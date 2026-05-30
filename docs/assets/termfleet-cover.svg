@@ -1,138 +1,148 @@
 <svg width="1280" height="640" viewBox="0 0 1280 640" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <filter id="panelShadow" x="-20%" y="-20%" width="140%" height="140%" color-interpolation-filters="sRGB">
-      <feDropShadow dx="0" dy="24" stdDeviation="28" flood-color="#050607" flood-opacity="0.42"/>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="150%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="16" stdDeviation="10" flood-color="#7b2e22" flood-opacity="0.22"/>
     </filter>
-    <filter id="softInset" x="-10%" y="-10%" width="120%" height="120%" color-interpolation-filters="sRGB">
-      <feDropShadow dx="0" dy="1" stdDeviation="0" flood-color="#5b646a" flood-opacity="0.22"/>
+    <filter id="inkShadow" x="-20%" y="-20%" width="140%" height="140%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="8" stdDeviation="1.5" flood-color="#3b1712" flood-opacity="0.2"/>
     </filter>
-    <linearGradient id="surfaceGrad" x1="130" y1="56" x2="1160" y2="600" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#30363a"/>
-      <stop offset="0.48" stop-color="#202426"/>
-      <stop offset="1" stop-color="#171b1d"/>
+    <linearGradient id="terminalBody" x1="540" y1="166" x2="740" y2="398" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#6f83bc"/>
+      <stop offset="1" stop-color="#4f639f"/>
     </linearGradient>
-    <linearGradient id="terminalGrad" x1="290" y1="152" x2="994" y2="496" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#1f2528"/>
-      <stop offset="1" stop-color="#15191b"/>
+    <linearGradient id="terminalTop" x1="500" y1="124" x2="814" y2="186" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#f1f4ff"/>
     </linearGradient>
-    <pattern id="grid" width="36" height="36" patternUnits="userSpaceOnUse">
-      <path d="M36 0H0V36" stroke="#849199" stroke-opacity="0.08" stroke-width="1"/>
-    </pattern>
     <style>
       .ui { font-family: DejaVu Sans, sans-serif; }
       .mono { font-family: DejaVu Sans Mono, monospace; }
-      .label { fill: #9aa3a8; font-size: 12px; font-weight: 500; letter-spacing: 0.12em; }
-      .tiny { fill: #717a80; font-size: 10px; letter-spacing: 0.08em; }
+      .route { stroke: #f3dc77; stroke-width: 6; stroke-linecap: round; stroke-linejoin: round; fill: none; }
+      .thinRoute { stroke: #456399; stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; fill: none; }
+      .taskRoute { stroke: #e45e3f; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; fill: none; }
+      .greenRoute { stroke: #438b65; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; fill: none; }
+      .ink { stroke: #11100f; stroke-width: 9; stroke-linecap: round; stroke-linejoin: round; }
+      .panelInk { stroke: #e15b42; stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; }
     </style>
   </defs>
 
-  <rect width="1280" height="640" fill="#111517"/>
-  <rect width="1280" height="640" fill="url(#grid)" opacity="0.72"/>
-  <rect x="0" y="0" width="1280" height="640" fill="url(#surfaceGrad)" opacity="0.86"/>
+  <rect width="1280" height="640" fill="#e96243"/>
+  <path class="route" fill="none" opacity="0.82" d="M24 126C72 22 174 22 242 58C312 95 382 77 430 31C472 -9 552 22 500 80C454 131 504 155 560 126"/>
+  <path class="route" fill="none" opacity="0.8" d="M842 1C836 63 884 82 936 56C982 33 966 4 980 -14"/>
+  <path class="route" fill="none" opacity="0.72" d="M948 102C916 169 1003 204 1068 188C1123 174 1200 176 1262 229"/>
+  <path class="route" fill="none" opacity="0.72" d="M22 314C130 292 185 365 132 424C86 475 114 545 224 514"/>
+  <path class="route" fill="none" opacity="0.72" d="M1080 395C1148 392 1178 419 1214 401C1234 389 1240 409 1218 421"/>
+  <path class="route" fill="none" opacity="0.72" d="M90 166C126 131 166 136 158 101C154 85 174 82 188 80"/>
+  <path class="route" fill="none" opacity="0.7" d="M426 278C460 278 466 303 440 310"/>
 
-  <g opacity="0.34">
-    <path d="M104 520C214 386 351 360 515 442C654 512 780 496 900 376C1018 258 1136 244 1204 302" stroke="#7dbac3" stroke-opacity="0.22" stroke-width="2"/>
-    <path d="M112 536C236 448 350 430 476 482C606 536 760 538 904 434C1029 344 1134 326 1200 370" stroke="#a7ff00" stroke-opacity="0.14" stroke-width="2"/>
+  <g transform="translate(200 104) rotate(-1.5)" filter="url(#softShadow)">
+    <rect x="0" y="0" width="210" height="134" rx="12" fill="#f0dc73"/>
+    <path class="panelInk" fill="none" d="M26 31C73 25 126 33 175 26"/>
+    <path class="panelInk" fill="none" d="M26 31L32 95C78 106 92 91 96 58C99 36 125 50 122 91"/>
+    <path class="panelInk" d="M162 28H188V53H162Z" fill="none"/>
+    <path class="panelInk" d="M154 67H188"/>
+    <circle cx="146" cy="105" r="4.5" fill="#e15b42"/>
+    <circle cx="166" cy="105" r="4.5" fill="#e15b42"/>
+    <circle cx="186" cy="105" r="4.5" fill="#e15b42"/>
   </g>
 
-  <g filter="url(#panelShadow)">
-    <rect x="76" y="64" width="1128" height="512" rx="24" fill="#171b1d" stroke="#3c454a" stroke-width="1"/>
-    <rect x="88" y="76" width="1104" height="488" rx="17" fill="#202426" stroke="#343b40" stroke-width="1"/>
+  <g transform="translate(988 68) rotate(-0.8)" filter="url(#softShadow)">
+    <rect x="0" y="0" width="244" height="72" rx="10" fill="#f0dc73"/>
+    <text x="21" y="47" class="ui" font-size="34" font-weight="700" fill="#d94d3c">MASTER PLAN</text>
   </g>
 
-  <rect x="88" y="76" width="1104" height="42" rx="17" fill="#282d30"/>
-  <rect x="88" y="102" width="1104" height="16" fill="#282d30"/>
-  <text x="114" y="103" class="ui" fill="#717a80" font-size="10" letter-spacing="0.08em">PROJECT</text>
-  <text x="176" y="104" class="ui" font-size="14" fill="#e2e5e7">termfleet</text>
-  <rect x="472" y="87" width="336" height="20" rx="6" fill="#181c1e" stroke="#343b40"/>
-  <text x="492" y="102" class="ui" fill="#717a80" font-size="10" letter-spacing="0.08em">COMMAND</text>
-  <text x="574" y="103" class="ui" font-size="13" fill="#c5ccd0">new terminal / focus pane / show map</text>
-  <rect x="1056" y="88" width="86" height="19" rx="9.5" fill="#1f2a1c" stroke="#4c6a2f"/>
-  <circle cx="1072" cy="97.5" r="3.5" fill="#a7ff00"/>
-  <text x="1084" y="102" class="ui" fill="#b9d49b" font-size="10" letter-spacing="0.08em">DAEMON LIVE</text>
-
-  <rect x="88" y="118" width="58" height="414" fill="#22272a"/>
-  <g>
-    <rect x="106" y="144" width="22" height="22" rx="5" fill="#3a4145" stroke="#a7ff00"/>
-    <path d="M112 151.5H122M112 157.5H119" stroke="#a7ff00" stroke-width="1.5" stroke-linecap="round"/>
-    <rect x="106" y="188" width="22" height="22" rx="5" fill="#282d30" stroke="#3c454a"/>
-    <path d="M112 196H122M112 202H119" stroke="#9aa3a8" stroke-width="1.5" stroke-linecap="round"/>
-    <rect x="106" y="232" width="22" height="22" rx="5" fill="#282d30" stroke="#3c454a"/>
-    <path d="M113 244L117 239L122 246" stroke="#9aa3a8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-    <rect x="106" y="276" width="22" height="22" rx="5" fill="#282d30" stroke="#3c454a"/>
-    <circle cx="117" cy="287" r="5" stroke="#9aa3a8" stroke-width="1.5"/>
+  <g transform="translate(1036 222) rotate(1.5)" filter="url(#softShadow)">
+    <rect x="0" y="0" width="216" height="137" rx="13" fill="#f0dc73"/>
+    <rect x="24" y="24" width="166" height="82" rx="5" fill="none" stroke="#e15b42" stroke-width="4"/>
+    <path class="panelInk" fill="none" d="M31 48C82 55 104 43 141 28M34 82C75 72 110 76 183 93M68 28C62 59 61 84 53 106M111 28C104 58 116 79 125 104M154 31C137 56 131 79 151 105"/>
   </g>
 
-  <rect x="146" y="118" width="206" height="414" fill="#202528" stroke="#343b40"/>
-  <text x="168" y="153" class="ui label">SESSIONS</text>
-  <g class="ui" font-size="13">
-    <rect x="162" y="174" width="174" height="34" rx="7" fill="#3a4145" stroke="#4a5359"/>
-    <rect x="172" y="185" width="7" height="7" rx="3.5" fill="#a7ff00"/>
-    <text x="190" y="196" fill="#e2e5e7">deploy-watch</text>
-    <text x="292" y="196" fill="#9aa3a8">live</text>
+  <path d="M0 438C114 422 216 434 318 454C410 472 502 444 628 454C764 464 879 432 1008 456C1116 475 1192 455 1280 442V640H0V438Z" fill="#fffdf1"/>
 
-    <rect x="162" y="218" width="174" height="34" rx="7" fill="#282d30" stroke="#343b40"/>
-    <rect x="172" y="229" width="7" height="7" rx="3.5" fill="#d4a44f"/>
-    <text x="190" y="240" fill="#c5ccd0">ci-runner</text>
-    <text x="294" y="240" fill="#717a80">busy</text>
+  <path class="thinRoute" fill="none" d="M-20 602C88 612 137 567 194 574C246 580 270 636 356 604C445 571 525 608 613 583C712 556 752 608 856 590C956 572 1006 611 1096 574C1160 548 1204 575 1300 559"/>
+  <path class="thinRoute" fill="none" d="M30 492C88 449 170 462 220 501C266 535 320 503 372 486C434 466 490 468 552 493C606 515 665 504 712 470C766 431 832 454 876 503C919 549 1002 514 1056 481C1112 446 1166 457 1205 500"/>
+  <path class="thinRoute" fill="none" d="M234 600L276 458L604 458L600 492L710 492L724 458L1008 474L992 548L1132 562"/>
+  <path class="taskRoute" fill="none" d="M408 548C464 526 505 555 463 576C428 594 383 570 424 546C470 517 506 519 552 542C616 574 635 514 693 520C762 527 702 608 772 612C833 616 806 548 862 548C912 548 929 581 901 604"/>
+  <path class="greenRoute" fill="none" d="M302 544C348 523 373 558 423 548C469 540 497 585 533 564M673 500C694 522 677 551 706 568C731 583 770 553 792 583"/>
 
-    <rect x="162" y="262" width="174" height="34" rx="7" fill="#282d30" stroke="#343b40"/>
-    <rect x="172" y="273" width="7" height="7" rx="3.5" fill="#7dbac3"/>
-    <text x="190" y="284" fill="#c5ccd0">prod-shell</text>
-    <text x="300" y="284" fill="#717a80">ssh</text>
-  </g>
-  <rect x="162" y="326" width="174" height="118" rx="8" fill="#181c1e" stroke="#343b40"/>
-  <text x="178" y="354" class="ui" fill="#717a80" font-size="10" letter-spacing="0.08em">OPS MAP</text>
-  <circle cx="214" cy="390" r="13" fill="#a7ff00" fill-opacity="0.15" stroke="#a7ff00"/>
-  <circle cx="278" cy="382" r="11" fill="#7dbac3" fill-opacity="0.14" stroke="#7dbac3"/>
-  <circle cx="256" cy="416" r="10" fill="#d4a44f" fill-opacity="0.13" stroke="#d4a44f"/>
-  <path d="M227 388L267 384M222 400L247 411" stroke="#849199" stroke-opacity="0.42"/>
-
-  <g filter="url(#softInset)">
-    <rect x="376" y="144" width="726" height="336" rx="13" fill="url(#terminalGrad)" stroke="#444c52"/>
-    <rect x="376" y="144" width="726" height="32" rx="13" fill="#282d30"/>
-    <rect x="376" y="164" width="726" height="12" fill="#282d30"/>
-    <circle cx="397" cy="160" r="4" fill="#ef6f72"/>
-    <circle cx="413" cy="160" r="4" fill="#d4a44f"/>
-    <circle cx="429" cy="160" r="4" fill="#7fc681"/>
-    <text x="455" y="165" class="ui" fill="#e2e5e7" font-size="13">deploy-watch</text>
-    <text x="1010" y="165" class="ui" fill="#717a80" font-size="10" letter-spacing="0.08em">NATIVE VTE</text>
-
-    <text x="410" y="218" class="mono" fill="#a7ff00" font-size="18">$</text>
-    <text x="434" y="218" class="mono" fill="#e2e5e7" font-size="18">termfleet run --workspace ops</text>
-    <text x="410" y="255" class="mono" fill="#8b969d" font-size="18">daemon</text>
-    <text x="492" y="255" class="mono" fill="#e2e5e7" font-size="18">attached to user-local daemon socket</text>
-    <text x="410" y="292" class="mono" fill="#8b969d" font-size="18">pane</text>
-    <text x="492" y="292" class="mono" fill="#e2e5e7" font-size="18">split.right synced with strategic map</text>
-    <text x="410" y="329" class="mono" fill="#8b969d" font-size="18">latency</text>
-    <text x="492" y="329" class="mono" fill="#e2e5e7" font-size="18">key-to-glyph p95 18ms</text>
-    <text x="410" y="366" class="mono" fill="#8b969d" font-size="18">status</text>
-    <text x="492" y="366" class="mono" fill="#e2e5e7" font-size="18">3 terminals live / 0 failed / restart-safe</text>
-    <text x="410" y="426" class="mono" fill="#a7ff00" font-size="18">ops@termfleet</text>
-    <text x="568" y="426" class="mono" fill="#e2e5e7" font-size="18">:</text>
-    <rect x="584" y="408" width="10" height="24" fill="#a7ff00"/>
+  <g transform="translate(486 74)" filter="url(#inkShadow)">
+    <path d="M130 31C135 10 166 10 168 32L162 139H126L130 31Z" fill="#f2dd72"/>
+    <path d="M188 33C194 11 228 12 226 36L218 146H182L188 33Z" fill="#2f876d"/>
+    <path d="M250 34C257 10 290 11 289 38L280 146H244L250 34Z" fill="#4b669d"/>
+    <path d="M318 31C324 10 358 8 358 34L348 145H312L318 31Z" fill="#2f876d"/>
+    <path d="M62 140L132 92L374 100L442 142L378 170H123L62 140Z" fill="#fffdf1" stroke="#456399" stroke-width="5" stroke-linejoin="round"/>
+    <path d="M123 170H378L364 384H138L123 170Z" fill="#5d70aa" stroke="#456399" stroke-width="5" stroke-linejoin="round"/>
+    <path d="M62 140L123 170H378L442 142" fill="none" stroke="#456399" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M91 202L190 232M254 232L411 202" fill="none" stroke="#11100f" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M84 286C-16 292 -62 337 -48 388C-39 424 2 430 33 398" fill="none" stroke="#11100f" stroke-width="17" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M392 286C510 282 559 328 544 382C533 420 488 432 452 402" fill="none" stroke="#11100f" stroke-width="17" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M20 317L82 406" fill="none" stroke="#11100f" stroke-width="17" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M495 330L438 414" fill="none" stroke="#11100f" stroke-width="17" stroke-linecap="round" stroke-linejoin="round"/>
+    <ellipse cx="179" cy="236" rx="58" ry="54" fill="#fffdf1" stroke="#11100f" stroke-width="8"/>
+    <ellipse cx="303" cy="236" rx="58" ry="54" fill="#fffdf1" stroke="#11100f" stroke-width="8"/>
+    <circle cx="181" cy="237" r="14" fill="#11100f"/>
+    <circle cx="300" cy="237" r="14" fill="#11100f"/>
+    <path d="M176 319C218 350 282 350 327 318C312 366 201 369 176 319Z" fill="#fffdf1"/>
+    <path d="M221 331L215 377M258 337L253 383M294 331L288 377" stroke="#4f639f" stroke-width="4" stroke-linecap="round"/>
   </g>
 
-  <rect x="920" y="198" width="226" height="238" rx="11" fill="#202426" stroke="#3c454a"/>
-  <text x="944" y="230" class="ui label">COCKPIT STATE</text>
-  <g class="ui" font-size="13">
-    <text x="944" y="266" fill="#9aa3a8">renderer</text>
-    <text x="1044" y="266" fill="#e2e5e7">native-vte</text>
-    <text x="944" y="300" fill="#9aa3a8">transport</text>
-    <text x="1044" y="300" fill="#e2e5e7">daemon IPC</text>
-    <text x="944" y="334" fill="#9aa3a8">layout</text>
-    <text x="1044" y="334" fill="#e2e5e7">split + map</text>
-    <text x="944" y="368" fill="#9aa3a8">recovery</text>
-    <text x="1044" y="368" fill="#a7ff00">reattach</text>
+  <g transform="translate(38 476)">
+    <g transform="translate(0 0)">
+      <rect x="0" y="18" width="54" height="52" rx="8" fill="#e96243"/>
+      <circle cx="27" cy="16" r="16" fill="#e96243"/>
+    </g>
+    <g transform="translate(118 28)">
+      <rect x="0" y="18" width="54" height="52" rx="8" fill="#4b669d"/>
+      <circle cx="27" cy="16" r="16" fill="#4b669d"/>
+    </g>
+    <g transform="translate(240 34)">
+      <rect x="0" y="18" width="54" height="52" rx="8" fill="#438b65"/>
+      <circle cx="27" cy="16" r="16" fill="#438b65"/>
+    </g>
+    <g transform="translate(762 78)">
+      <rect x="0" y="18" width="54" height="52" rx="8" fill="#4b669d"/>
+      <circle cx="27" cy="16" r="16" fill="#4b669d"/>
+    </g>
+    <g transform="translate(924 82)">
+      <rect x="0" y="18" width="54" height="52" rx="8" fill="#e96243"/>
+      <circle cx="27" cy="16" r="16" fill="#e96243"/>
+    </g>
+    <g transform="translate(1036 66)">
+      <rect x="0" y="18" width="54" height="52" rx="8" fill="#438b65"/>
+      <circle cx="27" cy="16" r="16" fill="#438b65"/>
+    </g>
+    <g transform="translate(1158 46)">
+      <rect x="0" y="18" width="54" height="52" rx="8" fill="#4b669d"/>
+      <circle cx="27" cy="16" r="16" fill="#4b669d"/>
+    </g>
   </g>
-  <rect x="944" y="394" width="154" height="18" rx="9" fill="#1f2a1c" stroke="#4c6a2f"/>
-  <text x="958" y="407" class="ui" fill="#c7e99c" font-size="10" letter-spacing="0.08em">TERMINALS OWN THE WORK</text>
 
-  <rect x="88" y="532" width="1104" height="32" rx="0" fill="#1c2022"/>
-  <text x="112" y="553" class="ui" fill="#717a80" font-size="10" letter-spacing="0.08em">PTY HEALTH: OK</text>
-  <text x="236" y="553" class="ui" fill="#717a80" font-size="10" letter-spacing="0.08em">PROJECT ROOT: /devops/termfleet</text>
-  <text x="1034" y="553" class="ui" fill="#717a80" font-size="10" letter-spacing="0.08em">LINUX FIRST</text>
+  <g filter="url(#softShadow)">
+    <g transform="translate(82 274) rotate(-1)">
+      <rect x="0" y="0" width="138" height="86" rx="10" fill="#f0dc73"/>
+      <path class="panelInk" d="M20 20H54M20 37H74M20 54H60M92 22H118M92 40H118"/>
+      <circle cx="95" cy="61" r="5" fill="#e15b42"/>
+      <circle cx="119" cy="61" r="5" fill="#e15b42"/>
+    </g>
+    <g transform="translate(1028 454) rotate(2)">
+      <rect x="0" y="0" width="132" height="82" rx="10" fill="#f0dc73"/>
+      <text x="22" y="30" class="mono" font-size="16" font-weight="700" fill="#d94d3c">$ npm</text>
+      <path d="M24 50H110M24 64H82" stroke="#d94d3c" stroke-width="4" stroke-linecap="round"/>
+    </g>
+    <g transform="translate(274 438) rotate(-3)">
+      <rect x="0" y="0" width="126" height="78" rx="10" fill="#f0dc73"/>
+      <text x="20" y="31" class="mono" font-size="15" font-weight="700" fill="#438b65">$ cargo</text>
+      <path d="M22 50H104M22 64H76" stroke="#438b65" stroke-width="4" stroke-linecap="round"/>
+    </g>
+    <g transform="translate(816 430) rotate(2.5)">
+      <rect x="0" y="0" width="132" height="82" rx="10" fill="#f0dc73"/>
+      <text x="22" y="31" class="mono" font-size="15" font-weight="700" fill="#456399">$ deploy</text>
+      <path d="M24 50H110M24 64H82" stroke="#456399" stroke-width="4" stroke-linecap="round"/>
+    </g>
+  </g>
 
-  <text x="112" y="614" class="ui" font-size="52" font-weight="500" fill="#f1f5f9">termfleet</text>
-  <text x="386" y="613" class="ui" font-size="22" font-weight="400" fill="#b5bec4">a terminal cockpit for multi-session operations</text>
+  <g transform="translate(62 585)">
+    <text x="0" y="0" class="ui" font-size="54" font-weight="800" fill="#11100f">termfleet</text>
+    <text x="286" y="-5" class="ui" font-size="22" font-weight="700" fill="#456399">one master plan, many live terminals</text>
+  </g>
 </svg>
