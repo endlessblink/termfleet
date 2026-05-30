@@ -1,0 +1,138 @@
+<svg width="1280" height="640" viewBox="0 0 1280 640" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <filter id="panelShadow" x="-20%" y="-20%" width="140%" height="140%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="24" stdDeviation="28" flood-color="#050607" flood-opacity="0.42"/>
+    </filter>
+    <filter id="softInset" x="-10%" y="-10%" width="120%" height="120%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="1" stdDeviation="0" flood-color="#5b646a" flood-opacity="0.22"/>
+    </filter>
+    <linearGradient id="surfaceGrad" x1="130" y1="56" x2="1160" y2="600" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#30363a"/>
+      <stop offset="0.48" stop-color="#202426"/>
+      <stop offset="1" stop-color="#171b1d"/>
+    </linearGradient>
+    <linearGradient id="terminalGrad" x1="290" y1="152" x2="994" y2="496" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1f2528"/>
+      <stop offset="1" stop-color="#15191b"/>
+    </linearGradient>
+    <pattern id="grid" width="36" height="36" patternUnits="userSpaceOnUse">
+      <path d="M36 0H0V36" stroke="#849199" stroke-opacity="0.08" stroke-width="1"/>
+    </pattern>
+    <style>
+      .ui { font-family: DejaVu Sans, sans-serif; }
+      .mono { font-family: DejaVu Sans Mono, monospace; }
+      .label { fill: #9aa3a8; font-size: 12px; font-weight: 500; letter-spacing: 0.12em; }
+      .tiny { fill: #717a80; font-size: 10px; letter-spacing: 0.08em; }
+    </style>
+  </defs>
+
+  <rect width="1280" height="640" fill="#111517"/>
+  <rect width="1280" height="640" fill="url(#grid)" opacity="0.72"/>
+  <rect x="0" y="0" width="1280" height="640" fill="url(#surfaceGrad)" opacity="0.86"/>
+
+  <g opacity="0.34">
+    <path d="M104 520C214 386 351 360 515 442C654 512 780 496 900 376C1018 258 1136 244 1204 302" stroke="#7dbac3" stroke-opacity="0.22" stroke-width="2"/>
+    <path d="M112 536C236 448 350 430 476 482C606 536 760 538 904 434C1029 344 1134 326 1200 370" stroke="#a7ff00" stroke-opacity="0.14" stroke-width="2"/>
+  </g>
+
+  <g filter="url(#panelShadow)">
+    <rect x="76" y="64" width="1128" height="512" rx="24" fill="#171b1d" stroke="#3c454a" stroke-width="1"/>
+    <rect x="88" y="76" width="1104" height="488" rx="17" fill="#202426" stroke="#343b40" stroke-width="1"/>
+  </g>
+
+  <rect x="88" y="76" width="1104" height="42" rx="17" fill="#282d30"/>
+  <rect x="88" y="102" width="1104" height="16" fill="#282d30"/>
+  <text x="114" y="103" class="ui" fill="#717a80" font-size="10" letter-spacing="0.08em">PROJECT</text>
+  <text x="176" y="104" class="ui" font-size="14" fill="#e2e5e7">termfleet</text>
+  <rect x="472" y="87" width="336" height="20" rx="6" fill="#181c1e" stroke="#343b40"/>
+  <text x="492" y="102" class="ui" fill="#717a80" font-size="10" letter-spacing="0.08em">COMMAND</text>
+  <text x="574" y="103" class="ui" font-size="13" fill="#c5ccd0">new terminal / focus pane / show map</text>
+  <rect x="1056" y="88" width="86" height="19" rx="9.5" fill="#1f2a1c" stroke="#4c6a2f"/>
+  <circle cx="1072" cy="97.5" r="3.5" fill="#a7ff00"/>
+  <text x="1084" y="102" class="ui" fill="#b9d49b" font-size="10" letter-spacing="0.08em">DAEMON LIVE</text>
+
+  <rect x="88" y="118" width="58" height="414" fill="#22272a"/>
+  <g>
+    <rect x="106" y="144" width="22" height="22" rx="5" fill="#3a4145" stroke="#a7ff00"/>
+    <path d="M112 151.5H122M112 157.5H119" stroke="#a7ff00" stroke-width="1.5" stroke-linecap="round"/>
+    <rect x="106" y="188" width="22" height="22" rx="5" fill="#282d30" stroke="#3c454a"/>
+    <path d="M112 196H122M112 202H119" stroke="#9aa3a8" stroke-width="1.5" stroke-linecap="round"/>
+    <rect x="106" y="232" width="22" height="22" rx="5" fill="#282d30" stroke="#3c454a"/>
+    <path d="M113 244L117 239L122 246" stroke="#9aa3a8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="106" y="276" width="22" height="22" rx="5" fill="#282d30" stroke="#3c454a"/>
+    <circle cx="117" cy="287" r="5" stroke="#9aa3a8" stroke-width="1.5"/>
+  </g>
+
+  <rect x="146" y="118" width="206" height="414" fill="#202528" stroke="#343b40"/>
+  <text x="168" y="153" class="ui label">SESSIONS</text>
+  <g class="ui" font-size="13">
+    <rect x="162" y="174" width="174" height="34" rx="7" fill="#3a4145" stroke="#4a5359"/>
+    <rect x="172" y="185" width="7" height="7" rx="3.5" fill="#a7ff00"/>
+    <text x="190" y="196" fill="#e2e5e7">deploy-watch</text>
+    <text x="292" y="196" fill="#9aa3a8">live</text>
+
+    <rect x="162" y="218" width="174" height="34" rx="7" fill="#282d30" stroke="#343b40"/>
+    <rect x="172" y="229" width="7" height="7" rx="3.5" fill="#d4a44f"/>
+    <text x="190" y="240" fill="#c5ccd0">ci-runner</text>
+    <text x="294" y="240" fill="#717a80">busy</text>
+
+    <rect x="162" y="262" width="174" height="34" rx="7" fill="#282d30" stroke="#343b40"/>
+    <rect x="172" y="273" width="7" height="7" rx="3.5" fill="#7dbac3"/>
+    <text x="190" y="284" fill="#c5ccd0">prod-shell</text>
+    <text x="300" y="284" fill="#717a80">ssh</text>
+  </g>
+  <rect x="162" y="326" width="174" height="118" rx="8" fill="#181c1e" stroke="#343b40"/>
+  <text x="178" y="354" class="ui" fill="#717a80" font-size="10" letter-spacing="0.08em">OPS MAP</text>
+  <circle cx="214" cy="390" r="13" fill="#a7ff00" fill-opacity="0.15" stroke="#a7ff00"/>
+  <circle cx="278" cy="382" r="11" fill="#7dbac3" fill-opacity="0.14" stroke="#7dbac3"/>
+  <circle cx="256" cy="416" r="10" fill="#d4a44f" fill-opacity="0.13" stroke="#d4a44f"/>
+  <path d="M227 388L267 384M222 400L247 411" stroke="#849199" stroke-opacity="0.42"/>
+
+  <g filter="url(#softInset)">
+    <rect x="376" y="144" width="726" height="336" rx="13" fill="url(#terminalGrad)" stroke="#444c52"/>
+    <rect x="376" y="144" width="726" height="32" rx="13" fill="#282d30"/>
+    <rect x="376" y="164" width="726" height="12" fill="#282d30"/>
+    <circle cx="397" cy="160" r="4" fill="#ef6f72"/>
+    <circle cx="413" cy="160" r="4" fill="#d4a44f"/>
+    <circle cx="429" cy="160" r="4" fill="#7fc681"/>
+    <text x="455" y="165" class="ui" fill="#e2e5e7" font-size="13">deploy-watch</text>
+    <text x="1010" y="165" class="ui" fill="#717a80" font-size="10" letter-spacing="0.08em">NATIVE VTE</text>
+
+    <text x="410" y="218" class="mono" fill="#a7ff00" font-size="18">$</text>
+    <text x="434" y="218" class="mono" fill="#e2e5e7" font-size="18">termfleet run --workspace ops</text>
+    <text x="410" y="255" class="mono" fill="#8b969d" font-size="18">daemon</text>
+    <text x="492" y="255" class="mono" fill="#e2e5e7" font-size="18">attached to /run/user/1000/termfleet.sock</text>
+    <text x="410" y="292" class="mono" fill="#8b969d" font-size="18">pane</text>
+    <text x="492" y="292" class="mono" fill="#e2e5e7" font-size="18">split.right synced with strategic map</text>
+    <text x="410" y="329" class="mono" fill="#8b969d" font-size="18">latency</text>
+    <text x="492" y="329" class="mono" fill="#e2e5e7" font-size="18">key-to-glyph p95 18ms</text>
+    <text x="410" y="366" class="mono" fill="#8b969d" font-size="18">status</text>
+    <text x="492" y="366" class="mono" fill="#e2e5e7" font-size="18">3 terminals live / 0 failed / restart-safe</text>
+    <text x="410" y="426" class="mono" fill="#a7ff00" font-size="18">ops@termfleet</text>
+    <text x="568" y="426" class="mono" fill="#e2e5e7" font-size="18">:</text>
+    <rect x="584" y="408" width="10" height="24" fill="#a7ff00"/>
+  </g>
+
+  <rect x="920" y="198" width="226" height="238" rx="11" fill="#202426" stroke="#3c454a"/>
+  <text x="944" y="230" class="ui label">COCKPIT STATE</text>
+  <g class="ui" font-size="13">
+    <text x="944" y="266" fill="#9aa3a8">renderer</text>
+    <text x="1044" y="266" fill="#e2e5e7">native-vte</text>
+    <text x="944" y="300" fill="#9aa3a8">transport</text>
+    <text x="1044" y="300" fill="#e2e5e7">daemon IPC</text>
+    <text x="944" y="334" fill="#9aa3a8">layout</text>
+    <text x="1044" y="334" fill="#e2e5e7">split + map</text>
+    <text x="944" y="368" fill="#9aa3a8">recovery</text>
+    <text x="1044" y="368" fill="#a7ff00">reattach</text>
+  </g>
+  <rect x="944" y="394" width="154" height="18" rx="9" fill="#1f2a1c" stroke="#4c6a2f"/>
+  <text x="958" y="407" class="ui" fill="#c7e99c" font-size="10" letter-spacing="0.08em">TERMINALS OWN THE WORK</text>
+
+  <rect x="88" y="532" width="1104" height="32" rx="0" fill="#1c2022"/>
+  <text x="112" y="553" class="ui" fill="#717a80" font-size="10" letter-spacing="0.08em">PTY HEALTH: OK</text>
+  <text x="236" y="553" class="ui" fill="#717a80" font-size="10" letter-spacing="0.08em">PROJECT ROOT: /devops/termfleet</text>
+  <text x="1034" y="553" class="ui" fill="#717a80" font-size="10" letter-spacing="0.08em">LINUX FIRST</text>
+
+  <text x="112" y="614" class="ui" font-size="52" font-weight="500" fill="#f1f5f9">termfleet</text>
+  <text x="386" y="613" class="ui" font-size="22" font-weight="400" fill="#b5bec4">a terminal cockpit for multi-session operations</text>
+</svg>
