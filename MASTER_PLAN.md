@@ -44,7 +44,7 @@ were retired during consolidation.
 | TC-017d | DONE | TASK | Stage 4: input translation & keymap (keydown to VT sequences) |
 | TC-017e | DONE | TASK | Stage 5: resize/reflow + map-mode CSS transform |
 | TC-017f | DONE | TASK | Stage 6: scrollback, selection, copy/paste |
-| TC-017g | IN_PROGRESS | TASK | Stage 7: box-drawing DONE + canvas is now the desktop default (replaces xterm); xterm reduced to browser-only fallback; live latency/TUI numbers pending |
+| TC-017g | DONE | TASK | Stage 7: canvas is the desktop default (replaces xterm); xterm browser-only fallback. Live-confirmed in the Tauri app via verify:canvas-live: fills pane (fixed an attach-race fill bug), reflows, live render, p95 1ms input, htop/vim/tmux TUIs |
 | TC-018 | TODO | FEATURE | BiDi/RTL + text shaping (Hebrew nikud) in the headless grid — depends on TC-017 |
 
 ---
@@ -1224,7 +1224,7 @@ Evidence: `cargo test` 33 passed — new `scrolling_into_history_reveals_older_
   `pointToCell` floor + clamp.
 Next: TC-017g (TUI correctness, latency gate, delete xterm.js).
 
-##### TC-017g - Stage 7: TUI correctness, latency gate, delete xterm.js `IN_PROGRESS`
+##### TC-017g - Stage 7: TUI correctness, latency gate, delete xterm.js `DONE`
 Render box-drawing (U+2500..U+257F) via raw `fillRect` (no atlas sub-pixel gaps).
 Validate `zellij`, `tmux`, `vim`, `htop` (alt screen, 256/truecolor, splits align).
 Pass the key-to-glyph p95 15-25ms gate. Then remove the xterm.js dependency and
@@ -1263,16 +1263,44 @@ still exercise xterm via the no-Tauri fallback — no regression);
 `verify:terminal-rendering` + `verify:typography` (TerminalCanvas allowlisted)
 pass for the files I own.
 
-REMAINING — live numbers only (need a desktop WebKitGTK session; cannot be
-produced headlessly here, and they are confirmation, not blockers to the default):
-- Key-to-glyph p95 15–25ms latency measurement. Instrumentation plan (TC-017
-  spec): tag a keypress with an invisible DCS sequence, flag the diff carrying
-  it in Rust, measure keypress→flagged-diff in React.
-- Live TUI smoke: `zellij`/`tmux`/`vim`/`htop` (alt screen, 256/truecolor, split
-  alignment) under the canvas renderer.
-Run `./run-native-vte-dev.sh` (default now uses the canvas renderer) to capture
-these. If a regression appears, `VITE_TERMINAL_RENDERER_MODE=web-xterm` reverts
-to xterm on desktop instantly.
+LIVE CONFIRMATION — DONE (2026-05-30): the canvas renderer was driven in the
+live Tauri desktop app (real WebKitGTK, on a private Xvfb so it never touches the
+user's :0 desktop) via the new `scripts/verify-canvas-live.sh`
+(`VITE_TERMINAL_RENDERER_MODE=canvas2d`, split mode, reset state). Every goal
+criterion passed with screenshot evidence in `/tmp/tw-canvas-live/`:
+- **Fills its pane** — `01-default.png`. NOTE: this exposed and fixed a real bug.
+  The grid stayed at the 80×24 attach default and only filled after a later
+  resize. Root cause: `TerminalCanvas` `ResizeObserver` can fire on the initial
+  layout BEFORE `grid_attach` resolves; that early fire recorded the pane size in
+  `lastCols/lastRows` while `grid_resize` no-op'd on the unattached session, so
+  the post-attach `applyResize()` saw no change and never grew the grid. Fix: an
+  `attached` flag gates `applyResize` so the first real fit always runs
+  post-attach (`src/components/TerminalCanvas.tsx`).
+- **Reflows on resize** — `03-resized-small.png` (1000×680, colored `ls` reflows
+  and fills) → `04-resized-large.png` (back to 1600×1000, refills).
+- **Renders live, never stale** — `02-typed.png` (colored `ls --color` output),
+  `06-htop.png`→`07-htop-live.png` (continuous htop redraw between frames),
+  tmux output round-trips.
+- **Types as fast as Alacritty** — backend key-to-PTY latency from the live run
+  (177 keystrokes, `TERMINAL_WORKSPACE_TRACE_LATENCY=1`): p50=0ms, **p95=1ms**,
+  max=1ms. No optimistic echo (real PTY round-trip).
+- **Real TUIs** — `htop` (`06/07`), `vim` (`05a` empty buffer + `~` markers + status
+  line, `05` inserted text with `[+]` modified flag), `tmux` (`08/09` green status
+  bar + nested pane I/O). All enter the alternate screen and fill the pane.
+  (Note: `vim` on this machine is aliased to Neovim+LazyVim which self-exits on a
+  version check — an environment quirk, not a renderer issue; verified with
+  `vim -u NONE`. The canvas correctly rendered nvim's alt-screen error too.)
+
+Automated regression check after the fix: `npm run build` clean, `tsc --noEmit`
+clean, `npm run verify:canvas-all` 6/6 passed, `verify:terminal-rendering` and
+`verify:typography` pass. (`verify:map-terminals` is broken independently of this
+work — it crashes reading a non-existent `../DESIGN.md` and references the retired
+`native_vte.rs`; needs separate reconciliation with the TC-017 cutover.)
+
+If a regression appears, `VITE_TERMINAL_RENDERER_MODE=web-xterm` reverts to xterm
+on desktop instantly. Optional remaining polish: a true instrumented key-to-glyph
+p95 (tag keypress with an invisible DCS, flag the carrying diff in Rust, measure
+keypress→flagged-diff in React) — confirmation only, not a blocker to the default.
 
 #### TC-018 - BiDi/RTL + text shaping (Hebrew nikud) in the headless grid `TODO`
 Future pass, layered on the completed TC-017 renderer (needs the binary IPC

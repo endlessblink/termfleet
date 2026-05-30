@@ -136,18 +136,44 @@ export function TerminalCanvas({
     // Reflow: derive cols/rows from the shell's pixel box and keep the PTY and
     // the headless grid in lock-step. The grid emits a full sync after a
     // dimension change, repainting at the new size.
+    //
+    // `attached` gates resize until grid_attach has completed. The ResizeObserver
+    // can fire on the initial layout (and on the first window resize) BEFORE the
+    // async attach below resolves; without this gate that early fire records the
+    // pane size in lastCols/lastRows while grid_resize no-ops on the unattached
+    // session, so the post-attach applyResize() then sees no change and the grid
+    // stays stuck at the 80×24 attach default until the next resize. Gating keeps
+    // lastCols/lastRows at the attach defaults so the first real fit always runs.
+    let attached = false;
     let lastCols = cols;
     let lastRows = rows;
-    const applyResize = () => {
+
+    // Derive the grid/PTY dimensions from the shell's pixel box. Falls back to
+    // the prop defaults while the pane is unmeasured (clientWidth 0, e.g. a
+    // not-yet-laid-out or hidden pane) so a collapsed pane never sends a bogus
+    // 1-column size.
+    const measure = (): { cols: number; rows: number } => {
       const shell = shellRef.current;
-      if (!shell || disposed) return;
-      const { cols: nextCols, rows: nextRows } = computeGridSize(
+      if (!shell || shell.clientWidth <= 0 || shell.clientHeight <= 0) {
+        return { cols, rows };
+      }
+      return computeGridSize(
         shell.clientWidth,
         shell.clientHeight,
         metrics.cellWidth,
         metrics.cellHeight,
       );
-      if (nextCols === lastCols && nextRows === lastRows) return;
+    };
+
+    // Resize the PTY winsize and the headless grid together. The two MUST stay in
+    // lock-step: the grid parses the PTY's byte stream, so if its width differs
+    // from the PTY winsize the shell/TUI wraps lines for a width the grid doesn't
+    // have, producing the duplicated/clipped-prompt corruption. `force` bypasses
+    // the no-change guard for the initial post-attach reconcile.
+    const applyResize = (force = false) => {
+      if (disposed || !attached) return;
+      const { cols: nextCols, rows: nextRows } = measure();
+      if (!force && nextCols === lastCols && nextRows === lastRows) return;
       lastCols = nextCols;
       lastRows = nextRows;
       invoke("daemon_resize_session", { id: sessionId, cols: nextCols, rows: nextRows }).catch(
@@ -158,19 +184,35 @@ export function TerminalCanvas({
       );
     };
 
-    const observer = new ResizeObserver(applyResize);
+    const observer = new ResizeObserver(() => applyResize());
     if (shellRef.current) observer.observe(shellRef.current);
 
     (async () => {
       // Ensure the daemon owns the PTY (the daemon is the PTY authority), then
       // attach the headless grid and subscribe to its binary diff stream.
+      //
+      // Attach the grid at the *measured* pane size rather than the 80x24 prop
+      // default, and resize the PTY to match BEFORE the grid subscribes. The
+      // daemon replays the session's scrollback into the grid the moment it
+      // subscribes; if the grid were still 80 columns that replay (and a reused
+      // session's wide history) would wrap at the wrong width and stay garbled.
+      // Sizing both sides to the real pane up front means the grid interprets
+      // every byte — replayed and live — at the width the shell is actually using.
       await invoke("daemon_ensure_running");
       await invoke("daemon_ensure_session", { id: sessionId, cwd, command });
       if (disposed) return;
-      await invoke("grid_attach", { id: sessionId, cols, rows });
+      const init = measure();
+      await invoke("daemon_resize_session", { id: sessionId, cols: init.cols, rows: init.rows });
+      if (disposed) return;
+      await invoke("grid_attach", { id: sessionId, cols: init.cols, rows: init.rows });
       if (disposed) return;
       await invoke("grid_subscribe_diffs", { id: sessionId, onDiff: channel });
-      applyResize();
+      attached = true;
+      lastCols = init.cols;
+      lastRows = init.rows;
+      // Force one reconcile in case layout settled during the awaits, guaranteeing
+      // PTY and grid are explicitly set to the same dimensions.
+      applyResize(true);
     })().catch(console.error);
 
     return () => {

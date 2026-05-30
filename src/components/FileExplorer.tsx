@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import type { FileEntry } from "../lib/types";
 import { createTerminalTab, useWorkspaceStore } from "../stores/workspace";
+import { FolderPicker } from "./FolderPicker";
 
 interface TreeNodeState {
   expanded: boolean;
@@ -618,6 +619,7 @@ export function FileExplorer() {
   const [error, setError] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   const resolvedRoot = useMemo(() => projectRoot ?? rootInput, [projectRoot, rootInput]);
 
@@ -720,24 +722,14 @@ export function FileExplorer() {
     addOpenFile({ path: entry.path, name: entry.name, dirty: false });
   }, [addOpenFile]);
 
-  const chooseProjectFolder = useCallback(async () => {
-    try {
-      if (!tauriAvailable) {
-        const selected = window.prompt("Project folder", rootInput);
-        if (selected?.trim()) setProjectRoot(selected.trim());
-        return;
-      }
-
-      const selected = await invoke<string | null>("fs_pick_project_folder", {
-        currentPath: resolvedRoot,
-      });
-      if (!selected) return;
-      setRootInput(selected);
-      setProjectRoot(selected);
-    } catch (requestError) {
-      setError(formatExplorerError(requestError));
+  const chooseProjectFolder = useCallback(() => {
+    if (!tauriAvailable) {
+      const selected = window.prompt("Project folder", rootInput);
+      if (selected?.trim()) setProjectRoot(selected.trim());
+      return;
     }
-  }, [resolvedRoot, rootInput, setProjectRoot, tauriAvailable]);
+    setPickerOpen(true);
+  }, [rootInput, setProjectRoot, tauriAvailable]);
 
   const refreshParent = useCallback((path: string) => {
     if (path === resolvedRoot || parentPath(path) === resolvedRoot) {
@@ -1009,6 +1001,17 @@ export function FileExplorer() {
             </>
           )}
         </div>
+      )}
+      {pickerOpen && (
+        <FolderPicker
+          initialPath={resolvedRoot || null}
+          onSelect={(selected) => {
+            setRootInput(selected);
+            setProjectRoot(selected);
+            setPickerOpen(false);
+          }}
+          onClose={() => setPickerOpen(false)}
+        />
       )}
     </aside>
   );

@@ -1,5 +1,4 @@
 import { CSSProperties, ReactNode, useEffect, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import {
   CaretDoubleLeft,
   CaretDoubleRight,
@@ -17,6 +16,7 @@ import {
   X,
 } from "@phosphor-icons/react";
 import { createNewTab, createTerminalTab, splitActivePane, useWorkspaceStore } from "../stores/workspace";
+import { FolderPicker } from "./FolderPicker";
 import type { CanvasNode, Tab } from "../lib/types";
 import { pathTail, projectNameFor } from "../lib/projectDisplay";
 import { FileExplorer } from "./FileExplorer";
@@ -126,10 +126,46 @@ const styles: Record<string, CSSProperties> = {
     gap: 8,
     minWidth: 0,
     color: "var(--text-primary)",
+  },
+  titleStack: {
+    display: "flex",
+    flexDirection: "column",
+    minWidth: 0,
+    gap: 1,
+  },
+  titleName: {
     fontSize: 12,
     fontWeight: 500,
     textTransform: "uppercase",
     letterSpacing: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  titlePath: {
+    fontSize: 10,
+    fontWeight: 400,
+    color: "var(--text-secondary)",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    maxWidth: 180,
+  },
+  onboard: {
+    display: "grid",
+    gap: 8,
+    padding: "10px 8px 4px",
+    justifyItems: "start",
+  },
+  onboardTitle: {
+    fontSize: 13,
+    fontWeight: 500,
+    color: "var(--text-primary)",
+  },
+  onboardText: {
+    fontSize: 12,
+    lineHeight: 1.45,
+    color: "var(--text-secondary)",
   },
   count: {
     color: "var(--text-secondary)",
@@ -882,11 +918,17 @@ function SessionsPanel({
   const [newTerminalMenu, setNewTerminalMenu] = useState<{ x: number; y: number } | null>(null);
   const [projectName, setProjectName] = useState("");
   const [projectPath, setProjectPath] = useState(projectRoot ?? "");
+  const [pickerOpen, setPickerOpen] = useState(false);
   const visibleTabs =
     activeGroupFilter === null
       ? tabs
       : tabs.filter((tab) => tab.groupId === activeGroupFilter);
   const activeProjectName = projectNameFor(activeGroupFilter, groups);
+  const activeProjectRoot =
+    activeGroupFilter !== null
+      ? groups.find((group) => group.id === activeGroupFilter)?.projectRoot ?? null
+      : null;
+  const hasProjects = groups.length > 0;
   const projects = [
     { id: null, name: "All projects", color: "var(--accent-info)", count: tabs.length },
     ...groups.map((group) => ({
@@ -905,32 +947,27 @@ function SessionsPanel({
     if (!showLauncher) setProjectPath("");
   }, [projectRoot, showLauncher]);
 
-  const chooseProjectPath = async (currentPath = projectPath) => {
-    try {
-      const selected = await invoke<string | null>("fs_pick_project_folder", {
-        currentPath: currentPath.trim() || projectRoot || undefined,
-      });
-      if (!selected) return null;
-      setProjectPath(selected);
-      if (!projectName.trim()) {
-        setProjectName(selected.split("/").filter(Boolean).pop() ?? selected);
-      }
-      return selected;
-    } catch (error) {
-      console.warn("Could not open project folder picker:", error);
-      return null;
+  // Apply a folder chosen in the themed in-app picker to the launcher fields.
+  const applyPickedPath = (selected: string) => {
+    setProjectPath(selected);
+    if (!projectName.trim()) {
+      setProjectName(selected.split("/").filter(Boolean).pop() ?? selected);
     }
+    setPickerOpen(false);
   };
 
-  const openProjectLauncher = async () => {
+  const openProjectLauncher = () => {
     setShowLauncher(true);
-    const selected = await chooseProjectPath(projectPath || projectRoot || "");
-    if (selected) setProjectPath(selected);
+    setPickerOpen(true);
   };
 
-  const createProjectSession = async () => {
-    const cwd = projectPath.trim() || await chooseProjectPath(projectRoot ?? "");
-    if (!cwd) return;
+  const createProjectSession = () => {
+    const cwd = projectPath.trim();
+    if (!cwd) {
+      // Nothing chosen yet — open the picker instead of failing silently.
+      setPickerOpen(true);
+      return;
+    }
 
     const name = projectName.trim() || cwd.split("/").filter(Boolean).pop() || "Project";
     const groupId = addGroup(name, undefined, cwd);
@@ -989,7 +1026,20 @@ function SessionsPanel({
       <div style={styles.header}>
         <div style={styles.title}>
           <TerminalWindow size={14} weight="duotone" />
-          <span>{activeProjectName}</span>
+          <span style={styles.titleStack}>
+            <span style={styles.titleName}>{activeProjectName}</span>
+            <span
+              style={styles.titlePath}
+              title={activeProjectRoot ?? (hasProjects ? undefined : "No project path set")}
+              dir="auto"
+            >
+              {activeProjectRoot
+                ? pathTail(activeProjectRoot, 3)
+                : hasProjects
+                  ? "all sessions"
+                  : "no project set"}
+            </span>
+          </span>
         </div>
         <span style={styles.headerActions}>
           <span style={styles.countPill} title={`${visibleTabs.length} visible sessions`}>
@@ -1073,9 +1123,9 @@ function SessionsPanel({
             />
           </label>
           <div style={styles.launcherActions}>
-            <button className="workspace-secondary-button" style={styles.secondaryButton} onClick={() => chooseProjectPath()}>
+            <button className="workspace-secondary-button" style={styles.secondaryButton} onClick={() => setPickerOpen(true)}>
               <FolderOpen size={14} />
-              Folder
+              Browse
             </button>
             <button className="workspace-secondary-button" style={styles.secondaryButton} onClick={() => setShowLauncher(false)}>
               Cancel
@@ -1092,6 +1142,18 @@ function SessionsPanel({
           <span>Projects</span>
           <span>{groups.length}</span>
         </div>
+        {!hasProjects ? (
+          <div style={styles.onboard}>
+            <span style={styles.onboardTitle}>No project open</span>
+            <span style={styles.onboardText}>
+              Open a folder to set your project path. New terminals will start there instead of your home directory.
+            </span>
+            <button className="workspace-primary-button" style={styles.primaryButton} onClick={openProjectLauncher}>
+              <FolderOpen size={14} />
+              Open a project
+            </button>
+          </div>
+        ) : (
         <div style={styles.projectGrid}>
           {projects.map((project) => {
             const active = project.id === activeGroupFilter;
@@ -1134,6 +1196,7 @@ function SessionsPanel({
             );
           })}
         </div>
+        )}
       </div>
       <div style={styles.list}>
         <div style={styles.sectionLabel}>
@@ -1241,6 +1304,13 @@ function SessionsPanel({
           Project
         </button>
       </div>
+      {pickerOpen && (
+        <FolderPicker
+          initialPath={projectPath || projectRoot || null}
+          onSelect={applyPickedPath}
+          onClose={() => setPickerOpen(false)}
+        />
+      )}
     </>
   );
 }

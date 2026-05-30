@@ -324,19 +324,28 @@ const restoredTabs =
 const restoredActiveTabId =
   restoredTabs.find((tab) => tab.id === persisted.activeTabId)?.id ?? restoredTabs[0].id;
 
-/** Create a new tab, inheriting CWD from active terminal and group from active filter */
+/** Create a new tab in the active project, opening at the project root when one is selected. */
 export async function createNewTab() {
   const { invoke } = await import("@tauri-apps/api/core");
   const store = useWorkspaceStore.getState();
   const activeTab = store.tabs.find((t) => t.id === store.activeTabId);
+
+  // The new tab belongs to the active project filter (falling back to the active tab's project).
+  const groupId = store.activeGroupFilter ?? activeTab?.groupId ?? null;
+  const targetGroup = groupId ? store.groups.find((group) => group.id === groupId) : null;
+
   let cwd: string | undefined;
 
-  if (activeTab && activeTab.terminals.length > 0) {
+  if (targetGroup?.projectRoot) {
+    // A project is selected: its root is authoritative so the terminal reflects the project.
+    cwd = targetGroup.projectRoot;
+  } else if (activeTab && activeTab.terminals.length > 0) {
+    // No project context: inherit the live cwd of the active terminal (transport-aware).
     const activeTerminal =
       activeTab.terminals.find((terminal) => terminal.paneId === activeTab.activePaneId) ??
       activeTab.terminals[0];
     try {
-      cwd = await invoke<string>("pty_get_cwd", { id: activeTerminal.id });
+      cwd = await getPtyCwd(activeTerminal.id, invoke);
     } catch (e) {
       console.warn("Could not get CWD from active terminal:", e);
       cwd = activeTab.initialCwd ?? store.projectRoot ?? undefined;
@@ -345,20 +354,20 @@ export async function createNewTab() {
     cwd = activeTab?.initialCwd ?? store.projectRoot ?? undefined;
   }
 
-  // Auto-assign new tab to the currently active group filter
-  const groupId = store.activeGroupFilter ?? activeTab?.groupId ?? null;
-
   store.addTab({ initialCwd: cwd, groupId });
 }
 
 export function createTerminalTab(cwd?: string) {
   const store = useWorkspaceStore.getState();
-  const name = cwd ? cwd.split("/").filter(Boolean).pop() ?? cwd : DEFAULT_TAB_TITLE;
+  const groupId = store.activeGroupFilter ?? store.activeGroupId;
+  const targetGroup = groupId ? store.groups.find((group) => group.id === groupId) : null;
+  const resolvedCwd = cwd ?? targetGroup?.projectRoot ?? store.projectRoot ?? undefined;
+  const name = resolvedCwd ? resolvedCwd.split("/").filter(Boolean).pop() ?? resolvedCwd : DEFAULT_TAB_TITLE;
   store.addTab({
     title: name,
     emoji: "\u{1F4C1}",
-    initialCwd: cwd,
-    groupId: store.activeGroupFilter ?? store.activeGroupId,
+    initialCwd: resolvedCwd,
+    groupId,
   });
 }
 

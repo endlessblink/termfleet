@@ -6,6 +6,10 @@ const srcRoot = join(root, "src");
 const allowedMonoFiles = new Set([
   "components/Terminal.tsx",
   "components/TerminalCanvas.tsx",
+  // MagicCanvas renders live terminal nodes on the operations map; its
+  // nativeTerminalPrompt label is a terminal surface (var(--terminal-fg)),
+  // so monospace is legitimate there per the same rule as the panes above.
+  "components/MagicCanvas.tsx",
   "styles/theme.css",
   "styles/global.css",
 ]);

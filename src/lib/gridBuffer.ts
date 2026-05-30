@@ -39,6 +39,8 @@ export class GridBuffer {
   apply(frame: DecodedFrame): Set<number> {
     const dirty = new Set<number>();
     const prevCursorLine = this.cursor.line;
+    const prevCursorCol = this.cursor.col;
+    const prevCursorVisible = this.cursorVisible;
 
     if (frame.full || frame.cols !== this.cols || frame.rows !== this.rows) {
       this.resize(frame.cols, frame.rows);
@@ -60,8 +62,16 @@ export class GridBuffer {
     this.appKeypad = frame.appKeypad;
     this.bracketedPaste = frame.bracketedPaste;
 
-    // Cursor moved: both the old and new rows need a repaint.
-    if (prevCursorLine !== this.cursor.line) {
+    // The cursor bar is painted by the renderer on top of its row, so any change
+    // to the cursor — vertical move, horizontal move, or show/hide — must repaint
+    // the previous and current cursor rows to erase the old bar. Tracking only the
+    // line missed same-row horizontal moves (e.g. a prompt redraw advancing the
+    // cursor without changing cell content), which left a trail of ghost bars.
+    const cursorMoved =
+      prevCursorLine !== this.cursor.line ||
+      prevCursorCol !== this.cursor.col ||
+      prevCursorVisible !== this.cursorVisible;
+    if (cursorMoved) {
       if (prevCursorLine < this.rows) dirty.add(prevCursorLine);
       if (this.cursor.line < this.rows) dirty.add(this.cursor.line);
     }

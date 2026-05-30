@@ -1,148 +1,142 @@
 <svg width="1280" height="640" viewBox="0 0 1280 640" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="150%" color-interpolation-filters="sRGB">
-      <feDropShadow dx="0" dy="16" stdDeviation="10" flood-color="#7b2e22" flood-opacity="0.22"/>
+    <filter id="paperShadow" x="-20%" y="-20%" width="140%" height="150%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="12" stdDeviation="6" flood-color="#813325" flood-opacity="0.22"/>
     </filter>
-    <filter id="inkShadow" x="-20%" y="-20%" width="140%" height="140%" color-interpolation-filters="sRGB">
-      <feDropShadow dx="0" dy="8" stdDeviation="1.5" flood-color="#3b1712" flood-opacity="0.2"/>
+    <filter id="inkLift" x="-20%" y="-20%" width="140%" height="150%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="8" stdDeviation="2" flood-color="#34120d" flood-opacity="0.18"/>
     </filter>
-    <linearGradient id="terminalBody" x1="540" y1="166" x2="740" y2="398" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#6f83bc"/>
-      <stop offset="1" stop-color="#4f639f"/>
-    </linearGradient>
-    <linearGradient id="terminalTop" x1="500" y1="124" x2="814" y2="186" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#ffffff"/>
-      <stop offset="1" stop-color="#f1f4ff"/>
+    <linearGradient id="flagshipBody" x1="520" y1="170" x2="782" y2="404" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#6f84bf"/>
+      <stop offset="1" stop-color="#5066a3"/>
     </linearGradient>
     <style>
       .ui { font-family: DejaVu Sans, sans-serif; }
       .mono { font-family: DejaVu Sans Mono, monospace; }
-      .route { stroke: #f3dc77; stroke-width: 6; stroke-linecap: round; stroke-linejoin: round; fill: none; }
-      .thinRoute { stroke: #456399; stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; fill: none; }
-      .taskRoute { stroke: #e45e3f; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; fill: none; }
-      .greenRoute { stroke: #438b65; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; fill: none; }
-      .ink { stroke: #11100f; stroke-width: 9; stroke-linecap: round; stroke-linejoin: round; }
-      .panelInk { stroke: #e15b42; stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; }
     </style>
   </defs>
 
-  <rect width="1280" height="640" fill="#e96243"/>
-  <path class="route" fill="none" opacity="0.82" d="M24 126C72 22 174 22 242 58C312 95 382 77 430 31C472 -9 552 22 500 80C454 131 504 155 560 126"/>
-  <path class="route" fill="none" opacity="0.8" d="M842 1C836 63 884 82 936 56C982 33 966 4 980 -14"/>
-  <path class="route" fill="none" opacity="0.72" d="M948 102C916 169 1003 204 1068 188C1123 174 1200 176 1262 229"/>
-  <path class="route" fill="none" opacity="0.72" d="M22 314C130 292 185 365 132 424C86 475 114 545 224 514"/>
-  <path class="route" fill="none" opacity="0.72" d="M1080 395C1148 392 1178 419 1214 401C1234 389 1240 409 1218 421"/>
-  <path class="route" fill="none" opacity="0.72" d="M90 166C126 131 166 136 158 101C154 85 174 82 188 80"/>
-  <path class="route" fill="none" opacity="0.7" d="M426 278C460 278 466 303 440 310"/>
+  <rect width="1280" height="640" fill="#e96042"/>
 
-  <g transform="translate(200 104) rotate(-1.5)" filter="url(#softShadow)">
-    <rect x="0" y="0" width="210" height="134" rx="12" fill="#f0dc73"/>
-    <path class="panelInk" fill="none" d="M26 31C73 25 126 33 175 26"/>
-    <path class="panelInk" fill="none" d="M26 31L32 95C78 106 92 91 96 58C99 36 125 50 122 91"/>
-    <path class="panelInk" d="M162 28H188V53H162Z" fill="none"/>
-    <path class="panelInk" d="M154 67H188"/>
-    <circle cx="146" cy="105" r="4.5" fill="#e15b42"/>
-    <circle cx="166" cy="105" r="4.5" fill="#e15b42"/>
-    <circle cx="186" cy="105" r="4.5" fill="#e15b42"/>
-  </g>
+  <!-- loose reference-style planning lines -->
+  <path d="M28 130C84 24 181 24 252 63C323 101 385 78 433 31C477 -12 560 23 503 82C456 130 508 155 560 126" fill="none" stroke="#f1db73" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" opacity="0.86"/>
+  <path d="M846 0C833 62 879 82 933 56C984 32 967 4 980 -16" fill="none" stroke="#f1db73" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" opacity="0.8"/>
+  <path d="M944 104C916 166 986 200 1060 188C1128 176 1196 178 1262 228" fill="none" stroke="#f1db73" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" opacity="0.76"/>
+  <path d="M24 332C110 294 177 352 130 423C92 482 130 542 224 516" fill="none" stroke="#f1db73" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" opacity="0.72"/>
+  <path d="M1080 398C1148 392 1180 418 1214 402C1235 392 1240 411 1218 424" fill="none" stroke="#f1db73" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" opacity="0.72"/>
+  <path d="M92 168C128 132 166 136 158 102C154 85 174 82 188 80" fill="none" stroke="#f1db73" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" opacity="0.72"/>
 
-  <g transform="translate(988 68) rotate(-0.8)" filter="url(#softShadow)">
-    <rect x="0" y="0" width="244" height="72" rx="10" fill="#f0dc73"/>
-    <text x="21" y="47" class="ui" font-size="34" font-weight="700" fill="#d94d3c">MASTER PLAN</text>
-  </g>
-
-  <g transform="translate(1036 222) rotate(1.5)" filter="url(#softShadow)">
-    <rect x="0" y="0" width="216" height="137" rx="13" fill="#f0dc73"/>
-    <rect x="24" y="24" width="166" height="82" rx="5" fill="none" stroke="#e15b42" stroke-width="4"/>
-    <path class="panelInk" fill="none" d="M31 48C82 55 104 43 141 28M34 82C75 72 110 76 183 93M68 28C62 59 61 84 53 106M111 28C104 58 116 79 125 104M154 31C137 56 131 79 151 105"/>
-  </g>
-
-  <path d="M0 438C114 422 216 434 318 454C410 472 502 444 628 454C764 464 879 432 1008 456C1116 475 1192 455 1280 442V640H0V438Z" fill="#fffdf1"/>
-
-  <path class="thinRoute" fill="none" d="M-20 602C88 612 137 567 194 574C246 580 270 636 356 604C445 571 525 608 613 583C712 556 752 608 856 590C956 572 1006 611 1096 574C1160 548 1204 575 1300 559"/>
-  <path class="thinRoute" fill="none" d="M30 492C88 449 170 462 220 501C266 535 320 503 372 486C434 466 490 468 552 493C606 515 665 504 712 470C766 431 832 454 876 503C919 549 1002 514 1056 481C1112 446 1166 457 1205 500"/>
-  <path class="thinRoute" fill="none" d="M234 600L276 458L604 458L600 492L710 492L724 458L1008 474L992 548L1132 562"/>
-  <path class="taskRoute" fill="none" d="M408 548C464 526 505 555 463 576C428 594 383 570 424 546C470 517 506 519 552 542C616 574 635 514 693 520C762 527 702 608 772 612C833 616 806 548 862 548C912 548 929 581 901 604"/>
-  <path class="greenRoute" fill="none" d="M302 544C348 523 373 558 423 548C469 540 497 585 533 564M673 500C694 522 677 551 706 568C731 583 770 553 792 583"/>
-
-  <g transform="translate(486 74)" filter="url(#inkShadow)">
-    <path d="M130 31C135 10 166 10 168 32L162 139H126L130 31Z" fill="#f2dd72"/>
-    <path d="M188 33C194 11 228 12 226 36L218 146H182L188 33Z" fill="#2f876d"/>
-    <path d="M250 34C257 10 290 11 289 38L280 146H244L250 34Z" fill="#4b669d"/>
-    <path d="M318 31C324 10 358 8 358 34L348 145H312L318 31Z" fill="#2f876d"/>
-    <path d="M62 140L132 92L374 100L442 142L378 170H123L62 140Z" fill="#fffdf1" stroke="#456399" stroke-width="5" stroke-linejoin="round"/>
-    <path d="M123 170H378L364 384H138L123 170Z" fill="#5d70aa" stroke="#456399" stroke-width="5" stroke-linejoin="round"/>
-    <path d="M62 140L123 170H378L442 142" fill="none" stroke="#456399" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M91 202L190 232M254 232L411 202" fill="none" stroke="#11100f" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M84 286C-16 292 -62 337 -48 388C-39 424 2 430 33 398" fill="none" stroke="#11100f" stroke-width="17" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M392 286C510 282 559 328 544 382C533 420 488 432 452 402" fill="none" stroke="#11100f" stroke-width="17" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M20 317L82 406" fill="none" stroke="#11100f" stroke-width="17" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M495 330L438 414" fill="none" stroke="#11100f" stroke-width="17" stroke-linecap="round" stroke-linejoin="round"/>
-    <ellipse cx="179" cy="236" rx="58" ry="54" fill="#fffdf1" stroke="#11100f" stroke-width="8"/>
-    <ellipse cx="303" cy="236" rx="58" ry="54" fill="#fffdf1" stroke="#11100f" stroke-width="8"/>
-    <circle cx="181" cy="237" r="14" fill="#11100f"/>
-    <circle cx="300" cy="237" r="14" fill="#11100f"/>
-    <path d="M176 319C218 350 282 350 327 318C312 366 201 369 176 319Z" fill="#fffdf1"/>
-    <path d="M221 331L215 377M258 337L253 383M294 331L288 377" stroke="#4f639f" stroke-width="4" stroke-linecap="round"/>
-  </g>
-
-  <g transform="translate(38 476)">
-    <g transform="translate(0 0)">
-      <rect x="0" y="18" width="54" height="52" rx="8" fill="#e96243"/>
-      <circle cx="27" cy="16" r="16" fill="#e96243"/>
+  <!-- top planning cards -->
+  <g filter="url(#paperShadow)">
+    <g transform="translate(200 104) rotate(-1.3)">
+      <rect width="212" height="136" rx="12" fill="#efdc72"/>
+      <path d="M25 32C77 25 126 33 176 27" fill="none" stroke="#df5840" stroke-width="4" stroke-linecap="round"/>
+      <path d="M26 32L32 96C76 106 91 92 96 58C99 37 126 48 123 92" fill="none" stroke="#df5840" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M162 29H188V54H162Z" fill="none" stroke="#df5840" stroke-width="4" stroke-linejoin="round"/>
+      <path d="M154 68H188" stroke="#df5840" stroke-width="4" stroke-linecap="round"/>
+      <circle cx="146" cy="106" r="4.5" fill="#df5840"/>
+      <circle cx="166" cy="106" r="4.5" fill="#df5840"/>
+      <circle cx="186" cy="106" r="4.5" fill="#df5840"/>
     </g>
-    <g transform="translate(118 28)">
-      <rect x="0" y="18" width="54" height="52" rx="8" fill="#4b669d"/>
-      <circle cx="27" cy="16" r="16" fill="#4b669d"/>
+    <g transform="translate(988 68) rotate(-0.8)">
+      <rect width="244" height="72" rx="10" fill="#efdc72"/>
+      <text x="20" y="47" class="ui" font-size="34" font-weight="800" fill="#d84d3b">MASTER PLAN</text>
     </g>
-    <g transform="translate(240 34)">
-      <rect x="0" y="18" width="54" height="52" rx="8" fill="#438b65"/>
-      <circle cx="27" cy="16" r="16" fill="#438b65"/>
-    </g>
-    <g transform="translate(762 78)">
-      <rect x="0" y="18" width="54" height="52" rx="8" fill="#4b669d"/>
-      <circle cx="27" cy="16" r="16" fill="#4b669d"/>
-    </g>
-    <g transform="translate(924 82)">
-      <rect x="0" y="18" width="54" height="52" rx="8" fill="#e96243"/>
-      <circle cx="27" cy="16" r="16" fill="#e96243"/>
-    </g>
-    <g transform="translate(1036 66)">
-      <rect x="0" y="18" width="54" height="52" rx="8" fill="#438b65"/>
-      <circle cx="27" cy="16" r="16" fill="#438b65"/>
-    </g>
-    <g transform="translate(1158 46)">
-      <rect x="0" y="18" width="54" height="52" rx="8" fill="#4b669d"/>
-      <circle cx="27" cy="16" r="16" fill="#4b669d"/>
+    <g transform="translate(1018 186) rotate(1.4)">
+      <rect width="226" height="128" rx="12" fill="#efdc72"/>
+      <rect x="25" y="24" width="174" height="82" rx="6" fill="none" stroke="#df5840" stroke-width="4"/>
+      <path d="M33 49C82 55 104 43 142 29M35 82C78 73 111 76 190 94M69 29C64 58 62 84 54 106M112 29C105 58 117 80 127 106M158 32C138 57 132 78 153 106" fill="none" stroke="#df5840" stroke-width="4" stroke-linecap="round"/>
     </g>
   </g>
 
-  <g filter="url(#softShadow)">
-    <g transform="translate(82 274) rotate(-1)">
-      <rect x="0" y="0" width="138" height="86" rx="10" fill="#f0dc73"/>
-      <path class="panelInk" d="M20 20H54M20 37H74M20 54H60M92 22H118M92 40H118"/>
-      <circle cx="95" cy="61" r="5" fill="#e15b42"/>
-      <circle cx="119" cy="61" r="5" fill="#e15b42"/>
+  <!-- map surface -->
+  <path d="M0 438C132 420 254 442 374 456C485 469 559 446 676 454C796 462 902 433 1027 456C1128 474 1196 455 1280 442V640H0V438Z" fill="#fffbed"/>
+
+  <!-- command routes on the map -->
+  <path d="M136 562C242 585 291 545 376 562C472 582 542 536 640 552C738 568 790 525 890 552C982 576 1036 528 1144 554" fill="none" stroke="#456399" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M184 495C246 462 312 471 362 504C425 545 494 489 548 476C618 458 680 491 730 518C792 551 850 495 914 482C984 468 1048 516 1104 492" fill="none" stroke="#456399" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M300 596L334 468L566 468L590 514L696 514L728 468L948 480L972 552L1132 570" fill="none" stroke="#456399" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M370 548C438 522 499 556 456 580C419 600 383 570 424 548C476 520 510 522 558 546C616 576 646 514 704 522C770 531 720 606 780 612C846 618 816 546 872 548C922 550 938 582 904 606" fill="none" stroke="#e95b3f" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M292 532C338 514 374 552 424 544C468 536 498 574 532 556M674 502C697 524 678 550 708 566C734 582 770 553 794 582" fill="none" stroke="#438b65" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- terminals as a fleet -->
+  <g filter="url(#paperShadow)">
+    <g transform="translate(244 396) rotate(-2.5)">
+      <path d="M18 74H128L102 104H40L18 74Z" fill="#456399"/>
+      <rect width="136" height="78" rx="10" fill="#efdc72"/>
+      <text x="20" y="33" class="mono" font-size="15" font-weight="800" fill="#338462">$ build</text>
+      <path d="M24 52H110M24 64H78" stroke="#338462" stroke-width="4" stroke-linecap="round"/>
     </g>
-    <g transform="translate(1028 454) rotate(2)">
-      <rect x="0" y="0" width="132" height="82" rx="10" fill="#f0dc73"/>
-      <text x="22" y="30" class="mono" font-size="16" font-weight="700" fill="#d94d3c">$ npm</text>
-      <path d="M24 50H110M24 64H82" stroke="#d94d3c" stroke-width="4" stroke-linecap="round"/>
+    <g transform="translate(382 466) rotate(2.4)">
+      <path d="M20 72H132L104 102H42L20 72Z" fill="#438b65"/>
+      <rect width="142" height="76" rx="10" fill="#efdc72"/>
+      <text x="20" y="32" class="mono" font-size="15" font-weight="800" fill="#456399">$ test</text>
+      <path d="M24 51H116M24 63H88" stroke="#456399" stroke-width="4" stroke-linecap="round"/>
     </g>
-    <g transform="translate(274 438) rotate(-3)">
-      <rect x="0" y="0" width="126" height="78" rx="10" fill="#f0dc73"/>
-      <text x="20" y="31" class="mono" font-size="15" font-weight="700" fill="#438b65">$ cargo</text>
-      <path d="M22 50H104M22 64H76" stroke="#438b65" stroke-width="4" stroke-linecap="round"/>
+    <g transform="translate(794 398) rotate(2.2)">
+      <path d="M18 76H134L104 106H42L18 76Z" fill="#e95b3f"/>
+      <rect width="142" height="80" rx="10" fill="#efdc72"/>
+      <text x="20" y="34" class="mono" font-size="15" font-weight="800" fill="#456399">$ deploy</text>
+      <path d="M24 54H118M24 66H92" stroke="#456399" stroke-width="4" stroke-linecap="round"/>
     </g>
-    <g transform="translate(816 430) rotate(2.5)">
-      <rect x="0" y="0" width="132" height="82" rx="10" fill="#f0dc73"/>
-      <text x="22" y="31" class="mono" font-size="15" font-weight="700" fill="#456399">$ deploy</text>
-      <path d="M24 50H110M24 64H82" stroke="#456399" stroke-width="4" stroke-linecap="round"/>
+    <g transform="translate(1018 454) rotate(2.3)">
+      <path d="M18 78H136L106 108H42L18 78Z" fill="#438b65"/>
+      <rect width="144" height="82" rx="10" fill="#efdc72"/>
+      <text x="22" y="34" class="mono" font-size="15" font-weight="800" fill="#e95b3f">$ logs</text>
+      <path d="M24 54H118M24 67H82" stroke="#e95b3f" stroke-width="4" stroke-linecap="round"/>
+    </g>
+    <g transform="translate(86 254) rotate(-0.6)">
+      <path d="M14 82H144L110 114H42L14 82Z" fill="#e95b3f"/>
+      <rect width="148" height="88" rx="10" fill="#efdc72"/>
+      <path d="M22 25H56M22 42H78M22 59H62M96 28H122M96 48H122" stroke="#df5840" stroke-width="4" stroke-linecap="round"/>
+      <circle cx="98" cy="68" r="5" fill="#df5840"/>
+      <circle cx="124" cy="68" r="5" fill="#df5840"/>
     </g>
   </g>
 
-  <g transform="translate(62 585)">
-    <text x="0" y="0" class="ui" font-size="54" font-weight="800" fill="#11100f">termfleet</text>
-    <text x="286" y="-5" class="ui" font-size="22" font-weight="700" fill="#456399">one master plan, many live terminals</text>
+  <!-- central flagship dispatcher -->
+  <g transform="translate(468 72)" filter="url(#inkLift)">
+    <path d="M148 30C154 8 184 8 186 32L180 124H142L148 30Z" fill="#efdc72"/>
+    <path d="M212 32C218 10 250 10 248 36L242 124H204L212 32Z" fill="#338462"/>
+    <path d="M276 32C282 8 315 10 314 36L306 124H268L276 32Z" fill="#456399"/>
+    <path d="M344 30C350 8 382 8 382 34L374 124H336L344 30Z" fill="#338462"/>
+
+    <path d="M84 140L160 92L392 100L468 144L400 178H148L84 140Z" fill="#fffdf1" stroke="#456399" stroke-width="5" stroke-linejoin="round"/>
+    <path d="M148 178H400L386 380H164L148 178Z" fill="url(#flagshipBody)" stroke="#456399" stroke-width="5" stroke-linejoin="round"/>
+    <path d="M84 140L148 178H400L468 144" fill="none" stroke="#456399" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <path d="M110 207L210 236M276 236L436 206" fill="none" stroke="#10100f" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+    <ellipse cx="207" cy="240" rx="58" ry="54" fill="#fffdf1" stroke="#10100f" stroke-width="8"/>
+    <ellipse cx="330" cy="240" rx="58" ry="54" fill="#fffdf1" stroke="#10100f" stroke-width="8"/>
+    <circle cx="209" cy="241" r="14" fill="#10100f"/>
+    <circle cx="327" cy="241" r="14" fill="#10100f"/>
+    <path d="M204 322C246 352 308 352 354 321C338 370 230 370 204 322Z" fill="#fffdf1"/>
+    <path d="M248 334L242 378M286 339L282 384M322 334L316 378" stroke="#5066a3" stroke-width="4" stroke-linecap="round"/>
+
+    <path d="M128 284C40 292 -6 332 8 382C18 418 54 423 86 395" fill="none" stroke="#10100f" stroke-width="17" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M420 284C528 282 574 326 560 378C550 416 510 424 474 398" fill="none" stroke="#10100f" stroke-width="17" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M62 316L126 404" fill="none" stroke="#10100f" stroke-width="17" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M520 326L456 410" fill="none" stroke="#10100f" stroke-width="17" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <g transform="translate(38 340) rotate(-20)">
+      <rect x="0" y="0" width="38" height="92" rx="8" fill="#e95b3f"/>
+      <path d="M12 90L28 90L20 116Z" fill="#10100f"/>
+    </g>
+  </g>
+
+  <!-- route endpoints / operator markers -->
+  <g>
+    <g transform="translate(38 476)"><rect x="0" y="18" width="54" height="52" rx="8" fill="#e95b3f"/><circle cx="27" cy="16" r="16" fill="#e95b3f"/></g>
+    <g transform="translate(156 504)"><rect x="0" y="18" width="54" height="52" rx="8" fill="#456399"/><circle cx="27" cy="16" r="16" fill="#456399"/></g>
+    <g transform="translate(278 510)"><rect x="0" y="18" width="54" height="52" rx="8" fill="#438b65"/><circle cx="27" cy="16" r="16" fill="#438b65"/></g>
+    <g transform="translate(800 554)"><rect x="0" y="18" width="54" height="52" rx="8" fill="#456399"/><circle cx="27" cy="16" r="16" fill="#456399"/></g>
+    <g transform="translate(962 560)"><rect x="0" y="18" width="54" height="52" rx="8" fill="#e95b3f"/><circle cx="27" cy="16" r="16" fill="#e95b3f"/></g>
+    <g transform="translate(1074 542)"><rect x="0" y="18" width="54" height="52" rx="8" fill="#438b65"/><circle cx="27" cy="16" r="16" fill="#438b65"/></g>
+    <g transform="translate(1196 522)"><rect x="0" y="18" width="54" height="52" rx="8" fill="#456399"/><circle cx="27" cy="16" r="16" fill="#456399"/></g>
+  </g>
+
+  <g transform="translate(62 586)">
+    <text x="0" y="0" class="ui" font-size="54" font-weight="900" fill="#10100f">termfleet</text>
+    <text x="286" y="-6" class="ui" font-size="22" font-weight="800" fill="#456399">one master plan, many live terminals</text>
   </g>
 </svg>

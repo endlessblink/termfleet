@@ -17,6 +17,7 @@
     "verify:canvas-all": "playwright test canvas-renderer grid-diff keymap grid-resize selection box-glyph",
     "verify:map-terminals": "node scripts/verify-map-terminals.mjs",
     "verify:canvas-terminal": "scripts/verify-canvas-terminal.sh",
+    "verify:canvas-live": "scripts/verify-canvas-live.sh",
     "verify:terminal-rendering": "node scripts/verify-terminal-rendering.mjs",
     "verify:tauri-dev-performance": "scripts/verify-tauri-dev-performance.sh",
     "verify:standalone-daemon": "scripts/verify-standalone-daemon-smoke.sh",
