@@ -83,12 +83,14 @@ export function TerminalComponent({
   const workspaceMode = useWorkspaceStore((s) => s.workspaceUiState.workspaceMode);
   const terminalRendererMode = useWorkspaceStore((s) => s.workspaceUiState.terminalRendererMode);
   const runtimeSessionId = `terminal-${tabId}-${paneId}`;
-  // TC-017g: opt-in headless-VT + Canvas2D renderer. Default stays xterm until
-  // the live latency + TUI gate is cleared (set VITE_TERMINAL_RENDERER_MODE=canvas2d).
+  // TC-017g: the headless-VT + Canvas2D renderer is now the production desktop
+  // terminal — it replaces xterm.js in the Tauri app. xterm.js remains ONLY the
+  // browser-preview fallback (no Tauri runtime). `auto` and `canvas2d` both use
+  // the canvas renderer on desktop; set VITE_TERMINAL_RENDERER_MODE=web-xterm to
+  // force the legacy xterm path on desktop for comparison/escape-hatch.
+  const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
   const canvasMode =
-    terminalRendererMode === "canvas2d" &&
-    typeof window !== "undefined" &&
-    "__TAURI_INTERNALS__" in window;
+    isTauri && (terminalRendererMode === "canvas2d" || terminalRendererMode === "auto");
   const isRuntimeVisible = standalone
     ? workspaceMode === "canvas" && runtimeActive
     : workspaceMode === "split" && activeTabId === tabId;

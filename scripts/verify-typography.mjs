@@ -5,6 +5,7 @@ const root = process.cwd();
 const srcRoot = join(root, "src");
 const allowedMonoFiles = new Set([
   "components/Terminal.tsx",
+  "components/TerminalCanvas.tsx",
   "styles/theme.css",
   "styles/global.css",
 ]);

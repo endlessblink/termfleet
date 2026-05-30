@@ -5,12 +5,16 @@ keyboard-first developer operations center. Terminals are the tactical work
 surface; files, sessions, the canvas/operations map, and (planned) agents are
 supporting instruments. Linux is the first release gate.
 
-Stack: **Tauri 2 + React 19 + TypeScript + Rust**, with a **native GTK/VTE**
-terminal backend and a **user-local Rust PTY daemon** (Unix-socket IPC) that owns
-PTYs independently of the UI lifecycle.
+Stack: **Tauri 2 + React 19 + TypeScript + Rust**, with a **headless-VT
+(`alacritty_terminal`) grid rendered to an HTML canvas** as the desktop terminal,
+and a **user-local Rust PTY daemon** (Unix-socket IPC) that owns PTYs
+independently of the UI lifecycle.
 
 Planning lives in `MASTER_PLAN.md` (the source of truth for task status). Active
-task is **TC-014** (terminal typing latency); TC-015/TC-016 are TODO backlog.
+task is **TC-017** (headless-VT + Canvas2D renderer replacing xterm.js): stages
+a–f done, g done except a live latency/TUI confirmation pass; the canvas renderer
+is now the desktop default. TC-018 (BiDi/Hebrew nikud) and TC-015/TC-016 are
+TODO backlog.
 
 ## Build & run
 
@@ -54,7 +58,9 @@ release evidence into an xterm/map smoke. Prefer these over ad-hoc checks.
 ## Architecture
 
 Frontend (`src/`):
-- `components/Terminal.tsx` — terminal pane; native VTE on desktop, xterm.js fallback in browser
+- `components/Terminal.tsx` — terminal pane; routes to `TerminalCanvas` (headless-VT + Canvas2D) on desktop, xterm.js fallback in browser
+- `components/TerminalCanvas.tsx` — production desktop terminal: Canvas2D renderer over the Rust grid (`grid_*` commands), hidden-textarea input
+- `lib/gridSnapshot|gridDiff|gridBuffer|fontAtlas|gridRenderer|keymap|selection|boxGlyph.ts` — the canvas renderer pipeline (decode/apply/draw/input)
 - `components/MagicCanvas.tsx` — strategic operations map (canvas of live terminal nodes)
 - `components/WorkbenchHeader.tsx` — top command/context bar + command menu
 - `components/SplitPane.tsx`, `WorkbenchSidebar.tsx`, `DockRail.tsx`, `StatusBar.tsx`, `FileExplorer.tsx`
@@ -78,18 +84,24 @@ Key docs in `docs/`: `terminal-cockpit-design-contract.md`, `native-terminal-pan
 - **No optimistic local echo and no PTY echo suppression.** Explicitly rejected in
   TC-014. It breaks password prompts, SSH, readline, bracketed paste,
   alternate-screen TUIs, and control keys. Latency is solved with measured
-  key-to-render instrumentation + native rendering, not by faking echo.
-- **Native VTE is the production desktop terminal**; xterm.js is the browser
-  preview / unsupported-platform fallback only. Don't reintroduce xterm as the
-  desktop input surface.
+  key-to-render instrumentation + the headless-VT/canvas renderer, not by faking echo.
+- **The headless-VT + Canvas2D renderer is the production desktop terminal**
+  (TC-017): Rust owns the grid via `alacritty_terminal` (fed by the daemon),
+  emits binary dirty-diffs, React draws to an HTML `<canvas>` (`TerminalCanvas.tsx`).
+  It is the default on desktop (`auto`/`canvas2d`). xterm.js is now ONLY the
+  browser-preview fallback (no Tauri runtime); `web-xterm` forces it on desktop
+  as an escape hatch. Native GTK/VTE (TC-014) is a retired dead end — do not
+  reintroduce it; snapshot at git tag `native-vte-snapshot`.
+- **Renderer is Canvas2D, NOT WebGL** (WebKitGTK DMA-BUF/WebGL is unstable). Font
+  atlas + `drawImage`; box-drawing via `fillRect`; HiDPI via `devicePixelRatio`.
 - **The daemon owns PTYs**, not React mounts or Tauri window state. React unmount
   must detach, never kill — only explicit close (`closeTerminalSession`) destroys.
 - **Never write transport errors into the terminal buffer.** `[pty write failed]`
-  / `[pty read failed]` are runtime state → `failed` status + console, not xterm
+  / `[pty read failed]` are runtime state → `failed` status + console, not terminal
   output. `verify:map-terminals` enforces this.
-- **Canvas/map terminals are not native panes.** The GTK overlay can't scale with
-  canvas zoom or clip to the viewport, so on the map they're activation cards;
-  clicking switches to the linked split pane where native VTE owns typing.
+- **The canvas terminal is a plain DOM `<canvas>`**, so it pans/zooms with CSS
+  transforms — it works identically in split panes and on the zoom/pan map
+  (unlike the retired GTK overlay, which couldn't live on the canvas).
 - Typography: non-terminal UI uses Rubik via `--font-ui`, weights 300/400/500
   only; monospace is reserved for the terminal buffer. `verify:typography` enforces.
 

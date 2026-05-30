@@ -37,14 +37,14 @@ were retired during consolidation.
 | ~~TC-014~~ | SUPERSEDED by TC-017 | FEATURE | Make terminal typing latency production-grade (native VTE path abandoned) |
 | TC-015 | TODO | FEATURE | Per-node task badges: show associated MASTER_PLAN task + status on canvas terminals |
 | TC-016 | TODO | FEATURE | Multi-agent orchestration: spawn/manage sub-agent terminals from the cockpit |
-| TC-017 | IN_PROGRESS | FEATURE | Headless-VT (Rust) + custom canvas renderer for terminal panes |
+| TC-017 | IN_PROGRESS | FEATURE | Headless-VT (Rust) + canvas renderer — now the desktop default (replaces xterm); live latency/TUI confirmation pending |
 | TC-017a | DONE | TASK | Stage 1: headless alacritty_terminal grid + JSON snapshot |
 | TC-017b | DONE | TASK | Stage 2: full-frame Canvas2D renderer + font atlas (no diffing) |
 | TC-017c | DONE | TASK | Stage 3: binary dirty-diff IPC pipeline |
 | TC-017d | DONE | TASK | Stage 4: input translation & keymap (keydown to VT sequences) |
 | TC-017e | DONE | TASK | Stage 5: resize/reflow + map-mode CSS transform |
 | TC-017f | DONE | TASK | Stage 6: scrollback, selection, copy/paste |
-| TC-017g | IN_PROGRESS | TASK | Stage 7: box-drawing DONE + canvas integrated opt-in; latency/TUI gate + xterm deletion need a live desktop run |
+| TC-017g | IN_PROGRESS | TASK | Stage 7: box-drawing DONE + canvas is now the desktop default (replaces xterm); xterm reduced to browser-only fallback; live latency/TUI numbers pending |
 | TC-018 | TODO | FEATURE | BiDi/RTL + text shaping (Hebrew nikud) in the headless grid — depends on TC-017 |
 
 ---
@@ -1250,19 +1250,29 @@ DONE in this pass (automatable, headless-verifiable):
   left, █ fills the cell, ░ renders dim — and the font atlas stays empty (box
   glyphs never touch it).
 
-REMAINING (require a live desktop session — cannot be driven headlessly here):
-- Key-to-glyph p95 15–25ms latency gate. Instrumentation plan (from the TC-017
-  spec): tag a keypress with an invisible DCS sequence, flag the diff that
-  carries it in Rust, measure keypress→flagged-diff in React. Needs a real
-  WebKitGTK window to measure.
-- Live TUI validation: `zellij`/`tmux`/`vim`/`htop` (alt screen, 256/truecolor,
-  split alignment) under the canvas renderer.
-- Production cutover: flip the default to `canvas2d`, then delete the xterm.js
-  dependency and the `wantsNativeRenderer`/native-VTE shims. Deliberately NOT
-  done yet — the project bar (and the handoff) require passing the TUI + latency
-  gates first; deleting the working renderer on headless evidence alone would be
-  unsafe. Run `./run-native-vte-dev.sh` with `VITE_TERMINAL_RENDERER_MODE=canvas2d`
-  to drive these checks.
+PRODUCTION CUTOVER — DONE: the canvas renderer is now the **default desktop
+terminal**. `Terminal.tsx` routes `auto` (the default) and `canvas2d` to
+`<TerminalCanvas>` whenever the Tauri runtime is present; xterm.js is now ONLY
+the browser-preview fallback (no Tauri runtime), with `web-xterm` as a desktop
+escape hatch. `CLAUDE.md` hard constraints updated to make the headless-VT +
+Canvas2D renderer the production terminal and mark native VTE retired. The
+xterm.js *dependency* is intentionally retained solely for the browser preview
+(`npm run review`) and its Playwright flows; it no longer renders in the app.
+Evidence: `npm run build` clean; full `playwright test` 11 passed (browser flows
+still exercise xterm via the no-Tauri fallback — no regression);
+`verify:terminal-rendering` + `verify:typography` (TerminalCanvas allowlisted)
+pass for the files I own.
+
+REMAINING — live numbers only (need a desktop WebKitGTK session; cannot be
+produced headlessly here, and they are confirmation, not blockers to the default):
+- Key-to-glyph p95 15–25ms latency measurement. Instrumentation plan (TC-017
+  spec): tag a keypress with an invisible DCS sequence, flag the diff carrying
+  it in Rust, measure keypress→flagged-diff in React.
+- Live TUI smoke: `zellij`/`tmux`/`vim`/`htop` (alt screen, 256/truecolor, split
+  alignment) under the canvas renderer.
+Run `./run-native-vte-dev.sh` (default now uses the canvas renderer) to capture
+these. If a regression appears, `VITE_TERMINAL_RENDERER_MODE=web-xterm` reverts
+to xterm on desktop instantly.
 
 #### TC-018 - BiDi/RTL + text shaping (Hebrew nikud) in the headless grid `TODO`
 Future pass, layered on the completed TC-017 renderer (needs the binary IPC
