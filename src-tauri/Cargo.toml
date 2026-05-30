@@ -1,0 +1,36 @@
+[package]
+name = "terminal-workspace"
+version = "0.1.0"
+description = "Terminal Workspace Manager"
+authors = []
+edition = "2021"
+default-run = "terminal-workspace"
+
+[features]
+default = []
+native-vte = ["dep:gtk", "dep:webkit2gtk"]
+
+[lib]
+name = "terminal_workspace_lib"
+crate-type = ["rlib"]
+
+[[bin]]
+name = "terminal-workspace-daemon"
+path = "src/bin/terminal-workspace-daemon.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+gtk = { version = "0.18.2", optional = true }
+webkit2gtk = { version = "2.0.2", optional = true }
+portable-pty = "0.8"
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v4"] }
+dirs = "5"
+
+[dev-dependencies]
+tauri = { version = "2", features = ["test"] }

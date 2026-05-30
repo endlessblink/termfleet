@@ -1,0 +1,51 @@
+{
+  "name": "mixed-canvas-layout",
+  "description": "Regression fixture for Magic Canvas mode switching, file nodes, terminal nodes, and mixed RTL/LTR labels.",
+  "workspaceUiState": {
+    "workspaceMode": "canvas",
+    "fileExplorerWidth": 260,
+    "fileExplorerCollapsed": false
+  },
+  "canvasState": {
+    "selectedNodeId": "fixture-note-hebrew",
+    "viewport": {
+      "x": 0,
+      "y": 0,
+      "zoom": 1
+    },
+    "nodes": [
+      {
+        "id": "fixture-terminal-src",
+        "type": "terminal",
+        "title": "Terminal: src",
+        "x": 120,
+        "y": 90,
+        "width": 320,
+        "height": 170,
+        "terminalCwd": "/tmp/magic-canvas/src",
+        "content": "Terminal node should open a split terminal tab in terminalCwd."
+      },
+      {
+        "id": "fixture-file-hebrew",
+        "type": "file",
+        "title": "קובץ README.md",
+        "x": 480,
+        "y": 120,
+        "width": 340,
+        "height": 150,
+        "filePath": "/tmp/magic-canvas/מסמכים/README.md",
+        "content": "/tmp/magic-canvas/מסמכים/README.md"
+      },
+      {
+        "id": "fixture-note-hebrew",
+        "type": "note",
+        "title": "Mixed RTL/LTR note",
+        "x": 260,
+        "y": 340,
+        "width": 360,
+        "height": 180,
+        "content": "בדיקת canvas עם path=/tmp/project וקובץ README.md. Text should remain selectable and readable in logical order."
+      }
+    ]
+  }
+}
