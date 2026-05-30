@@ -253,11 +253,11 @@ impl GridSnapshot {
             for col in 0..cols {
                 let cell = &line[Column(col)];
                 let flags = cell.flags;
-                if flags.contains(Flags::WIDE_CHAR_SPACER) {
-                    // The spacer trails a wide char; skip so columns stay aligned
-                    // with the canvas advance (char_width * 2).
-                    continue;
-                }
+                // Emit every column (including wide-char spacers) so the
+                // serialized row index maps 1:1 to the grid column; the renderer
+                // relies on `cells[row][col]` positional alignment. A spacer
+                // trails a wide char and renders as blank (the wide glyph itself
+                // carries the `wide` flag on its base cell).
                 row_cells.push(CellSnapshot {
                     c: cell.c.to_string(),
                     fg: hex(resolve_color(cell.fg, true)),

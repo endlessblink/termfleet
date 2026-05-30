@@ -8,6 +8,7 @@
     "review": "vite --host 127.0.0.1 --port 5177 --strictPort true",
     "build": "tsc && vite build",
     "preview": "vite preview",
+    "verify:canvas-renderer": "playwright test canvas-renderer",
     "verify:map-terminals": "node scripts/verify-map-terminals.mjs",
     "verify:canvas-terminal": "scripts/verify-canvas-terminal.sh",
     "verify:terminal-rendering": "node scripts/verify-terminal-rendering.mjs",

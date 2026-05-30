@@ -39,7 +39,7 @@ were retired during consolidation.
 | TC-016 | TODO | FEATURE | Multi-agent orchestration: spawn/manage sub-agent terminals from the cockpit |
 | TC-017 | IN_PROGRESS | FEATURE | Headless-VT (Rust) + custom canvas renderer for terminal panes |
 | TC-017a | DONE | TASK | Stage 1: headless alacritty_terminal grid + JSON snapshot |
-| TC-017b | TODO | TASK | Stage 2: full-frame Canvas2D renderer + font atlas (no diffing) |
+| TC-017b | DONE | TASK | Stage 2: full-frame Canvas2D renderer + font atlas (no diffing) |
 | TC-017c | TODO | TASK | Stage 3: binary dirty-diff IPC pipeline |
 | TC-017d | TODO | TASK | Stage 4: input translation & keymap (keydown to VT sequences) |
 | TC-017e | TODO | TASK | Stage 5: resize/reflow + map-mode CSS transform |
@@ -1058,13 +1058,39 @@ Evidence (`cd src-tauri`): `cargo check` clean; `cargo test` → 25 passed / 5
   colored word instead of htop's nondeterministic frame.
 Next: TC-017b (Canvas2D renderer + font atlas) consumes `grid_snapshot`.
 
-##### TC-017b - Stage 2: full-frame Canvas2D renderer + font atlas `TODO`
+##### TC-017b - Stage 2: full-frame Canvas2D renderer + font atlas `DONE`
 React `<canvas>` component with a `requestAnimationFrame` loop rendering the
 Stage-1 snapshot. Pre-render an offscreen font atlas (ASCII grid) and blit glyphs
 with `drawImage`. Canvas2D, NOT WebGL (WebKitGTK DMA-BUF/WebGL is unstable).
 HiDPI: scale canvas by `devicePixelRatio` and `ctx.scale(dpr, dpr)`.
 Acceptance: static `htop` frame renders with correct colors, alignment, crisp on
 HiDPI.
+
+Implemented as pure, framework-light modules so the renderer is testable
+without Tauri:
+- `src/lib/gridSnapshot.ts` — TS mirror of the Rust `GridSnapshot` JSON + parse.
+- `src/lib/fontAtlas.ts` — `measureCell()` (monospace metrics) + `GlyphAtlas`, a
+  tinted-glyph cache keyed by `(char, fg, bold, italic)`. Each unique glyph is
+  rasterized once into an offscreen tile at `cellPx * dpr` and blitted with
+  `drawImage` — a bounded atlas given the terminal's finite palette. Canvas2D
+  only; no WebGL.
+- `src/lib/gridRenderer.ts` — `sizeCanvasToGrid()` sets the backing store to
+  `cols*cellW*dpr × rows*cellH*dpr` while the CSS box stays at logical size
+  (HiDPI crispness); `renderSnapshot()` fills bg rects (overdrawn 1px to avoid
+  device-rounding seams), blits glyph tiles, draws underline + bar cursor,
+  swaps fg/bg on `inverse`.
+- `src/components/TerminalCanvas.tsx` — `grid_attach` then a RAF poll of
+  `grid_snapshot` → render. A plain DOM `<canvas>`, so it pans/zooms with CSS
+  transforms (the property native VTE could never satisfy). Input/diffing are
+  later stages; this is the output half.
+Evidence: `npx tsc --noEmit` clean; `cargo test` 25 passed (serialization now
+  emits every column incl. wide spacers so `cells[row][col]` is positional).
+  `npm run verify:canvas-renderer` (Playwright/Chromium, pixel-level): renders a
+  hand-built snapshot at dpr=2 and asserts backing store = `cols*cellW*2 ×
+  rows*cellH*2` with CSS box at logical px (HiDPI), a `#0000ee` bg cell samples
+  blue, the red `#cd0000` "R" rasterizes inside cell (0,0) with ZERO stray red
+  in the adjacent empty cell (alignment), and the atlas cached exactly 1 tile.
+Next: TC-017c (binary dirty-diff IPC) replaces full-frame JSON polling.
 
 ##### TC-017c - Stage 3: binary dirty-diff IPC pipeline `TODO`
 Rust tracks a dirty-row bitset; emits the binary diff payload (above) at <=60Hz
