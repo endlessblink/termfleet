@@ -431,6 +431,11 @@ pub fn grid_resize(
 }
 
 #[tauri::command]
+pub fn grid_scroll(grids: State<'_, GridManager>, id: String, delta: i32) -> Result<(), String> {
+    grids.scroll(&id, delta)
+}
+
+#[tauri::command]
 pub fn grid_subscribe_diffs(
     grids: State<'_, GridManager>,
     id: String,

@@ -12,6 +12,7 @@
     "verify:grid-diff": "playwright test grid-diff",
     "verify:keymap": "playwright test keymap",
     "verify:grid-resize": "playwright test grid-resize",
+    "verify:selection": "playwright test selection",
     "verify:map-terminals": "node scripts/verify-map-terminals.mjs",
     "verify:canvas-terminal": "scripts/verify-canvas-terminal.sh",
     "verify:terminal-rendering": "node scripts/verify-terminal-rendering.mjs",

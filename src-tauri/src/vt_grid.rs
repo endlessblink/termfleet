@@ -11,7 +11,7 @@
 
 use crate::daemon::{daemon_socket_path, DaemonRequest, DaemonResponse};
 use alacritty_terminal::event::VoidListener;
-use alacritty_terminal::grid::Dimensions;
+use alacritty_terminal::grid::{Dimensions, Scroll};
 use alacritty_terminal::index::{Column, Line};
 use alacritty_terminal::term::cell::Flags;
 use alacritty_terminal::term::{Config, Term, TermMode};
@@ -78,6 +78,10 @@ impl TermState {
             return;
         }
         self.term.resize(GridDims { cols, rows });
+    }
+
+    fn scroll(&mut self, delta: i32) {
+        self.term.scroll_display(Scroll::Delta(delta));
     }
 }
 
@@ -180,6 +184,18 @@ impl GridManager {
             .ok_or_else(|| format!("no grid attached for session {id}"))?;
         let mut state = session.state.write().map_err(|_| "grid state poisoned")?;
         state.resize(cols, rows);
+        Ok(())
+    }
+
+    /// Scroll the display by `delta` lines (positive = into history/up). The
+    /// next emit reflects the new viewport; the JS side only ever holds the
+    /// visible screen, so deep scrollback never grows the frontend heap.
+    pub fn scroll(&self, id: &str, delta: i32) -> Result<(), String> {
+        let session = self
+            .get(id)
+            .ok_or_else(|| format!("no grid attached for session {id}"))?;
+        let mut state = session.state.write().map_err(|_| "grid state poisoned")?;
+        state.scroll(delta);
         Ok(())
     }
 
@@ -358,9 +374,12 @@ impl GridSnapshot {
         };
 
         let grid = term.grid();
+        // Honor the scroll position: visible row `r` maps to buffer line
+        // `r - display_offset` (0 when not scrolled), so scrollback shows history.
+        let offset = grid.display_offset() as i32;
         let mut cells = Vec::with_capacity(rows);
         for row in 0..rows {
-            let line = &grid[Line(row as i32)];
+            let line = &grid[Line(row as i32 - offset)];
             let mut row_cells = Vec::with_capacity(cols);
             for col in 0..cols {
                 let cell = &line[Column(col)];
@@ -571,10 +590,13 @@ impl WireFrame {
         let mode = *term.mode();
         let cursor = term.renderable_content().cursor.point;
         let grid = term.grid();
+        // Visible row `r` maps to buffer line `r - display_offset` so a scrolled
+        // viewport reads history (0 when not scrolled).
+        let offset = grid.display_offset() as i32;
 
         let mut rows_cells = Vec::with_capacity(rows);
         for row in 0..rows {
-            let line = &grid[Line(row as i32)];
+            let line = &grid[Line(row as i32 - offset)];
             let mut cells = Vec::with_capacity(cols);
             for col in 0..cols {
                 let cell = &line[Column(col)];
@@ -887,6 +909,36 @@ mod tests {
             .filter(|c| *c != '\0')
             .collect();
         assert!(text.starts_with("hello"), "got: {text:?}");
+    }
+
+    #[test]
+    fn scrolling_into_history_reveals_older_lines() {
+        let mut state = TermState::new(DEFAULT_COLS, DEFAULT_ROWS);
+        // Print 100 numbered lines; only the last 24 are on screen.
+        for i in 0..100 {
+            state.feed(format!("line{i}\r\n").as_bytes());
+        }
+        let bottom = WireFrame::capture(&state.term);
+        let bottom_row0: String = bottom.rows_cells[0]
+            .iter()
+            .filter_map(|c| char::from_u32(c.ch))
+            .filter(|c| *c != '\0')
+            .collect();
+        // Without scrolling, row 0 shows a recent line, not line0.
+        assert_ne!(bottom_row0, "line0");
+
+        // Scroll up far enough to bring the very first lines into view.
+        state.scroll(100);
+        let scrolled = WireFrame::capture(&state.term);
+        let any_early = scrolled.rows_cells.iter().any(|row| {
+            let text: String = row
+                .iter()
+                .filter_map(|c| char::from_u32(c.ch))
+                .filter(|c| *c != '\0')
+                .collect();
+            text == "line0" || text == "line1"
+        });
+        assert!(any_early, "scrollback did not reveal the earliest lines");
     }
 
     #[test]

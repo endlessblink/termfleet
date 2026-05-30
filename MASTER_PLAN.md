@@ -43,7 +43,7 @@ were retired during consolidation.
 | TC-017c | DONE | TASK | Stage 3: binary dirty-diff IPC pipeline |
 | TC-017d | DONE | TASK | Stage 4: input translation & keymap (keydown to VT sequences) |
 | TC-017e | DONE | TASK | Stage 5: resize/reflow + map-mode CSS transform |
-| TC-017f | TODO | TASK | Stage 6: scrollback, selection, copy/paste |
+| TC-017f | DONE | TASK | Stage 6: scrollback, selection, copy/paste |
 | TC-017g | TODO | TASK | Stage 7: TUI correctness, latency gate, delete xterm.js |
 | TC-018 | TODO | FEATURE | BiDi/RTL + text shaping (Hebrew nikud) in the headless grid — depends on TC-017 |
 
@@ -1196,12 +1196,33 @@ Evidence: `cargo test` 32 passed — new `resize_changes_grid_dimensions_and_
   `getImageData`) — proving transform-independent rendering with no GTK crash.
 Next: TC-017f (scrollback, selection, copy/paste).
 
-##### TC-017f - Stage 6: scrollback, selection, copy/paste `TODO`
+##### TC-017f - Stage 6: scrollback, selection, copy/paste `DONE`
 Wheel -> scroll commands; Rust shifts the viewport into history and emits a full
 sync. Mouse drag -> grid coords -> highlight via `fillRect` alpha composite;
 `navigator.clipboard` for copy/paste.
 Acceptance: scroll 10k lines of `dmesg` with no JS heap growth (only visible
 screen held in JS).
+
+- Scrollback (Rust): `capture` now reads `grid[Line(row - display_offset)]` so a
+  scrolled viewport shows history (no-op at offset 0). `grid_scroll(id, delta)`
+  → `term.scroll_display(Scroll::Delta)`. alacritty's default 10000-line history
+  lives entirely in Rust; the JS `GridBuffer` only ever holds the visible screen,
+  so scrolling 10k lines cannot grow the frontend heap (the acceptance property,
+  by construction).
+- Selection/copy (frontend, `selection.ts`, pure): `normalizeRange` orders drag
+  endpoints row-major; `rowSpan`/`isCellSelected` give per-row inclusive spans;
+  `selectionToText` extracts text trimming trailing whitespace per line;
+  `pointToCell` hit-tests a pointer offset to a clamped cell. `TerminalCanvas`
+  draws the highlight on a separate overlay `<canvas>` (alpha `fillRect`,
+  decoupled from the diff render), wheel → `grid_scroll`, drag → selection,
+  pointer-up / Ctrl(Cmd)+Shift+C → `navigator.clipboard.writeText`. Pointer math
+  divides out any CSS scale so selection is correct on the zoom/pan map.
+Evidence: `cargo test` 33 passed — new `scrolling_into_history_reveals_older_
+  lines` (print 100 lines, scroll up, assert line0/line1 reappear). `tsc` clean.
+  `npm run verify:selection` (Playwright): normalize/rowSpan/isCellSelected,
+  single + multi-line `selectionToText` (per-line trailing-space trim), and
+  `pointToCell` floor + clamp.
+Next: TC-017g (TUI correctness, latency gate, delete xterm.js).
 
 ##### TC-017g - Stage 7: TUI correctness, latency gate, delete xterm.js `TODO`
 Render box-drawing (U+2500..U+257F) via raw `fillRect` (no atlas sub-pixel gaps).
