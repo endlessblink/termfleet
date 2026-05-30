@@ -6,14 +6,17 @@ mod native_terminal;
 #[cfg(all(target_os = "linux", feature = "native-vte"))]
 mod native_vte;
 mod pty;
+pub mod vt_grid;
 
 use pty::PtyManager;
 use tauri::Listener;
+use vt_grid::GridManager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .manage(PtyManager::new())
+        .manage(GridManager::new())
         .setup(|app| {
             commands::start_daemon_input_worker();
             app.listen_any(commands::DAEMON_INPUT_EVENT, |event| {
@@ -37,6 +40,9 @@ pub fn run() {
             commands::daemon_unsubscribe_session,
             commands::daemon_get_session_cwd,
             commands::daemon_kill_session,
+            commands::grid_attach,
+            commands::grid_snapshot,
+            commands::grid_detach,
             commands::pty_spawn,
             commands::pty_ensure,
             commands::pty_write,

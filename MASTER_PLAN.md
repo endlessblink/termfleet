@@ -38,7 +38,7 @@ were retired during consolidation.
 | TC-015 | TODO | FEATURE | Per-node task badges: show associated MASTER_PLAN task + status on canvas terminals |
 | TC-016 | TODO | FEATURE | Multi-agent orchestration: spawn/manage sub-agent terminals from the cockpit |
 | TC-017 | IN_PROGRESS | FEATURE | Headless-VT (Rust) + custom canvas renderer for terminal panes |
-| TC-017a | TODO | TASK | Stage 1: headless alacritty_terminal grid + JSON snapshot |
+| TC-017a | DONE | TASK | Stage 1: headless alacritty_terminal grid + JSON snapshot |
 | TC-017b | TODO | TASK | Stage 2: full-frame Canvas2D renderer + font atlas (no diffing) |
 | TC-017c | TODO | TASK | Stage 3: binary dirty-diff IPC pipeline |
 | TC-017d | TODO | TASK | Stage 4: input translation & keymap (keydown to VT sequences) |
@@ -1026,13 +1026,36 @@ terminal stream, bypassing the IPC router.
 
 Subtasks (each independently testable; ordered to de-risk early):
 
-##### TC-017a - Stage 1: headless grid + JSON snapshot `TODO`
+##### TC-017a - Stage 1: headless grid + JSON snapshot `DONE`
 Initialize a headless `alacritty_terminal::Term` behind an `EventListener`. Pipe
 the daemon's Unix-socket PTY bytes into it on a dedicated blocking thread, state
 behind an `RwLock`. Add a Tauri command `snapshot_grid` that serializes a 24x80
 grid (chars + color/style flags) to JSON.
 Acceptance: run `htop` in the PTY; `snapshot_grid` returns correct chars + colors.
 Risk: PTY blocking the async runtime -> isolate the processor in a blocking thread.
+
+Implemented in `src-tauri/src/vt_grid.rs`:
+- Pinned `alacritty_terminal = 0.25.1` (headless via `VoidListener`, ANSI bytes
+  fed through `vte::ansi::Processor::advance`). The crate does NOT own the PTY —
+  the daemon stays PTY authority; `GridManager` opens its own subscriber stream
+  (`SubscribeSession`) and feeds bytes on a per-session named blocking thread,
+  state behind `RwLock<TermState>`.
+- Tauri commands `grid_attach` / `grid_snapshot` / `grid_detach`
+  (`commands.rs`, registered in `lib.rs`; `GridManager` is `.manage`d).
+  `grid_snapshot` serializes a row-major grid of `{c, fg, bg, bold, italic,
+  underline, inverse, wide}` plus cursor + altScreen/cursorVisible. Colors are
+  resolved with a deterministic standard xterm-256 palette (truecolor exact);
+  wide-char spacer cells are dropped so columns stay aligned. Daemon snapshot is
+  replayed on attach to reconstruct the current screen.
+Evidence (`cd src-tauri`): `cargo check` clean; `cargo test` → 25 passed / 5
+  suites. Unit tests (`vt_grid::tests`, 6): plain text, CR/LF, SGR red, 24-bit
+  truecolor, bold flag, alt-screen mode. Live integration test
+  (`tests/grid_live.rs`): boots the daemon in an isolated `XDG_RUNTIME_DIR`,
+  runs a real `bash` PTY, `printf '\033[31mREDWORD\033[0m'`, and asserts the grid
+  reconstructs a red (`#cd0000`) `REDWORD` run in a well-formed 24x80 snapshot
+  (~0.5s). htop confirmed installed; the automated proof uses a deterministic
+  colored word instead of htop's nondeterministic frame.
+Next: TC-017b (Canvas2D renderer + font atlas) consumes `grid_snapshot`.
 
 ##### TC-017b - Stage 2: full-frame Canvas2D renderer + font atlas `TODO`
 React `<canvas>` component with a `requestAnimationFrame` loop rendering the

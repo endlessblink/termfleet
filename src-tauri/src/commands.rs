@@ -4,6 +4,7 @@ use crate::daemon::{
     DaemonStatus,
 };
 use crate::pty::{PtyManager, PtyOutputChunk};
+use crate::vt_grid::{GridManager, DEFAULT_COLS, DEFAULT_ROWS};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
@@ -395,6 +396,28 @@ pub fn daemon_kill_session(id: String) -> Result<(), String> {
         DaemonResponse::Error { message } => Err(message),
         response => Err(format!("Unexpected daemon response: {response:?}")),
     }
+}
+
+#[tauri::command]
+pub fn grid_attach(
+    grids: State<'_, GridManager>,
+    id: String,
+    cols: Option<usize>,
+    rows: Option<usize>,
+) -> Result<(), String> {
+    let cols = cols.filter(|value| *value > 0).unwrap_or(DEFAULT_COLS);
+    let rows = rows.filter(|value| *value > 0).unwrap_or(DEFAULT_ROWS);
+    grids.attach(&id, cols, rows)
+}
+
+#[tauri::command]
+pub fn grid_snapshot(grids: State<'_, GridManager>, id: String) -> Result<String, String> {
+    grids.snapshot(&id)
+}
+
+#[tauri::command]
+pub fn grid_detach(grids: State<'_, GridManager>, id: String) {
+    grids.detach(&id);
 }
 
 #[tauri::command]
