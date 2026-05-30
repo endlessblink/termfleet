@@ -101,7 +101,7 @@
     <text x="410" y="218" class="mono" fill="#a7ff00" font-size="18">$</text>
     <text x="434" y="218" class="mono" fill="#e2e5e7" font-size="18">termfleet run --workspace ops</text>
     <text x="410" y="255" class="mono" fill="#8b969d" font-size="18">daemon</text>
-    <text x="492" y="255" class="mono" fill="#e2e5e7" font-size="18">attached to /run/user/1000/termfleet.sock</text>
+    <text x="492" y="255" class="mono" fill="#e2e5e7" font-size="18">attached to user-local daemon socket</text>
     <text x="410" y="292" class="mono" fill="#8b969d" font-size="18">pane</text>
     <text x="492" y="292" class="mono" fill="#e2e5e7" font-size="18">split.right synced with strategic map</text>
     <text x="410" y="329" class="mono" fill="#8b969d" font-size="18">latency</text>
