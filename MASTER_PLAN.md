@@ -45,6 +45,7 @@ were retired during consolidation.
 | TC-017e | TODO | TASK | Stage 5: resize/reflow + map-mode CSS transform |
 | TC-017f | TODO | TASK | Stage 6: scrollback, selection, copy/paste |
 | TC-017g | TODO | TASK | Stage 7: TUI correctness, latency gate, delete xterm.js |
+| TC-018 | TODO | FEATURE | BiDi/RTL + text shaping (Hebrew nikud) in the headless grid — depends on TC-017 |
 
 ---
 
@@ -1096,6 +1097,43 @@ Validate `zellij`, `tmux`, `vim`, `htop` (alt screen, 256/truecolor, splits alig
 Pass the key-to-glyph p95 15-25ms gate. Then remove the xterm.js dependency and
 the `wantsNativeRenderer`/native-VTE fallback shims.
 Acceptance: TUIs render artifact-free, latency gate green, xterm.js deleted.
+
+#### TC-018 - BiDi/RTL + text shaping (Hebrew nikud) in the headless grid `TODO`
+Future pass, layered on the completed TC-017 renderer (needs the binary IPC
+payload from TC-017c and the shared font atlas from TC-017b/g). Goal: an
+RTL-safe grid that mixes English (LTR commands) and Hebrew (RTL, with nikud /
+combining marks) without breaking the fixed-width cell model. Do the layout math
+headlessly in Rust; React still receives a plain visual coordinate grid.
+
+Pipeline (split the flow into a logical buffer and a visual grid buffer):
+`PTY → logical buffer (alacritty grid) → (1) unicode-bidi reorder → (2) rustybuzz
+shape → visual grid buffer → binary IPC diff → canvas`.
+
+- **Stage 1 — logical vs. visual grid split (Rust).** Add a secondary
+  `visual_grid` in `vt_grid.rs` (the alacritty grid is the logical/history
+  buffer). A conversion pass clones the active viewport into `visual_grid` as a
+  baseline. Verify: ASCII flows identically through both grids, zero perf drop.
+- **Stage 2 — BiDi reorder (`unicode-bidi = 0.3`).** For each modified viewport
+  line, run `BidiInfo::new(&text, None)`, walk the visual runs, reverse RTL runs
+  when copying into `visual_grid`. Cursor tracks the *visual* endpoint, not the
+  logical one. Verify: `echo "שלום"` shows ש rightmost, ם leftmost.
+- **Stage 3 — shaping & diacritics (`rustybuzz = 0.12`).** Load the bundled
+  monospace font as a `rustybuzz::Face`; shape BiDi-reordered runs. Combining
+  marks (nikud) with nonzero x/y offset stay in the *base* cell as packed
+  metadata — no extra grid cell. Verify: `שָׁלוֹם` occupies exactly 4 cells with
+  vowel offsets attached.
+- **Stage 4 — extend binary cell payload to 16 bytes:** `[0..4]` u32 glyph index
+  (from rustybuzz, replacing raw UTF-32), `[4..6]` packed i8 x/y micro-offsets,
+  `[6..10]` u32 fg RGBA, `[10..14]` u32 bg RGBA, `[14..16]` u16 style flags.
+- **Stage 5 — canvas glyph pipeline (`Terminal*.tsx`).** Re-key the font atlas by
+  glyph ID (not ASCII); `drawImage` by glyph ID; shift draw target by the cell's
+  micro-offsets for diacritics.
+
+Risks/mitigations: (1) BiDi/shaping per byte is expensive on fast dumps (`cat`)
+→ compute **lazily**, only on visible viewport lines, and cache per-line; skip
+unchanged lines. (2) Backend layout vs. frontend drawing must use the *same*
+font → bundle one monospace font in Tauri assets; Rust loads it from disk, React
+builds its atlas from the identical file.
 
 #### MC-001 - Preserve canvas workspace mode `DONE`
 Add a first-class workspace mode switch with `canvas`, `split`, and `graph`
