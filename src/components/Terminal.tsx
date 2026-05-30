@@ -6,6 +6,7 @@ import { WebglAddon } from "@xterm/addon-webgl";
 import "@xterm/xterm/css/xterm.css";
 import { useNativeTerminalPane } from "../hooks/useNativeTerminalPane";
 import { usePty } from "../hooks/usePty";
+import { TerminalCanvas } from "./TerminalCanvas";
 import { syncTerminalLatencyTraceEnv, traceTerminalLatency } from "../lib/terminalLatencyTrace";
 import { refreshProjectRootFromActiveTerminal, useWorkspaceStore } from "../stores/workspace";
 import type { TerminalRuntimeStatus } from "../lib/types";
@@ -82,6 +83,12 @@ export function TerminalComponent({
   const workspaceMode = useWorkspaceStore((s) => s.workspaceUiState.workspaceMode);
   const terminalRendererMode = useWorkspaceStore((s) => s.workspaceUiState.terminalRendererMode);
   const runtimeSessionId = `terminal-${tabId}-${paneId}`;
+  // TC-017g: opt-in headless-VT + Canvas2D renderer. Default stays xterm until
+  // the live latency + TUI gate is cleared (set VITE_TERMINAL_RENDERER_MODE=canvas2d).
+  const canvasMode =
+    terminalRendererMode === "canvas2d" &&
+    typeof window !== "undefined" &&
+    "__TAURI_INTERNALS__" in window;
   const isRuntimeVisible = standalone
     ? workspaceMode === "canvas" && runtimeActive
     : workspaceMode === "split" && activeTabId === tabId;
@@ -92,7 +99,7 @@ export function TerminalComponent({
   // xterm renderer, which transforms and clips with the canvas. The native pane
   // is reserved for axis-aligned split panes per the native-pane architecture.
   const nativePane = useNativeTerminalPane({
-    enabled: isRuntimeVisible && !standalone,
+    enabled: isRuntimeVisible && !standalone && !canvasMode,
     rendererMode: terminalRendererMode,
     host: containerElement,
     sessionId: attachToPtyId ?? runtimeSessionId,
@@ -174,7 +181,7 @@ export function TerminalComponent({
   }, [updateTerminalRuntime]);
 
   const { resize, write } = usePty({
-    terminal: isRuntimeVisible && !nativePane.attached ? terminal : null,
+    terminal: !canvasMode && isRuntimeVisible && !nativePane.attached ? terminal : null,
     cwd,
     command,
     attachToPtyId,
@@ -423,15 +430,25 @@ export function TerminalComponent({
         <span className="terminal-block-marker" />
         <span className="terminal-block-context-dot" />
       </div>
-      <div
-        ref={(element) => {
-          containerRef.current = element;
-          setContainerElement(element);
-        }}
-        className="terminal-container"
-        data-terminal-renderer={nativePane.attached ? "native" : "web-xterm"}
-        title={nativePane.unavailableReason ?? undefined}
-      />
+      {canvasMode ? (
+        <div className="terminal-container" data-terminal-renderer="canvas2d">
+          <TerminalCanvas
+            sessionId={attachToPtyId ?? runtimeSessionId}
+            cwd={cwd}
+            command={command}
+          />
+        </div>
+      ) : (
+        <div
+          ref={(element) => {
+            containerRef.current = element;
+            setContainerElement(element);
+          }}
+          className="terminal-container"
+          data-terminal-renderer={nativePane.attached ? "native" : "web-xterm"}
+          title={nativePane.unavailableReason ?? undefined}
+        />
+      )}
     </div>
   );
 }

@@ -44,7 +44,7 @@ were retired during consolidation.
 | TC-017d | DONE | TASK | Stage 4: input translation & keymap (keydown to VT sequences) |
 | TC-017e | DONE | TASK | Stage 5: resize/reflow + map-mode CSS transform |
 | TC-017f | DONE | TASK | Stage 6: scrollback, selection, copy/paste |
-| TC-017g | TODO | TASK | Stage 7: TUI correctness, latency gate, delete xterm.js |
+| TC-017g | IN_PROGRESS | TASK | Stage 7: box-drawing DONE + canvas integrated opt-in; latency/TUI gate + xterm deletion need a live desktop run |
 | TC-018 | TODO | FEATURE | BiDi/RTL + text shaping (Hebrew nikud) in the headless grid — depends on TC-017 |
 
 ---
@@ -1224,12 +1224,45 @@ Evidence: `cargo test` 33 passed — new `scrolling_into_history_reveals_older_
   `pointToCell` floor + clamp.
 Next: TC-017g (TUI correctness, latency gate, delete xterm.js).
 
-##### TC-017g - Stage 7: TUI correctness, latency gate, delete xterm.js `TODO`
+##### TC-017g - Stage 7: TUI correctness, latency gate, delete xterm.js `IN_PROGRESS`
 Render box-drawing (U+2500..U+257F) via raw `fillRect` (no atlas sub-pixel gaps).
 Validate `zellij`, `tmux`, `vim`, `htop` (alt screen, 256/truecolor, splits align).
 Pass the key-to-glyph p95 15-25ms gate. Then remove the xterm.js dependency and
 the `wantsNativeRenderer`/native-VTE fallback shims.
 Acceptance: TUIs render artifact-free, latency gate green, xterm.js deleted.
+
+DONE in this pass (automatable, headless-verifiable):
+- Box-drawing + block elements via `fillRect` (`src/lib/boxGlyph.ts`):
+  U+2500..257F lines/corners/T-junctions/crosses (light+heavy; doubles
+  approximated by their single segment set), plus common blocks
+  (█▀▄▌▐ and ░▒▓ shades via alpha). The renderer routes these geometrically and
+  bypasses the glyph atlas, so borders tile with no sub-pixel gaps.
+- Canvas renderer integrated as an **opt-in** mode: `TerminalRendererMode` gains
+  `"canvas2d"` (set `VITE_TERMINAL_RENDERER_MODE=canvas2d`). `Terminal.tsx`
+  renders `<TerminalCanvas>` in that mode (xterm + native-VTE hooks go inert);
+  default stays xterm so the daily-driver app is untouched. `TerminalCanvas` is
+  self-sufficient: `daemon_ensure_running`/`daemon_ensure_session` →
+  `grid_attach` → `grid_subscribe_diffs`, input via `daemon_write_session`.
+- Evidence: `npm run build` clean; `npm run verify:canvas-all` (6 Playwright
+  specs) green; full `playwright test` suite 11 passed (incl. existing flows —
+  no regression from the `Terminal.tsx` change). `verify:box-glyph` samples
+  pixels: ─ bright at mid-height/dark at top, │ bright at mid-width/dark at
+  left, █ fills the cell, ░ renders dim — and the font atlas stays empty (box
+  glyphs never touch it).
+
+REMAINING (require a live desktop session — cannot be driven headlessly here):
+- Key-to-glyph p95 15–25ms latency gate. Instrumentation plan (from the TC-017
+  spec): tag a keypress with an invisible DCS sequence, flag the diff that
+  carries it in Rust, measure keypress→flagged-diff in React. Needs a real
+  WebKitGTK window to measure.
+- Live TUI validation: `zellij`/`tmux`/`vim`/`htop` (alt screen, 256/truecolor,
+  split alignment) under the canvas renderer.
+- Production cutover: flip the default to `canvas2d`, then delete the xterm.js
+  dependency and the `wantsNativeRenderer`/native-VTE shims. Deliberately NOT
+  done yet — the project bar (and the handoff) require passing the TUI + latency
+  gates first; deleting the working renderer on headless evidence alone would be
+  unsafe. Run `./run-native-vte-dev.sh` with `VITE_TERMINAL_RENDERER_MODE=canvas2d`
+  to drive these checks.
 
 #### TC-018 - BiDi/RTL + text shaping (Hebrew nikud) in the headless grid `TODO`
 Future pass, layered on the completed TC-017 renderer (needs the binary IPC

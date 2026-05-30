@@ -54,7 +54,12 @@ export interface OpenFile {
 }
 
 export type WorkspaceMode = "canvas" | "split" | "graph";
-export type TerminalRendererMode = "auto" | "web-xterm" | "native-vte" | "native-gpu";
+export type TerminalRendererMode =
+  | "auto"
+  | "web-xterm"
+  | "native-vte"
+  | "native-gpu"
+  | "canvas2d";
 
 export interface WorkspaceUiState {
   workspaceMode: WorkspaceMode;

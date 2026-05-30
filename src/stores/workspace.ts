@@ -35,7 +35,12 @@ export const WORKSPACE_STORAGE_KEY = "terminal-workspace.v1";
 
 function configuredTerminalRendererMode(): WorkspaceUiState["terminalRendererMode"] | null {
   const mode = import.meta.env.VITE_TERMINAL_RENDERER_MODE;
-  return mode === "web-xterm" || mode === "native-vte" || mode === "native-gpu" ? mode : null;
+  return mode === "web-xterm" ||
+    mode === "native-vte" ||
+    mode === "native-gpu" ||
+    mode === "canvas2d"
+    ? mode
+    : null;
 }
 
 function configuredWorkspaceMode(): WorkspaceUiState["workspaceMode"] | null {

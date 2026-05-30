@@ -41,6 +41,8 @@ function isTauriRuntime(): boolean {
 
 interface TerminalCanvasProps {
   sessionId: string;
+  cwd?: string;
+  command?: string;
   cols?: number;
   rows?: number;
   theme?: RenderTheme;
@@ -48,6 +50,8 @@ interface TerminalCanvasProps {
 
 export function TerminalCanvas({
   sessionId,
+  cwd,
+  command,
   cols = 80,
   rows = 24,
   theme = DEFAULT_THEME,
@@ -158,6 +162,11 @@ export function TerminalCanvas({
     if (shellRef.current) observer.observe(shellRef.current);
 
     (async () => {
+      // Ensure the daemon owns the PTY (the daemon is the PTY authority), then
+      // attach the headless grid and subscribe to its binary diff stream.
+      await invoke("daemon_ensure_running");
+      await invoke("daemon_ensure_session", { id: sessionId, cwd, command });
+      if (disposed) return;
       await invoke("grid_attach", { id: sessionId, cols, rows });
       if (disposed) return;
       await invoke("grid_subscribe_diffs", { id: sessionId, onDiff: channel });
@@ -169,7 +178,7 @@ export function TerminalCanvas({
       observer.disconnect();
       invoke("grid_detach", { id: sessionId }).catch(() => {});
     };
-  }, [sessionId, cols, rows, theme]);
+  }, [sessionId, cwd, command, cols, rows, theme]);
 
   const send = (data: string) => {
     invoke("daemon_write_session", { id: sessionId, data }).catch(console.error);

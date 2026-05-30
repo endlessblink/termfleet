@@ -13,6 +13,8 @@
     "verify:keymap": "playwright test keymap",
     "verify:grid-resize": "playwright test grid-resize",
     "verify:selection": "playwright test selection",
+    "verify:box-glyph": "playwright test box-glyph",
+    "verify:canvas-all": "playwright test canvas-renderer grid-diff keymap grid-resize selection box-glyph",
     "verify:map-terminals": "node scripts/verify-map-terminals.mjs",
     "verify:canvas-terminal": "scripts/verify-canvas-terminal.sh",
     "verify:terminal-rendering": "node scripts/verify-terminal-rendering.mjs",
