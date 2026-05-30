@@ -1,8 +1,15 @@
-# MASTER_PLAN.md - Magic Canvas Tauri Migration
+# MASTER_PLAN.md - termfleet
 
-Tauri 2 + React + Rust desktop migration for Magic Canvas. Linux is the first
-release gate. The migration must preserve the canvas workflow instead of
-replacing it with a terminal-only split-pane app.
+termfleet is a terminal cockpit / multi-terminal operations workspace
+(Tauri 2 + React + Rust, native GTK/VTE panes with a daemon-backed PTY). It is
+the current line of the project formerly built as "Magic Canvas"; Linux is the
+first release gate. The design preserves the canvas/operations-map workflow
+instead of replacing it with a terminal-only split-pane app.
+
+Extracted from `cc-linux-enhancments/terminal-workspace-tauri` on 2026-05-30;
+full prior history remains in that monorepo. Superseded predecessors
+(terminaltron, terminal-workspace, the web Magic Canvas, zellij-masterplan-tabbar)
+were retired during consolidation.
 
 ## Summary
 
@@ -28,6 +35,8 @@ replacing it with a terminal-only split-pane app.
 | TC-012 | DONE (2026-05-29) | TASK | Raise terminal rendering quality for Zellij/TUI workloads |
 | TC-013 | DONE (2026-05-29) | TASK | Prevent daemon transport failures from flooding terminals |
 | TC-014 | IN_PROGRESS | FEATURE | Make terminal typing latency production-grade |
+| TC-015 | TODO | FEATURE | Per-node task badges: show associated MASTER_PLAN task + status on canvas terminals |
+| TC-016 | TODO | FEATURE | Multi-agent orchestration: spawn/manage sub-agent terminals from the cockpit |
 
 ---
 
@@ -984,3 +993,40 @@ file nodes should reference the tracked open-file model.
 Add fixtures for mixed terminal/file canvas layouts, Hebrew/English labels, and
 mode switching. Verify canvas surfaces stay usable while raw PTY RTL remains
 best-effort.
+
+---
+
+## Backlog (post-consolidation)
+
+#### TC-015 - Per-node task badges on canvas terminals `TODO`
+Surface each terminal's associated MASTER_PLAN task and status directly on its
+canvas node (and in the sidebar list) as a compact badge: task id, short title,
+and a status dot (Todo / In-Progress / Blocked / Done). Lets the operations map
+double as a live task board.
+
+Origin: salvaged concept from the retired `zellij-masterplan-tabbar` plugin,
+which rendered MASTER_PLAN task status in the zellij tab bar. Only the idea
+carries forward; that plugin was a zellij WASM module and shares no code with
+termfleet's Tauri/Rust stack.
+
+Acceptance (draft):
+- A terminal node can be bound to a task id from a project's MASTER_PLAN.
+- The node shows task id + status badge; status updates when the plan changes.
+- Unbound terminals render with no badge and no layout shift.
+
+#### TC-016 - Multi-agent orchestration from the cockpit `TODO`
+Let one cockpit terminal spawn and manage multiple sub-agent terminals (Claude
+Code / Codex / bash) that work autonomously while the user monitors and steers
+them from the canvas. This is the core vision of the retired web "Magic Canvas"
+predecessor, brought into the native Tauri cockpit.
+
+Origin: the web Magic Canvas (Express + ws + node-pty + xterm) implemented this
+via a `tc-spawn` CLI, stream-json output parsing, git-worktree isolation per
+agent, and an agent-memory panel. None of that Node code is reusable here; the
+architecture and research are preserved in claude-mem (Mar 2026 observations).
+
+Acceptance (draft):
+- A cockpit action spawns a named sub-agent terminal (interactive or headless).
+- Headless agents stream readable status/output into their canvas node.
+- Parent can send follow-up tasks to a child; child exit is surfaced on the node.
+- Optional git-worktree isolation per agent to avoid file conflicts.
