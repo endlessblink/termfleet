@@ -54,8 +54,14 @@ function isTauriRuntime() {
   return "__TAURI_INTERNALS__" in window;
 }
 
-function wantsNativeRenderer(mode: TerminalRendererMode) {
-  return mode === "auto" || mode === "native-vte" || mode === "native-gpu";
+function wantsNativeRenderer(_mode: TerminalRendererMode) {
+  // Native VTE overlay is disabled: the GTK-over-WebKitGTK embedding was fragile
+  // (sizing, pixman crashes, keyboard focus, and it can't live on the canvas
+  // map). All terminals use the xterm.js renderer, which fills its pane, types
+  // reliably, and works in both split and map surfaces. The daemon/PTY backend
+  // is unchanged. To restore native VTE, revert this file (and native_gtk_pane.rs)
+  // from the `native-vte-snapshot` git tag.
+  return false;
 }
 
 function boundsForElement(element: HTMLElement): NativeTerminalBounds {

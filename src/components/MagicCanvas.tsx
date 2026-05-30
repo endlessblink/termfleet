@@ -457,11 +457,15 @@ function CanvasNodeView({ node }: { node: CanvasNode }) {
   const terminalPaneId = linkedTab?.activePaneId ?? node.id;
   const linkedPaneTerminalId = linkedTab?.terminals.find((terminal) => terminal.paneId === terminalPaneId)?.id;
   const linkedTerminalId = linkedPaneTerminalId ?? node.terminalPtyId ?? linkedTab?.terminals[0]?.id;
-  const shouldUseNativeSplitForInteraction =
-    node.type === "terminal" &&
-    isDesktopNativeRuntime() &&
-    terminalRendererMode !== "web-xterm" &&
-    Boolean(linkedTab);
+  // Native VTE is disabled app-wide (see useNativeTerminalPane.wantsNativeRenderer):
+  // the GTK overlay could not live on the zoom/pan canvas, which is why map nodes
+  // used to fall back to a static "Open terminal" card. With xterm.js everywhere,
+  // map nodes render a live terminal directly. Kept as a constant so the card
+  // branch and its helpers type-check; restore the old expression alongside the
+  // `native-vte-snapshot` tag if native VTE is reinstated.
+  const shouldUseNativeSplitForInteraction = false;
+  void isDesktopNativeRuntime;
+  void terminalRendererMode;
   const openLinkedTerminal = useCallback(() => {
     if (!linkedTab) return;
     setActiveTab(linkedTab.id);
