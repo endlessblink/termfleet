@@ -73,8 +73,6 @@ impl TermState {
         self.parser.advance(&mut self.term, bytes);
     }
 
-    // Used by TC-017e (resize/reflow); wired now so the grid owns sizing.
-    #[allow(dead_code)]
     fn resize(&mut self, cols: usize, rows: usize) {
         if self.term.columns() == cols && self.term.screen_lines() == rows {
             return;
@@ -169,6 +167,19 @@ impl GridManager {
         if emit.prev.is_none() {
             emit.prev = Some(frame);
         }
+        Ok(())
+    }
+
+    /// Resize the headless grid for `id` so it interprets PTY output at the new
+    /// dimensions. The PTY itself is resized separately (daemon_resize_session);
+    /// keeping both in lock-step avoids reflow corruption. The next emit is a
+    /// full sync (dimension change forces one).
+    pub fn resize(&self, id: &str, cols: usize, rows: usize) -> Result<(), String> {
+        let session = self
+            .get(id)
+            .ok_or_else(|| format!("no grid attached for session {id}"))?;
+        let mut state = session.state.write().map_err(|_| "grid state poisoned")?;
+        state.resize(cols, rows);
         Ok(())
     }
 
@@ -859,6 +870,23 @@ mod tests {
         assert_eq!(buffer[0], MSG_DIFF);
         assert_eq!(read_u16(&buffer, 5), 2); // cursor moved 3 -> 2
         assert_eq!(read_u16(&buffer, 13), 0); // zero dirty rows
+    }
+
+    #[test]
+    fn resize_changes_grid_dimensions_and_preserves_content() {
+        let mut state = TermState::new(DEFAULT_COLS, DEFAULT_ROWS);
+        state.feed(b"hello");
+        state.resize(100, 30);
+        let f = WireFrame::capture(&state.term);
+        assert_eq!(f.cols, 100);
+        assert_eq!(f.rows, 30);
+        // Content survives the reflow on the first row.
+        let text: String = f.rows_cells[0]
+            .iter()
+            .filter_map(|cell| char::from_u32(cell.ch))
+            .filter(|c| *c != '\0')
+            .collect();
+        assert!(text.starts_with("hello"), "got: {text:?}");
     }
 
     #[test]

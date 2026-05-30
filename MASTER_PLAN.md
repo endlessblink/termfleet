@@ -42,7 +42,7 @@ were retired during consolidation.
 | TC-017b | DONE | TASK | Stage 2: full-frame Canvas2D renderer + font atlas (no diffing) |
 | TC-017c | DONE | TASK | Stage 3: binary dirty-diff IPC pipeline |
 | TC-017d | DONE | TASK | Stage 4: input translation & keymap (keydown to VT sequences) |
-| TC-017e | TODO | TASK | Stage 5: resize/reflow + map-mode CSS transform |
+| TC-017e | DONE | TASK | Stage 5: resize/reflow + map-mode CSS transform |
 | TC-017f | TODO | TASK | Stage 6: scrollback, selection, copy/paste |
 | TC-017g | TODO | TASK | Stage 7: TUI correctness, latency gate, delete xterm.js |
 | TC-018 | TODO | FEATURE | BiDi/RTL + text shaping (Hebrew nikud) in the headless grid — depends on TC-017 |
@@ -1169,11 +1169,32 @@ Evidence: `npm run verify:keymap` (Playwright) constructs real `KeyboardEvent`s
   confirmed at TC-017g integration (write path is the same one usePty uses).
 Next: TC-017e (resize/reflow + map-mode CSS transform).
 
-##### TC-017e - Stage 5: resize/reflow + map-mode transform `TODO`
+##### TC-017e - Stage 5: resize/reflow + map-mode transform `DONE`
 `ResizeObserver` computes cols/rows from pixel size; send `Resize(cols,rows)` ->
 `term.resize()`. Verify on the pan/zoom map under CSS `transform: scale()/translate()`.
 Acceptance: terminal reflows on pane resize AND renders correctly transformed on
 the map, with no GTK overlay crashes (it's a DOM canvas).
+
+- Rust: `grid_resize(id, cols, rows)` → `GridManager::resize` → `TermState::resize`
+  (the headless grid reflows so it interprets PTY output at the new size). Kept
+  in lock-step with `daemon_resize_session` (the PTY). A dimension change forces
+  the next emit to be a full sync, repainting at the new size.
+- Frontend: `computeGridSize(w, h, cellW, cellH)` floors to fit and clamps to
+  >=1 (a collapsed pane never sends a 0-size resize). `TerminalCanvas` runs a
+  `ResizeObserver` on its shell: on box change it derives cols/rows and invokes
+  both `daemon_resize_session` and `grid_resize`. Initial reflow fires after
+  subscribe so the grid matches the real pane size.
+- Map mode: the renderer targets a plain DOM `<canvas>` backing store, so CSS
+  `transform: scale()/translate()` is purely a compositor operation — it never
+  touches the pixels or GTK. This is exactly what the native VTE overlay could
+  not do (TC-014's dead end).
+Evidence: `cargo test` 32 passed — new `resize_changes_grid_dimensions_and_
+  preserves_content` (resize 80x24→100x30 keeps "hello" on row 0). `tsc` clean.
+  `npm run verify:grid-resize` (Playwright): `computeGridSize` floor/clamp
+  asserted; and after rendering a red glyph, applying `scale(2.4) translate(...)`
+  leaves the canvas backing store byte-identical (same width/height, identical
+  `getImageData`) — proving transform-independent rendering with no GTK crash.
+Next: TC-017f (scrollback, selection, copy/paste).
 
 ##### TC-017f - Stage 6: scrollback, selection, copy/paste `TODO`
 Wheel -> scroll commands; Rust shifts the viewport into history and emits a full

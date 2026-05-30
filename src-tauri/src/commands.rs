@@ -421,6 +421,16 @@ pub fn grid_detach(grids: State<'_, GridManager>, id: String) {
 }
 
 #[tauri::command]
+pub fn grid_resize(
+    grids: State<'_, GridManager>,
+    id: String,
+    cols: usize,
+    rows: usize,
+) -> Result<(), String> {
+    grids.resize(&id, cols, rows)
+}
+
+#[tauri::command]
 pub fn grid_subscribe_diffs(
     grids: State<'_, GridManager>,
     id: String,

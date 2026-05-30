@@ -13,6 +13,7 @@ import { GlyphAtlas, measureCell } from "../lib/fontAtlas";
 import { GridBuffer } from "../lib/gridBuffer";
 import { decodeFrame } from "../lib/gridDiff";
 import {
+  computeGridSize,
   DEFAULT_THEME,
   renderPartial,
   renderSnapshot,
@@ -45,6 +46,7 @@ export function TerminalCanvas({
 }: TerminalCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const shellRef = useRef<HTMLDivElement>(null);
   // Latest terminal modes, kept current by the diff stream, read by input.
   const modesRef = useRef({ appCursor: false, bracketedPaste: false });
 
@@ -77,14 +79,44 @@ export function TerminalCanvas({
       }
     };
 
+    // Reflow: derive cols/rows from the shell's pixel box and keep the PTY and
+    // the headless grid in lock-step. The grid emits a full sync after a
+    // dimension change, repainting at the new size.
+    let lastCols = cols;
+    let lastRows = rows;
+    const applyResize = () => {
+      const shell = shellRef.current;
+      if (!shell || disposed) return;
+      const { cols: nextCols, rows: nextRows } = computeGridSize(
+        shell.clientWidth,
+        shell.clientHeight,
+        metrics.cellWidth,
+        metrics.cellHeight,
+      );
+      if (nextCols === lastCols && nextRows === lastRows) return;
+      lastCols = nextCols;
+      lastRows = nextRows;
+      invoke("daemon_resize_session", { id: sessionId, cols: nextCols, rows: nextRows }).catch(
+        console.error,
+      );
+      invoke("grid_resize", { id: sessionId, cols: nextCols, rows: nextRows }).catch(
+        console.error,
+      );
+    };
+
+    const observer = new ResizeObserver(applyResize);
+    if (shellRef.current) observer.observe(shellRef.current);
+
     (async () => {
       await invoke("grid_attach", { id: sessionId, cols, rows });
       if (disposed) return;
       await invoke("grid_subscribe_diffs", { id: sessionId, onDiff: channel });
+      applyResize();
     })().catch(console.error);
 
     return () => {
       disposed = true;
+      observer.disconnect();
       invoke("grid_detach", { id: sessionId }).catch(() => {});
     };
   }, [sessionId, cols, rows, theme]);
@@ -118,8 +150,9 @@ export function TerminalCanvas({
 
   return (
     <div
+      ref={shellRef}
       className="terminal-canvas-shell"
-      style={{ position: "relative", display: "block" }}
+      style={{ position: "relative", display: "block", width: "100%", height: "100%" }}
       onPointerDown={focusInput}
     >
       <canvas
