@@ -41,7 +41,7 @@ were retired during consolidation.
 | TC-017a | DONE | TASK | Stage 1: headless alacritty_terminal grid + JSON snapshot |
 | TC-017b | DONE | TASK | Stage 2: full-frame Canvas2D renderer + font atlas (no diffing) |
 | TC-017c | DONE | TASK | Stage 3: binary dirty-diff IPC pipeline |
-| TC-017d | TODO | TASK | Stage 4: input translation & keymap (keydown to VT sequences) |
+| TC-017d | DONE | TASK | Stage 4: input translation & keymap (keydown to VT sequences) |
 | TC-017e | TODO | TASK | Stage 5: resize/reflow + map-mode CSS transform |
 | TC-017f | TODO | TASK | Stage 6: scrollback, selection, copy/paste |
 | TC-017g | TODO | TASK | Stage 7: TUI correctness, latency gate, delete xterm.js |
@@ -1139,11 +1139,35 @@ Note: the "lower CPU than xterm.js / cmatrix smooth" claim is structural — onl
   can't be exercised headlessly without a Tauri window).
 Next: TC-017d (input translation & keymap).
 
-##### TC-017d - Stage 4: input translation & keymap `TODO`
+##### TC-017d - Stage 4: input translation & keymap `DONE`
 Hidden `<textarea>` over the canvas captures `keydown` (IME-friendly); translate
 `KeyboardEvent` to VT sequences (arrows, fn keys, ctrl/alt/meta, bracketed paste)
 and send to the daemon. Keymap is the single source of truth.
 Acceptance: type `ls -la`, Enter -> output appears immediately.
+
+- `src/lib/keymap.ts` — single source of truth. `keyEventToBytes(event, modes)`
+  covers Enter/Backspace/Tab/Shift-Tab/Esc, arrows + Home/End (CSI normally,
+  SS3 `ESC O` under DECCKM app-cursor mode, `CSI 1;<mod>` when modified),
+  Insert/Delete/PageUp/PageDown (`CSI n~`), F1–F4 (SS3) and F5–F12 (CSI),
+  Ctrl+letter → control bytes (incl. Ctrl+@/[/\\/]/^/_/Space), Alt+x → ESC
+  prefix, Backspace=DEL. Returns `null` for bare modifiers and Meta shortcuts.
+  `encodePaste()` normalizes newlines to `\r` and wraps in `ESC[200~/201~` when
+  bracketed paste is on.
+- DECCKM/keypad/bracketed-paste correctness: extended the wire mode flags (Rust
+  `WireFrame` + `gridDiff`/`GridBuffer`) with `appCursor` (bit2), `appKeypad`
+  (bit3), `bracketedPaste` (bit4), so the keymap honors the terminal's live
+  mode (vim/less arrows, paste guarding).
+- `TerminalCanvas.tsx` — hidden transparent `<textarea>` over the canvas owns
+  keyboard focus; `onKeyDown` → keymap → `daemon_write_session` (the proven PTY
+  write path); `onPaste` → `encodePaste`. No optimistic echo — the PTY echoes
+  and the grid updates via diffs (honors the hard constraint).
+Evidence: `npm run verify:keymap` (Playwright) constructs real `KeyboardEvent`s
+  in Chromium and asserts exact byte sequences (Enter=13, Shift-Tab=ESC[Z,
+  Ctrl+A=1, Alt+b=ESC b, ArrowUp normal=ESC[A vs app=ESC O A vs Ctrl=ESC[1;5A,
+  Delete=ESC[3~, F1=ESC O P, F5=ESC[15~, bare Shift/Meta→null, bracketed paste
+  framing). `tsc` clean; `cargo test` 31 passed. Live "type ls -la → output"
+  confirmed at TC-017g integration (write path is the same one usePty uses).
+Next: TC-017e (resize/reflow + map-mode CSS transform).
 
 ##### TC-017e - Stage 5: resize/reflow + map-mode transform `TODO`
 `ResizeObserver` computes cols/rows from pixel size; send `Resize(cols,rows)` ->

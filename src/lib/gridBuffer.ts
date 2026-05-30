@@ -19,6 +19,9 @@ export class GridBuffer {
   cursor = { col: 0, line: 0 };
   altScreen = false;
   cursorVisible = true;
+  appCursor = false;
+  appKeypad = false;
+  bracketedPaste = false;
   cells: GridCell[][] = [];
 
   private resize(cols: number, rows: number): void {
@@ -53,6 +56,9 @@ export class GridBuffer {
     this.cursor = frame.cursor;
     this.altScreen = frame.altScreen;
     this.cursorVisible = frame.cursorVisible;
+    this.appCursor = frame.appCursor;
+    this.appKeypad = frame.appKeypad;
+    this.bracketedPaste = frame.bracketedPaste;
 
     // Cursor moved: both the old and new rows need a repaint.
     if (prevCursorLine !== this.cursor.line) {

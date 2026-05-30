@@ -16,6 +16,9 @@ export const CELL_BYTES = 14;
 
 const MODE_ALT_SCREEN = 1 << 0;
 const MODE_CURSOR_VISIBLE = 1 << 1;
+const MODE_APP_CURSOR = 1 << 2;
+const MODE_APP_KEYPAD = 1 << 3;
+const MODE_BRACKETED_PASTE = 1 << 4;
 
 const STYLE_BOLD = 1 << 0;
 const STYLE_ITALIC = 1 << 1;
@@ -35,6 +38,9 @@ export interface DecodedFrame {
   cursor: { col: number; line: number };
   altScreen: boolean;
   cursorVisible: boolean;
+  appCursor: boolean;
+  appKeypad: boolean;
+  bracketedPaste: boolean;
   dirtyRows: DecodedRow[];
 }
 
@@ -90,6 +96,9 @@ export function decodeFrame(buffer: ArrayBuffer): DecodedFrame {
     cursor: { col: cursorCol, line: cursorLine },
     altScreen: Boolean(mode & MODE_ALT_SCREEN),
     cursorVisible: Boolean(mode & MODE_CURSOR_VISIBLE),
+    appCursor: Boolean(mode & MODE_APP_CURSOR),
+    appKeypad: Boolean(mode & MODE_APP_KEYPAD),
+    bracketedPaste: Boolean(mode & MODE_BRACKETED_PASTE),
     dirtyRows,
   };
 }

@@ -517,6 +517,9 @@ pub const HEADER_BYTES: usize = 15;
 
 const MODE_ALT_SCREEN: u32 = 1 << 0;
 const MODE_CURSOR_VISIBLE: u32 = 1 << 1;
+const MODE_APP_CURSOR: u32 = 1 << 2;
+const MODE_APP_KEYPAD: u32 = 1 << 3;
+const MODE_BRACKETED_PASTE: u32 = 1 << 4;
 
 const STYLE_BOLD: u16 = 1 << 0;
 const STYLE_ITALIC: u16 = 1 << 1;
@@ -540,6 +543,9 @@ struct WireFrame {
     cursor_line: u16,
     alt_screen: bool,
     cursor_visible: bool,
+    app_cursor: bool,
+    app_keypad: bool,
+    bracketed_paste: bool,
     rows_cells: Vec<Vec<WireCell>>,
 }
 
@@ -600,6 +606,9 @@ impl WireFrame {
             cursor_line: cursor.line.0.max(0) as u16,
             alt_screen: mode.contains(TermMode::ALT_SCREEN),
             cursor_visible: mode.contains(TermMode::SHOW_CURSOR),
+            app_cursor: mode.contains(TermMode::APP_CURSOR),
+            app_keypad: mode.contains(TermMode::APP_KEYPAD),
+            bracketed_paste: mode.contains(TermMode::BRACKETED_PASTE),
             rows_cells,
         }
     }
@@ -611,6 +620,15 @@ impl WireFrame {
         }
         if self.cursor_visible {
             flags |= MODE_CURSOR_VISIBLE;
+        }
+        if self.app_cursor {
+            flags |= MODE_APP_CURSOR;
+        }
+        if self.app_keypad {
+            flags |= MODE_APP_KEYPAD;
+        }
+        if self.bracketed_paste {
+            flags |= MODE_BRACKETED_PASTE;
         }
         flags
     }
