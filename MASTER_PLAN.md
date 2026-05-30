@@ -34,9 +34,17 @@ were retired during consolidation.
 | TC-011 | DONE (2026-05-29) | TASK | Audit and repair the daily project/session flow |
 | TC-012 | DONE (2026-05-29) | TASK | Raise terminal rendering quality for Zellij/TUI workloads |
 | TC-013 | DONE (2026-05-29) | TASK | Prevent daemon transport failures from flooding terminals |
-| TC-014 | IN_PROGRESS | FEATURE | Make terminal typing latency production-grade |
+| ~~TC-014~~ | SUPERSEDED by TC-017 | FEATURE | Make terminal typing latency production-grade (native VTE path abandoned) |
 | TC-015 | TODO | FEATURE | Per-node task badges: show associated MASTER_PLAN task + status on canvas terminals |
 | TC-016 | TODO | FEATURE | Multi-agent orchestration: spawn/manage sub-agent terminals from the cockpit |
+| TC-017 | IN_PROGRESS | FEATURE | Headless-VT (Rust) + custom canvas renderer for terminal panes |
+| TC-017a | TODO | TASK | Stage 1: headless alacritty_terminal grid + JSON snapshot |
+| TC-017b | TODO | TASK | Stage 2: full-frame Canvas2D renderer + font atlas (no diffing) |
+| TC-017c | TODO | TASK | Stage 3: binary dirty-diff IPC pipeline |
+| TC-017d | TODO | TASK | Stage 4: input translation & keymap (keydown to VT sequences) |
+| TC-017e | TODO | TASK | Stage 5: resize/reflow + map-mode CSS transform |
+| TC-017f | TODO | TASK | Stage 6: scrollback, selection, copy/paste |
+| TC-017g | TODO | TASK | Stage 7: TUI correctness, latency gate, delete xterm.js |
 
 ---
 
@@ -533,7 +541,22 @@ Completion notes:
   `npm run verify:standalone-daemon`, `rg "\[pty write failed\]|\[pty read failed\]"`
   across app/test/script sources, and `git diff --check`.
 
-#### TC-014 - Make terminal typing latency production-grade `IN_PROGRESS`
+#### TC-014 - Make terminal typing latency production-grade `SUPERSEDED by TC-017 (2026-05-30)`
+
+Outcome: the native GTK/VTE overlay path was abandoned. It is fundamentally
+incompatible with the product: VTE's hardcoded ~80x24 minimum size produced
+negative-width GTK allocations and pixman crashes, keyboard focus was unreliable,
+and a native GTK widget cannot live on the zoom/pan HTML canvas (the GTK
+compositor ignores CSS transforms). External research confirmed both the
+WebKitGTK xterm.js latency problem and the GTK-over-webview embedding dead end.
+Decision: route all terminals to xterm.js short-term (committed, working but
+laggy), and rebuild the renderer as a headless VT in Rust + a custom HTML canvas
+renderer. See TC-017. Native VTE code is preserved under the git tag
+`native-vte-snapshot`. Research notes:
+`docs/terminal-renderer-decision-perplexity-query.md`.
+
+The historical TC-014 investigation notes below are retained for reference.
+
 Typing in the Tauri terminal must feel immediate enough for daily shell work.
 The reliable solution is not optimistic local echo; it is measured key-to-render
 latency plus a persistent low-latency input transport that preserves real PTY
@@ -959,6 +982,97 @@ Progress notes (2026-05-29):
   worker to daemon stream receive p95 `1ms`, daemon stream receive to PTY write
   start p95 `0ms`, PTY write start to end p95 `1ms`,
   `ondata_to_write_call` p95 `23ms`, `keydown_to_write_raf` p95 `31ms`.
+
+#### TC-017 - Headless-VT (Rust) + custom canvas renderer `IN_PROGRESS`
+
+Replace the terminal renderer entirely. The PTY/daemon backend is fast (~1ms p95)
+and stays. The problem is the renderer: xterm.js on WebKitGTK has baseline +
+over-time typing lag (WebGL/DMA-BUF instability, JS heap growth), and the native
+GTK/VTE overlay is a dead end (see TC-014). Target architecture: Rust owns the
+terminal grid state via a headless VT crate fed by PTY bytes; Rust computes
+dirty-cell diffs and pushes a compact binary payload to the frontend; React draws
+glyphs on a plain HTML5 `<canvas>` via a font atlas. This kills WebKitGTK render
+lag and JS heap growth, and because it is a normal DOM `<canvas>` it pans/zooms
+with CSS — one renderer works in both split and map surfaces, and it future-proofs
+multi-agent/standalone/overlay modes.
+
+Hard constraints (carried forward): no optimistic local echo / no PTY echo
+suppression. Keep xterm.js behind a flag as the working fallback until the canvas
+renderer passes a TUI-correctness + latency bar, then delete it (TC-017g).
+
+Crate decision: **`alacritty_terminal` (v0.22+)**, used headless. Feed it PTY
+bytes (`process_new_bytes`), read its grid (`grid().display_iter()`); it must NOT
+own the PTY — the existing daemon stays the PTY authority. Rejected: `vt100`
+(weaker modern-TUI correctness) and `wezterm-term` (heavy ecosystem coupling).
+
+Binary wire format (little-endian, frontend reads as ArrayBuffer):
+- `[0]` u8 message type (0x01 = diff, 0x02 = full sync)
+- `[1..5]` cursor x,y (u16 each)
+- `[5..9]` u32 mode flags (alt screen, cursor hidden, ...)
+- `[9..]` dirty rows: each = u16 row index, u16 changed-cell count, then
+  12-byte cells: u32 UTF-32 char, u32 fg RGBA, u32 bg RGBA, u16 style flags
+  (bold/italic/underline/inverse).
+
+Performance plan (target key-to-glyph p95 15-25ms): Rust drains the PTY read
+buffer fully, updates the grid, and emits a diff at most 60Hz (~16ms). React
+queues incoming diffs and applies them inside `requestAnimationFrame` (no layout
+thrash). Measure latency by tagging a keypress with an invisible DCS sequence;
+Rust flags the next diff carrying it; React measures keypress->flagged-diff delta.
+
+Escape hatches: skip ligatures for MVP; handle CJK/wide chars via the grid's
+"wide" flag (advance `char_width * 2`); if Tauri IPC chokes on high-frequency
+binary blobs, fall back to an mmap shared buffer or a local WebSocket for the
+terminal stream, bypassing the IPC router.
+
+Subtasks (each independently testable; ordered to de-risk early):
+
+##### TC-017a - Stage 1: headless grid + JSON snapshot `TODO`
+Initialize a headless `alacritty_terminal::Term` behind an `EventListener`. Pipe
+the daemon's Unix-socket PTY bytes into it on a dedicated blocking thread, state
+behind an `RwLock`. Add a Tauri command `snapshot_grid` that serializes a 24x80
+grid (chars + color/style flags) to JSON.
+Acceptance: run `htop` in the PTY; `snapshot_grid` returns correct chars + colors.
+Risk: PTY blocking the async runtime -> isolate the processor in a blocking thread.
+
+##### TC-017b - Stage 2: full-frame Canvas2D renderer + font atlas `TODO`
+React `<canvas>` component with a `requestAnimationFrame` loop rendering the
+Stage-1 snapshot. Pre-render an offscreen font atlas (ASCII grid) and blit glyphs
+with `drawImage`. Canvas2D, NOT WebGL (WebKitGTK DMA-BUF/WebGL is unstable).
+HiDPI: scale canvas by `devicePixelRatio` and `ctx.scale(dpr, dpr)`.
+Acceptance: static `htop` frame renders with correct colors, alignment, crisp on
+HiDPI.
+
+##### TC-017c - Stage 3: binary dirty-diff IPC pipeline `TODO`
+Rust tracks a dirty-row bitset; emits the binary diff payload (above) at <=60Hz
+via `app_handle.emit()`. React parses the ArrayBuffer and updates only changed
+cells.
+Acceptance: `cmatrix` renders smoothly with markedly lower CPU than xterm.js.
+
+##### TC-017d - Stage 4: input translation & keymap `TODO`
+Hidden `<textarea>` over the canvas captures `keydown` (IME-friendly); translate
+`KeyboardEvent` to VT sequences (arrows, fn keys, ctrl/alt/meta, bracketed paste)
+and send to the daemon. Keymap is the single source of truth.
+Acceptance: type `ls -la`, Enter -> output appears immediately.
+
+##### TC-017e - Stage 5: resize/reflow + map-mode transform `TODO`
+`ResizeObserver` computes cols/rows from pixel size; send `Resize(cols,rows)` ->
+`term.resize()`. Verify on the pan/zoom map under CSS `transform: scale()/translate()`.
+Acceptance: terminal reflows on pane resize AND renders correctly transformed on
+the map, with no GTK overlay crashes (it's a DOM canvas).
+
+##### TC-017f - Stage 6: scrollback, selection, copy/paste `TODO`
+Wheel -> scroll commands; Rust shifts the viewport into history and emits a full
+sync. Mouse drag -> grid coords -> highlight via `fillRect` alpha composite;
+`navigator.clipboard` for copy/paste.
+Acceptance: scroll 10k lines of `dmesg` with no JS heap growth (only visible
+screen held in JS).
+
+##### TC-017g - Stage 7: TUI correctness, latency gate, delete xterm.js `TODO`
+Render box-drawing (U+2500..U+257F) via raw `fillRect` (no atlas sub-pixel gaps).
+Validate `zellij`, `tmux`, `vim`, `htop` (alt screen, 256/truecolor, splits align).
+Pass the key-to-glyph p95 15-25ms gate. Then remove the xterm.js dependency and
+the `wantsNativeRenderer`/native-VTE fallback shims.
+Acceptance: TUIs render artifact-free, latency gate green, xterm.js deleted.
 
 #### MC-001 - Preserve canvas workspace mode `DONE`
 Add a first-class workspace mode switch with `canvas`, `split`, and `graph`
