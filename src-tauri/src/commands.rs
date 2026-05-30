@@ -421,6 +421,15 @@ pub fn grid_detach(grids: State<'_, GridManager>, id: String) {
 }
 
 #[tauri::command]
+pub fn grid_subscribe_diffs(
+    grids: State<'_, GridManager>,
+    id: String,
+    on_diff: tauri::ipc::Channel<tauri::ipc::InvokeResponseBody>,
+) -> Result<(), String> {
+    grids.subscribe_diffs(&id, on_diff)
+}
+
+#[tauri::command]
 pub fn pty_spawn(
     state: State<'_, PtyManager>,
     app: tauri::AppHandle,

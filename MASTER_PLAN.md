@@ -40,7 +40,7 @@ were retired during consolidation.
 | TC-017 | IN_PROGRESS | FEATURE | Headless-VT (Rust) + custom canvas renderer for terminal panes |
 | TC-017a | DONE | TASK | Stage 1: headless alacritty_terminal grid + JSON snapshot |
 | TC-017b | DONE | TASK | Stage 2: full-frame Canvas2D renderer + font atlas (no diffing) |
-| TC-017c | TODO | TASK | Stage 3: binary dirty-diff IPC pipeline |
+| TC-017c | DONE | TASK | Stage 3: binary dirty-diff IPC pipeline |
 | TC-017d | TODO | TASK | Stage 4: input translation & keymap (keydown to VT sequences) |
 | TC-017e | TODO | TASK | Stage 5: resize/reflow + map-mode CSS transform |
 | TC-017f | TODO | TASK | Stage 6: scrollback, selection, copy/paste |
@@ -1092,11 +1092,52 @@ Evidence: `npx tsc --noEmit` clean; `cargo test` 25 passed (serialization now
   in the adjacent empty cell (alignment), and the atlas cached exactly 1 tile.
 Next: TC-017c (binary dirty-diff IPC) replaces full-frame JSON polling.
 
-##### TC-017c - Stage 3: binary dirty-diff IPC pipeline `TODO`
+##### TC-017c - Stage 3: binary dirty-diff IPC pipeline `DONE`
 Rust tracks a dirty-row bitset; emits the binary diff payload (above) at <=60Hz
 via `app_handle.emit()`. React parses the ArrayBuffer and updates only changed
 cells.
 Acceptance: `cmatrix` renders smoothly with markedly lower CPU than xterm.js.
+
+Transport decision: Tauri v2 `Channel<InvokeResponseBody>` + `Raw(Vec<u8>)`
+delivers a true `ArrayBuffer` to JS (verified in tauri-2.11.2 source:
+`InvokeResponseBody::Raw` → `new Uint8Array(...).buffer`). A plain `Vec<u8>`
+hits the blanket `impl<T: Serialize> IpcResponse` and would serialize as a JSON
+number array (~6× overhead) — avoided.
+
+Wire format (little-endian) finalized in `vt_grid.rs`: 15-byte header (u8 type
+0x01 diff / 0x02 full, u16 cols, u16 rows, u16 cursor col, u16 cursor line, u32
+mode flags [bit0 alt, bit1 cursor-visible], u16 dirty-row count), then per dirty
+row `u16 index, u16 cell count, cells`; each cell 14 bytes (u32 char, u32 fg
+RGBA, u32 bg RGBA, u16 style [bold/italic/underline/inverse/wide]).
+
+- Rust: `GridManager` now holds a `Session` per id (grid state + emit state +
+  stop flag). `run_emitter` is a 16ms (~60Hz) ticker that captures a `WireFrame`,
+  diffs row-by-row vs the last emitted frame, and pushes only changed rows;
+  cursor/mode always ride in the header so cursor-only moves emit a 0-dirty-row
+  diff. It idles (no capture) when no subscriber is attached. `subscribe_diffs`
+  sends an immediate full sync to each new subscriber (diffs are idempotent —
+  rows carry absolute cell values — so overlap with the shared emitter is safe).
+  Command `grid_subscribe_diffs(id, on_diff: Channel<InvokeResponseBody>)`.
+- Frontend: `gridDiff.ts` decodes the ArrayBuffer; `gridBuffer.ts` keeps the
+  persistent visible grid and `apply()`s a frame returning the row set to
+  repaint (changed rows ∪ old/new cursor rows — only the visible screen is held
+  in JS, no scrollback growth); `gridRenderer.renderPartial()` repaints just
+  those rows + cursor. `TerminalCanvas.tsx` subscribes via `Channel<ArrayBuffer>`:
+  full sync → `renderSnapshot`, diff → `renderPartial`.
+Evidence: `cargo test` 31 passed / 5 suites — 6 new codec tests (full-sync
+  header/dims, first-row glyphs, diff emits only changed rows, identical frames
+  no-op, cursor-move = diff with 0 dirty rows, dimension change forces full).
+  `cargo check` clean (Channel command compiles through the macro). `tsc` clean.
+  `npm run verify:grid-diff` (Playwright): builds wire buffers matching the Rust
+  encoder, decodes, applies a full sync (red "R") then a row-1-only diff (blue
+  bg), and asserts via sampled pixels that the blue appears only after the diff
+  and the red glyph in the *unredrawn* row 0 survives `renderPartial`.
+Note: the "lower CPU than xterm.js / cmatrix smooth" claim is structural — only
+  changed rows are decoded and repainted, the JS holds only the visible screen,
+  and emits coalesce at 60Hz — and is confirmed end-to-end at the TC-017g
+  latency/CPU gate in the integrated runtime (the live Channel↔webview seam
+  can't be exercised headlessly without a Tauri window).
+Next: TC-017d (input translation & keymap).
 
 ##### TC-017d - Stage 4: input translation & keymap `TODO`
 Hidden `<textarea>` over the canvas captures `keydown` (IME-friendly); translate

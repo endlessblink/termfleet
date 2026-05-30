@@ -1,21 +1,23 @@
-// TC-017b — Canvas2D terminal renderer (read-only full-frame).
+// TC-017b/c — Canvas2D terminal renderer (read-only).
 //
-// Attaches the headless-VT grid for a session, then polls `grid_snapshot` on a
-// requestAnimationFrame loop and renders the whole frame via the glyph atlas.
-// Input (TC-017d) and binary dirty-diff (TC-017c) come in later stages; this is
-// the visible-output half. Because it is a normal DOM <canvas>, it pans/zooms
-// with CSS transforms — solving both the split-pane and map-surface cases.
+// Attaches the headless-VT grid for a session and subscribes to the Rust binary
+// dirty-diff channel (`grid_subscribe_diffs`). A full sync repaints the whole
+// grid; subsequent diffs touch only changed rows. Because it is a normal DOM
+// <canvas>, it pans/zooms with CSS transforms — solving both the split-pane and
+// map-surface cases. Input (TC-017d) comes in a later stage.
 
 import { useEffect, useRef } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { Channel, invoke } from "@tauri-apps/api/core";
 import { GlyphAtlas, measureCell } from "../lib/fontAtlas";
+import { GridBuffer } from "../lib/gridBuffer";
+import { decodeFrame } from "../lib/gridDiff";
 import {
   DEFAULT_THEME,
+  renderPartial,
   renderSnapshot,
   sizeCanvasToGrid,
   type RenderTheme,
 } from "../lib/gridRenderer";
-import { parseGridSnapshot } from "../lib/gridSnapshot";
 
 const FONT_FAMILY =
   '"JetBrains Mono", "Geist Mono", "FiraCode Nerd Font", "Cascadia Code", "Consolas", monospace';
@@ -46,43 +48,34 @@ export function TerminalCanvas({
     if (!canvas || !isTauriRuntime()) return;
 
     let disposed = false;
-    let frame = 0;
     const dpr = window.devicePixelRatio || 1;
     const metrics = measureCell(FONT_FAMILY, FONT_SIZE_PX, dpr, LINE_HEIGHT);
     const atlas = new GlyphAtlas(metrics);
-    const ctx = sizeCanvasToGrid(canvas, atlas, cols, rows, dpr);
+    const buffer = new GridBuffer();
+    let ctx = sizeCanvasToGrid(canvas, atlas, cols, rows, dpr);
 
-    let inFlight = false;
-    const pump = async () => {
-      if (disposed || inFlight) {
-        frame = requestAnimationFrame(pump);
-        return;
-      }
-      inFlight = true;
-      try {
-        const json = await invoke<string>("grid_snapshot", { id: sessionId });
-        if (!disposed) {
-          const snapshot = parseGridSnapshot(json);
-          sizeCanvasToGrid(canvas, atlas, snapshot.cols, snapshot.rows, dpr);
-          renderSnapshot(ctx, atlas, snapshot, dpr, theme);
-        }
-      } catch {
-        // Grid may not be attached yet on the very first frames; keep polling.
-      } finally {
-        inFlight = false;
-        if (!disposed) frame = requestAnimationFrame(pump);
+    const channel = new Channel<ArrayBuffer>();
+    channel.onmessage = (payload) => {
+      if (disposed) return;
+      const frame = decodeFrame(payload);
+      const changed = buffer.apply(frame);
+      const snapshot = buffer.toSnapshot();
+      if (frame.full) {
+        ctx = sizeCanvasToGrid(canvas, atlas, snapshot.cols, snapshot.rows, dpr);
+        renderSnapshot(ctx, atlas, snapshot, dpr, theme);
+      } else {
+        renderPartial(ctx, atlas, snapshot, changed, dpr, theme);
       }
     };
 
-    invoke("grid_attach", { id: sessionId, cols, rows })
-      .catch(console.error)
-      .finally(() => {
-        if (!disposed) frame = requestAnimationFrame(pump);
-      });
+    (async () => {
+      await invoke("grid_attach", { id: sessionId, cols, rows });
+      if (disposed) return;
+      await invoke("grid_subscribe_diffs", { id: sessionId, onDiff: channel });
+    })().catch(console.error);
 
     return () => {
       disposed = true;
-      cancelAnimationFrame(frame);
       invoke("grid_detach", { id: sessionId }).catch(() => {});
     };
   }, [sessionId, cols, rows, theme]);

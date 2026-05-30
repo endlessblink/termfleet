@@ -43,6 +43,7 @@ pub fn run() {
             commands::grid_attach,
             commands::grid_snapshot,
             commands::grid_detach,
+            commands::grid_subscribe_diffs,
             commands::pty_spawn,
             commands::pty_ensure,
             commands::pty_write,
