@@ -645,11 +645,33 @@ function CanvasNodeView({ node }: { node: CanvasNode }) {
 export function MagicCanvas() {
   const canvasState = useWorkspaceStore((state) => state.canvasState);
   const addCanvasNode = useWorkspaceStore((state) => state.addCanvasNode);
+  const updateCanvasNode = useWorkspaceStore((state) => state.updateCanvasNode);
   const updateCanvasViewport = useWorkspaceStore((state) => state.updateCanvasViewport);
   const openFiles = useWorkspaceStore((state) => state.openFiles);
   const shellRef = useRef<HTMLDivElement>(null);
   const panRef = useRef<{ x: number; y: number; viewportX: number; viewportY: number } | null>(null);
   const [fileIndex, setFileIndex] = useState(0);
+  // Right-click "create here" menu. Screen coords place the menu; canvas coords
+  // drop the new node where the cursor is.
+  const [menu, setMenu] = useState<{ x: number; y: number; canvasX: number; canvasY: number } | null>(null);
+
+  const openCanvasMenu = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    if (event.target !== event.currentTarget) return; // only empty canvas background
+    event.preventDefault();
+    const rect = shellRef.current?.getBoundingClientRect();
+    const viewport = canvasState.viewport;
+    const canvasX = rect ? (event.clientX - rect.left - viewport.x) / viewport.zoom : 0;
+    const canvasY = rect ? (event.clientY - rect.top - viewport.y) / viewport.zoom : 0;
+    setMenu({ x: event.clientX, y: event.clientY, canvasX, canvasY });
+  }, [canvasState.viewport]);
+
+  const createTerminalAt = useCallback(async (canvasX: number, canvasY: number) => {
+    await createNewTab();
+    const newTabId = useWorkspaceStore.getState().activeTabId;
+    if (newTabId) {
+      updateCanvasNode(`terminal-map-${newTabId}`, { x: Math.round(canvasX), y: Math.round(canvasY) });
+    }
+  }, [updateCanvasNode]);
 
   const setZoomAt = useCallback((nextZoomValue: number, clientX?: number, clientY?: number) => {
     const viewport = canvasState.viewport;
@@ -759,6 +781,7 @@ export function MagicCanvas() {
       }}
       onMouseDown={onCanvasMouseDown}
       onWheel={onCanvasWheel}
+      onContextMenu={openCanvasMenu}
     >
       <div style={styles.toolbar}>
         <span style={styles.toolbarLabel}>
@@ -786,6 +809,7 @@ export function MagicCanvas() {
           transform: `translate(${canvasState.viewport.x}px, ${canvasState.viewport.y}px) scale(${canvasState.viewport.zoom})`,
         }}
         onMouseDown={onCanvasMouseDown}
+        onContextMenu={openCanvasMenu}
       >
         {canvasState.nodes.map((node) => (
           <CanvasNodeView key={node.id} node={node} />
@@ -822,6 +846,86 @@ export function MagicCanvas() {
           <RotateCcw size={14} strokeWidth={1.8} />
         </button>
       </div>
+
+      {menu && (
+        <>
+          <div
+            style={{ position: "fixed", inset: 0, zIndex: 50 }}
+            onMouseDown={() => setMenu(null)}
+            onContextMenu={(event) => {
+              event.preventDefault();
+              setMenu(null);
+            }}
+          />
+          <div
+            role="menu"
+            style={{
+              position: "fixed",
+              left: Math.min(menu.x, window.innerWidth - 196),
+              top: Math.min(menu.y, window.innerHeight - 120),
+              zIndex: 51,
+              minWidth: 184,
+              padding: 5,
+              background: "var(--surface-raised)",
+              borderRadius: "var(--radius-md)",
+              boxShadow: "var(--shadow-menu)",
+              border: "none",
+            }}
+          >
+            {[
+              {
+                icon: <TerminalSquare size={14} strokeWidth={1.8} />,
+                label: "New terminal here",
+                run: () => createTerminalAt(menu.canvasX, menu.canvasY),
+              },
+              {
+                icon: <NotebookText size={14} strokeWidth={1.8} />,
+                label: "New note here",
+                run: () =>
+                  addCanvasNode({
+                    type: "note",
+                    title: "Run note",
+                    x: Math.round(menu.canvasX),
+                    y: Math.round(menu.canvasY),
+                    width: 280,
+                    height: 160,
+                    content: "Capture the command, blocker, or next action for this run.",
+                  }),
+              },
+            ].map((item) => (
+              <button
+                key={item.label}
+                type="button"
+                role="menuitem"
+                className="workspace-launch-config-item"
+                style={{
+                  width: "100%",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 9,
+                  padding: "9px 10px",
+                  border: "none",
+                  borderRadius: "var(--radius-sm)",
+                  background: "transparent",
+                  color: "var(--text-primary)",
+                  fontFamily: "var(--font-ui)",
+                  fontSize: 13,
+                  cursor: "pointer",
+                  textAlign: "left",
+                }}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => {
+                  item.run();
+                  setMenu(null);
+                }}
+              >
+                {item.icon}
+                <span>{item.label}</span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }

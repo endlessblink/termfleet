@@ -12,6 +12,7 @@ import {
   SquaresFour,
   TerminalWindow,
   TextT,
+  Trash,
   TreeStructure,
   X,
 } from "@phosphor-icons/react";
@@ -748,6 +749,114 @@ function TerminalContextMenu({
   );
 }
 
+function ProjectContextMenu({
+  id,
+  name,
+  x,
+  y,
+  onClose,
+}: {
+  id: string;
+  name: string;
+  x: number;
+  y: number;
+  onClose: () => void;
+}) {
+  const updateGroup = useWorkspaceStore((state) => state.updateGroup);
+  const removeGroup = useWorkspaceStore((state) => state.removeGroup);
+  const [value, setValue] = useState(name);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function onPointerDown(event: MouseEvent) {
+      if (ref.current && !ref.current.contains(event.target as Node)) onClose();
+    }
+    document.addEventListener("mousedown", onPointerDown);
+    return () => document.removeEventListener("mousedown", onPointerDown);
+  }, [onClose]);
+
+  useEffect(() => {
+    const input = ref.current?.querySelector("input");
+    input?.focus();
+    input?.select();
+  }, []);
+
+  const commit = () => {
+    const trimmed = value.trim();
+    if (trimmed && trimmed !== name) updateGroup(id, { name: trimmed });
+  };
+
+  return (
+    <div
+      ref={ref}
+      className="workspace-terminal-settings-menu"
+      style={{
+        ...styles.contextMenu,
+        left: Math.min(x, window.innerWidth - 252),
+        top: Math.min(y, window.innerHeight - 188),
+      }}
+      onContextMenu={(event) => event.preventDefault()}
+    >
+      <div style={styles.contextHeader}>
+        <TreeStructure size={14} weight="duotone" />
+        <span style={{ minWidth: 0, display: "grid", gap: 1 }}>
+          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Project</span>
+          <span style={{ color: "var(--text-secondary)", fontSize: 10, fontWeight: 400 }}>Rename or remove</span>
+        </span>
+      </div>
+
+      <label>
+        <div style={styles.contextRow}>
+          <TextT size={13} />
+          <span>Rename</span>
+        </div>
+        <input
+          className="workspace-terminal-settings-input"
+          style={styles.contextInput}
+          value={value}
+          onChange={(event) => setValue(event.target.value)}
+          onBlur={commit}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              commit();
+              onClose();
+            }
+            if (event.key === "Escape") onClose();
+          }}
+        />
+      </label>
+
+      <button
+        type="button"
+        className="workspace-explorer-context-item workspace-explorer-context-item--danger"
+        style={{
+          width: "100%",
+          marginTop: 6,
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          padding: "8px 8px",
+          border: "none",
+          borderRadius: "var(--radius-sm)",
+          background: "transparent",
+          color: "var(--accent-danger)",
+          cursor: "pointer",
+          fontFamily: "var(--font-ui)",
+          fontSize: 13,
+          textAlign: "left",
+        }}
+        onClick={() => {
+          removeGroup(id);
+          onClose();
+        }}
+      >
+        <Trash size={13} />
+        <span>Remove project</span>
+      </button>
+    </div>
+  );
+}
+
 function NewTerminalLaunchMenu({
   x,
   y,
@@ -895,8 +1004,10 @@ function NewTerminalLaunchMenu({
 
 function SessionsPanel({
   onOpenTerminalMenu,
+  onOpenProjectMenu,
 }: {
   onOpenTerminalMenu: (event: React.MouseEvent, tab: Tab) => void;
+  onOpenProjectMenu: (event: React.MouseEvent, project: { id: string; name: string }) => void;
 }) {
   const tabs = useWorkspaceStore((state) => state.tabs);
   const groups = useWorkspaceStore((state) => state.groups);
@@ -1159,9 +1270,13 @@ function SessionsPanel({
                 className="workspace-sidebar-row"
                 data-active={active ? "true" : "false"}
                 style={styles.projectRow}
-                title={`Switch to ${project.name}`}
+                title={project.id ? `Switch to ${project.name} — right-click to rename` : `Switch to ${project.name}`}
                 aria-label={`Switch to ${project.name}`}
                 onClick={() => switchProject(project.id)}
+                onContextMenu={(event) => {
+                  if (!project.id) return;
+                  onOpenProjectMenu(event, { id: project.id, name: project.name });
+                }}
               >
                 <span
                   style={{
@@ -1455,11 +1570,18 @@ export function WorkbenchSidebar() {
   const operationsCollapsed = ui.primarySidebarCollapsed;
   const filesCollapsed = ui.fileExplorerCollapsed;
   const [terminalMenu, setTerminalMenu] = useState<{ tab: Tab; x: number; y: number } | null>(null);
+  const [projectMenu, setProjectMenu] = useState<{ id: string; name: string; x: number; y: number } | null>(null);
 
   const openTerminalMenu = (event: React.MouseEvent, tab: Tab) => {
     event.preventDefault();
     event.stopPropagation();
     setTerminalMenu({ tab, x: event.clientX, y: event.clientY });
+  };
+
+  const openProjectMenu = (event: React.MouseEvent, project: { id: string; name: string }) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setProjectMenu({ id: project.id, name: project.name, x: event.clientX, y: event.clientY });
   };
 
   if (operationsCollapsed && filesCollapsed) {
@@ -1476,7 +1598,7 @@ export function WorkbenchSidebar() {
       {!operationsCollapsed && (
         <div style={{ ...styles.panel, ...styles.operationsPanel }} aria-label="Operations panel">
         {ui.primarySidebarPanel === "sessions" && (
-          <SessionsPanel onOpenTerminalMenu={openTerminalMenu} />
+          <SessionsPanel onOpenTerminalMenu={openTerminalMenu} onOpenProjectMenu={openProjectMenu} />
         )}
         {ui.primarySidebarPanel === "map" && (
           <MapPanel onOpenTerminalMenu={openTerminalMenu} />
@@ -1494,6 +1616,15 @@ export function WorkbenchSidebar() {
           x={terminalMenu.x}
           y={terminalMenu.y}
           onClose={() => setTerminalMenu(null)}
+        />
+      )}
+      {projectMenu && (
+        <ProjectContextMenu
+          id={projectMenu.id}
+          name={projectMenu.name}
+          x={projectMenu.x}
+          y={projectMenu.y}
+          onClose={() => setProjectMenu(null)}
         />
       )}
     </aside>
