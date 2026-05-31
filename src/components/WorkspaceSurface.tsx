@@ -5,6 +5,7 @@ import { CanvasSidebar } from "./CanvasSidebar";
 
 const MagicCanvas = lazy(() => import("./MagicCanvas").then((module) => ({ default: module.MagicCanvas })));
 const SplitPaneLayout = lazy(() => import("./SplitPane").then((module) => ({ default: module.SplitPaneLayout })));
+const LinksView = lazy(() => import("./LinksView").then((module) => ({ default: module.LinksView })));
 
 const styles: Record<string, CSSProperties> = {
   shell: {
@@ -93,9 +94,10 @@ const styles: Record<string, CSSProperties> = {
     opacity: 0.7,
   },
   graph: {
+    width: "100%",
     height: "100%",
-    display: "grid",
-    placeItems: "center",
+    minWidth: 0,
+    minHeight: 0,
     color: "var(--text-secondary)",
     fontSize: 13,
     background: "var(--surface-sunken)",
@@ -177,6 +179,22 @@ export function WorkspaceSurface() {
   const tabs = useWorkspaceStore((state) => state.tabs);
   const activeTabId = useWorkspaceStore((state) => state.activeTabId);
   const workspaceMode = useWorkspaceStore((state) => state.workspaceUiState.workspaceMode);
+  const hydrating = useWorkspaceStore((state) => state.hydrating);
+
+  // Hold terminals from mounting until the durable layout is loaded, so they
+  // spawn against the restored tab/pane ids (not the default tab's) — otherwise
+  // a session would be created and then orphaned when the real tabs swap in.
+  if (hydrating) {
+    return (
+      <main className="workspace-surface" style={styles.shell}>
+        <div style={styles.stage}>
+          <div style={{ ...styles.surfacePane, zIndex: 1 }}>
+            <TerminalSurfaceFallback />
+          </div>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="workspace-surface" style={styles.shell}>
@@ -200,7 +218,11 @@ export function WorkspaceSurface() {
         )}
         {workspaceMode === "graph" && (
           <div style={{ ...styles.surfacePane, zIndex: 1 }}>
-            <div style={styles.graph}>Links will show terminal, file, and task relationships.</div>
+            <div style={styles.graph}>
+              <Suspense fallback={<MapSurfaceFallback />}>
+                <LinksView />
+              </Suspense>
+            </div>
           </div>
         )}
       </div>
