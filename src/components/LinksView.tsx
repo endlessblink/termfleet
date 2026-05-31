@@ -12,6 +12,9 @@ import type { OpenFile, Tab, TerminalRuntimeStatus } from "../lib/types";
 // workspace bucket so nothing is silently dropped.
 
 const UNASSIGNED = "__unassigned__";
+// Connectors must read clearly on the dark canvas. Group colors win when a
+// project has one; otherwise this neutral-but-visible stroke is used.
+const CONNECTOR_COLOR = "rgba(216, 222, 231, 0.45)";
 
 interface ProjectGroupView {
   id: string;
@@ -153,12 +156,12 @@ export function LinksView() {
 
       const next: { key: string; d: string; color: string }[] = [];
       for (const project of projects) {
-        const color = project.color ?? "var(--border-strong)";
+        const color = project.color ?? CONNECTOR_COLOR;
         for (const session of project.sessions) {
           const e = link(`project:${project.id}`, `session:${session.id}`, color);
           if (e) next.push({ key: `p${project.id}-s${session.id}`, ...e });
           for (const file of session.files) {
-            const fe = link(`session:${session.id}`, `file:${session.id}:${file.path}`, "var(--border-strong)");
+            const fe = link(`session:${session.id}`, `file:${session.id}:${file.path}`, CONNECTOR_COLOR);
             if (fe) next.push({ key: `s${session.id}-f${file.path}`, ...fe });
           }
         }
@@ -199,7 +202,7 @@ export function LinksView() {
     <div ref={containerRef} style={styles.canvas}>
       <svg style={styles.edgeLayer} aria-hidden="true">
         {edges.map((edge) => (
-          <path key={edge.key} d={edge.d} fill="none" stroke={edge.color} strokeWidth={1.5} strokeOpacity={0.5} />
+          <path key={edge.key} d={edge.d} fill="none" stroke={edge.color} strokeWidth={2} strokeOpacity={0.9} />
         ))}
       </svg>
 
@@ -212,7 +215,7 @@ export function LinksView() {
               <span
                 style={{
                   ...styles.projectDot,
-                  background: project.color ?? "var(--text-tertiary, #8a8f93)",
+                  background: project.color ?? "var(--accent-primary, #d99a45)",
                 }}
               />
               <div style={styles.cardText}>
