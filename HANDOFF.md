@@ -1,56 +1,57 @@
-# Handoff — 2026-05-30 16:54 Saturday
+# Handoff — 2026-05-31 20:35 Sunday
 
-You are continuing work in termfleet (terminal cockpit; Tauri 2 + React + TS +
-Rust, WebKitGTK) on branch main.
-Location: /media/endlessblink/data/my-projects/ai-development/devops/termfleet
+You are continuing work in **termfleet** on branch `design/warp-style-chrome`.
 
 ## Current task & next step
-TC-017 — rebuild the terminal renderer as headless-VT (Rust) + custom HTML
-canvas. next: implement **TC-017a (Stage 1)** — stand up a headless
-`alacritty_terminal::Term` fed by the existing PTY daemon bytes on a blocking
-thread (state behind RwLock), and add a Tauri `snapshot_grid` command that
-serializes a 24x80 grid (chars + color/style) to JSON. Verify by running `htop`
-and checking the JSON. Full staged spec (a–g, crate choice, binary wire format,
-perf plan, escape hatches) is in MASTER_PLAN.md under "TC-017".
+Fix **zellij fragmenting into stacked sections on the MAP** (operations canvas) — the
+grid doesn't fill the node width and zellij's panes/status-bar land on wrong rows.
+This is the PTY-winsize vs alacritty grid-width divergence class, scoped to map nodes.
+**Next: build a map-mode reproduction harness** — copy `scripts/verify-zellij-shortcuts.sh`
+to a new `scripts/verify-zellij-map.sh` that boots with `VITE_WORKSPACE_MODE=canvas`,
+focuses the map terminal node, runs `zellij`, and screenshots so the fragmentation is
+visible (user explicitly wants evidence-based, NOT guess-and-revert).
 
 ## Files touched / in flight
-- src/hooks/useNativeTerminalPane.ts — `wantsNativeRenderer()` now returns false
-  (native VTE disabled app-wide). Committed.
-- src/components/MagicCanvas.tsx — `shouldUseNativeSplitForInteraction = false`
-  so map nodes render live xterm. Committed.
-- MASTER_PLAN.md — TC-014 marked SUPERSEDED; TC-017 + subtasks a–g added. Committed.
-- docs/terminal-renderer-decision-perplexity-query.md, docs/headless-vt-canvas-plan-perplexity-query.md — research. Committed.
-- Uncommitted (NOT mine, pre-existing): .gitignore, docs/assets/termfleet-cover.svg, AGENTS.md, docs/assets/* — leave alone unless asked.
+- COMMITTED (e6ce38c, this branch): all terminal/zellij keyboard+render+daemon fixes —
+  `src-tauri/src/{gtk_keys.rs,commands.rs,lib.rs,daemon.rs,pty.rs,vt_grid.rs}`,
+  `src/components/{TerminalCanvas,Terminal,MagicCanvas,StatusBar,WorkbenchHeader}.tsx`,
+  `src/hooks/useKeybindings.ts`, `src/lib/{terminalFocus,gridRenderer,gridBuffer,gridDiff}.ts`,
+  `scripts/verify-zellij-shortcuts.sh`, `tests/{fractional-dpr-pitch,terminal-keyboard-passthrough}.spec.ts`.
+- UNCOMMITTED (separate UI-redesign work, NOT mine, leave alone unless asked): deleted
+  DockRail/GroupBar/ProjectRail/TabSidebar, `DESIGN.md`, `docs/redesign-preview/`,
+  theme/sidebar/StatusBar styling, `workspace.ts` pinnedProjects, `verify-typography.mjs`
+  outline rules, `MASTER_PLAN.md`.
+- Suspected culprit for the map bug is in committed `MagicCanvas.tsx`: `renderScale={2}` on
+  the map TerminalComponent + attaching the map node to the LIVE PTY via `attachToPtyId`.
+  Hypothesis: split-pane canvas and map-node canvas both call `daemon_resize_session` on the
+  SAME session at different widths (full pane vs 640px node) → winsize flaps → zellij
+  fragments. CONFIRM with the harness before changing anything.
 
 ## Key decisions & gotchas
-- **Native VTE is abandoned** (dead end): VTE's ~80x24 min size → negative-width
-  GTK alloc → pixman crash; unreliable focus; and a GTK widget CANNOT live on the
-  zoom/pan canvas (GTK compositor ignores CSS transforms). Do NOT retry the GTK
-  overlay. Code preserved at git tag `native-vte-snapshot` if ever needed.
-- **xterm.js is the current renderer everywhere** — works (split + map both
-  functional) but is LAGGY on WebKitGTK and degrades over time. It's the
-  temporary fallback; keep it behind the disable-flag until the canvas renderer
-  passes TUI + latency bars, then delete (TC-017g). App is usable as a daily driver now.
-- Crate decision is locked: **alacritty_terminal (v0.22+) headless** — feed it PTY
-  bytes, read its grid; it must NOT own the PTY (the daemon stays PTY authority).
-  Rejected vt100 (weak TUI) and wezterm-term (heavy).
-- HARD RULE: no optimistic local echo / no PTY echo suppression (breaks
-  passwords/SSH/readline/TUIs).
-- Renderer must be **Canvas2D, not WebGL** — WebKitGTK WebGL/DMA-BUF is unstable
-  on Linux. Font atlas via offscreen canvas + drawImage. HiDPI: scale by
-  devicePixelRatio.
-- The PTY/daemon backend is fast (~1ms p95) and is NOT the problem — do not
-  rearchitect it. Daemon: src-tauri/src/daemon.rs, commands in commands.rs.
-- Build/run: `npm run tauri:dev:native-vte` (or ./run-native-vte-dev.sh). First
-  Rust build can OOM-Kill; launchers set CARGO_BUILD_JOBS=1. The `!`-prefixed
-  shell in this session kept line-wrapping/mangling commands — run launches
-  plainly.
+- **DO NOT trust headless/logic tests as proof** — the goal hook rejected them. Only a live
+  xvfb run against real zellij counts. Reproduce the fragmentation visually FIRST.
+- **Shift+Tab is fixed at the GTK layer** (`gtk_keys.rs`), NOT in JS — WebKitGTK eats Tab
+  before the webview's JS sees it (proven; wry 0.55 / webkit2gtk 2.0.2). No DOM fix for Tab.
+- **Ctrl+T/Ctrl+W/Ctrl+K** fixed via `src/lib/terminalFocus.ts` (`terminalHasKeyboardFocus()`
+  early-returns in the two global window keydown listeners). A focused terminal owns the keyboard.
+- **The daemon outlives the app** (`process_group(0)`) and owns `/tmp/terminal-workspace-pty-trace.log`.
+  Any verify harness MUST `pkill -9 terminal-workspace-daemon` and truncate the trace BEFORE the
+  run, then assert only the slice after the last `SHORTCUT-PROBE-START` marker.
+- **Verify assertions use embedded python3, not bash grep -F** — `\u{..}` literals get mangled by
+  bash → false negatives. PTY trace renders control bytes via Rust `{:?}`: `\u{14}`=Ctrl+T,
+  `\u{10}`=Ctrl+P, `\u{1b}[Z`=Shift+Tab, `\u{17}`=Ctrl+W.
+- **rtk shell hook + Read tool intermittently return empty this session** — write to /tmp and Read,
+  use absolute `/usr/bin` paths and `$HOME/.cargo/bin/cargo`, parse with `python3 -c`, retry empties.
+- Build: `cd src-tauri && CARGO_BUILD_JOBS=1 CARGO_PROFILE_DEV_DEBUG=0 $HOME/.cargo/bin/cargo build`
+  (~10s incremental). Force map mode: `VITE_WORKSPACE_MODE=canvas`. Full fix log in memory file
+  `terminal-subsystem-audit-fixes.md`.
 
 ## Env / run state
-Branch: main | Last commit: 0fec2ad "Pivot plan to TC-017: headless-VT + canvas renderer (supersede TC-014)"
-Remote: https://github.com/endlessblink/termfleet.git (public), main tracking.
-Running: nothing relevant.
-Working app checkpoint = commit 3ebd666 (xterm everywhere). Native VTE = tag native-vte-snapshot.
+Branch: `design/warp-style-chrome` (NO upstream) | Last commit: `e6ce38c fix(terminal): zellij/TUI shortcuts...`
+Running: a dev app instance was live during testing (vite :1420 + target/debug/terminal-workspace);
+zellij sessions exist on the machine. xvfb-run + xdotool + import are available for a live harness.
+Regression baseline (green pre-map-bug): tsc 0, Playwright 9/9, cargo 35, ZELLIJ_SHORTCUTS_OK 4/4.
 
-Start by: read the TC-017 + TC-017a section in MASTER_PLAN.md, then scaffold the
-headless alacritty_terminal grid + snapshot_grid Tauri command (Stage 1).
+Start by: copy `scripts/verify-zellij-shortcuts.sh` → `scripts/verify-zellij-map.sh`, set env to
+`VITE_WORKSPACE_MODE=canvas`, have the driver focus the map node + run `zellij`, screenshot to
+`/tmp/tw-zellij-map/`, and INSPECT the screenshot to see the fragmentation before editing code.
