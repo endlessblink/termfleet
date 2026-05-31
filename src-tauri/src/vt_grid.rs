@@ -419,7 +419,9 @@ fn hex((r, g, b): (u8, u8, u8)) -> String {
 }
 
 const DEFAULT_FG: (u8, u8, u8) = (0xd0, 0xd0, 0xd0);
-const DEFAULT_BG: (u8, u8, u8) = (0x00, 0x00, 0x00);
+// Neutral cockpit gray (#1d2022) instead of pure black, matched to --terminal-bg
+// so default cells blend with the surface fill and the buffer reads as gray.
+const DEFAULT_BG: (u8, u8, u8) = (0x1d, 0x20, 0x22);
 
 /// Resolve an `alacritty_terminal` color into concrete RGB using a standard
 /// xterm palette. Stage 1 ignores live OSC palette overrides (the terminal's
@@ -550,6 +552,17 @@ const MODE_CURSOR_VISIBLE: u32 = 1 << 1;
 const MODE_APP_CURSOR: u32 = 1 << 2;
 const MODE_APP_KEYPAD: u32 = 1 << 3;
 const MODE_BRACKETED_PASTE: u32 = 1 << 4;
+// Mouse reporting is on (any of click/drag/motion). When set, the frontend must
+// forward wheel notches as mouse wheel reports so apps that own the mouse
+// (zellij, vim, htop, less, tmux) scroll — sending arrow keys instead makes the
+// focused TUI move the cursor/selection and warn "use PgUp/PgDn".
+const MODE_MOUSE_REPORT: u32 = 1 << 5;
+// Alternate-scroll (DECSET 1007): translate wheel to arrow keys on the alt
+// screen. Only honored when mouse reporting is OFF.
+const MODE_ALTERNATE_SCROLL: u32 = 1 << 6;
+// SGR extended mouse encoding (DECSET 1006) is active. Picks the wheel report
+// wire format: SGR `ESC[<b;x;yM` when set, legacy X10 `ESC[M` bytes otherwise.
+const MODE_SGR_MOUSE: u32 = 1 << 7;
 
 const STYLE_BOLD: u16 = 1 << 0;
 const STYLE_ITALIC: u16 = 1 << 1;
@@ -576,6 +589,9 @@ struct WireFrame {
     app_cursor: bool,
     app_keypad: bool,
     bracketed_paste: bool,
+    mouse_report: bool,
+    alternate_scroll: bool,
+    sgr_mouse: bool,
     rows_cells: Vec<Vec<WireCell>>,
 }
 
@@ -642,6 +658,12 @@ impl WireFrame {
             app_cursor: mode.contains(TermMode::APP_CURSOR),
             app_keypad: mode.contains(TermMode::APP_KEYPAD),
             bracketed_paste: mode.contains(TermMode::BRACKETED_PASTE),
+            // Any mouse-reporting variant means an app wants wheel-as-mouse.
+            mouse_report: mode.intersects(
+                TermMode::MOUSE_REPORT_CLICK | TermMode::MOUSE_DRAG | TermMode::MOUSE_MOTION,
+            ),
+            alternate_scroll: mode.contains(TermMode::ALTERNATE_SCROLL),
+            sgr_mouse: mode.contains(TermMode::SGR_MOUSE),
             rows_cells,
         }
     }
@@ -662,6 +684,15 @@ impl WireFrame {
         }
         if self.bracketed_paste {
             flags |= MODE_BRACKETED_PASTE;
+        }
+        if self.mouse_report {
+            flags |= MODE_MOUSE_REPORT;
+        }
+        if self.alternate_scroll {
+            flags |= MODE_ALTERNATE_SCROLL;
+        }
+        if self.sgr_mouse {
+            flags |= MODE_SGR_MOUSE;
         }
         flags
     }

@@ -27,7 +27,8 @@
     "verify:typography": "node scripts/verify-typography.mjs",
     "verify:visual": "scripts/verify-visual-evidence.sh",
     "tauri": "tauri",
-    "tauri:dev": "CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS:-1} CARGO_PROFILE_DEV_DEBUG=${CARGO_PROFILE_DEV_DEBUG:-0} tauri dev"
+    "tauri:dev": "CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS:-1} CARGO_PROFILE_DEV_DEBUG=${CARGO_PROFILE_DEV_DEBUG:-0} tauri dev",
+    "verify:zellij-shortcuts": "scripts/verify-zellij-shortcuts.sh"
   },
   "dependencies": {
     "@fontsource/geist-mono": "^5.2.8",

@@ -62,6 +62,13 @@ interface TerminalProps {
   standalone?: boolean;
   runtimeActive?: boolean;
   onActivate?: () => void;
+  /**
+   * Extra backing-store supersample factor for the canvas renderer. Map nodes
+   * live under a CSS `scale(zoom)` transform that resamples the canvas bitmap and
+   * blurs glyphs; rendering the backing store at a higher resolution gives the
+   * compositor more source pixels so text stays crisp when scaled up. 1 = none.
+   */
+  renderScale?: number;
 }
 
 export function TerminalComponent({
@@ -73,6 +80,7 @@ export function TerminalComponent({
   standalone = false,
   runtimeActive = true,
   onActivate,
+  renderScale = 1,
 }: TerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerElement, setContainerElement] = useState<HTMLDivElement | null>(null);
@@ -393,7 +401,10 @@ export function TerminalComponent({
   return (
     <div
       className="terminal-block-shell"
-      tabIndex={0}
+      // No tabIndex: the wrapper must NOT be a Tab stop. With tabIndex={0} a
+      // Shift+Tab inside the terminal moved focus from the hidden input to this
+      // wrapper (off the textarea), so the keystroke never reached the PTY and
+      // zellij's back-tab did nothing. Focus is driven by click → focusWebTerminal.
       onPointerDownCapture={(event) => {
         onActivate?.();
         focusWebTerminal();
@@ -438,6 +449,9 @@ export function TerminalComponent({
             sessionId={attachToPtyId ?? runtimeSessionId}
             cwd={cwd}
             command={command}
+            renderScale={renderScale}
+            onReady={handleReady}
+            onStatus={handleStatus}
           />
         </div>
       ) : (

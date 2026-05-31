@@ -36,7 +36,7 @@ const styles: Record<string, CSSProperties> = {
     gap: 6,
     padding: 7,
     background: "color-mix(in srgb, var(--surface-raised) 96%, transparent)",
-    border: "1px solid var(--border-subtle)",
+    border: "1px solid transparent",
     borderRadius: "var(--radius-md)",
     boxShadow: "var(--shadow-menu)",
     animation: "workbench-popover-in var(--motion-med)",
@@ -63,7 +63,7 @@ const styles: Record<string, CSSProperties> = {
     gap: 4,
     padding: 5,
     background: "color-mix(in srgb, var(--surface-raised) 94%, transparent)",
-    border: "1px solid var(--border-subtle)",
+    border: "1px solid transparent",
     borderRadius: "var(--radius-md)",
     boxShadow: "var(--shadow-menu)",
     animation: "workbench-popover-in var(--motion-med)",
@@ -77,7 +77,7 @@ const styles: Record<string, CSSProperties> = {
   },
   button: {
     height: 28,
-    border: "1px solid var(--border-subtle)",
+    border: "1px solid transparent",
     borderRadius: "var(--radius-sm)",
     background: "var(--surface-base)",
     color: "var(--text-secondary)",
@@ -97,7 +97,7 @@ const styles: Record<string, CSSProperties> = {
     display: "flex",
     flexDirection: "column",
     background: "var(--surface-raised)",
-    border: "1px solid var(--border-subtle)",
+    border: "1px solid transparent",
     borderRadius: "var(--radius-md)",
     boxShadow: "var(--shadow-card)",
     overflow: "hidden",
@@ -176,7 +176,7 @@ const styles: Record<string, CSSProperties> = {
     alignContent: "start",
     gap: 8,
     padding: 12,
-    border: "1px solid rgba(255,255,255,0.08)",
+    border: "1px solid transparent",
     borderRadius: "var(--radius-sm)",
     background:
       "linear-gradient(90deg, rgba(255,255,255,0.045) 1px, transparent 1px), linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px), rgba(0,0,0,0.18)",
@@ -207,7 +207,7 @@ const styles: Record<string, CSSProperties> = {
     alignItems: "center",
     justifyContent: "center",
     gap: 7,
-    border: "1px solid var(--border-subtle)",
+    border: "1px solid transparent",
     borderRadius: "var(--radius-sm)",
     background: "var(--surface-raised)",
     color: "var(--text-primary)",
@@ -224,7 +224,7 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 14,
   },
   headerButton: {
-    border: "1px solid var(--border-subtle)",
+    border: "1px solid transparent",
     background: "var(--surface-raised)",
     color: "var(--text-secondary)",
     cursor: "pointer",
@@ -243,7 +243,7 @@ const styles: Record<string, CSSProperties> = {
   cornerHandle: {
     width: 14,
     height: 14,
-    border: "1px solid var(--accent-live)",
+    border: "1px solid transparent",
     borderRadius: 3,
     background: "var(--surface-base)",
   },
@@ -258,7 +258,7 @@ const styles: Record<string, CSSProperties> = {
     padding: "2px 6px",
     borderRadius: 4,
     background: "color-mix(in srgb, var(--surface-sunken) 90%, transparent)",
-    border: "1px solid var(--border-subtle)",
+    border: "1px solid transparent",
     color: "var(--text-secondary)",
     fontSize: 11,
     fontFamily: "var(--font-ui)",
@@ -454,8 +454,19 @@ function CanvasNodeView({ node }: { node: CanvasNode }) {
   const linkedProject = projectForTab(linkedTab, groups);
   const terminalRoot = node.terminalCwd ?? linkedTab?.initialCwd;
   const terminalTabId = linkedTab?.id ?? `canvas-${node.id}`;
-  const terminalPaneId = linkedTab?.activePaneId ?? node.id;
-  const linkedPaneTerminalId = linkedTab?.terminals.find((terminal) => terminal.paneId === terminalPaneId)?.id;
+  // The map node MUST NOT reuse the split pane's activePaneId. Terminal.tsx
+  // derives runtimeSessionId = `terminal-${tabId}-${paneId}`, so a shared paneId
+  // makes the map node and the split pane mint the SAME session id — both then
+  // ensure/resize the same PTY, producing the "reconnected" flapping, competing
+  // resizes, and what looks like a duplicate zellij. Give the node its own stable
+  // paneId; attach to the live PTY via attachToPtyId instead (so it still shows
+  // the same running session, it just doesn't spawn/own a colliding one).
+  const terminalPaneId = node.id;
+  // Resolve the live PTY id from the tab's active pane (for attach only), falling
+  // back to the persisted node pty or the tab's first terminal.
+  const linkedPaneTerminalId = linkedTab?.terminals.find(
+    (terminal) => terminal.paneId === linkedTab.activePaneId,
+  )?.id;
   const linkedTerminalId = linkedPaneTerminalId ?? node.terminalPtyId ?? linkedTab?.terminals[0]?.id;
   // Native VTE is disabled app-wide (see useNativeTerminalPane.wantsNativeRenderer):
   // the GTK overlay could not live on the zoom/pan canvas, which is why map nodes
@@ -521,6 +532,11 @@ function CanvasNodeView({ node }: { node: CanvasNode }) {
         runtimeActive={selected}
         onActivate={() => selectCanvasNode(node.id)}
         standalone
+        // Map nodes sit under the canvas CSS scale() transform. Supersample the
+        // backing store 2x so glyphs stay sharp when the compositor scales them.
+        // Fixed (not tied to live zoom) so changing zoom never re-runs the attach
+        // effect — that would detach/reattach the grid on every zoom tick.
+        renderScale={2}
       />
     ) : node.type === "file" ? (
       <div dir="auto">{node.filePath ?? "No file attached yet"}</div>

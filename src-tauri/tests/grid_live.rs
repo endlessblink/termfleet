@@ -54,6 +54,8 @@ fn live_pty_output_reconstructs_into_the_grid() {
         id: Some(id.clone()),
         cwd: Some("/tmp".to_string()),
         command: Some("bash".to_string()),
+        cols: Some(80),
+        rows: Some(24),
     })
     .expect("ensure session request")
     {

@@ -7,7 +7,7 @@
 // the grid updates via diffs. A plain DOM <canvas>, so it pans/zooms with CSS
 // transforms (split-pane and map cases both covered).
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { GlyphAtlas, measureCell } from "../lib/fontAtlas";
 import { GridBuffer } from "../lib/gridBuffer";
@@ -30,10 +30,30 @@ import {
   type SelectionRange,
 } from "../lib/selection";
 
+// Hack is the terminal buffer font (Warp's default terminal font), bundled via
+// @font-face. Fallbacks keep things sane before the face loads / on other systems.
 const FONT_FAMILY =
-  '"JetBrains Mono", "Geist Mono", "FiraCode Nerd Font", "Cascadia Code", "Consolas", monospace';
+  '"Hack", "JetBrains Mono", "Geist Mono", "Cascadia Code", "Consolas", monospace';
 const FONT_SIZE_PX = 14;
 const LINE_HEIGHT = 1.2;
+// Synthetic weight boost is DISABLED. Hack ships only 400/700; a `strokeText`
+// halo in the glyph's own colour was tried to fake a medium weight, but measured
+// blur testing (e2e/blur-metric) showed it inflates anti-aliased fringe pixels
+// ~40% at every devicePixelRatio — that halo is exactly what read as "blurry"
+// text on both the fullscreen pane and the map. Crisp 400 is the correct
+// trade-off; if the buffer reads too thin, switch to a font with a real medium
+// weight rather than re-introducing a stroke.
+const FONT_WEIGHT_BOOST_PX = 0;
+
+// Faces the glyph atlas rasterizes (regular/bold × upright/italic). The atlas
+// measures cell width and bakes glyph tiles synchronously, so every face must be
+// loaded first or the metrics/tiles fall back to a different font and misalign.
+const TERMINAL_FONT_FACES = [
+  `${FONT_SIZE_PX}px "Hack"`,
+  `700 ${FONT_SIZE_PX}px "Hack"`,
+  `italic ${FONT_SIZE_PX}px "Hack"`,
+  `italic 700 ${FONT_SIZE_PX}px "Hack"`,
+];
 
 function isTauriRuntime(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -46,6 +66,16 @@ interface TerminalCanvasProps {
   cols?: number;
   rows?: number;
   theme?: RenderTheme;
+  // Backing-store supersample factor. Map nodes (under the canvas CSS scale()
+  // transform) pass 2 so glyphs stay crisp when the compositor scales the bitmap;
+  // split panes leave it 1. Constant per mount — see the effect's dpr note.
+  renderScale?: number;
+  // Lifecycle reporting so the workspace store can track the canvas-owned PTY.
+  // Without these, tab.terminals is never populated for canvas terminals (the
+  // production default), so the status bar shows "0 ptys" and store ops that map
+  // over tab.terminals (close, cwd-sync) silently no-op.
+  onReady?: (ptyId: string, details: { reused: boolean }) => void;
+  onStatus?: (status: "starting" | "failed", details?: { error?: string }) => void;
 }
 
 export function TerminalCanvas({
@@ -55,18 +85,65 @@ export function TerminalCanvas({
   cols = 80,
   rows = 24,
   theme = DEFAULT_THEME,
+  renderScale = 1,
+  onReady,
+  onStatus,
 }: TerminalCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  // Stable handle to the current session id for the window-capture key handler,
+  // which is registered once and must not close over a stale prop.
+  const sessionIdRef = useRef(sessionId);
+  sessionIdRef.current = sessionId;
   const shellRef = useRef<HTMLDivElement>(null);
   // Latest terminal modes, kept current by the diff stream, read by input.
-  const modesRef = useRef({ appCursor: false, bracketedPaste: false });
+  const modesRef = useRef({
+    appCursor: false,
+    bracketedPaste: false,
+    altScreen: false,
+    mouseReport: false,
+    alternateScroll: false,
+    sgrMouse: false,
+  });
+  // Callbacks are read through a ref so the (expensive) attach effect does not
+  // re-run when the parent passes new closure identities each render.
+  const onReadyRef = useRef(onReady);
+  onReadyRef.current = onReady;
+  const onStatusRef = useRef(onStatus);
+  onStatusRef.current = onStatus;
+  // True once the first diff frame has arrived, so modesRef reflects the real
+  // terminal modes (bracketedPaste etc.) rather than the false defaults. Paste is
+  // gated on this: pasting before the first frame would wrap with stale modes and
+  // a multi-line paste's newlines (normalized to \r) would auto-run instead of
+  // landing as bracketed paste. Waiters resolve when the first frame lands.
+  const firstFrameRef = useRef(false);
+  const firstFrameWaitersRef = useRef<Array<() => void>>([]);
   // Render context shared with pointer/copy handlers (set inside the effect).
   const bufferRef = useRef<GridBuffer | null>(null);
   const cellRef = useRef({ width: 8, height: 16, dpr: 1 });
   const selectionRef = useRef<SelectionRange | null>(null);
   const anchorRef = useRef<CellPoint | null>(null);
+  // Gate atlas construction until the bundled Hack faces are loaded so cell
+  // metrics and glyph tiles are measured against the real font, not a fallback.
+  const [fontsReady, setFontsReady] = useState(
+    () => typeof document === "undefined" || !document.fonts
+      ? true
+      : TERMINAL_FONT_FACES.every((face) => document.fonts.check(face)),
+  );
+
+  useEffect(() => {
+    if (fontsReady || typeof document === "undefined" || !document.fonts) return;
+    let cancelled = false;
+    Promise.all(TERMINAL_FONT_FACES.map((face) => document.fonts.load(face)))
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setFontsReady(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [fontsReady]);
 
   const drawSelectionOverlay = () => {
     const overlay = overlayRef.current;
@@ -93,11 +170,16 @@ export function TerminalCanvas({
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas || !isTauriRuntime()) return;
+    if (!canvas || !isTauriRuntime() || !fontsReady) return;
 
     let disposed = false;
-    const dpr = window.devicePixelRatio || 1;
-    const metrics = measureCell(FONT_FAMILY, FONT_SIZE_PX, dpr, LINE_HEIGHT);
+    // Fold the supersample factor into the device pixel ratio used for the backing
+    // store and glyph atlas. The CSS box stays at logical size (sizeCanvasToGrid
+    // sets style.width from cellWidth, not dpr), so a 2x renderScale just packs 2x
+    // more device pixels behind the same on-screen size — crisp under CSS scale().
+    // renderScale is constant per mount, so it's safe in this effect's deps.
+    const dpr = (window.devicePixelRatio || 1) * Math.max(1, renderScale);
+    const metrics = measureCell(FONT_FAMILY, FONT_SIZE_PX, dpr, LINE_HEIGHT, FONT_WEIGHT_BOOST_PX);
     const atlas = new GlyphAtlas(metrics);
     const buffer = new GridBuffer();
     bufferRef.current = buffer;
@@ -121,7 +203,17 @@ export function TerminalCanvas({
       modesRef.current = {
         appCursor: buffer.appCursor,
         bracketedPaste: buffer.bracketedPaste,
+        altScreen: buffer.altScreen,
+        mouseReport: buffer.mouseReport,
+        alternateScroll: buffer.alternateScroll,
+        sgrMouse: buffer.sgrMouse,
       };
+      if (!firstFrameRef.current) {
+        firstFrameRef.current = true;
+        const waiters = firstFrameWaitersRef.current;
+        firstFrameWaitersRef.current = [];
+        for (const resolve of waiters) resolve();
+      }
       const snapshot = buffer.toSnapshot();
       if (frame.full) {
         ctx = sizeCanvasToGrid(canvas, atlas, snapshot.cols, snapshot.rows, dpr);
@@ -165,62 +257,113 @@ export function TerminalCanvas({
       );
     };
 
-    // Resize the PTY winsize and the headless grid together. The two MUST stay in
+    // Resize the headless grid and the PTY winsize together. The two MUST stay in
     // lock-step: the grid parses the PTY's byte stream, so if its width differs
     // from the PTY winsize the shell/TUI wraps lines for a width the grid doesn't
-    // have, producing the duplicated/clipped-prompt corruption. `force` bypasses
-    // the no-change guard for the initial post-attach reconcile.
-    const applyResize = (force = false) => {
+    // have, producing the duplicated/clipped-prompt corruption.
+    //
+    // Order matters: resize the GRID first (awaited), THEN the PTY. The PTY resize
+    // raises SIGWINCH and the shell reprints its prompt at the new width; if the
+    // grid parser hasn't resized yet it parses that reprint at the old width and
+    // the prompt stacks/garbles. Awaiting grid_resize first guarantees the parser
+    // is already at the new width when the reprint bytes arrive.
+    const applyResize = async () => {
       if (disposed || !attached) return;
       const { cols: nextCols, rows: nextRows } = measure();
-      if (!force && nextCols === lastCols && nextRows === lastRows) return;
+      if (nextCols === lastCols && nextRows === lastRows) return;
       lastCols = nextCols;
       lastRows = nextRows;
-      invoke("daemon_resize_session", { id: sessionId, cols: nextCols, rows: nextRows }).catch(
-        console.error,
-      );
-      invoke("grid_resize", { id: sessionId, cols: nextCols, rows: nextRows }).catch(
-        console.error,
-      );
+      try {
+        await invoke("grid_resize", { id: sessionId, cols: nextCols, rows: nextRows });
+      } catch (error) {
+        console.error(error);
+      }
+      if (disposed) return;
+      // Await the PTY resize too. Fire-and-forget left a window where applyResize
+      // resolved while the SIGWINCH was still in flight; a fast shell could reprint
+      // before its winsize updated, stacking a wrong-width prompt. Awaiting closes
+      // that window (the grid is already at the new width from the await above).
+      try {
+        await invoke("daemon_resize_session", { id: sessionId, cols: nextCols, rows: nextRows });
+      } catch (error) {
+        console.error(error);
+      }
     };
 
-    const observer = new ResizeObserver(() => applyResize());
+    // Coalesce ResizeObserver bursts. On the map a node animates/zooms into place
+    // and the shell's pixel box steps through several intermediate sizes before it
+    // settles; firing applyResize on each step sends a SIGWINCH per step, and the
+    // shell reprints its prompt for every one — that's the stacked-duplicate-prompt
+    // corruption. A trailing debounce collapses the burst into a single resize at
+    // the final settled size, so the shell gets exactly one SIGWINCH. The forced
+    // post-attach reconcile below stays immediate (it runs once, off this path).
+    let resizeTimer: ReturnType<typeof setTimeout> | null = null;
+    const scheduleResize = () => {
+      if (resizeTimer !== null) clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        resizeTimer = null;
+        applyResize();
+      }, 80);
+    };
+
+    const observer = new ResizeObserver(scheduleResize);
     if (shellRef.current) observer.observe(shellRef.current);
 
     (async () => {
       // Ensure the daemon owns the PTY (the daemon is the PTY authority), then
       // attach the headless grid and subscribe to its binary diff stream.
       //
-      // Attach the grid at the *measured* pane size rather than the 80x24 prop
-      // default, and resize the PTY to match BEFORE the grid subscribes. The
-      // daemon replays the session's scrollback into the grid the moment it
-      // subscribes; if the grid were still 80 columns that replay (and a reused
-      // session's wide history) would wrap at the wrong width and stay garbled.
-      // Sizing both sides to the real pane up front means the grid interprets
-      // every byte — replayed and live — at the width the shell is actually using.
+      // Spawn the PTY at the *measured* pane size (not the 80x24 prop default) so a
+      // fresh shell prints its first prompt at the real width. The old path spawned
+      // at 80, then resized — SIGWINCH made the shell reprint, leaving a stale
+      // wrong-width prompt stacked above the live one (the duplicate-prompt bug).
+      // Attach the grid at the same size so the daemon's scrollback replay (and a
+      // reused session's wide history) is parsed at the width the shell is using.
+      onStatusRef.current?.("starting");
       await invoke("daemon_ensure_running");
-      await invoke("daemon_ensure_session", { id: sessionId, cwd, command });
-      if (disposed) return;
       const init = measure();
-      await invoke("daemon_resize_session", { id: sessionId, cols: init.cols, rows: init.rows });
+      const ensured = await invoke<{ id: string; reused: boolean }>("daemon_ensure_session", {
+        id: sessionId,
+        cwd,
+        command,
+        cols: init.cols,
+        rows: init.rows,
+      });
       if (disposed) return;
+      // A reused session is already running at its old winsize; bring it to this
+      // pane's size. A fresh session already spawned at init size above, so resizing
+      // it here would be a redundant SIGWINCH → an extra prompt reprint — skip it.
+      if (ensured.reused) {
+        await invoke("daemon_resize_session", { id: sessionId, cols: init.cols, rows: init.rows });
+        if (disposed) return;
+      }
       await invoke("grid_attach", { id: sessionId, cols: init.cols, rows: init.rows });
       if (disposed) return;
       await invoke("grid_subscribe_diffs", { id: sessionId, onDiff: channel });
       attached = true;
       lastCols = init.cols;
       lastRows = init.rows;
-      // Force one reconcile in case layout settled during the awaits, guaranteeing
-      // PTY and grid are explicitly set to the same dimensions.
-      applyResize(true);
-    })().catch(console.error);
+      // Reconcile only if layout settled to a different size during the awaits.
+      // Non-forced: if the pane is still init size this is a no-op (no redundant
+      // resize, no reprint).
+      void applyResize();
+      // Report the live PTY so the store records it in tab.terminals. The daemon
+      // is the PTY authority and `reused` is true when we reattached to a session
+      // that survived an unmount/project-switch (vs. a freshly spawned shell).
+      onReadyRef.current?.(ensured.id, { reused: ensured.reused });
+    })().catch((error) => {
+      if (disposed) return;
+      console.error(error);
+      onStatusRef.current?.("failed", { error: String(error) });
+    });
 
     return () => {
       disposed = true;
+      if (resizeTimer !== null) clearTimeout(resizeTimer);
       observer.disconnect();
       invoke("grid_detach", { id: sessionId }).catch(() => {});
     };
-  }, [sessionId, cwd, command, cols, rows, theme]);
+  }, [sessionId, cwd, command, cols, rows, theme, fontsReady, renderScale]);
 
   const send = (data: string) => {
     invoke("daemon_write_session", { id: sessionId, data }).catch(console.error);
@@ -240,15 +383,70 @@ export function TerminalCanvas({
       appCursor: modesRef.current.appCursor,
     });
     if (bytes !== null) {
+      // preventDefault stops the browser default (notably Tab/Shift+Tab focus
+      // traversal, which would otherwise move focus off this textarea and out of
+      // the terminal); stopPropagation keeps the key from bubbling to any app
+      // chrome listener. Together they guarantee a focused terminal owns the key.
       event.preventDefault();
+      event.stopPropagation();
       send(bytes);
     }
+  };
+
+  // Window-level CAPTURE keydown handler. The textarea's own onKeyDown is a
+  // bubble-phase listener; WebKitGTK performs Tab/Shift+Tab focus traversal as a
+  // default action that, on Linux, can move focus off the textarea before the
+  // bubble handler runs — so Shift+Tab (zellij back-tab) never reached the PTY.
+  // Capture phase fires window→target FIRST, so intercepting here lets us
+  // preventDefault the traversal and forward the bytes while the terminal is
+  // focused. stopPropagation also prevents the bubble handler from double-sending.
+  useEffect(() => {
+    const onCaptureKeyDown = (event: KeyboardEvent) => {
+      if (!inputRef.current || document.activeElement !== inputRef.current) return;
+      const key = event.key.toLowerCase();
+      // Leave copy/paste shortcuts to the bubble handler / browser clipboard.
+      if ((event.ctrlKey || event.metaKey) && event.shiftKey && (key === "c" || key === "v")) {
+        return;
+      }
+      const bytes = keyEventToBytes(event, { appCursor: modesRef.current.appCursor });
+      if (bytes === null) return;
+      event.preventDefault();
+      event.stopPropagation();
+      invoke("daemon_write_session", { id: sessionIdRef.current, data: bytes }).catch(
+        console.error,
+      );
+    };
+    window.addEventListener("keydown", onCaptureKeyDown, true);
+    return () => window.removeEventListener("keydown", onCaptureKeyDown, true);
+  }, []);
+
+  // Resolve once the first diff frame has set the real terminal modes, or after a
+  // short timeout so a paste is never lost if the backend is slow/quiet.
+  const waitForFirstFrame = (): Promise<void> => {
+    if (firstFrameRef.current) return Promise.resolve();
+    return new Promise((resolve) => {
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        resolve();
+      };
+      firstFrameWaitersRef.current.push(finish);
+      window.setTimeout(finish, 500);
+    });
   };
 
   const handlePaste = (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
     event.preventDefault();
     const text = event.clipboardData.getData("text");
-    if (text) send(encodePaste(text, modesRef.current.bracketedPaste));
+    if (!text) return;
+    // Gate on the first frame: pasting before modesRef reflects the real
+    // bracketedPaste mode would send a multi-line paste unwrapped, and its
+    // newlines (normalized to \r) would auto-run each line instead of landing as
+    // a single bracketed paste.
+    void waitForFirstFrame().then(() => {
+      if (text) send(encodePaste(text, modesRef.current.bracketedPaste));
+    });
   };
 
   const focusInput = () => inputRef.current?.focus();
@@ -291,19 +489,78 @@ export function TerminalCanvas({
     if (!buffer || !range) return;
     const text = selectionToText(buffer.cells, range);
     if (text) navigator.clipboard?.writeText(text).catch(console.error);
+    // Writing to the clipboard can move focus off the hidden textarea; without
+    // restoring it, the next keystroke (e.g. Shift+Tab) falls through to the
+    // browser's focus traversal and escapes the terminal instead of reaching the
+    // PTY. Re-own keyboard focus after every copy.
+    focusInput();
   };
 
   const handlePointerUp = () => {
     anchorRef.current = null;
     if (selectionRef.current) copySelection();
+    // A selection drag ends with the pointer up; make sure the textarea keeps
+    // keyboard focus so terminal shortcuts (Shift+Tab back-tab, Ctrl keys) go to
+    // the PTY rather than the browser.
+    focusInput();
+  };
+
+  // Translate a wheel event into the cell (1-based col/row) under the pointer.
+  // Shared with mouse-wheel reporting so the byte sequence names the right cell.
+  const wheelCell = (event: React.WheelEvent): { col: number; row: number } => {
+    const buffer = bufferRef.current;
+    const canvas = canvasRef.current;
+    if (!buffer || !canvas) return { col: 1, row: 1 };
+    const rect = canvas.getBoundingClientRect();
+    const { width, height } = cellRef.current;
+    const scaleX = rect.width / (canvas.width / cellRef.current.dpr);
+    const scaleY = rect.height / (canvas.height / cellRef.current.dpr);
+    const offsetX = (event.clientX - rect.left) / (scaleX || 1);
+    const offsetY = (event.clientY - rect.top) / (scaleY || 1);
+    const point = pointToCell(offsetX, offsetY, width, height, buffer.cols, buffer.rows);
+    // VT mouse coordinates are 1-based; clamp into the grid.
+    return {
+      col: Math.min(buffer.cols, Math.max(1, (point?.col ?? 0) + 1)),
+      row: Math.min(buffer.rows, Math.max(1, (point?.row ?? 0) + 1)),
+    };
   };
 
   const handleWheel = (event: React.WheelEvent) => {
     event.preventDefault();
-    // Scroll a few lines per notch; positive deltaY (down) reduces history offset.
-    const lines = Math.max(1, Math.round(Math.abs(event.deltaY) / 24)) * 3;
-    const delta = event.deltaY < 0 ? lines : -lines;
-    invoke("grid_scroll", { id: sessionId, delta }).catch(console.error);
+    const notches = Math.max(1, Math.round(Math.abs(event.deltaY) / 24));
+    const up = event.deltaY < 0;
+    const modes = modesRef.current;
+
+    // 1) App owns the mouse (zellij, vim, htop, less, tmux): forward the wheel as
+    // a mouse-wheel REPORT, not arrow keys. Sending arrows makes the focused TUI
+    // move the cursor/selection and warn "use PgUp/PgDn"; a real wheel report
+    // scrolls the pane the pointer is over. Button 64 = wheel up, 65 = wheel down.
+    if (modes.mouseReport) {
+      const { col, row } = wheelCell(event);
+      const button = up ? 64 : 65;
+      const report = modes.sgrMouse
+        // SGR (DECSET 1006): ESC[<b;col;rowM — press-only, no release for wheel.
+        ? `\x1b[<${button};${col};${row}M`
+        // Legacy X10: ESC[M then three bytes, each offset by 32 (cb, cx, cy).
+        : `\x1b[M${String.fromCharCode(32 + button, 32 + col, 32 + row)}`;
+      send(report.repeat(notches));
+      return;
+    }
+
+    // 2) Alt screen with alternate-scroll (DECSET 1007) but no mouse reporting:
+    // the conventional translation is arrow keys, honoring application-cursor mode.
+    if (modes.altScreen && modes.alternateScroll) {
+      const seq = up
+        ? modes.appCursor ? "\x1bOA" : "\x1b[A"
+        : modes.appCursor ? "\x1bOB" : "\x1b[B";
+      send(seq.repeat(notches * 3));
+      return;
+    }
+
+    // 3) Primary screen, no app mouse handling: pan the grid's own scrollback.
+    invoke("grid_scroll", { id: sessionId, delta: (up ? 1 : -1) * notches * 3 }).catch(
+      console.error,
+    );
   };
 
   return (
@@ -338,6 +595,14 @@ export function TerminalCanvas({
         spellCheck={false}
         onKeyDown={handleKeyDown}
         onPaste={handlePaste}
+        onFocus={() => {
+          // Tell the backend this terminal owns the keyboard, so the Linux GTK
+          // Tab-interceptor routes Tab/Shift+Tab here instead of moving focus.
+          invoke("set_focused_terminal", { id: sessionIdRef.current }).catch(() => {});
+        }}
+        onBlur={() => {
+          invoke("set_focused_terminal", { id: null }).catch(() => {});
+        }}
         style={{
           position: "absolute",
           top: 0,

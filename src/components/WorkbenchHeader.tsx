@@ -9,12 +9,10 @@ import {
   Map,
   PanelBottom,
   PanelRight,
-  Plus,
   Rocket,
   RotateCcw,
   Search,
   Terminal,
-  Workflow,
   X,
 } from "lucide-react";
 import {
@@ -26,52 +24,64 @@ import {
   useWorkspaceStore,
 } from "../stores/workspace";
 import { getAllLeafIds } from "../lib/splitUtils";
-import { projectNameFor, projectRootFor, projectSessionCount } from "../lib/projectDisplay";
+import { pathTail, projectNameFor, projectRootFor } from "../lib/projectDisplay";
+import { terminalHasKeyboardFocus } from "../lib/terminalFocus";
 
 const styles: Record<string, CSSProperties> = {
   header: {
     height: "var(--commandbar-height)",
     flexShrink: 0,
-    display: "grid",
-    gridTemplateColumns: "minmax(160px, 1fr) minmax(220px, 420px)",
+    display: "flex",
+    justifyContent: "center",
     alignItems: "center",
     gap: 10,
-    padding: "0 10px 0 18px",
-    background: "#252a2d",
-    borderBottom: "1px solid #3a4146",
+    padding: "0 18px",
+    background: "var(--surface-floor)",
+    borderBottom: "1px solid var(--border-subtle)",
     position: "relative",
   },
-  commandCluster: {
+  contextCrumb: {
     position: "absolute",
-    left: "50%",
-    transform: "translateX(-50%)",
-    width: "min(840px, calc(100vw - 560px))",
-    minWidth: 620,
-    display: "grid",
-    gridTemplateColumns: "minmax(260px, 380px) minmax(280px, 1fr)",
+    left: 18,
+    display: "flex",
     alignItems: "center",
-    gap: 8,
-    zIndex: 2,
+    gap: 7,
+    maxWidth: "min(280px, calc(50vw - 340px))",
+    minWidth: 0,
+    overflow: "hidden",
+    fontSize: 12,
+    color: "var(--text-secondary)",
+    whiteSpace: "nowrap",
+  },
+  contextCrumbName: {
+    color: "var(--text-primary)",
+    fontWeight: 500,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+  },
+  contextCrumbPath: {
+    color: "var(--text-secondary)",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    opacity: 0.8,
   },
   search: {
-    width: "100%",
+    width: "min(620px, 100%)",
     minWidth: 0,
-    height: 30,
+    height: 32,
     display: "flex",
     alignItems: "center",
     gap: 8,
-    padding: "0 10px",
-    border: "1px solid #32393d",
-    borderRadius: 6,
-    background: "#202528",
+    padding: "0 12px",
+    border: "none",
+    borderRadius: "var(--radius-sm)",
+    background: "var(--surface-base)",
     color: "var(--text-secondary)",
     fontSize: 12,
-    transition: "border-color var(--motion-fast), box-shadow var(--motion-fast), background var(--motion-fast)",
+    transition: "background var(--motion-fast)",
   },
   searchActive: {
-    borderColor: "var(--border-focus)",
-    boxShadow: "0 0 0 1px rgba(167, 255, 0, 0.08)",
-    background: "#1c2123",
+    background: "var(--surface-hover)",
   },
   projectTabs: {
     width: "100%",
@@ -81,7 +91,7 @@ const styles: Record<string, CSSProperties> = {
     alignItems: "center",
     gap: 4,
     padding: 3,
-    border: "1px solid var(--border-subtle)",
+    border: "1px solid transparent",
     borderRadius: "var(--radius-sm)",
     background: "var(--surface-base)",
     overflowX: "auto",
@@ -124,7 +134,7 @@ const styles: Record<string, CSSProperties> = {
     alignItems: "center",
     justifyContent: "center",
     padding: "0 4px",
-    border: "1px solid var(--border-subtle)",
+    border: "1px solid transparent",
     borderRadius: "var(--radius-xs)",
     color: "var(--text-secondary)",
     fontSize: 9,
@@ -135,7 +145,7 @@ const styles: Record<string, CSSProperties> = {
     height: 22,
     display: "grid",
     placeItems: "center",
-    border: "1px solid var(--border-subtle)",
+    border: "1px solid transparent",
     borderRadius: "var(--radius-xs)",
     background: "var(--surface-wash)",
     color: "var(--accent-live)",
@@ -151,7 +161,7 @@ const styles: Record<string, CSSProperties> = {
     maxHeight: 420,
     overflow: "auto",
     padding: 5,
-    border: "1px solid var(--border-subtle)",
+    border: "1px solid transparent",
     borderRadius: "var(--radius-md)",
     background: "var(--surface-raised)",
     boxShadow: "var(--shadow-menu)",
@@ -218,9 +228,10 @@ const styles: Record<string, CSSProperties> = {
     height: 18,
     display: "flex",
     alignItems: "center",
-    padding: "0 5px",
-    border: "1px solid var(--border-subtle)",
+    padding: "0 6px",
+    border: "none",
     borderRadius: "var(--radius-xs)",
+    background: "var(--surface-hover)",
     color: "var(--text-secondary)",
     fontFamily: "var(--font-ui)",
     fontSize: 10,
@@ -248,10 +259,10 @@ const styles: Record<string, CSSProperties> = {
     display: "inline-flex",
     alignItems: "center",
     gap: 5,
-    padding: "0 6px",
-    border: "1px solid var(--border-subtle)",
+    padding: "0 7px",
+    border: "none",
     borderRadius: "var(--radius-xs)",
-    background: "var(--surface-base)",
+    background: "var(--surface-hover)",
     color: "var(--text-secondary)",
     fontSize: 10,
     whiteSpace: "nowrap",
@@ -263,27 +274,27 @@ const styles: Record<string, CSSProperties> = {
     height: 22,
     display: "flex",
     alignItems: "center",
-    padding: "0 7px",
-    border: "1px solid var(--border-subtle)",
+    padding: "0 9px",
+    border: "none",
     borderRadius: "var(--radius-sm)",
-    background: "var(--surface-base)",
+    background: "var(--surface-hover)",
     color: "var(--text-secondary)",
     fontFamily: "var(--font-ui)",
     fontSize: 11,
     cursor: "pointer",
-    transition: "background var(--motion-fast), border-color var(--motion-fast), color var(--motion-fast)",
+    transition: "background var(--motion-fast), color var(--motion-fast)",
   },
   menuScopeTag: {
     height: 18,
     display: "inline-flex",
     alignItems: "center",
-    padding: "0 5px",
-    border: "1px solid var(--border-subtle)",
+    padding: "0 6px",
+    border: "none",
     borderRadius: "var(--radius-xs)",
     color: "var(--text-secondary)",
     fontSize: 10,
     lineHeight: 1,
-    background: "var(--surface-base)",
+    background: "var(--surface-hover)",
     flexShrink: 0,
   },
   menuFooter: {
@@ -312,9 +323,9 @@ const styles: Record<string, CSSProperties> = {
     alignItems: "center",
     justifyContent: "center",
     padding: "0 5px",
-    border: "1px solid var(--border-subtle)",
+    border: "none",
     borderRadius: "var(--radius-xs)",
-    background: "var(--surface-base)",
+    background: "var(--surface-hover)",
     color: "var(--text-secondary)",
     fontSize: 10,
     lineHeight: 1,
@@ -326,14 +337,14 @@ const styles: Record<string, CSSProperties> = {
   menu: {
     position: "absolute",
     left: "50%",
-    top: 36,
+    top: 42,
     transform: "translateX(-50%)",
     width: "var(--commandbar-search-width)",
     minWidth: "var(--commandbar-search-min-width)",
     maxHeight: 360,
     overflow: "auto",
     padding: 5,
-    border: "1px solid var(--border-subtle)",
+    border: "1px solid transparent",
     borderRadius: "var(--radius-md)",
     background: "var(--surface-raised)",
     boxShadow: "var(--shadow-menu)",
@@ -347,18 +358,16 @@ const styles: Record<string, CSSProperties> = {
     alignItems: "center",
     gap: 8,
     padding: "6px 8px",
-    border: "1px solid var(--border-subtle)",
+    border: "none",
     borderRadius: "var(--radius-sm)",
     color: "var(--text-primary)",
     cursor: "pointer",
     outline: "none",
     boxShadow: "none",
-    transition: "background var(--motion-fast), border-color var(--motion-fast), box-shadow var(--motion-fast)",
+    transition: "background var(--motion-fast)",
   },
   menuRowActive: {
-    background: "var(--command-chip-active-bg)",
-    borderColor: "var(--border-focus)",
-    boxShadow: "var(--shadow-selected-row)",
+    background: "var(--surface-selected)",
   },
   emptyResult: {
     minHeight: 86,
@@ -394,7 +403,7 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 12,
   },
   searchIcon: {
-    color: "var(--accent-live)",
+    color: "var(--text-secondary)",
     display: "grid",
     placeItems: "center",
   },
@@ -504,28 +513,10 @@ export function WorkbenchHeader() {
 
   const activeTab = tabs.find((tab) => tab.id === activeTabId);
   const commandQuery = normalizeCommand(commandValue);
-  const activeScope = COMMAND_SCOPES.find((candidate) => commandQuery.startsWith(candidate.prefix));
   const activePaneCount = activeTab ? getAllLeafIds(activeTab.splitLayout).length : 0;
   const selectedProjectName = projectNameFor(activeGroupFilter, groups);
   const selectedProjectRoot = projectRootFor(activeGroupFilter, groups, activeTab) ?? projectRoot;
-  const selectedProjectCount = projectSessionCount(activeGroupFilter, tabs);
   const projectLabel = activeGroupFilter === null ? selectedProjectName : basename(selectedProjectRoot ?? activeTab?.initialCwd);
-  const projects = useMemo(() => [
-    {
-      id: null as string | null,
-      name: "All projects",
-      root: "Mixed workspace",
-      count: tabs.length,
-      color: "var(--accent-info)",
-    },
-    ...groups.map((group) => ({
-      id: group.id,
-      name: group.name,
-      root: group.projectRoot ?? "No root selected",
-      count: tabs.filter((tab) => tab.groupId === group.id).length,
-      color: group.color,
-    })),
-  ], [groups, tabs]);
 
   const setScopedCommand = useCallback((prefix: string) => {
     setCommandValue(prefix);
@@ -785,6 +776,9 @@ export function WorkbenchHeader() {
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
+      // A focused terminal owns the keyboard — let zellij/vim/the shell have every
+      // key (Ctrl+K, Ctrl+Shift+P/T included) instead of opening the command bar.
+      if (terminalHasKeyboardFocus()) return;
       const key = event.key.toLowerCase();
       const opensPrimaryPalette = (event.ctrlKey || event.metaKey) && key === "k";
       const opensTerminalPalette = event.ctrlKey && event.shiftKey && key === "p";
@@ -820,64 +814,20 @@ export function WorkbenchHeader() {
     inputRef.current?.blur();
   };
 
-  const openProjectLauncher = useCallback(() => {
-    updateUiState({
-      primarySidebarCollapsed: false,
-      primarySidebarPanel: "sessions",
-    });
-    window.setTimeout(() => {
-      window.dispatchEvent(new CustomEvent("terminal-workspace:open-project-launcher"));
-    }, 0);
-  }, [updateUiState]);
 
   return (
     <header className="workbench-header" style={styles.header}>
-      <div className="workbench-command-cluster" style={styles.commandCluster}>
-      <div
-        className="workbench-project-tabs"
-        role="tablist"
-        aria-label="Projects"
-        style={styles.projectTabs}
+      <span
+        className="workbench-header-context"
+        style={styles.contextCrumb}
+        title={selectedProjectRoot ?? "No project selected"}
       >
-        {projects.map((project) => {
-          const active = project.id === activeGroupFilter;
-          return (
-            <button
-              key={project.id ?? "all-projects"}
-              type="button"
-              role="tab"
-              aria-selected={active}
-              aria-label={`Switch to ${project.name}`}
-              title={project.root}
-              style={{
-                ...styles.projectTab,
-                ...(active ? styles.projectTabActive : null),
-              }}
-              onClick={() => {
-                switchProject(project.id);
-                setWorkspaceMode("split");
-              }}
-            >
-              <FolderTree
-                size={12}
-                strokeWidth={1.8}
-                color={active ? "var(--accent-live)" : project.color}
-              />
-              <span style={styles.projectTabLabel}>{project.id === null ? "All" : project.name}</span>
-              <span style={styles.projectTabCount}>{project.count}</span>
-            </button>
-          );
-        })}
-        <button
-          type="button"
-          aria-label="Create project"
-          title="Create project"
-          style={styles.projectCreateButton}
-          onClick={openProjectLauncher}
-        >
-          <Plus size={13} strokeWidth={2} />
-        </button>
-      </div>
+        <FolderTree size={13} strokeWidth={1.8} color="var(--text-secondary)" />
+        <span style={styles.contextCrumbName}>{projectLabel}</span>
+        {selectedProjectRoot && (
+          <span style={styles.contextCrumbPath}>{pathTail(selectedProjectRoot)}</span>
+        )}
+      </span>
       <div className="workbench-command-search" style={{ ...styles.search, ...(commandOpen ? styles.searchActive : null) }}>
         <span style={styles.searchIcon}>
           <Command size={13} strokeWidth={1.8} />
@@ -917,75 +867,7 @@ export function WorkbenchHeader() {
             }
           }}
         />
-        <div style={styles.toolbelt} aria-label="Command filters">
-          <button
-            className="workbench-command-tool"
-            type="button"
-            title="Actions filter"
-            aria-label="Filter actions"
-            style={{
-              ...styles.toolButton,
-              ...(activeScope?.id === "actions" ? styles.activeToolButton : null),
-            }}
-            onMouseDown={(event) => {
-              event.preventDefault();
-              setScopedCommand("actions:");
-            }}
-          >
-            <Workflow size={12} strokeWidth={1.8} />
-          </button>
-          <button
-            className="workbench-command-tool"
-            type="button"
-            title="Sessions filter"
-            aria-label="Filter sessions"
-            style={{
-              ...styles.toolButton,
-              ...(activeScope?.id === "sessions" ? styles.activeToolButton : null),
-            }}
-            onMouseDown={(event) => {
-              event.preventDefault();
-              setScopedCommand("sessions:");
-            }}
-          >
-            <Terminal size={12} strokeWidth={1.8} />
-          </button>
-          <button
-            className="workbench-command-tool"
-            type="button"
-            title="Files context"
-            aria-label="Filter files"
-            style={{
-              ...styles.toolButton,
-              ...(activeScope?.id === "files" ? styles.activeToolButton : null),
-            }}
-            onMouseDown={(event) => {
-              event.preventDefault();
-              setScopedCommand("files:");
-            }}
-          >
-            <AtSign size={12} strokeWidth={1.8} />
-          </button>
-          <button
-            className="workbench-command-tool"
-            type="button"
-            title="Launch configurations"
-            aria-label="Filter launch configurations"
-            style={{
-              ...styles.toolButton,
-              ...(activeScope?.id === "launch_configs" ? styles.activeToolButton : null),
-            }}
-            onMouseDown={(event) => {
-              event.preventDefault();
-              setScopedCommand("launch_configs:");
-            }}
-          >
-            <Rocket size={12} strokeWidth={1.8} />
-          </button>
-        </div>
         <span className="workbench-command-shortcut" style={styles.commandShortcut}>Ctrl K</span>
-        <span className="workbench-command-shortcut workbench-command-shortcut--secondary" style={styles.commandShortcut}>Ctrl Shift P</span>
-      </div>
       </div>
       {commandOpen && (
         <div className="workbench-command-menu" style={styles.menu}>
@@ -1083,16 +965,6 @@ export function WorkbenchHeader() {
           </div>
         </div>
       )}
-      <div className="workbench-header-status" style={styles.right}>
-        <span style={styles.statusDot} aria-hidden="true" />
-        <span style={styles.context} title={activeTab?.title ?? "Workspace"}>
-          {activeTab?.title ?? "Workspace"}
-        </span>
-        <span className="workbench-header-stat" style={styles.stat}>{selectedProjectCount} visible</span>
-        <span className="workbench-header-stat workbench-header-stat--secondary" style={styles.stat}>{groups.length} groups</span>
-        <span className="workbench-header-stat workbench-header-stat--secondary" style={styles.stat}>{openFiles.length} files</span>
-        <span style={styles.live}>live</span>
-      </div>
     </header>
   );
 }

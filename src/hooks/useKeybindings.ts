@@ -1,10 +1,19 @@
 import { useEffect } from "react";
 import { useWorkspaceStore, createNewTab, splitActivePane, closeActivePane } from "../stores/workspace";
 import { calculatePaneBounds, findAdjacentPane } from "../lib/splitUtils";
+import { terminalHasKeyboardFocus } from "../lib/terminalFocus";
 
 export function useKeybindings() {
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
+      // When a terminal owns the keyboard, every key belongs to the program
+      // inside it (zellij, vim, the shell). Bail so the app never steals Ctrl+T,
+      // Ctrl+W, Ctrl+Tab, Alt+Arrow, etc. from a focused terminal — that was the
+      // "Ctrl+T closes zellij" bug. App shortcuts resume when focus is elsewhere
+      // (sidebar, file explorer, command bar). Click out of the terminal to use
+      // them, or use the on-screen affordances.
+      if (terminalHasKeyboardFocus()) return;
+
       const store = useWorkspaceStore.getState();
 
       // Ctrl+T — New tab

@@ -1,13 +1,33 @@
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fs;
 use std::io::{Read, Write};
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::thread::JoinHandle;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, Runtime};
 
 const MAX_SCROLLBACK_BYTES: usize = 200_000;
+
+/// How often a session's scrollback is checkpointed to disk while it is being
+/// written to. The daemon owns PTYs across app restarts, but a *daemon* death
+/// (reboot, OOM, dev relaunch which clears the daemon) used to lose all content
+/// because scrollback lived only in RAM. We checkpoint to disk on this cadence
+/// so a relaunched daemon can restore each session's content. Throttled so a
+/// fast PTY dump doesn't rewrite the (≤200KB) file on every read.
+const PERSIST_FLUSH_INTERVAL: Duration = Duration::from_millis(750);
+
+/// Banner injected ahead of restored scrollback when a session is rebuilt from
+/// disk (the original shell process died with the daemon, so a fresh shell is
+/// spawned and the previous output is replayed above it). The leading
+/// `ESC[?1049l` leaves the alternate screen in case the prior session was killed
+/// inside a full-screen TUI (vim/htop), so the restored main-screen content and
+/// the new prompt render on the primary buffer rather than a stranded alt-screen.
+const RESTORE_BANNER: &str = "\x1b[?1049l\x1b[0m\r\n\x1b[2m── session restored ──\x1b[0m\r\n";
 
 struct PtyEntry {
     master: Box<dyn MasterPty + Send>,
@@ -17,10 +37,35 @@ struct PtyEntry {
     subscribers: Arc<Mutex<Vec<PtySubscriber>>>,
     initial_cwd: Option<String>,
     command: String,
+    // Reader-thread lifecycle. The thread loops on master.read(); on kill() we set
+    // `stop`, kill the child, and drop the master to force read() to EOF, then join
+    // via `reader`. Without this the thread was detached and leaked: it kept Arcs to
+    // output/subscribers alive and (on a duplicate-shell race) a leaked reader could
+    // still broadcast bytes — output corruption that read as a duplicate zellij.
+    reader_stop: Arc<AtomicBool>,
+    reader: Option<JoinHandle<()>>,
+}
+
+impl PtyEntry {
+    /// Stop the reader thread and reap the child. Idempotent.
+    fn shutdown(&mut self) {
+        self.reader_stop.store(true, Ordering::Relaxed);
+        let _ = self.child.kill();
+        // Dropping all writers/clones of the master closes the PTY master fd, so
+        // the reader's blocking read() returns EOF and the loop exits.
+        if let Some(handle) = self.reader.take() {
+            let _ = handle.join();
+        }
+    }
 }
 
 pub struct PtyManager {
     ptys: Mutex<HashMap<String, PtyEntry>>,
+    /// When set, sessions checkpoint their scrollback + metadata under this
+    /// directory so they survive a daemon restart. `None` disables persistence
+    /// (used by the embedded Tauri fallback, which dies with the app anyway, and
+    /// by unit tests, which must not touch the user's data dir).
+    persist_dir: Option<PathBuf>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
@@ -47,23 +92,68 @@ struct PtySubscriber {
     sender: Sender<String>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 struct PtyOutputBuffer {
     base_offset: u64,
     data: String,
+    /// Disk checkpoint target. `None` for non-persistent managers.
+    persist: Option<PersistHandle>,
+}
+
+/// Throttled disk-checkpoint state for one session's scrollback.
+struct PersistHandle {
+    path: PathBuf,
+    last_flush: Option<Instant>,
+    dirty: bool,
+}
+
+impl PersistHandle {
+    fn new(path: PathBuf) -> Self {
+        Self {
+            path,
+            last_flush: None,
+            dirty: false,
+        }
+    }
+
+    /// Persist `data` (with its `base_offset` header) if dirty and the throttle
+    /// window has elapsed. Best-effort: an I/O error just leaves it dirty to
+    /// retry on the next append.
+    fn maybe_flush(&mut self, base_offset: u64, data: &str) {
+        if !self.dirty {
+            return;
+        }
+        let due = self
+            .last_flush
+            .map_or(true, |at| at.elapsed() >= PERSIST_FLUSH_INTERVAL);
+        if !due {
+            return;
+        }
+        let mut bytes = Vec::with_capacity(8 + data.len());
+        bytes.extend_from_slice(&base_offset.to_le_bytes());
+        bytes.extend_from_slice(data.as_bytes());
+        if atomic_write(&self.path, &bytes).is_ok() {
+            self.last_flush = Some(Instant::now());
+            self.dirty = false;
+        }
+    }
 }
 
 impl PtyOutputBuffer {
     fn append(&mut self, data: &str) {
         self.data.push_str(data);
-        if self.data.len() <= MAX_SCROLLBACK_BYTES {
-            return;
+        if self.data.len() > MAX_SCROLLBACK_BYTES {
+            let trim_to = self.data.len() - MAX_SCROLLBACK_BYTES;
+            let boundary = boundary_at_or_after(&self.data, trim_to);
+            self.data.drain(..boundary);
+            self.base_offset += boundary as u64;
         }
 
-        let trim_to = self.data.len() - MAX_SCROLLBACK_BYTES;
-        let boundary = boundary_at_or_after(&self.data, trim_to);
-        self.data.drain(..boundary);
-        self.base_offset += boundary as u64;
+        let base = self.base_offset;
+        if let Some(handle) = self.persist.as_mut() {
+            handle.dirty = true;
+            handle.maybe_flush(base, &self.data);
+        }
     }
 
     fn snapshot(&self) -> String {
@@ -113,6 +203,29 @@ impl PtyManager {
     pub fn new() -> Self {
         Self {
             ptys: Mutex::new(HashMap::new()),
+            persist_dir: None,
+        }
+    }
+
+    /// A manager that checkpoints sessions to the default per-user data dir so
+    /// they survive a daemon restart. Used by the daemon (the persistent PTY
+    /// owner). Falls back to no persistence if the data dir can't be created.
+    pub fn persistent() -> Self {
+        let persist_dir = default_persist_dir().and_then(|dir| {
+            fs::create_dir_all(&dir).ok().map(|_| dir)
+        });
+        Self {
+            ptys: Mutex::new(HashMap::new()),
+            persist_dir,
+        }
+    }
+
+    #[cfg(test)]
+    fn with_persistence_dir(dir: PathBuf) -> Self {
+        let _ = fs::create_dir_all(&dir);
+        Self {
+            ptys: Mutex::new(HashMap::new()),
+            persist_dir: Some(dir),
         }
     }
 
@@ -123,7 +236,7 @@ impl PtyManager {
         cwd: Option<String>,
         command: Option<String>,
     ) -> Result<(String, bool), String> {
-        self.ensure_with_sink(TauriPtyEventSink { app: app.clone() }, id, cwd, command)
+        self.ensure_with_sink(TauriPtyEventSink { app: app.clone() }, id, cwd, command, None, None)
     }
 
     fn ensure_with_sink<S: PtyEventSink>(
@@ -132,17 +245,35 @@ impl PtyManager {
         id: Option<String>,
         cwd: Option<String>,
         command: Option<String>,
+        cols: Option<u16>,
+        rows: Option<u16>,
     ) -> Result<(String, bool), String> {
         let id = id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
         if self.ptys.lock().unwrap().contains_key(&id) {
             return Ok((id, true));
         }
 
+        // A persisted checkpoint for this id means the original shell died with a
+        // previous daemon; spawn a fresh shell but replay the saved scrollback
+        // above it (and prefer the saved cwd so the new shell starts where the
+        // old one was launched).
+        let persisted = self
+            .persist_dir
+            .as_ref()
+            .and_then(|dir| load_persisted(dir, &id));
+        let cwd = cwd.or_else(|| persisted.as_ref().and_then(|entry| entry.cwd.clone()));
+
         let pty_system = native_pty_system();
+        // Open the PTY at the caller's measured size when known so a freshly
+        // spawned shell prints its first prompt at the real terminal width. The
+        // old hardcoded 80x24 meant the shell printed at 80, then the frontend
+        // immediately resized it — SIGWINCH made the shell reprint, leaving a
+        // stale wrong-width prompt stacked above the live one (the duplicate-prompt
+        // corruption). Sizing at spawn removes that initial resize round-trip.
         let pair = pty_system
             .openpty(PtySize {
-                rows: 24,
-                cols: 80,
+                rows: rows.filter(|value| *value > 0).unwrap_or(24),
+                cols: cols.filter(|value| *value > 0).unwrap_or(80),
                 pixel_width: 0,
                 pixel_height: 0,
             })
@@ -175,7 +306,7 @@ impl PtyManager {
         }
 
         // Spawn the child process on the slave side
-        let mut child = pair.slave.spawn_command(cmd).map_err(|e| e.to_string())?;
+        let child = pair.slave.spawn_command(cmd).map_err(|e| e.to_string())?;
         // Drop the slave - the child process has it now
         drop(pair.slave);
 
@@ -186,17 +317,41 @@ impl PtyManager {
         // Spawn reader thread that emits events to frontend
         let event_id = id.clone();
         let event_sink = Arc::new(event_sink);
-        let output = Arc::new(Mutex::new(PtyOutputBuffer::default()));
+        let mut initial_buffer = PtyOutputBuffer::default();
+        if let Some(entry) = &persisted {
+            initial_buffer.base_offset = entry.base_offset;
+            initial_buffer.data = entry.data.clone();
+        }
+        if let Some(dir) = &self.persist_dir {
+            initial_buffer.persist = Some(PersistHandle::new(scrollback_path(dir, &id)));
+            write_session_meta(dir, &id, cwd.as_deref(), &command_label);
+        }
+        // Replay marker + checkpoint the seeded content immediately so the very
+        // first post-restore frame already includes the restored scrollback.
+        if persisted.is_some() {
+            initial_buffer.append(RESTORE_BANNER);
+        }
+        let output = Arc::new(Mutex::new(initial_buffer));
         let output_reader = output.clone();
         let subscribers: Arc<Mutex<Vec<PtySubscriber>>> = Arc::new(Mutex::new(Vec::new()));
         let subscribers_reader = subscribers.clone();
+        let reader_stop = Arc::new(AtomicBool::new(false));
+        let reader_stop_thread = reader_stop.clone();
 
-        std::thread::spawn(move || {
+        let reader_handle = std::thread::spawn(move || {
             let mut buf = [0u8; 4096];
             loop {
+                if reader_stop_thread.load(Ordering::Relaxed) {
+                    break;
+                }
                 match reader.read(&mut buf) {
                     Ok(0) => break, // EOF
                     Ok(n) => {
+                        // A stop requested mid-read: discard the bytes and exit so a
+                        // killed/duplicate shell can never broadcast after shutdown.
+                        if reader_stop_thread.load(Ordering::Relaxed) {
+                            break;
+                        }
                         let data = String::from_utf8_lossy(&buf[..n]).to_string();
                         append_pty_output(&output_reader, &data);
                         broadcast_pty_output(&subscribers_reader, &data);
@@ -210,10 +365,23 @@ impl PtyManager {
         });
 
         // Store the PTY entry. A concurrent renderer may have created the same
-        // stable session while this shell was launching; keep the first owner.
+        // stable session while this shell was launching; keep the first owner and
+        // fully shut down this loser (kill child + stop/join its reader) so no
+        // orphaned thread keeps emitting.
         let mut ptys = self.ptys.lock().unwrap();
         if ptys.contains_key(&id) {
-            let _ = child.kill();
+            let mut loser = PtyEntry {
+                master: pair.master,
+                writer,
+                child,
+                output,
+                subscribers,
+                initial_cwd,
+                command: command_label,
+                reader_stop,
+                reader: Some(reader_handle),
+            };
+            loser.shutdown();
             return Ok((id, true));
         }
         ptys.insert(
@@ -226,6 +394,8 @@ impl PtyManager {
                 subscribers,
                 initial_cwd,
                 command: command_label,
+                reader_stop,
+                reader: Some(reader_handle),
             },
         );
 
@@ -248,8 +418,10 @@ impl PtyManager {
         id: Option<String>,
         cwd: Option<String>,
         command: Option<String>,
+        cols: Option<u16>,
+        rows: Option<u16>,
     ) -> Result<(String, bool), String> {
-        self.ensure_with_sink(DetachedPtyEventSink, id, cwd, command)
+        self.ensure_with_sink(DetachedPtyEventSink, id, cwd, command, cols, rows)
     }
 
     #[cfg(test)]
@@ -293,11 +465,21 @@ impl PtyManager {
     }
 
     pub fn kill(&self, id: &str) -> Result<(), String> {
-        let mut ptys = self.ptys.lock().unwrap();
-        let mut entry = ptys
-            .remove(id)
-            .ok_or_else(|| format!("PTY {} not found", id))?;
-        entry.child.kill().map_err(|e| e.to_string())
+        let mut entry = {
+            let mut ptys = self.ptys.lock().unwrap();
+            ptys.remove(id)
+                .ok_or_else(|| format!("PTY {} not found", id))?
+        };
+        // Stop + join the reader thread (and kill the child) outside the manager
+        // lock, so a reader blocked in read() can't deadlock other PTY operations
+        // while we wait for it to drain to EOF.
+        entry.shutdown();
+        // An explicit close destroys the session, so drop its disk checkpoint —
+        // otherwise a killed terminal would resurrect on the next daemon start.
+        if let Some(dir) = &self.persist_dir {
+            remove_persisted(dir, id);
+        }
+        Ok(())
     }
 
     pub fn get_cwd(&self, id: &str) -> Result<String, String> {
@@ -439,6 +621,99 @@ fn truncate_trace_detail(details: &str) -> String {
     format!("{}...", &details[..boundary])
 }
 
+// ---------------------------------------------------------------------------
+// Disk persistence (restore terminal content across a daemon restart)
+// ---------------------------------------------------------------------------
+
+/// Restored scrollback + metadata for one session.
+struct PersistedSession {
+    data: String,
+    base_offset: u64,
+    cwd: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct SessionMeta {
+    #[serde(default)]
+    cwd: Option<String>,
+    #[serde(default)]
+    command: Option<String>,
+}
+
+fn default_persist_dir() -> Option<PathBuf> {
+    dirs::data_local_dir().map(|dir| dir.join("terminal-workspace").join("sessions"))
+}
+
+/// Filesystem-safe, reversible mapping from a session id to a filename stem.
+/// Session ids come from the frontend (uuids, pane paths) and can contain
+/// characters that aren't valid in a filename, so hex-encode the raw bytes.
+fn encode_id(id: &str) -> String {
+    use std::fmt::Write as _;
+    let mut out = String::with_capacity(id.len() * 2);
+    for byte in id.as_bytes() {
+        let _ = write!(out, "{byte:02x}");
+    }
+    out
+}
+
+fn scrollback_path(dir: &Path, id: &str) -> PathBuf {
+    dir.join(format!("{}.scrollback", encode_id(id)))
+}
+
+fn meta_path(dir: &Path, id: &str) -> PathBuf {
+    dir.join(format!("{}.meta.json", encode_id(id)))
+}
+
+fn atomic_write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    let tmp = path.with_extension("tmp");
+    {
+        let mut file = fs::File::create(&tmp)?;
+        file.write_all(bytes)?;
+        let _ = file.sync_all();
+    }
+    fs::rename(&tmp, path)
+}
+
+fn write_session_meta(dir: &Path, id: &str, cwd: Option<&str>, command: &str) {
+    let meta = SessionMeta {
+        cwd: cwd.map(|value| value.to_string()),
+        command: Some(command.to_string()),
+    };
+    if let Ok(json) = serde_json::to_vec(&meta) {
+        let _ = atomic_write(&meta_path(dir, id), &json);
+    }
+}
+
+/// Load a session's checkpoint. Returns `None` when there is no saved scrollback
+/// for this id (the common "fresh session" case).
+fn load_persisted(dir: &Path, id: &str) -> Option<PersistedSession> {
+    let raw = fs::read(scrollback_path(dir, id)).ok()?;
+    if raw.len() < 8 {
+        return None;
+    }
+    let mut header = [0u8; 8];
+    header.copy_from_slice(&raw[..8]);
+    let base_offset = u64::from_le_bytes(header);
+    let data = String::from_utf8_lossy(&raw[8..]).to_string();
+
+    let cwd = fs::read(meta_path(dir, id))
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<SessionMeta>(&bytes).ok())
+        .and_then(|meta| meta.cwd);
+
+    Some(PersistedSession {
+        data,
+        base_offset,
+        cwd,
+    })
+}
+
+fn remove_persisted(dir: &Path, id: &str) {
+    let _ = fs::remove_file(scrollback_path(dir, id));
+    let _ = fs::remove_file(meta_path(dir, id));
+}
+
 fn boundary_at_or_after(data: &str, index: usize) -> usize {
     if index >= data.len() {
         return data.len();
@@ -479,6 +754,66 @@ mod tests {
             matches!(write_after_kill, Err(ref error) if error.contains("not found")),
             "expected killed PTY to be removed, got {write_after_kill:?}"
         );
+    }
+
+    #[test]
+    fn kill_stops_and_joins_the_reader_thread() {
+        let app = tauri::test::mock_app();
+        let manager = PtyManager::new();
+        let id = "reader-exit-test".to_string();
+
+        manager
+            .spawn(
+                app.handle(),
+                Some(id.clone()),
+                None,
+                // `cat` with no input produces no output, so the reader thread is
+                // parked in a blocking read() — the exact case that used to leak
+                // when the entry was killed. (Matches the other tests' shell.)
+                Some("cat".to_string()),
+            )
+            .expect("spawn test PTY");
+
+        // Hold a weak ref to the reader's shared output buffer. The reader thread
+        // keeps one strong clone; if kill() failed to stop+join it, the buffer
+        // would survive entry removal.
+        let output_weak = {
+            let ptys = manager.ptys.lock().unwrap();
+            std::sync::Arc::downgrade(&ptys.get(&id).expect("entry present").output)
+        };
+        assert!(output_weak.upgrade().is_some(), "buffer live before kill");
+
+        manager.kill(&id).expect("kill test PTY");
+
+        assert_eq!(manager.active_count(), 0);
+        assert!(
+            output_weak.upgrade().is_none(),
+            "reader thread leaked: output buffer still strong-referenced after kill"
+        );
+    }
+
+    #[test]
+    fn duplicate_spawn_shuts_down_the_loser_reader() {
+        let app = tauri::test::mock_app();
+        let manager = PtyManager::new();
+        let id = "dup-stable-test".to_string();
+
+        let (first, reused_first) = manager
+            .ensure(app.handle(), Some(id.clone()), None, Some("cat".to_string()))
+            .expect("first ensure");
+        assert!(!reused_first);
+
+        // Second ensure for the same id spawns a shell, loses the insert race, and
+        // must fully shut down its loser reader (not leak it). Manager keeps one.
+        let (second, reused_second) = manager
+            .ensure(app.handle(), Some(id.clone()), None, Some("cat".to_string()))
+            .expect("second ensure");
+        assert!(reused_second);
+        assert_eq!(first, second);
+        assert_eq!(manager.active_count(), 1);
+
+        manager.kill(&id).expect("kill test PTY");
+        assert_eq!(manager.active_count(), 0);
     }
 
     #[test]
@@ -609,6 +944,76 @@ mod tests {
     }
 
     #[test]
+    fn scrollback_survives_a_simulated_daemon_restart() {
+        use std::path::PathBuf;
+
+        let dir: PathBuf = std::env::temp_dir().join(format!(
+            "tw-persist-test-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        let id = "persist-restore-test".to_string();
+
+        // First daemon: spawn a session and write content that the reader echoes
+        // back into the scrollback buffer (and, throttled, to disk).
+        {
+            let manager = super::PtyManager::with_persistence_dir(dir.clone());
+            manager
+                .ensure_detached(Some(id.clone()), None, Some("cat".to_string()), None, None)
+                .expect("spawn persistent PTY");
+            manager
+                .write(&id, "persisted-content-line\n")
+                .expect("write content");
+
+            // Wait until the content has been checkpointed to disk.
+            let scrollback = super::scrollback_path(&dir, &id);
+            let mut ok = false;
+            for _ in 0..40 {
+                if let Some(loaded) = super::load_persisted(&dir, &id) {
+                    if loaded.data.contains("persisted-content-line") {
+                        ok = true;
+                        break;
+                    }
+                }
+                std::thread::sleep(std::time::Duration::from_millis(25));
+            }
+            assert!(
+                ok,
+                "scrollback was not checkpointed to disk at {scrollback:?}"
+            );
+            // Drop the manager WITHOUT killing the session — simulates the daemon
+            // process dying while the on-disk checkpoint remains.
+        }
+
+        // Second daemon: same persistence dir, session is no longer live, so
+        // ensure must rebuild it from disk with its previous content replayed.
+        {
+            let manager = super::PtyManager::with_persistence_dir(dir.clone());
+            let (rid, reused) = manager
+                .ensure_detached(Some(id.clone()), None, Some("cat".to_string()), None, None)
+                .expect("restore persistent PTY");
+            assert_eq!(rid, id);
+            assert!(!reused, "a disk-restored session spawns a fresh shell");
+
+            let snapshot = manager.snapshot(&id).expect("snapshot restored session");
+            assert!(
+                snapshot.contains("persisted-content-line"),
+                "restored snapshot missing previous content, got {snapshot:?}"
+            );
+
+            // Explicit close removes the checkpoint so it can't resurrect.
+            manager.kill(&id).expect("kill restored session");
+            assert!(
+                super::load_persisted(&dir, &id).is_none(),
+                "kill must drop the disk checkpoint"
+            );
+        }
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn detached_sessions_are_owned_and_listed_without_tauri() {
         let manager = PtyManager::new();
         let id = "detached-session-test".to_string();
@@ -618,6 +1023,8 @@ mod tests {
                 Some(id.clone()),
                 Some("/tmp".to_string()),
                 Some("cat".to_string()),
+                None,
+                None,
             )
             .expect("spawn detached PTY");
         let (second, reused_second) = manager
@@ -625,6 +1032,8 @@ mod tests {
                 Some(id.clone()),
                 Some("/tmp".to_string()),
                 Some("cat".to_string()),
+                None,
+                None,
             )
             .expect("reuse detached PTY");
         let sessions = manager.list_sessions();

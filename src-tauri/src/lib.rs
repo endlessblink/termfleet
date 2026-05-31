@@ -1,19 +1,25 @@
 mod commands;
 pub mod daemon;
+#[cfg(target_os = "linux")]
+mod gtk_keys;
 mod native_terminal;
 mod pty;
 pub mod vt_grid;
 
+use commands::FocusedTerminalState;
 use pty::PtyManager;
 use tauri::Listener;
 use vt_grid::GridManager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let focused_terminal = FocusedTerminalState::default();
+
     tauri::Builder::default()
         .manage(PtyManager::new())
         .manage(GridManager::new())
-        .setup(|app| {
+        .manage(focused_terminal.clone())
+        .setup(move |app| {
             commands::start_daemon_input_worker();
             app.listen_any(commands::DAEMON_INPUT_EVENT, |event| {
                 commands::handle_daemon_input_event(event.payload());
@@ -21,6 +27,18 @@ pub fn run() {
             app.listen_any(commands::TERMINAL_LATENCY_TRACE_EVENT, |event| {
                 commands::handle_terminal_latency_trace_event(event.payload());
             });
+
+            // Linux: WebKitGTK eats Tab/Shift+Tab for focus-traversal before JS
+            // sees it, so route Tab to the focused terminal at the GTK layer.
+            #[cfg(target_os = "linux")]
+            {
+                use tauri::Manager;
+                if let Some(window) = app.get_webview_window("main") {
+                    if let Ok(gtk_window) = window.gtk_window() {
+                        gtk_keys::install_tab_interceptor(&gtk_window, focused_terminal.0.clone());
+                    }
+                }
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -61,6 +79,7 @@ pub fn run() {
             native_terminal::native_terminal_create,
             native_terminal::native_terminal_update,
             native_terminal::native_terminal_destroy,
+            commands::set_focused_terminal,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -9,13 +9,13 @@ import { pathTail, projectNameFor, projectRootFor, projectSessionCount } from ".
 const styles: Record<string, CSSProperties> = {
   bar: {
     height: "var(--statusbar-height)",
-    background: "linear-gradient(180deg, var(--surface-sunken), var(--surface-floor))",
+    background: "var(--surface-base)",
     color: "var(--text-secondary)",
     borderTop: "1px solid var(--border-subtle)",
     display: "flex",
     alignItems: "center",
-    paddingLeft: 8,
-    paddingRight: 8,
+    paddingLeft: 12,
+    paddingRight: 12,
     fontSize: 12,
     fontFamily: "var(--font-ui)",
     gap: 8,
@@ -40,16 +40,16 @@ const styles: Record<string, CSSProperties> = {
     display: "flex",
     alignItems: "center",
     gap: 5,
-    padding: "0 6px",
-    border: "1px solid var(--border-subtle)",
+    padding: "0 7px",
+    border: "1px solid transparent",
     borderRadius: "var(--radius-xs)",
-    background: "var(--surface-base)",
+    background: "transparent",
     color: "var(--text-secondary)",
     minWidth: 0,
   },
   chipActive: {
-    borderColor: "color-mix(in srgb, var(--accent-live) 34%, var(--border-subtle))",
-    background: "var(--surface-wash)",
+    borderColor: "transparent",
+    background: "var(--surface-selected)",
     color: "var(--text-primary)",
   },
   dot: {
@@ -106,7 +106,15 @@ export function StatusBar() {
   const statusColor = STATUS_COLORS[activeStatus];
   const tabCount = tabs.length;
   const groupCount = groups.length;
-  const terminalCount = tabs.reduce((count, tab) => count + tab.terminals.length, 0);
+  // Count only LIVE ptys. Stale/failed records linger in tab.terminals after a
+  // failed reconnect (no cleanup), so counting the raw length inflated the badge
+  // with ghost sessions. Restrict to running/reconnected = sessions a PTY backs.
+  const terminalCount = tabs.reduce(
+    (count, tab) =>
+      count +
+      tab.terminals.filter((t) => t.status === "running" || t.status === "reconnected").length,
+    0,
+  );
   const selectedProjectName = projectNameFor(activeGroupFilter, groups);
   const selectedProjectRoot = projectRootFor(activeGroupFilter, groups, activeTab) ?? projectRoot;
   const selectedProjectCount = projectSessionCount(activeGroupFilter, tabs);

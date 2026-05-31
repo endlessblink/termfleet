@@ -32,3 +32,10 @@ alacritty_terminal = "0.25"
 
 [dev-dependencies]
 tauri = { version = "2", features = ["test"] }
+
+# Linux only: we hook the GTK window's key-press-event to stop WebKitGTK from
+# eating Tab/Shift+Tab for focus-traversal before the webview's JS can see them
+# (proven: those keydowns never reach JS, so the terminal's back-tab was lost).
+# Versions pinned to what tauri 2.11 / wry 0.55 already resolve, so no new tree.
+[target.'cfg(target_os = "linux")'.dependencies]
+gtk = "0.18"

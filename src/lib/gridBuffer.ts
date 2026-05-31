@@ -22,6 +22,9 @@ export class GridBuffer {
   appCursor = false;
   appKeypad = false;
   bracketedPaste = false;
+  mouseReport = false;
+  alternateScroll = false;
+  sgrMouse = false;
   cells: GridCell[][] = [];
 
   private resize(cols: number, rows: number): void {
@@ -61,6 +64,9 @@ export class GridBuffer {
     this.appCursor = frame.appCursor;
     this.appKeypad = frame.appKeypad;
     this.bracketedPaste = frame.bracketedPaste;
+    this.mouseReport = frame.mouseReport;
+    this.alternateScroll = frame.alternateScroll;
+    this.sgrMouse = frame.sgrMouse;
 
     // The cursor bar is painted by the renderer on top of its row, so any change
     // to the cursor — vertical move, horizontal move, or show/hide — must repaint

@@ -19,6 +19,9 @@ const MODE_CURSOR_VISIBLE = 1 << 1;
 const MODE_APP_CURSOR = 1 << 2;
 const MODE_APP_KEYPAD = 1 << 3;
 const MODE_BRACKETED_PASTE = 1 << 4;
+const MODE_MOUSE_REPORT = 1 << 5;
+const MODE_ALTERNATE_SCROLL = 1 << 6;
+const MODE_SGR_MOUSE = 1 << 7;
 
 const STYLE_BOLD = 1 << 0;
 const STYLE_ITALIC = 1 << 1;
@@ -41,6 +44,9 @@ export interface DecodedFrame {
   appCursor: boolean;
   appKeypad: boolean;
   bracketedPaste: boolean;
+  mouseReport: boolean;
+  alternateScroll: boolean;
+  sgrMouse: boolean;
   dirtyRows: DecodedRow[];
 }
 
@@ -99,6 +105,9 @@ export function decodeFrame(buffer: ArrayBuffer): DecodedFrame {
     appCursor: Boolean(mode & MODE_APP_CURSOR),
     appKeypad: Boolean(mode & MODE_APP_KEYPAD),
     bracketedPaste: Boolean(mode & MODE_BRACKETED_PASTE),
+    mouseReport: Boolean(mode & MODE_MOUSE_REPORT),
+    alternateScroll: Boolean(mode & MODE_ALTERNATE_SCROLL),
+    sgrMouse: Boolean(mode & MODE_SGR_MOUSE),
     dirtyRows,
   };
 }

@@ -14,9 +14,22 @@ use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::mpsc::{self, Sender};
-use std::sync::OnceLock;
+use std::sync::{Arc, Mutex, OnceLock};
 use tauri::ipc::Channel;
 use tauri::State;
+
+/// Session id of the terminal that currently owns the keyboard (or `None`). Held
+/// in an Arc so the Linux GTK key interceptor and the `set_focused_terminal`
+/// command share one cell. See `gtk_keys` for why Tab must be handled in GTK.
+#[derive(Clone, Default)]
+pub struct FocusedTerminalState(pub Arc<Mutex<Option<String>>>);
+
+/// Frontend tells the backend which terminal owns the keyboard, so the GTK
+/// Tab-interceptor only claims Tab while a terminal is focused.
+#[tauri::command]
+pub fn set_focused_terminal(state: State<'_, FocusedTerminalState>, id: Option<String>) {
+    *state.0.lock().unwrap() = id;
+}
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -269,8 +282,16 @@ pub fn daemon_ensure_session(
     id: Option<String>,
     cwd: Option<String>,
     command: Option<String>,
+    cols: Option<u16>,
+    rows: Option<u16>,
 ) -> Result<PtyEnsureResult, String> {
-    match send_daemon_request(DaemonRequest::EnsureSession { id, cwd, command })? {
+    match send_daemon_request(DaemonRequest::EnsureSession {
+        id,
+        cwd,
+        command,
+        cols,
+        rows,
+    })? {
         DaemonResponse::EnsureSession { id, reused } => Ok(PtyEnsureResult { id, reused }),
         DaemonResponse::Error { message } => Err(message),
         response => Err(format!("Unexpected daemon response: {response:?}")),

@@ -5,6 +5,7 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::net::Shutdown;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::{UnixListener, UnixStream};
+use std::os::unix::process::CommandExt;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::sync::{
@@ -28,6 +29,13 @@ pub enum DaemonRequest {
         id: Option<String>,
         cwd: Option<String>,
         command: Option<String>,
+        // Spawn the PTY at the caller's measured size so a fresh shell prints its
+        // first prompt at the real width (no spawn-at-80-then-resize duplicate).
+        // `default` keeps older clients that omit these fields decodable.
+        #[serde(default)]
+        cols: Option<u16>,
+        #[serde(default)]
+        rows: Option<u16>,
     },
     WriteSession {
         id: String,
@@ -261,6 +269,10 @@ fn run_daemon_stdio_bridge(
         id: Some(id.clone()),
         cwd,
         command,
+        // The stdio bridge sizes the session from the controlling TTY via its
+        // resize loop; spawn at the daemon default and let that reconcile.
+        cols: None,
+        rows: None,
     })? {
         DaemonResponse::EnsureSession { .. } => {}
         DaemonResponse::Error { message } => return Err(message),
@@ -406,6 +418,13 @@ fn spawn_current_binary_as_daemon() -> Result<(), String> {
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
+        // The daemon owns PTYs independently of the UI lifecycle, so it must
+        // outlive the app process. Put it in its own process group (detached from
+        // the app's controlling terminal) so a group-directed SIGHUP/SIGINT — e.g.
+        // closing the terminal that launched the app, or Ctrl-C'ing dev — does not
+        // also tear down the daemon and every detached PTY (zellij/ssh/etc.) with
+        // it. Without this the daemon shares the app's group and dies alongside it.
+        .process_group(0)
         .spawn()
         .map(|_| ())
         .map_err(|error| error.to_string())
@@ -416,7 +435,10 @@ pub fn run_daemon_forever() -> Result<(), String> {
     prepare_socket_dir(&socket_path)?;
     remove_stale_socket(&socket_path)?;
     let listener = UnixListener::bind(&socket_path).map_err(|error| error.to_string())?;
-    let pty_manager = Arc::new(PtyManager::new());
+    // The daemon is the persistent PTY owner, so it checkpoints session
+    // scrollback to disk. If it is restarted (reboot, OOM, dev relaunch) it
+    // rebuilds each session's content from those checkpoints on reattach.
+    let pty_manager = Arc::new(PtyManager::persistent());
 
     for stream in listener.incoming() {
         match stream {
@@ -564,8 +586,14 @@ fn handle_daemon_request(
 ) -> Result<(), String> {
     let response = match request {
         DaemonRequest::Status => DaemonResponse::Status(external_daemon_status(socket_path)),
-        DaemonRequest::EnsureSession { id, cwd, command } => {
-            let (id, reused) = pty_manager.ensure_detached(id, cwd, command)?;
+        DaemonRequest::EnsureSession {
+            id,
+            cwd,
+            command,
+            cols,
+            rows,
+        } => {
+            let (id, reused) = pty_manager.ensure_detached(id, cwd, command, cols, rows)?;
             DaemonResponse::EnsureSession { id, reused }
         }
         DaemonRequest::WriteSession { id, data } => {
@@ -740,6 +768,8 @@ mod tests {
             id: Some("session-a".to_string()),
             cwd: Some("/tmp".to_string()),
             command: Some("bash".to_string()),
+            cols: Some(80),
+            rows: Some(24),
         };
         let serialized = serde_json::to_string(&ensure).expect("serialize ensure request");
         let parsed =
