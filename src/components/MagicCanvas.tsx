@@ -454,19 +454,18 @@ function CanvasNodeView({ node }: { node: CanvasNode }) {
   const linkedProject = projectForTab(linkedTab, groups);
   const terminalRoot = node.terminalCwd ?? linkedTab?.initialCwd;
   const terminalTabId = linkedTab?.id ?? `canvas-${node.id}`;
-  // The map node MUST NOT reuse the split pane's activePaneId. Terminal.tsx
-  // derives runtimeSessionId = `terminal-${tabId}-${paneId}`, so a shared paneId
-  // makes the map node and the split pane mint the SAME session id — both then
-  // ensure/resize the same PTY, producing the "reconnected" flapping, competing
-  // resizes, and what looks like a duplicate zellij. Give the node its own stable
-  // paneId; attach to the live PTY via attachToPtyId instead (so it still shows
-  // the same running session, it just doesn't spawn/own a colliding one).
-  const terminalPaneId = node.id;
-  // Resolve the live PTY id from the tab's active pane (for attach only), falling
-  // back to the persisted node pty or the tab's first terminal.
-  const linkedPaneTerminalId = linkedTab?.terminals.find(
-    (terminal) => terminal.paneId === linkedTab.activePaneId,
-  )?.id;
+  // The map node MUST share the tab's active pane identity. Terminal.tsx derives
+  // runtimeSessionId = `terminal-${tabId}-${paneId}`, so the map node and the split
+  // pane only attach to the SAME daemon PTY when they agree on this paneId. The map
+  // and split views are mutually exclusive (workspaceMode is canvas xor split, and
+  // WorkspaceSurface mounts only one), so they never compete over the session at the
+  // same time — sharing the id is exactly what lets switching between map and split
+  // reattach to the live shell instead of minting a fresh one (the terminal-reset
+  // regression). `?? node.id` only applies before any pane exists.
+  const terminalPaneId = linkedTab?.activePaneId ?? node.id;
+  // Resolve the live PTY id for this shared pane (for attach only), falling back to
+  // the persisted node pty or the tab's first terminal.
+  const linkedPaneTerminalId = linkedTab?.terminals.find((terminal) => terminal.paneId === terminalPaneId)?.id;
   const linkedTerminalId = linkedPaneTerminalId ?? node.terminalPtyId ?? linkedTab?.terminals[0]?.id;
   // Native VTE is disabled app-wide (see useNativeTerminalPane.wantsNativeRenderer):
   // the GTK overlay could not live on the zoom/pan canvas, which is why map nodes

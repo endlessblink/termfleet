@@ -107,7 +107,8 @@ const checks = [
     ok: ptyBackend.includes("if self.ptys.lock().unwrap().contains_key(&id)") &&
       ptyBackend.includes("return Ok((id, true));") &&
       ptyBackend.includes("if ptys.contains_key(&id)") &&
-      ptyBackend.includes("let _ = child.kill();"),
+      ptyBackend.includes("loser.shutdown();") &&
+      ptyBackend.includes("let _ = self.child.kill();"),
     message: "Backend PTY spawn must reuse existing stable session ids, including concurrent attach races.",
   },
   {
