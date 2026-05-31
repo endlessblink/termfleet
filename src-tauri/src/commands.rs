@@ -428,6 +428,7 @@ pub fn grid_attach(
 ) -> Result<(), String> {
     let cols = cols.filter(|value| *value > 0).unwrap_or(DEFAULT_COLS);
     let rows = rows.filter(|value| *value > 0).unwrap_or(DEFAULT_ROWS);
+    crate::daemon::trace_pty("grid.attach", format!("id={id} cols={cols} rows={rows}"));
     grids.attach(&id, cols, rows)
 }
 
@@ -448,6 +449,7 @@ pub fn grid_resize(
     cols: usize,
     rows: usize,
 ) -> Result<(), String> {
+    crate::daemon::trace_pty("grid.resize", format!("id={id} cols={cols} rows={rows}"));
     grids.resize(&id, cols, rows)
 }
 

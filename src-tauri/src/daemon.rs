@@ -139,7 +139,7 @@ pub fn daemon_ensure_running() -> DaemonStatus {
     )
 }
 
-fn trace_pty(label: &str, details: impl AsRef<str>) {
+pub fn trace_pty(label: &str, details: impl AsRef<str>) {
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_millis())
@@ -593,7 +593,15 @@ fn handle_daemon_request(
             cols,
             rows,
         } => {
+            trace_pty(
+                "daemon.ensure.receive",
+                format!("id={id:?} cols={cols:?} rows={rows:?}"),
+            );
             let (id, reused) = pty_manager.ensure_detached(id, cwd, command, cols, rows)?;
+            trace_pty(
+                "daemon.ensure.done",
+                format!("id={id} reused={reused} cols={cols:?} rows={rows:?}"),
+            );
             DaemonResponse::EnsureSession { id, reused }
         }
         DaemonRequest::WriteSession { id, data } => {
@@ -609,6 +617,10 @@ fn handle_daemon_request(
             return handle_daemon_input_stream(stream, pty_manager, &id, &[]);
         }
         DaemonRequest::ResizeSession { id, cols, rows } => {
+            trace_pty(
+                "daemon.resize.receive",
+                format!("id={id} cols={cols} rows={rows}"),
+            );
             pty_manager.resize(&id, cols, rows)?;
             DaemonResponse::ResizeSession { ok: true }
         }
