@@ -1,10 +1,6 @@
 mod commands;
 pub mod daemon;
-#[cfg(all(target_os = "linux", feature = "native-vte"))]
-mod native_gtk_pane;
 mod native_terminal;
-#[cfg(all(target_os = "linux", feature = "native-vte"))]
-mod native_vte;
 mod pty;
 pub mod vt_grid;
 

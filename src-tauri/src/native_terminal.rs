@@ -89,8 +89,6 @@ struct NativeTerminalHandle {
     _session_id: String,
     _window_label: String,
     _readiness_phase: NativeTerminalReadinessPhase,
-    #[cfg(all(target_os = "linux", feature = "native-vte"))]
-    native_pane: Option<crate::native_gtk_pane::NativeGtkPane>,
     bounds: NativeTerminalBounds,
     visible: bool,
     focused: bool,
@@ -236,7 +234,7 @@ fn native_vte_reason(readiness_phase: &NativeTerminalReadinessPhase) -> String {
             "native VTE runtime exists, but vte_terminal_new could not be resolved from libvte-2.91.so.0"
         }
         NativeTerminalReadinessPhase::BackendNotCompiled => {
-            "native VTE system dependencies are present, but rebuild with --features native-vte to link the VTE backend"
+            "native VTE is retired; the desktop terminal uses the Canvas2D renderer, so no GTK/VTE backend is linked"
         }
         NativeTerminalReadinessPhase::EmbeddingNotReady => {
             "native VTE backend is linked, but GTK child-widget embedding is not wired to Tauri panes yet"
@@ -249,53 +247,27 @@ fn native_vte_reason(readiness_phase: &NativeTerminalReadinessPhase) -> String {
     .to_string()
 }
 
-#[cfg(all(target_os = "linux", feature = "native-vte"))]
-fn native_vte_backend_compiled() -> bool {
-    crate::native_vte::backend_compiled()
-}
-
-#[cfg(not(all(target_os = "linux", feature = "native-vte")))]
+// Native VTE/GTK embedding is retired (see CLAUDE.md): the GTK-over-WebKitGTK
+// overlay was a dead end superseded by the Canvas2D renderer. These probes now
+// always report "not compiled/ready" so the capability surface stays honest
+// without linking any GTK/VTE backend.
 fn native_vte_backend_compiled() -> bool {
     false
 }
 
-#[cfg(all(target_os = "linux", feature = "native-vte"))]
-fn native_vte_runtime_symbols_available() -> bool {
-    crate::native_vte::runtime_symbols_available()
-}
-
-#[cfg(not(all(target_os = "linux", feature = "native-vte")))]
 fn native_vte_runtime_symbols_available() -> bool {
     false
 }
 
-#[cfg(all(target_os = "linux", feature = "native-vte"))]
-fn native_vte_direct_pty_ready() -> bool {
-    crate::native_vte::direct_pty_symbols_available()
-}
-
-#[cfg(not(all(target_os = "linux", feature = "native-vte")))]
 fn native_vte_direct_pty_ready() -> bool {
     false
 }
 
-#[cfg(all(target_os = "linux", feature = "native-vte"))]
-fn native_gtk_embedding_probe_compiled() -> bool {
-    crate::native_gtk_pane::embedding_compiled()
-}
-
-#[cfg(not(all(target_os = "linux", feature = "native-vte")))]
 fn native_gtk_embedding_probe_compiled() -> bool {
     false
 }
 
 fn native_vte_embedding_ready() -> bool {
-    #[cfg(all(target_os = "linux", feature = "native-vte"))]
-    {
-        return crate::native_vte::runtime_symbols_available();
-    }
-
-    #[allow(unreachable_code)]
     false
 }
 
@@ -349,9 +321,6 @@ fn native_terminal_create_inner(
         window_label, request.tab_id, request.pane_id
     );
 
-    #[cfg(all(target_os = "linux", feature = "native-vte"))]
-    let native_pane = attach_native_pane(window, &request, &handle)?;
-    #[cfg(not(all(target_os = "linux", feature = "native-vte")))]
     attach_native_pane(window, &request, &handle)?;
 
     native_terminals()
@@ -364,8 +333,6 @@ fn native_terminal_create_inner(
                 _session_id: request.session_id,
                 _window_label: window_label,
                 _readiness_phase: capabilities.readiness_phase.clone(),
-                #[cfg(all(target_os = "linux", feature = "native-vte"))]
-                native_pane,
                 bounds: request.bounds,
                 visible: true,
                 focused: true,
@@ -381,18 +348,6 @@ fn native_terminal_create_inner(
     })
 }
 
-#[cfg(all(target_os = "linux", feature = "native-vte"))]
-fn attach_native_pane(
-    window: Option<&tauri::WebviewWindow>,
-    request: &NativeTerminalCreateRequest,
-    handle: &str,
-) -> Result<Option<crate::native_gtk_pane::NativeGtkPane>, String> {
-    let window =
-        window.ok_or_else(|| "native terminal create requires a Tauri window".to_string())?;
-    crate::native_gtk_pane::attach(window, request, handle).map(Some)
-}
-
-#[cfg(not(all(target_os = "linux", feature = "native-vte")))]
 fn attach_native_pane(
     _window: Option<&tauri::WebviewWindow>,
     _request: &NativeTerminalCreateRequest,
@@ -428,36 +383,15 @@ pub fn native_terminal_update(request: NativeTerminalUpdateRequest) -> Result<()
     terminal.bounds = request.bounds;
     terminal.visible = request.visible;
     terminal.focused = request.focused;
-    #[cfg(all(target_os = "linux", feature = "native-vte"))]
-    if let Some(native_pane) = terminal.native_pane.as_ref() {
-        crate::native_gtk_pane::update(
-            native_pane,
-            &terminal.bounds,
-            terminal.visible,
-            terminal.focused,
-        );
-    }
     Ok(())
 }
 
 #[tauri::command]
 pub fn native_terminal_destroy(handle: String) -> Result<(), String> {
-    #[cfg(all(target_os = "linux", feature = "native-vte"))]
-    let removed = native_terminals()
-        .lock()
-        .map_err(|error| error.to_string())?
-        .remove(&handle);
-    #[cfg(not(all(target_os = "linux", feature = "native-vte")))]
     native_terminals()
         .lock()
         .map_err(|error| error.to_string())?
         .remove(&handle);
-    #[cfg(all(target_os = "linux", feature = "native-vte"))]
-    if let Some(terminal) = removed {
-        if let Some(native_pane) = terminal.native_pane {
-            crate::native_gtk_pane::destroy(native_pane);
-        }
-    }
     Ok(())
 }
 
@@ -467,18 +401,12 @@ mod tests {
 
     #[test]
     fn native_terminal_capability_is_explicitly_gated() {
+        // Native VTE is retired: the capability surface must always report the
+        // backend as unavailable / not embeddable (no GTK/VTE is ever linked).
         let capabilities = native_terminal_capabilities();
-        #[cfg(all(target_os = "linux", feature = "native-vte"))]
-        assert!(capabilities.available);
-        #[cfg(not(all(target_os = "linux", feature = "native-vte")))]
         assert!(!capabilities.available);
-        #[cfg(all(target_os = "linux", feature = "native-vte"))]
-        assert!(capabilities.supports_embedding);
-        #[cfg(not(all(target_os = "linux", feature = "native-vte")))]
         assert!(!capabilities.supports_embedding);
         assert!(!capabilities.reason.is_empty());
-        #[cfg(not(all(target_os = "linux", feature = "native-vte")))]
-        assert!(!capabilities.available);
         #[cfg(target_os = "linux")]
         assert!(capabilities
             .required_packages

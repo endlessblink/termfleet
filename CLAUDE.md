@@ -24,14 +24,19 @@ use them rather than raw `tauri dev`.
 
 ```bash
 npm install
-./run-native-vte-dev.sh        # = npm run tauri:dev:native-vte — default local dev
+./run-native-vte-dev.sh        # = npm run tauri:dev — default local dev (Canvas2D terminal)
 npm run build                  # frontend only: tsc && vite build
 npm run review                 # browser-only preview on http://127.0.0.1:5177
 ```
 
+The retired native GTK/VTE build feature is gone: there is no `--features
+native-vte` anymore and the desktop terminal is always the Canvas2D renderer.
+The `run-native-vte-dev.sh` launcher name is kept for muscle memory but now
+builds the default (canvas) target.
+
 Rust-only compile check (non-interactive, no display needed):
 ```bash
-cd src-tauri && CARGO_BUILD_JOBS=1 cargo check --features native-vte
+cd src-tauri && CARGO_BUILD_JOBS=1 cargo check
 ```
 
 `run-dev.sh` / `terminal-workspace-dev` clear stale Vite + Tauri/daemon processes
@@ -40,16 +45,13 @@ Reset persisted layout/theme from the command bar with `Reset layout`.
 
 ## Verification scripts
 
-Verifiers force the native renderer + split mode via `VITE_*` env overrides
-(`VITE_TERMINAL_RENDERER_MODE=native-vte`, `VITE_WORKSPACE_MODE=split`,
+Verifiers force the canvas renderer + split mode via `VITE_*` env overrides
+(`VITE_TERMINAL_RENDERER_MODE=canvas2d`, `VITE_WORKSPACE_MODE=split`,
 `VITE_WORKSPACE_RESET_STATE=1`) so persisted localStorage can't silently turn
 release evidence into an xterm/map smoke. Prefer these over ad-hoc checks.
 
-- `npm run verify:native-vte-release-runtime` — release native VTE attach/input/split (strongest proof)
-- `npm run verify:native-vte-runtime` — dev native VTE attach/input
-- `npm run verify:native-vte-lifecycle` — attach/destroy/reattach across map/split/resize
-- `npm run verify:native-vte-restart-reconnect` — daemon survives app kill, session reattaches
-- `npm run verify:native-vte-pixel-latency` — external X11 key-to-glyph gate (p95 ≤ 25ms)
+- `npm run verify:canvas-live` — live desktop canvas attach/input/reflow + real TUIs (vim/htop/tmux), strongest end-to-end proof
+- `npm run verify:canvas-all` — Playwright pixel checks (renderer, grid-diff, keymap, resize, selection, box-glyph)
 - `npm run verify:daemon-latency` — backend-only daemon/PTY latency (p95 ~1ms)
 - `npm run verify:standalone-daemon` — daemon-owned PTY restart/reattach smoke
 - `npm run verify:map-terminals`, `verify:terminal-rendering`, `verify:typography` — source-contract checks
@@ -65,7 +67,6 @@ Frontend (`src/`):
 - `components/WorkbenchHeader.tsx` — top command/context bar + command menu
 - `components/SplitPane.tsx`, `WorkbenchSidebar.tsx`, `DockRail.tsx`, `StatusBar.tsx`, `FileExplorer.tsx`
 - `hooks/usePty.ts` — PTY transport (browser | tauri | daemon); input via one-way event → Rust worker → persistent Unix stream
-- `hooks/useNativeTerminalPane.ts` — native GTK/VTE pane attach/update/destroy + bounds sync
 - `stores/workspace.ts` — Zustand store; tabs, splits, canvas nodes, persistence, renderer/workspace mode
 - `lib/types.ts`, `lib/terminalLatencyTrace.ts`
 
@@ -73,8 +74,7 @@ Backend (`src-tauri/src/`):
 - `pty.rs` — `PtyManager`, bounded scrollback with monotonic byte offsets
 - `daemon.rs` — user-local Unix-socket daemon: owns detached PTYs, stdio bridge, input streams
 - `commands.rs` — Tauri command surface (daemon_*, pty_*, fs_*) + daemon input worker
-- `native_terminal.rs` — native pane capability gating, create/update/destroy, readiness phases
-- `native_gtk_pane.rs` — feature-gated GTK overlay embedding the runtime-loaded VTE widget
+- `native_terminal.rs` — legacy capability probe; always reports the native pane as unavailable (retired, no GTK/VTE linked)
 
 Key docs in `docs/`: `terminal-cockpit-design-contract.md`, `native-terminal-pane-architecture.md`,
 `recoverable-terminal-architecture.md`, `terminal-transport-failure-recovery.md`, `visual-qa-review.md`.

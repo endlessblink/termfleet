@@ -8,7 +8,6 @@ default-run = "terminal-workspace"
 
 [features]
 default = []
-native-vte = ["dep:gtk", "dep:webkit2gtk"]
 
 [lib]
 name = "terminal_workspace_lib"
@@ -23,8 +22,6 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = [] }
-gtk = { version = "0.18.2", optional = true }
-webkit2gtk = { version = "2.0.2", optional = true }
 portable-pty = "0.8"
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }

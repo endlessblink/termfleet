@@ -14,7 +14,7 @@ kill_if_running() {
 }
 
 cd "$APP_DIR"
-echo "Starting Terminal Workspace (native-vte Tauri dev mode)..."
+echo "Starting Terminal Workspace (Canvas2D terminal, Tauri dev mode)..."
 
 export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-1}"
 export CARGO_PROFILE_DEV_DEBUG="${CARGO_PROFILE_DEV_DEBUG:-0}"
@@ -27,4 +27,4 @@ kill_if_running "terminal-workspace-daemon"
 kill_if_running "$APP_DIR/src-tauri/target/debug/terminal-workspace"
 kill_if_running "target/debug/terminal-workspace"
 
-exec npm run tauri -- dev --features native-vte
+exec npm run tauri -- dev

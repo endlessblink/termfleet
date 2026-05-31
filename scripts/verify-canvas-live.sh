@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # Live desktop verification of the headless-VT + Canvas2D renderer (TC-017).
 #
-# Unlike the native-vte verifiers (which force the retired GTK path), this drives
-# the PRODUCTION canvas renderer: VITE_TERMINAL_RENDERER_MODE=canvas2d so
+# Drives the PRODUCTION canvas renderer: VITE_TERMINAL_RENDERER_MODE=canvas2d so
 # Terminal.tsx routes to <TerminalCanvas> in the live Tauri app. It proves the
 # goal criteria with screenshots: fills its pane, reflows on resize, renders live,
 # and survives real TUIs (vim/htop).
@@ -129,7 +128,7 @@ timeout "$APP_BUDGET" env \
   VITE_TERMINAL_RENDERER_MODE=canvas2d \
   VITE_WORKSPACE_MODE=split \
   VITE_WORKSPACE_RESET_STATE=1 \
-  npm run tauri -- dev --features native-vte >"$LOG_FILE" 2>&1 </dev/null || true
+  npm run tauri -- dev >"$LOG_FILE" 2>&1 </dev/null || true
 
 wait "$DRIVER_PID" 2>/dev/null || true
 

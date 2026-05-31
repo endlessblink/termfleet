@@ -1,5 +1,9 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
+
+// Optional read: returns "" when the file is absent so the verifier can run in
+// a standalone checkout (e.g. the parent-monorepo DESIGN.md may not be present).
+const readOptional = (path) => (existsSync(path) ? readFileSync(path, "utf8") : "");
 
 const root = process.cwd();
 const magicCanvas = readFileSync(join(root, "src/components/MagicCanvas.tsx"), "utf8");
@@ -15,7 +19,6 @@ const cargoBuild = readFileSync(join(root, "src-tauri/build.rs"), "utf8");
 const ptyBackend = readFileSync(join(root, "src-tauri/src/pty.rs"), "utf8");
 const ptyCommands = readFileSync(join(root, "src-tauri/src/commands.rs"), "utf8");
 const nativeTerminalBackend = readFileSync(join(root, "src-tauri/src/native_terminal.rs"), "utf8");
-const nativeVteBackend = readFileSync(join(root, "src-tauri/src/native_vte.rs"), "utf8");
 const daemonBackend = readFileSync(join(root, "src-tauri/src/daemon.rs"), "utf8");
 const daemonBin = readFileSync(join(root, "src-tauri/src/bin/terminal-workspace-daemon.rs"), "utf8");
 const tauriLib = readFileSync(join(root, "src-tauri/src/lib.rs"), "utf8");
@@ -25,7 +28,7 @@ const standaloneDaemonSmoke = readFileSync(join(root, "scripts/verify-standalone
 const visualEvidenceSmoke = readFileSync(join(root, "scripts/verify-visual-evidence.sh"), "utf8");
 const visualQaReview = readFileSync(join(root, "docs/visual-qa-review.md"), "utf8");
 const app = readFileSync(join(root, "src/App.tsx"), "utf8");
-const design = readFileSync(join(root, "../DESIGN.md"), "utf8");
+const design = readOptional(join(root, "../DESIGN.md"));
 
 const checks = [
   {
@@ -86,7 +89,8 @@ const checks = [
     message: "App must reconcile persisted terminal map nodes at startup.",
   },
   {
-    ok: /The map is a live workspace/.test(design) && /Map terminal nodes render live TerminalComponent panes/.test(design),
+    ok: design === "" ||
+      (/The map is a live workspace/.test(design) && /Map terminal nodes render live TerminalComponent panes/.test(design)),
     message: "DESIGN.md must document live terminal map behavior.",
   },
   {
@@ -98,17 +102,6 @@ const checks = [
       /runtimeSessionId,/.test(terminalComponent) &&
       /let id = attachToPtyId \?\? runtimeSessionId \?\? crypto\.randomUUID\(\);/.test(usePty),
     message: "Terminal panes must use stable tab/pane runtime session ids instead of random mount ids.",
-  },
-  {
-    ok: /enabled: isRuntimeVisible && !standalone,/.test(terminalComponent),
-    message: "Canvas/map (standalone) terminals must NOT attach the native VTE pane; the GTK overlay cannot scale or clip with the pan/zoom canvas.",
-  },
-  {
-    ok: /const shouldUseNativeSplitForInteraction =[\s\S]*isDesktopNativeRuntime\(\)[\s\S]*terminalRendererMode !== "web-xterm"[\s\S]*Boolean\(linkedTab\);/.test(magicCanvas) &&
-      /node\.type === "terminal" && shouldUseNativeSplitForInteraction/.test(magicCanvas) &&
-      /Open terminal/.test(magicCanvas) &&
-      /openLinkedTerminal\(\);/.test(magicCanvas),
-    message: "Desktop native map terminal nodes must be activation cards that route interaction to linked split/native panes instead of active xterm inputs.",
   },
   {
     ok: ptyBackend.includes("if self.ptys.lock().unwrap().contains_key(&id)") &&
@@ -283,19 +276,15 @@ const checks = [
       /runtime_symbols_available/.test(nativeTerminalBackend) &&
       /backend_compiled/.test(nativeTerminalBackend) &&
       /libvte-2\.91-0/.test(nativeTerminalBackend) &&
-      /"verify:native-terminal-deps": "scripts\/verify-native-terminal-deps\.sh"/.test(packageJson) &&
-      /"verify:native-vte-build": "scripts\/verify-native-vte-build\.sh"/.test(packageJson) &&
-      /"verify:native-vte-runtime": "scripts\/verify-native-vte-runtime\.sh"/.test(packageJson) &&
-      /"verify:native-vte-release-runtime": "NATIVE_VTE_RUNTIME_MODE=release scripts\/verify-native-vte-runtime\.sh"/.test(packageJson) &&
-      /"tauri:dev:native-vte": "CARGO_BUILD_JOBS=\$\{CARGO_BUILD_JOBS:-1\} CARGO_PROFILE_DEV_DEBUG=\$\{CARGO_PROFILE_DEV_DEBUG:-0\} tauri dev --features native-vte"/.test(packageJson) &&
-      /native-vte = \["dep:gtk", "dep:webkit2gtk"\]/.test(cargoToml) &&
-      /crate-type = \["rlib"\]/.test(cargoToml) &&
-      /gtk = \{ version = "0\.18\.2", optional = true \}/.test(cargoToml) &&
-      /webkit2gtk = \{ version = "2\.0\.2", optional = true \}/.test(cargoToml) &&
-      /dlopen/.test(nativeVteBackend) &&
-      /dlsym/.test(nativeVteBackend) &&
-      /vte_terminal_new/.test(nativeVteBackend),
-    message: "Native terminal pane migration must expose a persisted renderer preference plus Tauri capability/create/update/destroy boundary.",
+      // Native VTE/GTK is retired (TC-017): the capability surface stays as an
+      // honest "unavailable" probe, but no `native-vte` cargo feature, GTK/WebKit
+      // deps, or native-vte verifier scripts may exist anymore.
+      /tauri:dev/.test(packageJson) &&
+      !/native-vte/.test(packageJson) &&
+      !/native-vte/.test(cargoToml) &&
+      !/dep:gtk|dep:webkit2gtk/.test(cargoToml) &&
+      /crate-type = \["rlib"\]/.test(cargoToml),
+    message: "Native terminal capability surface must remain, but the retired native-vte feature/deps/scripts must be fully removed.",
   },
   {
     ok: /"verify:standalone-daemon": "scripts\/verify-standalone-daemon-smoke\.sh"/.test(packageJson) &&
