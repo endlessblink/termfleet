@@ -31,7 +31,6 @@ const GROUP_COLORS = [
 const DEFAULT_TAB_EMOJI = "\u2B1B";
 const DEFAULT_TAB_TITLE = "Terminal";
 const DEFAULT_TAB_COLOR = "#7aa2f7";
-export const WORKSPACE_STORAGE_KEY = "terminal-workspace.v1";
 
 function configuredTerminalRendererMode(): WorkspaceUiState["terminalRendererMode"] | null {
   const mode = import.meta.env.VITE_TERMINAL_RENDERER_MODE;
@@ -55,6 +54,16 @@ function configuredWorkspaceResetState(): boolean {
 const FORCED_TERMINAL_RENDERER_MODE = configuredTerminalRendererMode();
 const FORCED_WORKSPACE_MODE = configuredWorkspaceMode();
 const FORCE_WORKSPACE_RESET_STATE = configuredWorkspaceResetState();
+
+// Reset/verify runs (VITE_WORKSPACE_RESET_STATE=1) clear and re-persist the
+// workspace on load. They run on the SAME origin as the real app, so if they
+// shared this key a verify run would wipe the user's actual tabs/projects.
+// Namespace the key under reset mode so test runs only ever touch a throwaway
+// key and can never read, clear, or overwrite production state.
+export const WORKSPACE_STORAGE_KEY = FORCE_WORKSPACE_RESET_STATE
+  ? "terminal-workspace.test"
+  : "terminal-workspace.v1";
+
 const DEFAULT_UI_STATE: WorkspaceUiState = {
   workspaceMode: FORCED_WORKSPACE_MODE ?? "split",
   terminalRendererMode: FORCED_TERMINAL_RENDERER_MODE ?? "auto",
@@ -123,9 +132,15 @@ interface WorkspaceState {
   liveCwds: Record<string, string>;
   workspaceUiState: WorkspaceUiState;
   canvasState: CanvasState;
+  // True while the durable on-disk layout is being loaded (only when
+  // localStorage was empty/reset). Terminals must not mount until this clears,
+  // or they would spawn against the default tab's id and then be swapped out.
+  hydrating: boolean;
 
   // Tab actions
   addTab: (tab?: Partial<Tab>) => void;
+  /** Replace the restored tab set after async disk-hydration + orphan reconcile. */
+  hydrateRestoredWorkspace: (payload: { tabs: Tab[]; activeTabId: string | null }) => void;
   removeTab: (id: string) => void;
   closeTerminalSession: (id: string) => Promise<void>;
   setActiveTab: (id: string) => void;
@@ -336,6 +351,113 @@ const restoredTabs =
     : [initialTab];
 const restoredActiveTabId =
   restoredTabs.find((tab) => tab.id === persisted.activeTabId)?.id ?? restoredTabs[0].id;
+
+function isTauriRuntime() {
+  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+}
+
+// Only gate the first render (to load the durable disk layout) when localStorage
+// gave us nothing AND we're in the desktop app. The happy path (localStorage had
+// tabs) is untouched, so there is no flash or double-spawn there.
+const needsDiskHydration =
+  isTauriRuntime() &&
+  !FORCE_WORKSPACE_RESET_STATE &&
+  (!persisted.tabs || persisted.tabs.length === 0);
+
+interface PersistedSessionSummary {
+  id: string;
+  cwd: string | null;
+  scrollbackBytes: number;
+}
+
+// Sessions below this are just a fresh prompt / empty shell — not worth recovering.
+const ORPHAN_MIN_BYTES = 256;
+
+/** Build a single-pane tab whose derived session id (`terminal-<tabId>-<paneId>`)
+ *  matches an orphaned on-disk session, so mounting it replays that content. */
+function tabFromOrphanedSession(session: PersistedSessionSummary): Tab | null {
+  const prefix = "terminal-";
+  if (!session.id.startsWith(prefix)) return null;
+  const body = session.id.slice(prefix.length);
+  const tabId = body.slice(0, 36);
+  const paneId = body.slice(37);
+  // Skip map-node sessions — the same tab's real pane carries the content.
+  if (!paneId || paneId.startsWith("terminal-map-")) return null;
+  const cwd = session.cwd ?? undefined;
+  const title = cwd ? cwd.split("/").filter(Boolean).pop() ?? DEFAULT_TAB_TITLE : "Recovered";
+  return createDefaultTab({
+    id: tabId,
+    title,
+    initialCwd: cwd,
+    splitLayout: { id: paneId, type: "terminal" as const },
+    activePaneId: paneId,
+  });
+}
+
+/**
+ * Restore the durable workspace after mount: load the on-disk layout when
+ * localStorage was empty/reset, then reconcile any orphaned on-disk session
+ * content back into tabs. Runs once from App. Clears the `hydrating` gate.
+ */
+export async function hydrateWorkspace() {
+  const store = useWorkspaceStore.getState();
+  const clearGate = () => {
+    const s = useWorkspaceStore.getState();
+    if (s.hydrating) s.hydrateRestoredWorkspace({ tabs: s.tabs, activeTabId: s.activeTabId });
+  };
+
+  if (!isTauriRuntime() || FORCE_WORKSPACE_RESET_STATE) {
+    clearGate();
+    return;
+  }
+
+  try {
+    const { invoke } = await import("@tauri-apps/api/core");
+
+    // 1. localStorage gave us nothing → load the durable disk layout.
+    let baseTabs = store.tabs;
+    let baseActive = store.activeTabId;
+    if (store.hydrating) {
+      const raw = await invoke<string | null>("workspace_layout_load");
+      if (raw) {
+        try {
+          const disk = JSON.parse(raw) as PersistedWorkspace;
+          if (disk.tabs && disk.tabs.length > 0) {
+            baseTabs = disk.tabs.map(withRestartableTerminals);
+            baseActive = disk.activeTabId ?? baseTabs[0].id;
+          }
+        } catch (error) {
+          console.warn("Could not parse on-disk workspace layout:", error);
+        }
+      }
+    }
+
+    // 2. Reconcile orphaned content: any saved session with real scrollback whose
+    //    tab isn't present gets re-added (self-heals a wiped/never-saved layout).
+    let sessions: PersistedSessionSummary[] = [];
+    try {
+      sessions = await invoke<PersistedSessionSummary[]>("workspace_persisted_sessions");
+    } catch (error) {
+      console.warn("Could not list persisted sessions:", error);
+    }
+
+    const seen = new Set(baseTabs.map((tab) => tab.id));
+    const recovered: Tab[] = [];
+    for (const session of [...sessions].sort((a, b) => b.scrollbackBytes - a.scrollbackBytes)) {
+      if (session.scrollbackBytes < ORPHAN_MIN_BYTES) continue;
+      const tab = tabFromOrphanedSession(session);
+      if (!tab || seen.has(tab.id)) continue;
+      seen.add(tab.id);
+      recovered.push(tab);
+    }
+
+    if (!store.hydrating && recovered.length === 0) return; // happy path, nothing to do
+    store.hydrateRestoredWorkspace({ tabs: [...baseTabs, ...recovered], activeTabId: baseActive });
+  } catch (error) {
+    console.warn("Workspace hydration failed:", error);
+    clearGate();
+  }
+}
 
 /** Create a new tab in the active project, opening at the project root when one is selected. */
 export async function createNewTab() {
@@ -577,8 +699,23 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   liveCwds: {},
   workspaceUiState: normalizeWorkspaceUiState(persisted.workspaceUiState),
   canvasState: normalizeCanvasState(persisted.canvasState, restoredTabs),
+  hydrating: needsDiskHydration,
 
   // --- Tab actions ---
+
+  hydrateRestoredWorkspace: ({ tabs, activeTabId }) => {
+    set((state) => {
+      if (tabs.length === 0) return { hydrating: false };
+      const nextActive =
+        tabs.find((tab) => tab.id === activeTabId)?.id ?? tabs[0].id;
+      return {
+        tabs,
+        activeTabId: nextActive,
+        canvasState: normalizeCanvasState(state.canvasState, tabs),
+        hydrating: false,
+      };
+    });
+  },
 
   addTab: (overrides?: Partial<Tab>) => {
     const newTab = createDefaultTab(overrides);
@@ -1113,9 +1250,20 @@ function persistWorkspaceSnapshot(snapshot: PersistedWorkspace) {
     if (serialized === lastPersistedSnapshot) return;
     localStorage.setItem(WORKSPACE_STORAGE_KEY, serialized);
     lastPersistedSnapshot = serialized;
+    // Mirror to the daemon's data dir so the tab→session mapping survives a
+    // localStorage wipe (verifier RESET_STATE, dev↔release origin change). This
+    // is the durable copy; localStorage is just the fast synchronous cache.
+    mirrorWorkspaceLayoutToDisk(serialized);
   } catch (error) {
     console.warn("Could not persist workspace state:", error);
   }
+}
+
+function mirrorWorkspaceLayoutToDisk(serialized: string) {
+  if (!isTauriRuntime()) return;
+  void import("@tauri-apps/api/core")
+    .then(({ invoke }) => invoke("workspace_layout_save", { contents: serialized }))
+    .catch((error) => console.warn("Could not mirror workspace layout to disk:", error));
 }
 
 function scheduleWorkspacePersistence(snapshot: PersistedWorkspace) {
