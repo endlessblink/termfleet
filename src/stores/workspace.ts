@@ -59,7 +59,10 @@ const DEFAULT_UI_STATE: WorkspaceUiState = {
   workspaceMode: FORCED_WORKSPACE_MODE ?? "split",
   terminalRendererMode: FORCED_TERMINAL_RENDERER_MODE ?? "auto",
   fileExplorerWidth: 260,
-  fileExplorerCollapsed: false,
+  // Explorer is a toggle, not a permanent third column — terminal-first tools
+  // keep the file tree hidden until summoned. Distill pass: rail + sessions +
+  // the work surface by default; open files from the dock rail when needed.
+  fileExplorerCollapsed: true,
   canvasSidebarCollapsed: false,
   terminalSidebarCollapsed: false,
   primarySidebarCollapsed: false,
@@ -113,6 +116,7 @@ interface WorkspaceState {
   activeGroupId: string | null;
   activeGroupFilter: string | null;
   projectRoot: string | null;
+  pinnedProjects: string[];
   workspaceUiState: WorkspaceUiState;
   canvasState: CanvasState;
 
@@ -131,6 +135,8 @@ interface WorkspaceState {
   setGroupFilter: (groupId: string | null) => void;
   switchProject: (groupId: string | null) => void;
   setProjectRoot: (path: string | null, syncTerminal?: boolean) => void;
+  pinProject: (path: string) => void;
+  unpinProject: (path: string) => void;
   setActiveTerminal: (id: string | null) => void;
   addOpenFile: (file: OpenFile) => void;
   removeOpenFile: (path: string) => void;
@@ -165,6 +171,7 @@ interface PersistedWorkspace {
   activeGroupId?: string | null;
   activeGroupFilter?: string | null;
   projectRoot?: string | null;
+  pinnedProjects?: string[];
   workspaceUiState?: Partial<WorkspaceUiState>;
   canvasState?: CanvasState;
 }
@@ -558,6 +565,9 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   activeGroupId: persisted.activeGroupId ?? persisted.activeGroupFilter ?? null,
   activeGroupFilter: persisted.activeGroupFilter ?? persisted.activeGroupId ?? null,
   projectRoot: persisted.projectRoot ?? null,
+  pinnedProjects: (persisted.pinnedProjects ?? []).filter(
+    (path): path is string => typeof path === "string" && path.trim().length > 0
+  ),
   workspaceUiState: normalizeWorkspaceUiState(persisted.workspaceUiState),
   canvasState: normalizeCanvasState(persisted.canvasState, restoredTabs),
 
@@ -855,6 +865,22 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     if (path && syncTerminal) void syncActiveTerminalCwd(path);
   },
 
+  pinProject: (path: string) => {
+    const trimmed = path.trim().replace(/\/+$/, "") || path.trim();
+    if (!trimmed) return;
+    set((state) =>
+      state.pinnedProjects.includes(trimmed)
+        ? state
+        : { pinnedProjects: [...state.pinnedProjects, trimmed] }
+    );
+  },
+
+  unpinProject: (path: string) => {
+    set((state) => ({
+      pinnedProjects: state.pinnedProjects.filter((pinned) => pinned !== path),
+    }));
+  },
+
   setActiveTerminal: (id: string | null) => {
     set({ activeTerminalId: id });
   },
@@ -1108,6 +1134,7 @@ useWorkspaceStore.subscribe((state) => {
     activeGroupId: state.activeGroupId,
     activeGroupFilter: state.activeGroupFilter,
     projectRoot: state.projectRoot,
+    pinnedProjects: state.pinnedProjects,
     workspaceUiState: state.workspaceUiState,
     canvasState: state.canvasState,
   };

@@ -1,7 +1,21 @@
 import { CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { ArrowUp, CaretRight, Check, Eye, EyeSlash, Folder, FolderOpen, House, X } from "@phosphor-icons/react";
+import {
+  ArrowRight,
+  ArrowUp,
+  CaretRight,
+  Check,
+  Eye,
+  EyeSlash,
+  Folder,
+  FolderOpen,
+  House,
+  PushPin,
+  PushPinSlash,
+  X,
+} from "@phosphor-icons/react";
 import type { FileEntry } from "../lib/types";
+import { useWorkspaceStore } from "../stores/workspace";
 
 interface FolderPickerProps {
   /** Directory to open at. Falls back to the user home directory. */
@@ -28,7 +42,7 @@ const styles: Record<string, CSSProperties> = {
     display: "flex",
     flexDirection: "column",
     background: "var(--surface-raised)",
-    border: "1px solid var(--border-strong)",
+    border: "1px solid transparent",
     borderRadius: "var(--radius-md)",
     boxShadow: "var(--shadow-menu)",
     overflow: "hidden",
@@ -57,7 +71,7 @@ const styles: Record<string, CSSProperties> = {
     height: 28,
     display: "grid",
     placeItems: "center",
-    border: "1px solid var(--border-subtle)",
+    border: "1px solid transparent",
     borderRadius: "var(--radius-xs)",
     background: "var(--surface-base)",
     color: "var(--text-secondary)",
@@ -95,6 +109,75 @@ const styles: Record<string, CSSProperties> = {
     color: "var(--text-primary)",
     fontWeight: 500,
   },
+  pathRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    padding: "8px 10px",
+    borderBottom: "1px solid var(--border-subtle)",
+  },
+  pathInput: {
+    flex: 1,
+    minWidth: 0,
+    height: 28,
+    padding: "0 9px",
+    border: "1px solid transparent",
+    borderRadius: "var(--radius-xs)",
+    background: "var(--surface-sunken)",
+    color: "var(--text-primary)",
+    fontFamily: "var(--font-ui)",
+    fontSize: 12,
+    outline: "none",
+  },
+  pinnedSection: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    padding: "8px 10px",
+    borderBottom: "1px solid var(--border-subtle)",
+    overflowX: "auto",
+    scrollbarWidth: "none",
+  },
+  pinnedLabel: {
+    flexShrink: 0,
+    fontSize: 11,
+    color: "var(--text-secondary)",
+    textTransform: "uppercase",
+  },
+  pinnedChip: {
+    display: "flex",
+    alignItems: "center",
+    gap: 5,
+    flexShrink: 0,
+    height: 24,
+    padding: "0 4px 0 8px",
+    border: "1px solid transparent",
+    borderRadius: "999px",
+    background: "var(--surface-base)",
+    color: "var(--text-primary)",
+    fontFamily: "var(--font-ui)",
+    fontSize: 12,
+    cursor: "pointer",
+    maxWidth: 180,
+  },
+  pinnedChipName: {
+    minWidth: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  pinnedChipRemove: {
+    display: "grid",
+    placeItems: "center",
+    width: 16,
+    height: 16,
+    border: "none",
+    borderRadius: "999px",
+    background: "transparent",
+    color: "var(--text-secondary)",
+    cursor: "pointer",
+    flexShrink: 0,
+  },
   filter: {
     padding: "8px 10px",
     borderBottom: "1px solid var(--border-subtle)",
@@ -103,7 +186,7 @@ const styles: Record<string, CSSProperties> = {
     width: "100%",
     height: 28,
     padding: "0 9px",
-    border: "1px solid var(--border-subtle)",
+    border: "1px solid transparent",
     borderRadius: "var(--radius-xs)",
     background: "var(--surface-sunken)",
     color: "var(--text-primary)",
@@ -168,7 +251,7 @@ const styles: Record<string, CSSProperties> = {
   secondaryButton: {
     height: 30,
     padding: "0 12px",
-    border: "1px solid var(--border-subtle)",
+    border: "1px solid transparent",
     borderRadius: "var(--radius-sm)",
     background: "var(--surface-base)",
     color: "var(--text-secondary)",
@@ -182,9 +265,9 @@ const styles: Record<string, CSSProperties> = {
     display: "flex",
     alignItems: "center",
     gap: 6,
-    border: "1px solid rgba(167, 255, 0, 0.55)",
+    border: "1px solid transparent",
     borderRadius: "var(--radius-sm)",
-    background: "rgba(167, 255, 0, 0.12)",
+    background: "rgba(255, 255, 255, 0.06)",
     color: "var(--accent-live)",
     fontFamily: "var(--font-ui)",
     fontSize: 12,
@@ -192,6 +275,18 @@ const styles: Record<string, CSSProperties> = {
     cursor: "pointer",
   },
 };
+
+function basenameOf(path: string): string {
+  const cleaned = path.replace(/\/+$/, "");
+  return cleaned.split("/").filter(Boolean).pop() ?? (cleaned || "/");
+}
+
+function normalizePath(path: string): string {
+  const trimmed = path.trim();
+  if (!trimmed) return trimmed;
+  const stripped = trimmed.replace(/\/+$/, "");
+  return stripped || "/";
+}
 
 function parentOf(path: string): string {
   const segments = path.split("/").filter(Boolean);
@@ -217,7 +312,28 @@ export function FolderPicker({ initialPath, title = "Choose project folder", con
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
   const [showHidden, setShowHidden] = useState(false);
+  const [pathDraft, setPathDraft] = useState("");
   const filterRef = useRef<HTMLInputElement>(null);
+
+  const pinnedProjects = useWorkspaceStore((state) => state.pinnedProjects);
+  const pinProject = useWorkspaceStore((state) => state.pinProject);
+  const unpinProject = useWorkspaceStore((state) => state.unpinProject);
+
+  const normalizedPath = path ? normalizePath(path) : null;
+  const currentIsPinned = normalizedPath !== null && pinnedProjects.includes(normalizedPath);
+
+  const goToPath = () => {
+    const target = normalizePath(pathDraft);
+    if (!target) return;
+    setPath(target);
+    setPathDraft("");
+  };
+
+  const togglePinCurrent = () => {
+    if (!normalizedPath) return;
+    if (currentIsPinned) unpinProject(normalizedPath);
+    else pinProject(normalizedPath);
+  };
 
   // Resolve the starting directory once.
   useEffect(() => {
@@ -352,7 +468,92 @@ export function FolderPicker({ initialPath, title = "Choose project folder", con
           >
             {showHidden ? <EyeSlash size={14} /> : <Eye size={14} />}
           </button>
+          <button
+            style={{
+              ...styles.iconButton,
+              opacity: normalizedPath ? 1 : 0.4,
+              cursor: normalizedPath ? "pointer" : "default",
+              color: currentIsPinned ? "var(--accent-live)" : "var(--text-secondary)",
+            }}
+            onClick={togglePinCurrent}
+            disabled={!normalizedPath}
+            aria-label={currentIsPinned ? "Unpin this folder" : "Pin this folder"}
+            title={currentIsPinned ? "Unpin this folder" : "Pin this folder as a shortcut"}
+          >
+            {currentIsPinned ? <PushPinSlash size={14} /> : <PushPin size={14} />}
+          </button>
         </div>
+
+        <div style={styles.pathRow}>
+          <input
+            style={styles.pathInput}
+            value={pathDraft}
+            placeholder="Paste or type a full path…"
+            spellCheck={false}
+            autoCapitalize="off"
+            autoCorrect="off"
+            dir="auto"
+            onChange={(event) => setPathDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                goToPath();
+              }
+            }}
+          />
+          <button
+            style={{
+              ...styles.iconButton,
+              opacity: pathDraft.trim() ? 1 : 0.4,
+              cursor: pathDraft.trim() ? "pointer" : "default",
+            }}
+            onClick={goToPath}
+            disabled={!pathDraft.trim()}
+            aria-label="Go to pasted path"
+            title="Go to this path"
+          >
+            <ArrowRight size={14} />
+          </button>
+        </div>
+
+        {pinnedProjects.length > 0 && (
+          <div style={styles.pinnedSection}>
+            <span style={styles.pinnedLabel}>Pinned</span>
+            {pinnedProjects.map((pinned) => (
+              <span
+                key={pinned}
+                className="workspace-secondary-button"
+                style={styles.pinnedChip}
+                onClick={() => setPath(pinned)}
+                title={pinned}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    setPath(pinned);
+                  }
+                }}
+              >
+                <PushPin size={11} weight="fill" color="var(--accent-live)" />
+                <span style={styles.pinnedChipName} dir="auto">
+                  {basenameOf(pinned)}
+                </span>
+                <button
+                  style={styles.pinnedChipRemove}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    unpinProject(pinned);
+                  }}
+                  aria-label={`Unpin ${basenameOf(pinned)}`}
+                  title="Remove shortcut"
+                >
+                  <X size={11} />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
 
         <div style={styles.filter}>
           <input
