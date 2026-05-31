@@ -471,6 +471,16 @@ function CanvasNodeView({ node }: { node: CanvasNode }) {
   // Prefer the live cwd (polled from the PTY) over the initial cwd so the
   // breadcrumb tracks `cd`/`z`; falls back to the spawn cwd before the first poll.
   const liveTerminalRoot = (linkedTerminalId ? liveCwds[linkedTerminalId] : undefined) ?? terminalRoot;
+  // Title a terminal node by what it actually points at: a named project wins,
+  // otherwise the current directory's name (tracks cd/z via liveTerminalRoot).
+  // A manual rename (title differs from the default) is respected.
+  const cwdName = liveTerminalRoot?.split("/").filter(Boolean).pop();
+  const isDefaultName = (value?: string) => !value || value === "Terminal";
+  const terminalTitle =
+    linkedProject?.name ??
+    (isDefaultName(linkedTab?.title) && isDefaultName(node.title)
+      ? cwdName ?? "Terminal"
+      : linkedTab?.title ?? node.title);
   // Native VTE is disabled app-wide (see useNativeTerminalPane.wantsNativeRenderer):
   // the GTK overlay could not live on the zoom/pan canvas, which is why map nodes
   // used to fall back to a static "Open terminal" card. With xterm.js everywhere,
@@ -581,7 +591,7 @@ function CanvasNodeView({ node }: { node: CanvasNode }) {
           onDoubleClick={onRename}
         >
           <div style={styles.nodeTitle}>
-            {node.type === "terminal" && linkedProject ? linkedProject.name : linkedTab?.title ?? node.title}
+            {node.type === "terminal" ? terminalTitle : linkedTab?.title ?? node.title}
           </div>
           {node.type === "terminal" && (
             <div style={styles.nodeTitleMeta}>
