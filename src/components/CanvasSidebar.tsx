@@ -9,26 +9,24 @@ const styles: Record<string, CSSProperties> = {
     width: "var(--canvas-sidebar-width)",
     minWidth: "var(--canvas-sidebar-width)",
     height: "100%",
-    background: "linear-gradient(180deg, var(--canvas-sidebar-bg), var(--surface-sunken))",
-    borderRight: "1px solid var(--border-strong)",
+    background: "var(--surface-base)",
+    borderRight: "1px solid var(--border-subtle)",
     display: "flex",
     flexDirection: "column",
     overflow: "hidden",
     userSelect: "none",
   },
   header: {
-    height: 42,
+    minHeight: 56,
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
     gap: 8,
-    padding: "0 8px",
-    background: "linear-gradient(180deg, var(--canvas-sidebar-header-bg), var(--surface-wash))",
-    borderBottom: "1px solid var(--canvas-sidebar-border)",
+    padding: "12px 16px",
+    borderBottom: "1px solid var(--border-subtle)",
     color: "var(--text-primary)",
-    fontSize: 12,
+    fontSize: 15,
     fontWeight: 500,
-    textTransform: "uppercase",
   },
   headerTitle: {
     display: "flex",
@@ -39,7 +37,7 @@ const styles: Record<string, CSSProperties> = {
   closeButton: {
     width: 25,
     height: 24,
-    border: "1px solid var(--canvas-sidebar-border)",
+    border: "1px solid transparent",
     borderRadius: "var(--radius-sm)",
     background: "var(--surface-base)",
     color: "var(--text-secondary)",
@@ -65,23 +63,23 @@ const styles: Record<string, CSSProperties> = {
     padding: "0 5px 8px",
   },
   row: {
-    minHeight: 38,
+    minHeight: 44,
     display: "grid",
-    gridTemplateColumns: "22px minmax(0, 1fr)",
+    gridTemplateColumns: "30px minmax(0, 1fr)",
     alignItems: "center",
-    gap: 7,
-    padding: "4px 7px",
-    borderRadius: 5,
+    gap: 11,
+    padding: "8px 10px",
+    borderRadius: "var(--radius-sm)",
     cursor: "pointer",
     border: "1px solid transparent",
-    transition: "background var(--motion-fast), border-color var(--motion-fast), box-shadow var(--motion-fast)",
+    transition: "background var(--motion-fast)",
   },
   icon: {
-    width: 18,
-    height: 18,
+    width: 30,
+    height: 30,
     display: "grid",
     placeItems: "center",
-    borderRadius: 4,
+    borderRadius: 8,
     color: "var(--canvas-node-icon-fg)",
   },
   title: {
@@ -90,7 +88,7 @@ const styles: Record<string, CSSProperties> = {
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
     color: "var(--text-primary)",
-    fontSize: 13,
+    fontSize: 14,
   },
   meta: {
     minWidth: 0,
@@ -128,8 +126,8 @@ function nodeIcon(node: CanvasNode) {
   };
 }
 
-function nodeMeta(node: CanvasNode, linkedTab?: Tab) {
-  if (node.type === "terminal") return pathTail(node.terminalCwd ?? linkedTab?.initialCwd);
+function nodeMeta(node: CanvasNode, linkedTab?: Tab, liveCwd?: string) {
+  if (node.type === "terminal") return pathTail(liveCwd ?? node.terminalCwd ?? linkedTab?.initialCwd);
   if (node.type === "file") return node.filePath ?? "No file path";
   return `${Math.round(node.width)} x ${Math.round(node.height)}`;
 }
@@ -151,23 +149,36 @@ function NodeRow({
 }) {
   const icon = nodeIcon(node);
   const linkedProject = projectForTab(linkedTab, groups);
+  const liveCwds = useWorkspaceStore((s) => s.liveCwds);
+  const liveTermId =
+    linkedTab?.terminals.find((t) => t.paneId === linkedTab.activePaneId)?.id ??
+    node.terminalPtyId ??
+    linkedTab?.terminals[0]?.id;
+  const liveCwd = liveTermId ? liveCwds[liveTermId] : undefined;
   const title = node.type === "terminal" && linkedProject ? linkedProject.name : node.title;
   const meta = node.type === "terminal" && linkedTab
-    ? `${nodeMeta(node, linkedTab)} · ${linkedTab.title}`
-    : nodeMeta(node, linkedTab);
+    ? `${nodeMeta(node, linkedTab, liveCwd)} · ${linkedTab.title}`
+    : nodeMeta(node, linkedTab, liveCwd);
   return (
     <div
       className="canvas-sidebar-row"
+      role="button"
+      tabIndex={0}
+      aria-current={selected ? "true" : undefined}
       data-selected={selected ? "true" : "false"}
       style={{
         ...styles.row,
-        background: selected
-          ? "linear-gradient(90deg, rgba(217, 154, 69, 0.16), rgba(217, 154, 69, 0.07))"
-          : "transparent",
-        borderColor: selected ? "rgba(217, 154, 69, 0.44)" : "transparent",
-        boxShadow: selected ? "var(--shadow-selected-row)" : "none",
+        background: selected ? "var(--surface-selected)" : "transparent",
+        borderColor: "transparent",
+        boxShadow: "none",
       }}
       onClick={() => onSelect(node)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onSelect(node);
+        }
+      }}
       onDoubleClick={() => onRename(node)}
       title="Click to jump to node. Double-click to rename."
     >

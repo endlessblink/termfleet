@@ -46,6 +46,7 @@ were retired during consolidation.
 | TC-017f | DONE | TASK | Stage 6: scrollback, selection, copy/paste |
 | TC-017g | DONE | TASK | Stage 7: canvas is the desktop default (replaces xterm); xterm browser-only fallback. Live-confirmed in the Tauri app via verify:canvas-live: fills pane (fixed an attach-race fill bug), reflows, live render, p95 1ms input, htop/vim/tmux TUIs |
 | TC-018 | TODO | FEATURE | BiDi/RTL + text shaping (Hebrew nikud) in the headless grid — depends on TC-017 |
+| TC-019 | IN_PROGRESS | DESIGN | Warp-style chrome redesign: neutral fill-only design system (no outlines), terminal-first layout, Hack terminal font + #1d2022 gray, themed folder picker, DESIGN.md + CI-enforced no-outlines/typography rules |
 
 ---
 
@@ -370,6 +371,22 @@ Progress notes:
   embed `VITE_WORKSPACE_RESET_STATE=1` from invalidating standalone restart
   reattach evidence. Fresh evidence passed for
   `terminal-50440931-2480-4835-880e-e1768495be6b-b66262df-9264-47e9-8c38-50ddcc60e7db`.
+- 2026-05-31: Disk-backed scrollback so terminal **content** survives a daemon
+  death (reboot, OOM, dev relaunch that clears the daemon), not just an app-window
+  restart where the daemon stayed alive. The daemon now runs `PtyManager::persistent()`
+  and checkpoints each session's scrollback (`<id>.scrollback`, 8-byte base-offset
+  header + bytes, atomic temp+rename, throttled to 750ms) plus metadata
+  (`<id>.meta.json`, cwd/command) under `~/.local/share/terminal-workspace/sessions/`
+  (data dir, so it survives a reboot — unlike the runtime-dir socket). On
+  `ensure_session` for an id that is no longer live but has a checkpoint, the daemon
+  spawns a fresh shell at the saved cwd and seeds its output buffer with the saved
+  scrollback (prefixed by a `── session restored ──` banner that first leaves any
+  stranded alt-screen). The seeded snapshot flows through the existing
+  `feed_grid_from_daemon` path into the VT grid and onto the canvas — no frontend
+  change needed. `kill` (explicit close only) deletes the checkpoint so closed
+  terminals never resurrect. Evidence: `cargo test` 36 passing incl. new
+  `scrollback_survives_a_simulated_daemon_restart` (drops the manager without
+  killing, rebuilds from disk on a second manager, asserts content replays).
 
 Acceptance:
 - Tauri startup can detect or launch the user-local terminal daemon.

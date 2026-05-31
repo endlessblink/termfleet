@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>termfleet — Warp-style chrome mockup</title>
+<style>
+  /* ---- Design tokens (Warp-inspired: bigger, clearer, borderless, soft elevation) ---- */
+  :root {
+    /* cool neutral gray ladder — depth comes from fills, not borders */
+    --floor:    #15181a;   /* app background */
+    --chrome:   #1b1f22;   /* rails / sidebars (recede) */
+    --panel:    #20252a;   /* raised panels */
+    --hover:    #2a3036;
+    --active:   #313841;   /* selected row fill (no border) */
+    --term:     #1d2022;   /* terminal surface */
+    --hair:     rgba(255,255,255,0.05); /* the ONLY divider — barely-there, never a box */
+
+    --text:     #e6e9ec;
+    --text-2:   #9aa3ab;
+    --text-3:   #6b747c;
+
+    --accent:   #5fb6c4;   /* swappable below */
+    --accent-soft: color-mix(in srgb, var(--accent) 16%, transparent);
+
+    --font-ui: "Rubik","Segoe UI","Cantarell",sans-serif;
+    --font-mono: "Hack","JetBrains Mono",ui-monospace,monospace;
+    --r: 9px;
+  }
+
+  /* accent themes (toggled via body[data-accent]) */
+  body[data-accent="cyan"]    { --accent:#5fb6c4; }
+  body[data-accent="amber"]   { --accent:#d9a44f; }
+  body[data-accent="neutral"] { --accent:#c4ccd2; }  /* near-white, very Warp */
+  body[data-accent="green"]   { --accent:#7fc681; }
+  body[data-accent="violet"]  { --accent:#9d8bd8; }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { height:100%; }
+  body {
+    background:var(--floor); color:var(--text);
+    font-family:var(--font-ui); font-size:14px;
+    -webkit-font-smoothing:antialiased;
+    display:flex; flex-direction:column; height:100vh; overflow:hidden;
+  }
+
+  /* ---- controls bar (mockup only) ---- */
+  .controls {
+    display:flex; gap:14px; align-items:center; flex-wrap:wrap;
+    padding:10px 16px; background:#0f1113; border-bottom:1px solid var(--hair);
+    font-size:13px; color:var(--text-2);
+  }
+  .controls strong { color:var(--text); font-weight:500; }
+  .controls .group { display:flex; gap:6px; align-items:center; }
+  .swatch {
+    width:26px; height:26px; border-radius:7px; border:2px solid transparent;
+    cursor:pointer; outline:none;
+  }
+  .swatch[aria-pressed="true"] { border-color:var(--text); }
+  .toggle {
+    padding:5px 11px; border-radius:7px; background:var(--panel); color:var(--text-2);
+    border:none; cursor:pointer; font-family:inherit; font-size:13px;
+  }
+  .toggle[aria-pressed="true"] { background:var(--accent-soft); color:var(--accent); }
+
+  /* ---- app shell ---- */
+  .app { flex:1; display:flex; min-height:0; }
+
+  /* icon rail */
+  .rail {
+    width:52px; background:var(--chrome); display:flex; flex-direction:column;
+    align-items:center; padding:12px 0; gap:8px;
+  }
+  .rail-btn {
+    width:36px; height:36px; border-radius:9px; display:grid; place-items:center;
+    color:var(--text-3); background:transparent; border:none; cursor:pointer; font-size:17px;
+  }
+  .rail-btn.active { background:var(--accent-soft); color:var(--accent); }
+
+  /* sidebar */
+  .sidebar { width:300px; background:var(--chrome); display:flex; flex-direction:column; min-height:0; }
+  .side-head {
+    padding:18px 18px 12px;
+  }
+  .side-head .proj { font-size:17px; font-weight:500; letter-spacing:-0.01em; }
+  .side-head .path { font-size:12.5px; color:var(--text-3); margin-top:3px;
+    font-family:var(--font-mono); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+  .section { padding:6px 12px; }
+  .section-label {
+    display:flex; justify-content:space-between; align-items:center;
+    padding:10px 8px 8px; font-size:11.5px; letter-spacing:0.08em; text-transform:uppercase;
+    color:var(--text-3); font-weight:500;
+  }
+
+  /* rows — bigger, clearer, NO borders. selection = fill. */
+  .row {
+    display:flex; align-items:center; gap:11px;
+    padding:10px 10px; border-radius:var(--r); cursor:pointer;
+    color:var(--text); position:relative;
+  }
+  .row:hover { background:var(--hover); }
+  .row.active { background:var(--active); }
+  .row.active::before {
+    content:""; position:absolute; left:-12px; top:9px; bottom:9px; width:3px;
+    border-radius:0 3px 3px 0; background:var(--accent);
+  }
+  .row .ic {
+    width:30px; height:30px; border-radius:8px; flex:none; display:grid; place-items:center;
+    background:var(--panel); color:var(--text-2); font-size:15px;
+  }
+  .row.active .ic { color:var(--accent); }
+  .row .body { min-width:0; flex:1; }
+  .row .title { font-size:14px; font-weight:450; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .row .meta  { font-size:12px; color:var(--text-3); margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-family:var(--font-mono); }
+  .row .count { font-size:12px; color:var(--text-3); }
+
+  .sidebar-foot { margin-top:auto; padding:14px; }
+  .btn-primary {
+    width:100%; height:42px; border:none; border-radius:var(--r);
+    background:var(--accent-soft); color:var(--accent); cursor:pointer;
+    font-family:inherit; font-size:14px; font-weight:500; display:flex; gap:8px; align-items:center; justify-content:center;
+  }
+
+  /* main column */
+  .main { flex:1; display:flex; flex-direction:column; min-width:0; background:var(--floor); }
+
+  /* command bar — single clean element, bigger */
+  .cmdbar { height:56px; display:flex; align-items:center; padding:0 18px; gap:14px; }
+  .cmd {
+    flex:1; max-width:680px; margin:0 auto; height:40px; border-radius:11px;
+    background:var(--panel); display:flex; align-items:center; gap:11px; padding:0 16px;
+    color:var(--text-3); font-size:14px;
+  }
+  .cmd .kbd { margin-left:auto; font-size:12px; color:var(--text-3); font-family:var(--font-mono); }
+
+  /* terminal pane */
+  .stage { flex:1; padding:0 14px 14px; min-height:0; display:flex; }
+  .term {
+    flex:1; border-radius:13px; background:var(--term); overflow:hidden; display:flex; flex-direction:column;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.04);
+  }
+  .term-head {
+    height:42px; display:flex; align-items:center; gap:10px; padding:0 16px;
+    color:var(--text-2); font-size:13px; border-bottom:1px solid var(--hair);
+  }
+  .term-head .dot { width:9px; height:9px; border-radius:50%; background:var(--accent); }
+  .term-head .crumb { font-family:var(--font-mono); font-size:13px; }
+  .term-body { flex:1; padding:16px 18px; font-family:var(--font-mono); font-size:14px; line-height:1.55; color:#c8cdd2; }
+  .term-body .p { color:var(--accent); }
+
+  /* status */
+  .status { height:30px; display:flex; align-items:center; gap:18px; padding:0 18px;
+    color:var(--text-3); font-size:12.5px; }
+  .status .live { color:var(--accent); margin-left:auto; }
+  .note { padding:10px 16px; font-size:12.5px; color:var(--text-3); background:#0f1113; border-top:1px solid var(--hair); }
+</style>
+</head>
+<body data-accent="neutral" data-density="comfortable">
+
+  <div class="controls">
+    <span class="group"><strong>Accent</strong>
+      <button class="swatch" style="background:#5fb6c4" data-set="cyan"    aria-pressed="false" title="cyan"></button>
+      <button class="swatch" style="background:#d9a44f" data-set="amber"   aria-pressed="false" title="amber"></button>
+      <button class="swatch" style="background:#c4ccd2" data-set="neutral" aria-pressed="true"  title="neutral / near-white (very Warp)"></button>
+      <button class="swatch" style="background:#7fc681" data-set="green"   aria-pressed="false" title="green"></button>
+      <button class="swatch" style="background:#9d8bd8" data-set="violet"  aria-pressed="false" title="violet"></button>
+    </span>
+    <span class="group"><strong>Density</strong>
+      <button class="toggle" data-density="comfortable" aria-pressed="true">Comfortable (Warp-like)</button>
+      <button class="toggle" data-density="compact" aria-pressed="false">Compact</button>
+    </span>
+    <span style="color:var(--text-3)">← click to compare. This is a static mockup; pick a direction and I port it into the app.</span>
+  </div>
+
+  <div class="app">
+    <!-- icon rail -->
+    <div class="rail">
+      <button class="rail-btn active">▣</button>
+      <button class="rail-btn">⌗</button>
+      <button class="rail-btn">🗺</button>
+    </div>
+
+    <!-- sidebar -->
+    <div class="sidebar">
+      <div class="side-head">
+        <div class="proj">show-runner</div>
+        <div class="path">~/ai-development/content-creation/show-runner</div>
+      </div>
+
+      <div class="section">
+        <div class="section-label"><span>Projects</span><span>2</span></div>
+        <div class="row"><div class="ic">▦</div><div class="body"><div class="title">All projects</div></div><span class="count">3</span></div>
+        <div class="row"><div class="ic">◑</div><div class="body"><div class="title">inner-dialouge</div></div><span class="count">1</span></div>
+        <div class="row active"><div class="ic">◐</div><div class="body"><div class="title">show-runner</div></div><span class="count">1</span></div>
+      </div>
+
+      <div class="section">
+        <div class="section-label"><span>Sessions</span><span>show-runner</span></div>
+        <div class="row active"><div class="ic">›_</div><div class="body"><div class="title">show-runner</div><div class="meta">content-creation/show-runner</div></div></div>
+      </div>
+
+      <div class="sidebar-foot">
+        <button class="btn-primary">＋ &nbsp;New project</button>
+      </div>
+    </div>
+
+    <!-- main -->
+    <div class="main">
+      <div class="cmdbar">
+        <div class="cmd">⌘ &nbsp;Search command, session, or file…<span class="kbd">Ctrl K</span></div>
+      </div>
+      <div class="stage">
+        <div class="term">
+          <div class="term-head"><span class="dot"></span><span class="crumb">show-runner · content-creation/show-runner</span></div>
+          <div class="term-body">
+            <div><span class="p">endlessblink@endlessblink</span>:~/show-runner$ npm run dev</div>
+            <div>&nbsp;</div>
+            <div>VITE v5.4  ready in 412 ms</div>
+            <div>➜  Local:   http://localhost:5177/</div>
+            <div><span class="p">endlessblink@endlessblink</span>:~/show-runner$ ▏</div>
+          </div>
+        </div>
+      </div>
+      <div class="status">
+        <span>pty idle</span><span>0 ptys</span><span>2 groups</span>
+        <span class="live">● live</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="note">
+    Warp qualities applied here: 42–56px rows/bars (vs ~22–30 now), 14px text (vs 11), <strong>no outlines</strong> — selection is a fill + a 3px accent edge, depth from background steps not borders, generous padding, one rounded terminal surface that dominates.
+  </div>
+
+<script>
+  const body = document.body;
+  document.querySelectorAll('.swatch').forEach(s => s.addEventListener('click', () => {
+    document.querySelectorAll('.swatch').forEach(x => x.setAttribute('aria-pressed','false'));
+    s.setAttribute('aria-pressed','true');
+    body.dataset.accent = s.dataset.set;
+  }));
+  const dens = document.querySelectorAll('.toggle[data-density]');
+  dens.forEach(t => t.addEventListener('click', () => {
+    dens.forEach(x => x.setAttribute('aria-pressed','false'));
+    t.setAttribute('aria-pressed','true');
+    const compact = t.dataset.density === 'compact';
+    document.documentElement.style.setProperty('--r', compact ? '6px' : '9px');
+    document.querySelectorAll('.row').forEach(r => r.style.padding = compact ? '6px 8px' : '10px 10px');
+  }));
+</script>
+</body>
+</html>

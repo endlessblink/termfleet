@@ -7,6 +7,37 @@
 @import "@fontsource/geist-mono/latin-600.css";
 @import "@fontsource/geist-mono/latin-700.css";
 
+/* Hack — the terminal buffer font (matches Warp's default terminal font).
+   Bundled from the TTFs so rendering is identical regardless of system fonts. */
+@font-face {
+  font-family: "Hack";
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  src: url("./fonts/hack/Hack-Regular.ttf") format("truetype");
+}
+@font-face {
+  font-family: "Hack";
+  font-style: normal;
+  font-weight: 700;
+  font-display: block;
+  src: url("./fonts/hack/Hack-Bold.ttf") format("truetype");
+}
+@font-face {
+  font-family: "Hack";
+  font-style: italic;
+  font-weight: 400;
+  font-display: block;
+  src: url("./fonts/hack/Hack-Italic.ttf") format("truetype");
+}
+@font-face {
+  font-family: "Hack";
+  font-style: italic;
+  font-weight: 700;
+  font-display: block;
+  src: url("./fonts/hack/Hack-BoldItalic.ttf") format("truetype");
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -21,35 +52,41 @@ button::-moz-focus-inner {
   outline: none;
 }
 
-button:focus-visible,
+/* No hard outlines anywhere. Text inputs get a subtle ring for typing feedback;
+   buttons/rows show focus via their own hover/active fills. */
 input:focus-visible,
-textarea:focus-visible,
+textarea:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 1px var(--border-focus);
+}
+button:focus-visible,
 select:focus-visible,
 [role="button"]:focus-visible {
-  outline: 1px solid var(--border-focus);
-  outline-offset: -1px;
+  outline: none;
 }
 
+/* Rows are fill-only tiles (Warp-style): no borders, no outlines, ever.
+   State is communicated purely through background intensity + text contrast. */
 .workspace-sidebar-row,
 .workspace-sidebar-row:focus,
 .workspace-sidebar-row:focus-visible,
 .workspace-sidebar-row:active {
-  border-color: transparent !important;
+  border: none !important;
   box-shadow: none !important;
   outline: 0 !important;
 }
 
 .workspace-sidebar-row[data-active="true"] {
-  background: #3a4145 !important;
-  border-color: #4a5359 !important;
-  box-shadow: none !important;
+  background: var(--surface-selected) !important;
+}
+
+.workspace-sidebar-row[data-active="false"] {
+  background: transparent !important;
 }
 
 .workspace-sidebar-row[data-active="false"]:hover,
 .workspace-sidebar-row[data-active="false"]:focus-within {
-  background: #30373b !important;
-  border-color: transparent !important;
-  box-shadow: none !important;
+  background: var(--surface-hover) !important;
 }
 
 .workspace-sidebar-row:hover .workspace-sidebar-actions,
@@ -92,7 +129,7 @@ select:focus-visible,
 .workspace-header-create-button:focus-visible,
 .workspace-primary-button:hover,
 .workspace-primary-button:focus-visible {
-  background: rgba(167, 255, 0, 0.16) !important;
+  background: rgba(255, 255, 255, 0.08) !important;
   border-color: var(--border-focus) !important;
   color: var(--accent-live) !important;
 }
@@ -114,7 +151,7 @@ select:focus-visible,
 }
 
 .workspace-header-create-button[data-menu-open="true"] {
-  background: rgba(167, 255, 0, 0.18) !important;
+  background: rgba(255, 255, 255, 0.10) !important;
   border-color: var(--border-focus) !important;
   box-shadow: var(--shadow-command) !important;
 }
@@ -134,7 +171,7 @@ select:focus-visible,
 
 .workspace-launcher-input:focus-visible {
   border-color: var(--border-focus) !important;
-  box-shadow: 0 0 0 1px rgba(167, 255, 0, 0.14) !important;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.07) !important;
 }
 
 .workspace-explorer-footer-button:hover,
@@ -155,12 +192,13 @@ select:focus-visible,
 }
 
 .workspace-explorer-row[data-selected="true"] {
-  box-shadow: var(--shadow-selected-row) !important;
+  background: var(--surface-selected) !important;
+  box-shadow: none !important;
 }
 
 .workspace-explorer-row:focus-visible {
-  outline: 1px solid var(--border-focus);
-  outline-offset: -1px;
+  outline: none;
+  background: var(--surface-hover) !important;
 }
 
 .workspace-explorer-context-item:hover,
@@ -181,7 +219,7 @@ select:focus-visible,
 
 .workspace-terminal-settings-input:focus-visible {
   border-color: var(--border-focus) !important;
-  box-shadow: 0 0 0 1px rgba(167, 255, 0, 0.14) !important;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.07) !important;
 }
 
 .workspace-terminal-color-swatch:hover,
@@ -242,13 +280,13 @@ select:focus-visible,
 }
 
 .canvas-sidebar-row[data-selected="true"] {
-  background: #3a4145 !important;
-  border-color: #4a5359 !important;
+  background: var(--surface-selected) !important;
+  border-color: transparent !important;
   box-shadow: none !important;
 }
 
 .canvas-sidebar-row:focus-visible {
-  outline: 1px solid var(--border-focus);
+  outline: none;
   outline-offset: -1px;
 }
 
@@ -365,6 +403,11 @@ button:active {
   }
 
   .workbench-header-stat--secondary {
+    display: none !important;
+  }
+
+  /* Hide the header breadcrumb before it can collide with the centered command bar. */
+  .workbench-header-context {
     display: none !important;
   }
 }

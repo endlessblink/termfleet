@@ -117,6 +117,10 @@ interface WorkspaceState {
   activeGroupFilter: string | null;
   projectRoot: string | null;
   pinnedProjects: string[];
+  // Live cwd per PTY id (from /proc/<pid>/cwd), polled while a terminal is
+  // mounted. Display-only — NOT persisted and NOT the session's project
+  // identity, so a `cd`/`z` shows where you are without renaming the project.
+  liveCwds: Record<string, string>;
   workspaceUiState: WorkspaceUiState;
   canvasState: CanvasState;
 
@@ -138,6 +142,8 @@ interface WorkspaceState {
   pinProject: (path: string) => void;
   unpinProject: (path: string) => void;
   setActiveTerminal: (id: string | null) => void;
+  setLiveCwd: (id: string, cwd: string) => void;
+  refreshLiveCwd: (id: string) => Promise<void>;
   addOpenFile: (file: OpenFile) => void;
   removeOpenFile: (path: string) => void;
   setWorkspaceMode: (mode: WorkspaceMode) => void;
@@ -568,6 +574,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   pinnedProjects: (persisted.pinnedProjects ?? []).filter(
     (path): path is string => typeof path === "string" && path.trim().length > 0
   ),
+  liveCwds: {},
   workspaceUiState: normalizeWorkspaceUiState(persisted.workspaceUiState),
   canvasState: normalizeCanvasState(persisted.canvasState, restoredTabs),
 
@@ -883,6 +890,24 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
 
   setActiveTerminal: (id: string | null) => {
     set({ activeTerminalId: id });
+  },
+
+  setLiveCwd: (id: string, cwd: string) => {
+    set((state) => {
+      if (!id || !cwd || state.liveCwds[id] === cwd) return {};
+      return { liveCwds: { ...state.liveCwds, [id]: cwd } };
+    });
+  },
+
+  refreshLiveCwd: async (id: string) => {
+    if (!id) return;
+    try {
+      const { invoke } = await import("@tauri-apps/api/core");
+      const cwd = await getPtyCwd(id, invoke);
+      if (cwd) useWorkspaceStore.getState().setLiveCwd(id, cwd);
+    } catch {
+      // PTY may be gone or pre-attach; keep the last known cwd.
+    }
   },
 
   addOpenFile: (file: OpenFile) => {

@@ -6,7 +6,7 @@ export function pathTail(path?: string | null, segments = 2) {
 }
 
 export function projectNameFor(groupId: string | null, groups: Pick<Group, "id" | "name">[]) {
-  if (groupId === null) return "All projects";
+  if (groupId === null) return "All sessions";
   return groups.find((group) => group.id === groupId)?.name ?? "Project";
 }
 

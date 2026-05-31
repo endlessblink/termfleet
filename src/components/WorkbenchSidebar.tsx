@@ -42,8 +42,8 @@ const styles: Record<string, CSSProperties> = {
   shell: {
     height: "100%",
     display: "flex",
-    background: "#22272a",
-    borderRight: "1px solid #3a4146",
+    background: "var(--surface-base)",
+    borderRight: "1px solid var(--border-subtle)",
     color: "var(--text-primary)",
     userSelect: "none",
   },
@@ -74,15 +74,14 @@ const styles: Record<string, CSSProperties> = {
     flexDirection: "column",
     alignItems: "center",
     gap: 8,
-    padding: "8px 5px",
-    borderRight: "1px solid #343b40",
-    background: "#202528",
-    boxShadow: "inset -1px 0 0 rgba(0,0,0,0.22)",
+    padding: "12px 5px",
+    borderRight: "1px solid var(--border-subtle)",
+    background: "var(--surface-base)",
   },
   railButton: {
     width: 32,
     height: 30,
-    border: "1px solid var(--border-subtle)",
+    border: "1px solid transparent",
     borderRadius: "var(--radius-sm)",
     background: "transparent",
     color: "var(--text-secondary)",
@@ -108,17 +107,16 @@ const styles: Record<string, CSSProperties> = {
     display: "flex",
     flexDirection: "column",
     overflow: "hidden",
-    background: "#22272a",
-    borderLeft: "1px solid rgba(255,255,255,0.02)",
+    background: "var(--surface-base)",
   },
   header: {
-    height: 42,
+    minHeight: 56,
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
     gap: 8,
-    padding: "0 8px",
-    borderBottom: "1px solid #343b40",
+    padding: "12px 16px",
+    borderBottom: "1px solid var(--border-subtle)",
   },
   title: {
     display: "flex",
@@ -134,22 +132,21 @@ const styles: Record<string, CSSProperties> = {
     gap: 1,
   },
   titleName: {
-    fontSize: 12,
+    fontSize: 16,
     fontWeight: 500,
-    textTransform: "uppercase",
     letterSpacing: 0,
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   },
   titlePath: {
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: 400,
     color: "var(--text-secondary)",
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
-    maxWidth: 180,
+    maxWidth: 230,
   },
   onboard: {
     display: "grid",
@@ -184,16 +181,16 @@ const styles: Record<string, CSSProperties> = {
     alignItems: "center",
     justifyContent: "center",
     padding: "0 7px",
-    border: "1px solid var(--border-subtle)",
+    border: "1px solid transparent",
     borderRadius: "var(--radius-xs)",
-    background: "#1d2224",
+    background: "var(--surface-raised)",
     color: "var(--text-secondary)",
     fontSize: 11,
   },
   iconButton: {
     width: 30,
     height: 28,
-    border: "1px solid var(--border-subtle)",
+    border: "1px solid transparent",
     borderRadius: 6,
     background: "var(--surface-base)",
     color: "var(--text-secondary)",
@@ -224,44 +221,46 @@ const styles: Record<string, CSSProperties> = {
     textTransform: "uppercase",
   },
   projectRow: {
-    minHeight: 34,
+    position: "relative",
+    minHeight: 40,
     display: "grid",
-    gridTemplateColumns: "22px minmax(0, 1fr)",
-    gap: 8,
+    gridTemplateColumns: "30px minmax(0, 1fr) auto",
+    gap: 11,
     alignItems: "center",
-    padding: "5px 6px",
-    border: "1px solid transparent",
-    borderRadius: 5,
+    padding: "9px 10px",
+    border: "none",
+    borderRadius: "var(--radius-sm)",
     background: "transparent",
     color: "var(--text-primary)",
     cursor: "pointer",
-    transition: "background var(--motion-fast), border-color var(--motion-fast), box-shadow var(--motion-fast)",
+    transition: "background var(--motion-fast)",
   },
   activeProjectRow: {
-    background: "#3a4145",
-    borderColor: "#4a5359",
+    background: "var(--surface-selected)",
+    borderColor: "transparent",
     boxShadow: "none",
   },
   projectDot: {
-    width: 22,
-    height: 22,
-    borderRadius: "var(--radius-sm)",
+    width: 30,
+    height: 30,
+    borderRadius: 8,
     display: "grid",
     placeItems: "center",
-    background: "var(--surface-hover)",
-    border: "1px solid var(--border-subtle)",
+    background: "var(--surface-raised)",
+    border: "none",
   },
   projectGrid: {
     display: "grid",
     gap: 5,
   },
   row: {
-    minHeight: 42,
+    position: "relative",
+    minHeight: 48,
     display: "grid",
-    gridTemplateColumns: "26px minmax(0, 1fr) auto",
-    gap: 8,
+    gridTemplateColumns: "30px minmax(0, 1fr) auto",
+    gap: 11,
     alignItems: "center",
-    padding: "6px 7px",
+    padding: "9px 10px",
     border: "1px solid transparent",
     borderRadius: "var(--radius-sm)",
     background: "transparent",
@@ -270,34 +269,34 @@ const styles: Record<string, CSSProperties> = {
     outline: "none",
     boxShadow: "none",
     WebkitTapHighlightColor: "transparent",
-    transition: "background var(--motion-fast), border-color var(--motion-fast), box-shadow var(--motion-fast)",
+    transition: "background var(--motion-fast), box-shadow var(--motion-fast)",
   },
   activeRow: {
-    background: "#3a4145",
-    borderColor: "#4a5359",
+    background: "var(--surface-selected)",
+    borderColor: "transparent",
     boxShadow: "none",
   },
   hoverRow: {
     background: "var(--surface-hover)",
   },
   iconCell: {
-    width: 24,
-    height: 24,
-    borderRadius: "var(--radius-sm)",
+    width: 30,
+    height: 30,
+    borderRadius: 8,
     display: "grid",
     placeItems: "center",
-    background: "var(--surface-hover)",
+    background: "var(--surface-raised)",
     color: "var(--text-primary)",
   },
   rowTitle: {
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: 500,
   },
   rowMeta: {
-    marginTop: 3,
+    marginTop: 2,
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
@@ -316,7 +315,7 @@ const styles: Record<string, CSSProperties> = {
   rowActionButton: {
     width: 25,
     height: 24,
-    border: "1px solid var(--border-subtle)",
+    border: "1px solid transparent",
     borderRadius: "var(--radius-sm)",
     background: "var(--surface-base)",
     color: "var(--text-secondary)",
@@ -328,9 +327,9 @@ const styles: Record<string, CSSProperties> = {
   headerNewTerminalButton: {
     width: 30,
     height: 28,
-    border: "1px solid rgba(217, 154, 69, 0.48)",
+    border: "1px solid transparent",
     borderRadius: "var(--radius-sm)",
-    background: "rgba(167, 255, 0, 0.1)",
+    background: "rgba(255, 255, 255, 0.06)",
     color: "var(--accent-live)",
     display: "grid",
     placeItems: "center",
@@ -344,11 +343,11 @@ const styles: Record<string, CSSProperties> = {
   },
   primaryButton: {
     width: "100%",
-    height: 32,
-    border: "1px solid rgba(167, 255, 0, 0.55)",
+    height: 42,
+    border: "1px solid transparent",
     borderRadius: "var(--radius-sm)",
-    background: "rgba(167, 255, 0, 0.11)",
-    color: "var(--accent-live)",
+    background: "rgba(255, 255, 255, 0.06)",
+    color: "var(--text-primary)",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -370,7 +369,7 @@ const styles: Record<string, CSSProperties> = {
     zIndex: 1000,
     width: 236,
     padding: 8,
-    border: "1px solid var(--border-subtle)",
+    border: "1px solid transparent",
     borderRadius: "var(--radius-md)",
     background: "var(--surface-raised)",
     boxShadow: "var(--shadow-menu)",
@@ -399,7 +398,7 @@ const styles: Record<string, CSSProperties> = {
     width: "100%",
     height: 28,
     marginTop: 5,
-    border: "1px solid var(--border-subtle)",
+    border: "1px solid transparent",
     borderRadius: 4,
     background: "var(--surface-sunken)",
     color: "var(--text-primary)",
@@ -412,7 +411,7 @@ const styles: Record<string, CSSProperties> = {
   launcher: {
     margin: 8,
     padding: 8,
-    border: "1px solid var(--border-subtle)",
+    border: "1px solid transparent",
     borderRadius: "var(--radius-sm)",
     background: "linear-gradient(180deg, var(--surface-wash), var(--surface-base))",
     boxShadow: "inset 0 1px 0 rgba(255,255,255,0.025)",
@@ -456,7 +455,7 @@ const styles: Record<string, CSSProperties> = {
   secondaryButton: {
     flex: 1,
     height: 30,
-    border: "1px solid var(--border-subtle)",
+    border: "1px solid transparent",
     borderRadius: 4,
     background: "var(--surface-base)",
     color: "var(--text-secondary)",
@@ -478,7 +477,7 @@ const styles: Record<string, CSSProperties> = {
     width: "100%",
     height: 22,
     borderRadius: 4,
-    border: "1px solid var(--border-subtle)",
+    border: "1px solid transparent",
     cursor: "pointer",
     transition: "border-color var(--motion-fast), transform var(--motion-fast), box-shadow var(--motion-fast)",
   },
@@ -493,7 +492,7 @@ const styles: Record<string, CSSProperties> = {
     height: 22,
     display: "grid",
     placeItems: "center",
-    border: "1px solid var(--border-subtle)",
+    border: "1px solid transparent",
     borderRadius: 4,
     background: "var(--surface-base)",
     cursor: "pointer",
@@ -710,8 +709,8 @@ function TerminalContextMenu({
             style={{
               ...styles.colorSwatch,
               background: color,
-              outline: tab.color === color ? "1px solid var(--text-primary)" : "none",
-              boxShadow: tab.color === color ? "0 0 0 2px rgba(216, 222, 231, 0.08)" : "none",
+              outline: "none",
+              boxShadow: tab.color === color ? "inset 0 0 0 2px var(--text-primary)" : "none",
             }}
             title={color}
             aria-label={`Set terminal color ${color}`}
@@ -929,15 +928,12 @@ function SessionsPanel({
       ? groups.find((group) => group.id === activeGroupFilter)?.projectRoot ?? null
       : null;
   const hasProjects = groups.length > 0;
-  const projects = [
-    { id: null, name: "All projects", color: "var(--accent-info)", count: tabs.length },
-    ...groups.map((group) => ({
-      id: group.id,
-      name: group.name,
-      color: group.color,
-      count: tabs.filter((tab) => tab.groupId === group.id).length,
-    })),
-  ];
+  const projects = groups.map((group) => ({
+    id: group.id as string | null,
+    name: group.name,
+    color: group.color,
+    count: tabs.filter((tab) => tab.groupId === group.id).length,
+  }));
 
   useEffect(() => {
     if (projectRoot) {
@@ -1160,10 +1156,9 @@ function SessionsPanel({
             return (
               <button
                 key={project.id ?? "all-projects"}
-                style={{
-                  ...styles.projectRow,
-                  ...(active ? styles.activeProjectRow : null),
-                }}
+                className="workspace-sidebar-row"
+                data-active={active ? "true" : "false"}
+                style={styles.projectRow}
                 title={`Switch to ${project.name}`}
                 aria-label={`Switch to ${project.name}`}
                 onClick={() => switchProject(project.id)}
@@ -1171,8 +1166,7 @@ function SessionsPanel({
                 <span
                   style={{
                     ...styles.projectDot,
-                    color: active ? "var(--accent-live)" : "var(--text-secondary)",
-                    borderColor: active ? project.color : "var(--border-subtle)",
+                    color: active ? "var(--text-primary)" : "var(--text-secondary)",
                   }}
                 >
                   {project.id === null ? (
@@ -1185,7 +1179,7 @@ function SessionsPanel({
                   <span
                     style={{
                       ...styles.rowTitle,
-                      color: active ? "var(--accent-live)" : "var(--text-primary)",
+                      color: active ? "var(--text-primary)" : "var(--text-secondary)",
                     }}
                   >
                     {project.name}
@@ -1211,7 +1205,7 @@ function SessionsPanel({
               style={styles.primaryButton}
               onClick={() => {
                 addTab({
-                  title: activeProjectName === "All projects" ? "Terminal" : activeProjectName,
+                  title: activeGroupFilter === null ? "Terminal" : activeProjectName,
                   emoji: "\u{1F4C1}",
                   initialCwd: projectRoot ?? undefined,
                   groupId: activeGroupFilter,
@@ -1230,6 +1224,10 @@ function SessionsPanel({
             <div
               key={tab.id}
               className="workspace-sidebar-row"
+              role="button"
+              tabIndex={0}
+              aria-label={`Open session ${tab.title}`}
+              aria-current={active ? "true" : undefined}
               data-active={active ? "true" : "false"}
               style={{
                 ...styles.row,
@@ -1239,12 +1237,19 @@ function SessionsPanel({
                 setActiveTab(tab.id);
                 setWorkspaceMode("split");
               }}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  setActiveTab(tab.id);
+                  setWorkspaceMode("split");
+                }
+              }}
               onMouseDown={(event) => event.preventDefault()}
               onContextMenu={(event) => onOpenTerminalMenu(event, tab)}
             >
               <TerminalAvatar tab={tab} active={active} />
               <span style={{ minWidth: 0 }}>
-                <div style={{ ...styles.rowTitle, color: active ? "var(--accent-live)" : "var(--text-primary)" }}>
+                <div style={{ ...styles.rowTitle, color: active ? "var(--text-primary)" : "var(--text-secondary)" }}>
                   {tab.title}
                 </div>
                 <div style={styles.rowMeta}>
@@ -1322,6 +1327,7 @@ function MapPanel({
 }) {
   const tabs = useWorkspaceStore((state) => state.tabs);
   const groups = useWorkspaceStore((state) => state.groups);
+  const liveCwds = useWorkspaceStore((state) => state.liveCwds);
   const activeGroupFilter = useWorkspaceStore((state) => state.activeGroupFilter);
   const canvasState = useWorkspaceStore((state) => state.canvasState);
   const setActiveTab = useWorkspaceStore((state) => state.setActiveTab);
@@ -1367,7 +1373,12 @@ function MapPanel({
               : undefined;
             const linkedProjectName = linkedTab?.groupId
               ? projectNameFor(linkedTab.groupId, groups)
-              : "All projects";
+              : "Unassigned";
+            const liveTermId =
+              linkedTab?.terminals.find((t) => t.paneId === linkedTab.activePaneId)?.id ??
+              node.terminalPtyId ??
+              linkedTab?.terminals[0]?.id;
+            const liveNodeCwd = liveTermId ? liveCwds[liveTermId] : undefined;
             return (
               <div
                 key={node.id}
@@ -1407,7 +1418,7 @@ function MapPanel({
                   </div>
                   <div style={styles.rowMeta}>
                     {node.terminalTabId && linkedTab
-                      ? `${pathTail(node.terminalCwd ?? linkedTab.initialCwd)} · ${linkedTab.title}`
+                      ? `${pathTail(liveNodeCwd ?? node.terminalCwd ?? linkedTab.initialCwd)} · ${linkedTab.title}`
                       : `${Math.round(node.width)} x ${Math.round(node.height)}`}
                   </div>
                 </span>

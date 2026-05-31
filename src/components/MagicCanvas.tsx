@@ -335,6 +335,7 @@ function nextNodePosition(count: number) {
 function CanvasNodeView({ node }: { node: CanvasNode }) {
   const tabs = useWorkspaceStore((state) => state.tabs);
   const groups = useWorkspaceStore((state) => state.groups);
+  const liveCwds = useWorkspaceStore((state) => state.liveCwds);
   const selectedNodeId = useWorkspaceStore((state) => state.canvasState.selectedNodeId);
   const zoom = useWorkspaceStore((state) => state.canvasState.viewport.zoom);
   const updateCanvasNode = useWorkspaceStore((state) => state.updateCanvasNode);
@@ -467,6 +468,9 @@ function CanvasNodeView({ node }: { node: CanvasNode }) {
   // the persisted node pty or the tab's first terminal.
   const linkedPaneTerminalId = linkedTab?.terminals.find((terminal) => terminal.paneId === terminalPaneId)?.id;
   const linkedTerminalId = linkedPaneTerminalId ?? node.terminalPtyId ?? linkedTab?.terminals[0]?.id;
+  // Prefer the live cwd (polled from the PTY) over the initial cwd so the
+  // breadcrumb tracks `cd`/`z`; falls back to the spawn cwd before the first poll.
+  const liveTerminalRoot = (linkedTerminalId ? liveCwds[linkedTerminalId] : undefined) ?? terminalRoot;
   // Native VTE is disabled app-wide (see useNativeTerminalPane.wantsNativeRenderer):
   // the GTK overlay could not live on the zoom/pan canvas, which is why map nodes
   // used to fall back to a static "Open terminal" card. With xterm.js everywhere,
@@ -503,7 +507,7 @@ function CanvasNodeView({ node }: { node: CanvasNode }) {
           <div style={styles.nativeTerminalPrompt}>
             <TerminalSquare size={15} strokeWidth={1.8} />
             <span style={styles.nativeTerminalPromptGlyph}>$</span>
-            <span style={styles.nativeTerminalPath}>{pathTail(terminalRoot)}</span>
+            <span style={styles.nativeTerminalPath}>{pathTail(liveTerminalRoot)}</span>
           </div>
           <div style={styles.nativeTerminalPrompt}>
             <span style={styles.nativeTerminalPromptGlyph}>native</span>
@@ -581,7 +585,7 @@ function CanvasNodeView({ node }: { node: CanvasNode }) {
           </div>
           {node.type === "terminal" && (
             <div style={styles.nodeTitleMeta}>
-              {linkedProject ? `${pathTail(terminalRoot)} · ${linkedTab?.title ?? node.title}` : pathTail(terminalRoot)}
+              {linkedProject ? `${pathTail(liveTerminalRoot)} · ${linkedTab?.title ?? node.title}` : pathTail(liveTerminalRoot)}
             </div>
           )}
         </span>

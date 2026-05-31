@@ -85,6 +85,7 @@ export function TerminalComponent({
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerElement, setContainerElement] = useState<HTMLDivElement | null>(null);
   const [terminal, setTerminal] = useState<XTerminal | null>(null);
+  const [livePtyId, setLivePtyId] = useState<string | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const resizeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeTabId = useWorkspaceStore((s) => s.activeTabId);
@@ -172,6 +173,7 @@ export function TerminalComponent({
       status: details.reused ? "reconnected" : "running",
       reused: details.reused,
     });
+    setLivePtyId(ptyId);
 
     const store = useWorkspaceStore.getState();
     const linkedNode = store.canvasState.nodes.find((node) => node.terminalTabId === tabId);
@@ -199,6 +201,20 @@ export function TerminalComponent({
     onReady: handleReady,
     onStatus: handleStatus,
   });
+
+  // Poll the PTY's live cwd (/proc/<pid>/cwd) so a `cd`/`z` to another path
+  // updates the node subtitle + top-bar breadcrumb. Display-only: it never
+  // renames the session's project. ~2s cadence; a readlink per visible terminal
+  // is cheap. Browser preview has no real PTY, so skip it.
+  useEffect(() => {
+    if (!isTauri || !livePtyId) return;
+    const { refreshLiveCwd } = useWorkspaceStore.getState();
+    void refreshLiveCwd(livePtyId);
+    const interval = setInterval(() => {
+      void useWorkspaceStore.getState().refreshLiveCwd(livePtyId);
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [isTauri, livePtyId]);
 
   // Create terminal instance — only once per mount
   useEffect(() => {
@@ -405,10 +421,16 @@ export function TerminalComponent({
       // Shift+Tab inside the terminal moved focus from the hidden input to this
       // wrapper (off the textarea), so the keystroke never reached the PTY and
       // zellij's back-tab did nothing. Focus is driven by click → focusWebTerminal.
-      onPointerDownCapture={(event) => {
+      onPointerDownCapture={() => {
         onActivate?.();
         focusWebTerminal();
-        if (standalone) event.stopPropagation();
+        // Do NOT stopPropagation here: this is the capture phase, so stopping the
+        // event would prevent it from ever reaching TerminalCanvas's own
+        // onPointerDown — which is exactly what begins a drag-select. On the map
+        // (standalone) that killed text selection inside the terminal node. Map
+        // pan/node-drag are MOUSE events and are already blocked from bubbling by
+        // the bubble-phase onMouseDown below, so we don't need to swallow pointer
+        // events to keep the canvas from panning.
       }}
       onMouseDown={(event) => {
         onActivate?.();

@@ -500,6 +500,8 @@ export function WorkbenchHeader() {
   const activeTabId = useWorkspaceStore((state) => state.activeTabId);
   const activeGroupFilter = useWorkspaceStore((state) => state.activeGroupFilter);
   const projectRoot = useWorkspaceStore((state) => state.projectRoot);
+  const activeTerminalId = useWorkspaceStore((state) => state.activeTerminalId);
+  const liveCwds = useWorkspaceStore((state) => state.liveCwds);
   const setWorkspaceMode = useWorkspaceStore((state) => state.setWorkspaceMode);
   const setActiveTab = useWorkspaceStore((state) => state.setActiveTab);
   const switchProject = useWorkspaceStore((state) => state.switchProject);
@@ -516,6 +518,10 @@ export function WorkbenchHeader() {
   const activePaneCount = activeTab ? getAllLeafIds(activeTab.splitLayout).length : 0;
   const selectedProjectName = projectNameFor(activeGroupFilter, groups);
   const selectedProjectRoot = projectRootFor(activeGroupFilter, groups, activeTab) ?? projectRoot;
+  // The path crumb follows the focused terminal's live cwd (where you actually
+  // are after a `cd`/`z`); the project label keeps the project's identity.
+  const liveActiveCwd = activeTerminalId ? liveCwds[activeTerminalId] : undefined;
+  const crumbRoot = liveActiveCwd ?? selectedProjectRoot;
   const projectLabel = activeGroupFilter === null ? selectedProjectName : basename(selectedProjectRoot ?? activeTab?.initialCwd);
 
   const setScopedCommand = useCallback((prefix: string) => {
@@ -820,12 +826,12 @@ export function WorkbenchHeader() {
       <span
         className="workbench-header-context"
         style={styles.contextCrumb}
-        title={selectedProjectRoot ?? "No project selected"}
+        title={crumbRoot ?? "No project selected"}
       >
         <FolderTree size={13} strokeWidth={1.8} color="var(--text-secondary)" />
         <span style={styles.contextCrumbName}>{projectLabel}</span>
-        {selectedProjectRoot && (
-          <span style={styles.contextCrumbPath}>{pathTail(selectedProjectRoot)}</span>
+        {crumbRoot && (
+          <span style={styles.contextCrumbPath}>{pathTail(crumbRoot)}</span>
         )}
       </span>
       <div className="workbench-command-search" style={{ ...styles.search, ...(commandOpen ? styles.searchActive : null) }}>

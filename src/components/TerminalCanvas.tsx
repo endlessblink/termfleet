@@ -29,6 +29,7 @@ import {
   type CellPoint,
   type SelectionRange,
 } from "../lib/selection";
+import { useWorkspaceStore } from "../stores/workspace";
 
 // Hack is the terminal buffer font (Warp's default terminal font), bundled via
 // @font-face. Fallbacks keep things sane before the face loads / on other systems.
@@ -599,6 +600,9 @@ export function TerminalCanvas({
           // Tell the backend this terminal owns the keyboard, so the Linux GTK
           // Tab-interceptor routes Tab/Shift+Tab here instead of moving focus.
           invoke("set_focused_terminal", { id: sessionIdRef.current }).catch(() => {});
+          // Mark this PTY as the active terminal so the top-bar breadcrumb tracks
+          // the focused pane's live cwd.
+          useWorkspaceStore.getState().setActiveTerminal(sessionIdRef.current);
         }}
         onBlur={() => {
           invoke("set_focused_terminal", { id: null }).catch(() => {});

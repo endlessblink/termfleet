@@ -60,7 +60,7 @@
   --explorer-hidden: #7b8491;
   --explorer-chevron: var(--text-secondary);
   --explorer-row-hover: #30373b;
-  --explorer-row-selected: rgba(160, 255, 0, 0.11);
+  --explorer-row-selected: rgba(255, 255, 255, 0.06);
   --explorer-root-row-bg: #30373b;
   --explorer-input-bg: #171b1d;
   --explorer-input-border: var(--border-subtle);
@@ -99,7 +99,7 @@
   --explorer-radius-md: 6px;
 
   /* Typography */
-  --font-mono: "Geist Mono", "JetBrains Mono", "Fira Code", "Cascadia Code", "Consolas", monospace;
+  --font-mono: "Hack", "Geist Mono", "JetBrains Mono", "Cascadia Code", "Consolas", monospace;
   --font-ui: "Rubik", "Segoe UI", "Cantarell", "Noto Sans", sans-serif;
   --font-size: 14px;
   --font-weight-ui: 400;
@@ -109,20 +109,24 @@
   --font-weight-ui-label: var(--font-weight-ui);
   --font-weight-ui-status: var(--font-weight-ui);
 
-  /* Terminal Cockpit contract tokens */
-  --surface-base: #202426;
-  --surface-raised: #282d30;
-  --surface-sunken: #181c1e;
-  --surface-floor: #15191b;
-  --surface-hover: #333a3e;
-  --surface-selected: #3a4145;
-  --surface-wash: #24292c;
-  --border-subtle: #343b40;
-  --border-strong: #444c52;
-  --border-focus: #a7ff00;
-  --text-primary: #e2e5e7;
-  --text-secondary: #9aa3a8;
-  --accent-live: #a7ff00;
+  /* Terminal Cockpit contract tokens — Warp-style: depth from fills, not borders.
+     Borders are near-invisible hairlines; grouping/selection use background
+     steps + a small accent edge instead of outlines. */
+  --surface-floor: #15181a;    /* app background */
+  --surface-base: #1b1f22;     /* rails / sidebars (recede) */
+  --surface-raised: #20252a;   /* raised panels / menus */
+  --surface-sunken: #181b1d;
+  --surface-wash: #20252a;
+  --surface-hover: #2a3036;
+  --surface-selected: #313841; /* selected row fill (no border) */
+  --border-subtle: rgba(255, 255, 255, 0.05);
+  --border-strong: rgba(255, 255, 255, 0.10);
+  --border-focus: rgba(255, 255, 255, 0.16);
+  --text-primary: #e6e9ec;
+  --text-secondary: #9aa3ab;
+  /* Accent kept neutral/near-white (Warp barely uses a colored accent). Retint
+     this single token to color the active edge / live dot / cursor. */
+  --accent-live: #c4ccd2;
   --accent-info: #7dbac3;
   --accent-success: #7fc681;
   --accent-warning: #d4a44f;
@@ -131,20 +135,20 @@
   --operations-sidebar-width: 276px;
   --sidebar-expanded-width: 562px;
   --dock-collapsed-width: 40px;
-  --commandbar-height: 40px;
-  --commandbar-search-width: min(352px, calc(100vw - 760px));
+  --commandbar-height: 44px;
+  --commandbar-search-width: min(680px, calc(100vw - 620px));
   --commandbar-search-min-width: 300px;
-  --pane-chrome-height: 24px;
-  --radius-xs: 4px;
-  --radius-sm: 5px;
-  --radius-md: 7px;
+  --pane-chrome-height: 42px;
+  --radius-xs: 6px;
+  --radius-sm: 9px;
+  --radius-md: 12px;
   --motion-fast: 120ms cubic-bezier(0.22, 1, 0.36, 1);
   --motion-med: 180ms cubic-bezier(0.22, 1, 0.36, 1);
   --shadow-card: 0 18px 42px rgba(0, 0, 0, 0.22);
-  --shadow-command: 0 0 0 1px rgba(167, 255, 0, 0.14), 0 10px 28px rgba(0, 0, 0, 0.24);
-  --shadow-menu: 0 20px 54px rgba(0, 0, 0, 0.42);
-  --shadow-active-pane: inset 0 0 0 1px rgba(167, 255, 0, 0.28), 0 0 0 1px rgba(167, 255, 0, 0.1);
-  --shadow-selected-row: inset 3px 0 0 var(--accent-live);
+  --shadow-command: 0 0 0 1px rgba(255, 255, 255, 0.07), 0 10px 28px rgba(0, 0, 0, 0.28);
+  --shadow-menu: 0 20px 54px rgba(0, 0, 0, 0.45);
+  --shadow-active-pane: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+  --shadow-selected-row: none;
   --command-chip-active-bg: color-mix(in srgb, var(--accent-live) 13%, transparent);
   --command-chip-active-border: color-mix(in srgb, var(--accent-live) 52%, var(--border-subtle));
   --terminal-scroll-track: #1b2022;
@@ -156,7 +160,7 @@
   --terminal-block-marker: #657284;
   --terminal-block-marker-active: var(--accent-live);
   --terminal-block-context: var(--accent-info);
-  --terminal-bg: #1d2123;
+  --terminal-bg: #1d2022;
   --terminal-fg: var(--text-primary);
   --terminal-cursor: var(--accent-live);
   --terminal-selection-bg: #2a3a50;

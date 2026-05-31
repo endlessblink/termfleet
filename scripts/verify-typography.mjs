@@ -28,9 +28,12 @@ const failures = [];
 for (const file of sourceFiles(srcRoot)) {
   const text = readFileSync(file, "utf8");
   const rel = relative(srcRoot, file);
-  const withoutTerminalFontConfig = rel === "components/Terminal.tsx"
+  let withoutTerminalFontConfig = rel === "components/Terminal.tsx"
     ? text.replace(/new XTerminal\(\{[\s\S]*?\n    \}\);/, "")
     : text;
+  // @font-face blocks declare font files (e.g. the terminal's Hack 700 bold
+  // face); their font-weight is not a "visible UI weight", so exclude them.
+  withoutTerminalFontConfig = withoutTerminalFontConfig.replace(/@font-face\s*\{[\s\S]*?\}/g, "");
 
   if (/(fontWeight|font-weight)\s*:\s*["']?[6-9]\d{2}/.test(withoutTerminalFontConfig)) {
     failures.push(`${rel}: visible UI must not use 600+ font weights.`);
@@ -43,6 +46,21 @@ for (const file of sourceFiles(srcRoot)) {
 
   if (!allowedMonoFiles.has(rel) && /monospace|var\(--font-mono\)/.test(text)) {
     failures.push(`${rel}: monospace must be reserved for terminal/code surfaces.`);
+  }
+
+  // No outlines. State is shown with fills + text contrast, never an edge.
+  // - Hard `outline:` is banned everywhere except `none`/`0`.
+  // - Full `border:` shorthand with a visible color is banned in component
+  //   styles. Use a fill, or a directional hairline separator
+  //   (`borderTop`/`border-bottom`/etc.) for panel dividers.
+  for (const line of text.split("\n")) {
+    if (/\boutline\s*:\s*["']?(?!none|0)[^,;"'}]*\b(solid|dashed|dotted|\dpx)/.test(line)) {
+      failures.push(`${rel}: no hard outlines — "${line.trim()}" (use a fill/inset ring).`);
+    }
+    if (rel.endsWith(".tsx") &&
+        /\bborder\s*:\s*["']\s*\d+px\s+solid\s+(?!transparent)(var\(--|#|rgb)/.test(line)) {
+      failures.push(`${rel}: no full box-borders — "${line.trim()}" (use a fill or directional separator).`);
+    }
   }
 }
 

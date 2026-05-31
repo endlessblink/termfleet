@@ -22,7 +22,7 @@ const styles: Record<string, CSSProperties> = {
     overflow: "hidden",
     borderLeft: "1px solid var(--border-strong)",
     background:
-      "radial-gradient(circle at 62% -18%, rgba(167, 255, 0, 0.055), transparent 28%), linear-gradient(180deg, #1f2325, #171b1d 72%)",
+      "radial-gradient(circle at 62% -18%, rgba(255, 255, 255, 0.04), transparent 28%), linear-gradient(180deg, #1f2325, #171b1d 72%)",
   },
   surfacePane: {
     position: "absolute",
@@ -49,7 +49,7 @@ const styles: Record<string, CSSProperties> = {
     display: "flex",
     flexDirection: "column",
     overflow: "hidden",
-    border: "1px solid var(--border-subtle)",
+    border: "1px solid transparent",
     background: "var(--surface-sunken)",
     boxShadow: "var(--shadow-active-pane)",
     animation: "workbench-surface-in var(--motion-med)",
@@ -137,7 +137,7 @@ function MapSurfaceFallback() {
           left: 14,
           width: 170,
           height: 42,
-          border: "1px solid var(--border-subtle)",
+          border: "1px solid transparent",
           borderRadius: "var(--radius-md)",
           background: "var(--surface-raised)",
           boxShadow: "var(--shadow-card)",
