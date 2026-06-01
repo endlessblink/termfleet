@@ -21,13 +21,6 @@ const MAX_SCROLLBACK_BYTES: usize = 200_000;
 /// fast PTY dump doesn't rewrite the (≤200KB) file on every read.
 const PERSIST_FLUSH_INTERVAL: Duration = Duration::from_millis(750);
 
-/// Banner injected ahead of restored scrollback when a session is rebuilt from
-/// disk (the original shell process died with the daemon, so a fresh shell is
-/// spawned and the previous output is replayed above it). The leading
-/// `ESC[?1049l` leaves the alternate screen in case the prior session was killed
-/// inside a full-screen TUI (vim/htop), so the restored main-screen content and
-/// the new prompt render on the primary buffer rather than a stranded alt-screen.
-const RESTORE_BANNER: &str = "\x1b[?1049l\x1b[0m\r\n\x1b[2m── session restored ──\x1b[0m\r\n";
 
 struct PtyEntry {
     master: Box<dyn MasterPty + Send>,
@@ -254,9 +247,11 @@ impl PtyManager {
         }
 
         // A persisted checkpoint for this id means the original shell died with a
-        // previous daemon; spawn a fresh shell but replay the saved scrollback
-        // above it (and prefer the saved cwd so the new shell starts where the
-        // old one was launched).
+        // previous daemon. We restore the session's *identity* (its working
+        // directory) by spawning a fresh shell there — we do NOT replay the saved
+        // scrollback into the live grid. A dead full-screen app (zellij/tmux/vim)
+        // has no process to repaint, so replaying its frozen, mid-sequence byte log
+        // renders as garbage; a clean shell at the right cwd is usable instead.
         let persisted = self
             .persist_dir
             .as_ref()
@@ -318,18 +313,15 @@ impl PtyManager {
         let event_id = id.clone();
         let event_sink = Arc::new(event_sink);
         let mut initial_buffer = PtyOutputBuffer::default();
-        if let Some(entry) = &persisted {
-            initial_buffer.base_offset = entry.base_offset;
-            initial_buffer.data = entry.data.clone();
-        }
         if let Some(dir) = &self.persist_dir {
+            if persisted.is_some() {
+                // Preserve the dead session's raw scrollback under `<id>.history`
+                // (rather than replaying it live, which mangles full-screen apps)
+                // so a future opt-in plain-text history view can still surface it.
+                let _ = fs::rename(scrollback_path(dir, &id), history_path(dir, &id));
+            }
             initial_buffer.persist = Some(PersistHandle::new(scrollback_path(dir, &id)));
             write_session_meta(dir, &id, cwd.as_deref(), &command_label);
-        }
-        // Replay marker + checkpoint the seeded content immediately so the very
-        // first post-restore frame already includes the restored scrollback.
-        if persisted.is_some() {
-            initial_buffer.append(RESTORE_BANNER);
         }
         let output = Arc::new(Mutex::new(initial_buffer));
         let output_reader = output.clone();
@@ -625,10 +617,11 @@ fn truncate_trace_detail(details: &str) -> String {
 // Disk persistence (restore terminal content across a daemon restart)
 // ---------------------------------------------------------------------------
 
-/// Restored scrollback + metadata for one session.
+/// Metadata for a session that has an on-disk checkpoint. Its presence signals a
+/// restore (the original process is dead); `cwd` lets the fresh shell reopen where
+/// the old one was. The saved scrollback is NOT loaded here — it isn't replayed
+/// into the live grid (see `ensure_with_sink`).
 struct PersistedSession {
-    data: String,
-    base_offset: u64,
     cwd: Option<String>,
 }
 
@@ -641,8 +634,70 @@ struct SessionMeta {
     command: Option<String>,
 }
 
+/// Root of termfleet's per-user durable state (`~/.local/share/terminal-workspace`).
+/// Holds the per-session scrollback (`sessions/`) and the workspace layout
+/// (`workspace.json`) so the tab→session mapping survives a localStorage wipe.
+pub fn data_root_dir() -> Option<PathBuf> {
+    dirs::data_local_dir().map(|dir| dir.join("terminal-workspace"))
+}
+
 fn default_persist_dir() -> Option<PathBuf> {
-    dirs::data_local_dir().map(|dir| dir.join("terminal-workspace").join("sessions"))
+    data_root_dir().map(|dir| dir.join("sessions"))
+}
+
+/// Summary of a session whose content is checkpointed on disk (whether or not it
+/// is currently live). Used to reconcile orphaned content back into the
+/// workspace after a layout reset.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct PersistedSessionSummary {
+    pub id: String,
+    pub cwd: Option<String>,
+    pub scrollback_bytes: usize,
+}
+
+/// Enumerate sessions with on-disk scrollback in the default persistence dir.
+/// `scrollback_bytes` excludes the 8-byte base-offset header.
+pub fn list_persisted_sessions() -> Vec<PersistedSessionSummary> {
+    let Some(dir) = default_persist_dir() else {
+        return Vec::new();
+    };
+    let Ok(entries) = fs::read_dir(&dir) else {
+        return Vec::new();
+    };
+    let mut sessions = Vec::new();
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|ext| ext.to_str()) != Some("scrollback") {
+            continue;
+        }
+        let Some(stem) = path.file_stem().and_then(|stem| stem.to_str()) else {
+            continue;
+        };
+        let Ok(id_bytes) = (0..stem.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(stem.get(i..i + 2).unwrap_or(""), 16))
+            .collect::<Result<Vec<u8>, _>>()
+        else {
+            continue;
+        };
+        let Ok(id) = String::from_utf8(id_bytes) else {
+            continue;
+        };
+        let bytes = fs::metadata(&path)
+            .map(|meta| (meta.len() as usize).saturating_sub(8))
+            .unwrap_or(0);
+        let cwd = fs::read(meta_path(&dir, &id))
+            .ok()
+            .and_then(|raw| serde_json::from_slice::<SessionMeta>(&raw).ok())
+            .and_then(|meta| meta.cwd);
+        sessions.push(PersistedSessionSummary {
+            id,
+            cwd,
+            scrollback_bytes: bytes,
+        });
+    }
+    sessions
 }
 
 /// Filesystem-safe, reversible mapping from a session id to a filename stem.
@@ -665,6 +720,11 @@ fn meta_path(dir: &Path, id: &str) -> PathBuf {
     dir.join(format!("{}.meta.json", encode_id(id)))
 }
 
+/// Where a dead session's pre-restore scrollback is parked (not replayed live).
+fn history_path(dir: &Path, id: &str) -> PathBuf {
+    dir.join(format!("{}.history", encode_id(id)))
+}
+
 fn atomic_write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     let tmp = path.with_extension("tmp");
     {
@@ -685,33 +745,24 @@ fn write_session_meta(dir: &Path, id: &str, cwd: Option<&str>, command: &str) {
     }
 }
 
-/// Load a session's checkpoint. Returns `None` when there is no saved scrollback
-/// for this id (the common "fresh session" case).
+/// Detect a session checkpoint for this id. Returns `None` for a fresh session
+/// (no saved scrollback). Reads only the cwd metadata — the scrollback content is
+/// deliberately not loaded, since it is not replayed into the live grid.
 fn load_persisted(dir: &Path, id: &str) -> Option<PersistedSession> {
-    let raw = fs::read(scrollback_path(dir, id)).ok()?;
-    if raw.len() < 8 {
+    if !scrollback_path(dir, id).exists() {
         return None;
     }
-    let mut header = [0u8; 8];
-    header.copy_from_slice(&raw[..8]);
-    let base_offset = u64::from_le_bytes(header);
-    let data = String::from_utf8_lossy(&raw[8..]).to_string();
-
     let cwd = fs::read(meta_path(dir, id))
         .ok()
         .and_then(|bytes| serde_json::from_slice::<SessionMeta>(&bytes).ok())
         .and_then(|meta| meta.cwd);
-
-    Some(PersistedSession {
-        data,
-        base_offset,
-        cwd,
-    })
+    Some(PersistedSession { cwd })
 }
 
 fn remove_persisted(dir: &Path, id: &str) {
     let _ = fs::remove_file(scrollback_path(dir, id));
     let _ = fs::remove_file(meta_path(dir, id));
+    let _ = fs::remove_file(history_path(dir, id));
 }
 
 fn boundary_at_or_after(data: &str, index: usize) -> usize {
@@ -944,7 +995,7 @@ mod tests {
     }
 
     #[test]
-    fn scrollback_survives_a_simulated_daemon_restart() {
+    fn restored_session_is_clean_and_reopens_at_saved_cwd() {
         use std::path::PathBuf;
 
         let dir: PathBuf = std::env::temp_dir().join(format!(
@@ -955,39 +1006,44 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         let id = "persist-restore-test".to_string();
 
-        // First daemon: spawn a session and write content that the reader echoes
-        // back into the scrollback buffer (and, throttled, to disk).
+        // First daemon: a session at /tmp writes content that gets checkpointed.
         {
             let manager = super::PtyManager::with_persistence_dir(dir.clone());
             manager
-                .ensure_detached(Some(id.clone()), None, Some("cat".to_string()), None, None)
+                .ensure_detached(
+                    Some(id.clone()),
+                    Some("/tmp".to_string()),
+                    Some("cat".to_string()),
+                    None,
+                    None,
+                )
                 .expect("spawn persistent PTY");
             manager
                 .write(&id, "persisted-content-line\n")
                 .expect("write content");
 
-            // Wait until the content has been checkpointed to disk.
+            // Wait until the content reaches the on-disk scrollback checkpoint.
             let scrollback = super::scrollback_path(&dir, &id);
             let mut ok = false;
             for _ in 0..40 {
-                if let Some(loaded) = super::load_persisted(&dir, &id) {
-                    if loaded.data.contains("persisted-content-line") {
+                if let Ok(raw) = std::fs::read(&scrollback) {
+                    if raw.len() > 8
+                        && String::from_utf8_lossy(&raw[8..]).contains("persisted-content-line")
+                    {
                         ok = true;
                         break;
                     }
                 }
                 std::thread::sleep(std::time::Duration::from_millis(25));
             }
-            assert!(
-                ok,
-                "scrollback was not checkpointed to disk at {scrollback:?}"
-            );
+            assert!(ok, "scrollback was not checkpointed to disk at {scrollback:?}");
             // Drop the manager WITHOUT killing the session — simulates the daemon
             // process dying while the on-disk checkpoint remains.
         }
 
-        // Second daemon: same persistence dir, session is no longer live, so
-        // ensure must rebuild it from disk with its previous content replayed.
+        // Second daemon: the session is no longer live, so ensure restores it as a
+        // FRESH, clean shell at the saved cwd. It must NOT replay the old content
+        // (replaying a dead full-screen app's frozen byte log renders as garbage).
         {
             let manager = super::PtyManager::with_persistence_dir(dir.clone());
             let (rid, reused) = manager
@@ -996,17 +1052,35 @@ mod tests {
             assert_eq!(rid, id);
             assert!(!reused, "a disk-restored session spawns a fresh shell");
 
-            let snapshot = manager.snapshot(&id).expect("snapshot restored session");
+            // Identity restored: the fresh shell reopens at the saved cwd.
+            let cwd = manager.get_cwd(&id).expect("cwd of restored session");
             assert!(
-                snapshot.contains("persisted-content-line"),
-                "restored snapshot missing previous content, got {snapshot:?}"
+                cwd.ends_with("tmp"),
+                "restored shell did not reopen at saved cwd, got {cwd:?}"
             );
 
-            // Explicit close removes the checkpoint so it can't resurrect.
+            // Usable, not garbled: the live grid starts clean — no replayed content.
+            let snapshot = manager.snapshot(&id).expect("snapshot restored session");
+            assert!(
+                !snapshot.contains("persisted-content-line"),
+                "restored session must start clean, not replay old scrollback: {snapshot:?}"
+            );
+
+            // The pre-restore content is preserved (not destroyed) as `.history`.
+            assert!(
+                super::history_path(&dir, &id).exists(),
+                "pre-restore scrollback should be parked as .history"
+            );
+
+            // Explicit close removes every on-disk trace so it can't resurrect.
             manager.kill(&id).expect("kill restored session");
             assert!(
                 super::load_persisted(&dir, &id).is_none(),
                 "kill must drop the disk checkpoint"
+            );
+            assert!(
+                !super::history_path(&dir, &id).exists(),
+                "kill must drop the preserved history too"
             );
         }
 

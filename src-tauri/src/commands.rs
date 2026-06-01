@@ -696,6 +696,40 @@ pub fn fs_write_file(path: String, contents: String) -> Result<(), String> {
     fs::write(path, contents).map_err(|error| error.to_string())
 }
 
+/// Path of the durable workspace-layout mirror. Lives next to the per-session
+/// scrollback so the tab→session mapping survives a localStorage wipe (verifier
+/// `RESET_STATE`, dev↔release origin change, browser data clear).
+fn workspace_layout_file() -> Result<PathBuf, String> {
+    let root = crate::pty::data_root_dir()
+        .ok_or_else(|| "Could not resolve data directory".to_string())?;
+    fs::create_dir_all(&root).map_err(|error| error.to_string())?;
+    Ok(root.join("workspace.json"))
+}
+
+#[tauri::command]
+pub fn workspace_layout_save(contents: String) -> Result<(), String> {
+    let path = workspace_layout_file()?;
+    // Atomic temp+rename so a crash mid-write can't truncate the mirror.
+    let tmp = path.with_extension("json.tmp");
+    fs::write(&tmp, contents.as_bytes()).map_err(|error| error.to_string())?;
+    fs::rename(&tmp, &path).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn workspace_layout_load() -> Result<Option<String>, String> {
+    let path = workspace_layout_file()?;
+    match fs::read_to_string(&path) {
+        Ok(contents) => Ok(Some(contents)),
+        Err(ref error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(error.to_string()),
+    }
+}
+
+#[tauri::command]
+pub fn workspace_persisted_sessions() -> Vec<crate::pty::PersistedSessionSummary> {
+    crate::pty::list_persisted_sessions()
+}
+
 #[cfg(test)]
 mod tests {
     use super::normalize_selected_folder;

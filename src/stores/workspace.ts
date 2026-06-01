@@ -444,7 +444,10 @@ export async function hydrateWorkspace() {
     const seen = new Set(baseTabs.map((tab) => tab.id));
     const recovered: Tab[] = [];
     for (const session of [...sessions].sort((a, b) => b.scrollbackBytes - a.scrollbackBytes)) {
-      if (session.scrollbackBytes < ORPHAN_MIN_BYTES) continue;
+      // Require a saved cwd: a restored session is a *clean* shell (dead content
+      // can't be replayed without garbling), so its value is reopening the right
+      // directory. A cwd-less orphan would just be a home-shell — clutter, skip it.
+      if (session.scrollbackBytes < ORPHAN_MIN_BYTES || !session.cwd) continue;
       const tab = tabFromOrphanedSession(session);
       if (!tab || seen.has(tab.id)) continue;
       seen.add(tab.id);
