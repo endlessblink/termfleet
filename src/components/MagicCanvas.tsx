@@ -462,8 +462,13 @@ function CanvasNodeView({ node }: { node: CanvasNode }) {
   // WorkspaceSurface mounts only one), so they never compete over the session at the
   // same time — sharing the id is exactly what lets switching between map and split
   // reattach to the live shell instead of minting a fresh one (the terminal-reset
-  // regression). `?? node.id` only applies before any pane exists.
-  const terminalPaneId = linkedTab?.activePaneId ?? node.id;
+  // regression). The `node.id` fallback is the LAST resort (a node with no live
+  // tab); before it, prefer any pane the tab already owns, because spawning
+  // against `node.id` (`terminal-map-<tabId>`) mints a SEPARATE daemon PTY from
+  // the split's `terminal-<tabId>-<activePaneId>` — that orphan shell is the
+  // "extra line on the map" that accrues across map↔split switches.
+  const terminalPaneId =
+    linkedTab?.activePaneId ?? linkedTab?.terminals[0]?.paneId ?? node.id;
   // Resolve the live PTY id for this shared pane (for attach only), falling back to
   // the persisted node pty or the tab's first terminal.
   const linkedPaneTerminalId = linkedTab?.terminals.find((terminal) => terminal.paneId === terminalPaneId)?.id;

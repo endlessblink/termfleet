@@ -1486,14 +1486,23 @@ function MapPanel({
             const linkedTab = node.terminalTabId
               ? tabs.find((tab) => tab.id === node.terminalTabId)
               : undefined;
-            const linkedProjectName = linkedTab?.groupId
-              ? projectNameFor(linkedTab.groupId, groups)
-              : "Unassigned";
             const liveTermId =
               linkedTab?.terminals.find((t) => t.paneId === linkedTab.activePaneId)?.id ??
               node.terminalPtyId ??
               linkedTab?.terminals[0]?.id;
             const liveNodeCwd = liveTermId ? liveCwds[liveTermId] : undefined;
+            // Title the row by what the node actually points at — a named project
+            // wins, otherwise the tab's own name (or its current directory). Only
+            // say "Unassigned" when there is genuinely nothing to name it by, so an
+            // opened-folder tab reads as e.g. "arthouse", not "Unassigned".
+            const linkedCwdName = (liveNodeCwd ?? node.terminalCwd ?? linkedTab?.initialCwd)
+              ?.split("/")
+              .filter(Boolean)
+              .pop();
+            const isDefaultTitle = !linkedTab?.title || linkedTab.title === "Terminal";
+            const linkedProjectName = linkedTab?.groupId
+              ? projectNameFor(linkedTab.groupId, groups)
+              : (isDefaultTitle ? linkedCwdName : linkedTab?.title) ?? linkedCwdName ?? "Unassigned";
             return (
               <div
                 key={node.id}

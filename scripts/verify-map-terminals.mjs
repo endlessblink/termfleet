@@ -45,8 +45,8 @@ const checks = [
     message: "Standalone map terminals must use a stable browser/runtime session id.",
   },
   {
-    ok: /const terminalPaneId = linkedTab\?\.activePaneId \?\? node\.id;/.test(magicCanvas),
-    message: "Linked map terminals must share the active terminal pane identity.",
+    ok: /const terminalPaneId =\s*linkedTab\?\.activePaneId \?\? linkedTab\?\.terminals\[0\]\?\.paneId \?\? node\.id;/.test(magicCanvas),
+    message: "Linked map terminals must share the active terminal pane identity (node.id only as last resort, never over an existing pane).",
   },
   {
     ok: /<TerminalComponent[\s\S]*tabId=\{terminalTabId\}[\s\S]*paneId=\{terminalPaneId\}[\s\S]*attachToPtyId=\{linkedTerminalId \?\? null\}[\s\S]*standalone/.test(magicCanvas),
@@ -85,7 +85,7 @@ const checks = [
     message: "Show-on-map must create live-terminal-sized nodes.",
   },
   {
-    ok: /reconcileCanvasState\(\);/.test(app),
+    ok: /reconcileCanvasState\(\)/.test(app),
     message: "App must reconcile persisted terminal map nodes at startup.",
   },
   {
