@@ -95,6 +95,7 @@ interface TerminalCanvasProps {
   onReady?: (ptyId: string, details: { reused: boolean }) => void;
   onStatus?: (status: "starting" | "failed", details?: { error?: string }) => void;
   onOutput?: (data: string) => void;
+  onSnapshot?: (snapshot: GridSnapshot) => void;
 }
 
 export function TerminalCanvas({
@@ -109,6 +110,7 @@ export function TerminalCanvas({
   onReady,
   onStatus,
   onOutput,
+  onSnapshot,
 }: TerminalCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
@@ -128,6 +130,8 @@ export function TerminalCanvas({
   onStatusRef.current = onStatus;
   const onOutputRef = useRef(onOutput);
   onOutputRef.current = onOutput;
+  const onSnapshotRef = useRef(onSnapshot);
+  onSnapshotRef.current = onSnapshot;
   // True once the first diff frame has arrived, so modesRef reflects the real
   // terminal modes (bracketedPaste etc.) rather than the false defaults. Paste is
   // gated on this: pasting before the first frame would wrap with stale modes and
@@ -260,6 +264,7 @@ export function TerminalCanvas({
         for (const resolve of waiters) resolve();
       }
       const snapshot = buffer.toSnapshot();
+      onSnapshotRef.current?.(snapshot);
       visibleContentSeen = snapshot.cells.some((row) =>
         row.some((cell) => cell.c.trim() !== "")
       );

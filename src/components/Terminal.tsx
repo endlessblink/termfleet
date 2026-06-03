@@ -10,6 +10,7 @@ import { TerminalCanvas } from "./TerminalCanvas";
 import { syncTerminalLatencyTraceEnv, traceTerminalLatency } from "../lib/terminalLatencyTrace";
 import { refreshProjectRootFromActiveTerminal, useWorkspaceStore } from "../stores/workspace";
 import type { TerminalRuntimeStatus } from "../lib/types";
+import type { GridSnapshot } from "../lib/gridSnapshot";
 
 const LOCALHOST_URL_PATTERN = /https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0):(\d{2,5})(?:[/?#][^\s"'<>]*)?/gi;
 const LOCALHOST_HOST_PORT_PATTERN = /(?:localhost|127\.0\.0\.1|0\.0\.0\.0):(\d{2,5})(?:[/?#][^\s"'<>]*)?/gi;
@@ -92,6 +93,7 @@ interface TerminalProps {
   standalone?: boolean;
   runtimeActive?: boolean;
   onActivate?: () => void;
+  onSnapshot?: (snapshot: GridSnapshot) => void;
   /**
    * Extra backing-store supersample factor for the canvas renderer. Map nodes
    * live under a CSS `scale(zoom)` transform that resamples the canvas bitmap and
@@ -118,6 +120,7 @@ export function TerminalComponent({
   standalone = false,
   runtimeActive = true,
   onActivate,
+  onSnapshot,
   renderScale = 1,
   mapProjection = false,
 }: TerminalProps) {
@@ -535,6 +538,7 @@ export function TerminalComponent({
             onReady={handleReady}
             onStatus={handleStatus}
             onOutput={handleOutput}
+            onSnapshot={onSnapshot}
           />
         </div>
       ) : (
