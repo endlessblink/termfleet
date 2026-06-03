@@ -35,7 +35,7 @@ were retired during consolidation.
 | TC-012 | DONE (2026-05-29) | TASK | Raise terminal rendering quality for Zellij/TUI workloads |
 | TC-013 | DONE (2026-05-29) | TASK | Prevent daemon transport failures from flooding terminals |
 | ~~TC-014~~ | SUPERSEDED by TC-017 | FEATURE | Make terminal typing latency production-grade (native VTE path abandoned) |
-| TC-015 | TODO | FEATURE | Per-node task badges: show associated MASTER_PLAN task + status on canvas terminals |
+| TC-015 | DONE (2026-06-01) | FEATURE | Per-node task badges: show associated MASTER_PLAN task + status on canvas terminals |
 | TC-016 | TODO | FEATURE | Multi-agent orchestration: spawn/manage sub-agent terminals from the cockpit |
 | TC-017 | IN_PROGRESS | FEATURE | Headless-VT (Rust) + canvas renderer — now the desktop default (replaces xterm); live latency/TUI confirmation pending |
 | TC-017a | DONE | TASK | Stage 1: headless alacritty_terminal grid + JSON snapshot |
@@ -47,6 +47,7 @@ were retired during consolidation.
 | TC-017g | DONE | TASK | Stage 7: canvas is the desktop default (replaces xterm); xterm browser-only fallback. Live-confirmed in the Tauri app via verify:canvas-live: fills pane (fixed an attach-race fill bug), reflows, live render, p95 1ms input, htop/vim/tmux TUIs |
 | TC-018 | TODO | FEATURE | BiDi/RTL + text shaping (Hebrew nikud) in the headless grid — depends on TC-017 |
 | TC-019 | IN_PROGRESS | DESIGN | Warp-style chrome redesign: neutral fill-only design system (no outlines), terminal-first layout, Hack terminal font + #1d2022 gray, themed folder picker, DESIGN.md + CI-enforced no-outlines/typography rules |
+| TC-020 | DONE (2026-06-01) | FEATURE | Split-pane and canvas localhost preview surface |
 
 ---
 
@@ -1310,9 +1311,283 @@ criterion passed with screenshot evidence in `/tmp/tw-canvas-live/`:
 
 Automated regression check after the fix: `npm run build` clean, `tsc --noEmit`
 clean, `npm run verify:canvas-all` 6/6 passed, `verify:terminal-rendering` and
-`verify:typography` pass. (`verify:map-terminals` is broken independently of this
-work — it crashes reading a non-existent `../DESIGN.md` and references the retired
-`native_vte.rs`; needs separate reconciliation with the TC-017 cutover.)
+`verify:typography` pass.
+
+Reliability hardening addendum — 2026-06-02:
+- Added a single terminal reliability gate so the hardening matrix is not hidden
+  across separate scripts. `npm run verify:terminal-reliability` runs source
+  contracts, Canvas2D renderer/diff Playwright tests, Rust `vt_grid::tests`,
+  Rust `pty::tests`, and the frontend build against an isolated
+  `/tmp/tw-terminal-reliability-target` cargo target. The same script runs the
+  full private Xvfb/Tauri matrix when invoked as `npm run
+  verify:terminal-reliability:live` (legacy prompt repair, regular-shell
+  scrollback reattach, zellij map, bracketed paste, resize storm, zellij
+  shortcuts, canvas live, standalone daemon, restart restore). Evidence:
+  `npm run verify:terminal-reliability` passed with
+  `TERMFLEET_TERMINAL_RELIABILITY_OK live=0`; `npm run verify:map-terminals`
+  statically requires both package aliases and all matrix entries.
+- Fresh verification pass after the legacy old-session repair wiring:
+  `npm run verify:map-terminals` passed, `npm run verify:canvas-all` passed 9/9,
+  `cargo test vt_grid::tests -- --nocapture` passed 17/17,
+  `cargo test pty::tests -- --nocapture` passed 10/10, and `npm run build`
+  passed. Live private Xvfb/Tauri canaries also passed:
+  `APP_BUDGET=240 npm run verify:legacy-prompt-live` with
+  `LEGACY_PROMPT_REPAIR_REUSED_PTY`, `LEGACY_PROMPT_REPAIR_CTRL_L_SENT`,
+  `LEGACY_PROMPT_REPAIR_INPUT_REACHED_DAEMON`,
+  `LEGACY_PROMPT_REPAIR_OUTPUT_IN_SNAPSHOT`,
+  `LEGACY_PROMPT_REPAIR_VISUAL_REPAINT changed_pixels=9517`, and
+  `LEGACY_PROMPT_REPAIR_OK`; `APP_BUDGET=240 npm run
+  verify:scrollback-reattach` with `SCROLLBACK_MOVED_INTO_HISTORY`,
+  `SCROLLBACK_REATTACHED_REUSED_PTY`,
+  `SCROLLBACK_RESET_TO_BOTTOM_BEFORE_INPUT`,
+  `SCROLLBACK_INPUT_REACHED_DAEMON`, `SCROLLBACK_OUTPUT_IN_SNAPSHOT`, and
+  `SCROLLBACK_REATTACH_VISUAL_REPAINT changed_pixels=12991`;
+  `APP_BUDGET=360 npm run verify:zellij-map` with `GRID_PTY_MATCH (both
+  99x24 cols)`, `MAP_INPUT_REACHED_DAEMON`, nonblank map screenshots, and
+  repaint evidence (`htop-redraw changed_pixels=15824`, `map-input
+  changed_pixels=72211`); `APP_BUDGET=300 npm run verify:bracketed-paste` with
+  `BRACKETED_PASTE_MARKERS_IN_VIM`,
+  `BRACKETED_PASTE_NO_STALE_MARKERS_AFTER_DISABLE`, and
+  `BRACKETED_PASTE_OK`; `APP_BUDGET=360 npm run verify:resize-storm` with
+  `RESIZE_STORM_MULTIPLE_SIZES grid=6 pty=6`,
+  `RESIZE_STORM_GRID_PTY_MATCH grid=(157, 52) pty=(157, 52)`,
+  `RESIZE_STORM_INPUT_REACHED_DAEMON`,
+  `RESIZE_STORM_VISUAL_REPAINT post-storm-input changed_pixels=263975`, and
+  `RESIZE_STORM_OK`; `APP_BUDGET=360 npm run verify:zellij-shortcuts` with
+  exact Ctrl+T/Ctrl+P/Shift+Tab/Ctrl+W byte assertions and
+  `ZELLIJ_SHORTCUTS_OK`.
+- Selected map terminals now stop terminal-body mouse events at the terminal
+  surface, so canvas/node selection cannot steal focus from the hidden terminal
+  input. `npm run verify:zellij-map` now clicks the selected map terminal and
+  fails unless the private daemon trace reports `MAP_INPUT_REACHED_DAEMON`.
+- Blank canvas terminals now paint an initial background, retry a backend
+  `grid_snapshot`, and show a visible failed runtime state if no visible grid
+  content arrives after attach. Silent blank terminal panes are a verifier-locked
+  regression (`npm run verify:map-terminals`).
+- `scripts/verify-canvas-live.sh` now proves regular shell input/output, not only
+  screenshots: it requires `CANVAS_LIVE_INPUT_REACHED_DAEMON` and
+  `CANVAS_LIVE_OUTPUT_IN_SNAPSHOT` for the marker `TF_CANVAS_LIVE_INPUT_OK`.
+- Live verifiers now run in private `XDG_RUNTIME_DIR`, `XDG_DATA_HOME`, trace
+  files, and `CARGO_TARGET_DIR` directories. Cleanup kills only the verifier-owned
+  process group and private daemon PID. The tmux section uses
+  `/tmp/tw-canvas-live/tmux.sock`, never the user's default tmux server.
+- Fresh verification: `npm run build`, `npm run verify:map-terminals`,
+  `APP_BUDGET=360 npm run verify:zellij-map`, `APP_BUDGET=360 npm run
+  verify:canvas-live`, `CARGO_BUILD_JOBS=1 CARGO_TARGET_DIR=/tmp/tw-termfleet-cargo-check
+  cargo check`, and `CARGO_BUILD_JOBS=1 CARGO_TARGET_DIR=/tmp/tw-termfleet-cargo-check
+  cargo test` all pass.
+- Additional completion-audit evidence: `npm run verify:canvas-all` passed all
+  six renderer/grid/keymap/selection tests; `python3 scripts/verify-restart-restore.py`
+  passed outside the sandbox with a private debug binary after proving the sandbox
+  blocked daemon startup with `Operation not permitted`; and
+  `APP_BUDGET=360 npm run verify:zellij-shortcuts` passed byte-level assertions
+  for Ctrl+T (`0x14`), Ctrl+P (`0x10`), Shift+Tab (`ESC[Z`), and Ctrl+W (`0x17`).
+  `verify-restart-restore.py` now builds/uses `/tmp/tw-restart-restore-target`
+  and prints daemon log tails on startup failure; `verify:zellij-shortcuts` now
+  waits for the window according to `APP_BUDGET` so cold private builds don't
+  produce false shortcut failures.
+- Release-path restart evidence: `APP_BUDGET=240 npm run
+  verify:standalone-daemon` now builds its own release binary under
+  `/tmp/tw-standalone-daemon-smoke/target`, launches the app under private
+  `XDG_RUNTIME_DIR`/`XDG_DATA_HOME`, types `STANDALONE_CLIP_OK_680`, finds it in
+  daemon scrollback, stops only the app process, verifies the daemon PID is
+  unchanged, relaunches the app, types `STANDALONE_RECONNECT_OK_681`, and finds
+  the second marker in the same session id. The verifier logs to
+  `/tmp/tw-standalone-daemon-smoke/driver.log`, captures
+  `/tmp/tw-standalone-daemon-smoke/failure.png` on failure, and never touches the
+  user's live daemon/socket/target.
+- Release restart visual evidence: `verify:standalone-daemon` now captures
+  successful before/after restart screenshots and fails if the terminal region is
+  blank, visually flat, or unchanged after reconnect. Evidence:
+  `APP_BUDGET=360 npm run verify:standalone-daemon` passed with
+  `STANDALONE_RESTART_VISUAL_CONTENT before-app-restart mean=8306.9 sd=2576.1`,
+  `STANDALONE_RESTART_VISUAL_CONTENT after-app-restart mean=8468.1 sd=3487.4`,
+  `STANDALONE_RESTART_VISUAL_REPAINT app-restart changed_pixels=4455`, and
+  `Standalone daemon restart reattach passed` for the same session id. Success
+  screenshots are
+  `/tmp/tw-standalone-daemon-smoke/01-before-app-restart.png` and
+  `/tmp/tw-standalone-daemon-smoke/02-after-app-restart.png`.
+- Release cold-restore visual evidence: `verify:standalone-daemon` now also
+  kills the app and daemon after the app-restart pass, relaunches against the
+  same private `XDG_DATA_HOME`, verifies the prior marker is replayed into the
+  same session id, and requires nonblank/repainted terminal pixels before and
+  after cold-restore input. Evidence: `APP_BUDGET=420 npm run
+  verify:standalone-daemon` passed with daemon PID changing from `3577575` to
+  `3578889`, the same session id
+  `terminal-92863c38-601b-4a50-89c4-02392401711d-898d4fa6-aa7e-438f-a137-725642cb992a`,
+  `STANDALONE_RESTART_VISUAL_CONTENT after-daemon-restart-before-input mean=8414.8 sd=3211.1`,
+  `STANDALONE_RESTART_VISUAL_CONTENT after-daemon-restart-input mean=8584.4 sd=4008.7`,
+  `STANDALONE_RESTART_VISUAL_REPAINT daemon-cold-restore-input changed_pixels=4714`,
+  and `Standalone daemon cold restore passed`. Success screenshots are
+  `/tmp/tw-standalone-daemon-smoke/03-after-daemon-restart-before-input.png` and
+  `/tmp/tw-standalone-daemon-smoke/04-after-daemon-restart-input.png`.
+- Research constraint captured for future modifiers: daemon-owned PTYs plus
+  app-restart reattach are the correct reliability base; after daemon death or
+  OS reboot, Linux cannot honestly preserve running process state without
+  heavyweight checkpointing. TermFleet's guarantee is therefore no silent
+  blank/broken UI, safe app restart reattach, and cold restore of scrollback,
+  cwd, metadata, and terminal size.
+- Canvas terminal session-switch guard: `TerminalCanvas` now resets terminal
+  modes, first-frame state, selection anchors, and delayed-paste waiters on every
+  session attach, and delayed paste delivery is guarded by a session epoch so a
+  paste or stale mode snapshot cannot cross into a newly attached PTY. Evidence:
+  `npm run verify:map-terminals`, `npm run build`, and
+  `APP_BUDGET=360 npm run verify:zellij-map` passed after the change; the zellij
+  map run ended with `GRID_PTY_MATCH (99,24)` and `MAP_INPUT_REACHED_DAEMON`.
+- Split/reconnected scrollback viewport guard: the headless grid now hides the
+  live cursor while the grid is scrolled into history, exposes
+  `grid_scroll_to_bottom`, and `TerminalCanvas` resets the grid viewport to the
+  live bottom on attach and before every input path (normal keys/paste plus the
+  GTK Tab/Shift+Tab capture path). This prevents a reconnected split terminal
+  from painting a stale historical viewport mixed with the live prompt/cursor,
+  which is the broken view shown in the 2026-06-02 screenshot. Evidence:
+  `npm run verify:map-terminals`, `npm run build`,
+  `CARGO_BUILD_JOBS=1 CARGO_TARGET_DIR=/tmp/tw-termfleet-cargo-check cargo test
+  vt_grid::tests::scrolled_history_hides_cursor_until_bottom_reset`, and
+  `CARGO_BUILD_JOBS=1 CARGO_TARGET_DIR=/tmp/tw-termfleet-cargo-check cargo check`
+  passed. Live follow-up after the viewport fix: `APP_BUDGET=360 npm run
+  verify:canvas-live` passed with `CANVAS_LIVE_INPUT_REACHED_DAEMON` and
+  `CANVAS_LIVE_OUTPUT_IN_SNAPSHOT`, and `APP_BUDGET=360 npm run
+  verify:zellij-map` passed with `GRID_PTY_MATCH (99,24)` plus
+  `MAP_INPUT_REACHED_DAEMON`.
+- Shortcut verifier hardening: `verify:zellij-shortcuts` now revalidates or
+  reacquires the Tauri window before screenshots, terminal focus, and the
+  shortcut probe, so transient Xvfb/Tauri window IDs cannot create false hangs or
+  missing-window failures. Timed live evidence: `timeout 420 env APP_BUDGET=360
+  npm run verify:zellij-shortcuts` passed with exact daemon bytes for Ctrl+T
+  (`0x14`), Ctrl+P (`0x10`), Shift+Tab (`ESC[Z`), and Ctrl+W (`0x17`).
+- Regular-shell scrollback reattach guard: `npm run verify:scrollback-reattach`
+  now runs a private Xvfb/private-daemon live regression that fills shell
+  scrollback, scrolls the grid into history, switches split -> map -> split, and
+  rejects any run where post-reattach input lands on a different PTY id. It also
+  requires `grid.scroll_to_bottom` after reattach input and compares before/after
+  screenshots so backend-only success cannot hide a stale canvas. Evidence:
+  `APP_BUDGET=240 npm run verify:scrollback-reattach` passed with
+  `SCROLLBACK_MOVED_INTO_HISTORY`, `SCROLLBACK_REATTACHED_REUSED_PTY`,
+  `SCROLLBACK_RESET_TO_BOTTOM_BEFORE_INPUT`,
+  `SCROLLBACK_INPUT_REACHED_DAEMON`, `SCROLLBACK_OUTPUT_IN_SNAPSHOT`, and
+  `SCROLLBACK_REATTACH_VISUAL_REPAINT changed_pixels=13185`; screenshots are in
+  `/tmp/tw-scrollback-reattach/`.
+- Zellij map visual guard: `verify:zellij-map` now preserves the trace parser's
+  failure status and fails if the selected map terminal screenshots are blank,
+  visually flat, or frozen. It crops the focused terminal region in
+  `04-map-after-switch.png`, `05-map-htop-settled.png`, and
+  `06-map-htop-redraw.png`, requires high-contrast terminal content, and compares
+  screenshots across htop redraw and map input. Evidence: `APP_BUDGET=360 npm run
+  verify:zellij-map` passed with `GRID_PTY_MATCH (99,24)`,
+  `MAP_INPUT_REACHED_DAEMON`, `ZELLIJ_MAP_VISUAL_CONTENT` for all three map
+  frames, `ZELLIJ_MAP_VISUAL_REPAINT htop-redraw changed_pixels=17567`, and
+  `ZELLIJ_MAP_VISUAL_REPAINT map-input changed_pixels=74090`; screenshots are in
+  `/tmp/tw-zellij-map/`.
+- Sparse map shell prompt guard: selected map terminals now keep fresh/sparse
+  primary-screen shell prompts at their real top row, matching normal terminal
+  semantics. The previous map-only bottom-anchor presentation was removed because
+  it made map terminals behave unlike Konsole/xterm. `npm run
+  verify:map-shell-anchor` remains as a private Xvfb/Tauri screenshot canary, but
+  it now fails if the selected map shell cursor is too low in the terminal body.
+  Evidence: `npm run verify:map-terminals` now rejects `mapSurface` /
+  `applySparseMapAnchor` returning, `APP_BUDGET=180 npm run
+  verify:map-shell-anchor` requires `MAP_SHELL_PROMPT_TOP_OK`, and `npm run
+  verify:terminal-reliability` covers the fast source/browser/Rust/build gate.
+- Standalone daemon cold-restore flush guard: `PtyOutputBuffer::snapshot` and
+  `read_since` now force a pending scrollback persist flush before returning, so
+  verifier-driven daemon death cannot lose the newest marker between throttle
+  windows. Evidence: `cargo test pty::tests -- --nocapture` passed 11/11
+  including `snapshot_forces_dirty_persist_flush_before_daemon_death`, and
+  `APP_BUDGET=360 npm run verify:standalone-daemon` passed with app restart
+  reattach, daemon PID change, same-session cold restore, and post-restore input
+  repaint.
+- Bracketed-paste mode guard: `npm run verify:bracketed-paste` now runs a
+  private Xvfb/private-daemon live regression that enters `vim -u NONE`, uses the
+  terminal paste shortcut (`Ctrl+Shift+V`), and requires the daemon write stream
+  to contain `ESC[200~ ... ESC[201~` around the multi-line payload while Vim has
+  bracketed paste enabled. It then exits Vim, explicitly disables bracketed paste
+  while a foreground `sleep` prevents Bash from immediately re-enabling the
+  mode, pastes again, and fails if old TUI bracketed mode leaks into that second
+  paste. Evidence: `APP_BUDGET=300 npm run verify:bracketed-paste` passed with
+  `BRACKETED_PASTE_MARKERS_IN_VIM`, `BRACKETED_PASTE_VIM_PAYLOAD`,
+  `BRACKETED_PASTE_NO_STALE_MARKERS_AFTER_DISABLE`,
+  `BRACKETED_PASTE_DISABLED_PAYLOAD`, and `BRACKETED_PASTE_OK`; screenshots are
+  in `/tmp/tw-bracketed-paste/`. Follow-up checks after adding the guard:
+  `npm run verify:map-terminals`, `npm run build`, and
+  `CARGO_BUILD_JOBS=1 CARGO_TARGET_DIR=/tmp/tw-termfleet-cargo-check cargo check`
+  all pass.
+- Research-driven verifier reduction: external guidance points to a layered
+  suite instead of one headed E2E per bug class: Rust grid/PTY invariants first,
+  frontend Canvas2D pixel checks second, and private Tauri/Xvfb only for
+  WebKitGTK/focus/rendering canaries. Added fast Rust invariants for the resize
+  failure class: `resize_storm_keeps_wire_frame_rectangular_and_modes` repeatedly
+  resizes an alternate-screen, bracketed-paste, mouse-reporting grid and requires
+  rectangular frames, preserved modes, full-sync frames on every dimension change,
+  and a nonblank final frame. Added
+  `alternate_screen_roundtrip_preserves_main_scrollback` so alt-screen TUI content
+  cannot leak into restored shell scrollback. Evidence:
+  `CARGO_BUILD_JOBS=1 CARGO_TARGET_DIR=/tmp/tw-termfleet-cargo-check cargo test
+  vt_grid::tests -- --nocapture` passed 17/17 in the fast grid layer, followed by
+  `npm run verify:map-terminals` and
+  `CARGO_BUILD_JOBS=1 CARGO_TARGET_DIR=/tmp/tw-termfleet-cargo-check cargo check`.
+  `npm run verify:resize-storm` is now wired as the slow private Xvfb canary for
+  the same class and passed after fixing the verifier's `xdotool windowsize`
+  argument split. Live evidence: `RESIZE_STORM_MULTIPLE_SIZES grid=6 pty=6`,
+  `RESIZE_STORM_GRID_PTY_MATCH grid=(157, 52) pty=(157, 52)`,
+  `RESIZE_STORM_INPUT_REACHED_DAEMON`, `RESIZE_STORM_TRACE_OK`,
+  `RESIZE_STORM_VISUAL_REPAINT post-storm-input changed_pixels=254762`, and
+  `RESIZE_STORM_OK`; screenshots are in `/tmp/tw-resize-storm/`.
+- Backend PTY resize contract locked in the fast layer: added
+  `detached_spawn_records_requested_winsize` and
+  `resize_storm_tracks_final_winsize_and_reuse_does_not_shrink` so daemon-owned
+  sessions remember their requested spawn winsize, track every successful resize
+  through a storm, and report the live final size on reattach instead of shrinking
+  a reused zellij/tmux/TUI session. Evidence:
+  `CARGO_BUILD_JOBS=1 CARGO_TARGET_DIR=/tmp/tw-termfleet-cargo-check cargo test
+  pty::tests -- --nocapture` passed 10/10, `npm run verify:map-terminals` now
+  statically requires these PTY tests, and
+  `CARGO_BUILD_JOBS=1 CARGO_TARGET_DIR=/tmp/tw-termfleet-cargo-check cargo check`
+  passed.
+- Frontend binary-diff recovery hardened: `GridBuffer` now treats every full sync
+  as authoritative even at the same dimensions, clears stale rows before applying
+  the payload, and normalizes decoded row widths to the current grid width. This
+  prevents a reconnect/full-sync recovery frame from leaving old terminal rows in
+  the client buffer if the frontend had stale same-size state. Evidence:
+  `npm run verify:grid-diff` passed 2/2, including
+  `full sync is authoritative and clears stale same-size buffer state`;
+  `npm run verify:map-terminals` now statically requires the reset behavior and
+  regression test; `npm run build` passed.
+- Malformed binary-diff failure path hardened: `decodeFrame` now validates frame
+  length, message type, dimensions, dirty-row bounds, row cell count, and
+  codepoints before mutating the frontend grid buffer. `TerminalCanvas` catches
+  decode/apply failures, marks the terminal failed through the existing visible
+  runtime state, and preserves the prior rendered buffer instead of letting an
+  uncaught stream callback exception leave a silent broken canvas. Evidence:
+  `npm run verify:grid-diff` passed 3/3, including
+  `malformed binary frames fail explicitly before mutating the grid buffer`;
+  `npm run verify:map-terminals` now statically requires decoder validation,
+  visible failed-state wiring, and the malformed-frame regression; `npm run build`
+  passed.
+- Legacy duplicate-prompt repair for old reused plain-shell sessions: old PTYs
+  that already emitted stacked prompt bytes before the resize fixes can still
+  reconstruct that bad-looking screen when the grid replays daemon scrollback.
+  `TerminalCanvas` now detects the narrow first-frame pattern from the 2026-06-02
+  screenshot (same shell prompt above the cursor prompt with only blank rows
+  between) and sends one Ctrl-L redraw to the real daemon PTY. This keeps the
+  parser and PTY consistent, repairs old plain-shell sessions, and skips
+  alternate-screen sessions such as zellij/tmux/vim. Evidence:
+  `npx playwright test legacy-prompt-repair` passed, `npm run verify:grid-diff`
+  passed 3/3 after extending malformed-frame coverage to invalid cursor
+  coordinates and trailing bytes, `npm run verify:map-terminals` statically
+  requires the repair detector/wiring, and `npm run build` passed. The repair is
+  now part of the standard fast frontend verifier: `npm run
+  verify:legacy-prompt-repair` passed 1/1, and `npm run verify:canvas-all` now
+  includes it and passed 9/9. Slow live evidence is covered by
+  `npm run verify:legacy-prompt-live`, which seeds the exact duplicated-prompt
+  shape in a private Xvfb/Tauri daemon, switches `split -> links -> split` to
+  reattach the same PTY without map reflow, and passed with
+  `LEGACY_PROMPT_REPAIR_REUSED_PTY`, `LEGACY_PROMPT_REPAIR_CTRL_L_SENT`,
+  `LEGACY_PROMPT_REPAIR_INPUT_REACHED_DAEMON`,
+  `LEGACY_PROMPT_REPAIR_OUTPUT_IN_SNAPSHOT`,
+  `LEGACY_PROMPT_REPAIR_VISUAL_REPAINT changed_pixels=9460`, and
+  `LEGACY_PROMPT_REPAIR_OK`; screenshots are in
+  `/tmp/tw-legacy-prompt-repair/`.
 
 If a regression appears, `VITE_TERMINAL_RENDERER_MODE=web-xterm` reverts to xterm
 on desktop instantly. Optional remaining polish: a true instrumented key-to-glyph
@@ -1394,7 +1669,7 @@ best-effort.
 
 ## Backlog (post-consolidation)
 
-#### TC-015 - Per-node task badges on canvas terminals `TODO`
+#### TC-015 - Per-node task badges on canvas terminals `DONE (2026-06-01)`
 Surface each terminal's associated MASTER_PLAN task and status directly on its
 canvas node (and in the sidebar list) as a compact badge: task id, short title,
 and a status dot (Todo / In-Progress / Blocked / Done). Lets the operations map
@@ -1409,6 +1684,46 @@ Acceptance (draft):
 - A terminal node can be bound to a task id from a project's MASTER_PLAN.
 - The node shows task id + status badge; status updates when the plan changes.
 - Unbound terminals render with no badge and no layout shift.
+
+Completion notes:
+- Added durable `CanvasNode.taskBinding` metadata plus a no-dependency
+  MASTER_PLAN parser for table rows and task headings.
+- Map terminal node chrome now exposes a task-binding control and renders a
+  compact status badge outside the terminal buffer; the map sidebar mirrors it.
+- Task status is re-read from the project `MASTER_PLAN.md` while mounted, so a
+  changed plan updates the badge without requiring Zellij/tmux.
+
+Verification:
+- `npm run build` passed.
+- `npm run verify:map-terminals` passed with TC-015 static guards.
+
+#### TC-020 - Split-pane and canvas localhost preview surface `DONE (2026-06-01)`
+Add a first-class preview pane so TermFleet can show a local web app beside the
+terminal running its dev server, with the same preview represented on the map.
+
+Acceptance:
+- DONE: Command palette can open a preview pane next to the active terminal.
+- DONE: Preview URL can be edited, normalized, persisted, and reloaded.
+- DONE: Preview defaults to the localhost URL detected from the active terminal's
+  output, so each dev terminal owns its relevant port.
+- DONE: Quick actions support common local dev ports `3000` and `5173`.
+- DONE: Canvas mode shows the preview as a node next to the linked terminal.
+- DONE: The preview is isolated from PTY/daemon behavior; iframe-blocked apps
+  remain a browser security limitation.
+
+Completion notes:
+- Added `preview` split-pane leaves plus persisted `previewUrl` state.
+- Terminal panes detect localhost URLs from PTY output and store the relevant
+  preview URL on that terminal pane.
+- Added a `LocalhostPreview` surface with URL entry, reload, quick-port buttons,
+  and a full-surface iframe.
+- Added command menu and rail entry points for opening a preview beside the
+  active development terminal.
+- Added map preview nodes linked back to the originating terminal tab/pane.
+
+Verification:
+- `npm run build` passed.
+- `npx playwright test tests/localhost-preview.spec.ts` passed.
 
 #### TC-016 - Multi-agent orchestration from the cockpit `TODO`
 Let one cockpit terminal spawn and manage multiple sub-agent terminals (Claude
