@@ -17,15 +17,26 @@ BIN="$APP_ROOT/src-tauri/target/release/terminal-workspace"
 OUT_DIR="${CANVAS_VERIFY_OUT:-/tmp/tw-canvas-verify}"
 LOG_FILE="$OUT_DIR/runtime.log"
 DRIVER_LOG="$OUT_DIR/driver.log"
+RUN_DIR="$OUT_DIR/run"
+DATA_DIR="$OUT_DIR/data"
 APP_BUDGET="${APP_BUDGET:-45}"
 
-mkdir -p "$OUT_DIR"
+mkdir -p "$OUT_DIR" "$RUN_DIR" "$DATA_DIR"
+chmod 700 "$RUN_DIR"
 
 # Re-exec under a private auto-allocated Xvfb (free display + own auth).
 if [[ -z "${CANVAS_VERIFY_INNER:-}" ]]; then
   rm -f "$OUT_DIR"/*.png "$LOG_FILE" "$DRIVER_LOG"
+  rm -rf "$RUN_DIR" "$DATA_DIR"
+  mkdir -p "$RUN_DIR" "$DATA_DIR"
+  chmod 700 "$RUN_DIR"
   exec xvfb-run -a -s "-screen 0 1440x920x24" \
-    env CANVAS_VERIFY_INNER=1 bash "${BASH_SOURCE[0]}" "$@"
+    env \
+      CANVAS_VERIFY_INNER=1 \
+      CANVAS_VERIFY_OUT="$OUT_DIR" \
+      XDG_RUNTIME_DIR="$RUN_DIR" \
+      XDG_DATA_HOME="$DATA_DIR" \
+      bash "${BASH_SOURCE[0]}" "$@"
 fi
 
 [[ -x "$BIN" ]] || { echo "Release binary missing: $BIN" >&2; exit 2; }
@@ -79,6 +90,8 @@ timeout "$APP_BUDGET" env \
   WEBKIT_DISABLE_COMPOSITING_MODE=1 \
   WEBKIT_DISABLE_DMABUF_RENDERER=1 \
   TERMINAL_WORKSPACE_TRACE_LATENCY=1 \
+  XDG_RUNTIME_DIR="$RUN_DIR" \
+  XDG_DATA_HOME="$DATA_DIR" \
   "$BIN" >"$LOG_FILE" 2>&1 </dev/null || true
 
 wait "$DRIVER_PID" 2>/dev/null || true

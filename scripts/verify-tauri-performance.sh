@@ -5,7 +5,10 @@ APP_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TAURI_ROOT="$APP_ROOT/src-tauri"
 PERF_MODE="${TERMINAL_WORKSPACE_PERF_MODE:-release}"
 APP_BIN="${TERMINAL_WORKSPACE_APP_BIN:-$TAURI_ROOT/target/release/terminal-workspace}"
-SOCKET="${XDG_RUNTIME_DIR:-/tmp}/terminal-workspace/daemon.sock"
+OUT_DIR="${TERMINAL_WORKSPACE_PERF_OUT:-/tmp/tw-tauri-performance}"
+RUN_DIR="$OUT_DIR/run"
+DATA_DIR="$OUT_DIR/data"
+SOCKET="$RUN_DIR/terminal-workspace/daemon.sock"
 DISPLAY_VALUE="${DISPLAY:-:0}"
 XAUTHORITY_VALUE="${XAUTHORITY:-/run/user/1000/xauth_Mqgwcs}"
 NEEDLE="PERF_ECHO_$(date +%s)"
@@ -19,6 +22,15 @@ APP_PID=""
 APP_WINDOW_PID=""
 DAEMON_PID=""
 
+mkdir -p "$RUN_DIR" "$DATA_DIR"
+chmod 700 "$RUN_DIR"
+
+if [[ "$PERF_MODE" == "dev" && "${TERMINAL_WORKSPACE_ALLOW_SHARED_DEV_CLEANUP:-}" != "1" ]]; then
+  echo "Dev performance mode used to launch run-dev.sh, which may clean shared local processes." >&2
+  echo "Run release mode, or set TERMINAL_WORKSPACE_ALLOW_SHARED_DEV_CLEANUP=1 after ensuring no user sessions are active." >&2
+  exit 1
+fi
+
 metric() {
   printf -v "$1" '%s' "$2"
   printf 'PERF %s=%s\n' "$1" "$2"
@@ -31,11 +43,6 @@ now_ms() {
 cleanup() {
   if [[ -n "$APP_PID" ]]; then
     kill "$APP_PID" >/dev/null 2>&1 || true
-  fi
-  if [[ "$PERF_MODE" == "dev" ]]; then
-    pkill -f "$APP_ROOT/node_modules/.bin/vite --host 127.0.0.1 --port 1420" >/dev/null 2>&1 || true
-    pkill -f "$APP_ROOT/src-tauri/target/debug/terminal-workspace" >/dev/null 2>&1 || true
-    pkill -f "target/debug/terminal-workspace" >/dev/null 2>&1 || true
   fi
   if [[ -n "$DAEMON_PID" ]]; then
     kill "$DAEMON_PID" >/dev/null 2>&1 || true
@@ -54,9 +61,9 @@ launch_app() {
   WINDOW_ID=""
   APP_WINDOW_PID=""
   if [[ "$PERF_MODE" == "dev" ]]; then
-    DISPLAY="$DISPLAY_VALUE" XAUTHORITY="$XAUTHORITY_VALUE" "$APP_ROOT/run-dev.sh" &
+    DISPLAY="$DISPLAY_VALUE" XAUTHORITY="$XAUTHORITY_VALUE" XDG_RUNTIME_DIR="$RUN_DIR" XDG_DATA_HOME="$DATA_DIR" "$APP_ROOT/run-dev.sh" &
   else
-    DISPLAY="$DISPLAY_VALUE" XAUTHORITY="$XAUTHORITY_VALUE" "$APP_BIN" &
+    DISPLAY="$DISPLAY_VALUE" XAUTHORITY="$XAUTHORITY_VALUE" XDG_RUNTIME_DIR="$RUN_DIR" XDG_DATA_HOME="$DATA_DIR" "$APP_BIN" &
   fi
   APP_PID=$!
 

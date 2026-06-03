@@ -7,30 +7,91 @@ const readOptional = (path) => (existsSync(path) ? readFileSync(path, "utf8") : 
 
 const root = process.cwd();
 const magicCanvas = readFileSync(join(root, "src/components/MagicCanvas.tsx"), "utf8");
+const canvasSidebar = readFileSync(join(root, "src/components/CanvasSidebar.tsx"), "utf8");
+const workbenchHeader = readFileSync(join(root, "src/components/WorkbenchHeader.tsx"), "utf8");
 const workbenchSidebar = readFileSync(join(root, "src/components/WorkbenchSidebar.tsx"), "utf8");
 const workspaceStore = readFileSync(join(root, "src/stores/workspace.ts"), "utf8");
 const usePty = readFileSync(join(root, "src/hooks/usePty.ts"), "utf8");
 const useNativeTerminalPane = readFileSync(join(root, "src/hooks/useNativeTerminalPane.ts"), "utf8");
 const terminalComponent = readFileSync(join(root, "src/components/Terminal.tsx"), "utf8");
+const terminalCanvas = readFileSync(join(root, "src/components/TerminalCanvas.tsx"), "utf8");
 const splitPane = readFileSync(join(root, "src/components/SplitPane.tsx"), "utf8");
 const types = readFileSync(join(root, "src/lib/types.ts"), "utf8");
+const masterPlanTasks = readFileSync(join(root, "src/lib/masterPlanTasks.ts"), "utf8");
+const gridBuffer = readFileSync(join(root, "src/lib/gridBuffer.ts"), "utf8");
+const gridDiff = readFileSync(join(root, "src/lib/gridDiff.ts"), "utf8");
+const gridDiffSpec = readFileSync(join(root, "tests/grid-diff.spec.ts"), "utf8");
+const legacyPromptRepair = readFileSync(join(root, "src/lib/legacyPromptRepair.ts"), "utf8");
+const legacyPromptRepairSpec = readFileSync(join(root, "tests/legacy-prompt-repair.spec.ts"), "utf8");
 const cargoToml = readFileSync(join(root, "src-tauri/Cargo.toml"), "utf8");
 const cargoBuild = readFileSync(join(root, "src-tauri/build.rs"), "utf8");
 const ptyBackend = readFileSync(join(root, "src-tauri/src/pty.rs"), "utf8");
 const ptyCommands = readFileSync(join(root, "src-tauri/src/commands.rs"), "utf8");
 const nativeTerminalBackend = readFileSync(join(root, "src-tauri/src/native_terminal.rs"), "utf8");
 const daemonBackend = readFileSync(join(root, "src-tauri/src/daemon.rs"), "utf8");
+const vtGrid = readFileSync(join(root, "src-tauri/src/vt_grid.rs"), "utf8");
 const daemonBin = readFileSync(join(root, "src-tauri/src/bin/terminal-workspace-daemon.rs"), "utf8");
 const tauriLib = readFileSync(join(root, "src-tauri/src/lib.rs"), "utf8");
 const tauriMain = readFileSync(join(root, "src-tauri/src/main.rs"), "utf8");
 const packageJson = readFileSync(join(root, "package.json"), "utf8");
+const runDev = readFileSync(join(root, "run-dev.sh"), "utf8");
+const runNativeDev = readFileSync(join(root, "run-native-vte-dev.sh"), "utf8");
+const canvasTerminalSmoke = readFileSync(join(root, "scripts/verify-canvas-terminal.sh"), "utf8");
+const terminalReliabilityGate = readFileSync(join(root, "scripts/verify-terminal-reliability.sh"), "utf8");
 const standaloneDaemonSmoke = readFileSync(join(root, "scripts/verify-standalone-daemon-smoke.sh"), "utf8");
+const canvasLiveSmoke = readFileSync(join(root, "scripts/verify-canvas-live.sh"), "utf8");
+const bracketedPasteSmoke = readFileSync(join(root, "scripts/verify-bracketed-paste.sh"), "utf8");
+const legacyPromptLiveSmoke = readFileSync(join(root, "scripts/verify-legacy-prompt-repair.sh"), "utf8");
+const mapShellAnchorSmoke = readFileSync(join(root, "scripts/verify-map-shell-anchor.sh"), "utf8");
+const resizeStormSmoke = readFileSync(join(root, "scripts/verify-resize-storm.sh"), "utf8");
+const scrollbackReattachSmoke = readFileSync(join(root, "scripts/verify-scrollback-reattach.sh"), "utf8");
+const tauriPerformanceSmoke = readFileSync(join(root, "scripts/verify-tauri-performance.sh"), "utf8");
+const zellijMapSmoke = readFileSync(join(root, "scripts/verify-zellij-map.sh"), "utf8");
+const zellijShortcutSmoke = readFileSync(join(root, "scripts/verify-zellij-shortcuts.sh"), "utf8");
 const visualEvidenceSmoke = readFileSync(join(root, "scripts/verify-visual-evidence.sh"), "utf8");
 const visualQaReview = readFileSync(join(root, "docs/visual-qa-review.md"), "utf8");
 const app = readFileSync(join(root, "src/App.tsx"), "utf8");
 const design = readOptional(join(root, "../DESIGN.md"));
+const switchProjectBody = workspaceStore.match(
+  /switchProject: \(groupId: string \| null\) => \{([\s\S]*?)\n  \},\n\n  setProjectRoot:/
+)?.[1] ?? "";
+const liveHarnesses = [
+  canvasLiveSmoke,
+  canvasTerminalSmoke,
+  bracketedPasteSmoke,
+  legacyPromptLiveSmoke,
+  mapShellAnchorSmoke,
+  resizeStormSmoke,
+  standaloneDaemonSmoke,
+  scrollbackReattachSmoke,
+  tauriPerformanceSmoke,
+  zellijMapSmoke,
+  zellijShortcutSmoke,
+];
+const devLaunchers = [runDev, runNativeDev];
 
 const checks = [
+  {
+    ok: /"verify:terminal-reliability": "scripts\/verify-terminal-reliability\.sh"/.test(packageJson) &&
+      /"verify:terminal-reliability:live": "TERMFLEET_TERMINAL_RELIABILITY_LIVE=1 scripts\/verify-terminal-reliability\.sh"/.test(packageJson) &&
+      /TERMFLEET_TERMINAL_RELIABILITY_LIVE/.test(terminalReliabilityGate) &&
+      /verify:map-terminals/.test(terminalReliabilityGate) &&
+      /verify:canvas-all/.test(terminalReliabilityGate) &&
+      /vt_grid::tests/.test(terminalReliabilityGate) &&
+      /pty::tests/.test(terminalReliabilityGate) &&
+      /verify:legacy-prompt-live/.test(terminalReliabilityGate) &&
+      /verify:scrollback-reattach/.test(terminalReliabilityGate) &&
+      /verify:map-shell-anchor/.test(terminalReliabilityGate) &&
+      /verify:zellij-map/.test(terminalReliabilityGate) &&
+      /verify:bracketed-paste/.test(terminalReliabilityGate) &&
+      /verify:resize-storm/.test(terminalReliabilityGate) &&
+      /verify:zellij-shortcuts/.test(terminalReliabilityGate) &&
+      /verify:canvas-live/.test(terminalReliabilityGate) &&
+      /verify:standalone-daemon/.test(terminalReliabilityGate) &&
+      /verify:restart-restore/.test(terminalReliabilityGate) &&
+      /TERMFLEET_TERMINAL_RELIABILITY_OK/.test(terminalReliabilityGate),
+    message: "A single terminal reliability gate must cover fast invariants and the full live shell/zellij/map/restart matrix.",
+  },
   {
     ok: /import \{ TerminalComponent \} from "\.\/Terminal";/.test(magicCanvas),
     message: "MagicCanvas must import the real terminal renderer.",
@@ -53,15 +114,136 @@ const checks = [
     message: "Terminal map nodes must render a live TerminalComponent.",
   },
   {
-    ok: !/Open full terminal for shell work|Open the full terminal to start|terminalReference|terminalSummary|terminalIcon|terminalMeta|terminalPath/.test(magicCanvas),
-    message: "Map terminal nodes must not fall back to compact placeholder cards.",
+    ok: /onMouseDown=\{node\.type === "terminal"[\s\S]*event\.stopPropagation\(\);[\s\S]*activateTerminalNode\(\);/.test(magicCanvas) &&
+      /onClick=\{node\.type === "terminal" \? \(event\) => event\.stopPropagation\(\) : undefined\}/.test(magicCanvas),
+    message: "Terminal map node bodies must stop canvas/node mouse events so terminal focus and input are not stolen.",
   },
   {
-    ok: /const NODE_MIN_SIZE = \{[\s\S]*terminal: \{ width: 640, height: 360 \}/.test(magicCanvas),
+    ok: /const showTerminalSummary = node\.type === "terminal" && !selected && zoom < READABLE_TERMINAL_ZOOM;/.test(magicCanvas) &&
+      /<TerminalComponent[\s\S]*mapProjection=\{false\}/.test(magicCanvas) &&
+      !/mapSurface/.test(magicCanvas),
+    message: "Selected map terminal nodes must render a readable fitted terminal, not a frozen projection or inactive summary.",
+  },
+  {
+    ok: !/sparsePrimaryMapAnchorRows|applySparseMapAnchor|mapSurface|MAP_SHELL_ANCHOR_TOO_HIGH|MAP_SHELL_ANCHOR_OK/.test(terminalCanvas) &&
+      !/mapSurface/.test(terminalComponent) &&
+      /"verify:map-shell-anchor": "scripts\/verify-map-shell-anchor\.sh"/.test(packageJson) &&
+      /MAP_SHELL_PROMPT_TOP_OK/.test(mapShellAnchorSmoke) &&
+      /MAP_SHELL_PROMPT_TOO_LOW/.test(mapShellAnchorSmoke) &&
+      /VITE_WORKSPACE_MODE=canvas/.test(mapShellAnchorSmoke) &&
+      /VITE_WORKSPACE_RESET_STATE=1/.test(mapShellAnchorSmoke),
+    message: "Selected map terminals must keep sparse/fresh shell prompts at the real top row, matching normal terminal semantics.",
+  },
+  {
+    ok: /ctx\.fillStyle = theme\.background/.test(terminalCanvas) &&
+      /forceSnapshotRefresh/.test(terminalCanvas) &&
+      /invoke<string>\("grid_snapshot"/.test(terminalCanvas) &&
+      /visibleContentSeen/.test(terminalCanvas) &&
+      /failIfStillBlank/.test(terminalCanvas) &&
+      /No visible terminal content was received/.test(terminalCanvas) &&
+      /terminal-canvas-error/.test(terminalCanvas),
+    message: "Canvas terminals must not fail as silent blank panes; they need an initial paint, snapshot retry, blank guard, and visible attach failure state.",
+  },
+  {
+    ok: /const DEFAULT_TERMINAL_MODES = \{/.test(terminalCanvas) &&
+      /sessionEpochRef/.test(terminalCanvas) &&
+      /sessionEpochRef\.current \+= 1;/.test(terminalCanvas) &&
+      /firstFrameRef\.current = false;/.test(terminalCanvas) &&
+      /firstFrameWaitersRef\.current = \[\];/.test(terminalCanvas) &&
+      /modesRef\.current = \{ \.\.\.DEFAULT_TERMINAL_MODES \};/.test(terminalCanvas) &&
+      /selectionRef\.current = null;/.test(terminalCanvas) &&
+      /if \(epoch !== sessionEpochRef\.current\) return;/.test(terminalCanvas) &&
+      /const syncFocusedTerminal = useCallback/.test(terminalCanvas) &&
+      /set_focused_terminal/.test(terminalCanvas) &&
+      /useEffect\(\(\) => \{\s*syncFocusedTerminal\(\);\s*\}, \[sessionId, syncFocusedTerminal\]\);/.test(terminalCanvas),
+    message: "Canvas terminal remounts/session switches must reset mode, first-frame, selection, paste, and focused-terminal ownership state.",
+  },
+  {
+    ok: /pub fn scroll_to_bottom\(&self, id: &str\) -> Result<\(\), String>/.test(vtGrid) &&
+      /pub fn grid_scroll_to_bottom/.test(ptyCommands) &&
+      /commands::grid_scroll_to_bottom/.test(tauriLib) &&
+      /await invoke\("grid_scroll_to_bottom", \{ id: sessionId \}\);/.test(terminalCanvas) &&
+      /invoke\("grid_scroll_to_bottom", \{ id: sessionId \}\)/.test(terminalCanvas) &&
+      /invoke\("grid_scroll_to_bottom", \{ id: sessionIdRef\.current \}\)/.test(terminalCanvas) &&
+      /trace_pty\("grid\.scroll"/.test(ptyCommands) &&
+      /trace_pty\("grid\.scroll_to_bottom"/.test(ptyCommands) &&
+      /cursor_visible: offset == 0 && mode\.contains\(TermMode::SHOW_CURSOR\)/.test(vtGrid) &&
+      /scrolled_history_hides_cursor_until_bottom_reset/.test(vtGrid),
+    message: "Canvas input must return scrolled-back grid viewports to live bottom, and scrolled history must not render the live cursor.",
+  },
+  {
+    ok: /export function needsLegacyPromptRepair/.test(legacyPromptRepair) &&
+      /"verify:legacy-prompt-repair": "playwright test legacy-prompt-repair"/.test(packageJson) &&
+      /"verify:legacy-prompt-live": "scripts\/verify-legacy-prompt-repair\.sh"/.test(packageJson) &&
+      /"verify:canvas-all": "playwright test canvas-renderer grid-diff legacy-prompt-repair keymap grid-resize selection box-glyph"/.test(packageJson) &&
+      /snapshot\.altScreen/.test(legacyPromptRepair) &&
+      legacyPromptRepair.includes("/@[^:]+:.+[$#]$/") &&
+      /currentPrompt\.row !== snapshot\.cursor\.line/.test(legacyPromptRepair) &&
+      /betweenIsBlank/.test(legacyPromptRepair) &&
+      /needsLegacyPromptRepair\(snapshot\)/.test(terminalCanvas) &&
+      /reusedSession &&/.test(terminalCanvas) &&
+      /firstFrame &&/.test(terminalCanvas) &&
+      terminalCanvas.includes('invoke("daemon_write_session", { id: sessionId, data: "\\x0c" })') &&
+      /legacy duplicate prompt detector repairs only stale plain-shell prompt stacks/.test(legacyPromptRepairSpec) &&
+      /altScreenNeverRepairs/.test(legacyPromptRepairSpec),
+    message: "Reused legacy plain-shell sessions with duplicate prompt stacks must self-repair once, while alternate-screen sessions stay untouched.",
+  },
+  {
+    ok: /LEGACY_PROMPT_REPAIR_OUT/.test(legacyPromptLiveSmoke) &&
+      /XDG_RUNTIME_DIR="\$RUN_DIR"/.test(legacyPromptLiveSmoke) &&
+      /XDG_DATA_HOME="\$DATA_DIR"/.test(legacyPromptLiveSmoke) &&
+      /CARGO_TARGET_DIR="\$OUT_DIR\/target"/.test(legacyPromptLiveSmoke) &&
+      /TRACE_FILE="\$OUT_DIR\/pty-trace\.log"/.test(legacyPromptLiveSmoke) &&
+      /LEGACY-PROMPT-SEED/.test(legacyPromptLiveSmoke) &&
+      /LEGACY-PROMPT-SWITCH-GRAPH/.test(legacyPromptLiveSmoke) &&
+      /LEGACY-PROMPT-REATTACH/.test(legacyPromptLiveSmoke) &&
+      /legacy@host:\/tmp/.test(legacyPromptLiveSmoke) &&
+      /TF_LEGACY_PROMPT_LIVE_OK/.test(legacyPromptLiveSmoke) &&
+      /LEGACY_PROMPT_REPAIR_REUSED_PTY/.test(legacyPromptLiveSmoke) &&
+      /LEGACY_PROMPT_REPAIR_CTRL_L_SENT/.test(legacyPromptLiveSmoke) &&
+      /LEGACY_PROMPT_REPAIR_VISUAL_REPAINT/.test(legacyPromptLiveSmoke) &&
+      /LEGACY_PROMPT_REPAIR_OK/.test(legacyPromptLiveSmoke) &&
+      /magick compare -metric AE/.test(legacyPromptLiveSmoke),
+    message: "Verification scripts must reproduce old reused plain-shell prompt stacks and prove Ctrl-L repair, daemon input, and visual repaint.",
+  },
+  {
+    ok: /"verify:scrollback-reattach": "scripts\/verify-scrollback-reattach\.sh"/.test(packageJson) &&
+      /SCROLLBACK_REATTACH_OUT/.test(scrollbackReattachSmoke) &&
+      /XDG_RUNTIME_DIR="\$RUN_DIR"/.test(scrollbackReattachSmoke) &&
+      /XDG_DATA_HOME="\$DATA_DIR"/.test(scrollbackReattachSmoke) &&
+      /CARGO_TARGET_DIR="\$OUT_DIR\/target"/.test(scrollbackReattachSmoke) &&
+      /TRACE_FILE="\$OUT_DIR\/pty-trace\.log"/.test(scrollbackReattachSmoke) &&
+      /SCROLL-REATTACH-SCROLL-UP/.test(scrollbackReattachSmoke) &&
+      /SCROLL-REATTACH-SWITCH-MAP/.test(scrollbackReattachSmoke) &&
+      /SCROLL-REATTACH-SWITCH-SPLIT/.test(scrollbackReattachSmoke) &&
+      /SCROLL-REATTACH-LIVE-INPUT/.test(scrollbackReattachSmoke) &&
+      /SCROLLBACK_RESET_TO_BOTTOM_BEFORE_INPUT/.test(scrollbackReattachSmoke) &&
+      /SCROLLBACK_REATTACH_SESSION_CHANGED/.test(scrollbackReattachSmoke) &&
+      /SCROLLBACK_REATTACH_VISUAL_REPAINT/.test(scrollbackReattachSmoke) &&
+      /magick compare -metric AE/.test(scrollbackReattachSmoke),
+    message: "Verification scripts must reproduce regular-shell scrollback reattach and prove bottom reset, daemon input, and visual repaint.",
+  },
+  {
+    ok: /const FOCUS_TERMINAL_ZOOM = 1;/.test(magicCanvas) &&
+      /renderScale=\{1\}/.test(magicCanvas) &&
+      /function snapTerminalPixel/.test(magicCanvas) &&
+      /snapTerminalPixel\(nextX, node\.type, nextZoom\)/.test(magicCanvas) &&
+      /snapTerminalPixel\(nextY, node\.type, nextZoom\)/.test(magicCanvas) &&
+      /const zoom = node\.type === "terminal" \? 1 : canvasState\.viewport\.zoom;/.test(canvasSidebar) &&
+      /Math\.round\(nextX\)/.test(canvasSidebar) &&
+      /const zoom = 1;/.test(workbenchHeader) &&
+      /Math\.round\(nextX\)/.test(workbenchHeader) &&
+      /const zoom = 1;/.test(workbenchSidebar) &&
+      /const zoom = node\.type === "terminal" \? 1 : canvasState\.viewport\.zoom;/.test(workbenchSidebar) &&
+      /Math\.round\(nextX\)/.test(workbenchSidebar),
+    message: "Focused map terminals must render at exact 1:1 zoom on integer pixels without supersampling/downsampling blur.",
+  },
+  {
+    ok: /const NODE_MIN_SIZE = \{[\s\S]*terminal: \{ width: 820, height: 460 \}/.test(magicCanvas),
     message: "Map terminal nodes must have enough room for a usable terminal.",
   },
   {
-    ok: /const TERMINAL_MAP_NODE_SIZE = \{ width: 640, height: 360 \};/.test(workspaceStore),
+    ok: /const TERMINAL_MAP_NODE_SIZE = \{ width: 820, height: 460 \};/.test(workspaceStore),
     message: "Store terminal map node size must support live terminals.",
   },
   {
@@ -77,12 +259,167 @@ const checks = [
     message: "Switching to the map must reconcile terminal nodes before rendering.",
   },
   {
+    ok: /projectRoot: nextRoot/.test(switchProjectBody) &&
+      !/canvasState|viewport|updateCanvasViewport|selectCanvasNode|selectedNodeId|306 -/.test(switchProjectBody),
+    message: "Selecting a project must not recenter or zoom the canvas viewport; explicit map-focus actions own that behavior.",
+  },
+  {
+    ok: /"verify:bracketed-paste": "scripts\/verify-bracketed-paste\.sh"/.test(packageJson) &&
+      /BRACKETED_PASTE_OUT/.test(bracketedPasteSmoke) &&
+      /XDG_RUNTIME_DIR="\$RUN_DIR"/.test(bracketedPasteSmoke) &&
+      /XDG_DATA_HOME="\$DATA_DIR"/.test(bracketedPasteSmoke) &&
+      /CARGO_TARGET_DIR="\$OUT_DIR\/target"/.test(bracketedPasteSmoke) &&
+      /TRACE_FILE="\$OUT_DIR\/pty-trace\.log"/.test(bracketedPasteSmoke) &&
+      /xclip -selection clipboard/.test(bracketedPasteSmoke) &&
+      /BRACKETED-PASTE-VIM/.test(bracketedPasteSmoke) &&
+      /BRACKETED-PASTE-DISABLED/.test(bracketedPasteSmoke) &&
+      /BRACKETED_PASTE_MARKERS_IN_VIM/.test(bracketedPasteSmoke) &&
+      /BRACKETED_PASTE_NO_STALE_MARKERS_AFTER_DISABLE/.test(bracketedPasteSmoke) &&
+      /BRACKETED_PASTE_OK/.test(bracketedPasteSmoke),
+    message: "Verification scripts must prove real clipboard paste follows current bracketed-paste mode and does not leak stale TUI mode.",
+  },
+  {
+    ok: /"verify:resize-storm": "scripts\/verify-resize-storm\.sh"/.test(packageJson) &&
+      /RESIZE_STORM_OUT/.test(resizeStormSmoke) &&
+      /XDG_RUNTIME_DIR="\$RUN_DIR"/.test(resizeStormSmoke) &&
+      /XDG_DATA_HOME="\$DATA_DIR"/.test(resizeStormSmoke) &&
+      /CARGO_TARGET_DIR="\$OUT_DIR\/target"/.test(resizeStormSmoke) &&
+      /TRACE_FILE="\$OUT_DIR\/pty-trace\.log"/.test(resizeStormSmoke) &&
+      /zellij -s tf-resize-storm/.test(resizeStormSmoke) &&
+      /RESIZE-STORM-BEGIN/.test(resizeStormSmoke) &&
+      /RESIZE-STORM-END/.test(resizeStormSmoke) &&
+      /RESIZE-STORM-INPUT/.test(resizeStormSmoke) &&
+      /RESIZE_STORM_MULTIPLE_SIZES/.test(resizeStormSmoke) &&
+      /RESIZE_STORM_GRID_PTY_MATCH/.test(resizeStormSmoke) &&
+      /RESIZE_STORM_INPUT_REACHED_DAEMON/.test(resizeStormSmoke) &&
+      /RESIZE_STORM_VISUAL_CONTENT/.test(resizeStormSmoke) &&
+      /RESIZE_STORM_VISUAL_REPAINT/.test(resizeStormSmoke) &&
+      /RESIZE_STORM_OK/.test(resizeStormSmoke) &&
+      /magick compare -metric AE/.test(resizeStormSmoke),
+    message: "Verification scripts must stress repeated TUI resizes and prove grid/PTY sync, visual content, repaint, and input after the storm.",
+  },
+  {
+    ok: /TERMINAL_WORKSPACE_TRACE_PTY_FILE/.test(daemonBackend) &&
+      /TERMINAL_WORKSPACE_TRACE_PTY_FILE/.test(ptyBackend) &&
+      /TRACE_FILE="\$OUT_DIR\/pty-trace\.log"/.test(zellijMapSmoke) &&
+      /TRACE_FILE="\$OUT_DIR\/pty-trace\.log"/.test(zellijShortcutSmoke) &&
+      /XDG_RUNTIME_DIR="\$RUN_DIR"/.test(zellijMapSmoke) &&
+      /XDG_DATA_HOME="\$DATA_DIR"/.test(zellijMapSmoke) &&
+      /XDG_RUNTIME_DIR="\$RUN_DIR"/.test(zellijShortcutSmoke) &&
+      /XDG_DATA_HOME="\$DATA_DIR"/.test(zellijShortcutSmoke) &&
+      /XDG_RUNTIME_DIR="\$RUN_DIR"/.test(canvasLiveSmoke) &&
+      /XDG_DATA_HOME="\$DATA_DIR"/.test(canvasLiveSmoke) &&
+      /XDG_RUNTIME_DIR="\$RUN_DIR"/.test(bracketedPasteSmoke) &&
+      /XDG_DATA_HOME="\$DATA_DIR"/.test(bracketedPasteSmoke) &&
+      /XDG_RUNTIME_DIR="\$RUN_DIR"/.test(resizeStormSmoke) &&
+      /XDG_DATA_HOME="\$DATA_DIR"/.test(resizeStormSmoke) &&
+      /TRACE_FILE="\$OUT_DIR\/pty-trace\.log"/.test(canvasLiveSmoke) &&
+      /TRACE_FILE="\$OUT_DIR\/pty-trace\.log"/.test(bracketedPasteSmoke) &&
+      /TRACE_FILE="\$OUT_DIR\/pty-trace\.log"/.test(resizeStormSmoke) &&
+      /TRACE_FILE="\$OUT_DIR\/pty-trace\.log"/.test(scrollbackReattachSmoke) &&
+      /CANVAS-LIVE-SHELL-INPUT/.test(canvasLiveSmoke) &&
+      /TF_CANVAS_LIVE_INPUT_OK/.test(canvasLiveSmoke) &&
+      /CANVAS_LIVE_INPUT_REACHED_DAEMON/.test(canvasLiveSmoke) &&
+      /CANVAS_LIVE_OUTPUT_IN_SNAPSHOT/.test(canvasLiveSmoke) &&
+      /TMUX_SOCKET="\$OUT_DIR\/tmux\.sock"/.test(canvasLiveSmoke) &&
+      /tmux -S \$TMUX_SOCKET new -s canvas/.test(canvasLiveSmoke) &&
+      /tmux -S \$TMUX_SOCKET kill-server/.test(canvasLiveSmoke) &&
+      /XDG_RUNTIME_DIR="\$RUN_DIR"/.test(canvasTerminalSmoke) &&
+      /XDG_DATA_HOME="\$DATA_DIR"/.test(canvasTerminalSmoke) &&
+      /xvfb-run -a/.test(canvasTerminalSmoke) &&
+      /XDG_RUNTIME_DIR="\$RUN_DIR"/.test(standaloneDaemonSmoke) &&
+      /XDG_DATA_HOME="\$DATA_DIR"/.test(standaloneDaemonSmoke) &&
+      /XDG_RUNTIME_DIR="\$RUN_DIR"/.test(scrollbackReattachSmoke) &&
+      /XDG_DATA_HOME="\$DATA_DIR"/.test(scrollbackReattachSmoke) &&
+      /xvfb-run -a/.test(standaloneDaemonSmoke) &&
+      /XDG_RUNTIME_DIR="\$RUN_DIR"/.test(tauriPerformanceSmoke) &&
+      /XDG_DATA_HOME="\$DATA_DIR"/.test(tauriPerformanceSmoke) &&
+      /CARGO_TARGET_DIR="\$OUT_DIR\/target"/.test(canvasLiveSmoke) &&
+      /CARGO_TARGET_DIR="\$OUT_DIR\/target"/.test(bracketedPasteSmoke) &&
+      /CARGO_TARGET_DIR="\$OUT_DIR\/target"/.test(resizeStormSmoke) &&
+      /CARGO_TARGET_DIR="\$OUT_DIR\/target"/.test(zellijMapSmoke) &&
+      /CARGO_TARGET_DIR="\$OUT_DIR\/target"/.test(zellijShortcutSmoke) &&
+      /CARGO_TARGET_DIR="\$OUT_DIR\/target"/.test(scrollbackReattachSmoke) &&
+      /CARGO_TARGET_DIR="\$OUT_DIR\/target"/.test(standaloneDaemonSmoke) &&
+      /APP_BIN="\$CARGO_TARGET_DIR\/release\/terminal-workspace"/.test(standaloneDaemonSmoke),
+    message: "Live verifiers must use isolated runtime/data dirs and private PTY trace files, never the user's daemon or global trace.",
+  },
+  {
+    ok: liveHarnesses.every((source) =>
+      !/pkill(?:\s+-\S+)*\s+-f\s+["']?terminal-workspace/.test(source) &&
+      !/fuser\s+-k\s+1420\/tcp/.test(source) &&
+      !/rm\s+-f\s+\/tmp\/terminal-workspace-(?:pty|latency)-trace/.test(source)
+    ) &&
+      /private_daemon_pid/.test(zellijMapSmoke) &&
+      /private_daemon_pid/.test(zellijShortcutSmoke) &&
+      /private_daemon_pid/.test(canvasLiveSmoke) &&
+      /private_daemon_pid/.test(bracketedPasteSmoke) &&
+      /private_daemon_pid/.test(resizeStormSmoke) &&
+      /private_daemon_pid/.test(scrollbackReattachSmoke) &&
+      /kill "\$daemon_pid"/.test(zellijMapSmoke) &&
+      /kill "\$daemon_pid"/.test(zellijShortcutSmoke) &&
+      /kill "\$daemon_pid"/.test(canvasLiveSmoke) &&
+      /kill "\$daemon_pid"/.test(bracketedPasteSmoke) &&
+      /kill "\$daemon_pid"/.test(resizeStormSmoke) &&
+      /kill "\$daemon_pid"/.test(scrollbackReattachSmoke) &&
+      /setsid timeout/.test(zellijMapSmoke) &&
+      /setsid timeout/.test(zellijShortcutSmoke) &&
+      /setsid timeout/.test(canvasLiveSmoke) &&
+      /setsid timeout/.test(bracketedPasteSmoke) &&
+      /setsid timeout/.test(resizeStormSmoke) &&
+      /setsid timeout/.test(scrollbackReattachSmoke) &&
+      /MAP-PROBE-MAP-INPUT/.test(zellijMapSmoke) &&
+      /MAP_INPUT_REACHED_DAEMON/.test(zellijMapSmoke) &&
+      /MAP_INPUT_MISSING/.test(zellijMapSmoke) &&
+      /VERIFY_STATUS=\$\?/.test(zellijMapSmoke) &&
+      /assert_terminal_image_signal/.test(zellijMapSmoke) &&
+      /760x430\+520\+80/.test(zellijMapSmoke) &&
+      /ZELLIJ_MAP_VISUAL_CONTENT/.test(zellijMapSmoke) &&
+      /ZELLIJ_MAP_VISUAL_BLANK_OR_FLAT/.test(zellijMapSmoke) &&
+      /assert_visual_change/.test(zellijMapSmoke) &&
+      /ZELLIJ_MAP_VISUAL_REPAINT/.test(zellijMapSmoke) &&
+      /ZELLIJ_MAP_VISUAL_CHANGE_TOO_SMALL/.test(zellijMapSmoke) &&
+      /kill -- "-\$APP_RUN_PID"/.test(zellijMapSmoke) &&
+      /kill -- "-\$APP_RUN_PID"/.test(zellijShortcutSmoke) &&
+      /kill -- "-\$APP_RUN_PID"/.test(canvasLiveSmoke) &&
+      /kill -- "-\$APP_RUN_PID"/.test(bracketedPasteSmoke) &&
+      /kill -- "-\$APP_RUN_PID"/.test(resizeStormSmoke) &&
+      /kill -- "-\$APP_RUN_PID"/.test(scrollbackReattachSmoke) &&
+      /TERMINAL_WORKSPACE_ALLOW_SHARED_DEV_CLEANUP/.test(tauriPerformanceSmoke) &&
+      devLaunchers.every((source) =>
+        !/fuser\s+-k\s+1420\/tcp/.test(source) &&
+        /port_in_use\(\)/.test(source) &&
+        /refusing to kill an unknown owner/.test(source) &&
+        /grep -v -- "--terminal-workspace-daemon"/.test(source)
+      ),
+    message: "Live verifier cleanup must kill only verifier-owned process groups/private daemon PIDs, and unsafe dev cleanup must be opt-in.",
+  },
+  {
     ok: /id: `terminal-map-\$\{tab\.id\}`/.test(workbenchSidebar),
     message: "Sessions panel must focus the canonical live terminal map node.",
   },
   {
-    ok: /width: 640,[\s\S]*height: 360/.test(workbenchSidebar),
+    ok: /width: 820,[\s\S]*height: 460/.test(workbenchSidebar),
     message: "Show-on-map must create live-terminal-sized nodes.",
+  },
+  {
+    ok: /export interface CanvasTaskBinding/.test(types) &&
+      /taskBinding\?: CanvasTaskBinding;/.test(types) &&
+      /parseMasterPlanTasks/.test(masterPlanTasks) &&
+      /masterPlanPath/.test(masterPlanTasks),
+    message: "Canvas terminal nodes must support durable MASTER_PLAN task bindings parsed from the project plan.",
+  },
+  {
+    ok: /Bind MASTER_PLAN task/.test(magicCanvas) &&
+      /taskStatusColor/.test(magicCanvas) &&
+      /node\.taskBinding\.taskId/.test(magicCanvas),
+    message: "Map terminal node chrome must expose and render task bindings outside the terminal buffer.",
+  },
+  {
+    ok: /useMasterPlanTasks/.test(workbenchSidebar) &&
+      /taskInlineBadge/.test(workbenchSidebar) &&
+      /node\.taskBinding\.taskId/.test(workbenchSidebar),
+    message: "Map sidebar rows must mirror bound MASTER_PLAN task badges.",
   },
   {
     ok: /reconcileCanvasState\(\)/.test(app),
@@ -192,6 +529,39 @@ const checks = [
     message: "Daemon protocol must own the session control plane, not only status.",
   },
   {
+    ok: /fn detached_spawn_records_requested_winsize/.test(ptyBackend) &&
+      /fn resize_storm_tracks_final_winsize_and_reuse_does_not_shrink/.test(ptyBackend) &&
+      /manager\.session_size\(&id\),\s*Some\(\(132,\s*42\)\)/.test(ptyBackend) &&
+      /Some\(\(157,\s*52\)\)/.test(ptyBackend) &&
+      /reattach must report the live PTY size/.test(ptyBackend),
+    message: "PTY manager tests must lock requested spawn size, resize-storm final winsize, and no-shrink reuse semantics.",
+  },
+  {
+    ok: /function normalizeRow/.test(gridBuffer) &&
+      /private reset\(cols: number, rows: number\): void/.test(gridBuffer) &&
+      /if \(frame\.full \|\| frame\.cols !== this\.cols \|\| frame\.rows !== this\.rows\)/.test(gridBuffer) &&
+      /this\.reset\(frame\.cols, frame\.rows\)/.test(gridBuffer) &&
+      /normalizeRow\(row\.cells, this\.cols\)/.test(gridBuffer) &&
+      /full sync is authoritative and clears stale same-size buffer state/.test(gridDiffSpec) &&
+      /expect\(result\.rowText\[1\]\)\.toBe\("     "\)/.test(gridDiffSpec),
+    message: "Frontend grid buffer must treat full sync as authoritative and clear stale same-size rows before rendering.",
+  },
+  {
+    ok: /function requireAvailable/.test(gridDiff) &&
+      /unknown message type/.test(gridDiff) &&
+      /invalid dimensions/.test(gridDiff) &&
+      /cursor \$\{cursorCol\},\$\{cursorLine\} outside/.test(gridDiff) &&
+      /dirty row \$\{index\} outside/.test(gridDiff) &&
+      /has \$\{cellCount\} cells for/.test(gridDiff) &&
+      /invalid codepoint/.test(gridDiff) &&
+      /trailing bytes after frame payload/.test(gridDiff) &&
+      /Terminal grid diff failed/.test(terminalCanvas) &&
+      /onStatusRef\.current\?\.\("failed", \{ error: message \}\)/.test(terminalCanvas) &&
+      /malformed binary frames fail explicitly before mutating the grid buffer/.test(gridDiffSpec) &&
+      /expect\(result\.text\)\.toEqual\(\["safe", "    "\]\)/.test(gridDiffSpec),
+    message: "Malformed binary grid frames must fail explicitly, preserve the current buffer, and surface a visible terminal failure state.",
+  },
+  {
     ok: /pub fn daemon_ensure_session/.test(ptyCommands) &&
       /pub fn daemon_write_session/.test(ptyCommands) &&
       /pub fn daemon_resize_session/.test(ptyCommands) &&
@@ -291,14 +661,29 @@ const checks = [
     ok: /"verify:standalone-daemon": "scripts\/verify-standalone-daemon-smoke\.sh"/.test(packageJson) &&
       /npm run tauri -- build --no-bundle/.test(standaloneDaemonSmoke) &&
       /"beforeBuildCommand":"npm run build"/.test(standaloneDaemonSmoke) &&
-      /target\/release\/terminal-workspace/.test(standaloneDaemonSmoke) &&
+      /APP_BIN="\$CARGO_TARGET_DIR\/release\/terminal-workspace"/.test(standaloneDaemonSmoke) &&
       /App did not auto-launch the daemon/.test(standaloneDaemonSmoke) &&
       /Daemon did not survive app restart/.test(standaloneDaemonSmoke) &&
       /Standalone daemon restart reattach passed/.test(standaloneDaemonSmoke) &&
       /xdotool type --clearmodifiers --delay 0 "\$command"/.test(standaloneDaemonSmoke) &&
       /snapshotSession/.test(standaloneDaemonSmoke) &&
+      /01-before-app-restart\.png/.test(standaloneDaemonSmoke) &&
+      /02-after-app-restart\.png/.test(standaloneDaemonSmoke) &&
+      /03-after-daemon-restart-before-input\.png/.test(standaloneDaemonSmoke) &&
+      /04-after-daemon-restart-input\.png/.test(standaloneDaemonSmoke) &&
+      /STANDALONE_COLD_RESTORE_OK_682/.test(standaloneDaemonSmoke) &&
+      /wait_for_daemon_down/.test(standaloneDaemonSmoke) &&
+      /Standalone daemon cold restore passed/.test(standaloneDaemonSmoke) &&
+      /cold restore did not replay prior marker/.test(standaloneDaemonSmoke) &&
+      /assert_terminal_image_signal/.test(standaloneDaemonSmoke) &&
+      /1050x680\+300\+80/.test(standaloneDaemonSmoke) &&
+      /STANDALONE_RESTART_VISUAL_CONTENT/.test(standaloneDaemonSmoke) &&
+      /STANDALONE_RESTART_VISUAL_BLANK_OR_FLAT/.test(standaloneDaemonSmoke) &&
+      /assert_visual_change/.test(standaloneDaemonSmoke) &&
+      /STANDALONE_RESTART_VISUAL_REPAINT/.test(standaloneDaemonSmoke) &&
+      /STANDALONE_RESTART_VISUAL_CHANGE_TOO_SMALL/.test(standaloneDaemonSmoke) &&
       /Standalone daemon smoke passed/.test(standaloneDaemonSmoke),
-    message: "Verification scripts must include a repeatable standalone daemon-backed terminal smoke using direct typed input.",
+    message: "Verification scripts must include repeatable daemon-backed terminal smoke with direct typed input, visual app restart, and visual cold restore evidence.",
   },
   {
     ok: /"verify:visual": "scripts\/verify-visual-evidence\.sh"/.test(packageJson) &&
