@@ -1508,6 +1508,13 @@ Reliability hardening addendum — 2026-06-02:
   `npm run verify:map-terminals`, `npm run build`, `npm run verify:canvas-all`,
   and `APP_BUDGET=260 npm run verify:zellij-map` passed after adding the snapshot
   callback and preview cache.
+- Map preview visual polish: the overview preview now renders compact terminal
+  characters/colors rather than stretched block cells, so low-zoom selected nodes
+  read as terminal thumbnails instead of damaged output. Visual evidence:
+  inspected `/tmp/termfleet-visual-qa/after-preview-text.png`,
+  `/tmp/termfleet-visual-qa/focused-readable.png`, and the zellij smoke
+  screenshots `/tmp/tw-zellij-map/06a-map-after-zoom-churn.png` plus
+  `/tmp/tw-zellij-map/06b-map-focused-readable.png`.
 - Standalone daemon cold-restore flush guard: `PtyOutputBuffer::snapshot` and
   `read_since` now force a pending scrollback persist flush before returning, so
   verifier-driven daemon death cannot lose the newest marker between throttle

@@ -143,10 +143,13 @@ const checks = [
       /onSnapshot=\{\(snapshot\) => onTerminalSnapshot\(node\.id, snapshot\)\}/.test(magicCanvas) &&
       /onSnapshot\?: \(snapshot: GridSnapshot\) => void;/.test(terminalCanvas) &&
       /onSnapshotRef\.current\?\.\(snapshot\)/.test(terminalCanvas) &&
+      /const char = cell\?\.c && cell\.c !== "\\u0000" \? cell\.c : " ";/.test(magicCanvas) &&
+      /\{cell\.char\}/.test(magicCanvas) &&
+      !/background: cell\.color/.test(magicCanvas) &&
       !/live session/.test(magicCanvas) &&
       /<TerminalComponent[\s\S]*mapProjection=\{false\}/.test(magicCanvas) &&
       !/mapSurface/.test(magicCanvas),
-    message: "Map terminal nodes must use a truthful state/shape preview below 100% zoom and keep readable terminals live.",
+    message: "Map terminal nodes must use a truthful character-based preview below 100% zoom and keep readable terminals live.",
   },
   {
     ok: !/sparsePrimaryMapAnchorRows|applySparseMapAnchor|mapSurface|MAP_SHELL_ANCHOR_TOO_HIGH|MAP_SHELL_ANCHOR_OK/.test(terminalCanvas) &&
