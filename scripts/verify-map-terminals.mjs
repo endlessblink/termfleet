@@ -135,11 +135,18 @@ const checks = [
     message: "Canvas terminals must forward TUI mouse clicks/releases/wheel reports as VT mouse sequences instead of treating them only as DOM focus/selection.",
   },
   {
-    ok: /const showTerminalSummary = false;/.test(magicCanvas) &&
-      /const showCompactTerminalSummary = false;/.test(magicCanvas) &&
+    ok: /function TerminalMapPreview/.test(magicCanvas) &&
+      /data-terminal-map-preview="state-shape"/.test(magicCanvas) &&
+      /const READABLE_TERMINAL_ZOOM = 1;/.test(magicCanvas) &&
+      /const showTerminalPreview = node\.type === "terminal" && zoom < READABLE_TERMINAL_ZOOM;/.test(magicCanvas) &&
+      /<TerminalMapPreview[\s\S]*preview=\{terminalPreview\}/.test(magicCanvas) &&
+      /onSnapshot=\{\(snapshot\) => onTerminalSnapshot\(node\.id, snapshot\)\}/.test(magicCanvas) &&
+      /onSnapshot\?: \(snapshot: GridSnapshot\) => void;/.test(terminalCanvas) &&
+      /onSnapshotRef\.current\?\.\(snapshot\)/.test(terminalCanvas) &&
+      !/live session/.test(magicCanvas) &&
       /<TerminalComponent[\s\S]*mapProjection=\{false\}/.test(magicCanvas) &&
       !/mapSurface/.test(magicCanvas),
-    message: "Map terminal nodes must always render live terminal content; selection/zoom-dependent summary cards make the map inconsistent.",
+    message: "Map terminal nodes must use a truthful state/shape preview below 100% zoom and keep readable terminals live.",
   },
   {
     ok: !/sparsePrimaryMapAnchorRows|applySparseMapAnchor|mapSurface|MAP_SHELL_ANCHOR_TOO_HIGH|MAP_SHELL_ANCHOR_OK/.test(terminalCanvas) &&

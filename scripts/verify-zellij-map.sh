@@ -151,13 +151,16 @@ drive() {
   sleep 1
   shot "$wid" "06a-map-after-zoom-churn.png"
 
-  # 5) Prove the selected map terminal still owns input. A nonblank map terminal
-  # is not enough; the regression also showed selected terminal nodes that looked
-  # mounted but did not respond. Click inside the terminal body and send one key;
-  # the trace parser below requires both a TUI mouse report from the click and a
+  # 5) Prove the selected map terminal still owns input at readable zoom. Below
+  # 100% zoom, map terminals intentionally render a state/shape preview instead
+  # of a blurry downscaled live canvas. First click the preview/node to focus it
+  # back to 100%, then click the live terminal body and send one key; the trace
+  # parser below requires both a TUI mouse report from the click and a
   # daemon.write after this marker.
   echo "=== MAP-PROBE-MAP-INPUT ===" >> "$TRACE_FILE"
-  xdotool mousemove --window "$wid" 760 190 click --clearmodifiers 1; sleep 0.4
+  xdotool mousemove --window "$wid" 760 190 click --clearmodifiers 1; sleep 1.2
+  shot "$wid" "06b-map-focused-readable.png"
+  xdotool mousemove --window "$wid" 900 500 click --clearmodifiers 1; sleep 0.4
   xdotool key --clearmodifiers q; sleep 1
   shot "$wid" "07-map-after-input.png"
 

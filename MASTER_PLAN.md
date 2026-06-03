@@ -1501,6 +1501,13 @@ Reliability hardening addendum — 2026-06-02:
   `GRID_PTY_MATCH (both 99x24 cols)`, `MAP_INPUT_REACHED_DAEMON`,
   `MAP_MOUSE_REPORT_REACHED_DAEMON`, `MAP_ZOOM_VISUAL_ONLY`, visual
   content/repaint checks, and screenshots in `/tmp/tw-zellij-map/`.
+- Map overview readability guard: terminal nodes below 100% map zoom now render
+  a truthful state/shape preview from the latest grid snapshot instead of
+  trying to make dense live terminal text readable at 36-78% zoom or showing a
+  fake summary card. Readable 100%+ terminals remain live. Evidence:
+  `npm run verify:map-terminals`, `npm run build`, `npm run verify:canvas-all`,
+  and `APP_BUDGET=260 npm run verify:zellij-map` passed after adding the snapshot
+  callback and preview cache.
 - Standalone daemon cold-restore flush guard: `PtyOutputBuffer::snapshot` and
   `read_since` now force a pending scrollback persist flush before returning, so
   verifier-driven daemon death cannot lose the newest marker between throttle
