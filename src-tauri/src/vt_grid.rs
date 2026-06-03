@@ -83,6 +83,10 @@ impl TermState {
     fn scroll(&mut self, delta: i32) {
         self.term.scroll_display(Scroll::Delta(delta));
     }
+
+    fn scroll_to_bottom(&mut self) {
+        self.term.scroll_display(Scroll::Bottom);
+    }
 }
 
 /// Subscribers and last-emitted frame for a session's binary diff stream.
@@ -196,6 +200,19 @@ impl GridManager {
             .ok_or_else(|| format!("no grid attached for session {id}"))?;
         let mut state = session.state.write().map_err(|_| "grid state poisoned")?;
         state.scroll(delta);
+        Ok(())
+    }
+
+    /// Return a scrolled-back viewport to the live bottom. User keyboard input
+    /// should do this before writing to the PTY; otherwise the frontend can keep
+    /// showing a historical scrollback viewport while the prompt/cursor belongs
+    /// to the live screen, which reads as a broken split/blank terminal.
+    pub fn scroll_to_bottom(&self, id: &str) -> Result<(), String> {
+        let session = self
+            .get(id)
+            .ok_or_else(|| format!("no grid attached for session {id}"))?;
+        let mut state = session.state.write().map_err(|_| "grid state poisoned")?;
+        state.scroll_to_bottom();
         Ok(())
     }
 
@@ -408,7 +425,7 @@ impl GridSnapshot {
             rows,
             cursor,
             alt_screen: mode.contains(TermMode::ALT_SCREEN),
-            cursor_visible: mode.contains(TermMode::SHOW_CURSOR),
+            cursor_visible: offset == 0 && mode.contains(TermMode::SHOW_CURSOR),
             cells,
         }
     }
@@ -604,11 +621,11 @@ impl WireFrame {
         let cols = term.columns();
         let rows = term.screen_lines();
         let mode = *term.mode();
-        let cursor = term.renderable_content().cursor.point;
         let grid = term.grid();
         // Visible row `r` maps to buffer line `r - display_offset` so a scrolled
         // viewport reads history (0 when not scrolled).
         let offset = grid.display_offset() as i32;
+        let cursor = term.renderable_content().cursor.point;
 
         let mut rows_cells = Vec::with_capacity(rows);
         for row in 0..rows {
@@ -654,7 +671,7 @@ impl WireFrame {
             cursor_col: cursor.column.0 as u16,
             cursor_line: cursor.line.0.max(0) as u16,
             alt_screen: mode.contains(TermMode::ALT_SCREEN),
-            cursor_visible: mode.contains(TermMode::SHOW_CURSOR),
+            cursor_visible: offset == 0 && mode.contains(TermMode::SHOW_CURSOR),
             app_cursor: mode.contains(TermMode::APP_CURSOR),
             app_keypad: mode.contains(TermMode::APP_KEYPAD),
             bracketed_paste: mode.contains(TermMode::BRACKETED_PASTE),
@@ -779,6 +796,16 @@ mod tests {
         snapshot.cells[row]
             .iter()
             .map(|cell| cell.c.as_str())
+            .collect::<String>()
+            .trim_end()
+            .to_string()
+    }
+
+    fn wire_text_at(frame: &WireFrame, row: usize) -> String {
+        frame.rows_cells[row]
+            .iter()
+            .filter_map(|cell| char::from_u32(cell.ch))
+            .filter(|ch| *ch != '\0')
             .collect::<String>()
             .trim_end()
             .to_string()
@@ -943,6 +970,92 @@ mod tests {
     }
 
     #[test]
+    fn resize_storm_keeps_wire_frame_rectangular_and_modes() {
+        let mut state = TermState::new(DEFAULT_COLS, DEFAULT_ROWS);
+        state.feed(b"\x1b[?1049h\x1b[?2004h\x1b[?1000h\x1b[?1006h");
+        state.feed(b"\x1b[Hhtop-ish frame\r\nrunning after resize storms");
+
+        let sizes = [
+            (132, 42),
+            (82, 22),
+            (118, 34),
+            (64, 18),
+            (150, 45),
+            (96, 28),
+        ];
+        let mut previous = WireFrame::capture(&state.term);
+        for (cols, rows) in sizes {
+            state.resize(cols, rows);
+            // Simulate a foreground TUI repainting after SIGWINCH.
+            state.feed(format!("\x1b[Hresize {cols}x{rows}\x1b[K").as_bytes());
+            let frame = WireFrame::capture(&state.term);
+
+            assert_eq!(frame.cols, cols as u16);
+            assert_eq!(frame.rows, rows as u16);
+            assert_eq!(frame.rows_cells.len(), rows);
+            assert!(
+                frame.rows_cells.iter().all(|row| row.len() == cols),
+                "resize {cols}x{rows} produced a non-rectangular frame"
+            );
+            assert!(frame.alt_screen, "alt-screen mode leaked during resize");
+            assert!(frame.bracketed_paste, "bracketed paste mode leaked during resize");
+            assert!(frame.mouse_report, "mouse-report mode leaked during resize");
+            assert!(frame.sgr_mouse, "SGR mouse mode leaked during resize");
+            assert_eq!(
+                encode_frame(&frame, Some(&previous))[0],
+                MSG_FULL,
+                "dimension changes must force a full sync"
+            );
+            previous = frame;
+        }
+
+        let final_frame = WireFrame::capture(&state.term);
+        assert!(
+            final_frame
+                .rows_cells
+                .iter()
+                .flatten()
+                .any(|cell| cell.ch != 0),
+            "resize storm produced a blank live frame"
+        );
+    }
+
+    #[test]
+    fn alternate_screen_roundtrip_preserves_main_scrollback() {
+        let mut state = TermState::new(40, 8);
+        for i in 0..20 {
+            state.feed(format!("main-{i}\r\n").as_bytes());
+        }
+        let main_before_alt = WireFrame::capture(&state.term);
+        assert!(!main_before_alt.alt_screen);
+
+        state.feed(b"\x1b[?1049h\x1b[Halt-screen-only");
+        let alt = WireFrame::capture(&state.term);
+        assert!(alt.alt_screen);
+        assert_eq!(wire_text_at(&alt, 0), "alt-screen-only");
+
+        state.feed(b"\x1b[?1049l");
+        let restored = WireFrame::capture(&state.term);
+        assert!(!restored.alt_screen);
+        assert!(
+            restored
+                .rows_cells
+                .iter()
+                .enumerate()
+                .any(|(row, _)| wire_text_at(&restored, row).starts_with("main-")),
+            "main screen content was not restored after leaving alt-screen"
+        );
+        assert!(
+            !restored
+                .rows_cells
+                .iter()
+                .enumerate()
+                .any(|(row, _)| wire_text_at(&restored, row).contains("alt-screen-only")),
+            "alt-screen content leaked into the restored main screen"
+        );
+    }
+
+    #[test]
     fn scrolling_into_history_reveals_older_lines() {
         let mut state = TermState::new(DEFAULT_COLS, DEFAULT_ROWS);
         // Print 100 numbered lines; only the last 24 are on screen.
@@ -970,6 +1083,37 @@ mod tests {
             text == "line0" || text == "line1"
         });
         assert!(any_early, "scrollback did not reveal the earliest lines");
+    }
+
+    #[test]
+    fn scrolled_history_hides_cursor_until_bottom_reset() {
+        let mut state = TermState::new(DEFAULT_COLS, DEFAULT_ROWS);
+        for i in 0..100 {
+            state.feed(format!("line{i}\r\n").as_bytes());
+        }
+
+        let bottom = WireFrame::capture(&state.term);
+        assert!(bottom.cursor_visible, "cursor should show at live bottom");
+
+        state.scroll(100);
+        let scrolled = WireFrame::capture(&state.term);
+        assert!(
+            !scrolled.cursor_visible,
+            "scrolled-back history must not render the live cursor in a historical viewport"
+        );
+
+        state.scroll_to_bottom();
+        let restored = WireFrame::capture(&state.term);
+        assert!(restored.cursor_visible, "bottom reset should restore the live cursor");
+        let restored_row0: String = restored.rows_cells[0]
+            .iter()
+            .filter_map(|c| char::from_u32(c.ch))
+            .filter(|c| *c != '\0')
+            .collect();
+        assert_ne!(
+            restored_row0, "line0",
+            "bottom reset should leave history and return to the live screen"
+        );
     }
 
     #[test]

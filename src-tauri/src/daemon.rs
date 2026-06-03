@@ -10,7 +10,7 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
-    Arc,
+    Arc, OnceLock,
 };
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -20,6 +20,33 @@ const STATUS_COMMAND: &[u8] = b"status\n";
 const PROTOCOL_VERSION: u16 = 1;
 pub const DAEMON_ARG: &str = "--terminal-workspace-daemon";
 pub const DAEMON_STDIO_ARG: &str = "--terminal-workspace-daemon-stdio";
+/// When set, the launcher / caller wants a clean backend: an already-running
+/// daemon is replaced even if its build identity still matches.
+const FRESH_DAEMON_ENV: &str = "TERMINAL_WORKSPACE_FRESH_DAEMON";
+
+/// The daemon pins its build identity once, at startup, so a rebuilt binary at
+/// the same path (dev) cannot make this still-running, stale-code daemon report
+/// the *new* binary's mtime and falsely look current.
+static DAEMON_BUILD_ID: OnceLock<String> = OnceLock::new();
+
+/// Identifies the build a binary is running: protocol version + this binary's
+/// on-disk mtime. In `tauri dev` the daemon and app share one binary path, so a
+/// Rust relink bumps the mtime (→ replace the daemon) while a frontend-only
+/// change leaves it untouched (→ reuse the daemon, live reattach).
+fn current_build_id() -> String {
+    let mtime = std::env::current_exe()
+        .ok()
+        .and_then(|exe| fs::metadata(exe).ok())
+        .and_then(|meta| meta.modified().ok())
+        .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+        .map(|delta| delta.as_millis().to_string())
+        .unwrap_or_else(|| "unknown".to_string());
+    format!("{PROTOCOL_VERSION}:{mtime}")
+}
+
+fn fresh_daemon_requested() -> bool {
+    std::env::var_os(FRESH_DAEMON_ENV).is_some_and(|value| value != "0" && value != "")
+}
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(tag = "type", rename_all = "camelCase")]
@@ -77,7 +104,14 @@ pub enum DaemonRequest {
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum DaemonResponse {
     Status(DaemonStatus),
-    EnsureSession { id: String, reused: bool },
+    EnsureSession {
+        id: String,
+        reused: bool,
+        // Current PTY winsize. The map projection reattaches a reused session at
+        // this size so an alt-screen TUI rendered wide isn't shrunk/corrupted.
+        cols: Option<u16>,
+        rows: Option<u16>,
+    },
     WriteSession { ok: bool },
     ResizeSession { ok: bool },
     SnapshotSession { data: String },
@@ -98,6 +132,10 @@ pub struct DaemonStatus {
     pub mode: DaemonMode,
     pub protocol_version: u16,
     pub pid: Option<u32>,
+    /// Build identity of the *running* daemon (see `current_build_id`). The app
+    /// compares it to its own build to decide reuse-vs-replace on startup.
+    #[serde(default)]
+    pub build_id: String,
     pub message: String,
 }
 
@@ -119,7 +157,17 @@ pub fn daemon_status() -> DaemonStatus {
 pub fn daemon_ensure_running() -> DaemonStatus {
     let socket_path = daemon_socket_path();
     if let Ok(status) = query_daemon_status(&socket_path) {
-        return status;
+        // A reachable daemon running the same build is reused as-is: its PTYs are
+        // still live, so the app reattaches with full content (the whole point of
+        // the detached daemon). Replace it only when the backend code changed
+        // (build_id mismatch) or a clean backend was explicitly requested —
+        // there a fresh, code-matching daemon is required and the cold
+        // restore-from-checkpoint cost (fresh shells at the right cwd) is
+        // unavoidable.
+        if !fresh_daemon_requested() && status.build_id == current_build_id() {
+            return status;
+        }
+        replace_running_daemon(&socket_path, status.pid);
     }
 
     if let Err(error) = spawn_current_binary_as_daemon() {
@@ -168,10 +216,13 @@ pub fn trace_pty(label: &str, details: impl AsRef<str>) {
     }
     let line = format!("[TW-PTY] {now} {label} {}\n", details.as_ref());
     eprint!("{line}");
+    let trace_path = std::env::var_os("TERMINAL_WORKSPACE_TRACE_PTY_FILE")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("/tmp/terminal-workspace-pty-trace.log"));
     let _ = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
-        .open("/tmp/terminal-workspace-pty-trace.log")
+        .open(trace_path)
         .and_then(|mut file| std::io::Write::write_all(&mut file, line.as_bytes()));
 }
 
@@ -411,6 +462,36 @@ fn tty_size() -> Option<(u16, u16)> {
     Some((cols, rows))
 }
 
+/// Tear down a stale-build daemon so a fresh, code-matching one can take its
+/// socket. `remove_stale_socket` refuses to bind while the old daemon still
+/// answers, so we kill it and wait for the socket to go unreachable before the
+/// caller spawns the replacement.
+fn replace_running_daemon(socket_path: &PathBuf, pid: Option<u32>) {
+    if let Some(pid) = pid {
+        // SIGTERM first; an abrupt exit is safe because each session's cwd is
+        // already persisted at spawn and cold restore only consumes the cwd.
+        let _ = Command::new("kill").arg(pid.to_string()).status();
+        for _ in 0..40 {
+            if query_daemon_status(socket_path).is_err() {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        // Still answering after ~2s — force it.
+        let _ = Command::new("kill")
+            .arg("-KILL")
+            .arg(pid.to_string())
+            .status();
+    }
+
+    for _ in 0..40 {
+        if query_daemon_status(socket_path).is_err() {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
 fn spawn_current_binary_as_daemon() -> Result<(), String> {
     let current_exe = std::env::current_exe().map_err(|error| error.to_string())?;
     Command::new(current_exe)
@@ -431,6 +512,9 @@ fn spawn_current_binary_as_daemon() -> Result<(), String> {
 }
 
 pub fn run_daemon_forever() -> Result<(), String> {
+    // Pin the build identity to the binary this daemon launched from, so a later
+    // same-path rebuild can't make us report as current (see DAEMON_BUILD_ID).
+    let _ = DAEMON_BUILD_ID.set(current_build_id());
     let socket_path = daemon_socket_path();
     prepare_socket_dir(&socket_path)?;
     remove_stale_socket(&socket_path)?;
@@ -487,6 +571,7 @@ fn embedded_fallback_status(socket_path: PathBuf, error: String) -> DaemonStatus
         mode: DaemonMode::EmbeddedFallback,
         protocol_version: PROTOCOL_VERSION,
         pid: None,
+        build_id: current_build_id(),
         message: format!(
             "External terminal daemon is not available ({error}); using embedded Tauri PTY owner."
         ),
@@ -598,11 +683,22 @@ fn handle_daemon_request(
                 format!("id={id:?} cols={cols:?} rows={rows:?}"),
             );
             let (id, reused) = pty_manager.ensure_detached(id, cwd, command, cols, rows)?;
+            let (live_cols, live_rows) = match pty_manager.session_size(&id) {
+                Some((c, r)) => (Some(c), Some(r)),
+                None => (None, None),
+            };
             trace_pty(
                 "daemon.ensure.done",
-                format!("id={id} reused={reused} cols={cols:?} rows={rows:?}"),
+                format!(
+                    "id={id} reused={reused} cols={live_cols:?} rows={live_rows:?}"
+                ),
             );
-            DaemonResponse::EnsureSession { id, reused }
+            DaemonResponse::EnsureSession {
+                id,
+                reused,
+                cols: live_cols,
+                rows: live_rows,
+            }
         }
         DaemonRequest::WriteSession { id, data } => {
             trace_pty(
@@ -722,6 +818,12 @@ fn external_daemon_status(socket_path: &PathBuf) -> DaemonStatus {
         mode: DaemonMode::ExternalDaemon,
         protocol_version: PROTOCOL_VERSION,
         pid: Some(std::process::id()),
+        // Report the build pinned at this daemon's startup, not a fresh read —
+        // a same-path rebuild must not let stale code masquerade as current.
+        build_id: DAEMON_BUILD_ID
+            .get()
+            .cloned()
+            .unwrap_or_else(current_build_id),
         message: "External terminal daemon is reachable.".to_string(),
     }
 }
@@ -736,9 +838,9 @@ fn write_daemon_response(stream: &mut UnixStream, response: &DaemonResponse) -> 
 #[cfg(test)]
 mod tests {
     use super::{
-        daemon_socket_path, daemon_status, daemon_stdio_bridge_argv, embedded_fallback_status,
-        DaemonMode, DaemonRequest, DaemonResponse, DAEMON_STDIO_ARG, PROTOCOL_VERSION,
-        SOCKET_FILE_NAME,
+        current_build_id, daemon_socket_path, daemon_status, daemon_stdio_bridge_argv,
+        embedded_fallback_status, DaemonMode, DaemonRequest, DaemonResponse, DAEMON_STDIO_ARG,
+        PROTOCOL_VERSION, SOCKET_FILE_NAME,
     };
 
     #[test]
@@ -772,6 +874,14 @@ mod tests {
         assert_eq!(status.mode, DaemonMode::EmbeddedFallback);
         assert_eq!(status.protocol_version, PROTOCOL_VERSION);
         assert_eq!(status.pid, None);
+        assert_eq!(status.build_id, current_build_id());
+    }
+
+    #[test]
+    fn build_id_is_stable_and_carries_protocol_version() {
+        let id = current_build_id();
+        assert_eq!(id, current_build_id());
+        assert!(id.starts_with(&format!("{PROTOCOL_VERSION}:")));
     }
 
     #[test]
@@ -791,6 +901,8 @@ mod tests {
         let response = DaemonResponse::EnsureSession {
             id: "session-a".to_string(),
             reused: false,
+            cols: Some(120),
+            rows: Some(40),
         };
         let serialized_response =
             serde_json::to_string(&response).expect("serialize ensure response");

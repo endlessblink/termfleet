@@ -59,6 +59,7 @@ pub fn run() {
             commands::grid_detach,
             commands::grid_resize,
             commands::grid_scroll,
+            commands::grid_scroll_to_bottom,
             commands::grid_subscribe_diffs,
             commands::pty_spawn,
             commands::pty_ensure,

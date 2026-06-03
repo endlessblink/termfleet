@@ -45,6 +45,10 @@ pub struct FileEntry {
 pub struct PtyEnsureResult {
     id: String,
     reused: bool,
+    // Current PTY winsize (None if not reported). The map projection reattaches
+    // a reused session at this size to avoid shrinking a wide alt-screen TUI.
+    cols: Option<u16>,
+    rows: Option<u16>,
 }
 
 #[derive(Clone, Serialize)]
@@ -292,7 +296,17 @@ pub fn daemon_ensure_session(
         cols,
         rows,
     })? {
-        DaemonResponse::EnsureSession { id, reused } => Ok(PtyEnsureResult { id, reused }),
+        DaemonResponse::EnsureSession {
+            id,
+            reused,
+            cols,
+            rows,
+        } => Ok(PtyEnsureResult {
+            id,
+            reused,
+            cols,
+            rows,
+        }),
         DaemonResponse::Error { message } => Err(message),
         response => Err(format!("Unexpected daemon response: {response:?}")),
     }
@@ -455,7 +469,14 @@ pub fn grid_resize(
 
 #[tauri::command]
 pub fn grid_scroll(grids: State<'_, GridManager>, id: String, delta: i32) -> Result<(), String> {
+    crate::daemon::trace_pty("grid.scroll", format!("id={id} delta={delta}"));
     grids.scroll(&id, delta)
+}
+
+#[tauri::command]
+pub fn grid_scroll_to_bottom(grids: State<'_, GridManager>, id: String) -> Result<(), String> {
+    crate::daemon::trace_pty("grid.scroll_to_bottom", format!("id={id}"));
+    grids.scroll_to_bottom(&id)
 }
 
 #[tauri::command]
@@ -487,7 +508,16 @@ pub fn pty_ensure(
     command: Option<String>,
 ) -> Result<PtyEnsureResult, String> {
     let (id, reused) = state.ensure(&app, id, cwd, command)?;
-    Ok(PtyEnsureResult { id, reused })
+    let (cols, rows) = match state.session_size(&id) {
+        Some((c, r)) => (Some(c), Some(r)),
+        None => (None, None),
+    };
+    Ok(PtyEnsureResult {
+        id,
+        reused,
+        cols,
+        rows,
+    })
 }
 
 #[tauri::command]
