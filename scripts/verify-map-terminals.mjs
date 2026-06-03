@@ -23,6 +23,8 @@ const gridRenderer = readFileSync(join(root, "src/lib/gridRenderer.ts"), "utf8")
 const gridDiff = readFileSync(join(root, "src/lib/gridDiff.ts"), "utf8");
 const gridDiffSpec = readFileSync(join(root, "tests/grid-diff.spec.ts"), "utf8");
 const boxGlyphSpec = readFileSync(join(root, "tests/box-glyph.spec.ts"), "utf8");
+const terminalMouse = readFileSync(join(root, "src/lib/terminalMouse.ts"), "utf8");
+const terminalMouseSpec = readFileSync(join(root, "tests/terminal-mouse.spec.ts"), "utf8");
 const legacyPromptRepair = readFileSync(join(root, "src/lib/legacyPromptRepair.ts"), "utf8");
 const legacyPromptRepairSpec = readFileSync(join(root, "tests/legacy-prompt-repair.spec.ts"), "utf8");
 const cargoToml = readFileSync(join(root, "src-tauri/Cargo.toml"), "utf8");
@@ -121,6 +123,18 @@ const checks = [
     message: "Terminal map node bodies must stop canvas/node mouse events so terminal focus and input are not stolen.",
   },
   {
+    ok: /"verify:terminal-mouse": "playwright test terminal-mouse"/.test(packageJson) &&
+      /encodeMouseReport/.test(terminalCanvas) &&
+      /pointerButtonToTerminalButton/.test(terminalCanvas) &&
+      /sendPointerMouseReport\(event/.test(terminalCanvas) &&
+      /modesRef\.current\.mouseReport/.test(terminalCanvas) &&
+      /release \? "m" : "M"/.test(terminalMouse) &&
+      /pointerButtonToTerminalButton\(0\)/.test(terminalMouseSpec) &&
+      /leftReleaseSgr/.test(terminalMouseSpec) &&
+      /wheelDownLegacyHex/.test(terminalMouseSpec),
+    message: "Canvas terminals must forward TUI mouse clicks/releases/wheel reports as VT mouse sequences instead of treating them only as DOM focus/selection.",
+  },
+  {
     ok: /const showTerminalSummary = node\.type === "terminal" && !selected && zoom < READABLE_TERMINAL_ZOOM;/.test(magicCanvas) &&
       /<TerminalComponent[\s\S]*mapProjection=\{false\}/.test(magicCanvas) &&
       !/mapSurface/.test(magicCanvas),
@@ -177,7 +191,7 @@ const checks = [
     ok: /export function needsLegacyPromptRepair/.test(legacyPromptRepair) &&
       /"verify:legacy-prompt-repair": "playwright test legacy-prompt-repair"/.test(packageJson) &&
       /"verify:legacy-prompt-live": "scripts\/verify-legacy-prompt-repair\.sh"/.test(packageJson) &&
-      /"verify:canvas-all": "playwright test canvas-renderer grid-diff legacy-prompt-repair keymap grid-resize selection box-glyph"/.test(packageJson) &&
+      /"verify:canvas-all": "playwright test canvas-renderer grid-diff legacy-prompt-repair keymap terminal-mouse grid-resize selection box-glyph"/.test(packageJson) &&
       /snapshot\.altScreen/.test(legacyPromptRepair) &&
       legacyPromptRepair.includes("/@[^:]+:.+[$#]$/") &&
       /currentPrompt\.row !== snapshot\.cursor\.line/.test(legacyPromptRepair) &&
@@ -227,11 +241,10 @@ const checks = [
   },
   {
     ok: /const FOCUS_TERMINAL_ZOOM = 1;/.test(magicCanvas) &&
-      /activeTerminalContent/.test(magicCanvas) &&
-      /width: `\$\{Math\.max\(MIN_ZOOM, zoom\) \* 100\}%`/.test(magicCanvas) &&
-      /height: `\$\{Math\.max\(MIN_ZOOM, zoom\) \* 100\}%`/.test(magicCanvas) &&
-      /transform: `scale\(\$\{1 \/ Math\.max\(zoom, MIN_ZOOM\)\}\)`/.test(magicCanvas) &&
-      /renderScale=\{1\}/.test(magicCanvas) &&
+      /const MAP_TERMINAL_RENDER_SCALE = 2;/.test(magicCanvas) &&
+      /renderScale=\{MAP_TERMINAL_RENDER_SCALE\}/.test(magicCanvas) &&
+      !/terminalRenderScaleForZoom/.test(magicCanvas) &&
+      !/activeTerminalContent/.test(magicCanvas) &&
       /function snapTerminalPixel/.test(magicCanvas) &&
       /snapTerminalPixel\(nextX, node\.type, nextZoom\)/.test(magicCanvas) &&
       /snapTerminalPixel\(nextY, node\.type, nextZoom\)/.test(magicCanvas) &&
@@ -242,7 +255,7 @@ const checks = [
       /const zoom = 1;/.test(workbenchSidebar) &&
       /const zoom = node\.type === "terminal" \? 1 : canvasState\.viewport\.zoom;/.test(workbenchSidebar) &&
       /Math\.round\(nextX\)/.test(workbenchSidebar),
-    message: "Focused map terminals must cancel map zoom for their live terminal content and stay on integer map pixels without supersampling/downsampling blur.",
+    message: "Focused map terminals must preserve map geometry and use fixed backing-store supersampling, not zoom-derived renderer props or inverse CSS scaling that crop/churn live TUIs.",
   },
   {
     ok: existsSync(join(root, "src/lib/powerlineGlyph.ts")) &&
@@ -386,6 +399,11 @@ const checks = [
       /MAP-PROBE-MAP-INPUT/.test(zellijMapSmoke) &&
       /MAP_INPUT_REACHED_DAEMON/.test(zellijMapSmoke) &&
       /MAP_INPUT_MISSING/.test(zellijMapSmoke) &&
+      /MAP-PROBE-ZOOM-CHURN/.test(zellijMapSmoke) &&
+      /MAP_ZOOM_VISUAL_ONLY/.test(zellijMapSmoke) &&
+      /MAP_ZOOM_CAUSED_TERMINAL_RESIZE/.test(zellijMapSmoke) &&
+      /MAP_MOUSE_REPORT_REACHED_DAEMON/.test(zellijMapSmoke) &&
+      /MAP_MOUSE_REPORT_MISSING/.test(zellijMapSmoke) &&
       /VERIFY_STATUS=\$\?/.test(zellijMapSmoke) &&
       /assert_terminal_image_signal/.test(zellijMapSmoke) &&
       /760x430\+520\+80/.test(zellijMapSmoke) &&

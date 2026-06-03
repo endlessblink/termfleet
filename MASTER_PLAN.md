@@ -1489,14 +1489,17 @@ Reliability hardening addendum — 2026-06-02:
   `applySparseMapAnchor` returning, `APP_BUDGET=180 npm run
   verify:map-shell-anchor` requires `MAP_SHELL_PROMPT_TOP_OK`, and `npm run
   verify:terminal-reliability` covers the fast source/browser/Rust/build gate.
-- Zellij map readability guard: selected map terminals now inverse-scale their
-  live terminal content against the map zoom, so a 78% map viewport does not make
-  the active Canvas2D terminal blurry. Powerline separators used by zellij/tmux
-  themes render geometrically instead of relying on Hack font fallback, which
-  prevents missing-character boxes in status bars. Evidence: `npm run
-  verify:box-glyph`, `npm run verify:map-terminals`, `npm run build`, and
-  `APP_BUDGET=240 npm run verify:zellij-map` passed; the zellij run ended with
-  `GRID_PTY_MATCH (both 99x24 cols)`, `MAP_INPUT_REACHED_DAEMON`, map visual
+- Zellij map readability guard: selected map terminals now preserve normal map
+  geometry and use fixed backing-store supersampling, not inverse CSS scaling,
+  so zooming the map does not crop or churn the live TUI. Powerline separators
+  used by zellij/tmux themes render geometrically instead of relying on Hack font
+  fallback, which prevents missing-character boxes in status bars. Canvas mouse
+  clicks now forward VT mouse reports when the TUI enables mouse mode, so zellij
+  tab/pane clicks reach the PTY. Evidence: `npm run verify:box-glyph`, `npm run
+  verify:terminal-mouse`, `npm run verify:map-terminals`, `npm run build`, and
+  `APP_BUDGET=260 npm run verify:zellij-map` passed; the zellij run ended with
+  `GRID_PTY_MATCH (both 99x24 cols)`, `MAP_INPUT_REACHED_DAEMON`,
+  `MAP_MOUSE_REPORT_REACHED_DAEMON`, `MAP_ZOOM_VISUAL_ONLY`, visual
   content/repaint checks, and screenshots in `/tmp/tw-zellij-map/`.
 - Standalone daemon cold-restore flush guard: `PtyOutputBuffer::snapshot` and
   `read_since` now force a pending scrollback persist flush before returning, so
