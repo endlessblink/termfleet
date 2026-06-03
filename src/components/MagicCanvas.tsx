@@ -190,6 +190,10 @@ const styles: Record<string, CSSProperties> = {
     overflow: "hidden",
     background: "var(--surface-sunken)",
   },
+  activeTerminalContent: {
+    height: "100%",
+    transformOrigin: "top left",
+  },
   nativeTerminalPreview: {
     height: "100%",
     display: "grid",
@@ -813,23 +817,29 @@ function CanvasNodeView({
         )}
       </div>
     ) : node.type === "terminal" ? (
-      <TerminalComponent
-        tabId={terminalTabId}
-        paneId={terminalPaneId}
-        cwd={node.terminalCwd ?? linkedTab?.initialCwd}
-        attachToPtyId={linkedTerminalId ?? null}
-        runtimeActive={selected}
-        onActivate={activateTerminalNode}
-        standalone
-        // The active map terminal is centered at exact 1:1 canvas zoom. Extra
-        // supersampling makes the browser downsample glyphs at that exact zoom,
-        // which reads softer than the normal split terminal.
-        renderScale={1}
-        // The selected map terminal is the user's active work surface, so it
-        // must reflow to the node and stay readable instead of showing a frozen,
-        // scaled-down projection of a larger split-pane grid.
-        mapProjection={false}
-      />
+      <div
+        style={{
+          ...styles.activeTerminalContent,
+          width: `${Math.max(MIN_ZOOM, zoom) * 100}%`,
+          height: `${Math.max(MIN_ZOOM, zoom) * 100}%`,
+          transform: `scale(${1 / Math.max(zoom, MIN_ZOOM)})`,
+        }}
+      >
+        <TerminalComponent
+          tabId={terminalTabId}
+          paneId={terminalPaneId}
+          cwd={node.terminalCwd ?? linkedTab?.initialCwd}
+          attachToPtyId={linkedTerminalId ?? null}
+          runtimeActive={selected}
+          onActivate={activateTerminalNode}
+          standalone
+          renderScale={1}
+          // The selected map terminal is the user's active work surface, so it
+          // must reflow to the node and stay readable instead of showing a frozen,
+          // scaled-down projection of a larger split-pane grid.
+          mapProjection={false}
+        />
+      </div>
     ) : node.type === "preview" ? (
       <LocalhostPreview
         previewUrl={node.previewUrl}

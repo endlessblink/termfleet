@@ -19,8 +19,10 @@ const splitPane = readFileSync(join(root, "src/components/SplitPane.tsx"), "utf8
 const types = readFileSync(join(root, "src/lib/types.ts"), "utf8");
 const masterPlanTasks = readFileSync(join(root, "src/lib/masterPlanTasks.ts"), "utf8");
 const gridBuffer = readFileSync(join(root, "src/lib/gridBuffer.ts"), "utf8");
+const gridRenderer = readFileSync(join(root, "src/lib/gridRenderer.ts"), "utf8");
 const gridDiff = readFileSync(join(root, "src/lib/gridDiff.ts"), "utf8");
 const gridDiffSpec = readFileSync(join(root, "tests/grid-diff.spec.ts"), "utf8");
+const boxGlyphSpec = readFileSync(join(root, "tests/box-glyph.spec.ts"), "utf8");
 const legacyPromptRepair = readFileSync(join(root, "src/lib/legacyPromptRepair.ts"), "utf8");
 const legacyPromptRepairSpec = readFileSync(join(root, "tests/legacy-prompt-repair.spec.ts"), "utf8");
 const cargoToml = readFileSync(join(root, "src-tauri/Cargo.toml"), "utf8");
@@ -225,6 +227,10 @@ const checks = [
   },
   {
     ok: /const FOCUS_TERMINAL_ZOOM = 1;/.test(magicCanvas) &&
+      /activeTerminalContent/.test(magicCanvas) &&
+      /width: `\$\{Math\.max\(MIN_ZOOM, zoom\) \* 100\}%`/.test(magicCanvas) &&
+      /height: `\$\{Math\.max\(MIN_ZOOM, zoom\) \* 100\}%`/.test(magicCanvas) &&
+      /transform: `scale\(\$\{1 \/ Math\.max\(zoom, MIN_ZOOM\)\}\)`/.test(magicCanvas) &&
       /renderScale=\{1\}/.test(magicCanvas) &&
       /function snapTerminalPixel/.test(magicCanvas) &&
       /snapTerminalPixel\(nextX, node\.type, nextZoom\)/.test(magicCanvas) &&
@@ -236,7 +242,16 @@ const checks = [
       /const zoom = 1;/.test(workbenchSidebar) &&
       /const zoom = node\.type === "terminal" \? 1 : canvasState\.viewport\.zoom;/.test(workbenchSidebar) &&
       /Math\.round\(nextX\)/.test(workbenchSidebar),
-    message: "Focused map terminals must render at exact 1:1 zoom on integer pixels without supersampling/downsampling blur.",
+    message: "Focused map terminals must cancel map zoom for their live terminal content and stay on integer map pixels without supersampling/downsampling blur.",
+  },
+  {
+    ok: existsSync(join(root, "src/lib/powerlineGlyph.ts")) &&
+      /import \{ drawPowerlineGlyph, isPowerlineGlyph \} from "\.\/powerlineGlyph";/.test(gridRenderer) &&
+      /isPowerlineGlyph\(cp\) && drawPowerlineGlyph\(ctx, cp, x, y, cellW, cellH, fg\)/.test(gridRenderer) &&
+      /isPowerlineGlyph\(0xe0b0\)/.test(boxGlyphSpec) &&
+      /powerRight/.test(boxGlyphSpec) &&
+      /powerLeft/.test(boxGlyphSpec),
+    message: "Powerline separator glyphs used by zellij/tmux themes must render geometrically instead of falling back to missing-character boxes.",
   },
   {
     ok: /const NODE_MIN_SIZE = \{[\s\S]*terminal: \{ width: 820, height: 460 \}/.test(magicCanvas),
