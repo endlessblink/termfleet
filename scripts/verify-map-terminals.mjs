@@ -144,7 +144,8 @@ const checks = [
       /onSnapshot\?: \(snapshot: GridSnapshot\) => void;/.test(terminalCanvas) &&
       /onSnapshotRef\.current\?\.\(snapshot\)/.test(terminalCanvas) &&
       /const char = cell\?\.c && cell\.c !== "\\u0000" \? cell\.c : " ";/.test(magicCanvas) &&
-      /\{cell\.char\}/.test(magicCanvas) &&
+      /segments: \[\{ text: " "\.repeat\(maxCols\)/.test(magicCanvas) &&
+      /\{segment\.text\}/.test(magicCanvas) &&
       !/background: cell\.color/.test(magicCanvas) &&
       !/live session/.test(magicCanvas) &&
       /<TerminalComponent[\s\S]*mapProjection=\{false\}/.test(magicCanvas) &&
@@ -202,7 +203,7 @@ const checks = [
     ok: /export function needsLegacyPromptRepair/.test(legacyPromptRepair) &&
       /"verify:legacy-prompt-repair": "playwright test legacy-prompt-repair"/.test(packageJson) &&
       /"verify:legacy-prompt-live": "scripts\/verify-legacy-prompt-repair\.sh"/.test(packageJson) &&
-      /"verify:canvas-all": "playwright test canvas-renderer grid-diff legacy-prompt-repair keymap terminal-mouse grid-resize selection box-glyph"/.test(packageJson) &&
+      /"verify:canvas-all": "playwright test canvas-renderer grid-diff legacy-prompt-repair keymap terminal-mouse grid-resize selection box-glyph map-terminal-rendering"/.test(packageJson) &&
       /snapshot\.altScreen/.test(legacyPromptRepair) &&
       legacyPromptRepair.includes("/@[^:]+:.+[$#]$/") &&
       /currentPrompt\.row !== snapshot\.cursor\.line/.test(legacyPromptRepair) &&
@@ -252,11 +253,12 @@ const checks = [
   },
   {
     ok: /const FOCUS_TERMINAL_ZOOM = 1;/.test(magicCanvas) &&
-      /const MAP_TERMINAL_RENDER_SCALE = 4;/.test(magicCanvas) &&
+      /const MAP_TERMINAL_RENDER_SCALE = 2;/.test(magicCanvas) &&
       /renderScale=\{MAP_TERMINAL_RENDER_SCALE\}/.test(magicCanvas) &&
       !/terminalRenderScaleForZoom/.test(magicCanvas) &&
       !/activeTerminalContent/.test(magicCanvas) &&
-      /imageRendering: renderScale > 1 \? "pixelated" : "auto"/.test(terminalCanvas) &&
+      /imageRendering: "auto"/.test(terminalCanvas) &&
+      /willChange: "transform"/.test(magicCanvas) &&
       /function snapTerminalPixel/.test(magicCanvas) &&
       /snapTerminalPixel\(nextX, node\.type, nextZoom\)/.test(magicCanvas) &&
       /snapTerminalPixel\(nextY, node\.type, nextZoom\)/.test(magicCanvas) &&

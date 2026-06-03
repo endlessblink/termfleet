@@ -1515,6 +1515,14 @@ Reliability hardening addendum — 2026-06-02:
   `/tmp/termfleet-visual-qa/focused-readable.png`, and the zellij smoke
   screenshots `/tmp/tw-zellij-map/06a-map-after-zoom-churn.png` plus
   `/tmp/tw-zellij-map/06b-map-focused-readable.png`.
+- Map terminal text-quality regression: `tests/map-terminal-rendering.spec.ts`
+  now asserts live map canvases never use pixelated image scaling and that
+  overview previews group terminal runs into compact text segments instead of
+  thousands of per-cell DOM nodes. Evidence: `npx playwright test
+  map-terminal-rendering`, `npm run verify:canvas-all`, `npm run
+  verify:map-terminals`, `npm run build`, and `APP_BUDGET=260 npm run
+  verify:zellij-map` passed after switching live map terminals to a smooth 2x
+  backing store and adding transform hints for map zoom.
 - Standalone daemon cold-restore flush guard: `PtyOutputBuffer::snapshot` and
   `read_since` now force a pending scrollback persist flush before returning, so
   verifier-driven daemon death cannot lose the newest marker between throttle
