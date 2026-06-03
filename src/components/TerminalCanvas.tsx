@@ -22,6 +22,7 @@ import {
   type RenderTheme,
 } from "../lib/gridRenderer";
 import { encodePaste, keyEventToBytes } from "../lib/keymap";
+import { encodeMouseReport, pointerButtonToTerminalButton } from "../lib/terminalMouse";
 import {
   normalizeRange,
   pointToCell,
@@ -650,7 +651,7 @@ export function TerminalCanvas({
 
   const focusInput = () => inputRef.current?.focus();
 
-  const pointerToCell = (event: React.PointerEvent): CellPoint | null => {
+  const clientPointToCell = (clientX: number, clientY: number): CellPoint | null => {
     const buffer = bufferRef.current;
     const canvas = canvasRef.current;
     if (!buffer || !canvas) return null;
@@ -659,13 +660,50 @@ export function TerminalCanvas({
     // Account for any CSS scale applied on the map by normalizing to logical px.
     const scaleX = rect.width / (canvas.width / cellRef.current.dpr);
     const scaleY = rect.height / (canvas.height / cellRef.current.dpr);
-    const offsetX = (event.clientX - rect.left) / (scaleX || 1);
-    const offsetY = (event.clientY - rect.top) / (scaleY || 1);
+    const offsetX = (clientX - rect.left) / (scaleX || 1);
+    const offsetY = (clientY - rect.top) / (scaleY || 1);
     return pointToCell(offsetX, offsetY, width, height, buffer.cols, buffer.rows);
+  };
+
+  const pointerToCell = (event: React.PointerEvent): CellPoint | null =>
+    clientPointToCell(event.clientX, event.clientY);
+
+  const pointerToVtCell = (event: React.PointerEvent): { col: number; row: number } | null => {
+    const buffer = bufferRef.current;
+    if (!buffer) return null;
+    const point = pointerToCell(event);
+    return {
+      col: Math.min(buffer.cols, Math.max(1, (point?.col ?? 0) + 1)),
+      row: Math.min(buffer.rows, Math.max(1, (point?.row ?? 0) + 1)),
+    };
+  };
+
+  const sendPointerMouseReport = (event: React.PointerEvent, release = false) => {
+    const terminalButton = pointerButtonToTerminalButton(event.button);
+    if (terminalButton === null) return false;
+    const cell = pointerToVtCell(event);
+    if (!cell) return false;
+    const modes = modesRef.current;
+    send(encodeMouseReport({
+      button: terminalButton,
+      col: cell.col,
+      row: cell.row,
+      sgr: modes.sgrMouse,
+      release,
+      modifiers: event,
+    }));
+    return true;
   };
 
   const handlePointerDown = (event: React.PointerEvent) => {
     focusInput();
+    if (modesRef.current.mouseReport) {
+      if (sendPointerMouseReport(event)) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+      return;
+    }
     if (event.button !== 0) return;
     const cell = pointerToCell(event);
     if (!cell) return;
@@ -695,7 +733,16 @@ export function TerminalCanvas({
     focusInput();
   };
 
-  const handlePointerUp = () => {
+  const handlePointerUp = (event: React.PointerEvent) => {
+    if (modesRef.current.mouseReport) {
+      if (sendPointerMouseReport(event, true)) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+      anchorRef.current = null;
+      focusInput();
+      return;
+    }
     anchorRef.current = null;
     if (selectionRef.current) copySelection();
     // A selection drag ends with the pointer up; make sure the textarea keeps
@@ -708,15 +755,8 @@ export function TerminalCanvas({
   // Shared with mouse-wheel reporting so the byte sequence names the right cell.
   const wheelCell = (event: React.WheelEvent): { col: number; row: number } => {
     const buffer = bufferRef.current;
-    const canvas = canvasRef.current;
-    if (!buffer || !canvas) return { col: 1, row: 1 };
-    const rect = canvas.getBoundingClientRect();
-    const { width, height } = cellRef.current;
-    const scaleX = rect.width / (canvas.width / cellRef.current.dpr);
-    const scaleY = rect.height / (canvas.height / cellRef.current.dpr);
-    const offsetX = (event.clientX - rect.left) / (scaleX || 1);
-    const offsetY = (event.clientY - rect.top) / (scaleY || 1);
-    const point = pointToCell(offsetX, offsetY, width, height, buffer.cols, buffer.rows);
+    if (!buffer) return { col: 1, row: 1 };
+    const point = clientPointToCell(event.clientX, event.clientY);
     // VT mouse coordinates are 1-based; clamp into the grid.
     return {
       col: Math.min(buffer.cols, Math.max(1, (point?.col ?? 0) + 1)),
@@ -737,11 +777,13 @@ export function TerminalCanvas({
     if (modes.mouseReport) {
       const { col, row } = wheelCell(event);
       const button = up ? 64 : 65;
-      const report = modes.sgrMouse
-        // SGR (DECSET 1006): ESC[<b;col;rowM — press-only, no release for wheel.
-        ? `\x1b[<${button};${col};${row}M`
-        // Legacy X10: ESC[M then three bytes, each offset by 32 (cb, cx, cy).
-        : `\x1b[M${String.fromCharCode(32 + button, 32 + col, 32 + row)}`;
+      const report = encodeMouseReport({
+        button,
+        col,
+        row,
+        sgr: modes.sgrMouse,
+        modifiers: event,
+      });
       send(report.repeat(notches));
       return;
     }
