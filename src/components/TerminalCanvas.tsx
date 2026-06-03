@@ -825,7 +825,7 @@ export function TerminalCanvas({
         data-terminal-renderer="canvas2d"
         style={{
           display: "block",
-          imageRendering: renderScale > 1 ? "pixelated" : "auto",
+          imageRendering: "auto",
         }}
       />
       <canvas
@@ -838,7 +838,7 @@ export function TerminalCanvas({
           left: 0,
           pointerEvents: "none",
           display: "block",
-          imageRendering: renderScale > 1 ? "pixelated" : "auto",
+          imageRendering: "auto",
         }}
       />
       {attachError ? (
