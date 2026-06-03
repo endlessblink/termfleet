@@ -28,16 +28,25 @@ export interface HandleInfo {
 
 // ── Tree queries ─────────────────────────────────────────────────────────────
 
-/** Get all terminal leaf IDs from the split tree */
+/** Get all leaf IDs from the split tree */
 export function getAllLeafIds(node: SplitNode): string[] {
-  if (node.type === "terminal") return [node.id];
+  if (node.type !== "split") return [node.id];
   return (node.children ?? []).flatMap(getAllLeafIds);
 }
 
-/** Count the number of terminal leaves */
+/** Count the number of leaves */
 export function countLeaves(node: SplitNode): number {
-  if (node.type === "terminal") return 1;
+  if (node.type !== "split") return 1;
   return (node.children ?? []).reduce((sum, c) => sum + countLeaves(c), 0);
+}
+
+export function getLeafNode(node: SplitNode, paneId: string): SplitNode | undefined {
+  if (node.type !== "split") return node.id === paneId ? node : undefined;
+  for (const child of node.children ?? []) {
+    const leaf = getLeafNode(child, paneId);
+    if (leaf) return leaf;
+  }
+  return undefined;
 }
 
 /** Get the CWD for a specific pane from the tree */
@@ -74,6 +83,25 @@ export function updatePaneCwdInTree(
   return tree;
 }
 
+export function updatePanePreviewUrlInTree(
+  tree: SplitNode,
+  paneId: string,
+  previewUrl: string,
+): SplitNode {
+  if (tree.type === "preview") {
+    return tree.id === paneId ? { ...tree, previewUrl } : tree;
+  }
+  if (tree.children) {
+    return {
+      ...tree,
+      children: tree.children.map((child) =>
+        updatePanePreviewUrlInTree(child, paneId, previewUrl)
+      ),
+    };
+  }
+  return tree;
+}
+
 /** Split a terminal leaf into a split node with the original + a new pane */
 export function splitNodeInTree(
   tree: SplitNode,
@@ -81,15 +109,20 @@ export function splitNodeInTree(
   direction: "horizontal" | "vertical",
   newPaneId: string,
   cwd?: string,
+  newPaneType: "terminal" | "preview" = "terminal",
+  previewUrl?: string,
+  linkedTerminalPaneId?: string,
 ): SplitNode {
-  if (tree.id === targetId && tree.type === "terminal") {
+  if (tree.id === targetId && tree.type !== "split") {
     return {
       id: crypto.randomUUID(),
       type: "split",
       direction,
       children: [
         { ...tree },
-        { id: newPaneId, type: "terminal", cwd },
+        newPaneType === "preview"
+          ? { id: newPaneId, type: "preview", previewUrl, linkedTerminalPaneId }
+          : { id: newPaneId, type: "terminal", cwd },
       ],
       sizes: [50, 50],
     };
@@ -98,7 +131,7 @@ export function splitNodeInTree(
     return {
       ...tree,
       children: tree.children.map((child) =>
-        splitNodeInTree(child, targetId, direction, newPaneId, cwd)
+        splitNodeInTree(child, targetId, direction, newPaneId, cwd, newPaneType, previewUrl, linkedTerminalPaneId)
       ),
     };
   }
@@ -145,14 +178,14 @@ export function updateSizesInTree(
 
 // ── Layout calculation ───────────────────────────────────────────────────────
 
-/** Calculate pixel bounds for every terminal leaf in the tree */
+/** Calculate pixel bounds for every leaf in the tree */
 export function calculatePaneBounds(
   node: SplitNode,
   containerRect: Rect,
 ): Map<string, Rect> {
   const result = new Map<string, Rect>();
 
-  if (node.type === "terminal") {
+  if (node.type !== "split") {
     result.set(node.id, containerRect);
     return result;
   }

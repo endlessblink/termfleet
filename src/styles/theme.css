@@ -10,8 +10,8 @@
   --fg-gutter: #717a80;
   --border: #343a3e;
   --border-soft: #292f33;
-  --canvas-grid: rgba(132, 145, 153, 0.22);
-  --canvas-grid-soft: rgba(132, 145, 153, 0.09);
+  --canvas-grid: rgba(132, 145, 153, 0.055);
+  --canvas-grid-soft: rgba(132, 145, 153, 0.032);
   --selection-bg: #203149;
   --comment: #7c8796;
 

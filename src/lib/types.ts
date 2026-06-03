@@ -7,6 +7,7 @@ export interface TerminalState {
   rows: number;
   status?: TerminalRuntimeStatus;
   reused?: boolean;
+  previewUrl?: string;
   lastStatusAt?: number;
   lastError?: string;
 }
@@ -20,11 +21,13 @@ export interface FileEntry {
 
 export interface SplitNode {
   id: string;
-  type: "terminal" | "split";
+  type: "terminal" | "preview" | "split";
   direction?: "horizontal" | "vertical";
   children?: SplitNode[];
   sizes?: number[]; // percentage for each child (should sum to 100)
   cwd?: string;     // initial CWD for terminal nodes
+  previewUrl?: string;
+  linkedTerminalPaneId?: string;
 }
 
 export interface Tab {
@@ -70,9 +73,17 @@ export interface WorkspaceUiState {
   terminalSidebarCollapsed: boolean;
   primarySidebarCollapsed: boolean;
   primarySidebarPanel: "sessions" | "map";
+  previewUrl: string;
 }
 
-export type CanvasNodeType = "terminal" | "file" | "note";
+export type CanvasNodeType = "terminal" | "file" | "note" | "preview";
+
+export type MasterPlanTaskStatus = "todo" | "in-progress" | "blocked" | "done" | "unknown";
+
+export interface CanvasTaskBinding {
+  taskId: string;
+  planPath?: string;
+}
 
 export interface CanvasNode {
   id: string;
@@ -87,6 +98,10 @@ export interface CanvasNode {
   terminalPtyId?: string;
   content?: string;
   terminalCwd?: string;
+  previewUrl?: string;
+  previewPaneId?: string;
+  linkedTerminalPaneId?: string;
+  taskBinding?: CanvasTaskBinding;
 }
 
 export interface CanvasState {

@@ -7,11 +7,12 @@
 // the grid updates via diffs. A plain DOM <canvas>, so it pans/zooms with CSS
 // transforms (split-pane and map cases both covered).
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { GlyphAtlas, measureCell } from "../lib/fontAtlas";
 import { GridBuffer } from "../lib/gridBuffer";
 import { decodeFrame } from "../lib/gridDiff";
+import { needsLegacyPromptRepair } from "../lib/legacyPromptRepair";
 import {
   computeGridSize,
   DEFAULT_THEME,
@@ -30,6 +31,7 @@ import {
   type SelectionRange,
 } from "../lib/selection";
 import { useWorkspaceStore } from "../stores/workspace";
+import type { GridSnapshot } from "../lib/gridSnapshot";
 
 // Hack is the terminal buffer font (Warp's default terminal font), bundled via
 // @font-face. Fallbacks keep things sane before the face loads / on other systems.
@@ -56,6 +58,15 @@ const TERMINAL_FONT_FACES = [
   `italic 700 ${FONT_SIZE_PX}px "Hack"`,
 ];
 
+const DEFAULT_TERMINAL_MODES = {
+  appCursor: false,
+  bracketedPaste: false,
+  altScreen: false,
+  mouseReport: false,
+  alternateScroll: false,
+  sgrMouse: false,
+};
+
 function isTauriRuntime(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
@@ -71,12 +82,18 @@ interface TerminalCanvasProps {
   // transform) pass 2 so glyphs stay crisp when the compositor scales the bitmap;
   // split panes leave it 1. Constant per mount — see the effect's dpr note.
   renderScale?: number;
+  // Read-only map projection. When true and the session is in an alternate-screen
+  // TUI, the grid/PTY is NOT shrunk to the node; it stays at its working width and
+  // the canvas is CSS-scaled to fit, so a wide alt-screen frame (agent/zellij) is
+  // never reflowed into garbage on a small map node. Plain shells still reflow.
+  mapProjection?: boolean;
   // Lifecycle reporting so the workspace store can track the canvas-owned PTY.
   // Without these, tab.terminals is never populated for canvas terminals (the
   // production default), so the status bar shows "0 ptys" and store ops that map
   // over tab.terminals (close, cwd-sync) silently no-op.
   onReady?: (ptyId: string, details: { reused: boolean }) => void;
   onStatus?: (status: "starting" | "failed", details?: { error?: string }) => void;
+  onOutput?: (data: string) => void;
 }
 
 export function TerminalCanvas({
@@ -87,8 +104,10 @@ export function TerminalCanvas({
   rows = 24,
   theme = DEFAULT_THEME,
   renderScale = 1,
+  mapProjection = false,
   onReady,
   onStatus,
+  onOutput,
 }: TerminalCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
@@ -99,20 +118,15 @@ export function TerminalCanvas({
   sessionIdRef.current = sessionId;
   const shellRef = useRef<HTMLDivElement>(null);
   // Latest terminal modes, kept current by the diff stream, read by input.
-  const modesRef = useRef({
-    appCursor: false,
-    bracketedPaste: false,
-    altScreen: false,
-    mouseReport: false,
-    alternateScroll: false,
-    sgrMouse: false,
-  });
+  const modesRef = useRef({ ...DEFAULT_TERMINAL_MODES });
   // Callbacks are read through a ref so the (expensive) attach effect does not
   // re-run when the parent passes new closure identities each render.
   const onReadyRef = useRef(onReady);
   onReadyRef.current = onReady;
   const onStatusRef = useRef(onStatus);
   onStatusRef.current = onStatus;
+  const onOutputRef = useRef(onOutput);
+  onOutputRef.current = onOutput;
   // True once the first diff frame has arrived, so modesRef reflects the real
   // terminal modes (bracketedPaste etc.) rather than the false defaults. Paste is
   // gated on this: pasting before the first frame would wrap with stale modes and
@@ -120,6 +134,7 @@ export function TerminalCanvas({
   // landing as bracketed paste. Waiters resolve when the first frame lands.
   const firstFrameRef = useRef(false);
   const firstFrameWaitersRef = useRef<Array<() => void>>([]);
+  const sessionEpochRef = useRef(0);
   // Render context shared with pointer/copy handlers (set inside the effect).
   const bufferRef = useRef<GridBuffer | null>(null);
   const cellRef = useRef({ width: 8, height: 16, dpr: 1 });
@@ -132,6 +147,7 @@ export function TerminalCanvas({
       ? true
       : TERMINAL_FONT_FACES.every((face) => document.fonts.check(face)),
   );
+  const [attachError, setAttachError] = useState<string | null>(null);
 
   useEffect(() => {
     if (fontsReady || typeof document === "undefined" || !document.fonts) return;
@@ -174,6 +190,13 @@ export function TerminalCanvas({
     if (!canvas || !isTauriRuntime() || !fontsReady) return;
 
     let disposed = false;
+    sessionEpochRef.current += 1;
+    firstFrameRef.current = false;
+    firstFrameWaitersRef.current = [];
+    modesRef.current = { ...DEFAULT_TERMINAL_MODES };
+    selectionRef.current = null;
+    anchorRef.current = null;
+    setAttachError(null);
     // Fold the supersample factor into the device pixel ratio used for the backing
     // store and glyph atlas. The CSS box stays at logical size (sizeCanvasToGrid
     // sets style.width from cellWidth, not dpr), so a 2x renderScale just packs 2x
@@ -186,6 +209,13 @@ export function TerminalCanvas({
     bufferRef.current = buffer;
     cellRef.current = { width: metrics.cellWidth, height: metrics.cellHeight, dpr };
     let ctx = sizeCanvasToGrid(canvas, atlas, cols, rows, dpr);
+    ctx.fillStyle = theme.background;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    let visibleContentSeen = false;
+    let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+    let blankGuardTimer: ReturnType<typeof setTimeout> | null = null;
+    let reusedSession = false;
+    let legacyPromptRepairSent = false;
 
     const syncOverlaySize = () => {
       const overlay = overlayRef.current;
@@ -199,8 +229,20 @@ export function TerminalCanvas({
     const channel = new Channel<ArrayBuffer>();
     channel.onmessage = (payload) => {
       if (disposed) return;
-      const frame = decodeFrame(payload);
-      const changed = buffer.apply(frame);
+      let frame;
+      let changed;
+      try {
+        frame = decodeFrame(payload);
+        changed = buffer.apply(frame);
+      } catch (error) {
+        const message = `Terminal grid diff failed: ${String(error)}`;
+        console.error(message, error);
+        setAttachError(message);
+        onStatusRef.current?.("failed", { error: message });
+        return;
+      }
+      setAttachError(null);
+      const prevAltScreen = modesRef.current.altScreen;
       modesRef.current = {
         appCursor: buffer.appCursor,
         bracketedPaste: buffer.bracketedPaste,
@@ -209,13 +251,35 @@ export function TerminalCanvas({
         alternateScroll: buffer.alternateScroll,
         sgrMouse: buffer.sgrMouse,
       };
-      if (!firstFrameRef.current) {
+      const firstFrame = !firstFrameRef.current;
+      if (firstFrame) {
         firstFrameRef.current = true;
         const waiters = firstFrameWaitersRef.current;
         firstFrameWaitersRef.current = [];
         for (const resolve of waiters) resolve();
       }
       const snapshot = buffer.toSnapshot();
+      visibleContentSeen = snapshot.cells.some((row) =>
+        row.some((cell) => cell.c.trim() !== "")
+      );
+      if (onOutputRef.current) {
+        const changedText = [...changed]
+          .sort((a, b) => a - b)
+          .map((row) => snapshot.cells[row]?.map((cell) => cell.c).join("").trimEnd() ?? "")
+          .filter(Boolean)
+          .join("\n");
+        if (changedText) onOutputRef.current(changedText);
+      }
+      if (
+        reusedSession &&
+        firstFrame &&
+        !legacyPromptRepairSent &&
+        needsLegacyPromptRepair(snapshot)
+      ) {
+        legacyPromptRepairSent = true;
+        invoke("grid_scroll_to_bottom", { id: sessionId }).catch(console.error);
+        invoke("daemon_write_session", { id: sessionId, data: "\x0c" }).catch(console.error);
+      }
       if (frame.full) {
         ctx = sizeCanvasToGrid(canvas, atlas, snapshot.cols, snapshot.rows, dpr);
         renderSnapshot(ctx, atlas, snapshot, dpr, theme);
@@ -224,6 +288,13 @@ export function TerminalCanvas({
       }
       syncOverlaySize();
       drawSelectionOverlay();
+      // Keep the map node fitted to the current mode: re-fit the frozen canvas
+      // after a full sync (which resets canvas size), and switch freeze↔reflow
+      // when the inner app enters/leaves alt-screen. The first frame also runs
+      // this so the deferred post-attach reconcile happens once modes are known.
+      if (mapProjection && (firstFrame || frame.full || prevAltScreen !== buffer.altScreen)) {
+        reconcileLayout();
+      }
     };
 
     // Reflow: derive cols/rows from the shell's pixel box and keep the PTY and
@@ -291,6 +362,46 @@ export function TerminalCanvas({
       }
     };
 
+    // Map-projection freeze: scale the (frozen-size) canvas down to fit the node
+    // box instead of reflowing. Pointer math already normalizes by the canvas'
+    // getBoundingClientRect, so a CSS transform here doesn't break clicks.
+    const applyProjectionScale = () => {
+      const shell = shellRef.current;
+      if (!canvas || !shell) return;
+      const logicalW = parseFloat(canvas.style.width) || canvas.width / dpr;
+      const logicalH = parseFloat(canvas.style.height) || canvas.height / dpr;
+      if (logicalW <= 0 || logicalH <= 0) return;
+      const scale = Math.min(1, shell.clientWidth / logicalW, shell.clientHeight / logicalH);
+      const transform = `scale(${scale})`;
+      canvas.style.transformOrigin = "top left";
+      canvas.style.transform = transform;
+      const overlay = overlayRef.current;
+      if (overlay) {
+        overlay.style.transformOrigin = "top left";
+        overlay.style.transform = transform;
+      }
+    };
+
+    const clearProjectionScale = () => {
+      if (canvas.style.transform) canvas.style.transform = "";
+      const overlay = overlayRef.current;
+      if (overlay && overlay.style.transform) overlay.style.transform = "";
+    };
+
+    // Decide between freeze (alt-screen on the map) and reflow (everything else).
+    // For map nodes we must wait for the first frame so altScreen is known —
+    // reflowing a wide alt-screen frame before then is exactly the corruption
+    // this avoids; the first-frame handler re-runs this once modes are real.
+    const reconcileLayout = () => {
+      if (mapProjection && !firstFrameRef.current) return;
+      if (mapProjection && modesRef.current.altScreen) {
+        applyProjectionScale();
+      } else {
+        clearProjectionScale();
+        void applyResize();
+      }
+    };
+
     // Coalesce ResizeObserver bursts. On the map a node animates/zooms into place
     // and the shell's pixel box steps through several intermediate sizes before it
     // settles; firing applyResize on each step sends a SIGWINCH per step, and the
@@ -303,12 +414,45 @@ export function TerminalCanvas({
       if (resizeTimer !== null) clearTimeout(resizeTimer);
       resizeTimer = setTimeout(() => {
         resizeTimer = null;
-        applyResize();
+        reconcileLayout();
       }, 80);
     };
 
     const observer = new ResizeObserver(scheduleResize);
     if (shellRef.current) observer.observe(shellRef.current);
+
+    const forceSnapshotRefresh = async () => {
+      if (disposed || visibleContentSeen) return;
+      try {
+        const json = await invoke<string>("grid_snapshot", { id: sessionId });
+        if (disposed || visibleContentSeen) return;
+        const snapshot = JSON.parse(json) as GridSnapshot;
+        if (!snapshot?.cells?.length) return;
+        ctx = sizeCanvasToGrid(canvas, atlas, snapshot.cols, snapshot.rows, dpr);
+        renderSnapshot(ctx, atlas, snapshot, dpr, theme);
+        syncOverlaySize();
+        drawSelectionOverlay();
+        visibleContentSeen = snapshot.cells.some((row) =>
+          row.some((cell) => cell.c.trim() !== "")
+        );
+      } catch (error) {
+        if (!disposed) {
+          const message = String(error);
+          console.error("Terminal canvas snapshot refresh failed:", error);
+          setAttachError(message);
+          onStatusRef.current?.("failed", { error: message });
+        }
+      }
+    };
+
+    const failIfStillBlank = () => {
+      if (disposed || visibleContentSeen) return;
+      const message =
+        "No visible terminal content was received from the grid stream after attach.";
+      console.error(message);
+      setAttachError(message);
+      onStatusRef.current?.("failed", { error: message });
+    };
 
     (async () => {
       // Ensure the daemon owns the PTY (the daemon is the PTY authority), then
@@ -323,7 +467,12 @@ export function TerminalCanvas({
       onStatusRef.current?.("starting");
       await invoke("daemon_ensure_running");
       const init = measure();
-      const ensured = await invoke<{ id: string; reused: boolean }>("daemon_ensure_session", {
+      const ensured = await invoke<{
+        id: string;
+        reused: boolean;
+        cols?: number | null;
+        rows?: number | null;
+      }>("daemon_ensure_session", {
         id: sessionId,
         cwd,
         command,
@@ -331,44 +480,88 @@ export function TerminalCanvas({
         rows: init.rows,
       });
       if (disposed) return;
+      // On a map node, attach a reused session at its live working size (read back
+      // from the daemon) and DON'T resize it down: a wide alt-screen TUI shrunk to
+      // the tiny node reflows into garbage and a static app never repaints. The
+      // post-attach reconcile then either freezes+scales (alt-screen) or reflows
+      // (plain shell) once the first frame reveals the mode. A fresh session has no
+      // prior size, so it spawns at the node size like split panes.
+      const keepWorkingSize =
+        mapProjection &&
+        ensured.reused &&
+        typeof ensured.cols === "number" &&
+        ensured.cols > 0 &&
+        typeof ensured.rows === "number" &&
+        ensured.rows > 0;
+      const attachCols = keepWorkingSize ? (ensured.cols as number) : init.cols;
+      const attachRows = keepWorkingSize ? (ensured.rows as number) : init.rows;
+      reusedSession = ensured.reused;
       // A reused session is already running at its old winsize; bring it to this
       // pane's size. A fresh session already spawned at init size above, so resizing
       // it here would be a redundant SIGWINCH → an extra prompt reprint — skip it.
-      if (ensured.reused) {
-        await invoke("daemon_resize_session", { id: sessionId, cols: init.cols, rows: init.rows });
+      // Map projection skips this entirely to preserve the working size.
+      if (ensured.reused && !keepWorkingSize) {
+        await invoke("daemon_resize_session", { id: sessionId, cols: attachCols, rows: attachRows });
         if (disposed) return;
       }
-      await invoke("grid_attach", { id: sessionId, cols: init.cols, rows: init.rows });
+      await invoke("grid_attach", { id: sessionId, cols: attachCols, rows: attachRows });
+      if (disposed) return;
+      await invoke("grid_scroll_to_bottom", { id: sessionId });
       if (disposed) return;
       await invoke("grid_subscribe_diffs", { id: sessionId, onDiff: channel });
       attached = true;
-      lastCols = init.cols;
-      lastRows = init.rows;
+      lastCols = attachCols;
+      lastRows = attachRows;
+      refreshTimer = setTimeout(() => {
+        void forceSnapshotRefresh();
+      }, 900);
+      blankGuardTimer = setTimeout(failIfStillBlank, 3000);
       // Reconcile only if layout settled to a different size during the awaits.
-      // Non-forced: if the pane is still init size this is a no-op (no redundant
-      // resize, no reprint).
-      void applyResize();
+      // On a map node this defers (firstFrame not yet) so the mode is known before
+      // we choose freeze vs reflow; the first-frame handler runs it then.
+      reconcileLayout();
       // Report the live PTY so the store records it in tab.terminals. The daemon
       // is the PTY authority and `reused` is true when we reattached to a session
       // that survived an unmount/project-switch (vs. a freshly spawned shell).
       onReadyRef.current?.(ensured.id, { reused: ensured.reused });
     })().catch((error) => {
       if (disposed) return;
+      const message = String(error);
       console.error(error);
-      onStatusRef.current?.("failed", { error: String(error) });
+      setAttachError(message);
+      onStatusRef.current?.("failed", { error: message });
     });
 
     return () => {
       disposed = true;
+      if (refreshTimer !== null) clearTimeout(refreshTimer);
+      if (blankGuardTimer !== null) clearTimeout(blankGuardTimer);
       if (resizeTimer !== null) clearTimeout(resizeTimer);
       observer.disconnect();
       invoke("grid_detach", { id: sessionId }).catch(() => {});
     };
-  }, [sessionId, cwd, command, cols, rows, theme, fontsReady, renderScale]);
+  }, [sessionId, cwd, command, cols, rows, theme, fontsReady, renderScale, mapProjection]);
 
   const send = (data: string) => {
+    invoke("grid_scroll_to_bottom", { id: sessionId }).catch(console.error);
     invoke("daemon_write_session", { id: sessionId, data }).catch(console.error);
   };
+
+  const syncFocusedTerminal = useCallback(() => {
+    if (!inputRef.current || document.activeElement !== inputRef.current) return;
+    // Tell the backend this terminal owns the keyboard, so the Linux GTK
+    // Tab-interceptor routes Tab/Shift+Tab to the current PTY. This must also run
+    // when sessionId changes while the hidden textarea stays focused; otherwise
+    // GTK-level Tab rescue can keep pointing at the old PTY.
+    invoke("set_focused_terminal", { id: sessionIdRef.current }).catch(() => {});
+    // Mark this PTY as the active terminal so the top-bar breadcrumb tracks the
+    // focused pane's live cwd.
+    useWorkspaceStore.getState().setActiveTerminal(sessionIdRef.current);
+  }, []);
+
+  useEffect(() => {
+    syncFocusedTerminal();
+  }, [sessionId, syncFocusedTerminal]);
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     // Copy/paste shortcuts are handled by the browser/clipboard, not as input.
@@ -413,6 +606,7 @@ export function TerminalCanvas({
       if (bytes === null) return;
       event.preventDefault();
       event.stopPropagation();
+      invoke("grid_scroll_to_bottom", { id: sessionIdRef.current }).catch(console.error);
       invoke("daemon_write_session", { id: sessionIdRef.current, data: bytes }).catch(
         console.error,
       );
@@ -425,11 +619,13 @@ export function TerminalCanvas({
   // short timeout so a paste is never lost if the backend is slow/quiet.
   const waitForFirstFrame = (): Promise<void> => {
     if (firstFrameRef.current) return Promise.resolve();
+    const epoch = sessionEpochRef.current;
     return new Promise((resolve) => {
       let done = false;
       const finish = () => {
         if (done) return;
         done = true;
+        if (epoch !== sessionEpochRef.current) return;
         resolve();
       };
       firstFrameWaitersRef.current.push(finish);
@@ -445,7 +641,9 @@ export function TerminalCanvas({
     // bracketedPaste mode would send a multi-line paste unwrapped, and its
     // newlines (normalized to \r) would auto-run each line instead of landing as
     // a single bracketed paste.
+    const epoch = sessionEpochRef.current;
     void waitForFirstFrame().then(() => {
+      if (epoch !== sessionEpochRef.current) return;
       if (text) send(encodePaste(text, modesRef.current.bracketedPaste));
     });
   };
@@ -586,6 +784,28 @@ export function TerminalCanvas({
         aria-hidden="true"
         style={{ position: "absolute", top: 0, left: 0, pointerEvents: "none", display: "block" }}
       />
+      {attachError ? (
+        <div
+          className="terminal-canvas-error"
+          role="status"
+          style={{
+            position: "absolute",
+            inset: 0,
+            display: "flex",
+            alignItems: "center",
+            paddingLeft: 18,
+            paddingRight: 18,
+            color: "#f0b36a",
+            background: "rgba(29, 32, 34, 0.92)",
+            fontFamily: FONT_FAMILY,
+            fontSize: 12,
+            pointerEvents: "none",
+            whiteSpace: "pre-wrap",
+          }}
+        >
+          Terminal attach failed: {attachError}
+        </div>
+      ) : null}
       <textarea
         ref={inputRef}
         className="terminal-canvas-input"
@@ -596,14 +816,7 @@ export function TerminalCanvas({
         spellCheck={false}
         onKeyDown={handleKeyDown}
         onPaste={handlePaste}
-        onFocus={() => {
-          // Tell the backend this terminal owns the keyboard, so the Linux GTK
-          // Tab-interceptor routes Tab/Shift+Tab here instead of moving focus.
-          invoke("set_focused_terminal", { id: sessionIdRef.current }).catch(() => {});
-          // Mark this PTY as the active terminal so the top-bar breadcrumb tracks
-          // the focused pane's live cwd.
-          useWorkspaceStore.getState().setActiveTerminal(sessionIdRef.current);
-        }}
+        onFocus={syncFocusedTerminal}
         onBlur={() => {
           invoke("set_focused_terminal", { id: null }).catch(() => {});
         }}

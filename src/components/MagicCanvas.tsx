@@ -2,7 +2,11 @@ import { CSSProperties, useCallback, useRef, useState } from "react";
 import {
   ArrowUpRight,
   FileText,
+  Globe,
+  LocateFixed,
   Layers3,
+  ListTodo,
+  Maximize2,
   Minus,
   NotebookText,
   Plus,
@@ -11,9 +15,12 @@ import {
   X,
 } from "lucide-react";
 import type { CanvasNode } from "../lib/types";
+import { masterPlanPath, taskStatusColor, taskStatusLabel } from "../lib/masterPlanTasks";
+import { useMasterPlanTasks } from "../hooks/useMasterPlanTasks";
 import { pathTail, projectForTab } from "../lib/projectDisplay";
 import { createNewTab, useWorkspaceStore } from "../stores/workspace";
 import { TerminalComponent } from "./Terminal";
+import { LocalhostPreview } from "./LocalhostPreview";
 
 const styles: Record<string, CSSProperties> = {
   shell: {
@@ -23,8 +30,8 @@ const styles: Record<string, CSSProperties> = {
     overflow: "hidden",
     cursor: "grab",
     background:
-      "radial-gradient(circle, var(--canvas-grid) 1px, transparent 1.5px), linear-gradient(var(--canvas-grid-soft) 1px, transparent 1px), linear-gradient(90deg, var(--canvas-grid-soft) 1px, transparent 1px), #1d2224",
-    backgroundSize: "24px 24px, 96px 96px, 96px 96px, auto",
+      "linear-gradient(var(--canvas-grid-soft) 1px, transparent 1px), linear-gradient(90deg, var(--canvas-grid-soft) 1px, transparent 1px), #1b2022",
+    backgroundSize: "128px 128px, 128px 128px, auto",
   },
   toolbar: {
     position: "absolute",
@@ -145,6 +152,28 @@ const styles: Record<string, CSSProperties> = {
     textTransform: "uppercase",
     letterSpacing: 0,
   },
+  taskBadge: {
+    height: 22,
+    minWidth: 0,
+    maxWidth: 188,
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    padding: "0 7px",
+    border: "1px solid var(--border-subtle)",
+    borderRadius: "var(--radius-sm)",
+    background: "var(--surface-base)",
+    color: "var(--text-secondary)",
+    fontSize: 11,
+    fontFamily: "var(--font-ui)",
+    cursor: "pointer",
+  },
+  taskDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 999,
+    flexShrink: 0,
+  },
   nodeBody: {
     flex: 1,
     minHeight: 0,
@@ -215,6 +244,112 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 12,
     cursor: "pointer",
   },
+  terminalSummary: {
+    height: "100%",
+    overflow: "hidden",
+    background: "linear-gradient(180deg, #151a1d, #111619)",
+    cursor: "pointer",
+    userSelect: "none",
+  },
+  terminalSummaryContent: {
+    height: "100%",
+    display: "grid",
+    gridTemplateRows: "1fr auto",
+    gap: 12,
+    padding: 14,
+    color: "var(--terminal-fg)",
+    transformOrigin: "top left",
+    userSelect: "none",
+  },
+  terminalMiniSummaryContent: {
+    height: "100%",
+    display: "grid",
+    gridTemplateRows: "1fr auto",
+    gap: 8,
+    padding: 10,
+    color: "var(--terminal-fg)",
+    transformOrigin: "top left",
+    userSelect: "none",
+  },
+  terminalMiniTitle: {
+    minWidth: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    alignSelf: "end",
+    color: "var(--text-primary)",
+    fontFamily: "var(--font-ui)",
+    fontSize: 14,
+    fontWeight: 500,
+  },
+  terminalMiniMeta: {
+    minWidth: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    color: "var(--text-secondary)",
+    fontFamily: "var(--font-mono)",
+    fontSize: 11,
+  },
+  terminalMiniFooter: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+    color: "var(--text-secondary)",
+    fontFamily: "var(--font-ui)",
+    fontSize: 11,
+  },
+  terminalSummaryPanel: {
+    minHeight: 0,
+    display: "grid",
+    alignContent: "start",
+    gap: 8,
+    padding: 13,
+    borderRadius: "var(--radius-sm)",
+    background: "rgba(255,255,255,0.025)",
+    border: "1px solid var(--border-subtle)",
+  },
+  terminalSummaryTitle: {
+    minWidth: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    color: "var(--text-primary)",
+    fontFamily: "var(--font-ui)",
+    fontSize: 14,
+    fontWeight: 500,
+  },
+  terminalSummaryMeta: {
+    minWidth: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    color: "var(--text-secondary)",
+    fontFamily: "var(--font-mono)",
+    fontSize: 12,
+  },
+  terminalSummaryCommand: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    minWidth: 0,
+    marginTop: 6,
+    paddingTop: 10,
+    borderTop: "1px solid var(--border-subtle)",
+    color: "var(--terminal-fg)",
+    fontFamily: "var(--font-mono)",
+    fontSize: 12,
+  },
+  terminalSummaryFooter: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+    color: "var(--text-secondary)",
+    fontFamily: "var(--font-ui)",
+    fontSize: 11,
+  },
   closeButton: {
     border: "none",
     background: "transparent",
@@ -276,12 +411,16 @@ const styles: Record<string, CSSProperties> = {
 };
 
 const NODE_MIN_SIZE = {
-  terminal: { width: 640, height: 360 },
+  terminal: { width: 820, height: 460 },
+  preview: { width: 620, height: 420 },
   file: { width: 260, height: 120 },
   note: { width: 220, height: 120 },
 };
-const MIN_ZOOM = 0.35;
+const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 2.2;
+const COMPACT_TERMINAL_ZOOM = 0.45;
+const READABLE_TERMINAL_ZOOM = 0.75;
+const FOCUS_TERMINAL_ZOOM = 1;
 type ResizeDirection = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
 
 function isDesktopNativeRuntime() {
@@ -290,6 +429,10 @@ function isDesktopNativeRuntime() {
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
+}
+
+function snapTerminalPixel(value: number, nodeType: CanvasNode["type"], zoom: number) {
+  return nodeType === "terminal" && zoom === 1 ? Math.round(value) : value;
 }
 
 function clampNodeSize(type: CanvasNode["type"], width: number, height: number) {
@@ -332,7 +475,13 @@ function nextNodePosition(count: number) {
   };
 }
 
-function CanvasNodeView({ node }: { node: CanvasNode }) {
+function CanvasNodeView({
+  node,
+  focusNode,
+}: {
+  node: CanvasNode;
+  focusNode: (node: CanvasNode, zoom: number) => void;
+}) {
   const tabs = useWorkspaceStore((state) => state.tabs);
   const groups = useWorkspaceStore((state) => state.groups);
   const liveCwds = useWorkspaceStore((state) => state.liveCwds);
@@ -341,6 +490,8 @@ function CanvasNodeView({ node }: { node: CanvasNode }) {
   const updateCanvasNode = useWorkspaceStore((state) => state.updateCanvasNode);
   const removeCanvasNode = useWorkspaceStore((state) => state.removeCanvasNode);
   const closeTerminalSession = useWorkspaceStore((state) => state.closeTerminalSession);
+  const closePane = useWorkspaceStore((state) => state.closePane);
+  const updatePreviewPaneUrl = useWorkspaceStore((state) => state.updatePreviewPaneUrl);
   const selectCanvasNode = useWorkspaceStore((state) => state.selectCanvasNode);
   const setActiveTab = useWorkspaceStore((state) => state.setActiveTab);
   const setWorkspaceMode = useWorkspaceStore((state) => state.setWorkspaceMode);
@@ -357,6 +508,15 @@ function CanvasNodeView({ node }: { node: CanvasNode }) {
   } | null>(null);
   const [isResizing, setIsResizing] = useState(false);
   const selected = selectedNodeId === node.id;
+  const showTerminalSummary = node.type === "terminal" && !selected && zoom < READABLE_TERMINAL_ZOOM;
+  const showCompactTerminalSummary = node.type === "terminal" && zoom < COMPACT_TERMINAL_ZOOM;
+
+  const activateTerminalNode = useCallback(() => {
+    selectCanvasNode(node.id);
+    if (node.type === "terminal" && zoom < READABLE_TERMINAL_ZOOM) {
+      focusNode(node, FOCUS_TERMINAL_ZOOM);
+    }
+  }, [focusNode, node, selectCanvasNode, zoom]);
 
   const onMouseDown = useCallback((event: React.MouseEvent) => {
     event.preventDefault();
@@ -372,9 +532,11 @@ function CanvasNodeView({ node }: { node: CanvasNode }) {
     function onMouseMove(moveEvent: MouseEvent) {
       const drag = dragRef.current;
       if (!drag) return;
+      const nextX = drag.nodeX + (moveEvent.clientX - drag.x) / zoom;
+      const nextY = drag.nodeY + (moveEvent.clientY - drag.y) / zoom;
       updateCanvasNode(node.id, {
-        x: drag.nodeX + (moveEvent.clientX - drag.x) / zoom,
-        y: drag.nodeY + (moveEvent.clientY - drag.y) / zoom,
+        x: snapTerminalPixel(nextX, node.type, zoom),
+        y: snapTerminalPixel(nextY, node.type, zoom),
       });
     }
 
@@ -419,8 +581,16 @@ function CanvasNodeView({ node }: { node: CanvasNode }) {
 
       updateCanvasNode(node.id, {
         ...next,
-        x: affectsWest ? resize.nodeX + resize.width - next.width : resize.nodeX,
-        y: affectsNorth ? resize.nodeY + resize.height - next.height : resize.nodeY,
+        x: snapTerminalPixel(
+          affectsWest ? resize.nodeX + resize.width - next.width : resize.nodeX,
+          node.type,
+          zoom
+        ),
+        y: snapTerminalPixel(
+          affectsNorth ? resize.nodeY + resize.height - next.height : resize.nodeY,
+          node.type,
+          zoom
+        ),
       });
     }
 
@@ -454,6 +624,13 @@ function CanvasNodeView({ node }: { node: CanvasNode }) {
     : undefined;
   const linkedProject = projectForTab(linkedTab, groups);
   const terminalRoot = node.terminalCwd ?? linkedTab?.initialCwd;
+  const taskRoot = linkedProject?.projectRoot ?? terminalRoot;
+  const normalizedTaskRoot = taskRoot?.replace(/\/+$/, "");
+  const tasksByRoot = useMasterPlanTasks([normalizedTaskRoot]);
+  const rootTasks = normalizedTaskRoot ? tasksByRoot[normalizedTaskRoot] ?? [] : [];
+  const boundTask = node.taskBinding
+    ? rootTasks.find((task) => task.id.toLowerCase() === node.taskBinding?.taskId.toLowerCase())
+    : undefined;
   const terminalTabId = linkedTab?.id ?? `canvas-${node.id}`;
   // The map node MUST share the tab's active pane identity. Terminal.tsx derives
   // runtimeSessionId = `terminal-${tabId}-${paneId}`, so the map node and the split
@@ -501,6 +678,33 @@ function CanvasNodeView({ node }: { node: CanvasNode }) {
     setWorkspaceMode("split");
   }, [linkedTab, setActiveTab, setWorkspaceMode]);
 
+  const onBindTask = useCallback((event: React.MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (!normalizedTaskRoot) {
+      window.alert("No project root is available for this terminal.");
+      return;
+    }
+
+    const options = rootTasks
+      .slice(0, 24)
+      .map((task) => `${task.id}  ${taskStatusLabel(task.status)}  ${task.title}`)
+      .join("\n");
+    const nextTaskId = window.prompt(
+      `Bind this terminal to a MASTER_PLAN task id.\n\n${options || "No tasks found in MASTER_PLAN.md."}\n\nLeave blank to clear the binding.`,
+      node.taskBinding?.taskId ?? ""
+    );
+    if (nextTaskId === null) return;
+
+    const trimmed = nextTaskId.trim();
+    updateCanvasNode(node.id, {
+      taskBinding: trimmed
+        ? { taskId: trimmed, planPath: masterPlanPath(normalizedTaskRoot) }
+        : undefined,
+    });
+  }, [node.id, node.taskBinding?.taskId, normalizedTaskRoot, rootTasks, updateCanvasNode]);
+
   const body =
     node.type === "terminal" && shouldUseNativeSplitForInteraction ? (
       <div
@@ -541,6 +745,73 @@ function CanvasNodeView({ node }: { node: CanvasNode }) {
           Open terminal
         </button>
       </div>
+    ) : showTerminalSummary ? (
+      <div
+        style={styles.terminalSummary}
+        role="button"
+        tabIndex={0}
+        onMouseDown={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          activateTerminalNode();
+        }}
+        onClick={(event) => {
+          event.stopPropagation();
+          activateTerminalNode();
+        }}
+        onDoubleClick={(event) => {
+          event.stopPropagation();
+          openLinkedTerminal();
+        }}
+        onKeyDown={(event) => {
+          if (event.key !== "Enter" && event.key !== " ") return;
+          event.preventDefault();
+          event.stopPropagation();
+          activateTerminalNode();
+        }}
+      >
+        {showCompactTerminalSummary ? (
+          <div
+            style={{
+              ...styles.terminalMiniSummaryContent,
+              width: `${Math.max(18, zoom * 100)}%`,
+              height: `${Math.max(18, zoom * 100)}%`,
+              transform: `scale(${1 / Math.max(zoom, MIN_ZOOM)})`,
+            }}
+          >
+            <div>
+              <div style={styles.terminalMiniTitle}>{terminalTitle}</div>
+              <div style={styles.terminalMiniMeta}>{pathTail(liveTerminalRoot)}</div>
+            </div>
+            <div style={styles.terminalMiniFooter}>
+              <span>{Math.round(zoom * 100)}%</span>
+              <span>{linkedTab?.terminals.length ?? 0} PTY</span>
+            </div>
+          </div>
+        ) : (
+          <div
+            style={{
+              ...styles.terminalSummaryContent,
+              width: `${Math.max(24, zoom * 100)}%`,
+              height: `${Math.max(24, zoom * 100)}%`,
+              transform: `scale(${1 / Math.max(zoom, MIN_ZOOM)})`,
+            }}
+          >
+            <div style={styles.terminalSummaryPanel}>
+              <div style={styles.terminalSummaryTitle}>{terminalTitle}</div>
+              <div style={styles.terminalSummaryMeta}>{pathTail(liveTerminalRoot)}</div>
+              <div style={styles.terminalSummaryCommand}>
+                <span style={styles.nativeTerminalPromptGlyph}>$</span>
+                <span style={styles.nativeTerminalPath}>live session</span>
+              </div>
+            </div>
+            <div style={styles.terminalSummaryFooter}>
+              <span>{Math.round(zoom * 100)}% map view</span>
+              <span>{linkedTab?.terminals.length ?? 0} PTY panes</span>
+            </div>
+          </div>
+        )}
+      </div>
     ) : node.type === "terminal" ? (
       <TerminalComponent
         tabId={terminalTabId}
@@ -548,13 +819,30 @@ function CanvasNodeView({ node }: { node: CanvasNode }) {
         cwd={node.terminalCwd ?? linkedTab?.initialCwd}
         attachToPtyId={linkedTerminalId ?? null}
         runtimeActive={selected}
-        onActivate={() => selectCanvasNode(node.id)}
+        onActivate={activateTerminalNode}
         standalone
-        // Map nodes sit under the canvas CSS scale() transform. Supersample the
-        // backing store 2x so glyphs stay sharp when the compositor scales them.
-        // Fixed (not tied to live zoom) so changing zoom never re-runs the attach
-        // effect — that would detach/reattach the grid on every zoom tick.
-        renderScale={2}
+        // The active map terminal is centered at exact 1:1 canvas zoom. Extra
+        // supersampling makes the browser downsample glyphs at that exact zoom,
+        // which reads softer than the normal split terminal.
+        renderScale={1}
+        // The selected map terminal is the user's active work surface, so it
+        // must reflow to the node and stay readable instead of showing a frozen,
+        // scaled-down projection of a larger split-pane grid.
+        mapProjection={false}
+      />
+    ) : node.type === "preview" ? (
+      <LocalhostPreview
+        previewUrl={node.previewUrl}
+        onPreviewUrlChange={(previewUrl) => {
+          if (linkedTab && node.previewPaneId) {
+            updatePreviewPaneUrl(linkedTab.id, node.previewPaneId, previewUrl);
+            return;
+          }
+          updateCanvasNode(node.id, {
+            title: `Preview ${previewUrl.replace(/^https?:\/\//, "")}`,
+            previewUrl,
+          });
+        }}
       />
     ) : node.type === "file" ? (
       <div dir="auto">{node.filePath ?? "No file attached yet"}</div>
@@ -577,7 +865,7 @@ function CanvasNodeView({ node }: { node: CanvasNode }) {
       }}
       onMouseDown={(event) => {
         event.stopPropagation();
-        selectCanvasNode(node.id);
+        activateTerminalNode();
       }}
     >
       <div style={styles.nodeHeader} onMouseDown={onMouseDown}>
@@ -587,8 +875,27 @@ function CanvasNodeView({ node }: { node: CanvasNode }) {
             borderLeft: linkedTab?.color ? `2px solid ${linkedTab.color}` : undefined,
           }}
         >
-          {node.type === "terminal" ? "shell" : node.type}
+          {node.type === "terminal" ? "shell" : node.type === "preview" ? "preview" : node.type}
         </span>
+        {node.type === "terminal" && node.taskBinding && (
+          <button
+            type="button"
+            style={styles.taskBadge}
+            title={boundTask ? boundTask.title : "Task not found in MASTER_PLAN.md"}
+            onMouseDown={(event) => event.stopPropagation()}
+            onClick={onBindTask}
+          >
+            <span
+              style={{
+                ...styles.taskDot,
+                background: taskStatusColor(boundTask?.status ?? "unknown"),
+              }}
+            />
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {node.taskBinding.taskId} · {taskStatusLabel(boundTask?.status ?? "unknown")}
+            </span>
+          </button>
+        )}
         <span
           style={{ minWidth: 0, flex: 1 }}
           dir="auto"
@@ -596,14 +903,46 @@ function CanvasNodeView({ node }: { node: CanvasNode }) {
           onDoubleClick={onRename}
         >
           <div style={styles.nodeTitle}>
-            {node.type === "terminal" ? terminalTitle : linkedTab?.title ?? node.title}
+            {node.type === "terminal" ? terminalTitle : node.title}
           </div>
           {node.type === "terminal" && (
             <div style={styles.nodeTitleMeta}>
               {linkedProject ? `${pathTail(liveTerminalRoot)} · ${linkedTab?.title ?? node.title}` : pathTail(liveTerminalRoot)}
             </div>
           )}
+          {node.type === "preview" && node.previewUrl && (
+            <div style={styles.nodeTitleMeta}>{node.previewUrl}</div>
+          )}
         </span>
+        {node.type === "preview" && (
+          <button
+            style={styles.headerButton}
+            title="Open preview pane"
+            aria-label="Open preview pane"
+            onMouseDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation();
+              if (linkedTab) {
+                setActiveTab(linkedTab.id);
+                if (node.previewPaneId) useWorkspaceStore.getState().setActivePane(linkedTab.id, node.previewPaneId);
+                setWorkspaceMode("split");
+              }
+            }}
+          >
+            <Globe size={13} strokeWidth={1.8} />
+          </button>
+        )}
+        {node.type === "terminal" && (
+          <button
+            style={styles.headerButton}
+            title={node.taskBinding ? "Change task binding" : "Bind MASTER_PLAN task"}
+            aria-label={node.taskBinding ? "Change task binding" : "Bind MASTER_PLAN task"}
+            onMouseDown={(event) => event.stopPropagation()}
+            onClick={onBindTask}
+          >
+            <ListTodo size={13} strokeWidth={1.8} />
+          </button>
+        )}
         {node.type === "terminal" && (
           <button
             style={styles.headerButton}
@@ -626,6 +965,10 @@ function CanvasNodeView({ node }: { node: CanvasNode }) {
           onClick={(event) => {
             event.stopPropagation();
             if (linkedTab) {
+              if (node.type === "preview" && node.previewPaneId) {
+                closePane(linkedTab.id, node.previewPaneId);
+                return;
+              }
               closeTerminalSession(linkedTab.id);
               return;
             }
@@ -635,7 +978,18 @@ function CanvasNodeView({ node }: { node: CanvasNode }) {
           <X size={13} strokeWidth={1.8} />
         </button>
       </div>
-      <div style={node.type === "terminal" ? styles.terminalBody : styles.nodeBody}>{body}</div>
+      <div
+        style={node.type === "terminal" ? styles.terminalBody : styles.nodeBody}
+        onMouseDown={node.type === "terminal"
+          ? (event) => {
+              event.stopPropagation();
+              activateTerminalNode();
+            }
+          : undefined}
+        onClick={node.type === "terminal" ? (event) => event.stopPropagation() : undefined}
+      >
+        {body}
+      </div>
       {selected && (
         <>
           {(["n", "s", "e", "w", "ne", "nw", "se", "sw"] as ResizeDirection[]).map((direction) => (
@@ -687,6 +1041,72 @@ export function MagicCanvas() {
       updateCanvasNode(`terminal-map-${newTabId}`, { x: Math.round(canvasX), y: Math.round(canvasY) });
     }
   }, [updateCanvasNode]);
+
+  const centerNode = useCallback((node: CanvasNode, zoom: number) => {
+    const shellRect = shellRef.current?.getBoundingClientRect();
+    const width = shellRect?.width ?? window.innerWidth;
+    const height = shellRect?.height ?? window.innerHeight;
+    const padding = node.type === "terminal" ? 24 : 56;
+    const fittedZoom = node.type === "terminal"
+      ? zoom
+      : Math.min(
+          zoom,
+          (width - padding * 2) / Math.max(1, node.width),
+          (height - padding * 2) / Math.max(1, node.height)
+        );
+    const nextZoom = clamp(fittedZoom, MIN_ZOOM, MAX_ZOOM);
+    const nextX = width / 2 - (node.x + node.width / 2) * nextZoom;
+    const nextY = height / 2 - (node.y + node.height / 2) * nextZoom;
+    updateCanvasViewport({
+      zoom: nextZoom,
+      x: snapTerminalPixel(nextX, node.type, nextZoom),
+      y: snapTerminalPixel(nextY, node.type, nextZoom),
+    });
+  }, [updateCanvasViewport]);
+
+  const focusSelectedNode = useCallback(() => {
+    const selected =
+      canvasState.nodes.find((node) => node.id === canvasState.selectedNodeId) ??
+      canvasState.nodes.find((node) => node.type === "terminal") ??
+      canvasState.nodes[0];
+    if (!selected) {
+      updateCanvasViewport({ x: 0, y: 0, zoom: 1 });
+      return;
+    }
+    centerNode(selected, selected.type === "terminal" ? FOCUS_TERMINAL_ZOOM : 1);
+  }, [canvasState.nodes, canvasState.selectedNodeId, centerNode, updateCanvasViewport]);
+
+  const fitAllNodes = useCallback(() => {
+    if (canvasState.nodes.length === 0) {
+      updateCanvasViewport({ x: 0, y: 0, zoom: 1 });
+      return;
+    }
+    const shellRect = shellRef.current?.getBoundingClientRect();
+    const width = shellRect?.width ?? window.innerWidth;
+    const height = shellRect?.height ?? window.innerHeight;
+    const padding = 96;
+    const bounds = canvasState.nodes.reduce(
+      (acc, node) => ({
+        minX: Math.min(acc.minX, node.x),
+        minY: Math.min(acc.minY, node.y),
+        maxX: Math.max(acc.maxX, node.x + node.width),
+        maxY: Math.max(acc.maxY, node.y + node.height),
+      }),
+      { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity }
+    );
+    const contentWidth = Math.max(1, bounds.maxX - bounds.minX);
+    const contentHeight = Math.max(1, bounds.maxY - bounds.minY);
+    const nextZoom = clamp(
+      Math.min((width - padding * 2) / contentWidth, (height - padding * 2) / contentHeight),
+      MIN_ZOOM,
+      1
+    );
+    updateCanvasViewport({
+      zoom: nextZoom,
+      x: width / 2 - (bounds.minX + contentWidth / 2) * nextZoom,
+      y: height / 2 - (bounds.minY + contentHeight / 2) * nextZoom,
+    });
+  }, [canvasState.nodes, updateCanvasViewport]);
 
   const setZoomAt = useCallback((nextZoomValue: number, clientX?: number, clientY?: number) => {
     const viewport = canvasState.viewport;
@@ -791,7 +1211,7 @@ export function MagicCanvas() {
       data-magic-canvas-shell
       style={{
         ...styles.shell,
-        backgroundSize: `${24 * canvasState.viewport.zoom}px ${24 * canvasState.viewport.zoom}px, ${96 * canvasState.viewport.zoom}px ${96 * canvasState.viewport.zoom}px, ${96 * canvasState.viewport.zoom}px ${96 * canvasState.viewport.zoom}px, auto`,
+        backgroundSize: `${128 * canvasState.viewport.zoom}px ${128 * canvasState.viewport.zoom}px, ${128 * canvasState.viewport.zoom}px ${128 * canvasState.viewport.zoom}px, auto`,
         backgroundPosition: `${canvasState.viewport.x}px ${canvasState.viewport.y}px`,
       }}
       onMouseDown={onCanvasMouseDown}
@@ -827,7 +1247,11 @@ export function MagicCanvas() {
         onContextMenu={openCanvasMenu}
       >
         {canvasState.nodes.map((node) => (
-          <CanvasNodeView key={node.id} node={node} />
+          <CanvasNodeView
+            key={node.id}
+            node={node}
+            focusNode={centerNode}
+          />
         ))}
       </div>
 
@@ -840,6 +1264,15 @@ export function MagicCanvas() {
           aria-label="Zoom out"
         >
           <Minus size={14} strokeWidth={1.8} />
+        </button>
+        <button
+          className="magic-canvas-button"
+          style={styles.button}
+          onClick={focusSelectedNode}
+          title="Fit active"
+          aria-label="Fit active"
+        >
+          <LocateFixed size={14} strokeWidth={1.8} />
         </button>
         <span style={styles.zoomReadout}>{Math.round(canvasState.viewport.zoom * 100)}%</span>
         <button
@@ -854,9 +1287,18 @@ export function MagicCanvas() {
         <button
           className="magic-canvas-button"
           style={styles.button}
-          onClick={() => updateCanvasViewport({ x: 0, y: 0, zoom: 1 })}
-          title="Reset canvas view"
-          aria-label="Reset canvas view"
+          onClick={fitAllNodes}
+          title="Fit all"
+          aria-label="Fit all"
+        >
+          <Maximize2 size={14} strokeWidth={1.8} />
+        </button>
+        <button
+          className="magic-canvas-button"
+          style={styles.button}
+          onClick={focusSelectedNode}
+          title="Reset to readable view"
+          aria-label="Reset to readable view"
         >
           <RotateCcw size={14} strokeWidth={1.8} />
         </button>

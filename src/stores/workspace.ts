@@ -15,6 +15,7 @@ import {
   updateSizesInTree,
   getAllLeafIds,
   updatePaneCwdInTree,
+  updatePanePreviewUrlInTree,
 } from "../lib/splitUtils";
 import { destroyBrowserPtys } from "../hooks/usePty";
 
@@ -76,6 +77,7 @@ const DEFAULT_UI_STATE: WorkspaceUiState = {
   terminalSidebarCollapsed: false,
   primarySidebarCollapsed: false,
   primarySidebarPanel: "sessions",
+  previewUrl: "http://127.0.0.1:3000",
 };
 const DEFAULT_CANVAS_STATE: CanvasState = {
   nodes: [
@@ -93,9 +95,10 @@ const DEFAULT_CANVAS_STATE: CanvasState = {
   selectedNodeId: "welcome-canvas-node",
   viewport: { x: 0, y: 0, zoom: 1 },
 };
-const TERMINAL_MAP_NODE_SIZE = { width: 640, height: 360 };
+const TERMINAL_MAP_NODE_SIZE = { width: 820, height: 460 };
 const CANVAS_NODE_MIN_SIZE: Record<CanvasNode["type"], { width: number; height: number }> = {
   terminal: TERMINAL_MAP_NODE_SIZE,
+  preview: { width: 620, height: 420 },
   file: { width: 260, height: 120 },
   note: { width: 220, height: 120 },
 };
@@ -171,7 +174,16 @@ interface WorkspaceState {
   updateCanvasViewport: (viewport: Partial<CanvasState["viewport"]>) => void;
 
   // Split pane actions
-  splitPane: (tabId: string, paneId: string, direction: "horizontal" | "vertical", cwd?: string) => string;
+  splitPane: (
+    tabId: string,
+    paneId: string,
+    direction: "horizontal" | "vertical",
+    cwd?: string,
+    paneType?: "terminal" | "preview",
+    previewUrl?: string,
+    linkedTerminalPaneId?: string,
+  ) => string;
+  updatePreviewPaneUrl: (tabId: string, paneId: string, previewUrl: string) => void;
   closePane: (tabId: string, paneId: string) => void;
   setActivePane: (tabId: string, paneId: string) => void;
   updateSplitSizes: (tabId: string, splitNodeId: string, sizes: number[]) => void;
@@ -205,6 +217,7 @@ function persistedTerminalSnapshot(terminal: TerminalState): TerminalState {
     rows: terminal.rows,
     status: "stale",
     reused: false,
+    previewUrl: terminal.previewUrl,
     lastStatusAt: Date.now(),
     lastError: "Session will reconnect if the backend is still running; otherwise it will restart.",
   };
@@ -220,6 +233,7 @@ function withRestartableTerminals(tab: Tab): Tab {
         ...terminal,
         status: "stale",
         reused: false,
+        previewUrl: terminal.previewUrl,
         lastError: "Session was restored from workspace metadata.",
       })),
   };
@@ -237,9 +251,18 @@ function normalizeWorkspaceUiState(uiState: Partial<WorkspaceUiState> | undefine
   return {
     ...DEFAULT_UI_STATE,
     ...uiState,
-    workspaceMode: FORCED_WORKSPACE_MODE ?? uiState?.workspaceMode ?? DEFAULT_UI_STATE.workspaceMode,
+    workspaceMode:
+      FORCED_WORKSPACE_MODE ??
+      (uiState?.workspaceMode === "split" ||
+      uiState?.workspaceMode === "canvas" ||
+      uiState?.workspaceMode === "graph"
+        ? uiState.workspaceMode
+        : DEFAULT_UI_STATE.workspaceMode),
     terminalRendererMode,
     primarySidebarPanel: uiState?.primarySidebarPanel === "map" ? "map" : "sessions",
+    previewUrl: typeof uiState?.previewUrl === "string" && uiState.previewUrl.trim()
+      ? uiState.previewUrl
+      : DEFAULT_UI_STATE.previewUrl,
   };
 }
 
@@ -276,10 +299,12 @@ function normalizeCanvasState(canvasState: CanvasState | undefined, tabs: Tab[])
   for (const node of source.nodes) {
     if (seenNodeIds.has(node.id)) continue;
     if (node.id.startsWith("terminal-node-")) continue;
-    if (node.type === "terminal" && node.terminalTabId) {
+    if ((node.type === "terminal" || node.type === "preview") && node.terminalTabId) {
       if (!tabIds.has(node.terminalTabId)) continue;
-      if (seenTerminalTabIds.has(node.terminalTabId)) continue;
-      seenTerminalTabIds.add(node.terminalTabId);
+      if (node.type === "terminal") {
+        if (seenTerminalTabIds.has(node.terminalTabId)) continue;
+        seenTerminalTabIds.add(node.terminalTabId);
+      }
     }
 
     const min = CANVAS_NODE_MIN_SIZE[node.type];
@@ -291,6 +316,13 @@ function normalizeCanvasState(canvasState: CanvasState | undefined, tabs: Tab[])
           : undefined,
         width: TERMINAL_MAP_NODE_SIZE.width,
         height: TERMINAL_MAP_NODE_SIZE.height,
+      });
+    } else if (node.type === "preview") {
+      normalizedNodes.push({
+        ...node,
+        width: Math.max(node.width, min.width),
+        height: Math.max(node.height, min.height),
+        previewUrl: node.previewUrl ?? DEFAULT_UI_STATE.previewUrl,
       });
     } else {
       normalizedNodes.push({
@@ -509,6 +541,15 @@ export function createTerminalTab(cwd?: string) {
   });
 }
 
+function titleForPreviewUrl(url: string) {
+  try {
+    const parsed = new URL(url);
+    return `Preview ${parsed.host}`;
+  } catch {
+    return "Local preview";
+  }
+}
+
 /** Split the active pane, inheriting CWD */
 export async function splitActivePane(direction: "horizontal" | "vertical") {
   const { invoke } = await import("@tauri-apps/api/core");
@@ -527,6 +568,57 @@ export async function splitActivePane(direction: "horizontal" | "vertical") {
   }
 
   store.splitPane(tab.id, tab.activePaneId, direction, cwd);
+}
+
+export function splitActivePreviewPane(previewUrl?: string) {
+  const store = useWorkspaceStore.getState();
+  const tab = store.tabs.find((t) => t.id === store.activeTabId);
+  if (!tab) return false;
+  const activeTerminal = tab.terminals.find((terminal) => terminal.paneId === tab.activePaneId);
+  const resolvedPreviewUrl = previewUrl ?? activeTerminal?.previewUrl;
+  if (!resolvedPreviewUrl) return false;
+
+  const newPaneId = store.splitPane(
+    tab.id,
+    tab.activePaneId,
+    "horizontal",
+    undefined,
+    "preview",
+    resolvedPreviewUrl,
+    tab.activePaneId,
+  );
+  store.updateWorkspaceUiState({ previewUrl: resolvedPreviewUrl });
+  if (activeTerminal?.previewUrl !== resolvedPreviewUrl) {
+    store.updateTab(tab.id, {
+      terminals: tab.terminals.map((terminal) =>
+        terminal.paneId === tab.activePaneId
+          ? { ...terminal, previewUrl: resolvedPreviewUrl }
+          : terminal
+      ),
+    });
+  }
+  store.setWorkspaceMode("split");
+
+  const terminalNode = store.canvasState.nodes.find((node) => node.terminalTabId === tab.id && node.type === "terminal");
+  const existingPreviewNode = store.canvasState.nodes.find((node) =>
+    node.type === "preview" && node.terminalTabId === tab.id && node.previewPaneId === newPaneId
+  );
+  if (existingPreviewNode) return true;
+
+  store.addCanvasNode({
+    id: `preview-map-${tab.id}-${newPaneId}`,
+    type: "preview",
+    title: titleForPreviewUrl(resolvedPreviewUrl),
+    x: (terminalNode?.x ?? 120) + (terminalNode?.width ?? TERMINAL_MAP_NODE_SIZE.width) + 36,
+    y: terminalNode?.y ?? 90,
+    width: 620,
+    height: 420,
+    terminalTabId: tab.id,
+    previewPaneId: newPaneId,
+    linkedTerminalPaneId: tab.activePaneId,
+    previewUrl: resolvedPreviewUrl,
+  });
+  return true;
 }
 
 /** Close the active pane */
@@ -939,14 +1031,10 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
           ? projectTabs.find((tab) => tab.id === project.lastActiveTabId)
           : undefined;
       const nextTab = rememberedTab ?? projectTabs[0] ?? null;
-      const linkedNode = nextTab
-        ? state.canvasState.nodes.find((node) => node.terminalTabId === nextTab.id)
-        : undefined;
       const nextRoot =
         groupId === null
           ? nextTab?.initialCwd ?? null
           : project?.projectRoot ?? nextTab?.initialCwd ?? null;
-      const nextZoom = linkedNode ? Math.min(state.canvasState.viewport.zoom, 0.9) : state.canvasState.viewport.zoom;
 
       return {
         activeGroupFilter: groupId,
@@ -954,18 +1042,6 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         activeTabId: nextTab?.id ?? state.activeTabId,
         activeTerminalId: null,
         projectRoot: nextRoot,
-        canvasState: linkedNode
-          ? {
-              ...state.canvasState,
-              selectedNodeId: linkedNode.id,
-              viewport: {
-                ...state.canvasState.viewport,
-                zoom: nextZoom,
-                x: 306 - (linkedNode.x + linkedNode.width / 2) * nextZoom,
-                y: 220 - (linkedNode.y + linkedNode.height / 2) * nextZoom,
-              },
-            }
-          : state.canvasState,
       };
     });
   },
@@ -1098,7 +1174,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         nodes: [
           ...state.canvasState.nodes.filter((candidate) =>
             candidate.id !== id &&
-            (!node.terminalTabId || candidate.terminalTabId !== node.terminalTabId)
+            (node.type !== "terminal" || !node.terminalTabId || candidate.terminalTabId !== node.terminalTabId)
           ),
           { ...node, id },
         ],
@@ -1158,12 +1234,20 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
 
   // --- Split pane actions ---
 
-  splitPane: (tabId: string, paneId: string, direction: "horizontal" | "vertical", cwd?: string) => {
+  splitPane: (
+    tabId: string,
+    paneId: string,
+    direction: "horizontal" | "vertical",
+    cwd?: string,
+    paneType: "terminal" | "preview" = "terminal",
+    previewUrl?: string,
+    linkedTerminalPaneId?: string,
+  ) => {
     const newPaneId = crypto.randomUUID();
     set((state) => ({
       tabs: state.tabs.map((t) => {
         if (t.id !== tabId) return t;
-        const newLayout = splitNodeInTree(t.splitLayout, paneId, direction, newPaneId, cwd);
+        const newLayout = splitNodeInTree(t.splitLayout, paneId, direction, newPaneId, cwd, paneType, previewUrl, linkedTerminalPaneId);
         return {
           ...t,
           splitLayout: newLayout,
@@ -1172,6 +1256,41 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       }),
     }));
     return newPaneId;
+  },
+
+  updatePreviewPaneUrl: (tabId: string, paneId: string, previewUrl: string) => {
+    set((state) => ({
+      tabs: state.tabs.map((t) =>
+        t.id === tabId
+          ? {
+              ...t,
+              splitLayout: updatePanePreviewUrlInTree(t.splitLayout, paneId, previewUrl),
+              terminals: t.terminals.map((terminal) =>
+                state.canvasState.nodes.some((node) =>
+                  node.type === "preview" &&
+                  node.terminalTabId === tabId &&
+                  node.previewPaneId === paneId &&
+                  node.linkedTerminalPaneId === terminal.paneId
+                )
+                  ? { ...terminal, previewUrl }
+                  : terminal
+              ),
+            }
+          : t
+      ),
+      canvasState: {
+        ...state.canvasState,
+        nodes: state.canvasState.nodes.map((node) =>
+          node.type === "preview" && node.terminalTabId === tabId && node.previewPaneId === paneId
+            ? { ...node, title: titleForPreviewUrl(previewUrl), previewUrl }
+            : node
+        ),
+      },
+      workspaceUiState: {
+        ...state.workspaceUiState,
+        previewUrl,
+      },
+    }));
   },
 
   closePane: (tabId: string, paneId: string) => {
@@ -1199,6 +1318,19 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
           activePaneId: newActivePaneId,
         };
       }),
+      canvasState: {
+        ...state.canvasState,
+        nodes: state.canvasState.nodes.filter((node) =>
+          !(node.type === "preview" && node.terminalTabId === tabId && node.previewPaneId === paneId)
+        ),
+        selectedNodeId:
+          state.canvasState.nodes.some((node) =>
+            node.id === state.canvasState.selectedNodeId &&
+            !(node.type === "preview" && node.terminalTabId === tabId && node.previewPaneId === paneId)
+          )
+            ? state.canvasState.selectedNodeId
+            : null,
+      },
     }));
   },
 

@@ -16,9 +16,11 @@ import {
   TreeStructure,
   X,
 } from "@phosphor-icons/react";
-import { createNewTab, createTerminalTab, splitActivePane, useWorkspaceStore } from "../stores/workspace";
+import { createNewTab, createTerminalTab, splitActivePane, splitActivePreviewPane, useWorkspaceStore } from "../stores/workspace";
 import { FolderPicker } from "./FolderPicker";
 import type { CanvasNode, Tab } from "../lib/types";
+import { taskStatusColor, taskStatusLabel } from "../lib/masterPlanTasks";
+import { useMasterPlanTasks } from "../hooks/useMasterPlanTasks";
 import { pathTail, projectNameFor } from "../lib/projectDisplay";
 import { FileExplorer } from "./FileExplorer";
 
@@ -304,6 +306,27 @@ const styles: Record<string, CSSProperties> = {
     color: "var(--text-secondary)",
     fontSize: 12,
   },
+  taskInlineBadge: {
+    minWidth: 0,
+    maxWidth: 156,
+    height: 18,
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 5,
+    marginTop: 5,
+    padding: "0 6px",
+    border: "1px solid var(--border-subtle)",
+    borderRadius: "var(--radius-xs)",
+    background: "var(--surface-raised)",
+    color: "var(--text-secondary)",
+    fontSize: 10,
+  },
+  taskDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 999,
+    flexShrink: 0,
+  },
   rowActions: {
     display: "flex",
     alignItems: "center",
@@ -504,6 +527,7 @@ const styles: Record<string, CSSProperties> = {
 
 function nodeIcon(node: CanvasNode) {
   if (node.type === "terminal") return <TerminalWindow size={13} weight="duotone" />;
+  if (node.type === "preview") return <SquaresFour size={13} weight="duotone" />;
   if (node.type === "file") return <FileText size={13} />;
   return <Note size={13} />;
 }
@@ -568,6 +592,32 @@ function FileTreeButton() {
   );
 }
 
+function PreviewButton() {
+  const activeTabId = useWorkspaceStore((state) => state.activeTabId);
+  const activeTab = useWorkspaceStore((state) => state.tabs.find((tab) => tab.id === activeTabId));
+  const active = JSON.stringify(activeTab?.splitLayout).includes('"type":"preview"');
+
+  return (
+    <button
+      className="workspace-rail-button"
+      data-active={active ? "true" : "false"}
+      style={{
+        ...styles.railButton,
+        background: active ? "var(--surface-selected)" : "transparent",
+        borderColor: active ? "var(--border-focus)" : "var(--border-subtle)",
+        color: active ? "var(--accent-live)" : "var(--text-secondary)",
+      }}
+      title="Preview"
+      aria-label="Preview"
+      aria-current={active ? "page" : undefined}
+      onClick={() => splitActivePreviewPane()}
+      disabled={!activeTab?.terminals.find((terminal) => terminal.paneId === activeTab.activePaneId)?.previewUrl}
+    >
+      <SquaresFour size={15} weight="duotone" />
+    </button>
+  );
+}
+
 function SidebarRail({ collapsed }: { collapsed: boolean }) {
   const updateUi = useWorkspaceStore((state) => state.updateWorkspaceUiState);
 
@@ -583,6 +633,7 @@ function SidebarRail({ collapsed }: { collapsed: boolean }) {
       <div style={styles.railSeparator} aria-hidden="true" />
       <PanelButton panel="sessions" />
       <PanelButton panel="map" />
+      <PreviewButton />
       <div style={styles.railSpacer} aria-hidden="true" />
       <button
         className="workspace-rail-button"
@@ -991,6 +1042,14 @@ function NewTerminalLaunchMenu({
           setWorkspaceMode("split");
         }}
       />
+      <MenuItem
+        icon={<SquaresFour size={13} weight="duotone" />}
+        label="Localhost preview"
+        detail="Open beside the active terminal"
+        onClick={() => {
+          if (splitActivePreviewPane()) setWorkspaceMode("split");
+        }}
+      />
       <div style={{ borderTop: "1px solid var(--border-subtle)", margin: "6px 2px" }} />
       <MenuItem
         icon={<TreeStructure size={13} weight="duotone" />}
@@ -1109,8 +1168,8 @@ function SessionsPanel({
         title: tab.title,
         x: 120 + (terminalNodeCount % 3) * 700,
         y: 100 + Math.floor(terminalNodeCount / 3) * 430,
-        width: 640,
-        height: 360,
+        width: 820,
+        height: 460,
         terminalTabId: tab.id,
         terminalCwd: tab.initialCwd,
       };
@@ -1119,12 +1178,14 @@ function SessionsPanel({
     if (!canvasState.nodes.some((candidate) => candidate.id === node.id)) {
       addCanvasNode(node);
     }
-    const zoom = Math.min(canvasState.viewport.zoom, 0.9);
+    const zoom = 1;
+    const nextX = 306 - (node.x + node.width / 2) * zoom;
+    const nextY = 220 - (node.y + node.height / 2) * zoom;
     selectCanvasNode(node.id);
     updateCanvasViewport({
       zoom,
-      x: 306 - (node.x + node.width / 2) * zoom,
-      y: 220 - (node.y + node.height / 2) * zoom,
+      x: Math.round(nextX),
+      y: Math.round(nextY),
     });
   };
 
@@ -1451,14 +1512,17 @@ function MapPanel({
   const updateCanvasViewport = useWorkspaceStore((state) => state.updateCanvasViewport);
   const removeCanvasNode = useWorkspaceStore((state) => state.removeCanvasNode);
   const closeTerminalSession = useWorkspaceStore((state) => state.closeTerminalSession);
+  const closePane = useWorkspaceStore((state) => state.closePane);
 
   const focusCanvasNode = (node: CanvasNode) => {
-    const zoom = node.type === "terminal" ? Math.min(canvasState.viewport.zoom, 0.9) : canvasState.viewport.zoom;
+    const zoom = node.type === "terminal" ? 1 : canvasState.viewport.zoom;
     selectCanvasNode(node.id);
+    const nextX = node.type === "terminal" ? 18 - node.x * zoom : 320 - node.x * zoom;
+    const nextY = 120 - node.y * zoom;
     updateCanvasViewport({
       zoom,
-      x: node.type === "terminal" ? 18 - node.x * zoom : 320 - node.x * zoom,
-      y: 120 - node.y * zoom,
+      x: node.type === "terminal" && zoom === 1 ? Math.round(nextX) : nextX,
+      y: node.type === "terminal" && zoom === 1 ? Math.round(nextY) : nextY,
     });
   };
 
@@ -1468,6 +1532,16 @@ function MapPanel({
         if (!node.terminalTabId) return true;
         return tabs.find((tab) => tab.id === node.terminalTabId)?.groupId === activeGroupFilter;
       });
+  const taskRoots = visibleNodes.map((node) => {
+    const linkedTab = node.terminalTabId
+      ? tabs.find((tab) => tab.id === node.terminalTabId)
+      : undefined;
+    const linkedProjectRoot = linkedTab?.groupId
+      ? groups.find((group) => group.id === linkedTab.groupId)?.projectRoot
+      : undefined;
+    return linkedProjectRoot ?? node.terminalCwd ?? linkedTab?.initialCwd;
+  });
+  const tasksByRoot = useMasterPlanTasks(taskRoots);
 
   return (
     <>
@@ -1503,6 +1577,17 @@ function MapPanel({
             const linkedProjectName = linkedTab?.groupId
               ? projectNameFor(linkedTab.groupId, groups)
               : (isDefaultTitle ? linkedCwdName : linkedTab?.title) ?? linkedCwdName ?? "Unassigned";
+            const taskRoot = (
+              linkedTab?.groupId
+                ? groups.find((group) => group.id === linkedTab.groupId)?.projectRoot
+                : undefined
+            ) ?? node.terminalCwd ?? linkedTab?.initialCwd;
+            const normalizedTaskRoot = taskRoot?.replace(/\/+$/, "");
+            const boundTask = node.taskBinding && normalizedTaskRoot
+              ? (tasksByRoot[normalizedTaskRoot] ?? []).find((task) =>
+                  task.id.toLowerCase() === node.taskBinding?.taskId.toLowerCase()
+                )
+              : undefined;
             return (
               <div
                 key={node.id}
@@ -1528,7 +1613,7 @@ function MapPanel({
                   onOpenTerminalMenu(event, linkedTab);
                 }}
               >
-                {linkedTab ? (
+                {linkedTab && node.type !== "preview" ? (
                   <TerminalAvatar
                     tab={linkedTab}
                     active={node.id === canvasState.selectedNodeId}
@@ -1538,24 +1623,43 @@ function MapPanel({
                 )}
                 <span style={{ minWidth: 0 }}>
                   <div style={styles.rowTitle}>
-                    {linkedTab ? linkedProjectName : node.title}
+                    {node.type === "preview" ? node.title : linkedTab ? linkedProjectName : node.title}
                   </div>
                   <div style={styles.rowMeta}>
-                    {node.terminalTabId && linkedTab
+                    {node.type === "preview"
+                      ? node.previewUrl ?? "Localhost preview"
+                      : node.terminalTabId && linkedTab
                       ? `${pathTail(liveNodeCwd ?? node.terminalCwd ?? linkedTab.initialCwd)} · ${linkedTab.title}`
                       : `${Math.round(node.width)} x ${Math.round(node.height)}`}
                   </div>
+                  {node.taskBinding && (
+                    <div style={styles.taskInlineBadge} title={boundTask?.title ?? "Task not found in MASTER_PLAN.md"}>
+                      <span
+                        style={{
+                          ...styles.taskDot,
+                          background: taskStatusColor(boundTask?.status ?? "unknown"),
+                        }}
+                      />
+                      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {node.taskBinding.taskId} · {taskStatusLabel(boundTask?.status ?? "unknown")}
+                      </span>
+                    </div>
+                  )}
                 </span>
                 <span className="workspace-sidebar-actions" style={styles.rowActions}>
                   <button
                     className="workspace-sidebar-action workspace-sidebar-action--danger"
                     style={styles.rowActionButton}
-                    title={linkedTab ? "Close terminal session" : "Remove map node"}
-                    aria-label={linkedTab ? `Close ${linkedTab.title}` : `Remove ${node.title}`}
+                    title={node.type === "preview" ? "Close preview pane" : linkedTab ? "Close terminal session" : "Remove map node"}
+                    aria-label={node.type === "preview" ? `Close ${node.title}` : linkedTab ? `Close ${linkedTab.title}` : `Remove ${node.title}`}
                     onMouseDown={(event) => event.stopPropagation()}
                     onClick={(event) => {
                       event.stopPropagation();
                       if (linkedTab) {
+                        if (node.type === "preview" && node.previewPaneId) {
+                          closePane(linkedTab.id, node.previewPaneId);
+                          return;
+                        }
                         closeTerminalSession(linkedTab.id);
                         return;
                       }

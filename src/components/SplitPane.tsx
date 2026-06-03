@@ -1,6 +1,7 @@
 import { useRef, useEffect, useLayoutEffect, useState, useCallback, CSSProperties } from "react";
-import { PanelRight, PanelBottom, X, TerminalSquare } from "lucide-react";
+import { Globe, PanelRight, PanelBottom, X, TerminalSquare } from "lucide-react";
 import { TerminalComponent } from "./Terminal";
+import { LocalhostPreview } from "./LocalhostPreview";
 import { useWorkspaceStore } from "../stores/workspace";
 import { splitActivePane, closeActivePane } from "../stores/workspace";
 import type { Tab, TerminalRuntimeStatus } from "../lib/types";
@@ -12,6 +13,7 @@ import {
   getPaneCwd,
   resizeSizes,
   countLeaves,
+  getLeafNode,
   SPLIT_GAP,
   type Rect,
   type HandleInfo,
@@ -475,6 +477,8 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
         if (!bounds || bounds.width <= 0 || bounds.height <= 0) return null;
 
         const isActive = paneId === tab.activePaneId;
+        const paneNode = getLeafNode(tab.splitLayout, paneId);
+        const isPreviewPane = paneNode?.type === "preview";
         const paneCwd = getPaneCwd(tab.splitLayout, paneId) ?? tab.initialCwd;
         const project = projectForTab(tab, groups);
         const paneContext = project
@@ -558,13 +562,21 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                   boxShadow: isActive ? `0 0 0 3px color-mix(in srgb, ${STATUS_COLORS[terminalStatus]} 16%, transparent)` : "none",
                   flexShrink: 0,
                 }}
-                title={`Terminal ${terminalStatusLabel}`}
+                title={isPreviewPane ? "Localhost preview" : `Terminal ${terminalStatusLabel}`}
               />
-              <TerminalSquare
-                size={13}
-                strokeWidth={1.8}
-                color={isActive ? "var(--accent-live)" : "var(--text-secondary)"}
-              />
+              {isPreviewPane ? (
+                <Globe
+                  size={13}
+                  strokeWidth={1.8}
+                  color={isActive ? "var(--accent-live)" : "var(--text-secondary)"}
+                />
+              ) : (
+                <TerminalSquare
+                  size={13}
+                  strokeWidth={1.8}
+                  color={isActive ? "var(--accent-live)" : "var(--text-secondary)"}
+                />
+              )}
               <span
                 className="terminal-pane-status-pill"
                 data-status={terminalStatus}
@@ -578,9 +590,9 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                   fontSize: 12,
                   fontWeight: 500,
                 }}
-                title={project?.projectRoot ?? paneCwd ?? tab.title}
+                title={isPreviewPane ? paneNode.previewUrl : project?.projectRoot ?? paneCwd ?? tab.title}
               >
-                {paneContext}
+                {isPreviewPane ? paneNode.previewUrl ?? "Localhost preview" : paneContext}
               </span>
               <span
                 style={{
@@ -599,9 +611,9 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                   background: "color-mix(in srgb, currentColor 10%, transparent)",
                   flexShrink: 0,
                 }}
-                title={paneTerminal?.lastError ?? `Terminal ${terminalStatusLabel}`}
+                title={isPreviewPane ? "Preview pane" : paneTerminal?.lastError ?? `Terminal ${terminalStatusLabel}`}
               >
-                {terminalStatusLabel}
+                {isPreviewPane ? "preview" : terminalStatusLabel}
               </span>
               <PaneToolbar
                 paneId={paneId}
@@ -611,11 +623,20 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
               />
             </div>
             <div style={{ flex: 1, minHeight: 0, minWidth: 0 }}>
-              <TerminalComponent
-                tabId={tab.id}
-                paneId={paneId}
-                cwd={paneCwd}
-              />
+              {isPreviewPane ? (
+                <LocalhostPreview
+                  previewUrl={paneNode.previewUrl}
+                  onPreviewUrlChange={(previewUrl) =>
+                    useWorkspaceStore.getState().updatePreviewPaneUrl(tab.id, paneId, previewUrl)
+                  }
+                />
+              ) : (
+                <TerminalComponent
+                  tabId={tab.id}
+                  paneId={paneId}
+                  cwd={paneCwd}
+                />
+              )}
             </div>
           </div>
         );

@@ -5,6 +5,7 @@ import {
   FileText,
   FolderTree,
   GitBranch,
+  Globe,
   ListTree,
   Map,
   PanelBottom,
@@ -21,6 +22,7 @@ import {
   createTerminalTab,
   resetPersistedWorkspace,
   splitActivePane,
+  splitActivePreviewPane,
   useWorkspaceStore,
 } from "../stores/workspace";
 import { getAllLeafIds } from "../lib/splitUtils";
@@ -535,12 +537,14 @@ export function WorkbenchHeader() {
     if (!store.activeTabId) return;
     const node = store.canvasState.nodes.find((candidate) => candidate.terminalTabId === store.activeTabId);
     if (!node) return;
-    const zoom = Math.min(store.canvasState.viewport.zoom, 0.9);
+    const zoom = 1;
+    const nextX = 306 - (node.x + node.width / 2) * zoom;
+    const nextY = 220 - (node.y + node.height / 2) * zoom;
     store.selectCanvasNode(node.id);
     store.updateCanvasViewport({
       zoom,
-      x: 306 - (node.x + node.width / 2) * zoom,
-      y: 220 - (node.y + node.height / 2) * zoom,
+      x: Math.round(nextX),
+      y: Math.round(nextY),
     });
   }, []);
 
@@ -622,6 +626,42 @@ export function WorkbenchHeader() {
         run: () => {
           setWorkspaceMode("graph");
           setCommandStatus("links");
+        },
+      },
+      {
+        id: "show-preview",
+        label: "Show preview",
+        detail: "Open an in-app localhost site preview",
+        keywords: ["preview", "localhost", "browser", "site", "web", "app"],
+        scope: "actions",
+        Icon: Globe,
+        run: () => {
+          const opened = splitActivePreviewPane();
+          setCommandStatus(opened ? "preview" : "no preview port");
+        },
+      },
+      {
+        id: "preview-localhost-3000",
+        label: "Preview localhost:3000",
+        detail: "Open http://127.0.0.1:3000 inside TermFleet",
+        keywords: ["preview", "localhost", "3000", "next"],
+        scope: "actions",
+        Icon: Globe,
+        run: () => {
+          splitActivePreviewPane("http://127.0.0.1:3000");
+          setCommandStatus("preview :3000");
+        },
+      },
+      {
+        id: "preview-localhost-5173",
+        label: "Preview localhost:5173",
+        detail: "Open http://127.0.0.1:5173 inside TermFleet",
+        keywords: ["preview", "localhost", "5173", "vite"],
+        scope: "actions",
+        Icon: Globe,
+        run: () => {
+          splitActivePreviewPane("http://127.0.0.1:5173");
+          setCommandStatus("preview :5173");
         },
       },
       {

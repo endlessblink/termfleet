@@ -57,29 +57,62 @@ function rgbHex(rgba: number): string {
   return `#${((1 << 24) | (r << 16) | (g << 8) | b).toString(16).slice(1)}`;
 }
 
+function requireAvailable(buffer: ArrayBuffer, offset: number, bytes: number, label: string): void {
+  if (offset + bytes > buffer.byteLength) {
+    throw new Error(
+      `Malformed terminal grid diff: ${label} needs ${bytes} bytes at offset ${offset}, frame has ${buffer.byteLength} bytes`,
+    );
+  }
+}
+
 export function decodeFrame(buffer: ArrayBuffer): DecodedFrame {
+  requireAvailable(buffer, 0, HEADER_BYTES, "header");
   const view = new DataView(buffer);
   const msgType = view.getUint8(0);
+  if (msgType !== MSG_DIFF && msgType !== MSG_FULL) {
+    throw new Error(`Malformed terminal grid diff: unknown message type ${msgType}`);
+  }
   const cols = view.getUint16(1, true);
   const rows = view.getUint16(3, true);
+  if (cols === 0 || rows === 0) {
+    throw new Error(`Malformed terminal grid diff: invalid dimensions ${cols}x${rows}`);
+  }
   const cursorCol = view.getUint16(5, true);
   const cursorLine = view.getUint16(7, true);
+  if (cursorCol > cols || cursorLine >= rows) {
+    throw new Error(
+      `Malformed terminal grid diff: cursor ${cursorCol},${cursorLine} outside ${cols}x${rows}`,
+    );
+  }
   const mode = view.getUint32(9, true);
   const dirtyCount = view.getUint16(13, true);
 
   let offset = HEADER_BYTES;
   const dirtyRows: DecodedRow[] = [];
   for (let r = 0; r < dirtyCount; r += 1) {
+    requireAvailable(buffer, offset, 4, `dirty row ${r} header`);
     const index = view.getUint16(offset, true);
     const cellCount = view.getUint16(offset + 2, true);
+    if (index >= rows) {
+      throw new Error(`Malformed terminal grid diff: dirty row ${index} outside ${rows} rows`);
+    }
+    if (cellCount > cols) {
+      throw new Error(
+        `Malformed terminal grid diff: dirty row ${index} has ${cellCount} cells for ${cols} columns`,
+      );
+    }
     offset += 4;
     const cells: GridCell[] = new Array(cellCount);
     for (let c = 0; c < cellCount; c += 1) {
+      requireAvailable(buffer, offset, CELL_BYTES, `dirty row ${index} cell ${c}`);
       const ch = view.getUint32(offset, true);
       const fg = view.getUint32(offset + 4, true);
       const bg = view.getUint32(offset + 8, true);
       const style = view.getUint16(offset + 12, true);
       offset += CELL_BYTES;
+      if (ch > 0x10ffff) {
+        throw new Error(`Malformed terminal grid diff: invalid codepoint ${ch}`);
+      }
       const cell: GridCell = {
         c: ch === 0 ? " " : String.fromCodePoint(ch),
         fg: rgbHex(fg),
@@ -93,6 +126,11 @@ export function decodeFrame(buffer: ArrayBuffer): DecodedFrame {
       cells[c] = cell;
     }
     dirtyRows.push({ index, cells });
+  }
+  if (offset !== buffer.byteLength) {
+    throw new Error(
+      `Malformed terminal grid diff: ${buffer.byteLength - offset} trailing bytes after frame payload`,
+    );
   }
 
   return {

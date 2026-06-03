@@ -1,5 +1,5 @@
 import { CSSProperties, useCallback } from "react";
-import { FileText, Map, NotebookText, TerminalSquare, X } from "lucide-react";
+import { FileText, Globe, Map, NotebookText, TerminalSquare, X } from "lucide-react";
 import type { CanvasNode, Group, Tab } from "../lib/types";
 import { pathTail, projectForTab } from "../lib/projectDisplay";
 import { useWorkspaceStore } from "../stores/workspace";
@@ -120,6 +120,12 @@ function nodeIcon(node: CanvasNode) {
       bg: "var(--canvas-file-icon)",
     };
   }
+  if (node.type === "preview") {
+    return {
+      icon: <Globe size={13} strokeWidth={1.8} />,
+      bg: "var(--accent-info)",
+    };
+  }
   return {
     icon: <NotebookText size={13} strokeWidth={1.8} />,
     bg: "var(--canvas-note-icon)",
@@ -129,6 +135,7 @@ function nodeIcon(node: CanvasNode) {
 function nodeMeta(node: CanvasNode, linkedTab?: Tab, liveCwd?: string) {
   if (node.type === "terminal") return pathTail(liveCwd ?? node.terminalCwd ?? linkedTab?.initialCwd);
   if (node.type === "file") return node.filePath ?? "No file path";
+  if (node.type === "preview") return node.previewUrl ?? "Localhost preview";
   return `${Math.round(node.width)} x ${Math.round(node.height)}`;
 }
 
@@ -204,12 +211,14 @@ export function CanvasSidebar() {
   const updateUiState = useWorkspaceStore((state) => state.updateWorkspaceUiState);
 
   const onSelect = useCallback((node: CanvasNode) => {
-    const zoom = node.type === "terminal" ? Math.min(canvasState.viewport.zoom, 0.9) : canvasState.viewport.zoom;
+    const zoom = node.type === "terminal" ? 1 : canvasState.viewport.zoom;
     selectCanvasNode(node.id);
+    const nextX = node.type === "terminal" ? 18 - node.x * zoom : 280 - node.x * zoom;
+    const nextY = 150 - node.y * zoom;
     updateCanvasViewport({
       zoom,
-      x: node.type === "terminal" ? 18 - node.x * zoom : 280 - node.x * zoom,
-      y: 150 - node.y * zoom,
+      x: node.type === "terminal" && zoom === 1 ? Math.round(nextX) : nextX,
+      y: node.type === "terminal" && zoom === 1 ? Math.round(nextY) : nextY,
     });
   }, [canvasState.viewport.zoom, selectCanvasNode, updateCanvasViewport]);
 
@@ -267,7 +276,7 @@ export function CanvasSidebar() {
             />
           ))
         )}
-        {others.length > 0 && <div style={styles.sectionLabel}>Notes and files</div>}
+        {others.length > 0 && <div style={styles.sectionLabel}>Previews, notes, and files</div>}
         {others.map((node) => (
           <NodeRow
             key={node.id}

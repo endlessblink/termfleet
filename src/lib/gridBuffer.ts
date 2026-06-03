@@ -13,6 +13,12 @@ function blankRow(cols: number): GridCell[] {
   return Array.from({ length: cols }, blankCell);
 }
 
+function normalizeRow(cells: GridCell[], cols: number): GridCell[] {
+  if (cells.length === cols) return cells;
+  if (cells.length > cols) return cells.slice(0, cols);
+  return [...cells, ...blankRow(cols - cells.length)];
+}
+
 export class GridBuffer {
   cols = 0;
   rows = 0;
@@ -27,8 +33,7 @@ export class GridBuffer {
   sgrMouse = false;
   cells: GridCell[][] = [];
 
-  private resize(cols: number, rows: number): void {
-    if (this.cols === cols && this.rows === rows) return;
+  private reset(cols: number, rows: number): void {
     this.cols = cols;
     this.rows = rows;
     this.cells = Array.from({ length: rows }, () => blankRow(cols));
@@ -46,14 +51,14 @@ export class GridBuffer {
     const prevCursorVisible = this.cursorVisible;
 
     if (frame.full || frame.cols !== this.cols || frame.rows !== this.rows) {
-      this.resize(frame.cols, frame.rows);
+      this.reset(frame.cols, frame.rows);
       // A full sync carries every row; mark all dirty.
       for (let r = 0; r < this.rows; r += 1) dirty.add(r);
     }
 
     for (const row of frame.dirtyRows) {
       if (row.index < this.rows) {
-        this.cells[row.index] = row.cells;
+        this.cells[row.index] = normalizeRow(row.cells, this.cols);
         dirty.add(row.index);
       }
     }

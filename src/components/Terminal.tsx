@@ -11,6 +11,36 @@ import { syncTerminalLatencyTraceEnv, traceTerminalLatency } from "../lib/termin
 import { refreshProjectRootFromActiveTerminal, useWorkspaceStore } from "../stores/workspace";
 import type { TerminalRuntimeStatus } from "../lib/types";
 
+const LOCALHOST_URL_PATTERN = /https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0):(\d{2,5})(?:[/?#][^\s"'<>]*)?/gi;
+const LOCALHOST_HOST_PORT_PATTERN = /(?:localhost|127\.0\.0\.1|0\.0\.0\.0):(\d{2,5})(?:[/?#][^\s"'<>]*)?/gi;
+
+function validPreviewPort(port: string) {
+  const value = Number(port);
+  return Number.isInteger(value) && value >= 80 && value <= 65535;
+}
+
+function detectLocalhostPreviewUrl(output: string): string | null {
+  const matches = [...output.matchAll(LOCALHOST_URL_PATTERN)];
+  const match = matches[matches.length - 1];
+  if (match) {
+    const raw = match[0].replace("0.0.0.0", "127.0.0.1");
+    try {
+      const url = new URL(raw);
+      return url.toString().replace(/\/$/, "");
+    } catch {
+      return null;
+    }
+  }
+
+  const hostPortMatches = [...output.matchAll(LOCALHOST_HOST_PORT_PATTERN)];
+  const hostPortMatch = hostPortMatches[hostPortMatches.length - 1];
+  if (hostPortMatch && validPreviewPort(hostPortMatch[1])) {
+    return `http://127.0.0.1:${hostPortMatch[1]}`;
+  }
+
+  return null;
+}
+
 function resolveCssToken(styles: CSSStyleDeclaration, token: string, fallback: string): string {
   const raw = styles.getPropertyValue(token).trim();
   if (!raw) return fallback;
@@ -69,6 +99,14 @@ interface TerminalProps {
    * compositor more source pixels so text stays crisp when scaled up. 1 = none.
    */
   renderScale?: number;
+  /**
+   * Render this terminal as a read-only map projection: when the session is in
+   * an alternate-screen TUI (zellij/agent prompt) the grid is NOT shrunk to the
+   * small node; it stays at its working width and the canvas is CSS-scaled to
+   * fit, so a wide alt-screen frame never reflows into garbage. Plain shells
+   * still reflow to the node size. Off for split panes. See TerminalCanvas.
+  */
+  mapProjection?: boolean;
 }
 
 export function TerminalComponent({
@@ -81,6 +119,7 @@ export function TerminalComponent({
   runtimeActive = true,
   onActivate,
   renderScale = 1,
+  mapProjection = false,
 }: TerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerElement, setContainerElement] = useState<HTMLDivElement | null>(null);
@@ -142,6 +181,7 @@ export function TerminalComponent({
     id?: string;
     status?: TerminalRuntimeStatus;
     reused?: boolean;
+    previewUrl?: string;
     error?: string;
   }) => {
     const store = useWorkspaceStore.getState();
@@ -160,6 +200,7 @@ export function TerminalComponent({
           rows: terminal?.rows ?? previous?.rows ?? 24,
           status: updates.status ?? previous?.status,
           reused: updates.reused ?? previous?.reused,
+          previewUrl: updates.previewUrl ?? previous?.previewUrl,
           lastStatusAt: Date.now(),
           lastError: updates.error,
         },
@@ -192,6 +233,23 @@ export function TerminalComponent({
     });
   }, [updateTerminalRuntime]);
 
+  const handleOutput = useCallback((data: string) => {
+    const previewUrl = detectLocalhostPreviewUrl(data);
+    if (!previewUrl) return;
+
+    updateTerminalRuntime({ previewUrl });
+    const store = useWorkspaceStore.getState();
+    const tab = store.tabs.find((candidate) => candidate.id === tabId);
+    const previewNode = store.canvasState.nodes.find((node) =>
+      node.type === "preview" &&
+      node.terminalTabId === tabId &&
+      node.linkedTerminalPaneId === paneId
+    );
+    if (previewNode?.previewPaneId && tab) {
+      store.updatePreviewPaneUrl(tab.id, previewNode.previewPaneId, previewUrl);
+    }
+  }, [paneId, tabId, updateTerminalRuntime]);
+
   const { resize, write } = usePty({
     terminal: !canvasMode && isRuntimeVisible && !nativePane.attached ? terminal : null,
     cwd,
@@ -200,6 +258,7 @@ export function TerminalComponent({
     runtimeSessionId,
     onReady: handleReady,
     onStatus: handleStatus,
+    onOutput: handleOutput,
   });
 
   // Poll the PTY's live cwd (/proc/<pid>/cwd) so a `cd`/`z` to another path
@@ -472,8 +531,10 @@ export function TerminalComponent({
             cwd={cwd}
             command={command}
             renderScale={renderScale}
+            mapProjection={mapProjection}
             onReady={handleReady}
             onStatus={handleStatus}
+            onOutput={handleOutput}
           />
         </div>
       ) : (

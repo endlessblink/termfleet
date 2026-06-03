@@ -13,11 +13,13 @@ interface UsePtyOptions {
   runtimeSessionId?: string;
   onReady?: (id: string, details: { reused: boolean }) => void;
   onStatus?: (status: TerminalRuntimeStatus, details?: { id?: string; error?: string }) => void;
+  onOutput?: (data: string) => void;
 }
 
 interface BrowserPtySession {
   cwd: string;
   subscribers: Set<Terminal>;
+  outputSubscribers: Set<(data: string) => void>;
   input: string;
   output: string;
 }
@@ -178,6 +180,7 @@ function broadcastBrowserPty(id: string, data: string) {
   }
   appendPtyOutput(id, data);
   session.subscribers.forEach((subscriber) => subscriber.write(data));
+  session.outputSubscribers.forEach((subscriber) => subscriber(data));
   syncBrowserPtyDebugState();
 }
 
@@ -317,7 +320,7 @@ export function destroyBrowserPtys(ids: string[]) {
   syncBrowserPtyDebugState();
 }
 
-export function usePty({ terminal, cwd, command, attachToPtyId, runtimeSessionId, onReady, onStatus }: UsePtyOptions) {
+export function usePty({ terminal, cwd, command, attachToPtyId, runtimeSessionId, onReady, onStatus, onOutput }: UsePtyOptions) {
   const ptyIdRef = useRef<string | null>(null);
   const ownsPtyRef = useRef(false);
   const transportRef = useRef<PtyTransport | null>(null);
@@ -406,6 +409,7 @@ export function usePty({ terminal, cwd, command, attachToPtyId, runtimeSessionId
             session = {
               cwd: cwd ?? "/browser-workspace",
               subscribers: new Set(),
+              outputSubscribers: new Set(),
               input: "",
               output: "",
             };
@@ -416,6 +420,7 @@ export function usePty({ terminal, cwd, command, attachToPtyId, runtimeSessionId
           ownsPtyRef.current = !shouldAttachBrowser;
           ptyIdRef.current = id;
           session.subscribers.add(terminal!);
+          if (onOutput) session.outputSubscribers.add(onOutput);
           syncBrowserPtyDebugState();
 
           dataDisposableRef.current = terminal!.onData((data: string) => {
@@ -437,15 +442,17 @@ export function usePty({ terminal, cwd, command, attachToPtyId, runtimeSessionId
           window.setTimeout(() => {
             if (cancelled || ptyIdRef.current !== id) return;
             if (shouldAttachBrowser) {
-              terminal!.write(session.output || ptyOutputBuffers.get(id) || "");
+              const replay = session.output || ptyOutputBuffers.get(id) || "";
+              if (replay) onOutput?.(replay);
+              terminal!.write(replay);
               return;
             }
-            broadcastBrowserPty(
-              id,
+            const intro =
               "Browser preview shell. Type `help` for supported commands.\r\n" +
               "Use the standalone Tauri app for real system PTYs.\r\n\r\n" +
-              browserPrompt(session.cwd)
-            );
+              browserPrompt(session.cwd);
+            onOutput?.(intro);
+            broadcastBrowserPty(id, intro);
             if (command) {
               writeBrowserPty(id, command);
               writeBrowserPty(id, "\r");
@@ -589,6 +596,7 @@ export function usePty({ terminal, cwd, command, attachToPtyId, runtimeSessionId
                 data: event.data,
               });
               appendPtyOutput(spawnedId, event.data);
+              onOutput?.(event.data);
               tracePty("frontend.xterm.write.called", {
                 id: spawnedId,
                 bytes: event.data.length,
@@ -660,6 +668,7 @@ export function usePty({ terminal, cwd, command, attachToPtyId, runtimeSessionId
 
         const unlisten = await listen<string>(`pty-data-${id}`, (event) => {
           if (ownsPtyRef.current) appendPtyOutput(id, event.payload);
+          onOutput?.(event.payload);
           terminal!.write(event.payload);
         });
         unlistenRef.current = unlisten;
@@ -749,6 +758,7 @@ export function usePty({ terminal, cwd, command, attachToPtyId, runtimeSessionId
       if (ptyIdRef.current && !isTauriRuntime()) {
         const session = browserPtys.get(ptyIdRef.current);
         session?.subscribers.delete(terminal);
+        if (onOutput) session?.outputSubscribers.delete(onOutput);
         syncBrowserPtyDebugState();
       }
       ptyIdRef.current = null;
@@ -756,7 +766,7 @@ export function usePty({ terminal, cwd, command, attachToPtyId, runtimeSessionId
       transportRef.current = null;
       transportFailedRef.current = false;
     };
-  }, [terminal, cwd, command, attachToPtyId, runtimeSessionId, onReady, onStatus, activateInputListener, disposeInputListener]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [terminal, cwd, command, attachToPtyId, runtimeSessionId, onReady, onStatus, onOutput, activateInputListener, disposeInputListener]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Resize handler
   const resize = useCallback((cols: number, rows: number) => {
