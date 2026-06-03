@@ -17,6 +17,7 @@ test("box-drawing and block glyphs render geometrically", async ({ page }) => {
 
   const out = await page.evaluate(async () => {
     const { isBoxGlyph } = await import("/src/lib/boxGlyph.ts");
+    const { isPowerlineGlyph } = await import("/src/lib/powerlineGlyph.ts");
     const { GlyphAtlas, measureCell } = await import("/src/lib/fontAtlas.ts");
     const { renderSnapshot, sizeCanvasToGrid, DEFAULT_THEME } = await import(
       "/src/lib/gridRenderer.ts"
@@ -28,20 +29,20 @@ test("box-drawing and block glyphs render geometrically", async ({ page }) => {
     const cellH = metrics.cellHeight * dpr;
 
     const cell = (c: string) => ({ c, fg: "#ffffff", bg: "#000000" });
-    // 4 cells: ─ (horiz) │ (vert) █ (full block) ░ (light shade)
+    // 6 cells: ─ (horiz) │ (vert) █ (full block) ░ (light shade), / (Powerline)
     const snapshot = {
-      cols: 4,
+      cols: 6,
       rows: 1,
       cursor: { col: 0, line: 0 },
       altScreen: false,
       cursorVisible: false,
-      cells: [[cell("─"), cell("│"), cell("█"), cell("░")]],
+      cells: [[cell("─"), cell("│"), cell("█"), cell("░"), cell("\ue0b0"), cell("\ue0b2")]],
     };
 
     const atlas = new GlyphAtlas(metrics);
     const canvas = document.createElement("canvas");
     document.body.appendChild(canvas);
-    const ctx = sizeCanvasToGrid(canvas, atlas, 4, 1, dpr);
+    const ctx = sizeCanvasToGrid(canvas, atlas, 6, 1, dpr);
     renderSnapshot(ctx, atlas, snapshot, dpr, DEFAULT_THEME);
 
     const lum = (x: number, y: number) => {
@@ -59,23 +60,32 @@ test("box-drawing and block glyphs render geometrically", async ({ page }) => {
     const blockCorner = lum(cellW * 2.1, cellH * 0.15);
     // Light shade cell (3): dim (alpha ~0.25 white on black), not full bright.
     const shade = lum(cellW * 3.5, cellH * 0.5);
+    // Powerline filled separators draw geometrically, not as font fallback tofu.
+    const powerRight = lum(cellW * 4.25, cellH * 0.5);
+    const powerLeft = lum(cellW * 5.75, cellH * 0.5);
 
     return {
       atlasEmpty: atlas.size, // box glyphs must NOT populate the font atlas
       isBox2500: isBoxGlyph(0x2500),
       isBoxLetter: isBoxGlyph(0x41),
+      isPowerlineE0B0: isPowerlineGlyph(0xe0b0),
+      isPowerlineLetter: isPowerlineGlyph(0x41),
       hMid,
       hTop,
       vMid,
       vLeft,
       blockCorner,
       shade,
+      powerRight,
+      powerLeft,
     };
   });
 
   expect(out.isBox2500).toBe(true);
   expect(out.isBoxLetter).toBe(false);
-  // Geometric box glyphs bypass the atlas entirely.
+  expect(out.isPowerlineE0B0).toBe(true);
+  expect(out.isPowerlineLetter).toBe(false);
+  // Geometric box/Powerline glyphs bypass the atlas entirely.
   expect(out.atlasEmpty).toBe(0);
 
   // Horizontal line: center bright, top dark.
@@ -89,4 +99,7 @@ test("box-drawing and block glyphs render geometrically", async ({ page }) => {
   // Light shade: dim, clearly between black and white.
   expect(out.shade).toBeGreaterThan(20);
   expect(out.shade).toBeLessThan(130);
+  // Powerline filled triangles are bright at their center-facing side.
+  expect(out.powerRight).toBeGreaterThan(150);
+  expect(out.powerLeft).toBeGreaterThan(150);
 });
