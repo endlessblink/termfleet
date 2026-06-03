@@ -818,13 +818,23 @@ export function TerminalCanvas({
         ref={canvasRef}
         className="terminal-canvas"
         data-terminal-renderer="canvas2d"
-        style={{ display: "block" }}
+        style={{
+          display: "block",
+          imageRendering: renderScale > 1 ? "pixelated" : "auto",
+        }}
       />
       <canvas
         ref={overlayRef}
         className="terminal-canvas-selection"
         aria-hidden="true"
-        style={{ position: "absolute", top: 0, left: 0, pointerEvents: "none", display: "block" }}
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          pointerEvents: "none",
+          display: "block",
+          imageRendering: renderScale > 1 ? "pixelated" : "auto",
+        }}
       />
       {attachError ? (
         <div

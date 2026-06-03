@@ -418,10 +418,9 @@ const NODE_MIN_SIZE = {
 };
 const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 2.2;
-const COMPACT_TERMINAL_ZOOM = 0.45;
 const READABLE_TERMINAL_ZOOM = 0.75;
 const FOCUS_TERMINAL_ZOOM = 1;
-const MAP_TERMINAL_RENDER_SCALE = 2;
+const MAP_TERMINAL_RENDER_SCALE = 4;
 type ResizeDirection = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
 
 function isDesktopNativeRuntime() {
@@ -509,8 +508,8 @@ function CanvasNodeView({
   } | null>(null);
   const [isResizing, setIsResizing] = useState(false);
   const selected = selectedNodeId === node.id;
-  const showTerminalSummary = node.type === "terminal" && !selected && zoom < READABLE_TERMINAL_ZOOM;
-  const showCompactTerminalSummary = node.type === "terminal" && zoom < COMPACT_TERMINAL_ZOOM;
+  const showTerminalSummary = false;
+  const showCompactTerminalSummary = false;
 
   const activateTerminalNode = useCallback(() => {
     selectCanvasNode(node.id);

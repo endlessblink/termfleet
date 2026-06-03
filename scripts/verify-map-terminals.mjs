@@ -135,10 +135,11 @@ const checks = [
     message: "Canvas terminals must forward TUI mouse clicks/releases/wheel reports as VT mouse sequences instead of treating them only as DOM focus/selection.",
   },
   {
-    ok: /const showTerminalSummary = node\.type === "terminal" && !selected && zoom < READABLE_TERMINAL_ZOOM;/.test(magicCanvas) &&
+    ok: /const showTerminalSummary = false;/.test(magicCanvas) &&
+      /const showCompactTerminalSummary = false;/.test(magicCanvas) &&
       /<TerminalComponent[\s\S]*mapProjection=\{false\}/.test(magicCanvas) &&
       !/mapSurface/.test(magicCanvas),
-    message: "Selected map terminal nodes must render a readable fitted terminal, not a frozen projection or inactive summary.",
+    message: "Map terminal nodes must always render live terminal content; selection/zoom-dependent summary cards make the map inconsistent.",
   },
   {
     ok: !/sparsePrimaryMapAnchorRows|applySparseMapAnchor|mapSurface|MAP_SHELL_ANCHOR_TOO_HIGH|MAP_SHELL_ANCHOR_OK/.test(terminalCanvas) &&
@@ -241,10 +242,11 @@ const checks = [
   },
   {
     ok: /const FOCUS_TERMINAL_ZOOM = 1;/.test(magicCanvas) &&
-      /const MAP_TERMINAL_RENDER_SCALE = 2;/.test(magicCanvas) &&
+      /const MAP_TERMINAL_RENDER_SCALE = 4;/.test(magicCanvas) &&
       /renderScale=\{MAP_TERMINAL_RENDER_SCALE\}/.test(magicCanvas) &&
       !/terminalRenderScaleForZoom/.test(magicCanvas) &&
       !/activeTerminalContent/.test(magicCanvas) &&
+      /imageRendering: renderScale > 1 \? "pixelated" : "auto"/.test(terminalCanvas) &&
       /function snapTerminalPixel/.test(magicCanvas) &&
       /snapTerminalPixel\(nextX, node\.type, nextZoom\)/.test(magicCanvas) &&
       /snapTerminalPixel\(nextY, node\.type, nextZoom\)/.test(magicCanvas) &&
