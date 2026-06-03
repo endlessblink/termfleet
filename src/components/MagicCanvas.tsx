@@ -399,27 +399,28 @@ const styles: Record<string, CSSProperties> = {
   },
   terminalMapPreviewBody: {
     minHeight: 0,
-    display: "grid",
-    gap: 3,
-    alignContent: "stretch",
-    padding: 2,
+    display: "block",
+    padding: "6px 7px",
     borderRadius: "var(--radius-sm)",
-    background: "rgba(0,0,0,0.2)",
+    background: "#101416",
     border: "1px solid rgba(255,255,255,0.045)",
     overflow: "hidden",
   },
   terminalMapPreviewRow: {
-    minHeight: 2,
-    display: "grid",
-    gridAutoFlow: "column",
-    gridAutoColumns: "1fr",
-    gap: 1,
+    height: 8,
+    display: "block",
     overflow: "hidden",
+    whiteSpace: "pre",
+    fontFamily: "var(--font-mono)",
+    fontSize: 8,
+    lineHeight: "8px",
+    letterSpacing: 0,
   },
   terminalMapPreviewCell: {
-    minWidth: 1,
-    minHeight: 2,
-    borderRadius: 1,
+    display: "inline-block",
+    width: "0.62em",
+    height: "1em",
+    overflow: "hidden",
   },
   terminalMapPreviewFooter: {
     display: "flex",
@@ -560,10 +561,10 @@ type TerminalPreviewEntry = {
   updatedAt: number;
 };
 
-function snapshotPreviewRows(snapshot: GridSnapshot | undefined, maxRows = 10, maxCols = 48) {
+function snapshotPreviewRows(snapshot: GridSnapshot | undefined, maxRows = 20, maxCols = 96) {
   if (!snapshot?.cells.length) {
     return Array.from({ length: maxRows }, () =>
-      Array.from({ length: maxCols }, () => ({ color: "rgba(148, 163, 184, 0.08)", active: false }))
+      Array.from({ length: maxCols }, () => ({ char: " ", color: "rgba(148, 163, 184, 0.22)", active: false }))
     );
   }
 
@@ -575,12 +576,11 @@ function snapshotPreviewRows(snapshot: GridSnapshot | undefined, maxRows = 10, m
       const sourceIndex = Math.floor(colIndex * Math.max(1, sourceRow.length) / colCount);
       const cell = sourceRow[sourceIndex];
       const active = Boolean(cell?.c?.trim());
+      const char = cell?.c && cell.c !== "\u0000" ? cell.c : " ";
       const color = active
         ? cell?.fg ?? "var(--terminal-fg)"
-        : cell?.bg && cell.bg !== "#000000"
-          ? cell.bg
-          : "rgba(148, 163, 184, 0.08)";
-      return { color, active };
+        : "rgba(148, 163, 184, 0.16)";
+      return { char, color, active };
     });
   });
 }
@@ -646,10 +646,12 @@ function TerminalMapPreview({
                 key={colIndex}
                 style={{
                   ...styles.terminalMapPreviewCell,
-                  background: cell.color,
-                  opacity: cell.active ? 0.88 : 0.42,
+                  color: cell.color,
+                  opacity: cell.active ? 0.95 : 0.28,
                 }}
-              />
+              >
+                {cell.char}
+              </span>
             ))}
           </div>
         ))}
