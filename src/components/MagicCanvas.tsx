@@ -21,6 +21,8 @@ import { pathTail, projectForTab } from "../lib/projectDisplay";
 import { createNewTab, useWorkspaceStore } from "../stores/workspace";
 import { TerminalComponent } from "./Terminal";
 import { LocalhostPreview } from "./LocalhostPreview";
+import type { GridSnapshot } from "../lib/gridSnapshot";
+import type { TerminalRuntimeStatus } from "../lib/types";
 
 const styles: Record<string, CSSProperties> = {
   shell: {
@@ -350,6 +352,84 @@ const styles: Record<string, CSSProperties> = {
     fontFamily: "var(--font-ui)",
     fontSize: 11,
   },
+  terminalMapPreview: {
+    height: "100%",
+    display: "grid",
+    gridTemplateRows: "auto 1fr auto",
+    gap: 9,
+    padding: 10,
+    overflow: "hidden",
+    background: "linear-gradient(180deg, #14191c, #101517)",
+    color: "var(--terminal-fg)",
+    cursor: "pointer",
+    userSelect: "none",
+  },
+  terminalMapPreviewHeader: {
+    minWidth: 0,
+    display: "grid",
+    gridTemplateColumns: "1fr auto",
+    gap: 10,
+    alignItems: "start",
+  },
+  terminalMapPreviewTitle: {
+    minWidth: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    color: "var(--text-primary)",
+    fontFamily: "var(--font-ui)",
+    fontSize: 13,
+    fontWeight: 500,
+  },
+  terminalMapPreviewMeta: {
+    minWidth: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    color: "var(--text-secondary)",
+    fontFamily: "var(--font-mono)",
+    fontSize: 10,
+  },
+  terminalMapPreviewStatus: {
+    minWidth: 0,
+    color: "var(--text-secondary)",
+    fontFamily: "var(--font-ui)",
+    fontSize: 10,
+    textTransform: "uppercase",
+  },
+  terminalMapPreviewBody: {
+    minHeight: 0,
+    display: "grid",
+    gap: 3,
+    alignContent: "stretch",
+    padding: 2,
+    borderRadius: "var(--radius-sm)",
+    background: "rgba(0,0,0,0.2)",
+    border: "1px solid rgba(255,255,255,0.045)",
+    overflow: "hidden",
+  },
+  terminalMapPreviewRow: {
+    minHeight: 2,
+    display: "grid",
+    gridAutoFlow: "column",
+    gridAutoColumns: "1fr",
+    gap: 1,
+    overflow: "hidden",
+  },
+  terminalMapPreviewCell: {
+    minWidth: 1,
+    minHeight: 2,
+    borderRadius: 1,
+  },
+  terminalMapPreviewFooter: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+    color: "var(--text-secondary)",
+    fontFamily: "var(--font-ui)",
+    fontSize: 10,
+  },
   closeButton: {
     border: "none",
     background: "transparent",
@@ -418,7 +498,7 @@ const NODE_MIN_SIZE = {
 };
 const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 2.2;
-const READABLE_TERMINAL_ZOOM = 0.75;
+const READABLE_TERMINAL_ZOOM = 1;
 const FOCUS_TERMINAL_ZOOM = 1;
 const MAP_TERMINAL_RENDER_SCALE = 4;
 type ResizeDirection = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
@@ -475,12 +555,123 @@ function nextNodePosition(count: number) {
   };
 }
 
+type TerminalPreviewEntry = {
+  snapshot: GridSnapshot;
+  updatedAt: number;
+};
+
+function snapshotPreviewRows(snapshot: GridSnapshot | undefined, maxRows = 10, maxCols = 48) {
+  if (!snapshot?.cells.length) {
+    return Array.from({ length: maxRows }, () =>
+      Array.from({ length: maxCols }, () => ({ color: "rgba(148, 163, 184, 0.08)", active: false }))
+    );
+  }
+
+  const rowCount = Math.min(maxRows, snapshot.cells.length);
+  return Array.from({ length: rowCount }, (_, index) => {
+    const sourceRow = snapshot.cells[Math.floor(index * snapshot.cells.length / rowCount)] ?? [];
+    const colCount = Math.min(maxCols, Math.max(1, snapshot.cols));
+    return Array.from({ length: colCount }, (_, colIndex) => {
+      const sourceIndex = Math.floor(colIndex * Math.max(1, sourceRow.length) / colCount);
+      const cell = sourceRow[sourceIndex];
+      const active = Boolean(cell?.c?.trim());
+      const color = active
+        ? cell?.fg ?? "var(--terminal-fg)"
+        : cell?.bg && cell.bg !== "#000000"
+          ? cell.bg
+          : "rgba(148, 163, 184, 0.08)";
+      return { color, active };
+    });
+  });
+}
+
+function TerminalMapPreview({
+  title,
+  meta,
+  status,
+  ptyCount,
+  preview,
+  onActivate,
+  onOpen,
+}: {
+  title: string;
+  meta?: string;
+  status?: TerminalRuntimeStatus;
+  ptyCount: number;
+  preview?: TerminalPreviewEntry;
+  onActivate: () => void;
+  onOpen: () => void;
+}) {
+  const rows = snapshotPreviewRows(preview?.snapshot);
+  const ageSeconds = preview ? Math.max(0, Math.round((Date.now() - preview.updatedAt) / 1000)) : null;
+
+  return (
+    <div
+      style={styles.terminalMapPreview}
+      role="button"
+      tabIndex={0}
+      data-terminal-map-preview="state-shape"
+      onMouseDown={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onActivate();
+      }}
+      onClick={(event) => {
+        event.stopPropagation();
+        onActivate();
+      }}
+      onDoubleClick={(event) => {
+        event.stopPropagation();
+        onOpen();
+      }}
+      onKeyDown={(event) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
+        event.stopPropagation();
+        onActivate();
+      }}
+    >
+      <div style={styles.terminalMapPreviewHeader}>
+        <div style={{ minWidth: 0 }}>
+          <div style={styles.terminalMapPreviewTitle}>{title}</div>
+          <div style={styles.terminalMapPreviewMeta}>{meta ?? "No cwd"}</div>
+        </div>
+        <div style={styles.terminalMapPreviewStatus}>{status ?? "stale"}</div>
+      </div>
+      <div style={styles.terminalMapPreviewBody} aria-hidden="true">
+        {rows.map((row, rowIndex) => (
+          <div key={rowIndex} style={styles.terminalMapPreviewRow}>
+            {row.map((cell, colIndex) => (
+              <span
+                key={colIndex}
+                style={{
+                  ...styles.terminalMapPreviewCell,
+                  background: cell.color,
+                  opacity: cell.active ? 0.88 : 0.42,
+                }}
+              />
+            ))}
+          </div>
+        ))}
+      </div>
+      <div style={styles.terminalMapPreviewFooter}>
+        <span>{preview ? `${preview.snapshot.cols}x${preview.snapshot.rows}` : "waiting"}</span>
+        <span>{ageSeconds === null ? `${ptyCount} PTY` : `${ageSeconds}s ago`}</span>
+      </div>
+    </div>
+  );
+}
+
 function CanvasNodeView({
   node,
   focusNode,
+  terminalPreview,
+  onTerminalSnapshot,
 }: {
   node: CanvasNode;
   focusNode: (node: CanvasNode, zoom: number) => void;
+  terminalPreview?: TerminalPreviewEntry;
+  onTerminalSnapshot: (nodeId: string, snapshot: GridSnapshot) => void;
 }) {
   const tabs = useWorkspaceStore((state) => state.tabs);
   const groups = useWorkspaceStore((state) => state.groups);
@@ -508,8 +699,7 @@ function CanvasNodeView({
   } | null>(null);
   const [isResizing, setIsResizing] = useState(false);
   const selected = selectedNodeId === node.id;
-  const showTerminalSummary = false;
-  const showCompactTerminalSummary = false;
+  const showTerminalPreview = node.type === "terminal" && zoom < READABLE_TERMINAL_ZOOM;
 
   const activateTerminalNode = useCallback(() => {
     selectCanvasNode(node.id);
@@ -650,6 +840,9 @@ function CanvasNodeView({
   // the persisted node pty or the tab's first terminal.
   const linkedPaneTerminalId = linkedTab?.terminals.find((terminal) => terminal.paneId === terminalPaneId)?.id;
   const linkedTerminalId = linkedPaneTerminalId ?? node.terminalPtyId ?? linkedTab?.terminals[0]?.id;
+  const linkedTerminal = linkedTerminalId
+    ? linkedTab?.terminals.find((terminal) => terminal.id === linkedTerminalId)
+    : undefined;
   // Prefer the live cwd (polled from the PTY) over the initial cwd so the
   // breadcrumb tracks `cd`/`z`; falls back to the spawn cwd before the first poll.
   const liveTerminalRoot = (linkedTerminalId ? liveCwds[linkedTerminalId] : undefined) ?? terminalRoot;
@@ -745,73 +938,16 @@ function CanvasNodeView({
           Open terminal
         </button>
       </div>
-    ) : showTerminalSummary ? (
-      <div
-        style={styles.terminalSummary}
-        role="button"
-        tabIndex={0}
-        onMouseDown={(event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          activateTerminalNode();
-        }}
-        onClick={(event) => {
-          event.stopPropagation();
-          activateTerminalNode();
-        }}
-        onDoubleClick={(event) => {
-          event.stopPropagation();
-          openLinkedTerminal();
-        }}
-        onKeyDown={(event) => {
-          if (event.key !== "Enter" && event.key !== " ") return;
-          event.preventDefault();
-          event.stopPropagation();
-          activateTerminalNode();
-        }}
-      >
-        {showCompactTerminalSummary ? (
-          <div
-            style={{
-              ...styles.terminalMiniSummaryContent,
-              width: `${Math.max(18, zoom * 100)}%`,
-              height: `${Math.max(18, zoom * 100)}%`,
-              transform: `scale(${1 / Math.max(zoom, MIN_ZOOM)})`,
-            }}
-          >
-            <div>
-              <div style={styles.terminalMiniTitle}>{terminalTitle}</div>
-              <div style={styles.terminalMiniMeta}>{pathTail(liveTerminalRoot)}</div>
-            </div>
-            <div style={styles.terminalMiniFooter}>
-              <span>{Math.round(zoom * 100)}%</span>
-              <span>{linkedTab?.terminals.length ?? 0} PTY</span>
-            </div>
-          </div>
-        ) : (
-          <div
-            style={{
-              ...styles.terminalSummaryContent,
-              width: `${Math.max(24, zoom * 100)}%`,
-              height: `${Math.max(24, zoom * 100)}%`,
-              transform: `scale(${1 / Math.max(zoom, MIN_ZOOM)})`,
-            }}
-          >
-            <div style={styles.terminalSummaryPanel}>
-              <div style={styles.terminalSummaryTitle}>{terminalTitle}</div>
-              <div style={styles.terminalSummaryMeta}>{pathTail(liveTerminalRoot)}</div>
-              <div style={styles.terminalSummaryCommand}>
-                <span style={styles.nativeTerminalPromptGlyph}>$</span>
-                <span style={styles.nativeTerminalPath}>live session</span>
-              </div>
-            </div>
-            <div style={styles.terminalSummaryFooter}>
-              <span>{Math.round(zoom * 100)}% map view</span>
-              <span>{linkedTab?.terminals.length ?? 0} PTY panes</span>
-            </div>
-          </div>
-        )}
-      </div>
+    ) : showTerminalPreview ? (
+      <TerminalMapPreview
+        title={terminalTitle}
+        meta={pathTail(liveTerminalRoot)}
+        status={linkedTerminal?.status}
+        ptyCount={linkedTab?.terminals.length ?? 0}
+        preview={terminalPreview}
+        onActivate={activateTerminalNode}
+        onOpen={openLinkedTerminal}
+      />
     ) : node.type === "terminal" ? (
       <TerminalComponent
         tabId={terminalTabId}
@@ -822,6 +958,7 @@ function CanvasNodeView({
         onActivate={activateTerminalNode}
         standalone
         renderScale={MAP_TERMINAL_RENDER_SCALE}
+        onSnapshot={(snapshot) => onTerminalSnapshot(node.id, snapshot)}
         // The selected map terminal is the user's active work surface, so it
         // must reflow to the node and stay readable instead of showing a frozen,
         // scaled-down projection of a larger split-pane grid.
@@ -1017,6 +1154,7 @@ export function MagicCanvas() {
   const shellRef = useRef<HTMLDivElement>(null);
   const panRef = useRef<{ x: number; y: number; viewportX: number; viewportY: number } | null>(null);
   const [fileIndex, setFileIndex] = useState(0);
+  const [terminalPreviews, setTerminalPreviews] = useState<Record<string, TerminalPreviewEntry>>({});
   // Right-click "create here" menu. Screen coords place the menu; canvas coords
   // drop the new node where the cursor is.
   const [menu, setMenu] = useState<{ x: number; y: number; canvasX: number; canvasY: number } | null>(null);
@@ -1038,6 +1176,19 @@ export function MagicCanvas() {
       updateCanvasNode(`terminal-map-${newTabId}`, { x: Math.round(canvasX), y: Math.round(canvasY) });
     }
   }, [updateCanvasNode]);
+
+  const updateTerminalPreview = useCallback((nodeId: string, snapshot: GridSnapshot) => {
+    setTerminalPreviews((current) => ({
+      ...current,
+      [nodeId]: {
+        snapshot: {
+          ...snapshot,
+          cells: snapshot.cells.map((row) => row.slice()),
+        },
+        updatedAt: Date.now(),
+      },
+    }));
+  }, []);
 
   const centerNode = useCallback((node: CanvasNode, zoom: number) => {
     const shellRect = shellRef.current?.getBoundingClientRect();
@@ -1248,6 +1399,8 @@ export function MagicCanvas() {
             key={node.id}
             node={node}
             focusNode={centerNode}
+            terminalPreview={terminalPreviews[node.id]}
+            onTerminalSnapshot={updateTerminalPreview}
           />
         ))}
       </div>
