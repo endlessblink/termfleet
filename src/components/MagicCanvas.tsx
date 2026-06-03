@@ -190,10 +190,6 @@ const styles: Record<string, CSSProperties> = {
     overflow: "hidden",
     background: "var(--surface-sunken)",
   },
-  activeTerminalContent: {
-    height: "100%",
-    transformOrigin: "top left",
-  },
   nativeTerminalPreview: {
     height: "100%",
     display: "grid",
@@ -425,6 +421,7 @@ const MAX_ZOOM = 2.2;
 const COMPACT_TERMINAL_ZOOM = 0.45;
 const READABLE_TERMINAL_ZOOM = 0.75;
 const FOCUS_TERMINAL_ZOOM = 1;
+const MAP_TERMINAL_RENDER_SCALE = 2;
 type ResizeDirection = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
 
 function isDesktopNativeRuntime() {
@@ -817,29 +814,20 @@ function CanvasNodeView({
         )}
       </div>
     ) : node.type === "terminal" ? (
-      <div
-        style={{
-          ...styles.activeTerminalContent,
-          width: `${Math.max(MIN_ZOOM, zoom) * 100}%`,
-          height: `${Math.max(MIN_ZOOM, zoom) * 100}%`,
-          transform: `scale(${1 / Math.max(zoom, MIN_ZOOM)})`,
-        }}
-      >
-        <TerminalComponent
-          tabId={terminalTabId}
-          paneId={terminalPaneId}
-          cwd={node.terminalCwd ?? linkedTab?.initialCwd}
-          attachToPtyId={linkedTerminalId ?? null}
-          runtimeActive={selected}
-          onActivate={activateTerminalNode}
-          standalone
-          renderScale={1}
-          // The selected map terminal is the user's active work surface, so it
-          // must reflow to the node and stay readable instead of showing a frozen,
-          // scaled-down projection of a larger split-pane grid.
-          mapProjection={false}
-        />
-      </div>
+      <TerminalComponent
+        tabId={terminalTabId}
+        paneId={terminalPaneId}
+        cwd={node.terminalCwd ?? linkedTab?.initialCwd}
+        attachToPtyId={linkedTerminalId ?? null}
+        runtimeActive={selected}
+        onActivate={activateTerminalNode}
+        standalone
+        renderScale={MAP_TERMINAL_RENDER_SCALE}
+        // The selected map terminal is the user's active work surface, so it
+        // must reflow to the node and stay readable instead of showing a frozen,
+        // scaled-down projection of a larger split-pane grid.
+        mapProjection={false}
+      />
     ) : node.type === "preview" ? (
       <LocalhostPreview
         previewUrl={node.previewUrl}

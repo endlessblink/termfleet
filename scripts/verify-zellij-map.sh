@@ -141,12 +141,23 @@ drive() {
   sleep 2.5
   shot "$wid" "06-map-htop-redraw.png"
 
-  # 4) Prove the selected map terminal still owns input. A nonblank map terminal
+  # 4) Zoom churn must remain a visual viewport operation. It must not trigger
+  #    grid.resize / daemon.resize for the selected zellij/tmux alt-screen PTY.
+  echo "=== MAP-PROBE-ZOOM-CHURN ===" >> "$TRACE_FILE"
+  for _ in 1 2 3 4; do
+    xdotool mousemove --window "$wid" 1348 944 click --clearmodifiers 1; sleep 0.12
+    xdotool mousemove --window "$wid" 1460 944 click --clearmodifiers 1; sleep 0.12
+  done
+  sleep 1
+  shot "$wid" "06a-map-after-zoom-churn.png"
+
+  # 5) Prove the selected map terminal still owns input. A nonblank map terminal
   # is not enough; the regression also showed selected terminal nodes that looked
   # mounted but did not respond. Click inside the terminal body and send one key;
-  # the trace parser below requires a daemon.write after this marker.
+  # the trace parser below requires both a TUI mouse report from the click and a
+  # daemon.write after this marker.
   echo "=== MAP-PROBE-MAP-INPUT ===" >> "$TRACE_FILE"
-  xdotool mousemove --window "$wid" 930 360 click --clearmodifiers 1; sleep 0.4
+  xdotool mousemove --window "$wid" 760 190 click --clearmodifiers 1; sleep 0.4
   xdotool key --clearmodifiers q; sleep 1
   shot "$wid" "07-map-after-input.png"
 
@@ -193,18 +204,27 @@ def cols_rows(line):
 
 events = []
 input_marker = None
+zoom_marker = None
 map_input_write = False
+map_mouse_report_write = False
+zoom_resize_events = []
 for l in lines:
     if "MAP-PROBE-MAP-INPUT" in l:
         input_marker = len(events)
+    if "MAP-PROBE-ZOOM-CHURN" in l:
+        zoom_marker = len(events)
     for label in ("grid.attach", "grid.resize",
                   "daemon.ensure.receive", "daemon.ensure.done",
                   "daemon.resize.receive", "daemon.write.receive"):
         if label in l:
             ts = re.search(r"\[TW-PTY\]\s+(\d+)", l)
             events.append((int(ts.group(1)) if ts else 0, label, l.strip()))
+            if zoom_marker is not None and input_marker is None and label in {"grid.resize", "daemon.resize.receive"}:
+                zoom_resize_events.append(l.strip())
             if input_marker is not None and label == "daemon.write.receive":
                 map_input_write = True
+                if "[<" in l:
+                    map_mouse_report_write = True
             break
 
 events.sort(key=lambda e: e[0])
@@ -231,6 +251,17 @@ if grid[0] is not None and pty[0] is not None:
         else:
             print("MAP_INPUT_MISSING  selected map terminal did not send input to daemon after map click")
             sys.exit(1)
+        if map_mouse_report_write:
+            print("MAP_MOUSE_REPORT_REACHED_DAEMON  selected map terminal forwarded TUI mouse report bytes")
+        else:
+            print("MAP_MOUSE_REPORT_MISSING  selected map terminal click did not send VT mouse report bytes")
+            sys.exit(1)
+        if zoom_resize_events:
+            print("MAP_ZOOM_CAUSED_TERMINAL_RESIZE  zoom churn triggered terminal resize events:")
+            for event in zoom_resize_events:
+                print("  ", event)
+            sys.exit(1)
+        print("MAP_ZOOM_VISUAL_ONLY  zoom churn did not resize grid/PTY")
         sys.exit(0)
     else:
         print(f"GRID_PTY_DIVERGED  grid {grid[0]} cols vs pty {pty[0]} cols -- winsize mismatch IS the fragmentation")
