@@ -78,3 +78,50 @@ test("map terminal rendering avoids pixelated live canvases and grouped preview 
   expect(result.segmentCount).toBeLessThan(8);
   expect(result.segmentText.length).toBe(96);
 });
+
+test("overview preview sampling is capped and groups noisy terminal rows", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+
+  const result = await page.evaluate(async () => {
+    const { snapshotPreviewRows } = await import("/src/components/MagicCanvas.tsx");
+
+    const colors = ["#ff00ff", "#00ff00", "#00d0ff", "#d0d0d0"];
+    const cells = Array.from({ length: 120 }, (_, rowIndex) =>
+      Array.from({ length: 180 }, (_, colIndex) => {
+        const block = Math.floor(colIndex / 12);
+        const active = block % 3 !== 2;
+        return {
+          c: active ? String.fromCharCode(65 + ((rowIndex + block) % 26)) : " ",
+          fg: colors[block % colors.length],
+          bg: "#000000",
+        };
+      }),
+    );
+
+    const rows = snapshotPreviewRows({
+      cols: 180,
+      rows: 120,
+      cursor: { col: 0, line: 0 },
+      cursorVisible: false,
+      altScreen: false,
+      cells,
+    });
+
+    const segmentCounts = rows.map((row) => row.segments.length);
+    const visibleChars = rows.map((row) =>
+      row.segments.reduce((total, segment) => total + segment.text.length, 0),
+    );
+
+    return {
+      rowCount: rows.length,
+      maxSegments: Math.max(...segmentCounts),
+      maxVisibleChars: Math.max(...visibleChars),
+      totalSegments: segmentCounts.reduce((total, count) => total + count, 0),
+    };
+  });
+
+  expect(result.rowCount).toBeLessThanOrEqual(14);
+  expect(result.maxVisibleChars).toBeLessThanOrEqual(72);
+  expect(result.maxSegments).toBeLessThanOrEqual(18);
+  expect(result.totalSegments).toBeLessThan(14 * 72);
+});
