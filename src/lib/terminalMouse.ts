@@ -51,3 +51,7 @@ export function pointerButtonToTerminalButton(button: number): TerminalMouseButt
   if (button === 2) return 2;
   return null;
 }
+
+export function shouldSendWheelToTerminalApp(modifiers: TerminalMouseModifiers): boolean {
+  return Boolean(modifiers.altKey);
+}

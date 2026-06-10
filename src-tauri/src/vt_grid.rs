@@ -9,7 +9,7 @@
 //! Later stages replace the JSON snapshot with a binary dirty-diff pushed to the
 //! canvas renderer; the grid ownership established here is the foundation.
 
-use crate::daemon::{daemon_socket_path, DaemonRequest, DaemonResponse};
+use crate::daemon::{daemon_ensure_running, daemon_socket_path, DaemonRequest, DaemonResponse};
 use alacritty_terminal::event::VoidListener;
 use alacritty_terminal::grid::{Dimensions, Scroll};
 use alacritty_terminal::index::{Column, Line};
@@ -300,7 +300,20 @@ fn run_emitter(
 /// replays the escape sequences and reconstructs the screen), then live deltas.
 fn feed_grid_from_daemon(id: &str, state: &Arc<RwLock<TermState>>) -> Result<(), String> {
     let socket_path = daemon_socket_path();
-    let mut stream = UnixStream::connect(&socket_path).map_err(|error| error.to_string())?;
+    let mut stream = match UnixStream::connect(&socket_path) {
+        Ok(stream) => stream,
+        Err(initial_error) => {
+            let status = daemon_ensure_running();
+            if !status.reachable {
+                return Err(status.message);
+            }
+            UnixStream::connect(&socket_path).map_err(|retry_error| {
+                format!(
+                    "terminal daemon became reachable but grid stream connect still failed: {retry_error} (initial: {initial_error})"
+                )
+            })?
+        }
+    };
     let request = serde_json::to_vec(&DaemonRequest::SubscribeSession {
         id: id.to_string(),
         subscriber_id: format!("vt-grid-{}-{id}", std::process::id()),

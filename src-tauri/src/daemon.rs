@@ -242,7 +242,20 @@ fn truncate_trace_detail(details: &str) -> String {
 
 pub fn send_daemon_request(request: DaemonRequest) -> Result<DaemonResponse, String> {
     let socket_path = daemon_socket_path();
-    let mut stream = UnixStream::connect(&socket_path).map_err(|error| error.to_string())?;
+    let mut stream = match UnixStream::connect(&socket_path) {
+        Ok(stream) => stream,
+        Err(initial_error) => {
+            let status = daemon_ensure_running();
+            if !status.reachable {
+                return Err(status.message);
+            }
+            UnixStream::connect(&socket_path).map_err(|retry_error| {
+                format!(
+                    "terminal daemon became reachable but request connect still failed: {retry_error} (initial: {initial_error})"
+                )
+            })?
+        }
+    };
     stream
         .set_read_timeout(Some(Duration::from_millis(700)))
         .map_err(|error| error.to_string())?;

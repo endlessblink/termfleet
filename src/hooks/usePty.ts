@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useRef } from "react";
 import { Channel, invoke } from "@tauri-apps/api/core";
-import { emit, listen, UnlistenFn } from "@tauri-apps/api/event";
+import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import type { IDisposable, Terminal } from "@xterm/xterm";
+import {
+  createDaemonInputQueue,
+  nextTerminalInputSequence,
+  type DaemonInputQueue,
+} from "../lib/daemonInputQueue";
 import { traceTerminalLatency } from "../lib/terminalLatencyTrace";
 import type { TerminalRuntimeStatus } from "../lib/types";
 
@@ -44,23 +49,14 @@ type PtyTransport = "browser" | "tauri" | "daemon";
 const browserPtys = new Map<string, BrowserPtySession>();
 const ptyOutputBuffers = new Map<string, string>();
 const MAX_REPLAY_BUFFER = 200_000;
-const DAEMON_INPUT_BATCH_MS = 1;
-const DAEMON_IMMEDIATE_INPUT_PATTERN = /[\r\n\u0003\u0004\u0015\u001b]/;
-const DAEMON_INPUT_EVENT = "terminal-workspace-daemon-input";
 const TRACE_PTY =
   typeof window !== "undefined" && window.localStorage?.getItem("terminal-workspace.tracePty") === "1";
-let terminalInputSequence = 0;
 type ActiveInputListener = {
   transport: PtyTransport;
   sessionHint: string;
   dispose?: () => void;
 };
 const activeInputListeners = new Map<string, ActiveInputListener>();
-
-function nextTerminalInputSequence() {
-  terminalInputSequence += 1;
-  return terminalInputSequence;
-}
 
 function syncInputListenerDebugState() {
   if (typeof window === "undefined") return;
@@ -330,6 +326,7 @@ export function usePty({ terminal, cwd, command, attachToPtyId, runtimeSessionId
   const daemonSubscriberIdRef = useRef(`terminal-view-${crypto.randomUUID()}`);
   const inputListenerIdRef = useRef(`terminal-input-${crypto.randomUUID()}`);
   const inputListenerActiveRef = useRef(false);
+  const daemonInputQueueRef = useRef<DaemonInputQueue | null>(null);
   const daemonPollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const transportFailedRef = useRef(false);
 
@@ -470,58 +467,15 @@ export function usePty({ terminal, cwd, command, attachToPtyId, runtimeSessionId
           try {
             transportRef.current = "daemon";
             ownsPtyRef.current = !attachToPtyId;
-            let pendingDaemonInput = "";
-            let pendingDaemonInputSeqIds: number[] = [];
-            let daemonInputFlushTimeout: ReturnType<typeof setTimeout> | null = null;
-
-            const flushDaemonInput = () => {
-              daemonInputFlushTimeout = null;
-              if (!ptyIdRef.current || !pendingDaemonInput) return;
-              const data = pendingDaemonInput;
-              const seqIds = pendingDaemonInputSeqIds;
-              pendingDaemonInput = "";
-              pendingDaemonInputSeqIds = [];
-              tracePty("frontend.daemon.write.emit.start", {
-                id: ptyIdRef.current,
-                bytes: data.length,
-                seqIds,
-                data,
-              });
-              traceTerminalLatency("frontend.daemon.input.send.start", {
-                id: ptyIdRef.current,
-                bytes: data.length,
-                seqIds,
-                data,
-              });
-              emit(DAEMON_INPUT_EVENT, { id: ptyIdRef.current, data, seqIds }).catch((writeError) => {
-                tracePty("frontend.daemon.write.emit.failed", {
-                  bytes: data.length,
-                  seqIds,
-                  error: String(writeError),
-                });
-                traceTerminalLatency("frontend.daemon.input.send.failed", {
-                  id: ptyIdRef.current,
-                  bytes: data.length,
-                  seqIds,
-                  error: String(writeError),
-                });
-                invoke("daemon_write_session", { id: ptyIdRef.current, data }).catch(
-                  (fallbackError) => {
-                    stopBrokenTransport(fallbackError, "write");
-                  }
-                );
-              }).finally(() => {
-                tracePty("frontend.daemon.write.emit.end", {
-                  bytes: data.length,
-                  seqIds,
-                });
-                traceTerminalLatency("frontend.daemon.input.send.end", {
-                  id: ptyIdRef.current,
-                  bytes: data.length,
-                  seqIds,
-                });
-              });
-            };
+            const daemonInputQueue = createDaemonInputQueue({
+              getId: () => ptyIdRef.current,
+              source: "xterm-onData",
+              tracePty,
+              onFallbackError: (fallbackError) => {
+                stopBrokenTransport(fallbackError, "write");
+              },
+            });
+            daemonInputQueueRef.current = daemonInputQueue;
 
             const queueDaemonInput = (data: string, seqId: number) => {
               tracePty("frontend.xterm.onData", {
@@ -537,20 +491,7 @@ export function usePty({ terminal, cwd, command, attachToPtyId, runtimeSessionId
                 activeInputListeners: activeInputListeners.size,
                 data,
               });
-              pendingDaemonInput += data;
-              pendingDaemonInputSeqIds.push(seqId);
-              const shouldFlushImmediately = DAEMON_IMMEDIATE_INPUT_PATTERN.test(data);
-              if (shouldFlushImmediately && daemonInputFlushTimeout) {
-                clearTimeout(daemonInputFlushTimeout);
-                daemonInputFlushTimeout = null;
-                flushDaemonInput();
-                return;
-              }
-              if (daemonInputFlushTimeout) return;
-              daemonInputFlushTimeout = window.setTimeout(
-                flushDaemonInput,
-                shouldFlushImmediately ? 0 : DAEMON_INPUT_BATCH_MS
-              );
+              daemonInputQueue.queue(data, seqId);
             };
 
             dataDisposableRef.current = terminal!.onData((data: string) => {
@@ -634,14 +575,16 @@ export function usePty({ terminal, cwd, command, attachToPtyId, runtimeSessionId
             });
 
             for (const data of pendingWrites.splice(0)) {
-              pendingDaemonInput += data;
+              daemonInputQueue.queue(data);
             }
-            flushDaemonInput();
+            daemonInputQueue.flush();
 
             return;
           } catch (daemonError) {
             console.warn("Daemon PTY transport failed; falling back to embedded Tauri PTY:", daemonError);
             disposeInputListener();
+            daemonInputQueueRef.current?.dispose();
+            daemonInputQueueRef.current = null;
             daemonOutputChannelRef.current = null;
             if (daemonPollTimeoutRef.current) {
               clearTimeout(daemonPollTimeoutRef.current);
@@ -742,6 +685,8 @@ export function usePty({ terminal, cwd, command, attachToPtyId, runtimeSessionId
     return () => {
       cancelled = true;
       disposeInputListener();
+      daemonInputQueueRef.current?.dispose();
+      daemonInputQueueRef.current = null;
       daemonOutputChannelRef.current = null;
       unlistenRef.current?.();
       unlistenRef.current = null;
@@ -786,29 +731,16 @@ export function usePty({ terminal, cwd, command, attachToPtyId, runtimeSessionId
     }
     if (transportRef.current === "daemon") {
       const seqId = nextTerminalInputSequence();
-      traceTerminalLatency("frontend.daemon.input.send.start", {
-        id: ptyIdRef.current,
-        bytes: data.length,
-        seqIds: [seqId],
-        source: "imperative-write",
-      });
-      emit(DAEMON_INPUT_EVENT, { id: ptyIdRef.current, data, seqIds: [seqId] }).catch((writeError) => {
-        traceTerminalLatency("frontend.daemon.input.send.failed", {
-          id: ptyIdRef.current,
-          bytes: data.length,
-          seqIds: [seqId],
+      let queue = daemonInputQueueRef.current;
+      if (!queue) {
+        queue = createDaemonInputQueue({
+          getId: () => ptyIdRef.current,
           source: "imperative-write",
-          error: String(writeError),
+          onFallbackError: console.error,
         });
-        invoke("daemon_write_session", { id: ptyIdRef.current, data }).catch(console.error);
-      }).finally(() => {
-        traceTerminalLatency("frontend.daemon.input.send.end", {
-          id: ptyIdRef.current,
-          bytes: data.length,
-          seqIds: [seqId],
-          source: "imperative-write",
-        });
-      });
+        daemonInputQueueRef.current = queue;
+      }
+      queue.queue(data, seqId);
       return;
     }
     invoke("pty_write", { id: ptyIdRef.current, data }).catch(console.error);

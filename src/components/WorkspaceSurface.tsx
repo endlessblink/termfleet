@@ -179,7 +179,9 @@ export function WorkspaceSurface() {
   const tabs = useWorkspaceStore((state) => state.tabs);
   const activeTabId = useWorkspaceStore((state) => state.activeTabId);
   const workspaceMode = useWorkspaceStore((state) => state.workspaceUiState.workspaceMode);
+  const immersiveTerminal = useWorkspaceStore((state) => state.workspaceUiState.immersiveTerminal);
   const hydrating = useWorkspaceStore((state) => state.hydrating);
+  const effectiveWorkspaceMode = immersiveTerminal.enabled ? "split" : workspaceMode;
 
   // Hold terminals from mounting until the durable layout is loaded, so they
   // spawn against the restored tab/pane ids (not the default tab's) — otherwise
@@ -199,10 +201,10 @@ export function WorkspaceSurface() {
   return (
     <main className="workspace-surface" style={styles.shell}>
       <div style={styles.stage}>
-        {workspaceMode === "canvas" && (
+        {effectiveWorkspaceMode === "canvas" && (
           <div style={{ ...styles.surfacePane, zIndex: 1 }}>
             <div style={styles.canvasShell}>
-              <CanvasSidebar />
+              {!immersiveTerminal.enabled && <CanvasSidebar />}
               <div style={styles.canvasStage}>
                 <Suspense fallback={<MapSurfaceFallback />}>
                   <MagicCanvas />
@@ -211,12 +213,12 @@ export function WorkspaceSurface() {
             </div>
           </div>
         )}
-        {workspaceMode === "split" && (
+        {effectiveWorkspaceMode === "split" && (
           <div style={{ ...styles.surfacePane, zIndex: 1 }}>
             <SplitWorkspace tabs={tabs} activeTabId={activeTabId} />
           </div>
         )}
-        {workspaceMode === "graph" && (
+        {effectiveWorkspaceMode === "graph" && (
           <div style={{ ...styles.surfacePane, zIndex: 1 }}>
             <div style={styles.graph}>
               <Suspense fallback={<MapSurfaceFallback />}>

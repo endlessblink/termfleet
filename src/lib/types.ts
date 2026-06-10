@@ -67,6 +67,11 @@ export type TerminalRendererMode =
 export interface WorkspaceUiState {
   workspaceMode: WorkspaceMode;
   terminalRendererMode: TerminalRendererMode;
+  immersiveTerminal: {
+    enabled: boolean;
+    tabId: string | null;
+    paneId: string | null;
+  };
   fileExplorerWidth: number;
   fileExplorerCollapsed: boolean;
   canvasSidebarCollapsed: boolean;

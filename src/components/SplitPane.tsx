@@ -414,6 +414,8 @@ function MeasuringFallback() {
 
 export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
   const groups = useWorkspaceStore((state) => state.groups);
+  const immersiveTerminal = useWorkspaceStore((state) => state.workspaceUiState.immersiveTerminal);
+  const exitImmersiveTerminal = useWorkspaceStore((state) => state.exitImmersiveTerminal);
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; paneId: string } | null>(null);
@@ -462,8 +464,26 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
 
   const paneBounds = calculatePaneBounds(tab.splitLayout, containerRect);
   const handles = calculateHandles(tab.splitLayout, containerRect);
-  const leafIds = getAllLeafIds(tab.splitLayout);
+  const immersivePaneId =
+    immersiveTerminal.enabled && immersiveTerminal.tabId === tab.id
+      ? immersiveTerminal.paneId
+      : null;
+  const leafIds = immersivePaneId
+    ? getAllLeafIds(tab.splitLayout).filter((paneId) => paneId === immersivePaneId)
+    : getAllLeafIds(tab.splitLayout);
   const multiplePanes = countLeaves(tab.splitLayout) > 1;
+
+  useEffect(() => {
+    if (!immersivePaneId) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      exitImmersiveTerminal();
+    }
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [exitImmersiveTerminal, immersivePaneId]);
 
   return (
     <div
@@ -473,10 +493,13 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
       {(containerSize.width <= 0 || containerSize.height <= 0) && <MeasuringFallback />}
       {/* Terminal panes — stable keys, absolute positioning */}
       {leafIds.map((paneId) => {
-        const bounds = paneBounds.get(paneId);
+        const bounds = immersivePaneId
+          ? containerRect
+          : paneBounds.get(paneId);
         if (!bounds || bounds.width <= 0 || bounds.height <= 0) return null;
 
         const isActive = paneId === tab.activePaneId;
+        const isImmersivePane = immersivePaneId === paneId;
         const paneNode = getLeafNode(tab.splitLayout, paneId);
         const isPreviewPane = paneNode?.type === "preview";
         const paneCwd = getPaneCwd(tab.splitLayout, paneId) ?? tab.initialCwd;
@@ -506,11 +529,15 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
               flexDirection: "column",
               overflow: "hidden",
               background: "var(--surface-sunken)",
-              border: "1px solid transparent",
-              borderRadius: "var(--radius-md)",
-              boxShadow: isActive ? "var(--shadow-active-pane)" : "0 0 0 1px rgba(0, 0, 0, 0.12)",
-              transition: "box-shadow var(--motion-med), border-color var(--motion-med), background var(--motion-med)",
-              animation: "workbench-surface-in var(--motion-med)",
+              border: isImmersivePane ? "none" : "1px solid transparent",
+              borderRadius: isImmersivePane ? 0 : "var(--radius-md)",
+              boxShadow: isImmersivePane
+                ? "none"
+                : isActive ? "var(--shadow-active-pane)" : "0 0 0 1px rgba(0, 0, 0, 0.12)",
+              transition: isImmersivePane
+                ? "none"
+                : "box-shadow var(--motion-med), border-color var(--motion-med), background var(--motion-med)",
+              animation: isImmersivePane ? "none" : "workbench-surface-in var(--motion-med)",
             }}
             onClick={() => {
               useWorkspaceStore.getState().setActivePane(tab.id, paneId);
@@ -523,7 +550,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
             onMouseEnter={() => setHoveredPaneId(paneId)}
             onMouseLeave={() => setHoveredPaneId((current) => current === paneId ? null : current)}
           >
-            {isActive && (
+            {isActive && !isImmersivePane && (
               <div
                 aria-hidden="true"
                 style={{
@@ -537,6 +564,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                 }}
               />
             )}
+            {!isImmersivePane && (
             <div
               style={{
                 height: chromeHeight,
@@ -622,6 +650,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                 visible={showActions}
               />
             </div>
+            )}
             <div style={{ flex: 1, minHeight: 0, minWidth: 0 }}>
               {isPreviewPane ? (
                 <LocalhostPreview
@@ -643,12 +672,12 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
       })}
 
       {/* Resize handles */}
-      {handles.map((handle, i) => (
+      {!immersivePaneId && handles.map((handle, i) => (
         <ResizeHandle key={i} handle={handle} tabId={tab.id} />
       ))}
 
       {/* Context menu */}
-      {contextMenu && (
+      {!immersivePaneId && contextMenu && (
         <PaneContextMenu
           x={contextMenu.x}
           y={contextMenu.y}

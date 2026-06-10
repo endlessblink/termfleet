@@ -8,6 +8,7 @@ import {
   Globe,
   ListTree,
   Map,
+  Maximize2,
   PanelBottom,
   PanelRight,
   Rocket,
@@ -518,6 +519,8 @@ export function WorkbenchHeader() {
   const activeTab = tabs.find((tab) => tab.id === activeTabId);
   const commandQuery = normalizeCommand(commandValue);
   const activePaneCount = activeTab ? getAllLeafIds(activeTab.splitLayout).length : 0;
+  const immersiveTerminal = useWorkspaceStore((state) => state.workspaceUiState.immersiveTerminal);
+  const toggleImmersiveTerminal = useWorkspaceStore((state) => state.toggleImmersiveTerminal);
   const selectedProjectName = projectNameFor(activeGroupFilter, groups);
   const selectedProjectRoot = projectRootFor(activeGroupFilter, groups, activeTab) ?? projectRoot;
   // The path crumb follows the focused terminal's live cwd (where you actually
@@ -562,6 +565,21 @@ export function WorkbenchHeader() {
           createNewTab();
           setWorkspaceMode("split");
           setCommandStatus("new terminal");
+        },
+      },
+      {
+        id: "immersive-terminal",
+        label: immersiveTerminal.enabled ? "Exit immersive terminal" : "Immersive terminal",
+        detail: activeTab ? "Let the active terminal own the viewport" : "No active terminal",
+        keywords: ["immersive", "full", "fullscreen", "focus", "tui", "terminal"],
+        scope: "actions",
+        shortcut: "Ctrl Shift F",
+        Icon: Maximize2,
+        run: () => {
+          if (!activeTab) return;
+          toggleImmersiveTerminal(activeTab.id, activeTab.activePaneId);
+          setWorkspaceMode("split");
+          setCommandStatus(immersiveTerminal.enabled ? "exit immersive" : "immersive terminal");
         },
       },
       {
@@ -810,7 +828,7 @@ export function WorkbenchHeader() {
     }));
 
     return [...baseActions, ...sessionActions, ...paneActions, ...launchActions, ...fileActions];
-  }, [activeTab, addOpenFile, focusActiveTerminalOnMap, openFiles, projectLabel, setActiveTab, setWorkspaceMode, switchProject, tabs, updateUiState]);
+  }, [activeTab, addOpenFile, focusActiveTerminalOnMap, immersiveTerminal.enabled, openFiles, projectLabel, setActiveTab, setWorkspaceMode, switchProject, tabs, toggleImmersiveTerminal, updateUiState]);
 
   const visibleActions = useMemo(() => {
     return actions.filter((action) => actionMatches(action, commandQuery)).slice(0, 9);
@@ -829,6 +847,17 @@ export function WorkbenchHeader() {
       const opensPrimaryPalette = (event.ctrlKey || event.metaKey) && key === "k";
       const opensTerminalPalette = event.ctrlKey && event.shiftKey && key === "p";
       const createsNewTerminal = event.ctrlKey && event.shiftKey && key === "t";
+      const togglesImmersiveTerminal = event.ctrlKey && event.shiftKey && key === "f";
+      if (togglesImmersiveTerminal) {
+        const active = useWorkspaceStore.getState().getActiveTab();
+        if (active) {
+          event.preventDefault();
+          event.stopPropagation();
+          useWorkspaceStore.getState().toggleImmersiveTerminal(active.id, active.activePaneId);
+          setCommandStatus("immersive terminal");
+        }
+        return;
+      }
       if (opensPrimaryPalette || opensTerminalPalette) {
         event.preventDefault();
         event.stopPropagation();

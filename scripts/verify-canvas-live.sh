@@ -198,11 +198,11 @@ session_id = None
 for line in lines:
     if "CANVAS-LIVE-SHELL-INPUT" in line:
         marker_seen = True
-    if "daemon.ensure.done" in line or "daemon.write.receive" in line:
+    if "daemon.ensure.done" in line or "daemon.write.receive" in line or "daemon.input_stream.receive" in line:
         match = re.search(r"id=([^\s]+)", line)
         if match:
             session_id = match.group(1)
-    if marker_seen and "daemon.write.receive" in line:
+    if marker_seen and ("daemon.write.receive" in line or "daemon.input_stream.receive" in line):
         input_write = True
 
 if not marker_seen:

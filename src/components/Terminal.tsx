@@ -531,6 +531,8 @@ export function TerminalComponent({
         <div className="terminal-container" data-terminal-renderer="canvas2d">
           <TerminalCanvas
             sessionId={attachToPtyId ?? runtimeSessionId}
+            tabId={tabId}
+            paneId={paneId}
             cwd={cwd}
             command={command}
             renderScale={renderScale}

@@ -12,9 +12,11 @@ const workbenchHeader = readFileSync(join(root, "src/components/WorkbenchHeader.
 const workbenchSidebar = readFileSync(join(root, "src/components/WorkbenchSidebar.tsx"), "utf8");
 const workspaceStore = readFileSync(join(root, "src/stores/workspace.ts"), "utf8");
 const usePty = readFileSync(join(root, "src/hooks/usePty.ts"), "utf8");
+const daemonInputQueue = readFileSync(join(root, "src/lib/daemonInputQueue.ts"), "utf8");
 const useNativeTerminalPane = readFileSync(join(root, "src/hooks/useNativeTerminalPane.ts"), "utf8");
 const terminalComponent = readFileSync(join(root, "src/components/Terminal.tsx"), "utf8");
 const terminalCanvas = readFileSync(join(root, "src/components/TerminalCanvas.tsx"), "utf8");
+const workspaceSurface = readFileSync(join(root, "src/components/WorkspaceSurface.tsx"), "utf8");
 const splitPane = readFileSync(join(root, "src/components/SplitPane.tsx"), "utf8");
 const types = readFileSync(join(root, "src/lib/types.ts"), "utf8");
 const masterPlanTasks = readFileSync(join(root, "src/lib/masterPlanTasks.ts"), "utf8");
@@ -76,6 +78,26 @@ const devLaunchers = [runDev, runNativeDev];
 
 const checks = [
   {
+    ok: /immersiveTerminal: \{\s*enabled: false,\s*tabId: null,\s*paneId: null,\s*\}/.test(workspaceStore) &&
+      /enterImmersiveTerminal: \(tabId: string, paneId: string\) => void;/.test(workspaceStore) &&
+      /exitImmersiveTerminal: \(\) => void;/.test(workspaceStore) &&
+      /toggleImmersiveTerminal: \(tabId: string, paneId: string\) => void;/.test(workspaceStore) &&
+      /data-immersive-terminal=\{immersiveTerminal\.enabled \? "true" : "false"\}/.test(app) &&
+      /\{!immersiveTerminal\.enabled && <WorkbenchHeader \/>}/.test(app) &&
+      /\{!immersiveTerminal\.enabled && <WorkbenchSidebar \/>}/.test(app) &&
+      /\{!immersiveTerminal\.enabled && <StatusBar \/>}/.test(app) &&
+      /const effectiveWorkspaceMode = immersiveTerminal\.enabled \? "split" : workspaceMode;/.test(workspaceSurface) &&
+      /\{!immersiveTerminal\.enabled && <CanvasSidebar \/>}/.test(workspaceSurface) &&
+      /const immersivePaneId =[\s\S]*immersiveTerminal\.enabled && immersiveTerminal\.tabId === tab\.id/.test(splitPane) &&
+      /window\.addEventListener\("keydown", onKeyDown, true\);/.test(splitPane) &&
+      /event\.key !== "Escape"/.test(splitPane) &&
+      /exitImmersiveTerminal\(\);/.test(splitPane) &&
+      /const bounds = immersivePaneId\s*\?\s*containerRect\s*:\s*paneBounds\.get\(paneId\);/.test(splitPane) &&
+      /\{!isImmersivePane && \(/.test(splitPane) &&
+      /\{!immersivePaneId && handles\.map/.test(splitPane),
+    message: "Immersive terminal mode must hide app/sidebar/status/pane chrome, render only the targeted pane, and reserve Escape as the exit path.",
+  },
+  {
     ok: /"verify:terminal-reliability": "scripts\/verify-terminal-reliability\.sh"/.test(packageJson) &&
       /"verify:terminal-reliability:live": "TERMFLEET_TERMINAL_RELIABILITY_LIVE=1 scripts\/verify-terminal-reliability\.sh"/.test(packageJson) &&
       /TERMFLEET_TERMINAL_RELIABILITY_LIVE/.test(terminalReliabilityGate) &&
@@ -126,13 +148,18 @@ const checks = [
     ok: /"verify:terminal-mouse": "playwright test terminal-mouse"/.test(packageJson) &&
       /encodeMouseReport/.test(terminalCanvas) &&
       /pointerButtonToTerminalButton/.test(terminalCanvas) &&
+      /shouldSendWheelToTerminalApp\(event\)/.test(terminalCanvas) &&
+      /invoke\("grid_scroll"/.test(terminalCanvas) &&
       /sendPointerMouseReport\(event/.test(terminalCanvas) &&
       /modesRef\.current\.mouseReport/.test(terminalCanvas) &&
       /release \? "m" : "M"/.test(terminalMouse) &&
+      /export function shouldSendWheelToTerminalApp/.test(terminalMouse) &&
       /pointerButtonToTerminalButton\(0\)/.test(terminalMouseSpec) &&
       /leftReleaseSgr/.test(terminalMouseSpec) &&
-      /wheelDownLegacyHex/.test(terminalMouseSpec),
-    message: "Canvas terminals must forward TUI mouse clicks/releases/wheel reports as VT mouse sequences instead of treating them only as DOM focus/selection.",
+      /wheelDownLegacyHex/.test(terminalMouseSpec) &&
+      /plainWheelUsesTerminalHistory/.test(terminalMouseSpec) &&
+      /altWheelUsesTerminalApp/.test(terminalMouseSpec),
+    message: "Canvas terminals must make plain wheel scroll TermFleet history while preserving Alt+wheel VT mouse sequences for TUI apps.",
   },
   {
     ok: /function TerminalMapPreview/.test(magicCanvas) &&
@@ -192,7 +219,11 @@ const checks = [
       /commands::grid_scroll_to_bottom/.test(tauriLib) &&
       /await invoke\("grid_scroll_to_bottom", \{ id: sessionId \}\);/.test(terminalCanvas) &&
       /invoke\("grid_scroll_to_bottom", \{ id: sessionId \}\)/.test(terminalCanvas) &&
-      /invoke\("grid_scroll_to_bottom", \{ id: sessionIdRef\.current \}\)/.test(terminalCanvas) &&
+      /const send = \(data: string, seqId = nextTerminalInputSequence\(\), source = "canvas-send"\) => \{\s*invoke\("grid_scroll_to_bottom", \{ id: sessionIdRef\.current \}\)/.test(terminalCanvas) &&
+      /send\(bytes, seqId, "canvas-capture-keydown"\)/.test(terminalCanvas) &&
+      /createDaemonInputQueue/.test(terminalCanvas) &&
+      /send\(bytes, seqId, "canvas-keydown"\)/.test(terminalCanvas) &&
+      /send\(bytes, seqId, "canvas-capture-keydown"\)/.test(terminalCanvas) &&
       /trace_pty\("grid\.scroll"/.test(ptyCommands) &&
       /trace_pty\("grid\.scroll_to_bottom"/.test(ptyCommands) &&
       /cursor_visible: offset == 0 && mode\.contains\(TermMode::SHOW_CURSOR\)/.test(vtGrid) &&
@@ -533,6 +564,12 @@ const checks = [
       /protocol_version/.test(daemonBackend) &&
       /daemon_socket_path/.test(daemonBackend) &&
       /pub fn daemon_ensure_running\(\) -> DaemonStatus/.test(daemonBackend) &&
+      /let status = daemon_ensure_running\(\);[\s\S]*if !status\.reachable/.test(daemonBackend) &&
+      /terminal daemon became reachable but request connect still failed/.test(daemonBackend) &&
+      /use crate::daemon::\{daemon_ensure_running, daemon_socket_path, DaemonRequest, DaemonResponse\};/.test(vtGrid) &&
+      /terminal daemon became reachable but grid stream connect still failed/.test(vtGrid) &&
+      /const daemonStatus = await invoke<\{ reachable: boolean; message: string \}>\("daemon_ensure_running"\);/.test(terminalCanvas) &&
+      /if \(!daemonStatus\.reachable\) \{[\s\S]*throw new Error\(daemonStatus\.message\);/.test(terminalCanvas) &&
       /spawn_current_binary_as_daemon/.test(daemonBackend) &&
       /DAEMON_ARG/.test(daemonBackend) &&
       /terminal_workspace_lib::daemon::DAEMON_ARG/.test(tauriMain) &&
@@ -639,8 +676,10 @@ const checks = [
       /invoke\("daemon_unsubscribe_session"/.test(usePty) &&
       /daemonOutputChannelRef\.current = outputChannel/.test(usePty) &&
       /daemonSubscriberIdRef/.test(usePty) &&
-      /const DAEMON_INPUT_EVENT = "terminal-workspace-daemon-input";/.test(usePty) &&
-      /emit\(DAEMON_INPUT_EVENT, \{ id: ptyIdRef\.current, data, seqIds \}\)/.test(usePty) &&
+      /DAEMON_INPUT_EVENT = "terminal-workspace-daemon-input";/.test(daemonInputQueue) &&
+      /emit\(DAEMON_INPUT_EVENT, \{ id, data, seqIds \}\)/.test(daemonInputQueue) &&
+      /createDaemonInputQueue/.test(usePty) &&
+      /source: "xterm-onData"/.test(usePty) &&
       /activeInputListeners/.test(usePty) &&
       /nextTerminalInputSequence/.test(usePty) &&
       /daemon_resize_session/.test(usePty),

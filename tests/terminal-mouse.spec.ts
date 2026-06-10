@@ -12,9 +12,11 @@ test("terminal mouse reports encode SGR and legacy VT sequences", async ({ page 
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
 
   const out = await page.evaluate(async () => {
-    const { encodeMouseReport, pointerButtonToTerminalButton } = await import(
-      "/src/lib/terminalMouse.ts"
-    );
+    const {
+      encodeMouseReport,
+      pointerButtonToTerminalButton,
+      shouldSendWheelToTerminalApp,
+    } = await import("/src/lib/terminalMouse.ts");
     const hex = (value: string) =>
       [...value].map((ch) => ch.charCodeAt(0).toString(16).padStart(2, "0")).join(" ");
 
@@ -40,6 +42,8 @@ test("terminal mouse reports encode SGR and legacy VT sequences", async ({ page 
       middleButton: pointerButtonToTerminalButton(1),
       rightButton: pointerButtonToTerminalButton(2),
       ignoredButton: pointerButtonToTerminalButton(4),
+      plainWheelUsesTerminalHistory: shouldSendWheelToTerminalApp({ altKey: false }),
+      altWheelUsesTerminalApp: shouldSendWheelToTerminalApp({ altKey: true }),
     };
   });
 
@@ -52,4 +56,6 @@ test("terminal mouse reports encode SGR and legacy VT sequences", async ({ page 
   expect(out.middleButton).toBe(1);
   expect(out.rightButton).toBe(2);
   expect(out.ignoredButton).toBeNull();
+  expect(out.plainWheelUsesTerminalHistory).toBe(false);
+  expect(out.altWheelUsesTerminalApp).toBe(true);
 });

@@ -68,6 +68,11 @@ export const WORKSPACE_STORAGE_KEY = FORCE_WORKSPACE_RESET_STATE
 const DEFAULT_UI_STATE: WorkspaceUiState = {
   workspaceMode: FORCED_WORKSPACE_MODE ?? "split",
   terminalRendererMode: FORCED_TERMINAL_RENDERER_MODE ?? "auto",
+  immersiveTerminal: {
+    enabled: false,
+    tabId: null,
+    paneId: null,
+  },
   fileExplorerWidth: 260,
   // Explorer is a toggle, not a permanent third column — terminal-first tools
   // keep the file tree hidden until summoned. Distill pass: rail + sessions +
@@ -167,6 +172,9 @@ interface WorkspaceState {
   setWorkspaceMode: (mode: WorkspaceMode) => void;
   reconcileCanvasState: () => void;
   updateWorkspaceUiState: (updates: Partial<WorkspaceUiState>) => void;
+  enterImmersiveTerminal: (tabId: string, paneId: string) => void;
+  exitImmersiveTerminal: () => void;
+  toggleImmersiveTerminal: (tabId: string, paneId: string) => void;
   addCanvasNode: (node: Omit<CanvasNode, "id"> & { id?: string }) => void;
   updateCanvasNode: (id: string, updates: Partial<CanvasNode>) => void;
   removeCanvasNode: (id: string) => void;
@@ -247,6 +255,12 @@ function normalizeWorkspaceUiState(uiState: Partial<WorkspaceUiState> | undefine
     uiState?.terminalRendererMode === "native-gpu"
       ? uiState.terminalRendererMode
       : "auto");
+  const immersiveTerminal =
+    uiState?.immersiveTerminal?.enabled &&
+    typeof uiState.immersiveTerminal.tabId === "string" &&
+    typeof uiState.immersiveTerminal.paneId === "string"
+      ? uiState.immersiveTerminal
+      : DEFAULT_UI_STATE.immersiveTerminal;
 
   return {
     ...DEFAULT_UI_STATE,
@@ -259,6 +273,7 @@ function normalizeWorkspaceUiState(uiState: Partial<WorkspaceUiState> | undefine
         ? uiState.workspaceMode
         : DEFAULT_UI_STATE.workspaceMode),
     terminalRendererMode,
+    immersiveTerminal,
     primarySidebarPanel: uiState?.primarySidebarPanel === "map" ? "map" : "sessions",
     previewUrl: typeof uiState?.previewUrl === "string" && uiState.previewUrl.trim()
       ? uiState.previewUrl
@@ -1164,6 +1179,58 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         ...updates,
       },
     }));
+  },
+
+  enterImmersiveTerminal: (tabId: string, paneId: string) => {
+    set((state) => ({
+      workspaceUiState: {
+        ...state.workspaceUiState,
+        workspaceMode: "split",
+        immersiveTerminal: {
+          enabled: true,
+          tabId,
+          paneId,
+        },
+      },
+      activeTabId: tabId,
+      tabs: state.tabs.map((tab) =>
+        tab.id === tabId ? { ...tab, activePaneId: paneId } : tab
+      ),
+    }));
+  },
+
+  exitImmersiveTerminal: () => {
+    set((state) => ({
+      workspaceUiState: {
+        ...state.workspaceUiState,
+        immersiveTerminal: DEFAULT_UI_STATE.immersiveTerminal,
+      },
+    }));
+  },
+
+  toggleImmersiveTerminal: (tabId: string, paneId: string) => {
+    set((state) => {
+      const current = state.workspaceUiState.immersiveTerminal;
+      const isTarget =
+        current.enabled &&
+        current.tabId === tabId &&
+        current.paneId === paneId;
+      return {
+        workspaceUiState: {
+          ...state.workspaceUiState,
+          workspaceMode: isTarget ? state.workspaceUiState.workspaceMode : "split",
+          immersiveTerminal: isTarget
+            ? DEFAULT_UI_STATE.immersiveTerminal
+            : { enabled: true, tabId, paneId },
+        },
+        activeTabId: isTarget ? state.activeTabId : tabId,
+        tabs: isTarget
+          ? state.tabs
+          : state.tabs.map((tab) =>
+              tab.id === tabId ? { ...tab, activePaneId: paneId } : tab
+            ),
+      };
+    });
   },
 
   addCanvasNode: (node) => {

@@ -32,6 +32,12 @@ const events = traceFiles.flatMap((file) => fs.readFileSync(file, "utf8")
   .sort((a, b) => a.time - b.time);
 
 const intervals = [
+  ["canvas_keydown_to_input_send_start", "frontend.canvas.keydown", "frontend.daemon.input.send.start", 250],
+  ["canvas_keydown_to_diff_receive", "frontend.canvas.keydown", "frontend.canvas.diff.receive", 500],
+  ["canvas_keydown_to_render", "frontend.canvas.keydown", "frontend.canvas.render", 500],
+  ["canvas_keydown_to_render_raf", "frontend.canvas.keydown", "frontend.canvas.render.raf", 500],
+  ["canvas_diff_receive_to_render", "frontend.canvas.diff.receive", "frontend.canvas.render", 250],
+  ["canvas_render_to_raf", "frontend.canvas.render", "frontend.canvas.render.raf", 250],
   ["keydown_to_ondata", "frontend.xterm.keydown", "frontend.xterm.onData", 250],
   ["ondata_to_input_send_start", "frontend.xterm.onData", "frontend.daemon.input.send.start", 250],
   ["input_send_start_to_tauri_receive", "frontend.daemon.input.send.start", "tauri.daemon.input.event.receive", 250],

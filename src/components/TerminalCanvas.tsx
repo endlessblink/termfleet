@@ -9,6 +9,11 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Channel, invoke } from "@tauri-apps/api/core";
+import {
+  createDaemonInputQueue,
+  nextTerminalInputSequence,
+  type DaemonInputQueue,
+} from "../lib/daemonInputQueue";
 import { GlyphAtlas, measureCell } from "../lib/fontAtlas";
 import { GridBuffer } from "../lib/gridBuffer";
 import { decodeFrame } from "../lib/gridDiff";
@@ -22,7 +27,11 @@ import {
   type RenderTheme,
 } from "../lib/gridRenderer";
 import { encodePaste, keyEventToBytes } from "../lib/keymap";
-import { encodeMouseReport, pointerButtonToTerminalButton } from "../lib/terminalMouse";
+import {
+  encodeMouseReport,
+  pointerButtonToTerminalButton,
+  shouldSendWheelToTerminalApp,
+} from "../lib/terminalMouse";
 import {
   normalizeRange,
   pointToCell,
@@ -33,6 +42,7 @@ import {
 } from "../lib/selection";
 import { useWorkspaceStore } from "../stores/workspace";
 import type { GridSnapshot } from "../lib/gridSnapshot";
+import { syncTerminalLatencyTraceEnv, traceTerminalLatency } from "../lib/terminalLatencyTrace";
 
 // Hack is the terminal buffer font (Warp's default terminal font), bundled via
 // @font-face. Fallbacks keep things sane before the face loads / on other systems.
@@ -74,6 +84,8 @@ function isTauriRuntime(): boolean {
 
 interface TerminalCanvasProps {
   sessionId: string;
+  tabId: string;
+  paneId: string;
   cwd?: string;
   command?: string;
   cols?: number;
@@ -100,6 +112,8 @@ interface TerminalCanvasProps {
 
 export function TerminalCanvas({
   sessionId,
+  tabId,
+  paneId,
   cwd,
   command,
   cols = 80,
@@ -115,6 +129,7 @@ export function TerminalCanvas({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const daemonInputQueueRef = useRef<DaemonInputQueue | null>(null);
   // Stable handle to the current session id for the window-capture key handler,
   // which is registered once and must not close over a stale prop.
   const sessionIdRef = useRef(sessionId);
@@ -153,6 +168,10 @@ export function TerminalCanvas({
       : TERMINAL_FONT_FACES.every((face) => document.fonts.check(face)),
   );
   const [attachError, setAttachError] = useState<string | null>(null);
+
+  useEffect(() => {
+    syncTerminalLatencyTraceEnv().catch(console.error);
+  }, []);
 
   useEffect(() => {
     if (fontsReady || typeof document === "undefined" || !document.fonts) return;
@@ -239,6 +258,12 @@ export function TerminalCanvas({
       try {
         frame = decodeFrame(payload);
         changed = buffer.apply(frame);
+        traceTerminalLatency("frontend.canvas.diff.receive", {
+          id: sessionId,
+          full: frame.full,
+          changedRows: changed.size,
+          bytes: payload.byteLength,
+        });
       } catch (error) {
         const message = `Terminal grid diff failed: ${String(error)}`;
         console.error(message, error);
@@ -292,6 +317,18 @@ export function TerminalCanvas({
       } else {
         renderPartial(ctx, atlas, snapshot, changed, dpr, theme);
       }
+      traceTerminalLatency("frontend.canvas.render", {
+        id: sessionId,
+        full: frame.full,
+        changedRows: changed.size,
+      });
+      requestAnimationFrame(() => {
+        traceTerminalLatency("frontend.canvas.render.raf", {
+          id: sessionId,
+          full: frame.full,
+          changedRows: changed.size,
+        });
+      });
       syncOverlaySize();
       drawSelectionOverlay();
       // Keep the map node fitted to the current mode: re-fit the frozen canvas
@@ -471,7 +508,10 @@ export function TerminalCanvas({
       // Attach the grid at the same size so the daemon's scrollback replay (and a
       // reused session's wide history) is parsed at the width the shell is using.
       onStatusRef.current?.("starting");
-      await invoke("daemon_ensure_running");
+      const daemonStatus = await invoke<{ reachable: boolean; message: string }>("daemon_ensure_running");
+      if (!daemonStatus.reachable) {
+        throw new Error(daemonStatus.message);
+      }
       const init = measure();
       const ensured = await invoke<{
         id: string;
@@ -543,14 +583,25 @@ export function TerminalCanvas({
       if (refreshTimer !== null) clearTimeout(refreshTimer);
       if (blankGuardTimer !== null) clearTimeout(blankGuardTimer);
       if (resizeTimer !== null) clearTimeout(resizeTimer);
+      daemonInputQueueRef.current?.dispose();
+      daemonInputQueueRef.current = null;
       observer.disconnect();
       invoke("grid_detach", { id: sessionId }).catch(() => {});
     };
   }, [sessionId, cwd, command, cols, rows, theme, fontsReady, renderScale, mapProjection]);
 
-  const send = (data: string) => {
-    invoke("grid_scroll_to_bottom", { id: sessionId }).catch(console.error);
-    invoke("daemon_write_session", { id: sessionId, data }).catch(console.error);
+  const send = (data: string, seqId = nextTerminalInputSequence(), source = "canvas-send") => {
+    invoke("grid_scroll_to_bottom", { id: sessionIdRef.current }).catch(console.error);
+    let queue = daemonInputQueueRef.current;
+    if (!queue) {
+      queue = createDaemonInputQueue({
+        getId: () => sessionIdRef.current,
+        source,
+        onFallbackError: console.error,
+      });
+      daemonInputQueueRef.current = queue;
+    }
+    queue.queue(data, seqId);
   };
 
   const syncFocusedTerminal = useCallback(() => {
@@ -572,6 +623,12 @@ export function TerminalCanvas({
   const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     // Copy/paste shortcuts are handled by the browser/clipboard, not as input.
     const key = event.key.toLowerCase();
+    if (event.ctrlKey && event.shiftKey && key === "f") {
+      event.preventDefault();
+      event.stopPropagation();
+      useWorkspaceStore.getState().toggleImmersiveTerminal(tabId, paneId);
+      return;
+    }
     if ((event.ctrlKey || event.metaKey) && event.shiftKey && key === "c") {
       copySelection();
       return;
@@ -583,13 +640,20 @@ export function TerminalCanvas({
       appCursor: modesRef.current.appCursor,
     });
     if (bytes !== null) {
+      const seqId = nextTerminalInputSequence();
+      traceTerminalLatency("frontend.canvas.keydown", {
+        id: sessionId,
+        bytes: bytes.length,
+        seqId,
+        key: event.key,
+      });
       // preventDefault stops the browser default (notably Tab/Shift+Tab focus
       // traversal, which would otherwise move focus off this textarea and out of
       // the terminal); stopPropagation keeps the key from bubbling to any app
       // chrome listener. Together they guarantee a focused terminal owns the key.
       event.preventDefault();
       event.stopPropagation();
-      send(bytes);
+      send(bytes, seqId, "canvas-keydown");
     }
   };
 
@@ -604,22 +668,33 @@ export function TerminalCanvas({
     const onCaptureKeyDown = (event: KeyboardEvent) => {
       if (!inputRef.current || document.activeElement !== inputRef.current) return;
       const key = event.key.toLowerCase();
+      if (event.ctrlKey && event.shiftKey && key === "f") {
+        event.preventDefault();
+        event.stopPropagation();
+        useWorkspaceStore.getState().toggleImmersiveTerminal(tabId, paneId);
+        return;
+      }
       // Leave copy/paste shortcuts to the bubble handler / browser clipboard.
       if ((event.ctrlKey || event.metaKey) && event.shiftKey && (key === "c" || key === "v")) {
         return;
       }
       const bytes = keyEventToBytes(event, { appCursor: modesRef.current.appCursor });
       if (bytes === null) return;
+      const seqId = nextTerminalInputSequence();
+      traceTerminalLatency("frontend.canvas.keydown", {
+        id: sessionIdRef.current,
+        bytes: bytes.length,
+        seqId,
+        key: event.key,
+        capture: true,
+      });
       event.preventDefault();
       event.stopPropagation();
-      invoke("grid_scroll_to_bottom", { id: sessionIdRef.current }).catch(console.error);
-      invoke("daemon_write_session", { id: sessionIdRef.current, data: bytes }).catch(
-        console.error,
-      );
+      send(bytes, seqId, "canvas-capture-keydown");
     };
     window.addEventListener("keydown", onCaptureKeyDown, true);
     return () => window.removeEventListener("keydown", onCaptureKeyDown, true);
-  }, []);
+  }, [paneId, tabId]);
 
   // Resolve once the first diff frame has set the real terminal modes, or after a
   // short timeout so a paste is never lost if the backend is slow/quiet.
@@ -775,11 +850,9 @@ export function TerminalCanvas({
     const up = event.deltaY < 0;
     const modes = modesRef.current;
 
-    // 1) App owns the mouse (zellij, vim, htop, less, tmux): forward the wheel as
-    // a mouse-wheel REPORT, not arrow keys. Sending arrows makes the focused TUI
-    // move the cursor/selection and warn "use PgUp/PgDn"; a real wheel report
-    // scrolls the pane the pointer is over. Button 64 = wheel up, 65 = wheel down.
-    if (modes.mouseReport) {
+    // Plain wheel scrolls TermFleet's own history. Alt+wheel is the explicit
+    // escape hatch for apps that own wheel input (zellij, vim, htop, less, tmux).
+    if (shouldSendWheelToTerminalApp(event) && modes.mouseReport) {
       const { col, row } = wheelCell(event);
       const button = up ? 64 : 65;
       const report = encodeMouseReport({
@@ -793,9 +866,9 @@ export function TerminalCanvas({
       return;
     }
 
-    // 2) Alt screen with alternate-scroll (DECSET 1007) but no mouse reporting:
-    // the conventional translation is arrow keys, honoring application-cursor mode.
-    if (modes.altScreen && modes.alternateScroll) {
+    // Alt-screen alternate-scroll (DECSET 1007) remains available through
+    // Alt+wheel, honoring application-cursor mode.
+    if (shouldSendWheelToTerminalApp(event) && modes.altScreen && modes.alternateScroll) {
       const seq = up
         ? modes.appCursor ? "\x1bOA" : "\x1b[A"
         : modes.appCursor ? "\x1bOB" : "\x1b[B";
@@ -803,7 +876,6 @@ export function TerminalCanvas({
       return;
     }
 
-    // 3) Primary screen, no app mouse handling: pan the grid's own scrollback.
     invoke("grid_scroll", { id: sessionId, delta: (up ? 1 : -1) * notches * 3 }).catch(
       console.error,
     );

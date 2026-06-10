@@ -1240,6 +1240,31 @@ Evidence: `cargo test` 33 passed — new `scrolling_into_history_reveals_older_
   `npm run verify:selection` (Playwright): normalize/rowSpan/isCellSelected,
   single + multi-line `selectionToText` (per-line trailing-space trim), and
   `pointToCell` floor + clamp.
+- 2026-06-08: Reliable transcript scroll correction: plain wheel in
+  `TerminalCanvas` now always scrolls TermFleet's own grid history, including
+  sessions whose foreground app enabled mouse reporting or alternate-scroll;
+  `Alt+wheel` preserves the old app-owned wheel path for TUIs. Evidence:
+  `npm run verify:terminal-mouse`, `npm run verify:map-terminals`,
+  `npm run verify:canvas-all`, `npm run build`, and
+  `CARGO_BUILD_JOBS=1 cargo test vt_grid::tests::scroll --manifest-path
+  src-tauri/Cargo.toml` passed.
+- 2026-06-09: Added explicit immersive terminal mode for TUI ownership. The
+  targeted split pane can now hide the app header, sidebars, status bar, pane
+  chrome, resize handles, and sibling panes so full-screen TUIs can own the
+  viewport; `Escape` exits before reaching the PTY and `Ctrl+Shift+F` toggles
+  immersive mode from the command surface or focused canvas terminal. Evidence:
+  `npm run verify:map-terminals`, `npm run build`, and
+  `npm run verify:canvas-all` passed. Live `npm run verify:zellij-map` was
+  attempted but the Xvfb window disappeared and the run hung after app launch,
+  so it was interrupted without a product verdict.
+- 2026-06-09: Hardened daemon socket recovery after the UI showed
+  `Terminal attach failed: Connection refused`. Daemon requests now retry through
+  `daemon_ensure_running()` at the socket boundary, the VT grid subscriber uses
+  the same recovery path, and `TerminalCanvas` stops after an unreachable daemon
+  status instead of continuing into a raw refused `daemon_ensure_session` call.
+  Evidence: `npm run verify:map-terminals`, `npm run build`,
+  `CARGO_BUILD_JOBS=1 cargo check --manifest-path src-tauri/Cargo.toml`,
+  `npm run verify:standalone-daemon`, and `npm run verify:canvas-all` passed.
 Next: TC-017g (TUI correctness, latency gate, delete xterm.js).
 
 ##### TC-017g - Stage 7: TUI correctness, latency gate, delete xterm.js `DONE`

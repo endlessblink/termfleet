@@ -9,6 +9,7 @@ import { hydrateWorkspace, useWorkspaceStore } from "./stores/workspace";
 function App() {
   useKeybindings();
   const reconcileCanvasState = useWorkspaceStore((state) => state.reconcileCanvasState);
+  const immersiveTerminal = useWorkspaceStore((state) => state.workspaceUiState.immersiveTerminal);
 
   useEffect(() => {
     // Restore the durable on-disk layout + reconcile orphaned session content
@@ -17,13 +18,13 @@ function App() {
   }, [reconcileCanvasState]);
 
   return (
-    <div className="app-layout">
-      <WorkbenchHeader />
+    <div className="app-layout" data-immersive-terminal={immersiveTerminal.enabled ? "true" : "false"}>
+      {!immersiveTerminal.enabled && <WorkbenchHeader />}
       <div className="app-main">
-        <WorkbenchSidebar />
+        {!immersiveTerminal.enabled && <WorkbenchSidebar />}
         <WorkspaceSurface />
       </div>
-      <StatusBar />
+      {!immersiveTerminal.enabled && <StatusBar />}
     </div>
   );
 }
