@@ -43,6 +43,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::daemon_status,
+            commands::agent_provider_statuses,
             commands::terminal_latency_trace_enabled,
             commands::daemon_ensure_running,
             commands::daemon_ensure_session,

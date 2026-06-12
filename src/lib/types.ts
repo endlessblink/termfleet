@@ -36,10 +36,69 @@ export interface Tab {
   emoji: string;
   color: string;
   groupId: string | null;
+  workstream?: WorkstreamMetadata;
   terminals: TerminalState[];
   initialCwd?: string;
   splitLayout: SplitNode;
   activePaneId: string;
+}
+
+export type WorkstreamKind = "terminal" | "agent";
+export type AgentProvider = "codex" | "claude" | "opencode" | "shell";
+export type WorkstreamStatus = "ready" | "running" | "waiting" | "failed" | "done" | "stopped";
+export type WorkstreamEventKind = "created" | "provider" | "prompt" | "sent" | "status" | "control" | "signal";
+export type WorkstreamPhase = "queued" | "launching" | "active" | "needs-input" | "complete" | "reviewed" | "cancelling" | "interrupted" | "blocked";
+export type WorkstreamReadiness = "path-checked" | "provider-ready" | "auth-required" | "unknown";
+
+export interface WorkstreamMetadata {
+  kind: WorkstreamKind;
+  provider?: AgentProvider;
+  providerAvailable?: boolean;
+  providerAvailabilityMessage?: string;
+  role?: string;
+  mission?: string;
+  prompt?: string;
+  startupCommand?: string;
+  phase?: WorkstreamPhase;
+  launchMode?: string;
+  readinessCheck?: string;
+  authCheck?: string;
+  readiness?: WorkstreamReadiness;
+  stopBehavior?: string;
+  controlProtocol?: string;
+  structuredStatus?: boolean;
+  lastSummary?: string;
+  nextAction?: string;
+  promptCount?: number;
+  sentCount?: number;
+  signalCount?: number;
+  controlCount?: number;
+  outcome?: string;
+  runId?: string;
+  inputQueue?: WorkstreamInput[];
+  events?: WorkstreamEvent[];
+  generation?: number;
+  status: WorkstreamStatus;
+  createdAt: number;
+  completedAt?: number;
+  reviewedAt?: number;
+  lastActivityAt?: number;
+}
+
+export interface WorkstreamInput {
+  id: string;
+  text: string;
+  createdAt: number;
+  sentAt?: number;
+}
+
+export interface WorkstreamEvent {
+  id: string;
+  kind: WorkstreamEventKind;
+  label: string;
+  detail?: string;
+  status?: WorkstreamStatus;
+  at: number;
 }
 
 export interface Group {

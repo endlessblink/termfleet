@@ -1,6 +1,7 @@
 import { CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AtSign,
+  Bot,
   Command,
   FileText,
   FolderTree,
@@ -19,6 +20,7 @@ import {
 } from "lucide-react";
 import {
   closeActivePane,
+  createAgentWorkstream,
   createNewTab,
   createTerminalTab,
   resetPersistedWorkspace,
@@ -29,6 +31,8 @@ import {
 import { getAllLeafIds } from "../lib/splitUtils";
 import { pathTail, projectNameFor, projectRootFor } from "../lib/projectDisplay";
 import { terminalHasKeyboardFocus } from "../lib/terminalFocus";
+import { checkAgentProvider } from "../lib/agentProviders";
+import type { AgentProvider } from "../lib/types";
 
 const styles: Record<string, CSSProperties> = {
   header: {
@@ -541,8 +545,8 @@ export function WorkbenchHeader() {
     const node = store.canvasState.nodes.find((candidate) => candidate.terminalTabId === store.activeTabId);
     if (!node) return;
     const zoom = 1;
-    const nextX = 306 - (node.x + node.width / 2) * zoom;
-    const nextY = 220 - (node.y + node.height / 2) * zoom;
+    const nextX = 445 - (node.x + node.width / 2) * zoom;
+    const nextY = 330 - (node.y + node.height / 2) * zoom;
     store.selectCanvasNode(node.id);
     store.updateCanvasViewport({
       zoom,
@@ -550,6 +554,21 @@ export function WorkbenchHeader() {
       y: Math.round(nextY),
     });
   }, []);
+
+  const launchAgentWorkstream = useCallback(async (provider: AgentProvider, initialMission = "Supervised workstream") => {
+    setCommandStatus(`checking ${provider}`);
+    const availability = await checkAgentProvider(provider);
+    const mission = window.prompt(`Mission for ${availability.label} workstream`, initialMission);
+    if (mission === null) {
+      setCommandStatus("agent launch cancelled");
+      return;
+    }
+    createAgentWorkstream(provider, mission, availability);
+    setWorkspaceMode("canvas");
+    updateUiState({ primarySidebarCollapsed: false, primarySidebarPanel: "map" });
+    requestAnimationFrame(focusActiveTerminalOnMap);
+    setCommandStatus(availability.available ? `${availability.label} workstream` : `${availability.label} unavailable`);
+  }, [focusActiveTerminalOnMap, setWorkspaceMode, updateUiState]);
 
   const actions = useMemo<CommandAction[]>(() => {
     const baseActions: CommandAction[] = [
@@ -565,6 +584,17 @@ export function WorkbenchHeader() {
           createNewTab();
           setWorkspaceMode("split");
           setCommandStatus("new terminal");
+        },
+      },
+      {
+        id: "new-agent-workstream",
+        label: "New agent workstream",
+        detail: "Create a supervised local agent terminal",
+        keywords: ["agent", "codex", "claude", "opencode", "workstream", "supervise"],
+        scope: "actions",
+        Icon: Bot,
+        run: () => {
+          void launchAgentWorkstream("codex");
         },
       },
       {
@@ -770,6 +800,28 @@ export function WorkbenchHeader() {
 
     const launchActions: CommandAction[] = [
       {
+        id: "launch-codex-workstream",
+        label: "Launch Codex workstream",
+        detail: "Create a supervised Codex terminal in this project",
+        keywords: ["launch", "config", "agent", "codex", "workstream", projectLabel, activeTab?.initialCwd ?? ""],
+        scope: "launch_configs",
+        Icon: Bot,
+        run: () => {
+          void launchAgentWorkstream("codex");
+        },
+      },
+      {
+        id: "launch-claude-workstream",
+        label: "Launch Claude workstream",
+        detail: "Create a supervised Claude Code terminal in this project",
+        keywords: ["launch", "config", "agent", "claude", "workstream", projectLabel, activeTab?.initialCwd ?? ""],
+        scope: "launch_configs",
+        Icon: Bot,
+        run: () => {
+          void launchAgentWorkstream("claude");
+        },
+      },
+      {
         id: "launch-project-shell",
         label: `Launch ${projectLabel} shell`,
         detail: activeTab?.initialCwd ?? "Open a fresh project terminal",
@@ -828,7 +880,7 @@ export function WorkbenchHeader() {
     }));
 
     return [...baseActions, ...sessionActions, ...paneActions, ...launchActions, ...fileActions];
-  }, [activeTab, addOpenFile, focusActiveTerminalOnMap, immersiveTerminal.enabled, openFiles, projectLabel, setActiveTab, setWorkspaceMode, switchProject, tabs, toggleImmersiveTerminal, updateUiState]);
+  }, [activeTab, addOpenFile, focusActiveTerminalOnMap, immersiveTerminal.enabled, launchAgentWorkstream, openFiles, projectLabel, setActiveTab, setWorkspaceMode, switchProject, tabs, toggleImmersiveTerminal, updateUiState]);
 
   const visibleActions = useMemo(() => {
     return actions.filter((action) => actionMatches(action, commandQuery)).slice(0, 9);

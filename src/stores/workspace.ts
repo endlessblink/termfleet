@@ -2,6 +2,10 @@ import { create } from "zustand";
 import type {
   CanvasNode,
   CanvasState,
+  AgentProvider,
+  WorkstreamEvent,
+  WorkstreamEventKind,
+  WorkstreamStatus,
   Tab,
   Group,
   OpenFile,
@@ -17,7 +21,9 @@ import {
   updatePaneCwdInTree,
   updatePanePreviewUrlInTree,
 } from "../lib/splitUtils";
-import { destroyBrowserPtys } from "../hooks/usePty";
+import { destroyBrowserPtys, writeBrowserPtys } from "../hooks/usePty";
+import type { AgentProviderAvailability } from "../lib/agentProviders";
+import { providerDefinition } from "../lib/agentProviders";
 
 const GROUP_COLORS = [
   "#7aa2f7",
@@ -64,6 +70,30 @@ const FORCE_WORKSPACE_RESET_STATE = configuredWorkspaceResetState();
 export const WORKSPACE_STORAGE_KEY = FORCE_WORKSPACE_RESET_STATE
   ? "terminal-workspace.test"
   : "terminal-workspace.v1";
+
+type WorkstreamEventInput = {
+  kind: WorkstreamEventKind;
+  label: string;
+  detail?: string;
+  status?: WorkstreamStatus;
+};
+
+function createWorkstreamEvent(input: WorkstreamEventInput): WorkstreamEvent {
+  return {
+    id: crypto.randomUUID(),
+    at: Date.now(),
+    ...input,
+  };
+}
+
+function appendWorkstreamEvent(events: WorkstreamEvent[] | undefined, input: WorkstreamEventInput) {
+  return [...(events ?? []), createWorkstreamEvent(input)].slice(-12);
+}
+
+function createRunId(provider: AgentProvider, createdAt: number) {
+  const suffix = crypto.randomUUID().slice(0, 6);
+  return `${provider}-${createdAt.toString(36)}-${suffix}`;
+}
 
 const DEFAULT_UI_STATE: WorkspaceUiState = {
   workspaceMode: FORCED_WORKSPACE_MODE ?? "split",
@@ -153,6 +183,13 @@ interface WorkspaceState {
   closeTerminalSession: (id: string) => Promise<void>;
   setActiveTab: (id: string) => void;
   updateTab: (id: string, updates: Partial<Tab>) => void;
+  queueWorkstreamInput: (tabId: string, text: string) => string | null;
+  markWorkstreamInputSent: (tabId: string, inputId: string) => void;
+  recordWorkstreamEvent: (tabId: string, event: WorkstreamEventInput) => void;
+  interruptWorkstream: (tabId: string) => Promise<void>;
+  stopWorkstream: (tabId: string) => Promise<void>;
+  restartWorkstream: (tabId: string) => Promise<void>;
+  reviewWorkstream: (tabId: string) => void;
   reorderTabs: (fromIndex: number, toIndex: number) => void;
 
   // Group actions
@@ -556,6 +593,103 @@ export function createTerminalTab(cwd?: string) {
   });
 }
 
+export function createAgentWorkstream(
+  provider: AgentProvider = "codex",
+  prompt?: string,
+  availability?: AgentProviderAvailability
+) {
+  const store = useWorkspaceStore.getState();
+  const activeTab = store.tabs.find((tab) => tab.id === store.activeTabId);
+  const groupId = store.activeGroupFilter ?? activeTab?.groupId ?? store.activeGroupId;
+  const targetGroup = groupId ? store.groups.find((group) => group.id === groupId) : null;
+  const resolvedCwd = targetGroup?.projectRoot ?? activeTab?.initialCwd ?? store.projectRoot ?? undefined;
+  const providerInfo = availability ?? {
+    ...providerDefinition(provider),
+    available: provider === "shell",
+    message: provider === "shell" ? "Built-in shell workstream" : "Provider availability was not checked.",
+  };
+  const providerLabel = providerInfo.label;
+  const mission = prompt?.trim() || "Supervised workstream";
+  const startupCommand = providerInfo.available ? providerInfo.command : undefined;
+  const createdAt = Date.now();
+  const runId = createRunId(provider, createdAt);
+  const initialStatus = providerInfo.available ? "ready" : "failed";
+  const initialPhase = providerInfo.available ? "queued" : "blocked";
+  const initialInput = {
+    id: crypto.randomUUID(),
+    text: mission,
+    createdAt,
+  };
+
+  store.addTab({
+    title: `${providerLabel} workstream`,
+    emoji: "\u25C6",
+    color: "#d99a45",
+    initialCwd: resolvedCwd,
+    groupId,
+    workstream: {
+      kind: "agent",
+      provider,
+      providerAvailable: providerInfo.available,
+      providerAvailabilityMessage: providerInfo.message,
+      role: providerLabel,
+      mission,
+      prompt: mission,
+      startupCommand,
+      phase: initialPhase,
+      launchMode: providerInfo.launchMode,
+      readinessCheck: providerInfo.readinessCheck,
+      authCheck: providerInfo.authCheck,
+      readiness: providerInfo.available ? "path-checked" : "unknown",
+      stopBehavior: providerInfo.stopBehavior,
+      controlProtocol: providerInfo.controlProtocol,
+      structuredStatus: providerInfo.structuredStatus,
+      lastSummary: providerInfo.available
+        ? `${providerLabel} launch queued`
+        : `${providerLabel} provider unavailable`,
+      nextAction: providerInfo.available
+        ? "Watch provider startup"
+        : "Install or configure the provider CLI",
+      promptCount: 1,
+      sentCount: 0,
+      signalCount: 0,
+      controlCount: 0,
+      outcome: providerInfo.available ? "Launch queued" : "Provider unavailable",
+      runId,
+      inputQueue: [initialInput],
+      events: [
+        {
+          id: crypto.randomUUID(),
+          kind: "created",
+          label: "Mission created",
+          detail: mission,
+          status: initialStatus,
+          at: createdAt,
+        },
+        {
+          id: crypto.randomUUID(),
+          kind: "provider",
+          label: providerInfo.available ? `${providerLabel} ready` : `${providerLabel} unavailable`,
+          detail: `${providerInfo.message} · ${providerInfo.readinessCheck}`,
+          status: initialStatus,
+          at: createdAt,
+        },
+        {
+          id: crypto.randomUUID(),
+          kind: "prompt",
+          label: "Launch prompt queued",
+          detail: mission,
+          status: initialStatus,
+          at: createdAt,
+        },
+      ],
+      generation: 0,
+      status: initialStatus,
+      createdAt,
+    },
+  });
+}
+
 function titleForPreviewUrl(url: string) {
   try {
     const parsed = new URL(url);
@@ -763,6 +897,26 @@ async function killPtys(ptyIds: string[]) {
   }
 }
 
+async function writePtys(ptyIds: string[], data: string) {
+  if (ptyIds.length === 0) return;
+  writeBrowserPtys(ptyIds, data);
+
+  try {
+    const { invoke } = await import("@tauri-apps/api/core");
+    await Promise.all(
+      ptyIds.map(async (id) => {
+        try {
+          await writePty(id, data, invoke);
+        } catch (error) {
+          console.warn("Could not write PTY:", id, error);
+        }
+      })
+    );
+  } catch (error) {
+    console.warn("Could not reach Tauri PTY bridge:", error);
+  }
+}
+
 function selectNodeAfterRemovingTerminalTab({
   state,
   remainingNodes,
@@ -962,7 +1116,21 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   updateTab: (id: string, updates: Partial<Tab>) => {
     set((state) => ({
       tabs: state.tabs.map((t) =>
-        t.id === id ? { ...t, ...updates } : t
+        t.id === id
+          ? (() => {
+              const updated = { ...t, ...updates };
+              if (updates.workstream) {
+                const completesRun = updates.workstream.status === "done" || updates.workstream.phase === "complete";
+                updated.workstream = {
+                  ...updates.workstream,
+                  completedAt: completesRun
+                    ? updates.workstream.completedAt ?? t.workstream?.completedAt ?? Date.now()
+                    : updates.workstream.completedAt,
+                };
+              }
+              return updated;
+            })()
+          : t
       ),
       canvasState: {
         ...state.canvasState,
@@ -976,6 +1144,246 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
             : node
         ),
       },
+    }));
+  },
+
+  recordWorkstreamEvent: (tabId: string, event: WorkstreamEventInput) => {
+    set((state) => ({
+      tabs: state.tabs.map((tab) =>
+        tab.id === tabId && tab.workstream
+          ? (() => {
+              const eventText = `${event.label} ${event.detail ?? ""}`.toLowerCase();
+              const completesRun =
+                event.status === "done" ||
+                tab.workstream.phase === "complete" ||
+                (event.kind === "signal" && (eventText.includes("complete") || eventText.includes("done")));
+              return {
+              ...tab,
+              workstream: {
+                ...tab.workstream,
+                events: appendWorkstreamEvent(tab.workstream.events, event),
+                ...(event.kind === "signal" ? { signalCount: (tab.workstream.signalCount ?? 0) + 1 } : {}),
+                ...(event.kind === "control" ? { controlCount: (tab.workstream.controlCount ?? 0) + 1 } : {}),
+                ...(event.kind === "prompt" ? { promptCount: (tab.workstream.promptCount ?? 0) + 1 } : {}),
+                ...(event.kind === "sent" ? { sentCount: (tab.workstream.sentCount ?? 0) + 1 } : {}),
+                ...(event.kind === "provider" || event.kind === "signal" || event.kind === "control"
+                  ? { outcome: event.label }
+                  : {}),
+                ...(completesRun
+                  ? { completedAt: tab.workstream.completedAt ?? Date.now() }
+                  : {}),
+                lastActivityAt: Date.now(),
+              },
+            };
+            })()
+          : tab
+      ),
+    }));
+  },
+
+  queueWorkstreamInput: (tabId: string, text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed) return null;
+    const input = {
+      id: crypto.randomUUID(),
+      text: trimmed,
+      createdAt: Date.now(),
+    };
+    set((state) => ({
+      tabs: state.tabs.map((tab) =>
+        tab.id === tabId && tab.workstream
+          ? {
+              ...tab,
+              workstream: {
+                ...tab.workstream,
+                prompt: trimmed,
+                phase: "queued",
+                lastSummary: "Operator queued a follow-up prompt",
+                nextAction: "Wait for prompt dispatch",
+                promptCount: (tab.workstream.promptCount ?? 0) + 1,
+                outcome: "Follow-up queued",
+                inputQueue: [...(tab.workstream.inputQueue ?? []), input],
+                events: appendWorkstreamEvent(tab.workstream.events, {
+                  kind: "prompt",
+                  label: "Follow-up queued",
+                  detail: trimmed,
+                  status: tab.workstream.status,
+                }),
+                lastActivityAt: Date.now(),
+              },
+            }
+          : tab
+      ),
+    }));
+    return input.id;
+  },
+
+  markWorkstreamInputSent: (tabId: string, inputId: string) => {
+    set((state) => ({
+      tabs: state.tabs.map((tab) =>
+        tab.id === tabId && tab.workstream
+          ? {
+              ...tab,
+              workstream: {
+                ...tab.workstream,
+                phase: tab.workstream.phase === "queued" ? "launching" : tab.workstream.phase,
+                lastSummary: tab.workstream.status === "ready" || tab.workstream.status === "running"
+                  ? "Prompt sent to provider"
+                  : tab.workstream.lastSummary,
+                nextAction: tab.workstream.status === "ready" || tab.workstream.status === "running"
+                  ? "Watch provider response"
+                  : tab.workstream.nextAction,
+                sentCount: (tab.workstream.sentCount ?? 0) + 1,
+                outcome: "Prompt sent",
+                lastActivityAt: Date.now(),
+                inputQueue: (tab.workstream.inputQueue ?? []).map((input) =>
+                  input.id === inputId && !input.sentAt
+                    ? { ...input, sentAt: Date.now() }
+                    : input
+                ),
+                events: appendWorkstreamEvent(tab.workstream.events, {
+                  kind: "sent",
+                  label: "Prompt sent",
+                  detail: (tab.workstream.inputQueue ?? []).find((input) => input.id === inputId)?.text,
+                  status: tab.workstream.status,
+                }),
+              },
+            }
+          : tab
+      ),
+    }));
+  },
+
+  interruptWorkstream: async (tabId: string) => {
+    const tab = get().tabs.find((candidate) => candidate.id === tabId);
+    if (!tab?.workstream) return;
+    await writePtys(tab.terminals.map((terminal) => terminal.id), "\x03");
+    set((state) => ({
+      tabs: state.tabs.map((candidate) =>
+        candidate.id === tabId && candidate.workstream
+          ? {
+              ...candidate,
+              workstream: {
+                ...candidate.workstream,
+                phase: "cancelling",
+                lastSummary: "Cancellation requested",
+                nextAction: "Wait for provider acknowledgement or hard-stop",
+                controlCount: (candidate.workstream.controlCount ?? 0) + 1,
+                outcome: "Cancellation requested",
+                events: appendWorkstreamEvent(candidate.workstream.events, {
+                  kind: "control",
+                  label: "Cancellation requested",
+                  detail: candidate.workstream.controlProtocol ?? candidate.workstream.stopBehavior,
+                  status: candidate.workstream.status,
+                }),
+                lastActivityAt: Date.now(),
+              },
+            }
+          : candidate
+      ),
+    }));
+  },
+
+  stopWorkstream: async (tabId: string) => {
+    const tab = get().tabs.find((candidate) => candidate.id === tabId);
+    if (!tab?.workstream) return;
+    await killPtys(tab.terminals.map((terminal) => terminal.id));
+    set((state) => ({
+      activeTerminalId: tab.terminals.some((terminal) => terminal.id === state.activeTerminalId)
+        ? null
+        : state.activeTerminalId,
+      tabs: state.tabs.map((candidate) =>
+        candidate.id === tabId && candidate.workstream
+          ? {
+              ...candidate,
+              terminals: [],
+              workstream: {
+                ...candidate.workstream,
+                status: "stopped",
+                phase: "interrupted",
+                lastSummary: "Workstream stopped",
+                nextAction: "Restart or close the workstream",
+                controlCount: (candidate.workstream.controlCount ?? 0) + 1,
+                outcome: "Stopped by operator",
+                events: appendWorkstreamEvent(candidate.workstream.events, {
+                  kind: "control",
+                  label: "Stopped by operator",
+                  detail: candidate.workstream.stopBehavior,
+                  status: "stopped",
+                }),
+                lastActivityAt: Date.now(),
+              },
+            }
+          : candidate
+      ),
+    }));
+  },
+
+  restartWorkstream: async (tabId: string) => {
+    const tab = get().tabs.find((candidate) => candidate.id === tabId);
+    if (!tab?.workstream) return;
+    await killPtys(tab.terminals.map((terminal) => terminal.id));
+    set((state) => ({
+      activeTerminalId: tab.terminals.some((terminal) => terminal.id === state.activeTerminalId)
+        ? null
+        : state.activeTerminalId,
+      activeTabId: tabId,
+      tabs: state.tabs.map((candidate) =>
+        candidate.id === tabId && candidate.workstream
+          ? {
+              ...candidate,
+              terminals: [],
+              workstream: {
+                ...candidate.workstream,
+                status: "ready",
+                phase: "queued",
+                lastSummary: "Restart requested",
+                nextAction: "Watch provider startup",
+                controlCount: (candidate.workstream.controlCount ?? 0) + 1,
+                outcome: "Restart requested",
+                generation: (candidate.workstream.generation ?? 0) + 1,
+                events: appendWorkstreamEvent(candidate.workstream.events, {
+                  kind: "control",
+                  label: "Restart requested",
+                  detail: "Terminal remounting through provider startup command",
+                  status: "ready",
+                }),
+                lastActivityAt: Date.now(),
+              },
+            }
+          : candidate
+      ),
+    }));
+  },
+
+  reviewWorkstream: (tabId: string) => {
+    const reviewedAt = Date.now();
+    set((state) => ({
+      tabs: state.tabs.map((candidate) =>
+        candidate.id === tabId && candidate.workstream
+          ? {
+              ...candidate,
+              workstream: {
+                ...candidate.workstream,
+                status: candidate.workstream.status === "done" ? "done" : candidate.workstream.status,
+                phase: "reviewed",
+                lastSummary: "Workstream reviewed",
+                nextAction: "Close or restart the workstream",
+                controlCount: (candidate.workstream.controlCount ?? 0) + 1,
+                outcome: "Reviewed by operator",
+                completedAt: candidate.workstream.completedAt ?? reviewedAt,
+                reviewedAt,
+                events: appendWorkstreamEvent(candidate.workstream.events, {
+                  kind: "control",
+                  label: "Reviewed by operator",
+                  detail: "Operator acknowledged the completed run record",
+                  status: candidate.workstream.status,
+                }),
+                lastActivityAt: Date.now(),
+              },
+            }
+          : candidate
+      ),
     }));
   },
 

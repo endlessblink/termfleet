@@ -42,6 +42,73 @@ pub struct FileEntry {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct AgentProviderStatus {
+    id: String,
+    label: String,
+    command: Option<String>,
+    available: bool,
+    message: String,
+}
+
+fn shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
+}
+
+#[tauri::command]
+pub fn agent_provider_statuses() -> Vec<AgentProviderStatus> {
+    let adapter_path = std::env::current_dir()
+        .ok()
+        .map(|dir| dir.join("scripts").join("agent-provider-adapter.sh"));
+    [
+        ("codex", "Codex", "codex"),
+        ("claude", "Claude", "claude"),
+        ("opencode", "OpenCode", "opencode"),
+    ]
+    .into_iter()
+    .map(|(id, label, command)| {
+        let check = format!("command -v {command}");
+        let output = Command::new("sh")
+            .args(["-lc", check.as_str()])
+            .output();
+        match output {
+            Ok(result) if result.status.success() => {
+                let path = String::from_utf8_lossy(&result.stdout).trim().to_string();
+                AgentProviderStatus {
+                    id: id.to_string(),
+                    label: label.to_string(),
+                    command: adapter_path
+                        .as_ref()
+                        .map(|path| format!("sh {} {command}", shell_quote(&path.display().to_string())))
+                        .or_else(|| Some(command.to_string())),
+                    available: true,
+                    message: if path.is_empty() {
+                        format!("{command} is available")
+                    } else {
+                        path
+                    },
+                }
+            }
+            Ok(_) => AgentProviderStatus {
+                id: id.to_string(),
+                label: label.to_string(),
+                command: Some(command.to_string()),
+                available: false,
+                message: format!("{command} not found on PATH"),
+            },
+            Err(error) => AgentProviderStatus {
+                id: id.to_string(),
+                label: label.to_string(),
+                command: Some(command.to_string()),
+                available: false,
+                message: format!("could not check {command}: {error}"),
+            },
+        }
+    })
+    .collect()
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PtyEnsureResult {
     id: String,
     reused: bool,
@@ -762,7 +829,7 @@ pub fn workspace_persisted_sessions() -> Vec<crate::pty::PersistedSessionSummary
 
 #[cfg(test)]
 mod tests {
-    use super::normalize_selected_folder;
+    use super::{normalize_selected_folder, shell_quote};
 
     #[test]
     fn selected_folder_output_is_trimmed() {
@@ -783,5 +850,13 @@ mod tests {
     #[test]
     fn empty_selected_folder_means_cancelled() {
         assert_eq!(normalize_selected_folder("\n"), None);
+    }
+
+    #[test]
+    fn shell_quote_handles_single_quotes() {
+        assert_eq!(
+            shell_quote("/tmp/termfleet's adapter.sh"),
+            "'/tmp/termfleet'\\''s adapter.sh'"
+        );
     }
 }

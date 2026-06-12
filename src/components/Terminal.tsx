@@ -9,11 +9,12 @@ import { usePty } from "../hooks/usePty";
 import { TerminalCanvas } from "./TerminalCanvas";
 import { syncTerminalLatencyTraceEnv, traceTerminalLatency } from "../lib/terminalLatencyTrace";
 import { refreshProjectRootFromActiveTerminal, useWorkspaceStore } from "../stores/workspace";
-import type { TerminalRuntimeStatus } from "../lib/types";
+import type { TerminalRuntimeStatus, WorkstreamInput, WorkstreamPhase, WorkstreamReadiness, WorkstreamStatus } from "../lib/types";
 import type { GridSnapshot } from "../lib/gridSnapshot";
 
 const LOCALHOST_URL_PATTERN = /https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0):(\d{2,5})(?:[/?#][^\s"'<>]*)?/gi;
 const LOCALHOST_HOST_PORT_PATTERN = /(?:localhost|127\.0\.0\.1|0\.0\.0\.0):(\d{2,5})(?:[/?#][^\s"'<>]*)?/gi;
+const STRUCTURED_AGENT_SIGNAL_PATTERN = /\[\[TERMFLEET_AGENT_EVENT\s+({[^\]]+})\]\]/g;
 
 function validPreviewPort(port: string) {
   const value = Number(port);
@@ -40,6 +41,175 @@ function detectLocalhostPreviewUrl(output: string): string | null {
   }
 
   return null;
+}
+
+function inferWorkstreamStatus(output: string): "waiting" | "failed" | "done" | null {
+  const text = output.toLowerCase();
+  if (/\b(waiting for input|needs input|press enter|continue\?|yes\/no|y\/n)\b/.test(text)) {
+    return "waiting";
+  }
+  if (/\b(failed|error|panic|exception|fatal)\b/.test(text)) {
+    return "failed";
+  }
+  if (/\b(done|completed|complete|successfully|all tests passed)\b/.test(text)) {
+    return "done";
+  }
+  return null;
+}
+
+function inferProviderReadiness(output: string): {
+  readiness: WorkstreamReadiness;
+  label: string;
+  detail?: string;
+  status?: WorkstreamStatus;
+  phase?: WorkstreamPhase;
+  lastSummary?: string;
+  nextAction?: string;
+} | null {
+  const text = output.toLowerCase();
+  const cues = [
+    ...[...text.matchAll(/\b(not authenticated|authentication required|log in|login|api key|oauth|sign in)\b/g)].map((match) => ({
+      index: match.index ?? 0,
+      result: {
+        readiness: "auth-required" as const,
+        label: "Provider auth required",
+        detail: "CLI output indicates login, API key, or sign-in is required.",
+        status: "waiting" as const,
+        phase: "needs-input" as const,
+        lastSummary: "Provider requires authentication",
+        nextAction: "Authenticate the CLI, then restart or send a recovery prompt",
+      },
+    })),
+    ...[...text.matchAll(/\b(welcome|ready|session started|authenticated|logged in)\b/g)].map((match) => ({
+      index: match.index ?? 0,
+      result: {
+        readiness: "provider-ready" as const,
+        label: "Provider session ready",
+        detail: "CLI output indicates provider session readiness.",
+        status: "running" as const,
+        phase: "active" as const,
+        lastSummary: "Provider session is ready",
+        nextAction: "Send a task or watch provider response",
+      },
+    })),
+    ...[...text.matchAll(/\b(cancelled|canceled|interrupted|aborted)\b/g)].map((match) => ({
+      index: match.index ?? 0,
+      result: {
+        readiness: "provider-ready" as const,
+        label: "Provider interrupted",
+        detail: "CLI output indicates the run was interrupted or canceled.",
+        status: "stopped" as const,
+        phase: "interrupted" as const,
+        lastSummary: "Provider acknowledged cancellation",
+        nextAction: "Restart or close the workstream",
+      },
+    })),
+  ].sort((a, b) => b.index - a.index);
+
+  return cues[0]?.result ?? null;
+}
+
+function phaseForStatus(status: WorkstreamStatus): WorkstreamPhase {
+  if (status === "waiting") return "needs-input";
+  if (status === "done") return "complete";
+  if (status === "failed") return "blocked";
+  if (status === "stopped") return "interrupted";
+  if (status === "ready") return "queued";
+  return "active";
+}
+
+function summaryForWorkstreamStatus(status: WorkstreamStatus): { lastSummary: string; nextAction: string } {
+  if (status === "waiting") {
+    return {
+      lastSummary: "Provider is waiting for operator input",
+      nextAction: "Send a follow-up prompt",
+    };
+  }
+  if (status === "done") {
+    return {
+      lastSummary: "Provider reported completion",
+      nextAction: "Review output or restart",
+    };
+  }
+  if (status === "failed") {
+    return {
+      lastSummary: "Provider reported a failure",
+      nextAction: "Inspect output and send recovery prompt",
+    };
+  }
+  if (status === "stopped") {
+    return {
+      lastSummary: "Workstream stopped",
+      nextAction: "Restart or close the workstream",
+    };
+  }
+  if (status === "ready") {
+    return {
+      lastSummary: "Workstream queued",
+      nextAction: "Watch provider startup",
+    };
+  }
+  return {
+    lastSummary: "Provider is running",
+    nextAction: "Watch provider response",
+  };
+}
+
+interface StructuredAgentSignal {
+  status?: WorkstreamStatus;
+  phase?: WorkstreamPhase;
+  readiness?: WorkstreamReadiness;
+  summary?: string;
+  nextAction?: string;
+  label?: string;
+  detail?: string;
+}
+
+function isWorkstreamStatus(value: unknown): value is WorkstreamStatus {
+  return value === "ready" ||
+    value === "running" ||
+    value === "waiting" ||
+    value === "failed" ||
+    value === "done" ||
+    value === "stopped";
+}
+
+function isWorkstreamPhase(value: unknown): value is WorkstreamPhase {
+  return value === "queued" ||
+    value === "launching" ||
+    value === "active" ||
+    value === "needs-input" ||
+    value === "complete" ||
+    value === "cancelling" ||
+    value === "interrupted" ||
+    value === "blocked";
+}
+
+function isWorkstreamReadiness(value: unknown): value is WorkstreamReadiness {
+  return value === "path-checked" ||
+    value === "provider-ready" ||
+    value === "auth-required" ||
+    value === "unknown";
+}
+
+function parseStructuredAgentSignals(output: string) {
+  return [...output.matchAll(STRUCTURED_AGENT_SIGNAL_PATTERN)].flatMap((match) => {
+    const raw = match[0];
+    try {
+      const parsed = JSON.parse(match[1]) as Record<string, unknown>;
+      const signal: StructuredAgentSignal = {};
+      if (isWorkstreamStatus(parsed.status)) signal.status = parsed.status;
+      if (isWorkstreamPhase(parsed.phase)) signal.phase = parsed.phase;
+      if (isWorkstreamReadiness(parsed.readiness)) signal.readiness = parsed.readiness;
+      if (typeof parsed.summary === "string") signal.summary = parsed.summary.slice(0, 160);
+      if (typeof parsed.nextAction === "string") signal.nextAction = parsed.nextAction.slice(0, 160);
+      if (typeof parsed.label === "string") signal.label = parsed.label.slice(0, 80);
+      if (typeof parsed.detail === "string") signal.detail = parsed.detail.slice(0, 240);
+      return Object.keys(signal).length > 0 ? [{ raw, signal }] : [];
+    } catch {
+      return [];
+    }
+  });
 }
 
 function resolveCssToken(styles: CSSStyleDeclaration, token: string, fallback: string): string {
@@ -89,6 +259,8 @@ interface TerminalProps {
   paneId: string;
   cwd?: string;
   command?: string;
+  queuedInput?: WorkstreamInput;
+  onQueuedInputSent?: (inputId: string) => void;
   attachToPtyId?: string | null;
   standalone?: boolean;
   runtimeActive?: boolean;
@@ -116,6 +288,8 @@ export function TerminalComponent({
   paneId,
   cwd,
   command,
+  queuedInput,
+  onQueuedInputSent,
   attachToPtyId,
   standalone = false,
   runtimeActive = true,
@@ -130,6 +304,8 @@ export function TerminalComponent({
   const [livePtyId, setLivePtyId] = useState<string | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const resizeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const outputStatusWindowRef = useRef("");
+  const structuredSignalKeysRef = useRef<Set<string>>(new Set());
   const activeTabId = useWorkspaceStore((s) => s.activeTabId);
   const workspaceMode = useWorkspaceStore((s) => s.workspaceUiState.workspaceMode);
   const terminalRendererMode = useWorkspaceStore((s) => s.workspaceUiState.terminalRendererMode);
@@ -211,6 +387,44 @@ export function TerminalComponent({
     });
   }, [attachToPtyId, paneId, runtimeSessionId, tabId, terminal?.cols, terminal?.rows]);
 
+  const updateWorkstreamRuntime = useCallback((updates: {
+    status?: WorkstreamStatus;
+    phase?: WorkstreamPhase;
+    readiness?: WorkstreamReadiness;
+    lastSummary?: string;
+    nextAction?: string;
+    structuredStatus?: boolean;
+    activity?: boolean;
+  }) => {
+    const store = useWorkspaceStore.getState();
+    const tab = store.tabs.find((candidate) => candidate.id === tabId);
+    if (!tab?.workstream) return;
+    const statusChanged = updates.status && updates.status !== tab.workstream.status;
+    const summary = updates.status ? summaryForWorkstreamStatus(updates.status) : null;
+    const completed = updates.status === "done" || updates.phase === "complete";
+    store.updateTab(tabId, {
+      workstream: {
+        ...tab.workstream,
+        status: updates.status ?? tab.workstream.status,
+        readiness: updates.readiness ?? tab.workstream.readiness,
+        phase: updates.phase ?? (updates.status ? phaseForStatus(updates.status) : tab.workstream.phase),
+        lastSummary: updates.lastSummary ?? summary?.lastSummary ?? tab.workstream.lastSummary,
+        nextAction: updates.nextAction ?? summary?.nextAction ?? tab.workstream.nextAction,
+        outcome: updates.lastSummary ?? summary?.lastSummary ?? tab.workstream.outcome,
+        structuredStatus: updates.structuredStatus ?? tab.workstream.structuredStatus,
+        completedAt: completed ? tab.workstream.completedAt ?? Date.now() : tab.workstream.completedAt,
+        lastActivityAt: updates.activity ? Date.now() : tab.workstream.lastActivityAt,
+      },
+    });
+    if (statusChanged && updates.status) {
+      store.recordWorkstreamEvent(tabId, {
+        kind: "status",
+        label: `Status changed to ${updates.status}`,
+        status: updates.status,
+      });
+    }
+  }, [tabId]);
+
   const handleReady = useCallback((ptyId: string, details: { reused: boolean }) => {
     updateTerminalRuntime({
       id: ptyId,
@@ -225,7 +439,8 @@ export function TerminalComponent({
       store.updateCanvasNode(linkedNode.id, { terminalPtyId: ptyId });
     }
     store.setActiveTerminal(ptyId);
-  }, [tabId, updateTerminalRuntime]);
+    updateWorkstreamRuntime({ status: "running", activity: true });
+  }, [tabId, updateTerminalRuntime, updateWorkstreamRuntime]);
 
   const handleStatus = useCallback((status: TerminalRuntimeStatus, details?: { id?: string; error?: string }) => {
     updateTerminalRuntime({
@@ -234,9 +449,57 @@ export function TerminalComponent({
       error: details?.error,
       reused: status === "reconnected" ? true : undefined,
     });
-  }, [updateTerminalRuntime]);
+    if (status === "failed") updateWorkstreamRuntime({ status: "failed", activity: true });
+  }, [updateTerminalRuntime, updateWorkstreamRuntime]);
 
   const handleOutput = useCallback((data: string) => {
+    outputStatusWindowRef.current = `${outputStatusWindowRef.current}${data}`.slice(-4000);
+    const heuristicOutput = outputStatusWindowRef.current.replace(STRUCTURED_AGENT_SIGNAL_PATTERN, "");
+    const structuredSignals = parseStructuredAgentSignals(outputStatusWindowRef.current)
+      .filter(({ raw }) => {
+        if (structuredSignalKeysRef.current.has(raw)) return false;
+        structuredSignalKeysRef.current.add(raw);
+        return true;
+      });
+    for (const { signal } of structuredSignals) {
+      updateWorkstreamRuntime({
+        status: signal.status,
+        phase: signal.phase,
+        readiness: signal.readiness,
+        lastSummary: signal.summary,
+        nextAction: signal.nextAction,
+        structuredStatus: true,
+        activity: true,
+      });
+      useWorkspaceStore.getState().recordWorkstreamEvent(tabId, {
+        kind: "signal",
+        label: signal.label ?? "Structured provider signal",
+        detail: signal.detail ?? signal.summary,
+        status: signal.status,
+      });
+    }
+    const providerReadiness = inferProviderReadiness(heuristicOutput);
+    updateWorkstreamRuntime({
+      status: providerReadiness?.status ?? inferWorkstreamStatus(heuristicOutput) ?? undefined,
+      phase: providerReadiness?.phase,
+      readiness: providerReadiness?.readiness,
+      lastSummary: providerReadiness?.lastSummary,
+      nextAction: providerReadiness?.nextAction,
+      activity: true,
+    });
+    if (providerReadiness) {
+      const store = useWorkspaceStore.getState();
+      const tab = store.tabs.find((candidate) => candidate.id === tabId);
+      const alreadyRecorded = tab?.workstream?.events?.some((event) => event.label === providerReadiness.label);
+      if (!alreadyRecorded) {
+        store.recordWorkstreamEvent(tabId, {
+          kind: "provider",
+          label: providerReadiness.label,
+          detail: providerReadiness.detail,
+          status: providerReadiness.status,
+        });
+      }
+    }
     const previewUrl = detectLocalhostPreviewUrl(data);
     if (!previewUrl) return;
 
@@ -251,7 +514,7 @@ export function TerminalComponent({
     if (previewNode?.previewPaneId && tab) {
       store.updatePreviewPaneUrl(tab.id, previewNode.previewPaneId, previewUrl);
     }
-  }, [paneId, tabId, updateTerminalRuntime]);
+  }, [paneId, tabId, updateTerminalRuntime, updateWorkstreamRuntime]);
 
   const { resize, write } = usePty({
     terminal: !canvasMode && isRuntimeVisible && !nativePane.attached ? terminal : null,
@@ -263,6 +526,13 @@ export function TerminalComponent({
     onStatus: handleStatus,
     onOutput: handleOutput,
   });
+
+  useEffect(() => {
+    if (canvasMode || !livePtyId || !queuedInput || queuedInput.sentAt) return;
+    const text = queuedInput.text.endsWith("\r") ? queuedInput.text : `${queuedInput.text}\r`;
+    onQueuedInputSent?.(queuedInput.id);
+    write(text);
+  }, [canvasMode, livePtyId, onQueuedInputSent, queuedInput?.id, queuedInput?.sentAt, queuedInput?.text, write]);
 
   // Poll the PTY's live cwd (/proc/<pid>/cwd) so a `cd`/`z` to another path
   // updates the node subtitle + top-bar breadcrumb. Display-only: it never
@@ -541,6 +811,8 @@ export function TerminalComponent({
             onStatus={handleStatus}
             onOutput={handleOutput}
             onSnapshot={onSnapshot}
+            queuedInput={queuedInput}
+            onQueuedInputSent={onQueuedInputSent}
           />
         </div>
       ) : (

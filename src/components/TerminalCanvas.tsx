@@ -42,6 +42,7 @@ import {
 } from "../lib/selection";
 import { useWorkspaceStore } from "../stores/workspace";
 import type { GridSnapshot } from "../lib/gridSnapshot";
+import type { WorkstreamInput } from "../lib/types";
 import { syncTerminalLatencyTraceEnv, traceTerminalLatency } from "../lib/terminalLatencyTrace";
 
 // Hack is the terminal buffer font (Warp's default terminal font), bundled via
@@ -108,6 +109,8 @@ interface TerminalCanvasProps {
   onStatus?: (status: "starting" | "failed", details?: { error?: string }) => void;
   onOutput?: (data: string) => void;
   onSnapshot?: (snapshot: GridSnapshot) => void;
+  queuedInput?: WorkstreamInput;
+  onQueuedInputSent?: (inputId: string) => void;
 }
 
 export function TerminalCanvas({
@@ -125,6 +128,8 @@ export function TerminalCanvas({
   onStatus,
   onOutput,
   onSnapshot,
+  queuedInput,
+  onQueuedInputSent,
 }: TerminalCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
@@ -603,6 +608,21 @@ export function TerminalCanvas({
     }
     queue.queue(data, seqId);
   };
+
+  useEffect(() => {
+    if (!queuedInput || queuedInput.sentAt) return;
+    const inputId = queuedInput.id;
+    const text = queuedInput.text.endsWith("\r") ? queuedInput.text : `${queuedInput.text}\r`;
+    let cancelled = false;
+    void waitForFirstFrame().then(() => {
+      if (cancelled) return;
+      onQueuedInputSent?.(inputId);
+      send(text, nextTerminalInputSequence(), "canvas-workstream-input");
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [queuedInput?.id, queuedInput?.sentAt, queuedInput?.text, onQueuedInputSent]);
 
   const syncFocusedTerminal = useCallback(() => {
     if (!inputRef.current || document.activeElement !== inputRef.current) return;

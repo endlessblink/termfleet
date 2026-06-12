@@ -2,6 +2,7 @@ import { CSSProperties, ReactNode, useEffect, useRef, useState } from "react";
 import {
   CaretDoubleLeft,
   CaretDoubleRight,
+  Robot,
   FileText,
   FolderOpen,
   MapTrifold,
@@ -16,13 +17,15 @@ import {
   TreeStructure,
   X,
 } from "@phosphor-icons/react";
-import { createNewTab, createTerminalTab, splitActivePane, splitActivePreviewPane, useWorkspaceStore } from "../stores/workspace";
+import { createAgentWorkstream, createNewTab, createTerminalTab, splitActivePane, splitActivePreviewPane, useWorkspaceStore } from "../stores/workspace";
 import { FolderPicker } from "./FolderPicker";
 import type { CanvasNode, Tab } from "../lib/types";
 import { taskStatusColor, taskStatusLabel } from "../lib/masterPlanTasks";
 import { useMasterPlanTasks } from "../hooks/useMasterPlanTasks";
 import { pathTail, projectNameFor } from "../lib/projectDisplay";
 import { FileExplorer } from "./FileExplorer";
+import { checkAgentProvider } from "../lib/agentProviders";
+import { agentLaneStatusText, summarizeAgentLane } from "../lib/agentWorkstreamLane";
 
 const TERMINAL_COLORS = [
   "#d99a45",
@@ -33,6 +36,13 @@ const TERMINAL_COLORS = [
   "#ef6f72",
 ];
 const TERMINAL_EMOJIS = ["💻", "⚙️", "🚀", "🧪", "🛠️", "📦", "🔧", "🧭"];
+
+function workstreamLabel(provider?: string) {
+  if (provider === "opencode") return "OpenCode";
+  if (provider === "claude") return "Claude";
+  if (provider === "shell") return "Shell";
+  return "Codex";
+}
 
 type OperationsPanel = "sessions" | "map";
 
@@ -305,6 +315,58 @@ const styles: Record<string, CSSProperties> = {
     whiteSpace: "nowrap",
     color: "var(--text-secondary)",
     fontSize: 12,
+  },
+  agentLanePanel: {
+    display: "grid",
+    gap: 8,
+    margin: "0 0 8px",
+    padding: "9px 10px",
+    border: "1px solid var(--border-subtle)",
+    borderRadius: "var(--radius-sm)",
+    background: "color-mix(in srgb, var(--surface-raised) 78%, transparent)",
+  },
+  agentLaneHeader: {
+    minWidth: 0,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+    color: "var(--text-primary)",
+    fontSize: 12,
+    fontWeight: 500,
+  },
+  agentLaneStats: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: 5,
+  },
+  agentLaneChip: {
+    height: 20,
+    display: "inline-flex",
+    alignItems: "center",
+    padding: "0 6px",
+    borderRadius: "var(--radius-xs)",
+    background: "var(--surface-base)",
+    color: "var(--text-secondary)",
+    fontSize: 10,
+  },
+  agentLaneList: {
+    display: "grid",
+    gap: 4,
+  },
+  agentLaneItem: {
+    minWidth: 0,
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr) auto",
+    gap: 8,
+    alignItems: "center",
+    padding: "5px 6px",
+    border: "1px solid transparent",
+    borderRadius: "var(--radius-xs)",
+    background: "transparent",
+    color: "var(--text-primary)",
+    textAlign: "left",
+    cursor: "pointer",
   },
   taskInlineBadge: {
     minWidth: 0,
@@ -913,11 +975,13 @@ function NewTerminalLaunchMenu({
   y,
   onClose,
   onProjectLauncher,
+  onAgentWorkstream,
 }: {
   x: number;
   y: number;
   onClose: () => void;
   onProjectLauncher: () => void;
+  onAgentWorkstream: () => void;
 }) {
   const activeTabId = useWorkspaceStore((state) => state.activeTabId);
   const activeTab = useWorkspaceStore((state) => state.tabs.find((tab) => tab.id === activeTabId));
@@ -1050,6 +1114,12 @@ function NewTerminalLaunchMenu({
           if (splitActivePreviewPane()) setWorkspaceMode("split");
         }}
       />
+      <MenuItem
+        icon={<Robot size={13} weight="duotone" />}
+        label="Codex workstream"
+        detail="Track a supervised agent terminal"
+        onClick={onAgentWorkstream}
+      />
       <div style={{ borderTop: "1px solid var(--border-subtle)", margin: "6px 2px" }} />
       <MenuItem
         icon={<TreeStructure size={13} weight="duotone" />}
@@ -1104,6 +1174,7 @@ function SessionsPanel({
     color: group.color,
     count: tabs.filter((tab) => tab.groupId === group.id).length,
   }));
+  const agentLane = summarizeAgentLane(visibleTabs);
 
   useEffect(() => {
     if (projectRoot) {
@@ -1179,13 +1250,24 @@ function SessionsPanel({
       addCanvasNode(node);
     }
     const zoom = 1;
-    const nextX = 306 - (node.x + node.width / 2) * zoom;
-    const nextY = 220 - (node.y + node.height / 2) * zoom;
+    const nextX = 445 - (node.x + node.width / 2) * zoom;
+    const nextY = 330 - (node.y + node.height / 2) * zoom;
     selectCanvasNode(node.id);
     updateCanvasViewport({
       zoom,
       x: Math.round(nextX),
       y: Math.round(nextY),
+    });
+  };
+
+  const createAgentWorkstreamOnMap = async () => {
+    const availability = await checkAgentProvider("codex");
+    const mission = window.prompt(`Mission for ${availability.label} workstream`, "Supervised workstream");
+    if (mission === null) return;
+    createAgentWorkstream("codex", mission, availability);
+    requestAnimationFrame(() => {
+      const nextTab = useWorkspaceStore.getState().getActiveTab();
+      if (nextTab) focusTabOnMap(nextTab);
     });
   };
 
@@ -1254,6 +1336,7 @@ function SessionsPanel({
             openProjectLauncher();
             setNewTerminalMenu(null);
           }}
+          onAgentWorkstream={createAgentWorkstreamOnMap}
         />
       )}
       {showLauncher && (
@@ -1373,6 +1456,66 @@ function SessionsPanel({
           <span>Sessions</span>
           <span>{activeProjectName}</span>
         </div>
+        {agentLane.total > 0 && (
+          <div
+            style={styles.agentLanePanel}
+            data-testid="sidebar-agent-lane-summary"
+            aria-label={agentLaneStatusText(agentLane)}
+          >
+            <div style={styles.agentLaneHeader}>
+              <span>Agent workstreams</span>
+              <span>{agentLane.total}</span>
+            </div>
+            <div style={styles.agentLaneStats}>
+              <span style={styles.agentLaneChip} data-testid="sidebar-agent-lane-total">{agentLane.total} agents</span>
+              <span style={styles.agentLaneChip}>{agentLane.active} active</span>
+              <span style={styles.agentLaneChip}>{agentLane.waiting} waiting</span>
+              <span style={styles.agentLaneChip}>{agentLane.blocked} blocked</span>
+              <span style={styles.agentLaneChip}>{agentLane.complete} complete</span>
+              <span style={styles.agentLaneChip}>{agentLane.attention} attention</span>
+            </div>
+            {agentLane.primaryAttention && (
+              <button
+                type="button"
+                style={styles.agentLaneItem}
+                data-testid="sidebar-agent-lane-attention"
+                title={`Open ${agentLane.primaryAttention.title}`}
+                onClick={() => {
+                  setActiveTab(agentLane.primaryAttention!.tabId);
+                  setWorkspaceMode("split");
+                }}
+              >
+                <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {agentLane.primaryAttention.label}
+                </span>
+                <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                  {agentLane.primaryAttention.title} · {agentLane.primaryAttention.detail}
+                </span>
+              </button>
+            )}
+            <div style={styles.agentLaneList}>
+              {agentLane.workstreams.slice(0, 3).map(({ tab, workstream }) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  style={styles.agentLaneItem}
+                  title={workstream.lastSummary ?? workstream.mission ?? workstream.prompt ?? tab.title}
+                  onClick={() => {
+                    setActiveTab(tab.id);
+                    setWorkspaceMode("split");
+                  }}
+                >
+                  <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {tab.title}
+                  </span>
+                  <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                    {workstreamLabel(workstream.provider)} · {workstream.phase ?? workstream.status}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         {visibleTabs.length === 0 ? (
           <div style={{ ...styles.empty, display: "grid", gap: 8, justifyItems: "center" }}>
             <span>No terminals in this project yet.</span>
@@ -1396,6 +1539,8 @@ function SessionsPanel({
         ) : visibleTabs.map((tab) => {
           const active = tab.id === activeTabId;
           const group = tab.groupId ? groups.find((candidate) => candidate.id === tab.groupId) : null;
+          const workstream = tab.workstream;
+          const lastWorkstreamEvent = workstream?.events?.[workstream.events.length - 1];
           return (
             <div
               key={tab.id}
@@ -1429,6 +1574,7 @@ function SessionsPanel({
                   {tab.title}
                 </div>
                 <div style={styles.rowMeta}>
+                  {workstream?.kind === "agent" ? `${workstreamLabel(workstream.provider)} · ${workstream.phase ?? workstream.status}${workstream.startupCommand ? ` · ${workstream.startupCommand}` : ""}${workstream.lastSummary ? ` · ${workstream.lastSummary}` : ""}${lastWorkstreamEvent ? ` · ${lastWorkstreamEvent.label}` : ""}${workstream.providerAvailable === false ? ` · ${workstream.providerAvailabilityMessage ?? "unavailable"}` : ""} · ` : ""}
                   {group ? `${group.name} · ` : ""}
                   {pathTail(tab.initialCwd)}
                 </div>
@@ -1532,6 +1678,10 @@ function MapPanel({
         if (!node.terminalTabId) return true;
         return tabs.find((tab) => tab.id === node.terminalTabId)?.groupId === activeGroupFilter;
       });
+  const visibleTabs = activeGroupFilter === null
+    ? tabs
+    : tabs.filter((tab) => tab.groupId === activeGroupFilter);
+  const agentLane = summarizeAgentLane(visibleTabs);
   const taskRoots = visibleNodes.map((node) => {
     const linkedTab = node.terminalTabId
       ? tabs.find((tab) => tab.id === node.terminalTabId)
@@ -1553,6 +1703,72 @@ function MapPanel({
         <span style={styles.count}>{visibleNodes.length}</span>
       </div>
       <div style={styles.list}>
+        {agentLane.total > 0 && (
+          <div
+            style={styles.agentLanePanel}
+            data-testid="map-agent-lane-summary"
+            aria-label={agentLaneStatusText(agentLane)}
+          >
+            <div style={styles.agentLaneHeader}>
+              <span>Agent workstreams</span>
+              <span>{agentLane.total}</span>
+            </div>
+            <div style={styles.agentLaneStats}>
+              <span style={styles.agentLaneChip} data-testid="map-agent-lane-total">{agentLane.total} agents</span>
+              <span style={styles.agentLaneChip}>{agentLane.active} active</span>
+              <span style={styles.agentLaneChip}>{agentLane.waiting} waiting</span>
+              <span style={styles.agentLaneChip}>{agentLane.blocked} blocked</span>
+              <span style={styles.agentLaneChip}>{agentLane.complete} complete</span>
+              <span style={styles.agentLaneChip}>{agentLane.attention} attention</span>
+            </div>
+            {agentLane.primaryAttention && (
+              <button
+                type="button"
+                style={styles.agentLaneItem}
+                data-testid="map-agent-lane-attention"
+                title={`Focus ${agentLane.primaryAttention.title}`}
+                onClick={() => {
+                  const node = canvasState.nodes.find((candidate) => candidate.terminalTabId === agentLane.primaryAttention?.tabId);
+                  setActiveTab(agentLane.primaryAttention!.tabId);
+                  setWorkspaceMode("canvas");
+                  if (node) focusCanvasNode(node);
+                }}
+              >
+                <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {agentLane.primaryAttention.label}
+                </span>
+                <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                  {agentLane.primaryAttention.title} · {agentLane.primaryAttention.detail}
+                </span>
+              </button>
+            )}
+            <div style={styles.agentLaneList}>
+              {agentLane.workstreams.slice(0, 3).map(({ tab, workstream }) => {
+                const node = canvasState.nodes.find((candidate) => candidate.terminalTabId === tab.id);
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    style={styles.agentLaneItem}
+                    title={workstream.lastSummary ?? workstream.mission ?? workstream.prompt ?? tab.title}
+                    onClick={() => {
+                      setActiveTab(tab.id);
+                      setWorkspaceMode("canvas");
+                      if (node) focusCanvasNode(node);
+                    }}
+                  >
+                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {tab.title}
+                    </span>
+                    <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                      {workstreamLabel(workstream.provider)} · {workstream.phase ?? workstream.status}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
         {visibleNodes.length === 0 ? (
           <div style={styles.empty}>No map nodes yet.</div>
         ) : (

@@ -316,6 +316,13 @@ export function destroyBrowserPtys(ids: string[]) {
   syncBrowserPtyDebugState();
 }
 
+export function writeBrowserPtys(ids: string[], data: string) {
+  if (typeof window === "undefined" || isTauriRuntime()) return;
+
+  ids.forEach((id) => writeBrowserPty(id, data));
+  syncBrowserPtyDebugState();
+}
+
 export function usePty({ terminal, cwd, command, attachToPtyId, runtimeSessionId, onReady, onStatus, onOutput }: UsePtyOptions) {
   const ptyIdRef = useRef<string | null>(null);
   const ownsPtyRef = useRef(false);

@@ -317,7 +317,15 @@ impl PtyManager {
         let shell =
             command.unwrap_or_else(|| std::env::var("SHELL").unwrap_or_else(|_| "bash".into()));
         let command_label = shell.clone();
-        let mut cmd = CommandBuilder::new(&shell);
+        let mut cmd = if shell.chars().any(char::is_whitespace) {
+            let login_shell = std::env::var("SHELL").unwrap_or_else(|_| "sh".into());
+            let mut builder = CommandBuilder::new(login_shell);
+            builder.arg("-lc");
+            builder.arg(&shell);
+            builder
+        } else {
+            CommandBuilder::new(&shell)
+        };
         cmd.env("TERM", "xterm-256color");
         cmd.env("COLORTERM", "truecolor");
         cmd.env(

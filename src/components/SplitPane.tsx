@@ -510,6 +510,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
         const paneTerminal = tab.terminals.find((terminal) => terminal.paneId === paneId);
         const terminalStatus = paneTerminal?.status ?? "starting";
         const terminalStatusLabel = STATUS_LABELS[terminalStatus];
+        const queuedWorkstreamInput = tab.workstream?.inputQueue?.find((input) => !input.sentAt);
         const chromeHeight = 24;
         const showActions = hoveredPaneId === paneId || isActive;
 
@@ -659,11 +660,38 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                     useWorkspaceStore.getState().updatePreviewPaneUrl(tab.id, paneId, previewUrl)
                   }
                 />
+              ) : tab.workstream?.kind === "agent" && tab.workstream.providerAvailable === false ? (
+                <div
+                  role="status"
+                  style={{
+                    height: "100%",
+                    display: "flex",
+                    flexDirection: "column",
+                    justifyContent: "center",
+                    gap: 8,
+                    padding: 24,
+                    background: "var(--terminal-bg)",
+                    color: "var(--text-secondary)",
+                    fontFamily: "var(--font-ui)",
+                    fontSize: 13,
+                  }}
+                >
+                  <strong style={{ color: "var(--text-primary)", fontWeight: 500 }}>
+                    {tab.workstream.role} provider unavailable
+                  </strong>
+                  <span>{tab.workstream.providerAvailabilityMessage ?? "Provider command was not found."}</span>
+                </div>
               ) : (
                 <TerminalComponent
+                  key={`${tab.id}-${paneId}-${tab.workstream?.generation ?? 0}`}
                   tabId={tab.id}
                   paneId={paneId}
                   cwd={paneCwd}
+                  command={tab.workstream?.startupCommand}
+                  queuedInput={queuedWorkstreamInput}
+                  onQueuedInputSent={(inputId) =>
+                    useWorkspaceStore.getState().markWorkstreamInputSent(tab.id, inputId)
+                  }
                 />
               )}
             </div>

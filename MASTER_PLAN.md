@@ -36,7 +36,7 @@ were retired during consolidation.
 | TC-013 | DONE (2026-05-29) | TASK | Prevent daemon transport failures from flooding terminals |
 | ~~TC-014~~ | SUPERSEDED by TC-017 | FEATURE | Make terminal typing latency production-grade (native VTE path abandoned) |
 | TC-015 | DONE (2026-06-01) | FEATURE | Per-node task badges: show associated MASTER_PLAN task + status on canvas terminals |
-| TC-016 | TODO | FEATURE | Multi-agent orchestration: spawn/manage sub-agent terminals from the cockpit |
+| TC-016 | IN_PROGRESS | FEATURE | Multi-agent orchestration: spawn/manage sub-agent terminals from the cockpit |
 | TC-017 | IN_PROGRESS | FEATURE | Headless-VT (Rust) + canvas renderer — now the desktop default (replaces xterm); live latency/TUI confirmation pending |
 | TC-017a | DONE | TASK | Stage 1: headless alacritty_terminal grid + JSON snapshot |
 | TC-017b | DONE | TASK | Stage 2: full-frame Canvas2D renderer + font atlas (no diffing) |
@@ -48,6 +48,7 @@ were retired during consolidation.
 | TC-018 | TODO | FEATURE | BiDi/RTL + text shaping (Hebrew nikud) in the headless grid — depends on TC-017 |
 | TC-019 | IN_PROGRESS | DESIGN | Warp-style chrome redesign: neutral fill-only design system (no outlines), terminal-first layout, Hack terminal font + #1d2022 gray, themed folder picker, DESIGN.md + CI-enforced no-outlines/typography rules |
 | TC-020 | DONE (2026-06-01) | FEATURE | Split-pane and canvas localhost preview surface |
+| TC-021 | IN_PROGRESS | PRODUCT | Open-source developer preview lane: differentiate TermFleet as a local-first agent/ops cockpit |
 
 ---
 
@@ -1784,7 +1785,342 @@ Verification:
 - `npm run build` passed.
 - `npx playwright test tests/localhost-preview.spec.ts` passed.
 
-#### TC-016 - Multi-agent orchestration from the cockpit `TODO`
+#### TC-021 - Open-source developer preview lane `IN_PROGRESS`
+Prepare TermFleet for a public open-source developer preview without positioning
+it as another terminal emulator. The public story is: **a local-first operations
+cockpit for supervising many terminals, local services, and coding agents**.
+
+Launch bar:
+- The first public release should prove the agent/ops cockpit loop in one
+  coherent demo: open a project, spawn or attach multiple workstream terminals,
+  see them on the operations map, bind them to tasks, preview local services,
+  recover/reconnect sessions, and capture verification evidence.
+- Do not launch on terminal aesthetics alone. Ghostty, Warp, Wave, Tabby, and
+  existing multiplexers already cover large parts of the "better terminal"
+  market. TermFleet differentiates through persistent multi-workstream control,
+  spatial operations context, local-first recovery, and agent supervision.
+- Treat TC-016 as the flagship feature for this lane, not a side feature.
+
+Workstreams:
+1. **Agent cockpit vertical slice**
+   - Spawn named Codex / Claude Code / OpenCode / shell workstream terminals
+     from the command bar and map.
+   - Show agent role, task prompt, cwd, branch/worktree, status, last activity,
+     and exit state on the node and sidebar.
+   - Let the parent cockpit send a follow-up message or stop/restart a child.
+   - Keep the first version local and explicit; no hidden cloud orchestration.
+
+2. **Operations map intelligence**
+   - Auto-group nodes by project, task, branch, service, and agent role.
+   - Add map filters for active, failed, waiting-for-input, test-running, and
+     preview-linked terminals.
+   - Make the map explain the current workspace without manual arrangement.
+
+3. **Durable recovery as a visible product feature**
+   - Surface daemon/session states clearly: live, reconnecting, stale, restored,
+     failed, and explicitly closed.
+   - Add a "restore workspace" proof path to the demo and README.
+   - Keep the existing rule that React unmount detaches but does not kill PTYs.
+
+4. **Runbook and evidence capture**
+   - Capture command history, cwd, branch, selected logs, test commands, preview
+     URLs, screenshots, and verification status into a shareable local artifact.
+   - Redact secrets and machine-local absolute paths before export.
+   - Link captured evidence back to MASTER_PLAN task badges where available.
+
+5. **Local services dashboard**
+   - Detect localhost URLs, dev servers, ports, and failing commands from terminal
+     output and process state.
+   - Make preview nodes first-class companions to the service terminal that owns
+     them.
+   - Add quick actions for restart, open in browser, copy URL, and attach logs.
+
+6. **OSS readiness**
+   - Write a README that states what TermFleet is, what it is not, and why the
+     architecture is different.
+   - Add architecture diagram(s), demo GIF/video, install/run instructions,
+     contribution guide, issue templates, license, and security disclosure path.
+   - Run a secrets/path/license audit before publishing.
+   - Ensure a fresh clone can build or fail with actionable prerequisite errors.
+
+Acceptance (draft):
+- A fresh user can run TermFleet from the README and understand the product in
+  under 60 seconds from the first screen or demo.
+- The demo differentiates TermFleet as an agent/ops cockpit, not a generic
+  split-pane terminal.
+- TC-016 has a working vertical slice with at least two independently supervised
+  agent/workstream terminals.
+- Session recovery is visible and verified with the existing daemon-backed smoke
+  path.
+- Preview/service detection works for at least one common local web app flow.
+- Public docs include install, architecture, contribution, license, security,
+  limitations, and roadmap sections.
+- Repo audit finds no committed secrets, personal tokens, accidental private
+  paths in user-facing docs, or unsupported claims.
+
+Verification (planned):
+- `npm run build`
+- `npm run verify:canvas-live`
+- `npm run verify:standalone-daemon`
+- `npm run verify:canvas-all`
+- Fresh-clone README smoke on a clean temp directory or VM/container equivalent.
+
+Progress notes:
+- First vertical slice added: command palette and sidebar launch menu can create
+  a supervised `Codex workstream` terminal, persist agent/workstream metadata on
+  the tab, show the workstream in the sessions list, and render an `AGENT` node
+  badge plus provider status on the operations map.
+- New workstream creation switches to the map and centers the created node so the
+  supervision surface is visible immediately.
+- Second slice added: workstreams now carry a provider `startupCommand`
+  (`codex`, `claude`, or `opencode`), pass that command into the existing PTY
+  spawn path, and advance visible status from `ready` to `running` / `failed`
+  based on terminal lifecycle callbacks.
+- Third slice added: agent workstreams now have a durable input queue. The map
+  node exposes a follow-up prompt action, queued text is sent through the mounted
+  terminal transport, and each input is marked sent after dispatch.
+- Fourth slice added: agent workstreams now parse conservative status cues from
+  terminal output (`waiting`, `failed`, `done`) across a rolling output window,
+  and map nodes expose non-destructive Stop / Restart controls. Stop kills the
+  PTY while keeping the workstream node; Restart bumps the workstream generation
+  so the terminal remounts through the existing spawn path.
+- Fifth slice added: agent workstream launchers now check provider availability
+  before creating the tab. Desktop uses a Tauri `agent_provider_statuses`
+  command to check `codex`, `claude`, and `opencode` on PATH; browser preview
+  records simulated availability for regression coverage. Workstream metadata
+  stores the provider availability message, unavailable providers stay in a
+  failed inline state instead of mounting a shell, and the initial launch prompt
+  is queued automatically through the same terminal dispatch path as follow-up
+  prompts.
+- Sixth slice added: workstreams now maintain a durable cockpit event timeline
+  for mission creation, provider readiness, queued prompts, sent prompts, parsed
+  status changes, stop, and restart. Agent map nodes render a compact mission
+  panel plus latest timeline events above the live terminal, and the sessions
+  list includes the latest workstream event so the loop reads as a supervised
+  agent cockpit rather than a tagged terminal.
+- Seventh slice added: provider definitions now include a small control contract
+  (`launchMode`, `readinessCheck`, `stopBehavior`, `structuredStatus`) and each
+  workstream tracks a cockpit phase (`queued`, `launching`, `active`,
+  `needs-input`, `complete`, `interrupted`, `blocked`). The map cockpit renders
+  launch/readiness/status/stop cells so the UI is explicit about what is
+  provider-aware today and what is still terminal-inferred.
+- Eighth slice added: workstreams now track provider readiness (`path-checked`,
+  `provider-ready`, `auth-required`, `unknown`) and classify provider output for
+  auth-required, ready, and interrupted/cancelled cues. The cockpit also has an
+  explicit Interrupt control that sends Ctrl-C through the terminal transport
+  and records an `Interrupt requested` operator event before the hard Stop path.
+- Ninth slice added: workstreams now maintain durable operator guidance fields
+  (`lastSummary`, `nextAction`) derived from launch, prompt dispatch, parsed
+  status, interrupt, stop, and restart transitions. The map cockpit renders a
+  Summary/Next row and the sessions list includes the latest summary, so a run
+  can be understood without reading terminal scrollback or raw timeline cards.
+- Tenth slice added: the terminal output bridge now recognizes structured
+  provider signals of the form `[[TERMFLEET_AGENT_EVENT {...}]]`. These signals
+  can set status, phase, readiness, summary, next action, and event labels,
+  mark the workstream as structured-status capable, and are de-duplicated across
+  replay windows. Heuristic parsing ignores marker payloads so structured
+  summaries are not overwritten by fallback text matching.
+- Eleventh slice added: desktop provider launches now route through a
+  repo-local shell adapter command (`scripts/agent-provider-adapter.sh`) returned
+  by the Tauri provider availability check. The PTY spawn path supports command
+  strings via `$SHELL -lc`, so adapter commands can include arguments. The
+  adapter emits structured launch/exit/failure markers around the real provider
+  CLI, giving Codex/Claude/OpenCode launches a concrete structured-status path
+  before a deeper provider API exists.
+- Twelfth slice added: agent workstreams now roll up into a shared supervision
+  lane. The canvas renders an at-a-glance `Agent workstreams` overlay with total,
+  active, waiting, blocked, and complete counts plus quick focus rows. The
+  sidebar Sessions and Map panels use the same summary logic so multiple child
+  agents read as one supervised lane instead of isolated terminals.
+- Thirteenth slice added: provider contracts now include explicit auth-check and
+  control-protocol fields, persisted on each workstream and rendered as Auth /
+  Control cockpit cells. Provider readiness classification now gives
+  auth-required and provider-ready states provider-specific summaries and next
+  actions, and the rolling-output classifier uses the newest readiness cue so an
+  authenticated/ready message can recover from an earlier auth-required prompt.
+- Fourteenth slice added: cancellation now has an explicit lifecycle. Interrupt
+  sends Ctrl-C but moves the workstream to a `cancelling` phase with
+  `Cancellation requested` guidance instead of immediately claiming interruption.
+  Provider output that says cancelled/interrupted/aborted then acknowledges the
+  cancellation and moves the run to `interrupted` / `stopped`; hard Stop remains
+  the fallback when the provider does not return control.
+- Fifteenth slice added: the provider adapter now participates in the control
+  plane instead of only wrapping launch/exit. It traps interrupt/termination
+  signals, emits structured cancellation-request markers, forwards the signal to
+  the provider process, and emits a structured cancellation-ack marker once the
+  provider exits. Desktop provider command construction now shell-quotes the
+  adapter path, so repo paths containing single quotes cannot break launches.
+- Sixteenth slice added: workstreams now maintain a durable run record:
+  queued prompts, sent prompts, structured signals, control actions, and current
+  outcome. The map cockpit renders a compact `Agent run record` row so the demo
+  loop can be understood at a glance without reading scrollback or timeline
+  cards.
+- Seventeenth slice added: agent cockpit nodes now expose `Copy agent run brief`.
+  The copied handoff includes mission, provider, status/phase, readiness,
+  summary, next action, outcome, run-record counters, and latest event, making
+  the completed demo loop shareable without scraping terminal output.
+- Eighteenth slice added: agent lane summaries now compute prioritized operator
+  attention. Canvas, Sessions, and Map lane surfaces show the highest-priority
+  item requiring action (auth required, needs input, cancelling, blocked, or
+  complete) plus the relevant next-action detail, so multi-workstream supervision
+  points the operator at the right child instead of only showing counts.
+- Nineteenth slice added: primary attention rows are now actionable. Clicking
+  the highlighted attention item on the canvas focuses the target workstream
+  node, while the Sessions and Map sidebars open/focus the same workstream in
+  their respective surfaces.
+- Twentieth slice added: agent launch now captures a concrete mission before
+  creating the workstream. The mission is persisted separately from the mutable
+  latest prompt, rendered in the cockpit mission panel, and used in the copied
+  run brief even after follow-up prompts and structured provider markers change
+  the current prompt.
+- Twenty-first slice added: completed workstreams now have an explicit operator
+  review step. `Mark run reviewed` moves the run to a durable reviewed phase,
+  records a control event, preserves the completed run record, and clears lane
+  attention so the supervision loop can close without deleting the workstream.
+- Twenty-second slice added: agent workstreams now carry a durable run identity
+  and timing record. Each run gets a provider-scoped run id, the cockpit run
+  record shows run/generation plus completion/review times, and copied run
+  briefs include run id, generation, started, completed, and reviewed fields so
+  handoffs refer to a specific supervised run.
+- Current limitation: status parsing is text-pattern based, not provider-native
+  structured state. Stop/restart is PTY-level control, not a provider-aware
+  graceful cancellation protocol. Provider availability is PATH-based; it does
+  not yet validate auth/session readiness for each CLI.
+
+Verification:
+- `npm run build` passed.
+- Browser smoke against `http://127.0.0.1:5177/` created `New agent workstream`
+  from the command palette and found both `agent` and `Codex · running` visible.
+- Screenshot evidence: `/tmp/termfleet-agent-workstream-smoke.png`.
+- `npx playwright test tests/agent-workstream.spec.ts` passed, covering command
+  palette creation, visible map badges, persisted provider metadata, startup
+  command, runtime status, queued follow-up input, terminal dispatch, and sent
+  acknowledgement, waiting-state parsing, stop, and restart.
+- `npm run build` passed again after provider availability wiring.
+- `npx playwright test tests/agent-workstream.spec.ts` passed again, now also
+  covering browser-preview provider availability metadata and automatic initial
+  prompt dispatch before the follow-up prompt.
+- `cd src-tauri && CARGO_BUILD_JOBS=1 cargo check` passed for the new provider
+  status command.
+- `npm run build` passed after the cockpit event timeline UI/model changes.
+- `npx playwright test tests/agent-workstream.spec.ts` passed after adding
+  assertions for the visible mission panel, persisted event timeline, prompt
+  sent events, follow-up events, stop event, and restart/status event sequence.
+- `cd src-tauri && CARGO_BUILD_JOBS=1 cargo check` passed again.
+- `npm run build` passed after adding provider control-contract metadata and
+  cockpit phases.
+- `npx playwright test tests/agent-workstream.spec.ts` passed after adding
+  assertions for visible provider-control cells plus persisted launch mode,
+  readiness check, stop behavior, structured-status flag, and phase transitions.
+- `cd src-tauri && CARGO_BUILD_JOBS=1 cargo check` passed again.
+- `npm run build` passed after adding provider readiness classification and the
+  interrupt control path.
+- `npx playwright test tests/agent-workstream.spec.ts` passed after covering the
+  visible `path-checked` readiness cell, persisted readiness metadata, Interrupt
+  button, browser Ctrl-C dispatch, `Interrupt requested` event, hard Stop, and
+  restart.
+- `cd src-tauri && CARGO_BUILD_JOBS=1 cargo check` passed again.
+- `npm run build` passed after adding durable operator summaries and next-action
+  guidance.
+- `npx playwright test tests/agent-workstream.spec.ts` passed after covering the
+  visible Summary/Next row and persisted guidance through launch, follow-up,
+  waiting, interrupt, hard stop, and restart.
+- `cd src-tauri && CARGO_BUILD_JOBS=1 cargo check` passed again.
+- `npm run build` passed after adding structured provider signal parsing.
+- `npx playwright test tests/agent-workstream.spec.ts` passed after covering a
+  structured completion marker that updates status, phase, readiness,
+  structured-status flag, summary, next action, and timeline signal event.
+- `cd src-tauri && CARGO_BUILD_JOBS=1 cargo check` passed again.
+- `sh scripts/agent-provider-adapter.sh unsupported` emitted a structured
+  adapter failure marker and exited `64`, proving the wrapper failure path
+  without requiring a real provider install.
+- `npm run build` passed after routing desktop providers through the adapter
+  command.
+- `npx playwright test tests/agent-workstream.spec.ts` passed with the existing
+  browser-preview structured-signal loop.
+- `cd src-tauri && CARGO_BUILD_JOBS=1 cargo check` passed after adding shell
+  command-string support to the PTY spawn path.
+- `npm run build` passed after adding shared agent-lane aggregation and the
+  canvas/sidebar supervision surfaces.
+- `npx playwright test tests/agent-workstream.spec.ts` passed with two tests,
+  covering the existing supervised Codex loop plus a two-workstream lane summary
+  (`2 agents`, `2 active`) in UI and persisted state.
+- `cd src-tauri && cargo check` passed after the multi-workstream supervision
+  UI slice.
+- `npm run build` passed after adding provider auth/control contract metadata
+  and cockpit Auth / Control cells.
+- `npx playwright test tests/agent-workstream.spec.ts` passed with coverage for
+  auth-required output (`readiness=auth-required`, auth summary/next action,
+  provider event) followed by authenticated ready output recovering to
+  `readiness=provider-ready`, `phase=active`, and provider-ready guidance.
+- `cd src-tauri && cargo check` passed after the provider-aware readiness/control
+  UI slice.
+- `npm run build` passed after adding the explicit `cancelling` phase and
+  cancellation-pending UI state.
+- `npx playwright test tests/agent-workstream.spec.ts` passed after covering the
+  graceful-cancel flow: Ctrl-C request leaves the workstream running but
+  `phase=cancelling`, and later provider cancellation output acknowledges the
+  cancellation as `status=stopped`, `phase=interrupted`.
+- `cd src-tauri && cargo check` passed after the cancellation lifecycle slice.
+- Fake-provider adapter smoke passed: a stub `codex` on PATH launched through
+  `scripts/agent-provider-adapter.sh`, received forwarded `TERM`, and emitted
+  structured `Adapter launched`, `Adapter termination requested`, and
+  `Provider cancellation acknowledged` markers before exiting `143`.
+- `cargo test shell_quote_handles_single_quotes` passed for robust adapter path
+  quoting.
+- `sh scripts/agent-provider-adapter.sh unsupported` emitted the expected
+  structured adapter failure marker and exited `64`.
+- `npm run build` passed after the adapter-supervision and Rust launch quoting
+  changes.
+- `npx playwright test tests/agent-workstream.spec.ts` passed after the adapter
+  supervision changes, preserving the browser-preview cockpit loop.
+- `cd src-tauri && cargo check` passed after the adapter-supervision slice.
+- `npm run build` passed after adding durable run-record fields and the
+  cockpit `Agent run record` row.
+- `npx playwright test tests/agent-workstream.spec.ts` passed after covering
+  prompt/sent/signal/control counts and outcome across launch, follow-up,
+  auth-required, provider-ready, cancellation, stop, restart, and structured
+  completion.
+- `cd src-tauri && cargo check` passed after the run-record cockpit slice.
+- `npm run build` passed after adding the copyable agent run brief action.
+- `npx playwright test tests/agent-workstream.spec.ts` passed after granting
+  clipboard permissions, copying the final agent run brief, and verifying the
+  copied handoff contains mission, provider, status, readiness, summary, next
+  action, outcome, run-record counters, and latest structured event.
+- `cd src-tauri && cargo check` passed after the run-brief cockpit slice.
+- `npm run build` passed after adding prioritized lane-attention aggregation and
+  lane attention rows.
+- `npx playwright test tests/agent-workstream.spec.ts` passed after verifying
+  auth-required attention is surfaced in the canvas/map lane and final completed
+  work prompts review attention.
+- `cd src-tauri && cargo check` passed after the lane-attention slice.
+- `npx playwright test tests/agent-workstream.spec.ts` passed after proving the
+  canvas attention row can restore focus to the auth-required agent workstream
+  after focus moves to a new terminal.
+- `npm run build` passed after making attention rows actionable.
+- `cd src-tauri && cargo check` passed after the actionable-attention slice.
+- `npm run build` passed after adding launch mission capture and durable mission
+  metadata.
+- `npx playwright test tests/agent-workstream.spec.ts` passed after covering the
+  mission launch dialog, persisted mission, mutable latest prompt, copied run
+  brief mission preservation, and two-workstream launch missions.
+- `cd src-tauri && CARGO_BUILD_JOBS=1 cargo check` passed after the mission
+  capture slice.
+- `npm run build` passed after adding the reviewed completion state and cockpit
+  control.
+- `npx playwright test tests/agent-workstream.spec.ts` passed after covering
+  structured completion, copied run brief, `Mark run reviewed`, persisted
+  reviewed state, and lane attention clearing (`0 attention`).
+- `cd src-tauri && CARGO_BUILD_JOBS=1 cargo check` passed after the reviewed
+  completion slice.
+- `npm run build` passed after adding durable run identity and timing fields.
+- `npx playwright test tests/agent-workstream.spec.ts` passed after covering
+  persisted run id, created/completed/reviewed timestamps, visible run/timing
+  cells, and copied brief run/timing lines.
+- `cd src-tauri && CARGO_BUILD_JOBS=1 cargo check` passed after the run identity
+  and timing slice.
+
+#### TC-016 - Multi-agent orchestration from the cockpit `IN_PROGRESS`
 Let one cockpit terminal spawn and manage multiple sub-agent terminals (Claude
 Code / Codex / bash) that work autonomously while the user monitors and steers
 them from the canvas. This is the core vision of the retired web "Magic Canvas"
@@ -1800,3 +2136,69 @@ Acceptance (draft):
 - Headless agents stream readable status/output into their canvas node.
 - Parent can send follow-up tasks to a child; child exit is surfaced on the node.
 - Optional git-worktree isolation per agent to avoid file conflicts.
+
+Progress notes:
+- First slice implemented as a supervised local workstream surface:
+  `createAgentWorkstream()` creates a tab with durable `workstream` metadata and
+  an ordinary terminal PTY, then exposes it through the command palette,
+  right-click launch menu, sessions list, and canvas map.
+- Agent workstreams now pass provider startup commands through the existing
+  terminal `command` prop into `daemon_ensure_session` / `pty_ensure`.
+- Agent workstreams now have a durable input queue consumed by mounted split/map
+  terminals; the map node can queue follow-up prompts and mark them sent after
+  dispatch.
+- Agent workstreams now expose Stop and Restart map-node controls. Restart is
+  implemented by killing the current PTY, clearing terminal runtime state, and
+  incrementing `workstream.generation` so the mounted terminal remounts fresh.
+- Agent workstream launchers now check provider availability before creation,
+  record the availability result in durable metadata, keep unavailable providers
+  in a failed inline state, and automatically send the initial prompt through
+  the terminal transport when the provider is available. The next implementation
+  step is provider-aware graceful cancellation, auth/session readiness checks,
+  and structured status extraction.
+- Agent workstreams now have a durable cockpit event timeline and map-node
+  mission panel, so the demo loop exposes mission, provider, prompt, status,
+  stop, and restart state without relying on terminal scrollback.
+- Agent workstreams now expose provider control-contract metadata and explicit
+  run phases in both durable state and the map cockpit, distinguishing
+  provider-aware launch/readiness facts from terminal-inferred status.
+- Agent workstreams now classify provider readiness/auth/cancel cues from CLI
+  output and expose an interrupt-before-stop operator control, so the cockpit
+  loop has a graceful cancellation request before hard PTY teardown.
+- Agent workstreams now surface a durable operator summary and next action in
+  the map cockpit and sessions list, turning terminal/output changes into a
+  scannable supervision loop.
+- Agent workstreams can now consume a narrow structured provider-event marker,
+  giving provider adapters a machine-readable path for status/readiness/summary
+  updates before a full provider-native protocol exists.
+- Desktop Codex/Claude/OpenCode workstreams now launch through a TermFleet
+  adapter wrapper that emits structured lifecycle markers around the real CLI.
+- Agent workstreams now roll up into a shared supervision lane across the canvas
+  overlay and sidebar map/session indexes, so multiple child agents can be
+  scanned as one control surface.
+- Agent workstreams now persist provider auth-check/control-protocol metadata,
+  render Auth / Control cockpit cells, and recover readiness from
+  auth-required to provider-ready when newer CLI output proves the provider
+  session is authenticated.
+- Agent workstreams now distinguish cancellation requested from cancellation
+  acknowledged: Ctrl-C enters a visible `cancelling` phase and provider cancel
+  output completes the transition to interrupted/stopped.
+- The provider adapter now supervises provider lifecycle signals directly:
+  launch, termination requested, and cancellation acknowledged are emitted as
+  structured markers, and Rust quotes the adapter command path safely.
+- Agent workstreams now persist and render a compact run record: prompt count,
+  sent count, structured signal count, control count, and current outcome.
+- Agent workstreams can now copy a concise run brief from the cockpit, turning
+  the visible run record into a shareable handoff artifact.
+- Agent lane summaries now surface prioritized operator attention instead of
+  only showing aggregate counts.
+- Agent lane attention rows are now clickable focus controls for the highlighted
+  workstream.
+- Agent launches now prompt for a mission before creating the workstream, keep
+  that mission separate from follow-up prompts, and preserve it in the cockpit
+  panel plus copied run brief.
+- Completed agent runs can now be acknowledged as reviewed from the cockpit,
+  clearing lane attention while keeping the workstream and its run record.
+- Agent run records now include a durable run id plus started/completed/reviewed
+  timing, making copied briefs and lane entries refer to a concrete run rather
+  than a generic tab title.
