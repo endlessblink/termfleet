@@ -159,6 +159,7 @@ interface StructuredAgentSignal {
   status?: WorkstreamStatus;
   phase?: WorkstreamPhase;
   readiness?: WorkstreamReadiness;
+  exitCode?: number;
   summary?: string;
   nextAction?: string;
   label?: string;
@@ -180,6 +181,7 @@ function isWorkstreamPhase(value: unknown): value is WorkstreamPhase {
     value === "active" ||
     value === "needs-input" ||
     value === "complete" ||
+    value === "reviewed" ||
     value === "cancelling" ||
     value === "interrupted" ||
     value === "blocked";
@@ -201,6 +203,7 @@ function parseStructuredAgentSignals(output: string) {
       if (isWorkstreamStatus(parsed.status)) signal.status = parsed.status;
       if (isWorkstreamPhase(parsed.phase)) signal.phase = parsed.phase;
       if (isWorkstreamReadiness(parsed.readiness)) signal.readiness = parsed.readiness;
+      if (Number.isInteger(parsed.exitCode)) signal.exitCode = parsed.exitCode as number;
       if (typeof parsed.summary === "string") signal.summary = parsed.summary.slice(0, 160);
       if (typeof parsed.nextAction === "string") signal.nextAction = parsed.nextAction.slice(0, 160);
       if (typeof parsed.label === "string") signal.label = parsed.label.slice(0, 80);
@@ -394,6 +397,7 @@ export function TerminalComponent({
     lastSummary?: string;
     nextAction?: string;
     structuredStatus?: boolean;
+    exitCode?: number;
     activity?: boolean;
   }) => {
     const store = useWorkspaceStore.getState();
@@ -412,6 +416,7 @@ export function TerminalComponent({
         nextAction: updates.nextAction ?? summary?.nextAction ?? tab.workstream.nextAction,
         outcome: updates.lastSummary ?? summary?.lastSummary ?? tab.workstream.outcome,
         structuredStatus: updates.structuredStatus ?? tab.workstream.structuredStatus,
+        exitCode: updates.exitCode ?? tab.workstream.exitCode,
         completedAt: completed ? tab.workstream.completedAt ?? Date.now() : tab.workstream.completedAt,
         lastActivityAt: updates.activity ? Date.now() : tab.workstream.lastActivityAt,
       },
@@ -469,6 +474,7 @@ export function TerminalComponent({
         lastSummary: signal.summary,
         nextAction: signal.nextAction,
         structuredStatus: true,
+        exitCode: signal.exitCode,
         activity: true,
       });
       useWorkspaceStore.getState().recordWorkstreamEvent(tabId, {
@@ -477,6 +483,10 @@ export function TerminalComponent({
         detail: signal.detail ?? signal.summary,
         status: signal.status,
       });
+    }
+    if (structuredSignals.length > 0) {
+      outputStatusWindowRef.current = "";
+      return;
     }
     const providerReadiness = inferProviderReadiness(heuristicOutput);
     updateWorkstreamRuntime({

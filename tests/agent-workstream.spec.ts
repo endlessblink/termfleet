@@ -87,6 +87,7 @@ test("command palette creates a supervised Codex workstream on the map", async (
       createdAt: agent?.workstream?.createdAt,
       completedAt: agent?.workstream?.completedAt,
       reviewedAt: agent?.workstream?.reviewedAt,
+      exitCode: agent?.workstream?.exitCode,
       generation: agent?.workstream?.generation,
       mission: agent?.workstream?.mission,
       prompt: agent?.workstream?.prompt,
@@ -126,6 +127,7 @@ test("command palette creates a supervised Codex workstream on the map", async (
     createdAt: expect.any(Number),
     completedAt: undefined,
     reviewedAt: undefined,
+    exitCode: undefined,
     generation: 0,
     mission: PRIMARY_MISSION,
     prompt: PRIMARY_MISSION,
@@ -220,6 +222,9 @@ test("command palette creates a supervised Codex workstream on the map", async (
   await expect(page.getByText("Follow-up queued")).toBeVisible();
   await expect(page.getByLabel("Agent operator guidance").getByText("Provider is waiting for operator input")).toBeVisible();
   await expect(page.getByLabel("Agent operator guidance").getByText("Send a follow-up prompt")).toBeVisible();
+  await expect(page.getByLabel("Agent input history").getByText("Latest input")).toBeVisible();
+  await expect(page.getByLabel("Agent input history").getByText("echo waiting for input")).toBeVisible();
+  await expect(page.getByLabel("Agent input history").getByText("sent", { exact: true })).toBeVisible();
 
   await sendFollowUp(page, "authentication required: sign in with an API key");
 
@@ -280,6 +285,52 @@ test("command palette creates a supervised Codex workstream on the map", async (
     return state?.activeTabId;
   })).toBe(agentTabId);
 
+  const failureSignal =
+    '[[TERMFLEET_AGENT_EVENT {"status":"failed","phase":"blocked","readiness":"provider-ready","exitCode":2,"summary":"Provider crashed","nextAction":"Inspect output and send recovery prompt","label":"Structured failure","detail":"Provider exited with a non-zero status."}]]';
+  await sendFollowUp(page, failureSignal);
+
+  await expect.poll(async () => page.evaluate(() => {
+    const raw = localStorage.getItem("terminal-workspace.v1");
+    const state = raw ? JSON.parse(raw) : null;
+    const agent = state?.tabs?.find((tab: { workstream?: { kind?: string } }) =>
+      tab.workstream?.kind === "agent"
+    );
+    return {
+      status: agent?.workstream?.status,
+      phase: agent?.workstream?.phase,
+      readiness: agent?.workstream?.readiness,
+      lastSummary: agent?.workstream?.lastSummary,
+      nextAction: agent?.workstream?.nextAction,
+      promptCount: agent?.workstream?.promptCount,
+      sentCount: agent?.workstream?.sentCount,
+      signalCount: agent?.workstream?.signalCount,
+      exitCode: agent?.workstream?.exitCode,
+      outcome: agent?.workstream?.outcome,
+      hasFailureSignal: agent?.workstream?.events?.some((event: { kind?: string; label?: string }) =>
+        event.kind === "signal" && event.label === "Structured failure"
+      ),
+    };
+  })).toEqual({
+    status: "failed",
+    phase: "blocked",
+    readiness: "provider-ready",
+    lastSummary: "Provider crashed",
+    nextAction: "Inspect output and send recovery prompt",
+    promptCount: 4,
+    sentCount: 4,
+    signalCount: 1,
+    exitCode: 2,
+    outcome: "Structured failure",
+    hasFailureSignal: true,
+  });
+  await expect(page.getByTestId("canvas-agent-lane-attention")).toContainText("Blocked");
+  await expect(page.getByLabel("Agent operator guidance").getByText("Provider crashed")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Draft recovery prompt" })).toBeVisible();
+  await page.getByRole("button", { name: "Draft recovery prompt" }).click();
+  await expect(page.getByRole("textbox", { name: "Agent follow-up prompt" })).toHaveValue(/Recover Codex workstream/);
+  await page.getByRole("button", { name: "Queue follow-up prompt" }).click();
+  await expect(page.getByLabel("Agent input history").getByText("Recover Codex workstream")).toBeVisible();
+
   await sendFollowUp(page, "welcome authenticated session ready");
 
   await expect.poll(async () => page.evaluate(() => {
@@ -307,8 +358,8 @@ test("command palette creates a supervised Codex workstream on the map", async (
     readiness: "provider-ready",
     lastSummary: "Provider session is ready",
     nextAction: "Send a task or watch provider response",
-    promptCount: 4,
-    sentCount: 4,
+    promptCount: 6,
+    sentCount: 6,
     outcome: "Provider session is ready",
     hasReadyEvent: true,
   });
@@ -345,8 +396,8 @@ test("command palette creates a supervised Codex workstream on the map", async (
     phase: "cancelling",
     lastSummary: "Cancellation requested",
     nextAction: "Wait for provider acknowledgement or hard-stop",
-    promptCount: 4,
-    sentCount: 4,
+    promptCount: 6,
+    sentCount: 6,
     controlCount: 1,
     outcome: "Cancellation requested",
     lastEvent: "Cancellation requested",
@@ -383,8 +434,8 @@ test("command palette creates a supervised Codex workstream on the map", async (
     readiness: "provider-ready",
     lastSummary: "Provider acknowledged cancellation",
     nextAction: "Restart or close the workstream",
-    promptCount: 5,
-    sentCount: 5,
+    promptCount: 7,
+    sentCount: 7,
     controlCount: 1,
     outcome: "Provider acknowledged cancellation",
     hasInterruptedEvent: true,
@@ -452,7 +503,7 @@ test("command palette creates a supervised Codex workstream on the map", async (
   await expect(page.getByText("Codex · running")).toBeVisible();
 
   const structuredSignal =
-    '[[TERMFLEET_AGENT_EVENT {"status":"done","phase":"complete","readiness":"provider-ready","summary":"Structured task completed","nextAction":"Review structured result","label":"Structured completion","detail":"Provider emitted a machine-readable completion signal."}]]';
+    '[[TERMFLEET_AGENT_EVENT {"status":"done","phase":"complete","readiness":"provider-ready","exitCode":0,"summary":"Structured task completed","nextAction":"Review structured result","label":"Structured completion","detail":"Provider emitted a machine-readable completion signal."}]]';
   await sendFollowUp(page, structuredSignal);
 
   await expect.poll(async () => page.evaluate(() => {
@@ -473,6 +524,7 @@ test("command palette creates a supervised Codex workstream on the map", async (
       signalCount: agent?.workstream?.signalCount,
       controlCount: agent?.workstream?.controlCount,
       outcome: agent?.workstream?.outcome,
+      exitCode: agent?.workstream?.exitCode,
       completedAt: agent?.workstream?.completedAt,
       reviewedAt: agent?.workstream?.reviewedAt,
       lastEvent: agent?.workstream?.events?.at(-1)?.label,
@@ -487,11 +539,12 @@ test("command palette creates a supervised Codex workstream on the map", async (
     structuredStatus: true,
     lastSummary: "Structured task completed",
     nextAction: "Review structured result",
-    promptCount: 6,
-    sentCount: 6,
-    signalCount: 1,
+    promptCount: 8,
+    sentCount: 8,
+    signalCount: 2,
     controlCount: 3,
     outcome: "Structured completion",
+    exitCode: 0,
     completedAt: expect.any(Number),
     reviewedAt: undefined,
     lastEvent: "Structured completion",
@@ -501,6 +554,8 @@ test("command palette creates a supervised Codex workstream on the map", async (
   await expect(page.getByLabel("Agent operator guidance").getByText("Structured task completed", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Agent operator guidance").getByText("Review structured result", { exact: true })).toBeVisible();
   await expect(page.getByText("structured", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Agent run record").getByText("Exit")).toBeVisible();
+  await expect(page.getByLabel("Agent run record").getByText("0", { exact: true })).toBeVisible();
   await expect(page.getByTestId("canvas-agent-lane-attention")).toContainText("Complete");
   await expect(page.getByTestId("canvas-agent-lane-attention")).toContainText("Review structured result");
 
@@ -512,11 +567,13 @@ test("command palette creates a supervised Codex workstream on the map", async (
   await copiedBrief.toContain("Provider: Codex");
   await copiedBrief.toContain("Status: done / complete");
   await copiedBrief.toContain("Readiness: provider-ready");
+  await copiedBrief.toContain("Exit: 0");
   await copiedBrief.toMatch(/Timing: started=.*completed=.*reviewed=pending/);
   await copiedBrief.toContain("Summary: Structured task completed");
   await copiedBrief.toContain("Next: Review structured result");
   await copiedBrief.toContain("Outcome: Structured completion");
-  await copiedBrief.toContain("Run record: prompts=6, sent=6, signals=1, controls=3");
+  await copiedBrief.toContain("Latest input: sent - [[TERMFLEET_AGENT_EVENT");
+  await copiedBrief.toContain("Run record: prompts=8, sent=8, signals=2, controls=3");
   await copiedBrief.toContain("Latest event: signal - Structured completion");
 
   await page.getByRole("button", { name: "Mark run reviewed" }).click();
@@ -533,6 +590,7 @@ test("command palette creates a supervised Codex workstream on the map", async (
       nextAction: agent?.workstream?.nextAction,
       controlCount: agent?.workstream?.controlCount,
       outcome: agent?.workstream?.outcome,
+      exitCode: agent?.workstream?.exitCode,
       completedAt: agent?.workstream?.completedAt,
       reviewedAt: agent?.workstream?.reviewedAt,
       lastEvent: agent?.workstream?.events?.at(-1)?.label,
@@ -544,6 +602,7 @@ test("command palette creates a supervised Codex workstream on the map", async (
     nextAction: "Close or restart the workstream",
     controlCount: 4,
     outcome: "Reviewed by operator",
+    exitCode: 0,
     completedAt: expect.any(Number),
     reviewedAt: expect.any(Number),
     lastEvent: "Reviewed by operator",

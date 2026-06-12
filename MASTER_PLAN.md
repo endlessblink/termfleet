@@ -1982,6 +1982,24 @@ Progress notes:
   record shows run/generation plus completion/review times, and copied run
   briefs include run id, generation, started, completed, and reviewed fields so
   handoffs refer to a specific supervised run.
+- Twenty-third slice added: agent cockpit nodes now have a visible operator
+  composer for follow-up prompts. Follow-ups no longer rely on modal
+  `window.prompt`; the composer queues through the same durable input path, and
+  xterm's link-hit overlay no longer intercepts cockpit controls.
+- Twenty-fourth slice added: provider exit is now a first-class run-record
+  field. Structured provider markers and the desktop adapter can carry an
+  `exitCode`, the cockpit renders an Exit cell, and copied run briefs include
+  the exit code so child termination is visible without reading terminal
+  scrollback.
+- Twenty-fifth slice added: the cockpit now shows durable operator input
+  history. The latest queued/sent prompt is visible below the composer and is
+  included in copied run briefs, so operator steering is inspectable without
+  reading event titles or terminal output.
+- Twenty-sixth slice added: blocked/failed workstreams now expose a visible
+  recovery affordance. `Draft recovery prompt` appears in the cockpit composer
+  for failed children, seeds a recovery prompt, and structured provider signals
+  now clear stale heuristic windows so old auth/status text cannot overwrite
+  newer machine-readable failure state.
 - Current limitation: status parsing is text-pattern based, not provider-native
   structured state. Stop/restart is PTY-level control, not a provider-aware
   graceful cancellation protocol. Provider availability is PATH-based; it does
@@ -2119,6 +2137,38 @@ Verification:
   cells, and copied brief run/timing lines.
 - `cd src-tauri && CARGO_BUILD_JOBS=1 cargo check` passed after the run identity
   and timing slice.
+- `npm run build` passed after replacing modal follow-ups with the visible
+  cockpit composer and preventing xterm link-layer click interception.
+- `npx playwright test tests/agent-workstream.spec.ts` passed after sending all
+  operator follow-ups through `Agent follow-up prompt` / `Queue follow-up
+  prompt`, including auth-required, provider-ready, cancellation ack, and
+  structured completion flows.
+- `cd src-tauri && CARGO_BUILD_JOBS=1 cargo check` passed after the visible
+  composer slice.
+- `npm run build` passed after adding provider exit-code propagation to
+  structured signals, adapter exit markers, the cockpit run record, and copied
+  run briefs.
+- `npx playwright test tests/agent-workstream.spec.ts` passed after verifying
+  structured completion with `exitCode=0`, the visible Exit cell, preserved exit
+  code after review, and `Exit: 0` in the copied run brief.
+- `cd src-tauri && CARGO_BUILD_JOBS=1 cargo check` passed after the provider
+  exit-code slice.
+- `npm run build` passed after adding the visible latest-input strip and copied
+  brief latest-input line.
+- `npx playwright test tests/agent-workstream.spec.ts` passed after verifying
+  `Agent input history` shows the latest sent follow-up prompt and copied briefs
+  include the latest structured input.
+- `cd src-tauri && CARGO_BUILD_JOBS=1 cargo check` passed after the input
+  history slice.
+- `npm run build` passed after adding the failed-workstream recovery draft
+  affordance and making structured provider signals authoritative over stale
+  heuristic output.
+- `npx playwright test tests/agent-workstream.spec.ts` passed after covering a
+  structured provider failure (`status=failed`, `phase=blocked`, `exitCode=2`),
+  blocked lane attention, visible `Draft recovery prompt`, queued recovery
+  prompt, and recovery back to provider-ready state.
+- `cd src-tauri && CARGO_BUILD_JOBS=1 cargo check` passed after the recovery
+  affordance slice.
 
 #### TC-016 - Multi-agent orchestration from the cockpit `IN_PROGRESS`
 Let one cockpit terminal spawn and manage multiple sub-agent terminals (Claude
@@ -2202,3 +2252,11 @@ Progress notes:
 - Agent run records now include a durable run id plus started/completed/reviewed
   timing, making copied briefs and lane entries refer to a concrete run rather
   than a generic tab title.
+- Agent cockpit nodes now include a visible follow-up composer, so operator
+  steering happens inside the cockpit instead of through modal prompts.
+- Provider exit codes now flow into the run record and copied brief, making
+  child process termination visible from the cockpit.
+- Latest operator input now appears in the cockpit and run brief with queued/sent
+  state, so follow-up steering is part of the visible run record.
+- Failed/blocked workstreams now surface a one-click recovery prompt draft, and
+  structured provider events are protected from stale heuristic overrides.

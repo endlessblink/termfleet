@@ -257,13 +257,14 @@ const styles: Record<string, CSSProperties> = {
   agentCockpit: {
     height: "100%",
     minHeight: 0,
-    display: "grid",
-    gridTemplateRows: "auto minmax(0, 1fr)",
+    display: "flex",
+    flexDirection: "column",
     background: "var(--surface-sunken)",
   },
   agentMissionPanel: {
     position: "relative",
     zIndex: 2,
+    flex: "0 0 auto",
     display: "grid",
     gap: 8,
     padding: "9px 10px",
@@ -303,7 +304,7 @@ const styles: Record<string, CSSProperties> = {
   },
   agentComposer: {
     display: "grid",
-    gridTemplateColumns: "minmax(0, 1fr) auto",
+    gridTemplateColumns: "minmax(0, 1fr) auto auto",
     alignItems: "stretch",
     gap: 6,
   },
@@ -331,6 +332,11 @@ const styles: Record<string, CSSProperties> = {
     alignItems: "center",
     justifyContent: "center",
     cursor: "pointer",
+  },
+  agentInputStrip: {
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr) 96px",
+    gap: 6,
   },
   agentRunRecordRow: {
     display: "grid",
@@ -430,6 +436,7 @@ const styles: Record<string, CSSProperties> = {
   agentTerminalSlot: {
     position: "relative",
     zIndex: 1,
+    flex: "1 1 auto",
     minHeight: 0,
     overflow: "hidden",
   },
@@ -760,11 +767,21 @@ function runTimestamp(at?: number) {
   return at ? new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "pending";
 }
 
+function latestWorkstreamInput(workstream?: Tab["workstream"]) {
+  const inputs = workstream?.inputQueue ?? [];
+  return inputs[inputs.length - 1];
+}
+
+function recoveryPromptFor(workstream?: Tab["workstream"]) {
+  return `Recover ${workstreamLabel(workstream?.provider)} workstream: inspect the failure output, summarize the root cause, and propose the next command.`;
+}
+
 function formatAgentRunBrief(tab: Tab) {
   const workstream = tab.workstream;
   if (!workstream) return `${tab.title}\nNo workstream metadata available.`;
   const latestEvent = workstream.events?.[workstream.events.length - 1];
   const mission = workstream.mission ?? workstream.prompt ?? "Supervised workstream";
+  const latestInput = latestWorkstreamInput(workstream);
   return [
     `Agent workstream: ${tab.title}`,
     `Run: ${workstream.runId ?? "pending"} (generation ${workstream.generation ?? 0})`,
@@ -772,10 +789,12 @@ function formatAgentRunBrief(tab: Tab) {
     `Provider: ${workstreamLabel(workstream.provider)}`,
     `Status: ${workstream.status} / ${workstream.phase ?? "unknown"}`,
     `Readiness: ${workstream.readiness ?? "unknown"}`,
+    `Exit: ${typeof workstream.exitCode === "number" ? workstream.exitCode : "pending"}`,
     `Timing: started=${workstream.createdAt ? new Date(workstream.createdAt).toISOString() : "unknown"}, completed=${workstream.completedAt ? new Date(workstream.completedAt).toISOString() : "pending"}, reviewed=${workstream.reviewedAt ? new Date(workstream.reviewedAt).toISOString() : "pending"}`,
     `Summary: ${workstream.lastSummary ?? "No summary yet"}`,
     `Next: ${workstream.nextAction ?? "Watch provider response"}`,
     `Outcome: ${workstream.outcome ?? "Pending"}`,
+    `Latest input: ${latestInput ? `${latestInput.sentAt ? "sent" : "queued"} - ${latestInput.text}` : "none"}`,
     `Run record: prompts=${workstream.promptCount ?? 0}, sent=${workstream.sentCount ?? 0}, signals=${workstream.signalCount ?? 0}, controls=${workstream.controlCount ?? 0}`,
     `Latest event: ${latestEvent ? `${latestEvent.kind} - ${latestEvent.label}` : "none"}`,
   ].join("\n");
@@ -1150,7 +1169,12 @@ function CanvasNodeView({
       : linkedTab?.title ?? node.title);
   const workstream = linkedTab?.workstream;
   const queuedWorkstreamInput = workstream?.inputQueue?.find((input) => !input.sentAt);
+  const latestInput = latestWorkstreamInput(workstream);
   const cancellationPending = workstream?.phase === "cancelling";
+  const canDraftRecovery =
+    workstream?.phase === "blocked" ||
+    workstream?.status === "failed" ||
+    workstream?.providerAvailable === false;
   const canReviewWorkstream =
     workstream?.phase !== "reviewed" && (workstream?.status === "done" || workstream?.phase === "complete");
   const nodeKind = workstream?.kind === "agent"
@@ -1221,6 +1245,13 @@ function CanvasNodeView({
     event.stopPropagation();
     queueOperatorDraft();
   }, [queueOperatorDraft]);
+
+  const onDraftRecoveryPrompt = useCallback((event: React.MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setOperatorDraft(recoveryPromptFor(linkedTab?.workstream));
+    requestAnimationFrame(() => composerRef.current?.focus());
+  }, [linkedTab]);
 
   const onCopyWorkstreamBrief = useCallback((event: React.MouseEvent) => {
     event.preventDefault();
@@ -1644,6 +1675,21 @@ function CanvasNodeView({
                   }}
                 />
                 <button
+                  type="button"
+                  style={{
+                    ...styles.agentComposerButton,
+                    display: canDraftRecovery ? styles.agentComposerButton.display : "none",
+                    background: "var(--surface-hover)",
+                    color: "var(--text-primary)",
+                  }}
+                  aria-label="Draft recovery prompt"
+                  title="Draft recovery prompt"
+                  onMouseDown={(event) => event.stopPropagation()}
+                  onClick={onDraftRecoveryPrompt}
+                >
+                  <RefreshCw size={14} strokeWidth={2} />
+                </button>
+                <button
                   type="submit"
                   style={{
                     ...styles.agentComposerButton,
@@ -1658,6 +1704,16 @@ function CanvasNodeView({
                   <Bot size={14} strokeWidth={2} />
                 </button>
               </form>
+              <div style={styles.agentInputStrip} aria-label="Agent input history">
+                <div style={styles.agentDecisionCell} title={latestInput?.text ?? "No operator input queued yet"}>
+                  <span style={styles.agentProviderCellLabel}>Latest input</span>
+                  <span style={styles.agentProviderCellValue}>{latestInput?.text ?? "None"}</span>
+                </div>
+                <div style={styles.agentDecisionCell} title={latestInput?.sentAt ? "Prompt has been sent to the provider" : latestInput ? "Prompt is queued for dispatch" : "No prompt yet"}>
+                  <span style={styles.agentProviderCellLabel}>Input</span>
+                  <span style={styles.agentProviderCellValue}>{latestInput ? (latestInput.sentAt ? "sent" : "queued") : "none"}</span>
+                </div>
+              </div>
               <div style={styles.agentRunRecordRow} aria-label="Agent run record">
                 <div style={styles.agentProviderCell} title={workstream.runId ?? "Run id pending"}>
                   <span style={styles.agentProviderCellLabel}>Run</span>
@@ -1683,6 +1739,10 @@ function CanvasNodeView({
                   <span style={styles.agentProviderCellLabel}>Outcome</span>
                   <span style={styles.agentProviderCellValue}>{workstream.outcome ?? "Pending"}</span>
                 </div>
+                <div style={styles.agentProviderCell} title={typeof workstream.exitCode === "number" ? `Provider exited with code ${workstream.exitCode}` : "Provider has not exited"}>
+                  <span style={styles.agentProviderCellLabel}>Exit</span>
+                  <span style={styles.agentProviderCellValue}>{typeof workstream.exitCode === "number" ? workstream.exitCode : "pending"}</span>
+                </div>
                 <div style={styles.agentProviderCell} title={workstream.completedAt ? `Completed ${new Date(workstream.completedAt).toLocaleString()}` : "Run not complete yet"}>
                   <span style={styles.agentProviderCellLabel}>Done</span>
                   <span style={styles.agentProviderCellValue}>{runTimestamp(workstream.completedAt)}</span>
@@ -1704,7 +1764,7 @@ function CanvasNodeView({
                 ))}
               </div>
             </div>
-            <div style={styles.agentTerminalSlot}>{body}</div>
+            <div className="agent-terminal-slot" style={styles.agentTerminalSlot}>{body}</div>
           </div>
         ) : (
           body

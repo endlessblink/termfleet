@@ -75,6 +75,7 @@ export interface WorkstreamMetadata {
   controlCount?: number;
   outcome?: string;
   runId?: string;
+  exitCode?: number;
   inputQueue?: WorkstreamInput[];
   events?: WorkstreamEvent[];
   generation?: number;

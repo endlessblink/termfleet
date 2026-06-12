@@ -568,6 +568,10 @@ button:active {
   image-rendering: auto;
 }
 
+.xterm-link-layer {
+  pointer-events: none !important;
+}
+
 .terminal-pane-action:hover,
 .terminal-pane-action:focus-visible {
   background: var(--surface-hover) !important;

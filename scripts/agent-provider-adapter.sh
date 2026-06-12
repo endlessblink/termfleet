@@ -61,11 +61,11 @@ set -e
 trap - INT TERM HUP
 
 if [ "$cancel_requested" -eq 1 ]; then
-  emit "[[TERMFLEET_AGENT_EVENT {\"status\":\"stopped\",\"phase\":\"interrupted\",\"readiness\":\"provider-ready\",\"summary\":\"$provider acknowledged cancellation\",\"nextAction\":\"Review output or restart\",\"label\":\"Provider cancellation acknowledged\"}]]"
+  emit "[[TERMFLEET_AGENT_EVENT {\"status\":\"stopped\",\"phase\":\"interrupted\",\"readiness\":\"provider-ready\",\"exitCode\":$status,\"summary\":\"$provider acknowledged cancellation\",\"nextAction\":\"Review output or restart\",\"label\":\"Provider cancellation acknowledged\"}]]"
 elif [ "$status" -eq 0 ]; then
-  emit "[[TERMFLEET_AGENT_EVENT {\"status\":\"done\",\"phase\":\"complete\",\"readiness\":\"provider-ready\",\"summary\":\"$provider exited cleanly\",\"nextAction\":\"Review output or restart\",\"label\":\"Provider exited\"}]]"
+  emit "[[TERMFLEET_AGENT_EVENT {\"status\":\"done\",\"phase\":\"complete\",\"readiness\":\"provider-ready\",\"exitCode\":0,\"summary\":\"$provider exited cleanly\",\"nextAction\":\"Review output or restart\",\"label\":\"Provider exited\"}]]"
 else
-  emit "[[TERMFLEET_AGENT_EVENT {\"status\":\"failed\",\"phase\":\"blocked\",\"summary\":\"$provider exited with status $status\",\"nextAction\":\"Inspect output and send recovery prompt\",\"label\":\"Provider exited with error\"}]]"
+  emit "[[TERMFLEET_AGENT_EVENT {\"status\":\"failed\",\"phase\":\"blocked\",\"exitCode\":$status,\"summary\":\"$provider exited with status $status\",\"nextAction\":\"Inspect output and send recovery prompt\",\"label\":\"Provider exited with error\"}]]"
 fi
 
 exit "$status"
