@@ -69,6 +69,11 @@ export interface WorkstreamMetadata {
   structuredStatus?: boolean;
   lastSummary?: string;
   nextAction?: string;
+  evidence?: string;
+  stage?: string;
+  artifact?: string;
+  confidence?: string;
+  risk?: string;
   promptCount?: number;
   sentCount?: number;
   signalCount?: number;

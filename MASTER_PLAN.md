@@ -2000,6 +2000,30 @@ Progress notes:
   for failed children, seeds a recovery prompt, and structured provider signals
   now clear stale heuristic windows so old auth/status text cannot overwrite
   newer machine-readable failure state.
+- Twenty-seventh slice added: structured provider events can now carry
+  operator-facing evidence. The cockpit persists the evidence string, renders it
+  beside Summary/Next, and includes it in copied run briefs so a completed child
+  result has visible proof without scraping terminal scrollback.
+- Twenty-eighth slice added: structured provider events can now report the
+  child work stage. The cockpit persists the stage, renders it as a provider
+  control cell, and includes it in copied run briefs so operators can see
+  whether the child is analysing failure, executing, verifying, or ready for
+  review.
+- Twenty-ninth slice added: structured provider events can now report a child
+  artifact. The cockpit persists the artifact path/name, renders it beside
+  Summary/Next/Evidence, and includes it in copied run briefs so a completed
+  child run points to a concrete deliverable instead of only terminal output.
+- Thirtieth slice added: structured provider events can now report confidence.
+  The cockpit persists the confidence string, renders it in the provider control
+  grid, and includes it in copied run briefs so an operator can distinguish a
+  high-confidence completion from a low-confidence failure at a glance.
+- Thirty-first slice added: structured provider events can now report risk.
+  The cockpit persists the risk string, renders it beside Confidence in the
+  provider control grid, and includes it in copied run briefs so handoffs carry
+  the child's own residual-risk note rather than only pass/fail status.
+- Follow-up visual pass: the provider control grid now wraps into four columns
+  across two rows so Stage / Confidence / Risk remain readable after adding the
+  structured telemetry fields.
 - Current limitation: status parsing is text-pattern based, not provider-native
   structured state. Stop/restart is PTY-level control, not a provider-aware
   graceful cancellation protocol. Provider availability is PATH-based; it does
@@ -2169,6 +2193,53 @@ Verification:
   prompt, and recovery back to provider-ready state.
 - `cd src-tauri && CARGO_BUILD_JOBS=1 cargo check` passed after the recovery
   affordance slice.
+- `npm run build` passed after adding first-class provider evidence capture to
+  structured signals, workstream metadata, the cockpit panel, and copied run
+  briefs.
+- `npx playwright test tests/agent-workstream.spec.ts` passed after covering
+  structured failure evidence, structured completion evidence, visible cockpit
+  Evidence guidance, and `Evidence:` in the copied run brief.
+- `cd src-tauri && CARGO_BUILD_JOBS=1 cargo check` passed after the evidence
+  capture slice.
+- `npm run build` passed after adding first-class provider stage capture to
+  structured signals, workstream metadata, the provider control grid, and copied
+  run briefs.
+- `npx playwright test tests/agent-workstream.spec.ts` passed after covering
+  structured failure stage (`failure analysis`), structured completion stage
+  (`review`), visible cockpit Stage cells, and `Stage:` in the copied run brief.
+- `cd src-tauri && CARGO_BUILD_JOBS=1 cargo check` passed after the stage
+  capture slice.
+- `npm run build` passed after adding first-class provider artifact capture to
+  structured signals, workstream metadata, operator guidance, and copied run
+  briefs.
+- `npx playwright test tests/agent-workstream.spec.ts` passed after covering a
+  failed-run crash artifact (`logs/provider-crash.txt`), a completed-run report
+  artifact (`reports/checkout-flow.md`), visible cockpit Artifact guidance, and
+  `Artifact:` in the copied run brief.
+- `cd src-tauri && CARGO_BUILD_JOBS=1 cargo check` passed after the artifact
+  capture slice.
+- `npm run build` passed after adding first-class provider confidence capture
+  to structured signals, workstream metadata, the provider control grid, and
+  copied run briefs.
+- `npx playwright test tests/agent-workstream.spec.ts` passed after covering
+  low confidence on structured failure, high confidence on structured
+  completion, visible cockpit Confidence cells, and `Confidence:` in the copied
+  run brief.
+- `cd src-tauri && CARGO_BUILD_JOBS=1 cargo check` passed after the confidence
+  capture slice.
+- `npm run build` passed after adding first-class provider risk capture to
+  structured signals, workstream metadata, the provider control grid, and copied
+  run briefs.
+- `npx playwright test tests/agent-workstream.spec.ts` passed after covering
+  structured failure risk (`provider crashed before saving state`), structured
+  completion risk (`low residual risk`), visible cockpit Risk cells, and
+  `Risk:` in the copied run brief.
+- `cd src-tauri && CARGO_BUILD_JOBS=1 cargo check` passed after the risk
+  capture slice.
+- Temporary Playwright visual smoke passed for the structured telemetry cockpit
+  panel. Layout measurements showed no provider-grid overflow after the four
+  column wrap (`provider scrollWidth=798 clientWidth=798`), and screenshot
+  evidence was captured at `/tmp/termfleet-agent-telemetry-panel.png`.
 
 #### TC-016 - Multi-agent orchestration from the cockpit `IN_PROGRESS`
 Let one cockpit terminal spawn and manage multiple sub-agent terminals (Claude
@@ -2260,3 +2331,15 @@ Progress notes:
   state, so follow-up steering is part of the visible run record.
 - Failed/blocked workstreams now surface a one-click recovery prompt draft, and
   structured provider events are protected from stale heuristic overrides.
+- Structured provider evidence now persists into the cockpit and copied run
+  brief, giving the operator a proof line for the child run outcome.
+- Structured provider stage now persists into the cockpit and copied run brief,
+  making the child run's current work phase visible without terminal scrollback.
+- Structured provider artifacts now persist into the cockpit and copied run
+  brief, so completed child work points at a concrete deliverable.
+- Structured provider confidence now persists into the cockpit and copied run
+  brief, making child-run certainty visible in the control plane.
+- Structured provider risk now persists into the cockpit and copied run brief,
+  making residual risk part of the agent handoff instead of terminal-only text.
+- The provider control grid now wraps to four columns across two rows so the
+  expanded telemetry cells stay readable on the standard agent cockpit node.

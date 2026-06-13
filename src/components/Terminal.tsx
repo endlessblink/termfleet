@@ -162,6 +162,11 @@ interface StructuredAgentSignal {
   exitCode?: number;
   summary?: string;
   nextAction?: string;
+  evidence?: string;
+  stage?: string;
+  artifact?: string;
+  confidence?: string;
+  risk?: string;
   label?: string;
   detail?: string;
 }
@@ -206,6 +211,11 @@ function parseStructuredAgentSignals(output: string) {
       if (Number.isInteger(parsed.exitCode)) signal.exitCode = parsed.exitCode as number;
       if (typeof parsed.summary === "string") signal.summary = parsed.summary.slice(0, 160);
       if (typeof parsed.nextAction === "string") signal.nextAction = parsed.nextAction.slice(0, 160);
+      if (typeof parsed.evidence === "string") signal.evidence = parsed.evidence.slice(0, 160);
+      if (typeof parsed.stage === "string") signal.stage = parsed.stage.slice(0, 80);
+      if (typeof parsed.artifact === "string") signal.artifact = parsed.artifact.slice(0, 160);
+      if (typeof parsed.confidence === "string") signal.confidence = parsed.confidence.slice(0, 80);
+      if (typeof parsed.risk === "string") signal.risk = parsed.risk.slice(0, 160);
       if (typeof parsed.label === "string") signal.label = parsed.label.slice(0, 80);
       if (typeof parsed.detail === "string") signal.detail = parsed.detail.slice(0, 240);
       return Object.keys(signal).length > 0 ? [{ raw, signal }] : [];
@@ -396,6 +406,11 @@ export function TerminalComponent({
     readiness?: WorkstreamReadiness;
     lastSummary?: string;
     nextAction?: string;
+    evidence?: string;
+    stage?: string;
+    artifact?: string;
+    confidence?: string;
+    risk?: string;
     structuredStatus?: boolean;
     exitCode?: number;
     activity?: boolean;
@@ -414,6 +429,11 @@ export function TerminalComponent({
         phase: updates.phase ?? (updates.status ? phaseForStatus(updates.status) : tab.workstream.phase),
         lastSummary: updates.lastSummary ?? summary?.lastSummary ?? tab.workstream.lastSummary,
         nextAction: updates.nextAction ?? summary?.nextAction ?? tab.workstream.nextAction,
+        evidence: updates.evidence ?? tab.workstream.evidence,
+        stage: updates.stage ?? tab.workstream.stage,
+        artifact: updates.artifact ?? tab.workstream.artifact,
+        confidence: updates.confidence ?? tab.workstream.confidence,
+        risk: updates.risk ?? tab.workstream.risk,
         outcome: updates.lastSummary ?? summary?.lastSummary ?? tab.workstream.outcome,
         structuredStatus: updates.structuredStatus ?? tab.workstream.structuredStatus,
         exitCode: updates.exitCode ?? tab.workstream.exitCode,
@@ -473,6 +493,11 @@ export function TerminalComponent({
         readiness: signal.readiness,
         lastSummary: signal.summary,
         nextAction: signal.nextAction,
+        evidence: signal.evidence,
+        stage: signal.stage,
+        artifact: signal.artifact,
+        confidence: signal.confidence,
+        risk: signal.risk,
         structuredStatus: true,
         exitCode: signal.exitCode,
         activity: true,

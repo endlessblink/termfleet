@@ -294,12 +294,12 @@ const styles: Record<string, CSSProperties> = {
   },
   agentProviderGrid: {
     display: "grid",
-    gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
+    gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
     gap: 6,
   },
   agentDecisionRow: {
     display: "grid",
-    gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
+    gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
     gap: 6,
   },
   agentComposer: {
@@ -789,10 +789,15 @@ function formatAgentRunBrief(tab: Tab) {
     `Provider: ${workstreamLabel(workstream.provider)}`,
     `Status: ${workstream.status} / ${workstream.phase ?? "unknown"}`,
     `Readiness: ${workstream.readiness ?? "unknown"}`,
+    `Stage: ${workstream.stage ?? "pending"}`,
+    `Confidence: ${workstream.confidence ?? "pending"}`,
+    `Risk: ${workstream.risk ?? "pending"}`,
     `Exit: ${typeof workstream.exitCode === "number" ? workstream.exitCode : "pending"}`,
     `Timing: started=${workstream.createdAt ? new Date(workstream.createdAt).toISOString() : "unknown"}, completed=${workstream.completedAt ? new Date(workstream.completedAt).toISOString() : "pending"}, reviewed=${workstream.reviewedAt ? new Date(workstream.reviewedAt).toISOString() : "pending"}`,
     `Summary: ${workstream.lastSummary ?? "No summary yet"}`,
     `Next: ${workstream.nextAction ?? "Watch provider response"}`,
+    `Evidence: ${workstream.evidence ?? "pending"}`,
+    `Artifact: ${workstream.artifact ?? "pending"}`,
     `Outcome: ${workstream.outcome ?? "Pending"}`,
     `Latest input: ${latestInput ? `${latestInput.sentAt ? "sent" : "queued"} - ${latestInput.text}` : "none"}`,
     `Run record: prompts=${workstream.promptCount ?? 0}, sent=${workstream.sentCount ?? 0}, signals=${workstream.signalCount ?? 0}, controls=${workstream.controlCount ?? 0}`,
@@ -1645,6 +1650,18 @@ function CanvasNodeView({
                   <span style={styles.agentProviderCellLabel}>Control</span>
                   <span style={styles.agentProviderCellValue}>{workstream.structuredStatus ? "markers + pty" : "pty fallback"}</span>
                 </div>
+                <div style={styles.agentProviderCell} title={workstream.stage ?? "Provider has not reported a work stage"}>
+                  <span style={styles.agentProviderCellLabel}>Stage</span>
+                  <span style={styles.agentProviderCellValue}>{workstream.stage ?? "pending"}</span>
+                </div>
+                <div style={styles.agentProviderCell} title={workstream.confidence ?? "Provider has not reported confidence"}>
+                  <span style={styles.agentProviderCellLabel}>Confidence</span>
+                  <span style={styles.agentProviderCellValue}>{workstream.confidence ?? "pending"}</span>
+                </div>
+                <div style={styles.agentProviderCell} title={workstream.risk ?? "Provider has not reported risk"}>
+                  <span style={styles.agentProviderCellLabel}>Risk</span>
+                  <span style={styles.agentProviderCellValue}>{workstream.risk ?? "pending"}</span>
+                </div>
               </div>
               <div style={styles.agentDecisionRow} aria-label="Agent operator guidance">
                 <div style={styles.agentDecisionCell} title={workstream.lastSummary ?? "No summary yet"}>
@@ -1654,6 +1671,14 @@ function CanvasNodeView({
                 <div style={styles.agentDecisionCell} title={workstream.nextAction ?? "Watch provider response"}>
                   <span style={styles.agentProviderCellLabel}>Next</span>
                   <span style={styles.agentProviderCellValue}>{workstream.nextAction ?? "Watch provider response"}</span>
+                </div>
+                <div style={styles.agentDecisionCell} title={workstream.evidence ?? "No evidence reported yet"}>
+                  <span style={styles.agentProviderCellLabel}>Evidence</span>
+                  <span style={styles.agentProviderCellValue}>{workstream.evidence ?? "pending"}</span>
+                </div>
+                <div style={styles.agentDecisionCell} title={workstream.artifact ?? "No artifact reported yet"}>
+                  <span style={styles.agentProviderCellLabel}>Artifact</span>
+                  <span style={styles.agentProviderCellValue}>{workstream.artifact ?? "pending"}</span>
                 </div>
               </div>
               <form style={styles.agentComposer} aria-label="Agent operator composer" onSubmit={onSubmitWorkstreamInput}>

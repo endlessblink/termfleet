@@ -88,6 +88,10 @@ test("command palette creates a supervised Codex workstream on the map", async (
       completedAt: agent?.workstream?.completedAt,
       reviewedAt: agent?.workstream?.reviewedAt,
       exitCode: agent?.workstream?.exitCode,
+      stage: agent?.workstream?.stage,
+      artifact: agent?.workstream?.artifact,
+      confidence: agent?.workstream?.confidence,
+      risk: agent?.workstream?.risk,
       generation: agent?.workstream?.generation,
       mission: agent?.workstream?.mission,
       prompt: agent?.workstream?.prompt,
@@ -128,6 +132,10 @@ test("command palette creates a supervised Codex workstream on the map", async (
     completedAt: undefined,
     reviewedAt: undefined,
     exitCode: undefined,
+    stage: undefined,
+    artifact: undefined,
+    confidence: undefined,
+    risk: undefined,
     generation: 0,
     mission: PRIMARY_MISSION,
     prompt: PRIMARY_MISSION,
@@ -286,7 +294,7 @@ test("command palette creates a supervised Codex workstream on the map", async (
   })).toBe(agentTabId);
 
   const failureSignal =
-    '[[TERMFLEET_AGENT_EVENT {"status":"failed","phase":"blocked","readiness":"provider-ready","exitCode":2,"summary":"Provider crashed","nextAction":"Inspect output and send recovery prompt","label":"Structured failure","detail":"Provider exited with a non-zero status."}]]';
+    '[[TERMFLEET_AGENT_EVENT {"status":"failed","phase":"blocked","readiness":"provider-ready","exitCode":2,"stage":"failure analysis","confidence":"low","risk":"provider crashed before saving state","summary":"Provider crashed","nextAction":"Inspect output and send recovery prompt","evidence":"stderr: provider exited 2","artifact":"logs/provider-crash.txt","label":"Structured failure","detail":"Provider exited with a non-zero status."}]]';
   await sendFollowUp(page, failureSignal);
 
   await expect.poll(async () => page.evaluate(() => {
@@ -301,6 +309,11 @@ test("command palette creates a supervised Codex workstream on the map", async (
       readiness: agent?.workstream?.readiness,
       lastSummary: agent?.workstream?.lastSummary,
       nextAction: agent?.workstream?.nextAction,
+      evidence: agent?.workstream?.evidence,
+      stage: agent?.workstream?.stage,
+      artifact: agent?.workstream?.artifact,
+      confidence: agent?.workstream?.confidence,
+      risk: agent?.workstream?.risk,
       promptCount: agent?.workstream?.promptCount,
       sentCount: agent?.workstream?.sentCount,
       signalCount: agent?.workstream?.signalCount,
@@ -316,6 +329,11 @@ test("command palette creates a supervised Codex workstream on the map", async (
     readiness: "provider-ready",
     lastSummary: "Provider crashed",
     nextAction: "Inspect output and send recovery prompt",
+    evidence: "stderr: provider exited 2",
+    stage: "failure analysis",
+    artifact: "logs/provider-crash.txt",
+    confidence: "low",
+    risk: "provider crashed before saving state",
     promptCount: 4,
     sentCount: 4,
     signalCount: 1,
@@ -325,6 +343,11 @@ test("command palette creates a supervised Codex workstream on the map", async (
   });
   await expect(page.getByTestId("canvas-agent-lane-attention")).toContainText("Blocked");
   await expect(page.getByLabel("Agent operator guidance").getByText("Provider crashed")).toBeVisible();
+  await expect(page.getByLabel("Agent operator guidance").getByText("stderr: provider exited 2")).toBeVisible();
+  await expect(page.getByLabel("Agent operator guidance").getByText("logs/provider-crash.txt")).toBeVisible();
+  await expect(page.getByLabel("Agent provider control surface").getByText("failure analysis", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Agent provider control surface").getByText("low", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Agent provider control surface").getByText("provider crashed before saving state", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Draft recovery prompt" })).toBeVisible();
   await page.getByRole("button", { name: "Draft recovery prompt" }).click();
   await expect(page.getByRole("textbox", { name: "Agent follow-up prompt" })).toHaveValue(/Recover Codex workstream/);
@@ -503,7 +526,7 @@ test("command palette creates a supervised Codex workstream on the map", async (
   await expect(page.getByText("Codex · running")).toBeVisible();
 
   const structuredSignal =
-    '[[TERMFLEET_AGENT_EVENT {"status":"done","phase":"complete","readiness":"provider-ready","exitCode":0,"summary":"Structured task completed","nextAction":"Review structured result","label":"Structured completion","detail":"Provider emitted a machine-readable completion signal."}]]';
+    '[[TERMFLEET_AGENT_EVENT {"status":"done","phase":"complete","readiness":"provider-ready","exitCode":0,"stage":"review","confidence":"high","risk":"low residual risk","summary":"Structured task completed","nextAction":"Review structured result","evidence":"tests: checkout-flow.spec passed","artifact":"reports/checkout-flow.md","label":"Structured completion","detail":"Provider emitted a machine-readable completion signal."}]]';
   await sendFollowUp(page, structuredSignal);
 
   await expect.poll(async () => page.evaluate(() => {
@@ -519,6 +542,11 @@ test("command palette creates a supervised Codex workstream on the map", async (
       structuredStatus: agent?.workstream?.structuredStatus,
       lastSummary: agent?.workstream?.lastSummary,
       nextAction: agent?.workstream?.nextAction,
+      evidence: agent?.workstream?.evidence,
+      stage: agent?.workstream?.stage,
+      artifact: agent?.workstream?.artifact,
+      confidence: agent?.workstream?.confidence,
+      risk: agent?.workstream?.risk,
       promptCount: agent?.workstream?.promptCount,
       sentCount: agent?.workstream?.sentCount,
       signalCount: agent?.workstream?.signalCount,
@@ -539,6 +567,11 @@ test("command palette creates a supervised Codex workstream on the map", async (
     structuredStatus: true,
     lastSummary: "Structured task completed",
     nextAction: "Review structured result",
+    evidence: "tests: checkout-flow.spec passed",
+    stage: "review",
+    artifact: "reports/checkout-flow.md",
+    confidence: "high",
+    risk: "low residual risk",
     promptCount: 8,
     sentCount: 8,
     signalCount: 2,
@@ -553,6 +586,11 @@ test("command palette creates a supervised Codex workstream on the map", async (
   await expect(page.getByText("Codex · done")).toBeVisible();
   await expect(page.getByLabel("Agent operator guidance").getByText("Structured task completed", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Agent operator guidance").getByText("Review structured result", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Agent operator guidance").getByText("tests: checkout-flow.spec passed", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Agent operator guidance").getByText("reports/checkout-flow.md", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Agent provider control surface").getByText("review", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Agent provider control surface").getByText("high", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Agent provider control surface").getByText("low residual risk", { exact: true })).toBeVisible();
   await expect(page.getByText("structured", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Agent run record").getByText("Exit")).toBeVisible();
   await expect(page.getByLabel("Agent run record").getByText("0", { exact: true })).toBeVisible();
@@ -567,10 +605,15 @@ test("command palette creates a supervised Codex workstream on the map", async (
   await copiedBrief.toContain("Provider: Codex");
   await copiedBrief.toContain("Status: done / complete");
   await copiedBrief.toContain("Readiness: provider-ready");
+  await copiedBrief.toContain("Stage: review");
+  await copiedBrief.toContain("Confidence: high");
+  await copiedBrief.toContain("Risk: low residual risk");
   await copiedBrief.toContain("Exit: 0");
   await copiedBrief.toMatch(/Timing: started=.*completed=.*reviewed=pending/);
   await copiedBrief.toContain("Summary: Structured task completed");
   await copiedBrief.toContain("Next: Review structured result");
+  await copiedBrief.toContain("Evidence: tests: checkout-flow.spec passed");
+  await copiedBrief.toContain("Artifact: reports/checkout-flow.md");
   await copiedBrief.toContain("Outcome: Structured completion");
   await copiedBrief.toContain("Latest input: sent - [[TERMFLEET_AGENT_EVENT");
   await copiedBrief.toContain("Run record: prompts=8, sent=8, signals=2, controls=3");
