@@ -44,6 +44,7 @@ const runDev = readFileSync(join(root, "run-dev.sh"), "utf8");
 const runNativeDev = readFileSync(join(root, "run-native-vte-dev.sh"), "utf8");
 const canvasTerminalSmoke = readFileSync(join(root, "scripts/verify-canvas-terminal.sh"), "utf8");
 const terminalReliabilityGate = readFileSync(join(root, "scripts/verify-terminal-reliability.sh"), "utf8");
+const releaseGate = readFileSync(join(root, "scripts/verify-release.sh"), "utf8");
 const standaloneDaemonSmoke = readFileSync(join(root, "scripts/verify-standalone-daemon-smoke.sh"), "utf8");
 const canvasLiveSmoke = readFileSync(join(root, "scripts/verify-canvas-live.sh"), "utf8");
 const bracketedPasteSmoke = readFileSync(join(root, "scripts/verify-bracketed-paste.sh"), "utf8");
@@ -100,11 +101,13 @@ const checks = [
   {
     ok: /"verify:terminal-reliability": "scripts\/verify-terminal-reliability\.sh"/.test(packageJson) &&
       /"verify:terminal-reliability:live": "TERMFLEET_TERMINAL_RELIABILITY_LIVE=1 scripts\/verify-terminal-reliability\.sh"/.test(packageJson) &&
+      /"verify:daemon-survival":/.test(packageJson) &&
       /TERMFLEET_TERMINAL_RELIABILITY_LIVE/.test(terminalReliabilityGate) &&
       /verify:map-terminals/.test(terminalReliabilityGate) &&
       /verify:canvas-all/.test(terminalReliabilityGate) &&
       /vt_grid::tests/.test(terminalReliabilityGate) &&
       /pty::tests/.test(terminalReliabilityGate) &&
+      /verify:daemon-survival/.test(terminalReliabilityGate) &&
       /verify:legacy-prompt-live/.test(terminalReliabilityGate) &&
       /verify:scrollback-reattach/.test(terminalReliabilityGate) &&
       /verify:map-shell-anchor/.test(terminalReliabilityGate) &&
@@ -117,6 +120,15 @@ const checks = [
       /verify:restart-restore/.test(terminalReliabilityGate) &&
       /TERMFLEET_TERMINAL_RELIABILITY_OK/.test(terminalReliabilityGate),
     message: "A single terminal reliability gate must cover fast invariants and the full live shell/zellij/map/restart matrix.",
+  },
+  {
+    ok: /"verify:release": "scripts\/verify-release\.sh"/.test(packageJson) &&
+      /verify:terminal-reliability/.test(releaseGate) &&
+      /verify:restart-restore/.test(releaseGate) &&
+      /verify:daemon-latency/.test(releaseGate) &&
+      /verify:standalone-daemon/.test(releaseGate) &&
+      /TERMFLEET_RELEASE_CHECK_OK/.test(releaseGate),
+    message: "Release verification must block on terminal process-survival, restart/restore, latency, and standalone daemon smoke gates.",
   },
   {
     ok: /import \{ TerminalComponent \} from "\.\/Terminal";/.test(magicCanvas),
@@ -219,7 +231,8 @@ const checks = [
       /commands::grid_scroll_to_bottom/.test(tauriLib) &&
       /await invoke\("grid_scroll_to_bottom", \{ id: sessionId \}\);/.test(terminalCanvas) &&
       /invoke\("grid_scroll_to_bottom", \{ id: sessionId \}\)/.test(terminalCanvas) &&
-      /const send = \(data: string, seqId = nextTerminalInputSequence\(\), source = "canvas-send"\) => \{\s*invoke\("grid_scroll_to_bottom", \{ id: sessionIdRef\.current \}\)/.test(terminalCanvas) &&
+      /const scheduleScrollToBottom = \(\) => \{[\s\S]*scrollToBottomPendingRef\.current[\s\S]*requestAnimationFrame/.test(terminalCanvas) &&
+      /const send = \(data: string, seqId = nextTerminalInputSequence\(\), source = "canvas-send"\) => \{\s*scheduleScrollToBottom\(\);/.test(terminalCanvas) &&
       /send\(bytes, seqId, "canvas-capture-keydown"\)/.test(terminalCanvas) &&
       /createDaemonInputQueue/.test(terminalCanvas) &&
       /send\(bytes, seqId, "canvas-keydown"\)/.test(terminalCanvas) &&
@@ -522,7 +535,7 @@ const checks = [
     ok: ptyBackend.includes("if self.ptys.lock().unwrap().contains_key(&id)") &&
       ptyBackend.includes("return Ok((id, true));") &&
       ptyBackend.includes("if ptys.contains_key(&id)") &&
-      ptyBackend.includes("loser.shutdown();") &&
+      /loser\.shutdown\([\s\S]*duplicate stable session lost creation race/.test(ptyBackend) &&
       ptyBackend.includes("let _ = self.child.kill();"),
     message: "Backend PTY spawn must reuse existing stable session ids, including concurrent attach races.",
   },
@@ -564,6 +577,9 @@ const checks = [
       /protocol_version/.test(daemonBackend) &&
       /daemon_socket_path/.test(daemonBackend) &&
       /pub fn daemon_ensure_running\(\) -> DaemonStatus/.test(daemonBackend) &&
+      /fn should_reuse_running_daemon_with_fresh_request/.test(daemonBackend) &&
+      /status\.protocol_version == PROTOCOL_VERSION/.test(daemonBackend) &&
+      !/status\.build_id == current_build_id\(\)/.test(daemonBackend) &&
       /let status = daemon_ensure_running\(\);[\s\S]*if !status\.reachable/.test(daemonBackend) &&
       /terminal daemon became reachable but request connect still failed/.test(daemonBackend) &&
       /use crate::daemon::\{daemon_ensure_running, daemon_socket_path, DaemonRequest, DaemonResponse\};/.test(vtGrid) &&
@@ -658,7 +674,9 @@ const checks = [
       /commands::daemon_resize_session/.test(tauriLib) &&
       /commands::daemon_read_session/.test(tauriLib) &&
       /commands::daemon_get_session_cwd/.test(tauriLib) &&
-      /commands::daemon_kill_session/.test(tauriLib),
+      /commands::daemon_kill_session/.test(tauriLib) &&
+      /commands::daemon_list_sessions/.test(tauriLib) &&
+      /commands::daemon_list_session_events/.test(tauriLib),
     message: "Tauri commands must bridge frontend terminal transport to the external daemon control plane.",
   },
   {

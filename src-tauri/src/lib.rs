@@ -55,6 +55,8 @@ pub fn run() {
             commands::daemon_unsubscribe_session,
             commands::daemon_get_session_cwd,
             commands::daemon_kill_session,
+            commands::daemon_list_sessions,
+            commands::daemon_list_session_events,
             commands::grid_attach,
             commands::grid_snapshot,
             commands::grid_detach,

@@ -21,6 +21,7 @@ WINDOW_ID=""
 APP_PID=""
 APP_WINDOW_PID=""
 DAEMON_PID=""
+STRESS_PIDS=()
 
 mkdir -p "$RUN_DIR" "$DATA_DIR"
 chmod 700 "$RUN_DIR"
@@ -41,6 +42,7 @@ now_ms() {
 }
 
 cleanup() {
+  stop_cpu_stress
   if [[ -n "$APP_PID" ]]; then
     kill "$APP_PID" >/dev/null 2>&1 || true
   fi
@@ -49,6 +51,26 @@ cleanup() {
   fi
 }
 trap cleanup EXIT
+
+start_cpu_stress() {
+  local workers="${TERMFLEET_PERF_STRESS_WORKERS:-2}"
+  STRESS_PIDS=()
+  for _ in $(seq 1 "$workers"); do
+    yes TERMFLEET_CPU_STRESS >/dev/null &
+    STRESS_PIDS+=("$!")
+  done
+  sleep 0.25
+  metric cpu_stress_workers "$workers"
+}
+
+stop_cpu_stress() {
+  if (( ${#STRESS_PIDS[@]} == 0 )); then
+    return
+  fi
+  kill "${STRESS_PIDS[@]}" >/dev/null 2>&1 || true
+  wait "${STRESS_PIDS[@]}" >/dev/null 2>&1 || true
+  STRESS_PIDS=()
+}
 
 if [[ "$PERF_MODE" != "dev" && ! -x "$APP_BIN" ]]; then
   echo "Missing release app binary: $APP_BIN" >&2
@@ -286,6 +308,17 @@ type_shell_text "$FAST_TYPE_TEXT"
 wait_for_output "$FAST_TYPE_TEXT" "$start_ms" fast_type_integrity_ms
 clear_shell_line
 
+STRESS_TYPE_PREFIX="STRESS_TYPE_${RANDOM}_"
+STRESS_TYPE_FINAL="Q"
+start_cpu_stress
+type_shell_text "$STRESS_TYPE_PREFIX"
+wait_for_output "$STRESS_TYPE_PREFIX" "$(now_ms)" stressed_typed_prefix_warmup_ms
+start_ms="$(now_ms)"
+type_shell_text_raw "$STRESS_TYPE_FINAL"
+wait_for_output "$STRESS_TYPE_PREFIX$STRESS_TYPE_FINAL" "$start_ms" stressed_typed_last_char_echo_ms
+clear_shell_line
+stop_cpu_stress
+
 start_ms="$(now_ms)"
 paste_shell "for i in \$(seq 1 300); do echo PERF_BURST_\$i; done; echo $BURST_NEEDLE"
 wait_for_output "$BURST_NEEDLE" "$start_ms" terminal_burst_300_lines_ms
@@ -316,6 +349,7 @@ assert_le_int terminal_echo_roundtrip_ms "$terminal_echo_roundtrip_ms" 2000
 assert_le_int typed_echo_visible_ms "$typed_echo_visible_ms" 700
 assert_le_int typed_last_char_echo_ms "$typed_last_char_echo_ms" 150
 assert_le_int fast_type_integrity_ms "$fast_type_integrity_ms" "$fast_type_limit_ms"
+assert_le_int stressed_typed_last_char_echo_ms "$stressed_typed_last_char_echo_ms" 350
 assert_le_int terminal_burst_300_lines_ms "$terminal_burst_300_lines_ms" 2500
 assert_le_int surface_toggle_6x_ms "$surface_toggle_6x_ms" 12000
 assert_le_int canvas_pan_10x_ms "$canvas_pan_10x_ms" 3000

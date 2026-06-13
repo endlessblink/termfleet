@@ -558,7 +558,7 @@ export function WorkbenchHeader() {
   const launchAgentWorkstream = useCallback(async (provider: AgentProvider, initialMission = "Supervised workstream") => {
     setCommandStatus(`checking ${provider}`);
     const availability = await checkAgentProvider(provider);
-    const mission = window.prompt(`Mission for ${availability.label} workstream`, initialMission);
+    const mission = window.prompt(`Task for ${availability.label} agent`, initialMission);
     if (mission === null) {
       setCommandStatus("agent launch cancelled");
       return;
@@ -567,7 +567,7 @@ export function WorkbenchHeader() {
     setWorkspaceMode("canvas");
     updateUiState({ primarySidebarCollapsed: false, primarySidebarPanel: "map" });
     requestAnimationFrame(focusActiveTerminalOnMap);
-    setCommandStatus(availability.available ? `${availability.label} workstream` : `${availability.label} unavailable`);
+    setCommandStatus(availability.available ? `${availability.label} agent` : `${availability.label} unavailable`);
   }, [focusActiveTerminalOnMap, setWorkspaceMode, updateUiState]);
 
   const actions = useMemo<CommandAction[]>(() => {
@@ -588,8 +588,8 @@ export function WorkbenchHeader() {
       },
       {
         id: "new-agent-workstream",
-        label: "New agent workstream",
-        detail: "Create a supervised local agent terminal",
+        label: "New agent run",
+        detail: "Start a supervised local agent",
         keywords: ["agent", "codex", "claude", "opencode", "workstream", "supervise"],
         scope: "actions",
         Icon: Bot,
@@ -801,8 +801,8 @@ export function WorkbenchHeader() {
     const launchActions: CommandAction[] = [
       {
         id: "launch-codex-workstream",
-        label: "Launch Codex workstream",
-        detail: "Create a supervised Codex terminal in this project",
+        label: "Launch Codex agent",
+        detail: "Start a supervised Codex run in this project",
         keywords: ["launch", "config", "agent", "codex", "workstream", projectLabel, activeTab?.initialCwd ?? ""],
         scope: "launch_configs",
         Icon: Bot,
@@ -812,8 +812,8 @@ export function WorkbenchHeader() {
       },
       {
         id: "launch-claude-workstream",
-        label: "Launch Claude workstream",
-        detail: "Create a supervised Claude Code terminal in this project",
+        label: "Launch Claude agent",
+        detail: "Start a supervised Claude Code run in this project",
         keywords: ["launch", "config", "agent", "claude", "workstream", projectLabel, activeTab?.initialCwd ?? ""],
         scope: "launch_configs",
         Icon: Bot,

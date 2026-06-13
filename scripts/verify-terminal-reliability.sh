@@ -29,6 +29,7 @@ run env CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-1}" CARGO_TARGET_DIR="$RUST_TARGET
   cargo test --manifest-path src-tauri/Cargo.toml vt_grid::tests -- --nocapture
 run env CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-1}" CARGO_TARGET_DIR="$RUST_TARGET_DIR" \
   cargo test --manifest-path src-tauri/Cargo.toml pty::tests -- --nocapture
+run_npm verify:daemon-survival
 run_npm build
 
 if [[ "$LIVE" == "1" ]]; then

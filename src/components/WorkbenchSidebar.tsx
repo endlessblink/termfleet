@@ -1116,7 +1116,7 @@ function NewTerminalLaunchMenu({
       />
       <MenuItem
         icon={<Robot size={13} weight="duotone" />}
-        label="Codex workstream"
+        label="Codex agent"
         detail="Track a supervised agent terminal"
         onClick={onAgentWorkstream}
       />
@@ -1262,7 +1262,7 @@ function SessionsPanel({
 
   const createAgentWorkstreamOnMap = async () => {
     const availability = await checkAgentProvider("codex");
-    const mission = window.prompt(`Mission for ${availability.label} workstream`, "Supervised workstream");
+    const mission = window.prompt(`Task for ${availability.label} agent`, "Supervised workstream");
     if (mission === null) return;
     createAgentWorkstream("codex", mission, availability);
     requestAnimationFrame(() => {
@@ -1463,7 +1463,7 @@ function SessionsPanel({
             aria-label={agentLaneStatusText(agentLane)}
           >
             <div style={styles.agentLaneHeader}>
-              <span>Agent workstreams</span>
+              <span>Agent runs</span>
               <span>{agentLane.total}</span>
             </div>
             <div style={styles.agentLaneStats}>
@@ -1710,7 +1710,7 @@ function MapPanel({
             aria-label={agentLaneStatusText(agentLane)}
           >
             <div style={styles.agentLaneHeader}>
-              <span>Agent workstreams</span>
+              <span>Agent runs</span>
               <span>{agentLane.total}</span>
             </div>
             <div style={styles.agentLaneStats}>

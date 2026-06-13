@@ -218,17 +218,22 @@ for l in lines:
         zoom_marker = len(events)
     for label in ("grid.attach", "grid.resize",
                   "daemon.ensure.receive", "daemon.ensure.done",
-                  "daemon.resize.receive", "daemon.write.receive"):
+                  "daemon.resize.receive", "daemon.write.receive",
+                  "daemon.input_stream.receive"):
         if label in l:
             ts = re.search(r"\[TW-PTY\]\s+(\d+)", l)
             events.append((int(ts.group(1)) if ts else 0, label, l.strip()))
             if zoom_marker is not None and input_marker is None and label in {"grid.resize", "daemon.resize.receive"}:
                 zoom_resize_events.append(l.strip())
-            if input_marker is not None and label == "daemon.write.receive":
+            if input_marker is not None and label in {"daemon.write.receive", "daemon.input_stream.receive", "pty.write.start"}:
                 map_input_write = True
                 if "[<" in l:
                     map_mouse_report_write = True
             break
+    if input_marker is not None and "pty.write.start" in l:
+        map_input_write = True
+        if "[<" in l:
+            map_mouse_report_write = True
 
 events.sort(key=lambda e: e[0])
 print("=== winsize / grid timeline (chronological) ===")

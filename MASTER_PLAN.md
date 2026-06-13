@@ -1433,6 +1433,25 @@ Reliability hardening addendum — 2026-06-02:
   screenshots are
   `/tmp/tw-standalone-daemon-smoke/01-before-app-restart.png` and
   `/tmp/tw-standalone-daemon-smoke/02-after-app-restart.png`.
+- Responsiveness under load pass (2026-06-13): `TerminalCanvas` now coalesces
+  grid diff rendering into one `requestAnimationFrame` paint, snapshots the grid
+  once per painted frame instead of once per diff, scans only changed rows for
+  visible-content detection on partial diffs, and coalesces input-triggered
+  `grid_scroll_to_bottom` into one frame-scheduled command instead of one Tauri
+  invoke per key. This keeps burst output, map previews, and fast typing from
+  competing on the same synchronous canvas/input path while preserving real PTY
+  echo semantics. Evidence: `npm run build` passed; `CARGO_BUILD_JOBS=1 cargo
+  check` passed with existing dead-code warnings; `npm run verify:map-terminals`
+  passed; `npm run verify:canvas-all` passed 12/12; `npm run
+  verify:terminal-rendering` passed; `npm run verify:daemon-latency` reported
+  p95 `1.4ms`, max `1.4ms`; live desktop `TERMINAL_WORKSPACE_ALLOW_SHARED_DEV_CLEANUP=1
+  npm run verify:tauri-dev-performance` passed with `typed_last_char_echo_ms=94`,
+  `fast_type_integrity_ms=544`, `cpu_stress_workers=2`,
+  `stressed_typed_last_char_echo_ms=97`, `terminal_burst_300_lines_ms=937`,
+  `canvas_pan_10x_ms=146`, and `max_subscribers_after_toggle=1`.
+  `npm run verify:typography` remains red on unrelated pre-existing outline /
+  letter-spacing checks in LinksView, LocalhostPreview, MagicCanvas, and
+  WorkbenchSidebar.
 - Release cold-restore visual evidence: `verify:standalone-daemon` now also
   kills the app and daemon after the app-restart pass, relaunches against the
   same private `XDG_DATA_HOME`, verifies the prior marker is replayed into the
@@ -2240,6 +2259,11 @@ Verification:
   panel. Layout measurements showed no provider-grid overflow after the four
   column wrap (`provider scrollWidth=798 clientWidth=798`), and screenshot
   evidence was captured at `/tmp/termfleet-agent-telemetry-panel.png`.
+- `npx playwright test tests/agent-workstream.spec.ts` passed after covering
+  visible agent node header task text at launch and after a queued follow-up
+  prompt.
+- `npm run build` passed after moving the mutable agent task into the always
+  visible canvas node header while preserving ordinary shell terminal headers.
 
 #### TC-016 - Multi-agent orchestration from the cockpit `IN_PROGRESS`
 Let one cockpit terminal spawn and manage multiple sub-agent terminals (Claude
@@ -2343,3 +2367,36 @@ Progress notes:
   making residual risk part of the agent handoff instead of terminal-only text.
 - The provider control grid now wraps to four columns across two rows so the
   expanded telemetry cells stay readable on the standard agent cockpit node.
+- Agent canvas node headers now show the current task prompt directly, while
+  ordinary shell terminal nodes keep their existing title/cwd header behavior.
+- Process-survival hotfix: app/dev restarts no longer replace a reachable
+  same-protocol daemon just because the binary `build_id` changed. Root cause:
+  daemon replacement killed daemon-owned PTYs, while cold restore only replayed
+  scrollback and reopened cwd in a fresh shell, so Codex/Claude foreground
+  processes disappeared even though the terminal view returned. Replacement is
+  now limited to explicit `--fresh-daemon` / `TERMINAL_WORKSPACE_FRESH_DAEMON=1`
+  or protocol incompatibility; daemon session/event listing is exposed for
+  future kill/restore audits. Evidence: `CARGO_BUILD_JOBS=1 cargo test
+  daemon::tests --lib`, `CARGO_BUILD_JOBS=1 cargo check`, `npm run
+  verify:map-terminals`, and live socket owner remained PID `3399682` after
+  verification.
+- Reliability stress gate added for the exact process-survival regression:
+  `npm run verify:daemon-survival` starts a private real daemon, creates a
+  long-running child session, calls `daemon_ensure_running()` from a different
+  binary/build-id context, and asserts both daemon PID and child PID are
+  unchanged. The fast gate `npm run verify:terminal-reliability` now includes
+  this regression. Additional evidence: `APP_BUDGET=360 npm run
+  verify:standalone-daemon` passed app-restart reattach and daemon-cold-restore
+  against a private release app; `npm run verify:restart-restore` passed live
+  reattach plus daemon SIGKILL/restart restore at the socket layer; `npm run
+  verify:daemon-latency` reported p95 `1.4ms`; live daemon owner remained PID
+  `3399682`.
+- Release-blocking survival gate added: `npm run verify:release` now runs the
+  terminal reliability suite, restart/restore proof, daemon latency proof, and a
+  standalone release GUI smoke before printing `TERMFLEET_RELEASE_CHECK_OK`.
+  Fresh evidence: the full gate passed with `TERMFLEET_RELEASE_CHECK_OK gui=1`;
+  restart/restore covered app restart plus daemon SIGKILL/restart; daemon
+  latency reported p95 `1.3ms`; standalone release smoke preserved daemon PID
+  `3626544` across app restart, then proved cold restore after daemon restart to
+  PID `3627596`; the user's live daemon socket owner remained PID `3399682`
+  while release verification ran.

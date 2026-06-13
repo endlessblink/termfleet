@@ -135,6 +135,7 @@ export function TerminalCanvas({
   const overlayRef = useRef<HTMLCanvasElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const daemonInputQueueRef = useRef<DaemonInputQueue | null>(null);
+  const scrollToBottomPendingRef = useRef(false);
   // Stable handle to the current session id for the window-capture key handler,
   // which is registered once and must not close over a stale prop.
   const sessionIdRef = useRef(sessionId);
@@ -245,6 +246,9 @@ export function TerminalCanvas({
     let blankGuardTimer: ReturnType<typeof setTimeout> | null = null;
     let reusedSession = false;
     let legacyPromptRepairSent = false;
+    let renderScheduled = false;
+    let pendingFullRender = false;
+    const pendingRenderRows = new Set<number>();
 
     const syncOverlaySize = () => {
       const overlay = overlayRef.current;
@@ -253,6 +257,39 @@ export function TerminalCanvas({
       if (overlay.height !== canvas.height) overlay.height = canvas.height;
       overlay.style.width = canvas.style.width;
       overlay.style.height = canvas.style.height;
+    };
+
+    const scheduleRender = () => {
+      if (renderScheduled) return;
+      renderScheduled = true;
+      requestAnimationFrame(() => {
+        if (disposed) return;
+        renderScheduled = false;
+        const full = pendingFullRender;
+        const rowsToRender = new Set(pendingRenderRows);
+        pendingFullRender = false;
+        pendingRenderRows.clear();
+        const snapshot = buffer.toSnapshot();
+        onSnapshotRef.current?.(snapshot);
+        if (full) {
+          ctx = sizeCanvasToGrid(canvas, atlas, snapshot.cols, snapshot.rows, dpr);
+          renderSnapshot(ctx, atlas, snapshot, dpr, theme);
+        } else {
+          renderPartial(ctx, atlas, snapshot, rowsToRender, dpr, theme);
+        }
+        traceTerminalLatency("frontend.canvas.render", {
+          id: sessionId,
+          full,
+          changedRows: rowsToRender.size,
+        });
+        traceTerminalLatency("frontend.canvas.render.raf", {
+          id: sessionId,
+          full,
+          changedRows: rowsToRender.size,
+        });
+        syncOverlaySize();
+        drawSelectionOverlay();
+      });
     };
 
     const channel = new Channel<ArrayBuffer>();
@@ -293,49 +330,34 @@ export function TerminalCanvas({
         firstFrameWaitersRef.current = [];
         for (const resolve of waiters) resolve();
       }
-      const snapshot = buffer.toSnapshot();
-      onSnapshotRef.current?.(snapshot);
-      visibleContentSeen = snapshot.cells.some((row) =>
-        row.some((cell) => cell.c.trim() !== "")
-      );
+      for (const row of changed) {
+        pendingRenderRows.add(row);
+      }
+      pendingFullRender = pendingFullRender || frame.full;
+      visibleContentSeen =
+        visibleContentSeen ||
+        (frame.full
+          ? buffer.cells.some((row) => row.some((cell) => cell.c.trim() !== ""))
+          : [...changed].some((row) =>
+              buffer.cells[row]?.some((cell) => cell.c.trim() !== "")
+            ));
       if (onOutputRef.current) {
         const changedText = [...changed]
           .sort((a, b) => a - b)
-          .map((row) => snapshot.cells[row]?.map((cell) => cell.c).join("").trimEnd() ?? "")
+          .map((row) => buffer.cells[row]?.map((cell) => cell.c).join("").trimEnd() ?? "")
           .filter(Boolean)
           .join("\n");
         if (changedText) onOutputRef.current(changedText);
       }
-      if (
-        reusedSession &&
-        firstFrame &&
-        !legacyPromptRepairSent &&
-        needsLegacyPromptRepair(snapshot)
-      ) {
-        legacyPromptRepairSent = true;
-        invoke("grid_scroll_to_bottom", { id: sessionId }).catch(console.error);
-        invoke("daemon_write_session", { id: sessionId, data: "\x0c" }).catch(console.error);
+      if (reusedSession && firstFrame && !legacyPromptRepairSent) {
+        const snapshot = buffer.toSnapshot();
+        if (needsLegacyPromptRepair(snapshot)) {
+          legacyPromptRepairSent = true;
+          invoke("grid_scroll_to_bottom", { id: sessionId }).catch(console.error);
+          invoke("daemon_write_session", { id: sessionId, data: "\x0c" }).catch(console.error);
+        }
       }
-      if (frame.full) {
-        ctx = sizeCanvasToGrid(canvas, atlas, snapshot.cols, snapshot.rows, dpr);
-        renderSnapshot(ctx, atlas, snapshot, dpr, theme);
-      } else {
-        renderPartial(ctx, atlas, snapshot, changed, dpr, theme);
-      }
-      traceTerminalLatency("frontend.canvas.render", {
-        id: sessionId,
-        full: frame.full,
-        changedRows: changed.size,
-      });
-      requestAnimationFrame(() => {
-        traceTerminalLatency("frontend.canvas.render.raf", {
-          id: sessionId,
-          full: frame.full,
-          changedRows: changed.size,
-        });
-      });
-      syncOverlaySize();
-      drawSelectionOverlay();
+      scheduleRender();
       // Keep the map node fitted to the current mode: re-fit the frozen canvas
       // after a full sync (which resets canvas size), and switch freeze↔reflow
       // when the inner app enters/leaves alt-screen. The first frame also runs
@@ -595,8 +617,17 @@ export function TerminalCanvas({
     };
   }, [sessionId, cwd, command, cols, rows, theme, fontsReady, renderScale, mapProjection]);
 
+  const scheduleScrollToBottom = () => {
+    if (scrollToBottomPendingRef.current) return;
+    scrollToBottomPendingRef.current = true;
+    requestAnimationFrame(() => {
+      scrollToBottomPendingRef.current = false;
+      invoke("grid_scroll_to_bottom", { id: sessionIdRef.current }).catch(console.error);
+    });
+  };
+
   const send = (data: string, seqId = nextTerminalInputSequence(), source = "canvas-send") => {
-    invoke("grid_scroll_to_bottom", { id: sessionIdRef.current }).catch(console.error);
+    scheduleScrollToBottom();
     let queue = daemonInputQueueRef.current;
     if (!queue) {
       queue = createDaemonInputQueue({

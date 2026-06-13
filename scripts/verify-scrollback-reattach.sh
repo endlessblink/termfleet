@@ -219,7 +219,7 @@ for line in lines:
         after_input = True
     elif after_input and "grid.scroll_to_bottom" in line:
         bottom_after_input = True
-    elif after_input and "daemon.write.receive" in line:
+    elif after_input and ("daemon.write.receive" in line or "daemon.input_stream.receive" in line):
         write_after_input = True
 
 if not scrolled:

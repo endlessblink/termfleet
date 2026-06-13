@@ -266,8 +266,8 @@ const styles: Record<string, CSSProperties> = {
     zIndex: 2,
     flex: "0 0 auto",
     display: "grid",
-    gap: 8,
-    padding: "9px 10px",
+    gap: 7,
+    padding: "8px 10px",
     borderBottom: "1px solid var(--border-subtle)",
     background: "color-mix(in srgb, var(--surface-raised) 88%, #10161a)",
   },
@@ -299,7 +299,7 @@ const styles: Record<string, CSSProperties> = {
   },
   agentDecisionRow: {
     display: "grid",
-    gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
     gap: 6,
   },
   agentComposer: {
@@ -337,6 +337,25 @@ const styles: Record<string, CSSProperties> = {
     display: "grid",
     gridTemplateColumns: "minmax(0, 1fr) 96px",
     gap: 6,
+  },
+  agentDetails: {
+    display: "grid",
+    gap: 7,
+    paddingTop: 2,
+    color: "var(--text-secondary)",
+    fontSize: 11,
+  },
+  agentDetailsSummary: {
+    cursor: "pointer",
+    color: "var(--text-secondary)",
+    fontSize: 10,
+    textTransform: "uppercase",
+    userSelect: "none",
+  },
+  agentDetailsBody: {
+    display: "grid",
+    gap: 6,
+    paddingTop: 6,
   },
   agentRunRecordRow: {
     display: "grid",
@@ -773,19 +792,19 @@ function latestWorkstreamInput(workstream?: Tab["workstream"]) {
 }
 
 function recoveryPromptFor(workstream?: Tab["workstream"]) {
-  return `Recover ${workstreamLabel(workstream?.provider)} workstream: inspect the failure output, summarize the root cause, and propose the next command.`;
+  return `Recover ${workstreamLabel(workstream?.provider)} agent: inspect the failure output, summarize the root cause, and propose the next command.`;
 }
 
 function formatAgentRunBrief(tab: Tab) {
   const workstream = tab.workstream;
-  if (!workstream) return `${tab.title}\nNo workstream metadata available.`;
+  if (!workstream) return `${tab.title}\nNo agent run metadata available.`;
   const latestEvent = workstream.events?.[workstream.events.length - 1];
   const mission = workstream.mission ?? workstream.prompt ?? "Supervised workstream";
   const latestInput = latestWorkstreamInput(workstream);
   return [
-    `Agent workstream: ${tab.title}`,
+    `Agent run: ${tab.title}`,
     `Run: ${workstream.runId ?? "pending"} (generation ${workstream.generation ?? 0})`,
-    `Mission: ${mission}`,
+    `Task: ${mission}`,
     `Provider: ${workstreamLabel(workstream.provider)}`,
     `Status: ${workstream.status} / ${workstream.phase ?? "unknown"}`,
     `Readiness: ${workstream.readiness ?? "unknown"}`,
@@ -1182,6 +1201,14 @@ function CanvasNodeView({
     workstream?.providerAvailable === false;
   const canReviewWorkstream =
     workstream?.phase !== "reviewed" && (workstream?.status === "done" || workstream?.phase === "complete");
+  const agentHeaderTitle =
+    workstream?.kind === "agent"
+      ? workstream.prompt ?? workstream.mission ?? "Supervised agent run"
+      : undefined;
+  const agentHeaderMeta =
+    workstream?.kind === "agent"
+      ? `${workstreamLabel(workstream.provider)} agent · ${workstream.phase ?? workstream.status}`
+      : undefined;
   const nodeKind = workstream?.kind === "agent"
     ? "agent"
     : node.type === "terminal"
@@ -1422,7 +1449,7 @@ function CanvasNodeView({
           <span
             style={styles.taskBadge}
             title={[
-              workstream.startupCommand ? `Starts ${workstream.startupCommand}` : workstream.mission ?? workstream.prompt ?? "Supervised agent workstream",
+              workstream.startupCommand ? `Starts ${workstream.startupCommand}` : workstream.mission ?? workstream.prompt ?? "Supervised agent run",
               workstream.providerAvailabilityMessage,
             ].filter(Boolean).join(" · ")}
           >
@@ -1457,12 +1484,18 @@ function CanvasNodeView({
           title="Double-click to rename"
           onDoubleClick={onRename}
         >
-          <div style={styles.nodeTitle}>
-            {node.type === "terminal" ? terminalTitle : node.title}
+          <div
+            style={styles.nodeTitle}
+            data-testid={workstream?.kind === "agent" ? "canvas-agent-node-header-title" : "canvas-node-header-title"}
+          >
+            {agentHeaderTitle ?? (node.type === "terminal" ? terminalTitle : node.title)}
           </div>
           {node.type === "terminal" && (
-            <div style={styles.nodeTitleMeta}>
-              {linkedProject ? `${pathTail(liveTerminalRoot)} · ${linkedTab?.title ?? node.title}` : pathTail(liveTerminalRoot)}
+            <div
+              style={styles.nodeTitleMeta}
+              data-testid={workstream?.kind === "agent" ? "canvas-agent-node-header-meta" : "canvas-node-header-meta"}
+            >
+              {agentHeaderMeta ?? (linkedProject ? `${pathTail(liveTerminalRoot)} · ${linkedTab?.title ?? node.title}` : pathTail(liveTerminalRoot))}
             </div>
           )}
           {node.type === "preview" && node.previewUrl && (
@@ -1530,7 +1563,7 @@ function CanvasNodeView({
                 cursor: cancellationPending ? "default" : styles.headerButton.cursor,
               }}
               title={cancellationPending ? "Cancellation already requested" : "Request graceful cancellation"}
-              aria-label="Interrupt workstream"
+              aria-label="Interrupt agent run"
               disabled={cancellationPending}
               onMouseDown={(event) => event.stopPropagation()}
               onClick={onInterruptWorkstream}
@@ -1539,8 +1572,8 @@ function CanvasNodeView({
             </button>
             <button
               style={styles.headerButton}
-              title="Stop workstream"
-              aria-label="Stop workstream"
+              title="Stop agent run"
+              aria-label="Stop agent run"
               onMouseDown={(event) => event.stopPropagation()}
               onClick={onStopWorkstream}
             >
@@ -1548,8 +1581,8 @@ function CanvasNodeView({
             </button>
             <button
               style={styles.headerButton}
-              title="Restart workstream"
-              aria-label="Restart workstream"
+              title="Restart agent run"
+              aria-label="Restart agent run"
               onMouseDown={(event) => event.stopPropagation()}
               onClick={onRestartWorkstream}
             >
@@ -1618,50 +1651,12 @@ function CanvasNodeView({
             <div style={styles.agentMissionPanel} data-testid="agent-cockpit-panel">
               <div style={styles.agentMissionHeader}>
                 <span style={{ minWidth: 0 }}>
-                  <div style={styles.agentMissionLabel}>Mission</div>
-                  <div style={styles.agentMissionText} title={workstream.mission ?? workstream.prompt ?? "Supervised workstream"}>
-                    {workstream.mission ?? workstream.prompt ?? "Supervised workstream"}
+                  <div style={styles.agentMissionLabel}>Task</div>
+                  <div style={styles.agentMissionText} title={workstream.mission ?? workstream.prompt ?? "Supervised agent run"}>
+                    {workstream.mission ?? workstream.prompt ?? "Supervised agent run"}
                   </div>
                 </span>
                 <span style={styles.agentStatusPill}>{workstream.phase ?? workstream.status}</span>
-              </div>
-              <div style={styles.agentProviderGrid} aria-label="Agent provider control surface">
-                <div style={styles.agentProviderCell} title={workstream.launchMode ?? "Terminal command"}>
-                  <span style={styles.agentProviderCellLabel}>Launch</span>
-                  <span style={styles.agentProviderCellValue}>{workstream.launchMode ?? "terminal"}</span>
-                </div>
-                <div style={styles.agentProviderCell} title={workstream.readinessCheck ?? workstream.providerAvailabilityMessage}>
-                  <span style={styles.agentProviderCellLabel}>Readiness</span>
-                  <span style={styles.agentProviderCellValue}>
-                    {workstream.providerAvailable === false ? "unavailable" : workstream.readiness ?? "unknown"}
-                  </span>
-                </div>
-                <div style={styles.agentProviderCell} title={workstream.authCheck ?? "Auth inferred from provider output"}>
-                  <span style={styles.agentProviderCellLabel}>Auth</span>
-                  <span style={styles.agentProviderCellValue}>
-                    {workstream.readiness === "auth-required" ? "required" : workstream.readiness === "provider-ready" ? "ready" : "watching"}
-                  </span>
-                </div>
-                <div style={styles.agentProviderCell} title={workstream.structuredStatus ? "Provider-native status" : "Status inferred from terminal output"}>
-                  <span style={styles.agentProviderCellLabel}>Status</span>
-                  <span style={styles.agentProviderCellValue}>{workstream.structuredStatus ? "structured" : "terminal inferred"}</span>
-                </div>
-                <div style={styles.agentProviderCell} title={workstream.controlProtocol ?? workstream.stopBehavior ?? "PTY interrupt/kill"}>
-                  <span style={styles.agentProviderCellLabel}>Control</span>
-                  <span style={styles.agentProviderCellValue}>{workstream.structuredStatus ? "markers + pty" : "pty fallback"}</span>
-                </div>
-                <div style={styles.agentProviderCell} title={workstream.stage ?? "Provider has not reported a work stage"}>
-                  <span style={styles.agentProviderCellLabel}>Stage</span>
-                  <span style={styles.agentProviderCellValue}>{workstream.stage ?? "pending"}</span>
-                </div>
-                <div style={styles.agentProviderCell} title={workstream.confidence ?? "Provider has not reported confidence"}>
-                  <span style={styles.agentProviderCellLabel}>Confidence</span>
-                  <span style={styles.agentProviderCellValue}>{workstream.confidence ?? "pending"}</span>
-                </div>
-                <div style={styles.agentProviderCell} title={workstream.risk ?? "Provider has not reported risk"}>
-                  <span style={styles.agentProviderCellLabel}>Risk</span>
-                  <span style={styles.agentProviderCellValue}>{workstream.risk ?? "pending"}</span>
-                </div>
               </div>
               <div style={styles.agentDecisionRow} aria-label="Agent operator guidance">
                 <div style={styles.agentDecisionCell} title={workstream.lastSummary ?? "No summary yet"}>
@@ -1672,21 +1667,13 @@ function CanvasNodeView({
                   <span style={styles.agentProviderCellLabel}>Next</span>
                   <span style={styles.agentProviderCellValue}>{workstream.nextAction ?? "Watch provider response"}</span>
                 </div>
-                <div style={styles.agentDecisionCell} title={workstream.evidence ?? "No evidence reported yet"}>
-                  <span style={styles.agentProviderCellLabel}>Evidence</span>
-                  <span style={styles.agentProviderCellValue}>{workstream.evidence ?? "pending"}</span>
-                </div>
-                <div style={styles.agentDecisionCell} title={workstream.artifact ?? "No artifact reported yet"}>
-                  <span style={styles.agentProviderCellLabel}>Artifact</span>
-                  <span style={styles.agentProviderCellValue}>{workstream.artifact ?? "pending"}</span>
-                </div>
               </div>
               <form style={styles.agentComposer} aria-label="Agent operator composer" onSubmit={onSubmitWorkstreamInput}>
                 <textarea
                   ref={composerRef}
                   style={styles.agentComposerInput}
                   aria-label="Agent follow-up prompt"
-                  placeholder="Send follow-up to agent..."
+                  placeholder="Prompt the agent..."
                   value={operatorDraft}
                   onMouseDown={(event) => event.stopPropagation()}
                   onClick={(event) => event.stopPropagation()}
@@ -1722,72 +1709,125 @@ function CanvasNodeView({
                     cursor: operatorDraft.trim() ? "pointer" : "default",
                   }}
                   aria-label="Queue follow-up prompt"
-                  title="Queue follow-up prompt"
+                  title="Send prompt to agent"
                   disabled={!operatorDraft.trim()}
                   onMouseDown={(event) => event.stopPropagation()}
                 >
                   <Bot size={14} strokeWidth={2} />
                 </button>
               </form>
-              <div style={styles.agentInputStrip} aria-label="Agent input history">
-                <div style={styles.agentDecisionCell} title={latestInput?.text ?? "No operator input queued yet"}>
-                  <span style={styles.agentProviderCellLabel}>Latest input</span>
-                  <span style={styles.agentProviderCellValue}>{latestInput?.text ?? "None"}</span>
-                </div>
-                <div style={styles.agentDecisionCell} title={latestInput?.sentAt ? "Prompt has been sent to the provider" : latestInput ? "Prompt is queued for dispatch" : "No prompt yet"}>
-                  <span style={styles.agentProviderCellLabel}>Input</span>
-                  <span style={styles.agentProviderCellValue}>{latestInput ? (latestInput.sentAt ? "sent" : "queued") : "none"}</span>
-                </div>
-              </div>
-              <div style={styles.agentRunRecordRow} aria-label="Agent run record">
-                <div style={styles.agentProviderCell} title={workstream.runId ?? "Run id pending"}>
-                  <span style={styles.agentProviderCellLabel}>Run</span>
-                  <span style={styles.agentProviderCellValue}>{shortRunId(workstream.runId)} · g{workstream.generation ?? 0}</span>
-                </div>
-                <div style={styles.agentProviderCell} title="Queued prompts">
-                  <span style={styles.agentProviderCellLabel}>Prompts</span>
-                  <span style={styles.agentProviderCellValue}>{workstream.promptCount ?? 0}</span>
-                </div>
-                <div style={styles.agentProviderCell} title="Prompts sent to the provider">
-                  <span style={styles.agentProviderCellLabel}>Sent</span>
-                  <span style={styles.agentProviderCellValue}>{workstream.sentCount ?? 0}</span>
-                </div>
-                <div style={styles.agentProviderCell} title="Structured provider signals">
-                  <span style={styles.agentProviderCellLabel}>Signals</span>
-                  <span style={styles.agentProviderCellValue}>{workstream.signalCount ?? 0}</span>
-                </div>
-                <div style={styles.agentProviderCell} title="Operator control actions">
-                  <span style={styles.agentProviderCellLabel}>Control</span>
-                  <span style={styles.agentProviderCellValue}>{workstream.controlCount ?? 0}</span>
-                </div>
-                <div style={styles.agentProviderCell} title={workstream.outcome ?? workstream.lastSummary ?? "No outcome yet"}>
-                  <span style={styles.agentProviderCellLabel}>Outcome</span>
-                  <span style={styles.agentProviderCellValue}>{workstream.outcome ?? "Pending"}</span>
-                </div>
-                <div style={styles.agentProviderCell} title={typeof workstream.exitCode === "number" ? `Provider exited with code ${workstream.exitCode}` : "Provider has not exited"}>
-                  <span style={styles.agentProviderCellLabel}>Exit</span>
-                  <span style={styles.agentProviderCellValue}>{typeof workstream.exitCode === "number" ? workstream.exitCode : "pending"}</span>
-                </div>
-                <div style={styles.agentProviderCell} title={workstream.completedAt ? `Completed ${new Date(workstream.completedAt).toLocaleString()}` : "Run not complete yet"}>
-                  <span style={styles.agentProviderCellLabel}>Done</span>
-                  <span style={styles.agentProviderCellValue}>{runTimestamp(workstream.completedAt)}</span>
-                </div>
-                <div style={styles.agentProviderCell} title={workstream.reviewedAt ? `Reviewed ${new Date(workstream.reviewedAt).toLocaleString()}` : "Run not reviewed yet"}>
-                  <span style={styles.agentProviderCellLabel}>Reviewed</span>
-                  <span style={styles.agentProviderCellValue}>{runTimestamp(workstream.reviewedAt)}</span>
-                </div>
-              </div>
-              <div style={styles.agentTimeline} aria-label="Agent workstream timeline">
-                {(workstream.events ?? []).slice(-3).map((event) => (
-                  <div key={event.id} style={styles.agentEvent} title={event.detail ?? event.label}>
-                    <div style={styles.agentEventTop}>
-                      <span style={styles.agentEventKind}>{event.kind}</span>
-                      <span style={styles.agentEventTime}>{shortEventTime(event.at)}</span>
+              <details style={styles.agentDetails}>
+                <summary style={styles.agentDetailsSummary}>Details</summary>
+                <div style={styles.agentDetailsBody}>
+                  <div style={styles.agentInputStrip} aria-label="Agent input history">
+                    <div style={styles.agentDecisionCell} title={latestInput?.text ?? "No operator input queued yet"}>
+                      <span style={styles.agentProviderCellLabel}>Latest input</span>
+                      <span style={styles.agentProviderCellValue}>{latestInput?.text ?? "None"}</span>
                     </div>
-                    <div style={styles.agentEventLabel}>{event.label}</div>
+                    <div style={styles.agentDecisionCell} title={latestInput?.sentAt ? "Prompt has been sent to the provider" : latestInput ? "Prompt is queued for dispatch" : "No prompt yet"}>
+                      <span style={styles.agentProviderCellLabel}>Input</span>
+                      <span style={styles.agentProviderCellValue}>{latestInput ? (latestInput.sentAt ? "sent" : "queued") : "none"}</span>
+                    </div>
                   </div>
-                ))}
-              </div>
+                  <div style={styles.agentDecisionRow} aria-label="Agent output details">
+                    <div style={styles.agentDecisionCell} title={workstream.evidence ?? "No evidence reported yet"}>
+                      <span style={styles.agentProviderCellLabel}>Evidence</span>
+                      <span style={styles.agentProviderCellValue}>{workstream.evidence ?? "pending"}</span>
+                    </div>
+                    <div style={styles.agentDecisionCell} title={workstream.artifact ?? "No artifact reported yet"}>
+                      <span style={styles.agentProviderCellLabel}>Artifact</span>
+                      <span style={styles.agentProviderCellValue}>{workstream.artifact ?? "pending"}</span>
+                    </div>
+                  </div>
+                  <div style={styles.agentProviderGrid} aria-label="Agent provider control surface">
+                    <div style={styles.agentProviderCell} title={workstream.launchMode ?? "Terminal command"}>
+                      <span style={styles.agentProviderCellLabel}>Launch</span>
+                      <span style={styles.agentProviderCellValue}>{workstream.launchMode ?? "terminal"}</span>
+                    </div>
+                    <div style={styles.agentProviderCell} title={workstream.readinessCheck ?? workstream.providerAvailabilityMessage}>
+                      <span style={styles.agentProviderCellLabel}>Readiness</span>
+                      <span style={styles.agentProviderCellValue}>
+                        {workstream.providerAvailable === false ? "unavailable" : workstream.readiness ?? "unknown"}
+                      </span>
+                    </div>
+                    <div style={styles.agentProviderCell} title={workstream.authCheck ?? "Auth inferred from provider output"}>
+                      <span style={styles.agentProviderCellLabel}>Auth</span>
+                      <span style={styles.agentProviderCellValue}>
+                        {workstream.readiness === "auth-required" ? "required" : workstream.readiness === "provider-ready" ? "ready" : "watching"}
+                      </span>
+                    </div>
+                    <div style={styles.agentProviderCell} title={workstream.structuredStatus ? "Provider-native status" : "Status inferred from terminal output"}>
+                      <span style={styles.agentProviderCellLabel}>Status</span>
+                      <span style={styles.agentProviderCellValue}>{workstream.structuredStatus ? "structured" : "terminal inferred"}</span>
+                    </div>
+                    <div style={styles.agentProviderCell} title={workstream.controlProtocol ?? workstream.stopBehavior ?? "PTY interrupt/kill"}>
+                      <span style={styles.agentProviderCellLabel}>Control</span>
+                      <span style={styles.agentProviderCellValue}>{workstream.structuredStatus ? "markers + pty" : "pty fallback"}</span>
+                    </div>
+                    <div style={styles.agentProviderCell} title={workstream.stage ?? "Provider has not reported a work stage"}>
+                      <span style={styles.agentProviderCellLabel}>Stage</span>
+                      <span style={styles.agentProviderCellValue}>{workstream.stage ?? "pending"}</span>
+                    </div>
+                    <div style={styles.agentProviderCell} title={workstream.confidence ?? "Provider has not reported confidence"}>
+                      <span style={styles.agentProviderCellLabel}>Confidence</span>
+                      <span style={styles.agentProviderCellValue}>{workstream.confidence ?? "pending"}</span>
+                    </div>
+                    <div style={styles.agentProviderCell} title={workstream.risk ?? "Provider has not reported risk"}>
+                      <span style={styles.agentProviderCellLabel}>Risk</span>
+                      <span style={styles.agentProviderCellValue}>{workstream.risk ?? "pending"}</span>
+                    </div>
+                  </div>
+                  <div style={styles.agentRunRecordRow} aria-label="Agent run record">
+                    <div style={styles.agentProviderCell} title={workstream.runId ?? "Run id pending"}>
+                      <span style={styles.agentProviderCellLabel}>Run</span>
+                      <span style={styles.agentProviderCellValue}>{shortRunId(workstream.runId)} · g{workstream.generation ?? 0}</span>
+                    </div>
+                    <div style={styles.agentProviderCell} title="Queued prompts">
+                      <span style={styles.agentProviderCellLabel}>Prompts</span>
+                      <span style={styles.agentProviderCellValue}>{workstream.promptCount ?? 0}</span>
+                    </div>
+                    <div style={styles.agentProviderCell} title="Prompts sent to the provider">
+                      <span style={styles.agentProviderCellLabel}>Sent</span>
+                      <span style={styles.agentProviderCellValue}>{workstream.sentCount ?? 0}</span>
+                    </div>
+                    <div style={styles.agentProviderCell} title="Structured provider signals">
+                      <span style={styles.agentProviderCellLabel}>Signals</span>
+                      <span style={styles.agentProviderCellValue}>{workstream.signalCount ?? 0}</span>
+                    </div>
+                    <div style={styles.agentProviderCell} title="Operator control actions">
+                      <span style={styles.agentProviderCellLabel}>Control</span>
+                      <span style={styles.agentProviderCellValue}>{workstream.controlCount ?? 0}</span>
+                    </div>
+                    <div style={styles.agentProviderCell} title={workstream.outcome ?? workstream.lastSummary ?? "No outcome yet"}>
+                      <span style={styles.agentProviderCellLabel}>Outcome</span>
+                      <span style={styles.agentProviderCellValue}>{workstream.outcome ?? "Pending"}</span>
+                    </div>
+                    <div style={styles.agentProviderCell} title={typeof workstream.exitCode === "number" ? `Provider exited with code ${workstream.exitCode}` : "Provider has not exited"}>
+                      <span style={styles.agentProviderCellLabel}>Exit</span>
+                      <span style={styles.agentProviderCellValue}>{typeof workstream.exitCode === "number" ? workstream.exitCode : "pending"}</span>
+                    </div>
+                    <div style={styles.agentProviderCell} title={workstream.completedAt ? `Completed ${new Date(workstream.completedAt).toLocaleString()}` : "Run not complete yet"}>
+                      <span style={styles.agentProviderCellLabel}>Done</span>
+                      <span style={styles.agentProviderCellValue}>{runTimestamp(workstream.completedAt)}</span>
+                    </div>
+                    <div style={styles.agentProviderCell} title={workstream.reviewedAt ? `Reviewed ${new Date(workstream.reviewedAt).toLocaleString()}` : "Run not reviewed yet"}>
+                      <span style={styles.agentProviderCellLabel}>Reviewed</span>
+                      <span style={styles.agentProviderCellValue}>{runTimestamp(workstream.reviewedAt)}</span>
+                    </div>
+                  </div>
+                  <div style={styles.agentTimeline} aria-label="Agent run timeline">
+                    {(workstream.events ?? []).slice(-3).map((event) => (
+                      <div key={event.id} style={styles.agentEvent} title={event.detail ?? event.label}>
+                        <div style={styles.agentEventTop}>
+                          <span style={styles.agentEventKind}>{event.kind}</span>
+                          <span style={styles.agentEventTime}>{shortEventTime(event.at)}</span>
+                        </div>
+                        <div style={styles.agentEventLabel}>{event.label}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </details>
             </div>
             <div className="agent-terminal-slot" style={styles.agentTerminalSlot}>{body}</div>
           </div>
@@ -2065,7 +2105,7 @@ export function MagicCanvas() {
           <div style={styles.agentLaneHeader}>
             <span style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>
               <Bot size={13} strokeWidth={1.8} />
-              Agent workstreams
+              Agent runs
             </span>
             <span>{agentLane.total}</span>
           </div>

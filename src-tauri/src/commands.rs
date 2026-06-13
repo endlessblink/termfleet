@@ -3,7 +3,7 @@ use crate::daemon::{
     daemon_status as current_daemon_status, send_daemon_request, DaemonRequest, DaemonResponse,
     DaemonStatus,
 };
-use crate::pty::{PtyManager, PtyOutputChunk};
+use crate::pty::{PtyManager, PtyOutputChunk, PtySessionEvent, PtySessionSummary};
 use crate::vt_grid::{GridManager, DEFAULT_COLS, DEFAULT_ROWS};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -11,7 +11,7 @@ use std::fs;
 use std::io::{BufRead, BufReader, Write};
 use std::net::Shutdown;
 use std::os::unix::net::UnixStream;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -50,8 +50,53 @@ pub struct AgentProviderStatus {
     message: String,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedClipboardImage {
+    path: String,
+}
+
 fn shell_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\\''"))
+}
+
+fn clipboard_image_extension(mime_type: &str) -> Result<&'static str, String> {
+    match mime_type.trim().to_ascii_lowercase().as_str() {
+        "image/png" => Ok("png"),
+        "image/jpeg" | "image/jpg" => Ok("jpg"),
+        "image/gif" => Ok("gif"),
+        "image/webp" => Ok("webp"),
+        "image/bmp" => Ok("bmp"),
+        "image/tiff" => Ok("tiff"),
+        other => Err(format!("Unsupported clipboard image type: {other}")),
+    }
+}
+
+fn clipboard_image_dir(cwd: Option<String>) -> Result<PathBuf, String> {
+    if let Some(raw_cwd) = cwd {
+        let cwd_path = PathBuf::from(raw_cwd);
+        if cwd_path.is_dir() {
+            return Ok(cwd_path.join(".termfleet").join("pastes"));
+        }
+    }
+
+    let root = crate::pty::data_root_dir()
+        .ok_or_else(|| "Could not resolve app data directory".to_string())?;
+    Ok(root.join("clipboard-pastes"))
+}
+
+fn unique_clipboard_image_path(dir: &Path, extension: &str) -> PathBuf {
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_millis())
+        .unwrap_or(0);
+    let mut candidate = dir.join(format!("termfleet-paste-{timestamp}.{extension}"));
+    let mut suffix = 1;
+    while candidate.exists() {
+        candidate = dir.join(format!("termfleet-paste-{timestamp}-{suffix}.{extension}"));
+        suffix += 1;
+    }
+    candidate
 }
 
 #[tauri::command]
@@ -67,9 +112,7 @@ pub fn agent_provider_statuses() -> Vec<AgentProviderStatus> {
     .into_iter()
     .map(|(id, label, command)| {
         let check = format!("command -v {command}");
-        let output = Command::new("sh")
-            .args(["-lc", check.as_str()])
-            .output();
+        let output = Command::new("sh").args(["-lc", check.as_str()]).output();
         match output {
             Ok(result) if result.status.success() => {
                 let path = String::from_utf8_lossy(&result.stdout).trim().to_string();
@@ -78,7 +121,9 @@ pub fn agent_provider_statuses() -> Vec<AgentProviderStatus> {
                     label: label.to_string(),
                     command: adapter_path
                         .as_ref()
-                        .map(|path| format!("sh {} {command}", shell_quote(&path.display().to_string())))
+                        .map(|path| {
+                            format!("sh {} {command}", shell_quote(&path.display().to_string()))
+                        })
                         .or_else(|| Some(command.to_string())),
                     available: true,
                     message: if path.is_empty() {
@@ -495,6 +540,24 @@ pub fn daemon_get_session_cwd(id: String) -> Result<String, String> {
 pub fn daemon_kill_session(id: String) -> Result<(), String> {
     match send_daemon_request(DaemonRequest::KillSession { id })? {
         DaemonResponse::KillSession { ok: true } => Ok(()),
+        DaemonResponse::Error { message } => Err(message),
+        response => Err(format!("Unexpected daemon response: {response:?}")),
+    }
+}
+
+#[tauri::command]
+pub fn daemon_list_sessions() -> Result<Vec<PtySessionSummary>, String> {
+    match send_daemon_request(DaemonRequest::ListSessions)? {
+        DaemonResponse::ListSessions { sessions } => Ok(sessions),
+        DaemonResponse::Error { message } => Err(message),
+        response => Err(format!("Unexpected daemon response: {response:?}")),
+    }
+}
+
+#[tauri::command]
+pub fn daemon_list_session_events() -> Result<Vec<PtySessionEvent>, String> {
+    match send_daemon_request(DaemonRequest::ListSessionEvents)? {
+        DaemonResponse::ListSessionEvents { events } => Ok(events),
         DaemonResponse::Error { message } => Err(message),
         response => Err(format!("Unexpected daemon response: {response:?}")),
     }

@@ -39,9 +39,10 @@ export CARGO_PROFILE_DEV_DEBUG="${CARGO_PROFILE_DEV_DEBUG:-0}"
 # before starting so a previous crashed window cannot block port 1420.
 #
 # By default LEAVE THE DAEMON ALIVE across relaunches so the reopened app
-# reattaches to live PTYs with full content. The app auto-replaces the daemon
-# when its build_id changes (backend rebuilt). Pass --fresh-daemon (or set
-# TERMINAL_WORKSPACE_FRESH_DAEMON=1) to force a clean backend instead.
+# reattaches to live PTYs and the foreground processes inside them. Backend
+# rebuilds do not replace a compatible daemon; pass --fresh-daemon (or set
+# TERMINAL_WORKSPACE_FRESH_DAEMON=1) when you intentionally want to kill and
+# restart the daemon-owned sessions.
 FRESH_DAEMON=0
 for arg in "$@"; do
   case "$arg" in

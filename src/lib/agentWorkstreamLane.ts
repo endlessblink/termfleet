@@ -139,6 +139,6 @@ export function summarizeAgentLane(tabs: Tab[]): AgentLaneSummary {
 }
 
 export function agentLaneStatusText(summary: AgentLaneSummary) {
-  if (summary.total === 0) return "No agent workstreams";
+  if (summary.total === 0) return "No agent runs";
   return `${summary.total} agents · ${summary.active} active · ${summary.waiting} waiting · ${summary.blocked} blocked · ${summary.complete} complete · ${summary.attention} need attention`;
 }

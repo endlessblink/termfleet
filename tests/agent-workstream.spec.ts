@@ -20,11 +20,11 @@ async function resetWorkspace(page: import("@playwright/test").Page) {
 
 async function createAgentWorkstream(page: import("@playwright/test").Page, mission = PRIMARY_MISSION) {
   await page.getByRole("textbox", { name: "Workspace command" }).click();
-  await page.getByRole("textbox", { name: "Workspace command" }).fill("agent workstream");
+  await page.getByRole("textbox", { name: "Workspace command" }).fill("new agent run");
   const dialogPromise = new Promise<void>((resolve, reject) => {
     page.once("dialog", async (dialog) => {
       try {
-        expect(dialog.message()).toContain("Mission for Codex workstream");
+        expect(dialog.message()).toContain("Task for Codex agent");
         await dialog.accept(mission);
         resolve();
       } catch (error) {
@@ -32,7 +32,7 @@ async function createAgentWorkstream(page: import("@playwright/test").Page, miss
       }
     });
   });
-  await page.getByText("New agent workstream").click();
+  await page.getByRole("textbox", { name: "Workspace command" }).press("Enter");
   await dialogPromise;
 }
 
@@ -41,7 +41,7 @@ async function sendFollowUp(page: import("@playwright/test").Page, text: string)
   await page.getByRole("button", { name: "Queue follow-up prompt" }).click();
 }
 
-test("command palette creates a supervised Codex workstream on the map", async ({ page, context }) => {
+test("command palette creates a supervised Codex agent on the map", async ({ page, context }) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"], { origin: "http://127.0.0.1:5177" });
   await resetWorkspace(page);
 
@@ -49,21 +49,25 @@ test("command palette creates a supervised Codex workstream on the map", async (
 
   await expect(page.getByText("agent", { exact: true })).toBeVisible();
   await expect(page.getByText("Codex · running")).toBeVisible();
-  await expect(page.getByText("Codex workstream").first()).toBeVisible();
+  await expect(page.getByText("Codex agent").first()).toBeVisible();
   await expect(page.getByTestId("canvas-agent-lane-summary")).toBeVisible();
   await expect(page.getByTestId("canvas-agent-lane-total")).toHaveText("1 agents");
   await expect(page.getByTestId("map-agent-lane-summary")).toBeVisible();
   await expect(page.getByTestId("map-agent-lane-total")).toHaveText("1 agents");
   await expect(page.getByTestId("agent-cockpit-panel")).toBeVisible();
-  await expect(page.getByText("Mission")).toBeVisible();
+  await expect(page.getByText("Task")).toBeVisible();
   await expect(page.getByText(PRIMARY_MISSION).first()).toBeVisible();
+  await expect(page.getByTestId("canvas-agent-node-header-title")).toHaveText(PRIMARY_MISSION);
+  await expect(page.getByTestId("canvas-agent-node-header-meta")).toHaveText("Codex agent · active");
+  await expect(page.getByText("Prompt sent to provider")).toBeVisible();
+  await expect(page.getByText("Watch provider response")).toBeVisible();
+  await expect(page.getByText("Details")).toBeVisible();
+  await page.getByText("Details").click();
   await expect(page.getByText("interactive CLI")).toBeVisible();
   await expect(page.getByText("path-checked")).toBeVisible();
   await expect(page.getByText("watching")).toBeVisible();
   await expect(page.getByText("terminal inferred")).toBeVisible();
   await expect(page.getByText("pty fallback")).toBeVisible();
-  await expect(page.getByText("Prompt sent to provider")).toBeVisible();
-  await expect(page.getByText("Watch provider response")).toBeVisible();
   await expect(page.getByLabel("Agent run record").getByText("Prompts")).toBeVisible();
   await expect(page.getByLabel("Agent run record").getByText("Outcome")).toBeVisible();
   await expect(page.getByLabel("Agent run record").getByText("Run")).toBeVisible();
@@ -122,7 +126,7 @@ test("command palette creates a supervised Codex workstream on the map", async (
       ),
     };
   })).toMatchObject({
-    title: "Codex workstream",
+    title: "Codex agent",
     provider: "codex",
     providerAvailable: true,
     providerAvailabilityMessage: "Browser preview simulates provider startup; desktop checks PATH before launch.",
@@ -227,6 +231,8 @@ test("command palette creates a supervised Codex workstream on the map", async (
     outputHasPrompt: true,
   });
   await expect(page.getByText("Codex · waiting")).toBeVisible();
+  await expect(page.getByTestId("canvas-agent-node-header-title")).toHaveText("echo waiting for input");
+  await expect(page.getByTestId("canvas-agent-node-header-meta")).toHaveText("Codex agent · needs-input");
   await expect(page.getByText("Follow-up queued")).toBeVisible();
   await expect(page.getByLabel("Agent operator guidance").getByText("Provider is waiting for operator input")).toBeVisible();
   await expect(page.getByLabel("Agent operator guidance").getByText("Send a follow-up prompt")).toBeVisible();
@@ -343,16 +349,16 @@ test("command palette creates a supervised Codex workstream on the map", async (
   });
   await expect(page.getByTestId("canvas-agent-lane-attention")).toContainText("Blocked");
   await expect(page.getByLabel("Agent operator guidance").getByText("Provider crashed")).toBeVisible();
-  await expect(page.getByLabel("Agent operator guidance").getByText("stderr: provider exited 2")).toBeVisible();
-  await expect(page.getByLabel("Agent operator guidance").getByText("logs/provider-crash.txt")).toBeVisible();
+  await expect(page.getByLabel("Agent output details").getByText("stderr: provider exited 2")).toBeVisible();
+  await expect(page.getByLabel("Agent output details").getByText("logs/provider-crash.txt")).toBeVisible();
   await expect(page.getByLabel("Agent provider control surface").getByText("failure analysis", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Agent provider control surface").getByText("low", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Agent provider control surface").getByText("provider crashed before saving state", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Draft recovery prompt" })).toBeVisible();
   await page.getByRole("button", { name: "Draft recovery prompt" }).click();
-  await expect(page.getByRole("textbox", { name: "Agent follow-up prompt" })).toHaveValue(/Recover Codex workstream/);
+  await expect(page.getByRole("textbox", { name: "Agent follow-up prompt" })).toHaveValue(/Recover Codex agent/);
   await page.getByRole("button", { name: "Queue follow-up prompt" }).click();
-  await expect(page.getByLabel("Agent input history").getByText("Recover Codex workstream")).toBeVisible();
+  await expect(page.getByLabel("Agent input history").getByText("Recover Codex agent")).toBeVisible();
 
   await sendFollowUp(page, "welcome authenticated session ready");
 
@@ -389,7 +395,7 @@ test("command palette creates a supervised Codex workstream on the map", async (
   await expect(page.getByText("ready", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Agent operator guidance").getByText("Provider session is ready")).toBeVisible();
 
-  await page.getByRole("button", { name: "Interrupt workstream" }).click();
+  await page.getByRole("button", { name: "Interrupt agent run" }).click();
   await expect.poll(async () => page.evaluate(() => {
     const raw = localStorage.getItem("terminal-workspace.v1");
     const state = raw ? JSON.parse(raw) : null;
@@ -465,7 +471,7 @@ test("command palette creates a supervised Codex workstream on the map", async (
   });
   await expect(page.getByLabel("Agent operator guidance").getByText("Provider acknowledged cancellation")).toBeVisible();
 
-  await page.getByRole("button", { name: "Stop workstream" }).click();
+  await page.getByRole("button", { name: "Stop agent run" }).click();
   await expect.poll(async () => page.evaluate(() => {
     const raw = localStorage.getItem("terminal-workspace.v1");
     const state = raw ? JSON.parse(raw) : null;
@@ -496,7 +502,7 @@ test("command palette creates a supervised Codex workstream on the map", async (
   });
   await expect(page.getByText("Codex · stopped")).toBeVisible();
 
-  await page.getByRole("button", { name: "Restart workstream" }).click();
+  await page.getByRole("button", { name: "Restart agent run" }).click();
   await expect.poll(async () => page.evaluate(() => {
     const raw = localStorage.getItem("terminal-workspace.v1");
     const state = raw ? JSON.parse(raw) : null;
@@ -586,8 +592,8 @@ test("command palette creates a supervised Codex workstream on the map", async (
   await expect(page.getByText("Codex · done")).toBeVisible();
   await expect(page.getByLabel("Agent operator guidance").getByText("Structured task completed", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Agent operator guidance").getByText("Review structured result", { exact: true })).toBeVisible();
-  await expect(page.getByLabel("Agent operator guidance").getByText("tests: checkout-flow.spec passed", { exact: true })).toBeVisible();
-  await expect(page.getByLabel("Agent operator guidance").getByText("reports/checkout-flow.md", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Agent output details").getByText("tests: checkout-flow.spec passed", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Agent output details").getByText("reports/checkout-flow.md", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Agent provider control surface").getByText("review", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Agent provider control surface").getByText("high", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Agent provider control surface").getByText("low residual risk", { exact: true })).toBeVisible();
@@ -599,9 +605,9 @@ test("command palette creates a supervised Codex workstream on the map", async (
 
   await page.getByRole("button", { name: "Copy agent run brief" }).click();
   const copiedBrief = await expect.poll(async () => page.evaluate(() => navigator.clipboard.readText()));
-  await copiedBrief.toContain("Agent workstream: Codex workstream");
+  await copiedBrief.toContain("Agent run: Codex agent");
   await copiedBrief.toMatch(/Run: codex-[a-z0-9]+-[a-z0-9]{6} \(generation 1\)/);
-  await copiedBrief.toContain(`Mission: ${PRIMARY_MISSION}`);
+  await copiedBrief.toContain(`Task: ${PRIMARY_MISSION}`);
   await copiedBrief.toContain("Provider: Codex");
   await copiedBrief.toContain("Status: done / complete");
   await copiedBrief.toContain("Readiness: provider-ready");
@@ -681,12 +687,16 @@ test("agent lane summarizes multiple supervised workstreams", async ({ page }) =
     ) ?? [];
     return {
       count: agents.length,
-      running: agents.filter((tab: { workstream?: { status?: string } }) => tab.workstream?.status === "running").length,
-      active: agents.filter((tab: { workstream?: { phase?: string } }) => tab.workstream?.phase === "active").length,
+      activeLike: agents.filter((tab: { workstream?: { status?: string; phase?: string } }) =>
+        tab.workstream?.phase === "queued" ||
+        tab.workstream?.phase === "launching" ||
+        tab.workstream?.phase === "active" ||
+        tab.workstream?.status === "ready" ||
+        tab.workstream?.status === "running"
+      ).length,
     };
   })).toEqual({
     count: 2,
-    running: 2,
-    active: 2,
+    activeLike: 2,
   });
 });

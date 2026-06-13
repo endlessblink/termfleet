@@ -1,4 +1,4 @@
-use crate::pty::{PtyManager, PtyOutputChunk, PtySessionSummary};
+use crate::pty::{PtyManager, PtyOutputChunk, PtySessionEvent, PtySessionSummary};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::{BufRead, BufReader, Read, Write};
@@ -29,10 +29,10 @@ const FRESH_DAEMON_ENV: &str = "TERMINAL_WORKSPACE_FRESH_DAEMON";
 /// the *new* binary's mtime and falsely look current.
 static DAEMON_BUILD_ID: OnceLock<String> = OnceLock::new();
 
-/// Identifies the build a binary is running: protocol version + this binary's
-/// on-disk mtime. In `tauri dev` the daemon and app share one binary path, so a
-/// Rust relink bumps the mtime (→ replace the daemon) while a frontend-only
-/// change leaves it untouched (→ reuse the daemon, live reattach).
+/// Identifies the build a binary is running for diagnostics only: protocol
+/// version + this binary's on-disk mtime. In `tauri dev` the daemon and app
+/// share one binary path, so a Rust relink bumps the mtime; that must not be a
+/// replacement trigger because the daemon owns live user processes.
 fn current_build_id() -> String {
     let mtime = std::env::current_exe()
         .ok()
@@ -98,6 +98,7 @@ pub enum DaemonRequest {
         id: String,
     },
     ListSessions,
+    ListSessionEvents,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
@@ -112,16 +113,37 @@ pub enum DaemonResponse {
         cols: Option<u16>,
         rows: Option<u16>,
     },
-    WriteSession { ok: bool },
-    ResizeSession { ok: bool },
-    SnapshotSession { data: String },
+    WriteSession {
+        ok: bool,
+    },
+    ResizeSession {
+        ok: bool,
+    },
+    SnapshotSession {
+        data: String,
+    },
     ReadSession(PtyOutputChunk),
-    SessionData { data: String },
-    UnsubscribeSession { ok: bool },
-    GetSessionCwd { cwd: String },
-    KillSession { ok: bool },
-    ListSessions { sessions: Vec<PtySessionSummary> },
-    Error { message: String },
+    SessionData {
+        data: String,
+    },
+    UnsubscribeSession {
+        ok: bool,
+    },
+    GetSessionCwd {
+        cwd: String,
+    },
+    KillSession {
+        ok: bool,
+    },
+    ListSessions {
+        sessions: Vec<PtySessionSummary>,
+    },
+    ListSessionEvents {
+        events: Vec<PtySessionEvent>,
+    },
+    Error {
+        message: String,
+    },
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
@@ -157,14 +179,12 @@ pub fn daemon_status() -> DaemonStatus {
 pub fn daemon_ensure_running() -> DaemonStatus {
     let socket_path = daemon_socket_path();
     if let Ok(status) = query_daemon_status(&socket_path) {
-        // A reachable daemon running the same build is reused as-is: its PTYs are
-        // still live, so the app reattaches with full content (the whole point of
-        // the detached daemon). Replace it only when the backend code changed
-        // (build_id mismatch) or a clean backend was explicitly requested —
-        // there a fresh, code-matching daemon is required and the cold
-        // restore-from-checkpoint cost (fresh shells at the right cwd) is
-        // unavoidable.
-        if !fresh_daemon_requested() && status.build_id == current_build_id() {
+        // A reachable compatible daemon is reused as-is: its PTYs are still live,
+        // so the app reattaches to the same foreground processes. Build identity
+        // is intentionally *not* part of this decision. In dev, rebuilding the app
+        // changes current_build_id(); replacing the daemon at that point kills the
+        // user's shells/agents and only cold-restores scrollback plus cwd.
+        if should_reuse_running_daemon(&status) {
             return status;
         }
         replace_running_daemon(&socket_path, status.pid);
@@ -185,6 +205,17 @@ pub fn daemon_ensure_running() -> DaemonStatus {
         socket_path,
         "terminal daemon did not become reachable after launch".to_string(),
     )
+}
+
+fn should_reuse_running_daemon(status: &DaemonStatus) -> bool {
+    should_reuse_running_daemon_with_fresh_request(status, fresh_daemon_requested())
+}
+
+fn should_reuse_running_daemon_with_fresh_request(
+    status: &DaemonStatus,
+    fresh_requested: bool,
+) -> bool {
+    !fresh_requested && status.protocol_version == PROTOCOL_VERSION
 }
 
 pub fn trace_pty(label: &str, details: impl AsRef<str>) {
@@ -475,14 +506,14 @@ fn tty_size() -> Option<(u16, u16)> {
     Some((cols, rows))
 }
 
-/// Tear down a stale-build daemon so a fresh, code-matching one can take its
-/// socket. `remove_stale_socket` refuses to bind while the old daemon still
-/// answers, so we kill it and wait for the socket to go unreachable before the
-/// caller spawns the replacement.
+/// Tear down an explicitly requested or protocol-incompatible daemon so a fresh
+/// one can take its socket. `remove_stale_socket` refuses to bind while the old
+/// daemon still answers, so we kill it and wait for the socket to go unreachable
+/// before the caller spawns the replacement.
 fn replace_running_daemon(socket_path: &PathBuf, pid: Option<u32>) {
     if let Some(pid) = pid {
-        // SIGTERM first; an abrupt exit is safe because each session's cwd is
-        // already persisted at spawn and cold restore only consumes the cwd.
+        // SIGTERM first. This kills daemon-owned PTYs, so this path must remain
+        // limited to explicit fresh-daemon requests or incompatible protocols.
         let _ = Command::new("kill").arg(pid.to_string()).status();
         for _ in 0..40 {
             if query_daemon_status(socket_path).is_err() {
@@ -702,9 +733,7 @@ fn handle_daemon_request(
             };
             trace_pty(
                 "daemon.ensure.done",
-                format!(
-                    "id={id} reused={reused} cols={live_cols:?} rows={live_rows:?}"
-                ),
+                format!("id={id} reused={reused} cols={live_cols:?} rows={live_rows:?}"),
             );
             DaemonResponse::EnsureSession {
                 id,
@@ -755,6 +784,9 @@ fn handle_daemon_request(
         }
         DaemonRequest::ListSessions => DaemonResponse::ListSessions {
             sessions: pty_manager.list_sessions(),
+        },
+        DaemonRequest::ListSessionEvents => DaemonResponse::ListSessionEvents {
+            events: pty_manager.session_events(),
         },
     };
 
@@ -852,8 +884,9 @@ fn write_daemon_response(stream: &mut UnixStream, response: &DaemonResponse) -> 
 mod tests {
     use super::{
         current_build_id, daemon_socket_path, daemon_status, daemon_stdio_bridge_argv,
-        embedded_fallback_status, DaemonMode, DaemonRequest, DaemonResponse, DAEMON_STDIO_ARG,
-        PROTOCOL_VERSION, SOCKET_FILE_NAME,
+        embedded_fallback_status, should_reuse_running_daemon_with_fresh_request, DaemonMode,
+        DaemonRequest, DaemonResponse, DaemonStatus, DAEMON_STDIO_ARG, PROTOCOL_VERSION,
+        SOCKET_FILE_NAME,
     };
 
     #[test]
@@ -895,6 +928,59 @@ mod tests {
         let id = current_build_id();
         assert_eq!(id, current_build_id());
         assert!(id.starts_with(&format!("{PROTOCOL_VERSION}:")));
+    }
+
+    #[test]
+    fn reachable_same_protocol_daemon_is_reused_across_build_id_changes() {
+        let status = DaemonStatus {
+            socket_path: "/tmp/terminal-workspace/daemon.sock".to_string(),
+            reachable: true,
+            mode: DaemonMode::ExternalDaemon,
+            protocol_version: PROTOCOL_VERSION,
+            pid: Some(42),
+            build_id: format!("{PROTOCOL_VERSION}:older-dev-build"),
+            message: "reachable".to_string(),
+        };
+
+        assert!(
+            should_reuse_running_daemon_with_fresh_request(&status, false),
+            "dev rebuilds change build_id, but compatible live daemons must keep owning PTYs"
+        );
+    }
+
+    #[test]
+    fn fresh_daemon_request_forces_replacement_even_when_protocol_matches() {
+        let status = DaemonStatus {
+            socket_path: "/tmp/terminal-workspace/daemon.sock".to_string(),
+            reachable: true,
+            mode: DaemonMode::ExternalDaemon,
+            protocol_version: PROTOCOL_VERSION,
+            pid: Some(42),
+            build_id: current_build_id(),
+            message: "reachable".to_string(),
+        };
+
+        assert!(
+            !should_reuse_running_daemon_with_fresh_request(&status, true),
+            "explicit fresh-daemon remains the user-controlled way to replace the PTY owner"
+        );
+    }
+
+    #[test]
+    fn incompatible_protocol_daemon_is_not_reused() {
+        let status = DaemonStatus {
+            socket_path: "/tmp/terminal-workspace/daemon.sock".to_string(),
+            reachable: true,
+            mode: DaemonMode::ExternalDaemon,
+            protocol_version: PROTOCOL_VERSION + 1,
+            pid: Some(42),
+            build_id: format!("{}:future-build", PROTOCOL_VERSION + 1),
+            message: "reachable".to_string(),
+        };
+
+        assert!(!should_reuse_running_daemon_with_fresh_request(
+            &status, false
+        ));
     }
 
     #[test]

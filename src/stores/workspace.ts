@@ -622,7 +622,7 @@ export function createAgentWorkstream(
   };
 
   store.addTab({
-    title: `${providerLabel} workstream`,
+    title: `${providerLabel} agent`,
     emoji: "\u25C6",
     color: "#d99a45",
     initialCwd: resolvedCwd,
