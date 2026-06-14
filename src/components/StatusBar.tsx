@@ -87,6 +87,7 @@ const STATUS_COLORS: Record<StatusKey, string> = {
   reconnected: "var(--accent-info)",
   stale: "var(--accent-warning)",
   failed: "var(--accent-danger)",
+  exited: "var(--text-secondary)",
   idle: "var(--text-secondary)",
 };
 

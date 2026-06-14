@@ -1,7 +1,11 @@
 import { CSSProperties, ReactNode, useEffect, useRef, useState } from "react";
 import {
+  ArrowsClockwise,
+  CheckCircle,
+  Prohibit,
   CaretDoubleLeft,
   CaretDoubleRight,
+  ClipboardText,
   Robot,
   FileText,
   FolderOpen,
@@ -17,7 +21,7 @@ import {
   TreeStructure,
   X,
 } from "@phosphor-icons/react";
-import { createAgentWorkstream, createNewTab, createTerminalTab, splitActivePane, splitActivePreviewPane, useWorkspaceStore } from "../stores/workspace";
+import { createAgentWorkstream, createAgentWorkstreamRunId, createNewTab, createTerminalTab, currentAgentWorkstreamCwd, splitActivePane, splitActivePreviewPane, useWorkspaceStore } from "../stores/workspace";
 import { FolderPicker } from "./FolderPicker";
 import type { CanvasNode, Tab } from "../lib/types";
 import { taskStatusColor, taskStatusLabel } from "../lib/masterPlanTasks";
@@ -25,7 +29,9 @@ import { useMasterPlanTasks } from "../hooks/useMasterPlanTasks";
 import { pathTail, projectNameFor } from "../lib/projectDisplay";
 import { FileExplorer } from "./FileExplorer";
 import { checkAgentProvider } from "../lib/agentProviders";
-import { agentLaneStatusText, summarizeAgentLane } from "../lib/agentWorkstreamLane";
+import { agentLaneAuthRetryText, agentLaneAuthRetryTitle, agentLaneCleanupRequestText, agentLaneCleanupRequestTitle, agentLaneCloseoutText, agentLaneCloseoutTitle, agentLaneHealthText, agentLaneInterruptText, agentLaneInterruptTitle, agentLaneMemoryRequestText, agentLaneMemoryRequestTitle, agentLaneProofRequestText, agentLaneProofRequestTitle, agentLaneRestartText, agentLaneRestartTitle, agentLaneRiskMitigationText, agentLaneRiskMitigationTitle, agentLaneStatusSweepText, agentLaneStatusSweepTitle, agentLaneStatusText, attentionBreakdownText, cleanupBreakdownText, closeoutBreakdownText, formatAgentLaneBrief, formatAgentMissionControlBrief, formatAgentRunBrief, handoffMemoryPromptForWorkstream, isActiveAgentWorkstream, isAuthRetryableAgentWorkstream, isCleanupRequestableAgentWorkstream, isRestartableAgentWorkstream, isReviewItemCloseoutReady, isolationBreakdownText, latestMissionControlAskText, missionBreakdownText, missionControlAlternateText, missionControlDispatchBreakdownText, proofRequestPromptForWorkstream, providerBreakdownText, readinessBreakdownText, riskBreakdownText, statusCheckPromptForWorkstream, summarizeAgentLane } from "../lib/agentWorkstreamLane";
+import { workstreamActivityText } from "../lib/workstreamActivity";
+import { formatWorkstreamOpsContext, promptWorkstreamIsolation, resolveWorkstreamOpsContext } from "../lib/workstreamOpsContext";
 
 const TERMINAL_COLORS = [
   "#d99a45",
@@ -366,6 +372,17 @@ const styles: Record<string, CSSProperties> = {
     background: "transparent",
     color: "var(--text-primary)",
     textAlign: "left",
+    cursor: "pointer",
+  },
+  agentLaneIconButton: {
+    width: 24,
+    height: 24,
+    display: "inline-grid",
+    placeItems: "center",
+    border: "1px solid transparent",
+    borderRadius: "var(--radius-xs)",
+    background: "var(--surface-base)",
+    color: "var(--text-secondary)",
     cursor: "pointer",
   },
   taskInlineBadge: {
@@ -1175,6 +1192,118 @@ function SessionsPanel({
     count: tabs.filter((tab) => tab.groupId === group.id).length,
   }));
   const agentLane = summarizeAgentLane(visibleTabs);
+  const activeAgentWorkstreams = agentLane.workstreams.filter(({ workstream }) => isActiveAgentWorkstream(workstream));
+  const restartableAgentWorkstreams = agentLane.workstreams.filter(({ workstream }) => isRestartableAgentWorkstream(workstream));
+  const authRetryableAgentWorkstreams = agentLane.workstreams.filter(({ workstream }) => isAuthRetryableAgentWorkstream(workstream));
+  const cleanupRequestableAgentWorkstreams = agentLane.workstreams.filter(({ workstream }) => isCleanupRequestableAgentWorkstream(workstream));
+  const closeoutReadyReviewItems = agentLane.reviewItems.filter((item) => isReviewItemCloseoutReady(item));
+  const proofRequestItems = agentLane.proofItems;
+  const memoryRequestItems = agentLane.memoryRequestItems;
+  const riskMitigationItems = agentLane.riskItems;
+  const queueAgentLaneStatusSweep = () => {
+    if (activeAgentWorkstreams.length === 0) return;
+    const store = useWorkspaceStore.getState();
+    for (const { tab, workstream } of activeAgentWorkstreams) {
+      store.queueWorkstreamInput(tab.id, statusCheckPromptForWorkstream(workstream), {
+        source: "mission-control",
+        label: "Status sweep",
+      });
+    }
+    focusTabOnMap(activeAgentWorkstreams[0].tab);
+  };
+  const interruptActiveAgentFleet = () => {
+    if (activeAgentWorkstreams.length === 0) return;
+    const store = useWorkspaceStore.getState();
+    void Promise.all(activeAgentWorkstreams.map(({ tab }) => store.interruptWorkstream(tab.id)));
+    focusTabOnMap(activeAgentWorkstreams[0].tab);
+  };
+  const restartRecoveryAgentFleet = () => {
+    if (restartableAgentWorkstreams.length === 0) return;
+    const store = useWorkspaceStore.getState();
+    void Promise.all(restartableAgentWorkstreams.map(({ tab }) => store.restartWorkstream(tab.id, {
+      source: "mission-control",
+      label: "Restart recovery",
+    })));
+    focusTabOnMap(restartableAgentWorkstreams[0].tab);
+  };
+  const retryAuthAgentFleet = () => {
+    if (authRetryableAgentWorkstreams.length === 0) return;
+    const store = useWorkspaceStore.getState();
+    void Promise.all(authRetryableAgentWorkstreams.map(({ tab }) => store.restartWorkstream(tab.id, {
+      source: "mission-control",
+      label: "Retry auth",
+    })));
+    focusTabOnMap(authRetryableAgentWorkstreams[0].tab);
+  };
+  const requestCleanupFromAgentFleet = () => {
+    if (cleanupRequestableAgentWorkstreams.length === 0) return;
+    const store = useWorkspaceStore.getState();
+    for (const { tab } of cleanupRequestableAgentWorkstreams) {
+      store.requestWorktreeCleanup(tab.id, {
+        source: "mission-control",
+        label: "Request cleanup",
+      });
+    }
+    focusTabOnMap(cleanupRequestableAgentWorkstreams[0].tab);
+  };
+  const reviewReadyAgentCloseouts = () => {
+    if (closeoutReadyReviewItems.length === 0) return;
+    const store = useWorkspaceStore.getState();
+    for (const item of closeoutReadyReviewItems) {
+      store.reviewWorkstream(item.tabId, {
+        source: "mission-control",
+        label: "Review",
+      });
+    }
+    const firstTab = visibleTabs.find((tab) => tab.id === closeoutReadyReviewItems[0].tabId);
+    if (firstTab) focusTabOnMap(firstTab);
+  };
+  const requestProofFromAgentFleet = () => {
+    const targets = proofRequestItems
+      .map((item) => visibleTabs.find((tab) => tab.id === item.tabId))
+      .filter((tab): tab is Tab => Boolean(tab?.workstream));
+    if (targets.length === 0) return;
+    const store = useWorkspaceStore.getState();
+    for (const tab of targets) {
+      const workstream = tab.workstream;
+      if (!workstream) continue;
+      store.queueWorkstreamInput(tab.id, proofRequestPromptForWorkstream(workstream), {
+        source: "mission-control",
+        label: "Request proof",
+      });
+    }
+    focusTabOnMap(targets[0]);
+  };
+  const requestMemoryFromAgentFleet = () => {
+    const targets = memoryRequestItems
+      .map((item) => visibleTabs.find((tab) => tab.id === item.tabId))
+      .filter((tab): tab is Tab => Boolean(tab?.workstream));
+    if (targets.length === 0) return;
+    const store = useWorkspaceStore.getState();
+    for (const tab of targets) {
+      const workstream = tab.workstream;
+      if (!workstream) continue;
+      store.queueWorkstreamInput(tab.id, handoffMemoryPromptForWorkstream(workstream), {
+        source: "mission-control",
+        label: "Request memory",
+      });
+    }
+    focusTabOnMap(targets[0]);
+  };
+  const requestRiskMitigationFromAgentFleet = () => {
+    const targets = riskMitigationItems
+      .map((item) => ({ item, tab: visibleTabs.find((tab) => tab.id === item.tabId) }))
+      .filter((target): target is { item: typeof riskMitigationItems[number]; tab: Tab } => Boolean(target.tab?.workstream));
+    if (targets.length === 0) return;
+    const store = useWorkspaceStore.getState();
+    for (const { item, tab } of targets) {
+      store.queueWorkstreamInput(tab.id, item.prompt, {
+        source: "mission-control",
+        label: "Mitigate risk",
+      });
+    }
+    focusTabOnMap(targets[0].tab);
+  };
 
   useEffect(() => {
     if (projectRoot) {
@@ -1264,7 +1393,12 @@ function SessionsPanel({
     const availability = await checkAgentProvider("codex");
     const mission = window.prompt(`Task for ${availability.label} agent`, "Supervised workstream");
     if (mission === null) return;
-    createAgentWorkstream("codex", mission, availability);
+    const isolationMode = promptWorkstreamIsolation(availability.label);
+    if (isolationMode === null) return;
+    const createdAt = Date.now();
+    const runId = createAgentWorkstreamRunId("codex", createdAt);
+    const opsContext = await resolveWorkstreamOpsContext(currentAgentWorkstreamCwd(), isolationMode, runId, createdAt);
+    createAgentWorkstream("codex", mission, availability, opsContext);
     requestAnimationFrame(() => {
       const nextTab = useWorkspaceStore.getState().getActiveTab();
       if (nextTab) focusTabOnMap(nextTab);
@@ -1464,7 +1598,199 @@ function SessionsPanel({
           >
             <div style={styles.agentLaneHeader}>
               <span>Agent runs</span>
-              <span>{agentLane.total}</span>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <button
+                  type="button"
+                  style={styles.agentLaneIconButton}
+                  data-testid="sidebar-agent-lane-status-sweep"
+                  title={agentLaneStatusSweepTitle(agentLane)}
+                  aria-label="Request active agent status sweep"
+                  disabled={activeAgentWorkstreams.length === 0}
+                  onClick={queueAgentLaneStatusSweep}
+                >
+                  <ArrowsClockwise size={13} weight="duotone" />
+                </button>
+                <span
+                  data-testid="sidebar-agent-lane-status-sweep-plan"
+                  title={agentLaneStatusSweepTitle(agentLane)}
+                  style={{ ...styles.rowMeta, marginTop: 0 }}
+                >
+                  {agentLaneStatusSweepText(agentLane)}
+                </span>
+                <button
+                  type="button"
+                  style={styles.agentLaneIconButton}
+                  data-testid="sidebar-agent-lane-interrupt-active"
+                  title={agentLaneInterruptTitle(agentLane)}
+                  aria-label="Interrupt active agent fleet"
+                  disabled={activeAgentWorkstreams.length === 0}
+                  onClick={interruptActiveAgentFleet}
+                >
+                  <Prohibit size={13} weight="duotone" />
+                </button>
+                <span
+                  data-testid="sidebar-agent-lane-interrupt-plan"
+                  title={agentLaneInterruptTitle(agentLane)}
+                  style={{ ...styles.rowMeta, marginTop: 0 }}
+                >
+                  {agentLaneInterruptText(agentLane)}
+                </span>
+                <button
+                  type="button"
+                  style={styles.agentLaneIconButton}
+                  data-testid="sidebar-agent-lane-restart-recovery"
+                  title={agentLaneRestartTitle(agentLane)}
+                  aria-label="Restart recovery agent fleet"
+                  disabled={restartableAgentWorkstreams.length === 0}
+                  onClick={restartRecoveryAgentFleet}
+                >
+                  <ArrowsClockwise size={13} weight="duotone" />
+                </button>
+                <button
+                  type="button"
+                  style={styles.agentLaneIconButton}
+                  data-testid="sidebar-agent-lane-retry-auth"
+                  title={agentLaneAuthRetryTitle(agentLane)}
+                  aria-label="Retry auth-blocked agent fleet"
+                  disabled={authRetryableAgentWorkstreams.length === 0}
+                  onClick={retryAuthAgentFleet}
+                >
+                  <ArrowsClockwise size={13} weight="duotone" />
+                </button>
+                <button
+                  type="button"
+                  style={styles.agentLaneIconButton}
+                  data-testid="sidebar-agent-lane-request-cleanup"
+                  title={agentLaneCleanupRequestTitle(agentLane)}
+                  aria-label="Request cleanup for cleanup-ready agent fleet"
+                  disabled={cleanupRequestableAgentWorkstreams.length === 0}
+                  onClick={requestCleanupFromAgentFleet}
+                >
+                  <Trash size={13} weight="duotone" />
+                </button>
+                <span
+                  data-testid="sidebar-agent-lane-restart-plan"
+                  title={agentLaneRestartTitle(agentLane)}
+                  style={{ ...styles.rowMeta, marginTop: 0 }}
+                >
+                  {agentLaneRestartText(agentLane)}
+                </span>
+                <span
+                  data-testid="sidebar-agent-lane-auth-retry-plan"
+                  title={agentLaneAuthRetryTitle(agentLane)}
+                  style={{ ...styles.rowMeta, marginTop: 0 }}
+                >
+                  {agentLaneAuthRetryText(agentLane)}
+                </span>
+                <span
+                  data-testid="sidebar-agent-lane-cleanup-plan"
+                  title={agentLaneCleanupRequestTitle(agentLane)}
+                  style={{ ...styles.rowMeta, marginTop: 0 }}
+                >
+                  {agentLaneCleanupRequestText(agentLane)}
+                </span>
+                <button
+                  type="button"
+                  style={styles.agentLaneIconButton}
+                  data-testid="sidebar-agent-lane-review-ready"
+                  title={agentLaneCloseoutTitle(agentLane)}
+                  aria-label="Review ready agent closeouts"
+                  disabled={closeoutReadyReviewItems.length === 0}
+                  onClick={reviewReadyAgentCloseouts}
+                >
+                  <CheckCircle size={13} weight="duotone" />
+                </button>
+                <span
+                  data-testid="sidebar-agent-lane-closeout-plan"
+                  title={agentLaneCloseoutTitle(agentLane)}
+                  style={{ ...styles.rowMeta, marginTop: 0 }}
+                >
+                  {agentLaneCloseoutText(agentLane)}
+                </span>
+                <button
+                  type="button"
+                  style={styles.agentLaneIconButton}
+                  data-testid="sidebar-agent-lane-request-proof"
+                  title={agentLaneProofRequestTitle(agentLane)}
+                  aria-label="Request proof from proof-needed agent fleet"
+                  disabled={proofRequestItems.length === 0}
+                  onClick={requestProofFromAgentFleet}
+                >
+                  <FileText size={13} weight="duotone" />
+                </button>
+                <button
+                  type="button"
+                  style={styles.agentLaneIconButton}
+                  data-testid="sidebar-agent-lane-request-memory"
+                  title={agentLaneMemoryRequestTitle(agentLane)}
+                  aria-label="Request handoff memory from memory-needed agent fleet"
+                  disabled={memoryRequestItems.length === 0}
+                  onClick={requestMemoryFromAgentFleet}
+                >
+                  <Note size={13} weight="duotone" />
+                </button>
+                <button
+                  type="button"
+                  style={styles.agentLaneIconButton}
+                  data-testid="sidebar-agent-lane-mitigate-risk"
+                  title={agentLaneRiskMitigationTitle(agentLane)}
+                  aria-label="Request risk mitigation from risky agent fleet"
+                  disabled={riskMitigationItems.length === 0}
+                  onClick={requestRiskMitigationFromAgentFleet}
+                >
+                  <Prohibit size={13} weight="duotone" />
+                </button>
+                <span
+                  data-testid="sidebar-agent-lane-risk-plan"
+                  title={agentLaneRiskMitigationTitle(agentLane)}
+                  style={{ ...styles.rowMeta, marginTop: 0 }}
+                >
+                  {agentLaneRiskMitigationText(agentLane)}
+                </span>
+                <span
+                  data-testid="sidebar-agent-lane-memory-plan"
+                  title={agentLaneMemoryRequestTitle(agentLane)}
+                  style={{ ...styles.rowMeta, marginTop: 0 }}
+                >
+                  {agentLaneMemoryRequestText(agentLane)}
+                </span>
+                <span
+                  data-testid="sidebar-agent-lane-proof-plan"
+                  title={agentLaneProofRequestTitle(agentLane)}
+                  style={{ ...styles.rowMeta, marginTop: 0 }}
+                >
+                  {agentLaneProofRequestText(agentLane)}
+                </span>
+                <button
+                  type="button"
+                  style={styles.agentLaneIconButton}
+                  data-testid="sidebar-agent-lane-copy-mission"
+                  title="Copy mission control brief"
+                  aria-label="Copy mission control brief"
+                  onClick={() => {
+                    if (navigator.clipboard?.writeText) {
+                      void navigator.clipboard.writeText(formatAgentMissionControlBrief(agentLane));
+                    }
+                  }}
+                >
+                  <ClipboardText size={13} weight="duotone" />
+                </button>
+                <button
+                  type="button"
+                  style={styles.agentLaneIconButton}
+                  data-testid="sidebar-agent-lane-copy-brief"
+                  title="Copy agent supervision brief"
+                  aria-label="Copy agent supervision brief"
+                  onClick={() => {
+                    if (navigator.clipboard?.writeText) {
+                      void navigator.clipboard.writeText(formatAgentLaneBrief(agentLane));
+                    }
+                  }}
+                >
+                  <ClipboardText size={13} weight="duotone" />
+                </button>
+                <span>{agentLane.total}</span>
+              </span>
             </div>
             <div style={styles.agentLaneStats}>
               <span style={styles.agentLaneChip} data-testid="sidebar-agent-lane-total">{agentLane.total} agents</span>
@@ -1472,8 +1798,243 @@ function SessionsPanel({
               <span style={styles.agentLaneChip}>{agentLane.waiting} waiting</span>
               <span style={styles.agentLaneChip}>{agentLane.blocked} blocked</span>
               <span style={styles.agentLaneChip}>{agentLane.complete} complete</span>
+              <span style={styles.agentLaneChip}>{agentLane.workspaceGroups.length} groups</span>
+              <span style={styles.agentLaneChip}>{agentLane.missionItemCount} mission rows</span>
+              <span style={styles.agentLaneChip}>{agentLane.missionActionCount} actions</span>
+              {agentLane.hiddenMissionItemCount > 0 && (
+                <span style={styles.agentLaneChip}>+{agentLane.hiddenMissionItemCount} hidden rows</span>
+              )}
+              {agentLane.hiddenMissionActionCount > 0 && (
+                <span style={styles.agentLaneChip}>+{agentLane.hiddenMissionActionCount} hidden actions</span>
+              )}
+              <span style={styles.agentLaneChip}>{agentLane.promptCount} prompts</span>
+              <span style={styles.agentLaneChip}>{agentLane.missionControlPromptCount} mission prompts</span>
+              <span style={styles.agentLaneChip}>{agentLane.missionControlPromptSentCount} mission sent</span>
+              <span style={styles.agentLaneChip}>{agentLane.outputCount} outputs</span>
+              <span style={styles.agentLaneChip}>{agentLane.nextCount} next</span>
+              <span style={styles.agentLaneChip}>{agentLane.memoryItems.length} memories</span>
+              <span style={styles.agentLaneChip}>{agentLane.recentEvents.length} events</span>
+              <span style={styles.agentLaneChip}>{agentLane.staleItems.length} stale</span>
+              <span style={styles.agentLaneChip}>{agentLane.evidenceItems.length} evidence</span>
+              <span style={styles.agentLaneChip}>{agentLane.proofItems.length} proof</span>
+              <span style={styles.agentLaneChip}>{agentLane.authItems.length} auth</span>
+              <span style={styles.agentLaneChip}>{agentLane.riskItems.length} risk</span>
+              <span style={styles.agentLaneChip}>{agentLane.recoveryItems.length} recovery</span>
+              <span style={styles.agentLaneChip}>{agentLane.reviewItems.length} review</span>
+              <span style={styles.agentLaneChip}>{agentLane.reviewCloseoutReady} closeout ready</span>
+              <span style={styles.agentLaneChip}>{agentLane.reviewCloseoutBlocked} closeout blocked</span>
+              <span style={styles.agentLaneChip}>{agentLane.reviewReadyWithProof} proven</span>
+              <span style={styles.agentLaneChip}>{agentLane.reviewNeedsProof} unproven</span>
+              <span style={styles.agentLaneChip}>{agentLane.reviewReadyWithMemory} handoff ready</span>
+              <span style={styles.agentLaneChip}>{agentLane.reviewNeedsMemory} handoff missing</span>
+              <span style={styles.agentLaneChip}>{agentLane.attentionItems.length} queue</span>
+              <span style={styles.agentLaneChip}>{agentLane.dedicated} dedicated</span>
+              <span style={styles.agentLaneChip}>{agentLane.shared} shared</span>
+              <span style={styles.agentLaneChip}>{agentLane.cleanupRequested} cleanup</span>
               <span style={styles.agentLaneChip}>{agentLane.attention} attention</span>
             </div>
+            <div
+              style={styles.agentLaneItem}
+              data-testid="sidebar-agent-lane-headline"
+              aria-label="Agent cockpit headline"
+              title={agentLane.cockpitHeadline.detail}
+            >
+              <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {agentLane.cockpitHeadline.label}
+              </span>
+              <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                {agentLane.cockpitHeadline.detail}
+              </span>
+            </div>
+            <div
+              style={styles.agentLaneItem}
+              data-testid="sidebar-agent-lane-health"
+              aria-label="Agent lane health"
+              title={agentLaneHealthText(agentLane)}
+            >
+              <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                Health
+              </span>
+              <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                {agentLaneHealthText(agentLane)}
+              </span>
+            </div>
+            {agentLane.missionBreakdown.length > 0 && (
+              <div
+                style={styles.agentLaneItem}
+                data-testid="sidebar-agent-lane-mission-breakdown"
+                title={missionBreakdownText(agentLane)}
+              >
+                <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  Mission mix
+                </span>
+                <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                  {missionBreakdownText(agentLane)}
+                </span>
+              </div>
+            )}
+            {agentLane.missionControlDispatchBreakdown.length > 0 && (
+              <div
+                style={styles.agentLaneItem}
+                data-testid="sidebar-agent-lane-dispatch-breakdown"
+                title={missionControlDispatchBreakdownText(agentLane)}
+              >
+                <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  Dispatch mix
+                </span>
+                <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                  {missionControlDispatchBreakdownText(agentLane)}
+                </span>
+              </div>
+            )}
+            {agentLane.providerBreakdown.length > 0 && (
+              <div
+                style={styles.agentLaneItem}
+                data-testid="sidebar-agent-lane-provider-breakdown"
+                title={providerBreakdownText(agentLane)}
+              >
+                <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  Provider mix
+                </span>
+                <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                  {providerBreakdownText(agentLane)}
+                </span>
+              </div>
+            )}
+            {agentLane.isolationBreakdown.length > 0 && (
+              <div
+                style={styles.agentLaneItem}
+                data-testid="sidebar-agent-lane-isolation-breakdown"
+                title={isolationBreakdownText(agentLane)}
+              >
+                <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  Isolation mix
+                </span>
+                <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                  {isolationBreakdownText(agentLane)}
+                </span>
+              </div>
+            )}
+            {agentLane.cleanupBreakdown.length > 0 && (
+              <div
+                style={styles.agentLaneItem}
+                data-testid="sidebar-agent-lane-cleanup-breakdown"
+                title={cleanupBreakdownText(agentLane)}
+              >
+                <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  Cleanup mix
+                </span>
+                <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                  {cleanupBreakdownText(agentLane)}
+                </span>
+              </div>
+            )}
+            {agentLane.readinessBreakdown.length > 0 && (
+              <div
+                style={styles.agentLaneItem}
+                data-testid="sidebar-agent-lane-readiness-breakdown"
+                title={readinessBreakdownText(agentLane)}
+              >
+                <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  Readiness mix
+                </span>
+                <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                  {readinessBreakdownText(agentLane)}
+                </span>
+              </div>
+            )}
+            {agentLane.attentionBreakdown.length > 0 && (
+              <div
+                style={styles.agentLaneItem}
+                data-testid="sidebar-agent-lane-attention-breakdown"
+                title={attentionBreakdownText(agentLane)}
+              >
+                <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  Attention mix
+                </span>
+                <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                  {attentionBreakdownText(agentLane)}
+                </span>
+              </div>
+            )}
+            {agentLane.riskBreakdown.length > 0 && (
+              <div
+                style={styles.agentLaneItem}
+                data-testid="sidebar-agent-lane-risk-breakdown"
+                title={riskBreakdownText(agentLane)}
+              >
+                <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  Risk mix
+                </span>
+                <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                  {riskBreakdownText(agentLane)}
+                </span>
+              </div>
+            )}
+            {agentLane.closeoutBreakdown.length > 0 && (
+              <div
+                style={styles.agentLaneItem}
+                data-testid="sidebar-agent-lane-closeout-breakdown"
+                title={closeoutBreakdownText(agentLane)}
+              >
+                <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  Closeout mix
+                </span>
+                <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                  {closeoutBreakdownText(agentLane)}
+                </span>
+              </div>
+            )}
+            {agentLane.supervisorItems.length > 0 && (
+              <div style={styles.agentLaneList} aria-label="Agent mission control">
+                {agentLane.supervisorItems.map((item) => (
+                  <button
+                    key={`${item.tabId}-${item.label}-${item.detail}`}
+                    type="button"
+                    style={styles.agentLaneItem}
+                    data-testid="sidebar-agent-supervisor-item"
+                    title={`${item.label} ${item.title}`}
+                    onClick={() => {
+                      setActiveTab(item.tabId);
+                      if (item.action === "queue-prompt" && item.prompt) {
+                        useWorkspaceStore.getState().queueWorkstreamInput(item.tabId, item.prompt, {
+                          source: "mission-control",
+                          label: item.label,
+                        });
+                      }
+                      if (item.action === "review") {
+                        useWorkspaceStore.getState().reviewWorkstream(item.tabId, {
+                          source: "mission-control",
+                          label: item.label,
+                        });
+                      }
+                      setWorkspaceMode("split");
+                    }}
+                  >
+                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {item.label}
+                    </span>
+                    <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                      {item.title} · {item.runIdentity} · {item.workspaceIdentity} · Now: {item.activity} · Signal: {item.signalAge} · Source: {item.signalSource} · {item.detail}{missionControlAlternateText(item) ? ` · Also: ${missionControlAlternateText(item)}` : ""}
+                    </span>
+                  </button>
+                ))}
+                {agentLane.hiddenMissionItemCount > 0 && (
+                  <div
+                    style={styles.agentLaneItem}
+                    data-testid="sidebar-agent-supervisor-overflow"
+                    title={`${agentLane.hiddenMissionItemCount} mission rows and ${agentLane.hiddenMissionActionCount} actions hidden below the visible queue${agentLane.hiddenSupervisorItems[0] ? `: ${agentLane.hiddenSupervisorItems[0].title} · ${agentLane.hiddenSupervisorItems[0].label} · ${agentLane.hiddenSupervisorItems[0].detail}${missionControlAlternateText(agentLane.hiddenSupervisorItems[0]) ? ` · Also: ${missionControlAlternateText(agentLane.hiddenSupervisorItems[0])}` : ""}` : ""}`}
+                  >
+                    <span>+{agentLane.hiddenMissionItemCount} rows · {agentLane.hiddenMissionActionCount} actions</span>
+                    <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                      {agentLane.hiddenSupervisorItems[0]
+                        ? `${agentLane.hiddenSupervisorItems[0].title} · ${agentLane.hiddenSupervisorItems[0].label} · ${agentLane.hiddenSupervisorItems[0].detail}${missionControlAlternateText(agentLane.hiddenSupervisorItems[0]) ? ` · Also: ${missionControlAlternateText(agentLane.hiddenSupervisorItems[0])}` : ""}`
+                        : "Mission rows hidden below the visible queue"}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
             {agentLane.primaryAttention && (
               <button
                 type="button"
@@ -1493,26 +2054,575 @@ function SessionsPanel({
                 </span>
               </button>
             )}
+            {agentLane.attentionItems.length > 0 && (
+              <div style={styles.agentLaneList} aria-label="Agent attention queue">
+                {agentLane.attentionItems.slice(0, 3).map((item) => (
+                  <button
+                    key={item.tabId}
+                    type="button"
+                    style={styles.agentLaneItem}
+                    data-testid="sidebar-agent-attention-item"
+                    title={`Open ${item.title}`}
+                    onClick={() => {
+                      setActiveTab(item.tabId);
+                      setWorkspaceMode("split");
+                    }}
+                  >
+                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {item.label}
+                    </span>
+                    <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                      {item.title} · {item.detail}
+                    </span>
+                  </button>
+                ))}
+                {agentLane.attentionItems.length > 3 && (
+                  <div style={styles.agentLaneOverflow} data-testid="sidebar-agent-attention-overflow">
+                    +{agentLane.attentionItems.length - 3} more attention · {agentLane.attentionItems[3].label} · {agentLane.attentionItems[3].title} · {agentLane.attentionItems[3].detail}
+                  </div>
+                )}
+              </div>
+            )}
+            <div style={styles.agentLaneList} aria-label="Agent workspace groups">
+              {agentLane.workspaceGroups.slice(0, 3).map((group) => {
+                const cleanupText = group.cleanupRequested > 0 ? ` · ${group.cleanupRequested} cleanup` : "";
+                const attentionText = group.attention > 0 ? ` · ${group.attention} attention` : "";
+                return (
+                  <button
+                    key={group.id}
+                    type="button"
+                    style={styles.agentLaneItem}
+                    data-testid="sidebar-agent-workspace-group"
+                    title={`Copy workspace group ${group.label}`}
+                    onClick={() => {
+                      if (!group.primaryTabId) return;
+                      setActiveTab(group.primaryTabId);
+                      if (navigator.clipboard?.writeText) {
+                        void navigator.clipboard.writeText(group.brief);
+                      }
+                      setWorkspaceMode("split");
+                    }}
+                  >
+                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {group.label}
+                    </span>
+                    <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                      {group.total} agents · {group.active} active · {group.detail}{cleanupText}{attentionText}
+                    </span>
+                  </button>
+                );
+              })}
+              {agentLane.workspaceGroups.length > 3 && (
+                <div style={styles.agentLaneOverflow} data-testid="sidebar-agent-workspace-group-overflow">
+                  +{agentLane.workspaceGroups.length - 3} more groups · {agentLane.workspaceGroups[3].label} · {agentLane.workspaceGroups[3].total} agents · {agentLane.workspaceGroups[3].active} active · {agentLane.workspaceGroups[3].detail}
+                </div>
+              )}
+            </div>
+            {agentLane.recentEvents.length > 0 && (
+              <div style={styles.agentLaneList} aria-label="Agent recent events">
+                {agentLane.recentEvents.slice(0, 3).map((item) => (
+                  <button
+                    key={`${item.tabId}-${item.at}-${item.label}`}
+                    type="button"
+                    style={styles.agentLaneItem}
+                    data-testid="sidebar-agent-recent-event"
+                    title={`Copy event for ${item.title}`}
+                    onClick={() => {
+                      setActiveTab(item.tabId);
+                      if (navigator.clipboard?.writeText) {
+                        void navigator.clipboard.writeText(item.brief);
+                      }
+                      setWorkspaceMode("split");
+                    }}
+                  >
+                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      Copy event
+                    </span>
+                    <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                      {item.title} · {item.label}{item.detail ? ` · ${item.detail}` : ""}
+                    </span>
+                  </button>
+                ))}
+                {agentLane.recentEvents.length > 3 && (
+                  <div
+                    style={styles.agentLaneItem}
+                    data-testid="sidebar-agent-recent-event-overflow"
+                    title={`${agentLane.recentEvents.length - 3} recent events hidden below the visible event list`}
+                  >
+                    <span>+{agentLane.recentEvents.length - 3} more events</span>
+                    <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                      {agentLane.recentEvents[3].title} · {agentLane.recentEvents[3].label}{agentLane.recentEvents[3].detail ? ` · ${agentLane.recentEvents[3].detail}` : ""}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+            {agentLane.inputItems.length > 0 && (
+              <div style={styles.agentLaneList} aria-label="Agent operator prompts">
+                {agentLane.inputItems.slice(0, 3).map((item) => (
+                  <button
+                    key={`${item.tabId}-${item.at}-${item.text}`}
+                    type="button"
+                    style={styles.agentLaneItem}
+                    data-testid="sidebar-agent-input-item"
+                    title={`Copy prompt for ${item.title}`}
+                    onClick={() => {
+                      setActiveTab(item.tabId);
+                      if (navigator.clipboard?.writeText) {
+                        void navigator.clipboard.writeText(item.brief);
+                      }
+                      setWorkspaceMode("split");
+                    }}
+                  >
+                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      Copy prompt
+                    </span>
+                    <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                      {item.title} · {item.state} · {item.text}
+                    </span>
+                  </button>
+                ))}
+                {agentLane.inputItems.length > 3 && (
+                  <div
+                    style={styles.agentLaneItem}
+                    data-testid="sidebar-agent-input-overflow"
+                    title={`${agentLane.inputItems.length - 3} operator prompts hidden below the visible prompt list`}
+                  >
+                    <span>+{agentLane.inputItems.length - 3} more prompts</span>
+                    <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                      {agentLane.inputItems[3].title} · {agentLane.inputItems[3].state} · {agentLane.inputItems[3].text}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+            {agentLane.outputItems.length > 0 && (
+              <div style={styles.agentLaneList} aria-label="Agent terminal output">
+                {agentLane.outputItems.slice(0, 3).map((item) => (
+                  <button
+                    key={`${item.tabId}-${item.at}-${item.output}`}
+                    type="button"
+                    style={styles.agentLaneItem}
+                    data-testid="sidebar-agent-output-item"
+                    title={`Copy terminal output for ${item.title}`}
+                    onClick={() => {
+                      setActiveTab(item.tabId);
+                      if (navigator.clipboard?.writeText) {
+                        void navigator.clipboard.writeText(item.brief);
+                      }
+                      setWorkspaceMode("split");
+                    }}
+                  >
+                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      Copy output
+                    </span>
+                    <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                      {item.title} · {item.output}
+                    </span>
+                  </button>
+                ))}
+                {agentLane.outputItems.length > 3 && (
+                  <div
+                    style={styles.agentLaneItem}
+                    data-testid="sidebar-agent-output-overflow"
+                    title={`${agentLane.outputItems.length - 3} terminal outputs hidden below the visible output list`}
+                  >
+                    <span>+{agentLane.outputItems.length - 3} more output</span>
+                    <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                      {agentLane.outputItems[3].title} · {agentLane.outputItems[3].output}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+            {agentLane.nextItems.length > 0 && (
+              <div style={styles.agentLaneList} aria-label="Agent next actions">
+                {agentLane.nextItems.slice(0, 3).map((item) => (
+                  <button
+                    key={`${item.tabId}-${item.at}-${item.nextAction}`}
+                    type="button"
+                    style={styles.agentLaneItem}
+                    data-testid="sidebar-agent-next-item"
+                    title={`Copy next action for ${item.title}`}
+                    onClick={() => {
+                      setActiveTab(item.tabId);
+                      if (navigator.clipboard?.writeText) {
+                        void navigator.clipboard.writeText(item.brief);
+                      }
+                      setWorkspaceMode("split");
+                    }}
+                  >
+                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      Copy next
+                    </span>
+                    <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                      {item.title} · {item.nextAction}
+                    </span>
+                  </button>
+                ))}
+                {agentLane.nextItems.length > 3 && (
+                  <div
+                    style={styles.agentLaneItem}
+                    data-testid="sidebar-agent-next-overflow"
+                    title={`${agentLane.nextItems.length - 3} next actions hidden below the visible next-action list`}
+                  >
+                    <span>+{agentLane.nextItems.length - 3} more next</span>
+                    <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                      {agentLane.nextItems[3].title} · {agentLane.nextItems[3].nextAction}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+            {agentLane.staleItems.length > 0 && (
+              <div style={styles.agentLaneList} aria-label="Agent stale queue">
+                {agentLane.staleItems.slice(0, 3).map((item) => (
+                  <button
+                    key={item.tabId}
+                    type="button"
+                    style={styles.agentLaneItem}
+                    data-testid="sidebar-agent-stale-item"
+                    title={`Send status check to ${item.title}`}
+                    onClick={() => {
+                      setActiveTab(item.tabId);
+                      useWorkspaceStore.getState().queueWorkstreamInput(item.tabId, item.prompt, {
+                        source: "mission-control",
+                        label: "Check in",
+                      });
+                      setWorkspaceMode("split");
+                    }}
+                  >
+                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      Check in
+                    </span>
+                    <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                      {item.title} · {item.detail}
+                    </span>
+                  </button>
+                ))}
+                {agentLane.staleItems.length > 3 && (
+                  <div style={styles.agentLaneOverflow} data-testid="sidebar-agent-stale-overflow">
+                    +{agentLane.staleItems.length - 3} more stale · {agentLane.staleItems[3].title} · {agentLane.staleItems[3].detail}
+                  </div>
+                )}
+              </div>
+            )}
+            {agentLane.riskItems.length > 0 && (
+              <div style={styles.agentLaneList} aria-label="Agent risk queue">
+                {agentLane.riskItems.slice(0, 3).map((item) => (
+                  <button
+                    key={item.tabId}
+                    type="button"
+                    style={styles.agentLaneItem}
+                    data-testid="sidebar-agent-risk-item"
+                    title={`Send risk mitigation prompt to ${item.title}`}
+                    onClick={() => {
+                      setActiveTab(item.tabId);
+                      useWorkspaceStore.getState().queueWorkstreamInput(item.tabId, item.prompt, {
+                        source: "mission-control",
+                        label: "Mitigate risk",
+                      });
+                      setWorkspaceMode("split");
+                    }}
+                  >
+                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      Mitigate
+                    </span>
+                    <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                      {item.title} · {item.detail}
+                    </span>
+                  </button>
+                ))}
+                {agentLane.riskItems.length > 3 && (
+                  <div style={styles.agentLaneOverflow} data-testid="sidebar-agent-risk-overflow">
+                    +{agentLane.riskItems.length - 3} more risk · {agentLane.riskItems[3].title} · {agentLane.riskItems[3].detail}
+                  </div>
+                )}
+              </div>
+            )}
+            {agentLane.authItems.length > 0 && (
+              <div style={styles.agentLaneList} aria-label="Agent auth queue">
+                {agentLane.authItems.slice(0, 3).map((item) => (
+                  <button
+                    key={item.tabId}
+                    type="button"
+                    style={styles.agentLaneItem}
+                    data-testid="sidebar-agent-auth-item"
+                    title={`Copy auth handoff for ${item.title}`}
+                    onClick={() => {
+                      setActiveTab(item.tabId);
+                      if (navigator.clipboard?.writeText) {
+                        void navigator.clipboard.writeText(item.brief);
+                      }
+                      setWorkspaceMode("split");
+                    }}
+                  >
+                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      Copy auth
+                    </span>
+                    <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                      {item.title} · {item.reason} · {item.nextAction}
+                    </span>
+                  </button>
+                ))}
+                {agentLane.authItems.length > 3 && (
+                  <div
+                    style={styles.agentLaneItem}
+                    data-testid="sidebar-agent-auth-overflow"
+                    title={`${agentLane.authItems.length - 3} auth blockers hidden below the visible auth queue`}
+                  >
+                    <span>+{agentLane.authItems.length - 3} more auth</span>
+                    <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                      {agentLane.authItems[3].title} · {agentLane.authItems[3].reason} · {agentLane.authItems[3].nextAction}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+            {agentLane.recoveryItems.length > 0 && (
+              <div style={styles.agentLaneList} aria-label="Agent recovery queue">
+                {agentLane.recoveryItems.slice(0, 3).map((item) => (
+                  <button
+                    key={item.tabId}
+                    type="button"
+                    style={styles.agentLaneItem}
+                    data-testid="sidebar-agent-recovery-item"
+                    title={`Send recovery prompt to ${item.title}`}
+                    onClick={() => {
+                      setActiveTab(item.tabId);
+                      useWorkspaceStore.getState().queueWorkstreamInput(item.tabId, item.prompt, {
+                        source: "mission-control",
+                        label: "Recover",
+                      });
+                      setWorkspaceMode("split");
+                    }}
+                  >
+                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      Recover
+                    </span>
+                    <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                      {item.title} · {item.reason} · {item.prompt}
+                    </span>
+                  </button>
+                ))}
+                {agentLane.recoveryItems.length > 3 && (
+                  <div style={styles.agentLaneOverflow} data-testid="sidebar-agent-recovery-overflow">
+                    +{agentLane.recoveryItems.length - 3} more recovery · {agentLane.recoveryItems[3].title} · {agentLane.recoveryItems[3].reason} · {agentLane.recoveryItems[3].prompt}
+                  </div>
+                )}
+              </div>
+            )}
+            {agentLane.proofItems.length > 0 && (
+              <div style={styles.agentLaneList} aria-label="Agent proof needed queue">
+                {agentLane.proofItems.slice(0, 3).map((item) => (
+                  <button
+                    key={item.tabId}
+                    type="button"
+                    style={styles.agentLaneItem}
+                    data-testid="sidebar-agent-proof-item"
+                    title={`Send proof request to ${item.title}`}
+                    onClick={() => {
+                      setActiveTab(item.tabId);
+                      useWorkspaceStore.getState().queueWorkstreamInput(item.tabId, item.request, {
+                        source: "mission-control",
+                        label: "Request proof",
+                      });
+                      setWorkspaceMode("split");
+                    }}
+                  >
+                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      Request proof
+                    </span>
+                    <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                      {item.title} · {item.summary} · {item.request}
+                    </span>
+                  </button>
+                ))}
+                {agentLane.proofItems.length > 3 && (
+                  <div
+                    style={styles.agentLaneItem}
+                    data-testid="sidebar-agent-proof-overflow"
+                    title={`${agentLane.proofItems.length - 3} proof requests hidden below the visible proof queue`}
+                  >
+                    <span>+{agentLane.proofItems.length - 3} more proof</span>
+                    <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                      {agentLane.proofItems[3].title} · {agentLane.proofItems[3].summary} · {agentLane.proofItems[3].request}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+            {agentLane.evidenceItems.length > 0 && (
+              <div style={styles.agentLaneList} aria-label="Agent evidence queue">
+                {agentLane.evidenceItems.slice(0, 3).map((item) => (
+                  <button
+                    key={item.tabId}
+                    type="button"
+                    style={styles.agentLaneItem}
+                    data-testid="sidebar-agent-evidence-item"
+                    title={item.artifactPath ? `Open artifact for ${item.title}` : `Copy evidence for ${item.title}`}
+                    onClick={() => {
+                      setActiveTab(item.tabId);
+                      if (item.artifactPath) {
+                        useWorkspaceStore.getState().addOpenFile({
+                          path: item.artifactPath,
+                          name: item.artifactName ?? item.artifactPath,
+                          dirty: false,
+                        });
+                      }
+                      if (navigator.clipboard?.writeText) {
+                        void navigator.clipboard.writeText(item.brief);
+                      }
+                      setWorkspaceMode("split");
+                    }}
+                  >
+                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {item.artifactPath ? "Open proof" : "Copy proof"}
+                    </span>
+                    <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                      {item.title} · {item.evidence}{item.artifact ? ` · ${item.artifact}` : ""}
+                    </span>
+                  </button>
+                ))}
+                {agentLane.evidenceItems.length > 3 && (
+                  <div
+                    style={styles.agentLaneItem}
+                    data-testid="sidebar-agent-evidence-overflow"
+                    title={`${agentLane.evidenceItems.length - 3} evidence rows hidden below the visible evidence queue`}
+                  >
+                    <span>+{agentLane.evidenceItems.length - 3} more evidence</span>
+                    <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                      {agentLane.evidenceItems[3].title} · {agentLane.evidenceItems[3].evidence}{agentLane.evidenceItems[3].artifact ? ` · ${agentLane.evidenceItems[3].artifact}` : ""}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+            {agentLane.reviewItems.length > 0 && (
+              <div style={styles.agentLaneList} aria-label="Agent review queue">
+                {agentLane.reviewItems.slice(0, 3).map((item) => {
+                  const canCloseout = isReviewItemCloseoutReady(item);
+                  return (
+                    <button
+                      key={item.tabId}
+                      type="button"
+                      style={styles.agentLaneItem}
+                      data-testid="sidebar-agent-review-item"
+                      title={canCloseout ? `Mark ${item.title} reviewed` : `Review blocked for ${item.title} until proof and handoff memory are ready`}
+                      onClick={() => {
+                        setActiveTab(item.tabId);
+                        setWorkspaceMode("split");
+                        if (canCloseout) {
+                          useWorkspaceStore.getState().reviewWorkstream(item.tabId, {
+                            source: "mission-control",
+                            label: "Review",
+                          });
+                        }
+                      }}
+                    >
+                      <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {canCloseout ? "Review" : "Blocked review"}
+                      </span>
+                      <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                        {item.title} · {item.proofStatus} · {item.handoffStatus} · {item.summary} · {item.detail}
+                      </span>
+                    </button>
+                  );
+                })}
+                {agentLane.reviewItems.length > 3 && (
+                  <div
+                    style={styles.agentLaneItem}
+                    data-testid="sidebar-agent-review-overflow"
+                    title={`${agentLane.reviewItems.length - 3} review items hidden below the visible review queue`}
+                  >
+                    <span>+{agentLane.reviewItems.length - 3} more review</span>
+                    <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                      {agentLane.reviewItems[3].title} · {agentLane.reviewItems[3].proofStatus} · {agentLane.reviewItems[3].handoffStatus} · {agentLane.reviewItems[3].summary}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+            {agentLane.memoryItems.length > 0 && (
+              <div style={styles.agentLaneList} aria-label="Agent lane memory">
+                {agentLane.memoryItems.slice(0, 3).map((item) => (
+                  <button
+                    key={item.tabId}
+                    type="button"
+                    style={styles.agentLaneItem}
+                    data-testid="sidebar-agent-lane-memory"
+                    title={`Copy memory for ${item.title}`}
+                    onClick={() => {
+                      setActiveTab(item.tabId);
+                      if (navigator.clipboard?.writeText) {
+                        void navigator.clipboard.writeText(item.brief);
+                      }
+                      setWorkspaceMode("split");
+                    }}
+                  >
+                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      Copy memory
+                    </span>
+                    <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                      {item.title} · {item.memory}
+                    </span>
+                  </button>
+                ))}
+                {agentLane.memoryItems.length > 3 && (
+                  <div
+                    style={styles.agentLaneItem}
+                    data-testid="sidebar-agent-memory-overflow"
+                    title={`${agentLane.memoryItems.length - 3} memory rows hidden below the visible handoff-memory list`}
+                  >
+                    <span>+{agentLane.memoryItems.length - 3} more memory</span>
+                    <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                      {agentLane.memoryItems[3].title} · {agentLane.memoryItems[3].memory}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
             <div style={styles.agentLaneList}>
-              {agentLane.workstreams.slice(0, 3).map(({ tab, workstream }) => (
-                <button
-                  key={tab.id}
-                  type="button"
+              {agentLane.workstreams.slice(0, 3).map(({ tab, workstream }) => {
+                const askText = latestMissionControlAskText(workstream);
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    style={styles.agentLaneItem}
+                    data-testid="sidebar-agent-run-item"
+                    title={`Copy run brief for ${tab.title}`}
+                    onClick={() => {
+                      setActiveTab(tab.id);
+                      if (navigator.clipboard?.writeText) {
+                        void navigator.clipboard.writeText(formatAgentRunBrief(tab));
+                      }
+                      setWorkspaceMode("split");
+                    }}
+                  >
+                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      Copy run
+                    </span>
+                    <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                      {workstreamLabel(workstream.provider)} · {workstream.phase ?? workstream.status} · {workstreamActivityText(workstream)} · {formatWorkstreamOpsContext(workstream)}
+                      {askText ? ` · ${askText}` : ""}
+                    </span>
+                  </button>
+                );
+              })}
+              {agentLane.workstreams.length > 3 && (
+                <div
                   style={styles.agentLaneItem}
-                  title={workstream.lastSummary ?? workstream.mission ?? workstream.prompt ?? tab.title}
-                  onClick={() => {
-                    setActiveTab(tab.id);
-                    setWorkspaceMode("split");
-                  }}
+                  data-testid="sidebar-agent-run-overflow"
+                  title={`${agentLane.workstreams.length - 3} agent runs hidden below the visible run list`}
                 >
-                  <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {tab.title}
-                  </span>
+                  <span>+{agentLane.workstreams.length - 3} more agents</span>
                   <span style={{ ...styles.rowMeta, marginTop: 0 }}>
-                    {workstreamLabel(workstream.provider)} · {workstream.phase ?? workstream.status}
+                    {workstreamLabel(agentLane.workstreams[3].workstream.provider)} · {agentLane.workstreams[3].workstream.phase ?? agentLane.workstreams[3].workstream.status} · {workstreamActivityText(agentLane.workstreams[3].workstream)} · {formatWorkstreamOpsContext(agentLane.workstreams[3].workstream)}
+                    {latestMissionControlAskText(agentLane.workstreams[3].workstream) ? ` · ${latestMissionControlAskText(agentLane.workstreams[3].workstream)}` : ""}
                   </span>
-                </button>
-              ))}
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -1574,7 +2684,7 @@ function SessionsPanel({
                   {tab.title}
                 </div>
                 <div style={styles.rowMeta}>
-                  {workstream?.kind === "agent" ? `${workstreamLabel(workstream.provider)} · ${workstream.phase ?? workstream.status}${workstream.startupCommand ? ` · ${workstream.startupCommand}` : ""}${workstream.lastSummary ? ` · ${workstream.lastSummary}` : ""}${lastWorkstreamEvent ? ` · ${lastWorkstreamEvent.label}` : ""}${workstream.providerAvailable === false ? ` · ${workstream.providerAvailabilityMessage ?? "unavailable"}` : ""} · ` : ""}
+                  {workstream?.kind === "agent" ? `${workstreamLabel(workstream.provider)} · ${workstream.phase ?? workstream.status} · ${workstreamActivityText(workstream)} · ${formatWorkstreamOpsContext(workstream)}${workstream.startupCommand ? ` · ${workstream.startupCommand}` : ""}${lastWorkstreamEvent ? ` · ${lastWorkstreamEvent.label}` : ""}${workstream.providerAvailable === false ? ` · ${workstream.providerAvailabilityMessage ?? "unavailable"}` : ""} · ` : ""}
                   {group ? `${group.name} · ` : ""}
                   {pathTail(tab.initialCwd)}
                 </div>
@@ -1682,6 +2792,145 @@ function MapPanel({
     ? tabs
     : tabs.filter((tab) => tab.groupId === activeGroupFilter);
   const agentLane = summarizeAgentLane(visibleTabs);
+  const activeAgentWorkstreams = agentLane.workstreams.filter(({ workstream }) => isActiveAgentWorkstream(workstream));
+  const restartableAgentWorkstreams = agentLane.workstreams.filter(({ workstream }) => isRestartableAgentWorkstream(workstream));
+  const authRetryableAgentWorkstreams = agentLane.workstreams.filter(({ workstream }) => isAuthRetryableAgentWorkstream(workstream));
+  const cleanupRequestableAgentWorkstreams = agentLane.workstreams.filter(({ workstream }) => isCleanupRequestableAgentWorkstream(workstream));
+  const closeoutReadyReviewItems = agentLane.reviewItems.filter((item) => isReviewItemCloseoutReady(item));
+  const proofRequestItems = agentLane.proofItems;
+  const memoryRequestItems = agentLane.memoryRequestItems;
+  const riskMitigationItems = agentLane.riskItems;
+  const queueAgentLaneStatusSweep = () => {
+    if (activeAgentWorkstreams.length === 0) return;
+    const store = useWorkspaceStore.getState();
+    for (const { tab, workstream } of activeAgentWorkstreams) {
+      store.queueWorkstreamInput(tab.id, statusCheckPromptForWorkstream(workstream), {
+        source: "mission-control",
+        label: "Status sweep",
+      });
+    }
+    const firstTarget = activeAgentWorkstreams[0].tab;
+    setActiveTab(firstTarget.id);
+    const linkedNode = canvasState.nodes.find((node) => node.terminalTabId === firstTarget.id);
+    if (linkedNode) focusCanvasNode(linkedNode);
+  };
+  const restartRecoveryAgentFleet = () => {
+    if (restartableAgentWorkstreams.length === 0) return;
+    const store = useWorkspaceStore.getState();
+    void Promise.all(restartableAgentWorkstreams.map(({ tab }) => store.restartWorkstream(tab.id, {
+      source: "mission-control",
+      label: "Restart recovery",
+    })));
+    const firstTarget = restartableAgentWorkstreams[0].tab;
+    setActiveTab(firstTarget.id);
+    const linkedNode = canvasState.nodes.find((node) => node.terminalTabId === firstTarget.id);
+    if (linkedNode) focusCanvasNode(linkedNode);
+  };
+  const retryAuthAgentFleet = () => {
+    if (authRetryableAgentWorkstreams.length === 0) return;
+    const store = useWorkspaceStore.getState();
+    void Promise.all(authRetryableAgentWorkstreams.map(({ tab }) => store.restartWorkstream(tab.id, {
+      source: "mission-control",
+      label: "Retry auth",
+    })));
+    const firstTarget = authRetryableAgentWorkstreams[0].tab;
+    setActiveTab(firstTarget.id);
+    const linkedNode = canvasState.nodes.find((node) => node.terminalTabId === firstTarget.id);
+    if (linkedNode) focusCanvasNode(linkedNode);
+  };
+  const requestCleanupFromAgentFleet = () => {
+    if (cleanupRequestableAgentWorkstreams.length === 0) return;
+    const store = useWorkspaceStore.getState();
+    for (const { tab } of cleanupRequestableAgentWorkstreams) {
+      store.requestWorktreeCleanup(tab.id, {
+        source: "mission-control",
+        label: "Request cleanup",
+      });
+    }
+    const firstTarget = cleanupRequestableAgentWorkstreams[0].tab;
+    setActiveTab(firstTarget.id);
+    const linkedNode = canvasState.nodes.find((node) => node.terminalTabId === firstTarget.id);
+    if (linkedNode) focusCanvasNode(linkedNode);
+  };
+  const reviewReadyAgentCloseouts = () => {
+    if (closeoutReadyReviewItems.length === 0) return;
+    const store = useWorkspaceStore.getState();
+    for (const item of closeoutReadyReviewItems) {
+      store.reviewWorkstream(item.tabId, {
+        source: "mission-control",
+        label: "Review",
+      });
+    }
+    const firstTarget = visibleTabs.find((tab) => tab.id === closeoutReadyReviewItems[0].tabId);
+    if (!firstTarget) return;
+    setActiveTab(firstTarget.id);
+    const linkedNode = canvasState.nodes.find((node) => node.terminalTabId === firstTarget.id);
+    if (linkedNode) focusCanvasNode(linkedNode);
+  };
+  const requestProofFromAgentFleet = () => {
+    const targets = proofRequestItems
+      .map((item) => visibleTabs.find((tab) => tab.id === item.tabId))
+      .filter((tab): tab is Tab => Boolean(tab?.workstream));
+    if (targets.length === 0) return;
+    const store = useWorkspaceStore.getState();
+    for (const tab of targets) {
+      const workstream = tab.workstream;
+      if (!workstream) continue;
+      store.queueWorkstreamInput(tab.id, proofRequestPromptForWorkstream(workstream), {
+        source: "mission-control",
+        label: "Request proof",
+      });
+    }
+    const firstTarget = targets[0];
+    setActiveTab(firstTarget.id);
+    const linkedNode = canvasState.nodes.find((node) => node.terminalTabId === firstTarget.id);
+    if (linkedNode) focusCanvasNode(linkedNode);
+  };
+  const requestMemoryFromAgentFleet = () => {
+    const targets = memoryRequestItems
+      .map((item) => visibleTabs.find((tab) => tab.id === item.tabId))
+      .filter((tab): tab is Tab => Boolean(tab?.workstream));
+    if (targets.length === 0) return;
+    const store = useWorkspaceStore.getState();
+    for (const tab of targets) {
+      const workstream = tab.workstream;
+      if (!workstream) continue;
+      store.queueWorkstreamInput(tab.id, handoffMemoryPromptForWorkstream(workstream), {
+        source: "mission-control",
+        label: "Request memory",
+      });
+    }
+    const firstTarget = targets[0];
+    setActiveTab(firstTarget.id);
+    const linkedNode = canvasState.nodes.find((node) => node.terminalTabId === firstTarget.id);
+    if (linkedNode) focusCanvasNode(linkedNode);
+  };
+  const requestRiskMitigationFromAgentFleet = () => {
+    const targets = riskMitigationItems
+      .map((item) => ({ item, tab: visibleTabs.find((tab) => tab.id === item.tabId) }))
+      .filter((target): target is { item: typeof riskMitigationItems[number]; tab: Tab } => Boolean(target.tab?.workstream));
+    if (targets.length === 0) return;
+    const store = useWorkspaceStore.getState();
+    for (const { item, tab } of targets) {
+      store.queueWorkstreamInput(tab.id, item.prompt, {
+        source: "mission-control",
+        label: "Mitigate risk",
+      });
+    }
+    const firstTarget = targets[0].tab;
+    setActiveTab(firstTarget.id);
+    const linkedNode = canvasState.nodes.find((node) => node.terminalTabId === firstTarget.id);
+    if (linkedNode) focusCanvasNode(linkedNode);
+  };
+  const interruptActiveAgentFleet = () => {
+    if (activeAgentWorkstreams.length === 0) return;
+    const store = useWorkspaceStore.getState();
+    void Promise.all(activeAgentWorkstreams.map(({ tab }) => store.interruptWorkstream(tab.id)));
+    const firstTarget = activeAgentWorkstreams[0].tab;
+    setActiveTab(firstTarget.id);
+    const linkedNode = canvasState.nodes.find((node) => node.terminalTabId === firstTarget.id);
+    if (linkedNode) focusCanvasNode(linkedNode);
+  };
   const taskRoots = visibleNodes.map((node) => {
     const linkedTab = node.terminalTabId
       ? tabs.find((tab) => tab.id === node.terminalTabId)
@@ -1711,7 +2960,199 @@ function MapPanel({
           >
             <div style={styles.agentLaneHeader}>
               <span>Agent runs</span>
-              <span>{agentLane.total}</span>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <button
+                  type="button"
+                  style={styles.agentLaneIconButton}
+                  data-testid="map-agent-lane-status-sweep"
+                  title={agentLaneStatusSweepTitle(agentLane)}
+                  aria-label="Request active agent status sweep"
+                  disabled={activeAgentWorkstreams.length === 0}
+                  onClick={queueAgentLaneStatusSweep}
+                >
+                  <ArrowsClockwise size={13} weight="duotone" />
+                </button>
+                <span
+                  data-testid="map-agent-lane-status-sweep-plan"
+                  title={agentLaneStatusSweepTitle(agentLane)}
+                  style={{ ...styles.rowMeta, marginTop: 0 }}
+                >
+                  {agentLaneStatusSweepText(agentLane)}
+                </span>
+                <button
+                  type="button"
+                  style={styles.agentLaneIconButton}
+                  data-testid="map-agent-lane-interrupt-active"
+                  title={agentLaneInterruptTitle(agentLane)}
+                  aria-label="Interrupt active agent fleet"
+                  disabled={activeAgentWorkstreams.length === 0}
+                  onClick={interruptActiveAgentFleet}
+                >
+                  <Prohibit size={13} weight="duotone" />
+                </button>
+                <span
+                  data-testid="map-agent-lane-interrupt-plan"
+                  title={agentLaneInterruptTitle(agentLane)}
+                  style={{ ...styles.rowMeta, marginTop: 0 }}
+                >
+                  {agentLaneInterruptText(agentLane)}
+                </span>
+                <button
+                  type="button"
+                  style={styles.agentLaneIconButton}
+                  data-testid="map-agent-lane-restart-recovery"
+                  title={agentLaneRestartTitle(agentLane)}
+                  aria-label="Restart recovery agent fleet"
+                  disabled={restartableAgentWorkstreams.length === 0}
+                  onClick={restartRecoveryAgentFleet}
+                >
+                  <ArrowsClockwise size={13} weight="duotone" />
+                </button>
+                <span
+                  data-testid="map-agent-lane-restart-plan"
+                  title={agentLaneRestartTitle(agentLane)}
+                  style={{ ...styles.rowMeta, marginTop: 0 }}
+                >
+                  {agentLaneRestartText(agentLane)}
+                </span>
+                <button
+                  type="button"
+                  style={styles.agentLaneIconButton}
+                  data-testid="map-agent-lane-retry-auth"
+                  title={agentLaneAuthRetryTitle(agentLane)}
+                  aria-label="Retry auth-blocked agent fleet"
+                  disabled={authRetryableAgentWorkstreams.length === 0}
+                  onClick={retryAuthAgentFleet}
+                >
+                  <ArrowsClockwise size={13} weight="duotone" />
+                </button>
+                <span
+                  data-testid="map-agent-lane-auth-retry-plan"
+                  title={agentLaneAuthRetryTitle(agentLane)}
+                  style={{ ...styles.rowMeta, marginTop: 0 }}
+                >
+                  {agentLaneAuthRetryText(agentLane)}
+                </span>
+                <button
+                  type="button"
+                  style={styles.agentLaneIconButton}
+                  data-testid="map-agent-lane-request-cleanup"
+                  title={agentLaneCleanupRequestTitle(agentLane)}
+                  aria-label="Request cleanup for cleanup-ready agent fleet"
+                  disabled={cleanupRequestableAgentWorkstreams.length === 0}
+                  onClick={requestCleanupFromAgentFleet}
+                >
+                  <Trash size={13} weight="duotone" />
+                </button>
+                <span
+                  data-testid="map-agent-lane-cleanup-plan"
+                  title={agentLaneCleanupRequestTitle(agentLane)}
+                  style={{ ...styles.rowMeta, marginTop: 0 }}
+                >
+                  {agentLaneCleanupRequestText(agentLane)}
+                </span>
+                <button
+                  type="button"
+                  style={styles.agentLaneIconButton}
+                  data-testid="map-agent-lane-review-ready"
+                  title={agentLaneCloseoutTitle(agentLane)}
+                  aria-label="Review ready agent closeouts"
+                  disabled={closeoutReadyReviewItems.length === 0}
+                  onClick={reviewReadyAgentCloseouts}
+                >
+                  <CheckCircle size={13} weight="duotone" />
+                </button>
+                <span
+                  data-testid="map-agent-lane-closeout-plan"
+                  title={agentLaneCloseoutTitle(agentLane)}
+                  style={{ ...styles.rowMeta, marginTop: 0 }}
+                >
+                  {agentLaneCloseoutText(agentLane)}
+                </span>
+                <button
+                  type="button"
+                  style={styles.agentLaneIconButton}
+                  data-testid="map-agent-lane-request-proof"
+                  title={agentLaneProofRequestTitle(agentLane)}
+                  aria-label="Request proof from proof-needed agent fleet"
+                  disabled={proofRequestItems.length === 0}
+                  onClick={requestProofFromAgentFleet}
+                >
+                  <FileText size={13} weight="duotone" />
+                </button>
+                <button
+                  type="button"
+                  style={styles.agentLaneIconButton}
+                  data-testid="map-agent-lane-request-memory"
+                  title={agentLaneMemoryRequestTitle(agentLane)}
+                  aria-label="Request handoff memory from memory-needed agent fleet"
+                  disabled={memoryRequestItems.length === 0}
+                  onClick={requestMemoryFromAgentFleet}
+                >
+                  <Note size={13} weight="duotone" />
+                </button>
+                <button
+                  type="button"
+                  style={styles.agentLaneIconButton}
+                  data-testid="map-agent-lane-mitigate-risk"
+                  title={agentLaneRiskMitigationTitle(agentLane)}
+                  aria-label="Request risk mitigation from risky agent fleet"
+                  disabled={riskMitigationItems.length === 0}
+                  onClick={requestRiskMitigationFromAgentFleet}
+                >
+                  <Prohibit size={13} weight="duotone" />
+                </button>
+                <span
+                  data-testid="map-agent-lane-risk-plan"
+                  title={agentLaneRiskMitigationTitle(agentLane)}
+                  style={{ ...styles.rowMeta, marginTop: 0 }}
+                >
+                  {agentLaneRiskMitigationText(agentLane)}
+                </span>
+                <span
+                  data-testid="map-agent-lane-memory-plan"
+                  title={agentLaneMemoryRequestTitle(agentLane)}
+                  style={{ ...styles.rowMeta, marginTop: 0 }}
+                >
+                  {agentLaneMemoryRequestText(agentLane)}
+                </span>
+                <span
+                  data-testid="map-agent-lane-proof-plan"
+                  title={agentLaneProofRequestTitle(agentLane)}
+                  style={{ ...styles.rowMeta, marginTop: 0 }}
+                >
+                  {agentLaneProofRequestText(agentLane)}
+                </span>
+                <button
+                  type="button"
+                  style={styles.agentLaneIconButton}
+                  data-testid="map-agent-lane-copy-mission"
+                  title="Copy mission control brief"
+                  aria-label="Copy mission control brief"
+                  onClick={() => {
+                    if (navigator.clipboard?.writeText) {
+                      void navigator.clipboard.writeText(formatAgentMissionControlBrief(agentLane));
+                    }
+                  }}
+                >
+                  <ClipboardText size={13} weight="duotone" />
+                </button>
+                <button
+                  type="button"
+                  style={styles.agentLaneIconButton}
+                  data-testid="map-agent-lane-copy-brief"
+                  title="Copy agent supervision brief"
+                  aria-label="Copy agent supervision brief"
+                  onClick={() => {
+                    if (navigator.clipboard?.writeText) {
+                      void navigator.clipboard.writeText(formatAgentLaneBrief(agentLane));
+                    }
+                  }}
+                >
+                  <ClipboardText size={13} weight="duotone" />
+                </button>
+                <span>{agentLane.total}</span>
+              </span>
             </div>
             <div style={styles.agentLaneStats}>
               <span style={styles.agentLaneChip} data-testid="map-agent-lane-total">{agentLane.total} agents</span>
@@ -1719,8 +3160,247 @@ function MapPanel({
               <span style={styles.agentLaneChip}>{agentLane.waiting} waiting</span>
               <span style={styles.agentLaneChip}>{agentLane.blocked} blocked</span>
               <span style={styles.agentLaneChip}>{agentLane.complete} complete</span>
+              <span style={styles.agentLaneChip}>{agentLane.workspaceGroups.length} groups</span>
+              <span style={styles.agentLaneChip}>{agentLane.missionItemCount} mission rows</span>
+              <span style={styles.agentLaneChip}>{agentLane.missionActionCount} actions</span>
+              {agentLane.hiddenMissionItemCount > 0 && (
+                <span style={styles.agentLaneChip}>+{agentLane.hiddenMissionItemCount} hidden rows</span>
+              )}
+              {agentLane.hiddenMissionActionCount > 0 && (
+                <span style={styles.agentLaneChip}>+{agentLane.hiddenMissionActionCount} hidden actions</span>
+              )}
+              <span style={styles.agentLaneChip}>{agentLane.promptCount} prompts</span>
+              <span style={styles.agentLaneChip}>{agentLane.missionControlPromptCount} mission prompts</span>
+              <span style={styles.agentLaneChip}>{agentLane.missionControlPromptSentCount} mission sent</span>
+              <span style={styles.agentLaneChip}>{agentLane.outputCount} outputs</span>
+              <span style={styles.agentLaneChip}>{agentLane.nextCount} next</span>
+              <span style={styles.agentLaneChip}>{agentLane.memoryItems.length} memories</span>
+              <span style={styles.agentLaneChip}>{agentLane.recentEvents.length} events</span>
+              <span style={styles.agentLaneChip}>{agentLane.staleItems.length} stale</span>
+              <span style={styles.agentLaneChip}>{agentLane.evidenceItems.length} evidence</span>
+              <span style={styles.agentLaneChip}>{agentLane.proofItems.length} proof</span>
+              <span style={styles.agentLaneChip}>{agentLane.authItems.length} auth</span>
+              <span style={styles.agentLaneChip}>{agentLane.riskItems.length} risk</span>
+              <span style={styles.agentLaneChip}>{agentLane.recoveryItems.length} recovery</span>
+              <span style={styles.agentLaneChip}>{agentLane.reviewItems.length} review</span>
+              <span style={styles.agentLaneChip}>{agentLane.reviewCloseoutReady} closeout ready</span>
+              <span style={styles.agentLaneChip}>{agentLane.reviewCloseoutBlocked} closeout blocked</span>
+              <span style={styles.agentLaneChip}>{agentLane.reviewReadyWithProof} proven</span>
+              <span style={styles.agentLaneChip}>{agentLane.reviewNeedsProof} unproven</span>
+              <span style={styles.agentLaneChip}>{agentLane.reviewReadyWithMemory} handoff ready</span>
+              <span style={styles.agentLaneChip}>{agentLane.reviewNeedsMemory} handoff missing</span>
+              <span style={styles.agentLaneChip}>{agentLane.attentionItems.length} queue</span>
+              <span style={styles.agentLaneChip}>{agentLane.dedicated} dedicated</span>
+              <span style={styles.agentLaneChip}>{agentLane.shared} shared</span>
+              <span style={styles.agentLaneChip}>{agentLane.cleanupRequested} cleanup</span>
               <span style={styles.agentLaneChip}>{agentLane.attention} attention</span>
             </div>
+            <div
+              style={styles.agentLaneItem}
+              data-testid="map-agent-lane-headline"
+              aria-label="Agent cockpit headline"
+              title={agentLane.cockpitHeadline.detail}
+            >
+              <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {agentLane.cockpitHeadline.label}
+              </span>
+              <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                {agentLane.cockpitHeadline.detail}
+              </span>
+            </div>
+            <div
+              style={styles.agentLaneItem}
+              data-testid="map-agent-lane-health"
+              aria-label="Agent lane health"
+              title={agentLaneHealthText(agentLane)}
+            >
+              <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                Health
+              </span>
+              <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                {agentLaneHealthText(agentLane)}
+              </span>
+            </div>
+            {agentLane.missionBreakdown.length > 0 && (
+              <div
+                style={styles.agentLaneItem}
+                data-testid="map-agent-lane-mission-breakdown"
+                title={missionBreakdownText(agentLane)}
+              >
+                <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  Mission mix
+                </span>
+                <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                  {missionBreakdownText(agentLane)}
+                </span>
+              </div>
+            )}
+            {agentLane.missionControlDispatchBreakdown.length > 0 && (
+              <div
+                style={styles.agentLaneItem}
+                data-testid="map-agent-lane-dispatch-breakdown"
+                title={missionControlDispatchBreakdownText(agentLane)}
+              >
+                <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  Dispatch mix
+                </span>
+                <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                  {missionControlDispatchBreakdownText(agentLane)}
+                </span>
+              </div>
+            )}
+            {agentLane.providerBreakdown.length > 0 && (
+              <div
+                style={styles.agentLaneItem}
+                data-testid="map-agent-lane-provider-breakdown"
+                title={providerBreakdownText(agentLane)}
+              >
+                <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  Provider mix
+                </span>
+                <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                  {providerBreakdownText(agentLane)}
+                </span>
+              </div>
+            )}
+            {agentLane.isolationBreakdown.length > 0 && (
+              <div
+                style={styles.agentLaneItem}
+                data-testid="map-agent-lane-isolation-breakdown"
+                title={isolationBreakdownText(agentLane)}
+              >
+                <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  Isolation mix
+                </span>
+                <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                  {isolationBreakdownText(agentLane)}
+                </span>
+              </div>
+            )}
+            {agentLane.cleanupBreakdown.length > 0 && (
+              <div
+                style={styles.agentLaneItem}
+                data-testid="map-agent-lane-cleanup-breakdown"
+                title={cleanupBreakdownText(agentLane)}
+              >
+                <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  Cleanup mix
+                </span>
+                <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                  {cleanupBreakdownText(agentLane)}
+                </span>
+              </div>
+            )}
+            {agentLane.readinessBreakdown.length > 0 && (
+              <div
+                style={styles.agentLaneItem}
+                data-testid="map-agent-lane-readiness-breakdown"
+                title={readinessBreakdownText(agentLane)}
+              >
+                <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  Readiness mix
+                </span>
+                <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                  {readinessBreakdownText(agentLane)}
+                </span>
+              </div>
+            )}
+            {agentLane.attentionBreakdown.length > 0 && (
+              <div
+                style={styles.agentLaneItem}
+                data-testid="map-agent-lane-attention-breakdown"
+                title={attentionBreakdownText(agentLane)}
+              >
+                <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  Attention mix
+                </span>
+                <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                  {attentionBreakdownText(agentLane)}
+                </span>
+              </div>
+            )}
+            {agentLane.riskBreakdown.length > 0 && (
+              <div
+                style={styles.agentLaneItem}
+                data-testid="map-agent-lane-risk-breakdown"
+                title={riskBreakdownText(agentLane)}
+              >
+                <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  Risk mix
+                </span>
+                <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                  {riskBreakdownText(agentLane)}
+                </span>
+              </div>
+            )}
+            {agentLane.closeoutBreakdown.length > 0 && (
+              <div
+                style={styles.agentLaneItem}
+                data-testid="map-agent-lane-closeout-breakdown"
+                title={closeoutBreakdownText(agentLane)}
+              >
+                <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  Closeout mix
+                </span>
+                <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                  {closeoutBreakdownText(agentLane)}
+                </span>
+              </div>
+            )}
+            {agentLane.supervisorItems.length > 0 && (
+              <div style={styles.agentLaneList} aria-label="Agent mission control">
+                {agentLane.supervisorItems.map((item) => {
+                  const node = canvasState.nodes.find((candidate) => candidate.terminalTabId === item.tabId);
+                  return (
+                    <button
+                      key={`${item.tabId}-${item.label}-${item.detail}`}
+                      type="button"
+                      style={styles.agentLaneItem}
+                      data-testid="map-agent-supervisor-item"
+                      title={`${item.label} ${item.title}`}
+                      onClick={() => {
+                        setActiveTab(item.tabId);
+                        if (item.action === "queue-prompt" && item.prompt) {
+                          useWorkspaceStore.getState().queueWorkstreamInput(item.tabId, item.prompt, {
+                            source: "mission-control",
+                            label: item.label,
+                          });
+                        }
+                        if (item.action === "review") {
+                          useWorkspaceStore.getState().reviewWorkstream(item.tabId, {
+                            source: "mission-control",
+                            label: item.label,
+                          });
+                        }
+                        setWorkspaceMode("canvas");
+                        if (node) focusCanvasNode(node);
+                      }}
+                    >
+                      <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {item.label}
+                      </span>
+                      <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                        {item.title} · {item.runIdentity} · {item.workspaceIdentity} · Now: {item.activity} · Signal: {item.signalAge} · Source: {item.signalSource} · {item.detail}{missionControlAlternateText(item) ? ` · Also: ${missionControlAlternateText(item)}` : ""}
+                      </span>
+                    </button>
+                  );
+                })}
+                {agentLane.hiddenMissionItemCount > 0 && (
+                  <div
+                    style={styles.agentLaneItem}
+                    data-testid="map-agent-supervisor-overflow"
+                    title={`${agentLane.hiddenMissionItemCount} mission rows and ${agentLane.hiddenMissionActionCount} actions hidden below the visible queue${agentLane.hiddenSupervisorItems[0] ? `: ${agentLane.hiddenSupervisorItems[0].title} · ${agentLane.hiddenSupervisorItems[0].label} · ${agentLane.hiddenSupervisorItems[0].detail}${missionControlAlternateText(agentLane.hiddenSupervisorItems[0]) ? ` · Also: ${missionControlAlternateText(agentLane.hiddenSupervisorItems[0])}` : ""}` : ""}`}
+                  >
+                    <span>+{agentLane.hiddenMissionItemCount} rows · {agentLane.hiddenMissionActionCount} actions</span>
+                    <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                      {agentLane.hiddenSupervisorItems[0]
+                        ? `${agentLane.hiddenSupervisorItems[0].title} · ${agentLane.hiddenSupervisorItems[0].label} · ${agentLane.hiddenSupervisorItems[0].detail}${missionControlAlternateText(agentLane.hiddenSupervisorItems[0]) ? ` · Also: ${missionControlAlternateText(agentLane.hiddenSupervisorItems[0])}` : ""}`
+                        : "Mission rows hidden below the visible queue"}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
             {agentLane.primaryAttention && (
               <button
                 type="button"
@@ -1742,30 +3422,629 @@ function MapPanel({
                 </span>
               </button>
             )}
-            <div style={styles.agentLaneList}>
-              {agentLane.workstreams.slice(0, 3).map(({ tab, workstream }) => {
-                const node = canvasState.nodes.find((candidate) => candidate.terminalTabId === tab.id);
+            {agentLane.attentionItems.length > 0 && (
+              <div style={styles.agentLaneList} aria-label="Agent attention queue">
+                {agentLane.attentionItems.slice(0, 3).map((item) => {
+                  const node = canvasState.nodes.find((candidate) => candidate.terminalTabId === item.tabId);
+                  return (
+                    <button
+                      key={item.tabId}
+                      type="button"
+                      style={styles.agentLaneItem}
+                      data-testid="map-agent-attention-item"
+                      title={`Focus ${item.title}`}
+                      onClick={() => {
+                        setActiveTab(item.tabId);
+                        setWorkspaceMode("canvas");
+                        if (node) focusCanvasNode(node);
+                      }}
+                    >
+                      <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {item.label}
+                      </span>
+                      <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                        {item.title} · {item.detail}
+                      </span>
+                    </button>
+                  );
+                })}
+                {agentLane.attentionItems.length > 3 && (
+                  <div style={styles.agentLaneOverflow} data-testid="map-agent-attention-overflow">
+                    +{agentLane.attentionItems.length - 3} more attention · {agentLane.attentionItems[3].label} · {agentLane.attentionItems[3].title} · {agentLane.attentionItems[3].detail}
+                  </div>
+                )}
+              </div>
+            )}
+            <div style={styles.agentLaneList} aria-label="Agent workspace groups">
+              {agentLane.workspaceGroups.slice(0, 3).map((group) => {
+                const node = canvasState.nodes.find((candidate) => candidate.terminalTabId === group.primaryTabId);
+                const cleanupText = group.cleanupRequested > 0 ? ` · ${group.cleanupRequested} cleanup` : "";
+                const attentionText = group.attention > 0 ? ` · ${group.attention} attention` : "";
                 return (
                   <button
-                    key={tab.id}
+                    key={group.id}
                     type="button"
                     style={styles.agentLaneItem}
-                    title={workstream.lastSummary ?? workstream.mission ?? workstream.prompt ?? tab.title}
+                    data-testid="map-agent-workspace-group"
+                    title={`Copy workspace group ${group.label}`}
                     onClick={() => {
-                      setActiveTab(tab.id);
+                      if (!group.primaryTabId) return;
+                      setActiveTab(group.primaryTabId);
+                      if (navigator.clipboard?.writeText) {
+                        void navigator.clipboard.writeText(group.brief);
+                      }
                       setWorkspaceMode("canvas");
                       if (node) focusCanvasNode(node);
                     }}
                   >
                     <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {tab.title}
+                      {group.label}
                     </span>
                     <span style={{ ...styles.rowMeta, marginTop: 0 }}>
-                      {workstreamLabel(workstream.provider)} · {workstream.phase ?? workstream.status}
+                      {group.total} agents · {group.active} active · {group.detail}{cleanupText}{attentionText}
                     </span>
                   </button>
                 );
               })}
+              {agentLane.workspaceGroups.length > 3 && (
+                <div style={styles.agentLaneOverflow} data-testid="map-agent-workspace-group-overflow">
+                  +{agentLane.workspaceGroups.length - 3} more groups · {agentLane.workspaceGroups[3].label} · {agentLane.workspaceGroups[3].total} agents · {agentLane.workspaceGroups[3].active} active · {agentLane.workspaceGroups[3].detail}
+                </div>
+              )}
+            </div>
+            {agentLane.recentEvents.length > 0 && (
+              <div style={styles.agentLaneList} aria-label="Agent recent events">
+                {agentLane.recentEvents.slice(0, 3).map((item) => {
+                  const node = canvasState.nodes.find((candidate) => candidate.terminalTabId === item.tabId);
+                  return (
+                    <button
+                      key={`${item.tabId}-${item.at}-${item.label}`}
+                      type="button"
+                      style={styles.agentLaneItem}
+                      data-testid="map-agent-recent-event"
+                      title={`Copy event for ${item.title}`}
+                      onClick={() => {
+                        setActiveTab(item.tabId);
+                        if (navigator.clipboard?.writeText) {
+                          void navigator.clipboard.writeText(item.brief);
+                        }
+                        setWorkspaceMode("canvas");
+                        if (node) focusCanvasNode(node);
+                      }}
+                    >
+                      <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        Copy event
+                      </span>
+                      <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                        {item.title} · {item.label}{item.detail ? ` · ${item.detail}` : ""}
+                      </span>
+                    </button>
+                  );
+                })}
+                {agentLane.recentEvents.length > 3 && (
+                  <div
+                    style={styles.agentLaneItem}
+                    data-testid="map-agent-recent-event-overflow"
+                    title={`${agentLane.recentEvents.length - 3} recent events hidden below the visible event list`}
+                  >
+                    <span>+{agentLane.recentEvents.length - 3} more events</span>
+                    <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                      {agentLane.recentEvents[3].title} · {agentLane.recentEvents[3].label}{agentLane.recentEvents[3].detail ? ` · ${agentLane.recentEvents[3].detail}` : ""}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+            {agentLane.inputItems.length > 0 && (
+              <div style={styles.agentLaneList} aria-label="Agent operator prompts">
+                {agentLane.inputItems.slice(0, 3).map((item) => {
+                  const node = canvasState.nodes.find((candidate) => candidate.terminalTabId === item.tabId);
+                  return (
+                    <button
+                      key={`${item.tabId}-${item.at}-${item.text}`}
+                      type="button"
+                      style={styles.agentLaneItem}
+                      data-testid="map-agent-input-item"
+                      title={`Copy prompt for ${item.title}`}
+                      onClick={() => {
+                        setActiveTab(item.tabId);
+                        if (navigator.clipboard?.writeText) {
+                          void navigator.clipboard.writeText(item.brief);
+                        }
+                        setWorkspaceMode("canvas");
+                        if (node) focusCanvasNode(node);
+                      }}
+                    >
+                      <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        Copy prompt
+                      </span>
+                      <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                        {item.title} · {item.state} · {item.text}
+                      </span>
+                    </button>
+                  );
+                })}
+                {agentLane.inputItems.length > 3 && (
+                  <div
+                    style={styles.agentLaneItem}
+                    data-testid="map-agent-input-overflow"
+                    title={`${agentLane.inputItems.length - 3} operator prompts hidden below the visible prompt list`}
+                  >
+                    <span>+{agentLane.inputItems.length - 3} more prompts</span>
+                    <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                      {agentLane.inputItems[3].title} · {agentLane.inputItems[3].state} · {agentLane.inputItems[3].text}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+            {agentLane.outputItems.length > 0 && (
+              <div style={styles.agentLaneList} aria-label="Agent terminal output">
+                {agentLane.outputItems.slice(0, 3).map((item) => {
+                  const node = canvasState.nodes.find((candidate) => candidate.terminalTabId === item.tabId);
+                  return (
+                    <button
+                      key={`${item.tabId}-${item.at}-${item.output}`}
+                      type="button"
+                      style={styles.agentLaneItem}
+                      data-testid="map-agent-output-item"
+                      title={`Copy terminal output for ${item.title}`}
+                      onClick={() => {
+                        setActiveTab(item.tabId);
+                        if (navigator.clipboard?.writeText) {
+                          void navigator.clipboard.writeText(item.brief);
+                        }
+                        setWorkspaceMode("canvas");
+                        if (node) focusCanvasNode(node);
+                      }}
+                    >
+                      <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        Copy output
+                      </span>
+                      <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                        {item.title} · {item.output}
+                      </span>
+                    </button>
+                  );
+                })}
+                {agentLane.outputItems.length > 3 && (
+                  <div
+                    style={styles.agentLaneItem}
+                    data-testid="map-agent-output-overflow"
+                    title={`${agentLane.outputItems.length - 3} terminal outputs hidden below the visible output list`}
+                  >
+                    <span>+{agentLane.outputItems.length - 3} more output</span>
+                    <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                      {agentLane.outputItems[3].title} · {agentLane.outputItems[3].output}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+            {agentLane.nextItems.length > 0 && (
+              <div style={styles.agentLaneList} aria-label="Agent next actions">
+                {agentLane.nextItems.slice(0, 3).map((item) => {
+                  const node = canvasState.nodes.find((candidate) => candidate.terminalTabId === item.tabId);
+                  return (
+                    <button
+                      key={`${item.tabId}-${item.at}-${item.nextAction}`}
+                      type="button"
+                      style={styles.agentLaneItem}
+                      data-testid="map-agent-next-item"
+                      title={`Copy next action for ${item.title}`}
+                      onClick={() => {
+                        setActiveTab(item.tabId);
+                        if (navigator.clipboard?.writeText) {
+                          void navigator.clipboard.writeText(item.brief);
+                        }
+                        setWorkspaceMode("canvas");
+                        if (node) focusCanvasNode(node);
+                      }}
+                    >
+                      <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        Copy next
+                      </span>
+                      <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                        {item.title} · {item.nextAction}
+                      </span>
+                    </button>
+                  );
+                })}
+                {agentLane.nextItems.length > 3 && (
+                  <div
+                    style={styles.agentLaneItem}
+                    data-testid="map-agent-next-overflow"
+                    title={`${agentLane.nextItems.length - 3} next actions hidden below the visible next-action list`}
+                  >
+                    <span>+{agentLane.nextItems.length - 3} more next</span>
+                    <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                      {agentLane.nextItems[3].title} · {agentLane.nextItems[3].nextAction}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+            {agentLane.staleItems.length > 0 && (
+              <div style={styles.agentLaneList} aria-label="Agent stale queue">
+                {agentLane.staleItems.slice(0, 3).map((item) => {
+                  const node = canvasState.nodes.find((candidate) => candidate.terminalTabId === item.tabId);
+                  return (
+                    <button
+                      key={item.tabId}
+                      type="button"
+                      style={styles.agentLaneItem}
+                      data-testid="map-agent-stale-item"
+                      title={`Send status check to ${item.title}`}
+                      onClick={() => {
+                        setActiveTab(item.tabId);
+                        useWorkspaceStore.getState().queueWorkstreamInput(item.tabId, item.prompt, {
+                          source: "mission-control",
+                          label: "Check in",
+                        });
+                        setWorkspaceMode("canvas");
+                        if (node) focusCanvasNode(node);
+                      }}
+                    >
+                      <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        Check in
+                      </span>
+                      <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                        {item.title} · {item.detail}
+                      </span>
+                    </button>
+                  );
+                })}
+                {agentLane.staleItems.length > 3 && (
+                  <div style={styles.agentLaneOverflow} data-testid="map-agent-stale-overflow">
+                    +{agentLane.staleItems.length - 3} more stale · {agentLane.staleItems[3].title} · {agentLane.staleItems[3].detail}
+                  </div>
+                )}
+              </div>
+            )}
+            {agentLane.riskItems.length > 0 && (
+              <div style={styles.agentLaneList} aria-label="Agent risk queue">
+                {agentLane.riskItems.slice(0, 3).map((item) => {
+                  const node = canvasState.nodes.find((candidate) => candidate.terminalTabId === item.tabId);
+                  return (
+                    <button
+                      key={item.tabId}
+                      type="button"
+                      style={styles.agentLaneItem}
+                      data-testid="map-agent-risk-item"
+                      title={`Send risk mitigation prompt to ${item.title}`}
+                      onClick={() => {
+                        setActiveTab(item.tabId);
+                        useWorkspaceStore.getState().queueWorkstreamInput(item.tabId, item.prompt, {
+                          source: "mission-control",
+                          label: "Mitigate risk",
+                        });
+                        setWorkspaceMode("canvas");
+                        if (node) focusCanvasNode(node);
+                      }}
+                    >
+                      <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        Mitigate
+                      </span>
+                      <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                        {item.title} · {item.detail}
+                      </span>
+                    </button>
+                  );
+                })}
+                {agentLane.riskItems.length > 3 && (
+                  <div style={styles.agentLaneOverflow} data-testid="map-agent-risk-overflow">
+                    +{agentLane.riskItems.length - 3} more risk · {agentLane.riskItems[3].title} · {agentLane.riskItems[3].detail}
+                  </div>
+                )}
+              </div>
+            )}
+            {agentLane.authItems.length > 0 && (
+              <div style={styles.agentLaneList} aria-label="Agent auth queue">
+                {agentLane.authItems.slice(0, 3).map((item) => {
+                  const node = canvasState.nodes.find((candidate) => candidate.terminalTabId === item.tabId);
+                  return (
+                    <button
+                      key={item.tabId}
+                      type="button"
+                      style={styles.agentLaneItem}
+                      data-testid="map-agent-auth-item"
+                      title={`Copy auth handoff for ${item.title}`}
+                      onClick={() => {
+                        setActiveTab(item.tabId);
+                        if (navigator.clipboard?.writeText) {
+                          void navigator.clipboard.writeText(item.brief);
+                        }
+                        setWorkspaceMode("canvas");
+                        if (node) focusCanvasNode(node);
+                      }}
+                    >
+                      <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        Copy auth
+                      </span>
+                      <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                        {item.title} · {item.reason} · {item.nextAction}
+                      </span>
+                    </button>
+                  );
+                })}
+                {agentLane.authItems.length > 3 && (
+                  <div
+                    style={styles.agentLaneItem}
+                    data-testid="map-agent-auth-overflow"
+                    title={`${agentLane.authItems.length - 3} auth blockers hidden below the visible auth queue`}
+                  >
+                    <span>+{agentLane.authItems.length - 3} more auth</span>
+                    <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                      {agentLane.authItems[3].title} · {agentLane.authItems[3].reason} · {agentLane.authItems[3].nextAction}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+            {agentLane.recoveryItems.length > 0 && (
+              <div style={styles.agentLaneList} aria-label="Agent recovery queue">
+                {agentLane.recoveryItems.slice(0, 3).map((item) => {
+                  const node = canvasState.nodes.find((candidate) => candidate.terminalTabId === item.tabId);
+                  return (
+                    <button
+                      key={item.tabId}
+                      type="button"
+                      style={styles.agentLaneItem}
+                      data-testid="map-agent-recovery-item"
+                      title={`Send recovery prompt to ${item.title}`}
+                      onClick={() => {
+                        setActiveTab(item.tabId);
+                        useWorkspaceStore.getState().queueWorkstreamInput(item.tabId, item.prompt, {
+                          source: "mission-control",
+                          label: "Recover",
+                        });
+                        setWorkspaceMode("canvas");
+                        if (node) focusCanvasNode(node);
+                      }}
+                    >
+                      <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        Recover
+                      </span>
+                      <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                        {item.title} · {item.reason} · {item.prompt}
+                      </span>
+                    </button>
+                  );
+                })}
+                {agentLane.recoveryItems.length > 3 && (
+                  <div style={styles.agentLaneOverflow} data-testid="map-agent-recovery-overflow">
+                    +{agentLane.recoveryItems.length - 3} more recovery · {agentLane.recoveryItems[3].title} · {agentLane.recoveryItems[3].reason} · {agentLane.recoveryItems[3].prompt}
+                  </div>
+                )}
+              </div>
+            )}
+            {agentLane.proofItems.length > 0 && (
+              <div style={styles.agentLaneList} aria-label="Agent proof needed queue">
+                {agentLane.proofItems.slice(0, 3).map((item) => {
+                  const node = canvasState.nodes.find((candidate) => candidate.terminalTabId === item.tabId);
+                  return (
+                    <button
+                      key={item.tabId}
+                      type="button"
+                      style={styles.agentLaneItem}
+                      data-testid="map-agent-proof-item"
+                      title={`Send proof request to ${item.title}`}
+                      onClick={() => {
+                        setActiveTab(item.tabId);
+                        useWorkspaceStore.getState().queueWorkstreamInput(item.tabId, item.request, {
+                          source: "mission-control",
+                          label: "Request proof",
+                        });
+                        setWorkspaceMode("canvas");
+                        if (node) focusCanvasNode(node);
+                      }}
+                    >
+                      <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        Request proof
+                      </span>
+                      <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                        {item.title} · {item.summary} · {item.request}
+                      </span>
+                    </button>
+                  );
+                })}
+                {agentLane.proofItems.length > 3 && (
+                  <div
+                    style={styles.agentLaneItem}
+                    data-testid="map-agent-proof-overflow"
+                    title={`${agentLane.proofItems.length - 3} proof requests hidden below the visible proof queue`}
+                  >
+                    <span>+{agentLane.proofItems.length - 3} more proof</span>
+                    <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                      {agentLane.proofItems[3].title} · {agentLane.proofItems[3].summary} · {agentLane.proofItems[3].request}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+            {agentLane.evidenceItems.length > 0 && (
+              <div style={styles.agentLaneList} aria-label="Agent evidence queue">
+                {agentLane.evidenceItems.slice(0, 3).map((item) => {
+                  const node = canvasState.nodes.find((candidate) => candidate.terminalTabId === item.tabId);
+                  return (
+                    <button
+                      key={item.tabId}
+                      type="button"
+                      style={styles.agentLaneItem}
+                      data-testid="map-agent-evidence-item"
+                      title={item.artifactPath ? `Open artifact for ${item.title}` : `Copy evidence for ${item.title}`}
+                      onClick={() => {
+                        setActiveTab(item.tabId);
+                        if (item.artifactPath) {
+                          useWorkspaceStore.getState().addOpenFile({
+                            path: item.artifactPath,
+                            name: item.artifactName ?? item.artifactPath,
+                            dirty: false,
+                          });
+                        }
+                        if (navigator.clipboard?.writeText) {
+                          void navigator.clipboard.writeText(item.brief);
+                        }
+                        setWorkspaceMode("canvas");
+                        if (node) focusCanvasNode(node);
+                      }}
+                    >
+                      <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {item.artifactPath ? "Open proof" : "Copy proof"}
+                      </span>
+                      <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                        {item.title} · {item.evidence}{item.artifact ? ` · ${item.artifact}` : ""}
+                      </span>
+                    </button>
+                  );
+                })}
+                {agentLane.evidenceItems.length > 3 && (
+                  <div
+                    style={styles.agentLaneItem}
+                    data-testid="map-agent-evidence-overflow"
+                    title={`${agentLane.evidenceItems.length - 3} evidence rows hidden below the visible evidence queue`}
+                  >
+                    <span>+{agentLane.evidenceItems.length - 3} more evidence</span>
+                    <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                      {agentLane.evidenceItems[3].title} · {agentLane.evidenceItems[3].evidence}{agentLane.evidenceItems[3].artifact ? ` · ${agentLane.evidenceItems[3].artifact}` : ""}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+            {agentLane.reviewItems.length > 0 && (
+              <div style={styles.agentLaneList} aria-label="Agent review queue">
+                {agentLane.reviewItems.slice(0, 3).map((item) => {
+                  const node = canvasState.nodes.find((candidate) => candidate.terminalTabId === item.tabId);
+                  const canCloseout = isReviewItemCloseoutReady(item);
+                  return (
+                    <button
+                      key={item.tabId}
+                      type="button"
+                      style={styles.agentLaneItem}
+                      data-testid="map-agent-review-item"
+                      title={canCloseout ? `Mark ${item.title} reviewed` : `Review blocked for ${item.title} until proof and handoff memory are ready`}
+                      onClick={() => {
+                        setActiveTab(item.tabId);
+                        setWorkspaceMode("canvas");
+                        if (node) focusCanvasNode(node);
+                        if (canCloseout) {
+                          useWorkspaceStore.getState().reviewWorkstream(item.tabId, {
+                            source: "mission-control",
+                            label: "Review",
+                          });
+                        }
+                      }}
+                    >
+                      <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {canCloseout ? "Review" : "Blocked review"}
+                      </span>
+                      <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                        {item.title} · {item.proofStatus} · {item.handoffStatus} · {item.summary} · {item.detail}
+                      </span>
+                    </button>
+                  );
+                })}
+                {agentLane.reviewItems.length > 3 && (
+                  <div
+                    style={styles.agentLaneItem}
+                    data-testid="map-agent-review-overflow"
+                    title={`${agentLane.reviewItems.length - 3} review items hidden below the visible review queue`}
+                  >
+                    <span>+{agentLane.reviewItems.length - 3} more review</span>
+                    <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                      {agentLane.reviewItems[3].title} · {agentLane.reviewItems[3].proofStatus} · {agentLane.reviewItems[3].handoffStatus} · {agentLane.reviewItems[3].summary}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+            {agentLane.memoryItems.length > 0 && (
+              <div style={styles.agentLaneList} aria-label="Agent lane memory">
+                {agentLane.memoryItems.slice(0, 3).map((item) => {
+                  const node = canvasState.nodes.find((candidate) => candidate.terminalTabId === item.tabId);
+                  return (
+                    <button
+                      key={item.tabId}
+                      type="button"
+                      style={styles.agentLaneItem}
+                      data-testid="map-agent-lane-memory"
+                      title={`Copy memory for ${item.title}`}
+                      onClick={() => {
+                        setActiveTab(item.tabId);
+                        if (navigator.clipboard?.writeText) {
+                          void navigator.clipboard.writeText(item.brief);
+                        }
+                        setWorkspaceMode("canvas");
+                        if (node) focusCanvasNode(node);
+                      }}
+                    >
+                      <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        Copy memory
+                      </span>
+                      <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                        {item.title} · {item.memory}
+                      </span>
+                    </button>
+                  );
+                })}
+                {agentLane.memoryItems.length > 3 && (
+                  <div
+                    style={styles.agentLaneItem}
+                    data-testid="map-agent-memory-overflow"
+                    title={`${agentLane.memoryItems.length - 3} memory rows hidden below the visible handoff-memory list`}
+                  >
+                    <span>+{agentLane.memoryItems.length - 3} more memory</span>
+                    <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                      {agentLane.memoryItems[3].title} · {agentLane.memoryItems[3].memory}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+            <div style={styles.agentLaneList}>
+              {agentLane.workstreams.slice(0, 3).map(({ tab, workstream }) => {
+                const node = canvasState.nodes.find((candidate) => candidate.terminalTabId === tab.id);
+                const askText = latestMissionControlAskText(workstream);
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    style={styles.agentLaneItem}
+                    data-testid="map-agent-run-item"
+                    title={`Copy run brief for ${tab.title}`}
+                    onClick={() => {
+                      setActiveTab(tab.id);
+                      if (navigator.clipboard?.writeText) {
+                        void navigator.clipboard.writeText(formatAgentRunBrief(tab));
+                      }
+                      setWorkspaceMode("canvas");
+                      if (node) focusCanvasNode(node);
+                    }}
+                  >
+                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      Copy run
+                    </span>
+                    <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                      {workstreamLabel(workstream.provider)} · {workstream.phase ?? workstream.status} · {workstreamActivityText(workstream)} · {formatWorkstreamOpsContext(workstream)}
+                      {askText ? ` · ${askText}` : ""}
+                    </span>
+                  </button>
+                );
+              })}
+              {agentLane.workstreams.length > 3 && (
+                <div
+                  style={styles.agentLaneItem}
+                  data-testid="map-agent-run-overflow"
+                  title={`${agentLane.workstreams.length - 3} agent runs hidden below the visible run list`}
+                >
+                  <span>+{agentLane.workstreams.length - 3} more agents</span>
+                  <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                    {workstreamLabel(agentLane.workstreams[3].workstream.provider)} · {agentLane.workstreams[3].workstream.phase ?? agentLane.workstreams[3].workstream.status} · {workstreamActivityText(agentLane.workstreams[3].workstream)} · {formatWorkstreamOpsContext(agentLane.workstreams[3].workstream)}
+                    {latestMissionControlAskText(agentLane.workstreams[3].workstream) ? ` · ${latestMissionControlAskText(agentLane.workstreams[3].workstream)}` : ""}
+                  </span>
+                </div>
+              )}
             </div>
           </div>
         )}

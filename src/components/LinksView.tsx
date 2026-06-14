@@ -37,6 +37,7 @@ const statusTone: Record<TerminalRuntimeStatus, string> = {
   reconnected: "var(--accent-positive, #5fb878)",
   stale: "var(--text-tertiary, #8a8f93)",
   failed: "var(--accent-danger, #d96b6b)",
+  exited: "var(--text-tertiary, #8a8f93)",
 };
 
 function sessionStatus(tab: Tab): { tone: string; label: string } {
@@ -46,6 +47,7 @@ function sessionStatus(tab: Tab): { tone: string; label: string } {
     return { tone: statusTone.running, label: "running" };
   if (statuses.includes("starting")) return { tone: statusTone.starting, label: "starting" };
   if (statuses.includes("stale")) return { tone: statusTone.stale, label: "stale" };
+  if (statuses.includes("exited")) return { tone: statusTone.exited, label: "exited" };
   return { tone: "var(--text-tertiary, #8a8f93)", label: tab.terminals.length ? "idle" : "no pty" };
 }
 

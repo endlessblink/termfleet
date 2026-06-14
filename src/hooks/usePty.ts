@@ -19,14 +19,18 @@ interface UsePtyOptions {
   onReady?: (id: string, details: { reused: boolean }) => void;
   onStatus?: (status: TerminalRuntimeStatus, details?: { id?: string; error?: string }) => void;
   onOutput?: (data: string) => void;
+  onExit?: (details: { id: string; code: number; success: boolean }) => void;
 }
 
 interface BrowserPtySession {
   cwd: string;
   subscribers: Set<Terminal>;
   outputSubscribers: Set<(data: string) => void>;
+  exitSubscribers: Set<(details: { id: string; code: number; success: boolean }) => void>;
   input: string;
   output: string;
+  exited?: boolean;
+  exitCode?: number;
 }
 
 interface PtyEnsureResult {
@@ -180,6 +184,18 @@ function broadcastBrowserPty(id: string, data: string) {
   syncBrowserPtyDebugState();
 }
 
+function broadcastBrowserExit(id: string, code: number) {
+  const session = browserPtys.get(id);
+  if (!session || session.exited) return;
+  session.exited = true;
+  session.exitCode = code;
+  const success = code === 0;
+  const line = `process exited with code ${code}\r\n`;
+  broadcastBrowserPty(id, line);
+  session.exitSubscribers.forEach((subscriber) => subscriber({ id, code, success }));
+  syncBrowserPtyDebugState();
+}
+
 function browserList(cwd: string) {
   if (cwd.endsWith("/src")) return "components  hooks  stores  styles  main.tsx\r\n";
   if (cwd.endsWith("/docs")) return "terminal-cockpit-design-contract.md  visual-baselines\r\n";
@@ -251,6 +267,13 @@ function runBrowserCommand(id: string, command: string) {
     return;
   }
 
+  if (trimmed === "exit" || /^exit\s+-?\d+$/.test(trimmed)) {
+    const rawCode = trimmed === "exit" ? 0 : Number(trimmed.split(/\s+/)[1]);
+    const code = Number.isInteger(rawCode) ? rawCode : 0;
+    broadcastBrowserExit(id, code);
+    return;
+  }
+
   if (trimmed === "date") {
     broadcastBrowserPty(id, `${new Date().toString()}\r\n${browserPrompt(session.cwd)}`);
     return;
@@ -270,6 +293,7 @@ function runBrowserCommand(id: string, command: string) {
 function writeBrowserPty(id: string, data: string) {
   const session = browserPtys.get(id);
   if (!session) return;
+  if (session.exited) return;
 
   for (const char of data) {
     if (char === "\r") {
@@ -323,7 +347,7 @@ export function writeBrowserPtys(ids: string[], data: string) {
   syncBrowserPtyDebugState();
 }
 
-export function usePty({ terminal, cwd, command, attachToPtyId, runtimeSessionId, onReady, onStatus, onOutput }: UsePtyOptions) {
+export function usePty({ terminal, cwd, command, attachToPtyId, runtimeSessionId, onReady, onStatus, onOutput, onExit }: UsePtyOptions) {
   const ptyIdRef = useRef<string | null>(null);
   const ownsPtyRef = useRef(false);
   const transportRef = useRef<PtyTransport | null>(null);
@@ -414,6 +438,7 @@ export function usePty({ terminal, cwd, command, attachToPtyId, runtimeSessionId
               cwd: cwd ?? "/browser-workspace",
               subscribers: new Set(),
               outputSubscribers: new Set(),
+              exitSubscribers: new Set(),
               input: "",
               output: "",
             };
@@ -425,6 +450,7 @@ export function usePty({ terminal, cwd, command, attachToPtyId, runtimeSessionId
           ptyIdRef.current = id;
           session.subscribers.add(terminal!);
           if (onOutput) session.outputSubscribers.add(onOutput);
+          if (onExit) session.exitSubscribers.add(onExit);
           syncBrowserPtyDebugState();
 
           dataDisposableRef.current = terminal!.onData((data: string) => {
@@ -441,8 +467,11 @@ export function usePty({ terminal, cwd, command, attachToPtyId, runtimeSessionId
           });
           activateInputListener("browser", id);
 
-          onStatus?.(shouldAttachBrowser ? "reconnected" : "running", { id });
+          onStatus?.(session.exited ? "exited" : shouldAttachBrowser ? "reconnected" : "running", { id });
           onReady?.(id, { reused: shouldAttachBrowser });
+          if (session.exited && typeof session.exitCode === "number") {
+            onExit?.({ id, code: session.exitCode, success: session.exitCode === 0 });
+          }
           window.setTimeout(() => {
             if (cancelled || ptyIdRef.current !== id) return;
             if (shouldAttachBrowser) {
@@ -711,6 +740,7 @@ export function usePty({ terminal, cwd, command, attachToPtyId, runtimeSessionId
         const session = browserPtys.get(ptyIdRef.current);
         session?.subscribers.delete(terminal);
         if (onOutput) session?.outputSubscribers.delete(onOutput);
+        if (onExit) session?.exitSubscribers.delete(onExit);
         syncBrowserPtyDebugState();
       }
       ptyIdRef.current = null;
@@ -718,7 +748,7 @@ export function usePty({ terminal, cwd, command, attachToPtyId, runtimeSessionId
       transportRef.current = null;
       transportFailedRef.current = false;
     };
-  }, [terminal, cwd, command, attachToPtyId, runtimeSessionId, onReady, onStatus, onOutput, activateInputListener, disposeInputListener]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [terminal, cwd, command, attachToPtyId, runtimeSessionId, onReady, onStatus, onOutput, onExit, activateInputListener, disposeInputListener]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Resize handler
   const resize = useCallback((cols: number, rows: number) => {

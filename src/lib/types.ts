@@ -1,4 +1,4 @@
-export type TerminalRuntimeStatus = "starting" | "running" | "reconnected" | "stale" | "failed";
+export type TerminalRuntimeStatus = "starting" | "running" | "reconnected" | "stale" | "failed" | "exited";
 
 export interface TerminalState {
   id: string;      // PTY ID
@@ -49,6 +49,11 @@ export type WorkstreamStatus = "ready" | "running" | "waiting" | "failed" | "don
 export type WorkstreamEventKind = "created" | "provider" | "prompt" | "sent" | "status" | "control" | "signal";
 export type WorkstreamPhase = "queued" | "launching" | "active" | "needs-input" | "complete" | "reviewed" | "cancelling" | "interrupted" | "blocked";
 export type WorkstreamReadiness = "path-checked" | "provider-ready" | "auth-required" | "unknown";
+export type WorkstreamActivityKind = "starting" | "running" | "thinking" | "testing" | "editing" | "waiting" | "blocked" | "complete" | "idle";
+export type WorkstreamActivitySource = "structured" | "terminal" | "operator" | "system";
+export type WorkstreamIsolationMode = "shared-worktree" | "dedicated-worktree" | "unknown";
+export type WorkstreamIsolationStatus = "shared" | "requested" | "ready" | "unavailable" | "unknown";
+export type WorktreeCleanupStatus = "not-needed" | "available" | "requested" | "manual" | "removed" | "blocked";
 
 export interface WorkstreamMetadata {
   kind: WorkstreamKind;
@@ -58,6 +63,17 @@ export interface WorkstreamMetadata {
   role?: string;
   mission?: string;
   prompt?: string;
+  cwd?: string;
+  cwdLabel?: string;
+  gitRoot?: string;
+  gitBranch?: string;
+  gitDirty?: boolean;
+  worktreePath?: string;
+  isolationMode?: WorkstreamIsolationMode;
+  isolationStatus?: WorkstreamIsolationStatus;
+  isolationNote?: string;
+  worktreeCleanupStatus?: WorktreeCleanupStatus;
+  worktreeCleanupNote?: string;
   startupCommand?: string;
   phase?: WorkstreamPhase;
   launchMode?: string;
@@ -67,16 +83,24 @@ export interface WorkstreamMetadata {
   stopBehavior?: string;
   controlProtocol?: string;
   structuredStatus?: boolean;
+  currentActivity?: string;
+  activityKind?: WorkstreamActivityKind;
+  activitySource?: WorkstreamActivitySource;
+  activityUpdatedAt?: number;
   lastSummary?: string;
   nextAction?: string;
   evidence?: string;
+  memory?: string;
   stage?: string;
   artifact?: string;
   confidence?: string;
   risk?: string;
+  terminalOutput?: string;
+  terminalOutputUpdatedAt?: number;
   promptCount?: number;
   sentCount?: number;
   signalCount?: number;
+  processedStructuredSignals?: string[];
   controlCount?: number;
   outcome?: string;
   runId?: string;
@@ -96,6 +120,8 @@ export interface WorkstreamInput {
   text: string;
   createdAt: number;
   sentAt?: number;
+  source?: "operator" | "mission-control";
+  label?: string;
 }
 
 export interface WorkstreamEvent {

@@ -194,7 +194,7 @@ lines = open(sys.argv[1], encoding="utf-8", errors="replace").read().splitlines(
 mi = max((i for i, l in enumerate(lines) if "SHORTCUT-PROBE-START" in l), default=-1)
 got = []
 for l in lines[mi + 1:]:
-    if "daemon.write.receive" in l:
+    if "daemon.write.receive" in l or "pty.write.start" in l:
         m = re.search(r'data="([^"]*)"', l)
         if m:
             got.append(m.group(1))

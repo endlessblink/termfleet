@@ -6,6 +6,7 @@ import { useWorkspaceStore } from "../stores/workspace";
 import { splitActivePane, closeActivePane } from "../stores/workspace";
 import type { Tab, TerminalRuntimeStatus } from "../lib/types";
 import { pathTail, projectForTab } from "../lib/projectDisplay";
+import { workstreamActivityText } from "../lib/workstreamActivity";
 import {
   calculatePaneBounds,
   calculateHandles,
@@ -25,6 +26,7 @@ const STATUS_LABELS: Record<TerminalRuntimeStatus, string> = {
   reconnected: "reconnected",
   stale: "stale",
   failed: "failed",
+  exited: "exited",
 };
 
 const STATUS_COLORS: Record<TerminalRuntimeStatus, string> = {
@@ -33,7 +35,15 @@ const STATUS_COLORS: Record<TerminalRuntimeStatus, string> = {
   reconnected: "var(--accent-info)",
   stale: "var(--accent-warning)",
   failed: "var(--accent-danger)",
+  exited: "var(--text-secondary)",
 };
+
+function workstreamLabel(provider?: string) {
+  if (provider === "codex") return "Codex agent";
+  if (provider === "claude") return "Claude agent";
+  if (provider === "opencode") return "OpenCode agent";
+  return "Agent";
+}
 
 // ── PaneToolbar ──────────────────────────────────────────────────────────────
 
@@ -511,6 +521,15 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
         const terminalStatus = paneTerminal?.status ?? "starting";
         const terminalStatusLabel = STATUS_LABELS[terminalStatus];
         const queuedWorkstreamInput = tab.workstream?.inputQueue?.find((input) => !input.sentAt);
+        const workstreamInputs = tab.workstream?.inputQueue ?? [];
+        const latestWorkstreamInput = workstreamInputs[workstreamInputs.length - 1];
+        const latestMissionControlInput = latestWorkstreamInput?.source === "mission-control" ? latestWorkstreamInput : undefined;
+        const agentPaneActivity = !isPreviewPane && tab.workstream?.kind === "agent"
+          ? `${tab.workstream.mission ?? tab.workstream.prompt ?? tab.title} · ${workstreamLabel(tab.workstream.provider)} · ${tab.workstream.phase ?? tab.workstream.status} · ${workstreamActivityText(tab.workstream)}`
+          : null;
+        const agentPaneOutput = !isPreviewPane && tab.workstream?.kind === "agent"
+          ? tab.workstream.terminalOutput?.trim()
+          : undefined;
         const chromeHeight = 24;
         const showActions = hoveredPaneId === paneId || isActive;
 
@@ -608,10 +627,11 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
               )}
               <span
                 className="terminal-pane-status-pill"
+                data-testid={agentPaneActivity ? "split-agent-pane-context" : undefined}
                 data-status={terminalStatus}
                 style={{
                   minWidth: 0,
-                  flex: 1,
+                  flex: agentPaneActivity ? "0 1 45%" : 1,
                   overflow: "hidden",
                   textOverflow: "ellipsis",
                   whiteSpace: "nowrap",
@@ -623,6 +643,60 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
               >
                 {isPreviewPane ? paneNode.previewUrl ?? "Localhost preview" : paneContext}
               </span>
+              {agentPaneActivity && (
+                <span
+                  data-testid="split-agent-pane-now"
+                  style={{
+                    minWidth: 0,
+                    flex: agentPaneOutput ? "1 1 40%" : "1 1 auto",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                    color: isActive ? "var(--text-primary)" : "var(--text-secondary)",
+                    fontSize: 11,
+                    fontWeight: 500,
+                  }}
+                  title={agentPaneActivity}
+                >
+                  Now: {agentPaneActivity}
+                </span>
+              )}
+              {latestMissionControlInput && (
+                <span
+                  data-testid="split-agent-pane-ask"
+                  style={{
+                    minWidth: 0,
+                    flex: "1 1 28%",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                    color: isActive ? "var(--text-primary)" : "var(--text-secondary)",
+                    fontSize: 11,
+                    fontWeight: 500,
+                  }}
+                  title={latestMissionControlInput.text}
+                >
+                  Ask: {latestMissionControlInput.label ?? "Mission control"} · {latestMissionControlInput.sentAt ? "sent" : "queued"} · {latestMissionControlInput.text}
+                </span>
+              )}
+              {agentPaneOutput && (
+                <span
+                  data-testid="split-agent-pane-output"
+                  style={{
+                    minWidth: 0,
+                    flex: "1 1 28%",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                    color: isActive ? "var(--text-primary)" : "var(--text-secondary)",
+                    fontSize: 11,
+                    fontWeight: 500,
+                  }}
+                  title={agentPaneOutput}
+                >
+                  Output: {agentPaneOutput}
+                </span>
+              )}
               <span
                 style={{
                   color: STATUS_COLORS[terminalStatus],

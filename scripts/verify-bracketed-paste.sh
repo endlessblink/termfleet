@@ -178,7 +178,7 @@ def segment(marker):
 def writes(seg):
     out = []
     for line in seg:
-        if "daemon.write.receive" not in line:
+        if "daemon.write.receive" not in line and "pty.write.start" not in line:
             continue
         match = re.search(r'data="(.*)"$', line)
         if match:

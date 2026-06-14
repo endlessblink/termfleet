@@ -175,18 +175,24 @@ for line in lines:
         storm_seen = True
     if "RESIZE-STORM-INPUT" in line:
         input_seen = True
-    for label in ("grid.attach", "grid.resize", "daemon.ensure.receive", "daemon.ensure.done", "daemon.resize.receive", "daemon.write.receive"):
+    for label in ("grid.attach", "grid.resize", "daemon.ensure.receive", "daemon.ensure.done", "daemon.resize.receive", "daemon.write.receive", "daemon.input_stream.receive", "pty.write.start"):
         if label in line:
             ts = re.search(r"\[TW-PTY\]\s+(\d+)", line)
             events.append((int(ts.group(1)) if ts else 0, label, line.strip()))
-            if input_seen and label == "daemon.write.receive":
+            if input_seen and label in {"daemon.write.receive", "daemon.input_stream.receive", "pty.write.start"}:
                 input_write = True
             break
 
 events.sort(key=lambda item: item[0])
 print("=== resize storm timeline ===")
 for _, _, line in events:
-    if "grid.resize" in line or "daemon.resize.receive" in line or "daemon.write.receive" in line:
+    if (
+        "grid.resize" in line
+        or "daemon.resize.receive" in line
+        or "daemon.write.receive" in line
+        or "daemon.input_stream.receive" in line
+        or "pty.write.start" in line
+    ):
         print("  ", line)
 
 def last(label_set):

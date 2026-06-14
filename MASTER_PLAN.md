@@ -1441,7 +1441,10 @@ Reliability hardening addendum — 2026-06-02:
   invoke per key. This keeps burst output, map previews, and fast typing from
   competing on the same synchronous canvas/input path while preserving real PTY
   echo semantics. Evidence: `npm run build` passed; `CARGO_BUILD_JOBS=1 cargo
-  check` passed with existing dead-code warnings; `npm run verify:map-terminals`
+  check` initially passed with dead-code warnings from unused clipboard-image
+  helpers; those helpers were removed and `npm run verify:rust-warnings` now
+  runs `cargo check` with `RUSTFLAGS=-Dwarnings` and passes with
+  `TERMFLEET_RUST_WARNINGS_OK`. `npm run verify:map-terminals`
   passed; `npm run verify:canvas-all` passed 12/12; `npm run
   verify:terminal-rendering` passed; `npm run verify:daemon-latency` reported
   p95 `1.4ms`, max `1.4ms`; live desktop `TERMINAL_WORKSPACE_ALLOW_SHARED_DEV_CLEANUP=1
@@ -1449,6 +1452,14 @@ Reliability hardening addendum — 2026-06-02:
   `fast_type_integrity_ms=544`, `cpu_stress_workers=2`,
   `stressed_typed_last_char_echo_ms=97`, `terminal_burst_300_lines_ms=937`,
   `canvas_pan_10x_ms=146`, and `max_subscribers_after_toggle=1`.
+  Final reliability aggregate also passed after the verifier trace parsers were
+  updated for the persistent input stream: `TERMFLEET_TERMINAL_RELIABILITY_LIVE=1
+  APP_BUDGET=360 npm run verify:terminal-reliability` ended with
+  `TERMFLEET_TERMINAL_RELIABILITY_OK live=1`, including the source contract,
+  12/12 canvas Playwright specs, Rust `vt_grid` + `pty` suites, daemon survival,
+  build, live legacy prompt repair, scrollback reattach, map shell anchor,
+  zellij-on-map, bracketed paste, resize storm, zellij shortcuts, canvas-live,
+  standalone daemon restart/cold-restore, and restart/restore simulation.
   `npm run verify:typography` remains red on unrelated pre-existing outline /
   letter-spacing checks in LinksView, LocalhostPreview, MagicCanvas, and
   WorkbenchSidebar.
@@ -2342,6 +2353,193 @@ Progress notes:
 - Agent launches now prompt for a mission before creating the workstream, keep
   that mission separate from follow-up prompts, and preserve it in the cockpit
   panel plus copied run brief.
+- Agent launches now use the mission as the durable terminal/tab title instead
+  of naming every child run `Codex agent` / provider-only. Provider identity
+  stays visible in cockpit metadata, while Sessions, persisted state, and copied
+  run briefs identify the child by the actual task. Regression coverage: `npx
+  playwright test tests/agent-workstream.spec.ts` passed 5/5 and verifies the
+  stored tab title plus copied run briefs use `Investigate flaky checkout flow`
+  while node metadata still shows `Codex agent`. Additional verification passed
+  `npm run build`, `npm run verify:rust-warnings`, `npm run
+  verify:map-terminals`, and `git diff --check`.
+- Split-pane agent status now names the mission before provider/phase/activity.
+  The tactical terminal surface reads like `Now: Investigate flaky checkout
+  flow · Codex agent · active · ...` instead of only `Codex agent · active`,
+  so the operator can tell what a child terminal is doing without switching back
+  to the map node or opening copied briefs. Regression coverage: `npx
+  playwright test tests/agent-workstream.spec.ts` passed 5/5 and verifies both
+  active and complete split-pane agent strips carry the scenario mission plus
+  provider, phase, and current activity. Additional verification passed `npm run
+  build`, `npm run verify:rust-warnings`, `npm run verify:map-terminals`, and
+  `git diff --check`.
+- Map agent node titles now stay mission-stable after follow-up prompts. The
+  node header continues to identify the child terminal by the original mission,
+  while the latest prompt remains visible in input history and the live
+  activity/meta rows report what the agent is doing now. This keeps the canvas
+  from renaming a supervised child every time the operator sends steering text.
+  Regression coverage: `npx playwright test tests/agent-workstream.spec.ts`
+  passed 5/5 and verifies the map node title remains `Investigate flaky
+  checkout flow` after an `echo waiting for input` follow-up, while the follow-up
+  is still shown in `Agent input history`. Additional verification passed `npm
+  run build`, `npm run verify:rust-warnings`, `npm run verify:map-terminals`,
+  and `git diff --check`.
+- Agent lane summaries now include a compact health row on the canvas and map
+  supervision surfaces, with shared derivation used by the Sessions sidebar too.
+  The row collapses the long counter cloud into `Running`, `Review ready`,
+  `Needs attention`, or `Stable` plus the meaningful pressure counts, so an
+  operator can see at a glance whether the child fleet is simply running or has
+  auth, recovery, risk, stale, proof, closeout, or cleanup pressure. Regression
+  coverage: `npx playwright test tests/agent-workstream.spec.ts` passed 5/5 and
+  verifies running single-agent state, auth/recovery pressure, proof overflow,
+  stale pressure, recovered workspace-group totals, and two-agent fleet totals
+  through the visible health row. Additional verification passed `npm run
+  build`, `npm run verify:rust-warnings`, `npm run verify:map-terminals`, and
+  `git diff --check`.
+- Raw provider process exits now become cockpit-visible agent state even without
+  a structured provider marker. The terminal runtime recognizes
+  `process/provider/command exited with code/status N`, persists the exit code,
+  moves successful exits to reviewable completion and non-zero exits to blocked
+  recovery, records a provider timeline event, and exposes the exit through the
+  node header, current-activity row, run record, lane health, and recovery rows.
+  Browser preview also supports a deterministic `exit <code>` command so this
+  loop is regression-testable without a host process. Regression coverage:
+  `npx playwright test tests/agent-workstream.spec.ts` passed 6/6 and verifies
+  `exit 7` produces `failed/blocked`, exit code `7`, `blocked · system`
+  activity, visible run-record exit, lane health recovery pressure, and
+  canvas/map recovery rows. Additional verification passed `npm run build`,
+  `npm run verify:rust-warnings`, `npm run verify:map-terminals`, and
+  `git diff --check`.
+- Agent lanes now support an active-agent status sweep from the canvas,
+  Sessions sidebar, and Map sidebar. The sweep queues the shared status-check
+  prompt only to active child workstreams, records the input as a
+  `mission-control` / `Status sweep` action, and focuses the first targeted run,
+  so a parent operator can ask the whole live fleet what it is doing without
+  opening each terminal. Regression coverage: `npx playwright test
+  tests/agent-workstream.spec.ts` passed 7/7 and verifies two active agents both
+  receive mission-specific status prompts, prompt counts increment, mission
+  control events are recorded, and the canvas/map controls are visible.
+  Additional verification passed `npm run build`, `npm run
+  verify:rust-warnings`, `npm run verify:map-terminals`, and `git diff
+  --check`.
+- The status-sweep control now explains its operational scope before mutating
+  child terminals. Canvas, Sessions, and Map lane headers render a shared sweep
+  plan like `Sweep 2 active · 1 held`, and the control tooltip names the held
+  runs as skipped. The sweep still targets only active workstreams, so completed,
+  blocked, waiting, or interrupted runs are held for their more specific
+  mission-control actions instead of receiving generic status checks.
+  Regression coverage: `npx playwright test tests/agent-workstream.spec.ts`
+  passed 7/7 and verifies two active agents plus one completed held run show
+  `Sweep 2 active · 1 held`, only the active agents receive the status-check
+  prompt, and the held run's prompt queue is unchanged. Additional verification
+  passed `npm run build`, `npm run verify:rust-warnings`, `npm run
+  verify:map-terminals`, and `git diff --check`.
+- Agent lanes now have a guarded active-fleet interrupt alongside status sweep.
+  Canvas, Sessions, and Map render an `Interrupt N active · M held` plan, then
+  reuse the existing graceful cancellation path for active child workstreams
+  only. Held runs are skipped, so completed/blocked/waiting/interrupted children
+  keep their specific mission-control state instead of being accidentally
+  cancelled by a batch action. Regression coverage: `npx playwright test
+  tests/agent-workstream.spec.ts` passed 7/7 and verifies two active agents plus
+  one completed held run show `Interrupt 2 active · 1 held`, only the active
+  runs move to `running/cancelling` with `Cancellation requested`, and the held
+  completion stays `done/complete` with no cancellation event. Additional
+  verification passed `npm run build`, `npm run verify:rust-warnings`, `npm run
+  verify:map-terminals`, and `git diff --check`.
+- Agent lanes now also have a guarded recovery restart action. Canvas,
+  Sessions, and Map render a `Restart N recovery · M held` plan, where recovery
+  targets are failed, blocked, stopped, or interrupted child runs. The action
+  reuses the existing per-run restart path only for those recovery targets, so
+  active/cancelling children and completed runs are held instead of being
+  restarted by a broad batch command. The canvas overlay action labels now wrap
+  into lane chips instead of widening the header, avoiding overlap with agent
+  node controls. Regression coverage: `npx playwright test
+  tests/agent-workstream.spec.ts` passed 7/7 and verifies two active agents,
+  one completed held run, and one failed recovery run show `Restart 1 recovery
+  · 3 held`; status sweep and interrupt skip the recovery/completed runs; the
+  restart action restarts only the failed recovery run and clears restart
+  pressure to `Restart 0 recovery · 4 held`. Additional verification passed
+  `npm run build`, `npm run verify:rust-warnings`, `npm run
+  verify:map-terminals`, and `git diff --check`.
+- Agent lanes now have a guarded closeout-review batch action. Canvas,
+  Sessions, and Map render `Review N ready · M held` based on the existing
+  proof-plus-handoff-memory closeout rule, then mark only closeout-ready review
+  items as reviewed with mission-control provenance. Runs that are complete but
+  missing proof or handoff memory stay held and keep their blocked review rows,
+  so lane-level closeout cannot silently acknowledge incomplete child work.
+  Regression coverage: `npx playwright test tests/agent-workstream.spec.ts`
+  passed 7/7 and verifies a ready-with-proof/memory run can be reviewed from
+  the lane-level action, while unproven and memory-missing completions show
+  `Review 0 ready · 1 held`, keep the batch button disabled, and remain
+  unreviewed when their blocked review rows are clicked. Additional verification
+  passed `npm run build`, `npm run verify:rust-warnings`, `npm run
+  verify:map-terminals`, and `git diff --check`.
+- Agent evidence rows now open reported artifacts into the workspace file
+  context instead of leaving artifact paths as inert text. The shared lane model
+  resolves artifact paths against the workstream worktree, git root, or cwd when
+  available; Canvas, Sessions, and Map evidence rows add that artifact to
+  `openFiles` while preserving the existing proof snippet copy behavior. Rows
+  with artifacts now read `Open proof`, making the proof/artifact handoff a
+  cockpit action rather than manual file navigation. Regression coverage:
+  `npx playwright test tests/agent-workstream.spec.ts` passed 7/7 and verifies
+  clicking a proof row still copies `mission: evidence (artifact)` while adding
+  `reports/flaky-checkout-summary.md` as an open file with name
+  `flaky-checkout-summary.md`. Additional verification passed `npm run build`,
+  `npm run verify:rust-warnings`, `npm run verify:map-terminals`, and `git diff
+  --check`.
+- Split terminal panes now show a separate sanitized `Output:` glimpse for
+  agent terminals when a child run has produced readable terminal output. This
+  makes the tactical terminal pane itself answer what the child is doing, not
+  just the map/sidebar lane. The same regression exposed and fixed a remount
+  downgrade: generic terminal-ready events no longer erase waiting,
+  auth-required, blocked, complete, reviewed, interrupted, or cancelling agent
+  state when switching between split and map views. Regression coverage:
+  `npx playwright test tests/agent-workstream.spec.ts` passed 7/7 and verifies
+  `waiting for input` appears in `split-agent-pane-output`, then confirms an
+  auth-required child remains auth-required after returning from split view.
+  Additional verification passed `npm run build`, `npm run
+  verify:rust-warnings`, `npm run verify:map-terminals`, and `git diff
+  --check`.
+- Agent lanes now have a guarded batch proof-request action. Canvas, Sessions,
+  and Map render `Proof N needed · M held`, and the new proof button queues the
+  shared verification prompt only to completed child runs that lack evidence and
+  artifacts. Proofed runs, active runs, recovery runs, and review-blocked runs
+  that already have proof are held. The regression also tightened structured
+  final-state protection: terminal heuristics can still capture output and
+  cancellation, but cannot overwrite final structured summaries with generic
+  completion text after a proof signal. Regression coverage: `npx playwright
+  test tests/agent-workstream.spec.ts` passed 7/7 and verifies the lane-level
+  proof button queues a `mission-control` / `Request proof` prompt with the
+  current summary and operator request, then disables once proof is attached.
+  Additional verification passed `npm run build`, `npm run
+  verify:rust-warnings`, `npm run verify:map-terminals`, and `git diff
+  --check`.
+- Agent lanes now have the matching guarded batch memory-request action for the
+  proof-to-closeout path. Canvas, Sessions, and Map render `Memory N needed · M
+  held`; the new memory button queues the same durable handoff-memory prompt as
+  the individual `Request memory` mission row, but only to proofed completed
+  runs that still lack durable memory. Unproofed, active, recovery, reviewed,
+  and already-memory-ready runs are held. The same regression also tightened
+  final structured-state protection so stale terminal heuristics cannot replace
+  provider readiness after a structured blocked/complete signal. Regression
+  coverage: `npx playwright test tests/agent-workstream.spec.ts` passed 7/7 and
+  verifies memory is held before proof, enabled after proof, queues a
+  `mission-control` / `Request memory` prompt, then disables after durable
+  memory is recorded. Additional verification passed `npm run build`, `npm run
+  verify:rust-warnings`, `npm run verify:map-terminals`, and `git diff
+  --check`.
+- Agent lanes now have a guarded batch risk-mitigation action. Canvas,
+  Sessions, and Map render `Risk N open · M held`; the new risk button queues
+  the existing mitigation prompt only to child runs with low/medium confidence
+  or non-benign residual risk, while holding clean, active, proof, memory,
+  recovery, and review-only runs. This gives the parent cockpit a fleet-level
+  way to ask every risky child to mitigate or justify remaining risk before
+  closeout. Regression coverage: `npx playwright test
+  tests/agent-workstream.spec.ts` passed 7/7 and verifies a six-agent risky
+  fleet shows `Risk 6 open`, the canvas and Map controls are enabled, and the
+  canvas batch action queues `mission-control` / `Mitigate risk` prompts to all
+  six affected runs. Additional verification passed `npm run build`, `npm run
+  verify:rust-warnings`, `npm run verify:map-terminals`, and `git diff
+  --check`.
 - Completed agent runs can now be acknowledged as reviewed from the cockpit,
   clearing lane attention while keeping the workstream and its run record.
 - Agent run records now include a durable run id plus started/completed/reviewed
@@ -2369,6 +2567,1080 @@ Progress notes:
   expanded telemetry cells stay readable on the standard agent cockpit node.
 - Agent canvas node headers now show the current task prompt directly, while
   ordinary shell terminal nodes keep their existing title/cwd header behavior.
+- Agent workstreams now expose first-class current activity metadata:
+  `currentActivity`, `activityKind`, `activitySource`, and `activityUpdatedAt`.
+  The terminal runtime derives activity from structured provider markers or
+  readable terminal output, while operator controls seed activity for launch,
+  follow-up prompts, cancellation, stop, restart, and review. The map cockpit
+  now shows a visible `Now`/`Signal` row, sidebar and lane rows include current
+  activity, copied run briefs include the activity line, and the provider
+  adapter emits activity in lifecycle markers. Regression coverage:
+  `npx playwright test tests/agent-workstream.spec.ts` passed 2/2 and locks
+  structured activity through state, UI, lane attention, and copied brief.
+  Verification also passed `npm run build`, `npm run verify:map-terminals`,
+  `npm run verify:rust-warnings`, and `npm run verify:terminal-reliability`
+  (`TERMFLEET_TERMINAL_RELIABILITY_OK live=0`).
+- Agent workstreams now carry local ops context alongside provider/run state:
+  launch cwd, cwd label, git root/branch/dirty state, worktree path, and
+  isolation mode. Desktop resolves this through a dependency-free Tauri
+  `workstream_git_context` command; browser preview degrades to an explicit
+  shared-workspace/unknown-root context. The map cockpit renders `Agent local
+  context` and `Agent workspace isolation` rows, agent lane rows include that
+  context, and copied run briefs include `Cwd`, `Git`, `Isolation`, and
+  `Worktree` lines. Regression coverage: `npx playwright test
+  tests/agent-workstream.spec.ts` passed 2/2 and checks persisted context,
+  cockpit display, isolation display, and copied brief. Verification also
+  passed `npm run build`, `cd src-tauri && CARGO_BUILD_JOBS=1 cargo check`,
+  `npm run verify:map-terminals`, and `npm run verify:rust-warnings`
+  (`TERMFLEET_RUST_WARNINGS_OK`).
+- Agent launch now asks for an isolation policy (`shared` or `dedicated`) after
+  the mission prompt, persists `isolationStatus` and `isolationNote`, and
+  records the choice as a cockpit control event. Shared runs are explicit
+  `shared workspace`; dedicated runs are honestly marked `dedicated worktree
+  requested` until a later slice wires automatic `git worktree` provisioning.
+  The cockpit, lane rows, and copied run briefs now distinguish shared checkout
+  runs from dedicated-worktree requests instead of hiding that control-plane
+  decision in terminal text. Regression coverage: `npx playwright test
+  tests/agent-workstream.spec.ts` passed 2/2 with one shared run and one
+  dedicated-requested run. Verification also passed `npm run build`, `npm run
+  verify:rust-warnings`, and `npm run verify:map-terminals`.
+- Dedicated agent isolation now has a real desktop provisioning path: the
+  frontend precomputes the run id before launch, then Tauri
+  `workstream_prepare_dedicated_worktree` creates a unique sibling Git worktree
+  under `.termfleet-worktrees/<repo>/<run-id>` with branch
+  `termfleet/<run-id>` when the selected cwd belongs to a Git repository. If no
+  Git repo exists, the target already exists non-empty, or `git worktree add`
+  fails, the cockpit receives `isolationStatus=unavailable` plus the failure
+  note instead of pretending isolation succeeded. Browser preview still shows
+  requested isolation because it cannot provision local worktrees. Regression
+  coverage: `cd src-tauri && CARGO_BUILD_JOBS=1 cargo test commands::tests
+  --lib` passed 6/6 for target/branch safety helpers; `npx playwright test
+  tests/agent-workstream.spec.ts` passed 2/2 for shared/requested browser
+  workflow; `npm run build`, `npm run verify:rust-warnings`,
+  `npm run verify:map-terminals`, and `git diff --check` passed.
+- Dedicated worktree runs now have an explicit lifecycle/cleanup record in the
+  cockpit. Workstreams persist `worktreeCleanupStatus` and
+  `worktreeCleanupNote`; provisioned dedicated worktrees start as cleanup
+  `available`, unprovisioned/browser dedicated requests start as `manual`, and
+  shared checkout runs are `not-needed`. Dedicated agent nodes expose a
+  non-destructive `Request worktree cleanup` control that records operator
+  intent, updates the current activity/outcome, increments control count, and
+  writes a timeline event without deleting local files. The map cockpit and
+  copied run brief show cleanup status and note so worktree ownership is visible
+  as part of the run, not left as terminal tribal knowledge. Regression
+  coverage: `npx playwright test tests/agent-workstream.spec.ts` passed 2/2 and
+  verifies shared cleanup state plus dedicated cleanup request state. Additional
+  verification passed `npm run build`, `npm run verify:rust-warnings`, `npm run
+  verify:map-terminals`, and `git diff --check`.
+- Agent supervision lanes now roll up workspace ownership and cleanup state, not
+  just execution status. `summarizeAgentLane()` counts shared checkout runs,
+  dedicated worktree runs, ready dedicated worktrees, and cleanup-requested
+  worktrees; the canvas overlay plus sidebar session/map lanes render these as
+  chips alongside active/waiting/blocked/complete counts. This makes the control
+  surface read like an ops cockpit: the operator can see at a glance how many
+  child agents are using shared state, how many are isolated, and whether any
+  cleanup handoff is pending. Regression coverage: `npx playwright test
+  tests/agent-workstream.spec.ts` passed 2/2 and verifies `1 dedicated`, `1
+  shared`, `0 cleanup`, then `1 cleanup` after a cleanup request. Additional
+  verification passed `npm run build`, `npm run verify:rust-warnings`, `npm run
+  verify:map-terminals`, and `git diff --check`.
+- Dedicated worktree cleanup now has a guarded execution path. Tauri exposes
+  `workstream_remove_dedicated_worktree`, which refuses unmanaged paths outside
+  `.termfleet-worktrees`, refuses paths without worktree metadata, and refuses
+  dirty worktrees before calling `git worktree remove`. The cockpit now
+  separates `Request worktree cleanup` from `Execute worktree cleanup`, and the
+  store records `removed`, `blocked`, or `manual` cleanup outcomes as control
+  events without collapsing the agent run record. Browser preview fails closed
+  into manual cleanup because it cannot remove local worktrees. Regression
+  coverage: `cd src-tauri && CARGO_BUILD_JOBS=1 cargo test commands::tests
+  --lib` passed 8/8, including a real temporary Git repo cycle that provisions
+  a dedicated worktree with `git worktree add`, verifies its contents, removes
+  it with the guarded cleanup command, and confirms the worktree path is gone.
+  `npx playwright test
+  tests/agent-workstream.spec.ts` passed 2/2 and verifies browser manual cleanup
+  fallback after execution. Additional verification passed `npm run build`,
+  `npm run verify:rust-warnings`, `npm run verify:map-terminals`, and `git diff
+  --check`.
+- Agent supervision lanes now expose focusable workspace groups instead of only
+  a flat child-agent list. `summarizeAgentLane()` derives ordered groups by
+  shared checkout or dedicated worktree/run identity, tracks each group's active
+  agents, attention count, and cleanup-requested count, and the canvas overlay
+  plus sessions/map sidebars render those groups as focus buttons. This makes
+  workspace ownership operable from the cockpit: an operator can jump to a
+  shared checkout group or a dedicated-worktree group and see cleanup pressure
+  at the group level before drilling into individual terminals. Regression
+  coverage: `npx playwright test tests/agent-workstream.spec.ts` passed 2/2 and
+  verifies two workspace groups for one shared and one dedicated agent, plus
+  group-level `1 cleanup` after requesting dedicated cleanup. Additional
+  verification passed `npm run build`, `npm run verify:rust-warnings`, `npm run
+  verify:map-terminals`, and `git diff --check`.
+- Agent supervision lanes now copy an aggregate cockpit brief. The shared lane
+  model formats a `Agent supervision brief` with totals, workspace-group
+  ownership, active/attention/cleanup pressure, and each child agent's task,
+  current activity, next action, isolation, and cleanup state. The canvas
+  overlay plus sessions/map sidebars expose icon buttons for copying this
+  operator handoff, so the parent cockpit can communicate the state of the
+  whole agent swarm without opening individual terminal scrollback. Regression
+  coverage: `npx playwright test tests/agent-workstream.spec.ts` passed 2/2
+  and verifies the copied brief for one shared and one dedicated agent, then
+  verifies the copied brief updates with group-level cleanup after requesting
+  dedicated cleanup. Additional verification passed `npm run build`, `npm run
+  verify:rust-warnings`, and `npm run verify:map-terminals`.
+- Agent workstreams now have a durable cockpit memory/handoff field. Structured
+  provider markers can emit `memory`, the terminal parser persists it on the
+  workstream, the map cockpit renders an `Agent memory` row, and both per-run
+  and aggregate supervision briefs include the memory line. New runs start with
+  an explicit "No agent memory reported yet." placeholder, so missing handoff
+  state is visible instead of silently absent. This closes the first slice of
+  the original agent-memory-panel idea without introducing a separate storage
+  surface yet. Regression coverage: `npx playwright test
+  tests/agent-workstream.spec.ts` passed 2/2 and verifies structured memory in
+  persisted state, cockpit UI, copied run brief, and copied lane brief.
+  Additional verification passed `npm run build`, `npm run
+  verify:rust-warnings`, and `npm run verify:map-terminals`.
+- Agent memory is now lane-scannable, not only node-local or copy-only.
+  `summarizeAgentLane()` derives `memoryItems` from real reported memories while
+  ignoring the explicit no-memory placeholder. The canvas overlay and
+  sessions/map sidebars render a `memories` chip plus focusable memory rows, so
+  the operator can spot child-agent handoff facts from the supervision lane
+  before opening a terminal or copying the aggregate brief. Regression coverage:
+  `npx playwright test tests/agent-workstream.spec.ts` passed 2/2 and verifies
+  `0 memories` before structured memory, then `1 memories` plus visible canvas
+  and map lane memory after the structured completion marker. Additional
+  verification passed `npm run build`, `npm run verify:rust-warnings`, `npm run
+  verify:map-terminals`, and `git diff --check`.
+- Completed child-agent work now forms an explicit lane-level review queue.
+  `summarizeAgentLane()` derives `reviewItems` for completed-but-unreviewed
+  workstreams, includes a `review ready` count in the lane status text and
+  aggregate supervision brief, and the canvas overlay plus sessions/map sidebars
+  render focusable `Review` rows with the run summary and artifact/evidence
+  detail. Marking a run reviewed clears the queue item without deleting the run
+  record, so the cockpit has a visible closeout loop for agent-produced work.
+  Regression coverage: `npx playwright test tests/agent-workstream.spec.ts`
+  passed 2/2 and verifies `1 review` plus visible canvas/map review rows after
+  structured completion, then `0 review` and no review row after `Mark run
+  reviewed`. Additional verification passed `npm run build`, `npm run
+  verify:rust-warnings`, `npm run verify:map-terminals`, and `git diff
+  --check`.
+- Attention-worthy child-agent work now forms a lane-level queue, not only a
+  single primary attention callout. `summarizeAgentLane()` derives sorted
+  `attentionItems` from the existing auth-required, waiting, cancelling,
+  blocked, and complete classifications, includes an `attention queue` count in
+  the lane status text and aggregate supervision brief, and the canvas overlay
+  plus sessions/map sidebars render focusable attention rows for the top items.
+  This keeps the current primary alert while making multiple agents needing
+  operator action scannable from the supervision lane. Regression coverage:
+  `npx playwright test tests/agent-workstream.spec.ts` passed 2/2 and verifies
+  queue rows for auth-required, blocked, and complete states, plus queue
+  clearing after `Mark run reviewed`. Additional verification passed `npm run
+  build`, `npm run verify:rust-warnings`, `npm run verify:map-terminals`, and
+  `git diff --check`.
+- Child-agent proof is now lane-scannable through an explicit evidence queue.
+  `summarizeAgentLane()` derives `evidenceItems` from structured evidence and
+  artifact fields, includes an `evidence` count in lane status text and
+  aggregate supervision briefs, and the canvas overlay plus sessions/map
+  sidebars render focusable `Evidence` rows. This lets the parent operator
+  inspect what proof each agent has produced without opening every node or
+  scrolling terminal output. Regression coverage: `npx playwright test
+  tests/agent-workstream.spec.ts` passed 2/2 and verifies evidence rows for
+  structured failure and completion signals, including artifacts in the copied
+  supervision brief. Additional verification passed `npm run build`, `npm run
+  verify:rust-warnings`, `npm run verify:map-terminals`, and `git diff
+  --check`.
+- Blocked or failed child agents now form a lane-level recovery queue.
+  `summarizeAgentLane()` derives `recoveryItems` for blocked, failed, or
+  provider-unavailable workstreams, includes a `recovery` count in the lane
+  status text and aggregate supervision brief, and the canvas overlay plus
+  sessions/map sidebars render focusable `Recovery` rows with a copyable prompt.
+  This moves recovery from node-only affordance to the swarm supervision lane, so
+  the parent operator can see which children need intervention without opening
+  each terminal. Regression coverage: `npx playwright test
+  tests/agent-workstream.spec.ts` passed 2/2 and verifies `1 recovery`, visible
+  canvas/map recovery rows, and `Recovery queue:` plus the generated prompt in
+  the copied supervision brief. Additional verification passed `npm run build`,
+  `npm run verify:rust-warnings`, `npm run verify:map-terminals`, and `git diff
+  --check`.
+- Completed child-agent work without proof is now explicitly flagged before
+  review. `summarizeAgentLane()` derives `proofItems` for completed/unreviewed
+  workstreams that have no evidence line and no artifact path, includes a `proof
+  needed` count in lane status text and aggregate supervision briefs, and the
+  canvas overlay plus sessions/map sidebars render focusable `Proof needed` rows
+  with the agent summary and proof request. This keeps a child agent's "done"
+  state from looking release-ready when it has not produced verification
+  evidence. Regression coverage: `npx playwright test
+  tests/agent-workstream.spec.ts` passed 3/3 and verifies `1 proof`, no evidence
+  row, visible canvas/map proof rows, and `Proof needed:` plus the request in the
+  copied supervision brief. Additional verification passed `npm run build`,
+  `npm run verify:rust-warnings`, `npm run verify:map-terminals`, and `git diff
+  --check`.
+- Proof-needed child-agent work is now actionable from the cockpit node. When a
+  completed/unreviewed workstream has neither evidence nor artifact output, the
+  composer exposes a `Draft proof request` control that seeds a provider-specific
+  follow-up asking for completed-work summary, exact verification commands,
+  results, and artifact paths. The request then flows through the existing
+  durable prompt queue/input history, so the parent operator can turn a weak
+  "done" into a proof-gathering loop without hand-writing the prompt. Regression
+  coverage: `npx playwright test tests/agent-workstream.spec.ts` passed 3/3 and
+  verifies the proof request draft includes the run summary and next action, then
+  dispatches through the browser-preview prompt path. Additional verification
+  passed `npm run build`, `npm run verify:rust-warnings`, `npm run
+  verify:map-terminals`, and `git diff --check`.
+- The proof-needed loop now has regression coverage for resolution into real
+  evidence. After a proof request is dispatched, a later structured provider
+  marker with `evidence` and `artifact` clears the `Proof needed` rows, hides the
+  draft-proof control, moves the workstream into the evidence queue, and updates
+  the copied supervision brief from `Proof needed: - none` plus concrete
+  evidence. This locks the operator loop from weak completion to requested proof
+  to reviewable evidence. Regression coverage: `npx playwright test
+  tests/agent-workstream.spec.ts` passed 3/3 and verifies the canvas/map proof
+  rows disappear while evidence rows and copied evidence brief appear. Additional
+  verification passed `npm run build`, `npm run verify:rust-warnings`, `npm run
+  verify:map-terminals`, and `git diff --check`.
+- Review-ready child-agent work can now be acknowledged directly from the
+  supervision lanes. Canvas, Sessions, and Map `Review` rows call the same durable
+  `reviewWorkstream()` path as the node header button, clearing review and
+  attention queues while preserving the run record and reviewed timestamp. This
+  turns the lane from a passive index into an operator closeout surface for
+  completed agent work. Regression coverage: `npx playwright test
+  tests/agent-workstream.spec.ts` passed 3/3 and now closes the structured
+  completion run by clicking the canvas review row, then verifies reviewed state,
+  `0 queue`, `0 review`, and no remaining review row. Additional verification
+  passed `npm run build`, `npm run verify:rust-warnings`, `npm run
+  verify:map-terminals`, and `git diff --check`.
+- Agent supervision lanes now show a recent-event feed across child agents.
+  `summarizeAgentLane()` derives the latest durable workstream events across the
+  swarm, includes an `events` count in lane status text and aggregate briefs, and
+  the canvas overlay plus Sessions/Map sidebars render focusable event rows. This
+  gives the parent operator a chronological sense of what just changed without
+  opening each terminal or reading raw scrollback. Regression coverage:
+  `npx playwright test tests/agent-workstream.spec.ts` passed 3/3 and verifies
+  visible canvas/map event rows for structured completion, recent events in the
+  copied supervision brief, and event counts in aggregate totals. Additional
+  verification passed `npm run build`, `npm run verify:rust-warnings`, `npm run
+  verify:map-terminals`, and `git diff --check`.
+- Agent supervision lanes now surface risk/confidence warnings across child
+  agents. `summarizeAgentLane()` derives `riskItems` for low/medium confidence or
+  non-benign risk text, includes a `risk` count in lane status text and aggregate
+  briefs, and the canvas overlay plus Sessions/Map sidebars render focusable
+  `Risk` rows. Benign high-confidence outcomes such as `low residual risk` and
+  `no known residual risk` do not remain in the queue, so the operator sees
+  unresolved risk instead of every completed run. Regression coverage:
+  `npx playwright test tests/agent-workstream.spec.ts` passed 3/3 and verifies a
+  low-confidence structured failure appears in the canvas/map risk queue and
+  copied brief, then clears after a high-confidence structured completion.
+  Additional verification passed `npm run build`, `npm run verify:rust-warnings`,
+  `npm run verify:map-terminals`, and `git diff --check`.
+- Active child-agent silence is now lane-scannable through an explicit stale
+  queue. `summarizeAgentLane()` derives `staleItems` for active workstreams whose
+  latest activity timestamp is older than ten minutes, includes a `stale` count
+  in lane status text and aggregate briefs, and the canvas overlay plus
+  Sessions/Map sidebars render focusable `Stale` rows using the agent mission
+  instead of the generic terminal title. This makes an agent that is still marked
+  active but has stopped reporting progress visible without opening terminal
+  scrollback. Regression coverage: `npx playwright test
+  tests/agent-workstream.spec.ts` passed 3/3 and verifies a persisted/reloaded
+  sixteen-minute idle agent appears in the canvas/map stale queue and copied
+  supervision brief. Additional verification passed `npm run build`, `npm run
+  verify:rust-warnings`, `npm run verify:map-terminals`, and `git diff --check`.
+- Stale child-agent work is now actionable from the supervision lane. Each stale
+  row carries a provider-specific status-check prompt and clicking the row queues
+  that prompt through the same durable workstream input path used by normal
+  follow-ups, focuses the target run, updates activity timestamps, and clears the
+  stale queue item. This turns "active but quiet" from a passive warning into an
+  operator check-in loop without requiring the node composer to be visible under
+  the canvas overlay. Regression coverage: `npx playwright test
+  tests/agent-workstream.spec.ts` passed 3/3 and verifies a persisted/reloaded
+  sixteen-minute idle agent can be checked in from the canvas stale row, after
+  which the stale count drops to zero and persisted state records the status
+  prompt, `Prompt sent` event, and fresh activity timestamp. Additional
+  verification passed `npm run build`, `npm run verify:rust-warnings`, `npm run
+  verify:map-terminals`, and `git diff --check`.
+- Recovery queue rows are now actionable from the supervision lane. Each
+  recovery item uses the agent mission as its label and clicking the row sends
+  the generated provider-specific recovery prompt through the durable workstream
+  input path while focusing the target run. The recovery queue intentionally
+  remains visible until later provider output proves the child is running again,
+  so a sent recovery prompt does not falsely mark the run healthy. Regression
+  coverage: `npx playwright test tests/agent-workstream.spec.ts` passed 3/3 and
+  verifies a structured failed run appears in the canvas/map recovery queue,
+  clicking the canvas recovery row dispatches the exact generated recovery prompt
+  with a `Prompt sent` event, and later ready output clears the blocked state.
+  Additional verification passed `npm run build`, `npm run verify:rust-warnings`,
+  `npm run verify:map-terminals`, and `git diff --check`.
+- Proof-needed queue rows are now actionable from the supervision lane. Each
+  proof item uses the agent mission as its label and clicking the row sends the
+  generated proof request through the durable workstream input path while
+  focusing the target run. The proof-needed queue remains visible until the child
+  returns evidence or an artifact, so requesting proof does not falsely make an
+  unproven completion review-ready. Regression coverage: `npx playwright test
+  tests/agent-workstream.spec.ts` passed 3/3 and verifies an unproven completed
+  run appears in the canvas/map proof queue, clicking the canvas proof row
+  dispatches the exact proof request with a `Prompt sent` event, and later
+  structured evidence clears the proof queue into the evidence queue. Additional
+  verification passed `npm run build`, `npm run verify:rust-warnings`, `npm run
+  verify:map-terminals`, and `git diff --check`.
+- Risk queue rows are now actionable from the supervision lane. Each risk item
+  uses the agent mission as its label and clicking the row sends a generated
+  mitigation prompt asking the child to reduce or justify the risk, report
+  updated confidence, residual risk, and verification evidence. The risk queue
+  intentionally remains visible until a later structured signal reports high
+  confidence with benign residual risk, so asking for mitigation does not hide an
+  unresolved risk. Regression coverage: `npx playwright test
+  tests/agent-workstream.spec.ts` passed 3/3 and verifies a low-confidence failed
+  run appears in the canvas/map risk queue, clicking the canvas risk row
+  dispatches the generated mitigation prompt with a `Prompt sent` event, and a
+  later high-confidence completion clears the risk row while preserving the full
+  run record. Additional verification passed `npm run build`, `npm run
+  verify:rust-warnings`, `npm run verify:map-terminals`, and `git diff --check`.
+- Evidence queue rows now act as proof handoff controls. Each evidence item uses
+  the agent mission as its label and carries a concise copyable proof snippet
+  combining the evidence line plus artifact path; clicking an evidence row copies
+  that snippet to the clipboard while focusing the target run. This makes proven
+  child-agent output reusable from the supervision lane without opening terminal
+  scrollback or manually reconstructing artifact paths. Regression coverage:
+  `npx playwright test tests/agent-workstream.spec.ts` passed 3/3 and verifies a
+  proof-request response moves into the evidence queue, the canvas evidence row
+  copies `Summarize flaky test failures: npm test -- flaky-checkout passed
+  (reports/flaky-checkout-summary.md)`, and the copied lane brief still includes
+  the same evidence. Additional verification passed `npm run build`, `npm run
+  verify:rust-warnings`, `npm run verify:map-terminals`, and `git diff --check`.
+- Agent memory rows now act as copyable handoff controls. Each memory item uses
+  the agent mission as its label and carries a concise `mission: memory` snippet;
+  clicking a memory row copies that snippet to the clipboard while focusing the
+  target run. This makes child-agent handoff facts reusable from the supervision
+  lane without opening the node or copying the whole aggregate brief. Regression
+  coverage: `npx playwright test tests/agent-workstream.spec.ts` passed 3/3 and
+  verifies a structured memory signal appears in the canvas/map memory rows and
+  clicking the canvas memory row copies `Investigate flaky checkout flow:
+  Checkout flake isolated to retry timing; preserve auth fixture logs.`.
+  Additional verification passed `npm run build`, `npm run verify:rust-warnings`,
+  `npm run verify:map-terminals`, and `git diff --check`.
+- Recent-event rows now act as copyable audit-trail controls. Each event uses
+  the agent mission as its label and carries a concise `mission: kind · label -
+  detail` snippet; clicking a recent-event row copies that snippet to the
+  clipboard while focusing the target run. The aggregate supervision brief now
+  also names recent events by mission instead of the generic terminal title, so
+  copied handoffs point to the child task that actually changed. Regression
+  coverage: `npx playwright test tests/agent-workstream.spec.ts` passed 3/3 and
+  verifies a structured completion event copies `Investigate flaky checkout
+  flow: signal · Structured completion - Provider emitted a machine-readable
+  completion signal.`, while aggregate lane briefs use mission-based recent
+  event lines. Additional verification passed `npm run build`, `npm run
+  verify:rust-warnings`, `npm run verify:map-terminals`, and `git diff --check`.
+- Workspace-group rows now act as copyable ownership handoffs. Each group derives
+  a concise brief with workspace label, agent count, active count, cleanup
+  pressure, attention pressure, and isolation/branch detail; clicking a group row
+  copies that brief to the clipboard while focusing the group's primary run.
+  This makes shared-checkout versus dedicated-worktree ownership reusable from
+  the supervision lane without copying the whole aggregate brief. Regression
+  coverage: `npx playwright test tests/agent-workstream.spec.ts` passed 3/3 and
+  verifies clicking the shared workspace group copies `workspace root unknown: 1
+  agents, 1 active (shared workspace · branch unknown)`. Additional verification
+  passed `npm run build`, `npm run verify:rust-warnings`, `npm run
+  verify:map-terminals`, and `git diff --check`.
+- Individual agent-run rows now act as copyable per-run handoffs from the
+  supervision lane. The detailed run brief formatter moved into the shared lane
+  model and is reused by the node header, canvas overlay, Sessions sidebar, and
+  Map sidebar. Clicking a `Copy run` row still focuses the target run but also
+  copies the same per-agent brief with task, current activity, evidence,
+  memory, risk/confidence, isolation, cleanup, and run counters, so an operator
+  can hand off one child agent without opening the node controls or copying the
+  full aggregate brief. Regression coverage: `npx playwright test
+  tests/agent-workstream.spec.ts` passed 3/3 and verifies clicking the canvas
+  run row copies the structured completion run brief, including `Now: Reviewing
+  checkout report`, evidence, and run counters. Additional verification passed
+  `npm run build`, `npm run verify:rust-warnings`, `npm run
+  verify:map-terminals`, and `git diff --check`.
+- Operator prompts are now visible from the supervision lane instead of being
+  hidden inside each agent node. `summarizeAgentLane()` derives recent prompt
+  items from every child run's durable `inputQueue`, counts total prompts in
+  lane status text, includes an `Operator prompts:` section in the copied
+  aggregate brief, and the canvas overlay plus Sessions/Map sidebars render
+  copyable `Copy prompt` rows with queued/sent state. This makes parent-issued
+  steering part of the cockpit record: the operator can see what was asked,
+  whether it has dispatched, and copy one prompt without opening the child
+  terminal. Regression coverage: `npx playwright test
+  tests/agent-workstream.spec.ts` passed 3/3 and verifies prompt chips, visible
+  canvas/map prompt rows, queued versus sent state, clipboard copies, and
+  aggregate brief prompt lines. Additional verification passed `npm run build`,
+  `npm run verify:rust-warnings`, `npm run verify:map-terminals`, and `git diff
+  --check`.
+- Agent terminal output now contributes a sanitized cockpit glimpse instead of
+  living only in terminal scrollback. The terminal runtime records a short,
+  prompt-filtered `terminalOutput` line on each workstream from readable PTY
+  output, excluding structured provider markers and shell prompt chrome. The
+  lane summary counts agents with output, the copied aggregate brief includes a
+  `Terminal output:` section, and the canvas overlay plus Sessions/Map sidebars
+  render copyable `Copy output` rows. This lets the parent operator see what the
+  child terminal most recently said even when the provider has not emitted a
+  structured status marker. Regression coverage: `npx playwright test
+  tests/agent-workstream.spec.ts` passed 3/3 and verifies durable terminal
+  output metadata, canvas/map output rows, clipboard copy, and aggregate brief
+  output lines. Additional verification passed `npm run build`, `npm run
+  verify:rust-warnings`, `npm run verify:map-terminals`, and `git diff
+  --check`.
+- Agent next actions are now lane-scannable instead of only appearing inside
+  each node or copied run brief. `summarizeAgentLane()` derives `nextItems` from
+  each child workstream's durable `nextAction`, counts `next actions` in the
+  lane status text, adds a `Next actions:` section to the copied aggregate
+  brief, and renders copyable `Copy next` rows in the canvas overlay plus
+  Sessions/Map sidebars. This gives the parent operator a cockpit-level list of
+  what each child expects next, including the distinction between a queued run
+  still watching provider startup and a running run waiting for provider
+  response. Regression coverage: `npx playwright test
+  tests/agent-workstream.spec.ts` passed 3/3 and verifies next-action chips,
+  visible canvas/map next rows, clipboard copy, and aggregate brief next-action
+  lines. Additional verification passed `npm run build`, `npm run
+  verify:rust-warnings`, `npm run verify:map-terminals`, and `git diff
+  --check`.
+- Agent supervision now has one mission-control priority queue instead of
+  requiring the operator to scan recovery, risk, proof, stale, review, and
+  attention rows independently. `summarizeAgentLane()` derives
+  `supervisorItems`, orders concrete actions by urgency, deduplicates to one
+  highest-priority action per child run, counts mission items in lane status
+  text, and includes a `Mission control:` section in the copied aggregate
+  brief. The canvas overlay plus Sessions/Map sidebars render actionable
+  mission rows; queue-prompt rows dispatch the same durable follow-up prompt as
+  the underlying proof/risk/stale controls, review rows mark the run reviewed,
+  and focus rows open the child run. Regression coverage: `npx playwright test
+  tests/agent-workstream.spec.ts` passed 3/3 and verifies review, proof, and
+  stale check-in mission rows plus copied mission-control brief lines.
+  Additional verification passed `npm run build`, `npm run
+  verify:rust-warnings`, `npm run verify:map-terminals`, and `git diff
+  --check`.
+- Mission-control actions now leave a durable audit trail instead of looking
+  like anonymous prompt/review mutations. Workstream inputs persist
+  `source=mission-control` plus the mission action label, sent events preserve
+  labels such as `Mission control: Request proof sent`, aggregate prompt rows
+  and copied run briefs include `via mission-control`, and review actions from
+  the mission queue record `Mission control reviewed run`. This keeps the
+  cockpit timeline honest: later handoffs show which operator actions came from
+  the priority queue while `currentActivity` remains free to show what the child
+  terminal is actually doing. Regression coverage: `npx playwright test
+  tests/agent-workstream.spec.ts` passed 3/3 and verifies mission-control review,
+  proof request, and stale check-in source/label metadata plus mission-control
+  queued/sent events. Additional verification passed `npm run build`, `npm run
+  verify:rust-warnings`, `npm run verify:map-terminals`, and `git diff
+  --check`.
+- Agent supervision lanes now lead with an operator-readable cockpit headline,
+  not only counters and queue rows. The shared lane model derives
+  `cockpitHeadline` from the top mission-control item first, then active or
+  complete aggregate state, and the canvas overlay plus Sessions/Map sidebars
+  render that headline above the detailed rows. Copied aggregate briefs include
+  `Cockpit headline:` so handoffs preserve the same "what should I do next?"
+  signal. Regression coverage: `npx playwright test
+  tests/agent-workstream.spec.ts` passed 3/3 and verifies running, proof-needed,
+  stale-check-in, and post-check-in headlines in the canvas/map lanes plus
+  copied brief headline lines. Additional verification passed `npm run build`,
+  `npm run verify:rust-warnings`, `npm run verify:map-terminals`, and `git diff
+  --check`.
+- Mission-control backlog pressure is now explicit when the prioritized queue
+  is clipped. The shared lane model separates total `missionItemCount` from the
+  visible top-five mission rows, tracks `hiddenMissionItemCount`, and includes
+  hidden pressure in lane status text, cockpit headlines, and copied aggregate
+  briefs. Canvas, Sessions, and Map lanes now render all five prioritized
+  mission rows plus a `+n hidden` pressure indicator when more items remain, so
+  a busy parent cockpit cannot mistake a capped list for the whole queue.
+  Regression coverage: `npx playwright test tests/agent-workstream.spec.ts`
+  passed 4/4 and adds a six-agent unproven-completion case that verifies `6
+  mission`, `1 hidden`, five visible mission rows, map/canvas overflow rows, and
+  copied brief overflow text. Additional verification passed `npm run build`,
+  `npm run verify:rust-warnings`, `npm run verify:map-terminals`, and `git diff
+  --check`.
+- Mission-control can now be copied as a focused operator brief instead of only
+  as part of the full aggregate supervision brief. The shared lane model exposes
+  `formatAgentMissionControlBrief()`, and the canvas overlay plus Sessions/Map
+  sidebars add dedicated copy controls for the current mission headline, total
+  mission pressure, hidden backlog count, and visible priority rows. This gives
+  the parent cockpit a compact "what needs action now" handoff without copying
+  every run, event, prompt, terminal output, and evidence section. Regression
+  coverage: `npx playwright test tests/agent-workstream.spec.ts` passed 4/4 and
+  verifies the canvas/map mission-control brief copy path in the six-agent
+  overflow case. Additional verification passed `npm run build`, `npm run
+  verify:rust-warnings`, `npm run verify:map-terminals`, and `git diff
+  --check`.
+- Focused mission-control briefs are now operational, not just descriptive.
+  Visible mission items include an action line (`send prompt`, `mark reviewed`,
+  or `focus run`), and prompt-based rows include the exact prompt payload that
+  will be sent to the child agent. This makes a copied mission-control handoff
+  sufficient for another operator to understand the next command without
+  opening the full aggregate brief or the child terminal. Regression coverage:
+  `npx playwright test tests/agent-workstream.spec.ts` passed 4/4 and verifies
+  the six-agent overflow mission-control brief contains `Action: send prompt`
+  plus the copied proof-request prompt payload. Additional verification passed
+  `npm run build`, `npm run verify:rust-warnings`, `npm run
+  verify:map-terminals`, and `git diff --check`.
+- Mission-control handoffs now identify the concrete child run, not only the
+  mission title. The shared lane model attaches a compact run identity
+  (`provider · status/phase · short run id`) to each visible mission-control
+  item, renders it in canvas/Sessions/Map mission rows, and includes it in the
+  focused mission-control brief. This lets an operator match a copied action
+  item back to the exact child terminal even when several agents share similar
+  missions or statuses. Regression coverage: `npx playwright test
+  tests/agent-workstream.spec.ts` passed 4/4 and verifies mission-control rows
+  plus copied mission-control briefs include `Codex · done/complete`; older
+  broad status checks were narrowed to exact node text so the richer mission
+  rows do not collide with status assertions. Additional verification passed
+  `npm run build`, `npm run verify:rust-warnings`, `npm run
+  verify:map-terminals`, and `git diff --check`.
+- Mission-control handoffs now identify the child run's workspace context as
+  well as the run itself. Each visible mission-control item carries
+  `workspaceIdentity` from the existing ops-context formatter, renders it in
+  canvas/Sessions/Map mission rows, and includes it in focused mission-control
+  briefs as `Workspace: <cwd/branch/isolation>`. This makes handoffs usable when
+  several child agents share similar missions but operate against different
+  shared or dedicated checkouts. Regression coverage: `npx playwright test
+  tests/agent-workstream.spec.ts` passed 4/4 and verifies canvas mission rows
+  plus copied mission-control briefs include `shared workspace` / workspace root
+  context. Additional verification passed `npm run build`, `npm run
+  verify:rust-warnings`, `npm run verify:map-terminals`, and `git diff
+  --check`.
+- Mission-control pressure now shows its composition, not just total backlog
+  size. The shared lane model exposes a priority-ordered `missionBreakdown`,
+  canvas/Sessions/Map render a `Mission mix` row, and focused mission-control
+  briefs include `Breakdown: <label>: <count>` so a busy parent cockpit can
+  distinguish proof requests from recovery, risk, stale check-ins, review, or
+  focus actions without opening each child run. Regression coverage: `npx
+  playwright test tests/agent-workstream.spec.ts` passed 4/4 and verifies the
+  six-agent overflow queue renders `Request proof: 6` in canvas/map plus copied
+  mission-control briefs. Additional verification passed `npm run build`, `npm
+  run verify:rust-warnings`, `npm run verify:map-terminals`, and `git diff
+  --check`.
+- Mission-control rows now show what the target child is doing, not only which
+  action the parent should take. Each visible mission item carries the child's
+  current activity from the shared activity classifier, renders `Now:
+  <activity>` in canvas/Sessions/Map mission rows, and includes the same `Now:`
+  line in focused mission-control briefs. This keeps the priority queue grounded
+  in live child-agent state, so an operator can see both "request proof" and
+  "ready for proof" without opening terminal scrollback. Regression coverage:
+  `npx playwright test tests/agent-workstream.spec.ts` passed 4/4 and verifies
+  the six-agent overflow queue renders/copies `Now: Ready for proof`. The
+  helper now waits on the composer value instead of pointer-clicking through the
+  overlay. Additional verification passed `npm run build`, `npm run
+  verify:rust-warnings`, `npm run verify:map-terminals`, and `git diff
+  --check`.
+- Agent terminal tiles now show current activity directly in their canvas node
+  header metadata. Agent headers keep the task title as the first line, then
+  render `provider · phase · activity`, using the same activity classifier as
+  the node detail panel and supervision lanes. This makes each terminal tile
+  answer "what is being done in here?" before the operator opens details or
+  scans the aggregate lane. Regression coverage: `npx playwright test
+  tests/agent-workstream.spec.ts` passed 4/4 and verifies launch/browser-preview
+  activity, waiting-for-input activity, and structured `Ready for review`
+  activity in `canvas-agent-node-header-meta`. Additional verification passed
+  `npm run build`, `npm run verify:rust-warnings`, `npm run
+  verify:map-terminals`, and `git diff --check`.
+- Review queues now show proof readiness before an operator closes a child run.
+  `summarizeAgentLane()` tags review-ready work as `Ready with proof` when an
+  evidence line or artifact is present, otherwise `Needs proof`; canvas,
+  Sessions, Map, mission-control rows, and copied aggregate briefs render that
+  status next to the review summary. This makes the cockpit harder to misuse:
+  completed-but-unproven work is visible as reviewable but not silently
+  equivalent to proven work. Regression coverage: `npx playwright test
+  tests/agent-workstream.spec.ts` passed 4/4 and verifies unproven completions
+  show `Needs proof`, while structured evidence/artifact completions show
+  `Ready with proof` in review rows, mission-control, and copied briefs.
+  Additional verification passed `npm run build`, `npm run
+  verify:rust-warnings`, `npm run verify:map-terminals`, and `git diff
+  --check`.
+- Review proof readiness is now visible at aggregate-lane level too. The shared
+  lane summary derives `reviewReadyWithProof` and `reviewNeedsProof`, includes
+  them in `agentLaneStatusText()`, and renders `proven` / `unproven` review
+  chips in canvas, Sessions, and Map lanes. This lets the parent cockpit show
+  whether pending reviews are backed by evidence before the operator scans
+  individual rows. Regression coverage: `npx playwright test
+  tests/agent-workstream.spec.ts` passed 4/4 and verifies unproven completions
+  show `0 proven` / `1 unproven`, proven completions show `1 proven` / `0
+  unproven`, and copied aggregate briefs include `0 proven review · 0 unproven
+  review` for idle review state. Additional verification passed `npm run
+  build`, `npm run verify:rust-warnings`, `npm run verify:map-terminals`, and
+  `git diff --check`.
+- Attention pressure now has a visible breakdown instead of only a total queue
+  count. The shared lane summary derives `attentionBreakdown`, copied aggregate
+  briefs include `Attention mix: ...`, and canvas/Sessions/Map lanes render an
+  `Attention mix` row such as `Auth required: 1`, `Blocked: 1`, or `Complete:
+  1`. This lets the operator distinguish authentication, blocked, and
+  completion-review pressure without scanning individual child-agent rows.
+  Regression coverage: `npx playwright test tests/agent-workstream.spec.ts`
+  passed 4/4 and verifies auth-required, blocked, and complete attention mixes
+  plus copied aggregate brief text. Additional verification passed `npm run
+  build`, `npm run verify:rust-warnings`, `npm run verify:map-terminals`, and
+  `git diff --check`.
+- Risk pressure now has a visible severity breakdown instead of only a total
+  risk count. The shared lane summary derives `riskBreakdown` from unresolved
+  risk items, copied aggregate briefs include `Risk mix: ...`, and
+  canvas/Sessions/Map lanes render a `Risk mix` row such as `low confidence:
+  1`. This lets the operator distinguish low/medium confidence and risk-only
+  pressure before scanning individual risk rows. Regression coverage: `npx
+  playwright test tests/agent-workstream.spec.ts` passed 4/4 and verifies
+  low-confidence risk appears in canvas/map plus copied aggregate brief text,
+  then clears after a high-confidence benign completion. Additional verification
+  passed `npm run build`, `npm run verify:rust-warnings`, `npm run
+  verify:map-terminals`, and `git diff --check`.
+- Split terminal panes now show agent activity directly in the pane chrome, not
+  only on the map/canvas. Agent panes render a compact `Now: <provider> ·
+  <phase> · <activity>` line next to the cwd/status area, so a split-terminal
+  operator can see what the child agent is doing without opening the cockpit
+  details. The same slice hardened remount behavior: terminal attach/readiness
+  events no longer downgrade structured complete/blocked/reviewed/interrupted
+  state, and processed structured provider markers are remembered on the
+  workstream so scrollback replay does not double-count signals. Regression
+  coverage: `npx playwright test tests/agent-workstream.spec.ts` passed 4/4 and
+  verifies split-pane activity for browser-preview startup and `Ready for
+  review`, while preserving exact structured signal counts after switching
+  between split and map surfaces. Additional verification passed `npm run
+  build`, `npm run verify:rust-warnings`, `npm run verify:map-terminals`, and
+  `git diff --check`.
+- Operator-authored memory can now be saved from the agent cockpit without
+  sending another prompt to the child agent. The existing composer gained a
+  `Save operator memory` control that records a human handoff note on the
+  workstream, updates current activity/outcome, increments control history, and
+  writes an audit event. The saved note immediately appears in the node memory
+  row, lane memory rows, copied memory snippets, and aggregate briefs, while
+  prompt/sent counts remain unchanged. Regression coverage: `npx playwright
+  test tests/agent-workstream.spec.ts` passed 5/5 and verifies the saved note,
+  unchanged prompt counts, control event, visible canvas/map memory rows, and
+  copied `mission: memory` snippet. Additional verification passed `npm run
+  build`, `npm run verify:rust-warnings`, `npm run verify:map-terminals`, and
+  `git diff --check`.
+- Review queues now show handoff-memory readiness alongside proof readiness.
+  `summarizeAgentLane()` marks each review-ready run as `Memory ready` when it
+  has a real provider/operator memory note, otherwise `Needs memory`; canvas,
+  Sessions, Map, mission-control rows, and copied aggregate briefs render the
+  status next to `Ready with proof` / `Needs proof`. This keeps a proofed child
+  run from looking handoff-complete when the operator still lacks durable
+  restart context. Regression coverage: `npx playwright test
+  tests/agent-workstream.spec.ts` passed 5/5 and verifies structured
+  completions with memory show `Memory ready`, proofed completions without
+  memory show `Needs memory`, and copied lane briefs include the same status.
+  Additional verification passed `npm run build`, `npm run
+  verify:rust-warnings`, `npm run verify:map-terminals`, and `git diff
+  --check`.
+- Handoff-memory readiness is now visible at aggregate-lane level too. The
+  shared lane summary derives `reviewReadyWithMemory` and `reviewNeedsMemory`,
+  includes them in `agentLaneStatusText()`, and renders `handoff ready` /
+  `handoff missing` chips in canvas, Sessions, and Map lanes. This lets the
+  parent cockpit show whether pending reviews have durable restart context
+  before the operator scans individual review rows. Regression coverage:
+  `npx playwright test tests/agent-workstream.spec.ts` passed 5/5 and verifies
+  review-ready runs with memory show `1 handoff ready` / `0 handoff missing`,
+  proofed runs without memory show `0 handoff ready` / `1 handoff missing`, and
+  copied aggregate briefs include the same counts. Additional verification
+  passed `npm run build`, `npm run verify:rust-warnings`, `npm run
+  verify:map-terminals`, and `git diff --check`.
+- Missing handoff memory is now actionable from mission control. Once a child
+  agent has proof but no durable memory note, `summarizeAgentLane()` derives a
+  `Request memory` mission item ahead of `Review`, with a generated prompt that
+  asks the provider for restart context, decisions, caveats, proof location, and
+  risk. The focused mission-control brief copies the same action and prompt, and
+  clicking the mission row sends it through the durable mission-control prompt
+  queue instead of forcing the operator to compose it manually. Regression
+  coverage: `npx playwright test tests/agent-workstream.spec.ts` passed 5/5 and
+  verifies proofed/memory-missing runs show `Next: Request memory`, copied
+  briefs include `Handoff memory needed:` and `Prompt: Provide durable handoff
+  memory`, and clicking the row records `Mission control: Request memory sent`.
+  The overflow mission-control regression now also waits for each structured
+  completion marker to persist before asserting queue totals. Additional
+  verification passed `npm run build`, `npm run verify:rust-warnings`, `npm run
+  verify:map-terminals`, and `git diff --check`.
+- Auth-required child agents now produce a dedicated copied handoff section.
+  `summarizeAgentLane()` derives `authItems` from workstreams whose readiness is
+  `auth-required`, and the aggregate supervision brief now includes an `Auth
+  queue:` with the failing mission, next action, readiness check, auth detection
+  rule, and provider availability message when present. This turns an auth
+  prompt from a transient terminal-output inference into restartable operator
+  context for the next person who picks up the cockpit. Regression coverage:
+  `npx playwright test tests/agent-workstream.spec.ts` passed 5/5 and verifies
+  the copied aggregate brief includes `Auth queue:`, `Provider requires
+  authentication`, `Next: Authenticate the CLI, then restart or send a recovery
+  prompt`, the PATH readiness check, and the CLI auth-output scan. Additional
+  verification passed `npm run build`, `npm run verify:rust-warnings`, `npm run
+  verify:map-terminals`, and `git diff --check`.
+- Auth-required child agents are now visible as copyable lane rows too. The
+  derived `authItems` carry a concise `mission: reason; next=...; readiness=...;
+  auth=...` handoff string, and canvas, Sessions, and Map lanes render `Copy
+  auth` rows that focus the affected run while copying that snippet. This makes
+  auth recovery operable from the lane itself instead of requiring a full
+  aggregate brief copy or terminal scrollback. Regression coverage: `npx
+  playwright test tests/agent-workstream.spec.ts` passed 5/5 and verifies
+  canvas/map auth rows, clipboard text with the next action, readiness check,
+  and auth scan rule. Additional verification passed `npm run build`, `npm run
+  verify:rust-warnings`, `npm run verify:map-terminals`, and `git diff
+  --check`.
+- Direct lane action rows now preserve mission-control provenance. Canvas,
+  Sessions, and Map rows for stale check-ins, risk mitigation, recovery, and
+  proof requests all call `queueWorkstreamInput()` with
+  `source: "mission-control"` plus a stable label such as `Check in`,
+  `Mitigate risk`, `Recover`, or `Request proof`. The input history and timeline
+  now show these lane-originated interventions as cockpit actions instead of
+  anonymous operator follow-ups. Regression coverage: `npx playwright test
+  tests/agent-workstream.spec.ts` passed 5/5 and verifies risk/recovery row
+  clicks persist `latestInputSource: "mission-control"`, the row labels, queued
+  mission-control events, and sent events like `Mission control: Recover sent`.
+  Existing stale/proof mission-control assertions continue to pass. Additional
+  verification passed `npm run build`, `npm run verify:rust-warnings`, `npm run
+  verify:map-terminals`, and `git diff --check`.
+- Auth pressure is now visible in aggregate lane totals. `agentLaneStatusText()`
+  includes `${authItems.length} auth`, and canvas, Sessions, and Map lane chips
+  render the same count beside proof/risk/recovery counts. This keeps
+  authentication blockers from being hidden inside the broader attention queue
+  when an operator scans the cockpit header or copied aggregate brief.
+  Regression coverage: `npx playwright test tests/agent-workstream.spec.ts`
+  passed 5/5 and verifies auth-required runs show `1 auth`, while idle
+  multi-agent briefs include `0 auth` in totals. Additional verification passed
+  `npm run build`, `npm run verify:rust-warnings`, `npm run
+  verify:map-terminals`, and `git diff --check`.
+- Review closeout is now gated on both proof and durable handoff memory. The
+  shared lane model exposes closeout-readiness helpers, the canvas node
+  `Mark run reviewed` button stays disabled until evidence/artifact and memory
+  exist, and canvas, Sessions, and Map review rows now focus blocked runs
+  without mutating them. This prevents an operator from accidentally marking a
+  child agent reviewed while the cockpit is still asking for proof or restart
+  context. Regression coverage: `npx playwright test
+  tests/agent-workstream.spec.ts` passed 5/5 and verifies blocked review rows
+  remain `complete` with no `reviewedAt` when proof/memory are missing and when
+  proof exists but handoff memory is still missing. Additional verification
+  passed `npm run build`, `npm run verify:rust-warnings`, `npm run
+  verify:map-terminals`, and `git diff --check`.
+- Closeout pressure is now explicit in aggregate lane totals. The shared lane
+  summary derives `reviewCloseoutReady` and `reviewCloseoutBlocked` from the
+  proof-plus-memory closeout rule, `agentLaneStatusText()` includes both counts,
+  and canvas, Sessions, and Map lanes render `closeout ready` / `closeout
+  blocked` chips next to the broader review count. This lets an operator see at
+  a glance whether reviews are safe to close or still blocked by missing proof
+  or handoff memory, without mentally correlating the proof and memory chips.
+  Regression coverage: `npx playwright test tests/agent-workstream.spec.ts`
+  passed 5/5 and verifies completed runs without proof/memory show `0 closeout
+  ready` / `1 closeout blocked`, proofed runs without memory stay blocked, and
+  fully proven/memorized runs show `1 closeout ready` / `0 closeout blocked`.
+  Copied aggregate briefs now include the same counts. Additional verification
+  passed `npm run build`, `npm run verify:rust-warnings`, `npm run
+  verify:map-terminals`, and `git diff --check`.
+- Direct review-row closeout now preserves mission-control provenance. Once a
+  run is proofed and has durable handoff memory, clicking its canvas, Sessions,
+  or Map review row calls `reviewWorkstream()` with
+  `source: "mission-control"` and label `Review`, matching the rest of the lane
+  action rows instead of recording an anonymous operator review. The node header
+  button remains a plain operator acknowledgment, while lane-originated closeout
+  is now auditable in the run event stream. Regression coverage: `npx
+  playwright test tests/agent-workstream.spec.ts` passed 5/5 and verifies a
+  direct canvas review-row click records `Mission control reviewed run` with
+  detail `Review: acknowledged the completed run record`. Additional
+  verification passed `npm run build`, `npm run verify:rust-warnings`, `npm run
+  verify:map-terminals`, and `git diff --check`.
+- Closeout blockers now have an operator-visible diagnosis row. The shared lane
+  model derives a `closeoutBreakdown` with `Ready`, `Needs proof`, `Needs
+  memory`, or `Needs proof + memory` buckets, copied aggregate briefs include a
+  `Closeout mix:` line, and canvas, Sessions, and Map lanes render the same
+  `Closeout mix` row near mission/attention/risk mix. This makes the cockpit
+  explain why closeout is blocked without forcing the operator to inspect each
+  review row. Regression coverage: `npx playwright test
+  tests/agent-workstream.spec.ts` passed 5/5 and verifies ready runs show
+  `Ready: 1`, unproven/unmemorized runs show `Needs proof + memory: 1`, and
+  proofed memory-missing runs show `Needs memory: 1` in both visible lanes and
+  copied aggregate briefs. Additional verification passed `npm run build`,
+  `npm run verify:rust-warnings`, `npm run verify:map-terminals`, and `git diff
+  --check`.
+- Provider readiness is now visible at aggregate-lane level. The shared lane
+  model derives a `readinessBreakdown` from each workstream's provider
+  availability and readiness state (`Provider ready`, `Auth required`, `Path
+  checked`, `Unknown readiness`, or `Provider unavailable`), copied aggregate
+  briefs include a `Readiness mix:` line, and canvas, Sessions, and Map lanes
+  render the same `Readiness mix` row. This lets the cockpit show whether the
+  local agent fleet is merely path-checked, authenticated and ready, or blocked
+  on auth/provider availability without inspecting individual terminals.
+  Regression coverage: `npx playwright test tests/agent-workstream.spec.ts`
+  passed 5/5 and verifies launch state shows `Path checked: 1`, auth output
+  flips the aggregate mix to `Auth required: 1`, structured completion shows
+  `Provider ready: 1`, and copied aggregate briefs carry the same readiness
+  mix. Additional verification passed `npm run build`, `npm run
+  verify:rust-warnings`, `npm run verify:map-terminals`, and `git diff
+  --check`.
+- Provider mix is now visible at aggregate-lane level. The shared lane model
+  derives `providerBreakdown` from each workstream's provider metadata, copied
+  aggregate briefs include a `Provider mix:` line, and canvas, Sessions, and
+  Map lanes render a matching `Provider mix` row. This lets the cockpit show
+  which local agent runtimes make up the fleet before the operator drills into
+  individual runs. Regression coverage: `npx playwright test
+  tests/agent-workstream.spec.ts` passed 5/5 and verifies a single supervised
+  Codex run shows `Codex: 1`, a two-run lane shows `Codex: 2` on both canvas and
+  Map, and copied aggregate briefs include `Provider mix: Codex: 2`.
+  Additional verification passed `npm run build`, `npm run
+  verify:rust-warnings`, `npm run verify:map-terminals`, and `git diff
+  --check`.
+- Worktree isolation is now visible as an aggregate cockpit mix. The shared
+  lane model derives `isolationBreakdown` from each workstream's isolation
+  mode/status using the same labels shown in run cards, copied aggregate briefs
+  include an `Isolation mix:` line, and canvas, Sessions, and Map lanes render a
+  matching `Isolation mix` row. This lets the operator see shared-checkout
+  pressure versus dedicated-worktree requests without opening each agent or
+  scanning workspace groups. Regression coverage: `npx playwright test
+  tests/agent-workstream.spec.ts` passed 5/5 and verifies a single shared run
+  shows `shared workspace: 1`, a mixed two-run lane shows `shared workspace: 1`
+  plus `dedicated worktree requested: 1` on canvas and Map, and copied aggregate
+  briefs include `Isolation mix: shared workspace: 1 · dedicated worktree
+  requested: 1`. Additional verification passed `npm run build`, `npm run
+  verify:rust-warnings`, `npm run verify:map-terminals`, and `git diff
+  --check`.
+- Worktree cleanup ownership is now visible as an aggregate cockpit mix. The
+  shared lane model derives `cleanupBreakdown` from each workstream's cleanup
+  status, copied aggregate briefs include a `Cleanup mix:` line, and canvas,
+  Sessions, and Map lanes render a matching `Cleanup mix` row. This lets an
+  operator see which runs do not own cleanup targets, which dedicated runs are
+  manual, and which ones are actively cleanup-requested without drilling into
+  each agent card. Regression coverage: `npx playwright test
+  tests/agent-workstream.spec.ts` passed 5/5 and verifies the mixed shared /
+  dedicated lane starts as `not-needed: 1 · manual: 1`, changes to
+  `not-needed: 1 · requested: 1` after requesting cleanup, and returns to
+  `not-needed: 1 · manual: 1` after the browser cleanup fallback records manual
+  cleanup. Copied aggregate briefs include the same cleanup mix. Additional
+  verification passed `npm run build`, `npm run verify:rust-warnings`, `npm run
+  verify:map-terminals`, and `git diff --check`.
+- Focused mission-control briefs now carry fleet context, not just the action
+  queue. `formatAgentMissionControlBrief()` includes Provider, Isolation,
+  Cleanup, Readiness, and Closeout mix lines before the mission breakdown, so
+  copied action handoffs preserve the cockpit-wide state needed to understand
+  why a queue exists. Regression coverage: `npx playwright test
+  tests/agent-workstream.spec.ts` passed 5/5 and verifies Request memory briefs
+  include Provider, Readiness, and Closeout context, while overflow Request
+  proof briefs include Provider, Isolation, Cleanup, Readiness, and Closeout
+  context on both canvas and Map copies. Additional verification passed `npm run
+  build`, `npm run verify:rust-warnings`, `npm run verify:map-terminals`, and
+  `git diff --check`.
+- Mission-control rows now show signal recency, not just the latest activity
+  text. The shared lane model derives `signalAge` from the same
+  last-activity/activity/creation timestamp chain used by stale detection,
+  canvas/Sessions/Map mission rows render `Signal: ...`, and both aggregate and
+  focused copied briefs include the same recency line under `Now:`. This keeps
+  a copied action handoff honest about whether "Ready for proof" is fresh or a
+  stale terminal signal. Regression coverage: `npx playwright test
+  tests/agent-workstream.spec.ts` passed 5/5 and verifies fresh Request memory /
+  Request proof mission handoffs show `Signal: just now`, while stale check-in
+  mission rows and copied briefs show `Signal: 16m ago`. Additional verification
+  passed `npm run build`, `npm run verify:rust-warnings`, `npm run
+  verify:map-terminals`, and `git diff --check`.
+- Mission-control rows now show signal provenance as well as recency. The shared
+  lane model carries `signalSource` from `workstreamActivityMeta()`, so
+  canvas/Sessions/Map mission rows and copied mission-control briefs include
+  `Source: <kind> · <source>` beside `Now:` and `Signal:`. This lets an operator
+  distinguish a queue item caused by a structured provider marker from one
+  inferred from terminal output or operator control state. Regression coverage:
+  `npx playwright test tests/agent-workstream.spec.ts` passed 5/5 and verifies
+  structured Request memory / Request proof mission rows and copied focused
+  briefs show `Source: complete · structured`. Additional verification passed
+  `npm run build`, `npm run verify:rust-warnings`, `npm run
+  verify:map-terminals`, and `git diff --check`.
+- Hidden mission-control items now survive copied handoffs. The shared lane
+  model preserves `hiddenSupervisorItems` after the visible five-row cap, and
+  both aggregate and focused mission-control briefs include a `Hidden mission
+  control:` section with each hidden child run, workspace, activity, signal
+  age/source, action, and prompt. This keeps overflow queues compact on screen
+  without losing the identity of lower-priority child-agent work when the
+  cockpit state is handed to another operator. Regression coverage: `npx
+  playwright test tests/agent-workstream.spec.ts` passed 5/5 and verifies the
+  six-agent Request proof overflow still renders `+1 more`, while copied canvas,
+  Map, and aggregate briefs name `Overflow proof 6`, its `Request proof` action,
+  and `Prompt: Attach proof 6`. Additional verification passed `npm run build`,
+  `npm run verify:rust-warnings`, `npm run verify:map-terminals`, and `git diff
+  --check`.
+- Live overflow mission rows now preview the first hidden action instead of
+  staying anonymous. Canvas, Sessions, and Map overflow rows still keep the
+  visible queue capped, but their text/title now include the first hidden
+  mission item's child name, action label, and detail. This lets an operator see
+  which lower-priority child is hidden without copying a brief or opening every
+  terminal. Regression coverage: `npx playwright test
+  tests/agent-workstream.spec.ts` passed 5/5 and verifies the six-agent Request
+  proof overflow row still shows `+1 more` while canvas and Map rows expose
+  `Overflow proof 6`, `Request proof`, and `Needs proof 6`. Additional
+  verification passed `npm run build`, `npm run verify:rust-warnings`, `npm run
+  verify:map-terminals`, and `git diff --check`.
+- Live child-run lists now advertise their own overflow. The canvas, Sessions,
+  and Map `Agent runs` lists still cap visible run rows to three, but they now
+  append a `+N more agents` row with the first hidden run's provider, phase,
+  activity, and workspace context. This keeps dense supervision panes compact
+  while making it obvious which child run is hidden behind the cap. Regression
+  coverage: `npx playwright test tests/agent-workstream.spec.ts` passed 5/5 and
+  verifies the six-agent Request proof lane shows three visible run rows plus
+  `+3 more agents`, `Ready for proof`, and `shared workspace` on canvas and
+  Map. Additional verification passed `npm run build`, `npm run
+  verify:rust-warnings`, `npm run verify:map-terminals`, and `git diff
+  --check`.
+- Live operator-prompt lists now advertise hidden steering history. Canvas,
+  Sessions, and Map still show the three freshest prompt rows, but append a
+  `+N more prompts` row with the first hidden prompt's mission, sent/queued
+  state, and prompt preview. This prevents operator instructions from
+  disappearing behind the cap without any cockpit cue. Regression coverage:
+  `npx playwright test tests/agent-workstream.spec.ts` passed 5/5 and verifies
+  the six-agent Request proof lane shows three visible prompt rows plus a prompt
+  overflow row containing `more prompts`, `Overflow proof`, and `sent` on canvas
+  and Map. Additional verification passed `npm run build`, `npm run
+  verify:rust-warnings`, `npm run verify:map-terminals`, and `git diff
+  --check`.
+- Live next-action lists now advertise hidden follow-up work. Canvas, Sessions,
+  and Map still show the three freshest `Next actions`, but append a `+N more
+  next` row with the first hidden child mission and next-action text. This keeps
+  a busy parent cockpit from showing a smaller actionable queue than the summary
+  count implies. Regression coverage: `npx playwright test
+  tests/agent-workstream.spec.ts` passed 5/5 and verifies the six-agent Request
+  proof lane shows three visible next-action rows plus an overflow row
+  containing `more next`, `Overflow proof`, and `Attach proof` on canvas and
+  Map. Additional verification passed `npm run build`, `npm run
+  verify:rust-warnings`, `npm run verify:map-terminals`, and `git diff
+  --check`.
+- Live proof-needed queues now advertise hidden proof requests. Canvas,
+  Sessions, and Map still show the first three `Request proof` rows, but append
+  a `+N more proof` row with the first hidden child mission, summary, and proof
+  request. This keeps unproven completed work visible even when the proof queue
+  is busier than the live row cap. Regression coverage: `npx playwright test
+  tests/agent-workstream.spec.ts` passed 5/5 and verifies the six-agent Request
+  proof lane shows three visible proof rows plus an overflow row containing
+  `more proof`, `Overflow proof`, `Needs proof`, and `Attach proof` on canvas
+  and Map. Additional verification passed `npm run build`, `npm run
+  verify:rust-warnings`, `npm run verify:map-terminals`, and `git diff
+  --check`.
+- Live review queues now advertise hidden closeout work and use mission titles.
+  Canvas, Sessions, and Map still show the first three review rows, but append
+  a `+N more review` row with the first hidden child mission, proof status,
+  handoff-memory status, and summary. The shared lane model also titles review
+  items by `workstream.mission ?? workstream.prompt ?? tab.title`, so
+  review/closeout handoffs point to the child task instead of a generic `Codex
+  agent` label. Regression coverage: `npx playwright test
+  tests/agent-workstream.spec.ts` passed 5/5 and verifies the six-agent Request
+  proof lane shows three visible review rows plus a review overflow row
+  containing `more review`, `Overflow proof`, `Needs proof`, and `Needs memory`
+  on canvas and Map, while copied aggregate briefs use `Investigate flaky
+  checkout flow: Review...`. Additional verification passed `npm run build`,
+  `npm run verify:rust-warnings`, `npm run verify:map-terminals`, and `git diff
+  --check`.
+- Live terminal-output lists now advertise hidden output glimpses. Canvas,
+  Sessions, and Map still show the first three `Copy output` rows, but append a
+  `+N more output` row with the first hidden child mission and its latest
+  sanitized terminal-output glimpse. This keeps the parent cockpit from hiding
+  what busy child terminals are doing behind the visible row cap. The review
+  overflow row was also moved under the review queue instead of the attention
+  queue, so closeout overflow remains visible even when no separate attention
+  list is rendered. Regression coverage: `npx playwright test
+  tests/agent-workstream.spec.ts` passed 5/5 and verifies the six-agent Request
+  proof lane shows three visible output rows plus an output overflow row
+  containing `more output`, `Overflow proof`, and `Output glimpse` on canvas and
+  Map, while the existing review overflow assertions still pass. Additional
+  verification passed `npm run build`, `npm run verify:rust-warnings`, `npm run
+  verify:map-terminals`, and `git diff --check`.
+- Live recent-event lists now advertise hidden audit activity. Canvas, Sessions,
+  and Map still show the first three `Copy event` rows, but append a `+N more
+  events` row with the first hidden child mission, event label, and detail. This
+  keeps provider-readiness and status audit trails visible as cockpit pressure
+  instead of silently hiding lower-priority events behind the row cap. The
+  output and review overflow rows were also re-anchored under their own
+  terminal-output and review queues, so each overflow cue renders only when its
+  own list exists. Regression coverage: `npx playwright test
+  tests/agent-workstream.spec.ts` passed 5/5 and verifies the six-agent Request
+  proof lane shows three visible recent-event rows plus an event overflow row
+  containing `more events`, `Overflow proof`, and `Provider session ready` on
+  canvas and Map, while output and review overflow assertions still pass.
+  Additional verification passed `npm run build`, `npm run verify:rust-warnings`,
+  `npm run verify:map-terminals`, and `git diff --check`.
+- Live handoff-memory lists now advertise hidden restart context. Canvas,
+  Sessions, and Map still show the first three `Copy memory` rows, but append a
+  `+N more memory` row with the first hidden child mission and memory note. This
+  keeps durable operator/provider handoff facts visible as cockpit pressure, so
+  restart context does not disappear behind a row cap while the lane summary
+  reports more memories than the operator can see. Regression coverage: `npx
+  playwright test tests/agent-workstream.spec.ts` passed 5/5 and verifies the
+  six-agent Request proof lane shows three visible memory rows plus a memory
+  overflow row containing `more memory`, `Overflow proof`, and `Handoff memory`
+  on canvas and Map. The same regression also verifies review overflow now shows
+  `Memory ready` for those memorized runs. Additional verification passed `npm
+  run build`, `npm run verify:rust-warnings`, `npm run verify:map-terminals`,
+  and `git diff --check`.
+- Live evidence queues now advertise hidden proof artifacts. Canvas, Sessions,
+  and Map still show the first three `Copy proof` rows, but append a `+N more
+  evidence` row with the first hidden child mission, evidence line, and artifact
+  path. This keeps proof material visible as cockpit pressure instead of forcing
+  the operator to copy the aggregate brief or open child scrollback when many
+  agents have attached verification. Regression coverage: `npx playwright test
+  tests/agent-workstream.spec.ts` passed 5/5 and verifies the six-agent overflow
+  lane can transition from proof-needed to evidence-backed runs, then shows
+  three visible evidence rows plus an evidence overflow row containing `more
+  evidence`, `Overflow proof`, `Verification evidence`, and
+  `reports/overflow-proof` on canvas and Map. Additional verification passed
+  `npm run build`, `npm run verify:rust-warnings`, `npm run
+  verify:map-terminals`, and `git diff --check`.
+- Live auth queues now advertise hidden provider-auth blockers. Canvas,
+  Sessions, and Map still show the first three `Copy auth` rows, but append a
+  `+N more auth` row with the first hidden child mission, auth reason, and next
+  action. This keeps authentication blockers visible as fleet-level cockpit
+  pressure instead of hiding the fourth blocked agent behind the row cap.
+  Regression coverage: `npx playwright test tests/agent-workstream.spec.ts`
+  passed 5/5 and verifies the six-agent overflow lane can transition into
+  auth-required runs, then shows three visible auth rows plus an auth overflow
+  row containing `more auth`, `Overflow proof`, `Provider requires
+  authentication`, and `Authenticate the CLI` on canvas and Map. Additional
+  verification passed `npm run build`, `npm run verify:rust-warnings`, `npm run
+  verify:map-terminals`, and `git diff --check`.
+- Live risk queues now advertise hidden risky child runs. Canvas, Sessions, and
+  Map still show the first three `Mitigate` rows, but append a `+N more risk`
+  row with the first hidden child mission and confidence/risk detail. This keeps
+  low-confidence or non-benign residual-risk agents visible as cockpit pressure
+  instead of burying the fourth risky run behind the row cap. Regression
+  coverage: `npx playwright test tests/agent-workstream.spec.ts` passed 5/5 and
+  verifies the six-agent overflow lane can transition into low-confidence
+  residual-risk runs, then shows three visible risk rows plus a risk overflow
+  row containing `more risk`, `Overflow proof`, `confidence=low`, and `Residual
+  risk` on canvas and Map. Additional verification passed `npm run build`, `npm
+  run verify:rust-warnings`, `npm run verify:map-terminals`, and `git diff
+  --check`.
+- Live recovery queues now advertise hidden blocked/failed child runs. Canvas,
+  Sessions, and Map still show the first three `Recover` rows, but append a `+N
+  more recovery` row with the first hidden child mission, failure reason, and
+  generated recovery prompt. This keeps failed providers and blocked agents
+  visible as cockpit pressure instead of hiding the fourth recovery behind the
+  row cap. Regression coverage: `npx playwright test
+  tests/agent-workstream.spec.ts` passed 5/5 and verifies the six-agent overflow
+  lane can transition into failed/blocked runs, then shows three visible
+  recovery rows plus a recovery overflow row containing `more recovery`,
+  `Overflow proof`, `Provider failure`, and `Recover Codex agent` on canvas and
+  Map. Additional verification passed `npm run build`, `npm run
+  verify:rust-warnings`, `npm run verify:map-terminals`, and `git diff
+  --check`.
+- Live attention queues now advertise hidden operator-action pressure. Canvas,
+  Sessions, and Map still show the first three attention rows, but append a `+N
+  more attention` row with the first hidden label, child mission, and current
+  activity. Attention rows now prefer the actual mission/prompt title over the
+  generic tab title, so hidden blocked/auth/complete agents identify the work
+  being supervised instead of reading as `Codex agent`. Regression coverage:
+  `npx playwright test tests/agent-workstream.spec.ts` passed 5/5 and verifies
+  the six-agent overflow lane can transition into blocked runs, then shows three
+  visible attention rows plus an attention overflow row containing `more
+  attention`, `Blocked`, `Overflow proof`, and `Recovery needed` on canvas and
+  Map. Additional verification passed `npm run build`, `npm run
+  verify:rust-warnings`, `npm run verify:map-terminals`, and `git diff
+  --check`.
+- Live stale-agent queues now advertise hidden idle child runs. Canvas,
+  Sessions, and Map still show the first three `Check in` rows, but append a
+  `+N more stale` row with the first hidden child mission, idle age, and last
+  visible activity. This keeps long-running agents that have stopped producing
+  visible activity from disappearing behind the row cap while the cockpit
+  summary reports more stale agents than the operator can inspect. Regression
+  coverage: `npx playwright test tests/agent-workstream.spec.ts` passed 5/5 and
+  verifies the six-agent overflow lane can transition back into active-but-idle
+  runs, then shows three visible stale rows plus a stale overflow row containing
+  `more stale`, `Overflow proof`, `idle`, and `Idle child` on canvas and Map.
+  Additional verification passed `npm run build`, `npm run verify:rust-warnings`,
+  `npm run verify:map-terminals`, and `git diff --check`.
+- Live workspace-group lists now advertise hidden workspace ownership. Canvas,
+  Sessions, and Map still show the first three workspace groups, but append a
+  `+N more groups` row with the first hidden group's label, agent count, active
+  count, isolation mode, and branch detail. This keeps shared checkout and
+  dedicated-worktree spread visible as cockpit pressure instead of making the
+  operator infer hidden groups from the summary count. Regression coverage: `npx
+  playwright test tests/agent-workstream.spec.ts` passed 5/5 and verifies the
+  six-agent overflow lane can transition into six distinct shared workspace
+  groups, then shows three visible workspace groups plus a workspace overflow
+  row containing `more groups`, `Workspace group`, `1 agents`, `1 active`, and
+  `branch-overflow` on canvas and Map. Additional verification passed `npm run
+  build`, `npm run verify:rust-warnings`, `npm run verify:map-terminals`, and
+  `git diff --check`.
 - Process-survival hotfix: app/dev restarts no longer replace a reachable
   same-protocol daemon just because the binary `build_id` changed. Root cause:
   daemon replacement killed daemon-owned PTYs, while cold restore only replayed
@@ -2400,3 +3672,204 @@ Progress notes:
   `3626544` across app restart, then proved cold restore after daemon restart to
   PID `3627596`; the user's live daemon socket owner remained PID `3399682`
   while release verification ran.
+- Agent auth-blocker recovery now has a fleet-level cockpit action. Canvas,
+  Sessions, and Map show `Retry N auth`/`Retry N auth · M held` beside the
+  existing recovery/review/proof/memory/risk plans, and the action restarts only
+  auth-required child agents after the operator authenticates the CLI. Restart
+  metadata now clears stale auth/provider-failure readiness into `unknown` with
+  a startup readiness check, so old auth blockers do not remain stuck after a
+  retry. Regression coverage: `npx playwright test
+  tests/agent-workstream.spec.ts` passed 7/7 and verifies the six-agent overflow
+  lane exposes the auth retry plan/action on canvas and Map, then retries all
+  six auth-blocked runs into restart-requested provider startup state and
+  disables the retry action. Additional verification passed `npm run build`,
+  `npm run verify:rust-warnings`, `npm run verify:map-terminals`, and `git diff
+  --check`.
+- Agent cleanup ownership now has a safe fleet-level cockpit request action.
+  Canvas, Sessions, and Map show `Cleanup N ready · M held` beside the other
+  mission-control plans, and the action requests worktree cleanup only for
+  completed/reviewed dedicated worktree runs whose cleanup target is still
+  `available`. Active dedicated runs, shared-worktree runs, already-requested
+  cleanup, manual cleanup, removed worktrees, and not-needed cleanup are held;
+  destructive cleanup execution remains a per-run guarded action. Regression
+  coverage: `npx playwright test tests/agent-workstream.spec.ts` passed 8/8 and
+  verifies one cleanup-ready completed dedicated run plus two held runs show the
+  cleanup request plan/action on canvas and Map; the canvas batch action changes
+  only the eligible run to `worktreeCleanupStatus=requested`, records the
+  `Worktree cleanup requested` event, then disables once no cleanup-ready runs
+  remain. Additional verification passed `npm run build`, `npm run
+  verify:rust-warnings`, `npm run verify:map-terminals`, and `git diff
+  --check`.
+- Cleanup-requested runs now enter mission control instead of staying as a
+  passive health counter. Once a fleet cleanup request is recorded, the shared
+  mission queue adds a `Cleanup pending` focus item with the cleanup note,
+  workspace/run identity, activity signal, and copied handoff action `focus run
+  and execute guarded cleanup`; Canvas, Sessions, Map, aggregate briefs, and
+  focused mission-control briefs inherit the same row from the shared model.
+  This keeps pending worktree cleanup operable from the cockpit while leaving
+  destructive cleanup execution on the guarded per-run control. Regression
+  coverage: `npx playwright test tests/agent-workstream.spec.ts` passed 8/8 and
+  verifies a requested dedicated cleanup creates one visible mission item on
+  canvas and Map, appears in the copied aggregate brief as `Cleanup pending`,
+  and includes `Action: focus run and execute guarded cleanup`. Additional
+  verification passed `npm run build`, `npm run verify:rust-warnings`, `npm run
+  verify:map-terminals`, and `git diff --check`.
+- Cleanup-ready runs now count as actionable cockpit pressure before cleanup is
+  requested. The shared lane model tracks `cleanupReady`, includes it in the
+  aggregate status text and health pressure calculation, and surfaces `N cleanup
+  ready` on Canvas, Sessions, Map, and copied aggregate briefs. This prevents a
+  completed dedicated worktree with an available cleanup target from looking
+  stable until after the operator has already clicked the cleanup request.
+  Regression coverage: `npx playwright test tests/agent-workstream.spec.ts`
+  passed 8/8 and verifies a completed dedicated run with `available` cleanup
+  shows `Needs attention`, `1 cleanup ready`, and `Cleanup 1 ready · 2 held`
+  before the batch request, then changes to requested cleanup after the action.
+  Additional verification passed `npm run build`, `npm run
+  verify:rust-warnings`, `npm run verify:map-terminals`, and `git diff
+  --check`.
+- Fleet restart/cleanup controls now preserve mission-control provenance instead
+  of recording generic operator controls. The shared store control API accepts
+  source/label metadata; Canvas, Sessions, and Map pass
+  `source: "mission-control"` for recovery restarts, auth retries, and cleanup
+  requests while one-off run controls remain operator-scoped. Regression
+  coverage: `npx playwright test tests/agent-workstream.spec.ts` passed 8/8 and
+  verifies fleet auth retry/recovery restart events are recorded as
+  `Mission control requested restart`, and cleanup fleet requests record
+  `Mission control requested worktree cleanup` with the `Request cleanup`
+  detail while direct per-run cleanup still records the operator event.
+  Additional verification passed `npm run build`, `npm run
+  verify:rust-warnings`, `npm run verify:map-terminals`, and `git diff
+  --check`.
+- Mission-control rows now preserve same-run secondary pressure instead of
+  silently hiding it behind the one-row-per-agent queue. The shared lane model
+  still keeps the visible queue compact, but each primary mission row now
+  carries `Also:` actions for lower-priority work on the same child run, the
+  mission mix counts those secondary actions, and Canvas, Sessions, Map,
+  aggregate briefs, and focused mission-control briefs render the same
+  secondary pressure. Regression coverage: `npx playwright test
+  tests/agent-workstream.spec.ts` passed 8/8 and verifies six completed runs
+  that primarily need proof also show `Review: 6` in the mission mix, visible
+  rows include `Also: Review` plus the proof/memory closeout state, and copied
+  mission-control briefs include the same `Also:` handoff line. Additional
+  verification passed `npm run build`, `npm run verify:rust-warnings`, `npm run
+  verify:map-terminals`, and `git diff --check`.
+- Mission-control load now distinguishes compact rows from actual operator
+  actions. The shared summary tracks `missionActionCount` and
+  `hiddenMissionActionCount` in addition to visible/hidden mission rows, Canvas,
+  Sessions, and Map show row and action chips, and copied aggregate plus focused
+  mission-control briefs report rows/actions separately. This prevents a
+  one-row-per-agent queue from understating runs that need multiple operator
+  decisions. Regression coverage: `npx playwright test
+  tests/agent-workstream.spec.ts` passed 8/8 and verifies the six-row overflow
+  fixture reports `18 actions` / `3 hidden actions` when proof, review, and
+  completion-focus pressure all exist on the same six runs; no-action fixtures
+  report zero rows and zero actions. Additional verification passed `npm run
+  build`, `npm run verify:rust-warnings`, `npm run verify:map-terminals`, and
+  `git diff --check`.
+- Hidden mission-control overflow now carries the same row/action context as
+  the visible queue. Canvas, Sessions, and Map overflow rows say how many
+  hidden mission rows and hidden actions remain, preview the first hidden row,
+  and include its `Also:` secondary actions; aggregate and focused copied briefs
+  use the same `mission rows hidden (N actions)` wording. Regression coverage:
+  `npx playwright test tests/agent-workstream.spec.ts` passed 8/8 and verifies
+  the six-run overflow fixture renders `+1 rows · 3 actions`, previews
+  `Overflow proof 6`, and carries both `Review` and `Complete` secondary
+  pressure in the visible overflow row and copied hidden mission-control
+  section. Additional verification passed `npm run build`, `npm run
+  verify:rust-warnings`, `npm run verify:map-terminals`, and `git diff
+  --check`.
+- Mission-control dispatch now has its own prompt accounting instead of being
+  buried in the generic prompt count. The shared lane summary tracks
+  `missionControlPromptCount` and `missionControlPromptSentCount`, Canvas,
+  Sessions, and Map show `mission prompts` / `mission sent` chips, and copied
+  aggregate briefs include a separate `Mission-control prompts:` section for
+  recent cockpit-dispatched asks. Regression coverage: `npx playwright test
+  tests/agent-workstream.spec.ts` passed 8/8 and verifies a six-agent risk
+  mitigation batch reports `6 mission prompts` and `6 mission sent` on Canvas
+  and Map, while no-dispatch fixtures report zero mission-control prompts and
+  `Mission-control prompts: - none` in copied handoffs. Additional verification
+  passed `npm run build`, `npm run verify:rust-warnings`, `npm run
+  verify:map-terminals`, and `git diff --check`.
+- Copied mission-control handoffs now state dispatch state explicitly. Aggregate
+  briefs include `Mission-control dispatch: N mission-control prompts · M sent ·
+  K queued`, and focused mission-control briefs include the same dispatch line
+  near the queue summary so an operator can tell whether the cockpit already
+  sent the asks or merely queued them. Regression coverage: `npx playwright test
+  tests/agent-workstream.spec.ts` passed 8/8 and verifies zero-dispatch mission
+  briefs show `0 sent · 0 queued`, while a six-agent risk mitigation batch shows
+  `Dispatch: 6 mission-control prompts · 6 sent · 0 queued`. Additional
+  verification passed `npm run build`, `npm run verify:rust-warnings`, `npm run
+  verify:map-terminals`, and `git diff --check`.
+- Mission-control dispatch now shows what kind of cockpit asks were sent, not
+  only how many. The shared lane summary builds a label/state dispatch mix from
+  every agent input queue, Canvas, Sessions, and Map render a `Dispatch mix`
+  row, and copied aggregate/focused briefs include `Mission-control dispatch
+  mix` / `Dispatch mix`. Regression coverage: `npx playwright test
+  tests/agent-workstream.spec.ts` passed 8/8 and verifies a six-agent risk
+  mitigation batch shows `Mitigate risk: 6 sent` on Canvas and Map and in copied
+  mission-control briefs, while no-dispatch handoffs show `Mission-control
+  dispatch mix: none`. Additional verification passed `npm run build`, `npm run
+  verify:rust-warnings`, `npm run verify:map-terminals`, and `git diff
+  --check`.
+- Mission-control dispatch-mix coverage now explicitly locks the Sessions
+  surface, not only Canvas and Map. The Playwright regression switches the
+  operations rail to Sessions, verifies `Mitigate risk: 6 sent` in
+  `sidebar-agent-lane-dispatch-breakdown`, switches back to Map, and also
+  checks stale copied handoffs include `Mission-control dispatch mix: none`.
+  While tightening that proof, the raw provider-exit regression was stabilized
+  to wait for the durable `Provider process exited` event before asserting the
+  final blocked state, preserving the real queued-prompt-to-exit ordering.
+  Regression coverage: `npx playwright test tests/agent-workstream.spec.ts`
+  passed 8/8. Additional verification passed `npm run build`, `npm run
+  verify:rust-warnings`, `npm run verify:map-terminals`, and `git diff
+  --check`.
+- Child agent nodes now show the latest mission-control ask directly in the
+  visible cockpit panel. When the latest input came from mission control,
+  `MagicCanvas` renders an `Agent cockpit ask` row with the prompt text plus
+  `Ask state` showing the mission-control label and sent/queued state, so the
+  operator can see what the parent cockpit just asked the child to do without
+  expanding Details or reading terminal scrollback. Regression coverage:
+  `npx playwright test tests/agent-workstream.spec.ts` passed 8/8 and verifies
+  risk mitigation shows `Resolve risk for Codex agent` / `Mitigate risk · sent`
+  on the node, then recovery dispatch shows `Recover Codex agent` /
+  `Recover · sent`. The same run stabilized the recovery-dispatch fixture by
+  reseeding deterministic recovery state between separate mission-control
+  actions and loosened cancellation-sweep activity text to allow terminal echo
+  while preserving exact cancelling phase, event, and control-count checks.
+  Additional verification passed `npm run build`, `npm run
+  verify:rust-warnings`, `npm run verify:map-terminals`, and `git diff
+  --check`.
+- Split-pane child-agent terminal headers now show the latest mission-control
+  ask too. `SplitPane` derives the latest workstream input, and when it came
+  from mission control renders an `Ask:` header segment with the cockpit action
+  label, sent/queued state, and prompt text, so the terminal pane itself says
+  what the parent cockpit just asked the child to do. Regression coverage:
+  `npx playwright test tests/agent-workstream.spec.ts` passed 8/8 and verifies
+  the split terminal header shows `Ask: Mitigate risk · sent` with the risk
+  prompt and later `Ask: Recover · sent` with the recovery prompt. The same test
+  pass keeps durable dispatch/event checks for provider-auth races and scopes
+  Details-only assertions to the opened Details panel. Additional verification
+  passed `npm run build`, `npm run verify:rust-warnings`, `npm run
+  verify:map-terminals`, and `git diff --check`.
+- Fleet run rows now carry the latest mission-control ask too. A shared
+  `latestMissionControlAskText()` formatter derives `Ask: <label> ·
+  <sent|queued> · <prompt>` from the child input queue, and Canvas, Sessions,
+  and Map `Copy run` rows append it when the latest ask came from mission
+  control. This keeps multi-agent monitoring useful even when the operator is
+  looking at the fleet list instead of an opened node or split terminal.
+  Regression coverage: `npx playwright test tests/agent-workstream.spec.ts`
+  passed 8/8 and verifies a six-agent mitigation dispatch shows `Ask: Mitigate
+  risk · sent` plus `Resolve risk for Codex agent` in Canvas, Sessions, and Map
+  run rows. Additional verification passed `npm run build`, `npm run
+  verify:rust-warnings`, `npm run verify:map-terminals`, and `git diff
+  --check`.
+- Copied per-run handoffs now preserve the same cockpit-ask context as the
+  visible fleet rows. `formatAgentRunBrief()` adds `Cockpit ask: ...` using the
+  shared latest-ask formatter before the generic latest-input line, so a pasted
+  child-run brief states the parent command explicitly instead of burying it in
+  input history. Regression coverage: `npx playwright test
+  tests/agent-workstream.spec.ts` passed 8/8 and verifies a copied risk-run
+  brief contains `Cockpit ask: Ask: Mitigate risk · sent · Resolve risk for
+  Codex agent` plus the mission-control latest input line. Additional
+  verification passed `npm run build`, `npm run verify:rust-warnings`, `npm run
+  verify:map-terminals`, and `git diff --check`.

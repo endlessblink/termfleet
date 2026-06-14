@@ -798,7 +798,7 @@ const checks = [
     message: "Verification scripts must include durable browser and standalone visual QA evidence.",
   },
   {
-    ok: /export type TerminalRuntimeStatus = "starting" \| "running" \| "reconnected" \| "stale" \| "failed";/.test(types) &&
+    ok: /export type TerminalRuntimeStatus = "starting" \| "running" \| "reconnected" \| "stale" \| "failed" \| "exited";/.test(types) &&
       /status\?: TerminalRuntimeStatus;/.test(types) &&
       /lastError\?: string;/.test(types),
     message: "Terminal state must record explicit runtime status metadata for recovery UI.",
@@ -807,7 +807,7 @@ const checks = [
     ok: /onStatus\?: \(status: TerminalRuntimeStatus/.test(usePty) &&
       /onStatus\?\.\("starting"/.test(usePty) &&
       /onStatus\?\.\("failed"/.test(usePty),
-    message: "PTY hook must publish starting/running/reconnected/stale/failed runtime states.",
+    message: "PTY hook must publish starting/running/reconnected/stale/failed/exited runtime states.",
   },
   {
     ok: /function usePty/.test(usePty) &&

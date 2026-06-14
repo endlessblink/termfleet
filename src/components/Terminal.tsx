@@ -9,12 +9,14 @@ import { usePty } from "../hooks/usePty";
 import { TerminalCanvas } from "./TerminalCanvas";
 import { syncTerminalLatencyTraceEnv, traceTerminalLatency } from "../lib/terminalLatencyTrace";
 import { refreshProjectRootFromActiveTerminal, useWorkspaceStore } from "../stores/workspace";
-import type { TerminalRuntimeStatus, WorkstreamInput, WorkstreamPhase, WorkstreamReadiness, WorkstreamStatus } from "../lib/types";
+import { inferActivityFromOutput, isWorkstreamActivityKind, normalizeActivityText } from "../lib/workstreamActivity";
+import type { TerminalRuntimeStatus, WorkstreamActivityKind, WorkstreamActivitySource, WorkstreamInput, WorkstreamPhase, WorkstreamReadiness, WorkstreamStatus } from "../lib/types";
 import type { GridSnapshot } from "../lib/gridSnapshot";
 
 const LOCALHOST_URL_PATTERN = /https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0):(\d{2,5})(?:[/?#][^\s"'<>]*)?/gi;
 const LOCALHOST_HOST_PORT_PATTERN = /(?:localhost|127\.0\.0\.1|0\.0\.0\.0):(\d{2,5})(?:[/?#][^\s"'<>]*)?/gi;
 const STRUCTURED_AGENT_SIGNAL_PATTERN = /\[\[TERMFLEET_AGENT_EVENT\s+({[^\]]+})\]\]/g;
+const ANSI_SEQUENCE_PATTERN = /\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))/g;
 
 function validPreviewPort(port: string) {
   const value = Number(port);
@@ -55,6 +57,15 @@ function inferWorkstreamStatus(output: string): "waiting" | "failed" | "done" | 
     return "done";
   }
   return null;
+}
+
+function inferProcessExit(output: string): { code: number; success: boolean } | null {
+  const matches = [...output.matchAll(/\b(?:process|provider|command)\s+exited\s+with\s+(?:code|status)\s+(-?\d+)\b/gi)];
+  const match = matches[matches.length - 1];
+  if (!match) return null;
+  const code = Number(match[1]);
+  if (!Number.isInteger(code)) return null;
+  return { code, success: code === 0 };
 }
 
 function inferProviderReadiness(output: string): {
@@ -155,6 +166,54 @@ function summaryForWorkstreamStatus(status: WorkstreamStatus): { lastSummary: st
   };
 }
 
+function activityKindForStatus(status: WorkstreamStatus): WorkstreamActivityKind {
+  if (status === "waiting") return "waiting";
+  if (status === "failed") return "blocked";
+  if (status === "done") return "complete";
+  if (status === "stopped") return "idle";
+  if (status === "ready") return "starting";
+  return "running";
+}
+
+function isTerminalStateDowngrade(updates: { status?: WorkstreamStatus; phase?: WorkstreamPhase; structuredStatus?: boolean }, current: { phase?: WorkstreamPhase; structuredStatus?: boolean }) {
+  if (!current.structuredStatus || updates.structuredStatus) return false;
+  const finalPhase = current.phase === "complete" ||
+    current.phase === "blocked" ||
+    current.phase === "reviewed" ||
+    current.phase === "interrupted";
+  if (!finalPhase) return false;
+  if (updates.status === "stopped" || updates.phase === "interrupted") return false;
+  return Boolean(updates.status || updates.phase);
+}
+
+function shouldPreserveWorkstreamOnReady(current?: { status?: WorkstreamStatus; phase?: WorkstreamPhase; readiness?: WorkstreamReadiness }) {
+  return current?.phase === "needs-input" ||
+    current?.phase === "blocked" ||
+    current?.phase === "complete" ||
+    current?.phase === "reviewed" ||
+    current?.phase === "interrupted" ||
+    current?.phase === "cancelling" ||
+    current?.status === "waiting" ||
+    current?.status === "failed" ||
+    current?.status === "done" ||
+    current?.status === "stopped" ||
+    current?.readiness === "auth-required";
+}
+
+function latestReadableOutput(output: string) {
+  const cleaned = output
+    .replace(STRUCTURED_AGENT_SIGNAL_PATTERN, "")
+    .replace(ANSI_SEQUENCE_PATTERN, "")
+    .replace(/\r/g, "\n");
+  const lines = cleaned
+    .split("\n")
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter((line) => line.length > 0)
+    .filter((line) => !/^[\w.@:/~+-]+[$#>]$/.test(line));
+  const latest = lines[lines.length - 1];
+  return latest ? normalizeActivityText(latest, 180) : undefined;
+}
+
 interface StructuredAgentSignal {
   status?: WorkstreamStatus;
   phase?: WorkstreamPhase;
@@ -163,10 +222,13 @@ interface StructuredAgentSignal {
   summary?: string;
   nextAction?: string;
   evidence?: string;
+  memory?: string;
   stage?: string;
   artifact?: string;
   confidence?: string;
   risk?: string;
+  currentActivity?: string;
+  activityKind?: WorkstreamActivityKind;
   label?: string;
   detail?: string;
 }
@@ -212,10 +274,13 @@ function parseStructuredAgentSignals(output: string) {
       if (typeof parsed.summary === "string") signal.summary = parsed.summary.slice(0, 160);
       if (typeof parsed.nextAction === "string") signal.nextAction = parsed.nextAction.slice(0, 160);
       if (typeof parsed.evidence === "string") signal.evidence = parsed.evidence.slice(0, 160);
+      if (typeof parsed.memory === "string") signal.memory = parsed.memory.slice(0, 240);
       if (typeof parsed.stage === "string") signal.stage = parsed.stage.slice(0, 80);
       if (typeof parsed.artifact === "string") signal.artifact = parsed.artifact.slice(0, 160);
       if (typeof parsed.confidence === "string") signal.confidence = parsed.confidence.slice(0, 80);
       if (typeof parsed.risk === "string") signal.risk = parsed.risk.slice(0, 160);
+      if (typeof parsed.activity === "string") signal.currentActivity = normalizeActivityText(parsed.activity, 140);
+      if (isWorkstreamActivityKind(parsed.activityKind)) signal.activityKind = parsed.activityKind;
       if (typeof parsed.label === "string") signal.label = parsed.label.slice(0, 80);
       if (typeof parsed.detail === "string") signal.detail = parsed.detail.slice(0, 240);
       return Object.keys(signal).length > 0 ? [{ raw, signal }] : [];
@@ -407,10 +472,15 @@ export function TerminalComponent({
     lastSummary?: string;
     nextAction?: string;
     evidence?: string;
+    memory?: string;
     stage?: string;
     artifact?: string;
     confidence?: string;
     risk?: string;
+    terminalOutput?: string;
+    currentActivity?: string;
+    activityKind?: WorkstreamActivityKind;
+    activitySource?: WorkstreamActivitySource;
     structuredStatus?: boolean;
     exitCode?: number;
     activity?: boolean;
@@ -418,23 +488,50 @@ export function TerminalComponent({
     const store = useWorkspaceStore.getState();
     const tab = store.tabs.find((candidate) => candidate.id === tabId);
     if (!tab?.workstream) return;
-    const statusChanged = updates.status && updates.status !== tab.workstream.status;
     const summary = updates.status ? summaryForWorkstreamStatus(updates.status) : null;
     const completed = updates.status === "done" || updates.phase === "complete";
+    const hasActivityUpdate = Boolean(updates.currentActivity || updates.activityKind || updates.activitySource);
+    const preserveStructuredActivity =
+      updates.activitySource === "terminal" &&
+      tab.workstream.activitySource === "structured" &&
+      tab.workstream.structuredStatus;
+    const preserveStructuredState = isTerminalStateDowngrade(updates, tab.workstream);
+    const statusChanged = !preserveStructuredState && updates.status && updates.status !== tab.workstream.status;
     store.updateTab(tabId, {
       workstream: {
         ...tab.workstream,
-        status: updates.status ?? tab.workstream.status,
-        readiness: updates.readiness ?? tab.workstream.readiness,
-        phase: updates.phase ?? (updates.status ? phaseForStatus(updates.status) : tab.workstream.phase),
-        lastSummary: updates.lastSummary ?? summary?.lastSummary ?? tab.workstream.lastSummary,
-        nextAction: updates.nextAction ?? summary?.nextAction ?? tab.workstream.nextAction,
+        status: preserveStructuredState ? tab.workstream.status : updates.status ?? tab.workstream.status,
+        readiness: preserveStructuredState ? tab.workstream.readiness : updates.readiness ?? tab.workstream.readiness,
+        phase: preserveStructuredState
+          ? tab.workstream.phase
+          : updates.phase ?? (updates.status ? phaseForStatus(updates.status) : tab.workstream.phase),
+        lastSummary: preserveStructuredState
+          ? tab.workstream.lastSummary
+          : updates.lastSummary ?? summary?.lastSummary ?? tab.workstream.lastSummary,
+        nextAction: preserveStructuredState
+          ? tab.workstream.nextAction
+          : updates.nextAction ?? summary?.nextAction ?? tab.workstream.nextAction,
         evidence: updates.evidence ?? tab.workstream.evidence,
+        memory: updates.memory ?? tab.workstream.memory,
         stage: updates.stage ?? tab.workstream.stage,
         artifact: updates.artifact ?? tab.workstream.artifact,
         confidence: updates.confidence ?? tab.workstream.confidence,
         risk: updates.risk ?? tab.workstream.risk,
-        outcome: updates.lastSummary ?? summary?.lastSummary ?? tab.workstream.outcome,
+        terminalOutput: updates.terminalOutput ?? tab.workstream.terminalOutput,
+        terminalOutputUpdatedAt: updates.terminalOutput ? Date.now() : tab.workstream.terminalOutputUpdatedAt,
+        currentActivity: preserveStructuredActivity
+          ? tab.workstream.currentActivity
+          : updates.currentActivity ?? tab.workstream.currentActivity,
+        activityKind: preserveStructuredActivity
+          ? tab.workstream.activityKind
+          : updates.activityKind ?? tab.workstream.activityKind,
+        activitySource: preserveStructuredActivity
+          ? tab.workstream.activitySource
+          : updates.activitySource ?? tab.workstream.activitySource,
+        activityUpdatedAt: hasActivityUpdate && !preserveStructuredActivity ? Date.now() : tab.workstream.activityUpdatedAt,
+        outcome: preserveStructuredState
+          ? tab.workstream.outcome
+          : updates.lastSummary ?? summary?.lastSummary ?? tab.workstream.outcome,
         structuredStatus: updates.structuredStatus ?? tab.workstream.structuredStatus,
         exitCode: updates.exitCode ?? tab.workstream.exitCode,
         completedAt: completed ? tab.workstream.completedAt ?? Date.now() : tab.workstream.completedAt,
@@ -464,7 +561,10 @@ export function TerminalComponent({
       store.updateCanvasNode(linkedNode.id, { terminalPtyId: ptyId });
     }
     store.setActiveTerminal(ptyId);
-    updateWorkstreamRuntime({ status: "running", activity: true });
+    const currentTab = store.tabs.find((candidate) => candidate.id === tabId);
+    updateWorkstreamRuntime(shouldPreserveWorkstreamOnReady(currentTab?.workstream)
+      ? { activity: true }
+      : { status: "running", activity: true });
   }, [tabId, updateTerminalRuntime, updateWorkstreamRuntime]);
 
   const handleStatus = useCallback((status: TerminalRuntimeStatus, details?: { id?: string; error?: string }) => {
@@ -477,15 +577,62 @@ export function TerminalComponent({
     if (status === "failed") updateWorkstreamRuntime({ status: "failed", activity: true });
   }, [updateTerminalRuntime, updateWorkstreamRuntime]);
 
+  const handleExit = useCallback((details: { id: string; code: number; success: boolean }) => {
+    updateTerminalRuntime({
+      id: details.id,
+      status: "exited",
+    });
+    updateWorkstreamRuntime({
+      status: details.success ? "done" : "failed",
+      phase: details.success ? "complete" : "blocked",
+      exitCode: details.code,
+      lastSummary: `Provider process exited with code ${details.code}`,
+      nextAction: details.success ? "Review output or restart" : "Inspect output and send recovery prompt",
+      currentActivity: `Provider process exited with code ${details.code}`,
+      activityKind: details.success ? "complete" : "blocked",
+      activitySource: "system",
+      activity: true,
+    });
+    const store = useWorkspaceStore.getState();
+    const tab = store.tabs.find((candidate) => candidate.id === tabId);
+    const alreadyRecorded = tab?.workstream?.events?.some((event) =>
+      event.kind === "provider" &&
+      event.label === "Provider process exited" &&
+      event.detail === `exit code ${details.code}`
+    );
+    if (!alreadyRecorded) {
+      store.recordWorkstreamEvent(tabId, {
+        kind: "provider",
+        label: "Provider process exited",
+        detail: `exit code ${details.code}`,
+        status: details.success ? "done" : "failed",
+      });
+    }
+  }, [tabId, updateTerminalRuntime, updateWorkstreamRuntime]);
+
   const handleOutput = useCallback((data: string) => {
     outputStatusWindowRef.current = `${outputStatusWindowRef.current}${data}`.slice(-4000);
     const heuristicOutput = outputStatusWindowRef.current.replace(STRUCTURED_AGENT_SIGNAL_PATTERN, "");
+    const initialStore = useWorkspaceStore.getState();
+    const initialTab = initialStore.tabs.find((candidate) => candidate.id === tabId);
+    const processedStructuredSignals = new Set(initialTab?.workstream?.processedStructuredSignals ?? []);
     const structuredSignals = parseStructuredAgentSignals(outputStatusWindowRef.current)
       .filter(({ raw }) => {
-        if (structuredSignalKeysRef.current.has(raw)) return false;
+        if (structuredSignalKeysRef.current.has(raw) || processedStructuredSignals.has(raw)) return false;
         structuredSignalKeysRef.current.add(raw);
         return true;
       });
+    if (structuredSignals.length > 0 && initialTab?.workstream) {
+      initialStore.updateTab(tabId, {
+        workstream: {
+          ...initialTab.workstream,
+          processedStructuredSignals: [
+            ...(initialTab.workstream.processedStructuredSignals ?? []),
+            ...structuredSignals.map(({ raw }) => raw),
+          ].slice(-50),
+        },
+      });
+    }
     for (const { signal } of structuredSignals) {
       updateWorkstreamRuntime({
         status: signal.status,
@@ -494,10 +641,14 @@ export function TerminalComponent({
         lastSummary: signal.summary,
         nextAction: signal.nextAction,
         evidence: signal.evidence,
+        memory: signal.memory,
         stage: signal.stage,
         artifact: signal.artifact,
         confidence: signal.confidence,
         risk: signal.risk,
+        currentActivity: signal.currentActivity,
+        activityKind: signal.activityKind,
+        activitySource: "structured",
         structuredStatus: true,
         exitCode: signal.exitCode,
         activity: true,
@@ -514,17 +665,55 @@ export function TerminalComponent({
       return;
     }
     const providerReadiness = inferProviderReadiness(heuristicOutput);
+    const inferredActivity = inferActivityFromOutput(heuristicOutput);
+    const terminalOutput = latestReadableOutput(heuristicOutput);
+    const processExit = inferProcessExit(heuristicOutput);
+    if (processExit) {
+      updateWorkstreamRuntime({
+        status: processExit.success ? "done" : "failed",
+        phase: processExit.success ? "complete" : "blocked",
+        exitCode: processExit.code,
+        lastSummary: `Provider process exited with code ${processExit.code}`,
+        nextAction: processExit.success ? "Review output or restart" : "Inspect output and send recovery prompt",
+        terminalOutput,
+        currentActivity: `Provider process exited with code ${processExit.code}`,
+        activityKind: processExit.success ? "complete" : "blocked",
+        activitySource: "system",
+        activity: true,
+      });
+      const store = useWorkspaceStore.getState();
+      const tab = store.tabs.find((candidate) => candidate.id === tabId);
+      const alreadyRecorded = tab?.workstream?.events?.some((event) =>
+        event.kind === "provider" &&
+        event.label === "Provider process exited" &&
+        event.detail === `exit code ${processExit.code}`
+      );
+      if (!alreadyRecorded) {
+        store.recordWorkstreamEvent(tabId, {
+          kind: "provider",
+          label: "Provider process exited",
+          detail: `exit code ${processExit.code}`,
+          status: processExit.success ? "done" : "failed",
+        });
+      }
+      return;
+    }
     updateWorkstreamRuntime({
       status: providerReadiness?.status ?? inferWorkstreamStatus(heuristicOutput) ?? undefined,
       phase: providerReadiness?.phase,
       readiness: providerReadiness?.readiness,
       lastSummary: providerReadiness?.lastSummary,
       nextAction: providerReadiness?.nextAction,
+      terminalOutput,
+      currentActivity: providerReadiness?.lastSummary ?? inferredActivity?.currentActivity,
+      activityKind: providerReadiness?.status ? activityKindForStatus(providerReadiness.status) : inferredActivity?.activityKind,
+      activitySource: providerReadiness ? "terminal" : inferredActivity?.activitySource,
       activity: true,
     });
     if (providerReadiness) {
       const store = useWorkspaceStore.getState();
       const tab = store.tabs.find((candidate) => candidate.id === tabId);
+      if (tab?.workstream && isTerminalStateDowngrade(providerReadiness, tab.workstream)) return;
       const alreadyRecorded = tab?.workstream?.events?.some((event) => event.label === providerReadiness.label);
       if (!alreadyRecorded) {
         store.recordWorkstreamEvent(tabId, {
@@ -560,6 +749,7 @@ export function TerminalComponent({
     onReady: handleReady,
     onStatus: handleStatus,
     onOutput: handleOutput,
+    onExit: handleExit,
   });
 
   useEffect(() => {

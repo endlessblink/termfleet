@@ -18,6 +18,7 @@ import {
   RotateCcw,
   Square,
   TerminalSquare,
+  Trash2,
   X,
 } from "lucide-react";
 import type { CanvasNode } from "../lib/types";
@@ -29,7 +30,9 @@ import { TerminalComponent } from "./Terminal";
 import { LocalhostPreview } from "./LocalhostPreview";
 import type { GridSnapshot } from "../lib/gridSnapshot";
 import type { Tab, TerminalRuntimeStatus } from "../lib/types";
-import { agentLaneStatusText, summarizeAgentLane } from "../lib/agentWorkstreamLane";
+import { agentLaneAuthRetryText, agentLaneAuthRetryTitle, agentLaneCleanupRequestText, agentLaneCleanupRequestTitle, agentLaneCloseoutText, agentLaneCloseoutTitle, agentLaneHealthText, agentLaneInterruptText, agentLaneInterruptTitle, agentLaneMemoryRequestText, agentLaneMemoryRequestTitle, agentLaneProofRequestText, agentLaneProofRequestTitle, agentLaneRestartText, agentLaneRestartTitle, agentLaneRiskMitigationText, agentLaneRiskMitigationTitle, agentLaneStatusSweepText, agentLaneStatusSweepTitle, agentLaneStatusText, attentionBreakdownText, cleanupBreakdownText, closeoutBreakdownText, formatAgentLaneBrief, formatAgentMissionControlBrief, formatAgentRunBrief, handoffMemoryPromptForWorkstream, isActiveAgentWorkstream, isAgentReviewCloseoutReady, isAuthRetryableAgentWorkstream, isCleanupRequestableAgentWorkstream, isRestartableAgentWorkstream, isReviewItemCloseoutReady, isStaleAgentWorkstream, isolationBreakdownText, latestMissionControlAskText, missionBreakdownText, missionControlAlternateText, missionControlDispatchBreakdownText, needsAgentProofRequest, proofRequestPromptForWorkstream, providerBreakdownText, readinessBreakdownText, riskBreakdownText, statusCheckPromptForWorkstream, summarizeAgentLane } from "../lib/agentWorkstreamLane";
+import { workstreamActivityMeta, workstreamActivityText } from "../lib/workstreamActivity";
+import { formatWorkstreamBranch, formatWorkstreamIsolation, formatWorkstreamOpsContext } from "../lib/workstreamOpsContext";
 
 const styles: Record<string, CSSProperties> = {
   shell: {
@@ -786,43 +789,10 @@ function runTimestamp(at?: number) {
   return at ? new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "pending";
 }
 
-function latestWorkstreamInput(workstream?: Tab["workstream"]) {
-  const inputs = workstream?.inputQueue ?? [];
-  return inputs[inputs.length - 1];
-}
-
 function recoveryPromptFor(workstream?: Tab["workstream"]) {
   return `Recover ${workstreamLabel(workstream?.provider)} agent: inspect the failure output, summarize the root cause, and propose the next command.`;
 }
 
-function formatAgentRunBrief(tab: Tab) {
-  const workstream = tab.workstream;
-  if (!workstream) return `${tab.title}\nNo agent run metadata available.`;
-  const latestEvent = workstream.events?.[workstream.events.length - 1];
-  const mission = workstream.mission ?? workstream.prompt ?? "Supervised workstream";
-  const latestInput = latestWorkstreamInput(workstream);
-  return [
-    `Agent run: ${tab.title}`,
-    `Run: ${workstream.runId ?? "pending"} (generation ${workstream.generation ?? 0})`,
-    `Task: ${mission}`,
-    `Provider: ${workstreamLabel(workstream.provider)}`,
-    `Status: ${workstream.status} / ${workstream.phase ?? "unknown"}`,
-    `Readiness: ${workstream.readiness ?? "unknown"}`,
-    `Stage: ${workstream.stage ?? "pending"}`,
-    `Confidence: ${workstream.confidence ?? "pending"}`,
-    `Risk: ${workstream.risk ?? "pending"}`,
-    `Exit: ${typeof workstream.exitCode === "number" ? workstream.exitCode : "pending"}`,
-    `Timing: started=${workstream.createdAt ? new Date(workstream.createdAt).toISOString() : "unknown"}, completed=${workstream.completedAt ? new Date(workstream.completedAt).toISOString() : "pending"}, reviewed=${workstream.reviewedAt ? new Date(workstream.reviewedAt).toISOString() : "pending"}`,
-    `Summary: ${workstream.lastSummary ?? "No summary yet"}`,
-    `Next: ${workstream.nextAction ?? "Watch provider response"}`,
-    `Evidence: ${workstream.evidence ?? "pending"}`,
-    `Artifact: ${workstream.artifact ?? "pending"}`,
-    `Outcome: ${workstream.outcome ?? "Pending"}`,
-    `Latest input: ${latestInput ? `${latestInput.sentAt ? "sent" : "queued"} - ${latestInput.text}` : "none"}`,
-    `Run record: prompts=${workstream.promptCount ?? 0}, sent=${workstream.sentCount ?? 0}, signals=${workstream.signalCount ?? 0}, controls=${workstream.controlCount ?? 0}`,
-    `Latest event: ${latestEvent ? `${latestEvent.kind} - ${latestEvent.label}` : "none"}`,
-  ].join("\n");
-}
 type ResizeDirection = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
 
 function isDesktopNativeRuntime() {
@@ -1193,21 +1163,35 @@ function CanvasNodeView({
       : linkedTab?.title ?? node.title);
   const workstream = linkedTab?.workstream;
   const queuedWorkstreamInput = workstream?.inputQueue?.find((input) => !input.sentAt);
-  const latestInput = latestWorkstreamInput(workstream);
+  const latestInput = workstream?.inputQueue?.[workstream.inputQueue.length - 1];
+  const latestMissionControlInput = latestInput?.source === "mission-control" ? latestInput : undefined;
   const cancellationPending = workstream?.phase === "cancelling";
   const canDraftRecovery =
     workstream?.phase === "blocked" ||
     workstream?.status === "failed" ||
     workstream?.providerAvailable === false;
+  const canDraftProofRequest = needsAgentProofRequest(workstream);
+  const canDraftStatusCheck = workstream?.kind === "agent" && isStaleAgentWorkstream(workstream);
   const canReviewWorkstream =
-    workstream?.phase !== "reviewed" && (workstream?.status === "done" || workstream?.phase === "complete");
+    workstream?.phase !== "reviewed" &&
+    (workstream?.status === "done" || workstream?.phase === "complete") &&
+    isAgentReviewCloseoutReady(workstream);
+  const canRequestWorktreeCleanup =
+    workstream?.kind === "agent" &&
+    workstream.isolationMode === "dedicated-worktree" &&
+    workstream.worktreeCleanupStatus !== "requested";
+  const canExecuteWorktreeCleanup =
+    workstream?.kind === "agent" &&
+    workstream.isolationMode === "dedicated-worktree" &&
+    workstream.worktreeCleanupStatus !== "removed" &&
+    workstream.worktreeCleanupStatus !== "not-needed";
   const agentHeaderTitle =
     workstream?.kind === "agent"
-      ? workstream.prompt ?? workstream.mission ?? "Supervised agent run"
+      ? workstream.mission ?? workstream.prompt ?? "Supervised agent run"
       : undefined;
   const agentHeaderMeta =
     workstream?.kind === "agent"
-      ? `${workstreamLabel(workstream.provider)} agent · ${workstream.phase ?? workstream.status}`
+      ? `${workstreamLabel(workstream.provider)} agent · ${workstream.phase ?? workstream.status} · ${workstreamActivityText(workstream)}`
       : undefined;
   const nodeKind = workstream?.kind === "agent"
     ? "agent"
@@ -1266,6 +1250,14 @@ function CanvasNodeView({
     setActiveTab(linkedTab.id);
   }, [linkedTab, operatorDraft, setActiveTab]);
 
+  const saveOperatorMemory = useCallback(() => {
+    const trimmed = operatorDraft.trim();
+    if (!linkedTab?.workstream || !trimmed) return;
+    useWorkspaceStore.getState().recordWorkstreamMemory(linkedTab.id, trimmed);
+    setOperatorDraft("");
+    setActiveTab(linkedTab.id);
+  }, [linkedTab, operatorDraft, setActiveTab]);
+
   const onFocusWorkstreamComposer = useCallback((event: React.MouseEvent) => {
     event.preventDefault();
     event.stopPropagation();
@@ -1282,6 +1274,21 @@ function CanvasNodeView({
     event.preventDefault();
     event.stopPropagation();
     setOperatorDraft(recoveryPromptFor(linkedTab?.workstream));
+    requestAnimationFrame(() => composerRef.current?.focus());
+  }, [linkedTab]);
+
+  const onDraftProofRequest = useCallback((event: React.MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setOperatorDraft(proofRequestPromptForWorkstream(linkedTab?.workstream));
+    requestAnimationFrame(() => composerRef.current?.focus());
+  }, [linkedTab]);
+
+  const onDraftStatusCheck = useCallback((event: React.MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!linkedTab?.workstream) return;
+    setOperatorDraft(statusCheckPromptForWorkstream(linkedTab.workstream));
     requestAnimationFrame(() => composerRef.current?.focus());
   }, [linkedTab]);
 
@@ -1324,6 +1331,20 @@ function CanvasNodeView({
     event.stopPropagation();
     if (!linkedTab?.workstream) return;
     useWorkspaceStore.getState().reviewWorkstream(linkedTab.id);
+  }, [linkedTab]);
+
+  const onRequestWorktreeCleanup = useCallback((event: React.MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!linkedTab?.workstream) return;
+    useWorkspaceStore.getState().requestWorktreeCleanup(linkedTab.id);
+  }, [linkedTab]);
+
+  const onExecuteWorktreeCleanup = useCallback((event: React.MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!linkedTab?.workstream) return;
+    void useWorkspaceStore.getState().executeWorktreeCleanup(linkedTab.id);
   }, [linkedTab]);
 
   const body =
@@ -1548,7 +1569,7 @@ function CanvasNodeView({
                 opacity: canReviewWorkstream ? undefined : 0.45,
                 cursor: canReviewWorkstream ? styles.headerButton.cursor : "default",
               }}
-              title={canReviewWorkstream ? "Mark run reviewed" : "Run is not complete yet"}
+              title={canReviewWorkstream ? "Mark run reviewed" : "Proof and handoff memory are required before review"}
               aria-label="Mark run reviewed"
               disabled={!canReviewWorkstream}
               onMouseDown={(event) => event.stopPropagation()}
@@ -1556,6 +1577,38 @@ function CanvasNodeView({
             >
               <CheckCircle2 size={13} strokeWidth={1.8} />
             </button>
+            {workstream.isolationMode === "dedicated-worktree" && (
+              <>
+              <button
+                style={{
+                  ...styles.headerButton,
+                  opacity: canRequestWorktreeCleanup ? undefined : 0.45,
+                  cursor: canRequestWorktreeCleanup ? styles.headerButton.cursor : "default",
+                }}
+                title={canRequestWorktreeCleanup ? "Request worktree cleanup" : "Worktree cleanup already requested"}
+                aria-label="Request worktree cleanup"
+                disabled={!canRequestWorktreeCleanup}
+                onMouseDown={(event) => event.stopPropagation()}
+                onClick={onRequestWorktreeCleanup}
+              >
+                <Trash2 size={13} strokeWidth={1.8} />
+              </button>
+              <button
+                style={{
+                  ...styles.headerButton,
+                  opacity: canExecuteWorktreeCleanup ? undefined : 0.45,
+                  cursor: canExecuteWorktreeCleanup ? styles.headerButton.cursor : "default",
+                }}
+                title={canExecuteWorktreeCleanup ? "Execute worktree cleanup" : "Worktree cleanup is complete"}
+                aria-label="Execute worktree cleanup"
+                disabled={!canExecuteWorktreeCleanup}
+                onMouseDown={(event) => event.stopPropagation()}
+                onClick={onExecuteWorktreeCleanup}
+              >
+                <X size={13} strokeWidth={1.8} />
+              </button>
+              </>
+            )}
             <button
               style={{
                 ...styles.headerButton,
@@ -1658,6 +1711,16 @@ function CanvasNodeView({
                 </span>
                 <span style={styles.agentStatusPill}>{workstream.phase ?? workstream.status}</span>
               </div>
+              <div style={styles.agentDecisionRow} aria-label="Agent current activity">
+                <div style={styles.agentDecisionCell} title={workstreamActivityText(workstream)}>
+                  <span style={styles.agentProviderCellLabel}>Now</span>
+                  <span style={styles.agentProviderCellValue}>{workstreamActivityText(workstream)}</span>
+                </div>
+                <div style={styles.agentDecisionCell} title={workstreamActivityMeta(workstream)}>
+                  <span style={styles.agentProviderCellLabel}>Signal</span>
+                  <span style={styles.agentProviderCellValue}>{workstreamActivityMeta(workstream)}</span>
+                </div>
+              </div>
               <div style={styles.agentDecisionRow} aria-label="Agent operator guidance">
                 <div style={styles.agentDecisionCell} title={workstream.lastSummary ?? "No summary yet"}>
                   <span style={styles.agentProviderCellLabel}>Summary</span>
@@ -1666,6 +1729,29 @@ function CanvasNodeView({
                 <div style={styles.agentDecisionCell} title={workstream.nextAction ?? "Watch provider response"}>
                   <span style={styles.agentProviderCellLabel}>Next</span>
                   <span style={styles.agentProviderCellValue}>{workstream.nextAction ?? "Watch provider response"}</span>
+                </div>
+              </div>
+              {latestMissionControlInput && (
+                <div style={styles.agentDecisionRow} aria-label="Agent cockpit ask" data-testid="canvas-agent-cockpit-ask">
+                  <div style={styles.agentDecisionCell} title={latestMissionControlInput.text}>
+                    <span style={styles.agentProviderCellLabel}>Cockpit ask</span>
+                    <span style={styles.agentProviderCellValue}>{latestMissionControlInput.text}</span>
+                  </div>
+                  <div
+                    style={styles.agentDecisionCell}
+                    title={latestMissionControlInput.sentAt ? "Mission-control ask was sent to the provider" : "Mission-control ask is queued for dispatch"}
+                  >
+                    <span style={styles.agentProviderCellLabel}>Ask state</span>
+                    <span style={styles.agentProviderCellValue}>
+                      {latestMissionControlInput.label ?? "Mission control"} · {latestMissionControlInput.sentAt ? "sent" : "queued"}
+                    </span>
+                  </div>
+                </div>
+              )}
+              <div style={styles.agentDecisionRow} aria-label="Agent memory">
+                <div style={styles.agentDecisionCell} title={workstream.memory ?? "No agent memory reported yet."}>
+                  <span style={styles.agentProviderCellLabel}>Memory</span>
+                  <span style={styles.agentProviderCellValue}>{workstream.memory ?? "No agent memory reported yet."}</span>
                 </div>
               </div>
               <form style={styles.agentComposer} aria-label="Agent operator composer" onSubmit={onSubmitWorkstreamInput}>
@@ -1702,6 +1788,53 @@ function CanvasNodeView({
                   <RefreshCw size={14} strokeWidth={2} />
                 </button>
                 <button
+                  type="button"
+                  style={{
+                    ...styles.agentComposerButton,
+                    display: canDraftProofRequest ? styles.agentComposerButton.display : "none",
+                    background: "var(--surface-hover)",
+                    color: "var(--text-primary)",
+                  }}
+                  aria-label="Draft proof request"
+                  title="Draft proof request"
+                  onMouseDown={(event) => event.stopPropagation()}
+                  onClick={onDraftProofRequest}
+                >
+                  <FileText size={14} strokeWidth={2} />
+                </button>
+                <button
+                  type="button"
+                  style={{
+                    ...styles.agentComposerButton,
+                    display: canDraftStatusCheck ? styles.agentComposerButton.display : "none",
+                    background: "var(--surface-hover)",
+                    color: "var(--text-primary)",
+                  }}
+                  aria-label="Draft status check"
+                  title="Draft status check"
+                  onMouseDown={(event) => event.stopPropagation()}
+                  onClick={onDraftStatusCheck}
+                >
+                  <NotebookText size={14} strokeWidth={2} />
+                </button>
+                <button
+                  type="button"
+                  style={{
+                    ...styles.agentComposerButton,
+                    background: "var(--surface-hover)",
+                    color: "var(--text-primary)",
+                    opacity: operatorDraft.trim() ? undefined : 0.45,
+                    cursor: operatorDraft.trim() ? "pointer" : "default",
+                  }}
+                  aria-label="Save operator memory"
+                  title="Save handoff memory"
+                  disabled={!operatorDraft.trim()}
+                  onMouseDown={(event) => event.stopPropagation()}
+                  onClick={saveOperatorMemory}
+                >
+                  <ClipboardCopy size={14} strokeWidth={2} />
+                </button>
+                <button
                   type="submit"
                   style={{
                     ...styles.agentComposerButton,
@@ -1727,6 +1860,36 @@ function CanvasNodeView({
                     <div style={styles.agentDecisionCell} title={latestInput?.sentAt ? "Prompt has been sent to the provider" : latestInput ? "Prompt is queued for dispatch" : "No prompt yet"}>
                       <span style={styles.agentProviderCellLabel}>Input</span>
                       <span style={styles.agentProviderCellValue}>{latestInput ? (latestInput.sentAt ? "sent" : "queued") : "none"}</span>
+                    </div>
+                  </div>
+                  <div style={styles.agentDecisionRow} aria-label="Agent local context">
+                    <div style={styles.agentDecisionCell} title={workstream.cwd ?? "No launch cwd recorded"}>
+                      <span style={styles.agentProviderCellLabel}>Cwd</span>
+                      <span style={styles.agentProviderCellValue}>{workstream.cwdLabel ?? "workspace root unknown"}</span>
+                    </div>
+                    <div style={styles.agentDecisionCell} title={workstream.gitRoot ?? "No git repository detected"}>
+                      <span style={styles.agentProviderCellLabel}>Git</span>
+                      <span style={styles.agentProviderCellValue}>{formatWorkstreamBranch(workstream)}</span>
+                    </div>
+                  </div>
+                  <div style={styles.agentDecisionRow} aria-label="Agent workspace isolation">
+                    <div style={styles.agentDecisionCell} title={workstream.worktreePath ?? "No worktree path recorded"}>
+                      <span style={styles.agentProviderCellLabel}>Worktree</span>
+                      <span style={styles.agentProviderCellValue}>{workstream.worktreePath ?? "unknown"}</span>
+                    </div>
+                    <div style={styles.agentDecisionCell} title={workstream.isolationNote ?? "Worktree isolation policy"}>
+                      <span style={styles.agentProviderCellLabel}>Isolation</span>
+                      <span style={styles.agentProviderCellValue}>{formatWorkstreamIsolation(workstream.isolationMode, workstream.isolationStatus)}</span>
+                    </div>
+                  </div>
+                  <div style={styles.agentDecisionRow} aria-label="Agent worktree cleanup">
+                    <div style={styles.agentDecisionCell} title={workstream.worktreeCleanupNote ?? "No cleanup status recorded"}>
+                      <span style={styles.agentProviderCellLabel}>Cleanup</span>
+                      <span style={styles.agentProviderCellValue}>{workstream.worktreeCleanupStatus ?? "unknown"}</span>
+                    </div>
+                    <div style={styles.agentDecisionCell} title={workstream.worktreeCleanupNote ?? "No cleanup note recorded"}>
+                      <span style={styles.agentProviderCellLabel}>Cleanup note</span>
+                      <span style={styles.agentProviderCellValue}>{workstream.worktreeCleanupNote ?? "pending"}</span>
                     </div>
                   </div>
                   <div style={styles.agentDecisionRow} aria-label="Agent output details">
@@ -1872,6 +2035,123 @@ export function MagicCanvas() {
   // drop the new node where the cursor is.
   const [menu, setMenu] = useState<{ x: number; y: number; canvasX: number; canvasY: number } | null>(null);
   const agentLane = summarizeAgentLane(tabs);
+  const activeAgentWorkstreams = agentLane.workstreams.filter(({ workstream }) => isActiveAgentWorkstream(workstream));
+  const restartableAgentWorkstreams = agentLane.workstreams.filter(({ workstream }) => isRestartableAgentWorkstream(workstream));
+  const authRetryableAgentWorkstreams = agentLane.workstreams.filter(({ workstream }) => isAuthRetryableAgentWorkstream(workstream));
+  const cleanupRequestableAgentWorkstreams = agentLane.workstreams.filter(({ workstream }) => isCleanupRequestableAgentWorkstream(workstream));
+  const closeoutReadyReviewItems = agentLane.reviewItems.filter((item) => isReviewItemCloseoutReady(item));
+  const proofRequestItems = agentLane.proofItems;
+  const memoryRequestItems = agentLane.memoryRequestItems;
+  const riskMitigationItems = agentLane.riskItems;
+  const queueAgentLaneStatusSweep = useCallback(() => {
+    const targets = activeAgentWorkstreams;
+    if (targets.length === 0) return;
+    const store = useWorkspaceStore.getState();
+    for (const { tab, workstream } of targets) {
+      store.queueWorkstreamInput(tab.id, statusCheckPromptForWorkstream(workstream), {
+        source: "mission-control",
+        label: "Status sweep",
+      });
+    }
+    setActiveTab(targets[0].tab.id);
+  }, [activeAgentWorkstreams, setActiveTab]);
+  const interruptActiveAgentFleet = useCallback(() => {
+    const targets = activeAgentWorkstreams;
+    if (targets.length === 0) return;
+    const store = useWorkspaceStore.getState();
+    void Promise.all(targets.map(({ tab }) => store.interruptWorkstream(tab.id)));
+    setActiveTab(targets[0].tab.id);
+  }, [activeAgentWorkstreams, setActiveTab]);
+  const restartRecoveryAgentFleet = useCallback(() => {
+    const targets = restartableAgentWorkstreams;
+    if (targets.length === 0) return;
+    const store = useWorkspaceStore.getState();
+    setActiveTab(targets[0].tab.id);
+    void Promise.all(targets.map(({ tab }) => store.restartWorkstream(tab.id, {
+      source: "mission-control",
+      label: "Restart recovery",
+    })));
+  }, [restartableAgentWorkstreams, setActiveTab]);
+  const retryAuthAgentFleet = useCallback(() => {
+    const targets = authRetryableAgentWorkstreams;
+    if (targets.length === 0) return;
+    const store = useWorkspaceStore.getState();
+    setActiveTab(targets[0].tab.id);
+    void Promise.all(targets.map(({ tab }) => store.restartWorkstream(tab.id, {
+      source: "mission-control",
+      label: "Retry auth",
+    })));
+  }, [authRetryableAgentWorkstreams, setActiveTab]);
+  const requestCleanupFromAgentFleet = useCallback(() => {
+    const targets = cleanupRequestableAgentWorkstreams;
+    if (targets.length === 0) return;
+    const store = useWorkspaceStore.getState();
+    for (const { tab } of targets) {
+      store.requestWorktreeCleanup(tab.id, {
+        source: "mission-control",
+        label: "Request cleanup",
+      });
+    }
+    setActiveTab(targets[0].tab.id);
+  }, [cleanupRequestableAgentWorkstreams, setActiveTab]);
+  const reviewReadyAgentCloseouts = useCallback(() => {
+    const targets = closeoutReadyReviewItems;
+    if (targets.length === 0) return;
+    const store = useWorkspaceStore.getState();
+    for (const item of targets) {
+      store.reviewWorkstream(item.tabId, {
+        source: "mission-control",
+        label: "Review",
+      });
+    }
+    setActiveTab(targets[0].tabId);
+  }, [closeoutReadyReviewItems, setActiveTab]);
+  const requestProofFromAgentFleet = useCallback(() => {
+    const targets = proofRequestItems
+      .map((item) => tabs.find((tab) => tab.id === item.tabId))
+      .filter((tab): tab is Tab => Boolean(tab?.workstream));
+    if (targets.length === 0) return;
+    const store = useWorkspaceStore.getState();
+    for (const tab of targets) {
+      const workstream = tab.workstream;
+      if (!workstream) continue;
+      store.queueWorkstreamInput(tab.id, proofRequestPromptForWorkstream(workstream), {
+        source: "mission-control",
+        label: "Request proof",
+      });
+    }
+    setActiveTab(targets[0].id);
+  }, [proofRequestItems, setActiveTab, tabs]);
+  const requestMemoryFromAgentFleet = useCallback(() => {
+    const targets = memoryRequestItems
+      .map((item) => tabs.find((tab) => tab.id === item.tabId))
+      .filter((tab): tab is Tab => Boolean(tab?.workstream));
+    if (targets.length === 0) return;
+    const store = useWorkspaceStore.getState();
+    for (const tab of targets) {
+      const workstream = tab.workstream;
+      if (!workstream) continue;
+      store.queueWorkstreamInput(tab.id, handoffMemoryPromptForWorkstream(workstream), {
+        source: "mission-control",
+        label: "Request memory",
+      });
+    }
+    setActiveTab(targets[0].id);
+  }, [memoryRequestItems, setActiveTab, tabs]);
+  const requestRiskMitigationFromAgentFleet = useCallback(() => {
+    const targets = riskMitigationItems
+      .map((item) => ({ item, tab: tabs.find((tab) => tab.id === item.tabId) }))
+      .filter((target): target is { item: typeof riskMitigationItems[number]; tab: Tab } => Boolean(target.tab?.workstream));
+    if (targets.length === 0) return;
+    const store = useWorkspaceStore.getState();
+    for (const { item, tab } of targets) {
+      store.queueWorkstreamInput(tab.id, item.prompt, {
+        source: "mission-control",
+        label: "Mitigate risk",
+      });
+    }
+    setActiveTab(targets[0].tab.id);
+  }, [riskMitigationItems, setActiveTab, tabs]);
 
   const openCanvasMenu = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
     if (event.target !== event.currentTarget) return; // only empty canvas background
@@ -2107,7 +2387,212 @@ export function MagicCanvas() {
               <Bot size={13} strokeWidth={1.8} />
               Agent runs
             </span>
-            <span>{agentLane.total}</span>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <button
+                type="button"
+                className="magic-canvas-button"
+                style={{ ...styles.button, width: 24, height: 24 }}
+                data-testid="canvas-agent-lane-status-sweep"
+                title={agentLaneStatusSweepTitle(agentLane)}
+                aria-label="Request active agent status sweep"
+                disabled={activeAgentWorkstreams.length === 0}
+                onClick={queueAgentLaneStatusSweep}
+              >
+                <RefreshCw size={13} strokeWidth={1.8} />
+              </button>
+              <button
+                type="button"
+                className="magic-canvas-button"
+                style={{ ...styles.button, width: 24, height: 24 }}
+                data-testid="canvas-agent-lane-interrupt-active"
+                title={agentLaneInterruptTitle(agentLane)}
+                aria-label="Interrupt active agent fleet"
+                disabled={activeAgentWorkstreams.length === 0}
+                onClick={interruptActiveAgentFleet}
+              >
+                <Ban size={13} strokeWidth={1.8} />
+              </button>
+              <button
+                type="button"
+                className="magic-canvas-button"
+                style={{ ...styles.button, width: 24, height: 24 }}
+                data-testid="canvas-agent-lane-restart-recovery"
+                title={agentLaneRestartTitle(agentLane)}
+                aria-label="Restart recovery agent fleet"
+                disabled={restartableAgentWorkstreams.length === 0}
+                onClick={restartRecoveryAgentFleet}
+              >
+                <RotateCcw size={13} strokeWidth={1.8} />
+              </button>
+              <button
+                type="button"
+                className="magic-canvas-button"
+                style={{ ...styles.button, width: 24, height: 24 }}
+                data-testid="canvas-agent-lane-retry-auth"
+                title={agentLaneAuthRetryTitle(agentLane)}
+                aria-label="Retry auth-blocked agent fleet"
+                disabled={authRetryableAgentWorkstreams.length === 0}
+                onClick={retryAuthAgentFleet}
+              >
+                <RefreshCw size={13} strokeWidth={1.8} />
+              </button>
+              <button
+                type="button"
+                className="magic-canvas-button"
+                style={{ ...styles.button, width: 24, height: 24 }}
+                data-testid="canvas-agent-lane-request-cleanup"
+                title={agentLaneCleanupRequestTitle(agentLane)}
+                aria-label="Request cleanup for cleanup-ready agent fleet"
+                disabled={cleanupRequestableAgentWorkstreams.length === 0}
+                onClick={requestCleanupFromAgentFleet}
+              >
+                <Trash2 size={13} strokeWidth={1.8} />
+              </button>
+              <button
+                type="button"
+                className="magic-canvas-button"
+                style={{ ...styles.button, width: 24, height: 24 }}
+                data-testid="canvas-agent-lane-request-proof"
+                title={agentLaneProofRequestTitle(agentLane)}
+                aria-label="Request proof from proof-needed agent fleet"
+                disabled={proofRequestItems.length === 0}
+                onClick={requestProofFromAgentFleet}
+              >
+                <FileText size={13} strokeWidth={1.8} />
+              </button>
+              <button
+                type="button"
+                className="magic-canvas-button"
+                style={{ ...styles.button, width: 24, height: 24 }}
+                data-testid="canvas-agent-lane-request-memory"
+                title={agentLaneMemoryRequestTitle(agentLane)}
+                aria-label="Request handoff memory from memory-needed agent fleet"
+                disabled={memoryRequestItems.length === 0}
+                onClick={requestMemoryFromAgentFleet}
+              >
+                <NotebookText size={13} strokeWidth={1.8} />
+              </button>
+              <button
+                type="button"
+                className="magic-canvas-button"
+                style={{ ...styles.button, width: 24, height: 24 }}
+                data-testid="canvas-agent-lane-mitigate-risk"
+                title={agentLaneRiskMitigationTitle(agentLane)}
+                aria-label="Request risk mitigation from risky agent fleet"
+                disabled={riskMitigationItems.length === 0}
+                onClick={requestRiskMitigationFromAgentFleet}
+              >
+                <Ban size={13} strokeWidth={1.8} />
+              </button>
+              <button
+                type="button"
+                className="magic-canvas-button"
+                style={{ ...styles.button, width: 24, height: 24 }}
+                data-testid="canvas-agent-lane-review-ready"
+                title={agentLaneCloseoutTitle(agentLane)}
+                aria-label="Review ready agent closeouts"
+                disabled={closeoutReadyReviewItems.length === 0}
+                onClick={reviewReadyAgentCloseouts}
+              >
+                <CheckCircle2 size={13} strokeWidth={1.8} />
+              </button>
+              <button
+                type="button"
+                className="magic-canvas-button"
+                style={{ ...styles.button, width: 24, height: 24 }}
+                data-testid="canvas-agent-lane-copy-mission"
+                title="Copy mission control brief"
+                aria-label="Copy mission control brief"
+                onClick={() => {
+                  if (navigator.clipboard?.writeText) {
+                    void navigator.clipboard.writeText(formatAgentMissionControlBrief(agentLane));
+                  }
+                }}
+              >
+                <ListTodo size={13} strokeWidth={1.8} />
+              </button>
+              <button
+                type="button"
+                className="magic-canvas-button"
+                style={{ ...styles.button, width: 24, height: 24 }}
+                data-testid="canvas-agent-lane-copy-brief"
+                title="Copy agent supervision brief"
+                aria-label="Copy agent supervision brief"
+                onClick={() => {
+                  if (navigator.clipboard?.writeText) {
+                    void navigator.clipboard.writeText(formatAgentLaneBrief(agentLane));
+                  }
+                }}
+              >
+                <ClipboardCopy size={13} strokeWidth={1.8} />
+              </button>
+              <span>{agentLane.total}</span>
+            </span>
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+            <span
+              data-testid="canvas-agent-lane-status-sweep-plan"
+              title={agentLaneStatusSweepTitle(agentLane)}
+              style={styles.agentLaneChip}
+            >
+              {agentLaneStatusSweepText(agentLane)}
+            </span>
+            <span
+              data-testid="canvas-agent-lane-interrupt-plan"
+              title={agentLaneInterruptTitle(agentLane)}
+              style={styles.agentLaneChip}
+            >
+              {agentLaneInterruptText(agentLane)}
+            </span>
+            <span
+              data-testid="canvas-agent-lane-restart-plan"
+              title={agentLaneRestartTitle(agentLane)}
+              style={styles.agentLaneChip}
+            >
+              {agentLaneRestartText(agentLane)}
+            </span>
+            <span
+              data-testid="canvas-agent-lane-auth-retry-plan"
+              title={agentLaneAuthRetryTitle(agentLane)}
+              style={styles.agentLaneChip}
+            >
+              {agentLaneAuthRetryText(agentLane)}
+            </span>
+            <span
+              data-testid="canvas-agent-lane-cleanup-plan"
+              title={agentLaneCleanupRequestTitle(agentLane)}
+              style={styles.agentLaneChip}
+            >
+              {agentLaneCleanupRequestText(agentLane)}
+            </span>
+            <span
+              data-testid="canvas-agent-lane-closeout-plan"
+              title={agentLaneCloseoutTitle(agentLane)}
+              style={styles.agentLaneChip}
+            >
+              {agentLaneCloseoutText(agentLane)}
+            </span>
+            <span
+              data-testid="canvas-agent-lane-proof-plan"
+              title={agentLaneProofRequestTitle(agentLane)}
+              style={styles.agentLaneChip}
+            >
+              {agentLaneProofRequestText(agentLane)}
+            </span>
+            <span
+              data-testid="canvas-agent-lane-memory-plan"
+              title={agentLaneMemoryRequestTitle(agentLane)}
+              style={styles.agentLaneChip}
+            >
+              {agentLaneMemoryRequestText(agentLane)}
+            </span>
+            <span
+              data-testid="canvas-agent-lane-risk-plan"
+              title={agentLaneRiskMitigationTitle(agentLane)}
+              style={styles.agentLaneChip}
+            >
+              {agentLaneRiskMitigationText(agentLane)}
+            </span>
           </div>
           <div style={styles.agentLaneStats}>
             <span style={styles.agentLaneChip} data-testid="canvas-agent-lane-total">{agentLane.total} agents</span>
@@ -2115,8 +2600,247 @@ export function MagicCanvas() {
             <span style={styles.agentLaneChip}>{agentLane.waiting} waiting</span>
             <span style={styles.agentLaneChip}>{agentLane.blocked} blocked</span>
             <span style={styles.agentLaneChip}>{agentLane.complete} complete</span>
+            <span style={styles.agentLaneChip}>{agentLane.workspaceGroups.length} groups</span>
+            <span style={styles.agentLaneChip}>{agentLane.missionItemCount} mission rows</span>
+            <span style={styles.agentLaneChip}>{agentLane.missionActionCount} actions</span>
+            {agentLane.hiddenMissionItemCount > 0 && (
+              <span style={styles.agentLaneChip}>+{agentLane.hiddenMissionItemCount} hidden rows</span>
+            )}
+            {agentLane.hiddenMissionActionCount > 0 && (
+              <span style={styles.agentLaneChip}>+{agentLane.hiddenMissionActionCount} hidden actions</span>
+            )}
+            <span style={styles.agentLaneChip}>{agentLane.promptCount} prompts</span>
+            <span style={styles.agentLaneChip}>{agentLane.missionControlPromptCount} mission prompts</span>
+            <span style={styles.agentLaneChip}>{agentLane.missionControlPromptSentCount} mission sent</span>
+            <span style={styles.agentLaneChip}>{agentLane.outputCount} outputs</span>
+            <span style={styles.agentLaneChip}>{agentLane.nextCount} next</span>
+            <span style={styles.agentLaneChip}>{agentLane.memoryItems.length} memories</span>
+            <span style={styles.agentLaneChip}>{agentLane.recentEvents.length} events</span>
+            <span style={styles.agentLaneChip}>{agentLane.staleItems.length} stale</span>
+            <span style={styles.agentLaneChip}>{agentLane.evidenceItems.length} evidence</span>
+            <span style={styles.agentLaneChip}>{agentLane.proofItems.length} proof</span>
+            <span style={styles.agentLaneChip}>{agentLane.authItems.length} auth</span>
+            <span style={styles.agentLaneChip}>{agentLane.riskItems.length} risk</span>
+            <span style={styles.agentLaneChip}>{agentLane.recoveryItems.length} recovery</span>
+            <span style={styles.agentLaneChip}>{agentLane.reviewItems.length} review</span>
+            <span style={styles.agentLaneChip}>{agentLane.reviewCloseoutReady} closeout ready</span>
+            <span style={styles.agentLaneChip}>{agentLane.reviewCloseoutBlocked} closeout blocked</span>
+            <span style={styles.agentLaneChip}>{agentLane.reviewReadyWithProof} proven</span>
+            <span style={styles.agentLaneChip}>{agentLane.reviewNeedsProof} unproven</span>
+            <span style={styles.agentLaneChip}>{agentLane.reviewReadyWithMemory} handoff ready</span>
+            <span style={styles.agentLaneChip}>{agentLane.reviewNeedsMemory} handoff missing</span>
+            <span style={styles.agentLaneChip}>{agentLane.attentionItems.length} queue</span>
+            <span style={styles.agentLaneChip}>{agentLane.dedicated} dedicated</span>
+            <span style={styles.agentLaneChip}>{agentLane.shared} shared</span>
+            <span style={styles.agentLaneChip}>{agentLane.cleanupRequested} cleanup</span>
             <span style={styles.agentLaneChip}>{agentLane.attention} attention</span>
           </div>
+          <div
+            style={styles.agentLaneItem}
+            data-testid="canvas-agent-lane-headline"
+            aria-label="Agent cockpit headline"
+            title={agentLane.cockpitHeadline.detail}
+          >
+            <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text-primary)" }}>
+              {agentLane.cockpitHeadline.label}
+            </span>
+            <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {agentLane.cockpitHeadline.detail}
+            </span>
+          </div>
+          <div
+            style={styles.agentLaneItem}
+            data-testid="canvas-agent-lane-health"
+            aria-label="Agent lane health"
+            title={agentLaneHealthText(agentLane)}
+          >
+            <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text-primary)" }}>
+              Health
+            </span>
+            <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {agentLaneHealthText(agentLane)}
+            </span>
+          </div>
+          {agentLane.missionBreakdown.length > 0 && (
+            <div
+              style={styles.agentLaneItem}
+              data-testid="canvas-agent-lane-mission-breakdown"
+              title={missionBreakdownText(agentLane)}
+            >
+              <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text-primary)" }}>
+                Mission mix
+              </span>
+              <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {missionBreakdownText(agentLane)}
+              </span>
+            </div>
+          )}
+          {agentLane.missionControlDispatchBreakdown.length > 0 && (
+            <div
+              style={styles.agentLaneItem}
+              data-testid="canvas-agent-lane-dispatch-breakdown"
+              title={missionControlDispatchBreakdownText(agentLane)}
+            >
+              <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text-primary)" }}>
+                Dispatch mix
+              </span>
+              <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {missionControlDispatchBreakdownText(agentLane)}
+              </span>
+            </div>
+          )}
+          {agentLane.providerBreakdown.length > 0 && (
+            <div
+              style={styles.agentLaneItem}
+              data-testid="canvas-agent-lane-provider-breakdown"
+              title={providerBreakdownText(agentLane)}
+            >
+              <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text-primary)" }}>
+                Provider mix
+              </span>
+              <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {providerBreakdownText(agentLane)}
+              </span>
+            </div>
+          )}
+          {agentLane.isolationBreakdown.length > 0 && (
+            <div
+              style={styles.agentLaneItem}
+              data-testid="canvas-agent-lane-isolation-breakdown"
+              title={isolationBreakdownText(agentLane)}
+            >
+              <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text-primary)" }}>
+                Isolation mix
+              </span>
+              <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {isolationBreakdownText(agentLane)}
+              </span>
+            </div>
+          )}
+          {agentLane.cleanupBreakdown.length > 0 && (
+            <div
+              style={styles.agentLaneItem}
+              data-testid="canvas-agent-lane-cleanup-breakdown"
+              title={cleanupBreakdownText(agentLane)}
+            >
+              <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text-primary)" }}>
+                Cleanup mix
+              </span>
+              <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {cleanupBreakdownText(agentLane)}
+              </span>
+            </div>
+          )}
+          {agentLane.readinessBreakdown.length > 0 && (
+            <div
+              style={styles.agentLaneItem}
+              data-testid="canvas-agent-lane-readiness-breakdown"
+              title={readinessBreakdownText(agentLane)}
+            >
+              <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text-primary)" }}>
+                Readiness mix
+              </span>
+              <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {readinessBreakdownText(agentLane)}
+              </span>
+            </div>
+          )}
+          {agentLane.attentionBreakdown.length > 0 && (
+            <div
+              style={styles.agentLaneItem}
+              data-testid="canvas-agent-lane-attention-breakdown"
+              title={attentionBreakdownText(agentLane)}
+            >
+              <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text-primary)" }}>
+                Attention mix
+              </span>
+              <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {attentionBreakdownText(agentLane)}
+              </span>
+            </div>
+          )}
+          {agentLane.riskBreakdown.length > 0 && (
+            <div
+              style={styles.agentLaneItem}
+              data-testid="canvas-agent-lane-risk-breakdown"
+              title={riskBreakdownText(agentLane)}
+            >
+              <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text-primary)" }}>
+                Risk mix
+              </span>
+              <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {riskBreakdownText(agentLane)}
+              </span>
+            </div>
+          )}
+          {agentLane.closeoutBreakdown.length > 0 && (
+            <div
+              style={styles.agentLaneItem}
+              data-testid="canvas-agent-lane-closeout-breakdown"
+              title={closeoutBreakdownText(agentLane)}
+            >
+              <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text-primary)" }}>
+                Closeout mix
+              </span>
+              <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {closeoutBreakdownText(agentLane)}
+              </span>
+            </div>
+          )}
+          {agentLane.supervisorItems.length > 0 && (
+            <div style={styles.agentLaneList} aria-label="Agent mission control">
+              {agentLane.supervisorItems.map((item) => {
+                const node = canvasState.nodes.find((candidate) => candidate.terminalTabId === item.tabId);
+                return (
+                  <button
+                    key={`${item.tabId}-${item.label}-${item.detail}`}
+                    type="button"
+                    className="magic-canvas-button"
+                    style={{ ...styles.agentLaneItem, background: "transparent", border: "none", padding: "3px 0", textAlign: "left", cursor: node ? "pointer" : "default" }}
+                    data-testid="canvas-agent-supervisor-item"
+                    title={`${item.label} ${item.title}`}
+                    onClick={() => {
+                      setActiveTab(item.tabId);
+                      if (item.action === "queue-prompt" && item.prompt) {
+                        useWorkspaceStore.getState().queueWorkstreamInput(item.tabId, item.prompt, {
+                          source: "mission-control",
+                          label: item.label,
+                        });
+                      }
+                      if (item.action === "review") {
+                        useWorkspaceStore.getState().reviewWorkstream(item.tabId, {
+                          source: "mission-control",
+                          label: item.label,
+                        });
+                      }
+                      if (node) centerNode(node, FOCUS_TERMINAL_ZOOM);
+                    }}
+                  >
+                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text-primary)" }}>
+                      {item.label}
+                    </span>
+                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {item.title} · {item.runIdentity} · {item.workspaceIdentity} · Now: {item.activity} · Signal: {item.signalAge} · Source: {item.signalSource} · {item.detail}{missionControlAlternateText(item) ? ` · Also: ${missionControlAlternateText(item)}` : ""}
+                    </span>
+                  </button>
+                );
+              })}
+              {agentLane.hiddenMissionItemCount > 0 && (
+                <div
+                  style={styles.agentLaneItem}
+                  data-testid="canvas-agent-supervisor-overflow"
+                  title={`${agentLane.hiddenMissionItemCount} mission rows and ${agentLane.hiddenMissionActionCount} actions hidden below the visible queue${agentLane.hiddenSupervisorItems[0] ? `: ${agentLane.hiddenSupervisorItems[0].title} · ${agentLane.hiddenSupervisorItems[0].label} · ${agentLane.hiddenSupervisorItems[0].detail}${missionControlAlternateText(agentLane.hiddenSupervisorItems[0]) ? ` · Also: ${missionControlAlternateText(agentLane.hiddenSupervisorItems[0])}` : ""}` : ""}`}
+                >
+                  <span style={{ color: "var(--text-primary)" }}>+{agentLane.hiddenMissionItemCount} rows · {agentLane.hiddenMissionActionCount} actions</span>
+                  <span>
+                    {agentLane.hiddenSupervisorItems[0]
+                      ? `${agentLane.hiddenSupervisorItems[0].title} · ${agentLane.hiddenSupervisorItems[0].label} · ${agentLane.hiddenSupervisorItems[0].detail}${missionControlAlternateText(agentLane.hiddenSupervisorItems[0]) ? ` · Also: ${missionControlAlternateText(agentLane.hiddenSupervisorItems[0])}` : ""}`
+                      : "Mission rows hidden below the visible queue"}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
           {agentLane.primaryAttention && (
             <button
               type="button"
@@ -2140,28 +2864,627 @@ export function MagicCanvas() {
               </span>
             </button>
           )}
+          {agentLane.attentionItems.length > 0 && (
+            <div style={styles.agentLaneList} aria-label="Agent attention queue">
+              {agentLane.attentionItems.slice(0, 3).map((item) => {
+                const node = canvasState.nodes.find((candidate) => candidate.terminalTabId === item.tabId);
+                return (
+                  <button
+                    key={item.tabId}
+                    type="button"
+                    className="magic-canvas-button"
+                    style={{ ...styles.agentLaneItem, background: "transparent", border: "none", padding: "3px 0", textAlign: "left", cursor: node ? "pointer" : "default" }}
+                    data-testid="canvas-agent-attention-item"
+                    title={`Send status check to ${item.title}`}
+                    onClick={() => {
+                      setActiveTab(item.tabId);
+                      if (node) centerNode(node, FOCUS_TERMINAL_ZOOM);
+                    }}
+                  >
+                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text-primary)" }}>
+                      {item.label}
+                    </span>
+                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {item.title} · {item.detail}
+                    </span>
+                  </button>
+                );
+              })}
+              {agentLane.attentionItems.length > 3 && (
+                <div style={styles.agentLaneOverflow} data-testid="canvas-agent-attention-overflow">
+                  +{agentLane.attentionItems.length - 3} more attention · {agentLane.attentionItems[3].label} · {agentLane.attentionItems[3].title} · {agentLane.attentionItems[3].detail}
+                </div>
+              )}
+            </div>
+          )}
+          <div style={styles.agentLaneList} aria-label="Agent workspace groups">
+            {agentLane.workspaceGroups.slice(0, 3).map((group) => {
+              const node = canvasState.nodes.find((candidate) => candidate.terminalTabId === group.primaryTabId);
+              const cleanupText = group.cleanupRequested > 0 ? ` · ${group.cleanupRequested} cleanup` : "";
+              const attentionText = group.attention > 0 ? ` · ${group.attention} attention` : "";
+              return (
+                <button
+                  key={group.id}
+                  type="button"
+                  className="magic-canvas-button"
+                  style={{ ...styles.agentLaneItem, background: "transparent", border: "none", padding: "3px 0", textAlign: "left", cursor: node ? "pointer" : "default" }}
+                  data-testid="canvas-agent-workspace-group"
+                  title={`Copy workspace group ${group.label}`}
+                  onClick={() => {
+                    if (!group.primaryTabId) return;
+                    setActiveTab(group.primaryTabId);
+                    if (navigator.clipboard?.writeText) {
+                      void navigator.clipboard.writeText(group.brief);
+                    }
+                    if (node) centerNode(node, FOCUS_TERMINAL_ZOOM);
+                  }}
+                >
+                  <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text-primary)" }}>
+                    {group.label}
+                  </span>
+                  <span>{group.total} agents · {group.active} active · {group.detail}{cleanupText}{attentionText}</span>
+                </button>
+              );
+            })}
+            {agentLane.workspaceGroups.length > 3 && (
+              <div style={styles.agentLaneOverflow} data-testid="canvas-agent-workspace-group-overflow">
+                +{agentLane.workspaceGroups.length - 3} more groups · {agentLane.workspaceGroups[3].label} · {agentLane.workspaceGroups[3].total} agents · {agentLane.workspaceGroups[3].active} active · {agentLane.workspaceGroups[3].detail}
+              </div>
+            )}
+          </div>
+          {agentLane.recentEvents.length > 0 && (
+            <div style={styles.agentLaneList} aria-label="Agent recent events">
+              {agentLane.recentEvents.slice(0, 3).map((item) => {
+                const node = canvasState.nodes.find((candidate) => candidate.terminalTabId === item.tabId);
+                return (
+                  <button
+                    key={`${item.tabId}-${item.at}-${item.label}`}
+                    type="button"
+                    className="magic-canvas-button"
+                    style={{ ...styles.agentLaneItem, background: "transparent", border: "none", padding: "3px 0", textAlign: "left", cursor: node ? "pointer" : "default" }}
+                    data-testid="canvas-agent-recent-event"
+                    title={`Copy event for ${item.title}`}
+                    onClick={() => {
+                      setActiveTab(item.tabId);
+                      if (navigator.clipboard?.writeText) {
+                        void navigator.clipboard.writeText(item.brief);
+                      }
+                      if (node) centerNode(node, FOCUS_TERMINAL_ZOOM);
+                    }}
+                  >
+                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text-primary)" }}>
+                      Copy event
+                    </span>
+                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {item.title} · {item.label}{item.detail ? ` · ${item.detail}` : ""}
+                    </span>
+                  </button>
+                );
+              })}
+              {agentLane.recentEvents.length > 3 && (
+                <div
+                  style={styles.agentLaneItem}
+                  data-testid="canvas-agent-recent-event-overflow"
+                  title={`${agentLane.recentEvents.length - 3} recent events hidden below the visible event list`}
+                >
+                  <span style={{ color: "var(--text-primary)" }}>+{agentLane.recentEvents.length - 3} more events</span>
+                  <span>
+                    {agentLane.recentEvents[3].title} · {agentLane.recentEvents[3].label}{agentLane.recentEvents[3].detail ? ` · ${agentLane.recentEvents[3].detail}` : ""}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+          {agentLane.inputItems.length > 0 && (
+            <div style={styles.agentLaneList} aria-label="Agent operator prompts">
+              {agentLane.inputItems.slice(0, 3).map((item) => {
+                const node = canvasState.nodes.find((candidate) => candidate.terminalTabId === item.tabId);
+                return (
+                  <button
+                    key={`${item.tabId}-${item.at}-${item.text}`}
+                    type="button"
+                    className="magic-canvas-button"
+                    style={{ ...styles.agentLaneItem, background: "transparent", border: "none", padding: "3px 0", textAlign: "left", cursor: node ? "pointer" : "default" }}
+                    data-testid="canvas-agent-input-item"
+                    title={`Copy prompt for ${item.title}`}
+                    onClick={() => {
+                      setActiveTab(item.tabId);
+                      if (navigator.clipboard?.writeText) {
+                        void navigator.clipboard.writeText(item.brief);
+                      }
+                      if (node) centerNode(node, FOCUS_TERMINAL_ZOOM);
+                    }}
+                  >
+                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text-primary)" }}>
+                      Copy prompt
+                    </span>
+                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {item.title} · {item.state} · {item.text}
+                    </span>
+                  </button>
+                );
+              })}
+              {agentLane.inputItems.length > 3 && (
+                <div
+                  style={styles.agentLaneItem}
+                  data-testid="canvas-agent-input-overflow"
+                  title={`${agentLane.inputItems.length - 3} operator prompts hidden below the visible prompt list`}
+                >
+                  <span style={{ color: "var(--text-primary)" }}>+{agentLane.inputItems.length - 3} more prompts</span>
+                  <span>
+                    {agentLane.inputItems[3].title} · {agentLane.inputItems[3].state} · {agentLane.inputItems[3].text}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+          {agentLane.outputItems.length > 0 && (
+            <div style={styles.agentLaneList} aria-label="Agent terminal output">
+              {agentLane.outputItems.slice(0, 3).map((item) => {
+                const node = canvasState.nodes.find((candidate) => candidate.terminalTabId === item.tabId);
+                return (
+                  <button
+                    key={`${item.tabId}-${item.at}-${item.output}`}
+                    type="button"
+                    className="magic-canvas-button"
+                    style={{ ...styles.agentLaneItem, background: "transparent", border: "none", padding: "3px 0", textAlign: "left", cursor: node ? "pointer" : "default" }}
+                    data-testid="canvas-agent-output-item"
+                    title={`Copy terminal output for ${item.title}`}
+                    onClick={() => {
+                      setActiveTab(item.tabId);
+                      if (navigator.clipboard?.writeText) {
+                        void navigator.clipboard.writeText(item.brief);
+                      }
+                      if (node) centerNode(node, FOCUS_TERMINAL_ZOOM);
+                    }}
+                  >
+                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text-primary)" }}>
+                      Copy output
+                    </span>
+                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {item.title} · {item.output}
+                    </span>
+                  </button>
+                );
+              })}
+              {agentLane.outputItems.length > 3 && (
+                <div
+                  style={styles.agentLaneItem}
+                  data-testid="canvas-agent-output-overflow"
+                  title={`${agentLane.outputItems.length - 3} terminal outputs hidden below the visible output list`}
+                >
+                  <span style={{ color: "var(--text-primary)" }}>+{agentLane.outputItems.length - 3} more output</span>
+                  <span>
+                    {agentLane.outputItems[3].title} · {agentLane.outputItems[3].output}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+          {agentLane.nextItems.length > 0 && (
+            <div style={styles.agentLaneList} aria-label="Agent next actions">
+              {agentLane.nextItems.slice(0, 3).map((item) => {
+                const node = canvasState.nodes.find((candidate) => candidate.terminalTabId === item.tabId);
+                return (
+                  <button
+                    key={`${item.tabId}-${item.at}-${item.nextAction}`}
+                    type="button"
+                    className="magic-canvas-button"
+                    style={{ ...styles.agentLaneItem, background: "transparent", border: "none", padding: "3px 0", textAlign: "left", cursor: node ? "pointer" : "default" }}
+                    data-testid="canvas-agent-next-item"
+                    title={`Copy next action for ${item.title}`}
+                    onClick={() => {
+                      setActiveTab(item.tabId);
+                      if (navigator.clipboard?.writeText) {
+                        void navigator.clipboard.writeText(item.brief);
+                      }
+                      if (node) centerNode(node, FOCUS_TERMINAL_ZOOM);
+                    }}
+                  >
+                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text-primary)" }}>
+                      Copy next
+                    </span>
+                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {item.title} · {item.nextAction}
+                    </span>
+                  </button>
+                );
+              })}
+              {agentLane.nextItems.length > 3 && (
+                <div
+                  style={styles.agentLaneItem}
+                  data-testid="canvas-agent-next-overflow"
+                  title={`${agentLane.nextItems.length - 3} next actions hidden below the visible next-action list`}
+                >
+                  <span style={{ color: "var(--text-primary)" }}>+{agentLane.nextItems.length - 3} more next</span>
+                  <span>
+                    {agentLane.nextItems[3].title} · {agentLane.nextItems[3].nextAction}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+          {agentLane.staleItems.length > 0 && (
+            <div style={styles.agentLaneList} aria-label="Agent stale queue">
+              {agentLane.staleItems.slice(0, 3).map((item) => {
+                const node = canvasState.nodes.find((candidate) => candidate.terminalTabId === item.tabId);
+                return (
+                  <button
+                    key={item.tabId}
+                    type="button"
+                    className="magic-canvas-button"
+                    style={{ ...styles.agentLaneItem, background: "transparent", border: "none", padding: "3px 0", textAlign: "left", cursor: node ? "pointer" : "default" }}
+                    data-testid="canvas-agent-stale-item"
+                    title={`Focus ${item.title}`}
+                    onClick={() => {
+                      setActiveTab(item.tabId);
+                      useWorkspaceStore.getState().queueWorkstreamInput(item.tabId, item.prompt, {
+                        source: "mission-control",
+                        label: "Check in",
+                      });
+                      if (node) centerNode(node, FOCUS_TERMINAL_ZOOM);
+                    }}
+                  >
+                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text-primary)" }}>
+                      Check in
+                    </span>
+                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {item.title} · {item.detail}
+                    </span>
+                  </button>
+                );
+              })}
+              {agentLane.staleItems.length > 3 && (
+                <div style={styles.agentLaneOverflow} data-testid="canvas-agent-stale-overflow">
+                  +{agentLane.staleItems.length - 3} more stale · {agentLane.staleItems[3].title} · {agentLane.staleItems[3].detail}
+                </div>
+              )}
+            </div>
+          )}
+          {agentLane.riskItems.length > 0 && (
+            <div style={styles.agentLaneList} aria-label="Agent risk queue">
+              {agentLane.riskItems.slice(0, 3).map((item) => {
+                const node = canvasState.nodes.find((candidate) => candidate.terminalTabId === item.tabId);
+                return (
+                  <button
+                    key={item.tabId}
+                    type="button"
+                    className="magic-canvas-button"
+                    style={{ ...styles.agentLaneItem, background: "transparent", border: "none", padding: "3px 0", textAlign: "left", cursor: node ? "pointer" : "default" }}
+                    data-testid="canvas-agent-risk-item"
+                    title={`Send risk mitigation prompt to ${item.title}`}
+                    onClick={() => {
+                      setActiveTab(item.tabId);
+                      useWorkspaceStore.getState().queueWorkstreamInput(item.tabId, item.prompt, {
+                        source: "mission-control",
+                        label: "Mitigate risk",
+                      });
+                      if (node) centerNode(node, FOCUS_TERMINAL_ZOOM);
+                    }}
+                  >
+                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text-primary)" }}>
+                      Mitigate
+                    </span>
+                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {item.title} · {item.detail}
+                    </span>
+                  </button>
+                );
+              })}
+              {agentLane.riskItems.length > 3 && (
+                <div style={styles.agentLaneOverflow} data-testid="canvas-agent-risk-overflow">
+                  +{agentLane.riskItems.length - 3} more risk · {agentLane.riskItems[3].title} · {agentLane.riskItems[3].detail}
+                </div>
+              )}
+            </div>
+          )}
+          {agentLane.authItems.length > 0 && (
+            <div style={styles.agentLaneList} aria-label="Agent auth queue">
+              {agentLane.authItems.slice(0, 3).map((item) => {
+                const node = canvasState.nodes.find((candidate) => candidate.terminalTabId === item.tabId);
+                return (
+                  <button
+                    key={item.tabId}
+                    type="button"
+                    className="magic-canvas-button"
+                    style={{ ...styles.agentLaneItem, background: "transparent", border: "none", padding: "3px 0", textAlign: "left", cursor: node ? "pointer" : "default" }}
+                    data-testid="canvas-agent-auth-item"
+                    title={`Copy auth handoff for ${item.title}`}
+                    onClick={() => {
+                      setActiveTab(item.tabId);
+                      if (navigator.clipboard?.writeText) {
+                        void navigator.clipboard.writeText(item.brief);
+                      }
+                      if (node) centerNode(node, FOCUS_TERMINAL_ZOOM);
+                    }}
+                  >
+                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text-primary)" }}>
+                      Copy auth
+                    </span>
+                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {item.title} · {item.reason} · {item.nextAction}
+                    </span>
+                  </button>
+                );
+              })}
+              {agentLane.authItems.length > 3 && (
+                <div
+                  style={styles.agentLaneItem}
+                  data-testid="canvas-agent-auth-overflow"
+                  title={`${agentLane.authItems.length - 3} auth blockers hidden below the visible auth queue`}
+                >
+                  <span style={{ color: "var(--text-primary)" }}>+{agentLane.authItems.length - 3} more auth</span>
+                  <span>
+                    {agentLane.authItems[3].title} · {agentLane.authItems[3].reason} · {agentLane.authItems[3].nextAction}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+          {agentLane.recoveryItems.length > 0 && (
+            <div style={styles.agentLaneList} aria-label="Agent recovery queue">
+              {agentLane.recoveryItems.slice(0, 3).map((item) => {
+                const node = canvasState.nodes.find((candidate) => candidate.terminalTabId === item.tabId);
+                return (
+                  <button
+                    key={item.tabId}
+                    type="button"
+                    className="magic-canvas-button"
+                    style={{ ...styles.agentLaneItem, background: "transparent", border: "none", padding: "3px 0", textAlign: "left", cursor: node ? "pointer" : "default" }}
+                    data-testid="canvas-agent-recovery-item"
+                    title={`Send recovery prompt to ${item.title}`}
+                    onClick={() => {
+                      setActiveTab(item.tabId);
+                      useWorkspaceStore.getState().queueWorkstreamInput(item.tabId, item.prompt, {
+                        source: "mission-control",
+                        label: "Recover",
+                      });
+                      if (node) centerNode(node, FOCUS_TERMINAL_ZOOM);
+                    }}
+                  >
+                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text-primary)" }}>
+                      Recover
+                    </span>
+                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {item.title} · {item.reason} · {item.prompt}
+                    </span>
+                  </button>
+                );
+              })}
+              {agentLane.recoveryItems.length > 3 && (
+                <div style={styles.agentLaneOverflow} data-testid="canvas-agent-recovery-overflow">
+                  +{agentLane.recoveryItems.length - 3} more recovery · {agentLane.recoveryItems[3].title} · {agentLane.recoveryItems[3].reason} · {agentLane.recoveryItems[3].prompt}
+                </div>
+              )}
+            </div>
+          )}
+          {agentLane.proofItems.length > 0 && (
+            <div style={styles.agentLaneList} aria-label="Agent proof needed queue">
+              {agentLane.proofItems.slice(0, 3).map((item) => {
+                const node = canvasState.nodes.find((candidate) => candidate.terminalTabId === item.tabId);
+                return (
+                  <button
+                    key={item.tabId}
+                    type="button"
+                    className="magic-canvas-button"
+                    style={{ ...styles.agentLaneItem, background: "transparent", border: "none", padding: "3px 0", textAlign: "left", cursor: node ? "pointer" : "default" }}
+                    data-testid="canvas-agent-proof-item"
+                    title={`Send proof request to ${item.title}`}
+                    onClick={() => {
+                      setActiveTab(item.tabId);
+                      useWorkspaceStore.getState().queueWorkstreamInput(item.tabId, item.request, {
+                        source: "mission-control",
+                        label: "Request proof",
+                      });
+                      if (node) centerNode(node, FOCUS_TERMINAL_ZOOM);
+                    }}
+                  >
+                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text-primary)" }}>
+                      Request proof
+                    </span>
+                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {item.title} · {item.summary} · {item.request}
+                    </span>
+                  </button>
+                );
+              })}
+              {agentLane.proofItems.length > 3 && (
+                <div
+                  style={styles.agentLaneItem}
+                  data-testid="canvas-agent-proof-overflow"
+                  title={`${agentLane.proofItems.length - 3} proof requests hidden below the visible proof queue`}
+                >
+                  <span style={{ color: "var(--text-primary)" }}>+{agentLane.proofItems.length - 3} more proof</span>
+                  <span>
+                    {agentLane.proofItems[3].title} · {agentLane.proofItems[3].summary} · {agentLane.proofItems[3].request}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+          {agentLane.evidenceItems.length > 0 && (
+            <div style={styles.agentLaneList} aria-label="Agent evidence queue">
+              {agentLane.evidenceItems.slice(0, 3).map((item) => {
+                const node = canvasState.nodes.find((candidate) => candidate.terminalTabId === item.tabId);
+                return (
+                  <button
+                    key={item.tabId}
+                    type="button"
+                    className="magic-canvas-button"
+                    style={{ ...styles.agentLaneItem, background: "transparent", border: "none", padding: "3px 0", textAlign: "left", cursor: node ? "pointer" : "default" }}
+                    data-testid="canvas-agent-evidence-item"
+                    title={item.artifactPath ? `Open artifact for ${item.title}` : `Copy evidence for ${item.title}`}
+                    onClick={() => {
+                      setActiveTab(item.tabId);
+                      if (item.artifactPath) {
+                        useWorkspaceStore.getState().addOpenFile({
+                          path: item.artifactPath,
+                          name: item.artifactName ?? item.artifactPath,
+                          dirty: false,
+                        });
+                      }
+                      if (navigator.clipboard?.writeText) {
+                        void navigator.clipboard.writeText(item.brief);
+                      }
+                      if (node) centerNode(node, FOCUS_TERMINAL_ZOOM);
+                    }}
+                  >
+                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text-primary)" }}>
+                      {item.artifactPath ? "Open proof" : "Copy proof"}
+                    </span>
+                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {item.title} · {item.evidence}{item.artifact ? ` · ${item.artifact}` : ""}
+                    </span>
+                  </button>
+                );
+              })}
+              {agentLane.evidenceItems.length > 3 && (
+                <div
+                  style={styles.agentLaneItem}
+                  data-testid="canvas-agent-evidence-overflow"
+                  title={`${agentLane.evidenceItems.length - 3} evidence rows hidden below the visible evidence queue`}
+                >
+                  <span style={{ color: "var(--text-primary)" }}>+{agentLane.evidenceItems.length - 3} more evidence</span>
+                  <span>
+                    {agentLane.evidenceItems[3].title} · {agentLane.evidenceItems[3].evidence}{agentLane.evidenceItems[3].artifact ? ` · ${agentLane.evidenceItems[3].artifact}` : ""}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+          {agentLane.reviewItems.length > 0 && (
+            <div style={styles.agentLaneList} aria-label="Agent review queue">
+              {agentLane.reviewItems.slice(0, 3).map((item) => {
+                const node = canvasState.nodes.find((candidate) => candidate.terminalTabId === item.tabId);
+                const canCloseout = isReviewItemCloseoutReady(item);
+                return (
+                  <button
+                    key={item.tabId}
+                    type="button"
+                    className="magic-canvas-button"
+                    style={{ ...styles.agentLaneItem, background: "transparent", border: "none", padding: "3px 0", textAlign: "left", cursor: node ? "pointer" : "default" }}
+                    data-testid="canvas-agent-review-item"
+                    title={canCloseout ? `Mark ${item.title} reviewed` : `Review blocked for ${item.title} until proof and handoff memory are ready`}
+                    onClick={() => {
+                      setActiveTab(item.tabId);
+                      if (node) centerNode(node, FOCUS_TERMINAL_ZOOM);
+                      if (canCloseout) {
+                        useWorkspaceStore.getState().reviewWorkstream(item.tabId, {
+                          source: "mission-control",
+                          label: "Review",
+                        });
+                      }
+                    }}
+                  >
+                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text-primary)" }}>
+                      {canCloseout ? "Review" : "Blocked review"}
+                    </span>
+                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {item.title} · {item.proofStatus} · {item.handoffStatus} · {item.summary} · {item.detail}
+                    </span>
+                  </button>
+                );
+              })}
+              {agentLane.reviewItems.length > 3 && (
+                <div
+                  style={styles.agentLaneItem}
+                  data-testid="canvas-agent-review-overflow"
+                  title={`${agentLane.reviewItems.length - 3} review items hidden below the visible review queue`}
+                >
+                  <span style={{ color: "var(--text-primary)" }}>+{agentLane.reviewItems.length - 3} more review</span>
+                  <span>
+                    {agentLane.reviewItems[3].title} · {agentLane.reviewItems[3].proofStatus} · {agentLane.reviewItems[3].handoffStatus} · {agentLane.reviewItems[3].summary}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+          {agentLane.memoryItems.length > 0 && (
+            <div style={styles.agentLaneList} aria-label="Agent lane memory">
+              {agentLane.memoryItems.slice(0, 3).map((item) => {
+                const node = canvasState.nodes.find((candidate) => candidate.terminalTabId === item.tabId);
+                return (
+                  <button
+                    key={item.tabId}
+                    type="button"
+                    className="magic-canvas-button"
+                    style={{ ...styles.agentLaneItem, background: "transparent", border: "none", padding: "3px 0", textAlign: "left", cursor: node ? "pointer" : "default" }}
+                    data-testid="canvas-agent-lane-memory"
+                    title={`Copy memory for ${item.title}`}
+                    onClick={() => {
+                      setActiveTab(item.tabId);
+                      if (navigator.clipboard?.writeText) {
+                        void navigator.clipboard.writeText(item.brief);
+                      }
+                      if (node) centerNode(node, FOCUS_TERMINAL_ZOOM);
+                    }}
+                  >
+                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text-primary)" }}>
+                      Copy memory
+                    </span>
+                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {item.title} · {item.memory}
+                    </span>
+                  </button>
+                );
+              })}
+              {agentLane.memoryItems.length > 3 && (
+                <div
+                  style={styles.agentLaneItem}
+                  data-testid="canvas-agent-memory-overflow"
+                  title={`${agentLane.memoryItems.length - 3} memory rows hidden below the visible handoff-memory list`}
+                >
+                  <span style={{ color: "var(--text-primary)" }}>+{agentLane.memoryItems.length - 3} more memory</span>
+                  <span>
+                    {agentLane.memoryItems[3].title} · {agentLane.memoryItems[3].memory}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
           <div style={styles.agentLaneList}>
             {agentLane.workstreams.slice(0, 3).map(({ tab, workstream }) => {
               const node = canvasState.nodes.find((candidate) => candidate.terminalTabId === tab.id);
+              const askText = latestMissionControlAskText(workstream);
               return (
                 <button
                   key={tab.id}
                   type="button"
                   className="magic-canvas-button"
                   style={{ ...styles.agentLaneItem, background: "transparent", border: "none", padding: "3px 0", textAlign: "left", cursor: node ? "pointer" : "default" }}
-                  title={workstream.lastSummary ?? workstream.mission ?? workstream.prompt ?? tab.title}
+                  data-testid="canvas-agent-run-item"
+                  title={`Copy run brief for ${tab.title}`}
                   onClick={() => {
                     setActiveTab(tab.id);
+                    if (navigator.clipboard?.writeText) {
+                      void navigator.clipboard.writeText(formatAgentRunBrief(tab));
+                    }
                     if (node) centerNode(node, FOCUS_TERMINAL_ZOOM);
                   }}
                 >
                   <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {tab.title}
+                    Copy run
                   </span>
-                  <span>{workstreamLabel(workstream.provider)} · {workstream.phase ?? workstream.status}</span>
+                  <span>
+                    {workstreamLabel(workstream.provider)} · {workstream.phase ?? workstream.status} · {workstreamActivityText(workstream)} · {formatWorkstreamOpsContext(workstream)}
+                    {askText ? ` · ${askText}` : ""}
+                  </span>
                 </button>
               );
             })}
+            {agentLane.workstreams.length > 3 && (
+              <div
+                style={styles.agentLaneItem}
+                data-testid="canvas-agent-run-overflow"
+                title={`${agentLane.workstreams.length - 3} agent runs hidden below the visible run list`}
+              >
+                <span style={{ color: "var(--text-primary)" }}>+{agentLane.workstreams.length - 3} more agents</span>
+                <span>
+                  {workstreamLabel(agentLane.workstreams[3].workstream.provider)} · {agentLane.workstreams[3].workstream.phase ?? agentLane.workstreams[3].workstream.status} · {workstreamActivityText(agentLane.workstreams[3].workstream)} · {formatWorkstreamOpsContext(agentLane.workstreams[3].workstream)}
+                  {latestMissionControlAskText(agentLane.workstreams[3].workstream) ? ` · ${latestMissionControlAskText(agentLane.workstreams[3].workstream)}` : ""}
+                </span>
+              </div>
+            )}
           </div>
         </div>
       )}

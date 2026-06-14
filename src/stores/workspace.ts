@@ -24,6 +24,7 @@ import {
 import { destroyBrowserPtys, writeBrowserPtys } from "../hooks/usePty";
 import type { AgentProviderAvailability } from "../lib/agentProviders";
 import { providerDefinition } from "../lib/agentProviders";
+import type { WorkstreamOpsContext } from "../lib/workstreamOpsContext";
 
 const GROUP_COLORS = [
   "#7aa2f7",
@@ -78,6 +79,16 @@ type WorkstreamEventInput = {
   status?: WorkstreamStatus;
 };
 
+type QueueWorkstreamInputOptions = {
+  source?: "operator" | "mission-control";
+  label?: string;
+};
+
+type WorkstreamControlOptions = {
+  source?: "operator" | "mission-control";
+  label?: string;
+};
+
 function createWorkstreamEvent(input: WorkstreamEventInput): WorkstreamEvent {
   return {
     id: crypto.randomUUID(),
@@ -90,7 +101,7 @@ function appendWorkstreamEvent(events: WorkstreamEvent[] | undefined, input: Wor
   return [...(events ?? []), createWorkstreamEvent(input)].slice(-12);
 }
 
-function createRunId(provider: AgentProvider, createdAt: number) {
+export function createAgentWorkstreamRunId(provider: AgentProvider, createdAt: number) {
   const suffix = crypto.randomUUID().slice(0, 6);
   return `${provider}-${createdAt.toString(36)}-${suffix}`;
 }
@@ -183,13 +194,16 @@ interface WorkspaceState {
   closeTerminalSession: (id: string) => Promise<void>;
   setActiveTab: (id: string) => void;
   updateTab: (id: string, updates: Partial<Tab>) => void;
-  queueWorkstreamInput: (tabId: string, text: string) => string | null;
+  queueWorkstreamInput: (tabId: string, text: string, options?: QueueWorkstreamInputOptions) => string | null;
   markWorkstreamInputSent: (tabId: string, inputId: string) => void;
   recordWorkstreamEvent: (tabId: string, event: WorkstreamEventInput) => void;
+  recordWorkstreamMemory: (tabId: string, memory: string) => void;
   interruptWorkstream: (tabId: string) => Promise<void>;
   stopWorkstream: (tabId: string) => Promise<void>;
-  restartWorkstream: (tabId: string) => Promise<void>;
-  reviewWorkstream: (tabId: string) => void;
+  restartWorkstream: (tabId: string, options?: WorkstreamControlOptions) => Promise<void>;
+  reviewWorkstream: (tabId: string, options?: { source?: "operator" | "mission-control"; label?: string }) => void;
+  requestWorktreeCleanup: (tabId: string, options?: WorkstreamControlOptions) => void;
+  executeWorktreeCleanup: (tabId: string) => Promise<void>;
   reorderTabs: (fromIndex: number, toIndex: number) => void;
 
   // Group actions
@@ -593,16 +607,25 @@ export function createTerminalTab(cwd?: string) {
   });
 }
 
+export function currentAgentWorkstreamCwd() {
+  const store = useWorkspaceStore.getState();
+  const activeTab = store.tabs.find((tab) => tab.id === store.activeTabId);
+  const groupId = store.activeGroupFilter ?? activeTab?.groupId ?? store.activeGroupId;
+  const targetGroup = groupId ? store.groups.find((group) => group.id === groupId) : null;
+  return targetGroup?.projectRoot ?? activeTab?.initialCwd ?? store.projectRoot ?? undefined;
+}
+
 export function createAgentWorkstream(
   provider: AgentProvider = "codex",
   prompt?: string,
-  availability?: AgentProviderAvailability
+  availability?: AgentProviderAvailability,
+  opsContext?: WorkstreamOpsContext
 ) {
   const store = useWorkspaceStore.getState();
   const activeTab = store.tabs.find((tab) => tab.id === store.activeTabId);
   const groupId = store.activeGroupFilter ?? activeTab?.groupId ?? store.activeGroupId;
   const targetGroup = groupId ? store.groups.find((group) => group.id === groupId) : null;
-  const resolvedCwd = targetGroup?.projectRoot ?? activeTab?.initialCwd ?? store.projectRoot ?? undefined;
+  const resolvedCwd = opsContext?.cwd ?? targetGroup?.projectRoot ?? activeTab?.initialCwd ?? store.projectRoot ?? undefined;
   const providerInfo = availability ?? {
     ...providerDefinition(provider),
     available: provider === "shell",
@@ -611,10 +634,11 @@ export function createAgentWorkstream(
   const providerLabel = providerInfo.label;
   const mission = prompt?.trim() || "Supervised workstream";
   const startupCommand = providerInfo.available ? providerInfo.command : undefined;
-  const createdAt = Date.now();
-  const runId = createRunId(provider, createdAt);
+  const createdAt = opsContext?.createdAt ?? Date.now();
+  const runId = opsContext?.runId ?? createAgentWorkstreamRunId(provider, createdAt);
   const initialStatus = providerInfo.available ? "ready" : "failed";
   const initialPhase = providerInfo.available ? "queued" : "blocked";
+  const initialActivity = providerInfo.available ? "Launch queued" : "Provider unavailable";
   const initialInput = {
     id: crypto.randomUUID(),
     text: mission,
@@ -622,7 +646,7 @@ export function createAgentWorkstream(
   };
 
   store.addTab({
-    title: `${providerLabel} agent`,
+    title: mission,
     emoji: "\u25C6",
     color: "#d99a45",
     initialCwd: resolvedCwd,
@@ -635,6 +659,25 @@ export function createAgentWorkstream(
       role: providerLabel,
       mission,
       prompt: mission,
+      cwd: resolvedCwd,
+      cwdLabel: opsContext?.cwdLabel ?? (resolvedCwd ? resolvedCwd.split("/").filter(Boolean).pop() ?? resolvedCwd : "workspace root unknown"),
+      gitRoot: opsContext?.gitRoot,
+      gitBranch: opsContext?.gitBranch,
+      gitDirty: opsContext?.gitDirty,
+      worktreePath: opsContext?.worktreePath ?? resolvedCwd,
+      isolationMode: opsContext?.isolationMode ?? "shared-worktree",
+      isolationStatus: opsContext?.isolationStatus ?? "shared",
+      isolationNote: opsContext?.isolationNote ?? "Agent shares the selected workspace checkout.",
+      worktreeCleanupStatus: opsContext?.isolationMode === "dedicated-worktree" && opsContext?.isolationStatus === "ready"
+        ? "available"
+        : opsContext?.isolationMode === "dedicated-worktree"
+          ? "manual"
+          : "not-needed",
+      worktreeCleanupNote: opsContext?.isolationMode === "dedicated-worktree" && opsContext?.isolationStatus === "ready"
+        ? "Dedicated worktree can be removed after the run is reviewed."
+        : opsContext?.isolationMode === "dedicated-worktree"
+          ? "No provisioned worktree is owned by this run."
+          : "Shared workspace runs do not own a cleanup target.",
       startupCommand,
       phase: initialPhase,
       launchMode: providerInfo.launchMode,
@@ -644,12 +687,17 @@ export function createAgentWorkstream(
       stopBehavior: providerInfo.stopBehavior,
       controlProtocol: providerInfo.controlProtocol,
       structuredStatus: providerInfo.structuredStatus,
+      currentActivity: initialActivity,
+      activityKind: providerInfo.available ? "starting" : "blocked",
+      activitySource: "system",
+      activityUpdatedAt: createdAt,
       lastSummary: providerInfo.available
         ? `${providerLabel} launch queued`
         : `${providerLabel} provider unavailable`,
       nextAction: providerInfo.available
         ? "Watch provider startup"
         : "Install or configure the provider CLI",
+      memory: "No agent memory reported yet.",
       promptCount: 1,
       sentCount: 0,
       signalCount: 0,
@@ -671,6 +719,14 @@ export function createAgentWorkstream(
           kind: "provider",
           label: providerInfo.available ? `${providerLabel} ready` : `${providerLabel} unavailable`,
           detail: `${providerInfo.message} · ${providerInfo.readinessCheck}`,
+          status: initialStatus,
+          at: createdAt,
+        },
+        {
+          id: crypto.randomUUID(),
+          kind: "control",
+          label: opsContext?.isolationMode === "dedicated-worktree" ? "Dedicated worktree requested" : "Shared workspace selected",
+          detail: opsContext?.isolationNote ?? "Agent shares the selected workspace checkout.",
           status: initialStatus,
           at: createdAt,
         },
@@ -1181,13 +1237,52 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     }));
   },
 
-  queueWorkstreamInput: (tabId: string, text: string) => {
+  recordWorkstreamMemory: (tabId: string, memory: string) => {
+    const trimmed = memory.trim();
+    if (!trimmed) return;
+    const updatedAt = Date.now();
+    set((state) => ({
+      tabs: state.tabs.map((tab) =>
+        tab.id === tabId && tab.workstream
+          ? {
+              ...tab,
+              workstream: {
+                ...tab.workstream,
+                memory: trimmed,
+                currentActivity: "Operator memory updated",
+                activityKind: "complete",
+                activitySource: "operator",
+                activityUpdatedAt: updatedAt,
+                controlCount: (tab.workstream.controlCount ?? 0) + 1,
+                outcome: "Operator memory updated",
+                events: appendWorkstreamEvent(tab.workstream.events, {
+                  kind: "control",
+                  label: "Operator memory updated",
+                  detail: trimmed,
+                  status: tab.workstream.status,
+                }),
+                lastActivityAt: updatedAt,
+              },
+            }
+          : tab
+      ),
+    }));
+  },
+
+  queueWorkstreamInput: (tabId: string, text: string, options = {}) => {
     const trimmed = text.trim();
     if (!trimmed) return null;
+    const source = options.source ?? "operator";
+    const label = options.label?.trim();
+    const sourcePrefix = source === "mission-control"
+      ? `Mission control${label ? `: ${label}` : ""}`
+      : "Operator";
     const input = {
       id: crypto.randomUUID(),
       text: trimmed,
       createdAt: Date.now(),
+      source,
+      ...(label ? { label } : {}),
     };
     set((state) => ({
       tabs: state.tabs.map((tab) =>
@@ -1198,14 +1293,18 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
                 ...tab.workstream,
                 prompt: trimmed,
                 phase: "queued",
-                lastSummary: "Operator queued a follow-up prompt",
+                lastSummary: `${sourcePrefix} queued a follow-up prompt`,
                 nextAction: "Wait for prompt dispatch",
+                currentActivity: `${sourcePrefix} queued follow-up`,
+                activityKind: "thinking",
+                activitySource: "operator",
+                activityUpdatedAt: Date.now(),
                 promptCount: (tab.workstream.promptCount ?? 0) + 1,
-                outcome: "Follow-up queued",
+                outcome: source === "mission-control" ? "Mission-control prompt queued" : "Follow-up queued",
                 inputQueue: [...(tab.workstream.inputQueue ?? []), input],
                 events: appendWorkstreamEvent(tab.workstream.events, {
                   kind: "prompt",
-                  label: "Follow-up queued",
+                  label: source === "mission-control" ? `Mission control queued${label ? ` ${label}` : ""}` : "Follow-up queued",
                   detail: trimmed,
                   status: tab.workstream.status,
                 }),
@@ -1222,17 +1321,34 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     set((state) => ({
       tabs: state.tabs.map((tab) =>
         tab.id === tabId && tab.workstream
-          ? {
+          ? (() => {
+              const sentInput = (tab.workstream.inputQueue ?? []).find((input) => input.id === inputId);
+              const missionControlLabel = sentInput?.source === "mission-control"
+                ? `Mission control${sentInput.label ? `: ${sentInput.label}` : ""}`
+                : null;
+              return {
               ...tab,
               workstream: {
                 ...tab.workstream,
                 phase: tab.workstream.phase === "queued" ? "launching" : tab.workstream.phase,
                 lastSummary: tab.workstream.status === "ready" || tab.workstream.status === "running"
-                  ? "Prompt sent to provider"
+                  ? `${missionControlLabel ?? "Prompt"} sent to provider`
                   : tab.workstream.lastSummary,
                 nextAction: tab.workstream.status === "ready" || tab.workstream.status === "running"
                   ? "Watch provider response"
                   : tab.workstream.nextAction,
+                currentActivity: tab.workstream.status === "ready" || tab.workstream.status === "running"
+                  ? `${missionControlLabel ?? "Prompt"} sent to provider`
+                  : tab.workstream.currentActivity,
+                activityKind: tab.workstream.status === "ready" || tab.workstream.status === "running"
+                  ? "thinking"
+                  : tab.workstream.activityKind,
+                activitySource: tab.workstream.status === "ready" || tab.workstream.status === "running"
+                  ? "operator"
+                  : tab.workstream.activitySource,
+                activityUpdatedAt: tab.workstream.status === "ready" || tab.workstream.status === "running"
+                  ? Date.now()
+                  : tab.workstream.activityUpdatedAt,
                 sentCount: (tab.workstream.sentCount ?? 0) + 1,
                 outcome: "Prompt sent",
                 lastActivityAt: Date.now(),
@@ -1243,12 +1359,13 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
                 ),
                 events: appendWorkstreamEvent(tab.workstream.events, {
                   kind: "sent",
-                  label: "Prompt sent",
-                  detail: (tab.workstream.inputQueue ?? []).find((input) => input.id === inputId)?.text,
+                  label: missionControlLabel ? `${missionControlLabel} sent` : "Prompt sent",
+                  detail: sentInput?.text,
                   status: tab.workstream.status,
                 }),
               },
-            }
+            };
+            })()
           : tab
       ),
     }));
@@ -1268,6 +1385,10 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
                 phase: "cancelling",
                 lastSummary: "Cancellation requested",
                 nextAction: "Wait for provider acknowledgement or hard-stop",
+                currentActivity: "Cancellation requested",
+                activityKind: "waiting",
+                activitySource: "operator",
+                activityUpdatedAt: Date.now(),
                 controlCount: (candidate.workstream.controlCount ?? 0) + 1,
                 outcome: "Cancellation requested",
                 events: appendWorkstreamEvent(candidate.workstream.events, {
@@ -1303,6 +1424,10 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
                 phase: "interrupted",
                 lastSummary: "Workstream stopped",
                 nextAction: "Restart or close the workstream",
+                currentActivity: "Workstream stopped",
+                activityKind: "idle",
+                activitySource: "operator",
+                activityUpdatedAt: Date.now(),
                 controlCount: (candidate.workstream.controlCount ?? 0) + 1,
                 outcome: "Stopped by operator",
                 events: appendWorkstreamEvent(candidate.workstream.events, {
@@ -1319,9 +1444,12 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     }));
   },
 
-  restartWorkstream: async (tabId: string) => {
+  restartWorkstream: async (tabId: string, options = {}) => {
     const tab = get().tabs.find((candidate) => candidate.id === tabId);
     if (!tab?.workstream) return;
+    const requestedAt = Date.now();
+    const source = options.source === "mission-control" ? "Mission control" : "Operator";
+    const label = options.label?.trim();
     await killPtys(tab.terminals.map((terminal) => terminal.id));
     set((state) => ({
       activeTerminalId: tab.terminals.some((terminal) => terminal.id === state.activeTerminalId)
@@ -1337,18 +1465,29 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
                 ...candidate.workstream,
                 status: "ready",
                 phase: "queued",
+                providerAvailable: undefined,
+                providerAvailabilityMessage: undefined,
+                readiness: "unknown",
+                readinessCheck: "Restart requested; waiting for provider startup output",
+                authCheck: undefined,
                 lastSummary: "Restart requested",
                 nextAction: "Watch provider startup",
+                currentActivity: "Restart requested",
+                activityKind: "starting",
+                activitySource: "operator",
+                activityUpdatedAt: requestedAt,
                 controlCount: (candidate.workstream.controlCount ?? 0) + 1,
-                outcome: "Restart requested",
+                outcome: source === "Mission control" ? "Mission-control restart requested" : "Restart requested",
                 generation: (candidate.workstream.generation ?? 0) + 1,
                 events: appendWorkstreamEvent(candidate.workstream.events, {
                   kind: "control",
-                  label: "Restart requested",
-                  detail: "Terminal remounting through provider startup command",
+                  label: source === "Mission control" ? "Mission control requested restart" : "Restart requested",
+                  detail: label
+                    ? `${label}: terminal remounting through provider startup command`
+                    : "Terminal remounting through provider startup command",
                   status: "ready",
                 }),
-                lastActivityAt: Date.now(),
+                lastActivityAt: requestedAt,
               },
             }
           : candidate
@@ -1356,8 +1495,10 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     }));
   },
 
-  reviewWorkstream: (tabId: string) => {
+  reviewWorkstream: (tabId: string, options = {}) => {
     const reviewedAt = Date.now();
+    const source = options.source === "mission-control" ? "Mission control" : "Operator";
+    const label = options.label?.trim();
     set((state) => ({
       tabs: state.tabs.map((candidate) =>
         candidate.id === tabId && candidate.workstream
@@ -1369,17 +1510,110 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
                 phase: "reviewed",
                 lastSummary: "Workstream reviewed",
                 nextAction: "Close or restart the workstream",
+                currentActivity: "Workstream reviewed",
+                activityKind: "complete",
+                activitySource: "operator",
+                activityUpdatedAt: reviewedAt,
                 controlCount: (candidate.workstream.controlCount ?? 0) + 1,
-                outcome: "Reviewed by operator",
+                outcome: `${source} reviewed run`,
                 completedAt: candidate.workstream.completedAt ?? reviewedAt,
                 reviewedAt,
                 events: appendWorkstreamEvent(candidate.workstream.events, {
                   kind: "control",
-                  label: "Reviewed by operator",
-                  detail: "Operator acknowledged the completed run record",
+                  label: source === "Mission control" ? "Mission control reviewed run" : "Reviewed by operator",
+                  detail: label ? `${label}: acknowledged the completed run record` : "Operator acknowledged the completed run record",
                   status: candidate.workstream.status,
                 }),
                 lastActivityAt: Date.now(),
+              },
+            }
+          : candidate
+      ),
+    }));
+  },
+
+  requestWorktreeCleanup: (tabId: string, options = {}) => {
+    const requestedAt = Date.now();
+    const source = options.source === "mission-control" ? "Mission control" : "Operator";
+    const label = options.label?.trim();
+    set((state) => ({
+      tabs: state.tabs.map((candidate) =>
+        candidate.id === tabId && candidate.workstream
+          ? {
+              ...candidate,
+              workstream: {
+                ...candidate.workstream,
+                worktreeCleanupStatus: "requested",
+                worktreeCleanupNote: candidate.workstream.worktreePath
+                  ? `Cleanup requested for ${candidate.workstream.worktreePath}`
+                  : "Cleanup requested; no worktree path is recorded.",
+                currentActivity: "Worktree cleanup requested",
+                activityKind: "waiting",
+                activitySource: "operator",
+                activityUpdatedAt: requestedAt,
+                controlCount: (candidate.workstream.controlCount ?? 0) + 1,
+                outcome: source === "Mission control" ? "Mission-control cleanup requested" : "Worktree cleanup requested",
+                events: appendWorkstreamEvent(candidate.workstream.events, {
+                  kind: "control",
+                  label: source === "Mission control" ? "Mission control requested worktree cleanup" : "Worktree cleanup requested",
+                  detail: label
+                    ? `${label}: ${candidate.workstream.worktreePath ?? candidate.workstream.worktreeCleanupNote ?? "no cleanup target recorded"}`
+                    : candidate.workstream.worktreePath ?? candidate.workstream.worktreeCleanupNote,
+                  status: candidate.workstream.status,
+                }),
+                lastActivityAt: requestedAt,
+              },
+            }
+          : candidate
+      ),
+    }));
+  },
+
+  executeWorktreeCleanup: async (tabId: string) => {
+    const tab = get().tabs.find((candidate) => candidate.id === tabId);
+    if (!tab?.workstream) return;
+    const requestedAt = Date.now();
+    let status: "removed" | "blocked" | "manual" = "manual";
+    let note = "Cleanup execution requires the Tauri desktop runtime.";
+    if (tab.workstream.worktreePath) {
+      try {
+        const { invoke } = await import("@tauri-apps/api/core");
+        const result = await invoke<{ status: string; note: string }>("workstream_remove_dedicated_worktree", {
+          path: tab.workstream.worktreePath,
+        });
+        status = result.status === "removed" ? "removed" : result.status === "blocked" ? "blocked" : "manual";
+        note = result.note;
+      } catch (error) {
+        status = "manual";
+        note = `Cleanup execution requires desktop support: ${String(error)}`;
+      }
+    } else {
+      status = "manual";
+      note = "Cleanup cannot run because no worktree path is recorded.";
+    }
+
+    set((state) => ({
+      tabs: state.tabs.map((candidate) =>
+        candidate.id === tabId && candidate.workstream
+          ? {
+              ...candidate,
+              workstream: {
+                ...candidate.workstream,
+                worktreeCleanupStatus: status,
+                worktreeCleanupNote: note,
+                currentActivity: status === "removed" ? "Worktree removed" : "Worktree cleanup needs attention",
+                activityKind: status === "removed" ? "complete" : "blocked",
+                activitySource: "operator",
+                activityUpdatedAt: requestedAt,
+                controlCount: (candidate.workstream.controlCount ?? 0) + 1,
+                outcome: status === "removed" ? "Worktree removed" : "Worktree cleanup blocked",
+                events: appendWorkstreamEvent(candidate.workstream.events, {
+                  kind: "control",
+                  label: status === "removed" ? "Worktree removed" : "Worktree cleanup blocked",
+                  detail: note,
+                  status: candidate.workstream.status,
+                }),
+                lastActivityAt: requestedAt,
               },
             }
           : candidate
@@ -1899,6 +2133,10 @@ window.addEventListener("beforeunload", () => {
     pendingSnapshot = null;
   }
 });
+
+if (import.meta.env.DEV && typeof window !== "undefined") {
+  (window as typeof window & { __termfleetWorkspaceStore?: typeof useWorkspaceStore }).__termfleetWorkspaceStore = useWorkspaceStore;
+}
 
 useWorkspaceStore.subscribe((state) => {
   if (FORCE_WORKSPACE_RESET_STATE) {
