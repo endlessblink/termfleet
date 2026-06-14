@@ -3873,3 +3873,20 @@ Progress notes:
   Codex agent` plus the mission-control latest input line. Additional
   verification passed `npm run build`, `npm run verify:rust-warnings`, `npm run
   verify:map-terminals`, and `git diff --check`.
+- Agent launch mode is now first-class instead of implied by provider metadata.
+  Command-palette and map launches prompt for `terminal` vs `headless`, persist
+  `workstream.launchProfile`, and render the selected launch mode in the
+  cockpit provider grid. Headless Codex runs are constructed as `codex exec
+  --json <mission>` in browser-preview state and as `agent-provider-adapter.sh
+  codex headless <mission>` in the Tauri adapter path; Claude uses `claude -p
+  --output-format=stream-json <mission>`. The adapter emits a structured
+  headless launch marker and then supervises the non-interactive child process
+  with the same exit/cancel lifecycle markers. Regression coverage: `npx
+  playwright test tests/agent-workstream.spec.ts` passed 9/9 after adding
+  explicit headless launch coverage and keeping the default terminal launch
+  assertion. Adapter-level regression coverage: `npm run verify:agent-adapter`
+  passed and proves the headless Codex/Claude command contract plus unsupported
+  OpenCode and missing-mission structured failures with fake provider binaries.
+  Additional verification passed `npm run build`, `npm run
+  verify:rust-warnings`, `npm run verify:map-terminals`, `sh -n
+  scripts/agent-provider-adapter.sh`, and `git diff --check`.

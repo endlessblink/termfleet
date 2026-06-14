@@ -54,6 +54,7 @@ export type WorkstreamActivitySource = "structured" | "terminal" | "operator" | 
 export type WorkstreamIsolationMode = "shared-worktree" | "dedicated-worktree" | "unknown";
 export type WorkstreamIsolationStatus = "shared" | "requested" | "ready" | "unavailable" | "unknown";
 export type WorktreeCleanupStatus = "not-needed" | "available" | "requested" | "manual" | "removed" | "blocked";
+export type WorkstreamLaunchProfile = "terminal" | "headless";
 
 export interface WorkstreamMetadata {
   kind: WorkstreamKind;
@@ -75,6 +76,7 @@ export interface WorkstreamMetadata {
   worktreeCleanupStatus?: WorktreeCleanupStatus;
   worktreeCleanupNote?: string;
   startupCommand?: string;
+  launchProfile?: WorkstreamLaunchProfile;
   phase?: WorkstreamPhase;
   launchMode?: string;
   readinessCheck?: string;

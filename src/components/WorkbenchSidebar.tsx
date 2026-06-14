@@ -31,7 +31,7 @@ import { FileExplorer } from "./FileExplorer";
 import { checkAgentProvider } from "../lib/agentProviders";
 import { agentLaneAuthRetryText, agentLaneAuthRetryTitle, agentLaneCleanupRequestText, agentLaneCleanupRequestTitle, agentLaneCloseoutText, agentLaneCloseoutTitle, agentLaneHealthText, agentLaneInterruptText, agentLaneInterruptTitle, agentLaneMemoryRequestText, agentLaneMemoryRequestTitle, agentLaneProofRequestText, agentLaneProofRequestTitle, agentLaneRestartText, agentLaneRestartTitle, agentLaneRiskMitigationText, agentLaneRiskMitigationTitle, agentLaneStatusSweepText, agentLaneStatusSweepTitle, agentLaneStatusText, attentionBreakdownText, cleanupBreakdownText, closeoutBreakdownText, formatAgentLaneBrief, formatAgentMissionControlBrief, formatAgentRunBrief, handoffMemoryPromptForWorkstream, isActiveAgentWorkstream, isAuthRetryableAgentWorkstream, isCleanupRequestableAgentWorkstream, isRestartableAgentWorkstream, isReviewItemCloseoutReady, isolationBreakdownText, latestMissionControlAskText, missionBreakdownText, missionControlAlternateText, missionControlDispatchBreakdownText, proofRequestPromptForWorkstream, providerBreakdownText, readinessBreakdownText, riskBreakdownText, statusCheckPromptForWorkstream, summarizeAgentLane } from "../lib/agentWorkstreamLane";
 import { workstreamActivityText } from "../lib/workstreamActivity";
-import { formatWorkstreamOpsContext, promptWorkstreamIsolation, resolveWorkstreamOpsContext } from "../lib/workstreamOpsContext";
+import { formatWorkstreamOpsContext, promptWorkstreamIsolation, promptWorkstreamLaunchProfile, resolveWorkstreamOpsContext } from "../lib/workstreamOpsContext";
 
 const TERMINAL_COLORS = [
   "#d99a45",
@@ -1395,10 +1395,12 @@ function SessionsPanel({
     if (mission === null) return;
     const isolationMode = promptWorkstreamIsolation(availability.label);
     if (isolationMode === null) return;
+    const launchProfile = promptWorkstreamLaunchProfile(availability.label);
+    if (launchProfile === null) return;
     const createdAt = Date.now();
     const runId = createAgentWorkstreamRunId("codex", createdAt);
     const opsContext = await resolveWorkstreamOpsContext(currentAgentWorkstreamCwd(), isolationMode, runId, createdAt);
-    createAgentWorkstream("codex", mission, availability, opsContext);
+    createAgentWorkstream("codex", mission, availability, opsContext, launchProfile);
     requestAnimationFrame(() => {
       const nextTab = useWorkspaceStore.getState().getActiveTab();
       if (nextTab) focusTabOnMap(nextTab);

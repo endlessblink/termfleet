@@ -10,6 +10,8 @@ if [ -z "$provider" ]; then
   emit '[[TERMFLEET_AGENT_EVENT {"status":"failed","phase":"blocked","activity":"Provider adapter missing provider id","activityKind":"blocked","summary":"Provider adapter missing provider id","nextAction":"Check workstream launch configuration","label":"Adapter launch failed"}]]'
   exit 64
 fi
+mode="${2:-terminal}"
+mission="${3:-}"
 
 case "$provider" in
   codex|claude|opencode)
@@ -23,6 +25,16 @@ esac
 if ! command -v "$provider" >/dev/null 2>&1; then
   emit "[[TERMFLEET_AGENT_EVENT {\"status\":\"failed\",\"phase\":\"blocked\",\"readiness\":\"unknown\",\"activity\":\"$provider is not on PATH\",\"activityKind\":\"blocked\",\"summary\":\"$provider is not on PATH\",\"nextAction\":\"Install or configure the provider CLI\",\"label\":\"Provider unavailable\"}]]"
   exit 127
+fi
+
+if [ "$mode" != "terminal" ] && [ "$mode" != "headless" ]; then
+  emit "[[TERMFLEET_AGENT_EVENT {\"status\":\"failed\",\"phase\":\"blocked\",\"activity\":\"Unsupported launch mode\",\"activityKind\":\"blocked\",\"summary\":\"Unsupported launch mode\",\"nextAction\":\"Use terminal or headless launch mode\",\"label\":\"Adapter launch failed\"}]]"
+  exit 64
+fi
+
+if [ "$mode" = "headless" ] && [ -z "$mission" ]; then
+  emit "[[TERMFLEET_AGENT_EVENT {\"status\":\"failed\",\"phase\":\"blocked\",\"activity\":\"Headless launch missing mission\",\"activityKind\":\"blocked\",\"summary\":\"Headless launch missing mission\",\"nextAction\":\"Start the agent with a concrete mission\",\"label\":\"Adapter launch failed\"}]]"
+  exit 64
 fi
 
 child_pid=""
@@ -47,9 +59,24 @@ terminate_provider() {
 trap request_cancel INT
 trap terminate_provider TERM HUP
 
-emit "[[TERMFLEET_AGENT_EVENT {\"status\":\"running\",\"phase\":\"active\",\"readiness\":\"provider-ready\",\"activity\":\"$provider adapter launched\",\"activityKind\":\"starting\",\"summary\":\"$provider adapter launched\",\"nextAction\":\"Watch provider response\",\"label\":\"Adapter launched\",\"detail\":\"Provider command found on PATH and started through TermFleet adapter.\"}]]"
-
-"$provider" &
+if [ "$mode" = "headless" ]; then
+  emit "[[TERMFLEET_AGENT_EVENT {\"status\":\"running\",\"phase\":\"active\",\"readiness\":\"provider-ready\",\"activity\":\"$provider headless adapter launched\",\"activityKind\":\"starting\",\"summary\":\"$provider headless adapter launched\",\"nextAction\":\"Watch streamed provider output\",\"label\":\"Headless adapter launched\",\"detail\":\"Provider command found on PATH and started through TermFleet non-interactive adapter.\"}]]"
+  case "$provider" in
+    codex)
+      codex exec --json "$mission" &
+      ;;
+    claude)
+      claude -p --output-format=stream-json "$mission" &
+      ;;
+    opencode)
+      emit '[[TERMFLEET_AGENT_EVENT {"status":"failed","phase":"blocked","activity":"OpenCode headless launch is not configured","activityKind":"blocked","summary":"OpenCode headless launch is not configured","nextAction":"Use terminal launch mode for OpenCode","label":"Headless adapter unavailable"}]]'
+      exit 64
+      ;;
+  esac
+else
+  emit "[[TERMFLEET_AGENT_EVENT {\"status\":\"running\",\"phase\":\"active\",\"readiness\":\"provider-ready\",\"activity\":\"$provider adapter launched\",\"activityKind\":\"starting\",\"summary\":\"$provider adapter launched\",\"nextAction\":\"Watch provider response\",\"label\":\"Adapter launched\",\"detail\":\"Provider command found on PATH and started through TermFleet adapter.\"}]]"
+  "$provider" &
+fi
 child_pid=$!
 set +e
 while kill -0 "$child_pid" 2>/dev/null; do

@@ -18,7 +18,12 @@ async function resetWorkspace(page: import("@playwright/test").Page) {
   await page.waitForLoadState("networkidle");
 }
 
-async function createAgentWorkstream(page: import("@playwright/test").Page, mission = PRIMARY_MISSION, isolation = "shared") {
+async function createAgentWorkstream(
+  page: import("@playwright/test").Page,
+  mission = PRIMARY_MISSION,
+  isolation = "shared",
+  launchProfile = "terminal"
+) {
   await page.getByRole("textbox", { name: "Workspace command" }).click();
   await page.getByRole("textbox", { name: "Workspace command" }).fill("new agent run");
   const dialogPromise = new Promise<void>((resolve, reject) => {
@@ -32,10 +37,15 @@ async function createAgentWorkstream(page: import("@playwright/test").Page, miss
         }
         if (dialog.message().includes("Isolation for Codex agent")) {
           await dialog.accept(isolation);
+          return;
+        }
+        if (dialog.message().includes("Launch mode for Codex agent")) {
+          await dialog.accept(launchProfile);
           page.off("dialog", onDialog);
           expect(messages).toEqual([
             expect.stringContaining("Task for Codex agent"),
             expect.stringContaining("Isolation for Codex agent"),
+            expect.stringContaining("Launch mode for Codex agent"),
           ]);
           resolve();
           return;
@@ -489,7 +499,7 @@ test("command palette creates a supervised Codex agent on the map", async ({ pag
   await expect(page.getByLabel("Agent operator guidance").getByText("Watch provider response")).toBeVisible();
   await expect(page.getByText("Details")).toBeVisible();
   await page.getByText("Details").click();
-  await expect(page.getByText("interactive CLI")).toBeVisible();
+  await expect(page.getByLabel("Agent provider control surface").getByText("interactive CLI", { exact: true })).toBeVisible();
   await expect(page.getByText("path-checked")).toBeVisible();
   await expect(page.getByText("watching")).toBeVisible();
   await expect(page.getByText("terminal inferred")).toBeVisible();
@@ -542,6 +552,7 @@ test("command palette creates a supervised Codex agent on the map", async ({ pag
       worktreeCleanupStatus: agent?.workstream?.worktreeCleanupStatus,
       worktreeCleanupNote: agent?.workstream?.worktreeCleanupNote,
       phase: agent?.workstream?.phase,
+      launchProfile: agent?.workstream?.launchProfile,
       launchMode: agent?.workstream?.launchMode,
       readinessCheck: agent?.workstream?.readinessCheck,
       authCheck: agent?.workstream?.authCheck,
@@ -602,6 +613,7 @@ test("command palette creates a supervised Codex agent on the map", async ({ pag
     worktreeCleanupStatus: "not-needed",
     worktreeCleanupNote: "Shared workspace runs do not own a cleanup target.",
     phase: "active",
+    launchProfile: "terminal",
     launchMode: "interactive CLI",
     readinessCheck: "PATH check only; auth/session readiness is confirmed by CLI output.",
     authCheck: "CLI output scan for login, API key, OAuth, or sign-in prompts.",
@@ -1488,6 +1500,40 @@ test("command palette creates a supervised Codex agent on the map", async ({ pag
   await page.screenshot({
     path: test.info().outputPath("agent-workstream-map.png"),
     fullPage: true,
+  });
+});
+
+test("command palette can launch a headless Codex agent profile", async ({ page, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"], { origin: "http://127.0.0.1:5177" });
+  await resetWorkspace(page);
+
+  const mission = "Summarize release blockers";
+  await createAgentWorkstream(page, mission, "shared", "headless");
+
+  await expect(page.getByText(mission).first()).toBeVisible();
+  await page.getByText("Details").click();
+  await expect(page.getByLabel("Agent provider control surface").getByText("Launch")).toBeVisible();
+  await expect(page.getByLabel("Agent provider control surface")).toContainText("Codex headless status stream");
+
+  await expect.poll(async () => page.evaluate((mission) => {
+    const raw = localStorage.getItem("terminal-workspace.v1");
+    const state = raw ? JSON.parse(raw) : null;
+    const agent = state?.tabs?.find((tab: { workstream?: { kind?: string; mission?: string } }) =>
+      tab.workstream?.kind === "agent" && tab.workstream?.mission === mission
+    );
+    return {
+      launchProfile: agent?.workstream?.launchProfile,
+      launchMode: agent?.workstream?.launchMode,
+      startupCommand: agent?.workstream?.startupCommand,
+      controlProtocol: agent?.workstream?.controlProtocol,
+      providerEvent: agent?.workstream?.events?.find((event: { kind?: string }) => event.kind === "provider")?.detail,
+    };
+  }, mission)).toMatchObject({
+    launchProfile: "headless",
+    launchMode: "Codex headless status stream",
+    startupCommand: "codex exec --json 'Summarize release blockers'",
+    controlProtocol: "TermFleet adapter runs a non-interactive provider process and streams lifecycle/output into the cockpit.",
+    providerEvent: expect.stringContaining("Codex headless status stream"),
   });
 });
 

@@ -12,6 +12,7 @@ import type {
   TerminalState,
   WorkspaceMode,
   WorkspaceUiState,
+  WorkstreamLaunchProfile,
 } from "../lib/types";
 import {
   splitNodeInTree,
@@ -39,6 +40,29 @@ const GROUP_COLORS = [
 const DEFAULT_TAB_EMOJI = "\u2B1B";
 const DEFAULT_TAB_TITLE = "Terminal";
 const DEFAULT_TAB_COLOR = "#7aa2f7";
+
+function startupCommandForAgent(
+  provider: AgentProvider,
+  command: string | undefined,
+  launchProfile: WorkstreamLaunchProfile,
+  mission: string
+) {
+  if (!command) return undefined;
+  if (launchProfile === "terminal") return command;
+  const quotedMission = shellQuote(mission);
+  if (command.includes("agent-provider-adapter.sh")) {
+    return `${command} headless ${quotedMission}`;
+  }
+  if (provider === "codex") return `${command} exec --json ${quotedMission}`;
+  if (provider === "claude") return `${command} -p --output-format=stream-json ${quotedMission}`;
+  return `${command} ${quotedMission}`;
+}
+
+function launchModeForAgent(label: string, fallback: string, launchProfile: WorkstreamLaunchProfile) {
+  return launchProfile === "headless"
+    ? `${label} headless status stream`
+    : fallback;
+}
 
 function configuredTerminalRendererMode(): WorkspaceUiState["terminalRendererMode"] | null {
   const mode = import.meta.env.VITE_TERMINAL_RENDERER_MODE;
@@ -619,7 +643,8 @@ export function createAgentWorkstream(
   provider: AgentProvider = "codex",
   prompt?: string,
   availability?: AgentProviderAvailability,
-  opsContext?: WorkstreamOpsContext
+  opsContext?: WorkstreamOpsContext,
+  launchProfile: WorkstreamLaunchProfile = "terminal"
 ) {
   const store = useWorkspaceStore.getState();
   const activeTab = store.tabs.find((tab) => tab.id === store.activeTabId);
@@ -633,7 +658,10 @@ export function createAgentWorkstream(
   };
   const providerLabel = providerInfo.label;
   const mission = prompt?.trim() || "Supervised workstream";
-  const startupCommand = providerInfo.available ? providerInfo.command : undefined;
+  const startupCommand = providerInfo.available
+    ? startupCommandForAgent(provider, providerInfo.command, launchProfile, mission)
+    : undefined;
+  const launchMode = launchModeForAgent(providerLabel, providerInfo.launchMode, launchProfile);
   const createdAt = opsContext?.createdAt ?? Date.now();
   const runId = opsContext?.runId ?? createAgentWorkstreamRunId(provider, createdAt);
   const initialStatus = providerInfo.available ? "ready" : "failed";
@@ -679,13 +707,16 @@ export function createAgentWorkstream(
           ? "No provisioned worktree is owned by this run."
           : "Shared workspace runs do not own a cleanup target.",
       startupCommand,
+      launchProfile,
       phase: initialPhase,
-      launchMode: providerInfo.launchMode,
+      launchMode,
       readinessCheck: providerInfo.readinessCheck,
       authCheck: providerInfo.authCheck,
       readiness: providerInfo.available ? "path-checked" : "unknown",
       stopBehavior: providerInfo.stopBehavior,
-      controlProtocol: providerInfo.controlProtocol,
+      controlProtocol: launchProfile === "headless"
+        ? "TermFleet adapter runs a non-interactive provider process and streams lifecycle/output into the cockpit."
+        : providerInfo.controlProtocol,
       structuredStatus: providerInfo.structuredStatus,
       currentActivity: initialActivity,
       activityKind: providerInfo.available ? "starting" : "blocked",
@@ -718,7 +749,7 @@ export function createAgentWorkstream(
           id: crypto.randomUUID(),
           kind: "provider",
           label: providerInfo.available ? `${providerLabel} ready` : `${providerLabel} unavailable`,
-          detail: `${providerInfo.message} · ${providerInfo.readinessCheck}`,
+          detail: `${providerInfo.message} · ${launchMode}`,
           status: initialStatus,
           at: createdAt,
         },

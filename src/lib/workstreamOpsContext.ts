@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { WorkstreamIsolationMode, WorkstreamIsolationStatus } from "./types";
+import type { WorkstreamIsolationMode, WorkstreamIsolationStatus, WorkstreamLaunchProfile } from "./types";
 
 export interface WorkstreamOpsContext {
   runId?: string;
@@ -62,6 +62,15 @@ export function promptWorkstreamIsolation(label: string): WorkstreamIsolationMod
   );
   if (answer === null) return null;
   return answer.trim().toLowerCase().startsWith("d") ? "dedicated-worktree" : "shared-worktree";
+}
+
+export function promptWorkstreamLaunchProfile(label: string): WorkstreamLaunchProfile | null {
+  const answer = window.prompt(
+    `Launch mode for ${label} agent: terminal or headless`,
+    "terminal"
+  );
+  if (answer === null) return null;
+  return answer.trim().toLowerCase().startsWith("h") ? "headless" : "terminal";
 }
 
 export async function resolveWorkstreamOpsContext(

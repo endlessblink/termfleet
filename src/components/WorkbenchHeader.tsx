@@ -34,7 +34,7 @@ import { getAllLeafIds } from "../lib/splitUtils";
 import { pathTail, projectNameFor, projectRootFor } from "../lib/projectDisplay";
 import { terminalHasKeyboardFocus } from "../lib/terminalFocus";
 import { checkAgentProvider } from "../lib/agentProviders";
-import { promptWorkstreamIsolation, resolveWorkstreamOpsContext } from "../lib/workstreamOpsContext";
+import { promptWorkstreamIsolation, promptWorkstreamLaunchProfile, resolveWorkstreamOpsContext } from "../lib/workstreamOpsContext";
 import type { AgentProvider } from "../lib/types";
 
 const styles: Record<string, CSSProperties> = {
@@ -571,10 +571,15 @@ export function WorkbenchHeader() {
       setCommandStatus("agent launch cancelled");
       return;
     }
+    const launchProfile = promptWorkstreamLaunchProfile(availability.label);
+    if (launchProfile === null) {
+      setCommandStatus("agent launch cancelled");
+      return;
+    }
     const createdAt = Date.now();
     const runId = createAgentWorkstreamRunId(provider, createdAt);
     const opsContext = await resolveWorkstreamOpsContext(currentAgentWorkstreamCwd(), isolationMode, runId, createdAt);
-    createAgentWorkstream(provider, mission, availability, opsContext);
+    createAgentWorkstream(provider, mission, availability, opsContext, launchProfile);
     setWorkspaceMode("canvas");
     updateUiState({ primarySidebarCollapsed: false, primarySidebarPanel: "map" });
     requestAnimationFrame(focusActiveTerminalOnMap);
