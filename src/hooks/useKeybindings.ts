@@ -1,11 +1,40 @@
 import { useEffect } from "react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useWorkspaceStore, createNewTab, splitActivePane, closeActivePane } from "../stores/workspace";
 import { calculatePaneBounds, findAdjacentPane } from "../lib/splitUtils";
 import { terminalHasKeyboardFocus } from "../lib/terminalFocus";
 
+function isTauriRuntime(): boolean {
+  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+}
+
+async function toggleWindowFullscreen() {
+  if (isTauriRuntime()) {
+    const currentWindow = getCurrentWindow();
+    await currentWindow.setFullscreen(!(await currentWindow.isFullscreen()));
+    return;
+  }
+
+  if (document.fullscreenElement) {
+    await document.exitFullscreen();
+  } else {
+    await document.documentElement.requestFullscreen();
+  }
+}
+
 export function useKeybindings() {
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
+      // F11 is the app/window fullscreen escape hatch, so it must work even
+      // when the hidden terminal input has focus.
+      if (e.key === "F11") {
+        e.preventDefault();
+        void toggleWindowFullscreen().catch((error) => {
+          console.error("Failed to toggle fullscreen:", error);
+        });
+        return;
+      }
+
       // When a terminal owns the keyboard, every key belongs to the program
       // inside it (zellij, vim, the shell). Bail so the app never steals Ctrl+T,
       // Ctrl+W, Ctrl+Tab, Alt+Arrow, etc. from a focused terminal — that was the
@@ -109,16 +138,6 @@ export function useKeybindings() {
         }
       }
 
-      // F11 — Toggle fullscreen
-      if (e.key === "F11") {
-        e.preventDefault();
-        if (document.fullscreenElement) {
-          document.exitFullscreen();
-        } else {
-          document.documentElement.requestFullscreen();
-        }
-        return;
-      }
     }
 
     window.addEventListener("keydown", handleKeyDown, true);

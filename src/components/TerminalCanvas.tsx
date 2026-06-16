@@ -108,6 +108,7 @@ interface TerminalCanvasProps {
   onReady?: (ptyId: string, details: { reused: boolean }) => void;
   onStatus?: (status: "starting" | "failed", details?: { error?: string }) => void;
   onOutput?: (data: string) => void;
+  onExit?: (details: { id: string; code: number; success: boolean }) => void;
   onSnapshot?: (snapshot: GridSnapshot) => void;
   queuedInput?: WorkstreamInput;
   onQueuedInputSent?: (inputId: string) => void;
@@ -127,6 +128,7 @@ export function TerminalCanvas({
   onReady,
   onStatus,
   onOutput,
+  onExit,
   onSnapshot,
   queuedInput,
   onQueuedInputSent,
@@ -151,6 +153,8 @@ export function TerminalCanvas({
   onStatusRef.current = onStatus;
   const onOutputRef = useRef(onOutput);
   onOutputRef.current = onOutput;
+  const onExitRef = useRef(onExit);
+  onExitRef.current = onExit;
   const onSnapshotRef = useRef(onSnapshot);
   onSnapshotRef.current = onSnapshot;
   // True once the first diff frame has arrived, so modesRef reflects the real
@@ -244,6 +248,8 @@ export function TerminalCanvas({
     let visibleContentSeen = false;
     let refreshTimer: ReturnType<typeof setTimeout> | null = null;
     let blankGuardTimer: ReturnType<typeof setTimeout> | null = null;
+    let exitPollTimer: ReturnType<typeof setInterval> | null = null;
+    let exitReported = false;
     let reusedSession = false;
     let legacyPromptRepairSent = false;
     let renderScheduled = false;
@@ -589,6 +595,29 @@ export function TerminalCanvas({
         void forceSnapshotRefresh();
       }, 900);
       blankGuardTimer = setTimeout(failIfStillBlank, 3000);
+      exitPollTimer = setInterval(() => {
+        if (disposed || exitReported) return;
+        void invoke<Array<{
+          id: string;
+          kind: string;
+          exit_status?: { code?: number | null; success?: boolean } | null;
+        }>>("daemon_list_session_events")
+          .then((events) => {
+            if (disposed || exitReported) return;
+            const exitEvent = [...events]
+              .reverse()
+              .find((event) =>
+                event.id === sessionId &&
+                (event.kind === "eof" || event.kind === "killed" || event.kind === "read-error")
+              );
+            if (!exitEvent) return;
+            exitReported = true;
+            const code = exitEvent.exit_status?.code ?? (exitEvent.kind === "read-error" ? 1 : 0);
+            const success = exitEvent.exit_status?.success ?? exitEvent.kind !== "read-error";
+            onExitRef.current?.({ id: sessionId, code, success });
+          })
+          .catch(() => {});
+      }, 500);
       // Reconcile only if layout settled to a different size during the awaits.
       // On a map node this defers (firstFrame not yet) so the mode is known before
       // we choose freeze vs reflow; the first-frame handler runs it then.
@@ -609,6 +638,7 @@ export function TerminalCanvas({
       disposed = true;
       if (refreshTimer !== null) clearTimeout(refreshTimer);
       if (blankGuardTimer !== null) clearTimeout(blankGuardTimer);
+      if (exitPollTimer !== null) clearInterval(exitPollTimer);
       if (resizeTimer !== null) clearTimeout(resizeTimer);
       daemonInputQueueRef.current?.dispose();
       daemonInputQueueRef.current = null;
@@ -719,6 +749,23 @@ export function TerminalCanvas({
     const onCaptureKeyDown = (event: KeyboardEvent) => {
       if (!inputRef.current || document.activeElement !== inputRef.current) return;
       const key = event.key.toLowerCase();
+      const immersiveTerminal = useWorkspaceStore.getState().workspaceUiState.immersiveTerminal;
+      const isImmersivePane =
+        immersiveTerminal.enabled &&
+        immersiveTerminal.tabId === tabId &&
+        immersiveTerminal.paneId === paneId;
+      if (
+        isImmersivePane &&
+        event.key === "Escape" &&
+        !event.altKey &&
+        !event.ctrlKey &&
+        !event.metaKey
+      ) {
+        event.preventDefault();
+        event.stopPropagation();
+        useWorkspaceStore.getState().exitImmersiveTerminal();
+        return;
+      }
       if (event.ctrlKey && event.shiftKey && key === "f") {
         event.preventDefault();
         event.stopPropagation();

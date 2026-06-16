@@ -31,6 +31,7 @@ import { LocalhostPreview } from "./LocalhostPreview";
 import type { GridSnapshot } from "../lib/gridSnapshot";
 import type { Tab, TerminalRuntimeStatus } from "../lib/types";
 import { agentLaneAuthRetryText, agentLaneAuthRetryTitle, agentLaneCleanupRequestText, agentLaneCleanupRequestTitle, agentLaneCloseoutText, agentLaneCloseoutTitle, agentLaneHealthText, agentLaneInterruptText, agentLaneInterruptTitle, agentLaneMemoryRequestText, agentLaneMemoryRequestTitle, agentLaneProofRequestText, agentLaneProofRequestTitle, agentLaneRestartText, agentLaneRestartTitle, agentLaneRiskMitigationText, agentLaneRiskMitigationTitle, agentLaneStatusSweepText, agentLaneStatusSweepTitle, agentLaneStatusText, attentionBreakdownText, cleanupBreakdownText, closeoutBreakdownText, formatAgentLaneBrief, formatAgentMissionControlBrief, formatAgentRunBrief, handoffMemoryPromptForWorkstream, isActiveAgentWorkstream, isAgentReviewCloseoutReady, isAuthRetryableAgentWorkstream, isCleanupRequestableAgentWorkstream, isRestartableAgentWorkstream, isReviewItemCloseoutReady, isStaleAgentWorkstream, isolationBreakdownText, latestMissionControlAskText, missionBreakdownText, missionControlAlternateText, missionControlDispatchBreakdownText, needsAgentProofRequest, proofRequestPromptForWorkstream, providerBreakdownText, readinessBreakdownText, riskBreakdownText, statusCheckPromptForWorkstream, summarizeAgentLane } from "../lib/agentWorkstreamLane";
+import { agentStatusChipText, agentStatusSummaryFromWorkstream } from "../lib/agentStatusSummary";
 import { workstreamActivityMeta, workstreamActivityText } from "../lib/workstreamActivity";
 import { formatWorkstreamBranch, formatWorkstreamIsolation, formatWorkstreamOpsContext } from "../lib/workstreamOpsContext";
 
@@ -62,11 +63,12 @@ const styles: Record<string, CSSProperties> = {
   },
   agentLaneOverlay: {
     position: "absolute",
-    top: 62,
     left: 14,
+    bottom: 14,
     zIndex: 20,
     minWidth: 286,
     maxWidth: 420,
+    maxHeight: 280,
     display: "grid",
     gap: 8,
     padding: "9px 10px",
@@ -75,6 +77,7 @@ const styles: Record<string, CSSProperties> = {
     borderRadius: "var(--radius-md)",
     boxShadow: "var(--shadow-menu)",
     animation: "workbench-popover-in var(--motion-med)",
+    overflowY: "auto",
   },
   agentLaneHeader: {
     display: "flex",
@@ -157,6 +160,7 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 12,
     padding: "0 10px",
     cursor: "pointer",
+    pointerEvents: "auto",
     transition: "background var(--motion-fast), border-color var(--motion-fast), color var(--motion-fast), transform var(--motion-fast)",
   },
   stage: {
@@ -189,6 +193,24 @@ const styles: Record<string, CSSProperties> = {
     cursor: "grab",
     userSelect: "none",
   },
+  agentNodeHeader: {
+    minHeight: 96,
+    display: "flex",
+    flexWrap: "wrap",
+    alignItems: "center",
+    padding: "7px 9px 8px 11px",
+  },
+  agentHeaderMetaRow: {
+    minWidth: 0,
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+  },
+  agentHeaderActions: {
+    display: "flex",
+    alignItems: "center",
+    gap: 5,
+  },
   nodeTitle: {
     flex: 1,
     minWidth: 0,
@@ -206,6 +228,92 @@ const styles: Record<string, CSSProperties> = {
     color: "var(--text-secondary)",
     fontSize: 10,
     marginTop: 1,
+  },
+  nodeTitleActivity: {
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    color: "var(--accent-live)",
+    fontSize: 11,
+    fontWeight: 500,
+    marginTop: 1,
+  },
+  agentStatusBlock: {
+    minWidth: 0,
+    flex: "1 0 100%",
+    display: "grid",
+    gap: 5,
+    order: 2,
+  },
+  agentWorkingLine: {
+    minWidth: 0,
+    display: "flex",
+    alignItems: "baseline",
+    gap: 6,
+    color: "var(--text-primary)",
+    fontSize: 13,
+    fontWeight: 500,
+    lineHeight: 1.15,
+  },
+  agentStatusLabel: {
+    flex: "0 0 auto",
+    color: "var(--text-secondary)",
+    fontSize: 10,
+    fontWeight: 500,
+    textTransform: "uppercase",
+    letterSpacing: 0,
+  },
+  agentWorkingText: {
+    minWidth: 0,
+    overflow: "hidden",
+    display: "-webkit-box",
+    WebkitBoxOrient: "vertical",
+    WebkitLineClamp: 2,
+  },
+  agentStatusDetailGrid: {
+    minWidth: 0,
+    display: "grid",
+    gridTemplateColumns: "minmax(120px, 0.65fr) minmax(180px, 1.35fr)",
+    gap: 10,
+    alignItems: "center",
+  },
+  agentStatusDetail: {
+    minWidth: 0,
+    display: "flex",
+    alignItems: "baseline",
+    gap: 5,
+    overflow: "hidden",
+    color: "var(--text-secondary)",
+    fontSize: 11,
+    lineHeight: 1.2,
+  },
+  agentStatusDetailText: {
+    minWidth: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  agentStatusChips: {
+    minWidth: 0,
+    display: "flex",
+    alignItems: "center",
+    gap: 5,
+    flexWrap: "wrap",
+  },
+  agentStatusChip: {
+    maxWidth: 220,
+    height: 18,
+    display: "inline-flex",
+    alignItems: "center",
+    padding: "0 6px",
+    border: "1px solid var(--border-subtle)",
+    borderRadius: "var(--radius-xs)",
+    background: "color-mix(in srgb, var(--surface-base) 82%, transparent)",
+    color: "var(--text-secondary)",
+    fontSize: 10,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
   },
   nodeKind: {
     height: 18,
@@ -890,6 +998,7 @@ function TerminalMapPreview({
   title,
   meta,
   status,
+  activity,
   ptyCount,
   preview,
   onActivate,
@@ -898,6 +1007,7 @@ function TerminalMapPreview({
   title: string;
   meta?: string;
   status?: TerminalRuntimeStatus;
+  activity?: string;
   ptyCount: number;
   preview?: TerminalPreviewEntry;
   onActivate: () => void;
@@ -936,6 +1046,7 @@ function TerminalMapPreview({
         <div style={{ minWidth: 0 }}>
           <div style={styles.terminalMapPreviewTitle}>{title}</div>
           <div style={styles.terminalMapPreviewMeta}>{meta ?? "No cwd"}</div>
+          {activity && <div style={styles.nodeTitleActivity} title={activity}>Now: {activity}</div>}
         </div>
         <div style={styles.terminalMapPreviewStatus}>{status ?? "stale"}</div>
       </div>
@@ -1148,6 +1259,7 @@ function CanvasNodeView({
   const linkedTerminal = linkedTerminalId
     ? linkedTab?.terminals.find((terminal) => terminal.id === linkedTerminalId)
     : undefined;
+  const terminalActivity = linkedTerminal?.currentActivity;
   // Prefer the live cwd (polled from the PTY) over the initial cwd so the
   // breadcrumb tracks `cd`/`z`; falls back to the spawn cwd before the first poll.
   const liveTerminalRoot = (linkedTerminalId ? liveCwds[linkedTerminalId] : undefined) ?? terminalRoot;
@@ -1193,6 +1305,10 @@ function CanvasNodeView({
     workstream?.kind === "agent"
       ? `${workstreamLabel(workstream.provider)} agent · ${workstream.phase ?? workstream.status} · ${workstreamActivityText(workstream)}`
       : undefined;
+  const agentStatusSummary = agentStatusSummaryFromWorkstream(workstream);
+  const agentStatusChip = workstream?.kind === "agent" && agentStatusSummary
+    ? agentStatusChipText(workstream, agentStatusSummary)
+    : undefined;
   const nodeKind = workstream?.kind === "agent"
     ? "agent"
     : node.type === "terminal"
@@ -1392,6 +1508,7 @@ function CanvasNodeView({
         title={terminalTitle}
         meta={pathTail(liveTerminalRoot)}
         status={linkedTerminal?.status}
+        activity={linkedTerminal?.currentActivity}
         ptyCount={linkedTab?.terminals.length ?? 0}
         preview={terminalPreview}
         onActivate={activateTerminalNode}
@@ -1447,6 +1564,7 @@ function CanvasNodeView({
         top: node.y,
         width: node.width,
         height: node.height,
+        zIndex: node.type === "terminal" && workstream?.kind === "agent" ? 25 : selected ? 15 : 1,
         borderColor: selected ? "var(--border-focus)" : "var(--border-subtle)",
         boxShadow: selected
           ? "0 0 0 1px rgba(217,154,69,0.36), 0 20px 54px rgba(0,0,0,0.52)"
@@ -1457,7 +1575,15 @@ function CanvasNodeView({
         activateTerminalNode();
       }}
     >
-      <div style={styles.nodeHeader} onMouseDown={onMouseDown}>
+      <div
+        style={{
+          ...styles.nodeHeader,
+          ...(agentStatusSummary
+            ? styles.agentNodeHeader
+            : null),
+        }}
+        onMouseDown={onMouseDown}
+      >
         <span
           style={{
             ...styles.nodeKind,
@@ -1466,7 +1592,7 @@ function CanvasNodeView({
         >
           {nodeKind}
         </span>
-        {node.type === "terminal" && workstream?.kind === "agent" && (
+        {node.type === "terminal" && workstream?.kind === "agent" && !agentStatusSummary && (
           <span
             style={styles.taskBadge}
             title={[
@@ -1499,30 +1625,69 @@ function CanvasNodeView({
             </span>
           </button>
         )}
-        <span
-          style={{ minWidth: 0, flex: 1 }}
-          dir="auto"
-          title="Double-click to rename"
-          onDoubleClick={onRename}
-        >
+        {node.type === "terminal" && agentStatusSummary ? (
           <div
-            style={styles.nodeTitle}
-            data-testid={workstream?.kind === "agent" ? "canvas-agent-node-header-title" : "canvas-node-header-title"}
+            style={styles.agentStatusBlock}
+            dir="auto"
+            title={`${agentStatusSummary.task} · ${agentStatusSummary.path} · ${agentStatusSummary.now}`}
+            onDoubleClick={onRename}
           >
-            {agentHeaderTitle ?? (node.type === "terminal" ? terminalTitle : node.title)}
-          </div>
-          {node.type === "terminal" && (
-            <div
-              style={styles.nodeTitleMeta}
-              data-testid={workstream?.kind === "agent" ? "canvas-agent-node-header-meta" : "canvas-node-header-meta"}
-            >
-              {agentHeaderMeta ?? (linkedProject ? `${pathTail(liveTerminalRoot)} · ${linkedTab?.title ?? node.title}` : pathTail(liveTerminalRoot))}
+            <div style={styles.agentWorkingLine} data-testid="canvas-agent-working-on">
+              <span style={styles.agentStatusLabel}>Working on</span>
+              <span style={styles.agentWorkingText}>{agentStatusSummary.task}</span>
             </div>
-          )}
-          {node.type === "preview" && node.previewUrl && (
-            <div style={styles.nodeTitleMeta}>{node.previewUrl}</div>
-          )}
-        </span>
+            <div style={styles.agentStatusDetailGrid}>
+              <div style={styles.agentStatusDetail} data-testid="canvas-agent-status-path">
+                <span style={styles.agentStatusLabel}>Path</span>
+                <span style={styles.agentStatusDetailText}>{agentStatusSummary.path}</span>
+              </div>
+              <div style={styles.agentStatusDetail} data-testid="canvas-agent-status-now">
+                <span style={styles.agentStatusLabel}>Now</span>
+                <span style={styles.agentStatusDetailText}>{agentStatusSummary.now}</span>
+              </div>
+            </div>
+            <div style={styles.agentStatusChips} data-testid="canvas-agent-status-chips">
+              <span style={styles.agentStatusChip}>{agentStatusChip}</span>
+              {agentStatusSummary.confidence && (
+                <span style={styles.agentStatusChip}>summary · {agentStatusSummary.confidence}</span>
+              )}
+            </div>
+          </div>
+        ) : (
+          <span
+            style={{ minWidth: 0, flex: 1 }}
+            dir="auto"
+            title="Double-click to rename"
+            onDoubleClick={onRename}
+          >
+            <div
+              style={styles.nodeTitle}
+              data-testid={workstream?.kind === "agent" ? "canvas-agent-node-header-title" : "canvas-node-header-title"}
+            >
+              {agentHeaderTitle ?? (node.type === "terminal" ? terminalTitle : node.title)}
+            </div>
+            {node.type === "terminal" && (
+              <div
+                style={styles.nodeTitleMeta}
+                data-testid={workstream?.kind === "agent" ? "canvas-agent-node-header-meta" : "canvas-node-header-meta"}
+              >
+                {agentHeaderMeta ?? (linkedProject ? `${pathTail(liveTerminalRoot)} · ${linkedTab?.title ?? node.title}` : pathTail(liveTerminalRoot))}
+              </div>
+            )}
+            {node.type === "terminal" && terminalActivity && workstream?.kind !== "agent" && (
+              <div
+                style={styles.nodeTitleActivity}
+                data-testid="canvas-terminal-node-now"
+                title={terminalActivity}
+              >
+                Now: {terminalActivity}
+              </div>
+            )}
+            {node.type === "preview" && node.previewUrl && (
+              <div style={styles.nodeTitleMeta}>{node.previewUrl}</div>
+            )}
+          </span>
+        )}
         {node.type === "preview" && (
           <button
             style={styles.headerButton}

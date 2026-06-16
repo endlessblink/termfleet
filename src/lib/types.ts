@@ -8,6 +8,10 @@ export interface TerminalState {
   status?: TerminalRuntimeStatus;
   reused?: boolean;
   previewUrl?: string;
+  currentActivity?: string;
+  activityKind?: WorkstreamActivityKind;
+  activityUpdatedAt?: number;
+  terminalOutput?: string;
   lastStatusAt?: number;
   lastError?: string;
 }
@@ -55,6 +59,20 @@ export type WorkstreamIsolationMode = "shared-worktree" | "dedicated-worktree" |
 export type WorkstreamIsolationStatus = "shared" | "requested" | "ready" | "unavailable" | "unknown";
 export type WorktreeCleanupStatus = "not-needed" | "available" | "requested" | "manual" | "removed" | "blocked";
 export type WorkstreamLaunchProfile = "terminal" | "headless";
+export type WorkstreamStatusSummaryLifecycle = "working" | "idle" | "waiting" | "blocked" | "stopped" | "done";
+export type WorkstreamStatusSummaryConfidence = "low" | "medium" | "high";
+export type WorkstreamStatusSummarySource = "fallback" | "process";
+
+export interface WorkstreamStatusSummary {
+  task: string;
+  path: string;
+  now: string;
+  status: WorkstreamStatusSummaryLifecycle;
+  provider?: AgentProvider;
+  confidence?: WorkstreamStatusSummaryConfidence;
+  proof?: string;
+  blocker?: string;
+}
 
 export interface WorkstreamMetadata {
   kind: WorkstreamKind;
@@ -99,6 +117,10 @@ export interface WorkstreamMetadata {
   risk?: string;
   terminalOutput?: string;
   terminalOutputUpdatedAt?: number;
+  statusSummary?: WorkstreamStatusSummary;
+  statusSummaryUpdatedAt?: number;
+  statusSummarySource?: WorkstreamStatusSummarySource;
+  statusSummaryError?: string;
   promptCount?: number;
   sentCount?: number;
   signalCount?: number;

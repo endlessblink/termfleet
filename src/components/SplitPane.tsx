@@ -1,11 +1,12 @@
 import { useRef, useEffect, useLayoutEffect, useState, useCallback, CSSProperties } from "react";
-import { Globe, PanelRight, PanelBottom, X, TerminalSquare } from "lucide-react";
+import { Globe, Minimize2, PanelRight, PanelBottom, X, TerminalSquare } from "lucide-react";
 import { TerminalComponent } from "./Terminal";
 import { LocalhostPreview } from "./LocalhostPreview";
 import { useWorkspaceStore } from "../stores/workspace";
 import { splitActivePane, closeActivePane } from "../stores/workspace";
 import type { Tab, TerminalRuntimeStatus } from "../lib/types";
 import { pathTail, projectForTab } from "../lib/projectDisplay";
+import { agentStatusSummaryFromWorkstream } from "../lib/agentStatusSummary";
 import { workstreamActivityText } from "../lib/workstreamActivity";
 import {
   calculatePaneBounds,
@@ -517,11 +518,18 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
         const workstreamInputs = tab.workstream?.inputQueue ?? [];
         const latestWorkstreamInput = workstreamInputs[workstreamInputs.length - 1];
         const latestMissionControlInput = latestWorkstreamInput?.source === "mission-control" ? latestWorkstreamInput : undefined;
-        const agentPaneActivity = !isPreviewPane && tab.workstream?.kind === "agent"
-          ? workstreamActivityText(tab.workstream)
+        const agentStatusSummary = tab.workstream?.kind === "agent"
+          ? agentStatusSummaryFromWorkstream(tab.workstream)
           : null;
-        const agentPaneOutput = !isPreviewPane && tab.workstream?.kind === "agent"
-          ? tab.workstream.terminalOutput?.trim()
+        const paneActivity = !isPreviewPane
+          ? tab.workstream?.kind === "agent"
+            ? agentStatusSummary?.now ?? workstreamActivityText(tab.workstream)
+            : paneTerminal?.currentActivity
+          : null;
+        const paneOutput = !isPreviewPane
+          ? tab.workstream?.kind === "agent"
+            ? tab.workstream.terminalOutput?.trim()
+            : paneTerminal?.terminalOutput?.trim()
           : undefined;
         const chromeHeight = 24;
         const showActions = hoveredPaneId === paneId || isActive;
@@ -577,6 +585,68 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                 }}
               />
             )}
+            {isImmersivePane && (
+              <div
+                role="toolbar"
+                aria-label="Terminal focus controls"
+                style={{
+                  position: "absolute",
+                  top: 10,
+                  right: 10,
+                  zIndex: 5,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "7px 8px",
+                  borderRadius: 8,
+                  background: "rgba(29, 34, 36, 0.94)",
+                  border: "1px solid var(--border-subtle)",
+                  boxShadow: "0 12px 32px rgba(0,0,0,0.35)",
+                  color: "var(--text-primary)",
+                  fontFamily: "var(--font-ui)",
+                }}
+                onMouseDown={(event) => event.stopPropagation()}
+                onClick={(event) => event.stopPropagation()}
+              >
+                <span
+                  style={{
+                    maxWidth: 220,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                    color: "var(--text-secondary)",
+                    fontSize: 12,
+                    fontWeight: 500,
+                  }}
+                  title={paneContext}
+                >
+                  Terminal focus
+                </span>
+                <button
+                  type="button"
+                  title="Restore workspace chrome"
+                  aria-label="Exit terminal focus"
+                  onClick={() => exitImmersiveTerminal()}
+                  style={{
+                    height: 28,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 7,
+                    padding: "0 10px",
+                    border: "1px solid color-mix(in srgb, var(--accent-live) 42%, transparent)",
+                    borderRadius: 6,
+                    background: "color-mix(in srgb, var(--accent-live) 16%, var(--surface-raised))",
+                    color: "var(--text-primary)",
+                    fontSize: 12,
+                    fontWeight: 500,
+                    cursor: "pointer",
+                  }}
+                >
+                  <Minimize2 size={14} strokeWidth={1.8} />
+                  <span>Exit focus</span>
+                </button>
+              </div>
+            )}
             {!isImmersivePane && (
             <div
               style={{
@@ -620,11 +690,11 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
               )}
               <span
                 className="terminal-pane-status-pill"
-                data-testid={agentPaneActivity ? "split-agent-pane-context" : undefined}
+                data-testid={agentStatusSummary ? "split-agent-working-on" : paneActivity ? "split-agent-pane-context" : undefined}
                 data-status={terminalStatus}
                 style={{
                   minWidth: 0,
-                  flex: agentPaneActivity ? "0 1 45%" : 1,
+                  flex: paneActivity ? "0 1 45%" : 1,
                   overflow: "hidden",
                   textOverflow: "ellipsis",
                   whiteSpace: "nowrap",
@@ -632,16 +702,16 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                   fontSize: 12,
                   fontWeight: 500,
                 }}
-                title={isPreviewPane ? paneNode.previewUrl : project?.projectRoot ?? paneCwd ?? tab.title}
+                title={agentStatusSummary ? agentStatusSummary.path : isPreviewPane ? paneNode.previewUrl : project?.projectRoot ?? paneCwd ?? tab.title}
               >
-                {isPreviewPane ? paneNode.previewUrl ?? "Localhost preview" : paneContext}
+                {agentStatusSummary ? `Working on: ${agentStatusSummary.task}` : isPreviewPane ? paneNode.previewUrl ?? "Localhost preview" : paneContext}
               </span>
-              {agentPaneActivity && (
+              {paneActivity && (
                 <span
                   data-testid="split-agent-pane-now"
                   style={{
                     minWidth: 0,
-                    flex: agentPaneOutput ? "1 1 40%" : "1 1 auto",
+                    flex: paneOutput ? "1 1 40%" : "1 1 auto",
                     overflow: "hidden",
                     textOverflow: "ellipsis",
                     whiteSpace: "nowrap",
@@ -649,9 +719,9 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                     fontSize: 11,
                     fontWeight: 500,
                   }}
-                  title={agentPaneActivity}
+                  title={paneActivity}
                 >
-                  Now: {agentPaneActivity}
+                  Now: {paneActivity}
                 </span>
               )}
               {latestMissionControlInput && (
@@ -672,7 +742,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                   Ask: {latestMissionControlInput.label ?? "Mission control"} · {latestMissionControlInput.sentAt ? "sent" : "queued"} · {latestMissionControlInput.text}
                 </span>
               )}
-              {agentPaneOutput && (
+              {paneOutput && (
                 <span
                   data-testid="split-agent-pane-output"
                   style={{
@@ -685,9 +755,9 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                     fontSize: 11,
                     fontWeight: 500,
                   }}
-                  title={agentPaneOutput}
+                  title={paneOutput}
                 >
-                  Output: {agentPaneOutput}
+                  Output: {paneOutput}
                 </span>
               )}
               <span

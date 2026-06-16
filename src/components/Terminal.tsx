@@ -9,6 +9,8 @@ import { usePty } from "../hooks/usePty";
 import { TerminalCanvas } from "./TerminalCanvas";
 import { syncTerminalLatencyTraceEnv, traceTerminalLatency } from "../lib/terminalLatencyTrace";
 import { refreshProjectRootFromActiveTerminal, useWorkspaceStore } from "../stores/workspace";
+import { agentStatusSummaryInputFromWorkstream } from "../lib/agentStatusSummary";
+import { isAgentStatusSummarizerConfigured, summarizeAgentStatus } from "../lib/agentStatusSummarizer";
 import { inferActivityFromOutput, isWorkstreamActivityKind, normalizeActivityText } from "../lib/workstreamActivity";
 import type { TerminalRuntimeStatus, WorkstreamActivityKind, WorkstreamActivitySource, WorkstreamInput, WorkstreamPhase, WorkstreamReadiness, WorkstreamStatus } from "../lib/types";
 import type { GridSnapshot } from "../lib/gridSnapshot";
@@ -384,6 +386,8 @@ export function TerminalComponent({
   const resizeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const outputStatusWindowRef = useRef("");
   const structuredSignalKeysRef = useRef<Set<string>>(new Set());
+  const statusSummaryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const statusSummarySequenceRef = useRef(0);
   const activeTabId = useWorkspaceStore((s) => s.activeTabId);
   const workspaceMode = useWorkspaceStore((s) => s.workspaceUiState.workspaceMode);
   const terminalRendererMode = useWorkspaceStore((s) => s.workspaceUiState.terminalRendererMode);
@@ -439,6 +443,9 @@ export function TerminalComponent({
     status?: TerminalRuntimeStatus;
     reused?: boolean;
     previewUrl?: string;
+    currentActivity?: string;
+    activityKind?: WorkstreamActivityKind;
+    terminalOutput?: string;
     error?: string;
   }) => {
     const store = useWorkspaceStore.getState();
@@ -458,12 +465,46 @@ export function TerminalComponent({
           status: updates.status ?? previous?.status,
           reused: updates.reused ?? previous?.reused,
           previewUrl: updates.previewUrl ?? previous?.previewUrl,
+          currentActivity: updates.currentActivity ?? previous?.currentActivity,
+          activityKind: updates.activityKind ?? previous?.activityKind,
+          activityUpdatedAt: updates.currentActivity ? Date.now() : previous?.activityUpdatedAt,
+          terminalOutput: updates.terminalOutput ?? previous?.terminalOutput,
           lastStatusAt: Date.now(),
           lastError: updates.error,
         },
       ],
     });
   }, [attachToPtyId, paneId, runtimeSessionId, tabId, terminal?.cols, terminal?.rows]);
+
+  const scheduleStatusSummaryUpdate = useCallback(() => {
+    if (!isAgentStatusSummarizerConfigured()) return;
+    if (statusSummaryTimeoutRef.current) clearTimeout(statusSummaryTimeoutRef.current);
+    const sequence = statusSummarySequenceRef.current + 1;
+    statusSummarySequenceRef.current = sequence;
+
+    statusSummaryTimeoutRef.current = setTimeout(() => {
+      const store = useWorkspaceStore.getState();
+      const tab = store.tabs.find((candidate) => candidate.id === tabId);
+      if (!tab?.workstream || tab.workstream.kind !== "agent") return;
+      const input = agentStatusSummaryInputFromWorkstream(tab.workstream);
+
+      void summarizeAgentStatus(input).then((result) => {
+        if (statusSummarySequenceRef.current !== sequence) return;
+        const latestStore = useWorkspaceStore.getState();
+        const latestTab = latestStore.tabs.find((candidate) => candidate.id === tabId);
+        if (!latestTab?.workstream || latestTab.workstream.kind !== "agent") return;
+        latestStore.updateTab(tabId, {
+          workstream: {
+            ...latestTab.workstream,
+            statusSummary: result.summary,
+            statusSummaryUpdatedAt: Date.now(),
+            statusSummarySource: result.source,
+            statusSummaryError: result.error,
+          },
+        });
+      });
+    }, 650);
+  }, [tabId]);
 
   const updateWorkstreamRuntime = useCallback((updates: {
     status?: WorkstreamStatus;
@@ -545,7 +586,19 @@ export function TerminalComponent({
         status: updates.status,
       });
     }
-  }, [tabId]);
+    if (
+      tab.workstream.kind === "agent" &&
+      (updates.activity ||
+        updates.status ||
+        updates.phase ||
+        updates.currentActivity ||
+        updates.lastSummary ||
+        updates.nextAction ||
+        updates.terminalOutput)
+    ) {
+      scheduleStatusSummaryUpdate();
+    }
+  }, [scheduleStatusSummaryUpdate, tabId]);
 
   const handleReady = useCallback((ptyId: string, details: { reused: boolean }) => {
     updateTerminalRuntime({
@@ -565,7 +618,7 @@ export function TerminalComponent({
     updateWorkstreamRuntime(shouldPreserveWorkstreamOnReady(currentTab?.workstream)
       ? { activity: true }
       : { status: "running", activity: true });
-  }, [tabId, updateTerminalRuntime, updateWorkstreamRuntime]);
+  }, [paneId, tabId, updateTerminalRuntime, updateWorkstreamRuntime]);
 
   const handleStatus = useCallback((status: TerminalRuntimeStatus, details?: { id?: string; error?: string }) => {
     updateTerminalRuntime({
@@ -607,6 +660,14 @@ export function TerminalComponent({
         detail: `exit code ${details.code}`,
         status: details.success ? "done" : "failed",
       });
+    }
+    const immersiveTerminal = store.workspaceUiState.immersiveTerminal;
+    if (
+      immersiveTerminal.enabled &&
+      immersiveTerminal.tabId === tabId &&
+      immersiveTerminal.paneId === paneId
+    ) {
+      store.exitImmersiveTerminal();
     }
   }, [tabId, updateTerminalRuntime, updateWorkstreamRuntime]);
 
@@ -668,6 +729,11 @@ export function TerminalComponent({
     const inferredActivity = inferActivityFromOutput(heuristicOutput);
     const terminalOutput = latestReadableOutput(heuristicOutput);
     const processExit = inferProcessExit(heuristicOutput);
+    updateTerminalRuntime({
+      terminalOutput,
+      currentActivity: providerReadiness?.lastSummary ?? inferredActivity?.currentActivity,
+      activityKind: providerReadiness?.status ? activityKindForStatus(providerReadiness.status) : inferredActivity?.activityKind,
+    });
     if (processExit) {
       updateWorkstreamRuntime({
         status: processExit.success ? "done" : "failed",
@@ -877,6 +943,11 @@ export function TerminalComponent({
     });
 
     return () => {
+      if (statusSummaryTimeoutRef.current) {
+        clearTimeout(statusSummaryTimeoutRef.current);
+        statusSummaryTimeoutRef.current = null;
+      }
+      statusSummarySequenceRef.current += 1;
       renderDisposable.dispose();
       term.dispose();
       setTerminal(null);
@@ -1035,6 +1106,7 @@ export function TerminalComponent({
             onReady={handleReady}
             onStatus={handleStatus}
             onOutput={handleOutput}
+            onExit={handleExit}
             onSnapshot={onSnapshot}
             queuedInput={queuedInput}
             onQueuedInputSent={onQueuedInputSent}

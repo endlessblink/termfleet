@@ -22,6 +22,7 @@
     "verify:terminal-reliability:live": "TERMFLEET_TERMINAL_RELIABILITY_LIVE=1 scripts/verify-terminal-reliability.sh",
     "verify:release": "scripts/verify-release.sh",
     "verify:map-terminals": "node scripts/verify-map-terminals.mjs",
+    "verify:agent-status-summary": "node scripts/verify-agent-status-summary-server.mjs",
     "verify:agent-adapter": "scripts/verify-agent-provider-adapter-headless.sh",
     "verify:canvas-terminal": "scripts/verify-canvas-terminal.sh",
     "verify:canvas-live": "scripts/verify-canvas-live.sh",
