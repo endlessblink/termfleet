@@ -37,6 +37,7 @@ were retired during consolidation.
 | ~~TC-014~~ | SUPERSEDED by TC-017 | FEATURE | Make terminal typing latency production-grade (native VTE path abandoned) |
 | TC-015 | DONE (2026-06-01) | FEATURE | Per-node task badges: show associated MASTER_PLAN task + status on canvas terminals |
 | TC-016 | IN_PROGRESS | FEATURE | Multi-agent orchestration: spawn/manage sub-agent terminals from the cockpit |
+| TC-016h | IN_PROGRESS | TASK | Live terminal activity + agent status list |
 | TC-017 | IN_PROGRESS | FEATURE | Headless-VT (Rust) + canvas renderer — now the desktop default (replaces xterm); live latency/TUI confirmation pending |
 | TC-017a | DONE | TASK | Stage 1: headless alacritty_terminal grid + JSON snapshot |
 | TC-017b | DONE | TASK | Stage 2: full-frame Canvas2D renderer + font atlas (no diffing) |
@@ -2292,6 +2293,50 @@ Acceptance (draft):
 - Headless agents stream readable status/output into their canvas node.
 - Parent can send follow-up tasks to a child; child exit is surfaced on the node.
 - Optional git-worktree isolation per agent to avoid file conflicts.
+
+#### TC-016h - Live terminal activity + agent status list `IN_PROGRESS`
+User-facing correction for TC-016: the product goal is not an abstract "agent
+cockpit"; it is terminals that say what they are doing in real time, with a
+compact sidebar/list for scanning many terminals at once.
+
+Product rule:
+- Terminal pane/header shows one short live activity strip, for example
+  `Now: running tests · needs proof` or `Now: waiting for auth`.
+- Sidebar agent rows show the scan-friendly structured state: mission/title,
+  provider (`codex`, `claude`, `opencode`, `shell`), lifecycle (`working`,
+  `idle`, `blocked`, `done`), current activity, and proof/review/attention state.
+- Clicking a sidebar row focuses the real terminal.
+- The terminal remains the primary shell surface; status text must not replace
+  scrollback or add noisy chrome.
+- The same data should also feed map nodes and copied briefs, but sidebar +
+  terminal-header visibility is the acceptance gate.
+
+Acceptance:
+- A live run with at least two supervised workstreams shows distinct sidebar rows
+  like `mission · working · codex` and `mission · idle · claude`.
+- Each corresponding terminal pane/header shows a short `Now:` description that
+  changes as the workstream starts, runs, waits/blocks, completes, or exits.
+- Provider, status, current activity, and proof/review/attention state are
+  visible from the sidebar without opening every terminal.
+- Follow-up, stop/restart, provider-exit, blocked/auth, and completion states
+  update both the terminal strip and sidebar row from the existing workstream
+  metadata/event path.
+- Verification includes the focused Playwright agent-workstream spec plus a
+  browser or desktop smoke screenshot proving the compact list and terminal
+  activity strip are visible together.
+
+Progress notes:
+- First slice: the agent run lists in the Sessions and Map sidebars now render
+  as compact status rows instead of generic `Copy run` rows. Each row leads with
+  the mission/title, then shows scan-friendly status/provider/activity/attention
+  state such as `working · codex · running tests · needs proof`, while still
+  preserving the existing run-brief copy side effect.
+- The terminal pane already exposes the short `Now:` strip for agent
+  workstreams; regression coverage now locks that the visible sidebar row and
+  terminal strip can be reached in the same launch flow.
+- Verification: `npm run build` passed; `npx playwright test
+  tests/agent-workstream.spec.ts` passed 9/9 after locking compact map rows,
+  terminal `Now:` visibility, and the browser-preview provider activity variant.
 
 Progress notes:
 - First slice implemented as a supervised local workstream surface:

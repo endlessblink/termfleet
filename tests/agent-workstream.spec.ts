@@ -492,8 +492,7 @@ test("command palette creates a supervised Codex agent on the map", async ({ pag
   await expect(page.getByTestId("canvas-agent-node-header-meta")).toContainText("command is not available in browser preview");
   await runWorkspaceCommand(page, "show terminal");
   await expect(page.getByTestId("split-agent-pane-context")).toContainText(PRIMARY_MISSION);
-  await expect(page.getByTestId("split-agent-pane-now")).toContainText(`Now: ${PRIMARY_MISSION} · Codex agent · active`);
-  await expect(page.getByTestId("split-agent-pane-now")).toContainText("command is not available in browser preview");
+  await expect(page.getByTestId("split-agent-pane-now")).toHaveText("Now: codex: command is not available in browser preview. Use the Tauri app for real shell commands.");
   await runWorkspaceCommand(page, "show map");
   await expect(page.getByLabel("Agent current activity")).toContainText("command is not available in browser preview");
   await expect(page.getByLabel("Agent operator guidance").getByText("Watch provider response")).toBeVisible();
@@ -621,7 +620,7 @@ test("command palette creates a supervised Codex agent on the map", async ({ pag
     stopBehavior: "PTY interrupt/kill until provider-native cancel is available.",
     controlProtocol: "TermFleet prompt queue plus PTY Ctrl-C/kill fallback.",
     structuredStatus: false,
-    currentActivity: expect.stringMatching(/^(Prompt sent to provider|Provider is running|Investigate flaky checkout flow: command is not available in browser preview\. Use the Tauri app for real shell commands\.)$/),
+    currentActivity: expect.stringMatching(/^(Prompt sent to provider|Provider is running|Investigate flaky checkout flow: command is not available in browser preview\. Use the Tauri app for real shell commands\.|codex: command is not available in browser preview\. Use the Tauri app for real shell commands\.)$/),
     activityKind: expect.stringMatching(/^(thinking|running|blocked)$/),
     activitySource: expect.stringMatching(/^(operator|terminal)$/),
     activityUpdatedAt: expect.any(Number),
@@ -1511,9 +1510,15 @@ test("command palette can launch a headless Codex agent profile", async ({ page,
   await createAgentWorkstream(page, mission, "shared", "headless");
 
   await expect(page.getByText(mission).first()).toBeVisible();
+  await expect(page.getByTestId("map-agent-run-item").filter({ hasText: mission })).toBeVisible();
+  await expect(page.getByTestId("map-agent-run-status").filter({ hasText: "codex" })).toContainText("command is not available in browser preview");
+
   await page.getByText("Details").click();
   await expect(page.getByLabel("Agent provider control surface").getByText("Launch")).toBeVisible();
   await expect(page.getByLabel("Agent provider control surface")).toContainText("Codex headless status stream");
+
+  await page.getByRole("button", { name: "Open full terminal" }).last().click();
+  await expect(page.getByTestId("split-agent-pane-now")).toContainText("command is not available in browser preview");
 
   await expect.poll(async () => page.evaluate((mission) => {
     const raw = localStorage.getItem("terminal-workspace.v1");
@@ -2051,8 +2056,7 @@ test("agent lane flags completed work without proof", async ({ page, context }) 
   await expect(page.getByTestId("canvas-agent-node-header-meta")).toContainText("Codex agent · complete");
   await expect(page.getByTestId("canvas-agent-node-header-meta")).toContainText("Ready for review");
   await runWorkspaceCommand(page, "show terminal");
-  await expect(page.getByTestId("split-agent-pane-now")).toContainText(`Now: ${proofMission} · Codex agent · complete`);
-  await expect(page.getByTestId("split-agent-pane-now")).toContainText("Ready for review");
+  await expect(page.getByTestId("split-agent-pane-now")).toHaveText("Now: Ready for review");
   await runWorkspaceCommand(page, "show map");
   await expect(page.getByTestId("canvas-agent-lane-headline")).toContainText("Next: Request proof");
   await expect(page.getByTestId("canvas-agent-lane-headline")).toContainText("Summary finished");
