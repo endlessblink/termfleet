@@ -23,7 +23,7 @@ import {
 } from "@phosphor-icons/react";
 import { createAgentWorkstream, createAgentWorkstreamRunId, createNewTab, createTerminalTab, currentAgentWorkstreamCwd, splitActivePane, splitActivePreviewPane, useWorkspaceStore } from "../stores/workspace";
 import { FolderPicker } from "./FolderPicker";
-import type { CanvasNode, Tab } from "../lib/types";
+import type { CanvasNode, Tab, WorkstreamMetadata } from "../lib/types";
 import { taskStatusColor, taskStatusLabel } from "../lib/masterPlanTasks";
 import { useMasterPlanTasks } from "../hooks/useMasterPlanTasks";
 import { pathTail, projectNameFor } from "../lib/projectDisplay";
@@ -48,6 +48,26 @@ function workstreamLabel(provider?: string) {
   if (provider === "claude") return "Claude";
   if (provider === "shell") return "Shell";
   return "Codex";
+}
+
+function workstreamScanStatus(workstream: WorkstreamMetadata) {
+  if (workstream.status === "done" || workstream.phase === "complete" || workstream.phase === "reviewed") return "done";
+  if (workstream.status === "failed" || workstream.phase === "blocked" || workstream.readiness === "auth-required") return "blocked";
+  if (workstream.status === "waiting" || workstream.phase === "needs-input" || workstream.activityKind === "waiting") return "waiting";
+  if (workstream.status === "stopped" || workstream.phase === "interrupted") return "idle";
+  if (workstream.status === "running" || workstream.phase === "active" || workstream.phase === "launching") return "working";
+  return "idle";
+}
+
+function workstreamAttentionText(workstream: WorkstreamMetadata) {
+  if (workstream.readiness === "auth-required") return "needs auth";
+  if (workstream.status === "failed" || workstream.phase === "blocked") return "recovery";
+  if (workstream.risk && !/^none$/i.test(workstream.risk)) return "risk";
+  if (workstream.evidence) return "has evidence";
+  if (workstream.phase === "reviewed") return "reviewed";
+  if (workstream.status === "done" || workstream.phase === "complete") return "review ready";
+  if (workstream.activityKind === "testing") return "needs proof";
+  return workstream.nextAction ?? "watch";
 }
 
 type OperationsPanel = "sessions" | "map";
@@ -373,6 +393,38 @@ const styles: Record<string, CSSProperties> = {
     color: "var(--text-primary)",
     textAlign: "left",
     cursor: "pointer",
+  },
+  agentRunItem: {
+    minWidth: 0,
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr)",
+    gap: 2,
+    alignItems: "center",
+    padding: "6px 7px",
+    border: "1px solid transparent",
+    borderRadius: "var(--radius-xs)",
+    background: "transparent",
+    color: "var(--text-primary)",
+    textAlign: "left",
+    cursor: "pointer",
+  },
+  agentRunTitle: {
+    minWidth: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    color: "var(--text-primary)",
+    fontSize: 12,
+    fontWeight: 500,
+  },
+  agentRunMeta: {
+    minWidth: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    color: "var(--text-secondary)",
+    fontSize: 11,
+    fontWeight: 400,
   },
   agentLaneIconButton: {
     width: 24,
@@ -2587,13 +2639,16 @@ function SessionsPanel({
             <div style={styles.agentLaneList}>
               {agentLane.workstreams.slice(0, 3).map(({ tab, workstream }) => {
                 const askText = latestMissionControlAskText(workstream);
+                const title = workstream.mission ?? workstream.prompt ?? tab.title;
+                const scanStatus = workstreamScanStatus(workstream);
+                const attention = workstreamAttentionText(workstream);
                 return (
                   <button
                     key={tab.id}
                     type="button"
-                    style={styles.agentLaneItem}
+                    style={styles.agentRunItem}
                     data-testid="sidebar-agent-run-item"
-                    title={`Copy run brief for ${tab.title}`}
+                    title={`Focus ${title}`}
                     onClick={() => {
                       setActiveTab(tab.id);
                       if (navigator.clipboard?.writeText) {
@@ -2602,11 +2657,11 @@ function SessionsPanel({
                       setWorkspaceMode("split");
                     }}
                   >
-                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      Copy run
+                    <span style={styles.agentRunTitle} data-testid="sidebar-agent-run-title">
+                      {title}
                     </span>
-                    <span style={{ ...styles.rowMeta, marginTop: 0 }}>
-                      {workstreamLabel(workstream.provider)} · {workstream.phase ?? workstream.status} · {workstreamActivityText(workstream)} · {formatWorkstreamOpsContext(workstream)}
+                    <span style={styles.agentRunMeta} data-testid="sidebar-agent-run-status">
+                      {scanStatus} · {workstreamLabel(workstream.provider).toLowerCase()} · {workstreamActivityText(workstream)} · {attention} · {formatWorkstreamOpsContext(workstream)}
                       {askText ? ` · ${askText}` : ""}
                     </span>
                   </button>
@@ -2620,7 +2675,7 @@ function SessionsPanel({
                 >
                   <span>+{agentLane.workstreams.length - 3} more agents</span>
                   <span style={{ ...styles.rowMeta, marginTop: 0 }}>
-                    {workstreamLabel(agentLane.workstreams[3].workstream.provider)} · {agentLane.workstreams[3].workstream.phase ?? agentLane.workstreams[3].workstream.status} · {workstreamActivityText(agentLane.workstreams[3].workstream)} · {formatWorkstreamOpsContext(agentLane.workstreams[3].workstream)}
+                    {workstreamScanStatus(agentLane.workstreams[3].workstream)} · {workstreamLabel(agentLane.workstreams[3].workstream.provider).toLowerCase()} · {workstreamActivityText(agentLane.workstreams[3].workstream)} · {workstreamAttentionText(agentLane.workstreams[3].workstream)} · {formatWorkstreamOpsContext(agentLane.workstreams[3].workstream)}
                     {latestMissionControlAskText(agentLane.workstreams[3].workstream) ? ` · ${latestMissionControlAskText(agentLane.workstreams[3].workstream)}` : ""}
                   </span>
                 </div>
@@ -4008,13 +4063,16 @@ function MapPanel({
               {agentLane.workstreams.slice(0, 3).map(({ tab, workstream }) => {
                 const node = canvasState.nodes.find((candidate) => candidate.terminalTabId === tab.id);
                 const askText = latestMissionControlAskText(workstream);
+                const title = workstream.mission ?? workstream.prompt ?? tab.title;
+                const scanStatus = workstreamScanStatus(workstream);
+                const attention = workstreamAttentionText(workstream);
                 return (
                   <button
                     key={tab.id}
                     type="button"
-                    style={styles.agentLaneItem}
+                    style={styles.agentRunItem}
                     data-testid="map-agent-run-item"
-                    title={`Copy run brief for ${tab.title}`}
+                    title={`Focus ${title}`}
                     onClick={() => {
                       setActiveTab(tab.id);
                       if (navigator.clipboard?.writeText) {
@@ -4024,11 +4082,11 @@ function MapPanel({
                       if (node) focusCanvasNode(node);
                     }}
                   >
-                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      Copy run
+                    <span style={styles.agentRunTitle} data-testid="map-agent-run-title">
+                      {title}
                     </span>
-                    <span style={{ ...styles.rowMeta, marginTop: 0 }}>
-                      {workstreamLabel(workstream.provider)} · {workstream.phase ?? workstream.status} · {workstreamActivityText(workstream)} · {formatWorkstreamOpsContext(workstream)}
+                    <span style={styles.agentRunMeta} data-testid="map-agent-run-status">
+                      {scanStatus} · {workstreamLabel(workstream.provider).toLowerCase()} · {workstreamActivityText(workstream)} · {attention} · {formatWorkstreamOpsContext(workstream)}
                       {askText ? ` · ${askText}` : ""}
                     </span>
                   </button>
@@ -4042,7 +4100,7 @@ function MapPanel({
                 >
                   <span>+{agentLane.workstreams.length - 3} more agents</span>
                   <span style={{ ...styles.rowMeta, marginTop: 0 }}>
-                    {workstreamLabel(agentLane.workstreams[3].workstream.provider)} · {agentLane.workstreams[3].workstream.phase ?? agentLane.workstreams[3].workstream.status} · {workstreamActivityText(agentLane.workstreams[3].workstream)} · {formatWorkstreamOpsContext(agentLane.workstreams[3].workstream)}
+                    {workstreamScanStatus(agentLane.workstreams[3].workstream)} · {workstreamLabel(agentLane.workstreams[3].workstream.provider).toLowerCase()} · {workstreamActivityText(agentLane.workstreams[3].workstream)} · {workstreamAttentionText(agentLane.workstreams[3].workstream)} · {formatWorkstreamOpsContext(agentLane.workstreams[3].workstream)}
                     {latestMissionControlAskText(agentLane.workstreams[3].workstream) ? ` · ${latestMissionControlAskText(agentLane.workstreams[3].workstream)}` : ""}
                   </span>
                 </div>

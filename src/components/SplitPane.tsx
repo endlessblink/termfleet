@@ -38,13 +38,6 @@ const STATUS_COLORS: Record<TerminalRuntimeStatus, string> = {
   exited: "var(--text-secondary)",
 };
 
-function workstreamLabel(provider?: string) {
-  if (provider === "codex") return "Codex agent";
-  if (provider === "claude") return "Claude agent";
-  if (provider === "opencode") return "OpenCode agent";
-  return "Agent";
-}
-
 // ── PaneToolbar ──────────────────────────────────────────────────────────────
 
 interface PaneToolbarProps {
@@ -525,7 +518,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
         const latestWorkstreamInput = workstreamInputs[workstreamInputs.length - 1];
         const latestMissionControlInput = latestWorkstreamInput?.source === "mission-control" ? latestWorkstreamInput : undefined;
         const agentPaneActivity = !isPreviewPane && tab.workstream?.kind === "agent"
-          ? `${tab.workstream.mission ?? tab.workstream.prompt ?? tab.title} · ${workstreamLabel(tab.workstream.provider)} · ${tab.workstream.phase ?? tab.workstream.status} · ${workstreamActivityText(tab.workstream)}`
+          ? workstreamActivityText(tab.workstream)
           : null;
         const agentPaneOutput = !isPreviewPane && tab.workstream?.kind === "agent"
           ? tab.workstream.terminalOutput?.trim()
