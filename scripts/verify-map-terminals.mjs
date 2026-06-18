@@ -44,6 +44,7 @@ const daemonBin = readFileSync(join(root, "src-tauri/src/bin/terminal-workspace-
 const tauriLib = readFileSync(join(root, "src-tauri/src/lib.rs"), "utf8");
 const tauriMain = readFileSync(join(root, "src-tauri/src/main.rs"), "utf8");
 const packageJson = readFileSync(join(root, "package.json"), "utf8");
+const readme = readFileSync(join(root, "README.md"), "utf8");
 const runDev = readFileSync(join(root, "run-dev.sh"), "utf8");
 const runNativeDev = readFileSync(join(root, "run-native-vte-dev.sh"), "utf8");
 const canvasTerminalSmoke = readFileSync(join(root, "scripts/verify-canvas-terminal.sh"), "utf8");
@@ -840,6 +841,14 @@ const checks = [
       /Visual QA Review/.test(visualQaReview) &&
       /Remaining Visual Debt/.test(visualQaReview),
     message: "Verification scripts must include durable browser and standalone visual QA evidence.",
+  },
+  {
+    ok: /"verify:readme-recovery": "node scripts\/verify-readme-recovery\.mjs"/.test(packageJson) &&
+      /## Restore Workspace Proof/.test(readme) &&
+      /npm run verify:restart-restore/.test(readme) &&
+      /npm run verify:standalone-daemon/.test(readme) &&
+      /restartable stale sessions/.test(readme),
+    message: "README must expose a reproducible restore-workspace proof path.",
   },
   {
     ok: /export type TerminalRuntimeStatus = "starting" \| "running" \| "reconnected" \| "stale" \| "failed" \| "exited";/.test(types) &&

@@ -22,6 +22,7 @@
     "verify:terminal-reliability:live": "TERMFLEET_TERMINAL_RELIABILITY_LIVE=1 scripts/verify-terminal-reliability.sh",
     "verify:release": "scripts/verify-release.sh",
     "verify:map-terminals": "node scripts/verify-map-terminals.mjs",
+    "verify:readme-recovery": "node scripts/verify-readme-recovery.mjs",
     "verify:agent-status-summary": "node scripts/verify-agent-status-summary-server.mjs",
     "agent-status:ollama": "node scripts/agent-status-summary-ollama.mjs",
     "termfleetctl": "node scripts/termfleetctl.mjs",

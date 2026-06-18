@@ -30,6 +30,32 @@ instead of treating the app window as the owner of terminal processes.
 
 <img src="docs/assets/termfleet-daemon-recovery.png" alt="termfleet daemon recovery view showing reattached terminal sessions, recovery timeline, and daemon-owned PTY status" width="1280">
 
+## Restore Workspace Proof
+
+TermFleet has two recovery layers:
+
+- **App restart reattach:** the Tauri window can close or restart while the
+  user-local daemon keeps PTYs alive, then the relaunched UI reattaches to the
+  same sessions.
+- **Cold restore:** if the daemon is gone, persisted workspace/session metadata
+  comes back as restartable stale sessions instead of silently deleting the
+  user's workspace shape.
+
+Run the repeatable proof path before claiming recovery works:
+
+```bash
+npm run verify:restart-restore
+npm run verify:standalone-daemon
+```
+
+`verify:restart-restore` checks the daemon/socket restore layers without a GUI.
+`verify:standalone-daemon` runs the release app against an isolated private
+runtime, captures app-restart and daemon-cold-restore screenshots under
+`/tmp/tw-standalone-daemon-smoke/`, and proves post-restore input still reaches
+the terminal. Recovery is a product feature, not a best-effort cache restore:
+React unmounts detach, explicit close/stop destroys, and stale sessions remain
+visible until restarted or closed.
+
 ## Local Agent Status Summaries
 
 TermFleet can summarize live terminal and agent output into compact

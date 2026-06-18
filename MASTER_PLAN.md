@@ -2101,6 +2101,13 @@ Workstreams:
      playwright test tests/map-terminal-rendering.spec.ts -g "status bar
      summarizes"`; `git diff --check`.
    - Add a "restore workspace" proof path to the demo and README.
+   - In progress: README now has a dedicated "Restore Workspace Proof" section
+     that explains app-restart reattach vs daemon-cold-restore, names the exact
+     `verify:restart-restore` and `verify:standalone-daemon` commands, points to
+     the `/tmp/tw-standalone-daemon-smoke/` screenshot evidence, and restates the
+     ownership rule that React unmounts detach while explicit close/stop
+     destroys. Verification: `npm run verify:readme-recovery`; `npm run
+     verify:map-terminals`; `npm run build`; `git diff --check`.
    - Keep the existing rule that React unmount detaches but does not kill PTYs.
 
 4. **Runbook and evidence capture**
