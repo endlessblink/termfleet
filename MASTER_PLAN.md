@@ -2189,6 +2189,12 @@ Workstreams:
      `SECURITY.md` files to remain explicit README blockers until publishing.
      Verification: `npm run verify:public-audit`; `npm run
      verify:oss-readiness`; `npm run build`; `git diff --check`.
+   - In progress: added `npm run verify:prerequisites` as a fresh-clone preflight
+     for Node/npm, Rust/Cargo, pkg-config, WebKitGTK 4.1, JavaScriptCoreGTK 4.1,
+     libsoup 3, and the npm lockfile. README now points new users to this gate
+     before install/build so missing native dependencies fail with actionable
+     package-family hints. Verification: `npm run verify:prerequisites`; `npm
+     run verify:oss-readiness`; `npm run build`; `git diff --check`.
 
 Acceptance (draft):
 

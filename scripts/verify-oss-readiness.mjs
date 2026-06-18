@@ -15,10 +15,18 @@ const checks = [
   {
     ok: /## Quick Start/.test(readme) &&
       /npm install/.test(readme) &&
+      /npm run verify:prerequisites/.test(readme) &&
       /npm run review/.test(readme) &&
       /npm run tauri:dev/.test(readme) &&
       /npm run build/.test(readme),
     message: "README must include install, browser review, native app, and build commands.",
+  },
+  {
+    ok: /"verify:prerequisites": "node scripts\/verify-prerequisites\.mjs"/.test(packageJson) &&
+      /WebKitGTK/.test(readme) &&
+      /4\.1, JavaScriptCoreGTK 4\.1/.test(readme) &&
+      /libsoup 3/.test(readme),
+    message: "OSS readiness must include an actionable fresh-clone prerequisite verifier.",
   },
   {
     ok: /## Architecture/.test(readme) &&

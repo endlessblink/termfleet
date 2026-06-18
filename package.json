@@ -8,6 +8,7 @@
     "review": "vite --host 127.0.0.1 --port 5177 --strictPort true",
     "build": "tsc && vite build",
     "preview": "vite preview",
+    "verify:prerequisites": "node scripts/verify-prerequisites.mjs",
     "verify:canvas-renderer": "playwright test canvas-renderer",
     "verify:grid-diff": "playwright test grid-diff",
     "verify:legacy-prompt-repair": "playwright test legacy-prompt-repair",

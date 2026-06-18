@@ -40,6 +40,7 @@ Prerequisites:
 Install and run the browser review surface:
 
 ```bash
+npm run verify:prerequisites
 npm install
 npm run review
 ```
@@ -53,8 +54,15 @@ npm run tauri:dev
 Run the fast frontend build gate:
 
 ```bash
+npm run verify:prerequisites
 npm run build
 ```
+
+`verify:prerequisites` checks Node, npm, Rust/Cargo, `pkg-config`, WebKitGTK
+4.1, JavaScriptCoreGTK 4.1, libsoup 3, and the lockfile before the heavier
+install/build commands. If a fresh checkout cannot build, start there: the
+script reports the missing system package family instead of letting Tauri fail
+deep in a native build.
 
 The historical launcher name `run-native-vte-dev.sh` is retained for muscle
 memory, but the production desktop terminal path is Canvas2D over the headless
