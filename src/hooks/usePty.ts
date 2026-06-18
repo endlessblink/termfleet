@@ -55,6 +55,7 @@ const ptyOutputBuffers = new Map<string, string>();
 const MAX_REPLAY_BUFFER = 200_000;
 const TRACE_PTY =
   typeof window !== "undefined" && window.localStorage?.getItem("terminal-workspace.tracePty") === "1";
+const TRANSIENT_ATTACH_RETRY_DELAYS_MS = [150, 400, 900];
 type ActiveInputListener = {
   transport: PtyTransport;
   sessionHint: string;
@@ -165,6 +166,15 @@ function appendPtyOutput(id: string, data: string) {
 
 function isTauriRuntime() {
   return "__TAURI_INTERNALS__" in window;
+}
+
+function isTransientPtyAttachError(error: unknown) {
+  const message = String(error);
+  return /\b(?:EAGAIN|Resource temporarily unavailable|os error 11)\b/i.test(message);
+}
+
+function delay(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
 function browserPrompt(_cwd: string) {
@@ -412,7 +422,7 @@ export function usePty({ terminal, cwd, command, attachToPtyId, runtimeSessionId
       transportRef.current = null;
     };
 
-    async function setup() {
+    async function setup(attempt = 0) {
       try {
         transportFailedRef.current = false;
         const startingId = attachToPtyId ?? runtimeSessionId;
@@ -711,8 +721,22 @@ export function usePty({ terminal, cwd, command, attachToPtyId, runtimeSessionId
       } catch (err) {
         console.error("Failed to spawn PTY:", err);
         const error = String(err);
+        disposeInputListener();
+        daemonInputQueueRef.current?.dispose();
+        daemonInputQueueRef.current = null;
+        daemonOutputChannelRef.current = null;
+        unlistenRef.current?.();
+        unlistenRef.current = null;
+        ptyIdRef.current = null;
+        transportRef.current = null;
+        if (!cancelled && isTransientPtyAttachError(err) && attempt < TRANSIENT_ATTACH_RETRY_DELAYS_MS.length) {
+          const retryDelay = TRANSIENT_ATTACH_RETRY_DELAYS_MS[attempt];
+          onStatus?.("starting", { id: attachToPtyId ?? runtimeSessionId ?? undefined, error: `Retrying terminal attach after ${retryDelay}ms: ${error}` });
+          await delay(retryDelay);
+          if (!cancelled) await setup(attempt + 1);
+          return;
+        }
         onStatus?.("failed", { id: attachToPtyId ?? runtimeSessionId ?? undefined, error });
-        terminal!.write(`\r\n[pty spawn failed] ${error}\r\n`);
       }
     }
 

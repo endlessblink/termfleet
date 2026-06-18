@@ -70,6 +70,7 @@ const TERMINAL_FONT_FACES = [
   `italic ${FONT_SIZE_PX}px "Hack"`,
   `italic 700 ${FONT_SIZE_PX}px "Hack"`,
 ];
+const TRANSIENT_ATTACH_RETRY_DELAYS_MS = [150, 400, 900];
 
 const DEFAULT_TERMINAL_MODES = {
   appCursor: false,
@@ -80,6 +81,15 @@ const DEFAULT_TERMINAL_MODES = {
   alternateScrollSet: false,
   sgrMouse: false,
 };
+
+function isTransientAttachError(error: unknown) {
+  const message = String(error);
+  return /\b(?:EAGAIN|Resource temporarily unavailable|os error 11)\b/i.test(message);
+}
+
+function delay(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
 
 function isTauriRuntime(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -533,7 +543,7 @@ export function TerminalCanvas({
       onStatusRef.current?.("failed", { error: message });
     };
 
-    (async () => {
+    const attachGrid = async (): Promise<void> => {
       // Ensure the daemon owns the PTY (the daemon is the PTY authority), then
       // attach the headless grid and subscribe to its binary diff stream.
       //
@@ -544,6 +554,7 @@ export function TerminalCanvas({
       // Attach the grid at the same size so the daemon's scrollback replay (and a
       // reused session's wide history) is parsed at the width the shell is using.
       onStatusRef.current?.("starting");
+      setAttachError(null);
       const daemonStatus = await invoke<{ reachable: boolean; message: string }>("daemon_ensure_running");
       if (!daemonStatus.reachable) {
         throw new Error(daemonStatus.message);
@@ -613,7 +624,30 @@ export function TerminalCanvas({
       // is the PTY authority and `reused` is true when we reattached to a session
       // that survived an unmount/project-switch (vs. a freshly spawned shell).
       onReadyRef.current?.(ensured.id, { reused: ensured.reused });
-    })().catch((error) => {
+    };
+
+    const attachWithRetry = async () => {
+      for (let attempt = 0; attempt <= TRANSIENT_ATTACH_RETRY_DELAYS_MS.length; attempt += 1) {
+        try {
+          await attachGrid();
+          return;
+        } catch (error) {
+          if (disposed) return;
+          if (isTransientAttachError(error) && attempt < TRANSIENT_ATTACH_RETRY_DELAYS_MS.length) {
+            const retryDelay = TRANSIENT_ATTACH_RETRY_DELAYS_MS[attempt];
+            const message = `Terminal attach is busy; retrying in ${retryDelay}ms.`;
+            console.warn(message, error);
+            setAttachError(message);
+            onStatusRef.current?.("starting", { error: message });
+            await delay(retryDelay);
+            continue;
+          }
+          throw error;
+        }
+      }
+    };
+
+    attachWithRetry().catch((error) => {
       if (disposed) return;
       const message = String(error);
       console.error(error);
@@ -1017,20 +1051,23 @@ export function TerminalCanvas({
           role="status"
           style={{
             position: "absolute",
-            inset: 0,
+            top: 10,
+            left: 10,
+            right: 10,
             display: "flex",
-            alignItems: "center",
-            paddingLeft: 18,
-            paddingRight: 18,
+            alignItems: "flex-start",
+            padding: "8px 10px",
+            border: "1px solid rgba(240, 179, 106, 0.36)",
+            borderRadius: 6,
             color: "#f0b36a",
-            background: "rgba(29, 32, 34, 0.92)",
+            background: "rgba(29, 32, 34, 0.88)",
             fontFamily: FONT_FAMILY,
             fontSize: 12,
             pointerEvents: "none",
             whiteSpace: "pre-wrap",
           }}
         >
-          Terminal attach failed: {attachError}
+          {attachError}
         </div>
       ) : null}
       <textarea

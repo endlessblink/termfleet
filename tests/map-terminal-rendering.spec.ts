@@ -1495,12 +1495,19 @@ Acceptance:
         cols: 100,
         rows: 30,
         status: "running",
-        currentActivity: "« gpt-5.5 default · -",
-        terminalOutput: "translate to hebrew\nWhat changed:\nquality-gate tests passed\n› Use /skills to list available skills\ngpt-5.5 default · ~",
+        currentActivity: "Running 2 tests using 1 worker",
+        terminalOutput: [
+          "npx playwright test tests/map-terminal-rendering.spec.ts -g \"map shell header prefers summarized task path and now\" --reporter=line",
+          "Running 2 tests using 1 worker",
+          "… +35 lines (ctrl + t to view transcript)",
+          "1 passed (10.5s)",
+          "The next assertion was still expecting the sidebar to disappear when the terminal summary becomes stale. That is exactly the old changing behavior.",
+          "Working (10m 52s • esc to interrupt)",
+        ].join("\n"),
         statusSummary: {
-          task: "Translate post copy to Hebrew",
+          task: "Running 2 tests using 1 worker",
           path: "inner-dialogue",
-          now: "Checking the rewritten Hebrew post and verification notes",
+          now: "stale. That is exactly the old changing behavior.",
           status: "working",
           provider: "shell",
           confidence: "medium",
@@ -1509,22 +1516,23 @@ Acceptance:
     });
   });
 
-  await expect(page.getByTestId("canvas-terminal-node-header-title")).toHaveText("Translate post copy to Hebrew");
+  await expect(page.getByTestId("canvas-terminal-node-header-title")).toHaveText("Playwright test");
   await expect(page.getByTestId("canvas-terminal-node-workspace")).toHaveText("termfleet");
-  await expect(page.getByTestId("canvas-terminal-node-header-path")).toHaveText("inner-dialogue");
-  await expect(page.getByTestId("canvas-terminal-node-now")).toHaveText("Checking the rewritten Hebrew post and verification notes");
-  await expect(page.getByTestId("canvas-terminal-node-now")).not.toContainText("gpt-5.5 default");
+  await expect(page.getByTestId("canvas-terminal-node-header-path")).toHaveText("devops/termfleet");
+  await expect(page.getByTestId("canvas-terminal-node-now")).toHaveText("map-terminal-rendering.spec.ts · grep: map shell header prefers summarized task path and now");
+  await expect(page.getByTestId("canvas-terminal-node-header-title")).not.toContainText("Running 2 tests");
+  await expect(page.getByTestId("canvas-terminal-node-now")).not.toContainText("stale");
   await expect(page.getByTestId("canvas-terminal-task-sidebar")).toContainText("Tasks");
   await expect(page.getByTestId("canvas-terminal-task-row")).toHaveCount(3);
   await expect(page.getByTestId("canvas-terminal-task-row").nth(0)).toContainText("Parse stable lane checklist items.");
   await expect(page.getByTestId("canvas-terminal-task-row").nth(0)).toContainText("Done");
   await expect(page.getByTestId("canvas-terminal-task-row").nth(2)).toContainText("Render remaining lane tasks.");
   await expect(page.getByTestId("canvas-terminal-task-row").nth(2)).toContainText("Not done");
-  const nowBox = await page.getByTestId("canvas-terminal-node-now").boundingBox();
+  const contentBox = await page.getByTestId("canvas-terminal-task-content").boundingBox();
   const tasksBox = await page.getByTestId("canvas-terminal-task-sidebar").boundingBox();
-  if (!nowBox || !tasksBox) throw new Error("Terminal live summary or task sidebar is not visible");
-  expect(tasksBox.x).toBeGreaterThan(nowBox.x + nowBox.width);
-  expect(tasksBox.y).toBeGreaterThan(nowBox.y + nowBox.height);
+  if (!contentBox || !tasksBox) throw new Error("Terminal content column or task sidebar is not visible");
+  expect(tasksBox.x).toBeGreaterThanOrEqual(contentBox.x + contentBox.width - 1);
+  expect(Math.abs(tasksBox.y - contentBox.y)).toBeLessThanOrEqual(1);
   const viewportBeforeTaskScroll = await page.evaluate(() => {
     const store = (window as typeof window & {
       __termfleetWorkspaceStore?: {
@@ -1741,8 +1749,8 @@ Acceptance:
     });
   });
 
-  await expect(page.getByTestId("canvas-terminal-node-header-title")).toHaveText("Playwright: map shell header prefers summarized task path and now");
-  await expect(page.getByTestId("canvas-terminal-node-now")).toHaveText("map-terminal-rendering.spec.ts");
+  await expect(page.getByTestId("canvas-terminal-node-header-title")).toHaveText("Playwright test");
+  await expect(page.getByTestId("canvas-terminal-node-now")).toHaveText("map-terminal-rendering.spec.ts · grep: map shell header prefers summarized task path and now");
   await expect(page.getByTestId("canvas-terminal-node-header-title")).not.toContainText("Running 2 tests");
   await expect(page.getByTestId("canvas-terminal-node-now")).not.toContainText("stale");
 

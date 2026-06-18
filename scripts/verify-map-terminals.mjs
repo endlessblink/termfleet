@@ -253,6 +253,14 @@ const checks = [
       /data-terminal-map-preview="state-shape"/.test(magicCanvas) &&
       /const READABLE_TERMINAL_ZOOM = 1;/.test(magicCanvas) &&
       /const showTerminalPreview = node\.type === "terminal" && zoom < READABLE_TERMINAL_ZOOM;/.test(magicCanvas) &&
+      // Viewport culling: a terminal node mounts a live renderer only when it is
+      // readable-zoom AND in the live set (in viewport / selected, capped). The
+      // rest fall back to the truthful preview even at readable zoom. The live
+      // set must be computed and threaded to each node.
+      /const shouldMountTerminal = node\.type === "terminal" && live && !showTerminalPreview;/.test(magicCanvas) &&
+      /const MAX_LIVE_TERMINALS = \d+;/.test(magicCanvas) &&
+      /const liveNodeIds = useMemo\(/.test(magicCanvas) &&
+      /live=\{liveNodeIds\.has\(node\.id\)\}/.test(magicCanvas) &&
       /<TerminalMapPreview[\s\S]*preview=\{terminalPreview\}/.test(magicCanvas) &&
       /onSnapshot=\{\(snapshot\) => onTerminalSnapshot\(node\.id, snapshot\)\}/.test(magicCanvas) &&
       /onSnapshot\?: \(snapshot: GridSnapshot\) => void;/.test(terminalCanvas) &&
@@ -915,8 +923,16 @@ const checks = [
     ok: /function usePty/.test(usePty) &&
       /const stopBrokenTransport = \(error: unknown, operation: "read" \| "write"\)/.test(usePty) &&
       /transportFailedRef\.current/.test(usePty) &&
-      !/\[pty write failed\]|\[pty read failed\]/.test(usePty),
-    message: "PTY transport failures must become one runtime status update, never repeated terminal-buffer error lines.",
+      /isTransientPtyAttachError/.test(usePty) &&
+      !/\[pty write failed\]|\[pty read failed\]|\[pty spawn failed\]/.test(usePty),
+    message: "PTY transport and spawn failures must become runtime status updates, never terminal-buffer error lines.",
+  },
+  {
+    ok: /function isTransientAttachError/.test(terminalCanvas) &&
+      /TRANSIENT_ATTACH_RETRY_DELAYS_MS/.test(terminalCanvas) &&
+      /attachWithRetry/.test(terminalCanvas) &&
+      /Terminal attach failed:/.test(terminalCanvas) === false,
+    message: "Canvas terminal attach must retry transient resource failures and render failures as runtime chrome, not terminal text.",
   },
   {
     ok: /updateTerminalRuntime/.test(terminalComponent) &&

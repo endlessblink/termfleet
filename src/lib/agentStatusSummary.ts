@@ -122,16 +122,17 @@ function shellCommandSummary(input: AgentStatusSummaryInput) {
   const grep = quotedFlagValue(command, "-g") ?? quotedFlagValue(command, "--grep");
   const fileName = fileNameFromCommand(command);
   if (/\bplaywright\s+test\b/i.test(command)) {
+    const target = fileName ?? "Playwright suite";
     return {
-      task: grep ? `Playwright: ${grep}` : "Playwright test",
-      now: fileName ?? "Running Playwright",
+      task: "Playwright test",
+      now: grep ? `${target} · grep: ${grep}` : `Running ${target}`,
     };
   }
 
   const script = command.match(/\b(?:npm|pnpm|yarn)\s+(?:run\s+)?([^\s]+)/i)?.[1];
   return {
-    task: script ? `Running ${script}` : "Running tests",
-    now: fileName ?? command.replace(/^[›$#\s]+/, "").slice(0, 90),
+    task: script ? `Running ${script}` : "Running command",
+    now: fileName ? `Target: ${fileName}` : command.replace(/^[›$#\s]+/, "").slice(0, 90),
   };
 }
 
@@ -215,6 +216,8 @@ function pathFromInput(input: AgentStatusSummaryInput) {
 }
 
 function fallbackNow(input: AgentStatusSummaryInput, task: string, status: AgentStatusLifecycle, commandSummary?: { now: string } | null) {
+  if (commandSummary?.now && !isNoisyActivity(commandSummary.now)) return commandSummary.now;
+
   const activity = cleanText(input.currentActivity);
   if (activity && !isNoisyActivity(activity)) return activity;
 
@@ -223,8 +226,6 @@ function fallbackNow(input: AgentStatusSummaryInput, task: string, status: Agent
 
   const summary = cleanText(input.lastSummary);
   if (summary && !isNoisyActivity(summary)) return summary;
-
-  if (commandSummary?.now && !isNoisyActivity(commandSummary.now)) return commandSummary.now;
 
   const transcriptNow = cleanText(inferTranscriptNow(transcriptLines(input), task));
   if (transcriptNow && !isNoisyActivity(transcriptNow)) return transcriptNow;
@@ -258,7 +259,7 @@ export function fallbackAgentStatusSummary(input: AgentStatusSummaryInput): Agen
     now: promptVisible && task === "Ready" ? "Awaiting command" : fallbackNow(input, task, status, commandSummary),
     status,
     provider: input.provider ?? "codex",
-    confidence: cleanText(input.currentActivity) && !isNoisyActivity(input.currentActivity) ? "medium" : "low",
+    confidence: commandSummary ? "high" : cleanText(input.currentActivity) && !isNoisyActivity(input.currentActivity) ? "medium" : "low",
     proof: cleanText(input.evidence),
     blocker: status === "blocked" ? cleanText(input.risk) ?? cleanText(input.lastSummary) : undefined,
     tasks: normalizeExtractedItems(extracted.tasks, "summary", excerpt),
@@ -328,6 +329,9 @@ export function displayAgentStatusSummary(
   persisted?: WorkstreamStatusSummary | null
 ): AgentStatusSummary {
   const fallback = fallbackAgentStatusSummary(input);
+  if (input.provider === "shell" && fallback.confidence === "high") {
+    return fallback;
+  }
   const task = cleanText(persisted?.task);
   const path = cleanText(persisted?.path);
   const now = cleanText(persisted?.now);

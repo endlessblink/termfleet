@@ -1,4 +1,4 @@
-import { CSSProperties, useCallback, useMemo, useRef, useState } from "react";
+import { CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   ArrowUpRight,
@@ -345,7 +345,7 @@ const styles: Record<string, CSSProperties> = {
   terminalStatusLayout: {
     minWidth: 0,
     display: "grid",
-    gridTemplateColumns: "minmax(0, 1fr) minmax(190px, 28%)",
+    gridTemplateColumns: "minmax(0, 1fr) minmax(240px, 30%)",
     gap: 10,
     alignItems: "start",
   },
@@ -718,7 +718,7 @@ const styles: Record<string, CSSProperties> = {
     cursor: "pointer",
   },
   taskPickerRowActive: {
-    borderColor: "color-mix(in srgb, var(--accent-live) 48%, var(--border-subtle))",
+    border: "1px solid color-mix(in srgb, var(--accent-live) 48%, var(--border-subtle))",
     background: "color-mix(in srgb, var(--accent-live) 10%, var(--surface-base))",
   },
   taskPickerTaskId: {
@@ -808,12 +808,12 @@ const styles: Record<string, CSSProperties> = {
     cursor: "pointer",
   },
   taskPickerPrimaryButton: {
-    borderColor: "color-mix(in srgb, var(--accent-live) 52%, var(--border-subtle))",
+    border: "1px solid color-mix(in srgb, var(--accent-live) 52%, var(--border-subtle))",
     background: "color-mix(in srgb, var(--accent-live) 13%, var(--surface-base))",
     color: "var(--accent-live)",
   },
   taskPickerDangerButton: {
-    borderColor: "color-mix(in srgb, var(--accent-danger) 42%, var(--border-subtle))",
+    border: "1px solid color-mix(in srgb, var(--accent-danger) 42%, var(--border-subtle))",
     color: "var(--accent-danger)",
   },
   taskPickerEmpty: {
@@ -868,7 +868,7 @@ const styles: Record<string, CSSProperties> = {
     flex: 1,
     minHeight: 0,
     display: "grid",
-    gridTemplateColumns: "minmax(0, 1fr) minmax(210px, 25%)",
+    gridTemplateColumns: "minmax(0, 1fr) minmax(280px, 32%)",
     background: "var(--surface-sunken)",
     overflow: "hidden",
   },
@@ -911,6 +911,13 @@ const styles: Record<string, CSSProperties> = {
     borderRadius: 2,
     border: "1px solid color-mix(in srgb, var(--accent-live) 70%, var(--border-subtle))",
     background: "color-mix(in srgb, var(--accent-live) 16%, transparent)",
+  },
+  terminalBodyTaskTitle: {
+    minWidth: 0,
+    color: "var(--text-primary)",
+    fontSize: 12,
+    fontWeight: 500,
+    lineHeight: 1.25,
   },
   liveTerminalBody: {
     flex: "1 1 auto",
@@ -1434,7 +1441,7 @@ const MAP_TERMINAL_RENDER_SCALE = 2;
 // Viewport culling: cap how many terminal nodes mount a full live renderer at
 // once. Off-screen / over-cap nodes fall back to the cheap DOM snapshot preview
 // (TerminalMapPreview). The selected node and the active tab's node are always
-// live, so the user's work surface always streams. See computeLiveNodeIds.
+// live, so the user's work surface always streams.
 const MAX_LIVE_TERMINALS = 24;
 // Inflate the visible rect (canvas-space px) so nodes warm up just before they
 // scroll into view, avoiding a blank flash on pan.
@@ -1463,13 +1470,13 @@ function TerminalBodyTaskSidebar({
   rows,
   testIdPrefix,
   ariaLabel,
+  emptyText,
 }: {
   rows: Array<{ id: string; task: string; state: string; next: string }>;
   testIdPrefix: "canvas-terminal" | "canvas-agent";
   ariaLabel: string;
+  emptyText: string;
 }) {
-  if (rows.length === 0) return null;
-
   return (
     <aside
       style={styles.terminalBodyTaskSidebar}
@@ -1481,56 +1488,60 @@ function TerminalBodyTaskSidebar({
         <span>Tasks</span>
         <span>{rows.length}</span>
       </div>
-      <div style={styles.terminalBodyTaskList}>
-        {rows.slice(0, 5).map((task) => (
-          <div
-            key={task.id}
-            style={styles.terminalBodyTaskRow}
-            data-testid={`${testIdPrefix}-task-row`}
-            title={`${task.task} · ${task.state} · Next: ${task.next}`}
-          >
-            <span
-              style={{
-                ...styles.terminalBodyTaskMarker,
-                background: task.state === "Done"
-                  ? "var(--accent-live)"
-                  : "color-mix(in srgb, var(--surface-base) 90%, transparent)",
-              }}
-              aria-hidden="true"
-            />
-            <span style={{ minWidth: 0 }}>
-              <div style={styles.agentTaskTitle}>{task.task}</div>
-              <div style={styles.agentTaskMeta}>
-                <span data-testid={`${testIdPrefix}-task-state`}>{task.state}</span>
-                <span style={{ color: "var(--text-tertiary)" }}>·</span>
-                <span style={styles.agentTaskNext} data-testid={`${testIdPrefix}-task-next`}>
-                  Next: {task.next}
-                </span>
-              </div>
-            </span>
-          </div>
-        ))}
-        {rows.length > 5 && (
-          <div style={{ color: "var(--text-tertiary)", fontSize: 10 }}>
-            +{rows.length - 5} more tasks
-          </div>
-        )}
-      </div>
+      {rows.length === 0 ? (
+        <div
+          data-testid={`${testIdPrefix}-task-empty`}
+          style={{
+            color: "var(--text-secondary)",
+            fontSize: 11,
+            lineHeight: 1.35,
+          }}
+        >
+          {emptyText}
+        </div>
+      ) : (
+        <div style={styles.terminalBodyTaskList}>
+          {rows.slice(0, 5).map((task) => (
+            <div
+              key={task.id}
+              style={styles.terminalBodyTaskRow}
+              data-testid={`${testIdPrefix}-task-row`}
+              title={`${task.task} · ${task.state} · Next: ${task.next}`}
+            >
+              <span
+                style={{
+                  ...styles.terminalBodyTaskMarker,
+                  background: task.state === "Done"
+                    ? "var(--accent-live)"
+                    : "color-mix(in srgb, var(--surface-base) 90%, transparent)",
+                }}
+                aria-hidden="true"
+              />
+              <span style={{ minWidth: 0 }}>
+                <div style={styles.terminalBodyTaskTitle}>{task.task}</div>
+                <div style={styles.agentTaskMeta}>
+                  <span data-testid={`${testIdPrefix}-task-state`}>{task.state}</span>
+                  <span style={{ color: "var(--text-tertiary)" }}>·</span>
+                  <span style={styles.agentTaskNext} data-testid={`${testIdPrefix}-task-next`}>
+                    Next: {task.next}
+                  </span>
+                </div>
+              </span>
+            </div>
+          ))}
+          {rows.length > 5 && (
+            <div style={{ color: "var(--text-tertiary)", fontSize: 10 }}>
+              +{rows.length - 5} more tasks
+            </div>
+          )}
+        </div>
+      )}
     </aside>
   );
 }
 
 function recoveryPromptFor(workstream?: Tab["workstream"]) {
   return `Recover ${workstreamLabel(workstream?.provider)} agent: inspect the failure output, summarize the root cause, and propose the next command.`;
-}
-
-function snapshotText(snapshot?: GridSnapshot) {
-  if (!snapshot?.cells.length) return undefined;
-  const lines = snapshot.cells
-    .map((row) => row.map((cell) => cell.c && cell.c !== "\u0000" ? cell.c : " ").join("").trimEnd())
-    .map((line) => line.trim())
-    .filter(Boolean);
-  return lines.slice(-24).join("\n") || undefined;
 }
 
 type ResizeDirection = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
@@ -1686,7 +1697,7 @@ function CanvasNodeView({
   node: CanvasNode;
   // Whether this terminal node mounts a full live renderer. When false (off
   // screen / over the live cap) it shows the cheap snapshot preview instead.
-  // Computed once per render by the parent (see computeLiveNodeIds).
+  // Computed once per render by the parent live-node set.
   live: boolean;
   focusNode: (node: CanvasNode, zoom: number) => void;
   terminalPreview?: TerminalPreviewEntry;
@@ -1740,11 +1751,10 @@ function CanvasNodeView({
         boxShadow: "inset 0 1px 0 color-mix(in srgb, #ffffff 5%, transparent)",
       }
     : undefined;
-  // Show the cheap snapshot preview when zoomed out OR when this node is not in
-  // the live set (off screen / over the cap). The full TerminalComponent mounts
-  // only for readable-zoom, live nodes — bounding live renderers at scale.
-  const showTerminalPreview =
-    node.type === "terminal" && (zoom < READABLE_TERMINAL_ZOOM || !live);
+  // Below readable zoom, show the cheap character preview. At readable zoom,
+  // the parent live set decides whether the full renderer should mount.
+  const showTerminalPreview = node.type === "terminal" && zoom < READABLE_TERMINAL_ZOOM;
+  const shouldMountTerminal = node.type === "terminal" && live && !showTerminalPreview;
 
   const activateTerminalNode = useCallback(() => {
     selectCanvasNode(node.id);
@@ -1927,7 +1937,6 @@ function CanvasNodeView({
     nodeTitle: node.title,
   });
   const terminalStatusSummary = linkedTerminal?.statusSummary;
-  const terminalVisibleTranscript = snapshotText(terminalPreview?.snapshot);
   const terminalDisplaySummary = getDisplaySummary({
     mission: "Terminal",
     provider: "shell",
@@ -1941,7 +1950,7 @@ function CanvasNodeView({
     cwd: liveTerminalRoot,
     cwdLabel: pathTail(liveTerminalRoot),
     currentActivity: terminalActivity,
-    terminalOutput: [linkedTerminal?.terminalOutput, terminalVisibleTranscript].filter(Boolean).join("\n"),
+    terminalOutput: linkedTerminal?.terminalOutput,
   }, terminalStatusSummary);
   const terminalHeaderTitle = terminalDisplaySummary.task === "Ready" ? terminalTitle : terminalDisplaySummary.task;
   const terminalHeaderPath = terminalDisplaySummary.path;
@@ -2230,7 +2239,7 @@ function CanvasNodeView({
         onActivate={activateTerminalNode}
         onOpen={openLinkedTerminal}
       />
-    ) : node.type === "terminal" ? (
+    ) : shouldMountTerminal ? (
       <TerminalComponent
         key={`${terminalTabId}-${terminalPaneId}-${workstream?.generation ?? 0}`}
         tabId={terminalTabId}
@@ -2251,6 +2260,17 @@ function CanvasNodeView({
         // must reflow to the node and stay readable instead of showing a frozen,
         // scaled-down projection of a larger split-pane grid.
         mapProjection={false}
+      />
+    ) : node.type === "terminal" ? (
+      <TerminalMapPreview
+        title={terminalTitle}
+        meta={pathTail(liveTerminalRoot)}
+        status={linkedTerminal?.status}
+        activity={terminalHeaderHasUsefulNow ? terminalHeaderSummarySignal : undefined}
+        ptyCount={linkedTab?.terminals.length ?? 0}
+        preview={terminalPreview}
+        onActivate={activateTerminalNode}
+        onOpen={openLinkedTerminal}
       />
     ) : node.type === "preview" ? (
       <LocalhostPreview
@@ -2878,7 +2898,7 @@ function CanvasNodeView({
         style={
           node.type === "terminal"
             ? {
-                ...(terminalBodyTasks.length > 0 ? styles.terminalBodyWithTasks : styles.terminalBody),
+                ...styles.terminalBodyWithTasks,
                 ...styles.liveTerminalBody,
               }
             : node.type === "note"
@@ -2894,8 +2914,10 @@ function CanvasNodeView({
         onClick={node.type === "terminal" ? (event) => event.stopPropagation() : undefined}
         onWheel={node.type === "terminal" ? (event) => event.stopPropagation() : undefined}
       >
-        {node.type === "terminal" && workstream?.kind === "agent" ? (
-          <div style={styles.agentCockpit}>
+        {node.type === "terminal" ? (
+          <div style={styles.terminalBodyTaskContent} data-testid="canvas-terminal-task-content">
+            {workstream?.kind === "agent" ? (
+              <div style={styles.agentCockpit}>
             <div style={styles.agentMissionPanel} data-testid="agent-cockpit-panel">
               <div style={styles.agentMissionHeader}>
                 <span style={{ minWidth: 0 }}>
@@ -3187,16 +3209,23 @@ function CanvasNodeView({
                 </div>
               </details>
             </div>
-            <div className="agent-terminal-slot" style={styles.agentTerminalSlot}>{body}</div>
+                <div className="agent-terminal-slot" style={styles.agentTerminalSlot}>{body}</div>
+              </div>
+            ) : (
+              body
+            )}
           </div>
         ) : (
           body
         )}
-        {node.type === "terminal" && terminalBodyTasks.length > 0 && (
+        {node.type === "terminal" && (
           <TerminalBodyTaskSidebar
             rows={terminalBodyTasks}
             testIdPrefix={terminalBodyTaskPrefix}
             ariaLabel={workstream?.kind === "agent" ? "Agent terminal tasks" : "Terminal tasks"}
+            emptyText={detectedLaneTaskId
+              ? `No checklist found for ${detectedLaneTaskId}. Add Acceptance bullets in MASTER_PLAN.md to show done and not-done tasks.`
+              : "No lane task list is bound to this terminal yet."}
           />
         )}
       </div>
@@ -3224,6 +3253,7 @@ function CanvasNodeView({
 export function MagicCanvas() {
   const canvasState = useWorkspaceStore((state) => state.canvasState);
   const tabs = useWorkspaceStore((state) => state.tabs);
+  const activeTabId = useWorkspaceStore((state) => state.activeTabId);
   const setActiveTab = useWorkspaceStore((state) => state.setActiveTab);
   const addCanvasNode = useWorkspaceStore((state) => state.addCanvasNode);
   const updateCanvasNode = useWorkspaceStore((state) => state.updateCanvasNode);
@@ -3235,6 +3265,87 @@ export function MagicCanvas() {
   const [fileIndex, setFileIndex] = useState(0);
   const [terminalPreviews, setTerminalPreviews] = useState<Record<string, TerminalPreviewEntry>>({});
   const [selectionBox, setSelectionBox] = useState<SelectionBox | null>(null);
+  // --- Viewport culling: bound how many terminal nodes mount a live renderer ---
+  // Measured size of the map viewport, used to project the visible canvas rect.
+  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
+  // Recency of last-live, per node id, for LRU/hysteresis when over the cap.
+  const liveRecencyRef = useRef<Map<string, number>>(new Map());
+  const liveTickRef = useRef(0);
+
+  useEffect(() => {
+    const el = shellRef.current;
+    if (!el) return;
+    const apply = () =>
+      setContainerSize({ width: el.clientWidth, height: el.clientHeight });
+    apply();
+    const observer = new ResizeObserver(apply);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  const { viewport, nodes, selectedNodeId, selectedNodeIds } = canvasState;
+  const liveNodeIds = useMemo(() => {
+    const live = new Set<string>();
+    // Below readable zoom every terminal already renders the cheap DOM preview,
+    // so no live renderers are mounted regardless — nothing to cull.
+    if (viewport.zoom < READABLE_TERMINAL_ZOOM) return live;
+
+    const selectedSet = new Set(
+      selectedNodeIds ?? (selectedNodeId ? [selectedNodeId] : []),
+    );
+    const { x, y, zoom } = viewport;
+    const { width: w, height: h } = containerSize;
+    // Invert the stage transform to get the visible rect in canvas space, then
+    // inflate by the overscan so nodes warm up just before scrolling into view.
+    const viewLeft = -x / zoom - CULL_OVERSCAN_PX;
+    const viewTop = -y / zoom - CULL_OVERSCAN_PX;
+    const viewRight = (w - x) / zoom + CULL_OVERSCAN_PX;
+    const viewBottom = (h - y) / zoom + CULL_OVERSCAN_PX;
+
+    const recency = liveRecencyRef.current;
+    const alwaysLive: string[] = [];
+    const candidates: string[] = [];
+    for (const node of nodes) {
+      if (node.type !== "terminal") continue;
+      // The selected node and the active tab's node are the user's work surface
+      // — keep them streaming even if off screen.
+      const isAlwaysLive =
+        selectedSet.has(node.id) ||
+        (node.terminalTabId != null && node.terminalTabId === activeTabId);
+      const intersects =
+        w > 0 &&
+        h > 0 &&
+        node.x < viewRight &&
+        node.x + node.width > viewLeft &&
+        node.y < viewBottom &&
+        node.y + node.height > viewTop;
+      if (isAlwaysLive) alwaysLive.push(node.id);
+      else if (intersects) candidates.push(node.id);
+    }
+
+    for (const id of alwaysLive) live.add(id);
+    const remaining = Math.max(0, MAX_LIVE_TERMINALS - live.size);
+    if (candidates.length <= remaining) {
+      for (const id of candidates) live.add(id);
+    } else {
+      // Over the cap: keep the most-recently-live candidates (hysteresis avoids
+      // dropping a node that just streamed while panning).
+      candidates
+        .sort((a, b) => (recency.get(b) ?? 0) - (recency.get(a) ?? 0))
+        .slice(0, remaining)
+        .forEach((id) => live.add(id));
+    }
+    return live;
+  }, [nodes, viewport, containerSize, selectedNodeId, selectedNodeIds, activeTabId]);
+
+  // Advance recency for currently-live nodes (used as hysteresis next compute).
+  useEffect(() => {
+    const recency = liveRecencyRef.current;
+    for (const id of liveNodeIds) {
+      liveTickRef.current += 1;
+      recency.set(id, liveTickRef.current);
+    }
+  }, [liveNodeIds]);
   const selectionStartRef = useRef<{ clientX: number; clientY: number; canvasX: number; canvasY: number } | null>(null);
   // Right-click "create here" menu. Screen coords place the menu; canvas coords
   // drop the new node where the cursor is.
@@ -4908,6 +5019,7 @@ export function MagicCanvas() {
           <CanvasNodeView
             key={node.id}
             node={node}
+            live={liveNodeIds.has(node.id)}
             focusNode={centerNode}
             terminalPreview={terminalPreviews[node.id]}
             onTerminalSnapshot={updateTerminalPreview}

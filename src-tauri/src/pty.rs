@@ -30,6 +30,12 @@ const RESTORE_NORMALIZE_SEQUENCE: &str = "\x1b[?1049l\x1b[?2004l\x1b[0m\r\n";
 /// fast PTY dump doesn't rewrite the (≤200KB) file on every read.
 const PERSIST_FLUSH_INTERVAL: Duration = Duration::from_millis(750);
 const MAX_SESSION_EVENTS: usize = 200;
+/// Stack size for each PTY's reader thread. The daemon owns one of these per
+/// live session, so at ~100 parallel terminals the default 2MB-per-thread stack
+/// would reserve ~200MB of address space for threads that only hold a 4KB read
+/// buffer plus a few Arc clones. A small fixed stack keeps the footprint flat as
+/// the number of terminals grows.
+const READER_THREAD_STACK_BYTES: usize = 256 * 1024;
 
 struct PtyEntry {
     master: Box<dyn MasterPty + Send>,
@@ -507,7 +513,10 @@ impl PtyManager {
         let reader_event_id = id.clone();
         let reader_pid = child_pid;
 
-        let reader_handle = std::thread::spawn(move || {
+        let reader_handle = std::thread::Builder::new()
+            .name(format!("pty-reader-{id}"))
+            .stack_size(READER_THREAD_STACK_BYTES)
+            .spawn(move || {
             let mut buf = [0u8; 4096];
             let end_event = loop {
                 if reader_stop_thread.load(Ordering::Relaxed) {
@@ -565,7 +574,8 @@ impl PtyManager {
                 );
                 push_session_event(&reader_events, event);
             }
-        });
+            })
+            .expect("spawn pty reader thread");
 
         // Store the PTY entry. A concurrent renderer may have created the same
         // stable session while this shell was launching; keep the first owner and

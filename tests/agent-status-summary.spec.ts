@@ -162,8 +162,9 @@ test("keeps Playwright shell summaries stable on the test identity", () => {
     confidence: "medium",
   });
 
-  expect(summary.task).toBe("Playwright: map shell header prefers summarized task path and now");
-  expect(summary.now).toBe("map-terminal-rendering.spec.ts");
+  expect(summary.task).toBe("Playwright test");
+  expect(summary.now).toBe("map-terminal-rendering.spec.ts · grep: map shell header prefers summarized task path and now");
+  expect(summary.confidence).toBe("high");
   expect(summary.task).not.toContain("Running 2 tests");
   expect(summary.now).not.toContain("stale");
 });
