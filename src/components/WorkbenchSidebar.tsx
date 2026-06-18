@@ -2593,32 +2593,88 @@ function SessionsPanel({
             {agentLane.extractedItems.length > 0 && (
               <div style={styles.agentLaneList} aria-label="Extracted cockpit objects">
                 {agentLane.extractedItems.slice(0, 4).map((item) => (
-                  <button
-                    key={`${item.tabId}-${item.kind}-${item.at}-${item.text}`}
-                    type="button"
-                    style={styles.agentLaneItem}
+                  <div
+                    key={`${item.tabId}-${item.objectId}`}
+                    style={{ ...styles.agentLaneItem, gridTemplateColumns: "minmax(0, 1fr) auto", cursor: "default" }}
                     data-testid="sidebar-agent-extracted-item"
-                    title={`${item.actionLabel} for ${item.title}`}
-                    onClick={() => {
-                      setActiveTab(item.tabId);
-                      if (item.request) {
-                        useWorkspaceStore.getState().queueWorkstreamInput(item.tabId, item.request, {
-                          source: "mission-control",
-                          label: "Request proof",
-                        });
-                      } else if (navigator.clipboard?.writeText) {
-                        void navigator.clipboard.writeText(item.brief);
-                      }
-                      setWorkspaceMode("split");
-                    }}
+                    data-review-state={item.reviewState}
+                    title={`${item.label} ${item.reviewState} for ${item.title}`}
                   >
-                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {item.actionLabel}
+                    <span style={{ minWidth: 0 }}>
+                      <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block" }}>
+                        {item.label} · {item.reviewState}
+                      </span>
+                      <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                        {item.title} · {item.text} · {item.source}
+                      </span>
                     </span>
-                    <span style={{ ...styles.rowMeta, marginTop: 0 }}>
-                      {item.title} · {item.label} · {item.text} · {item.provenance}
+                    <span style={styles.serviceActions}>
+                      <button
+                        type="button"
+                        style={{ ...styles.serviceActionButton, width: "auto", minWidth: 42, padding: "0 6px" }}
+                        title={`Focus ${item.title}`}
+                        aria-label={`Focus ${item.label}`}
+                        onClick={() => {
+                          setActiveTab(item.tabId);
+                          setWorkspaceMode("split");
+                        }}
+                      >
+                        Focus
+                      </button>
+                      <button
+                        type="button"
+                        style={{ ...styles.serviceActionButton, width: "auto", minWidth: 40, padding: "0 6px" }}
+                        title={item.request ? `Request proof for ${item.text}` : `Convert ${item.label} to prompt`}
+                        aria-label={item.request ? `Request proof for ${item.label}` : `Convert ${item.label} to prompt`}
+                        onClick={() => {
+                          if (item.request) {
+                            useWorkspaceStore.getState().queueWorkstreamInput(item.tabId, item.request, {
+                              source: "mission-control",
+                              label: "Request proof",
+                            });
+                            useWorkspaceStore.getState().reviewCockpitObject(item.tabId, item.objectId, "proof-requested");
+                          } else {
+                            useWorkspaceStore.getState().queueWorkstreamInput(item.tabId, item.prompt, {
+                              source: "mission-control",
+                              label: "Object prompt",
+                            });
+                            useWorkspaceStore.getState().reviewCockpitObject(item.tabId, item.objectId, "prompted");
+                          }
+                        }}
+                      >
+                        {item.request ? "Proof" : "Prompt"}
+                      </button>
+                      <button
+                        type="button"
+                        style={{ ...styles.serviceActionButton, width: "auto", minWidth: 40, padding: "0 6px" }}
+                        title={`Copy ${item.label}`}
+                        aria-label={`Copy ${item.label}`}
+                        onClick={() => {
+                          if (navigator.clipboard?.writeText) void navigator.clipboard.writeText(item.brief);
+                        }}
+                      >
+                        Copy
+                      </button>
+                      <button
+                        type="button"
+                        style={{ ...styles.serviceActionButton, width: "auto", minWidth: 48, padding: "0 6px" }}
+                        title={`Accept ${item.text}`}
+                        aria-label={`Accept ${item.label}`}
+                        onClick={() => useWorkspaceStore.getState().reviewCockpitObject(item.tabId, item.objectId, "accepted")}
+                      >
+                        Accept
+                      </button>
+                      <button
+                        type="button"
+                        style={{ ...styles.serviceActionButton, width: "auto", minWidth: 52, padding: "0 6px" }}
+                        title={`Dismiss ${item.text}`}
+                        aria-label={`Dismiss ${item.label}`}
+                        onClick={() => useWorkspaceStore.getState().reviewCockpitObject(item.tabId, item.objectId, "dismissed")}
+                      >
+                        Dismiss
+                      </button>
                     </span>
-                  </button>
+                  </div>
                 ))}
                 {agentLane.extractedItems.length > 4 && (
                   <div
@@ -4282,33 +4338,89 @@ function MapPanel({
                 {agentLane.extractedItems.slice(0, 4).map((item) => {
                   const node = canvasState.nodes.find((candidate) => candidate.terminalTabId === item.tabId);
                   return (
-                    <button
-                      key={`${item.tabId}-${item.kind}-${item.at}-${item.text}`}
-                      type="button"
-                      style={styles.agentLaneItem}
+                    <div
+                      key={`${item.tabId}-${item.objectId}`}
+                      style={{ ...styles.agentLaneItem, gridTemplateColumns: "minmax(0, 1fr) auto", cursor: "default" }}
                       data-testid="map-agent-extracted-item"
-                      title={`${item.actionLabel} for ${item.title}`}
-                      onClick={() => {
-                        setActiveTab(item.tabId);
-                        if (item.request) {
-                          useWorkspaceStore.getState().queueWorkstreamInput(item.tabId, item.request, {
-                            source: "mission-control",
-                            label: "Request proof",
-                          });
-                        } else if (navigator.clipboard?.writeText) {
-                          void navigator.clipboard.writeText(item.brief);
-                        }
-                        setWorkspaceMode("canvas");
-                        if (node) focusCanvasNode(node);
-                      }}
+                      data-review-state={item.reviewState}
+                      title={`${item.label} ${item.reviewState} for ${item.title}`}
                     >
-                      <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {item.actionLabel}
+                      <span style={{ minWidth: 0 }}>
+                        <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block" }}>
+                          {item.label} · {item.reviewState}
+                        </span>
+                        <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                          {item.title} · {item.text} · {item.source}
+                        </span>
                       </span>
-                      <span style={{ ...styles.rowMeta, marginTop: 0 }}>
-                        {item.title} · {item.label} · {item.text} · {item.provenance}
+                      <span style={styles.serviceActions}>
+                        <button
+                          type="button"
+                          style={{ ...styles.serviceActionButton, width: "auto", minWidth: 42, padding: "0 6px" }}
+                          title={`Focus ${item.title}`}
+                          aria-label={`Focus ${item.label}`}
+                          onClick={() => {
+                            setActiveTab(item.tabId);
+                            setWorkspaceMode("canvas");
+                            if (node) focusCanvasNode(node);
+                          }}
+                        >
+                          Focus
+                        </button>
+                        <button
+                          type="button"
+                          style={{ ...styles.serviceActionButton, width: "auto", minWidth: 40, padding: "0 6px" }}
+                          title={item.request ? `Request proof for ${item.text}` : `Convert ${item.label} to prompt`}
+                          aria-label={item.request ? `Request proof for ${item.label}` : `Convert ${item.label} to prompt`}
+                          onClick={() => {
+                            if (item.request) {
+                              useWorkspaceStore.getState().queueWorkstreamInput(item.tabId, item.request, {
+                                source: "mission-control",
+                                label: "Request proof",
+                              });
+                              useWorkspaceStore.getState().reviewCockpitObject(item.tabId, item.objectId, "proof-requested");
+                            } else {
+                              useWorkspaceStore.getState().queueWorkstreamInput(item.tabId, item.prompt, {
+                                source: "mission-control",
+                                label: "Object prompt",
+                              });
+                              useWorkspaceStore.getState().reviewCockpitObject(item.tabId, item.objectId, "prompted");
+                            }
+                          }}
+                        >
+                          {item.request ? "Proof" : "Prompt"}
+                        </button>
+                        <button
+                          type="button"
+                          style={{ ...styles.serviceActionButton, width: "auto", minWidth: 40, padding: "0 6px" }}
+                          title={`Copy ${item.label}`}
+                          aria-label={`Copy ${item.label}`}
+                          onClick={() => {
+                            if (navigator.clipboard?.writeText) void navigator.clipboard.writeText(item.brief);
+                          }}
+                        >
+                          Copy
+                        </button>
+                        <button
+                          type="button"
+                          style={{ ...styles.serviceActionButton, width: "auto", minWidth: 48, padding: "0 6px" }}
+                          title={`Accept ${item.text}`}
+                          aria-label={`Accept ${item.label}`}
+                          onClick={() => useWorkspaceStore.getState().reviewCockpitObject(item.tabId, item.objectId, "accepted")}
+                        >
+                          Accept
+                        </button>
+                        <button
+                          type="button"
+                          style={{ ...styles.serviceActionButton, width: "auto", minWidth: 52, padding: "0 6px" }}
+                          title={`Dismiss ${item.text}`}
+                          aria-label={`Dismiss ${item.label}`}
+                          onClick={() => useWorkspaceStore.getState().reviewCockpitObject(item.tabId, item.objectId, "dismissed")}
+                        >
+                          Dismiss
+                        </button>
                       </span>
-                    </button>
+                    </div>
                   );
                 })}
                 {agentLane.extractedItems.length > 4 && (

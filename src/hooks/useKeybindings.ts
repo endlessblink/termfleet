@@ -8,6 +8,26 @@ function isTauriRuntime(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
 
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  const tagName = target.tagName.toLowerCase();
+  return tagName === "input" ||
+    tagName === "textarea" ||
+    tagName === "select" ||
+    target.isContentEditable;
+}
+
+function isGeneratedBlankTerminalTab(store: ReturnType<typeof useWorkspaceStore.getState>): boolean {
+  const tab = store.tabs.find((candidate) => candidate.id === store.activeTabId);
+  return Boolean(
+    tab &&
+    tab.title === "Terminal" &&
+    tab.terminals.length === 0 &&
+    !tab.initialCwd &&
+    !tab.workstream
+  );
+}
+
 async function toggleWindowFullscreen() {
   if (isTauriRuntime()) {
     const currentWindow = getCurrentWindow();
@@ -35,6 +55,23 @@ export function useKeybindings() {
         return;
       }
 
+      const store = useWorkspaceStore.getState();
+
+      if (e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey && e.key.toLowerCase() === "z") {
+        const terminalFocused = terminalHasKeyboardFocus();
+        const restoringAfterLastClose =
+          terminalFocused &&
+          store.recentlyClosed.length > 0 &&
+          isGeneratedBlankTerminalTab(store);
+        if (terminalFocused && !restoringAfterLastClose) return;
+        if (isEditableTarget(e.target) && !restoringAfterLastClose) return;
+        if (store.restoreLastClosed()) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+        return;
+      }
+
       // When a terminal owns the keyboard, every key belongs to the program
       // inside it (zellij, vim, the shell). Bail so the app never steals Ctrl+T,
       // Ctrl+W, Ctrl+Tab, Alt+Arrow, etc. from a focused terminal — that was the
@@ -42,8 +79,6 @@ export function useKeybindings() {
       // (sidebar, file explorer, command bar). Click out of the terminal to use
       // them, or use the on-screen affordances.
       if (terminalHasKeyboardFocus()) return;
-
-      const store = useWorkspaceStore.getState();
 
       // Ctrl+T — New tab
       if (e.ctrlKey && !e.shiftKey && e.key === "t") {

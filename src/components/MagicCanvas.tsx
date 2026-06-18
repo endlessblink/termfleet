@@ -33,6 +33,7 @@ import type { GridSnapshot } from "../lib/gridSnapshot";
 import type { Tab, TerminalRuntimeStatus } from "../lib/types";
 import { agentLaneAuthRetryText, agentLaneAuthRetryTitle, agentLaneCleanupRequestText, agentLaneCleanupRequestTitle, agentLaneCloseoutText, agentLaneCloseoutTitle, agentLaneHealthText, agentLaneInterruptText, agentLaneInterruptTitle, agentLaneMemoryRequestText, agentLaneMemoryRequestTitle, agentLaneProofRequestText, agentLaneProofRequestTitle, agentLaneRestartText, agentLaneRestartTitle, agentLaneRiskMitigationText, agentLaneRiskMitigationTitle, agentLaneStatusSweepText, agentLaneStatusSweepTitle, agentLaneStatusText, attentionBreakdownText, cleanupBreakdownText, closeoutBreakdownText, formatAgentLaneBrief, formatAgentMissionControlBrief, formatAgentRunBrief, handoffMemoryPromptForWorkstream, isActiveAgentWorkstream, isAgentReviewCloseoutReady, isAuthRetryableAgentWorkstream, isCleanupRequestableAgentWorkstream, isRestartableAgentWorkstream, isReviewItemCloseoutReady, isStaleAgentWorkstream, isolationBreakdownText, latestMissionControlAskText, missionBreakdownText, missionControlAlternateText, missionControlDispatchBreakdownText, needsAgentProofRequest, proofRequestPromptForWorkstream, providerBreakdownText, readinessBreakdownText, riskBreakdownText, statusCheckPromptForWorkstream, summarizeAgentLane } from "../lib/agentWorkstreamLane";
 import { agentStatusChipText, agentStatusSummaryFromWorkstream, getDisplaySummary } from "../lib/agentStatusSummary";
+import { agentTerminalTaskRows } from "../lib/agentTerminalTasks";
 import { workstreamActivityMeta, workstreamActivityText } from "../lib/workstreamActivity";
 import { formatWorkstreamBranch, formatWorkstreamIsolation, formatWorkstreamOpsContext } from "../lib/workstreamOpsContext";
 import { snapshotPreviewRows } from "../lib/snapshotPreviewRows";
@@ -454,6 +455,54 @@ const styles: Record<string, CSSProperties> = {
     background: "color-mix(in srgb, var(--surface-base) 82%, transparent)",
     color: "var(--text-secondary)",
     fontSize: 10,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  agentTaskPanel: {
+    minWidth: 0,
+    display: "grid",
+    gap: 6,
+    paddingTop: 7,
+    borderTop: "1px solid var(--border-subtle)",
+  },
+  agentTaskHeader: {
+    minWidth: 0,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+    color: "var(--text-secondary)",
+    fontSize: 10,
+    fontWeight: 500,
+    textTransform: "uppercase",
+    letterSpacing: 0,
+  },
+  agentTaskRow: {
+    minWidth: 0,
+    display: "grid",
+    gap: 3,
+  },
+  agentTaskTitle: {
+    minWidth: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    color: "var(--text-primary)",
+    fontSize: 12,
+    fontWeight: 500,
+  },
+  agentTaskMeta: {
+    minWidth: 0,
+    display: "flex",
+    alignItems: "center",
+    gap: 5,
+    overflow: "hidden",
+    color: "var(--text-secondary)",
+    fontSize: 10,
+  },
+  agentTaskNext: {
+    minWidth: 0,
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
@@ -1261,6 +1310,16 @@ function CanvasNodeView({
   const selectedNodeIds = storedSelectedNodeIds ?? (selectedNodeId ? [selectedNodeId] : []);
   const selected = selectedNodeIds.includes(node.id) || selectedNodeId === node.id;
   const labelColor = node.type === "terminal" ? node.labelColor : undefined;
+  const labelStatusBlockStyle: CSSProperties | undefined = labelColor
+    ? {
+        padding: "8px 10px",
+        border: `1px solid color-mix(in srgb, ${labelColor} 30%, var(--border-subtle))`,
+        borderLeft: `3px solid ${labelColor}`,
+        borderRadius: "var(--radius-sm)",
+        background: `linear-gradient(90deg, color-mix(in srgb, ${labelColor} 15%, transparent), color-mix(in srgb, ${labelColor} 4%, transparent))`,
+        boxShadow: "inset 0 1px 0 color-mix(in srgb, #ffffff 5%, transparent)",
+      }
+    : undefined;
   const showTerminalPreview = node.type === "terminal" && zoom < READABLE_TERMINAL_ZOOM;
 
   const activateTerminalNode = useCallback(() => {
@@ -1499,6 +1558,9 @@ function CanvasNodeView({
   const agentStatusChip = workstream?.kind === "agent" && agentStatusSummary
     ? agentStatusChipText(workstream, agentStatusSummary)
     : undefined;
+  const agentTerminalTasks = workstream?.kind === "agent" && agentStatusSummary
+    ? agentTerminalTaskRows(workstream, agentStatusSummary)
+    : [];
   const nodeKind = workstream?.kind === "agent"
     ? "agent"
     : node.type === "terminal"
@@ -1861,7 +1923,8 @@ function CanvasNodeView({
         )}
         {node.type === "terminal" && agentStatusSummary ? (
           <div
-            style={styles.agentStatusBlock}
+            style={{ ...styles.agentStatusBlock, ...labelStatusBlockStyle }}
+            data-testid="canvas-agent-status-block"
             dir="auto"
             title={`${workspaceLabel} · ${agentStatusSummary.task} · ${agentStatusSummary.path} · ${agentStatusSummary.now}`}
             onMouseDown={onMouseDown}
@@ -1893,10 +1956,45 @@ function CanvasNodeView({
                 <span style={styles.agentStatusChip}>summary · {agentStatusSummary.confidence}</span>
               )}
             </div>
+            {agentTerminalTasks.length > 0 && (
+              <div
+                style={styles.agentTaskPanel}
+                data-testid="canvas-agent-task-sidebar"
+                aria-label="Agent terminal tasks"
+              >
+                <div style={styles.agentTaskHeader}>
+                  <span>Tasks</span>
+                  <span>{agentTerminalTasks.length}</span>
+                </div>
+                {agentTerminalTasks.slice(0, 3).map((task) => (
+                  <div
+                    key={task.id}
+                    style={styles.agentTaskRow}
+                    data-testid="canvas-agent-task-row"
+                    title={`${task.task} · ${task.state} · Next: ${task.next}`}
+                  >
+                    <div style={styles.agentTaskTitle}>{task.task}</div>
+                    <div style={styles.agentTaskMeta}>
+                      <span data-testid="canvas-agent-task-state">{task.state}</span>
+                      <span style={{ color: "var(--text-tertiary)" }}>·</span>
+                      <span style={styles.agentTaskNext} data-testid="canvas-agent-task-next">
+                        Next: {task.next}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+                {agentTerminalTasks.length > 3 && (
+                  <div style={{ color: "var(--text-tertiary)", fontSize: 10 }}>
+                    +{agentTerminalTasks.length - 3} more tasks
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         ) : node.type === "terminal" && workstream?.kind !== "agent" ? (
           <div
-            style={styles.terminalStatusBlock}
+            style={{ ...styles.terminalStatusBlock, ...labelStatusBlockStyle }}
+            data-testid="canvas-terminal-status-block"
             dir="auto"
             title={`${workspaceLabel} · ${terminalHeaderTitle} · ${terminalHeaderPath} · ${terminalHeaderSummarySignal}`}
             onMouseDown={onMouseDown}
@@ -3658,33 +3756,93 @@ export function MagicCanvas() {
               {agentLane.extractedItems.slice(0, 4).map((item) => {
                 const node = canvasState.nodes.find((candidate) => candidate.terminalTabId === item.tabId);
                 return (
-                  <button
-                    key={`${item.tabId}-${item.kind}-${item.at}-${item.text}`}
-                    type="button"
-                    className="magic-canvas-button"
-                    style={{ ...styles.agentLaneItem, background: "transparent", border: "none", padding: "3px 0", textAlign: "left", cursor: node ? "pointer" : "default" }}
+                  <div
+                    key={`${item.tabId}-${item.objectId}`}
+                    style={{ ...styles.agentLaneItem, background: "transparent", border: "none", padding: "3px 0", gridTemplateColumns: "minmax(0, 1fr) auto" }}
                     data-testid="canvas-agent-extracted-item"
-                    title={`${item.actionLabel} for ${item.title}`}
-                    onClick={() => {
-                      setActiveTab(item.tabId);
-                      if (item.request) {
-                        useWorkspaceStore.getState().queueWorkstreamInput(item.tabId, item.request, {
-                          source: "mission-control",
-                          label: "Request proof",
-                        });
-                      } else if (navigator.clipboard?.writeText) {
-                        void navigator.clipboard.writeText(item.brief);
-                      }
-                      if (node) centerNode(node, FOCUS_TERMINAL_ZOOM);
-                    }}
+                    data-review-state={item.reviewState}
+                    title={`${item.label} ${item.reviewState} for ${item.title}`}
                   >
-                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text-primary)" }}>
-                      {item.actionLabel}
+                    <span style={{ minWidth: 0 }}>
+                      <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block", color: "var(--text-primary)" }}>
+                        {item.label} · {item.reviewState}
+                      </span>
+                      <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block" }}>
+                        {item.title} · {item.text} · {item.source}
+                      </span>
                     </span>
-                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {item.title} · {item.label} · {item.text} · {item.provenance}
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
+                      <button
+                        type="button"
+                        className="magic-canvas-button"
+                        style={{ ...styles.agentLaneIconButton, width: "auto", minWidth: 42, padding: "0 6px" }}
+                        title={`Focus ${item.title}`}
+                        aria-label={`Focus ${item.label}`}
+                        onClick={() => {
+                          setActiveTab(item.tabId);
+                          if (node) centerNode(node, FOCUS_TERMINAL_ZOOM);
+                        }}
+                      >
+                        Focus
+                      </button>
+                      <button
+                        type="button"
+                        className="magic-canvas-button"
+                        style={{ ...styles.agentLaneIconButton, width: "auto", minWidth: 40, padding: "0 6px" }}
+                        title={item.request ? `Request proof for ${item.text}` : `Convert ${item.label} to prompt`}
+                        aria-label={item.request ? `Request proof for ${item.label}` : `Convert ${item.label} to prompt`}
+                        onClick={() => {
+                          if (item.request) {
+                            useWorkspaceStore.getState().queueWorkstreamInput(item.tabId, item.request, {
+                              source: "mission-control",
+                              label: "Request proof",
+                            });
+                            useWorkspaceStore.getState().reviewCockpitObject(item.tabId, item.objectId, "proof-requested");
+                          } else {
+                            useWorkspaceStore.getState().queueWorkstreamInput(item.tabId, item.prompt, {
+                              source: "mission-control",
+                              label: "Object prompt",
+                            });
+                            useWorkspaceStore.getState().reviewCockpitObject(item.tabId, item.objectId, "prompted");
+                          }
+                        }}
+                      >
+                        {item.request ? "Proof" : "Prompt"}
+                      </button>
+                      <button
+                        type="button"
+                        className="magic-canvas-button"
+                        style={{ ...styles.agentLaneIconButton, width: "auto", minWidth: 40, padding: "0 6px" }}
+                        title={`Copy ${item.label}`}
+                        aria-label={`Copy ${item.label}`}
+                        onClick={() => {
+                          if (navigator.clipboard?.writeText) void navigator.clipboard.writeText(item.brief);
+                        }}
+                      >
+                        Copy
+                      </button>
+                      <button
+                        type="button"
+                        className="magic-canvas-button"
+                        style={{ ...styles.agentLaneIconButton, width: "auto", minWidth: 48, padding: "0 6px" }}
+                        title={`Accept ${item.text}`}
+                        aria-label={`Accept ${item.label}`}
+                        onClick={() => useWorkspaceStore.getState().reviewCockpitObject(item.tabId, item.objectId, "accepted")}
+                      >
+                        Accept
+                      </button>
+                      <button
+                        type="button"
+                        className="magic-canvas-button"
+                        style={{ ...styles.agentLaneIconButton, width: "auto", minWidth: 52, padding: "0 6px" }}
+                        title={`Dismiss ${item.text}`}
+                        aria-label={`Dismiss ${item.label}`}
+                        onClick={() => useWorkspaceStore.getState().reviewCockpitObject(item.tabId, item.objectId, "dismissed")}
+                      >
+                        Dismiss
+                      </button>
                     </span>
-                  </button>
+                  </div>
                 );
               })}
               {agentLane.extractedItems.length > 4 && (

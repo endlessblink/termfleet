@@ -1,4 +1,5 @@
-import type { Tab, WorkstreamExtractedItem, WorkstreamIsolationMode, WorkstreamMetadata, WorktreeCleanupStatus } from "./types";
+import type { Tab, WorkstreamCockpitObject, WorkstreamCockpitObjectKind, WorkstreamIsolationMode, WorkstreamMetadata, WorktreeCleanupStatus } from "./types";
+import { mergeCockpitObjectsFromExtractedItems } from "./workstreamExtraction";
 import { workstreamActivityMeta, workstreamActivityText } from "./workstreamActivity";
 import { formatWorkstreamBranch, formatWorkstreamIsolation, formatWorkstreamOpsContext, pathLabel } from "./workstreamOpsContext";
 
@@ -219,16 +220,24 @@ export interface AgentLaneSummary {
     brief: string;
   }[];
   extractedItems: {
+    objectId: string;
     tabId: string;
     title: string;
-    kind: "task" | "blocker" | "evidence" | "next-action";
+    kind: WorkstreamCockpitObjectKind;
     label: string;
     actionLabel: string;
     text: string;
-    provenance: WorkstreamExtractedItem["provenance"];
+    status: WorkstreamCockpitObject["status"];
+    reviewState: WorkstreamCockpitObject["reviewState"];
+    source: WorkstreamCockpitObject["source"];
+    provenance: WorkstreamCockpitObject["source"];
     excerpt: string;
     at: number;
+    createdAt: number;
+    updatedAt: number;
+    resolvedAt?: number;
     brief: string;
+    prompt: string;
     request?: string;
   }[];
   total: number;
@@ -848,18 +857,23 @@ function recoveryPromptForWorkstream(workstream: WorkstreamMetadata) {
   return `Recover ${providerLabel(workstream.provider)} agent: inspect the failure output, summarize the root cause, and propose the next command.`;
 }
 
-function extractedProofRequestPrompt(item: WorkstreamExtractedItem, workstream: WorkstreamMetadata) {
+function extractedProofRequestPrompt(item: Pick<WorkstreamCockpitObject, "text" | "source" | "sourceExcerpt">, workstream: WorkstreamMetadata) {
   const mission = workstream.mission ?? workstream.prompt ?? "agent run";
-  return `Resolve extracted blocker for ${providerLabel(workstream.provider)} agent: verify whether this still blocks the work, provide exact evidence or artifact paths, and report the next concrete action. Mission: ${mission}. Blocker: ${item.text}. Source: ${item.provenance}. Excerpt: ${item.excerpt}.`;
+  return `Resolve extracted blocker for ${providerLabel(workstream.provider)} agent: verify whether this still blocks the work, provide exact evidence or artifact paths, and report the next concrete action. Mission: ${mission}. Blocker: ${item.text}. Source: ${item.source}. Excerpt: ${item.sourceExcerpt}.`;
+}
+
+function extractedPromptForObject(item: Pick<WorkstreamCockpitObject, "kind" | "text" | "source" | "sourceExcerpt">, workstream: WorkstreamMetadata) {
+  const mission = workstream.mission ?? workstream.prompt ?? "agent run";
+  return `Follow up on extracted ${item.kind} for ${providerLabel(workstream.provider)} agent. Mission: ${mission}. Item: ${item.text}. Source: ${item.source}. Excerpt: ${item.sourceExcerpt}.`;
 }
 
 function extractedLaneItem(
   tab: Tab,
   workstream: WorkstreamMetadata,
-  item: WorkstreamExtractedItem,
-  kind: AgentLaneSummary["extractedItems"][number]["kind"]
+  item: WorkstreamCockpitObject
 ): AgentLaneSummary["extractedItems"][number] {
   const title = workstream.mission ?? workstream.prompt ?? tab.title;
+  const kind = item.kind;
   const label =
     kind === "task" ? "Task" :
     kind === "blocker" ? "Blocker" :
@@ -871,18 +885,36 @@ function extractedLaneItem(
     kind === "evidence" ? "Copy proof" :
     "Copy next";
   return {
+    objectId: item.id,
     tabId: tab.id,
     title,
     kind,
     label,
     actionLabel,
     text: item.text,
-    provenance: item.provenance,
-    excerpt: item.excerpt,
-    at: item.at,
-    brief: `${title}: extracted ${label.toLowerCase()} - ${item.text} (${item.provenance})`,
+    status: item.status,
+    reviewState: item.reviewState,
+    source: item.source,
+    provenance: item.source,
+    excerpt: item.sourceExcerpt,
+    at: item.updatedAt,
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
+    resolvedAt: item.resolvedAt,
+    brief: `${title}: ${item.reviewState} ${label.toLowerCase()} - ${item.text} (${item.source})`,
+    prompt: extractedPromptForObject(item, workstream),
     request: kind === "blocker" ? extractedProofRequestPrompt(item, workstream) : undefined,
   };
+}
+
+function cockpitObjectsForWorkstream(tab: Tab, workstream: WorkstreamMetadata) {
+  if (workstream.cockpitObjects?.length) return workstream.cockpitObjects;
+  return mergeCockpitObjectsFromExtractedItems([], tab.id, {
+    task: workstream.extractedTasks,
+    blocker: workstream.extractedBlockers,
+    evidence: workstream.extractedEvidence,
+    "next-action": workstream.extractedNextActions,
+  }, workstream.statusSummaryUpdatedAt ?? workstream.lastActivityAt ?? workstream.createdAt);
 }
 
 export function statusCheckPromptForWorkstream(workstream: WorkstreamMetadata) {
@@ -1154,10 +1186,7 @@ export function summarizeAgentLane(tabs: Tab[], now = Date.now()): AgentLaneSumm
       nextCount: summary.nextCount + (workstream.nextAction?.trim() ? 1 : 0),
       extractedCount:
         summary.extractedCount +
-        (workstream.extractedTasks?.length ?? 0) +
-        (workstream.extractedBlockers?.length ?? 0) +
-        (workstream.extractedEvidence?.length ?? 0) +
-        (workstream.extractedNextActions?.length ?? 0),
+        (workstream.cockpitObjects?.length ?? cockpitObjectsForWorkstream(item.tab, workstream).length),
       active: summary.active + (active ? 1 : 0),
       waiting: summary.waiting + (waiting ? 1 : 0),
       blocked: summary.blocked + (blocked ? 1 : 0),
@@ -1383,13 +1412,10 @@ export function summarizeAgentLane(tabs: Tab[], now = Date.now()): AgentLaneSumm
       .sort((a, b) => b.at - a.at)
       .slice(0, 5),
     extractedItems: workstreams
-      .flatMap(({ tab, workstream }) => [
-        ...(workstream.extractedBlockers ?? []).map((item) => extractedLaneItem(tab, workstream, item, "blocker")),
-        ...(workstream.extractedNextActions ?? []).map((item) => extractedLaneItem(tab, workstream, item, "next-action")),
-        ...(workstream.extractedTasks ?? []).map((item) => extractedLaneItem(tab, workstream, item, "task")),
-        ...(workstream.extractedEvidence ?? []).map((item) => extractedLaneItem(tab, workstream, item, "evidence")),
-      ])
-      .sort((a, b) => b.at - a.at)
+      .flatMap(({ tab, workstream }) =>
+        cockpitObjectsForWorkstream(tab, workstream).map((item) => extractedLaneItem(tab, workstream, item))
+      )
+      .sort((a, b) => b.updatedAt - a.updatedAt || b.createdAt - a.createdAt)
       .slice(0, 8),
     total: 0,
     promptCount: 0,

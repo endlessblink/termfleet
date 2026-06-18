@@ -6,6 +6,7 @@ import {
   parseAgentStatusSummaryResponse,
 } from "../src/lib/agentStatusSummary";
 import { summarizeAgentStatus } from "../src/lib/agentStatusSummarizer";
+import { mergeCockpitObjectsFromExtractedItems } from "../src/lib/workstreamExtraction";
 
 test("parses strict LLM status JSON into visible agent status", () => {
   const fallback = fallbackAgentStatusSummary({
@@ -178,6 +179,42 @@ test("extracts reviewable cockpit objects from noisy terminal output without pro
     excerpt: expect.stringContaining("Task: persist retry evidence"),
   });
   expect(summary.tasks?.[0].sourceHash).toMatch(/^[0-9a-f]{8}$/);
+});
+
+test("deduplicates extracted cockpit objects while preserving review state", () => {
+  const first = mergeCockpitObjectsFromExtractedItems([], "tab-agent", {
+    task: [{
+      id: "summary:task-1",
+      text: "Persist retry evidence on the checkout report",
+      provenance: "summary",
+      at: 100,
+      excerpt: "Task: persist retry evidence on the checkout report",
+      sourceHash: "task-1",
+    }],
+  }, 100);
+  const accepted = [{ ...first[0], reviewState: "accepted" as const, status: "accepted" as const, resolvedAt: 125 }];
+  const merged = mergeCockpitObjectsFromExtractedItems(accepted, "tab-agent", {
+    task: [{
+      id: "summary:task-1",
+      text: "Persist retry evidence on the checkout report",
+      provenance: "summary",
+      at: 200,
+      excerpt: "Updated excerpt after another summary refresh",
+      sourceHash: "task-1",
+    }],
+  }, 200);
+
+  expect(merged).toHaveLength(1);
+  expect(merged[0]).toMatchObject({
+    id: "task:summary:task-1",
+    ownerTabId: "tab-agent",
+    kind: "task",
+    reviewState: "accepted",
+    status: "accepted",
+    resolvedAt: 125,
+    sourceExcerpt: "Updated excerpt after another summary refresh",
+    updatedAt: 200,
+  });
 });
 
 test("display summary rejects persisted prompt or TUI chrome", () => {

@@ -32,6 +32,7 @@ test("keymap translates keys to VT sequences", async ({ page }) => {
       plainA: toHex(keyEventToBytes(ev("a"))),
       ctrlC: toHex(keyEventToBytes(ev("c", { ctrlKey: true }))),
       ctrlA: toHex(keyEventToBytes(ev("a", { ctrlKey: true }))),
+      ctrlZ: toHex(keyEventToBytes(ev("z", { ctrlKey: true }))),
       altB: toHex(keyEventToBytes(ev("b", { altKey: true }))),
       // Arrows: normal (CSI) vs application-cursor (SS3) vs modified.
       upNormal: toHex(keyEventToBytes(ev("ArrowUp"))),
@@ -57,6 +58,7 @@ test("keymap translates keys to VT sequences", async ({ page }) => {
   expect(out.plainA).toBe("97");
   expect(out.ctrlC).toBe("3"); // ETX
   expect(out.ctrlA).toBe("1"); // SOH
+  expect(out.ctrlZ).toBe("26"); // SUB / VSUSP
   expect(out.altB).toBe("27,98"); // ESC b
   expect(out.upNormal).toBe("27,91,65"); // ESC [ A
   expect(out.upApp).toBe("27,79,65"); // ESC O A

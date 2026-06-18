@@ -3,6 +3,7 @@ import type {
   CanvasNode,
   CanvasState,
   AgentProvider,
+  WorkstreamCockpitObjectReviewState,
   WorkstreamEvent,
   WorkstreamEventKind,
   WorkstreamStatus,
@@ -14,11 +15,13 @@ import type {
   WorkspaceUiState,
   WorkstreamLaunchProfile,
 } from "../lib/types";
+import { cockpitObjectReviewPatch, mergeCockpitObjectsFromExtractedItems } from "../lib/workstreamExtraction";
 import {
   splitNodeInTree,
   removeNodeFromTree,
   updateSizesInTree,
   getAllLeafIds,
+  getLeafNode,
   updatePaneCwdInTree,
   updatePanePreviewUrlInTree,
 } from "../lib/splitUtils";
@@ -113,6 +116,16 @@ type WorkstreamControlOptions = {
   label?: string;
 };
 
+type RecentlyClosedTerminal = {
+  kind: "terminal";
+  tab: Tab;
+  nodes: CanvasNode[];
+  activeTabId: string | null;
+  activeTerminalId: string | null;
+  selectedNodeId: string | null;
+  selectedNodeIds: string[];
+};
+
 function createWorkstreamEvent(input: WorkstreamEventInput): WorkstreamEvent {
   return {
     id: crypto.randomUUID(),
@@ -166,6 +179,7 @@ const DEFAULT_CANVAS_STATE: CanvasState = {
   viewport: { x: 0, y: 0, zoom: 1 },
 };
 const TERMINAL_MAP_NODE_SIZE = { width: 820, height: 460 };
+const MAX_RECENTLY_CLOSED_ITEMS = 10;
 const CANVAS_NODE_MIN_SIZE: Record<CanvasNode["type"], { width: number; height: number }> = {
   terminal: TERMINAL_MAP_NODE_SIZE,
   preview: { width: 620, height: 420 },
@@ -175,6 +189,59 @@ const CANVAS_NODE_MIN_SIZE: Record<CanvasNode["type"], { width: number; height: 
 
 function snapCanvasCoordinate(value: number) {
   return Math.round(value);
+}
+
+function cloneCanvasNode(node: CanvasNode): CanvasNode {
+  return {
+    ...node,
+    taskBinding: node.taskBinding ? { ...node.taskBinding } : undefined,
+  };
+}
+
+function tabForFreshRestore(tab: Tab): Tab {
+  return {
+    ...tab,
+    terminals: [],
+    splitLayout: structuredClone(tab.splitLayout),
+    workstream: tab.workstream ? structuredClone(tab.workstream) : undefined,
+  };
+}
+
+function recentlyClosedTerminalFor(state: WorkspaceState, tab: Tab): RecentlyClosedTerminal {
+  return {
+    kind: "terminal",
+    tab: {
+      ...tab,
+      splitLayout: structuredClone(tab.splitLayout),
+      workstream: tab.workstream ? structuredClone(tab.workstream) : undefined,
+      terminals: tab.terminals.map((terminal) => ({ ...terminal })),
+    },
+    nodes: state.canvasState.nodes
+      .filter((node) => node.terminalTabId === tab.id)
+      .map(cloneCanvasNode),
+    activeTabId: state.activeTabId,
+    activeTerminalId: state.activeTerminalId,
+    selectedNodeId: state.canvasState.selectedNodeId,
+    selectedNodeIds: [...(state.canvasState.selectedNodeIds ?? [])],
+  };
+}
+
+function pushRecentlyClosed(
+  items: RecentlyClosedTerminal[],
+  item: RecentlyClosedTerminal,
+): RecentlyClosedTerminal[] {
+  return [item, ...items.filter((candidate) => candidate.tab.id !== item.tab.id)]
+    .slice(0, MAX_RECENTLY_CLOSED_ITEMS);
+}
+
+function cockpitObjectsForReview(tab: Tab, at: number) {
+  if (!tab.workstream) return [];
+  return mergeCockpitObjectsFromExtractedItems(tab.workstream.cockpitObjects, tab.id, {
+    task: tab.workstream.extractedTasks,
+    blocker: tab.workstream.extractedBlockers,
+    evidence: tab.workstream.extractedEvidence,
+    "next-action": tab.workstream.extractedNextActions,
+  }, at);
 }
 
 function createDefaultTab(overrides: Partial<Tab> = {}): Tab {
@@ -209,6 +276,7 @@ interface WorkspaceState {
   liveCwds: Record<string, string>;
   workspaceUiState: WorkspaceUiState;
   canvasState: CanvasState;
+  recentlyClosed: RecentlyClosedTerminal[];
   // True while the durable on-disk layout is being loaded (only when
   // localStorage was empty/reset). Terminals must not mount until this clears,
   // or they would spawn against the default tab's id and then be swapped out.
@@ -220,12 +288,14 @@ interface WorkspaceState {
   hydrateRestoredWorkspace: (payload: { tabs: Tab[]; activeTabId: string | null }) => void;
   removeTab: (id: string) => void;
   closeTerminalSession: (id: string) => Promise<void>;
+  restoreLastClosed: () => boolean;
   setActiveTab: (id: string) => void;
   updateTab: (id: string, updates: Partial<Tab>) => void;
   queueWorkstreamInput: (tabId: string, text: string, options?: QueueWorkstreamInputOptions) => string | null;
   markWorkstreamInputSent: (tabId: string, inputId: string) => void;
   recordWorkstreamEvent: (tabId: string, event: WorkstreamEventInput) => void;
   recordWorkstreamMemory: (tabId: string, memory: string) => void;
+  reviewCockpitObject: (tabId: string, objectId: string, reviewState: WorkstreamCockpitObjectReviewState) => void;
   interruptWorkstream: (tabId: string) => Promise<void>;
   stopWorkstream: (tabId: string) => Promise<void>;
   restartWorkstream: (tabId: string, options?: WorkstreamControlOptions) => Promise<void>;
@@ -883,6 +953,12 @@ export async function closeActivePane() {
     return;
   }
 
+  const activePane = getLeafNode(tab.splitLayout, tab.activePaneId);
+  if (activePane?.type === "preview") {
+    store.closePane(tab.id, tab.activePaneId);
+    return;
+  }
+
   // Kill the PTY for this pane
   const paneTerminal = tab.terminals.find((t) => t.paneId === tab.activePaneId);
   if (paneTerminal) {
@@ -1062,6 +1138,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   liveCwds: {},
   workspaceUiState: normalizeWorkspaceUiState(persisted.workspaceUiState),
   canvasState: normalizeCanvasState(persisted.canvasState, restoredTabs),
+  recentlyClosed: [],
   hydrating: needsDiskHydration,
 
   // --- Tab actions ---
@@ -1184,8 +1261,75 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     const tab = get().tabs.find((candidate) => candidate.id === id);
     if (!tab) return;
 
+    set((state) => ({
+      recentlyClosed: pushRecentlyClosed(
+        state.recentlyClosed,
+        recentlyClosedTerminalFor(state, tab),
+      ),
+    }));
     await killPtys(tab.terminals.map((terminal) => terminal.id));
     get().removeTab(id);
+  },
+
+  restoreLastClosed: () => {
+    let restored = false;
+    set((state) => {
+      const [item, ...remainingClosed] = state.recentlyClosed;
+      if (!item) return state;
+
+      if (item.kind !== "terminal") {
+        return {
+          recentlyClosed: remainingClosed,
+        };
+      }
+
+      const restoredTab = tabForFreshRestore(item.tab);
+      const restoredNodes = item.nodes.length > 0
+        ? item.nodes
+        : [terminalNodeForTab(restoredTab, state.tabs.length)];
+      const restoredNodeIds = new Set(restoredNodes.map((node) => node.id));
+      const selectedNodeIds = item.selectedNodeIds.filter((id) => restoredNodeIds.has(id));
+      const selectedNodeId =
+        (item.selectedNodeId && restoredNodeIds.has(item.selectedNodeId))
+          ? item.selectedNodeId
+          : selectedNodeIds[0] ?? restoredNodes[0]?.id ?? state.canvasState.selectedNodeId;
+      const generatedBlankTab =
+        state.tabs.length === 1 &&
+        state.tabs[0].title === DEFAULT_TAB_TITLE &&
+        state.tabs[0].terminals.length === 0 &&
+        !state.tabs[0].initialCwd &&
+        !state.tabs[0].workstream;
+      const tabs = generatedBlankTab
+        ? [restoredTab]
+        : [
+            ...state.tabs.filter((tab) => tab.id !== restoredTab.id),
+            restoredTab,
+          ];
+
+      restored = true;
+      return {
+        recentlyClosed: remainingClosed,
+        tabs,
+        activeTabId: restoredTab.id,
+        activeTerminalId: null,
+        canvasState: normalizeCanvasState(
+          {
+            ...state.canvasState,
+            nodes: [
+              ...state.canvasState.nodes.filter((node) =>
+                node.terminalTabId !== restoredTab.id &&
+                !restoredNodeIds.has(node.id)
+              ),
+              ...restoredNodes,
+            ],
+            selectedNodeId,
+            selectedNodeIds: selectedNodeIds.length > 0 ? selectedNodeIds : selectedNodeId ? [selectedNodeId] : [],
+          },
+          tabs,
+        ),
+      };
+    });
+    return restored;
   },
 
   setActiveTab: (id: string) => {
@@ -1309,6 +1453,46 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
             }
           : tab
       ),
+    }));
+  },
+
+  reviewCockpitObject: (tabId: string, objectId: string, reviewState: WorkstreamCockpitObjectReviewState) => {
+    const reviewedAt = Date.now();
+    set((state) => ({
+      tabs: state.tabs.map((tab) => {
+        if (tab.id !== tabId || !tab.workstream) return tab;
+        const cockpitObjects = cockpitObjectsForReview(tab, reviewedAt);
+        const object = cockpitObjects.find((candidate) => candidate.id === objectId);
+        if (!object) return tab;
+        const updatedObject = cockpitObjectReviewPatch(object, reviewState, reviewedAt);
+        const label =
+          reviewState === "accepted" ? "Cockpit object accepted" :
+          reviewState === "dismissed" ? "Cockpit object dismissed" :
+          reviewState === "proof-requested" ? "Cockpit object proof requested" :
+          "Cockpit object reviewed";
+        return {
+          ...tab,
+          workstream: {
+            ...tab.workstream,
+            cockpitObjects: cockpitObjects.map((candidate) =>
+              candidate.id === objectId ? updatedObject : candidate
+            ),
+            currentActivity: label,
+            activityKind: reviewState === "dismissed" || reviewState === "accepted" ? "complete" : "waiting",
+            activitySource: "operator",
+            activityUpdatedAt: reviewedAt,
+            controlCount: (tab.workstream.controlCount ?? 0) + 1,
+            outcome: `${label}: ${object.text}`,
+            events: appendWorkstreamEvent(tab.workstream.events, {
+              kind: "control",
+              label,
+              detail: object.text,
+              status: tab.workstream.status,
+            }),
+            lastActivityAt: reviewedAt,
+          },
+        };
+      }),
     }));
   },
 

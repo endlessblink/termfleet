@@ -4,10 +4,11 @@ import { TerminalComponent } from "./Terminal";
 import { LocalhostPreview } from "./LocalhostPreview";
 import { useWorkspaceStore } from "../stores/workspace";
 import { splitActivePane, closeActivePane } from "../stores/workspace";
-import type { Tab, TerminalRuntimeStatus } from "../lib/types";
+import type { Tab, TerminalRuntimeStatus, WorkstreamMetadata, WorkstreamStatusSummary } from "../lib/types";
 import { pathTail, projectForTab } from "../lib/projectDisplay";
 import { agentStatusSummaryFromWorkstream, getDisplaySummary } from "../lib/agentStatusSummary";
 import { workstreamActivityText } from "../lib/workstreamActivity";
+import { agentTerminalTaskRows } from "../lib/agentTerminalTasks";
 import {
   calculatePaneBounds,
   calculateHandles,
@@ -38,6 +39,127 @@ const STATUS_COLORS: Record<TerminalRuntimeStatus, string> = {
   failed: "var(--accent-danger)",
   exited: "var(--text-secondary)",
 };
+
+function AgentTaskSidebar({
+  workstream,
+  summary,
+}: {
+  workstream: WorkstreamMetadata;
+  summary: WorkstreamStatusSummary;
+}) {
+  const rows = agentTerminalTaskRows(workstream, summary);
+  const visibleRows = rows.slice(0, 4);
+  const hiddenCount = Math.max(0, rows.length - visibleRows.length);
+
+  return (
+    <aside
+      data-testid="split-agent-task-sidebar"
+      aria-label="Agent terminal tasks"
+      style={{
+        width: "min(240px, 34%)",
+        minWidth: 176,
+        maxWidth: 260,
+        height: "100%",
+        display: "flex",
+        flexDirection: "column",
+        gap: 8,
+        padding: "10px 10px 11px",
+        borderLeft: "1px solid var(--border-subtle)",
+        background: "color-mix(in srgb, var(--surface-base) 72%, var(--surface-sunken))",
+        color: "var(--text-secondary)",
+        fontFamily: "var(--font-ui)",
+        overflow: "hidden",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 8,
+          minHeight: 18,
+        }}
+      >
+        <span style={{ color: "var(--text-primary)", fontSize: 11, fontWeight: 500 }}>
+          Tasks
+        </span>
+        <span style={{ color: "var(--text-tertiary)", fontSize: 10 }}>
+          {rows.length}
+        </span>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 7, minHeight: 0, overflow: "hidden" }}>
+        {visibleRows.map((row) => (
+          <div
+            key={row.id}
+            data-testid="split-agent-task-row"
+            title={`${row.task} · ${row.state} · Next: ${row.next}`}
+            style={{
+              display: "grid",
+              gap: 4,
+              minWidth: 0,
+              padding: "7px 0 8px",
+              borderTop: "1px solid var(--border-subtle)",
+            }}
+          >
+            <div
+              style={{
+                minWidth: 0,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                color: "var(--text-primary)",
+                fontSize: 12,
+                fontWeight: 500,
+              }}
+            >
+              {row.task}
+            </div>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                minWidth: 0,
+                color: "var(--text-secondary)",
+                fontSize: 10,
+              }}
+            >
+              <span
+                data-testid="split-agent-task-state"
+                style={{
+                  flexShrink: 0,
+                  color: row.state === "Blocked" ? "var(--accent-danger)" : row.state === "Waiting" ? "var(--accent-warning)" : "var(--text-secondary)",
+                }}
+              >
+                {row.state}
+              </span>
+              <span style={{ color: "var(--text-tertiary)" }}>·</span>
+              <span
+                data-testid="split-agent-task-next"
+                style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+              >
+                Next: {row.next}
+              </span>
+            </div>
+          </div>
+        ))}
+        {hiddenCount > 0 && (
+          <div
+            data-testid="split-agent-task-overflow"
+            style={{
+              paddingTop: 6,
+              borderTop: "1px solid var(--border-subtle)",
+              color: "var(--text-tertiary)",
+              fontSize: 10,
+            }}
+          >
+            +{hiddenCount} more tasks
+          </div>
+        )}
+      </div>
+    </aside>
+  );
+}
 
 // ── PaneToolbar ──────────────────────────────────────────────────────────────
 
@@ -1055,7 +1177,15 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
               )}
             </div>
             )}
-            <div style={{ flex: 1, minHeight: 0, minWidth: 0 }}>
+            <div
+              style={{
+                flex: 1,
+                minHeight: 0,
+                minWidth: 0,
+                display: isAgentPane && agentStatusSummary && !isPreviewPane ? "flex" : "block",
+              }}
+            >
+              <div style={{ flex: 1, minHeight: 0, minWidth: 0 }}>
               {isPreviewPane ? (
                 <LocalhostPreview
                   previewUrl={paneNode.previewUrl}
@@ -1096,6 +1226,10 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                     useWorkspaceStore.getState().markWorkstreamInputSent(tab.id, inputId)
                   }
                 />
+              )}
+              </div>
+              {isAgentPane && agentStatusSummary && tab.workstream?.kind === "agent" && !isPreviewPane && (
+                <AgentTaskSidebar workstream={tab.workstream} summary={agentStatusSummary} />
               )}
             </div>
           </div>

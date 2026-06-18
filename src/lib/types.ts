@@ -67,6 +67,9 @@ export type WorkstreamStatusSummaryLifecycle = "working" | "idle" | "waiting" | 
 export type WorkstreamStatusSummaryConfidence = "low" | "medium" | "high";
 export type WorkstreamStatusSummarySource = "fallback" | "process";
 export type WorkstreamExtractionProvenance = "terminal-output" | "structured-signal" | "operator-prompt" | "summary";
+export type WorkstreamCockpitObjectKind = "task" | "blocker" | "evidence" | "next-action";
+export type WorkstreamCockpitObjectStatus = "open" | "accepted" | "dismissed";
+export type WorkstreamCockpitObjectReviewState = "new" | "accepted" | "dismissed" | "prompted" | "proof-requested";
 
 export interface WorkstreamExtractedItem {
   id: string;
@@ -75,6 +78,21 @@ export interface WorkstreamExtractedItem {
   at: number;
   excerpt: string;
   sourceHash: string;
+}
+
+export interface WorkstreamCockpitObject {
+  id: string;
+  kind: WorkstreamCockpitObjectKind;
+  text: string;
+  status: WorkstreamCockpitObjectStatus;
+  reviewState: WorkstreamCockpitObjectReviewState;
+  source: WorkstreamExtractionProvenance;
+  sourceExcerpt: string;
+  sourceHash: string;
+  ownerTabId: string;
+  createdAt: number;
+  updatedAt: number;
+  resolvedAt?: number;
 }
 
 export interface WorkstreamStatusSummary {
@@ -143,6 +161,7 @@ export interface WorkstreamMetadata {
   extractedBlockers?: WorkstreamExtractedItem[];
   extractedEvidence?: WorkstreamExtractedItem[];
   extractedNextActions?: WorkstreamExtractedItem[];
+  cockpitObjects?: WorkstreamCockpitObject[];
   promptCount?: number;
   sentCount?: number;
   signalCount?: number;

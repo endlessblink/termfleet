@@ -53,6 +53,7 @@ were retired during consolidation.
 | TC-028     | Clarify the left operations rail into distinct Files, Sessions, Map, and Preview jobs                                                                                                                           | P1       | DONE (2026-06-18) | TC-021         |
 | TC-029     | Map terminal organization controls: right-click label colors, box-select terminals, and drag selected terminal groups while staying responsive with 100+ terminals                                              | P1       | DONE (2026-06-18) | TC-017         |
 | TC-030     | Orchestrator terminal lifecycle: parent terminal can spawn, track, and terminate child terminals when finished                                                                                                  | P1       | TODO              | TC-016, TC-017 |
+| TC-031     | Ctrl+Z restore for closed map terminals and non-destructive localhost preview closure                                                                                                                           | P1       | DONE (2026-06-18) | TC-017, TC-020 |
 
 ---
 
@@ -232,18 +233,35 @@ Acceptance:
   reviewable cockpit rows in the Sessions and Map agent lanes. Rows expose
   copy/focus/request-proof actions; blocker proof requests queue a
   mission-control prompt only after the operator clicks the row.
+- DONE: Promoted extracted rows into durable `cockpitObjects` with `id`, `kind`,
+  `status`, `source`, `ownerTabId`, `createdAt`, `updatedAt`, `resolvedAt`, and
+  `reviewState`. Summary refreshes update existing objects by stable source hash
+  instead of duplicating rows, while preserving accepted/dismissed/proof-requested
+  state.
+- DONE: Cockpit object rows expose explicit operator actions: focus, convert to
+  prompt, request proof for blockers, copy, accept, and dismiss. Accept/dismiss/
+  prompt/proof state is visible in the row and persisted through reload. Older
+  workstreams that only have legacy extracted arrays now materialize those rows
+  into durable `cockpitObjects` on first review action instead of showing
+  no-op controls.
 - DONE: Added a regression fixture where noisy terminal output plus a mission
   becomes concrete extracted work items, blockers, evidence, and next actions
   without surfacing raw prompt noise as the primary task.
 - DONE: Verification includes focused Playwright agent lane coverage and visual
   proof of the extracted tasks/next-actions lane. Current evidence:
-  `npx playwright test tests/agent-status-summary.spec.ts
+  `npx playwright test tests/agent-status-summary.spec.ts -g "deduplicates
+  extracted cockpit objects|extracts reviewable cockpit objects"
+  --reporter=line` passed 2/2, `npx playwright test
   tests/agent-workstream.spec.ts -g "agent lanes render extracted cockpit
-  objects|extracts reviewable cockpit objects|posts transcript"` passed 3/3,
-  `npm run verify:agent-status-summary` passed with
-  `TERMFLEET_AGENT_STATUS_SUMMARY_SERVER_OK`, and `npm run build` passed on
+  objects" --reporter=line` passed 1/1, and `npm run build` passed on
   2026-06-18. Screenshot evidence:
-  `/tmp/termfleet-tc-027-extracted-cockpit-objects.png`.
+  `test-results/agent-workstream-agent-lan-b1aea-icit-copy-and-proof-actions/tc-027-extracted-cockpit-objects.png`.
+- Current durable-object evidence: `npx playwright test
+  tests/agent-status-summary.spec.ts -g "deduplicates extracted cockpit
+  objects|extracts reviewable cockpit objects" --reporter=line` passed 2/2,
+  `npx playwright test tests/agent-workstream.spec.ts -g "agent lanes render
+  extracted cockpit objects" --reporter=line` passed, and `npm run build`
+  passed.
 
 ### TC-029: Map terminal organization controls
 
@@ -308,6 +326,37 @@ Acceptance:
   audit events and no ability to kill unrelated terminals.
 - TODO: Verification covers child spawn, status tracking, scoped termination,
   and daemon-owned PTY survival for unrelated sessions.
+
+### TC-031: Ctrl+Z restore and safe localhost preview close
+
+**Priority:** P1
+**Status:** DONE (2026-06-18)
+**Depends:** TC-017, TC-020
+
+Closing a terminal from the map is easy to do accidentally, so app-level
+`Ctrl+Z` should restore the most recently closed terminal/map item when app
+chrome owns focus. A focused terminal still owns `Ctrl+Z` as normal PTY input
+(`0x1a`, VSUSP/SIGTSTP). Localhost preview close is UI-only and must never kill
+the owning terminal.
+
+Acceptance:
+
+- DONE: Workspace state keeps a bounded in-memory stack of recently closed
+  terminal sessions and linked map nodes.
+- DONE: `Ctrl+Z` restores the most recently closed terminal session/map node
+  when focus is in app chrome, while editable fields and focused terminals keep
+  their normal key behavior.
+- DONE: Restored terminal sessions recreate the visible TermFleet context with a
+  fresh PTY, preserving title, cwd, split layout, map geometry, label color, and
+  task binding. Explicit close still kills the old foreground process.
+- DONE: Active preview-pane closure uses the pane close path without killing the
+  linked terminal PTY/session. Map/sidebar preview close remains non-destructive.
+- DONE: Regression coverage includes keymap `Ctrl+Z -> 0x1a`, app-level undo,
+  terminal passthrough, and preview-close safety. Evidence: `npx playwright test
+  tests/keymap.spec.ts tests/terminal-keyboard-passthrough.spec.ts
+  tests/localhost-preview.spec.ts tests/operations-rail.spec.ts
+  tests/map-terminal-rendering.spec.ts` passed 20/20, and `npm run build` passed
+  on 2026-06-18.
 
 ### TC-001: Freeze Terminal Cockpit target and visual rules
 

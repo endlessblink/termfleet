@@ -1,4 +1,10 @@
-import type { WorkstreamExtractedItem, WorkstreamExtractionProvenance } from "./types";
+import type {
+  WorkstreamCockpitObject,
+  WorkstreamCockpitObjectKind,
+  WorkstreamCockpitObjectReviewState,
+  WorkstreamExtractedItem,
+  WorkstreamExtractionProvenance,
+} from "./types";
 
 const MAX_EXTRACTED_ITEM_TEXT = 180;
 const MAX_EXTRACTED_EXCERPT = 240;
@@ -98,4 +104,88 @@ export function mergeExtractedItems(
     merged.push(persisted);
   }
   return merged.sort((a, b) => b.at - a.at).slice(0, limit);
+}
+
+export type ExtractedItemsByKind = Partial<Record<WorkstreamCockpitObjectKind, WorkstreamExtractedItem[] | undefined>>;
+
+function cockpitObjectId(kind: WorkstreamCockpitObjectKind, item: WorkstreamExtractedItem) {
+  return `${kind}:${item.provenance}:${item.sourceHash}`;
+}
+
+function cockpitObjectFromExtractedItem(
+  ownerTabId: string,
+  kind: WorkstreamCockpitObjectKind,
+  item: WorkstreamExtractedItem,
+  at: number,
+): WorkstreamCockpitObject {
+  const timestamp = item.at > 0 ? item.at : at;
+  return {
+    id: cockpitObjectId(kind, item),
+    kind,
+    text: item.text,
+    status: "open",
+    reviewState: "new",
+    source: item.provenance,
+    sourceExcerpt: item.excerpt,
+    sourceHash: item.sourceHash,
+    ownerTabId,
+    createdAt: timestamp,
+    updatedAt: at,
+  };
+}
+
+export function mergeCockpitObjectsFromExtractedItems(
+  existing: WorkstreamCockpitObject[] | undefined,
+  ownerTabId: string,
+  incoming: ExtractedItemsByKind,
+  at = Date.now(),
+  limit = 80
+) {
+  const objects = new Map<string, WorkstreamCockpitObject>();
+  for (const object of existing ?? []) {
+    objects.set(object.id, object);
+  }
+
+  for (const [kind, items] of Object.entries(incoming) as Array<[WorkstreamCockpitObjectKind, WorkstreamExtractedItem[] | undefined]>) {
+    for (const item of items ?? []) {
+      const next = cockpitObjectFromExtractedItem(ownerTabId, kind, item, at);
+      const previous = objects.get(next.id);
+      objects.set(next.id, previous
+        ? {
+            ...previous,
+            text: next.text,
+            sourceExcerpt: next.sourceExcerpt,
+            sourceHash: next.sourceHash,
+            source: next.source,
+            ownerTabId,
+            updatedAt: at,
+          }
+        : next
+      );
+    }
+  }
+
+  return [...objects.values()]
+    .sort((a, b) => b.updatedAt - a.updatedAt || b.createdAt - a.createdAt)
+    .slice(0, limit);
+}
+
+export function cockpitObjectReviewPatch(
+  object: WorkstreamCockpitObject,
+  reviewState: WorkstreamCockpitObjectReviewState,
+  at = Date.now()
+): WorkstreamCockpitObject {
+  const status =
+    reviewState === "accepted" ? "accepted" :
+    reviewState === "dismissed" ? "dismissed" :
+    object.status;
+  return {
+    ...object,
+    status,
+    reviewState,
+    updatedAt: at,
+    resolvedAt: reviewState === "accepted" || reviewState === "dismissed"
+      ? object.resolvedAt ?? at
+      : object.resolvedAt,
+  };
 }

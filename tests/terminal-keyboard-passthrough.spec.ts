@@ -87,6 +87,7 @@ test("zellij combos pass through to the PTY instead of being dropped", async ({ 
       // Ctrl+P (zellij pane mode) and Ctrl+W must also reach the shell.
       ctrlP: keyEventToBytes(mk({ key: "p", ctrlKey: true }), { appCursor: false }),
       ctrlW: keyEventToBytes(mk({ key: "w", ctrlKey: true }), { appCursor: false }),
+      ctrlZ: keyEventToBytes(mk({ key: "z", ctrlKey: true }), { appCursor: false }),
     };
   });
 
@@ -94,6 +95,7 @@ test("zellij combos pass through to the PTY instead of being dropped", async ({ 
   expect(bytes.shiftTab).toBe("\x1b[Z"); // back-tab
   expect(bytes.ctrlP).toBe("\x10"); // Ctrl+P
   expect(bytes.ctrlW).toBe("\x17"); // Ctrl+W
+  expect(bytes.ctrlZ).toBe("\x1a"); // Ctrl+Z / VSUSP
 });
 
 test("the REAL running app's global Ctrl+T handler yields to a focused terminal", async ({ page }) => {

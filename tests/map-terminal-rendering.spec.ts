@@ -181,6 +181,7 @@ test("terminal map labels can be recolored from the right-click menu", async ({ 
 
   await page.getByTestId("canvas-terminal-node-header-title").click({ button: "right" });
   await page.getByRole("menu", { name: "Terminal label color" }).getByRole("menuitem", { name: "Set terminal label color Amber" }).click();
+  await expect(page.getByTestId("canvas-terminal-status-block")).toHaveCSS("border-left-color", "rgb(212, 164, 79)");
 
   await expect.poll(async () => page.evaluate(() => {
     const store = (window as typeof window & {
@@ -506,6 +507,247 @@ test("workspace store supports multi-select canvas movement and label colors", a
   ]));
   expect(result.afterRemoveSelectedNodeId).toBe("node-a");
   expect(result.afterRemoveSelectedNodeIds).toEqual(["node-a"]);
+});
+
+test("Ctrl+Z restores the last closed terminal map session from app chrome", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+
+  await page.evaluate(async () => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => {
+          closeTerminalSession: (id: string) => Promise<void>;
+          workspaceUiState: Record<string, unknown>;
+        };
+        setState: (state: Record<string, unknown>) => void;
+      };
+    }).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+
+    store.setState({
+      workspaceUiState: {
+        ...store.getState().workspaceUiState,
+        workspaceMode: "canvas",
+        primarySidebarPanel: "map",
+      },
+      tabs: [{
+        id: "tab-undo",
+        title: "Undo build",
+        emoji: "[]",
+        color: "#7aa2f7",
+        groupId: null,
+        initialCwd: "/tmp/undo-build",
+        terminals: [{ id: "pty-undo", paneId: "pane-undo", cols: 80, rows: 24, status: "running" }],
+        splitLayout: { id: "pane-undo", type: "terminal", cwd: "/tmp/undo-build" },
+        activePaneId: "pane-undo",
+      }],
+      activeTabId: "tab-undo",
+      activeTerminalId: "pty-undo",
+      canvasState: {
+        nodes: [{
+          id: "node-undo",
+          type: "terminal",
+          title: "Undo build",
+          terminalTabId: "tab-undo",
+          terminalCwd: "/tmp/undo-build",
+          x: 320,
+          y: 180,
+          width: 820,
+          height: 460,
+          labelColor: "#d4a44f",
+          taskBinding: { taskId: "TC-029", planPath: "MASTER_PLAN.md" },
+        }],
+        selectedNodeId: "node-undo",
+        selectedNodeIds: ["node-undo"],
+        viewport: { x: 12, y: 24, zoom: 0.8 },
+      },
+    });
+
+    await store.getState().closeTerminalSession("tab-undo");
+  });
+
+  await expect.poll(async () => page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => {
+          tabs: Array<{ id: string }>;
+          canvasState: { nodes: Array<{ id: string }> };
+        };
+      };
+    }).__termfleetWorkspaceStore;
+    const state = store?.getState();
+    return `${state?.tabs.some((tab) => tab.id === "tab-undo")}:${state?.canvasState.nodes.some((node) => node.id === "node-undo")}`;
+  })).toBe("false:false");
+
+  await page.evaluate(async () => {
+    const { TERMINAL_INPUT_CLASS } = await import("/src/lib/terminalFocus.ts");
+    const input = document.createElement("textarea");
+    input.className = TERMINAL_INPUT_CLASS;
+    document.body.appendChild(input);
+    input.focus();
+  });
+  await page.keyboard.press("ControlOrMeta+Z");
+
+  const restored = await page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => {
+          activeTabId: string | null;
+          activeTerminalId: string | null;
+          tabs: Array<{
+            id: string;
+            title: string;
+            initialCwd?: string;
+            terminals: Array<unknown>;
+          }>;
+          canvasState: {
+            selectedNodeId: string | null;
+            selectedNodeIds?: string[];
+            nodes: Array<{
+              id: string;
+              terminalTabId?: string;
+              x: number;
+              y: number;
+              labelColor?: string;
+              taskBinding?: { taskId: string };
+            }>;
+          };
+        };
+      };
+    }).__termfleetWorkspaceStore;
+    const state = store?.getState();
+    const tab = state?.tabs.find((candidate) => candidate.id === "tab-undo");
+    const node = state?.canvasState.nodes.find((candidate) => candidate.id === "node-undo");
+    return {
+      activeTabId: state?.activeTabId,
+      activeTerminalId: state?.activeTerminalId,
+      tab,
+      node,
+      selectedNodeId: state?.canvasState.selectedNodeId,
+      selectedNodeIds: state?.canvasState.selectedNodeIds,
+    };
+  });
+
+  expect(restored.activeTabId).toBe("tab-undo");
+  expect(restored.activeTerminalId).toBeNull();
+  expect(restored.tab).toMatchObject({
+    id: "tab-undo",
+    title: "Undo build",
+    initialCwd: "/tmp/undo-build",
+    terminals: [],
+  });
+  expect(restored.node).toMatchObject({
+    id: "node-undo",
+    terminalTabId: "tab-undo",
+    x: 320,
+    y: 180,
+    labelColor: "#d4a44f",
+    taskBinding: { taskId: "TC-029" },
+  });
+  expect(restored.selectedNodeId).toBe("node-undo");
+  expect(restored.selectedNodeIds).toEqual(["node-undo"]);
+});
+
+test("closing a localhost preview pane never removes the linked terminal", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+
+  const result = await page.evaluate(async () => {
+    const { closeActivePane } = await import("/src/stores/workspace.ts");
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => {
+          setActivePane: (tabId: string, paneId: string) => void;
+          workspaceUiState: Record<string, unknown>;
+        };
+        setState: (state: Record<string, unknown>) => void;
+      };
+    }).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+
+    store.setState({
+      workspaceUiState: {
+        ...store.getState().workspaceUiState,
+        workspaceMode: "split",
+        primarySidebarPanel: "map",
+      },
+      tabs: [{
+        id: "tab-preview-safe",
+        title: "Preview owner",
+        emoji: "[]",
+        color: "#7aa2f7",
+        groupId: null,
+        initialCwd: "/tmp/preview-safe",
+        terminals: [{
+          id: "pty-preview-owner",
+          paneId: "pane-terminal",
+          cols: 80,
+          rows: 24,
+          status: "running",
+          previewUrl: "http://127.0.0.1:43210",
+        }],
+        splitLayout: {
+          id: "split-root",
+          type: "split",
+          direction: "horizontal",
+          sizes: [50, 50],
+          children: [
+            { id: "pane-terminal", type: "terminal", cwd: "/tmp/preview-safe" },
+            { id: "pane-preview", type: "preview", previewUrl: "http://127.0.0.1:43210", linkedTerminalPaneId: "pane-terminal" },
+          ],
+        },
+        activePaneId: "pane-preview",
+      }],
+      activeTabId: "tab-preview-safe",
+      activeTerminalId: "pty-preview-owner",
+      canvasState: {
+        nodes: [
+          { id: "node-terminal-safe", type: "terminal", title: "Preview owner", terminalTabId: "tab-preview-safe", x: 0, y: 0, width: 820, height: 460 },
+          { id: "node-preview-safe", type: "preview", title: "Preview localhost", terminalTabId: "tab-preview-safe", previewPaneId: "pane-preview", linkedTerminalPaneId: "pane-terminal", previewUrl: "http://127.0.0.1:43210", x: 860, y: 0, width: 620, height: 420 },
+        ],
+        selectedNodeId: "node-preview-safe",
+        selectedNodeIds: ["node-preview-safe"],
+        viewport: { x: 0, y: 0, zoom: 1 },
+      },
+    });
+
+    await closeActivePane();
+    const state = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => {
+          tabs: Array<{ id: string; activePaneId: string; terminals: Array<{ id: string; paneId: string; previewUrl?: string }>; splitLayout: unknown }>;
+          canvasState: { nodes: Array<{ id: string; type: string }> };
+        };
+      };
+    }).__termfleetWorkspaceStore?.getState();
+    return {
+      tab: state?.tabs.find((tab) => tab.id === "tab-preview-safe"),
+      nodes: state?.canvasState.nodes,
+    };
+  });
+
+  expect(result.tab).toMatchObject({
+    id: "tab-preview-safe",
+    activePaneId: "pane-terminal",
+    terminals: [{
+      id: "pty-preview-owner",
+      paneId: "pane-terminal",
+      previewUrl: "http://127.0.0.1:43210",
+    }],
+  });
+  expect(result.nodes).toEqual(expect.arrayContaining([
+    expect.objectContaining({ id: "node-terminal-safe", type: "terminal" }),
+  ]));
+  expect(result.nodes).not.toEqual(expect.arrayContaining([
+    expect.objectContaining({ id: "node-preview-safe" }),
+  ]));
 });
 
 test("map shell header prefers summarized task path and now over raw prompt chrome", async ({ page }) => {

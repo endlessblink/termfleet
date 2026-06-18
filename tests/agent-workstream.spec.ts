@@ -91,6 +91,83 @@ async function runWorkspaceCommand(page: import("@playwright/test").Page, comman
   await commandBox.press("Enter");
 }
 
+test("shell terminals do not show the agent task sidebar", async ({ page }) => {
+  await resetWorkspace(page);
+  await expect(page.getByTestId("split-agent-task-sidebar")).toHaveCount(0);
+});
+
+test("agent terminal task sidebar renders extracted tasks and next action", async ({ page }) => {
+  await resetWorkspace(page);
+  await createAgentWorkstream(page, "Extract checkout follow-ups");
+
+  await page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => {
+          tabs: Array<{ id: string; workstream?: Record<string, unknown> }>;
+          updateTab: (id: string, updates: { workstream?: Record<string, unknown> }) => void;
+        };
+      };
+    }).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+    const state = store.getState();
+    const agent = state.tabs.find((tab) => tab.workstream?.kind === "agent");
+    if (!agent?.workstream) throw new Error("Agent workstream not found");
+    const now = Date.now();
+    const object = (kind: string, sourceHash: string, text: string, sourceExcerpt: string, offset: number) => ({
+      id: `${kind}:summary:${sourceHash}`,
+      kind,
+      text,
+      status: "open",
+      reviewState: "new",
+      source: "summary",
+      sourceExcerpt,
+      sourceHash,
+      ownerTabId: agent.id,
+      createdAt: now + offset,
+      updatedAt: now + offset,
+    });
+    state.updateTab(agent.id, {
+      workstream: {
+        ...agent.workstream,
+        extractedTasks: [{
+          id: "summary:task-1",
+          text: "Persist retry evidence on the checkout report",
+          provenance: "summary",
+          at: now + 1,
+          excerpt: "Task: persist retry evidence on the checkout report",
+          sourceHash: "task-1",
+        }],
+        extractedNextActions: [{
+          id: "summary:next-1",
+          text: "Rerun checkout-flow.spec with retry trace",
+          provenance: "summary",
+          at: now + 2,
+          excerpt: "Next: rerun checkout-flow.spec with retry trace",
+          sourceHash: "next-1",
+        }],
+        cockpitObjects: [
+          object("task", "task-1", "Persist retry evidence on the checkout report", "Task: persist retry evidence on the checkout report", 1),
+          object("evidence", "evidence-1", "npm test -- checkout-flow.spec passed", "Evidence: npm test -- checkout-flow.spec passed", 2),
+          object("next-action", "next-1", "Rerun checkout-flow.spec with retry trace", "Next: rerun checkout-flow.spec with retry trace", 3),
+          object("blocker", "blocker-1", "Auth fixture token expired", "Blocked: auth fixture token expired", 4),
+        ],
+      },
+    });
+  });
+
+  await expect(page.getByTestId("canvas-agent-task-sidebar")).toContainText("Tasks");
+  await expect(page.getByTestId("canvas-agent-task-row")).toContainText("Persist retry evidence on the checkout report");
+  await expect(page.getByTestId("canvas-agent-task-state")).toContainText("Working");
+  await expect(page.getByTestId("canvas-agent-task-next")).toContainText("Next: Rerun checkout-flow.spec with retry trace");
+  await runWorkspaceCommand(page, "show terminal");
+  await expect(page.getByTestId("split-agent-task-sidebar")).toContainText("Tasks");
+  await expect(page.getByTestId("split-agent-task-row")).toHaveCount(1);
+  await expect(page.getByTestId("split-agent-task-row")).toContainText("Persist retry evidence on the checkout report");
+  await expect(page.getByTestId("split-agent-task-state")).toContainText("Working");
+  await expect(page.getByTestId("split-agent-task-next")).toContainText("Next: Rerun checkout-flow.spec with retry trace");
+});
+
 async function ageAgentWorkstream(page: import("@playwright/test").Page, mission: string, idleMinutes: number, activity: string) {
   await page.waitForTimeout(300);
   await page.evaluate(({ mission, idleMinutes, activity }) => {
@@ -557,9 +634,13 @@ test("command palette creates a supervised Codex agent on the map", async ({ pag
   const copiedInitialPrompt = await expect.poll(async () => page.evaluate(() => navigator.clipboard.readText()));
   await copiedInitialPrompt.toBe(`${PRIMARY_MISSION}: sent - ${PRIMARY_MISSION}`);
   await expect(page.getByTestId("agent-cockpit-panel")).toBeVisible();
-  await expect(page.getByText("Task")).toBeVisible();
+  await expect(page.getByTestId("agent-cockpit-panel").getByText("Task", { exact: true })).toBeVisible();
   await expect(page.getByText(PRIMARY_MISSION).first()).toBeVisible();
   await expect(page.getByTestId("canvas-agent-working-on")).toContainText(PRIMARY_MISSION);
+  await expect(page.getByTestId("canvas-agent-task-sidebar")).toContainText("Tasks");
+  await expect(page.getByTestId("canvas-agent-task-row")).toContainText(PRIMARY_MISSION);
+  await expect(page.getByTestId("canvas-agent-task-state")).toContainText("Working");
+  await expect(page.getByTestId("canvas-agent-task-next")).toContainText("Next: Watch provider response");
   await expect(page.getByTestId("canvas-agent-status-path")).toContainText("Path");
   await expect(page.getByTestId("canvas-agent-status-now")).toContainText("Watch provider response");
   await expect(page.getByTestId("canvas-agent-status-chips")).toContainText("codex");
@@ -568,6 +649,10 @@ test("command palette creates a supervised Codex agent on the map", async ({ pag
   await expect(page.getByTestId("split-agent-working-on")).toContainText(PRIMARY_MISSION);
   await expect(page.getByTestId("split-agent-status-path")).toContainText("workspace root unknown");
   await expect(page.getByTestId("split-agent-pane-now")).toContainText("Watch provider response");
+  await expect(page.getByTestId("split-agent-task-sidebar")).toContainText("Tasks");
+  await expect(page.getByTestId("split-agent-task-row")).toContainText(PRIMARY_MISSION);
+  await expect(page.getByTestId("split-agent-task-state")).toContainText("Working");
+  await expect(page.getByTestId("split-agent-task-next")).toContainText("Next: Watch provider response");
   await runWorkspaceCommand(page, "show map");
   await expect(page.getByLabel("Agent current activity")).toContainText("command is not available in browser preview");
   await expect(page.getByLabel("Agent operator guidance").getByText("Watch provider response")).toBeVisible();
@@ -3256,16 +3341,15 @@ test("agent lanes render extracted cockpit objects with explicit copy and proof 
   await expect(page.getByTestId("map-agent-lane-summary")).toContainText("4 extracted");
   await expect(page.getByTestId("canvas-agent-lane-health")).toContainText("4 extracted");
   await expect(page.getByTestId("canvas-agent-extracted-item")).toHaveCount(4);
-  await expect(page.getByTestId("canvas-agent-extracted-item").filter({ hasText: "Request proof" })).toContainText("Blocker");
-  await expect(page.getByTestId("canvas-agent-extracted-item").filter({ hasText: "Request proof" })).toContainText("Auth fixture token expired");
-  await expect(page.getByTestId("canvas-agent-extracted-item").filter({ hasText: "Copy next" })).toContainText("Rerun checkout-flow.spec with retry trace");
-  await expect(page.getByTestId("canvas-agent-extracted-item").filter({ hasText: "Focus task" })).toContainText("Persist retry evidence on the checkout report");
-  await expect(page.getByTestId("canvas-agent-extracted-item").filter({ hasText: "Copy proof" })).toContainText("npm test -- checkout-flow.spec passed");
+  await expect(page.getByTestId("canvas-agent-extracted-item").filter({ hasText: "Blocker · new" })).toContainText("Auth fixture token expired");
+  await expect(page.getByTestId("canvas-agent-extracted-item").filter({ hasText: "Next · new" })).toContainText("Rerun checkout-flow.spec with retry trace");
+  await expect(page.getByTestId("canvas-agent-extracted-item").filter({ hasText: "Task · new" })).toContainText("Persist retry evidence on the checkout report");
+  await expect(page.getByTestId("canvas-agent-extracted-item").filter({ hasText: "Evidence · new" })).toContainText("npm test -- checkout-flow.spec passed");
   await expect(page.getByTestId("map-agent-extracted-item")).toHaveCount(4);
-  await expect(page.getByTestId("map-agent-extracted-item").filter({ hasText: "Request proof" })).toContainText("Auth fixture token expired");
+  await expect(page.getByTestId("map-agent-extracted-item").filter({ hasText: "Blocker · new" })).toContainText("Auth fixture token expired");
   await page.getByRole("button", { name: "Sessions" }).click();
   await expect(page.getByTestId("sidebar-agent-extracted-item")).toHaveCount(4);
-  await expect(page.getByTestId("sidebar-agent-extracted-item").filter({ hasText: "Focus task" })).toContainText("Persist retry evidence on the checkout report");
+  await expect(page.getByTestId("sidebar-agent-extracted-item").filter({ hasText: "Task · new" })).toContainText("Persist retry evidence on the checkout report");
   await runWorkspaceCommand(page, "show map");
 
   await expect.poll(async () => page.evaluate(() => {
@@ -3275,18 +3359,56 @@ test("agent lanes render extracted cockpit objects with explicit copy and proof 
     return agent?.workstream?.inputQueue?.filter((item: { label?: string }) => item.label === "Request proof").length ?? 0;
   })).toBe(0);
 
-  await page.getByTestId("canvas-agent-extracted-item").filter({ hasText: "Copy next" }).click();
-  const copiedNext = await expect.poll(async () => page.evaluate(() => navigator.clipboard.readText()));
-  await copiedNext.toBe("Extract checkout follow-ups: extracted next - Rerun checkout-flow.spec with retry trace (summary)");
+  await page.getByTestId("canvas-agent-extracted-item").filter({ hasText: "Rerun checkout-flow.spec with retry trace" }).getByRole("button", { name: "Convert Next to prompt" }).click();
+  await expect.poll(async () => page.evaluate(() => {
+    const raw = localStorage.getItem("terminal-workspace.v1");
+    const state = raw ? JSON.parse(raw) : null;
+    const agent = state?.tabs?.find((tab: { workstream?: { kind?: string } }) => tab.workstream?.kind === "agent");
+    const prompt = agent?.workstream?.inputQueue?.find((item: { label?: string; text?: string }) => item.label === "Object prompt");
+    const next = agent?.workstream?.cockpitObjects?.find((item: { text?: string }) => item.text === "Rerun checkout-flow.spec with retry trace");
+    return {
+      prompt: prompt?.text ?? "",
+      reviewState: next?.reviewState,
+    };
+  })).toMatchObject({
+    prompt: expect.stringContaining("Rerun checkout-flow.spec with retry trace"),
+    reviewState: "prompted",
+  });
 
-  await page.getByTestId("canvas-agent-extracted-item").filter({ hasText: "Request proof" }).click();
+  await page.getByTestId("canvas-agent-extracted-item").filter({ hasText: "Rerun checkout-flow.spec with retry trace" }).getByRole("button", { name: "Copy Next" }).click();
+  const copiedNext = await expect.poll(async () => page.evaluate(() => navigator.clipboard.readText()));
+  await copiedNext.toBe("Extract checkout follow-ups: prompted next - Rerun checkout-flow.spec with retry trace (summary)");
+
+  await page.getByTestId("canvas-agent-extracted-item").filter({ hasText: "Auth fixture token expired" }).getByRole("button", { name: "Request proof for Blocker" }).click();
   await expect.poll(async () => page.evaluate(() => {
     const raw = localStorage.getItem("terminal-workspace.v1");
     const state = raw ? JSON.parse(raw) : null;
     const agent = state?.tabs?.find((tab: { workstream?: { kind?: string } }) => tab.workstream?.kind === "agent");
     const request = agent?.workstream?.inputQueue?.find((item: { label?: string; text?: string }) => item.label === "Request proof");
-    return request?.text;
-  })).toContain("Auth fixture token expired");
+    const blocker = agent?.workstream?.cockpitObjects?.find((item: { text?: string }) => item.text === "Auth fixture token expired");
+    return {
+      request: request?.text ?? "",
+      reviewState: blocker?.reviewState,
+    };
+  })).toMatchObject({
+    request: expect.stringContaining("Auth fixture token expired"),
+    reviewState: "proof-requested",
+  });
+
+  await page.getByTestId("canvas-agent-extracted-item").filter({ hasText: "Persist retry evidence" }).getByRole("button", { name: "Accept Task" }).click();
+  await page.getByTestId("canvas-agent-extracted-item").filter({ hasText: "npm test -- checkout-flow.spec passed" }).getByRole("button", { name: "Dismiss Evidence" }).click();
+  await expect.poll(async () => page.evaluate(() => {
+    const raw = localStorage.getItem("terminal-workspace.v1");
+    const state = raw ? JSON.parse(raw) : null;
+    const agent = state?.tabs?.find((tab: { workstream?: { kind?: string } }) => tab.workstream?.kind === "agent");
+    return (agent?.workstream?.cockpitObjects ?? []).map((item: { text: string; reviewState: string; status: string }) =>
+      `${item.text}:${item.reviewState}:${item.status}`
+    );
+  })).toContain("npm test -- checkout-flow.spec passed:dismissed:dismissed");
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await runWorkspaceCommand(page, "show map");
+  await expect(page.getByTestId("canvas-agent-extracted-item").filter({ hasText: "Evidence · dismissed" })).toContainText("npm test -- checkout-flow.spec passed");
   await page.getByTestId("canvas-agent-lane-summary").screenshot({
     path: test.info().outputPath("tc-027-extracted-cockpit-objects.png"),
   });
