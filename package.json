@@ -24,6 +24,7 @@
     "verify:map-terminals": "node scripts/verify-map-terminals.mjs",
     "evidence:bundle": "node scripts/export-evidence-bundle.mjs",
     "verify:evidence-bundle": "node scripts/verify-evidence-bundle.mjs",
+    "verify:oss-readiness": "node scripts/verify-oss-readiness.mjs",
     "verify:readme-recovery": "node scripts/verify-readme-recovery.mjs",
     "verify:agent-status-summary": "node scripts/verify-agent-status-summary-server.mjs",
     "agent-status:ollama": "node scripts/agent-status-summary-ollama.mjs",

@@ -2151,6 +2151,12 @@ Workstreams:
      contribution guide, issue templates, license, and security disclosure path.
    - Run a secrets/path/license audit before publishing.
    - Ensure a fresh clone can build or fail with actionable prerequisite errors.
+   - In progress: README now includes public-preview positioning, what it is/is
+     not, quick start, architecture, evidence bundles, contribution guidance,
+     security expectations, limitations, and roadmap. The actual license and
+     `SECURITY.md` remain explicit pre-publish items instead of being silently
+     invented. Verification: `npm run verify:oss-readiness`; `npm run
+     verify:readme-recovery`; `npm run build`; `git diff --check`.
 
 Acceptance (draft):
 
