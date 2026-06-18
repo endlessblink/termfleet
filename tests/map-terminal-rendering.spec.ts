@@ -437,6 +437,125 @@ test("map summary cards expose workspace labels for parallel sessions", async ({
   await expect(page.getByTestId("canvas-terminal-node-header-title").filter({ hasText: "Run Arthouse checks" })).toBeVisible();
 });
 
+test("map panel summarizes visible nodes by workspace branch role and service", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.getByRole("button", { name: "Map", exact: true }).click();
+
+  await page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => {
+          workspaceUiState: Record<string, unknown>;
+        };
+        setState: (state: Record<string, unknown>) => void;
+      };
+    }).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+
+    const now = Date.now();
+    const group = {
+      id: "group-termfleet",
+      name: "TermFleet OSS",
+      color: "#7aa2f7",
+      projectRoot: "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
+      lastActiveTabId: "tab-shell",
+    };
+    const tab = (id: string, title: string, paneId: string, initialCwd: string, groupId: string | null, terminal: Record<string, unknown>, workstream?: Record<string, unknown>) => ({
+      id,
+      title,
+      emoji: "[]",
+      color: "#7aa2f7",
+      groupId,
+      initialCwd,
+      terminals: [{ id: `pty-${id}`, paneId, cols: 80, rows: 24, ...terminal }],
+      splitLayout: { id: paneId, type: "terminal" },
+      activePaneId: paneId,
+      ...(workstream ? { workstream } : {}),
+    });
+
+    store.setState({
+      workspaceUiState: {
+        ...store.getState().workspaceUiState,
+        workspaceMode: "canvas",
+        canvasSidebarCollapsed: false,
+        primarySidebarCollapsed: false,
+        primarySidebarPanel: "map",
+      },
+      groups: [group],
+      terminalGroups: [group],
+      tabs: [
+        tab("tab-shell", "Terminal", "pane-shell", "/media/endlessblink/data/my-projects/ai-development/devops/termfleet", "group-termfleet", {
+          status: "running",
+          currentActivity: "npm run dev",
+          previewUrl: "http://127.0.0.1:5177",
+        }, {
+          kind: "terminal",
+          status: "running",
+          phase: "active",
+          gitBranch: "feat/map-intel",
+          createdAt: now,
+        }),
+        tab("tab-agent", "Agent", "pane-agent", "/media/endlessblink/data/my-projects/ai-development/devops/termfleet", "group-termfleet", {
+          status: "running",
+          currentActivity: "coding",
+        }, {
+          kind: "agent",
+          provider: "codex",
+          role: "verifier",
+          status: "running",
+          phase: "active",
+          gitBranch: "feat/map-intel",
+          mission: "Verify map intelligence",
+          createdAt: now,
+        }),
+        tab("tab-docs", "Terminal", "pane-docs", "/media/endlessblink/data/my-projects/ai-development/docs-site", null, {
+          status: "running",
+          currentActivity: "pnpm docs",
+        }, {
+          kind: "terminal",
+          status: "running",
+          phase: "active",
+          gitBranch: "docs/homepage",
+          createdAt: now,
+        }),
+      ],
+      activeTabId: "tab-shell",
+      canvasState: {
+        selectedNodeId: "node-shell",
+        viewport: { x: 0, y: 0, zoom: 1 },
+        nodes: [
+          { id: "node-shell", type: "terminal", title: "Terminal", terminalTabId: "tab-shell", x: 0, y: 0, width: 620, height: 420 },
+          { id: "node-agent", type: "terminal", title: "Agent", terminalTabId: "tab-agent", x: 660, y: 0, width: 620, height: 420 },
+          { id: "node-docs", type: "terminal", title: "Terminal", terminalTabId: "tab-docs", terminalCwd: "/media/endlessblink/data/my-projects/ai-development/docs-site", x: 0, y: 460, width: 620, height: 420 },
+          { id: "node-preview", type: "preview", title: "Preview docs", terminalTabId: "tab-shell", previewPaneId: "pane-preview", previewUrl: "http://127.0.0.1:5177", x: 660, y: 460, width: 620, height: 420 },
+        ],
+      },
+    });
+  });
+
+  const mapPanel = page.locator('[aria-label="Operations panel"]');
+  await expect(mapPanel.getByTestId("map-workspace-summary")).toContainText("2 workspaces");
+  await expect(mapPanel.getByTestId("map-workspace-summary")).toContainText("3 roles");
+  await expect(mapPanel.getByTestId("map-workspace-summary")).toContainText("2 branches");
+  await expect(mapPanel.getByTestId("map-workspace-summary")).toContainText("1 service");
+  await expect(mapPanel.getByTestId("map-workspace-group").filter({ hasText: "TermFleet OSS" })).toContainText("3 nodes");
+  await expect(mapPanel.getByTestId("map-workspace-group").filter({ hasText: "docs-site" })).toContainText("1 node");
+  await expect(mapPanel.getByTestId("map-workspace-summary-facets")).toContainText("feat/map-intel");
+  await expect(mapPanel.getByTestId("map-workspace-summary-facets")).toContainText("docs/homepage");
+  await expect(mapPanel.getByTestId("map-workspace-summary-facets")).toContainText("verifier");
+  await expect(mapPanel.getByTestId("map-workspace-summary-facets")).toContainText("preview");
+
+  await mapPanel.getByTestId("map-filter-preview").click();
+  await expect(mapPanel.getByTestId("map-workspace-summary")).toContainText("1 workspace");
+  await expect(mapPanel.getByTestId("map-workspace-group").filter({ hasText: "TermFleet OSS" })).toContainText("2 nodes");
+  await expect(mapPanel.getByTestId("map-workspace-summary-facets")).toContainText("preview");
+  await expect(mapPanel.getByTestId("map-workspace-summary-facets")).not.toContainText("docs/homepage");
+});
+
 test("map sidebar filters operations nodes by visible work state", async ({ page }) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle");

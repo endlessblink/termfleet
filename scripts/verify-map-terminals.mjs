@@ -169,6 +169,16 @@ const checks = [
     message: "Map sidebar must provide active/failed/waiting/testing/preview filters derived from terminal and workstream state.",
   },
   {
+    ok: /function summarizeMapNodes/.test(workbenchSidebar) &&
+      /workspaceLabelFor/.test(workbenchSidebar) &&
+      /gitBranch/.test(workbenchSidebar) &&
+      /previewUrl/.test(workbenchSidebar) &&
+      /data-testid="map-workspace-summary"/.test(workbenchSidebar) &&
+      /data-testid="map-workspace-group"/.test(workbenchSidebar) &&
+      /data-testid="map-workspace-summary-facets"/.test(workbenchSidebar),
+    message: "Map panel must explain visible nodes through workspace, branch, role, and service group summaries.",
+  },
+  {
     ok: /getDisplaySummary/.test(magicCanvas) &&
       /getDisplaySummary/.test(splitPane) &&
       /terminalDisplaySummary/.test(magicCanvas) &&

@@ -2056,6 +2056,13 @@ Workstreams:
      temporarily missing active-tab state. Verification: `npm run build`; `npm
      run verify:map-terminals`; unsandboxed `npx playwright test
      tests/map-terminal-rendering.spec.ts`; `git diff --check`.
+   - In progress: added a general map workspace summary above the node list so
+     the visible map explains itself by workspace, role, branch, and preview
+     service. The summary is derived from visible/filtered nodes and existing
+     tab/workstream metadata, so it changes with map filters without mutating
+     layout or daemon state. Verification: `npm run build`; `npm run
+     verify:map-terminals`; unsandboxed `npx playwright test
+     tests/map-terminal-rendering.spec.ts`; `git diff --check`.
    - Make the map explain the current workspace without manual arrangement.
 
 3. **Durable recovery as a visible product feature**

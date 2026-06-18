@@ -23,10 +23,10 @@ import {
 } from "@phosphor-icons/react";
 import { createAgentWorkstream, createAgentWorkstreamRunId, createNewTab, createTerminalTab, currentAgentWorkstreamCwd, splitActivePane, splitActivePreviewPane, useWorkspaceStore } from "../stores/workspace";
 import { FolderPicker } from "./FolderPicker";
-import type { CanvasNode, Tab, WorkstreamMetadata } from "../lib/types";
+import type { CanvasNode, Group, Tab, WorkstreamMetadata } from "../lib/types";
 import { taskStatusColor, taskStatusLabel } from "../lib/masterPlanTasks";
 import { useMasterPlanTasks } from "../hooks/useMasterPlanTasks";
-import { pathTail, projectNameFor } from "../lib/projectDisplay";
+import { pathTail, projectNameFor, workspaceLabelFor } from "../lib/projectDisplay";
 import { FileExplorer } from "./FileExplorer";
 import { checkAgentProvider } from "../lib/agentProviders";
 import { agentLaneAuthRetryText, agentLaneAuthRetryTitle, agentLaneCleanupRequestText, agentLaneCleanupRequestTitle, agentLaneCloseoutText, agentLaneCloseoutTitle, agentLaneHealthText, agentLaneInterruptText, agentLaneInterruptTitle, agentLaneMemoryRequestText, agentLaneMemoryRequestTitle, agentLaneProofRequestText, agentLaneProofRequestTitle, agentLaneRestartText, agentLaneRestartTitle, agentLaneRiskMitigationText, agentLaneRiskMitigationTitle, agentLaneStatusSweepText, agentLaneStatusSweepTitle, agentLaneStatusText, attentionBreakdownText, cleanupBreakdownText, closeoutBreakdownText, formatAgentLaneBrief, formatAgentMissionControlBrief, formatAgentRunBrief, handoffMemoryPromptForWorkstream, isActiveAgentWorkstream, isAuthRetryableAgentWorkstream, isCleanupRequestableAgentWorkstream, isRestartableAgentWorkstream, isReviewItemCloseoutReady, isolationBreakdownText, latestMissionControlAskText, missionBreakdownText, missionControlAlternateText, missionControlDispatchBreakdownText, proofRequestPromptForWorkstream, providerBreakdownText, readinessBreakdownText, riskBreakdownText, statusCheckPromptForWorkstream, summarizeAgentLane } from "../lib/agentWorkstreamLane";
@@ -69,6 +69,72 @@ function workstreamAttentionText(workstream: WorkstreamMetadata) {
   if (workstream.status === "done" || workstream.phase === "complete") return "review ready";
   if (workstream.activityKind === "testing") return "needs proof";
   return workstream.nextAction ?? "watch";
+}
+
+function countLabel(values: string[]) {
+  const counts = new Map<string, number>();
+  for (const value of values) {
+    const label = value.trim();
+    if (!label) continue;
+    counts.set(label, (counts.get(label) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([label, count]) => ({ label, count }));
+}
+
+function terminalForNode(node: CanvasNode, tab?: Tab) {
+  if (!tab) return undefined;
+  return tab.terminals.find((terminal) => terminal.paneId === tab.activePaneId) ??
+    tab.terminals.find((terminal) => terminal.paneId === node.id) ??
+    tab.terminals.find((terminal) => terminal.id === node.terminalPtyId) ??
+    tab.terminals[0];
+}
+
+function summarizeMapNodes(nodes: CanvasNode[], tabs: Tab[], groups: Group[], liveCwds: Record<string, string>) {
+  const workspaceValues: string[] = [];
+  const branchValues: string[] = [];
+  const roleValues: string[] = [];
+  const serviceValues: string[] = [];
+
+  for (const node of nodes) {
+    const linkedTab = node.terminalTabId ? tabs.find((tab) => tab.id === node.terminalTabId) : undefined;
+    const linkedProject = linkedTab?.groupId ? groups.find((group) => group.id === linkedTab.groupId) : null;
+    const terminal = terminalForNode(node, linkedTab);
+    const liveCwd = terminal?.id ? liveCwds[terminal.id] : undefined;
+    workspaceValues.push(workspaceLabelFor({
+      project: linkedProject,
+      cwd: liveCwd ?? node.terminalCwd ?? linkedTab?.initialCwd,
+      tabTitle: linkedTab?.title,
+      nodeTitle: node.title,
+    }));
+
+    if (linkedTab?.workstream?.gitBranch) branchValues.push(linkedTab.workstream.gitBranch);
+    if (node.type === "preview" || node.previewUrl || terminal?.previewUrl) serviceValues.push(node.previewUrl ?? terminal?.previewUrl ?? "localhost preview");
+
+    if (node.type === "preview") {
+      roleValues.push("preview");
+    } else if (linkedTab?.workstream?.kind === "agent") {
+      roleValues.push(linkedTab.workstream.role ?? `${workstreamLabel(linkedTab.workstream.provider)} agent`);
+    } else if (node.type === "terminal") {
+      roleValues.push("shell");
+    } else {
+      roleValues.push(node.type);
+    }
+  }
+
+  const workspaces = countLabel(workspaceValues);
+  const branches = countLabel(branchValues);
+  const roles = countLabel(roleValues);
+  const services = countLabel(serviceValues);
+  const headline = [
+    `${workspaces.length} workspace${workspaces.length === 1 ? "" : "s"}`,
+    `${roles.length} role${roles.length === 1 ? "" : "s"}`,
+    branches.length > 0 ? `${branches.length} branch${branches.length === 1 ? "" : "es"}` : null,
+    services.length > 0 ? `${services.length} service${services.length === 1 ? "" : "s"}` : null,
+  ].filter(Boolean).join(" · ");
+
+  return { workspaces, branches, roles, services, headline };
 }
 
 type OperationsPanel = "sessions" | "map";
@@ -2886,6 +2952,10 @@ function MapPanel({
     ])
   ) as Record<MapFilter, number>, [groupVisibleNodes, tabs]);
   const visibleNodes = groupVisibleNodes.filter((node) => nodeMatchesMapFilter(node, nodeTab(node), mapFilter));
+  const mapSummary = useMemo(
+    () => summarizeMapNodes(visibleNodes, tabs, groups, liveCwds),
+    [visibleNodes, tabs, groups, liveCwds]
+  );
   const visibleTabs = activeGroupFilter === null
     ? tabs
     : tabs.filter((tab) => tab.groupId === activeGroupFilter);
@@ -3073,6 +3143,53 @@ function MapPanel({
         })}
       </div>
       <div style={styles.list}>
+        {visibleNodes.length > 0 && (
+          <div
+            style={styles.agentLanePanel}
+            data-testid="map-workspace-summary"
+            aria-label="Map workspace grouping summary"
+            title={mapSummary.headline}
+          >
+            <div style={styles.agentLaneHeader}>
+              <span>Workspace groups</span>
+              <span style={{ ...styles.rowMeta, marginTop: 0 }}>{mapSummary.headline}</span>
+            </div>
+            <div style={styles.agentLaneStats}>
+              <span style={styles.agentLaneChip} data-testid="map-workspace-group-count">
+                {mapSummary.workspaces.length} workspace{mapSummary.workspaces.length === 1 ? "" : "s"}
+              </span>
+              <span style={styles.agentLaneChip}>{mapSummary.roles.length} role{mapSummary.roles.length === 1 ? "" : "s"}</span>
+              <span style={styles.agentLaneChip}>{mapSummary.branches.length} branch{mapSummary.branches.length === 1 ? "" : "es"}</span>
+              <span style={styles.agentLaneChip}>{mapSummary.services.length} service{mapSummary.services.length === 1 ? "" : "s"}</span>
+            </div>
+            <div style={styles.agentLaneList} aria-label="Map workspace groups">
+              {mapSummary.workspaces.slice(0, 4).map((workspace) => (
+                <div
+                  key={workspace.label}
+                  style={{ ...styles.agentLaneItem, cursor: "default" }}
+                  data-testid="map-workspace-group"
+                  title={`${workspace.label}: ${workspace.count} node${workspace.count === 1 ? "" : "s"}`}
+                >
+                  <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {workspace.label}
+                  </span>
+                  <span style={{ ...styles.rowMeta, marginTop: 0 }}>{workspace.count} node{workspace.count === 1 ? "" : "s"}</span>
+                </div>
+              ))}
+            </div>
+            <div style={styles.agentLaneStats} data-testid="map-workspace-summary-facets">
+              {mapSummary.branches.slice(0, 3).map((branch) => (
+                <span key={`branch-${branch.label}`} style={styles.agentLaneChip}>{branch.label} · {branch.count}</span>
+              ))}
+              {mapSummary.roles.slice(0, 3).map((role) => (
+                <span key={`role-${role.label}`} style={styles.agentLaneChip}>{role.label} · {role.count}</span>
+              ))}
+              {mapSummary.services.slice(0, 2).map((service) => (
+                <span key={`service-${service.label}`} style={styles.agentLaneChip}>{service.label} · {service.count}</span>
+              ))}
+            </div>
+          </div>
+        )}
         {agentLane.total > 0 && (
           <div
             style={styles.agentLanePanel}
