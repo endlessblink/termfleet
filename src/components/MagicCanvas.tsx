@@ -12,7 +12,6 @@ import {
   ListTodo,
   Maximize2,
   Minus,
-  MousePointer2,
   NotebookText,
   Plus,
   RefreshCw,
@@ -300,6 +299,19 @@ const styles: Record<string, CSSProperties> = {
     gap: 9,
     alignContent: "start",
   },
+  terminalStatusLayout: {
+    minWidth: 0,
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr) minmax(190px, 28%)",
+    gap: 10,
+    alignItems: "start",
+  },
+  terminalStatusSummaryColumn: {
+    minWidth: 0,
+    display: "grid",
+    gap: 9,
+    alignContent: "start",
+  },
   terminalStatusKicker: {
     display: "inline-flex",
     alignItems: "center",
@@ -465,6 +477,13 @@ const styles: Record<string, CSSProperties> = {
     gap: 6,
     paddingTop: 7,
     borderTop: "1px solid var(--border-subtle)",
+  },
+  terminalTaskPanel: {
+    minWidth: 0,
+    display: "grid",
+    gap: 6,
+    paddingLeft: 10,
+    borderLeft: "1px solid var(--border-subtle)",
   },
   agentTaskHeader: {
     minWidth: 0,
@@ -1277,12 +1296,14 @@ function CanvasNodeView({
   terminalPreview,
   onTerminalSnapshot,
   onOpenNodeLabelMenu,
+  onPanStart,
 }: {
   node: CanvasNode;
   focusNode: (node: CanvasNode, zoom: number) => void;
   terminalPreview?: TerminalPreviewEntry;
   onTerminalSnapshot: (nodeId: string, snapshot: GridSnapshot) => void;
   onOpenNodeLabelMenu: (nodeId: string, event: React.MouseEvent) => void;
+  onPanStart: (event: React.MouseEvent) => void;
 }) {
   const tabs = useWorkspaceStore((state) => state.tabs);
   const groups = useWorkspaceStore((state) => state.groups);
@@ -1856,6 +1877,11 @@ function CanvasNodeView({
           : styles.node.boxShadow,
       }}
       onMouseDown={(event) => {
+        if (event.button === 1) {
+          onPanStart(event);
+          return;
+        }
+        if (event.button !== 0) return;
         event.stopPropagation();
         if (dragRef.current) return;
         const target = event.target as HTMLElement;
@@ -2028,56 +2054,60 @@ function CanvasNodeView({
             >
               <span style={{ color: labelColor ?? "var(--text-primary)" }}>{terminalHeaderTitle}</span>
             </div>
-            <div style={styles.terminalStatusGrid}>
-              <div style={styles.terminalStatusField}>
-                <span style={styles.terminalStatusFieldLabel}>Path</span>
-                <span
-                  style={styles.terminalStatusFieldValue}
-                  data-testid="canvas-terminal-node-header-path"
-                  title={terminalHeaderPath}
-                >
-                  {terminalHeaderPath}
-                </span>
-              </div>
-              <div style={styles.terminalStatusField}>
-                <span style={styles.terminalStatusFieldLabel}>{terminalHeaderHasUsefulNow ? "Now" : "Signal"}</span>
-                <span
-                  style={terminalHeaderHasUsefulNow ? styles.terminalStatusNow : styles.terminalStatusFieldValue}
-                  data-testid="canvas-terminal-node-now"
-                  title={terminalHeaderSummarySignal}
-                >
-                  {terminalHeaderSummarySignal}
-                </span>
-              </div>
-            </div>
-            {terminalHeaderHasUsefulSummary && (
-              <div
-                style={styles.agentTaskPanel}
-                data-testid="canvas-terminal-task-sidebar"
-                aria-label="Terminal tasks"
-              >
-                <div style={styles.agentTaskHeader}>
-                  <span>Tasks</span>
-                  <span>1</span>
-                </div>
-                <div
-                  style={styles.agentTaskRow}
-                  data-testid="canvas-terminal-task-row"
-                  title={`${terminalHeaderTitle} · ${terminalHeaderTaskState} · Next: ${terminalHeaderSummarySignal}`}
-                >
-                  <div style={styles.agentTaskTitle}>{terminalHeaderTitle}</div>
-                  <div style={styles.agentTaskMeta}>
-                    <span data-testid="canvas-terminal-task-state">
-                      {terminalHeaderTaskState}
+            <div style={terminalHeaderHasUsefulSummary ? styles.terminalStatusLayout : styles.terminalStatusSummaryColumn}>
+              <div style={styles.terminalStatusSummaryColumn}>
+                <div style={styles.terminalStatusGrid}>
+                  <div style={styles.terminalStatusField}>
+                    <span style={styles.terminalStatusFieldLabel}>Path</span>
+                    <span
+                      style={styles.terminalStatusFieldValue}
+                      data-testid="canvas-terminal-node-header-path"
+                      title={terminalHeaderPath}
+                    >
+                      {terminalHeaderPath}
                     </span>
-                    <span style={{ color: "var(--text-tertiary)" }}>·</span>
-                    <span style={styles.agentTaskNext} data-testid="canvas-terminal-task-next">
-                      Next: {terminalHeaderSummarySignal}
+                  </div>
+                  <div style={styles.terminalStatusField}>
+                    <span style={styles.terminalStatusFieldLabel}>{terminalHeaderHasUsefulNow ? "Now" : "Signal"}</span>
+                    <span
+                      style={terminalHeaderHasUsefulNow ? styles.terminalStatusNow : styles.terminalStatusFieldValue}
+                      data-testid="canvas-terminal-node-now"
+                      title={terminalHeaderSummarySignal}
+                    >
+                      {terminalHeaderSummarySignal}
                     </span>
                   </div>
                 </div>
               </div>
-            )}
+              {terminalHeaderHasUsefulSummary && (
+                <div
+                  style={styles.terminalTaskPanel}
+                  data-testid="canvas-terminal-task-sidebar"
+                  aria-label="Terminal tasks"
+                >
+                  <div style={styles.agentTaskHeader}>
+                    <span>Tasks</span>
+                    <span>1</span>
+                  </div>
+                  <div
+                    style={styles.agentTaskRow}
+                    data-testid="canvas-terminal-task-row"
+                    title={`${terminalHeaderTitle} · ${terminalHeaderTaskState} · Next: ${terminalHeaderSummarySignal}`}
+                  >
+                    <div style={styles.agentTaskTitle}>{terminalHeaderTitle}</div>
+                    <div style={styles.agentTaskMeta}>
+                      <span data-testid="canvas-terminal-task-state">
+                        {terminalHeaderTaskState}
+                      </span>
+                      <span style={{ color: "var(--text-tertiary)" }}>·</span>
+                      <span style={styles.agentTaskNext} data-testid="canvas-terminal-task-next">
+                        Next: {terminalHeaderSummarySignal}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         ) : (
           <span
@@ -2642,7 +2672,6 @@ export function MagicCanvas() {
   const panRef = useRef<{ x: number; y: number; viewportX: number; viewportY: number } | null>(null);
   const [fileIndex, setFileIndex] = useState(0);
   const [terminalPreviews, setTerminalPreviews] = useState<Record<string, TerminalPreviewEntry>>({});
-  const [selectionMode, setSelectionMode] = useState(false);
   const [selectionBox, setSelectionBox] = useState<SelectionBox | null>(null);
   const selectionStartRef = useRef<{ clientX: number; clientY: number; canvasX: number; canvasY: number } | null>(null);
   // Right-click "create here" menu. Screen coords place the menu; canvas coords
@@ -2894,12 +2923,46 @@ export function MagicCanvas() {
     });
   }, [canvasState.viewport, updateCanvasViewport]);
 
+  const startCanvasPan = useCallback((event: React.MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    panRef.current = {
+      x: event.clientX,
+      y: event.clientY,
+      viewportX: canvasState.viewport.x,
+      viewportY: canvasState.viewport.y,
+    };
+    document.body.classList.add("no-select");
+    if (shellRef.current) shellRef.current.style.cursor = "grabbing";
+
+    function onMouseMove(moveEvent: MouseEvent) {
+      const pan = panRef.current;
+      if (!pan) return;
+      updateCanvasViewport({
+        x: pan.viewportX + moveEvent.clientX - pan.x,
+        y: pan.viewportY + moveEvent.clientY - pan.y,
+      });
+    }
+
+    function onMouseUp() {
+      panRef.current = null;
+      document.body.classList.remove("no-select");
+      if (shellRef.current) shellRef.current.style.cursor = "";
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+    }
+
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+  }, [canvasState.viewport.x, canvasState.viewport.y, updateCanvasViewport]);
+
   const onCanvasMouseDown = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
-    if (event.button !== 0 || event.target !== event.currentTarget) return;
+    if (event.target !== event.currentTarget) return;
+    if (event.button !== 0 && event.button !== 1) return;
     event.preventDefault();
     const rect = shellRef.current?.getBoundingClientRect();
     const viewport = canvasState.viewport;
-    if ((selectionMode || event.shiftKey) && rect) {
+    if (event.button === 0 && event.shiftKey && rect) {
       const canvasRect = rect;
       const canvasX = (event.clientX - canvasRect.left - viewport.x) / viewport.zoom;
       const canvasY = (event.clientY - canvasRect.top - viewport.y) / viewport.zoom;
@@ -2950,35 +3013,8 @@ export function MagicCanvas() {
       document.addEventListener("mouseup", onSelectUp);
       return;
     }
-    panRef.current = {
-      x: event.clientX,
-      y: event.clientY,
-      viewportX: canvasState.viewport.x,
-      viewportY: canvasState.viewport.y,
-    };
-    document.body.classList.add("no-select");
-    if (shellRef.current) shellRef.current.style.cursor = "grabbing";
-
-    function onMouseMove(moveEvent: MouseEvent) {
-      const pan = panRef.current;
-      if (!pan) return;
-      updateCanvasViewport({
-        x: pan.viewportX + moveEvent.clientX - pan.x,
-        y: pan.viewportY + moveEvent.clientY - pan.y,
-      });
-    }
-
-    function onMouseUp() {
-      panRef.current = null;
-      document.body.classList.remove("no-select");
-      if (shellRef.current) shellRef.current.style.cursor = "";
-      document.removeEventListener("mousemove", onMouseMove);
-      document.removeEventListener("mouseup", onMouseUp);
-    }
-
-    document.addEventListener("mousemove", onMouseMove);
-    document.addEventListener("mouseup", onMouseUp);
-  }, [canvasState.viewport, selectCanvasNodes, selectionMode, updateCanvasViewport]);
+    startCanvasPan(event);
+  }, [canvasState.viewport, selectCanvasNodes, startCanvasPan]);
 
   const onCanvasWheel = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
     const target = event.target as HTMLElement;
@@ -3048,20 +3084,6 @@ export function MagicCanvas() {
         </button>
         <button className="magic-canvas-button" style={styles.button} title="Add file" aria-label="Add file" onClick={addFile}>
           <FileText size={14} strokeWidth={1.8} />
-        </button>
-        <button
-          className="magic-canvas-button"
-          style={{
-            ...styles.button,
-            background: selectionMode ? "var(--surface-selected)" : styles.button.background,
-            color: selectionMode ? "var(--text-primary)" : styles.button.color,
-          }}
-          title="Select terminals"
-          aria-label="Select terminals"
-          aria-pressed={selectionMode}
-          onClick={() => setSelectionMode((enabled) => !enabled)}
-        >
-          <MousePointer2 size={14} strokeWidth={1.8} />
         </button>
       </div>
 
@@ -4319,6 +4341,7 @@ export function MagicCanvas() {
             terminalPreview={terminalPreviews[node.id]}
             onTerminalSnapshot={updateTerminalPreview}
             onOpenNodeLabelMenu={openNodeLabelMenu}
+            onPanStart={startCanvasPan}
           />
         ))}
       </div>

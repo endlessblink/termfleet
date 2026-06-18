@@ -193,7 +193,7 @@ test("terminal map labels can be recolored from the right-click menu", async ({ 
   })).toBe("#d4a44f");
 });
 
-test("selection mode box-selects terminals and drags the selected group", async ({ page }) => {
+test("shift-drag box-selects terminals while regular and middle drags pan the map", async ({ page }) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle");
   await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
@@ -247,14 +247,77 @@ test("selection mode box-selects terminals and drags the selected group", async 
     });
   });
 
-  await page.getByRole("button", { name: "Select terminals" }).click();
   const shellBox = await page.locator("[data-magic-canvas-shell]").boundingBox();
   if (!shellBox) throw new Error("Map shell not found");
 
   await page.mouse.move(shellBox.x + 20, shellBox.y + 650);
   await page.mouse.down();
+  await page.mouse.move(shellBox.x + 140, shellBox.y + 610, { steps: 4 });
+  await page.mouse.up();
+
+  await expect.poll(async () => page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => { canvasState: { selectedNodeIds?: string[]; viewport: { x: number; y: number } } };
+      };
+    }).__termfleetWorkspaceStore;
+    const state = store?.getState().canvasState;
+    return `${state?.selectedNodeIds?.join(",") ?? ""}|${state?.viewport.x}:${state?.viewport.y}`;
+  })).toBe("|120:-40");
+
+  await page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => { canvasState: Record<string, unknown> };
+        setState: (state: Record<string, unknown>) => void;
+      };
+    }).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+    store.setState({
+      canvasState: {
+        ...store.getState().canvasState,
+        viewport: { x: 0, y: 0, zoom: 1 },
+      },
+    });
+  });
+
+  await page.mouse.move(shellBox.x + 20, shellBox.y + 650);
+  await page.mouse.down({ button: "middle" });
+  await page.mouse.move(shellBox.x + 95, shellBox.y + 580, { steps: 4 });
+  await page.mouse.up({ button: "middle" });
+
+  await expect.poll(async () => page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => { canvasState: { selectedNodeIds?: string[]; viewport: { x: number; y: number } } };
+      };
+    }).__termfleetWorkspaceStore;
+    const state = store?.getState().canvasState;
+    return `${state?.selectedNodeIds?.join(",") ?? ""}|${state?.viewport.x}:${state?.viewport.y}`;
+  })).toBe("|75:-70");
+
+  await page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => { canvasState: Record<string, unknown> };
+        setState: (state: Record<string, unknown>) => void;
+      };
+    }).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+    store.setState({
+      canvasState: {
+        ...store.getState().canvasState,
+        viewport: { x: 0, y: 0, zoom: 1 },
+      },
+    });
+  });
+
+  await page.mouse.move(shellBox.x + 20, shellBox.y + 650);
+  await page.keyboard.down("Shift");
+  await page.mouse.down();
   await page.mouse.move(shellBox.x + 1780, shellBox.y + 40, { steps: 4 });
   await page.mouse.up();
+  await page.keyboard.up("Shift");
 
   await expect.poll(async () => page.evaluate(() => {
     const store = (window as typeof window & {
@@ -282,6 +345,45 @@ test("selection mode box-selects terminals and drags the selected group", async 
     const nodes = store?.getState().canvasState.nodes ?? [];
     return nodes.map((node) => `${node.id}:${node.x}:${node.y}`).sort().join("|");
   })).toBe("node-one:156:116|node-three:1840:80|node-two:1036:116");
+
+  await page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => { canvasState: Record<string, unknown> };
+        setState: (state: Record<string, unknown>) => void;
+      };
+    }).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+    store.setState({
+      canvasState: {
+        ...store.getState().canvasState,
+        viewport: { x: 0, y: 0, zoom: 1 },
+      },
+    });
+  });
+
+  const movedBox = await firstNode.boundingBox();
+  if (!movedBox) throw new Error("Moved selected node header not found");
+  await page.mouse.move(movedBox.x + 24, movedBox.y + 18);
+  await page.mouse.down({ button: "middle" });
+  await page.mouse.move(movedBox.x + 104, movedBox.y - 42, { steps: 4 });
+  await page.mouse.up({ button: "middle" });
+
+  await expect.poll(async () => page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => {
+          canvasState: {
+            viewport: { x: number; y: number };
+            nodes: Array<{ id: string; x: number; y: number }>;
+          };
+        };
+      };
+    }).__termfleetWorkspaceStore;
+    const state = store?.getState().canvasState;
+    const nodes = state?.nodes.map((node) => `${node.id}:${node.x}:${node.y}`).sort().join("|");
+    return `${state?.viewport.x}:${state?.viewport.y}|${nodes}`;
+  })).toBe("80:-60|node-one:156:116|node-three:1840:80|node-two:1036:116");
 });
 
 test("map remains lightweight with more than 100 terminal nodes at overview zoom", async ({ page }) => {
