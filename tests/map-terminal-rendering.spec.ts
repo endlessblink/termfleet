@@ -19,6 +19,14 @@ test("MASTER_PLAN task parser keeps summary table titles and statuses readable",
 | MC-001     | Preserve canvas workspace mode   | P2       | DONE              | -            |
 | ~~TC-014~~ | Native VTE path abandoned        | P2       | DONE (2026-05-28) | TC-017       |
 | TC-019     | Warp-style chrome redesign       | P2       | IN_PROGRESS       | -            |
+
+### TC-019: Warp-style chrome redesign
+
+Acceptance:
+
+- DONE: Preserve existing terminal behavior.
+- TODO: Add stable task sidebar rows.
+- BLOCKED: Waiting for screenshot approval.
 `);
   });
 
@@ -40,6 +48,26 @@ test("MASTER_PLAN task parser keeps summary table titles and statuses readable",
       title: "Warp-style chrome redesign",
       status: "in-progress",
       rawStatus: "IN_PROGRESS",
+      checklist: [
+        {
+          id: "TC-019-1",
+          text: "Preserve existing terminal behavior.",
+          status: "done",
+          rawStatus: "DONE",
+        },
+        {
+          id: "TC-019-2",
+          text: "Add stable task sidebar rows.",
+          status: "todo",
+          rawStatus: "TODO",
+        },
+        {
+          id: "TC-019-3",
+          text: "Waiting for screenshot approval.",
+          status: "blocked",
+          rawStatus: "BLOCKED",
+        },
+      ],
     },
   ]);
 });
@@ -1260,8 +1288,13 @@ test("Delete closes the selected terminal map node and Ctrl+Z restores it", asyn
     id: "tab-delete",
     title: "Delete me",
     initialCwd: "/tmp/delete-me",
-    terminals: [],
   });
+  if (restored.tab?.terminals.length) {
+    expect(restored.tab.terminals[0]).toMatchObject({
+      paneId: "pane-delete",
+      status: "reconnected",
+    });
+  }
   expect(restored.node).toMatchObject({
     id: "node-delete",
     terminalTabId: "tab-delete",
@@ -1372,6 +1405,51 @@ test("closing a localhost preview pane never removes the linked terminal", async
 });
 
 test("map shell header prefers summarized task path and now over raw prompt chrome", async ({ page }) => {
+  const lanePlan = `
+| ID         | Title                            | Priority | Status            | Dependencies |
+| ---------- | -------------------------------- | -------- | ----------------- | ------------ |
+| TC-027     | LLM task extraction lane          | P1       | IN_PROGRESS       | -            |
+
+### TC-027: LLM task extraction lane
+
+Acceptance:
+
+- DONE: Parse stable lane checklist items.
+- DONE: Render completed lane tasks.
+- TODO: Render remaining lane tasks.
+`;
+  await page.addInitScript((masterPlan) => {
+    let callbackId = 1;
+    const callbacks = new Map<number, unknown>();
+    (window as typeof window & { __TAURI_INTERNALS__?: Record<string, unknown> }).__TAURI_INTERNALS__ = {
+      metadata: { currentWindow: { label: "main" }, currentWebview: { label: "main" } },
+      callbacks,
+      transformCallback(callback: unknown) {
+        const id = callbackId++;
+        callbacks.set(id, callback);
+        return id;
+      },
+      unregisterCallback(id: number) {
+        callbacks.delete(id);
+      },
+      async invoke(command: string) {
+        if (command === "fs_read_file") return masterPlan;
+        if (command === "daemon_status") return { reachable: false, mode: "browser" };
+        if (command === "daemon_ensure_running") return { reachable: false, mode: "browser", message: "browser" };
+        if (command === "grid_snapshot") {
+          return JSON.stringify({
+            cols: 80,
+            rows: 24,
+            cursor_x: 0,
+            cursor_y: 0,
+            cells: [],
+          });
+        }
+        return null;
+      },
+    };
+  }, lanePlan);
+
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle");
   await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
@@ -1383,21 +1461,34 @@ test("map shell header prefers summarized task path and now over raw prompt chro
     const store = (window as typeof window & {
       __termfleetWorkspaceStore?: {
         getState: () => {
+          workspaceUiState: Record<string, unknown>;
           tabs: Array<{ id: string; title: string; terminals: unknown[] }>;
           canvasState: { nodes: Array<{ id: string; type: string; terminalTabId?: string }> };
           updateTab: (id: string, updates: Record<string, unknown>) => void;
+          updateCanvasNode: (id: string, updates: Record<string, unknown>) => void;
         };
+        setState: (state: Record<string, unknown>) => void;
       };
     }).__termfleetWorkspaceStore;
     if (!store) throw new Error("TermFleet test store is unavailable");
     const state = store.getState();
+    store.setState({
+      workspaceUiState: {
+        ...state.workspaceUiState,
+        workspaceMode: "canvas",
+        primarySidebarPanel: "map",
+      },
+    });
     const node = state.canvasState.nodes.find((candidate) => candidate.type === "terminal");
     if (!node?.terminalTabId) throw new Error("Terminal map node is unavailable");
     const tab = state.tabs.find((candidate) => candidate.id === node.terminalTabId);
     if (!tab) throw new Error("Terminal tab is unavailable");
+    store.getState().updateCanvasNode(node.id, {
+      taskBinding: { taskId: "TC-027", planPath: "/media/endlessblink/data/my-projects/ai-development/devops/termfleet/MASTER_PLAN.md" },
+    });
     store.getState().updateTab(tab.id, {
       title: "endlessblink",
-      initialCwd: "/media/endlessblink/data/my-projects/ai-development/content-creation/inner-dialogue",
+      initialCwd: "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
       terminals: [{
         id: "pty-summary-fixture",
         paneId: node.id,
@@ -1419,18 +1510,39 @@ test("map shell header prefers summarized task path and now over raw prompt chro
   });
 
   await expect(page.getByTestId("canvas-terminal-node-header-title")).toHaveText("Translate post copy to Hebrew");
-  await expect(page.getByTestId("canvas-terminal-node-workspace")).toHaveText("inner-dialogue");
+  await expect(page.getByTestId("canvas-terminal-node-workspace")).toHaveText("termfleet");
   await expect(page.getByTestId("canvas-terminal-node-header-path")).toHaveText("inner-dialogue");
   await expect(page.getByTestId("canvas-terminal-node-now")).toHaveText("Checking the rewritten Hebrew post and verification notes");
   await expect(page.getByTestId("canvas-terminal-node-now")).not.toContainText("gpt-5.5 default");
   await expect(page.getByTestId("canvas-terminal-task-sidebar")).toContainText("Tasks");
-  await expect(page.getByTestId("canvas-terminal-task-row")).toContainText("Translate post copy to Hebrew");
-  await expect(page.getByTestId("canvas-terminal-task-state")).toContainText("Working");
-  await expect(page.getByTestId("canvas-terminal-task-next")).toContainText("Next: Checking the rewritten Hebrew post and verification notes");
+  await expect(page.getByTestId("canvas-terminal-task-row")).toHaveCount(3);
+  await expect(page.getByTestId("canvas-terminal-task-row").nth(0)).toContainText("Parse stable lane checklist items.");
+  await expect(page.getByTestId("canvas-terminal-task-row").nth(0)).toContainText("Done");
+  await expect(page.getByTestId("canvas-terminal-task-row").nth(2)).toContainText("Render remaining lane tasks.");
+  await expect(page.getByTestId("canvas-terminal-task-row").nth(2)).toContainText("Not done");
   const nowBox = await page.getByTestId("canvas-terminal-node-now").boundingBox();
   const tasksBox = await page.getByTestId("canvas-terminal-task-sidebar").boundingBox();
   if (!nowBox || !tasksBox) throw new Error("Terminal live summary or task sidebar is not visible");
   expect(tasksBox.x).toBeGreaterThan(nowBox.x + nowBox.width);
+  expect(tasksBox.y).toBeGreaterThan(nowBox.y + nowBox.height);
+  const viewportBeforeTaskScroll = await page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => { canvasState: { viewport: { x: number; y: number; zoom: number } } };
+      };
+    }).__termfleetWorkspaceStore;
+    return store?.getState().canvasState.viewport;
+  });
+  await page.mouse.move(tasksBox.x + tasksBox.width / 2, tasksBox.y + Math.min(tasksBox.height - 8, 80));
+  await page.mouse.wheel(0, -420);
+  await expect.poll(async () => page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => { canvasState: { viewport: { x: number; y: number; zoom: number } } };
+      };
+    }).__termfleetWorkspaceStore;
+    return store?.getState().canvasState.viewport;
+  })).toEqual(viewportBeforeTaskScroll);
   await expect(page.getByRole("main").getByRole("button", { name: "Close endlessblink" })).toBeVisible();
 
   await page.evaluate(() => {
@@ -1585,6 +1697,105 @@ test("map shell header prefers summarized task path and now over raw prompt chro
   await expect(page.getByTestId("canvas-terminal-node-now")).toHaveText("The editor already has a screenplay conversion preview pattern; I'll mirror that architecture for post rewrites.");
   await expect(page.getByTestId("canvas-terminal-node-now")).not.toContainText("/skills");
   await expect(page.getByTestId("canvas-terminal-node-now")).not.toContainText("gpt-5.5 default");
+
+  await page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => {
+          tabs: Array<{ id: string; title: string; terminals: Array<{ paneId?: string }> }>;
+          canvasState: { nodes: Array<{ id: string; type: string; terminalTabId?: string }> };
+          updateTab: (id: string, updates: Record<string, unknown>) => void;
+        };
+      };
+    }).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+    const state = store.getState();
+    const node = state.canvasState.nodes.find((candidate) => candidate.type === "terminal");
+    if (!node?.terminalTabId) throw new Error("Terminal map node is unavailable");
+    const tab = state.tabs.find((candidate) => candidate.id === node.terminalTabId);
+    if (!tab) throw new Error("Terminal tab is unavailable");
+    store.getState().updateTab(tab.id, {
+      title: "Terminal",
+      terminals: [{
+        id: "pty-playwright-summary-fixture",
+        paneId: node.id,
+        cols: 100,
+        rows: 30,
+        status: "running",
+        currentActivity: "Running 2 tests using 1 worker",
+        terminalOutput: [
+          "npx playwright test tests/map-terminal-rendering.spec.ts -g \"map shell header prefers summarized task path and now\" --reporter=line",
+          "Running 2 tests using 1 worker",
+          "… +35 lines (ctrl + t to view transcript)",
+          "1 passed (10.5s)",
+        ].join("\n"),
+        statusSummary: {
+          task: "Running 2 tests using 1 worker",
+          path: "devops/termfleet",
+          now: "stale. That is exactly the old changing behavior.",
+          status: "working",
+          provider: "shell",
+          confidence: "medium",
+        },
+      }],
+    });
+  });
+
+  await expect(page.getByTestId("canvas-terminal-node-header-title")).toHaveText("Playwright: map shell header prefers summarized task path and now");
+  await expect(page.getByTestId("canvas-terminal-node-now")).toHaveText("map-terminal-rendering.spec.ts");
+  await expect(page.getByTestId("canvas-terminal-node-header-title")).not.toContainText("Running 2 tests");
+  await expect(page.getByTestId("canvas-terminal-node-now")).not.toContainText("stale");
+
+  await page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => {
+          tabs: Array<{ id: string; title: string; terminals: Array<{ paneId?: string }> }>;
+          canvasState: { nodes: Array<{ id: string; type: string; terminalTabId?: string }> };
+          updateTab: (id: string, updates: Record<string, unknown>) => void;
+        };
+      };
+    }).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+    const state = store.getState();
+    const node = state.canvasState.nodes.find((candidate) => candidate.type === "terminal");
+    if (!node?.terminalTabId) throw new Error("Terminal map node is unavailable");
+    const tab = state.tabs.find((candidate) => candidate.id === node.terminalTabId);
+    if (!tab) throw new Error("Terminal tab is unavailable");
+    store.getState().updateTab(tab.id, {
+      title: "Terminal",
+      terminals: [{
+        id: "pty-tool-log-summary-fixture",
+        paneId: node.id,
+        cols: 100,
+        rows: 30,
+        status: "running",
+        currentActivity: "Search",
+        terminalOutput: [
+          "I’m going to wire the real sidebar into the terminal body now. The key change is: the terminal output area becomes a two-column layout only when task rows exist; otherwise it stays unchanged.",
+          "Explored",
+          "Read MagicCanvas.tsx",
+          "Search",
+          "terminalTaskPanel|canvas-terminal-task-sidebar|agentTaskPanel|TerminalComponent|nodeBody|terminalBody|liveTerminalBody|node.type === \"terminal\" ? in MagicCanvas.tsx",
+          "Read MagicCanvas.tsx",
+        ].join("\n"),
+        statusSummary: {
+          task: "Search",
+          path: "devops/termfleet",
+          now: "terminalBody|liveTerminalBody|node.type ...",
+          status: "working",
+          provider: "shell",
+          confidence: "low",
+        },
+      }],
+    });
+  });
+
+  await expect(page.getByTestId("canvas-terminal-node-header-title")).not.toHaveText("Search");
+  await expect(page.getByTestId("canvas-terminal-node-now")).not.toContainText("terminalBody|liveTerminalBody");
+  await expect(page.getByTestId("canvas-terminal-task-sidebar")).toHaveCount(1);
+  await expect(page.getByTestId("canvas-terminal-task-row")).toHaveCount(3);
+  await expect(page.getByTestId("canvas-terminal-task-row").nth(2)).toContainText("Not done");
 });
 
 test("map summary cards expose workspace labels for parallel sessions", async ({ page }) => {
@@ -1739,6 +1950,7 @@ test("map panel summarizes visible nodes by workspace branch role and service", 
       },
       groups: [group],
       terminalGroups: [group],
+      activeGroupFilter: null,
       tabs: [
         tab("tab-shell", "Terminal", "pane-shell", "/media/endlessblink/data/my-projects/ai-development/devops/termfleet", "group-termfleet", {
           status: "running",
@@ -1808,6 +2020,137 @@ test("map panel summarizes visible nodes by workspace branch role and service", 
   await expect(mapPanel.getByTestId("map-workspace-group").filter({ hasText: "TermFleet OSS" })).toContainText("2 nodes");
   await expect(mapPanel.getByTestId("map-workspace-summary-facets")).toContainText("preview");
   await expect(mapPanel.getByTestId("map-workspace-summary-facets")).not.toContainText("docs/homepage");
+});
+
+test("terminal folders reconcile into project rows without moving the map viewport", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+
+  await page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => {
+          workspaceUiState: Record<string, unknown>;
+          reconcileProjectGroups: () => void;
+        };
+        setState: (state: Record<string, unknown>) => void;
+      };
+    }).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+
+    const terminalTab = (id: string, title: string, paneId: string, initialCwd?: string) => ({
+      id,
+      title,
+      emoji: "[]",
+      color: "#7aa2f7",
+      groupId: null,
+      initialCwd,
+      terminals: [{ id: `pty-${id}`, paneId, cols: 80, rows: 24, status: "running" }],
+      splitLayout: { id: paneId, type: "terminal" },
+      activePaneId: paneId,
+    });
+
+    store.setState({
+      workspaceUiState: {
+        ...store.getState().workspaceUiState,
+        workspaceMode: "canvas",
+        primarySidebarPanel: "sessions",
+        primarySidebarCollapsed: false,
+        canvasSidebarCollapsed: false,
+      },
+      groups: [{
+        id: "group-termfleet",
+        name: "TermFleet OSS",
+        color: "#7aa2f7",
+        projectRoot: "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
+      }],
+      terminalGroups: [{
+        id: "group-termfleet",
+        name: "TermFleet OSS",
+        color: "#7aa2f7",
+        projectRoot: "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
+      }],
+      tabs: [
+        terminalTab("tab-termfleet", "TermFleet shell", "pane-termfleet", "/media/endlessblink/data/my-projects/ai-development/devops/termfleet"),
+        terminalTab("tab-docs", "Docs shell", "pane-docs", "/media/endlessblink/data/my-projects/ai-development/docs-site"),
+        terminalTab("tab-inner", "Inner Dialogue shell", "pane-inner"),
+      ],
+      activeTabId: "tab-termfleet",
+      activeGroupFilter: null,
+      activeGroupId: null,
+      projectRoot: null,
+      canvasState: {
+        selectedNodeId: "node-termfleet",
+        selectedNodeIds: ["node-termfleet"],
+        viewport: { x: -321, y: 88, zoom: 0.62 },
+        nodes: [
+          { id: "node-termfleet", type: "terminal", title: "TermFleet shell", terminalTabId: "tab-termfleet", x: 0, y: 0, width: 620, height: 420 },
+          { id: "node-docs", type: "terminal", title: "Docs shell", terminalTabId: "tab-docs", x: 660, y: 0, width: 620, height: 420 },
+          { id: "node-inner", type: "terminal", title: "Inner Dialogue shell", terminalTabId: "tab-inner", terminalCwd: "/media/endlessblink/data/my-projects/ai-development/content-creation/inner-dialogue", x: 1320, y: 0, width: 620, height: 420 },
+        ],
+      },
+    });
+    store.getState().reconcileProjectGroups();
+  });
+
+  const sidebar = page.getByRole("complementary", { name: "Workspace sidebar" });
+  await expect(sidebar.getByRole("button", { name: "Switch to TermFleet OSS" })).toBeVisible();
+  await expect(sidebar.getByRole("button", { name: "Switch to docs-site" })).toBeVisible();
+  await expect(sidebar.getByRole("button", { name: "Switch to inner-dialogue" })).toBeVisible();
+
+  const reconciled = await page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => {
+          tabs: Array<{ id: string; groupId: string | null }>;
+          groups: Array<{ id: string; name: string; projectRoot?: string }>;
+          canvasState: { viewport: { x: number; y: number; zoom: number } };
+        };
+      };
+    }).__termfleetWorkspaceStore;
+    const state = store?.getState();
+    return {
+      groups: state?.groups.map((group) => ({
+        name: group.name,
+        root: group.projectRoot,
+        count: state.tabs.filter((tab) => tab.groupId === group.id).length,
+      })),
+      viewport: state?.canvasState.viewport,
+    };
+  });
+  expect(reconciled.groups).toEqual([
+    {
+      name: "TermFleet OSS",
+      root: "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
+      count: 1,
+    },
+    {
+      name: "docs-site",
+      root: "/media/endlessblink/data/my-projects/ai-development/docs-site",
+      count: 1,
+    },
+    {
+      name: "inner-dialogue",
+      root: "/media/endlessblink/data/my-projects/ai-development/content-creation/inner-dialogue",
+      count: 1,
+    },
+  ]);
+  expect(reconciled.viewport).toEqual({ x: -321, y: 88, zoom: 0.62 });
+
+  await sidebar.getByRole("button", { name: "Switch to docs-site" }).click();
+  await expect(sidebar.getByText("Docs shell")).toBeVisible();
+  await expect(sidebar.getByText("TermFleet shell")).not.toBeVisible();
+  await expect.poll(async () => page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => { canvasState: { viewport: { x: number; y: number; zoom: number } } };
+      };
+    }).__termfleetWorkspaceStore;
+    return store?.getState().canvasState.viewport;
+  })).toEqual({ x: -321, y: 88, zoom: 0.62 });
 });
 
 test("map sidebar filters operations nodes by visible work state", async ({ page }) => {

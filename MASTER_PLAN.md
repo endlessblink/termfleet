@@ -288,11 +288,11 @@ Acceptance:
   group movement, and bounded DOM/render behavior with 100+ terminal nodes.
 - DONE: Verification includes `npm run build`, focused Playwright map coverage,
   and the existing map/terminal source-contract checks. Current evidence:
-  `npm run build` passed, focused `tests/map-terminal-rendering.spec.ts`
-  batches covered task binding/parser, map drag/select, split terminal sizing,
-  terminal summary layout, preview close, workspace cards, sidebar filters, and
-  Delete/Ctrl+Z restore, and `npm run verify:map-terminals` passed on
-  2026-06-18.
+  `npm run build` passed, `npx playwright test
+  tests/map-terminal-rendering.spec.ts` passed 20/20, `npm run
+  verify:map-terminals` passed, `npm run verify:terminal-rendering` passed, and
+  `CARGO_BUILD_JOBS=1 cargo test --manifest-path src-tauri/Cargo.toml` passed
+  on 2026-06-18.
 
 ### TC-030: Orchestrator terminal lifecycle
 
@@ -360,8 +360,8 @@ Acceptance:
   tests/keymap.spec.ts tests/terminal-keyboard-passthrough.spec.ts
   tests/localhost-preview.spec.ts tests/operations-rail.spec.ts
   tests/map-terminal-rendering.spec.ts` passed 20/20, and `npm run build` passed
-  on 2026-06-18. Additional Delete-key evidence: focused Playwright
-  keyboard/map coverage passed 6/6 on 2026-06-18.
+  on 2026-06-18. Additional Delete-key evidence: `npx playwright test
+  tests/map-terminal-rendering.spec.ts` passed 20/20 on 2026-06-18.
 
 ### TC-001: Freeze Terminal Cockpit target and visual rules
 

@@ -42,6 +42,14 @@ const NOISY_ACTIVITY_PATTERNS = [
   /^\/clear$/i,
   /^hi[!.]?$/i,
   /^hello[!.]?$/i,
+  /^(explored|search|read|working|verified|tasks?):?$/i,
+  /^running\s+\d+\s+tests?\s+using\s+\d+\s+workers?/i,
+  /^(\d+\s+passed|\d+\s+failed|\d+\s+skipped)\b/i,
+  /^passed\s+\([\d.]+s\)$/i,
+  /^(search|read)\s+.+\.(tsx?|jsx?|rs|md|json|css|mjs|cjs)\b/i,
+  /\b(read|search)\s+[\w./-]+\s+in\s+[\w./-]+\.(tsx?|jsx?|rs|md|json|css|mjs|cjs)\b/i,
+  /\bnode\.type\b/i,
+  /\b[A-Za-z][\w.]*\|[A-Za-z][\w.]*\b/,
   /^web\$ /i,
   /^bash[$#]?\s*/i,
   /^supervised agent run$/i,
@@ -91,6 +99,40 @@ function hasVisibleShellPrompt(input: AgentStatusSummaryInput) {
 function transcriptLines(input: AgentStatusSummaryInput) {
   return rawTranscriptLines(input)
     .filter((line) => !isNoisyActivity(line));
+}
+
+function quotedFlagValue(command: string, flag: string) {
+  const escaped = flag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = command.match(new RegExp(`${escaped}\\s+(?:"([^"]+)"|'([^']+)'|([^\\s]+))`));
+  return cleanText(match?.[1] ?? match?.[2] ?? match?.[3]);
+}
+
+function fileNameFromCommand(command: string) {
+  const match = command.match(/(?:^|\s)([\w./-]+\.(?:spec|test)\.(?:tsx?|jsx?))/i);
+  return match?.[1]?.split("/").filter(Boolean).pop();
+}
+
+function shellCommandSummary(input: AgentStatusSummaryInput) {
+  if (input.provider !== "shell") return null;
+  const command = rawTranscriptLines(input)
+    .reverse()
+    .find((line) => /\b(?:npx\s+)?playwright\s+test\b|\b(?:npm|pnpm|yarn)\s+(?:run\s+)?(?:test|verify:[\w:-]+)\b/i.test(line));
+  if (!command) return null;
+
+  const grep = quotedFlagValue(command, "-g") ?? quotedFlagValue(command, "--grep");
+  const fileName = fileNameFromCommand(command);
+  if (/\bplaywright\s+test\b/i.test(command)) {
+    return {
+      task: grep ? `Playwright: ${grep}` : "Playwright test",
+      now: fileName ?? "Running Playwright",
+    };
+  }
+
+  const script = command.match(/\b(?:npm|pnpm|yarn)\s+(?:run\s+)?([^\s]+)/i)?.[1];
+  return {
+    task: script ? `Running ${script}` : "Running tests",
+    now: fileName ?? command.replace(/^[›$#\s]+/, "").slice(0, 90),
+  };
 }
 
 function inferTranscriptTask(lines: string[]) {
@@ -172,7 +214,7 @@ function pathFromInput(input: AgentStatusSummaryInput) {
   return label ?? "workspace path unknown";
 }
 
-function fallbackNow(input: AgentStatusSummaryInput, task: string, status: AgentStatusLifecycle) {
+function fallbackNow(input: AgentStatusSummaryInput, task: string, status: AgentStatusLifecycle, commandSummary?: { now: string } | null) {
   const activity = cleanText(input.currentActivity);
   if (activity && !isNoisyActivity(activity)) return activity;
 
@@ -181,6 +223,8 @@ function fallbackNow(input: AgentStatusSummaryInput, task: string, status: Agent
 
   const summary = cleanText(input.lastSummary);
   if (summary && !isNoisyActivity(summary)) return summary;
+
+  if (commandSummary?.now && !isNoisyActivity(commandSummary.now)) return commandSummary.now;
 
   const transcriptNow = cleanText(inferTranscriptNow(transcriptLines(input), task));
   if (transcriptNow && !isNoisyActivity(transcriptNow)) return transcriptNow;
@@ -195,12 +239,14 @@ function fallbackNow(input: AgentStatusSummaryInput, task: string, status: Agent
 
 export function fallbackAgentStatusSummary(input: AgentStatusSummaryInput): AgentStatusSummary {
   const lines = transcriptLines(input);
+  const commandSummary = shellCommandSummary(input);
   const transcriptTask = cleanText(inferTranscriptTask(lines));
   const promptVisible = hasVisibleShellPrompt(input);
   const task =
     promptVisible && !transcriptTask ? "Ready" :
     (cleanText(input.mission) && cleanText(input.mission) !== "Terminal" ? cleanText(input.mission) : undefined) ??
     cleanText(input.prompt) ??
+    commandSummary?.task ??
     transcriptTask ??
     "Supervised agent run";
   const status = promptVisible && task === "Ready" ? "idle" : normalizeLifecycle(input);
@@ -209,7 +255,7 @@ export function fallbackAgentStatusSummary(input: AgentStatusSummaryInput): Agen
   return {
     task,
     path: pathFromInput(input),
-    now: promptVisible && task === "Ready" ? "Awaiting command" : fallbackNow(input, task, status),
+    now: promptVisible && task === "Ready" ? "Awaiting command" : fallbackNow(input, task, status, commandSummary),
     status,
     provider: input.provider ?? "codex",
     confidence: cleanText(input.currentActivity) && !isNoisyActivity(input.currentActivity) ? "medium" : "low",

@@ -320,6 +320,7 @@ interface WorkspaceState {
   removeOpenFile: (path: string) => void;
   setWorkspaceMode: (mode: WorkspaceMode) => void;
   reconcileCanvasState: () => void;
+  reconcileProjectGroups: () => void;
   updateWorkspaceUiState: (updates: Partial<WorkspaceUiState>) => void;
   enterImmersiveTerminal: (tabId: string, paneId: string) => void;
   exitImmersiveTerminal: () => void;
@@ -454,6 +455,88 @@ function terminalNodeForTab(tab: Tab, index: number): CanvasNode {
   };
 }
 
+function normalizeProjectPath(path?: string | null) {
+  const trimmed = path?.trim();
+  if (!trimmed) return null;
+  return trimmed.replace(/\/+$/, "") || trimmed;
+}
+
+function projectNameFromPath(path: string) {
+  return path.split("/").filter(Boolean).pop() || path || "Project";
+}
+
+function projectIdFromPath(path: string, groups: Group[]) {
+  let hash = 0;
+  for (let index = 0; index < path.length; index += 1) {
+    hash = ((hash << 5) - hash + path.charCodeAt(index)) | 0;
+  }
+  const base = `project-${Math.abs(hash).toString(36)}`;
+  let candidate = base;
+  let suffix = 2;
+  const groupIds = new Set(groups.map((group) => group.id));
+  while (groupIds.has(candidate)) {
+    candidate = `${base}-${suffix}`;
+    suffix += 1;
+  }
+  return candidate;
+}
+
+function terminalProjectPath(tab: Tab, nodesByTabId: Map<string, CanvasNode>) {
+  return normalizeProjectPath(tab.initialCwd ?? nodesByTabId.get(tab.id)?.terminalCwd);
+}
+
+function reconcileProjectGroups(tabs: Tab[], groups: Group[], canvasState: CanvasState) {
+  const nodesByTabId = new Map(
+    canvasState.nodes
+      .filter((node) => node.type === "terminal" && node.terminalTabId)
+      .map((node) => [node.terminalTabId as string, node])
+  );
+  const groupsByRoot = new Map<string, Group>();
+  const nextGroups = groups.map((group) => {
+    const projectRoot = normalizeProjectPath(group.projectRoot);
+    const normalizedGroup = projectRoot && projectRoot !== group.projectRoot
+      ? { ...group, projectRoot }
+      : group;
+    if (projectRoot && !groupsByRoot.has(projectRoot)) {
+      groupsByRoot.set(projectRoot, normalizedGroup);
+    }
+    return normalizedGroup;
+  });
+  const groupIds = new Set(nextGroups.map((group) => group.id));
+  let changed = nextGroups.length !== groups.length || nextGroups.some((group, index) => group !== groups[index]);
+
+  const ensureGroupForPath = (path: string) => {
+    const existing = groupsByRoot.get(path);
+    if (existing) return existing;
+
+    const group: Group = {
+      id: projectIdFromPath(path, nextGroups),
+      name: projectNameFromPath(path),
+      color: GROUP_COLORS[nextGroups.length % GROUP_COLORS.length],
+      projectRoot: path,
+    };
+    nextGroups.push(group);
+    groupsByRoot.set(path, group);
+    groupIds.add(group.id);
+    changed = true;
+    return group;
+  };
+
+  const nextTabs = tabs.map((tab) => {
+    const existingGroupIsValid = tab.groupId ? groupIds.has(tab.groupId) : false;
+    if (existingGroupIsValid) return tab;
+
+    const path = terminalProjectPath(tab, nodesByTabId);
+    if (!path) return tab.groupId ? { ...tab, groupId: null } : tab;
+
+    const group = ensureGroupForPath(path);
+    changed = true;
+    return { ...tab, groupId: group.id };
+  });
+
+  return changed ? { tabs: nextTabs, groups: nextGroups } : { tabs, groups };
+}
+
 function normalizeCanvasState(canvasState: CanvasState | undefined, tabs: Tab[]): CanvasState {
   const source = canvasState ?? DEFAULT_CANVAS_STATE;
   const tabIds = new Set(tabs.map((tab) => tab.id));
@@ -552,6 +635,8 @@ const restoredTabs =
     : [initialTab];
 const restoredActiveTabId =
   restoredTabs.find((tab) => tab.id === persisted.activeTabId)?.id ?? restoredTabs[0].id;
+const restoredCanvasState = normalizeCanvasState(persisted.canvasState, restoredTabs);
+const restoredProjects = reconcileProjectGroups(restoredTabs, persisted.groups ?? [], restoredCanvasState);
 
 function isTauriRuntime() {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -1123,9 +1208,9 @@ function selectNodeAfterRemovingTerminalTab({
 }
 
 export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
-  tabs: restoredTabs,
-  groups: persisted.groups ?? [],
-  terminalGroups: persisted.groups ?? [],
+  tabs: restoredProjects.tabs,
+  groups: restoredProjects.groups,
+  terminalGroups: restoredProjects.groups,
   openFiles: persisted.openFiles ?? [],
   activeTabId: restoredActiveTabId,
   activeTerminalId: null,
@@ -1137,7 +1222,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   ),
   liveCwds: {},
   workspaceUiState: normalizeWorkspaceUiState(persisted.workspaceUiState),
-  canvasState: normalizeCanvasState(persisted.canvasState, restoredTabs),
+  canvasState: restoredCanvasState,
   recentlyClosed: [],
   hydrating: needsDiskHydration,
 
@@ -1146,12 +1231,16 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   hydrateRestoredWorkspace: ({ tabs, activeTabId }) => {
     set((state) => {
       if (tabs.length === 0) return { hydrating: false };
+      const canvasState = normalizeCanvasState(state.canvasState, tabs);
+      const projects = reconcileProjectGroups(tabs, state.groups, canvasState);
       const nextActive =
-        tabs.find((tab) => tab.id === activeTabId)?.id ?? tabs[0].id;
+        projects.tabs.find((tab) => tab.id === activeTabId)?.id ?? projects.tabs[0].id;
       return {
-        tabs,
+        tabs: projects.tabs,
+        groups: projects.groups,
+        terminalGroups: projects.groups,
         activeTabId: nextActive,
-        canvasState: normalizeCanvasState(state.canvasState, tabs),
+        canvasState,
         hydrating: false,
       };
     });
@@ -2026,19 +2115,44 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   },
 
   setWorkspaceMode: (mode: WorkspaceMode) => {
-    set((state) => ({
-      workspaceUiState: {
-        ...state.workspaceUiState,
-        workspaceMode: mode,
-      },
-      canvasState: normalizeCanvasState(state.canvasState, state.tabs),
-    }));
+    set((state) => {
+      const canvasState = normalizeCanvasState(state.canvasState, state.tabs);
+      const projects = reconcileProjectGroups(state.tabs, state.groups, canvasState);
+      return {
+        workspaceUiState: {
+          ...state.workspaceUiState,
+          workspaceMode: mode,
+        },
+        tabs: projects.tabs,
+        groups: projects.groups,
+        terminalGroups: projects.groups,
+        canvasState: normalizeCanvasState(state.canvasState, state.tabs),
+      };
+    });
   },
 
   reconcileCanvasState: () => {
-    set((state) => ({
-      canvasState: normalizeCanvasState(state.canvasState, state.tabs),
-    }));
+    set((state) => {
+      const canvasState = normalizeCanvasState(state.canvasState, state.tabs);
+      const projects = reconcileProjectGroups(state.tabs, state.groups, canvasState);
+      return {
+        tabs: projects.tabs,
+        groups: projects.groups,
+        terminalGroups: projects.groups,
+        canvasState,
+      };
+    });
+  },
+
+  reconcileProjectGroups: () => {
+    set((state) => {
+      const projects = reconcileProjectGroups(state.tabs, state.groups, state.canvasState);
+      return {
+        tabs: projects.tabs,
+        groups: projects.groups,
+        terminalGroups: projects.groups,
+      };
+    });
   },
 
   updateWorkspaceUiState: (updates: Partial<WorkspaceUiState>) => {

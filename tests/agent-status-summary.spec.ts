@@ -109,6 +109,65 @@ test("summarizes shell TUI transcript when no model endpoint is configured", () 
   expect(summary.now).not.toContain("gpt-5.5 default");
 });
 
+test("does not promote tool-log labels or code query fragments into shell summaries", () => {
+  const summary = getDisplaySummary({
+    mission: "Terminal",
+    provider: "shell",
+    status: "running",
+    cwd: "/repo/termfleet",
+    currentActivity: "Search",
+    terminalOutput: [
+      "I’m going to wire the real sidebar into the terminal body now. The key change is: the terminal output area becomes a two-column layout only when task rows exist; otherwise it stays unchanged.",
+      "Explored",
+      "Read MagicCanvas.tsx",
+      "Search",
+      "terminalTaskPanel|canvas-terminal-task-sidebar|agentTaskPanel|TerminalComponent|nodeBody|terminalBody|liveTerminalBody|node.type === \"terminal\" ? in MagicCanvas.tsx",
+      "Read MagicCanvas.tsx",
+    ].join("\n"),
+  }, {
+    task: "Search",
+    path: "devops/termfleet",
+    now: "terminalBody|liveTerminalBody|node.type ...",
+    status: "working",
+    provider: "shell",
+    confidence: "low",
+  });
+
+  expect(summary.task).toBe("Ready");
+  expect(summary.now).toBe("Awaiting terminal output");
+  expect(summary.task).not.toBe("Search");
+  expect(summary.now).not.toContain("terminalBody|liveTerminalBody");
+});
+
+test("keeps Playwright shell summaries stable on the test identity", () => {
+  const summary = getDisplaySummary({
+    mission: "Terminal",
+    provider: "shell",
+    status: "running",
+    cwd: "/repo/termfleet",
+    currentActivity: "Running 2 tests using 1 worker",
+    terminalOutput: [
+      "npx playwright test tests/map-terminal-rendering.spec.ts -g \"map shell header prefers summarized task path and now\" --reporter=line",
+      "Running 2 tests using 1 worker",
+      "… +35 lines (ctrl + t to view transcript)",
+      "1 passed (10.5s)",
+      "Working (10m 52s • esc to interrupt)",
+    ].join("\n"),
+  }, {
+    task: "Running 2 tests using 1 worker",
+    path: "devops/termfleet",
+    now: "stale. That is exactly the old changing behavior.",
+    status: "working",
+    provider: "shell",
+    confidence: "medium",
+  });
+
+  expect(summary.task).toBe("Playwright: map shell header prefers summarized task path and now");
+  expect(summary.now).toBe("map-terminal-rendering.spec.ts");
+  expect(summary.task).not.toContain("Running 2 tests");
+  expect(summary.now).not.toContain("stale");
+});
+
 test("summarizes fullscreen htop chrome as process monitoring", () => {
   const summary = fallbackAgentStatusSummary({
     mission: "Terminal",

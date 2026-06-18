@@ -96,7 +96,7 @@ test("shell terminals do not show the agent task sidebar", async ({ page }) => {
   await expect(page.getByTestId("split-agent-task-sidebar")).toHaveCount(0);
 });
 
-test("agent terminal task sidebar renders extracted tasks and next action", async ({ page }) => {
+test("agent terminal task sidebar does not rewrite from extracted live summaries", async ({ page }) => {
   await resetWorkspace(page);
   await createAgentWorkstream(page, "Extract checkout follow-ups");
 
@@ -156,10 +156,7 @@ test("agent terminal task sidebar renders extracted tasks and next action", asyn
     });
   });
 
-  await expect(page.getByTestId("canvas-agent-task-sidebar")).toContainText("Tasks");
-  await expect(page.getByTestId("canvas-agent-task-row")).toContainText("Persist retry evidence on the checkout report");
-  await expect(page.getByTestId("canvas-agent-task-state")).toContainText("Working");
-  await expect(page.getByTestId("canvas-agent-task-next")).toContainText("Next: Rerun checkout-flow.spec with retry trace");
+  await expect(page.getByTestId("canvas-agent-task-sidebar")).toHaveCount(0);
   await runWorkspaceCommand(page, "show terminal");
   await expect(page.getByTestId("split-agent-task-sidebar")).toContainText("Tasks");
   await expect(page.getByTestId("split-agent-task-row")).toHaveCount(1);

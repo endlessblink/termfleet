@@ -14,7 +14,8 @@ import {
   nextTerminalInputSequence,
   type DaemonInputQueue,
 } from "../lib/daemonInputQueue";
-import { GlyphAtlas, measureCell } from "../lib/fontAtlas";
+import { getSharedAtlas, measureCell } from "../lib/fontAtlas";
+import { register as registerExitWatch, unregister as unregisterExitWatch } from "../lib/exitWatcher";
 import { GridBuffer } from "../lib/gridBuffer";
 import { decodeFrame } from "../lib/gridDiff";
 import { needsLegacyPromptRepair } from "../lib/legacyPromptRepair";
@@ -239,7 +240,9 @@ export function TerminalCanvas({
     // renderScale is constant per mount, so it's safe in this effect's deps.
     const dpr = (window.devicePixelRatio || 1) * Math.max(1, renderScale);
     const metrics = measureCell(FONT_FAMILY, FONT_SIZE_PX, dpr, LINE_HEIGHT, FONT_WEIGHT_BOOST_PX);
-    const atlas = new GlyphAtlas(metrics);
+    // Shared across all terminal instances at this metrics identity — do not
+    // dispose on unmount (see getSharedAtlas).
+    const atlas = getSharedAtlas(metrics);
     const buffer = new GridBuffer();
     bufferRef.current = buffer;
     cellRef.current = { width: metrics.cellWidth, height: metrics.cellHeight, dpr };
@@ -249,8 +252,6 @@ export function TerminalCanvas({
     let visibleContentSeen = false;
     let refreshTimer: ReturnType<typeof setTimeout> | null = null;
     let blankGuardTimer: ReturnType<typeof setTimeout> | null = null;
-    let exitPollTimer: ReturnType<typeof setInterval> | null = null;
-    let exitReported = false;
     let reusedSession = false;
     let legacyPromptRepairSent = false;
     let renderScheduled = false;
@@ -597,29 +598,13 @@ export function TerminalCanvas({
         void forceSnapshotRefresh();
       }, 900);
       blankGuardTimer = setTimeout(failIfStillBlank, 3000);
-      exitPollTimer = setInterval(() => {
-        if (disposed || exitReported) return;
-        void invoke<Array<{
-          id: string;
-          kind: string;
-          exit_status?: { code?: number | null; success?: boolean } | null;
-        }>>("daemon_list_session_events")
-          .then((events) => {
-            if (disposed || exitReported) return;
-            const exitEvent = [...events]
-              .reverse()
-              .find((event) =>
-                event.id === sessionId &&
-                (event.kind === "eof" || event.kind === "killed" || event.kind === "read-error")
-              );
-            if (!exitEvent) return;
-            exitReported = true;
-            const code = exitEvent.exit_status?.code ?? (exitEvent.kind === "read-error" ? 1 : 0);
-            const success = exitEvent.exit_status?.success ?? exitEvent.kind !== "read-error";
-            onExitRef.current?.({ id: sessionId, code, success });
-          })
-          .catch(() => {});
-      }, 500);
+      // One shared poller for the whole process fans out exit events to each
+      // registered session (see exitWatcher) — instead of one interval + a
+      // full daemon_list_session_events scan per terminal.
+      registerExitWatch(sessionId, (exit) => {
+        if (disposed) return;
+        onExitRef.current?.(exit);
+      });
       // Reconcile only if layout settled to a different size during the awaits.
       // On a map node this defers (firstFrame not yet) so the mode is known before
       // we choose freeze vs reflow; the first-frame handler runs it then.
@@ -640,7 +625,7 @@ export function TerminalCanvas({
       disposed = true;
       if (refreshTimer !== null) clearTimeout(refreshTimer);
       if (blankGuardTimer !== null) clearTimeout(blankGuardTimer);
-      if (exitPollTimer !== null) clearInterval(exitPollTimer);
+      unregisterExitWatch(sessionId);
       if (resizeTimer !== null) clearTimeout(resizeTimer);
       daemonInputQueueRef.current?.dispose();
       daemonInputQueueRef.current = null;

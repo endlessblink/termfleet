@@ -5,6 +5,14 @@ export interface MasterPlanTask {
   title: string;
   status: MasterPlanTaskStatus;
   rawStatus: string;
+  checklist?: MasterPlanTaskChecklistItem[];
+}
+
+export interface MasterPlanTaskChecklistItem {
+  id: string;
+  text: string;
+  status: MasterPlanTaskStatus;
+  rawStatus: string;
 }
 
 export function masterPlanPath(projectRoot: string) {
@@ -31,11 +39,79 @@ function cleanTaskId(value: string) {
   return value.replace(/^~~|~~$/g, "").trim();
 }
 
+function cleanChecklistText(value: string) {
+  return cleanTitle(value.replace(/^(done|todo|blocked?|in[_ -]?progress|progress|doing)\s*:\s*/i, ""));
+}
+
 export function parseMasterPlanTasks(contents: string): MasterPlanTask[] {
   const byId = new Map<string, MasterPlanTask>();
   let tableHeader: string[] = [];
+  let currentTaskId: string | null = null;
+  let inAcceptance = false;
+  let currentChecklistItem: MasterPlanTaskChecklistItem | null = null;
+
+  function appendChecklistContinuation(line: string) {
+    if (!currentTaskId || !currentChecklistItem || !inAcceptance) return;
+    const trimmed = line.trim();
+    if (!trimmed) return;
+    currentChecklistItem.text = cleanTitle(`${currentChecklistItem.text} ${trimmed}`);
+  }
+
+  function pushChecklistItem(raw: string) {
+    if (!currentTaskId) return;
+    const task = byId.get(currentTaskId);
+    if (!task) return;
+    const rawStatus = raw.match(/^(done|todo|blocked?|in[_ -]?progress|progress|doing)\s*:/i)?.[1] ?? "Unknown";
+    const item: MasterPlanTaskChecklistItem = {
+      id: `${currentTaskId}-${(task.checklist?.length ?? 0) + 1}`,
+      text: cleanChecklistText(raw),
+      status: normalizeStatus(rawStatus),
+      rawStatus,
+    };
+    task.checklist = [...(task.checklist ?? []), item];
+    currentChecklistItem = item;
+  }
 
   for (const line of contents.split(/\r?\n/)) {
+    const headingMatch = line.match(/^#{2,6}\s+([A-Za-z]+-\d+)\s*[-:]\s+(.+?)(?:\s+`([^`]+)`)?\s*$/);
+    if (headingMatch) {
+      const [, id, rawTitle, rawStatus] = headingMatch;
+      currentTaskId = id;
+      inAcceptance = false;
+      currentChecklistItem = null;
+      const existing = byId.get(id);
+      byId.set(id, {
+        id,
+        title: cleanTitle(rawTitle),
+        status: normalizeStatus(rawStatus ?? existing?.rawStatus),
+        rawStatus: rawStatus?.trim() ?? existing?.rawStatus ?? "Unknown",
+        ...(existing?.checklist ? { checklist: existing.checklist } : {}),
+      });
+      continue;
+    }
+
+    if (currentTaskId && /^Acceptance:\s*$/i.test(line.trim())) {
+      inAcceptance = true;
+      currentChecklistItem = null;
+      continue;
+    }
+
+    if (currentTaskId && inAcceptance && /^#{2,6}\s+/.test(line)) {
+      inAcceptance = false;
+      currentChecklistItem = null;
+    }
+
+    const acceptanceBullet = currentTaskId && inAcceptance ? line.match(/^\s*-\s+(.+)$/) : null;
+    if (acceptanceBullet) {
+      pushChecklistItem(acceptanceBullet[1]);
+      continue;
+    }
+
+    if (currentTaskId && inAcceptance && currentChecklistItem && /^\s{2,}\S/.test(line)) {
+      appendChecklistContinuation(line);
+      continue;
+    }
+
     const tableCells = line.startsWith("|")
       ? line.split("|").slice(1, -1).map((cell) => cell.trim())
       : [];
@@ -65,19 +141,10 @@ export function parseMasterPlanTasks(contents: string): MasterPlanTask[] {
         title: cleanTitle(title),
         status: normalizeStatus(rawStatus),
         rawStatus: rawStatus.trim(),
+        ...(byId.get(tableId)?.checklist ? { checklist: byId.get(tableId)?.checklist } : {}),
       });
       continue;
     }
-
-    const headingMatch = line.match(/^#{2,6}\s+([A-Za-z]+-\d+)\s+-\s+(.+?)(?:\s+`([^`]+)`)?\s*$/);
-    if (!headingMatch) continue;
-    const [, id, rawTitle, rawStatus] = headingMatch;
-    byId.set(id, {
-      id,
-      title: cleanTitle(rawTitle),
-      status: normalizeStatus(rawStatus),
-      rawStatus: rawStatus?.trim() ?? "Unknown",
-    });
   }
 
   return [...byId.values()];

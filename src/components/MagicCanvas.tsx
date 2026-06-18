@@ -98,6 +98,14 @@ function visibleTaskOptions(tasks: MasterPlanTask[], query: string) {
     });
 }
 
+function firstTaskIdFromText(...values: Array<string | undefined | null>) {
+  for (const value of values) {
+    const match = value?.match(/\b[A-Za-z]+-\d+\b/);
+    if (match) return match[0];
+  }
+  return undefined;
+}
+
 const styles: Record<string, CSSProperties> = {
   shell: {
     position: "relative",
@@ -856,6 +864,54 @@ const styles: Record<string, CSSProperties> = {
     overflow: "hidden",
     background: "var(--surface-sunken)",
   },
+  terminalBodyWithTasks: {
+    flex: 1,
+    minHeight: 0,
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr) minmax(210px, 25%)",
+    background: "var(--surface-sunken)",
+    overflow: "hidden",
+  },
+  terminalBodyTaskContent: {
+    minWidth: 0,
+    minHeight: 0,
+    overflow: "hidden",
+  },
+  terminalBodyTaskSidebar: {
+    minWidth: 0,
+    minHeight: 0,
+    display: "flex",
+    flexDirection: "column",
+    gap: 9,
+    padding: "11px 10px",
+    borderLeft: "1px solid var(--border-subtle)",
+    background: "color-mix(in srgb, var(--surface-base) 72%, var(--surface-sunken))",
+    color: "var(--text-secondary)",
+    fontFamily: "var(--font-ui)",
+    overflow: "hidden",
+  },
+  terminalBodyTaskList: {
+    minHeight: 0,
+    display: "flex",
+    flexDirection: "column",
+    gap: 9,
+    overflowY: "auto",
+  },
+  terminalBodyTaskRow: {
+    minWidth: 0,
+    display: "grid",
+    gridTemplateColumns: "12px minmax(0, 1fr)",
+    gap: 8,
+    alignItems: "start",
+  },
+  terminalBodyTaskMarker: {
+    width: 8,
+    height: 8,
+    marginTop: 4,
+    borderRadius: 2,
+    border: "1px solid color-mix(in srgb, var(--accent-live) 70%, var(--border-subtle))",
+    background: "color-mix(in srgb, var(--accent-live) 16%, transparent)",
+  },
   liveTerminalBody: {
     flex: "1 1 auto",
     minHeight: 260,
@@ -1375,6 +1431,14 @@ const MAX_ZOOM = 2.2;
 const READABLE_TERMINAL_ZOOM = 1;
 const FOCUS_TERMINAL_ZOOM = 1;
 const MAP_TERMINAL_RENDER_SCALE = 2;
+// Viewport culling: cap how many terminal nodes mount a full live renderer at
+// once. Off-screen / over-cap nodes fall back to the cheap DOM snapshot preview
+// (TerminalMapPreview). The selected node and the active tab's node are always
+// live, so the user's work surface always streams. See computeLiveNodeIds.
+const MAX_LIVE_TERMINALS = 24;
+// Inflate the visible rect (canvas-space px) so nodes warm up just before they
+// scroll into view, avoiding a blank flash on pan.
+const CULL_OVERSCAN_PX = 400;
 
 function workstreamLabel(provider?: string) {
   if (provider === "opencode") return "OpenCode";
@@ -1393,6 +1457,67 @@ function shortRunId(runId?: string) {
 
 function runTimestamp(at?: number) {
   return at ? new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "pending";
+}
+
+function TerminalBodyTaskSidebar({
+  rows,
+  testIdPrefix,
+  ariaLabel,
+}: {
+  rows: Array<{ id: string; task: string; state: string; next: string }>;
+  testIdPrefix: "canvas-terminal" | "canvas-agent";
+  ariaLabel: string;
+}) {
+  if (rows.length === 0) return null;
+
+  return (
+    <aside
+      style={styles.terminalBodyTaskSidebar}
+      data-testid={`${testIdPrefix}-task-sidebar`}
+      aria-label={ariaLabel}
+      onWheel={(event) => event.stopPropagation()}
+    >
+      <div style={styles.agentTaskHeader}>
+        <span>Tasks</span>
+        <span>{rows.length}</span>
+      </div>
+      <div style={styles.terminalBodyTaskList}>
+        {rows.slice(0, 5).map((task) => (
+          <div
+            key={task.id}
+            style={styles.terminalBodyTaskRow}
+            data-testid={`${testIdPrefix}-task-row`}
+            title={`${task.task} · ${task.state} · Next: ${task.next}`}
+          >
+            <span
+              style={{
+                ...styles.terminalBodyTaskMarker,
+                background: task.state === "Done"
+                  ? "var(--accent-live)"
+                  : "color-mix(in srgb, var(--surface-base) 90%, transparent)",
+              }}
+              aria-hidden="true"
+            />
+            <span style={{ minWidth: 0 }}>
+              <div style={styles.agentTaskTitle}>{task.task}</div>
+              <div style={styles.agentTaskMeta}>
+                <span data-testid={`${testIdPrefix}-task-state`}>{task.state}</span>
+                <span style={{ color: "var(--text-tertiary)" }}>·</span>
+                <span style={styles.agentTaskNext} data-testid={`${testIdPrefix}-task-next`}>
+                  Next: {task.next}
+                </span>
+              </div>
+            </span>
+          </div>
+        ))}
+        {rows.length > 5 && (
+          <div style={{ color: "var(--text-tertiary)", fontSize: 10 }}>
+            +{rows.length - 5} more tasks
+          </div>
+        )}
+      </div>
+    </aside>
+  );
 }
 
 function recoveryPromptFor(workstream?: Tab["workstream"]) {
@@ -1551,6 +1676,7 @@ function TerminalMapPreview({
 
 function CanvasNodeView({
   node,
+  live,
   focusNode,
   terminalPreview,
   onTerminalSnapshot,
@@ -1558,6 +1684,10 @@ function CanvasNodeView({
   onPanStart,
 }: {
   node: CanvasNode;
+  // Whether this terminal node mounts a full live renderer. When false (off
+  // screen / over the live cap) it shows the cheap snapshot preview instead.
+  // Computed once per render by the parent (see computeLiveNodeIds).
+  live: boolean;
   focusNode: (node: CanvasNode, zoom: number) => void;
   terminalPreview?: TerminalPreviewEntry;
   onTerminalSnapshot: (nodeId: string, snapshot: GridSnapshot) => void;
@@ -1610,7 +1740,11 @@ function CanvasNodeView({
         boxShadow: "inset 0 1px 0 color-mix(in srgb, #ffffff 5%, transparent)",
       }
     : undefined;
-  const showTerminalPreview = node.type === "terminal" && zoom < READABLE_TERMINAL_ZOOM;
+  // Show the cheap snapshot preview when zoomed out OR when this node is not in
+  // the live set (off screen / over the cap). The full TerminalComponent mounts
+  // only for readable-zoom, live nodes — bounding live renderers at scale.
+  const showTerminalPreview =
+    node.type === "terminal" && (zoom < READABLE_TERMINAL_ZOOM || !live);
 
   const activateTerminalNode = useCallback(() => {
     selectCanvasNode(node.id);
@@ -1748,9 +1882,6 @@ function CanvasNodeView({
   const normalizedTaskRoot = taskRoot?.replace(/\/+$/, "");
   const tasksByRoot = useMasterPlanTasks([normalizedTaskRoot]);
   const rootTasks = normalizedTaskRoot ? tasksByRoot[normalizedTaskRoot] ?? [] : [];
-  const boundTask = node.taskBinding
-    ? rootTasks.find((task) => task.id.toLowerCase() === node.taskBinding?.taskId.toLowerCase())
-    : undefined;
   const taskOptions = useMemo(() => visibleTaskOptions(rootTasks, taskPickerQuery), [rootTasks, taskPickerQuery]);
   const taskPlanPath = normalizedTaskRoot ? masterPlanPath(normalizedTaskRoot) : "No project root";
   const terminalTabId = linkedTab?.id ?? `canvas-${node.id}`;
@@ -1817,6 +1948,8 @@ function CanvasNodeView({
   const terminalHeaderSummarySignal = terminalDisplaySummary.now;
   const terminalHeaderHasUsefulNow = terminalDisplaySummary.now !== "Awaiting terminal output";
   const terminalHeaderHasUsefulSummary = terminalDisplaySummary.task !== "Ready";
+  const terminalHeaderHasTrustedSummary =
+    terminalHeaderHasUsefulSummary && terminalDisplaySummary.confidence !== "low";
   const terminalHeaderTaskState = terminalHeaderHasUsefulNow
     ? "Working"
     : linkedTerminal?.status === "failed"
@@ -1825,6 +1958,20 @@ function CanvasNodeView({
         ? "Done"
         : "Idle";
   const workstream = linkedTab?.workstream;
+  const detectedLaneTaskId = node.taskBinding?.taskId ?? firstTaskIdFromText(
+    workstream?.mission,
+    workstream?.prompt,
+    workstream?.lastSummary,
+    workstream?.nextAction,
+    terminalStatusSummary?.task,
+    terminalHeaderTitle,
+    terminalHeaderSummarySignal,
+    linkedTab?.title,
+    node.title
+  );
+  const boundTask = detectedLaneTaskId
+    ? rootTasks.find((task) => task.id.toLowerCase() === detectedLaneTaskId.toLowerCase())
+    : undefined;
   const queuedWorkstreamInput = workstream?.inputQueue?.find((input) => !input.sentAt);
   const latestInput = workstream?.inputQueue?.[workstream.inputQueue.length - 1];
   const latestMissionControlInput = latestInput?.source === "mission-control" ? latestInput : undefined;
@@ -1863,6 +2010,17 @@ function CanvasNodeView({
   const agentTerminalTasks = workstream?.kind === "agent" && agentStatusSummary
     ? agentTerminalTaskRows(workstream, agentStatusSummary)
     : [];
+  void agentTerminalTasks;
+  const laneChecklistTasks = (boundTask?.checklist ?? []).map((item) => ({
+    id: item.id,
+    task: item.text,
+    state: item.status === "done" ? "Done" : "Not done",
+    next: item.status === "done" ? "Complete" : taskStatusLabel(item.status),
+  }));
+  void terminalHeaderTaskState;
+  const terminalBodyTasks = laneChecklistTasks;
+  const terminalBodyTaskPrefix: "canvas-agent" | "canvas-terminal" =
+    workstream?.kind === "agent" ? "canvas-agent" : "canvas-terminal";
   const nodeKind = workstream?.kind === "agent"
     ? "agent"
     : node.type === "terminal"
@@ -2142,7 +2300,7 @@ function CanvasNodeView({
         width: node.width,
         height: node.height,
         zIndex: node.type === "terminal" && workstream?.kind === "agent" ? 25 : selected ? 15 : 1,
-        borderColor: selected ? "var(--border-focus)" : "var(--border-subtle)",
+        border: selected ? "1px solid var(--border-focus)" : styles.node.border,
         boxShadow: selected
           ? "0 0 0 1px rgba(217,154,69,0.36), 0 20px 54px rgba(0,0,0,0.52)"
           : styles.node.boxShadow,
@@ -2274,40 +2432,6 @@ function CanvasNodeView({
                 <span style={styles.agentStatusChip}>summary · {agentStatusSummary.confidence}</span>
               )}
             </div>
-            {agentTerminalTasks.length > 0 && (
-              <div
-                style={styles.agentTaskPanel}
-                data-testid="canvas-agent-task-sidebar"
-                aria-label="Agent terminal tasks"
-              >
-                <div style={styles.agentTaskHeader}>
-                  <span>Tasks</span>
-                  <span>{agentTerminalTasks.length}</span>
-                </div>
-                {agentTerminalTasks.slice(0, 3).map((task) => (
-                  <div
-                    key={task.id}
-                    style={styles.agentTaskRow}
-                    data-testid="canvas-agent-task-row"
-                    title={`${task.task} · ${task.state} · Next: ${task.next}`}
-                  >
-                    <div style={styles.agentTaskTitle}>{task.task}</div>
-                    <div style={styles.agentTaskMeta}>
-                      <span data-testid="canvas-agent-task-state">{task.state}</span>
-                      <span style={{ color: "var(--text-tertiary)" }}>·</span>
-                      <span style={styles.agentTaskNext} data-testid="canvas-agent-task-next">
-                        Next: {task.next}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-                {agentTerminalTasks.length > 3 && (
-                  <div style={{ color: "var(--text-tertiary)", fontSize: 10 }}>
-                    +{agentTerminalTasks.length - 3} more tasks
-                  </div>
-                )}
-              </div>
-            )}
           </div>
         ) : node.type === "terminal" && workstream?.kind !== "agent" ? (
           <div
@@ -2332,7 +2456,7 @@ function CanvasNodeView({
             >
               <span style={{ color: labelColor ?? "var(--text-primary)" }}>{terminalHeaderTitle}</span>
             </div>
-            <div style={terminalHeaderHasUsefulSummary ? styles.terminalStatusLayout : styles.terminalStatusSummaryColumn}>
+            <div style={terminalHeaderHasTrustedSummary ? styles.terminalStatusLayout : styles.terminalStatusSummaryColumn}>
               <div style={styles.terminalStatusSummaryColumn}>
                 <div style={styles.terminalStatusGrid}>
                   <div style={styles.terminalStatusField}>
@@ -2357,34 +2481,6 @@ function CanvasNodeView({
                   </div>
                 </div>
               </div>
-              {terminalHeaderHasUsefulSummary && (
-                <div
-                  style={styles.terminalTaskPanel}
-                  data-testid="canvas-terminal-task-sidebar"
-                  aria-label="Terminal tasks"
-                >
-                  <div style={styles.agentTaskHeader}>
-                    <span>Tasks</span>
-                    <span>1</span>
-                  </div>
-                  <div
-                    style={styles.agentTaskRow}
-                    data-testid="canvas-terminal-task-row"
-                    title={`${terminalHeaderTitle} · ${terminalHeaderTaskState} · Next: ${terminalHeaderSummarySignal}`}
-                  >
-                    <div style={styles.agentTaskTitle}>{terminalHeaderTitle}</div>
-                    <div style={styles.agentTaskMeta}>
-                      <span data-testid="canvas-terminal-task-state">
-                        {terminalHeaderTaskState}
-                      </span>
-                      <span style={{ color: "var(--text-tertiary)" }}>·</span>
-                      <span style={styles.agentTaskNext} data-testid="canvas-terminal-task-next">
-                        Next: {terminalHeaderSummarySignal}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         ) : (
@@ -2781,7 +2877,10 @@ function CanvasNodeView({
       <div
         style={
           node.type === "terminal"
-            ? { ...styles.terminalBody, ...styles.liveTerminalBody }
+            ? {
+                ...(terminalBodyTasks.length > 0 ? styles.terminalBodyWithTasks : styles.terminalBody),
+                ...styles.liveTerminalBody,
+              }
             : node.type === "note"
               ? styles.noteBody
               : styles.nodeBody
@@ -2793,6 +2892,7 @@ function CanvasNodeView({
             }
           : undefined}
         onClick={node.type === "terminal" ? (event) => event.stopPropagation() : undefined}
+        onWheel={node.type === "terminal" ? (event) => event.stopPropagation() : undefined}
       >
         {node.type === "terminal" && workstream?.kind === "agent" ? (
           <div style={styles.agentCockpit}>
@@ -3091,6 +3191,13 @@ function CanvasNodeView({
           </div>
         ) : (
           body
+        )}
+        {node.type === "terminal" && terminalBodyTasks.length > 0 && (
+          <TerminalBodyTaskSidebar
+            rows={terminalBodyTasks}
+            testIdPrefix={terminalBodyTaskPrefix}
+            ariaLabel={workstream?.kind === "agent" ? "Agent terminal tasks" : "Terminal tasks"}
+          />
         )}
       </div>
       {selected && (
