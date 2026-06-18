@@ -801,6 +801,16 @@ pub fn grid_detach(grids: State<'_, GridManager>, id: String) {
 }
 
 #[tauri::command]
+pub fn grid_search(
+    grids: State<'_, GridManager>,
+    id: String,
+    query: String,
+    case_sensitive: bool,
+) -> Result<Vec<crate::search::Match>, String> {
+    grids.search(&id, &query, case_sensitive)
+}
+
+#[tauri::command]
 pub fn grid_resize(
     grids: State<'_, GridManager>,
     id: String,
