@@ -28,6 +28,7 @@
     "verify:oss-readiness": "node scripts/verify-oss-readiness.mjs",
     "verify:public-audit": "node scripts/verify-public-audit.mjs",
     "verify:readme-recovery": "node scripts/verify-readme-recovery.mjs",
+    "verify:developer-preview": "node scripts/verify-developer-preview.mjs",
     "verify:agent-status-summary": "node scripts/verify-agent-status-summary-server.mjs",
     "agent-status:ollama": "node scripts/agent-status-summary-ollama.mjs",
     "termfleetctl": "node scripts/termfleetctl.mjs",

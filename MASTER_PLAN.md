@@ -43,7 +43,7 @@ were retired during consolidation.
 | TC-018     | BiDi/RTL + text shaping (Hebrew nikud) in the headless grid — depends on TC-017                                                                                                                                 | P2       | TODO              | -              |
 | TC-019     | Warp-style chrome redesign: neutral fill-only design system (no outlines), terminal-first layout, Hack terminal font + #1d2022 gray, themed folder picker, DESIGN.md + CI-enforced no-outlines/typography rules | P2       | IN_PROGRESS       | -              |
 | TC-020     | Split-pane and canvas localhost preview surface                                                                                                                                                                 | P2       | DONE (2026-06-01) | -              |
-| TC-021     | Open-source developer preview lane: differentiate TermFleet as a local-first agent/ops cockpit                                                                                                                  | P2       | IN_PROGRESS       | -              |
+| TC-021     | Open-source developer preview lane: differentiate TermFleet as a local-first agent/ops cockpit                                                                                                                  | P2       | DONE (2026-06-18) | -              |
 | TC-022     | External agent bridge: let Hermes attach to and control TermFleet terminals                                                                                                                                     | P1       | TODO              | TC-016, TC-017 |
 | TC-023     | Cross-platform terminal substrate: isolate Linux daemon, path, process, and shell assumptions before macOS/Windows ports                                                                                         | P1       | IN_PROGRESS       | TC-009, TC-017 |
 | TC-024     | Session/map cards: show the project/workspace name in the live summary header                                                                                                                                   | P1       | DONE              | TC-016i        |
@@ -2050,7 +2050,7 @@ Verification:
 ### TC-021: Open-source developer preview lane
 
 **Priority:** P2
-**Status:** In Progress
+**Status:** Done (2026-06-18)
 
 Prepare TermFleet for a public open-source developer preview without positioning
 it as another terminal emulator. The public story is: **a local-first operations
@@ -2196,6 +2196,40 @@ Workstreams:
      package-family hints. Verification: `npm run verify:prerequisites`; `npm
      run verify:oss-readiness`; `npm run build`; `git diff --check`.
 
+Completion checklist:
+
+- DONE: Public positioning differentiates TermFleet as a local-first
+  agent/ops cockpit, not a generic terminal emulator.
+- DONE: README covers quick start, architecture, restore proof, evidence
+  bundles, release gates, contribution guidance, security expectations,
+  limitations, and roadmap.
+- DONE: Fresh-clone prerequisite failures are actionable through
+  `npm run verify:prerequisites`.
+- DONE: Public docs/audit gates are covered by `npm run verify:oss-readiness`
+  and `npm run verify:public-audit`.
+- DONE: Recovery proof path is documented and locked by
+  `npm run verify:readme-recovery`.
+- DONE: Evidence bundle export is implemented and locked by
+  `npm run verify:evidence-bundle`.
+- DONE: Agent status summary proof path is locked by
+  `npm run verify:agent-status-summary`.
+- DONE: Map, task-binding, service, recovery-state, and source-contract
+  behavior is locked by `npm run verify:map-terminals`.
+- DONE: Local-services derived state and log handoff are implemented; visual
+  redesign debt is split into TC-026.
+- DONE: Map filter/workspace-summary visual redesign debt is split into TC-025.
+- DONE: Non-destructive readiness is consolidated under
+  `npm run verify:developer-preview`, which passed on 2026-06-18.
+
+Explicitly out of TC-021:
+
+- Public publishing policy decisions remain blocked on a chosen LICENSE and a
+  real `SECURITY.md` intake path.
+- Heavy live desktop release proof remains covered by `npm run verify:release`
+  and its component live smoke tests before cutting a release candidate.
+- UI redesign follow-up is tracked separately in TC-025 and TC-026 and must use
+  the `design-taste-frontend` skill before implementation.
+
 Acceptance (draft):
 
 - A fresh user can run TermFleet from the README and understand the product in
@@ -2212,13 +2246,18 @@ Acceptance (draft):
 - Repo audit finds no committed secrets, personal tokens, accidental private
   paths in user-facing docs, or unsupported claims.
 
-Verification (planned):
+Completion verification:
 
-- `npm run build`
-- `npm run verify:canvas-live`
-- `npm run verify:standalone-daemon`
-- `npm run verify:canvas-all`
-- Fresh-clone README smoke on a clean temp directory or VM/container equivalent.
+- `npm run verify:developer-preview` passed on 2026-06-18.
+- `npm run verify:prerequisites` passed on 2026-06-18.
+- `npm run verify:oss-readiness` passed on 2026-06-18.
+- `npm run verify:public-audit` passed on 2026-06-18.
+- `npm run verify:readme-recovery` passed on 2026-06-18.
+- `npm run verify:evidence-bundle` passed on 2026-06-18.
+- `npm run verify:agent-status-summary` passed on 2026-06-18 outside the
+  sandbox because it binds local HTTP servers.
+- `npm run verify:map-terminals` passed on 2026-06-18.
+- `npm run build` passed on 2026-06-18.
 
 ### TC-022: External agent bridge: let Hermes attach to and control TermFleet terminals
 

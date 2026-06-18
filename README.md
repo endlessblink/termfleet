@@ -175,6 +175,16 @@ secrets and machine-local absolute paths are redacted before export.
 
 ## Release Gate
 
+For non-destructive developer-preview readiness, run:
+
+```bash
+npm run verify:developer-preview
+```
+
+This runs prerequisite, README/OSS, public-audit, recovery-doc,
+evidence-bundle, agent-status, map-contract, and frontend build checks. It does
+not run the heavier live desktop smoke tests.
+
 Process survival is release-blocking. Before cutting a release candidate, run:
 
 ```bash

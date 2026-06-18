@@ -73,6 +73,12 @@ const checks = [
     ok: /"verify:public-audit": "node scripts\/verify-public-audit\.mjs"/.test(packageJson),
     message: "OSS readiness must include the public pre-publish audit verifier.",
   },
+  {
+    ok: /"verify:developer-preview": "node scripts\/verify-developer-preview\.mjs"/.test(packageJson) &&
+      /npm run verify:developer-preview/.test(readme) &&
+      /not run the heavier live desktop smoke tests/.test(readme),
+    message: "OSS readiness must document the non-destructive developer-preview verification gate.",
+  },
 ];
 
 const failures = checks.filter((check) => !check.ok);
