@@ -48,6 +48,7 @@ were retired during consolidation.
 | TC-023     | Cross-platform terminal substrate: isolate Linux daemon, path, process, and shell assumptions before macOS/Windows ports                                                                                         | P1       | IN_PROGRESS       | TC-009, TC-017 |
 | TC-024     | Session/map cards: show the project/workspace name in the live summary header                                                                                                                                   | P1       | DONE              | TC-016i        |
 | TC-025     | Redesign map filters and workspace summary into a usable non-scrolling control surface                                                                                                                          | P1       | TODO              | TC-021         |
+| TC-026     | Redesign local-services panel into a usable service cockpit control surface                                                                                                                                      | P1       | TODO              | TC-021         |
 
 ---
 
@@ -94,6 +95,9 @@ Acceptance:
 
 Design target:
 
+- Future UI redesigns must use the `design-taste-frontend` skill before
+  implementation. Use it to set the interaction hierarchy and density first,
+  then preserve behavior with focused regressions.
 - Match the reference workbench proportions more than the current graph-paper
   canvas: strong left operational dock, dominant central work area, thin top
   command strip, restrained bottom telemetry.
@@ -128,6 +132,28 @@ Acceptance:
   behind the redesigned UI.
 - TODO: Browser review covers the narrow sidebar at the same width as the
   screenshot and proves no horizontal sliding is needed for common filters.
+
+### TC-026: Redesign local-services panel
+
+**Priority:** P1
+**Status:** TODO
+**Depends:** TC-021
+
+The local-services panel currently exposes useful derived state, but the visual
+design is poor: rows repeat host/port text, controls are cramped, and the panel
+reads as chip noise instead of a service cockpit. This redesign must use the
+`design-taste-frontend` skill before implementation.
+
+Acceptance:
+
+- TODO: Redesign service rows so URL, port, owner, state, activity, and actions
+  have a clear hierarchy without repeated text or cramped icon clusters.
+- TODO: Keep copy URL, copy logs, open URL, and focus behavior reachable without
+  horizontal scrolling or ambiguous nested controls.
+- TODO: Preserve the current derived service contract from terminal/preview
+  metadata; do not add background port scanning as part of this redesign.
+- TODO: Browser review covers the narrow sidebar and proves the panel remains
+  readable with at least two detected services.
 - TODO: Verification includes `npm run build`, the map rendering regression, and
   screenshot evidence of the redesigned sidebar.
 

@@ -79,6 +79,16 @@ Backend (`src-tauri/src/`):
 Key docs in `docs/`: `terminal-cockpit-design-contract.md`,
 `recoverable-terminal-architecture.md`, `terminal-transport-failure-recovery.md`, `visual-qa-review.md`.
 
+## Design work
+
+Future UI redesigns must use the `design-taste-frontend` skill before editing.
+Treat screenshots that feel crowded, horizontally scrolling, chip-heavy, or
+noisy as product-quality failures, not cosmetic polish. Preserve existing
+behavior with focused regressions, but redesign the control surface with the
+skill's dashboard constraints: restrained density, no generic card overuse,
+clear icon/action hierarchy, and no hidden horizontal scrolling for primary
+controls.
+
 ## Hard constraints (learned — do not relitigate)
 
 - **No optimistic local echo and no PTY echo suppression.** Explicitly rejected in
