@@ -12,6 +12,7 @@ import {
   ListTodo,
   Maximize2,
   Minus,
+  MousePointer2,
   NotebookText,
   Plus,
   RefreshCw,
@@ -35,6 +36,32 @@ import { agentStatusChipText, agentStatusSummaryFromWorkstream, getDisplaySummar
 import { workstreamActivityMeta, workstreamActivityText } from "../lib/workstreamActivity";
 import { formatWorkstreamBranch, formatWorkstreamIsolation, formatWorkstreamOpsContext } from "../lib/workstreamOpsContext";
 import { snapshotPreviewRows } from "../lib/snapshotPreviewRows";
+
+type CanvasRect = {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+};
+
+type SelectionBox = {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+};
+
+const TERMINAL_LABEL_COLORS = [
+  { label: "Default", value: undefined },
+  { label: "Cyan", value: "#7dbac3" },
+  { label: "Amber", value: "#d4a44f" },
+  { label: "Red", value: "#d96767" },
+  { label: "Violet", value: "#a890d3" },
+];
+
+function rectsIntersect(a: CanvasRect, b: CanvasRect) {
+  return a.minX <= b.maxX && a.maxX >= b.minX && a.minY <= b.maxY && a.maxY >= b.minY;
+}
 
 const styles: Record<string, CSSProperties> = {
   shell: {
@@ -116,6 +143,14 @@ const styles: Record<string, CSSProperties> = {
     alignItems: "center",
     color: "var(--text-secondary)",
     fontSize: 11,
+  },
+  selectionRect: {
+    position: "fixed",
+    zIndex: 30,
+    border: "1px solid color-mix(in srgb, var(--accent-info) 72%, transparent)",
+    background: "color-mix(in srgb, var(--accent-info) 13%, transparent)",
+    borderRadius: "var(--radius-xs)",
+    pointerEvents: "none",
   },
   toolbarLabel: {
     height: 28,
@@ -1185,27 +1220,32 @@ function CanvasNodeView({
   focusNode,
   terminalPreview,
   onTerminalSnapshot,
+  onOpenNodeLabelMenu,
 }: {
   node: CanvasNode;
   focusNode: (node: CanvasNode, zoom: number) => void;
   terminalPreview?: TerminalPreviewEntry;
   onTerminalSnapshot: (nodeId: string, snapshot: GridSnapshot) => void;
+  onOpenNodeLabelMenu: (nodeId: string, event: React.MouseEvent) => void;
 }) {
   const tabs = useWorkspaceStore((state) => state.tabs);
   const groups = useWorkspaceStore((state) => state.groups);
   const liveCwds = useWorkspaceStore((state) => state.liveCwds);
   const selectedNodeId = useWorkspaceStore((state) => state.canvasState.selectedNodeId);
+  const storedSelectedNodeIds = useWorkspaceStore((state) => state.canvasState.selectedNodeIds);
   const zoom = useWorkspaceStore((state) => state.canvasState.viewport.zoom);
   const updateCanvasNode = useWorkspaceStore((state) => state.updateCanvasNode);
+  const moveCanvasNodes = useWorkspaceStore((state) => state.moveCanvasNodes);
   const removeCanvasNode = useWorkspaceStore((state) => state.removeCanvasNode);
   const closeTerminalSession = useWorkspaceStore((state) => state.closeTerminalSession);
   const closePane = useWorkspaceStore((state) => state.closePane);
   const updatePreviewPaneUrl = useWorkspaceStore((state) => state.updatePreviewPaneUrl);
   const selectCanvasNode = useWorkspaceStore((state) => state.selectCanvasNode);
+  const selectCanvasNodes = useWorkspaceStore((state) => state.selectCanvasNodes);
   const setActiveTab = useWorkspaceStore((state) => state.setActiveTab);
   const setWorkspaceMode = useWorkspaceStore((state) => state.setWorkspaceMode);
   const terminalRendererMode = useWorkspaceStore((state) => state.workspaceUiState.terminalRendererMode);
-  const dragRef = useRef<{ x: number; y: number; nodeX: number; nodeY: number } | null>(null);
+  const dragRef = useRef<{ x: number; y: number; nodeX: number; nodeY: number; lastDeltaX: number; lastDeltaY: number } | null>(null);
   const resizeRef = useRef<{
     pointerX: number;
     pointerY: number;
@@ -1218,7 +1258,9 @@ function CanvasNodeView({
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const [isResizing, setIsResizing] = useState(false);
   const [operatorDraft, setOperatorDraft] = useState("");
-  const selected = selectedNodeId === node.id;
+  const selectedNodeIds = storedSelectedNodeIds ?? (selectedNodeId ? [selectedNodeId] : []);
+  const selected = selectedNodeIds.includes(node.id) || selectedNodeId === node.id;
+  const labelColor = node.type === "terminal" ? node.labelColor : undefined;
   const showTerminalPreview = node.type === "terminal" && zoom < READABLE_TERMINAL_ZOOM;
 
   const activateTerminalNode = useCallback(() => {
@@ -1231,12 +1273,24 @@ function CanvasNodeView({
   const onMouseDown = useCallback((event: React.MouseEvent) => {
     event.preventDefault();
     event.stopPropagation();
-    selectCanvasNode(node.id);
+    if (event.shiftKey || event.metaKey || event.ctrlKey) {
+      const nextIds = selectedNodeIds.includes(node.id)
+        ? selectedNodeIds.filter((id) => id !== node.id)
+        : [...selectedNodeIds, node.id];
+      selectCanvasNodes(nextIds.length > 0 ? nextIds : [node.id]);
+    } else if (!selectedNodeIds.includes(node.id)) {
+      selectCanvasNode(node.id);
+    }
+    const dragIds = selectedNodeIds.includes(node.id) && selectedNodeIds.length > 1
+      ? selectedNodeIds
+      : [node.id];
     dragRef.current = {
       x: event.clientX,
       y: event.clientY,
       nodeX: node.x,
       nodeY: node.y,
+      lastDeltaX: 0,
+      lastDeltaY: 0,
     };
 
     function onMouseMove(moveEvent: MouseEvent) {
@@ -1244,10 +1298,14 @@ function CanvasNodeView({
       if (!drag) return;
       const nextX = drag.nodeX + (moveEvent.clientX - drag.x) / zoom;
       const nextY = drag.nodeY + (moveEvent.clientY - drag.y) / zoom;
-      updateCanvasNode(node.id, {
-        x: snapTerminalPixel(nextX, node.type, zoom),
-        y: snapTerminalPixel(nextY, node.type, zoom),
+      const totalDeltaX = snapTerminalPixel(nextX, node.type, zoom) - node.x;
+      const totalDeltaY = snapTerminalPixel(nextY, node.type, zoom) - node.y;
+      moveCanvasNodes(dragIds, {
+        x: totalDeltaX - drag.lastDeltaX,
+        y: totalDeltaY - drag.lastDeltaY,
       });
+      drag.lastDeltaX = totalDeltaX;
+      drag.lastDeltaY = totalDeltaY;
     }
 
     function onMouseUp() {
@@ -1258,7 +1316,7 @@ function CanvasNodeView({
 
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onMouseUp);
-  }, [node.id, node.x, node.y, selectCanvasNode, updateCanvasNode, zoom]);
+  }, [moveCanvasNodes, node.id, node.type, node.x, node.y, selectCanvasNode, selectCanvasNodes, selectedNodeIds, zoom]);
 
   const onResizeMouseDown = useCallback((event: React.MouseEvent, direction: ResizeDirection) => {
     event.preventDefault();
@@ -1707,6 +1765,8 @@ function CanvasNodeView({
 
   return (
     <section
+      data-testid={node.type === "terminal" ? "canvas-terminal-node" : "canvas-node"}
+      data-node-id={node.id}
       style={{
         ...styles.node,
         left: node.x,
@@ -1721,10 +1781,26 @@ function CanvasNodeView({
       }}
       onMouseDown={(event) => {
         event.stopPropagation();
+        if (dragRef.current) return;
+        const target = event.target as HTMLElement;
+        if (
+          selectedNodeIds.includes(node.id) &&
+          selectedNodeIds.length > 1 &&
+          !target.closest(".terminal-container,button,input,textarea,select")
+        ) {
+          onMouseDown(event);
+          return;
+        }
         activateTerminalNode();
+      }}
+      onContextMenu={(event) => {
+        if (node.type === "terminal") {
+          onOpenNodeLabelMenu(node.id, event);
+        }
       }}
     >
       <div
+        data-testid={node.type === "terminal" ? "canvas-terminal-node-header" : "canvas-node-header"}
         style={{
           ...styles.nodeHeader,
           ...(node.type === "terminal" && !agentStatusSummary
@@ -1735,11 +1811,17 @@ function CanvasNodeView({
             : null),
         }}
         onMouseDown={onMouseDown}
+        onContextMenu={(event) => {
+          if (node.type === "terminal") {
+            onOpenNodeLabelMenu(node.id, event);
+          }
+        }}
       >
         <span
           style={{
             ...styles.nodeKind,
-            borderLeft: linkedTab?.color ? `2px solid ${linkedTab.color}` : undefined,
+            borderLeft: labelColor || linkedTab?.color ? `2px solid ${labelColor ?? linkedTab?.color}` : undefined,
+            color: labelColor ?? styles.nodeKind.color,
           }}
         >
           {nodeKind}
@@ -1782,6 +1864,7 @@ function CanvasNodeView({
             style={styles.agentStatusBlock}
             dir="auto"
             title={`${workspaceLabel} · ${agentStatusSummary.task} · ${agentStatusSummary.path} · ${agentStatusSummary.now}`}
+            onMouseDown={onMouseDown}
             onDoubleClick={onRename}
           >
             <div style={styles.terminalStatusKicker}>
@@ -1816,6 +1899,7 @@ function CanvasNodeView({
             style={styles.terminalStatusBlock}
             dir="auto"
             title={`${workspaceLabel} · ${terminalHeaderTitle} · ${terminalHeaderPath} · ${terminalHeaderSummarySignal}`}
+            onMouseDown={onMouseDown}
             onDoubleClick={onRename}
           >
             <div style={styles.terminalStatusKicker}>
@@ -1830,7 +1914,7 @@ function CanvasNodeView({
               style={styles.terminalStatusTitle}
               data-testid="canvas-terminal-node-header-title"
             >
-              {terminalHeaderTitle}
+              <span style={{ color: labelColor ?? "var(--text-primary)" }}>{terminalHeaderTitle}</span>
             </div>
             <div style={styles.terminalStatusGrid}>
               <div style={styles.terminalStatusField}>
@@ -1866,7 +1950,9 @@ function CanvasNodeView({
               style={styles.nodeTitle}
               data-testid={workstream?.kind === "agent" ? "canvas-agent-node-header-title" : "canvas-node-header-title"}
             >
-              {agentHeaderTitle ?? (node.type === "terminal" ? terminalTitle : node.title)}
+              <span style={{ color: labelColor ?? "var(--text-primary)" }}>
+                {agentHeaderTitle ?? (node.type === "terminal" ? terminalTitle : node.title)}
+              </span>
             </div>
             {node.type === "terminal" && (
               <div
@@ -2410,14 +2496,19 @@ export function MagicCanvas() {
   const addCanvasNode = useWorkspaceStore((state) => state.addCanvasNode);
   const updateCanvasNode = useWorkspaceStore((state) => state.updateCanvasNode);
   const updateCanvasViewport = useWorkspaceStore((state) => state.updateCanvasViewport);
+  const selectCanvasNodes = useWorkspaceStore((state) => state.selectCanvasNodes);
   const openFiles = useWorkspaceStore((state) => state.openFiles);
   const shellRef = useRef<HTMLDivElement>(null);
   const panRef = useRef<{ x: number; y: number; viewportX: number; viewportY: number } | null>(null);
   const [fileIndex, setFileIndex] = useState(0);
   const [terminalPreviews, setTerminalPreviews] = useState<Record<string, TerminalPreviewEntry>>({});
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectionBox, setSelectionBox] = useState<SelectionBox | null>(null);
+  const selectionStartRef = useRef<{ clientX: number; clientY: number; canvasX: number; canvasY: number } | null>(null);
   // Right-click "create here" menu. Screen coords place the menu; canvas coords
   // drop the new node where the cursor is.
   const [menu, setMenu] = useState<{ x: number; y: number; canvasX: number; canvasY: number } | null>(null);
+  const [labelMenu, setLabelMenu] = useState<{ nodeId: string; x: number; y: number } | null>(null);
   const agentLane = summarizeAgentLane(tabs);
   const activeAgentWorkstreams = agentLane.workstreams.filter(({ workstream }) => isActiveAgentWorkstream(workstream));
   const restartableAgentWorkstreams = agentLane.workstreams.filter(({ workstream }) => isRestartableAgentWorkstream(workstream));
@@ -2547,6 +2638,13 @@ export function MagicCanvas() {
     setMenu({ x: event.clientX, y: event.clientY, canvasX, canvasY });
   }, [canvasState.viewport]);
 
+  const openNodeLabelMenu = useCallback((nodeId: string, event: React.MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setMenu(null);
+    setLabelMenu({ nodeId, x: event.clientX, y: event.clientY });
+  }, []);
+
   const createTerminalAt = useCallback(async (canvasX: number, canvasY: number) => {
     await createNewTab();
     const newTabId = useWorkspaceStore.getState().activeTabId;
@@ -2659,6 +2757,59 @@ export function MagicCanvas() {
   const onCanvasMouseDown = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
     if (event.button !== 0 || event.target !== event.currentTarget) return;
     event.preventDefault();
+    const rect = shellRef.current?.getBoundingClientRect();
+    const viewport = canvasState.viewport;
+    if ((selectionMode || event.shiftKey) && rect) {
+      const canvasRect = rect;
+      const canvasX = (event.clientX - canvasRect.left - viewport.x) / viewport.zoom;
+      const canvasY = (event.clientY - canvasRect.top - viewport.y) / viewport.zoom;
+      selectionStartRef.current = { clientX: event.clientX, clientY: event.clientY, canvasX, canvasY };
+      setSelectionBox({ left: event.clientX, top: event.clientY, width: 0, height: 0 });
+      document.body.classList.add("no-select");
+
+      function onSelectMove(moveEvent: MouseEvent) {
+        const start = selectionStartRef.current;
+        if (!start) return;
+        setSelectionBox({
+          left: Math.min(start.clientX, moveEvent.clientX),
+          top: Math.min(start.clientY, moveEvent.clientY),
+          width: Math.abs(moveEvent.clientX - start.clientX),
+          height: Math.abs(moveEvent.clientY - start.clientY),
+        });
+      }
+
+      function onSelectUp(upEvent: MouseEvent) {
+        const start = selectionStartRef.current;
+        selectionStartRef.current = null;
+        setSelectionBox(null);
+        document.body.classList.remove("no-select");
+        document.removeEventListener("mousemove", onSelectMove);
+        document.removeEventListener("mouseup", onSelectUp);
+        if (!start) return;
+        const endCanvasX = (upEvent.clientX - canvasRect.left - viewport.x) / viewport.zoom;
+        const endCanvasY = (upEvent.clientY - canvasRect.top - viewport.y) / viewport.zoom;
+        const selectionRect: CanvasRect = {
+          minX: Math.min(start.canvasX, endCanvasX),
+          minY: Math.min(start.canvasY, endCanvasY),
+          maxX: Math.max(start.canvasX, endCanvasX),
+          maxY: Math.max(start.canvasY, endCanvasY),
+        };
+        const selectedIds = useWorkspaceStore.getState().canvasState.nodes
+          .filter((node) => node.type === "terminal")
+          .filter((node) => rectsIntersect(selectionRect, {
+            minX: node.x,
+            minY: node.y,
+            maxX: node.x + node.width,
+            maxY: node.y + node.height,
+          }))
+          .map((node) => node.id);
+        selectCanvasNodes(selectedIds);
+      }
+
+      document.addEventListener("mousemove", onSelectMove);
+      document.addEventListener("mouseup", onSelectUp);
+      return;
+    }
     panRef.current = {
       x: event.clientX,
       y: event.clientY,
@@ -2687,7 +2838,7 @@ export function MagicCanvas() {
 
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onMouseUp);
-  }, [canvasState.viewport.x, canvasState.viewport.y, updateCanvasViewport]);
+  }, [canvasState.viewport, selectCanvasNodes, selectionMode, updateCanvasViewport]);
 
   const onCanvasWheel = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
     const target = event.target as HTMLElement;
@@ -2757,6 +2908,20 @@ export function MagicCanvas() {
         </button>
         <button className="magic-canvas-button" style={styles.button} title="Add file" aria-label="Add file" onClick={addFile}>
           <FileText size={14} strokeWidth={1.8} />
+        </button>
+        <button
+          className="magic-canvas-button"
+          style={{
+            ...styles.button,
+            background: selectionMode ? "var(--surface-selected)" : styles.button.background,
+            color: selectionMode ? "var(--text-primary)" : styles.button.color,
+          }}
+          title="Select terminals"
+          aria-label="Select terminals"
+          aria-pressed={selectionMode}
+          onClick={() => setSelectionMode((enabled) => !enabled)}
+        >
+          <MousePointer2 size={14} strokeWidth={1.8} />
         </button>
       </div>
 
@@ -3925,6 +4090,19 @@ export function MagicCanvas() {
         <div style={styles.empty}>Map is empty. Add a note, shell, or file node.</div>
       )}
 
+      {selectionBox && (
+        <div
+          data-testid="canvas-selection-rect"
+          style={{
+            ...styles.selectionRect,
+            left: selectionBox.left,
+            top: selectionBox.top,
+            width: selectionBox.width,
+            height: selectionBox.height,
+          }}
+        />
+      )}
+
       <div
         style={{
           ...styles.stage,
@@ -3940,6 +4118,7 @@ export function MagicCanvas() {
             focusNode={centerNode}
             terminalPreview={terminalPreviews[node.id]}
             onTerminalSnapshot={updateTerminalPreview}
+            onOpenNodeLabelMenu={openNodeLabelMenu}
           />
         ))}
       </div>
@@ -4066,6 +4245,78 @@ export function MagicCanvas() {
                 }}
               >
                 {item.icon}
+                <span>{item.label}</span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+      {labelMenu && (
+        <>
+          <div
+            style={{ position: "fixed", inset: 0, zIndex: 50 }}
+            onMouseDown={() => setLabelMenu(null)}
+            onContextMenu={(event) => {
+              event.preventDefault();
+              setLabelMenu(null);
+            }}
+          />
+          <div
+            role="menu"
+            aria-label="Terminal label color"
+            style={{
+              position: "fixed",
+              left: Math.min(labelMenu.x, window.innerWidth - 220),
+              top: Math.min(labelMenu.y, window.innerHeight - 220),
+              zIndex: 51,
+              minWidth: 196,
+              padding: 6,
+              background: "var(--surface-raised)",
+              borderRadius: "var(--radius-md)",
+              boxShadow: "var(--shadow-menu)",
+              border: "none",
+            }}
+          >
+            {TERMINAL_LABEL_COLORS.map((item) => (
+              <button
+                key={item.label}
+                type="button"
+                role="menuitem"
+                className="workspace-launch-config-item"
+                aria-label={`Set terminal label color ${item.label}`}
+                style={{
+                  width: "100%",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 9,
+                  padding: "8px 9px",
+                  border: "none",
+                  borderRadius: "var(--radius-sm)",
+                  background: "transparent",
+                  color: "var(--text-primary)",
+                  fontFamily: "var(--font-ui)",
+                  fontSize: 13,
+                  cursor: "pointer",
+                  textAlign: "left",
+                }}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => {
+                  updateCanvasNode(labelMenu.nodeId, { labelColor: item.value });
+                  setLabelMenu(null);
+                }}
+              >
+                <span
+                  aria-hidden="true"
+                  style={{
+                    width: 13,
+                    height: 13,
+                    borderRadius: 4,
+                    background: item.value ?? "var(--surface-base)",
+                    boxShadow: item.value
+                      ? "inset 0 0 0 1px color-mix(in srgb, #ffffff 20%, transparent)"
+                      : "inset 0 0 0 1px var(--border-subtle)",
+                  }}
+                />
                 <span>{item.label}</span>
               </button>
             ))}

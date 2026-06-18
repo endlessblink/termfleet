@@ -51,6 +51,8 @@ were retired during consolidation.
 | TC-026     | Redesign local-services panel into a usable service cockpit control surface                                                                                                                                      | P1       | DONE (2026-06-18) | TC-021         |
 | TC-027     | LLM task extraction lane: turn terminal/agent output into actionable tasks, blockers, evidence, and next actions                                                                                                | P1       | DONE (2026-06-18) | TC-016i        |
 | TC-028     | Clarify the left operations rail into distinct Files, Sessions, Map, and Preview jobs                                                                                                                           | P1       | DONE (2026-06-18) | TC-021         |
+| TC-029     | Map terminal organization controls: right-click label colors, box-select terminals, and drag selected terminal groups while staying responsive with 100+ terminals                                              | P1       | DONE (2026-06-18) | TC-017         |
+| TC-030     | Orchestrator terminal lifecycle: parent terminal can spawn, track, and terminate child terminals when finished                                                                                                  | P1       | TODO              | TC-016, TC-017 |
 
 ---
 
@@ -242,6 +244,70 @@ Acceptance:
   `TERMFLEET_AGENT_STATUS_SUMMARY_SERVER_OK`, and `npm run build` passed on
   2026-06-18. Screenshot evidence:
   `/tmp/termfleet-tc-027-extracted-cockpit-objects.png`.
+
+### TC-029: Map terminal organization controls
+
+**Priority:** P1
+**Status:** DONE (2026-06-18)
+**Depends:** TC-017
+
+As the operations map grows past a handful of terminals, the user needs fast
+visual grouping and bulk positioning without opening terminal buffers. Add
+terminal-label color metadata plus direct map selection controls that remain
+responsive for large terminal fleets.
+
+Acceptance:
+
+- DONE: Terminal map nodes support a persisted `labelColor` that colors only the
+  node label/chrome, never the terminal buffer or PTY output.
+- DONE: Right-clicking a terminal map node opens a local color menu with a small
+  fixed palette and a reset/default option.
+- DONE: The map has a mouse-only selection mode plus Shift-drag shortcut for
+  box-selecting terminal nodes.
+- DONE: Dragging any selected terminal node moves the selected terminal group in
+  one batched state update per pointer move.
+- DONE: Regression coverage proves label-color persistence, group selection,
+  group movement, and bounded DOM/render behavior with 100+ terminal nodes.
+- DONE: Verification includes `npm run build`, focused Playwright map coverage,
+  and the existing map/terminal source-contract checks. Current evidence:
+  `npm run build` passed, `npx playwright test
+  tests/map-terminal-rendering.spec.ts -g "terminal map labels|selection
+  mode|more than 100 terminal nodes|workspace store supports"` passed 4/4,
+  and `npm run verify:map-terminals` passed on 2026-06-18.
+
+### TC-030: Orchestrator terminal lifecycle
+
+**Priority:** P1
+**Status:** TODO
+**Depends:** TC-016, TC-017
+
+Research and design a first-class orchestrator terminal: a parent terminal or
+workstream that can spawn child terminals, tag them as owned by the parent, track
+their status, and stop/close them when the orchestrated job is finished.
+
+Research notes:
+
+- TC-016 already proved spawning and supervising agent terminals from the
+  cockpit. This lane is narrower and stricter: lifecycle ownership by a parent
+  orchestrator terminal, not just a shared agent lane.
+- The daemon must remain the source of PTY ownership. The orchestrator should
+  request child creation/termination through existing session APIs or a small
+  local control contract, not bypass daemon ownership.
+- Killing children must be explicit and scoped: only child terminals with a
+  durable parent/orchestrator id may be stopped by the parent.
+
+Acceptance:
+
+- TODO: Add `orchestratorId` / child ownership metadata to workstreams and/or
+  terminal tabs without breaking ordinary terminals.
+- TODO: Parent orchestrator terminal can spawn child shell/Codex/Claude/OpenCode
+  terminals with inherited cwd/task context and visible ownership on the map.
+- TODO: Parent can list children, see running/done/failed state, and focus each
+  child from the map/Sessions lane.
+- TODO: Parent can request stop/close for only its owned children, with clear
+  audit events and no ability to kill unrelated terminals.
+- TODO: Verification covers child spawn, status tracking, scoped termination,
+  and daemon-owned PTY survival for unrelated sessions.
 
 ### TC-001: Freeze Terminal Cockpit target and visual rules
 

@@ -173,6 +173,10 @@ const CANVAS_NODE_MIN_SIZE: Record<CanvasNode["type"], { width: number; height: 
   note: { width: 220, height: 120 },
 };
 
+function snapCanvasCoordinate(value: number) {
+  return Math.round(value);
+}
+
 function createDefaultTab(overrides: Partial<Tab> = {}): Tab {
   const paneId = crypto.randomUUID();
   return {
@@ -252,8 +256,10 @@ interface WorkspaceState {
   toggleImmersiveTerminal: (tabId: string, paneId: string) => void;
   addCanvasNode: (node: Omit<CanvasNode, "id"> & { id?: string }) => void;
   updateCanvasNode: (id: string, updates: Partial<CanvasNode>) => void;
+  moveCanvasNodes: (ids: string[], delta: { x: number; y: number }) => void;
   removeCanvasNode: (id: string) => void;
   selectCanvasNode: (id: string | null) => void;
+  selectCanvasNodes: (ids: string[]) => void;
   updateCanvasViewport: (viewport: Partial<CanvasState["viewport"]>) => void;
 
   // Split pane actions
@@ -433,12 +439,15 @@ function normalizeCanvasState(canvasState: CanvasState | undefined, tabs: Tab[])
     nodes.some((node) => node.id === source.selectedNodeId)
       ? source.selectedNodeId
       : nodes[0]?.id ?? null;
+  const selectedNodeIds = (source.selectedNodeIds ?? [selectedNodeId].filter(Boolean))
+    .filter((id): id is string => nodes.some((node) => node.id === id));
 
   return {
     ...DEFAULT_CANVAS_STATE,
     ...source,
     nodes,
     selectedNodeId,
+    selectedNodeIds: selectedNodeIds.length > 0 ? selectedNodeIds : selectedNodeId ? [selectedNodeId] : [],
     viewport: {
       ...DEFAULT_CANVAS_STATE.viewport,
       ...source.viewport,
@@ -1922,6 +1931,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
           { ...node, id },
         ],
         selectedNodeId: id,
+        selectedNodeIds: [id],
       },
     }));
   },
@@ -1937,17 +1947,44 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     }));
   },
 
-  removeCanvasNode: (id: string) => {
+  moveCanvasNodes: (ids: string[], delta: { x: number; y: number }) => {
+    if (ids.length === 0 || (delta.x === 0 && delta.y === 0)) return;
+    const idSet = new Set(ids);
     set((state) => ({
       canvasState: {
         ...state.canvasState,
-        nodes: state.canvasState.nodes.filter((node) => node.id !== id),
-        selectedNodeId:
-          state.canvasState.selectedNodeId === id
-            ? null
-            : state.canvasState.selectedNodeId,
+        nodes: state.canvasState.nodes.map((node) =>
+          idSet.has(node.id)
+            ? {
+                ...node,
+                x: snapCanvasCoordinate(node.x + delta.x),
+                y: snapCanvasCoordinate(node.y + delta.y),
+              }
+            : node
+        ),
       },
     }));
+  },
+
+  removeCanvasNode: (id: string) => {
+    set((state) => {
+      const nodes = state.canvasState.nodes.filter((node) => node.id !== id);
+      const selectedNodeIds = (state.canvasState.selectedNodeIds ?? []).filter((nodeId) =>
+        nodeId !== id && nodes.some((node) => node.id === nodeId)
+      );
+      const selectedNodeId =
+        state.canvasState.selectedNodeId === id
+          ? selectedNodeIds[0] ?? null
+          : state.canvasState.selectedNodeId;
+      return {
+        canvasState: {
+          ...state.canvasState,
+          nodes,
+          selectedNodeId,
+          selectedNodeIds,
+        },
+      };
+    });
   },
 
   selectCanvasNode: (id: string | null) => {
@@ -1958,6 +1995,24 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         canvasState: {
           ...state.canvasState,
           selectedNodeId: id,
+          selectedNodeIds: id ? [id] : [],
+        },
+      };
+    });
+  },
+
+  selectCanvasNodes: (ids: string[]) => {
+    set((state) => {
+      const validIds = ids.filter((id) => state.canvasState.nodes.some((node) => node.id === id));
+      const firstNode = validIds[0]
+        ? state.canvasState.nodes.find((node) => node.id === validIds[0])
+        : undefined;
+      return {
+        activeTabId: firstNode?.terminalTabId ?? state.activeTabId,
+        canvasState: {
+          ...state.canvasState,
+          selectedNodeId: validIds[0] ?? null,
+          selectedNodeIds: validIds,
         },
       };
     });

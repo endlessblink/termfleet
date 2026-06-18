@@ -126,6 +126,222 @@ test("overview preview sampling is capped and groups noisy terminal rows", async
   expect(result.totalSegments).toBeLessThan(14 * 72);
 });
 
+test("terminal map labels can be recolored from the right-click menu", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.getByRole("button", { name: "Map", exact: true }).click();
+
+  await page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => { workspaceUiState: Record<string, unknown> };
+        setState: (state: Record<string, unknown>) => void;
+      };
+    }).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+
+    store.setState({
+      workspaceUiState: {
+        ...store.getState().workspaceUiState,
+        workspaceMode: "canvas",
+        primarySidebarPanel: "map",
+      },
+      tabs: [{
+        id: "tab-color",
+        title: "Build release lane",
+        emoji: "[]",
+        color: "#7aa2f7",
+        groupId: null,
+        initialCwd: "/tmp/termfleet-color",
+        terminals: [{ id: "pty-color", paneId: "pane-color", cols: 80, rows: 24, status: "running" }],
+        splitLayout: { id: "pane-color", type: "terminal" },
+        activePaneId: "pane-color",
+      }],
+      activeTabId: "tab-color",
+      canvasState: {
+        nodes: [{
+          id: "node-color",
+          type: "terminal",
+          title: "Build release lane",
+          terminalTabId: "tab-color",
+          x: 100,
+          y: 100,
+          width: 820,
+          height: 460,
+        }],
+        selectedNodeId: "node-color",
+        selectedNodeIds: ["node-color"],
+        viewport: { x: 0, y: 0, zoom: 1 },
+      },
+    });
+  });
+
+  await page.getByTestId("canvas-terminal-node-header-title").click({ button: "right" });
+  await page.getByRole("menu", { name: "Terminal label color" }).getByRole("menuitem", { name: "Set terminal label color Amber" }).click();
+
+  await expect.poll(async () => page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => { canvasState: { nodes: Array<{ id: string; labelColor?: string }> } };
+      };
+    }).__termfleetWorkspaceStore;
+    return store?.getState().canvasState.nodes.find((node) => node.id === "node-color")?.labelColor;
+  })).toBe("#d4a44f");
+});
+
+test("selection mode box-selects terminals and drags the selected group", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.getByRole("button", { name: "Map", exact: true }).click();
+
+  await page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => { workspaceUiState: Record<string, unknown> };
+        setState: (state: Record<string, unknown>) => void;
+      };
+    }).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+
+    const terminalTab = (id: string, title: string) => ({
+      id,
+      title,
+      emoji: "[]",
+      color: "#7aa2f7",
+      groupId: null,
+      initialCwd: `/tmp/${id}`,
+      terminals: [{ id: `pty-${id}`, paneId: `pane-${id}`, cols: 80, rows: 24, status: "running" }],
+      splitLayout: { id: `pane-${id}`, type: "terminal" },
+      activePaneId: `pane-${id}`,
+    });
+
+    store.setState({
+      workspaceUiState: {
+        ...store.getState().workspaceUiState,
+        workspaceMode: "canvas",
+        primarySidebarPanel: "map",
+      },
+      tabs: [
+        terminalTab("tab-one", "Build one"),
+        terminalTab("tab-two", "Build two"),
+        terminalTab("tab-three", "Build three"),
+      ],
+      activeTabId: "tab-one",
+      canvasState: {
+        nodes: [
+          { id: "node-one", type: "terminal", title: "Build one", terminalTabId: "tab-one", x: 40, y: 80, width: 820, height: 460 },
+          { id: "node-two", type: "terminal", title: "Build two", terminalTabId: "tab-two", x: 920, y: 80, width: 820, height: 460 },
+          { id: "node-three", type: "terminal", title: "Build three", terminalTabId: "tab-three", x: 1840, y: 80, width: 820, height: 460 },
+        ],
+        selectedNodeId: null,
+        selectedNodeIds: [],
+        viewport: { x: 0, y: 0, zoom: 1 },
+      },
+    });
+  });
+
+  await page.getByRole("button", { name: "Select terminals" }).click();
+  const shellBox = await page.locator("[data-magic-canvas-shell]").boundingBox();
+  if (!shellBox) throw new Error("Map shell not found");
+
+  await page.mouse.move(shellBox.x + 20, shellBox.y + 650);
+  await page.mouse.down();
+  await page.mouse.move(shellBox.x + 1780, shellBox.y + 40, { steps: 4 });
+  await page.mouse.up();
+
+  await expect.poll(async () => page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => { canvasState: { selectedNodeIds?: string[] } };
+      };
+    }).__termfleetWorkspaceStore;
+    return store?.getState().canvasState.selectedNodeIds?.sort().join(",");
+  })).toBe("node-one,node-two");
+
+  const firstNode = page.locator("[data-magic-canvas-shell] [data-testid='canvas-terminal-node-header']").filter({ hasText: "Build two" });
+  const firstBox = await firstNode.boundingBox();
+  if (!firstBox) throw new Error("Selected node header not found");
+  await page.mouse.move(firstBox.x + 24, firstBox.y + 18);
+  await page.mouse.down();
+  await page.mouse.move(firstBox.x + 140, firstBox.y + 54, { steps: 4 });
+  await page.mouse.up();
+
+  await expect.poll(async () => page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => { canvasState: { nodes: Array<{ id: string; x: number; y: number }> } };
+      };
+    }).__termfleetWorkspaceStore;
+    const nodes = store?.getState().canvasState.nodes ?? [];
+    return nodes.map((node) => `${node.id}:${node.x}:${node.y}`).sort().join("|");
+  })).toBe("node-one:156:116|node-three:1840:80|node-two:1036:116");
+});
+
+test("map remains lightweight with more than 100 terminal nodes at overview zoom", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.getByRole("button", { name: "Map", exact: true }).click();
+
+  await page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => { workspaceUiState: Record<string, unknown> };
+        setState: (state: Record<string, unknown>) => void;
+      };
+    }).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+
+    const tabs = Array.from({ length: 120 }, (_, index) => ({
+      id: `tab-${index}`,
+      title: `Fleet ${index + 1}`,
+      emoji: "[]",
+      color: "#7aa2f7",
+      groupId: null,
+      initialCwd: `/tmp/fleet-${index}`,
+      terminals: [{ id: `pty-${index}`, paneId: `pane-${index}`, cols: 80, rows: 24, status: "running" }],
+      splitLayout: { id: `pane-${index}`, type: "terminal" },
+      activePaneId: `pane-${index}`,
+    }));
+
+    store.setState({
+      workspaceUiState: {
+        ...store.getState().workspaceUiState,
+        workspaceMode: "canvas",
+        primarySidebarPanel: "map",
+      },
+      tabs,
+      activeTabId: "tab-0",
+      canvasState: {
+        nodes: tabs.map((tab, index) => ({
+          id: `node-${index}`,
+          type: "terminal",
+          title: tab.title,
+          terminalTabId: tab.id,
+          x: (index % 12) * 860,
+          y: Math.floor(index / 12) * 500,
+          width: 820,
+          height: 460,
+        })),
+        selectedNodeId: "node-0",
+        selectedNodeIds: ["node-0"],
+        viewport: { x: 0, y: 0, zoom: 0.45 },
+      },
+    });
+  });
+
+  await expect(page.getByTestId("canvas-terminal-node-header-title")).toHaveCount(120);
+  await expect(page.locator(".terminal-container")).toHaveCount(0);
+});
+
 test("status bar summarizes durable terminal recovery states", async ({ page }) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle");
@@ -217,6 +433,79 @@ test("map notes can be edited without dragging the canvas", async ({ page }) => 
     const note = state?.nodes.find((candidate) => candidate.type === "note" && candidate.title === "Run note");
     return note ? `${state?.viewport.x}:${state?.viewport.y}:${note.content}` : null;
   })).toBe("0:0:Check failing build, capture blocker, then re-run proof.");
+});
+
+test("workspace store supports multi-select canvas movement and label colors", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+
+  const result = await page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => {
+          activeTabId: string | null;
+          canvasState: {
+            selectedNodeId: string | null;
+            selectedNodeIds?: string[];
+            nodes: Array<{ id: string; type: string; title: string; x: number; y: number; labelColor?: string; terminalTabId?: string }>;
+          };
+          addCanvasNode: (node: { id: string; type: string; title: string; x: number; y: number; width: number; height: number; labelColor?: string; terminalTabId?: string }) => void;
+          selectCanvasNodes: (ids: string[]) => void;
+          moveCanvasNodes: (ids: string[], delta: { x: number; y: number }) => void;
+          removeCanvasNode: (id: string) => void;
+        };
+      };
+    }).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+    const state = store.getState();
+    state.addCanvasNode({
+      id: "node-a",
+      type: "note",
+      title: "A",
+      x: 10,
+      y: 20,
+      width: 220,
+      height: 120,
+      labelColor: "#7dbac3",
+    });
+    state.addCanvasNode({
+      id: "node-b",
+      type: "terminal",
+      title: "B",
+      x: 100,
+      y: 200,
+      width: 820,
+      height: 460,
+      terminalTabId: "missing-tab",
+      labelColor: "#d4a44f",
+    });
+    state.selectCanvasNodes(["node-b", "node-a", "missing-node"]);
+    state.moveCanvasNodes(["node-a", "node-b"], { x: 3.4, y: -2.6 });
+    const moved = store.getState().canvasState;
+    state.removeCanvasNode("node-b");
+    const afterRemove = store.getState().canvasState;
+    return {
+      selectedNodeId: moved.selectedNodeId,
+      selectedNodeIds: moved.selectedNodeIds,
+      nodes: moved.nodes
+        .filter((node) => node.id === "node-a" || node.id === "node-b")
+        .map((node) => ({ id: node.id, x: node.x, y: node.y, labelColor: node.labelColor })),
+      afterRemoveSelectedNodeId: afterRemove.selectedNodeId,
+      afterRemoveSelectedNodeIds: afterRemove.selectedNodeIds,
+    };
+  });
+
+  expect(result.selectedNodeId).toBe("node-b");
+  expect(result.selectedNodeIds).toEqual(["node-b", "node-a"]);
+  expect(result.nodes).toEqual(expect.arrayContaining([
+    { id: "node-a", x: 13, y: 17, labelColor: "#7dbac3" },
+    { id: "node-b", x: 103, y: 197, labelColor: "#d4a44f" },
+  ]));
+  expect(result.afterRemoveSelectedNodeId).toBe("node-a");
+  expect(result.afterRemoveSelectedNodeIds).toEqual(["node-a"]);
 });
 
 test("map shell header prefers summarized task path and now over raw prompt chrome", async ({ page }) => {

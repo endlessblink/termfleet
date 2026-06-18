@@ -231,6 +231,7 @@ export interface CanvasNode {
   id: string;
   type: CanvasNodeType;
   title: string;
+  labelColor?: string;
   x: number;
   y: number;
   width: number;
@@ -249,6 +250,7 @@ export interface CanvasNode {
 export interface CanvasState {
   nodes: CanvasNode[];
   selectedNodeId: string | null;
+  selectedNodeIds?: string[];
   viewport: {
     x: number;
     y: number;
