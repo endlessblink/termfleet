@@ -3,6 +3,7 @@ use crate::daemon::{
     daemon_status as current_daemon_status, send_daemon_request, DaemonRequest, DaemonResponse,
     DaemonStatus,
 };
+use crate::daemon_ipc::{self, LocalStream};
 use crate::pty::{PtyManager, PtyOutputChunk, PtySessionEvent, PtySessionSummary};
 use crate::vt_grid::{GridManager, DEFAULT_COLS, DEFAULT_ROWS};
 use serde::{Deserialize, Serialize};
@@ -10,7 +11,6 @@ use std::collections::HashMap;
 use std::fs;
 use std::io::{BufRead, BufReader, Write};
 use std::net::Shutdown;
-use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::mpsc::{self, Sender};
@@ -244,10 +244,7 @@ pub fn workstream_prepare_dedicated_worktree(
 
     let mut prepared = context_for_cwd(target.clone());
     prepared.isolation_status = Some("ready".to_string());
-    prepared.isolation_note = Some(format!(
-        "Dedicated worktree ready at {}",
-        target.display()
-    ));
+    prepared.isolation_note = Some(format!("Dedicated worktree ready at {}", target.display()));
     Ok(prepared)
 }
 
@@ -267,27 +264,34 @@ pub fn workstream_remove_dedicated_worktree(path: String) -> Result<WorktreeClea
     if !target.join(".git").exists() {
         return Ok(WorktreeCleanupResult {
             status: "blocked".to_string(),
-            note: format!("Refusing to remove path without worktree metadata: {}", target.display()),
+            note: format!(
+                "Refusing to remove path without worktree metadata: {}",
+                target.display()
+            ),
         });
     }
     let dirty = git_output(&target, &["status", "--porcelain"]).unwrap_or_default();
     if !dirty.trim().is_empty() {
         return Ok(WorktreeCleanupResult {
             status: "blocked".to_string(),
-            note: "Refusing to remove dirty worktree; commit, stash, or clean it first.".to_string(),
+            note: "Refusing to remove dirty worktree; commit, stash, or clean it first."
+                .to_string(),
         });
     }
 
-    let command_cwd = git_output(&target, &["rev-parse", "--path-format=absolute", "--git-common-dir"])
-        .map(PathBuf::from)
-        .and_then(|path| {
-            if path.file_name().and_then(|name| name.to_str()) == Some(".git") {
-                path.parent().map(|parent| parent.to_path_buf())
-            } else {
-                Some(path)
-            }
-        })
-        .ok_or_else(|| "Could not resolve owning Git repository for worktree cleanup".to_string())?;
+    let command_cwd = git_output(
+        &target,
+        &["rev-parse", "--path-format=absolute", "--git-common-dir"],
+    )
+    .map(PathBuf::from)
+    .and_then(|path| {
+        if path.file_name().and_then(|name| name.to_str()) == Some(".git") {
+            path.parent().map(|parent| parent.to_path_buf())
+        } else {
+            Some(path)
+        }
+    })
+    .ok_or_else(|| "Could not resolve owning Git repository for worktree cleanup".to_string())?;
     let output = Command::new("git")
         .arg("-C")
         .arg(command_cwd)
@@ -400,7 +404,7 @@ pub fn start_daemon_input_worker() {
     let _ = DAEMON_INPUT_SENDER.get_or_init(|| {
         let (sender, receiver) = mpsc::channel::<DaemonInputEvent>();
         std::thread::spawn(move || {
-            let mut streams = HashMap::<String, UnixStream>::new();
+            let mut streams = HashMap::<String, LocalStream>::new();
             for payload in receiver {
                 trace_terminal_latency(
                     "tauri.daemon.input.worker.write.start",
@@ -429,7 +433,7 @@ pub fn start_daemon_input_worker() {
 }
 
 fn write_daemon_input_stream(
-    streams: &mut HashMap<String, UnixStream>,
+    streams: &mut HashMap<String, LocalStream>,
     id: String,
     data: String,
     seq_ids: Option<Vec<u64>>,
@@ -460,9 +464,9 @@ fn write_daemon_input_stream(
     Err(format!("input stream write failed for {id}"))
 }
 
-fn open_daemon_input_stream(id: &str) -> Result<UnixStream, String> {
+fn open_daemon_input_stream(id: &str) -> Result<LocalStream, String> {
     let socket_path = daemon_socket_path();
-    let mut stream = UnixStream::connect(&socket_path).map_err(|error| error.to_string())?;
+    let mut stream = daemon_ipc::connect(&socket_path).map_err(|error| error.to_string())?;
     stream
         .set_write_timeout(Some(std::time::Duration::from_millis(700)))
         .map_err(|error| error.to_string())?;
@@ -681,7 +685,7 @@ pub fn daemon_subscribe_session(
     on_data: Channel<PtyStreamEvent>,
 ) -> Result<(), String> {
     let socket_path = daemon_socket_path();
-    let mut stream = UnixStream::connect(&socket_path).map_err(|error| error.to_string())?;
+    let mut stream = daemon_ipc::connect(&socket_path).map_err(|error| error.to_string())?;
     let request = serde_json::to_vec(&DaemonRequest::SubscribeSession { id, subscriber_id })
         .map_err(|error| error.to_string())?;
     stream
@@ -1142,7 +1146,10 @@ mod tests {
     fn create_git_repo(root: &Path) {
         fs::create_dir_all(root).unwrap();
         git(root, &["init"]);
-        git(root, &["config", "user.email", "termfleet-test@example.invalid"]);
+        git(
+            root,
+            &["config", "user.email", "termfleet-test@example.invalid"],
+        );
         git(root, &["config", "user.name", "TermFleet Test"]);
         fs::write(root.join("README.md"), "termfleet test\n").unwrap();
         git(root, &["add", "README.md"]);

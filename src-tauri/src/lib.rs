@@ -1,8 +1,12 @@
 mod commands;
 pub mod daemon;
+mod daemon_ipc;
+mod default_shell;
 #[cfg(target_os = "linux")]
 mod gtk_keys;
 mod native_terminal;
+mod platform_paths;
+mod platform_process;
 mod pty;
 pub mod vt_grid;
 

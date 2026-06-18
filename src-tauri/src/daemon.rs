@@ -1,21 +1,20 @@
+use crate::daemon_ipc::{self, LocalStream};
+use crate::platform_paths;
+use crate::platform_process;
 use crate::pty::{PtyManager, PtyOutputChunk, PtySessionEvent, PtySessionSummary};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::Shutdown;
 use std::os::unix::fs::PermissionsExt;
-use std::os::unix::net::{UnixListener, UnixStream};
-use std::os::unix::process::CommandExt;
 use std::path::PathBuf;
-use std::process::{Command, Stdio};
+use std::process::Command;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc, OnceLock,
 };
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-const SOCKET_DIR_NAME: &str = "terminal-workspace";
-const SOCKET_FILE_NAME: &str = "daemon.sock";
 const STATUS_COMMAND: &[u8] = b"status\n";
 const PROTOCOL_VERSION: u16 = 1;
 pub const DAEMON_ARG: &str = "--terminal-workspace-daemon";
@@ -273,14 +272,14 @@ fn truncate_trace_detail(details: &str) -> String {
 
 pub fn send_daemon_request(request: DaemonRequest) -> Result<DaemonResponse, String> {
     let socket_path = daemon_socket_path();
-    let mut stream = match UnixStream::connect(&socket_path) {
+    let mut stream = match daemon_ipc::connect(&socket_path) {
         Ok(stream) => stream,
         Err(initial_error) => {
             let status = daemon_ensure_running();
             if !status.reachable {
                 return Err(status.message);
             }
-            UnixStream::connect(&socket_path).map_err(|retry_error| {
+            daemon_ipc::connect(&socket_path).map_err(|retry_error| {
                 format!(
                     "terminal daemon became reachable but request connect still failed: {retry_error} (initial: {initial_error})"
                 )
@@ -422,7 +421,7 @@ impl Drop for SttyRawGuard {
 
 fn stream_daemon_session_to_stdout(id: &str, stop: &AtomicBool) -> Result<(), String> {
     let mut stream =
-        UnixStream::connect(daemon_socket_path()).map_err(|error| error.to_string())?;
+        daemon_ipc::connect(&daemon_socket_path()).map_err(|error| error.to_string())?;
     let request = serde_json::to_vec(&DaemonRequest::SubscribeSession {
         id: id.to_string(),
         subscriber_id: format!("native-vte-stdio-{}", std::process::id()),
@@ -464,7 +463,7 @@ fn stream_daemon_session_to_stdout(id: &str, stop: &AtomicBool) -> Result<(), St
 
 fn copy_stdin_to_daemon_input_stream(id: &str) -> Result<(), String> {
     let mut stream =
-        UnixStream::connect(daemon_socket_path()).map_err(|error| error.to_string())?;
+        daemon_ipc::connect(&daemon_socket_path()).map_err(|error| error.to_string())?;
     let request = serde_json::to_vec(&DaemonRequest::InputStream { id: id.to_string() })
         .map_err(|error| error.to_string())?;
     stream
@@ -514,7 +513,7 @@ fn replace_running_daemon(socket_path: &PathBuf, pid: Option<u32>) {
     if let Some(pid) = pid {
         // SIGTERM first. This kills daemon-owned PTYs, so this path must remain
         // limited to explicit fresh-daemon requests or incompatible protocols.
-        let _ = Command::new("kill").arg(pid.to_string()).status();
+        platform_process::terminate_process(pid);
         for _ in 0..40 {
             if query_daemon_status(socket_path).is_err() {
                 return;
@@ -522,10 +521,7 @@ fn replace_running_daemon(socket_path: &PathBuf, pid: Option<u32>) {
             std::thread::sleep(Duration::from_millis(50));
         }
         // Still answering after ~2s — force it.
-        let _ = Command::new("kill")
-            .arg("-KILL")
-            .arg(pid.to_string())
-            .status();
+        platform_process::force_terminate_process(pid);
     }
 
     for _ in 0..40 {
@@ -537,22 +533,7 @@ fn replace_running_daemon(socket_path: &PathBuf, pid: Option<u32>) {
 }
 
 fn spawn_current_binary_as_daemon() -> Result<(), String> {
-    let current_exe = std::env::current_exe().map_err(|error| error.to_string())?;
-    Command::new(current_exe)
-        .arg(DAEMON_ARG)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        // The daemon owns PTYs independently of the UI lifecycle, so it must
-        // outlive the app process. Put it in its own process group (detached from
-        // the app's controlling terminal) so a group-directed SIGHUP/SIGINT — e.g.
-        // closing the terminal that launched the app, or Ctrl-C'ing dev — does not
-        // also tear down the daemon and every detached PTY (zellij/ssh/etc.) with
-        // it. Without this the daemon shares the app's group and dies alongside it.
-        .process_group(0)
-        .spawn()
-        .map(|_| ())
-        .map_err(|error| error.to_string())
+    platform_process::spawn_detached_current_binary(DAEMON_ARG)
 }
 
 pub fn run_daemon_forever() -> Result<(), String> {
@@ -562,7 +543,7 @@ pub fn run_daemon_forever() -> Result<(), String> {
     let socket_path = daemon_socket_path();
     prepare_socket_dir(&socket_path)?;
     remove_stale_socket(&socket_path)?;
-    let listener = UnixListener::bind(&socket_path).map_err(|error| error.to_string())?;
+    let listener = daemon_ipc::bind(&socket_path).map_err(|error| error.to_string())?;
     // The daemon is the persistent PTY owner, so it checkpoints session
     // scrollback to disk. If it is restarted (reboot, OOM, dev relaunch) it
     // rebuilds each session's content from those checkpoints on reattach.
@@ -590,7 +571,7 @@ pub fn run_daemon_forever() -> Result<(), String> {
 }
 
 fn query_daemon_status(socket_path: &PathBuf) -> Result<DaemonStatus, String> {
-    let mut stream = UnixStream::connect(socket_path).map_err(|error| error.to_string())?;
+    let mut stream = daemon_ipc::connect(socket_path).map_err(|error| error.to_string())?;
     stream
         .set_read_timeout(Some(Duration::from_millis(160)))
         .map_err(|error| error.to_string())?;
@@ -623,14 +604,7 @@ fn embedded_fallback_status(socket_path: PathBuf, error: String) -> DaemonStatus
 }
 
 pub fn daemon_socket_path() -> PathBuf {
-    runtime_dir().join(SOCKET_DIR_NAME).join(SOCKET_FILE_NAME)
-}
-
-fn runtime_dir() -> PathBuf {
-    std::env::var_os("XDG_RUNTIME_DIR")
-        .map(PathBuf::from)
-        .or_else(|| dirs::runtime_dir())
-        .unwrap_or_else(std::env::temp_dir)
+    platform_paths::daemon_socket_path()
 }
 
 fn prepare_socket_dir(socket_path: &PathBuf) -> Result<(), String> {
@@ -658,7 +632,7 @@ fn remove_stale_socket(socket_path: &PathBuf) -> Result<(), String> {
 }
 
 fn handle_daemon_client(
-    stream: &mut UnixStream,
+    stream: &mut LocalStream,
     socket_path: &PathBuf,
     pty_manager: &PtyManager,
 ) -> Result<(), String> {
@@ -708,7 +682,7 @@ fn handle_daemon_client(
 }
 
 fn handle_daemon_request(
-    stream: &mut UnixStream,
+    stream: &mut LocalStream,
     socket_path: &PathBuf,
     pty_manager: &PtyManager,
     request: DaemonRequest,
@@ -794,7 +768,7 @@ fn handle_daemon_request(
 }
 
 fn handle_daemon_input_stream(
-    stream: &mut UnixStream,
+    stream: &mut LocalStream,
     pty_manager: &PtyManager,
     id: &str,
     initial_data: &[u8],
@@ -832,7 +806,7 @@ fn handle_daemon_input_stream(
 }
 
 fn stream_daemon_session(
-    stream: &mut UnixStream,
+    stream: &mut LocalStream,
     pty_manager: &PtyManager,
     id: &str,
     subscriber_id: String,
@@ -873,7 +847,10 @@ fn external_daemon_status(socket_path: &PathBuf) -> DaemonStatus {
     }
 }
 
-fn write_daemon_response(stream: &mut UnixStream, response: &DaemonResponse) -> Result<(), String> {
+fn write_daemon_response(
+    stream: &mut LocalStream,
+    response: &DaemonResponse,
+) -> Result<(), String> {
     let response = serde_json::to_string(response).map_err(|error| error.to_string())?;
     stream
         .write_all(format!("{response}\n").as_bytes())
@@ -886,7 +863,6 @@ mod tests {
         current_build_id, daemon_socket_path, daemon_status, daemon_stdio_bridge_argv,
         embedded_fallback_status, should_reuse_running_daemon_with_fresh_request, DaemonMode,
         DaemonRequest, DaemonResponse, DaemonStatus, DAEMON_STDIO_ARG, PROTOCOL_VERSION,
-        SOCKET_FILE_NAME,
     };
 
     #[test]
@@ -894,7 +870,7 @@ mod tests {
         let socket_path = daemon_socket_path();
         assert_eq!(
             socket_path.file_name().and_then(|name| name.to_str()),
-            Some(SOCKET_FILE_NAME)
+            Some("daemon.sock")
         );
         assert!(
             socket_path

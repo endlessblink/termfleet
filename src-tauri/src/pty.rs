@@ -1,3 +1,4 @@
+use crate::default_shell;
 use portable_pty::{native_pty_system, Child, CommandBuilder, ExitStatus, MasterPty, PtySize};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -416,11 +417,10 @@ impl PtyManager {
             .map_err(|e| e.to_string())?;
 
         let initial_cwd = cwd.clone();
-        let shell =
-            command.unwrap_or_else(|| std::env::var("SHELL").unwrap_or_else(|_| "bash".into()));
+        let shell = default_shell::shell_command(command);
         let command_label = shell.clone();
-        let mut cmd = if shell.chars().any(char::is_whitespace) {
-            let login_shell = std::env::var("SHELL").unwrap_or_else(|_| "sh".into());
+        let mut cmd = if default_shell::is_inline_shell_command(&shell) {
+            let login_shell = default_shell::login_shell_command();
             let mut builder = CommandBuilder::new(login_shell);
             builder.arg("-lc");
             builder.arg(&shell);
