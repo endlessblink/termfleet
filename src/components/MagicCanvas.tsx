@@ -1529,6 +1529,13 @@ function CanvasNodeView({
   const terminalHeaderSummarySignal = terminalDisplaySummary.now;
   const terminalHeaderHasUsefulNow = terminalDisplaySummary.now !== "Awaiting terminal output";
   const terminalHeaderHasUsefulSummary = terminalDisplaySummary.task !== "Ready";
+  const terminalHeaderTaskState = terminalHeaderHasUsefulNow
+    ? "Working"
+    : linkedTerminal?.status === "failed"
+      ? "Failed"
+      : linkedTerminal?.status === "exited"
+        ? "Done"
+        : "Idle";
   const workstream = linkedTab?.workstream;
   const queuedWorkstreamInput = workstream?.inputQueue?.find((input) => !input.sentAt);
   const latestInput = workstream?.inputQueue?.[workstream.inputQueue.length - 1];
@@ -2043,6 +2050,34 @@ function CanvasNodeView({
                 </span>
               </div>
             </div>
+            {terminalHeaderHasUsefulSummary && (
+              <div
+                style={styles.agentTaskPanel}
+                data-testid="canvas-terminal-task-sidebar"
+                aria-label="Terminal tasks"
+              >
+                <div style={styles.agentTaskHeader}>
+                  <span>Tasks</span>
+                  <span>1</span>
+                </div>
+                <div
+                  style={styles.agentTaskRow}
+                  data-testid="canvas-terminal-task-row"
+                  title={`${terminalHeaderTitle} · ${terminalHeaderTaskState} · Next: ${terminalHeaderSummarySignal}`}
+                >
+                  <div style={styles.agentTaskTitle}>{terminalHeaderTitle}</div>
+                  <div style={styles.agentTaskMeta}>
+                    <span data-testid="canvas-terminal-task-state">
+                      {terminalHeaderTaskState}
+                    </span>
+                    <span style={{ color: "var(--text-tertiary)" }}>·</span>
+                    <span style={styles.agentTaskNext} data-testid="canvas-terminal-task-next">
+                      Next: {terminalHeaderSummarySignal}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         ) : (
           <span

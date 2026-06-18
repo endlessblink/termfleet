@@ -889,6 +889,10 @@ test("map shell header prefers summarized task path and now over raw prompt chro
   await expect(page.getByTestId("canvas-terminal-node-header-path")).toHaveText("inner-dialogue");
   await expect(page.getByTestId("canvas-terminal-node-now")).toHaveText("Checking the rewritten Hebrew post and verification notes");
   await expect(page.getByTestId("canvas-terminal-node-now")).not.toContainText("gpt-5.5 default");
+  await expect(page.getByTestId("canvas-terminal-task-sidebar")).toContainText("Tasks");
+  await expect(page.getByTestId("canvas-terminal-task-row")).toContainText("Translate post copy to Hebrew");
+  await expect(page.getByTestId("canvas-terminal-task-state")).toContainText("Working");
+  await expect(page.getByTestId("canvas-terminal-task-next")).toContainText("Next: Checking the rewritten Hebrew post and verification notes");
   await expect(page.getByRole("main").getByRole("button", { name: "Close endlessblink" })).toBeVisible();
 
   await page.evaluate(() => {
