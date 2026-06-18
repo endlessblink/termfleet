@@ -1568,4 +1568,66 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    // Password prompts and ssh password entry rely on the tty disabling echo:
+    // typed bytes reach the program but are NOT painted back. This proves the
+    // daemon-owned real PTY preserves that semantic end to end. (A full ssh
+    // connection test needs an sshd fixture and is environment-gated; this
+    // characterizes the underlying no-echo behavior deterministically.)
+    #[test]
+    fn password_prompt_does_not_echo_typed_input() {
+        let app = tauri::test::mock_app();
+        let manager = PtyManager::new();
+        let id = "no-echo-password-test".to_string();
+        // Print READY only AFTER echo is disabled, so we never write the secret
+        // while the tty would still echo it (avoids a startup race).
+        manager
+            .spawn(
+                app.handle(),
+                Some(id.clone()),
+                None,
+                Some(
+                    "stty -echo; printf READY; read secret; stty echo; printf 'GOT[%s]' \"$secret\""
+                        .to_string(),
+                ),
+            )
+            .expect("spawn no-echo PTY");
+
+        let mut snapshot = String::new();
+        for _ in 0..40 {
+            snapshot = manager.snapshot(&id).expect("snapshot");
+            if snapshot.contains("READY") {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(25));
+        }
+        assert!(
+            snapshot.contains("READY"),
+            "program never reached the no-echo read prompt, got {snapshot:?}"
+        );
+
+        manager.write(&id, "swordfish42\n").expect("write secret");
+
+        let mut out = String::new();
+        for _ in 0..40 {
+            out = manager.snapshot(&id).expect("snapshot");
+            if out.contains("GOT[swordfish42]") {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(25));
+        }
+        assert!(
+            out.contains("GOT[swordfish42]"),
+            "program did not receive the typed secret through the PTY, got {out:?}"
+        );
+        // The secret must appear exactly once (inside GOT[...]); a second
+        // occurrence would mean the tty echoed the typed password.
+        assert_eq!(
+            out.matches("swordfish42").count(),
+            1,
+            "typed password was echoed to the terminal (no-echo broken), got {out:?}"
+        );
+
+        manager.kill(&id).expect("kill no-echo session");
+    }
 }
