@@ -12,6 +12,7 @@ import { refreshProjectRootFromActiveTerminal, useWorkspaceStore } from "../stor
 import { agentStatusSummaryInputFromWorkstream, type AgentStatusSummaryInput } from "../lib/agentStatusSummary";
 import { summarizeAgentStatus } from "../lib/agentStatusSummarizer";
 import { activityKindForText, inferActivityFromOutput, isWorkstreamActivityKind, normalizeActivityText } from "../lib/workstreamActivity";
+import { mergeExtractedItems, normalizeExtractedItems } from "../lib/workstreamExtraction";
 import type { TerminalRuntimeStatus, WorkstreamActivityKind, WorkstreamActivitySource, WorkstreamInput, WorkstreamPhase, WorkstreamReadiness, WorkstreamStatus } from "../lib/types";
 import type { GridSnapshot } from "../lib/gridSnapshot";
 
@@ -543,13 +544,18 @@ export function TerminalComponent({
         const latestTab = latestStore.tabs.find((candidate) => candidate.id === tabId);
         if (!latestTab) return;
         if (latestTab.workstream?.kind === "agent") {
+          const extractedAt = Date.now();
           latestStore.updateTab(tabId, {
             workstream: {
               ...latestTab.workstream,
               statusSummary: result.summary,
-              statusSummaryUpdatedAt: Date.now(),
+              statusSummaryUpdatedAt: extractedAt,
               statusSummarySource: result.source,
               statusSummaryError: result.error,
+              extractedTasks: mergeExtractedItems(latestTab.workstream.extractedTasks, result.summary.tasks, extractedAt),
+              extractedBlockers: mergeExtractedItems(latestTab.workstream.extractedBlockers, result.summary.blockers, extractedAt),
+              extractedEvidence: mergeExtractedItems(latestTab.workstream.extractedEvidence, result.summary.evidence, extractedAt),
+              extractedNextActions: mergeExtractedItems(latestTab.workstream.extractedNextActions, result.summary.nextActions, extractedAt),
             },
           });
           return;
@@ -626,6 +632,18 @@ export function TerminalComponent({
     const summary = updates.status ? summaryForWorkstreamStatus(updates.status) : null;
     const completed = updates.status === "done" || updates.phase === "complete";
     const hasActivityUpdate = Boolean(updates.currentActivity || updates.activityKind || updates.activitySource);
+    const structuredAt = Date.now();
+    const structuredExcerpt = [
+      updates.lastSummary,
+      updates.currentActivity,
+      updates.evidence,
+      updates.risk,
+      updates.nextAction,
+    ].filter(Boolean).join(" · ");
+    const extractedTasks = normalizeExtractedItems(updates.lastSummary, "structured-signal", structuredExcerpt, structuredAt, 1);
+    const extractedBlockers = normalizeExtractedItems(updates.risk, "structured-signal", structuredExcerpt, structuredAt, 1);
+    const extractedEvidence = normalizeExtractedItems(updates.evidence, "structured-signal", structuredExcerpt, structuredAt, 1);
+    const extractedNextActions = normalizeExtractedItems(updates.nextAction, "structured-signal", structuredExcerpt, structuredAt, 1);
     const preserveStructuredActivity =
       updates.activitySource === "terminal" &&
       tab.workstream.activitySource === "structured" &&
@@ -671,6 +689,10 @@ export function TerminalComponent({
         exitCode: updates.exitCode ?? tab.workstream.exitCode,
         completedAt: completed ? tab.workstream.completedAt ?? Date.now() : tab.workstream.completedAt,
         lastActivityAt: updates.activity ? Date.now() : tab.workstream.lastActivityAt,
+        extractedTasks: mergeExtractedItems(tab.workstream.extractedTasks, extractedTasks, structuredAt),
+        extractedBlockers: mergeExtractedItems(tab.workstream.extractedBlockers, extractedBlockers, structuredAt),
+        extractedEvidence: mergeExtractedItems(tab.workstream.extractedEvidence, extractedEvidence, structuredAt),
+        extractedNextActions: mergeExtractedItems(tab.workstream.extractedNextActions, extractedNextActions, structuredAt),
       },
     });
     if (statusChanged && updates.status) {

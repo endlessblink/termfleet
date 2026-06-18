@@ -44,6 +44,8 @@ function buildRequestBody(input: AgentStatusSummaryInput) {
       "Ignore prompts, model names, spinners, esc-to-interrupt, repeated commands, and chrome.",
       "Describe only visible/current activity. Never overclaim.",
       "Keep task/path/now short, plain, and free of bullets.",
+      "Also return arrays named tasks, blockers, evidence, and nextActions for reviewable cockpit rows.",
+      "Each extracted array item can be a string or {text, excerpt}; exclude prompt chrome and repeated instructions.",
     ],
     projectId: input.gitRoot ?? input.cwd ?? input.cwdLabel ?? "workspace",
     transcript,
@@ -73,6 +75,10 @@ function buildRequestBody(input: AgentStatusSummaryInput) {
       confidence: "low | medium | high",
       proof: "optional string",
       blocker: "optional string",
+      tasks: "array of extracted task strings or { text, excerpt }",
+      blockers: "array of extracted blocker strings or { text, excerpt }",
+      evidence: "array of extracted proof/evidence strings or { text, excerpt }",
+      nextActions: "array of extracted next-action strings or { text, excerpt }",
     },
     examples: [
       {

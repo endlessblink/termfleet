@@ -466,6 +466,27 @@ const styles: Record<string, CSSProperties> = {
     lineHeight: 1.45,
     overflow: "auto",
   },
+  noteBody: {
+    flex: 1,
+    minHeight: 0,
+    display: "flex",
+    padding: 8,
+    background: "color-mix(in srgb, var(--surface-raised) 88%, var(--surface-base))",
+  },
+  noteTextarea: {
+    width: "100%",
+    minHeight: 0,
+    resize: "none",
+    padding: "7px 8px",
+    border: "1px solid var(--border-subtle)",
+    borderRadius: "var(--radius-sm)",
+    outline: "none",
+    background: "var(--surface-base)",
+    color: "var(--text-primary)",
+    font: "inherit",
+    fontSize: 13,
+    lineHeight: 1.45,
+  },
   terminalBody: {
     flex: 1,
     minHeight: 0,
@@ -1663,6 +1684,23 @@ function CanvasNodeView({
       />
     ) : node.type === "file" ? (
       <div dir="auto">{node.filePath ?? "No file attached yet"}</div>
+    ) : node.type === "note" ? (
+      <textarea
+        data-testid="canvas-note-editor"
+        aria-label={`${node.title} note`}
+        dir="auto"
+        style={styles.noteTextarea}
+        value={node.content ?? ""}
+        placeholder="Write a command, blocker, or next action..."
+        onMouseDown={(event) => {
+          event.stopPropagation();
+          selectCanvasNode(node.id);
+        }}
+        onClick={(event) => event.stopPropagation()}
+        onWheel={(event) => event.stopPropagation()}
+        onChange={(event) => updateCanvasNode(node.id, { content: event.target.value })}
+        onKeyDown={(event) => event.stopPropagation()}
+      />
     ) : (
       <div dir="auto">{node.content}</div>
     );
@@ -2005,16 +2043,20 @@ function CanvasNodeView({
         {node.type !== "terminal" && (
           <button
           style={{ ...styles.closeButton, ...styles.headerButton }}
-          title={linkedTab ? "Close terminal session" : "Remove node"}
-          aria-label={linkedTab ? `Close ${linkedTab.title}` : "Remove node"}
+          title={node.type === "preview" ? "Close preview pane" : linkedTab ? "Close terminal session" : "Remove node"}
+          aria-label={node.type === "preview" ? `Close ${node.title}` : linkedTab ? `Close ${linkedTab.title}` : "Remove node"}
           onMouseDown={(event) => event.stopPropagation()}
           onClick={(event) => {
             event.stopPropagation();
-            if (linkedTab) {
-              if (node.type === "preview" && node.previewPaneId) {
+            if (node.type === "preview") {
+              if (linkedTab && node.previewPaneId) {
                 closePane(linkedTab.id, node.previewPaneId);
                 return;
               }
+              removeCanvasNode(node.id);
+              return;
+            }
+            if (linkedTab) {
               closeTerminalSession(linkedTab.id);
               return;
             }
@@ -2026,7 +2068,13 @@ function CanvasNodeView({
         )}
       </div>
       <div
-        style={node.type === "terminal" ? styles.terminalBody : styles.nodeBody}
+        style={
+          node.type === "terminal"
+            ? styles.terminalBody
+            : node.type === "note"
+              ? styles.noteBody
+              : styles.nodeBody
+        }
         onMouseDown={node.type === "terminal"
           ? (event) => {
               event.stopPropagation();
@@ -3435,6 +3483,54 @@ export function MagicCanvas() {
                   <span style={{ color: "var(--text-primary)" }}>+{agentLane.nextItems.length - 3} more next</span>
                   <span>
                     {agentLane.nextItems[3].title} · {agentLane.nextItems[3].nextAction}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+          {agentLane.extractedItems.length > 0 && (
+            <div style={styles.agentLaneList} aria-label="Extracted cockpit objects">
+              {agentLane.extractedItems.slice(0, 4).map((item) => {
+                const node = canvasState.nodes.find((candidate) => candidate.terminalTabId === item.tabId);
+                return (
+                  <button
+                    key={`${item.tabId}-${item.kind}-${item.at}-${item.text}`}
+                    type="button"
+                    className="magic-canvas-button"
+                    style={{ ...styles.agentLaneItem, background: "transparent", border: "none", padding: "3px 0", textAlign: "left", cursor: node ? "pointer" : "default" }}
+                    data-testid="canvas-agent-extracted-item"
+                    title={`${item.actionLabel} for ${item.title}`}
+                    onClick={() => {
+                      setActiveTab(item.tabId);
+                      if (item.request) {
+                        useWorkspaceStore.getState().queueWorkstreamInput(item.tabId, item.request, {
+                          source: "mission-control",
+                          label: "Request proof",
+                        });
+                      } else if (navigator.clipboard?.writeText) {
+                        void navigator.clipboard.writeText(item.brief);
+                      }
+                      if (node) centerNode(node, FOCUS_TERMINAL_ZOOM);
+                    }}
+                  >
+                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text-primary)" }}>
+                      {item.actionLabel}
+                    </span>
+                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {item.title} · {item.label} · {item.text} · {item.provenance}
+                    </span>
+                  </button>
+                );
+              })}
+              {agentLane.extractedItems.length > 4 && (
+                <div
+                  style={styles.agentLaneItem}
+                  data-testid="canvas-agent-extracted-overflow"
+                  title={`${agentLane.extractedItems.length - 4} extracted cockpit objects hidden below the visible list`}
+                >
+                  <span style={{ color: "var(--text-primary)" }}>+{agentLane.extractedItems.length - 4} more extracted</span>
+                  <span>
+                    {agentLane.extractedItems[4].title} · {agentLane.extractedItems[4].label} · {agentLane.extractedItems[4].text}
                   </span>
                 </div>
               )}

@@ -259,7 +259,11 @@ process.stdin.on("end", () => {
     now: "Returning strict JSON from the fake model command",
     status: "working",
     provider: "codex",
-    confidence: "high"
+    confidence: "high",
+    tasks: ["Summarize with configured local command"],
+    blockers: [],
+    evidence: ["fake model command returned strict JSON"],
+    nextActions: ["Review configured local command output"]
   }));
 });
 `, { mode: 0o755 });
@@ -274,6 +278,9 @@ await withServer({
   assert.equal(summary.path, "scripts/agent-status-summary-server.mjs");
   assert.equal(summary.now, "Returning strict JSON from the fake model command");
   assert.equal(summary.confidence, "high");
+  assert.equal(summary.tasks[0], "Summarize with configured local command");
+  assert.equal(summary.evidence[0], "fake model command returned strict JSON");
+  assert.equal(summary.nextActions[0], "Review configured local command output");
 });
 
 await withServerArgs({
@@ -284,6 +291,7 @@ await withServerArgs({
   assert.equal(summary.path, "scripts/agent-status-summary-server.mjs");
   assert.equal(summary.now, "Returning strict JSON from the fake model command");
   assert.equal(summary.confidence, "high");
+  assert.equal(summary.tasks[0], "Summarize with configured local command");
 });
 
 {
@@ -358,6 +366,7 @@ await withFakeOllama(async (endpoint) => {
   assert.equal(summary.task, "Running tests");
   assert.equal(summary.path, "termfleet");
   assert.equal(summary.now, "10 tests passed");
+  assert.equal(summary.evidence[0].text, "10 tests passed");
 }, {
   task: "gpt-5.5 default · -",
   path: "termfleet",
@@ -365,6 +374,7 @@ await withFakeOllama(async (endpoint) => {
   status: "done",
   provider: "shell",
   confidence: "high",
+  evidence: ["10 tests passed"],
 });
 
 await withFakeOllama(async (endpoint) => {

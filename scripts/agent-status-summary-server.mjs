@@ -23,6 +23,41 @@ function cleanText(value) {
   return typeof value === "string" ? value.replace(/\s+/g, " ").replace(/^[•*-]\s+/, "").trim() : "";
 }
 
+function hashText(value) {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
+function extractedItems(values, fallbackExcerpt = "") {
+  const seen = new Set();
+  return values
+    .flat()
+    .map((value) => cleanText(value).slice(0, 180))
+    .filter(Boolean)
+    .map((text) => {
+      const excerpt = cleanText(fallbackExcerpt || text).slice(0, 240);
+      const sourceHash = hashText(`summary:${excerpt}:${text}`);
+      return {
+        id: `summary:${sourceHash}`,
+        text,
+        provenance: "summary",
+        at: 0,
+        excerpt,
+        sourceHash,
+      };
+    })
+    .filter((item) => {
+      if (seen.has(item.sourceHash)) return false;
+      seen.add(item.sourceHash);
+      return true;
+    })
+    .slice(0, 5);
+}
+
 function lifecycleFrom(workstream = {}) {
   if (workstream.status === "done" || workstream.phase === "complete" || workstream.phase === "reviewed") return "done";
   if (workstream.status === "failed" || workstream.phase === "blocked") return "blocked";
@@ -101,6 +136,10 @@ function inferTranscriptNow(lines, task) {
   );
 }
 
+function stripExtractionPrefix(line) {
+  return line.replace(/^(task|todo|blocker|blocked|evidence|proof|verified|next|next action)\s*[:=-]\s*/i, "").trim();
+}
+
 function fallbackSummary(payload) {
   const workstream = payload?.workstream ?? {};
   const lines = transcriptLines(payload);
@@ -124,6 +163,26 @@ function fallbackSummary(payload) {
           status === "stopped" ? "Stopped by operator" :
             status === "idle" ? "Idle until the next prompt" :
               `Working on ${task}`);
+  const excerpt = cleanText(payload?.transcript || workstream.currentActivity || workstream.lastSummary || task).slice(-240);
+  const tasks = [
+    mission && mission !== "Terminal" ? mission : "",
+    cleanText(workstream.prompt),
+    task && task !== "Ready" && task !== "Supervised agent run" ? task : "",
+    ...lines.filter((line) => /^(task|todo|fix|implement|add|update|review|wire|persist)\b/i.test(line)).map(stripExtractionPrefix),
+  ];
+  const blockers = [
+    workstream.risk,
+    status === "blocked" ? workstream.lastSummary : "",
+    ...lines.filter((line) => /\b(blocked|blocker|failed|failure|error|cannot|missing|auth|credential|permission)\b/i.test(line)).map(stripExtractionPrefix),
+  ];
+  const evidence = [
+    workstream.evidence,
+    ...lines.filter((line) => /\b(evidence|proof|verified|passed|screenshot|artifact|report|build passed|tests? passed)\b/i.test(line)).map(stripExtractionPrefix),
+  ];
+  const nextActions = [
+    workstream.nextAction,
+    ...lines.filter((line) => /^(next|next action|todo)\b/i.test(line)).map(stripExtractionPrefix),
+  ];
 
   return {
     task,
@@ -132,6 +191,12 @@ function fallbackSummary(payload) {
     status,
     provider: workstream.provider || "codex",
     confidence: cleanText(workstream.currentActivity) && !isNoisy(workstream.currentActivity) ? "medium" : "low",
+    proof: cleanText(workstream.evidence) || undefined,
+    blocker: status === "blocked" ? cleanText(workstream.risk) || cleanText(workstream.lastSummary) || undefined : undefined,
+    tasks: extractedItems(tasks, excerpt),
+    blockers: extractedItems(blockers, excerpt),
+    evidence: extractedItems(evidence, excerpt),
+    nextActions: extractedItems(nextActions, excerpt),
   };
 }
 

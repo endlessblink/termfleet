@@ -1,4 +1,4 @@
-import type { Tab, WorkstreamIsolationMode, WorkstreamMetadata, WorktreeCleanupStatus } from "./types";
+import type { Tab, WorkstreamExtractedItem, WorkstreamIsolationMode, WorkstreamMetadata, WorktreeCleanupStatus } from "./types";
 import { workstreamActivityMeta, workstreamActivityText } from "./workstreamActivity";
 import { formatWorkstreamBranch, formatWorkstreamIsolation, formatWorkstreamOpsContext, pathLabel } from "./workstreamOpsContext";
 
@@ -218,12 +218,26 @@ export interface AgentLaneSummary {
     at: number;
     brief: string;
   }[];
+  extractedItems: {
+    tabId: string;
+    title: string;
+    kind: "task" | "blocker" | "evidence" | "next-action";
+    label: string;
+    actionLabel: string;
+    text: string;
+    provenance: WorkstreamExtractedItem["provenance"];
+    excerpt: string;
+    at: number;
+    brief: string;
+    request?: string;
+  }[];
   total: number;
   promptCount: number;
   missionControlPromptCount: number;
   missionControlPromptSentCount: number;
   outputCount: number;
   nextCount: number;
+  extractedCount: number;
   reviewReadyWithProof: number;
   reviewNeedsProof: number;
   reviewReadyWithMemory: number;
@@ -834,6 +848,43 @@ function recoveryPromptForWorkstream(workstream: WorkstreamMetadata) {
   return `Recover ${providerLabel(workstream.provider)} agent: inspect the failure output, summarize the root cause, and propose the next command.`;
 }
 
+function extractedProofRequestPrompt(item: WorkstreamExtractedItem, workstream: WorkstreamMetadata) {
+  const mission = workstream.mission ?? workstream.prompt ?? "agent run";
+  return `Resolve extracted blocker for ${providerLabel(workstream.provider)} agent: verify whether this still blocks the work, provide exact evidence or artifact paths, and report the next concrete action. Mission: ${mission}. Blocker: ${item.text}. Source: ${item.provenance}. Excerpt: ${item.excerpt}.`;
+}
+
+function extractedLaneItem(
+  tab: Tab,
+  workstream: WorkstreamMetadata,
+  item: WorkstreamExtractedItem,
+  kind: AgentLaneSummary["extractedItems"][number]["kind"]
+): AgentLaneSummary["extractedItems"][number] {
+  const title = workstream.mission ?? workstream.prompt ?? tab.title;
+  const label =
+    kind === "task" ? "Task" :
+    kind === "blocker" ? "Blocker" :
+    kind === "evidence" ? "Evidence" :
+    "Next";
+  const actionLabel =
+    kind === "task" ? "Focus task" :
+    kind === "blocker" ? "Request proof" :
+    kind === "evidence" ? "Copy proof" :
+    "Copy next";
+  return {
+    tabId: tab.id,
+    title,
+    kind,
+    label,
+    actionLabel,
+    text: item.text,
+    provenance: item.provenance,
+    excerpt: item.excerpt,
+    at: item.at,
+    brief: `${title}: extracted ${label.toLowerCase()} - ${item.text} (${item.provenance})`,
+    request: kind === "blocker" ? extractedProofRequestPrompt(item, workstream) : undefined,
+  };
+}
+
 export function statusCheckPromptForWorkstream(workstream: WorkstreamMetadata) {
   const mission = workstream.mission ?? workstream.prompt ?? "this workstream";
   const activity = workstreamActivityText(workstream, "No current activity");
@@ -1088,6 +1139,7 @@ export function summarizeAgentLane(tabs: Tab[], now = Date.now()): AgentLaneSumm
       inputItems: summary.inputItems,
       outputItems: summary.outputItems,
       nextItems: summary.nextItems,
+      extractedItems: summary.extractedItems,
       reviewReadyWithProof: summary.reviewReadyWithProof,
       reviewNeedsProof: summary.reviewNeedsProof,
       reviewReadyWithMemory: summary.reviewReadyWithMemory,
@@ -1100,6 +1152,12 @@ export function summarizeAgentLane(tabs: Tab[], now = Date.now()): AgentLaneSumm
       missionControlPromptSentCount: summary.missionControlPromptSentCount + (workstream.inputQueue?.filter((input) => input.source === "mission-control" && input.sentAt).length ?? 0),
       outputCount: summary.outputCount + (workstream.terminalOutput?.trim() ? 1 : 0),
       nextCount: summary.nextCount + (workstream.nextAction?.trim() ? 1 : 0),
+      extractedCount:
+        summary.extractedCount +
+        (workstream.extractedTasks?.length ?? 0) +
+        (workstream.extractedBlockers?.length ?? 0) +
+        (workstream.extractedEvidence?.length ?? 0) +
+        (workstream.extractedNextActions?.length ?? 0),
       active: summary.active + (active ? 1 : 0),
       waiting: summary.waiting + (waiting ? 1 : 0),
       blocked: summary.blocked + (blocked ? 1 : 0),
@@ -1324,12 +1382,22 @@ export function summarizeAgentLane(tabs: Tab[], now = Date.now()): AgentLaneSumm
       })
       .sort((a, b) => b.at - a.at)
       .slice(0, 5),
+    extractedItems: workstreams
+      .flatMap(({ tab, workstream }) => [
+        ...(workstream.extractedBlockers ?? []).map((item) => extractedLaneItem(tab, workstream, item, "blocker")),
+        ...(workstream.extractedNextActions ?? []).map((item) => extractedLaneItem(tab, workstream, item, "next-action")),
+        ...(workstream.extractedTasks ?? []).map((item) => extractedLaneItem(tab, workstream, item, "task")),
+        ...(workstream.extractedEvidence ?? []).map((item) => extractedLaneItem(tab, workstream, item, "evidence")),
+      ])
+      .sort((a, b) => b.at - a.at)
+      .slice(0, 8),
     total: 0,
     promptCount: 0,
     missionControlPromptCount: 0,
     missionControlPromptSentCount: 0,
     outputCount: 0,
     nextCount: 0,
+    extractedCount: 0,
     reviewReadyWithProof: 0,
     reviewNeedsProof: 0,
     reviewReadyWithMemory: 0,
@@ -1521,7 +1589,7 @@ export function summarizeAgentLane(tabs: Tab[], now = Date.now()): AgentLaneSumm
 
 export function agentLaneStatusText(summary: AgentLaneSummary) {
   if (summary.total === 0) return "No agent runs";
-  return `${summary.total} agents · ${summary.workspaceGroups.length} workspace groups · ${summary.missionItemCount} mission rows · ${summary.hiddenMissionItemCount} hidden mission rows · ${summary.missionActionCount} mission actions · ${summary.hiddenMissionActionCount} hidden mission actions · ${summary.promptCount} prompts · ${summary.missionControlPromptCount} mission-control prompts · ${summary.missionControlPromptSentCount} mission-control sent · ${summary.outputCount} outputs · ${summary.nextCount} next actions · ${summary.memoryItems.length} memories · ${summary.recentEvents.length} events · ${summary.staleItems.length} stale · ${summary.evidenceItems.length} evidence · ${summary.proofItems.length} proof needed · ${summary.authItems.length} auth · ${summary.riskItems.length} risk · ${summary.recoveryItems.length} recovery · ${summary.reviewItems.length} review ready · ${summary.reviewCloseoutReady} closeout ready · ${summary.reviewCloseoutBlocked} closeout blocked · ${summary.reviewReadyWithProof} proven review · ${summary.reviewNeedsProof} unproven review · ${summary.reviewReadyWithMemory} handoff ready · ${summary.reviewNeedsMemory} handoff missing · ${summary.attentionItems.length} attention queue · ${summary.active} active · ${summary.waiting} waiting · ${summary.blocked} blocked · ${summary.complete} complete · ${summary.dedicated} dedicated · ${summary.shared} shared · ${summary.cleanupReady} cleanup ready · ${summary.cleanupRequested} cleanup requested · ${summary.attention} need attention`;
+  return `${summary.total} agents · ${summary.workspaceGroups.length} workspace groups · ${summary.missionItemCount} mission rows · ${summary.hiddenMissionItemCount} hidden mission rows · ${summary.missionActionCount} mission actions · ${summary.hiddenMissionActionCount} hidden mission actions · ${summary.promptCount} prompts · ${summary.missionControlPromptCount} mission-control prompts · ${summary.missionControlPromptSentCount} mission-control sent · ${summary.outputCount} outputs · ${summary.nextCount} next actions · ${summary.extractedCount} extracted · ${summary.memoryItems.length} memories · ${summary.recentEvents.length} events · ${summary.staleItems.length} stale · ${summary.evidenceItems.length} evidence · ${summary.proofItems.length} proof needed · ${summary.authItems.length} auth · ${summary.riskItems.length} risk · ${summary.recoveryItems.length} recovery · ${summary.reviewItems.length} review ready · ${summary.reviewCloseoutReady} closeout ready · ${summary.reviewCloseoutBlocked} closeout blocked · ${summary.reviewReadyWithProof} proven review · ${summary.reviewNeedsProof} unproven review · ${summary.reviewReadyWithMemory} handoff ready · ${summary.reviewNeedsMemory} handoff missing · ${summary.attentionItems.length} attention queue · ${summary.active} active · ${summary.waiting} waiting · ${summary.blocked} blocked · ${summary.complete} complete · ${summary.dedicated} dedicated · ${summary.shared} shared · ${summary.cleanupReady} cleanup ready · ${summary.cleanupRequested} cleanup requested · ${summary.attention} need attention`;
 }
 
 export function agentLaneHealthText(summary: AgentLaneSummary) {
@@ -1556,6 +1624,7 @@ export function agentLaneHealthText(summary: AgentLaneSummary) {
     summary.recoveryItems.length > 0 ? `${summary.recoveryItems.length} recovery` : null,
     summary.riskItems.length > 0 ? `${summary.riskItems.length} risk` : null,
     summary.staleItems.length > 0 ? `${summary.staleItems.length} stale` : null,
+    summary.extractedCount > 0 ? `${summary.extractedCount} extracted` : null,
     summary.proofItems.length > 0 ? `${summary.proofItems.length} proof` : null,
     summary.reviewCloseoutReady > 0 ? `${summary.reviewCloseoutReady} closeout ready` : null,
     summary.reviewCloseoutBlocked > 0 ? `${summary.reviewCloseoutBlocked} closeout blocked` : null,
@@ -1691,6 +1760,15 @@ export function formatAgentLaneBrief(summary: AgentLaneSummary) {
   } else {
     for (const item of summary.nextItems) {
       lines.push(`- ${item.title}: ${item.nextAction}`);
+    }
+  }
+
+  lines.push("", "Extracted cockpit objects:");
+  if (summary.extractedItems.length === 0) {
+    lines.push("- none");
+  } else {
+    for (const item of summary.extractedItems) {
+      lines.push(`- ${item.title}: ${item.label} · ${item.text} · ${item.provenance}`);
     }
   }
 

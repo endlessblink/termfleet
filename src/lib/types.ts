@@ -66,6 +66,16 @@ export type WorkstreamLaunchProfile = "terminal" | "headless";
 export type WorkstreamStatusSummaryLifecycle = "working" | "idle" | "waiting" | "blocked" | "stopped" | "done";
 export type WorkstreamStatusSummaryConfidence = "low" | "medium" | "high";
 export type WorkstreamStatusSummarySource = "fallback" | "process";
+export type WorkstreamExtractionProvenance = "terminal-output" | "structured-signal" | "operator-prompt" | "summary";
+
+export interface WorkstreamExtractedItem {
+  id: string;
+  text: string;
+  provenance: WorkstreamExtractionProvenance;
+  at: number;
+  excerpt: string;
+  sourceHash: string;
+}
 
 export interface WorkstreamStatusSummary {
   task: string;
@@ -76,6 +86,10 @@ export interface WorkstreamStatusSummary {
   confidence?: WorkstreamStatusSummaryConfidence;
   proof?: string;
   blocker?: string;
+  tasks?: WorkstreamExtractedItem[];
+  blockers?: WorkstreamExtractedItem[];
+  evidence?: WorkstreamExtractedItem[];
+  nextActions?: WorkstreamExtractedItem[];
 }
 
 export interface WorkstreamMetadata {
@@ -125,6 +139,10 @@ export interface WorkstreamMetadata {
   statusSummaryUpdatedAt?: number;
   statusSummarySource?: WorkstreamStatusSummarySource;
   statusSummaryError?: string;
+  extractedTasks?: WorkstreamExtractedItem[];
+  extractedBlockers?: WorkstreamExtractedItem[];
+  extractedEvidence?: WorkstreamExtractedItem[];
+  extractedNextActions?: WorkstreamExtractedItem[];
   promptCount?: number;
   sentCount?: number;
   signalCount?: number;

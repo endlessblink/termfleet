@@ -3193,3 +3193,101 @@ test("agent lane summarizes multiple supervised workstreams", async ({ page, con
     lastEvent: "Worktree cleanup blocked",
   });
 });
+
+test("agent lanes render extracted cockpit objects with explicit copy and proof actions", async ({ page, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"], { origin: "http://127.0.0.1:5177" });
+  await resetWorkspace(page);
+  await createAgentWorkstream(page, "Extract checkout follow-ups");
+
+  await page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => {
+          tabs: Array<{ id: string; workstream?: Record<string, unknown> }>;
+          updateTab: (id: string, updates: { workstream?: Record<string, unknown> }) => void;
+        };
+      };
+    }).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+    const state = store.getState();
+    const agent = state.tabs.find((tab) => tab.workstream?.kind === "agent");
+    if (!agent?.workstream) throw new Error("Agent workstream not found");
+    const now = Date.now();
+    state.updateTab(agent.id, {
+      workstream: {
+        ...agent.workstream,
+        extractedTasks: [{
+          id: "summary:task-1",
+          text: "Persist retry evidence on the checkout report",
+          provenance: "summary",
+          at: now + 1,
+          excerpt: "Task: persist retry evidence on the checkout report",
+          sourceHash: "task-1",
+        }],
+        extractedBlockers: [{
+          id: "summary:blocker-1",
+          text: "Auth fixture token expired",
+          provenance: "summary",
+          at: now + 4,
+          excerpt: "Blocked: auth fixture token expired",
+          sourceHash: "blocker-1",
+        }],
+        extractedEvidence: [{
+          id: "summary:evidence-1",
+          text: "npm test -- checkout-flow.spec passed",
+          provenance: "summary",
+          at: now + 2,
+          excerpt: "Evidence: npm test -- checkout-flow.spec passed",
+          sourceHash: "evidence-1",
+        }],
+        extractedNextActions: [{
+          id: "summary:next-1",
+          text: "Rerun checkout-flow.spec with retry trace",
+          provenance: "summary",
+          at: now + 3,
+          excerpt: "Next: rerun checkout-flow.spec with retry trace",
+          sourceHash: "next-1",
+        }],
+      },
+    });
+  });
+
+  await expect(page.getByTestId("canvas-agent-lane-summary")).toContainText("4 extracted");
+  await expect(page.getByTestId("map-agent-lane-summary")).toContainText("4 extracted");
+  await expect(page.getByTestId("canvas-agent-lane-health")).toContainText("4 extracted");
+  await expect(page.getByTestId("canvas-agent-extracted-item")).toHaveCount(4);
+  await expect(page.getByTestId("canvas-agent-extracted-item").filter({ hasText: "Request proof" })).toContainText("Blocker");
+  await expect(page.getByTestId("canvas-agent-extracted-item").filter({ hasText: "Request proof" })).toContainText("Auth fixture token expired");
+  await expect(page.getByTestId("canvas-agent-extracted-item").filter({ hasText: "Copy next" })).toContainText("Rerun checkout-flow.spec with retry trace");
+  await expect(page.getByTestId("canvas-agent-extracted-item").filter({ hasText: "Focus task" })).toContainText("Persist retry evidence on the checkout report");
+  await expect(page.getByTestId("canvas-agent-extracted-item").filter({ hasText: "Copy proof" })).toContainText("npm test -- checkout-flow.spec passed");
+  await expect(page.getByTestId("map-agent-extracted-item")).toHaveCount(4);
+  await expect(page.getByTestId("map-agent-extracted-item").filter({ hasText: "Request proof" })).toContainText("Auth fixture token expired");
+  await page.getByRole("button", { name: "Sessions" }).click();
+  await expect(page.getByTestId("sidebar-agent-extracted-item")).toHaveCount(4);
+  await expect(page.getByTestId("sidebar-agent-extracted-item").filter({ hasText: "Focus task" })).toContainText("Persist retry evidence on the checkout report");
+  await runWorkspaceCommand(page, "show map");
+
+  await expect.poll(async () => page.evaluate(() => {
+    const raw = localStorage.getItem("terminal-workspace.v1");
+    const state = raw ? JSON.parse(raw) : null;
+    const agent = state?.tabs?.find((tab: { workstream?: { kind?: string } }) => tab.workstream?.kind === "agent");
+    return agent?.workstream?.inputQueue?.filter((item: { label?: string }) => item.label === "Request proof").length ?? 0;
+  })).toBe(0);
+
+  await page.getByTestId("canvas-agent-extracted-item").filter({ hasText: "Copy next" }).click();
+  const copiedNext = await expect.poll(async () => page.evaluate(() => navigator.clipboard.readText()));
+  await copiedNext.toBe("Extract checkout follow-ups: extracted next - Rerun checkout-flow.spec with retry trace (summary)");
+
+  await page.getByTestId("canvas-agent-extracted-item").filter({ hasText: "Request proof" }).click();
+  await expect.poll(async () => page.evaluate(() => {
+    const raw = localStorage.getItem("terminal-workspace.v1");
+    const state = raw ? JSON.parse(raw) : null;
+    const agent = state?.tabs?.find((tab: { workstream?: { kind?: string } }) => tab.workstream?.kind === "agent");
+    const request = agent?.workstream?.inputQueue?.find((item: { label?: string; text?: string }) => item.label === "Request proof");
+    return request?.text;
+  })).toContain("Auth fixture token expired");
+  await page.getByTestId("canvas-agent-lane-summary").screenshot({
+    path: test.info().outputPath("tc-027-extracted-cockpit-objects.png"),
+  });
+});

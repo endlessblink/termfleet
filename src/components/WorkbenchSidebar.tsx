@@ -2589,6 +2589,50 @@ function SessionsPanel({
                 )}
               </div>
             )}
+            {agentLane.extractedItems.length > 0 && (
+              <div style={styles.agentLaneList} aria-label="Extracted cockpit objects">
+                {agentLane.extractedItems.slice(0, 4).map((item) => (
+                  <button
+                    key={`${item.tabId}-${item.kind}-${item.at}-${item.text}`}
+                    type="button"
+                    style={styles.agentLaneItem}
+                    data-testid="sidebar-agent-extracted-item"
+                    title={`${item.actionLabel} for ${item.title}`}
+                    onClick={() => {
+                      setActiveTab(item.tabId);
+                      if (item.request) {
+                        useWorkspaceStore.getState().queueWorkstreamInput(item.tabId, item.request, {
+                          source: "mission-control",
+                          label: "Request proof",
+                        });
+                      } else if (navigator.clipboard?.writeText) {
+                        void navigator.clipboard.writeText(item.brief);
+                      }
+                      setWorkspaceMode("split");
+                    }}
+                  >
+                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {item.actionLabel}
+                    </span>
+                    <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                      {item.title} · {item.label} · {item.text} · {item.provenance}
+                    </span>
+                  </button>
+                ))}
+                {agentLane.extractedItems.length > 4 && (
+                  <div
+                    style={styles.agentLaneItem}
+                    data-testid="sidebar-agent-extracted-overflow"
+                    title={`${agentLane.extractedItems.length - 4} extracted cockpit objects hidden below the visible list`}
+                  >
+                    <span>+{agentLane.extractedItems.length - 4} more extracted</span>
+                    <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                      {agentLane.extractedItems[4].title} · {agentLane.extractedItems[4].label} · {agentLane.extractedItems[4].text}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
             {agentLane.staleItems.length > 0 && (
               <div style={styles.agentLaneList} aria-label="Agent stale queue">
                 {agentLane.staleItems.slice(0, 3).map((item) => (
@@ -4232,6 +4276,54 @@ function MapPanel({
                 )}
               </div>
             )}
+            {agentLane.extractedItems.length > 0 && (
+              <div style={styles.agentLaneList} aria-label="Extracted cockpit objects">
+                {agentLane.extractedItems.slice(0, 4).map((item) => {
+                  const node = canvasState.nodes.find((candidate) => candidate.terminalTabId === item.tabId);
+                  return (
+                    <button
+                      key={`${item.tabId}-${item.kind}-${item.at}-${item.text}`}
+                      type="button"
+                      style={styles.agentLaneItem}
+                      data-testid="map-agent-extracted-item"
+                      title={`${item.actionLabel} for ${item.title}`}
+                      onClick={() => {
+                        setActiveTab(item.tabId);
+                        if (item.request) {
+                          useWorkspaceStore.getState().queueWorkstreamInput(item.tabId, item.request, {
+                            source: "mission-control",
+                            label: "Request proof",
+                          });
+                        } else if (navigator.clipboard?.writeText) {
+                          void navigator.clipboard.writeText(item.brief);
+                        }
+                        setWorkspaceMode("canvas");
+                        if (node) focusCanvasNode(node);
+                      }}
+                    >
+                      <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {item.actionLabel}
+                      </span>
+                      <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                        {item.title} · {item.label} · {item.text} · {item.provenance}
+                      </span>
+                    </button>
+                  );
+                })}
+                {agentLane.extractedItems.length > 4 && (
+                  <div
+                    style={styles.agentLaneItem}
+                    data-testid="map-agent-extracted-overflow"
+                    title={`${agentLane.extractedItems.length - 4} extracted cockpit objects hidden below the visible list`}
+                  >
+                    <span>+{agentLane.extractedItems.length - 4} more extracted</span>
+                    <span style={{ ...styles.rowMeta, marginTop: 0 }}>
+                      {agentLane.extractedItems[4].title} · {agentLane.extractedItems[4].label} · {agentLane.extractedItems[4].text}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
             {agentLane.staleItems.length > 0 && (
               <div style={styles.agentLaneList} aria-label="Agent stale queue">
                 {agentLane.staleItems.slice(0, 3).map((item) => {
@@ -4724,11 +4816,15 @@ function MapPanel({
                     onMouseDown={(event) => event.stopPropagation()}
                     onClick={(event) => {
                       event.stopPropagation();
-                      if (linkedTab) {
-                        if (node.type === "preview" && node.previewPaneId) {
+                      if (node.type === "preview") {
+                        if (linkedTab && node.previewPaneId) {
                           closePane(linkedTab.id, node.previewPaneId);
                           return;
                         }
+                        removeCanvasNode(node.id);
+                        return;
+                      }
+                      if (linkedTab) {
                         closeTerminalSession(linkedTab.id);
                         return;
                       }

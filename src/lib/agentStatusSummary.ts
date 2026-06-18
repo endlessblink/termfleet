@@ -1,5 +1,6 @@
 import type { AgentProvider, WorkstreamMetadata, WorkstreamStatus, WorkstreamStatusSummary } from "./types";
 import { workstreamActivityText } from "./workstreamActivity";
+import { cleanExtractedText, normalizeExtractedItems } from "./workstreamExtraction";
 import { formatWorkstreamIsolation, pathLabel } from "./workstreamOpsContext";
 
 export type AgentStatusLifecycle = WorkstreamStatusSummary["status"];
@@ -112,6 +113,48 @@ function inferTranscriptNow(lines: string[], task?: string) {
   );
 }
 
+function stripExtractionPrefix(line: string) {
+  return line.replace(/^(task|todo|blocker|blocked|evidence|proof|verified|next|next action)\s*[:=-]\s*/i, "").trim();
+}
+
+function extractionCandidates(input: AgentStatusSummaryInput, task: string, status: AgentStatusLifecycle) {
+  const lines = transcriptLines(input);
+  const taskLines = lines
+    .filter((line) => /^(task|todo|fix|implement|add|update|review|wire|persist)\b/i.test(line))
+    .map(stripExtractionPrefix);
+  const blockerLines = lines
+    .filter((line) => /\b(blocked|blocker|failed|failure|error|cannot|missing|auth|credential|permission)\b/i.test(line))
+    .map(stripExtractionPrefix);
+  const evidenceLines = lines
+    .filter((line) => /\b(evidence|proof|verified|passed|screenshot|artifact|report|build passed|tests? passed)\b/i.test(line))
+    .map(stripExtractionPrefix);
+  const nextLines = lines
+    .filter((line) => /^(next|next action|todo)\b/i.test(line))
+    .map(stripExtractionPrefix);
+
+  return {
+    tasks: [
+      ...(cleanExtractedText(input.mission) && cleanExtractedText(input.mission) !== "Terminal" ? [input.mission] : []),
+      ...(cleanExtractedText(input.prompt) ? [input.prompt] : []),
+      ...(task && task !== "Ready" && task !== "Supervised agent run" ? [task] : []),
+      ...taskLines,
+    ],
+    blockers: [
+      input.risk,
+      status === "blocked" ? input.lastSummary : undefined,
+      ...blockerLines,
+    ],
+    evidence: [
+      input.evidence,
+      ...evidenceLines,
+    ],
+    nextActions: [
+      input.nextAction,
+      ...nextLines,
+    ],
+  };
+}
+
 function normalizeLifecycle(input: Pick<AgentStatusSummaryInput, "status" | "phase">): AgentStatusLifecycle {
   if (input.status === "done" || input.phase === "complete" || input.phase === "reviewed") return "done";
   if (input.status === "failed" || input.phase === "blocked") return "blocked";
@@ -161,6 +204,8 @@ export function fallbackAgentStatusSummary(input: AgentStatusSummaryInput): Agen
     transcriptTask ??
     "Supervised agent run";
   const status = promptVisible && task === "Ready" ? "idle" : normalizeLifecycle(input);
+  const excerpt = (input.terminalOutput ?? input.currentActivity ?? input.lastSummary ?? task).slice(-240);
+  const extracted = extractionCandidates(input, task, status);
   return {
     task,
     path: pathFromInput(input),
@@ -170,6 +215,10 @@ export function fallbackAgentStatusSummary(input: AgentStatusSummaryInput): Agen
     confidence: cleanText(input.currentActivity) && !isNoisyActivity(input.currentActivity) ? "medium" : "low",
     proof: cleanText(input.evidence),
     blocker: status === "blocked" ? cleanText(input.risk) ?? cleanText(input.lastSummary) : undefined,
+    tasks: normalizeExtractedItems(extracted.tasks, "summary", excerpt),
+    blockers: normalizeExtractedItems(extracted.blockers, "summary", excerpt),
+    evidence: normalizeExtractedItems(extracted.evidence, "summary", excerpt),
+    nextActions: normalizeExtractedItems(extracted.nextActions, "summary", excerpt),
   };
 }
 
@@ -218,6 +267,10 @@ export function parseAgentStatusSummaryResponse(raw: string, fallback: AgentStat
       status: parsed.status ?? fallback.status,
       provider: parsed.provider ?? fallback.provider,
       confidence: parsed.confidence ?? "medium",
+      tasks: normalizeExtractedItems(parsed.tasks ?? fallback.tasks, "summary", raw),
+      blockers: normalizeExtractedItems(parsed.blockers ?? fallback.blockers, "summary", raw),
+      evidence: normalizeExtractedItems(parsed.evidence ?? fallback.evidence, "summary", raw),
+      nextActions: normalizeExtractedItems(parsed.nextActions ?? fallback.nextActions, "summary", raw),
     };
   } catch {
     return fallback;
@@ -244,6 +297,10 @@ export function displayAgentStatusSummary(
     status: persisted?.status ?? fallback.status,
     provider: persisted?.provider ?? fallback.provider,
     confidence: persisted?.confidence ?? fallback.confidence,
+    tasks: persisted?.tasks ?? fallback.tasks,
+    blockers: persisted?.blockers ?? fallback.blockers,
+    evidence: persisted?.evidence ?? fallback.evidence,
+    nextActions: persisted?.nextActions ?? fallback.nextActions,
   };
 }
 

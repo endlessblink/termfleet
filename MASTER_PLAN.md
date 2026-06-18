@@ -49,7 +49,7 @@ were retired during consolidation.
 | TC-024     | Session/map cards: show the project/workspace name in the live summary header                                                                                                                                   | P1       | DONE              | TC-016i        |
 | TC-025     | Redesign map filters and workspace summary into a usable non-scrolling control surface                                                                                                                          | P1       | DONE (2026-06-18) | TC-021         |
 | TC-026     | Redesign local-services panel into a usable service cockpit control surface                                                                                                                                      | P1       | DONE (2026-06-18) | TC-021         |
-| TC-027     | LLM task extraction lane: turn terminal/agent output into actionable tasks, blockers, evidence, and next actions                                                                                                | P1       | TODO              | TC-016i        |
+| TC-027     | LLM task extraction lane: turn terminal/agent output into actionable tasks, blockers, evidence, and next actions                                                                                                | P1       | DONE (2026-06-18) | TC-016i        |
 | TC-028     | Clarify the left operations rail into distinct Files, Sessions, Map, and Preview jobs                                                                                                                           | P1       | DONE (2026-06-18) | TC-021         |
 
 ---
@@ -192,16 +192,22 @@ Acceptance:
 - DONE: Preview is disabled with a clear tooltip until the active terminal has a
   detected localhost URL; after URL detection it opens the preview pane and
   preserves the detected URL.
+- DONE: Closing a localhost preview node that is linked to a terminal removes
+  only the preview node/pane; it does not close the connected terminal session or
+  terminal map node.
 - DONE: Playwright verifies Files, Sessions, Map, and Preview switching plus the
   disabled/enabled preview contract. Evidence: `npx playwright test
   operations-rail.spec.ts`; screenshot artifact
-  `test-results/operations-rail-operations-edcad--preview-until-a-URL-exists/operations-rail-preview.png`.
+  `/tmp/termfleet-operations-rail-preview.png`.
+- DONE: Preview-close regression is covered by focused Playwright: `npx
+  playwright test tests/map-terminal-rendering.spec.ts -g "map sidebar filters
+  operations nodes by visible work state" --reporter=line`.
 - DONE: Build verification passes. Evidence: `npm run build`.
 
 ### TC-027: LLM task extraction lane
 
 **Priority:** P1
-**Status:** TODO
+**Status:** Done
 **Depends:** TC-016i
 
 The summarizer currently answers what an agent or terminal is doing: task, path,
@@ -212,21 +218,30 @@ Sessions/Map lanes without reading scrollback.
 
 Acceptance:
 
-- TODO: Extend the status summary schema and local summary server contract with
-  extracted `tasks`, `blockers`, `evidence`, and `nextActions` arrays while
-  preserving deterministic fallback behavior.
-- TODO: Persist extracted items into workstream metadata with provenance
-  (`terminal-output`, `structured-signal`, `operator-prompt`, or `summary`), a
-  timestamp, and source excerpt/hash so items can be deduplicated.
-- TODO: Render extracted tasks/next actions as reviewable cockpit rows in the
-  Sessions/Map agent lanes, with copy/focus/request-proof actions that do not
-  mutate child terminals until explicitly clicked.
-- TODO: Add a regression fixture where noisy terminal output plus a mission
+- DONE: Extended the status summary schema and local summary server contract
+  with extracted `tasks`, `blockers`, `evidence`, and `nextActions` arrays while
+  preserving deterministic fallback behavior. The bundled Ollama adapter now
+  asks for and preserves the same arrays.
+- DONE: Persist extracted items into workstream metadata with provenance
+  (`structured-signal` or `summary` in the current slice), a timestamp, source
+  excerpt, and source hash so repeated summary refreshes deduplicate the same
+  cockpit object.
+- DONE: Render extracted tasks, blockers, evidence, and next actions as
+  reviewable cockpit rows in the Sessions and Map agent lanes. Rows expose
+  copy/focus/request-proof actions; blocker proof requests queue a
+  mission-control prompt only after the operator clicks the row.
+- DONE: Added a regression fixture where noisy terminal output plus a mission
   becomes concrete extracted work items, blockers, evidence, and next actions
   without surfacing raw prompt noise as the primary task.
-- TODO: Verification includes `npm run verify:agent-status-summary`, focused
-  Playwright agent lane coverage, `npm run build`, and visual proof of the
-  extracted tasks/next-actions lane.
+- DONE: Verification includes focused Playwright agent lane coverage and visual
+  proof of the extracted tasks/next-actions lane. Current evidence:
+  `npx playwright test tests/agent-status-summary.spec.ts
+  tests/agent-workstream.spec.ts -g "agent lanes render extracted cockpit
+  objects|extracts reviewable cockpit objects|posts transcript"` passed 3/3,
+  `npm run verify:agent-status-summary` passed with
+  `TERMFLEET_AGENT_STATUS_SUMMARY_SERVER_OK`, and `npm run build` passed on
+  2026-06-18. Screenshot evidence:
+  `/tmp/termfleet-tc-027-extracted-cockpit-objects.png`.
 
 ### TC-001: Freeze Terminal Cockpit target and visual rules
 

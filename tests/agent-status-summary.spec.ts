@@ -35,6 +35,12 @@ test("parses strict LLM status JSON into visible agent status", () => {
     confidence: "high",
     blocker: undefined,
     proof: undefined,
+    tasks: expect.arrayContaining([
+      expect.objectContaining({ text: "Fix TC-016i header", provenance: "summary", at: 0 }),
+    ]),
+    blockers: [],
+    evidence: [],
+    nextActions: [],
   });
 });
 
@@ -137,6 +143,43 @@ test("summarizes a clean visible shell prompt as ready", () => {
   expect(summary.status).toBe("idle");
 });
 
+test("extracts reviewable cockpit objects from noisy terminal output without promoting prompt chrome", () => {
+  const summary = fallbackAgentStatusSummary({
+    mission: "Stabilize checkout retry lane",
+    provider: "codex",
+    status: "failed",
+    phase: "blocked",
+    cwd: "/repo/termfleet",
+    currentActivity: "gpt-5.5 default · -",
+    nextAction: "Next: rerun checkout-flow.spec with retry trace",
+    evidence: "Verified: npm test -- checkout-flow.spec passed before retry slice",
+    risk: "Blocked: auth fixture token expired",
+    terminalOutput: [
+      "gpt-5.5 default · ~",
+      "› Use /skills to list available skills",
+      "Task: persist retry evidence on the checkout report",
+      "Blocked: auth fixture token expired",
+      "Evidence: npm test -- checkout-flow.spec passed before retry slice",
+      "Next: rerun checkout-flow.spec with retry trace",
+    ].join("\n"),
+  });
+
+  expect(summary.task).toBe("Stabilize checkout retry lane");
+  expect(summary.status).toBe("blocked");
+  expect(summary.tasks?.map((item) => item.text)).toContain("Stabilize checkout retry lane");
+  expect(summary.tasks?.map((item) => item.text)).toContain("persist retry evidence on the checkout report");
+  expect(summary.blockers?.map((item) => item.text)).toContain("Blocked: auth fixture token expired");
+  expect(summary.evidence?.map((item) => item.text)).toContain("Verified: npm test -- checkout-flow.spec passed before retry slice");
+  expect(summary.nextActions?.map((item) => item.text)).toContain("Next: rerun checkout-flow.spec with retry trace");
+  expect(summary.tasks?.map((item) => item.text).join(" ")).not.toContain("gpt-5.5 default");
+  expect(summary.tasks?.[0]).toMatchObject({
+    provenance: "summary",
+    at: 0,
+    excerpt: expect.stringContaining("Task: persist retry evidence"),
+  });
+  expect(summary.tasks?.[0].sourceHash).toMatch(/^[0-9a-f]{8}$/);
+});
+
 test("display summary rejects persisted prompt or TUI chrome", () => {
   const summary = displayAgentStatusSummary({
     mission: "Terminal",
@@ -206,6 +249,10 @@ test("posts transcript and workstream context to a configured status process", a
       task: "string",
       path: "string",
       now: "string",
+      tasks: "array of extracted task strings or { text, excerpt }",
+      blockers: "array of extracted blocker strings or { text, excerpt }",
+      evidence: "array of extracted proof/evidence strings or { text, excerpt }",
+      nextActions: "array of extracted next-action strings or { text, excerpt }",
     },
     workstream: {
       mission: "Add LLM status process",
@@ -216,6 +263,7 @@ test("posts transcript and workstream context to a configured status process", a
   });
   expect((capturedBody as { instructions?: string[] }).instructions?.join(" ")).toContain("heuristicCandidate");
   expect((capturedBody as { instructions?: string[] }).instructions?.join(" ")).toContain("Ignore prompts");
+  expect((capturedBody as { instructions?: string[] }).instructions?.join(" ")).toContain("extracted array item");
   expect((capturedBody as { instructions?: string[] }).instructions?.join(" ")).toContain("Never overclaim");
 });
 

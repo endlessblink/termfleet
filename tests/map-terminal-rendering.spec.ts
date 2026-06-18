@@ -189,6 +189,36 @@ test("status bar summarizes durable terminal recovery states", async ({ page }) 
   await expect(page.getByText("2 ptys")).toBeVisible();
 });
 
+test("map notes can be edited without dragging the canvas", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.getByRole("button", { name: "Map", exact: true }).click();
+
+  await page.getByLabel("Add note").click();
+  const editor = page.getByTestId("canvas-note-editor").last();
+  await editor.fill("Check failing build, capture blocker, then re-run proof.");
+  await expect(editor).toHaveValue("Check failing build, capture blocker, then re-run proof.");
+
+  await expect.poll(async () => page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => {
+          canvasState: {
+            viewport: { x: number; y: number };
+            nodes: Array<{ type: string; title: string; content?: string }>;
+          };
+        };
+      };
+    }).__termfleetWorkspaceStore;
+    const state = store?.getState().canvasState;
+    const note = state?.nodes.find((candidate) => candidate.type === "note" && candidate.title === "Run note");
+    return note ? `${state?.viewport.x}:${state?.viewport.y}:${note.content}` : null;
+  })).toBe("0:0:Check failing build, capture blocker, then re-run proof.");
+});
+
 test("map shell header prefers summarized task path and now over raw prompt chrome", async ({ page }) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle");
@@ -803,6 +833,33 @@ test("map sidebar filters operations nodes by visible work state", async ({ page
   await mapPanel.getByTestId("map-filter-preview").click();
   await expect(mapPanel.getByTestId("map-node-list")).toContainText("Preview service");
   await expect(mapPanel.getByTestId("map-node-list")).toContainText("Preview localhost");
+  await mapPanel.getByText("Preview localhost:5177").hover();
+  await mapPanel.getByRole("button", { name: "Close Preview localhost:5177" }).click();
+  await expect.poll(async () => page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => {
+          tabs: Array<{ id: string }>;
+          canvasState: { nodes: Array<{ id: string; type: string; terminalTabId?: string }> };
+        };
+      };
+    }).__termfleetWorkspaceStore;
+    const state = store?.getState();
+    if (!state) return null;
+    return {
+      previewExists: state.canvasState.nodes.some((node) => node.id === "service-preview-tab-preview-5177"),
+      terminalNodeExists: state.canvasState.nodes.some((node) => node.id === "node-preview-terminal"),
+      terminalTabExists: state.tabs.some((tab) => tab.id === "tab-preview"),
+    };
+  })).toEqual({
+    previewExists: false,
+    terminalNodeExists: true,
+    terminalTabExists: true,
+  });
+  await expect(mapPanel.getByTestId("map-node-list")).toContainText("Preview service");
+  await expect(mapPanel.getByTestId("map-node-list")).not.toContainText("Preview localhost");
+  await mapPanel.getByRole("button", { name: "Open http://localhost:5177 on map" }).click();
+  await expect(mapPanel.getByTestId("map-local-service-action-status")).toHaveText("Map window opened");
 
   await page.reload({ waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle");

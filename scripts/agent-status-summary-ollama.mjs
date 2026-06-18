@@ -25,6 +25,42 @@ function cleanText(value) {
   return typeof value === "string" ? value.replace(/\s+/g, " ").replace(/^[•*-]\s+/, "").trim() : "";
 }
 
+function hashText(value) {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
+function extractedItems(values, fallbackExcerpt = "") {
+  const sourceValues = Array.isArray(values) ? values : values ? [values] : [];
+  const seen = new Set();
+  return sourceValues
+    .map((value) => typeof value === "string" ? value : value && typeof value === "object" ? value.text : "")
+    .map((value) => cleanText(value).slice(0, 180))
+    .filter(Boolean)
+    .map((text) => {
+      const excerpt = cleanText(fallbackExcerpt || text).slice(0, 240);
+      const sourceHash = hashText(`summary:${excerpt}:${text}`);
+      return {
+        id: `summary:${sourceHash}`,
+        text,
+        provenance: "summary",
+        at: 0,
+        excerpt,
+        sourceHash,
+      };
+    })
+    .filter((item) => {
+      if (seen.has(item.sourceHash)) return false;
+      seen.add(item.sourceHash);
+      return true;
+    })
+    .slice(0, 5);
+}
+
 function isNoisy(value) {
   const text = cleanText(value);
   if (!text) return true;
@@ -71,7 +107,7 @@ function buildPrompt(payload) {
   const candidate = fallbackSummary(payload);
   return [
     "Return ONLY one compact JSON object for this terminal status.",
-    "Schema: task,path,now,status,provider,confidence.",
+    "Schema: task,path,now,status,provider,confidence,tasks,blockers,evidence,nextActions.",
     "Use heuristicCandidate unless transcript clearly improves it.",
     "Ignore prompts, model names, spinners, esc-to-interrupt, repeated commands, and UI chrome.",
     "Never overclaim. Keep task/path/now short and user-facing.",
@@ -134,6 +170,10 @@ function parseOllamaResponse(raw, payload) {
     status: parsed.status || fallback.status,
     provider: parsed.provider || fallback.provider,
     confidence: parsed.confidence || fallback.confidence || "low",
+    tasks: extractedItems(parsed.tasks ?? fallback.tasks, text),
+    blockers: extractedItems(parsed.blockers ?? fallback.blockers, text),
+    evidence: extractedItems(parsed.evidence ?? fallback.evidence, text),
+    nextActions: extractedItems(parsed.nextActions ?? fallback.nextActions, text),
   };
 }
 
