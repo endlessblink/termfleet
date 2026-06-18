@@ -2183,6 +2183,12 @@ Workstreams:
      `SECURITY.md` remain explicit pre-publish items instead of being silently
      invented. Verification: `npm run verify:oss-readiness`; `npm run
      verify:readme-recovery`; `npm run build`; `git diff --check`.
+   - In progress: added a public pre-publish audit verifier for README/AGENTS/docs
+     that fails on obvious token-shaped secrets or machine-local private paths,
+     keeps `package.json` private, and requires the missing LICENSE and
+     `SECURITY.md` files to remain explicit README blockers until publishing.
+     Verification: `npm run verify:public-audit`; `npm run
+     verify:oss-readiness`; `npm run build`; `git diff --check`.
 
 Acceptance (draft):
 

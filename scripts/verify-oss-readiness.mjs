@@ -61,6 +61,10 @@ const checks = [
       /license/.test(readme),
     message: "README must include a public-preview roadmap and license pre-publish item.",
   },
+  {
+    ok: /"verify:public-audit": "node scripts\/verify-public-audit\.mjs"/.test(packageJson),
+    message: "OSS readiness must include the public pre-publish audit verifier.",
+  },
 ];
 
 const failures = checks.filter((check) => !check.ok);
