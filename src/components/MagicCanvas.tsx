@@ -24,7 +24,7 @@ import {
 import type { CanvasNode } from "../lib/types";
 import { masterPlanPath, taskStatusColor, taskStatusLabel } from "../lib/masterPlanTasks";
 import { useMasterPlanTasks } from "../hooks/useMasterPlanTasks";
-import { pathTail, projectForTab } from "../lib/projectDisplay";
+import { pathTail, projectForTab, workspaceLabelFor } from "../lib/projectDisplay";
 import { createNewTab, useWorkspaceStore } from "../stores/workspace";
 import { TerminalComponent } from "./Terminal";
 import { LocalhostPreview } from "./LocalhostPreview";
@@ -273,6 +273,24 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 500,
     textTransform: "uppercase",
     letterSpacing: 0,
+  },
+  workspacePill: {
+    minWidth: 0,
+    maxWidth: 170,
+    height: 18,
+    display: "inline-flex",
+    alignItems: "center",
+    padding: "0 6px",
+    border: "1px solid var(--border-subtle)",
+    borderRadius: "var(--radius-xs)",
+    background: "color-mix(in srgb, var(--surface-base) 82%, transparent)",
+    color: "var(--text-primary)",
+    fontSize: 10,
+    fontWeight: 500,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    textTransform: "none",
   },
   terminalStatusTitle: {
     minWidth: 0,
@@ -1338,6 +1356,12 @@ function CanvasNodeView({
     (isDefaultName(linkedTab?.title) && isDefaultName(node.title)
       ? cwdName ?? "Terminal"
       : linkedTab?.title ?? node.title);
+  const workspaceLabel = workspaceLabelFor({
+    project: linkedProject,
+    cwd: liveTerminalRoot,
+    tabTitle: linkedTab?.title,
+    nodeTitle: node.title,
+  });
   const terminalStatusSummary = linkedTerminal?.statusSummary;
   const terminalVisibleTranscript = snapshotText(terminalPreview?.snapshot);
   const terminalDisplaySummary = getDisplaySummary({
@@ -1719,9 +1743,15 @@ function CanvasNodeView({
           <div
             style={styles.agentStatusBlock}
             dir="auto"
-            title={`${agentStatusSummary.task} · ${agentStatusSummary.path} · ${agentStatusSummary.now}`}
+            title={`${workspaceLabel} · ${agentStatusSummary.task} · ${agentStatusSummary.path} · ${agentStatusSummary.now}`}
             onDoubleClick={onRename}
           >
+            <div style={styles.terminalStatusKicker}>
+              <span>Workspace</span>
+              <span style={styles.workspacePill} data-testid="canvas-agent-node-workspace" title={workspaceLabel}>
+                {workspaceLabel}
+              </span>
+            </div>
             <div style={styles.agentWorkingLine} data-testid="canvas-agent-working-on">
               <span style={styles.agentStatusLabel}>Working on</span>
               <span style={styles.agentWorkingText}>{agentStatusSummary.task}</span>
@@ -1747,13 +1777,16 @@ function CanvasNodeView({
           <div
             style={styles.terminalStatusBlock}
             dir="auto"
-            title={`${terminalHeaderTitle} · ${terminalHeaderPath} · ${terminalHeaderSummarySignal}`}
+            title={`${workspaceLabel} · ${terminalHeaderTitle} · ${terminalHeaderPath} · ${terminalHeaderSummarySignal}`}
             onDoubleClick={onRename}
           >
             <div style={styles.terminalStatusKicker}>
               <span>Context</span>
               <span>·</span>
               <span>{terminalHeaderHasUsefulSummary ? "live summary" : "terminal state"}</span>
+              <span style={styles.workspacePill} data-testid="canvas-terminal-node-workspace" title={workspaceLabel}>
+                {workspaceLabel}
+              </span>
             </div>
             <div
               style={styles.terminalStatusTitle}

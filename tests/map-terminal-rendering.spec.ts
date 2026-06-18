@@ -152,6 +152,7 @@ test("map shell header prefers summarized task path and now over raw prompt chro
     if (!tab) throw new Error("Terminal tab is unavailable");
     store.getState().updateTab(tab.id, {
       title: "endlessblink",
+      initialCwd: "/media/endlessblink/data/my-projects/ai-development/content-creation/inner-dialogue",
       terminals: [{
         id: "pty-summary-fixture",
         paneId: node.id,
@@ -173,6 +174,7 @@ test("map shell header prefers summarized task path and now over raw prompt chro
   });
 
   await expect(page.getByTestId("canvas-terminal-node-header-title")).toHaveText("Translate post copy to Hebrew");
+  await expect(page.getByTestId("canvas-terminal-node-workspace")).toHaveText("inner-dialogue");
   await expect(page.getByTestId("canvas-terminal-node-header-path")).toHaveText("inner-dialogue");
   await expect(page.getByTestId("canvas-terminal-node-now")).toHaveText("Checking the rewritten Hebrew post and verification notes");
   await expect(page.getByTestId("canvas-terminal-node-now")).not.toContainText("gpt-5.5 default");
@@ -330,6 +332,109 @@ test("map shell header prefers summarized task path and now over raw prompt chro
   await expect(page.getByTestId("canvas-terminal-node-now")).toHaveText("The editor already has a screenplay conversion preview pattern; I'll mirror that architecture for post rewrites.");
   await expect(page.getByTestId("canvas-terminal-node-now")).not.toContainText("/skills");
   await expect(page.getByTestId("canvas-terminal-node-now")).not.toContainText("gpt-5.5 default");
+});
+
+test("map summary cards expose workspace labels for parallel sessions", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.getByRole("button", { name: "Map", exact: true }).click();
+
+  await page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => {
+          workspaceUiState: Record<string, unknown>;
+        };
+        setState: (state: Record<string, unknown>) => void;
+      };
+    }).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+
+    const terminalTab = (
+      id: string,
+      title: string,
+      paneId: string,
+      initialCwd: string,
+      groupId: string | null,
+      task: string,
+    ) => ({
+      id,
+      title,
+      emoji: "[]",
+      color: "#7aa2f7",
+      groupId,
+      initialCwd,
+      terminals: [{
+        id: `pty-${id}`,
+        paneId,
+        cols: 80,
+        rows: 24,
+        status: "running",
+        currentActivity: "npm run dev",
+        terminalOutput: task,
+        statusSummary: {
+          task,
+          path: initialCwd.split("/").filter(Boolean).slice(-2).join("/"),
+          now: "Serving localhost preview",
+          status: "working",
+          provider: "shell",
+          confidence: "medium",
+        },
+      }],
+      splitLayout: { id: paneId, type: "terminal" },
+      activePaneId: paneId,
+    });
+
+    store.setState({
+      workspaceUiState: {
+        ...store.getState().workspaceUiState,
+        workspaceMode: "canvas",
+        canvasSidebarCollapsed: false,
+        primarySidebarCollapsed: false,
+        primarySidebarPanel: "map",
+      },
+      groups: [
+        {
+          id: "group-termfleet",
+          name: "TermFleet OSS",
+          color: "#7aa2f7",
+          projectRoot: "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
+          lastActiveTabId: "tab-termfleet",
+        },
+      ],
+      terminalGroups: [
+        {
+          id: "group-termfleet",
+          name: "TermFleet OSS",
+          color: "#7aa2f7",
+          projectRoot: "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
+          lastActiveTabId: "tab-termfleet",
+        },
+      ],
+      tabs: [
+        terminalTab("tab-termfleet", "Terminal", "pane-termfleet", "/media/endlessblink/data/my-projects/ai-development/devops/termfleet", "group-termfleet", "Run TermFleet checks"),
+        terminalTab("tab-arthouse", "Terminal", "pane-arthouse", "/media/endlessblink/data/my-projects/ai-development/content-creation/arthouse", null, "Run Arthouse checks"),
+      ],
+      activeTabId: "tab-termfleet",
+      canvasState: {
+        selectedNodeId: "node-termfleet",
+        viewport: { x: 0, y: 0, zoom: 1 },
+        nodes: [
+          { id: "node-termfleet", type: "terminal", title: "Terminal", terminalTabId: "tab-termfleet", x: 0, y: 0, width: 620, height: 420 },
+          { id: "node-arthouse", type: "terminal", title: "Terminal", terminalTabId: "tab-arthouse", terminalCwd: "/media/endlessblink/data/my-projects/ai-development/content-creation/arthouse", x: 660, y: 0, width: 620, height: 420 },
+        ],
+      },
+    });
+  });
+
+  const workspaceLabels = page.getByTestId("canvas-terminal-node-workspace");
+  await expect(workspaceLabels.filter({ hasText: "TermFleet OSS" })).toBeVisible();
+  await expect(workspaceLabels.filter({ hasText: "arthouse" })).toBeVisible();
+  await expect(page.getByTestId("canvas-terminal-node-header-title").filter({ hasText: "Run TermFleet checks" })).toBeVisible();
+  await expect(page.getByTestId("canvas-terminal-node-header-title").filter({ hasText: "Run Arthouse checks" })).toBeVisible();
 });
 
 test("map sidebar filters operations nodes by visible work state", async ({ page }) => {

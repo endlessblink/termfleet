@@ -46,6 +46,7 @@ were retired during consolidation.
 | TC-021     | Open-source developer preview lane: differentiate TermFleet as a local-first agent/ops cockpit                                                                                                                  | P2       | IN_PROGRESS       | -              |
 | TC-022     | External agent bridge: let Hermes attach to and control TermFleet terminals                                                                                                                                     | P1       | TODO              | TC-016, TC-017 |
 | TC-023     | Cross-platform terminal substrate: isolate Linux daemon, path, process, and shell assumptions before macOS/Windows ports                                                                                         | P1       | IN_PROGRESS       | TC-009, TC-017 |
+| TC-024     | Session/map cards: show the project/workspace name in the live summary header                                                                                                                                   | P1       | DONE              | TC-016i        |
 
 ---
 
@@ -62,6 +63,33 @@ Watchpost phase scope: TC-001 through TC-008 are one cohesive redesign phase.
 Do not split them into unrelated cleanup/design buckets; execute them in order so
 the visual system, shell, navigation, terminal surface, map, command layer, run
 state, and visual QA converge on one product direction.
+
+### TC-024: Session/map cards show project/workspace name
+
+**Priority:** P1
+**Status:** Done
+
+The live session/map card header currently shows status such as provider readiness
+and task/path/now summaries, but the project identity is not visible enough. In
+the All sessions map, cards should show the project/workspace name in the top
+summary area so a user can distinguish multiple same-repo or same-command
+sessions at a glance.
+
+Acceptance:
+
+- DONE: Each live summary card shows a compact project/workspace label derived
+  from the session workspace path, e.g. `arthouse`, `termfleet`, or the configured
+  project display name.
+- DONE: The label is visible in the card/header area without relying on the tiny
+  left sidebar session row.
+- DONE: It remains readable when the card is narrow and does not crowd out task,
+  path, provider, or current-step status.
+- DONE: Browser review screenshot covers at least two sessions from different
+  project paths so the distinction is visible: `/tmp/tc-024-workspace-labels.png`
+  shows `TermFleet OSS` and `arthouse` in map-card headers.
+- DONE: Verification includes `npm run build` plus the relevant agent/status UI
+  regression. Evidence: `npm run build`; focused `npx playwright test
+  tests/map-terminal-rendering.spec.ts -g "workspace labels"`.
 
 Design target:
 
