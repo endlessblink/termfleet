@@ -289,11 +289,9 @@ Acceptance:
 - DONE: Verification includes `npm run build`, focused Playwright map coverage,
   and the existing map/terminal source-contract checks. Current evidence:
   `npm run build` passed, `npx playwright test
-  tests/map-terminal-rendering.spec.ts -g "terminal map labels|selection
-  mode|more than 100 terminal nodes|workspace store supports"` passed 4/4,
-  `npx playwright test tests/map-terminal-rendering.spec.ts -g "selected
-  default-size|more than 100 terminal nodes"` passed 2/2, and `npm run
-  verify:map-terminals` passed on 2026-06-18.
+  tests/map-terminal-rendering.spec.ts` passed 19/19, `npm run
+  verify:map-terminals` passed, `npm run verify:terminal-rendering` passed,
+  and `/favicon.svg` returned HTTP 200 from the review server on 2026-06-18.
 
 ### TC-030: Orchestrator terminal lifecycle
 
@@ -348,6 +346,9 @@ Acceptance:
 - DONE: `Ctrl+Z` restores the most recently closed terminal session/map node
   when focus is in app chrome, while editable fields and focused terminals keep
   their normal key behavior.
+- DONE: Pressing `Delete` with a selected terminal map node explicitly closes
+  and kills that terminal session, pushes it onto the recent-close stack, and
+  allows `Ctrl+Z` to restore it as a fresh terminal session/map node.
 - DONE: Restored terminal sessions recreate the visible TermFleet context with a
   fresh PTY, preserving title, cwd, split layout, map geometry, label color, and
   task binding. Explicit close still kills the old foreground process.
@@ -358,7 +359,8 @@ Acceptance:
   tests/keymap.spec.ts tests/terminal-keyboard-passthrough.spec.ts
   tests/localhost-preview.spec.ts tests/operations-rail.spec.ts
   tests/map-terminal-rendering.spec.ts` passed 20/20, and `npm run build` passed
-  on 2026-06-18.
+  on 2026-06-18. Additional Delete-key evidence: focused Playwright
+  keyboard/map coverage passed 6/6 on 2026-06-18.
 
 ### TC-001: Freeze Terminal Cockpit target and visual rules
 
