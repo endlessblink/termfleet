@@ -291,7 +291,9 @@ Acceptance:
   `npm run build` passed, `npx playwright test
   tests/map-terminal-rendering.spec.ts -g "terminal map labels|selection
   mode|more than 100 terminal nodes|workspace store supports"` passed 4/4,
-  and `npm run verify:map-terminals` passed on 2026-06-18.
+  `npx playwright test tests/map-terminal-rendering.spec.ts -g "selected
+  default-size|more than 100 terminal nodes"` passed 2/2, and `npm run
+  verify:map-terminals` passed on 2026-06-18.
 
 ### TC-030: Orchestrator terminal lifecycle
 

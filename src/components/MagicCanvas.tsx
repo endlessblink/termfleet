@@ -578,6 +578,13 @@ const styles: Record<string, CSSProperties> = {
     overflow: "hidden",
     background: "var(--surface-sunken)",
   },
+  liveTerminalBody: {
+    flex: "1 1 auto",
+    minHeight: 260,
+    height: "calc(100% - 118px)",
+    display: "grid",
+    gridTemplateRows: "minmax(0, 1fr)",
+  },
   agentCockpit: {
     height: "100%",
     minHeight: 0,
@@ -2254,7 +2261,7 @@ function CanvasNodeView({
       <div
         style={
           node.type === "terminal"
-            ? styles.terminalBody
+            ? { ...styles.terminalBody, ...styles.liveTerminalBody }
             : node.type === "note"
               ? styles.noteBody
               : styles.nodeBody

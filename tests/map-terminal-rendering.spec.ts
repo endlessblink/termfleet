@@ -343,6 +343,93 @@ test("map remains lightweight with more than 100 terminal nodes at overview zoom
   await expect(page.locator(".terminal-container")).toHaveCount(0);
 });
 
+test("selected default-size map terminal keeps a usable live viewport before resize", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.getByRole("button", { name: "Map", exact: true }).click();
+
+  await page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => { workspaceUiState: Record<string, unknown> };
+        setState: (state: Record<string, unknown>) => void;
+      };
+    }).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+
+    store.setState({
+      workspaceUiState: {
+        ...store.getState().workspaceUiState,
+        workspaceMode: "canvas",
+        primarySidebarPanel: "map",
+      },
+      tabs: [{
+        id: "tab-live-default",
+        title: "Default live terminal",
+        emoji: "[]",
+        color: "#7aa2f7",
+        groupId: null,
+        initialCwd: "/tmp/termfleet-live-default",
+        terminals: [{ id: "pty-live-default", paneId: "pane-live-default", cols: 80, rows: 24, status: "running" }],
+        splitLayout: { id: "pane-live-default", type: "terminal" },
+        activePaneId: "pane-live-default",
+      }],
+      activeTabId: "tab-live-default",
+      canvasState: {
+        nodes: [{
+          id: "node-live-default",
+          type: "terminal",
+          title: "Default live terminal",
+          terminalTabId: "tab-live-default",
+          x: 80,
+          y: 80,
+          width: 820,
+          height: 460,
+        }],
+        selectedNodeId: "node-live-default",
+        selectedNodeIds: ["node-live-default"],
+        viewport: { x: 0, y: 0, zoom: 1 },
+      },
+    });
+  });
+
+  await expect(page.locator("[data-testid='canvas-terminal-node'] .terminal-container")).toBeVisible();
+  await expect.poll(async () => page.evaluate(() => {
+    const container = document.querySelector("[data-testid='canvas-terminal-node'] .terminal-container");
+    const terminalShell = document.querySelector("[data-testid='canvas-terminal-node'] .terminal-block-shell");
+    const xtermScreen = document.querySelector("[data-testid='canvas-terminal-node'] .xterm-screen");
+    const containerRect = container?.getBoundingClientRect();
+    const shellRect = terminalShell?.getBoundingClientRect();
+    const screenRect = xtermScreen?.getBoundingClientRect();
+    return {
+      containerHeight: Math.round(containerRect?.height ?? 0),
+      shellHeight: Math.round(shellRect?.height ?? 0),
+      screenHeight: Math.round(screenRect?.height ?? 0),
+    };
+  })).toMatchObject({
+    containerHeight: expect.any(Number),
+    shellHeight: expect.any(Number),
+    screenHeight: expect.any(Number),
+  });
+
+  const dimensions = await page.evaluate(() => {
+    const container = document.querySelector("[data-testid='canvas-terminal-node'] .terminal-container");
+    const terminalShell = document.querySelector("[data-testid='canvas-terminal-node'] .terminal-block-shell");
+    const xtermScreen = document.querySelector("[data-testid='canvas-terminal-node'] .xterm-screen");
+    return {
+      containerHeight: Math.round(container?.getBoundingClientRect().height ?? 0),
+      shellHeight: Math.round(terminalShell?.getBoundingClientRect().height ?? 0),
+      screenHeight: Math.round(xtermScreen?.getBoundingClientRect().height ?? 0),
+    };
+  });
+  expect(dimensions.containerHeight).toBeGreaterThanOrEqual(260);
+  expect(dimensions.shellHeight).toBeGreaterThanOrEqual(260);
+  expect(dimensions.screenHeight).toBeGreaterThanOrEqual(220);
+});
+
 test("status bar summarizes durable terminal recovery states", async ({ page }) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle");
