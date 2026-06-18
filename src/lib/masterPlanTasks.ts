@@ -13,10 +13,10 @@ export function masterPlanPath(projectRoot: string) {
 
 function normalizeStatus(raw: string | undefined): MasterPlanTaskStatus {
   const value = (raw ?? "").toLowerCase();
-  if (value.includes("done")) return "done";
-  if (value.includes("block")) return "blocked";
-  if (value.includes("progress") || value.includes("doing")) return "in-progress";
-  if (value.includes("todo") || value.includes("backlog")) return "todo";
+  if (/(^|[^a-z])done([^a-z]|$)/.test(value)) return "done";
+  if (/(^|[^a-z])(blocked?|blocking)([^a-z]|$)/.test(value)) return "blocked";
+  if (/(^|[^a-z])(in[_ -]?progress|progress|doing)([^a-z]|$)/.test(value)) return "in-progress";
+  if (/(^|[^a-z])(todo|backlog)([^a-z]|$)/.test(value)) return "todo";
   return "unknown";
 }
 
@@ -27,16 +27,41 @@ function cleanTitle(value: string) {
     .trim();
 }
 
+function cleanTaskId(value: string) {
+  return value.replace(/^~~|~~$/g, "").trim();
+}
+
 export function parseMasterPlanTasks(contents: string): MasterPlanTask[] {
   const byId = new Map<string, MasterPlanTask>();
+  let tableHeader: string[] = [];
 
   for (const line of contents.split(/\r?\n/)) {
-    const tableMatch = line.match(/^\|\s*([A-Za-z]+-\d+)\s*\|\s*([^|]+?)\s*\|\s*[^|]*\|\s*([^|]+?)\s*\|/);
+    const tableCells = line.startsWith("|")
+      ? line.split("|").slice(1, -1).map((cell) => cell.trim())
+      : [];
+    const normalizedHeader = tableCells.map((cell) => cell.toLowerCase());
+    if (
+      normalizedHeader.includes("id") &&
+      normalizedHeader.includes("title") &&
+      normalizedHeader.includes("status")
+    ) {
+      tableHeader = normalizedHeader;
+      continue;
+    }
+
+    const tableId = tableCells[0] ? cleanTaskId(tableCells[0]) : "";
+    const tableMatch = tableId.match(/^[A-Za-z]+-\d+[a-z]?$/i);
     if (tableMatch) {
-      const [, id, rawStatus, title] = tableMatch;
-      if (id.toLowerCase() === "id") continue;
-      byId.set(id, {
-        id,
+      const statusColumnIndex = tableHeader.indexOf("status");
+      const titleColumnIndex = tableHeader.indexOf("title");
+      const statusIndex = statusColumnIndex >= 0
+        ? statusColumnIndex
+        : tableCells.findIndex((cell, index) => index > 0 && normalizeStatus(cell) !== "unknown");
+      const rawStatus = statusIndex >= 0 ? tableCells[statusIndex] : "Unknown";
+      const titleIndex = titleColumnIndex >= 0 ? titleColumnIndex : statusIndex === 1 ? 2 : 1;
+      const title = tableCells[titleIndex] ?? tableId;
+      byId.set(tableId, {
+        id: tableId,
         title: cleanTitle(title),
         status: normalizeStatus(rawStatus),
         rawStatus: rawStatus.trim(),

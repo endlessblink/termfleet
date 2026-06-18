@@ -1182,7 +1182,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                 flex: 1,
                 minHeight: 0,
                 minWidth: 0,
-                display: isAgentPane && agentStatusSummary && !isPreviewPane ? "flex" : "block",
+                display: "flex",
               }}
             >
               <div style={{ flex: 1, minHeight: 0, minWidth: 0 }}>

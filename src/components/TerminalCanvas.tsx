@@ -778,6 +778,20 @@ export function TerminalCanvas({
       if ((event.ctrlKey || event.metaKey) && event.shiftKey && (key === "c" || key === "v")) {
         return;
       }
+      if (event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey && key === "z") {
+        const store = useWorkspaceStore.getState();
+        const tab = store.tabs.find((candidate) => candidate.id === tabId);
+        const restoringAfterLastClose =
+          store.recentlyClosed.length > 0 &&
+          tab?.title === "Terminal" &&
+          !tab.initialCwd &&
+          !tab.workstream;
+        if (restoringAfterLastClose && store.restoreLastClosed()) {
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
+      }
       const bytes = keyEventToBytes(event, { appCursor: modesRef.current.appCursor });
       if (bytes === null) return;
       const seqId = nextTerminalInputSequence();

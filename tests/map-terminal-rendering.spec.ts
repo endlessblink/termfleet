@@ -8,6 +8,198 @@ test.use({
   },
 });
 
+test("MASTER_PLAN task parser keeps summary table titles and statuses readable", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+
+  const result = await page.evaluate(async () => {
+    const { parseMasterPlanTasks } = await import("/src/lib/masterPlanTasks.ts");
+    return parseMasterPlanTasks(`
+| ID         | Title                            | Priority | Status            | Dependencies |
+| ---------- | -------------------------------- | -------- | ----------------- | ------------ |
+| MC-001     | Preserve canvas workspace mode   | P2       | DONE              | -            |
+| ~~TC-014~~ | Native VTE path abandoned        | P2       | DONE (2026-05-28) | TC-017       |
+| TC-019     | Warp-style chrome redesign       | P2       | IN_PROGRESS       | -            |
+`);
+  });
+
+  expect(result).toEqual([
+    {
+      id: "MC-001",
+      title: "Preserve canvas workspace mode",
+      status: "done",
+      rawStatus: "DONE",
+    },
+    {
+      id: "TC-014",
+      title: "Native VTE path abandoned",
+      status: "done",
+      rawStatus: "DONE (2026-05-28)",
+    },
+    {
+      id: "TC-019",
+      title: "Warp-style chrome redesign",
+      status: "in-progress",
+      rawStatus: "IN_PROGRESS",
+    },
+  ]);
+});
+
+test("terminal task binding uses an in-app searchable picker", async ({ page }) => {
+  const plan = `
+| ID         | Title                            | Priority | Status            | Dependencies |
+| ---------- | -------------------------------- | -------- | ----------------- | ------------ |
+| MC-001     | Preserve canvas workspace mode   | P2       | DONE              | -            |
+| TC-018     | BiDi terminal shaping            | P2       | TODO              | -            |
+| TC-019     | Warp-style chrome redesign       | P2       | IN_PROGRESS       | -            |
+`;
+
+  await page.addInitScript((masterPlan) => {
+    let callbackId = 1;
+    const callbacks = new Map<number, unknown>();
+    window.prompt = () => {
+      throw new Error("Task binding must not use window.prompt");
+    };
+    (window as typeof window & { __TAURI_INTERNALS__?: Record<string, unknown> }).__TAURI_INTERNALS__ = {
+      metadata: { currentWindow: { label: "main" }, currentWebview: { label: "main" } },
+      callbacks,
+      transformCallback(callback: unknown) {
+        const id = callbackId++;
+        callbacks.set(id, callback);
+        return id;
+      },
+      unregisterCallback(id: number) {
+        callbacks.delete(id);
+      },
+      async invoke(command: string) {
+        if (command === "fs_read_file") return masterPlan;
+        if (command === "daemon_status") return { reachable: false, mode: "browser" };
+        if (command === "daemon_ensure_running") return { reachable: false, mode: "browser", message: "browser" };
+        if (command === "grid_snapshot") {
+          return JSON.stringify({
+            cols: 80,
+            rows: 24,
+            cursor: { col: 0, line: 0 },
+            cursorVisible: false,
+            altScreen: false,
+            cells: [],
+          });
+        }
+        return null;
+      },
+      convertFileSrc(path: string) {
+        return path;
+      },
+    };
+  }, plan);
+
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+
+  await page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => { workspaceUiState: Record<string, unknown> };
+        setState: (state: Record<string, unknown>) => void;
+      };
+    }).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+    const group = {
+      id: "group-termfleet",
+      name: "TermFleet OSS",
+      color: "#7aa2f7",
+      projectRoot: "/workspace/termfleet",
+      lastActiveTabId: "tab-shell",
+    };
+    store.setState({
+      workspaceUiState: {
+        ...store.getState().workspaceUiState,
+        workspaceMode: "canvas",
+        canvasSidebarCollapsed: true,
+        primarySidebarCollapsed: true,
+      },
+      groups: [group],
+      terminalGroups: [group],
+      tabs: [{
+        id: "tab-shell",
+        title: "Terminal",
+        emoji: "[]",
+        color: "#7aa2f7",
+        groupId: "group-termfleet",
+        initialCwd: "/workspace/termfleet",
+        terminals: [{ id: "pty-shell", paneId: "pane-shell", cols: 80, rows: 24, status: "running" }],
+        splitLayout: { id: "pane-shell", type: "terminal" },
+        activePaneId: "pane-shell",
+      }],
+      activeTabId: "tab-shell",
+      canvasState: {
+        selectedNodeId: "node-shell",
+        selectedNodeIds: ["node-shell"],
+        viewport: { x: 80, y: 80, zoom: 1 },
+        nodes: [{
+          id: "node-shell",
+          type: "terminal",
+          title: "Terminal",
+          terminalTabId: "tab-shell",
+          x: 0,
+          y: 0,
+          width: 820,
+          height: 460,
+        }],
+      },
+    });
+  });
+
+  await page.getByLabel("Bind MASTER_PLAN task").click();
+  await expect(page.getByTestId("task-binding-picker")).toBeVisible();
+  await expect(page.getByTestId("task-binding-option").filter({ hasText: "Warp-style chrome redesign" })).toBeVisible();
+  await expect(page.getByTestId("task-binding-option").filter({ hasText: "Unknown DONE" })).toHaveCount(0);
+
+  await page.getByTestId("task-binding-search").fill("warp");
+  await expect(page.getByTestId("task-binding-option")).toHaveCount(1);
+  await page.getByTestId("task-binding-option").click();
+
+  await expect.poll(async () => page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => {
+          canvasState: { nodes: Array<{ id: string; taskBinding?: { taskId: string; planPath?: string } }> };
+        };
+      };
+    }).__termfleetWorkspaceStore;
+    return store?.getState().canvasState.nodes.find((node) => node.id === "node-shell")?.taskBinding;
+  })).toEqual({ taskId: "TC-019", planPath: "/workspace/termfleet/MASTER_PLAN.md" });
+
+  await page.getByLabel("Change task binding").click();
+  await page.getByTestId("task-binding-clear").click();
+  await expect.poll(async () => page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => {
+          canvasState: { nodes: Array<{ id: string; taskBinding?: { taskId: string } }> };
+        };
+      };
+    }).__termfleetWorkspaceStore;
+    return store?.getState().canvasState.nodes.find((node) => node.id === "node-shell")?.taskBinding ?? null;
+  })).toBeNull();
+
+  await page.getByLabel("Bind MASTER_PLAN task").click();
+  await page.getByTestId("task-binding-manual-input").fill("TC-777");
+  await page.getByTestId("task-binding-manual-bind").click();
+  await expect.poll(async () => page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => {
+          canvasState: { nodes: Array<{ id: string; taskBinding?: { taskId: string; planPath?: string } }> };
+        };
+      };
+    }).__termfleetWorkspaceStore;
+    return store?.getState().canvasState.nodes.find((node) => node.id === "node-shell")?.taskBinding;
+  })).toEqual({ taskId: "TC-777", planPath: "/workspace/termfleet/MASTER_PLAN.md" });
+});
+
 test("map terminal rendering avoids pixelated live canvases and grouped preview DOM churn", async ({ page }) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
 
@@ -328,7 +520,7 @@ test("shift-drag box-selects terminals while regular and middle drags pan the ma
     return store?.getState().canvasState.selectedNodeIds?.sort().join(",");
   })).toBe("node-one,node-two");
 
-  const firstNode = page.locator("[data-magic-canvas-shell] [data-testid='canvas-terminal-node-header']").filter({ hasText: "Build two" });
+  const firstNode = page.locator("[data-magic-canvas-shell] [data-testid='canvas-terminal-node-header']").filter({ hasText: "Build one" });
   const firstBox = await firstNode.boundingBox();
   if (!firstBox) throw new Error("Selected node header not found");
   await page.mouse.move(firstBox.x + 24, firstBox.y + 18);
@@ -384,6 +576,27 @@ test("shift-drag box-selects terminals while regular and middle drags pan the ma
     const nodes = state?.nodes.map((node) => `${node.id}:${node.x}:${node.y}`).sort().join("|");
     return `${state?.viewport.x}:${state?.viewport.y}|${nodes}`;
   })).toBe("80:-60|node-one:156:116|node-three:1840:80|node-two:1036:116");
+
+  await expect.poll(async () => page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => { canvasState: { selectedNodeIds?: string[] } };
+      };
+    }).__termfleetWorkspaceStore;
+    return store?.getState().canvasState.selectedNodeIds?.sort().join(",");
+  })).toBe("node-one,node-two");
+
+  await page.mouse.click(shellBox.x + 20, shellBox.y + 650);
+
+  await expect.poll(async () => page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => { canvasState: { selectedNodeId: string | null; selectedNodeIds?: string[] } };
+      };
+    }).__termfleetWorkspaceStore;
+    const state = store?.getState().canvasState;
+    return `${state?.selectedNodeId ?? ""}|${state?.selectedNodeIds?.join(",") ?? ""}`;
+  })).toBe("|");
 });
 
 test("map remains lightweight with more than 100 terminal nodes at overview zoom", async ({ page }) => {
@@ -595,6 +808,73 @@ test("status bar summarizes durable terminal recovery states", async ({ page }) 
   await expect(page.getByText("2 ptys")).toBeVisible();
 });
 
+test("split terminal body fills the available pane height", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+
+  await page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => { workspaceUiState: Record<string, unknown> };
+        setState: (state: Record<string, unknown>) => void;
+      };
+    }).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+
+    store.setState({
+      workspaceUiState: {
+        ...store.getState().workspaceUiState,
+        workspaceMode: "split",
+        primarySidebarCollapsed: false,
+        primarySidebarPanel: "sessions",
+      },
+      tabs: [{
+        id: "tab-fill",
+        title: "Tall terminal",
+        emoji: "[]",
+        color: "#7aa2f7",
+        groupId: null,
+        initialCwd: "/tmp/termfleet-fill",
+        terminals: [{
+          id: "pty-fill",
+          paneId: "pane-fill",
+          cols: 80,
+          rows: 24,
+          status: "running",
+        }],
+        splitLayout: { id: "pane-fill", type: "terminal", cwd: "/tmp/termfleet-fill" },
+        activePaneId: "pane-fill",
+      }],
+      activeTabId: "tab-fill",
+      activeTerminalId: "pty-fill",
+    });
+  });
+
+  await expect(page.locator(".terminal-pane-frame")).toBeVisible();
+  await expect(page.locator(".terminal-pane-frame .terminal-container")).toBeVisible();
+
+  const dimensions = await page.evaluate(() => {
+    const pane = document.querySelector(".terminal-pane-frame");
+    const container = document.querySelector(".terminal-pane-frame .terminal-container");
+    const paneRect = pane?.getBoundingClientRect();
+    const containerRect = container?.getBoundingClientRect();
+    return {
+      paneHeight: Math.round(paneRect?.height ?? 0),
+      containerHeight: Math.round(containerRect?.height ?? 0),
+      containerBottomGap: Math.round((paneRect?.bottom ?? 0) - (containerRect?.bottom ?? 0)),
+      containerTopGap: Math.round((containerRect?.top ?? 0) - (paneRect?.top ?? 0)),
+    };
+  });
+
+  expect(dimensions.paneHeight).toBeGreaterThan(500);
+  expect(dimensions.containerHeight).toBeGreaterThan(dimensions.paneHeight - 96);
+  expect(dimensions.containerBottomGap).toBeLessThanOrEqual(2);
+  expect(dimensions.containerTopGap).toBeGreaterThanOrEqual(20);
+});
+
 test("map notes can be edited without dragging the canvas", async ({ page }) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle");
@@ -779,7 +1059,21 @@ test("Ctrl+Z restores the last closed terminal map session from app chrome", asy
     document.body.appendChild(input);
     input.focus();
   });
-  await page.keyboard.press("ControlOrMeta+Z");
+  await page.evaluate(async () => {
+    const { TERMINAL_INPUT_CLASS } = await import("/src/lib/terminalFocus.ts");
+    const input = document.createElement("textarea");
+    input.className = TERMINAL_INPUT_CLASS;
+    document.body.appendChild(input);
+    input.focus();
+  });
+  await page.evaluate(async () => {
+    const { TERMINAL_INPUT_CLASS } = await import("/src/lib/terminalFocus.ts");
+    const input = document.createElement("textarea");
+    input.className = TERMINAL_INPUT_CLASS;
+    document.body.appendChild(input);
+    input.focus();
+  });
+  await page.keyboard.press("Control+Z");
 
   const restored = await page.evaluate(() => {
     const store = (window as typeof window & {
@@ -841,6 +1135,148 @@ test("Ctrl+Z restores the last closed terminal map session from app chrome", asy
   expect(restored.selectedNodeIds).toEqual(["node-undo"]);
 });
 
+test("Delete closes the selected terminal map node and Ctrl+Z restores it", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.getByRole("button", { name: "Map", exact: true }).click();
+
+  await page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => { workspaceUiState: Record<string, unknown> };
+        setState: (state: Record<string, unknown>) => void;
+      };
+    }).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+
+    store.setState({
+      workspaceUiState: {
+        ...store.getState().workspaceUiState,
+        workspaceMode: "canvas",
+        primarySidebarPanel: "map",
+      },
+      tabs: [{
+        id: "tab-delete",
+        title: "Delete me",
+        emoji: "[]",
+        color: "#7aa2f7",
+        groupId: null,
+        initialCwd: "/tmp/delete-me",
+        terminals: [{ id: "pty-delete", paneId: "pane-delete", cols: 80, rows: 24, status: "running" }],
+        splitLayout: { id: "pane-delete", type: "terminal", cwd: "/tmp/delete-me" },
+        activePaneId: "pane-delete",
+      }],
+      activeTabId: "tab-delete",
+      activeTerminalId: "pty-delete",
+      canvasState: {
+        nodes: [{
+          id: "node-delete",
+          type: "terminal",
+          title: "Delete me",
+          terminalTabId: "tab-delete",
+          terminalCwd: "/tmp/delete-me",
+          x: 220,
+          y: 140,
+          width: 820,
+          height: 460,
+          labelColor: "#7dbac3",
+        }],
+        selectedNodeId: "node-delete",
+        selectedNodeIds: ["node-delete"],
+        viewport: { x: 0, y: 0, zoom: 1 },
+      },
+    });
+  });
+
+  await expect(page.getByTestId("canvas-terminal-node-header-title").filter({ hasText: "Delete me" })).toBeVisible();
+  await page.locator("[data-magic-canvas-shell]").focus();
+  await page.keyboard.press("Delete");
+
+  await expect.poll(async () => page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => {
+          tabs: Array<{ id: string }>;
+          canvasState: { nodes: Array<{ id: string }> };
+          recentlyClosed: Array<{ tab: { id: string } }>;
+        };
+      };
+    }).__termfleetWorkspaceStore;
+    const state = store?.getState();
+    return [
+      state?.tabs.some((tab) => tab.id === "tab-delete"),
+      state?.canvasState.nodes.some((node) => node.id === "node-delete"),
+      state?.recentlyClosed[0]?.tab.id,
+    ].join(":");
+  })).toBe("false:false:tab-delete");
+
+  await page.evaluate(async () => {
+    const { TERMINAL_INPUT_CLASS } = await import("/src/lib/terminalFocus.ts");
+    const input = document.createElement("textarea");
+    input.className = TERMINAL_INPUT_CLASS;
+    document.body.appendChild(input);
+    input.focus();
+  });
+  await page.keyboard.press("Control+Z");
+
+  await expect.poll(async () => page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => { activeTabId: string | null };
+      };
+    }).__termfleetWorkspaceStore;
+    return store?.getState().activeTabId;
+  })).toBe("tab-delete");
+
+  const restored = await page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => {
+          activeTabId: string | null;
+          tabs: Array<{ id: string; title: string; terminals: Array<unknown>; initialCwd?: string }>;
+          canvasState: {
+            selectedNodeId: string | null;
+            selectedNodeIds?: string[];
+            nodes: Array<{ id: string; terminalTabId?: string; x: number; y: number; labelColor?: string }>;
+          };
+        };
+      };
+    }).__termfleetWorkspaceStore;
+    const state = store?.getState();
+    return {
+      activeTabId: state?.activeTabId,
+      tab: state?.tabs.find((tab) => tab.id === "tab-delete"),
+      node: state?.canvasState.nodes.find((node) => node.id === "node-delete"),
+      selectedNodeId: state?.canvasState.selectedNodeId,
+      selectedNodeIds: state?.canvasState.selectedNodeIds,
+    };
+  });
+
+  expect(restored.activeTabId).toBe("tab-delete");
+  expect(restored.tab).toMatchObject({
+    id: "tab-delete",
+    title: "Delete me",
+    initialCwd: "/tmp/delete-me",
+  });
+  expect(restored.tab?.terminals).toHaveLength(1);
+  expect(restored.tab?.terminals[0]).toMatchObject({
+    paneId: "pane-delete",
+    status: "reconnected",
+  });
+  expect(restored.node).toMatchObject({
+    id: "node-delete",
+    terminalTabId: "tab-delete",
+    x: 220,
+    y: 140,
+    labelColor: "#7dbac3",
+  });
+  expect(restored.selectedNodeId).toBe("node-delete");
+  expect(restored.selectedNodeIds).toEqual(["node-delete"]);
+});
+
 test("closing a localhost preview pane never removes the linked terminal", async ({ page }) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle");
@@ -864,7 +1300,7 @@ test("closing a localhost preview pane never removes the linked terminal", async
     store.setState({
       workspaceUiState: {
         ...store.getState().workspaceUiState,
-        workspaceMode: "split",
+        workspaceMode: "canvas",
         primarySidebarPanel: "map",
       },
       tabs: [{
@@ -995,6 +1431,10 @@ test("map shell header prefers summarized task path and now over raw prompt chro
   await expect(page.getByTestId("canvas-terminal-task-row")).toContainText("Translate post copy to Hebrew");
   await expect(page.getByTestId("canvas-terminal-task-state")).toContainText("Working");
   await expect(page.getByTestId("canvas-terminal-task-next")).toContainText("Next: Checking the rewritten Hebrew post and verification notes");
+  const nowBox = await page.getByTestId("canvas-terminal-node-now").boundingBox();
+  const tasksBox = await page.getByTestId("canvas-terminal-task-sidebar").boundingBox();
+  if (!nowBox || !tasksBox) throw new Error("Terminal live summary or task sidebar is not visible");
+  expect(tasksBox.x).toBeGreaterThan(nowBox.x + nowBox.width);
   await expect(page.getByRole("main").getByRole("button", { name: "Close endlessblink" })).toBeVisible();
 
   await page.evaluate(() => {

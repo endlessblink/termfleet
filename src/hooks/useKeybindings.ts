@@ -22,7 +22,6 @@ function isGeneratedBlankTerminalTab(store: ReturnType<typeof useWorkspaceStore.
   return Boolean(
     tab &&
     tab.title === "Terminal" &&
-    tab.terminals.length === 0 &&
     !tab.initialCwd &&
     !tab.workstream
   );
@@ -79,6 +78,28 @@ export function useKeybindings() {
       // (sidebar, file explorer, command bar). Click out of the terminal to use
       // them, or use the on-screen affordances.
       if (terminalHasKeyboardFocus()) return;
+
+      if (e.key === "Delete" && !e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey) {
+        if (isEditableTarget(e.target)) return;
+        const selectedIds = new Set(
+          store.canvasState.selectedNodeIds ??
+          (store.canvasState.selectedNodeId ? [store.canvasState.selectedNodeId] : [])
+        );
+        const terminalTabIds = Array.from(new Set(
+          store.canvasState.nodes
+            .filter((node) => selectedIds.has(node.id) && node.type === "terminal" && node.terminalTabId)
+            .map((node) => node.terminalTabId as string)
+        ));
+        if (terminalTabIds.length === 0) return;
+        e.preventDefault();
+        e.stopPropagation();
+        void Promise.all(terminalTabIds.map((tabId) => store.closeTerminalSession(tabId)))
+          .finally(() => {
+            document.body.tabIndex = -1;
+            document.body.focus();
+          });
+        return;
+      }
 
       // Ctrl+T — New tab
       if (e.ctrlKey && !e.shiftKey && e.key === "t") {

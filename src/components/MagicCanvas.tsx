@@ -1,4 +1,5 @@
-import { CSSProperties, useCallback, useRef, useState } from "react";
+import { CSSProperties, useCallback, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   ArrowUpRight,
   Ban,
@@ -16,13 +17,14 @@ import {
   Plus,
   RefreshCw,
   RotateCcw,
+  Search,
   Square,
   TerminalSquare,
   Trash2,
   X,
 } from "lucide-react";
 import type { CanvasNode } from "../lib/types";
-import { masterPlanPath, taskStatusColor, taskStatusLabel } from "../lib/masterPlanTasks";
+import { masterPlanPath, taskStatusColor, taskStatusLabel, type MasterPlanTask } from "../lib/masterPlanTasks";
 import { useMasterPlanTasks } from "../hooks/useMasterPlanTasks";
 import { pathTail, projectForTab, workspaceLabelFor } from "../lib/projectDisplay";
 import { createNewTab, useWorkspaceStore } from "../stores/workspace";
@@ -61,6 +63,39 @@ const TERMINAL_LABEL_COLORS = [
 
 function rectsIntersect(a: CanvasRect, b: CanvasRect) {
   return a.minX <= b.maxX && a.maxX >= b.minX && a.minY <= b.maxY && a.maxY >= b.minY;
+}
+
+const TASK_STATUS_RANK: Record<MasterPlanTask["status"], number> = {
+  "in-progress": 0,
+  blocked: 1,
+  todo: 2,
+  unknown: 3,
+  done: 4,
+};
+
+function normalizedTaskSearchText(task: MasterPlanTask) {
+  return `${task.id} ${task.title} ${task.status} ${task.rawStatus}`.toLowerCase();
+}
+
+function taskSearchRank(task: MasterPlanTask, query: string) {
+  const value = query.trim().toLowerCase();
+  if (!value) return TASK_STATUS_RANK[task.status] * 1000;
+  const id = task.id.toLowerCase();
+  if (id === value) return -3000;
+  if (id.startsWith(value)) return -2000 + TASK_STATUS_RANK[task.status];
+  if (task.title.toLowerCase().startsWith(value)) return -1000 + TASK_STATUS_RANK[task.status];
+  return TASK_STATUS_RANK[task.status] * 1000;
+}
+
+function visibleTaskOptions(tasks: MasterPlanTask[], query: string) {
+  const normalizedQuery = query.trim().toLowerCase();
+  return tasks
+    .filter((task) => !normalizedQuery || normalizedTaskSearchText(task).includes(normalizedQuery))
+    .sort((a, b) => {
+      const byRank = taskSearchRank(a, normalizedQuery) - taskSearchRank(b, normalizedQuery);
+      if (byRank !== 0) return byRank;
+      return a.id.localeCompare(b.id, undefined, { numeric: true, sensitivity: "base" });
+    });
 }
 
 const styles: Record<string, CSSProperties> = {
@@ -559,6 +594,230 @@ const styles: Record<string, CSSProperties> = {
     height: 6,
     borderRadius: 999,
     flexShrink: 0,
+  },
+  taskPickerScrim: {
+    position: "fixed",
+    inset: 0,
+    zIndex: 60,
+    background: "rgba(10, 13, 15, 0.42)",
+    cursor: "default",
+  },
+  taskPicker: {
+    position: "fixed",
+    left: "50%",
+    top: "50%",
+    zIndex: 61,
+    width: "min(680px, calc(100vw - 32px))",
+    maxHeight: "min(680px, calc(100dvh - 56px))",
+    display: "grid",
+    gridTemplateRows: "auto auto minmax(0, 1fr) auto",
+    gap: 10,
+    padding: 12,
+    border: "1px solid var(--border-subtle)",
+    borderRadius: "var(--radius-md)",
+    background: "color-mix(in srgb, var(--surface-raised) 97%, transparent)",
+    boxShadow: "var(--shadow-menu), inset 0 1px 0 rgba(255,255,255,0.05)",
+    transform: "translate(-50%, -50%)",
+    animation: "workbench-popover-in var(--motion-med)",
+    cursor: "default",
+  },
+  taskPickerHeader: {
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr) auto",
+    gap: 10,
+    alignItems: "start",
+  },
+  taskPickerTitle: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    color: "var(--text-primary)",
+    fontSize: 14,
+    fontWeight: 500,
+  },
+  taskPickerMeta: {
+    marginTop: 5,
+    display: "flex",
+    flexWrap: "wrap",
+    gap: 6,
+    color: "var(--text-secondary)",
+    fontSize: 11,
+  },
+  taskPickerPill: {
+    minWidth: 0,
+    maxWidth: 260,
+    height: 20,
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 5,
+    padding: "0 7px",
+    border: "1px solid var(--border-subtle)",
+    borderRadius: "var(--radius-xs)",
+    background: "color-mix(in srgb, var(--surface-base) 86%, transparent)",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  taskPickerSearchRow: {
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr) auto",
+    gap: 8,
+    alignItems: "center",
+  },
+  taskPickerSearch: {
+    minWidth: 0,
+    height: 34,
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    padding: "0 10px",
+    border: "1px solid var(--border-subtle)",
+    borderRadius: "var(--radius-sm)",
+    background: "var(--surface-base)",
+    color: "var(--text-secondary)",
+  },
+  taskPickerInput: {
+    flex: 1,
+    minWidth: 0,
+    height: "100%",
+    border: "none",
+    outline: "none",
+    background: "transparent",
+    color: "var(--text-primary)",
+    fontSize: 12,
+  },
+  taskPickerList: {
+    minHeight: 170,
+    display: "grid",
+    alignContent: "start",
+    gap: 6,
+    paddingRight: 2,
+    overflowY: "auto",
+  },
+  taskPickerRow: {
+    width: "100%",
+    minWidth: 0,
+    display: "grid",
+    gridTemplateColumns: "92px minmax(0, 1fr) auto",
+    gap: 10,
+    alignItems: "center",
+    padding: "9px 10px",
+    border: "1px solid var(--border-subtle)",
+    borderRadius: "var(--radius-sm)",
+    background: "color-mix(in srgb, var(--surface-base) 76%, transparent)",
+    color: "var(--text-secondary)",
+    textAlign: "left",
+    cursor: "pointer",
+  },
+  taskPickerRowActive: {
+    borderColor: "color-mix(in srgb, var(--accent-live) 48%, var(--border-subtle))",
+    background: "color-mix(in srgb, var(--accent-live) 10%, var(--surface-base))",
+  },
+  taskPickerTaskId: {
+    color: "var(--text-primary)",
+    fontFamily: "var(--font-mono)",
+    fontSize: 12,
+    letterSpacing: 0,
+  },
+  taskPickerTaskTitle: {
+    minWidth: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    color: "var(--text-primary)",
+    fontSize: 12,
+    fontWeight: 500,
+  },
+  taskPickerTaskMeta: {
+    minWidth: 0,
+    marginTop: 3,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    color: "var(--text-secondary)",
+    fontSize: 10,
+  },
+  taskPickerStatus: {
+    height: 22,
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    padding: "0 7px",
+    border: "1px solid var(--border-subtle)",
+    borderRadius: "var(--radius-xs)",
+    color: "var(--text-primary)",
+    fontSize: 10,
+    whiteSpace: "nowrap",
+  },
+  taskPickerFooter: {
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr) auto",
+    gap: 8,
+    alignItems: "end",
+    paddingTop: 2,
+    borderTop: "1px solid var(--border-subtle)",
+  },
+  taskPickerManualBlock: {
+    display: "grid",
+    gap: 5,
+  },
+  taskPickerLabel: {
+    color: "var(--text-secondary)",
+    fontSize: 10,
+    fontWeight: 500,
+    textTransform: "uppercase",
+    letterSpacing: 0,
+  },
+  taskPickerManual: {
+    height: 30,
+    minWidth: 0,
+    border: "1px solid var(--border-subtle)",
+    borderRadius: "var(--radius-sm)",
+    outline: "none",
+    padding: "0 9px",
+    background: "var(--surface-base)",
+    color: "var(--text-primary)",
+    fontSize: 12,
+  },
+  taskPickerActions: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 7,
+  },
+  taskPickerButton: {
+    height: 30,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    padding: "0 10px",
+    border: "1px solid var(--border-subtle)",
+    borderRadius: "var(--radius-sm)",
+    background: "var(--surface-base)",
+    color: "var(--text-secondary)",
+    fontSize: 12,
+    cursor: "pointer",
+  },
+  taskPickerPrimaryButton: {
+    borderColor: "color-mix(in srgb, var(--accent-live) 52%, var(--border-subtle))",
+    background: "color-mix(in srgb, var(--accent-live) 13%, var(--surface-base))",
+    color: "var(--accent-live)",
+  },
+  taskPickerDangerButton: {
+    borderColor: "color-mix(in srgb, var(--accent-danger) 42%, var(--border-subtle))",
+    color: "var(--accent-danger)",
+  },
+  taskPickerEmpty: {
+    minHeight: 150,
+    display: "grid",
+    placeItems: "center",
+    padding: 18,
+    border: "1px dashed var(--border-subtle)",
+    borderRadius: "var(--radius-sm)",
+    color: "var(--text-secondary)",
+    fontSize: 12,
+    textAlign: "center",
   },
   nodeBody: {
     flex: 1,
@@ -1335,6 +1594,9 @@ function CanvasNodeView({
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const [isResizing, setIsResizing] = useState(false);
   const [operatorDraft, setOperatorDraft] = useState("");
+  const [taskPickerOpen, setTaskPickerOpen] = useState(false);
+  const [taskPickerQuery, setTaskPickerQuery] = useState("");
+  const [manualTaskId, setManualTaskId] = useState(node.taskBinding?.taskId ?? "");
   const selectedNodeIds = storedSelectedNodeIds ?? (selectedNodeId ? [selectedNodeId] : []);
   const selected = selectedNodeIds.includes(node.id) || selectedNodeId === node.id;
   const labelColor = node.type === "terminal" ? node.labelColor : undefined;
@@ -1360,16 +1622,19 @@ function CanvasNodeView({
   const onMouseDown = useCallback((event: React.MouseEvent) => {
     event.preventDefault();
     event.stopPropagation();
+    const currentCanvasState = useWorkspaceStore.getState().canvasState;
+    const currentSelectedNodeIds = currentCanvasState.selectedNodeIds ??
+      (currentCanvasState.selectedNodeId ? [currentCanvasState.selectedNodeId] : []);
     if (event.shiftKey || event.metaKey || event.ctrlKey) {
-      const nextIds = selectedNodeIds.includes(node.id)
-        ? selectedNodeIds.filter((id) => id !== node.id)
-        : [...selectedNodeIds, node.id];
+      const nextIds = currentSelectedNodeIds.includes(node.id)
+        ? currentSelectedNodeIds.filter((id) => id !== node.id)
+        : [...currentSelectedNodeIds, node.id];
       selectCanvasNodes(nextIds.length > 0 ? nextIds : [node.id]);
-    } else if (!selectedNodeIds.includes(node.id)) {
+    } else if (!currentSelectedNodeIds.includes(node.id)) {
       selectCanvasNode(node.id);
     }
-    const dragIds = selectedNodeIds.includes(node.id) && selectedNodeIds.length > 1
-      ? selectedNodeIds
+    const dragIds = currentSelectedNodeIds.includes(node.id) && currentSelectedNodeIds.length > 1
+      ? currentSelectedNodeIds
       : [node.id];
     dragRef.current = {
       x: event.clientX,
@@ -1486,6 +1751,8 @@ function CanvasNodeView({
   const boundTask = node.taskBinding
     ? rootTasks.find((task) => task.id.toLowerCase() === node.taskBinding?.taskId.toLowerCase())
     : undefined;
+  const taskOptions = useMemo(() => visibleTaskOptions(rootTasks, taskPickerQuery), [rootTasks, taskPickerQuery]);
+  const taskPlanPath = normalizedTaskRoot ? masterPlanPath(normalizedTaskRoot) : "No project root";
   const terminalTabId = linkedTab?.id ?? `canvas-${node.id}`;
   // The map node MUST share the tab's active pane identity. Terminal.tsx derives
   // runtimeSessionId = `terminal-${tabId}-${paneId}`, so the map node and the split
@@ -1621,29 +1888,33 @@ function CanvasNodeView({
   const onBindTask = useCallback((event: React.MouseEvent) => {
     event.preventDefault();
     event.stopPropagation();
+    setManualTaskId(node.taskBinding?.taskId ?? "");
+    setTaskPickerQuery("");
+    setTaskPickerOpen(true);
+  }, [node.taskBinding?.taskId]);
 
+  const closeTaskPicker = useCallback(() => {
+    setTaskPickerOpen(false);
+  }, []);
+
+  const bindTaskId = useCallback((taskId: string) => {
     if (!normalizedTaskRoot) {
-      window.alert("No project root is available for this terminal.");
       return;
     }
 
-    const options = rootTasks
-      .slice(0, 24)
-      .map((task) => `${task.id}  ${taskStatusLabel(task.status)}  ${task.title}`)
-      .join("\n");
-    const nextTaskId = window.prompt(
-      `Bind this terminal to a MASTER_PLAN task id.\n\n${options || "No tasks found in MASTER_PLAN.md."}\n\nLeave blank to clear the binding.`,
-      node.taskBinding?.taskId ?? ""
-    );
-    if (nextTaskId === null) return;
-
-    const trimmed = nextTaskId.trim();
+    const trimmed = taskId.trim();
+    if (!trimmed) return;
     updateCanvasNode(node.id, {
-      taskBinding: trimmed
-        ? { taskId: trimmed, planPath: masterPlanPath(normalizedTaskRoot) }
-        : undefined,
+      taskBinding: { taskId: trimmed, planPath: masterPlanPath(normalizedTaskRoot) },
     });
-  }, [node.id, node.taskBinding?.taskId, normalizedTaskRoot, rootTasks, updateCanvasNode]);
+    setTaskPickerOpen(false);
+  }, [node.id, normalizedTaskRoot, updateCanvasNode]);
+
+  const clearTaskBinding = useCallback(() => {
+    updateCanvasNode(node.id, { taskBinding: undefined });
+    setManualTaskId("");
+    setTaskPickerOpen(false);
+  }, [node.id, updateCanvasNode]);
 
   const queueOperatorDraft = useCallback(() => {
     if (!linkedTab?.workstream) return;
@@ -1912,7 +2183,14 @@ function CanvasNodeView({
             ? styles.agentNodeHeader
             : null),
         }}
-        onMouseDown={onMouseDown}
+        onMouseDown={(event) => {
+          if (event.button === 1) {
+            onPanStart(event);
+            return;
+          }
+          if (event.button !== 0) return;
+          onMouseDown(event);
+        }}
         onContextMenu={(event) => {
           if (node.type === "terminal") {
             onOpenNodeLabelMenu(node.id, event);
@@ -2323,6 +2601,183 @@ function CanvasNodeView({
           </button>
         )}
       </div>
+      {taskPickerOpen && typeof document !== "undefined" && createPortal(
+        <>
+          <div
+            data-testid="task-binding-picker-scrim"
+            style={styles.taskPickerScrim}
+            onMouseDown={closeTaskPicker}
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Bind MASTER_PLAN task"
+            data-testid="task-binding-picker"
+            style={styles.taskPicker}
+            onMouseDown={(event) => event.stopPropagation()}
+            onClick={(event) => event.stopPropagation()}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") closeTaskPicker();
+            }}
+          >
+            <div style={styles.taskPickerHeader}>
+              <div style={{ minWidth: 0 }}>
+                <div style={styles.taskPickerTitle}>
+                  <ListTodo size={16} strokeWidth={1.8} />
+                  <span>Bind MASTER_PLAN task</span>
+                </div>
+                <div style={styles.taskPickerMeta}>
+                  <span style={styles.taskPickerPill} title={workspaceLabel}>
+                    Workspace · {workspaceLabel}
+                  </span>
+                  <span style={styles.taskPickerPill} title={taskPlanPath}>
+                    <FileText size={12} strokeWidth={1.8} />
+                    {taskPlanPath}
+                  </span>
+                  {node.taskBinding && (
+                    <span
+                      style={styles.taskPickerPill}
+                      title={boundTask ? boundTask.title : "Current binding is not present in parsed tasks"}
+                    >
+                      Current · {node.taskBinding.taskId}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <button
+                type="button"
+                style={styles.taskPickerButton}
+                aria-label="Close task picker"
+                onClick={closeTaskPicker}
+              >
+                <X size={14} strokeWidth={1.8} />
+              </button>
+            </div>
+
+            <div style={styles.taskPickerSearchRow}>
+              <label style={styles.taskPickerSearch}>
+                <Search size={14} strokeWidth={1.8} />
+                <input
+                  data-testid="task-binding-search"
+                  style={styles.taskPickerInput}
+                  value={taskPickerQuery}
+                  placeholder="Search task id, title, or status"
+                  aria-label="Search MASTER_PLAN tasks"
+                  autoFocus
+                  onChange={(event) => setTaskPickerQuery(event.currentTarget.value)}
+                />
+              </label>
+              <span style={{ color: "var(--text-secondary)", fontSize: 11 }}>
+                {taskOptions.length} of {rootTasks.length}
+              </span>
+            </div>
+
+            <div style={styles.taskPickerList} data-testid="task-binding-options">
+              {!normalizedTaskRoot ? (
+                <div style={styles.taskPickerEmpty}>
+                  This terminal does not have a project root yet. Open it from a project workspace before binding a plan task.
+                </div>
+              ) : rootTasks.length === 0 ? (
+                <div style={styles.taskPickerEmpty}>
+                  No tasks were parsed from MASTER_PLAN.md. Use the manual task id field below if the task exists in another ledger format.
+                </div>
+              ) : taskOptions.length === 0 ? (
+                <div style={styles.taskPickerEmpty}>
+                  No tasks match this search. Try a task id, status, or a shorter phrase.
+                </div>
+              ) : (
+                taskOptions.map((task) => {
+                  const active = task.id.toLowerCase() === node.taskBinding?.taskId.toLowerCase();
+                  return (
+                    <button
+                      key={task.id}
+                      type="button"
+                      data-testid="task-binding-option"
+                      data-task-id={task.id}
+                      style={{
+                        ...styles.taskPickerRow,
+                        ...(active ? styles.taskPickerRowActive : null),
+                      }}
+                      title={`${task.id} · ${taskStatusLabel(task.status)} · ${task.title}`}
+                      onClick={() => bindTaskId(task.id)}
+                    >
+                      <span style={styles.taskPickerTaskId}>{task.id}</span>
+                      <span style={{ minWidth: 0 }}>
+                        <span style={styles.taskPickerTaskTitle}>{task.title}</span>
+                        <span style={styles.taskPickerTaskMeta}>
+                          {task.rawStatus || taskStatusLabel(task.status)}
+                        </span>
+                      </span>
+                      <span
+                        style={{
+                          ...styles.taskPickerStatus,
+                          background: `color-mix(in srgb, ${taskStatusColor(task.status)} 14%, var(--surface-base))`,
+                        }}
+                      >
+                        <span style={{ ...styles.taskDot, background: taskStatusColor(task.status) }} />
+                        {active ? "Bound" : taskStatusLabel(task.status)}
+                      </span>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+
+            <div style={styles.taskPickerFooter}>
+              <label style={styles.taskPickerManualBlock}>
+                <span style={styles.taskPickerLabel}>Manual task id</span>
+                <input
+                  data-testid="task-binding-manual-input"
+                  style={styles.taskPickerManual}
+                  value={manualTaskId}
+                  placeholder="TC-021"
+                  aria-label="Manual task id"
+                  onChange={(event) => setManualTaskId(event.currentTarget.value)}
+                  onKeyDown={(event) => {
+                    if (event.key !== "Enter") return;
+                    event.preventDefault();
+                    bindTaskId(manualTaskId);
+                  }}
+                />
+              </label>
+              <div style={styles.taskPickerActions}>
+                {node.taskBinding && (
+                  <button
+                    type="button"
+                    data-testid="task-binding-clear"
+                    style={{ ...styles.taskPickerButton, ...styles.taskPickerDangerButton }}
+                    onClick={clearTaskBinding}
+                  >
+                    Clear binding
+                  </button>
+                )}
+                <button
+                  type="button"
+                  style={styles.taskPickerButton}
+                  onClick={closeTaskPicker}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  data-testid="task-binding-manual-bind"
+                  style={{
+                    ...styles.taskPickerButton,
+                    ...styles.taskPickerPrimaryButton,
+                    opacity: normalizedTaskRoot && manualTaskId.trim() ? 1 : 0.52,
+                    cursor: normalizedTaskRoot && manualTaskId.trim() ? "pointer" : "default",
+                  }}
+                  disabled={!normalizedTaskRoot || !manualTaskId.trim()}
+                  onClick={() => bindTaskId(manualTaskId)}
+                >
+                  Bind
+                </button>
+              </div>
+            </div>
+          </div>
+        </>,
+        document.body
+      )}
       <div
         style={
           node.type === "terminal"
@@ -2923,9 +3378,10 @@ export function MagicCanvas() {
     });
   }, [canvasState.viewport, updateCanvasViewport]);
 
-  const startCanvasPan = useCallback((event: React.MouseEvent) => {
+  const startCanvasPan = useCallback((event: React.MouseEvent, options?: { deselectOnClick?: boolean }) => {
     event.preventDefault();
     event.stopPropagation();
+    let moved = false;
     panRef.current = {
       x: event.clientX,
       y: event.clientY,
@@ -2938,6 +3394,9 @@ export function MagicCanvas() {
     function onMouseMove(moveEvent: MouseEvent) {
       const pan = panRef.current;
       if (!pan) return;
+      if (Math.abs(moveEvent.clientX - pan.x) > 3 || Math.abs(moveEvent.clientY - pan.y) > 3) {
+        moved = true;
+      }
       updateCanvasViewport({
         x: pan.viewportX + moveEvent.clientX - pan.x,
         y: pan.viewportY + moveEvent.clientY - pan.y,
@@ -2950,11 +3409,14 @@ export function MagicCanvas() {
       if (shellRef.current) shellRef.current.style.cursor = "";
       document.removeEventListener("mousemove", onMouseMove);
       document.removeEventListener("mouseup", onMouseUp);
+      if (options?.deselectOnClick && !moved) {
+        selectCanvasNodes([]);
+      }
     }
 
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onMouseUp);
-  }, [canvasState.viewport.x, canvasState.viewport.y, updateCanvasViewport]);
+  }, [canvasState.viewport.x, canvasState.viewport.y, selectCanvasNodes, updateCanvasViewport]);
 
   const onCanvasMouseDown = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
     if (event.target !== event.currentTarget) return;
@@ -3013,7 +3475,7 @@ export function MagicCanvas() {
       document.addEventListener("mouseup", onSelectUp);
       return;
     }
-    startCanvasPan(event);
+    startCanvasPan(event, { deselectOnClick: event.button === 0 });
   }, [canvasState.viewport, selectCanvasNodes, startCanvasPan]);
 
   const onCanvasWheel = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
@@ -3062,6 +3524,8 @@ export function MagicCanvas() {
     <div
       ref={shellRef}
       data-magic-canvas-shell
+      tabIndex={0}
+      aria-label="Operations map"
       style={{
         ...styles.shell,
         backgroundSize: `${128 * canvasState.viewport.zoom}px ${128 * canvasState.viewport.zoom}px, ${128 * canvasState.viewport.zoom}px ${128 * canvasState.viewport.zoom}px, auto`,
