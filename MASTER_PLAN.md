@@ -288,10 +288,11 @@ Acceptance:
   group movement, and bounded DOM/render behavior with 100+ terminal nodes.
 - DONE: Verification includes `npm run build`, focused Playwright map coverage,
   and the existing map/terminal source-contract checks. Current evidence:
-  `npm run build` passed, `npx playwright test
-  tests/map-terminal-rendering.spec.ts` passed 19/19, `npm run
-  verify:map-terminals` passed, `npm run verify:terminal-rendering` passed,
-  and `/favicon.svg` returned HTTP 200 from the review server on 2026-06-18.
+  `npm run build` passed, focused `tests/map-terminal-rendering.spec.ts`
+  batches covered task binding/parser, map drag/select, split terminal sizing,
+  terminal summary layout, preview close, workspace cards, sidebar filters, and
+  Delete/Ctrl+Z restore, and `npm run verify:map-terminals` passed on
+  2026-06-18.
 
 ### TC-030: Orchestrator terminal lifecycle
 
