@@ -10,6 +10,7 @@ const magicCanvas = readFileSync(join(root, "src/components/MagicCanvas.tsx"), "
 const canvasSidebar = readFileSync(join(root, "src/components/CanvasSidebar.tsx"), "utf8");
 const workbenchHeader = readFileSync(join(root, "src/components/WorkbenchHeader.tsx"), "utf8");
 const workbenchSidebar = readFileSync(join(root, "src/components/WorkbenchSidebar.tsx"), "utf8");
+const statusBar = readFileSync(join(root, "src/components/StatusBar.tsx"), "utf8");
 const workspaceStore = readFileSync(join(root, "src/stores/workspace.ts"), "utf8");
 const usePty = readFileSync(join(root, "src/hooks/usePty.ts"), "utf8");
 const daemonInputQueue = readFileSync(join(root, "src/lib/daemonInputQueue.ts"), "utf8");
@@ -870,6 +871,15 @@ const checks = [
       /Terminal \$\{terminalStatusLabel\}/.test(splitPane) &&
       /\{terminalStatusLabel\}/.test(splitPane),
     message: "Split pane chrome must expose terminal runtime status without replacing the live terminal.",
+  },
+  {
+    ok: /const recoveryCounts = tabs\.reduce/.test(statusBar) &&
+      /statusbar-recovery-summary/.test(statusBar) &&
+      /reconnected/.test(statusBar) &&
+      /stale/.test(statusBar) &&
+      /failed/.test(statusBar) &&
+      /exited/.test(statusBar),
+    message: "Status bar must summarize durable recovery states across all terminal records.",
   },
   {
     ok: /function persistedTerminalSnapshot\(terminal: TerminalState\): TerminalState/.test(workspaceStore) &&

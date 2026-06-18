@@ -47,6 +47,7 @@ were retired during consolidation.
 | TC-022     | External agent bridge: let Hermes attach to and control TermFleet terminals                                                                                                                                     | P1       | TODO              | TC-016, TC-017 |
 | TC-023     | Cross-platform terminal substrate: isolate Linux daemon, path, process, and shell assumptions before macOS/Windows ports                                                                                         | P1       | IN_PROGRESS       | TC-009, TC-017 |
 | TC-024     | Session/map cards: show the project/workspace name in the live summary header                                                                                                                                   | P1       | DONE              | TC-016i        |
+| TC-025     | Redesign map filters and workspace summary into a usable non-scrolling control surface                                                                                                                          | P1       | TODO              | TC-021         |
 
 ---
 
@@ -105,6 +106,30 @@ Design target:
   map for arranging and relating sessions.
 - Redesign one subsystem at a time. Each task ends with build verification,
   screenshots, and a direct comparison against the reference and these rules.
+
+### TC-025: Redesign map filters and workspace summary
+
+**Priority:** P1
+**Status:** TODO
+**Depends:** TC-021
+
+The map filter bar and workspace grouping summary currently work but do not meet
+the product UX bar. The filter row overflows horizontally in the narrow sidebar,
+forcing users to slide right, and the workspace summary reads as low-signal
+metadata noise instead of a usable orientation/control surface.
+
+Acceptance:
+
+- TODO: Replace the horizontally scrolling filter row with a compact control that
+  keeps all primary states reachable in the sidebar width.
+- TODO: Redesign or demote the workspace grouping summary so it answers a user
+  question clearly, instead of listing counts and chips by default.
+- TODO: Preserve the current filter semantics and visible-node grouping contract
+  behind the redesigned UI.
+- TODO: Browser review covers the narrow sidebar at the same width as the
+  screenshot and proves no horizontal sliding is needed for common filters.
+- TODO: Verification includes `npm run build`, the map rendering regression, and
+  screenshot evidence of the redesigned sidebar.
 
 ### TC-001: Freeze Terminal Cockpit target and visual rules
 
@@ -2068,6 +2093,13 @@ Workstreams:
 3. **Durable recovery as a visible product feature**
    - Surface daemon/session states clearly: live, reconnecting, stale, restored,
      failed, and explicitly closed.
+   - In progress: status bar now summarizes durable terminal recovery states
+     across all terminal records, not only the active pane. Reconnected, stale,
+     failed, and exited records appear as a compact recovery chip while the live
+     PTY count remains limited to running/reconnected sessions. Verification:
+     `npm run build`; `npm run verify:map-terminals`; unsandboxed `npx
+     playwright test tests/map-terminal-rendering.spec.ts -g "status bar
+     summarizes"`; `git diff --check`.
    - Add a "restore workspace" proof path to the demo and README.
    - Keep the existing rule that React unmount detaches but does not kill PTYs.
 

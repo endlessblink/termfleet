@@ -126,6 +126,69 @@ test("overview preview sampling is capped and groups noisy terminal rows", async
   expect(result.totalSegments).toBeLessThan(14 * 72);
 });
 
+test("status bar summarizes durable terminal recovery states", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+
+  await page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => {
+          workspaceUiState: Record<string, unknown>;
+        };
+        setState: (state: Record<string, unknown>) => void;
+      };
+    }).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+
+    const terminalTab = (id: string, status: string, title = "Terminal") => ({
+      id,
+      title,
+      emoji: "[]",
+      color: "#7aa2f7",
+      groupId: null,
+      initialCwd: `/tmp/${id}`,
+      terminals: [{
+        id: `pty-${id}`,
+        paneId: `pane-${id}`,
+        cols: 80,
+        rows: 24,
+        status,
+        lastError: status === "failed" ? "daemon write failed" : undefined,
+      }],
+      splitLayout: { id: `pane-${id}`, type: "terminal" },
+      activePaneId: `pane-${id}`,
+    });
+
+    store.setState({
+      workspaceUiState: {
+        ...store.getState().workspaceUiState,
+        workspaceMode: "split",
+        primarySidebarCollapsed: false,
+        primarySidebarPanel: "sessions",
+      },
+      tabs: [
+        terminalTab("running", "running", "Running shell"),
+        terminalTab("reconnected", "reconnected", "Restored shell"),
+        terminalTab("stale", "stale", "Stale shell"),
+        terminalTab("failed", "failed", "Failed shell"),
+        terminalTab("exited", "exited", "Closed shell"),
+      ],
+      activeTabId: "running",
+      activeTerminalId: "pty-running",
+    });
+  });
+
+  await expect(page.getByTestId("statusbar-recovery-summary")).toContainText("1 reconnected");
+  await expect(page.getByTestId("statusbar-recovery-summary")).toContainText("1 stale");
+  await expect(page.getByTestId("statusbar-recovery-summary")).toContainText("1 failed");
+  await expect(page.getByTestId("statusbar-recovery-summary")).toContainText("1 exited");
+  await expect(page.getByText("2 ptys")).toBeVisible();
+});
+
 test("map shell header prefers summarized task path and now over raw prompt chrome", async ({ page }) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle");

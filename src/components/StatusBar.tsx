@@ -116,6 +116,26 @@ export function StatusBar() {
       tab.terminals.filter((t) => t.status === "running" || t.status === "reconnected").length,
     0,
   );
+  const recoveryCounts = tabs.reduce(
+    (counts, tab) => {
+      for (const terminal of tab.terminals) {
+        if (terminal.status === "reconnected") counts.reconnected += 1;
+        if (terminal.status === "stale") counts.stale += 1;
+        if (terminal.status === "failed") counts.failed += 1;
+        if (terminal.status === "exited") counts.exited += 1;
+      }
+      return counts;
+    },
+    { reconnected: 0, stale: 0, failed: 0, exited: 0 },
+  );
+  const recoveryItems = [
+    recoveryCounts.reconnected > 0 ? `${recoveryCounts.reconnected} reconnected` : null,
+    recoveryCounts.stale > 0 ? `${recoveryCounts.stale} stale` : null,
+    recoveryCounts.failed > 0 ? `${recoveryCounts.failed} failed` : null,
+    recoveryCounts.exited > 0 ? `${recoveryCounts.exited} exited` : null,
+  ].filter(Boolean);
+  const recoveryTotal = recoveryCounts.reconnected + recoveryCounts.stale + recoveryCounts.failed + recoveryCounts.exited;
+  const recoveryText = recoveryItems.join(" · ");
   const selectedProjectName = projectNameFor(activeGroupFilter, groups);
   const selectedProjectRoot = projectRootFor(activeGroupFilter, groups, activeTab) ?? projectRoot;
   const selectedProjectCount = projectSessionCount(activeGroupFilter, tabs);
@@ -161,6 +181,16 @@ export function StatusBar() {
             {terminalCount} {terminalCount === 1 ? "pty" : "ptys"}
           </span>
         </span>
+        {recoveryTotal > 0 && (
+          <span
+            style={styles.chip}
+            title={`Recovery states: ${recoveryText}`}
+            data-testid="statusbar-recovery-summary"
+          >
+            <Activity size={12} strokeWidth={1.8} color="var(--accent-warning)" style={styles.icon} />
+            <span style={styles.muted}>{recoveryText}</span>
+          </span>
+        )}
         {groupCount > 0 && (
           <span style={styles.chip}>
             <Layers3 size={12} strokeWidth={1.8} color="var(--accent-info)" style={styles.icon} />
