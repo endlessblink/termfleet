@@ -810,24 +810,27 @@ export function splitActivePreviewPane(previewUrl?: string) {
   const store = useWorkspaceStore.getState();
   const tab = store.tabs.find((t) => t.id === store.activeTabId);
   if (!tab) return false;
-  const activeTerminal = tab.terminals.find((terminal) => terminal.paneId === tab.activePaneId);
+  const activeTerminal =
+    tab.terminals.find((terminal) => terminal.paneId === tab.activePaneId) ??
+    tab.terminals.find((terminal) => terminal.previewUrl);
   const resolvedPreviewUrl = previewUrl ?? activeTerminal?.previewUrl;
   if (!resolvedPreviewUrl) return false;
+  const targetPaneId = activeTerminal?.paneId ?? tab.activePaneId;
 
   const newPaneId = store.splitPane(
     tab.id,
-    tab.activePaneId,
+    targetPaneId,
     "horizontal",
     undefined,
     "preview",
     resolvedPreviewUrl,
-    tab.activePaneId,
+    targetPaneId,
   );
   store.updateWorkspaceUiState({ previewUrl: resolvedPreviewUrl });
   if (activeTerminal?.previewUrl !== resolvedPreviewUrl) {
     store.updateTab(tab.id, {
       terminals: tab.terminals.map((terminal) =>
-        terminal.paneId === tab.activePaneId
+        terminal.paneId === targetPaneId
           ? { ...terminal, previewUrl: resolvedPreviewUrl }
           : terminal
       ),

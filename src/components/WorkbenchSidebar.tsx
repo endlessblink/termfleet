@@ -985,7 +985,8 @@ function PreviewButton() {
   const activeTabId = useWorkspaceStore((state) => state.activeTabId);
   const activeTab = useWorkspaceStore((state) => state.tabs.find((tab) => tab.id === activeTabId));
   const active = activeTab ? JSON.stringify(activeTab.splitLayout).includes('"type":"preview"') : false;
-  const hasPreviewUrl = Boolean(activeTab?.terminals.find((terminal) => terminal.paneId === activeTab.activePaneId)?.previewUrl);
+  const activePanePreviewUrl = activeTab?.terminals.find((terminal) => terminal.paneId === activeTab.activePaneId)?.previewUrl;
+  const hasPreviewUrl = Boolean(activePanePreviewUrl ?? activeTab?.terminals.find((terminal) => terminal.previewUrl)?.previewUrl);
 
   return (
     <button
