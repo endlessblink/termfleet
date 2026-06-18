@@ -36,7 +36,13 @@ function isPromptOnlyLine(line: string) {
   return /^[>$#]\s*$/.test(line) ||
     /^[\w./~:-]+[$#]\s*$/.test(line) ||
     /^[\w.-]+@[\w.-]+:.*[$#]\s*$/.test(line) ||
-    /^➜\s+\S+/.test(line);
+    /^➜\s+\S+/.test(line) ||
+    /^›\s*use\s+\/\w+/i.test(line) ||
+    /^use\s+\/\w+/i.test(line) ||
+    /^gpt[-\w. ]+\s+default\b/i.test(line) ||
+    /^[«‹›|│┃¦\s•·-]*gpt[-\w. ]+\s+default\b/i.test(line) ||
+    /^«\s*gpt[-\w. ]+\s+default\b/i.test(line) ||
+    /\besc to interrupt\b/i.test(line);
 }
 
 export function activityKindForText(text: string): WorkstreamActivityKind {

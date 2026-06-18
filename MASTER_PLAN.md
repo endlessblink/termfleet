@@ -39,12 +39,13 @@ were retired during consolidation.
 | TC-016     | Multi-agent orchestration: spawn/manage sub-agent terminals from the cockpit                                                                                                                                    | P2       | DONE              | -              |
 | TC-016h    | Live terminal activity + agent status list                                                                                                                                                                      | P1       | DONE              | TC-016         |
 | TC-016i    | LLM-summarized agent work status: visible task/path/now in terminal and map cards                                                                                                                               | P1       | DONE              | TC-016h        |
-| TC-017     | Headless-VT (Rust) + canvas renderer — now the desktop default (replaces xterm); live latency/TUI confirmation pending                                                                                          | P2       | IN_PROGRESS       | -              |
+| TC-017     | Headless-VT (Rust) + canvas renderer — now the desktop default (replaces xterm)                                                                                                                                 | P2       | DONE              | -              |
 | TC-018     | BiDi/RTL + text shaping (Hebrew nikud) in the headless grid — depends on TC-017                                                                                                                                 | P2       | TODO              | -              |
 | TC-019     | Warp-style chrome redesign: neutral fill-only design system (no outlines), terminal-first layout, Hack terminal font + #1d2022 gray, themed folder picker, DESIGN.md + CI-enforced no-outlines/typography rules | P2       | IN_PROGRESS       | -              |
 | TC-020     | Split-pane and canvas localhost preview surface                                                                                                                                                                 | P2       | DONE (2026-06-01) | -              |
 | TC-021     | Open-source developer preview lane: differentiate TermFleet as a local-first agent/ops cockpit                                                                                                                  | P2       | IN_PROGRESS       | -              |
 | TC-022     | External agent bridge: let Hermes attach to and control TermFleet terminals                                                                                                                                     | P1       | TODO              | TC-016, TC-017 |
+| TC-023     | Cross-platform terminal substrate: isolate Linux daemon, path, process, and shell assumptions before macOS/Windows ports                                                                                         | P1       | IN_PROGRESS       | TC-009, TC-017 |
 
 ---
 
@@ -1995,6 +1996,23 @@ Workstreams:
      from the command bar and map.
    - Show agent role, task prompt, cwd, branch/worktree, status, last activity,
      and exit state on the node and sidebar.
+   - In progress: redesigned the terminal/map header around useful
+     `Context / Path / Now` fields, fed by the visible canvas grid snapshot plus
+     recent transcript tail. Prompt/model chrome such as provider names,
+     `Working ... esc to interrupt`, and bare prompt fragments are filtered
+     before display. The optional local summarizer now uses a tiny-model-friendly
+     payload with a heuristic candidate; `scripts/agent-status-summary-ollama.mjs`
+     defaults to `gemma4:e2b-it` through Ollama and falls back deterministically.
+     TUI wheel handling now keeps plain alternate-screen scrolling inside the
+     app as faux arrow scrolling, while Shift+wheel remains the explicit outer
+     scrollback bypass. Verification: `npm run verify:agent-status-summary`;
+     `npx playwright test tests/map-terminal-rendering.spec.ts
+     tests/terminal-mouse.spec.ts tests/agent-status-summary.spec.ts
+     tests/agent-workstream.spec.ts`; `npm run build`; `npm run
+     verify:map-terminals`; `git diff --check`;
+     unsandboxed `APP_BUDGET=360 npm run verify:canvas-live` passed with
+     Canvas2D live shell input/output, resize, vim, htop, and tmux screenshots in
+     `/tmp/tw-canvas-live/`.
    - Let the parent cockpit send a follow-up message or stop/restart a child.
    - Keep the first version local and explicit; no hidden cloud orchestration.
 
@@ -2128,6 +2146,19 @@ or structured status without stealing ownership from the TermFleet daemon.
 
 Progress notes:
 
+- Control-surface read-only slice added: `docs/control-surface.md` defines the
+  TC-022 query/command/event boundary and ownership rules, and
+  `scripts/termfleetctl.mjs` exposes read-only JSON for `status --json`,
+  `sessions list --json`, and `agents list --json`. The CLI reads the existing
+  daemon socket plus durable workspace/session mirrors without spawning,
+  writing, killing, or creating sessions. Verification:
+  `node scripts/verify-termfleetctl.mjs` passed; live read-only daemon checks
+  showed `reachable=true`, `mode=externalDaemon`, 7 live sessions, 8 persisted
+  sessions, and 8 merged session rows.
+- Follow-up CLI wiring added: package scripts now expose
+  `npm run termfleetctl -- ...` and `npm run verify:termfleetctl`, keeping the
+  first control-surface slice easy to run without making it a mutating command
+  surface. Verification: `npm run verify:termfleetctl` passed.
 - First vertical slice added: command palette and sidebar launch menu can create
   a supervised `Codex workstream` terminal, persist agent/workstream metadata on
   the tab, show the workstream in the sessions list, and render an `AGENT` node
@@ -2154,6 +2185,7 @@ Progress notes:
   failed inline state instead of mounting a shell, and the initial launch prompt
   is queued automatically through the same terminal dispatch path as follow-up
   prompts.
+
 - Sixth slice added: workstreams now maintain a durable cockpit event timeline
   for mission creation, provider readiness, queued prompts, sent prompts, parsed
   status changes, stop, and restart. Agent map nodes render a compact mission
@@ -4362,3 +4394,64 @@ playwright test tests/agent-workstream.spec.ts` passed 9/9 after adding
   Additional verification passed `npm run build`, `npm run
 verify:rust-warnings`, `npm run verify:map-terminals`, `sh -n
 scripts/agent-provider-adapter.sh`, and `git diff --check`.
+
+### TC-023: Cross-platform terminal substrate
+
+**Priority:** P1
+**Status:** In progress
+**Depends:** TC-009, TC-017
+
+#### Problem
+
+TermFleet's UI and headless Canvas2D renderer are mostly portable, but the
+terminal substrate still embeds Linux/Unix assumptions directly in production
+code: Unix-domain sockets, XDG runtime paths, process-group daemon detach,
+`kill` / `stty`, `/tmp`, and POSIX shell defaults. That makes macOS plausible
+but unproven, and Windows impossible to compile until the seams are explicit.
+
+#### Goal
+
+Create a safe Linux-preserving substrate layer that keeps the current daemon and
+PTY behavior intact while making the platform boundary obvious enough to add
+macOS and Windows implementations later.
+
+#### Cleanup plan
+
+- Lock current Linux behavior first with daemon and Rust regressions.
+- Introduce wrappers in small slices: `default_shell`, `platform_paths`,
+  `daemon_ipc`, then `platform_process`.
+- Keep the first pass behavior-preserving: Linux continues to use the same
+  XDG socket path, Unix streams, detached process group, shell defaults, and
+  daemon protocol.
+- Do not add new dependencies until the wrapper-only refactor is stable; evaluate
+  `interprocess` only when replacing Unix IPC with a cross-platform backend.
+
+#### Verification
+
+- `cargo test --manifest-path src-tauri/Cargo.toml`
+- `npm run verify:daemon-survival`
+- `npm run verify:daemon-latency`
+- `npm run verify:standalone-daemon`
+- `npm run verify:release` before marking the lane done.
+
+Progress notes:
+
+- Started with the lowest-risk wrapper slices: default shell resolution and
+  daemon/runtime path helpers. Baseline `npm run verify:daemon-survival` passed
+  before edits; full `cargo test --manifest-path src-tauri/Cargo.toml` passed
+  unit tests but the sandboxed integration daemon process hung after
+  `Operation not permitted`, so the dedicated daemon survival gate is the
+  baseline for this pass.
+- Added a behavior-preserving `daemon_ipc` wrapper and routed daemon requests,
+  persistent input streams, subscriptions, and grid daemon attach through it
+  while still using Unix sockets on Linux. Verification after the wrapper pass:
+  `cargo test --manifest-path src-tauri/Cargo.toml --lib` passed (54 tests),
+  `npm run verify:daemon-survival` passed, `npm run verify:daemon-latency`
+  passed with p95 1.5ms, and `git diff --check` passed.
+- Added a behavior-preserving `platform_process` wrapper for detached daemon
+  launch and explicit daemon termination. Linux still uses `process_group(0)`
+  and `kill`, but those assumptions now live behind the platform seam.
+  Verification repeated after this slice: `cargo test --manifest-path
+  src-tauri/Cargo.toml --lib` passed (54 tests), `npm run
+  verify:daemon-survival` passed, `npm run verify:daemon-latency` passed with
+  p95 1.5ms, and `git diff --check` passed.

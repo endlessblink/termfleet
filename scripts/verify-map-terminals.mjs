@@ -23,6 +23,7 @@ const masterPlanTasks = readFileSync(join(root, "src/lib/masterPlanTasks.ts"), "
 const gridBuffer = readFileSync(join(root, "src/lib/gridBuffer.ts"), "utf8");
 const gridRenderer = readFileSync(join(root, "src/lib/gridRenderer.ts"), "utf8");
 const gridDiff = readFileSync(join(root, "src/lib/gridDiff.ts"), "utf8");
+const snapshotPreviewRows = readFileSync(join(root, "src/lib/snapshotPreviewRows.ts"), "utf8");
 const gridDiffSpec = readFileSync(join(root, "tests/grid-diff.spec.ts"), "utf8");
 const boxGlyphSpec = readFileSync(join(root, "tests/box-glyph.spec.ts"), "utf8");
 const terminalMouse = readFileSync(join(root, "src/lib/terminalMouse.ts"), "utf8");
@@ -35,6 +36,7 @@ const ptyBackend = readFileSync(join(root, "src-tauri/src/pty.rs"), "utf8");
 const ptyCommands = readFileSync(join(root, "src-tauri/src/commands.rs"), "utf8");
 const nativeTerminalBackend = readFileSync(join(root, "src-tauri/src/native_terminal.rs"), "utf8");
 const daemonBackend = readFileSync(join(root, "src-tauri/src/daemon.rs"), "utf8");
+const daemonIpc = readFileSync(join(root, "src-tauri/src/daemon_ipc.rs"), "utf8");
 const vtGrid = readFileSync(join(root, "src-tauri/src/vt_grid.rs"), "utf8");
 const daemonBin = readFileSync(join(root, "src-tauri/src/bin/terminal-workspace-daemon.rs"), "utf8");
 const tauriLib = readFileSync(join(root, "src-tauri/src/lib.rs"), "utf8");
@@ -152,6 +154,13 @@ const checks = [
     message: "Terminal map nodes must render a live TerminalComponent.",
   },
   {
+    ok: /getDisplaySummary/.test(magicCanvas) &&
+      /getDisplaySummary/.test(splitPane) &&
+      /terminalDisplaySummary/.test(magicCanvas) &&
+      /shellStatusSummary/.test(splitPane),
+    message: "Map and split terminal headers must render from the shared display-summary helper.",
+  },
+  {
     ok: /onMouseDown=\{node\.type === "terminal"[\s\S]*event\.stopPropagation\(\);[\s\S]*activateTerminalNode\(\);/.test(magicCanvas) &&
       /onClick=\{node\.type === "terminal" \? \(event\) => event\.stopPropagation\(\) : undefined\}/.test(magicCanvas),
     message: "Terminal map node bodies must stop canvas/node mouse events so terminal focus and input are not stolen.",
@@ -160,18 +169,20 @@ const checks = [
     ok: /"verify:terminal-mouse": "playwright test terminal-mouse"/.test(packageJson) &&
       /encodeMouseReport/.test(terminalCanvas) &&
       /pointerButtonToTerminalButton/.test(terminalCanvas) &&
-      /shouldSendWheelToTerminalApp\(event\)/.test(terminalCanvas) &&
+      /terminalWheelAction\(event, modes/.test(terminalCanvas) &&
       /invoke\("grid_scroll"/.test(terminalCanvas) &&
       /sendPointerMouseReport\(event/.test(terminalCanvas) &&
       /modesRef\.current\.mouseReport/.test(terminalCanvas) &&
       /release \? "m" : "M"/.test(terminalMouse) &&
       /export function shouldSendWheelToTerminalApp/.test(terminalMouse) &&
+      /export function terminalWheelAction/.test(terminalMouse) &&
       /pointerButtonToTerminalButton\(0\)/.test(terminalMouseSpec) &&
       /leftReleaseSgr/.test(terminalMouseSpec) &&
       /wheelDownLegacyHex/.test(terminalMouseSpec) &&
       /plainWheelUsesTerminalHistory/.test(terminalMouseSpec) &&
-      /altWheelUsesTerminalApp/.test(terminalMouseSpec),
-    message: "Canvas terminals must make plain wheel scroll TermFleet history while preserving Alt+wheel VT mouse sequences for TUI apps.",
+      /plainAltScreenWheelUsesTerminalApp/.test(terminalMouseSpec) &&
+      /mouseReportWheelAction/.test(terminalMouseSpec),
+    message: "Canvas terminals must route primary-buffer wheel to history, alt-screen wheel to app arrows, and mouse-reporting wheel to VT mouse events.",
   },
   {
     ok: /function TerminalMapPreview/.test(magicCanvas) &&
@@ -182,8 +193,8 @@ const checks = [
       /onSnapshot=\{\(snapshot\) => onTerminalSnapshot\(node\.id, snapshot\)\}/.test(magicCanvas) &&
       /onSnapshot\?: \(snapshot: GridSnapshot\) => void;/.test(terminalCanvas) &&
       /onSnapshotRef\.current\?\.\(snapshot\)/.test(terminalCanvas) &&
-      /const char = cell\?\.c && cell\.c !== "\\u0000" \? cell\.c : " ";/.test(magicCanvas) &&
-      /segments: \[\{ text: " "\.repeat\(maxCols\)/.test(magicCanvas) &&
+      /const char = cell\?\.c && cell\.c !== "\\u0000" \? cell\.c : " ";/.test(snapshotPreviewRows) &&
+      /segments: \[\{ text: " "\.repeat\(maxCols\)/.test(snapshotPreviewRows) &&
       /\{segment\.text\}/.test(magicCanvas) &&
       !/background: cell\.color/.test(magicCanvas) &&
       !/live session/.test(magicCanvas) &&
@@ -407,6 +418,9 @@ const checks = [
       /TF_CANVAS_LIVE_INPUT_OK/.test(canvasLiveSmoke) &&
       /CANVAS_LIVE_INPUT_REACHED_DAEMON/.test(canvasLiveSmoke) &&
       /CANVAS_LIVE_OUTPUT_IN_SNAPSHOT/.test(canvasLiveSmoke) &&
+      /06a-htop-wheel-down\.png/.test(canvasLiveSmoke) &&
+      /CANVAS_LIVE_VISUAL_REPAINT/.test(canvasLiveSmoke) &&
+      /htop-wheel-down/.test(canvasLiveSmoke) &&
       /TMUX_SOCKET="\$OUT_DIR\/tmux\.sock"/.test(canvasLiveSmoke) &&
       /tmux -S \$TMUX_SOCKET new -s canvas/.test(canvasLiveSmoke) &&
       /tmux -S \$TMUX_SOCKET kill-server/.test(canvasLiveSmoke) &&
@@ -572,7 +586,8 @@ const checks = [
   {
     ok: /pub struct DaemonStatus/.test(daemonBackend) &&
       /pub enum DaemonMode/.test(daemonBackend) &&
-      /UnixStream::connect/.test(daemonBackend) &&
+      /daemon_ipc::connect/.test(daemonBackend) &&
+      /pub type LocalStream = std::os::unix::net::UnixStream;/.test(daemonIpc) &&
       /STATUS_COMMAND/.test(daemonBackend) &&
       /protocol_version/.test(daemonBackend) &&
       /daemon_socket_path/.test(daemonBackend) &&
@@ -583,6 +598,7 @@ const checks = [
       /let status = daemon_ensure_running\(\);[\s\S]*if !status\.reachable/.test(daemonBackend) &&
       /terminal daemon became reachable but request connect still failed/.test(daemonBackend) &&
       /use crate::daemon::\{daemon_ensure_running, daemon_socket_path, DaemonRequest, DaemonResponse\};/.test(vtGrid) &&
+      /use crate::daemon_ipc;/.test(vtGrid) &&
       /terminal daemon became reachable but grid stream connect still failed/.test(vtGrid) &&
       /const daemonStatus = await invoke<\{ reachable: boolean; message: string \}>\("daemon_ensure_running"\);/.test(terminalCanvas) &&
       /if \(!daemonStatus\.reachable\) \{[\s\S]*throw new Error\(daemonStatus\.message\);/.test(terminalCanvas) &&
@@ -600,7 +616,8 @@ const checks = [
     ok: /\[\[bin\]\][\s\S]*name = "terminal-workspace-daemon"/.test(cargoToml) &&
       /default-run = "terminal-workspace"/.test(cargoToml) &&
       /pub fn run_daemon_forever\(\) -> Result<\(\), String>/.test(daemonBackend) &&
-      /UnixListener::bind/.test(daemonBackend) &&
+      /daemon_ipc::bind/.test(daemonBackend) &&
+      /pub type LocalListener = std::os::unix::net::UnixListener;/.test(daemonIpc) &&
       /handle_daemon_client/.test(daemonBackend) &&
       /terminal_workspace_lib::daemon::run_daemon_forever/.test(daemonBin),
     message: "Rust package must include a terminal-workspace-daemon binary that serves the Unix socket status protocol.",
@@ -708,8 +725,9 @@ const checks = [
       /pub fn start_daemon_input_worker/.test(ptyCommands) &&
       /mpsc::channel::<DaemonInputEvent>/.test(ptyCommands) &&
       /seq_ids: Option<Vec<u64>>/.test(ptyCommands) &&
-      /HashMap::<String, UnixStream>::new/.test(ptyCommands) &&
+      /HashMap::<String, LocalStream>::new/.test(ptyCommands) &&
       /fn open_daemon_input_stream/.test(ptyCommands) &&
+      /daemon_ipc::connect/.test(ptyCommands) &&
       /DaemonRequest::InputStream/.test(ptyCommands) &&
       /InputStream/.test(daemonBackend) &&
       /handle_daemon_input_stream/.test(daemonBackend) &&

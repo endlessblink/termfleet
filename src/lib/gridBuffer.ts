@@ -30,6 +30,7 @@ export class GridBuffer {
   bracketedPaste = false;
   mouseReport = false;
   alternateScroll = false;
+  alternateScrollSet = false;
   sgrMouse = false;
   cells: GridCell[][] = [];
 
@@ -71,6 +72,7 @@ export class GridBuffer {
     this.bracketedPaste = frame.bracketedPaste;
     this.mouseReport = frame.mouseReport;
     this.alternateScroll = frame.alternateScroll;
+    this.alternateScrollSet = frame.alternateScrollSet;
     this.sgrMouse = frame.sgrMouse;
 
     // The cursor bar is painted by the renderer on top of its row, so any change

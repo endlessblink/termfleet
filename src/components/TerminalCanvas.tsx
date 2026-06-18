@@ -30,7 +30,7 @@ import { encodePaste, keyEventToBytes } from "../lib/keymap";
 import {
   encodeMouseReport,
   pointerButtonToTerminalButton,
-  shouldSendWheelToTerminalApp,
+  terminalWheelAction,
 } from "../lib/terminalMouse";
 import {
   normalizeRange,
@@ -76,6 +76,7 @@ const DEFAULT_TERMINAL_MODES = {
   altScreen: false,
   mouseReport: false,
   alternateScroll: false,
+  alternateScrollSet: false,
   sgrMouse: false,
 };
 
@@ -327,6 +328,7 @@ export function TerminalCanvas({
         altScreen: buffer.altScreen,
         mouseReport: buffer.mouseReport,
         alternateScroll: buffer.alternateScroll,
+        alternateScrollSet: buffer.alternateScrollSet,
         sgrMouse: buffer.sgrMouse,
       };
       const firstFrame = !firstFrameRef.current;
@@ -948,9 +950,13 @@ export function TerminalCanvas({
     const up = event.deltaY < 0;
     const modes = modesRef.current;
 
-    // Plain wheel scrolls TermFleet's own history. Alt+wheel is the explicit
-    // escape hatch for apps that own wheel input (zellij, vim, htop, less, tmux).
-    if (shouldSendWheelToTerminalApp(event) && modes.mouseReport) {
+    const wheelAction = terminalWheelAction(event, modes, up ? "up" : "down");
+
+    // TUIs own wheel input while they are on the alternate screen. Some agent
+    // TUIs do not set DECSET 1007, but letting the outer scrollback move still
+    // tears the visible frame away from the app. Forward wheel to the app in
+    // alt-screen mode; plain shell buffers keep TermFleet history scrolling.
+    if (wheelAction.kind === "mouse-report") {
       const { col, row } = wheelCell(event);
       const button = up ? 64 : 65;
       const report = encodeMouseReport({
@@ -964,13 +970,8 @@ export function TerminalCanvas({
       return;
     }
 
-    // Alt-screen alternate-scroll (DECSET 1007) remains available through
-    // Alt+wheel, honoring application-cursor mode.
-    if (shouldSendWheelToTerminalApp(event) && modes.altScreen && modes.alternateScroll) {
-      const seq = up
-        ? modes.appCursor ? "\x1bOA" : "\x1b[A"
-        : modes.appCursor ? "\x1bOB" : "\x1b[B";
-      send(seq.repeat(notches * 3));
+    if (wheelAction.kind === "app-arrows") {
+      send(wheelAction.sequence.repeat(notches * 3));
       return;
     }
 

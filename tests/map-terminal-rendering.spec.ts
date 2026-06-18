@@ -15,7 +15,7 @@ test("map terminal rendering avoids pixelated live canvases and grouped preview 
     const ReactModule = await import("/node_modules/.vite/deps/react.js");
     const ReactDom = await import("/node_modules/.vite/deps/react-dom_client.js");
     const { TerminalCanvas } = await import("/src/components/TerminalCanvas.tsx");
-    const { snapshotPreviewRows } = await import("/src/components/MagicCanvas.tsx");
+    const { snapshotPreviewRows } = await import("/src/lib/snapshotPreviewRows.ts");
     const React = ReactModule.default ?? ReactModule;
 
     const host = document.createElement("div");
@@ -83,7 +83,7 @@ test("overview preview sampling is capped and groups noisy terminal rows", async
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
 
   const result = await page.evaluate(async () => {
-    const { snapshotPreviewRows } = await import("/src/components/MagicCanvas.tsx");
+    const { snapshotPreviewRows } = await import("/src/lib/snapshotPreviewRows.ts");
 
     const colors = ["#ff00ff", "#00ff00", "#00d0ff", "#d0d0d0"];
     const cells = Array.from({ length: 120 }, (_, rowIndex) =>
@@ -124,4 +124,210 @@ test("overview preview sampling is capped and groups noisy terminal rows", async
   expect(result.maxVisibleChars).toBeLessThanOrEqual(72);
   expect(result.maxSegments).toBeLessThanOrEqual(18);
   expect(result.totalSegments).toBeLessThan(14 * 72);
+});
+
+test("map shell header prefers summarized task path and now over raw prompt chrome", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.getByRole("button", { name: "Map", exact: true }).click();
+
+  await page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => {
+          tabs: Array<{ id: string; title: string; terminals: unknown[] }>;
+          canvasState: { nodes: Array<{ id: string; type: string; terminalTabId?: string }> };
+          updateTab: (id: string, updates: Record<string, unknown>) => void;
+        };
+      };
+    }).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+    const state = store.getState();
+    const node = state.canvasState.nodes.find((candidate) => candidate.type === "terminal");
+    if (!node?.terminalTabId) throw new Error("Terminal map node is unavailable");
+    const tab = state.tabs.find((candidate) => candidate.id === node.terminalTabId);
+    if (!tab) throw new Error("Terminal tab is unavailable");
+    store.getState().updateTab(tab.id, {
+      title: "endlessblink",
+      terminals: [{
+        id: "pty-summary-fixture",
+        paneId: node.id,
+        cols: 100,
+        rows: 30,
+        status: "running",
+        currentActivity: "« gpt-5.5 default · -",
+        terminalOutput: "translate to hebrew\nWhat changed:\nquality-gate tests passed\n› Use /skills to list available skills\ngpt-5.5 default · ~",
+        statusSummary: {
+          task: "Translate post copy to Hebrew",
+          path: "inner-dialogue",
+          now: "Checking the rewritten Hebrew post and verification notes",
+          status: "working",
+          provider: "shell",
+          confidence: "medium",
+        },
+      }],
+    });
+  });
+
+  await expect(page.getByTestId("canvas-terminal-node-header-title")).toHaveText("Translate post copy to Hebrew");
+  await expect(page.getByTestId("canvas-terminal-node-header-path")).toHaveText("inner-dialogue");
+  await expect(page.getByTestId("canvas-terminal-node-now")).toHaveText("Checking the rewritten Hebrew post and verification notes");
+  await expect(page.getByTestId("canvas-terminal-node-now")).not.toContainText("gpt-5.5 default");
+  await expect(page.getByRole("main").getByRole("button", { name: "Close endlessblink" })).toBeVisible();
+
+  await page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => {
+          tabs: Array<{ id: string; title: string; terminals: Array<{ paneId?: string }> }>;
+          canvasState: { nodes: Array<{ id: string; type: string; terminalTabId?: string }> };
+          updateTab: (id: string, updates: Record<string, unknown>) => void;
+        };
+      };
+    }).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+    const state = store.getState();
+    const node = state.canvasState.nodes.find((candidate) => candidate.type === "terminal");
+    if (!node?.terminalTabId) throw new Error("Terminal map node is unavailable");
+    const tab = state.tabs.find((candidate) => candidate.id === node.terminalTabId);
+    if (!tab) throw new Error("Terminal tab is unavailable");
+    store.getState().updateTab(tab.id, {
+      title: "Terminal",
+      terminals: [{
+        id: "pty-stale-summary-fixture",
+        paneId: node.id,
+        cols: 100,
+        rows: 30,
+        status: "running",
+        currentActivity: "« | gpt-5.5 default · -",
+        terminalOutput: [
+          "translate to hebrew",
+          "What changed:",
+          "- server-side quality gate now validates generated posts",
+          "- editor button regression passed",
+          "› Use /skills to list available skills",
+          "gpt-5.5 default · ~",
+        ].join("\n"),
+        statusSummary: {
+          task: "Terminal",
+          path: "workspace root unknown",
+          now: "« | gpt-5.5 default · -",
+          status: "working",
+          provider: "shell",
+          confidence: "low",
+        },
+      }],
+    });
+  });
+
+  await expect(page.getByTestId("canvas-terminal-node-header-title")).toHaveText("translate to hebrew");
+  await expect(page.getByTestId("canvas-terminal-node-now")).toHaveText("server-side quality gate now validates generated posts");
+  await expect(page.getByTestId("canvas-terminal-node-now")).not.toContainText("gpt-5.5 default");
+
+  await page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => {
+          tabs: Array<{ id: string; title: string; terminals: Array<{ paneId?: string }> }>;
+          canvasState: { nodes: Array<{ id: string; type: string; terminalTabId?: string }> };
+          updateTab: (id: string, updates: Record<string, unknown>) => void;
+        };
+      };
+    }).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+    const state = store.getState();
+    const node = state.canvasState.nodes.find((candidate) => candidate.type === "terminal");
+    if (!node?.terminalTabId) throw new Error("Terminal map node is unavailable");
+    const tab = state.tabs.find((candidate) => candidate.id === node.terminalTabId);
+    if (!tab) throw new Error("Terminal tab is unavailable");
+    store.getState().updateTab(tab.id, {
+      title: "Terminal",
+      terminals: [{
+        id: "pty-gibberish-summary-fixture",
+        paneId: node.id,
+        cols: 100,
+        rows: 30,
+        status: "running",
+        currentActivity: "› sfgdsafgd ||> sfgdsafg ||> sfgdsaf",
+        terminalOutput: [
+          "translate to hebrew",
+          "Verified:",
+          "- production route: 200 OK",
+          "- Live UI smoke test clicked the real production menu action",
+          "You can start the process now.",
+          "› sfgdsafgd ||> sfgdsafg ||> sfgdsaf",
+          "gpt-5.5 default · ~",
+        ].join("\n"),
+        statusSummary: {
+          task: "Supervised agent run",
+          path: "home/endlessblink",
+          now: "› sfgdsafgd ||> sfgdsafg ||> sfgdsaf",
+          status: "working",
+          provider: "shell",
+          confidence: "low",
+        },
+      }],
+    });
+  });
+
+  await expect(page.getByTestId("canvas-terminal-node-header-title")).toHaveText("translate to hebrew");
+  await expect(page.getByTestId("canvas-terminal-node-now")).toHaveText("production route: 200 OK");
+  await expect(page.getByTestId("canvas-terminal-node-now")).not.toContainText("sfgdsafgd");
+  await expect(page.getByTestId("canvas-terminal-node-header-title")).not.toContainText("Supervised agent run");
+
+  await page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => {
+          tabs: Array<{ id: string; title: string; terminals: Array<{ paneId?: string }> }>;
+          canvasState: { nodes: Array<{ id: string; type: string; terminalTabId?: string }> };
+          updateTab: (id: string, updates: Record<string, unknown>) => void;
+        };
+      };
+    }).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+    const state = store.getState();
+    const node = state.canvasState.nodes.find((candidate) => candidate.type === "terminal");
+    if (!node?.terminalTabId) throw new Error("Terminal map node is unavailable");
+    const tab = state.tabs.find((candidate) => candidate.id === node.terminalTabId);
+    if (!tab) throw new Error("Terminal tab is unavailable");
+    store.getState().updateTab(tab.id, {
+      title: "Terminal",
+      terminals: [{
+        id: "pty-skills-summary-fixture",
+        paneId: node.id,
+        cols: 100,
+        rows: 30,
+        status: "running",
+        currentActivity: "«│ gpt-5.5 default • -",
+        terminalOutput: [
+          "mirror that architecture for post rewrites instead of adding a one-off",
+          "The editor already has a screenplay conversion preview pattern; I'll mirror that architecture for post rewrites.",
+          "Explored",
+          "Search .impeccable.md in .",
+          "Read screenplay-convert-dialog.tsx, smoke.spec.ts, editor-ai-regression.spec.ts",
+          "Reviewing approval request (1m 48s • esc to interrupt)",
+          "apply_patch touching /media/endlessblink/data/my-projects/ai-development/inner-dialogue",
+          "Use /skills to list available skills",
+          "«│ gpt-5.5 default • -",
+        ].join("\n"),
+        statusSummary: {
+          task: "Terminal",
+          path: "home/endlessblink",
+          now: "Use /skills to list available skills",
+          status: "working",
+          provider: "shell",
+          confidence: "low",
+        },
+      }],
+    });
+  });
+
+  await expect(page.getByTestId("canvas-terminal-node-header-title")).toHaveText("mirror that architecture for post rewrites instead of adding a one-off");
+  await expect(page.getByTestId("canvas-terminal-node-now")).toHaveText("The editor already has a screenplay conversion preview pattern; I'll mirror that architecture for post rewrites.");
+  await expect(page.getByTestId("canvas-terminal-node-now")).not.toContainText("/skills");
+  await expect(page.getByTestId("canvas-terminal-node-now")).not.toContainText("gpt-5.5 default");
 });

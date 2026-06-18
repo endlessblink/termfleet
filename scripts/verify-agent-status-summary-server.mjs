@@ -1,12 +1,35 @@
 #!/usr/bin/env node
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
+import http from "node:http";
 import assert from "node:assert/strict";
 
 const root = new URL("..", import.meta.url).pathname;
 const serverPath = join(root, "scripts", "agent-status-summary-server.mjs");
+const ollamaAdapterPath = join(root, "scripts", "agent-status-summary-ollama.mjs");
+const packagePath = join(root, "package.json");
+const tauriDevWrapperPath = join(root, "scripts", "tauri-dev-with-status.sh");
+const runDevPath = join(root, "run-dev.sh");
+const runNativeDevPath = join(root, "run-native-vte-dev.sh");
+
+const [packageJson, tauriDevWrapper, ollamaAdapterSource, runDev, runNativeDev] = await Promise.all([
+  readFile(packagePath, "utf8"),
+  readFile(tauriDevWrapperPath, "utf8"),
+  readFile(ollamaAdapterPath, "utf8"),
+  readFile(runDevPath, "utf8"),
+  readFile(runNativeDevPath, "utf8"),
+]);
+
+assert.match(packageJson, /"tauri:dev": "scripts\/tauri-dev-with-status\.sh"/);
+assert.match(tauriDevWrapper, /agent-status-summary-server\.mjs node scripts\/agent-status-summary-ollama\.mjs/);
+assert.match(tauriDevWrapper, /VITE_AGENT_STATUS_SUMMARY_ENDPOINT/);
+assert.match(tauriDevWrapper, /TERMFLEET_AGENT_STATUS_DISABLE/);
+assert.match(tauriDevWrapper, /TERMFLEET_AGENT_STATUS_MODEL:-qwen3:4b/);
+assert.match(ollamaAdapterSource, /TERMFLEET_AGENT_STATUS_MODEL \|\| "qwen3:4b"/);
+assert.match(runDev, /npm run tauri:dev/);
+assert.match(runNativeDev, /npm run tauri:dev/);
 
 function waitForEndpoint(child) {
   return new Promise((resolve, reject) => {
@@ -45,6 +68,19 @@ async function withServer(env, callback) {
   }
 }
 
+async function withServerArgs(env, args, callback) {
+  const child = spawn(process.execPath, [serverPath, ...args], {
+    env: { ...process.env, ...env },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  try {
+    const endpoint = await waitForEndpoint(child);
+    await callback(endpoint);
+  } finally {
+    child.kill("SIGTERM");
+  }
+}
+
 async function postStatus(endpoint, body) {
   const response = await fetch(endpoint, {
     method: "POST",
@@ -53,6 +89,79 @@ async function postStatus(endpoint, body) {
   });
   assert.equal(response.status, 200);
   return response.json();
+}
+
+function withFakeOllama(callback, responseSummary = {
+  task: "Summarize terminal",
+  path: "src/components",
+  now: "Parsed by fake Gemma adapter",
+  status: "working",
+  provider: "shell",
+  confidence: "high",
+}) {
+  return new Promise((resolve, reject) => {
+    let capturedPayload = null;
+    const server = http.createServer((request, response) => {
+      if (request.method !== "POST" || request.url !== "/api/generate") {
+        response.writeHead(404).end();
+        return;
+      }
+      let raw = "";
+      request.setEncoding("utf8");
+      request.on("data", (chunk) => {
+        raw += chunk;
+      });
+      request.on("end", () => {
+        capturedPayload = JSON.parse(raw);
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(JSON.stringify({
+          response: typeof responseSummary === "string" ? responseSummary : JSON.stringify(responseSummary),
+        }));
+      });
+    });
+    server.on("error", reject);
+    server.listen(0, "127.0.0.1", async () => {
+      const address = server.address();
+      try {
+        if (!address || typeof address === "string") throw new Error("fake ollama port unavailable");
+        await callback(`http://127.0.0.1:${address.port}`, () => capturedPayload);
+        server.close(() => resolve());
+      } catch (error) {
+        server.close(() => reject(error));
+      }
+    });
+  });
+}
+
+function runOllamaAdapter(body, env = {}) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [ollamaAdapterPath], {
+      env: {
+        ...process.env,
+        TERMFLEET_OLLAMA_URL: "http://127.0.0.1:9",
+        TERMFLEET_AGENT_STATUS_MODEL: "gemma4:e2b-it",
+        ...env,
+      },
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk.toString("utf8");
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString("utf8");
+    });
+    child.on("error", reject);
+    child.on("close", (code) => {
+      if (code !== 0) {
+        reject(new Error(`ollama adapter exited ${code}: ${stderr || stdout}`));
+        return;
+      }
+      resolve(JSON.parse(stdout));
+    });
+    child.stdin.end(JSON.stringify(body));
+  });
 }
 
 const payload = {
@@ -82,6 +191,59 @@ await withServer({ TERMFLEET_AGENT_STATUS_PORT: "37981" }, async (endpoint) => {
   assert.equal(summary.provider, "codex");
 });
 
+await withServer({ TERMFLEET_AGENT_STATUS_PORT: "37983" }, async (endpoint) => {
+  const summary = await postStatus(endpoint, {
+    type: "agent-workstream-status",
+    projectId: "workspace root unknown",
+    transcript: [
+      "translate to hebrew",
+      "What changed:",
+      "- server-side quality gate now validates generated posts",
+      "- repair pass runs automatically when first draft fails",
+      "Verified:",
+      "- quality-gate tests: 4/4 passed",
+      "› Use /skills to list available skills",
+      "gpt-5.5 default · ~",
+    ].join("\n"),
+    workstream: {
+      mission: "Terminal",
+      provider: "shell",
+      status: "running",
+      path: "workspace root unknown",
+      currentActivity: "« | gpt-5.5 default · -",
+    },
+  });
+  assert.equal(summary.task, "translate to hebrew");
+  assert.equal(summary.path, "workspace root unknown");
+  assert.equal(summary.now, "server-side quality gate now validates generated posts");
+  assert.equal(summary.provider, "shell");
+});
+
+await withServer({ TERMFLEET_AGENT_STATUS_PORT: "37985" }, async (endpoint) => {
+  const summary = await postStatus(endpoint, {
+    type: "agent-workstream-status",
+    projectId: "termfleet",
+    transcript: [
+      "gpt-5.5 default",
+      "Use /skills to list available skills",
+      "Reviewing approval request",
+      "apply_patch touching src/lib/terminalMouse.ts",
+      "Working (32s • esc to interrupt)",
+    ].join("\n"),
+    workstream: {
+      mission: "Terminal",
+      provider: "shell",
+      status: "running",
+      path: "termfleet",
+      currentActivity: "gpt-5.5 default",
+    },
+  });
+  assert.equal(summary.task, "Reviewing approval request");
+  assert.equal(summary.path, "termfleet");
+  assert.equal(summary.now, "apply_patch touching src/lib/terminalMouse.ts");
+  assert.equal(summary.provider, "shell");
+});
+
 const tmp = await mkdtemp(join(tmpdir(), "termfleet-status-summary-"));
 const fakeCommand = join(tmp, "fake-llm.mjs");
 await writeFile(fakeCommand, `#!/usr/bin/env node
@@ -90,6 +252,7 @@ process.stdin.on("data", chunk => input += chunk);
 process.stdin.on("end", () => {
   const payload = JSON.parse(input);
   if (payload.workstream.mission !== "Add local status summary process") process.exit(2);
+  if (payload.heuristicCandidate?.now !== "Wire the endpoint into the app") process.exit(3);
   process.stdout.write(JSON.stringify({
     task: "Summarize with configured local command",
     path: "scripts/agent-status-summary-server.mjs",
@@ -112,5 +275,116 @@ await withServer({
   assert.equal(summary.now, "Returning strict JSON from the fake model command");
   assert.equal(summary.confidence, "high");
 });
+
+await withServerArgs({
+  TERMFLEET_AGENT_STATUS_PORT: "37984",
+}, [process.execPath, fakeCommand], async (endpoint) => {
+  const summary = await postStatus(endpoint, payload);
+  assert.equal(summary.task, "Summarize with configured local command");
+  assert.equal(summary.path, "scripts/agent-status-summary-server.mjs");
+  assert.equal(summary.now, "Returning strict JSON from the fake model command");
+  assert.equal(summary.confidence, "high");
+});
+
+{
+  const summary = await runOllamaAdapter({
+    projectId: "termfleet",
+    transcript: "gpt-5.5 default · ~\n› Use /skills to list available skills",
+    heuristicCandidate: {
+      task: "Shell ready",
+      path: "termfleet",
+      now: "Awaiting command",
+      status: "idle",
+      provider: "shell",
+      confidence: "low",
+    },
+  });
+  assert.equal(summary.task, "Shell ready");
+  assert.equal(summary.path, "termfleet");
+  assert.equal(summary.now, "Awaiting command");
+  assert.equal(summary.confidence, "low");
+}
+
+await withFakeOllama(async (endpoint, capturedPayload) => {
+  const summary = await runOllamaAdapter({
+    projectId: "termfleet",
+    transcript: "Running tests\n10 passed",
+    workstream: { provider: "shell" },
+    heuristicCandidate: {
+      task: "Running tests",
+      path: "termfleet",
+      now: "10 tests passed",
+      status: "done",
+      provider: "shell",
+      confidence: "medium",
+    },
+  }, {
+    TERMFLEET_OLLAMA_URL: endpoint,
+    TERMFLEET_AGENT_STATUS_MODEL: "gemma4:e2b-it",
+  });
+  assert.equal(summary.task, "Summarize terminal");
+  assert.equal(summary.path, "src/components");
+  assert.equal(summary.now, "Parsed by fake Gemma adapter");
+  assert.equal(summary.confidence, "high");
+
+  const request = capturedPayload();
+  assert.equal(request.model, "gemma4:e2b-it");
+  assert.equal(request.stream, false);
+  assert.equal(request.format, "json");
+  assert.equal(request.options.temperature, 0);
+  assert.equal(request.options.num_ctx, 2048);
+  assert.equal(request.options.num_predict, 120);
+  assert.match(request.prompt, /Use heuristicCandidate/);
+  assert.match(request.prompt, /Never overclaim/);
+});
+
+await withFakeOllama(async (endpoint) => {
+  const summary = await runOllamaAdapter({
+    projectId: "termfleet",
+    transcript: "Running tests\n10 passed",
+    workstream: { provider: "shell" },
+    heuristicCandidate: {
+      task: "Running tests",
+      path: "termfleet",
+      now: "10 tests passed",
+      status: "done",
+      provider: "shell",
+      confidence: "medium",
+    },
+  }, {
+    TERMFLEET_OLLAMA_URL: endpoint,
+    TERMFLEET_AGENT_STATUS_MODEL: "gemma4:e2b-it",
+  });
+  assert.equal(summary.task, "Running tests");
+  assert.equal(summary.path, "termfleet");
+  assert.equal(summary.now, "10 tests passed");
+}, {
+  task: "gpt-5.5 default · -",
+  path: "termfleet",
+  now: "- 10 tests passed",
+  status: "done",
+  provider: "shell",
+  confidence: "high",
+});
+
+await withFakeOllama(async (endpoint) => {
+  const summary = await runOllamaAdapter({
+    projectId: "termfleet",
+    transcript: "cargo test\n10 passed",
+    heuristicCandidate: {
+      task: "Running tests",
+      path: "termfleet",
+      now: "10 tests passed",
+      status: "done",
+      provider: "shell",
+      confidence: "medium",
+    },
+  }, {
+    TERMFLEET_OLLAMA_URL: endpoint,
+    TERMFLEET_AGENT_STATUS_MODEL: "gemma4:e2b-it",
+  });
+  assert.equal(summary.task, "Running tests");
+  assert.equal(summary.now, "cargo test complete");
+}, "```json\n{\"task\":\"Running tests\",\"path\":\"termfleet\",\"now\":\"cargo test complete\",\"status\":\"done\",\"provider\":\"shell\",\"confidence\":\"high\"}\n```");
 
 process.stdout.write("TERMFLEET_AGENT_STATUS_SUMMARY_SERVER_OK\n");

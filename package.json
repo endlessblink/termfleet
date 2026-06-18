@@ -23,6 +23,9 @@
     "verify:release": "scripts/verify-release.sh",
     "verify:map-terminals": "node scripts/verify-map-terminals.mjs",
     "verify:agent-status-summary": "node scripts/verify-agent-status-summary-server.mjs",
+    "agent-status:ollama": "node scripts/agent-status-summary-ollama.mjs",
+    "termfleetctl": "node scripts/termfleetctl.mjs",
+    "verify:termfleetctl": "node scripts/verify-termfleetctl.mjs",
     "verify:agent-adapter": "scripts/verify-agent-provider-adapter-headless.sh",
     "verify:canvas-terminal": "scripts/verify-canvas-terminal.sh",
     "verify:canvas-live": "scripts/verify-canvas-live.sh",
@@ -43,7 +46,7 @@
     "verify:typography": "node scripts/verify-typography.mjs",
     "verify:visual": "scripts/verify-visual-evidence.sh",
     "tauri": "tauri",
-    "tauri:dev": "CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS:-1} CARGO_PROFILE_DEV_DEBUG=${CARGO_PROFILE_DEV_DEBUG:-0} tauri dev",
+    "tauri:dev": "scripts/tauri-dev-with-status.sh",
     "verify:zellij-shortcuts": "scripts/verify-zellij-shortcuts.sh"
   },
   "dependencies": {

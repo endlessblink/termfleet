@@ -12,6 +12,10 @@ export interface TerminalState {
   activityKind?: WorkstreamActivityKind;
   activityUpdatedAt?: number;
   terminalOutput?: string;
+  statusSummary?: WorkstreamStatusSummary;
+  statusSummaryUpdatedAt?: number;
+  statusSummarySource?: WorkstreamStatusSummarySource;
+  statusSummaryError?: string;
   lastStatusAt?: number;
   lastError?: string;
 }

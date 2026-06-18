@@ -86,6 +86,28 @@ cleanup
 
 shot() { import -window "$1" "$OUT_DIR/$2" 2>>"$DRIVER_LOG" || true; }
 
+assert_visual_change() {
+  local before="$1"
+  local after="$2"
+  local label="$3"
+  if [[ ! -s "$before" || ! -s "$after" ]]; then
+    echo "CANVAS_LIVE_VISUAL_CHANGE_SCREENSHOT_MISSING  $label" >&2
+    return 1
+  fi
+  local diff_pixels
+  diff_pixels="$(magick compare -metric AE "$before" "$after" null: 2>&1 || true)"
+  python3 - "$label" "$diff_pixels" <<'PYEOF'
+import re, sys
+label = sys.argv[1]
+match = re.search(r"\d+", sys.argv[2])
+pixels = int(match.group(0)) if match else 0
+if pixels < 1000:
+    print(f"CANVAS_LIVE_VISUAL_CHANGE_TOO_SMALL  {label} changed_pixels={pixels}", file=sys.stderr)
+    sys.exit(1)
+print(f"CANVAS_LIVE_VISUAL_REPAINT  {label} changed_pixels={pixels}")
+PYEOF
+}
+
 # --- Driver: runs concurrently with the foreground app, then exits. ---
 drive() {
   local wid=""
@@ -143,6 +165,8 @@ drive() {
   xdotool mousemove --window "$wid" 1000 500 click --clearmodifiers 1; sleep 0.4
   xdotool type --clearmodifiers --delay 12 "htop"; xdotool key Return; sleep 3
   shot "$wid" "06-htop.png"
+  xdotool mousemove --window "$wid" 1000 500 click --clearmodifiers 5; sleep 0.8
+  shot "$wid" "06a-htop-wheel-down.png"
   sleep 1.5
   shot "$wid" "07-htop-live.png"        # second frame: confirms continuous redraw
   xdotool key q; sleep 0.8
@@ -242,6 +266,9 @@ print("CANVAS_LIVE_INPUT_REACHED_DAEMON")
 print("CANVAS_LIVE_OUTPUT_IN_SNAPSHOT")
 PYEOF
 VERIFY_STATUS=$?
+if (( VERIFY_STATUS == 0 )); then
+  assert_visual_change "$OUT_DIR/06-htop.png" "$OUT_DIR/06a-htop-wheel-down.png" "htop-wheel-down" || VERIFY_STATUS=$?
+fi
 cleanup
 if (( VERIFY_STATUS != 0 )); then
   exit "$VERIFY_STATUS"

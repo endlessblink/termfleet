@@ -43,6 +43,18 @@ const NOISY_ACTIVITY_PATTERNS = [
   /^hello[!.]?$/i,
   /^web\$ /i,
   /^bash[$#]?\s*/i,
+  /^supervised agent run$/i,
+  /^shell ready$/i,
+  /^›\s*/i,
+  /^›\s*use\s+\/\w+/i,
+  /^use\s+\/\w+/i,
+  /^F\d+\w+\s+F\d+/i,
+  /\bF10Quit\b/i,
+  /^[«‹›|│┃¦\s•·-]*gpt[-\w. ]+\s+default\b/i,
+  /^«?\s*\|?\s*gpt[-\w. ]+\s+default\b/i,
+  /^«?\s*\|?\s*[\w.-]+\s+default\b/i,
+  /\|\|?>/,
+  /\besc to interrupt\b/i,
   /^codex: command is not available/i,
   /^claude: command is not available/i,
   /^opencode: command is not available/i,
@@ -51,13 +63,53 @@ const NOISY_ACTIVITY_PATTERNS = [
 ];
 
 function cleanText(value?: string | null) {
-  return value?.replace(/\s+/g, " ").trim() || undefined;
+  return value?.replace(/\s+/g, " ").replace(/^[•*-]\s+/, "").trim() || undefined;
 }
 
 function isNoisyActivity(value?: string | null) {
   const text = cleanText(value);
   if (!text) return true;
   return NOISY_ACTIVITY_PATTERNS.some((pattern) => pattern.test(text));
+}
+
+function rawTranscriptLines(input: AgentStatusSummaryInput) {
+  return (input.terminalOutput ?? "")
+    .replace(/\r/g, "\n")
+    .split("\n")
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+}
+
+function hasVisibleShellPrompt(input: AgentStatusSummaryInput) {
+  return rawTranscriptLines(input).slice(-5).some((line) =>
+    /^[\w.-]+@[\w.-]+:[^$#>]*[$#>]\s*$/.test(line) ||
+    /^[~./\w -]+[$#>]\s*$/.test(line)
+  );
+}
+
+function transcriptLines(input: AgentStatusSummaryInput) {
+  return rawTranscriptLines(input)
+    .filter((line) => !isNoisyActivity(line));
+}
+
+function inferTranscriptTask(lines: string[]) {
+  const text = lines.join("\n");
+  if (/\bTasks:\s*\d+/.test(text) && /\bLoad average:/.test(text)) return "Monitoring processes";
+  return lines.find((line) =>
+    /^[\p{L}\p{N}][\p{L}\p{N}\s:_/-]{3,90}$/u.test(line) &&
+    !/^(what changed|verified|done|output|path|signal|now)$/i.test(line) &&
+    !/\b(passed|failed|error|http|github\.com|https?:\/\/)\b/i.test(line)
+  );
+}
+
+function inferTranscriptNow(lines: string[], task?: string) {
+  const text = lines.join("\n");
+  if (/\bTasks:\s*\d+/.test(text) && /\bLoad average:/.test(text)) return "htop live process table";
+  return lines.find((line) =>
+    line !== task &&
+    !/^(what changed|verified|done|output|path|signal|now):?$/i.test(line) &&
+    /\b(now runs|validates|repair|rewrite|checking|reviewing|translated|translation|quality-gate|regression|deployed|active|200 ok|passed|completed|hook|triage|prompt-routing|explored|search|read|apply_patch|touching|architecture|mirroring|mirror)\b/i.test(line)
+  );
 }
 
 function normalizeLifecycle(input: Pick<AgentStatusSummaryInput, "status" | "phase">): AgentStatusLifecycle {
@@ -87,6 +139,9 @@ function fallbackNow(input: AgentStatusSummaryInput, task: string, status: Agent
   const summary = cleanText(input.lastSummary);
   if (summary && !isNoisyActivity(summary)) return summary;
 
+  const transcriptNow = cleanText(inferTranscriptNow(transcriptLines(input), task));
+  if (transcriptNow && !isNoisyActivity(transcriptNow)) return transcriptNow;
+
   if (status === "blocked") return "Needs operator attention";
   if (status === "done") return "Ready for review";
   if (status === "waiting") return "Waiting for input";
@@ -96,15 +151,20 @@ function fallbackNow(input: AgentStatusSummaryInput, task: string, status: Agent
 }
 
 export function fallbackAgentStatusSummary(input: AgentStatusSummaryInput): AgentStatusSummary {
+  const lines = transcriptLines(input);
+  const transcriptTask = cleanText(inferTranscriptTask(lines));
+  const promptVisible = hasVisibleShellPrompt(input);
   const task =
-    cleanText(input.mission) ??
+    promptVisible && !transcriptTask ? "Ready" :
+    (cleanText(input.mission) && cleanText(input.mission) !== "Terminal" ? cleanText(input.mission) : undefined) ??
     cleanText(input.prompt) ??
+    transcriptTask ??
     "Supervised agent run";
-  const status = normalizeLifecycle(input);
+  const status = promptVisible && task === "Ready" ? "idle" : normalizeLifecycle(input);
   return {
     task,
     path: pathFromInput(input),
-    now: fallbackNow(input, task, status),
+    now: promptVisible && task === "Ready" ? "Awaiting command" : fallbackNow(input, task, status),
     status,
     provider: input.provider ?? "codex",
     confidence: cleanText(input.currentActivity) && !isNoisyActivity(input.currentActivity) ? "medium" : "low",
@@ -162,6 +222,45 @@ export function parseAgentStatusSummaryResponse(raw: string, fallback: AgentStat
   } catch {
     return fallback;
   }
+}
+
+export function displayAgentStatusSummary(
+  input: AgentStatusSummaryInput,
+  persisted?: WorkstreamStatusSummary | null
+): AgentStatusSummary {
+  const fallback = fallbackAgentStatusSummary(input);
+  const task = cleanText(persisted?.task);
+  const path = cleanText(persisted?.path);
+  const now = cleanText(persisted?.now);
+  if (!task || !path || !now || isNoisyActivity(task) || isNoisyActivity(path) || isNoisyActivity(now)) {
+    return fallback;
+  }
+  return {
+    ...fallback,
+    ...persisted,
+    task,
+    path,
+    now,
+    status: persisted?.status ?? fallback.status,
+    provider: persisted?.provider ?? fallback.provider,
+    confidence: persisted?.confidence ?? fallback.confidence,
+  };
+}
+
+export function getDisplaySummary(
+  input: AgentStatusSummaryInput,
+  persisted?: WorkstreamStatusSummary | null
+): AgentStatusSummary {
+  const summary = displayAgentStatusSummary(input, persisted);
+  if (input.provider === "shell" && summary.task === "Supervised agent run") {
+    return {
+      ...summary,
+      task: "Ready",
+      now: summary.status === "idle" ? "Awaiting command" : "Awaiting terminal output",
+      confidence: "low",
+    };
+  }
+  return summary;
 }
 
 function persistedAgentStatusSummary(workstream: WorkstreamMetadata, fallback: AgentStatusSummary): AgentStatusSummary | null {

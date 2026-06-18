@@ -16,9 +16,11 @@ export interface AgentStatusSummarizerOptions {
   fetcher?: typeof fetch;
 }
 
+const DEFAULT_AGENT_STATUS_SUMMARY_ENDPOINT = "http://127.0.0.1:37819/status";
+
 function configuredEndpoint() {
   const env = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env;
-  return env?.VITE_AGENT_STATUS_SUMMARY_ENDPOINT?.trim();
+  return env?.VITE_AGENT_STATUS_SUMMARY_ENDPOINT?.trim() || DEFAULT_AGENT_STATUS_SUMMARY_ENDPOINT;
 }
 
 export function isAgentStatusSummarizerConfigured() {
@@ -31,10 +33,22 @@ function shortError(error: unknown) {
 }
 
 function buildRequestBody(input: AgentStatusSummaryInput) {
+  const fallback = fallbackAgentStatusSummary(input);
+  const transcript = (input.terminalOutput ?? "").slice(-1800);
   return {
     type: "agent-workstream-status",
+    promptVersion: "terminal-status-v2-tiny",
+    instructions: [
+      "Return compact JSON for a terminal cockpit.",
+      "Use the heuristicCandidate unless the transcript clearly improves it.",
+      "Ignore prompts, model names, spinners, esc-to-interrupt, repeated commands, and chrome.",
+      "Describe only visible/current activity. Never overclaim.",
+      "Keep task/path/now short, plain, and free of bullets.",
+    ],
     projectId: input.gitRoot ?? input.cwd ?? input.cwdLabel ?? "workspace",
-    transcript: input.terminalOutput ?? "",
+    transcript,
+    transcriptWindow: "visible grid snapshot plus recent transcript tail",
+    heuristicCandidate: fallback,
     workstream: {
       mission: input.mission,
       prompt: input.prompt,
@@ -60,6 +74,30 @@ function buildRequestBody(input: AgentStatusSummaryInput) {
       proof: "optional string",
       blocker: "optional string",
     },
+    examples: [
+      {
+        transcript: "cargo test\\nRunning 15 tests\\ntest renderer ... FAILED",
+        summary: {
+          task: "Running tests",
+          path: "project",
+          now: "renderer test failed",
+          status: "working",
+          provider: input.provider ?? "shell",
+          confidence: "high",
+        },
+      },
+      {
+        transcript: "gpt-5.5 default · ~\\n› Use /skills to list available skills",
+        summary: {
+          task: "Shell ready",
+          path: "workspace",
+          now: "Awaiting command",
+          status: "idle",
+          provider: input.provider ?? "shell",
+          confidence: "low",
+        },
+      },
+    ],
   };
 }
 

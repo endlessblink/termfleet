@@ -16,6 +16,7 @@ test("terminal mouse reports encode SGR and legacy VT sequences", async ({ page 
       encodeMouseReport,
       pointerButtonToTerminalButton,
       shouldSendWheelToTerminalApp,
+      terminalWheelAction,
     } = await import("/src/lib/terminalMouse.ts");
     const hex = (value: string) =>
       [...value].map((ch) => ch.charCodeAt(0).toString(16).padStart(2, "0")).join(" ");
@@ -44,6 +45,56 @@ test("terminal mouse reports encode SGR and legacy VT sequences", async ({ page 
       ignoredButton: pointerButtonToTerminalButton(4),
       plainWheelUsesTerminalHistory: shouldSendWheelToTerminalApp({ altKey: false }),
       altWheelUsesTerminalApp: shouldSendWheelToTerminalApp({ altKey: true }),
+      mouseReportingWheelUsesTerminalApp: shouldSendWheelToTerminalApp(
+        { altKey: false },
+        { mouseReport: true }
+      ),
+      alternateScrollWheelUsesTerminalApp: shouldSendWheelToTerminalApp(
+        { altKey: false },
+        { altScreen: true, alternateScroll: true, alternateScrollSet: true }
+      ),
+      plainAltScreenWheelUsesTerminalApp: shouldSendWheelToTerminalApp(
+        { altKey: false },
+        { altScreen: true, alternateScroll: false }
+      ),
+      disabledAlternateScrollUsesHistory: shouldSendWheelToTerminalApp(
+        { altKey: false },
+        { altScreen: true, alternateScroll: false, alternateScrollSet: true }
+      ),
+      shiftAltScreenWheelUsesTerminalHistory: shouldSendWheelToTerminalApp(
+        { altKey: false, shiftKey: true },
+        { altScreen: true, alternateScroll: false }
+      ),
+      shiftMouseReportingWheelUsesTerminalApp: shouldSendWheelToTerminalApp(
+        { altKey: false, shiftKey: true },
+        { mouseReport: true, altScreen: true }
+      ),
+      plainWheelAction: terminalWheelAction({ altKey: false }, {}, "down"),
+      altScreenWheelDownAction: terminalWheelAction(
+        { altKey: false },
+        { altScreen: true, alternateScroll: false },
+        "down"
+      ),
+      explicitAlternateScrollWheelUpAction: terminalWheelAction(
+        { altKey: false },
+        { altScreen: true, alternateScroll: true, alternateScrollSet: true },
+        "up"
+      ),
+      appCursorWheelUpAction: terminalWheelAction(
+        { altKey: false },
+        { altScreen: true, alternateScroll: true, alternateScrollSet: true, appCursor: true },
+        "up"
+      ),
+      shiftAltScreenWheelAction: terminalWheelAction(
+        { altKey: false, shiftKey: true },
+        { altScreen: true },
+        "down"
+      ),
+      mouseReportWheelAction: terminalWheelAction(
+        { altKey: false, shiftKey: true },
+        { mouseReport: true, altScreen: true },
+        "down"
+      ),
     };
   });
 
@@ -58,4 +109,16 @@ test("terminal mouse reports encode SGR and legacy VT sequences", async ({ page 
   expect(out.ignoredButton).toBeNull();
   expect(out.plainWheelUsesTerminalHistory).toBe(false);
   expect(out.altWheelUsesTerminalApp).toBe(true);
+  expect(out.mouseReportingWheelUsesTerminalApp).toBe(true);
+  expect(out.alternateScrollWheelUsesTerminalApp).toBe(true);
+  expect(out.plainAltScreenWheelUsesTerminalApp).toBe(true);
+  expect(out.disabledAlternateScrollUsesHistory).toBe(false);
+  expect(out.shiftAltScreenWheelUsesTerminalHistory).toBe(false);
+  expect(out.shiftMouseReportingWheelUsesTerminalApp).toBe(true);
+  expect(out.plainWheelAction).toEqual({ kind: "history" });
+  expect(out.altScreenWheelDownAction).toEqual({ kind: "app-arrows", sequence: "\x1b[B" });
+  expect(out.explicitAlternateScrollWheelUpAction).toEqual({ kind: "app-arrows", sequence: "\x1b[A" });
+  expect(out.appCursorWheelUpAction).toEqual({ kind: "app-arrows", sequence: "\x1bOA" });
+  expect(out.shiftAltScreenWheelAction).toEqual({ kind: "history" });
+  expect(out.mouseReportWheelAction).toEqual({ kind: "mouse-report" });
 });

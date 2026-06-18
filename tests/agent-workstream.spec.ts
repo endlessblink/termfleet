@@ -94,21 +94,31 @@ async function runWorkspaceCommand(page: import("@playwright/test").Page, comman
 async function ageAgentWorkstream(page: import("@playwright/test").Page, mission: string, idleMinutes: number, activity: string) {
   await page.waitForTimeout(300);
   await page.evaluate(({ mission, idleMinutes, activity }) => {
-    const raw = localStorage.getItem("terminal-workspace.v1");
-    if (!raw) throw new Error("Workspace snapshot missing");
-    const state = JSON.parse(raw);
-    const agent = state.tabs?.find((tab: { workstream?: { kind?: string; mission?: string } }) =>
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => {
+          tabs: Array<{ id: string; workstream?: { kind?: string; mission?: string } }>;
+          updateTab: (id: string, updates: { workstream?: Record<string, unknown> }) => void;
+        };
+      };
+    }).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+    const state = store.getState();
+    const agent = state.tabs?.find((tab) =>
       tab.workstream?.kind === "agent" && tab.workstream?.mission === mission
     );
     if (!agent?.workstream) throw new Error(`Agent workstream not found: ${mission}`);
     const staleAt = Date.now() - idleMinutes * 60_000;
-    agent.workstream.activityUpdatedAt = staleAt;
-    agent.workstream.lastActivityAt = staleAt;
-    agent.workstream.currentActivity = activity;
-    localStorage.setItem("terminal-workspace.v1", JSON.stringify(state));
+    state.updateTab(agent.id, {
+      workstream: {
+        ...agent.workstream,
+        activityUpdatedAt: staleAt,
+        lastActivityAt: staleAt,
+        currentActivity: activity,
+      },
+    });
   }, { mission, idleMinutes, activity });
-  await page.reload({ waitUntil: "domcontentloaded" });
-  await page.waitForLoadState("networkidle");
+  await expect(page.getByTestId("canvas-agent-lane-summary")).toContainText("1 stale");
 }
 
 async function seedAgentTerminalOutputs(page: import("@playwright/test").Page, missions: string[]) {
@@ -555,8 +565,9 @@ test("command palette creates a supervised Codex agent on the map", async ({ pag
   await expect(page.getByTestId("canvas-agent-status-chips")).toContainText("codex");
   await expect(page.getByTestId("canvas-agent-status-chips")).toContainText("working");
   await runWorkspaceCommand(page, "show terminal");
-  await expect(page.getByTestId("split-agent-working-on")).toContainText(`Working on: ${PRIMARY_MISSION}`);
-  await expect(page.getByTestId("split-agent-pane-now")).toHaveText("Now: Watch provider response");
+  await expect(page.getByTestId("split-agent-working-on")).toContainText(PRIMARY_MISSION);
+  await expect(page.getByTestId("split-agent-status-path")).toContainText("workspace root unknown");
+  await expect(page.getByTestId("split-agent-pane-now")).toContainText("Watch provider response");
   await runWorkspaceCommand(page, "show map");
   await expect(page.getByLabel("Agent current activity")).toContainText("command is not available in browser preview");
   await expect(page.getByLabel("Agent operator guidance").getByText("Watch provider response")).toBeVisible();
@@ -1052,7 +1063,7 @@ test("command palette creates a supervised Codex agent on the map", async ({ pag
   await expect(page.getByTestId("canvas-agent-cockpit-ask")).toContainText("Resolve risk for Codex agent");
   await expect(page.getByTestId("canvas-agent-cockpit-ask")).toContainText("Mitigate risk · sent");
   await runWorkspaceCommand(page, "show terminal");
-  await expect(page.getByTestId("split-agent-pane-ask")).toContainText("Ask: Mitigate risk · sent");
+  await expect(page.getByTestId("split-agent-pane-ask")).toContainText("Ask · Mitigate risk · sent");
   await expect(page.getByTestId("split-agent-pane-ask")).toContainText("Resolve risk for Codex agent");
   await runWorkspaceCommand(page, "show map");
   await expect(page.getByTestId("canvas-agent-lane-summary")).toContainText("1 risk");
@@ -1099,7 +1110,7 @@ test("command palette creates a supervised Codex agent on the map", async ({ pag
   await expect(page.getByTestId("canvas-agent-cockpit-ask")).toContainText("Recover Codex agent");
   await expect(page.getByTestId("canvas-agent-cockpit-ask")).toContainText("Recover · sent");
   await runWorkspaceCommand(page, "show terminal");
-  await expect(page.getByTestId("split-agent-pane-ask")).toContainText("Ask: Recover · sent");
+  await expect(page.getByTestId("split-agent-pane-ask")).toContainText("Ask · Recover · sent");
   await expect(page.getByTestId("split-agent-pane-ask")).toContainText("Recover Codex agent");
   await runWorkspaceCommand(page, "show map");
 
@@ -1585,7 +1596,7 @@ test("command palette can launch a headless Codex agent profile", async ({ page,
   await expect(page.getByLabel("Agent provider control surface")).toContainText("Codex headless status stream");
 
   await page.getByRole("button", { name: "Open full terminal" }).last().click();
-  await expect(page.getByTestId("split-agent-working-on")).toContainText(`Working on: ${mission}`);
+  await expect(page.getByTestId("split-agent-working-on")).toContainText(mission);
   await expect(page.getByTestId("split-agent-pane-now")).toContainText("Watch provider response");
 
   await expect.poll(async () => page.evaluate((mission) => {
@@ -2125,7 +2136,7 @@ test("agent lane flags completed work without proof", async ({ page, context }) 
   await expect(page.getByTestId("canvas-agent-working-on")).toContainText("Summarize flaky test failures");
   await expect(page.getByTestId("canvas-agent-status-now")).toContainText("Ready for review");
   await runWorkspaceCommand(page, "show terminal");
-  await expect(page.getByTestId("split-agent-pane-now")).toHaveText("Now: Ready for review");
+  await expect(page.getByTestId("split-agent-pane-now")).toContainText("Ready for review");
   await runWorkspaceCommand(page, "show map");
   await expect(page.getByTestId("canvas-agent-lane-headline")).toContainText("Next: Request proof");
   await expect(page.getByTestId("canvas-agent-lane-headline")).toContainText("Summary finished");
@@ -2949,9 +2960,9 @@ test("agent lane summarizes multiple supervised workstreams", async ({ page, con
   await expect(sidebarCodexRun.getByTestId("sidebar-agent-run-status")).toContainText("working · codex · Auditing deployment scripts");
   await expect(sidebarClaudeRun.getByTestId("sidebar-agent-run-status")).toContainText("idle · claude · Waiting for operator follow-up");
   await sidebarClaudeRun.click();
-  await expect(page.getByTestId("split-agent-pane-now")).toHaveText("Now: Waiting for operator follow-up");
+  await expect(page.getByTestId("split-agent-pane-now")).toContainText("Waiting for operator follow-up");
   await sidebarCodexRun.click();
-  await expect(page.getByTestId("split-agent-pane-now")).toHaveText("Now: Watch provider response");
+  await expect(page.getByTestId("split-agent-pane-now")).toContainText("Watch provider response");
   await page.getByRole("button", { name: "Map", exact: true }).click();
   await expect(page.getByTestId("canvas-agent-lane-isolation-breakdown")).toContainText("shared workspace: 1");
   await expect(page.getByTestId("canvas-agent-lane-isolation-breakdown")).toContainText("dedicated worktree requested: 1");

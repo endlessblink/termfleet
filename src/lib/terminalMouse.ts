@@ -6,6 +6,19 @@ export interface TerminalMouseModifiers {
   ctrlKey?: boolean;
 }
 
+export interface TerminalWheelModes {
+  mouseReport?: boolean;
+  altScreen?: boolean;
+  alternateScrollSet?: boolean;
+  alternateScroll?: boolean;
+  appCursor?: boolean;
+}
+
+export type TerminalWheelAction =
+  | { kind: "mouse-report" }
+  | { kind: "app-arrows"; sequence: string }
+  | { kind: "history" };
+
 export interface TerminalMouseReport {
   button: TerminalMouseButton;
   col: number;
@@ -52,6 +65,31 @@ export function pointerButtonToTerminalButton(button: number): TerminalMouseButt
   return null;
 }
 
-export function shouldSendWheelToTerminalApp(modifiers: TerminalMouseModifiers): boolean {
-  return Boolean(modifiers.altKey);
+export function shouldSendWheelToTerminalApp(modifiers: TerminalMouseModifiers, modes: TerminalWheelModes = {}): boolean {
+  if (modes.mouseReport) return true;
+  if (modifiers.shiftKey) return false;
+  if (modifiers.altKey) return true;
+  if (!modes.altScreen) return false;
+  if (modes.alternateScrollSet && !modes.alternateScroll) return false;
+  return true;
+}
+
+export function terminalWheelAction(
+  modifiers: TerminalMouseModifiers,
+  modes: TerminalWheelModes = {},
+  direction: "up" | "down" = "down"
+): TerminalWheelAction {
+  if (modes.mouseReport) return { kind: "mouse-report" };
+  if (modifiers.shiftKey) return { kind: "history" };
+  const useAppArrows = modifiers.altKey ||
+    (modes.altScreen && !(modes.alternateScrollSet && !modes.alternateScroll));
+  if (useAppArrows) {
+    return {
+      kind: "app-arrows",
+      sequence: direction === "up"
+        ? modes.appCursor ? "\x1bOA" : "\x1b[A"
+        : modes.appCursor ? "\x1bOB" : "\x1b[B",
+    };
+  }
+  return { kind: "history" };
 }

@@ -6,7 +6,7 @@ import { useWorkspaceStore } from "../stores/workspace";
 import { splitActivePane, closeActivePane } from "../stores/workspace";
 import type { Tab, TerminalRuntimeStatus } from "../lib/types";
 import { pathTail, projectForTab } from "../lib/projectDisplay";
-import { agentStatusSummaryFromWorkstream } from "../lib/agentStatusSummary";
+import { agentStatusSummaryFromWorkstream, getDisplaySummary } from "../lib/agentStatusSummary";
 import { workstreamActivityText } from "../lib/workstreamActivity";
 import {
   calculatePaneBounds,
@@ -521,17 +521,37 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
         const agentStatusSummary = tab.workstream?.kind === "agent"
           ? agentStatusSummaryFromWorkstream(tab.workstream)
           : null;
+        const shellStatusSummary = !agentStatusSummary && !isPreviewPane && paneTerminal
+          ? getDisplaySummary({
+              mission: "Terminal",
+              provider: "shell",
+              status: terminalStatus === "failed"
+                ? "failed"
+                : terminalStatus === "exited"
+                  ? "done"
+                  : terminalStatus === "running" || terminalStatus === "reconnected"
+                    ? "running"
+                    : "ready",
+              cwd: paneCwd,
+              currentActivity: paneTerminal.currentActivity,
+              terminalOutput: paneTerminal.terminalOutput,
+            }, paneTerminal.statusSummary)
+          : null;
+        const isAgentPane = Boolean(agentStatusSummary);
+        const isShellSummaryPane = Boolean(shellStatusSummary);
         const paneActivity = !isPreviewPane
           ? tab.workstream?.kind === "agent"
             ? agentStatusSummary?.now ?? workstreamActivityText(tab.workstream)
-            : paneTerminal?.currentActivity
+            : shellStatusSummary?.now
           : null;
         const paneOutput = !isPreviewPane
           ? tab.workstream?.kind === "agent"
             ? tab.workstream.terminalOutput?.trim()
             : paneTerminal?.terminalOutput?.trim()
           : undefined;
-        const chromeHeight = 24;
+        const chromeHeight = isAgentPane
+          ? 68 + (latestMissionControlInput ? 16 : 0) + (paneOutput ? 16 : 0)
+          : isShellSummaryPane ? 58 : 24;
         const showActions = hoveredPaneId === paneId || isActive;
 
         return (
@@ -652,16 +672,260 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
               style={{
                 height: chromeHeight,
                 minHeight: chromeHeight,
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                padding: "0 7px",
+                display: isAgentPane || isShellSummaryPane ? "grid" : "flex",
+                gridTemplateRows: isAgentPane || isShellSummaryPane ? "auto auto" : undefined,
+                alignItems: isAgentPane || isShellSummaryPane ? "stretch" : "center",
+                gap: isAgentPane ? 6 : isShellSummaryPane ? 5 : 8,
+                padding: isAgentPane ? "8px 9px 7px" : isShellSummaryPane ? "7px 8px 6px" : "0 7px",
                 borderBottom: "1px solid var(--border-subtle)",
                 background: isActive ? "#202527" : "#1d2224",
                 color: "var(--text-secondary)",
                 cursor: "default",
               }}
             >
+              {isAgentPane && agentStatusSummary ? (
+                <>
+                <div
+                  style={{
+                    minWidth: 0,
+                    display: "grid",
+                    gridTemplateColumns: "auto auto minmax(0, 1fr) auto auto",
+                    alignItems: "center",
+                    gap: 8,
+                  }}
+                >
+                  <span
+                    className="terminal-pane-status-dot"
+                    style={{
+                      width: 7,
+                      height: 7,
+                      borderRadius: "50%",
+                      background: STATUS_COLORS[terminalStatus],
+                      opacity: isActive ? 1 : 0.7,
+                      boxShadow: isActive ? `0 0 0 3px color-mix(in srgb, ${STATUS_COLORS[terminalStatus]} 16%, transparent)` : "none",
+                    }}
+                    title={`Terminal ${terminalStatusLabel}`}
+                  />
+                  <TerminalSquare
+                    size={13}
+                    strokeWidth={1.8}
+                    color={isActive ? "var(--accent-live)" : "var(--text-secondary)"}
+                  />
+                  <div
+                    data-testid="split-agent-working-on"
+                    style={{
+                      minWidth: 0,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                      color: isActive ? "var(--text-primary)" : "var(--text-secondary)",
+                      fontSize: 13,
+                      fontWeight: 500,
+                    }}
+                    title={agentStatusSummary.task}
+                  >
+                    {agentStatusSummary.task}
+                  </div>
+                  <span
+                    style={{
+                      minWidth: 92,
+                      height: 18,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      padding: "0 7px",
+                      border: "1px solid var(--border-subtle)",
+                      borderRadius: "var(--radius-xs)",
+                      background: "var(--surface-base)",
+                      color: "var(--text-secondary)",
+                      fontSize: 10,
+                      textTransform: "uppercase",
+                    }}
+                    title={`${agentStatusSummary.provider} · ${agentStatusSummary.status}`}
+                  >
+                    {agentStatusSummary.provider} · {agentStatusSummary.status}
+                  </span>
+                  <PaneToolbar
+                    paneId={paneId}
+                    tabId={tab.id}
+                    canClose={multiplePanes}
+                    visible={showActions}
+                  />
+                </div>
+                <div
+                  style={{
+                    minWidth: 0,
+                    display: "grid",
+                    gridTemplateColumns: "minmax(120px, 0.8fr) minmax(180px, 1.2fr)",
+                    gap: 8,
+                    alignItems: "center",
+                  }}
+                >
+                  <div
+                    data-testid="split-agent-status-path"
+                    style={{
+                      minWidth: 0,
+                      display: "flex",
+                      alignItems: "baseline",
+                      gap: 5,
+                      overflow: "hidden",
+                      color: "var(--text-secondary)",
+                      fontSize: 11,
+                    }}
+                    title={agentStatusSummary.path}
+                  >
+                    <span style={{ flexShrink: 0, color: "var(--text-tertiary)", fontSize: 10, textTransform: "uppercase" }}>Path</span>
+                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{agentStatusSummary.path}</span>
+                  </div>
+                  <div
+                    data-testid="split-agent-pane-now"
+                    style={{
+                      minWidth: 0,
+                      display: "flex",
+                      alignItems: "baseline",
+                      gap: 5,
+                      overflow: "hidden",
+                      color: isActive ? "var(--text-primary)" : "var(--text-secondary)",
+                      fontSize: 11,
+                      fontWeight: 500,
+                    }}
+                    title={agentStatusSummary.now}
+                  >
+                    <span style={{ flexShrink: 0, color: "var(--text-tertiary)", fontSize: 10, textTransform: "uppercase" }}>Now</span>
+                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{agentStatusSummary.now}</span>
+                  </div>
+                </div>
+                {latestMissionControlInput && (
+                  <div
+                    data-testid="split-agent-pane-ask"
+                    style={{
+                      minWidth: 0,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                      color: "var(--text-secondary)",
+                      fontSize: 10,
+                      fontWeight: 500,
+                    }}
+                    title={latestMissionControlInput.text}
+                  >
+                    Ask · {latestMissionControlInput.label ?? "Mission control"} · {latestMissionControlInput.sentAt ? "sent" : "queued"} · {latestMissionControlInput.text}
+                  </div>
+                )}
+                {paneOutput && (
+                  <div
+                    data-testid="split-agent-pane-output"
+                    style={{
+                      minWidth: 0,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                      color: "var(--text-secondary)",
+                      fontSize: 10,
+                      fontWeight: 500,
+                    }}
+                    title={paneOutput}
+                  >
+                    Output: {paneOutput}
+                  </div>
+                )}
+                </>
+              ) : shellStatusSummary ? (
+                <>
+                <div
+                  style={{
+                    minWidth: 0,
+                    display: "grid",
+                    gridTemplateColumns: "auto auto minmax(0, 1fr) auto",
+                    alignItems: "center",
+                    gap: 7,
+                  }}
+                >
+                  <span
+                    className="terminal-pane-status-dot"
+                    style={{
+                      width: 7,
+                      height: 7,
+                      borderRadius: "50%",
+                      background: STATUS_COLORS[terminalStatus],
+                      opacity: isActive ? 1 : 0.7,
+                      boxShadow: isActive ? `0 0 0 3px color-mix(in srgb, ${STATUS_COLORS[terminalStatus]} 16%, transparent)` : "none",
+                    }}
+                    title={`Terminal ${terminalStatusLabel}`}
+                  />
+                  <TerminalSquare
+                    size={13}
+                    strokeWidth={1.8}
+                    color={isActive ? "var(--accent-live)" : "var(--text-secondary)"}
+                  />
+                  <div
+                    data-testid="split-terminal-summary-task"
+                    style={{
+                      minWidth: 0,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                      color: isActive ? "var(--text-primary)" : "var(--text-secondary)",
+                      fontSize: 13,
+                      fontWeight: 500,
+                    }}
+                    title={shellStatusSummary.task}
+                  >
+                    {shellStatusSummary.task}
+                  </div>
+                  <PaneToolbar
+                    paneId={paneId}
+                    tabId={tab.id}
+                    canClose={multiplePanes}
+                    visible={showActions}
+                  />
+                </div>
+                <div
+                  style={{
+                    minWidth: 0,
+                    display: "grid",
+                    gridTemplateColumns: "minmax(120px, 0.8fr) minmax(180px, 1.2fr)",
+                    gap: 8,
+                    alignItems: "center",
+                  }}
+                >
+                  <div
+                    data-testid="split-terminal-summary-path"
+                    style={{
+                      minWidth: 0,
+                      display: "flex",
+                      alignItems: "baseline",
+                      gap: 5,
+                      overflow: "hidden",
+                      color: "var(--text-secondary)",
+                      fontSize: 11,
+                    }}
+                    title={shellStatusSummary.path}
+                  >
+                    <span style={{ flexShrink: 0, color: "var(--text-tertiary)", fontSize: 10, textTransform: "uppercase" }}>Path</span>
+                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{shellStatusSummary.path}</span>
+                  </div>
+                  <div
+                    data-testid="split-terminal-summary-now"
+                    style={{
+                      minWidth: 0,
+                      display: "flex",
+                      alignItems: "baseline",
+                      gap: 5,
+                      overflow: "hidden",
+                      color: isActive ? "var(--text-primary)" : "var(--text-secondary)",
+                      fontSize: 11,
+                      fontWeight: 500,
+                    }}
+                    title={shellStatusSummary.now}
+                  >
+                    <span style={{ flexShrink: 0, color: "var(--text-tertiary)", fontSize: 10, textTransform: "uppercase" }}>Now</span>
+                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{shellStatusSummary.now}</span>
+                  </div>
+                </div>
+                </>
+              ) : (
+              <>
               <span
                 className="terminal-pane-status-dot"
                 style={{
@@ -787,6 +1051,8 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                 canClose={multiplePanes}
                 visible={showActions}
               />
+              </>
+              )}
             </div>
             )}
             <div style={{ flex: 1, minHeight: 0, minWidth: 0 }}>

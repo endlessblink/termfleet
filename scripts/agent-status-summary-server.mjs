@@ -1,23 +1,26 @@
 #!/usr/bin/env node
 import http from "node:http";
 import { spawn } from "node:child_process";
+import { argv } from "node:process";
 
 const host = process.env.TERMFLEET_AGENT_STATUS_HOST || "127.0.0.1";
 const port = Number(process.env.TERMFLEET_AGENT_STATUS_PORT || 37819);
-const command = process.env.TERMFLEET_AGENT_STATUS_COMMAND;
+const command = process.env.TERMFLEET_AGENT_STATUS_COMMAND || argv[2];
 const commandArgs = (() => {
   const raw = process.env.TERMFLEET_AGENT_STATUS_ARGS;
-  if (!raw) return [];
-  try {
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.map(String) : [];
-  } catch {
-    return raw.split(/\s+/).filter(Boolean);
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed.map(String) : [];
+    } catch {
+      return raw.split(/\s+/).filter(Boolean);
+    }
   }
+  return argv.slice(3);
 })();
 
 function cleanText(value) {
-  return typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
+  return typeof value === "string" ? value.replace(/\s+/g, " ").replace(/^[•*-]\s+/, "").trim() : "";
 }
 
 function lifecycleFrom(workstream = {}) {
@@ -38,6 +41,18 @@ function isNoisy(value) {
     /^hello[!.]?$/i,
     /^web\$ /i,
     /^bash[$#]?\s*/i,
+    /^supervised agent run$/i,
+    /^shell ready$/i,
+    /^›\s*/i,
+    /^›\s*use\s+\/\w+/i,
+    /^use\s+\/\w+/i,
+    /^F\d+\w+\s+F\d+/i,
+    /\bF10Quit\b/i,
+    /^[«‹›|│┃¦\s•·-]*gpt[-\w. ]+\s+default\b/i,
+    /^«?\s*\|?\s*gpt[-\w. ]+\s+default\b/i,
+    /^«?\s*\|?\s*[\w.-]+\s+default\b/i,
+    /\|\|?>/,
+    /\besc to interrupt\b/i,
     /^codex: command is not available/i,
     /^claude: command is not available/i,
     /^opencode: command is not available/i,
@@ -46,15 +61,63 @@ function isNoisy(value) {
   ].some((pattern) => pattern.test(text));
 }
 
+function rawTranscriptLines(payload) {
+  return (typeof payload?.transcript === "string" ? payload.transcript : "")
+    .replace(/\r/g, "\n")
+    .split("\n")
+    .map((line) => cleanText(line))
+    .filter(Boolean)
+}
+
+function hasVisibleShellPrompt(payload) {
+  return rawTranscriptLines(payload).slice(-5).some((line) =>
+    /^[\w.-]+@[\w.-]+:[^$#>]*[$#>]\s*$/.test(line) ||
+    /^[~./\w -]+[$#>]\s*$/.test(line)
+  );
+}
+
+function transcriptLines(payload) {
+  return rawTranscriptLines(payload)
+    .filter((line) => !isNoisy(line));
+}
+
+function inferTranscriptTask(lines) {
+  const text = lines.join("\n");
+  if (/\bTasks:\s*\d+/.test(text) && /\bLoad average:/.test(text)) return "Monitoring processes";
+  return lines.find((line) =>
+    /^[\p{L}\p{N}][\p{L}\p{N}\s:_/-]{3,90}$/u.test(line) &&
+    !/^(what changed|verified|done|output|path|signal|now)$/i.test(line) &&
+    !/\b(passed|failed|error|http|github\.com|https?:\/\/)\b/i.test(line)
+  );
+}
+
+function inferTranscriptNow(lines, task) {
+  const text = lines.join("\n");
+  if (/\bTasks:\s*\d+/.test(text) && /\bLoad average:/.test(text)) return "htop live process table";
+  return lines.find((line) =>
+    line !== task &&
+    !/^(what changed|verified|done|output|path|signal|now):?$/i.test(line) &&
+    /\b(now runs|validates|repair|rewrite|checking|reviewing|translated|translation|quality-gate|regression|deployed|active|200 ok|passed|completed|hook|triage|prompt-routing|explored|search|read|apply_patch|touching|architecture|mirroring|mirror)\b/i.test(line)
+  );
+}
+
 function fallbackSummary(payload) {
   const workstream = payload?.workstream ?? {};
-  const task = cleanText(workstream.mission) || cleanText(workstream.prompt) || "Supervised agent run";
+  const lines = transcriptLines(payload);
+  const mission = cleanText(workstream.mission);
+  const transcriptTask = inferTranscriptTask(lines);
+  const promptVisible = hasVisibleShellPrompt(payload);
+  const task = promptVisible && !transcriptTask
+    ? "Ready"
+    : (mission && mission !== "Terminal" ? mission : "") || cleanText(workstream.prompt) || transcriptTask || "Supervised agent run";
   const path = cleanText(workstream.path) || cleanText(payload?.projectId) || "workspace path unknown";
-  const status = lifecycleFrom(workstream);
+  const status = promptVisible && task === "Ready" ? "idle" : lifecycleFrom(workstream);
   const now =
+    (promptVisible && task === "Ready" && "Awaiting command") ||
     (!isNoisy(workstream.currentActivity) && cleanText(workstream.currentActivity)) ||
     (!isNoisy(workstream.nextAction) && cleanText(workstream.nextAction)) ||
     (!isNoisy(workstream.lastSummary) && cleanText(workstream.lastSummary)) ||
+    inferTranscriptNow(lines, task) ||
     (status === "blocked" ? "Needs operator attention" :
       status === "done" ? "Ready for review" :
         status === "waiting" ? "Waiting for input" :
@@ -117,7 +180,10 @@ function runCommand(payload) {
         reject(new Error(`status command exited ${code}: ${stderr || stdout}`));
       }
     });
-    child.stdin.end(JSON.stringify(payload));
+    child.stdin.end(JSON.stringify({
+      ...payload,
+      heuristicCandidate: fallbackSummary(payload),
+    }));
   });
 }
 

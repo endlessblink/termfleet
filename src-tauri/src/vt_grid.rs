@@ -10,6 +10,7 @@
 //! canvas renderer; the grid ownership established here is the foundation.
 
 use crate::daemon::{daemon_ensure_running, daemon_socket_path, DaemonRequest, DaemonResponse};
+use crate::daemon_ipc;
 use alacritty_terminal::event::VoidListener;
 use alacritty_terminal::grid::{Dimensions, Scroll};
 use alacritty_terminal::index::{Column, Line};
@@ -20,7 +21,6 @@ use serde::Serialize;
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::net::Shutdown;
-use std::os::unix::net::UnixStream;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
@@ -57,6 +57,8 @@ impl Dimensions for GridDims {
 struct TermState {
     term: Term<VoidListener>,
     parser: Processor,
+    alternate_scroll_touched: bool,
+    mode_scan_tail: Vec<u8>,
 }
 
 impl TermState {
@@ -66,11 +68,30 @@ impl TermState {
         Self {
             term,
             parser: Processor::new(),
+            alternate_scroll_touched: false,
+            mode_scan_tail: Vec::new(),
         }
     }
 
     fn feed(&mut self, bytes: &[u8]) {
+        self.scan_mode_sequences(bytes);
         self.parser.advance(&mut self.term, bytes);
+    }
+
+    fn scan_mode_sequences(&mut self, bytes: &[u8]) {
+        let mut scan = self.mode_scan_tail.clone();
+        scan.extend_from_slice(bytes);
+        if scan
+            .windows(b"\x1b[?1007h".len())
+            .any(|window| window == b"\x1b[?1007h")
+            || scan
+                .windows(b"\x1b[?1007l".len())
+                .any(|window| window == b"\x1b[?1007l")
+        {
+            self.alternate_scroll_touched = true;
+        }
+        let keep = scan.len().min(16);
+        self.mode_scan_tail = scan[scan.len() - keep..].to_vec();
     }
 
     fn resize(&mut self, cols: usize, rows: usize) {
@@ -162,7 +183,7 @@ impl GridManager {
 
         let frame = {
             let state = session.state.read().map_err(|_| "grid state poisoned")?;
-            WireFrame::capture(&state.term)
+            WireFrame::capture_state(&state)
         };
         // Full sync to the new subscriber. Diffs are idempotent (each row carries
         // absolute cell values), so any overlap with the shared emitter is safe.
@@ -276,7 +297,7 @@ fn run_emitter(
         }
 
         let frame = match state.read() {
-            Ok(state) => WireFrame::capture(&state.term),
+            Ok(state) => WireFrame::capture_state(&state),
             Err(_) => return,
         };
 
@@ -300,14 +321,14 @@ fn run_emitter(
 /// replays the escape sequences and reconstructs the screen), then live deltas.
 fn feed_grid_from_daemon(id: &str, state: &Arc<RwLock<TermState>>) -> Result<(), String> {
     let socket_path = daemon_socket_path();
-    let mut stream = match UnixStream::connect(&socket_path) {
+    let mut stream = match daemon_ipc::connect(&socket_path) {
         Ok(stream) => stream,
         Err(initial_error) => {
             let status = daemon_ensure_running();
             if !status.reachable {
                 return Err(status.message);
             }
-            UnixStream::connect(&socket_path).map_err(|retry_error| {
+            daemon_ipc::connect(&socket_path).map_err(|retry_error| {
                 format!(
                     "terminal daemon became reachable but grid stream connect still failed: {retry_error} (initial: {initial_error})"
                 )
@@ -593,6 +614,9 @@ const MODE_ALTERNATE_SCROLL: u32 = 1 << 6;
 // SGR extended mouse encoding (DECSET 1006) is active. Picks the wheel report
 // wire format: SGR `ESC[<b;x;yM` when set, legacy X10 `ESC[M` bytes otherwise.
 const MODE_SGR_MOUSE: u32 = 1 << 7;
+// The app explicitly sent DECSET/DECRST 1007 at least once. Without this, a
+// false alternate-scroll bit means "unset", not "explicitly disabled".
+const MODE_ALTERNATE_SCROLL_SET: u32 = 1 << 8;
 
 const STYLE_BOLD: u16 = 1 << 0;
 const STYLE_ITALIC: u16 = 1 << 1;
@@ -621,6 +645,7 @@ struct WireFrame {
     bracketed_paste: bool,
     mouse_report: bool,
     alternate_scroll: bool,
+    alternate_scroll_set: bool,
     sgr_mouse: bool,
     rows_cells: Vec<Vec<WireCell>>,
 }
@@ -630,6 +655,12 @@ fn rgba_u32((r, g, b): (u8, u8, u8)) -> u32 {
 }
 
 impl WireFrame {
+    fn capture_state(state: &TermState) -> Self {
+        let mut frame = Self::capture(&state.term);
+        frame.alternate_scroll_set = state.alternate_scroll_touched;
+        frame
+    }
+
     fn capture(term: &Term<VoidListener>) -> Self {
         let cols = term.columns();
         let rows = term.screen_lines();
@@ -693,6 +724,7 @@ impl WireFrame {
                 TermMode::MOUSE_REPORT_CLICK | TermMode::MOUSE_DRAG | TermMode::MOUSE_MOTION,
             ),
             alternate_scroll: mode.contains(TermMode::ALTERNATE_SCROLL),
+            alternate_scroll_set: false,
             sgr_mouse: mode.contains(TermMode::SGR_MOUSE),
             rows_cells,
         }
@@ -723,6 +755,9 @@ impl WireFrame {
         }
         if self.sgr_mouse {
             flags |= MODE_SGR_MOUSE;
+        }
+        if self.alternate_scroll_set {
+            flags |= MODE_ALTERNATE_SCROLL_SET;
         }
         flags
     }
@@ -781,7 +816,8 @@ fn encode_frame(frame: &WireFrame, prev: Option<&WireFrame>) -> Vec<u8> {
             .collect()
     };
 
-    let mut buffer = Vec::with_capacity(HEADER_BYTES + dirty.len() * (4 + frame.cols as usize * CELL_BYTES));
+    let mut buffer =
+        Vec::with_capacity(HEADER_BYTES + dirty.len() * (4 + frame.cols as usize * CELL_BYTES));
     buffer.push(if full { MSG_FULL } else { MSG_DIFF });
     push_u16(&mut buffer, frame.cols);
     push_u16(&mut buffer, frame.rows);
@@ -879,7 +915,7 @@ mod tests {
     fn frame(bytes: &str) -> WireFrame {
         let mut state = TermState::new(DEFAULT_COLS, DEFAULT_ROWS);
         state.feed(bytes.as_bytes());
-        WireFrame::capture(&state.term)
+        WireFrame::capture_state(&state)
     }
 
     fn read_u16(buffer: &[u8], offset: usize) -> u16 {
@@ -904,11 +940,25 @@ mod tests {
         assert_eq!(read_u16(&buffer, 3), DEFAULT_ROWS as u16);
         assert_eq!(read_u16(&buffer, 5), 2); // cursor col after "hi"
         assert_eq!(read_u16(&buffer, 7), 0); // cursor line
-        // mode: cursor visible by default, no alt screen.
-        assert_eq!(read_u32(&buffer, 9) & MODE_CURSOR_VISIBLE, MODE_CURSOR_VISIBLE);
+                                             // mode: cursor visible by default, no alt screen.
+        assert_eq!(
+            read_u32(&buffer, 9) & MODE_CURSOR_VISIBLE,
+            MODE_CURSOR_VISIBLE
+        );
         assert_eq!(read_u32(&buffer, 9) & MODE_ALT_SCREEN, 0);
         // full sync marks every row dirty.
         assert_eq!(read_u16(&buffer, 13), DEFAULT_ROWS as u16);
+    }
+
+    #[test]
+    fn alternate_scroll_touched_is_reported_even_when_disabled() {
+        let disabled = frame("\x1b[?1007l");
+        assert!(!disabled.alternate_scroll);
+        assert!(disabled.alternate_scroll_set);
+
+        let enabled = frame("\x1b[?1007h");
+        assert!(enabled.alternate_scroll);
+        assert!(enabled.alternate_scroll_set);
     }
 
     #[test]
@@ -1011,7 +1061,10 @@ mod tests {
                 "resize {cols}x{rows} produced a non-rectangular frame"
             );
             assert!(frame.alt_screen, "alt-screen mode leaked during resize");
-            assert!(frame.bracketed_paste, "bracketed paste mode leaked during resize");
+            assert!(
+                frame.bracketed_paste,
+                "bracketed paste mode leaked during resize"
+            );
             assert!(frame.mouse_report, "mouse-report mode leaked during resize");
             assert!(frame.sgr_mouse, "SGR mouse mode leaked during resize");
             assert_eq!(
@@ -1117,7 +1170,10 @@ mod tests {
 
         state.scroll_to_bottom();
         let restored = WireFrame::capture(&state.term);
-        assert!(restored.cursor_visible, "bottom reset should restore the live cursor");
+        assert!(
+            restored.cursor_visible,
+            "bottom reset should restore the live cursor"
+        );
         let restored_row0: String = restored.rows_cells[0]
             .iter()
             .filter_map(|c| char::from_u32(c.ch))

@@ -22,6 +22,7 @@ const MODE_BRACKETED_PASTE = 1 << 4;
 const MODE_MOUSE_REPORT = 1 << 5;
 const MODE_ALTERNATE_SCROLL = 1 << 6;
 const MODE_SGR_MOUSE = 1 << 7;
+const MODE_ALTERNATE_SCROLL_SET = 1 << 8;
 
 const STYLE_BOLD = 1 << 0;
 const STYLE_ITALIC = 1 << 1;
@@ -46,6 +47,7 @@ export interface DecodedFrame {
   bracketedPaste: boolean;
   mouseReport: boolean;
   alternateScroll: boolean;
+  alternateScrollSet: boolean;
   sgrMouse: boolean;
   dirtyRows: DecodedRow[];
 }
@@ -145,6 +147,7 @@ export function decodeFrame(buffer: ArrayBuffer): DecodedFrame {
     bracketedPaste: Boolean(mode & MODE_BRACKETED_PASTE),
     mouseReport: Boolean(mode & MODE_MOUSE_REPORT),
     alternateScroll: Boolean(mode & MODE_ALTERNATE_SCROLL),
+    alternateScrollSet: Boolean(mode & MODE_ALTERNATE_SCROLL_SET),
     sgrMouse: Boolean(mode & MODE_SGR_MOUSE),
     dirtyRows,
   };

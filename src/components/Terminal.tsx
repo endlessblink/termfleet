@@ -9,9 +9,9 @@ import { usePty } from "../hooks/usePty";
 import { TerminalCanvas } from "./TerminalCanvas";
 import { syncTerminalLatencyTraceEnv, traceTerminalLatency } from "../lib/terminalLatencyTrace";
 import { refreshProjectRootFromActiveTerminal, useWorkspaceStore } from "../stores/workspace";
-import { agentStatusSummaryInputFromWorkstream } from "../lib/agentStatusSummary";
-import { isAgentStatusSummarizerConfigured, summarizeAgentStatus } from "../lib/agentStatusSummarizer";
-import { inferActivityFromOutput, isWorkstreamActivityKind, normalizeActivityText } from "../lib/workstreamActivity";
+import { agentStatusSummaryInputFromWorkstream, type AgentStatusSummaryInput } from "../lib/agentStatusSummary";
+import { summarizeAgentStatus } from "../lib/agentStatusSummarizer";
+import { activityKindForText, inferActivityFromOutput, isWorkstreamActivityKind, normalizeActivityText } from "../lib/workstreamActivity";
 import type { TerminalRuntimeStatus, WorkstreamActivityKind, WorkstreamActivitySource, WorkstreamInput, WorkstreamPhase, WorkstreamReadiness, WorkstreamStatus } from "../lib/types";
 import type { GridSnapshot } from "../lib/gridSnapshot";
 
@@ -177,6 +177,13 @@ function activityKindForStatus(status: WorkstreamStatus): WorkstreamActivityKind
   return "running";
 }
 
+function workstreamStatusForTerminalStatus(status?: TerminalRuntimeStatus): WorkstreamStatus {
+  if (status === "failed") return "failed";
+  if (status === "exited") return "stopped";
+  if (status === "starting") return "ready";
+  return "running";
+}
+
 function isTerminalStateDowngrade(updates: { status?: WorkstreamStatus; phase?: WorkstreamPhase; structuredStatus?: boolean }, current: { phase?: WorkstreamPhase; structuredStatus?: boolean }) {
   if (!current.structuredStatus || updates.structuredStatus) return false;
   const finalPhase = current.phase === "complete" ||
@@ -211,9 +218,33 @@ function latestReadableOutput(output: string) {
     .split("\n")
     .map((line) => line.replace(/\s+/g, " ").trim())
     .filter((line) => line.length > 0)
-    .filter((line) => !/^[\w.@:/~+-]+[$#>]$/.test(line));
+    .filter((line) => !/^[\w.@:/~+-]+[$#>]$/.test(line))
+    .filter((line) => !/^use\s+\/\w+/i.test(line))
+    .filter((line) => !/^[«‹›|│┃¦\s•·-]*gpt[-\w. ]+\s+default\b/i.test(line));
   const latest = lines[lines.length - 1];
   return latest ? normalizeActivityText(latest, 180) : undefined;
+}
+
+function readableOutputExcerpt(output: string) {
+  const cleaned = output
+    .replace(STRUCTURED_AGENT_SIGNAL_PATTERN, "")
+    .replace(ANSI_SEQUENCE_PATTERN, "")
+    .replace(/\r/g, "\n");
+  const lines = cleaned
+    .split("\n")
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter((line) => line.length > 0)
+    .filter((line) => !/^[\w.@:/~+-]+[$#>]$/.test(line));
+  return lines.slice(-18).join("\n").slice(-1600) || undefined;
+}
+
+function readableSnapshotExcerpt(snapshot: GridSnapshot) {
+  const lines = snapshot.cells
+    .map((row) => row.map((cell) => cell.c && cell.c !== "\u0000" ? cell.c : " ").join("").trimEnd())
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter((line) => line.length > 0)
+    .filter((line) => !/^[\w.@:/~+-]+[$#>]\s*$/.test(line));
+  return lines.slice(-24).join("\n").slice(-1800) || undefined;
 }
 
 interface StructuredAgentSignal {
@@ -388,6 +419,7 @@ export function TerminalComponent({
   const structuredSignalKeysRef = useRef<Set<string>>(new Set());
   const statusSummaryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const statusSummarySequenceRef = useRef(0);
+  const latestSnapshotExcerptRef = useRef<string | null>(null);
   const activeTabId = useWorkspaceStore((s) => s.activeTabId);
   const workspaceMode = useWorkspaceStore((s) => s.workspaceUiState.workspaceMode);
   const terminalRendererMode = useWorkspaceStore((s) => s.workspaceUiState.terminalRendererMode);
@@ -469,6 +501,10 @@ export function TerminalComponent({
           activityKind: updates.activityKind ?? previous?.activityKind,
           activityUpdatedAt: updates.currentActivity ? Date.now() : previous?.activityUpdatedAt,
           terminalOutput: updates.terminalOutput ?? previous?.terminalOutput,
+          statusSummary: previous?.statusSummary,
+          statusSummaryUpdatedAt: previous?.statusSummaryUpdatedAt,
+          statusSummarySource: previous?.statusSummarySource,
+          statusSummaryError: previous?.statusSummaryError,
           lastStatusAt: Date.now(),
           lastError: updates.error,
         },
@@ -477,7 +513,6 @@ export function TerminalComponent({
   }, [attachToPtyId, paneId, runtimeSessionId, tabId, terminal?.cols, terminal?.rows]);
 
   const scheduleStatusSummaryUpdate = useCallback(() => {
-    if (!isAgentStatusSummarizerConfigured()) return;
     if (statusSummaryTimeoutRef.current) clearTimeout(statusSummaryTimeoutRef.current);
     const sequence = statusSummarySequenceRef.current + 1;
     statusSummarySequenceRef.current = sequence;
@@ -485,26 +520,85 @@ export function TerminalComponent({
     statusSummaryTimeoutRef.current = setTimeout(() => {
       const store = useWorkspaceStore.getState();
       const tab = store.tabs.find((candidate) => candidate.id === tabId);
-      if (!tab?.workstream || tab.workstream.kind !== "agent") return;
-      const input = agentStatusSummaryInputFromWorkstream(tab.workstream);
+      if (!tab) return;
+      const terminalState = tab.terminals.find((candidate) => candidate.paneId === paneId);
+      const input: AgentStatusSummaryInput | null =
+        tab.workstream?.kind === "agent"
+          ? agentStatusSummaryInputFromWorkstream(tab.workstream)
+          : terminalState
+            ? {
+                mission: tab.title,
+                provider: "shell",
+                status: workstreamStatusForTerminalStatus(terminalState.status),
+                cwd,
+                currentActivity: terminalState.currentActivity,
+                terminalOutput: terminalState.terminalOutput,
+              }
+            : null;
+      if (!input) return;
 
       void summarizeAgentStatus(input).then((result) => {
         if (statusSummarySequenceRef.current !== sequence) return;
         const latestStore = useWorkspaceStore.getState();
         const latestTab = latestStore.tabs.find((candidate) => candidate.id === tabId);
-        if (!latestTab?.workstream || latestTab.workstream.kind !== "agent") return;
+        if (!latestTab) return;
+        if (latestTab.workstream?.kind === "agent") {
+          latestStore.updateTab(tabId, {
+            workstream: {
+              ...latestTab.workstream,
+              statusSummary: result.summary,
+              statusSummaryUpdatedAt: Date.now(),
+              statusSummarySource: result.source,
+              statusSummaryError: result.error,
+            },
+          });
+          return;
+        }
         latestStore.updateTab(tabId, {
-          workstream: {
-            ...latestTab.workstream,
-            statusSummary: result.summary,
-            statusSummaryUpdatedAt: Date.now(),
-            statusSummarySource: result.source,
-            statusSummaryError: result.error,
-          },
+          terminals: latestTab.terminals.map((candidate) =>
+            candidate.paneId === paneId
+              ? {
+                  ...candidate,
+                  statusSummary: result.summary,
+                  statusSummaryUpdatedAt: Date.now(),
+                  statusSummarySource: result.source,
+                  statusSummaryError: result.error,
+                }
+              : candidate
+          ),
         });
       });
     }, 650);
-  }, [tabId]);
+  }, [cwd, paneId, tabId]);
+
+  const handleSnapshot = useCallback((snapshot: GridSnapshot) => {
+    onSnapshot?.(snapshot);
+    const excerpt = readableSnapshotExcerpt(snapshot);
+    if (!excerpt || latestSnapshotExcerptRef.current === excerpt) return;
+    latestSnapshotExcerptRef.current = excerpt;
+    updateTerminalRuntime({
+      terminalOutput: excerpt,
+      currentActivity: latestReadableOutput(excerpt),
+    });
+    const store = useWorkspaceStore.getState();
+    const tab = store.tabs.find((candidate) => candidate.id === tabId);
+    if (tab?.workstream) {
+      const currentActivity = latestReadableOutput(excerpt);
+      store.updateTab(tabId, {
+        workstream: {
+          ...tab.workstream,
+          terminalOutput: excerpt,
+          terminalOutputUpdatedAt: Date.now(),
+          currentActivity: currentActivity ?? tab.workstream.currentActivity,
+          activityKind: currentActivity ? activityKindForText(currentActivity) : tab.workstream.activityKind,
+          activitySource: "terminal",
+          activityUpdatedAt: Date.now(),
+          lastActivityAt: Date.now(),
+        },
+      });
+    }
+    scheduleStatusSummaryUpdate();
+  }, [onSnapshot, scheduleStatusSummaryUpdate, tabId, updateTerminalRuntime]);
 
   const updateWorkstreamRuntime = useCallback((updates: {
     status?: WorkstreamStatus;
@@ -728,12 +822,21 @@ export function TerminalComponent({
     const providerReadiness = inferProviderReadiness(heuristicOutput);
     const inferredActivity = inferActivityFromOutput(heuristicOutput);
     const terminalOutput = latestReadableOutput(heuristicOutput);
+    const terminalTranscript = readableOutputExcerpt(heuristicOutput);
     const processExit = inferProcessExit(heuristicOutput);
     updateTerminalRuntime({
-      terminalOutput,
+      terminalOutput: terminalTranscript ?? terminalOutput,
       currentActivity: providerReadiness?.lastSummary ?? inferredActivity?.currentActivity,
       activityKind: providerReadiness?.status ? activityKindForStatus(providerReadiness.status) : inferredActivity?.activityKind,
     });
+    updateWorkstreamRuntime({
+      terminalOutput: terminalTranscript ?? terminalOutput,
+      currentActivity: providerReadiness?.lastSummary ?? inferredActivity?.currentActivity,
+      activityKind: providerReadiness?.status ? activityKindForStatus(providerReadiness.status) : inferredActivity?.activityKind,
+      activitySource: "terminal",
+      activity: Boolean(providerReadiness?.lastSummary ?? inferredActivity?.currentActivity ?? terminalTranscript ?? terminalOutput),
+    });
+    scheduleStatusSummaryUpdate();
     if (processExit) {
       updateWorkstreamRuntime({
         status: processExit.success ? "done" : "failed",
@@ -1107,7 +1210,7 @@ export function TerminalComponent({
             onStatus={handleStatus}
             onOutput={handleOutput}
             onExit={handleExit}
-            onSnapshot={onSnapshot}
+            onSnapshot={handleSnapshot}
             queuedInput={queuedInput}
             onQueuedInputSent={onQueuedInputSent}
           />

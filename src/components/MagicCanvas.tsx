@@ -31,9 +31,10 @@ import { LocalhostPreview } from "./LocalhostPreview";
 import type { GridSnapshot } from "../lib/gridSnapshot";
 import type { Tab, TerminalRuntimeStatus } from "../lib/types";
 import { agentLaneAuthRetryText, agentLaneAuthRetryTitle, agentLaneCleanupRequestText, agentLaneCleanupRequestTitle, agentLaneCloseoutText, agentLaneCloseoutTitle, agentLaneHealthText, agentLaneInterruptText, agentLaneInterruptTitle, agentLaneMemoryRequestText, agentLaneMemoryRequestTitle, agentLaneProofRequestText, agentLaneProofRequestTitle, agentLaneRestartText, agentLaneRestartTitle, agentLaneRiskMitigationText, agentLaneRiskMitigationTitle, agentLaneStatusSweepText, agentLaneStatusSweepTitle, agentLaneStatusText, attentionBreakdownText, cleanupBreakdownText, closeoutBreakdownText, formatAgentLaneBrief, formatAgentMissionControlBrief, formatAgentRunBrief, handoffMemoryPromptForWorkstream, isActiveAgentWorkstream, isAgentReviewCloseoutReady, isAuthRetryableAgentWorkstream, isCleanupRequestableAgentWorkstream, isRestartableAgentWorkstream, isReviewItemCloseoutReady, isStaleAgentWorkstream, isolationBreakdownText, latestMissionControlAskText, missionBreakdownText, missionControlAlternateText, missionControlDispatchBreakdownText, needsAgentProofRequest, proofRequestPromptForWorkstream, providerBreakdownText, readinessBreakdownText, riskBreakdownText, statusCheckPromptForWorkstream, summarizeAgentLane } from "../lib/agentWorkstreamLane";
-import { agentStatusChipText, agentStatusSummaryFromWorkstream } from "../lib/agentStatusSummary";
+import { agentStatusChipText, agentStatusSummaryFromWorkstream, getDisplaySummary } from "../lib/agentStatusSummary";
 import { workstreamActivityMeta, workstreamActivityText } from "../lib/workstreamActivity";
 import { formatWorkstreamBranch, formatWorkstreamIsolation, formatWorkstreamOpsContext } from "../lib/workstreamOpsContext";
+import { snapshotPreviewRows } from "../lib/snapshotPreviewRows";
 
 const styles: Record<string, CSSProperties> = {
   shell: {
@@ -193,12 +194,22 @@ const styles: Record<string, CSSProperties> = {
     cursor: "grab",
     userSelect: "none",
   },
+  terminalNodeHeader: {
+    minHeight: 118,
+    display: "grid",
+    gridTemplateColumns: "auto minmax(0, 1fr) auto",
+    columnGap: 10,
+    rowGap: 7,
+    alignItems: "start",
+    padding: "10px 12px 11px",
+  },
   agentNodeHeader: {
-    minHeight: 96,
-    display: "flex",
-    flexWrap: "wrap",
-    alignItems: "center",
-    padding: "7px 9px 8px 11px",
+    minHeight: 132,
+    display: "grid",
+    gridTemplateColumns: "auto minmax(0, 1fr) auto",
+    alignItems: "start",
+    gap: 8,
+    padding: "9px 10px 10px 11px",
   },
   agentHeaderMetaRow: {
     minWidth: 0,
@@ -208,6 +219,8 @@ const styles: Record<string, CSSProperties> = {
   },
   agentHeaderActions: {
     display: "flex",
+    flexWrap: "wrap",
+    justifyContent: "flex-end",
     alignItems: "center",
     gap: 5,
   },
@@ -238,17 +251,94 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 500,
     marginTop: 1,
   },
+  nodeTitleActivityLabel: {
+    color: "var(--text-secondary)",
+    fontSize: 10,
+    fontWeight: 500,
+    textTransform: "uppercase",
+    letterSpacing: 0,
+  },
+  terminalStatusBlock: {
+    minWidth: 0,
+    display: "grid",
+    gap: 9,
+    alignContent: "start",
+  },
+  terminalStatusKicker: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 5,
+    color: "var(--text-secondary)",
+    fontSize: 10,
+    fontWeight: 500,
+    textTransform: "uppercase",
+    letterSpacing: 0,
+  },
+  terminalStatusTitle: {
+    minWidth: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    color: "var(--text-primary)",
+    fontSize: 16,
+    fontWeight: 500,
+    lineHeight: 1.15,
+  },
+  terminalStatusGrid: {
+    minWidth: 0,
+    display: "grid",
+    gridTemplateColumns: "minmax(120px, 0.6fr) minmax(180px, 1fr)",
+    gap: 7,
+  },
+  terminalStatusField: {
+    minWidth: 0,
+    maxWidth: "100%",
+    minHeight: 34,
+    display: "grid",
+    alignContent: "center",
+    gap: 2,
+    padding: "5px 8px 6px",
+    borderRadius: "var(--radius-sm)",
+    border: "1px solid var(--border-subtle)",
+    background: "color-mix(in srgb, var(--surface-base) 76%, transparent)",
+  },
+  terminalStatusFieldLabel: {
+    color: "var(--text-secondary)",
+    fontSize: 10,
+    fontWeight: 500,
+    textTransform: "uppercase",
+    letterSpacing: 0,
+  },
+  terminalStatusFieldValue: {
+    minWidth: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    color: "var(--text-secondary)",
+    fontSize: 11,
+    lineHeight: 1.2,
+  },
+  terminalStatusNow: {
+    minWidth: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    color: "var(--accent-live)",
+    fontSize: 12,
+    fontWeight: 500,
+    lineHeight: 1.2,
+  },
   agentStatusBlock: {
     minWidth: 0,
-    flex: "1 0 100%",
+    gridColumn: "1 / -1",
     display: "grid",
-    gap: 5,
-    order: 2,
+    gap: 7,
   },
   agentWorkingLine: {
     minWidth: 0,
-    display: "flex",
-    alignItems: "baseline",
+    display: "grid",
+    gridTemplateColumns: "auto minmax(0, 1fr)",
+    alignItems: "start",
     gap: 6,
     color: "var(--text-primary)",
     fontSize: 13,
@@ -268,14 +358,14 @@ const styles: Record<string, CSSProperties> = {
     overflow: "hidden",
     display: "-webkit-box",
     WebkitBoxOrient: "vertical",
-    WebkitLineClamp: 2,
+    WebkitLineClamp: 3,
   },
   agentStatusDetailGrid: {
     minWidth: 0,
     display: "grid",
-    gridTemplateColumns: "minmax(120px, 0.65fr) minmax(180px, 1.35fr)",
-    gap: 10,
-    alignItems: "center",
+    gridTemplateRows: "auto auto",
+    gap: 5,
+    alignItems: "start",
   },
   agentStatusDetail: {
     minWidth: 0,
@@ -901,6 +991,15 @@ function recoveryPromptFor(workstream?: Tab["workstream"]) {
   return `Recover ${workstreamLabel(workstream?.provider)} agent: inspect the failure output, summarize the root cause, and propose the next command.`;
 }
 
+function snapshotText(snapshot?: GridSnapshot) {
+  if (!snapshot?.cells.length) return undefined;
+  const lines = snapshot.cells
+    .map((row) => row.map((cell) => cell.c && cell.c !== "\u0000" ? cell.c : " ").join("").trimEnd())
+    .map((line) => line.trim())
+    .filter(Boolean);
+  return lines.slice(-24).join("\n") || undefined;
+}
+
 type ResizeDirection = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
 
 function isDesktopNativeRuntime() {
@@ -959,40 +1058,6 @@ type TerminalPreviewEntry = {
   snapshot: GridSnapshot;
   updatedAt: number;
 };
-
-export function snapshotPreviewRows(snapshot: GridSnapshot | undefined, maxRows = 14, maxCols = 72) {
-  if (!snapshot?.cells.length) {
-    return Array.from({ length: maxRows }, () => ({
-      segments: [{ text: " ".repeat(maxCols), color: "rgba(148, 163, 184, 0.22)", active: false }],
-    }));
-  }
-
-  const rowCount = Math.min(maxRows, snapshot.cells.length);
-  return Array.from({ length: rowCount }, (_, index) => {
-    const sourceRow = snapshot.cells[Math.floor(index * snapshot.cells.length / rowCount)] ?? [];
-    const colCount = Math.min(maxCols, Math.max(1, snapshot.cols));
-    const cells = Array.from({ length: colCount }, (_, colIndex) => {
-      const sourceIndex = Math.floor(colIndex * Math.max(1, sourceRow.length) / colCount);
-      const cell = sourceRow[sourceIndex];
-      const active = Boolean(cell?.c?.trim());
-      const char = cell?.c && cell.c !== "\u0000" ? cell.c : " ";
-      const color = active
-        ? cell?.fg ?? "var(--terminal-fg)"
-        : "rgba(148, 163, 184, 0.16)";
-      return { char, color, active };
-    });
-    const segments = cells.reduce<Array<{ text: string; color: string; active: boolean }>>((acc, cell) => {
-      const prev = acc[acc.length - 1];
-      if (prev && prev.color === cell.color && prev.active === cell.active) {
-        prev.text += cell.char;
-        return acc;
-      }
-      acc.push({ text: cell.char, color: cell.color, active: cell.active });
-      return acc;
-    }, []);
-    return { segments };
-  });
-}
 
 function TerminalMapPreview({
   title,
@@ -1273,6 +1338,28 @@ function CanvasNodeView({
     (isDefaultName(linkedTab?.title) && isDefaultName(node.title)
       ? cwdName ?? "Terminal"
       : linkedTab?.title ?? node.title);
+  const terminalStatusSummary = linkedTerminal?.statusSummary;
+  const terminalVisibleTranscript = snapshotText(terminalPreview?.snapshot);
+  const terminalDisplaySummary = getDisplaySummary({
+    mission: "Terminal",
+    provider: "shell",
+    status: linkedTerminal?.status === "failed"
+      ? "failed"
+      : linkedTerminal?.status === "exited"
+        ? "done"
+        : linkedTerminal?.status === "running" || linkedTerminal?.status === "reconnected"
+          ? "running"
+          : "ready",
+    cwd: liveTerminalRoot,
+    cwdLabel: pathTail(liveTerminalRoot),
+    currentActivity: terminalActivity,
+    terminalOutput: [linkedTerminal?.terminalOutput, terminalVisibleTranscript].filter(Boolean).join("\n"),
+  }, terminalStatusSummary);
+  const terminalHeaderTitle = terminalDisplaySummary.task === "Ready" ? terminalTitle : terminalDisplaySummary.task;
+  const terminalHeaderPath = terminalDisplaySummary.path;
+  const terminalHeaderSummarySignal = terminalDisplaySummary.now;
+  const terminalHeaderHasUsefulNow = terminalDisplaySummary.now !== "Awaiting terminal output";
+  const terminalHeaderHasUsefulSummary = terminalDisplaySummary.task !== "Ready";
   const workstream = linkedTab?.workstream;
   const queuedWorkstreamInput = workstream?.inputQueue?.find((input) => !input.sentAt);
   const latestInput = workstream?.inputQueue?.[workstream.inputQueue.length - 1];
@@ -1508,7 +1595,7 @@ function CanvasNodeView({
         title={terminalTitle}
         meta={pathTail(liveTerminalRoot)}
         status={linkedTerminal?.status}
-        activity={linkedTerminal?.currentActivity}
+        activity={terminalHeaderHasUsefulNow ? terminalHeaderSummarySignal : undefined}
         ptyCount={linkedTab?.terminals.length ?? 0}
         preview={terminalPreview}
         onActivate={activateTerminalNode}
@@ -1578,6 +1665,9 @@ function CanvasNodeView({
       <div
         style={{
           ...styles.nodeHeader,
+          ...(node.type === "terminal" && !agentStatusSummary
+            ? styles.terminalNodeHeader
+            : null),
           ...(agentStatusSummary
             ? styles.agentNodeHeader
             : null),
@@ -1653,6 +1743,47 @@ function CanvasNodeView({
               )}
             </div>
           </div>
+        ) : node.type === "terminal" && workstream?.kind !== "agent" ? (
+          <div
+            style={styles.terminalStatusBlock}
+            dir="auto"
+            title={`${terminalHeaderTitle} · ${terminalHeaderPath} · ${terminalHeaderSummarySignal}`}
+            onDoubleClick={onRename}
+          >
+            <div style={styles.terminalStatusKicker}>
+              <span>Context</span>
+              <span>·</span>
+              <span>{terminalHeaderHasUsefulSummary ? "live summary" : "terminal state"}</span>
+            </div>
+            <div
+              style={styles.terminalStatusTitle}
+              data-testid="canvas-terminal-node-header-title"
+            >
+              {terminalHeaderTitle}
+            </div>
+            <div style={styles.terminalStatusGrid}>
+              <div style={styles.terminalStatusField}>
+                <span style={styles.terminalStatusFieldLabel}>Path</span>
+                <span
+                  style={styles.terminalStatusFieldValue}
+                  data-testid="canvas-terminal-node-header-path"
+                  title={terminalHeaderPath}
+                >
+                  {terminalHeaderPath}
+                </span>
+              </div>
+              <div style={styles.terminalStatusField}>
+                <span style={styles.terminalStatusFieldLabel}>{terminalHeaderHasUsefulNow ? "Now" : "Signal"}</span>
+                <span
+                  style={terminalHeaderHasUsefulNow ? styles.terminalStatusNow : styles.terminalStatusFieldValue}
+                  data-testid="canvas-terminal-node-now"
+                  title={terminalHeaderSummarySignal}
+                >
+                  {terminalHeaderSummarySignal}
+                </span>
+              </div>
+            </div>
+          </div>
         ) : (
           <span
             style={{ minWidth: 0, flex: 1 }}
@@ -1672,15 +1803,6 @@ function CanvasNodeView({
                 data-testid={workstream?.kind === "agent" ? "canvas-agent-node-header-meta" : "canvas-node-header-meta"}
               >
                 {agentHeaderMeta ?? (linkedProject ? `${pathTail(liveTerminalRoot)} · ${linkedTab?.title ?? node.title}` : pathTail(liveTerminalRoot))}
-              </div>
-            )}
-            {node.type === "terminal" && terminalActivity && workstream?.kind !== "agent" && (
-              <div
-                style={styles.nodeTitleActivity}
-                data-testid="canvas-terminal-node-now"
-                title={terminalActivity}
-              >
-                Now: {terminalActivity}
               </div>
             )}
             {node.type === "preview" && node.previewUrl && (
@@ -1707,7 +1829,7 @@ function CanvasNodeView({
           </button>
         )}
         {node.type === "terminal" && (
-          <>
+          <div style={styles.agentHeaderActions}>
           {workstream?.kind === "agent" && (
             <>
             <button
@@ -1817,9 +1939,6 @@ function CanvasNodeView({
           >
             <ListTodo size={13} strokeWidth={1.8} />
           </button>
-          </>
-        )}
-        {node.type === "terminal" && (
           <button
             style={styles.headerButton}
             title="Open full terminal"
@@ -1832,8 +1951,26 @@ function CanvasNodeView({
           >
             <ArrowUpRight size={13} strokeWidth={1.8} />
           </button>
+          <button
+            style={{ ...styles.closeButton, ...styles.headerButton }}
+            title="Close terminal session"
+            aria-label={linkedTab ? `Close ${linkedTab.title}` : "Remove node"}
+            onMouseDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation();
+              if (linkedTab) {
+                closeTerminalSession(linkedTab.id);
+                return;
+              }
+              removeCanvasNode(node.id);
+            }}
+          >
+            <X size={13} strokeWidth={1.8} />
+          </button>
+          </div>
         )}
-        <button
+        {node.type !== "terminal" && (
+          <button
           style={{ ...styles.closeButton, ...styles.headerButton }}
           title={linkedTab ? "Close terminal session" : "Remove node"}
           aria-label={linkedTab ? `Close ${linkedTab.title}` : "Remove node"}
@@ -1852,7 +1989,8 @@ function CanvasNodeView({
           }}
         >
           <X size={13} strokeWidth={1.8} />
-        </button>
+          </button>
+        )}
       </div>
       <div
         style={node.type === "terminal" ? styles.terminalBody : styles.nodeBody}

@@ -72,4 +72,4 @@ if port_in_use 1420; then
   exit 1
 fi
 
-exec npm run tauri -- dev
+exec npm run tauri:dev
