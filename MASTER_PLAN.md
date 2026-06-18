@@ -293,6 +293,11 @@ Acceptance:
   verify:map-terminals` passed, `npm run verify:terminal-rendering` passed, and
   `CARGO_BUILD_JOBS=1 cargo test --manifest-path src-tauri/Cargo.toml` passed
   on 2026-06-18.
+- DONE: Follow-up real Tauri verification on 2026-06-19 fixed the visible
+  `Resource temporarily unavailable (os error 11)` attach failure. Evidence:
+  stale daemon had 593 threads before cleanup; relaunched Tauri app with the
+  shared grid emitter showed 11 daemon threads and active/reconnected terminal
+  content in `/tmp/termfleet-tauri-verify.png`.
 
 ### TC-030: Orchestrator terminal lifecycle
 

@@ -32,6 +32,7 @@ pub const DEFAULT_ROWS: usize = 24;
 /// Diff emit cadence: at most ~60Hz (16ms) so a fast PTY dump coalesces into one
 /// frame per tick instead of flooding the IPC channel.
 const EMIT_INTERVAL: Duration = Duration::from_millis(16);
+const GRID_FEED_THREAD_STACK_BYTES: usize = 256 * 1024;
 
 /// Minimal `Dimensions` implementation so we can build/resize the grid without
 /// pulling in the crate's test-only `TermSize` helper.
@@ -127,14 +128,14 @@ struct Session {
 
 /// Owns one headless grid per terminal session id.
 pub struct GridManager {
-    sessions: Mutex<HashMap<String, Arc<Session>>>,
+    sessions: Arc<Mutex<HashMap<String, Arc<Session>>>>,
 }
 
 impl GridManager {
     pub fn new() -> Self {
-        Self {
-            sessions: Mutex::new(HashMap::new()),
-        }
+        let sessions = Arc::new(Mutex::new(HashMap::new()));
+        spawn_shared_emitter(Arc::clone(&sessions));
+        Self { sessions }
     }
 
     fn get(&self, id: &str) -> Option<Arc<Session>> {
@@ -258,6 +259,7 @@ fn spawn_session_threads(id: &str, session: &Arc<Session>) -> Result<(), String>
     let feed_state = Arc::clone(&session.state);
     std::thread::Builder::new()
         .name(format!("vt-grid-{id}"))
+        .stack_size(GRID_FEED_THREAD_STACK_BYTES)
         .spawn(move || {
             if let Err(error) = feed_grid_from_daemon(&feed_id, &feed_state) {
                 eprintln!("vt-grid reader for {feed_id} stopped: {error}");
@@ -265,55 +267,64 @@ fn spawn_session_threads(id: &str, session: &Arc<Session>) -> Result<(), String>
         })
         .map_err(|error| error.to_string())?;
 
-    let emit_state = Arc::clone(&session.state);
-    let emit = Arc::clone(&session.emit);
-    let stop = Arc::clone(&session.stop);
-    std::thread::Builder::new()
-        .name(format!("vt-emit-{id}"))
-        .spawn(move || run_emitter(&emit_state, &emit, &stop))
-        .map_err(|error| error.to_string())?;
-
     Ok(())
+}
+
+fn spawn_shared_emitter(sessions: Arc<Mutex<HashMap<String, Arc<Session>>>>) {
+    std::thread::Builder::new()
+        .name("vt-grid-emitter".to_string())
+        .stack_size(GRID_FEED_THREAD_STACK_BYTES)
+        .spawn(move || run_shared_emitter(&sessions))
+        .expect("spawn vt grid shared emitter");
 }
 
 /// 60Hz loop: capture the grid, diff against the last emitted frame, and push
 /// the binary delta to every subscriber. Skips work entirely when nobody is
 /// listening.
-fn run_emitter(
-    state: &Arc<RwLock<TermState>>,
-    emit: &Arc<Mutex<EmitState>>,
-    stop: &Arc<AtomicBool>,
-) {
-    while !stop.load(Ordering::Relaxed) {
+fn run_shared_emitter(sessions: &Arc<Mutex<HashMap<String, Arc<Session>>>>) {
+    loop {
         std::thread::sleep(EMIT_INTERVAL);
-        {
-            let guard = match emit.lock() {
-                Ok(guard) => guard,
-                Err(_) => return,
-            };
-            if guard.channels.is_empty() {
-                continue;
-            }
-        }
-
-        let frame = match state.read() {
-            Ok(state) => WireFrame::capture_state(&state),
+        let sessions = match sessions.lock() {
+            Ok(sessions) => sessions.values().cloned().collect::<Vec<_>>(),
             Err(_) => return,
         };
+        for session in sessions {
+            emit_session_diff(&session);
+        }
+    }
+}
 
-        let mut guard = match emit.lock() {
+fn emit_session_diff(session: &Arc<Session>) {
+    if session.stop.load(Ordering::Relaxed) {
+        return;
+    }
+    {
+        let guard = match session.emit.lock() {
             Ok(guard) => guard,
             Err(_) => return,
         };
-        if !frame.differs_from(guard.prev.as_ref()) {
-            continue;
+        if guard.channels.is_empty() {
+            return;
         }
-        let bytes = encode_frame(&frame, guard.prev.as_ref());
-        guard
-            .channels
-            .retain(|channel| channel.send(InvokeResponseBody::Raw(bytes.clone())).is_ok());
-        guard.prev = Some(frame);
     }
+
+    let frame = match session.state.read() {
+        Ok(state) => WireFrame::capture_state(&state),
+        Err(_) => return,
+    };
+
+    let mut guard = match session.emit.lock() {
+        Ok(guard) => guard,
+        Err(_) => return,
+    };
+    if !frame.differs_from(guard.prev.as_ref()) {
+        return;
+    }
+    let bytes = encode_frame(&frame, guard.prev.as_ref());
+    guard
+        .channels
+        .retain(|channel| channel.send(InvokeResponseBody::Raw(bytes.clone())).is_ok());
+    guard.prev = Some(frame);
 }
 
 /// Open a subscriber stream to the daemon for `id` and feed every chunk into the

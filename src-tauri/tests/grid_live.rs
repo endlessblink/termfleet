@@ -6,7 +6,9 @@
 
 use std::time::{Duration, Instant};
 
-use terminal_workspace_lib::daemon::{run_daemon_forever, send_daemon_request, DaemonRequest, DaemonResponse};
+use terminal_workspace_lib::daemon::{
+    run_daemon_forever, send_daemon_request, DaemonRequest, DaemonResponse,
+};
 use terminal_workspace_lib::vt_grid::GridManager;
 
 fn unique_runtime_dir() -> std::path::PathBuf {
@@ -59,7 +61,9 @@ fn live_pty_output_reconstructs_into_the_grid() {
     match ready {
         Some(true) => {}
         Some(false) => {
-            eprintln!("skipping live daemon/grid test: daemon startup is blocked by the test sandbox");
+            eprintln!(
+                "skipping live daemon/grid test: daemon startup is blocked by the test sandbox"
+            );
             return;
         }
         None => panic!("daemon did not become reachable"),

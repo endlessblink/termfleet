@@ -260,6 +260,9 @@ const checks = [
       /const shouldMountTerminal = node\.type === "terminal" && live && !showTerminalPreview;/.test(magicCanvas) &&
       /const MAX_LIVE_TERMINALS = \d+;/.test(magicCanvas) &&
       /const liveNodeIds = useMemo\(/.test(magicCanvas) &&
+      /fn spawn_shared_emitter/.test(vtGrid) &&
+      /fn run_shared_emitter/.test(vtGrid) &&
+      !/name\(format!\("vt-emit-\{id\}"\)\)/.test(vtGrid) &&
       /live=\{liveNodeIds\.has\(node\.id\)\}/.test(magicCanvas) &&
       /<TerminalMapPreview[\s\S]*preview=\{terminalPreview\}/.test(magicCanvas) &&
       /onSnapshot=\{\(snapshot\) => onTerminalSnapshot\(node\.id, snapshot\)\}/.test(magicCanvas) &&

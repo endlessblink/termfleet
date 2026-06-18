@@ -28,8 +28,8 @@ pub type FocusedSession = Arc<Mutex<Option<String>>>;
 pub fn install_tab_interceptor(gtk_window: &gtk::ApplicationWindow, focused: FocusedSession) {
     gtk_window.connect_key_press_event(move |_window, event| {
         let keyval = event.keyval();
-        let is_tab = keyval == gdk::keys::constants::Tab
-            || keyval == gdk::keys::constants::ISO_Left_Tab;
+        let is_tab =
+            keyval == gdk::keys::constants::Tab || keyval == gdk::keys::constants::ISO_Left_Tab;
         if !is_tab {
             return glib::Propagation::Proceed;
         }
@@ -45,7 +45,11 @@ pub fn install_tab_interceptor(gtk_window: &gtk::ApplicationWindow, focused: Foc
         // shift modifier on a plain Tab.
         let shift = keyval == gdk::keys::constants::ISO_Left_Tab
             || event.state().contains(gdk::ModifierType::SHIFT_MASK);
-        let data = if shift { "\u{1b}[Z".to_string() } else { "\t".to_string() };
+        let data = if shift {
+            "\u{1b}[Z".to_string()
+        } else {
+            "\t".to_string()
+        };
 
         // The daemon write is a blocking unix-socket round-trip; do it off the GTK
         // main loop so a slow daemon can't stutter the UI.

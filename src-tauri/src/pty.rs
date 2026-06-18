@@ -517,63 +517,63 @@ impl PtyManager {
             .name(format!("pty-reader-{id}"))
             .stack_size(READER_THREAD_STACK_BYTES)
             .spawn(move || {
-            let mut buf = [0u8; 4096];
-            let end_event = loop {
-                if reader_stop_thread.load(Ordering::Relaxed) {
-                    break Some(
-                        PtySessionEvent::new(&reader_event_id, "reader-stopped")
-                            .with_pid(reader_pid)
-                            .with_reason("shutdown requested"),
+                let mut buf = [0u8; 4096];
+                let end_event = loop {
+                    if reader_stop_thread.load(Ordering::Relaxed) {
+                        break Some(
+                            PtySessionEvent::new(&reader_event_id, "reader-stopped")
+                                .with_pid(reader_pid)
+                                .with_reason("shutdown requested"),
+                        );
+                    }
+                    match reader.read(&mut buf) {
+                        Ok(0) => {
+                            break Some(
+                                PtySessionEvent::new(&reader_event_id, "eof")
+                                    .with_pid(reader_pid)
+                                    .with_reason("pty master returned EOF"),
+                            );
+                        }
+                        Ok(n) => {
+                            // A stop requested mid-read: discard the bytes and exit so a
+                            // killed/duplicate shell can never broadcast after shutdown.
+                            if reader_stop_thread.load(Ordering::Relaxed) {
+                                break Some(
+                                    PtySessionEvent::new(&reader_event_id, "reader-stopped")
+                                        .with_pid(reader_pid)
+                                        .with_reason("shutdown requested after read"),
+                                );
+                            }
+                            let data = String::from_utf8_lossy(&buf[..n]).to_string();
+                            append_pty_output(&output_reader, &data);
+                            broadcast_pty_output(&subscribers_reader, &data);
+                            if event_sink.emit_pty_data(&event_id, &data).is_err() {
+                                break Some(
+                                    PtySessionEvent::new(&reader_event_id, "event-sink-closed")
+                                        .with_pid(reader_pid)
+                                        .with_reason("frontend event sink closed"),
+                                );
+                            }
+                        }
+                        Err(error) => {
+                            break Some(
+                                PtySessionEvent::new(&reader_event_id, "read-error")
+                                    .with_pid(reader_pid)
+                                    .with_reason(&error.to_string()),
+                            );
+                        }
+                    }
+                };
+                if let Some(event) = end_event {
+                    trace_pty(
+                        "pty.session.event",
+                        format!(
+                            "id={} kind={} pid={:?} reason={:?}",
+                            event.id, event.kind, event.pid, event.reason
+                        ),
                     );
+                    push_session_event(&reader_events, event);
                 }
-                match reader.read(&mut buf) {
-                    Ok(0) => {
-                        break Some(
-                            PtySessionEvent::new(&reader_event_id, "eof")
-                                .with_pid(reader_pid)
-                                .with_reason("pty master returned EOF"),
-                        );
-                    }
-                    Ok(n) => {
-                        // A stop requested mid-read: discard the bytes and exit so a
-                        // killed/duplicate shell can never broadcast after shutdown.
-                        if reader_stop_thread.load(Ordering::Relaxed) {
-                            break Some(
-                                PtySessionEvent::new(&reader_event_id, "reader-stopped")
-                                    .with_pid(reader_pid)
-                                    .with_reason("shutdown requested after read"),
-                            );
-                        }
-                        let data = String::from_utf8_lossy(&buf[..n]).to_string();
-                        append_pty_output(&output_reader, &data);
-                        broadcast_pty_output(&subscribers_reader, &data);
-                        if event_sink.emit_pty_data(&event_id, &data).is_err() {
-                            break Some(
-                                PtySessionEvent::new(&reader_event_id, "event-sink-closed")
-                                    .with_pid(reader_pid)
-                                    .with_reason("frontend event sink closed"),
-                            );
-                        }
-                    }
-                    Err(error) => {
-                        break Some(
-                            PtySessionEvent::new(&reader_event_id, "read-error")
-                                .with_pid(reader_pid)
-                                .with_reason(&error.to_string()),
-                        );
-                    }
-                }
-            };
-            if let Some(event) = end_event {
-                trace_pty(
-                    "pty.session.event",
-                    format!(
-                        "id={} kind={} pid={:?} reason={:?}",
-                        event.id, event.kind, event.pid, event.reason
-                    ),
-                );
-                push_session_event(&reader_events, event);
-            }
             })
             .expect("spawn pty reader thread");
 
