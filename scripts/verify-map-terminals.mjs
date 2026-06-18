@@ -51,6 +51,8 @@ const canvasTerminalSmoke = readFileSync(join(root, "scripts/verify-canvas-termi
 const terminalReliabilityGate = readFileSync(join(root, "scripts/verify-terminal-reliability.sh"), "utf8");
 const releaseGate = readFileSync(join(root, "scripts/verify-release.sh"), "utf8");
 const standaloneDaemonSmoke = readFileSync(join(root, "scripts/verify-standalone-daemon-smoke.sh"), "utf8");
+const evidenceBundle = readFileSync(join(root, "scripts/export-evidence-bundle.mjs"), "utf8");
+const evidenceBundleSpec = readFileSync(join(root, "scripts/verify-evidence-bundle.mjs"), "utf8");
 const canvasLiveSmoke = readFileSync(join(root, "scripts/verify-canvas-live.sh"), "utf8");
 const bracketedPasteSmoke = readFileSync(join(root, "scripts/verify-bracketed-paste.sh"), "utf8");
 const legacyPromptLiveSmoke = readFileSync(join(root, "scripts/verify-legacy-prompt-repair.sh"), "utf8");
@@ -546,6 +548,18 @@ const checks = [
       /taskStatusColor/.test(magicCanvas) &&
       /node\.taskBinding\.taskId/.test(magicCanvas),
     message: "Map terminal node chrome must expose and render task bindings outside the terminal buffer.",
+  },
+  {
+    ok: /"evidence:bundle": "node scripts\/export-evidence-bundle\.mjs"/.test(packageJson) &&
+      /"verify:evidence-bundle": "node scripts\/verify-evidence-bundle\.mjs"/.test(packageJson) &&
+      /function redactString/.test(evidenceBundle) &&
+      /collectPreviewUrls/.test(evidenceBundle) &&
+      /collectTaskBindings/.test(evidenceBundle) &&
+      /TermFleet Evidence Bundle/.test(evidenceBundle) &&
+      /createEvidenceBundle/.test(evidenceBundle) &&
+      /<redacted-token>/.test(evidenceBundleSpec) &&
+      /http:\/\/localhost:3000/.test(evidenceBundleSpec),
+    message: "Evidence bundle export must capture commands, previews, task bindings, sessions, agents, and redact local paths/tokens.",
   },
   {
     ok: /useMasterPlanTasks/.test(workbenchSidebar) &&

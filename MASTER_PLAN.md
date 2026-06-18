@@ -2115,6 +2115,13 @@ Workstreams:
      URLs, screenshots, and verification status into a shareable local artifact.
    - Redact secrets and machine-local absolute paths before export.
    - Link captured evidence back to MASTER_PLAN task badges where available.
+   - In progress: added a local evidence bundle exporter that reads the existing
+     TermFleet data root, status/session mirrors, agent workstreams, preview
+     URLs, canvas task bindings, and chosen verification commands into Markdown
+     or JSON. The exporter preserves local preview URLs and MASTER_PLAN task
+     bindings while redacting token-shaped secrets and machine-local absolute
+     paths. Verification: `npm run verify:evidence-bundle`; `npm run
+     verify:map-terminals`; `npm run build`; `git diff --check`.
 
 5. **Local services dashboard**
    - Detect localhost URLs, dev servers, ports, and failing commands from terminal
