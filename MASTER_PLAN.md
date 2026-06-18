@@ -2137,6 +2137,12 @@ Workstreams:
      playwright test tests/map-terminal-rendering.spec.ts -g "map sidebar
      filters operations nodes" --reporter=line`; `npm run build`; `git diff
      --check`.
+   - In progress: local service rows now include an attach-log handoff action
+     that copies a bounded brief with service URL, owner, status, port, activity,
+     and the latest terminal/service log lines. Verification: `npm run
+     verify:map-terminals`; `npx playwright test
+     tests/map-terminal-rendering.spec.ts -g "map sidebar filters operations
+     nodes" --reporter=line`; `npm run build`; `git diff --check`.
 
 6. **OSS readiness**
    - Write a README that states what TermFleet is, what it is not, and why the

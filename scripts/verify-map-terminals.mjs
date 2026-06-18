@@ -188,12 +188,17 @@ const checks = [
     ok: /export function summarizeLocalServices/.test(localServices) &&
       /LocalServiceSummary/.test(localServices) &&
       /normalizeLocalUrl/.test(localServices) &&
+      /trimServiceLogs/.test(localServices) &&
+      /formatLocalServiceBrief/.test(localServices) &&
       /serviceStatus/.test(localServices) &&
       /summarizeLocalServices\(visibleTabs, groupVisibleNodes\)/.test(workbenchSidebar) &&
       /data-testid="map-local-services"/.test(workbenchSidebar) &&
       /data-testid="map-local-service-row"/.test(workbenchSidebar) &&
+      /Copy logs for/.test(workbenchSidebar) &&
+      /formatLocalServiceBrief\(service\)/.test(workbenchSidebar) &&
       /window\.open\(service\.url/.test(workbenchSidebar) &&
       /navigator\.clipboard\.writeText\(service\.url\)/.test(workbenchSidebar) &&
+      /terminalOutput: "VITE ready at http:\/\/localhost:5177\\nGET \/ 200"/.test(mapTerminalRenderingSpec) &&
       /map-local-service-row/.test(mapTerminalRenderingSpec) &&
       /node-preview/.test(mapTerminalRenderingSpec),
     message: "Map sidebar must summarize local preview services with owner/status plus focus, copy, and open actions.",

@@ -688,6 +688,7 @@ test("map sidebar filters operations nodes by visible work state", async ({ page
         terminalTab("tab-preview", "Preview service", "pane-preview", {
           status: "exited",
           previewUrl: "http://localhost:5177",
+          terminalOutput: "VITE ready at http://localhost:5177\nGET / 200",
         }),
       ],
       activeTabId: "tab-active",
@@ -717,6 +718,7 @@ test("map sidebar filters operations nodes by visible work state", async ({ page
   await expect(mapPanel.getByTestId("map-local-service-row")).toContainText("localhost:5177");
   await expect(mapPanel.getByTestId("map-local-service-row")).toContainText("stopped");
   await expect(mapPanel.getByTestId("map-local-service-row")).toContainText("Preview service");
+  await expect(mapPanel.getByRole("button", { name: "Copy logs for http://localhost:5177" })).toBeVisible();
 
   await mapPanel.getByTestId("map-local-service-row").click();
   await expect.poll(async () => page.evaluate(() => {

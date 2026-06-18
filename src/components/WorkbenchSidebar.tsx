@@ -34,7 +34,7 @@ import { agentLaneAuthRetryText, agentLaneAuthRetryTitle, agentLaneCleanupReques
 import { workstreamActivityText } from "../lib/workstreamActivity";
 import { formatWorkstreamOpsContext, promptWorkstreamIsolation, promptWorkstreamLaunchProfile, resolveWorkstreamOpsContext } from "../lib/workstreamOpsContext";
 import { MAP_FILTERS, type MapFilter, nodeMatchesMapFilter } from "../lib/mapNodeFilters";
-import { summarizeLocalServices, type LocalServiceSummary } from "../lib/localServices";
+import { formatLocalServiceBrief, summarizeLocalServices, type LocalServiceSummary } from "../lib/localServices";
 
 const TERMINAL_COLORS = [
   "#d99a45",
@@ -3199,19 +3199,10 @@ function MapPanel({
                 return (
                   <div
                     key={service.id}
-                    role="button"
-                    tabIndex={0}
                     style={styles.serviceRow}
                     data-testid="map-local-service-row"
                     title={`Focus ${service.url}`}
                     onClick={() => {
-                      if (service.ownerTabId) setActiveTab(service.ownerTabId);
-                      setWorkspaceMode("canvas");
-                      if (focusNode) focusCanvasNode(focusNode);
-                    }}
-                    onKeyDown={(event) => {
-                      if (event.key !== "Enter" && event.key !== " ") return;
-                      event.preventDefault();
                       if (service.ownerTabId) setActiveTab(service.ownerTabId);
                       setWorkspaceMode("canvas");
                       if (focusNode) focusCanvasNode(focusNode);
@@ -3236,6 +3227,19 @@ function MapPanel({
                         }}
                       >
                         <ClipboardText size={13} />
+                      </button>
+                      <button
+                        type="button"
+                        style={styles.rowActionButton}
+                        title={`Copy logs for ${service.url}`}
+                        aria-label={`Copy logs for ${service.url}`}
+                        onMouseDown={(event) => event.stopPropagation()}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          if (navigator.clipboard?.writeText) void navigator.clipboard.writeText(formatLocalServiceBrief(service));
+                        }}
+                      >
+                        <Note size={13} />
                       </button>
                       <button
                         type="button"

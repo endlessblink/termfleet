@@ -14,6 +14,16 @@ export interface LocalServiceSummary {
   previewNodeId?: string;
   terminalNodeId?: string;
   activity?: string;
+  logs?: string;
+}
+
+function trimServiceLogs(value?: string) {
+  const lines = value
+    ?.split(/\r?\n/)
+    .map((line) => line.trimEnd())
+    .filter(Boolean)
+    .slice(-8);
+  return lines?.length ? lines.join("\n") : undefined;
 }
 
 function normalizeLocalUrl(value?: string) {
@@ -51,6 +61,7 @@ export function summarizeLocalServices(tabs: Tab[], nodes: CanvasNode[]): LocalS
       terminalId: existing?.terminalId ?? summary.terminalId,
       terminalPaneId: existing?.terminalPaneId ?? summary.terminalPaneId,
       activity: summary.activity ?? existing?.activity,
+      logs: summary.logs ?? existing?.logs,
     });
   };
 
@@ -76,6 +87,7 @@ export function summarizeLocalServices(tabs: Tab[], nodes: CanvasNode[]): LocalS
         terminalId: terminal.id,
         terminalNodeId: terminalNode?.id,
         activity: terminal.currentActivity ?? tab.workstream?.currentActivity,
+        logs: trimServiceLogs(terminal.terminalOutput ?? tab.workstream?.terminalOutput),
       });
     }
   }
@@ -100,8 +112,20 @@ export function summarizeLocalServices(tabs: Tab[], nodes: CanvasNode[]): LocalS
       previewNodeId: node.type === "preview" ? node.id : undefined,
       terminalNodeId: node.type === "terminal" ? node.id : undefined,
       activity: terminal?.currentActivity ?? tab?.workstream?.currentActivity,
+      logs: trimServiceLogs(terminal?.terminalOutput ?? tab?.workstream?.terminalOutput),
     });
   }
 
   return [...summaries.values()].sort((a, b) => Number(a.port) - Number(b.port) || a.ownerTitle.localeCompare(b.ownerTitle));
+}
+
+export function formatLocalServiceBrief(service: LocalServiceSummary) {
+  return [
+    `Service: ${service.url}`,
+    `Owner: ${service.ownerTitle}`,
+    `Status: ${service.status}`,
+    `Port: ${service.port}`,
+    service.activity ? `Activity: ${service.activity}` : null,
+    service.logs ? `Logs:\n${service.logs}` : "Logs: none captured",
+  ].filter(Boolean).join("\n");
 }
