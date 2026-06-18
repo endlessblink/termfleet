@@ -27,8 +27,10 @@ const gridDiff = readFileSync(join(root, "src/lib/gridDiff.ts"), "utf8");
 const snapshotPreviewRows = readFileSync(join(root, "src/lib/snapshotPreviewRows.ts"), "utf8");
 const gridDiffSpec = readFileSync(join(root, "tests/grid-diff.spec.ts"), "utf8");
 const boxGlyphSpec = readFileSync(join(root, "tests/box-glyph.spec.ts"), "utf8");
+const mapTerminalRenderingSpec = readFileSync(join(root, "tests/map-terminal-rendering.spec.ts"), "utf8");
 const terminalMouse = readFileSync(join(root, "src/lib/terminalMouse.ts"), "utf8");
 const mapNodeFilters = readFileSync(join(root, "src/lib/mapNodeFilters.ts"), "utf8");
+const localServices = readFileSync(join(root, "src/lib/localServices.ts"), "utf8");
 const terminalMouseSpec = readFileSync(join(root, "tests/terminal-mouse.spec.ts"), "utf8");
 const legacyPromptRepair = readFileSync(join(root, "src/lib/legacyPromptRepair.ts"), "utf8");
 const legacyPromptRepairSpec = readFileSync(join(root, "tests/legacy-prompt-repair.spec.ts"), "utf8");
@@ -181,6 +183,20 @@ const checks = [
       /data-testid="map-workspace-group"/.test(workbenchSidebar) &&
       /data-testid="map-workspace-summary-facets"/.test(workbenchSidebar),
     message: "Map panel must explain visible nodes through workspace, branch, role, and service group summaries.",
+  },
+  {
+    ok: /export function summarizeLocalServices/.test(localServices) &&
+      /LocalServiceSummary/.test(localServices) &&
+      /normalizeLocalUrl/.test(localServices) &&
+      /serviceStatus/.test(localServices) &&
+      /summarizeLocalServices\(visibleTabs, groupVisibleNodes\)/.test(workbenchSidebar) &&
+      /data-testid="map-local-services"/.test(workbenchSidebar) &&
+      /data-testid="map-local-service-row"/.test(workbenchSidebar) &&
+      /window\.open\(service\.url/.test(workbenchSidebar) &&
+      /navigator\.clipboard\.writeText\(service\.url\)/.test(workbenchSidebar) &&
+      /map-local-service-row/.test(mapTerminalRenderingSpec) &&
+      /node-preview/.test(mapTerminalRenderingSpec),
+    message: "Map sidebar must summarize local preview services with owner/status plus focus, copy, and open actions.",
   },
   {
     ok: /getDisplaySummary/.test(magicCanvas) &&

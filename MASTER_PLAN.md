@@ -2129,6 +2129,14 @@ Workstreams:
    - Make preview nodes first-class companions to the service terminal that owns
      them.
    - Add quick actions for restart, open in browser, copy URL, and attach logs.
+   - In progress: added a derived local-services panel to the map sidebar. It
+     groups existing terminal and preview-node localhost URLs by owning
+     terminal/workstream, shows port, owner, activity, and live/failed/waiting
+     status, and provides focus, copy URL, and open URL actions without probing
+     external processes. Verification: `npm run verify:map-terminals`; `npx
+     playwright test tests/map-terminal-rendering.spec.ts -g "map sidebar
+     filters operations nodes" --reporter=line`; `npm run build`; `git diff
+     --check`.
 
 6. **OSS readiness**
    - Write a README that states what TermFleet is, what it is not, and why the

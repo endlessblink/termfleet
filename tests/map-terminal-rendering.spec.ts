@@ -713,6 +713,22 @@ test("map sidebar filters operations nodes by visible work state", async ({ page
   await expect(mapPanel.getByTestId("map-filter-waiting")).toContainText("1");
   await expect(mapPanel.getByTestId("map-filter-testing")).toContainText("1");
   await expect(mapPanel.getByTestId("map-filter-preview")).toContainText("2");
+  await expect(mapPanel.getByTestId("map-local-services")).toContainText("1 detected");
+  await expect(mapPanel.getByTestId("map-local-service-row")).toContainText("localhost:5177");
+  await expect(mapPanel.getByTestId("map-local-service-row")).toContainText("stopped");
+  await expect(mapPanel.getByTestId("map-local-service-row")).toContainText("Preview service");
+
+  await mapPanel.getByTestId("map-local-service-row").click();
+  await expect.poll(async () => page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => {
+          canvasState: { selectedNodeId: string | null };
+        };
+      };
+    }).__termfleetWorkspaceStore;
+    return store?.getState().canvasState.selectedNodeId;
+  })).toBe("node-preview");
 
   await mapPanel.getByTestId("map-filter-failed").click();
   await expect(mapPanel.getByTestId("map-node-list")).toContainText("Failed build");

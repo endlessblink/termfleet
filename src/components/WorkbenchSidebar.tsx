@@ -1,6 +1,7 @@
 import { CSSProperties, ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowsClockwise,
+  ArrowSquareOut,
   CheckCircle,
   Prohibit,
   CaretDoubleLeft,
@@ -33,6 +34,7 @@ import { agentLaneAuthRetryText, agentLaneAuthRetryTitle, agentLaneCleanupReques
 import { workstreamActivityText } from "../lib/workstreamActivity";
 import { formatWorkstreamOpsContext, promptWorkstreamIsolation, promptWorkstreamLaunchProfile, resolveWorkstreamOpsContext } from "../lib/workstreamOpsContext";
 import { MAP_FILTERS, type MapFilter, nodeMatchesMapFilter } from "../lib/mapNodeFilters";
+import { summarizeLocalServices, type LocalServiceSummary } from "../lib/localServices";
 
 const TERMINAL_COLORS = [
   "#d99a45",
@@ -477,6 +479,29 @@ const styles: Record<string, CSSProperties> = {
     display: "grid",
     gap: 4,
   },
+  servicePanel: {
+    display: "grid",
+    gap: 8,
+    margin: "0 0 8px",
+    padding: "9px 10px",
+    border: "1px solid var(--border-subtle)",
+    borderRadius: "var(--radius-sm)",
+    background: "var(--surface-base)",
+  },
+  serviceRow: {
+    minWidth: 0,
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr) auto",
+    gap: 8,
+    alignItems: "center",
+    padding: "6px 7px",
+    border: "1px solid transparent",
+    borderRadius: "var(--radius-xs)",
+    background: "var(--surface-raised)",
+    color: "var(--text-primary)",
+    textAlign: "left",
+    cursor: "pointer",
+  },
   agentLaneItem: {
     minWidth: 0,
     display: "grid",
@@ -758,6 +783,14 @@ function nodeIcon(node: CanvasNode) {
   if (node.type === "preview") return <SquaresFour size={13} weight="duotone" />;
   if (node.type === "file") return <FileText size={13} />;
   return <Note size={13} />;
+}
+
+function localServiceStatusText(service: LocalServiceSummary) {
+  if (service.status === "live") return "live";
+  if (service.status === "failed") return "failed";
+  if (service.status === "waiting") return "waiting";
+  if (service.status === "stopped") return "stopped";
+  return "unknown";
 }
 
 function PanelButton({ panel }: { panel: OperationsPanel }) {
@@ -2952,13 +2985,17 @@ function MapPanel({
     ])
   ) as Record<MapFilter, number>, [groupVisibleNodes, tabs]);
   const visibleNodes = groupVisibleNodes.filter((node) => nodeMatchesMapFilter(node, nodeTab(node), mapFilter));
+  const visibleTabs = activeGroupFilter === null
+    ? tabs
+    : tabs.filter((tab) => tab.groupId === activeGroupFilter);
+  const localServices = useMemo(
+    () => summarizeLocalServices(visibleTabs, groupVisibleNodes),
+    [visibleTabs, groupVisibleNodes]
+  );
   const mapSummary = useMemo(
     () => summarizeMapNodes(visibleNodes, tabs, groups, liveCwds),
     [visibleNodes, tabs, groups, liveCwds]
   );
-  const visibleTabs = activeGroupFilter === null
-    ? tabs
-    : tabs.filter((tab) => tab.groupId === activeGroupFilter);
   const agentLane = summarizeAgentLane(visibleTabs);
   const activeAgentWorkstreams = agentLane.workstreams.filter(({ workstream }) => isActiveAgentWorkstream(workstream));
   const restartableAgentWorkstreams = agentLane.workstreams.filter(({ workstream }) => isRestartableAgentWorkstream(workstream));
@@ -3143,6 +3180,83 @@ function MapPanel({
         })}
       </div>
       <div style={styles.list}>
+        {localServices.length > 0 && (
+          <div
+            style={styles.servicePanel}
+            data-testid="map-local-services"
+            aria-label="Local services"
+            title={`${localServices.length} local service${localServices.length === 1 ? "" : "s"}`}
+          >
+            <div style={styles.agentLaneHeader}>
+              <span>Local services</span>
+              <span style={{ ...styles.rowMeta, marginTop: 0 }}>{localServices.length} detected</span>
+            </div>
+            <div style={styles.agentLaneList}>
+              {localServices.slice(0, 3).map((service) => {
+                const focusNode = canvasState.nodes.find((node) => node.id === service.previewNodeId) ??
+                  canvasState.nodes.find((node) => node.id === service.terminalNodeId) ??
+                  canvasState.nodes.find((node) => node.terminalTabId === service.ownerTabId);
+                return (
+                  <div
+                    key={service.id}
+                    role="button"
+                    tabIndex={0}
+                    style={styles.serviceRow}
+                    data-testid="map-local-service-row"
+                    title={`Focus ${service.url}`}
+                    onClick={() => {
+                      if (service.ownerTabId) setActiveTab(service.ownerTabId);
+                      setWorkspaceMode("canvas");
+                      if (focusNode) focusCanvasNode(focusNode);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key !== "Enter" && event.key !== " ") return;
+                      event.preventDefault();
+                      if (service.ownerTabId) setActiveTab(service.ownerTabId);
+                      setWorkspaceMode("canvas");
+                      if (focusNode) focusCanvasNode(focusNode);
+                    }}
+                  >
+                    <span style={{ minWidth: 0 }}>
+                      <span style={styles.agentRunTitle}>{service.url.replace(/^https?:\/\//, "")}</span>
+                      <span style={styles.agentRunMeta}>
+                        :{service.port} · {localServiceStatusText(service)} · {service.ownerTitle}{service.activity ? ` · ${service.activity}` : ""}
+                      </span>
+                    </span>
+                    <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                      <button
+                        type="button"
+                        style={styles.rowActionButton}
+                        title={`Copy ${service.url}`}
+                        aria-label={`Copy ${service.url}`}
+                        onMouseDown={(event) => event.stopPropagation()}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          if (navigator.clipboard?.writeText) void navigator.clipboard.writeText(service.url);
+                        }}
+                      >
+                        <ClipboardText size={13} />
+                      </button>
+                      <button
+                        type="button"
+                        style={styles.rowActionButton}
+                        title={`Open ${service.url}`}
+                        aria-label={`Open ${service.url}`}
+                        onMouseDown={(event) => event.stopPropagation()}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          window.open(service.url, "_blank", "noopener,noreferrer");
+                        }}
+                      >
+                        <ArrowSquareOut size={13} />
+                      </button>
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
         {visibleNodes.length > 0 && (
           <div
             style={styles.agentLanePanel}
