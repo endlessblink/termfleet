@@ -392,28 +392,55 @@ fn is_false(value: &bool) -> bool {
     !*value
 }
 
+/// Reorder one row's cells from logical into visual order. Identity rows (no
+/// RTL) are returned untouched; otherwise each visual column pulls its logical
+/// source cell exactly once.
+fn apply_order<T>(logical: Vec<T>, order: &crate::bidi::RowOrder) -> Vec<T> {
+    if order.identity {
+        return logical;
+    }
+    let mut slots: Vec<Option<T>> = logical.into_iter().map(Some).collect();
+    order
+        .vis_to_log
+        .iter()
+        .map(|&log| {
+            slots[log]
+                .take()
+                .expect("bidi permutation visits each column exactly once")
+        })
+        .collect()
+}
+
 impl GridSnapshot {
     fn capture(term: &Term<VoidListener>) -> Self {
         let cols = term.columns();
         let rows = term.screen_lines();
         let mode = *term.mode();
         let content = term.renderable_content();
-        let cursor = CursorSnapshot {
-            col: content.cursor.point.column.0,
-            line: content.cursor.point.line.0,
-        };
+        let cursor_col = content.cursor.point.column.0;
+        let cursor_line = content.cursor.point.line.0;
 
         let grid = term.grid();
         // Honor the scroll position: visible row `r` maps to buffer line
         // `r - display_offset` (0 when not scrolled), so scrollback shows history.
         let offset = grid.display_offset() as i32;
         let mut cells = Vec::with_capacity(rows);
+        // The cursor lives in logical coordinates; BiDi maps it to its visual
+        // column on the cursor's own line.
+        let mut cursor_vis_col = cursor_col;
         for row in 0..rows {
             let line = &grid[Line(row as i32 - offset)];
             let mut row_cells = Vec::with_capacity(cols);
+            // Primary char per column for BiDi (wide-char spacers ride their base).
+            let mut text: Vec<Option<char>> = Vec::with_capacity(cols);
             for col in 0..cols {
                 let cell = &line[Column(col)];
                 let flags = cell.flags;
+                text.push(if flags.contains(Flags::WIDE_CHAR_SPACER) {
+                    None
+                } else {
+                    Some(cell.c)
+                });
                 // Emit every column (including wide-char spacers) so the
                 // serialized row index maps 1:1 to the grid column; the renderer
                 // relies on `cells[row][col]` positional alignment. A spacer
@@ -430,8 +457,16 @@ impl GridSnapshot {
                     wide: flags.contains(Flags::WIDE_CHAR),
                 });
             }
-            cells.push(row_cells);
+            let order = crate::bidi::order_row(&text, crate::bidi::BaseDir::Ltr);
+            if row as i32 == cursor_line && !order.identity {
+                cursor_vis_col = order.log_to_vis.get(cursor_col).copied().unwrap_or(cursor_col);
+            }
+            cells.push(apply_order(row_cells, &order));
         }
+        let cursor = CursorSnapshot {
+            col: cursor_vis_col,
+            line: cursor_line,
+        };
 
         Self {
             cols,
@@ -639,14 +674,21 @@ impl WireFrame {
         // viewport reads history (0 when not scrolled).
         let offset = grid.display_offset() as i32;
         let cursor = term.renderable_content().cursor.point;
+        let mut cursor_vis_col = cursor.column.0;
 
         let mut rows_cells = Vec::with_capacity(rows);
         for row in 0..rows {
             let line = &grid[Line(row as i32 - offset)];
             let mut cells = Vec::with_capacity(cols);
+            let mut text: Vec<Option<char>> = Vec::with_capacity(cols);
             for col in 0..cols {
                 let cell = &line[Column(col)];
                 let flags = cell.flags;
+                text.push(if flags.contains(Flags::WIDE_CHAR_SPACER) {
+                    None
+                } else {
+                    Some(cell.c)
+                });
                 let mut style = 0u16;
                 if flags.intersects(Flags::BOLD | Flags::DIM_BOLD) {
                     style |= STYLE_BOLD;
@@ -675,13 +717,21 @@ impl WireFrame {
                     style,
                 });
             }
-            rows_cells.push(cells);
+            let order = crate::bidi::order_row(&text, crate::bidi::BaseDir::Ltr);
+            if row as i32 == cursor.line.0 && !order.identity {
+                cursor_vis_col = order
+                    .log_to_vis
+                    .get(cursor.column.0)
+                    .copied()
+                    .unwrap_or(cursor.column.0);
+            }
+            rows_cells.push(apply_order(cells, &order));
         }
 
         Self {
             cols: cols as u16,
             rows: rows as u16,
-            cursor_col: cursor.column.0 as u16,
+            cursor_col: cursor_vis_col as u16,
             cursor_line: cursor.line.0.max(0) as u16,
             alt_screen: mode.contains(TermMode::ALT_SCREEN),
             cursor_visible: offset == 0 && mode.contains(TermMode::SHOW_CURSOR),
@@ -865,6 +915,37 @@ mod tests {
     fn bold_flag_is_reported() {
         let snapshot = feed("\x1b[1mB");
         assert!(snapshot.cells[0][0].bold);
+    }
+
+    fn feed_wire(bytes: &str) -> WireFrame {
+        let mut state = TermState::new(DEFAULT_COLS, DEFAULT_ROWS);
+        state.feed(bytes.as_bytes());
+        WireFrame::capture(&state.term)
+    }
+
+    #[test]
+    fn hebrew_snapshot_row_is_visually_reordered() {
+        // Logical "שלום" (ש,ל,ו,ם) must display right-to-left under the LTR
+        // base: ם ו ל ש across columns 0..3.
+        let snapshot = feed("שלום");
+        assert_eq!(snapshot.cells[0][0].c, "ם");
+        assert_eq!(snapshot.cells[0][1].c, "ו");
+        assert_eq!(snapshot.cells[0][2].c, "ל");
+        assert_eq!(snapshot.cells[0][3].c, "ש");
+    }
+
+    #[test]
+    fn ascii_snapshot_row_unchanged_by_bidi() {
+        // Regression: a plain LTR line must be byte-identical (fast path).
+        let snapshot = feed("hello world");
+        assert_eq!(text_at(&snapshot, 0), "hello world");
+        assert_eq!(snapshot.cells[0][0].c, "h");
+    }
+
+    #[test]
+    fn hebrew_wire_frame_row_is_visually_reordered() {
+        let frame = feed_wire("שלום");
+        assert_eq!(wire_text_at(&frame, 0), "םולש");
     }
 
     #[test]
