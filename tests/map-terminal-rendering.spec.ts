@@ -518,7 +518,6 @@ test("map panel summarizes visible nodes by workspace branch role and service", 
       };
     }).__termfleetWorkspaceStore;
     if (!store) throw new Error("TermFleet test store is unavailable");
-
     const now = Date.now();
     const group = {
       id: "group-termfleet",
@@ -601,6 +600,7 @@ test("map panel summarizes visible nodes by workspace branch role and service", 
   });
 
   const mapPanel = page.locator('[aria-label="Operations panel"]');
+  await mapPanel.getByTestId("map-workspace-summary-toggle").click();
   await expect(mapPanel.getByTestId("map-workspace-summary")).toContainText("2 workspaces");
   await expect(mapPanel.getByTestId("map-workspace-summary")).toContainText("3 roles");
   await expect(mapPanel.getByTestId("map-workspace-summary")).toContainText("2 branches");
@@ -613,6 +613,7 @@ test("map panel summarizes visible nodes by workspace branch role and service", 
   await expect(mapPanel.getByTestId("map-workspace-summary-facets")).toContainText("preview");
 
   await mapPanel.getByTestId("map-filter-preview").click();
+  await expect(mapPanel.getByTestId("map-workspace-summary-toggle")).toHaveAttribute("aria-expanded", "true");
   await expect(mapPanel.getByTestId("map-workspace-summary")).toContainText("1 workspace");
   await expect(mapPanel.getByTestId("map-workspace-group").filter({ hasText: "TermFleet OSS" })).toContainText("2 nodes");
   await expect(mapPanel.getByTestId("map-workspace-summary-facets")).toContainText("preview");
@@ -620,6 +621,17 @@ test("map panel summarizes visible nodes by workspace branch role and service", 
 });
 
 test("map sidebar filters operations nodes by visible work state", async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: async (text: string) => {
+          (window as typeof window & { __termfleetCopied?: string[] }).__termfleetCopied ??= [];
+          (window as typeof window & { __termfleetCopied?: string[] }).__termfleetCopied?.push(text);
+        },
+      },
+    });
+  });
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle");
   await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
@@ -701,24 +713,68 @@ test("map sidebar filters operations nodes by visible work state", async ({ page
           { id: "node-waiting", type: "terminal", title: "Waiting agent", terminalTabId: "tab-waiting", x: 0, y: 500, width: 820, height: 460 },
           { id: "node-tests", type: "terminal", title: "Test runner", terminalTabId: "tab-tests", x: 860, y: 500, width: 820, height: 460 },
           { id: "node-preview-terminal", type: "terminal", title: "Preview service", terminalTabId: "tab-preview", x: 1720, y: 0, width: 820, height: 460 },
-          { id: "node-preview", type: "preview", title: "Preview localhost", terminalTabId: "tab-preview", previewPaneId: "pane-preview-ui", previewUrl: "http://localhost:5177", x: 1720, y: 500, width: 620, height: 420 },
         ],
       },
     });
   });
 
   const mapPanel = page.locator('[aria-label="Operations panel"]');
-  await expect(mapPanel.getByTestId("map-filter-all")).toContainText("6");
+  await expect(mapPanel.getByTestId("map-filter-all")).toContainText("5");
   await expect(mapPanel.getByTestId("map-filter-active")).toContainText("2");
   await expect(mapPanel.getByTestId("map-filter-failed")).toContainText("1");
   await expect(mapPanel.getByTestId("map-filter-waiting")).toContainText("1");
   await expect(mapPanel.getByTestId("map-filter-testing")).toContainText("1");
-  await expect(mapPanel.getByTestId("map-filter-preview")).toContainText("2");
+  await expect(mapPanel.getByTestId("map-filter-preview")).toContainText("1");
   await expect(mapPanel.getByTestId("map-local-services")).toContainText("1 detected");
+  await expect(mapPanel.getByTestId("map-local-services-toggle")).toHaveAttribute("aria-expanded", "true");
+  await mapPanel.getByTestId("map-local-services-toggle").click();
+  await expect(mapPanel.getByTestId("map-local-services-toggle")).toHaveAttribute("aria-expanded", "false");
+  await expect(mapPanel.getByTestId("map-local-service-row")).toHaveCount(0);
+  await mapPanel.getByTestId("map-local-services-toggle").click();
   await expect(mapPanel.getByTestId("map-local-service-row")).toContainText("localhost:5177");
   await expect(mapPanel.getByTestId("map-local-service-row")).toContainText("stopped");
   await expect(mapPanel.getByTestId("map-local-service-row")).toContainText("Preview service");
+  await expect(mapPanel.getByTestId("map-local-service-row")).not.toContainText("localhost:5177:5177");
+  await expect(mapPanel.getByTestId("map-local-service-row")).not.toContainText("VITE ready");
+  await expect(mapPanel.getByRole("button", { name: "Copy http://localhost:5177" })).toBeVisible();
   await expect(mapPanel.getByRole("button", { name: "Copy logs for http://localhost:5177" })).toBeVisible();
+  await expect(mapPanel.getByRole("button", { name: "Open http://localhost:5177 on map" })).toBeVisible();
+
+  await mapPanel.getByRole("button", { name: "Copy http://localhost:5177" }).click();
+  await expect(mapPanel.getByTestId("map-local-service-action-status")).toHaveText("URL copied");
+  await expect.poll(async () => page.evaluate(() =>
+    (window as typeof window & { __termfleetCopied?: string[] }).__termfleetCopied?.at(-1)
+  )).toBe("http://localhost:5177");
+
+  await mapPanel.getByRole("button", { name: "Copy logs for http://localhost:5177" }).click();
+  await expect(mapPanel.getByTestId("map-local-service-action-status")).toHaveText("Logs copied");
+  await expect.poll(async () => page.evaluate(() =>
+    (window as typeof window & { __termfleetCopied?: string[] }).__termfleetCopied?.at(-1)
+  )).toContain("GET / 200");
+
+  await mapPanel.getByRole("button", { name: "Open http://localhost:5177 on map" }).click();
+  await expect(mapPanel.getByTestId("map-local-service-action-status")).toHaveText("Map window opened");
+  await expect.poll(async () => page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => {
+          canvasState: { selectedNodeId: string | null; nodes: Array<{ id: string; type: string; previewUrl?: string }> };
+        };
+      };
+    }).__termfleetWorkspaceStore;
+    const state = store?.getState().canvasState;
+    const node = state?.nodes.find((candidate) => candidate.type === "preview" && candidate.previewUrl === "http://localhost:5177");
+    return node ? `${state?.selectedNodeId}:${node.id}` : null;
+  })).toBe("service-preview-tab-preview-5177:service-preview-tab-preview-5177");
+  await expect.poll(async () => page.evaluate(() => {
+    const raw = localStorage.getItem("terminal-workspace.v1");
+    if (!raw) return null;
+    const workspace = JSON.parse(raw) as {
+      canvasState?: { nodes?: Array<{ id: string; type: string; previewUrl?: string; linkedTerminalPaneId?: string }> };
+    };
+    const node = workspace.canvasState?.nodes?.find((candidate) => candidate.id === "service-preview-tab-preview-5177");
+    return node ? `${node.type}:${node.previewUrl}:${node.linkedTerminalPaneId}` : null;
+  })).toBe("preview:http://localhost:5177:pane-preview");
 
   await mapPanel.getByTestId("map-local-service-row").click();
   await expect.poll(async () => page.evaluate(() => {
@@ -730,7 +786,7 @@ test("map sidebar filters operations nodes by visible work state", async ({ page
       };
     }).__termfleetWorkspaceStore;
     return store?.getState().canvasState.selectedNodeId;
-  })).toBe("node-preview");
+  })).toBe("service-preview-tab-preview-5177");
 
   await mapPanel.getByTestId("map-filter-failed").click();
   await expect(mapPanel.getByTestId("map-node-list")).toContainText("Failed build");
@@ -747,4 +803,21 @@ test("map sidebar filters operations nodes by visible work state", async ({ page
   await mapPanel.getByTestId("map-filter-preview").click();
   await expect(mapPanel.getByTestId("map-node-list")).toContainText("Preview service");
   await expect(mapPanel.getByTestId("map-node-list")).toContainText("Preview localhost");
+
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await expect(mapPanel.getByTestId("map-local-services")).toContainText("1 detected");
+  await expect(mapPanel.getByTestId("map-local-service-row")).toContainText("localhost:5177");
+  await expect(mapPanel.getByTestId("map-local-service-row")).toContainText("Preview service");
+  await mapPanel.getByTestId("map-local-service-row").click();
+  await expect.poll(async () => page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => {
+          canvasState: { selectedNodeId: string | null };
+        };
+      };
+    }).__termfleetWorkspaceStore;
+    return store?.getState().canvasState.selectedNodeId;
+  })).toBe("service-preview-tab-preview-5177");
 });

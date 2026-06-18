@@ -194,14 +194,28 @@ const checks = [
       /summarizeLocalServices\(visibleTabs, groupVisibleNodes\)/.test(workbenchSidebar) &&
       /data-testid="map-local-services"/.test(workbenchSidebar) &&
       /data-testid="map-local-service-row"/.test(workbenchSidebar) &&
+      /data-testid="map-local-services-toggle"/.test(workbenchSidebar) &&
+      /data-testid="map-workspace-summary-toggle"/.test(workbenchSidebar) &&
+      /data-testid="map-local-service-action-status"/.test(workbenchSidebar) &&
       /Copy logs for/.test(workbenchSidebar) &&
       /formatLocalServiceBrief\(service\)/.test(workbenchSidebar) &&
-      /window\.open\(service\.url/.test(workbenchSidebar) &&
-      /navigator\.clipboard\.writeText\(service\.url\)/.test(workbenchSidebar) &&
+      /copyServiceText\(service\.url, "URL"\)/.test(workbenchSidebar) &&
+      /openServiceOnMap\(service\)/.test(workbenchSidebar) &&
+      /addCanvasNode\(previewNode\)/.test(workbenchSidebar) &&
+      /type: "preview"/.test(workbenchSidebar) &&
+      /setServiceActionStatus\("Map window opened"\)/.test(workbenchSidebar) &&
+      /navigator\.clipboard\.writeText\(text\)/.test(workbenchSidebar) &&
       /terminalOutput: "VITE ready at http:\/\/localhost:5177\\nGET \/ 200"/.test(mapTerminalRenderingSpec) &&
+      /__termfleetCopied/.test(mapTerminalRenderingSpec) &&
+      /Open http:\/\/localhost:5177 on map/.test(mapTerminalRenderingSpec) &&
+      /Map window opened/.test(mapTerminalRenderingSpec) &&
+      /service-preview-tab-preview-5177/.test(mapTerminalRenderingSpec) &&
+      /localStorage\.getItem\("terminal-workspace\.v1"\)/.test(mapTerminalRenderingSpec) &&
+      /page\.reload\(\{ waitUntil: "domcontentloaded" \}\)/.test(mapTerminalRenderingSpec) &&
+      /not\.toContainText\("localhost:5177:5177"\)/.test(mapTerminalRenderingSpec) &&
       /map-local-service-row/.test(mapTerminalRenderingSpec) &&
-      /node-preview/.test(mapTerminalRenderingSpec),
-    message: "Map sidebar must summarize local preview services with owner/status plus focus, copy, and open actions.",
+      /map-local-services-toggle/.test(mapTerminalRenderingSpec),
+    message: "Map sidebar must summarize local preview services with owner/status plus focus, copy, collapse, persisted restore, and map-window actions.",
   },
   {
     ok: /getDisplaySummary/.test(magicCanvas) &&

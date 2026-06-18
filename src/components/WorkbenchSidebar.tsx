@@ -7,9 +7,11 @@ import {
   CaretDoubleLeft,
   CaretDoubleRight,
   ClipboardText,
+  Browser,
   Robot,
   FileText,
   FolderOpen,
+  ListBullets,
   MapTrifold,
   Note,
   Palette,
@@ -142,8 +144,13 @@ function summarizeMapNodes(nodes: CanvasNode[], tabs: Tab[], groups: Group[], li
 type OperationsPanel = "sessions" | "map";
 
 const panelIcons: Record<OperationsPanel, typeof TerminalWindow> = {
-  sessions: TerminalWindow,
+  sessions: ListBullets,
   map: MapTrifold,
+};
+
+const panelTitles: Record<OperationsPanel, string> = {
+  sessions: "Sessions list",
+  map: "Operations map",
 };
 
 const styles: Record<string, CSSProperties> = {
@@ -311,22 +318,25 @@ const styles: Record<string, CSSProperties> = {
     minHeight: 0,
     overflow: "auto",
     padding: 8,
+    display: "flex",
+    flexDirection: "column",
+    gap: 8,
   },
   mapFilterBar: {
-    display: "flex",
-    gap: 5,
+    display: "grid",
+    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+    gap: 4,
     padding: "8px",
     borderBottom: "1px solid var(--border-subtle)",
-    overflowX: "auto",
+    overflow: "hidden",
   },
   mapFilterButton: {
-    minWidth: 64,
     height: 28,
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
     gap: 5,
-    padding: "0 8px",
+    padding: "0 6px",
     border: "1px solid transparent",
     borderRadius: "var(--radius-sm)",
     background: "var(--surface-base)",
@@ -336,6 +346,7 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 500,
     cursor: "pointer",
     whiteSpace: "nowrap",
+    minWidth: 0,
   },
   mapFilterCount: {
     color: "var(--text-tertiary)",
@@ -479,28 +490,136 @@ const styles: Record<string, CSSProperties> = {
     display: "grid",
     gap: 4,
   },
-  servicePanel: {
+  utilityPanel: {
     display: "grid",
-    gap: 8,
-    margin: "0 0 8px",
-    padding: "9px 10px",
+    gap: 6,
+    margin: "0 0 6px",
+    padding: "7px 8px",
     border: "1px solid var(--border-subtle)",
     borderRadius: "var(--radius-sm)",
-    background: "var(--surface-base)",
+    background: "color-mix(in srgb, var(--surface-base) 82%, transparent)",
+  },
+  compactUtilityHeader: {
+    minWidth: 0,
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr) auto auto",
+    gap: 8,
+    alignItems: "center",
+    color: "var(--text-primary)",
+    fontSize: 11,
+    fontWeight: 500,
+  },
+  compactUtilityMeta: {
+    minWidth: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    color: "var(--text-secondary)",
+    fontSize: 10,
+  },
+  compactToggle: {
+    height: 20,
+    minWidth: 34,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "0 7px",
+    border: "1px solid transparent",
+    borderRadius: "var(--radius-xs)",
+    background: "var(--surface-raised)",
+    color: "var(--text-secondary)",
+    fontFamily: "var(--font-ui)",
+    fontSize: 10,
+    fontWeight: 500,
+    cursor: "pointer",
+  },
+  servicePanel: {
+    display: "grid",
+    gap: 6,
+    margin: "0 0 6px",
+    padding: "7px 8px",
+    border: "1px solid var(--border-subtle)",
+    borderRadius: "var(--radius-sm)",
+    background: "color-mix(in srgb, var(--surface-base) 82%, transparent)",
   },
   serviceRow: {
     minWidth: 0,
     display: "grid",
     gridTemplateColumns: "minmax(0, 1fr) auto",
-    gap: 8,
+    gap: 6,
     alignItems: "center",
-    padding: "6px 7px",
+    padding: "5px 6px",
     border: "1px solid transparent",
     borderRadius: "var(--radius-xs)",
     background: "var(--surface-raised)",
     color: "var(--text-primary)",
     textAlign: "left",
     cursor: "pointer",
+  },
+  serviceTitleRow: {
+    minWidth: 0,
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr) auto",
+    gap: 8,
+    alignItems: "center",
+  },
+  serviceHost: {
+    minWidth: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    color: "var(--text-primary)",
+    fontSize: 11,
+    fontWeight: 500,
+  },
+  servicePort: {
+    height: 17,
+    display: "inline-flex",
+    alignItems: "center",
+    padding: "0 6px",
+    borderRadius: "var(--radius-xs)",
+    background: "var(--surface-base)",
+    color: "var(--text-secondary)",
+    fontSize: 10,
+    fontVariantNumeric: "tabular-nums",
+  },
+  serviceActions: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 3,
+    justifySelf: "end",
+  },
+  serviceActionButton: {
+    width: 24,
+    height: 24,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 0,
+    border: "1px solid transparent",
+    borderRadius: "var(--radius-xs)",
+    background: "var(--surface-base)",
+    color: "var(--text-secondary)",
+    fontFamily: "var(--font-ui)",
+    fontSize: 10,
+    fontWeight: 500,
+    cursor: "pointer",
+  },
+  serviceActionStatus: {
+    minHeight: 14,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    color: "var(--text-secondary)",
+    fontSize: 10,
+  },
+  serviceMetaLine: {
+    minWidth: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    color: "var(--text-secondary)",
+    fontSize: 10,
   },
   agentLaneItem: {
     minWidth: 0,
@@ -780,7 +899,7 @@ const styles: Record<string, CSSProperties> = {
 
 function nodeIcon(node: CanvasNode) {
   if (node.type === "terminal") return <TerminalWindow size={13} weight="duotone" />;
-  if (node.type === "preview") return <SquaresFour size={13} weight="duotone" />;
+  if (node.type === "preview") return <Browser size={13} weight="duotone" />;
   if (node.type === "file") return <FileText size={13} />;
   return <Note size={13} />;
 }
@@ -793,13 +912,22 @@ function localServiceStatusText(service: LocalServiceSummary) {
   return "unknown";
 }
 
+function localServiceHostText(service: LocalServiceSummary) {
+  try {
+    return new URL(service.url).hostname;
+  } catch {
+    return service.url.replace(/^https?:\/\//, "").replace(/:\d+$/, "");
+  }
+}
+
 function PanelButton({ panel }: { panel: OperationsPanel }) {
   const ui = useWorkspaceStore((state) => state.workspaceUiState);
   const updateUi = useWorkspaceStore((state) => state.updateWorkspaceUiState);
   const setWorkspaceMode = useWorkspaceStore((state) => state.setWorkspaceMode);
   const active = ui.primarySidebarPanel === panel && !ui.primarySidebarCollapsed;
   const Icon = panelIcons[panel];
-  const label = panel[0].toUpperCase() + panel.slice(1);
+  const title = panelTitles[panel];
+  const label = panel === "sessions" ? "Sessions" : "Map";
 
   return (
     <button
@@ -811,9 +939,9 @@ function PanelButton({ panel }: { panel: OperationsPanel }) {
         borderColor: active ? "var(--border-focus)" : "var(--border-subtle)",
         color: active ? "var(--accent-live)" : "var(--text-secondary)",
       }}
-      title={label}
+      title={title}
       aria-label={label}
-      aria-current={active ? "page" : undefined}
+      aria-pressed={active}
       onClick={() => {
         if (panel === "map") setWorkspaceMode("canvas");
         if (panel === "sessions") setWorkspaceMode("split");
@@ -843,9 +971,9 @@ function FileTreeButton() {
         borderColor: active ? "var(--border-focus)" : "var(--border-subtle)",
         color: active ? "var(--accent-live)" : "var(--text-secondary)",
       }}
-      title={active ? "Hide files" : "Show files"}
-      aria-label={active ? "Hide files" : "Show files"}
-      aria-current={active ? "page" : undefined}
+      title={active ? "Hide files panel" : "Show files panel"}
+      aria-label="Files"
+      aria-pressed={active}
       onClick={() => updateUi({ fileExplorerCollapsed: !ui.fileExplorerCollapsed })}
     >
       <FolderOpen size={15} weight="duotone" />
@@ -857,6 +985,7 @@ function PreviewButton() {
   const activeTabId = useWorkspaceStore((state) => state.activeTabId);
   const activeTab = useWorkspaceStore((state) => state.tabs.find((tab) => tab.id === activeTabId));
   const active = activeTab ? JSON.stringify(activeTab.splitLayout).includes('"type":"preview"') : false;
+  const hasPreviewUrl = Boolean(activeTab?.terminals.find((terminal) => terminal.paneId === activeTab.activePaneId)?.previewUrl);
 
   return (
     <button
@@ -865,16 +994,18 @@ function PreviewButton() {
       style={{
         ...styles.railButton,
         background: active ? "var(--surface-selected)" : "transparent",
-        borderColor: active ? "var(--border-focus)" : "var(--border-subtle)",
+        borderColor: active ? "var(--border-focus)" : hasPreviewUrl ? "var(--border-subtle)" : "transparent",
         color: active ? "var(--accent-live)" : "var(--text-secondary)",
+        cursor: hasPreviewUrl ? "pointer" : "not-allowed",
+        opacity: hasPreviewUrl ? 1 : 0.44,
       }}
-      title="Preview"
+      title={hasPreviewUrl ? "Open preview pane for active terminal" : "Preview unavailable until the active terminal prints a localhost URL"}
       aria-label="Preview"
-      aria-current={active ? "page" : undefined}
+      aria-pressed={active}
       onClick={() => splitActivePreviewPane()}
-      disabled={!activeTab?.terminals.find((terminal) => terminal.paneId === activeTab.activePaneId)?.previewUrl}
+      disabled={!hasPreviewUrl}
     >
-      <SquaresFour size={15} weight="duotone" />
+      <Browser size={15} weight="duotone" />
     </button>
   );
 }
@@ -1306,7 +1437,7 @@ function NewTerminalLaunchMenu({
         }}
       />
       <MenuItem
-        icon={<SquaresFour size={13} weight="duotone" />}
+        icon={<Browser size={13} weight="duotone" />}
         label="Localhost preview"
         detail="Open beside the active terminal"
         onClick={() => {
@@ -2945,6 +3076,9 @@ function MapPanel({
   onOpenTerminalMenu: (event: React.MouseEvent, tab: Tab) => void;
 }) {
   const [mapFilter, setMapFilter] = useState<MapFilter>("all");
+  const [serviceActionStatus, setServiceActionStatus] = useState("");
+  const [servicesCollapsed, setServicesCollapsed] = useState(false);
+  const [scopeCollapsed, setScopeCollapsed] = useState(true);
   const tabs = useWorkspaceStore((state) => state.tabs);
   const groups = useWorkspaceStore((state) => state.groups);
   const liveCwds = useWorkspaceStore((state) => state.liveCwds);
@@ -2954,6 +3088,7 @@ function MapPanel({
   const setWorkspaceMode = useWorkspaceStore((state) => state.setWorkspaceMode);
   const selectCanvasNode = useWorkspaceStore((state) => state.selectCanvasNode);
   const updateCanvasViewport = useWorkspaceStore((state) => state.updateCanvasViewport);
+  const addCanvasNode = useWorkspaceStore((state) => state.addCanvasNode);
   const removeCanvasNode = useWorkspaceStore((state) => state.removeCanvasNode);
   const closeTerminalSession = useWorkspaceStore((state) => state.closeTerminalSession);
   const closePane = useWorkspaceStore((state) => state.closePane);
@@ -3136,6 +3271,49 @@ function MapPanel({
     const linkedNode = canvasState.nodes.find((node) => node.terminalTabId === firstTarget.id);
     if (linkedNode) focusCanvasNode(linkedNode);
   };
+  const copyServiceText = async (text: string, label: string) => {
+    if (!navigator.clipboard?.writeText) {
+      setServiceActionStatus("Clipboard unavailable");
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+      setServiceActionStatus(`${label} copied`);
+    } catch {
+      setServiceActionStatus(`${label} copy failed`);
+    }
+  };
+  const openServiceOnMap = (service: LocalServiceSummary) => {
+    const existingPreviewNode = service.previewNodeId
+      ? canvasState.nodes.find((node) => node.id === service.previewNodeId)
+      : canvasState.nodes.find((node) => node.type === "preview" && node.previewUrl === service.url);
+    if (existingPreviewNode) {
+      setWorkspaceMode("canvas");
+      focusCanvasNode(existingPreviewNode);
+      setServiceActionStatus("Map window focused");
+      return;
+    }
+
+    const terminalNode = service.terminalNodeId
+      ? canvasState.nodes.find((node) => node.id === service.terminalNodeId)
+      : canvasState.nodes.find((node) => node.terminalTabId === service.ownerTabId && node.type === "terminal");
+    const previewNode: CanvasNode = {
+      id: `service-preview-${(service.ownerTabId ?? "local").replace(/[^a-z0-9_-]/gi, "-")}-${service.port}`,
+      type: "preview",
+      title: `Preview ${localServiceHostText(service)}:${service.port}`,
+      x: (terminalNode?.x ?? 120) + (terminalNode?.width ?? 620) + 36,
+      y: terminalNode?.y ?? 90,
+      width: 620,
+      height: 420,
+      terminalTabId: service.ownerTabId,
+      previewUrl: service.url,
+      linkedTerminalPaneId: service.terminalPaneId,
+    };
+    addCanvasNode(previewNode);
+    setWorkspaceMode("canvas");
+    focusCanvasNode(previewNode);
+    setServiceActionStatus("Map window opened");
+  };
   const taskRoots = visibleNodes.map((node) => {
     const linkedTab = node.terminalTabId
       ? tabs.find((tab) => tab.id === node.terminalTabId)
@@ -3182,135 +3360,169 @@ function MapPanel({
       <div style={styles.list}>
         {localServices.length > 0 && (
           <div
-            style={styles.servicePanel}
+            style={{ ...styles.servicePanel, order: 2 }}
             data-testid="map-local-services"
             aria-label="Local services"
             title={`${localServices.length} local service${localServices.length === 1 ? "" : "s"}`}
           >
-            <div style={styles.agentLaneHeader}>
-              <span>Local services</span>
-              <span style={{ ...styles.rowMeta, marginTop: 0 }}>{localServices.length} detected</span>
+            <div style={styles.compactUtilityHeader}>
+              <span>Services</span>
+              <span style={styles.compactUtilityMeta}>{localServices.length} detected</span>
+              <button
+                type="button"
+                style={styles.compactToggle}
+                data-testid="map-local-services-toggle"
+                aria-expanded={!servicesCollapsed}
+                aria-label={servicesCollapsed ? "Show local services" : "Hide local services"}
+                onClick={() => setServicesCollapsed((collapsed) => !collapsed)}
+              >
+                {servicesCollapsed ? "Show" : "Hide"}
+              </button>
             </div>
-            <div style={styles.agentLaneList}>
-              {localServices.slice(0, 3).map((service) => {
-                const focusNode = canvasState.nodes.find((node) => node.id === service.previewNodeId) ??
-                  canvasState.nodes.find((node) => node.id === service.terminalNodeId) ??
-                  canvasState.nodes.find((node) => node.terminalTabId === service.ownerTabId);
-                return (
-                  <div
-                    key={service.id}
-                    style={styles.serviceRow}
-                    data-testid="map-local-service-row"
-                    title={`Focus ${service.url}`}
-                    onClick={() => {
-                      if (service.ownerTabId) setActiveTab(service.ownerTabId);
-                      setWorkspaceMode("canvas");
-                      if (focusNode) focusCanvasNode(focusNode);
-                    }}
-                  >
-                    <span style={{ minWidth: 0 }}>
-                      <span style={styles.agentRunTitle}>{service.url.replace(/^https?:\/\//, "")}</span>
-                      <span style={styles.agentRunMeta}>
-                        :{service.port} · {localServiceStatusText(service)} · {service.ownerTitle}{service.activity ? ` · ${service.activity}` : ""}
-                      </span>
-                    </span>
-                    <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                      <button
-                        type="button"
-                        style={styles.rowActionButton}
-                        title={`Copy ${service.url}`}
-                        aria-label={`Copy ${service.url}`}
-                        onMouseDown={(event) => event.stopPropagation()}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          if (navigator.clipboard?.writeText) void navigator.clipboard.writeText(service.url);
+            {!servicesCollapsed && (
+              <>
+                <div style={styles.serviceActionStatus} data-testid="map-local-service-action-status">
+                  {serviceActionStatus || "Ready"}
+                </div>
+                <div style={styles.agentLaneList}>
+                  {localServices.slice(0, 3).map((service) => {
+                    const focusNode = canvasState.nodes.find((node) => node.id === service.previewNodeId) ??
+                      canvasState.nodes.find((node) => node.id === service.terminalNodeId) ??
+                      canvasState.nodes.find((node) => node.terminalTabId === service.ownerTabId);
+                    return (
+                      <div
+                        key={service.id}
+                        style={styles.serviceRow}
+                        data-testid="map-local-service-row"
+                        title={`Focus ${service.url}`}
+                        onClick={() => {
+                          if (service.ownerTabId) setActiveTab(service.ownerTabId);
+                          setWorkspaceMode("canvas");
+                          if (focusNode) focusCanvasNode(focusNode);
                         }}
                       >
-                        <ClipboardText size={13} />
-                      </button>
-                      <button
-                        type="button"
-                        style={styles.rowActionButton}
-                        title={`Copy logs for ${service.url}`}
-                        aria-label={`Copy logs for ${service.url}`}
-                        onMouseDown={(event) => event.stopPropagation()}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          if (navigator.clipboard?.writeText) void navigator.clipboard.writeText(formatLocalServiceBrief(service));
-                        }}
-                      >
-                        <Note size={13} />
-                      </button>
-                      <button
-                        type="button"
-                        style={styles.rowActionButton}
-                        title={`Open ${service.url}`}
-                        aria-label={`Open ${service.url}`}
-                        onMouseDown={(event) => event.stopPropagation()}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          window.open(service.url, "_blank", "noopener,noreferrer");
-                        }}
-                      >
-                        <ArrowSquareOut size={13} />
-                      </button>
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
+                        <span style={{ minWidth: 0, display: "block" }}>
+                          <span style={styles.serviceTitleRow}>
+                            <span style={styles.serviceHost}>{localServiceHostText(service)}</span>
+                            <span style={styles.servicePort}>:{service.port}</span>
+                          </span>
+                          <span style={styles.serviceMetaLine}>
+                            {localServiceStatusText(service)} · {service.ownerTitle}
+                          </span>
+                        </span>
+                        <span style={styles.serviceActions}>
+                          <button
+                            type="button"
+                            style={styles.serviceActionButton}
+                            title={`Copy ${service.url}`}
+                            aria-label={`Copy ${service.url}`}
+                            onMouseDown={(event) => event.stopPropagation()}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void copyServiceText(service.url, "URL");
+                            }}
+                          >
+                            <ClipboardText size={13} />
+                          </button>
+                          <button
+                            type="button"
+                            style={styles.serviceActionButton}
+                            title={`Copy logs for ${service.url}`}
+                            aria-label={`Copy logs for ${service.url}`}
+                            onMouseDown={(event) => event.stopPropagation()}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void copyServiceText(formatLocalServiceBrief(service), "Logs");
+                            }}
+                          >
+                            <Note size={13} />
+                          </button>
+                          <button
+                            type="button"
+                            style={styles.serviceActionButton}
+                            title={`Open ${service.url} on map`}
+                            aria-label={`Open ${service.url} on map`}
+                            onMouseDown={(event) => event.stopPropagation()}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              openServiceOnMap(service);
+                            }}
+                          >
+                            <ArrowSquareOut size={13} />
+                          </button>
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
           </div>
         )}
         {visibleNodes.length > 0 && (
           <div
-            style={styles.agentLanePanel}
+            style={{ ...styles.utilityPanel, order: 3 }}
             data-testid="map-workspace-summary"
             aria-label="Map workspace grouping summary"
             title={mapSummary.headline}
           >
-            <div style={styles.agentLaneHeader}>
-              <span>Workspace groups</span>
-              <span style={{ ...styles.rowMeta, marginTop: 0 }}>{mapSummary.headline}</span>
+            <div style={styles.compactUtilityHeader}>
+              <span>Scope</span>
+              <span style={styles.compactUtilityMeta}>{mapSummary.headline}</span>
+              <button
+                type="button"
+                style={styles.compactToggle}
+                data-testid="map-workspace-summary-toggle"
+                aria-expanded={!scopeCollapsed}
+                aria-label={scopeCollapsed ? "Show map scope summary" : "Hide map scope summary"}
+                onClick={() => setScopeCollapsed((collapsed) => !collapsed)}
+              >
+                {scopeCollapsed ? "Show" : "Hide"}
+              </button>
             </div>
-            <div style={styles.agentLaneStats}>
-              <span style={styles.agentLaneChip} data-testid="map-workspace-group-count">
-                {mapSummary.workspaces.length} workspace{mapSummary.workspaces.length === 1 ? "" : "s"}
-              </span>
-              <span style={styles.agentLaneChip}>{mapSummary.roles.length} role{mapSummary.roles.length === 1 ? "" : "s"}</span>
-              <span style={styles.agentLaneChip}>{mapSummary.branches.length} branch{mapSummary.branches.length === 1 ? "" : "es"}</span>
-              <span style={styles.agentLaneChip}>{mapSummary.services.length} service{mapSummary.services.length === 1 ? "" : "s"}</span>
-            </div>
-            <div style={styles.agentLaneList} aria-label="Map workspace groups">
-              {mapSummary.workspaces.slice(0, 4).map((workspace) => (
-                <div
-                  key={workspace.label}
-                  style={{ ...styles.agentLaneItem, cursor: "default" }}
-                  data-testid="map-workspace-group"
-                  title={`${workspace.label}: ${workspace.count} node${workspace.count === 1 ? "" : "s"}`}
-                >
-                  <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {workspace.label}
+            {!scopeCollapsed && (
+              <>
+                <div style={styles.agentLaneStats}>
+                  <span style={styles.agentLaneChip} data-testid="map-workspace-group-count">
+                    {mapSummary.workspaces.length} workspace{mapSummary.workspaces.length === 1 ? "" : "s"}
                   </span>
-                  <span style={{ ...styles.rowMeta, marginTop: 0 }}>{workspace.count} node{workspace.count === 1 ? "" : "s"}</span>
+                  <span style={styles.agentLaneChip}>{mapSummary.roles.length} role{mapSummary.roles.length === 1 ? "" : "s"}</span>
+                  <span style={styles.agentLaneChip}>{mapSummary.branches.length} branch{mapSummary.branches.length === 1 ? "" : "es"}</span>
+                  <span style={styles.agentLaneChip}>{mapSummary.services.length} service{mapSummary.services.length === 1 ? "" : "s"}</span>
                 </div>
-              ))}
-            </div>
-            <div style={styles.agentLaneStats} data-testid="map-workspace-summary-facets">
-              {mapSummary.branches.slice(0, 3).map((branch) => (
-                <span key={`branch-${branch.label}`} style={styles.agentLaneChip}>{branch.label} · {branch.count}</span>
-              ))}
-              {mapSummary.roles.slice(0, 3).map((role) => (
-                <span key={`role-${role.label}`} style={styles.agentLaneChip}>{role.label} · {role.count}</span>
-              ))}
-              {mapSummary.services.slice(0, 2).map((service) => (
-                <span key={`service-${service.label}`} style={styles.agentLaneChip}>{service.label} · {service.count}</span>
-              ))}
-            </div>
+                <div style={{ ...styles.agentLaneStats, display: "none" }} aria-label="Map workspace groups">
+                  {mapSummary.workspaces.slice(0, 4).map((workspace) => (
+                    <div
+                      key={workspace.label}
+                      style={{ ...styles.agentLaneItem, cursor: "default" }}
+                      data-testid="map-workspace-group"
+                      title={`${workspace.label}: ${workspace.count} node${workspace.count === 1 ? "" : "s"}`}
+                    >
+                      <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {workspace.label}
+                      </span>
+                      <span style={{ ...styles.rowMeta, marginTop: 0 }}>{workspace.count} node{workspace.count === 1 ? "" : "s"}</span>
+                    </div>
+                  ))}
+                </div>
+                <div style={styles.agentLaneStats} data-testid="map-workspace-summary-facets">
+                  {mapSummary.branches.slice(0, 3).map((branch) => (
+                    <span key={`branch-${branch.label}`} style={styles.agentLaneChip}>{branch.label} · {branch.count}</span>
+                  ))}
+                  {mapSummary.roles.slice(0, 3).map((role) => (
+                    <span key={`role-${role.label}`} style={styles.agentLaneChip}>{role.label} · {role.count}</span>
+                  ))}
+                  {mapSummary.services.slice(0, 2).map((service) => (
+                    <span key={`service-${service.label}`} style={styles.agentLaneChip}>{service.label} · {service.count}</span>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         )}
         {agentLane.total > 0 && (
           <div
-            style={styles.agentLanePanel}
+            style={{ ...styles.agentLanePanel, order: 4 }}
             data-testid="map-agent-lane-summary"
             aria-label={agentLaneStatusText(agentLane)}
           >
@@ -4408,11 +4620,11 @@ function MapPanel({
           </div>
         )}
         {visibleNodes.length === 0 ? (
-          <div style={styles.empty} data-testid="map-node-empty">
+          <div style={{ ...styles.empty, order: 1 }} data-testid="map-node-empty">
             {mapFilter === "all" ? "No map nodes yet." : "No map nodes match this filter."}
           </div>
         ) : (
-          <div data-testid="map-node-list">
+          <div data-testid="map-node-list" style={{ order: 1 }}>
           {visibleNodes.map((node) => {
             const linkedTab = node.terminalTabId
               ? tabs.find((tab) => tab.id === node.terminalTabId)

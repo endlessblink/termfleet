@@ -47,8 +47,10 @@ were retired during consolidation.
 | TC-022     | External agent bridge: let Hermes attach to and control TermFleet terminals                                                                                                                                     | P1       | TODO              | TC-016, TC-017 |
 | TC-023     | Cross-platform terminal substrate: isolate Linux daemon, path, process, and shell assumptions before macOS/Windows ports                                                                                         | P1       | IN_PROGRESS       | TC-009, TC-017 |
 | TC-024     | Session/map cards: show the project/workspace name in the live summary header                                                                                                                                   | P1       | DONE              | TC-016i        |
-| TC-025     | Redesign map filters and workspace summary into a usable non-scrolling control surface                                                                                                                          | P1       | TODO              | TC-021         |
-| TC-026     | Redesign local-services panel into a usable service cockpit control surface                                                                                                                                      | P1       | TODO              | TC-021         |
+| TC-025     | Redesign map filters and workspace summary into a usable non-scrolling control surface                                                                                                                          | P1       | DONE (2026-06-18) | TC-021         |
+| TC-026     | Redesign local-services panel into a usable service cockpit control surface                                                                                                                                      | P1       | DONE (2026-06-18) | TC-021         |
+| TC-027     | LLM task extraction lane: turn terminal/agent output into actionable tasks, blockers, evidence, and next actions                                                                                                | P1       | TODO              | TC-016i        |
+| TC-028     | Clarify the left operations rail into distinct Files, Sessions, Map, and Preview jobs                                                                                                                           | P1       | DONE (2026-06-18) | TC-021         |
 
 ---
 
@@ -114,7 +116,7 @@ Design target:
 ### TC-025: Redesign map filters and workspace summary
 
 **Priority:** P1
-**Status:** TODO
+**Status:** Done
 **Depends:** TC-021
 
 The map filter bar and workspace grouping summary currently work but do not meet
@@ -124,19 +126,22 @@ metadata noise instead of a usable orientation/control surface.
 
 Acceptance:
 
-- TODO: Replace the horizontally scrolling filter row with a compact control that
-  keeps all primary states reachable in the sidebar width.
-- TODO: Redesign or demote the workspace grouping summary so it answers a user
-  question clearly, instead of listing counts and chips by default.
-- TODO: Preserve the current filter semantics and visible-node grouping contract
-  behind the redesigned UI.
-- TODO: Browser review covers the narrow sidebar at the same width as the
-  screenshot and proves no horizontal sliding is needed for common filters.
+- DONE: Replaced the horizontally scrolling filter row with a compact 3-column
+  grid so all primary states remain reachable inside the sidebar width.
+- DONE: Demoted workspace grouping into a collapsed `Scope` cockpit row by
+  default. The expanded state still exposes the prior workspace/branch/role/
+  service grouping contract for users who need the detail.
+- DONE: Preserved the current filter semantics and visible-node grouping
+  contract behind the redesigned UI. Evidence: `npm run verify:map-terminals`;
+  full Playwright `npx playwright test tests/map-terminal-rendering.spec.ts`.
+- DONE: Browser review covers the narrow sidebar at the same width as the user
+  screenshots and proves no horizontal sliding is needed for common filters.
+  Evidence screenshot: `/tmp/termfleet-map-sidebar-collapsible.png`.
 
 ### TC-026: Redesign local-services panel
 
 **Priority:** P1
-**Status:** TODO
+**Status:** Done
 **Depends:** TC-021
 
 The local-services panel currently exposes useful derived state, but the visual
@@ -146,16 +151,82 @@ reads as chip noise instead of a service cockpit. This redesign must use the
 
 Acceptance:
 
-- TODO: Redesign service rows so URL, port, owner, state, activity, and actions
-  have a clear hierarchy without repeated text or cramped icon clusters.
-- TODO: Keep copy URL, copy logs, open URL, and focus behavior reachable without
-  horizontal scrolling or ambiguous nested controls.
-- TODO: Preserve the current derived service contract from terminal/preview
-  metadata; do not add background port scanning as part of this redesign.
-- TODO: Browser review covers the narrow sidebar and proves the panel remains
-  readable with at least two detected services.
-- TODO: Verification includes `npm run build`, the map rendering regression, and
-  screenshot evidence of the redesigned sidebar.
+- DONE: Redesigned service rows so host, port, owner, state, and actions have a
+  compact hierarchy without repeated host/port text or long activity strings
+  clipping the row.
+- DONE: Kept copy URL, copy logs, focus behavior, and service opening reachable
+  without horizontal scrolling. The visible open action now opens or focuses a
+  localhost preview window on the map and reports `Map window opened/focused`;
+  copy actions report visible success/failure status.
+- DONE: Preserved the derived service contract from terminal/preview metadata;
+  no background port scanning was added.
+- DONE: Browser review covers the narrow sidebar with three detected services
+  and proves service rows are readable and non-overflowing. Evidence screenshot:
+  `/tmp/termfleet-map-sidebar-collapsible.png`.
+- DONE: Verification includes `npm run build`, `npm run verify:map-terminals`,
+  full Playwright `npx playwright test tests/map-terminal-rendering.spec.ts`,
+  rail-affordance Playwright `npx playwright test tests/operations-rail.spec.ts`,
+  persisted-restore coverage for service-created preview nodes, and screenshot
+  evidence of both the redesigned sidebar and service-created map preview node
+  (`/tmp/termfleet-map-sidebar-collapsible.png`,
+  `/tmp/termfleet-map-node-list-after-service-open.png`).
+
+### TC-028: Clarify left operations rail jobs
+
+**Priority:** P1
+**Status:** Done
+**Depends:** TC-021
+
+The left operations rail must read as four distinct operating modes/actions, not
+as a set of duplicate-looking icons. Files, Sessions, Map, and Preview each need
+one unmistakable job, stable accessible names, and preview controls must not
+invite a click before a preview URL exists.
+
+Acceptance:
+
+- DONE: Rail buttons expose stable ARIA labels: `Files`, `Sessions`, `Map`, and
+  `Preview`. Active/toggle state now uses `aria-pressed` instead of changing the
+  accessible name.
+- DONE: Preview uses a distinct browser icon in the rail, map node list, and
+  launch menu, so it no longer resembles the split-workbench grid action.
+- DONE: Preview is disabled with a clear tooltip until the active terminal has a
+  detected localhost URL; after URL detection it opens the preview pane and
+  preserves the detected URL.
+- DONE: Playwright verifies Files, Sessions, Map, and Preview switching plus the
+  disabled/enabled preview contract. Evidence: `npx playwright test
+  operations-rail.spec.ts`; screenshot artifact
+  `test-results/operations-rail-operations-edcad--preview-until-a-URL-exists/operations-rail-preview.png`.
+- DONE: Build verification passes. Evidence: `npm run build`.
+
+### TC-027: LLM task extraction lane
+
+**Priority:** P1
+**Status:** TODO
+**Depends:** TC-016i
+
+The summarizer currently answers what an agent or terminal is doing: task, path,
+now, status, provider, and confidence. The next product step is to turn that
+status stream into actionable cockpit objects: extracted tasks, blockers,
+evidence, next actions, and follow-up prompts that can be reviewed from the
+Sessions/Map lanes without reading scrollback.
+
+Acceptance:
+
+- TODO: Extend the status summary schema and local summary server contract with
+  extracted `tasks`, `blockers`, `evidence`, and `nextActions` arrays while
+  preserving deterministic fallback behavior.
+- TODO: Persist extracted items into workstream metadata with provenance
+  (`terminal-output`, `structured-signal`, `operator-prompt`, or `summary`), a
+  timestamp, and source excerpt/hash so items can be deduplicated.
+- TODO: Render extracted tasks/next actions as reviewable cockpit rows in the
+  Sessions/Map agent lanes, with copy/focus/request-proof actions that do not
+  mutate child terminals until explicitly clicked.
+- TODO: Add a regression fixture where noisy terminal output plus a mission
+  becomes concrete extracted work items, blockers, evidence, and next actions
+  without surfacing raw prompt noise as the primary task.
+- TODO: Verification includes `npm run verify:agent-status-summary`, focused
+  Playwright agent lane coverage, `npm run build`, and visual proof of the
+  extracted tasks/next-actions lane.
 
 ### TC-001: Freeze Terminal Cockpit target and visual rules
 
