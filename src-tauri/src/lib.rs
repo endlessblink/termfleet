@@ -1,6 +1,7 @@
 mod bidi;
 mod commands;
 pub mod daemon;
+mod search;
 #[cfg(target_os = "linux")]
 mod gtk_keys;
 mod native_terminal;
@@ -64,6 +65,7 @@ pub fn run() {
             commands::grid_attach,
             commands::grid_snapshot,
             commands::grid_detach,
+            commands::grid_search,
             commands::grid_resize,
             commands::grid_scroll,
             commands::grid_scroll_to_bottom,
