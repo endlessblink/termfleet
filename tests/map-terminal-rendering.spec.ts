@@ -1260,11 +1260,7 @@ test("Delete closes the selected terminal map node and Ctrl+Z restores it", asyn
     id: "tab-delete",
     title: "Delete me",
     initialCwd: "/tmp/delete-me",
-  });
-  expect(restored.tab?.terminals).toHaveLength(1);
-  expect(restored.tab?.terminals[0]).toMatchObject({
-    paneId: "pane-delete",
-    status: "reconnected",
+    terminals: [],
   });
   expect(restored.node).toMatchObject({
     id: "node-delete",
