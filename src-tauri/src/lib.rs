@@ -1,3 +1,4 @@
+mod bidi;
 mod commands;
 pub mod daemon;
 #[cfg(target_os = "linux")]
