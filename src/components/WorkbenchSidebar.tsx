@@ -1,4 +1,4 @@
-import { CSSProperties, ReactNode, useEffect, useRef, useState } from "react";
+import { CSSProperties, ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowsClockwise,
   CheckCircle,
@@ -32,6 +32,7 @@ import { checkAgentProvider } from "../lib/agentProviders";
 import { agentLaneAuthRetryText, agentLaneAuthRetryTitle, agentLaneCleanupRequestText, agentLaneCleanupRequestTitle, agentLaneCloseoutText, agentLaneCloseoutTitle, agentLaneHealthText, agentLaneInterruptText, agentLaneInterruptTitle, agentLaneMemoryRequestText, agentLaneMemoryRequestTitle, agentLaneProofRequestText, agentLaneProofRequestTitle, agentLaneRestartText, agentLaneRestartTitle, agentLaneRiskMitigationText, agentLaneRiskMitigationTitle, agentLaneStatusSweepText, agentLaneStatusSweepTitle, agentLaneStatusText, attentionBreakdownText, cleanupBreakdownText, closeoutBreakdownText, formatAgentLaneBrief, formatAgentMissionControlBrief, formatAgentRunBrief, handoffMemoryPromptForWorkstream, isActiveAgentWorkstream, isAuthRetryableAgentWorkstream, isCleanupRequestableAgentWorkstream, isRestartableAgentWorkstream, isReviewItemCloseoutReady, isolationBreakdownText, latestMissionControlAskText, missionBreakdownText, missionControlAlternateText, missionControlDispatchBreakdownText, proofRequestPromptForWorkstream, providerBreakdownText, readinessBreakdownText, riskBreakdownText, statusCheckPromptForWorkstream, summarizeAgentLane } from "../lib/agentWorkstreamLane";
 import { workstreamActivityText } from "../lib/workstreamActivity";
 import { formatWorkstreamOpsContext, promptWorkstreamIsolation, promptWorkstreamLaunchProfile, resolveWorkstreamOpsContext } from "../lib/workstreamOpsContext";
+import { MAP_FILTERS, type MapFilter, nodeMatchesMapFilter } from "../lib/mapNodeFilters";
 
 const TERMINAL_COLORS = [
   "#d99a45",
@@ -242,6 +243,36 @@ const styles: Record<string, CSSProperties> = {
     minHeight: 0,
     overflow: "auto",
     padding: 8,
+  },
+  mapFilterBar: {
+    display: "flex",
+    gap: 5,
+    padding: "8px",
+    borderBottom: "1px solid var(--border-subtle)",
+    overflowX: "auto",
+  },
+  mapFilterButton: {
+    minWidth: 64,
+    height: 28,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+    padding: "0 8px",
+    border: "1px solid transparent",
+    borderRadius: "var(--radius-sm)",
+    background: "var(--surface-base)",
+    color: "var(--text-secondary)",
+    fontFamily: "var(--font-ui)",
+    fontSize: 11,
+    fontWeight: 500,
+    cursor: "pointer",
+    whiteSpace: "nowrap",
+  },
+  mapFilterCount: {
+    color: "var(--text-tertiary)",
+    fontSize: 10,
+    fontWeight: 500,
   },
   projectList: {
     padding: "8px 8px 6px",
@@ -726,7 +757,7 @@ function FileTreeButton() {
 function PreviewButton() {
   const activeTabId = useWorkspaceStore((state) => state.activeTabId);
   const activeTab = useWorkspaceStore((state) => state.tabs.find((tab) => tab.id === activeTabId));
-  const active = JSON.stringify(activeTab?.splitLayout).includes('"type":"preview"');
+  const active = activeTab ? JSON.stringify(activeTab.splitLayout).includes('"type":"preview"') : false;
 
   return (
     <button
@@ -2814,6 +2845,7 @@ function MapPanel({
 }: {
   onOpenTerminalMenu: (event: React.MouseEvent, tab: Tab) => void;
 }) {
+  const [mapFilter, setMapFilter] = useState<MapFilter>("all");
   const tabs = useWorkspaceStore((state) => state.tabs);
   const groups = useWorkspaceStore((state) => state.groups);
   const liveCwds = useWorkspaceStore((state) => state.liveCwds);
@@ -2839,12 +2871,21 @@ function MapPanel({
     });
   };
 
-  const visibleNodes = activeGroupFilter === null
+  const groupVisibleNodes = activeGroupFilter === null
     ? canvasState.nodes
     : canvasState.nodes.filter((node) => {
         if (!node.terminalTabId) return true;
         return tabs.find((tab) => tab.id === node.terminalTabId)?.groupId === activeGroupFilter;
       });
+  const nodeTab = (node: CanvasNode) =>
+    node.terminalTabId ? tabs.find((tab) => tab.id === node.terminalTabId) : undefined;
+  const filterCounts = useMemo(() => Object.fromEntries(
+    MAP_FILTERS.map((filter) => [
+      filter.id,
+      groupVisibleNodes.filter((node) => nodeMatchesMapFilter(node, nodeTab(node), filter.id)).length,
+    ])
+  ) as Record<MapFilter, number>, [groupVisibleNodes, tabs]);
+  const visibleNodes = groupVisibleNodes.filter((node) => nodeMatchesMapFilter(node, nodeTab(node), mapFilter));
   const visibleTabs = activeGroupFilter === null
     ? tabs
     : tabs.filter((tab) => tab.groupId === activeGroupFilter);
@@ -3007,6 +3048,29 @@ function MapPanel({
           <span>Map</span>
         </div>
         <span style={styles.count}>{visibleNodes.length}</span>
+      </div>
+      <div style={styles.mapFilterBar} aria-label="Map filters">
+        {MAP_FILTERS.map((filter) => {
+          const active = mapFilter === filter.id;
+          return (
+            <button
+              key={filter.id}
+              type="button"
+              data-testid={`map-filter-${filter.id}`}
+              aria-pressed={active}
+              style={{
+                ...styles.mapFilterButton,
+                background: active ? "var(--surface-selected)" : "var(--surface-base)",
+                color: active ? "var(--text-primary)" : "var(--text-secondary)",
+                borderColor: active ? "var(--border-strong)" : "transparent",
+              }}
+              onClick={() => setMapFilter(filter.id)}
+            >
+              <span>{filter.label}</span>
+              <span style={styles.mapFilterCount}>{filterCounts[filter.id]}</span>
+            </button>
+          );
+        })}
       </div>
       <div style={styles.list}>
         {agentLane.total > 0 && (
@@ -4109,9 +4173,12 @@ function MapPanel({
           </div>
         )}
         {visibleNodes.length === 0 ? (
-          <div style={styles.empty}>No map nodes yet.</div>
+          <div style={styles.empty} data-testid="map-node-empty">
+            {mapFilter === "all" ? "No map nodes yet." : "No map nodes match this filter."}
+          </div>
         ) : (
-          visibleNodes.map((node) => {
+          <div data-testid="map-node-list">
+          {visibleNodes.map((node) => {
             const linkedTab = node.terminalTabId
               ? tabs.find((tab) => tab.id === node.terminalTabId)
               : undefined;
@@ -4226,7 +4293,8 @@ function MapPanel({
                 </span>
               </div>
             );
-          })
+          })}
+          </div>
         )}
       </div>
     </>

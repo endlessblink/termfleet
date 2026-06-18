@@ -331,3 +331,115 @@ test("map shell header prefers summarized task path and now over raw prompt chro
   await expect(page.getByTestId("canvas-terminal-node-now")).not.toContainText("/skills");
   await expect(page.getByTestId("canvas-terminal-node-now")).not.toContainText("gpt-5.5 default");
 });
+
+test("map sidebar filters operations nodes by visible work state", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.getByRole("button", { name: "Map", exact: true }).click();
+
+  await page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => {
+          workspaceUiState: Record<string, unknown>;
+        };
+        setState: (state: Record<string, unknown>) => void;
+      };
+    }).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+
+    const now = Date.now();
+    const terminalTab = (id: string, title: string, paneId: string, terminal: Record<string, unknown>, workstream?: Record<string, unknown>) => ({
+      id,
+      title,
+      emoji: "[]",
+      color: "#7aa2f7",
+      groupId: null,
+      terminals: [{ id: `pty-${id}`, paneId, cols: 80, rows: 24, ...terminal }],
+      splitLayout: { id: paneId, type: "terminal" },
+      activePaneId: paneId,
+      ...(workstream ? { workstream } : {}),
+    });
+
+    store.setState({
+      workspaceUiState: {
+        ...store.getState().workspaceUiState,
+        workspaceMode: "canvas",
+        canvasSidebarCollapsed: false,
+        primarySidebarCollapsed: false,
+        primarySidebarPanel: "map",
+      },
+      tabs: [
+        terminalTab("tab-active", "Active shell", "pane-active", {
+          status: "running",
+          currentActivity: "npm run dev",
+          activityKind: "running",
+        }),
+        terminalTab("tab-failed", "Failed build", "pane-failed", {
+          status: "failed",
+          currentActivity: "cargo check failed",
+        }),
+        terminalTab("tab-waiting", "Waiting agent", "pane-waiting", {
+          status: "exited",
+        }, {
+          kind: "agent",
+          provider: "codex",
+          status: "waiting",
+          phase: "needs-input",
+          activityKind: "waiting",
+          mission: "Review deploy error",
+          createdAt: now,
+        }),
+        terminalTab("tab-tests", "Test runner", "pane-tests", {
+          status: "running",
+          currentActivity: "npm test running",
+          activityKind: "testing",
+        }),
+        terminalTab("tab-preview", "Preview service", "pane-preview", {
+          status: "exited",
+          previewUrl: "http://localhost:5177",
+        }),
+      ],
+      activeTabId: "tab-active",
+      canvasState: {
+        selectedNodeId: "node-active",
+        viewport: { x: 0, y: 0, zoom: 1 },
+        nodes: [
+          { id: "node-active", type: "terminal", title: "Active shell", terminalTabId: "tab-active", x: 0, y: 0, width: 820, height: 460 },
+          { id: "node-failed", type: "terminal", title: "Failed build", terminalTabId: "tab-failed", x: 860, y: 0, width: 820, height: 460 },
+          { id: "node-waiting", type: "terminal", title: "Waiting agent", terminalTabId: "tab-waiting", x: 0, y: 500, width: 820, height: 460 },
+          { id: "node-tests", type: "terminal", title: "Test runner", terminalTabId: "tab-tests", x: 860, y: 500, width: 820, height: 460 },
+          { id: "node-preview-terminal", type: "terminal", title: "Preview service", terminalTabId: "tab-preview", x: 1720, y: 0, width: 820, height: 460 },
+          { id: "node-preview", type: "preview", title: "Preview localhost", terminalTabId: "tab-preview", previewPaneId: "pane-preview-ui", previewUrl: "http://localhost:5177", x: 1720, y: 500, width: 620, height: 420 },
+        ],
+      },
+    });
+  });
+
+  const mapPanel = page.locator('[aria-label="Operations panel"]');
+  await expect(mapPanel.getByTestId("map-filter-all")).toContainText("6");
+  await expect(mapPanel.getByTestId("map-filter-active")).toContainText("2");
+  await expect(mapPanel.getByTestId("map-filter-failed")).toContainText("1");
+  await expect(mapPanel.getByTestId("map-filter-waiting")).toContainText("1");
+  await expect(mapPanel.getByTestId("map-filter-testing")).toContainText("1");
+  await expect(mapPanel.getByTestId("map-filter-preview")).toContainText("2");
+
+  await mapPanel.getByTestId("map-filter-failed").click();
+  await expect(mapPanel.getByTestId("map-node-list")).toContainText("Failed build");
+  await expect(mapPanel.getByTestId("map-node-list")).not.toContainText("Active shell");
+
+  await mapPanel.getByTestId("map-filter-waiting").click();
+  await expect(mapPanel.getByTestId("map-node-list")).toContainText("Waiting agent");
+  await expect(mapPanel.getByTestId("map-node-list")).not.toContainText("Failed build");
+
+  await mapPanel.getByTestId("map-filter-testing").click();
+  await expect(mapPanel.getByTestId("map-node-list")).toContainText("Test runner");
+  await expect(mapPanel.getByTestId("map-node-list")).not.toContainText("Waiting agent");
+
+  await mapPanel.getByTestId("map-filter-preview").click();
+  await expect(mapPanel.getByTestId("map-node-list")).toContainText("Preview service");
+  await expect(mapPanel.getByTestId("map-node-list")).toContainText("Preview localhost");
+});

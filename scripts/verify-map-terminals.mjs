@@ -27,6 +27,7 @@ const snapshotPreviewRows = readFileSync(join(root, "src/lib/snapshotPreviewRows
 const gridDiffSpec = readFileSync(join(root, "tests/grid-diff.spec.ts"), "utf8");
 const boxGlyphSpec = readFileSync(join(root, "tests/box-glyph.spec.ts"), "utf8");
 const terminalMouse = readFileSync(join(root, "src/lib/terminalMouse.ts"), "utf8");
+const mapNodeFilters = readFileSync(join(root, "src/lib/mapNodeFilters.ts"), "utf8");
 const terminalMouseSpec = readFileSync(join(root, "tests/terminal-mouse.spec.ts"), "utf8");
 const legacyPromptRepair = readFileSync(join(root, "src/lib/legacyPromptRepair.ts"), "utf8");
 const legacyPromptRepairSpec = readFileSync(join(root, "tests/legacy-prompt-repair.spec.ts"), "utf8");
@@ -152,6 +153,20 @@ const checks = [
   {
     ok: /<TerminalComponent[\s\S]*tabId=\{terminalTabId\}[\s\S]*paneId=\{terminalPaneId\}[\s\S]*attachToPtyId=\{linkedTerminalId \?\? null\}[\s\S]*standalone/.test(magicCanvas),
     message: "Terminal map nodes must render a live TerminalComponent.",
+  },
+  {
+    ok: /export type MapFilter = "all" \| "active" \| "failed" \| "waiting" \| "testing" \| "preview";/.test(mapNodeFilters) &&
+      /export function nodeMatchesMapFilter/.test(mapNodeFilters) &&
+      /terminal\?\.status === "failed"/.test(mapNodeFilters) &&
+      /workstream\?\.phase === "needs-input"/.test(mapNodeFilters) &&
+      /terminal\?\.activityKind/.test(mapNodeFilters) &&
+      /terminal\.previewUrl/.test(mapNodeFilters) &&
+      /data-testid=\{`map-filter-\$\{filter\.id\}`\}/.test(canvasSidebar) &&
+      /nodeMatchesMapFilter\(node, nodeTab\(node\), mapFilter\)/.test(canvasSidebar) &&
+      /data-testid=\{`map-filter-\$\{filter\.id\}`\}/.test(workbenchSidebar) &&
+      /nodeMatchesMapFilter\(node, nodeTab\(node\), mapFilter\)/.test(workbenchSidebar) &&
+      /data-testid="map-node-list"/.test(workbenchSidebar),
+    message: "Map sidebar must provide active/failed/waiting/testing/preview filters derived from terminal and workstream state.",
   },
   {
     ok: /getDisplaySummary/.test(magicCanvas) &&

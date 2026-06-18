@@ -1,8 +1,9 @@
-import { CSSProperties, useCallback } from "react";
+import { CSSProperties, useCallback, useMemo, useState } from "react";
 import { FileText, Globe, Map, NotebookText, TerminalSquare, X } from "lucide-react";
 import type { CanvasNode, Group, Tab } from "../lib/types";
 import { pathTail, projectForTab } from "../lib/projectDisplay";
 import { useWorkspaceStore } from "../stores/workspace";
+import { MAP_FILTERS, type MapFilter, nodeMatchesMapFilter } from "../lib/mapNodeFilters";
 
 const styles: Record<string, CSSProperties> = {
   sidebar: {
@@ -54,6 +55,36 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 11,
     textTransform: "uppercase",
     letterSpacing: 0,
+    fontWeight: 500,
+  },
+  filterBar: {
+    display: "flex",
+    gap: 5,
+    padding: "8px 10px",
+    borderBottom: "1px solid var(--border-subtle)",
+    overflowX: "auto",
+  },
+  filterButton: {
+    minWidth: 64,
+    height: 28,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+    padding: "0 8px",
+    border: "1px solid transparent",
+    borderRadius: "var(--radius-sm)",
+    background: "var(--surface-base)",
+    color: "var(--text-secondary)",
+    fontFamily: "var(--font-ui)",
+    fontSize: 11,
+    fontWeight: 500,
+    cursor: "pointer",
+    whiteSpace: "nowrap",
+  },
+  filterCount: {
+    color: "var(--text-tertiary)",
+    fontSize: 10,
     fontWeight: 500,
   },
   list: {
@@ -199,6 +230,7 @@ function NodeRow({
 }
 
 export function CanvasSidebar() {
+  const [mapFilter, setMapFilter] = useState<MapFilter>("all");
   const workspaceMode = useWorkspaceStore((state) => state.workspaceUiState.workspaceMode);
   const collapsed = useWorkspaceStore((state) => state.workspaceUiState.canvasSidebarCollapsed);
   const canvasState = useWorkspaceStore((state) => state.canvasState);
@@ -228,16 +260,26 @@ export function CanvasSidebar() {
     if (trimmed) updateCanvasNode(node.id, { title: trimmed });
   }, [updateCanvasNode]);
 
-  if (workspaceMode !== "canvas" || collapsed) return null;
-
-  const visibleNodes = activeGroupFilter === null
+  const groupVisibleNodes = activeGroupFilter === null
     ? canvasState.nodes
     : canvasState.nodes.filter((node) => {
         if (!node.terminalTabId) return true;
         return tabs.find((tab) => tab.id === node.terminalTabId)?.groupId === activeGroupFilter;
       });
+  const nodeTab = useCallback((node: CanvasNode) =>
+    node.terminalTabId ? tabs.find((tab) => tab.id === node.terminalTabId) : undefined,
+  [tabs]);
+  const filterCounts = useMemo(() => Object.fromEntries(
+    MAP_FILTERS.map((filter) => [
+      filter.id,
+      groupVisibleNodes.filter((node) => nodeMatchesMapFilter(node, nodeTab(node), filter.id)).length,
+    ])
+  ) as Record<MapFilter, number>, [groupVisibleNodes, nodeTab]);
+  const visibleNodes = groupVisibleNodes.filter((node) => nodeMatchesMapFilter(node, nodeTab(node), mapFilter));
   const terminals = visibleNodes.filter((node) => node.type === "terminal");
   const others = visibleNodes.filter((node) => node.type !== "terminal");
+
+  if (workspaceMode !== "canvas" || collapsed) return null;
 
   return (
     <aside style={styles.sidebar}>
@@ -259,16 +301,41 @@ export function CanvasSidebar() {
           </button>
         </span>
       </div>
+      <div style={styles.filterBar} aria-label="Map filters">
+        {MAP_FILTERS.map((filter) => {
+          const active = mapFilter === filter.id;
+          return (
+            <button
+              key={filter.id}
+              type="button"
+              data-testid={`map-filter-${filter.id}`}
+              aria-pressed={active}
+              style={{
+                ...styles.filterButton,
+                background: active ? "var(--surface-selected)" : "var(--surface-base)",
+                color: active ? "var(--text-primary)" : "var(--text-secondary)",
+                borderColor: active ? "var(--border-strong)" : "transparent",
+              }}
+              onClick={() => setMapFilter(filter.id)}
+            >
+              <span>{filter.label}</span>
+              <span style={styles.filterCount}>{filterCounts[filter.id]}</span>
+            </button>
+          );
+        })}
+      </div>
       <div style={styles.sectionLabel}>Shells</div>
-      <div style={styles.list}>
+      <div style={styles.list} data-testid="canvas-sidebar-node-list">
         {terminals.length === 0 ? (
-          <div style={styles.empty}>No canvas terminals yet.</div>
+          <div style={styles.empty} data-testid="canvas-sidebar-empty">
+            {mapFilter === "all" ? "No canvas terminals yet." : "No map nodes match this filter."}
+          </div>
         ) : (
           terminals.map((node) => (
             <NodeRow
               key={node.id}
               node={node}
-              linkedTab={node.terminalTabId ? tabs.find((tab) => tab.id === node.terminalTabId) : undefined}
+              linkedTab={nodeTab(node)}
               groups={groups}
               selected={canvasState.selectedNodeId === node.id}
               onSelect={onSelect}
@@ -281,6 +348,7 @@ export function CanvasSidebar() {
           <NodeRow
             key={node.id}
             node={node}
+            linkedTab={nodeTab(node)}
             groups={groups}
             selected={canvasState.selectedNodeId === node.id}
             onSelect={onSelect}

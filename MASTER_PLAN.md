@@ -2020,6 +2020,14 @@ Workstreams:
    - Auto-group nodes by project, task, branch, service, and agent role.
    - Add map filters for active, failed, waiting-for-input, test-running, and
      preview-linked terminals.
+   - In progress: added shared operations-map filters across the primary map
+     panel and the canvas map index. Nodes can now be narrowed to all, active,
+     failed, waiting, tests, or preview-linked states from terminal status,
+     preview URLs, and workstream metadata; empty filtered states now explain
+     that no nodes match. Also hardened the sidebar preview rail against
+     temporarily missing active-tab state. Verification: `npm run build`; `npm
+     run verify:map-terminals`; unsandboxed `npx playwright test
+     tests/map-terminal-rendering.spec.ts`; `git diff --check`.
    - Make the map explain the current workspace without manual arrangement.
 
 3. **Durable recovery as a visible product feature**
