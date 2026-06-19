@@ -138,3 +138,93 @@ test("terminal folders reconcile into project rows without moving the map viewpo
     return store?.getState().canvasState.viewport;
   })).toEqual({ x: -321, y: 88, zoom: 0.62 });
 });
+
+test("terminal opened in another project path is reassigned from stale active project", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+
+  await page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => {
+          reconcileProjectGroups: () => void;
+        };
+        setState: (state: Record<string, unknown>) => void;
+      };
+    }).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+
+    const group = {
+      id: "group-termfleet",
+      name: "termfleet",
+      color: "#7aa2f7",
+      projectRoot: "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
+      lastActiveTabId: "tab-paperbot",
+    };
+
+    store.setState({
+      groups: [group],
+      terminalGroups: [group],
+      tabs: [{
+        id: "tab-paperbot",
+        title: "Terminal",
+        emoji: "[]",
+        color: "#7aa2f7",
+        groupId: "group-termfleet",
+        initialCwd: "/media/endlessblink/data/my-projects/ai-development/bots+automation/paper-bot",
+        terminals: [{ id: "pty-paperbot", paneId: "pane-paperbot", cols: 80, rows: 24, status: "running" }],
+        splitLayout: { id: "pane-paperbot", type: "terminal" },
+        activePaneId: "pane-paperbot",
+      }],
+      activeTabId: "tab-paperbot",
+      activeGroupFilter: null,
+      activeGroupId: null,
+      projectRoot: null,
+      canvasState: {
+        selectedNodeId: "node-paperbot",
+        selectedNodeIds: ["node-paperbot"],
+        viewport: { x: 40, y: 50, zoom: 0.8 },
+        nodes: [{
+          id: "node-paperbot",
+          type: "terminal",
+          title: "Terminal",
+          terminalTabId: "tab-paperbot",
+          terminalCwd: "/media/endlessblink/data/my-projects/ai-development/bots+automation/paper-bot",
+          x: 0,
+          y: 0,
+          width: 620,
+          height: 420,
+        }],
+      },
+    });
+    store.getState().reconcileProjectGroups();
+  });
+
+  const reconciled = await page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => {
+          tabs: Array<{ id: string; groupId: string | null }>;
+          groups: Array<{ id: string; name: string; projectRoot?: string }>;
+          canvasState: { viewport: { x: number; y: number; zoom: number } };
+        };
+      };
+    }).__termfleetWorkspaceStore;
+    const state = store?.getState();
+    const paperBot = state?.groups.find((group) => group.name === "paper-bot");
+    return {
+      tabGroupName: state?.groups.find((group) => group.id === state.tabs[0].groupId)?.name,
+      paperBotRoot: paperBot?.projectRoot,
+      viewport: state?.canvasState.viewport,
+    };
+  });
+
+  expect(reconciled).toEqual({
+    tabGroupName: "paper-bot",
+    paperBotRoot: "/media/endlessblink/data/my-projects/ai-development/bots+automation/paper-bot",
+    viewport: { x: 40, y: 50, zoom: 0.8 },
+  });
+});

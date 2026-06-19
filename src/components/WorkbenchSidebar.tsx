@@ -3183,7 +3183,6 @@ function MapPanel({
   const tabs = useWorkspaceStore((state) => state.tabs);
   const groups = useWorkspaceStore((state) => state.groups);
   const liveCwds = useWorkspaceStore((state) => state.liveCwds);
-  const activeGroupFilter = useWorkspaceStore((state) => state.activeGroupFilter);
   const canvasState = useWorkspaceStore((state) => state.canvasState);
   const setActiveTab = useWorkspaceStore((state) => state.setActiveTab);
   const setWorkspaceMode = useWorkspaceStore((state) => state.setWorkspaceMode);
@@ -3206,12 +3205,7 @@ function MapPanel({
     });
   };
 
-  const groupVisibleNodes = activeGroupFilter === null
-    ? canvasState.nodes
-    : canvasState.nodes.filter((node) => {
-        if (!node.terminalTabId) return true;
-        return tabs.find((tab) => tab.id === node.terminalTabId)?.groupId === activeGroupFilter;
-      });
+  const groupVisibleNodes = canvasState.nodes;
   const nodeTab = (node: CanvasNode) =>
     node.terminalTabId ? tabs.find((tab) => tab.id === node.terminalTabId) : undefined;
   const filterCounts = useMemo(() => Object.fromEntries(
@@ -3221,9 +3215,7 @@ function MapPanel({
     ])
   ) as Record<MapFilter, number>, [groupVisibleNodes, tabs]);
   const visibleNodes = groupVisibleNodes.filter((node) => nodeMatchesMapFilter(node, nodeTab(node), mapFilter));
-  const visibleTabs = activeGroupFilter === null
-    ? tabs
-    : tabs.filter((tab) => tab.groupId === activeGroupFilter);
+  const visibleTabs = tabs;
   const localServices = useMemo(
     () => summarizeLocalServices(visibleTabs, groupVisibleNodes),
     [visibleTabs, groupVisibleNodes]

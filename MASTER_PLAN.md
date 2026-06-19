@@ -917,6 +917,15 @@ Verification notes (2026-05-29):
   `npx tsc --noEmit --pretty false`, `npx playwright test
 tests/terminal-user-flows.spec.ts --reporter=line`, `cargo test`, and
   `npm run build`.
+- 2026-06-19: Project reconciliation now repairs stale-but-valid tab group ids
+  when a terminal was opened in a different project path, so a
+  `bots+automation/paper-bot` terminal no longer renders under the `termfleet`
+  project. The Map sidebar and in-canvas Map index now list every visible map
+  node instead of inheriting the active project filter, so the sidebar count
+  matches the terminals visible on the map. Verified with `npm run build`,
+  `npx playwright test tests/project-reconciliation.spec.ts`, and
+  `npx playwright test tests/map-terminal-rendering.spec.ts -g
+  "map sidebar lists every visible map terminal"`.
 
 ### TC-012: Raise terminal rendering quality for Zellij/TUI workloads
 

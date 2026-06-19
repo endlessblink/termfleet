@@ -236,7 +236,6 @@ export function CanvasSidebar() {
   const canvasState = useWorkspaceStore((state) => state.canvasState);
   const tabs = useWorkspaceStore((state) => state.tabs);
   const groups = useWorkspaceStore((state) => state.groups);
-  const activeGroupFilter = useWorkspaceStore((state) => state.activeGroupFilter);
   const selectCanvasNode = useWorkspaceStore((state) => state.selectCanvasNode);
   const updateCanvasNode = useWorkspaceStore((state) => state.updateCanvasNode);
   const updateCanvasViewport = useWorkspaceStore((state) => state.updateCanvasViewport);
@@ -260,12 +259,7 @@ export function CanvasSidebar() {
     if (trimmed) updateCanvasNode(node.id, { title: trimmed });
   }, [updateCanvasNode]);
 
-  const groupVisibleNodes = activeGroupFilter === null
-    ? canvasState.nodes
-    : canvasState.nodes.filter((node) => {
-        if (!node.terminalTabId) return true;
-        return tabs.find((tab) => tab.id === node.terminalTabId)?.groupId === activeGroupFilter;
-      });
+  const groupVisibleNodes = canvasState.nodes;
   const nodeTab = useCallback((node: CanvasNode) =>
     node.terminalTabId ? tabs.find((tab) => tab.id === node.terminalTabId) : undefined,
   [tabs]);

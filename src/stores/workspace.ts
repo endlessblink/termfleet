@@ -488,6 +488,13 @@ function projectIdFromPath(path: string, groups: Group[]) {
   return candidate;
 }
 
+function pathBelongsToProject(path: string, projectRoot?: string | null) {
+  const normalizedPath = normalizeProjectPath(path);
+  const normalizedRoot = normalizeProjectPath(projectRoot);
+  if (!normalizedPath || !normalizedRoot) return false;
+  return normalizedPath === normalizedRoot || normalizedPath.startsWith(`${normalizedRoot}/`);
+}
+
 function terminalProjectPath(tab: Tab, nodesByTabId: Map<string, CanvasNode>) {
   return normalizeProjectPath(tab.initialCwd ?? nodesByTabId.get(tab.id)?.terminalCwd);
 }
@@ -509,7 +516,6 @@ function reconcileProjectGroups(tabs: Tab[], groups: Group[], canvasState: Canva
     }
     return normalizedGroup;
   });
-  const groupIds = new Set(nextGroups.map((group) => group.id));
   let changed = nextGroups.length !== groups.length || nextGroups.some((group, index) => group !== groups[index]);
 
   const ensureGroupForPath = (path: string) => {
@@ -524,16 +530,19 @@ function reconcileProjectGroups(tabs: Tab[], groups: Group[], canvasState: Canva
     };
     nextGroups.push(group);
     groupsByRoot.set(path, group);
-    groupIds.add(group.id);
     changed = true;
     return group;
   };
 
   const nextTabs = tabs.map((tab) => {
-    const existingGroupIsValid = tab.groupId ? groupIds.has(tab.groupId) : false;
-    if (existingGroupIsValid) return tab;
-
     const path = terminalProjectPath(tab, nodesByTabId);
+    const existingGroup = tab.groupId
+      ? nextGroups.find((group) => group.id === tab.groupId)
+      : undefined;
+    if (existingGroup && (!path || pathBelongsToProject(path, existingGroup.projectRoot))) {
+      return tab;
+    }
+
     if (!path) return tab.groupId ? { ...tab, groupId: null } : tab;
 
     const group = ensureGroupForPath(path);

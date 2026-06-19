@@ -2882,3 +2882,94 @@ test("map sidebar filters operations nodes by visible work state", async ({ page
     return store?.getState().canvasState.selectedNodeId;
   })).toBe("service-preview-tab-preview-5177");
 });
+
+test("map sidebar lists every visible map terminal even when a project filter is active", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.locator('.workspace-rail-button[aria-label="Map"]').click();
+
+  await page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => {
+          workspaceUiState: Record<string, unknown>;
+        };
+        setState: (state: Record<string, unknown>) => void;
+      };
+    }).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+
+    const tab = (id: string, groupId: string, cwd: string, paneId: string) => ({
+      id,
+      title: "Terminal",
+      emoji: "[]",
+      color: "#7aa2f7",
+      groupId,
+      initialCwd: cwd,
+      terminals: [{ id: `pty-${id}`, paneId, cols: 80, rows: 24, status: "running" }],
+      splitLayout: { id: paneId, type: "terminal" },
+      activePaneId: paneId,
+    });
+
+    const groups = [
+      {
+        id: "group-termfleet",
+        name: "termfleet",
+        color: "#7aa2f7",
+        projectRoot: "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
+      },
+      {
+        id: "group-paperbot",
+        name: "paper-bot",
+        color: "#9ece6a",
+        projectRoot: "/media/endlessblink/data/my-projects/ai-development/bots+automation/paper-bot",
+      },
+      {
+        id: "group-bina",
+        name: "bina-veze",
+        color: "#bb9af7",
+        projectRoot: "/media/endlessblink/data/my-projects/ai-development/web-dev/bina-veze",
+      },
+    ];
+
+    store.setState({
+      workspaceUiState: {
+        ...store.getState().workspaceUiState,
+        workspaceMode: "canvas",
+        canvasSidebarCollapsed: false,
+        primarySidebarCollapsed: false,
+        primarySidebarPanel: "map",
+      },
+      groups,
+      terminalGroups: groups,
+      activeGroupFilter: "group-termfleet",
+      activeGroupId: "group-termfleet",
+      activeTabId: "tab-termfleet",
+      tabs: [
+        tab("tab-termfleet", "group-termfleet", "/media/endlessblink/data/my-projects/ai-development/devops/termfleet", "pane-termfleet"),
+        tab("tab-paperbot", "group-paperbot", "/media/endlessblink/data/my-projects/ai-development/bots+automation/paper-bot", "pane-paperbot"),
+        tab("tab-bina", "group-bina", "/media/endlessblink/data/my-projects/ai-development/web-dev/bina-veze", "pane-bina"),
+      ],
+      canvasState: {
+        selectedNodeId: "node-termfleet",
+        selectedNodeIds: ["node-termfleet"],
+        viewport: { x: 0, y: 0, zoom: 0.7 },
+        nodes: [
+          { id: "node-termfleet", type: "terminal", title: "Terminal", terminalTabId: "tab-termfleet", terminalCwd: "/media/endlessblink/data/my-projects/ai-development/devops/termfleet", x: 0, y: 0, width: 620, height: 420 },
+          { id: "node-paperbot", type: "terminal", title: "Terminal", terminalTabId: "tab-paperbot", terminalCwd: "/media/endlessblink/data/my-projects/ai-development/bots+automation/paper-bot", x: 660, y: 0, width: 620, height: 420 },
+          { id: "node-bina", type: "terminal", title: "Terminal", terminalTabId: "tab-bina", terminalCwd: "/media/endlessblink/data/my-projects/ai-development/web-dev/bina-veze", x: 1320, y: 0, width: 620, height: 420 },
+        ],
+      },
+    });
+  });
+
+  const mapPanel = page.locator('[aria-label="Operations panel"]');
+  await expect(mapPanel.getByTestId("map-filter-all")).toContainText("3");
+  const nodeList = mapPanel.getByTestId("map-node-list");
+  await expect(nodeList.getByText("termfleet", { exact: true })).toBeVisible();
+  await expect(nodeList.getByText("paper-bot", { exact: true })).toBeVisible();
+  await expect(nodeList.getByText("bina-veze", { exact: true })).toBeVisible();
+});
