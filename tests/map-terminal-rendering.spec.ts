@@ -533,8 +533,9 @@ test("project emojis identify map terminals by path without using task colors", 
   await expect(page.getByTestId("map-node-project-emoji").filter({ hasText: "🧭" })).toHaveCount(2);
 
   await page.getByTestId("map-node-project-emoji").filter({ hasText: "🧭" }).first().click();
-  await page.getByLabel("Search project emoji").fill("launch");
-  await page.getByTestId("project-emoji-picker").getByRole("button", { name: "Set project emoji launch" }).click();
+  // Full emoji picker: search by emoji name and pick from the searchable grid.
+  await page.getByTestId("project-emoji-picker").getByLabel("Search emoji").fill("rocket");
+  await page.getByTestId("project-emoji-picker").getByRole("option", { name: "rocket", exact: true }).click();
   await expect(page.getByTestId("canvas-terminal-project-emoji").filter({ hasText: "🚀" })).toHaveCount(2);
   await expect(page.getByTestId("canvas-terminal-project-emoji").filter({ hasText: "📝" })).toHaveCount(1);
   await expect(page.getByTestId("map-node-project-emoji").filter({ hasText: "🚀" })).toHaveCount(2);

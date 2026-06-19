@@ -26,6 +26,7 @@ import {
 } from "@phosphor-icons/react";
 import { createAgentWorkstream, createAgentWorkstreamRunId, createNewTab, createTerminalTab, currentAgentWorkstreamCwd, splitActivePane, splitActivePreviewPane, useWorkspaceStore } from "../stores/workspace";
 import { FolderPicker } from "./FolderPicker";
+import { EmojiPicker } from "./EmojiPicker";
 import type { CanvasNode, Group, Tab, WorkstreamMetadata } from "../lib/types";
 import { taskStatusColor, taskStatusLabel } from "../lib/masterPlanTasks";
 import { useMasterPlanTasks } from "../hooks/useMasterPlanTasks";
@@ -47,20 +48,6 @@ const TERMINAL_COLORS = [
   "#ef6f72",
 ];
 const TERMINAL_EMOJIS = ["💻", "⚙️", "🚀", "🧪", "🛠️", "📦", "🔧", "🧭"];
-const PROJECT_EMOJIS = [
-  { emoji: "💻", label: "code" },
-  { emoji: "🧭", label: "ops" },
-  { emoji: "📦", label: "package" },
-  { emoji: "🧪", label: "test" },
-  { emoji: "🛠️", label: "tools" },
-  { emoji: "🚀", label: "launch" },
-  { emoji: "🗂️", label: "files" },
-  { emoji: "🔬", label: "research" },
-  { emoji: "🧩", label: "product" },
-  { emoji: "📡", label: "service" },
-  { emoji: "🧱", label: "infra" },
-  { emoji: "📝", label: "content" },
-];
 
 function workstreamLabel(provider?: string) {
   if (provider === "opencode") return "OpenCode";
@@ -1113,6 +1100,7 @@ function TerminalContextMenu({
 }) {
   const updateTab = useWorkspaceStore((state) => state.updateTab);
   const [title, setTitle] = useState(tab.title);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -1207,7 +1195,7 @@ function TerminalContextMenu({
         <Smiley size={13} />
         <span>Emoji</span>
       </div>
-      <div style={styles.emojiGrid}>
+      <div style={{ ...styles.emojiGrid, position: "relative" }}>
         {TERMINAL_EMOJIS.map((emoji) => (
           <button
             key={emoji}
@@ -1227,6 +1215,26 @@ function TerminalContextMenu({
             {emoji}
           </button>
         ))}
+        {/* Quick emojis stay inline; this opens the full searchable picker. */}
+        <button
+          type="button"
+          className="workspace-terminal-emoji-button"
+          aria-label="Open full emoji picker"
+          title="More emoji…"
+          style={{ ...styles.emojiButton, borderColor: "var(--border-subtle)", outline: "none" }}
+          onClick={() => setShowEmojiPicker((open) => !open)}
+        >
+          <Smiley size={14} weight="duotone" />
+        </button>
+        {showEmojiPicker && (
+          <div style={{ position: "absolute", top: "100%", left: 0, marginTop: 4 }}>
+            <EmojiPicker
+              selected={tab.emoji}
+              onSelect={(picked) => updateTab(tab.id, { emoji: picked })}
+              onClose={() => setShowEmojiPicker(false)}
+            />
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1251,12 +1259,8 @@ function ProjectContextMenu({
   const removeGroup = useWorkspaceStore((state) => state.removeGroup);
   const currentGroup = useWorkspaceStore((state) => state.groups.find((group) => group.id === id));
   const [value, setValue] = useState(name);
-  const [emojiQuery, setEmojiQuery] = useState("");
   const ref = useRef<HTMLDivElement>(null);
   const selectedEmoji = currentGroup?.emoji ?? emoji;
-  const emojiOptions = PROJECT_EMOJIS.filter((item) =>
-    `${item.emoji} ${item.label}`.toLowerCase().includes(emojiQuery.trim().toLowerCase())
-  );
 
   useEffect(() => {
     function onPointerDown(event: MouseEvent) {
@@ -1321,38 +1325,12 @@ function ProjectContextMenu({
         <Smiley size={13} />
         <span>Project emoji</span>
       </div>
-      <input
-        className="workspace-terminal-settings-input"
-        style={styles.contextInput}
-        value={emojiQuery}
-        placeholder="Search emoji"
-        aria-label="Search project emoji"
-        onChange={(event) => setEmojiQuery(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === "Escape") onClose();
-        }}
-      />
-      <div style={styles.emojiGrid} data-testid="project-emoji-picker">
-        {emojiOptions.map((item) => (
-          <button
-            key={item.emoji}
-            type="button"
-            className="workspace-terminal-emoji-button"
-            data-selected={selectedEmoji === item.emoji ? "true" : "false"}
-            style={{
-              ...styles.emojiButton,
-              borderColor: selectedEmoji === item.emoji ? "var(--border-focus)" : "var(--border-subtle)",
-              background: selectedEmoji === item.emoji ? "var(--surface-selected)" : "var(--surface-base)",
-              color: selectedEmoji === item.emoji ? "var(--accent-live)" : "var(--text-primary)",
-              outline: "none",
-            }}
-            title={item.label}
-            aria-label={`Set project emoji ${item.label}`}
-            onClick={() => updateGroup(id, { emoji: item.emoji })}
-          >
-            {item.emoji}
-          </button>
-        ))}
+      <div data-testid="project-emoji-picker">
+        <EmojiPicker
+          embedded
+          selected={selectedEmoji}
+          onSelect={(picked) => updateGroup(id, { emoji: picked })}
+        />
       </div>
 
       <button
