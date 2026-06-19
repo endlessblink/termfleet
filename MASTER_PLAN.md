@@ -4873,3 +4873,30 @@ Progress notes:
   src-tauri/Cargo.toml --lib` passed (54 tests), `npm run
   verify:daemon-survival` passed, `npm run verify:daemon-latency` passed with
   p95 1.5ms, and `git diff --check` passed.
+- Added a behavior-preserving trace-path seam in `platform_paths`: latency trace
+  files and PTY trace logs now go through shared helper functions instead of
+  hardcoded `/tmp/terminal-workspace-*` strings in `pty.rs`, `daemon.rs`, and
+  `commands.rs`. Linux defaults and `TERMINAL_WORKSPACE_TRACE_PTY_FILE` override
+  behavior are locked by unit tests. Verification: `cargo test --manifest-path
+  src-tauri/Cargo.toml --lib platform_paths -- --nocapture` passed 3/3; `cargo
+  test --manifest-path src-tauri/Cargo.toml --lib -- --nocapture` passed 56/56;
+  `npm run build` passed; `git diff --check` passed.
+- Added a behavior-preserving `platform_tty` seam for daemon stdio attach:
+  raw/no-echo activation, sane-mode restore, and `stty size` parsing moved out of
+  `daemon.rs` while preserving the Linux `stty` behavior. Verification: `cargo
+  test --manifest-path src-tauri/Cargo.toml --lib platform_tty -- --nocapture`
+  passed 2/2; `cargo test --manifest-path src-tauri/Cargo.toml --lib --
+  --nocapture` passed 58/58; `npm run build` passed; `git diff --check` passed.
+- PTY session spawning now clears an inherited `NO_COLOR` while still setting
+  `TERM=xterm-256color` and `COLORTERM=truecolor`, so user shell environment
+  cannot silently strip color from TermFleet panes. Regression coverage:
+  `spawned_sessions_clear_no_color_but_keep_color_capability`; full Rust lib
+  suite passed 58/58.
+- The terminal task sidebar now uses a normalized `TaskLineupItem` model shared by
+  shell summaries, structured workstream signals, split panes, and map nodes.
+  Stale shell summary/menu text such as plan-mode choices is ignored, completed
+  tasks render muted/crossed out, and the sidebar can collapse into a compact
+  task rail with counts. Verification: full `tests/map-terminal-rendering.spec.ts`
+  passed 21/21, `tests/agent-status-summary.spec.ts` passed 15/15,
+  `npm run verify:map-terminals` passed after updating the source contract for
+  the new `platform_paths` trace helpers, and `npm run build` passed.

@@ -7,6 +7,7 @@ mod gtk_keys;
 mod native_terminal;
 mod platform_paths;
 mod platform_process;
+mod platform_tty;
 mod pty;
 pub mod vt_grid;
 

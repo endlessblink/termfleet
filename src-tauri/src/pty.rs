@@ -1,4 +1,4 @@
-use crate::default_shell;
+use crate::{default_shell, platform_paths};
 use portable_pty::{native_pty_system, Child, CommandBuilder, ExitStatus, MasterPty, PtySize};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -436,6 +436,7 @@ impl PtyManager {
         };
         cmd.env("TERM", "xterm-256color");
         cmd.env("COLORTERM", "truecolor");
+        cmd.env_remove("NO_COLOR");
         cmd.env(
             "LANG",
             std::env::var("LANG").unwrap_or_else(|_| "C.UTF-8".into()),
@@ -852,9 +853,9 @@ fn trace_pty(label: &str, details: impl AsRef<str>) {
         let _ = std::fs::OpenOptions::new()
             .create(true)
             .append(true)
-            .open(format!(
-                "/tmp/terminal-workspace-latency-trace-{}-{thread_id}.jsonl",
+            .open(platform_paths::latency_trace_path(
                 std::process::id(),
+                &thread_id,
             ))
             .and_then(|mut file| writeln!(file, "{line}"));
     }
@@ -863,13 +864,10 @@ fn trace_pty(label: &str, details: impl AsRef<str>) {
     }
     let line = format!("[TW-PTY] {now} {label} {}\n", details.as_ref());
     eprint!("{line}");
-    let trace_path = std::env::var_os("TERMINAL_WORKSPACE_TRACE_PTY_FILE")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("/tmp/terminal-workspace-pty-trace.log"));
     let _ = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
-        .open(trace_path)
+        .open(platform_paths::pty_trace_path())
         .and_then(|mut file| std::io::Write::write_all(&mut file, line.as_bytes()));
 }
 
@@ -1068,6 +1066,18 @@ fn boundary_at_or_after(data: &str, index: usize) -> usize {
 #[cfg(test)]
 mod tests {
     use super::PtyManager;
+
+    fn wait_for_snapshot_containing(manager: &PtyManager, id: &str, needle: &str) -> String {
+        let mut snapshot = String::new();
+        for _ in 0..40 {
+            snapshot = manager.snapshot(id).expect("read snapshot");
+            if snapshot.contains(needle) {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(25));
+        }
+        snapshot
+    }
 
     #[test]
     fn kill_removes_pty_from_manager() {
@@ -1444,6 +1454,50 @@ mod tests {
         assert_eq!(manager.session_size(&id), Some((132, 42)));
 
         manager.kill(&id).expect("kill sized detached PTY");
+    }
+
+    #[test]
+    fn spawned_sessions_clear_no_color_but_keep_color_capability() {
+        let manager = PtyManager::new();
+        let id = "detached-color-env-test".to_string();
+        let previous_no_color = std::env::var_os("NO_COLOR");
+
+        std::env::set_var("NO_COLOR", "1");
+        let result = manager.ensure_detached(
+            Some(id.clone()),
+            Some("/tmp".to_string()),
+            Some("sh".to_string()),
+            Some(96),
+            Some(24),
+        );
+        match previous_no_color {
+            Some(value) => std::env::set_var("NO_COLOR", value),
+            None => std::env::remove_var("NO_COLOR"),
+        }
+        result.expect("spawn detached PTY with parent NO_COLOR set");
+
+        manager
+            .write(
+                &id,
+                "printf 'NO_COLOR=%s TERM=%s COLORTERM=%s\\n' \"${NO_COLOR-unset}\" \"$TERM\" \"$COLORTERM\"\n",
+            )
+            .expect("write color env probe");
+        let snapshot = wait_for_snapshot_containing(&manager, &id, "NO_COLOR=unset");
+
+        assert!(
+            snapshot.contains("NO_COLOR=unset"),
+            "spawned shell should not inherit NO_COLOR, got {snapshot:?}"
+        );
+        assert!(
+            snapshot.contains("TERM=xterm-256color"),
+            "spawned shell should advertise 256-color TERM, got {snapshot:?}"
+        );
+        assert!(
+            snapshot.contains("COLORTERM=truecolor"),
+            "spawned shell should advertise truecolor, got {snapshot:?}"
+        );
+
+        manager.kill(&id).expect("kill color env PTY");
     }
 
     #[test]

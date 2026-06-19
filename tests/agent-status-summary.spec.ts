@@ -236,6 +236,37 @@ test("durable terminal activity explains focused Playwright header regressions",
   expect(summary.title).not.toContain("Testing \"map");
 });
 
+test("durable terminal activity explains Playwright spec files without command fragments", () => {
+  const summary = deriveTerminalActivity({
+    now: 1000,
+    transcript: [
+      "npx playwright test tests/map-terminal-rendering.spec.ts",
+      "Running 1 test using 1 worker",
+    ].join("\n"),
+    runtimeStatus: "running",
+    cwd: "/repo/termfleet",
+  });
+
+  expect(summary.title).toBe("Checking terminal cards on the map");
+  expect(summary.subtitle).toBe("map card rendering contract · 1 test · 1 worker · map-terminal-rendering.spec.ts");
+  expect(summary.title).not.toContain("Map Terminal Rendering");
+});
+
+test("durable terminal activity ignores unterminated grep fragments", () => {
+  const summary = deriveTerminalActivity({
+    now: 1000,
+    transcript: [
+      "npx playwright test tests/map-terminal-rendering.spec.ts -g \"map",
+      "Running 1 test using 1 worker",
+    ].join("\n"),
+    runtimeStatus: "running",
+    cwd: "/repo/termfleet",
+  });
+
+  expect(summary.title).toBe("Checking terminal cards on the map");
+  expect(summary.title).not.toContain("\"map");
+});
+
 test("summarizes fullscreen htop chrome as process monitoring", () => {
   const summary = fallbackAgentStatusSummary({
     mission: "Terminal",

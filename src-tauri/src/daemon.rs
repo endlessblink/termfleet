@@ -1,6 +1,7 @@
 use crate::daemon_ipc::{self, LocalStream};
 use crate::platform_paths;
 use crate::platform_process;
+use crate::platform_tty;
 use crate::pty::{PtyManager, PtyOutputChunk, PtySessionEvent, PtySessionSummary};
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -8,7 +9,6 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::net::Shutdown;
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
-use std::process::Command;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc, OnceLock,
@@ -235,10 +235,7 @@ pub fn trace_pty(label: &str, details: impl AsRef<str>) {
         let _ = std::fs::OpenOptions::new()
             .create(true)
             .append(true)
-            .open(format!(
-                "/tmp/terminal-workspace-latency-trace-{}-{thread_id}.jsonl",
-                std::process::id(),
-            ))
+            .open(platform_paths::latency_trace_path(std::process::id(), &thread_id))
             .and_then(|mut file| writeln!(file, "{line}"));
     }
     if std::env::var_os("TERMINAL_WORKSPACE_TRACE_PTY").is_none() {
@@ -246,13 +243,10 @@ pub fn trace_pty(label: &str, details: impl AsRef<str>) {
     }
     let line = format!("[TW-PTY] {now} {label} {}\n", details.as_ref());
     eprint!("{line}");
-    let trace_path = std::env::var_os("TERMINAL_WORKSPACE_TRACE_PTY_FILE")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("/tmp/terminal-workspace-pty-trace.log"));
     let _ = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
-        .open(trace_path)
+        .open(platform_paths::pty_trace_path())
         .and_then(|mut file| std::io::Write::write_all(&mut file, line.as_bytes()));
 }
 
@@ -377,7 +371,7 @@ fn run_daemon_stdio_bridge(
         }
     }
 
-    let _raw_guard = SttyRawGuard::activate();
+    let _raw_guard = platform_tty::RawModeGuard::activate();
     let stop = Arc::new(AtomicBool::new(false));
 
     {
@@ -402,21 +396,6 @@ fn run_daemon_stdio_bridge(
     copy_stdin_to_daemon_input_stream(&id)?;
     stop.store(true, Ordering::Relaxed);
     Ok(())
-}
-
-struct SttyRawGuard;
-
-impl SttyRawGuard {
-    fn activate() -> Option<Self> {
-        let status = Command::new("stty").args(["raw", "-echo"]).status().ok()?;
-        status.success().then_some(Self)
-    }
-}
-
-impl Drop for SttyRawGuard {
-    fn drop(&mut self) {
-        let _ = Command::new("stty").arg("sane").status();
-    }
 }
 
 fn stream_daemon_session_to_stdout(id: &str, stop: &AtomicBool) -> Result<(), String> {
@@ -478,7 +457,7 @@ fn copy_stdin_to_daemon_input_stream(id: &str) -> Result<(), String> {
 fn resize_daemon_session_from_tty(id: &str, stop: &AtomicBool) {
     let mut previous = None;
     while !stop.load(Ordering::Relaxed) {
-        if let Some((cols, rows)) = tty_size() {
+        if let Some((cols, rows)) = platform_tty::terminal_size() {
             let next = Some((cols, rows));
             if next != previous {
                 let _ = send_daemon_request(DaemonRequest::ResizeSession {
@@ -491,18 +470,6 @@ fn resize_daemon_session_from_tty(id: &str, stop: &AtomicBool) {
         }
         std::thread::sleep(Duration::from_millis(250));
     }
-}
-
-fn tty_size() -> Option<(u16, u16)> {
-    let output = Command::new("stty").arg("size").output().ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    let text = String::from_utf8(output.stdout).ok()?;
-    let mut parts = text.split_whitespace();
-    let rows = parts.next()?.parse::<u16>().ok()?;
-    let cols = parts.next()?.parse::<u16>().ok()?;
-    Some((cols, rows))
 }
 
 /// Tear down an explicitly requested or protocol-incompatible daemon so a fresh

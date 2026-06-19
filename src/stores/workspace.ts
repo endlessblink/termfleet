@@ -11,6 +11,7 @@ import type {
   Group,
   OpenFile,
   TerminalState,
+  TaskLineupItem,
   WorkspaceMode,
   WorkspaceUiState,
   WorkstreamLaunchProfile,
@@ -316,6 +317,8 @@ interface WorkspaceState {
   setActiveTerminal: (id: string | null) => void;
   setLiveCwd: (id: string, cwd: string) => void;
   refreshLiveCwd: (id: string) => Promise<void>;
+  replaceTerminalTaskLineup: (tabId: string, paneId: string, taskLineup: TaskLineupItem[]) => void;
+  setTerminalTaskSidebarCollapsed: (tabId: string, paneId: string, collapsed: boolean, nodeId?: string) => void;
   addOpenFile: (file: OpenFile) => void;
   removeOpenFile: (path: string) => void;
   setWorkspaceMode: (mode: WorkspaceMode) => void;
@@ -379,6 +382,8 @@ function persistedTerminalSnapshot(terminal: TerminalState): TerminalState {
     reused: false,
     previewUrl: terminal.previewUrl,
     durableActivity: terminal.durableActivity,
+    taskLineup: terminal.taskLineup,
+    taskSidebarCollapsed: terminal.taskSidebarCollapsed,
     lastStatusAt: Date.now(),
     lastError: "Session will reconnect if the backend is still running; otherwise it will restart.",
   };
@@ -2098,6 +2103,45 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     } catch {
       // PTY may be gone or pre-attach; keep the last known cwd.
     }
+  },
+
+  replaceTerminalTaskLineup: (tabId: string, paneId: string, taskLineup: TaskLineupItem[]) => {
+    set((state) => ({
+      tabs: state.tabs.map((tab) => {
+        if (tab.id !== tabId) return tab;
+        const previous = tab.terminals.find((terminal) => terminal.paneId === paneId);
+        if (!previous) return tab;
+        return {
+          ...tab,
+          terminals: tab.terminals.map((terminal) =>
+            terminal.paneId === paneId ? { ...terminal, taskLineup } : terminal
+          ),
+          workstream: tab.workstream ? { ...tab.workstream, taskLineup } : tab.workstream,
+        };
+      }),
+    }));
+  },
+
+  setTerminalTaskSidebarCollapsed: (tabId: string, paneId: string, collapsed: boolean, nodeId?: string) => {
+    set((state) => ({
+      tabs: state.tabs.map((tab) => {
+        if (tab.id !== tabId) return tab;
+        return {
+          ...tab,
+          terminals: tab.terminals.map((terminal) =>
+            terminal.paneId === paneId ? { ...terminal, taskSidebarCollapsed: collapsed } : terminal
+          ),
+        };
+      }),
+      canvasState: {
+        ...state.canvasState,
+        nodes: state.canvasState.nodes.map((node) =>
+          node.id === nodeId || (node.type === "terminal" && node.terminalTabId === tabId)
+            ? { ...node, taskSidebarCollapsed: collapsed }
+            : node
+        ),
+      },
+    }));
   },
 
   addOpenFile: (file: OpenFile) => {

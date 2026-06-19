@@ -38,6 +38,7 @@ const cargoToml = readFileSync(join(root, "src-tauri/Cargo.toml"), "utf8");
 const cargoBuild = readFileSync(join(root, "src-tauri/build.rs"), "utf8");
 const ptyBackend = readFileSync(join(root, "src-tauri/src/pty.rs"), "utf8");
 const ptyCommands = readFileSync(join(root, "src-tauri/src/commands.rs"), "utf8");
+const platformPaths = readFileSync(join(root, "src-tauri/src/platform_paths.rs"), "utf8");
 const nativeTerminalBackend = readFileSync(join(root, "src-tauri/src/native_terminal.rs"), "utf8");
 const daemonBackend = readFileSync(join(root, "src-tauri/src/daemon.rs"), "utf8");
 const daemonIpc = readFileSync(join(root, "src-tauri/src/daemon_ipc.rs"), "utf8");
@@ -471,8 +472,11 @@ const checks = [
     message: "Verification scripts must stress repeated TUI resizes and prove grid/PTY sync, visual content, repaint, and input after the storm.",
   },
   {
-    ok: /TERMINAL_WORKSPACE_TRACE_PTY_FILE/.test(daemonBackend) &&
-      /TERMINAL_WORKSPACE_TRACE_PTY_FILE/.test(ptyBackend) &&
+    ok: /pub fn pty_trace_path/.test(platformPaths) &&
+      /TERMINAL_WORKSPACE_TRACE_PTY_FILE/.test(platformPaths) &&
+      /pty_trace_path_uses_env_override_or_temp_default/.test(platformPaths) &&
+      /platform_paths::pty_trace_path\(\)/.test(daemonBackend) &&
+      /platform_paths::pty_trace_path\(\)/.test(ptyBackend) &&
       /TRACE_FILE="\$OUT_DIR\/pty-trace\.log"/.test(zellijMapSmoke) &&
       /TRACE_FILE="\$OUT_DIR\/pty-trace\.log"/.test(zellijShortcutSmoke) &&
       /XDG_RUNTIME_DIR="\$RUN_DIR"/.test(zellijMapSmoke) &&
@@ -827,10 +831,13 @@ const checks = [
     ok: /TERMINAL_LATENCY_TRACE_EVENT/.test(ptyCommands) &&
       /terminal_latency_trace_enabled/.test(ptyCommands) &&
       /handle_terminal_latency_trace_event/.test(ptyCommands) &&
-      /terminal-workspace-latency-trace-/.test(ptyCommands) &&
+      /platform_paths::latency_trace_path/.test(ptyCommands) &&
       /std::thread::current\(\)\.id\(\)/.test(ptyCommands) &&
-      /terminal-workspace-latency-trace-/.test(ptyBackend) &&
+      /platform_paths::latency_trace_path/.test(ptyBackend) &&
       /std::thread::current\(\)\.id\(\)/.test(ptyBackend) &&
+      /pub fn latency_trace_path/.test(platformPaths) &&
+      /terminal-workspace-latency-trace-\{pid\}-\{thread_id\}\.jsonl/.test(platformPaths) &&
+      /latency_trace_path_keeps_linux_temp_file_shape/.test(platformPaths) &&
       /traceTerminalLatency/.test(usePty) &&
       /frontend\.xterm\.write\.callback/.test(usePty) &&
       /frontend\.xterm\.render/.test(terminalComponent) &&

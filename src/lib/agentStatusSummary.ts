@@ -113,8 +113,11 @@ function explicitLineupTasks(input: AgentStatusSummaryInput) {
   for (let index = lines.length - 1; index >= 0; index -= 1) {
     const line = lines[index];
     if (
-      /\b(?:current|my|agent|working)\s+(?:task\s+)?(?:lineup|tasks?|todo\s+list)\b/i.test(line) ||
-      /\blineup\s+for\b/i.test(line)
+      /:\s*$/.test(line) &&
+      (
+        /\b(?:current|my|agent|working)\s+(?:task\s+)?(?:lineup|todo\s+list|task\s+list)\b/i.test(line) ||
+        /\blineup\s+for\b/i.test(line)
+      )
     ) {
       headerIndex = index;
       break;
@@ -140,11 +143,33 @@ function explicitLineupTasks(input: AgentStatusSummaryInput) {
     const rawText = listed?.[2] ?? stated?.[2] ?? "";
     const text = cleanText(rawText.replace(/\.$/, ""));
     if (!text) continue;
+    if (/^(yes|no|switch to|clear context|continue planning|press enter|esc\b)/i.test(text)) continue;
+    if (/\b(plan mode|default and start coding|confirm or esc)\b/i.test(text)) continue;
     const status = rawStatus.toLowerCase();
     tasks.push(/^(x|done|complete)$/.test(status) ? `Done: ${text}` : text);
     if (tasks.length >= 12) break;
   }
   return tasks;
+}
+
+function shellOperatorPromptTask(input: AgentStatusSummaryInput) {
+  if (input.provider !== "shell") return undefined;
+  const lines = (input.terminalOutput ?? "")
+    .replace(/\r/g, "\n")
+    .replace(OSC_PATTERN, "")
+    .split("\n")
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+  const promptLine = [...lines].reverse().find((line) => /^›\s+\S/.test(line));
+  const raw = promptLine?.replace(/^›\s+/, "").trim();
+  const task = cleanText(raw?.replace(/\.$/, ""));
+  if (!task) return undefined;
+  if (/^(yes|no|switch to|clear context|continue planning|press enter|esc\b)/i.test(task)) return undefined;
+  if (/\b(plan mode|default and start coding|confirm or esc)\b/i.test(task)) return undefined;
+  if (/^implement\s+(?:this|the)\s+plan\??$/i.test(task)) return undefined;
+  if (/^(delete|backspace|term|shell|search|read|working|verified|done|output|path|signal|now)$/i.test(task)) return undefined;
+  if (task.length < 12 || task.split(/\s+/).length < 3) return undefined;
+  return task;
 }
 
 function quotedFlagValue(command: string, flag: string) {
@@ -209,6 +234,7 @@ function stripExtractionPrefix(line: string) {
 function extractionCandidates(input: AgentStatusSummaryInput, task: string, status: AgentStatusLifecycle) {
   const lines = transcriptLines(input);
   const lineupTasks = explicitLineupTasks(input);
+  const operatorPromptTask = shellOperatorPromptTask(input);
   const taskLines = lines
     .filter((line) => /^(task|todo|fix|implement|add|update|review|wire|persist)\b/i.test(line))
     .map(stripExtractionPrefix);
@@ -224,10 +250,12 @@ function extractionCandidates(input: AgentStatusSummaryInput, task: string, stat
 
   return {
     tasks: lineupTasks.length > 0 ? lineupTasks : [
-      ...(cleanExtractedText(input.mission) && cleanExtractedText(input.mission) !== "Terminal" ? [input.mission] : []),
-      ...(cleanExtractedText(input.prompt) ? [input.prompt] : []),
-      ...(task && task !== "Ready" && task !== "Supervised agent run" ? [task] : []),
-      ...taskLines,
+      ...(input.provider === "shell" ? (operatorPromptTask ? [operatorPromptTask] : []) : [
+        ...(cleanExtractedText(input.mission) && cleanExtractedText(input.mission) !== "Terminal" ? [input.mission] : []),
+        ...(cleanExtractedText(input.prompt) ? [input.prompt] : []),
+        ...(task && task !== "Ready" && task !== "Supervised agent run" ? [task] : []),
+        ...taskLines,
+      ]),
     ],
     blockers: [
       input.risk,
@@ -394,7 +422,7 @@ export function displayAgentStatusSummary(
     status: persisted?.status ?? fallback.status,
     provider: persisted?.provider ?? fallback.provider,
     confidence: persisted?.confidence ?? fallback.confidence,
-    tasks: persisted?.tasks ?? fallback.tasks,
+    tasks: input.provider === "shell" ? fallback.tasks : persisted?.tasks ?? fallback.tasks,
     blockers: persisted?.blockers ?? fallback.blockers,
     evidence: persisted?.evidence ?? fallback.evidence,
     nextActions: persisted?.nextActions ?? fallback.nextActions,

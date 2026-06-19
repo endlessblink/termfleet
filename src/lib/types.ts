@@ -1,6 +1,18 @@
 export type TerminalRuntimeStatus = "starting" | "running" | "reconnected" | "stale" | "failed" | "exited";
 export type TerminalActivityStatus = "idle" | "running" | "success" | "error" | "cancelled";
 export type TerminalActivitySource = "shell-integration" | "command" | "output" | "system";
+export type TaskLineupStatus = "pending" | "in_progress" | "completed" | "cancelled";
+export type TaskLineupPriority = "high" | "medium" | "low";
+export type TaskLineupSource = "todo-write" | "structured-signal" | "summary" | "lane-checklist" | "operator";
+
+export interface TaskLineupItem {
+  id: string;
+  content: string;
+  status: TaskLineupStatus;
+  priority?: TaskLineupPriority;
+  source: TaskLineupSource;
+  updatedAt: number;
+}
 
 export interface TerminalActivitySummary {
   title: string;
@@ -27,6 +39,8 @@ export interface TerminalState {
   activityKind?: WorkstreamActivityKind;
   activityUpdatedAt?: number;
   durableActivity?: TerminalActivitySummary;
+  taskLineup?: TaskLineupItem[];
+  taskSidebarCollapsed?: boolean;
   terminalOutput?: string;
   statusSummary?: WorkstreamStatusSummary;
   statusSummaryUpdatedAt?: number;
@@ -173,6 +187,7 @@ export interface WorkstreamMetadata {
   statusSummaryUpdatedAt?: number;
   statusSummarySource?: WorkstreamStatusSummarySource;
   statusSummaryError?: string;
+  taskLineup?: TaskLineupItem[];
   extractedTasks?: WorkstreamExtractedItem[];
   extractedBlockers?: WorkstreamExtractedItem[];
   extractedEvidence?: WorkstreamExtractedItem[];
@@ -280,6 +295,7 @@ export interface CanvasNode {
   previewPaneId?: string;
   linkedTerminalPaneId?: string;
   taskBinding?: CanvasTaskBinding;
+  taskSidebarCollapsed?: boolean;
 }
 
 export interface CanvasState {

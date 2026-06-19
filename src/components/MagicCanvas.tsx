@@ -14,6 +14,7 @@ import {
   Maximize2,
   Minus,
   NotebookText,
+  PanelRightClose,
   Plus,
   RefreshCw,
   RotateCcw,
@@ -31,13 +32,15 @@ import { createNewTab, useWorkspaceStore } from "../stores/workspace";
 import { TerminalComponent } from "./Terminal";
 import { LocalhostPreview } from "./LocalhostPreview";
 import type { GridSnapshot } from "../lib/gridSnapshot";
-import type { Tab, TerminalRuntimeStatus } from "../lib/types";
+import type { Tab, TaskLineupItem, TerminalRuntimeStatus, WorkstreamStatusSummary } from "../lib/types";
 import { agentLaneAuthRetryText, agentLaneAuthRetryTitle, agentLaneCleanupRequestText, agentLaneCleanupRequestTitle, agentLaneCloseoutText, agentLaneCloseoutTitle, agentLaneHealthText, agentLaneInterruptText, agentLaneInterruptTitle, agentLaneMemoryRequestText, agentLaneMemoryRequestTitle, agentLaneProofRequestText, agentLaneProofRequestTitle, agentLaneRestartText, agentLaneRestartTitle, agentLaneRiskMitigationText, agentLaneRiskMitigationTitle, agentLaneStatusSweepText, agentLaneStatusSweepTitle, agentLaneStatusText, attentionBreakdownText, cleanupBreakdownText, closeoutBreakdownText, formatAgentLaneBrief, formatAgentMissionControlBrief, formatAgentRunBrief, handoffMemoryPromptForWorkstream, isActiveAgentWorkstream, isAgentReviewCloseoutReady, isAuthRetryableAgentWorkstream, isCleanupRequestableAgentWorkstream, isRestartableAgentWorkstream, isReviewItemCloseoutReady, isStaleAgentWorkstream, isolationBreakdownText, latestMissionControlAskText, missionBreakdownText, missionControlAlternateText, missionControlDispatchBreakdownText, needsAgentProofRequest, proofRequestPromptForWorkstream, providerBreakdownText, readinessBreakdownText, riskBreakdownText, statusCheckPromptForWorkstream, summarizeAgentLane } from "../lib/agentWorkstreamLane";
 import { agentStatusChipText, agentStatusSummaryFromWorkstream, getDisplaySummary } from "../lib/agentStatusSummary";
 import { agentTerminalTaskRows } from "../lib/agentTerminalTasks";
 import { workstreamActivityMeta, workstreamActivityText } from "../lib/workstreamActivity";
 import { formatWorkstreamBranch, formatWorkstreamIsolation, formatWorkstreamOpsContext } from "../lib/workstreamOpsContext";
 import { snapshotPreviewRows } from "../lib/snapshotPreviewRows";
+import { taskLineupStats } from "../lib/taskLineup";
+import { summaryFromDurableActivity } from "../lib/terminalHeaderDisplay";
 
 type CanvasRect = {
   minX: number;
@@ -346,7 +349,7 @@ const styles: Record<string, CSSProperties> = {
   terminalStatusBlock: {
     minWidth: 0,
     display: "grid",
-    gap: 9,
+    gap: 8,
     alignContent: "start",
   },
   terminalStatusLayout: {
@@ -366,10 +369,9 @@ const styles: Record<string, CSSProperties> = {
     display: "inline-flex",
     alignItems: "center",
     gap: 5,
-    color: "var(--text-secondary)",
-    fontSize: 10,
+    color: "color-mix(in srgb, var(--text-secondary) 72%, transparent)",
+    fontSize: 11,
     fontWeight: 500,
-    textTransform: "uppercase",
     letterSpacing: 0,
   },
   workspacePill: {
@@ -396,33 +398,32 @@ const styles: Record<string, CSSProperties> = {
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
     color: "var(--text-primary)",
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: 500,
     lineHeight: 1.15,
   },
   terminalStatusGrid: {
     minWidth: 0,
     display: "grid",
-    gridTemplateColumns: "minmax(120px, 0.6fr) minmax(180px, 1fr)",
-    gap: 7,
+    gridTemplateColumns: "minmax(120px, 0.7fr) minmax(180px, 1.3fr)",
+    gap: 10,
   },
   terminalStatusField: {
     minWidth: 0,
     maxWidth: "100%",
-    minHeight: 34,
+    minHeight: 30,
     display: "grid",
     alignContent: "center",
     gap: 2,
-    padding: "5px 8px 6px",
-    borderRadius: "var(--radius-sm)",
-    border: "1px solid var(--border-subtle)",
-    background: "color-mix(in srgb, var(--surface-base) 76%, transparent)",
+    padding: 0,
+    borderRadius: 0,
+    border: "none",
+    background: "transparent",
   },
   terminalStatusFieldLabel: {
-    color: "var(--text-secondary)",
+    color: "color-mix(in srgb, var(--text-secondary) 62%, transparent)",
     fontSize: 10,
     fontWeight: 500,
-    textTransform: "uppercase",
     letterSpacing: 0,
   },
   terminalStatusFieldValue: {
@@ -439,7 +440,7 @@ const styles: Record<string, CSSProperties> = {
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
-    color: "var(--accent-live)",
+    color: "var(--text-secondary)",
     fontSize: 12,
     fontWeight: 500,
     lineHeight: 1.2,
@@ -896,6 +897,65 @@ const styles: Record<string, CSSProperties> = {
     color: "var(--text-secondary)",
     fontFamily: "var(--font-ui)",
     overflow: "hidden",
+  },
+  terminalBodyTaskRail: {
+    minWidth: 0,
+    minHeight: 0,
+    width: "100%",
+    height: "100%",
+    display: "grid",
+    gridTemplateRows: "auto auto auto auto 1fr",
+    justifyItems: "center",
+    alignItems: "start",
+    gap: 7,
+    padding: "12px 6px",
+    border: "none",
+    borderLeft: "1px solid var(--border-subtle)",
+    background: "color-mix(in srgb, var(--surface-base) 78%, var(--surface-sunken))",
+    color: "var(--text-secondary)",
+    fontFamily: "var(--font-ui)",
+    cursor: "pointer",
+    overflow: "hidden",
+  },
+  terminalBodyTaskRailText: {
+    writingMode: "vertical-rl",
+    textTransform: "uppercase",
+    color: "var(--text-primary)",
+    fontSize: 10,
+    fontWeight: 600,
+    letterSpacing: 0,
+  },
+  terminalBodyTaskRailCount: {
+    minWidth: 22,
+    height: 22,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 6,
+    background: "color-mix(in srgb, var(--accent-live) 16%, var(--surface-raised))",
+    color: "var(--text-primary)",
+    fontSize: 11,
+    fontWeight: 600,
+  },
+  terminalBodyTaskRailMeta: {
+    writingMode: "vertical-rl",
+    color: "var(--text-tertiary)",
+    fontSize: 9,
+    lineHeight: 1,
+    whiteSpace: "nowrap",
+  },
+  iconButtonSm: {
+    width: 22,
+    height: 22,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 0,
+    border: "1px solid var(--border-subtle)",
+    borderRadius: 6,
+    background: "color-mix(in srgb, var(--surface-raised) 82%, transparent)",
+    color: "var(--text-secondary)",
+    cursor: "pointer",
   },
   terminalBodyTaskList: {
     minHeight: 0,
@@ -1478,12 +1538,47 @@ function TerminalBodyTaskSidebar({
   testIdPrefix,
   ariaLabel,
   emptyText,
+  collapsed,
+  onToggleCollapsed,
 }: {
   rows: TerminalBodyTaskRow[];
   testIdPrefix: "canvas-terminal" | "canvas-agent";
   ariaLabel: string;
   emptyText: string;
+  collapsed: boolean;
+  onToggleCollapsed: () => void;
 }) {
+  const stats = taskLineupStats(rows.map((row) => ({
+    id: row.id,
+    content: row.task,
+    status: row.state === "Done" ? "completed" : row.state === "Working" ? "in_progress" : "pending",
+    source: "summary",
+    updatedAt: 0,
+  })));
+  if (collapsed) {
+    return (
+      <button
+        type="button"
+        style={styles.terminalBodyTaskRail}
+        data-testid={`${testIdPrefix}-task-rail`}
+        aria-label={`${ariaLabel}: ${stats.open} open, ${stats.done} done. Expand tasks.`}
+        title={`${stats.open} open · ${stats.done} done`}
+        onClick={(event) => {
+          event.stopPropagation();
+          onToggleCollapsed();
+        }}
+        onMouseDown={(event) => event.stopPropagation()}
+        onWheel={(event) => event.stopPropagation()}
+      >
+        <ListTodo size={14} strokeWidth={1.8} />
+        <span style={styles.terminalBodyTaskRailText}>Tasks</span>
+        <span style={styles.terminalBodyTaskRailCount}>{stats.total}</span>
+        <span style={styles.terminalBodyTaskRailMeta}>{stats.open} open</span>
+        <span style={styles.terminalBodyTaskRailMeta}>{stats.done} done</span>
+      </button>
+    );
+  }
+
   return (
     <aside
       style={styles.terminalBodyTaskSidebar}
@@ -1493,7 +1588,21 @@ function TerminalBodyTaskSidebar({
     >
       <div style={styles.agentTaskHeader}>
         <span>Tasks</span>
-        <span>{rows.length}</span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+          <span>{rows.length}</span>
+          <button
+            type="button"
+            aria-label="Minimize tasks"
+            title="Minimize tasks"
+            style={styles.iconButtonSm}
+            onClick={(event) => {
+              event.stopPropagation();
+              onToggleCollapsed();
+            }}
+          >
+            <PanelRightClose size={13} strokeWidth={1.8} />
+          </button>
+        </span>
       </div>
       {rows.length === 0 ? (
         <div
@@ -1566,8 +1675,28 @@ function TerminalBodyTaskSidebar({
 
 function currentLineupTaskRows(
   workstream: Tab["workstream"] | undefined,
-  summary: ReturnType<typeof agentStatusSummaryFromWorkstream> | ReturnType<typeof getDisplaySummary> | undefined
+  taskLineup: TaskLineupItem[] | undefined,
+  summary: WorkstreamStatusSummary | undefined
 ): TerminalBodyTaskRow[] {
+  if (taskLineup?.length) {
+    return taskLineup.map((item) => ({
+      id: item.id,
+      task: item.content,
+      state: item.status === "completed"
+        ? "Done"
+        : item.status === "in_progress"
+          ? "Working"
+          : item.status === "cancelled"
+            ? "Cancelled"
+            : "Not done",
+      next: item.status === "completed"
+        ? "Complete"
+        : item.status === "in_progress"
+          ? "Active now"
+          : item.priority ? `${item.priority} priority` : "Open",
+    }));
+  }
+
   const cockpitTasks = (workstream?.cockpitObjects ?? [])
     .filter((item) => item.kind === "task" && item.reviewState !== "dismissed")
     .map((item) => {
@@ -2018,23 +2147,11 @@ function CanvasNodeView({
     terminalOutput: linkedTerminal?.terminalOutput,
   }, terminalStatusSummary);
   const terminalDisplaySummary = linkedTerminal?.durableActivity
-    ? {
-        ...terminalExtractedSummary,
-        task: linkedTerminal.durableActivity.title,
-        path: pathTail(liveTerminalRoot) ?? liveTerminalRoot ?? "workspace path unknown",
-        now: linkedTerminal.durableActivity.subtitle ?? (
-          linkedTerminal.durableActivity.status === "idle" ? "Awaiting command" : linkedTerminal.durableActivity.title
-        ),
-        status: linkedTerminal.durableActivity.status === "success"
-          ? "done" as const
-          : linkedTerminal.durableActivity.status === "error"
-            ? "blocked" as const
-            : linkedTerminal.durableActivity.status === "idle"
-              ? "idle" as const
-              : "working" as const,
-        provider: "shell" as const,
-        confidence: linkedTerminal.durableActivity.status === "idle" ? "low" as const : "high" as const,
-      }
+    ? summaryFromDurableActivity(
+        linkedTerminal.durableActivity,
+        pathTail(liveTerminalRoot) ?? liveTerminalRoot ?? "workspace path unknown",
+        terminalExtractedSummary,
+      )
     : terminalExtractedSummary;
   const terminalHeaderTitle = terminalDisplaySummary.task === "Ready" ? terminalTitle : terminalDisplaySummary.task;
   const terminalHeaderPath = terminalDisplaySummary.path;
@@ -2112,11 +2229,19 @@ function CanvasNodeView({
   void terminalHeaderTaskState;
   const currentLineupTasks = currentLineupTaskRows(
     workstream,
-    workstream?.kind === "agent" ? agentStatusSummary : terminalDisplaySummary
+    workstream?.taskLineup ?? (
+      linkedTerminal?.taskLineup?.filter((item) =>
+        Boolean(terminalDisplaySummary.tasks?.length) ||
+        item.source === "todo-write" ||
+        item.source === "operator"
+      )
+    ),
+    workstream?.kind === "agent" ? agentStatusSummary ?? undefined : terminalDisplaySummary
   );
   const terminalBodyTasks = laneChecklistTasks.length > 0
     ? laneChecklistTasks
     : currentLineupTasks;
+  const taskSidebarCollapsed = linkedTerminal?.taskSidebarCollapsed ?? node.taskSidebarCollapsed ?? false;
   const terminalBodyTaskPrefix: "canvas-agent" | "canvas-terminal" =
     workstream?.kind === "agent" ? "canvas-agent" : "canvas-terminal";
   const nodeKind = workstream?.kind === "agent"
@@ -2140,6 +2265,19 @@ function CanvasNodeView({
     setActiveTab(linkedTab.id);
     setWorkspaceMode("split");
   }, [linkedTab, setActiveTab, setWorkspaceMode]);
+
+  const toggleTaskSidebarCollapsed = useCallback(() => {
+    if (!linkedTab) {
+      updateCanvasNode(node.id, { taskSidebarCollapsed: !taskSidebarCollapsed });
+      return;
+    }
+    useWorkspaceStore.getState().setTerminalTaskSidebarCollapsed(
+      linkedTab.id,
+      terminalPaneId,
+      !taskSidebarCollapsed,
+      node.id
+    );
+  }, [linkedTab, node.id, taskSidebarCollapsed, terminalPaneId, updateCanvasNode]);
 
   const onBindTask = useCallback((event: React.MouseEvent) => {
     event.preventDefault();
@@ -2552,9 +2690,9 @@ function CanvasNodeView({
             onDoubleClick={onRename}
           >
             <div style={styles.terminalStatusKicker}>
-              <span>Context</span>
+              <span>Shell session</span>
               <span>·</span>
-              <span>{terminalHeaderHasUsefulSummary ? "live summary" : "terminal state"}</span>
+              <span>{terminalHeaderHasUsefulSummary ? "activity" : "ready"}</span>
               <span style={styles.workspacePill} data-testid="canvas-terminal-node-workspace" title={workspaceLabel}>
                 {workspaceLabel}
               </span>
@@ -2579,7 +2717,7 @@ function CanvasNodeView({
                     </span>
                   </div>
                   <div style={styles.terminalStatusField}>
-                    <span style={styles.terminalStatusFieldLabel}>{terminalHeaderHasUsefulNow ? "Now" : "Signal"}</span>
+                    <span style={styles.terminalStatusFieldLabel}>{terminalHeaderHasUsefulNow ? "Detail" : "Signal"}</span>
                     <span
                       style={terminalHeaderHasUsefulNow ? styles.terminalStatusNow : styles.terminalStatusFieldValue}
                       data-testid="canvas-terminal-node-now"
@@ -2988,6 +3126,9 @@ function CanvasNodeView({
           node.type === "terminal"
             ? {
                 ...styles.terminalBodyWithTasks,
+                gridTemplateColumns: taskSidebarCollapsed
+                  ? "minmax(0, 1fr) 46px"
+                  : styles.terminalBodyWithTasks.gridTemplateColumns,
                 ...styles.liveTerminalBody,
               }
             : node.type === "note"
@@ -3312,6 +3453,8 @@ function CanvasNodeView({
             rows={terminalBodyTasks}
             testIdPrefix={terminalBodyTaskPrefix}
             ariaLabel={workstream?.kind === "agent" ? "Agent terminal tasks" : "Terminal tasks"}
+            collapsed={taskSidebarCollapsed}
+            onToggleCollapsed={toggleTaskSidebarCollapsed}
             emptyText={detectedLaneTaskId
               ? `No checklist found for ${detectedLaneTaskId}. Add Acceptance bullets in MASTER_PLAN.md to show done and not-done tasks.`
               : workstream?.kind === "agent"

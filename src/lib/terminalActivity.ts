@@ -101,7 +101,9 @@ function quotedFlagValue(command: string, flag: string) {
   const normalized = normalizeCommand(command);
   const escaped = flag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const match = normalized.match(new RegExp(`${escaped}\\s+(?:"([^"]+)"|'([^']+)'|([^\\s]+))`));
-  return cleanText(match?.[1] ?? match?.[2] ?? match?.[3]);
+  const value = cleanText(match?.[1] ?? match?.[2] ?? match?.[3]);
+  if (!value || /^["']/.test(value)) return undefined;
+  return value;
 }
 
 function targetFile(command: string) {
@@ -114,6 +116,37 @@ function humanizeSpecName(value: string) {
     .replace(/\.(?:spec|test)\.(?:tsx?|jsx?)$/i, "")
     .replace(/[-_]+/g, " ")
     .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function activityForPlaywrightFile(value?: string) {
+  const file = cleanText(value);
+  if (!file) return null;
+  const basename = file.split("/").filter(Boolean).pop() ?? file;
+  if (/map-terminal-rendering\.spec\./i.test(basename)) {
+    return {
+      title: "Checking terminal cards on the map",
+      detail: "map card rendering contract",
+    };
+  }
+  if (/agent-status-summary\.spec\./i.test(basename)) {
+    return {
+      title: "Checking activity summary wording",
+      detail: "terminal status summary contract",
+    };
+  }
+  if (/checkout/i.test(basename)) {
+    return {
+      title: "Checking checkout flow",
+      detail: "checkout regression",
+    };
+  }
+  if (/login|auth|authentication|sign-in|signin/i.test(basename)) {
+    return {
+      title: "Checking login flow",
+      detail: "authentication regression",
+    };
+  }
+  return null;
 }
 
 function humanizeGrep(value: string) {
@@ -207,6 +240,8 @@ function playwrightTitle(command: string) {
   const named = activityForPlaywrightName(grep);
   if (named) return named.title;
   if (grep) return `Verifying ${humanizeGrep(grep)}`;
+  const fileActivity = activityForPlaywrightFile(file);
+  if (fileActivity) return fileActivity.title;
   if (file) return `Checking ${humanizeSpecName(file)} tests`;
   return "Running Playwright tests";
 }
@@ -214,8 +249,9 @@ function playwrightTitle(command: string) {
 function playwrightSubtitle(command: string, transcript: string) {
   const named = activityForPlaywrightName(currentPlaywrightTestName(transcript) ?? quotedFlagValue(command, "-g") ?? quotedFlagValue(command, "--grep"));
   const file = targetFile(command)?.split("/").filter(Boolean).pop();
+  const fileActivity = activityForPlaywrightFile(file);
   const progress = playwrightProgressSubtitle(transcript);
-  return [named?.detail, progress, file].filter(Boolean).join(" · ") || undefined;
+  return [named?.detail ?? fileActivity?.detail, progress, file].filter(Boolean).join(" · ") || undefined;
 }
 
 function completionTitle(previous: TerminalActivitySummary | undefined, success: boolean) {

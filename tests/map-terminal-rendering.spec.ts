@@ -1825,6 +1825,103 @@ Acceptance:
     if (!tab) throw new Error("Terminal tab is unavailable");
     store.getState().updateTab(tab.id, {
       terminals: [{
+        id: "pty-plan-mode-menu-fixture",
+        paneId: node.id,
+        cols: 100,
+        rows: 30,
+        status: "running",
+        currentActivity: "Working",
+        statusSummary: {
+          task: "Running verify:canvas-all",
+          path: "devops/termfleet",
+          now: "Press enter to confirm or esc to go back",
+          status: "working",
+          provider: "shell",
+          confidence: "medium",
+          tasks: [{
+            id: "stale-term",
+            text: "TERM",
+            provenance: "summary",
+            at: Date.now(),
+            excerpt: "stale bad task",
+            sourceHash: "stale-term",
+          }],
+        },
+        taskLineup: [{
+          id: "stale-term",
+          content: "TERM",
+          status: "pending",
+          source: "summary",
+          updatedAt: Date.now(),
+        }],
+        terminalOutput: [
+          "Implement this plan?",
+          "› Implement the plan.",
+          "1. Yes, implement this plan",
+          "2. Yes, clear context and implement",
+          "3. No, stay in Plan mode",
+          "Press enter to confirm or esc to go back",
+        ].join("\n"),
+      }],
+    });
+  });
+
+  await expect(page.getByTestId("canvas-terminal-task-row")).toHaveCount(0);
+
+  await page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => {
+          tabs: Array<{ id: string; title: string; terminals: Array<{ paneId?: string }> }>;
+          canvasState: { nodes: Array<{ id: string; type: string; terminalTabId?: string }> };
+          updateTab: (id: string, updates: Record<string, unknown>) => void;
+        };
+      };
+    }).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+    const state = store.getState();
+    const node = state.canvasState.nodes.find((candidate) => candidate.type === "terminal");
+    if (!node?.terminalTabId) throw new Error("Terminal map node is unavailable");
+    const tab = state.tabs.find((candidate) => candidate.id === node.terminalTabId);
+    if (!tab) throw new Error("Terminal tab is unavailable");
+    store.getState().updateTab(tab.id, {
+      terminals: [{
+        id: "pty-real-prompt-fixture",
+        paneId: node.id,
+        cols: 100,
+        rows: 30,
+        status: "running",
+        currentActivity: "Working",
+        terminalOutput: [
+          "Working (48s • esc to interrupt)",
+          "› Find and fix a bug in @filename",
+          "gpt-5.5 default",
+        ].join("\n"),
+      }],
+    });
+  });
+
+  await expect(page.getByTestId("canvas-terminal-task-row")).toHaveCount(1);
+  await expect(page.getByTestId("canvas-terminal-task-row")).toContainText("Find and fix a bug in @filename");
+
+  await page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => {
+          tabs: Array<{ id: string; title: string; terminals: Array<{ paneId?: string }> }>;
+          canvasState: { nodes: Array<{ id: string; type: string; terminalTabId?: string }> };
+          updateTab: (id: string, updates: Record<string, unknown>) => void;
+        };
+      };
+    }).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+    const state = store.getState();
+    const node = state.canvasState.nodes.find((candidate) => candidate.type === "terminal");
+    if (!node?.terminalTabId) throw new Error("Terminal map node is unavailable");
+    const tab = state.tabs.find((candidate) => candidate.id === node.terminalTabId);
+    if (!tab) throw new Error("Terminal tab is unavailable");
+    store.getState().updateTab(tab.id, {
+      terminals: [{
         id: "pty-lineup-summary-fixture",
         paneId: node.id,
         cols: 100,

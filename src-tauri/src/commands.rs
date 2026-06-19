@@ -4,6 +4,7 @@ use crate::daemon::{
     DaemonStatus,
 };
 use crate::daemon_ipc::{self, LocalStream};
+use crate::platform_paths;
 use crate::pty::{PtyManager, PtyOutputChunk, PtySessionEvent, PtySessionSummary};
 use crate::vt_grid::{GridManager, DEFAULT_COLS, DEFAULT_ROWS};
 use serde::{Deserialize, Serialize};
@@ -574,19 +575,18 @@ fn append_latency_trace_line(line: &str) {
     let _ = fs::OpenOptions::new()
         .create(true)
         .append(true)
-        .open(latency_trace_path())
+        .open(platform_paths::latency_trace_path(
+            std::process::id(),
+            &current_thread_trace_id(),
+        ))
         .and_then(|mut file| writeln!(file, "{line}"));
 }
 
-fn latency_trace_path() -> String {
-    let thread_id = format!("{:?}", std::thread::current().id())
+fn current_thread_trace_id() -> String {
+    format!("{:?}", std::thread::current().id())
         .chars()
         .filter(|char| char.is_ascii_alphanumeric())
-        .collect::<String>();
-    format!(
-        "/tmp/terminal-workspace-latency-trace-{}-{thread_id}.jsonl",
-        std::process::id(),
-    )
+        .collect::<String>()
 }
 
 fn epoch_ms() -> u128 {

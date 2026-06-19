@@ -14,6 +14,7 @@ import { summarizeAgentStatus } from "../lib/agentStatusSummarizer";
 import { activityKindForText, inferActivityFromOutput, isWorkstreamActivityKind, normalizeActivityText } from "../lib/workstreamActivity";
 import { mergeCockpitObjectsFromExtractedItems, mergeExtractedItems, normalizeExtractedItems } from "../lib/workstreamExtraction";
 import { deriveTerminalActivity } from "../lib/terminalActivity";
+import { taskLineupFromExtractedItems } from "../lib/taskLineup";
 import type { TerminalActivitySummary, TerminalRuntimeStatus, WorkstreamActivityKind, WorkstreamActivitySource, WorkstreamInput, WorkstreamPhase, WorkstreamReadiness, WorkstreamStatus } from "../lib/types";
 import type { GridSnapshot } from "../lib/gridSnapshot";
 
@@ -504,6 +505,8 @@ export function TerminalComponent({
           activityKind: updates.activityKind ?? previous?.activityKind,
           activityUpdatedAt: updates.currentActivity ? Date.now() : previous?.activityUpdatedAt,
           durableActivity: updates.durableActivity ?? previous?.durableActivity,
+          taskLineup: previous?.taskLineup,
+          taskSidebarCollapsed: previous?.taskSidebarCollapsed,
           terminalOutput: updates.terminalOutput ?? previous?.terminalOutput,
           statusSummary: previous?.statusSummary,
           statusSummaryUpdatedAt: previous?.statusSummaryUpdatedAt,
@@ -552,6 +555,12 @@ export function TerminalComponent({
           const extractedBlockers = mergeExtractedItems(latestTab.workstream.extractedBlockers, result.summary.blockers, extractedAt);
           const extractedEvidence = mergeExtractedItems(latestTab.workstream.extractedEvidence, result.summary.evidence, extractedAt);
           const extractedNextActions = mergeExtractedItems(latestTab.workstream.extractedNextActions, result.summary.nextActions, extractedAt);
+          const taskLineup = taskLineupFromExtractedItems(
+            extractedTasks,
+            result.source === "process" ? "summary" : "structured-signal",
+            "pending",
+            extractedAt
+          );
           latestStore.updateTab(tabId, {
             workstream: {
               ...latestTab.workstream,
@@ -563,6 +572,7 @@ export function TerminalComponent({
               extractedBlockers,
               extractedEvidence,
               extractedNextActions,
+              taskLineup,
               cockpitObjects: mergeCockpitObjectsFromExtractedItems(latestTab.workstream.cockpitObjects, tabId, {
                 task: extractedTasks,
                 blocker: extractedBlockers,
@@ -582,6 +592,13 @@ export function TerminalComponent({
                   statusSummaryUpdatedAt: Date.now(),
                   statusSummarySource: result.source,
                   statusSummaryError: result.error,
+                  taskLineup: result.summary.tasks?.length
+                    ? taskLineupFromExtractedItems(
+                        result.summary.tasks,
+                        "operator",
+                        "in_progress"
+                      )
+                    : candidate.taskLineup,
                 }
               : candidate
           ),
@@ -659,6 +676,7 @@ export function TerminalComponent({
     const nextExtractedBlockers = mergeExtractedItems(tab.workstream.extractedBlockers, extractedBlockers, structuredAt);
     const nextExtractedEvidence = mergeExtractedItems(tab.workstream.extractedEvidence, extractedEvidence, structuredAt);
     const nextExtractedNextActions = mergeExtractedItems(tab.workstream.extractedNextActions, extractedNextActions, structuredAt);
+    const nextTaskLineup = taskLineupFromExtractedItems(nextExtractedTasks, "structured-signal", "pending", structuredAt);
     const preserveStructuredActivity =
       updates.activitySource === "terminal" &&
       tab.workstream.activitySource === "structured" &&
@@ -708,6 +726,7 @@ export function TerminalComponent({
         extractedBlockers: nextExtractedBlockers,
         extractedEvidence: nextExtractedEvidence,
         extractedNextActions: nextExtractedNextActions,
+        taskLineup: nextTaskLineup.length > 0 ? nextTaskLineup : tab.workstream.taskLineup,
         cockpitObjects: mergeCockpitObjectsFromExtractedItems(tab.workstream.cockpitObjects, tabId, {
           task: nextExtractedTasks,
           blocker: nextExtractedBlockers,
