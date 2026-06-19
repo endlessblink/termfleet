@@ -5019,6 +5019,6 @@ T8 persistence, T9 input.
   summary/header specs `agent-status-summary` + `map-terminal-rendering` +
   `terminal-summary-visual` + the three new T1/T2/T5 specs = **76 passed, 0 failed**.
 - **Gate (Phase 2 / T3/T6/T7):** `npm run build` green; `cargo test --manifest-path
-  src-tauri/Cargo.toml` **64 passed**; `tests/keymap.spec.ts` **4/4**; live
-  `npm run verify:bracketed-paste` passed with `BRACKETED_PASTE_OK` and screenshots
-  under `/tmp/tw-bracketed-paste/`.
+  src-tauri/Cargo.toml` **64 passed**; `tests/keymap.spec.ts` **4/4**;
+  `tests/paste-bracketing.spec.ts` **5/5**; live `npm run verify:bracketed-paste`
+  passed with `BRACKETED_PASTE_OK` and screenshots under `/tmp/tw-bracketed-paste/`.
