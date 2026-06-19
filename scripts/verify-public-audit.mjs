@@ -47,12 +47,14 @@ const checks = [
     message: "package.json must remain private until license/security publishing decisions are complete.",
   },
   {
-    ok: !licenseExists && /license/.test(readme) && /before publishing/.test(readme),
-    message: "Missing LICENSE must remain an explicit pre-publish blocker in README.",
+    // Publishing decision made: the repo ships under a real license (Apache-2.0).
+    ok: licenseExists && /license/.test(readme),
+    message: "LICENSE file must exist and be referenced in the README before public release.",
   },
   {
-    ok: !securityExists && /SECURITY\.md/.test(readme) && /before public release/.test(readme),
-    message: "Missing SECURITY.md must remain an explicit pre-publish blocker in README.",
+    // Publishing decision made: a real vulnerability-intake path exists.
+    ok: securityExists && /SECURITY\.md/.test(readme),
+    message: "SECURITY.md must exist and be referenced in the README before public release.",
   },
   {
     ok: /Do not include secrets/.test(readme) && /npm run evidence:bundle/.test(readme),

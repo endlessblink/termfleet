@@ -220,9 +220,10 @@ Do not include secrets, private paths, or proprietary terminal output in public
 issues. Use `npm run evidence:bundle` when sharing repro context; it redacts
 common token-shaped secrets and machine-local absolute paths.
 
-Security disclosure path before public release: open a private maintainer
-contact channel and add `SECURITY.md`. Until then, do not treat this repository
-as a public vulnerability intake surface.
+Security disclosure: report vulnerabilities privately via the process in
+[`SECURITY.md`](SECURITY.md) (GitHub private reporting or the maintainer email) —
+not in public issues. The daemon listens only on a `0700` user-owned Unix socket
+with a `0600` inode and rejects connections whose peer uid differs from its own.
 
 ## Limitations
 
@@ -234,6 +235,11 @@ as a public vulnerability intake surface.
 - Restart controls are limited to sessions/workstreams that TermFleet owns.
 - Localhost service detection is derived from terminal and preview metadata; it
   is not a background port scanner.
+- RTL/Hebrew PTY output is best-effort; full BiDi/nikud terminal shaping (TC-018)
+  is deferred.
+- After a full reboot, running processes are not resurrected — only terminal
+  content (last ~200 KB of scrollback) plus cwd and window size are restored. A
+  hard crash can lose up to the last ~750 ms of unflushed output.
 
 ## Roadmap
 
@@ -242,4 +248,5 @@ as a public vulnerability intake surface.
 - Improve local-services ownership and restart flows once command ownership is
   explicit.
 - Redesign the map filter/header surface tracked by TC-025.
-- Add public contribution, license, and security files before publishing.
+- Now licensed under Apache-2.0 with a `SECURITY.md` vulnerability-intake path;
+  Linux AppImage/.deb releases are cut by pushing a `v*` tag (see CI workflows).
