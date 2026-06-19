@@ -138,3 +138,88 @@ test("terminal folders reconcile into project rows without moving the map viewpo
     return store?.getState().canvasState.viewport;
   })).toEqual({ x: -321, y: 88, zoom: 0.62 });
 });
+
+// TC-034: terminals opened in the same path must collapse into ONE project, and
+// re-opening a folder must not mint a duplicate project group for that path.
+test("same-path terminals and duplicate project groups collapse into one project", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+
+  const result = await page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => {
+          reconcileProjectGroups: () => void;
+          addGroup: (name: string, color?: string, projectRoot?: string) => string;
+          groups: Array<{ id: string; name: string; projectRoot?: string }>;
+          tabs: Array<{ id: string; groupId: string | null }>;
+        };
+        setState: (state: Record<string, unknown>) => void;
+      };
+    }).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+
+    const TF = "/home/u/dev/termfleet";
+    const PAPER = "/home/u/bots/paper-bot";
+    const term = (id: string, paneId: string, initialCwd?: string, groupId: string | null = null) => ({
+      id, title: id, emoji: "[]", color: "#7aa2f7", groupId, initialCwd,
+      terminals: [{ id: `pty-${id}`, paneId, cols: 80, rows: 24, status: "running" }],
+      splitLayout: { id: paneId, type: "terminal" }, activePaneId: paneId,
+    });
+    const node = (id: string, tabId: string, x: number) => ({
+      id, type: "terminal", title: tabId, terminalTabId: tabId, x, y: 0, width: 620, height: 420,
+    });
+
+    store.setState({
+      // Two DISTINCT groups for the SAME termfleet path (e.g. folder opened twice).
+      groups: [
+        { id: "g-tf-1", name: "termfleet", color: "#7aa2f7", projectRoot: TF },
+        { id: "g-tf-2", name: "termfleet", color: "#7aa2f7", projectRoot: TF + "/" },
+      ],
+      terminalGroups: [],
+      tabs: [
+        term("tf-a", "p1", TF, "g-tf-1"),
+        term("tf-b", "p2", TF, "g-tf-2"),
+        term("tf-c", "p3", TF),            // ungrouped, same path
+        term("tf-d", "p4", TF),            // ungrouped, same path
+        term("paper", "p5", PAPER),        // different project
+      ],
+      activeTabId: "tf-a", activeGroupFilter: null, activeGroupId: null, projectRoot: null,
+      canvasState: {
+        selectedNodeId: null, selectedNodeIds: [], viewport: { x: 0, y: 0, zoom: 1 },
+        nodes: [node("n-a","tf-a",0),node("n-b","tf-b",660),node("n-c","tf-c",1320),node("n-d","tf-d",1980),node("n-paper","paper",2640)],
+      },
+    });
+    store.getState().reconcileProjectGroups();
+
+    const s1 = store.getState();
+    const tfGroups = s1.groups.filter((g) => (g.projectRoot ?? "").replace(/\/+$/, "") === TF);
+    const summary = s1.groups.map((g) => ({
+      name: g.name, root: (g.projectRoot ?? "").replace(/\/+$/, ""),
+      count: s1.tabs.filter((t) => t.groupId === g.id).length,
+    }));
+
+    // addGroup dedup: re-opening the same path must reuse the existing group.
+    const groupsBefore = store.getState().groups.length;
+    const reusedId = store.getState().addGroup("termfleet", undefined, TF);
+    const groupsAfter = store.getState().groups.length;
+
+    return {
+      termfleetGroupCount: tfGroups.length,
+      termfleetTabCount: tfGroups.reduce((n, g) => n + s1.tabs.filter((t) => t.groupId === g.id).length, 0),
+      summary,
+      addGroupReusedExisting: groupsAfter === groupsBefore && tfGroups.some((g) => g.id === reusedId),
+    };
+  });
+
+  // All four termfleet terminals collapse into a single termfleet project.
+  expect(result.termfleetGroupCount).toBe(1);
+  expect(result.termfleetTabCount).toBe(4);
+  // paper-bot stays its own project.
+  expect(result.summary).toContainEqual({ name: "paper-bot", root: "/home/u/bots/paper-bot", count: 1 });
+  // Re-opening the same folder reuses the project instead of duplicating it.
+  expect(result.addGroupReusedExisting).toBe(true);
+});
