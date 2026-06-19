@@ -42,6 +42,7 @@
     "verify:map-shell-anchor": "scripts/verify-map-shell-anchor.sh",
     "verify:zellij-map": "scripts/verify-zellij-map.sh",
     "verify:terminal-rendering": "node scripts/verify-terminal-rendering.mjs",
+    "verify:tui-color-env": "scripts/verify-tui-color-env.sh",
     "verify:tauri-dev-performance": "scripts/verify-tauri-dev-performance.sh",
     "verify:standalone-daemon": "scripts/verify-standalone-daemon-smoke.sh",
     "verify:restart-restore": "python3 scripts/verify-restart-restore.py",
