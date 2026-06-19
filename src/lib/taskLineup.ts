@@ -38,6 +38,15 @@ export function cleanTaskLineupContent(value?: string | null) {
   if (/^(explored|search|read|ran|verified|working|output|path|signal|now)$/i.test(cleaned)) return undefined;
   if (/^(explored|read|ran|searched)\b/i.test(cleaned)) return undefined;
   if (/\b[A-Za-z][\w.]*\|[A-Za-z][\w.]*\b/.test(cleaned)) return undefined;
+  // Runner / verify / build OUTCOMES are status reports, not tasks. Anchored so a
+  // real task that merely mentions build/test (e.g. "Fix the frontend build",
+  // "Fix 3 failed tests") is kept — only report-shaped lines are dropped.
+  if (/^\d+\s+(?:passed|failed)\b/i.test(cleaned)) return undefined;
+  if (/^running\s+\d+\s+tests?\b/i.test(cleaned)) return undefined;
+  if (/(?:checks?|build|tests?|suite|lint|typecheck)\s+(?:passed|failed)\s*$/i.test(cleaned)) return undefined;
+  // Agent/shell prompt chrome is not a task.
+  if (/\b(?:esc to interrupt|context left|tab to queue message)\b/i.test(cleaned)) return undefined;
+  if (/\b(?:gpt|claude|opus|codex)[-\w.]*\s+default\b/i.test(cleaned)) return undefined;
   return cleaned.slice(0, MAX_TASK_TEXT);
 }
 

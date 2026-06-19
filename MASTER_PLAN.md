@@ -5020,3 +5020,35 @@ T8 persistence, T9 input.
   `terminal-summary-visual` + the three new T1/T2/T5 specs = **76 passed, 0 failed**.
 - **Gate (Phase 2 / T3/T6/T7):** `tsc --noEmit` clean; `cargo test --lib` **62 passed**
   (incl. the 2 new replay-boundary tests); `tests/keymap.spec.ts` **3/3**.
+
+#### TC-033 remaining lanes (not yet done — cover later)
+
+- **T-TASKS — faulty task descriptions / task lists (DONE):** the TASKS panel showed
+  runner/verify/build *outcomes* ("Terminal summary visual checks failed", "Frontend
+  build failed", "3 passed", "Running 2 tests…") and prompt chrome ("gpt-5.5 default
+  · ~") as task rows. Root cause: `cleanTaskLineupContent` (`src/lib/taskLineup.ts`)
+  only rejected a few generic single words. Added an operator contract — anchored
+  rejects for runner/verify/build outcomes (`^\d+ (passed|failed)`, `^running \d+
+  tests?`, `(checks?|build|tests?|suite|lint|typecheck) (passed|failed)$`) and prompt
+  chrome (`esc to interrupt`/`context left`/`tab to queue message`, `(gpt|claude|opus|
+  codex)… default`), kept anchored so real tasks that mention build/test survive.
+  Worktree branch `tc-033-tasklist` off `1c708e1`. Verify:
+  `tests/task-lineup-content-contract.spec.ts` 4/4; regression
+  `task-lineup-source-merge` + `agent-status-summary` + `map-terminal-rendering` 67/67;
+  `npm run build` green.
+- **T9 — input reliability:** Ctrl+C flush batching (a second interrupt during a
+  pending flush is dropped — `src/lib/daemonInputQueue.ts` ~107-118), input-listener
+  leak (delete-during-iteration in `src/hooks/usePty.ts` ~81-112), and copy/Shift+Tab
+  focus restore (`src/components/TerminalCanvas.tsx`). Pure frontend TS, unit-testable.
+- **E — renderer artifacts (agent-reported, REPRODUCE FIRST):** cursor ghost trails
+  (`src/lib/gridBuffer.ts` dirty-region/overlay paint order) and blur after a
+  monitor/DPR change (atlas measured once at mount, never re-atlased —
+  `src/lib/fontAtlas.ts`, `src/components/TerminalCanvas.tsx`). Needs a GUI repro to
+  confirm before fixing — not yet verified as real.
+- **F — persistence robustness:** on-disk `workspace.json` is NOT namespaced under
+  verify-reset mode so a verify run can clobber real layout
+  (`src-tauri/src/commands.rs` ~1092); orphan session-id parse assumes a rigid
+  `terminal-<36charUUID>-<paneId>` shape and mis-recovers map-shaped ids
+  (`src/stores/workspace.ts` ~670-687). ⚠️ overlaps daemon/persistence work — coordinate.
+- Full plan + acceptance/verify per lane:
+  `plans/there-are-several-features-robust-babbage.md`.
