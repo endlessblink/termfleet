@@ -1462,7 +1462,7 @@ Acceptance:
       __termfleetWorkspaceStore?: {
         getState: () => {
           workspaceUiState: Record<string, unknown>;
-          tabs: Array<{ id: string; title: string; terminals: unknown[] }>;
+          tabs: Array<{ id: string; title: string; activePaneId?: string; terminals: unknown[] }>;
           canvasState: { nodes: Array<{ id: string; type: string; terminalTabId?: string }> };
           updateTab: (id: string, updates: Record<string, unknown>) => void;
           updateCanvasNode: (id: string, updates: Record<string, unknown>) => void;
@@ -1560,6 +1560,7 @@ Acceptance:
           tabs: Array<{ id: string; title: string; terminals: Array<{ paneId?: string }> }>;
           canvasState: { nodes: Array<{ id: string; type: string; terminalTabId?: string }> };
           updateTab: (id: string, updates: Record<string, unknown>) => void;
+          updateCanvasNode: (id: string, updates: Record<string, unknown>) => void;
         };
       };
     }).__termfleetWorkspaceStore;
@@ -1569,6 +1570,7 @@ Acceptance:
     if (!node?.terminalTabId) throw new Error("Terminal map node is unavailable");
     const tab = state.tabs.find((candidate) => candidate.id === node.terminalTabId);
     if (!tab) throw new Error("Terminal tab is unavailable");
+    store.getState().updateCanvasNode(node.id, { taskBinding: undefined });
     store.getState().updateTab(tab.id, {
       title: "Terminal",
       terminals: [{
@@ -1802,8 +1804,129 @@ Acceptance:
   await expect(page.getByTestId("canvas-terminal-node-header-title")).not.toHaveText("Search");
   await expect(page.getByTestId("canvas-terminal-node-now")).not.toContainText("terminalBody|liveTerminalBody");
   await expect(page.getByTestId("canvas-terminal-task-sidebar")).toHaveCount(1);
+  await expect(page.getByTestId("canvas-terminal-task-row")).toHaveCount(0);
+  await expect(page.getByTestId("canvas-terminal-task-empty")).toContainText("No current task lineup");
+
+  await page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => {
+          tabs: Array<{ id: string; title: string; terminals: Array<{ paneId?: string }> }>;
+          canvasState: { nodes: Array<{ id: string; type: string; terminalTabId?: string }> };
+          updateTab: (id: string, updates: Record<string, unknown>) => void;
+        };
+      };
+    }).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+    const state = store.getState();
+    const node = state.canvasState.nodes.find((candidate) => candidate.type === "terminal");
+    if (!node?.terminalTabId) throw new Error("Terminal map node is unavailable");
+    const tab = state.tabs.find((candidate) => candidate.id === node.terminalTabId);
+    if (!tab) throw new Error("Terminal tab is unavailable");
+    store.getState().updateTab(tab.id, {
+      terminals: [{
+        id: "pty-lineup-summary-fixture",
+        paneId: node.id,
+        cols: 100,
+        rows: 30,
+        status: "running",
+        currentActivity: "Working",
+        terminalOutput: [
+          "My current lineup for fixing this is:",
+          "1. Make the sidebar source canonical, not terminal-output-derived.",
+          "2. Show only the agent/current lane's lineup.",
+          "3. Done: Render completed tasks crossed and muted.",
+          "",
+          "Working on the task sidebar.",
+        ].join("\n"),
+      }],
+    });
+  });
+
   await expect(page.getByTestId("canvas-terminal-task-row")).toHaveCount(3);
-  await expect(page.getByTestId("canvas-terminal-task-row").nth(2)).toContainText("Not done");
+  await expect(page.getByTestId("canvas-terminal-task-row").nth(0)).toContainText("Make the sidebar source canonical");
+  await expect(page.getByTestId("canvas-terminal-task-row").nth(1)).toContainText("Show only the agent/current lane");
+  await expect(page.getByTestId("canvas-terminal-task-row").nth(2)).toContainText("Done");
+  const doneDecoration = await page.getByTestId("canvas-terminal-task-row").nth(2).locator("span").nth(1).locator("div").first().evaluate((element) =>
+    window.getComputedStyle(element).textDecorationLine
+  );
+  expect(doneDecoration).toContain("line-through");
+});
+
+test("map shell header uses durable activity instead of stale transcript summary", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.getByRole("button", { name: "Map", exact: true }).click();
+
+  await page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => {
+          workspaceUiState: Record<string, unknown>;
+          tabs: Array<{ id: string; title: string; terminals: unknown[] }>;
+          canvasState: { nodes: Array<{ id: string; type: string; terminalTabId?: string }> };
+          updateTab: (id: string, updates: Record<string, unknown>) => void;
+        };
+        setState: (state: Record<string, unknown>) => void;
+      };
+    }).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+    const state = store.getState();
+    store.setState({
+      workspaceUiState: {
+        ...state.workspaceUiState,
+        workspaceMode: "canvas",
+        primarySidebarPanel: "map",
+      },
+    });
+    const node = state.canvasState.nodes.find((candidate) => candidate.type === "terminal");
+    if (!node?.terminalTabId) throw new Error("Terminal map node is unavailable");
+    const tab = state.tabs.find((candidate) => candidate.id === node.terminalTabId);
+    if (!tab) throw new Error("Terminal tab is unavailable");
+    const paneId = tab.activePaneId ?? node.id;
+    store.getState().updateTab(tab.id, {
+      title: "Terminal",
+      initialCwd: "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
+      terminals: [{
+        id: "pty-durable-activity-fixture",
+        paneId,
+        cols: 100,
+        rows: 30,
+        status: "running",
+        currentActivity: "web$ npm run unfinished prompt text",
+        durableActivity: {
+          title: "Testing checkout flow",
+          subtitle: "12 tests · Chromium",
+          status: "running",
+          command: "npx playwright test tests/checkout.spec.ts",
+          source: "command",
+          startedAt: 1000,
+          updatedAt: 2000,
+        },
+        terminalOutput: [
+          "npx playwright test tests/checkout.spec.ts --project=chromium",
+          "Running 12 tests using 1 worker",
+          "web$ npm run unfinished prompt text",
+        ].join("\n"),
+        statusSummary: {
+          task: "Search",
+          path: "devops/termfleet",
+          now: "web$ npm run unfinished prompt text",
+          status: "working",
+          provider: "shell",
+          confidence: "high",
+        },
+      }],
+    });
+  });
+
+  await expect(page.getByTestId("canvas-terminal-node-header-title")).toHaveText("Testing checkout flow");
+  await expect(page.getByTestId("canvas-terminal-node-now")).toHaveText("12 tests · Chromium");
+  await expect(page.getByTestId("canvas-terminal-node-header-title")).not.toHaveText("Search");
+  await expect(page.getByTestId("canvas-terminal-node-now")).not.toContainText("unfinished prompt");
 });
 
 test("map summary cards expose workspace labels for parallel sessions", async ({ page }) => {

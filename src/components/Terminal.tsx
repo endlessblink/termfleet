@@ -13,7 +13,8 @@ import { agentStatusSummaryInputFromWorkstream, type AgentStatusSummaryInput } f
 import { summarizeAgentStatus } from "../lib/agentStatusSummarizer";
 import { activityKindForText, inferActivityFromOutput, isWorkstreamActivityKind, normalizeActivityText } from "../lib/workstreamActivity";
 import { mergeCockpitObjectsFromExtractedItems, mergeExtractedItems, normalizeExtractedItems } from "../lib/workstreamExtraction";
-import type { TerminalRuntimeStatus, WorkstreamActivityKind, WorkstreamActivitySource, WorkstreamInput, WorkstreamPhase, WorkstreamReadiness, WorkstreamStatus } from "../lib/types";
+import { deriveTerminalActivity } from "../lib/terminalActivity";
+import type { TerminalActivitySummary, TerminalRuntimeStatus, WorkstreamActivityKind, WorkstreamActivitySource, WorkstreamInput, WorkstreamPhase, WorkstreamReadiness, WorkstreamStatus } from "../lib/types";
 import type { GridSnapshot } from "../lib/gridSnapshot";
 
 const LOCALHOST_URL_PATTERN = /https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0):(\d{2,5})(?:[/?#][^\s"'<>]*)?/gi;
@@ -478,6 +479,7 @@ export function TerminalComponent({
     previewUrl?: string;
     currentActivity?: string;
     activityKind?: WorkstreamActivityKind;
+    durableActivity?: TerminalActivitySummary;
     terminalOutput?: string;
     error?: string;
   }) => {
@@ -501,6 +503,7 @@ export function TerminalComponent({
           currentActivity: updates.currentActivity ?? previous?.currentActivity,
           activityKind: updates.activityKind ?? previous?.activityKind,
           activityUpdatedAt: updates.currentActivity ? Date.now() : previous?.activityUpdatedAt,
+          durableActivity: updates.durableActivity ?? previous?.durableActivity,
           terminalOutput: updates.terminalOutput ?? previous?.terminalOutput,
           statusSummary: previous?.statusSummary,
           statusSummaryUpdatedAt: previous?.statusSummaryUpdatedAt,
@@ -594,7 +597,6 @@ export function TerminalComponent({
     latestSnapshotExcerptRef.current = excerpt;
     updateTerminalRuntime({
       terminalOutput: excerpt,
-      currentActivity: latestReadableOutput(excerpt),
     });
     const store = useWorkspaceStore.getState();
     const tab = store.tabs.find((candidate) => candidate.id === tabId);
@@ -613,8 +615,7 @@ export function TerminalComponent({
         },
       });
     }
-    scheduleStatusSummaryUpdate();
-  }, [onSnapshot, scheduleStatusSummaryUpdate, tabId, updateTerminalRuntime]);
+  }, [onSnapshot, tabId, updateTerminalRuntime]);
 
   const updateWorkstreamRuntime = useCallback((updates: {
     status?: WorkstreamStatus;
@@ -767,9 +768,26 @@ export function TerminalComponent({
   }, [updateTerminalRuntime, updateWorkstreamRuntime]);
 
   const handleExit = useCallback((details: { id: string; code: number; success: boolean }) => {
+    const store = useWorkspaceStore.getState();
+    const tab = store.tabs.find((candidate) => candidate.id === tabId);
+    const previousTerminal = tab?.terminals.find((candidate) => candidate.paneId === paneId);
+    const previousActivity = previousTerminal?.durableActivity;
     updateTerminalRuntime({
       id: details.id,
       status: "exited",
+      durableActivity: previousActivity
+        ? {
+            ...previousActivity,
+            title: details.success
+              ? `${previousActivity.title.replace(/\s+(passed|failed|completed)$/i, "")} completed`
+              : `${previousActivity.title.replace(/\s+(passed|failed|completed)$/i, "")} failed`,
+            status: details.success ? "success" : "error",
+            completedAt: Date.now(),
+            exitCode: details.code,
+            source: "system",
+            updatedAt: Date.now(),
+          }
+        : undefined,
     });
     updateWorkstreamRuntime({
       status: details.success ? "done" : "failed",
@@ -782,8 +800,6 @@ export function TerminalComponent({
       activitySource: "system",
       activity: true,
     });
-    const store = useWorkspaceStore.getState();
-    const tab = store.tabs.find((candidate) => candidate.id === tabId);
     const alreadyRecorded = tab?.workstream?.events?.some((event) =>
       event.kind === "provider" &&
       event.label === "Provider process exited" &&
@@ -805,7 +821,7 @@ export function TerminalComponent({
     ) {
       store.exitImmersiveTerminal();
     }
-  }, [tabId, updateTerminalRuntime, updateWorkstreamRuntime]);
+  }, [paneId, tabId, updateTerminalRuntime, updateWorkstreamRuntime]);
 
   const handleOutput = useCallback((data: string) => {
     outputStatusWindowRef.current = `${outputStatusWindowRef.current}${data}`.slice(-4000);
@@ -866,10 +882,18 @@ export function TerminalComponent({
     const terminalOutput = latestReadableOutput(heuristicOutput);
     const terminalTranscript = readableOutputExcerpt(heuristicOutput);
     const processExit = inferProcessExit(heuristicOutput);
+    const previousTerminal = initialTab?.terminals.find((candidate) => candidate.paneId === paneId);
+    const durableActivity = deriveTerminalActivity({
+      transcript: heuristicOutput,
+      previous: previousTerminal?.durableActivity,
+      runtimeStatus: previousTerminal?.status,
+      cwd,
+    });
     updateTerminalRuntime({
       terminalOutput: terminalTranscript ?? terminalOutput,
       currentActivity: providerReadiness?.lastSummary ?? inferredActivity?.currentActivity,
       activityKind: providerReadiness?.status ? activityKindForStatus(providerReadiness.status) : inferredActivity?.activityKind,
+      durableActivity,
     });
     updateWorkstreamRuntime({
       terminalOutput: terminalTranscript ?? terminalOutput,

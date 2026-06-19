@@ -644,20 +644,37 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
           ? agentStatusSummaryFromWorkstream(tab.workstream)
           : null;
         const shellStatusSummary = !agentStatusSummary && !isPreviewPane && paneTerminal
-          ? getDisplaySummary({
-              mission: "Terminal",
-              provider: "shell",
-              status: terminalStatus === "failed"
-                ? "failed"
-                : terminalStatus === "exited"
-                  ? "done"
-                  : terminalStatus === "running" || terminalStatus === "reconnected"
-                    ? "running"
-                    : "ready",
-              cwd: paneCwd,
-              currentActivity: paneTerminal.currentActivity,
-              terminalOutput: paneTerminal.terminalOutput,
-            }, paneTerminal.statusSummary)
+          ? paneTerminal.durableActivity
+            ? {
+                task: paneTerminal.durableActivity.title,
+                path: pathTail(paneCwd) ?? paneCwd ?? "workspace path unknown",
+                now: paneTerminal.durableActivity.subtitle ?? (
+                  paneTerminal.durableActivity.status === "idle" ? "Awaiting command" : paneTerminal.durableActivity.title
+                ),
+                status: paneTerminal.durableActivity.status === "success"
+                  ? "done" as const
+                  : paneTerminal.durableActivity.status === "error"
+                    ? "blocked" as const
+                    : paneTerminal.durableActivity.status === "idle"
+                      ? "idle" as const
+                      : "working" as const,
+                provider: "shell" as const,
+                confidence: paneTerminal.durableActivity.status === "idle" ? "low" as const : "high" as const,
+              }
+            : getDisplaySummary({
+                mission: "Terminal",
+                provider: "shell",
+                status: terminalStatus === "failed"
+                  ? "failed"
+                  : terminalStatus === "exited"
+                    ? "done"
+                    : terminalStatus === "running" || terminalStatus === "reconnected"
+                      ? "running"
+                      : "ready",
+                cwd: paneCwd,
+                currentActivity: paneTerminal.currentActivity,
+                terminalOutput: paneTerminal.terminalOutput,
+              }, paneTerminal.statusSummary)
           : null;
         const isAgentPane = Boolean(agentStatusSummary);
         const isShellSummaryPane = Boolean(shellStatusSummary);

@@ -5,6 +5,7 @@ import {
   getDisplaySummary,
   parseAgentStatusSummaryResponse,
 } from "../src/lib/agentStatusSummary";
+import { deriveTerminalActivity } from "../src/lib/terminalActivity";
 import { summarizeAgentStatus } from "../src/lib/agentStatusSummarizer";
 import { mergeCockpitObjectsFromExtractedItems } from "../src/lib/workstreamExtraction";
 
@@ -167,6 +168,72 @@ test("keeps Playwright shell summaries stable on the test identity", () => {
   expect(summary.confidence).toBe("high");
   expect(summary.task).not.toContain("Running 2 tests");
   expect(summary.now).not.toContain("stale");
+});
+
+test("durable terminal activity ignores prompt typing and sticky-noisy output", () => {
+  const first = deriveTerminalActivity({
+    now: 1000,
+    transcript: [
+      "npx playwright test tests/auth/login.spec.ts -g \"should login successfully\" --project=chromium",
+      "Running 12 tests using 1 worker",
+    ].join("\n"),
+    runtimeStatus: "running",
+    cwd: "/repo/termfleet",
+  });
+
+  expect(first.title).toBe("Checking login flow");
+  expect(first.subtitle).toBe("login successfully · 12 tests · 1 worker · chromium · login.spec.ts");
+  expect(first.status).toBe("running");
+
+  const typedPrompt = deriveTerminalActivity({
+    now: 1300,
+    previous: first,
+    transcript: [
+      "npx playwright test tests/auth/login.spec.ts -g \"should login successfully\" --project=chromium",
+      "Running 12 tests using 1 worker",
+      "web$ npm run totally unrelated partial input",
+    ].join("\n"),
+    runtimeStatus: "running",
+    cwd: "/repo/termfleet",
+  });
+
+  expect(typedPrompt).toBe(first);
+  expect(typedPrompt.title).toBe("Checking login flow");
+
+  const completed = deriveTerminalActivity({
+    now: 5000,
+    previous: typedPrompt,
+    transcript: [
+      "npx playwright test tests/auth/login.spec.ts -g \"should login successfully\" --project=chromium",
+      "Running 12 tests using 1 worker",
+      "12 passed (24s)",
+      "\u001b]133;D;0\u0007",
+    ].join("\n"),
+    runtimeStatus: "exited",
+    cwd: "/repo/termfleet",
+  });
+
+  expect(completed.title).toBe("Checking login flow completed");
+  expect(completed.status).toBe("success");
+  expect(completed.exitCode).toBe(0);
+});
+
+test("durable terminal activity explains focused Playwright header regressions", () => {
+  const summary = deriveTerminalActivity({
+    now: 1000,
+    transcript: [
+      "npx playwright test tests/map-terminal-rendering.spec.ts -g \\\"map shell header uses durable activity instead of stale transcript summary\\\" --reporter=line",
+      "Running 1 test using 1 worker",
+      "[1/1] tests/map-terminal-rendering.spec.ts:1809:1 › map shell header uses durable activity instead of stale transcript summary",
+    ].join("\n"),
+    runtimeStatus: "running",
+    cwd: "/repo/termfleet",
+  });
+
+  expect(summary.title).toBe("Verifying map card header stability");
+  expect(summary.subtitle).toBe("ignores stale transcript summaries · 1 test · 1 worker · map-terminal-rendering.spec.ts");
+  expect(summary.title).not.toContain("Map Terminal Rendering");
+  expect(summary.title).not.toContain("Testing \"map");
 });
 
 test("summarizes fullscreen htop chrome as process monitoring", () => {

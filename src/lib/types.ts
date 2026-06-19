@@ -1,4 +1,19 @@
 export type TerminalRuntimeStatus = "starting" | "running" | "reconnected" | "stale" | "failed" | "exited";
+export type TerminalActivityStatus = "idle" | "running" | "success" | "error" | "cancelled";
+export type TerminalActivitySource = "shell-integration" | "command" | "output" | "system";
+
+export interface TerminalActivitySummary {
+  title: string;
+  subtitle?: string;
+  status: TerminalActivityStatus;
+  progress?: number;
+  command?: string;
+  startedAt?: number;
+  completedAt?: number;
+  exitCode?: number;
+  source: TerminalActivitySource;
+  updatedAt: number;
+}
 
 export interface TerminalState {
   id: string;      // PTY ID
@@ -11,6 +26,7 @@ export interface TerminalState {
   currentActivity?: string;
   activityKind?: WorkstreamActivityKind;
   activityUpdatedAt?: number;
+  durableActivity?: TerminalActivitySummary;
   terminalOutput?: string;
   statusSummary?: WorkstreamStatusSummary;
   statusSummaryUpdatedAt?: number;

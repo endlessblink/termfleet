@@ -378,6 +378,7 @@ function persistedTerminalSnapshot(terminal: TerminalState): TerminalState {
     status: "stale",
     reused: false,
     previewUrl: terminal.previewUrl,
+    durableActivity: terminal.durableActivity,
     lastStatusAt: Date.now(),
     lastError: "Session will reconnect if the backend is still running; otherwise it will restart.",
   };

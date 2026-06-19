@@ -53,6 +53,13 @@ type SelectionBox = {
   height: number;
 };
 
+type TerminalBodyTaskRow = {
+  id: string;
+  task: string;
+  state: string;
+  next: string;
+};
+
 const TERMINAL_LABEL_COLORS = [
   { label: "Default", value: undefined },
   { label: "Cyan", value: "#7dbac3" },
@@ -1472,7 +1479,7 @@ function TerminalBodyTaskSidebar({
   ariaLabel,
   emptyText,
 }: {
-  rows: Array<{ id: string; task: string; state: string; next: string }>;
+  rows: TerminalBodyTaskRow[];
   testIdPrefix: "canvas-terminal" | "canvas-agent";
   ariaLabel: string;
   emptyText: string;
@@ -1501,43 +1508,99 @@ function TerminalBodyTaskSidebar({
         </div>
       ) : (
         <div style={styles.terminalBodyTaskList}>
-          {rows.slice(0, 5).map((task) => (
-            <div
-              key={task.id}
-              style={styles.terminalBodyTaskRow}
-              data-testid={`${testIdPrefix}-task-row`}
-              title={`${task.task} · ${task.state} · Next: ${task.next}`}
-            >
-              <span
+          {rows.map((task) => {
+            const done = task.state === "Done";
+            return (
+              <div
+                key={task.id}
                 style={{
-                  ...styles.terminalBodyTaskMarker,
-                  background: task.state === "Done"
-                    ? "var(--accent-live)"
-                    : "color-mix(in srgb, var(--surface-base) 90%, transparent)",
+                  ...styles.terminalBodyTaskRow,
+                  opacity: done ? 0.72 : 1,
                 }}
-                aria-hidden="true"
-              />
-              <span style={{ minWidth: 0 }}>
-                <div style={styles.terminalBodyTaskTitle}>{task.task}</div>
-                <div style={styles.agentTaskMeta}>
-                  <span data-testid={`${testIdPrefix}-task-state`}>{task.state}</span>
-                  <span style={{ color: "var(--text-tertiary)" }}>·</span>
-                  <span style={styles.agentTaskNext} data-testid={`${testIdPrefix}-task-next`}>
-                    Next: {task.next}
-                  </span>
-                </div>
-              </span>
-            </div>
-          ))}
-          {rows.length > 5 && (
-            <div style={{ color: "var(--text-tertiary)", fontSize: 10 }}>
-              +{rows.length - 5} more tasks
-            </div>
-          )}
+                data-testid={`${testIdPrefix}-task-row`}
+                title={`${task.task} · ${task.state} · Next: ${task.next}`}
+              >
+                <span
+                  style={{
+                    ...styles.terminalBodyTaskMarker,
+                    background: done
+                      ? "var(--accent-live)"
+                      : "color-mix(in srgb, var(--surface-base) 90%, transparent)",
+                  }}
+                  aria-hidden="true"
+                />
+                <span style={{ minWidth: 0 }}>
+                  <div
+                    style={{
+                      ...styles.terminalBodyTaskTitle,
+                      color: done ? "var(--text-secondary)" : styles.terminalBodyTaskTitle.color,
+                      textDecoration: done ? "line-through" : "none",
+                      textDecorationThickness: done ? 2 : undefined,
+                      textDecorationColor: done ? "var(--text-tertiary)" : undefined,
+                    }}
+                  >
+                    {task.task}
+                  </div>
+                  <div
+                    style={{
+                      ...styles.agentTaskMeta,
+                      textDecoration: done ? "line-through" : "none",
+                      textDecorationColor: done ? "var(--text-tertiary)" : undefined,
+                    }}
+                  >
+                    <span data-testid={`${testIdPrefix}-task-state`}>{task.state}</span>
+                    <span style={{ color: "var(--text-tertiary)" }}>·</span>
+                    <span style={styles.agentTaskNext} data-testid={`${testIdPrefix}-task-next`}>
+                      Next: {task.next}
+                    </span>
+                  </div>
+                </span>
+              </div>
+            );
+          })}
         </div>
       )}
     </aside>
   );
+}
+
+function currentLineupTaskRows(
+  workstream: Tab["workstream"] | undefined,
+  summary: ReturnType<typeof agentStatusSummaryFromWorkstream> | ReturnType<typeof getDisplaySummary> | undefined
+): TerminalBodyTaskRow[] {
+  const cockpitTasks = (workstream?.cockpitObjects ?? [])
+    .filter((item) => item.kind === "task" && item.reviewState !== "dismissed")
+    .map((item) => {
+      const done = item.status === "accepted" || item.reviewState === "accepted";
+      return {
+        id: item.id,
+        task: item.text,
+        state: done ? "Done" : "Not done",
+        next: done ? "Complete" : item.reviewState === "proof-requested" ? "Proof requested" : "Open",
+      };
+    });
+
+  if (cockpitTasks.length > 0) return cockpitTasks;
+
+  const summaryTasks = (summary?.tasks ?? []).map((item) => ({
+    id: item.id,
+    task: item.text.replace(/^(done|complete)\s*:\s*/i, ""),
+    state: summary?.status === "done" || /^(done|complete)\s*:/i.test(item.text) ? "Done" : "Not done",
+    next: summary?.status === "done" || /^(done|complete)\s*:/i.test(item.text)
+      ? "Complete"
+      : summary?.nextActions?.[0]?.text ?? workstream?.nextAction ?? "Open",
+  }));
+
+  if (summaryTasks.length > 0) {
+    return summaryTasks;
+  }
+
+  return (workstream?.extractedTasks ?? []).map((item) => ({
+    id: item.id,
+    task: item.text.replace(/^(done|complete)\s*:\s*/i, ""),
+    state: /^(done|complete)\s*:/i.test(item.text) ? "Done" : "Not done",
+    next: /^(done|complete)\s*:/i.test(item.text) ? "Complete" : workstream?.extractedNextActions?.[0]?.text ?? workstream?.nextAction ?? "Open",
+  }));
 }
 
 function recoveryPromptFor(workstream?: Tab["workstream"]) {
@@ -1721,6 +1784,7 @@ function CanvasNodeView({
   const selectCanvasNodes = useWorkspaceStore((state) => state.selectCanvasNodes);
   const setActiveTab = useWorkspaceStore((state) => state.setActiveTab);
   const setWorkspaceMode = useWorkspaceStore((state) => state.setWorkspaceMode);
+  const workspaceProjectRoot = useWorkspaceStore((state) => state.projectRoot);
   const terminalRendererMode = useWorkspaceStore((state) => state.workspaceUiState.terminalRendererMode);
   const dragRef = useRef<{ x: number; y: number; nodeX: number; nodeY: number; lastDeltaX: number; lastDeltaY: number } | null>(null);
   const resizeRef = useRef<{
@@ -1887,8 +1951,9 @@ function CanvasNodeView({
     ? tabs.find((tab) => tab.id === node.terminalTabId)
     : undefined;
   const linkedProject = projectForTab(linkedTab, groups);
+  const workstream = linkedTab?.workstream;
   const terminalRoot = node.terminalCwd ?? linkedTab?.initialCwd;
-  const taskRoot = linkedProject?.projectRoot ?? terminalRoot;
+  const taskRoot = linkedProject?.projectRoot ?? terminalRoot ?? workstream?.gitRoot ?? workstream?.cwd ?? workspaceProjectRoot;
   const normalizedTaskRoot = taskRoot?.replace(/\/+$/, "");
   const tasksByRoot = useMasterPlanTasks([normalizedTaskRoot]);
   const rootTasks = normalizedTaskRoot ? tasksByRoot[normalizedTaskRoot] ?? [] : [];
@@ -1916,7 +1981,7 @@ function CanvasNodeView({
   const linkedTerminal = linkedTerminalId
     ? linkedTab?.terminals.find((terminal) => terminal.id === linkedTerminalId)
     : undefined;
-  const terminalActivity = linkedTerminal?.currentActivity;
+  const terminalActivity = linkedTerminal?.durableActivity?.title ?? linkedTerminal?.currentActivity;
   // Prefer the live cwd (polled from the PTY) over the initial cwd so the
   // breadcrumb tracks `cd`/`z`; falls back to the spawn cwd before the first poll.
   const liveTerminalRoot = (linkedTerminalId ? liveCwds[linkedTerminalId] : undefined) ?? terminalRoot;
@@ -1937,7 +2002,7 @@ function CanvasNodeView({
     nodeTitle: node.title,
   });
   const terminalStatusSummary = linkedTerminal?.statusSummary;
-  const terminalDisplaySummary = getDisplaySummary({
+  const terminalExtractedSummary = getDisplaySummary({
     mission: "Terminal",
     provider: "shell",
     status: linkedTerminal?.status === "failed"
@@ -1952,6 +2017,25 @@ function CanvasNodeView({
     currentActivity: terminalActivity,
     terminalOutput: linkedTerminal?.terminalOutput,
   }, terminalStatusSummary);
+  const terminalDisplaySummary = linkedTerminal?.durableActivity
+    ? {
+        ...terminalExtractedSummary,
+        task: linkedTerminal.durableActivity.title,
+        path: pathTail(liveTerminalRoot) ?? liveTerminalRoot ?? "workspace path unknown",
+        now: linkedTerminal.durableActivity.subtitle ?? (
+          linkedTerminal.durableActivity.status === "idle" ? "Awaiting command" : linkedTerminal.durableActivity.title
+        ),
+        status: linkedTerminal.durableActivity.status === "success"
+          ? "done" as const
+          : linkedTerminal.durableActivity.status === "error"
+            ? "blocked" as const
+            : linkedTerminal.durableActivity.status === "idle"
+              ? "idle" as const
+              : "working" as const,
+        provider: "shell" as const,
+        confidence: linkedTerminal.durableActivity.status === "idle" ? "low" as const : "high" as const,
+      }
+    : terminalExtractedSummary;
   const terminalHeaderTitle = terminalDisplaySummary.task === "Ready" ? terminalTitle : terminalDisplaySummary.task;
   const terminalHeaderPath = terminalDisplaySummary.path;
   const terminalHeaderSummarySignal = terminalDisplaySummary.now;
@@ -1966,7 +2050,6 @@ function CanvasNodeView({
       : linkedTerminal?.status === "exited"
         ? "Done"
         : "Idle";
-  const workstream = linkedTab?.workstream;
   const detectedLaneTaskId = node.taskBinding?.taskId ?? firstTaskIdFromText(
     workstream?.mission,
     workstream?.prompt,
@@ -2027,7 +2110,13 @@ function CanvasNodeView({
     next: item.status === "done" ? "Complete" : taskStatusLabel(item.status),
   }));
   void terminalHeaderTaskState;
-  const terminalBodyTasks = laneChecklistTasks;
+  const currentLineupTasks = currentLineupTaskRows(
+    workstream,
+    workstream?.kind === "agent" ? agentStatusSummary : terminalDisplaySummary
+  );
+  const terminalBodyTasks = laneChecklistTasks.length > 0
+    ? laneChecklistTasks
+    : currentLineupTasks;
   const terminalBodyTaskPrefix: "canvas-agent" | "canvas-terminal" =
     workstream?.kind === "agent" ? "canvas-agent" : "canvas-terminal";
   const nodeKind = workstream?.kind === "agent"
@@ -3225,7 +3314,9 @@ function CanvasNodeView({
             ariaLabel={workstream?.kind === "agent" ? "Agent terminal tasks" : "Terminal tasks"}
             emptyText={detectedLaneTaskId
               ? `No checklist found for ${detectedLaneTaskId}. Add Acceptance bullets in MASTER_PLAN.md to show done and not-done tasks.`
-              : "No lane task list is bound to this terminal yet."}
+              : workstream?.kind === "agent"
+                ? "No structured task lineup has been created for this agent yet."
+                : "No current task lineup is bound to this terminal yet."}
           />
         )}
       </div>

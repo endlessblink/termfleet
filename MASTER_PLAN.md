@@ -2287,21 +2287,42 @@ Workstreams:
    - Show agent role, task prompt, cwd, branch/worktree, status, last activity,
      and exit state on the node and sidebar.
    - In progress: redesigned the terminal/map header around useful
-     `Context / Path / Now` fields, fed by the visible canvas grid snapshot plus
-     recent transcript tail. Prompt/model chrome such as provider names,
-     `Working ... esc to interrupt`, and bare prompt fragments are filtered
-     before display. The optional local summarizer now uses a tiny-model-friendly
-     payload with a heuristic candidate; `scripts/agent-status-summary-ollama.mjs`
-     defaults to `gemma4:e2b-it` through Ollama and falls back deterministically.
-     TUI wheel handling now keeps plain alternate-screen scrolling inside the
-     app as faux arrow scrolling, while Shift+wheel remains the explicit outer
-     scrollback bypass. Verification: `npm run verify:agent-status-summary`;
-     `npx playwright test tests/map-terminal-rendering.spec.ts
-     tests/terminal-mouse.spec.ts tests/agent-status-summary.spec.ts
-     tests/agent-workstream.spec.ts`; `npm run build`; `npm run
-     verify:map-terminals`; `git diff --check`;
-     unsandboxed `APP_BUDGET=360 npm run verify:canvas-live` passed with
-     Canvas2D live shell input/output, resize, vim, htop, and tmux screenshots in
+     `Context / Path / Now` fields. Follow-up: shell terminal headers now prefer
+     a durable `TerminalActivitySummary` owned by the session instead of deriving
+     visible header text from canvas snapshots, scrollback, or stale transcript
+     summaries. Canvas snapshots still update transcript storage, but no longer
+     mutate the header-facing current activity; map and split shell headers use
+     the durable title/subtitle when present, so partial prompt input and noisy
+     scroll/view changes do not make the card text jump. The Playwright
+     recognizer now maps focused header-regression runs to human intent such as
+     `Verifying map card header stability` with `ignores stale transcript
+     summaries` as the detail instead of file names or raw `-g` fragments.
+     Prompt/model chrome
+     such as provider names, `Working ... esc to interrupt`, and bare prompt
+     fragments remain filtered for fallback summaries. The optional local
+     summarizer now uses a tiny-model-friendly payload with a heuristic
+     candidate; `scripts/agent-status-summary-ollama.mjs` defaults to
+     `gemma4:e2b-it` through Ollama and falls back deterministically. TUI wheel
+     handling now keeps plain alternate-screen scrolling inside the app as faux
+     arrow scrolling, while Shift+wheel remains the explicit outer scrollback
+     bypass. Fresh verification: `npx playwright test
+     tests/agent-status-summary.spec.ts` passed 15/15; `npx playwright test
+     tests/map-terminal-rendering.spec.ts -g "map shell header uses durable
+     activity" --reporter=line` passed; temporary browser proof captured
+     `/tmp/termfleet-durable-header-proof-crop.png`, showing the map-card header
+     title `Verifying map card header stability` and a non-prompt `Now` detail.
+     Additional verification: `npx playwright test tests/agent-status-summary.spec.ts`;
+     `npx playwright test tests/agent-status-summary.spec.ts
+     tests/map-terminal-rendering.spec.ts -g "durable terminal activity|map
+     shell header uses durable activity" --reporter=line`; `npx playwright test
+     tests/map-terminal-rendering.spec.ts -g "map shell header uses durable
+     activity" --reporter=line`; `npm run build`; prior evidence also includes
+     `npm run verify:agent-status-summary`; `npx playwright test
+     tests/map-terminal-rendering.spec.ts tests/terminal-mouse.spec.ts
+     tests/agent-status-summary.spec.ts tests/agent-workstream.spec.ts`; `npm
+     run verify:map-terminals`; `git diff --check`; unsandboxed
+     `APP_BUDGET=360 npm run verify:canvas-live` passed with Canvas2D live shell
+     input/output, resize, vim, htop, and tmux screenshots in
      `/tmp/tw-canvas-live/`.
    - Let the parent cockpit send a follow-up message or stop/restart a child.
    - Keep the first version local and explicit; no hidden cloud orchestration.

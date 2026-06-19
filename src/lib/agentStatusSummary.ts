@@ -11,6 +11,8 @@ export type AgentStatusSummary = WorkstreamStatusSummary & {
   confidence: AgentStatusConfidence;
 };
 
+const OSC_PATTERN = /\x1b\](?:[^\x07\x1b]*)(?:\x07|\x1b\\)/g;
+
 export interface AgentStatusSummaryInput {
   mission?: string;
   prompt?: string;
@@ -101,6 +103,50 @@ function transcriptLines(input: AgentStatusSummaryInput) {
     .filter((line) => !isNoisyActivity(line));
 }
 
+function explicitLineupTasks(input: AgentStatusSummaryInput) {
+  const lines = (input.terminalOutput ?? "")
+    .replace(/\r/g, "\n")
+    .replace(OSC_PATTERN, "")
+    .split("\n")
+    .map((line) => line.replace(/\s+/g, " ").trim());
+  let headerIndex = -1;
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    const line = lines[index];
+    if (
+      /\b(?:current|my|agent|working)\s+(?:task\s+)?(?:lineup|tasks?|todo\s+list)\b/i.test(line) ||
+      /\blineup\s+for\b/i.test(line)
+    ) {
+      headerIndex = index;
+      break;
+    }
+  }
+  if (headerIndex < 0) return [];
+
+  const tasks: string[] = [];
+  for (const line of lines.slice(headerIndex + 1)) {
+    if (!line) {
+      if (tasks.length > 0) break;
+      continue;
+    }
+
+    const listed = line.match(/^(?:\d+[.)]|[-*])\s+(?:\[(x|done|complete| |todo|pending|in[- ]?progress)\]\s*)?(.+)$/i);
+    const stated = line.match(/^(done|complete|todo|pending|not done|in[- ]?progress|blocked)\s*:\s*(.+)$/i);
+    if (!listed && !stated) {
+      if (tasks.length > 0) break;
+      continue;
+    }
+
+    const rawStatus = listed?.[1] ?? stated?.[1] ?? "";
+    const rawText = listed?.[2] ?? stated?.[2] ?? "";
+    const text = cleanText(rawText.replace(/\.$/, ""));
+    if (!text) continue;
+    const status = rawStatus.toLowerCase();
+    tasks.push(/^(x|done|complete)$/.test(status) ? `Done: ${text}` : text);
+    if (tasks.length >= 12) break;
+  }
+  return tasks;
+}
+
 function quotedFlagValue(command: string, flag: string) {
   const escaped = flag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const match = command.match(new RegExp(`${escaped}\\s+(?:"([^"]+)"|'([^']+)'|([^\\s]+))`));
@@ -162,6 +208,7 @@ function stripExtractionPrefix(line: string) {
 
 function extractionCandidates(input: AgentStatusSummaryInput, task: string, status: AgentStatusLifecycle) {
   const lines = transcriptLines(input);
+  const lineupTasks = explicitLineupTasks(input);
   const taskLines = lines
     .filter((line) => /^(task|todo|fix|implement|add|update|review|wire|persist)\b/i.test(line))
     .map(stripExtractionPrefix);
@@ -176,7 +223,7 @@ function extractionCandidates(input: AgentStatusSummaryInput, task: string, stat
     .map(stripExtractionPrefix);
 
   return {
-    tasks: [
+    tasks: lineupTasks.length > 0 ? lineupTasks : [
       ...(cleanExtractedText(input.mission) && cleanExtractedText(input.mission) !== "Terminal" ? [input.mission] : []),
       ...(cleanExtractedText(input.prompt) ? [input.prompt] : []),
       ...(task && task !== "Ready" && task !== "Supervised agent run" ? [task] : []),
