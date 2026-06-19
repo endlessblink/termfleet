@@ -7,7 +7,7 @@ import {
 } from "../src/lib/agentStatusSummary";
 import { deriveTerminalActivity } from "../src/lib/terminalActivity";
 import { summaryFromDurableActivity } from "../src/lib/terminalHeaderDisplay";
-import { cleanTaskLineupContent, normalizeTaskLineupItems } from "../src/lib/taskLineup";
+import { cleanTaskLineupContent, completeOpenTaskLineup, normalizeTaskLineupItems, terminalOutputClosesTaskLineup } from "../src/lib/taskLineup";
 import { summarizeAgentStatus } from "../src/lib/agentStatusSummarizer";
 import { mergeCockpitObjectsFromExtractedItems } from "../src/lib/workstreamExtraction";
 
@@ -304,6 +304,31 @@ test("task lineup marks explicitly done items as completed", () => {
     expect.objectContaining({ content: "Render completed tasks crossed and muted", status: "completed" }),
     expect.objectContaining({ content: "Verify task sidebar screenshot", status: "completed" }),
   ]);
+});
+
+test("task lineup closes when terminal output reports the run worked to completion", () => {
+  const output = [
+    "- npm run build passed",
+    "- npm run verify:map-terminals passed",
+    "- git diff --check passed",
+    "Worked for 2m 23s",
+  ].join("\n");
+
+  expect(terminalOutputClosesTaskLineup(output)).toBe(true);
+  expect(completeOpenTaskLineup([
+    { id: "task-1", content: "Summarize recent commits", status: "in_progress", source: "operator", updatedAt: 1 },
+  ], 2000)).toEqual([
+    { id: "task-1", content: "Summarize recent commits", status: "completed", source: "operator", updatedAt: 2000 },
+  ]);
+});
+
+test("task lineup completion markers are explicit and do not match incidental words", () => {
+  expect(terminalOutputClosesTaskLineup("Goal achieved (8m)")).toBe(true);
+  expect(terminalOutputClosesTaskLineup("• Task complete")).toBe(true);
+  expect(terminalOutputClosesTaskLineup("Worked for 11s")).toBe(true);
+  expect(terminalOutputClosesTaskLineup("Goal: achieved better summaries next")).toBe(false);
+  expect(terminalOutputClosesTaskLineup("The task completion parser is being edited")).toBe(false);
+  expect(terminalOutputClosesTaskLineup("Worked for the app, still running")).toBe(false);
 });
 
 test("durable terminal activity summarizes build and cargo checks as operator intent", () => {

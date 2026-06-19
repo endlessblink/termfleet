@@ -14,7 +14,7 @@ import { summarizeAgentStatus } from "../lib/agentStatusSummarizer";
 import { activityKindForText, inferActivityFromOutput, isWorkstreamActivityKind, normalizeActivityText } from "../lib/workstreamActivity";
 import { mergeCockpitObjectsFromExtractedItems, mergeExtractedItems, normalizeExtractedItems } from "../lib/workstreamExtraction";
 import { deriveTerminalActivity } from "../lib/terminalActivity";
-import { completeOpenTaskLineup, normalizeTaskLineupItems, taskLineupFromExtractedItems } from "../lib/taskLineup";
+import { completeOpenTaskLineup, normalizeTaskLineupItems, taskLineupFromExtractedItems, terminalOutputClosesTaskLineup } from "../lib/taskLineup";
 import type { TaskLineupItem, TerminalActivitySummary, TerminalRuntimeStatus, WorkstreamActivityKind, WorkstreamActivitySource, WorkstreamInput, WorkstreamPhase, WorkstreamReadiness, WorkstreamStatus } from "../lib/types";
 import type { GridSnapshot } from "../lib/gridSnapshot";
 
@@ -59,7 +59,7 @@ function inferWorkstreamStatus(output: string): "waiting" | "failed" | "done" | 
   if (/\b(failed|error|panic|exception|fatal)\b/.test(text)) {
     return "failed";
   }
-  if (/\b(done|completed|complete|successfully|all tests passed)\b/.test(text)) {
+  if (terminalOutputClosesTaskLineup(output) || /\b(done|completed|complete|successfully|all tests passed)\b/.test(text)) {
     return "done";
   }
   return null;
@@ -949,6 +949,8 @@ export function TerminalComponent({
     const terminalOutput = latestReadableOutput(heuristicOutput);
     const terminalTranscript = readableOutputExcerpt(heuristicOutput);
     const processExit = inferProcessExit(heuristicOutput);
+    const inferredStatus = providerReadiness?.status ?? inferWorkstreamStatus(heuristicOutput);
+    const closesTaskLineup = inferredStatus === "done" || terminalOutputClosesTaskLineup(heuristicOutput);
     const previousTerminal = initialTab?.terminals.find((candidate) => candidate.paneId === paneId);
     const durableActivity = deriveTerminalActivity({
       transcript: heuristicOutput,
@@ -961,6 +963,9 @@ export function TerminalComponent({
       currentActivity: providerReadiness?.lastSummary ?? inferredActivity?.currentActivity,
       activityKind: providerReadiness?.status ? activityKindForStatus(providerReadiness.status) : inferredActivity?.activityKind,
       durableActivity,
+      taskLineup: closesTaskLineup
+        ? completeOpenTaskLineup(previousTerminal?.taskLineup)
+        : previousTerminal?.taskLineup,
     });
     updateWorkstreamRuntime({
       terminalOutput: terminalTranscript ?? terminalOutput,
@@ -1007,11 +1012,11 @@ export function TerminalComponent({
       return;
     }
     updateWorkstreamRuntime({
-      status: providerReadiness?.status ?? inferWorkstreamStatus(heuristicOutput) ?? undefined,
-      phase: providerReadiness?.phase,
+      status: inferredStatus ?? undefined,
+      phase: providerReadiness?.phase ?? (closesTaskLineup ? "complete" : undefined),
       readiness: providerReadiness?.readiness,
-      lastSummary: providerReadiness?.lastSummary,
-      nextAction: providerReadiness?.nextAction,
+      lastSummary: providerReadiness?.lastSummary ?? (closesTaskLineup ? "Task run completed" : undefined),
+      nextAction: providerReadiness?.nextAction ?? (closesTaskLineup ? "Review output or start the next task" : undefined),
       terminalOutput,
       currentActivity: providerReadiness?.lastSummary ?? inferredActivity?.currentActivity,
       activityKind: providerReadiness?.status ? activityKindForStatus(providerReadiness.status) : inferredActivity?.activityKind,

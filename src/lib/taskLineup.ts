@@ -134,3 +134,10 @@ export function completeOpenTaskLineup(items: TaskLineupItem[] | undefined, upda
       : item
   );
 }
+
+export function terminalOutputClosesTaskLineup(output: string | undefined) {
+  if (!output) return false;
+  return /(?:^|\n)\s*[-•]?\s*Worked for\s+\d+[^\n]*$/im.test(output) ||
+    /(?:^|\n)\s*[-•]?\s*Goal achieved\b[^\n]*$/im.test(output) ||
+    /(?:^|\n)\s*[-•]?\s*Task complete\b[^\n]*$/im.test(output);
+}

@@ -882,9 +882,21 @@ const styles: Record<string, CSSProperties> = {
     background: "var(--surface-sunken)",
     overflow: "hidden",
   },
+  shellTerminalBody: {
+    flex: 1,
+    minHeight: 0,
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr) 46px",
+    gridTemplateRows: "minmax(0, 1fr)",
+    background: "var(--surface-sunken)",
+    overflow: "hidden",
+  },
   terminalBodyTaskContent: {
     minWidth: 0,
     minHeight: 0,
+    height: "100%",
+    display: "grid",
+    gridTemplateRows: "minmax(0, 1fr)",
     overflow: "hidden",
   },
   terminalBodyTaskSidebar: {
@@ -1000,8 +1012,7 @@ const styles: Record<string, CSSProperties> = {
   },
   liveTerminalBody: {
     flex: "1 1 auto",
-    minHeight: 260,
-    height: "calc(100% - 118px)",
+    minHeight: 0,
     display: "grid",
     gridTemplateRows: "minmax(0, 1fr)",
   },
@@ -1636,7 +1647,7 @@ function TerminalBodyTaskSidebar({
                 key={task.id}
                 style={{
                   ...styles.terminalBodyTaskRow,
-                  opacity: done ? 0.72 : 1,
+                  opacity: done ? 0.62 : 1,
                 }}
                 data-testid={`${testIdPrefix}-task-row`}
                 title={`${task.task} · ${task.state} · Next: ${task.next}`}
@@ -1657,10 +1668,10 @@ function TerminalBodyTaskSidebar({
                   <div
                     style={{
                       ...styles.terminalBodyTaskTitle,
-                      color: done ? "var(--text-secondary)" : styles.terminalBodyTaskTitle.color,
+                      color: done ? "color-mix(in srgb, var(--text-secondary) 68%, transparent)" : styles.terminalBodyTaskTitle.color,
                       textDecoration: done ? "line-through" : "none",
-                      textDecorationThickness: done ? 2 : undefined,
-                      textDecorationColor: done ? "var(--text-tertiary)" : undefined,
+                      textDecorationThickness: done ? 1 : undefined,
+                      textDecorationColor: done ? "color-mix(in srgb, var(--text-tertiary) 48%, transparent)" : undefined,
                     }}
                   >
                     {task.task}
@@ -1669,7 +1680,8 @@ function TerminalBodyTaskSidebar({
                     style={{
                       ...styles.agentTaskMeta,
                       textDecoration: done ? "line-through" : "none",
-                      textDecorationColor: done ? "var(--text-tertiary)" : undefined,
+                      textDecorationThickness: done ? 1 : undefined,
+                      textDecorationColor: done ? "color-mix(in srgb, var(--text-tertiary) 42%, transparent)" : undefined,
                     }}
                   >
                     <span data-testid={`${testIdPrefix}-task-state`}>{task.state}</span>
