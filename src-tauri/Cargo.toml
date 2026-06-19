@@ -39,3 +39,6 @@ tauri = { version = "2", features = ["test"] }
 # Versions pinned to what tauri 2.11 / wry 0.55 already resolve, so no new tree.
 [target.'cfg(target_os = "linux")'.dependencies]
 gtk = "0.18"
+# SO_PEERCRED / geteuid for daemon socket peer-credential validation. Linux-only;
+# the macOS port (TC-023) will use getpeereid behind the same daemon_ipc seam.
+libc = "0.2"

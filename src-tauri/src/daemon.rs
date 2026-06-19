@@ -519,6 +519,14 @@ pub fn run_daemon_forever() -> Result<(), String> {
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
+                // Defense-in-depth: only this user may drive the PTYs, even if the
+                // socket ever lands somewhere more permissive than the 0700 dir.
+                if !daemon_ipc::peer_is_authorized(&stream) {
+                    eprintln!(
+                        "terminal-workspace-daemon: rejected connection from unauthorized peer uid"
+                    );
+                    continue;
+                }
                 let socket_path = socket_path.clone();
                 let pty_manager = pty_manager.clone();
                 std::thread::spawn(move || {
@@ -579,6 +587,34 @@ fn prepare_socket_dir(socket_path: &PathBuf) -> Result<(), String> {
         .parent()
         .ok_or_else(|| "Daemon socket path has no parent directory".to_string())?;
     fs::create_dir_all(socket_dir).map_err(|error| error.to_string())?;
+
+    // Before we trust this directory to hold the control socket, reject anything
+    // we don't exclusively own. This closes the `/tmp` squat / cross-user case
+    // (e.g. when XDG_RUNTIME_DIR is unset and the path falls back to a shared
+    // world-writable temp dir): a pre-existing dir owned by another uid, or a
+    // symlink redirecting us elsewhere, must not be silently reused.
+    let meta = fs::symlink_metadata(socket_dir).map_err(|error| error.to_string())?;
+    if meta.file_type().is_symlink() {
+        return Err(format!(
+            "Daemon socket dir {} is a symlink; refusing to use it",
+            socket_dir.to_string_lossy()
+        ));
+    }
+    #[cfg(target_os = "linux")]
+    {
+        use std::os::unix::fs::MetadataExt;
+        // SAFETY: geteuid takes no arguments and always succeeds.
+        let self_uid = unsafe { libc::geteuid() };
+        if meta.uid() != self_uid {
+            return Err(format!(
+                "Daemon socket dir {} is owned by uid {}, not {}; refusing to use it",
+                socket_dir.to_string_lossy(),
+                meta.uid(),
+                self_uid
+            ));
+        }
+    }
+
     fs::set_permissions(socket_dir, fs::Permissions::from_mode(0o700))
         .map_err(|error| error.to_string())
 }
@@ -828,9 +864,42 @@ fn write_daemon_response(
 mod tests {
     use super::{
         current_build_id, daemon_socket_path, daemon_status, daemon_stdio_bridge_argv,
-        embedded_fallback_status, should_reuse_running_daemon_with_fresh_request, DaemonMode,
-        DaemonRequest, DaemonResponse, DaemonStatus, DAEMON_STDIO_ARG, PROTOCOL_VERSION,
+        embedded_fallback_status, prepare_socket_dir,
+        should_reuse_running_daemon_with_fresh_request, DaemonMode, DaemonRequest, DaemonResponse,
+        DaemonStatus, DAEMON_STDIO_ARG, PROTOCOL_VERSION,
     };
+
+    #[test]
+    fn prepare_socket_dir_creates_owner_only_dir() {
+        use std::os::unix::fs::PermissionsExt;
+        let base = std::env::temp_dir().join(format!("tf-sockdir-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let socket_path = base.join("daemon.sock");
+
+        prepare_socket_dir(&socket_path).expect("prepare should succeed for an owned dir");
+        let mode = std::fs::metadata(&base).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o700, "socket dir must be owner-only");
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn prepare_socket_dir_rejects_symlinked_dir() {
+        use std::os::unix::fs::symlink;
+        let base = std::env::temp_dir().join(format!("tf-socklink-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        let real = base.join("real");
+        let link = base.join("link");
+        std::fs::create_dir_all(&real).unwrap();
+        symlink(&real, &link).unwrap();
+        let socket_path = link.join("daemon.sock");
+
+        let result = prepare_socket_dir(&socket_path);
+        assert!(result.is_err(), "a symlinked socket dir must be refused");
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
 
     #[test]
     fn socket_path_uses_terminal_workspace_dir() {
