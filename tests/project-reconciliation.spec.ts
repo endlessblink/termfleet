@@ -223,3 +223,66 @@ test("same-path terminals and duplicate project groups collapse into one project
   // Re-opening the same folder reuses the project instead of duplicating it.
   expect(result.addGroupReusedExisting).toBe(true);
 });
+
+// TC-034 regression: the LIVE store actions (addTab / updateTab) must auto-group
+// terminals by path, not just the explicit reconcileProjectGroups() call.
+test("addTab and cwd changes auto-group terminals by path (live wiring)", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+
+  const out = await page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => {
+          addTab: (overrides?: Record<string, unknown>) => void;
+          updateTab: (id: string, updates: Record<string, unknown>) => void;
+          tabs: Array<{ id: string; groupId: string | null; initialCwd?: string }>;
+          groups: Array<{ id: string; projectRoot?: string }>;
+        };
+        setState: (state: Record<string, unknown>) => void;
+      };
+    }).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+
+    const A = "/home/u/dev/alpha";
+    const B = "/home/u/dev/beta";
+    store.setState({ tabs: [], groups: [], terminalGroups: [],
+      canvasState: { selectedNodeId: null, selectedNodeIds: [], viewport: { x: 0, y: 0, zoom: 1 }, nodes: [] } });
+
+    // Three terminals opened in the same path (one with a trailing slash) + one elsewhere.
+    store.getState().addTab({ initialCwd: A });
+    store.getState().addTab({ initialCwd: A + "/" });
+    store.getState().addTab({ initialCwd: A });
+    store.getState().addTab({ initialCwd: B });
+
+    const s = store.getState();
+    const groupOf = (cwd: string) => {
+      const tab = s.tabs.find((t) => (t.initialCwd ?? "").replace(/\/+$/, "") === cwd);
+      return tab?.groupId ?? null;
+    };
+    const aGroupIds = new Set(
+      s.tabs.filter((t) => (t.initialCwd ?? "").replace(/\/+$/, "") === A).map((t) => t.groupId)
+    );
+
+    // Now move one terminal's cwd from A to B; it must re-home to B's project.
+    const movable = s.tabs.find((t) => (t.initialCwd ?? "").replace(/\/+$/, "") === A);
+    store.getState().updateTab(movable!.id, { initialCwd: B });
+    const s2 = store.getState();
+    const movedGroup = s2.tabs.find((t) => t.id === movable!.id)?.groupId ?? null;
+
+    return {
+      aDistinctGroups: aGroupIds.size,          // all three A terminals share one group
+      aProjectCount: s.groups.filter((g) => (g.projectRoot ?? "").replace(/\/+$/, "") === A).length,
+      aAndBDiffer: groupOf(A) !== groupOf(B),
+      movedToBGroup: movedGroup === s2.tabs.find((t) => (t.initialCwd ?? "").replace(/\/+$/, "") === B && t.id !== movable!.id)?.groupId,
+    };
+  });
+
+  expect(out.aDistinctGroups).toBe(1);   // same-path terminals collapse into one project
+  expect(out.aProjectCount).toBe(1);     // exactly one project group for that path
+  expect(out.aAndBDiffer).toBe(true);    // different paths are different projects
+  expect(out.movedToBGroup).toBe(true);  // cwd change re-homes the terminal
+});
