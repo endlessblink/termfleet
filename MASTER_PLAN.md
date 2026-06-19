@@ -55,7 +55,7 @@ were retired during consolidation.
 | TC-030     | Orchestrator terminal lifecycle: parent terminal can spawn, track, and terminate child terminals when finished                                                                                                  | P1       | TODO              | TC-016, TC-017 |
 | TC-031     | Ctrl+Z restore for closed map terminals and non-destructive localhost preview closure                                                                                                                           | P1       | DONE (2026-06-18) | TC-017, TC-020 |
 | TC-032     | Operator-useful terminal summary: regular app headers answer what each shell/agent terminal is doing right now                                                                                                  | P1       | DONE (2026-06-19) | TC-016i        |
-| TC-033     | Reliability hardening: fix recurring sidebar task list, AI summary, paste, and render/session issues that never stayed fixed                                                                                     | P1       | IN_PROGRESS       | TC-027, TC-032 |
+| TC-033     | Reliability hardening: fix recurring sidebar task list, AI summary, paste, and render/session issues that never stayed fixed                                                                                     | P1       | DONE (2026-06-19) | TC-027, TC-032 |
 
 ---
 

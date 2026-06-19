@@ -184,6 +184,7 @@ export function TerminalCanvas({
   const firstFrameRef = useRef(false);
   const firstFrameWaitersRef = useRef<Array<() => void>>([]);
   const sessionEpochRef = useRef(0);
+  const inputGenerationRef = useRef(0);
   // Render context shared with pointer/copy handlers (set inside the effect).
   const bufferRef = useRef<GridBuffer | null>(null);
   const cellRef = useRef({ width: 8, height: 16, dpr: 1 });
@@ -761,6 +762,11 @@ export function TerminalCanvas({
     input.value = "";
   };
 
+  const advanceInputGeneration = () => {
+    inputGenerationRef.current += 1;
+    return inputGenerationRef.current;
+  };
+
   useEffect(() => {
     const input = inputRef.current;
     if (!input) return;
@@ -812,6 +818,7 @@ export function TerminalCanvas({
       appCursor: modesRef.current.appCursor,
     });
     if (bytes !== null) {
+      advanceInputGeneration();
       const seqId = nextTerminalInputSequence();
       traceTerminalLatency("frontend.canvas.keydown", {
         id: sessionId,
@@ -888,6 +895,7 @@ export function TerminalCanvas({
       }
       const bytes = keyEventToBytes(event, { appCursor: modesRef.current.appCursor });
       if (bytes === null) return;
+      advanceInputGeneration();
       const seqId = nextTerminalInputSequence();
       traceTerminalLatency("frontend.canvas.keydown", {
         id: sessionIdRef.current,
@@ -936,8 +944,10 @@ export function TerminalCanvas({
   const sendPasteText = (text: string) => {
     if (!text) return;
     const epoch = sessionEpochRef.current;
+    const generation = advanceInputGeneration();
     void waitForFirstFrame().then(() => {
       if (epoch !== sessionEpochRef.current) return;
+      if (generation !== inputGenerationRef.current) return;
       const bracketed =
         modesRef.current.bracketedPaste || shouldBracketPasteForVisibleAgentPrompt(text);
       send(encodePaste(text, bracketed), nextTerminalInputSequence(), "canvas-paste");
@@ -958,6 +968,7 @@ export function TerminalCanvas({
     Boolean(data && Array.from(data.types).some((type) => type.startsWith("image/")));
 
   const sendImagePasteShortcut = () => {
+    advanceInputGeneration();
     send("\x16", nextTerminalInputSequence(), "canvas-image-paste-shortcut");
     clearHiddenInputSoon();
   };
