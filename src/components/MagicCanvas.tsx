@@ -38,7 +38,7 @@ import { agentStatusChipText, agentStatusSummaryFromWorkstream, getDisplaySummar
 import { workstreamActivityMeta, workstreamActivityText } from "../lib/workstreamActivity";
 import { formatWorkstreamBranch, formatWorkstreamIsolation, formatWorkstreamOpsContext } from "../lib/workstreamOpsContext";
 import { snapshotPreviewRows } from "../lib/snapshotPreviewRows";
-import { taskLineupForVisibleRun, taskLineupNextLabel, taskLineupStats } from "../lib/taskLineup";
+import { taskLineupNextLabel, taskLineupStats, visibleTaskLineup } from "../lib/taskLineup";
 import { normalizePersistedShellSummary, summaryFromDurableActivity, summarySourceLabel, terminalPurposeFromContext } from "../lib/terminalHeaderDisplay";
 
 type CanvasRect = {
@@ -2136,8 +2136,8 @@ function CanvasNodeView({
   const directlyBoundTask = node.taskBinding
     ? rootTasks.find((task) => task.id.toLowerCase() === node.taskBinding?.taskId.toLowerCase())
     : undefined;
-  const purposeTaskLineup = taskLineupForVisibleRun(
-    (workstream?.taskLineup ?? linkedTerminal?.taskLineup)?.filter((item) => item.source === "todo-write"),
+  const purposeTaskLineup = visibleTaskLineup(
+    workstream?.taskLineup ?? linkedTerminal?.taskLineup,
     linkedTerminal?.activeRunId
   );
   const terminalPurpose = terminalPurposeFromContext({
@@ -2251,12 +2251,12 @@ function CanvasNodeView({
     meta: `Plan checklist ${index + 1}/${boundTask?.checklist?.length ?? 1}`,
   }));
   void terminalHeaderTaskState;
-  const canonicalTerminalTaskLineup = taskLineupForVisibleRun(
-    linkedTerminal?.taskLineup?.filter((item) => item.source === "todo-write"),
+  const canonicalTerminalTaskLineup = visibleTaskLineup(
+    linkedTerminal?.taskLineup,
     linkedTerminal?.activeRunId
   );
-  const canonicalWorkstreamTaskLineup = taskLineupForVisibleRun(
-    workstream?.taskLineup?.filter((item) => item.source === "todo-write"),
+  const canonicalWorkstreamTaskLineup = visibleTaskLineup(
+    workstream?.taskLineup,
     linkedTerminal?.activeRunId
   );
   const currentLineupTasks = currentLineupTaskRows(
