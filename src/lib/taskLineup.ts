@@ -42,7 +42,7 @@ export function cleanTaskLineupContent(value?: string | null) {
 }
 
 export function taskLineupSourceLabel(source: TaskLineupSource) {
-  if (source === "todo-write") return "operator task list";
+  if (source === "todo-write") return "task list";
   if (source === "structured-signal") return "structured signal";
   if (source === "summary") return "summary";
   if (source === "lane-checklist") return "plan checklist";
@@ -70,6 +70,7 @@ export function normalizeTaskLineupItems(
   items: Array<Partial<TaskLineupItem> & { text?: string }>,
   source: TaskLineupSource,
   updatedAt = Date.now(),
+  runId?: string,
 ): TaskLineupItem[] {
   const seen = new Set<string>();
   let activeSeen = false;
@@ -90,6 +91,7 @@ export function normalizeTaskLineupItems(
       seen.add(key);
       return {
         id,
+        ...(item.runId ?? runId ? { runId: item.runId ?? runId } : {}),
         content,
         status,
         ...(priority ? { priority } : {}),
@@ -106,13 +108,14 @@ export function taskLineupFromExtractedItems(
   source: TaskLineupSource,
   fallbackStatus: TaskLineupStatus = "pending",
   updatedAt = Date.now(),
+  runId?: string,
 ) {
   return normalizeTaskLineupItems((items ?? []).map((item) => ({
     id: item.id,
     content: item.text,
     status: inferStatus(item.text, fallbackStatus),
     updatedAt: item.at > 0 ? item.at : updatedAt,
-  })), source, updatedAt);
+  })), source, updatedAt, runId);
 }
 
 export function taskLineupStats(items: TaskLineupItem[]) {
@@ -133,6 +136,57 @@ export function completeOpenTaskLineup(items: TaskLineupItem[] | undefined, upda
       ? { ...item, status: "completed" as const, updatedAt }
       : item
   );
+}
+
+export function completeOpenTaskLineupForRun(items: TaskLineupItem[] | undefined, runId: string | undefined, updatedAt = Date.now()) {
+  if (!runId) return completeOpenTaskLineup(items, updatedAt);
+  const hasMatchingRun = (items ?? []).some((item) => item.runId === runId);
+  const fallbackRunId = !hasMatchingRun ? latestTaskLineupRunId(items) : undefined;
+  return (items ?? []).map((item) =>
+    (item.runId === runId || item.runId === fallbackRunId) && (item.status === "pending" || item.status === "in_progress")
+      ? { ...item, status: "completed" as const, updatedAt }
+      : item
+  );
+}
+
+function latestTaskLineupRunId(items: TaskLineupItem[] | undefined) {
+  return (items ?? [])
+    .filter((item) => Boolean(item.runId))
+    .sort((a, b) => b.updatedAt - a.updatedAt)[0]?.runId;
+}
+
+/**
+ * Merge a status-summary-derived (`operator`) lineup into the terminal's existing
+ * lineup WITHOUT clobbering a live `todo-write` list. The sidebar/map renderers
+ * display only `source === "todo-write"`, so letting the 650ms summary cycle replace
+ * the lineup with `operator` items empties the visible TASKS panel (TC-033 T1).
+ * Decision: TodoWrite wins — operator items populate the lineup only when no
+ * `todo-write` items exist.
+ */
+export function mergeShellSummaryTaskLineup(
+  existing: TaskLineupItem[] | undefined,
+  extracted: TaskLineupItem[],
+  options: { closesRun: boolean; runId: string | undefined; updatedAt?: number },
+): TaskLineupItem[] {
+  const existingItems = existing ?? [];
+  // A populated todo-write list is the source-of-truth for the panel; never let a
+  // summary cycle overwrite it. Its lifecycle (completion on run close) is owned by
+  // the dedicated todo-write / structured-signal paths, not the summary path.
+  if (existingItems.some((item) => item.source === "todo-write")) return existingItems;
+  if (extracted.length === 0) return existingItems;
+  return options.closesRun
+    ? completeOpenTaskLineupForRun(extracted, options.runId, options.updatedAt)
+    : extracted;
+}
+
+export function taskLineupForVisibleRun(items: TaskLineupItem[] | undefined, runId: string | undefined) {
+  const allItems = items ?? [];
+  if (!runId) return allItems;
+  const scopedItems = allItems.filter((item) => item.runId === runId);
+  const hasAnyScopedItems = allItems.some((item) => Boolean(item.runId));
+  if (!hasAnyScopedItems || scopedItems.length > 0) return hasAnyScopedItems ? scopedItems : allItems;
+  const fallbackRunId = latestTaskLineupRunId(allItems);
+  return fallbackRunId ? allItems.filter((item) => item.runId === fallbackRunId) : [];
 }
 
 export function terminalOutputClosesTaskLineup(output: string | undefined) {

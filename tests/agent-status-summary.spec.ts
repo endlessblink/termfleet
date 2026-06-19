@@ -6,8 +6,15 @@ import {
   parseAgentStatusSummaryResponse,
 } from "../src/lib/agentStatusSummary";
 import { deriveTerminalActivity } from "../src/lib/terminalActivity";
-import { summaryFromDurableActivity } from "../src/lib/terminalHeaderDisplay";
-import { cleanTaskLineupContent, completeOpenTaskLineup, normalizeTaskLineupItems, terminalOutputClosesTaskLineup } from "../src/lib/taskLineup";
+import { normalizePersistedShellSummary, summaryFromDurableActivity, terminalPurposeFromContext } from "../src/lib/terminalHeaderDisplay";
+import {
+  cleanTaskLineupContent,
+  completeOpenTaskLineup,
+  completeOpenTaskLineupForRun,
+  normalizeTaskLineupItems,
+  taskLineupForVisibleRun,
+  terminalOutputClosesTaskLineup,
+} from "../src/lib/taskLineup";
 import { summarizeAgentStatus } from "../src/lib/agentStatusSummarizer";
 import { mergeCockpitObjectsFromExtractedItems } from "../src/lib/workstreamExtraction";
 
@@ -322,6 +329,60 @@ test("task lineup closes when terminal output reports the run worked to completi
   ]);
 });
 
+test("task lineup is scoped to the current terminal run", () => {
+  const previousRun = completeOpenTaskLineupForRun(
+    normalizeTaskLineupItems([
+      { text: "Summarize recent commits", status: "in_progress" },
+    ], "todo-write", 1000, "run-1"),
+    "run-1",
+    2000
+  );
+  const currentRun = normalizeTaskLineupItems([
+    { text: "Find and fix a bug in @filename", status: "in_progress" },
+  ], "todo-write", 3000, "run-2");
+  const visible = taskLineupForVisibleRun([...previousRun, ...currentRun], "run-2");
+
+  expect(previousRun).toEqual([
+    expect.objectContaining({ content: "Summarize recent commits", runId: "run-1", status: "completed" }),
+  ]);
+  expect(visible).toEqual([
+    expect.objectContaining({
+      content: "Find and fix a bug in the selected file",
+      runId: "run-2",
+      status: "in_progress",
+    }),
+  ]);
+});
+
+test("task lineup falls back to the newest run when the active run id drifts", () => {
+  const items = [
+    ...completeOpenTaskLineupForRun(
+      normalizeTaskLineupItems([
+        { text: "Summarize recent commits", status: "in_progress" },
+      ], "todo-write", 1000, "run-1"),
+      "run-1",
+      2000
+    ),
+    ...normalizeTaskLineupItems([
+      { text: "Verify completed task sidebar", status: "in_progress" },
+    ], "todo-write", 3000, "run-created-before-command-id-set"),
+  ];
+  const completed = completeOpenTaskLineupForRun(items, "command-derived-run-id", 4000);
+  const visible = taskLineupForVisibleRun(completed, "command-derived-run-id");
+
+  expect(visible).toEqual([
+    expect.objectContaining({
+      content: "Verify completed task sidebar",
+      runId: "run-created-before-command-id-set",
+      status: "completed",
+      updatedAt: 4000,
+    }),
+  ]);
+  expect(visible).not.toEqual(expect.arrayContaining([
+    expect.objectContaining({ content: "Summarize recent commits" }),
+  ]));
+});
+
 test("task lineup completion markers are explicit and do not match incidental words", () => {
   expect(terminalOutputClosesTaskLineup("Goal achieved (8m)")).toBe(true);
   expect(terminalOutputClosesTaskLineup("• Task complete")).toBe(true);
@@ -437,15 +498,19 @@ test("durable shell header prefers command target over stale extracted path", ()
     status: "working",
     provider: "shell",
     confidence: "high",
+  }, {
+    title: "Improve activity summary wording",
+    source: "task-binding",
+    updatedAt: 1000,
   });
 
-  expect(header.task).toBe("Checking activity summary wording");
+  expect(header.task).toBe("Improve activity summary wording");
   expect(header.path).toBe("tests/agent-status-summary.spec.ts");
   expect(header.now).toBe("terminal status summary contract · 1 test · 1 worker · agent-status-summary.spec.ts");
   expect(header.now).not.toContain("stale");
 });
 
-test("durable shell header rewrites generic persisted Playwright completion titles", () => {
+test("durable shell header turns generic Playwright completion into contextual activity", () => {
   const header = summaryFromDurableActivity({
     title: "Playwright tests passed",
     subtitle: "map card rendering contract · 5 passed · 12.6s",
@@ -461,11 +526,227 @@ test("durable shell header rewrites generic persisted Playwright completion titl
     status: "working",
     provider: "shell",
     confidence: "high",
+  }, {
+    title: "Validate map terminal rendering behavior",
+    source: "task-binding",
+    updatedAt: 1000,
   });
 
-  expect(header.task).toBe("Map terminal card checks passed");
+  expect(header.task).toBe("Validate map terminal rendering behavior");
   expect(header.path).toBe("tests/map-terminal-rendering.spec.ts");
   expect(header.now).toBe("map card rendering contract · 5 passed · 12.6s");
+});
+
+test("durable shell header combines higher-level goal with verifier result", () => {
+  const header = summaryFromDurableActivity({
+    title: "Verifying map terminals",
+    subtitle: "map terminal source checks passed",
+    status: "success",
+    command: "npm run verify:map-terminals",
+    source: "command",
+    updatedAt: 1000,
+  }, "termfleet", {
+    task: "Make terminal summaries operator-useful",
+    path: "devops/termfleet",
+    now: "stale runner outcome",
+    status: "working",
+    provider: "shell",
+    confidence: "high",
+  }, {
+    title: "Make terminal summaries operator-useful",
+    source: "task-binding",
+    updatedAt: 1000,
+  });
+
+  expect(header.task).toBe("Make terminal summaries operator-useful");
+  expect(header.path).toBe("termfleet");
+  expect(header.now).toBe("map terminal source checks passed");
+});
+
+test("durable shell header does not promote noisy extracted task prose into the title", () => {
+  const noisyTask =
+    "The visual app surface now reports the intended hierarchy in the split header: title Validating terminal-summary behavior on map cards, path devops/termfleet, and Now map terminal source checks passed.";
+
+  const header = summaryFromDurableActivity({
+    title: "Building frontend",
+    subtitle: "TypeScript and Vite production build",
+    status: "success",
+    command: "npm run build",
+    source: "command",
+    updatedAt: 1000,
+  }, "devops/termfleet", {
+    task: noisyTask,
+    path: "devops/termfleet",
+    now: "frontend build passed",
+    status: "done",
+    provider: "shell",
+    confidence: "high",
+    tasks: [{ id: "1", text: noisyTask, status: "done" }],
+  }, {
+    title: "Improving terminal summary headers",
+    source: "task-binding",
+    updatedAt: 1000,
+  });
+
+  expect(header.task).toBe("Improving terminal summary headers");
+  expect(header.task).not.toContain("The visual app surface");
+  expect(header.task.length).toBeLessThanOrEqual(64);
+  expect(header.path).toBe("devops/termfleet");
+  expect(header.now).toBe("frontend build passed");
+});
+
+test("durable shell header keeps visual verifier result out of the title", () => {
+  const header = summaryFromDurableActivity({
+    title: "Terminal summary visual checks passed",
+    subtitle: "headed app terminal summary visual contract",
+    status: "success",
+    command: "npm run verify:terminal-summary-visual",
+    source: "command",
+    updatedAt: 1000,
+  }, "devops/termfleet", {
+    task: "Search",
+    path: "devops/termfleet",
+    now: "npm run verify:terminal-summary-visual",
+    status: "done",
+    provider: "shell",
+    confidence: "high",
+  }, {
+    title: "Improving terminal summary headers",
+    source: "task-binding",
+    updatedAt: 1000,
+  });
+
+  expect(header.task).toBe("Improving terminal summary headers");
+  expect(header.now).toBe("terminal summary visual checks passed");
+  expect(header.now).not.toBe("npm run verify:terminal-summary-visual");
+});
+
+test("durable shell header exposes missing task context instead of inventing build purpose", () => {
+  const header = summaryFromDurableActivity({
+    title: "Building frontend",
+    subtitle: "TypeScript and Vite production build",
+    status: "success",
+    command: "npm run build",
+    source: "command",
+    updatedAt: 1000,
+  }, "devops/termfleet", {
+    task: "Search",
+    path: "devops/termfleet",
+    now: "npm run build",
+    status: "done",
+    provider: "shell",
+    confidence: "high",
+  });
+
+  expect(header.task).toBe("Checking frontend build");
+  expect(header.now).toBe("frontend build passed");
+});
+
+test("persisted shell summaries are normalized for already-running terminals", () => {
+  const summary = normalizePersistedShellSummary({
+    task: "Map terminal card checks passed",
+    path: "tests/map-terminal-rendering.spec.ts",
+    now: "map card rendering contract · 5 passed",
+    status: "done",
+    provider: "shell",
+    confidence: "high",
+  }, "devops/termfleet", {
+    title: "Validate map terminal rendering behavior",
+    source: "task-binding",
+    updatedAt: 1000,
+  });
+
+  expect(summary.task).toBe("Validate map terminal rendering behavior");
+  expect(summary.now).toBe("map card rendering contract passed");
+  expect(summary.path).toBe("tests/map-terminal-rendering.spec.ts");
+});
+
+test("persisted shell summaries without purpose expose missing task context", () => {
+  const summary = normalizePersistedShellSummary({
+    task: "Frontend build passed",
+    path: "devops/termfleet",
+    now: "npm run build",
+    status: "done",
+    provider: "shell",
+    confidence: "high",
+  }, "devops/termfleet");
+
+  expect(summary.task).toBe("Checking frontend build");
+  expect(summary.now).toBe("frontend build passed");
+});
+
+test("terminal purpose follows the current active agent prompt", () => {
+  const purpose = terminalPurposeFromContext({
+    terminalOutput: [
+      "Auto-reviewer approved codex to run xclip this time",
+      "the user's X11 clipboard with a test PNG to drive the requested headed image-paste verification in the local app, a reversible local GUI side effect with no evident exfiltration or irreversible damage.",
+      "Ran xclip -selection clipboard -t image/png -i /tmp/termfleet-image-paste-proof.png",
+      "Working (11m 36s • esc to interrupt)",
+      "› Write tests for @filename",
+    ].join("\n"),
+    now: 1000,
+  });
+
+  expect(purpose).toEqual({
+    title: "Writing tests for selected file",
+    source: "inferred",
+    updatedAt: 1000,
+  });
+});
+
+test("terminal purpose follows a worked-for agent prompt over stale command output", () => {
+  const purpose = terminalPurposeFromContext({
+    terminalOutput: [
+      "I verified the current focused contract with npm run verify:keymap: 3 passed.",
+      "Worked for 1m 12s",
+      "› pick up the copy and pasting task and load it to memory",
+      "reverse-i-search:",
+    ].join("\n"),
+    now: 1000,
+  });
+
+  expect(purpose).toEqual({
+    title: "Saving copy/paste task to memory",
+    source: "inferred",
+    updatedAt: 1000,
+  });
+});
+
+test("terminal purpose ignores pre-working stale transcript lines", () => {
+  const purpose = terminalPurposeFromContext({
+    terminalOutput: [
+      "Visually verify headed text paste and image paste",
+      "Explored",
+      "Search class GridBuffer|rows in gridBuffer.ts",
+      "I’m making the split stricter now: image-only paste uses negotiated bracketed mode.",
+      "Working (13m 23s • esc to interrupt)",
+    ].join("\n"),
+    now: 1000,
+  });
+
+  expect(purpose).toBeUndefined();
+});
+
+test("durable shell header keeps current verifier title without stale transcript purpose", () => {
+  const header = summaryFromDurableActivity({
+    title: "Terminal summary visual checks failed",
+    subtitle: "headed app terminal summary visual contract",
+    status: "error",
+    command: "npm run verify:terminal-summary-visual",
+    source: "command",
+    updatedAt: 1000,
+  }, "devops/termfleet", {
+    task: "Search",
+    path: "devops/termfleet",
+    now: "terminal summary visual checks failed",
+    status: "blocked",
+    provider: "shell",
+    confidence: "high",
+  });
+
+  expect(header.task).not.toBe("Checking bracketed paste");
+  expect(header.task).toBe("Improving terminal-summary visual headers");
+  expect(header.now).toBe("terminal summary visual checks failed");
 });
 
 test("summarizes fullscreen htop chrome as process monitoring", () => {

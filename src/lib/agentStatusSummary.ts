@@ -84,6 +84,27 @@ function isNoisyActivity(value?: string | null) {
   return NOISY_ACTIVITY_PATTERNS.some((pattern) => pattern.test(text));
 }
 
+/**
+ * Clean a raw terminal transcript before it is sent to the status summarizer:
+ * drop prompt chrome / spinner noise and collapse consecutive duplicate lines so
+ * repeated paste / verification payload can't dominate the summary (TC-033 T2).
+ * Returns the trailing `maxChars` of the cleaned text.
+ */
+export function cleanTranscriptForSummary(output?: string | null, maxChars = 1800) {
+  const lines = (output ?? "")
+    .replace(/\r/g, "\n")
+    .split("\n")
+    .map((line) => line.replace(/\s+/g, " ").trim());
+  const kept: string[] = [];
+  for (const line of lines) {
+    if (!line || isNoisyActivity(line)) continue;
+    if (kept.length > 0 && kept[kept.length - 1] === line) continue;
+    kept.push(line);
+  }
+  const joined = kept.join("\n");
+  return joined.length > maxChars ? joined.slice(joined.length - maxChars) : joined;
+}
+
 function rawTranscriptLines(input: AgentStatusSummaryInput) {
   return (input.terminalOutput ?? "")
     .replace(/\r/g, "\n")

@@ -55,6 +55,7 @@ were retired during consolidation.
 | TC-030     | Orchestrator terminal lifecycle: parent terminal can spawn, track, and terminate child terminals when finished                                                                                                  | P1       | TODO              | TC-016, TC-017 |
 | TC-031     | Ctrl+Z restore for closed map terminals and non-destructive localhost preview closure                                                                                                                           | P1       | DONE (2026-06-18) | TC-017, TC-020 |
 | TC-032     | Operator-useful terminal summary: regular app headers answer what each shell/agent terminal is doing right now                                                                                                  | P1       | DONE (2026-06-19) | TC-016i        |
+| TC-033     | Reliability hardening: fix recurring sidebar task list, AI summary, paste, and render/session issues that never stayed fixed                                                                                     | P1       | IN_PROGRESS       | TC-027, TC-032 |
 
 ---
 
@@ -419,6 +420,19 @@ Progress notes:
   generic `Playwright tests passed` case corrected to `Map terminal card checks
   passed`, with `tests/map-terminal-rendering.spec.ts` as the path and `map card
   rendering contract · 5 passed · 12.6s` as `Now`.
+- DONE: Added a regular-app visual gate, `npm run verify:terminal-summary-visual`,
+  that seeds split and map terminal cards and fails when noisy scrollback, stale
+  verifier output, or raw command text becomes the main title. The hook now also
+  covers the headed regression where a stale `verify:keymap` durable command
+  must yield to the current agent prompt after `Working (...)` / `Worked for ...`.
+  Current evidence: `npx playwright test tests/agent-status-summary.spec.ts
+  --reporter=line` passed 40/40; `npm run verify:terminal-summary-visual`
+  passed 4/4; `npm run build` passed; `git diff --check` passed.
+- Headed app proof: `/tmp/termfleet-headed-final-worked-for-purpose.png`
+  captures the current regular TermFleet window after reload. It shows the fixed
+  non-bleeding summary behavior on the loaded map, while an old terminal with no
+  captured task/output context still falls back to a command-result summary
+  instead of inventing a task.
 
 ### TC-001: Freeze Terminal Cockpit target and visual rules
 
@@ -4952,3 +4966,38 @@ Progress notes:
   passed 21/21, `tests/agent-status-summary.spec.ts` passed 15/15,
   `npm run verify:map-terminals` passed after updating the source contract for
   the new `platform_paths` trace helpers, and `npm run build` passed.
+
+### TC-033: Reliability hardening (recurring unreliable features)
+
+Umbrella for the features that "never stayed fixed." Plan + per-task lane in
+`plans/there-are-several-features-robust-babbage.md`. Phase 1 (autonomous):
+T1, T2, T4, T5. Phase 2 (after checkpoint): T3 paste, T6 resize, T7 wheel/render,
+T8 persistence, T9 input.
+
+- **T1 — sidebar task list no longer clobbered (DONE):** the 650ms status-summary
+  cycle was overwriting the live `todo-write` lineup with `operator`-source items,
+  but the sidebar/map only render `todo-write` → the TASKS panel kept emptying.
+  Added pure `mergeShellSummaryTaskLineup()` in `src/lib/taskLineup.ts` (TodoWrite
+  wins, never clobbered) and wired `Terminal.tsx`. Verify: `tests/task-lineup-source-merge.spec.ts` 4/4.
+- **T5 — operator-text contract for the header purpose (DONE):** the new
+  transcript "purpose" latched onto prompt-box chrome (`› Use /skills…`) and
+  gibberish input, overriding the real summarized title. Narrowed
+  `purposeFromTranscriptLine` in `src/lib/terminalHeaderDisplay.ts` to reject
+  slash-command/placeholder chrome and require an actionable prompt. Fixed the two
+  pre-existing failures in `tests/map-terminal-rendering.spec.ts`. Verify:
+  `tests/terminal-purpose-transcript.spec.ts` 5/5.
+- **T2 — AI summary transcript cleaning (DONE, partial):** added exported
+  `cleanTranscriptForSummary()` in `src/lib/agentStatusSummary.ts` (drops chrome +
+  collapses repeated paste lines) and fed it into the summarizer request
+  (`src/lib/agentStatusSummarizer.ts`) so duplicated paste can't dominate the
+  summary. Verify: `tests/transcript-cleaning.spec.ts` 3/3. REMAINING: surface the
+  fallback-vs-model source in the UI (not yet started — `statusSummarySource` is
+  rendered nowhere).
+- **T4 — terminal-summary visual seed (DONE/satisfied):** `tests/terminal-summary-visual.spec.ts`
+  passes; the in-flight seed already carries the needed state.
+- **Gate:** `npm run build` green; `cd src-tauri && cargo test` 64 passed; the
+  summary/header specs `agent-status-summary` + `map-terminal-rendering` +
+  `terminal-summary-visual` + the three new T1/T2/T5 specs = **76 passed, 0 failed**.
+- **Deferred to Phase 2 checkpoint:** T3 paste (`TerminalCanvas.tsx`,
+  `scripts/verify-bracketed-paste.sh`), T6 resize/scrollback (`pty.rs`), T7
+  (`keymap.spec.ts`) remain uncommitted in the working tree.

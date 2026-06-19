@@ -23,6 +23,7 @@
     "verify:terminal-reliability:live": "TERMFLEET_TERMINAL_RELIABILITY_LIVE=1 scripts/verify-terminal-reliability.sh",
     "verify:release": "scripts/verify-release.sh",
     "verify:map-terminals": "node scripts/verify-map-terminals.mjs",
+    "verify:terminal-summary-visual": "playwright test tests/terminal-summary-visual.spec.ts --reporter=line",
     "evidence:bundle": "node scripts/export-evidence-bundle.mjs",
     "verify:evidence-bundle": "node scripts/verify-evidence-bundle.mjs",
     "verify:oss-readiness": "node scripts/verify-oss-readiness.mjs",

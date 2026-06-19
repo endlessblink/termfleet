@@ -14,8 +14,8 @@ import { summarizeAgentStatus } from "../lib/agentStatusSummarizer";
 import { activityKindForText, inferActivityFromOutput, isWorkstreamActivityKind, normalizeActivityText } from "../lib/workstreamActivity";
 import { mergeCockpitObjectsFromExtractedItems, mergeExtractedItems, normalizeExtractedItems } from "../lib/workstreamExtraction";
 import { deriveTerminalActivity } from "../lib/terminalActivity";
-import { completeOpenTaskLineup, normalizeTaskLineupItems, taskLineupFromExtractedItems, terminalOutputClosesTaskLineup } from "../lib/taskLineup";
-import type { TaskLineupItem, TerminalActivitySummary, TerminalRuntimeStatus, WorkstreamActivityKind, WorkstreamActivitySource, WorkstreamInput, WorkstreamPhase, WorkstreamReadiness, WorkstreamStatus } from "../lib/types";
+import { completeOpenTaskLineup, completeOpenTaskLineupForRun, mergeShellSummaryTaskLineup, normalizeTaskLineupItems, taskLineupFromExtractedItems, terminalOutputClosesTaskLineup } from "../lib/taskLineup";
+import type { TaskLineupItem, TerminalActivitySummary, TerminalRuntimeStatus, TerminalState, WorkstreamActivityKind, WorkstreamActivitySource, WorkstreamInput, WorkstreamPhase, WorkstreamReadiness, WorkstreamStatus } from "../lib/types";
 import type { GridSnapshot } from "../lib/gridSnapshot";
 
 const LOCALHOST_URL_PATTERN = /https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0):(\d{2,5})(?:[/?#][^\s"'<>]*)?/gi;
@@ -72,6 +72,11 @@ function inferProcessExit(output: string): { code: number; success: boolean } | 
   const code = Number(match[1]);
   if (!Number.isInteger(code)) return null;
   return { code, success: code === 0 };
+}
+
+function taskRunIdForActivity(activity: TerminalActivitySummary | undefined, fallback: string) {
+  if (!activity?.command) return fallback;
+  return `${activity.startedAt ?? activity.updatedAt}:${activity.command}`;
 }
 
 function inferProviderReadiness(output: string): {
@@ -505,7 +510,10 @@ export function TerminalComponent({
     currentActivity?: string;
     activityKind?: WorkstreamActivityKind;
     durableActivity?: TerminalActivitySummary;
+    activeRunId?: string;
+    runClosed?: boolean;
     taskLineup?: TaskLineupItem[];
+    purpose?: TerminalState["purpose"];
     terminalOutput?: string;
     error?: string;
   }) => {
@@ -530,7 +538,10 @@ export function TerminalComponent({
           activityKind: updates.activityKind ?? previous?.activityKind,
           activityUpdatedAt: updates.currentActivity ? Date.now() : previous?.activityUpdatedAt,
           durableActivity: updates.durableActivity ?? previous?.durableActivity,
+          activeRunId: updates.activeRunId ?? previous?.activeRunId,
+          runClosed: updates.runClosed ?? previous?.runClosed,
           taskLineup: updates.taskLineup ?? previous?.taskLineup,
+          purpose: updates.purpose ?? previous?.purpose,
           taskSidebarCollapsed: previous?.taskSidebarCollapsed,
           terminalOutput: updates.terminalOutput ?? previous?.terminalOutput,
           statusSummary: previous?.statusSummary,
@@ -611,13 +622,36 @@ export function TerminalComponent({
         latestStore.updateTab(tabId, {
           terminals: latestTab.terminals.map((candidate) =>
             candidate.paneId === paneId
-              ? {
-                  ...candidate,
-                  statusSummary: result.summary,
-                  statusSummaryUpdatedAt: Date.now(),
-                  statusSummarySource: result.source,
-                  statusSummaryError: result.error,
-                }
+              ? (() => {
+                  const updatedAt = Date.now();
+                  const runId = candidate.activeRunId;
+                  const closesRun = candidate.runClosed || terminalOutputClosesTaskLineup(candidate.terminalOutput);
+                  const extractedLineup = result.summary.tasks?.length
+                    ? taskLineupFromExtractedItems(
+                        result.summary.tasks,
+                        "operator",
+                        closesRun ? "completed" : "in_progress",
+                        updatedAt,
+                        runId
+                      )
+                    : [];
+                  // TC-033 T1: never let this summary cycle clobber a live
+                  // todo-write list (the sidebar/map only render todo-write items).
+                  const taskLineup = mergeShellSummaryTaskLineup(candidate.taskLineup, extractedLineup, {
+                    closesRun,
+                    runId,
+                    updatedAt,
+                  });
+                  return {
+                    ...candidate,
+                    statusSummary: result.summary,
+                    statusSummaryUpdatedAt: updatedAt,
+                    statusSummarySource: result.source,
+                    statusSummaryError: result.error,
+                    runClosed: closesRun,
+                    taskLineup,
+                  };
+                })()
               : candidate
           ),
         });
@@ -811,12 +845,14 @@ export function TerminalComponent({
     const tab = store.tabs.find((candidate) => candidate.id === tabId);
     const previousTerminal = tab?.terminals.find((candidate) => candidate.paneId === paneId);
     const previousActivity = previousTerminal?.durableActivity;
+    const activeRunId = previousTerminal?.activeRunId ?? taskRunIdForActivity(previousActivity, `${tabId}:${paneId}`);
     const completedTaskLineup = details.success
-      ? completeOpenTaskLineup(previousTerminal?.taskLineup)
+      ? completeOpenTaskLineupForRun(previousTerminal?.taskLineup, activeRunId)
       : previousTerminal?.taskLineup;
     updateTerminalRuntime({
       id: details.id,
       status: "exited",
+      runClosed: details.success,
       taskLineup: completedTaskLineup,
       durableActivity: previousActivity
         ? {
@@ -881,7 +917,15 @@ export function TerminalComponent({
         return true;
       });
     if (todoWrites.length > 0) {
-      const latestTaskLineup = todoWrites[todoWrites.length - 1].taskLineup;
+      const previousTerminal = initialTab?.terminals.find((candidate) => candidate.paneId === paneId);
+      const runId = previousTerminal?.activeRunId ?? taskRunIdForActivity(previousTerminal?.durableActivity, `${tabId}:${paneId}`);
+      const scopedTaskLineup = todoWrites[todoWrites.length - 1].taskLineup.map((item) => ({
+        ...item,
+        runId: item.runId ?? runId,
+      }));
+      const latestTaskLineup = previousTerminal?.runClosed
+        ? completeOpenTaskLineupForRun(scopedTaskLineup, runId)
+        : scopedTaskLineup;
       initialStore.replaceTerminalTaskLineup(tabId, paneId, latestTaskLineup);
       if (initialTab?.workstream) {
         initialStore.updateTab(tabId, {
@@ -958,13 +1002,19 @@ export function TerminalComponent({
       runtimeStatus: previousTerminal?.status,
       cwd,
     });
+    const activeRunId = taskRunIdForActivity(durableActivity, previousTerminal?.activeRunId ?? `${tabId}:${paneId}`);
+    const runChanged = Boolean(previousTerminal?.activeRunId && previousTerminal.activeRunId !== activeRunId);
     updateTerminalRuntime({
       terminalOutput: terminalTranscript ?? terminalOutput,
       currentActivity: providerReadiness?.lastSummary ?? inferredActivity?.currentActivity,
       activityKind: providerReadiness?.status ? activityKindForStatus(providerReadiness.status) : inferredActivity?.activityKind,
       durableActivity,
+      activeRunId,
+      runClosed: closesTaskLineup ? true : runChanged ? false : previousTerminal?.runClosed,
       taskLineup: closesTaskLineup
-        ? completeOpenTaskLineup(previousTerminal?.taskLineup)
+        ? completeOpenTaskLineupForRun(previousTerminal?.taskLineup, activeRunId)
+        : runChanged
+          ? previousTerminal?.taskLineup?.filter((item) => item.runId !== activeRunId)
         : previousTerminal?.taskLineup,
     });
     updateWorkstreamRuntime({
@@ -978,8 +1028,9 @@ export function TerminalComponent({
     if (processExit) {
       updateTerminalRuntime({
         status: "exited",
+        runClosed: processExit.success,
         taskLineup: processExit.success
-          ? completeOpenTaskLineup(previousTerminal?.taskLineup)
+          ? completeOpenTaskLineupForRun(previousTerminal?.taskLineup, activeRunId)
           : previousTerminal?.taskLineup,
       });
       updateWorkstreamRuntime({

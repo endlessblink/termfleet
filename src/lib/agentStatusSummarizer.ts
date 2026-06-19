@@ -1,4 +1,5 @@
 import {
+  cleanTranscriptForSummary,
   fallbackAgentStatusSummary,
   parseAgentStatusSummaryResponse,
   type AgentStatusSummary,
@@ -34,7 +35,7 @@ function shortError(error: unknown) {
 
 function buildRequestBody(input: AgentStatusSummaryInput) {
   const fallback = fallbackAgentStatusSummary(input);
-  const transcript = (input.terminalOutput ?? "").slice(-1800);
+  const transcript = cleanTranscriptForSummary(input.terminalOutput, 1800);
   return {
     type: "agent-workstream-status",
     promptVersion: "terminal-status-v2-tiny",

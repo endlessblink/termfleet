@@ -7,6 +7,7 @@ export type TaskLineupSource = "todo-write" | "structured-signal" | "summary" | 
 
 export interface TaskLineupItem {
   id: string;
+  runId?: string;
   content: string;
   status: TaskLineupStatus;
   priority?: TaskLineupPriority;
@@ -28,6 +29,14 @@ export interface TerminalActivitySummary {
   updatedAt: number;
 }
 
+export type TerminalPurposeSource = "task-binding" | "workstream" | "manual" | "inferred" | "missing";
+
+export interface TerminalPurpose {
+  title: string;
+  source: TerminalPurposeSource;
+  updatedAt?: number;
+}
+
 export interface TerminalState {
   id: string;      // PTY ID
   paneId: string;  // Which split pane this belongs to
@@ -40,7 +49,10 @@ export interface TerminalState {
   activityKind?: WorkstreamActivityKind;
   activityUpdatedAt?: number;
   durableActivity?: TerminalActivitySummary;
+  activeRunId?: string;
+  runClosed?: boolean;
   taskLineup?: TaskLineupItem[];
+  purpose?: TerminalPurpose;
   taskSidebarCollapsed?: boolean;
   terminalOutput?: string;
   statusSummary?: WorkstreamStatusSummary;
@@ -189,6 +201,7 @@ export interface WorkstreamMetadata {
   statusSummarySource?: WorkstreamStatusSummarySource;
   statusSummaryError?: string;
   taskLineup?: TaskLineupItem[];
+  activeRunId?: string;
   extractedTasks?: WorkstreamExtractedItem[];
   extractedBlockers?: WorkstreamExtractedItem[];
   extractedEvidence?: WorkstreamExtractedItem[];

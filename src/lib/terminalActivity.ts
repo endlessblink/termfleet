@@ -165,6 +165,14 @@ function scriptSummary(script: string) {
       failedTitle: "Status summary server checks failed",
     };
   }
+  if (/^verify:terminal-summary-visual$/i.test(script)) {
+    return {
+      title: "Checking terminal summary visual headers",
+      detail: "headed app terminal summary visual contract",
+      passedTitle: "Terminal summary visual checks passed",
+      failedTitle: "Terminal summary visual checks failed",
+    };
+  }
   if (/^verify:/i.test(script)) {
     const target = script.replace(/^verify:/i, "").replace(/[-_:]+/g, " ");
     return {
@@ -217,6 +225,7 @@ function scriptSummary(script: string) {
 function scriptCompletionTitle(title: string, success: boolean) {
   if (/^Checking map terminal source contract$/i.test(title)) return success ? "Map terminal source checks passed" : "Map terminal source checks failed";
   if (/^Checking status summary server contract$/i.test(title)) return success ? "Status summary server checks passed" : "Status summary server checks failed";
+  if (/^Checking terminal summary visual headers$/i.test(title)) return success ? "Terminal summary visual checks passed" : "Terminal summary visual checks failed";
   if (/^Building frontend$/i.test(title)) return success ? "Frontend build passed" : "Frontend build failed";
   if (/^Checking TypeScript$/i.test(title)) return success ? "TypeScript checks passed" : "TypeScript checks failed";
   if (/^Linting frontend$/i.test(title)) return success ? "Frontend lint passed" : "Frontend lint failed";

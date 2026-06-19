@@ -35,12 +35,11 @@ import type { GridSnapshot } from "../lib/gridSnapshot";
 import type { Tab, TaskLineupItem, TerminalRuntimeStatus, WorkstreamStatusSummary } from "../lib/types";
 import { agentLaneAuthRetryText, agentLaneAuthRetryTitle, agentLaneCleanupRequestText, agentLaneCleanupRequestTitle, agentLaneCloseoutText, agentLaneCloseoutTitle, agentLaneHealthText, agentLaneInterruptText, agentLaneInterruptTitle, agentLaneMemoryRequestText, agentLaneMemoryRequestTitle, agentLaneProofRequestText, agentLaneProofRequestTitle, agentLaneRestartText, agentLaneRestartTitle, agentLaneRiskMitigationText, agentLaneRiskMitigationTitle, agentLaneStatusSweepText, agentLaneStatusSweepTitle, agentLaneStatusText, attentionBreakdownText, cleanupBreakdownText, closeoutBreakdownText, formatAgentLaneBrief, formatAgentMissionControlBrief, formatAgentRunBrief, handoffMemoryPromptForWorkstream, isActiveAgentWorkstream, isAgentReviewCloseoutReady, isAuthRetryableAgentWorkstream, isCleanupRequestableAgentWorkstream, isRestartableAgentWorkstream, isReviewItemCloseoutReady, isStaleAgentWorkstream, isolationBreakdownText, latestMissionControlAskText, missionBreakdownText, missionControlAlternateText, missionControlDispatchBreakdownText, needsAgentProofRequest, proofRequestPromptForWorkstream, providerBreakdownText, readinessBreakdownText, riskBreakdownText, statusCheckPromptForWorkstream, summarizeAgentLane } from "../lib/agentWorkstreamLane";
 import { agentStatusChipText, agentStatusSummaryFromWorkstream, getDisplaySummary } from "../lib/agentStatusSummary";
-import { agentTerminalTaskRows } from "../lib/agentTerminalTasks";
 import { workstreamActivityMeta, workstreamActivityText } from "../lib/workstreamActivity";
 import { formatWorkstreamBranch, formatWorkstreamIsolation, formatWorkstreamOpsContext } from "../lib/workstreamOpsContext";
 import { snapshotPreviewRows } from "../lib/snapshotPreviewRows";
-import { cleanTaskLineupContent, taskLineupNextLabel, taskLineupSourceLabel, taskLineupStats } from "../lib/taskLineup";
-import { summaryFromDurableActivity } from "../lib/terminalHeaderDisplay";
+import { taskLineupForVisibleRun, taskLineupNextLabel, taskLineupStats } from "../lib/taskLineup";
+import { normalizePersistedShellSummary, summaryFromDurableActivity, terminalPurposeFromContext } from "../lib/terminalHeaderDisplay";
 
 type CanvasRect = {
   minX: number;
@@ -1584,8 +1583,10 @@ function TerminalBodyTaskSidebar({
         type="button"
         style={styles.terminalBodyTaskRail}
         data-testid={`${testIdPrefix}-task-rail`}
-        aria-label={`${ariaLabel}: ${stats.open} open, ${stats.done} done. Expand tasks.`}
-        title={`${stats.open} open · ${stats.done} done`}
+        aria-label={stats.total > 0
+          ? `${ariaLabel}: ${stats.open} open, ${stats.done} done. Expand tasks.`
+          : `${ariaLabel}: no task list captured for this run. Expand tasks.`}
+        title={stats.total > 0 ? `${stats.open} open · ${stats.done} done` : "No task list captured"}
         onClick={(event) => {
           event.stopPropagation();
           onToggleCollapsed();
@@ -1595,9 +1596,15 @@ function TerminalBodyTaskSidebar({
       >
         <ListTodo size={14} strokeWidth={1.8} />
         <span style={styles.terminalBodyTaskRailText}>Tasks</span>
-        <span style={styles.terminalBodyTaskRailCount}>{stats.total}</span>
-        <span style={styles.terminalBodyTaskRailMeta}>{stats.open} open</span>
-        <span style={styles.terminalBodyTaskRailMeta}>{stats.done} done</span>
+        {stats.total > 0 ? (
+          <>
+            <span style={styles.terminalBodyTaskRailCount}>{stats.total}</span>
+            <span style={styles.terminalBodyTaskRailMeta}>{stats.open} open</span>
+            <span style={styles.terminalBodyTaskRailMeta}>{stats.done} done</span>
+          </>
+        ) : (
+          <span style={styles.terminalBodyTaskRailMeta}>No list</span>
+        )}
       </button>
     );
   }
@@ -1612,7 +1619,7 @@ function TerminalBodyTaskSidebar({
       <div style={styles.agentTaskHeader}>
         <span>Tasks</span>
         <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-          <span>{rows.length}</span>
+          <span>{rows.length > 0 ? rows.length : "No list"}</span>
           <button
             type="button"
             aria-label="Minimize tasks"
@@ -1640,7 +1647,7 @@ function TerminalBodyTaskSidebar({
         </div>
       ) : (
         <div style={styles.terminalBodyTaskList}>
-          {rows.map((task, index) => {
+          {rows.map((task) => {
             const done = task.state === "Done";
             return (
               <div
@@ -1662,9 +1669,11 @@ function TerminalBodyTaskSidebar({
                   aria-hidden="true"
                 />
                 <span style={{ minWidth: 0 }}>
-                  <div style={styles.terminalBodyTaskEyebrow}>
-                    {task.meta ?? `Task ${index + 1}/${rows.length}`}
-                  </div>
+                  {task.meta && (
+                    <div style={styles.terminalBodyTaskEyebrow}>
+                      {task.meta}
+                    </div>
+                  )}
                   <div
                     style={{
                       ...styles.terminalBodyTaskTitle,
@@ -1705,8 +1714,10 @@ function currentLineupTaskRows(
   taskLineup: TaskLineupItem[] | undefined,
   summary: WorkstreamStatusSummary | undefined
 ): TerminalBodyTaskRow[] {
+  void workstream;
+  void summary;
   if (taskLineup?.length) {
-    return taskLineup.map((item, index) => ({
+    return taskLineup.map((item) => ({
       id: item.id,
       task: item.content,
       state: item.status === "completed"
@@ -1717,57 +1728,10 @@ function currentLineupTaskRows(
           ? "Cancelled"
           : "Not done",
       next: taskLineupNextLabel(item),
-      meta: `Task ${index + 1}/${taskLineup.length} · ${taskLineupSourceLabel(item.source)}`,
     }));
   }
 
-  const cockpitTasks = (workstream?.cockpitObjects ?? [])
-    .filter((item) => item.kind === "task" && item.reviewState !== "dismissed")
-    .flatMap((item) => {
-      const task = cleanTaskLineupContent(item.text);
-      if (!task) return [];
-      const done = item.status === "accepted" || item.reviewState === "accepted";
-      return [{
-        id: item.id,
-        task,
-        state: done ? "Done" : "Not done",
-        next: done ? "Completed" : item.reviewState === "proof-requested" ? "Proof requested" : "Needs review",
-        meta: "Review item",
-      }];
-    });
-
-  if (cockpitTasks.length > 0) return cockpitTasks;
-
-  const rawSummaryTasks = summary?.tasks ?? [];
-  const summaryTasks = rawSummaryTasks.flatMap((item, index) => {
-    const task = cleanTaskLineupContent(item.text);
-    if (!task) return [];
-    return [{
-      id: item.id,
-      task,
-      state: summary?.status === "done" || /^(done|complete)\s*:/i.test(item.text) ? "Done" : "Not done",
-      next: summary?.status === "done" || /^(done|complete)\s*:/i.test(item.text)
-        ? "Completed"
-        : summary?.nextActions?.[0]?.text ?? workstream?.nextAction ?? "Queued after current",
-      meta: `Summary task ${index + 1}/${rawSummaryTasks.length}`,
-    }];
-  });
-
-  if (summaryTasks.length > 0) {
-    return summaryTasks;
-  }
-
-  return (workstream?.extractedTasks ?? []).flatMap((item) => {
-    const task = cleanTaskLineupContent(item.text);
-    if (!task) return [];
-    return [{
-      id: item.id,
-      task,
-      state: /^(done|complete)\s*:/i.test(item.text) ? "Done" : "Not done",
-      next: /^(done|complete)\s*:/i.test(item.text) ? "Completed" : workstream?.extractedNextActions?.[0]?.text ?? workstream?.nextAction ?? "Queued after current",
-      meta: "Extracted task",
-    }];
-  });
+  return [];
 }
 
 function recoveryPromptFor(workstream?: Tab["workstream"]) {
@@ -2169,6 +2133,22 @@ function CanvasNodeView({
     nodeTitle: node.title,
   });
   const terminalStatusSummary = linkedTerminal?.statusSummary;
+  const directlyBoundTask = node.taskBinding
+    ? rootTasks.find((task) => task.id.toLowerCase() === node.taskBinding?.taskId.toLowerCase())
+    : undefined;
+  const purposeTaskLineup = taskLineupForVisibleRun(
+    (workstream?.taskLineup ?? linkedTerminal?.taskLineup)?.filter((item) => item.source === "todo-write"),
+    linkedTerminal?.activeRunId
+  );
+  const terminalPurpose = terminalPurposeFromContext({
+    stored: linkedTerminal?.purpose,
+    boundTaskTitle: directlyBoundTask?.title,
+    workstreamTitle: workstream?.mission ?? workstream?.prompt,
+    activeTaskTitle: purposeTaskLineup.find((item) => item.status === "in_progress")?.content ?? purposeTaskLineup[0]?.content,
+    terminalOutput: !linkedTerminal?.durableActivity || /\b(?:Working\s+\(|Worked for\b)/i.test(linkedTerminal.terminalOutput ?? "")
+      ? linkedTerminal?.terminalOutput
+      : undefined,
+  });
   const terminalExtractedSummary = getDisplaySummary({
     mission: "Terminal",
     provider: "shell",
@@ -2189,8 +2169,13 @@ function CanvasNodeView({
         linkedTerminal.durableActivity,
         pathTail(liveTerminalRoot) ?? liveTerminalRoot ?? "workspace path unknown",
         terminalExtractedSummary,
+        terminalPurpose,
       )
-    : terminalExtractedSummary;
+    : normalizePersistedShellSummary(
+        terminalExtractedSummary,
+        pathTail(liveTerminalRoot) ?? liveTerminalRoot ?? "workspace path unknown",
+        terminalPurpose,
+      );
   const terminalHeaderTitle = terminalDisplaySummary.task === "Ready" ? terminalTitle : terminalDisplaySummary.task;
   const terminalHeaderPath = terminalDisplaySummary.path;
   const terminalHeaderSummarySignal = terminalDisplaySummary.now;
@@ -2216,9 +2201,9 @@ function CanvasNodeView({
     linkedTab?.title,
     node.title
   );
-  const boundTask = detectedLaneTaskId
+  const boundTask = directlyBoundTask ?? (detectedLaneTaskId
     ? rootTasks.find((task) => task.id.toLowerCase() === detectedLaneTaskId.toLowerCase())
-    : undefined;
+    : undefined);
   const queuedWorkstreamInput = workstream?.inputQueue?.find((input) => !input.sentAt);
   const latestInput = workstream?.inputQueue?.[workstream.inputQueue.length - 1];
   const latestMissionControlInput = latestInput?.source === "mission-control" ? latestInput : undefined;
@@ -2254,10 +2239,6 @@ function CanvasNodeView({
   const agentStatusChip = workstream?.kind === "agent" && agentStatusSummary
     ? agentStatusChipText(workstream, agentStatusSummary)
     : undefined;
-  const agentTerminalTasks = workstream?.kind === "agent" && agentStatusSummary
-    ? agentTerminalTaskRows(workstream, agentStatusSummary)
-    : [];
-  void agentTerminalTasks;
   const laneChecklistTasks = (boundTask?.checklist ?? []).map((item, index) => ({
     id: item.id,
     task: item.text,
@@ -2266,16 +2247,23 @@ function CanvasNodeView({
     meta: `Plan checklist ${index + 1}/${boundTask?.checklist?.length ?? 1}`,
   }));
   void terminalHeaderTaskState;
-  const canonicalTerminalTaskLineup = linkedTerminal?.taskLineup?.filter((item) => item.source !== "summary");
+  const canonicalTerminalTaskLineup = taskLineupForVisibleRun(
+    linkedTerminal?.taskLineup?.filter((item) => item.source === "todo-write"),
+    linkedTerminal?.activeRunId
+  );
+  const canonicalWorkstreamTaskLineup = taskLineupForVisibleRun(
+    workstream?.taskLineup?.filter((item) => item.source === "todo-write"),
+    linkedTerminal?.activeRunId
+  );
   const currentLineupTasks = currentLineupTaskRows(
     workstream,
-    workstream?.taskLineup ?? canonicalTerminalTaskLineup,
+    canonicalWorkstreamTaskLineup?.length ? canonicalWorkstreamTaskLineup : canonicalTerminalTaskLineup,
     workstream?.kind === "agent" ? agentStatusSummary ?? undefined : undefined
   );
   const terminalBodyTasks = laneChecklistTasks.length > 0
     ? laneChecklistTasks
     : currentLineupTasks;
-  const taskSidebarCollapsed = linkedTerminal?.taskSidebarCollapsed ?? node.taskSidebarCollapsed ?? false;
+  const taskSidebarCollapsed = linkedTerminal?.taskSidebarCollapsed ?? node.taskSidebarCollapsed ?? terminalBodyTasks.length === 0;
   const terminalBodyTaskPrefix: "canvas-agent" | "canvas-terminal" =
     workstream?.kind === "agent" ? "canvas-agent" : "canvas-terminal";
   const nodeKind = workstream?.kind === "agent"
@@ -3154,10 +3142,14 @@ function CanvasNodeView({
         style={
           node.type === "terminal"
             ? {
-                ...styles.terminalBodyWithTasks,
+                ...(workstream?.kind === "agent"
+                  ? styles.terminalBodyWithTasks
+                  : styles.shellTerminalBody),
                 gridTemplateColumns: taskSidebarCollapsed
                   ? "minmax(0, 1fr) 46px"
-                  : styles.terminalBodyWithTasks.gridTemplateColumns,
+                  : workstream?.kind === "agent"
+                    ? styles.terminalBodyWithTasks.gridTemplateColumns
+                    : "minmax(0, 1fr) minmax(240px, 30%)",
                 ...styles.liveTerminalBody,
               }
             : node.type === "note"
@@ -3488,7 +3480,7 @@ function CanvasNodeView({
               ? `No checklist found for ${detectedLaneTaskId}. Add Acceptance bullets in MASTER_PLAN.md to show done and not-done tasks.`
               : workstream?.kind === "agent"
                 ? "No structured task lineup has been created for this agent yet."
-                : "No current task lineup is bound to this terminal yet."}
+                : "No task list captured for this run."}
           />
         )}
       </div>

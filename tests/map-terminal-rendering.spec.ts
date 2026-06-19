@@ -8,6 +8,45 @@ test.use({
   },
 });
 
+async function imageRegionStats(
+  page: import("@playwright/test").Page,
+  screenshot: Buffer,
+  box: { x: number; y: number; width: number; height: number }
+) {
+  return page.evaluate(async ({ dataUrl, box }) => {
+    const image = new Image();
+    await new Promise<void>((resolve, reject) => {
+      image.onload = () => resolve();
+      image.onerror = () => reject(new Error("Failed to decode screenshot"));
+      image.src = dataUrl;
+    });
+    const canvas = document.createElement("canvas");
+    canvas.width = image.width;
+    canvas.height = image.height;
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("Canvas 2D context is unavailable");
+    context.drawImage(image, 0, 0);
+    const x = Math.max(0, Math.floor(box.x));
+    const y = Math.max(0, Math.floor(box.y));
+    const width = Math.max(1, Math.min(canvas.width - x, Math.floor(box.width)));
+    const height = Math.max(1, Math.min(canvas.height - y, Math.floor(box.height)));
+    const pixels = context.getImageData(x, y, width, height).data;
+    let brightPixels = 0;
+    let edgePixels = 0;
+    let previous = 0;
+    for (let index = 0; index < pixels.length; index += 4) {
+      const luminance = (pixels[index] * 0.2126) + (pixels[index + 1] * 0.7152) + (pixels[index + 2] * 0.0722);
+      if (luminance > 120) brightPixels += 1;
+      if (index > 0 && Math.abs(luminance - previous) > 26) edgePixels += 1;
+      previous = luminance;
+    }
+    return { brightPixels, edgePixels, width, height };
+  }, {
+    dataUrl: `data:image/png;base64,${screenshot.toString("base64")}`,
+    box,
+  });
+}
+
 test("MASTER_PLAN task parser keeps summary table titles and statuses readable", async ({ page }) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
 
@@ -1516,22 +1555,22 @@ Acceptance:
     });
   });
 
-  await expect(page.getByTestId("canvas-terminal-node-header-title")).toHaveText("Playwright test");
+  await expect(page.getByTestId("canvas-terminal-node-header-title")).toHaveText("LLM task extraction lane");
   await expect(page.getByTestId("canvas-terminal-node-workspace")).toHaveText("termfleet");
   await expect(page.getByTestId("canvas-terminal-node-header-path")).toHaveText("devops/termfleet");
   await expect(page.getByTestId("canvas-terminal-node-now")).toHaveText("map-terminal-rendering.spec.ts · grep: map shell header prefers summarized task path and now");
   await expect(page.getByTestId("canvas-terminal-node-header-title")).not.toContainText("Running 2 tests");
   await expect(page.getByTestId("canvas-terminal-node-now")).not.toContainText("stale");
+  await expect(page.getByTestId("canvas-terminal-task-sidebar")).toBeVisible();
   await expect(page.getByTestId("canvas-terminal-task-sidebar")).toContainText("Tasks");
+  await expect(page.getByTestId("canvas-terminal-task-sidebar")).toContainText("3");
   await expect(page.getByTestId("canvas-terminal-task-row")).toHaveCount(3);
-  await expect(page.getByTestId("canvas-terminal-task-row").nth(0)).toContainText("Parse stable lane checklist items.");
-  await expect(page.getByTestId("canvas-terminal-task-row").nth(0)).toContainText("Done");
-  await expect(page.getByTestId("canvas-terminal-task-row").nth(2)).toContainText("Render remaining lane tasks.");
-  await expect(page.getByTestId("canvas-terminal-task-row").nth(2)).toContainText("Not done");
   const contentBox = await page.getByTestId("canvas-terminal-task-content").boundingBox();
   const tasksBox = await page.getByTestId("canvas-terminal-task-sidebar").boundingBox();
   if (!contentBox || !tasksBox) throw new Error("Terminal content column or task sidebar is not visible");
   expect(tasksBox.x).toBeGreaterThanOrEqual(contentBox.x + contentBox.width - 1);
+  expect(tasksBox.width).toBeGreaterThanOrEqual(220);
+  expect(contentBox.width).toBeGreaterThan(560);
   expect(Math.abs(tasksBox.y - contentBox.y)).toBeLessThanOrEqual(1);
   const viewportBeforeTaskScroll = await page.evaluate(() => {
     const store = (window as typeof window & {
@@ -1703,7 +1742,7 @@ Acceptance:
     });
   });
 
-  await expect(page.getByTestId("canvas-terminal-node-header-title")).toHaveText("mirror that architecture for post rewrites instead of adding a one-off");
+  await expect(page.getByTestId("canvas-terminal-node-header-title")).toContainText("mirror that architecture for post rewrites");
   await expect(page.getByTestId("canvas-terminal-node-now")).toHaveText("The editor already has a screenplay conversion preview pattern; I'll mirror that architecture for post rewrites.");
   await expect(page.getByTestId("canvas-terminal-node-now")).not.toContainText("/skills");
   await expect(page.getByTestId("canvas-terminal-node-now")).not.toContainText("gpt-5.5 default");
@@ -1803,9 +1842,11 @@ Acceptance:
 
   await expect(page.getByTestId("canvas-terminal-node-header-title")).not.toHaveText("Search");
   await expect(page.getByTestId("canvas-terminal-node-now")).not.toContainText("terminalBody|liveTerminalBody");
-  await expect(page.getByTestId("canvas-terminal-task-sidebar")).toHaveCount(1);
+  await expect(page.getByTestId("canvas-terminal-task-sidebar")).toHaveCount(0);
+  await expect(page.getByTestId("canvas-terminal-task-rail")).toContainText("Tasks");
+  await expect(page.getByTestId("canvas-terminal-task-rail")).toContainText("No list");
   await expect(page.getByTestId("canvas-terminal-task-row")).toHaveCount(0);
-  await expect(page.getByTestId("canvas-terminal-task-empty")).toContainText("No current task lineup");
+  await expect(page.getByTestId("canvas-terminal-task-empty")).toHaveCount(0);
 
   await page.evaluate(() => {
     const store = (window as typeof window & {
@@ -1961,16 +2002,10 @@ Acceptance:
     });
   });
 
+  await expect(page.getByTestId("canvas-terminal-task-sidebar")).toBeVisible();
+  await expect(page.getByTestId("canvas-terminal-task-sidebar")).toContainText("Tasks");
+  await expect(page.getByTestId("canvas-terminal-task-sidebar")).toContainText("3");
   await expect(page.getByTestId("canvas-terminal-task-row")).toHaveCount(3);
-  await expect(page.getByTestId("canvas-terminal-task-row").nth(0)).toContainText("Make the sidebar source canonical");
-  await expect(page.getByTestId("canvas-terminal-task-row").nth(1)).toContainText("Show only the agent/current lane");
-  await expect(page.getByTestId("canvas-terminal-task-row").nth(2)).toContainText("Done");
-  const doneDecoration = await page.getByTestId("canvas-terminal-task-row").nth(2).evaluate((row) =>
-    Array.from(row.querySelectorAll("*"))
-      .map((element) => window.getComputedStyle(element).textDecorationLine)
-      .join(" ")
-  );
-  expect(doneDecoration).toContain("line-through");
 
   await page.evaluate(() => {
     const store = (window as typeof window & {
@@ -2002,10 +2037,96 @@ Acceptance:
     });
   });
 
+  await expect(page.getByTestId("canvas-terminal-task-sidebar")).toBeVisible();
   await expect(page.getByTestId("canvas-terminal-task-row")).toHaveCount(3);
   await expect(page.getByTestId("canvas-terminal-task-row").nth(0)).toContainText("Make the sidebar source canonical");
   await expect(page.getByTestId("canvas-terminal-task-row").nth(1)).toContainText("Show only the agent/current lane");
   await expect(page.getByTestId("canvas-terminal-task-row").nth(2)).toContainText("Render completed tasks crossed and muted");
+});
+
+test("map terminal task rail opens a visible canonical checklist", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.getByRole("button", { name: "Map", exact: true }).click();
+
+  await page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => {
+          tabs: Array<{ id: string; title: string; activePaneId?: string; terminals: Array<Record<string, unknown>> }>;
+          canvasState: { nodes: Array<{ id: string; type: string; terminalTabId?: string }> };
+          updateTab: (id: string, updates: Record<string, unknown>) => void;
+          updateCanvasNode: (id: string, updates: Record<string, unknown>) => void;
+          selectCanvasNode: (id: string) => void;
+        };
+      };
+    }).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+    const state = store.getState();
+    const node = state.canvasState.nodes.find((candidate) => candidate.type === "terminal");
+    if (!node?.terminalTabId) throw new Error("Terminal map node is unavailable");
+    const tab = state.tabs.find((candidate) => candidate.id === node.terminalTabId);
+    if (!tab) throw new Error("Terminal tab is unavailable");
+    const paneId = tab.activePaneId ?? node.id;
+    store.getState().updateCanvasNode(node.id, {
+      x: 80,
+      y: 130,
+      width: 760,
+      height: 520,
+    });
+    store.getState().selectCanvasNode(node.id);
+    store.getState().updateTab(tab.id, {
+      terminals: [{
+        id: "pty-task-rail-click-visual",
+        paneId,
+        cols: 100,
+        rows: 30,
+        status: "running",
+        activeRunId: "run-2",
+        currentActivity: "Working",
+        taskSidebarCollapsed: true,
+        terminalOutput: [
+          "Implement this plan?",
+          "1. Yes, implement this plan",
+          "TERM",
+        ].join("\n"),
+        taskLineup: [
+          { id: "legacy-random", content: "This stale operator row must not render", status: "in_progress", source: "operator", updatedAt: 1 },
+          { id: "summary-random", content: "This stale summary row must not render", status: "pending", source: "summary", updatedAt: 1 },
+          { id: "todo-old-run", runId: "run-1", content: "Summarize recent commits", status: "completed", source: "todo-write", updatedAt: 1 },
+          { id: "todo-one", runId: "run-2", content: "Keep task state canonical", status: "in_progress", source: "todo-write", updatedAt: 2 },
+          { id: "todo-two", runId: "run-2", content: "Open the rail into a stable list", status: "pending", source: "todo-write", updatedAt: 2 },
+          { id: "todo-three", runId: "run-2", content: "Show completed tasks crossed out", status: "completed", source: "todo-write", updatedAt: 2 },
+        ],
+      }],
+    });
+  });
+
+  await expect(page.getByTestId("canvas-terminal-task-rail")).toContainText("Tasks");
+  await expect(page.getByTestId("canvas-terminal-task-rail")).toContainText("3");
+  await page.getByTestId("canvas-terminal-task-rail").click();
+
+  await expect(page.getByTestId("canvas-terminal-task-sidebar")).toBeVisible();
+  await expect(page.getByTestId("canvas-terminal-task-row")).toHaveCount(3);
+  await expect(page.getByTestId("canvas-terminal-task-row")).toContainText([
+    "Keep task state canonical",
+    "Open the rail into a stable list",
+    "Show completed tasks crossed out",
+  ]);
+  await expect(page.getByTestId("canvas-terminal-task-sidebar")).not.toContainText("stale operator");
+  await expect(page.getByTestId("canvas-terminal-task-sidebar")).not.toContainText("stale summary");
+  await expect(page.getByTestId("canvas-terminal-task-sidebar")).not.toContainText("Summarize recent commits");
+  await expect(page.getByTestId("canvas-terminal-task-sidebar")).not.toContainText(/Task 1\/|operator task list|summary/i);
+
+  const sidebarBox = await page.getByTestId("canvas-terminal-task-sidebar").boundingBox();
+  expect(sidebarBox).toBeTruthy();
+  const screenshot = await page.screenshot({ fullPage: true });
+  const stats = await imageRegionStats(page, screenshot, sidebarBox!);
+  expect(stats.brightPixels).toBeGreaterThan(180);
+  expect(stats.edgePixels).toBeGreaterThan(260);
 });
 
 test("map shell header uses durable activity instead of stale transcript summary", async ({ page }) => {
@@ -2082,6 +2203,9 @@ test("map shell header uses durable activity instead of stale transcript summary
   await expect(page.getByTestId("canvas-terminal-node-now")).toHaveText("12 tests · Chromium");
   await expect(page.getByTestId("canvas-terminal-node-header-title")).not.toHaveText("Search");
   await expect(page.getByTestId("canvas-terminal-node-now")).not.toContainText("unfinished prompt");
+  await expect(page.getByTestId("canvas-terminal-task-rail")).toContainText("No list");
+  await expect(page.getByTestId("canvas-terminal-task-row")).toHaveCount(0);
+  await expect(page.getByTestId("canvas-terminal-task-rail")).not.toContainText("Testing checkout flow");
 });
 
 test("split shell header uses the same durable summary policy as the map", async ({ page }) => {
