@@ -4997,9 +4997,26 @@ T8 persistence, T9 input.
   deferred (per decision).
 - **T4 — terminal-summary visual seed (DONE/satisfied):** `tests/terminal-summary-visual.spec.ts`
   passes; the in-flight seed already carries the needed state.
-- **Gate:** `npm run build` green; `cd src-tauri && cargo test` 64 passed; the
+- **T3 — agent-prompt paste no longer duplicated/auto-run (DONE):** multi-line/large
+  pastes into an on-screen agent TUI (Claude/codex/gpt) were sent unwrapped, so the
+  agent and the shell both saw raw newlines. Added pure `shouldBracketAgentPromptPaste()`
+  in `src/lib/keymap.ts` (force bracketed-paste when an agent prompt is visible; single
+  short pastes left raw) and wired it through `TerminalCanvas.tsx` via
+  `shouldBracketPasteForVisibleAgentPrompt`. Also closed the WebKitGTK hidden-textarea
+  retained-paste leak: `beforeinput`/`input`/`paste` cleanup nets keep `textarea.value`
+  authoritative-free (keydown/paste are the only PTY input paths), plus image-paste
+  (`\x16`) passthrough. Verifier hardened (`scripts/verify-bracketed-paste.sh`: resilient
+  screenshot + isolated `vim -n -u NONE -i NONE`).
+- **T6 — scrollback replay-trim integrity (DONE):** a trimmed/restored scrollback could
+  start mid-escape-sequence, corrupting the first rendered line on cold restore. Added
+  `replay_boundary_at_or_after()` and `discard_partial_replay_prefix()` in `pty.rs` so
+  trim and restore both start on a clean line boundary. Tests:
+  `replay_trim_uses_line_boundary_instead_of_escape_tail`,
+  `restored_trimmed_scrollback_drops_partial_first_line`.
+- **T7 — canvas paste/input source-contract (DONE):** `tests/keymap.spec.ts` asserts the
+  hidden-textarea cleanup + agent-prompt bracketing wiring stays in place. 3/3.
+- **Gate (Phase 1):** `npm run build` green; `cd src-tauri && cargo test` 64 passed; the
   summary/header specs `agent-status-summary` + `map-terminal-rendering` +
   `terminal-summary-visual` + the three new T1/T2/T5 specs = **76 passed, 0 failed**.
-- **Deferred to Phase 2 checkpoint:** T3 paste (`TerminalCanvas.tsx`,
-  `scripts/verify-bracketed-paste.sh`), T6 resize/scrollback (`pty.rs`), T7
-  (`keymap.spec.ts`) remain uncommitted in the working tree.
+- **Gate (Phase 2 / T3/T6/T7):** `tsc --noEmit` clean; `cargo test --lib` **62 passed**
+  (incl. the 2 new replay-boundary tests); `tests/keymap.spec.ts` **3/3**.

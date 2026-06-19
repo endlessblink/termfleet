@@ -263,7 +263,7 @@ impl PtyOutputBuffer {
         self.data.push_str(data);
         if self.data.len() > MAX_SCROLLBACK_BYTES {
             let trim_to = self.data.len() - MAX_SCROLLBACK_BYTES;
-            let boundary = boundary_at_or_after(&self.data, trim_to);
+            let boundary = replay_boundary_at_or_after(&self.data, trim_to);
             self.data.drain(..boundary);
             self.base_offset += boundary as u64;
         }
@@ -488,7 +488,8 @@ impl PtyManager {
                 // into the grid. Append the normalize sequence so a session that
                 // died in a full-screen app comes back to its shell, not a frozen
                 // alt-screen frame.
-                if let Some((base_offset, mut data)) = load_persisted_scrollback(dir, &id) {
+                if let Some((base_offset, data)) = load_persisted_scrollback(dir, &id) {
+                    let (base_offset, mut data) = discard_partial_replay_prefix(base_offset, data);
                     data.push_str(RESTORE_NORMALIZE_SEQUENCE);
                     initial_buffer.base_offset = base_offset;
                     initial_buffer.data = data;
@@ -1063,9 +1064,38 @@ fn boundary_at_or_after(data: &str, index: usize) -> usize {
         .unwrap_or(data.len())
 }
 
+fn replay_boundary_at_or_after(data: &str, index: usize) -> usize {
+    let boundary = boundary_at_or_after(data, index);
+    if boundary == 0 || boundary >= data.len() {
+        return boundary;
+    }
+
+    let rest = &data[boundary..];
+    rest.find('\n')
+        .map(|line_end| boundary + line_end + 1)
+        .unwrap_or(data.len())
+}
+
+fn discard_partial_replay_prefix(base_offset: u64, data: String) -> (u64, String) {
+    if base_offset == 0 || data.is_empty() {
+        return (base_offset, data);
+    }
+
+    match data.find('\n') {
+        Some(line_end) => {
+            let boundary = line_end + 1;
+            (
+                base_offset + boundary as u64,
+                data.get(boundary..).unwrap_or("").to_string(),
+            )
+        }
+        None => (base_offset + data.len() as u64, String::new()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::PtyManager;
+    use super::{discard_partial_replay_prefix, replay_boundary_at_or_after, PtyManager};
 
     fn wait_for_snapshot_containing(manager: &PtyManager, id: &str, needle: &str) -> String {
         let mut snapshot = String::new();
@@ -1077,6 +1107,24 @@ mod tests {
             std::thread::sleep(std::time::Duration::from_millis(25));
         }
         snapshot
+    }
+
+    #[test]
+    fn replay_trim_uses_line_boundary_instead_of_escape_tail() {
+        let data = "stable line before\n\x1b[14;8Hcorrupt first retained line\nrendered line after\n";
+        let index_inside_escape = data.find("14;8H").expect("escape tail marker");
+        let boundary = replay_boundary_at_or_after(data, index_inside_escape);
+
+        assert_eq!(&data[boundary..], "rendered line after\n");
+    }
+
+    #[test]
+    fn restored_trimmed_scrollback_drops_partial_first_line() {
+        let (base_offset, data) =
+            discard_partial_replay_prefix(900, "14;8Hng\r\nvisible line\r\n".to_string());
+
+        assert_eq!(base_offset, 909);
+        assert_eq!(data, "visible line\r\n");
     }
 
     #[test]

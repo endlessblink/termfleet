@@ -174,3 +174,17 @@ export function encodePaste(text: string, bracketed: boolean): string {
   const normalized = text.replace(/\r\n/g, "\r").replace(/\n/g, "\r");
   return bracketed ? `\x1b[200~${normalized}\x1b[201~` : normalized;
 }
+
+/**
+ * Decide whether a paste should be force-wrapped in bracketed-paste markers when
+ * the PTY hasn't reported bracketed mode but an agent TUI is clearly on screen.
+ * Without this, multi-line / large pastes into a Claude/codex/gpt prompt get
+ * duplicated, garbled, or auto-run because the agent's own paste handling and the
+ * shell both see the raw newlines (TC-033 T3). Single short pastes are left raw.
+ */
+export function shouldBracketAgentPromptPaste(text: string, visibleText: string): boolean {
+  if (!/[\r\n]/.test(text) && text.length < 120) return false;
+  return /\b(?:gpt-\d|Claude|Opus|context left|tab to queue message|esc to interrupt|Pasted (?:text|Content))\b/i.test(
+    visibleText,
+  );
+}

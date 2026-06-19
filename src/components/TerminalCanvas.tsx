@@ -27,7 +27,7 @@ import {
   sizeCanvasToGrid,
   type RenderTheme,
 } from "../lib/gridRenderer";
-import { encodePaste, isTerminalPasteShortcut, keyEventToBytes } from "../lib/keymap";
+import { encodePaste, isTerminalPasteShortcut, keyEventToBytes, shouldBracketAgentPromptPaste } from "../lib/keymap";
 import {
   encodeMouseReport,
   pointerButtonToTerminalButton,
@@ -741,8 +741,44 @@ export function TerminalCanvas({
     syncFocusedTerminal();
   }, [sessionId, syncFocusedTerminal]);
 
+  const clearHiddenInput = () => {
+    const input = inputRef.current;
+    if (!input) return;
+    input.value = "";
+  };
+
+  useEffect(() => {
+    const input = inputRef.current;
+    if (!input) return;
+    const clear = () => {
+      input.value = "";
+      queueMicrotask(() => {
+        input.value = "";
+      });
+      window.setTimeout(() => {
+        input.value = "";
+      }, 0);
+    };
+    const onBeforeInput = (event: InputEvent) => {
+      if (event.inputType === "insertFromPaste") {
+        // Let the native paste event stay authoritative. On WebKitGTK,
+        // cancelling beforeinput can race ahead of paste and make Ctrl+Shift+V
+        // look dead; this listener is only a retained-value cleanup net.
+        event.stopPropagation();
+      }
+      clear();
+    };
+    input.addEventListener("beforeinput", onBeforeInput, true);
+    input.addEventListener("input", clear, true);
+    return () => {
+      input.removeEventListener("beforeinput", onBeforeInput, true);
+      input.removeEventListener("input", clear, true);
+    };
+  }, []);
+
   const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     // Copy/paste shortcuts are handled by the browser/clipboard, not as PTY keys.
+    clearHiddenInput();
     const key = event.key.toLowerCase();
     if (event.ctrlKey && event.shiftKey && key === "f") {
       event.preventDefault();
@@ -789,6 +825,7 @@ export function TerminalCanvas({
   useEffect(() => {
     const onCaptureKeyDown = (event: KeyboardEvent) => {
       if (!inputRef.current || document.activeElement !== inputRef.current) return;
+      clearHiddenInput();
       const key = event.key.toLowerCase();
       const immersiveTerminal = useWorkspaceStore.getState().workspaceUiState.immersiveTerminal;
       const isImmersivePane =
@@ -871,23 +908,91 @@ export function TerminalCanvas({
     });
   };
 
-  const handlePaste = (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
-    event.preventDefault();
-    const armed = performance.now() <= pasteShortcutArmedUntilRef.current;
-    pasteShortcutArmedUntilRef.current = 0;
-    if (!armed) return;
-    const text = event.clipboardData.getData("text");
+  const clearHiddenInputSoon = (input = inputRef.current) => {
+    if (!input) return;
+    input.value = "";
+    queueMicrotask(() => {
+      input.value = "";
+    });
+    window.setTimeout(() => {
+      input.value = "";
+    }, 0);
+  };
+
+  const sendPasteText = (text: string) => {
     if (!text) return;
-    // Gate on the first frame: pasting before modesRef reflects the real
-    // bracketedPaste mode would send a multi-line paste unwrapped, and its
-    // newlines (normalized to \r) would auto-run each line instead of landing as
-    // a single bracketed paste.
     const epoch = sessionEpochRef.current;
     void waitForFirstFrame().then(() => {
       if (epoch !== sessionEpochRef.current) return;
-      if (text) send(encodePaste(text, modesRef.current.bracketedPaste));
+      const bracketed =
+        modesRef.current.bracketedPaste || shouldBracketPasteForVisibleAgentPrompt(text);
+      send(encodePaste(text, bracketed), nextTerminalInputSequence(), "canvas-paste");
+      clearHiddenInputSoon();
     });
   };
+
+  const shouldBracketPasteForVisibleAgentPrompt = (text: string) => {
+    const buffer = bufferRef.current;
+    if (!buffer) return false;
+    const visibleText = buffer.cells
+      .map((row) => row.map((cell) => cell.c || " ").join("").trimEnd())
+      .join("\n");
+    return shouldBracketAgentPromptPaste(text, visibleText);
+  };
+
+  const clipboardHasImage = (data: DataTransfer | null) =>
+    Boolean(data && Array.from(data.types).some((type) => type.startsWith("image/")));
+
+  const sendImagePasteShortcut = () => {
+    send("\x16", nextTerminalInputSequence(), "canvas-image-paste-shortcut");
+    clearHiddenInputSoon();
+  };
+
+  const handlePaste = (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const text = event.clipboardData.getData("text");
+    const armed = performance.now() <= pasteShortcutArmedUntilRef.current;
+    if (!text && !(armed && clipboardHasImage(event.clipboardData))) return;
+    event.preventDefault();
+    event.stopPropagation();
+    pasteShortcutArmedUntilRef.current = 0;
+    clearHiddenInputSoon(event.currentTarget);
+    if (!armed) return;
+    if (!text) {
+      sendImagePasteShortcut();
+      return;
+    }
+    sendPasteText(text);
+  };
+
+  const handleInput = (event: React.FormEvent<HTMLTextAreaElement>) => {
+    // The textarea is only a focus/clipboard sink. WebKitGTK can retain pasted
+    // text despite preventDefault(), then surface it on the next input event.
+    // Never treat textarea.value as terminal input; keydown/paste handlers are
+    // the authoritative PTY input paths.
+    event.currentTarget.value = "";
+  };
+
+  useEffect(() => {
+    const input = inputRef.current;
+    if (!input) return;
+    const onPaste = (event: ClipboardEvent) => {
+      const text = event.clipboardData?.getData("text/plain") ?? "";
+      const armed = performance.now() <= pasteShortcutArmedUntilRef.current;
+      if (!text && !(armed && clipboardHasImage(event.clipboardData))) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      event.stopPropagation();
+      pasteShortcutArmedUntilRef.current = 0;
+      clearHiddenInputSoon(input);
+      if (!text) {
+        sendImagePasteShortcut();
+        return;
+      }
+      sendPasteText(text);
+    };
+    input.addEventListener("paste", onPaste, true);
+    return () => input.removeEventListener("paste", onPaste, true);
+  }, []);
 
   const focusInput = () => inputRef.current?.focus();
 
@@ -1207,6 +1312,7 @@ export function TerminalCanvas({
         spellCheck={false}
         onKeyDown={handleKeyDown}
         onPaste={handlePaste}
+        onInput={handleInput}
         onFocus={syncFocusedTerminal}
         onBlur={() => {
           invoke("set_focused_terminal", { id: null }).catch(() => {});

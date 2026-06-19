@@ -13,6 +13,7 @@ DATA_DIR="$OUT_DIR/data"
 CARGO_TARGET_DIR="$OUT_DIR/target"
 SOCKET="$RUN_DIR/terminal-workspace/daemon.sock"
 PORT="${BRACKETED_PASTE_PORT:-$((20000 + RANDOM % 1000))}"
+VIM_PASTE_FILE="/tmp/tf-bracketed-paste-${PORT}.txt"
 APP_BUDGET="${APP_BUDGET:-180}"
 APP_RUN_PID=""
 
@@ -70,7 +71,18 @@ cleanup() {
 trap cleanup EXIT
 cleanup
 
-shot() { import -window "$1" "$OUT_DIR/$2" 2>>"$DRIVER_LOG" || true; }
+shot() {
+  local wid="$1"
+  local name="$2"
+  if ! xdotool getwindowname "$wid" >/dev/null 2>&1; then
+    wid="$(xdotool search --name "Terminal Workspace" 2>/dev/null | tail -1 || true)"
+  fi
+  if [[ -z "$wid" ]]; then
+    echo "driver: screenshot skipped for $name; no window" >>"$DRIVER_LOG"
+    return
+  fi
+  timeout 8 import -window "$wid" "$OUT_DIR/$name" 2>>"$DRIVER_LOG" || true
+}
 
 set_clipboard() {
   local text="$1"
@@ -106,7 +118,8 @@ drive() {
   # Vim enables bracketed paste; Ctrl+Shift+V must send
   # ESC[200~ ... ESC[201~ to the PTY. Plain Ctrl+V is real terminal input
   # (literal insert / visual block in vim), so the verifier must not use it.
-  xdotool type --clearmodifiers --delay 10 "vim -u NONE /tmp/tf-bracketed-paste.txt"
+  rm -f "$VIM_PASTE_FILE"
+  xdotool type --clearmodifiers --delay 10 "vim -n -u NONE -i NONE ${VIM_PASTE_FILE}"
   xdotool key --clearmodifiers Return
   sleep 3
   xdotool key --clearmodifiers i

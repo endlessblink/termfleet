@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { readFileSync } from "node:fs";
 
 // TC-017d — keymap proof. Constructs real KeyboardEvents in Chromium and
 // asserts the VT byte sequences the keymap emits (the single source of truth
@@ -102,4 +103,55 @@ test("terminal paste shortcut is explicit and does not include random keys", asy
   expect(out.enter).toBe(false);
   expect(out.x).toBe(false);
   expect(out.pasteEvent).toBe(false);
+});
+
+test("agent prompt paste bracketing only wraps risky prompt pastes", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+
+  const out = await page.evaluate(async () => {
+    const { shouldBracketAgentPromptPaste } = await import("/src/lib/keymap.ts");
+
+    return {
+      multilineClaude: shouldBracketAgentPromptPaste(
+        "first line\nsecond line",
+        "Claude Code\nesc to interrupt",
+      ),
+      largeCodexPrompt: shouldBracketAgentPromptPaste(
+        "x".repeat(140),
+        "gpt-5 thinking\ncontext left 42%",
+      ),
+      shortClaudeText: shouldBracketAgentPromptPaste("hello", "Claude Code\nesc to interrupt"),
+      multilineShell: shouldBracketAgentPromptPaste("first line\nsecond line", "$ "),
+    };
+  });
+
+  expect(out.multilineClaude).toBe(true);
+  expect(out.largeCodexPrompt).toBe(true);
+  expect(out.shortClaudeText).toBe(false);
+  expect(out.multilineShell).toBe(false);
+});
+
+test("canvas terminal clears hidden textarea around paste and input events", () => {
+  const source = readFileSync("src/components/TerminalCanvas.tsx", "utf8");
+  const onBeforeInputBlock =
+    source.match(/const onBeforeInput = \(event: InputEvent\) => \{[\s\S]*?\n    \};/)?.[0] ?? "";
+
+  expect(source).toContain("const clearHiddenInput");
+  expect(source).toContain("clearHiddenInput();");
+  expect(source).toContain("const sendPasteText");
+  expect(source).toContain("shouldBracketPasteForVisibleAgentPrompt(text)");
+  expect(source).toContain("modesRef.current.bracketedPaste || shouldBracketPasteForVisibleAgentPrompt(text)");
+  expect(source).toContain("const clipboardHasImage");
+  expect(source).toContain('send("\\x16", nextTerminalInputSequence(), "canvas-image-paste-shortcut")');
+  expect(source).toContain("const onPaste = (event: ClipboardEvent)");
+  expect(source).toContain("event.stopImmediatePropagation()");
+  expect(source).toContain('input.addEventListener("paste", onPaste, true)');
+  expect(source).toContain('event.inputType === "insertFromPaste"');
+  expect(source).toContain('input.addEventListener("beforeinput", onBeforeInput, true)');
+  expect(source).toContain('input.addEventListener("input", clear, true)');
+  expect(onBeforeInputBlock).not.toContain("event.preventDefault()");
+  expect(source).toMatch(/const handlePaste = \(event: React\.ClipboardEvent<HTMLTextAreaElement>\) => \{[\s\S]*const text = event\.clipboardData\.getData\("text"\);[\s\S]*const armed = performance\.now\(\) <= pasteShortcutArmedUntilRef\.current;[\s\S]*if \(!text && !\(armed && clipboardHasImage\(event\.clipboardData\)\)\) return;[\s\S]*event\.preventDefault\(\);[\s\S]*event\.stopPropagation\(\);[\s\S]*sendImagePasteShortcut\(\);/);
+  expect(source).toMatch(/const onPaste = \(event: ClipboardEvent\) => \{[\s\S]*const text = event\.clipboardData\?\.getData\("text\/plain"\) \?\? "";[\s\S]*const armed = performance\.now\(\) <= pasteShortcutArmedUntilRef\.current;[\s\S]*if \(!text && !\(armed && clipboardHasImage\(event\.clipboardData\)\)\) return;[\s\S]*event\.preventDefault\(\);[\s\S]*event\.stopImmediatePropagation\(\);[\s\S]*sendImagePasteShortcut\(\);/);
+  expect(source).toMatch(/const handleInput = \(event: React\.FormEvent<HTMLTextAreaElement>\) => \{[\s\S]*event\.currentTarget\.value = "";/);
+  expect(source).toContain("onInput={handleInput}");
 });
