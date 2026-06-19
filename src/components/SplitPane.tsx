@@ -9,7 +9,7 @@ import { pathTail, projectForTab } from "../lib/projectDisplay";
 import { agentStatusSummaryFromWorkstream, getDisplaySummary } from "../lib/agentStatusSummary";
 import { workstreamActivityText } from "../lib/workstreamActivity";
 import { taskLineupForVisibleRun, taskLineupNextLabel, taskLineupStats } from "../lib/taskLineup";
-import { normalizePersistedShellSummary, summaryFromDurableActivity, terminalPurposeFromContext } from "../lib/terminalHeaderDisplay";
+import { normalizePersistedShellSummary, summaryFromDurableActivity, summarySourceLabel, terminalPurposeFromContext } from "../lib/terminalHeaderDisplay";
 import {
   calculatePaneBounds,
   calculateHandles,
@@ -801,6 +801,10 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
               ? normalizePersistedShellSummary(shellExtractedSummary, pathTail(paneCwd) ?? paneCwd ?? "workspace path unknown", terminalPurpose)
               : null
           : null;
+        const shellSummarySource = summarySourceLabel(
+          paneTerminal?.statusSummarySource ?? tab.workstream?.statusSummarySource,
+          paneTerminal?.statusSummaryError ?? tab.workstream?.statusSummaryError,
+        );
         const isAgentPane = Boolean(agentStatusSummary);
         const isShellSummaryPane = Boolean(shellStatusSummary);
         const taskSidebarCollapsed = paneTerminal?.taskSidebarCollapsed ?? false;
@@ -1186,6 +1190,15 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                   >
                     <span style={{ flexShrink: 0, color: "var(--text-tertiary)", fontSize: 10 }}>Now</span>
                     <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{shellStatusSummary.now}</span>
+                    {shellSummarySource ? (
+                      <span
+                        data-testid="split-terminal-summary-source"
+                        title={shellSummarySource.detail}
+                        style={{ flexShrink: 0, color: "var(--text-tertiary)", fontSize: 10 }}
+                      >
+                        {shellSummarySource.label}
+                      </span>
+                    ) : null}
                   </div>
                 </div>
                 </>

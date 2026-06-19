@@ -418,6 +418,29 @@ function normalizedPersistedNow(summary: WorkstreamStatusSummary) {
   return now ?? "Awaiting command";
 }
 
+/**
+ * Describe where a terminal's status summary came from so the UI can show whether
+ * it is a real model summary or the deterministic heuristic fallback (the status
+ * model server being offline). Returns null when no summary has run yet (TC-033 T2).
+ */
+export function summarySourceLabel(
+  source?: "fallback" | "process" | null,
+  error?: string | null,
+): { label: string; detail: string } | null {
+  if (source === "process") {
+    return { label: "model summary", detail: "Summarized by the local status model" };
+  }
+  if (source === "fallback") {
+    return {
+      label: "heuristic summary",
+      detail: error
+        ? `Status model unavailable (${error}); showing heuristic summary`
+        : "Status model offline; showing heuristic summary",
+    };
+  }
+  return null;
+}
+
 export function normalizePersistedShellSummary(
   summary: WorkstreamStatusSummary,
   path: string,

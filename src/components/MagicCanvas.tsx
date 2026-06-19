@@ -39,7 +39,7 @@ import { workstreamActivityMeta, workstreamActivityText } from "../lib/workstrea
 import { formatWorkstreamBranch, formatWorkstreamIsolation, formatWorkstreamOpsContext } from "../lib/workstreamOpsContext";
 import { snapshotPreviewRows } from "../lib/snapshotPreviewRows";
 import { taskLineupForVisibleRun, taskLineupNextLabel, taskLineupStats } from "../lib/taskLineup";
-import { normalizePersistedShellSummary, summaryFromDurableActivity, terminalPurposeFromContext } from "../lib/terminalHeaderDisplay";
+import { normalizePersistedShellSummary, summaryFromDurableActivity, summarySourceLabel, terminalPurposeFromContext } from "../lib/terminalHeaderDisplay";
 
 type CanvasRect = {
   minX: number;
@@ -2176,6 +2176,10 @@ function CanvasNodeView({
         pathTail(liveTerminalRoot) ?? liveTerminalRoot ?? "workspace path unknown",
         terminalPurpose,
       );
+  const terminalSummarySource = summarySourceLabel(
+    linkedTerminal?.statusSummarySource ?? workstream?.statusSummarySource,
+    linkedTerminal?.statusSummaryError ?? workstream?.statusSummaryError,
+  );
   const terminalHeaderTitle = terminalDisplaySummary.task === "Ready" ? terminalTitle : terminalDisplaySummary.task;
   const terminalHeaderPath = terminalDisplaySummary.path;
   const terminalHeaderSummarySignal = terminalDisplaySummary.now;
@@ -2718,6 +2722,17 @@ function CanvasNodeView({
               <span>shell</span>
               <span>·</span>
               <span>{terminalHeaderHasUsefulSummary ? "running activity" : "ready"}</span>
+              {terminalSummarySource ? (
+                <>
+                  <span>·</span>
+                  <span
+                    data-testid="canvas-terminal-summary-source"
+                    title={terminalSummarySource.detail}
+                  >
+                    {terminalSummarySource.label}
+                  </span>
+                </>
+              ) : null}
             </div>
             <div
               style={styles.terminalStatusTitle}

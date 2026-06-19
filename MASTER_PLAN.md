@@ -4986,13 +4986,15 @@ T8 persistence, T9 input.
   slash-command/placeholder chrome and require an actionable prompt. Fixed the two
   pre-existing failures in `tests/map-terminal-rendering.spec.ts`. Verify:
   `tests/terminal-purpose-transcript.spec.ts` 5/5.
-- **T2 — AI summary transcript cleaning (DONE, partial):** added exported
-  `cleanTranscriptForSummary()` in `src/lib/agentStatusSummary.ts` (drops chrome +
-  collapses repeated paste lines) and fed it into the summarizer request
-  (`src/lib/agentStatusSummarizer.ts`) so duplicated paste can't dominate the
-  summary. Verify: `tests/transcript-cleaning.spec.ts` 3/3. REMAINING: surface the
-  fallback-vs-model source in the UI (not yet started — `statusSummarySource` is
-  rendered nowhere).
+- **T2 — AI summary (DONE):** (a) added exported `cleanTranscriptForSummary()` in
+  `src/lib/agentStatusSummary.ts` (drops chrome + collapses repeated paste lines)
+  and fed it into the summarizer request (`src/lib/agentStatusSummarizer.ts`) so
+  duplicated paste can't dominate the summary — `tests/transcript-cleaning.spec.ts`
+  3/3. (b) added `summarySourceLabel()` and a `…-summary-source` indicator in the
+  map (`MagicCanvas.tsx`) and split (`SplitPane.tsx`) headers so the UI shows
+  "model summary" vs "heuristic summary" (with the error in the tooltip) instead of
+  silently degrading — `tests/summary-source-label.spec.ts` 3/3. Server auto-start
+  deferred (per decision).
 - **T4 — terminal-summary visual seed (DONE/satisfied):** `tests/terminal-summary-visual.spec.ts`
   passes; the in-flight seed already carries the needed state.
 - **Gate:** `npm run build` green; `cd src-tauri && cargo test` 64 passed; the
