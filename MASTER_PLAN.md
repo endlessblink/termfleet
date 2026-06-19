@@ -5014,9 +5014,11 @@ T8 persistence, T9 input.
   `replay_trim_uses_line_boundary_instead_of_escape_tail`,
   `restored_trimmed_scrollback_drops_partial_first_line`.
 - **T7 — canvas paste/input source-contract (DONE):** `tests/keymap.spec.ts` asserts the
-  hidden-textarea cleanup + agent-prompt bracketing wiring stays in place. 3/3.
+  hidden-textarea cleanup + agent-prompt bracketing wiring stays in place. 4/4.
 - **Gate (Phase 1):** `npm run build` green; `cd src-tauri && cargo test` 64 passed; the
   summary/header specs `agent-status-summary` + `map-terminal-rendering` +
   `terminal-summary-visual` + the three new T1/T2/T5 specs = **76 passed, 0 failed**.
-- **Gate (Phase 2 / T3/T6/T7):** `tsc --noEmit` clean; `cargo test --lib` **62 passed**
-  (incl. the 2 new replay-boundary tests); `tests/keymap.spec.ts` **3/3**.
+- **Gate (Phase 2 / T3/T6/T7):** `npm run build` green; `cargo test --manifest-path
+  src-tauri/Cargo.toml` **64 passed**; `tests/keymap.spec.ts` **4/4**; live
+  `npm run verify:bracketed-paste` passed with `BRACKETED_PASTE_OK` and screenshots
+  under `/tmp/tw-bracketed-paste/`.
