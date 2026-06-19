@@ -603,6 +603,20 @@ const checks = [
     message: "Map terminal node chrome must expose and render task bindings outside the terminal buffer.",
   },
   {
+    ok: /emoji\?: string;/.test(types) &&
+      /PROJECT_EMOJIS/.test(workspaceStore) &&
+      /projectEmojiFor/.test(workspaceStore) &&
+      /Project emoji/.test(workbenchSidebar) &&
+      /data-testid="project-emoji-picker"/.test(workbenchSidebar) &&
+      /data-testid="project-row-emoji"/.test(workbenchSidebar) &&
+      /data-testid="map-node-project-emoji"/.test(workbenchSidebar) &&
+      /const projectEmoji = linkedProject\?\.emoji;/.test(magicCanvas) &&
+      /data-testid="canvas-terminal-project-emoji"/.test(magicCanvas) &&
+      /data-testid="canvas-terminal-project-emoji-zoom"/.test(magicCanvas) &&
+      /project emojis identify map terminals by path without using task colors/.test(mapTerminalRenderingSpec),
+    message: "Project identity on the map must use project-owned emoji badges, with colors left for terminal task labels.",
+  },
+  {
     ok: /"evidence:bundle": "node scripts\/export-evidence-bundle\.mjs"/.test(packageJson) &&
       /"verify:evidence-bundle": "node scripts\/verify-evidence-bundle\.mjs"/.test(packageJson) &&
       /function redactString/.test(evidenceBundle) &&

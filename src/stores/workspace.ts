@@ -40,6 +40,7 @@ const GROUP_COLORS = [
   "#7dcfff",
   "#ff9e64",
 ];
+const PROJECT_EMOJIS = ["💻", "🧭", "📦", "🧪", "🛠️", "🚀", "🗂️", "🔬", "🧩", "📡", "🧱", "📝"];
 
 const DEFAULT_TAB_EMOJI = "\u2B1B";
 const DEFAULT_TAB_TITLE = "Terminal";
@@ -488,6 +489,18 @@ function projectIdFromPath(path: string, groups: Group[]) {
   return candidate;
 }
 
+function hashProjectIdentity(value: string) {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = ((hash << 5) - hash + value.charCodeAt(index)) | 0;
+  }
+  return Math.abs(hash);
+}
+
+function projectEmojiFor(pathOrName: string) {
+  return PROJECT_EMOJIS[hashProjectIdentity(pathOrName) % PROJECT_EMOJIS.length];
+}
+
 function pathBelongsToProject(path: string, projectRoot?: string | null) {
   const normalizedPath = normalizeProjectPath(path);
   const normalizedRoot = normalizeProjectPath(projectRoot);
@@ -508,8 +521,9 @@ function reconcileProjectGroups(tabs: Tab[], groups: Group[], canvasState: Canva
   const groupsByRoot = new Map<string, Group>();
   const nextGroups = groups.map((group) => {
     const projectRoot = normalizeProjectPath(group.projectRoot);
-    const normalizedGroup = projectRoot && projectRoot !== group.projectRoot
-      ? { ...group, projectRoot }
+    const emoji = group.emoji ?? projectEmojiFor(projectRoot ?? group.name);
+    const normalizedGroup = (projectRoot && projectRoot !== group.projectRoot) || !group.emoji
+      ? { ...group, projectRoot: projectRoot ?? group.projectRoot, emoji }
       : group;
     if (projectRoot && !groupsByRoot.has(projectRoot)) {
       groupsByRoot.set(projectRoot, normalizedGroup);
@@ -526,6 +540,7 @@ function reconcileProjectGroups(tabs: Tab[], groups: Group[], canvasState: Canva
       id: projectIdFromPath(path, nextGroups),
       name: projectNameFromPath(path),
       color: GROUP_COLORS[nextGroups.length % GROUP_COLORS.length],
+      emoji: projectEmojiFor(path),
       projectRoot: path,
     };
     nextGroups.push(group);
@@ -1972,6 +1987,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       id: crypto.randomUUID(),
       name,
       color: resolvedColor,
+      emoji: projectEmojiFor(projectRoot ?? name),
       projectRoot,
     };
     set((state) => ({

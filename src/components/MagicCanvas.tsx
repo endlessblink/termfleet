@@ -590,6 +590,36 @@ const styles: Record<string, CSSProperties> = {
     textTransform: "uppercase",
     letterSpacing: 0,
   },
+  projectEmojiBadge: {
+    width: 22,
+    height: 22,
+    flex: "0 0 auto",
+    display: "grid",
+    placeItems: "center",
+    border: "1px solid var(--border-subtle)",
+    borderRadius: "var(--radius-xs)",
+    background: "color-mix(in srgb, var(--surface-base) 86%, transparent)",
+    fontSize: 14,
+    lineHeight: 1,
+    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04)",
+  },
+  projectEmojiZoomBadge: {
+    position: "absolute",
+    left: 10,
+    top: 42,
+    zIndex: 5,
+    width: 34,
+    height: 34,
+    display: "grid",
+    placeItems: "center",
+    border: "1px solid var(--border-subtle)",
+    borderRadius: "var(--radius-sm)",
+    background: "color-mix(in srgb, var(--surface-raised) 94%, transparent)",
+    fontSize: 21,
+    lineHeight: 1,
+    pointerEvents: "none",
+    boxShadow: "0 10px 28px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.05)",
+  },
   taskBadge: {
     height: 22,
     minWidth: 0,
@@ -2082,6 +2112,7 @@ function CanvasNodeView({
     ? tabs.find((tab) => tab.id === node.terminalTabId)
     : undefined;
   const linkedProject = projectForTab(linkedTab, groups);
+  const projectEmoji = linkedProject?.emoji;
   const workstream = linkedTab?.workstream;
   const terminalRoot = node.terminalCwd ?? linkedTab?.initialCwd;
   const taskRoot = linkedProject?.projectRoot ?? terminalRoot ?? workstream?.gitRoot ?? workstream?.cwd ?? workspaceProjectRoot;
@@ -2603,6 +2634,20 @@ function CanvasNodeView({
         }
       }}
     >
+      {node.type === "terminal" && projectEmoji && zoom < READABLE_TERMINAL_ZOOM && (
+        <span
+          style={{
+            ...styles.projectEmojiZoomBadge,
+            transform: `scale(${Math.min(2.2, Math.max(1, 1 / Math.max(zoom, 0.35)))})`,
+            transformOrigin: "top left",
+          }}
+          data-testid="canvas-terminal-project-emoji-zoom"
+          title={workspaceLabel}
+          aria-hidden="true"
+        >
+          {projectEmoji}
+        </span>
+      )}
       <div
         data-testid={node.type === "terminal" ? "canvas-terminal-node-header" : "canvas-node-header"}
         style={{
@@ -2637,6 +2682,16 @@ function CanvasNodeView({
         >
           {nodeKind}
         </span>
+        {node.type === "terminal" && projectEmoji && (
+          <span
+            style={styles.projectEmojiBadge}
+            data-testid="canvas-terminal-project-emoji"
+            title={workspaceLabel}
+            aria-label={`${workspaceLabel} project emoji`}
+          >
+            {projectEmoji}
+          </span>
+        )}
         {node.type === "terminal" && workstream?.kind === "agent" && !agentStatusSummary && (
           <span
             style={styles.taskBadge}

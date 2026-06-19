@@ -168,7 +168,7 @@ test("terminal task binding uses an in-app searchable picker", async ({ page }) 
   await page.evaluate(() => {
     const store = (window as typeof window & {
       __termfleetWorkspaceStore?: {
-        getState: () => { workspaceUiState: Record<string, unknown> };
+        getState: () => { workspaceUiState: Record<string, unknown>; reconcileProjectGroups: () => void };
         setState: (state: Record<string, unknown>) => void;
       };
     }).__termfleetWorkspaceStore;
@@ -217,6 +217,7 @@ test("terminal task binding uses an in-app searchable picker", async ({ page }) 
         }],
       },
     });
+    store.getState().reconcileProjectGroups();
   });
 
   await page.getByLabel("Bind MASTER_PLAN task").click();
@@ -450,6 +451,112 @@ test("terminal map labels can be recolored from the right-click menu", async ({ 
     }).__termfleetWorkspaceStore;
     return store?.getState().canvasState.nodes.find((node) => node.id === "node-color")?.labelColor;
   })).toBe("#d4a44f");
+});
+
+test("project emojis identify map terminals by path without using task colors", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.getByRole("button", { name: "Map", exact: true }).click();
+
+  await page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => { workspaceUiState: Record<string, unknown> };
+        setState: (state: Record<string, unknown>) => void;
+      };
+    }).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+
+    const tab = (id: string, groupId: string, cwd: string, paneId: string) => ({
+      id,
+      title: "Terminal",
+      emoji: "[]",
+      color: "#7aa2f7",
+      groupId,
+      initialCwd: cwd,
+      terminals: [{ id: `pty-${id}`, paneId, cols: 80, rows: 24, status: "running" }],
+      splitLayout: { id: paneId, type: "terminal" },
+      activePaneId: paneId,
+    });
+    const termfleet = {
+      id: "group-termfleet",
+      name: "termfleet",
+      color: "#7aa2f7",
+      emoji: "🧭",
+      projectRoot: "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
+    };
+    const docs = {
+      id: "group-docs",
+      name: "docs-site",
+      color: "#9ece6a",
+      emoji: "📝",
+      projectRoot: "/media/endlessblink/data/my-projects/ai-development/docs-site",
+    };
+
+    store.setState({
+      workspaceUiState: {
+        ...store.getState().workspaceUiState,
+        workspaceMode: "canvas",
+        canvasSidebarCollapsed: false,
+        primarySidebarCollapsed: false,
+        primarySidebarPanel: "map",
+      },
+      groups: [termfleet, docs],
+      terminalGroups: [termfleet, docs],
+      activeGroupFilter: null,
+      activeGroupId: null,
+      activeTabId: "tab-termfleet-a",
+      tabs: [
+        tab("tab-termfleet-a", "group-termfleet", "/media/endlessblink/data/my-projects/ai-development/devops/termfleet", "pane-termfleet-a"),
+        tab("tab-termfleet-b", "group-termfleet", "/media/endlessblink/data/my-projects/ai-development/devops/termfleet", "pane-termfleet-b"),
+        tab("tab-docs", "group-docs", "/media/endlessblink/data/my-projects/ai-development/docs-site", "pane-docs"),
+      ],
+      canvasState: {
+        selectedNodeId: "node-termfleet-a",
+        selectedNodeIds: ["node-termfleet-a"],
+        viewport: { x: 0, y: 0, zoom: 0.42 },
+        nodes: [
+          { id: "node-termfleet-a", type: "terminal", title: "Terminal", terminalTabId: "tab-termfleet-a", terminalCwd: "/media/endlessblink/data/my-projects/ai-development/devops/termfleet", x: 0, y: 0, width: 820, height: 460 },
+          { id: "node-termfleet-b", type: "terminal", title: "Terminal", terminalTabId: "tab-termfleet-b", terminalCwd: "/media/endlessblink/data/my-projects/ai-development/devops/termfleet", x: 860, y: 0, width: 820, height: 460 },
+          { id: "node-docs", type: "terminal", title: "Terminal", terminalTabId: "tab-docs", terminalCwd: "/media/endlessblink/data/my-projects/ai-development/docs-site", x: 1720, y: 0, width: 820, height: 460 },
+        ],
+      },
+    });
+  });
+
+  await expect(page.getByTestId("canvas-terminal-project-emoji").filter({ hasText: "🧭" })).toHaveCount(2);
+  await expect(page.getByTestId("canvas-terminal-project-emoji").filter({ hasText: "📝" })).toHaveCount(1);
+  await expect(page.getByTestId("canvas-terminal-project-emoji-zoom")).toHaveCount(3);
+  await expect(page.getByTestId("map-node-project-emoji").filter({ hasText: "🧭" })).toHaveCount(2);
+
+  await page.getByTestId("map-node-project-emoji").filter({ hasText: "🧭" }).first().click();
+  await page.getByLabel("Search project emoji").fill("launch");
+  await page.getByTestId("project-emoji-picker").getByRole("button", { name: "Set project emoji launch" }).click();
+  await expect(page.getByTestId("canvas-terminal-project-emoji").filter({ hasText: "🚀" })).toHaveCount(2);
+  await expect(page.getByTestId("canvas-terminal-project-emoji").filter({ hasText: "📝" })).toHaveCount(1);
+  await expect(page.getByTestId("map-node-project-emoji").filter({ hasText: "🚀" })).toHaveCount(2);
+
+  await page.getByTestId("canvas-terminal-node-header-title").first().click({ button: "right" });
+  await page.getByRole("menu", { name: "Terminal label color" }).getByRole("menuitem", { name: "Set terminal label color Amber" }).click();
+  await expect(page.getByTestId("canvas-terminal-project-emoji").filter({ hasText: "🚀" })).toHaveCount(2);
+  await expect.poll(async () => page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => {
+          groups: Array<{ id: string; emoji?: string }>;
+          canvasState: { nodes: Array<{ id: string; labelColor?: string }> };
+        };
+      };
+    }).__termfleetWorkspaceStore;
+    const state = store?.getState();
+    return {
+      emoji: state?.groups.find((group) => group.id === "group-termfleet")?.emoji,
+      labelColor: state?.canvasState.nodes.find((node) => node.id === "node-termfleet-a")?.labelColor,
+    };
+  })).toEqual({ emoji: "🚀", labelColor: "#d4a44f" });
 });
 
 test("shift-drag box-selects terminals while regular and middle drags pan the map", async ({ page }) => {

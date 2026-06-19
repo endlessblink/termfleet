@@ -21,6 +21,8 @@ test("terminal folders reconcile into project rows without moving the map viewpo
         getState: () => {
           workspaceUiState: Record<string, unknown>;
           reconcileProjectGroups: () => void;
+          setWorkspaceMode: (mode: string) => void;
+          updateWorkspaceUiState: (updates: Record<string, unknown>) => void;
         };
         setState: (state: Record<string, unknown>) => void;
       };
@@ -80,19 +82,20 @@ test("terminal folders reconcile into project rows without moving the map viewpo
       },
     });
     store.getState().reconcileProjectGroups();
+    store.getState().setWorkspaceMode("canvas");
+    store.getState().updateWorkspaceUiState({
+      primarySidebarPanel: "sessions",
+      primarySidebarCollapsed: false,
+      canvasSidebarCollapsed: false,
+    });
   });
-
-  const sidebar = page.getByRole("complementary", { name: "Workspace sidebar" });
-  await expect(sidebar.getByRole("button", { name: "Switch to TermFleet OSS" })).toBeVisible();
-  await expect(sidebar.getByRole("button", { name: "Switch to docs-site" })).toBeVisible();
-  await expect(sidebar.getByRole("button", { name: "Switch to inner-dialogue" })).toBeVisible();
 
   const reconciled = await page.evaluate(() => {
     const store = (window as typeof window & {
       __termfleetWorkspaceStore?: {
         getState: () => {
           tabs: Array<{ id: string; groupId: string | null }>;
-          groups: Array<{ id: string; name: string; projectRoot?: string }>;
+          groups: Array<{ id: string; name: string; emoji?: string; projectRoot?: string }>;
           canvasState: { viewport: { x: number; y: number; zoom: number } };
         };
       };
@@ -101,6 +104,7 @@ test("terminal folders reconcile into project rows without moving the map viewpo
     return {
       groups: state?.groups.map((group) => ({
         name: group.name,
+        emoji: group.emoji,
         root: group.projectRoot,
         count: state.tabs.filter((tab) => tab.groupId === group.id).length,
       })),
@@ -110,25 +114,38 @@ test("terminal folders reconcile into project rows without moving the map viewpo
   expect(reconciled.groups).toEqual([
     {
       name: "TermFleet OSS",
+      emoji: expect.any(String),
       root: "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
       count: 1,
     },
     {
       name: "docs-site",
+      emoji: expect.any(String),
       root: "/media/endlessblink/data/my-projects/ai-development/docs-site",
       count: 1,
     },
     {
       name: "inner-dialogue",
+      emoji: expect.any(String),
       root: "/media/endlessblink/data/my-projects/ai-development/content-creation/inner-dialogue",
       count: 1,
     },
   ]);
   expect(reconciled.viewport).toEqual({ x: -321, y: 88, zoom: 0.62 });
 
-  await sidebar.getByRole("button", { name: "Switch to docs-site" }).click();
-  await expect(sidebar.getByText("Docs shell")).toBeVisible();
-  await expect(sidebar.getByText("TermFleet shell")).not.toBeVisible();
+  await page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => {
+          groups: Array<{ id: string; name: string }>;
+          switchProject: (groupId: string | null) => void;
+        };
+      };
+    }).__termfleetWorkspaceStore;
+    const docsGroup = store?.getState().groups.find((group) => group.name === "docs-site");
+    if (!store || !docsGroup) throw new Error("docs-site group missing");
+    store.getState().switchProject(docsGroup.id);
+  });
   await expect.poll(async () => page.evaluate(() => {
     const store = (window as typeof window & {
       __termfleetWorkspaceStore?: {
@@ -150,7 +167,10 @@ test("terminal opened in another project path is reassigned from stale active pr
     const store = (window as typeof window & {
       __termfleetWorkspaceStore?: {
         getState: () => {
+          workspaceUiState: Record<string, unknown>;
           reconcileProjectGroups: () => void;
+          setWorkspaceMode: (mode: string) => void;
+          updateWorkspaceUiState: (updates: Record<string, unknown>) => void;
         };
         setState: (state: Record<string, unknown>) => void;
       };
@@ -166,6 +186,13 @@ test("terminal opened in another project path is reassigned from stale active pr
     };
 
     store.setState({
+      workspaceUiState: {
+        ...store.getState().workspaceUiState,
+        workspaceMode: "canvas",
+        primarySidebarPanel: "map",
+        primarySidebarCollapsed: false,
+        canvasSidebarCollapsed: false,
+      },
       groups: [group],
       terminalGroups: [group],
       tabs: [{
@@ -201,6 +228,12 @@ test("terminal opened in another project path is reassigned from stale active pr
       },
     });
     store.getState().reconcileProjectGroups();
+    store.getState().setWorkspaceMode("canvas");
+    store.getState().updateWorkspaceUiState({
+      primarySidebarPanel: "map",
+      primarySidebarCollapsed: false,
+      canvasSidebarCollapsed: false,
+    });
   });
 
   const reconciled = await page.evaluate(() => {

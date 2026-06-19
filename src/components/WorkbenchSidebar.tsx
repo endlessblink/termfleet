@@ -47,6 +47,20 @@ const TERMINAL_COLORS = [
   "#ef6f72",
 ];
 const TERMINAL_EMOJIS = ["💻", "⚙️", "🚀", "🧪", "🛠️", "📦", "🔧", "🧭"];
+const PROJECT_EMOJIS = [
+  { emoji: "💻", label: "code" },
+  { emoji: "🧭", label: "ops" },
+  { emoji: "📦", label: "package" },
+  { emoji: "🧪", label: "test" },
+  { emoji: "🛠️", label: "tools" },
+  { emoji: "🚀", label: "launch" },
+  { emoji: "🗂️", label: "files" },
+  { emoji: "🔬", label: "research" },
+  { emoji: "🧩", label: "product" },
+  { emoji: "📡", label: "service" },
+  { emoji: "🧱", label: "infra" },
+  { emoji: "📝", label: "content" },
+];
 
 function workstreamLabel(provider?: string) {
   if (provider === "opencode") return "OpenCode";
@@ -437,6 +451,21 @@ const styles: Record<string, CSSProperties> = {
     background: "var(--surface-raised)",
     color: "var(--text-primary)",
   },
+  projectEmojiCell: {
+    width: 30,
+    height: 30,
+    border: "1px solid var(--border-subtle)",
+    borderRadius: 8,
+    display: "grid",
+    placeItems: "center",
+    background: "var(--surface-raised)",
+    color: "var(--text-primary)",
+    fontFamily: "var(--font-ui)",
+    fontSize: 16,
+    lineHeight: 1,
+    cursor: "pointer",
+    padding: 0,
+  },
   rowTitle: {
     overflow: "hidden",
     textOverflow: "ellipsis",
@@ -780,6 +809,16 @@ const styles: Record<string, CSSProperties> = {
     color: "var(--text-primary)",
     fontSize: 12,
     fontWeight: 500,
+  },
+  projectMenuEmoji: {
+    width: 22,
+    height: 22,
+    display: "grid",
+    placeItems: "center",
+    borderRadius: 6,
+    background: "var(--surface-base)",
+    fontSize: 14,
+    lineHeight: 1,
   },
   contextRow: {
     display: "flex",
@@ -1196,20 +1235,28 @@ function TerminalContextMenu({
 function ProjectContextMenu({
   id,
   name,
+  emoji,
   x,
   y,
   onClose,
 }: {
   id: string;
   name: string;
+  emoji?: string;
   x: number;
   y: number;
   onClose: () => void;
 }) {
   const updateGroup = useWorkspaceStore((state) => state.updateGroup);
   const removeGroup = useWorkspaceStore((state) => state.removeGroup);
+  const currentGroup = useWorkspaceStore((state) => state.groups.find((group) => group.id === id));
   const [value, setValue] = useState(name);
+  const [emojiQuery, setEmojiQuery] = useState("");
   const ref = useRef<HTMLDivElement>(null);
+  const selectedEmoji = currentGroup?.emoji ?? emoji;
+  const emojiOptions = PROJECT_EMOJIS.filter((item) =>
+    `${item.emoji} ${item.label}`.toLowerCase().includes(emojiQuery.trim().toLowerCase())
+  );
 
   useEffect(() => {
     function onPointerDown(event: MouseEvent) {
@@ -1237,15 +1284,15 @@ function ProjectContextMenu({
       style={{
         ...styles.contextMenu,
         left: Math.min(x, window.innerWidth - 252),
-        top: Math.min(y, window.innerHeight - 188),
+        top: Math.min(y, window.innerHeight - 322),
       }}
       onContextMenu={(event) => event.preventDefault()}
     >
       <div style={styles.contextHeader}>
-        <TreeStructure size={14} weight="duotone" />
+        <span style={styles.projectMenuEmoji} aria-hidden="true">{selectedEmoji ?? "💻"}</span>
         <span style={{ minWidth: 0, display: "grid", gap: 1 }}>
           <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Project</span>
-          <span style={{ color: "var(--text-secondary)", fontSize: 10, fontWeight: 400 }}>Rename or remove</span>
+          <span style={{ color: "var(--text-secondary)", fontSize: 10, fontWeight: 400 }}>Rename or set project emoji</span>
         </span>
       </div>
 
@@ -1269,6 +1316,44 @@ function ProjectContextMenu({
           }}
         />
       </label>
+
+      <div style={styles.contextRow}>
+        <Smiley size={13} />
+        <span>Project emoji</span>
+      </div>
+      <input
+        className="workspace-terminal-settings-input"
+        style={styles.contextInput}
+        value={emojiQuery}
+        placeholder="Search emoji"
+        aria-label="Search project emoji"
+        onChange={(event) => setEmojiQuery(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") onClose();
+        }}
+      />
+      <div style={styles.emojiGrid} data-testid="project-emoji-picker">
+        {emojiOptions.map((item) => (
+          <button
+            key={item.emoji}
+            type="button"
+            className="workspace-terminal-emoji-button"
+            data-selected={selectedEmoji === item.emoji ? "true" : "false"}
+            style={{
+              ...styles.emojiButton,
+              borderColor: selectedEmoji === item.emoji ? "var(--border-focus)" : "var(--border-subtle)",
+              background: selectedEmoji === item.emoji ? "var(--surface-selected)" : "var(--surface-base)",
+              color: selectedEmoji === item.emoji ? "var(--accent-live)" : "var(--text-primary)",
+              outline: "none",
+            }}
+            title={item.label}
+            aria-label={`Set project emoji ${item.label}`}
+            onClick={() => updateGroup(id, { emoji: item.emoji })}
+          >
+            {item.emoji}
+          </button>
+        ))}
+      </div>
 
       <button
         type="button"
@@ -1467,13 +1552,13 @@ function SessionsPanel({
   onOpenProjectMenu,
 }: {
   onOpenTerminalMenu: (event: React.MouseEvent, tab: Tab) => void;
-  onOpenProjectMenu: (event: React.MouseEvent, project: { id: string; name: string }) => void;
+  onOpenProjectMenu: (event: React.MouseEvent, project: { id: string; name: string; emoji?: string }) => void;
 }) {
   const tabs = useWorkspaceStore((state) => state.tabs);
   const groups = useWorkspaceStore((state) => state.groups);
+  const activeGroupFilter = useWorkspaceStore((state) => state.activeGroupFilter);
   const projectRoot = useWorkspaceStore((state) => state.projectRoot);
   const activeTabId = useWorkspaceStore((state) => state.activeTabId);
-  const activeGroupFilter = useWorkspaceStore((state) => state.activeGroupFilter);
   const canvasState = useWorkspaceStore((state) => state.canvasState);
   const addTab = useWorkspaceStore((state) => state.addTab);
   const addGroup = useWorkspaceStore((state) => state.addGroup);
@@ -1502,6 +1587,7 @@ function SessionsPanel({
   const projects = groups.map((group) => ({
     id: group.id as string | null,
     name: group.name,
+    emoji: group.emoji,
     color: group.color,
     count: tabs.filter((tab) => tab.groupId === group.id).length,
   }));
@@ -1869,7 +1955,7 @@ function SessionsPanel({
                 onClick={() => switchProject(project.id)}
                 onContextMenu={(event) => {
                   if (!project.id) return;
-                  onOpenProjectMenu(event, { id: project.id, name: project.name });
+                  onOpenProjectMenu(event, { id: project.id, name: project.name, emoji: project.emoji });
                 }}
               >
                 <span
@@ -1881,7 +1967,7 @@ function SessionsPanel({
                   {project.id === null ? (
                     <SquaresFour size={12} weight="duotone" />
                   ) : (
-                    <TreeStructure size={12} weight="duotone" />
+                    <span data-testid="project-row-emoji" aria-hidden="true">{project.emoji ?? "💻"}</span>
                   )}
                 </span>
                 <span style={{ minWidth: 0, display: "flex", alignItems: "baseline", gap: 7 }}>
@@ -3173,8 +3259,10 @@ function SessionsPanel({
 
 function MapPanel({
   onOpenTerminalMenu,
+  onOpenProjectMenu,
 }: {
   onOpenTerminalMenu: (event: React.MouseEvent, tab: Tab) => void;
+  onOpenProjectMenu: (event: React.MouseEvent, project: { id: string; name: string; emoji?: string }) => void;
 }) {
   const [mapFilter, setMapFilter] = useState<MapFilter>("all");
   const [serviceActionStatus, setServiceActionStatus] = useState("");
@@ -4843,6 +4931,9 @@ function MapPanel({
             const linkedProjectName = linkedTab?.groupId
               ? projectNameFor(linkedTab.groupId, groups)
               : (isDefaultTitle ? linkedCwdName : linkedTab?.title) ?? linkedCwdName ?? "Unassigned";
+            const linkedProject = linkedTab?.groupId
+              ? groups.find((group) => group.id === linkedTab.groupId)
+              : undefined;
             const taskRoot = (
               linkedTab?.groupId
                 ? groups.find((group) => group.id === linkedTab.groupId)?.projectRoot
@@ -4879,7 +4970,29 @@ function MapPanel({
                   onOpenTerminalMenu(event, linkedTab);
                 }}
               >
-                {linkedTab && node.type !== "preview" ? (
+                {linkedProject && node.type !== "preview" ? (
+                  <button
+                    type="button"
+                    style={styles.projectEmojiCell}
+                    data-testid="map-node-project-emoji"
+                    title={`Set ${linkedProject.name} project emoji`}
+                    aria-label={`Set ${linkedProject.name} project emoji`}
+                    onMouseDown={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                    }}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onOpenProjectMenu(event, {
+                        id: linkedProject.id,
+                        name: linkedProject.name,
+                        emoji: linkedProject.emoji,
+                      });
+                    }}
+                  >
+                    {linkedProject.emoji ?? "💻"}
+                  </button>
+                ) : linkedTab && node.type !== "preview" ? (
                   <TerminalAvatar
                     tab={linkedTab}
                     active={node.id === canvasState.selectedNodeId}
@@ -4954,7 +5067,7 @@ export function WorkbenchSidebar() {
   const operationsCollapsed = ui.primarySidebarCollapsed;
   const filesCollapsed = ui.fileExplorerCollapsed;
   const [terminalMenu, setTerminalMenu] = useState<{ tab: Tab; x: number; y: number } | null>(null);
-  const [projectMenu, setProjectMenu] = useState<{ id: string; name: string; x: number; y: number } | null>(null);
+  const [projectMenu, setProjectMenu] = useState<{ id: string; name: string; emoji?: string; x: number; y: number } | null>(null);
 
   const openTerminalMenu = (event: React.MouseEvent, tab: Tab) => {
     event.preventDefault();
@@ -4962,10 +5075,10 @@ export function WorkbenchSidebar() {
     setTerminalMenu({ tab, x: event.clientX, y: event.clientY });
   };
 
-  const openProjectMenu = (event: React.MouseEvent, project: { id: string; name: string }) => {
+  const openProjectMenu = (event: React.MouseEvent, project: { id: string; name: string; emoji?: string }) => {
     event.preventDefault();
     event.stopPropagation();
-    setProjectMenu({ id: project.id, name: project.name, x: event.clientX, y: event.clientY });
+    setProjectMenu({ id: project.id, name: project.name, emoji: project.emoji, x: event.clientX, y: event.clientY });
   };
 
   if (operationsCollapsed && filesCollapsed) {
@@ -4985,7 +5098,7 @@ export function WorkbenchSidebar() {
           <SessionsPanel onOpenTerminalMenu={openTerminalMenu} onOpenProjectMenu={openProjectMenu} />
         )}
         {ui.primarySidebarPanel === "map" && (
-          <MapPanel onOpenTerminalMenu={openTerminalMenu} />
+          <MapPanel onOpenTerminalMenu={openTerminalMenu} onOpenProjectMenu={openProjectMenu} />
         )}
         </div>
       )}
@@ -5006,6 +5119,7 @@ export function WorkbenchSidebar() {
         <ProjectContextMenu
           id={projectMenu.id}
           name={projectMenu.name}
+          emoji={projectMenu.emoji}
           x={projectMenu.x}
           y={projectMenu.y}
           onClose={() => setProjectMenu(null)}

@@ -247,6 +247,7 @@ export interface Group {
   id: string;
   name: string;
   color: string;
+  emoji?: string;
   projectRoot?: string;
   lastActiveTabId?: string;
 }

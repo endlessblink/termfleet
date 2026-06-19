@@ -926,6 +926,15 @@ tests/terminal-user-flows.spec.ts --reporter=line`, `cargo test`, and
   `npx playwright test tests/project-reconciliation.spec.ts`, and
   `npx playwright test tests/map-terminal-rendering.spec.ts -g
   "map sidebar lists every visible map terminal"`.
+- 2026-06-19: Project identity on the map is now emoji-owned by project path
+  groups, independent of terminal/task colors. Project rows expose an emoji
+  picker, Map sidebar terminal rows expose the same project emoji as a direct
+  picker target, terminal map headers inherit the project emoji, and zoomed-out map
+  nodes keep the project emoji visible. Verified with `npm run
+  verify:map-terminals`, `npx playwright test tests/map-terminal-rendering.spec.ts
+  -g "project emojis identify map terminals by path without using task colors|terminal
+  map labels can be recolored" --reporter=line`, `npx playwright test
+  tests/project-reconciliation.spec.ts --reporter=line`, and `npm run build`.
 
 ### TC-012: Raise terminal rendering quality for Zellij/TUI workloads
 
