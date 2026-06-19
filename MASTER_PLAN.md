@@ -5036,15 +5036,28 @@ T8 persistence, T9 input.
   `tests/task-lineup-content-contract.spec.ts` 4/4; regression
   `task-lineup-source-merge` + `agent-status-summary` + `map-terminal-rendering` 67/67;
   `npm run build` green.
-- **T9 — input reliability:** Ctrl+C flush batching (a second interrupt during a
-  pending flush is dropped — `src/lib/daemonInputQueue.ts` ~107-118), input-listener
-  leak (delete-during-iteration in `src/hooks/usePty.ts` ~81-112), and copy/Shift+Tab
-  focus restore (`src/components/TerminalCanvas.tsx`). Pure frontend TS, unit-testable.
-- **E — renderer artifacts (agent-reported, REPRODUCE FIRST):** cursor ghost trails
-  (`src/lib/gridBuffer.ts` dirty-region/overlay paint order) and blur after a
-  monitor/DPR change (atlas measured once at mount, never re-atlased —
-  `src/lib/fontAtlas.ts`, `src/components/TerminalCanvas.tsx`). Needs a GUI repro to
-  confirm before fixing — not yet verified as real.
+- **T9 — input reliability — UNCONFIRMED (no fix; agent false-positives):** traced both
+  reported bugs against the code; neither reproduces.
+  - *Ctrl+C "dropped":* `queue()` appends to `pendingInput` (`daemonInputQueue.ts:108`)
+    **before** the `shouldFlushImmediately && flushTimeout` branch flushes (110-117), so a
+    second Ctrl+C is included in the same emit — **batched, not dropped**; both bytes reach
+    the PTY.
+  - *Input-listener leak:* `markInputListenerActive` deletes the **current** entry during
+    `for…of` over a Map (`usePty.ts:87-102`). Map iteration is spec-safe against deleting
+    visited/current entries — later same-`sessionHint` entries are still visited and
+    disposed, so two same-hint listeners both get cleaned. **No leak.**
+  - copy/Shift+Tab focus restore lives in `TerminalCanvas.tsx` (concurrent session owns it)
+    — out of scope. Net: T9 has no actionable frontend bug. (Same false-positive pattern as
+    the disproven cluster B / hydration-gate claims.)
+- **E — renderer artifacts (cursor ghost trail ALREADY FIXED + guarded; DPR blur
+  out-of-scope):**
+  - *Cursor ghost trails:* already fixed in `gridBuffer.ts` (85-92) — `cursorMoved`
+    tracks `prevCursorCol` and `prevCursorVisible`, not just the line, and re-dirties the
+    cursor row on any same-row move / show-hide. Added a regression guard
+    `tests/grid-cursor-dirty.spec.ts` (2/2) so it can't silently regress.
+  - *DPR re-atlas blur:* the atlas is created in `TerminalCanvas.tsx` (concurrent session
+    owns it) and the symptom only shows after a live monitor/DPR change — **out of scope +
+    GUI-only**, deferred. Not blind-fixed.
 - **F — persistence robustness:** on-disk `workspace.json` is NOT namespaced under
   verify-reset mode so a verify run can clobber real layout
   (`src-tauri/src/commands.rs` ~1092); orphan session-id parse assumes a rigid
