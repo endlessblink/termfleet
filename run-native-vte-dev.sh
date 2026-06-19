@@ -98,7 +98,7 @@ if [[ "${TERMFLEET_AGENT_STATUS_DISABLE:-0}" != "1" ]]; then
       TERMFLEET_AGENT_STATUS_HOST="$STATUS_HOST" \
       TERMFLEET_AGENT_STATUS_PORT="$STATUS_PORT" \
       TERMFLEET_AGENT_STATUS_MODEL="${TERMFLEET_AGENT_STATUS_MODEL:-qwen3:4b}" \
-        node scripts/agent-status-summary-server.mjs node scripts/agent-status-summary-ollama.mjs
+        node scripts/agent-status-summary-server.mjs ${TERMFLEET_AGENT_STATUS_WORKER:-node scripts/agent-status-summary-sidecar.mjs}
     ) >"$STATUS_LOG" 2>&1 &
     STATUS_PID="$!"
     for _ in {1..40}; do
