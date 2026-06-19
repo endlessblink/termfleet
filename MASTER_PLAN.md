@@ -5065,3 +5065,25 @@ T8 persistence, T9 input.
   (`src/stores/workspace.ts` ~670-687). ⚠️ overlaps daemon/persistence work — coordinate.
 - Full plan + acceptance/verify per lane:
   `plans/there-are-several-features-robust-babbage.md`.
+
+#### Empty list + dead description — fix outcomes
+
+- **List populates (DONE, `80d841b`):** root cause — renderers showed only
+  `source==="todo-write"` items but nothing emits that marker, so the panel was always
+  empty. Added `visibleTaskLineup()` (prefer authoritative todo-write, else fall back to
+  the model/heuristic-extracted operator/summary items, re-validated through the content
+  contract so junk like a bare "TERM" can't surface). Wired both renderers.
+- **Description live (DONE, `f3fb213`):** root cause — `scheduleStatusSummaryUpdate`
+  debounce was reset on every output chunk so it never fired during streaming. Now
+  leading + max-wait (fires once ~1.5s elapsed) + refresh on snapshots.
+- **Real model summaries (DONE, `f89439e`):** `run-native-vte-dev.sh` now starts the
+  Ollama status server (qwen3:4b); header shows "model summary" vs "heuristic summary".
+- **Lane B (authoritative opencode-style emitter) — BLOCKED (architectural):** the
+  `[[TERMFLEET_TODO_WRITE]]` marker can only be captured as **visible** text — `onOutput`
+  is built from alacritty grid cells (`TerminalCanvas.tsx:382-387`), so an OSC/invisible
+  form is consumed by alacritty and never reaches the parser, while a plain-text form is
+  rendered as visible garbage (nothing strips it pre-render). Making it invisible needs a
+  **daemon/`vt_grid.rs` change** to extract+strip the marker from the byte stream before
+  rendering — out of this lane's scope (concurrent session owns those files). Coordinate
+  that backend change, then the gated global Claude `TodoWrite` hook (+ `cmd.env("TERMFLEET","1")`
+  in `pty.rs`) becomes safe. Until then, the model-extracted list (above) is the path.
