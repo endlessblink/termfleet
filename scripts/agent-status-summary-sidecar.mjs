@@ -4,7 +4,7 @@
 // stdin→stdout contract as the Ollama worker, but ZERO model/CLI calls — it just
 // reads a local file. Falls back to the request's heuristic candidate when no
 // fresh sidecar exists. (TC-033, cost-minimizing path.)
-import { readFileSync } from "node:fs";
+import { appendFileSync, readFileSync } from "node:fs";
 import { stdin, stdout } from "node:process";
 import { sidecarFresh, sidecarPath } from "./lib/agent-status-paths.mjs";
 
@@ -78,6 +78,16 @@ export function summaryFromSidecar(sidecar, payload) {
 
 export function readSidecarForPayload(payload, read = (p) => readFileSync(p, "utf8")) {
   const candidates = [payload?.workstream?.path, payload?.projectId, payload?.cwd, payload?.cwdLabel].filter(Boolean);
+  if (process.env.TERMFLEET_SIDECAR_DEBUG) {
+    try {
+      appendFileSync(
+        process.env.TERMFLEET_SIDECAR_DEBUG,
+        `${new Date().toISOString()} candidates=${JSON.stringify(candidates)} paths=${JSON.stringify(candidates.map((c) => sidecarPath(c)))}\n`,
+      );
+    } catch {
+      // debug only
+    }
+  }
   for (const key of candidates) {
     try {
       const sidecar = JSON.parse(read(sidecarPath(key)));
