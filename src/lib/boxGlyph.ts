@@ -99,6 +99,24 @@ export function drawBoxGlyph(
   // Block elements.
   const cw = Math.ceil(w) + 1;
   const ch = Math.ceil(h) + 1;
+
+  // Lower partial blocks ▁▂▃▄▅▆▇█ (U+2581..U+2588): N/8 of cell height, from bottom.
+  if (codePoint >= 0x2581 && codePoint <= 0x2588) {
+    const eighths = codePoint - 0x2580;
+    const fillH = Math.round((h * eighths) / 8);
+    ctx.fillStyle = fg;
+    ctx.fillRect(x, y + Math.floor(h) - fillH, cw, fillH + 1);
+    return true;
+  }
+  // Left partial blocks █▉▊▋▌▍▎▏ (U+2589..U+258F): N/8 of cell width, from left.
+  if (codePoint >= 0x2589 && codePoint <= 0x258f) {
+    const eighths = 0x2590 - codePoint;
+    const fillW = Math.round((w * eighths) / 8);
+    ctx.fillStyle = fg;
+    ctx.fillRect(x, y, fillW + 1, ch);
+    return true;
+  }
+
   switch (codePoint) {
     case 0x2588: // █ full block
       ctx.fillStyle = fg;
@@ -120,6 +138,14 @@ export function drawBoxGlyph(
       ctx.fillStyle = fg;
       ctx.fillRect(x + Math.floor(w / 2), y, Math.ceil(w / 2) + 1, ch);
       return true;
+    case 0x2594: // ▔ upper one eighth
+      ctx.fillStyle = fg;
+      ctx.fillRect(x, y, cw, Math.round(h / 8) + 1);
+      return true;
+    case 0x2595: // ▕ right one eighth
+      ctx.fillStyle = fg;
+      ctx.fillRect(x + Math.floor(w) - Math.round(w / 8), y, Math.round(w / 8) + 1, ch);
+      return true;
     case 0x2591: // ░ light shade
       withAlpha(ctx, fg, 0.25, () => ctx.fillRect(x, y, cw, ch));
       return true;
@@ -130,6 +156,40 @@ export function drawBoxGlyph(
       withAlpha(ctx, fg, 0.75, () => ctx.fillRect(x, y, cw, ch));
       return true;
     default:
-      return false;
+      break;
   }
+
+  // Quadrant blocks ▖▗▘▙▚▛▜▝▞▟ (U+2596..U+259F): combinations of the four cell
+  // quarters. Heavily used by htop/btop meters, so draw them geometrically.
+  const quadrants = QUADRANTS[codePoint];
+  if (quadrants) {
+    ctx.fillStyle = fg;
+    const lw = Math.ceil(w / 2);
+    const rw = Math.ceil(w / 2) + 1;
+    const th = Math.ceil(h / 2);
+    const bh = Math.ceil(h / 2) + 1;
+    const midX = x + Math.floor(w / 2);
+    const midY = y + Math.floor(h / 2);
+    if (quadrants[0]) ctx.fillRect(x, y, lw, th); // upper-left
+    if (quadrants[1]) ctx.fillRect(midX, y, rw, th); // upper-right
+    if (quadrants[2]) ctx.fillRect(x, midY, lw, bh); // lower-left
+    if (quadrants[3]) ctx.fillRect(midX, midY, rw, bh); // lower-right
+    return true;
+  }
+
+  return false;
 }
+
+// [upper-left, upper-right, lower-left, lower-right]
+const QUADRANTS: Record<number, [boolean, boolean, boolean, boolean]> = {
+  0x2596: [false, false, true, false], // ▖
+  0x2597: [false, false, false, true], // ▗
+  0x2598: [true, false, false, false], // ▘
+  0x2599: [true, false, true, true], // ▙
+  0x259a: [true, false, false, true], // ▚
+  0x259b: [true, true, true, false], // ▛
+  0x259c: [true, true, false, true], // ▜
+  0x259d: [false, true, false, false], // ▝
+  0x259e: [false, true, true, false], // ▞
+  0x259f: [false, true, true, true], // ▟
+};

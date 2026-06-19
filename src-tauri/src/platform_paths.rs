@@ -20,6 +20,11 @@ pub fn pty_trace_path() -> PathBuf {
 }
 
 pub fn runtime_dir() -> PathBuf {
+    // Prefer the per-user runtime dir (`/run/user/<uid>`, itself 0700). If neither
+    // XDG_RUNTIME_DIR nor dirs::runtime_dir() is available we fall back to the
+    // shared temp dir — but the daemon does NOT trust this blindly:
+    // `daemon::prepare_socket_dir` rejects a socket dir it doesn't exclusively own
+    // (0700, non-symlink), so a `/tmp` squat cannot host or hijack the socket.
     std::env::var_os("XDG_RUNTIME_DIR")
         .map(PathBuf::from)
         .or_else(|| dirs::runtime_dir())

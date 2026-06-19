@@ -103,3 +103,61 @@ test("box-drawing and block glyphs render geometrically", async ({ page }) => {
   expect(out.powerRight).toBeGreaterThan(150);
   expect(out.powerLeft).toBeGreaterThan(150);
 });
+
+test("quadrant and partial-eighth blocks render geometrically (htop/btop meters)", async ({
+  page,
+}) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+
+  const out = await page.evaluate(async () => {
+    const { GlyphAtlas, measureCell } = await import("/src/lib/fontAtlas.ts");
+    const { renderSnapshot, sizeCanvasToGrid, DEFAULT_THEME } = await import(
+      "/src/lib/gridRenderer.ts"
+    );
+
+    const dpr = 2;
+    const metrics = measureCell('"Geist Mono", monospace', 14, dpr, 1.2);
+    const cellW = metrics.cellWidth * dpr;
+    const cellH = metrics.cellHeight * dpr;
+    const cell = (c: string) => ({ c, fg: "#ffffff", bg: "#000000" });
+    // ▟ (U+259F all but upper-left), ▂ (U+2582 lower 2/8), ▏ (U+258F left 1/8)
+    const snapshot = {
+      cols: 3,
+      rows: 1,
+      cursor: { col: 0, line: 0 },
+      altScreen: false,
+      cursorVisible: false,
+      cells: [[cell("▟"), cell("▂"), cell("▏")]],
+    };
+    const atlas = new GlyphAtlas(metrics);
+    const canvas = document.createElement("canvas");
+    document.body.appendChild(canvas);
+    const ctx = sizeCanvasToGrid(canvas, atlas, 3, 1, dpr);
+    renderSnapshot(ctx, atlas, snapshot, dpr, DEFAULT_THEME);
+    const lum = (x: number, y: number) => {
+      const d = ctx.getImageData(Math.round(x), Math.round(y), 1, 1).data;
+      return (d[0] + d[1] + d[2]) / 3;
+    };
+    return {
+      atlasEmpty: atlas.size,
+      // ▟: upper-left quarter dark, lower-right quarter bright.
+      quadUpperLeft: lum(cellW * 0.25, cellH * 0.25),
+      quadLowerRight: lum(cellW * 0.75, cellH * 0.75),
+      // ▂ (cell 1): bottom bright, top dark.
+      eighthBottom: lum(cellW * 1.5, cellH * 0.95),
+      eighthTop: lum(cellW * 1.5, cellH * 0.2),
+      // ▏ (cell 2): left edge bright, right side dark.
+      leftEdge: lum(cellW * 2.02, cellH * 0.5),
+      rightSide: lum(cellW * 2.7, cellH * 0.5),
+    };
+  });
+
+  // All drawn geometrically — atlas must stay empty.
+  expect(out.atlasEmpty).toBe(0);
+  expect(out.quadUpperLeft).toBeLessThan(60);
+  expect(out.quadLowerRight).toBeGreaterThan(150);
+  expect(out.eighthBottom).toBeGreaterThan(150);
+  expect(out.eighthTop).toBeLessThan(60);
+  expect(out.leftEdge).toBeGreaterThan(150);
+  expect(out.rightSide).toBeLessThan(60);
+});
