@@ -74,16 +74,26 @@ test("worker falls back to the heuristic when no sidecar exists for the cwd", as
   expect(summary.confidence).toBe("low");
 });
 
-test("hook ignores non-TodoWrite tools", async () => {
+test("live-now: a tool call updates the activity and preserves the todo list", async () => {
   const dataHome = mkdtempSync(path.join(os.tmpdir(), "tf-status-"));
-  const cwd = "/tmp/tf-demo-other";
+  const cwd = "/tmp/tf-demo-live";
   const env = { XDG_DATA_HOME: dataHome };
-  runNode(HOOK, { tool_name: "Bash", cwd, tool_input: { command: "ls" } }, env);
-  // No sidecar written → worker falls back.
+
+  // Todos established first.
+  runNode(HOOK, {
+    tool_name: "TodoWrite", cwd, session_id: "s",
+    tool_input: { todos: [{ content: "Ship the feature", status: "in_progress", activeForm: "Shipping the feature" }] },
+  }, env);
+  // Then a Bash tool call updates "now" without TodoWrite.
+  const hookResult = runNode(HOOK, { tool_name: "Bash", cwd, tool_input: { command: "npm run build && echo done" } }, env);
+  expect(hookResult.status).toBe(0);
+
   const workerResult = runNode(WORKER, {
     projectId: cwd, workstream: { path: cwd, provider: "shell" },
     heuristicCandidate: { task: "Shell ready", path: cwd, now: "Awaiting command", status: "idle", provider: "shell", confidence: "low" },
   }, env);
   const summary = JSON.parse(workerResult.stdout.trim());
-  expect(summary.now).toBe("Awaiting command");
+  expect(summary.now).toBe("Running: npm run build && echo done");
+  // Todo list preserved across the non-TodoWrite call.
+  expect(summary.tasks.map((t: { text: string }) => t.text)).toContain("in-progress: Ship the feature");
 });
