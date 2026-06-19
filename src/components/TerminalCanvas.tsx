@@ -73,6 +73,10 @@ const TERMINAL_FONT_FACES = [
   `italic 700 ${FONT_SIZE_PX}px "Hack"`,
 ];
 const TRANSIENT_ATTACH_RETRY_DELAYS_MS = [150, 400, 900];
+// Upper bound on how long the canvas waits for the bundled terminal font before
+// rendering with whatever faces resolved (fallback metrics). Guards against a
+// stalled WebKitGTK font load blanking the terminal indefinitely.
+const FONT_LOAD_TIMEOUT_MS = 1500;
 
 const DEFAULT_TERMINAL_MODES = {
   appCursor: false,
@@ -205,13 +209,23 @@ export function TerminalCanvas({
   useEffect(() => {
     if (fontsReady || typeof document === "undefined" || !document.fonts) return;
     let cancelled = false;
+    const markReady = () => {
+      if (!cancelled) setFontsReady(true);
+    };
+    // Bounded fallback: WebKitGTK font loads can occasionally stall, and a hung
+    // load must never leave the terminal blank forever. After the timeout we
+    // proceed with whatever faces resolved (fallback metrics if Hack is missing)
+    // rather than blocking the canvas on font readiness.
+    const timeout = window.setTimeout(markReady, FONT_LOAD_TIMEOUT_MS);
     Promise.all(TERMINAL_FONT_FACES.map((face) => document.fonts.load(face)))
+      // Wait for the fontset to settle so the synchronous atlas measures against
+      // the real face, not a transient fallback.
+      .then(() => document.fonts.ready)
       .catch(() => {})
-      .finally(() => {
-        if (!cancelled) setFontsReady(true);
-      });
+      .finally(markReady);
     return () => {
       cancelled = true;
+      window.clearTimeout(timeout);
     };
   }, [fontsReady]);
 
