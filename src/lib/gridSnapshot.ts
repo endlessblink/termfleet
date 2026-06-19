@@ -26,6 +26,8 @@ export interface GridCursor {
 export interface GridSnapshot {
   cols: number;
   rows: number;
+  /** Scrollback lines above the live bottom; visible row r maps to r - displayOffset. */
+  displayOffset: number;
   cursor: GridCursor;
   altScreen: boolean;
   cursorVisible: boolean;
@@ -39,6 +41,7 @@ export function parseGridSnapshot(json: string): GridSnapshot {
   if (
     typeof value.cols !== "number" ||
     typeof value.rows !== "number" ||
+    typeof value.displayOffset !== "number" ||
     !Array.isArray(value.cells)
   ) {
     throw new Error("invalid grid snapshot shape");

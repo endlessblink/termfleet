@@ -39,7 +39,7 @@ import { agentTerminalTaskRows } from "../lib/agentTerminalTasks";
 import { workstreamActivityMeta, workstreamActivityText } from "../lib/workstreamActivity";
 import { formatWorkstreamBranch, formatWorkstreamIsolation, formatWorkstreamOpsContext } from "../lib/workstreamOpsContext";
 import { snapshotPreviewRows } from "../lib/snapshotPreviewRows";
-import { taskLineupStats } from "../lib/taskLineup";
+import { cleanTaskLineupContent, taskLineupNextLabel, taskLineupSourceLabel, taskLineupStats } from "../lib/taskLineup";
 import { summaryFromDurableActivity } from "../lib/terminalHeaderDisplay";
 
 type CanvasRect = {
@@ -61,6 +61,7 @@ type TerminalBodyTaskRow = {
   task: string;
   state: string;
   next: string;
+  meta?: string;
 };
 
 const TERMINAL_LABEL_COLORS = [
@@ -405,8 +406,9 @@ const styles: Record<string, CSSProperties> = {
   terminalStatusGrid: {
     minWidth: 0,
     display: "grid",
-    gridTemplateColumns: "minmax(120px, 0.7fr) minmax(180px, 1.3fr)",
-    gap: 10,
+    gridTemplateColumns: "minmax(90px, 0.56fr) auto minmax(170px, 1.44fr)",
+    gap: 7,
+    alignItems: "center",
   },
   terminalStatusField: {
     minWidth: 0,
@@ -985,6 +987,16 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 12,
     fontWeight: 500,
     lineHeight: 1.25,
+  },
+  terminalBodyTaskEyebrow: {
+    minWidth: 0,
+    marginBottom: 2,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    color: "color-mix(in srgb, var(--text-secondary) 70%, transparent)",
+    fontSize: 9,
+    fontWeight: 500,
   },
   liveTerminalBody: {
     flex: "1 1 auto",
@@ -1617,7 +1629,7 @@ function TerminalBodyTaskSidebar({
         </div>
       ) : (
         <div style={styles.terminalBodyTaskList}>
-          {rows.map((task) => {
+          {rows.map((task, index) => {
             const done = task.state === "Done";
             return (
               <div
@@ -1639,6 +1651,9 @@ function TerminalBodyTaskSidebar({
                   aria-hidden="true"
                 />
                 <span style={{ minWidth: 0 }}>
+                  <div style={styles.terminalBodyTaskEyebrow}>
+                    {task.meta ?? `Task ${index + 1}/${rows.length}`}
+                  </div>
                   <div
                     style={{
                       ...styles.terminalBodyTaskTitle,
@@ -1679,7 +1694,7 @@ function currentLineupTaskRows(
   summary: WorkstreamStatusSummary | undefined
 ): TerminalBodyTaskRow[] {
   if (taskLineup?.length) {
-    return taskLineup.map((item) => ({
+    return taskLineup.map((item, index) => ({
       id: item.id,
       task: item.content,
       state: item.status === "completed"
@@ -1687,49 +1702,60 @@ function currentLineupTaskRows(
         : item.status === "in_progress"
           ? "Working"
           : item.status === "cancelled"
-            ? "Cancelled"
-            : "Not done",
-      next: item.status === "completed"
-        ? "Complete"
-        : item.status === "in_progress"
-          ? "Active now"
-          : item.priority ? `${item.priority} priority` : "Open",
+          ? "Cancelled"
+          : "Not done",
+      next: taskLineupNextLabel(item),
+      meta: `Task ${index + 1}/${taskLineup.length} · ${taskLineupSourceLabel(item.source)}`,
     }));
   }
 
   const cockpitTasks = (workstream?.cockpitObjects ?? [])
     .filter((item) => item.kind === "task" && item.reviewState !== "dismissed")
-    .map((item) => {
+    .flatMap((item) => {
+      const task = cleanTaskLineupContent(item.text);
+      if (!task) return [];
       const done = item.status === "accepted" || item.reviewState === "accepted";
-      return {
+      return [{
         id: item.id,
-        task: item.text,
+        task,
         state: done ? "Done" : "Not done",
-        next: done ? "Complete" : item.reviewState === "proof-requested" ? "Proof requested" : "Open",
-      };
+        next: done ? "Completed" : item.reviewState === "proof-requested" ? "Proof requested" : "Needs review",
+        meta: "Review item",
+      }];
     });
 
   if (cockpitTasks.length > 0) return cockpitTasks;
 
-  const summaryTasks = (summary?.tasks ?? []).map((item) => ({
-    id: item.id,
-    task: item.text.replace(/^(done|complete)\s*:\s*/i, ""),
-    state: summary?.status === "done" || /^(done|complete)\s*:/i.test(item.text) ? "Done" : "Not done",
-    next: summary?.status === "done" || /^(done|complete)\s*:/i.test(item.text)
-      ? "Complete"
-      : summary?.nextActions?.[0]?.text ?? workstream?.nextAction ?? "Open",
-  }));
+  const rawSummaryTasks = summary?.tasks ?? [];
+  const summaryTasks = rawSummaryTasks.flatMap((item, index) => {
+    const task = cleanTaskLineupContent(item.text);
+    if (!task) return [];
+    return [{
+      id: item.id,
+      task,
+      state: summary?.status === "done" || /^(done|complete)\s*:/i.test(item.text) ? "Done" : "Not done",
+      next: summary?.status === "done" || /^(done|complete)\s*:/i.test(item.text)
+        ? "Completed"
+        : summary?.nextActions?.[0]?.text ?? workstream?.nextAction ?? "Queued after current",
+      meta: `Summary task ${index + 1}/${rawSummaryTasks.length}`,
+    }];
+  });
 
   if (summaryTasks.length > 0) {
     return summaryTasks;
   }
 
-  return (workstream?.extractedTasks ?? []).map((item) => ({
-    id: item.id,
-    task: item.text.replace(/^(done|complete)\s*:\s*/i, ""),
-    state: /^(done|complete)\s*:/i.test(item.text) ? "Done" : "Not done",
-    next: /^(done|complete)\s*:/i.test(item.text) ? "Complete" : workstream?.extractedNextActions?.[0]?.text ?? workstream?.nextAction ?? "Open",
-  }));
+  return (workstream?.extractedTasks ?? []).flatMap((item) => {
+    const task = cleanTaskLineupContent(item.text);
+    if (!task) return [];
+    return [{
+      id: item.id,
+      task,
+      state: /^(done|complete)\s*:/i.test(item.text) ? "Done" : "Not done",
+      next: /^(done|complete)\s*:/i.test(item.text) ? "Completed" : workstream?.extractedNextActions?.[0]?.text ?? workstream?.nextAction ?? "Queued after current",
+      meta: "Extracted task",
+    }];
+  });
 }
 
 function recoveryPromptFor(workstream?: Tab["workstream"]) {
@@ -2220,23 +2246,19 @@ function CanvasNodeView({
     ? agentTerminalTaskRows(workstream, agentStatusSummary)
     : [];
   void agentTerminalTasks;
-  const laneChecklistTasks = (boundTask?.checklist ?? []).map((item) => ({
+  const laneChecklistTasks = (boundTask?.checklist ?? []).map((item, index) => ({
     id: item.id,
     task: item.text,
     state: item.status === "done" ? "Done" : "Not done",
-    next: item.status === "done" ? "Complete" : taskStatusLabel(item.status),
+    next: item.status === "done" ? "Completed" : taskStatusLabel(item.status),
+    meta: `Plan checklist ${index + 1}/${boundTask?.checklist?.length ?? 1}`,
   }));
   void terminalHeaderTaskState;
+  const canonicalTerminalTaskLineup = linkedTerminal?.taskLineup?.filter((item) => item.source !== "summary");
   const currentLineupTasks = currentLineupTaskRows(
     workstream,
-    workstream?.taskLineup ?? (
-      linkedTerminal?.taskLineup?.filter((item) =>
-        Boolean(terminalDisplaySummary.tasks?.length) ||
-        item.source === "todo-write" ||
-        item.source === "operator"
-      )
-    ),
-    workstream?.kind === "agent" ? agentStatusSummary ?? undefined : terminalDisplaySummary
+    workstream?.taskLineup ?? canonicalTerminalTaskLineup,
+    workstream?.kind === "agent" ? agentStatusSummary ?? undefined : undefined
   );
   const terminalBodyTasks = laneChecklistTasks.length > 0
     ? laneChecklistTasks
@@ -2690,12 +2712,12 @@ function CanvasNodeView({
             onDoubleClick={onRename}
           >
             <div style={styles.terminalStatusKicker}>
-              <span>Shell session</span>
-              <span>·</span>
-              <span>{terminalHeaderHasUsefulSummary ? "activity" : "ready"}</span>
               <span style={styles.workspacePill} data-testid="canvas-terminal-node-workspace" title={workspaceLabel}>
                 {workspaceLabel}
               </span>
+              <span>shell</span>
+              <span>·</span>
+              <span>{terminalHeaderHasUsefulSummary ? "running activity" : "ready"}</span>
             </div>
             <div
               style={styles.terminalStatusTitle}
@@ -2706,26 +2728,21 @@ function CanvasNodeView({
             <div style={terminalHeaderHasTrustedSummary ? styles.terminalStatusLayout : styles.terminalStatusSummaryColumn}>
               <div style={styles.terminalStatusSummaryColumn}>
                 <div style={styles.terminalStatusGrid}>
-                  <div style={styles.terminalStatusField}>
-                    <span style={styles.terminalStatusFieldLabel}>Path</span>
-                    <span
-                      style={styles.terminalStatusFieldValue}
-                      data-testid="canvas-terminal-node-header-path"
-                      title={terminalHeaderPath}
-                    >
-                      {terminalHeaderPath}
-                    </span>
-                  </div>
-                  <div style={styles.terminalStatusField}>
-                    <span style={styles.terminalStatusFieldLabel}>{terminalHeaderHasUsefulNow ? "Detail" : "Signal"}</span>
-                    <span
-                      style={terminalHeaderHasUsefulNow ? styles.terminalStatusNow : styles.terminalStatusFieldValue}
-                      data-testid="canvas-terminal-node-now"
-                      title={terminalHeaderSummarySignal}
-                    >
-                      {terminalHeaderSummarySignal}
-                    </span>
-                  </div>
+                  <span
+                    style={styles.terminalStatusFieldValue}
+                    data-testid="canvas-terminal-node-header-path"
+                    title={terminalHeaderPath}
+                  >
+                    {terminalHeaderPath}
+                  </span>
+                  <span style={{ color: "var(--text-tertiary)", fontSize: 11 }}>·</span>
+                  <span
+                    style={terminalHeaderHasUsefulNow ? styles.terminalStatusNow : styles.terminalStatusFieldValue}
+                    data-testid="canvas-terminal-node-now"
+                    title={terminalHeaderSummarySignal}
+                  >
+                    {terminalHeaderSummarySignal}
+                  </span>
                 </div>
               </div>
             </div>

@@ -67,6 +67,7 @@ pub fn run() {
             commands::daemon_list_session_events,
             commands::grid_attach,
             commands::grid_snapshot,
+            commands::grid_selection_text,
             commands::grid_detach,
             commands::grid_resize,
             commands::grid_scroll,

@@ -9,7 +9,7 @@ import { pathTail, projectForTab } from "../lib/projectDisplay";
 import { agentStatusSummaryFromWorkstream, getDisplaySummary } from "../lib/agentStatusSummary";
 import { workstreamActivityText } from "../lib/workstreamActivity";
 import { agentTerminalTaskRows } from "../lib/agentTerminalTasks";
-import { taskLineupStats } from "../lib/taskLineup";
+import { taskLineupNextLabel, taskLineupSourceLabel, taskLineupStats } from "../lib/taskLineup";
 import { summaryFromDurableActivity } from "../lib/terminalHeaderDisplay";
 import {
   calculatePaneBounds,
@@ -42,6 +42,14 @@ const STATUS_COLORS: Record<TerminalRuntimeStatus, string> = {
   exited: "var(--text-secondary)",
 };
 
+type SplitTaskRow = {
+  id: string;
+  task: string;
+  state: string;
+  next: string;
+  meta?: string;
+};
+
 function AgentTaskSidebar({
   workstream,
   summary,
@@ -55,12 +63,13 @@ function AgentTaskSidebar({
   collapsed: boolean;
   onToggleCollapsed: () => void;
 }) {
-  const rows = taskLineup?.length
-    ? taskLineup.map((item) => ({
+  const rows: SplitTaskRow[] = taskLineup?.length
+    ? taskLineup.map((item, index) => ({
         id: item.id,
         task: item.content,
         state: item.status === "completed" ? "Done" : item.status === "in_progress" ? "Working" : item.status === "cancelled" ? "Cancelled" : "Not done",
-        next: item.status === "completed" ? "Complete" : item.status === "in_progress" ? "Active now" : item.priority ? `${item.priority} priority` : "Open",
+        next: taskLineupNextLabel(item),
+        meta: `Task ${index + 1}/${taskLineup.length} · ${taskLineupSourceLabel(item.source)}`,
       }))
     : agentTerminalTaskRows(workstream, summary);
   const stats = taskLineupStats(rows.map((row) => ({
@@ -170,7 +179,7 @@ function AgentTaskSidebar({
         </span>
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 7, minHeight: 0, overflow: "hidden" }}>
-        {rows.map((row) => {
+        {rows.map((row, index) => {
           const done = row.state === "Done";
           return (
             <div
@@ -186,6 +195,19 @@ function AgentTaskSidebar({
                 opacity: done ? 0.72 : 1,
               }}
             >
+              <div
+                style={{
+                  minWidth: 0,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                  color: "color-mix(in srgb, var(--text-secondary) 70%, transparent)",
+                  fontSize: 9,
+                  fontWeight: 500,
+                }}
+              >
+                {row.meta ?? `Task ${index + 1}/${rows.length}`}
+              </div>
               <div
                 style={{
                   minWidth: 0,
@@ -721,26 +743,30 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
         const agentStatusSummary = tab.workstream?.kind === "agent"
           ? agentStatusSummaryFromWorkstream(tab.workstream)
           : null;
+        const shellExtractedSummary = !agentStatusSummary && !isPreviewPane && paneTerminal
+          ? getDisplaySummary({
+              mission: "Terminal",
+              provider: "shell",
+              status: terminalStatus === "failed"
+                ? "failed"
+                : terminalStatus === "exited"
+                  ? "done"
+                  : terminalStatus === "running" || terminalStatus === "reconnected"
+                    ? "running"
+                    : "ready",
+              cwd: paneCwd,
+              currentActivity: paneTerminal.currentActivity,
+              terminalOutput: paneTerminal.terminalOutput,
+            }, paneTerminal.statusSummary)
+          : null;
         const shellStatusSummary = !agentStatusSummary && !isPreviewPane && paneTerminal
           ? paneTerminal.durableActivity
             ? summaryFromDurableActivity(
                 paneTerminal.durableActivity,
                 pathTail(paneCwd) ?? paneCwd ?? "workspace path unknown",
+                shellExtractedSummary ?? undefined,
               )
-            : getDisplaySummary({
-                mission: "Terminal",
-                provider: "shell",
-                status: terminalStatus === "failed"
-                  ? "failed"
-                  : terminalStatus === "exited"
-                    ? "done"
-                    : terminalStatus === "running" || terminalStatus === "reconnected"
-                      ? "running"
-                      : "ready",
-                cwd: paneCwd,
-                currentActivity: paneTerminal.currentActivity,
-                terminalOutput: paneTerminal.terminalOutput,
-              }, paneTerminal.statusSummary)
+            : shellExtractedSummary
           : null;
         const isAgentPane = Boolean(agentStatusSummary);
         const isShellSummaryPane = Boolean(shellStatusSummary);
@@ -1125,7 +1151,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                     }}
                     title={shellStatusSummary.now}
                   >
-                    <span style={{ flexShrink: 0, color: "var(--text-tertiary)", fontSize: 10 }}>Detail</span>
+                    <span style={{ flexShrink: 0, color: "var(--text-tertiary)", fontSize: 10 }}>Now</span>
                     <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{shellStatusSummary.now}</span>
                   </div>
                 </div>

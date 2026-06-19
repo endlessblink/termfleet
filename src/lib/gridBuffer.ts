@@ -22,6 +22,7 @@ function normalizeRow(cells: GridCell[], cols: number): GridCell[] {
 export class GridBuffer {
   cols = 0;
   rows = 0;
+  displayOffset = 0;
   cursor = { col: 0, line: 0 };
   altScreen = false;
   cursorVisible = true;
@@ -65,6 +66,7 @@ export class GridBuffer {
     }
 
     this.cursor = frame.cursor;
+    this.displayOffset = frame.displayOffset;
     this.altScreen = frame.altScreen;
     this.cursorVisible = frame.cursorVisible;
     this.appCursor = frame.appCursor;
@@ -97,6 +99,7 @@ export class GridBuffer {
     return {
       cols: this.cols,
       rows: this.rows,
+      displayOffset: this.displayOffset,
       cursor: this.cursor,
       altScreen: this.altScreen,
       cursorVisible: this.cursorVisible,

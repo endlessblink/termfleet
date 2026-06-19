@@ -27,17 +27,19 @@ import {
   sizeCanvasToGrid,
   type RenderTheme,
 } from "../lib/gridRenderer";
-import { encodePaste, keyEventToBytes } from "../lib/keymap";
+import { encodePaste, isTerminalPasteShortcut, keyEventToBytes } from "../lib/keymap";
 import {
   encodeMouseReport,
   pointerButtonToTerminalButton,
   terminalWheelAction,
 } from "../lib/terminalMouse";
 import {
+  computeSelectionAutoScrollDelta,
   normalizeRange,
   pointToCell,
-  rowSpan,
   selectionToText,
+  visiblePointToAbsolute,
+  visibleRowSpan,
   type CellPoint,
   type SelectionRange,
 } from "../lib/selection";
@@ -150,6 +152,7 @@ export function TerminalCanvas({
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const daemonInputQueueRef = useRef<DaemonInputQueue | null>(null);
   const scrollToBottomPendingRef = useRef(false);
+  const pasteShortcutArmedUntilRef = useRef(0);
   // Stable handle to the current session id for the window-capture key handler,
   // which is registered once and must not close over a stale prop.
   const sessionIdRef = useRef(sessionId);
@@ -182,6 +185,10 @@ export function TerminalCanvas({
   const cellRef = useRef({ width: 8, height: 16, dpr: 1 });
   const selectionRef = useRef<SelectionRange | null>(null);
   const anchorRef = useRef<CellPoint | null>(null);
+  const selectionPointerIdRef = useRef<number | null>(null);
+  const lastSelectionClientRef = useRef<{ x: number; y: number } | null>(null);
+  const autoScrollRafRef = useRef<number | null>(null);
+  const autoScrollInFlightRef = useRef(false);
   // Gate atlas construction until the bundled Hack faces are loaded so cell
   // metrics and glyph tiles are measured against the real font, not a fallback.
   const [fontsReady, setFontsReady] = useState(
@@ -208,6 +215,14 @@ export function TerminalCanvas({
     };
   }, [fontsReady]);
 
+  const cancelSelectionAutoScroll = () => {
+    if (autoScrollRafRef.current !== null) {
+      window.cancelAnimationFrame(autoScrollRafRef.current);
+      autoScrollRafRef.current = null;
+    }
+    autoScrollInFlightRef.current = false;
+  };
+
   const drawSelectionOverlay = () => {
     const overlay = overlayRef.current;
     const buffer = bufferRef.current;
@@ -222,8 +237,8 @@ export function TerminalCanvas({
     const cellW = width * dpr;
     const cellH = height * dpr;
     octx.fillStyle = "rgba(90, 140, 220, 0.35)";
-    for (let row = range.start.row; row <= range.end.row; row += 1) {
-      const span = rowSpan(range, row, buffer.cols);
+    for (let row = 0; row < buffer.rows; row += 1) {
+      const span = visibleRowSpan(range, row, buffer.displayOffset, buffer.cols);
       if (!span) continue;
       const x = Math.round(span[0] * cellW);
       const w = Math.ceil((span[1] - span[0] + 1) * cellW);
@@ -242,6 +257,9 @@ export function TerminalCanvas({
     modesRef.current = { ...DEFAULT_TERMINAL_MODES };
     selectionRef.current = null;
     anchorRef.current = null;
+    selectionPointerIdRef.current = null;
+    lastSelectionClientRef.current = null;
+    cancelSelectionAutoScroll();
     setAttachError(null);
     // Fold the supersample factor into the device pixel ratio used for the backing
     // store and glyph atlas. The CSS box stays at logical size (sizeCanvasToGrid
@@ -657,6 +675,7 @@ export function TerminalCanvas({
 
     return () => {
       disposed = true;
+      cancelSelectionAutoScroll();
       if (refreshTimer !== null) clearTimeout(refreshTimer);
       if (blankGuardTimer !== null) clearTimeout(blankGuardTimer);
       unregisterExitWatch(sessionId);
@@ -723,7 +742,7 @@ export function TerminalCanvas({
   }, [sessionId, syncFocusedTerminal]);
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    // Copy/paste shortcuts are handled by the browser/clipboard, not as input.
+    // Copy/paste shortcuts are handled by the browser/clipboard, not as PTY keys.
     const key = event.key.toLowerCase();
     if (event.ctrlKey && event.shiftKey && key === "f") {
       event.preventDefault();
@@ -735,7 +754,8 @@ export function TerminalCanvas({
       copySelection();
       return;
     }
-    if ((event.ctrlKey || event.metaKey) && event.shiftKey && key === "v") {
+    if (isTerminalPasteShortcut(event.nativeEvent)) {
+      pasteShortcutArmedUntilRef.current = performance.now() + 1500;
       return;
     }
     const bytes = keyEventToBytes(event.nativeEvent, {
@@ -793,8 +813,12 @@ export function TerminalCanvas({
         useWorkspaceStore.getState().toggleImmersiveTerminal(tabId, paneId);
         return;
       }
-      // Leave copy/paste shortcuts to the bubble handler / browser clipboard.
-      if ((event.ctrlKey || event.metaKey) && event.shiftKey && (key === "c" || key === "v")) {
+      if (isTerminalPasteShortcut(event)) {
+        pasteShortcutArmedUntilRef.current = performance.now() + 1500;
+        return;
+      }
+      // Leave copy shortcut to the bubble handler.
+      if ((event.ctrlKey || event.metaKey) && event.shiftKey && key === "c") {
         return;
       }
       if (event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey && key === "z") {
@@ -849,6 +873,9 @@ export function TerminalCanvas({
 
   const handlePaste = (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
     event.preventDefault();
+    const armed = performance.now() <= pasteShortcutArmedUntilRef.current;
+    pasteShortcutArmedUntilRef.current = 0;
+    if (!armed) return;
     const text = event.clipboardData.getData("text");
     if (!text) return;
     // Gate on the first frame: pasting before modesRef reflects the real
@@ -881,6 +908,16 @@ export function TerminalCanvas({
   const pointerToCell = (event: React.PointerEvent): CellPoint | null =>
     clientPointToCell(event.clientX, event.clientY);
 
+  const clientPointToSelectionPoint = (clientX: number, clientY: number): CellPoint | null => {
+    const buffer = bufferRef.current;
+    const visible = clientPointToCell(clientX, clientY);
+    if (!buffer || !visible) return null;
+    return visiblePointToAbsolute(visible, buffer.displayOffset);
+  };
+
+  const pointerToSelectionPoint = (event: React.PointerEvent): CellPoint | null =>
+    clientPointToSelectionPoint(event.clientX, event.clientY);
+
   const pointerToVtCell = (event: React.PointerEvent): { col: number; row: number } | null => {
     const buffer = bufferRef.current;
     if (!buffer) return null;
@@ -908,6 +945,63 @@ export function TerminalCanvas({
     return true;
   };
 
+  const updateSelectionFocusFromLastPointer = () => {
+    const anchor = anchorRef.current;
+    const last = lastSelectionClientRef.current;
+    if (!anchor || !last) return;
+    const focus = clientPointToSelectionPoint(last.x, last.y);
+    if (!focus) return;
+    selectionRef.current = normalizeRange(anchor, focus);
+    drawSelectionOverlay();
+  };
+
+  const scheduleSelectionAutoScroll = () => {
+    if (autoScrollRafRef.current !== null) return;
+    const tick = () => {
+      autoScrollRafRef.current = null;
+      if (!anchorRef.current || selectionPointerIdRef.current === null) return;
+      const canvas = canvasRef.current;
+      const last = lastSelectionClientRef.current;
+      if (!canvas || !last) return;
+      const rect = canvas.getBoundingClientRect();
+      const delta = computeSelectionAutoScrollDelta(last.y, rect.top, rect.bottom);
+      if (delta !== 0 && !autoScrollInFlightRef.current) {
+        autoScrollInFlightRef.current = true;
+        invoke("grid_scroll", { id: sessionIdRef.current, delta })
+          .catch(console.error)
+          .finally(() => {
+            autoScrollInFlightRef.current = false;
+            updateSelectionFocusFromLastPointer();
+          });
+      } else {
+        updateSelectionFocusFromLastPointer();
+      }
+      autoScrollRafRef.current = window.requestAnimationFrame(tick);
+    };
+    autoScrollRafRef.current = window.requestAnimationFrame(tick);
+  };
+
+  const stopSelectionDrag = (event?: React.PointerEvent) => {
+    cancelSelectionAutoScroll();
+    const pointerId = selectionPointerIdRef.current;
+    selectionPointerIdRef.current = null;
+    lastSelectionClientRef.current = null;
+    anchorRef.current = null;
+    if (event && pointerId !== null) {
+      try {
+        event.currentTarget.releasePointerCapture(pointerId);
+      } catch {
+        // Pointer capture may already be gone after cancellation/window blur.
+      }
+    }
+  };
+
+  const handlePointerCancel = (event: React.PointerEvent) => {
+    if (selectionPointerIdRef.current !== null && selectionPointerIdRef.current !== event.pointerId) return;
+    stopSelectionDrag(event);
+    focusInput();
+  };
+
   const handlePointerDown = (event: React.PointerEvent) => {
     focusInput();
     if (modesRef.current.mouseReport) {
@@ -918,27 +1012,50 @@ export function TerminalCanvas({
       return;
     }
     if (event.button !== 0) return;
-    const cell = pointerToCell(event);
+    const cell = pointerToSelectionPoint(event);
     if (!cell) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
     anchorRef.current = cell;
+    selectionPointerIdRef.current = event.pointerId;
+    lastSelectionClientRef.current = { x: event.clientX, y: event.clientY };
     selectionRef.current = null;
+    scheduleSelectionAutoScroll();
     drawSelectionOverlay();
   };
 
   const handlePointerMove = (event: React.PointerEvent) => {
-    if (!anchorRef.current || (event.buttons & 1) === 0) return;
-    const cell = pointerToCell(event);
-    if (!cell) return;
-    selectionRef.current = normalizeRange(anchorRef.current, cell);
-    drawSelectionOverlay();
+    if (!anchorRef.current || selectionPointerIdRef.current !== event.pointerId) return;
+    if ((event.buttons & 1) === 0) {
+      stopSelectionDrag(event);
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    lastSelectionClientRef.current = { x: event.clientX, y: event.clientY };
+    updateSelectionFocusFromLastPointer();
+    scheduleSelectionAutoScroll();
   };
 
   const copySelection = () => {
     const buffer = bufferRef.current;
     const range = selectionRef.current;
     if (!buffer || !range) return;
-    const text = selectionToText(buffer.cells, range);
-    if (text) navigator.clipboard?.writeText(text).catch(console.error);
+    invoke<string>("grid_selection_text", {
+      id: sessionIdRef.current,
+      startRow: range.start.row,
+      startCol: range.start.col,
+      endRow: range.end.row,
+      endCol: range.end.col,
+    })
+      .catch(() => {
+        if (buffer.displayOffset !== 0) return "";
+        return selectionToText(buffer.cells, range);
+      })
+      .then((text) => {
+        if (text) navigator.clipboard?.writeText(text).catch(console.error);
+      });
     // Writing to the clipboard can move focus off the hidden textarea; without
     // restoring it, the next keystroke (e.g. Shift+Tab) falls through to the
     // browser's focus traversal and escapes the terminal instead of reaching the
@@ -952,17 +1069,26 @@ export function TerminalCanvas({
         event.preventDefault();
         event.stopPropagation();
       }
-      anchorRef.current = null;
+      stopSelectionDrag(event);
       focusInput();
       return;
     }
-    anchorRef.current = null;
+    if (selectionPointerIdRef.current !== null && selectionPointerIdRef.current !== event.pointerId) return;
+    stopSelectionDrag(event);
     if (selectionRef.current) copySelection();
     // A selection drag ends with the pointer up; make sure the textarea keeps
     // keyboard focus so terminal shortcuts (Shift+Tab back-tab, Ctrl keys) go to
     // the PTY rather than the browser.
     focusInput();
   };
+
+  useEffect(() => {
+    const handleBlur = () => {
+      stopSelectionDrag();
+    };
+    window.addEventListener("blur", handleBlur);
+    return () => window.removeEventListener("blur", handleBlur);
+  }, []);
 
   // Translate a wheel event into the cell (1-based col/row) under the pointer.
   // Shared with mouse-wheel reporting so the byte sequence names the right cell.
@@ -1021,6 +1147,7 @@ export function TerminalCanvas({
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerCancel}
       onWheel={handleWheel}
     >
       <canvas

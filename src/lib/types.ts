@@ -17,6 +17,7 @@ export interface TaskLineupItem {
 export interface TerminalActivitySummary {
   title: string;
   subtitle?: string;
+  targetPath?: string;
   status: TerminalActivityStatus;
   progress?: number;
   command?: string;

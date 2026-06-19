@@ -171,6 +171,21 @@ impl GridManager {
         serde_json::to_string(&snapshot).map_err(|error| error.to_string())
     }
 
+    pub fn selection_text(
+        &self,
+        id: &str,
+        start_row: i32,
+        start_col: usize,
+        end_row: i32,
+        end_col: usize,
+    ) -> Result<String, String> {
+        let session = self
+            .get(id)
+            .ok_or_else(|| format!("no grid attached for session {id}"))?;
+        let state = session.state.read().map_err(|_| "grid state poisoned")?;
+        Ok(selection_text(&state.term, start_row, start_col, end_row, end_col))
+    }
+
     /// Register a binary-diff subscriber. Sends an immediate full-sync frame so
     /// the new subscriber has a baseline, then the emitter pushes diffs at 60Hz.
     pub fn subscribe_diffs(
@@ -386,6 +401,7 @@ fn feed_grid_from_daemon(id: &str, state: &Arc<RwLock<TermState>>) -> Result<(),
 struct GridSnapshot {
     cols: usize,
     rows: usize,
+    display_offset: usize,
     cursor: CursorSnapshot,
     alt_screen: bool,
     cursor_visible: bool,
@@ -468,6 +484,7 @@ impl GridSnapshot {
         Self {
             cols,
             rows,
+            display_offset: grid.display_offset(),
             cursor,
             alt_screen: mode.contains(TermMode::ALT_SCREEN),
             cursor_visible: offset == 0 && mode.contains(TermMode::SHOW_CURSOR),
@@ -583,14 +600,15 @@ fn cube_step(value: u8) -> u8 {
 //
 // All integers little-endian. The frontend reads it as an ArrayBuffer.
 //
-// Header (15 bytes):
+// Header (17 bytes):
 //   [0]      u8   message type: 0x01 = diff, 0x02 = full sync
 //   [1..3]   u16  cols
 //   [3..5]   u16  rows (visible screen rows)
-//   [5..7]   u16  cursor column
-//   [7..9]   u16  cursor line (visible, 0-based)
-//   [9..13]  u32  mode flags: bit0 = alt screen, bit1 = cursor visible
-//   [13..15] u16  dirty row count
+//   [5..7]   u16  display offset (scrollback lines above the live bottom)
+//   [7..9]   u16  cursor column
+//   [9..11]  u16  cursor line (visible, 0-based)
+//   [11..15] u32  mode flags: bit0 = alt screen, bit1 = cursor visible
+//   [15..17] u16  dirty row count
 // Then, per dirty row:
 //   u16 row index, u16 cell count (== cols), then `cell count` cells.
 // Cell (14 bytes):
@@ -607,7 +625,7 @@ fn cube_step(value: u8) -> u8 {
 pub const MSG_DIFF: u8 = 0x01;
 pub const MSG_FULL: u8 = 0x02;
 pub const CELL_BYTES: usize = 14;
-pub const HEADER_BYTES: usize = 15;
+pub const HEADER_BYTES: usize = 17;
 
 const MODE_ALT_SCREEN: u32 = 1 << 0;
 const MODE_CURSOR_VISIBLE: u32 = 1 << 1;
@@ -647,6 +665,7 @@ struct WireCell {
 struct WireFrame {
     cols: u16,
     rows: u16,
+    display_offset: u16,
     cursor_col: u16,
     cursor_line: u16,
     alt_screen: bool,
@@ -723,6 +742,7 @@ impl WireFrame {
         Self {
             cols: cols as u16,
             rows: rows as u16,
+            display_offset: grid.display_offset().min(u16::MAX as usize) as u16,
             cursor_col: cursor.column.0 as u16,
             cursor_line: cursor.line.0.max(0) as u16,
             alt_screen: mode.contains(TermMode::ALT_SCREEN),
@@ -781,6 +801,7 @@ impl WireFrame {
         };
         if prev.cols != self.cols
             || prev.rows != self.rows
+            || prev.display_offset != self.display_offset
             || prev.cursor_col != self.cursor_col
             || prev.cursor_line != self.cursor_line
             || prev.mode_flags() != self.mode_flags()
@@ -832,6 +853,7 @@ fn encode_frame(frame: &WireFrame, prev: Option<&WireFrame>) -> Vec<u8> {
     buffer.push(if full { MSG_FULL } else { MSG_DIFF });
     push_u16(&mut buffer, frame.cols);
     push_u16(&mut buffer, frame.rows);
+    push_u16(&mut buffer, frame.display_offset);
     push_u16(&mut buffer, frame.cursor_col);
     push_u16(&mut buffer, frame.cursor_line);
     push_u32(&mut buffer, frame.mode_flags());
@@ -840,6 +862,48 @@ fn encode_frame(frame: &WireFrame, prev: Option<&WireFrame>) -> Vec<u8> {
         push_row(&mut buffer, index, &frame.rows_cells[index]);
     }
     buffer
+}
+
+fn ordered_selection(
+    start_row: i32,
+    start_col: usize,
+    end_row: i32,
+    end_col: usize,
+) -> ((i32, usize), (i32, usize)) {
+    if start_row < end_row || (start_row == end_row && start_col <= end_col) {
+        ((start_row, start_col), (end_row, end_col))
+    } else {
+        ((end_row, end_col), (start_row, start_col))
+    }
+}
+
+fn selection_text(
+    term: &Term<VoidListener>,
+    start_row: i32,
+    start_col: usize,
+    end_row: i32,
+    end_col: usize,
+) -> String {
+    let cols = term.columns();
+    if cols == 0 {
+        return String::new();
+    }
+    let ((start_row, start_col), (end_row, end_col)) =
+        ordered_selection(start_row, start_col, end_row, end_col);
+    let grid = term.grid();
+    let mut lines = Vec::new();
+    for row in start_row..=end_row {
+        let from = if row == start_row { start_col } else { 0 }.min(cols - 1);
+        let to = if row == end_row { end_col } else { cols - 1 }.min(cols - 1);
+        let mut text = String::new();
+        let line = &grid[Line(row)];
+        for col in from..=to {
+            let ch = line[Column(col)].c;
+            text.push(if ch == '\0' { ' ' } else { ch });
+        }
+        lines.push(text.trim_end().to_string());
+    }
+    lines.join("\n")
 }
 
 #[cfg(test)]
@@ -949,16 +1013,17 @@ mod tests {
         assert_eq!(buffer[0], MSG_FULL);
         assert_eq!(read_u16(&buffer, 1), DEFAULT_COLS as u16);
         assert_eq!(read_u16(&buffer, 3), DEFAULT_ROWS as u16);
-        assert_eq!(read_u16(&buffer, 5), 2); // cursor col after "hi"
-        assert_eq!(read_u16(&buffer, 7), 0); // cursor line
+        assert_eq!(read_u16(&buffer, 5), 0); // display offset
+        assert_eq!(read_u16(&buffer, 7), 2); // cursor col after "hi"
+        assert_eq!(read_u16(&buffer, 9), 0); // cursor line
                                              // mode: cursor visible by default, no alt screen.
         assert_eq!(
-            read_u32(&buffer, 9) & MODE_CURSOR_VISIBLE,
+            read_u32(&buffer, 11) & MODE_CURSOR_VISIBLE,
             MODE_CURSOR_VISIBLE
         );
-        assert_eq!(read_u32(&buffer, 9) & MODE_ALT_SCREEN, 0);
+        assert_eq!(read_u32(&buffer, 11) & MODE_ALT_SCREEN, 0);
         // full sync marks every row dirty.
-        assert_eq!(read_u16(&buffer, 13), DEFAULT_ROWS as u16);
+        assert_eq!(read_u16(&buffer, 15), DEFAULT_ROWS as u16);
     }
 
     #[test]
@@ -976,7 +1041,7 @@ mod tests {
     fn full_sync_first_row_carries_expected_glyphs() {
         let f = frame("\x1b[31mR\x1b[0m");
         let buffer = encode_frame(&f, None);
-        // First dirty row starts right after the 15-byte header.
+        // First dirty row starts right after the header.
         let row_index = read_u16(&buffer, HEADER_BYTES);
         let cell_count = read_u16(&buffer, HEADER_BYTES + 2);
         assert_eq!(row_index, 0);
@@ -998,7 +1063,7 @@ mod tests {
 
         let buffer = encode_frame(&second, Some(&first));
         assert_eq!(buffer[0], MSG_DIFF);
-        let dirty = read_u16(&buffer, 13);
+        let dirty = read_u16(&buffer, 15);
         // Only the newly written row changed (1), not all 24.
         assert_eq!(dirty, 1);
         assert_eq!(read_u16(&buffer, HEADER_BYTES), 2); // row index 2
@@ -1022,8 +1087,8 @@ mod tests {
         assert!(second.differs_from(Some(&first)));
         let buffer = encode_frame(&second, Some(&first));
         assert_eq!(buffer[0], MSG_DIFF);
-        assert_eq!(read_u16(&buffer, 5), 2); // cursor moved 3 -> 2
-        assert_eq!(read_u16(&buffer, 13), 0); // zero dirty rows
+        assert_eq!(read_u16(&buffer, 7), 2); // cursor moved 3 -> 2
+        assert_eq!(read_u16(&buffer, 15), 0); // zero dirty rows
     }
 
     #[test]
@@ -1151,6 +1216,10 @@ mod tests {
         // Scroll up far enough to bring the very first lines into view.
         state.scroll(100);
         let scrolled = WireFrame::capture(&state.term);
+        assert!(
+            scrolled.display_offset > 0,
+            "scrolled history must expose a non-zero display offset"
+        );
         let any_early = scrolled.rows_cells.iter().any(|row| {
             let text: String = row
                 .iter()
@@ -1175,12 +1244,17 @@ mod tests {
         state.scroll(100);
         let scrolled = WireFrame::capture(&state.term);
         assert!(
+            GridSnapshot::capture(&state.term).display_offset > 0,
+            "JSON snapshots must expose the scrolled viewport offset"
+        );
+        assert!(
             !scrolled.cursor_visible,
             "scrolled-back history must not render the live cursor in a historical viewport"
         );
 
         state.scroll_to_bottom();
         let restored = WireFrame::capture(&state.term);
+        assert_eq!(restored.display_offset, 0);
         assert!(
             restored.cursor_visible,
             "bottom reset should restore the live cursor"
@@ -1197,6 +1271,32 @@ mod tests {
     }
 
     #[test]
+    fn selection_text_extracts_across_scrolled_history_lines() {
+        let mut state = TermState::new(DEFAULT_COLS, DEFAULT_ROWS);
+        for i in 0..100 {
+            state.feed(format!("line{i:02}\r\n").as_bytes());
+        }
+        state.scroll(100);
+        let snapshot = GridSnapshot::capture(&state.term);
+        let frame = WireFrame::capture(&state.term);
+        let visible_row = frame
+            .rows_cells
+            .iter()
+            .enumerate()
+            .find_map(|(row, _)| {
+                if wire_text_at(&frame, row).starts_with("line00") {
+                    Some(row as i32)
+                } else {
+                    None
+                }
+            })
+            .expect("line00 should be visible after scrolling to history");
+        let top_row = visible_row - snapshot.display_offset as i32;
+        let text = selection_text(&state.term, top_row, 0, top_row + 2, 5);
+        assert_eq!(text, "line00\nline01\nline02");
+    }
+
+    #[test]
     fn dimension_change_forces_full_sync() {
         let small = {
             let mut state = TermState::new(40, 10);
@@ -1206,6 +1306,6 @@ mod tests {
         let big = frame("x");
         let buffer = encode_frame(&big, Some(&small));
         assert_eq!(buffer[0], MSG_FULL);
-        assert_eq!(read_u16(&buffer, 13), DEFAULT_ROWS as u16);
+        assert_eq!(read_u16(&buffer, 15), DEFAULT_ROWS as u16);
     }
 }

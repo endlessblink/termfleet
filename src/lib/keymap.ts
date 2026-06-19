@@ -12,6 +12,17 @@ export interface KeymapModes {
 
 const DEFAULT_MODES: KeymapModes = { appCursor: false };
 
+export function isTerminalPasteShortcut(event: KeyboardEvent): boolean {
+  return (
+    event.type === "keydown" &&
+    event.key.toLowerCase() === "v" &&
+    (event.ctrlKey || event.metaKey) &&
+    event.shiftKey &&
+    !event.altKey &&
+    !event.repeat
+  );
+}
+
 /** Modifier code per xterm's `CSI 1 ; <mod> <final>` convention. */
 function modifierCode(event: KeyboardEvent): number {
   let code = 1;

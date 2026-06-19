@@ -73,3 +73,33 @@ test("keymap translates keys to VT sequences", async ({ page }) => {
   expect(out.paste).toBe("97,13,98"); // newline normalized to \r
   expect(out.pasteBracketed).toBe("27,91,50,48,48,126,120,27,91,50,48,49,126"); // ESC[200~ x ESC[201~
 });
+
+test("terminal paste shortcut is explicit and does not include random keys", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+
+  const out = await page.evaluate(async () => {
+    const { isTerminalPasteShortcut } = await import("/src/lib/keymap.ts");
+    const ev = (key: string, opts: Partial<KeyboardEventInit> = {}) =>
+      new KeyboardEvent("keydown", { key, ...opts });
+
+    return {
+      ctrlShiftV: isTerminalPasteShortcut(ev("v", { ctrlKey: true, shiftKey: true })),
+      metaShiftV: isTerminalPasteShortcut(ev("v", { metaKey: true, shiftKey: true })),
+      plainV: isTerminalPasteShortcut(ev("v")),
+      ctrlV: isTerminalPasteShortcut(ev("v", { ctrlKey: true })),
+      repeatedCtrlShiftV: isTerminalPasteShortcut(ev("v", { ctrlKey: true, shiftKey: true, repeat: true })),
+      enter: isTerminalPasteShortcut(ev("Enter")),
+      x: isTerminalPasteShortcut(ev("x")),
+      pasteEvent: isTerminalPasteShortcut(new KeyboardEvent("keyup", { key: "v", ctrlKey: true, shiftKey: true })),
+    };
+  });
+
+  expect(out.ctrlShiftV).toBe(true);
+  expect(out.metaShiftV).toBe(true);
+  expect(out.plainV).toBe(false);
+  expect(out.ctrlV).toBe(false);
+  expect(out.repeatedCtrlShiftV).toBe(false);
+  expect(out.enter).toBe(false);
+  expect(out.x).toBe(false);
+  expect(out.pasteEvent).toBe(false);
+});

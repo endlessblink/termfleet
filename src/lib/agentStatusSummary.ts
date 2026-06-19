@@ -45,6 +45,7 @@ const NOISY_ACTIVITY_PATTERNS = [
   /^hi[!.]?$/i,
   /^hello[!.]?$/i,
   /^(explored|search|read|working|verified|tasks?):?$/i,
+  /^term$/i,
   /^running\s+\d+\s+tests?\s+using\s+\d+\s+workers?/i,
   /^(\d+\s+passed|\d+\s+failed|\d+\s+skipped)\b/i,
   /^passed\s+\([\d.]+s\)$/i,
@@ -152,26 +153,6 @@ function explicitLineupTasks(input: AgentStatusSummaryInput) {
   return tasks;
 }
 
-function shellOperatorPromptTask(input: AgentStatusSummaryInput) {
-  if (input.provider !== "shell") return undefined;
-  const lines = (input.terminalOutput ?? "")
-    .replace(/\r/g, "\n")
-    .replace(OSC_PATTERN, "")
-    .split("\n")
-    .map((line) => line.replace(/\s+/g, " ").trim())
-    .filter(Boolean);
-  const promptLine = [...lines].reverse().find((line) => /^›\s+\S/.test(line));
-  const raw = promptLine?.replace(/^›\s+/, "").trim();
-  const task = cleanText(raw?.replace(/\.$/, ""));
-  if (!task) return undefined;
-  if (/^(yes|no|switch to|clear context|continue planning|press enter|esc\b)/i.test(task)) return undefined;
-  if (/\b(plan mode|default and start coding|confirm or esc)\b/i.test(task)) return undefined;
-  if (/^implement\s+(?:this|the)\s+plan\??$/i.test(task)) return undefined;
-  if (/^(delete|backspace|term|shell|search|read|working|verified|done|output|path|signal|now)$/i.test(task)) return undefined;
-  if (task.length < 12 || task.split(/\s+/).length < 3) return undefined;
-  return task;
-}
-
 function quotedFlagValue(command: string, flag: string) {
   const escaped = flag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const match = command.match(new RegExp(`${escaped}\\s+(?:"([^"]+)"|'([^']+)'|([^\\s]+))`));
@@ -234,7 +215,6 @@ function stripExtractionPrefix(line: string) {
 function extractionCandidates(input: AgentStatusSummaryInput, task: string, status: AgentStatusLifecycle) {
   const lines = transcriptLines(input);
   const lineupTasks = explicitLineupTasks(input);
-  const operatorPromptTask = shellOperatorPromptTask(input);
   const taskLines = lines
     .filter((line) => /^(task|todo|fix|implement|add|update|review|wire|persist)\b/i.test(line))
     .map(stripExtractionPrefix);
@@ -249,12 +229,13 @@ function extractionCandidates(input: AgentStatusSummaryInput, task: string, stat
     .map(stripExtractionPrefix);
 
   return {
-    tasks: lineupTasks.length > 0 ? lineupTasks : [
-      ...(input.provider === "shell" ? (operatorPromptTask ? [operatorPromptTask] : []) : [
+    tasks: [
+      ...(input.provider === "shell" ? [] : [
         ...(cleanExtractedText(input.mission) && cleanExtractedText(input.mission) !== "Terminal" ? [input.mission] : []),
         ...(cleanExtractedText(input.prompt) ? [input.prompt] : []),
         ...(task && task !== "Ready" && task !== "Supervised agent run" ? [task] : []),
         ...taskLines,
+        ...lineupTasks,
       ]),
     ],
     blockers: [

@@ -25,7 +25,7 @@ test("decode + apply + partial render of a binary diff", async ({ page }) => {
       "/src/lib/gridRenderer.ts"
     );
 
-    const HEADER = 15;
+    const HEADER = 17;
     const CELL = 14;
     const cols = 4;
     const rows = 2;
@@ -37,6 +37,7 @@ test("decode + apply + partial render of a binary diff", async ({ page }) => {
       cursor: { col: number; line: number },
       mode: number,
       dirty: { index: number; cells: { ch: number; fg: number; bg: number; style: number }[] }[],
+      displayOffset = 0,
     ): ArrayBuffer {
       let size = HEADER;
       for (const row of dirty) size += 4 + row.cells.length * CELL;
@@ -44,10 +45,11 @@ test("decode + apply + partial render of a binary diff", async ({ page }) => {
       view.setUint8(0, msgType);
       view.setUint16(1, cols, true);
       view.setUint16(3, rows, true);
-      view.setUint16(5, cursor.col, true);
-      view.setUint16(7, cursor.line, true);
-      view.setUint32(9, mode, true);
-      view.setUint16(13, dirty.length, true);
+      view.setUint16(5, displayOffset, true);
+      view.setUint16(7, cursor.col, true);
+      view.setUint16(9, cursor.line, true);
+      view.setUint32(11, mode, true);
+      view.setUint16(15, dirty.length, true);
       let off = HEADER;
       for (const row of dirty) {
         view.setUint16(off, row.index, true);
@@ -80,7 +82,7 @@ test("decode + apply + partial render of a binary diff", async ({ page }) => {
     // Diff: only row 1 changes — cell (1,2) gets a blue background.
     const diff = encode(1, { col: 1, line: 0 }, 0b10, [
       { index: 1, cells: rowOf([blank, blank, { ch: 0, fg: FG, bg: BLUE, style: 0 }, blank]) },
-    ]);
+    ], 3);
 
     const dpr = 2;
     const metrics = measureCell('"Geist Mono", monospace', 14, dpr, 1.2);
@@ -128,6 +130,8 @@ test("decode + apply + partial render of a binary diff", async ({ page }) => {
     return {
       fullIsFull: fullFrame.full,
       diffIsFull: diffFrame.full,
+      diffDisplayOffset: diffFrame.displayOffset,
+      bufferDisplayOffset: buffer.displayOffset,
       fullChangedCount: changedFull.size,
       diffChangedRows: Array.from(changed).sort(),
       decodedRedChar: fullFrame.dirtyRows[0].cells[0].c,
@@ -142,6 +146,8 @@ test("decode + apply + partial render of a binary diff", async ({ page }) => {
   // Decode correctness.
   expect(result.fullIsFull).toBe(true);
   expect(result.diffIsFull).toBe(false);
+  expect(result.diffDisplayOffset).toBe(3);
+  expect(result.bufferDisplayOffset).toBe(3);
   expect(result.decodedRedChar).toBe("R");
   expect(result.decodedRedFg).toBe("#cd0000");
 
@@ -166,7 +172,7 @@ test("full sync is authoritative and clears stale same-size buffer state", async
     const { decodeFrame } = await import("/src/lib/gridDiff.ts");
     const { GridBuffer } = await import("/src/lib/gridBuffer.ts");
 
-    const HEADER = 15;
+    const HEADER = 17;
     const CELL = 14;
     const cols = 5;
     const rows = 3;
@@ -192,8 +198,9 @@ test("full sync is authoritative and clears stale same-size buffer state", async
       view.setUint16(3, rows, true);
       view.setUint16(5, 0, true);
       view.setUint16(7, 0, true);
-      view.setUint32(9, 0b10, true);
-      view.setUint16(13, dirty.length, true);
+      view.setUint16(9, 0, true);
+      view.setUint32(11, 0b10, true);
+      view.setUint16(15, dirty.length, true);
       let off = HEADER;
       for (const row of dirty) {
         view.setUint16(off, row.index, true);
@@ -256,7 +263,7 @@ test("malformed binary frames fail explicitly before mutating the grid buffer", 
     const { decodeFrame } = await import("/src/lib/gridDiff.ts");
     const { GridBuffer } = await import("/src/lib/gridBuffer.ts");
 
-    const HEADER = 15;
+    const HEADER = 17;
     const CELL = 14;
     const FG = 0xd0d0d0ff;
     const BLACK = 0x000000ff;
@@ -281,10 +288,11 @@ test("malformed binary frames fail explicitly before mutating the grid buffer", 
       view.setUint8(0, options.msgType ?? 2);
       view.setUint16(1, cols, true);
       view.setUint16(3, rows, true);
-      view.setUint16(5, options.cursor?.col ?? 0, true);
-      view.setUint16(7, options.cursor?.line ?? 0, true);
-      view.setUint32(9, 0b10, true);
-      view.setUint16(13, dirty.length, true);
+      view.setUint16(5, 0, true);
+      view.setUint16(7, options.cursor?.col ?? 0, true);
+      view.setUint16(9, options.cursor?.line ?? 0, true);
+      view.setUint32(11, 0b10, true);
+      view.setUint16(15, dirty.length, true);
       let off = HEADER;
       for (const row of dirty) {
         view.setUint16(off, row.index, true);

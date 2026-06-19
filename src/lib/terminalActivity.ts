@@ -1,7 +1,7 @@
 import type { TerminalActivitySummary, TerminalRuntimeStatus } from "./types";
 
 const OSC_PATTERN = /\x1b\](\d+);([^\x07\x1b]*)(?:\x07|\x1b\\)/g;
-const COMMAND_PATTERN = /\b(?:npx\s+)?playwright\s+test\b|\b(?:npm|pnpm|yarn)\s+(?:run\s+)?(?:test|verify:[\w:-]+)\b/i;
+const COMMAND_PATTERN = /\b(?:npx\s+)?playwright\s+test\b|\b(?:npm|pnpm|yarn)\s+(?:run\s+)?(?:build|check|lint|test|typecheck|verify:[\w:-]+)\b|\bcargo\s+(?:build|check|test)\b/i;
 const MIN_TITLE_CHANGE_MS = 2500;
 const MIN_PROGRESS_CHANGE_MS = 450;
 
@@ -93,8 +93,40 @@ function progressValue(raw?: string) {
   return Math.max(0, Math.min(100, value));
 }
 
+function shellPromptCommand(line: string) {
+  const match = line.match(/^(?:[\w.-]+@[\w.-]+:[^$#>]*|[\w.-]+|web)\s*[$#>]\s+(.+)$/i);
+  return cleanText(match?.[1]);
+}
+
+function isPromptOrMenuNoise(line: string) {
+  return (
+    /^Working\s+\([\dmh\s.]+[•·]\s*esc to interrupt\)$/i.test(line) ||
+    /^Use\s+\/\w+/i.test(line) ||
+    /^›\s*Use\s+\/\w+/i.test(line) ||
+    /^gpt[-\w. ]+\s+default\b/i.test(line) ||
+    /^«?\s*[|│]?\s*gpt[-\w. ]+\s+default\b/i.test(line) ||
+    /^Implement this plan\??$/i.test(line) ||
+    /^[1-3][.)]\s+(?:Yes|No)\b/i.test(line) ||
+    /Press enter to confirm or esc to go back/i.test(line) ||
+    /\bPlan mode\b/i.test(line)
+  );
+}
+
+function commandCandidateAt(lines: string[], index: number) {
+  const line = lines[index];
+  if (!line || isPromptOrMenuNoise(line)) return undefined;
+  const promptCommand = shellPromptCommand(line);
+  if (promptCommand && index === lines.length - 1) return undefined;
+  const candidate = promptCommand ?? line;
+  return COMMAND_PATTERN.test(candidate) ? candidate : undefined;
+}
+
 function lastCommandLine(lines: string[]) {
-  return [...lines].reverse().find((line) => COMMAND_PATTERN.test(line));
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    const command = commandCandidateAt(lines, index);
+    if (command) return command;
+  }
+  return undefined;
 }
 
 function quotedFlagValue(command: string, flag: string) {
@@ -108,6 +140,88 @@ function quotedFlagValue(command: string, flag: string) {
 
 function targetFile(command: string) {
   return normalizeCommand(command).match(/(?:^|\s)([\w./-]+\.(?:spec|test)\.(?:tsx?|jsx?))/i)?.[1];
+}
+
+function cargoManifest(command: string) {
+  const normalized = normalizeCommand(command);
+  const manifest = normalized.match(/--manifest-path\s+(?:"([^"]+)"|'([^']+)'|([^\s]+))/i);
+  return cleanText(manifest?.[1] ?? manifest?.[2] ?? manifest?.[3]);
+}
+
+function scriptSummary(script: string) {
+  if (/^verify:map-terminals$/i.test(script)) {
+    return {
+      title: "Checking map terminal source contract",
+      detail: "live map terminal source checks",
+      passedTitle: "Map terminal source checks passed",
+      failedTitle: "Map terminal source checks failed",
+    };
+  }
+  if (/^verify:agent-status-summary$/i.test(script)) {
+    return {
+      title: "Checking status summary server contract",
+      detail: "local summary server contract",
+      passedTitle: "Status summary server checks passed",
+      failedTitle: "Status summary server checks failed",
+    };
+  }
+  if (/^verify:/i.test(script)) {
+    const target = script.replace(/^verify:/i, "").replace(/[-_:]+/g, " ");
+    return {
+      title: `Checking ${target}`,
+      detail: `npm run ${script}`,
+      passedTitle: `${target} checks passed`,
+      failedTitle: `${target} checks failed`,
+    };
+  }
+  if (/^build$/i.test(script)) {
+    return {
+      title: "Building frontend",
+      detail: "TypeScript and Vite production build",
+      passedTitle: "Frontend build passed",
+      failedTitle: "Frontend build failed",
+    };
+  }
+  if (/^(typecheck|check)$/i.test(script)) {
+    return {
+      title: "Checking TypeScript",
+      detail: `npm run ${script}`,
+      passedTitle: "TypeScript checks passed",
+      failedTitle: "TypeScript checks failed",
+    };
+  }
+  if (/^lint$/i.test(script)) {
+    return {
+      title: "Linting frontend",
+      detail: "frontend lint checks",
+      passedTitle: "Frontend lint passed",
+      failedTitle: "Frontend lint failed",
+    };
+  }
+  if (/^test$/i.test(script)) {
+    return {
+      title: "Running test suite",
+      detail: "npm test",
+      passedTitle: "Test suite passed",
+      failedTitle: "Test suite failed",
+    };
+  }
+  return {
+    title: `Running ${script}`,
+    detail: `npm run ${script}`,
+    passedTitle: `${script} passed`,
+    failedTitle: `${script} failed`,
+  };
+}
+
+function scriptCompletionTitle(title: string, success: boolean) {
+  if (/^Checking map terminal source contract$/i.test(title)) return success ? "Map terminal source checks passed" : "Map terminal source checks failed";
+  if (/^Checking status summary server contract$/i.test(title)) return success ? "Status summary server checks passed" : "Status summary server checks failed";
+  if (/^Building frontend$/i.test(title)) return success ? "Frontend build passed" : "Frontend build failed";
+  if (/^Checking TypeScript$/i.test(title)) return success ? "TypeScript checks passed" : "TypeScript checks failed";
+  if (/^Linting frontend$/i.test(title)) return success ? "Frontend lint passed" : "Frontend lint failed";
+  if (/^Running test suite$/i.test(title)) return success ? "Test suite passed" : "Test suite failed";
+  return undefined;
 }
 
 function humanizeSpecName(value: string) {
@@ -254,8 +368,24 @@ function playwrightSubtitle(command: string, transcript: string) {
   return [named?.detail ?? fileActivity?.detail, progress, file].filter(Boolean).join(" · ") || undefined;
 }
 
+function playwrightCompletionTitle(intent: string, success: boolean) {
+  const outcome = success ? "passed" : "failed";
+  if (/^Checking terminal cards on the map$/i.test(intent)) return `Map terminal card checks ${outcome}`;
+  if (/^Checking activity summary wording$/i.test(intent)) return `Activity summary checks ${outcome}`;
+  if (/^Checking login flow$/i.test(intent)) return `Login flow checks ${outcome}`;
+  if (/^Checking checkout flow$/i.test(intent)) return `Checkout flow checks ${outcome}`;
+  if (/^Verifying\s+(.+)/i.test(intent)) {
+    const target = intent.replace(/^Verifying\s+/i, "");
+    return success ? `${target} verified` : `${target} failed`;
+  }
+  if (/^Running Playwright tests$/i.test(intent)) return `Playwright tests ${outcome}`;
+  return `${intent} ${outcome}`;
+}
+
 function completionTitle(previous: TerminalActivitySummary | undefined, success: boolean) {
   if (!previous) return success ? "Command completed" : "Command failed";
+  const scriptCompletion = scriptCompletionTitle(previous.title, success);
+  if (scriptCompletion) return scriptCompletion;
   const base = previous.title.replace(/\s+(passed|failed|completed)$/i, "");
   if (/^Verifying terminal header stability$/i.test(base)) {
     return success ? "Terminal header verification passed" : "Terminal header verification failed";
@@ -270,13 +400,15 @@ function summarizeCommand(command: string, transcript: string, now: number): Ter
   if (/\bplaywright\s+test\b/i.test(command)) {
     const failed = /\b\d+\s+failed\b/i.test(transcript);
     const passed = /\b\d+\s+passed\s+\([^)]+\)/i.test(transcript);
+    const intent = playwrightTitle(command);
     return {
       title: passed
-        ? "Playwright tests passed"
+        ? playwrightCompletionTitle(intent, true)
         : failed
-          ? "Playwright tests failed"
-          : playwrightTitle(command),
+          ? playwrightCompletionTitle(intent, false)
+          : intent,
       subtitle: playwrightSubtitle(command, transcript),
+      targetPath: targetFile(command),
       status: failed ? "error" : passed ? "success" : "running",
       command: normalizeCommand(command),
       source: "command",
@@ -285,11 +417,38 @@ function summarizeCommand(command: string, transcript: string, now: number): Ter
   }
 
   const script = command.match(/\b(?:npm|pnpm|yarn)\s+(?:run\s+)?([^\s]+)/i)?.[1];
+  if (script) {
+    const summary = scriptSummary(script);
+    const failed = /\b(?:failed|error)\b/i.test(transcript);
+    const passed = !failed && /\b(?:passed|_OK|checks passed|built in)\b/i.test(transcript);
+    return {
+      title: passed ? summary.passedTitle : failed ? summary.failedTitle : summary.title,
+      subtitle: summary.detail,
+      status: failed ? "error" : passed ? "success" : "running",
+      command: normalizeCommand(command),
+      source: "command",
+      updatedAt: now,
+    };
+  }
+
+  const cargo = command.match(/\bcargo\s+(build|check|test)\b/i)?.[1]?.toLowerCase();
+  if (cargo) {
+    return {
+      title: cargo === "test" ? "Testing Rust backend" : cargo === "build" ? "Building Rust backend" : "Checking Rust backend",
+      subtitle: cargoManifest(command) ?? normalizeCommand(command),
+      targetPath: cargoManifest(command),
+      status: "running",
+      command: normalizeCommand(command),
+      source: "command",
+      updatedAt: now,
+    };
+  }
+
   return {
-    title: script ? `Running ${script}` : "Running terminal command",
-    subtitle: command.slice(0, 96),
+    title: "Running terminal command",
+    subtitle: normalizeCommand(command).slice(0, 96),
     status: "running",
-    command,
+    command: normalizeCommand(command),
     source: "command",
     updatedAt: now,
   };

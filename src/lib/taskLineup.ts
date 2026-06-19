@@ -27,18 +27,42 @@ export function cleanTaskLineupContent(value?: string | null) {
   const cleaned = value
     ?.replace(/\s+/g, " ")
     .replace(/^[•*-]\s+/, "")
+    .replace(/^(?:\d+[.)]|[-*])\s+/, "")
+    .replace(/^(?:\[(?:x|done|complete|completed)\]|[✓✔])\s*/i, "")
+    .replace(/\B@filename\b/gi, "the selected file")
     .replace(/^(?:i(?:'|’)m\s+going\s+to|i\s+will|we\s+need\s+to|need\s+to|working\s+on|task|todo|next)\s*:?\s*/i, "")
     .replace(/^(?:done|complete|completed|pending|todo|in[-_ ]?progress|blocked|cancelled|canceled)\s*:\s*/i, "")
     .replace(/\.$/, "")
     .trim();
   if (!cleaned) return undefined;
+  if (/^(explored|search|read|ran|verified|working|output|path|signal|now)$/i.test(cleaned)) return undefined;
+  if (/^(explored|read|ran|searched)\b/i.test(cleaned)) return undefined;
+  if (/\b[A-Za-z][\w.]*\|[A-Za-z][\w.]*\b/.test(cleaned)) return undefined;
   return cleaned.slice(0, MAX_TASK_TEXT);
 }
 
+export function taskLineupSourceLabel(source: TaskLineupSource) {
+  if (source === "todo-write") return "operator task list";
+  if (source === "structured-signal") return "structured signal";
+  if (source === "summary") return "summary";
+  if (source === "lane-checklist") return "plan checklist";
+  return "manual task";
+}
+
+export function taskLineupNextLabel(item: Pick<TaskLineupItem, "status" | "priority">) {
+  if (item.status === "completed") return "Completed";
+  if (item.status === "cancelled") return "Cancelled";
+  if (item.status === "in_progress") return "Current focus";
+  return item.priority ? `Queued after current · ${item.priority} priority` : "Queued after current";
+}
+
 function inferStatus(raw: string, fallback: TaskLineupStatus): TaskLineupStatus {
-  if (/^(?:done|complete|completed)\s*:/i.test(raw)) return "completed";
-  if (/^(?:cancelled|canceled)\s*:/i.test(raw)) return "cancelled";
-  if (/^(?:in[-_ ]?progress|working)\s*:/i.test(raw)) return "in_progress";
+  const text = raw.replace(/\s+/g, " ").trim();
+  const unlisted = text.replace(/^(?:\d+[.)]|[-*])\s+/, "");
+  if (/^(?:\[(?:x|done|complete|completed)\]|[✓✔])\s*/i.test(unlisted)) return "completed";
+  if (/^(?:done|complete|completed)\b\s*[:\-–—]?/i.test(unlisted)) return "completed";
+  if (/^(?:cancelled|canceled)\b\s*[:\-–—]?/i.test(unlisted)) return "cancelled";
+  if (/^(?:in[-_ ]?progress|working)\b\s*[:\-–—]?/i.test(unlisted)) return "in_progress";
   return fallback;
 }
 

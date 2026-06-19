@@ -14,13 +14,14 @@ import { summarizeAgentStatus } from "../lib/agentStatusSummarizer";
 import { activityKindForText, inferActivityFromOutput, isWorkstreamActivityKind, normalizeActivityText } from "../lib/workstreamActivity";
 import { mergeCockpitObjectsFromExtractedItems, mergeExtractedItems, normalizeExtractedItems } from "../lib/workstreamExtraction";
 import { deriveTerminalActivity } from "../lib/terminalActivity";
-import { taskLineupFromExtractedItems } from "../lib/taskLineup";
-import type { TerminalActivitySummary, TerminalRuntimeStatus, WorkstreamActivityKind, WorkstreamActivitySource, WorkstreamInput, WorkstreamPhase, WorkstreamReadiness, WorkstreamStatus } from "../lib/types";
+import { completeOpenTaskLineup, normalizeTaskLineupItems, taskLineupFromExtractedItems } from "../lib/taskLineup";
+import type { TaskLineupItem, TerminalActivitySummary, TerminalRuntimeStatus, WorkstreamActivityKind, WorkstreamActivitySource, WorkstreamInput, WorkstreamPhase, WorkstreamReadiness, WorkstreamStatus } from "../lib/types";
 import type { GridSnapshot } from "../lib/gridSnapshot";
 
 const LOCALHOST_URL_PATTERN = /https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0):(\d{2,5})(?:[/?#][^\s"'<>]*)?/gi;
 const LOCALHOST_HOST_PORT_PATTERN = /(?:localhost|127\.0\.0\.1|0\.0\.0\.0):(\d{2,5})(?:[/?#][^\s"'<>]*)?/gi;
 const STRUCTURED_AGENT_SIGNAL_PATTERN = /\[\[TERMFLEET_AGENT_EVENT\s+({[^\]]+})\]\]/g;
+const STRUCTURED_TODO_WRITE_PATTERN = /\[\[TERMFLEET_TODO_WRITE\s+([\s\S]*?)\]\]/g;
 const ANSI_SEQUENCE_PATTERN = /\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))/g;
 
 function validPreviewPort(port: string) {
@@ -215,6 +216,7 @@ function shouldPreserveWorkstreamOnReady(current?: { status?: WorkstreamStatus; 
 function latestReadableOutput(output: string) {
   const cleaned = output
     .replace(STRUCTURED_AGENT_SIGNAL_PATTERN, "")
+    .replace(STRUCTURED_TODO_WRITE_PATTERN, "")
     .replace(ANSI_SEQUENCE_PATTERN, "")
     .replace(/\r/g, "\n");
   const lines = cleaned
@@ -231,6 +233,7 @@ function latestReadableOutput(output: string) {
 function readableOutputExcerpt(output: string) {
   const cleaned = output
     .replace(STRUCTURED_AGENT_SIGNAL_PATTERN, "")
+    .replace(STRUCTURED_TODO_WRITE_PATTERN, "")
     .replace(ANSI_SEQUENCE_PATTERN, "")
     .replace(/\r/g, "\n");
   const lines = cleaned
@@ -320,6 +323,27 @@ function parseStructuredAgentSignals(output: string) {
       if (typeof parsed.label === "string") signal.label = parsed.label.slice(0, 80);
       if (typeof parsed.detail === "string") signal.detail = parsed.detail.slice(0, 240);
       return Object.keys(signal).length > 0 ? [{ raw, signal }] : [];
+    } catch {
+      return [];
+    }
+  });
+}
+
+function parseStructuredTodoWrites(output: string) {
+  return [...output.matchAll(STRUCTURED_TODO_WRITE_PATTERN)].flatMap((match) => {
+    const raw = match[0];
+    try {
+      const parsed = JSON.parse(match[1]) as Record<string, unknown>;
+      const rawItems = Array.isArray(parsed.tasks)
+        ? parsed.tasks
+        : Array.isArray(parsed.todos)
+          ? parsed.todos
+          : [];
+      const taskLineup = normalizeTaskLineupItems(
+        rawItems.flatMap((item) => item && typeof item === "object" ? [item as Partial<TaskLineupItem> & { text?: string }] : []),
+        "todo-write"
+      );
+      return [{ raw, taskLineup }];
     } catch {
       return [];
     }
@@ -481,6 +505,7 @@ export function TerminalComponent({
     currentActivity?: string;
     activityKind?: WorkstreamActivityKind;
     durableActivity?: TerminalActivitySummary;
+    taskLineup?: TaskLineupItem[];
     terminalOutput?: string;
     error?: string;
   }) => {
@@ -505,7 +530,7 @@ export function TerminalComponent({
           activityKind: updates.activityKind ?? previous?.activityKind,
           activityUpdatedAt: updates.currentActivity ? Date.now() : previous?.activityUpdatedAt,
           durableActivity: updates.durableActivity ?? previous?.durableActivity,
-          taskLineup: previous?.taskLineup,
+          taskLineup: updates.taskLineup ?? previous?.taskLineup,
           taskSidebarCollapsed: previous?.taskSidebarCollapsed,
           terminalOutput: updates.terminalOutput ?? previous?.terminalOutput,
           statusSummary: previous?.statusSummary,
@@ -592,13 +617,6 @@ export function TerminalComponent({
                   statusSummaryUpdatedAt: Date.now(),
                   statusSummarySource: result.source,
                   statusSummaryError: result.error,
-                  taskLineup: result.summary.tasks?.length
-                    ? taskLineupFromExtractedItems(
-                        result.summary.tasks,
-                        "operator",
-                        "in_progress"
-                      )
-                    : candidate.taskLineup,
                 }
               : candidate
           ),
@@ -676,7 +694,9 @@ export function TerminalComponent({
     const nextExtractedBlockers = mergeExtractedItems(tab.workstream.extractedBlockers, extractedBlockers, structuredAt);
     const nextExtractedEvidence = mergeExtractedItems(tab.workstream.extractedEvidence, extractedEvidence, structuredAt);
     const nextExtractedNextActions = mergeExtractedItems(tab.workstream.extractedNextActions, extractedNextActions, structuredAt);
-    const nextTaskLineup = taskLineupFromExtractedItems(nextExtractedTasks, "structured-signal", "pending", structuredAt);
+    const nextTaskLineup = completed
+      ? completeOpenTaskLineup(tab.workstream.taskLineup, structuredAt)
+      : taskLineupFromExtractedItems(nextExtractedTasks, "structured-signal", "pending", structuredAt);
     const preserveStructuredActivity =
       updates.activitySource === "terminal" &&
       tab.workstream.activitySource === "structured" &&
@@ -791,9 +811,13 @@ export function TerminalComponent({
     const tab = store.tabs.find((candidate) => candidate.id === tabId);
     const previousTerminal = tab?.terminals.find((candidate) => candidate.paneId === paneId);
     const previousActivity = previousTerminal?.durableActivity;
+    const completedTaskLineup = details.success
+      ? completeOpenTaskLineup(previousTerminal?.taskLineup)
+      : previousTerminal?.taskLineup;
     updateTerminalRuntime({
       id: details.id,
       status: "exited",
+      taskLineup: completedTaskLineup,
       durableActivity: previousActivity
         ? {
             ...previousActivity,
@@ -844,10 +868,34 @@ export function TerminalComponent({
 
   const handleOutput = useCallback((data: string) => {
     outputStatusWindowRef.current = `${outputStatusWindowRef.current}${data}`.slice(-4000);
-    const heuristicOutput = outputStatusWindowRef.current.replace(STRUCTURED_AGENT_SIGNAL_PATTERN, "");
+    const heuristicOutput = outputStatusWindowRef.current
+      .replace(STRUCTURED_AGENT_SIGNAL_PATTERN, "")
+      .replace(STRUCTURED_TODO_WRITE_PATTERN, "");
     const initialStore = useWorkspaceStore.getState();
     const initialTab = initialStore.tabs.find((candidate) => candidate.id === tabId);
     const processedStructuredSignals = new Set(initialTab?.workstream?.processedStructuredSignals ?? []);
+    const todoWrites = parseStructuredTodoWrites(outputStatusWindowRef.current)
+      .filter(({ raw }) => {
+        if (structuredSignalKeysRef.current.has(raw) || processedStructuredSignals.has(raw)) return false;
+        structuredSignalKeysRef.current.add(raw);
+        return true;
+      });
+    if (todoWrites.length > 0) {
+      const latestTaskLineup = todoWrites[todoWrites.length - 1].taskLineup;
+      initialStore.replaceTerminalTaskLineup(tabId, paneId, latestTaskLineup);
+      if (initialTab?.workstream) {
+        initialStore.updateTab(tabId, {
+          workstream: {
+            ...initialTab.workstream,
+            taskLineup: latestTaskLineup,
+            processedStructuredSignals: [
+              ...(initialTab.workstream.processedStructuredSignals ?? []),
+              ...todoWrites.map(({ raw }) => raw),
+            ].slice(-50),
+          },
+        });
+      }
+    }
     const structuredSignals = parseStructuredAgentSignals(outputStatusWindowRef.current)
       .filter(({ raw }) => {
         if (structuredSignalKeysRef.current.has(raw) || processedStructuredSignals.has(raw)) return false;
@@ -923,6 +971,12 @@ export function TerminalComponent({
     });
     scheduleStatusSummaryUpdate();
     if (processExit) {
+      updateTerminalRuntime({
+        status: "exited",
+        taskLineup: processExit.success
+          ? completeOpenTaskLineup(previousTerminal?.taskLineup)
+          : previousTerminal?.taskLineup,
+      });
       updateWorkstreamRuntime({
         status: processExit.success ? "done" : "failed",
         phase: processExit.success ? "complete" : "blocked",

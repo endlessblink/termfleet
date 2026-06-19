@@ -77,6 +77,13 @@ set_clipboard() {
   printf '%s' "$text" | xclip -selection clipboard
 }
 
+long_agent_payload() {
+  python3 - <<'PYEOF'
+for i in range(1, 80):
+    print(f"AGENT_TUI_LONG_PASTE_{i:03d} " + ("x" * 70))
+PYEOF
+}
+
 drive() {
   local wid=""
   local wait_limit=$((APP_BUDGET * 2))
@@ -105,9 +112,15 @@ drive() {
   xdotool key --clearmodifiers i
   sleep 0.5
   echo "=== BRACKETED-PASTE-VIM ===" >> "$TRACE_FILE"
-  set_clipboard $'BRACKETED_ALPHA\nBRACKETED_BETA'
+  LONG_AGENT_PAYLOAD="$(long_agent_payload)"
+  set_clipboard "BRACKETED_ALPHA
+${LONG_AGENT_PAYLOAD}
+BRACKETED_BETA"
   xdotool key --clearmodifiers ctrl+shift+v
   sleep 1.2
+  echo "=== POST-VIM-PASTE-PLAIN-KEY ===" >> "$TRACE_FILE"
+  xdotool key --clearmodifiers x
+  sleep 0.6
   shot "$wid" "02-vim-paste.png"
   xdotool key --clearmodifiers Escape
   xdotool key --clearmodifiers ctrl+c
@@ -129,6 +142,9 @@ drive() {
   echo "=== BRACKETED-PASTE-DISABLED ===" >> "$TRACE_FILE"
   set_clipboard $'PLAIN_ALPHA\nPLAIN_BETA'
   xdotool key --clearmodifiers ctrl+shift+v
+  sleep 0.8
+  echo "=== POST-DISABLED-PASTE-PLAIN-KEY ===" >> "$TRACE_FILE"
+  xdotool key --clearmodifiers x
   sleep 4.8
   shot "$wid" "03-disabled-paste.png"
 
@@ -187,6 +203,8 @@ def writes(seg):
 
 vim = writes(segment("BRACKETED-PASTE-VIM"))
 disabled = writes(segment("BRACKETED-PASTE-DISABLED"))
+post_vim = writes(segment("POST-VIM-PASTE-PLAIN-KEY"))
+post_disabled = writes(segment("POST-DISABLED-PASTE-PLAIN-KEY"))
 
 ok = True
 if r"\u{1b}[200~" not in vim or r"\u{1b}[201~" not in vim:
@@ -213,12 +231,28 @@ if "PLAIN_ALPHA" not in disabled or "PLAIN_BETA" not in disabled:
 else:
     print("BRACKETED_PASTE_DISABLED_PAYLOAD")
 
+if "BRACKETED_ALPHA" in post_vim or "BRACKETED_BETA" in post_vim:
+    print("BRACKETED_PASTE_REPLAYED_AFTER_VIM_KEY")
+    ok = False
+else:
+    print("BRACKETED_PASTE_NOT_REPLAYED_AFTER_VIM_KEY")
+
+if "PLAIN_ALPHA" in post_disabled or "PLAIN_BETA" in post_disabled:
+    print("BRACKETED_PASTE_REPLAYED_AFTER_DISABLED_KEY")
+    ok = False
+else:
+    print("BRACKETED_PASTE_NOT_REPLAYED_AFTER_DISABLED_KEY")
+
 print("BRACKETED_PASTE_OK" if ok else "BRACKETED_PASTE_FAILED")
 if not ok:
     print("=== vim writes ===")
     print(vim)
     print("=== disabled writes ===")
     print(disabled)
+    print("=== post vim key writes ===")
+    print(post_vim)
+    print("=== post disabled key writes ===")
+    print(post_disabled)
 sys.exit(0 if ok else 1)
 PYEOF
 VERIFY_STATUS=$?

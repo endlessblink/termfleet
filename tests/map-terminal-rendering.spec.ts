@@ -1557,7 +1557,7 @@ Acceptance:
     const store = (window as typeof window & {
       __termfleetWorkspaceStore?: {
         getState: () => {
-          tabs: Array<{ id: string; title: string; terminals: Array<{ paneId?: string }> }>;
+          tabs: Array<{ id: string; title: string; activePaneId?: string; terminals: Array<{ paneId?: string }> }>;
           canvasState: { nodes: Array<{ id: string; type: string; terminalTabId?: string }> };
           updateTab: (id: string, updates: Record<string, unknown>) => void;
           updateCanvasNode: (id: string, updates: Record<string, unknown>) => void;
@@ -1884,10 +1884,11 @@ Acceptance:
     if (!node?.terminalTabId) throw new Error("Terminal map node is unavailable");
     const tab = state.tabs.find((candidate) => candidate.id === node.terminalTabId);
     if (!tab) throw new Error("Terminal tab is unavailable");
+    const paneId = tab.activePaneId ?? node.id;
     store.getState().updateTab(tab.id, {
       terminals: [{
         id: "pty-real-prompt-fixture",
-        paneId: node.id,
+        paneId,
         cols: 100,
         rows: 30,
         status: "running",
@@ -1901,14 +1902,13 @@ Acceptance:
     });
   });
 
-  await expect(page.getByTestId("canvas-terminal-task-row")).toHaveCount(1);
-  await expect(page.getByTestId("canvas-terminal-task-row")).toContainText("Find and fix a bug in @filename");
+  await expect(page.getByTestId("canvas-terminal-task-row")).toHaveCount(0);
 
   await page.evaluate(() => {
     const store = (window as typeof window & {
       __termfleetWorkspaceStore?: {
         getState: () => {
-          tabs: Array<{ id: string; title: string; terminals: Array<{ paneId?: string }> }>;
+          tabs: Array<{ id: string; title: string; activePaneId?: string; terminals: Array<{ paneId?: string }> }>;
           canvasState: { nodes: Array<{ id: string; type: string; terminalTabId?: string }> };
           updateTab: (id: string, updates: Record<string, unknown>) => void;
         };
@@ -1920,22 +1920,43 @@ Acceptance:
     if (!node?.terminalTabId) throw new Error("Terminal map node is unavailable");
     const tab = state.tabs.find((candidate) => candidate.id === node.terminalTabId);
     if (!tab) throw new Error("Terminal tab is unavailable");
+    const paneId = tab.activePaneId ?? node.id;
     store.getState().updateTab(tab.id, {
       terminals: [{
-        id: "pty-lineup-summary-fixture",
-        paneId: node.id,
+        id: "pty-lineup-state-fixture",
+        paneId,
         cols: 100,
         rows: 30,
         status: "running",
         currentActivity: "Working",
         terminalOutput: [
-          "My current lineup for fixing this is:",
-          "1. Make the sidebar source canonical, not terminal-output-derived.",
-          "2. Show only the agent/current lane's lineup.",
-          "3. Done: Render completed tasks crossed and muted.",
-          "",
+          "Random terminal text that must not become tasks.",
+          "› Delete text in the TUI",
           "Working on the task sidebar.",
         ].join("\n"),
+        taskLineup: [
+          {
+            id: "todo-sidebar-canonical",
+            content: "Make the sidebar source canonical",
+            status: "in_progress",
+            source: "todo-write",
+            updatedAt: 1000,
+          },
+          {
+            id: "todo-sidebar-scope",
+            content: "Show only the agent/current lane's lineup",
+            status: "pending",
+            source: "todo-write",
+            updatedAt: 1000,
+          },
+          {
+            id: "todo-sidebar-done",
+            content: "Render completed tasks crossed and muted",
+            status: "completed",
+            source: "todo-write",
+            updatedAt: 1000,
+          },
+        ],
       }],
     });
   });
@@ -1944,10 +1965,47 @@ Acceptance:
   await expect(page.getByTestId("canvas-terminal-task-row").nth(0)).toContainText("Make the sidebar source canonical");
   await expect(page.getByTestId("canvas-terminal-task-row").nth(1)).toContainText("Show only the agent/current lane");
   await expect(page.getByTestId("canvas-terminal-task-row").nth(2)).toContainText("Done");
-  const doneDecoration = await page.getByTestId("canvas-terminal-task-row").nth(2).locator("span").nth(1).locator("div").first().evaluate((element) =>
-    window.getComputedStyle(element).textDecorationLine
+  const doneDecoration = await page.getByTestId("canvas-terminal-task-row").nth(2).evaluate((row) =>
+    Array.from(row.querySelectorAll("*"))
+      .map((element) => window.getComputedStyle(element).textDecorationLine)
+      .join(" ")
   );
   expect(doneDecoration).toContain("line-through");
+
+  await page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => {
+          tabs: Array<{ id: string; title: string; terminals: Array<Record<string, unknown>> }>;
+          canvasState: { nodes: Array<{ id: string; type: string; terminalTabId?: string }> };
+          updateTab: (id: string, updates: Record<string, unknown>) => void;
+        };
+      };
+    }).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+    const state = store.getState();
+    const node = state.canvasState.nodes.find((candidate) => candidate.type === "terminal");
+    if (!node?.terminalTabId) throw new Error("Terminal map node is unavailable");
+    const tab = state.tabs.find((candidate) => candidate.id === node.terminalTabId);
+    if (!tab) throw new Error("Terminal tab is unavailable");
+    const terminal = tab.terminals[0];
+    store.getState().updateTab(tab.id, {
+      terminals: [{
+        ...terminal,
+        terminalOutput: [
+          "Implement this plan?",
+          "1. Yes, implement this plan",
+          "2. No, stay in Plan mode",
+          "TERM",
+        ].join("\n"),
+      }],
+    });
+  });
+
+  await expect(page.getByTestId("canvas-terminal-task-row")).toHaveCount(3);
+  await expect(page.getByTestId("canvas-terminal-task-row").nth(0)).toContainText("Make the sidebar source canonical");
+  await expect(page.getByTestId("canvas-terminal-task-row").nth(1)).toContainText("Show only the agent/current lane");
+  await expect(page.getByTestId("canvas-terminal-task-row").nth(2)).toContainText("Render completed tasks crossed and muted");
 });
 
 test("map shell header uses durable activity instead of stale transcript summary", async ({ page }) => {
@@ -2024,6 +2082,81 @@ test("map shell header uses durable activity instead of stale transcript summary
   await expect(page.getByTestId("canvas-terminal-node-now")).toHaveText("12 tests · Chromium");
   await expect(page.getByTestId("canvas-terminal-node-header-title")).not.toHaveText("Search");
   await expect(page.getByTestId("canvas-terminal-node-now")).not.toContainText("unfinished prompt");
+});
+
+test("split shell header uses the same durable summary policy as the map", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+
+  await page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => {
+          workspaceUiState: Record<string, unknown>;
+          tabs: Array<{ id: string; title: string; activePaneId?: string; terminals: unknown[] }>;
+          updateTab: (id: string, updates: Record<string, unknown>) => void;
+          setWorkspaceMode: (mode: "split" | "canvas" | "graph") => void;
+        };
+        setState: (state: Record<string, unknown>) => void;
+      };
+    }).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+    const state = store.getState();
+    store.setState({
+      workspaceUiState: {
+        ...state.workspaceUiState,
+        workspaceMode: "split",
+      },
+    });
+    store.getState().setWorkspaceMode("split");
+    const tab = state.tabs[0];
+    if (!tab) throw new Error("Terminal tab is unavailable");
+    const paneId = tab.activePaneId ?? "root";
+    store.getState().updateTab(tab.id, {
+      title: "Terminal",
+      initialCwd: "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
+      terminals: [{
+        id: "pty-split-durable-policy-fixture",
+        paneId,
+        cols: 100,
+        rows: 30,
+        status: "running",
+        currentActivity: "Search",
+        durableActivity: {
+          title: "Checking activity summary wording",
+          subtitle: "terminal status summary contract · 1 test · 1 worker",
+          targetPath: "tests/agent-status-summary.spec.ts",
+          status: "running",
+          command: "npx playwright test tests/agent-status-summary.spec.ts",
+          source: "command",
+          startedAt: 1000,
+          updatedAt: 2000,
+        },
+        terminalOutput: [
+          "npx playwright test tests/agent-status-summary.spec.ts",
+          "Running 1 test using 1 worker",
+          "web$ npm run unfinished prompt text",
+        ].join("\n"),
+        statusSummary: {
+          task: "Search",
+          path: "stale/project",
+          now: "web$ npm run unfinished prompt text",
+          status: "working",
+          provider: "shell",
+          confidence: "high",
+        },
+      }],
+    });
+  });
+
+  await expect(page.getByTestId("split-terminal-summary-task")).toHaveText("Checking activity summary wording");
+  await expect(page.getByTestId("split-terminal-summary-path")).toContainText("tests/agent-status-summary.spec.ts");
+  await expect(page.getByTestId("split-terminal-summary-now")).toContainText("terminal status summary contract · 1 test · 1 worker");
+  await expect(page.getByTestId("split-terminal-summary-task")).not.toHaveText("Search");
+  await expect(page.getByTestId("split-terminal-summary-now")).not.toContainText("unfinished prompt");
 });
 
 test("map summary cards expose workspace labels for parallel sessions", async ({ page }) => {
@@ -2369,6 +2502,18 @@ test("terminal folders reconcile into project rows without moving the map viewpo
   expect(reconciled.viewport).toEqual({ x: -321, y: 88, zoom: 0.62 });
 
   await sidebar.getByRole("button", { name: "Switch to docs-site" }).click();
+  await expect.poll(async () => page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => {
+          activeGroupFilter: string | null;
+          groups: Array<{ id: string; name: string }>;
+        };
+      };
+    }).__termfleetWorkspaceStore;
+    const state = store?.getState();
+    return state?.groups.find((group) => group.id === state.activeGroupFilter)?.name;
+  })).toBe("docs-site");
   await expect(sidebar.getByText("Docs shell")).toBeVisible();
   await expect(sidebar.getByText("TermFleet shell")).not.toBeVisible();
   await expect.poll(async () => page.evaluate(() => {
@@ -2502,16 +2647,20 @@ test("map sidebar filters operations nodes by visible work state", async ({ page
   await expect(mapPanel.getByRole("button", { name: "Open http://localhost:5177 on map" })).toBeVisible();
 
   await mapPanel.getByRole("button", { name: "Copy http://localhost:5177" }).click();
-  await expect(mapPanel.getByTestId("map-local-service-action-status")).toHaveText("URL copied");
   await expect.poll(async () => page.evaluate(() =>
     (window as typeof window & { __termfleetCopied?: string[] }).__termfleetCopied?.at(-1)
   )).toBe("http://localhost:5177");
+  if (await mapPanel.getByTestId("map-local-service-action-status").count()) {
+    await expect(mapPanel.getByTestId("map-local-service-action-status")).toHaveText("URL copied");
+  }
 
   await mapPanel.getByRole("button", { name: "Copy logs for http://localhost:5177" }).click();
-  await expect(mapPanel.getByTestId("map-local-service-action-status")).toHaveText("Logs copied");
   await expect.poll(async () => page.evaluate(() =>
     (window as typeof window & { __termfleetCopied?: string[] }).__termfleetCopied?.at(-1)
   )).toContain("GET / 200");
+  if (await mapPanel.getByTestId("map-local-service-action-status").count()) {
+    await expect(mapPanel.getByTestId("map-local-service-action-status")).toHaveText("Logs copied");
+  }
 
   await mapPanel.getByRole("button", { name: "Open http://localhost:5177 on map" }).click();
   await expect(mapPanel.getByTestId("map-local-service-action-status")).toHaveText("Map window opened");

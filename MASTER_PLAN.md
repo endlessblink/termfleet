@@ -54,6 +54,7 @@ were retired during consolidation.
 | TC-029     | Map terminal organization controls: right-click label colors, box-select terminals, and drag selected terminal groups while staying responsive with 100+ terminals                                              | P1       | DONE (2026-06-18) | TC-017         |
 | TC-030     | Orchestrator terminal lifecycle: parent terminal can spawn, track, and terminate child terminals when finished                                                                                                  | P1       | TODO              | TC-016, TC-017 |
 | TC-031     | Ctrl+Z restore for closed map terminals and non-destructive localhost preview closure                                                                                                                           | P1       | DONE (2026-06-18) | TC-017, TC-020 |
+| TC-032     | Operator-useful terminal summary: regular app headers answer what each shell/agent terminal is doing right now                                                                                                  | P1       | DONE (2026-06-19) | TC-016i        |
 
 ---
 
@@ -367,6 +368,57 @@ Acceptance:
   tests/map-terminal-rendering.spec.ts` passed 20/20, and `npm run build` passed
   on 2026-06-18. Additional Delete-key evidence: `npx playwright test
   tests/map-terminal-rendering.spec.ts` passed 20/20 on 2026-06-18.
+
+### TC-032: Operator-useful terminal summary
+
+**Priority:** P1
+**Status:** Done (2026-06-19)
+**Depends:** TC-016i
+
+The terminal summary must reliably answer "what is this terminal doing right
+now?" at a glance in the regular app. TC-016i added the status-summary
+infrastructure, but the visible shell and agent headers still need a stricter
+operator-facing contract so prompt fragments, menu choices, raw commands,
+generic runner outcomes, and stale scrollback never become the main answer.
+
+Acceptance:
+
+- DONE: Top split-terminal and map-terminal headers show a useful task, path, and
+  current step for shell and agent terminals.
+- DONE: Prompt fragments, plan-mode menus, provider chrome, raw command syntax,
+  generic runner outcomes, and stale transcript summaries are demoted from the
+  main header.
+- DONE: The summary remains stable while output scrolls, but updates when the real
+  activity changes.
+- DONE: Map and split shell headers use the same durable-summary policy.
+- DONE: Verification covers the regular header surfaces with focused Playwright
+  regressions, `npm run build`, `npm run verify:agent-status-summary`,
+  `npm run verify:map-terminals`, and `git diff --check`.
+
+Progress notes:
+
+- DONE: Shell activity classification now recognizes build, verify,
+  Playwright, and Cargo check/test/build commands as operator intent, ignores
+  trailing prompt/menu fragments as primary activity candidates, preserves the
+  checked target after pass/fail outcomes, and carries a target path for focused
+  spec/manifest commands. The shared terminal header helper prefers durable
+  activity and command target paths over stale extracted status summaries; split
+  and map shell headers now share that policy and label the current-step row as
+  `Now`.
+- Verification: `npx playwright test tests/agent-status-summary.spec.ts
+  --reporter=line` passed 26/26; `npx playwright test tests/keymap.spec.ts
+  --reporter=line` passed 2/2; `npx playwright test
+  tests/map-terminal-rendering.spec.ts --reporter=line` passed 22/22; `npx
+  playwright test tests/grid-diff.spec.ts tests/selection.spec.ts
+  tests/app-shell.spec.ts --reporter=line` passed 5/5; `cargo test
+  --manifest-path src-tauri/Cargo.toml vt_grid::tests -- --nocapture` passed
+  19/19; `npm run build` passed; `npm run verify:agent-status-summary` passed;
+  `npm run verify:map-terminals` passed; `npm run verify:tui-color-env` passed;
+  `git diff --check` passed.
+- Visual proof: `/tmp/tc-032-terminal-summary-page.png` shows the previous
+  generic `Playwright tests passed` case corrected to `Map terminal card checks
+  passed`, with `tests/map-terminal-rendering.spec.ts` as the path and `map card
+  rendering contract · 5 passed · 12.6s` as `Now`.
 
 ### TC-001: Freeze Terminal Cockpit target and visual rules
 

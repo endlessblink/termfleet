@@ -1,9 +1,10 @@
 // TC-017c — decoder for the binary dirty-diff wire format emitted by the Rust
 // `grid_subscribe_diffs` channel. Mirrors src-tauri/src/vt_grid.rs exactly.
 //
-// Layout (little-endian), header 15 bytes:
+// Layout (little-endian), header 17 bytes:
 //   [0] u8 msg type (1=diff, 2=full), [1..3] cols, [3..5] rows,
-//   [5..7] cursor col, [7..9] cursor line, [9..13] mode flags, [13..15] dirty rows
+//   [5..7] display offset, [7..9] cursor col, [9..11] cursor line,
+//   [11..15] mode flags, [15..17] dirty rows
 // Per dirty row: u16 index, u16 cell count, then 14-byte cells:
 //   [0..4] u32 char, [4..8] u32 fg RGBA, [8..12] u32 bg RGBA, [12..14] u16 style.
 
@@ -11,7 +12,7 @@ import type { GridCell } from "./gridSnapshot";
 
 export const MSG_DIFF = 0x01;
 export const MSG_FULL = 0x02;
-export const HEADER_BYTES = 15;
+export const HEADER_BYTES = 17;
 export const CELL_BYTES = 14;
 
 const MODE_ALT_SCREEN = 1 << 0;
@@ -39,6 +40,7 @@ export interface DecodedFrame {
   full: boolean;
   cols: number;
   rows: number;
+  displayOffset: number;
   cursor: { col: number; line: number };
   altScreen: boolean;
   cursorVisible: boolean;
@@ -79,15 +81,16 @@ export function decodeFrame(buffer: ArrayBuffer): DecodedFrame {
   if (cols === 0 || rows === 0) {
     throw new Error(`Malformed terminal grid diff: invalid dimensions ${cols}x${rows}`);
   }
-  const cursorCol = view.getUint16(5, true);
-  const cursorLine = view.getUint16(7, true);
+  const displayOffset = view.getUint16(5, true);
+  const cursorCol = view.getUint16(7, true);
+  const cursorLine = view.getUint16(9, true);
   if (cursorCol > cols || cursorLine >= rows) {
     throw new Error(
       `Malformed terminal grid diff: cursor ${cursorCol},${cursorLine} outside ${cols}x${rows}`,
     );
   }
-  const mode = view.getUint32(9, true);
-  const dirtyCount = view.getUint16(13, true);
+  const mode = view.getUint32(11, true);
+  const dirtyCount = view.getUint16(15, true);
 
   let offset = HEADER_BYTES;
   const dirtyRows: DecodedRow[] = [];
@@ -139,6 +142,7 @@ export function decodeFrame(buffer: ArrayBuffer): DecodedFrame {
     full: msgType === MSG_FULL,
     cols,
     rows,
+    displayOffset,
     cursor: { col: cursorCol, line: cursorLine },
     altScreen: Boolean(mode & MODE_ALT_SCREEN),
     cursorVisible: Boolean(mode & MODE_CURSOR_VISIBLE),

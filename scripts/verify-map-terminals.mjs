@@ -446,10 +446,13 @@ const checks = [
       /xclip -selection clipboard/.test(bracketedPasteSmoke) &&
       /BRACKETED-PASTE-VIM/.test(bracketedPasteSmoke) &&
       /BRACKETED-PASTE-DISABLED/.test(bracketedPasteSmoke) &&
+      /AGENT_TUI_LONG_PASTE_/.test(bracketedPasteSmoke) &&
       /BRACKETED_PASTE_MARKERS_IN_VIM/.test(bracketedPasteSmoke) &&
       /BRACKETED_PASTE_NO_STALE_MARKERS_AFTER_DISABLE/.test(bracketedPasteSmoke) &&
+      /BRACKETED_PASTE_NOT_REPLAYED_AFTER_VIM_KEY/.test(bracketedPasteSmoke) &&
+      /BRACKETED_PASTE_NOT_REPLAYED_AFTER_DISABLED_KEY/.test(bracketedPasteSmoke) &&
       /BRACKETED_PASTE_OK/.test(bracketedPasteSmoke),
-    message: "Verification scripts must prove real clipboard paste follows current bracketed-paste mode and does not leak stale TUI mode.",
+    message: "Verification scripts must prove real clipboard paste follows current bracketed-paste mode, preserves long agent-TUI payload handling, and does not replay on later keys.",
   },
   {
     ok: /"verify:resize-storm": "scripts\/verify-resize-storm\.sh"/.test(packageJson) &&

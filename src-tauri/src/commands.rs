@@ -800,6 +800,18 @@ pub fn grid_snapshot(grids: State<'_, GridManager>, id: String) -> Result<String
 }
 
 #[tauri::command]
+pub fn grid_selection_text(
+    grids: State<'_, GridManager>,
+    id: String,
+    start_row: i32,
+    start_col: usize,
+    end_row: i32,
+    end_col: usize,
+) -> Result<String, String> {
+    grids.selection_text(&id, start_row, start_col, end_row, end_col)
+}
+
+#[tauri::command]
 pub fn grid_detach(grids: State<'_, GridManager>, id: String) {
     grids.detach(&id);
 }

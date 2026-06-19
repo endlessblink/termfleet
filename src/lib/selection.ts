@@ -15,6 +15,9 @@ export interface SelectionRange {
   end: CellPoint;
 }
 
+export const SELECTION_AUTO_SCROLL_ZONE_PX = 32;
+export const SELECTION_AUTO_SCROLL_MAX_LINES = 8;
+
 /** Order two drag endpoints into a row-major [start, end] range (inclusive). */
 export function normalizeRange(anchor: CellPoint, focus: CellPoint): SelectionRange {
   const before =
@@ -28,6 +31,15 @@ export function rowSpan(range: SelectionRange, row: number, cols: number): [numb
   const from = row === range.start.row ? range.start.col : 0;
   const to = row === range.end.row ? range.end.col : cols - 1;
   return [Math.max(0, Math.min(from, to)), Math.min(cols - 1, Math.max(from, to))];
+}
+
+export function visibleRowSpan(
+  range: SelectionRange,
+  visibleRow: number,
+  displayOffset: number,
+  cols: number,
+): [number, number] | null {
+  return rowSpan(range, visibleRow - displayOffset, cols);
 }
 
 export function isCellSelected(
@@ -74,4 +86,27 @@ export function pointToCell(
   const col = Math.max(0, Math.min(cols - 1, Math.floor(offsetX / cellWidth)));
   const row = Math.max(0, Math.min(rows - 1, Math.floor(offsetY / cellHeight)));
   return { col, row };
+}
+
+export function visiblePointToAbsolute(point: CellPoint, displayOffset: number): CellPoint {
+  return { col: point.col, row: point.row - displayOffset };
+}
+
+export function computeSelectionAutoScrollDelta(
+  pointerY: number,
+  viewportTop: number,
+  viewportBottom: number,
+  zonePx = SELECTION_AUTO_SCROLL_ZONE_PX,
+  maxLines = SELECTION_AUTO_SCROLL_MAX_LINES,
+): number {
+  if (viewportBottom <= viewportTop || zonePx <= 0 || maxLines <= 0) return 0;
+  if (pointerY < viewportTop + zonePx) {
+    const distance = viewportTop + zonePx - pointerY;
+    return Math.max(1, Math.min(maxLines, Math.ceil(distance / 12)));
+  }
+  if (pointerY > viewportBottom - zonePx) {
+    const distance = pointerY - (viewportBottom - zonePx);
+    return -Math.max(1, Math.min(maxLines, Math.ceil(distance / 12)));
+  }
+  return 0;
 }
