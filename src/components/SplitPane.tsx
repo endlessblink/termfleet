@@ -801,13 +801,14 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
           : null;
         // The agent's real task list (sidecar) wins the title/now over heuristic
         // inference — see preferRealTaskSummary. (TC-033)
-        // No real task → keep the clean tracked-activity description as the title; only
-        // fall to a neutral word when idle (no durable activity), never a scraped command.
+        // No real task → show the activity description ONLY while a command is actually
+        // running; a finished/stale command must not linger as the title (fall to a clean
+        // status word instead).
         const shellStatusSummary = shellStatusSummaryBase
           ? preferRealTaskSummary(
               shellStatusSummaryBase,
               paneTerminal?.statusSummary,
-              paneTerminal?.durableActivity ? undefined : neutralHeaderTitle(terminalStatus),
+              paneTerminal?.durableActivity?.status === "running" ? undefined : neutralHeaderTitle(terminalStatus),
             )
           : shellStatusSummaryBase;
         const shellSummarySource = summarySourceLabel(

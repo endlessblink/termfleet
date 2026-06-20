@@ -2208,13 +2208,16 @@ function CanvasNodeView({
       );
   // The agent's real task list (sidecar) wins the title/now over heuristic
   // inference — see preferRealTaskSummary. (TC-033)
-  // No real task → show the clean tracked-activity description (e.g. "building
-  // TypeScript and Vite production bundle") as the title; only fall to a neutral word
-  // when there's no tracked activity to describe (idle), never a scraped command. (TC-033)
+  // No real task → show the clean activity description ONLY while a command is actually
+  // running (e.g. "building TypeScript and Vite production bundle"). A finished/stale
+  // command (idle/success/error) must NOT linger as the title — fall to a clean status
+  // word instead. The reliable "what's it working on" comes from the agent's TaskCreate
+  // list; activity inference is a best-effort live indicator only. (TC-033)
+  const terminalActivityLive = linkedTerminal?.durableActivity?.status === "running";
   const terminalDisplaySummary = preferRealTaskSummary(
     terminalDisplaySummaryBase,
     terminalStatusSummary,
-    linkedTerminal?.durableActivity ? undefined : neutralHeaderTitle(linkedTerminal?.status),
+    terminalActivityLive ? undefined : neutralHeaderTitle(linkedTerminal?.status),
   );
   const terminalSummarySource = summarySourceLabel(
     linkedTerminal?.statusSummarySource ?? workstream?.statusSummarySource,
