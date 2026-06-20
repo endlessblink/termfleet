@@ -72,46 +72,45 @@ if port_in_use 1420; then
   exit 1
 fi
 
-# Start the local Ollama-backed status summary server so terminal/agent
-# descriptions are real model summaries (the header shows "model summary" vs
-# "heuristic summary"). Ollama-only; if it can't start the app still runs with the
-# deterministic heuristic. Disable with TERMFLEET_AGENT_STATUS_DISABLE=1.
+# Start the status summary server. The default worker is the SIDECAR worker: it serves
+# the agent's REAL task list + activity from the status hook's sidecar (free, accurate,
+# no model). When no sidecar exists (e.g. Codex/OpenCode panes today) it returns the
+# heuristic candidate, which the UI neutralizes — NO model hallucination of scrollback.
+# The Ollama model summarizer is opt-in only (TERMFLEET_AGENT_STATUS_WORKER="node
+# scripts/agent-status-summary-ollama.mjs"); it is no longer used by default — it was
+# the source of the garbage titles. Disable status entirely with
+# TERMFLEET_AGENT_STATUS_DISABLE=1.
 STATUS_HOST="${TERMFLEET_AGENT_STATUS_HOST:-127.0.0.1}"
 STATUS_PORT="${TERMFLEET_AGENT_STATUS_PORT:-37819}"
 STATUS_ENDPOINT="http://${STATUS_HOST}:${STATUS_PORT}/status"
 STATUS_LOG="${TERMFLEET_AGENT_STATUS_LOG:-/tmp/termfleet-agent-status-summary.log}"
+STATUS_WORKER="${TERMFLEET_AGENT_STATUS_WORKER:-node scripts/agent-status-summary-sidecar.mjs}"
 STATUS_PID=""
 
-status_server_ready() {
-  curl -fsS -X POST "$STATUS_ENDPOINT" -H "content-type: application/json" \
-    --data '{"type":"agent-workstream-status","projectId":"termfleet","transcript":"","workstream":{"mission":"Terminal","provider":"shell","status":"stopped","path":"termfleet"}}' \
-    >/dev/null 2>&1
-}
-
 if [[ "${TERMFLEET_AGENT_STATUS_DISABLE:-0}" != "1" ]]; then
-  if status_server_ready; then
-    export VITE_AGENT_STATUS_SUMMARY_ENDPOINT="${VITE_AGENT_STATUS_SUMMARY_ENDPOINT:-$STATUS_ENDPOINT}"
-    echo "Using existing status summary server at $STATUS_ENDPOINT"
-  else
-    (
-      cd "$APP_DIR"
-      TERMFLEET_AGENT_STATUS_HOST="$STATUS_HOST" \
-      TERMFLEET_AGENT_STATUS_PORT="$STATUS_PORT" \
-      TERMFLEET_AGENT_STATUS_MODEL="${TERMFLEET_AGENT_STATUS_MODEL:-qwen3:4b}" \
-        node scripts/agent-status-summary-server.mjs ${TERMFLEET_AGENT_STATUS_WORKER:-node scripts/agent-status-summary-sidecar.mjs}
-    ) >"$STATUS_LOG" 2>&1 &
-    STATUS_PID="$!"
-    for _ in {1..40}; do
-      if status_server_ready; then
-        export VITE_AGENT_STATUS_SUMMARY_ENDPOINT="${VITE_AGENT_STATUS_SUMMARY_ENDPOINT:-$STATUS_ENDPOINT}"
-        echo "Started status summary server at $STATUS_ENDPOINT"
-        break
-      fi
-      sleep 0.1
-    done
-    if [[ -z "${VITE_AGENT_STATUS_SUMMARY_ENDPOINT:-}" ]]; then
-      echo "Status summary server not ready (is Ollama running?); continuing with heuristic summaries. Log: $STATUS_LOG" >&2
+  # Always replace our own status server so a worker/code change actually takes effect.
+  # Reusing a stale server (e.g. an old model-only worker) silently serves outdated
+  # behavior across relaunches — the exact bug that hid the sidecar task list. (TC-033)
+  kill_if_running "agent-status-summary-server.mjs"
+  (
+    cd "$APP_DIR"
+    TERMFLEET_AGENT_STATUS_HOST="$STATUS_HOST" \
+    TERMFLEET_AGENT_STATUS_PORT="$STATUS_PORT" \
+    TERMFLEET_AGENT_STATUS_MODEL="${TERMFLEET_AGENT_STATUS_MODEL:-qwen3:4b}" \
+      node scripts/agent-status-summary-server.mjs ${STATUS_WORKER}
+  ) >"$STATUS_LOG" 2>&1 &
+  STATUS_PID="$!"
+  for _ in {1..40}; do
+    if curl -fsS -X POST "$STATUS_ENDPOINT" -H "content-type: application/json" \
+         --data '{"projectId":"termfleet","workstream":{"provider":"shell","path":"termfleet"}}' >/dev/null 2>&1; then
+      export VITE_AGENT_STATUS_SUMMARY_ENDPOINT="${VITE_AGENT_STATUS_SUMMARY_ENDPOINT:-$STATUS_ENDPOINT}"
+      echo "Started status summary server at $STATUS_ENDPOINT (worker: ${STATUS_WORKER})"
+      break
     fi
+    sleep 0.1
+  done
+  if [[ -z "${VITE_AGENT_STATUS_SUMMARY_ENDPOINT:-}" ]]; then
+    echo "Status summary server not ready; continuing with heuristic summaries. Log: $STATUS_LOG" >&2
   fi
 fi
 

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import http from "node:http";
 import { stdin, stdout } from "node:process";
+import { readSidecarForPayload, summaryFromSidecar } from "./agent-status-summary-sidecar.mjs";
 
 const model = process.env.TERMFLEET_AGENT_STATUS_MODEL || "qwen3:4b";
 const endpoint = process.env.TERMFLEET_OLLAMA_URL || "http://127.0.0.1:11434";
@@ -181,6 +182,16 @@ let payload = {};
 try {
   const raw = await readStdin();
   payload = raw ? JSON.parse(raw) : {};
+  // Sidecar-first: when the agent's own status hook has written a fresh sidecar for
+  // this cwd (Claude Code panes), use its REAL task list + activity — free, accurate,
+  // and never the model's hallucination of the scrollback. Only fall through to the
+  // local model when no sidecar exists (e.g. Codex/OpenCode panes, which don't write
+  // one). This makes the single worker serve every agent type. (TC-033)
+  const sidecar = readSidecarForPayload(payload);
+  if (sidecar) {
+    stdout.write(`${JSON.stringify(summaryFromSidecar(sidecar, payload))}\n`);
+    process.exit(0);
+  }
   const body = {
     model,
     prompt: buildPrompt(payload),

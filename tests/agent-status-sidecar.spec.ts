@@ -11,6 +11,7 @@ import path from "node:path";
 const ROOT = process.cwd();
 const HOOK = path.join(ROOT, "scripts", "termfleet-claude-status-hook.mjs");
 const WORKER = path.join(ROOT, "scripts", "agent-status-summary-sidecar.mjs");
+const OLLAMA_WORKER = path.join(ROOT, "scripts", "agent-status-summary-ollama.mjs");
 
 function runNode(script: string, input: unknown, env: Record<string, string>) {
   return spawnSync("node", [script], {
@@ -107,6 +108,35 @@ test("modern Task tools (TaskCreate/TaskUpdate) build a stateful task list", asy
   expect(texts).toContain("in-progress: Wire the hook");
   // A verb-first ("Read ...") item survives, marked done by status.
   expect(texts).toContain("done: Read the worker contract");
+});
+
+test("the ollama worker is sidecar-first: returns the real task list without a model call", async () => {
+  // The live app runs the ollama worker; it must prefer the agent's own sidecar (real
+  // TaskCreate/TaskUpdate list) over model-summarizing scrollback. A sidecar hit
+  // short-circuits before any Ollama HTTP call, so this passes with Ollama offline.
+  const dataHome = mkdtempSync(path.join(os.tmpdir(), "tf-status-"));
+  const cwd = "/tmp/tf-ollama-sidecar";
+  const env = { XDG_DATA_HOME: dataHome, TERMFLEET_OLLAMA_URL: "http://127.0.0.1:1" };
+  runNode(HOOK, {
+    tool_name: "TaskCreate", cwd, session_id: "s",
+    tool_input: { subject: "Real captured task", activeForm: "Doing the real task" },
+    tool_response: { task: { id: "1", subject: "Real captured task" } },
+  }, env);
+  runNode(HOOK, {
+    tool_name: "TaskUpdate", cwd, session_id: "s",
+    tool_input: { taskId: "1", status: "in_progress" },
+    tool_response: { success: true, taskId: "1" },
+  }, env);
+
+  const result = runNode(OLLAMA_WORKER, {
+    projectId: cwd, workstream: { path: cwd, provider: "shell" },
+    heuristicCandidate: { task: "Shell ready", path: cwd, now: "Awaiting command", status: "idle", provider: "shell", confidence: "low" },
+  }, env);
+  expect(result.status).toBe(0);
+  const summary = JSON.parse(result.stdout.trim());
+  expect(summary.tasksFromTodoWrite).toBe(true);
+  expect(summary.now).toBe("Doing the real task");
+  expect(summary.tasks.map((t: { text: string }) => t.text)).toContain("in-progress: Real captured task");
 });
 
 test("a non-task tool keeps the Task-tool list and only updates the now line", async () => {
