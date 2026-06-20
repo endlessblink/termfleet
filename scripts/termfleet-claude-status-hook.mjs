@@ -99,8 +99,18 @@ export function activityFromTool(toolName, toolInput) {
       return `Editing ${base(toolInput?.file_path ?? toolInput?.notebook_path)}`;
     case "Read":
       return `Reading ${base(toolInput?.file_path)}`;
-    case "Bash":
-      return `Running: ${trim(toolInput?.command, 60)}`;
+    case "Bash": {
+      let command = String(toolInput?.command ?? "").replace(/\s+/g, " ").trim();
+      // Strip a leading navigation prefix so "cd x && npm test" → "npm test".
+      command = command.replace(/^(?:cd|z|pushd)\s+[^&;|]+(?:&&|;|\|\|)\s*/i, "").trim();
+      // Pure navigation / screen / inspection commands aren't meaningful "activity" —
+      // returning "" keeps the previous (more useful) now line instead of showing
+      // "Running: cd /long/path". (TC-033)
+      if (!command || /^(?:cd|z|pushd|popd|ls|ll|la|pwd|clear|cls|exit|echo)\b/i.test(command)) {
+        return "";
+      }
+      return `Running: ${command.slice(0, 60)}`;
+    }
     case "Grep":
       return `Searching ${trim(toolInput?.pattern, 40)}`;
     case "Glob":

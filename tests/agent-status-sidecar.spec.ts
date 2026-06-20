@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { activityFromTool } from "../scripts/termfleet-claude-status-hook.mjs";
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync } from "node:fs";
 import os from "node:os";
@@ -139,6 +140,18 @@ test("the ollama worker is sidecar-first: returns the real task list without a m
   expect(summary.tasksFromTodoWrite).toBe(true);
   expect(summary.now).toBe("Doing the real task");
   expect(summary.tasks.map((t: { text: string }) => t.text)).toContain("in-progress: Real captured task");
+});
+
+test("activity line: trivial nav/inspection commands are filtered out", () => {
+  // These keep the previous (meaningful) now line instead of showing "Running: cd ...".
+  expect(activityFromTool("Bash", { command: "cd /media/foo/bar" })).toBe("");
+  expect(activityFromTool("Bash", { command: "ls -la" })).toBe("");
+  expect(activityFromTool("Bash", { command: "pwd" })).toBe("");
+  expect(activityFromTool("Bash", { command: "clear" })).toBe("");
+  // Leading nav is stripped; the meaningful command remains.
+  expect(activityFromTool("Bash", { command: "cd /x/y && npm test" })).toBe("Running: npm test");
+  // Real commands still show.
+  expect(activityFromTool("Bash", { command: "npm run build" })).toBe("Running: npm run build");
 });
 
 test("all tasks complete: title is the last task, never the raw shell command", async () => {
