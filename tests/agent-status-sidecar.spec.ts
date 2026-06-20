@@ -141,6 +141,38 @@ test("the ollama worker is sidecar-first: returns the real task list without a m
   expect(summary.tasks.map((t: { text: string }) => t.text)).toContain("in-progress: Real captured task");
 });
 
+test("all tasks complete: title is the last task, never the raw shell command", async () => {
+  // After the agent finishes its list, the header must NOT fall back to the momentary
+  // raw command (e.g. "Running: cd /long/path") as the title — that's the ugly summary
+  // the user flagged. It should show the last task worked on. (TC-033)
+  const dataHome = mkdtempSync(path.join(os.tmpdir(), "tf-status-"));
+  const cwd = "/tmp/tf-all-done";
+  const env = { XDG_DATA_HOME: dataHome };
+  runNode(HOOK, {
+    tool_name: "TaskCreate", cwd, session_id: "s",
+    tool_input: { subject: "Build the parser", activeForm: "Building the parser" },
+    tool_response: { task: { id: "1", subject: "Build the parser" } },
+  }, env);
+  runNode(HOOK, {
+    tool_name: "TaskCreate", cwd, session_id: "s",
+    tool_input: { subject: "Ship the feature", activeForm: "Shipping the feature" },
+    tool_response: { task: { id: "2", subject: "Ship the feature" } },
+  }, env);
+  runNode(HOOK, { tool_name: "TaskUpdate", cwd, session_id: "s", tool_input: { taskId: "1", status: "completed" }, tool_response: { taskId: "1" } }, env);
+  runNode(HOOK, { tool_name: "TaskUpdate", cwd, session_id: "s", tool_input: { taskId: "2", status: "completed" }, tool_response: { taskId: "2" } }, env);
+  // A trailing raw command sets `now` to a cd line.
+  runNode(HOOK, { tool_name: "Bash", cwd, tool_input: { command: "cd /media/endlessblink/data/my-projects/ai-development/devops/termfleet" } }, env);
+
+  const result = runNode(WORKER, {
+    projectId: cwd, workstream: { path: cwd, provider: "shell" },
+    heuristicCandidate: { task: "Shell ready", path: cwd, now: "x", status: "idle", provider: "shell", confidence: "low" },
+  }, env);
+  const summary = JSON.parse(result.stdout.trim());
+  expect(summary.task).toBe("Ship the feature"); // last completed task, not the cd command
+  expect(summary.task).not.toContain("cd ");
+  expect(summary.task).not.toContain("Running:");
+});
+
 test("TaskUpdate status deleted removes the task; later events keep it gone", async () => {
   const dataHome = mkdtempSync(path.join(os.tmpdir(), "tf-status-"));
   const cwd = "/tmp/tf-task-delete";

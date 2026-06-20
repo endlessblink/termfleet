@@ -63,17 +63,18 @@ export function summaryFromSidecar(sidecar, payload) {
   const now = cleanText(sidecar?.now);
   const active = todos.find((todo) => todo.status === "in_progress");
   const firstOpen = todos.find((todo) => todo.status !== "completed");
+  const lastDone = [...todos].reverse().find((todo) => todo.status === "completed");
   const working = Boolean(active);
-  // Title = the agent's CURRENT task, preferring its `activeForm` — the human-readable
-  // "what's happening now" phrasing the agent writes (e.g. "Suppressing scrollback
-  // garbage") over the terse subject. Stays on the current task, not the momentary tool
-  // activity (which every tool call overwrites into `now`). Falls to `now`/fallback when
-  // the list is empty or all-complete.
+  // Title = the agent's CURRENT task, preferring its human-readable `activeForm` over the
+  // terse subject. When nothing is live (all complete), fall back to the LAST completed
+  // task — a clean summary of what was just done. NEVER fall back to `now` (the momentary
+  // raw tool activity, e.g. "Running: cd /long/path") as the title; that belongs only on
+  // the activity line. (TC-033)
   const current = active ?? firstOpen;
-  const currentTask = cleanText(current?.activeForm || current?.content);
+  const currentTask = cleanText(current?.activeForm || current?.content) || cleanText(lastDone?.content);
   return {
     ...fallback,
-    task: currentTask || now || fallback.task,
+    task: currentTask || fallback.task,
     now: now || fallback.now,
     status: working ? "working" : todos.length > 0 ? "idle" : fallback.status,
     provider: fallback.provider,
