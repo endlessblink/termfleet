@@ -64,6 +64,97 @@ test("hook writes a sidecar and the worker turns it into a live summary", async 
   expect(summary.tasksFromTodoWrite).toBe(true);
 });
 
+test("modern Task tools (TaskCreate/TaskUpdate) build a stateful task list", async () => {
+  // Claude Code v2.1.142+ emits TaskCreate/TaskUpdate, NOT TodoWrite. The hook must
+  // fold these (real captured payload shapes) into a stateful per-cwd list.
+  const dataHome = mkdtempSync(path.join(os.tmpdir(), "tf-status-"));
+  const cwd = "/tmp/tf-task-tools";
+  const env = { XDG_DATA_HOME: dataHome };
+
+  // TaskCreate: id is in tool_response.task.id; input has subject/activeForm (no id).
+  runNode(HOOK, {
+    tool_name: "TaskCreate", cwd, session_id: "s",
+    tool_input: { subject: "Wire the hook", description: "d", activeForm: "Wiring the hook" },
+    tool_response: { task: { id: "1", subject: "Wire the hook" } },
+  }, env);
+  runNode(HOOK, {
+    tool_name: "TaskCreate", cwd, session_id: "s",
+    tool_input: { subject: "Read the worker contract", description: "d", activeForm: "Reading the contract" },
+    tool_response: { task: { id: "2", subject: "Read the worker contract" } },
+  }, env);
+  // TaskUpdate: taskId + status in tool_input.
+  runNode(HOOK, {
+    tool_name: "TaskUpdate", cwd, session_id: "s",
+    tool_input: { taskId: "1", status: "in_progress" },
+    tool_response: { success: true, taskId: "1" },
+  }, env);
+  runNode(HOOK, {
+    tool_name: "TaskUpdate", cwd, session_id: "s",
+    tool_input: { taskId: "2", status: "completed" },
+    tool_response: { success: true, taskId: "2" },
+  }, env);
+
+  const workerResult = runNode(WORKER, {
+    projectId: cwd, workstream: { path: cwd, provider: "shell" },
+    heuristicCandidate: { task: "Shell ready", path: cwd, now: "Awaiting command", status: "idle", provider: "shell", confidence: "low" },
+  }, env);
+  const summary = JSON.parse(workerResult.stdout.trim());
+
+  expect(summary.tasksFromTodoWrite).toBe(true);
+  expect(summary.now).toBe("Wiring the hook"); // in-progress task's active form
+  expect(summary.status).toBe("working");
+  const texts = summary.tasks.map((t: { text: string }) => t.text);
+  expect(texts).toContain("in-progress: Wire the hook");
+  // A verb-first ("Read ...") item survives, marked done by status.
+  expect(texts).toContain("done: Read the worker contract");
+});
+
+test("a non-task tool keeps the Task-tool list and only updates the now line", async () => {
+  const dataHome = mkdtempSync(path.join(os.tmpdir(), "tf-status-"));
+  const cwd = "/tmp/tf-task-livenow";
+  const env = { XDG_DATA_HOME: dataHome };
+  runNode(HOOK, {
+    tool_name: "TaskCreate", cwd, session_id: "s",
+    tool_input: { subject: "Ship it", activeForm: "Shipping it" },
+    tool_response: { task: { id: "1", subject: "Ship it" } },
+  }, env);
+  runNode(HOOK, { tool_name: "Bash", cwd, tool_input: { command: "npm test" } }, env);
+  const workerResult = runNode(WORKER, {
+    projectId: cwd, workstream: { path: cwd, provider: "shell" },
+    heuristicCandidate: { task: "Shell ready", path: cwd, now: "Awaiting command", status: "idle", provider: "shell", confidence: "low" },
+  }, env);
+  const summary = JSON.parse(workerResult.stdout.trim());
+  expect(summary.now).toBe("Running: npm test");
+  expect(summary.tasks.map((t: { text: string }) => t.text)).toContain("Ship it");
+});
+
+test("worktree cwd: hook keys the sidecar by the worktree path, not the main checkout", async () => {
+  // Claude issue #64851: in a git worktree, payload.cwd is the MAIN checkout; the real
+  // worktree path is in payload.worktree. The terminal's live cwd is the worktree, so
+  // the sidecar must be keyed by it for the join to hit.
+  const dataHome = mkdtempSync(path.join(os.tmpdir(), "tf-status-"));
+  const mainCheckout = "/tmp/tf-main-repo";
+  const worktree = "/tmp/tf-main-repo/.worktrees/feature";
+  const env = { XDG_DATA_HOME: dataHome };
+  runNode(HOOK, {
+    tool_name: "TaskCreate", cwd: mainCheckout, worktree, session_id: "s",
+    tool_input: { subject: "Do worktree work", activeForm: "Doing worktree work" },
+    tool_response: { task: { id: "1", subject: "Do worktree work" } },
+  }, env);
+  // Worker looking up by the worktree path (what the live cwd resolves to) finds it.
+  const hit = runNode(WORKER, {
+    projectId: worktree, workstream: { path: worktree, provider: "shell" },
+    heuristicCandidate: { task: "Shell ready", path: worktree, now: "Awaiting command", status: "idle", provider: "shell", confidence: "low" },
+  }, env);
+  expect(JSON.parse(hit.stdout.trim()).tasksFromTodoWrite).toBe(true);
+  // Looking up by the MAIN checkout path does NOT (the bug would key it here).
+  const miss = runNode(WORKER, {
+    projectId: mainCheckout, workstream: { path: mainCheckout, provider: "shell" },
+    heuristicCandidate: { task: "Shell ready", path: mainCheckout, now: "Awaiting command", status: "idle", provider: "shell", confidence: "low" },
+  }, env);
+  expect(JSON.parse(miss.stdout.trim()).tasksFromTodoWrite).toBeFalsy();
+});
+
 test("worker falls back to the heuristic when no sidecar exists for the cwd", async () => {
   const dataHome = mkdtempSync(path.join(os.tmpdir(), "tf-status-"));
   const result = runNode(WORKER, {
