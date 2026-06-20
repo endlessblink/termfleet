@@ -39,7 +39,7 @@ import { workstreamActivityMeta, workstreamActivityText } from "../lib/workstrea
 import { formatWorkstreamBranch, formatWorkstreamIsolation, formatWorkstreamOpsContext } from "../lib/workstreamOpsContext";
 import { snapshotPreviewRows } from "../lib/snapshotPreviewRows";
 import { taskLineupNextLabel, taskLineupStats, visibleTaskLineup } from "../lib/taskLineup";
-import { normalizePersistedShellSummary, summaryFromDurableActivity, summarySourceLabel, terminalPurposeFromContext } from "../lib/terminalHeaderDisplay";
+import { normalizePersistedShellSummary, preferRealTaskSummary, summaryFromDurableActivity, summarySourceLabel, terminalPurposeFromContext } from "../lib/terminalHeaderDisplay";
 
 type CanvasRect = {
   minX: number;
@@ -2207,18 +2207,9 @@ function CanvasNodeView({
         pathTail(liveTerminalRoot) ?? liveTerminalRoot ?? "workspace path unknown",
         terminalPurpose,
       );
-  // When the agent has a REAL task list (sidecar TaskCreate/TaskUpdate →
-  // tasksFromTodoWrite), the map node title/now MUST be the agent's current task —
-  // never the heuristic/purpose inference from terminal output. Read straight from
-  // statusSummary so it holds even if the task lineup hasn't populated. (TC-033)
-  const terminalRealTask = terminalStatusSummary?.tasksFromTodoWrite ? terminalStatusSummary : null;
-  const terminalDisplaySummary = terminalRealTask
-    ? {
-        ...terminalDisplaySummaryBase,
-        task: terminalRealTask.task || terminalDisplaySummaryBase.task,
-        now: terminalRealTask.now || terminalDisplaySummaryBase.now,
-      }
-    : terminalDisplaySummaryBase;
+  // The agent's real task list (sidecar) wins the title/now over heuristic
+  // inference — see preferRealTaskSummary. (TC-033)
+  const terminalDisplaySummary = preferRealTaskSummary(terminalDisplaySummaryBase, terminalStatusSummary);
   const terminalSummarySource = summarySourceLabel(
     linkedTerminal?.statusSummarySource ?? workstream?.statusSummarySource,
     linkedTerminal?.statusSummaryError ?? workstream?.statusSummaryError,

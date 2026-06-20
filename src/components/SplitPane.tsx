@@ -9,7 +9,7 @@ import { pathTail, projectForTab } from "../lib/projectDisplay";
 import { agentStatusSummaryFromWorkstream, getDisplaySummary } from "../lib/agentStatusSummary";
 import { workstreamActivityText } from "../lib/workstreamActivity";
 import { taskLineupNextLabel, taskLineupStats, visibleTaskLineup as pickVisibleTaskLineup } from "../lib/taskLineup";
-import { normalizePersistedShellSummary, summaryFromDurableActivity, summarySourceLabel, terminalPurposeFromContext } from "../lib/terminalHeaderDisplay";
+import { normalizePersistedShellSummary, preferRealTaskSummary, summaryFromDurableActivity, summarySourceLabel, terminalPurposeFromContext } from "../lib/terminalHeaderDisplay";
 import {
   calculatePaneBounds,
   calculateHandles,
@@ -799,19 +799,10 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
               ? normalizePersistedShellSummary(shellExtractedSummary, pathTail(paneCwd) ?? paneCwd ?? "workspace path unknown", terminalPurpose)
               : null
           : null;
-        // When the agent has a REAL task list (sidecar TaskCreate/TaskUpdate →
-        // tasksFromTodoWrite), the header title/now MUST be the agent's current task —
-        // never the heuristic/purpose inference from terminal output. Read straight from
-        // statusSummary so this holds even if the task lineup hasn't populated. (TC-033)
-        const shellRealTask = paneTerminal?.statusSummary?.tasksFromTodoWrite
-          ? paneTerminal.statusSummary
-          : null;
-        const shellStatusSummary = shellStatusSummaryBase && shellRealTask
-          ? {
-              ...shellStatusSummaryBase,
-              task: shellRealTask.task || shellStatusSummaryBase.task,
-              now: shellRealTask.now || shellStatusSummaryBase.now,
-            }
+        // The agent's real task list (sidecar) wins the title/now over heuristic
+        // inference — see preferRealTaskSummary. (TC-033)
+        const shellStatusSummary = shellStatusSummaryBase
+          ? preferRealTaskSummary(shellStatusSummaryBase, paneTerminal?.statusSummary)
           : shellStatusSummaryBase;
         const shellSummarySource = summarySourceLabel(
           paneTerminal?.statusSummarySource ?? tab.workstream?.statusSummarySource,

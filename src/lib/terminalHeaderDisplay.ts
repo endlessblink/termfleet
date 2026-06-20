@@ -455,6 +455,26 @@ export function normalizePersistedShellSummary(
   }, purpose);
 }
 
+/**
+ * When the agent has a REAL task list (its own TaskCreate/TaskUpdate, captured into the
+ * status sidecar → `tasksFromTodoWrite`), the header title/now MUST be the agent's
+ * current task — never the heuristic/purpose inference scraped from terminal output.
+ * Reads straight from `statusSummary`, so it holds even when the task lineup hasn't
+ * populated. Heuristic inference remains the fallback only when there is no real task
+ * list. Shared by the split-pane header and the map node header. (TC-033)
+ */
+export function preferRealTaskSummary<T extends { task: string; now: string }>(
+  base: T,
+  statusSummary: WorkstreamStatusSummary | null | undefined,
+): T {
+  if (!statusSummary?.tasksFromTodoWrite) return base;
+  return {
+    ...base,
+    task: cleanText(statusSummary.task) ?? base.task,
+    now: cleanText(statusSummary.now) ?? base.now,
+  };
+}
+
 export function terminalActivityDetail(activity: TerminalActivitySummary, idleFallback = "Awaiting command") {
   const commandResult = commandResultNow(activity);
   if (commandResult) return commandResult;
