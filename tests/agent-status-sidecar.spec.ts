@@ -139,6 +139,38 @@ test("the ollama worker is sidecar-first: returns the real task list without a m
   expect(summary.tasks.map((t: { text: string }) => t.text)).toContain("in-progress: Real captured task");
 });
 
+test("TaskUpdate status deleted removes the task; later events keep it gone", async () => {
+  const dataHome = mkdtempSync(path.join(os.tmpdir(), "tf-status-"));
+  const cwd = "/tmp/tf-task-delete";
+  const env = { XDG_DATA_HOME: dataHome };
+  runNode(HOOK, {
+    tool_name: "TaskCreate", cwd, session_id: "s",
+    tool_input: { subject: "Keep me", activeForm: "Keeping" },
+    tool_response: { task: { id: "1", subject: "Keep me" } },
+  }, env);
+  runNode(HOOK, {
+    tool_name: "TaskCreate", cwd, session_id: "s",
+    tool_input: { subject: "Delete me", activeForm: "Deleting" },
+    tool_response: { task: { id: "2", subject: "Delete me" } },
+  }, env);
+  runNode(HOOK, {
+    tool_name: "TaskUpdate", cwd, session_id: "s",
+    tool_input: { taskId: "2", status: "deleted" },
+    tool_response: { success: true, taskId: "2" },
+  }, env);
+  // A following non-task tool (live-now) must not resurrect the deleted task.
+  runNode(HOOK, { tool_name: "Read", cwd, tool_input: { file_path: "/x/y.ts" } }, env);
+
+  const result = runNode(WORKER, {
+    projectId: cwd, workstream: { path: cwd, provider: "shell" },
+    heuristicCandidate: { task: "Shell ready", path: cwd, now: "x", status: "idle", provider: "shell", confidence: "low" },
+  }, env);
+  const summary = JSON.parse(result.stdout.trim());
+  const texts = summary.tasks.map((t: { text: string }) => t.text);
+  expect(texts).toContain("Keep me");
+  expect(texts.join(" ")).not.toContain("Delete me");
+});
+
 test("a non-task tool keeps the Task-tool list and only updates the now line", async () => {
   const dataHome = mkdtempSync(path.join(os.tmpdir(), "tf-status-"));
   const cwd = "/tmp/tf-task-livenow";
