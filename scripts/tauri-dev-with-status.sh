@@ -38,34 +38,38 @@ PYEOF
 status_server_ready() {
   curl -fsS -X POST "$STATUS_ENDPOINT" \
     -H "content-type: application/json" \
-    --data '{"type":"agent-workstream-status","projectId":"termfleet","transcript":"","workstream":{"mission":"Terminal","provider":"shell","status":"stopped","path":"termfleet"}}' \
+    --data '{"projectId":"termfleet","workstream":{"provider":"shell","path":"termfleet"}}' \
     >/dev/null 2>&1
 }
+
+# Default worker = the no-model SIDECAR worker: serves the agent's REAL task list from
+# the status hook. The Ollama model summarizer is opt-in only via
+# TERMFLEET_AGENT_STATUS_WORKER (it produced hallucinated/jargon titles).
+STATUS_WORKER="${TERMFLEET_AGENT_STATUS_WORKER:-node scripts/agent-status-summary-sidecar.mjs}"
 
 start_status_server() {
   if [[ "${TERMFLEET_AGENT_STATUS_DISABLE:-0}" == "1" ]]; then
     return
   fi
 
-  if status_server_ready; then
-    export VITE_AGENT_STATUS_SUMMARY_ENDPOINT="${VITE_AGENT_STATUS_SUMMARY_ENDPOINT:-$STATUS_ENDPOINT}"
-    echo "Using existing TermFleet status summary server at $STATUS_ENDPOINT"
-    return
-  fi
+  # Always REPLACE our own status server so a worker/code change actually takes effect.
+  # Reusing a stale server silently served the old (model) worker across relaunches —
+  # the exact bug that hid the sidecar task list and kept showing jargon titles. (TC-033)
+  kill_if_running "agent-status-summary-server.mjs"
 
   (
     cd "$ROOT_DIR"
     TERMFLEET_AGENT_STATUS_HOST="$STATUS_HOST" \
     TERMFLEET_AGENT_STATUS_PORT="$STATUS_PORT" \
     TERMFLEET_AGENT_STATUS_MODEL="${TERMFLEET_AGENT_STATUS_MODEL:-qwen3:4b}" \
-      node scripts/agent-status-summary-server.mjs node scripts/agent-status-summary-ollama.mjs
+      node scripts/agent-status-summary-server.mjs ${STATUS_WORKER}
   ) >"$STATUS_LOG" 2>&1 &
   STATUS_PID="$!"
 
   for _ in {1..40}; do
     if status_server_ready; then
       export VITE_AGENT_STATUS_SUMMARY_ENDPOINT="${VITE_AGENT_STATUS_SUMMARY_ENDPOINT:-$STATUS_ENDPOINT}"
-      echo "Started TermFleet status summary server at $STATUS_ENDPOINT"
+      echo "Started TermFleet status summary server at $STATUS_ENDPOINT (worker: ${STATUS_WORKER})"
       return
     fi
     sleep 0.1
