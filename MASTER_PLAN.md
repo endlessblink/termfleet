@@ -3044,6 +3044,50 @@ prompt`, including auth-required, provider-ready, cancellation ack, and
 - `npm run build` passed after moving the mutable agent task into the always
   visible canvas node header while preserving ordinary shell terminal headers.
 
+### TC-034: Shared agent-memory layer (research)
+
+**Priority:** P2
+**Status:** Todo
+
+As TermFleet runs several agents concurrently in one workspace and moves toward
+agents-that-spawn-agents, evaluate a shared, local-first **agent-memory service**
+so spawned/ephemeral agents can record and recall what worked across runs —
+something the per-user `memory/` dir cannot provide (single identity, no
+concurrent API, no retrieval). Research only; the output is a recommendation, not
+a shipped feature. Adjacent to TC-022 (external agent bridge).
+
+Candidates to compare:
+
+- **EverOS as a local-only sidecar** (https://github.com/EverMind-AI/EverOS) —
+  OSS server reached over the `127.0.0.1` HTTP API, embeddings repointed to local
+  Ollama. No cloud, and explicitly NOT the transcript-uploading cloud Claude Code
+  plugin (`evermem-claude-code`, which POSTs conversations to `api.evermind.ai`).
+  Ready-made hybrid retrieval (BM25 + vector) and a dual-track "agent cases/skills"
+  model aimed at agents learning from past runs. Cost: a Python + LanceDB runtime
+  living alongside the appimage/deb.
+- **Thin Rust-native store in the daemon** — shared SQLite/Markdown the daemon
+  owns, anchored to the existing per-agent `memory`/`evidence`/`proof`
+  control-surface fields; add vector retrieval only when volume demands it. Cost:
+  build retrieval ourselves.
+
+Acceptance (draft):
+
+- Written comparison of the two on local-first/privacy fit, packaging impact,
+  concurrent multi-agent read/write, retrieval quality, and effort.
+- A throwaway local-only EverOS sidecar spike proving (or disproving) that shared
+  memory measurably improves a spawned-agent run, behind a `TERMFLEET_EVEROS_*`
+  flag, never bundled into the binary.
+- A recommendation: adopt the EverOS sidecar, build the thin Rust-native store, or
+  defer — with the trigger condition for revisiting.
+
+Constraints (do not relitigate):
+
+- Local-first only; no cloud providers, no transcript upload off-machine.
+- Never bundle a Python/LanceDB runtime into the TermFleet binary; sidecar shape
+  only (mirrors the optional Ollama summarizer), with graceful absence.
+- The per-user `memory/` dir stays the operator's own memory; this lane is about
+  *agent* memory.
+
 ### TC-016: Multi-agent orchestration from the cockpit
 
 **Priority:** P2
