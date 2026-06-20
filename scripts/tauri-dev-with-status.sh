@@ -99,4 +99,8 @@ start_status_server
 export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-1}"
 export CARGO_PROFILE_DEV_DEBUG="${CARGO_PROFILE_DEV_DEBUG:-0}"
 
+# WebKitGTK serves stale frontend JS from its disk cache across relaunches — disable it
+# for dev so the webview always loads current code. (TC-033)
+export WEBKIT_DISABLE_DISK_CACHE_NOT_RECOMMENDED="${WEBKIT_DISABLE_DISK_CACHE_NOT_RECOMMENDED:-1}"
+
 tauri dev

@@ -35,6 +35,11 @@ echo "Starting Terminal Workspace (Canvas2D terminal, Tauri dev mode)..."
 export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-1}"
 export CARGO_PROFILE_DEV_DEBUG="${CARGO_PROFILE_DEV_DEBUG:-0}"
 
+# WebKitGTK aggressively caches frontend JS on disk and serves it across relaunches,
+# so edits silently never appear in the dev window. Disable the disk cache for dev so
+# the webview always loads current code from vite. (TC-033)
+export WEBKIT_DISABLE_DISK_CACHE_NOT_RECOMMENDED="${WEBKIT_DISABLE_DISK_CACHE_NOT_RECOMMENDED:-1}"
+
 # By default LEAVE THE DAEMON ALIVE across relaunches so the reopened app
 # reattaches to live PTYs with full content. The app auto-replaces the daemon
 # when its build_id changes (backend rebuilt). Pass --fresh-daemon (or set
