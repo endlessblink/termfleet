@@ -644,17 +644,16 @@ export function TerminalComponent({
                   // authoritative `todo-write` source so the panel/map/header treat
                   // them as the declared list — not clobberable `operator` items.
                   // (TC-033 RC-B)
-                  const lineupSource = result.summary.tasksFromTodoWrite ? "todo-write" : "operator";
-                  // The worker encodes real todo status via text prefixes
-                  // (`done:`/`in-progress:`) and leaves pending todos bare — so an
-                  // unmarked todo-write item is pending, not in-progress. Operator
-                  // heuristic items keep the in-progress default (current activity).
-                  const openFallback = lineupSource === "todo-write" ? "pending" : "in_progress";
-                  const extractedLineup = result.summary.tasks?.length
+                  // Only populate the TASKS panel from the agent's REAL task list
+                  // (sidecar TaskCreate/TaskUpdate → tasksFromTodoWrite). Heuristic/model
+                  // "tasks" scraped from scrollback are not a real list and produced junk
+                  // items, so they contribute nothing. The worker encodes real status via
+                  // text prefixes (`done:`/`in-progress:`); unmarked items are pending. (TC-033)
+                  const extractedLineup = result.summary.tasksFromTodoWrite && result.summary.tasks?.length
                     ? taskLineupFromExtractedItems(
                         result.summary.tasks,
-                        lineupSource,
-                        closesRun ? "completed" : openFallback,
+                        "todo-write",
+                        closesRun ? "completed" : "pending",
                         updatedAt,
                         runId
                       )
