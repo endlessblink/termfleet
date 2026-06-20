@@ -221,12 +221,16 @@ export function mergeShellSummaryTaskLineup(
 export function visibleTaskLineup(items: TaskLineupItem[] | undefined, runId: string | undefined): TaskLineupItem[] {
   const all = items ?? [];
   const todoWrite = all.filter((item) => item.source === "todo-write");
-  if (todoWrite.length > 0) return taskLineupForVisibleRun(todoWrite, runId);
-  // No authoritative list → fall back to AI/heuristic-extracted items, but re-validate
-  // each through the content contract so stale/junk extractions (e.g. a bare "TERM")
-  // can't surface even when injected directly into the lineup.
-  const cleaned = all.filter((item) => cleanTaskLineupContent(item.content) !== undefined);
-  return taskLineupForVisibleRun(cleaned, runId);
+  const chosen = todoWrite.length > 0
+    ? taskLineupForVisibleRun(todoWrite, runId)
+    // No authoritative list → fall back to AI/heuristic-extracted items, but re-validate
+    // each through the content contract so stale/junk extractions (e.g. a bare "TERM")
+    // can't surface even when injected directly into the lineup.
+    : taskLineupForVisibleRun(all.filter((item) => cleanTaskLineupContent(item.content) !== undefined), runId);
+  // The panel shows what's being worked on. If nothing is live (every item is
+  // completed/cancelled), it should be EMPTY — not a graveyard of struck-through done
+  // items. When there is at least one live task, show the full list for progress context.
+  return chosen.some((item) => item.status === "pending" || item.status === "in_progress") ? chosen : [];
 }
 
 export function taskLineupForVisibleRun(items: TaskLineupItem[] | undefined, runId: string | undefined) {

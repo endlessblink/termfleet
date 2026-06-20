@@ -37,6 +37,22 @@ test("empty/undefined lineup yields an empty list", () => {
   expect(visibleTaskLineup([], undefined)).toEqual([]);
 });
 
+test("an all-completed list shows nothing (panel is empty when no live tasks)", () => {
+  const allDone: TaskLineupItem[] = [
+    { id: "a", content: "Wire the hook", status: "completed", source: "todo-write", updatedAt: 1_000 },
+    { id: "b", content: "Verify it", status: "completed", source: "todo-write", updatedAt: 2_000 },
+  ];
+  expect(visibleTaskLineup(allDone, undefined)).toEqual([]);
+});
+
+test("a list with at least one live task shows the full list (completed for context)", () => {
+  const mixed: TaskLineupItem[] = [
+    { id: "a", content: "Wire the hook", status: "completed", source: "todo-write", updatedAt: 1_000 },
+    { id: "b", content: "Verify it", status: "in_progress", source: "todo-write", updatedAt: 2_000 },
+  ];
+  expect(visibleTaskLineup(mixed, undefined).length).toBe(2);
+});
+
 test("drops stale/junk fallback items (e.g. a bare all-caps fragment)", () => {
   const junk: TaskLineupItem[] = [
     { id: "stale-term", content: "TERM", status: "pending", source: "summary", updatedAt: 1_000 },
