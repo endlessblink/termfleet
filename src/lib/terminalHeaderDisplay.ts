@@ -463,16 +463,40 @@ export function normalizePersistedShellSummary(
  * populated. Heuristic inference remains the fallback only when there is no real task
  * list. Shared by the split-pane header and the map node header. (TC-033)
  */
+/** A clean, honest title for a pane that has no real task list — based on run state. */
+export function neutralHeaderTitle(status?: string | null): string {
+  switch (status) {
+    case "running":
+    case "reconnected":
+      return "Working";
+    case "failed":
+      return "Needs attention";
+    case "exited":
+      return "Idle";
+    default:
+      return "Ready";
+  }
+}
+
 export function preferRealTaskSummary<T extends { task: string; now: string }>(
   base: T,
   statusSummary: WorkstreamStatusSummary | null | undefined,
+  neutralTitle?: string,
 ): T {
-  if (!statusSummary?.tasksFromTodoWrite) return base;
-  return {
-    ...base,
-    task: cleanText(statusSummary.task) ?? base.task,
-    now: cleanText(statusSummary.now) ?? base.now,
-  };
+  if (statusSummary?.tasksFromTodoWrite) {
+    return {
+      ...base,
+      task: cleanText(statusSummary.task) ?? base.task,
+      now: cleanText(statusSummary.now) ?? base.now,
+    };
+  }
+  // No real task list → the title must NOT be a heuristic scrape of terminal output
+  // (which surfaced raw commands / arbitrary on-screen text). Show a clean neutral
+  // status word; the (filtered) activity detail stays on the `now` line. (TC-033)
+  if (neutralTitle) {
+    return { ...base, task: neutralTitle };
+  }
+  return base;
 }
 
 export function terminalActivityDetail(activity: TerminalActivitySummary, idleFallback = "Awaiting command") {

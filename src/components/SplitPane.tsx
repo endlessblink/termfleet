@@ -9,7 +9,7 @@ import { pathTail, projectForTab } from "../lib/projectDisplay";
 import { agentStatusSummaryFromWorkstream, getDisplaySummary } from "../lib/agentStatusSummary";
 import { workstreamActivityText } from "../lib/workstreamActivity";
 import { taskLineupNextLabel, taskLineupStats, visibleTaskLineup as pickVisibleTaskLineup } from "../lib/taskLineup";
-import { normalizePersistedShellSummary, preferRealTaskSummary, summaryFromDurableActivity, summarySourceLabel, terminalPurposeFromContext } from "../lib/terminalHeaderDisplay";
+import { neutralHeaderTitle, normalizePersistedShellSummary, preferRealTaskSummary, summaryFromDurableActivity, summarySourceLabel, terminalPurposeFromContext } from "../lib/terminalHeaderDisplay";
 import {
   calculatePaneBounds,
   calculateHandles,
@@ -802,7 +802,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
         // The agent's real task list (sidecar) wins the title/now over heuristic
         // inference — see preferRealTaskSummary. (TC-033)
         const shellStatusSummary = shellStatusSummaryBase
-          ? preferRealTaskSummary(shellStatusSummaryBase, paneTerminal?.statusSummary)
+          ? preferRealTaskSummary(shellStatusSummaryBase, paneTerminal?.statusSummary, neutralHeaderTitle(terminalStatus))
           : shellStatusSummaryBase;
         const shellSummarySource = summarySourceLabel(
           paneTerminal?.statusSummarySource ?? tab.workstream?.statusSummarySource,

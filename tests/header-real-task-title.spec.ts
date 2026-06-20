@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { preferRealTaskSummary } from "../src/lib/terminalHeaderDisplay";
+import { neutralHeaderTitle, preferRealTaskSummary } from "../src/lib/terminalHeaderDisplay";
 import type { WorkstreamStatusSummary } from "../src/lib/types";
 
 // TC-033 regression: the header title/now (split pane AND map node) must show the
@@ -37,12 +37,31 @@ test("real task list overrides the heuristic title and now", () => {
   expect(result.path).toBe("termfleet");
 });
 
-test("without a real task list, the heuristic base is left untouched", () => {
+test("without a real task list, the heuristic base is left untouched (no neutral given)", () => {
   const result = preferRealTaskSummary(
     heuristicBase,
     statusSummary({ tasksFromTodoWrite: false }),
   );
   expect(result).toEqual(heuristicBase);
+});
+
+test("no real task + neutral title → clean status replaces the heuristic scrape", () => {
+  const result = preferRealTaskSummary(
+    heuristicBase,
+    statusSummary({ tasksFromTodoWrite: false }),
+    "Working",
+  );
+  // The scraped heuristic title is replaced by the clean neutral; activity stays.
+  expect(result.task).toBe("Working");
+  expect(result.now).toBe(heuristicBase.now);
+});
+
+test("neutralHeaderTitle maps run state to a clean word", () => {
+  expect(neutralHeaderTitle("running")).toBe("Working");
+  expect(neutralHeaderTitle("reconnected")).toBe("Working");
+  expect(neutralHeaderTitle("failed")).toBe("Needs attention");
+  expect(neutralHeaderTitle("exited")).toBe("Idle");
+  expect(neutralHeaderTitle(undefined)).toBe("Ready");
 });
 
 test("a missing/undefined status summary leaves the base untouched", () => {

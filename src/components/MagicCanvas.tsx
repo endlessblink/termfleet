@@ -39,7 +39,7 @@ import { workstreamActivityMeta, workstreamActivityText } from "../lib/workstrea
 import { formatWorkstreamBranch, formatWorkstreamIsolation, formatWorkstreamOpsContext } from "../lib/workstreamOpsContext";
 import { snapshotPreviewRows } from "../lib/snapshotPreviewRows";
 import { taskLineupNextLabel, taskLineupStats, visibleTaskLineup } from "../lib/taskLineup";
-import { normalizePersistedShellSummary, preferRealTaskSummary, summaryFromDurableActivity, summarySourceLabel, terminalPurposeFromContext } from "../lib/terminalHeaderDisplay";
+import { neutralHeaderTitle, normalizePersistedShellSummary, preferRealTaskSummary, summaryFromDurableActivity, summarySourceLabel, terminalPurposeFromContext } from "../lib/terminalHeaderDisplay";
 
 type CanvasRect = {
   minX: number;
@@ -2209,7 +2209,11 @@ function CanvasNodeView({
       );
   // The agent's real task list (sidecar) wins the title/now over heuristic
   // inference — see preferRealTaskSummary. (TC-033)
-  const terminalDisplaySummary = preferRealTaskSummary(terminalDisplaySummaryBase, terminalStatusSummary);
+  const terminalDisplaySummary = preferRealTaskSummary(
+    terminalDisplaySummaryBase,
+    terminalStatusSummary,
+    neutralHeaderTitle(linkedTerminal?.status),
+  );
   const terminalSummarySource = summarySourceLabel(
     linkedTerminal?.statusSummarySource ?? workstream?.statusSummarySource,
     linkedTerminal?.statusSummaryError ?? workstream?.statusSummaryError,
