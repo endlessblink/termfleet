@@ -72,4 +72,54 @@ if port_in_use 1420; then
   exit 1
 fi
 
-exec npm run tauri:dev
+# Start the local Ollama-backed status summary server so terminal/agent
+# descriptions are real model summaries (the header shows "model summary" vs
+# "heuristic summary"). Ollama-only; if it can't start the app still runs with the
+# deterministic heuristic. Disable with TERMFLEET_AGENT_STATUS_DISABLE=1.
+STATUS_HOST="${TERMFLEET_AGENT_STATUS_HOST:-127.0.0.1}"
+STATUS_PORT="${TERMFLEET_AGENT_STATUS_PORT:-37819}"
+STATUS_ENDPOINT="http://${STATUS_HOST}:${STATUS_PORT}/status"
+STATUS_LOG="${TERMFLEET_AGENT_STATUS_LOG:-/tmp/termfleet-agent-status-summary.log}"
+STATUS_PID=""
+
+status_server_ready() {
+  curl -fsS -X POST "$STATUS_ENDPOINT" -H "content-type: application/json" \
+    --data '{"type":"agent-workstream-status","projectId":"termfleet","transcript":"","workstream":{"mission":"Terminal","provider":"shell","status":"stopped","path":"termfleet"}}' \
+    >/dev/null 2>&1
+}
+
+if [[ "${TERMFLEET_AGENT_STATUS_DISABLE:-0}" != "1" ]]; then
+  if status_server_ready; then
+    export VITE_AGENT_STATUS_SUMMARY_ENDPOINT="${VITE_AGENT_STATUS_SUMMARY_ENDPOINT:-$STATUS_ENDPOINT}"
+    echo "Using existing status summary server at $STATUS_ENDPOINT"
+  else
+    (
+      cd "$APP_DIR"
+      TERMFLEET_AGENT_STATUS_HOST="$STATUS_HOST" \
+      TERMFLEET_AGENT_STATUS_PORT="$STATUS_PORT" \
+      TERMFLEET_AGENT_STATUS_MODEL="${TERMFLEET_AGENT_STATUS_MODEL:-qwen3:4b}" \
+        node scripts/agent-status-summary-server.mjs ${TERMFLEET_AGENT_STATUS_WORKER:-node scripts/agent-status-summary-sidecar.mjs}
+    ) >"$STATUS_LOG" 2>&1 &
+    STATUS_PID="$!"
+    for _ in {1..40}; do
+      if status_server_ready; then
+        export VITE_AGENT_STATUS_SUMMARY_ENDPOINT="${VITE_AGENT_STATUS_SUMMARY_ENDPOINT:-$STATUS_ENDPOINT}"
+        echo "Started status summary server at $STATUS_ENDPOINT"
+        break
+      fi
+      sleep 0.1
+    done
+    if [[ -z "${VITE_AGENT_STATUS_SUMMARY_ENDPOINT:-}" ]]; then
+      echo "Status summary server not ready (is Ollama running?); continuing with heuristic summaries. Log: $STATUS_LOG" >&2
+    fi
+  fi
+fi
+
+cleanup_status_server() {
+  if [[ -n "$STATUS_PID" ]]; then
+    kill "$STATUS_PID" >/dev/null 2>&1 || true
+  fi
+}
+trap cleanup_status_server EXIT INT TERM
+
+npm run tauri:dev

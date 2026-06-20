@@ -451,6 +451,7 @@ export function TerminalComponent({
   const structuredSignalKeysRef = useRef<Set<string>>(new Set());
   const statusSummaryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const statusSummarySequenceRef = useRef(0);
+  const lastSummaryRunRef = useRef(0);
   const latestSnapshotExcerptRef = useRef<string | null>(null);
   const activeTabId = useWorkspaceStore((s) => s.activeTabId);
   const workspaceMode = useWorkspaceStore((s) => s.workspaceUiState.workspaceMode);
@@ -560,7 +561,14 @@ export function TerminalComponent({
     const sequence = statusSummarySequenceRef.current + 1;
     statusSummarySequenceRef.current = sequence;
 
+    // Leading + max-wait debounce: the trailing 650ms debounce was reset on every
+    // output chunk, so during continuous output the summary never fired and the
+    // header looked frozen. Once ~1.5s has elapsed since the last actual run, fire
+    // immediately so the description stays "alive" even while output streams.
+    const sinceLast = Date.now() - lastSummaryRunRef.current;
+    const wait = sinceLast >= 1500 ? 0 : 650;
     statusSummaryTimeoutRef.current = setTimeout(() => {
+      lastSummaryRunRef.current = Date.now();
       const store = useWorkspaceStore.getState();
       const tab = store.tabs.find((candidate) => candidate.id === tabId);
       if (!tab) return;
@@ -656,7 +664,7 @@ export function TerminalComponent({
           ),
         });
       });
-    }, 650);
+    }, wait);
   }, [cwd, paneId, tabId]);
 
   const handleSnapshot = useCallback((snapshot: GridSnapshot) => {
@@ -684,7 +692,10 @@ export function TerminalComponent({
         },
       });
     }
-  }, [onSnapshot, tabId, updateTerminalRuntime]);
+    // Keep the header/description live on canvas/map nodes, which update via
+    // snapshots rather than the output callback.
+    scheduleStatusSummaryUpdate();
+  }, [onSnapshot, tabId, updateTerminalRuntime, scheduleStatusSummaryUpdate]);
 
   const updateWorkstreamRuntime = useCallback((updates: {
     status?: WorkstreamStatus;

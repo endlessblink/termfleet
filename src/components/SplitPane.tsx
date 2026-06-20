@@ -8,7 +8,7 @@ import type { Tab, TaskLineupItem, TerminalRuntimeStatus, WorkstreamMetadata, Wo
 import { pathTail, projectForTab } from "../lib/projectDisplay";
 import { agentStatusSummaryFromWorkstream, getDisplaySummary } from "../lib/agentStatusSummary";
 import { workstreamActivityText } from "../lib/workstreamActivity";
-import { taskLineupForVisibleRun, taskLineupNextLabel, taskLineupStats } from "../lib/taskLineup";
+import { taskLineupNextLabel, taskLineupStats, visibleTaskLineup as pickVisibleTaskLineup } from "../lib/taskLineup";
 import { normalizePersistedShellSummary, summaryFromDurableActivity, summarySourceLabel, terminalPurposeFromContext } from "../lib/terminalHeaderDisplay";
 import {
   calculatePaneBounds,
@@ -775,10 +775,8 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
               terminalOutput: paneTerminal.terminalOutput,
             }, paneTerminal.statusSummary)
           : null;
-        const visibleTaskLineup = taskLineupForVisibleRun(
-          (tab.workstream?.taskLineup ?? paneTerminal?.taskLineup)?.filter((item) =>
-            item.source === "todo-write"
-          ),
+        const visibleTaskLineup = pickVisibleTaskLineup(
+          tab.workstream?.taskLineup ?? paneTerminal?.taskLineup,
           paneTerminal?.activeRunId
         );
         const terminalPurpose = terminalPurposeFromContext({

@@ -406,13 +406,19 @@ export function displayAgentStatusSummary(
   persisted?: WorkstreamStatusSummary | null
 ): AgentStatusSummary {
   const fallback = fallbackAgentStatusSummary(input);
-  if (input.provider === "shell" && fallback.confidence === "high") {
-    return fallback;
-  }
   const task = cleanText(persisted?.task);
   const path = cleanText(persisted?.path);
   const now = cleanText(persisted?.now);
-  if (!task || !path || !now || isNoisyActivity(task) || isNoisyActivity(path) || isNoisyActivity(now)) {
+  const persistedUsable =
+    Boolean(task && path && now) && !isNoisyActivity(task) && !isNoisyActivity(path) && !isNoisyActivity(now);
+  // A fresh, confident persisted summary (e.g. the sidecar worker reporting the
+  // agent's REAL current activity/todos) wins over the local heuristic — even for
+  // shells, where the heuristic is often "high" confidence but generic.
+  const persistedWins = persistedUsable && persisted?.confidence === "high";
+  if (input.provider === "shell" && fallback.confidence === "high" && !persistedWins) {
+    return fallback;
+  }
+  if (!persistedUsable || !task || !path || !now) {
     return fallback;
   }
   return {
@@ -424,7 +430,7 @@ export function displayAgentStatusSummary(
     status: persisted?.status ?? fallback.status,
     provider: persisted?.provider ?? fallback.provider,
     confidence: persisted?.confidence ?? fallback.confidence,
-    tasks: input.provider === "shell" ? fallback.tasks : persisted?.tasks ?? fallback.tasks,
+    tasks: persisted?.tasks?.length ? persisted.tasks : input.provider === "shell" ? fallback.tasks : persisted?.tasks ?? fallback.tasks,
     blockers: persisted?.blockers ?? fallback.blockers,
     evidence: persisted?.evidence ?? fallback.evidence,
     nextActions: persisted?.nextActions ?? fallback.nextActions,

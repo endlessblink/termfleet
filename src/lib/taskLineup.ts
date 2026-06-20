@@ -38,6 +38,18 @@ export function cleanTaskLineupContent(value?: string | null) {
   if (/^(explored|search|read|ran|verified|working|output|path|signal|now)$/i.test(cleaned)) return undefined;
   if (/^(explored|read|ran|searched)\b/i.test(cleaned)) return undefined;
   if (/\b[A-Za-z][\w.]*\|[A-Za-z][\w.]*\b/.test(cleaned)) return undefined;
+  // Runner / verify / build OUTCOMES are status reports, not tasks. Anchored so a
+  // real task that merely mentions build/test (e.g. "Fix the frontend build",
+  // "Fix 3 failed tests") is kept — only report-shaped lines are dropped.
+  if (/^\d+\s+(?:passed|failed)\b/i.test(cleaned)) return undefined;
+  if (/^running\s+\d+\s+tests?\b/i.test(cleaned)) return undefined;
+  if (/(?:checks?|build|tests?|suite|lint|typecheck)\s+(?:passed|failed)\s*$/i.test(cleaned)) return undefined;
+  // Agent/shell prompt chrome is not a task.
+  if (/\b(?:esc to interrupt|context left|tab to queue message)\b/i.test(cleaned)) return undefined;
+  if (/\b(?:gpt|claude|opus|codex)[-\w.]*\s+default\b/i.test(cleaned)) return undefined;
+  // A bare all-caps token (no spaces) is env-var / fragment noise (e.g. "TERM",
+  // "PATH", "API"), not a task. Real tasks have spaces or lowercase.
+  if (/^[A-Z0-9_.-]+$/.test(cleaned) && /[A-Z]/.test(cleaned)) return undefined;
   return cleaned.slice(0, MAX_TASK_TEXT);
 }
 
@@ -177,6 +189,24 @@ export function mergeShellSummaryTaskLineup(
   return options.closesRun
     ? completeOpenTaskLineupForRun(extracted, options.runId, options.updatedAt)
     : extracted;
+}
+
+/**
+ * The task lineup the panel should render. Prefers an authoritative `todo-write`
+ * list (the agent's real declared todos); when none exists, falls back to the
+ * AI/heuristic-extracted items (operator/summary/structured-signal) so the panel
+ * isn't permanently empty (nothing emits the todo-write marker by default). Run
+ * scoping is applied to whichever source wins (TC-033 list-empty fix).
+ */
+export function visibleTaskLineup(items: TaskLineupItem[] | undefined, runId: string | undefined): TaskLineupItem[] {
+  const all = items ?? [];
+  const todoWrite = all.filter((item) => item.source === "todo-write");
+  if (todoWrite.length > 0) return taskLineupForVisibleRun(todoWrite, runId);
+  // No authoritative list → fall back to AI/heuristic-extracted items, but re-validate
+  // each through the content contract so stale/junk extractions (e.g. a bare "TERM")
+  // can't surface even when injected directly into the lineup.
+  const cleaned = all.filter((item) => cleanTaskLineupContent(item.content) !== undefined);
+  return taskLineupForVisibleRun(cleaned, runId);
 }
 
 export function taskLineupForVisibleRun(items: TaskLineupItem[] | undefined, runId: string | undefined) {

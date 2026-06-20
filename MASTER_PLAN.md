@@ -5082,3 +5082,70 @@ cwd (matches the "terminals opened in a path should be a project" intent).
   own project, and `addGroup` reuses the existing group for a repeated path.
 - Gate: `tsc --noEmit` clean; `npm run build` green; `project-reconciliation` +
   `map-terminal-rendering` specs **25 passed, 0 failed**.
+
+#### TC-033 remaining lanes (not yet done — cover later)
+
+- **T-TASKS — faulty task descriptions / task lists (DONE):** the TASKS panel showed
+  runner/verify/build *outcomes* ("Terminal summary visual checks failed", "Frontend
+  build failed", "3 passed", "Running 2 tests…") and prompt chrome ("gpt-5.5 default
+  · ~") as task rows. Root cause: `cleanTaskLineupContent` (`src/lib/taskLineup.ts`)
+  only rejected a few generic single words. Added an operator contract — anchored
+  rejects for runner/verify/build outcomes (`^\d+ (passed|failed)`, `^running \d+
+  tests?`, `(checks?|build|tests?|suite|lint|typecheck) (passed|failed)$`) and prompt
+  chrome (`esc to interrupt`/`context left`/`tab to queue message`, `(gpt|claude|opus|
+  codex)… default`), kept anchored so real tasks that mention build/test survive.
+  Worktree branch `tc-033-tasklist` off `1c708e1`. Verify:
+  `tests/task-lineup-content-contract.spec.ts` 4/4; regression
+  `task-lineup-source-merge` + `agent-status-summary` + `map-terminal-rendering` 67/67;
+  `npm run build` green.
+- **T9 — input reliability — UNCONFIRMED (no fix; agent false-positives):** traced both
+  reported bugs against the code; neither reproduces.
+  - *Ctrl+C "dropped":* `queue()` appends to `pendingInput` (`daemonInputQueue.ts:108`)
+    **before** the `shouldFlushImmediately && flushTimeout` branch flushes (110-117), so a
+    second Ctrl+C is included in the same emit — **batched, not dropped**; both bytes reach
+    the PTY.
+  - *Input-listener leak:* `markInputListenerActive` deletes the **current** entry during
+    `for…of` over a Map (`usePty.ts:87-102`). Map iteration is spec-safe against deleting
+    visited/current entries — later same-`sessionHint` entries are still visited and
+    disposed, so two same-hint listeners both get cleaned. **No leak.**
+  - copy/Shift+Tab focus restore lives in `TerminalCanvas.tsx` (concurrent session owns it)
+    — out of scope. Net: T9 has no actionable frontend bug. (Same false-positive pattern as
+    the disproven cluster B / hydration-gate claims.)
+- **E — renderer artifacts (cursor ghost trail ALREADY FIXED + guarded; DPR blur
+  out-of-scope):**
+  - *Cursor ghost trails:* already fixed in `gridBuffer.ts` (85-92) — `cursorMoved`
+    tracks `prevCursorCol` and `prevCursorVisible`, not just the line, and re-dirties the
+    cursor row on any same-row move / show-hide. Added a regression guard
+    `tests/grid-cursor-dirty.spec.ts` (2/2) so it can't silently regress.
+  - *DPR re-atlas blur:* the atlas is created in `TerminalCanvas.tsx` (concurrent session
+    owns it) and the symptom only shows after a live monitor/DPR change — **out of scope +
+    GUI-only**, deferred. Not blind-fixed.
+- **F — persistence robustness:** on-disk `workspace.json` is NOT namespaced under
+  verify-reset mode so a verify run can clobber real layout
+  (`src-tauri/src/commands.rs` ~1092); orphan session-id parse assumes a rigid
+  `terminal-<36charUUID>-<paneId>` shape and mis-recovers map-shaped ids
+  (`src/stores/workspace.ts` ~670-687). ⚠️ overlaps daemon/persistence work — coordinate.
+- Full plan + acceptance/verify per lane:
+  `plans/there-are-several-features-robust-babbage.md`.
+
+#### Empty list + dead description — fix outcomes
+
+- **List populates (DONE, `80d841b`):** root cause — renderers showed only
+  `source==="todo-write"` items but nothing emits that marker, so the panel was always
+  empty. Added `visibleTaskLineup()` (prefer authoritative todo-write, else fall back to
+  the model/heuristic-extracted operator/summary items, re-validated through the content
+  contract so junk like a bare "TERM" can't surface). Wired both renderers.
+- **Description live (DONE, `f3fb213`):** root cause — `scheduleStatusSummaryUpdate`
+  debounce was reset on every output chunk so it never fired during streaming. Now
+  leading + max-wait (fires once ~1.5s elapsed) + refresh on snapshots.
+- **Real model summaries (DONE, `f89439e`):** `run-native-vte-dev.sh` now starts the
+  Ollama status server (qwen3:4b); header shows "model summary" vs "heuristic summary".
+- **Lane B (authoritative opencode-style emitter) — BLOCKED (architectural):** the
+  `[[TERMFLEET_TODO_WRITE]]` marker can only be captured as **visible** text — `onOutput`
+  is built from alacritty grid cells (`TerminalCanvas.tsx:382-387`), so an OSC/invisible
+  form is consumed by alacritty and never reaches the parser, while a plain-text form is
+  rendered as visible garbage (nothing strips it pre-render). Making it invisible needs a
+  **daemon/`vt_grid.rs` change** to extract+strip the marker from the byte stream before
+  rendering — out of this lane's scope (concurrent session owns those files). Coordinate
+  that backend change, then the gated global Claude `TodoWrite` hook (+ `cmd.env("TERMFLEET","1")`
+  in `pty.rs`) becomes safe. Until then, the model-extracted list (above) is the path.
