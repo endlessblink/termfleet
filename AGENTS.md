@@ -5,6 +5,15 @@ keyboard-first developer operations center. Terminals are the tactical work
 surface; files, sessions, the canvas/operations map, and (planned) agents are
 supporting instruments. Linux is the first release gate.
 
+## Task names are cockpit-visible — write them for non-developers
+
+TermFleet's TASKS panel + header title show your task `subject`/`activeForm` (or
+plan steps) to whoever is watching the cockpit — often non-technical. Write them in
+**plain, everyday language**: no file names, code, flags, or jargon. Put the friendly
+phrasing in a short present-continuous form (the title prefers it), e.g. "Cleaning up
+messy terminal text" rather than "Suppress scrollback garbage (neutral floor)". This
+costs no extra tokens — it's the same task you already record, just human-readable.
+
 Stack: **Tauri 2 + React 19 + TypeScript + Rust**, with a **headless-VT
 (`alacritty_terminal`) grid rendered to an HTML canvas** as the desktop terminal,
 and a **user-local Rust PTY daemon** (Unix-socket IPC) that owns PTYs
