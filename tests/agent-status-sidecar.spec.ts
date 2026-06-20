@@ -102,8 +102,8 @@ test("modern Task tools (TaskCreate/TaskUpdate) build a stateful task list", asy
   const summary = JSON.parse(workerResult.stdout.trim());
 
   expect(summary.tasksFromTodoWrite).toBe(true);
-  // Title = the current (in-progress) task; now = its live active form.
-  expect(summary.task).toBe("Wire the hook");
+  // Title = the current task's human-readable active form (what's happening now).
+  expect(summary.task).toBe("Wiring the hook");
   expect(summary.now).toBe("Wiring the hook"); // in-progress task's active form
   expect(summary.status).toBe("working");
   const texts = summary.tasks.map((t: { text: string }) => t.text);
