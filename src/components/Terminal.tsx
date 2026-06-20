@@ -573,6 +573,11 @@ export function TerminalComponent({
       const tab = store.tabs.find((candidate) => candidate.id === tabId);
       if (!tab) return;
       const terminalState = tab.terminals.find((candidate) => candidate.paneId === paneId);
+      // Join with the agent's status sidecar by the terminal's LIVE cwd (the dir a
+      // `cd`/`z` moved into, where the user actually launched Claude), not the pane's
+      // spawn cwd. The Claude TodoWrite hook keys the sidecar by Claude's live cwd, so
+      // sending the stale spawn cwd misses the sidecar → generic fallback. (TC-033 RC-A)
+      const liveCwd = livePtyId ? store.liveCwds[livePtyId] : undefined;
       const input: AgentStatusSummaryInput | null =
         tab.workstream?.kind === "agent"
           ? agentStatusSummaryInputFromWorkstream(tab.workstream)
@@ -581,7 +586,7 @@ export function TerminalComponent({
                 mission: tab.title,
                 provider: "shell",
                 status: workstreamStatusForTerminalStatus(terminalState.status),
-                cwd,
+                cwd: liveCwd ?? cwd,
                 currentActivity: terminalState.currentActivity,
                 terminalOutput: terminalState.terminalOutput,
               }
@@ -634,11 +639,22 @@ export function TerminalComponent({
                   const updatedAt = Date.now();
                   const runId = candidate.activeRunId;
                   const closesRun = candidate.runClosed || terminalOutputClosesTaskLineup(candidate.terminalOutput);
+                  // When the summary's tasks ARE the agent's real Claude TodoWrite
+                  // list (captured by the status sidecar), render them as the
+                  // authoritative `todo-write` source so the panel/map/header treat
+                  // them as the declared list — not clobberable `operator` items.
+                  // (TC-033 RC-B)
+                  const lineupSource = result.summary.tasksFromTodoWrite ? "todo-write" : "operator";
+                  // The worker encodes real todo status via text prefixes
+                  // (`done:`/`in-progress:`) and leaves pending todos bare — so an
+                  // unmarked todo-write item is pending, not in-progress. Operator
+                  // heuristic items keep the in-progress default (current activity).
+                  const openFallback = lineupSource === "todo-write" ? "pending" : "in_progress";
                   const extractedLineup = result.summary.tasks?.length
                     ? taskLineupFromExtractedItems(
                         result.summary.tasks,
-                        "operator",
-                        closesRun ? "completed" : "in_progress",
+                        lineupSource,
+                        closesRun ? "completed" : openFallback,
                         updatedAt,
                         runId
                       )
@@ -665,7 +681,7 @@ export function TerminalComponent({
         });
       });
     }, wait);
-  }, [cwd, paneId, tabId]);
+  }, [cwd, livePtyId, paneId, tabId]);
 
   const handleSnapshot = useCallback((snapshot: GridSnapshot) => {
     onSnapshot?.(snapshot);

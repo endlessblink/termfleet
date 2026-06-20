@@ -52,6 +52,8 @@ test("parses strict LLM status JSON into visible agent status", () => {
     blockers: [],
     evidence: [],
     nextActions: [],
+    // No sidecar todo-write flag in this strict LLM JSON → coerced to false.
+    tasksFromTodoWrite: false,
   });
 });
 

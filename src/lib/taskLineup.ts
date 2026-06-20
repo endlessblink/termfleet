@@ -182,9 +182,11 @@ export function mergeShellSummaryTaskLineup(
 ): TaskLineupItem[] {
   const existingItems = existing ?? [];
   // A populated todo-write list is the source-of-truth for the panel; never let a
-  // summary cycle overwrite it. Its lifecycle (completion on run close) is owned by
-  // the dedicated todo-write / structured-signal paths, not the summary path.
-  if (existingItems.some((item) => item.source === "todo-write")) return existingItems;
+  // (lower-grade) `operator`/summary cycle overwrite it. EXCEPTION: a fresh
+  // todo-write-sourced extraction is the agent's updated real list and MUST replace
+  // the prior one — otherwise the panel freezes on the first list the agent wrote.
+  const incomingIsTodoWrite = extracted.some((item) => item.source === "todo-write");
+  if (existingItems.some((item) => item.source === "todo-write") && !incomingIsTodoWrite) return existingItems;
   if (extracted.length === 0) return existingItems;
   return options.closesRun
     ? completeOpenTaskLineupForRun(extracted, options.runId, options.updatedAt)

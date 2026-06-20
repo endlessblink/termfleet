@@ -66,6 +66,34 @@ test("empty extraction keeps the existing lineup untouched", () => {
   expect(merged).toEqual(existing);
 });
 
+test("an incoming todo-write list replaces a stale todo-write list", () => {
+  // The agent updated its TodoWrite (e.g. completed an item, added another). A
+  // fresh todo-write-sourced extraction MUST replace the prior one — otherwise the
+  // panel freezes on the first list the agent ever wrote.
+  const existing = todoWriteLineup();
+  const updated = normalizeTaskLineupItems(
+    [
+      { text: "Wire the daemon input worker", status: "completed" },
+      { text: "Add reconnection guard", status: "in_progress" },
+      { text: "Cover it with a regression test", status: "pending" },
+    ],
+    "todo-write",
+    5_000,
+    "run-A"
+  );
+
+  const merged = mergeShellSummaryTaskLineup(existing, updated, {
+    closesRun: false,
+    runId: "run-A",
+    updatedAt: 5_000,
+  });
+
+  const visible = merged.filter((item) => item.source === "todo-write");
+  expect(visible.length).toBe(3);
+  expect(visible.find((item) => item.content === "Wire the daemon input worker")?.status).toBe("completed");
+  expect(merged.some((item) => item.content === "Cover it with a regression test")).toBe(true);
+});
+
 test("run close completes open operator items when no todo-write list exists", () => {
   const merged = mergeShellSummaryTaskLineup([], operatorLineup(), {
     closesRun: true,

@@ -151,6 +151,9 @@ export interface WorkstreamStatusSummary {
   blockers?: WorkstreamExtractedItem[];
   evidence?: WorkstreamExtractedItem[];
   nextActions?: WorkstreamExtractedItem[];
+  // True when `tasks` is the agent's real Claude TodoWrite list (from the status
+  // sidecar), not heuristic summary extraction → render as the `todo-write` source.
+  tasksFromTodoWrite?: boolean;
 }
 
 export interface WorkstreamMetadata {

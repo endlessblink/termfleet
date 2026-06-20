@@ -395,6 +395,9 @@ export function parseAgentStatusSummaryResponse(raw: string, fallback: AgentStat
       blockers: normalizeExtractedItems(parsed.blockers ?? fallback.blockers, "summary", raw),
       evidence: normalizeExtractedItems(parsed.evidence ?? fallback.evidence, "summary", raw),
       nextActions: normalizeExtractedItems(parsed.nextActions ?? fallback.nextActions, "summary", raw),
+      // Carry the sidecar's authoritative-list flag; coerce so a fallback never
+      // leaks a stale `true`.
+      tasksFromTodoWrite: Boolean(parsed.tasksFromTodoWrite),
     };
   } catch {
     return fallback;

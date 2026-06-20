@@ -70,6 +70,12 @@ export function summaryFromSidecar(sidecar, payload) {
     provider: fallback.provider,
     confidence: "high",
     tasks: extractedItems(todos.map(todoToTaskText)),
+    // These tasks ARE the agent's real Claude TodoWrite list (captured by the
+    // status hook), not heuristic summary items. Flag it so the consumer renders
+    // them as the authoritative `todo-write` source. Todos only ever originate
+    // from a TodoWrite call (the live-now path merely preserves them), so a
+    // non-empty list is sufficient proof.
+    tasksFromTodoWrite: todos.length > 0,
     blockers: [],
     evidence: [],
     nextActions: [],

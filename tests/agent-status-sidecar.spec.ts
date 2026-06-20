@@ -59,6 +59,9 @@ test("hook writes a sidecar and the worker turns it into a live summary", async 
   expect(texts).toContain("in-progress: Build the sidecar parser");
   expect(texts).toContain("Write the regression test");
   expect(texts).toContain("done: Read the worker contract");
+  // The list came from a real Claude TodoWrite → flagged authoritative so the
+  // consumer can render it as the `todo-write` source (not throwaway summary).
+  expect(summary.tasksFromTodoWrite).toBe(true);
 });
 
 test("worker falls back to the heuristic when no sidecar exists for the cwd", async () => {
@@ -72,6 +75,8 @@ test("worker falls back to the heuristic when no sidecar exists for the cwd", as
   const summary = JSON.parse(result.stdout.trim());
   expect(summary.now).toBe("Awaiting command");
   expect(summary.confidence).toBe("low");
+  // No real todo list → not flagged authoritative.
+  expect(summary.tasksFromTodoWrite).toBeFalsy();
 });
 
 test("live-now: a tool call updates the activity and preserves the todo list", async () => {
