@@ -1831,7 +1831,6 @@ function TerminalMapPreview({
   title,
   meta,
   status,
-  activity,
   ptyCount,
   preview,
   onActivate,
@@ -1840,7 +1839,6 @@ function TerminalMapPreview({
   title: string;
   meta?: string;
   status?: TerminalRuntimeStatus;
-  activity?: string;
   ptyCount: number;
   preview?: TerminalPreviewEntry;
   onActivate: () => void;
@@ -1879,7 +1877,8 @@ function TerminalMapPreview({
         <div style={{ minWidth: 0 }}>
           <div style={styles.terminalMapPreviewTitle}>{title}</div>
           <div style={styles.terminalMapPreviewMeta}>{meta ?? "No cwd"}</div>
-          {activity && <div style={styles.nodeTitleActivity} title={activity}>Now: {activity}</div>}
+          {/* The work activity ("Now: …") is shown once, in the node status block below;
+              repeating it here was the duplicate header the cockpit showed. (TC-033) */}
         </div>
         <div style={styles.terminalMapPreviewStatus}>{status ?? "stale"}</div>
       </div>
@@ -2527,7 +2526,6 @@ function CanvasNodeView({
         title={terminalTitle}
         meta={pathTail(liveTerminalRoot)}
         status={linkedTerminal?.status}
-        activity={terminalHeaderHasUsefulNow ? terminalHeaderSummarySignal : undefined}
         ptyCount={linkedTab?.terminals.length ?? 0}
         preview={terminalPreview}
         onActivate={activateTerminalNode}
@@ -2560,7 +2558,6 @@ function CanvasNodeView({
         title={terminalTitle}
         meta={pathTail(liveTerminalRoot)}
         status={linkedTerminal?.status}
-        activity={terminalHeaderHasUsefulNow ? terminalHeaderSummarySignal : undefined}
         ptyCount={linkedTab?.terminals.length ?? 0}
         preview={terminalPreview}
         onActivate={activateTerminalNode}
