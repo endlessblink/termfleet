@@ -1,28 +1,65 @@
-# Handoff - 2026-06-17 18:02 Wednesday
+# HANDOFF — 2026-06-20 10:33 Saturday
 
-```text
-You are continuing work in termfleet on branch main.
+```
+You are continuing work in termfleet on branch `integration`
+(worktree: .claude/worktrees/integration).
 
 ## Current task & next step
-TC-021 open-source developer preview lane - next: redesign the agent terminal/map header so the top content is useful and has enough vertical space, then reconcile the TC-017 summary-table status before advancing the TC-021 release checklist.
+All active branch work is consolidated + verified on `integration`. Next: have the
+user review, then merge `integration` → `main` (it's clean and NON-stale vs
+origin/main). THEN tackle the open TC-033 piece: the live TASKS panel shows
+"No task list captured for this run" because the authoritative todo-write emitter
+is not wired.
 
 ## Files touched / in flight
-- No uncommitted feature files are in flight.
-- Recent committed work: TC-016/TC-016i agent cockpit visibility stack in commit b3457a6.
-- HANDOFF.md is the only dropoff file changed by this handoff.
+Tree is CLEAN (everything committed). `integration` HEAD = d3d1a24 with three merge
+commits: 75caffb (tc-release-hardening), bff67be (tc-034-project-grouping),
+d3d1a24 (tc-033-tasklist). The one hand-resolved conflict was
+src/stores/workspace.ts::reconcileProjectGroups (union of HEAD's pathBelongsToProject
++ emoji AND tc-034's dedup/remap) — re-read it if grouping misbehaves.
 
 ## Key decisions & gotchas
-- TC-016 is done, committed, and pushed: agent workstreams now expose task/path/now status in map and split headers, include provider/status chips, and have a local optional status-summary process plus deterministic fallback.
-- The next selected lane is TC-021, not a random backlog item, because TC-016 is its flagship dependency and is now satisfied.
-- Do not claim TC-021 is implemented yet. It is only selected/in progress in the plan.
-- Latest user feedback after TC-016 closeout: the current top terminal/map status strip is not useful enough and is too vertically cramped. The header should be taller/use more of the top area and should show an actually helpful task/path/current-step summary, not repeated `Working ... esc to interrupt` fragments or truncated provider text.
-- Ledger trap: the summary table still shows TC-017 as IN_PROGRESS, while the detailed TC-017 section and repo AGENTS guidance say TC-017 is DONE. Resolve this before using TC-021 as a release checklist.
-- Dropoff intentionally did not run tests. Last verification for b3457a6 is recorded in the commit: npm run build; npm run verify:agent-status-summary; npm run verify:agent-adapter; npx playwright test tests/agent-workstream.spec.ts tests/agent-status-summary.spec.ts; cargo test --manifest-path src-tauri/Cargo.toml worktree; git diff --check.
+- Rollback tag `pre-integration-20260620` → the pre-merge live HEAD (7f96237). Use it
+  if a merge needs undoing.
+- CONCURRENCY: other Claude sessions are/were active on `tc-033-reliability` (live,
+  the app the user RUNS) and `tc-033-tasklist`. Only their COMMITTED state was merged;
+  their uncommitted edits stay with them. Work in worktrees, stage only your own files,
+  never `git add -A`. Renaming productName→"TermFleet" earlier broke 10 GUI verifiers
+  that search the window by title (already fixed to "TermFleet").
+- Worktrees symlink node_modules to the main checkout (`ln -s ../../../node_modules`).
+  Rust: reuse the shared target via
+  `CARGO_TARGET_DIR=/media/endlessblink/data/my-projects/ai-development/devops/termfleet/src-tauri/target`
+  to avoid a from-scratch (OOM-risky) build; `CARGO_BUILD_JOBS=2`.
+- Playwright specs hardcode executablePath `/usr/bin/chromium` — symlink Playwright's
+  chromium there if missing.
+- DO NOT merge to main without the user's go-ahead (branch-safety rule).
+- The full emoji picker (1914 emojis) is live in tc-033-reliability AND integration:
+  src/lib/emojiData.ts + src/components/EmojiPicker.tsx, wired in WorkbenchSidebar
+  (project menu = embedded; terminal menu = "more" button). Regenerate the dataset
+  with scripts/generate-emoji-data.mjs (transient unicode-emoji-json dev tool, no
+  runtime dep).
+
+## The TASKS-panel-empty fix (TC-033 open lane)
+The panel reads a `todo-write` marker from VISIBLE terminal output; Claude Code's
+TodoWrite never emits it. Per MASTER_PLAN TC-033 notes this is BLOCKED on a backend
+change: src-tauri/src/vt_grid.rs must extract+strip an invisible
+`[[TERMFLEET_TODO_WRITE]]` marker from the daemon byte stream BEFORE rendering (today
+onOutput is built from alacritty grid cells — TerminalCanvas.tsx:382-387 — so an
+OSC/invisible form is consumed by alacritty and a plain-text form renders as garbage).
+After that, add a global Claude TodoWrite hook + `cmd.env("TERMFLEET","1")` in
+pty.rs. Until then the panel only shows model/heuristic-extracted items
+(src/lib/taskLineup.ts::visibleTaskLineup).
 
 ## Env / run state
-Branch: main | Last commit: b3457a6 Make agent work legible from the cockpit
-Running: no TermFleet verifier/dev ports were intentionally left running; docker ps shows unrelated long-running local services including waha, FlowState Supabase, discord-bot, lobe, dockge, and portainer.
-Repo state before dropoff: main was synced with origin/main; untracked generated test-results/ was cleared.
+Branch: integration | Last commit: d3d1a24 Merge tc-033-tasklist into integration
+Verified GREEN on integration: tsc, npm run build, cargo test 72 passed,
+verify:rust-warnings, verify:public-audit, verify:oss-readiness, 57 Playwright specs
+(canvas-all + reconciliation + map + emoji + tasklist). NOT run: live verify:canvas-live
+(GUI, disruptive).
+Running: user runs the app from the MAIN checkout on tc-033-reliability via
+./run-native-vte-dev.sh.
 
-Start by: inspect `src/components/MagicCanvas.tsx`, `src/components/SplitPane.tsx`, and `src/components/Terminal.tsx` for the current agent header layout, then make the top status area taller and replace the repeated low-value status string with the useful summarized task/path/now content.
+Start by: cd .claude/worktrees/integration && git log --oneline --graph -8 to confirm
+the three merges, then either (a) merge integration→main on the user's go-ahead, or
+(b) implement the TC-033 vt_grid.rs todo-write marker strip so the TASKS panel fills.
 ```
