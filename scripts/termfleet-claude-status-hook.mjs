@@ -170,6 +170,23 @@ export function buildSidecar(payload) {
   };
 }
 
+const RECENT_LIMIT = 8;
+
+// A rolling log of the agent's recent actions (what it actually DID) — reliable, unlike
+// inferring a title. Dedupes consecutive repeats (just refreshes the timestamp). (TC-033)
+function appendRecent(prevRecent, text, at) {
+  const list = Array.isArray(prevRecent) ? prevRecent.slice(-RECENT_LIMIT) : [];
+  const clean = cleanField(text, 90);
+  if (!clean) return list;
+  const last = list[list.length - 1];
+  if (last && last.text === clean) {
+    list[list.length - 1] = { text: clean, at };
+    return list;
+  }
+  list.push({ text: clean, at });
+  return list.slice(-RECENT_LIMIT);
+}
+
 async function main() {
   const raw = await readStdin();
   let payload = {};
@@ -213,6 +230,9 @@ async function main() {
       now,
     };
   }
+  // Roll the agent's actual action into the recent-activity log (what it DID).
+  const prevForRecent = readExistingSidecar(cwd);
+  sidecar.recent = appendRecent(prevForRecent?.recent, sidecar.now, sidecar.updatedAt);
   try {
     mkdirSync(statusDir(), { recursive: true });
     writeFileSync(sidecarPath(sidecar.cwd), JSON.stringify(sidecar));

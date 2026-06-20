@@ -142,6 +142,29 @@ test("the ollama worker is sidecar-first: returns the real task list without a m
   expect(summary.tasks.map((t: { text: string }) => t.text)).toContain("in-progress: Real captured task");
 });
 
+test("recent-activity log: the worker returns the agent's actual recent actions", async () => {
+  // The reliable 'what the AI is doing' feed — the agent's real actions, logged by the
+  // hook (like Watchpost's changelog), not inferred. (TC-033)
+  const dataHome = mkdtempSync(path.join(os.tmpdir(), "tf-status-"));
+  const cwd = "/tmp/tf-recent";
+  const env = { XDG_DATA_HOME: dataHome };
+  runNode(HOOK, { tool_name: "Read", cwd, tool_input: { file_path: "/x/types.ts" } }, env);
+  runNode(HOOK, { tool_name: "Edit", cwd, tool_input: { file_path: "/x/worker.mjs" } }, env);
+  runNode(HOOK, { tool_name: "Bash", cwd, tool_input: { command: "npm test" } }, env);
+
+  const result = runNode(WORKER, {
+    projectId: cwd, workstream: { path: cwd, provider: "shell" },
+    heuristicCandidate: { task: "Shell ready", path: cwd, now: "x", status: "idle", provider: "shell", confidence: "low" },
+  }, env);
+  const summary = JSON.parse(result.stdout.trim());
+  const texts = (summary.recent ?? []).map((entry: { text: string }) => entry.text);
+  expect(texts).toContain("Reading types.ts");
+  expect(texts).toContain("Editing worker.mjs");
+  expect(texts).toContain("Running: npm test");
+  // Newest last, each with a timestamp.
+  expect(summary.recent.every((entry: { at: number }) => entry.at > 0)).toBe(true);
+});
+
 test("activity line: trivial nav/inspection commands are filtered out", () => {
   // These keep the previous (meaningful) now line instead of showing "Running: cd ...".
   expect(activityFromTool("Bash", { command: "cd /media/foo/bar" })).toBe("");

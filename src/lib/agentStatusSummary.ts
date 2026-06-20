@@ -398,6 +398,13 @@ export function parseAgentStatusSummaryResponse(raw: string, fallback: AgentStat
       // Carry the sidecar's authoritative-list flag; coerce so a fallback never
       // leaks a stale `true`.
       tasksFromTodoWrite: Boolean(parsed.tasksFromTodoWrite),
+      // Carry the agent's recent-activity log (validated shape).
+      recent: Array.isArray(parsed.recent)
+        ? parsed.recent
+            .filter((entry): entry is { text: string; at: number } => Boolean(entry && typeof entry.text === "string"))
+            .map((entry) => ({ text: entry.text.slice(0, 90), at: Number(entry.at) || 0 }))
+            .slice(-8)
+        : [],
     };
   } catch {
     return fallback;

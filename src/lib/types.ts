@@ -154,6 +154,9 @@ export interface WorkstreamStatusSummary {
   // True when `tasks` is the agent's real Claude TodoWrite list (from the status
   // sidecar), not heuristic summary extraction → render as the `todo-write` source.
   tasksFromTodoWrite?: boolean;
+  // Rolling log of the agent's recent actions (what it actually did), newest last.
+  // Shown when there's no task list — reliable, not inferred.
+  recent?: Array<{ text: string; at: number }>;
 }
 
 export interface WorkstreamMetadata {

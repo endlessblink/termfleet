@@ -86,6 +86,12 @@ export function summaryFromSidecar(sidecar, payload) {
     // from a TodoWrite call (the live-now path merely preserves them), so a
     // non-empty list is sufficient proof.
     tasksFromTodoWrite: todos.length > 0,
+    // The agent's rolling recent-activity log (what it actually did) — a reliable feed
+    // to show when there's no task list, instead of inferring a title. (TC-033)
+    recent: (Array.isArray(sidecar?.recent) ? sidecar.recent : [])
+      .filter((entry) => entry && cleanText(entry.text))
+      .map((entry) => ({ text: cleanText(entry.text).slice(0, 90), at: Number(entry.at) || 0 }))
+      .slice(-8),
     blockers: [],
     evidence: [],
     nextActions: [],

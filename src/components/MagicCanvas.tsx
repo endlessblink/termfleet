@@ -1585,11 +1585,21 @@ function runTimestamp(at?: number) {
   return at ? new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "pending";
 }
 
+function activityAgo(at: number): string {
+  if (!at) return "";
+  const seconds = Math.max(0, Math.round((Date.now() - at) / 1000));
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes}m`;
+  return `${Math.round(minutes / 60)}h`;
+}
+
 function TerminalBodyTaskSidebar({
   rows,
   testIdPrefix,
   ariaLabel,
   emptyText,
+  recent,
   collapsed,
   onToggleCollapsed,
 }: {
@@ -1597,6 +1607,7 @@ function TerminalBodyTaskSidebar({
   testIdPrefix: "canvas-terminal" | "canvas-agent";
   ariaLabel: string;
   emptyText: string;
+  recent?: Array<{ text: string; at: number }>;
   collapsed: boolean;
   onToggleCollapsed: () => void;
 }) {
@@ -1665,16 +1676,34 @@ function TerminalBodyTaskSidebar({
         </span>
       </div>
       {rows.length === 0 ? (
-        <div
-          data-testid={`${testIdPrefix}-task-empty`}
-          style={{
-            color: "var(--text-secondary)",
-            fontSize: 11,
-            lineHeight: 1.35,
-          }}
-        >
-          {emptyText}
-        </div>
+        recent && recent.length > 0 ? (
+          <div data-testid={`${testIdPrefix}-recent`} style={{ display: "flex", flexDirection: "column", gap: 5, minWidth: 0 }}>
+            <div style={{ color: "var(--text-tertiary)", fontSize: 9, textTransform: "uppercase", letterSpacing: 0.4 }}>
+              Recent activity
+            </div>
+            {[...recent].reverse().map((entry, index) => (
+              <div
+                key={`${entry.at}-${index}`}
+                title={entry.text}
+                style={{ display: "flex", justifyContent: "space-between", gap: 8, minWidth: 0, fontSize: 11, color: "var(--text-secondary)" }}
+              >
+                <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{entry.text}</span>
+                <span style={{ flexShrink: 0, color: "var(--text-tertiary)", fontSize: 9 }}>{activityAgo(entry.at)}</span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div
+            data-testid={`${testIdPrefix}-task-empty`}
+            style={{
+              color: "var(--text-secondary)",
+              fontSize: 11,
+              lineHeight: 1.35,
+            }}
+          >
+            {emptyText}
+          </div>
+        )
       ) : (
         <div style={styles.terminalBodyTaskList}>
           {rows.map((task) => {
@@ -3554,6 +3583,7 @@ function CanvasNodeView({
             rows={terminalBodyTasks}
             testIdPrefix={terminalBodyTaskPrefix}
             ariaLabel={workstream?.kind === "agent" ? "Agent terminal tasks" : "Terminal tasks"}
+            recent={terminalDisplaySummary.recent}
             collapsed={taskSidebarCollapsed}
             onToggleCollapsed={toggleTaskSidebarCollapsed}
             emptyText={detectedLaneTaskId
