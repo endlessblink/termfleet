@@ -15,6 +15,12 @@ e.g. `activeForm: "Cleaning up messy terminal text"` rather than
 `subject: "Suppress scrollback garbage (neutral floor)"`. This costs no extra tokens —
 it's the same task call you already make, just human-readable.
 
+**Record plans/checklists as tasks, not just prose.** When you produce a plan, a
+checklist, or a list of steps (e.g. "things to do before release"), create them with
+the `TaskCreate` tool — don't only write them in the chat. The cockpit's TASKS panel
+mirrors your task tool, so a prose-only list does NOT appear there. Mark the one you're
+doing `in_progress` via `TaskUpdate` so the header shows what you're working on.
+
 Stack: **Tauri 2 + React 19 + TypeScript + Rust**, with a **headless-VT
 (`alacritty_terminal`) grid rendered to an HTML canvas** as the desktop terminal,
 and a **user-local Rust PTY daemon** (Unix-socket IPC) that owns PTYs

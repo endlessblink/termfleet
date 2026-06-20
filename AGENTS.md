@@ -14,6 +14,11 @@ phrasing in a short present-continuous form (the title prefers it), e.g. "Cleani
 messy terminal text" rather than "Suppress scrollback garbage (neutral floor)". This
 costs no extra tokens — it's the same task you already record, just human-readable.
 
+**Record plans/checklists as tasks, not just prose.** When you produce a plan,
+checklist, or list of steps, create them with your task tool (Claude: `TaskCreate`) and
+mark the active one `in_progress` — don't only write them in the chat. The cockpit's
+TASKS panel mirrors the task tool, so a prose-only list does NOT show up there.
+
 Stack: **Tauri 2 + React 19 + TypeScript + Rust**, with a **headless-VT
 (`alacritty_terminal`) grid rendered to an HTML canvas** as the desktop terminal,
 and a **user-local Rust PTY daemon** (Unix-socket IPC) that owns PTYs
