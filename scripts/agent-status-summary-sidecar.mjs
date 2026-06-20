@@ -61,10 +61,17 @@ export function summaryFromSidecar(sidecar, payload) {
   const fallback = fallbackSummary(payload);
   const todos = Array.isArray(sidecar?.todos) ? sidecar.todos : [];
   const now = cleanText(sidecar?.now);
-  const working = todos.some((todo) => todo.status === "in_progress");
+  const active = todos.find((todo) => todo.status === "in_progress");
+  const firstOpen = todos.find((todo) => todo.status !== "completed");
+  const working = Boolean(active);
+  // Title = the agent's CURRENT task (the in-progress one, else the next open one) so
+  // the top stays on what's being worked on — not the momentary tool activity, which
+  // every tool call overwrites into `now`. Falls to the live `now`/fallback when the
+  // list is empty or all-complete.
+  const currentTask = cleanText((active ?? firstOpen)?.content);
   return {
     ...fallback,
-    task: now || fallback.task,
+    task: currentTask || now || fallback.task,
     now: now || fallback.now,
     status: working ? "working" : todos.length > 0 ? "idle" : fallback.status,
     provider: fallback.provider,
