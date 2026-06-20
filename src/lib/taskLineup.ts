@@ -23,7 +23,9 @@ function hashText(value: string) {
   return (hash >>> 0).toString(16).padStart(8, "0");
 }
 
-export function cleanTaskLineupContent(value?: string | null) {
+// Structural cleanup only: bullets, list markers, status/intent prefixes, trailing
+// period. No noise rejection — used as-is for the authoritative `todo-write` list.
+function structuralCleanTaskContent(value?: string | null) {
   const cleaned = value
     ?.replace(/\s+/g, " ")
     .replace(/^[•*-]\s+/, "")
@@ -34,6 +36,20 @@ export function cleanTaskLineupContent(value?: string | null) {
     .replace(/^(?:done|complete|completed|pending|todo|in[-_ ]?progress|blocked|cancelled|canceled)\s*:\s*/i, "")
     .replace(/\.$/, "")
     .trim();
+  return cleaned ? cleaned : undefined;
+}
+
+// Authoritative TodoWrite items: keep structural cleanup but SKIP the noise-rejection
+// heuristics below. Those heuristics exist to filter junk scraped from terminal
+// output; a real declared todo that merely starts with "Read"/"Explore"/"Search" (very
+// common in Claude's lists) must NOT be dropped. (TC-033)
+export function cleanTodoWriteContent(value?: string | null) {
+  const cleaned = structuralCleanTaskContent(value);
+  return cleaned ? cleaned.slice(0, MAX_TASK_TEXT) : undefined;
+}
+
+export function cleanTaskLineupContent(value?: string | null) {
+  const cleaned = structuralCleanTaskContent(value);
   if (!cleaned) return undefined;
   if (/^(explored|search|read|ran|verified|working|output|path|signal|now)$/i.test(cleaned)) return undefined;
   if (/^(explored|read|ran|searched)\b/i.test(cleaned)) return undefined;
@@ -89,7 +105,9 @@ export function normalizeTaskLineupItems(
   return items
     .map((item, index) => {
       const raw = item.content ?? item.text ?? "";
-      const content = cleanTaskLineupContent(raw);
+      // The authoritative todo-write list bypasses the heuristic noise filter so
+      // verb-first todos ("Read X", "Explore Y") survive; all other sources stay strict.
+      const content = source === "todo-write" ? cleanTodoWriteContent(raw) : cleanTaskLineupContent(raw);
       if (!content) return null;
       const inferred = inferStatus(raw, item.status ?? (index === 0 ? "in_progress" : "pending"));
       const status = inferred === "in_progress" && activeSeen ? "pending" : inferred;
