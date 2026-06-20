@@ -2195,7 +2195,7 @@ function CanvasNodeView({
     currentActivity: terminalActivity,
     terminalOutput: linkedTerminal?.terminalOutput,
   }, terminalStatusSummary);
-  const terminalDisplaySummary = linkedTerminal?.durableActivity
+  const terminalDisplaySummaryBase = linkedTerminal?.durableActivity
     ? summaryFromDurableActivity(
         linkedTerminal.durableActivity,
         pathTail(liveTerminalRoot) ?? liveTerminalRoot ?? "workspace path unknown",
@@ -2207,6 +2207,18 @@ function CanvasNodeView({
         pathTail(liveTerminalRoot) ?? liveTerminalRoot ?? "workspace path unknown",
         terminalPurpose,
       );
+  // When the agent has a REAL task list (sidecar TaskCreate/TaskUpdate →
+  // tasksFromTodoWrite), the map node title/now MUST be the agent's current task —
+  // never the heuristic/purpose inference from terminal output. Read straight from
+  // statusSummary so it holds even if the task lineup hasn't populated. (TC-033)
+  const terminalRealTask = terminalStatusSummary?.tasksFromTodoWrite ? terminalStatusSummary : null;
+  const terminalDisplaySummary = terminalRealTask
+    ? {
+        ...terminalDisplaySummaryBase,
+        task: terminalRealTask.task || terminalDisplaySummaryBase.task,
+        now: terminalRealTask.now || terminalDisplaySummaryBase.now,
+      }
+    : terminalDisplaySummaryBase;
   const terminalSummarySource = summarySourceLabel(
     linkedTerminal?.statusSummarySource ?? workstream?.statusSummarySource,
     linkedTerminal?.statusSummaryError ?? workstream?.statusSummaryError,
