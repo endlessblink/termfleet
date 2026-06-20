@@ -787,7 +787,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
             ? paneTerminal?.terminalOutput
             : undefined,
         });
-        const shellStatusSummary = !agentStatusSummary && !isPreviewPane && paneTerminal
+        const shellStatusSummaryBase = !agentStatusSummary && !isPreviewPane && paneTerminal
           ? paneTerminal.durableActivity
             ? summaryFromDurableActivity(
                 paneTerminal.durableActivity,
@@ -799,6 +799,20 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
               ? normalizePersistedShellSummary(shellExtractedSummary, pathTail(paneCwd) ?? paneCwd ?? "workspace path unknown", terminalPurpose)
               : null
           : null;
+        // When the agent has a REAL task list (sidecar TaskCreate/TaskUpdate →
+        // tasksFromTodoWrite), the header title/now MUST be the agent's current task —
+        // never the heuristic/purpose inference from terminal output. Read straight from
+        // statusSummary so this holds even if the task lineup hasn't populated. (TC-033)
+        const shellRealTask = paneTerminal?.statusSummary?.tasksFromTodoWrite
+          ? paneTerminal.statusSummary
+          : null;
+        const shellStatusSummary = shellStatusSummaryBase && shellRealTask
+          ? {
+              ...shellStatusSummaryBase,
+              task: shellRealTask.task || shellStatusSummaryBase.task,
+              now: shellRealTask.now || shellStatusSummaryBase.now,
+            }
+          : shellStatusSummaryBase;
         const shellSummarySource = summarySourceLabel(
           paneTerminal?.statusSummarySource ?? tab.workstream?.statusSummarySource,
           paneTerminal?.statusSummaryError ?? tab.workstream?.statusSummaryError,
