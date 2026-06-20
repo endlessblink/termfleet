@@ -33,6 +33,17 @@ pub const DEFAULT_ROWS: usize = 24;
 /// frame per tick instead of flooding the IPC channel.
 const EMIT_INTERVAL: Duration = Duration::from_millis(16);
 const GRID_FEED_THREAD_STACK_BYTES: usize = 256 * 1024;
+// Reconnect tuning for the grid feed. The daemon owns the PTY and survives socket
+// drops / its own restarts (build-id replace, crash+respawn), so the grid feed
+// retries with exponential backoff instead of dying on the first read error.
+const GRID_FEED_RECONNECT_BASE: Duration = Duration::from_millis(150);
+const GRID_FEED_RECONNECT_MAX: Duration = Duration::from_millis(2000);
+// Stop after this many *consecutive* failed reconnects (a feed that streamed for
+// a while resets the counter), so a permanently dead daemon can't spin forever.
+const GRID_FEED_MAX_RECONNECTS: u32 = 40;
+// A feed that ran at least this long counts as a healthy session and resets the
+// consecutive-failure counter on the next loop.
+const GRID_FEED_HEALTHY_MIN: Duration = Duration::from_secs(2);
 
 /// Minimal `Dimensions` implementation so we can build/resize the grid without
 /// pulling in the crate's test-only `TermSize` helper.
@@ -100,6 +111,21 @@ impl TermState {
             return;
         }
         self.term.resize(GridDims { cols, rows });
+    }
+
+    /// Drop all grid content and reset the parser, preserving the current
+    /// dimensions. Used before applying a fresh daemon snapshot on (re)subscribe:
+    /// the daemon replays the full scrollback as escape sequences, so feeding it
+    /// into a Term that already holds that content would stack a duplicate.
+    fn reset(&mut self) {
+        let dims = GridDims {
+            cols: self.term.columns(),
+            rows: self.term.screen_lines(),
+        };
+        self.term = Term::new(Config::default(), &dims, VoidListener);
+        self.parser = Processor::new();
+        self.mode_scan_tail.clear();
+        self.alternate_scroll_touched = false;
     }
 
     fn scroll(&mut self, delta: i32) {
@@ -272,17 +298,80 @@ impl Default for GridManager {
 fn spawn_session_threads(id: &str, session: &Arc<Session>) -> Result<(), String> {
     let feed_id = id.to_string();
     let feed_state = Arc::clone(&session.state);
+    let stop = Arc::clone(&session.stop);
     std::thread::Builder::new()
         .name(format!("vt-grid-{id}"))
         .stack_size(GRID_FEED_THREAD_STACK_BYTES)
-        .spawn(move || {
-            if let Err(error) = feed_grid_from_daemon(&feed_id, &feed_state) {
-                eprintln!("vt-grid reader for {feed_id} stopped: {error}");
-            }
-        })
+        .spawn(move || run_feed_with_reconnect(&feed_id, &feed_state, &stop))
         .map_err(|error| error.to_string())?;
 
     Ok(())
+}
+
+/// Exponential backoff for grid-feed reconnects, capped. `failures` is the count
+/// of consecutive failed attempts (1 for the first retry). Pure for testability.
+fn grid_feed_reconnect_backoff(failures: u32) -> Duration {
+    let shift = failures.saturating_sub(1).min(4);
+    let millis = GRID_FEED_RECONNECT_BASE
+        .as_millis()
+        .saturating_mul(1u128 << shift)
+        .min(GRID_FEED_RECONNECT_MAX.as_millis()) as u64;
+    Duration::from_millis(millis)
+}
+
+/// Sleep up to `dur`, waking early (in small slices) if `stop` is set so a detach
+/// aborts a backoff promptly. Returns true if it slept the full duration.
+fn sleep_unless_stopped(dur: Duration, stop: &AtomicBool) -> bool {
+    let slice = Duration::from_millis(50);
+    let mut remaining = dur;
+    while remaining > Duration::ZERO {
+        if stop.load(Ordering::Relaxed) {
+            return false;
+        }
+        let step = remaining.min(slice);
+        std::thread::sleep(step);
+        remaining = remaining.saturating_sub(step);
+    }
+    true
+}
+
+/// Run the daemon grid feed, reconnecting across transient socket drops and daemon
+/// restarts. The daemon is the PTY authority and survives these, so a dropped feed
+/// is recoverable: each re-subscribe begins with a fresh snapshot (applied via
+/// `TermState::reset` + feed) so reconnection neither blanks nor duplicates the grid.
+fn run_feed_with_reconnect(id: &str, state: &Arc<RwLock<TermState>>, stop: &AtomicBool) {
+    let mut consecutive_failures: u32 = 0;
+    loop {
+        if stop.load(Ordering::Relaxed) {
+            return;
+        }
+        let started = std::time::Instant::now();
+        let result = feed_grid_from_daemon(id, state);
+        if stop.load(Ordering::Relaxed) {
+            return;
+        }
+        // A feed that streamed for a meaningful time was a healthy connection;
+        // only count rapid back-to-back failures toward the give-up cap.
+        let was_healthy = result.is_ok() || started.elapsed() >= GRID_FEED_HEALTHY_MIN;
+        if was_healthy {
+            consecutive_failures = 0;
+        } else {
+            consecutive_failures += 1;
+        }
+        if let Err(error) = &result {
+            eprintln!("vt-grid reader for {id} dropped (attempt {consecutive_failures}): {error}");
+        }
+        if consecutive_failures > GRID_FEED_MAX_RECONNECTS {
+            eprintln!(
+                "vt-grid reader for {id} giving up after {consecutive_failures} consecutive reconnect failures"
+            );
+            return;
+        }
+        let backoff = grid_feed_reconnect_backoff(consecutive_failures.max(1));
+        if !sleep_unless_stopped(backoff, stop) {
+            return;
+        }
+    }
 }
 
 fn spawn_shared_emitter(sessions: Arc<Mutex<HashMap<String, Arc<Session>>>>) {
@@ -380,7 +469,15 @@ fn feed_grid_from_daemon(id: &str, state: &Arc<RwLock<TermState>>) -> Result<(),
         let response = serde_json::from_str::<DaemonResponse>(&line)
             .map_err(|error| format!("daemon stream parse failed: {error}"))?;
         match response {
-            DaemonResponse::SnapshotSession { data } | DaemonResponse::SessionData { data } => {
+            DaemonResponse::SnapshotSession { data } => {
+                // A snapshot is a complete screen+scrollback reconstruction. Reset
+                // first so a reconnect's fresh snapshot replaces the (now stale)
+                // grid atomically instead of stacking a duplicate scrollback.
+                let mut state = state.write().map_err(|_| "grid state poisoned")?;
+                state.reset();
+                state.feed(data.as_bytes());
+            }
+            DaemonResponse::SessionData { data } => {
                 let mut state = state.write().map_err(|_| "grid state poisoned")?;
                 state.feed(data.as_bytes());
             }
@@ -914,6 +1011,57 @@ mod tests {
         let mut state = TermState::new(DEFAULT_COLS, DEFAULT_ROWS);
         state.feed(bytes.as_bytes());
         GridSnapshot::capture(&state.term)
+    }
+
+    #[test]
+    fn reconnect_backoff_is_monotonic_and_capped() {
+        let b1 = grid_feed_reconnect_backoff(1);
+        let b2 = grid_feed_reconnect_backoff(2);
+        let b3 = grid_feed_reconnect_backoff(3);
+        assert_eq!(b1, GRID_FEED_RECONNECT_BASE, "first retry uses the base delay");
+        assert!(b2 > b1 && b3 > b2, "backoff grows with consecutive failures");
+        // Far-out attempts saturate at the cap, never exceeding it.
+        for failures in 5..50 {
+            assert!(
+                grid_feed_reconnect_backoff(failures) <= GRID_FEED_RECONNECT_MAX,
+                "backoff must stay capped"
+            );
+        }
+        assert_eq!(grid_feed_reconnect_backoff(40), GRID_FEED_RECONNECT_MAX);
+    }
+
+    #[test]
+    fn reset_clears_grid_content_but_keeps_dimensions() {
+        let mut state = TermState::new(100, 30);
+        state.feed(b"hello reconnect world\r\n");
+        let before = GridSnapshot::capture(&state.term);
+        assert!(text_at(&before, 0).contains("hello reconnect world"));
+
+        state.reset();
+        let after = GridSnapshot::capture(&state.term);
+        assert_eq!(after.cols, 100, "reset preserves columns");
+        assert_eq!(after.rows, 30, "reset preserves rows");
+        assert!(
+            !text_at(&after, 0).contains("hello"),
+            "reset must clear prior grid content so a fresh snapshot can't duplicate it"
+        );
+    }
+
+    #[test]
+    fn reset_then_feed_does_not_duplicate_snapshot_content() {
+        // Simulates a reconnect: the same snapshot bytes are applied twice. With
+        // reset-before-feed the grid must hold the content once, not stacked.
+        let snapshot = "line-A\r\nline-B\r\nline-C\r\n";
+        let mut state = TermState::new(DEFAULT_COLS, DEFAULT_ROWS);
+        state.reset();
+        state.feed(snapshot.as_bytes());
+        state.reset();
+        state.feed(snapshot.as_bytes());
+        let grid = GridSnapshot::capture(&state.term);
+        let occurrences = (0..grid.rows)
+            .filter(|&row| text_at(&grid, row).contains("line-B"))
+            .count();
+        assert_eq!(occurrences, 1, "reconnect snapshot must not duplicate rows");
     }
 
     fn text_at(snapshot: &GridSnapshot, row: usize) -> String {

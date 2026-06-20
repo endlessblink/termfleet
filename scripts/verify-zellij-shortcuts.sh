@@ -85,7 +85,7 @@ find_window() {
   local wait_limit=$((APP_BUDGET * 2))
   local wid=""
   for ((i = 0; i < wait_limit; i += 1)); do
-    wid="$(xdotool search --name "Terminal Workspace" 2>/dev/null | tail -1 || true)"
+    wid="$(xdotool search --name "TermFleet" 2>/dev/null | tail -1 || true)"
     if [[ -n "$wid" ]] && xdotool getwindowname "$wid" >/dev/null 2>&1; then
       printf '%s' "$wid"
       return 0

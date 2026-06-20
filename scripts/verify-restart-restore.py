@@ -194,7 +194,8 @@ def verify_cold_restore():
             print_log_tail(log1)
             return False
         print(f"daemon #1 up  pid={s1.get('pid')} build={s1.get('buildId')}")
-        send(sock, {"type": "ensureSession", "id": sid, "cwd": "/tmp", "command": "/bin/bash"})
+        # Open at a non-default winsize so we can prove it survives the reboot.
+        send(sock, {"type": "ensureSession", "id": sid, "cwd": "/tmp", "command": "/bin/bash", "cols": 120, "rows": 40})
         send(sock, {"type": "writeSession", "id": sid, "data": f"echo {marker}\n"})
         if marker not in snapshot_until(sock, sid, marker):
             print("FAIL: marker never reached live session", file=sys.stderr)
@@ -212,19 +213,27 @@ def verify_cold_restore():
             print_log_tail(log2)
             return False
         print(f"daemon #2 up  pid={s2.get('pid')}")
-        ens = send(sock, {"type": "ensureSession", "id": sid})  # no cwd -> restore
+        ens = send(sock, {"type": "ensureSession", "id": sid})  # no cwd/size -> restore
         reused = ens[0].get("reused") if ens else None
+        restored_cols = ens[0].get("cols") if ens else None
+        restored_rows = ens[0].get("rows") if ens else None
         post = snapshot_until(sock, sid, marker, tries=40)
         cwd = send(sock, {"type": "getSessionCwd", "id": sid})
         cwd_val = cwd[0].get("cwd") if cwd else None
-        print(f"restored reused={reused} cwd={cwd_val!r}")
+        print(f"restored reused={reused} cwd={cwd_val!r} size={restored_cols}x{restored_rows}")
         if marker not in post:
             print(f"FAIL: marker missing after reboot: {post!r}", file=sys.stderr)
             return False
         if cwd_val != "/tmp":
             print(f"FAIL: restored at wrong cwd: {cwd_val!r}", file=sys.stderr)
             return False
-        print("content REPLAYED and cwd restored after reboot  ✓\n")
+        if (restored_cols, restored_rows) != (120, 40):
+            print(
+                f"FAIL: restored at wrong winsize: {restored_cols}x{restored_rows} (want 120x40)",
+                file=sys.stderr,
+            )
+            return False
+        print("content REPLAYED, cwd + winsize restored after reboot  ✓\n")
         return True
     finally:
         for d in (d2, d1):

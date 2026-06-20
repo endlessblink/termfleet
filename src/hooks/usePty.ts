@@ -56,6 +56,11 @@ const MAX_REPLAY_BUFFER = 200_000;
 const TRACE_PTY =
   typeof window !== "undefined" && window.localStorage?.getItem("terminal-workspace.tracePty") === "1";
 const TRANSIENT_ATTACH_RETRY_DELAYS_MS = [150, 400, 900];
+// Bounded reconnect backoff for a mid-session daemon transport drop. The daemon
+// owns the PTY and survives socket blips / its own restart, so a dropped stream
+// is recoverable: re-subscribe (which replays a fresh snapshot) instead of going
+// permanently failed. Exhausting these falls through to the failed state.
+const DAEMON_RECONNECT_DELAYS_MS = [200, 500, 1000, 2000, 2000];
 type ActiveInputListener = {
   transport: PtyTransport;
   sessionHint: string;
@@ -370,6 +375,10 @@ export function usePty({ terminal, cwd, command, attachToPtyId, runtimeSessionId
   const daemonInputQueueRef = useRef<DaemonInputQueue | null>(null);
   const daemonPollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const transportFailedRef = useRef(false);
+  // Consecutive daemon reconnect attempts since the last healthy subscribe. Reset
+  // to 0 once a fresh subscribe succeeds so a long-lived session that blips later
+  // gets a full reconnect budget again.
+  const daemonReconnectAttemptsRef = useRef(0);
 
   const activateInputListener = useCallback((transport: PtyTransport, sessionHint: string) => {
     if (inputListenerActiveRef.current) {
@@ -401,14 +410,18 @@ export function usePty({ terminal, cwd, command, attachToPtyId, runtimeSessionId
 
       transportFailedRef.current = true;
       const id = ptyIdRef.current ?? attachToPtyId ?? runtimeSessionId ?? undefined;
+      const wasDaemon = transportRef.current === "daemon";
       console.error(`PTY ${operation} transport failed:`, error);
-      onStatus?.("failed", { id, error: String(error) });
 
+      // Tear down the broken stream. Transport errors NEVER reach the terminal
+      // buffer — only status + console (see the no-transport-errors-in-buffer rule).
       disposeInputListener();
+      daemonInputQueueRef.current?.dispose();
+      daemonInputQueueRef.current = null;
       daemonOutputChannelRef.current = null;
       unlistenRef.current?.();
       unlistenRef.current = null;
-      if (ptyIdRef.current && transportRef.current === "daemon") {
+      if (ptyIdRef.current && wasDaemon) {
         invoke("daemon_unsubscribe_session", {
           id: ptyIdRef.current,
           subscriberId: daemonSubscriberIdRef.current,
@@ -420,6 +433,33 @@ export function usePty({ terminal, cwd, command, attachToPtyId, runtimeSessionId
       }
       ptyIdRef.current = null;
       transportRef.current = null;
+
+      // The daemon owns the PTY and survives a transient socket drop / its own
+      // restart, so attempt a bounded reconnect rather than failing outright.
+      if (
+        wasDaemon &&
+        !cancelled &&
+        daemonReconnectAttemptsRef.current < DAEMON_RECONNECT_DELAYS_MS.length
+      ) {
+        const attempt = daemonReconnectAttemptsRef.current;
+        daemonReconnectAttemptsRef.current += 1;
+        const retryDelay = DAEMON_RECONNECT_DELAYS_MS[attempt];
+        onStatus?.("starting", {
+          id,
+          error: `Terminal connection dropped; reconnecting in ${retryDelay}ms.`,
+        });
+        // Clear the buffer so the re-subscribe's fresh scrollback snapshot replaces
+        // the stale screen instead of stacking a duplicate.
+        terminal?.reset();
+        daemonPollTimeoutRef.current = setTimeout(() => {
+          if (cancelled) return;
+          transportFailedRef.current = false;
+          void setup();
+        }, retryDelay);
+        return;
+      }
+
+      onStatus?.("failed", { id, error: String(error) });
     };
 
     async function setup(attempt = 0) {
@@ -625,6 +665,8 @@ export function usePty({ terminal, cwd, command, attachToPtyId, runtimeSessionId
             }
             daemonInputQueue.flush();
 
+            // Healthy subscribe — restore a full reconnect budget for any future drop.
+            daemonReconnectAttemptsRef.current = 0;
             return;
           } catch (daemonError) {
             console.warn("Daemon PTY transport failed; falling back to embedded Tauri PTY:", daemonError);

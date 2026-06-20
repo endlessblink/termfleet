@@ -94,12 +94,12 @@ launch_app() {
     if [[ "$PERF_MODE" == "dev" ]]; then
       window_line="$(
         DISPLAY="$DISPLAY_VALUE" XAUTHORITY="$XAUTHORITY_VALUE" wmctrl -lp |
-          awk '/Terminal Workspace/ { print; exit }'
+          awk '/TermFleet/ { print; exit }'
       )"
     else
       window_line="$(
         DISPLAY="$DISPLAY_VALUE" XAUTHORITY="$XAUTHORITY_VALUE" wmctrl -lp |
-          awk -v pid="$APP_PID" '$3 == pid && /Terminal Workspace/ { print; exit }'
+          awk -v pid="$APP_PID" '$3 == pid && /TermFleet/ { print; exit }'
       )"
     fi
     WINDOW_ID="$(awk '{ print $1 }' <<<"$window_line")"
@@ -113,7 +113,7 @@ launch_app() {
     sleep 0.1
   done
 
-  echo "Could not find Terminal Workspace window for PID $APP_PID." >&2
+  echo "Could not find TermFleet window for PID $APP_PID." >&2
   return 1
 }
 

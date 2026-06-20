@@ -45,7 +45,7 @@ fi
 drive() {
   local wid=""
   for _ in {1..80}; do
-    wid="$(wmctrl -l 2>/dev/null | awk '/Terminal Workspace/ { print $1; exit }')"
+    wid="$(wmctrl -l 2>/dev/null | awk '/TermFleet/ { print $1; exit }')"
     [[ -n "$wid" ]] && break
     sleep 0.5
   done

@@ -1,7 +1,7 @@
 [package]
 name = "terminal-workspace"
 version = "0.1.0"
-description = "Terminal Workspace Manager"
+description = "TermFleet — keyboard-first terminal cockpit"
 authors = []
 edition = "2021"
 default-run = "terminal-workspace"

@@ -91,8 +91,8 @@ drive() {
   local wid=""
   local wait_limit=$((APP_BUDGET * 2))
   for ((i = 1; i <= wait_limit; i += 1)); do
-    wid="$(wmctrl -l 2>/dev/null | awk '/Terminal Workspace/ { print $1; exit }')"
-    [[ -z "$wid" ]] && wid="$(xdotool search --name "Terminal Workspace" 2>/dev/null | head -1)"
+    wid="$(wmctrl -l 2>/dev/null | awk '/TermFleet/ { print $1; exit }')"
+    [[ -z "$wid" ]] && wid="$(xdotool search --name "TermFleet" 2>/dev/null | head -1)"
     [[ -n "$wid" ]] && break
     sleep 0.5
   done

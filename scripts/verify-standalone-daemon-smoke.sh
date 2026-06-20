@@ -94,12 +94,12 @@ launch_app() {
     fi
     WINDOW_ID="$(
       DISPLAY="$DISPLAY_VALUE" XAUTHORITY="$XAUTHORITY_VALUE" wmctrl -l 2>/dev/null |
-        awk '/Terminal Workspace/ { print $1; exit }' || true
+        awk '/TermFleet/ { print $1; exit }' || true
     )"
     if [[ -z "$WINDOW_ID" ]]; then
       WINDOW_ID="$(
         DISPLAY="$DISPLAY_VALUE" XAUTHORITY="$XAUTHORITY_VALUE" \
-          xdotool search --name "Terminal Workspace" 2>/dev/null | head -1 || true
+          xdotool search --name "TermFleet" 2>/dev/null | head -1 || true
       )"
     fi
     if [[ -n "$WINDOW_ID" ]]; then
@@ -108,7 +108,7 @@ launch_app() {
     sleep 0.2
   done
 
-  echo "Could not find Terminal Workspace window." >&2
+  echo "Could not find TermFleet window." >&2
   tail_app_log
   return 1
 }

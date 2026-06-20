@@ -411,8 +411,20 @@ impl PtyManager {
         // Resolve the spawn size once so the stored size matches the PTY winsize.
         // The map projection reattaches a reused session at this size (read back
         // via session_size) to avoid a corrupting shrink of an alt-screen TUI.
-        let open_rows = rows.filter(|value| *value > 0).unwrap_or(24);
-        let open_cols = cols.filter(|value| *value > 0).unwrap_or(80);
+        // Prefer the caller's measured size; on a cold restore (no size supplied)
+        // fall back to the persisted winsize so the reopened shell matches the
+        // dead session's width instead of snapping to 24x80 and reflowing the
+        // replayed scrollback. Default only when neither is known.
+        let open_rows = rows
+            .filter(|value| *value > 0)
+            .or_else(|| persisted.as_ref().and_then(|entry| entry.rows))
+            .filter(|value| *value > 0)
+            .unwrap_or(24);
+        let open_cols = cols
+            .filter(|value| *value > 0)
+            .or_else(|| persisted.as_ref().and_then(|entry| entry.cols))
+            .filter(|value| *value > 0)
+            .unwrap_or(80);
         let pair = pty_system
             .openpty(PtySize {
                 rows: open_rows,
@@ -502,7 +514,7 @@ impl PtyManager {
                 }
             }
             initial_buffer.persist = Some(persist);
-            write_session_meta(dir, &id, cwd.as_deref(), &command_label);
+            write_session_meta(dir, &id, cwd.as_deref(), &command_label, open_cols, open_rows);
         }
         let output = Arc::new(Mutex::new(initial_buffer));
         let output_reader = output.clone();
@@ -688,6 +700,11 @@ impl PtyManager {
             .map_err(|e| e.to_string())?;
         entry.cols = cols;
         entry.rows = rows;
+        // Keep the persisted winsize current so a cold restore reopens at the
+        // user's latest size, not the spawn size.
+        if let Some(dir) = &self.persist_dir {
+            write_session_meta(dir, id, entry.initial_cwd.as_deref(), &entry.command, cols, rows);
+        }
         Ok(())
     }
 
@@ -896,6 +913,8 @@ fn truncate_trace_detail(details: &str) -> String {
 /// `load_persisted_scrollback` and replayed (see `ensure_with_sink`).
 struct PersistedSession {
     cwd: Option<String>,
+    cols: Option<u16>,
+    rows: Option<u16>,
 }
 
 #[derive(Serialize, Deserialize, Default)]
@@ -905,6 +924,14 @@ struct SessionMeta {
     cwd: Option<String>,
     #[serde(default)]
     command: Option<String>,
+    // Last known PTY winsize, persisted so a cold restore (daemon death/reboot)
+    // reopens the shell at its real width instead of snapping to the default
+    // 24x80 — which reflowed restored scrollback and the first prompt. Optional
+    // for backward compatibility with checkpoints written before this field.
+    #[serde(default)]
+    cols: Option<u16>,
+    #[serde(default)]
+    rows: Option<u16>,
 }
 
 /// Root of termfleet's per-user durable state (`~/.local/share/terminal-workspace`).
@@ -1008,10 +1035,19 @@ fn atomic_write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     fs::rename(&tmp, path)
 }
 
-fn write_session_meta(dir: &Path, id: &str, cwd: Option<&str>, command: &str) {
+fn write_session_meta(
+    dir: &Path,
+    id: &str,
+    cwd: Option<&str>,
+    command: &str,
+    cols: u16,
+    rows: u16,
+) {
     let meta = SessionMeta {
         cwd: cwd.map(|value| value.to_string()),
         command: Some(command.to_string()),
+        cols: Some(cols),
+        rows: Some(rows),
     };
     if let Ok(json) = serde_json::to_vec(&meta) {
         let _ = atomic_write(&meta_path(dir, id), &json);
@@ -1025,11 +1061,15 @@ fn load_persisted(dir: &Path, id: &str) -> Option<PersistedSession> {
     if !scrollback_path(dir, id).exists() {
         return None;
     }
-    let cwd = fs::read(meta_path(dir, id))
+    let meta = fs::read(meta_path(dir, id))
         .ok()
         .and_then(|bytes| serde_json::from_slice::<SessionMeta>(&bytes).ok())
-        .and_then(|meta| meta.cwd);
-    Some(PersistedSession { cwd })
+        .unwrap_or_default();
+    Some(PersistedSession {
+        cwd: meta.cwd,
+        cols: meta.cols,
+        rows: meta.rows,
+    })
 }
 
 /// Load a dead session's checkpointed scrollback for replay on cold restore:
@@ -1441,6 +1481,68 @@ mod tests {
                 super::load_persisted(&dir, &id).is_none(),
                 "kill must drop the disk checkpoint"
             );
+        }
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn restored_session_reopens_at_persisted_winsize() {
+        use std::path::PathBuf;
+
+        let dir: PathBuf = std::env::temp_dir().join(format!(
+            "tw-persist-size-test-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        let id = "persist-size-test".to_string();
+
+        // First daemon: a session opened at a non-default 120x40 writes content
+        // that gets checkpointed, then the daemon "dies" (manager dropped).
+        {
+            let manager = super::PtyManager::with_persistence_dir(dir.clone());
+            manager
+                .ensure_detached(
+                    Some(id.clone()),
+                    Some("/tmp".to_string()),
+                    Some("cat".to_string()),
+                    Some(120),
+                    Some(40),
+                )
+                .expect("spawn persistent PTY");
+            manager.write(&id, "sized-content\n").expect("write content");
+
+            let scrollback = super::scrollback_path(&dir, &id);
+            let mut ok = false;
+            for _ in 0..40 {
+                if let Ok(raw) = std::fs::read(&scrollback) {
+                    if raw.len() > 8
+                        && String::from_utf8_lossy(&raw[8..]).contains("sized-content")
+                    {
+                        ok = true;
+                        break;
+                    }
+                }
+                std::thread::sleep(std::time::Duration::from_millis(25));
+            }
+            assert!(ok, "scrollback was not checkpointed at {scrollback:?}");
+        }
+
+        // Second daemon: restore WITHOUT supplying a size (the cold-restore case).
+        // It must reopen at the persisted 120x40, not snap to the default 24x80.
+        {
+            let manager = super::PtyManager::with_persistence_dir(dir.clone());
+            manager
+                .ensure_detached(Some(id.clone()), None, Some("cat".to_string()), None, None)
+                .expect("restore persistent PTY");
+            let size = manager.session_size(&id).expect("restored session size");
+            assert_eq!(
+                size,
+                (120, 40),
+                "restored session must reopen at the persisted winsize, got {size:?}"
+            );
+            manager.kill(&id).expect("kill restored session");
         }
 
         let _ = std::fs::remove_dir_all(&dir);

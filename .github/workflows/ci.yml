@@ -1,0 +1,105 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Linux is the first release gate (see CLAUDE.md / MASTER_PLAN.md). All jobs run
+# on Linux against WebKitGTK 4.1, matching the supported target.
+env:
+  CARGO_TERM_COLOR: always
+  # First Rust build compiles from scratch; keep memory bounded so the runner
+  # doesn't OOM-kill the build (same reason the dev launchers pin this).
+  CARGO_BUILD_JOBS: "1"
+  CARGO_PROFILE_DEV_DEBUG: "0"
+
+jobs:
+  # Deterministic, no-display gates: build, Rust tests, and source-contract /
+  # OSS-readiness verifiers. This is the required signal.
+  build-and-test:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux build dependencies (WebKitGTK 4.1 + Tauri)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libjavascriptcoregtk-4.1-dev \
+            libsoup-3.0-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            build-essential curl wget file libssl-dev pkg-config
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - run: npm ci
+
+      - name: Prerequisite toolchain check
+        run: npm run verify:prerequisites
+
+      - name: Frontend build (tsc + vite)
+        run: npm run build
+
+      - name: Rust unit tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml --lib
+
+      - name: Daemon survival + live grid integration tests
+        run: |
+          cargo test --manifest-path src-tauri/Cargo.toml --test daemon_survival -- --nocapture
+          cargo test --manifest-path src-tauri/Cargo.toml --test grid_live -- --nocapture
+
+      - name: Rust warnings gate
+        run: npm run verify:rust-warnings
+
+      - name: Source-contract gates
+        run: |
+          npm run verify:map-terminals
+          npm run verify:terminal-rendering
+        # NOTE: verify:typography is intentionally NOT a required gate yet — the
+        # no-full-box-borders rule it enforces is the in-progress TC-019 chrome
+        # migration (currently red on main, e.g. WorkbenchSidebar.tsx borders).
+        # Re-add it here once TC-019 lands so CI doesn't block on unrelated work.
+
+      - name: OSS-readiness + public audit
+        run: |
+          npm run verify:oss-readiness
+          npm run verify:public-audit
+
+  # Canvas renderer / keymap / mouse / resize / selection / box-glyph pixel proofs.
+  # Separate job: these need a Chromium at /usr/bin/chromium (the path the specs
+  # pin); they run headless so no Xvfb is required.
+  playwright:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Install Chromium at the path the specs expect
+        run: |
+          npx playwright install --with-deps chromium
+          CHROMIUM="$(node -e "console.log(require('playwright').chromium.executablePath())")"
+          sudo ln -sf "$CHROMIUM" /usr/bin/chromium
+          /usr/bin/chromium --version
+
+      - name: Canvas renderer + interaction specs
+        run: npm run verify:canvas-all
