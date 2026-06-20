@@ -56,6 +56,7 @@ were retired during consolidation.
 | TC-031     | Ctrl+Z restore for closed map terminals and non-destructive localhost preview closure                                                                                                                           | P1       | DONE (2026-06-18) | TC-017, TC-020 |
 | TC-032     | Operator-useful terminal summary: regular app headers answer what each shell/agent terminal is doing right now                                                                                                  | P1       | DONE (2026-06-19) | TC-016i        |
 | TC-033     | Reliability hardening: fix recurring sidebar task list, AI summary, paste, and render/session issues that never stayed fixed                                                                                     | P1       | DONE (2026-06-19) | TC-027, TC-032 |
+| TC-034     | Group terminals into projects by path: terminals in the same cwd collapse into one project; stop minting duplicate project groups per folder-open                                                                  | P1       | IN_PROGRESS       | TC-011, TC-024 |
 
 ---
 
@@ -5040,3 +5041,44 @@ T8 persistence, T9 input.
   src-tauri/Cargo.toml` **64 passed**; `tests/keymap.spec.ts` **4/4**;
   `tests/paste-bracketing.spec.ts` **5/5**; live `npm run verify:bracketed-paste`
   passed with `BRACKETED_PASTE_OK` and screenshots under `/tmp/tw-bracketed-paste/`.
+
+### TC-034: Group terminals into projects by path
+
+**Priority:** P1
+**Status:** In progress
+**Depends:** TC-011, TC-024
+
+#### Problem
+
+Terminals opened in the same directory showed as separate flat rows instead of
+collapsing under one project (observed: four `devops/termfleet` terminals as four
+rows). Root cause: render-time grouping keys on an opaque per-spawn `tab.groupId`
+(set from the active filter, or `null`), not the cwd; the only path-based grouping
+(`reconcileProjectGroups`) ran only on hydrate/`replaceTabs`, never on live
+spawn/cwd-resolution; `addGroup` minted a fresh random group id per folder-open
+(no dedup by `projectRoot`); and the reconciler skipped any tab that already had a
+valid group, so per-terminal auto-groups never merged.
+
+#### Fix (path-authoritative grouping)
+
+- `reconcileProjectGroups` is now path-authoritative for terminal tabs: a terminal
+  whose `initialCwd`/`terminalCwd` resolves to a path is homed to the single
+  canonical group for that normalized path, so same-path terminals collapse. It
+  also collapses pre-existing duplicate groups that share a `projectRoot` and
+  remaps their tabs onto the canonical group.
+- `addGroup` dedups by normalized `projectRoot` (re-opening a folder reuses the
+  existing project group instead of duplicating it).
+- Reconcile is now wired into `addTab` and into `updateTab` on cwd changes
+  (`updates.initialCwd`), so grouping self-heals live instead of only on hydrate.
+
+Files: `src/stores/workspace.ts`. Behavior note: path is authoritative for
+terminals, so a terminal cannot be manually parked in a different project from its
+cwd (matches the "terminals opened in a path should be a project" intent).
+
+#### Verification
+
+- `tests/project-reconciliation.spec.ts` extended: four same-path terminals + a
+  duplicate project group collapse into one project (count 4), paper-bot stays its
+  own project, and `addGroup` reuses the existing group for a repeated path.
+- Gate: `tsc --noEmit` clean; `npm run build` green; `project-reconciliation` +
+  `map-terminal-rendering` specs **25 passed, 0 failed**.

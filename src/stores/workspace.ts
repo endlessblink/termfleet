@@ -518,19 +518,30 @@ function reconcileProjectGroups(tabs: Tab[], groups: Group[], canvasState: Canva
       .filter((node) => node.type === "terminal" && node.terminalTabId)
       .map((node) => [node.terminalTabId as string, node])
   );
+  // One canonical group per normalized project path. The first group seen for a
+  // root wins; later groups with the SAME root are duplicates (e.g. a folder
+  // re-opened, which used to mint a fresh random group id each time) — they are
+  // dropped and their tabs remapped onto the canonical group. (TC-034)
   const groupsByRoot = new Map<string, Group>();
-  const nextGroups = groups.map((group) => {
+  const remap = new Map<string, string>(); // duplicate group id -> canonical id
+  const nextGroups: Group[] = [];
+  for (const group of groups) {
     const projectRoot = normalizeProjectPath(group.projectRoot);
     const emoji = group.emoji ?? projectEmojiFor(projectRoot ?? group.name);
     const normalizedGroup = (projectRoot && projectRoot !== group.projectRoot) || !group.emoji
       ? { ...group, projectRoot: projectRoot ?? group.projectRoot, emoji }
       : group;
-    if (projectRoot && !groupsByRoot.has(projectRoot)) {
+    if (projectRoot) {
+      const canonical = groupsByRoot.get(projectRoot);
+      if (canonical) {
+        remap.set(group.id, canonical.id);
+        continue; // collapse duplicate project group
+      }
       groupsByRoot.set(projectRoot, normalizedGroup);
     }
-    return normalizedGroup;
-  });
-  let changed = nextGroups.length !== groups.length || nextGroups.some((group, index) => group !== groups[index]);
+    nextGroups.push(normalizedGroup);
+  }
+  const groupIds = new Set(nextGroups.map((group) => group.id));
 
   const ensureGroupForPath = (path: string) => {
     const existing = groupsByRoot.get(path);
@@ -545,11 +556,16 @@ function reconcileProjectGroups(tabs: Tab[], groups: Group[], canvasState: Canva
     };
     nextGroups.push(group);
     groupsByRoot.set(path, group);
-    changed = true;
+    groupIds.add(group.id);
     return group;
   };
 
   const nextTabs = tabs.map((tab) => {
+    // Path-based project membership: a terminal whose cwd resolves under a project
+    // root stays in that project (sub-path tolerant); otherwise it is (re)homed to
+    // the single canonical group for its path, so same-path terminals collapse into
+    // one project. A tab whose group was collapsed as a duplicate follows the
+    // canonical group. (TC-034 + project-emoji identity)
     const path = terminalProjectPath(tab, nodesByTabId);
     const existingGroup = tab.groupId
       ? nextGroups.find((group) => group.id === tab.groupId)
@@ -557,13 +573,19 @@ function reconcileProjectGroups(tabs: Tab[], groups: Group[], canvasState: Canva
     if (existingGroup && (!path || pathBelongsToProject(path, existingGroup.projectRoot))) {
       return tab;
     }
-
+    if (tab.groupId && remap.has(tab.groupId)) {
+      return { ...tab, groupId: remap.get(tab.groupId) ?? null };
+    }
     if (!path) return tab.groupId ? { ...tab, groupId: null } : tab;
 
     const group = ensureGroupForPath(path);
-    changed = true;
     return { ...tab, groupId: group.id };
   });
+
+  const changed =
+    nextGroups.length !== groups.length ||
+    nextGroups.some((group, index) => group !== groups[index]) ||
+    nextTabs.some((tab, index) => tab !== tabs[index]);
 
   return changed ? { tabs: nextTabs, groups: nextGroups } : { tabs, groups };
 }
@@ -1279,28 +1301,35 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
 
   addTab: (overrides?: Partial<Tab>) => {
     const newTab = createDefaultTab(overrides);
-    set((state) => ({
-      tabs: [...state.tabs, newTab],
-      activeTabId: newTab.id,
-      groups: newTab.groupId
-        ? state.groups.map((group) =>
-            group.id === newTab.groupId ? { ...group, lastActiveTabId: newTab.id } : group
-          )
-        : state.groups,
-      terminalGroups: newTab.groupId
-        ? state.terminalGroups.map((group) =>
-            group.id === newTab.groupId ? { ...group, lastActiveTabId: newTab.id } : group
-          )
-        : state.terminalGroups,
-      canvasState: normalizeCanvasState(
+    set((state) => {
+      const tabs = [...state.tabs, newTab];
+      const canvasState = normalizeCanvasState(
         {
           ...state.canvasState,
           nodes: [...state.canvasState.nodes, terminalNodeForTab(newTab, state.tabs.length)],
           selectedNodeId: `terminal-map-${newTab.id}`,
         },
-        [...state.tabs, newTab]
-      ),
-    }));
+        tabs
+      );
+      // Reconcile so the new terminal joins the single project for its path
+      // (and any same-path siblings collapse together) instead of forming a
+      // separate row. (TC-034)
+      const projects = reconcileProjectGroups(tabs, state.groups, canvasState);
+      const newTabGroupId = projects.tabs.find((tab) => tab.id === newTab.id)?.groupId ?? null;
+      const bumpActive = (groupList: Group[]) =>
+        newTabGroupId
+          ? groupList.map((group) =>
+              group.id === newTabGroupId ? { ...group, lastActiveTabId: newTab.id } : group
+            )
+          : groupList;
+      return {
+        tabs: projects.tabs,
+        activeTabId: newTab.id,
+        groups: bumpActive(projects.groups),
+        terminalGroups: bumpActive(projects.groups),
+        canvasState,
+      };
+    });
   },
 
   removeTab: (id: string) => {
@@ -1477,8 +1506,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   },
 
   updateTab: (id: string, updates: Partial<Tab>) => {
-    set((state) => ({
-      tabs: state.tabs.map((t) =>
+    set((state) => {
+      const tabs = state.tabs.map((t) =>
         t.id === id
           ? (() => {
               const updated = { ...t, ...updates };
@@ -1494,8 +1523,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
               return updated;
             })()
           : t
-      ),
-      canvasState: {
+      );
+      const canvasState = {
         ...state.canvasState,
         nodes: state.canvasState.nodes.map((node) =>
           node.terminalTabId === id
@@ -1506,8 +1535,21 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
               }
             : node
         ),
-      },
-    }));
+      };
+      // When a terminal's cwd resolves or changes, re-home it to the single
+      // project for that path (collapsing same-path terminals). Only on cwd
+      // updates to avoid regrouping work on unrelated updates. (TC-034)
+      if (updates.initialCwd !== undefined) {
+        const projects = reconcileProjectGroups(tabs, state.groups, canvasState);
+        return {
+          tabs: projects.tabs,
+          groups: projects.groups,
+          terminalGroups: projects.groups,
+          canvasState,
+        };
+      }
+      return { tabs, canvasState };
+    });
   },
 
   recordWorkstreamEvent: (tabId: string, event: WorkstreamEventInput) => {
@@ -1981,6 +2023,15 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
 
   addGroup: (name: string, color?: string, projectRoot?: string) => {
     const { groups } = get();
+    // One project per path: re-opening a folder reuses its existing group instead
+    // of minting a duplicate (which previously split same-path terminals). (TC-034)
+    const normalizedRoot = normalizeProjectPath(projectRoot);
+    if (normalizedRoot) {
+      const existing = groups.find(
+        (group) => normalizeProjectPath(group.projectRoot) === normalizedRoot
+      );
+      if (existing) return existing.id;
+    }
     const resolvedColor =
       color ?? GROUP_COLORS[groups.length % GROUP_COLORS.length];
     const newGroup: Group = {
