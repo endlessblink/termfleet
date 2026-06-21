@@ -6,7 +6,11 @@
 // fresh sidecar exists. (TC-033, cost-minimizing path.)
 import { appendFileSync, readFileSync } from "node:fs";
 import { stdin, stdout } from "node:process";
-import { sidecarFresh, sidecarPath } from "./lib/agent-status-paths.mjs";
+import {
+  paneSidecarPath,
+  sidecarFresh,
+  sidecarPath,
+} from "./lib/agent-status-paths.mjs";
 
 function cleanText(value) {
   return typeof value === "string"
@@ -129,6 +133,19 @@ export function readSidecarForPayload(
   payload,
   read = (p) => readFileSync(p, "utf8"),
 ) {
+  // Per-terminal status (TC-035): when the request carries the pane's id, prefer its
+  // pane-keyed sidecar so two terminals in the SAME cwd read independent status. Falls
+  // through to the cwd candidates when the pane sidecar is missing/stale (the pane id
+  // isn't injected into the PTY yet, or this is a non-termfleet shell) → legacy behavior.
+  const paneId = payload?.paneId;
+  if (paneId) {
+    try {
+      const sidecar = JSON.parse(read(paneSidecarPath(paneId)));
+      if (sidecarFresh(sidecar)) return sidecar;
+    } catch {
+      // no fresh pane sidecar → fall through to cwd keying
+    }
+  }
   const candidates = [
     payload?.workstream?.path,
     payload?.projectId,

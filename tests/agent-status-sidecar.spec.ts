@@ -25,7 +25,9 @@ function runNode(script: string, input: unknown, env: Record<string, string>) {
   return spawnSync("node", [script], {
     input: JSON.stringify(input),
     encoding: "utf8",
-    env: { ...process.env, ...env },
+    // Default TERMFLEET_PANE_ID off so cwd-keyed tests stay hermetic even when the suite
+    // runs inside a termfleet pane (which injects it); pane tests set it explicitly.
+    env: { ...process.env, TERMFLEET_PANE_ID: "", ...env },
   });
 }
 
@@ -775,6 +777,123 @@ test("worktree cwd: hook keys the sidecar by the worktree path, not the main che
     env,
   );
   expect(JSON.parse(miss.stdout.trim()).tasksFromTodoWrite).toBeFalsy();
+});
+
+test("per-terminal status (TC-035): two panes in the SAME cwd keep independent task lists", async () => {
+  // The core standalone-per-terminal guarantee: when termfleet injects a pane id into the
+  // PTY (TERMFLEET_PANE_ID), the hook keys the sidecar by terminal, so two terminals open
+  // in the same directory no longer share one title/task list.
+  const dataHome = mkdtempSync(path.join(os.tmpdir(), "tf-status-"));
+  const cwd = "/tmp/tf-shared-cwd";
+
+  // Pane A creates its own task.
+  runNode(
+    HOOK,
+    {
+      tool_name: "TaskCreate",
+      cwd,
+      session_id: "sA",
+      tool_input: {
+        subject: "Wire the daemon",
+        activeForm: "Wiring the daemon",
+      },
+      tool_response: { task: { id: "1", subject: "Wire the daemon" } },
+    },
+    { XDG_DATA_HOME: dataHome, TERMFLEET_PANE_ID: "pane-A" },
+  );
+  // Pane B, SAME cwd, creates a different task.
+  runNode(
+    HOOK,
+    {
+      tool_name: "TaskCreate",
+      cwd,
+      session_id: "sB",
+      tool_input: {
+        subject: "Fix the renderer",
+        activeForm: "Fixing the renderer",
+      },
+      tool_response: { task: { id: "1", subject: "Fix the renderer" } },
+    },
+    { XDG_DATA_HOME: dataHome, TERMFLEET_PANE_ID: "pane-B" },
+  );
+
+  // Each request keyed by its own pane id sees only that terminal's task.
+  const reqFor = (paneId: string) => ({
+    paneId,
+    projectId: cwd,
+    workstream: { path: cwd, provider: "shell" },
+    heuristicCandidate: {
+      task: "Shell ready",
+      path: cwd,
+      now: "Awaiting command",
+      status: "idle",
+      provider: "shell",
+      confidence: "low",
+    },
+  });
+  const a = JSON.parse(
+    runNode(WORKER, reqFor("pane-A"), {
+      XDG_DATA_HOME: dataHome,
+    }).stdout.trim(),
+  );
+  const b = JSON.parse(
+    runNode(WORKER, reqFor("pane-B"), {
+      XDG_DATA_HOME: dataHome,
+    }).stdout.trim(),
+  );
+
+  // Pending task → now is its content (activeForm is only used once in_progress).
+  expect(a.now).toBe("Wire the daemon");
+  expect(b.now).toBe("Fix the renderer");
+  // No cross-talk: neither pane sees the other's task.
+  expect(a.tasks.map((t: { text: string }) => t.text).join(" ")).not.toContain(
+    "renderer",
+  );
+  expect(b.tasks.map((t: { text: string }) => t.text).join(" ")).not.toContain(
+    "daemon",
+  );
+});
+
+test("per-terminal status (TC-035): request falls back to cwd when the pane sidecar is absent", async () => {
+  // Backward compatibility: until the PTY injects a pane id, the hook writes a cwd-keyed
+  // sidecar. A request that carries a paneId with no matching pane file must still find the
+  // cwd sidecar (legacy/not-yet-injected sessions keep working).
+  const dataHome = mkdtempSync(path.join(os.tmpdir(), "tf-status-"));
+  const cwd = "/tmp/tf-fallback-cwd";
+  // Hook runs WITHOUT a pane id → cwd-keyed file.
+  runNode(
+    HOOK,
+    {
+      tool_name: "TaskCreate",
+      cwd,
+      session_id: "s",
+      tool_input: { subject: "Legacy task", activeForm: "Doing legacy work" },
+      tool_response: { task: { id: "1", subject: "Legacy task" } },
+    },
+    { XDG_DATA_HOME: dataHome },
+  );
+  // Request carries a paneId that has no pane file → must fall back to the cwd sidecar.
+  const summary = JSON.parse(
+    runNode(
+      WORKER,
+      {
+        paneId: "pane-with-no-file",
+        projectId: cwd,
+        workstream: { path: cwd, provider: "shell" },
+        heuristicCandidate: {
+          task: "Shell ready",
+          path: cwd,
+          now: "Awaiting command",
+          status: "idle",
+          provider: "shell",
+          confidence: "low",
+        },
+      },
+      { XDG_DATA_HOME: dataHome },
+    ).stdout.trim(),
+  );
+  expect(summary.tasksFromTodoWrite).toBe(true);
+  expect(summary.now).toBe("Legacy task"); // pending task → now is its content
 });
 
 test("worker falls back to the heuristic when no sidecar exists for the cwd", async () => {

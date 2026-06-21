@@ -578,7 +578,7 @@ export function TerminalComponent({
       // spawn cwd. The Claude TodoWrite hook keys the sidecar by Claude's live cwd, so
       // sending the stale spawn cwd misses the sidecar → generic fallback. (TC-033 RC-A)
       const liveCwd = livePtyId ? store.liveCwds[livePtyId] : undefined;
-      const input: AgentStatusSummaryInput | null =
+      const baseInput: AgentStatusSummaryInput | null =
         tab.workstream?.kind === "agent"
           ? agentStatusSummaryInputFromWorkstream(tab.workstream)
           : terminalState
@@ -591,7 +591,12 @@ export function TerminalComponent({
                 terminalOutput: terminalState.terminalOutput,
               }
             : null;
-      if (!input) return;
+      if (!baseInput) return;
+      // Key the status lookup by this terminal's own pane id (TC-035): the worker
+      // prefers the pane-keyed sidecar so two terminals in the same cwd stay
+      // independent. Falls back to cwd inside the worker when the pane sidecar isn't
+      // present yet.
+      const input: AgentStatusSummaryInput = { ...baseInput, paneId };
 
       void summarizeAgentStatus(input).then((result) => {
         if (statusSummarySequenceRef.current !== sequence) return;

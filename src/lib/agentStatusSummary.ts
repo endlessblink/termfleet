@@ -14,6 +14,9 @@ export type AgentStatusSummary = WorkstreamStatusSummary & {
 const OSC_PATTERN = /\x1b\](?:[^\x07\x1b]*)(?:\x07|\x1b\\)/g;
 
 export interface AgentStatusSummaryInput {
+  // Stable per-terminal id. When present the status request prefers the pane-keyed
+  // sidecar, so two terminals in the same cwd keep independent status. (TC-035)
+  paneId?: string;
   mission?: string;
   prompt?: string;
   provider?: AgentProvider;

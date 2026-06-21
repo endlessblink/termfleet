@@ -14,6 +14,7 @@ import { stdin } from "node:process";
 import {
   fnv,
   normalizeCwd,
+  paneSidecarPath,
   sidecarPath,
   statusDir,
 } from "./lib/agent-status-paths.mjs";
@@ -33,6 +34,21 @@ function cleanField(value, max = 200) {
 // sidecar by the worktree when present.
 function sidecarKeyCwd(payload) {
   return normalizeCwd(payload?.worktree || payload?.cwd || process.cwd());
+}
+
+// A stable per-terminal id injected into the PTY env by termfleet (`TERMFLEET_PANE_ID`).
+// When present it keys the sidecar by terminal instead of by cwd, so two terminals in the
+// same directory don't share one status file. Absent (non-termfleet shell, or PTY env not
+// yet injected) → cwd keying, i.e. unchanged behavior. (TC-035)
+function statusPaneId() {
+  return cleanField(process.env.TERMFLEET_PANE_ID, 128);
+}
+
+// The sidecar file this turn reads + writes: pane-keyed when a pane id is present, else
+// cwd-keyed. Reader and writer in this process MUST agree, so it's computed once per run.
+function statusFilePath(cwd) {
+  const paneId = statusPaneId();
+  return paneId ? paneSidecarPath(paneId) : sidecarPath(cwd);
 }
 
 function normTaskStatus(status) {
@@ -287,9 +303,9 @@ export function narrationToNow(text) {
   return cleanField(stripLeadIns(chosen), 90);
 }
 
-function readExistingSidecar(cwd) {
+function readExistingSidecar(filePath) {
   try {
-    return JSON.parse(readFileSync(sidecarPath(cwd), "utf8"));
+    return JSON.parse(readFileSync(filePath, "utf8"));
   } catch {
     return null;
   }
@@ -353,6 +369,9 @@ async function main() {
     process.exit(0);
   }
   const cwd = sidecarKeyCwd(payload);
+  const paneId = statusPaneId();
+  // Pane-keyed when termfleet injected TERMFLEET_PANE_ID into the PTY, else cwd-keyed.
+  const filePath = statusFilePath(cwd);
   let sidecar;
   if (
     payload.hook_event_name === "Stop" ||
@@ -362,7 +381,7 @@ async function main() {
     // task list (a real plan) outranks it, so don't clobber an in-progress task summary.
     const now = narrationToNow(lastAssistantText(payload.transcript_path));
     if (!now) process.exit(0);
-    const prev = readExistingSidecar(cwd);
+    const prev = readExistingSidecar(filePath);
     const todos = Array.isArray(prev?.todos) ? prev.todos : [];
     const taskNow = nowFromTodos(todos);
     sidecar = {
@@ -380,7 +399,7 @@ async function main() {
     if (sidecar.todos.length === 0) process.exit(0);
   } else if (TASK_EVENT_TOOLS.has(payload.tool_name)) {
     // Modern task tools: fold this TaskCreate/TaskUpdate into the stateful list.
-    const prev = readExistingSidecar(cwd);
+    const prev = readExistingSidecar(filePath);
     const todos = applyTaskEvent(prev?.todos, payload);
     if (todos.length === 0) process.exit(0);
     sidecar = {
@@ -402,7 +421,7 @@ async function main() {
     // known task list so the panel stays populated between task events.
     const now = activityFromTool(payload?.tool_name, payload?.tool_input);
     if (!now) process.exit(0);
-    const prev = readExistingSidecar(cwd);
+    const prev = readExistingSidecar(filePath);
     sidecar = {
       cwd,
       sessionId: String(payload?.session_id ?? prev?.sessionId ?? ""),
@@ -415,7 +434,7 @@ async function main() {
   // Roll the agent's actual action into the recent-activity log (what it DID). On a Stop
   // event prefer the agent's own narration over a task summary, so the feed reads in the
   // model's voice.
-  const prevForRecent = readExistingSidecar(cwd);
+  const prevForRecent = readExistingSidecar(filePath);
   sidecar.recent = appendRecent(
     prevForRecent?.recent,
     sidecar.narration ?? sidecar.now,
@@ -427,9 +446,11 @@ async function main() {
   if (sidecar.narration === undefined && prevForRecent?.narration) {
     sidecar.narration = cleanField(prevForRecent.narration, 90);
   }
+  // Stamp the pane id so the reader can confirm which terminal this status belongs to.
+  if (paneId) sidecar.paneId = paneId;
   try {
     mkdirSync(statusDir(), { recursive: true });
-    writeFileSync(sidecarPath(sidecar.cwd), JSON.stringify(sidecar));
+    writeFileSync(filePath, JSON.stringify(sidecar));
   } catch {
     // Never break the agent over a status-file write.
   }

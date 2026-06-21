@@ -16,7 +16,8 @@ export function fnv(value) {
 }
 
 export function statusDir() {
-  const base = process.env.XDG_DATA_HOME || path.join(os.homedir(), ".local", "share");
+  const base =
+    process.env.XDG_DATA_HOME || path.join(os.homedir(), ".local", "share");
   return path.join(base, "terminal-workspace", "agent-status");
 }
 
@@ -31,7 +32,23 @@ export function sidecarPath(cwd) {
   return path.join(statusDir(), `${fnv(normalizeCwd(cwd))}.json`);
 }
 
-export function sidecarFresh(sidecar, ttlMs = Number(process.env.TERMFLEET_SIDECAR_TTL_MS || 30 * 60 * 1000)) {
+/**
+ * Per-terminal sidecar path, keyed by a stable pane id rather than the cwd. Lets two
+ * terminals open in the SAME directory keep independent status (title + task list)
+ * instead of sharing one cwd-keyed file. The writer (status hook) uses this when the
+ * pane id is injected into the PTY env (`TERMFLEET_PANE_ID`); the reader (worker) uses
+ * it when the status request carries the pane's id. Both fall back to the cwd path when
+ * no pane id is present, so non-termfleet shells and not-yet-injected sessions keep
+ * working exactly as before. (TC-035)
+ */
+export function paneSidecarPath(paneId) {
+  return path.join(statusDir(), `pane-${fnv(String(paneId ?? ""))}.json`);
+}
+
+export function sidecarFresh(
+  sidecar,
+  ttlMs = Number(process.env.TERMFLEET_SIDECAR_TTL_MS || 30 * 60 * 1000),
+) {
   if (!sidecar || typeof sidecar.updatedAt !== "number") return false;
   return Date.now() - sidecar.updatedAt <= ttlMs;
 }

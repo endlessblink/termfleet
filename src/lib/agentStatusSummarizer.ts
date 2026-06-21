@@ -49,6 +49,9 @@ function buildRequestBody(input: AgentStatusSummaryInput) {
       "Each extracted array item can be a string or {text, excerpt}; exclude prompt chrome and repeated instructions.",
     ],
     projectId: input.gitRoot ?? input.cwd ?? input.cwdLabel ?? "workspace",
+    // Per-terminal status key (TC-035): the worker prefers the pane-keyed sidecar
+    // when this is set, so same-cwd terminals don't share one status file.
+    paneId: input.paneId,
     transcript,
     transcriptWindow: "visible grid snapshot plus recent transcript tail",
     heuristicCandidate: fallback,

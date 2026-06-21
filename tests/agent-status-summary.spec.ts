@@ -1174,6 +1174,38 @@ test("posts transcript and workstream context to a configured status process", a
   ).toContain("Never overclaim");
 });
 
+test("posts the terminal's pane id so the worker can key status per terminal (TC-035)", async () => {
+  let capturedBody: unknown;
+  const fetcher = async (_url: RequestInfo | URL, init?: RequestInit) => {
+    capturedBody = JSON.parse(String(init?.body));
+    return new Response(
+      JSON.stringify({
+        task: "t",
+        path: "p",
+        now: "n",
+        status: "working",
+        provider: "shell",
+        confidence: "high",
+      }),
+      { status: 200 },
+    );
+  };
+
+  await summarizeAgentStatus(
+    {
+      paneId: "pane-xyz",
+      mission: "Terminal",
+      provider: "shell",
+      status: "running",
+      cwd: "/repo/termfleet",
+      terminalOutput: "ready",
+    },
+    { endpoint: "http://127.0.0.1:4567/status", fetcher },
+  );
+
+  expect((capturedBody as { paneId?: string }).paneId).toBe("pane-xyz");
+});
+
 test("falls back when the configured status process fails", async () => {
   const result = await summarizeAgentStatus(
     {
