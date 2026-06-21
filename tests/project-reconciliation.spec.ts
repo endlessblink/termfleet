@@ -409,3 +409,125 @@ test("addTab and cwd changes auto-group terminals by path (live wiring)", async 
   expect(out.aAndBDiffer).toBe(true);    // different paths are different projects
   expect(out.movedToBGroup).toBe(true);  // cwd change re-homes the terminal
 });
+
+test("live cwd rehomes a stale Bina-scoped terminal to the TermFleet project", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+
+  await page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => {
+          workspaceUiState: Record<string, unknown>;
+          setWorkspaceMode: (mode: string) => void;
+          setLiveCwd: (id: string, cwd: string) => void;
+          updateWorkspaceUiState: (updates: Record<string, unknown>) => void;
+        };
+        setState: (state: Record<string, unknown>) => void;
+      };
+    }).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+
+    const BINA = "/media/endlessblink/data/my-projects/ai-development/web-dev/bina-ve-ze";
+    const TERMFLEET = "/media/endlessblink/data/my-projects/ai-development/devops/termfleet";
+    const staleBinaGroup = {
+      id: "group-bina",
+      name: "bina-ve-ze",
+      color: "#7aa2f7",
+      emoji: "BZ",
+      projectRoot: BINA,
+      lastActiveTabId: "tab-termfleet",
+    };
+
+    store.setState({
+      workspaceUiState: {
+        ...store.getState().workspaceUiState,
+        workspaceMode: "canvas",
+        primarySidebarPanel: "map",
+        primarySidebarCollapsed: false,
+        canvasSidebarCollapsed: false,
+      },
+      groups: [staleBinaGroup],
+      terminalGroups: [staleBinaGroup],
+      tabs: [{
+        id: "tab-termfleet",
+        title: "Terminal",
+        emoji: "[]",
+        color: "#7aa2f7",
+        groupId: "group-bina",
+        initialCwd: BINA,
+        terminals: [{ id: "pty-termfleet", paneId: "pane-termfleet", cols: 80, rows: 24, status: "running" }],
+        splitLayout: { id: "pane-termfleet", type: "terminal" },
+        activePaneId: "pane-termfleet",
+      }],
+      activeTabId: "tab-termfleet",
+      activeGroupFilter: "group-bina",
+      activeGroupId: "group-bina",
+      projectRoot: BINA,
+      liveCwds: {},
+      canvasState: {
+        selectedNodeId: "node-termfleet",
+        selectedNodeIds: ["node-termfleet"],
+        viewport: { x: -220, y: 140, zoom: 0.7 },
+        nodes: [{
+          id: "node-termfleet",
+          type: "terminal",
+          title: "Terminal",
+          terminalTabId: "tab-termfleet",
+          terminalCwd: BINA,
+          x: 0,
+          y: 0,
+          width: 620,
+          height: 420,
+        }],
+      },
+    });
+    store.getState().setLiveCwd("pty-termfleet", TERMFLEET);
+    store.getState().setWorkspaceMode("canvas");
+    store.getState().updateWorkspaceUiState({
+      primarySidebarPanel: "map",
+      primarySidebarCollapsed: false,
+      canvasSidebarCollapsed: false,
+    });
+  });
+
+  await expect.poll(async () => page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => {
+          activeGroupFilter: string | null;
+          projectRoot: string | null;
+          tabs: Array<{ id: string; groupId: string | null }>;
+          groups: Array<{ id: string; name: string; projectRoot?: string }>;
+          canvasState: { viewport: { x: number; y: number; zoom: number } };
+        };
+      };
+    }).__termfleetWorkspaceStore;
+    const state = store?.getState();
+    if (!state) return null;
+    const tab = state.tabs.find((candidate) => candidate.id === "tab-termfleet");
+    const group = state.groups.find((candidate) => candidate.id === tab?.groupId);
+    const activeGroup = state.groups.find((candidate) => candidate.id === state.activeGroupFilter);
+    return {
+      tabGroupName: group?.name,
+      tabGroupRoot: group?.projectRoot,
+      activeProjectName: activeGroup?.name,
+      projectRoot: state.projectRoot,
+      viewport: state.canvasState.viewport,
+    };
+  })).toEqual({
+    tabGroupName: "termfleet",
+    tabGroupRoot: "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
+    activeProjectName: "termfleet",
+    projectRoot: "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
+    viewport: { x: -220, y: 140, zoom: 0.7 },
+  });
+
+  const nodeList = page.getByTestId("map-node-list");
+  await expect(nodeList).toContainText("termfleet");
+  await expect(nodeList).not.toContainText("bina-ve-ze");
+  await expect(page.getByTestId("map-node-project-emoji")).toHaveAttribute("title", /termfleet/);
+});

@@ -508,11 +508,29 @@ function pathBelongsToProject(path: string, projectRoot?: string | null) {
   return normalizedPath === normalizedRoot || normalizedPath.startsWith(`${normalizedRoot}/`);
 }
 
-function terminalProjectPath(tab: Tab, nodesByTabId: Map<string, CanvasNode>) {
-  return normalizeProjectPath(tab.initialCwd ?? nodesByTabId.get(tab.id)?.terminalCwd);
+function terminalLiveCwd(tab: Tab, liveCwds?: Record<string, string>) {
+  if (!liveCwds) return undefined;
+  const activeTerminal = tab.terminals.find((terminal) => terminal.paneId === tab.activePaneId);
+  if (activeTerminal && liveCwds[activeTerminal.id]) return liveCwds[activeTerminal.id];
+  return tab.terminals.map((terminal) => liveCwds[terminal.id]).find(Boolean);
 }
 
-function reconcileProjectGroups(tabs: Tab[], groups: Group[], canvasState: CanvasState) {
+function terminalProjectPath(
+  tab: Tab,
+  nodesByTabId: Map<string, CanvasNode>,
+  liveCwds?: Record<string, string>
+) {
+  return normalizeProjectPath(
+    terminalLiveCwd(tab, liveCwds) ?? nodesByTabId.get(tab.id)?.terminalCwd ?? tab.initialCwd
+  );
+}
+
+function reconcileProjectGroups(
+  tabs: Tab[],
+  groups: Group[],
+  canvasState: CanvasState,
+  liveCwds?: Record<string, string>
+) {
   const nodesByTabId = new Map(
     canvasState.nodes
       .filter((node) => node.type === "terminal" && node.terminalTabId)
@@ -566,7 +584,7 @@ function reconcileProjectGroups(tabs: Tab[], groups: Group[], canvasState: Canva
     // the single canonical group for its path, so same-path terminals collapse into
     // one project. A tab whose group was collapsed as a duplicate follows the
     // canonical group. (TC-034 + project-emoji identity)
-    const path = terminalProjectPath(tab, nodesByTabId);
+    const path = terminalProjectPath(tab, nodesByTabId, liveCwds);
     const existingGroup = tab.groupId
       ? nextGroups.find((group) => group.id === tab.groupId)
       : undefined;
@@ -588,6 +606,31 @@ function reconcileProjectGroups(tabs: Tab[], groups: Group[], canvasState: Canva
     nextTabs.some((tab, index) => tab !== tabs[index]);
 
   return changed ? { tabs: nextTabs, groups: nextGroups } : { tabs, groups };
+}
+
+function activeProjectContextAfterReconcile(
+  state: Pick<WorkspaceState, "tabs" | "activeTabId" | "activeGroupFilter" | "activeGroupId" | "projectRoot">,
+  tabs: Tab[],
+  groups: Group[]
+) {
+  const previousActiveTab = state.tabs.find((tab) => tab.id === state.activeTabId);
+  const nextActiveTab = tabs.find((tab) => tab.id === state.activeTabId);
+  if (!previousActiveTab || !nextActiveTab || previousActiveTab.groupId === nextActiveTab.groupId) {
+    return {};
+  }
+  if (previousActiveTab.groupId === null) return {};
+  const wasFollowingPreviousProject =
+    state.activeGroupFilter === previousActiveTab.groupId ||
+    state.activeGroupId === previousActiveTab.groupId;
+  if (!wasFollowingPreviousProject) return {};
+  const nextProject = nextActiveTab.groupId
+    ? groups.find((group) => group.id === nextActiveTab.groupId)
+    : null;
+  return {
+    activeGroupFilter: nextActiveTab.groupId,
+    activeGroupId: nextActiveTab.groupId,
+    projectRoot: nextProject?.projectRoot ?? nextActiveTab.initialCwd ?? state.projectRoot,
+  };
 }
 
 function normalizeCanvasState(canvasState: CanvasState | undefined, tabs: Tab[]): CanvasState {
@@ -1285,7 +1328,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     set((state) => {
       if (tabs.length === 0) return { hydrating: false };
       const canvasState = normalizeCanvasState(state.canvasState, tabs);
-      const projects = reconcileProjectGroups(tabs, state.groups, canvasState);
+      const projects = reconcileProjectGroups(tabs, state.groups, canvasState, state.liveCwds);
       const nextActive =
         projects.tabs.find((tab) => tab.id === activeTabId)?.id ?? projects.tabs[0].id;
       return {
@@ -1314,8 +1357,15 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       // Reconcile so the new terminal joins the single project for its path
       // (and any same-path siblings collapse together) instead of forming a
       // separate row. (TC-034)
-      const projects = reconcileProjectGroups(tabs, state.groups, canvasState);
+      const projects = reconcileProjectGroups(tabs, state.groups, canvasState, state.liveCwds);
       const newTabGroupId = projects.tabs.find((tab) => tab.id === newTab.id)?.groupId ?? null;
+      const newTabProject = newTabGroupId
+        ? projects.groups.find((group) => group.id === newTabGroupId)
+        : null;
+      const shouldFollowNewTabProject =
+        newTab.groupId !== newTabGroupId &&
+        newTab.groupId !== null &&
+        (state.activeGroupFilter === newTab.groupId || state.activeGroupId === newTab.groupId);
       const bumpActive = (groupList: Group[]) =>
         newTabGroupId
           ? groupList.map((group) =>
@@ -1325,6 +1375,11 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       return {
         tabs: projects.tabs,
         activeTabId: newTab.id,
+        activeGroupFilter: shouldFollowNewTabProject ? newTabGroupId : state.activeGroupFilter,
+        activeGroupId: shouldFollowNewTabProject ? newTabGroupId : state.activeGroupId,
+        projectRoot: shouldFollowNewTabProject
+          ? newTabProject?.projectRoot ?? newTab.initialCwd ?? state.projectRoot
+          : state.projectRoot,
         groups: bumpActive(projects.groups),
         terminalGroups: bumpActive(projects.groups),
         canvasState,
@@ -1540,12 +1595,13 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       // project for that path (collapsing same-path terminals). Only on cwd
       // updates to avoid regrouping work on unrelated updates. (TC-034)
       if (updates.initialCwd !== undefined) {
-        const projects = reconcileProjectGroups(tabs, state.groups, canvasState);
+        const projects = reconcileProjectGroups(tabs, state.groups, canvasState, state.liveCwds);
         return {
           tabs: projects.tabs,
           groups: projects.groups,
           terminalGroups: projects.groups,
           canvasState,
+          ...activeProjectContextAfterReconcile(state, projects.tabs, projects.groups),
         };
       }
       return { tabs, canvasState };
@@ -2167,7 +2223,15 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   setLiveCwd: (id: string, cwd: string) => {
     set((state) => {
       if (!id || !cwd || state.liveCwds[id] === cwd) return {};
-      return { liveCwds: { ...state.liveCwds, [id]: cwd } };
+      const liveCwds = { ...state.liveCwds, [id]: cwd };
+      const projects = reconcileProjectGroups(state.tabs, state.groups, state.canvasState, liveCwds);
+      return {
+        liveCwds,
+        tabs: projects.tabs,
+        groups: projects.groups,
+        terminalGroups: projects.groups,
+        ...activeProjectContextAfterReconcile(state, projects.tabs, projects.groups),
+      };
     });
   },
 
@@ -2239,7 +2303,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   setWorkspaceMode: (mode: WorkspaceMode) => {
     set((state) => {
       const canvasState = normalizeCanvasState(state.canvasState, state.tabs);
-      const projects = reconcileProjectGroups(state.tabs, state.groups, canvasState);
+      const projects = reconcileProjectGroups(state.tabs, state.groups, canvasState, state.liveCwds);
       return {
         workspaceUiState: {
           ...state.workspaceUiState,
@@ -2256,7 +2320,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   reconcileCanvasState: () => {
     set((state) => {
       const canvasState = normalizeCanvasState(state.canvasState, state.tabs);
-      const projects = reconcileProjectGroups(state.tabs, state.groups, canvasState);
+      const projects = reconcileProjectGroups(state.tabs, state.groups, canvasState, state.liveCwds);
       return {
         tabs: projects.tabs,
         groups: projects.groups,
@@ -2268,7 +2332,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
 
   reconcileProjectGroups: () => {
     set((state) => {
-      const projects = reconcileProjectGroups(state.tabs, state.groups, state.canvasState);
+      const projects = reconcileProjectGroups(state.tabs, state.groups, state.canvasState, state.liveCwds);
       return {
         tabs: projects.tabs,
         groups: projects.groups,
