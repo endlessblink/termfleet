@@ -1,5 +1,21 @@
 # MASTER_PLAN.md - termfleet
 
+> **⏯️ AFTER RESTART — VERIFY THIS FIRST (TC-035, set 2026-06-21).** Before picking new
+> work, confirm per-terminal status now works. The PC reboot replaced the daemon, so new
+> PTYs get `TERMFLEET_PANE_ID` and the stale-JS cache is gone. Launch via `termfleet` /
+> `./run-native-vte-dev.sh`, then check, in order:
+> 1. In a pane: `env | grep TERMFLEET_PANE_ID` → should print `terminal-<tab>-<pane>`.
+> 2. The terminal header shows the agent's **real task title** + the TASKS panel lists it
+>    (no more "Working" / "No list").
+> 3. Open **two terminals in the same folder**, do different work in each → each shows its
+>    **own** title + task list (no shared/stomped status).
+> 4. `ls ~/.local/share/terminal-workspace/agent-status/pane-*.json` → one file per terminal.
+>
+> If a terminal still shows "No list" while `curl :37819/status` returns the task, it's a
+> real frontend bug to hunt (backend was proven correct pre-reboot). If all green, mark
+> TC-035 steps verified and move on to TC-035 #5 (restart-survival) / #6 (close-cleanup),
+> or another lane. Delete this banner once verified.
+
 termfleet is a terminal cockpit / multi-terminal operations workspace
 (Tauri 2 + React + Rust, native GTK/VTE panes with a daemon-backed PTY). It is
 the current line of the project formerly built as "Magic Canvas"; Linux is the
