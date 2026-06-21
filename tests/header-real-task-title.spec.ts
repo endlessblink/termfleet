@@ -1,5 +1,8 @@
 import { expect, test } from "@playwright/test";
-import { neutralHeaderTitle, preferRealTaskSummary } from "../src/lib/terminalHeaderDisplay";
+import {
+  neutralHeaderTitle,
+  preferRealTaskSummary,
+} from "../src/lib/terminalHeaderDisplay";
 import type { WorkstreamStatusSummary } from "../src/lib/types";
 
 // TC-033 regression: the header title/now (split pane AND map node) must show the
@@ -16,7 +19,9 @@ const heuristicBase = {
   confidence: "low" as const,
 };
 
-function statusSummary(over: Partial<WorkstreamStatusSummary>): WorkstreamStatusSummary {
+function statusSummary(
+  over: Partial<WorkstreamStatusSummary>,
+): WorkstreamStatusSummary {
   return {
     task: "Confirming the cockpit title works",
     path: "termfleet",
@@ -56,6 +61,38 @@ test("no real task + neutral title → clean status replaces the heuristic scrap
   expect(result.now).toBe(heuristicBase.now);
 });
 
+test("no task list but agent narrated → narration becomes the title, not 'Working'", () => {
+  // TC-033: when there's no task list, the agent's own last words (Stop-hook capture)
+  // are a reliable title — better than the bare "Working" neutral.
+  const result = preferRealTaskSummary(
+    heuristicBase,
+    statusSummary({
+      tasksFromTodoWrite: false,
+      narration: "Wiring the Stop hook so the title reads in my own words.",
+      now: "Reading terminalHeaderDisplay.ts",
+    }),
+    "Working",
+  );
+  expect(result.task).toBe(
+    "Wiring the Stop hook so the title reads in my own words.",
+  );
+  // The live activity detail stays on the now line.
+  expect(result.now).toBe("Reading terminalHeaderDisplay.ts");
+});
+
+test("narration title is preferred over the neutral but still yields to a real task list", () => {
+  const result = preferRealTaskSummary(
+    heuristicBase,
+    statusSummary({
+      tasksFromTodoWrite: true,
+      task: "Confirming the cockpit title works",
+      narration: "Some narration that must NOT win over the real task.",
+    }),
+    "Working",
+  );
+  expect(result.task).toBe("Confirming the cockpit title works");
+});
+
 test("neutralHeaderTitle maps run state to a clean word", () => {
   expect(neutralHeaderTitle("running")).toBe("Working");
   expect(neutralHeaderTitle("reconnected")).toBe("Working");
@@ -65,7 +102,9 @@ test("neutralHeaderTitle maps run state to a clean word", () => {
 });
 
 test("a missing/undefined status summary leaves the base untouched", () => {
-  expect(preferRealTaskSummary(heuristicBase, undefined)).toEqual(heuristicBase);
+  expect(preferRealTaskSummary(heuristicBase, undefined)).toEqual(
+    heuristicBase,
+  );
   expect(preferRealTaskSummary(heuristicBase, null)).toEqual(heuristicBase);
 });
 

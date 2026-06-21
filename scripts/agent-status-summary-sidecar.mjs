@@ -9,7 +9,12 @@ import { stdin, stdout } from "node:process";
 import { sidecarFresh, sidecarPath } from "./lib/agent-status-paths.mjs";
 
 function cleanText(value) {
-  return typeof value === "string" ? value.replace(/\s+/g, " ").replace(/^[•*-]\s+/, "").trim() : "";
+  return typeof value === "string"
+    ? value
+        .replace(/\s+/g, " ")
+        .replace(/^[•*-]\s+/, "")
+        .trim()
+    : "";
 }
 
 function hashText(value) {
@@ -29,21 +34,32 @@ function extractedItems(values) {
     .filter(Boolean)
     .map((text) => {
       const sourceHash = hashText(`summary:${text}`);
-      return { id: `summary:${sourceHash}`, text, provenance: "summary", at: 0, excerpt: text.slice(0, 240), sourceHash };
+      return {
+        id: `summary:${sourceHash}`,
+        text,
+        provenance: "summary",
+        at: 0,
+        excerpt: text.slice(0, 240),
+        sourceHash,
+      };
     })
-    .filter((item) => (seen.has(item.sourceHash) ? false : (seen.add(item.sourceHash), true)))
+    .filter((item) =>
+      seen.has(item.sourceHash) ? false : (seen.add(item.sourceHash), true),
+    )
     .slice(0, 8);
 }
 
 export function fallbackSummary(payload) {
-  return payload?.heuristicCandidate ?? {
-    task: "Shell ready",
-    path: payload?.projectId ?? "workspace",
-    now: "Awaiting command",
-    status: "idle",
-    provider: payload?.workstream?.provider ?? "shell",
-    confidence: "low",
-  };
+  return (
+    payload?.heuristicCandidate ?? {
+      task: "Shell ready",
+      path: payload?.projectId ?? "workspace",
+      now: "Awaiting command",
+      status: "idle",
+      provider: payload?.workstream?.provider ?? "shell",
+      confidence: "low",
+    }
+  );
 }
 
 // Encode a todo into task text whose prefix termfleet's inferStatus maps back to a
@@ -63,7 +79,9 @@ export function summaryFromSidecar(sidecar, payload) {
   const now = cleanText(sidecar?.now);
   const active = todos.find((todo) => todo.status === "in_progress");
   const firstOpen = todos.find((todo) => todo.status !== "completed");
-  const lastDone = [...todos].reverse().find((todo) => todo.status === "completed");
+  const lastDone = [...todos]
+    .reverse()
+    .find((todo) => todo.status === "completed");
   const working = Boolean(active);
   // Title = the agent's CURRENT task, preferring its human-readable `activeForm` over the
   // terse subject. When nothing is live (all complete), fall back to the LAST completed
@@ -71,7 +89,9 @@ export function summaryFromSidecar(sidecar, payload) {
   // raw tool activity, e.g. "Running: cd /long/path") as the title; that belongs only on
   // the activity line. (TC-033)
   const current = active ?? firstOpen;
-  const currentTask = cleanText(current?.activeForm || current?.content) || cleanText(lastDone?.content);
+  const currentTask =
+    cleanText(current?.activeForm || current?.content) ||
+    cleanText(lastDone?.content);
   return {
     ...fallback,
     task: currentTask || fallback.task,
@@ -86,11 +106,18 @@ export function summaryFromSidecar(sidecar, payload) {
     // from a TodoWrite call (the live-now path merely preserves them), so a
     // non-empty list is sufficient proof.
     tasksFromTodoWrite: todos.length > 0,
+    // The agent's own last words (from the Stop-hook transcript capture) — a reliable
+    // title source when there's no task list, since it's what the model SAID it's doing
+    // (not a heuristic scrape of terminal output). (TC-033)
+    narration: cleanText(sidecar?.narration).slice(0, 90) || undefined,
     // The agent's rolling recent-activity log (what it actually did) — a reliable feed
     // to show when there's no task list, instead of inferring a title. (TC-033)
     recent: (Array.isArray(sidecar?.recent) ? sidecar.recent : [])
       .filter((entry) => entry && cleanText(entry.text))
-      .map((entry) => ({ text: cleanText(entry.text).slice(0, 90), at: Number(entry.at) || 0 }))
+      .map((entry) => ({
+        text: cleanText(entry.text).slice(0, 90),
+        at: Number(entry.at) || 0,
+      }))
       .slice(-8),
     blockers: [],
     evidence: [],
@@ -98,8 +125,16 @@ export function summaryFromSidecar(sidecar, payload) {
   };
 }
 
-export function readSidecarForPayload(payload, read = (p) => readFileSync(p, "utf8")) {
-  const candidates = [payload?.workstream?.path, payload?.projectId, payload?.cwd, payload?.cwdLabel].filter(Boolean);
+export function readSidecarForPayload(
+  payload,
+  read = (p) => readFileSync(p, "utf8"),
+) {
+  const candidates = [
+    payload?.workstream?.path,
+    payload?.projectId,
+    payload?.cwd,
+    payload?.cwdLabel,
+  ].filter(Boolean);
   if (process.env.TERMFLEET_SIDECAR_DEBUG) {
     try {
       appendFileSync(
@@ -137,7 +172,9 @@ async function main() {
     const raw = await readStdin();
     payload = raw ? JSON.parse(raw) : {};
     const sidecar = readSidecarForPayload(payload);
-    const summary = sidecar ? summaryFromSidecar(sidecar, payload) : fallbackSummary(payload);
+    const summary = sidecar
+      ? summaryFromSidecar(sidecar, payload)
+      : fallbackSummary(payload);
     stdout.write(`${JSON.stringify(summary)}\n`);
   } catch {
     stdout.write(`${JSON.stringify(fallbackSummary(payload))}\n`);

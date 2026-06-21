@@ -231,6 +231,15 @@ export function narrationToNow(text) {
   // First sentence (up to . ! ? followed by space/end), else the whole thing.
   const match = clean.match(/^.*?[.!?](?=\s|$)/);
   if (match) clean = match[0];
+  // Drop conversational lead-ins ("Now let me…", "I'll…", "Let's…", "First, …") so the
+  // line reads as a plain activity phrase for the cockpit. Strip repeatedly to peel a
+  // chain ("Now let me …" → "let me …" → "…"), then re-capitalize.
+  const LEAD_IN =
+    /^(?:ok(?:ay)?|now|next|so|alright|first|then|finally|let me|let's|i'?ll|i am going to|i'?m going to|i'?m going|i will|i need to|i'?m|i have|i've)\b[\s,]*/i;
+  for (let i = 0; i < 4 && LEAD_IN.test(clean); i += 1) {
+    clean = clean.replace(LEAD_IN, "").trim();
+  }
+  if (clean) clean = clean.charAt(0).toUpperCase() + clean.slice(1);
   return cleanField(clean, 90);
 }
 
@@ -368,6 +377,12 @@ async function main() {
     sidecar.narration ?? sidecar.now,
     sidecar.updatedAt,
   );
+  // Carry the agent's last narration forward across tool-call rewrites: only the Stop
+  // branch refreshes it, but it must survive the live-now/task rewrites in between so the
+  // header title keeps reading the agent's own words instead of falling back to "Working".
+  if (sidecar.narration === undefined && prevForRecent?.narration) {
+    sidecar.narration = cleanField(prevForRecent.narration, 90);
+  }
   try {
     mkdirSync(statusDir(), { recursive: true });
     writeFileSync(sidecarPath(sidecar.cwd), JSON.stringify(sidecar));

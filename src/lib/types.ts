@@ -1,9 +1,33 @@
-export type TerminalRuntimeStatus = "starting" | "running" | "reconnected" | "stale" | "failed" | "exited";
-export type TerminalActivityStatus = "idle" | "running" | "success" | "error" | "cancelled";
-export type TerminalActivitySource = "shell-integration" | "command" | "output" | "system";
-export type TaskLineupStatus = "pending" | "in_progress" | "completed" | "cancelled";
+export type TerminalRuntimeStatus =
+  | "starting"
+  | "running"
+  | "reconnected"
+  | "stale"
+  | "failed"
+  | "exited";
+export type TerminalActivityStatus =
+  | "idle"
+  | "running"
+  | "success"
+  | "error"
+  | "cancelled";
+export type TerminalActivitySource =
+  | "shell-integration"
+  | "command"
+  | "output"
+  | "system";
+export type TaskLineupStatus =
+  | "pending"
+  | "in_progress"
+  | "completed"
+  | "cancelled";
 export type TaskLineupPriority = "high" | "medium" | "low";
-export type TaskLineupSource = "todo-write" | "structured-signal" | "summary" | "lane-checklist" | "operator";
+export type TaskLineupSource =
+  | "todo-write"
+  | "structured-signal"
+  | "summary"
+  | "lane-checklist"
+  | "operator";
 
 export interface TaskLineupItem {
   id: string;
@@ -29,7 +53,12 @@ export interface TerminalActivitySummary {
   updatedAt: number;
 }
 
-export type TerminalPurposeSource = "task-binding" | "workstream" | "manual" | "inferred" | "missing";
+export type TerminalPurposeSource =
+  | "task-binding"
+  | "workstream"
+  | "manual"
+  | "inferred"
+  | "missing";
 
 export interface TerminalPurpose {
   title: string;
@@ -38,8 +67,8 @@ export interface TerminalPurpose {
 }
 
 export interface TerminalState {
-  id: string;      // PTY ID
-  paneId: string;  // Which split pane this belongs to
+  id: string; // PTY ID
+  paneId: string; // Which split pane this belongs to
   cols: number;
   rows: number;
   status?: TerminalRuntimeStatus;
@@ -76,7 +105,7 @@ export interface SplitNode {
   direction?: "horizontal" | "vertical";
   children?: SplitNode[];
   sizes?: number[]; // percentage for each child (should sum to 100)
-  cwd?: string;     // initial CWD for terminal nodes
+  cwd?: string; // initial CWD for terminal nodes
   previewUrl?: string;
   linkedTerminalPaneId?: string;
 }
@@ -96,23 +125,95 @@ export interface Tab {
 
 export type WorkstreamKind = "terminal" | "agent";
 export type AgentProvider = "codex" | "claude" | "opencode" | "shell";
-export type WorkstreamStatus = "ready" | "running" | "waiting" | "failed" | "done" | "stopped";
-export type WorkstreamEventKind = "created" | "provider" | "prompt" | "sent" | "status" | "control" | "signal";
-export type WorkstreamPhase = "queued" | "launching" | "active" | "needs-input" | "complete" | "reviewed" | "cancelling" | "interrupted" | "blocked";
-export type WorkstreamReadiness = "path-checked" | "provider-ready" | "auth-required" | "unknown";
-export type WorkstreamActivityKind = "starting" | "running" | "thinking" | "testing" | "editing" | "waiting" | "blocked" | "complete" | "idle";
-export type WorkstreamActivitySource = "structured" | "terminal" | "operator" | "system";
-export type WorkstreamIsolationMode = "shared-worktree" | "dedicated-worktree" | "unknown";
-export type WorkstreamIsolationStatus = "shared" | "requested" | "ready" | "unavailable" | "unknown";
-export type WorktreeCleanupStatus = "not-needed" | "available" | "requested" | "manual" | "removed" | "blocked";
+export type WorkstreamStatus =
+  | "ready"
+  | "running"
+  | "waiting"
+  | "failed"
+  | "done"
+  | "stopped";
+export type WorkstreamEventKind =
+  | "created"
+  | "provider"
+  | "prompt"
+  | "sent"
+  | "status"
+  | "control"
+  | "signal";
+export type WorkstreamPhase =
+  | "queued"
+  | "launching"
+  | "active"
+  | "needs-input"
+  | "complete"
+  | "reviewed"
+  | "cancelling"
+  | "interrupted"
+  | "blocked";
+export type WorkstreamReadiness =
+  | "path-checked"
+  | "provider-ready"
+  | "auth-required"
+  | "unknown";
+export type WorkstreamActivityKind =
+  | "starting"
+  | "running"
+  | "thinking"
+  | "testing"
+  | "editing"
+  | "waiting"
+  | "blocked"
+  | "complete"
+  | "idle";
+export type WorkstreamActivitySource =
+  | "structured"
+  | "terminal"
+  | "operator"
+  | "system";
+export type WorkstreamIsolationMode =
+  | "shared-worktree"
+  | "dedicated-worktree"
+  | "unknown";
+export type WorkstreamIsolationStatus =
+  | "shared"
+  | "requested"
+  | "ready"
+  | "unavailable"
+  | "unknown";
+export type WorktreeCleanupStatus =
+  | "not-needed"
+  | "available"
+  | "requested"
+  | "manual"
+  | "removed"
+  | "blocked";
 export type WorkstreamLaunchProfile = "terminal" | "headless";
-export type WorkstreamStatusSummaryLifecycle = "working" | "idle" | "waiting" | "blocked" | "stopped" | "done";
+export type WorkstreamStatusSummaryLifecycle =
+  | "working"
+  | "idle"
+  | "waiting"
+  | "blocked"
+  | "stopped"
+  | "done";
 export type WorkstreamStatusSummaryConfidence = "low" | "medium" | "high";
 export type WorkstreamStatusSummarySource = "fallback" | "process";
-export type WorkstreamExtractionProvenance = "terminal-output" | "structured-signal" | "operator-prompt" | "summary";
-export type WorkstreamCockpitObjectKind = "task" | "blocker" | "evidence" | "next-action";
+export type WorkstreamExtractionProvenance =
+  | "terminal-output"
+  | "structured-signal"
+  | "operator-prompt"
+  | "summary";
+export type WorkstreamCockpitObjectKind =
+  | "task"
+  | "blocker"
+  | "evidence"
+  | "next-action";
 export type WorkstreamCockpitObjectStatus = "open" | "accepted" | "dismissed";
-export type WorkstreamCockpitObjectReviewState = "new" | "accepted" | "dismissed" | "prompted" | "proof-requested";
+export type WorkstreamCockpitObjectReviewState =
+  | "new"
+  | "accepted"
+  | "dismissed"
+  | "prompted"
+  | "proof-requested";
 
 export interface WorkstreamExtractedItem {
   id: string;
@@ -157,6 +258,10 @@ export interface WorkstreamStatusSummary {
   // Rolling log of the agent's recent actions (what it actually did), newest last.
   // Shown when there's no task list — reliable, not inferred.
   recent?: Array<{ text: string; at: number }>;
+  // The agent's own last words (captured by the Stop hook from the turn transcript).
+  // Used as the header title when there's no task list — what the model SAID it's doing,
+  // not a heuristic scrape of terminal output.
+  narration?: string;
 }
 
 export interface WorkstreamMetadata {
@@ -291,7 +396,12 @@ export interface WorkspaceUiState {
 
 export type CanvasNodeType = "terminal" | "file" | "note" | "preview";
 
-export type MasterPlanTaskStatus = "todo" | "in-progress" | "blocked" | "done" | "unknown";
+export type MasterPlanTaskStatus =
+  | "todo"
+  | "in-progress"
+  | "blocked"
+  | "done"
+  | "unknown";
 
 export interface CanvasTaskBinding {
   taskId: string;
