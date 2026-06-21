@@ -11,12 +11,20 @@
 // status worker/UI need no changes.
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { stdin } from "node:process";
-import { fnv, normalizeCwd, sidecarPath, statusDir } from "./lib/agent-status-paths.mjs";
+import {
+  fnv,
+  normalizeCwd,
+  sidecarPath,
+  statusDir,
+} from "./lib/agent-status-paths.mjs";
 
 const TASK_EVENT_TOOLS = new Set(["TaskCreate", "TaskUpdate"]);
 
 function cleanField(value, max = 200) {
-  return String(value ?? "").replace(/\s+/g, " ").trim().slice(0, max);
+  return String(value ?? "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, max);
 }
 
 // In a git worktree, Claude's hook payload reports the MAIN checkout path in `cwd`
@@ -28,14 +36,18 @@ function sidecarKeyCwd(payload) {
 }
 
 function normTaskStatus(status) {
-  return ["pending", "in_progress", "completed"].includes(status) ? status : "pending";
+  return ["pending", "in_progress", "completed"].includes(status)
+    ? status
+    : "pending";
 }
 
 // Apply one TaskCreate/TaskUpdate event to the prior stateful todo list, returning the
 // new list. TaskCreate's generated id is in tool_response.task.id (input lacks it);
 // TaskUpdate carries taskId + status in tool_input. Defensive key reading throughout.
 export function applyTaskEvent(prevTodos, payload) {
-  const todos = (Array.isArray(prevTodos) ? prevTodos : []).map((todo) => ({ ...todo }));
+  const todos = (Array.isArray(prevTodos) ? prevTodos : []).map((todo) => ({
+    ...todo,
+  }));
   const tool = payload?.tool_name;
   const input = payload?.tool_input ?? {};
   const response = payload?.tool_response ?? {};
@@ -47,15 +59,28 @@ export function applyTaskEvent(prevTodos, payload) {
   if (tool === "TaskCreate") {
     const content = cleanField(input?.subject ?? input?.content);
     if (!content) return todos;
-    const id = keyFor(content, response?.task?.id ?? response?.taskId ?? response?.id ?? input?.taskId ?? input?.id);
+    const id = keyFor(
+      content,
+      response?.task?.id ??
+        response?.taskId ??
+        response?.id ??
+        input?.taskId ??
+        input?.id,
+    );
     if (todos.some((todo) => todo.id === id)) return todos;
-    todos.push({ id, content, status: "pending", activeForm: cleanField(input?.activeForm) });
+    todos.push({
+      id,
+      content,
+      status: "pending",
+      activeForm: cleanField(input?.activeForm),
+    });
     return todos;
   }
 
   // TaskUpdate
   const status = input?.status;
-  const rawId = input?.taskId ?? input?.task_id ?? input?.id ?? response?.taskId;
+  const rawId =
+    input?.taskId ?? input?.task_id ?? input?.id ?? response?.taskId;
   const subject = cleanField(input?.subject);
   const id = cleanField(rawId, 64) || (subject ? `h:${fnv(subject)}` : "");
   const index = todos.findIndex((todo) => todo.id === id);
@@ -63,7 +88,12 @@ export function applyTaskEvent(prevTodos, payload) {
     // Update for a task created before the hook saw it: synthesize from the subject if
     // we have one (and it isn't a deletion).
     if (subject && status !== "deleted") {
-      todos.push({ id: id || `h:${fnv(subject)}`, content: subject, status: normTaskStatus(status), activeForm: cleanField(input?.activeForm) });
+      todos.push({
+        id: id || `h:${fnv(subject)}`,
+        content: subject,
+        status: normTaskStatus(status),
+        activeForm: cleanField(input?.activeForm),
+      });
     }
     return todos;
   }
@@ -83,14 +113,24 @@ export function applyTaskEvent(prevTodos, payload) {
 function nowFromTodos(todos) {
   const active = todos.find((todo) => todo.status === "in_progress");
   const firstOpen = todos.find((todo) => todo.status !== "completed");
-  return active ? active.activeForm || active.content : firstOpen?.content || "";
+  return active
+    ? active.activeForm || active.content
+    : firstOpen?.content || "";
 }
 
 // Map a non-TodoWrite tool call to a short "what's happening now" line, so the
 // description tracks every step (live-now), not just todo changes.
 export function activityFromTool(toolName, toolInput) {
-  const base = (p) => String(p ?? "").split("/").filter(Boolean).pop() || String(p ?? "");
-  const trim = (s, n) => String(s ?? "").replace(/\s+/g, " ").trim().slice(0, n);
+  const base = (p) =>
+    String(p ?? "")
+      .split("/")
+      .filter(Boolean)
+      .pop() || String(p ?? "");
+  const trim = (s, n) =>
+    String(s ?? "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, n);
   switch (toolName) {
     case "Edit":
     case "Write":
@@ -100,13 +140,20 @@ export function activityFromTool(toolName, toolInput) {
     case "Read":
       return `Reading ${base(toolInput?.file_path)}`;
     case "Bash": {
-      let command = String(toolInput?.command ?? "").replace(/\s+/g, " ").trim();
+      let command = String(toolInput?.command ?? "")
+        .replace(/\s+/g, " ")
+        .trim();
       // Strip a leading navigation prefix so "cd x && npm test" → "npm test".
-      command = command.replace(/^(?:cd|z|pushd)\s+[^&;|]+(?:&&|;|\|\|)\s*/i, "").trim();
+      command = command
+        .replace(/^(?:cd|z|pushd)\s+[^&;|]+(?:&&|;|\|\|)\s*/i, "")
+        .trim();
       // Pure navigation / screen / inspection commands aren't meaningful "activity" —
       // returning "" keeps the previous (more useful) now line instead of showing
       // "Running: cd /long/path". (TC-033)
-      if (!command || /^(?:cd|z|pushd|popd|ls|ll|la|pwd|clear|cls|exit|echo)\b/i.test(command)) {
+      if (
+        !command ||
+        /^(?:cd|z|pushd|popd|ls|ll|la|pwd|clear|cls|exit|echo)\b/i.test(command)
+      ) {
         return "";
       }
       return `Running: ${command.slice(0, 60)}`;
@@ -132,6 +179,61 @@ export function activityFromTool(toolName, toolInput) {
   }
 }
 
+// Stop event: read the agent's OWN last words (the final assistant text block) from the
+// turn transcript, so the status line is what the model literally said it's doing — not an
+// inference from tool calls. The model writes the log; the summary picks it up. (TC-033)
+export function lastAssistantText(transcriptPath) {
+  if (!transcriptPath) return "";
+  let raw;
+  try {
+    raw = readFileSync(transcriptPath, "utf8");
+  } catch {
+    return "";
+  }
+  let text = "";
+  // Scan forward, keep the last assistant entry that carries a real text block. (Tool-only
+  // assistant turns have no text — those are skipped so we land on actual narration.)
+  for (const line of raw.split("\n")) {
+    if (!line.trim()) continue;
+    let entry;
+    try {
+      entry = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (entry?.type !== "assistant") continue;
+    const content = entry?.message?.content;
+    if (!Array.isArray(content)) continue;
+    const blockText = content
+      .filter(
+        (block) =>
+          block && block.type === "text" && typeof block.text === "string",
+      )
+      .map((block) => block.text)
+      .join(" ")
+      .trim();
+    if (blockText) text = blockText;
+  }
+  return text;
+}
+
+// Condense the agent's narration into one short plain-language "now" line: drop markdown
+// noise, take the first sentence, cap the length. Keeps the cockpit readable for
+// non-developers without a model call.
+export function narrationToNow(text) {
+  let clean = String(text ?? "")
+    .replace(/```[\s\S]*?```/g, " ") // strip fenced code blocks
+    .replace(/`[^`]*`/g, " ") // strip inline code
+    .replace(/[*_#>]+/g, " ") // strip markdown emphasis/headers
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!clean) return "";
+  // First sentence (up to . ! ? followed by space/end), else the whole thing.
+  const match = clean.match(/^.*?[.!?](?=\s|$)/);
+  if (match) clean = match[0];
+  return cleanField(clean, 90);
+}
+
 function readExistingSidecar(cwd) {
   try {
     return JSON.parse(readFileSync(sidecarPath(cwd), "utf8"));
@@ -152,7 +254,9 @@ function readStdin() {
 
 export function buildSidecar(payload) {
   const cwd = sidecarKeyCwd(payload);
-  const rawTodos = Array.isArray(payload?.tool_input?.todos) ? payload.tool_input.todos : [];
+  const rawTodos = Array.isArray(payload?.tool_input?.todos)
+    ? payload.tool_input.todos
+    : [];
   const todos = rawTodos
     .map((todo) => ({
       content: cleanField(todo?.content ?? todo?.activeForm),
@@ -197,7 +301,27 @@ async function main() {
   }
   const cwd = sidecarKeyCwd(payload);
   let sidecar;
-  if (payload.tool_name === "TodoWrite") {
+  if (
+    payload.hook_event_name === "Stop" ||
+    (!payload.tool_name && payload.transcript_path)
+  ) {
+    // End-of-turn: capture the agent's own last words as the live "now" line. Only the
+    // task list (a real plan) outranks it, so don't clobber an in-progress task summary.
+    const now = narrationToNow(lastAssistantText(payload.transcript_path));
+    if (!now) process.exit(0);
+    const prev = readExistingSidecar(cwd);
+    const todos = Array.isArray(prev?.todos) ? prev.todos : [];
+    const taskNow = nowFromTodos(todos);
+    sidecar = {
+      cwd,
+      sessionId: String(payload?.session_id ?? prev?.sessionId ?? ""),
+      updatedAt: Date.now(),
+      source: "claude-narration",
+      todos,
+      now: taskNow || now,
+      narration: now,
+    };
+  } else if (payload.tool_name === "TodoWrite") {
     // Legacy authoritative path (CLAUDE_CODE_ENABLE_TASKS=0): rewrite from the array.
     sidecar = buildSidecar(payload);
     if (sidecar.todos.length === 0) process.exit(0);
@@ -213,7 +337,12 @@ async function main() {
       source: "claude-task",
       todos,
       now: nowFromTodos(todos),
-      ...(payload?.agent_id ? { agentId: String(payload.agent_id), agentType: String(payload.agent_type ?? "") } : {}),
+      ...(payload?.agent_id
+        ? {
+            agentId: String(payload.agent_id),
+            agentType: String(payload.agent_type ?? ""),
+          }
+        : {}),
     };
   } else {
     // Live-now: update the activity line on every other tool call, preserving the last
@@ -230,9 +359,15 @@ async function main() {
       now,
     };
   }
-  // Roll the agent's actual action into the recent-activity log (what it DID).
+  // Roll the agent's actual action into the recent-activity log (what it DID). On a Stop
+  // event prefer the agent's own narration over a task summary, so the feed reads in the
+  // model's voice.
   const prevForRecent = readExistingSidecar(cwd);
-  sidecar.recent = appendRecent(prevForRecent?.recent, sidecar.now, sidecar.updatedAt);
+  sidecar.recent = appendRecent(
+    prevForRecent?.recent,
+    sidecar.narration ?? sidecar.now,
+    sidecar.updatedAt,
+  );
   try {
     mkdirSync(statusDir(), { recursive: true });
     writeFileSync(sidecarPath(sidecar.cwd), JSON.stringify(sidecar));

@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { activityFromTool } from "../scripts/termfleet-claude-status-hook.mjs";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
@@ -12,7 +12,11 @@ import path from "node:path";
 const ROOT = process.cwd();
 const HOOK = path.join(ROOT, "scripts", "termfleet-claude-status-hook.mjs");
 const WORKER = path.join(ROOT, "scripts", "agent-status-summary-sidecar.mjs");
-const OLLAMA_WORKER = path.join(ROOT, "scripts", "agent-status-summary-ollama.mjs");
+const OLLAMA_WORKER = path.join(
+  ROOT,
+  "scripts",
+  "agent-status-summary-ollama.mjs",
+);
 
 function runNode(script: string, input: unknown, env: Record<string, string>) {
   return spawnSync("node", [script], {
@@ -28,27 +32,54 @@ test("hook writes a sidecar and the worker turns it into a live summary", async 
   const env = { XDG_DATA_HOME: dataHome };
 
   // 1. Hook receives a Claude PostToolUse(TodoWrite) payload.
-  const hookResult = runNode(HOOK, {
-    hook_event_name: "PostToolUse",
-    tool_name: "TodoWrite",
-    session_id: "sess-1",
-    cwd,
-    tool_input: {
-      todos: [
-        { content: "Build the sidecar parser", status: "in_progress", activeForm: "Building the sidecar parser" },
-        { content: "Write the regression test", status: "pending", activeForm: "Writing the regression test" },
-        { content: "Read the worker contract", status: "completed", activeForm: "Reading the worker contract" },
-      ],
+  const hookResult = runNode(
+    HOOK,
+    {
+      hook_event_name: "PostToolUse",
+      tool_name: "TodoWrite",
+      session_id: "sess-1",
+      cwd,
+      tool_input: {
+        todos: [
+          {
+            content: "Build the sidecar parser",
+            status: "in_progress",
+            activeForm: "Building the sidecar parser",
+          },
+          {
+            content: "Write the regression test",
+            status: "pending",
+            activeForm: "Writing the regression test",
+          },
+          {
+            content: "Read the worker contract",
+            status: "completed",
+            activeForm: "Reading the worker contract",
+          },
+        ],
+      },
     },
-  }, env);
+    env,
+  );
   expect(hookResult.status).toBe(0);
 
   // 2. The sidecar worker reads it back for a request carrying the same cwd.
-  const workerResult = runNode(WORKER, {
-    projectId: cwd,
-    workstream: { path: cwd, provider: "shell" },
-    heuristicCandidate: { task: "Shell ready", path: cwd, now: "Awaiting command", status: "idle", provider: "shell", confidence: "low" },
-  }, env);
+  const workerResult = runNode(
+    WORKER,
+    {
+      projectId: cwd,
+      workstream: { path: cwd, provider: "shell" },
+      heuristicCandidate: {
+        task: "Shell ready",
+        path: cwd,
+        now: "Awaiting command",
+        status: "idle",
+        provider: "shell",
+        confidence: "low",
+      },
+    },
+    env,
+  );
   expect(workerResult.status).toBe(0);
   const summary = JSON.parse(workerResult.stdout.trim());
 
@@ -74,32 +105,76 @@ test("modern Task tools (TaskCreate/TaskUpdate) build a stateful task list", asy
   const env = { XDG_DATA_HOME: dataHome };
 
   // TaskCreate: id is in tool_response.task.id; input has subject/activeForm (no id).
-  runNode(HOOK, {
-    tool_name: "TaskCreate", cwd, session_id: "s",
-    tool_input: { subject: "Wire the hook", description: "d", activeForm: "Wiring the hook" },
-    tool_response: { task: { id: "1", subject: "Wire the hook" } },
-  }, env);
-  runNode(HOOK, {
-    tool_name: "TaskCreate", cwd, session_id: "s",
-    tool_input: { subject: "Read the worker contract", description: "d", activeForm: "Reading the contract" },
-    tool_response: { task: { id: "2", subject: "Read the worker contract" } },
-  }, env);
+  runNode(
+    HOOK,
+    {
+      tool_name: "TaskCreate",
+      cwd,
+      session_id: "s",
+      tool_input: {
+        subject: "Wire the hook",
+        description: "d",
+        activeForm: "Wiring the hook",
+      },
+      tool_response: { task: { id: "1", subject: "Wire the hook" } },
+    },
+    env,
+  );
+  runNode(
+    HOOK,
+    {
+      tool_name: "TaskCreate",
+      cwd,
+      session_id: "s",
+      tool_input: {
+        subject: "Read the worker contract",
+        description: "d",
+        activeForm: "Reading the contract",
+      },
+      tool_response: { task: { id: "2", subject: "Read the worker contract" } },
+    },
+    env,
+  );
   // TaskUpdate: taskId + status in tool_input.
-  runNode(HOOK, {
-    tool_name: "TaskUpdate", cwd, session_id: "s",
-    tool_input: { taskId: "1", status: "in_progress" },
-    tool_response: { success: true, taskId: "1" },
-  }, env);
-  runNode(HOOK, {
-    tool_name: "TaskUpdate", cwd, session_id: "s",
-    tool_input: { taskId: "2", status: "completed" },
-    tool_response: { success: true, taskId: "2" },
-  }, env);
+  runNode(
+    HOOK,
+    {
+      tool_name: "TaskUpdate",
+      cwd,
+      session_id: "s",
+      tool_input: { taskId: "1", status: "in_progress" },
+      tool_response: { success: true, taskId: "1" },
+    },
+    env,
+  );
+  runNode(
+    HOOK,
+    {
+      tool_name: "TaskUpdate",
+      cwd,
+      session_id: "s",
+      tool_input: { taskId: "2", status: "completed" },
+      tool_response: { success: true, taskId: "2" },
+    },
+    env,
+  );
 
-  const workerResult = runNode(WORKER, {
-    projectId: cwd, workstream: { path: cwd, provider: "shell" },
-    heuristicCandidate: { task: "Shell ready", path: cwd, now: "Awaiting command", status: "idle", provider: "shell", confidence: "low" },
-  }, env);
+  const workerResult = runNode(
+    WORKER,
+    {
+      projectId: cwd,
+      workstream: { path: cwd, provider: "shell" },
+      heuristicCandidate: {
+        task: "Shell ready",
+        path: cwd,
+        now: "Awaiting command",
+        status: "idle",
+        provider: "shell",
+        confidence: "low",
+      },
+    },
+    env,
+  );
   const summary = JSON.parse(workerResult.stdout.trim());
 
   expect(summary.tasksFromTodoWrite).toBe(true);
@@ -119,27 +194,59 @@ test("the ollama worker is sidecar-first: returns the real task list without a m
   // short-circuits before any Ollama HTTP call, so this passes with Ollama offline.
   const dataHome = mkdtempSync(path.join(os.tmpdir(), "tf-status-"));
   const cwd = "/tmp/tf-ollama-sidecar";
-  const env = { XDG_DATA_HOME: dataHome, TERMFLEET_OLLAMA_URL: "http://127.0.0.1:1" };
-  runNode(HOOK, {
-    tool_name: "TaskCreate", cwd, session_id: "s",
-    tool_input: { subject: "Real captured task", activeForm: "Doing the real task" },
-    tool_response: { task: { id: "1", subject: "Real captured task" } },
-  }, env);
-  runNode(HOOK, {
-    tool_name: "TaskUpdate", cwd, session_id: "s",
-    tool_input: { taskId: "1", status: "in_progress" },
-    tool_response: { success: true, taskId: "1" },
-  }, env);
+  const env = {
+    XDG_DATA_HOME: dataHome,
+    TERMFLEET_OLLAMA_URL: "http://127.0.0.1:1",
+  };
+  runNode(
+    HOOK,
+    {
+      tool_name: "TaskCreate",
+      cwd,
+      session_id: "s",
+      tool_input: {
+        subject: "Real captured task",
+        activeForm: "Doing the real task",
+      },
+      tool_response: { task: { id: "1", subject: "Real captured task" } },
+    },
+    env,
+  );
+  runNode(
+    HOOK,
+    {
+      tool_name: "TaskUpdate",
+      cwd,
+      session_id: "s",
+      tool_input: { taskId: "1", status: "in_progress" },
+      tool_response: { success: true, taskId: "1" },
+    },
+    env,
+  );
 
-  const result = runNode(OLLAMA_WORKER, {
-    projectId: cwd, workstream: { path: cwd, provider: "shell" },
-    heuristicCandidate: { task: "Shell ready", path: cwd, now: "Awaiting command", status: "idle", provider: "shell", confidence: "low" },
-  }, env);
+  const result = runNode(
+    OLLAMA_WORKER,
+    {
+      projectId: cwd,
+      workstream: { path: cwd, provider: "shell" },
+      heuristicCandidate: {
+        task: "Shell ready",
+        path: cwd,
+        now: "Awaiting command",
+        status: "idle",
+        provider: "shell",
+        confidence: "low",
+      },
+    },
+    env,
+  );
   expect(result.status).toBe(0);
   const summary = JSON.parse(result.stdout.trim());
   expect(summary.tasksFromTodoWrite).toBe(true);
   expect(summary.now).toBe("Doing the real task");
-  expect(summary.tasks.map((t: { text: string }) => t.text)).toContain("in-progress: Real captured task");
+  expect(summary.tasks.map((t: { text: string }) => t.text)).toContain(
+    "in-progress: Real captured task",
+  );
 });
 
 test("recent-activity log: the worker returns the agent's actual recent actions", async () => {
@@ -148,21 +255,210 @@ test("recent-activity log: the worker returns the agent's actual recent actions"
   const dataHome = mkdtempSync(path.join(os.tmpdir(), "tf-status-"));
   const cwd = "/tmp/tf-recent";
   const env = { XDG_DATA_HOME: dataHome };
-  runNode(HOOK, { tool_name: "Read", cwd, tool_input: { file_path: "/x/types.ts" } }, env);
-  runNode(HOOK, { tool_name: "Edit", cwd, tool_input: { file_path: "/x/worker.mjs" } }, env);
-  runNode(HOOK, { tool_name: "Bash", cwd, tool_input: { command: "npm test" } }, env);
+  runNode(
+    HOOK,
+    { tool_name: "Read", cwd, tool_input: { file_path: "/x/types.ts" } },
+    env,
+  );
+  runNode(
+    HOOK,
+    { tool_name: "Edit", cwd, tool_input: { file_path: "/x/worker.mjs" } },
+    env,
+  );
+  runNode(
+    HOOK,
+    { tool_name: "Bash", cwd, tool_input: { command: "npm test" } },
+    env,
+  );
 
-  const result = runNode(WORKER, {
-    projectId: cwd, workstream: { path: cwd, provider: "shell" },
-    heuristicCandidate: { task: "Shell ready", path: cwd, now: "x", status: "idle", provider: "shell", confidence: "low" },
-  }, env);
+  const result = runNode(
+    WORKER,
+    {
+      projectId: cwd,
+      workstream: { path: cwd, provider: "shell" },
+      heuristicCandidate: {
+        task: "Shell ready",
+        path: cwd,
+        now: "x",
+        status: "idle",
+        provider: "shell",
+        confidence: "low",
+      },
+    },
+    env,
+  );
   const summary = JSON.parse(result.stdout.trim());
-  const texts = (summary.recent ?? []).map((entry: { text: string }) => entry.text);
+  const texts = (summary.recent ?? []).map(
+    (entry: { text: string }) => entry.text,
+  );
   expect(texts).toContain("Reading types.ts");
   expect(texts).toContain("Editing worker.mjs");
   expect(texts).toContain("Running: npm test");
   // Newest last, each with a timestamp.
-  expect(summary.recent.every((entry: { at: number }) => entry.at > 0)).toBe(true);
+  expect(summary.recent.every((entry: { at: number }) => entry.at > 0)).toBe(
+    true,
+  );
+});
+
+test("Stop event: the agent's own last words become the live now line + recent feed", async () => {
+  // TC-033 'model writes the log → summary picks it up': at end of turn the hook reads the
+  // final assistant text block from transcript_path and records it as the now/narration —
+  // the agent's declared words, not an inference from tool calls.
+  const dataHome = mkdtempSync(path.join(os.tmpdir(), "tf-status-"));
+  const cwd = "/tmp/tf-narration";
+  const env = { XDG_DATA_HOME: dataHome };
+  // A minimal turn transcript: a tool-only assistant turn (no text), then the real
+  // narration. The hook must skip the tool-only entry and land on the narration.
+  const transcript = path.join(dataHome, "transcript.jsonl");
+  writeFileSync(
+    transcript,
+    [
+      JSON.stringify({
+        type: "assistant",
+        message: {
+          role: "assistant",
+          content: [{ type: "tool_use", id: "t1", name: "Read", input: {} }],
+        },
+      }),
+      JSON.stringify({
+        type: "user",
+        message: {
+          role: "user",
+          content: [{ type: "tool_result", tool_use_id: "t1", content: "ok" }],
+        },
+      }),
+      JSON.stringify({
+        type: "assistant",
+        message: {
+          role: "assistant",
+          content: [
+            {
+              type: "text",
+              text: "**Wiring** the Stop hook so the title reads in my own words. Next I will verify.",
+            },
+          ],
+        },
+      }),
+    ].join("\n"),
+  );
+
+  const hookResult = runNode(
+    HOOK,
+    {
+      hook_event_name: "Stop",
+      session_id: "s",
+      cwd,
+      transcript_path: transcript,
+    },
+    env,
+  );
+  expect(hookResult.status).toBe(0);
+
+  const workerResult = runNode(
+    WORKER,
+    {
+      projectId: cwd,
+      workstream: { path: cwd, provider: "shell" },
+      heuristicCandidate: {
+        task: "Shell ready",
+        path: cwd,
+        now: "Awaiting command",
+        status: "idle",
+        provider: "shell",
+        confidence: "low",
+      },
+    },
+    env,
+  );
+  const summary = JSON.parse(workerResult.stdout.trim());
+  // First sentence only, markdown stripped — plain language for the cockpit.
+  expect(summary.now).toBe(
+    "Wiring the Stop hook so the title reads in my own words.",
+  );
+  const recent = (summary.recent ?? []).map(
+    (entry: { text: string }) => entry.text,
+  );
+  expect(recent).toContain(
+    "Wiring the Stop hook so the title reads in my own words.",
+  );
+});
+
+test("Stop event: a live task summary outranks narration for the title, narration still feeds recent", async () => {
+  // A real plan (in-progress task) is a better title than end-of-turn narration, so the
+  // task summary wins `now`; the narration still lands in the recent-activity feed.
+  const dataHome = mkdtempSync(path.join(os.tmpdir(), "tf-status-"));
+  const cwd = "/tmp/tf-narration-task";
+  const env = { XDG_DATA_HOME: dataHome };
+  runNode(
+    HOOK,
+    {
+      tool_name: "TaskCreate",
+      cwd,
+      session_id: "s",
+      tool_input: { subject: "Wire the hook", activeForm: "Wiring the hook" },
+      tool_response: { task: { id: "1", subject: "Wire the hook" } },
+    },
+    env,
+  );
+  runNode(
+    HOOK,
+    {
+      tool_name: "TaskUpdate",
+      cwd,
+      session_id: "s",
+      tool_input: { taskId: "1", status: "in_progress" },
+      tool_response: { taskId: "1" },
+    },
+    env,
+  );
+
+  const transcript = path.join(dataHome, "transcript.jsonl");
+  writeFileSync(
+    transcript,
+    JSON.stringify({
+      type: "assistant",
+      message: {
+        role: "assistant",
+        content: [
+          { type: "text", text: "Just finished the edit and ran the tests." },
+        ],
+      },
+    }),
+  );
+  runNode(
+    HOOK,
+    {
+      hook_event_name: "Stop",
+      session_id: "s",
+      cwd,
+      transcript_path: transcript,
+    },
+    env,
+  );
+
+  const workerResult = runNode(
+    WORKER,
+    {
+      projectId: cwd,
+      workstream: { path: cwd, provider: "shell" },
+      heuristicCandidate: {
+        task: "Shell ready",
+        path: cwd,
+        now: "Awaiting command",
+        status: "idle",
+        provider: "shell",
+        confidence: "low",
+      },
+    },
+    env,
+  );
+  const summary = JSON.parse(workerResult.stdout.trim());
+  expect(summary.now).toBe("Wiring the hook"); // in-progress task wins the now line
+  expect(summary.tasksFromTodoWrite).toBe(true);
+  const recent = (summary.recent ?? []).map(
+    (entry: { text: string }) => entry.text,
+  );
+  expect(recent).toContain("Just finished the edit and ran the tests."); // narration still logged
 });
 
 test("activity line: trivial nav/inspection commands are filtered out", () => {
@@ -172,9 +468,13 @@ test("activity line: trivial nav/inspection commands are filtered out", () => {
   expect(activityFromTool("Bash", { command: "pwd" })).toBe("");
   expect(activityFromTool("Bash", { command: "clear" })).toBe("");
   // Leading nav is stripped; the meaningful command remains.
-  expect(activityFromTool("Bash", { command: "cd /x/y && npm test" })).toBe("Running: npm test");
+  expect(activityFromTool("Bash", { command: "cd /x/y && npm test" })).toBe(
+    "Running: npm test",
+  );
   // Real commands still show.
-  expect(activityFromTool("Bash", { command: "npm run build" })).toBe("Running: npm run build");
+  expect(activityFromTool("Bash", { command: "npm run build" })).toBe(
+    "Running: npm run build",
+  );
 });
 
 test("all tasks complete: title is the last task, never the raw shell command", async () => {
@@ -184,25 +484,86 @@ test("all tasks complete: title is the last task, never the raw shell command", 
   const dataHome = mkdtempSync(path.join(os.tmpdir(), "tf-status-"));
   const cwd = "/tmp/tf-all-done";
   const env = { XDG_DATA_HOME: dataHome };
-  runNode(HOOK, {
-    tool_name: "TaskCreate", cwd, session_id: "s",
-    tool_input: { subject: "Build the parser", activeForm: "Building the parser" },
-    tool_response: { task: { id: "1", subject: "Build the parser" } },
-  }, env);
-  runNode(HOOK, {
-    tool_name: "TaskCreate", cwd, session_id: "s",
-    tool_input: { subject: "Ship the feature", activeForm: "Shipping the feature" },
-    tool_response: { task: { id: "2", subject: "Ship the feature" } },
-  }, env);
-  runNode(HOOK, { tool_name: "TaskUpdate", cwd, session_id: "s", tool_input: { taskId: "1", status: "completed" }, tool_response: { taskId: "1" } }, env);
-  runNode(HOOK, { tool_name: "TaskUpdate", cwd, session_id: "s", tool_input: { taskId: "2", status: "completed" }, tool_response: { taskId: "2" } }, env);
+  runNode(
+    HOOK,
+    {
+      tool_name: "TaskCreate",
+      cwd,
+      session_id: "s",
+      tool_input: {
+        subject: "Build the parser",
+        activeForm: "Building the parser",
+      },
+      tool_response: { task: { id: "1", subject: "Build the parser" } },
+    },
+    env,
+  );
+  runNode(
+    HOOK,
+    {
+      tool_name: "TaskCreate",
+      cwd,
+      session_id: "s",
+      tool_input: {
+        subject: "Ship the feature",
+        activeForm: "Shipping the feature",
+      },
+      tool_response: { task: { id: "2", subject: "Ship the feature" } },
+    },
+    env,
+  );
+  runNode(
+    HOOK,
+    {
+      tool_name: "TaskUpdate",
+      cwd,
+      session_id: "s",
+      tool_input: { taskId: "1", status: "completed" },
+      tool_response: { taskId: "1" },
+    },
+    env,
+  );
+  runNode(
+    HOOK,
+    {
+      tool_name: "TaskUpdate",
+      cwd,
+      session_id: "s",
+      tool_input: { taskId: "2", status: "completed" },
+      tool_response: { taskId: "2" },
+    },
+    env,
+  );
   // A trailing raw command sets `now` to a cd line.
-  runNode(HOOK, { tool_name: "Bash", cwd, tool_input: { command: "cd /media/endlessblink/data/my-projects/ai-development/devops/termfleet" } }, env);
+  runNode(
+    HOOK,
+    {
+      tool_name: "Bash",
+      cwd,
+      tool_input: {
+        command:
+          "cd /media/endlessblink/data/my-projects/ai-development/devops/termfleet",
+      },
+    },
+    env,
+  );
 
-  const result = runNode(WORKER, {
-    projectId: cwd, workstream: { path: cwd, provider: "shell" },
-    heuristicCandidate: { task: "Shell ready", path: cwd, now: "x", status: "idle", provider: "shell", confidence: "low" },
-  }, env);
+  const result = runNode(
+    WORKER,
+    {
+      projectId: cwd,
+      workstream: { path: cwd, provider: "shell" },
+      heuristicCandidate: {
+        task: "Shell ready",
+        path: cwd,
+        now: "x",
+        status: "idle",
+        provider: "shell",
+        confidence: "low",
+      },
+    },
+    env,
+  );
   const summary = JSON.parse(result.stdout.trim());
   expect(summary.task).toBe("Ship the feature"); // last completed task, not the cd command
   expect(summary.task).not.toContain("cd ");
@@ -213,28 +574,62 @@ test("TaskUpdate status deleted removes the task; later events keep it gone", as
   const dataHome = mkdtempSync(path.join(os.tmpdir(), "tf-status-"));
   const cwd = "/tmp/tf-task-delete";
   const env = { XDG_DATA_HOME: dataHome };
-  runNode(HOOK, {
-    tool_name: "TaskCreate", cwd, session_id: "s",
-    tool_input: { subject: "Keep me", activeForm: "Keeping" },
-    tool_response: { task: { id: "1", subject: "Keep me" } },
-  }, env);
-  runNode(HOOK, {
-    tool_name: "TaskCreate", cwd, session_id: "s",
-    tool_input: { subject: "Delete me", activeForm: "Deleting" },
-    tool_response: { task: { id: "2", subject: "Delete me" } },
-  }, env);
-  runNode(HOOK, {
-    tool_name: "TaskUpdate", cwd, session_id: "s",
-    tool_input: { taskId: "2", status: "deleted" },
-    tool_response: { success: true, taskId: "2" },
-  }, env);
+  runNode(
+    HOOK,
+    {
+      tool_name: "TaskCreate",
+      cwd,
+      session_id: "s",
+      tool_input: { subject: "Keep me", activeForm: "Keeping" },
+      tool_response: { task: { id: "1", subject: "Keep me" } },
+    },
+    env,
+  );
+  runNode(
+    HOOK,
+    {
+      tool_name: "TaskCreate",
+      cwd,
+      session_id: "s",
+      tool_input: { subject: "Delete me", activeForm: "Deleting" },
+      tool_response: { task: { id: "2", subject: "Delete me" } },
+    },
+    env,
+  );
+  runNode(
+    HOOK,
+    {
+      tool_name: "TaskUpdate",
+      cwd,
+      session_id: "s",
+      tool_input: { taskId: "2", status: "deleted" },
+      tool_response: { success: true, taskId: "2" },
+    },
+    env,
+  );
   // A following non-task tool (live-now) must not resurrect the deleted task.
-  runNode(HOOK, { tool_name: "Read", cwd, tool_input: { file_path: "/x/y.ts" } }, env);
+  runNode(
+    HOOK,
+    { tool_name: "Read", cwd, tool_input: { file_path: "/x/y.ts" } },
+    env,
+  );
 
-  const result = runNode(WORKER, {
-    projectId: cwd, workstream: { path: cwd, provider: "shell" },
-    heuristicCandidate: { task: "Shell ready", path: cwd, now: "x", status: "idle", provider: "shell", confidence: "low" },
-  }, env);
+  const result = runNode(
+    WORKER,
+    {
+      projectId: cwd,
+      workstream: { path: cwd, provider: "shell" },
+      heuristicCandidate: {
+        task: "Shell ready",
+        path: cwd,
+        now: "x",
+        status: "idle",
+        provider: "shell",
+        confidence: "low",
+      },
+    },
+    env,
+  );
   const summary = JSON.parse(result.stdout.trim());
   const texts = summary.tasks.map((t: { text: string }) => t.text);
   expect(texts).toContain("Keep me");
@@ -245,19 +640,43 @@ test("a non-task tool keeps the Task-tool list and only updates the now line", a
   const dataHome = mkdtempSync(path.join(os.tmpdir(), "tf-status-"));
   const cwd = "/tmp/tf-task-livenow";
   const env = { XDG_DATA_HOME: dataHome };
-  runNode(HOOK, {
-    tool_name: "TaskCreate", cwd, session_id: "s",
-    tool_input: { subject: "Ship it", activeForm: "Shipping it" },
-    tool_response: { task: { id: "1", subject: "Ship it" } },
-  }, env);
-  runNode(HOOK, { tool_name: "Bash", cwd, tool_input: { command: "npm test" } }, env);
-  const workerResult = runNode(WORKER, {
-    projectId: cwd, workstream: { path: cwd, provider: "shell" },
-    heuristicCandidate: { task: "Shell ready", path: cwd, now: "Awaiting command", status: "idle", provider: "shell", confidence: "low" },
-  }, env);
+  runNode(
+    HOOK,
+    {
+      tool_name: "TaskCreate",
+      cwd,
+      session_id: "s",
+      tool_input: { subject: "Ship it", activeForm: "Shipping it" },
+      tool_response: { task: { id: "1", subject: "Ship it" } },
+    },
+    env,
+  );
+  runNode(
+    HOOK,
+    { tool_name: "Bash", cwd, tool_input: { command: "npm test" } },
+    env,
+  );
+  const workerResult = runNode(
+    WORKER,
+    {
+      projectId: cwd,
+      workstream: { path: cwd, provider: "shell" },
+      heuristicCandidate: {
+        task: "Shell ready",
+        path: cwd,
+        now: "Awaiting command",
+        status: "idle",
+        provider: "shell",
+        confidence: "low",
+      },
+    },
+    env,
+  );
   const summary = JSON.parse(workerResult.stdout.trim());
   expect(summary.now).toBe("Running: npm test");
-  expect(summary.tasks.map((t: { text: string }) => t.text)).toContain("Ship it");
+  expect(summary.tasks.map((t: { text: string }) => t.text)).toContain(
+    "Ship it",
+  );
 });
 
 test("worktree cwd: hook keys the sidecar by the worktree path, not the main checkout", async () => {
@@ -268,32 +687,77 @@ test("worktree cwd: hook keys the sidecar by the worktree path, not the main che
   const mainCheckout = "/tmp/tf-main-repo";
   const worktree = "/tmp/tf-main-repo/.worktrees/feature";
   const env = { XDG_DATA_HOME: dataHome };
-  runNode(HOOK, {
-    tool_name: "TaskCreate", cwd: mainCheckout, worktree, session_id: "s",
-    tool_input: { subject: "Do worktree work", activeForm: "Doing worktree work" },
-    tool_response: { task: { id: "1", subject: "Do worktree work" } },
-  }, env);
+  runNode(
+    HOOK,
+    {
+      tool_name: "TaskCreate",
+      cwd: mainCheckout,
+      worktree,
+      session_id: "s",
+      tool_input: {
+        subject: "Do worktree work",
+        activeForm: "Doing worktree work",
+      },
+      tool_response: { task: { id: "1", subject: "Do worktree work" } },
+    },
+    env,
+  );
   // Worker looking up by the worktree path (what the live cwd resolves to) finds it.
-  const hit = runNode(WORKER, {
-    projectId: worktree, workstream: { path: worktree, provider: "shell" },
-    heuristicCandidate: { task: "Shell ready", path: worktree, now: "Awaiting command", status: "idle", provider: "shell", confidence: "low" },
-  }, env);
+  const hit = runNode(
+    WORKER,
+    {
+      projectId: worktree,
+      workstream: { path: worktree, provider: "shell" },
+      heuristicCandidate: {
+        task: "Shell ready",
+        path: worktree,
+        now: "Awaiting command",
+        status: "idle",
+        provider: "shell",
+        confidence: "low",
+      },
+    },
+    env,
+  );
   expect(JSON.parse(hit.stdout.trim()).tasksFromTodoWrite).toBe(true);
   // Looking up by the MAIN checkout path does NOT (the bug would key it here).
-  const miss = runNode(WORKER, {
-    projectId: mainCheckout, workstream: { path: mainCheckout, provider: "shell" },
-    heuristicCandidate: { task: "Shell ready", path: mainCheckout, now: "Awaiting command", status: "idle", provider: "shell", confidence: "low" },
-  }, env);
+  const miss = runNode(
+    WORKER,
+    {
+      projectId: mainCheckout,
+      workstream: { path: mainCheckout, provider: "shell" },
+      heuristicCandidate: {
+        task: "Shell ready",
+        path: mainCheckout,
+        now: "Awaiting command",
+        status: "idle",
+        provider: "shell",
+        confidence: "low",
+      },
+    },
+    env,
+  );
   expect(JSON.parse(miss.stdout.trim()).tasksFromTodoWrite).toBeFalsy();
 });
 
 test("worker falls back to the heuristic when no sidecar exists for the cwd", async () => {
   const dataHome = mkdtempSync(path.join(os.tmpdir(), "tf-status-"));
-  const result = runNode(WORKER, {
-    projectId: "/tmp/no-sidecar-here",
-    workstream: { path: "/tmp/no-sidecar-here", provider: "shell" },
-    heuristicCandidate: { task: "Shell ready", path: "p", now: "Awaiting command", status: "idle", provider: "shell", confidence: "low" },
-  }, { XDG_DATA_HOME: dataHome });
+  const result = runNode(
+    WORKER,
+    {
+      projectId: "/tmp/no-sidecar-here",
+      workstream: { path: "/tmp/no-sidecar-here", provider: "shell" },
+      heuristicCandidate: {
+        task: "Shell ready",
+        path: "p",
+        now: "Awaiting command",
+        status: "idle",
+        provider: "shell",
+        confidence: "low",
+      },
+    },
+    { XDG_DATA_HOME: dataHome },
+  );
   expect(result.status).toBe(0);
   const summary = JSON.parse(result.stdout.trim());
   expect(summary.now).toBe("Awaiting command");
@@ -308,20 +772,56 @@ test("live-now: a tool call updates the activity and preserves the todo list", a
   const env = { XDG_DATA_HOME: dataHome };
 
   // Todos established first.
-  runNode(HOOK, {
-    tool_name: "TodoWrite", cwd, session_id: "s",
-    tool_input: { todos: [{ content: "Ship the feature", status: "in_progress", activeForm: "Shipping the feature" }] },
-  }, env);
+  runNode(
+    HOOK,
+    {
+      tool_name: "TodoWrite",
+      cwd,
+      session_id: "s",
+      tool_input: {
+        todos: [
+          {
+            content: "Ship the feature",
+            status: "in_progress",
+            activeForm: "Shipping the feature",
+          },
+        ],
+      },
+    },
+    env,
+  );
   // Then a Bash tool call updates "now" without TodoWrite.
-  const hookResult = runNode(HOOK, { tool_name: "Bash", cwd, tool_input: { command: "npm run build && echo done" } }, env);
+  const hookResult = runNode(
+    HOOK,
+    {
+      tool_name: "Bash",
+      cwd,
+      tool_input: { command: "npm run build && echo done" },
+    },
+    env,
+  );
   expect(hookResult.status).toBe(0);
 
-  const workerResult = runNode(WORKER, {
-    projectId: cwd, workstream: { path: cwd, provider: "shell" },
-    heuristicCandidate: { task: "Shell ready", path: cwd, now: "Awaiting command", status: "idle", provider: "shell", confidence: "low" },
-  }, env);
+  const workerResult = runNode(
+    WORKER,
+    {
+      projectId: cwd,
+      workstream: { path: cwd, provider: "shell" },
+      heuristicCandidate: {
+        task: "Shell ready",
+        path: cwd,
+        now: "Awaiting command",
+        status: "idle",
+        provider: "shell",
+        confidence: "low",
+      },
+    },
+    env,
+  );
   const summary = JSON.parse(workerResult.stdout.trim());
   expect(summary.now).toBe("Running: npm run build && echo done");
   // Todo list preserved across the non-TodoWrite call.
-  expect(summary.tasks.map((t: { text: string }) => t.text)).toContain("in-progress: Ship the feature");
+  expect(summary.tasks.map((t: { text: string }) => t.text)).toContain(
+    "in-progress: Ship the feature",
+  );
 });
