@@ -9,7 +9,7 @@
 // so a TodoWrite-only hook records nothing. The legacy TodoWrite path is kept for
 // CLAUDE_CODE_ENABLE_TASKS=0 sessions. The sidecar `todos[]` shape is unchanged, so the
 // status worker/UI need no changes.
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { stdin } from "node:process";
 import {
   fnv,
@@ -448,9 +448,27 @@ async function main() {
   }
   // Stamp the pane id so the reader can confirm which terminal this status belongs to.
   if (paneId) sidecar.paneId = paneId;
+  // Guard the task list against the concurrent-hook race: parallel tool calls each spawn a
+  // hook that read-modify-writes this file. If THIS write carries no todos but the file on
+  // disk already has a task list (written by a sibling hook after we read `prev`), keep the
+  // on-disk list — so a live-now/narration write can never wipe the agent's real tasks. A
+  // legitimate delete-to-empty never reaches here (the task branch exits early when empty).
+  if (!Array.isArray(sidecar.todos) || sidecar.todos.length === 0) {
+    const onDisk = readExistingSidecar(filePath);
+    if (Array.isArray(onDisk?.todos) && onDisk.todos.length > 0) {
+      sidecar.todos = onDisk.todos;
+      if (!sidecar.now) sidecar.now = nowFromTodos(onDisk.todos);
+    }
+  }
   try {
     mkdirSync(statusDir(), { recursive: true });
-    writeFileSync(filePath, JSON.stringify(sidecar));
+    // Atomic write (temp + rename): a concurrent reader must never see a half-written file
+    // — a torn read parses as invalid JSON, which resets the task list to empty and is how
+    // the agent's tasks vanished under parallel tool calls. The temp name is pid-unique so
+    // two sibling hooks don't collide on it. (TC-035)
+    const tmp = `${filePath}.${process.pid}.tmp`;
+    writeFileSync(tmp, JSON.stringify(sidecar));
+    renameSync(tmp, filePath);
   } catch {
     // Never break the agent over a status-file write.
   }

@@ -3,7 +3,8 @@ import {
   activityFromTool,
   narrationToNow,
 } from "../scripts/termfleet-claude-status-hook.mjs";
-import { spawnSync } from "node:child_process";
+import { fnv } from "../scripts/lib/agent-status-paths.mjs";
+import { spawn, spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -894,6 +895,67 @@ test("per-terminal status (TC-035): request falls back to cwd when the pane side
   );
   expect(summary.tasksFromTodoWrite).toBe(true);
   expect(summary.now).toBe("Legacy task"); // pending task → now is its content
+});
+
+test("concurrent hook writes never corrupt the file or wipe the task list (TC-035)", async () => {
+  // Root cause of the vanishing task list: the hook does read-modify-write on every tool
+  // call, and parallel tool calls spawn concurrent hooks. A non-atomic write let a reader
+  // see a half-written file (invalid JSON → todos reset to []), and a stale-prev write
+  // clobbered a sibling's just-written tasks. Atomic write (temp+rename) + the on-disk
+  // todo guard must keep the task list intact under a burst of concurrent hooks.
+  const dataHome = mkdtempSync(path.join(os.tmpdir(), "tf-status-"));
+  const cwd = "/tmp/tf-concurrent";
+  const env = {
+    ...process.env,
+    XDG_DATA_HOME: dataHome,
+    TERMFLEET_PANE_ID: "",
+  };
+
+  // Establish a real task list first.
+  runNode(
+    HOOK,
+    {
+      tool_name: "TaskCreate",
+      cwd,
+      session_id: "s",
+      tool_input: {
+        subject: "Important task",
+        activeForm: "Doing important work",
+      },
+      tool_response: { task: { id: "1", subject: "Important task" } },
+    },
+    { XDG_DATA_HOME: dataHome },
+  );
+
+  // Fire a burst of concurrent hooks: live-now tool calls (which carry NO todos) racing
+  // each other and the file. Without the fix some writes corrupt the JSON / wipe todos.
+  const spawnHook = (payload: unknown) =>
+    new Promise<void>((resolve) => {
+      const child = spawn("node", [HOOK], { env });
+      child.stdin.end(JSON.stringify(payload));
+      child.on("close", () => resolve());
+      child.on("error", () => resolve());
+    });
+  const burst = Array.from({ length: 24 }, (_, i) =>
+    spawnHook({
+      tool_name: "Bash",
+      cwd,
+      tool_input: { command: `echo step-${i}` },
+    }),
+  );
+  await Promise.all(burst);
+
+  // The file must still be valid JSON and STILL carry the task (never wiped to []).
+  const file = path.join(
+    dataHome,
+    "terminal-workspace",
+    "agent-status",
+    `${fnv(cwd)}.json`,
+  );
+  const sidecar = JSON.parse(readFileSync(file, "utf8")); // throws if a torn write corrupted it
+  expect(sidecar.todos.map((t: { content: string }) => t.content)).toContain(
+    "Important task",
+  );
 });
 
 test("worker falls back to the heuristic when no sidecar exists for the cwd", async () => {
