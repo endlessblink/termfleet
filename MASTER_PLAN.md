@@ -5248,16 +5248,22 @@ GUI-verified lifecycle items remain.
 - DONE (4ca1816): Regression tests — two same-cwd panes keep independent task lists (no
   cross-talk); request falls back to cwd when the pane sidecar is absent; body carries
   `paneId`. `runNode` defaults `TERMFLEET_PANE_ID` off so cwd tests stay hermetic.
-- TODO (step 1, **needs GUI + Rust**): Inject `TERMFLEET_PANE_ID` at PTY spawn so it
-  **exactly equals** the `paneId` the frontend sends. ⚠️ The PTY `id` passed to
-  `pty_spawn`/`pty_ensure` is a composite (`terminal-<uuid>-<paneId>`), and the daemon path
-  (`daemon.rs`) carries its own `session_id` — neither equals the cockpit `paneId`. So the
-  spawn must inject the **paneId component** (or the frontend must switch its status key to
-  the PTY id). Decide the canonical id, inject via `cmd.env(...)` next to pty.rs:449, mirror
-  it on the daemon spawn, and verify end-to-end in the running app
-  (`env | grep TERMFLEET_PANE_ID` in a pane; two same-cwd terminals show independent
-  titles). `cargo check` is not enough — this needs the GUI.
+- DONE (3226682): Inject `TERMFLEET_PANE_ID` at PTY spawn. Resolved the id-correspondence
+  question by keying on the existing unique session id (`terminal-<tabId>-<paneId>`) instead
+  of threading a new bare-paneId param through the whole PTY/daemon IPC stack. `pty.rs`
+  `ensure_with_sink` (the single chokepoint for both the in-process `ensure` and the
+  daemon-owned `ensure_detached` spawns) sets `cmd.env("TERMFLEET_PANE_ID", &id)`;
+  `Terminal.tsx` sends the same `livePtyId ?? runtimeSessionId` as the status key.
+  `cargo test --lib` 70 passed, build clean.
+- **GUI verification owed (needs a `termfleet` relaunch — can't be done headless):**
+  1. In a terminal pane: `env | grep TERMFLEET_PANE_ID` prints `terminal-<tab>-<pane>`.
+  2. Open two terminals in the SAME directory, run a different agent/task in each → each
+     shows its OWN title + task list (no shared/stomped status).
+  3. Sidecars: `ls ~/.local/share/terminal-workspace/agent-status/pane-*.json` shows one
+     file per terminal.
 - TODO: Pane id stable across daemon reattach (app relaunch) + disk restore so the lane
-  survives restart (extend `verify:restart-restore`).
-- TODO: Closing a pane retires/expires its sidecar; a new pane in the same cwd starts
-  clean. Worktree case (#64851) then resolves via pane-id precedence.
+  survives restart — should hold (id is re-derived from the persisted tab/pane and
+  re-injected on reattach), confirm via `verify:restart-restore` + GUI.
+- TODO: Closing a pane retires/expires its sidecar. Already non-inheriting (a new pane gets
+  a new id → new file; the old one ages out at the 30-min TTL); optional explicit cleanup
+  on close. Worktree case (#64851) now resolves via pane-id precedence.
