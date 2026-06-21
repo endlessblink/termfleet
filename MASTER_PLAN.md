@@ -57,6 +57,7 @@ were retired during consolidation.
 | TC-032     | Operator-useful terminal summary: regular app headers answer what each shell/agent terminal is doing right now                                                                                                  | P1       | DONE (2026-06-19) | TC-016i        |
 | TC-033     | Reliability hardening: fix recurring sidebar task list, AI summary, paste, and render/session issues that never stayed fixed                                                                                     | P1       | DONE (2026-06-19) | TC-027, TC-032 |
 | TC-034     | Group terminals into projects by path: terminals in the same cwd collapse into one project; stop minting duplicate project groups per folder-open                                                                  | P1       | IN_PROGRESS       | TC-011, TC-024 |
+| TC-035     | Per-terminal standalone status: key the cockpit task list/title by pane identity, not cwd, so each terminal tracks its own work even when several share a directory                                              | P1       | TODO              | TC-033, TC-034 |
 
 ---
 
@@ -5193,3 +5194,57 @@ cwd (matches the "terminals opened in a path should be a project" intent).
   rendering — out of this lane's scope (concurrent session owns those files). Coordinate
   that backend change, then the gated global Claude `TodoWrite` hook (+ `cmd.env("TERMFLEET","1")`
   in `pty.rs`) becomes safe. Until then, the model-extracted list (above) is the path.
+
+### TC-035: Per-terminal standalone status (key status by pane, not cwd)
+
+**Priority:** P1
+**Status:** TODO
+**Depends:** TC-033, TC-034
+
+#### Problem
+
+The cockpit title + TASKS panel are shared by **directory**, not by terminal. The
+status sidecar is keyed `fnv(normalizeCwd(cwd))` (`scripts/lib/agent-status-paths.mjs`)
+and the frontend looks it up by `gitRoot ?? cwd ?? cwdLabel`
+(`src/lib/agentStatusSummarizer.ts`). So two (or ten) terminals open in the same
+directory all read and write **one** sidecar: they show the same title, the same task
+list, and stomp each other's `now`/`narration`. Each terminal needs its own standalone
+task lane.
+
+#### Approach (inject a stable per-pane id into the PTY, key status by it)
+
+The hook runs as a child of the agent process, which runs inside the pane's PTY, so any
+env var termfleet injects at spawn is visible to the hook. Precedent already exists for
+PTY env injection (the planned `cmd.env("TERMFLEET","1")` in `pty.rs`, TC-033 Lane B).
+
+1. **Pane id is stable + persisted.** Each terminal already has a `paneId`; ensure it is
+   stable across daemon reattach and app restart (lives in `stores/workspace.ts`), since
+   the status mapping hangs off it.
+2. **Inject it into the PTY env.** At PTY spawn (`src-tauri/src/pty.rs` /
+   `daemon.rs` / `commands.rs`), set `TERMFLEET_PANE_ID=<paneId>` (and keep the existing
+   `TERMFLEET=1`). Survives reattach (re-set on the spawn that owns the PTY).
+3. **Hook keys by pane id when present.** `termfleet-claude-status-hook.mjs` →
+   `sidecarKeyCwd` prefers `process.env.TERMFLEET_PANE_ID` over cwd; the path scheme adds a
+   pane-keyed file (`agent-status/pane-<id>.json`). Falls back to cwd for non-termfleet
+   shells (global-safe install is preserved).
+4. **Frontend looks up by its own pane id.** The status request
+   (`agentStatusSummarizer.ts` / worker `readSidecarForPayload`) passes the pane's id as
+   the first candidate, then cwd as fallback for legacy/non-injected sessions.
+5. **Lifecycle isolation.** Closing a pane retires its sidecar; a fresh pane in the same
+   cwd starts clean (no inherited title/tasks).
+
+#### Acceptance
+
+- TODO: Two terminals in the **same cwd** running different agents show **independent**
+  titles + task lists in both the split header and the map node (regression test:
+  same-cwd, two pane ids, two distinct sidecars, no cross-talk).
+- TODO: A termfleet-spawned PTY exposes `TERMFLEET_PANE_ID` to its child processes
+  (verified end-to-end: spawn → `env | grep TERMFLEET_PANE_ID` → hook keys by it).
+- TODO: The hook keys the sidecar by pane id when present and **still** falls back to cwd
+  when absent (global install on non-termfleet shells keeps working) — unit test both.
+- TODO: Pane id is stable across daemon reattach (app relaunch) and disk restore, so the
+  terminal keeps its own status lane after restart (extend `verify:restart-restore`).
+- TODO: Closing a pane retires/expires its sidecar; a new pane in the same cwd does not
+  inherit the old title/tasks.
+- TODO: Worktree case (Claude issue #64851) still resolves correctly — pane id takes
+  precedence so the `worktree` vs `cwd` mismatch no longer matters for the join.
