@@ -808,7 +808,10 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
           ? preferRealTaskSummary(
               shellStatusSummaryBase,
               paneTerminal?.statusSummary,
-              paneTerminal?.durableActivity?.status === "running" ? undefined : neutralHeaderTitle(terminalStatus),
+              paneTerminal?.durableActivity?.status === "running" &&
+              Date.now() - (paneTerminal.durableActivity.updatedAt ?? 0) < 60_000
+                ? undefined
+                : neutralHeaderTitle(terminalStatus),
             )
           : shellStatusSummaryBase;
         const shellSummarySource = summarySourceLabel(

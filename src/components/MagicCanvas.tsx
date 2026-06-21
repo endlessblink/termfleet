@@ -2242,7 +2242,9 @@ function CanvasNodeView({
   // command (idle/success/error) must NOT linger as the title — fall to a clean status
   // word instead. The reliable "what's it working on" comes from the agent's TaskCreate
   // list; activity inference is a best-effort live indicator only. (TC-033)
-  const terminalActivityLive = linkedTerminal?.durableActivity?.status === "running";
+  const terminalActivityLive =
+    linkedTerminal?.durableActivity?.status === "running" &&
+    Date.now() - (linkedTerminal.durableActivity.updatedAt ?? 0) < 60_000;
   const terminalDisplaySummary = preferRealTaskSummary(
     terminalDisplaySummaryBase,
     terminalStatusSummary,
