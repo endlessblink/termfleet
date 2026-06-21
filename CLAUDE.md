@@ -21,6 +21,15 @@ the `TaskCreate` tool — don't only write them in the chat. The cockpit's TASKS
 mirrors your task tool, so a prose-only list does NOT appear there. Mark the one you're
 doing `in_progress` via `TaskUpdate` so the header shows what you're working on.
 
+**Always keep exactly one task `in_progress` while you work.** The header title is
+driven by your current task's `activeForm`. With no `in_progress` task, the cockpit
+falls back to a guessed line from your last sentence — fine, but vaguer and sometimes a
+terse status fragment ("All 71 pass."). So: at the start of any non-trivial work create a
+task and set it `in_progress`; when you move on, mark it `completed` and set the next one
+`in_progress`. One present-continuous, plain-language `activeForm` at all times keeps the
+title specific and honest for whoever is watching — for free, in the task call you already
+make.
+
 Stack: **Tauri 2 + React 19 + TypeScript + Rust**, with a **headless-VT
 (`alacritty_terminal`) grid rendered to an HTML canvas** as the desktop terminal,
 and a **user-local Rust PTY daemon** (Unix-socket IPC) that owns PTYs

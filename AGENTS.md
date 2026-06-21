@@ -19,6 +19,13 @@ checklist, or list of steps, create them with your task tool (Claude: `TaskCreat
 mark the active one `in_progress` — don't only write them in the chat. The cockpit's
 TASKS panel mirrors the task tool, so a prose-only list does NOT show up there.
 
+**Always keep exactly one task `in_progress` while you work.** The header title is
+driven by your current task's present-continuous form. With no `in_progress` task, the
+cockpit falls back to a guessed line from your last sentence — vaguer, sometimes a terse
+status fragment ("All 71 pass."). So at the start of any non-trivial work, create a task
+and set it `in_progress`; when you move on, complete it and start the next one. One plain,
+present-continuous task active at all times keeps the title specific — for free.
+
 Stack: **Tauri 2 + React 19 + TypeScript + Rust**, with a **headless-VT
 (`alacritty_terminal`) grid rendered to an HTML canvas** as the desktop terminal,
 and a **user-local Rust PTY daemon** (Unix-socket IPC) that owns PTYs
