@@ -457,6 +457,13 @@ impl PtyManager {
             "LC_CTYPE",
             std::env::var("LC_CTYPE").unwrap_or_else(|_| "C.UTF-8".into()),
         );
+        // Per-terminal status key (TC-035): expose this terminal's stable session id to
+        // its child processes. The Claude status hook reads TERMFLEET_PANE_ID and keys its
+        // sidecar by it, so two terminals open in the SAME directory keep independent
+        // status (title + task list) instead of sharing one cwd-keyed file. The frontend
+        // sends this same id as the status-request key. Covers both the in-process
+        // (`ensure`) and daemon-owned (`ensure_detached`) spawns — both route here.
+        cmd.env("TERMFLEET_PANE_ID", &id);
 
         // Set working directory
         if let Some(dir) = &cwd {

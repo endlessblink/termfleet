@@ -596,7 +596,11 @@ export function TerminalComponent({
       // prefers the pane-keyed sidecar so two terminals in the same cwd stay
       // independent. Falls back to cwd inside the worker when the pane sidecar isn't
       // present yet.
-      const input: AgentStatusSummaryInput = { ...baseInput, paneId };
+      // Key by this terminal's live session id (TC-035) — the PTY exposes the same
+      // value as TERMFLEET_PANE_ID, so two terminals in one cwd stay independent.
+      // (`runtimeSessionId` = the id the PTY was spawned with; livePtyId on reattach.)
+      const statusPaneKey = livePtyId ?? runtimeSessionId;
+      const input: AgentStatusSummaryInput = { ...baseInput, paneId: statusPaneKey };
 
       void summarizeAgentStatus(input).then((result) => {
         if (statusSummarySequenceRef.current !== sequence) return;
