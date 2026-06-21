@@ -5233,18 +5233,31 @@ PTY env injection (the planned `cmd.env("TERMFLEET","1")` in `pty.rs`, TC-033 La
 5. **Lifecycle isolation.** Closing a pane retires its sidecar; a fresh pane in the same
    cwd starts clean (no inherited title/tasks).
 
-#### Acceptance
+#### Status — contract shipped (4ca1816), Rust activation pending
 
-- TODO: Two terminals in the **same cwd** running different agents show **independent**
-  titles + task lists in both the split header and the map node (regression test:
-  same-cwd, two pane ids, two distinct sidecars, no cross-talk).
-- TODO: A termfleet-spawned PTY exposes `TERMFLEET_PANE_ID` to its child processes
-  (verified end-to-end: spawn → `env | grep TERMFLEET_PANE_ID` → hook keys by it).
-- TODO: The hook keys the sidecar by pane id when present and **still** falls back to cwd
-  when absent (global install on non-termfleet shells keeps working) — unit test both.
-- TODO: Pane id is stable across daemon reattach (app relaunch) and disk restore, so the
-  terminal keeps its own status lane after restart (extend `verify:restart-restore`).
-- TODO: Closing a pane retires/expires its sidecar; a new pane in the same cwd does not
-  inherit the old title/tasks.
-- TODO: Worktree case (Claude issue #64851) still resolves correctly — pane id takes
-  precedence so the `worktree` vs `cwd` mismatch no longer matters for the join.
+The full JS/TS contract is implemented + tested, backward compatible (no pane id →
+unchanged cwd behavior). Only the PTY env injection (the activation switch) and the
+GUI-verified lifecycle items remain.
+
+- DONE (4ca1816): The hook keys the sidecar by `TERMFLEET_PANE_ID` when present and falls
+  back to cwd when absent (`paneSidecarPath`; reader+writer agree). Unit-tested both ways.
+- DONE (4ca1816): The worker (`readSidecarForPayload`, shared by sidecar + ollama) prefers
+  the request's `paneId` pane-file, then falls through to cwd candidates.
+- DONE (4ca1816): Frontend sends the pane's id (`AgentStatusSummaryInput.paneId` → request
+  body → `Terminal.tsx` call site).
+- DONE (4ca1816): Regression tests — two same-cwd panes keep independent task lists (no
+  cross-talk); request falls back to cwd when the pane sidecar is absent; body carries
+  `paneId`. `runNode` defaults `TERMFLEET_PANE_ID` off so cwd tests stay hermetic.
+- TODO (step 1, **needs GUI + Rust**): Inject `TERMFLEET_PANE_ID` at PTY spawn so it
+  **exactly equals** the `paneId` the frontend sends. ⚠️ The PTY `id` passed to
+  `pty_spawn`/`pty_ensure` is a composite (`terminal-<uuid>-<paneId>`), and the daemon path
+  (`daemon.rs`) carries its own `session_id` — neither equals the cockpit `paneId`. So the
+  spawn must inject the **paneId component** (or the frontend must switch its status key to
+  the PTY id). Decide the canonical id, inject via `cmd.env(...)` next to pty.rs:449, mirror
+  it on the daemon spawn, and verify end-to-end in the running app
+  (`env | grep TERMFLEET_PANE_ID` in a pane; two same-cwd terminals show independent
+  titles). `cargo check` is not enough — this needs the GUI.
+- TODO: Pane id stable across daemon reattach (app relaunch) + disk restore so the lane
+  survives restart (extend `verify:restart-restore`).
+- TODO: Closing a pane retires/expires its sidecar; a new pane in the same cwd starts
+  clean. Worktree case (#64851) then resolves via pane-id precedence.
