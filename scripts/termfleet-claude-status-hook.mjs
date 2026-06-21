@@ -217,30 +217,74 @@ export function lastAssistantText(transcriptPath) {
   return text;
 }
 
-// Condense the agent's narration into one short plain-language "now" line: drop markdown
-// noise, take the first sentence, cap the length. Keeps the cockpit readable for
-// non-developers without a model call.
+// Conversational lead-ins ("Now let me…", "I'll…", "Let's…", "First, …"). Stripped from a
+// chosen sentence so it reads as a plain activity phrase; also the marker that a sentence
+// is a statement of INTENT (what the agent is about to do) rather than a result.
+const LEAD_IN =
+  /^(?:ok(?:ay)?|now|next|so|alright|first|then|finally|let me|let's|i'?ll|i am going to|i'?m going to|i'?m going|i will|i need to|i'?m|i have|i've)\b[\s,]*/i;
+
+// Terse status/result conclusions — useless as a "what's it working on" title
+// ("All 71 pass.", "Done.", "Fixed.", "Committed as abc123."). Rejected outright.
+const STATUS_CONCLUSION =
+  /^(?:all\s+(?:\d+\s+)?(?:tests?\s+)?pass(?:ed|es)?|done|fixed|fix(?:ed)?\s*[.!]|committed|pushed|\d+\s+passed|\d+\/\d+\s+pass|tests?\s+pass(?:ed|es)?|that'?s\s+it|perfect|great|success(?:ful)?|complete[d]?|finished|ready|ok(?:ay)?)\b[\s.!,:-]*$/i;
+
+// Git/process reports — describe an OUTCOME, not the work ("Committed as abc123.",
+// "Pushed to origin/main.", "Merged the branch."). Useless as a title; rejected.
+const REPORT_LINE =
+  /^(?:committed|pushed|merged|reverted|stashed|tagged|deployed|published|released)\b/i;
+
+// An action verb that signals the sentence describes real WORK (so we can prefer a
+// descriptive sentence over chit-chat when there's no explicit "let me …" intent).
+const WORK_VERB =
+  /\b(?:add|adding|fix|fixing|wir(?:e|ing)|implement(?:ing)?|show(?:ing)?|mak(?:e|ing)|updat(?:e|ing)|build(?:ing)?|refactor(?:ing)?|writ(?:e|ing)|read(?:ing)?|captur(?:e|ing)|render(?:ing)?|creat(?:e|ing)|remov(?:e|ing)|chang(?:e|ing)|improv(?:e|ing)|investigat(?:e|ing)|debug(?:ging)?|prefer(?:ring)?|promot(?:e|ing)|design(?:ing)?|migrat(?:e|ing)|test(?:ing)?|verif(?:y|ying)|repair(?:ing)?|hook(?:ing)?\s+up|set\s*up|wir(?:e|ing)\s+up)\b/i;
+
+function stripLeadIns(sentence) {
+  let clean = sentence;
+  for (let i = 0; i < 4 && LEAD_IN.test(clean); i += 1) {
+    clean = clean.replace(LEAD_IN, "").trim();
+  }
+  if (clean) clean = clean.charAt(0).toUpperCase() + clean.slice(1);
+  return clean;
+}
+
+// Condense the agent's narration into one short plain-language "now" line. End-of-turn
+// narration is often a terse wrap-up ("All 71 pass."); the agent's actual WORK is in its
+// stated intent ("Let me wire X") or a descriptive action sentence. Prefer those, reject
+// status conclusions, so the cockpit title says what the agent is DOING — not the result.
 export function narrationToNow(text) {
-  let clean = String(text ?? "")
+  const clean = String(text ?? "")
     .replace(/```[\s\S]*?```/g, " ") // strip fenced code blocks
     .replace(/`[^`]*`/g, " ") // strip inline code
     .replace(/[*_#>]+/g, " ") // strip markdown emphasis/headers
     .replace(/\s+/g, " ")
     .trim();
   if (!clean) return "";
-  // First sentence (up to . ! ? followed by space/end), else the whole thing.
-  const match = clean.match(/^.*?[.!?](?=\s|$)/);
-  if (match) clean = match[0];
-  // Drop conversational lead-ins ("Now let me…", "I'll…", "Let's…", "First, …") so the
-  // line reads as a plain activity phrase for the cockpit. Strip repeatedly to peel a
-  // chain ("Now let me …" → "let me …" → "…"), then re-capitalize.
-  const LEAD_IN =
-    /^(?:ok(?:ay)?|now|next|so|alright|first|then|finally|let me|let's|i'?ll|i am going to|i'?m going to|i'?m going|i will|i need to|i'?m|i have|i've)\b[\s,]*/i;
-  for (let i = 0; i < 4 && LEAD_IN.test(clean); i += 1) {
-    clean = clean.replace(LEAD_IN, "").trim();
-  }
-  if (clean) clean = clean.charAt(0).toUpperCase() + clean.slice(1);
-  return cleanField(clean, 90);
+  // Split into sentences and keep substantive ones (drop terse fragments / pure status).
+  const sentences = (clean.match(/[^.!?]+[.!?]?/g) ?? [clean])
+    .map((sentence) => sentence.trim())
+    .filter(
+      (sentence) =>
+        sentence &&
+        !STATUS_CONCLUSION.test(sentence) &&
+        !REPORT_LINE.test(sentence),
+    );
+  if (sentences.length === 0) return "";
+  const substantive = (sentence) =>
+    sentence.replace(/[^\p{L}\p{N}]+/gu, "").length >= 18;
+  // 1) An explicit statement of intent ("Let me / I'll / I'm going to …") is the clearest
+  //    "what I'm working on" — take the FIRST one (the turn's stated goal, not a sub-step).
+  const intents = sentences.filter(
+    (sentence) => LEAD_IN.test(sentence) && substantive(sentence),
+  );
+  // 2) Else the first descriptive work sentence; 3) else the first substantive sentence.
+  const chosen =
+    intents[0] ??
+    sentences.find(
+      (sentence) => WORK_VERB.test(sentence) && substantive(sentence),
+    ) ??
+    sentences.find(substantive);
+  if (!chosen) return "";
+  return cleanField(stripLeadIns(chosen), 90);
 }
 
 function readExistingSidecar(cwd) {

@@ -1,5 +1,8 @@
 import { expect, test } from "@playwright/test";
-import { activityFromTool } from "../scripts/termfleet-claude-status-hook.mjs";
+import {
+  activityFromTool,
+  narrationToNow,
+} from "../scripts/termfleet-claude-status-hook.mjs";
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
@@ -459,6 +462,40 @@ test("Stop event: a live task summary outranks narration for the title, narratio
     (entry: { text: string }) => entry.text,
   );
   expect(recent).toContain("Just finished the edit and ran the tests."); // narration still logged
+});
+
+test("narration: the agent's stated intent wins over a terse status wrap-up", () => {
+  // The end-of-turn text often opens with a status fragment ("All 71 pass.") before the
+  // real intent. The title must be the WORK ("Commit this fix"), not the status. (TC-033)
+  expect(
+    narrationToNow("All 71 pass. Let me commit this fix to the cockpit title."),
+  ).toBe("Commit this fix to the cockpit title.");
+  // First stated intent = the turn's goal, not a later sub-step.
+  expect(
+    narrationToNow(
+      "I will wire the daemon reconnect so dropped PTYs come back. First let me read the code.",
+    ),
+  ).toBe("Wire the daemon reconnect so dropped PTYs come back.");
+  // A descriptive work sentence is used when there's no explicit "let me …" intent.
+  expect(
+    narrationToNow(
+      "The hook now captures the agent's own words and writes them to the sidecar.",
+    ),
+  ).toContain("captures the agent's own words");
+});
+
+test("narration: pure status / report wrap-ups yield nothing (title falls back to neutral)", () => {
+  // Useless-as-a-title lines must produce "" so the header shows the clean neutral word
+  // instead of "Done." / "Committed as abc123.". (TC-033)
+  for (const junk of [
+    "Done.",
+    "All 71 pass.",
+    "Perfect. Committed as f598b76.",
+    "Pushed to origin/main.",
+    "Great, that's it.",
+  ]) {
+    expect(narrationToNow(junk)).toBe("");
+  }
 });
 
 test("activity line: trivial nav/inspection commands are filtered out", () => {
