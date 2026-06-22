@@ -71,6 +71,7 @@ struct TermState {
     parser: Processor,
     alternate_scroll_touched: bool,
     mode_scan_tail: Vec<u8>,
+    unsupported_control_tail: Vec<u8>,
 }
 
 impl TermState {
@@ -82,12 +83,14 @@ impl TermState {
             parser: Processor::new(),
             alternate_scroll_touched: false,
             mode_scan_tail: Vec::new(),
+            unsupported_control_tail: Vec::new(),
         }
     }
 
     fn feed(&mut self, bytes: &[u8]) {
         self.scan_mode_sequences(bytes);
-        self.parser.advance(&mut self.term, bytes);
+        let filtered = self.strip_unsupported_control_sequences(bytes);
+        self.parser.advance(&mut self.term, &filtered);
     }
 
     fn scan_mode_sequences(&mut self, bytes: &[u8]) {
@@ -104,6 +107,43 @@ impl TermState {
         }
         let keep = scan.len().min(16);
         self.mode_scan_tail = scan[scan.len() - keep..].to_vec();
+    }
+
+    fn strip_unsupported_control_sequences(&mut self, bytes: &[u8]) -> Vec<u8> {
+        const SYNC_OUTPUT_ON: &[u8] = b"\x1b[?2026h";
+        const SYNC_OUTPUT_OFF: &[u8] = b"\x1b[?2026l";
+        const TARGETS: [&[u8]; 2] = [SYNC_OUTPUT_ON, SYNC_OUTPUT_OFF];
+
+        let mut scan = Vec::with_capacity(self.unsupported_control_tail.len() + bytes.len());
+        scan.extend_from_slice(&self.unsupported_control_tail);
+        scan.extend_from_slice(bytes);
+        self.unsupported_control_tail.clear();
+
+        let mut out = Vec::with_capacity(scan.len());
+        let mut index = 0;
+        while index < scan.len() {
+            if scan[index] == 0x1b {
+                if let Some(target) = TARGETS
+                    .iter()
+                    .find(|target| scan[index..].starts_with(target))
+                {
+                    index += target.len();
+                    continue;
+                }
+                if TARGETS
+                    .iter()
+                    .any(|target| target.starts_with(&scan[index..]))
+                {
+                    self.unsupported_control_tail = scan[index..].to_vec();
+                    break;
+                }
+            }
+
+            out.push(scan[index]);
+            index += 1;
+        }
+
+        out
     }
 
     fn resize(&mut self, cols: usize, rows: usize) {
@@ -125,6 +165,7 @@ impl TermState {
         self.term = Term::new(Config::default(), &dims, VoidListener);
         self.parser = Processor::new();
         self.mode_scan_tail.clear();
+        self.unsupported_control_tail.clear();
         self.alternate_scroll_touched = false;
     }
 
@@ -1083,6 +1124,13 @@ mod tests {
             .to_string()
     }
 
+    fn frame_text(frame: &WireFrame) -> String {
+        (0..usize::from(frame.rows))
+            .map(|row| wire_text_at(frame, row))
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
     #[test]
     fn plain_text_lands_on_the_first_row() {
         let snapshot = feed("hello world");
@@ -1307,6 +1355,43 @@ mod tests {
                 .flatten()
                 .any(|cell| cell.ch != 0),
             "resize storm produced a blank live frame"
+        );
+    }
+
+    #[test]
+    fn synchronized_output_markers_never_render_as_text() {
+        let mut state = TermState::new(40, 8);
+        state.feed(b"\x1b[?2026hWorking 57\x1b[?2026l");
+        let frame = WireFrame::capture(&state.term);
+        let text = frame_text(&frame);
+
+        assert!(
+            text.contains("Working") && text.contains("57"),
+            "payload should still render, got: {text:?}"
+        );
+        assert!(
+            !text.contains("?2026") && !text.contains("[?2026"),
+            "synchronized-output marker leaked into the grid: {text:?}"
+        );
+    }
+
+    #[test]
+    fn split_synchronized_output_markers_never_render_as_text() {
+        let mut state = TermState::new(40, 8);
+        state.feed(b"\x1b[?");
+        state.feed(b"2026hWorking");
+        state.feed(b" 57\x1b[?20");
+        state.feed(b"26l");
+        let frame = WireFrame::capture(&state.term);
+        let text = frame_text(&frame);
+
+        assert!(
+            text.contains("Working") && text.contains("57"),
+            "payload should still render, got: {text:?}"
+        );
+        assert!(
+            !text.contains("?2026") && !text.contains("[?2026"),
+            "split synchronized-output marker leaked into the grid: {text:?}"
         );
     }
 

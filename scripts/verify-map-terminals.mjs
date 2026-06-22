@@ -277,8 +277,11 @@ const checks = [
       /<TerminalComponent[\s\S]*onSnapshot=\{\(snapshot\) => onTerminalSnapshot\(node\.id, snapshot\)\}[\s\S]*mapProjection[\s\S]*\/>/.test(magicCanvas) &&
       !/<TerminalComponent[\s\S]*mapProjection=\{false\}/.test(magicCanvas) &&
       /mapProjection && modesRef\.current\.altScreen/.test(terminalCanvas) &&
+      /strip_unsupported_control_sequences/.test(vtGrid) &&
+      /SYNC_OUTPUT_ON: &\[u8\] = b"\\x1b\[\?2026h"/.test(vtGrid) &&
+      /split_synchronized_output_markers_never_render_as_text/.test(vtGrid) &&
       !/mapSurface/.test(magicCanvas),
-    message: "Map terminal nodes must use truthful previews below 100% zoom, keep readable terminals live, and preserve alternate-screen agent TUIs through projection.",
+    message: "Map terminal nodes must use truthful previews below 100% zoom, keep readable terminals live, preserve alternate-screen agent TUIs through projection, and suppress unsupported sync-output control markers.",
   },
   {
     ok: !/sparsePrimaryMapAnchorRows|applySparseMapAnchor|mapSurface|MAP_SHELL_ANCHOR_TOO_HIGH|MAP_SHELL_ANCHOR_OK/.test(terminalCanvas) &&

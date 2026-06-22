@@ -5117,6 +5117,12 @@ T8 persistence, T9 input.
   passed 26/26; `tests/terminal-mouse.spec.ts` passed 1/1; `npm run
   verify:terminal-rendering` passed; `npm run verify:canvas-all` passed 41/41; `npm
   run build` passed.
+- **T8 follow-up (2026-06-23):** selected map agent panes could still show raw
+  synchronized-output control residue like `[?2026l` even after projection preserved the
+  working grid size. `vt_grid` now strips the exact DEC `CSI ? 2026 h/l` markers before
+  feeding `alacritty_terminal`, including markers split across PTY chunks. Regression:
+  `vt_grid::tests::{synchronized_output_markers_never_render_as_text,
+  split_synchronized_output_markers_never_render_as_text}` plus the map source contract.
 - **Gate (Phase 1):** `npm run build` green; `cd src-tauri && cargo test` 64 passed; the
   summary/header specs `agent-status-summary` + `map-terminal-rendering` +
   `terminal-summary-visual` + the three new T1/T2/T5 specs = **76 passed, 0 failed**.
