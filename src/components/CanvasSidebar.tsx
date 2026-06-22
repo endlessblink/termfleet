@@ -121,6 +121,19 @@ const styles: Record<string, CSSProperties> = {
     color: "var(--text-primary)",
     fontSize: 14,
   },
+  titleInput: {
+    width: "100%",
+    minWidth: 0,
+    height: 24,
+    border: "1px solid var(--border-focus)",
+    borderRadius: "var(--radius-sm)",
+    background: "var(--surface-raised)",
+    color: "var(--text-primary)",
+    fontFamily: "var(--font-ui)",
+    fontSize: 14,
+    outline: "none",
+    padding: "0 6px",
+  },
   meta: {
     minWidth: 0,
     overflow: "hidden",
@@ -183,9 +196,11 @@ function NodeRow({
   groups: Group[];
   selected: boolean;
   onSelect: (node: CanvasNode) => void;
-  onRename: (node: CanvasNode) => void;
+  onRename: (node: CanvasNode, title: string) => void;
 }) {
   const icon = nodeIcon(node);
+  const [editing, setEditing] = useState(false);
+  const [draftTitle, setDraftTitle] = useState(node.title);
   const linkedProject = projectForTab(linkedTab, groups);
   const liveCwds = useWorkspaceStore((s) => s.liveCwds);
   const liveTermId =
@@ -197,9 +212,23 @@ function NodeRow({
   const meta = node.type === "terminal" && linkedTab
     ? `${nodeMeta(node, linkedTab, liveCwd)} · ${linkedTab.title}`
     : nodeMeta(node, linkedTab, liveCwd);
+  const beginRename = useCallback(() => {
+    setDraftTitle(node.title);
+    setEditing(true);
+  }, [node.title]);
+  const commitRename = useCallback(() => {
+    const trimmed = draftTitle.trim();
+    if (trimmed) onRename(node, trimmed);
+    setEditing(false);
+  }, [draftTitle, node, onRename]);
+  const cancelRename = useCallback(() => {
+    setDraftTitle(node.title);
+    setEditing(false);
+  }, [node.title]);
   return (
     <div
       className="canvas-sidebar-row"
+      data-testid="canvas-sidebar-node-row"
       role="button"
       tabIndex={0}
       aria-current={selected ? "true" : undefined}
@@ -212,17 +241,48 @@ function NodeRow({
       }}
       onClick={() => onSelect(node)}
       onKeyDown={(event) => {
+        if (editing) return;
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
           onSelect(node);
         }
       }}
-      onDoubleClick={() => onRename(node)}
+      onDoubleClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        beginRename();
+      }}
       title="Click to jump to node. Double-click to rename."
     >
       <span style={{ ...styles.icon, background: icon.bg }}>{icon.icon}</span>
       <span style={{ minWidth: 0 }}>
-        <div style={styles.title} dir="auto">{title}</div>
+        {editing ? (
+          <input
+            aria-label={`Rename ${node.type}`}
+            data-testid="canvas-sidebar-rename-input"
+            autoFocus
+            dir="auto"
+            style={styles.titleInput}
+            value={draftTitle}
+            onChange={(event) => setDraftTitle(event.target.value)}
+            onClick={(event) => event.stopPropagation()}
+            onDoubleClick={(event) => event.stopPropagation()}
+            onMouseDown={(event) => event.stopPropagation()}
+            onBlur={commitRename}
+            onKeyDown={(event) => {
+              event.stopPropagation();
+              if (event.key === "Enter") {
+                event.preventDefault();
+                commitRename();
+              } else if (event.key === "Escape") {
+                event.preventDefault();
+                cancelRename();
+              }
+            }}
+          />
+        ) : (
+          <div style={styles.title} dir="auto">{title}</div>
+        )}
         <div style={styles.meta} dir="auto">{meta}</div>
       </span>
     </div>
@@ -237,7 +297,7 @@ export function CanvasSidebar() {
   const tabs = useWorkspaceStore((state) => state.tabs);
   const groups = useWorkspaceStore((state) => state.groups);
   const selectCanvasNode = useWorkspaceStore((state) => state.selectCanvasNode);
-  const updateCanvasNode = useWorkspaceStore((state) => state.updateCanvasNode);
+  const renameCanvasNode = useWorkspaceStore((state) => state.renameCanvasNode);
   const updateCanvasViewport = useWorkspaceStore((state) => state.updateCanvasViewport);
   const updateUiState = useWorkspaceStore((state) => state.updateWorkspaceUiState);
 
@@ -253,11 +313,9 @@ export function CanvasSidebar() {
     });
   }, [canvasState.viewport.zoom, selectCanvasNode, updateCanvasViewport]);
 
-  const onRename = useCallback((node: CanvasNode) => {
-    const nextTitle = window.prompt(`Rename ${node.type}`, node.title);
-    const trimmed = nextTitle?.trim();
-    if (trimmed) updateCanvasNode(node.id, { title: trimmed });
-  }, [updateCanvasNode]);
+  const onRename = useCallback((node: CanvasNode, title: string) => {
+    renameCanvasNode(node.id, title);
+  }, [renameCanvasNode]);
 
   const groupVisibleNodes = canvasState.nodes;
   const nodeTab = useCallback((node: CanvasNode) =>

@@ -19,6 +19,18 @@ test("selected live map terminals keep projection enabled for alternate-screen a
   expect(liveTerminalBlock?.[0]).not.toContain("mapProjection={false}");
 });
 
+test("selected map agent panes suppress synchronized-output control residue", () => {
+  const vtGrid = readFileSync("src-tauri/src/vt_grid.rs", "utf8");
+  const mapVerifier = readFileSync("scripts/verify-map-terminals.mjs", "utf8");
+
+  expect(vtGrid).toContain("strip_unsupported_control_sequences");
+  expect(vtGrid).toContain('SYNC_OUTPUT_ON: &[u8] = b"\\x1b[?2026h"');
+  expect(vtGrid).toContain('SYNC_OUTPUT_OFF: &[u8] = b"\\x1b[?2026l"');
+  expect(vtGrid).toContain("synchronized_output_markers_never_render_as_text");
+  expect(vtGrid).toContain("split_synchronized_output_markers_never_render_as_text");
+  expect(mapVerifier).toContain("suppress unsupported sync-output control markers");
+});
+
 async function imageRegionStats(
   page: import("@playwright/test").Page,
   screenshot: Buffer,
@@ -462,6 +474,105 @@ test("terminal map labels can be recolored from the right-click menu", async ({ 
     }).__termfleetWorkspaceStore;
     return store?.getState().canvasState.nodes.find((node) => node.id === "node-color")?.labelColor;
   })).toBe("#d4a44f");
+});
+
+test("terminal map renaming uses in-app inputs and keeps linked tab titles in sync", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.prompt = () => {
+      throw new Error("Terminal rename must not use window.prompt");
+    };
+  });
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.getByRole("button", { name: "Map", exact: true }).click();
+
+  await page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => { workspaceUiState: Record<string, unknown> };
+        setState: (state: Record<string, unknown>) => void;
+      };
+    }).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+
+    store.setState({
+      workspaceUiState: {
+        ...store.getState().workspaceUiState,
+        workspaceMode: "canvas",
+        primarySidebarPanel: "map",
+      },
+      tabs: [{
+        id: "tab-rename",
+        title: "Old terminal name",
+        emoji: "[]",
+        color: "#7aa2f7",
+        groupId: null,
+        initialCwd: "/tmp/termfleet-rename",
+        terminals: [{ id: "pty-rename", paneId: "pane-rename", cols: 80, rows: 24, status: "running" }],
+        splitLayout: { id: "pane-rename", type: "terminal" },
+        activePaneId: "pane-rename",
+      }],
+      activeTabId: "tab-rename",
+      canvasState: {
+        nodes: [{
+          id: "node-rename",
+          type: "terminal",
+          title: "Old terminal name",
+          terminalTabId: "tab-rename",
+          x: 100,
+          y: 100,
+          width: 820,
+          height: 460,
+        }],
+        selectedNodeId: "node-rename",
+        selectedNodeIds: ["node-rename"],
+        viewport: { x: 0, y: 0, zoom: 1 },
+      },
+    });
+  });
+
+  await page.getByTestId("canvas-terminal-status-block").dblclick();
+  await page.getByTestId("canvas-terminal-rename-input").fill("Map rename from card");
+  await page.getByTestId("canvas-terminal-rename-input").press("Enter");
+
+  await expect.poll(async () => page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => {
+          tabs: Array<{ id: string; title: string }>;
+          canvasState: { nodes: Array<{ id: string; title: string }> };
+        };
+      };
+    }).__termfleetWorkspaceStore;
+    const state = store?.getState();
+    return {
+      tabTitle: state?.tabs.find((tab) => tab.id === "tab-rename")?.title,
+      nodeTitle: state?.canvasState.nodes.find((node) => node.id === "node-rename")?.title,
+    };
+  })).toEqual({ tabTitle: "Map rename from card", nodeTitle: "Map rename from card" });
+
+  await page.getByTestId("canvas-sidebar-node-row").dblclick();
+  await page.getByTestId("canvas-sidebar-rename-input").fill("Sidebar rename works");
+  await page.getByTestId("canvas-sidebar-rename-input").press("Enter");
+
+  await expect.poll(async () => page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => {
+          tabs: Array<{ id: string; title: string }>;
+          canvasState: { nodes: Array<{ id: string; title: string }> };
+        };
+      };
+    }).__termfleetWorkspaceStore;
+    const state = store?.getState();
+    return {
+      tabTitle: state?.tabs.find((tab) => tab.id === "tab-rename")?.title,
+      nodeTitle: state?.canvasState.nodes.find((node) => node.id === "node-rename")?.title,
+    };
+  })).toEqual({ tabTitle: "Sidebar rename works", nodeTitle: "Sidebar rename works" });
 });
 
 test("project emojis identify map terminals by path without using task colors", async ({ page }) => {
@@ -1162,6 +1273,58 @@ test("workspace store supports multi-select canvas movement and label colors", a
   ]));
   expect(result.afterRemoveSelectedNodeId).toBe("node-a");
   expect(result.afterRemoveSelectedNodeIds).toEqual(["node-a"]);
+});
+
+test("workspace store renames terminal map nodes and their linked tabs together", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+
+  const result = await page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => {
+          activeTabId: string | null;
+          tabs: Array<{ id: string; title: string }>;
+          canvasState: {
+            nodes: Array<{ id: string; type: string; title: string; terminalTabId?: string }>;
+          };
+          addCanvasNode: (node: { id: string; type: string; title: string; x: number; y: number; width: number; height: number; terminalTabId?: string }) => void;
+          renameCanvasNode: (id: string, title: string) => void;
+        };
+      };
+    }).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+    const state = store.getState();
+    const activeTabId = state.activeTabId;
+    if (!activeTabId) throw new Error("No active tab to link");
+
+    state.addCanvasNode({
+      id: "terminal-rename-node",
+      type: "terminal",
+      title: "Old terminal title",
+      x: 100,
+      y: 140,
+      width: 820,
+      height: 460,
+      terminalTabId: activeTabId,
+    });
+    state.renameCanvasNode("terminal-rename-node", "  Build monitor  ");
+    state.renameCanvasNode("terminal-rename-node", "   ");
+
+    const next = store.getState();
+    return {
+      nodeTitle: next.canvasState.nodes.find((node) => node.id === "terminal-rename-node")?.title,
+      tabTitle: next.tabs.find((tab) => tab.id === activeTabId)?.title,
+    };
+  });
+
+  expect(result).toEqual({
+    nodeTitle: "Build monitor",
+    tabTitle: "Build monitor",
+  });
 });
 
 test("Ctrl+Z restores the last closed terminal map session from app chrome", async ({ page }) => {

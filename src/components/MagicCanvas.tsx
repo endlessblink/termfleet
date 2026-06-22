@@ -403,6 +403,20 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 500,
     lineHeight: 1.15,
   },
+  renameInput: {
+    width: "100%",
+    minWidth: 0,
+    height: 30,
+    border: "1px solid var(--border-focus)",
+    borderRadius: "var(--radius-sm)",
+    background: "var(--surface-base)",
+    color: "var(--text-primary)",
+    fontFamily: "var(--font-ui)",
+    fontSize: 15,
+    fontWeight: 500,
+    outline: "none",
+    padding: "0 8px",
+  },
   terminalStatusGrid: {
     minWidth: 0,
     display: "grid",
@@ -1965,6 +1979,7 @@ function CanvasNodeView({
   const storedSelectedNodeIds = useWorkspaceStore((state) => state.canvasState.selectedNodeIds);
   const zoom = useWorkspaceStore((state) => state.canvasState.viewport.zoom);
   const updateCanvasNode = useWorkspaceStore((state) => state.updateCanvasNode);
+  const renameCanvasNode = useWorkspaceStore((state) => state.renameCanvasNode);
   const moveCanvasNodes = useWorkspaceStore((state) => state.moveCanvasNodes);
   const removeCanvasNode = useWorkspaceStore((state) => state.removeCanvasNode);
   const closeTerminalSession = useWorkspaceStore((state) => state.closeTerminalSession);
@@ -1987,7 +2002,10 @@ function CanvasNodeView({
     direction: ResizeDirection;
   } | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
+  const renameInputRef = useRef<HTMLInputElement | null>(null);
   const [isResizing, setIsResizing] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [renameDraft, setRenameDraft] = useState(node.title);
   const [operatorDraft, setOperatorDraft] = useState("");
   const [taskPickerOpen, setTaskPickerOpen] = useState(false);
   const [taskPickerQuery, setTaskPickerQuery] = useState("");
@@ -2009,6 +2027,12 @@ function CanvasNodeView({
   // the parent live set decides whether the full renderer should mount.
   const showTerminalPreview = node.type === "terminal" && zoom < READABLE_TERMINAL_ZOOM;
   const shouldMountTerminal = node.type === "terminal" && live && !showTerminalPreview;
+
+  useEffect(() => {
+    if (!renaming) return;
+    renameInputRef.current?.focus();
+    renameInputRef.current?.select();
+  }, [renaming]);
 
   const activateTerminalNode = useCallback(() => {
     selectCanvasNode(node.id);
@@ -2130,12 +2154,45 @@ function CanvasNodeView({
   const onRename = useCallback((event: React.MouseEvent) => {
     event.preventDefault();
     event.stopPropagation();
-    const nextTitle = window.prompt(`Rename ${node.type}`, node.title);
-    const trimmed = nextTitle?.trim();
-    if (trimmed) {
-      updateCanvasNode(node.id, { title: trimmed });
-    }
-  }, [node.id, node.title, node.type, updateCanvasNode]);
+    setRenameDraft(node.title);
+    setRenaming(true);
+  }, [node.title]);
+
+  const commitRename = useCallback(() => {
+    renameCanvasNode(node.id, renameDraft);
+    setRenaming(false);
+  }, [node.id, renameCanvasNode, renameDraft]);
+
+  const cancelRename = useCallback(() => {
+    setRenameDraft(node.title);
+    setRenaming(false);
+  }, [node.title]);
+
+  const renameEditor = (
+    <input
+      ref={renameInputRef}
+      aria-label={`Rename ${node.type}`}
+      data-testid={node.type === "terminal" ? "canvas-terminal-rename-input" : "canvas-node-rename-input"}
+      dir="auto"
+      style={styles.renameInput}
+      value={renameDraft}
+      onChange={(event) => setRenameDraft(event.target.value)}
+      onClick={(event) => event.stopPropagation()}
+      onDoubleClick={(event) => event.stopPropagation()}
+      onMouseDown={(event) => event.stopPropagation()}
+      onBlur={commitRename}
+      onKeyDown={(event) => {
+        event.stopPropagation();
+        if (event.key === "Enter") {
+          event.preventDefault();
+          commitRename();
+        } else if (event.key === "Escape") {
+          event.preventDefault();
+          cancelRename();
+        }
+      }}
+    />
+  );
 
   const linkedTab = node.terminalTabId
     ? tabs.find((tab) => tab.id === node.terminalTabId)
@@ -2776,6 +2833,7 @@ function CanvasNodeView({
             onMouseDown={onMouseDown}
             onDoubleClick={onRename}
           >
+            {renaming && renameEditor}
             <div style={styles.terminalStatusKicker}>
               <span>Workspace</span>
               <span style={styles.workspacePill} data-testid="canvas-agent-node-workspace" title={workspaceLabel}>
@@ -2835,7 +2893,11 @@ function CanvasNodeView({
               style={styles.terminalStatusTitle}
               data-testid="canvas-terminal-node-header-title"
             >
-              <span style={{ color: labelColor ?? "var(--text-primary)" }}>{terminalHeaderTitle}</span>
+              {renaming ? (
+                renameEditor
+              ) : (
+                <span style={{ color: labelColor ?? "var(--text-primary)" }}>{terminalHeaderTitle}</span>
+              )}
               {(workstream || linkedTerminal) && (
                 <CockpitSnapshotProbe
                   entry={{
@@ -2887,9 +2949,13 @@ function CanvasNodeView({
               style={styles.nodeTitle}
               data-testid={workstream?.kind === "agent" ? "canvas-agent-node-header-title" : "canvas-node-header-title"}
             >
-              <span style={{ color: labelColor ?? "var(--text-primary)" }}>
-                {agentHeaderTitle ?? (node.type === "terminal" ? terminalTitle : node.title)}
-              </span>
+              {renaming ? (
+                renameEditor
+              ) : (
+                <span style={{ color: labelColor ?? "var(--text-primary)" }}>
+                  {agentHeaderTitle ?? (node.type === "terminal" ? terminalTitle : node.title)}
+                </span>
+              )}
             </div>
             {node.type === "terminal" && (
               <div

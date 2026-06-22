@@ -331,6 +331,7 @@ interface WorkspaceState {
   toggleImmersiveTerminal: (tabId: string, paneId: string) => void;
   addCanvasNode: (node: Omit<CanvasNode, "id"> & { id?: string }) => void;
   updateCanvasNode: (id: string, updates: Partial<CanvasNode>) => void;
+  renameCanvasNode: (id: string, title: string) => void;
   moveCanvasNodes: (ids: string[], delta: { x: number; y: number }) => void;
   removeCanvasNode: (id: string) => void;
   selectCanvasNode: (id: string | null) => void;
@@ -2463,6 +2464,31 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         ),
       },
     }));
+  },
+
+  renameCanvasNode: (id: string, title: string) => {
+    const trimmed = title.trim();
+    if (!trimmed) return;
+
+    set((state) => {
+      const renamedNode = state.canvasState.nodes.find((node) => node.id === id);
+      const linkedTerminalTabId =
+        renamedNode?.type === "terminal" ? renamedNode.terminalTabId : undefined;
+
+      return {
+        tabs: linkedTerminalTabId
+          ? state.tabs.map((tab) =>
+              tab.id === linkedTerminalTabId ? { ...tab, title: trimmed } : tab
+            )
+          : state.tabs,
+        canvasState: {
+          ...state.canvasState,
+          nodes: state.canvasState.nodes.map((node) =>
+            node.id === id ? { ...node, title: trimmed } : node
+          ),
+        },
+      };
+    });
   },
 
   moveCanvasNodes: (ids: string[], delta: { x: number; y: number }) => {

@@ -568,6 +568,10 @@ Completion notes:
 - Added compact terminal pane chrome with active status, session title, CWD, and
   hover/focus icon actions.
 - Replaced split/close glyph controls with `lucide-react` icons.
+- 2026-06-23: Map-node rename now uses in-app inputs instead of `window.prompt`,
+  and terminal map renames update the linked tab title. Regression:
+  `tests/map-terminal-rendering.spec.ts` covers map-card rename, sidebar rename,
+  and store-level tab/node title sync.
 - Recessed terminal panes into the tactical surface with tokenized borders,
   active focus outline, and consistent pane body padding.
 - Browser preview uses an in-memory test shell for app-flow validation; real
@@ -5136,6 +5140,12 @@ T8 persistence, T9 input.
   feeding `alacritty_terminal`, including markers split across PTY chunks. Regression:
   `vt_grid::tests::{synchronized_output_markers_never_render_as_text,
   split_synchronized_output_markers_never_render_as_text}` plus the map source contract.
+- **T9 follow-up (2026-06-23):** terminal renaming from the map and map index no longer
+  uses WebKit/Tauri native `window.prompt`, which could open a dialog that did not accept
+  user edits. The map card and map index now use in-app rename inputs, and terminal node
+  renames update the linked tab title too. Evidence: focused rename regression
+  `npx playwright test tests/map-terminal-rendering.spec.ts -g "renam" --reporter=line`
+  passed 2/2; `npm run verify:map-terminals` passed; `npm run build` passed.
 - **Gate (Phase 1):** `npm run build` green; `cd src-tauri && cargo test` 64 passed; the
   summary/header specs `agent-status-summary` + `map-terminal-rendering` +
   `terminal-summary-visual` + the three new T1/T2/T5 specs = **76 passed, 0 failed**.
