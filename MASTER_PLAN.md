@@ -2181,6 +2181,15 @@ verify:legacy-prompt-repair` passed 1/1, and `npm run verify:canvas-all` now
   `LEGACY_PROMPT_REPAIR_VISUAL_REPAINT changed_pixels=9460`, and
   `LEGACY_PROMPT_REPAIR_OK`; screenshots are in
   `/tmp/tw-legacy-prompt-repair/`.
+- Wide terminal icon clipping guard: the Canvas2D renderer now honors the
+  headless grid's `wide` flag for emoji/icon glyphs by caching two-cell atlas
+  tiles and painting row backgrounds before glyphs, so the spacer cell no longer
+  slices icons like `✅`. The NUL atlas separators are escaped as `\u0000` so
+  renderer diffs remain reviewable. Evidence: `npx playwright test
+  tests/box-glyph.spec.ts --reporter=line` passed 3/3 with the new wide-emoji
+  pixel regression; `npx playwright test canvas-renderer grid-diff grid-resize
+  box-glyph --reporter=line` passed 8/8; `npm run verify:terminal-rendering`,
+  `npm run verify:map-terminals`, and `npm run build` passed.
 
 If a regression appears, `VITE_TERMINAL_RENDERER_MODE=web-xterm` reverts to xterm
 on desktop instantly. Optional remaining polish: a true instrumented key-to-glyph
