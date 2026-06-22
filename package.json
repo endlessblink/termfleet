@@ -56,7 +56,8 @@
     "verify:visual": "scripts/verify-visual-evidence.sh",
     "tauri": "tauri",
     "tauri:dev": "scripts/tauri-dev-with-status.sh",
-    "verify:zellij-shortcuts": "scripts/verify-zellij-shortcuts.sh"
+    "verify:zellij-shortcuts": "scripts/verify-zellij-shortcuts.sh",
+    "cockpit:snapshot": "node scripts/cockpit-snapshot.mjs"
   },
   "dependencies": {
     "@fontsource/geist-mono": "^5.2.8",

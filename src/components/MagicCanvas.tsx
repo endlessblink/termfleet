@@ -35,6 +35,7 @@ import type { GridSnapshot } from "../lib/gridSnapshot";
 import type { Tab, TaskLineupItem, TerminalRuntimeStatus, WorkstreamStatusSummary } from "../lib/types";
 import { agentLaneAuthRetryText, agentLaneAuthRetryTitle, agentLaneCleanupRequestText, agentLaneCleanupRequestTitle, agentLaneCloseoutText, agentLaneCloseoutTitle, agentLaneHealthText, agentLaneInterruptText, agentLaneInterruptTitle, agentLaneMemoryRequestText, agentLaneMemoryRequestTitle, agentLaneProofRequestText, agentLaneProofRequestTitle, agentLaneRestartText, agentLaneRestartTitle, agentLaneRiskMitigationText, agentLaneRiskMitigationTitle, agentLaneStatusSweepText, agentLaneStatusSweepTitle, agentLaneStatusText, attentionBreakdownText, cleanupBreakdownText, closeoutBreakdownText, formatAgentLaneBrief, formatAgentMissionControlBrief, formatAgentRunBrief, handoffMemoryPromptForWorkstream, isActiveAgentWorkstream, isAgentReviewCloseoutReady, isAuthRetryableAgentWorkstream, isCleanupRequestableAgentWorkstream, isRestartableAgentWorkstream, isReviewItemCloseoutReady, isStaleAgentWorkstream, isolationBreakdownText, latestMissionControlAskText, missionBreakdownText, missionControlAlternateText, missionControlDispatchBreakdownText, needsAgentProofRequest, proofRequestPromptForWorkstream, providerBreakdownText, readinessBreakdownText, riskBreakdownText, statusCheckPromptForWorkstream, summarizeAgentLane } from "../lib/agentWorkstreamLane";
 import { agentStatusChipText, agentStatusSummaryFromWorkstream, getDisplaySummary } from "../lib/agentStatusSummary";
+import { CockpitSnapshotProbe } from "./CockpitSnapshotProbe";
 import { workstreamActivityMeta, workstreamActivityText } from "../lib/workstreamActivity";
 import { formatWorkstreamBranch, formatWorkstreamIsolation, formatWorkstreamOpsContext } from "../lib/workstreamOpsContext";
 import { snapshotPreviewRows } from "../lib/snapshotPreviewRows";
@@ -2835,6 +2836,23 @@ function CanvasNodeView({
               data-testid="canvas-terminal-node-header-title"
             >
               <span style={{ color: labelColor ?? "var(--text-primary)" }}>{terminalHeaderTitle}</span>
+              {(workstream || linkedTerminal) && (
+                <CockpitSnapshotProbe
+                  entry={{
+                    paneId: terminalPaneId,
+                    tabId: terminalTabId,
+                    cwd: liveTerminalRoot ?? undefined,
+                    kind: "shell",
+                    title: terminalHeaderTitle,
+                    now: terminalHeaderSummarySignal ?? "",
+                    status: linkedTerminal?.status,
+                    tasksFromTodoWrite: terminalStatusSummary?.tasksFromTodoWrite,
+                    narration: terminalStatusSummary?.narration,
+                    durableActivityTitle: linkedTerminal?.durableActivity?.title,
+                    taskLineup: canonicalTerminalTaskLineup.map((item) => ({ content: item.content, status: item.status })),
+                  }}
+                />
+              )}
             </div>
             <div style={terminalHeaderHasTrustedSummary ? styles.terminalStatusLayout : styles.terminalStatusSummaryColumn}>
               <div style={styles.terminalStatusSummaryColumn}>
