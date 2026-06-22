@@ -161,3 +161,64 @@ test("quadrant and partial-eighth blocks render geometrically (htop/btop meters)
   expect(out.leftEdge).toBeGreaterThan(150);
   expect(out.rightSide).toBeLessThan(60);
 });
+
+test("wide emoji icons render across their reserved terminal cells", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+
+  const out = await page.evaluate(async () => {
+    const { GlyphAtlas, measureCell } = await import("/src/lib/fontAtlas.ts");
+    const { renderSnapshot, sizeCanvasToGrid, DEFAULT_THEME } = await import(
+      "/src/lib/gridRenderer.ts"
+    );
+
+    const dpr = 2;
+    const metrics = measureCell('"Geist Mono", monospace', 18, dpr, 1.2);
+    const cellW = Math.round(metrics.cellWidth * dpr);
+    const cellH = Math.round(metrics.cellHeight * dpr);
+    const atlas = new GlyphAtlas(metrics);
+    const wideTile = atlas.tile("✅", "#9ece6a", false, false, 2);
+
+    const cell = (c: string, wide = false) => ({
+      c,
+      fg: "#9ece6a",
+      bg: "#000000",
+      wide,
+    });
+    const snapshot = {
+      cols: 2,
+      rows: 1,
+      cursor: { col: 0, line: 0 },
+      altScreen: false,
+      cursorVisible: false,
+      cells: [[cell("✅", true), cell(" ")]],
+    };
+
+    const canvas = document.createElement("canvas");
+    document.body.appendChild(canvas);
+    const ctx = sizeCanvasToGrid(canvas, atlas, 2, 1, dpr);
+    renderSnapshot(ctx, atlas, snapshot, dpr, DEFAULT_THEME);
+
+    const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+    const countLit = (x0: number, x1: number) => {
+      let lit = 0;
+      for (let y = 0; y < cellH; y += 1) {
+        for (let x = x0; x < x1; x += 1) {
+          const i = (y * canvas.width + x) * 4;
+          if (data[i] + data[i + 1] + data[i + 2] > 40) lit += 1;
+        }
+      }
+      return lit;
+    };
+
+    return {
+      tileWidth: (wideTile as HTMLCanvasElement | OffscreenCanvas).width,
+      expectedTileWidth: atlas.deviceTileWidth * 2,
+      firstCellLit: countLit(0, cellW),
+      secondCellLit: countLit(cellW, cellW * 2),
+    };
+  });
+
+  expect(out.tileWidth).toBe(out.expectedTileWidth);
+  expect(out.firstCellLit).toBeGreaterThan(20);
+  expect(out.secondCellLit).toBeGreaterThan(20);
+});

@@ -1,10 +1,4 @@
-export type TerminalRuntimeStatus =
-  | "starting"
-  | "running"
-  | "reconnected"
-  | "stale"
-  | "failed"
-  | "exited";
+export type TerminalRuntimeStatus = "starting" | "running" | "reconnected" | "stale" | "failed" | "exited";
 export type TerminalActivityStatus =
   | "idle"
   | "running"

@@ -881,7 +881,7 @@ export function TerminalCanvas({
       }
       if (event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey && key === "z") {
         const store = useWorkspaceStore.getState();
-        const tab = store.tabs.find((candidate) => candidate.id === tabId);
+        const tab = store.tabs.find((candidate) => candidate.id === store.activeTabId);
         const restoringAfterLastClose =
           store.recentlyClosed.length > 0 &&
           tab?.title === "Terminal" &&

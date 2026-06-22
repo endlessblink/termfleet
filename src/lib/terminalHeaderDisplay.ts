@@ -76,6 +76,7 @@ function isGenericTaskTitle(value?: string | null) {
     /^Map terminal source checks (?:passed|failed)$/i.test(text) ||
     /^Status summary server checks (?:passed|failed)$/i.test(text) ||
     /^Checking status summary server contract$/i.test(text) ||
+    /^Checking Agent Status Sidecar tests$/i.test(text) ||
     /^Frontend build (?:passed|failed)$/i.test(text) ||
     /^Building frontend$/i.test(text)
   );
@@ -660,10 +661,10 @@ export function preferRealTaskSummary<T extends { task: string; now: string }>(
       now: cleanText(statusSummary?.now) ?? base.now,
     };
   }
-  // No real task list and no narration → the title must NOT be a heuristic scrape of
-  // terminal output (which surfaced raw commands / arbitrary on-screen text). Show a clean
-  // neutral status word; the (filtered) activity detail stays on the `now` line. (TC-033)
-  if (neutralTitle) {
+  // No real task list and no narration → only replace titles that are actually
+  // generic/scraped. Durable activity and persisted summaries already carry
+  // better contextual titles and must not collapse back to "Working".
+  if (neutralTitle && base.task !== "Ready" && isGenericTaskTitle(base.task)) {
     return { ...base, task: neutralTitle };
   }
   return base;
