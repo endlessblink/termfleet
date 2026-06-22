@@ -2,6 +2,22 @@
 import http from "node:http";
 import { spawn } from "node:child_process";
 import { argv } from "node:process";
+import { mkdirSync, renameSync, writeFileSync } from "node:fs";
+import path from "node:path";
+import { statusDir } from "./lib/agent-status-paths.mjs";
+
+// Dev-only cockpit-state capture (TC-035 observability): the frontend POSTs a faithful dump
+// of every rendered terminal's title/source here, and we write it to a file the operator (or
+// an agent) can read to compare "what's shown" vs "what each terminal is really working on".
+// The frontend can't resolve an absolute path itself, so the node server owns the write.
+function writeCockpitSnapshot(rawBody) {
+  const dir = statusDir();
+  mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, "cockpit-snapshot.json");
+  const tmp = `${file}.${process.pid}.tmp`;
+  writeFileSync(tmp, rawBody || "{}");
+  renameSync(tmp, file);
+}
 
 const host = process.env.TERMFLEET_AGENT_STATUS_HOST || "127.0.0.1";
 const port = Number(process.env.TERMFLEET_AGENT_STATUS_PORT || 37819);
@@ -265,6 +281,19 @@ function sendJson(response, statusCode, payload) {
 const server = http.createServer(async (request, response) => {
   if (request.method === "OPTIONS") {
     sendJson(response, 204, {});
+    return;
+  }
+  // Dev-only observability route: accept the frontend's rendered cockpit-state dump.
+  if (request.method === "POST" && request.url === "/cockpit-snapshot") {
+    try {
+      const raw = await readRequestBody(request);
+      writeCockpitSnapshot(raw);
+      sendJson(response, 200, { ok: true });
+    } catch (error) {
+      sendJson(response, 500, {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
     return;
   }
   if (request.method !== "POST" || request.url !== "/status") {

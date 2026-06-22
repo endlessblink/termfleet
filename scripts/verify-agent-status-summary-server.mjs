@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
@@ -13,23 +13,34 @@ const packagePath = join(root, "package.json");
 const tauriDevWrapperPath = join(root, "scripts", "tauri-dev-with-status.sh");
 const runDevPath = join(root, "run-dev.sh");
 const runNativeDevPath = join(root, "run-native-vte-dev.sh");
+const splitPanePath = join(root, "src", "components", "SplitPane.tsx");
+const cockpitSnapshotPath = join(root, "src", "lib", "cockpitSnapshot.ts");
 
-const [packageJson, tauriDevWrapper, ollamaAdapterSource, runDev, runNativeDev] = await Promise.all([
+const [packageJson, tauriDevWrapper, ollamaAdapterSource, runDev, runNativeDev, splitPaneSource, cockpitSnapshotSource] = await Promise.all([
   readFile(packagePath, "utf8"),
   readFile(tauriDevWrapperPath, "utf8"),
   readFile(ollamaAdapterPath, "utf8"),
   readFile(runDevPath, "utf8"),
   readFile(runNativeDevPath, "utf8"),
+  readFile(splitPanePath, "utf8"),
+  readFile(cockpitSnapshotPath, "utf8"),
 ]);
 
 assert.match(packageJson, /"tauri:dev": "scripts\/tauri-dev-with-status\.sh"/);
-assert.match(tauriDevWrapper, /agent-status-summary-server\.mjs node scripts\/agent-status-summary-ollama\.mjs/);
+assert.match(tauriDevWrapper, /STATUS_WORKER="\$\{TERMFLEET_AGENT_STATUS_WORKER:-node scripts\/agent-status-summary-sidecar\.mjs\}"/);
+assert.match(tauriDevWrapper, /agent-status-summary-server\.mjs \$\{STATUS_WORKER\}/);
 assert.match(tauriDevWrapper, /VITE_AGENT_STATUS_SUMMARY_ENDPOINT/);
 assert.match(tauriDevWrapper, /TERMFLEET_AGENT_STATUS_DISABLE/);
 assert.match(tauriDevWrapper, /TERMFLEET_AGENT_STATUS_MODEL:-qwen3:4b/);
 assert.match(ollamaAdapterSource, /TERMFLEET_AGENT_STATUS_MODEL \|\| "qwen3:4b"/);
 assert.match(runDev, /npm run tauri:dev/);
 assert.match(runNativeDev, /npm run tauri:dev/);
+assert.match(splitPaneSource, /<CockpitSnapshotProbe/);
+assert.match(splitPaneSource, /title: \(isAgentPane \? agentStatusSummary\?\.task : shellStatusSummary\?\.task\)/);
+assert.match(splitPaneSource, /now: \(isAgentPane \? agentStatusSummary\?\.now : shellStatusSummary\?\.now\)/);
+assert.match(splitPaneSource, /taskLineup: visibleTaskLineup\.map/);
+assert.match(cockpitSnapshotSource, /VITE_COCKPIT_SNAPSHOT/);
+assert.match(cockpitSnapshotSource, /\/cockpit-snapshot/);
 
 function waitForEndpoint(child) {
   return new Promise((resolve, reject) => {
@@ -83,6 +94,17 @@ async function withServerArgs(env, args, callback) {
 
 async function postStatus(endpoint, body) {
   const response = await fetch(endpoint, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  assert.equal(response.status, 200);
+  return response.json();
+}
+
+async function postCockpitSnapshot(endpoint, body) {
+  const snapshotEndpoint = endpoint.replace(/\/status\/?$/, "") + "/cockpit-snapshot";
+  const response = await fetch(snapshotEndpoint, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
@@ -190,6 +212,38 @@ await withServer({ TERMFLEET_AGENT_STATUS_PORT: "37981" }, async (endpoint) => {
   assert.equal(summary.status, "working");
   assert.equal(summary.provider, "codex");
 });
+
+{
+  const dataHome = await mkdtemp(join(tmpdir(), "termfleet-cockpit-snapshot-"));
+  await withServer({
+    XDG_DATA_HOME: dataHome,
+    TERMFLEET_AGENT_STATUS_PORT: "37986",
+  }, async (endpoint) => {
+    const body = {
+      updatedAt: 1710000000000,
+      terminals: [
+        {
+          paneId: "terminal-tab-a-pane-b",
+          tabId: "tab-a",
+          cwd: "/workspace/termfleet",
+          kind: "shell",
+          title: "Running map projection checks",
+          now: "Keeping alternate-screen agent panes readable",
+          status: "running",
+          tasksFromTodoWrite: true,
+          taskLineup: [{ content: "Checking selected map terminal", status: "in_progress" }],
+          updatedAt: 1710000000001,
+        },
+      ],
+    };
+
+    const result = await postCockpitSnapshot(endpoint, body);
+    assert.equal(result.ok, true);
+    const snapshotFile = join(dataHome, "terminal-workspace", "agent-status", "cockpit-snapshot.json");
+    await stat(snapshotFile);
+    assert.deepEqual(JSON.parse(await readFile(snapshotFile, "utf8")), body);
+  });
+}
 
 await withServer({ TERMFLEET_AGENT_STATUS_PORT: "37983" }, async (endpoint) => {
   const summary = await postStatus(endpoint, {

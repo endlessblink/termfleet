@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { readFileSync } from "node:fs";
 
 test.use({
   viewport: { width: 1440, height: 920 },
@@ -6,6 +7,16 @@ test.use({
     executablePath: "/usr/bin/chromium",
     args: ["--disable-crash-reporter", "--disable-crashpad", "--disable-gpu"],
   },
+});
+
+test("selected live map terminals keep projection enabled for alternate-screen agent TUIs", () => {
+  const source = readFileSync("src/components/MagicCanvas.tsx", "utf8");
+  const liveTerminalBlock = source.match(/<TerminalComponent[\s\S]*?onSnapshot=\{\(snapshot\) => onTerminalSnapshot\(node\.id, snapshot\)\}[\s\S]*?\/>/);
+
+  expect(liveTerminalBlock?.[0]).toContain("standalone");
+  expect(liveTerminalBlock?.[0]).toContain("runtimeActive={selected}");
+  expect(liveTerminalBlock?.[0]).toContain("mapProjection");
+  expect(liveTerminalBlock?.[0]).not.toContain("mapProjection={false}");
 });
 
 async function imageRegionStats(

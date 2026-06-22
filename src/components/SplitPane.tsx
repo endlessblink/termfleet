@@ -7,6 +7,7 @@ import { splitActivePane, closeActivePane } from "../stores/workspace";
 import type { Tab, TaskLineupItem, TerminalRuntimeStatus, WorkstreamMetadata, WorkstreamStatusSummary } from "../lib/types";
 import { pathTail, projectForTab } from "../lib/projectDisplay";
 import { agentStatusSummaryFromWorkstream, getDisplaySummary } from "../lib/agentStatusSummary";
+import { CockpitSnapshotProbe } from "./CockpitSnapshotProbe";
 import { workstreamActivityText } from "../lib/workstreamActivity";
 import { taskLineupNextLabel, taskLineupStats, visibleTaskLineup as pickVisibleTaskLineup } from "../lib/taskLineup";
 import { neutralHeaderTitle, normalizePersistedShellSummary, preferRealTaskSummary, summaryFromDurableActivity, summarySourceLabel, terminalPurposeFromContext } from "../lib/terminalHeaderDisplay";
@@ -873,6 +874,23 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
             onMouseEnter={() => setHoveredPaneId(paneId)}
             onMouseLeave={() => setHoveredPaneId((current) => current === paneId ? null : current)}
           >
+            {(isAgentPane || isShellSummaryPane) && (
+              <CockpitSnapshotProbe
+                entry={{
+                  paneId,
+                  tabId: tab.id,
+                  cwd: paneCwd ?? undefined,
+                  kind: isAgentPane ? "agent" : "shell",
+                  title: (isAgentPane ? agentStatusSummary?.task : shellStatusSummary?.task) ?? "",
+                  now: (isAgentPane ? agentStatusSummary?.now : shellStatusSummary?.now) ?? "",
+                  status: terminalStatus,
+                  tasksFromTodoWrite: (isAgentPane ? tab.workstream?.statusSummary : paneTerminal?.statusSummary)?.tasksFromTodoWrite,
+                  narration: (isAgentPane ? tab.workstream?.statusSummary : paneTerminal?.statusSummary)?.narration,
+                  durableActivityTitle: paneTerminal?.durableActivity?.title,
+                  taskLineup: visibleTaskLineup.map((item) => ({ content: item.content, status: item.status })),
+                }}
+              />
+            )}
             {isActive && !isImmersivePane && (
               <div
                 aria-hidden="true"

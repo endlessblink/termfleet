@@ -4971,7 +4971,7 @@ scripts/agent-provider-adapter.sh`, and `git diff --check`.
 ### TC-023: Cross-platform terminal substrate
 
 **Priority:** P1
-**Status:** In progress
+**Status:** Done (2026-06-22)
 **Depends:** TC-009, TC-017
 
 #### Problem
@@ -5104,6 +5104,19 @@ T8 persistence, T9 input.
   `restored_trimmed_scrollback_drops_partial_first_line`.
 - **T7 — canvas paste/input source-contract (DONE):** `tests/keymap.spec.ts` asserts the
   hidden-textarea cleanup + agent-prompt bracketing wiring stays in place. 4/4.
+- **T8 — selected map agent TUI projection (DONE):** selected map terminals were forcing
+  `mapProjection={false}`, which bypassed `TerminalCanvas`'s alternate-screen protection
+  and let Codex/agent TUIs reflow on the map; scrolling up could expose control-sequence
+  fragments instead of a readable conversation. Selected map terminals now pass projection
+  through so plain shells still reflow, while alternate-screen agent TUIs keep their
+  working PTY size and are scaled by the canvas renderer. Regression:
+  `tests/map-terminal-rendering.spec.ts` asserts the selected live map terminal keeps
+  projection enabled; `scripts/verify-map-terminals.mjs` now guards the same contract.
+  Evidence: red/green regression (`mapProjection={false}` fails, fixed wiring passes);
+  `npm run verify:map-terminals` passed; full `tests/map-terminal-rendering.spec.ts`
+  passed 26/26; `tests/terminal-mouse.spec.ts` passed 1/1; `npm run
+  verify:terminal-rendering` passed; `npm run verify:canvas-all` passed 41/41; `npm
+  run build` passed.
 - **Gate (Phase 1):** `npm run build` green; `cd src-tauri && cargo test` 64 passed; the
   summary/header specs `agent-status-summary` + `map-terminal-rendering` +
   `terminal-summary-visual` + the three new T1/T2/T5 specs = **76 passed, 0 failed**.
@@ -5290,6 +5303,13 @@ GUI-verified lifecycle items remain.
   daemon-owned `ensure_detached` spawns) sets `cmd.env("TERMFLEET_PANE_ID", &id)`;
   `Terminal.tsx` sends the same `livePtyId ?? runtimeSessionId` as the status key.
   `cargo test --lib` 70 passed, build clean.
+- DONE (2026-06-23): Added dev-only cockpit snapshot observability so the rendered pane
+  title/now/task source can be compared against each terminal's real work without relying on
+  screenshots. `SplitPane` mounts `CockpitSnapshotProbe` beside each summarized terminal
+  header; the recorder POSTs to the status server's `/cockpit-snapshot` route; the server
+  atomically writes `cockpit-snapshot.json` under the existing agent-status directory.
+  Regression: `scripts/verify-agent-status-summary-server.mjs` now asserts the source
+  wiring and proves the endpoint writes the exact posted rendered-state payload.
 - **GUI verification owed (needs a `termfleet` relaunch — can't be done headless):**
   1. In a terminal pane: `env | grep TERMFLEET_PANE_ID` prints `terminal-<tab>-<pane>`.
   2. Open two terminals in the SAME directory, run a different agent/task in each → each

@@ -2582,10 +2582,10 @@ function CanvasNodeView({
         standalone
         renderScale={MAP_TERMINAL_RENDER_SCALE}
         onSnapshot={(snapshot) => onTerminalSnapshot(node.id, snapshot)}
-        // The selected map terminal is the user's active work surface, so it
-        // must reflow to the node and stay readable instead of showing a frozen,
-        // scaled-down projection of a larger split-pane grid.
-        mapProjection={false}
+        // Let TerminalCanvas preserve working-size alternate-screen agent TUIs on
+        // the map. Plain shell buffers still reflow because projection only
+        // freezes while the grid reports altScreen.
+        mapProjection
       />
     ) : node.type === "terminal" ? (
       <TerminalMapPreview

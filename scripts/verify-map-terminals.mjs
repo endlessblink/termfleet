@@ -274,9 +274,11 @@ const checks = [
       /\{segment\.text\}/.test(magicCanvas) &&
       !/background: cell\.color/.test(magicCanvas) &&
       !/live session/.test(magicCanvas) &&
-      /<TerminalComponent[\s\S]*mapProjection=\{false\}/.test(magicCanvas) &&
+      /<TerminalComponent[\s\S]*onSnapshot=\{\(snapshot\) => onTerminalSnapshot\(node\.id, snapshot\)\}[\s\S]*mapProjection[\s\S]*\/>/.test(magicCanvas) &&
+      !/<TerminalComponent[\s\S]*mapProjection=\{false\}/.test(magicCanvas) &&
+      /mapProjection && modesRef\.current\.altScreen/.test(terminalCanvas) &&
       !/mapSurface/.test(magicCanvas),
-    message: "Map terminal nodes must use a truthful character-based preview below 100% zoom and keep readable terminals live.",
+    message: "Map terminal nodes must use truthful previews below 100% zoom, keep readable terminals live, and preserve alternate-screen agent TUIs through projection.",
   },
   {
     ok: !/sparsePrimaryMapAnchorRows|applySparseMapAnchor|mapSurface|MAP_SHELL_ANCHOR_TOO_HIGH|MAP_SHELL_ANCHOR_OK/.test(terminalCanvas) &&
