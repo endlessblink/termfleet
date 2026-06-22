@@ -20,15 +20,21 @@ test("selected live map terminals keep projection enabled for alternate-screen a
 });
 
 test("selected map agent panes suppress synchronized-output control residue", () => {
+  const terminalCanvas = readFileSync("src/components/TerminalCanvas.tsx", "utf8");
   const vtGrid = readFileSync("src-tauri/src/vt_grid.rs", "utf8");
   const mapVerifier = readFileSync("scripts/verify-map-terminals.mjs", "utf8");
 
+  expect(terminalCanvas).toContain("preservesProjectionSize");
+  expect(terminalCanvas).toContain("modesRef.current.bracketedPaste");
+  expect(terminalCanvas).toContain("modesRef.current.mouseReport");
+  expect(terminalCanvas).toContain("modesRef.current.appCursor");
+  expect(terminalCanvas).toContain("interactive TUI mode");
   expect(vtGrid).toContain("strip_unsupported_control_sequences");
   expect(vtGrid).toContain('SYNC_OUTPUT_ON: &[u8] = b"\\x1b[?2026h"');
   expect(vtGrid).toContain('SYNC_OUTPUT_OFF: &[u8] = b"\\x1b[?2026l"');
   expect(vtGrid).toContain("synchronized_output_markers_never_render_as_text");
   expect(vtGrid).toContain("split_synchronized_output_markers_never_render_as_text");
-  expect(mapVerifier).toContain("suppress unsupported sync-output control markers");
+  expect(mapVerifier).toContain("preserve interactive agent TUIs through projection");
 });
 
 async function imageRegionStats(

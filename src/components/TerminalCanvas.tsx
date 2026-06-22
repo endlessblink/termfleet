@@ -114,10 +114,10 @@ interface TerminalCanvasProps {
   // transform) pass 2 so glyphs stay crisp when the compositor scales the bitmap;
   // split panes leave it 1. Constant per mount — see the effect's dpr note.
   renderScale?: number;
-  // Read-only map projection. When true and the session is in an alternate-screen
-  // TUI, the grid/PTY is NOT shrunk to the node; it stays at its working width and
-  // the canvas is CSS-scaled to fit, so a wide alt-screen frame (agent/zellij) is
-  // never reflowed into garbage on a small map node. Plain shells still reflow.
+  // Read-only map projection. When true and the session is in an interactive TUI
+  // mode, the grid/PTY is NOT shrunk to the node; it stays at its working width and
+  // the canvas is CSS-scaled to fit, so a wide agent/zellij frame is never reflowed
+  // into garbage on a small map node. Plain shells still reflow.
   mapProjection?: boolean;
   // Lifecycle reporting so the workspace store can track the canvas-owned PTY.
   // Without these, tab.terminals is never populated for canvas terminals (the
@@ -344,6 +344,18 @@ export function TerminalCanvas({
     };
 
     const channel = new Channel<ArrayBuffer>();
+    const preservesProjectionSize = () =>
+      mapProjection &&
+      (
+        modesRef.current.altScreen ||
+        modesRef.current.mouseReport ||
+        modesRef.current.appCursor ||
+        modesRef.current.bracketedPaste ||
+        modesRef.current.alternateScroll ||
+        modesRef.current.alternateScrollSet ||
+        modesRef.current.sgrMouse
+      );
+
     channel.onmessage = (payload) => {
       if (disposed) return;
       let frame;
@@ -365,7 +377,7 @@ export function TerminalCanvas({
         return;
       }
       setAttachError(null);
-      const prevAltScreen = modesRef.current.altScreen;
+      const prevPreservedProjection = preservesProjectionSize();
       modesRef.current = {
         appCursor: buffer.appCursor,
         bracketedPaste: buffer.bracketedPaste,
@@ -411,10 +423,11 @@ export function TerminalCanvas({
       }
       scheduleRender();
       // Keep the map node fitted to the current mode: re-fit the frozen canvas
-      // after a full sync (which resets canvas size), and switch freeze↔reflow
-      // when the inner app enters/leaves alt-screen. The first frame also runs
-      // this so the deferred post-attach reconcile happens once modes are known.
-      if (mapProjection && (firstFrame || frame.full || prevAltScreen !== buffer.altScreen)) {
+      // after a full sync (which resets canvas size), and switch freeze/reflow
+      // when the inner app enters/leaves an interactive TUI mode. The first frame
+      // also runs this so the deferred post-attach reconcile happens once modes
+      // are known.
+      if (mapProjection && (firstFrame || frame.full || prevPreservedProjection !== preservesProjectionSize())) {
         reconcileLayout();
       }
     };
@@ -510,13 +523,13 @@ export function TerminalCanvas({
       if (overlay && overlay.style.transform) overlay.style.transform = "";
     };
 
-    // Decide between freeze (alt-screen on the map) and reflow (everything else).
-    // For map nodes we must wait for the first frame so altScreen is known —
-    // reflowing a wide alt-screen frame before then is exactly the corruption
-    // this avoids; the first-frame handler re-runs this once modes are real.
+    // Decide between freeze (interactive TUI on the map) and reflow (everything
+    // else). For map nodes we must wait for the first frame so terminal modes are
+    // known; reflowing a wide agent/TUI frame before then is exactly the corruption
+    // this avoids. The first-frame handler re-runs this once modes are real.
     const reconcileLayout = () => {
       if (mapProjection && !firstFrameRef.current) return;
-      if (mapProjection && modesRef.current.altScreen) {
+      if (preservesProjectionSize()) {
         applyProjectionScale();
       } else {
         clearProjectionScale();
