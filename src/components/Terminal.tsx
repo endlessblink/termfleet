@@ -1159,9 +1159,9 @@ export function TerminalComponent({
   }, [canvasMode, livePtyId, onQueuedInputSent, queuedInput?.id, queuedInput?.sentAt, queuedInput?.text, write]);
 
   // Poll the PTY's live cwd (/proc/<pid>/cwd) so a `cd`/`z` to another path
-  // updates the node subtitle + top-bar breadcrumb. Display-only: it never
-  // renames the session's project. ~2s cadence; a readlink per visible terminal
-  // is cheap. Browser preview has no real PTY, so skip it.
+  // updates the node subtitle, top-bar breadcrumb, and project identity. ~2s
+  // cadence; a readlink per visible terminal is cheap. Browser preview has no
+  // real PTY, so skip it.
   useEffect(() => {
     if (!isTauri || !livePtyId) return;
     const { refreshLiveCwd } = useWorkspaceStore.getState();

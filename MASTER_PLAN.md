@@ -72,7 +72,7 @@ were retired during consolidation.
 | TC-031     | Ctrl+Z restore for closed map terminals and non-destructive localhost preview closure                                                                                                                           | P1       | DONE (2026-06-18) | TC-017, TC-020 |
 | TC-032     | Operator-useful terminal summary: regular app headers answer what each shell/agent terminal is doing right now                                                                                                  | P1       | DONE (2026-06-19) | TC-016i        |
 | TC-033     | Reliability hardening: fix recurring sidebar task list, AI summary, paste, and render/session issues that never stayed fixed                                                                                     | P1       | DONE (2026-06-19) | TC-027, TC-032 |
-| TC-034     | Group terminals into projects by path: terminals in the same cwd collapse into one project; stop minting duplicate project groups per folder-open                                                                  | P1       | IN_PROGRESS       | TC-011, TC-024 |
+| TC-034     | Group terminals into projects by path: terminals in the same cwd collapse into one project; stop minting duplicate project groups per folder-open                                                                  | P1       | DONE (2026-06-22) | TC-011, TC-024 |
 | TC-035     | Per-terminal standalone status: key the cockpit task list/title by pane identity, not cwd, so each terminal tracks its own work even when several share a directory                                              | P1       | TODO              | TC-033, TC-034 |
 
 ---
@@ -5115,7 +5115,7 @@ T8 persistence, T9 input.
 ### TC-034: Group terminals into projects by path
 
 **Priority:** P1
-**Status:** In progress
+**Status:** Done (2026-06-22)
 **Depends:** TC-011, TC-024
 
 #### Problem
@@ -5140,6 +5140,11 @@ valid group, so per-terminal auto-groups never merged.
   existing project group instead of duplicating it).
 - Reconcile is now wired into `addTab` and into `updateTab` on cwd changes
   (`updates.initialCwd`), so grouping self-heals live instead of only on hydrate.
+- 2026-06-22: Live PTY cwd now wins over stale project identity after `cd`/`z`,
+  and nested project roots choose the deepest matching project instead of a
+  parent checkout. Generated project names are repaired when the active project
+  root changes, so a shell in `cc-linux-enhancments` does not keep showing the
+  stale `termfleet` project name.
 
 Files: `src/stores/workspace.ts`. Behavior note: path is authoritative for
 terminals, so a terminal cannot be manually parked in a different project from its
@@ -5150,6 +5155,11 @@ cwd (matches the "terminals opened in a path should be a project" intent).
 - `tests/project-reconciliation.spec.ts` extended: four same-path terminals + a
   duplicate project group collapse into one project (count 4), paper-bot stays its
   own project, and `addGroup` reuses the existing group for a repeated path.
+- 2026-06-22 nested/stale-name proof: `npx playwright test
+  tests/project-reconciliation.spec.ts --reporter=line` passed 9/9, covering
+  deepest-root selection and generated-name repair. `npm run
+  verify:map-terminals`, `npm run verify:terminal-rendering`, and `npm run
+  build` passed.
 - Gate: `tsc --noEmit` clean; `npm run build` green; `project-reconciliation` +
   `map-terminal-rendering` specs **25 passed, 0 failed**.
 

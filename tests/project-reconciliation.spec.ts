@@ -532,6 +532,198 @@ test("live cwd rehomes a stale Bina-scoped terminal to the TermFleet project", a
   await expect(page.getByTestId("map-node-project-emoji")).toHaveAttribute("title", /termfleet/);
 });
 
+test("live cwd uses the deepest matching project root instead of a stale parent", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+
+  await page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => {
+          workspaceUiState: Record<string, unknown>;
+          setWorkspaceMode: (mode: string) => void;
+          setLiveCwd: (id: string, cwd: string) => void;
+          updateWorkspaceUiState: (updates: Record<string, unknown>) => void;
+        };
+        setState: (state: Record<string, unknown>) => void;
+      };
+    }).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+
+    const ROOT = "/media/endlessblink/data/my-projects/ai-development/cc-linux-enhancments";
+    const APP = `${ROOT}/terminal-workspace-tauri`;
+    const groups = [
+      { id: "group-root", name: "cc-linux-enhancments", color: "#7aa2f7", projectRoot: ROOT },
+      { id: "group-app", name: "termfleet", color: "#9ece6a", projectRoot: APP },
+    ];
+
+    store.setState({
+      workspaceUiState: {
+        ...store.getState().workspaceUiState,
+        workspaceMode: "canvas",
+        primarySidebarPanel: "map",
+        primarySidebarCollapsed: false,
+        canvasSidebarCollapsed: false,
+      },
+      groups,
+      terminalGroups: groups,
+      tabs: [{
+        id: "tab-termfleet",
+        title: "Terminal",
+        emoji: "[]",
+        color: "#7aa2f7",
+        groupId: "group-root",
+        initialCwd: ROOT,
+        terminals: [{ id: "pty-termfleet", paneId: "pane-termfleet", cols: 80, rows: 24, status: "running" }],
+        splitLayout: { id: "pane-termfleet", type: "terminal" },
+        activePaneId: "pane-termfleet",
+      }],
+      activeTabId: "tab-termfleet",
+      activeGroupFilter: "group-root",
+      activeGroupId: "group-root",
+      projectRoot: ROOT,
+      liveCwds: {},
+      canvasState: {
+        selectedNodeId: "node-termfleet",
+        selectedNodeIds: ["node-termfleet"],
+        viewport: { x: -80, y: 70, zoom: 0.75 },
+        nodes: [{
+          id: "node-termfleet",
+          type: "terminal",
+          title: "Terminal",
+          terminalTabId: "tab-termfleet",
+          terminalCwd: ROOT,
+          x: 0,
+          y: 0,
+          width: 620,
+          height: 420,
+        }],
+      },
+    });
+    store.getState().setLiveCwd("pty-termfleet", `${APP}/src`);
+    store.getState().setWorkspaceMode("canvas");
+    store.getState().updateWorkspaceUiState({
+      primarySidebarPanel: "map",
+      primarySidebarCollapsed: false,
+      canvasSidebarCollapsed: false,
+    });
+  });
+
+  await expect.poll(async () => page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => {
+          activeGroupFilter: string | null;
+          projectRoot: string | null;
+          tabs: Array<{ id: string; groupId: string | null }>;
+          groups: Array<{ id: string; name: string; projectRoot?: string }>;
+          canvasState: { viewport: { x: number; y: number; zoom: number } };
+        };
+      };
+    }).__termfleetWorkspaceStore;
+    const state = store?.getState();
+    if (!state) return null;
+    const tab = state.tabs.find((candidate) => candidate.id === "tab-termfleet");
+    const group = state.groups.find((candidate) => candidate.id === tab?.groupId);
+    const activeGroup = state.groups.find((candidate) => candidate.id === state.activeGroupFilter);
+    return {
+      tabGroupName: group?.name,
+      tabGroupRoot: group?.projectRoot,
+      activeProjectName: activeGroup?.name,
+      projectRoot: state.projectRoot,
+      viewport: state.canvasState.viewport,
+    };
+  })).toEqual({
+    tabGroupName: "termfleet",
+    tabGroupRoot: "/media/endlessblink/data/my-projects/ai-development/cc-linux-enhancments/terminal-workspace-tauri",
+    activeProjectName: "termfleet",
+    projectRoot: "/media/endlessblink/data/my-projects/ai-development/cc-linux-enhancments/terminal-workspace-tauri",
+    viewport: { x: -80, y: 70, zoom: 0.75 },
+  });
+});
+
+test("project root changes repair generated project names from the new path", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+
+  const result = await page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => {
+          setProjectRoot: (path: string | null, syncTerminal?: boolean) => void;
+          groups: Array<{ id: string; name: string; projectRoot?: string }>;
+          tabs: Array<{ id: string; groupId: string | null }>;
+          activeGroupFilter: string | null;
+          projectRoot: string | null;
+        };
+        setState: (state: Record<string, unknown>) => void;
+      };
+    }).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+
+    const TERMFLEET = "/media/endlessblink/data/my-projects/ai-development/devops/termfleet";
+    const CC = "/media/endlessblink/data/my-projects/ai-development/cc-linux-enhancments";
+    store.setState({
+      groups: [{ id: "group-termfleet", name: "termfleet", color: "#7aa2f7", projectRoot: TERMFLEET }],
+      terminalGroups: [{ id: "group-termfleet", name: "termfleet", color: "#7aa2f7", projectRoot: TERMFLEET }],
+      tabs: [{
+        id: "tab-shell",
+        title: "Terminal",
+        emoji: "[]",
+        color: "#7aa2f7",
+        groupId: "group-termfleet",
+        initialCwd: TERMFLEET,
+        terminals: [{ id: "pty-shell", paneId: "pane-shell", cols: 80, rows: 24, status: "running" }],
+        splitLayout: { id: "pane-shell", type: "terminal" },
+        activePaneId: "pane-shell",
+      }],
+      activeTabId: "tab-shell",
+      activeGroupFilter: "group-termfleet",
+      activeGroupId: "group-termfleet",
+      projectRoot: TERMFLEET,
+      canvasState: {
+        selectedNodeId: "node-shell",
+        selectedNodeIds: ["node-shell"],
+        viewport: { x: 0, y: 0, zoom: 1 },
+        nodes: [{
+          id: "node-shell",
+          type: "terminal",
+          title: "Terminal",
+          terminalTabId: "tab-shell",
+          terminalCwd: TERMFLEET,
+          x: 0,
+          y: 0,
+          width: 620,
+          height: 420,
+        }],
+      },
+    });
+    store.getState().setProjectRoot(CC, false);
+    const state = store.getState();
+    const group = state.groups.find((candidate) => candidate.id === "group-termfleet");
+    const tab = state.tabs.find((candidate) => candidate.id === "tab-shell");
+    return {
+      groupName: group?.name,
+      groupRoot: group?.projectRoot,
+      tabRoot: tab?.initialCwd,
+      projectRoot: state.projectRoot,
+    };
+  });
+
+  expect(result).toEqual({
+    groupName: "cc-linux-enhancments",
+    groupRoot: "/media/endlessblink/data/my-projects/ai-development/cc-linux-enhancments",
+    tabRoot: "/media/endlessblink/data/my-projects/ai-development/cc-linux-enhancments",
+    projectRoot: "/media/endlessblink/data/my-projects/ai-development/cc-linux-enhancments",
+  });
+});
+
 test("new terminal follows the active tab project instead of a stale project filter", async ({ page }) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle");

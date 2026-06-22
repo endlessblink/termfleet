@@ -473,6 +473,20 @@ function projectNameFromPath(path: string) {
   return path.split("/").filter(Boolean).pop() || path || "Project";
 }
 
+function generatedProjectNameForRoot(projectRoot?: string | null) {
+  const normalizedRoot = normalizeProjectPath(projectRoot);
+  return normalizedRoot ? projectNameFromPath(normalizedRoot) : null;
+}
+
+function projectNameAfterRootChange(group: Group, nextRoot?: string | null) {
+  const previousGeneratedName = generatedProjectNameForRoot(group.projectRoot);
+  const nextGeneratedName = generatedProjectNameForRoot(nextRoot);
+  if (!nextGeneratedName) return group.name;
+  return !previousGeneratedName || group.name === previousGeneratedName
+    ? nextGeneratedName
+    : group.name;
+}
+
 function projectIdFromPath(path: string, groups: Group[]) {
   let hash = 0;
   for (let index = 0; index < path.length; index += 1) {
@@ -506,6 +520,16 @@ function pathBelongsToProject(path: string, projectRoot?: string | null) {
   const normalizedRoot = normalizeProjectPath(projectRoot);
   if (!normalizedPath || !normalizedRoot) return false;
   return normalizedPath === normalizedRoot || normalizedPath.startsWith(`${normalizedRoot}/`);
+}
+
+function bestProjectGroupForPath(path: string, groups: Group[]) {
+  return groups
+    .filter((group) => pathBelongsToProject(path, group.projectRoot))
+    .sort((left, right) => {
+      const leftRoot = normalizeProjectPath(left.projectRoot) ?? "";
+      const rightRoot = normalizeProjectPath(right.projectRoot) ?? "";
+      return rightRoot.length - leftRoot.length;
+    })[0];
 }
 
 function terminalLiveCwd(tab: Tab, liveCwds?: Record<string, string>) {
@@ -585,24 +609,17 @@ function reconcileProjectGroups(
   };
 
   const nextTabs = tabs.map((tab) => {
-    // Path-based project membership: a terminal whose cwd resolves under a project
-    // root stays in that project (sub-path tolerant); otherwise it is (re)homed to
-    // the single canonical group for its path, so same-path terminals collapse into
-    // one project. A tab whose group was collapsed as a duplicate follows the
-    // canonical group. (TC-034 + project-emoji identity)
+    // Path-based project membership: live cwd wins, and when nested project roots
+    // match the same cwd, the deepest root wins (e.g. parent checkout vs nested app).
+    // Otherwise same-path terminals collapse into one canonical project. (TC-034)
     const path = terminalProjectPath(tab, nodesByTabId, liveCwds);
-    const existingGroup = tab.groupId
-      ? nextGroups.find((group) => group.id === tab.groupId)
-      : undefined;
-    if (existingGroup && (!path || pathBelongsToProject(path, existingGroup.projectRoot))) {
-      return tab;
-    }
-    if (tab.groupId && remap.has(tab.groupId)) {
+    if (!path && tab.groupId && remap.has(tab.groupId)) {
       return { ...tab, groupId: remap.get(tab.groupId) ?? null };
     }
     if (!path) return tab.groupId ? { ...tab, groupId: null } : tab;
 
-    const group = ensureGroupForPath(path);
+    const group = bestProjectGroupForPath(path, nextGroups) ?? ensureGroupForPath(path);
+    if (tab.groupId === group.id) return tab;
     return { ...tab, groupId: group.id };
   });
 
@@ -2194,14 +2211,22 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       groups: state.activeGroupFilter
         ? state.groups.map((group) =>
             group.id === state.activeGroupFilter
-              ? { ...group, projectRoot: path ?? undefined }
+              ? {
+                  ...group,
+                  name: projectNameAfterRootChange(group, path),
+                  projectRoot: path ?? undefined,
+                }
               : group
           )
         : state.groups,
       terminalGroups: state.activeGroupFilter
         ? state.terminalGroups.map((group) =>
             group.id === state.activeGroupFilter
-              ? { ...group, projectRoot: path ?? undefined }
+              ? {
+                  ...group,
+                  name: projectNameAfterRootChange(group, path),
+                  projectRoot: path ?? undefined,
+                }
               : group
           )
         : state.terminalGroups,
