@@ -545,9 +545,14 @@ function reconcileProjectGroups(
   const nextGroups: Group[] = [];
   for (const group of groups) {
     const projectRoot = normalizeProjectPath(group.projectRoot);
-    const emoji = group.emoji ?? projectEmojiFor(projectRoot ?? group.name);
-    const normalizedGroup = (projectRoot && projectRoot !== group.projectRoot) || !group.emoji
-      ? { ...group, projectRoot: projectRoot ?? group.projectRoot, emoji }
+    const generatedEmoji = projectEmojiFor(projectRoot ?? group.name);
+    const emoji = group.emojiSource === "user" ? group.emoji ?? generatedEmoji : generatedEmoji;
+    const emojiSource: Group["emojiSource"] = group.emojiSource === "user" ? "user" : "generated";
+    const normalizedGroup =
+      (projectRoot && projectRoot !== group.projectRoot) ||
+      group.emoji !== emoji ||
+      group.emojiSource !== emojiSource
+      ? { ...group, projectRoot: projectRoot ?? group.projectRoot, emoji, emojiSource }
       : group;
     if (projectRoot) {
       const canonical = groupsByRoot.get(projectRoot);
@@ -570,6 +575,7 @@ function reconcileProjectGroups(
       name: projectNameFromPath(path),
       color: GROUP_COLORS[nextGroups.length % GROUP_COLORS.length],
       emoji: projectEmojiFor(path),
+      emojiSource: "generated",
       projectRoot: path,
     };
     nextGroups.push(group);
@@ -850,8 +856,10 @@ export async function createNewTab() {
   const store = useWorkspaceStore.getState();
   const activeTab = store.tabs.find((t) => t.id === store.activeTabId);
 
-  // The new tab belongs to the active project filter (falling back to the active tab's project).
-  const groupId = store.activeGroupFilter ?? activeTab?.groupId ?? null;
+  // Prefer the selected terminal's actual project when it disagrees with a stale
+  // filter. The filter can lag behind direct session/map selection, and a new
+  // terminal must follow what the operator is looking at.
+  const groupId = activeTab?.groupId ?? store.activeGroupFilter ?? null;
   const targetGroup = groupId ? store.groups.find((group) => group.id === groupId) : null;
 
   let cwd: string | undefined;
@@ -1363,9 +1371,9 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         ? projects.groups.find((group) => group.id === newTabGroupId)
         : null;
       const shouldFollowNewTabProject =
-        newTab.groupId !== newTabGroupId &&
         newTab.groupId !== null &&
-        (state.activeGroupFilter === newTab.groupId || state.activeGroupId === newTab.groupId);
+        state.activeGroupFilter !== null &&
+        state.activeGroupFilter !== newTabGroupId;
       const bumpActive = (groupList: Group[]) =>
         newTabGroupId
           ? groupList.map((group) =>
@@ -2094,8 +2102,9 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       id: crypto.randomUUID(),
       name,
       color: resolvedColor,
-      emoji: projectEmojiFor(projectRoot ?? name),
-      projectRoot,
+      emoji: projectEmojiFor(normalizedRoot ?? name),
+      emojiSource: "generated",
+      projectRoot: normalizedRoot ?? projectRoot,
     };
     set((state) => ({
       groups: [...state.groups, newGroup],

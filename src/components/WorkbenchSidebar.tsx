@@ -1329,7 +1329,7 @@ function ProjectContextMenu({
         <EmojiPicker
           embedded
           selected={selectedEmoji}
-          onSelect={(picked) => updateGroup(id, { emoji: picked })}
+          onSelect={(picked) => updateGroup(id, { emoji: picked, emojiSource: "user" })}
         />
       </div>
 

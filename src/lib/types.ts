@@ -359,6 +359,7 @@ export interface Group {
   name: string;
   color: string;
   emoji?: string;
+  emojiSource?: "generated" | "user";
   projectRoot?: string;
   lastActiveTabId?: string;
 }

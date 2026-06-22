@@ -531,3 +531,164 @@ test("live cwd rehomes a stale Bina-scoped terminal to the TermFleet project", a
   await expect(nodeList).not.toContainText("bina-ve-ze");
   await expect(page.getByTestId("map-node-project-emoji")).toHaveAttribute("title", /termfleet/);
 });
+
+test("new terminal follows the active tab project instead of a stale project filter", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+
+  await page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => {
+          workspaceUiState: Record<string, unknown>;
+        };
+        setState: (state: Record<string, unknown>) => void;
+      };
+    }).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+
+    const BINA = "/media/endlessblink/data/my-projects/ai-development/web-dev/bina-ve-ze";
+    const TERMFLEET = "/media/endlessblink/data/my-projects/ai-development/devops/termfleet";
+    const groups = [
+      { id: "group-bina", name: "bina-ve-ze", color: "#7aa2f7", emoji: "BZ", projectRoot: BINA },
+      { id: "group-termfleet", name: "termfleet", color: "#9ece6a", emoji: "TF", projectRoot: TERMFLEET },
+    ];
+
+    store.setState({
+      workspaceUiState: {
+        ...store.getState().workspaceUiState,
+        workspaceMode: "split",
+      },
+      groups,
+      terminalGroups: groups,
+      tabs: [{
+        id: "tab-termfleet",
+        title: "Terminal",
+        emoji: "[]",
+        color: "#7aa2f7",
+        groupId: "group-termfleet",
+        initialCwd: TERMFLEET,
+        terminals: [{ id: "pty-termfleet", paneId: "pane-termfleet", cols: 80, rows: 24, status: "running" }],
+        splitLayout: { id: "pane-termfleet", type: "terminal" },
+        activePaneId: "pane-termfleet",
+      }],
+      activeTabId: "tab-termfleet",
+      activeGroupFilter: "group-bina",
+      activeGroupId: "group-bina",
+      projectRoot: BINA,
+      liveCwds: {},
+      canvasState: {
+        selectedNodeId: "node-termfleet",
+        selectedNodeIds: ["node-termfleet"],
+        viewport: { x: 0, y: 0, zoom: 1 },
+        nodes: [{
+          id: "node-termfleet",
+          type: "terminal",
+          title: "Terminal",
+          terminalTabId: "tab-termfleet",
+          terminalCwd: TERMFLEET,
+          x: 0,
+          y: 0,
+          width: 620,
+          height: 420,
+        }],
+      },
+    });
+  });
+
+  await page.keyboard.press("Control+Shift+T");
+
+  await expect.poll(async () => page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => {
+          tabs: Array<{ id: string; groupId: string | null; initialCwd?: string }>;
+          groups: Array<{ id: string; name: string; projectRoot?: string }>;
+          activeTabId: string | null;
+          activeGroupFilter: string | null;
+          projectRoot: string | null;
+        };
+      };
+    }).__termfleetWorkspaceStore;
+    if (!store) return null;
+    const state = store.getState();
+    const newTab = state.tabs.find((tab) => tab.id !== "tab-termfleet");
+    const newGroup = state.groups.find((group) => group.id === newTab?.groupId);
+    return {
+      newTabRoot: newTab?.initialCwd,
+      newTabGroup: newGroup?.name,
+      activeTabId: state.activeTabId,
+      activeFilter: state.activeGroupFilter,
+      projectRoot: state.projectRoot,
+    };
+  })).toEqual({
+    newTabRoot: "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
+    newTabGroup: "termfleet",
+    activeTabId: expect.any(String),
+    activeFilter: "group-termfleet",
+    projectRoot: "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
+  });
+});
+
+test("project emoji is stable for generated icons and user emoji wins", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+
+  const result = await page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => {
+          addGroup: (name: string, color?: string, projectRoot?: string) => string;
+          updateGroup: (id: string, updates: Record<string, unknown>) => void;
+          reconcileProjectGroups: () => void;
+          groups: Array<{ id: string; name: string; emoji?: string; emojiSource?: string; projectRoot?: string }>;
+        };
+        setState: (state: Record<string, unknown>) => void;
+      };
+    }).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+
+    const root = "/media/endlessblink/data/my-projects/ai-development/devops/termfleet";
+    store.setState({
+      groups: [],
+      terminalGroups: [],
+      tabs: [],
+      canvasState: { selectedNodeId: null, selectedNodeIds: [], viewport: { x: 0, y: 0, zoom: 1 }, nodes: [] },
+    });
+
+    const firstId = store.getState().addGroup("termfleet", undefined, root);
+    const first = store.getState().groups.find((group) => group.id === firstId);
+    const duplicateId = store.getState().addGroup("TermFleet custom label", undefined, `${root}/`);
+    const duplicate = store.getState().groups.find((group) => group.id === duplicateId);
+
+    store.getState().updateGroup(firstId, { emoji: "USER", emojiSource: "user" });
+    store.getState().reconcileProjectGroups();
+    const userOwned = store.getState().groups.find((group) => group.id === firstId);
+
+    return {
+      reusedSameGroup: duplicateId === firstId,
+      generatedEmoji: first?.emoji,
+      duplicateEmoji: duplicate?.emoji,
+      generatedSource: first?.emojiSource,
+      userEmoji: userOwned?.emoji,
+      userSource: userOwned?.emojiSource,
+      root: userOwned?.projectRoot,
+    };
+  });
+
+  expect(result).toEqual({
+    reusedSameGroup: true,
+    generatedEmoji: expect.any(String),
+    duplicateEmoji: result.generatedEmoji,
+    generatedSource: "generated",
+    userEmoji: "USER",
+    userSource: "user",
+    root: "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
+  });
+});
