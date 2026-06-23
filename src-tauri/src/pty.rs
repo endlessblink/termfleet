@@ -12,7 +12,13 @@ use std::thread::JoinHandle;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, Runtime};
 
-const MAX_SCROLLBACK_BYTES: usize = 200_000;
+// Per-session scrollback we retain in RAM and replay on restore. 200KB was far
+// too small for agent CLIs (Claude/Codex): their output is escape-sequence-heavy
+// (~3KB per rendered line), so 200KB rendered to only ~60-70 scrollable lines and
+// you could never scroll back near the start of a conversation. 4MB retains
+// ~1.3k+ lines of that kind of output (and far more for plain shells) — enough to
+// reach the start of a typical session, at a bounded RAM/disk cost per session.
+const MAX_SCROLLBACK_BYTES: usize = 4_000_000;
 
 /// Injected once after a session's replayed scrollback on cold restore (daemon
 /// death / reboot) to normalize VT state before the fresh shell writes. A dead
