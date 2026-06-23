@@ -833,6 +833,9 @@ export async function hydrateWorkspace() {
     // 1. localStorage gave us nothing → load the durable disk layout.
     let baseTabs = store.tabs;
     let baseActive = store.activeTabId;
+    // A saved layout (from localStorage OR the disk checkpoint) is authoritative.
+    // `!hydrating` means localStorage already restored a layout.
+    let hadSavedLayout = !store.hydrating;
     if (store.hydrating) {
       const raw = await invoke<string | null>("workspace_layout_load");
       if (raw) {
@@ -841,6 +844,7 @@ export async function hydrateWorkspace() {
           if (disk.tabs && disk.tabs.length > 0) {
             baseTabs = disk.tabs.map(withRestartableTerminals);
             baseActive = disk.activeTabId ?? baseTabs[0].id;
+            hadSavedLayout = true;
           }
         } catch (error) {
           console.warn("Could not parse on-disk workspace layout:", error);
@@ -849,25 +853,30 @@ export async function hydrateWorkspace() {
     }
 
     // 2. Reconcile orphaned content: any saved session with real scrollback whose
-    //    tab isn't present gets re-added (self-heals a wiped/never-saved layout).
-    let sessions: PersistedSessionSummary[] = [];
-    try {
-      sessions = await invoke<PersistedSessionSummary[]>("workspace_persisted_sessions");
-    } catch (error) {
-      console.warn("Could not list persisted sessions:", error);
-    }
-
+    //    tab isn't present gets re-added. This is ONLY a self-heal for a genuinely
+    //    wiped / never-saved layout. With any saved layout present, the user's tab
+    //    set is authoritative — a terminal they closed must STAY closed, even if
+    //    its on-disk session checkpoint outlived it. Recovering orphans on top of a
+    //    valid layout is exactly what resurrected dead terminals on restart (TC-040).
     const seen = new Set(baseTabs.map((tab) => tab.id));
     const recovered: Tab[] = [];
-    for (const session of [...sessions].sort((a, b) => b.scrollbackBytes - a.scrollbackBytes)) {
-      // Require a saved cwd: a restored session is a *clean* shell (dead content
-      // can't be replayed without garbling), so its value is reopening the right
-      // directory. A cwd-less orphan would just be a home-shell — clutter, skip it.
-      if (session.scrollbackBytes < ORPHAN_MIN_BYTES || !session.cwd) continue;
-      const tab = tabFromOrphanedSession(session);
-      if (!tab || seen.has(tab.id)) continue;
-      seen.add(tab.id);
-      recovered.push(tab);
+    if (!hadSavedLayout) {
+      let sessions: PersistedSessionSummary[] = [];
+      try {
+        sessions = await invoke<PersistedSessionSummary[]>("workspace_persisted_sessions");
+      } catch (error) {
+        console.warn("Could not list persisted sessions:", error);
+      }
+      for (const session of [...sessions].sort((a, b) => b.scrollbackBytes - a.scrollbackBytes)) {
+        // Require a saved cwd: a restored session is a *clean* shell (dead content
+        // can't be replayed without garbling), so its value is reopening the right
+        // directory. A cwd-less orphan would just be a home-shell — clutter, skip it.
+        if (session.scrollbackBytes < ORPHAN_MIN_BYTES || !session.cwd) continue;
+        const tab = tabFromOrphanedSession(session);
+        if (!tab || seen.has(tab.id)) continue;
+        seen.add(tab.id);
+        recovered.push(tab);
+      }
     }
 
     if (!store.hydrating && recovered.length === 0) return; // happy path, nothing to do
