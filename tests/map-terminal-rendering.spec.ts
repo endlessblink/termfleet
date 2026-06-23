@@ -9,7 +9,7 @@ test.use({
   },
 });
 
-test("selected live map terminals keep projection enabled for alternate-screen agent TUIs", () => {
+test("selected live map terminals preserve alternate-screen projection without clipping overscale", () => {
   const source = readFileSync("src/components/MagicCanvas.tsx", "utf8");
   const liveTerminalBlock = source.match(/<TerminalComponent[\s\S]*?onSnapshot=\{\(snapshot\) => onTerminalSnapshot\(node\.id, snapshot\)\}[\s\S]*?\/>/);
 
@@ -17,6 +17,7 @@ test("selected live map terminals keep projection enabled for alternate-screen a
   expect(liveTerminalBlock?.[0]).toContain("runtimeActive={selected}");
   expect(liveTerminalBlock?.[0]).toContain("mapProjection");
   expect(liveTerminalBlock?.[0]).not.toContain("mapProjection={false}");
+  expect(liveTerminalBlock?.[0]).not.toContain("projectionMinScale");
 });
 
 test("selected map agent panes suppress synchronized-output control residue", () => {
@@ -24,17 +25,25 @@ test("selected map agent panes suppress synchronized-output control residue", ()
   const vtGrid = readFileSync("src-tauri/src/vt_grid.rs", "utf8");
   const mapVerifier = readFileSync("scripts/verify-map-terminals.mjs", "utf8");
 
-  expect(terminalCanvas).toContain("preservesProjectionSize");
-  expect(terminalCanvas).toContain("modesRef.current.bracketedPaste");
-  expect(terminalCanvas).toContain("modesRef.current.mouseReport");
-  expect(terminalCanvas).toContain("modesRef.current.appCursor");
+  const projectionGuard = terminalCanvas.match(/const preservesProjectionSize = \(\) =>[\s\S]*?;\n\n    channel\.onmessage/);
+  const projectionClip = terminalCanvas.match(/const applyProjectionClip = \(\) => \{[\s\S]*?\n    \};/);
+  expect(projectionGuard?.[0]).toContain("modesRef.current.mouseReport");
+  expect(projectionGuard?.[0]).toContain("modesRef.current.altScreen");
+  expect(projectionGuard?.[0]).not.toContain("modesRef.current.bracketedPaste");
+  expect(projectionGuard?.[0]).not.toContain("modesRef.current.appCursor");
+  // Viewport CLIP, not down-scale: render at 1:1 (no Math.min scale-to-fit that
+  // made text tiny) and anchor the bottom rows; the shell's overflow:hidden clips.
+  expect(projectionClip?.[0]).toContain("Math.min(0, shell.clientHeight - logicalH)");
+  expect(projectionClip?.[0]).toContain("translateY");
+  expect(projectionClip?.[0]).not.toContain("scale(");
+  expect(terminalCanvas).toContain("syncOverlaySize();\n        if (mapProjection && preservesProjectionSize())");
   expect(terminalCanvas).toContain("interactive TUI mode");
   expect(vtGrid).toContain("strip_unsupported_control_sequences");
   expect(vtGrid).toContain('SYNC_OUTPUT_ON: &[u8] = b"\\x1b[?2026h"');
   expect(vtGrid).toContain('SYNC_OUTPUT_OFF: &[u8] = b"\\x1b[?2026l"');
   expect(vtGrid).toContain("synchronized_output_markers_never_render_as_text");
   expect(vtGrid).toContain("split_synchronized_output_markers_never_render_as_text");
-  expect(mapVerifier).toContain("preserve interactive agent TUIs through projection");
+  expect(mapVerifier).toContain("preserve alternate-screen terminals with a 1:1 viewport clip (no down-scale)");
 });
 
 async function imageRegionStats(
@@ -961,7 +970,10 @@ test("map remains lightweight with more than 100 terminal nodes at overview zoom
   await expect(page.locator(".terminal-container")).toHaveCount(0);
 });
 
-test("selected default-size map terminal keeps a usable live viewport before resize", async ({ page }) => {
+test("selected default-size map terminal does not resize itself on click", async ({ page }) => {
+  const source = readFileSync("src/components/MagicCanvas.tsx", "utf8");
+  expect(source).not.toContain("READABLE_LIVE_TERMINAL_SIZE");
+
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle");
   await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
@@ -1034,18 +1046,179 @@ test("selected default-size map terminal keeps a usable live viewport before res
   });
 
   const dimensions = await page.evaluate(() => {
+    const node = document.querySelector("[data-testid='canvas-terminal-node']");
     const container = document.querySelector("[data-testid='canvas-terminal-node'] .terminal-container");
     const terminalShell = document.querySelector("[data-testid='canvas-terminal-node'] .terminal-block-shell");
     const xtermScreen = document.querySelector("[data-testid='canvas-terminal-node'] .xterm-screen");
     return {
+      nodeWidth: Math.round(node?.getBoundingClientRect().width ?? 0),
+      nodeHeight: Math.round(node?.getBoundingClientRect().height ?? 0),
       containerHeight: Math.round(container?.getBoundingClientRect().height ?? 0),
       shellHeight: Math.round(terminalShell?.getBoundingClientRect().height ?? 0),
       screenHeight: Math.round(xtermScreen?.getBoundingClientRect().height ?? 0),
     };
   });
+  expect(dimensions.nodeWidth).toBe(820);
+  expect(dimensions.nodeHeight).toBe(460);
   expect(dimensions.containerHeight).toBeGreaterThanOrEqual(260);
   expect(dimensions.shellHeight).toBeGreaterThanOrEqual(260);
   expect(dimensions.screenHeight).toBeGreaterThanOrEqual(220);
+});
+
+test("manual-sized selected live terminal is not reset to the readable default", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.getByRole("button", { name: "Map", exact: true }).click();
+
+  await page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => { workspaceUiState: Record<string, unknown> };
+        setState: (state: Record<string, unknown>) => void;
+      };
+    }).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+
+    store.setState({
+      workspaceUiState: {
+        ...store.getState().workspaceUiState,
+        workspaceMode: "canvas",
+        primarySidebarPanel: "map",
+      },
+      tabs: [{
+        id: "tab-user-sized",
+        title: "User sized terminal",
+        emoji: "[]",
+        color: "#7aa2f7",
+        groupId: null,
+        initialCwd: "/tmp/termfleet-user-sized",
+        terminals: [{ id: "pty-user-sized", paneId: "pane-user-sized", cols: 80, rows: 24, status: "running" }],
+        splitLayout: { id: "pane-user-sized", type: "terminal" },
+        activePaneId: "pane-user-sized",
+      }],
+      activeTabId: "tab-user-sized",
+      canvasState: {
+        nodes: [{
+          id: "node-user-sized",
+          type: "terminal",
+          title: "User sized terminal",
+          terminalTabId: "tab-user-sized",
+          x: 80,
+          y: 80,
+          width: 820,
+          height: 460,
+          userSized: true,
+        }],
+        selectedNodeId: "node-user-sized",
+        selectedNodeIds: ["node-user-sized"],
+        viewport: { x: 0, y: 0, zoom: 1 },
+      },
+    });
+  });
+
+  await expect(page.locator("[data-testid='canvas-terminal-node'] .terminal-container")).toBeVisible();
+  await expect.poll(async () => page.evaluate(() => {
+    const node = document.querySelector("[data-testid='canvas-terminal-node']");
+    return {
+      width: Math.round(node?.getBoundingClientRect().width ?? 0),
+      height: Math.round(node?.getBoundingClientRect().height ?? 0),
+    };
+  })).toEqual({ width: 820, height: 460 });
+});
+
+test("task sidebar toggles without resizing terminal content", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.getByRole("button", { name: "Map", exact: true }).click();
+
+  await page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => { workspaceUiState: Record<string, unknown> };
+        setState: (state: Record<string, unknown>) => void;
+      };
+    }).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+
+    store.setState({
+      workspaceUiState: {
+        ...store.getState().workspaceUiState,
+        workspaceMode: "canvas",
+        primarySidebarPanel: "map",
+      },
+      tabs: [{
+        id: "tab-empty-tasks",
+        title: "Empty tasks terminal",
+        emoji: "[]",
+        color: "#7aa2f7",
+        groupId: null,
+        initialCwd: "/tmp/termfleet-empty-tasks",
+        terminals: [{
+          id: "pty-empty-tasks",
+          paneId: "pane-empty-tasks",
+          cols: 80,
+          rows: 24,
+          status: "running",
+          taskSidebarCollapsed: false,
+          statusSummary: {
+            task: "Running",
+            path: "termfleet",
+            now: "watching output",
+            status: "working",
+            provider: "shell",
+            confidence: "medium",
+            tasks: [],
+            tasksFromTodoWrite: false,
+          },
+        }],
+        splitLayout: { id: "pane-empty-tasks", type: "terminal" },
+        activePaneId: "pane-empty-tasks",
+      }],
+      activeTabId: "tab-empty-tasks",
+      canvasState: {
+        nodes: [{
+          id: "node-empty-tasks",
+          type: "terminal",
+          title: "Empty tasks terminal",
+          terminalTabId: "tab-empty-tasks",
+          x: 80,
+          y: 80,
+          width: 820,
+          height: 460,
+        }],
+        selectedNodeId: "node-empty-tasks",
+        selectedNodeIds: ["node-empty-tasks"],
+        viewport: { x: 0, y: 0, zoom: 1 },
+      },
+    });
+  });
+
+  await expect(page.getByTestId("canvas-terminal-task-sidebar")).toBeVisible();
+  const openContentBox = await page.getByTestId("canvas-terminal-task-content").boundingBox();
+  const openNodeBox = await page.getByTestId("canvas-terminal-node").boundingBox();
+  const openSidebarBox = await page.getByTestId("canvas-terminal-task-sidebar").boundingBox();
+  if (!openContentBox || !openNodeBox || !openSidebarBox) throw new Error("Open terminal content, sidebar, or node is not visible");
+  expect(openContentBox.width).toBeGreaterThan(openNodeBox.width - 80);
+  expect(openSidebarBox.x).toBeGreaterThanOrEqual(openContentBox.x + openContentBox.width - 1);
+  await page.getByLabel("Minimize tasks").click();
+  await expect(page.getByTestId("canvas-terminal-task-sidebar")).toHaveCount(0);
+  await expect(page.getByTestId("canvas-terminal-task-rail")).toContainText("No list");
+  const collapsedContentBox = await page.getByTestId("canvas-terminal-task-content").boundingBox();
+  if (!collapsedContentBox) throw new Error("Collapsed terminal content is not visible");
+  expect(Math.round(collapsedContentBox.width)).toBe(Math.round(openContentBox.width));
+  await page.getByTestId("canvas-terminal-task-rail").click();
+  await expect(page.getByTestId("canvas-terminal-task-sidebar")).toBeVisible();
+  const reopenedContentBox = await page.getByTestId("canvas-terminal-task-content").boundingBox();
+  const reopenedSidebarBox = await page.getByTestId("canvas-terminal-task-sidebar").boundingBox();
+  if (!reopenedContentBox || !reopenedSidebarBox) throw new Error("Reopened terminal content or sidebar is not visible");
+  expect(Math.round(reopenedContentBox.width)).toBe(Math.round(openContentBox.width));
+  expect(reopenedSidebarBox.x).toBeGreaterThanOrEqual(reopenedContentBox.x + reopenedContentBox.width - 1);
 });
 
 test("status bar summarizes durable terminal recovery states", async ({ page }) => {

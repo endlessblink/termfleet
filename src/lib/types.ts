@@ -415,6 +415,7 @@ export interface CanvasNode {
   filePath?: string;
   terminalTabId?: string;
   terminalPtyId?: string;
+  userSized?: boolean;
   content?: string;
   terminalCwd?: string;
   previewUrl?: string;

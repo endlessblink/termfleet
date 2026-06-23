@@ -87,6 +87,8 @@ were retired during consolidation.
 | TC-033     | Reliability hardening: fix recurring sidebar task list, AI summary, paste, and render/session issues that never stayed fixed                                                                                     | P1       | DONE (2026-06-19) | TC-027, TC-032 |
 | TC-034     | Group terminals into projects by path: terminals in the same cwd collapse into one project; stop minting duplicate project groups per folder-open                                                                  | P1       | DONE (2026-06-22) | TC-011, TC-024 |
 | TC-035     | Per-terminal standalone status: key the cockpit task list/title by pane identity, not cwd, so each terminal tracks its own work even when several share a directory                                              | P1       | TODO              | TC-033, TC-034 |
+| TC-036     | Automatic agent terminal recovery: relaunch interrupted Codex/Claude agent TUIs inside regular TermFleet terminals with no end-user recovery steps                                                                | P0       | TODO              | TC-009, TC-016, TC-035 |
+| TC-037     | Fix map terminal rendering regressions from the sidebar/projection refactor: task-rail numbers bleed over terminal text, terminal shrinks leaving dead space, sidebar paints empty                                 | P1       | IN PROGRESS       | TC-035                  |
 
 ---
 
@@ -5140,6 +5142,25 @@ T8 persistence, T9 input.
   feeding `alacritty_terminal`, including markers split across PTY chunks. Regression:
   `vt_grid::tests::{synchronized_output_markers_never_render_as_text,
   split_synchronized_output_markers_never_render_as_text}` plus the map source contract.
+- **T8 follow-up (2026-06-23):** the map terminal sizing fix is now conservative after
+  live screenshots showed that forced reflow corrupts alternate-screen Claude/zellij panes
+  and forced over-scale clips the canvas. Map terminals preserve real alternate-screen and
+  mouse-reporting grids with fit-only scaling, while bracketed-paste/app-cursor alone no
+  longer makes ordinary shells render as tiny projected terminals. Wheel routing now keeps
+  primary-buffer and plain alternate-screen scroll in TermFleet history, and sends arrows
+  only when the app explicitly enabled alternate-scroll (mouse-reporting still receives VT
+  mouse wheel events). The renderer also re-applies projection scale immediately after a
+  full-frame canvas resize, so selected map terminals no longer stay at a stale tiny scale
+  until a later zoom/resize event. Follow-up: the readable default is no longer a size
+  lock. Single selected live terminals are auto-expanded only while untouched; manual
+  resizing sets `userSized` and prevents the app from snapping that terminal back. Evidence:
+  `npm run verify:map-terminals`; focused
+  `npx playwright test map-terminal-rendering --grep "selected live map terminals|selected
+  map agent panes|selected default-size map terminal"` passed 3/3; focused resize/drag
+  coverage `npx playwright test map-terminal-rendering --grep "selected default-size map
+  terminal|manual-sized selected live terminal|shift-drag box-selects"` passed 3/3; `npm
+  run verify:terminal-mouse` passed 1/1; `npm run verify:canvas-all` passed 45/45; `npm
+  run build` passed.
 - **T9 follow-up (2026-06-23):** terminal renaming from the map and map index no longer
   uses WebKit/Tauri native `window.prompt`, which could open a dialog that did not accept
   user edits. The map card and map index now use in-app rename inputs, and terminal node
@@ -5339,6 +5360,16 @@ GUI-verified lifecycle items remain.
   atomically writes `cockpit-snapshot.json` under the existing agent-status directory.
   Regression: `scripts/verify-agent-status-summary-server.mjs` now asserts the source
   wiring and proves the endpoint writes the exact posted rendered-state payload.
+- DONE (2026-06-23): Added a 5s minimum hold for real sidecar title/now pairs so
+  polling updates do not make the cockpit header strobe. Failed/exited panes, bound
+  MASTER_PLAN tasks, and heuristic shell-output fallbacks bypass the hold so urgent or
+  authoritative changes surface immediately. Regression: `npx playwright test
+  stable-header` passed 7/7; `npm run verify:canvas-all` passed 44/44.
+- DONE (2026-06-23): Real `todo-write` task lists no longer get run-scoped away or
+  force-completed by terminal-output close markers such as `Worked for...` / `Task complete`.
+  The sidecar task list keeps its own item statuses as authoritative; run-close completion
+  still applies only to heuristic/operator-extracted fallback lists. Regression:
+  `npx playwright test visible-task-lineup` passed 9/9; `npm run build` passed.
 - **GUI verification owed (needs a `termfleet` relaunch — can't be done headless):**
   1. In a terminal pane: `env | grep TERMFLEET_PANE_ID` prints `terminal-<tab>-<pane>`.
   2. Open two terminals in the SAME directory, run a different agent/task in each → each
@@ -5351,3 +5382,111 @@ GUI-verified lifecycle items remain.
 - TODO: Closing a pane retires/expires its sidecar. Already non-inheriting (a new pane gets
   a new id → new file; the old one ages out at the 30-min TTL); optional explicit cleanup
   on close. Worktree case (#64851) now resolves via pane-id precedence.
+
+### TC-036: Automatic agent terminal recovery
+
+**Priority:** P0
+**Status:** TODO
+**Depends:** TC-009, TC-016, TC-035
+
+#### Problem
+
+When the TermFleet daemon or dev launcher kills live PTYs, the app can currently restore
+terminal-shaped containers, saved scrollback, cwd, and partial session metadata, but it
+does **not** restore the actual interactive coding-agent TUI the user was working with.
+Manual repair can accidentally create fake agent/workstream cards, empty terminal nodes, or
+dead shells with `codex resume ...` / `claude --resume ...` merely printed in metadata.
+
+The end-user requirement is stricter: after a crash, daemon replacement, reboot, or
+accidental daemon kill, TermFleet should automatically put the user back on the map with
+regular terminal nodes whose buffers contain resumed Codex/Claude agent TUIs. The user
+should not choose a recovery tool, copy commands, clean up fake cards, or know whether the
+prior PTY process survived.
+
+#### Target behavior
+
+- If the original PTY still exists, TermFleet reattaches to it exactly as TC-009 already
+  promises.
+- If the original PTY is gone but its session was a known agent terminal, TermFleet starts a
+  replacement PTY in the same cwd, runs the saved resume command, and mounts that PTY in the
+  original regular terminal tab/node.
+- Recovery never creates `workstream.kind === "agent"` cards, mission dashboards, or
+  separate "Agent runs" replacement surfaces for terminals that began life as regular
+  terminal panes.
+- The map and sessions list show the recovered agents as normal terminals, grouped by their
+  original workspace/project path.
+- Recovery is idempotent: repeated app reloads do not spawn duplicate agent resumes or
+  duplicate map nodes.
+
+#### Implementation slices
+
+1. **Persist launch identity for agent terminals.**
+   - Extend terminal runtime snapshots and daemon session metadata with:
+     `recoveryKind: "shell" | "agent-terminal"`, provider (`codex` / `claude`), cwd,
+     original command, sanitized resume command, pane/session ids, last healthy timestamp,
+     and whether the terminal was launched as a regular terminal or supervised workstream.
+   - Detect Codex/Claude resume-capable terminals from launch commands and from active
+     process/terminal output when the command was typed by the user.
+   - Store this next to existing session scrollback/meta under the daemon data dir so it
+     survives localStorage wipes and app restarts.
+
+2. **Add a daemon recovery planner.**
+   - On startup and `ensure_session`, classify missing sessions:
+     live PTY exists -> attach; checkpoint only -> restore shell; agent-terminal checkpoint
+     with resume command -> relaunch agent TUI.
+   - The planner must prefer the original terminal id when safe, or atomically rewrite the
+     tab/node to the replacement id when the old id cannot be reused.
+   - Record recovery state (`pending`, `launching`, `attached`, `failed`) in metadata, not
+     in terminal scrollback.
+
+3. **Relaunch agent TUIs as regular terminals.**
+   - Run `codex resume <session-id>` or `claude --resume <session-id>` inside the replacement
+     PTY, in the original cwd, with the same `TERMFLEET` / `TERMFLEET_PANE_ID` env injection.
+   - Preserve the normal terminal input path: the recovered pane must be interactive and
+     writable from the map and split views.
+   - Do not use zellij/tmux as the primary recovery mechanism for this lane.
+
+4. **Hydrate the workspace without fake surfaces.**
+   - Reconcile workspace tabs/nodes from daemon recovery metadata before first render.
+   - Remove stale broken recovery artifacts from the model: no synthetic agent cards, no
+     one-off localStorage recovery markers, and no duplicated "recovered" terminal shells.
+   - Keep existing terminal layout, groups, labels, and map positions when available.
+
+5. **Operator-visible proof and fallback.**
+   - Add a compact recovery event log/diagnostic command for developers, but keep the user
+     flow automatic.
+   - If an agent cannot be resumed because the provider rejects the session id or needs auth,
+     show the failure as terminal/runtime state plus a clear reconnect action; do not replace
+     the terminal with an agent dashboard.
+
+#### Acceptance
+
+- DONE only when killing the daemon and relaunching TermFleet restores existing Codex and
+  Claude agent terminals automatically as normal terminal map nodes.
+- DONE only when the restored nodes show live agent TUI output, accept keyboard input, and
+  continue through the regular TermFleet terminal renderer.
+- DONE only when no `workstream.kind === "agent"` cards, mission rows, recovery dashboards,
+  or duplicate "Agent runs" panels are created for regular terminal-agent recovery.
+- DONE only when localStorage deletion plus durable disk metadata still restores the same
+  regular terminal map after app restart.
+- DONE only when repeated restart/reload cycles are idempotent: one terminal per recovered
+  agent, one daemon PTY per terminal, no respawn loop.
+- DONE only when failed resume/auth cases are represented as failed terminal recovery state,
+  not as fake live terminals or empty shells.
+
+#### Verification
+
+- Add a backend recovery test that creates an agent-terminal metadata fixture, simulates
+  daemon death, and asserts the planner relaunches the saved resume command in the original
+  cwd with the original pane identity env.
+- Add a workspace hydration regression that proves recovered agent terminals remain plain
+  terminal tabs/nodes and never become workstream cards.
+- Add a Playwright/Tauri smoke (`verify:agent-terminal-recovery`) that:
+  1. starts one Codex-style and one Claude-style resumable agent fixture terminal,
+  2. kills/replaces the daemon,
+  3. reloads the app,
+  4. verifies the map shows regular terminal nodes with live output,
+  5. sends input into one recovered terminal and sees it reach the PTY.
+- Add a negative regression for duplicate prevention across two reloads.
+- Record screenshot evidence of the map with recovered regular terminal nodes and daemon
+  session-list evidence showing the matching live PTYs before marking this lane DONE.

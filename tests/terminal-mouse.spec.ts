@@ -53,9 +53,17 @@ test("terminal mouse reports encode SGR and legacy VT sequences", async ({ page 
         { altKey: false },
         { altScreen: true, alternateScroll: true, alternateScrollSet: true }
       ),
-      plainAltScreenWheelUsesTerminalApp: shouldSendWheelToTerminalApp(
+      plainAltScreenWheelUsesTerminalHistory: shouldSendWheelToTerminalApp(
         { altKey: false },
         { altScreen: true, alternateScroll: false }
+      ),
+      appCursorOnlyWheelUsesTerminalHistory: shouldSendWheelToTerminalApp(
+        { altKey: false },
+        { altScreen: true, appCursor: true }
+      ),
+      bracketedPasteOnlyWheelUsesTerminalHistory: shouldSendWheelToTerminalApp(
+        { altKey: false },
+        { altScreen: true }
       ),
       disabledAlternateScrollUsesHistory: shouldSendWheelToTerminalApp(
         { altKey: false },
@@ -73,6 +81,11 @@ test("terminal mouse reports encode SGR and legacy VT sequences", async ({ page 
       altScreenWheelDownAction: terminalWheelAction(
         { altKey: false },
         { altScreen: true, alternateScroll: false },
+        "down"
+      ),
+      altScreenAppCursorWheelDownAction: terminalWheelAction(
+        { altKey: false },
+        { altScreen: true, appCursor: true },
         "down"
       ),
       explicitAlternateScrollWheelUpAction: terminalWheelAction(
@@ -111,12 +124,15 @@ test("terminal mouse reports encode SGR and legacy VT sequences", async ({ page 
   expect(out.altWheelUsesTerminalApp).toBe(true);
   expect(out.mouseReportingWheelUsesTerminalApp).toBe(true);
   expect(out.alternateScrollWheelUsesTerminalApp).toBe(true);
-  expect(out.plainAltScreenWheelUsesTerminalApp).toBe(true);
+  expect(out.plainAltScreenWheelUsesTerminalHistory).toBe(false);
+  expect(out.appCursorOnlyWheelUsesTerminalHistory).toBe(false);
+  expect(out.bracketedPasteOnlyWheelUsesTerminalHistory).toBe(false);
   expect(out.disabledAlternateScrollUsesHistory).toBe(false);
   expect(out.shiftAltScreenWheelUsesTerminalHistory).toBe(false);
   expect(out.shiftMouseReportingWheelUsesTerminalApp).toBe(true);
   expect(out.plainWheelAction).toEqual({ kind: "history" });
-  expect(out.altScreenWheelDownAction).toEqual({ kind: "app-arrows", sequence: "\x1b[B" });
+  expect(out.altScreenWheelDownAction).toEqual({ kind: "history" });
+  expect(out.altScreenAppCursorWheelDownAction).toEqual({ kind: "history" });
   expect(out.explicitAlternateScrollWheelUpAction).toEqual({ kind: "app-arrows", sequence: "\x1b[A" });
   expect(out.appCursorWheelUpAction).toEqual({ kind: "app-arrows", sequence: "\x1bOA" });
   expect(out.shiftAltScreenWheelAction).toEqual({ kind: "history" });

@@ -339,6 +339,9 @@ export function TerminalCanvas({
           changedRows: rowsToRender.size,
         });
         syncOverlaySize();
+        if (mapProjection && preservesProjectionSize()) {
+          applyProjectionClip();
+        }
         drawSelectionOverlay();
       });
     };
@@ -349,8 +352,6 @@ export function TerminalCanvas({
       (
         modesRef.current.altScreen ||
         modesRef.current.mouseReport ||
-        modesRef.current.appCursor ||
-        modesRef.current.bracketedPaste ||
         modesRef.current.alternateScroll ||
         modesRef.current.alternateScrollSet ||
         modesRef.current.sgrMouse
@@ -478,6 +479,7 @@ export function TerminalCanvas({
       if (disposed || !attached) return;
       const { cols: nextCols, rows: nextRows } = measure();
       if (nextCols === lastCols && nextRows === lastRows) return;
+      const grew = nextRows > lastRows;
       lastCols = nextCols;
       lastRows = nextRows;
       try {
@@ -495,19 +497,42 @@ export function TerminalCanvas({
       } catch (error) {
         console.error(error);
       }
+      if (disposed) return;
+      // Anchor the view to the live bottom after a GROW. alacritty pads the new
+      // lines below the cursor and pulls scrollback in above; without this, a grow
+      // can leave the view sitting on the old top with blank rows below the prompt
+      // (the "dead space on resize up"). Snapping to the live bottom keeps the
+      // prompt/cursor pinned to the pane floor with history filling upward. No-op on
+      // the alternate screen (no scrollback) and on shrink (alacritty already keeps
+      // the bottom).
+      if (grew) {
+        try {
+          await invoke("grid_scroll_to_bottom", { id: sessionId });
+        } catch (error) {
+          console.error(error);
+        }
+      }
     };
 
-    // Map-projection freeze: scale the (frozen-size) canvas down to fit the node
-    // box instead of reflowing. Pointer math already normalizes by the canvas'
-    // getBoundingClientRect, so a CSS transform here doesn't break clicks.
-    const applyProjectionScale = () => {
+    // Map-projection viewport CLIP: an alt-screen TUI keeps its working grid size
+    // (never reflowed to the small node — that fragments wide static TUIs), but
+    // instead of down-scaling the frozen canvas to fit (which makes text tiny and
+    // leaves aspect-ratio dead space), we render at 1:1 and anchor the canvas to
+    // the node's BOTTOM-LEFT, letting the shell's overflow:hidden clip the rest.
+    // Result: the node fills with legible text and the live prompt/cursor (always
+    // at the bottom-left) stays visible; focus the node at 100% to pan to the rest.
+    // Pointer math normalizes by the canvas' getBoundingClientRect, so the CSS
+    // translate here doesn't break click/selection mapping.
+    const applyProjectionClip = () => {
       const shell = shellRef.current;
       if (!canvas || !shell) return;
       const logicalW = parseFloat(canvas.style.width) || canvas.width / dpr;
       const logicalH = parseFloat(canvas.style.height) || canvas.height / dpr;
       if (logicalW <= 0 || logicalH <= 0) return;
-      const scale = Math.min(1, shell.clientWidth / logicalW, shell.clientHeight / logicalH);
-      const transform = `scale(${scale})`;
+      // Shift up when the grid is taller than the node so the bottom rows show;
+      // keep the left edge pinned. Never shift a grid that already fits (>= 0).
+      const dy = Math.min(0, shell.clientHeight - logicalH);
+      const transform = dy < 0 ? `translateY(${dy}px)` : "";
       canvas.style.transformOrigin = "top left";
       canvas.style.transform = transform;
       const overlay = overlayRef.current;
@@ -530,7 +555,7 @@ export function TerminalCanvas({
     const reconcileLayout = () => {
       if (mapProjection && !firstFrameRef.current) return;
       if (preservesProjectionSize()) {
-        applyProjectionScale();
+        applyProjectionClip();
       } else {
         clearProjectionScale();
         void applyResize();
@@ -1254,10 +1279,10 @@ export function TerminalCanvas({
 
     const wheelAction = terminalWheelAction(event, modes, up ? "up" : "down");
 
-    // TUIs own wheel input while they are on the alternate screen. Some agent
-    // TUIs do not set DECSET 1007, but letting the outer scrollback move still
-    // tears the visible frame away from the app. Forward wheel to the app in
-    // alt-screen mode; plain shell buffers keep TermFleet history scrolling.
+    // Mouse-reporting TUIs own wheel input. Apps that explicitly enable
+    // alternate-scroll receive arrow-key scroll. Plain alt-screen alone is not
+    // enough: Claude-style prompts may use alt-screen without making arrows a
+    // reliable scroll primitive, so those fall back to TermFleet history.
     if (wheelAction.kind === "mouse-report") {
       const { col, row } = wheelCell(event);
       const button = up ? 64 : 65;
@@ -1286,7 +1311,17 @@ export function TerminalCanvas({
     <div
       ref={shellRef}
       className="terminal-canvas-shell"
-      style={{ position: "relative", display: "block", width: "100%", height: "100%" }}
+      // Paint the pane with the terminal's own background so the sub-cell remainder
+      // left by flooring the grid to whole cells (rows×cellHeight is always a hair
+      // shorter than the pane, and shorter still right after a resize) reads as the
+      // terminal filling the pane edge-to-edge, instead of exposing the lighter card
+      // surface behind it as dead space.
+      // overflow:hidden makes the map-projection viewport clip work: an alt-screen
+      // TUI keeps its working grid size (no destructive reflow) and the canvas is
+      // anchored bottom-left at 1:1 instead of down-scaled to tiny text — the
+      // overflow past the node edges is clipped, so the node fills with legible
+      // text and the live prompt/cursor stays visible. See applyProjectionClip.
+      style={{ position: "relative", display: "block", width: "100%", height: "100%", overflow: "hidden", background: theme.background }}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}

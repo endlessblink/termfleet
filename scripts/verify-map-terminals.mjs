@@ -245,9 +245,10 @@ const checks = [
       /leftReleaseSgr/.test(terminalMouseSpec) &&
       /wheelDownLegacyHex/.test(terminalMouseSpec) &&
       /plainWheelUsesTerminalHistory/.test(terminalMouseSpec) &&
-      /plainAltScreenWheelUsesTerminalApp/.test(terminalMouseSpec) &&
+      /plainAltScreenWheelUsesTerminalHistory/.test(terminalMouseSpec) &&
+      /altScreenAppCursorWheelDownAction/.test(terminalMouseSpec) &&
       /mouseReportWheelAction/.test(terminalMouseSpec),
-    message: "Canvas terminals must route primary-buffer wheel to history, alt-screen wheel to app arrows, and mouse-reporting wheel to VT mouse events.",
+    message: "Canvas terminals must route primary-buffer and plain alt-screen wheel to history, explicit alternate-scroll to app arrows, and mouse-reporting wheel to VT mouse events.",
   },
   {
     ok: /function TerminalMapPreview/.test(magicCanvas) &&
@@ -276,15 +277,25 @@ const checks = [
       !/live session/.test(magicCanvas) &&
       /<TerminalComponent[\s\S]*onSnapshot=\{\(snapshot\) => onTerminalSnapshot\(node\.id, snapshot\)\}[\s\S]*mapProjection[\s\S]*\/>/.test(magicCanvas) &&
       !/<TerminalComponent[\s\S]*mapProjection=\{false\}/.test(magicCanvas) &&
+      !/READABLE_LIVE_TERMINAL_SIZE/.test(magicCanvas) &&
+      /terminalBodyTaskSidebar: \{[\s\S]*?position: "absolute"/.test(magicCanvas) &&
+      /terminalBodyTaskSidebar: \{[\s\S]*?right: -320/.test(magicCanvas) &&
+      /terminalBodyTaskRail: \{\s*position: "absolute"/.test(magicCanvas) &&
+      /right: 0/.test(magicCanvas) &&
+      /gridTemplateColumns: "minmax\(0, 1fr\) 46px"/.test(magicCanvas) &&
+      !/projectionMinScale/.test(magicCanvas) &&
+      !/projectionMinScale/.test(terminalCanvas) &&
       /preservesProjectionSize/.test(terminalCanvas) &&
-      /modesRef\.current\.bracketedPaste/.test(terminalCanvas) &&
+      /applyProjectionClip/.test(terminalCanvas) &&
+      /Math\.min\(0, shell\.clientHeight - logicalH\)/.test(terminalCanvas) &&
+      /syncOverlaySize\(\);\s*if \(mapProjection && preservesProjectionSize\(\)\)/.test(terminalCanvas) &&
+      !/Math\.max\(projectionMinScale/.test(terminalCanvas) &&
       /modesRef\.current\.mouseReport/.test(terminalCanvas) &&
-      /modesRef\.current\.appCursor/.test(terminalCanvas) &&
       /strip_unsupported_control_sequences/.test(vtGrid) &&
       /SYNC_OUTPUT_ON: &\[u8\] = b"\\x1b\[\?2026h"/.test(vtGrid) &&
       /split_synchronized_output_markers_never_render_as_text/.test(vtGrid) &&
       !/mapSurface/.test(magicCanvas),
-    message: "Map terminal nodes must use truthful previews below 100% zoom, keep readable terminals live, preserve interactive agent TUIs through projection, and suppress unsupported sync-output control markers.",
+    message: "Map terminal nodes must use truthful previews below 100% zoom, preserve alternate-screen terminals with a 1:1 viewport clip (no down-scale), and suppress unsupported sync-output control markers.",
   },
   {
     ok: !/sparsePrimaryMapAnchorRows|applySparseMapAnchor|mapSurface|MAP_SHELL_ANCHOR_TOO_HIGH|MAP_SHELL_ANCHOR_OK/.test(terminalCanvas) &&

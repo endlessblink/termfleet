@@ -181,6 +181,7 @@ const DEFAULT_CANVAS_STATE: CanvasState = {
   viewport: { x: 0, y: 0, zoom: 1 },
 };
 const TERMINAL_MAP_NODE_SIZE = { width: 820, height: 460 };
+const AUTO_READABLE_TERMINAL_SIZES = new Set(["1180x720", "1180x560"]);
 const MAX_RECENTLY_CLOSED_ITEMS = 10;
 const CANVAS_NODE_MIN_SIZE: Record<CanvasNode["type"], { width: number; height: number }> = {
   terminal: TERMINAL_MAP_NODE_SIZE,
@@ -197,6 +198,16 @@ function cloneCanvasNode(node: CanvasNode): CanvasNode {
   return {
     ...node,
     taskBinding: node.taskBinding ? { ...node.taskBinding } : undefined,
+  };
+}
+
+function normalizedTerminalNodeSize(node: CanvasNode) {
+  if (!node.userSized && AUTO_READABLE_TERMINAL_SIZES.has(`${node.width}x${node.height}`)) {
+    return TERMINAL_MAP_NODE_SIZE;
+  }
+  return {
+    width: Math.max(node.width, TERMINAL_MAP_NODE_SIZE.width),
+    height: Math.max(node.height, TERMINAL_MAP_NODE_SIZE.height),
   };
 }
 
@@ -416,12 +427,11 @@ function normalizeWorkspaceUiState(uiState: Partial<WorkspaceUiState> | undefine
     uiState?.terminalRendererMode === "native-gpu"
       ? uiState.terminalRendererMode
       : "auto");
-  const immersiveTerminal =
-    uiState?.immersiveTerminal?.enabled &&
-    typeof uiState.immersiveTerminal.tabId === "string" &&
-    typeof uiState.immersiveTerminal.paneId === "string"
-      ? uiState.immersiveTerminal
-      : DEFAULT_UI_STATE.immersiveTerminal;
+  // Immersive (fullscreen) terminal mode hides the sidebar AND header, so the only
+  // way out is Escape / Ctrl+Shift+F. Persisting it means an accidental toggle survives
+  // a reload with no visible exit — the "sidebar disappeared" report. Always hydrate it
+  // OFF so it is a per-session state and a restart always restores the sidebar.
+  const immersiveTerminal = DEFAULT_UI_STATE.immersiveTerminal;
 
   return {
     ...DEFAULT_UI_STATE,
@@ -678,13 +688,13 @@ function normalizeCanvasState(canvasState: CanvasState | undefined, tabs: Tab[])
 
     const min = CANVAS_NODE_MIN_SIZE[node.type];
     if (node.type === "terminal") {
+      const size = normalizedTerminalNodeSize(node);
       normalizedNodes.push({
         ...node,
         terminalPtyId: node.terminalPtyId && liveTerminalIds.has(node.terminalPtyId)
           ? node.terminalPtyId
           : undefined,
-        width: TERMINAL_MAP_NODE_SIZE.width,
-        height: TERMINAL_MAP_NODE_SIZE.height,
+        ...size,
       });
     } else if (node.type === "preview") {
       normalizedNodes.push({
@@ -1605,6 +1615,14 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
             })()
           : t
       );
+      // The map nodes only mirror `title` / `terminalCwd`. Rebuilding
+      // canvasState on unrelated (high-frequency, runtime-only) tab updates
+      // churns its identity and re-renders the whole map on every output chunk.
+      // Only touch canvasState when one of those two fields actually changed.
+      const affectsCanvas = updates.title !== undefined || updates.initialCwd !== undefined;
+      if (!affectsCanvas) {
+        return { tabs };
+      }
       const canvasState = {
         ...state.canvasState,
         nodes: state.canvasState.nodes.map((node) =>
@@ -2718,8 +2736,27 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
 }));
 
 let pendingPersist: ReturnType<typeof window.setTimeout> | null = null;
-let pendingSnapshot: PersistedWorkspace | null = null;
+let persistDirty = false;
 let lastPersistedSnapshot = "";
+
+function buildPersistedSnapshot(state: WorkspaceState): PersistedWorkspace {
+  return {
+    tabs: state.tabs.map((tab) => ({
+      ...tab,
+      terminals: tab.terminals.map(persistedTerminalSnapshot),
+    })),
+    groups: state.groups,
+    openFiles: state.openFiles,
+    activeTabId: state.activeTabId,
+    activeTerminalId: state.activeTerminalId,
+    activeGroupId: state.activeGroupId,
+    activeGroupFilter: state.activeGroupFilter,
+    projectRoot: state.projectRoot,
+    pinnedProjects: state.pinnedProjects,
+    workspaceUiState: state.workspaceUiState,
+    canvasState: state.canvasState,
+  };
+}
 
 function persistWorkspaceSnapshot(snapshot: PersistedWorkspace) {
   try {
@@ -2743,16 +2780,18 @@ function mirrorWorkspaceLayoutToDisk(serialized: string) {
     .catch((error) => console.warn("Could not mirror workspace layout to disk:", error));
 }
 
-function scheduleWorkspacePersistence(snapshot: PersistedWorkspace) {
-  pendingSnapshot = snapshot;
+function scheduleWorkspacePersistence() {
+  // Only arm the debounce here — building the (potentially large) snapshot is
+  // deferred to flush time so a burst of store writes (e.g. one per terminal
+  // output chunk) collapses into a single snapshot build + persist per 250ms.
+  persistDirty = true;
   if (pendingPersist) return;
 
   pendingPersist = window.setTimeout(() => {
     pendingPersist = null;
-    if (!pendingSnapshot) return;
-    const snapshotToPersist = pendingSnapshot;
-    pendingSnapshot = null;
-    persistWorkspaceSnapshot(snapshotToPersist);
+    if (!persistDirty) return;
+    persistDirty = false;
+    persistWorkspaceSnapshot(buildPersistedSnapshot(useWorkspaceStore.getState()));
   }, 250);
 }
 
@@ -2761,9 +2800,9 @@ window.addEventListener("beforeunload", () => {
     clearTimeout(pendingPersist);
     pendingPersist = null;
   }
-  if (pendingSnapshot) {
-    persistWorkspaceSnapshot(pendingSnapshot);
-    pendingSnapshot = null;
+  if (persistDirty) {
+    persistDirty = false;
+    persistWorkspaceSnapshot(buildPersistedSnapshot(useWorkspaceStore.getState()));
   }
 });
 
@@ -2771,27 +2810,10 @@ if (import.meta.env.DEV && typeof window !== "undefined") {
   (window as typeof window & { __termfleetWorkspaceStore?: typeof useWorkspaceStore }).__termfleetWorkspaceStore = useWorkspaceStore;
 }
 
-useWorkspaceStore.subscribe((state) => {
+useWorkspaceStore.subscribe(() => {
   if (FORCE_WORKSPACE_RESET_STATE) {
     return;
   }
 
-  const snapshot: PersistedWorkspace = {
-    tabs: state.tabs.map((tab) => ({
-      ...tab,
-      terminals: tab.terminals.map(persistedTerminalSnapshot),
-    })),
-    groups: state.groups,
-    openFiles: state.openFiles,
-    activeTabId: state.activeTabId,
-    activeTerminalId: state.activeTerminalId,
-    activeGroupId: state.activeGroupId,
-    activeGroupFilter: state.activeGroupFilter,
-    projectRoot: state.projectRoot,
-    pinnedProjects: state.pinnedProjects,
-    workspaceUiState: state.workspaceUiState,
-    canvasState: state.canvasState,
-  };
-
-  scheduleWorkspacePersistence(snapshot);
+  scheduleWorkspacePersistence();
 });

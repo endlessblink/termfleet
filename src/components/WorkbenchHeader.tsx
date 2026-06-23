@@ -31,7 +31,7 @@ import {
   useWorkspaceStore,
 } from "../stores/workspace";
 import { getAllLeafIds } from "../lib/splitUtils";
-import { pathTail, projectNameFor, projectRootFor } from "../lib/projectDisplay";
+import { headerProjectLabel, pathTail, projectNameFor, projectRootFor } from "../lib/projectDisplay";
 import { terminalHasKeyboardFocus } from "../lib/terminalFocus";
 import { checkAgentProvider } from "../lib/agentProviders";
 import { promptWorkstreamIsolation, promptWorkstreamLaunchProfile, resolveWorkstreamOpsContext } from "../lib/workstreamOpsContext";
@@ -485,12 +485,6 @@ const COMMAND_SCOPES = [
   { id: "launch_configs", label: "launch", prefix: "launch_configs:" },
 ] as const;
 
-function basename(path?: string | null) {
-  if (!path) return "workspace";
-  const clean = path.replace(/\/+$/, "");
-  return clean.split("/").filter(Boolean).pop() ?? clean;
-}
-
 function actionMatches(action: CommandAction, query: string) {
   if (!query) return true;
   const scope = COMMAND_SCOPES.find((candidate) => query.startsWith(candidate.prefix));
@@ -534,7 +528,12 @@ export function WorkbenchHeader() {
   // are after a `cd`/`z`); the project label keeps the project's identity.
   const liveActiveCwd = activeTerminalId ? liveCwds[activeTerminalId] : undefined;
   const crumbRoot = liveActiveCwd ?? selectedProjectRoot;
-  const projectLabel = activeGroupFilter === null ? selectedProjectName : basename(selectedProjectRoot ?? activeTab?.initialCwd);
+  const projectLabel = headerProjectLabel({
+    groupFilter: activeGroupFilter,
+    groups,
+    cwd: liveActiveCwd ?? selectedProjectRoot ?? activeTab?.initialCwd,
+    projectRoot: selectedProjectRoot,
+  });
 
   const setScopedCommand = useCallback((prefix: string) => {
     setCommandValue(prefix);

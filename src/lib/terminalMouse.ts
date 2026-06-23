@@ -69,9 +69,7 @@ export function shouldSendWheelToTerminalApp(modifiers: TerminalMouseModifiers, 
   if (modes.mouseReport) return true;
   if (modifiers.shiftKey) return false;
   if (modifiers.altKey) return true;
-  if (!modes.altScreen) return false;
-  if (modes.alternateScrollSet && !modes.alternateScroll) return false;
-  return true;
+  return Boolean(modes.altScreen && modes.alternateScrollSet && modes.alternateScroll);
 }
 
 export function terminalWheelAction(
@@ -82,7 +80,7 @@ export function terminalWheelAction(
   if (modes.mouseReport) return { kind: "mouse-report" };
   if (modifiers.shiftKey) return { kind: "history" };
   const useAppArrows = modifiers.altKey ||
-    (modes.altScreen && !(modes.alternateScrollSet && !modes.alternateScroll));
+    (modes.altScreen && modes.alternateScrollSet && modes.alternateScroll);
   if (useAppArrows) {
     return {
       kind: "app-arrows",

@@ -1,4 +1,4 @@
-import { CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { CSSProperties, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   ArrowUpRight,
@@ -41,6 +41,7 @@ import { formatWorkstreamBranch, formatWorkstreamIsolation, formatWorkstreamOpsC
 import { snapshotPreviewRows } from "../lib/snapshotPreviewRows";
 import { taskLineupNextLabel, taskLineupStats, visibleTaskLineup } from "../lib/taskLineup";
 import { neutralHeaderTitle, normalizePersistedShellSummary, preferRealTaskSummary, summaryFromDurableActivity, summarySourceLabel, terminalPurposeFromContext } from "../lib/terminalHeaderDisplay";
+import { stableHeader } from "../lib/stableHeader";
 
 type CanvasRect = {
   minX: number;
@@ -268,7 +269,7 @@ const styles: Record<string, CSSProperties> = {
     border: "1px solid transparent",
     borderRadius: "var(--radius-md)",
     boxShadow: "var(--shadow-card)",
-    overflow: "hidden",
+    overflow: "visible",
     transition: "border-color var(--motion-med), box-shadow var(--motion-med), transform var(--motion-fast)",
     animation: "workbench-surface-in var(--motion-med)",
   },
@@ -316,7 +317,7 @@ const styles: Record<string, CSSProperties> = {
   nodeTitle: {
     flex: 1,
     minWidth: 0,
-    overflow: "hidden",
+    overflow: "visible",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
     fontSize: 13,
@@ -324,7 +325,7 @@ const styles: Record<string, CSSProperties> = {
     color: "var(--text-primary)",
   },
   nodeTitleMeta: {
-    overflow: "hidden",
+    overflow: "visible",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
     color: "var(--text-secondary)",
@@ -922,9 +923,13 @@ const styles: Record<string, CSSProperties> = {
     flex: 1,
     minHeight: 0,
     display: "grid",
-    gridTemplateColumns: "minmax(0, 1fr) minmax(280px, 32%)",
+    gridTemplateColumns: "minmax(0, 1fr) 46px",
     background: "var(--surface-sunken)",
-    overflow: "hidden",
+    // visible (not hidden) so the expanded task sidebar can float just outside the
+    // node's right edge without being clipped. The terminal itself is clipped by
+    // the inner terminalBodyTaskContent (overflow:hidden), not here.
+    overflow: "visible",
+    position: "relative",
   },
   shellTerminalBody: {
     flex: 1,
@@ -933,7 +938,10 @@ const styles: Record<string, CSSProperties> = {
     gridTemplateColumns: "minmax(0, 1fr) 46px",
     gridTemplateRows: "minmax(0, 1fr)",
     background: "var(--surface-sunken)",
-    overflow: "hidden",
+    // visible: see terminalBodyWithTasks — lets the outside task sidebar show; the
+    // terminal is clipped by the inner terminalBodyTaskContent instead.
+    overflow: "visible",
+    position: "relative",
   },
   terminalBodyTaskContent: {
     minWidth: 0,
@@ -944,6 +952,18 @@ const styles: Record<string, CSSProperties> = {
     overflow: "hidden",
   },
   terminalBodyTaskSidebar: {
+    // Float the expanded list just OUTSIDE the node to the right so it never
+    // shrinks the terminal (content keeps full width). This only shows because the
+    // node card AND the terminal body are overflow:visible; the inner
+    // terminalBodyTaskContent stays overflow:hidden so the terminal itself is still
+    // clipped. (Earlier the body was overflow:hidden, which clipped this sidebar to
+    // nothing — brightPixels 0.)
+    position: "absolute",
+    top: 0,
+    right: -320,
+    bottom: 0,
+    zIndex: 4,
+    width: 320,
     minWidth: 0,
     minHeight: 0,
     display: "flex",
@@ -957,9 +977,14 @@ const styles: Record<string, CSSProperties> = {
     overflow: "hidden",
   },
   terminalBodyTaskRail: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 4,
     minWidth: 0,
     minHeight: 0,
-    width: "100%",
+    width: 46,
     height: "100%",
     display: "grid",
     gridTemplateRows: "auto auto auto auto 1fr",
@@ -1580,6 +1605,9 @@ const MAX_LIVE_TERMINALS = 24;
 // Inflate the visible rect (canvas-space px) so nodes warm up just before they
 // scroll into view, avoiding a blank flash on pan.
 const CULL_OVERSCAN_PX = 400;
+// Max preview refresh rate per node (ms between flushes). A busy terminal emits
+// a diff frame far faster than the eye can read a shrunk map preview.
+const PREVIEW_THROTTLE_MS = 100;
 
 function workstreamLabel(provider?: string) {
   if (provider === "opencode") return "OpenCode";
@@ -1952,7 +1980,7 @@ function TerminalMapPreview({
   );
 }
 
-function CanvasNodeView({
+function CanvasNodeViewImpl({
   node,
   live,
   focusNode,
@@ -2123,6 +2151,7 @@ function CanvasNodeView({
 
       updateCanvasNode(node.id, {
         ...next,
+        userSized: true,
         x: snapTerminalPixel(
           affectsWest ? resize.nodeX + resize.width - next.width : resize.nodeX,
           node.type,
@@ -2312,10 +2341,28 @@ function CanvasNodeView({
     linkedTerminal?.statusSummarySource ?? workstream?.statusSummarySource,
     linkedTerminal?.statusSummaryError ?? workstream?.statusSummaryError,
   );
-  const terminalHeaderTitle = terminalDisplaySummary.task === "Ready" ? terminalTitle : terminalDisplaySummary.task;
+  const terminalHeaderTitleRaw = terminalDisplaySummary.task === "Ready" ? terminalTitle : terminalDisplaySummary.task;
   const terminalHeaderPath = terminalDisplaySummary.path;
-  const terminalHeaderSummarySignal = terminalDisplaySummary.now;
-  const terminalHeaderHasUsefulNow = terminalDisplaySummary.now !== "Awaiting terminal output";
+  // Anti-flicker for real sidecar task summaries. Bound MASTER_PLAN tasks and heuristic
+  // shell-output fallbacks are authoritative per render, so they bypass the hold. (TC-035)
+  const stabilizedNodeHeader = stableHeader(
+    `map:${terminalTabId}:${terminalPaneId}:${node.taskBinding?.taskId ?? "unbound"}`,
+    {
+      title: (terminalHeaderTitleRaw ?? "").toString(),
+      now: (terminalDisplaySummary.now ?? "").toString(),
+    },
+    {
+      nowMs: Date.now(),
+      bypass:
+        !terminalStatusSummary?.tasksFromTodoWrite ||
+        Boolean(directlyBoundTask) ||
+        linkedTerminal?.status === "failed" ||
+        linkedTerminal?.status === "exited",
+    },
+  );
+  const terminalHeaderTitle = stabilizedNodeHeader.title;
+  const terminalHeaderSummarySignal = stabilizedNodeHeader.now;
+  const terminalHeaderHasUsefulNow = terminalHeaderSummarySignal !== "Awaiting terminal output";
   const terminalHeaderHasUsefulSummary = terminalDisplaySummary.task !== "Ready";
   const terminalHeaderHasTrustedSummary =
     terminalHeaderHasUsefulSummary && terminalDisplaySummary.confidence !== "low";
@@ -2640,9 +2687,9 @@ function CanvasNodeView({
         standalone
         renderScale={MAP_TERMINAL_RENDER_SCALE}
         onSnapshot={(snapshot) => onTerminalSnapshot(node.id, snapshot)}
-        // Let TerminalCanvas preserve working-size alternate-screen agent TUIs on
-        // the map. Plain shell buffers still reflow because projection only
-        // freezes while the grid reports altScreen.
+        // Preserve alternate-screen agent TUIs on the map so Claude/zellij-style
+        // panes do not rewrap into corrupted fragments. Readability comes from
+        // focusing the map at 100%, not by over-scaling a clipped canvas.
         mapProjection
       />
     ) : node.type === "terminal" ? (
@@ -3340,11 +3387,6 @@ function CanvasNodeView({
                 ...(workstream?.kind === "agent"
                   ? styles.terminalBodyWithTasks
                   : styles.shellTerminalBody),
-                gridTemplateColumns: taskSidebarCollapsed
-                  ? "minmax(0, 1fr) 46px"
-                  : workstream?.kind === "agent"
-                    ? styles.terminalBodyWithTasks.gridTemplateColumns
-                    : "minmax(0, 1fr) minmax(240px, 30%)",
                 ...styles.liveTerminalBody,
               }
             : node.type === "note"
@@ -3701,6 +3743,12 @@ function CanvasNodeView({
   );
 }
 
+// Memoized so one node's preview/state update (parent re-render + .map) does not
+// re-render every other node. Props are referentially stable: the parent passes
+// useCallback'd handlers and per-node `terminalPreview` entries that only change
+// for the node whose preview actually updated.
+const CanvasNodeView = memo(CanvasNodeViewImpl);
+
 export function MagicCanvas() {
   const canvasState = useWorkspaceStore((state) => state.canvasState);
   const tabs = useWorkspaceStore((state) => state.tabs);
@@ -3715,6 +3763,10 @@ export function MagicCanvas() {
   const panRef = useRef<{ x: number; y: number; viewportX: number; viewportY: number } | null>(null);
   const [fileIndex, setFileIndex] = useState(0);
   const [terminalPreviews, setTerminalPreviews] = useState<Record<string, TerminalPreviewEntry>>({});
+  // Per-node throttle state for preview updates (leading + trailing).
+  const previewThrottleRef = useRef<
+    Map<string, { lastFlush: number; timer: number | null; pending: GridSnapshot | null }>
+  >(new Map());
   const [selectionBox, setSelectionBox] = useState<SelectionBox | null>(null);
   // --- Viewport culling: bound how many terminal nodes mount a live renderer ---
   // Measured size of the map viewport, used to project the visible canvas rect.
@@ -3732,6 +3784,40 @@ export function MagicCanvas() {
     const observer = new ResizeObserver(apply);
     observer.observe(el);
     return () => observer.disconnect();
+  }, []);
+
+  // Drop preview snapshots (and their throttle state) for nodes that no longer
+  // exist. Previously entries were only ever added, so every closed terminal
+  // leaked a full grid snapshot for the life of the session.
+  useEffect(() => {
+    const validIds = new Set(canvasState.nodes.map((n) => n.id));
+    for (const id of previewThrottleRef.current.keys()) {
+      if (!validIds.has(id)) {
+        const entry = previewThrottleRef.current.get(id);
+        if (entry?.timer != null) clearTimeout(entry.timer);
+        previewThrottleRef.current.delete(id);
+      }
+    }
+    setTerminalPreviews((current) => {
+      let changed = false;
+      const next: Record<string, TerminalPreviewEntry> = {};
+      for (const [id, entry] of Object.entries(current)) {
+        if (validIds.has(id)) next[id] = entry;
+        else changed = true;
+      }
+      return changed ? next : current;
+    });
+  }, [canvasState.nodes]);
+
+  // Clear any pending throttle timers on unmount.
+  useEffect(() => {
+    const throttle = previewThrottleRef.current;
+    return () => {
+      for (const entry of throttle.values()) {
+        if (entry.timer != null) clearTimeout(entry.timer);
+      }
+      throttle.clear();
+    };
   }, []);
 
   const { viewport, nodes, selectedNodeId, selectedNodeIds } = canvasState;
@@ -3946,18 +4032,55 @@ export function MagicCanvas() {
     }
   }, [updateCanvasNode]);
 
-  const updateTerminalPreview = useCallback((nodeId: string, snapshot: GridSnapshot) => {
+  const flushTerminalPreview = useCallback((nodeId: string, snapshot: GridSnapshot) => {
     setTerminalPreviews((current) => ({
       ...current,
       [nodeId]: {
-        snapshot: {
-          ...snapshot,
-          cells: snapshot.cells.map((row) => row.slice()),
-        },
+        // Shallow outer-array copy is sufficient: GridBuffer.apply() only ever
+        // replaces whole row arrays by index (never mutates a stored row's
+        // cells in place), so the captured row references stay frozen even as
+        // the live buffer swaps slots on later frames. Avoids the O(rows×cols)
+        // per-row deep copy that previously ran on every diff frame.
+        snapshot: { ...snapshot, cells: snapshot.cells.slice() },
         updatedAt: Date.now(),
       },
     }));
   }, []);
+
+  // Coalesce high-frequency snapshots (one per diff frame) down to ~10/s per
+  // node so a busy terminal does not drive a setState + map re-render on every
+  // frame. Leading-edge flush keeps the preview responsive; a trailing timer
+  // delivers the final frame of a burst.
+  const updateTerminalPreview = useCallback((nodeId: string, snapshot: GridSnapshot) => {
+    const map = previewThrottleRef.current;
+    let entry = map.get(nodeId);
+    if (!entry) {
+      entry = { lastFlush: 0, timer: null, pending: null };
+      map.set(nodeId, entry);
+    }
+    const now = Date.now();
+    const elapsed = now - entry.lastFlush;
+    if (elapsed >= PREVIEW_THROTTLE_MS) {
+      entry.lastFlush = now;
+      entry.pending = null;
+      flushTerminalPreview(nodeId, snapshot);
+      return;
+    }
+    entry.pending = snapshot;
+    if (entry.timer === null) {
+      entry.timer = window.setTimeout(() => {
+        const e = map.get(nodeId);
+        if (!e) return;
+        e.timer = null;
+        e.lastFlush = Date.now();
+        if (e.pending) {
+          const pending = e.pending;
+          e.pending = null;
+          flushTerminalPreview(nodeId, pending);
+        }
+      }, PREVIEW_THROTTLE_MS - elapsed);
+    }
+  }, [flushTerminalPreview]);
 
   const centerNode = useCallback((node: CanvasNode, zoom: number) => {
     const shellRect = shellRef.current?.getBoundingClientRect();
