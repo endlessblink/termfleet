@@ -54,7 +54,7 @@ import { syncTerminalLatencyTraceEnv, traceTerminalLatency } from "../lib/termin
 // Per-terminal debug HUD (TC-047). Flip to true to surface each terminal's live
 // mode + layout decision + sizes + wheel path, so rendering breakage (alt-screen
 // fragmentation, black-bottom, reflow vs freeze, dead scroll) is visible at a
-// glance. Kept off by default; re-enable when resuming the terminal-render work.
+// glance. Off by default; flip true to resume the terminal-render investigation.
 const DEBUG_TERM_HUD = false;
 const FONT_FAMILY =
   '"Hack", "JetBrains Mono", "Geist Mono", "Cascadia Code", "Consolas", monospace';
@@ -395,7 +395,7 @@ export function TerminalCanvas({
           changedRows: rowsToRender.size,
         });
         syncOverlaySize();
-        if (mapProjection && preservesProjectionSize()) {
+        if (mapProjection && modesRef.current.altScreen) {
           applyProjectionClip();
         }
         drawSelectionOverlay();
@@ -612,7 +612,7 @@ export function TerminalCanvas({
       // the working grid; when it's at least as large in both dims, reflow so the
       // terminal fills the grown node instead of leaving dead space below it.
       const mode = mapNodeLayoutMode({
-        preservesProjectionSize: preservesProjectionSize(),
+        altScreenOnMap: mapProjection && modesRef.current.altScreen,
       });
       if (DEBUG_TERM_HUD) {
         bumpHud({

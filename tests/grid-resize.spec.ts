@@ -91,22 +91,21 @@ test("reflow sizing and CSS-transform-independent rendering", async ({ page }) =
   expect(result.identical).toBe(true);
 });
 
-// TC-047 — an interactive TUI on the map (alt-screen / mouse-report) must ALWAYS
-// freeze + clip, never reflow. Reflowing a full-screen TUI (even on grow) re-runs
-// its wrap/redraw at a different width and fragments it into visual wreckage. A
-// reflow-on-grow attempt regressed exactly this, so the rule is unconditional:
-// interactive → freeze, plain/non-interactive → reflow.
-test("interactive map nodes always freeze; plain terminals reflow", async ({ page }) => {
+// TC-047 — only a true ALT-SCREEN TUI on the map freezes + clips (reflowing one
+// fragments it into wreckage). Everything else reflows — including primary-screen
+// agents that enable mouse-report (Claude/Codex inline); freezing those strands
+// the grid small inside a larger node with a black band below.
+test("only alt-screen map nodes freeze; everything else reflows", async ({ page }) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
 
   const r = await page.evaluate(async () => {
     const { mapNodeLayoutMode } = await import("/src/lib/gridRenderer.ts");
     return {
-      plainReflows: mapNodeLayoutMode({ preservesProjectionSize: false }),
-      interactiveFreezes: mapNodeLayoutMode({ preservesProjectionSize: true }),
+      nonAltReflows: mapNodeLayoutMode({ altScreenOnMap: false }),
+      altScreenFreezes: mapNodeLayoutMode({ altScreenOnMap: true }),
     };
   });
 
-  expect(r.plainReflows).toBe("reflow");
-  expect(r.interactiveFreezes).toBe("freeze");
+  expect(r.nonAltReflows).toBe("reflow");
+  expect(r.altScreenFreezes).toBe("freeze");
 });

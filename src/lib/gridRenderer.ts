@@ -94,15 +94,19 @@ export function computeGridSize(
  * map node) the answer is always "reflow".
  */
 export function mapNodeLayoutMode(params: {
-  preservesProjectionSize: boolean;
+  altScreenOnMap: boolean;
 }): "reflow" | "freeze" {
-  // An interactive TUI on the map (alt-screen / mouse-report) is ALWAYS frozen at
-  // its working size and clipped — never reflowed. Reflowing a full-screen TUI
-  // (even on grow) re-runs its wrap/redraw against a different width and fragments
-  // it into visual wreckage (the zellij-fragmentation root cause; it's why the
-  // clip path exists). A reflow-on-grow attempt regressed exactly this. Only plain
-  // / non-interactive terminals reflow to fill their node.
-  return params.preservesProjectionSize ? "freeze" : "reflow";
+  // Freeze + clip ONLY a true full-screen ALT-SCREEN TUI (vim/htop, and any agent
+  // that switches to the alternate screen). Reflowing one of those re-runs its
+  // redraw at a different width and fragments it into visual wreckage — that's the
+  // zellij-fragmentation reason the clip path exists.
+  //
+  // Everything else reflows, including PRIMARY-screen agents that merely enable
+  // mouse-report (Claude/Codex inline). Primary-screen reflow is just line-rewrap,
+  // which is safe — and necessary, or the grid stays frozen-small inside a larger
+  // node and leaves a black band below. Gating freeze on mouse-report (too broad)
+  // is exactly what regressed this.
+  return params.altScreenOnMap ? "freeze" : "reflow";
 }
 
 function resolveColors(cell: GridCell): { fg: string; bg: string } {
