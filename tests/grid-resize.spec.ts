@@ -91,38 +91,22 @@ test("reflow sizing and CSS-transform-independent rendering", async ({ page }) =
   expect(result.identical).toBe(true);
 });
 
-// TC-037 — a map node running an interactive agent (Claude/Codex, which enable
-// mouse/SGR/alt modes) is frozen at its working size to avoid fragmenting a wide
-// TUI when SHRUNK into a small node. The bug: that freeze was applied to GROW
-// too, so growing the node left the frozen smaller canvas anchored top-left with
-// a dark band below. Fix: reflow on grow, freeze only on shrink. This is the
-// exact decision `reconcileLayout` makes via mapNodeLayoutMode.
-test("map node reflows on grow, freezes only on shrink", async ({ page }) => {
+// TC-047 — an interactive TUI on the map (alt-screen / mouse-report) must ALWAYS
+// freeze + clip, never reflow. Reflowing a full-screen TUI (even on grow) re-runs
+// its wrap/redraw at a different width and fragments it into visual wreckage. A
+// reflow-on-grow attempt regressed exactly this, so the rule is unconditional:
+// interactive → freeze, plain/non-interactive → reflow.
+test("interactive map nodes always freeze; plain terminals reflow", async ({ page }) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
 
   const r = await page.evaluate(async () => {
     const { mapNodeLayoutMode } = await import("/src/lib/gridRenderer.ts");
-    const grid = { gridCols: 80, gridRows: 24 };
     return {
-      // Non-interactive (or non-map) terminals always reflow.
-      plainReflows: mapNodeLayoutMode({ preservesProjectionSize: false, measuredCols: 40, measuredRows: 12, ...grid }),
-      // Interactive map node GROWN in both dims → reflow (fills the node).
-      growReflows: mapNodeLayoutMode({ preservesProjectionSize: true, measuredCols: 120, measuredRows: 40, ...grid }),
-      // Same size → reflow (no-op resize, never freeze).
-      equalReflows: mapNodeLayoutMode({ preservesProjectionSize: true, measuredCols: 80, measuredRows: 24, ...grid }),
-      // Shrunk height → freeze (anti-fragmentation preserved).
-      shrinkHFreezes: mapNodeLayoutMode({ preservesProjectionSize: true, measuredCols: 80, measuredRows: 18, ...grid }),
-      // Shrunk width → freeze.
-      shrinkWFreezes: mapNodeLayoutMode({ preservesProjectionSize: true, measuredCols: 64, measuredRows: 24, ...grid }),
-      // Grow height but shrink width → still freeze (any shrink fragments).
-      mixedFreezes: mapNodeLayoutMode({ preservesProjectionSize: true, measuredCols: 64, measuredRows: 40, ...grid }),
+      plainReflows: mapNodeLayoutMode({ preservesProjectionSize: false }),
+      interactiveFreezes: mapNodeLayoutMode({ preservesProjectionSize: true }),
     };
   });
 
   expect(r.plainReflows).toBe("reflow");
-  expect(r.growReflows).toBe("reflow");
-  expect(r.equalReflows).toBe("reflow");
-  expect(r.shrinkHFreezes).toBe("freeze");
-  expect(r.shrinkWFreezes).toBe("freeze");
-  expect(r.mixedFreezes).toBe("freeze");
+  expect(r.interactiveFreezes).toBe("freeze");
 });

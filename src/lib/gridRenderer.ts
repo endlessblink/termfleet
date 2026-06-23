@@ -95,15 +95,14 @@ export function computeGridSize(
  */
 export function mapNodeLayoutMode(params: {
   preservesProjectionSize: boolean;
-  measuredCols: number;
-  measuredRows: number;
-  gridCols: number;
-  gridRows: number;
 }): "reflow" | "freeze" {
-  const { preservesProjectionSize, measuredCols, measuredRows, gridCols, gridRows } = params;
-  if (!preservesProjectionSize) return "reflow";
-  const wouldShrink = measuredCols < gridCols || measuredRows < gridRows;
-  return wouldShrink ? "freeze" : "reflow";
+  // An interactive TUI on the map (alt-screen / mouse-report) is ALWAYS frozen at
+  // its working size and clipped — never reflowed. Reflowing a full-screen TUI
+  // (even on grow) re-runs its wrap/redraw against a different width and fragments
+  // it into visual wreckage (the zellij-fragmentation root cause; it's why the
+  // clip path exists). A reflow-on-grow attempt regressed exactly this. Only plain
+  // / non-interactive terminals reflow to fill their node.
+  return params.preservesProjectionSize ? "freeze" : "reflow";
 }
 
 function resolveColors(cell: GridCell): { fg: string; bg: string } {

@@ -51,6 +51,11 @@ import { syncTerminalLatencyTraceEnv, traceTerminalLatency } from "../lib/termin
 
 // Hack is the terminal buffer font (Warp's default terminal font), bundled via
 // @font-face. Fallbacks keep things sane before the face loads / on other systems.
+// Per-terminal debug HUD (TC-047). Flip to true to surface each terminal's live
+// mode + layout decision + sizes + wheel path, so rendering breakage (alt-screen
+// fragmentation, black-bottom, reflow vs freeze, dead scroll) is visible at a
+// glance. Kept off by default; re-enable when resuming the terminal-render work.
+const DEBUG_TERM_HUD = false;
 const FONT_FAMILY =
   '"Hack", "JetBrains Mono", "Geist Mono", "Cascadia Code", "Consolas", monospace';
 const FONT_SIZE_PX = 14;
@@ -203,6 +208,24 @@ export function TerminalCanvas({
       : TERMINAL_FONT_FACES.every((face) => document.fonts.check(face)),
   );
   const [attachError, setAttachError] = useState<string | null>(null);
+  // TC-047 per-terminal debug HUD state. Updated at render + layout-decision points.
+  const hudRef = useRef({
+    cols: 0, rows: 0, pxW: 0, pxH: 0, boxW: 0, boxH: 0,
+    alt: false, mouse: false, off: 0, ty: 0, frame: "-", layout: "-",
+    whN: 0, whKind: "-",
+  });
+  const [hudTick, setHudTick] = useState(0);
+  const bumpHud = (patch: Partial<typeof hudRef.current>) => {
+    if (!DEBUG_TERM_HUD) return;
+    const cur = hudRef.current;
+    let changed = false;
+    for (const k of Object.keys(patch) as Array<keyof typeof patch>) {
+      if (cur[k] !== patch[k]) { changed = true; break; }
+    }
+    if (!changed) return;
+    hudRef.current = { ...cur, ...patch };
+    setHudTick((t) => (t + 1) & 0xffff);
+  };
   // Bumped whenever devicePixelRatio changes (dragging the window between
   // monitors of different DPI, or an OS scale change). dpr is read once when the
   // attach effect builds the glyph atlas + cell metrics, so without this the
@@ -376,6 +399,16 @@ export function TerminalCanvas({
           applyProjectionClip();
         }
         drawSelectionOverlay();
+        if (DEBUG_TERM_HUD) {
+          bumpHud({
+            cols: snapshot.cols, rows: snapshot.rows,
+            pxW: canvas.width, pxH: canvas.height,
+            off: buffer.displayOffset,
+            alt: modesRef.current.altScreen,
+            mouse: modesRef.current.mouseReport || modesRef.current.sgrMouse,
+            frame: full ? "full" : `d${rowsToRender.size}`,
+          });
+        }
       });
     };
 
@@ -557,6 +590,7 @@ export function TerminalCanvas({
         overlay.style.transformOrigin = "top left";
         overlay.style.transform = transform;
       }
+      if (DEBUG_TERM_HUD) bumpHud({ ty: Math.round(dy) });
     };
 
     const clearProjectionScale = () => {
@@ -577,14 +611,16 @@ export function TerminalCanvas({
       // just gets more room. So only freeze when the node would actually shrink
       // the working grid; when it's at least as large in both dims, reflow so the
       // terminal fills the grown node instead of leaving dead space below it.
-      const m = measure();
       const mode = mapNodeLayoutMode({
         preservesProjectionSize: preservesProjectionSize(),
-        measuredCols: m.cols,
-        measuredRows: m.rows,
-        gridCols: lastCols,
-        gridRows: lastRows,
       });
+      if (DEBUG_TERM_HUD) {
+        bumpHud({
+          layout: mapProjection ? mode : "split",
+          boxW: shellRef.current?.clientWidth ?? 0,
+          boxH: shellRef.current?.clientHeight ?? 0,
+        });
+      }
       if (mode === "freeze") {
         applyProjectionClip();
         return;
@@ -1309,6 +1345,10 @@ export function TerminalCanvas({
     const modes = modesRef.current;
 
     const wheelAction = terminalWheelAction(event, modes, up ? "up" : "down");
+    if (DEBUG_TERM_HUD) {
+      const k = wheelAction.kind === "mouse-report" ? "mouse" : wheelAction.kind === "app-arrows" ? "arrows" : "history";
+      bumpHud({ whN: (hudRef.current.whN + 1) & 0xffff, whKind: `${up ? "up" : "dn"}/${k}` });
+    }
 
     // Mouse-reporting TUIs own wheel input. Apps that explicitly enable
     // alternate-scroll receive arrow-key scroll. Plain alt-screen alone is not
@@ -1359,6 +1399,37 @@ export function TerminalCanvas({
       onPointerCancel={handlePointerCancel}
       onWheel={handleWheel}
     >
+      {DEBUG_TERM_HUD ? (
+        (() => {
+          void hudTick;
+          const h = hudRef.current;
+          // Red-flag the bug: an alt-screen TUI that is NOT frozen is being
+          // reflowed/clipped wrong — that's the fragmentation/wreckage.
+          const danger = h.alt && h.layout !== "freeze" && h.layout !== "-";
+          return (
+            <div
+              aria-hidden="true"
+              style={{
+                position: "absolute",
+                top: 2,
+                left: 2,
+                zIndex: 20,
+                padding: "2px 6px",
+                background: danger ? "rgba(120,0,0,0.82)" : "rgba(0,0,0,0.74)",
+                color: danger ? "#ff8a8a" : "#46d369",
+                font: "10px/1.35 monospace",
+                pointerEvents: "none",
+                whiteSpace: "pre",
+                borderRadius: 3,
+              }}
+            >
+              {`${h.cols}x${h.rows} grid · ${h.pxW}x${h.pxH}px · box ${h.boxW}x${h.boxH}\n` +
+                `alt:${h.alt ? "Y" : "n"} mouse:${h.mouse ? "Y" : "n"} · layout:${h.layout} · off:${h.off} ty:${h.ty} · ${h.frame}\n` +
+                `wheel#${h.whN} ${h.whKind}`}
+            </div>
+          );
+        })()
+      ) : null}
       <canvas
         ref={canvasRef}
         className="terminal-canvas"
