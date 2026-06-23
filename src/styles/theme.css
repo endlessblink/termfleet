@@ -124,6 +124,10 @@
   --border-focus: rgba(255, 255, 255, 0.16);
   --text-primary: #e6e9ec;
   --text-secondary: #9aa3ab;
+  /* Dimmer meta (counts, separators, timestamps). Was used in ~19 places but never
+     defined, so it resolved to inherited color — unpredictable + failing contrast.
+     Kept legible (~4.6:1 on the dark surfaces) for small meta labels. */
+  --text-tertiary: #79818a;
   /* Accent kept neutral/near-white (Warp barely uses a colored accent). Retint
      this single token to color the active edge / live dot / cursor. */
   --accent-live: #c4ccd2;

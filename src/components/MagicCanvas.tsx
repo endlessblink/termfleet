@@ -920,27 +920,20 @@ const styles: Record<string, CSSProperties> = {
     background: "var(--surface-sunken)",
   },
   terminalBodyWithTasks: {
+    // Grid columns + overflow are set inline at the body div (they depend on the
+    // collapsed/expanded state): terminal (1fr) + task column (44px / 224px).
     flex: 1,
     minHeight: 0,
     display: "grid",
-    gridTemplateColumns: "minmax(0, 1fr) 46px",
     background: "var(--surface-sunken)",
-    // visible (not hidden) so the expanded task sidebar can float just outside the
-    // node's right edge without being clipped. The terminal itself is clipped by
-    // the inner terminalBodyTaskContent (overflow:hidden), not here.
-    overflow: "visible",
     position: "relative",
   },
   shellTerminalBody: {
     flex: 1,
     minHeight: 0,
     display: "grid",
-    gridTemplateColumns: "minmax(0, 1fr) 46px",
     gridTemplateRows: "minmax(0, 1fr)",
     background: "var(--surface-sunken)",
-    // visible: see terminalBodyWithTasks — lets the outside task sidebar show; the
-    // terminal is clipped by the inner terminalBodyTaskContent instead.
-    overflow: "visible",
     position: "relative",
   },
   terminalBodyTaskContent: {
@@ -958,38 +951,29 @@ const styles: Record<string, CSSProperties> = {
     // terminalBodyTaskContent stays overflow:hidden so the terminal itself is still
     // clipped. (Earlier the body was overflow:hidden, which clipped this sidebar to
     // nothing — brightPixels 0.)
-    position: "absolute",
-    top: 0,
-    right: -320,
-    bottom: 0,
-    zIndex: 4,
-    width: 320,
+    // In-flow second column of the card (sized by the body grid), NOT a floating
+    // slab. The card owns the rounding + shadow; this is just the right zone, set
+    // off from the terminal by a single 1px divider. One flat step up in surface so
+    // it reads as part of the same card, recessed from the live terminal.
     minWidth: 0,
     minHeight: 0,
+    height: "100%",
     display: "flex",
     flexDirection: "column",
     gap: 9,
-    padding: "11px 10px",
-    // The card squares its right corners while this is open (see taskSidebarExpanded);
-    // the list carries the card's right-side rounding + shadow so the two read as one
-    // continuous card. borderLeft is the internal divider between terminal and list.
+    padding: "11px 11px 12px 13px",
     borderLeft: "1px solid var(--border-subtle)",
-    borderRadius: "0 var(--radius-md) var(--radius-md) 0",
-    boxShadow: "var(--shadow-card)",
-    background: "color-mix(in srgb, var(--surface-base) 72%, var(--surface-sunken))",
+    background: "var(--surface-base)",
     color: "var(--text-secondary)",
     fontFamily: "var(--font-ui)",
     overflow: "hidden",
   },
   terminalBodyTaskRail: {
-    position: "absolute",
-    top: 0,
-    right: 0,
-    bottom: 0,
-    zIndex: 4,
+    // Collapsed affordance: a slim icon rail filling the card's 44px second column
+    // (in-flow, not floated). Same surface + divider as the expanded panel.
     minWidth: 0,
     minHeight: 0,
-    width: 46,
+    width: "100%",
     height: "100%",
     display: "grid",
     gridTemplateRows: "auto auto auto auto 1fr",
@@ -999,7 +983,7 @@ const styles: Record<string, CSSProperties> = {
     padding: "12px 6px",
     border: "none",
     borderLeft: "1px solid var(--border-subtle)",
-    background: "color-mix(in srgb, var(--surface-base) 78%, var(--surface-sunken))",
+    background: "var(--surface-base)",
     color: "var(--text-secondary)",
     fontFamily: "var(--font-ui)",
     cursor: "pointer",
@@ -2452,10 +2436,6 @@ function CanvasNodeViewImpl({
     ? laneChecklistTasks
     : currentLineupTasks;
   const taskSidebarCollapsed = linkedTerminal?.taskSidebarCollapsed ?? node.taskSidebarCollapsed ?? terminalBodyTasks.length === 0;
-  // When the task list is expanded it floats flush to the node's right edge. Square
-  // off the card's right corners (and let the list carry the right-side rounding +
-  // shadow) so the two read as one continuous card instead of a detached panel.
-  const taskSidebarExpanded = node.type === "terminal" && !taskSidebarCollapsed;
   const terminalBodyTaskPrefix: "canvas-agent" | "canvas-terminal" =
     workstream?.kind === "agent" ? "canvas-agent" : "canvas-terminal";
   const nodeKind = workstream?.kind === "agent"
@@ -2759,11 +2739,6 @@ function CanvasNodeViewImpl({
         width: node.width,
         height: node.height,
         zIndex: node.type === "terminal" && workstream?.kind === "agent" ? 25 : selected ? 15 : 1,
-        // Right corners go square while the task list is docked to the right edge so
-        // the card + list form one rounded shape (the list rounds the right side).
-        borderRadius: taskSidebarExpanded
-          ? "var(--radius-md) 0 0 var(--radius-md)"
-          : styles.node.borderRadius,
         border: selected ? "1px solid var(--border-focus)" : styles.node.border,
         boxShadow: selected
           ? "0 0 0 1px rgba(217,154,69,0.36), 0 20px 54px rgba(0,0,0,0.52)"
@@ -3402,6 +3377,15 @@ function CanvasNodeViewImpl({
                   ? styles.terminalBodyWithTasks
                   : styles.shellTerminalBody),
                 ...styles.liveTerminalBody,
+                // The task panel is a real second column INSIDE the card: a narrow
+                // icon rail when collapsed, the full list when expanded. The terminal
+                // (column 1) makes room for it, so the two read as one card with a
+                // single divider — no detached floating slab, no gap. overflow:hidden
+                // keeps everything clipped to the card.
+                gridTemplateColumns: taskSidebarCollapsed
+                  ? "minmax(0, 1fr) 44px"
+                  : "minmax(0, 1fr) 224px",
+                overflow: "hidden",
               }
             : node.type === "note"
               ? styles.noteBody

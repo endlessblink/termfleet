@@ -1129,7 +1129,7 @@ test("manual-sized selected live terminal is not reset to the readable default",
   })).toEqual({ width: 820, height: 460 });
 });
 
-test("task sidebar toggles without resizing terminal content", async ({ page }) => {
+test("task sidebar docks as an inner column flush inside the card", async ({ page }) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle");
   await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
@@ -1199,32 +1199,36 @@ test("task sidebar toggles without resizing terminal content", async ({ page }) 
     });
   });
 
+  // TC-042 — the expanded list docks as an in-flow inner column of the card: the
+  // terminal makes room for it, the list sits flush against the terminal content
+  // (no gap) and stays INSIDE the node (no detached overhanging slab).
   await expect(page.getByTestId("canvas-terminal-task-sidebar")).toBeVisible();
   const openContentBox = await page.getByTestId("canvas-terminal-task-content").boundingBox();
   const openNodeBox = await page.getByTestId("canvas-terminal-node").boundingBox();
   const openSidebarBox = await page.getByTestId("canvas-terminal-task-sidebar").boundingBox();
   if (!openContentBox || !openNodeBox || !openSidebarBox) throw new Error("Open terminal content, sidebar, or node is not visible");
-  expect(openContentBox.width).toBeGreaterThan(openNodeBox.width - 80);
-  expect(openSidebarBox.x).toBeGreaterThanOrEqual(openContentBox.x + openContentBox.width - 1);
+  // List is flush against the terminal content — no gap.
+  expect(Math.abs(openSidebarBox.x - (openContentBox.x + openContentBox.width))).toBeLessThanOrEqual(2);
+  // List stays inside the card — its right edge does not overhang the node.
+  expect(openSidebarBox.x + openSidebarBox.width).toBeLessThanOrEqual(openNodeBox.x + openNodeBox.width + 2);
   await page.getByLabel("Minimize tasks").click();
   await expect(page.getByTestId("canvas-terminal-task-sidebar")).toHaveCount(0);
-  await expect(page.getByTestId("canvas-terminal-task-rail")).toContainText("No list");
   const collapsedContentBox = await page.getByTestId("canvas-terminal-task-content").boundingBox();
   if (!collapsedContentBox) throw new Error("Collapsed terminal content is not visible");
-  expect(Math.round(collapsedContentBox.width)).toBe(Math.round(openContentBox.width));
+  // Collapsing the list to the slim rail gives the terminal its room back.
+  expect(collapsedContentBox.width).toBeGreaterThan(openContentBox.width + 100);
   await page.getByTestId("canvas-terminal-task-rail").click();
   await expect(page.getByTestId("canvas-terminal-task-sidebar")).toBeVisible();
   const reopenedContentBox = await page.getByTestId("canvas-terminal-task-content").boundingBox();
   const reopenedSidebarBox = await page.getByTestId("canvas-terminal-task-sidebar").boundingBox();
   if (!reopenedContentBox || !reopenedSidebarBox) throw new Error("Reopened terminal content or sidebar is not visible");
   expect(Math.round(reopenedContentBox.width)).toBe(Math.round(openContentBox.width));
-  expect(reopenedSidebarBox.x).toBeGreaterThanOrEqual(reopenedContentBox.x + reopenedContentBox.width - 1);
+  expect(Math.abs(reopenedSidebarBox.x - (reopenedContentBox.x + reopenedContentBox.width))).toBeLessThanOrEqual(2);
 });
 
-// TC-039 — the expanded task list must read as ONE card with the terminal, not a
-// detached floating panel. Visual merge: the card squares its right corners while
-// the list is docked flush to the right, and the list carries the right-side
-// rounding, so together they form a single rounded card.
+// TC-039/TC-042 — the expanded task list must read as ONE card with the terminal,
+// not a detached floating panel. It's an in-flow inner column of the card: flush
+// against the terminal content, contained within the node bounds, full height.
 test("expanded task list reads as one card with the terminal", async ({ page }) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle");
@@ -1286,28 +1290,21 @@ test("expanded task list reads as one card with the terminal", async ({ page }) 
   const sidebar = page.getByTestId("canvas-terminal-task-sidebar");
   await expect(sidebar).toBeVisible();
   const nodeEl = page.getByTestId("canvas-terminal-node");
+  const content = page.getByTestId("canvas-terminal-task-content");
 
-  // The card squares its right corners while the list is docked...
-  const cardTopRight = await nodeEl.evaluate((el) =>
-    parseFloat(getComputedStyle(el).borderTopRightRadius));
-  const cardTopLeft = await nodeEl.evaluate((el) =>
-    parseFloat(getComputedStyle(el).borderTopLeftRadius));
-  expect(cardTopRight).toBe(0);
-  expect(cardTopLeft).toBeGreaterThan(0);
-
-  // ...and the list carries the right-side rounding, so the pair reads as one card.
-  const listTopRight = await sidebar.evaluate((el) =>
-    parseFloat(getComputedStyle(el).borderTopRightRadius));
-  const listTopLeft = await sidebar.evaluate((el) =>
-    parseFloat(getComputedStyle(el).borderTopLeftRadius));
-  expect(listTopRight).toBeGreaterThan(0);
-  expect(listTopLeft).toBe(0);
-
-  // The list is flush to the card's right edge (no detached gap).
+  // The list is a real inner column of ONE card: it sits flush against the
+  // terminal content (no gap) and entirely inside the node's bounds (no detached,
+  // overhanging slab past the card's right edge).
   const nodeBox = await nodeEl.boundingBox();
   const sidebarBox = await sidebar.boundingBox();
-  if (!nodeBox || !sidebarBox) throw new Error("node or sidebar not visible");
-  expect(Math.abs(sidebarBox.x - (nodeBox.x + nodeBox.width))).toBeLessThanOrEqual(1);
+  const contentBox = await content.boundingBox();
+  if (!nodeBox || !sidebarBox || !contentBox) throw new Error("node, content, or sidebar not visible");
+  // Flush against the terminal content — no gap.
+  expect(Math.abs(sidebarBox.x - (contentBox.x + contentBox.width))).toBeLessThanOrEqual(2);
+  // Contained within the card — the right edge does not overhang the node.
+  expect(sidebarBox.x + sidebarBox.width).toBeLessThanOrEqual(nodeBox.x + nodeBox.width + 2);
+  // Spans the card's height (one unit with the terminal, not a floating panel).
+  expect(Math.abs(sidebarBox.height - contentBox.height)).toBeLessThanOrEqual(2);
 });
 
 test("status bar summarizes durable terminal recovery states", async ({ page }) => {

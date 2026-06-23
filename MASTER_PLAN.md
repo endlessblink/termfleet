@@ -93,6 +93,7 @@ were retired during consolidation.
 | TC-039     | Task sidebar must be part of the same node unit: the expanded TASKS list floats detached to the right with a gap instead of reading as one card with the terminal                                                   | P1       | DONE (2026-06-23) | TC-037                  |
 | TC-040     | Restarting the app resurrects deleted/closed dead terminals: closed/killed sessions reappear as map nodes on restart instead of staying gone                                                                       | P1       | TODO              | TC-035                  |
 | TC-041     | Full agent resurrection on restart: after closing the app or rebooting the PC, bring the live running agent (Claude/Codex) back, not just its saved scrollback/context text — the agent process should resume, not just be readable                                | P0       | TODO              | TC-036, TC-040          |
+| TC-042     | Harden map terminal node visuals from every direction: kill the large blank gap (content stranded at the floor with empty rows above), and audit/fix vertical anchoring, dead space, header/rail/sidebar alignment, and empty-state rendering reliably                | P1       | IN PROGRESS       | TC-037, TC-039          |
 
 ---
 

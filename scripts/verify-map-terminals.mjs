@@ -278,11 +278,13 @@ const checks = [
       /<TerminalComponent[\s\S]*onSnapshot=\{\(snapshot\) => onTerminalSnapshot\(node\.id, snapshot\)\}[\s\S]*mapProjection[\s\S]*\/>/.test(magicCanvas) &&
       !/<TerminalComponent[\s\S]*mapProjection=\{false\}/.test(magicCanvas) &&
       !/READABLE_LIVE_TERMINAL_SIZE/.test(magicCanvas) &&
-      /terminalBodyTaskSidebar: \{[\s\S]*?position: "absolute"/.test(magicCanvas) &&
-      /terminalBodyTaskSidebar: \{[\s\S]*?right: -320/.test(magicCanvas) &&
-      /terminalBodyTaskRail: \{\s*position: "absolute"/.test(magicCanvas) &&
-      /right: 0/.test(magicCanvas) &&
-      /gridTemplateColumns: "minmax\(0, 1fr\) 46px"/.test(magicCanvas) &&
+      // TC-042: the task list is an in-flow inner COLUMN of the card (not a floated
+      // slab) — no longer pinned outside via right:-320; the body grid sizes the
+      // column inline by collapsed/expanded state (rail 44px / list 224px).
+      !/right: -320/.test(magicCanvas) &&
+      /gridTemplateColumns: taskSidebarCollapsed/.test(magicCanvas) &&
+      /"minmax\(0, 1fr\) 224px"/.test(magicCanvas) &&
+      /"minmax\(0, 1fr\) 44px"/.test(magicCanvas) &&
       !/projectionMinScale/.test(magicCanvas) &&
       !/projectionMinScale/.test(terminalCanvas) &&
       /preservesProjectionSize/.test(terminalCanvas) &&
