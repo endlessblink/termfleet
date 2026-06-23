@@ -94,6 +94,8 @@ were retired during consolidation.
 | TC-040     | Restarting the app resurrects deleted/closed dead terminals: closed/killed sessions reappear as map nodes on restart instead of staying gone                                                                       | P1       | TODO              | TC-035                  |
 | TC-041     | Full agent resurrection on restart: after closing the app or rebooting the PC, bring the live running agent (Claude/Codex) back, not just its saved scrollback/context text — the agent process should resume, not just be readable                                | P0       | TODO              | TC-036, TC-040          |
 | TC-042     | Harden map terminal node visuals from every direction: kill the large blank gap (content stranded at the floor with empty rows above), and audit/fix vertical anchoring, dead space, header/rail/sidebar alignment, and empty-state rendering reliably                | P1       | IN PROGRESS       | TC-037, TC-039          |
+| TC-043     | Scroll up broke in the map terminal: wheel/scroll-back into scrollback history no longer works (likely regression from the task-sidebar inner-column overflow change)                                                                                                | P1       | IN PROGRESS       | TC-042                  |
+| TC-044     | Project/group label defaults to "termfleet" when no group is selected: a terminal running in another path (e.g. bots+automation/bina-bot) shows the "termfleet" chip instead of its own project derived from the cwd                                                  | P1       | DONE (2026-06-23) | TC-034                  |
 
 ---
 

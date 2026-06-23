@@ -15,14 +15,36 @@ export function projectForTab(tab: Pick<Tab, "groupId"> | undefined, groups: Gro
   return groups.find((group) => group.id === tab.groupId) ?? null;
 }
 
+/** True when `path` is the same directory as `root` or nested inside it. */
+function isPathWithin(path: string, root: string): boolean {
+  const p = path.replace(/\/+$/, "");
+  const r = root.replace(/\/+$/, "");
+  if (!r) return false;
+  return p === r || p.startsWith(`${r}/`);
+}
+
 export function workspaceLabelFor(input: {
-  project?: Pick<Group, "name"> | null;
+  project?: Pick<Group, "name" | "projectRoot"> | null;
   cwd?: string | null;
   tabTitle?: string | null;
   nodeTitle?: string | null;
 }) {
-  if (input.project?.name?.trim()) return input.project.name.trim();
-  const cwdTail = input.cwd?.split("/").filter(Boolean).pop();
+  const projectName = input.project?.name?.trim() || undefined;
+  const projectRoot = input.project?.projectRoot?.trim() || undefined;
+  const cwd = input.cwd?.trim() || undefined;
+  const cwdTail = cwd?.split("/").filter(Boolean).pop();
+
+  // The assigned project names the terminal ONLY while it is actually inside that
+  // project's root. If the terminal has cd'd outside it (e.g. an app-default
+  // "termfleet" group while the shell runs in another repo), the live folder is
+  // the truthful identity — never keep showing a stale/default project label.
+  if (projectName) {
+    const navigatedAway = !!projectRoot && !!cwd && !isPathWithin(cwd, projectRoot);
+    if (!navigatedAway) return projectName;
+    if (cwdTail) return cwdTail;
+    return projectName;
+  }
+
   if (cwdTail) return cwdTail;
   const tabTitle = input.tabTitle?.trim();
   if (tabTitle && tabTitle !== "Terminal") return tabTitle;
