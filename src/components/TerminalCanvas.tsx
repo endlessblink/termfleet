@@ -212,7 +212,7 @@ export function TerminalCanvas({
   const hudRef = useRef({
     cols: 0, rows: 0, pxW: 0, pxH: 0, boxW: 0, boxH: 0,
     alt: false, mouse: false, off: 0, ty: 0, frame: "-", layout: "-",
-    whN: 0, whKind: "-",
+    whN: 0, whKind: "-", clip: "-",
   });
   const [hudTick, setHudTick] = useState(0);
   const bumpHud = (patch: Partial<typeof hudRef.current>) => {
@@ -1081,16 +1081,24 @@ export function TerminalCanvas({
   const handlePaste = (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const text = event.clipboardData.getData("text");
     const armed = performance.now() <= pasteShortcutArmedUntilRef.current;
-    if (!text && !(armed && clipboardHasImage(event.clipboardData))) return;
+    if (!text && !(armed && clipboardHasImage(event.clipboardData))) {
+      if (DEBUG_TERM_HUD) bumpHud({ clip: `paste:empty armed=${armed ? "Y" : "n"}` });
+      return;
+    }
     event.preventDefault();
     event.stopPropagation();
     pasteShortcutArmedUntilRef.current = 0;
     clearHiddenInputSoon(event.currentTarget);
-    if (!armed) return;
+    if (!armed) {
+      if (DEBUG_TERM_HUD) bumpHud({ clip: "paste:DROPPED(not-armed)" });
+      return;
+    }
     if (!text) {
+      if (DEBUG_TERM_HUD) bumpHud({ clip: "paste:image" });
       sendImagePasteShortcut();
       return;
     }
+    if (DEBUG_TERM_HUD) bumpHud({ clip: `paste:sent ${text.length}` });
     sendPasteText(text);
   };
 
@@ -1276,7 +1284,10 @@ export function TerminalCanvas({
   const copySelection = () => {
     const buffer = bufferRef.current;
     const range = selectionRef.current;
-    if (!buffer || !range) return;
+    if (!buffer || !range) {
+      if (DEBUG_TERM_HUD) bumpHud({ clip: "copy:no-sel" });
+      return;
+    }
     invoke<string>("grid_selection_text", {
       id: sessionIdRef.current,
       startRow: range.start.row,
@@ -1289,7 +1300,13 @@ export function TerminalCanvas({
         return selectionToText(buffer.cells, range);
       })
       .then((text) => {
-        if (text) navigator.clipboard?.writeText(text).catch(console.error);
+        if (text) {
+          navigator.clipboard?.writeText(text)
+            .then(() => { if (DEBUG_TERM_HUD) bumpHud({ clip: `copy:ok ${text.length}` }); })
+            .catch((err) => { if (DEBUG_TERM_HUD) bumpHud({ clip: "copy:write-fail" }); console.error(err); });
+        } else if (DEBUG_TERM_HUD) {
+          bumpHud({ clip: "copy:empty" });
+        }
       });
     // Writing to the clipboard can move focus off the hidden textarea; without
     // restoring it, the next keystroke (e.g. Shift+Tab) falls through to the
@@ -1425,7 +1442,7 @@ export function TerminalCanvas({
             >
               {`${h.cols}x${h.rows} grid · ${h.pxW}x${h.pxH}px · box ${h.boxW}x${h.boxH}\n` +
                 `alt:${h.alt ? "Y" : "n"} mouse:${h.mouse ? "Y" : "n"} · layout:${h.layout} · off:${h.off} ty:${h.ty} · ${h.frame}\n` +
-                `wheel#${h.whN} ${h.whKind}`}
+                `wheel#${h.whN} ${h.whKind} · clip ${h.clip}`}
             </div>
           );
         })()
