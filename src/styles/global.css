@@ -470,6 +470,11 @@ button:active {
   min-height: 0;
   display: grid;
   grid-template-columns: 24px minmax(0, 1fr);
+  /* Resolved row track: without this the single implicit row is content-sized,
+     so terminal-container's height:100% resolves against an indefinite track and
+     the canvas's ResizeObserver never re-fires on a pane grow (dead space below).
+     minmax(0,1fr) fills the definite container height so height propagates. */
+  grid-template-rows: minmax(0, 1fr);
   align-items: stretch;
   overflow: hidden;
   position: relative;

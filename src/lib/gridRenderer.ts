@@ -78,6 +78,34 @@ export function computeGridSize(
   };
 }
 
+/**
+ * Decide whether a terminal should REFLOW its grid to the node's measured size
+ * or FREEZE at its current working size (TC-037 map projection).
+ *
+ * An interactive TUI on the operations map is normally frozen + clipped, because
+ * reflowing a WIDE TUI into a SMALLER node fragments it. But that hazard is
+ * shrink-only: GROWING a node never fragments — the app just gets more room. So
+ * freeze only when the node would shrink the working grid in either dimension;
+ * otherwise reflow so the terminal fills the grown node instead of leaving a
+ * dead (background-colored) band below it.
+ *
+ * `preservesProjectionSize` is true only for an interactive map node (mouse/SGR/
+ * alt-screen/alt-scroll modes). When false (a normal pane, or a non-interactive
+ * map node) the answer is always "reflow".
+ */
+export function mapNodeLayoutMode(params: {
+  preservesProjectionSize: boolean;
+  measuredCols: number;
+  measuredRows: number;
+  gridCols: number;
+  gridRows: number;
+}): "reflow" | "freeze" {
+  const { preservesProjectionSize, measuredCols, measuredRows, gridCols, gridRows } = params;
+  if (!preservesProjectionSize) return "reflow";
+  const wouldShrink = measuredCols < gridCols || measuredRows < gridRows;
+  return wouldShrink ? "freeze" : "reflow";
+}
+
 function resolveColors(cell: GridCell): { fg: string; bg: string } {
   let fg = cell.fg;
   let bg = cell.bg;

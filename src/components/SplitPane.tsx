@@ -1390,7 +1390,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                 display: "flex",
               }}
             >
-              <div style={{ flex: 1, minHeight: 0, minWidth: 0 }}>
+              <div style={{ flex: 1, minHeight: 0, minWidth: 0, height: "100%", display: "flex", flexDirection: "column" }}>
               {isPreviewPane ? (
                 <LocalhostPreview
                   previewUrl={paneNode.previewUrl}

@@ -89,6 +89,10 @@ were retired during consolidation.
 | TC-035     | Per-terminal standalone status: key the cockpit task list/title by pane identity, not cwd, so each terminal tracks its own work even when several share a directory                                              | P1       | TODO              | TC-033, TC-034 |
 | TC-036     | Automatic agent terminal recovery: relaunch interrupted Codex/Claude agent TUIs inside regular TermFleet terminals with no end-user recovery steps                                                                | P0       | TODO              | TC-009, TC-016, TC-035 |
 | TC-037     | Fix map terminal rendering regressions from the sidebar/projection refactor: task-rail numbers bleed over terminal text, terminal shrinks leaving dead space, sidebar paints empty                                 | P1       | IN PROGRESS       | TC-035                  |
+| TC-038     | Stale sessions appear randomly in the sessions/scope panel: old/dead sessions surface in the list with no live PTY                                                                                                 | P2       | TODO              | TC-035                  |
+| TC-039     | Task sidebar must be part of the same node unit: the expanded TASKS list floats detached to the right with a gap instead of reading as one card with the terminal                                                   | P1       | IN PROGRESS       | TC-037                  |
+| TC-040     | Restarting the app resurrects deleted/closed dead terminals: closed/killed sessions reappear as map nodes on restart instead of staying gone                                                                       | P1       | TODO              | TC-035                  |
+| TC-041     | Full agent resurrection on restart: after closing the app or rebooting the PC, bring the live running agent (Claude/Codex) back, not just its saved scrollback/context text — the agent process should resume, not just be readable                                | P0       | TODO              | TC-036, TC-040          |
 
 ---
 

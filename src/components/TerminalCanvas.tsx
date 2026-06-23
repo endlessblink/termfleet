@@ -21,6 +21,7 @@ import { decodeFrame } from "../lib/gridDiff";
 import { needsLegacyPromptRepair } from "../lib/legacyPromptRepair";
 import {
   computeGridSize,
+  mapNodeLayoutMode,
   DEFAULT_THEME,
   renderPartial,
   renderSnapshot,
@@ -202,9 +203,41 @@ export function TerminalCanvas({
       : TERMINAL_FONT_FACES.every((face) => document.fonts.check(face)),
   );
   const [attachError, setAttachError] = useState<string | null>(null);
+  // Bumped whenever devicePixelRatio changes (dragging the window between
+  // monitors of different DPI, or an OS scale change). dpr is read once when the
+  // attach effect builds the glyph atlas + cell metrics, so without this the
+  // canvas keeps the old monitor's pitch and renders blurry/mis-sized until the
+  // next remount. Threading it through the effect deps re-measures at the new
+  // dpr and re-fits. matchMedia carries no resize-loop risk (it fires on dpr
+  // transitions only, off the ResizeObserver path).
+  const [dprTick, setDprTick] = useState(0);
 
   useEffect(() => {
     syncTerminalLatencyTraceEnv().catch(console.error);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
+    let media: MediaQueryList | null = null;
+    let disposed = false;
+    const onChange = () => {
+      if (disposed) return;
+      setDprTick((tick) => tick + 1);
+      // A matchMedia list is bound to one specific ratio; re-arm against the new
+      // devicePixelRatio so the *next* transition also fires.
+      subscribe();
+    };
+    const subscribe = () => {
+      media?.removeEventListener?.("change", onChange);
+      const dpr = window.devicePixelRatio || 1;
+      media = window.matchMedia(`(resolution: ${dpr}dppx)`);
+      media.addEventListener?.("change", onChange);
+    };
+    subscribe();
+    return () => {
+      disposed = true;
+      media?.removeEventListener?.("change", onChange);
+    };
   }, []);
 
   useEffect(() => {
@@ -479,7 +512,6 @@ export function TerminalCanvas({
       if (disposed || !attached) return;
       const { cols: nextCols, rows: nextRows } = measure();
       if (nextCols === lastCols && nextRows === lastRows) return;
-      const grew = nextRows > lastRows;
       lastCols = nextCols;
       lastRows = nextRows;
       try {
@@ -496,21 +528,6 @@ export function TerminalCanvas({
         await invoke("daemon_resize_session", { id: sessionId, cols: nextCols, rows: nextRows });
       } catch (error) {
         console.error(error);
-      }
-      if (disposed) return;
-      // Anchor the view to the live bottom after a GROW. alacritty pads the new
-      // lines below the cursor and pulls scrollback in above; without this, a grow
-      // can leave the view sitting on the old top with blank rows below the prompt
-      // (the "dead space on resize up"). Snapping to the live bottom keeps the
-      // prompt/cursor pinned to the pane floor with history filling upward. No-op on
-      // the alternate screen (no scrollback) and on shrink (alacritty already keeps
-      // the bottom).
-      if (grew) {
-        try {
-          await invoke("grid_scroll_to_bottom", { id: sessionId });
-        } catch (error) {
-          console.error(error);
-        }
       }
     };
 
@@ -554,12 +571,26 @@ export function TerminalCanvas({
     // this avoids. The first-frame handler re-runs this once modes are real.
     const reconcileLayout = () => {
       if (mapProjection && !firstFrameRef.current) return;
-      if (preservesProjectionSize()) {
+      // An interactive TUI on the map is frozen at its working size and clipped,
+      // because reflowing a WIDE TUI into a SMALLER node fragments it (TC-037).
+      // But that risk is shrink-only: GROWING a node never fragments — the TUI
+      // just gets more room. So only freeze when the node would actually shrink
+      // the working grid; when it's at least as large in both dims, reflow so the
+      // terminal fills the grown node instead of leaving dead space below it.
+      const m = measure();
+      const mode = mapNodeLayoutMode({
+        preservesProjectionSize: preservesProjectionSize(),
+        measuredCols: m.cols,
+        measuredRows: m.rows,
+        gridCols: lastCols,
+        gridRows: lastRows,
+      });
+      if (mode === "freeze") {
         applyProjectionClip();
-      } else {
-        clearProjectionScale();
-        void applyResize();
+        return;
       }
+      clearProjectionScale();
+      void applyResize();
     };
 
     // Coalesce ResizeObserver bursts. On the map a node animates/zooms into place
@@ -738,7 +769,7 @@ export function TerminalCanvas({
       observer.disconnect();
       invoke("grid_detach", { id: sessionId }).catch(() => {});
     };
-  }, [sessionId, cwd, command, cols, rows, theme, fontsReady, renderScale, mapProjection]);
+  }, [sessionId, cwd, command, cols, rows, theme, fontsReady, renderScale, mapProjection, dprTick]);
 
   const scheduleScrollToBottom = () => {
     if (scrollToBottomPendingRef.current) return;

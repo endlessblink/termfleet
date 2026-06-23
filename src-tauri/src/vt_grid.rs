@@ -1304,6 +1304,120 @@ mod tests {
         assert!(text.starts_with("hello"), "got: {text:?}");
     }
 
+    fn last_nonblank_row(frame: &WireFrame) -> Option<usize> {
+        (0..frame.rows as usize)
+            .rev()
+            .find(|&r| !wire_text_at(frame, r).is_empty())
+    }
+
+    // Root-cause regression for the "grow toward the bottom leaves black space"
+    // report: on a row GROW the grid pins live content to the TOP and leaves the
+    // unfilled rows blank at the BOTTOM (alacritty pulls only as much scrollback
+    // down as history holds; an inline app that parked its cursor mid-screen
+    // fills nothing beneath it). This is exactly why TerminalCanvas must
+    // bottom-anchor the rendered canvas (applyLiveBottomAnchor) — the grid itself
+    // cannot avoid the trailing dead strip. If a future alacritty bump changes
+    // this to keep the cursor at the floor, this test flips and the frontend
+    // anchor can be revisited.
+    #[test]
+    fn grow_leaves_blank_rows_below_live_content() {
+        // Scenario A: a shell with limited history. 30 printed lines into a 24-row
+        // grid -> only ~7 lines of history exist to pull down on a 24->40 grow.
+        let mut shell = TermState::new(DEFAULT_COLS, DEFAULT_ROWS);
+        for n in 0..30 {
+            shell.feed(format!("line-{n:02}\r\n").as_bytes());
+        }
+        shell.resize(DEFAULT_COLS, 40);
+        let after = WireFrame::capture(&shell.term);
+        let last_a = last_nonblank_row(&after).expect("shell has content");
+        assert!(
+            (after.rows as usize) - 1 - last_a > 0,
+            "grow left no blank strip below a short-history shell — alacritty grow \
+             behavior changed; revisit applyLiveBottomAnchor (last_nonblank={last_a}, rows={})",
+            after.rows,
+        );
+
+        // Scenario B: an inline TUI draws a block then parks the cursor mid-screen
+        // (CUP) without filling the rows beneath it. The grow can only add blanks.
+        let mut app = TermState::new(DEFAULT_COLS, DEFAULT_ROWS);
+        for n in 0..10 {
+            app.feed(format!("menu-{n:02}\r\n").as_bytes());
+        }
+        app.feed(b"\x1b[12;1Hfooter");
+        app.resize(DEFAULT_COLS, 40);
+        let a2 = WireFrame::capture(&app.term);
+        let last_b = last_nonblank_row(&a2).expect("app has content");
+        assert!(
+            (a2.rows as usize) - 1 - last_b >= 24,
+            "inline-app grow should leave a large blank strip below the parked \
+             content (last_nonblank={last_b}, rows={})",
+            a2.rows,
+        );
+    }
+
+    // The user's repro: there IS ample scrollback (it scrolls into view), yet a
+    // grow leaves black at the bottom. This pins down whether the GRID fills from
+    // history on grow when plenty exists, or leaves a blank tail regardless.
+    #[test]
+    fn grow_with_ample_history_fills_from_scrollback() {
+        let mut shell = TermState::new(DEFAULT_COLS, DEFAULT_ROWS);
+        // 100 lines into a 24-row grid -> ~76 lines of scrollback history.
+        for n in 0..100 {
+            shell.feed(format!("line-{n:03}\r\n").as_bytes());
+        }
+        let before = WireFrame::capture(&shell.term);
+        shell.resize(DEFAULT_COLS, 40);
+        let after = WireFrame::capture(&shell.term);
+        let last = last_nonblank_row(&after).expect("content present");
+        let blank_below = (after.rows as usize) - 1 - last;
+        eprintln!(
+            "ample-history grow: before cursor_line={} -> after cursor_line={} last_nonblank={} blank_below={}",
+            before.cursor_line, after.cursor_line, last, blank_below,
+        );
+        // With 76 history lines available to fill 16 new rows, the grow pulls
+        // history down to the floor; the only "blank" tail is the single live
+        // prompt line where the cursor rests. So the GRID fills correctly on grow
+        // — the live black-tail must come from elsewhere (the app's SIGWINCH
+        // reprint drawing a short frame, or the frontend not resizing the grid),
+        // NOT the grid resize itself.
+        assert!(
+            blank_below <= 1,
+            "grow with ample history left {blank_below} blank rows at the bottom; \
+             the grid should fill from scrollback down to the live prompt line",
+        );
+    }
+
+    // End-to-end backend replay of the user's exact live sequence: run a command
+    // that builds scrollback, GROW the grid (what grid_resize does), then feed the
+    // real bytes bash emits on the grow SIGWINCH (captured from a live PTY:
+    // "\r\x1b[K\rPROMPT$ " — clear-line + prompt reprint, NO clear-screen). If the
+    // resulting frame is filled to the floor, the BACKEND is correct and any live
+    // black-tail is lost in the FRONTEND render/resize wiring, not here.
+    #[test]
+    fn live_sequence_grow_then_bash_reprint_stays_filled() {
+        let mut state = TermState::new(DEFAULT_COLS, DEFAULT_ROWS);
+        for n in 1..=100 {
+            state.feed(format!("{n}\r\n").as_bytes());
+        }
+        state.feed(b"PROMPT$ ");
+        // Grow 24 -> 40, exactly like grid_resize.
+        state.resize(DEFAULT_COLS, 40);
+        // The real bash grow-SIGWINCH reprint, captured from a live PTY.
+        state.feed(b"\r\x1b[K\rPROMPT$ ");
+        let frame = WireFrame::capture(&state.term);
+        let last = last_nonblank_row(&frame).expect("content present");
+        let blank_below = (frame.rows as usize) - 1 - last;
+        eprintln!(
+            "live replay: rows={} cursor_line={} last_nonblank={} blank_below={}",
+            frame.rows, frame.cursor_line, last, blank_below,
+        );
+        assert!(
+            blank_below <= 1,
+            "backend live-replay left {blank_below} blank rows after grow+reprint; \
+             the backend itself is dropping the fill",
+        );
+    }
+
     #[test]
     fn resize_storm_keeps_wire_frame_rectangular_and_modes() {
         let mut state = TermState::new(DEFAULT_COLS, DEFAULT_ROWS);
