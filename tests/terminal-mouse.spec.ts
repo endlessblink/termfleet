@@ -45,9 +45,16 @@ test("terminal mouse reports encode SGR and legacy VT sequences", async ({ page 
       ignoredButton: pointerButtonToTerminalButton(4),
       plainWheelUsesTerminalHistory: shouldSendWheelToTerminalApp({ altKey: false }),
       altWheelUsesTerminalApp: shouldSendWheelToTerminalApp({ altKey: true }),
-      mouseReportingWheelUsesTerminalApp: shouldSendWheelToTerminalApp(
+      // TC-043: mouse-report on the PRIMARY screen (inline agent CLI) must NOT
+      // steal the wheel — the scrollback lives in our grid, so plain wheel = history.
+      mouseReportPrimaryWheelUsesHistory: shouldSendWheelToTerminalApp(
         { altKey: false },
         { mouseReport: true }
+      ),
+      // mouse-report on the ALTERNATE screen (vim/htop) still owns the wheel.
+      mouseReportAltScreenWheelUsesTerminalApp: shouldSendWheelToTerminalApp(
+        { altKey: false },
+        { mouseReport: true, altScreen: true }
       ),
       alternateScrollWheelUsesTerminalApp: shouldSendWheelToTerminalApp(
         { altKey: false },
@@ -108,6 +115,19 @@ test("terminal mouse reports encode SGR and legacy VT sequences", async ({ page 
         { mouseReport: true, altScreen: true },
         "down"
       ),
+      // TC-043: primary-screen mouse-report (inline Claude/Codex) → our history,
+      // so scroll-up reaches the grid's scrollback instead of black-holing.
+      mouseReportPrimaryWheelAction: terminalWheelAction(
+        { altKey: false },
+        { mouseReport: true },
+        "up"
+      ),
+      // alt-screen mouse-report (vim/htop) still goes to the app.
+      mouseReportAltScreenWheelAction: terminalWheelAction(
+        { altKey: false },
+        { mouseReport: true, altScreen: true },
+        "up"
+      ),
     };
   });
 
@@ -122,7 +142,8 @@ test("terminal mouse reports encode SGR and legacy VT sequences", async ({ page 
   expect(out.ignoredButton).toBeNull();
   expect(out.plainWheelUsesTerminalHistory).toBe(false);
   expect(out.altWheelUsesTerminalApp).toBe(true);
-  expect(out.mouseReportingWheelUsesTerminalApp).toBe(true);
+  expect(out.mouseReportPrimaryWheelUsesHistory).toBe(false);
+  expect(out.mouseReportAltScreenWheelUsesTerminalApp).toBe(true);
   expect(out.alternateScrollWheelUsesTerminalApp).toBe(true);
   expect(out.plainAltScreenWheelUsesTerminalHistory).toBe(false);
   expect(out.appCursorOnlyWheelUsesTerminalHistory).toBe(false);
@@ -137,4 +158,6 @@ test("terminal mouse reports encode SGR and legacy VT sequences", async ({ page 
   expect(out.appCursorWheelUpAction).toEqual({ kind: "app-arrows", sequence: "\x1bOA" });
   expect(out.shiftAltScreenWheelAction).toEqual({ kind: "history" });
   expect(out.mouseReportWheelAction).toEqual({ kind: "mouse-report" });
+  expect(out.mouseReportPrimaryWheelAction).toEqual({ kind: "history" });
+  expect(out.mouseReportAltScreenWheelAction).toEqual({ kind: "mouse-report" });
 });

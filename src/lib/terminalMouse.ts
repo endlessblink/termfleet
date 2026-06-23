@@ -65,8 +65,15 @@ export function pointerButtonToTerminalButton(button: number): TerminalMouseButt
   return null;
 }
 
+// A mouse-reporting app owns the wheel ONLY on the alternate screen (vim/htop),
+// where the app controls the whole surface and there is no terminal scrollback.
+// On the PRIMARY screen the scrollback lives in our grid, so plain wheel must
+// scroll OUR history — an inline agent CLI (Claude/Codex) enables mouse-report
+// for clicks but does NOT scroll on the wheel, so routing the wheel to it just
+// black-holes scroll-up and the user can never reach the history sitting in the
+// grid (TC-043).
 export function shouldSendWheelToTerminalApp(modifiers: TerminalMouseModifiers, modes: TerminalWheelModes = {}): boolean {
-  if (modes.mouseReport) return true;
+  if (modes.mouseReport && modes.altScreen) return true;
   if (modifiers.shiftKey) return false;
   if (modifiers.altKey) return true;
   return Boolean(modes.altScreen && modes.alternateScrollSet && modes.alternateScroll);
@@ -77,7 +84,7 @@ export function terminalWheelAction(
   modes: TerminalWheelModes = {},
   direction: "up" | "down" = "down"
 ): TerminalWheelAction {
-  if (modes.mouseReport) return { kind: "mouse-report" };
+  if (modes.mouseReport && modes.altScreen) return { kind: "mouse-report" };
   if (modifiers.shiftKey) return { kind: "history" };
   const useAppArrows = modifiers.altKey ||
     (modes.altScreen && modes.alternateScrollSet && modes.alternateScroll);
