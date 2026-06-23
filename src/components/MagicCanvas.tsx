@@ -970,7 +970,12 @@ const styles: Record<string, CSSProperties> = {
     flexDirection: "column",
     gap: 9,
     padding: "11px 10px",
+    // The card squares its right corners while this is open (see taskSidebarExpanded);
+    // the list carries the card's right-side rounding + shadow so the two read as one
+    // continuous card. borderLeft is the internal divider between terminal and list.
     borderLeft: "1px solid var(--border-subtle)",
+    borderRadius: "0 var(--radius-md) var(--radius-md) 0",
+    boxShadow: "var(--shadow-card)",
     background: "color-mix(in srgb, var(--surface-base) 72%, var(--surface-sunken))",
     color: "var(--text-secondary)",
     fontFamily: "var(--font-ui)",
@@ -2447,6 +2452,10 @@ function CanvasNodeViewImpl({
     ? laneChecklistTasks
     : currentLineupTasks;
   const taskSidebarCollapsed = linkedTerminal?.taskSidebarCollapsed ?? node.taskSidebarCollapsed ?? terminalBodyTasks.length === 0;
+  // When the task list is expanded it floats flush to the node's right edge. Square
+  // off the card's right corners (and let the list carry the right-side rounding +
+  // shadow) so the two read as one continuous card instead of a detached panel.
+  const taskSidebarExpanded = node.type === "terminal" && !taskSidebarCollapsed;
   const terminalBodyTaskPrefix: "canvas-agent" | "canvas-terminal" =
     workstream?.kind === "agent" ? "canvas-agent" : "canvas-terminal";
   const nodeKind = workstream?.kind === "agent"
@@ -2750,6 +2759,11 @@ function CanvasNodeViewImpl({
         width: node.width,
         height: node.height,
         zIndex: node.type === "terminal" && workstream?.kind === "agent" ? 25 : selected ? 15 : 1,
+        // Right corners go square while the task list is docked to the right edge so
+        // the card + list form one rounded shape (the list rounds the right side).
+        borderRadius: taskSidebarExpanded
+          ? "var(--radius-md) 0 0 var(--radius-md)"
+          : styles.node.borderRadius,
         border: selected ? "1px solid var(--border-focus)" : styles.node.border,
         boxShadow: selected
           ? "0 0 0 1px rgba(217,154,69,0.36), 0 20px 54px rgba(0,0,0,0.52)"

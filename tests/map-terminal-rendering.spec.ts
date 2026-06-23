@@ -1221,6 +1221,95 @@ test("task sidebar toggles without resizing terminal content", async ({ page }) 
   expect(reopenedSidebarBox.x).toBeGreaterThanOrEqual(reopenedContentBox.x + reopenedContentBox.width - 1);
 });
 
+// TC-039 — the expanded task list must read as ONE card with the terminal, not a
+// detached floating panel. Visual merge: the card squares its right corners while
+// the list is docked flush to the right, and the list carries the right-side
+// rounding, so together they form a single rounded card.
+test("expanded task list reads as one card with the terminal", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.getByRole("button", { name: "Map", exact: true }).click();
+
+  await page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => { workspaceUiState: Record<string, unknown> };
+        setState: (state: Record<string, unknown>) => void;
+      };
+    }).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+    store.setState({
+      workspaceUiState: {
+        ...store.getState().workspaceUiState,
+        workspaceMode: "canvas",
+        primarySidebarPanel: "map",
+      },
+      tabs: [{
+        id: "tab-onecard",
+        title: "One card terminal",
+        emoji: "[]",
+        color: "#7aa2f7",
+        groupId: null,
+        initialCwd: "/tmp/termfleet-onecard",
+        terminals: [{
+          id: "pty-onecard",
+          paneId: "pane-onecard",
+          cols: 80,
+          rows: 24,
+          status: "running",
+          taskSidebarCollapsed: false,
+          statusSummary: {
+            task: "Running", path: "termfleet", now: "watching output",
+            status: "working", provider: "shell", confidence: "medium",
+            tasks: [], tasksFromTodoWrite: false,
+          },
+        }],
+        splitLayout: { id: "pane-onecard", type: "terminal" },
+        activePaneId: "pane-onecard",
+      }],
+      activeTabId: "tab-onecard",
+      canvasState: {
+        nodes: [{
+          id: "node-onecard", type: "terminal", title: "One card terminal",
+          terminalTabId: "tab-onecard", x: 80, y: 80, width: 820, height: 460,
+        }],
+        selectedNodeId: "node-onecard",
+        selectedNodeIds: ["node-onecard"],
+        viewport: { x: 0, y: 0, zoom: 1 },
+      },
+    });
+  });
+
+  const sidebar = page.getByTestId("canvas-terminal-task-sidebar");
+  await expect(sidebar).toBeVisible();
+  const nodeEl = page.getByTestId("canvas-terminal-node");
+
+  // The card squares its right corners while the list is docked...
+  const cardTopRight = await nodeEl.evaluate((el) =>
+    parseFloat(getComputedStyle(el).borderTopRightRadius));
+  const cardTopLeft = await nodeEl.evaluate((el) =>
+    parseFloat(getComputedStyle(el).borderTopLeftRadius));
+  expect(cardTopRight).toBe(0);
+  expect(cardTopLeft).toBeGreaterThan(0);
+
+  // ...and the list carries the right-side rounding, so the pair reads as one card.
+  const listTopRight = await sidebar.evaluate((el) =>
+    parseFloat(getComputedStyle(el).borderTopRightRadius));
+  const listTopLeft = await sidebar.evaluate((el) =>
+    parseFloat(getComputedStyle(el).borderTopLeftRadius));
+  expect(listTopRight).toBeGreaterThan(0);
+  expect(listTopLeft).toBe(0);
+
+  // The list is flush to the card's right edge (no detached gap).
+  const nodeBox = await nodeEl.boundingBox();
+  const sidebarBox = await sidebar.boundingBox();
+  if (!nodeBox || !sidebarBox) throw new Error("node or sidebar not visible");
+  expect(Math.abs(sidebarBox.x - (nodeBox.x + nodeBox.width))).toBeLessThanOrEqual(1);
+});
+
 test("status bar summarizes durable terminal recovery states", async ({ page }) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle");
