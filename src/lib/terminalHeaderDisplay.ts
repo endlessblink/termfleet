@@ -93,6 +93,10 @@ function normalizePurposeTitle(value?: string | null) {
     .replace(/^([A-Z]+-\d+)\s*[-:]\s*/i, "")
     .replace(/\s{2,}/g, " ");
   if (!text || isGenericTaskTitle(text)) return undefined;
+  // Unsubstituted prompt-box placeholders (`@filename`, `@filepath`, `@directory` …) are
+  // input-box chrome, not a real task the agent is doing — never surface them as a title.
+  // This is what produced bogus headers like "Improve documentation in @filename". (TC-035)
+  if (/@(?:filename|filepath|file|directory|folder|selection)\b/i.test(text)) return undefined;
   return boundedTitle(text);
 }
 

@@ -1,5 +1,10 @@
 import { expect, test } from "@playwright/test";
-import { normalizeTaskLineupItems, visibleTaskLineup } from "../src/lib/taskLineup";
+import {
+  mergeShellSummaryTaskLineup,
+  normalizeTaskLineupItems,
+  taskLineupFromExtractedItems,
+  visibleTaskLineup,
+} from "../src/lib/taskLineup";
 import type { TaskLineupItem } from "../src/lib/types";
 
 // TC-033 (list empty): the panel must show the AI/heuristic-extracted tasks
@@ -66,4 +71,35 @@ test("respects run scoping on the fallback source", () => {
   const visible = visibleTaskLineup([...a, ...b], "run-B");
   expect(visible.length).toBe(2);
   expect(visible.every((i) => i.runId === "run-B")).toBe(true);
+});
+
+// TC-035: the agent's real sidecar list (todo-write) is NOT tied to any one terminal
+// command run. Its items get stamped with whatever run was active when the summary
+// landed, but `activeRunId` rolls forward on every command (`${startedAt}:${command}`),
+// so run-scoping would filter the real list to nothing. The authoritative list must
+// always render, regardless of the current run id.
+test("todo-write list is never run-scoped (real sidecar list always shows)", () => {
+  const stamped = items("todo-write", "run-OLD");
+  const visible = visibleTaskLineup(stamped, "run-NEW-rolled-forward");
+  expect(visible.length).toBe(2);
+  expect(visible.every((i) => i.source === "todo-write")).toBe(true);
+});
+
+// TC-035 (root cause of "No list"): a terminal-output run-close marker
+// ("Worked for…", "Task complete") must NEVER force-complete the agent's REAL task
+// list. `runClosed` is sticky, so once a Claude pane prints such a line the panel
+// would otherwise stay permanently empty even while the agent has live tasks. This
+// mirrors the exact Terminal.tsx shell-pane construction.
+test("a terminal run-close does not empty the agent's real task list", () => {
+  const sidecarTasks = [
+    { id: "a", text: "done: Verify per-terminal task list", at: 0 },
+    { id: "b", text: "in-progress: Fix empty TASKS panel", at: 0 },
+    { id: "c", text: "Stop header flicker", at: 0 },
+  ];
+  const runId = "1782195534600:claude";
+  const extracted = taskLineupFromExtractedItems(sidecarTasks, "todo-write", "pending", 1_000, runId);
+  const merged = mergeShellSummaryTaskLineup(undefined, extracted, { closesRun: true, runId, updatedAt: 1_000 });
+  const visible = visibleTaskLineup(merged, runId);
+  expect(visible.length).toBe(3);
+  expect(visible.some((i) => i.status === "in_progress")).toBe(true);
 });

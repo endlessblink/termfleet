@@ -15,6 +15,7 @@ import { activityKindForText, inferActivityFromOutput, isWorkstreamActivityKind,
 import { mergeCockpitObjectsFromExtractedItems, mergeExtractedItems, normalizeExtractedItems } from "../lib/workstreamExtraction";
 import { deriveTerminalActivity } from "../lib/terminalActivity";
 import { completeOpenTaskLineup, completeOpenTaskLineupForRun, mergeShellSummaryTaskLineup, normalizeTaskLineupItems, taskLineupFromExtractedItems, terminalOutputClosesTaskLineup } from "../lib/taskLineup";
+import { parseTerminalChecklist } from "../lib/terminalChecklist";
 import type { TaskLineupItem, TerminalActivitySummary, TerminalRuntimeStatus, TerminalState, WorkstreamActivityKind, WorkstreamActivitySource, WorkstreamInput, WorkstreamPhase, WorkstreamReadiness, WorkstreamStatus } from "../lib/types";
 import type { GridSnapshot } from "../lib/gridSnapshot";
 
@@ -658,15 +659,28 @@ export function TerminalComponent({
                   // "tasks" scraped from scrollback are not a real list and produced junk
                   // items, so they contribute nothing. The worker encodes real status via
                   // text prefixes (`done:`/`in-progress:`); unmarked items are pending. (TC-033)
+                  // The agent's declared status is authoritative: an unmarked item is
+                  // PENDING regardless of terminal run-close — never default it to
+                  // "completed", or a `Worked for…` line in scrollback empties the panel
+                  // while the agent still has open tasks. (TC-035)
+                  // No sidecar list? Agents that don't use the Claude hook (codex/gpt-5.5)
+                  // still PRINT their plan as a checkbox list in the terminal — surface that
+                  // as the authoritative task list so the panel shows it instead of "NO LIST".
+                  // (TC-035, Image #8)
+                  const printedChecklist = result.summary.tasksFromTodoWrite && result.summary.tasks?.length
+                    ? null
+                    : parseTerminalChecklist(candidate.terminalOutput);
                   const extractedLineup = result.summary.tasksFromTodoWrite && result.summary.tasks?.length
                     ? taskLineupFromExtractedItems(
                         result.summary.tasks,
                         "todo-write",
-                        closesRun ? "completed" : "pending",
+                        "pending",
                         updatedAt,
                         runId
                       )
-                    : [];
+                    : printedChecklist && printedChecklist.length
+                      ? normalizeTaskLineupItems(printedChecklist, "todo-write", updatedAt)
+                      : [];
                   // TC-033 T1: never let this summary cycle clobber a live
                   // todo-write list (the sidebar/map only render todo-write items).
                   const taskLineup = mergeShellSummaryTaskLineup(candidate.taskLineup, extractedLineup, {

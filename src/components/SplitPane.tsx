@@ -11,6 +11,7 @@ import { CockpitSnapshotProbe } from "./CockpitSnapshotProbe";
 import { workstreamActivityText } from "../lib/workstreamActivity";
 import { taskLineupNextLabel, taskLineupStats, visibleTaskLineup as pickVisibleTaskLineup } from "../lib/taskLineup";
 import { neutralHeaderTitle, normalizePersistedShellSummary, preferRealTaskSummary, summaryFromDurableActivity, summarySourceLabel, terminalPurposeFromContext } from "../lib/terminalHeaderDisplay";
+import { stableHeader } from "../lib/stableHeader";
 import {
   calculatePaneBounds,
   calculateHandles,
@@ -827,6 +828,23 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
             ? agentStatusSummary?.now ?? workstreamActivityText(tab.workstream)
             : shellStatusSummary?.now
           : null;
+        // Anti-flicker: the title + activity line re-derive on every ~1.2–2s poll and the
+        // sidecar `now` changes on every tool call. Hold the displayed pair for a minimum
+        // of 5s so the header is readable, not a strobe. A failed/exited pane bypasses the
+        // hold so trouble surfaces immediately. (TC-035)
+        const stabilizedHeader = stableHeader(
+          `split:${tab.id}:${paneId}`,
+          {
+            title: ((isAgentPane ? agentStatusSummary?.task : shellStatusSummary?.task) ?? "").toString(),
+            now: ((isAgentPane ? agentStatusSummary?.now : shellStatusSummary?.now ?? paneActivity) ?? "").toString(),
+          },
+          {
+            nowMs: Date.now(),
+            bypass: terminalStatus === "failed" || terminalStatus === "exited",
+          },
+        );
+        const headerTitle = stabilizedHeader.title;
+        const headerNow = stabilizedHeader.now;
         const paneOutput = !isPreviewPane
           ? tab.workstream?.kind === "agent"
             ? tab.workstream.terminalOutput?.trim()
@@ -881,8 +899,8 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                   tabId: tab.id,
                   cwd: paneCwd ?? undefined,
                   kind: isAgentPane ? "agent" : "shell",
-                  title: (isAgentPane ? agentStatusSummary?.task : shellStatusSummary?.task) ?? "",
-                  now: (isAgentPane ? agentStatusSummary?.now : shellStatusSummary?.now) ?? "",
+                  title: headerTitle,
+                  now: headerNow,
                   status: terminalStatus,
                   tasksFromTodoWrite: (isAgentPane ? tab.workstream?.statusSummary : paneTerminal?.statusSummary)?.tasksFromTodoWrite,
                   narration: (isAgentPane ? tab.workstream?.statusSummary : paneTerminal?.statusSummary)?.narration,
@@ -1022,9 +1040,9 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                       fontSize: 13,
                       fontWeight: 500,
                     }}
-                    title={agentStatusSummary.task}
+                    title={headerTitle}
                   >
-                    {agentStatusSummary.task}
+                    {headerTitle}
                   </div>
                   <span
                     style={{
@@ -1089,10 +1107,10 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                       fontSize: 11,
                       fontWeight: 500,
                     }}
-                    title={agentStatusSummary.now}
+                    title={headerNow}
                   >
                     <span style={{ flexShrink: 0, color: "var(--text-tertiary)", fontSize: 10, textTransform: "uppercase" }}>Now</span>
-                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{agentStatusSummary.now}</span>
+                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{headerNow}</span>
                   </div>
                 </div>
                 {latestMissionControlInput && (
@@ -1169,9 +1187,9 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                       fontSize: 13,
                       fontWeight: 500,
                     }}
-                    title={shellStatusSummary.task}
+                    title={headerTitle}
                   >
-                    {shellStatusSummary.task}
+                    {headerTitle}
                   </div>
                   <PaneToolbar
                     paneId={paneId}
@@ -1217,10 +1235,10 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                       fontSize: 11,
                       fontWeight: 500,
                     }}
-                    title={shellStatusSummary.now}
+                    title={headerNow}
                   >
                     <span style={{ flexShrink: 0, color: "var(--text-tertiary)", fontSize: 10 }}>Now</span>
-                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{shellStatusSummary.now}</span>
+                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{headerNow}</span>
                     {shellSummarySource ? (
                       <span
                         data-testid="split-terminal-summary-source"
@@ -1277,7 +1295,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                 }}
                 title={agentStatusSummary ? agentStatusSummary.path : isPreviewPane ? paneNode.previewUrl : project?.projectRoot ?? paneCwd ?? tab.title}
               >
-                {agentStatusSummary ? `Working on: ${agentStatusSummary.task}` : isPreviewPane ? paneNode.previewUrl ?? "Localhost preview" : paneContext}
+                {agentStatusSummary ? `Working on: ${headerTitle}` : isPreviewPane ? paneNode.previewUrl ?? "Localhost preview" : paneContext}
               </span>
               {paneActivity && (
                 <span
@@ -1292,9 +1310,9 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                     fontSize: 11,
                     fontWeight: 500,
                   }}
-                  title={paneActivity}
+                  title={headerNow || paneActivity}
                 >
-                  Now: {paneActivity}
+                  Now: {headerNow || paneActivity}
                 </span>
               )}
               {latestMissionControlInput && (

@@ -64,3 +64,13 @@ test("a task-binding title still wins over transcript chrome", () => {
   });
   expect(purpose?.title).toBe("LLM task extraction lane");
 });
+
+test("an unsubstituted @filename prompt placeholder is not surfaced as a title (TC-035)", () => {
+  const purpose = terminalPurposeFromContext({
+    terminalOutput: ["Working (3m • esc to interrupt)", "› Improve documentation in @filename"].join("\n"),
+    now: 1_000,
+  });
+  // It's input-box chrome, not real work — must fall through to neutral, not become the title.
+  expect(purpose?.title ?? "").not.toMatch(/@filename/i);
+  expect(purpose?.title ?? "").not.toMatch(/Improve documentation/i);
+});

@@ -206,6 +206,12 @@ export function mergeShellSummaryTaskLineup(
   const incomingIsTodoWrite = extracted.some((item) => item.source === "todo-write");
   if (existingItems.some((item) => item.source === "todo-write") && !incomingIsTodoWrite) return existingItems;
   if (extracted.length === 0) return existingItems;
+  // The authoritative todo-write list carries its OWN per-item status straight from the
+  // agent's sidecar. A terminal-output run-close ("Worked for…"/"Task complete") must
+  // never force-complete the agent's real (possibly still-open) tasks — doing so empties
+  // the TASKS panel even while work is live. Run-close completion applies only to the
+  // heuristic/operator-extracted list it was designed for. (TC-035)
+  if (incomingIsTodoWrite) return extracted;
   return options.closesRun
     ? completeOpenTaskLineupForRun(extracted, options.runId, options.updatedAt)
     : extracted;

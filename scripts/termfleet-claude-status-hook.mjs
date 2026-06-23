@@ -156,6 +156,11 @@ export function activityFromTool(toolName, toolInput) {
     case "Read":
       return `Reading ${base(toolInput?.file_path)}`;
     case "Bash": {
+      // The cockpit is for non-developers, so PREFER Claude's own plain-language
+      // `description` ("Run tests", "List files") over the raw command. A raw command —
+      // heredocs, `node -e "…"`, inline code, comments — is developer jargon and produced
+      // garbage activity lines like `Running: const cases = [ "› Improve docum…`. (TC-035)
+      const description = trim(toolInput?.description, 70);
       let command = String(toolInput?.command ?? "")
         .replace(/\s+/g, " ")
         .trim();
@@ -170,9 +175,13 @@ export function activityFromTool(toolName, toolInput) {
         !command ||
         /^(?:cd|z|pushd|popd|ls|ll|la|pwd|clear|cls|exit|echo)\b/i.test(command)
       ) {
-        return "";
+        return description || "";
       }
-      return `Running: ${command.slice(0, 60)}`;
+      if (description) return description;
+      // No description: show only the head of the command (program + first arg), never the
+      // inline code / heredoc body, so we don't leak `node -e "<code>"` into the feed.
+      const head = command.split(/\s*(?:<<|["'|<>])/)[0].trim();
+      return `Running: ${head.slice(0, 50)}`;
     }
     case "Grep":
       return `Searching ${trim(toolInput?.pattern, 40)}`;

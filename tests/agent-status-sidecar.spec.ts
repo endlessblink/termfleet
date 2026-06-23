@@ -517,6 +517,23 @@ test("activity line: trivial nav/inspection commands are filtered out", () => {
   );
 });
 
+test("activity line: prefers Claude's plain-language description over raw command (TC-035)", () => {
+  // The cockpit is for non-developers — show the friendly description, never the code.
+  expect(
+    activityFromTool("Bash", {
+      command: 'node -e "const cases = [ \\"Improve docs\\" ]; console.log(cases)"',
+      description: "Verify the chrome-title fix",
+    }),
+  ).toBe("Verify the chrome-title fix");
+  // No description: never leak inline code / heredoc bodies — only the command head shows.
+  expect(
+    activityFromTool("Bash", { command: 'node -e "const x = 1; doStuff(x)"' }),
+  ).toBe("Running: node -e");
+  expect(
+    activityFromTool("Bash", { command: "cat <<EOF\nsecret body\nEOF" }),
+  ).toBe("Running: cat");
+});
+
 test("all tasks complete: title is the last task, never the raw shell command", async () => {
   // After the agent finishes its list, the header must NOT fall back to the momentary
   // raw command (e.g. "Running: cd /long/path") as the title — that's the ugly summary

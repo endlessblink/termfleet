@@ -5,3 +5,6 @@ src-tauri/target/
 src-tauri/gen/
 *.tsbuildinfo
 .omx/
+
+# Cockpit visual capture output (scripts/capture-cockpit.mjs)
+.captures/
