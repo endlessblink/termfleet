@@ -290,7 +290,7 @@ const checks = [
       /preservesProjectionSize/.test(terminalCanvas) &&
       /applyProjectionClip/.test(terminalCanvas) &&
       /Math\.min\(0, shell\.clientHeight - logicalH\)/.test(terminalCanvas) &&
-      /syncOverlaySize\(\);\s*if \(mapProjection && preservesProjectionSize\(\)\)/.test(terminalCanvas) &&
+      /syncOverlaySize\(\);\s*if \(mapProjection && modesRef\.current\.altScreen\)/.test(terminalCanvas) &&
       !/Math\.max\(projectionMinScale/.test(terminalCanvas) &&
       /modesRef\.current\.mouseReport/.test(terminalCanvas) &&
       /strip_unsupported_control_sequences/.test(vtGrid) &&

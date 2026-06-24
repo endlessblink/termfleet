@@ -912,11 +912,14 @@ export function TerminalCanvas({
       return;
     }
     if ((event.ctrlKey || event.metaKey) && event.shiftKey && key === "c") {
+      event.preventDefault();
+      event.stopPropagation();
       copySelection();
       return;
     }
     if (isTerminalPasteShortcut(event.nativeEvent)) {
       pasteShortcutArmedUntilRef.current = performance.now() + 1500;
+      event.stopPropagation();
       return;
     }
     const bytes = keyEventToBytes(event.nativeEvent, {
@@ -978,10 +981,13 @@ export function TerminalCanvas({
       }
       if (isTerminalPasteShortcut(event)) {
         pasteShortcutArmedUntilRef.current = performance.now() + 1500;
+        event.stopPropagation();
         return;
       }
-      // Leave copy shortcut to the bubble handler.
+      // Leave copy shortcut to the bubble handler, but keep it inside the
+      // terminal so app/global shortcuts cannot race the clipboard path.
       if ((event.ctrlKey || event.metaKey) && event.shiftKey && key === "c") {
+        event.stopPropagation();
         return;
       }
       if (event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey && key === "z") {

@@ -36,7 +36,7 @@ test("selected map agent panes suppress synchronized-output control residue", ()
   expect(projectionClip?.[0]).toContain("Math.min(0, shell.clientHeight - logicalH)");
   expect(projectionClip?.[0]).toContain("translateY");
   expect(projectionClip?.[0]).not.toContain("scale(");
-  expect(terminalCanvas).toContain("syncOverlaySize();\n        if (mapProjection && preservesProjectionSize())");
+  expect(terminalCanvas).toContain("syncOverlaySize();\n        if (mapProjection && modesRef.current.altScreen)");
   expect(terminalCanvas).toContain("interactive TUI mode");
   expect(vtGrid).toContain("strip_unsupported_control_sequences");
   expect(vtGrid).toContain('SYNC_OUTPUT_ON: &[u8] = b"\\x1b[?2026h"');
