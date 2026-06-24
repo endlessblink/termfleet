@@ -405,7 +405,13 @@ impl PtyManager {
             .persist_dir
             .as_ref()
             .and_then(|dir| load_persisted(dir, &id));
+        let recovery_command = persisted
+            .as_ref()
+            .and_then(PersistedSession::agent_resume_command);
         let cwd = cwd.or_else(|| persisted.as_ref().and_then(|entry| entry.cwd.clone()));
+        let command = recovery_command
+            .or(command)
+            .or_else(|| persisted.as_ref().and_then(|entry| entry.command.clone()));
 
         let pty_system = native_pty_system();
         // Open the PTY at the caller's measured size when known so a freshly
@@ -527,7 +533,14 @@ impl PtyManager {
                 }
             }
             initial_buffer.persist = Some(persist);
-            write_session_meta(dir, &id, cwd.as_deref(), &command_label, open_cols, open_rows);
+            write_session_meta(
+                dir,
+                &id,
+                cwd.as_deref(),
+                &command_label,
+                open_cols,
+                open_rows,
+            );
         }
         let output = Arc::new(Mutex::new(initial_buffer));
         let output_reader = output.clone();
@@ -716,7 +729,14 @@ impl PtyManager {
         // Keep the persisted winsize current so a cold restore reopens at the
         // user's latest size, not the spawn size.
         if let Some(dir) = &self.persist_dir {
-            write_session_meta(dir, id, entry.initial_cwd.as_deref(), &entry.command, cols, rows);
+            write_session_meta(
+                dir,
+                id,
+                entry.initial_cwd.as_deref(),
+                &entry.command,
+                cols,
+                rows,
+            );
         }
         Ok(())
     }
@@ -926,8 +946,24 @@ fn truncate_trace_detail(details: &str) -> String {
 /// `load_persisted_scrollback` and replayed (see `ensure_with_sink`).
 struct PersistedSession {
     cwd: Option<String>,
+    command: Option<String>,
     cols: Option<u16>,
     rows: Option<u16>,
+    recovery_kind: Option<SessionRecoveryKind>,
+    sanitized_resume_command: Option<String>,
+}
+
+impl PersistedSession {
+    fn agent_resume_command(&self) -> Option<String> {
+        if self.recovery_kind != Some(SessionRecoveryKind::AgentTerminal) {
+            return None;
+        }
+        self.sanitized_resume_command
+            .as_deref()
+            .map(str::trim)
+            .filter(|command| !command.is_empty())
+            .map(ToString::to_string)
+    }
 }
 
 #[derive(Serialize, Deserialize, Default)]
@@ -945,6 +981,25 @@ struct SessionMeta {
     cols: Option<u16>,
     #[serde(default)]
     rows: Option<u16>,
+    #[serde(default)]
+    recovery_kind: Option<SessionRecoveryKind>,
+    #[serde(default)]
+    provider: Option<String>,
+    #[serde(default)]
+    original_command: Option<String>,
+    #[serde(default)]
+    sanitized_resume_command: Option<String>,
+    #[serde(default)]
+    launched_as_regular_terminal: Option<bool>,
+    #[serde(default)]
+    last_healthy_ms: Option<u128>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+enum SessionRecoveryKind {
+    Shell,
+    AgentTerminal,
 }
 
 /// Root of termfleet's per-user durable state (`~/.local/share/terminal-workspace`).
@@ -1056,11 +1111,21 @@ fn write_session_meta(
     cols: u16,
     rows: u16,
 ) {
+    let previous = fs::read(meta_path(dir, id))
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<SessionMeta>(&bytes).ok())
+        .unwrap_or_default();
     let meta = SessionMeta {
         cwd: cwd.map(|value| value.to_string()),
         command: Some(command.to_string()),
         cols: Some(cols),
         rows: Some(rows),
+        recovery_kind: previous.recovery_kind,
+        provider: previous.provider,
+        original_command: previous.original_command,
+        sanitized_resume_command: previous.sanitized_resume_command,
+        launched_as_regular_terminal: previous.launched_as_regular_terminal,
+        last_healthy_ms: previous.last_healthy_ms,
     };
     if let Ok(json) = serde_json::to_vec(&meta) {
         let _ = atomic_write(&meta_path(dir, id), &json);
@@ -1080,8 +1145,11 @@ fn load_persisted(dir: &Path, id: &str) -> Option<PersistedSession> {
         .unwrap_or_default();
     Some(PersistedSession {
         cwd: meta.cwd,
+        command: meta.command,
         cols: meta.cols,
         rows: meta.rows,
+        recovery_kind: meta.recovery_kind,
+        sanitized_resume_command: meta.sanitized_resume_command,
     })
 }
 
@@ -1148,7 +1216,10 @@ fn discard_partial_replay_prefix(base_offset: u64, data: String) -> (u64, String
 
 #[cfg(test)]
 mod tests {
-    use super::{discard_partial_replay_prefix, replay_boundary_at_or_after, PtyManager};
+    use super::{
+        discard_partial_replay_prefix, replay_boundary_at_or_after, PtyManager, SessionMeta,
+        SessionRecoveryKind,
+    };
 
     fn wait_for_snapshot_containing(manager: &PtyManager, id: &str, needle: &str) -> String {
         let mut snapshot = String::new();
@@ -1164,7 +1235,8 @@ mod tests {
 
     #[test]
     fn replay_trim_uses_line_boundary_instead_of_escape_tail() {
-        let data = "stable line before\n\x1b[14;8Hcorrupt first retained line\nrendered line after\n";
+        let data =
+            "stable line before\n\x1b[14;8Hcorrupt first retained line\nrendered line after\n";
         let index_inside_escape = data.find("14;8H").expect("escape tail marker");
         let boundary = replay_boundary_at_or_after(data, index_inside_escape);
 
@@ -1524,14 +1596,15 @@ mod tests {
                     Some(40),
                 )
                 .expect("spawn persistent PTY");
-            manager.write(&id, "sized-content\n").expect("write content");
+            manager
+                .write(&id, "sized-content\n")
+                .expect("write content");
 
             let scrollback = super::scrollback_path(&dir, &id);
             let mut ok = false;
             for _ in 0..40 {
                 if let Ok(raw) = std::fs::read(&scrollback) {
-                    if raw.len() > 8
-                        && String::from_utf8_lossy(&raw[8..]).contains("sized-content")
+                    if raw.len() > 8 && String::from_utf8_lossy(&raw[8..]).contains("sized-content")
                     {
                         ok = true;
                         break;
@@ -1558,6 +1631,89 @@ mod tests {
             manager.kill(&id).expect("kill restored session");
         }
 
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn restored_agent_terminal_checkpoint_runs_saved_resume_command() {
+        use std::path::PathBuf;
+
+        let dir: PathBuf = std::env::temp_dir().join(format!(
+            "tw-agent-restore-test-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create persistence dir");
+        let cwd = dir.join("agent-workspace");
+        std::fs::create_dir_all(&cwd).expect("create agent cwd");
+        let cwd_string = cwd.to_string_lossy().to_string();
+        let id = "agent-terminal-restore-test".to_string();
+        let resume_command =
+            "printf 'AGENT_RECOVERED:%s:%s\\n' \"$PWD\" \"$TERMFLEET_PANE_ID\"; sleep 5"
+                .to_string();
+
+        let mut scrollback = Vec::new();
+        scrollback.extend_from_slice(&0_u64.to_le_bytes());
+        scrollback.extend_from_slice(b"previous agent transcript\n");
+        super::atomic_write(&super::scrollback_path(&dir, &id), &scrollback)
+            .expect("seed agent scrollback checkpoint");
+
+        let meta = SessionMeta {
+            cwd: Some(cwd_string.clone()),
+            command: Some("bash".to_string()),
+            cols: Some(132),
+            rows: Some(37),
+            recovery_kind: Some(SessionRecoveryKind::AgentTerminal),
+            provider: Some("codex".to_string()),
+            original_command: Some("codex".to_string()),
+            sanitized_resume_command: Some(resume_command.clone()),
+            launched_as_regular_terminal: Some(true),
+            last_healthy_ms: Some(123),
+        };
+        let meta_bytes = serde_json::to_vec(&meta).expect("encode seeded meta");
+        super::atomic_write(&super::meta_path(&dir, &id), &meta_bytes)
+            .expect("seed agent metadata checkpoint");
+
+        let manager = super::PtyManager::with_persistence_dir(dir.clone());
+        let (rid, reused) = manager
+            .ensure_detached(Some(id.clone()), None, None, None, None)
+            .expect("restore agent terminal checkpoint");
+        assert_eq!(rid, id);
+        assert!(!reused, "disk-restored agent terminal spawns a fresh PTY");
+        assert_eq!(manager.session_size(&id), Some((132, 37)));
+
+        let snapshot = wait_for_snapshot_containing(&manager, &id, "AGENT_RECOVERED:");
+        assert!(
+            snapshot.contains("previous agent transcript"),
+            "agent restore must keep prior terminal transcript, got {snapshot:?}"
+        );
+        assert!(
+            snapshot.contains(&format!("AGENT_RECOVERED:{cwd_string}:{id}")),
+            "agent restore must run the saved resume command in the saved cwd with the pane id, got {snapshot:?}"
+        );
+
+        manager
+            .resize(&id, 144, 41)
+            .expect("resize restored agent terminal");
+        let rewritten = std::fs::read(super::meta_path(&dir, &id))
+            .ok()
+            .and_then(|bytes| serde_json::from_slice::<SessionMeta>(&bytes).ok())
+            .expect("read rewritten agent metadata");
+        assert_eq!(
+            rewritten.recovery_kind,
+            Some(SessionRecoveryKind::AgentTerminal),
+            "ordinary metadata rewrites must preserve the agent recovery marker"
+        );
+        assert_eq!(
+            rewritten.sanitized_resume_command.as_deref(),
+            Some(resume_command.as_str()),
+            "ordinary metadata rewrites must preserve the sanitized resume command"
+        );
+        assert_eq!(rewritten.cols, Some(144));
+        assert_eq!(rewritten.rows, Some(41));
+
+        manager.kill(&id).expect("kill restored agent terminal");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

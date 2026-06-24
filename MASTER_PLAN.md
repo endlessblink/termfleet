@@ -87,7 +87,7 @@ were retired during consolidation.
 | TC-033     | Reliability hardening: fix recurring sidebar task list, AI summary, paste, and render/session issues that never stayed fixed                                                                                     | P1       | DONE (2026-06-19) | TC-027, TC-032 |
 | TC-034     | Group terminals into projects by path: terminals in the same cwd collapse into one project; stop minting duplicate project groups per folder-open                                                                  | P1       | DONE (2026-06-22) | TC-011, TC-024 |
 | TC-035     | Per-terminal standalone status: key the cockpit task list/title by pane identity, not cwd, so each terminal tracks its own work even when several share a directory                                              | P1       | TODO              | TC-033, TC-034 |
-| TC-036     | Automatic agent terminal recovery: relaunch interrupted Codex/Claude agent TUIs inside regular TermFleet terminals with no end-user recovery steps                                                                | P0       | TODO              | TC-009, TC-016, TC-035 |
+| TC-036     | Bringing interrupted Codex and Claude terminals back after restart                                                                                                                                             | P0       | IN_PROGRESS       | TC-009, TC-016, TC-035 |
 | TC-037     | Fix map terminal rendering regressions from the sidebar/projection refactor: task-rail numbers bleed over terminal text, terminal shrinks leaving dead space, sidebar paints empty                                 | P1       | DONE (2026-06-23) | TC-035                  |
 | TC-038     | Stale sessions appear randomly in the sessions/scope panel: old/dead sessions surface in the list with no live PTY                                                                                                 | P2       | TODO              | TC-035                  |
 | TC-039     | Task sidebar must be part of the same node unit: the expanded TASKS list floats detached to the right with a gap instead of reading as one card with the terminal                                                   | P1       | DONE (2026-06-23) | TC-037                  |
@@ -5393,10 +5393,10 @@ GUI-verified lifecycle items remain.
   a new id → new file; the old one ages out at the 30-min TTL); optional explicit cleanup
   on close. Worktree case (#64851) now resolves via pane-id precedence.
 
-### TC-036: Automatic agent terminal recovery
+### TC-036: Bringing interrupted Codex and Claude terminals back after restart
 
 **Priority:** P0
-**Status:** TODO
+**Status:** IN_PROGRESS
 **Depends:** TC-009, TC-016, TC-035
 
 #### Problem
@@ -5486,9 +5486,11 @@ prior PTY process survived.
 
 #### Verification
 
-- Add a backend recovery test that creates an agent-terminal metadata fixture, simulates
+- DONE (2026-06-25): Backend recovery test creates an agent-terminal metadata fixture, simulates
   daemon death, and asserts the planner relaunches the saved resume command in the original
-  cwd with the original pane identity env.
+  cwd with the original pane identity env. Proof:
+  `CARGO_BUILD_JOBS=1 CARGO_PROFILE_DEV_DEBUG=0 cargo test --manifest-path src-tauri/Cargo.toml restored_agent_terminal_checkpoint_runs_saved_resume_command -- --nocapture`
+  and `CARGO_BUILD_JOBS=1 CARGO_PROFILE_DEV_DEBUG=0 cargo test --manifest-path src-tauri/Cargo.toml pty::tests -- --nocapture`.
 - Add a workspace hydration regression that proves recovered agent terminals remain plain
   terminal tabs/nodes and never become workstream cards.
 - Add a Playwright/Tauri smoke (`verify:agent-terminal-recovery`) that:
