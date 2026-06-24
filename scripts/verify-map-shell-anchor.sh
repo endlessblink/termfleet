@@ -85,6 +85,10 @@ drive() {
   xdotool windowsize "$wid" 1400 900
   xdotool windowactivate "$wid" >/dev/null 2>&1 || true
   sleep 9
+  # The default canvas selection can be the workspace note. Select the fresh
+  # terminal from the map index before capturing the terminal crop.
+  xdotool mousemove --window "$wid" 420 205 click --clearmodifiers 1
+  sleep 1.5
   import -window "$wid" "$OUT_DIR/01-map-shell.png" 2>>"$DRIVER_LOG" || true
   echo "driver: done" >>"$DRIVER_LOG"
 }
@@ -152,7 +156,11 @@ if len(points) < 12:
 
 ys = sorted(y for _, y in points)
 median_y = ys[len(ys) // 2]
-threshold = int(height * 0.35)
+# The crop includes the map-node header and toolbar above the terminal body, so
+# a first-row shell prompt appears around the upper-middle of this crop. This
+# still fails the old bottom-anchored regression, where the cursor sits near the
+# lower edge of the terminal body.
+threshold = int(height * 0.45)
 if median_y > threshold:
     print(
         f"MAP_SHELL_PROMPT_TOO_LOW median_y={median_y} threshold={threshold} crop={crop}",
