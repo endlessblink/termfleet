@@ -416,8 +416,8 @@ test("map header neutralizes scraped prose when there is no real task", async ({
   await expect(block).not.toContainText("header chunk");
   await expect(block).not.toContainText("auto-placement");
   await expect(taskRow).toContainText("Task:");
-  await expect(title).toHaveText("No task set");
-  await expect(description).toHaveText("No task set");
+  await expect(title).toHaveText("Working");
+  await expect(description).toHaveText("No task list");
   await expect(now).toContainText("Working");
 
   // Title fits its box (no horizontal overflow).
@@ -430,6 +430,190 @@ test("map header neutralizes scraped prose when there is no real task", async ({
   expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth + 1);
 
   await block.screenshot({ path: "/tmp/tc-036-map-header-neutralized.png" });
+});
+
+test("map header separates missing task list from live approval request", async ({ page }) => {
+  await mockTauri(page);
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+
+  await page.evaluate(() => {
+    type Store = {
+      getState: () => { workspaceUiState: Record<string, unknown> };
+      setState: (state: Record<string, unknown>) => void;
+    };
+    const store = (window as typeof window & { __termfleetWorkspaceStore?: Store }).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+    const group = {
+      id: "group-productivity",
+      name: "productivity",
+      color: "#d69a2d",
+      projectRoot: "/media/endlessblink/data/my-projects/ai-development/productivity/flow-state",
+      lastActiveTabId: "tab-approval-shell",
+    };
+    store.setState({
+      workspaceUiState: {
+        ...store.getState().workspaceUiState,
+        workspaceMode: "canvas",
+        primarySidebarCollapsed: true,
+        canvasSidebarCollapsed: true,
+      },
+      groups: [group],
+      terminalGroups: [group],
+      activeGroupFilter: null,
+      projectRoot: group.projectRoot,
+      activeTabId: "tab-approval-shell",
+      activeTerminalId: "pty-approval-shell",
+      hydrating: false,
+      canvasState: {
+        selectedNodeId: "node-approval-shell",
+        selectedNodeIds: ["node-approval-shell"],
+        viewport: { x: 80, y: 80, zoom: 1 },
+        nodes: [{
+          id: "node-approval-shell",
+          type: "terminal",
+          title: "Terminal",
+          terminalTabId: "tab-approval-shell",
+          x: 80,
+          y: 70,
+          width: 940,
+          height: 360,
+        }],
+      },
+      tabs: [{
+        id: "tab-approval-shell",
+        title: "Terminal",
+        emoji: "[]",
+        color: "#d69a2d",
+        groupId: group.id,
+        initialCwd: group.projectRoot,
+        terminals: [{
+          id: "pty-approval-shell",
+          paneId: "pane-approval-shell",
+          cols: 100,
+          rows: 28,
+          status: "running",
+          terminalOutput: [
+            "productivity/flow-state . npm run test:e2e",
+            "Confirm: permanently delete the E2E test account from PRODUCTION? Account playwright@test.flowstate (UUID 47cade92...), removing its tasks, projects, tombstones, and auth user.",
+            "1. Yes, delete it from prod",
+            "2. No, leave it",
+            "3. Type something.",
+            "Enter to select · Tab/Arrow keys to navigate · Esc to cancel",
+          ].join("\n"),
+        }],
+        splitLayout: { id: "pane-approval-shell", type: "terminal" },
+        activePaneId: "pane-approval-shell",
+      }],
+    });
+  });
+
+  const block = page.getByTestId("canvas-terminal-status-block").filter({ hasText: "productivity" });
+  const title = block.getByTestId("canvas-terminal-node-header-title");
+  const description = block.getByTestId("canvas-terminal-node-description");
+  const taskRow = block.getByTestId("canvas-terminal-node-task-row");
+  const now = block.getByTestId("canvas-terminal-node-now");
+
+  await expect(title).toHaveText("Reviewing approval request");
+  await expect(title).not.toHaveText("No task list");
+  await expect(title).not.toContainText("permanently delete");
+  await expect(description).toHaveText("No task list");
+  await expect(taskRow).toContainText("Task:");
+  await expect(now).toContainText("Waiting for operator selection");
+});
+
+test("map header keeps live cwd when persisted summary path belongs to another project", async ({ page }) => {
+  await mockTauri(page);
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+
+  await page.evaluate(() => {
+    type Store = {
+      getState: () => { workspaceUiState: Record<string, unknown> };
+      setState: (state: Record<string, unknown>) => void;
+    };
+    const store = (window as typeof window & { __termfleetWorkspaceStore?: Store }).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+    const group = {
+      id: "group-flow-state",
+      name: "flow-state",
+      color: "#d69a2d",
+      projectRoot: "/media/endlessblink/data/my-projects/ai-development/productivity/flow-state",
+      lastActiveTabId: "tab-stale-path",
+    };
+    store.setState({
+      workspaceUiState: {
+        ...store.getState().workspaceUiState,
+        workspaceMode: "canvas",
+        primarySidebarCollapsed: true,
+        canvasSidebarCollapsed: true,
+      },
+      groups: [group],
+      terminalGroups: [group],
+      activeGroupFilter: null,
+      projectRoot: group.projectRoot,
+      activeTabId: "tab-stale-path",
+      activeTerminalId: "pty-stale-path",
+      hydrating: false,
+      canvasState: {
+        selectedNodeId: "node-stale-path",
+        selectedNodeIds: ["node-stale-path"],
+        viewport: { x: 80, y: 80, zoom: 1 },
+        nodes: [{
+          id: "node-stale-path",
+          type: "terminal",
+          title: "Terminal",
+          terminalTabId: "tab-stale-path",
+          x: 80,
+          y: 70,
+          width: 940,
+          height: 360,
+        }],
+      },
+      tabs: [{
+        id: "tab-stale-path",
+        title: "Terminal",
+        emoji: "[]",
+        color: "#d69a2d",
+        groupId: group.id,
+        initialCwd: group.projectRoot,
+        terminals: [{
+          id: "pty-stale-path",
+          paneId: "pane-stale-path",
+          cols: 100,
+          rows: 28,
+          status: "running",
+          terminalOutput: ["› lets", "gpt-5.5 default · /media/endlessblink/data/my-projects/ai-development/productivity/flow-state"].join("\n"),
+          statusSummary: {
+            task: "Ready",
+            path: "income-zen",
+            now: "income-zen",
+            status: "idle",
+            provider: "shell",
+            confidence: "high",
+            tasksFromTodoWrite: false,
+          },
+        }],
+        splitLayout: { id: "pane-stale-path", type: "terminal" },
+        activePaneId: "pane-stale-path",
+      }],
+    });
+  });
+
+  const block = page.getByTestId("canvas-terminal-status-block").filter({ hasText: "flow-state" });
+  const path = block.getByTestId("canvas-terminal-node-header-path");
+  const now = block.getByTestId("canvas-terminal-node-now");
+
+  await expect(path).toContainText("productivity/flow-state");
+  await expect(path).not.toContainText("income-zen");
+  await expect(now).toHaveText("Awaiting command");
+  await expect(now).not.toContainText("income-zen");
 });
 
 test("map header rejects slash-command prompt echoes as task descriptions", async ({ page }) => {

@@ -816,6 +816,23 @@ test("persisted shell summaries without purpose expose missing task context", ()
   expect(summary.now).toBe("frontend build passed");
 });
 
+test("persisted shell summaries cannot replace the live cwd with a foreign project", () => {
+  const summary = normalizePersistedShellSummary(
+    {
+      task: "Ready",
+      path: "income-zen",
+      now: "Awaiting command",
+      status: "idle",
+      provider: "shell",
+      confidence: "high",
+    },
+    "productivity/flow-state",
+  );
+
+  expect(summary.path).toBe("productivity/flow-state");
+  expect(summary.now).toBe("Awaiting command");
+});
+
 test("terminal purpose follows the current active agent prompt", () => {
   const purpose = terminalPurposeFromContext({
     terminalOutput: [

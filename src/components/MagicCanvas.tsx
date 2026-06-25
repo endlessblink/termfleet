@@ -2305,10 +2305,14 @@ function CanvasNodeViewImpl({
   const taskToolLineup = purposeTaskLineup.filter((item) => item.source === "todo-write");
   const activeTaskToolItem =
     taskToolLineup.find((item) => item.status === "in_progress") ?? taskToolLineup[0];
+  const hasTerminalTaskDescription = Boolean(
+    activeTaskToolItem?.content ||
+    (terminalStatusSummary?.tasksFromTodoWrite && terminalStatusSummary.task)
+  );
   const terminalHeaderTaskDescription =
     activeTaskToolItem?.content ??
     (terminalStatusSummary?.tasksFromTodoWrite ? terminalStatusSummary.task : undefined) ??
-    "No task set";
+    "No task list";
   const terminalExtractedSummary = getDisplaySummary({
     mission: "Terminal",
     provider: "shell",
@@ -2357,7 +2361,9 @@ function CanvasNodeViewImpl({
     terminalStatusSummary,
     terminalActivityLive ? undefined : terminalNeutralTitle,
   );
-  const terminalHeaderTitleRaw = terminalHeaderTaskDescription;
+  const terminalHeaderTitleRaw = hasTerminalTaskDescription
+    ? terminalHeaderTaskDescription
+    : terminalDisplaySummary.task;
   const terminalHeaderPath = terminalDisplaySummary.path;
   // Anti-flicker for real sidecar task summaries. Bound MASTER_PLAN tasks and heuristic
   // shell-output fallbacks are authoritative per render, so they bypass the hold. (TC-035)

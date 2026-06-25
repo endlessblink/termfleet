@@ -34,6 +34,45 @@ function cleanPath(value?: string | null) {
   return text;
 }
 
+function looksLikeFilePath(value: string) {
+  return /(?:^|\/)[\w.-]+\.[a-z0-9]+$/i.test(value);
+}
+
+function compatibleSummaryPath(summaryPath: string | undefined, fallbackPath: string | undefined) {
+  if (!summaryPath) return fallbackPath ?? "workspace path unknown";
+  if (!fallbackPath || fallbackPath === "workspace path unknown") return summaryPath;
+  if (looksLikeFilePath(summaryPath)) return summaryPath;
+  const normalizedSummary = summaryPath.replace(/\/+$/, "");
+  const normalizedFallback = fallbackPath.replace(/\/+$/, "");
+  if (
+    normalizedSummary === normalizedFallback ||
+    normalizedFallback.endsWith(`/${normalizedSummary}`) ||
+    normalizedSummary.endsWith(`/${normalizedFallback}`)
+  ) {
+    return summaryPath;
+  }
+  return fallbackPath;
+}
+
+function fallbackPathLabels(path: string) {
+  const parts = path.split("/").filter(Boolean);
+  return new Set([
+    path,
+    parts[parts.length - 1],
+    parts.slice(-2).join("/"),
+  ].filter(Boolean));
+}
+
+function compatibleActivityNow(now: string | undefined, fallbackPath: string) {
+  if (!now) return "Awaiting command";
+  // A bare slug in `now` is usually a leaked project/path label, not activity. Keep it
+  // only when it matches the live terminal path; richer strings are real activity text.
+  if (/^[\w.-]+$/.test(now) && !fallbackPathLabels(fallbackPath).has(now)) {
+    return "Awaiting command";
+  }
+  return now;
+}
+
 function pathFromCommand(command?: string) {
   const normalized = command?.replace(/\\"/g, '"').replace(/\\'/g, "'");
   if (!normalized) return undefined;
@@ -291,7 +330,7 @@ function purposeFromTranscript(output?: string | null) {
     }
     return undefined;
   };
-  return findPurpose(candidateLines) ?? findPurpose(lines);
+  return lastWorkingIndex >= 0 ? findPurpose(candidateLines) : findPurpose(lines);
 }
 
 export function terminalPurposeFromContext(input: {
@@ -615,7 +654,7 @@ function normalizedPersistedTitle(summary: WorkstreamStatusSummary) {
   return task ? boundedTitle(task) : "Terminal activity";
 }
 
-function normalizedPersistedNow(summary: WorkstreamStatusSummary) {
+function normalizedPersistedNow(summary: WorkstreamStatusSummary, fallbackPath: string) {
   const task = cleanText(summary.task);
   const now = cleanText(summary.now);
   if (/^Map terminal card checks passed$/i.test(task ?? ""))
@@ -641,7 +680,7 @@ function normalizedPersistedNow(summary: WorkstreamStatusSummary) {
     return "frontend build passed";
   if (/^Frontend build failed$/i.test(task ?? ""))
     return "frontend build failed";
-  return now ?? "Awaiting command";
+  return compatibleActivityNow(now, fallbackPath);
 }
 
 /**
@@ -675,13 +714,13 @@ export function normalizePersistedShellSummary(
   path: string,
   purpose?: TerminalPurpose,
 ): WorkstreamStatusSummary {
+  const fallbackPath = cleanPath(path) ?? "workspace path unknown";
   return applyTerminalPurpose(
     {
       ...summary,
       task: normalizedPersistedTitle(summary),
-      path:
-        cleanPath(summary.path) ?? cleanPath(path) ?? "workspace path unknown",
-      now: normalizedPersistedNow(summary),
+      path: compatibleSummaryPath(cleanPath(summary.path), fallbackPath),
+      now: normalizedPersistedNow(summary, fallbackPath),
       provider: "shell",
     },
     purpose,

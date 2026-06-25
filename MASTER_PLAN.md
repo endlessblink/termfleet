@@ -5277,6 +5277,19 @@ cwd (matches the "terminals opened in a path should be a project" intent).
   `tests/task-lineup-content-contract.spec.ts` 4/4; regression
   `task-lineup-source-merge` + `agent-status-summary` + `map-terminal-rendering` 67/67;
   `npm run build` green.
+- **T-TITLES — map task description fallback (DONE 2026-06-25):** map terminal cards no
+  longer use the missing task-list fallback as the main title. The `Task:` row now stays
+  honest as `No task list` when no TodoWrite/task-tool list exists, while the large title
+  uses the terminal activity summary (for example `Reviewing approval request`) and `Now`
+  carries the waiting/proof detail. Approval menus are recognized by the local shell
+  fallback, so the screenshot shape does not depend on the model summary server. Also fixed
+  transcript-purpose extraction so stale text before a current `Working (...)` marker cannot
+  override the current header, and guarded against stale persisted summary path/`Now` values
+  showing a foreign project (for example `income-zen`) instead of the live terminal cwd
+  (`flow-state`).
+  Proof: `npx playwright test tests/terminal-summary-visual.spec.ts --reporter=line` passed
+  8/8; `npx playwright test tests/agent-status-summary.spec.ts --reporter=line` passed 42/42;
+  `npm run verify:map-terminals` passed; `npm run build` passed.
 - **T9 — input reliability — UNCONFIRMED (no fix; agent false-positives):** traced both
   reported bugs against the code; neither reproduces.
   - *Ctrl+C "dropped":* `queue()` appends to `pendingInput` (`daemonInputQueue.ts:108`)

@@ -128,6 +128,18 @@ function transcriptLines(input: AgentStatusSummaryInput) {
     .filter((line) => !isNoisyActivity(line));
 }
 
+function approvalPromptSummary(lines: string[]) {
+  const confirmLine = [...lines].reverse().find((line) => /^Confirm:\s+/i.test(line));
+  if (!confirmLine) return null;
+  const hasChoices = lines.some((line) => /^\s*\d+[.)]\s+(?:Yes|No)\b/i.test(line));
+  const hasSelectionHint = lines.some((line) => /\bEnter to select\b|\bEsc to cancel\b/i.test(line));
+  if (!hasChoices && !hasSelectionHint) return null;
+  return {
+    task: "Reviewing approval request",
+    now: "Waiting for operator selection",
+  };
+}
+
 function explicitLineupTasks(input: AgentStatusSummaryInput) {
   const lines = (input.terminalOutput ?? "")
     .replace(/\r/g, "\n")
@@ -321,25 +333,28 @@ function fallbackNow(input: AgentStatusSummaryInput, task: string, status: Agent
 export function fallbackAgentStatusSummary(input: AgentStatusSummaryInput): AgentStatusSummary {
   const lines = transcriptLines(input);
   const commandSummary = shellCommandSummary(input);
+  const approvalSummary = input.provider === "shell" ? approvalPromptSummary(rawTranscriptLines(input)) : null;
   const transcriptTask = cleanText(inferTranscriptTask(lines));
   const promptVisible = hasVisibleShellPrompt(input);
+  const readyTask = promptVisible && !transcriptTask ? "Ready" : undefined;
   const task =
-    promptVisible && !transcriptTask ? "Ready" :
+    approvalSummary?.task ??
+    readyTask ??
     (cleanText(input.mission) && cleanText(input.mission) !== "Terminal" ? cleanText(input.mission) : undefined) ??
     cleanText(input.prompt) ??
     commandSummary?.task ??
     transcriptTask ??
     "Supervised agent run";
-  const status = promptVisible && task === "Ready" ? "idle" : normalizeLifecycle(input);
+  const status = approvalSummary ? "waiting" : promptVisible && task === "Ready" ? "idle" : normalizeLifecycle(input);
   const excerpt = (input.terminalOutput ?? input.currentActivity ?? input.lastSummary ?? task).slice(-240);
   const extracted = extractionCandidates(input, task, status);
   return {
     task,
     path: pathFromInput(input),
-    now: promptVisible && task === "Ready" ? "Awaiting command" : fallbackNow(input, task, status, commandSummary),
+    now: approvalSummary?.now ?? (promptVisible && task === "Ready" ? "Awaiting command" : fallbackNow(input, task, status, commandSummary)),
     status,
     provider: input.provider ?? "codex",
-    confidence: commandSummary ? "high" : cleanText(input.currentActivity) && !isNoisyActivity(input.currentActivity) ? "medium" : "low",
+    confidence: approvalSummary || commandSummary ? "high" : cleanText(input.currentActivity) && !isNoisyActivity(input.currentActivity) ? "medium" : "low",
     proof: cleanText(input.evidence),
     blocker: status === "blocked" ? cleanText(input.risk) ?? cleanText(input.lastSummary) : undefined,
     tasks: normalizeExtractedItems(extracted.tasks, "summary", excerpt),
