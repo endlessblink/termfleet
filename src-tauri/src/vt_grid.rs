@@ -184,6 +184,9 @@ impl TermState {
     }
 
     fn scroll_to_bottom(&mut self) {
+        if self.term.grid().display_offset() == 0 {
+            return;
+        }
         self.term.scroll_display(Scroll::Bottom);
         self.dirty = true;
     }
@@ -1200,7 +1203,20 @@ mod tests {
 
         state.dirty = false;
         state.scroll_to_bottom();
-        assert!(state.dirty, "scroll-to-bottom changes the visible grid");
+        assert!(
+            !state.dirty,
+            "scroll-to-bottom at the live bottom should not wake the emitter"
+        );
+
+        for i in 0..100 {
+            state.feed(format!("line{i}\r\n").as_bytes());
+        }
+        state.dirty = false;
+        state.scroll(100);
+        assert!(state.dirty, "scroll into history changes the visible grid");
+        state.dirty = false;
+        state.scroll_to_bottom();
+        assert!(state.dirty, "scroll-to-bottom from history changes the visible grid");
 
         state.dirty = false;
         state.reset();
@@ -1228,7 +1244,20 @@ mod tests {
 
         s.dirty = false;
         s.scroll_to_bottom();
-        assert!(s.dirty, "scroll_to_bottom marks the grid dirty");
+        assert!(
+            !s.dirty,
+            "scroll_to_bottom at the live bottom must not mark dirty"
+        );
+
+        for i in 0..100 {
+            s.feed(format!("line{i}\r\n").as_bytes());
+        }
+        s.dirty = false;
+        s.scroll(100);
+        assert!(s.dirty, "scroll into history marks dirty");
+        s.dirty = false;
+        s.scroll_to_bottom();
+        assert!(s.dirty, "scroll_to_bottom from history marks dirty");
 
         s.dirty = false;
         s.resize(100, 30);

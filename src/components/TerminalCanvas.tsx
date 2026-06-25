@@ -808,6 +808,8 @@ export function TerminalCanvas({
   }, [sessionId, cwd, command, cols, rows, theme, fontsReady, renderScale, mapProjection, dprTick]);
 
   const scheduleScrollToBottom = () => {
+    const buffer = bufferRef.current;
+    if (!buffer || buffer.displayOffset === 0) return;
     if (scrollToBottomPendingRef.current) return;
     scrollToBottomPendingRef.current = true;
     requestAnimationFrame(() => {
