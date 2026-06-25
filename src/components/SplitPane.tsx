@@ -10,7 +10,7 @@ import { agentStatusSummaryFromWorkstream, getDisplaySummary } from "../lib/agen
 import { CockpitSnapshotProbe } from "./CockpitSnapshotProbe";
 import { workstreamActivityText } from "../lib/workstreamActivity";
 import { taskLineupNextLabel, taskLineupStats, visibleTaskLineup as pickVisibleTaskLineup } from "../lib/taskLineup";
-import { neutralHeaderTitle, normalizePersistedShellSummary, preferRealTaskSummary, summaryFromDurableActivity, summarySourceLabel, terminalPurposeFromContext } from "../lib/terminalHeaderDisplay";
+import { neutralHeaderTitle, normalizePersistedShellSummary, preferRealTaskSummary, summaryFromDurableActivity, terminalPurposeFromContext } from "../lib/terminalHeaderDisplay";
 import { stableHeader } from "../lib/stableHeader";
 import {
   calculatePaneBounds,
@@ -816,10 +816,6 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                 : neutralHeaderTitle(terminalStatus),
             )
           : shellStatusSummaryBase;
-        const shellSummarySource = summarySourceLabel(
-          paneTerminal?.statusSummarySource ?? tab.workstream?.statusSummarySource,
-          paneTerminal?.statusSummaryError ?? tab.workstream?.statusSummaryError,
-        );
         const isAgentPane = Boolean(agentStatusSummary);
         const isShellSummaryPane = Boolean(shellStatusSummary);
         const taskSidebarCollapsed = paneTerminal?.taskSidebarCollapsed ?? false;
@@ -1239,15 +1235,6 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                   >
                     <span style={{ flexShrink: 0, color: "var(--text-tertiary)", fontSize: 10 }}>Now</span>
                     <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{headerNow}</span>
-                    {shellSummarySource ? (
-                      <span
-                        data-testid="split-terminal-summary-source"
-                        title={shellSummarySource.detail}
-                        style={{ flexShrink: 0, color: "var(--text-tertiary)", fontSize: 10 }}
-                      >
-                        {shellSummarySource.label}
-                      </span>
-                    ) : null}
                   </div>
                 </div>
                 </>

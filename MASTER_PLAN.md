@@ -468,6 +468,12 @@ Progress notes:
   verifier output, or raw command text becomes the main title. The hook now also
   covers the headed regression where a stale `verify:keymap` durable command
   must yield to the current agent prompt after `Working (...)` / `Worked for ...`.
+- DONE (2026-06-25): Map and split terminal headers no longer render internal
+  summary-source/debug labels such as `running activity` or `model summary` as
+  cockpit-visible description text. The map card kicker now identifies the
+  workspace and shows the cleaned current activity, while regressions block raw
+  prompt/input fragments from taking over that description. Proof: `npm run
+  build` and `npm run verify:terminal-summary-visual` passed.
   Current evidence: `npx playwright test tests/agent-status-summary.spec.ts
   --reporter=line` passed 40/40; `npm run verify:terminal-summary-visual`
   passed 4/4; `npm run build` passed; `git diff --check` passed.

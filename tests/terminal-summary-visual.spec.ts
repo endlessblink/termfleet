@@ -190,7 +190,7 @@ test("regular split header rejects noisy scrollback titles and fits the activity
   });
 
   await expect(title).toHaveText("Improving terminal-summary visual headers");
-  await expect(now).toContainText("terminal status summary contract");
+  await expect(now).toContainText("frontend build passed");
   const afterCommandChange = await title.evaluate((element) => element.textContent?.trim() ?? "");
   expect(afterCommandChange).toBe(metrics.text);
 });
@@ -280,13 +280,19 @@ test("regular map header rejects noisy scrollback titles and fits the activity t
   });
 
   const title = page.getByTestId("canvas-terminal-node-header-title");
+  const description = page.getByTestId("canvas-terminal-node-description");
   const now = page.getByTestId("canvas-terminal-node-now");
   const path = page.getByTestId("canvas-terminal-node-header-path");
 
   await expect(title).toHaveText("Improving terminal-summary visual headers");
   await expect(title).not.toContainText("The visual app surface");
+  await expect(description).toContainText("frontend build passed");
+  await expect(description).not.toContainText("web$");
+  await expect(description).not.toContainText("unfinished prompt");
   await expect(now).toContainText("frontend build passed");
   await expect(path).toContainText("devops/termfleet");
+  await expect(page.getByTestId("canvas-terminal-status-block")).not.toContainText("running activity");
+  await expect(page.getByTestId("canvas-terminal-status-block")).not.toContainText("model summary");
 
   const metrics = await title.evaluate((element) => ({
     text: element.textContent?.trim() ?? "",

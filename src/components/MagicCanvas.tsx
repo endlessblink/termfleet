@@ -40,7 +40,7 @@ import { workstreamActivityMeta, workstreamActivityText } from "../lib/workstrea
 import { formatWorkstreamBranch, formatWorkstreamIsolation, formatWorkstreamOpsContext } from "../lib/workstreamOpsContext";
 import { snapshotPreviewRows } from "../lib/snapshotPreviewRows";
 import { taskLineupNextLabel, taskLineupStats, visibleTaskLineup } from "../lib/taskLineup";
-import { neutralHeaderTitle, normalizePersistedShellSummary, preferRealTaskSummary, summaryFromDurableActivity, summarySourceLabel, terminalPurposeFromContext } from "../lib/terminalHeaderDisplay";
+import { neutralHeaderTitle, normalizePersistedShellSummary, preferRealTaskSummary, summaryFromDurableActivity, terminalPurposeFromContext } from "../lib/terminalHeaderDisplay";
 import { stableHeader } from "../lib/stableHeader";
 
 type CanvasRect = {
@@ -350,6 +350,7 @@ const styles: Record<string, CSSProperties> = {
   },
   terminalStatusBlock: {
     minWidth: 0,
+    gridColumn: "1 / -1",
     display: "grid",
     gap: 8,
     alignContent: "start",
@@ -371,15 +372,15 @@ const styles: Record<string, CSSProperties> = {
     display: "inline-flex",
     alignItems: "center",
     gap: 5,
-    color: "color-mix(in srgb, var(--text-secondary) 72%, transparent)",
-    fontSize: 11,
+    color: "color-mix(in srgb, var(--text-secondary) 78%, transparent)",
+    fontSize: 12,
     fontWeight: 500,
     letterSpacing: 0,
   },
   workspacePill: {
     minWidth: 0,
-    maxWidth: 170,
-    height: 18,
+    maxWidth: 200,
+    height: 20,
     display: "inline-flex",
     alignItems: "center",
     padding: "0 6px",
@@ -387,7 +388,7 @@ const styles: Record<string, CSSProperties> = {
     borderRadius: "var(--radius-xs)",
     background: "color-mix(in srgb, var(--surface-base) 82%, transparent)",
     color: "var(--text-primary)",
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: 500,
     overflow: "hidden",
     textOverflow: "ellipsis",
@@ -400,9 +401,9 @@ const styles: Record<string, CSSProperties> = {
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
     color: "var(--text-primary)",
-    fontSize: 17,
-    fontWeight: 500,
-    lineHeight: 1.15,
+    fontSize: 19,
+    fontWeight: 600,
+    lineHeight: 1.18,
   },
   renameInput: {
     width: "100%",
@@ -449,18 +450,18 @@ const styles: Record<string, CSSProperties> = {
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
     color: "var(--text-secondary)",
-    fontSize: 11,
-    lineHeight: 1.2,
+    fontSize: 12,
+    lineHeight: 1.25,
   },
   terminalStatusNow: {
     minWidth: 0,
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
-    color: "var(--text-secondary)",
-    fontSize: 12,
+    color: "var(--text-primary)",
+    fontSize: 13,
     fontWeight: 500,
-    lineHeight: 1.2,
+    lineHeight: 1.25,
   },
   agentStatusBlock: {
     minWidth: 0,
@@ -2326,10 +2327,6 @@ function CanvasNodeViewImpl({
     terminalStatusSummary,
     terminalActivityLive ? undefined : neutralHeaderTitle(linkedTerminal?.status),
   );
-  const terminalSummarySource = summarySourceLabel(
-    linkedTerminal?.statusSummarySource ?? workstream?.statusSummarySource,
-    linkedTerminal?.statusSummaryError ?? workstream?.statusSummaryError,
-  );
   const terminalHeaderTitleRaw = terminalDisplaySummary.task === "Ready" ? terminalTitle : terminalDisplaySummary.task;
   const terminalHeaderPath = terminalDisplaySummary.path;
   // Anti-flicker for real sidecar task summaries. Bound MASTER_PLAN tasks and heuristic
@@ -2362,6 +2359,9 @@ function CanvasNodeViewImpl({
       : linkedTerminal?.status === "exited"
         ? "Done"
         : "Idle";
+  const terminalHeaderDescription = terminalHeaderHasUsefulNow
+    ? terminalHeaderSummarySignal
+    : terminalHeaderTaskState;
   const detectedLaneTaskId = node.taskBinding?.taskId ?? firstTaskIdFromText(
     workstream?.mission,
     workstream?.prompt,
@@ -2907,23 +2907,18 @@ function CanvasNodeViewImpl({
             onDoubleClick={onRename}
           >
             <div style={styles.terminalStatusKicker}>
+              <span>Workspace</span>
               <span style={styles.workspacePill} data-testid="canvas-terminal-node-workspace" title={workspaceLabel}>
                 {workspaceLabel}
               </span>
-              <span>shell</span>
               <span>·</span>
-              <span>{terminalHeaderHasUsefulSummary ? "running activity" : "ready"}</span>
-              {terminalSummarySource ? (
-                <>
-                  <span>·</span>
-                  <span
-                    data-testid="canvas-terminal-summary-source"
-                    title={terminalSummarySource.detail}
-                  >
-                    {terminalSummarySource.label}
-                  </span>
-                </>
-              ) : null}
+              <span
+                data-testid="canvas-terminal-node-description"
+                title={terminalHeaderDescription}
+                style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+              >
+                {terminalHeaderDescription}
+              </span>
             </div>
             <div
               style={styles.terminalStatusTitle}
