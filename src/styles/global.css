@@ -373,15 +373,20 @@ button:active {
   }
 }
 
+/* Pulse via compositor-only opacity + transform, NOT box-shadow. Animating
+   box-shadow repaints every frame for every live node (it scales with live-node
+   count and ran continuously even while idle); opacity/transform stay on the
+   compositor. The static ring shadow lives on the animated elements themselves
+   (see the marker/status-dot rules) so the glow is preserved. */
 @keyframes terminal-live-pulse {
   0%,
   100% {
-    box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 12%, transparent);
-    opacity: 0.88;
+    opacity: 0.82;
+    transform: scale(1);
   }
   50% {
-    box-shadow: 0 0 0 5px color-mix(in srgb, currentColor 4%, transparent);
     opacity: 1;
+    transform: scale(1.18);
   }
 }
 
@@ -590,6 +595,8 @@ button:active {
 
 .terminal-pane-frame[data-active="true"][data-status="running"] .terminal-pane-status-dot,
 .terminal-pane-frame[data-active="true"][data-status="reconnected"] .terminal-pane-status-dot {
+  /* Static glow ring (the keyframe no longer animates box-shadow). */
+  box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 10%, transparent);
   animation: terminal-live-pulse 2.4s ease-in-out infinite;
 }
 

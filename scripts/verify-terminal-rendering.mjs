@@ -9,6 +9,7 @@ const sidebar = readFileSync(join(root, "src/components/WorkbenchSidebar.tsx"), 
 const globalCss = readFileSync(join(root, "src/styles/global.css"), "utf8");
 const themeCss = readFileSync(join(root, "src/styles/theme.css"), "utf8");
 const pty = readFileSync(join(root, "src-tauri/src/pty.rs"), "utf8");
+const livePulseKeyframe = globalCss.match(/@keyframes terminal-live-pulse\s*\{([\s\S]*?)\n\}/)?.[1] ?? "";
 
 const checks = [
   {
@@ -50,6 +51,20 @@ const checks = [
     message: "terminal live-state motion must be source-visible and reduced-motion safe.",
   },
   {
+    ok: /SNAPSHOT_EXCERPT_THROTTLE_MS\s*=\s*100/.test(terminal) &&
+      /latestSnapshotRef\.current\s*=\s*snapshot/.test(terminal) &&
+      /snapshotThrottleTimerRef\.current\s*=\s*setTimeout/.test(terminal) &&
+      /runSnapshotExcerpt\(\);/.test(terminal) &&
+      /clearTimeout\(snapshotThrottleTimerRef\.current\)/.test(terminal),
+    message: "canvas snapshot excerpt/status-summary work must be throttled with a trailing update and unmount cleanup.",
+  },
+  {
+    ok: !/box-shadow/.test(livePulseKeyframe) &&
+      /transform:\s*scale\(1\.18\)/.test(livePulseKeyframe) &&
+      /box-shadow:\s*0 0 0 3px color-mix\(in srgb, currentColor 10%, transparent\)/.test(globalCss),
+    message: "terminal live pulse animation must avoid repaint-heavy animated box-shadow while preserving a static glow ring.",
+  },
+  {
     ok: /event\.ctrlKey && event\.shiftKey && key === "t"/.test(header) &&
       /shortcut:\s*"Ctrl Shift T"/.test(header) &&
       /Ctrl\+Shift\+T/.test(sidebar) &&
@@ -61,7 +76,8 @@ const checks = [
     message: "new-terminal creation must have matching Ctrl+Shift+T and plus-button launch affordances.",
   },
   {
-    ok: /<div style=\{\{ flex: 1, minHeight: 0, minWidth: 0 \}\}>/.test(splitPane) &&
+    ok: /style=\{\{\s*flex:\s*1,\s*minHeight:\s*0,\s*minWidth:\s*0,\s*display:\s*"flex",\s*\}\}/.test(splitPane) &&
+      /style=\{\{ flex: 1, minHeight: 0, minWidth: 0, height: "100%", display: "flex", flexDirection: "column" \}\}/.test(splitPane) &&
       !/terminalHeight/.test(splitPane),
     message: "split panes must flex-fill terminal bodies instead of subtracting manual heights.",
   },

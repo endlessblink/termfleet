@@ -250,6 +250,12 @@ function readableOutputExcerpt(output: string) {
   return lines.slice(-18).join("\n").slice(-1600) || undefined;
 }
 
+// The header/activity text only needs to refresh a few times a second, but grid
+// snapshots arrive at up to 60fps while an agent prints. Cap the (O(rows×cols)
+// string-rebuild + regex + store-write) excerpt work to ~10Hz so a fast spinner
+// can't cascade re-renders across the cockpit panels every frame.
+const SNAPSHOT_EXCERPT_THROTTLE_MS = 100;
+
 function readableSnapshotExcerpt(snapshot: GridSnapshot) {
   const lines = snapshot.cells
     .map((row) => row.map((cell) => cell.c && cell.c !== "\u0000" ? cell.c : " ").join("").trimEnd())
@@ -454,6 +460,9 @@ export function TerminalComponent({
   const statusSummarySequenceRef = useRef(0);
   const lastSummaryRunRef = useRef(0);
   const latestSnapshotExcerptRef = useRef<string | null>(null);
+  const latestSnapshotRef = useRef<GridSnapshot | null>(null);
+  const lastSnapshotRunRef = useRef(0);
+  const snapshotThrottleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeTabId = useWorkspaceStore((s) => s.activeTabId);
   const workspaceMode = useWorkspaceStore((s) => s.workspaceUiState.workspaceMode);
   const terminalRendererMode = useWorkspaceStore((s) => s.workspaceUiState.terminalRendererMode);
@@ -705,8 +714,13 @@ export function TerminalComponent({
     }, wait);
   }, [cwd, livePtyId, paneId, tabId]);
 
-  const handleSnapshot = useCallback((snapshot: GridSnapshot) => {
-    onSnapshot?.(snapshot);
+  // The actual excerpt rebuild + store write, run from the throttled scheduler
+  // below (never directly off the per-frame snapshot). Reads the latest snapshot
+  // from a ref so a coalesced trailing run still captures the final frame.
+  const runSnapshotExcerpt = useCallback(() => {
+    lastSnapshotRunRef.current = Date.now();
+    const snapshot = latestSnapshotRef.current;
+    if (!snapshot) return;
     const excerpt = readableSnapshotExcerpt(snapshot);
     if (!excerpt || latestSnapshotExcerptRef.current === excerpt) return;
     latestSnapshotExcerptRef.current = excerpt;
@@ -733,7 +747,36 @@ export function TerminalComponent({
     // Keep the header/description live on canvas/map nodes, which update via
     // snapshots rather than the output callback.
     scheduleStatusSummaryUpdate();
-  }, [onSnapshot, tabId, updateTerminalRuntime, scheduleStatusSummaryUpdate]);
+  }, [tabId, updateTerminalRuntime, scheduleStatusSummaryUpdate]);
+
+  const handleSnapshot = useCallback((snapshot: GridSnapshot) => {
+    // onSnapshot drives the map preview, which throttles itself — leave it on the
+    // raw per-frame stream. Only the expensive excerpt/store work is throttled.
+    onSnapshot?.(snapshot);
+    latestSnapshotRef.current = snapshot;
+    const since = Date.now() - lastSnapshotRunRef.current;
+    if (since >= SNAPSHOT_EXCERPT_THROTTLE_MS) {
+      if (snapshotThrottleTimerRef.current) {
+        clearTimeout(snapshotThrottleTimerRef.current);
+        snapshotThrottleTimerRef.current = null;
+      }
+      runSnapshotExcerpt();
+    } else if (snapshotThrottleTimerRef.current === null) {
+      // Trailing run guarantees the final frame is captured after a burst.
+      snapshotThrottleTimerRef.current = setTimeout(() => {
+        snapshotThrottleTimerRef.current = null;
+        runSnapshotExcerpt();
+      }, SNAPSHOT_EXCERPT_THROTTLE_MS - since);
+    }
+  }, [onSnapshot, runSnapshotExcerpt]);
+
+  // Cancel any pending trailing excerpt run when this terminal unmounts.
+  useEffect(() => () => {
+    if (snapshotThrottleTimerRef.current) {
+      clearTimeout(snapshotThrottleTimerRef.current);
+      snapshotThrottleTimerRef.current = null;
+    }
+  }, []);
 
   const updateWorkstreamRuntime = useCallback((updates: {
     status?: WorkstreamStatus;

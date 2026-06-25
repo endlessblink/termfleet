@@ -72,6 +72,11 @@ struct TermState {
     alternate_scroll_touched: bool,
     mode_scan_tail: Vec<u8>,
     unsupported_control_tail: Vec<u8>,
+    /// Set by any method that can change the visible grid (feed/scroll/resize/
+    /// reset); cleared by the emitter after it captures a frame. Lets the 60Hz
+    /// emitter skip the O(rows*cols) capture+diff for panes that haven't changed
+    /// — the dominant always-on cost when many panes sit idle.
+    dirty: bool,
 }
 
 impl TermState {
@@ -84,6 +89,7 @@ impl TermState {
             alternate_scroll_touched: false,
             mode_scan_tail: Vec::new(),
             unsupported_control_tail: Vec::new(),
+            dirty: true,
         }
     }
 
@@ -91,6 +97,7 @@ impl TermState {
         self.scan_mode_sequences(bytes);
         let filtered = self.strip_unsupported_control_sequences(bytes);
         self.parser.advance(&mut self.term, &filtered);
+        self.dirty = true;
     }
 
     fn scan_mode_sequences(&mut self, bytes: &[u8]) {
@@ -151,6 +158,7 @@ impl TermState {
             return;
         }
         self.term.resize(GridDims { cols, rows });
+        self.dirty = true;
     }
 
     /// Drop all grid content and reset the parser, preserving the current
@@ -167,14 +175,17 @@ impl TermState {
         self.mode_scan_tail.clear();
         self.unsupported_control_tail.clear();
         self.alternate_scroll_touched = false;
+        self.dirty = true;
     }
 
     fn scroll(&mut self, delta: i32) {
         self.term.scroll_display(Scroll::Delta(delta));
+        self.dirty = true;
     }
 
     fn scroll_to_bottom(&mut self) {
         self.term.scroll_display(Scroll::Bottom);
+        self.dirty = true;
     }
 }
 
@@ -209,20 +220,55 @@ impl GridManager {
         self.sessions.lock().ok()?.get(id).cloned()
     }
 
+    /// Ensure a grid session exists for `id` at exactly `cols`x`rows`, without
+    /// spawning any threads. Returns the session and whether it was freshly
+    /// created (`true`) or already existed (`false`).
+    ///
+    /// A RE-ATTACH to an existing session MUST resize its Term to the caller's
+    /// size — it must never keep the old width. Re-attach happens whenever the
+    /// frontend effect re-subscribes (map zoom toggling `mapProjection`, a
+    /// `cols`/`rows`/`dprTick` change) while a grid session lingers from a prior
+    /// mount whose fire-and-forget `grid_detach` hasn't landed yet. If we kept
+    /// the stale width here, the grid Term would drift from the PTY winsize
+    /// (which `daemon_resize_session` moves to the new size): the agent then
+    /// composes lines at the PTY width while the grid parses them at its old
+    /// width, so every full line overflows and the surplus character spills onto
+    /// the next row (the mid-word wrap-spill regression). Resizing on re-attach
+    /// keeps grid width == PTY winsize regardless of detach/attach ordering.
+    fn upsert_session(
+        &self,
+        id: &str,
+        cols: usize,
+        rows: usize,
+    ) -> Result<(Arc<Session>, bool), String> {
+        let mut sessions = self.sessions.lock().map_err(|_| "grid lock poisoned")?;
+        if let Some(existing) = sessions.get(id) {
+            existing
+                .state
+                .write()
+                .map_err(|_| "grid state poisoned")?
+                .resize(cols, rows);
+            return Ok((Arc::clone(existing), false));
+        }
+        let session = Arc::new(Session {
+            state: Arc::new(RwLock::new(TermState::new(cols, rows))),
+            emit: Arc::new(Mutex::new(EmitState::default())),
+            stop: Arc::new(AtomicBool::new(false)),
+        });
+        sessions.insert(id.to_string(), Arc::clone(&session));
+        Ok((session, true))
+    }
+
     /// Idempotently stand up a grid for `id`: start feeding it daemon bytes and
-    /// run the 60Hz diff emitter. Returns immediately.
+    /// run the 60Hz diff emitter. Returns immediately. On a re-attach to an
+    /// existing session this resizes the live Term to `cols`x`rows` (see
+    /// `upsert_session`) and does not re-spawn its threads.
     pub fn attach(&self, id: &str, cols: usize, rows: usize) -> Result<(), String> {
         {
-            let mut sessions = self.sessions.lock().map_err(|_| "grid lock poisoned")?;
-            if sessions.contains_key(id) {
+            let (session, is_new) = self.upsert_session(id, cols, rows)?;
+            if !is_new {
                 return Ok(());
             }
-            let session = Arc::new(Session {
-                state: Arc::new(RwLock::new(TermState::new(cols, rows))),
-                emit: Arc::new(Mutex::new(EmitState::default())),
-                stop: Arc::new(AtomicBool::new(false)),
-            });
-            sessions.insert(id.to_string(), Arc::clone(&session));
             spawn_session_threads(id, &session)?;
         }
         Ok(())
@@ -453,9 +499,20 @@ fn emit_session_diff(session: &Arc<Session>) {
         }
     }
 
-    let frame = match session.state.read() {
-        Ok(state) => WireFrame::capture_state(&state),
-        Err(_) => return,
+    // Skip the full-grid capture entirely for panes that haven't mutated since
+    // the last emit. Capturing every session at 60Hz even while idle was the
+    // dominant always-on CPU cost with many panes open (O(rows*cols) per pane
+    // per frame). Take the write lock briefly to consume the dirty flag.
+    let frame = {
+        let mut state = match session.state.write() {
+            Ok(state) => state,
+            Err(_) => return,
+        };
+        if !state.dirty {
+            return;
+        }
+        state.dirty = false;
+        WireFrame::capture_state(&state)
     };
 
     let mut guard = match session.emit.lock() {
@@ -1052,6 +1109,85 @@ mod tests {
         let mut state = TermState::new(DEFAULT_COLS, DEFAULT_ROWS);
         state.feed(bytes.as_bytes());
         GridSnapshot::capture(&state.term)
+    }
+
+    // Regression: re-attaching to a lingering grid session MUST resize its Term
+    // to the caller's size, never silently keep the old width. A stale width
+    // drifts the grid from the PTY winsize, so the agent composes lines at the
+    // PTY width while the grid parses them at its old width and every full line
+    // spills one character onto the next row (the mid-word wrap-spill bug).
+    // `upsert_session` is the thread-free core of `GridManager::attach`; before
+    // the fix `attach` returned early on an existing session and dropped the new
+    // size, which this asserts against.
+    #[test]
+    fn reattach_resizes_existing_grid_to_new_size() {
+        let manager = GridManager::new();
+        let (_first, first_is_new) = manager
+            .upsert_session("regression-session", 80, 24)
+            .expect("first attach");
+        assert!(first_is_new, "first upsert creates the session");
+
+        // Put content in so the Term isn't empty, mirroring a live re-attach.
+        manager
+            .get("regression-session")
+            .expect("session present")
+            .state
+            .write()
+            .expect("state lock")
+            .feed(b"agent output before re-attach\r\n");
+
+        // Re-attach (e.g. a map zoom toggled `mapProjection`) at a wider size.
+        let (session, second_is_new) = manager
+            .upsert_session("regression-session", 100, 30)
+            .expect("re-attach");
+        assert!(!second_is_new, "re-attach reuses the existing session");
+
+        let state = session.state.read().expect("state lock");
+        assert_eq!(
+            state.term.columns(),
+            100,
+            "re-attach must resize the grid Term width to match the new PTY winsize"
+        );
+        assert_eq!(
+            state.term.screen_lines(),
+            30,
+            "re-attach must resize the grid Term height too"
+        );
+        drop(state);
+
+        manager.detach("regression-session");
+    }
+
+    #[test]
+    fn term_state_dirty_flag_tracks_visible_mutations() {
+        let mut state = TermState::new(80, 24);
+        assert!(state.dirty, "new sessions must emit an initial full frame");
+
+        state.dirty = false;
+        state.feed(b"visible output");
+        assert!(state.dirty, "feed must mark the grid dirty");
+
+        state.dirty = false;
+        state.resize(100, 30);
+        assert!(state.dirty, "dimension changes must mark the grid dirty");
+
+        state.dirty = false;
+        state.resize(100, 30);
+        assert!(
+            !state.dirty,
+            "same-size resize should not wake the emitter when nothing changed"
+        );
+
+        state.scroll(-1);
+        assert!(state.dirty, "scroll changes the visible grid");
+
+        state.dirty = false;
+        state.scroll_to_bottom();
+        assert!(state.dirty, "scroll-to-bottom changes the visible grid");
+
+        state.dirty = false;
+        state.reset();
+        assert!(state.dirty, "reset must force a fresh frame");
     }
 
     #[test]
