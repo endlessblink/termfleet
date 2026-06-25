@@ -1,8 +1,11 @@
 import { expect, test } from "@playwright/test";
 import {
   looksLikeNarrativeProse,
+  looksLikeTypedPromptEcho,
+  normalizePersistedShellSummary,
   neutralHeaderTitle,
   preferRealTaskSummary,
+  terminalPurposeFromContext,
 } from "../src/lib/terminalHeaderDisplay";
 import type { WorkstreamStatusSummary } from "../src/lib/types";
 
@@ -78,6 +81,45 @@ test("no real task + narrative scrape → clean status replaces prose and dedupe
   expect(looksLikeNarrativeProse(prose)).toBe(true);
   expect(result.task).toBe("Working");
   expect(result.now).toBe("Working");
+});
+
+test("no real task + slash command prompt echo → activity title replaces typed prompt", () => {
+  const prompt = "Run /review on my current changes";
+  const base = normalizePersistedShellSummary(
+    statusSummary({
+      task: prompt,
+      now: "status summary server checks passed",
+      tasksFromTodoWrite: false,
+    }),
+    "devops/termfleet",
+  );
+  const result = preferRealTaskSummary(
+    base,
+    statusSummary({
+      task: prompt,
+      now: "status summary server checks passed",
+      tasksFromTodoWrite: false,
+    }),
+    "Working",
+  );
+
+  expect(looksLikeTypedPromptEcho(prompt)).toBe(true);
+  expect(result.task).toBe("Validating status-summary extraction");
+  expect(result.task).not.toContain("/review");
+  expect(result.now).toBe("status summary server checks passed");
+});
+
+test("purpose extraction skips slash command echoes and keeps the real task description", () => {
+  const purpose = terminalPurposeFromContext({
+    terminalOutput: [
+      "› Fix terminal header activity description",
+      "Working (12s • esc to interrupt)",
+      "› it is not fixed at all... you havent verified anything",
+      "› Run /review on my current changes",
+    ].join("\n"),
+  });
+
+  expect(purpose?.title).toBe("Fixing terminal header activity description");
 });
 
 test("no task list but agent narrated → narration becomes the title, not 'Working'", () => {

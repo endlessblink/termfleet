@@ -419,3 +419,104 @@ test("map header neutralizes scraped prose when there is no real task", async ({
 
   await block.screenshot({ path: "/tmp/tc-036-map-header-neutralized.png" });
 });
+
+test("map header rejects slash-command prompt echoes as task descriptions", async ({ page }) => {
+  await mockTauri(page);
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+
+  await page.evaluate(() => {
+    type Store = {
+      getState: () => { workspaceUiState: Record<string, unknown> };
+      setState: (state: Record<string, unknown>) => void;
+    };
+    const store = (window as typeof window & { __termfleetWorkspaceStore?: Store }).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+    const group = {
+      id: "group-termfleet",
+      name: "termfleet",
+      color: "#d69a2d",
+      projectRoot: "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
+      lastActiveTabId: "tab-review-prompt",
+    };
+    store.setState({
+      workspaceUiState: {
+        ...store.getState().workspaceUiState,
+        workspaceMode: "canvas",
+        primarySidebarCollapsed: true,
+        canvasSidebarCollapsed: true,
+      },
+      groups: [group],
+      terminalGroups: [group],
+      activeGroupFilter: null,
+      projectRoot: group.projectRoot,
+      activeTabId: "tab-review-prompt",
+      activeTerminalId: "pty-review-prompt",
+      hydrating: false,
+      canvasState: {
+        selectedNodeId: "node-review-prompt",
+        selectedNodeIds: ["node-review-prompt"],
+        viewport: { x: 80, y: 80, zoom: 1 },
+        nodes: [{
+          id: "node-review-prompt",
+          type: "terminal",
+          title: "Terminal",
+          terminalTabId: "tab-review-prompt",
+          x: 80,
+          y: 70,
+          width: 940,
+          height: 360,
+        }],
+      },
+      tabs: [{
+        id: "tab-review-prompt",
+        title: "Terminal",
+        emoji: "[]",
+        color: "#d69a2d",
+        groupId: group.id,
+        initialCwd: group.projectRoot,
+        terminals: [{
+          id: "pty-review-prompt",
+          paneId: "pane-review-prompt",
+          cols: 100,
+          rows: 28,
+          status: "running",
+          terminalOutput: [
+            "› Fix terminal header activity description",
+            "Working (12s • esc to interrupt)",
+            "TERMFLEET_AGENT_STATUS_SUMMARY_SERVER_OK",
+            "› it is not fixed at all... you havent verified anything",
+            "› Run /review on my current changes",
+          ].join("\n"),
+          statusSummary: {
+            task: "Run /review on my current changes",
+            path: "devops/termfleet",
+            now: "status summary server checks passed",
+            status: "done",
+            provider: "shell",
+            confidence: "high",
+            tasksFromTodoWrite: false,
+          },
+        }],
+        splitLayout: { id: "pane-review-prompt", type: "terminal" },
+        activePaneId: "pane-review-prompt",
+      }],
+    });
+  });
+
+  const block = page.getByTestId("canvas-terminal-status-block").filter({ hasText: "termfleet" });
+  const title = block.getByTestId("canvas-terminal-node-header-title");
+  const description = block.getByTestId("canvas-terminal-node-description");
+  const now = block.getByTestId("canvas-terminal-node-now");
+
+  await expect(block).not.toContainText("Run /review on my current changes");
+  await expect(block).not.toContainText("you havent verified anything");
+  await expect(title).toHaveText("Validating status-summary extraction");
+  await expect(description).toHaveText("Fixing terminal header activity description");
+  await expect(now).toContainText("status summary server checks passed");
+
+  await block.screenshot({ path: "/tmp/tc-033-map-header-no-review-prompt.png" });
+});

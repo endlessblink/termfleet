@@ -87,6 +87,28 @@ function boundedTitle(value: string) {
   return text.length > 64 ? `${text.slice(0, 61).trimEnd()}...` : text;
 }
 
+function activeFormTitle(value: string) {
+  return value
+    .replace(/^fix\b/i, "Fixing")
+    .replace(/^improve\b/i, "Improving")
+    .replace(/^add\b/i, "Adding")
+    .replace(/^update\b/i, "Updating")
+    .replace(/^review\b/i, "Reviewing")
+    .replace(/^verify\b/i, "Verifying")
+    .replace(/^validate\b/i, "Validating")
+    .replace(/^check\b/i, "Checking")
+    .replace(/^build\b/i, "Building")
+    .replace(/^test\b/i, "Testing");
+}
+
+export function looksLikeTypedPromptEcho(value?: string | null) {
+  const text = cleanText(value);
+  if (!text) return false;
+  if (/^\s*›/.test(text)) return true;
+  if (/(?:^|\s)\/[a-z][\w-]*\b/i.test(text)) return true;
+  return /^(?:run|use|try|ask|tell|say|write|fix|add|update|review)\s+\/[a-z][\w-]*\b/i.test(text);
+}
+
 /**
  * A scraped transcript line that reads as narrative prose — a sentence the agent or
  * operator wrote — rather than a short, scannable task label. These slip past
@@ -172,6 +194,7 @@ function purposeFromTranscriptLine(line: string) {
     if (
       /^use\s+\/[a-z]/i.test(promptText) ||
       /^\/[a-z][\w-]*\b/i.test(promptText) ||
+      looksLikeTypedPromptEcho(promptText) ||
       /\blist available (?:skills|commands)\b/i.test(promptText)
     ) {
       return undefined;
@@ -201,7 +224,7 @@ function purposeFromTranscriptLine(line: string) {
     ) {
       return undefined;
     }
-    const normalizedPrompt = normalizePurposeTitle(promptText);
+    const normalizedPrompt = normalizePurposeTitle(activeFormTitle(promptText));
     return normalizedPrompt;
   }
 
@@ -258,14 +281,17 @@ function purposeFromTranscript(output?: string | null) {
   }
   const candidateLines =
     lastWorkingIndex >= 0 ? lines.slice(lastWorkingIndex + 1) : lines;
-  for (let index = candidateLines.length - 1; index >= 0; index -= 1) {
-    const line = candidateLines[index];
-    if (/^(?:reverse-i-search|bck-i-search|fwd-i-search):/i.test(line))
-      continue;
-    const title = normalizePurposeTitle(purposeFromTranscriptLine(line));
-    if (title) return title;
-  }
-  return undefined;
+  const findPurpose = (candidates: string[]) => {
+    for (let index = candidates.length - 1; index >= 0; index -= 1) {
+      const line = candidates[index];
+      if (/^(?:reverse-i-search|bck-i-search|fwd-i-search):/i.test(line))
+        continue;
+      const title = normalizePurposeTitle(purposeFromTranscriptLine(line));
+      if (title) return title;
+    }
+    return undefined;
+  };
+  return findPurpose(candidateLines) ?? findPurpose(lines);
 }
 
 export function terminalPurposeFromContext(input: {
@@ -560,6 +586,8 @@ function normalizedPersistedTitle(summary: WorkstreamStatusSummary) {
   const path = cleanPath(summary.path);
   const now = cleanText(summary.now);
 
+  if (/^status summary server checks (?:passed|failed)$/i.test(now ?? ""))
+    return "Validating status-summary extraction";
   if (
     /^Map terminal card checks (?:passed|failed)$/i.test(task ?? "") ||
     /map-terminal-rendering\.spec/i.test(path ?? "")
@@ -719,6 +747,7 @@ export function preferRealTaskSummary<T extends { task: string; now: string }>(
     base.task !== "Ready" &&
     (isGenericTaskTitle(base.task) ||
       looksLikeNarrativeProse(base.task) ||
+      looksLikeTypedPromptEcho(base.task) ||
       repeatsTitle(base.task, base.now))
   ) {
     return {

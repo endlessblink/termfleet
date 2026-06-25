@@ -2305,12 +2305,10 @@ function CanvasNodeViewImpl({
         linkedTerminal.durableActivity,
         pathTail(liveTerminalRoot) ?? liveTerminalRoot ?? "workspace path unknown",
         terminalExtractedSummary,
-        terminalPurpose,
       )
     : normalizePersistedShellSummary(
         terminalExtractedSummary,
         pathTail(liveTerminalRoot) ?? liveTerminalRoot ?? "workspace path unknown",
-        terminalPurpose,
       );
   // The agent's real task list (sidecar) wins the title/now over heuristic
   // inference — see preferRealTaskSummary. (TC-033)
@@ -2361,10 +2359,15 @@ function CanvasNodeViewImpl({
   const terminalHeaderHasTrustedSummary =
     terminalHeaderHasUsefulSummary && terminalDisplaySummary.confidence !== "low";
   const terminalHeaderTaskState = terminalHeaderHasUsefulNow ? "Working" : terminalNeutralTitle;
+  const terminalHeaderPurpose =
+    terminalPurpose?.title && terminalPurpose.title !== terminalHeaderTitle
+      ? terminalPurpose.title
+      : undefined;
   const terminalHeaderDescription =
-    terminalHeaderSummarySignal && terminalHeaderSummarySignal !== "Awaiting terminal output"
+    terminalHeaderPurpose ??
+    (terminalHeaderSummarySignal && terminalHeaderSummarySignal !== "Awaiting terminal output"
       ? terminalHeaderSummarySignal
-      : terminalHeaderTaskState;
+      : terminalHeaderTaskState);
   const detectedLaneTaskId = node.taskBinding?.taskId ?? firstTaskIdFromText(
     workstream?.mission,
     workstream?.prompt,
