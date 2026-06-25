@@ -472,11 +472,16 @@ Progress notes:
   summary-source/debug labels such as `running activity` or `model summary` as
   cockpit-visible description text. The map card kicker now identifies the
   workspace and shows the cleaned current activity, while regressions block raw
-  prompt/input fragments from taking over that description. Proof: `npm run
-  build` and `npm run verify:terminal-summary-visual` passed.
+  prompt/input fragments from taking over that description. Follow-up hardening
+  blocks narrative terminal prose from becoming the title/description when there
+  is no real task list, purpose, or durable live activity. Proof: `npm run build`
+  and `npm run verify:terminal-summary-visual` passed.
   Current evidence: `npx playwright test tests/agent-status-summary.spec.ts
-  --reporter=line` passed 40/40; `npm run verify:terminal-summary-visual`
-  passed 4/4; `npm run build` passed; `git diff --check` passed.
+  --reporter=line` passed 40/40; `npx playwright test
+  tests/header-real-task-title.spec.ts --reporter=line` passed 9/9; `npm run
+  verify:terminal-summary-visual` passed 5/5; `npm run build` passed;
+  `TERMFLEET_AGENT_STATUS_PORT=37820 npm run verify:agent-status-summary`
+  passed; `git diff --check` passed.
 - Headed app proof: `/tmp/termfleet-headed-final-worked-for-purpose.png`
   captures the current regular TermFleet window after reload. It shows the fixed
   non-bleeding summary behavior on the loaded map, while an old terminal with no

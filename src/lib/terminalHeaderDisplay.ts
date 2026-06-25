@@ -87,6 +87,48 @@ function boundedTitle(value: string) {
   return text.length > 64 ? `${text.slice(0, 61).trimEnd()}...` : text;
 }
 
+/**
+ * A scraped transcript line that reads as narrative prose — a sentence the agent or
+ * operator wrote — rather than a short, scannable task label. These slip past
+ * `isGenericTaskTitle` (which only knows a fixed allow-list) but must NEVER become the
+ * header title: they are long, they describe past chatter instead of the current task,
+ * and the same line tends to get surfaced into both `task` and `now`, producing the
+ * duplicated, truncated headers operators reported. When detected we fall back to the
+ * neutral run-state title instead. Deliberately conservative so real labels like
+ * "Improving terminal-summary visual headers" or "frontend build passed" are kept. (TC-033)
+ */
+export function looksLikeNarrativeProse(value?: string | null) {
+  const text = cleanText(value);
+  if (!text) return false;
+  // Real task labels stay short; anything long enough to need truncation is prose.
+  if (text.length > 56) return true;
+  const words = text.split(" ");
+  // Narration openers a task label would not start with.
+  if (/^(?:what|here|there|this|that|i['’]m|i am|i|we|you|now|so|the|it|but|and|because)$/i.test(words[0] ?? "")) {
+    return true;
+  }
+  // Ends like a sentence (period/!/? optionally closed by a quote/bracket) AND multi-word.
+  if (words.length > 4 && /[.!?]["')\]]?$/.test(text)) return true;
+  // Has a clause verb in the middle of a long line — reads as a sentence, not a label.
+  if (words.length > 7 && /\b(?:was|were|is|are|been|sat|which|that|because|while)\b/i.test(text)) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Keep `now` from echoing the title. A heuristic scrape often surfaces the same line
+ * into both fields; when that happens the duplicate carries no new information, so we
+ * collapse it to a short run-state detail. Use only for heuristic/scraped summaries;
+ * real task summaries should keep their explicit current activity. (TC-033)
+ */
+function dedupedNow(title: string, now: string | undefined, idleFallback = "Awaiting command") {
+  const detail = cleanText(now);
+  if (!detail) return idleFallback;
+  if (repeatsTitle(title, detail) || looksLikeNarrativeProse(detail)) return idleFallback;
+  return boundedTitle(detail);
+}
+
 function normalizePurposeTitle(value?: string | null) {
   const text = cleanText(value)
     ?.replace(/^\[[^\]]+\]\s*/, "")
@@ -647,9 +689,10 @@ export function preferRealTaskSummary<T extends { task: string; now: string }>(
   neutralTitle?: string,
 ): T {
   if (statusSummary?.tasksFromTodoWrite) {
+    const task = cleanText(statusSummary.task) ?? base.task;
     return {
       ...base,
-      task: cleanText(statusSummary.task) ?? base.task,
+      task,
       now: cleanText(statusSummary.now) ?? base.now,
     };
   }
@@ -659,19 +702,32 @@ export function preferRealTaskSummary<T extends { task: string; now: string }>(
   // activity detail. (TC-033)
   const narration = cleanText(statusSummary?.narration);
   if (narration) {
+    const task = boundedTitle(narration);
     return {
       ...base,
-      task: boundedTitle(narration),
+      task,
       now: cleanText(statusSummary?.now) ?? base.now,
     };
   }
-  // No real task list and no narration → only replace titles that are actually
-  // generic/scraped. Durable activity and persisted summaries already carry
-  // better contextual titles and must not collapse back to "Working".
-  if (neutralTitle && base.task !== "Ready" && isGenericTaskTitle(base.task)) {
-    return { ...base, task: neutralTitle };
+  // No real task list and no narration → the title is a best-effort heuristic scrape.
+  // Replace it with the neutral run-state title when it is generic, reads as narrative
+  // prose, or merely echoes the `now` detail — none of those are a trustworthy task
+  // label, and surfacing them produces the long, duplicated headers we guard against.
+  // Durable activity / persisted summaries with a real contextual title are kept. (TC-033)
+  if (
+    neutralTitle &&
+    base.task !== "Ready" &&
+    (isGenericTaskTitle(base.task) ||
+      looksLikeNarrativeProse(base.task) ||
+      repeatsTitle(base.task, base.now))
+  ) {
+    return {
+      ...base,
+      task: neutralTitle,
+      now: dedupedNow(neutralTitle, base.now, neutralTitle),
+    };
   }
-  return base;
+  return { ...base, now: dedupedNow(base.task, base.now) };
 }
 
 export function terminalActivityDetail(

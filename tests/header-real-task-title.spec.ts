@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import {
+  looksLikeNarrativeProse,
   neutralHeaderTitle,
   preferRealTaskSummary,
 } from "../src/lib/terminalHeaderDisplay";
@@ -59,6 +60,24 @@ test("no real task + neutral title → clean status replaces the heuristic scrap
   // The scraped heuristic title is replaced by the clean neutral; activity stays.
   expect(result.task).toBe("Working");
   expect(result.now).toBe(heuristicBase.now);
+});
+
+test("no real task + narrative scrape → clean status replaces prose and dedupes now", () => {
+  const prose =
+    "The map card header was showing implementation/source labels like running activity and model summary.";
+  const result = preferRealTaskSummary(
+    {
+      ...heuristicBase,
+      task: prose,
+      now: prose,
+    },
+    statusSummary({ tasksFromTodoWrite: false }),
+    "Working",
+  );
+
+  expect(looksLikeNarrativeProse(prose)).toBe(true);
+  expect(result.task).toBe("Working");
+  expect(result.now).toBe("Working");
 });
 
 test("no task list but agent narrated → narration becomes the title, not 'Working'", () => {

@@ -2322,10 +2322,18 @@ function CanvasNodeViewImpl({
   const terminalActivityLive =
     linkedTerminal?.durableActivity?.status === "running" &&
     Date.now() - (linkedTerminal.durableActivity.updatedAt ?? 0) < 60_000;
+  const terminalNeutralTitle =
+    terminalDisplaySummaryBase.status === "working"
+      ? "Working"
+      : terminalDisplaySummaryBase.status === "blocked"
+        ? "Needs attention"
+        : terminalDisplaySummaryBase.status === "done" || terminalDisplaySummaryBase.status === "idle"
+          ? "Idle"
+          : neutralHeaderTitle(linkedTerminal?.status);
   const terminalDisplaySummary = preferRealTaskSummary(
     terminalDisplaySummaryBase,
     terminalStatusSummary,
-    terminalActivityLive ? undefined : neutralHeaderTitle(linkedTerminal?.status),
+    terminalActivityLive ? undefined : terminalNeutralTitle,
   );
   const terminalHeaderTitleRaw = terminalDisplaySummary.task === "Ready" ? terminalTitle : terminalDisplaySummary.task;
   const terminalHeaderPath = terminalDisplaySummary.path;
@@ -2352,16 +2360,11 @@ function CanvasNodeViewImpl({
   const terminalHeaderHasUsefulSummary = terminalDisplaySummary.task !== "Ready";
   const terminalHeaderHasTrustedSummary =
     terminalHeaderHasUsefulSummary && terminalDisplaySummary.confidence !== "low";
-  const terminalHeaderTaskState = terminalHeaderHasUsefulNow
-    ? "Working"
-    : linkedTerminal?.status === "failed"
-      ? "Failed"
-      : linkedTerminal?.status === "exited"
-        ? "Done"
-        : "Idle";
-  const terminalHeaderDescription = terminalHeaderHasUsefulNow
-    ? terminalHeaderSummarySignal
-    : terminalHeaderTaskState;
+  const terminalHeaderTaskState = terminalHeaderHasUsefulNow ? "Working" : terminalNeutralTitle;
+  const terminalHeaderDescription =
+    terminalHeaderSummarySignal && terminalHeaderSummarySignal !== "Awaiting terminal output"
+      ? terminalHeaderSummarySignal
+      : terminalHeaderTaskState;
   const detectedLaneTaskId = node.taskBinding?.taskId ?? firstTaskIdFromText(
     workstream?.mission,
     workstream?.prompt,

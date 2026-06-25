@@ -306,3 +306,116 @@ test("regular map header rejects noisy scrollback titles and fits the activity t
     path: "/tmp/tc-032-terminal-summary-map-title.png",
   });
 });
+
+// Reproduces the REAL production failure: a plain shell with NO real task list, NO durable
+// activity and NO purpose — the only signal is scraped scrollback prose, surfaced into BOTH
+// `task` and `now`. That prose is terminal text, not a task description. The header must
+// collapse to a clean current-activity state instead of reflecting typed/output prose.
+test("map header neutralizes scraped prose when there is no real task", async ({ page }) => {
+  await mockTauri(page);
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+
+  const prose =
+    "What was wrong: the header chunk (Workspace pill + title + path/now) sat inside a 3-column grid using auto-placement, so it landed wherever room was left.";
+
+  await page.evaluate((proseText) => {
+    type Store = {
+      getState: () => { workspaceUiState: Record<string, unknown> };
+      setState: (state: Record<string, unknown>) => void;
+    };
+    const store = (window as typeof window & { __termfleetWorkspaceStore?: Store }).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+    const group = {
+      id: "group-termfleet",
+      name: "productivity",
+      color: "#d69a2d",
+      projectRoot: "/media/endlessblink/data/my-projects/ai-development/productivity",
+      lastActiveTabId: "tab-shell",
+    };
+    store.setState({
+      workspaceUiState: {
+        ...store.getState().workspaceUiState,
+        workspaceMode: "canvas",
+        primarySidebarCollapsed: true,
+        canvasSidebarCollapsed: true,
+      },
+      groups: [group],
+      terminalGroups: [group],
+      activeGroupFilter: null,
+      projectRoot: group.projectRoot,
+      activeTabId: "tab-prose-shell",
+      activeTerminalId: "pty-prose-shell",
+      hydrating: false,
+      canvasState: {
+        selectedNodeId: "node-prose-shell",
+        selectedNodeIds: ["node-prose-shell"],
+        viewport: { x: 80, y: 80, zoom: 1 },
+        nodes: [{
+          id: "node-prose-shell",
+          type: "terminal",
+          title: "Terminal",
+          terminalTabId: "tab-prose-shell",
+          x: 80,
+          y: 70,
+          width: 940,
+          height: 360,
+        }],
+      },
+      tabs: [{
+        id: "tab-prose-shell",
+        title: "Terminal",
+        emoji: "[]",
+        color: "#d69a2d",
+        groupId: group.id,
+        initialCwd: group.projectRoot,
+        terminals: [{
+          id: "pty-prose-shell",
+          paneId: "pane-prose-shell",
+          cols: 100,
+          rows: 28,
+          status: "running",
+          // No durableActivity, no purpose — only scraped scrollback.
+          terminalOutput: [proseText, "› ", "[OMC] | thinking | session:2m"].join("\n"),
+          statusSummary: {
+            task: proseText,
+            path: "ai-development/productivity",
+            now: proseText,
+            status: "working",
+            provider: "shell",
+            confidence: "high",
+            tasksFromTodoWrite: false,
+          },
+        }],
+        splitLayout: { id: "pane-prose-shell", type: "terminal" },
+        activePaneId: "pane-prose-shell",
+      }],
+    });
+  }, prose);
+
+  const block = page.getByTestId("canvas-terminal-status-block").filter({ hasText: "productivity" });
+  const title = block.getByTestId("canvas-terminal-node-header-title");
+  const description = block.getByTestId("canvas-terminal-node-description");
+  const now = block.getByTestId("canvas-terminal-node-now");
+
+  // The prose must not appear anywhere in the header.
+  await expect(block).not.toContainText("header chunk");
+  await expect(block).not.toContainText("auto-placement");
+  await expect(title).toHaveText("Working");
+  await expect(description).toHaveText("Working");
+  await expect(now).toContainText("Working");
+
+  // Title fits its box (no horizontal overflow).
+  const metrics = await title.evaluate((element) => ({
+    text: element.textContent?.trim() ?? "",
+    clientWidth: element.clientWidth,
+    scrollWidth: element.scrollWidth,
+  }));
+  expect(metrics.text.length).toBeLessThanOrEqual(64);
+  expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth + 1);
+
+  await block.screenshot({ path: "/tmp/tc-036-map-header-neutralized.png" });
+});
