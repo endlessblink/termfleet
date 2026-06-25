@@ -19,6 +19,17 @@ kill_if_running() {
   fi
 }
 
+kill_app_vite() {
+  local pids
+
+  pids="$(ps -eo pid=,args= | awk -v root_dir="$ROOT_DIR" '
+    index($0, root_dir "/node_modules/.bin/vite") && index($0, "--port 1420") { print $1 }
+  ')" || true
+  if [[ -n "$pids" ]]; then
+    echo "$pids" | xargs -r kill
+  fi
+}
+
 port_in_use() {
   python3 - "$1" <<'PYEOF'
 import socket, sys
@@ -88,7 +99,7 @@ trap cleanup EXIT INT TERM
 
 cd "$ROOT_DIR"
 
-kill_if_running "$ROOT_DIR/node_modules/.bin/vite --host 127.0.0.1 --port 1420"
+kill_app_vite
 if port_in_use 1420; then
   echo "Port 1420 is still in use after cleaning this app's dev processes; refusing to kill an unknown owner." >&2
   exit 1

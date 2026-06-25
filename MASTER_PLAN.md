@@ -5119,6 +5119,12 @@ T8 persistence, T9 input.
   "model summary" vs "heuristic summary" (with the error in the tooltip) instead of
   silently degrading — `tests/summary-source-label.spec.ts` 3/3. Server auto-start
   deferred (per decision).
+- **T2 launcher cleanup follow-up (2026-06-25):** dev launchers now clear only this
+  repo's Vite process on port 1420 instead of using a loose `pgrep -f` command-string
+  match. That preserves the "refuse to kill unknown owners" safety path while avoiding
+  stale same-app Vite blockers after crashes. Evidence: `npm run
+  verify:agent-status-summary`; `bash -n run-dev.sh`; `bash -n
+  run-native-vte-dev.sh`; `bash -n scripts/tauri-dev-with-status.sh`.
 - **T4 — terminal-summary visual seed (DONE/satisfied):** `tests/terminal-summary-visual.spec.ts`
   passes; the in-flight seed already carries the needed state.
 - **T3 — agent-prompt paste no longer duplicated/auto-run (DONE):** multi-line/large

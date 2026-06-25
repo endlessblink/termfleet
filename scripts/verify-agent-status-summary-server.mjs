@@ -35,9 +35,19 @@ assert.match(tauriDevWrapper, /TERMFLEET_AGENT_STATUS_MODEL:-qwen3:4b/);
 assert.match(ollamaAdapterSource, /TERMFLEET_AGENT_STATUS_MODEL \|\| "qwen3:4b"/);
 assert.match(runDev, /npm run tauri:dev/);
 assert.match(runNativeDev, /npm run tauri:dev/);
+assert.match(tauriDevWrapper, /kill_app_vite\(\)/);
+assert.match(tauriDevWrapper, /index\(\$0, root_dir "\/node_modules\/\.bin\/vite"\)/);
+assert.match(tauriDevWrapper, /index\(\$0, "--port 1420"\)/);
+assert.doesNotMatch(tauriDevWrapper, /kill_if_running "\$ROOT_DIR\/node_modules\/\.bin\/vite --host 127\.0\.0\.1 --port 1420"/);
+for (const launcherSource of [runDev, runNativeDev]) {
+  assert.match(launcherSource, /kill_app_vite\(\)/);
+  assert.match(launcherSource, /index\(\$0, app_dir "\/node_modules\/\.bin\/vite"\)/);
+  assert.match(launcherSource, /index\(\$0, "--port 1420"\)/);
+  assert.doesNotMatch(launcherSource, /kill_if_running "\$APP_DIR\/node_modules\/\.bin\/vite --host 127\.0\.0\.1 --port 1420"/);
+}
 assert.match(splitPaneSource, /<CockpitSnapshotProbe/);
-assert.match(splitPaneSource, /title: \(isAgentPane \? agentStatusSummary\?\.task : shellStatusSummary\?\.task\)/);
-assert.match(splitPaneSource, /now: \(isAgentPane \? agentStatusSummary\?\.now : shellStatusSummary\?\.now\)/);
+assert.match(splitPaneSource, /title: headerTitle/);
+assert.match(splitPaneSource, /now: headerNow/);
 assert.match(splitPaneSource, /taskLineup: visibleTaskLineup\.map/);
 assert.match(cockpitSnapshotSource, /VITE_COCKPIT_SNAPSHOT/);
 assert.match(cockpitSnapshotSource, /\/cockpit-snapshot/);
