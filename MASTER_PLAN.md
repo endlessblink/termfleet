@@ -476,10 +476,13 @@ Progress notes:
   blocks narrative terminal prose from becoming the title/description when there
   is no real task list, purpose, or durable live activity, and separates the map
   header fields so the kicker shows the overarching task description, the title
-  shows the current summary, and `Now` shows proof/status detail.
+  shows the active human task, and `Now` shows proof/status detail. Added
+  `npm run verify:terminal-header-contract` as the focused visual hook for this
+  screenshot-shaped contract.
   Current evidence: `npx playwright test tests/agent-status-summary.spec.ts
   --reporter=line` passed 40/40; `npx playwright test
   tests/header-real-task-title.spec.ts --reporter=line` passed 11/11; `npm run
+  verify:terminal-header-contract` passed 1/1; `npm run
   verify:terminal-summary-visual` passed 6/6; `npm run build` passed;
   `TERMFLEET_AGENT_STATUS_PORT=37820 npm run verify:agent-status-summary`
   passed; screenshot proof: `/tmp/tc-033-map-header-no-review-prompt.png`;

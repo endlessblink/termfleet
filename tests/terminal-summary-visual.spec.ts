@@ -286,7 +286,8 @@ test("regular map header rejects noisy scrollback titles and fits the activity t
 
   await expect(title).toHaveText("Improving terminal-summary visual headers");
   await expect(title).not.toContainText("The visual app surface");
-  await expect(description).toContainText("frontend build passed");
+  await expect(description).toContainText("Improving terminal summaries");
+  await expect(description).not.toContainText("frontend build passed");
   await expect(description).not.toContainText("web$");
   await expect(description).not.toContainText("unfinished prompt");
   await expect(now).toContainText("frontend build passed");
@@ -514,8 +515,8 @@ test("map header rejects slash-command prompt echoes as task descriptions", asyn
 
   await expect(block).not.toContainText("Run /review on my current changes");
   await expect(block).not.toContainText("you havent verified anything");
-  await expect(title).toHaveText("Validating status-summary extraction");
-  await expect(description).toHaveText("Fixing terminal header activity description");
+  await expect(title).toHaveText("Fixing terminal header activity description");
+  await expect(description).toHaveText("Improving terminal header activity");
   await expect(now).toContainText("status summary server checks passed");
 
   await block.screenshot({ path: "/tmp/tc-033-map-header-no-review-prompt.png" });

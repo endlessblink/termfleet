@@ -25,6 +25,7 @@
     "verify:release": "scripts/verify-release.sh",
     "verify:map-terminals": "node scripts/verify-map-terminals.mjs",
     "verify:terminal-summary-visual": "playwright test tests/terminal-summary-visual.spec.ts --reporter=line",
+    "verify:terminal-header-contract": "playwright test tests/terminal-summary-visual.spec.ts -g \"map header rejects slash-command prompt echoes\" --reporter=line",
     "evidence:bundle": "node scripts/export-evidence-bundle.mjs",
     "verify:evidence-bundle": "node scripts/verify-evidence-bundle.mjs",
     "verify:oss-readiness": "node scripts/verify-oss-readiness.mjs",

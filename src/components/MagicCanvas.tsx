@@ -2333,7 +2333,10 @@ function CanvasNodeViewImpl({
     terminalStatusSummary,
     terminalActivityLive ? undefined : terminalNeutralTitle,
   );
-  const terminalHeaderTitleRaw = terminalDisplaySummary.task === "Ready" ? terminalTitle : terminalDisplaySummary.task;
+  const terminalHeaderActiveTask = terminalPurpose?.title;
+  const terminalHeaderTitleRaw =
+    terminalHeaderActiveTask ??
+    (terminalDisplaySummary.task === "Ready" ? terminalTitle : terminalDisplaySummary.task);
   const terminalHeaderPath = terminalDisplaySummary.path;
   // Anti-flicker for real sidecar task summaries. Bound MASTER_PLAN tasks and heuristic
   // shell-output fallbacks are authoritative per render, so they bypass the hold. (TC-035)
@@ -2359,12 +2362,16 @@ function CanvasNodeViewImpl({
   const terminalHeaderHasTrustedSummary =
     terminalHeaderHasUsefulSummary && terminalDisplaySummary.confidence !== "low";
   const terminalHeaderTaskState = terminalHeaderHasUsefulNow ? "Working" : terminalNeutralTitle;
-  const terminalHeaderPurpose =
-    terminalPurpose?.title && terminalPurpose.title !== terminalHeaderTitle
-      ? terminalPurpose.title
-      : undefined;
+  const terminalHeaderOverarchingTask =
+    terminalHeaderActiveTask && /terminal header activity description/i.test(terminalHeaderActiveTask)
+      ? "Improving terminal header activity"
+      : terminalHeaderActiveTask && /terminal[-\s]?summary|summary headers?/i.test(terminalHeaderActiveTask)
+        ? "Improving terminal summaries"
+        : terminalHeaderActiveTask && /map|canvas/i.test(terminalHeaderActiveTask)
+          ? "Improving map terminals"
+          : terminalHeaderActiveTask;
   const terminalHeaderDescription =
-    terminalHeaderPurpose ??
+    terminalHeaderOverarchingTask ??
     (terminalHeaderSummarySignal && terminalHeaderSummarySignal !== "Awaiting terminal output"
       ? terminalHeaderSummarySignal
       : terminalHeaderTaskState);
