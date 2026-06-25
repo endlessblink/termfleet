@@ -3766,7 +3766,17 @@ export function MagicCanvas() {
   const selectCanvasNodes = useWorkspaceStore((state) => state.selectCanvasNodes);
   const openFiles = useWorkspaceStore((state) => state.openFiles);
   const shellRef = useRef<HTMLDivElement>(null);
-  const panRef = useRef<{ x: number; y: number; viewportX: number; viewportY: number } | null>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
+  const panRef = useRef<{
+    x: number;
+    y: number;
+    viewportX: number;
+    viewportY: number;
+    zoom: number;
+    nextX: number;
+    nextY: number;
+  } | null>(null);
+  const panRafRef = useRef<number | null>(null);
   const [fileIndex, setFileIndex] = useState(0);
   const [terminalPreviews, setTerminalPreviews] = useState<Record<string, TerminalPreviewEntry>>({});
   // Per-node throttle state for preview updates (leading + trailing).
@@ -4185,9 +4195,31 @@ export function MagicCanvas() {
       y: event.clientY,
       viewportX: canvasState.viewport.x,
       viewportY: canvasState.viewport.y,
+      zoom: canvasState.viewport.zoom,
+      nextX: canvasState.viewport.x,
+      nextY: canvasState.viewport.y,
     };
     document.body.classList.add("no-select");
     if (shellRef.current) shellRef.current.style.cursor = "grabbing";
+
+    // Drive the pan with direct, rAF-coalesced DOM writes instead of a store
+    // write per mousemove. Writing canvasState.viewport on every move re-rendered
+    // the whole canvas tree — and recomputed liveNodeIds (its memo depends on
+    // viewport), churning every live terminal node — which is the pan lag. The
+    // stage is a CSS-transformed container, so moving it pans all nodes for free
+    // on the compositor. The store is committed once on mouseup.
+    function applyPanToDom() {
+      panRafRef.current = null;
+      const pan = panRef.current;
+      if (!pan) return;
+      if (stageRef.current) {
+        stageRef.current.style.transform =
+          `translate(${pan.nextX}px, ${pan.nextY}px) scale(${pan.zoom})`;
+      }
+      if (shellRef.current) {
+        shellRef.current.style.backgroundPosition = `${pan.nextX}px ${pan.nextY}px`;
+      }
+    }
 
     function onMouseMove(moveEvent: MouseEvent) {
       const pan = panRef.current;
@@ -4195,18 +4227,29 @@ export function MagicCanvas() {
       if (Math.abs(moveEvent.clientX - pan.x) > 3 || Math.abs(moveEvent.clientY - pan.y) > 3) {
         moved = true;
       }
-      updateCanvasViewport({
-        x: pan.viewportX + moveEvent.clientX - pan.x,
-        y: pan.viewportY + moveEvent.clientY - pan.y,
-      });
+      pan.nextX = pan.viewportX + moveEvent.clientX - pan.x;
+      pan.nextY = pan.viewportY + moveEvent.clientY - pan.y;
+      if (panRafRef.current === null) {
+        panRafRef.current = requestAnimationFrame(applyPanToDom);
+      }
     }
 
     function onMouseUp() {
+      const pan = panRef.current;
       panRef.current = null;
+      if (panRafRef.current !== null) {
+        cancelAnimationFrame(panRafRef.current);
+        panRafRef.current = null;
+      }
       document.body.classList.remove("no-select");
       if (shellRef.current) shellRef.current.style.cursor = "";
       document.removeEventListener("mousemove", onMouseMove);
       document.removeEventListener("mouseup", onMouseUp);
+      // Commit the final viewport to the store once (recomputes liveNodeIds,
+      // persists layout). Only when actually panned — a plain click stays cheap.
+      if (pan && moved) {
+        updateCanvasViewport({ x: pan.nextX, y: pan.nextY });
+      }
       if (options?.deselectOnClick && !moved) {
         selectCanvasNodes([]);
       }
@@ -4214,7 +4257,7 @@ export function MagicCanvas() {
 
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onMouseUp);
-  }, [canvasState.viewport.x, canvasState.viewport.y, selectCanvasNodes, updateCanvasViewport]);
+  }, [canvasState.viewport.x, canvasState.viewport.y, canvasState.viewport.zoom, selectCanvasNodes, updateCanvasViewport]);
 
   const onCanvasMouseDown = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
     if (event.target !== event.currentTarget) return;
@@ -5588,6 +5631,7 @@ export function MagicCanvas() {
       )}
 
       <div
+        ref={stageRef}
         style={{
           ...styles.stage,
           transform: `translate(${canvasState.viewport.x}px, ${canvasState.viewport.y}px) scale(${canvasState.viewport.zoom})`,

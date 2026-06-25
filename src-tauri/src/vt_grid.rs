@@ -502,7 +502,24 @@ fn emit_session_diff(session: &Arc<Session>) {
     // Skip the full-grid capture entirely for panes that haven't mutated since
     // the last emit. Capturing every session at 60Hz even while idle was the
     // dominant always-on CPU cost with many panes open (O(rows*cols) per pane
-    // per frame). Take the write lock briefly to consume the dirty flag.
+    // per frame).
+    //
+    // Idle panes (the common case) check `dirty` under a cheap SHARED read lock
+    // and bail — they never take the write lock. Taking the write lock here every
+    // tick would serialize against the feed thread that applies keystroke echo,
+    // adding input latency that scales with pane count. Only a dirtied pane
+    // escalates to the write lock to capture + clear the flag. The emitter is the
+    // sole clearer of `dirty` and the feed thread only ever sets it, so the value
+    // can't be lost between the read check and the write.
+    {
+        let state = match session.state.read() {
+            Ok(state) => state,
+            Err(_) => return,
+        };
+        if !state.dirty {
+            return;
+        }
+    }
     let frame = {
         let mut state = match session.state.write() {
             Ok(state) => state,
@@ -1188,6 +1205,44 @@ mod tests {
         state.dirty = false;
         state.reset();
         assert!(state.dirty, "reset must force a fresh frame");
+    }
+
+    // Regression: the 60Hz emitter skips the O(rows*cols) grid capture for panes
+    // that haven't changed (the dirty flag). This guards the invariant the skip
+    // relies on — every method that can change the visible grid must mark dirty,
+    // and a no-op must NOT — so the optimization can never drop a real frame nor
+    // needlessly re-emit an idle one. If a new mutation method is added without
+    // setting `dirty`, this fails.
+    #[test]
+    fn term_state_dirty_tracks_grid_mutations() {
+        let mut s = TermState::new(80, 24);
+        assert!(s.dirty, "a new grid starts dirty so its first frame emits");
+
+        s.dirty = false;
+        s.feed(b"hello world");
+        assert!(s.dirty, "feed marks the grid dirty");
+
+        s.dirty = false;
+        s.scroll(1);
+        assert!(s.dirty, "scroll marks the grid dirty");
+
+        s.dirty = false;
+        s.scroll_to_bottom();
+        assert!(s.dirty, "scroll_to_bottom marks the grid dirty");
+
+        s.dirty = false;
+        s.resize(100, 30);
+        assert!(s.dirty, "a real resize marks the grid dirty");
+
+        s.dirty = false;
+        s.resize(100, 30);
+        assert!(
+            !s.dirty,
+            "a no-op resize must NOT mark dirty (no needless capture/emit)"
+        );
+
+        s.reset();
+        assert!(s.dirty, "reset marks the grid dirty");
     }
 
     #[test]
