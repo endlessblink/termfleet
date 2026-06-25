@@ -424,6 +424,19 @@ const checks = [
     message: "Focused map terminals must preserve map geometry and use fixed backing-store supersampling, not zoom-derived renderer props or inverse CSS scaling that crop/churn live TUIs.",
   },
   {
+    // Pan perf regression: dragging the map must NOT write canvasState.viewport on
+    // every mousemove (that re-rendered the whole canvas tree and recomputed the
+    // liveNodeIds memo per move — the pan lag). The drag updates the stage
+    // transform via an rAF-coalesced DOM write and commits the viewport to the
+    // store only once on mouseup.
+    ok: /const panRafRef = useRef<number \| null>\(null\);/.test(magicCanvas) &&
+      /panRafRef\.current = requestAnimationFrame\(applyPanToDom\);/.test(magicCanvas) &&
+      /stageRef\.current\.style\.transform =/.test(magicCanvas) &&
+      /if \(pan && moved\) \{\s*updateCanvasViewport\(\{ x: pan\.nextX, y: pan\.nextY \}\);/.test(magicCanvas) &&
+      !/updateCanvasViewport\(\{\s*x: pan\.viewportX \+ moveEvent\.clientX - pan\.x,/.test(magicCanvas),
+    message: "Canvas panning must update the stage transform via rAF/DOM during drag and commit the viewport to the store only on mouseup (never per mousemove).",
+  },
+  {
     ok: existsSync(join(root, "src/lib/powerlineGlyph.ts")) &&
       /import \{ drawPowerlineGlyph, isPowerlineGlyph \} from "\.\/powerlineGlyph";/.test(gridRenderer) &&
       /isPowerlineGlyph\(cp\) && drawPowerlineGlyph\(ctx, cp, x, y, cellW, cellH, fg\)/.test(gridRenderer) &&
