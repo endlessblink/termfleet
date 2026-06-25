@@ -40,7 +40,7 @@ import { workstreamActivityMeta, workstreamActivityText } from "../lib/workstrea
 import { formatWorkstreamBranch, formatWorkstreamIsolation, formatWorkstreamOpsContext } from "../lib/workstreamOpsContext";
 import { snapshotPreviewRows } from "../lib/snapshotPreviewRows";
 import { taskLineupNextLabel, taskLineupStats, visibleTaskLineup } from "../lib/taskLineup";
-import { neutralHeaderTitle, normalizePersistedShellSummary, preferRealTaskSummary, summaryFromDurableActivity, terminalPurposeFromContext } from "../lib/terminalHeaderDisplay";
+import { neutralHeaderTitle, normalizePersistedShellSummary, preferRealTaskSummary, summaryFromDurableActivity } from "../lib/terminalHeaderDisplay";
 import { stableHeader } from "../lib/stableHeader";
 
 type CanvasRect = {
@@ -376,6 +376,32 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 12,
     fontWeight: 500,
     letterSpacing: 0,
+  },
+  terminalTaskRow: {
+    minWidth: 0,
+    display: "grid",
+    gridTemplateColumns: "auto minmax(0, 1fr)",
+    alignItems: "baseline",
+    gap: 6,
+    color: "color-mix(in srgb, var(--text-secondary) 82%, transparent)",
+    fontSize: 12,
+    fontWeight: 500,
+    letterSpacing: 0,
+  },
+  terminalTaskLabel: {
+    color: "var(--text-tertiary)",
+    fontSize: 11,
+    fontWeight: 600,
+    letterSpacing: 0,
+  },
+  terminalTaskValue: {
+    minWidth: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    color: "var(--text-secondary)",
+    fontSize: 12,
+    fontWeight: 500,
   },
   workspacePill: {
     minWidth: 0,
@@ -2276,15 +2302,13 @@ function CanvasNodeViewImpl({
     workstream?.taskLineup ?? linkedTerminal?.taskLineup,
     linkedTerminal?.activeRunId
   );
-  const terminalPurpose = terminalPurposeFromContext({
-    stored: linkedTerminal?.purpose,
-    boundTaskTitle: directlyBoundTask?.title,
-    workstreamTitle: workstream?.mission ?? workstream?.prompt,
-    activeTaskTitle: purposeTaskLineup.find((item) => item.status === "in_progress")?.content ?? purposeTaskLineup[0]?.content,
-    terminalOutput: !linkedTerminal?.durableActivity || /\b(?:Working\s+\(|Worked for\b)/i.test(linkedTerminal.terminalOutput ?? "")
-      ? linkedTerminal?.terminalOutput
-      : undefined,
-  });
+  const taskToolLineup = purposeTaskLineup.filter((item) => item.source === "todo-write");
+  const activeTaskToolItem =
+    taskToolLineup.find((item) => item.status === "in_progress") ?? taskToolLineup[0];
+  const terminalHeaderTaskDescription =
+    activeTaskToolItem?.content ??
+    (terminalStatusSummary?.tasksFromTodoWrite ? terminalStatusSummary.task : undefined) ??
+    "No task set";
   const terminalExtractedSummary = getDisplaySummary({
     mission: "Terminal",
     provider: "shell",
@@ -2333,10 +2357,7 @@ function CanvasNodeViewImpl({
     terminalStatusSummary,
     terminalActivityLive ? undefined : terminalNeutralTitle,
   );
-  const terminalHeaderActiveTask = terminalPurpose?.title;
-  const terminalHeaderTitleRaw =
-    terminalHeaderActiveTask ??
-    (terminalDisplaySummary.task === "Ready" ? terminalTitle : terminalDisplaySummary.task);
+  const terminalHeaderTitleRaw = terminalHeaderTaskDescription;
   const terminalHeaderPath = terminalDisplaySummary.path;
   // Anti-flicker for real sidecar task summaries. Bound MASTER_PLAN tasks and heuristic
   // shell-output fallbacks are authoritative per render, so they bypass the hold. (TC-035)
@@ -2362,19 +2383,10 @@ function CanvasNodeViewImpl({
   const terminalHeaderHasTrustedSummary =
     terminalHeaderHasUsefulSummary && terminalDisplaySummary.confidence !== "low";
   const terminalHeaderTaskState = terminalHeaderHasUsefulNow ? "Working" : terminalNeutralTitle;
-  const terminalHeaderOverarchingTask =
-    terminalHeaderActiveTask && /terminal header activity description/i.test(terminalHeaderActiveTask)
-      ? "Improving terminal header activity"
-      : terminalHeaderActiveTask && /terminal[-\s]?summary|summary headers?/i.test(terminalHeaderActiveTask)
-        ? "Improving terminal summaries"
-        : terminalHeaderActiveTask && /map|canvas/i.test(terminalHeaderActiveTask)
-          ? "Improving map terminals"
-          : terminalHeaderActiveTask;
-  const terminalHeaderDescription =
-    terminalHeaderOverarchingTask ??
-    (terminalHeaderSummarySignal && terminalHeaderSummarySignal !== "Awaiting terminal output"
+  const terminalHeaderNow =
+    terminalHeaderSummarySignal && terminalHeaderSummarySignal !== "Awaiting terminal output"
       ? terminalHeaderSummarySignal
-      : terminalHeaderTaskState);
+      : terminalHeaderTaskState;
   const detectedLaneTaskId = node.taskBinding?.taskId ?? firstTaskIdFromText(
     workstream?.mission,
     workstream?.prompt,
@@ -2924,13 +2936,19 @@ function CanvasNodeViewImpl({
               <span style={styles.workspacePill} data-testid="canvas-terminal-node-workspace" title={workspaceLabel}>
                 {workspaceLabel}
               </span>
-              <span>·</span>
+            </div>
+            <div
+              style={styles.terminalTaskRow}
+              data-testid="canvas-terminal-node-task-row"
+              title={`Task: ${terminalHeaderTaskDescription}`}
+            >
+              <span style={styles.terminalTaskLabel}>Task:</span>
               <span
                 data-testid="canvas-terminal-node-description"
-                title={terminalHeaderDescription}
-                style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                title={terminalHeaderTaskDescription}
+                style={styles.terminalTaskValue}
               >
-                {terminalHeaderDescription}
+                {terminalHeaderTaskDescription}
               </span>
             </div>
             <div
@@ -2950,7 +2968,7 @@ function CanvasNodeViewImpl({
                     cwd: liveTerminalRoot ?? undefined,
                     kind: "shell",
                     title: terminalHeaderTitle,
-                    now: terminalHeaderSummarySignal ?? "",
+                    now: terminalHeaderNow ?? "",
                     status: linkedTerminal?.status,
                     tasksFromTodoWrite: terminalStatusSummary?.tasksFromTodoWrite,
                     narration: terminalStatusSummary?.narration,
@@ -2974,9 +2992,9 @@ function CanvasNodeViewImpl({
                   <span
                     style={terminalHeaderHasUsefulNow ? styles.terminalStatusNow : styles.terminalStatusFieldValue}
                     data-testid="canvas-terminal-node-now"
-                    title={terminalHeaderSummarySignal}
+                    title={terminalHeaderNow}
                   >
-                    {terminalHeaderSummarySignal}
+                    {terminalHeaderNow}
                   </span>
                 </div>
               </div>

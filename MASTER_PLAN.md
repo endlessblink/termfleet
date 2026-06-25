@@ -474,16 +474,20 @@ Progress notes:
   workspace and shows the cleaned current activity, while regressions block raw
   prompt/input fragments from taking over that description. Follow-up hardening
   blocks narrative terminal prose from becoming the title/description when there
-  is no real task list, purpose, or durable live activity, and separates the map
-  header fields so the kicker shows the overarching task description, the title
-  shows the active human task, and `Now` shows proof/status detail. Added
-  `npm run verify:terminal-header-contract` as the focused visual hook for this
-  screenshot-shaped contract.
+  is no real task list, purpose, or durable live activity. Final contract:
+  the map header renders an explicit `Task:` row from authoritative task-tool
+  state, the title mirrors that active task, `No task set` is shown when no
+  task-tool task exists, and `Now` is the only proof/status row. Added
+  `npm run verify:terminal-header-contract` as the focused headed visual hook
+  for this screenshot-shaped contract.
   Current evidence: `npx playwright test tests/agent-status-summary.spec.ts
   --reporter=line` passed 40/40; `npx playwright test
   tests/header-real-task-title.spec.ts --reporter=line` passed 11/11; `npm run
   verify:terminal-header-contract` passed 1/1; `npm run
-  verify:terminal-summary-visual` passed 6/6; `npm run build` passed;
+  verify:terminal-summary-visual` passed 6/6; headed `DISPLAY=:0
+  XAUTHORITY=/run/user/1000/xauth_Mqgwcs npx playwright test
+  tests/terminal-summary-visual.spec.ts -g "map header rejects slash-command
+  prompt echoes" --headed --reporter=line` passed 1/1; `npm run build` passed;
   `TERMFLEET_AGENT_STATUS_PORT=37820 npm run verify:agent-status-summary`
   passed; screenshot proof: `/tmp/tc-033-map-header-no-review-prompt.png`;
   `git diff --check` passed.

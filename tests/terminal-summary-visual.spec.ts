@@ -132,6 +132,13 @@ async function seedSplitTerminal(
             "npm run build",
             "built in 2.4s",
           ]).join("\n"),
+          taskLineup: includePurpose ? [{
+            id: "task-visual-headers",
+            content: "Improving terminal-summary visual headers",
+            status: "in_progress",
+            source: "todo-write",
+            updatedAt: 1000,
+          }] : undefined,
           statusSummary: {
             task: taskText,
             path: "devops/termfleet",
@@ -281,12 +288,14 @@ test("regular map header rejects noisy scrollback titles and fits the activity t
 
   const title = page.getByTestId("canvas-terminal-node-header-title");
   const description = page.getByTestId("canvas-terminal-node-description");
+  const taskRow = page.getByTestId("canvas-terminal-node-task-row");
   const now = page.getByTestId("canvas-terminal-node-now");
   const path = page.getByTestId("canvas-terminal-node-header-path");
 
   await expect(title).toHaveText("Improving terminal-summary visual headers");
   await expect(title).not.toContainText("The visual app surface");
-  await expect(description).toContainText("Improving terminal summaries");
+  await expect(taskRow).toContainText("Task:");
+  await expect(description).toContainText("Improving terminal-summary visual headers");
   await expect(description).not.toContainText("frontend build passed");
   await expect(description).not.toContainText("web$");
   await expect(description).not.toContainText("unfinished prompt");
@@ -400,13 +409,15 @@ test("map header neutralizes scraped prose when there is no real task", async ({
   const block = page.getByTestId("canvas-terminal-status-block").filter({ hasText: "productivity" });
   const title = block.getByTestId("canvas-terminal-node-header-title");
   const description = block.getByTestId("canvas-terminal-node-description");
+  const taskRow = block.getByTestId("canvas-terminal-node-task-row");
   const now = block.getByTestId("canvas-terminal-node-now");
 
   // The prose must not appear anywhere in the header.
   await expect(block).not.toContainText("header chunk");
   await expect(block).not.toContainText("auto-placement");
-  await expect(title).toHaveText("Working");
-  await expect(description).toHaveText("Working");
+  await expect(taskRow).toContainText("Task:");
+  await expect(title).toHaveText("No task set");
+  await expect(description).toHaveText("No task set");
   await expect(now).toContainText("Working");
 
   // Title fits its box (no horizontal overflow).
@@ -492,6 +503,13 @@ test("map header rejects slash-command prompt echoes as task descriptions", asyn
             "› it is not fixed at all... you havent verified anything",
             "› Run /review on my current changes",
           ].join("\n"),
+          taskLineup: [{
+            id: "task-header-description",
+            content: "Fixing terminal header activity description",
+            status: "in_progress",
+            source: "todo-write",
+            updatedAt: 1000,
+          }],
           statusSummary: {
             task: "Run /review on my current changes",
             path: "devops/termfleet",
@@ -511,12 +529,14 @@ test("map header rejects slash-command prompt echoes as task descriptions", asyn
   const block = page.getByTestId("canvas-terminal-status-block").filter({ hasText: "termfleet" });
   const title = block.getByTestId("canvas-terminal-node-header-title");
   const description = block.getByTestId("canvas-terminal-node-description");
+  const taskRow = block.getByTestId("canvas-terminal-node-task-row");
   const now = block.getByTestId("canvas-terminal-node-now");
 
   await expect(block).not.toContainText("Run /review on my current changes");
   await expect(block).not.toContainText("you havent verified anything");
+  await expect(taskRow).toContainText("Task:");
   await expect(title).toHaveText("Fixing terminal header activity description");
-  await expect(description).toHaveText("Improving terminal header activity");
+  await expect(description).toHaveText("Fixing terminal header activity description");
   await expect(now).toContainText("status summary server checks passed");
 
   await block.screenshot({ path: "/tmp/tc-033-map-header-no-review-prompt.png" });
