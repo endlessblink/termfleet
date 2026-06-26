@@ -159,6 +159,7 @@ const DEFAULT_UI_STATE: WorkspaceUiState = {
   // the work surface by default; open files from the dock rail when needed.
   fileExplorerCollapsed: true,
   canvasSidebarCollapsed: false,
+  canvasSidebarSortMode: "manual",
   terminalSidebarCollapsed: false,
   primarySidebarCollapsed: false,
   primarySidebarPanel: "sessions",
@@ -344,6 +345,7 @@ interface WorkspaceState {
   updateCanvasNode: (id: string, updates: Partial<CanvasNode>) => void;
   renameCanvasNode: (id: string, title: string) => void;
   moveCanvasNodes: (ids: string[], delta: { x: number; y: number }) => void;
+  reorderCanvasNodes: (draggedId: string, targetId: string, place: "before" | "after") => void;
   removeCanvasNode: (id: string) => void;
   selectCanvasNode: (id: string | null) => void;
   selectCanvasNodes: (ids: string[]) => void;
@@ -2535,6 +2537,21 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         ),
       },
     }));
+  },
+
+  reorderCanvasNodes: (draggedId: string, targetId: string, place: "before" | "after") => {
+    if (draggedId === targetId) return;
+    set((state) => {
+      const nodes = [...state.canvasState.nodes];
+      const from = nodes.findIndex((node) => node.id === draggedId);
+      if (from < 0) return {};
+      const [moved] = nodes.splice(from, 1);
+      let to = nodes.findIndex((node) => node.id === targetId);
+      if (to < 0) return {};
+      if (place === "after") to += 1;
+      nodes.splice(to, 0, moved);
+      return { canvasState: { ...state.canvasState, nodes } };
+    });
   },
 
   removeCanvasNode: (id: string) => {

@@ -3258,6 +3258,11 @@ function MapPanel({
   const removeCanvasNode = useWorkspaceStore((state) => state.removeCanvasNode);
   const closeTerminalSession = useWorkspaceStore((state) => state.closeTerminalSession);
   const closePane = useWorkspaceStore((state) => state.closePane);
+  const reorderCanvasNodes = useWorkspaceStore((state) => state.reorderCanvasNodes);
+  const updateWorkspaceUiState = useWorkspaceStore((state) => state.updateWorkspaceUiState);
+  const sortMode = useWorkspaceStore((state) => state.workspaceUiState.canvasSidebarSortMode);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<{ id: string; place: "before" | "after" } | null>(null);
 
   const focusCanvasNode = (node: CanvasNode) => {
     const zoom = node.type === "terminal" ? 1 : canvasState.viewport.zoom;
@@ -3484,6 +3489,69 @@ function MapPanel({
   });
   const tasksByRoot = useMasterPlanTasks(taskRoots);
 
+  const draggable = sortMode === "manual";
+  const clearDrag = () => {
+    setDraggingId(null);
+    setDropTarget(null);
+  };
+  const handleDragStart = (node: CanvasNode, event: React.DragEvent) => {
+    setDraggingId(node.id);
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", node.id);
+  };
+  const handleDragOver = (node: CanvasNode, event: React.DragEvent) => {
+    if (!draggingId || draggingId === node.id) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    const rect = event.currentTarget.getBoundingClientRect();
+    const place: "before" | "after" = event.clientY < rect.top + rect.height / 2 ? "before" : "after";
+    setDropTarget((prev) => (prev?.id === node.id && prev.place === place ? prev : { id: node.id, place }));
+  };
+  const handleDrop = (node: CanvasNode, event: React.DragEvent) => {
+    event.preventDefault();
+    const place = dropTarget?.id === node.id ? dropTarget.place : "before";
+    if (draggingId && draggingId !== node.id) reorderCanvasNodes(draggingId, node.id, place);
+    clearDrag();
+  };
+
+  // By-project view groups map nodes under their project (Group) header. Terminals
+  // resolve their project via the linked tab's groupId; nodes with no project fall
+  // into an "Unassigned" bucket shown last.
+  const projectBuckets = useMemo(() => {
+    const buckets = new globalThis.Map<string | null, CanvasNode[]>();
+    for (const node of visibleNodes) {
+      const gid = node.terminalTabId
+        ? tabs.find((tab) => tab.id === node.terminalTabId)?.groupId ?? null
+        : null;
+      const list = buckets.get(gid);
+      if (list) list.push(node);
+      else buckets.set(gid, [node]);
+    }
+    const ordered: { key: string; label: string; nodes: CanvasNode[] }[] = [];
+    for (const group of groups) {
+      const list = buckets.get(group.id);
+      if (list) ordered.push({ key: group.id, label: group.name, nodes: list });
+    }
+    for (const [gid, list] of buckets) {
+      if (gid !== null && !groups.some((group) => group.id === gid)) {
+        ordered.push({ key: gid, label: projectNameFor(gid, groups), nodes: list });
+      }
+    }
+    const unassigned = buckets.get(null);
+    if (unassigned) ordered.push({ key: "__unassigned__", label: "Unassigned", nodes: unassigned });
+    return ordered;
+  }, [visibleNodes, tabs, groups]);
+
+  type MapListItem =
+    | { kind: "header"; key: string; label: string }
+    | { kind: "node"; node: CanvasNode };
+  const mapListItems: MapListItem[] = sortMode === "project"
+    ? projectBuckets.flatMap((bucket) => [
+        { kind: "header" as const, key: `header-${bucket.key}`, label: bucket.label },
+        ...bucket.nodes.map((node) => ({ kind: "node" as const, node })),
+      ])
+    : visibleNodes.map((node) => ({ kind: "node" as const, node }));
+
   return (
     <>
       <div style={styles.header}>
@@ -3492,6 +3560,31 @@ function MapPanel({
           <span>Map</span>
         </div>
         <span style={styles.count}>{visibleNodes.length}</span>
+      </div>
+      <div style={styles.mapFilterBar} aria-label="Arrange terminals">
+        {([
+          { id: "manual", label: "Manual" },
+          { id: "project", label: "By project" },
+        ] as const).map((mode) => {
+          const active = sortMode === mode.id;
+          return (
+            <button
+              key={mode.id}
+              type="button"
+              data-testid={`map-sort-${mode.id}`}
+              aria-pressed={active}
+              style={{
+                ...styles.mapFilterButton,
+                background: active ? "var(--surface-selected)" : "var(--surface-base)",
+                color: active ? "var(--text-primary)" : "var(--text-secondary)",
+                borderColor: active ? "var(--border-strong)" : "transparent",
+              }}
+              onClick={() => updateWorkspaceUiState({ canvasSidebarSortMode: mode.id })}
+            >
+              <span>{mode.label}</span>
+            </button>
+          );
+        })}
       </div>
       <div style={styles.mapFilterBar} aria-label="Map filters">
         {MAP_FILTERS.map((filter) => {
@@ -4888,7 +4981,15 @@ function MapPanel({
           </div>
         ) : (
           <div data-testid="map-node-list" style={{ order: 1 }}>
-          {visibleNodes.map((node) => {
+          {mapListItems.map((item) => {
+            if (item.kind === "header") {
+              return (
+                <div key={item.key} style={styles.sectionLabel} data-testid="map-project-group-header">
+                  {item.label}
+                </div>
+              );
+            }
+            const node = item.node;
             const linkedTab = node.terminalTabId
               ? tabs.find((tab) => tab.id === node.terminalTabId)
               : undefined;
@@ -4928,11 +5029,28 @@ function MapPanel({
                 key={node.id}
                 className="workspace-sidebar-row"
                 data-active={node.id === canvasState.selectedNodeId ? "true" : "false"}
+                draggable={draggable}
                 style={{
                   ...styles.row,
                   ...(node.id === canvasState.selectedNodeId ? styles.activeRow : null),
+                  ...(draggingId === node.id ? { opacity: 0.45 } : null),
+                  ...(dropTarget?.id === node.id
+                    ? {
+                        boxShadow:
+                          dropTarget.place === "before"
+                            ? "inset 0 2px 0 0 var(--border-focus)"
+                            : "inset 0 -2px 0 0 var(--border-focus)",
+                      }
+                    : null),
+                  ...(draggable ? { cursor: "grab" } : null),
                 }}
-                onMouseDown={(event) => event.preventDefault()}
+                onDragStart={(event) => handleDragStart(node, event)}
+                onDragOver={(event) => handleDragOver(node, event)}
+                onDrop={(event) => handleDrop(node, event)}
+                onDragEnd={clearDrag}
+                onMouseDown={(event) => {
+                  if (!draggable) event.preventDefault();
+                }}
                 onClick={() => {
                   if (node.terminalTabId && linkedTab) setActiveTab(linkedTab.id);
                   setWorkspaceMode("canvas");

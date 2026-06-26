@@ -1,7 +1,7 @@
 import { CSSProperties, useCallback, useMemo, useState } from "react";
 import { FileText, Globe, Map, NotebookText, TerminalSquare, X } from "lucide-react";
 import type { CanvasNode, Group, Tab } from "../lib/types";
-import { pathTail, projectForTab } from "../lib/projectDisplay";
+import { pathTail, projectForTab, projectNameFor } from "../lib/projectDisplay";
 import { useWorkspaceStore } from "../stores/workspace";
 import { MAP_FILTERS, type MapFilter, nodeMatchesMapFilter } from "../lib/mapNodeFilters";
 
@@ -149,7 +149,30 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 12,
     lineHeight: 1.45,
   },
+  sortToggle: {
+    display: "inline-flex",
+    gap: 3,
+    padding: 2,
+    borderRadius: "var(--radius-sm)",
+    background: "var(--surface-base)",
+    border: "1px solid var(--border-subtle)",
+  },
+  sortToggleButton: {
+    height: 22,
+    padding: "0 8px",
+    border: "1px solid transparent",
+    borderRadius: "var(--radius-sm)",
+    background: "transparent",
+    color: "var(--text-secondary)",
+    fontFamily: "var(--font-ui)",
+    fontSize: 11,
+    fontWeight: 500,
+    cursor: "pointer",
+    whiteSpace: "nowrap",
+  },
 };
+
+const DROP_INDICATOR_COLOR = "var(--border-focus)";
 
 function nodeIcon(node: CanvasNode) {
   if (node.type === "terminal") {
@@ -190,6 +213,13 @@ function NodeRow({
   selected,
   onSelect,
   onRename,
+  draggable = false,
+  dropIndicator,
+  isDragging = false,
+  onDragStart,
+  onDragOver,
+  onDrop,
+  onDragEnd,
 }: {
   node: CanvasNode;
   linkedTab?: Tab;
@@ -197,6 +227,13 @@ function NodeRow({
   selected: boolean;
   onSelect: (node: CanvasNode) => void;
   onRename: (node: CanvasNode, title: string) => void;
+  draggable?: boolean;
+  dropIndicator?: "before" | "after" | null;
+  isDragging?: boolean;
+  onDragStart?: (node: CanvasNode, event: React.DragEvent) => void;
+  onDragOver?: (node: CanvasNode, event: React.DragEvent) => void;
+  onDrop?: (node: CanvasNode, event: React.DragEvent) => void;
+  onDragEnd?: () => void;
 }) {
   const icon = nodeIcon(node);
   const [editing, setEditing] = useState(false);
@@ -233,12 +270,24 @@ function NodeRow({
       tabIndex={0}
       aria-current={selected ? "true" : undefined}
       data-selected={selected ? "true" : "false"}
+      draggable={draggable && !editing}
       style={{
         ...styles.row,
         background: selected ? "var(--surface-selected)" : "transparent",
         borderColor: "transparent",
-        boxShadow: "none",
+        boxShadow:
+          dropIndicator === "before"
+            ? `inset 0 2px 0 0 ${DROP_INDICATOR_COLOR}`
+            : dropIndicator === "after"
+              ? `inset 0 -2px 0 0 ${DROP_INDICATOR_COLOR}`
+              : "none",
+        opacity: isDragging ? 0.45 : 1,
+        cursor: draggable ? "grab" : "pointer",
       }}
+      onDragStart={(event) => onDragStart?.(node, event)}
+      onDragOver={(event) => onDragOver?.(node, event)}
+      onDrop={(event) => onDrop?.(node, event)}
+      onDragEnd={() => onDragEnd?.()}
       onClick={() => onSelect(node)}
       onKeyDown={(event) => {
         if (editing) return;
@@ -261,6 +310,7 @@ function NodeRow({
             aria-label={`Rename ${node.type}`}
             data-testid="canvas-sidebar-rename-input"
             autoFocus
+            draggable={false}
             dir="auto"
             style={styles.titleInput}
             value={draftTitle}
@@ -289,17 +339,27 @@ function NodeRow({
   );
 }
 
+const SORT_MODES: { id: "manual" | "project"; label: string }[] = [
+  { id: "manual", label: "Manual" },
+  { id: "project", label: "By project" },
+];
+
 export function CanvasSidebar() {
   const [mapFilter, setMapFilter] = useState<MapFilter>("all");
   const workspaceMode = useWorkspaceStore((state) => state.workspaceUiState.workspaceMode);
   const collapsed = useWorkspaceStore((state) => state.workspaceUiState.canvasSidebarCollapsed);
+  const sortMode = useWorkspaceStore((state) => state.workspaceUiState.canvasSidebarSortMode);
   const canvasState = useWorkspaceStore((state) => state.canvasState);
   const tabs = useWorkspaceStore((state) => state.tabs);
   const groups = useWorkspaceStore((state) => state.groups);
   const selectCanvasNode = useWorkspaceStore((state) => state.selectCanvasNode);
   const renameCanvasNode = useWorkspaceStore((state) => state.renameCanvasNode);
+  const reorderCanvasNodes = useWorkspaceStore((state) => state.reorderCanvasNodes);
   const updateCanvasViewport = useWorkspaceStore((state) => state.updateCanvasViewport);
   const updateUiState = useWorkspaceStore((state) => state.updateWorkspaceUiState);
+
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<{ id: string; place: "before" | "after" } | null>(null);
 
   const onSelect = useCallback((node: CanvasNode) => {
     const zoom = node.type === "terminal" ? 1 : canvasState.viewport.zoom;
@@ -331,6 +391,74 @@ export function CanvasSidebar() {
   const terminals = visibleNodes.filter((node) => node.type === "terminal");
   const others = visibleNodes.filter((node) => node.type !== "terminal");
 
+  const draggable = sortMode === "manual";
+
+  const clearDrag = useCallback(() => {
+    setDraggingId(null);
+    setDropTarget(null);
+  }, []);
+  const onDragStart = useCallback((node: CanvasNode, event: React.DragEvent) => {
+    setDraggingId(node.id);
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", node.id);
+  }, []);
+  const onDragOver = useCallback((node: CanvasNode, event: React.DragEvent) => {
+    if (!draggingId || draggingId === node.id) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    const rect = event.currentTarget.getBoundingClientRect();
+    const place = event.clientY < rect.top + rect.height / 2 ? "before" : "after";
+    setDropTarget((prev) => (prev?.id === node.id && prev.place === place ? prev : { id: node.id, place }));
+  }, [draggingId]);
+  const onDrop = useCallback((node: CanvasNode, event: React.DragEvent) => {
+    event.preventDefault();
+    const place = dropTarget?.id === node.id ? dropTarget.place : "before";
+    if (draggingId && draggingId !== node.id) reorderCanvasNodes(draggingId, node.id, place);
+    clearDrag();
+  }, [draggingId, dropTarget, reorderCanvasNodes, clearDrag]);
+
+  const renderRow = useCallback((node: CanvasNode, rowDraggable: boolean) => (
+    <NodeRow
+      key={node.id}
+      node={node}
+      linkedTab={nodeTab(node)}
+      groups={groups}
+      selected={canvasState.selectedNodeId === node.id}
+      onSelect={onSelect}
+      onRename={onRename}
+      draggable={rowDraggable}
+      isDragging={draggingId === node.id}
+      dropIndicator={dropTarget?.id === node.id ? dropTarget.place : null}
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+      onDragEnd={clearDrag}
+    />
+  ), [nodeTab, groups, canvasState.selectedNodeId, onSelect, onRename, draggingId, dropTarget, onDragStart, onDragOver, onDrop, clearDrag]);
+
+  const projectBuckets = useMemo(() => {
+    const buckets = new globalThis.Map<string | null, CanvasNode[]>();
+    for (const node of terminals) {
+      const gid = nodeTab(node)?.groupId ?? null;
+      const list = buckets.get(gid);
+      if (list) list.push(node);
+      else buckets.set(gid, [node]);
+    }
+    const ordered: { key: string; label: string; nodes: CanvasNode[] }[] = [];
+    for (const group of groups) {
+      const list = buckets.get(group.id);
+      if (list) ordered.push({ key: group.id, label: group.name, nodes: list });
+    }
+    for (const [gid, list] of buckets) {
+      if (gid !== null && !groups.some((group) => group.id === gid)) {
+        ordered.push({ key: gid, label: projectNameFor(gid, groups), nodes: list });
+      }
+    }
+    const unassigned = buckets.get(null);
+    if (unassigned) ordered.push({ key: "__unassigned__", label: projectNameFor(null, groups), nodes: unassigned });
+    return ordered;
+  }, [terminals, groups, nodeTab]);
+
   if (workspaceMode !== "canvas" || collapsed) return null;
 
   return (
@@ -352,6 +480,30 @@ export function CanvasSidebar() {
             <X size={13} strokeWidth={1.8} />
           </button>
         </span>
+      </div>
+      <div style={styles.filterBar} aria-label="Map arrangement">
+        <div style={styles.sortToggle} role="group" aria-label="Arrange terminals">
+          {SORT_MODES.map((mode) => {
+            const active = sortMode === mode.id;
+            return (
+              <button
+                key={mode.id}
+                type="button"
+                data-testid={`map-sort-${mode.id}`}
+                aria-pressed={active}
+                style={{
+                  ...styles.sortToggleButton,
+                  background: active ? "var(--surface-selected)" : "transparent",
+                  color: active ? "var(--text-primary)" : "var(--text-secondary)",
+                  borderColor: active ? "var(--border-strong)" : "transparent",
+                }}
+                onClick={() => updateUiState({ canvasSidebarSortMode: mode.id })}
+              >
+                {mode.label}
+              </button>
+            );
+          })}
+        </div>
       </div>
       <div style={styles.filterBar} aria-label="Map filters">
         {MAP_FILTERS.map((filter) => {
@@ -376,37 +528,24 @@ export function CanvasSidebar() {
           );
         })}
       </div>
-      <div style={styles.sectionLabel}>Shells</div>
+      {sortMode === "manual" && <div style={styles.sectionLabel}>Shells</div>}
       <div style={styles.list} data-testid="canvas-sidebar-node-list">
         {terminals.length === 0 ? (
           <div style={styles.empty} data-testid="canvas-sidebar-empty">
             {mapFilter === "all" ? "No canvas terminals yet." : "No map nodes match this filter."}
           </div>
-        ) : (
-          terminals.map((node) => (
-            <NodeRow
-              key={node.id}
-              node={node}
-              linkedTab={nodeTab(node)}
-              groups={groups}
-              selected={canvasState.selectedNodeId === node.id}
-              onSelect={onSelect}
-              onRename={onRename}
-            />
+        ) : sortMode === "project" ? (
+          projectBuckets.map((bucket) => (
+            <div key={bucket.key} data-testid="canvas-sidebar-project-group">
+              <div style={styles.sectionLabel}>{bucket.label}</div>
+              {bucket.nodes.map((node) => renderRow(node, false))}
+            </div>
           ))
+        ) : (
+          terminals.map((node) => renderRow(node, draggable))
         )}
         {others.length > 0 && <div style={styles.sectionLabel}>Previews, notes, and files</div>}
-        {others.map((node) => (
-          <NodeRow
-            key={node.id}
-            node={node}
-            linkedTab={nodeTab(node)}
-            groups={groups}
-            selected={canvasState.selectedNodeId === node.id}
-            onSelect={onSelect}
-            onRename={onRename}
-          />
-        ))}
+        {others.map((node) => renderRow(node, false))}
       </div>
     </aside>
   );

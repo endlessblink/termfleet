@@ -383,6 +383,7 @@ export interface WorkspaceUiState {
   fileExplorerWidth: number;
   fileExplorerCollapsed: boolean;
   canvasSidebarCollapsed: boolean;
+  canvasSidebarSortMode: "manual" | "project";
   terminalSidebarCollapsed: boolean;
   primarySidebarCollapsed: boolean;
   primarySidebarPanel: "sessions" | "map";
