@@ -1,4 +1,4 @@
-import { CSSProperties, ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { CSSProperties, Fragment, ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowsClockwise,
   ArrowSquareOut,
@@ -425,6 +425,21 @@ const styles: Record<string, CSSProperties> = {
     background: "var(--surface-selected)",
     borderColor: "transparent",
     boxShadow: "none",
+  },
+  dragGhost: {
+    minHeight: 36,
+    margin: "2px 0",
+    display: "flex",
+    alignItems: "center",
+    padding: "0 12px",
+    border: "1px dashed var(--border-focus)",
+    borderRadius: "var(--radius-sm)",
+    background: "color-mix(in srgb, var(--border-focus) 12%, transparent)",
+    color: "var(--text-secondary)",
+    fontSize: 12,
+    overflow: "hidden",
+    whiteSpace: "nowrap",
+    textOverflow: "ellipsis",
   },
   hoverRow: {
     background: "var(--surface-hover)",
@@ -3552,6 +3567,18 @@ function MapPanel({
       ])
     : visibleNodes.map((node) => ({ kind: "node" as const, node }));
 
+  const draggedNode = draggingId ? visibleNodes.find((node) => node.id === draggingId) : undefined;
+  const draggedGhostLabel = (() => {
+    if (!draggedNode) return "";
+    const tab = draggedNode.terminalTabId ? tabs.find((t) => t.id === draggedNode.terminalTabId) : undefined;
+    return tab?.title || draggedNode.title || "Terminal";
+  })();
+  const dragGhost = (
+    <div style={styles.dragGhost} data-testid="map-drag-ghost">
+      Move “{draggedGhostLabel}” here
+    </div>
+  );
+
   return (
     <>
       <div style={styles.header}>
@@ -5024,9 +5051,11 @@ function MapPanel({
                   task.id.toLowerCase() === node.taskBinding?.taskId.toLowerCase()
                 )
               : undefined;
+            const showGhost = draggable && dropTarget?.id === node.id && draggingId !== node.id;
             return (
+              <Fragment key={node.id}>
+              {showGhost && dropTarget?.place === "before" && dragGhost}
               <div
-                key={node.id}
                 className="workspace-sidebar-row"
                 data-active={node.id === canvasState.selectedNodeId ? "true" : "false"}
                 draggable={draggable}
@@ -5034,14 +5063,6 @@ function MapPanel({
                   ...styles.row,
                   ...(node.id === canvasState.selectedNodeId ? styles.activeRow : null),
                   ...(draggingId === node.id ? { opacity: 0.45 } : null),
-                  ...(dropTarget?.id === node.id
-                    ? {
-                        boxShadow:
-                          dropTarget.place === "before"
-                            ? "inset 0 2px 0 0 var(--border-focus)"
-                            : "inset 0 -2px 0 0 var(--border-focus)",
-                      }
-                    : null),
                   ...(draggable ? { cursor: "grab" } : null),
                 }}
                 onDragStart={(event) => handleDragStart(node, event)}
@@ -5149,6 +5170,8 @@ function MapPanel({
                   </button>
                 </span>
               </div>
+              {showGhost && dropTarget?.place === "after" && dragGhost}
+              </Fragment>
             );
           })}
           </div>
