@@ -21,6 +21,7 @@ pub fn run() {
     let focused_terminal = FocusedTerminalState::default();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_opener::init())
         .manage(PtyManager::new())
         .manage(GridManager::new())
         .manage(focused_terminal.clone())

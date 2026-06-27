@@ -66,6 +66,7 @@
     "@fontsource/rubik": "^5.2.8",
     "@phosphor-icons/react": "^2.1.10",
     "@tauri-apps/api": "^2",
+    "@tauri-apps/plugin-opener": "^2",
     "@xterm/addon-fit": "^0.10",
     "@xterm/addon-web-links": "^0.11",
     "@xterm/addon-webgl": "^0.18",

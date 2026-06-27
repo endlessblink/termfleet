@@ -1,9 +1,12 @@
 import { CSSProperties, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { openPath, revealItemInDir } from "@tauri-apps/plugin-opener";
 import {
+  ExternalLink,
   FilePlus,
   FolderOpen,
   FolderPlus,
+  FolderSearch,
   MapPinned,
   PanelLeftClose,
   Pencil,
@@ -785,6 +788,30 @@ export function FileExplorer() {
     }
   }, [refreshParent, tauriAvailable]);
 
+  const revealEntryLocation = useCallback(async (entry: FileEntry) => {
+    if (!tauriAvailable) {
+      setError("Revealing files is only available in the desktop app.");
+      return;
+    }
+    try {
+      await revealItemInDir(entry.path);
+    } catch (requestError) {
+      setError(formatExplorerError(requestError));
+    }
+  }, [tauriAvailable]);
+
+  const openEntryFile = useCallback(async (entry: FileEntry) => {
+    if (!tauriAvailable) {
+      setError("Opening files is only available in the desktop app.");
+      return;
+    }
+    try {
+      await openPath(entry.path);
+    } catch (requestError) {
+      setError(formatExplorerError(requestError));
+    }
+  }, [tauriAvailable]);
+
   const addEntryToCanvas = useCallback((entry: FileEntry) => {
     const nodeCount = useWorkspaceStore.getState().canvasState.nodes.length;
     addCanvasNode({
@@ -972,6 +999,22 @@ export function FileExplorer() {
               label="Add to map"
               onClick={() => { addEntryToCanvas(contextMenu.entry!); setContextMenu(null); }}
             />
+          )}
+          {contextMenu.entry && (
+            <>
+              {!contextMenu.entry.isDir && (
+                <ExplorerContextItem
+                  icon={<ExternalLink size={14} strokeWidth={1.8} />}
+                  label="Open file"
+                  onClick={() => { openEntryFile(contextMenu.entry!); setContextMenu(null); }}
+                />
+              )}
+              <ExplorerContextItem
+                icon={<FolderSearch size={14} strokeWidth={1.8} />}
+                label="Open file location"
+                onClick={() => { revealEntryLocation(contextMenu.entry!); setContextMenu(null); }}
+              />
+            </>
           )}
           <div style={styles.contextDivider} />
           <ExplorerContextItem

@@ -8,6 +8,8 @@
     "core:event:default",
     "core:event:allow-emit",
     "core:event:allow-listen",
-    "core:window:allow-set-fullscreen"
+    "core:window:allow-set-fullscreen",
+    "opener:allow-reveal-item-in-dir",
+    "opener:allow-open-path"
   ]
 }
