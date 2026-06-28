@@ -147,6 +147,12 @@ test("canvas terminal clears hidden textarea around paste and input events", () 
   expect(source).toContain("modesRef.current.bracketedPaste || shouldBracketPasteForVisibleAgentPrompt(text)");
   expect(source).toContain("const clipboardHasImage");
   expect(source).toContain('send("\\x16", nextTerminalInputSequence(), "canvas-image-paste-shortcut")');
+  // Ctrl+Shift+V must read the clipboard from the Rust BACKEND, never rely on
+  // WebKitGTK's blocked navigator.clipboard.readText() nor on a native `paste`
+  // event firing (both broke text paste "again"). Guards against regressing back
+  // to a webview-only read.
+  expect(source).toContain("const pasteFromClipboardShortcut");
+  expect(source).toContain('invoke<string>("clipboard_read_text")');
   expect(source).toContain("const onPaste = (event: ClipboardEvent)");
   expect(source).toContain("event.stopImmediatePropagation()");
   expect(source).toContain('input.addEventListener("paste", onPaste, true)');
@@ -154,13 +160,13 @@ test("canvas terminal clears hidden textarea around paste and input events", () 
   expect(source).toContain('input.addEventListener("beforeinput", onBeforeInput, true)');
   expect(source).toContain('input.addEventListener("input", clear, true)');
   expect(onBeforeInputBlock).not.toContain("event.preventDefault()");
-  expect(source).toMatch(/const handlePaste = \(event: React\.ClipboardEvent<HTMLTextAreaElement>\) => \{[\s\S]*const text = event\.clipboardData\.getData\("text"\);[\s\S]*const armed = performance\.now\(\) <= pasteShortcutArmedUntilRef\.current;[\s\S]*if \(!text && !\(armed && clipboardHasImage\(event\.clipboardData\)\)\) return;[\s\S]*event\.preventDefault\(\);[\s\S]*event\.stopPropagation\(\);[\s\S]*sendImagePasteShortcut\(\);/);
-  expect(source).toMatch(/const onPaste = \(event: ClipboardEvent\) => \{[\s\S]*const text = event\.clipboardData\?\.getData\("text\/plain"\) \?\? "";[\s\S]*const armed = performance\.now\(\) <= pasteShortcutArmedUntilRef\.current;[\s\S]*if \(!text && !\(armed && clipboardHasImage\(event\.clipboardData\)\)\) return;[\s\S]*event\.preventDefault\(\);[\s\S]*event\.stopImmediatePropagation\(\);[\s\S]*sendImagePasteShortcut\(\);/);
+  expect(source).toMatch(/const handlePaste = \(event: React\.ClipboardEvent<HTMLTextAreaElement>\) => \{[\s\S]*const text = event\.clipboardData\.getData\("text"\);[\s\S]*const armed = performance\.now\(\) <= pasteShortcutArmedUntilRef\.current;[\s\S]*if \(!text && !\(armed && clipboardHasImage\(event\.clipboardData\)\)\) \{[\s\S]*event\.preventDefault\(\);[\s\S]*event\.stopPropagation\(\);[\s\S]*sendImagePasteShortcut\(\);/);
+  expect(source).toMatch(/const onPaste = \(event: ClipboardEvent\) => \{[\s\S]*const text = event\.clipboardData\?\.getData\("text\/plain"\) \?\? "";[\s\S]*const armed = performance\.now\(\) <= pasteShortcutArmedUntilRef\.current;[\s\S]*decidePasteAction\(\{[\s\S]*if \(action === "ignore"\) return;[\s\S]*event\.preventDefault\(\);[\s\S]*event\.stopImmediatePropagation\(\);[\s\S]*if \(action === "image"\) \{[\s\S]*sendImagePasteShortcut\(\);/);
   expect(source).toMatch(/const handleInput = \(event: React\.FormEvent<HTMLTextAreaElement>\) => \{[\s\S]*event\.currentTarget\.value = "";/);
   expect(source).toContain("onInput={handleInput}");
 
   expect(handleKeyDownBlock).toMatch(/\(event\.ctrlKey \|\| event\.metaKey\) && event\.shiftKey && key === "c"[\s\S]*event\.preventDefault\(\);[\s\S]*event\.stopPropagation\(\);[\s\S]*copySelection\(\);/);
-  expect(handleKeyDownBlock).toMatch(/isTerminalPasteShortcut\(event\.nativeEvent\)[\s\S]*pasteShortcutArmedUntilRef\.current = performance\.now\(\) \+ 1500;[\s\S]*event\.stopPropagation\(\);[\s\S]*return;/);
-  expect(captureKeyDownBlock).toMatch(/isTerminalPasteShortcut\(event\)[\s\S]*pasteShortcutArmedUntilRef\.current = performance\.now\(\) \+ 1500;[\s\S]*event\.stopPropagation\(\);[\s\S]*return;/);
+  expect(handleKeyDownBlock).toMatch(/isTerminalPasteShortcut\(event\.nativeEvent\)[\s\S]*event\.preventDefault\(\);[\s\S]*event\.stopPropagation\(\);[\s\S]*pasteFromClipboardShortcut\(\);[\s\S]*return;/);
+  expect(captureKeyDownBlock).toMatch(/isTerminalPasteShortcut\(event\)[\s\S]*event\.preventDefault\(\);[\s\S]*event\.stopPropagation\(\);[\s\S]*pasteFromClipboardShortcut\(\);[\s\S]*return;/);
   expect(captureKeyDownBlock).toMatch(/\(event\.ctrlKey \|\| event\.metaKey\) && event\.shiftKey && key === "c"[\s\S]*event\.stopPropagation\(\);[\s\S]*return;/);
 });

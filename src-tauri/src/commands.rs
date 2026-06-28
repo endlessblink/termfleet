@@ -917,6 +917,40 @@ pub fn fs_home_dir() -> Result<String, String> {
         .ok_or_else(|| "Could not resolve home directory".to_string())
 }
 
+/// Read the OS clipboard's text from the backend, NOT the webview.
+///
+/// `navigator.clipboard.readText()` is unreliable/blocked inside a WebKitGTK
+/// webview (copy via writeText works, read does not), which is why Ctrl+Shift+V
+/// text paste kept breaking. We read the real X11/Wayland clipboard here instead.
+///
+/// This is an `async` command on purpose: a *synchronous* clipboard read can
+/// deadlock the GTK main thread on WebKitGTK (tauri-apps/plugins-workspace#2267).
+/// Running `tokio::process` keeps it off the blocking path. Returns "" (not an
+/// error) when the clipboard has no text — e.g. it holds an image — so the caller
+/// can fall back to forwarding Ctrl-V (`\x16`) and let the agent read the image.
+#[tauri::command]
+pub async fn clipboard_read_text() -> Result<String, String> {
+    // Wayland first, then X11. Each returns text only; on an image-only clipboard
+    // they exit non-zero / empty, so we surface "" and let the image path run.
+    let attempts: [(&str, &[&str]); 3] = [
+        ("wl-paste", &["--no-newline", "--type", "text/plain"]),
+        ("xclip", &["-selection", "clipboard", "-o"]),
+        ("xsel", &["--clipboard", "--output"]),
+    ];
+    for (bin, args) in attempts {
+        // Only a SUCCESSFUL read is authoritative. A non-zero exit means either the
+        // wrong display server (e.g. wl-paste on X11) or no text on the clipboard —
+        // both indistinguishable here — so fall through to the next tool, and only
+        // report "" (→ image/agent path) once every tool has been tried.
+        if let Ok(output) = tokio::process::Command::new(bin).args(args).output().await {
+            if output.status.success() {
+                return Ok(String::from_utf8_lossy(&output.stdout).to_string());
+            }
+        }
+    }
+    Ok(String::new())
+}
+
 fn normalize_selected_folder(raw: &str) -> Option<String> {
     let selected = raw.trim();
     if selected.is_empty() {

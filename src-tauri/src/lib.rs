@@ -21,6 +21,7 @@ pub fn run() {
     let focused_terminal = FocusedTerminalState::default();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_opener::init())
         .manage(PtyManager::new())
         .manage(GridManager::new())
         .manage(focused_terminal.clone())
@@ -81,6 +82,7 @@ pub fn run() {
             commands::pty_get_cwd,
             commands::pty_snapshot,
             commands::fs_home_dir,
+            commands::clipboard_read_text,
             commands::fs_pick_project_folder,
             commands::fs_list_dir,
             commands::fs_create,

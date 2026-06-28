@@ -28,7 +28,7 @@ import {
   sizeCanvasToGrid,
   type RenderTheme,
 } from "../lib/gridRenderer";
-import { encodePaste, isTerminalPasteShortcut, keyEventToBytes, shouldBracketAgentPromptPaste } from "../lib/keymap";
+import { decidePasteAction, encodePaste, isTerminalPasteShortcut, keyEventToBytes, shouldBracketAgentPromptPaste } from "../lib/keymap";
 import {
   encodeMouseReport,
   pointerButtonToTerminalButton,
@@ -491,7 +491,10 @@ export function TerminalCanvas({
       scheduleRender();
       // Keep the map node fitted to the current mode: re-fit the frozen canvas
       // after a full sync (which resets canvas size), and switch freeze/reflow
-      // when the inner app enters/leaves an interactive TUI mode. The first frame
+      // when the inner app enters/leaves a true alt-screen TUI mode. Mouse-report
+      // primary-screen prompts, including AskUserQuestion-style primary-screen
+      // prompts, must not trigger a map resize; that extra SIGWINCH is what makes
+      // question options duplicate and wrap into corrupted rows. The first frame
       // also runs this so the deferred post-attach reconcile happens once modes
       // are known.
       if (mapProjection && (firstFrame || frame.full || prevPreservedProjection !== preservesProjectionSize())) {
@@ -920,8 +923,11 @@ export function TerminalCanvas({
       return;
     }
     if (isTerminalPasteShortcut(event.nativeEvent)) {
+      // Read the clipboard directly — do NOT depend on a native paste event.
       pasteShortcutArmedUntilRef.current = performance.now() + 1500;
+      event.preventDefault();
       event.stopPropagation();
+      void pasteFromClipboardShortcut();
       return;
     }
     const bytes = keyEventToBytes(event.nativeEvent, {
@@ -982,8 +988,14 @@ export function TerminalCanvas({
         return;
       }
       if (isTerminalPasteShortcut(event)) {
+        // Read the clipboard directly — do NOT depend on a native paste event.
+        // preventDefault + the direct read is what makes Ctrl+Shift+V reliable;
+        // the old arm-then-wait design broke when this stopPropagation kept the
+        // keydown from reaching the textarea so WebKit never fired `paste`.
         pasteShortcutArmedUntilRef.current = performance.now() + 1500;
+        event.preventDefault();
         event.stopPropagation();
+        void pasteFromClipboardShortcut();
         return;
       }
       // Leave copy shortcut to the bubble handler, but keep it inside the
@@ -1086,6 +1098,35 @@ export function TerminalCanvas({
     clearHiddenInputSoon();
   };
 
+  // The Ctrl+Shift+V paste path reads the clipboard DIRECTLY rather than arming and
+  // waiting for WebKitGTK to fire a native `paste` event. That event-based design
+  // was fragile: a capture-phase stopPropagation (added to keep app/global
+  // shortcuts from racing) stops the keydown reaching the textarea, so WebKit never
+  // runs its paste command and no `paste` event fires — text paste silently broke
+  // "again" (bd583fb). Reading the clipboard ourselves is deterministic and
+  // independent of event propagation. Empty/denied text → fall back to forwarding
+  // Ctrl-V (`\x16`) so an image on the clipboard still reaches the running agent.
+  const pasteFromClipboardShortcut = async () => {
+    try {
+      // Read the OS clipboard from the Rust backend — `navigator.clipboard.readText`
+      // is blocked in WebKitGTK (that is the actual paste bug). Browser preview (no
+      // Tauri runtime) still uses the webview API as a fallback.
+      const text = isTauriRuntime()
+        ? await invoke<string>("clipboard_read_text")
+        : await navigator.clipboard.readText();
+      if (text) {
+        if (DEBUG_TERM_HUD) bumpHud({ clip: `paste:read ${text.length}` });
+        sendPasteText(text);
+        return;
+      }
+    } catch {
+      // Clipboard unavailable → fall through to the image/agent path.
+    }
+    // No text (image on the clipboard) → forward Ctrl-V so the agent reads it.
+    if (DEBUG_TERM_HUD) bumpHud({ clip: "paste:read-image" });
+    sendImagePasteShortcut();
+  };
+
   const handlePaste = (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const text = event.clipboardData.getData("text");
     const armed = performance.now() <= pasteShortcutArmedUntilRef.current;
@@ -1124,13 +1165,18 @@ export function TerminalCanvas({
     const onPaste = (event: ClipboardEvent) => {
       const text = event.clipboardData?.getData("text/plain") ?? "";
       const armed = performance.now() <= pasteShortcutArmedUntilRef.current;
-      if (!text && !(armed && clipboardHasImage(event.clipboardData))) return;
+      const action = decidePasteAction({
+        hasText: Boolean(text),
+        hasImage: clipboardHasImage(event.clipboardData ?? null),
+        armed,
+      });
+      if (action === "ignore") return;
       event.preventDefault();
       event.stopImmediatePropagation();
       event.stopPropagation();
       pasteShortcutArmedUntilRef.current = 0;
       clearHiddenInputSoon(input);
-      if (!text) {
+      if (action === "image") {
         sendImagePasteShortcut();
         return;
       }
