@@ -1123,8 +1123,8 @@ function TerminalContextMenu({
       if (ref.current && !ref.current.contains(event.target as Node)) onClose();
     }
 
-    document.addEventListener("mousedown", onPointerDown);
-    return () => document.removeEventListener("mousedown", onPointerDown);
+    document.addEventListener("mousedown", onPointerDown, true);
+    return () => document.removeEventListener("mousedown", onPointerDown, true);
   }, [onClose]);
 
   const commitTitle = () => {
@@ -1281,8 +1281,8 @@ function ProjectContextMenu({
     function onPointerDown(event: MouseEvent) {
       if (ref.current && !ref.current.contains(event.target as Node)) onClose();
     }
-    document.addEventListener("mousedown", onPointerDown);
-    return () => document.removeEventListener("mousedown", onPointerDown);
+    document.addEventListener("mousedown", onPointerDown, true);
+    return () => document.removeEventListener("mousedown", onPointerDown, true);
   }, [onClose]);
 
   useEffect(() => {
@@ -1402,8 +1402,8 @@ function NewTerminalLaunchMenu({
       if (ref.current && !ref.current.contains(event.target as Node)) onClose();
     }
 
-    document.addEventListener("mousedown", onPointerDown);
-    return () => document.removeEventListener("mousedown", onPointerDown);
+    document.addEventListener("mousedown", onPointerDown, true);
+    return () => document.removeEventListener("mousedown", onPointerDown, true);
   }, [onClose]);
 
   useEffect(() => {
