@@ -163,6 +163,9 @@ export function TerminalCanvas({
   const daemonInputQueueRef = useRef<DaemonInputQueue | null>(null);
   const scrollToBottomPendingRef = useRef(false);
   const pasteShortcutArmedUntilRef = useRef(0);
+  // Guards against two overlapping Ctrl+Shift+V reads (capture + bubble handlers)
+  // racing the async backend clipboard read and double-pasting.
+  const pasteReadInFlightRef = useRef(false);
   // Stable handle to the current session id for the window-capture key handler,
   // which is registered once and must not close over a stale prop.
   const sessionIdRef = useRef(sessionId);
@@ -1066,13 +1069,19 @@ export function TerminalCanvas({
     }, 0);
   };
 
-  const sendPasteText = (text: string) => {
+  // `force` skips the generation guard. That guard drops input superseded by a
+  // newer keystroke — correct for replayed keys, WRONG for a deliberate paste:
+  // the async backend clipboard read adds latency, so an unrelated input event
+  // can bump the generation before the paste resolves and silently swallow it
+  // (the "copy several times to paste" regression). A paste the user asked for
+  // must always land; only a session swap (epoch) may legitimately cancel it.
+  const sendPasteText = (text: string, options?: { force?: boolean }) => {
     if (!text) return;
     const epoch = sessionEpochRef.current;
     const generation = advanceInputGeneration();
     void waitForFirstFrame().then(() => {
       if (epoch !== sessionEpochRef.current) return;
-      if (generation !== inputGenerationRef.current) return;
+      if (!options?.force && generation !== inputGenerationRef.current) return;
       const bracketed =
         modesRef.current.bracketedPaste || shouldBracketPasteForVisibleAgentPrompt(text);
       send(encodePaste(text, bracketed), nextTerminalInputSequence(), "canvas-paste");
@@ -1107,6 +1116,8 @@ export function TerminalCanvas({
   // independent of event propagation. Empty/denied text → fall back to forwarding
   // Ctrl-V (`\x16`) so an image on the clipboard still reaches the running agent.
   const pasteFromClipboardShortcut = async () => {
+    if (pasteReadInFlightRef.current) return; // one read at a time → no double-paste
+    pasteReadInFlightRef.current = true;
     try {
       // Read the OS clipboard from the Rust backend — `navigator.clipboard.readText`
       // is blocked in WebKitGTK (that is the actual paste bug). Browser preview (no
@@ -1116,11 +1127,15 @@ export function TerminalCanvas({
         : await navigator.clipboard.readText();
       if (text) {
         if (DEBUG_TERM_HUD) bumpHud({ clip: `paste:read ${text.length}` });
-        sendPasteText(text);
+        // force: a user-initiated paste must never be dropped by the generation
+        // guard just because an input raced during the async read.
+        sendPasteText(text, { force: true });
         return;
       }
     } catch {
       // Clipboard unavailable → fall through to the image/agent path.
+    } finally {
+      pasteReadInFlightRef.current = false;
     }
     // No text (image on the clipboard) → forward Ctrl-V so the agent reads it.
     if (DEBUG_TERM_HUD) bumpHud({ clip: "paste:read-image" });
