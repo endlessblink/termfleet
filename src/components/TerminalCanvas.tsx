@@ -107,6 +107,23 @@ function isTauriRuntime(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
 
+// Fire-and-forget paste diagnostics → ~/.local/share/terminal-workspace/paste-debug.log
+// (the WebKitGTK webview console isn't readable, so we trace through the backend).
+// The optional corrId threads one copy/paste across the webview + backend layers.
+function pasteLog(line: string, corrId?: string): void {
+  if (!isTauriRuntime()) return;
+  void invoke("paste_debug_log", { line: corrId ? `corr=${corrId} ${line}` : line }).catch(() => {});
+}
+
+// Short correlation id per copy/paste operation.
+function newCorrId(): string {
+  try {
+    return crypto.randomUUID().slice(0, 8);
+  } catch {
+    return `c${Date.now().toString(36).slice(-6)}`;
+  }
+}
+
 interface TerminalCanvasProps {
   sessionId: string;
   tabId: string;
@@ -930,7 +947,7 @@ export function TerminalCanvas({
       pasteShortcutArmedUntilRef.current = performance.now() + 1500;
       event.preventDefault();
       event.stopPropagation();
-      void pasteFromClipboardShortcut();
+      void pasteFromClipboardShortcut("bubble");
       return;
     }
     const bytes = keyEventToBytes(event.nativeEvent, {
@@ -998,13 +1015,16 @@ export function TerminalCanvas({
         pasteShortcutArmedUntilRef.current = performance.now() + 1500;
         event.preventDefault();
         event.stopPropagation();
-        void pasteFromClipboardShortcut();
+        void pasteFromClipboardShortcut("capture");
         return;
       }
-      // Leave copy shortcut to the bubble handler, but keep it inside the
-      // terminal so app/global shortcuts cannot race the clipboard path.
+      // Own copy in capture phase. If we only stop propagation here, the event
+      // never reaches the textarea bubble handler and Ctrl+Shift+C silently
+      // does nothing.
       if ((event.ctrlKey || event.metaKey) && event.shiftKey && key === "c") {
+        event.preventDefault();
         event.stopPropagation();
+        copySelection();
         return;
       }
       if (event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey && key === "z") {
@@ -1075,16 +1095,24 @@ export function TerminalCanvas({
   // can bump the generation before the paste resolves and silently swallow it
   // (the "copy several times to paste" regression). A paste the user asked for
   // must always land; only a session swap (epoch) may legitimately cancel it.
-  const sendPasteText = (text: string, options?: { force?: boolean }) => {
+  const sendPasteText = (text: string, options?: { force?: boolean; corrId?: string }) => {
     if (!text) return;
+    const corrId = options?.corrId;
     const epoch = sessionEpochRef.current;
     const generation = advanceInputGeneration();
     void waitForFirstFrame().then(() => {
-      if (epoch !== sessionEpochRef.current) return;
-      if (!options?.force && generation !== inputGenerationRef.current) return;
+      if (epoch !== sessionEpochRef.current) {
+        pasteLog(`send DROPPED: session changed (epoch ${epoch}→${sessionEpochRef.current})`, corrId);
+        return;
+      }
+      if (!options?.force && generation !== inputGenerationRef.current) {
+        pasteLog(`send DROPPED: generation ${generation}≠${inputGenerationRef.current} (input raced)`, corrId);
+        return;
+      }
       const bracketed =
         modesRef.current.bracketedPaste || shouldBracketPasteForVisibleAgentPrompt(text);
       send(encodePaste(text, bracketed), nextTerminalInputSequence(), "canvas-paste");
+      pasteLog(`send OK: ${text.length} chars to PTY (bracketed=${bracketed}, force=${!!options?.force})`, corrId);
       clearHiddenInputSoon();
     });
   };
@@ -1115,24 +1143,32 @@ export function TerminalCanvas({
   // "again" (bd583fb). Reading the clipboard ourselves is deterministic and
   // independent of event propagation. Empty/denied text → fall back to forwarding
   // Ctrl-V (`\x16`) so an image on the clipboard still reaches the running agent.
-  const pasteFromClipboardShortcut = async () => {
-    if (pasteReadInFlightRef.current) return; // one read at a time → no double-paste
+  const pasteFromClipboardShortcut = async (origin: string) => {
+    const corrId = newCorrId();
+    if (pasteReadInFlightRef.current) {
+      pasteLog(`shortcut ${origin} ignored: read already in flight`, corrId);
+      return; // one read at a time → no double-paste
+    }
     pasteReadInFlightRef.current = true;
+    pasteLog(`shortcut ${origin}: reading clipboard (tauri=${isTauriRuntime()})`, corrId);
     try {
       // Read the OS clipboard from the Rust backend — `navigator.clipboard.readText`
       // is blocked in WebKitGTK (that is the actual paste bug). Browser preview (no
       // Tauri runtime) still uses the webview API as a fallback.
       const text = isTauriRuntime()
-        ? await invoke<string>("clipboard_read_text")
+        ? await invoke<string>("clipboard_read_text", { corrId })
         : await navigator.clipboard.readText();
       if (text) {
         if (DEBUG_TERM_HUD) bumpHud({ clip: `paste:read ${text.length}` });
+        pasteLog(`read returned len=${text.length} → sending (force)`, corrId);
         // force: a user-initiated paste must never be dropped by the generation
         // guard just because an input raced during the async read.
-        sendPasteText(text, { force: true });
+        sendPasteText(text, { force: true, corrId });
         return;
       }
-    } catch {
+      pasteLog("read returned EMPTY → image/agent fallback (Ctrl-V)", corrId);
+    } catch (error) {
+      pasteLog(`read THREW (${String(error)}) → image/agent fallback`, corrId);
       // Clipboard unavailable → fall through to the image/agent path.
     } finally {
       pasteReadInFlightRef.current = false;
@@ -1369,12 +1405,28 @@ export function TerminalCanvas({
         return selectionToText(buffer.cells, range);
       })
       .then((text) => {
+        const corrId = newCorrId();
         if (text) {
-          navigator.clipboard?.writeText(text)
-            .then(() => { if (DEBUG_TERM_HUD) bumpHud({ clip: `copy:ok ${text.length}` }); })
-            .catch((err) => { if (DEBUG_TERM_HUD) bumpHud({ clip: "copy:write-fail" }); console.error(err); });
-        } else if (DEBUG_TERM_HUD) {
-          bumpHud({ clip: "copy:empty" });
+          // Write via the Rust backend — navigator.clipboard.writeText is
+          // unreliable in WebKitGTK (tauri#10835), so copying inside the app
+          // would silently not land. Browser preview falls back to the webview.
+          pasteLog(`copy: writing ${text.length} chars (tauri=${isTauriRuntime()})`, corrId);
+          const wrote = isTauriRuntime()
+            ? invoke("clipboard_write_text", { text, corrId })
+            : (navigator.clipboard?.writeText(text) ?? Promise.reject("no clipboard"));
+          Promise.resolve(wrote)
+            .then(() => {
+              pasteLog(`copy OK: ${text.length} chars to clipboard`, corrId);
+              if (DEBUG_TERM_HUD) bumpHud({ clip: `copy:ok ${text.length}` });
+            })
+            .catch((err) => {
+              pasteLog(`copy FAILED: ${String(err)}`, corrId);
+              if (DEBUG_TERM_HUD) bumpHud({ clip: "copy:write-fail" });
+              console.error(err);
+            });
+        } else {
+          pasteLog("copy: selection empty", corrId);
+          if (DEBUG_TERM_HUD) bumpHud({ clip: "copy:empty" });
         }
       });
     // Writing to the clipboard can move focus off the hidden textarea; without

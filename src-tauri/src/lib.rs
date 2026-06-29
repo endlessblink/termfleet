@@ -83,6 +83,8 @@ pub fn run() {
             commands::pty_snapshot,
             commands::fs_home_dir,
             commands::clipboard_read_text,
+            commands::clipboard_write_text,
+            commands::paste_debug_log,
             commands::fs_pick_project_folder,
             commands::fs_list_dir,
             commands::fs_create,

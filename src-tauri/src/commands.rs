@@ -929,7 +929,8 @@ pub fn fs_home_dir() -> Result<String, String> {
 /// error) when the clipboard has no text — e.g. it holds an image — so the caller
 /// can fall back to forwarding Ctrl-V (`\x16`) and let the agent read the image.
 #[tauri::command]
-pub async fn clipboard_read_text() -> Result<String, String> {
+pub async fn clipboard_read_text(corr_id: Option<String>) -> Result<String, String> {
+    let cid = corr_id.unwrap_or_default();
     // Wayland first, then X11. Each returns text only; on an image-only clipboard
     // they exit non-zero / empty, so we surface "" and let the image path run.
     let attempts: [(&str, &[&str]); 3] = [
@@ -942,13 +943,126 @@ pub async fn clipboard_read_text() -> Result<String, String> {
         // wrong display server (e.g. wl-paste on X11) or no text on the clipboard —
         // both indistinguishable here — so fall through to the next tool, and only
         // report "" (→ image/agent path) once every tool has been tried.
-        if let Ok(output) = tokio::process::Command::new(bin).args(args).output().await {
-            if output.status.success() {
-                return Ok(String::from_utf8_lossy(&output.stdout).to_string());
+        let start = std::time::Instant::now();
+        match tokio::process::Command::new(bin).args(args).output().await {
+            Ok(output) if output.status.success() => {
+                let text = String::from_utf8_lossy(&output.stdout).to_string();
+                plog(&cid, &format!(
+                    "backend.read OK tool={} len={} ms={} display={}",
+                    bin, text.len(), start.elapsed().as_millis(), display_backend()
+                ));
+                return Ok(text);
             }
+            Ok(output) => plog(&cid, &format!(
+                "backend.read miss tool={} exit={:?} stderr={:?} ms={}",
+                bin, output.status.code(),
+                String::from_utf8_lossy(&output.stderr).trim(), start.elapsed().as_millis()
+            )),
+            Err(err) => plog(&cid, &format!(
+                "backend.read spawn-fail tool={} err={} ms={}", bin, err, start.elapsed().as_millis()
+            )),
         }
     }
+    plog(&cid, &format!("backend.read EMPTY (all tools exhausted) display={}", display_backend()));
     Ok(String::new())
+}
+
+/// Write text to the OS clipboard from the backend, NOT the webview.
+///
+/// `navigator.clipboard.writeText()` is unreliable in WebKitGTK (tauri#10835), so
+/// copying inside the app would silently not land on the clipboard. We set the
+/// real X11/Wayland selection here. The clipboard tools daemonize themselves to
+/// keep serving the selection after we return, so a later `clipboard_read_text`
+/// (or any app) can read it.
+#[tauri::command]
+pub async fn clipboard_write_text(text: String, corr_id: Option<String>) -> Result<(), String> {
+    use tokio::io::AsyncWriteExt;
+    let cid = corr_id.unwrap_or_default();
+    let attempts: [(&str, &[&str]); 3] = [
+        ("wl-copy", &[]),
+        ("xclip", &["-selection", "clipboard"]),
+        ("xsel", &["--clipboard", "--input"]),
+    ];
+    for (bin, args) in attempts {
+        let start = std::time::Instant::now();
+        let spawned = tokio::process::Command::new(bin)
+            .args(args)
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn();
+        let mut child = match spawned {
+            Ok(child) => child,
+            Err(err) => {
+                plog(&cid, &format!("backend.write spawn-fail tool={} err={}", bin, err));
+                continue; // tool not installed / wrong display server
+            }
+        };
+        if let Some(mut stdin) = child.stdin.take() {
+            let _ = stdin.write_all(text.as_bytes()).await;
+            let _ = stdin.shutdown().await; // close stdin so the tool takes ownership
+        }
+        // The foreground process forks a daemon to serve the selection and exits;
+        // waiting on it returns promptly while the daemon keeps the clipboard set.
+        let _ = child.wait().await;
+        plog(&cid, &format!(
+            "backend.write OK tool={} len={} ms={} display={}",
+            bin, text.len(), start.elapsed().as_millis(), display_backend()
+        ));
+        return Ok(());
+    }
+    plog(&cid, &format!("backend.write FAILED (no clipboard tool) display={}", display_backend()));
+    Err("no clipboard tool available".into())
+}
+
+/// Path of the rolling paste-diagnostics log (so the user/agent can `tail` it).
+pub fn paste_log_path() -> std::path::PathBuf {
+    dirs::data_dir()
+        .unwrap_or_else(std::env::temp_dir)
+        .join("terminal-workspace")
+        .join("paste-debug.log")
+}
+
+/// Active display server, logged on every clipboard op so X11/Wayland mismatches
+/// (e.g. wl-paste failing on X11) are obvious in the trace.
+fn display_backend() -> &'static str {
+    if std::env::var_os("WAYLAND_DISPLAY").is_some() {
+        "wayland"
+    } else if std::env::var_os("DISPLAY").is_some() {
+        "x11"
+    } else {
+        "none"
+    }
+}
+
+/// Append a correlated diagnostic line: `<ts> corr=<id> <msg>`. The correlation id
+/// (generated per copy/paste in the frontend) threads the webview keystroke, this
+/// backend read/write, and the PTY injection into one ordered trace.
+fn plog(corr_id: &str, msg: &str) {
+    append_paste_log(&format!("corr={} {}", if corr_id.is_empty() { "-" } else { corr_id }, msg));
+}
+
+/// Append one timestamped diagnostic line. Best-effort, never fails a paste.
+fn append_paste_log(line: &str) {
+    use std::io::Write;
+    let ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    let path = paste_log_path();
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
+        let _ = writeln!(f, "{ms} {line}");
+    }
+}
+
+/// Frontend hook into the same paste-diagnostics log so a single ordered trace
+/// captures both the React paste path and the backend clipboard read.
+#[tauri::command]
+pub fn paste_debug_log(line: String) {
+    append_paste_log(&format!("ui.{line}"));
 }
 
 fn normalize_selected_folder(raw: &str) -> Option<String> {

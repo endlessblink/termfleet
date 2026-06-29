@@ -23,7 +23,7 @@ grep -q 'commands::clipboard_read_text' src-tauri/src/lib.rs \
   || fail "clipboard_read_text is not registered in lib.rs invoke_handler"
 pass "command registered in lib.rs"
 
-grep -q 'invoke<string>("clipboard_read_text")' src/components/TerminalCanvas.tsx \
+grep -Eq 'invoke<string>\("clipboard_read_text"(, *\{[^}]*corrId[^}]*\})?\)' src/components/TerminalCanvas.tsx \
   || fail "Ctrl+Shift+V must read the clipboard via the backend command, not navigator.clipboard alone"
 pass "frontend reads the clipboard via the backend command"
 

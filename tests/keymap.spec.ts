@@ -152,7 +152,7 @@ test("canvas terminal clears hidden textarea around paste and input events", () 
   // event firing (both broke text paste "again"). Guards against regressing back
   // to a webview-only read.
   expect(source).toContain("const pasteFromClipboardShortcut");
-  expect(source).toContain('invoke<string>("clipboard_read_text")');
+  expect(source).toMatch(/invoke<string>\("clipboard_read_text"(?:,\s*\{[^}]*corrId[^}]*\})?\)/);
   expect(source).toContain("const onPaste = (event: ClipboardEvent)");
   expect(source).toContain("event.stopImmediatePropagation()");
   expect(source).toContain('input.addEventListener("paste", onPaste, true)');
@@ -166,7 +166,7 @@ test("canvas terminal clears hidden textarea around paste and input events", () 
   expect(source).toContain("onInput={handleInput}");
 
   expect(handleKeyDownBlock).toMatch(/\(event\.ctrlKey \|\| event\.metaKey\) && event\.shiftKey && key === "c"[\s\S]*event\.preventDefault\(\);[\s\S]*event\.stopPropagation\(\);[\s\S]*copySelection\(\);/);
-  expect(handleKeyDownBlock).toMatch(/isTerminalPasteShortcut\(event\.nativeEvent\)[\s\S]*event\.preventDefault\(\);[\s\S]*event\.stopPropagation\(\);[\s\S]*pasteFromClipboardShortcut\(\);[\s\S]*return;/);
-  expect(captureKeyDownBlock).toMatch(/isTerminalPasteShortcut\(event\)[\s\S]*event\.preventDefault\(\);[\s\S]*event\.stopPropagation\(\);[\s\S]*pasteFromClipboardShortcut\(\);[\s\S]*return;/);
-  expect(captureKeyDownBlock).toMatch(/\(event\.ctrlKey \|\| event\.metaKey\) && event\.shiftKey && key === "c"[\s\S]*event\.stopPropagation\(\);[\s\S]*return;/);
+  expect(handleKeyDownBlock).toMatch(/isTerminalPasteShortcut\(event\.nativeEvent\)[\s\S]*event\.preventDefault\(\);[\s\S]*event\.stopPropagation\(\);[\s\S]*pasteFromClipboardShortcut\("bubble"\);[\s\S]*return;/);
+  expect(captureKeyDownBlock).toMatch(/isTerminalPasteShortcut\(event\)[\s\S]*event\.preventDefault\(\);[\s\S]*event\.stopPropagation\(\);[\s\S]*pasteFromClipboardShortcut\("capture"\);[\s\S]*return;/);
+  expect(captureKeyDownBlock).toMatch(/\(event\.ctrlKey \|\| event\.metaKey\) && event\.shiftKey && key === "c"[\s\S]*event\.preventDefault\(\);[\s\S]*event\.stopPropagation\(\);[\s\S]*copySelection\(\);[\s\S]*return;/);
 });
