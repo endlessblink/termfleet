@@ -25,6 +25,11 @@ export function normalizeRange(anchor: CellPoint, focus: CellPoint): SelectionRa
   return before ? { start: anchor, end: focus } : { start: focus, end: anchor };
 }
 
+export function hasSelectionExtent(range: SelectionRange | null): boolean {
+  if (!range) return false;
+  return range.start.row !== range.end.row || range.start.col !== range.end.col;
+}
+
 /** Per-row inclusive column span of the selection on `row`, or null if none. */
 export function rowSpan(range: SelectionRange, row: number, cols: number): [number, number] | null {
   if (row < range.start.row || row > range.end.row) return null;

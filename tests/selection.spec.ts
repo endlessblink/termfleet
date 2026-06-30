@@ -17,6 +17,7 @@ test("selection range, hit-test, and text extraction", async ({ page }) => {
   const out = await page.evaluate(async () => {
     const {
       computeSelectionAutoScrollDelta,
+      hasSelectionExtent,
       normalizeRange,
       rowSpan,
       isCellSelected,
@@ -56,6 +57,8 @@ test("selection range, hit-test, and text extraction", async ({ page }) => {
         8,
         cols
       ),
+      clickExtent: hasSelectionExtent(normalizeRange({ col: 4, row: 2 }, { col: 4, row: 2 })),
+      dragExtent: hasSelectionExtent(normalizeRange({ col: 4, row: 2 }, { col: 5, row: 2 })),
       scrollAbove: computeSelectionAutoScrollDelta(80, 100, 300),
       scrollInside: computeSelectionAutoScrollDelta(160, 100, 300),
       scrollBelow: computeSelectionAutoScrollDelta(340, 100, 300),
@@ -79,6 +82,8 @@ test("selection range, hit-test, and text extraction", async ({ page }) => {
   expect(out.clampHigh).toEqual({ col: 9, row: 4 }); // clamped to cols-1, rows-1
   expect(out.absolutePoint).toEqual({ col: 4, row: -5 });
   expect(out.visibleScrolledSpan).toEqual([1, 9]);
+  expect(out.clickExtent).toBe(false);
+  expect(out.dragExtent).toBe(true);
   expect(out.scrollAbove).toBeGreaterThan(0);
   expect(out.scrollInside).toBe(0);
   expect(out.scrollBelow).toBeLessThan(0);

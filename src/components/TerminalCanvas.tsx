@@ -37,6 +37,7 @@ import {
 } from "../lib/terminalMouse";
 import {
   computeSelectionAutoScrollDelta,
+  hasSelectionExtent,
   normalizeRange,
   pointToCell,
   selectionToText,
@@ -1490,7 +1491,7 @@ export function TerminalCanvas({
     }
     if (selectionPointerIdRef.current !== null && selectionPointerIdRef.current !== event.pointerId) return;
     stopSelectionDrag(event);
-    if (selectionRef.current) copySelection();
+    if (hasSelectionExtent(selectionRef.current)) copySelection();
     // A selection drag ends with the pointer up; make sure the textarea keeps
     // keyboard focus so terminal shortcuts (Shift+Tab back-tab, Ctrl keys) go to
     // the PTY rather than the browser.

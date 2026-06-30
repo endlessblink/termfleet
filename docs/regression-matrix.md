@@ -23,8 +23,12 @@ Playwright suite; the per-row specs are the precise guards.
 | 1.3 | Image paste / paste decision branching | No image-to-disk pipeline — image paste forwards Ctrl-V (`\x16`) so the agent reads the clipboard. Decision centralized in pure `decidePasteAction` (text never needs arming; image needs an armed clipboard-image). | `tests/paste-image-decision.spec.ts`, `tests/keymap.spec.ts` | 🟡 logic guarded; no live e2e guard |
 | 1.4 | Shift+Tab (zellij back-tab) lost to WebKitGTK focus traversal | WebKitGTK eats Tab/Shift+Tab before JS; fixed with GTK key interceptor + window-capture keydown. | `verify:zellij-shortcuts`, `tests/terminal-keyboard-passthrough.spec.ts` | ✅ |
 | 1.5 | Control keys / cursor keys wrong in TUIs (vim/less app-cursor) | Keymap SS3 vs CSI encoding. | `verify:keymap`, `tests/keymap.spec.ts` | ✅ |
-| 1.6 | Copy / selection loses focus or copies nothing | Ctrl+Shift+C ownership + selection model. | `tests/selection.spec.ts` | ✅ |
+| 1.6 | Copy / selection loses focus or copies nothing | Ctrl+Shift+C ownership + selection model. | `tests/selection.spec.ts`, `tests/keymap.spec.ts` | ✅ |
 | 1.7 | Mouse / wheel not forwarded in TUIs | Mouse encoding + wheel-in-alt-screen. | `verify:terminal-mouse`, `tests/terminal-mouse.spec.ts` | ✅ |
+| 1.8 | **Ctrl+Shift+V typed a literal `v` / paste did nothing in the desktop app** | On Linux desktop, GTK/WebKit can handle terminal shortcuts before the React textarea path sees the intended modifiers. The fix extends the native GTK interceptor from Tab-only to terminal clipboard shortcuts, logs `gtk.key` / `gtk.shortcut.emit`, and emits `terminal-workspace-gtk-clipboard-shortcut` back to the active terminal. React then routes that event through the same backend clipboard read and PTY paste path. | `tests/keymap.spec.ts` (GTK/source contract), `tests/terminal-keyboard-passthrough.spec.ts`, live paste log chain `gtk.shortcut.emit -> paste_shortcut.read_text -> pty_send.ok` | 🟡 no dedicated live GUI verifier yet |
+| 1.9 | **Map-view paste into Claude/Codex TUI targets the wrong terminal or app chrome** | Clicking a map terminal selected the canvas node but did not necessarily make that terminal's tab, pane, and PTY id the active keyboard owner before paste. The fix makes terminal node activation set `activeTab`, `activePane`, and `activeTerminal` before focusing/zooming; `TerminalCanvas` now accepts capture-phase terminal shortcuts when that session owns keyboard even if the hidden textarea was not already focused. | `tests/map-terminal-rendering.spec.ts --grep "map terminal activation owns"`, `tests/terminal-keyboard-passthrough.spec.ts` | ✅ for ownership contract; 🟡 for live headed map paste |
+| 1.10 | **TUI-to-TUI paste copied a large selection, then pasted only one character** | Log evidence showed `copy.write_ok chars=1678`, followed by an unintended `copy.write_start chars=1` before paste. A destination-terminal click/focus could create a same-cell selection; pointer-up auto-copied that one cell and overwrote the clipboard. The fix adds `hasSelectionExtent` and only auto-copies when the pointer drag has real extent. | `tests/selection.spec.ts` (`clickExtent=false`, `dragExtent=true`) | ✅ |
+| 1.11 | Paste/copy diagnostics became noisy or unsafe to trust | Clipboard traces previously allowed non-ASCII/control characters and unbounded lines, making copy/paste failures hard to compare. The fix sanitizes frontend/backend paste logs to single-line ASCII, caps lines, rotates at 256KB, and records structured events (`copy.write_*`, `paste_shortcut.*`, `pty_send.*`, `focus.set`, `gtk.*`). | `cargo test paste_log_lines` | ✅ |
 
 ## 2. Canvas renderer (grid / Canvas2D)
 
@@ -93,15 +97,19 @@ Playwright suite; the per-row specs are the precise guards.
 
 ## Open gaps (prioritized — close these to stop "again" regressions)
 
-1. **Clipboard paste (text + image) has no live end-to-end guard (rows 1.1, 1.3).**
+1. **Clipboard paste (text + image + TUI-to-TUI + map-view focus) has no single live end-to-end guard (rows 1.1, 1.3, 1.8, 1.9).**
    Source-contract + unit tests now exist, but every real breakage was runtime
    (WebKitGTK clipboard, event propagation, the agent reading `\x16`) — a unit test
    cannot see it. Add a `verify:clipboard-paste` live script modeled on
    `verify-bracketed-paste.sh`: (a) `xclip -selection clipboard` a known TEXT
    string, focus the canvas terminal, send Ctrl+Shift+V, assert the PTY received
    that text; (b) `xclip -t image/png` an image, Ctrl+Shift+V, assert the PTY
-   received `\x16`. This is the only guard that would have caught the text-paste
-   regression — the source-contract test can lock wiring but not WebKit runtime.
+   received `\x16`; (c) in map mode, activate a non-current terminal node and
+   assert paste lands in that node's PTY; (d) copy a multi-line terminal selection,
+   click/focus a second terminal, paste, and assert the copied payload is not
+   overwritten by a same-cell destination click. This is the only guard that would
+   have caught the text-paste and map/TUI-to-TUI runtime regressions — source
+   contracts lock wiring but not GTK/WebKit/runtime focus behavior.
 2. **Typing-lag has no UI-level assertion (2.7)** — only backend latency. A
    key-to-pixel trace threshold in a Playwright run would guard perceived lag.
 3. **Map-node freeze-path heuristic under-covered (4.2)** — the
