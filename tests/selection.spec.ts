@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
 
 // TC-017f — selection model proof (pure functions). Scrollback + clipboard wiring
@@ -88,4 +89,21 @@ test("selection range, hit-test, and text extraction", async ({ page }) => {
   expect(out.scrollInside).toBe(0);
   expect(out.scrollBelow).toBeLessThan(0);
   expect(out.scrollBelowClamped).toBe(-8);
+});
+
+test("terminal pointer-up only auto-copies an active selection drag", () => {
+  const source = readFileSync("src/components/TerminalCanvas.tsx", "utf8");
+  const match = source.match(
+    /const handlePointerUp = \(event: React\.PointerEvent\) => \{[\s\S]*?\n  \};/
+  );
+  const block = match?.[0] ?? "";
+
+  expect(block).toContain("const activeSelectionPointerId = selectionPointerIdRef.current");
+  expect(block).toMatch(
+    /if \(activeSelectionPointerId === null\) \{[\s\S]*focusInput\(\);[\s\S]*return;[\s\S]*\}/
+  );
+  expect(block).toContain("if (activeSelectionPointerId !== event.pointerId) return;");
+  expect(block.indexOf("activeSelectionPointerId === null")).toBeLessThan(
+    block.indexOf("copySelection()")
+  );
 });

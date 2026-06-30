@@ -1489,7 +1489,12 @@ export function TerminalCanvas({
       focusInput();
       return;
     }
-    if (selectionPointerIdRef.current !== null && selectionPointerIdRef.current !== event.pointerId) return;
+    const activeSelectionPointerId = selectionPointerIdRef.current;
+    if (activeSelectionPointerId === null) {
+      focusInput();
+      return;
+    }
+    if (activeSelectionPointerId !== event.pointerId) return;
     stopSelectionDrag(event);
     if (hasSelectionExtent(selectionRef.current)) copySelection();
     // A selection drag ends with the pointer up; make sure the textarea keeps
