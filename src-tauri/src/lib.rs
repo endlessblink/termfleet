@@ -41,7 +41,11 @@ pub fn run() {
                 use tauri::Manager;
                 if let Some(window) = app.get_webview_window("main") {
                     if let Ok(gtk_window) = window.gtk_window() {
-                        gtk_keys::install_tab_interceptor(&gtk_window, focused_terminal.0.clone());
+                        gtk_keys::install_terminal_key_interceptor(
+                            &gtk_window,
+                            focused_terminal.0.clone(),
+                            app.handle().clone(),
+                        );
                     }
                 }
             }

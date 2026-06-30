@@ -13,9 +13,10 @@ export interface KeymapModes {
 const DEFAULT_MODES: KeymapModes = { appCursor: false };
 
 export function isTerminalPasteShortcut(event: KeyboardEvent): boolean {
+  const key = event.key.toLowerCase();
   return (
     event.type === "keydown" &&
-    event.key.toLowerCase() === "v" &&
+    (key === "v" || event.code === "KeyV") &&
     (event.ctrlKey || event.metaKey) &&
     event.shiftKey &&
     !event.altKey &&

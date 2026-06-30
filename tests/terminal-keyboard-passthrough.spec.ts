@@ -98,7 +98,7 @@ test("zellij combos pass through to the PTY instead of being dropped", async ({ 
   expect(bytes.ctrlZ).toBe("\x1a"); // Ctrl+Z / VSUSP
 });
 
-test("the REAL running app's global Ctrl+T handler yields to a focused terminal", async ({ page }) => {
+test("the REAL running app's global shortcut handlers yield to focused-terminal keys", async ({ page }) => {
   // This loads the actual app (App.tsx mounts useKeybindings + WorkbenchHeader,
   // which register their global window-capture keydown listeners). We then fire a
   // real cancelable Ctrl+T at window and read `defaultPrevented`: the app handlers
@@ -116,16 +116,15 @@ test("the REAL running app's global Ctrl+T handler yields to a focused terminal"
   const result = await page.evaluate(async () => {
     const { TERMINAL_INPUT_CLASS } = await import("/src/lib/terminalFocus.ts");
 
-    const fireCtrlTFrom = (el: HTMLElement) => {
+    const fireKeyFrom = (el: HTMLElement, init: KeyboardEventInit) => {
       el.focus();
       // Guard: only dispatch once focus actually committed to our element, so the
       // app's focus check sees the intended activeElement.
       if (document.activeElement !== el) return { ok: false, prevented: false };
       const ev = new KeyboardEvent("keydown", {
-        key: "t",
-        ctrlKey: true,
         bubbles: true,
         cancelable: true,
+        ...init,
       });
       el.dispatchEvent(ev); // bubbles → window-capture listeners run
       return { ok: true, prevented: ev.defaultPrevented };
@@ -138,19 +137,23 @@ test("the REAL running app's global Ctrl+T handler yields to a focused terminal"
     const outside = document.createElement("input");
     document.body.appendChild(outside);
 
-    const inTerminal = fireCtrlTFrom(term);
-    const outsideTerminal = fireCtrlTFrom(outside);
+    const inTerminalCtrlT = fireKeyFrom(term, { key: "t", ctrlKey: true });
+    const outsideTerminalCtrlT = fireKeyFrom(outside, { key: "t", ctrlKey: true });
+    const inTerminalPaste = fireKeyFrom(term, { key: "v", ctrlKey: true, shiftKey: true });
 
     term.remove();
     outside.remove();
-    return { inTerminal, outsideTerminal };
+    return { inTerminalCtrlT, outsideTerminalCtrlT, inTerminalPaste };
   });
 
   // Both dispatches must have actually focused their element first.
-  expect(result.inTerminal.ok, "terminal input took focus").toBe(true);
-  expect(result.outsideTerminal.ok, "non-terminal input took focus").toBe(true);
+  expect(result.inTerminalCtrlT.ok, "terminal input took focus for Ctrl+T").toBe(true);
+  expect(result.outsideTerminalCtrlT.ok, "non-terminal input took focus for Ctrl+T").toBe(true);
+  expect(result.inTerminalPaste.ok, "terminal input took focus for Ctrl+Shift+V").toBe(true);
   // Terminal focused → app must NOT consume Ctrl+T (it reaches zellij as 0x14).
-  expect(result.inTerminal.prevented).toBe(false);
+  expect(result.inTerminalCtrlT.prevented).toBe(false);
   // Not in a terminal → the app's Ctrl+T (new tab) still fires (preventDefault).
-  expect(result.outsideTerminal.prevented).toBe(true);
+  expect(result.outsideTerminalCtrlT.prevented).toBe(true);
+  // Terminal focused → app chrome must also leave paste to TerminalCanvas.
+  expect(result.inTerminalPaste.prevented).toBe(false);
 });

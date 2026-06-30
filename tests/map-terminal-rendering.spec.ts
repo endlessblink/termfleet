@@ -46,6 +46,16 @@ test("selected map agent panes suppress synchronized-output control residue", ()
   expect(mapVerifier).toContain("preserve alternate-screen terminals with a 1:1 viewport clip (no down-scale)");
 });
 
+test("map terminal activation owns tab, pane, and focused terminal before paste", () => {
+  const source = readFileSync("src/components/MagicCanvas.tsx", "utf8");
+  const activationBlock = source.match(/const activateTerminalNode = useCallback\(\(\) => \{[\s\S]*?\n  \}, \[/)?.[0] ?? "";
+
+  expect(activationBlock).toContain("selectCanvasNode(node.id)");
+  expect(activationBlock).toContain("setActiveTab(terminalTabId)");
+  expect(activationBlock).toContain("setActivePane(terminalTabId, terminalPaneId)");
+  expect(activationBlock).toContain("setActiveTerminal(linkedTerminalId ?? `terminal-${terminalTabId}-${terminalPaneId}`)");
+});
+
 async function imageRegionStats(
   page: import("@playwright/test").Page,
   screenshot: Buffer,

@@ -2032,6 +2032,8 @@ function CanvasNodeViewImpl({
   const selectCanvasNode = useWorkspaceStore((state) => state.selectCanvasNode);
   const selectCanvasNodes = useWorkspaceStore((state) => state.selectCanvasNodes);
   const setActiveTab = useWorkspaceStore((state) => state.setActiveTab);
+  const setActivePane = useWorkspaceStore((state) => state.setActivePane);
+  const setActiveTerminal = useWorkspaceStore((state) => state.setActiveTerminal);
   const setWorkspaceMode = useWorkspaceStore((state) => state.setWorkspaceMode);
   const workspaceProjectRoot = useWorkspaceStore((state) => state.projectRoot);
   const terminalRendererMode = useWorkspaceStore((state) => state.workspaceUiState.terminalRendererMode);
@@ -2077,13 +2079,6 @@ function CanvasNodeViewImpl({
     renameInputRef.current?.focus();
     renameInputRef.current?.select();
   }, [renaming]);
-
-  const activateTerminalNode = useCallback(() => {
-    selectCanvasNode(node.id);
-    if (node.type === "terminal" && zoom < READABLE_TERMINAL_ZOOM) {
-      focusNode(node, FOCUS_TERMINAL_ZOOM);
-    }
-  }, [focusNode, node, selectCanvasNode, zoom]);
 
   const onMouseDown = useCallback((event: React.MouseEvent) => {
     event.preventDefault();
@@ -2274,6 +2269,28 @@ function CanvasNodeViewImpl({
   const linkedTerminal = linkedTerminalId
     ? linkedTab?.terminals.find((terminal) => terminal.id === linkedTerminalId)
     : undefined;
+  const activateTerminalNode = useCallback(() => {
+    selectCanvasNode(node.id);
+    if (node.type === "terminal") {
+      setActiveTab(terminalTabId);
+      setActivePane(terminalTabId, terminalPaneId);
+      setActiveTerminal(linkedTerminalId ?? `terminal-${terminalTabId}-${terminalPaneId}`);
+    }
+    if (node.type === "terminal" && zoom < READABLE_TERMINAL_ZOOM) {
+      focusNode(node, FOCUS_TERMINAL_ZOOM);
+    }
+  }, [
+    focusNode,
+    linkedTerminalId,
+    node,
+    selectCanvasNode,
+    setActivePane,
+    setActiveTab,
+    setActiveTerminal,
+    terminalPaneId,
+    terminalTabId,
+    zoom,
+  ]);
   const terminalActivity = linkedTerminal?.durableActivity?.title ?? linkedTerminal?.currentActivity;
   // Prefer the live cwd (polled from the PTY) over the initial cwd so the
   // breadcrumb tracks `cd`/`z`; falls back to the spawn cwd before the first poll.

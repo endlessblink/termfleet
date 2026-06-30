@@ -9,6 +9,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Channel, invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import {
   createDaemonInputQueue,
   nextTerminalInputSequence,
@@ -83,6 +84,7 @@ const TRANSIENT_ATTACH_RETRY_DELAYS_MS = [150, 400, 900];
 // rendering with whatever faces resolved (fallback metrics). Guards against a
 // stalled WebKitGTK font load blanking the terminal indefinitely.
 const FONT_LOAD_TIMEOUT_MS = 1500;
+const GTK_TERMINAL_CLIPBOARD_SHORTCUT_EVENT = "terminal-workspace-gtk-clipboard-shortcut";
 
 const DEFAULT_TERMINAL_MODES = {
   appCursor: false,
@@ -112,7 +114,11 @@ function isTauriRuntime(): boolean {
 // The optional corrId threads one copy/paste across the webview + backend layers.
 function pasteLog(line: string, corrId?: string): void {
   if (!isTauriRuntime()) return;
-  void invoke("paste_debug_log", { line: corrId ? `corr=${corrId} ${line}` : line }).catch(() => {});
+  const safeLine = line
+    .replace(/[\r\n\t]+/g, " ")
+    .replace(/[^\x20-\x7e]/g, "?")
+    .slice(0, 900);
+  void invoke("paste_debug_log", { line: corrId ? `corr=${corrId} ${safeLine}` : safeLine }).catch(() => {});
 }
 
 // Short correlation id per copy/paste operation.
@@ -183,6 +189,7 @@ export function TerminalCanvas({
   // Guards against two overlapping Ctrl+Shift+V reads (capture + bubble handlers)
   // racing the async backend clipboard read and double-pasting.
   const pasteReadInFlightRef = useRef(false);
+  const nativePasteInputPendingUntilRef = useRef(0);
   // Stable handle to the current session id for the window-capture key handler,
   // which is registered once and must not close over a stale prop.
   const sessionIdRef = useRef(sessionId);
@@ -870,8 +877,7 @@ export function TerminalCanvas({
     };
   }, [queuedInput?.id, queuedInput?.sentAt, queuedInput?.text, onQueuedInputSent]);
 
-  const syncFocusedTerminal = useCallback(() => {
-    if (!inputRef.current || document.activeElement !== inputRef.current) return;
+  const claimTerminalKeyboard = useCallback(() => {
     // Tell the backend this terminal owns the keyboard, so the Linux GTK
     // Tab-interceptor routes Tab/Shift+Tab to the current PTY. This must also run
     // when sessionId changes while the hidden textarea stays focused; otherwise
@@ -882,6 +888,11 @@ export function TerminalCanvas({
     useWorkspaceStore.getState().setActiveTerminal(sessionIdRef.current);
   }, []);
 
+  const syncFocusedTerminal = useCallback(() => {
+    if (!inputRef.current || document.activeElement !== inputRef.current) return;
+    claimTerminalKeyboard();
+  }, [claimTerminalKeyboard]);
+
   useEffect(() => {
     syncFocusedTerminal();
   }, [sessionId, syncFocusedTerminal]);
@@ -890,6 +901,32 @@ export function TerminalCanvas({
     const input = inputRef.current;
     if (!input) return;
     input.value = "";
+  };
+
+  const focusInput = () => {
+    const input = inputRef.current;
+    if (!input) return;
+    input.focus({ preventScroll: true });
+    claimTerminalKeyboard();
+  };
+
+  const terminalOwnsKeyboard = () => {
+    const input = inputRef.current;
+    if (!input) return false;
+    if (document.activeElement === input) return true;
+
+    const active = document.activeElement;
+    if (active instanceof HTMLElement) {
+      const tagName = active.tagName.toLowerCase();
+      const isEditable =
+        active.isContentEditable ||
+        tagName === "input" ||
+        tagName === "textarea" ||
+        tagName === "select";
+      if (isEditable) return false;
+    }
+
+    return useWorkspaceStore.getState().activeTerminalId === sessionIdRef.current;
   };
 
   const advanceInputGeneration = () => {
@@ -914,6 +951,7 @@ export function TerminalCanvas({
         // Let the native paste event stay authoritative. On WebKitGTK,
         // cancelling beforeinput can race ahead of paste and make Ctrl+Shift+V
         // look dead; this listener is only a retained-value cleanup net.
+        nativePasteInputPendingUntilRef.current = performance.now() + 350;
         event.stopPropagation();
       }
       clear();
@@ -936,7 +974,7 @@ export function TerminalCanvas({
       useWorkspaceStore.getState().toggleImmersiveTerminal(tabId, paneId);
       return;
     }
-    if ((event.ctrlKey || event.metaKey) && event.shiftKey && key === "c") {
+    if ((event.ctrlKey || event.metaKey) && event.shiftKey && (key === "c" || event.code === "KeyC")) {
       event.preventDefault();
       event.stopPropagation();
       copySelection();
@@ -981,7 +1019,8 @@ export function TerminalCanvas({
   // focused. stopPropagation also prevents the bubble handler from double-sending.
   useEffect(() => {
     const onCaptureKeyDown = (event: KeyboardEvent) => {
-      if (!inputRef.current || document.activeElement !== inputRef.current) return;
+      if (!terminalOwnsKeyboard()) return;
+      focusInput();
       clearHiddenInput();
       const key = event.key.toLowerCase();
       const immersiveTerminal = useWorkspaceStore.getState().workspaceUiState.immersiveTerminal;
@@ -1021,7 +1060,7 @@ export function TerminalCanvas({
       // Own copy in capture phase. If we only stop propagation here, the event
       // never reaches the textarea bubble handler and Ctrl+Shift+C silently
       // does nothing.
-      if ((event.ctrlKey || event.metaKey) && event.shiftKey && key === "c") {
+      if ((event.ctrlKey || event.metaKey) && event.shiftKey && (key === "c" || event.code === "KeyC")) {
         event.preventDefault();
         event.stopPropagation();
         copySelection();
@@ -1102,17 +1141,17 @@ export function TerminalCanvas({
     const generation = advanceInputGeneration();
     void waitForFirstFrame().then(() => {
       if (epoch !== sessionEpochRef.current) {
-        pasteLog(`send DROPPED: session changed (epoch ${epoch}→${sessionEpochRef.current})`, corrId);
+        pasteLog(`pty_send.drop terminal=${sessionIdRef.current} reason=session_changed epoch=${epoch} current=${sessionEpochRef.current}`, corrId);
         return;
       }
       if (!options?.force && generation !== inputGenerationRef.current) {
-        pasteLog(`send DROPPED: generation ${generation}≠${inputGenerationRef.current} (input raced)`, corrId);
+        pasteLog(`pty_send.drop terminal=${sessionIdRef.current} reason=input_generation_raced generation=${generation} current=${inputGenerationRef.current}`, corrId);
         return;
       }
       const bracketed =
         modesRef.current.bracketedPaste || shouldBracketPasteForVisibleAgentPrompt(text);
       send(encodePaste(text, bracketed), nextTerminalInputSequence(), "canvas-paste");
-      pasteLog(`send OK: ${text.length} chars to PTY (bracketed=${bracketed}, force=${!!options?.force})`, corrId);
+      pasteLog(`pty_send.ok terminal=${sessionIdRef.current} chars=${text.length} bracketed=${bracketed} force=${!!options?.force}`, corrId);
       clearHiddenInputSoon();
     });
   };
@@ -1146,11 +1185,11 @@ export function TerminalCanvas({
   const pasteFromClipboardShortcut = async (origin: string) => {
     const corrId = newCorrId();
     if (pasteReadInFlightRef.current) {
-      pasteLog(`shortcut ${origin} ignored: read already in flight`, corrId);
+      pasteLog(`paste_shortcut.drop origin=${origin} reason=read_in_flight`, corrId);
       return; // one read at a time → no double-paste
     }
     pasteReadInFlightRef.current = true;
-    pasteLog(`shortcut ${origin}: reading clipboard (tauri=${isTauriRuntime()})`, corrId);
+    pasteLog(`paste_shortcut.read_start origin=${origin} tauri=${isTauriRuntime()}`, corrId);
     try {
       // Read the OS clipboard from the Rust backend — `navigator.clipboard.readText`
       // is blocked in WebKitGTK (that is the actual paste bug). Browser preview (no
@@ -1160,15 +1199,15 @@ export function TerminalCanvas({
         : await navigator.clipboard.readText();
       if (text) {
         if (DEBUG_TERM_HUD) bumpHud({ clip: `paste:read ${text.length}` });
-        pasteLog(`read returned len=${text.length} → sending (force)`, corrId);
+        pasteLog(`paste_shortcut.read_text chars=${text.length}`, corrId);
         // force: a user-initiated paste must never be dropped by the generation
         // guard just because an input raced during the async read.
         sendPasteText(text, { force: true, corrId });
         return;
       }
-      pasteLog("read returned EMPTY → image/agent fallback (Ctrl-V)", corrId);
+      pasteLog("paste_shortcut.read_empty action=agent_ctrl_v", corrId);
     } catch (error) {
-      pasteLog(`read THREW (${String(error)}) → image/agent fallback`, corrId);
+      pasteLog(`paste_shortcut.read_error action=agent_ctrl_v error=${String(error)}`, corrId);
       // Clipboard unavailable → fall through to the image/agent path.
     } finally {
       pasteReadInFlightRef.current = false;
@@ -1207,6 +1246,12 @@ export function TerminalCanvas({
     // text despite preventDefault(), then surface it on the next input event.
     // Never treat textarea.value as terminal input; keydown/paste handlers are
     // the authoritative PTY input paths.
+    const text = event.currentTarget.value;
+    if (text && performance.now() <= nativePasteInputPendingUntilRef.current) {
+      nativePasteInputPendingUntilRef.current = 0;
+      pasteLog(`native_input_paste_fallback chars=${text.length}`);
+      sendPasteText(text, { force: true });
+    }
     event.currentTarget.value = "";
   };
 
@@ -1236,8 +1281,6 @@ export function TerminalCanvas({
     input.addEventListener("paste", onPaste, true);
     return () => input.removeEventListener("paste", onPaste, true);
   }, []);
-
-  const focusInput = () => inputRef.current?.focus();
 
   const clientPointToCell = (clientX: number, clientY: number): CellPoint | null => {
     const buffer = bufferRef.current;
@@ -1410,22 +1453,21 @@ export function TerminalCanvas({
           // Write via the Rust backend — navigator.clipboard.writeText is
           // unreliable in WebKitGTK (tauri#10835), so copying inside the app
           // would silently not land. Browser preview falls back to the webview.
-          pasteLog(`copy: writing ${text.length} chars (tauri=${isTauriRuntime()})`, corrId);
+          pasteLog(`copy.write_start chars=${text.length} tauri=${isTauriRuntime()}`, corrId);
           const wrote = isTauriRuntime()
             ? invoke("clipboard_write_text", { text, corrId })
             : (navigator.clipboard?.writeText(text) ?? Promise.reject("no clipboard"));
           Promise.resolve(wrote)
             .then(() => {
-              pasteLog(`copy OK: ${text.length} chars to clipboard`, corrId);
+              pasteLog(`copy.write_ok chars=${text.length}`, corrId);
               if (DEBUG_TERM_HUD) bumpHud({ clip: `copy:ok ${text.length}` });
             })
             .catch((err) => {
-              pasteLog(`copy FAILED: ${String(err)}`, corrId);
+              pasteLog(`copy.write_error error=${String(err)}`, corrId);
               if (DEBUG_TERM_HUD) bumpHud({ clip: "copy:write-fail" });
               console.error(err);
             });
         } else {
-          pasteLog("copy: selection empty", corrId);
           if (DEBUG_TERM_HUD) bumpHud({ clip: "copy:empty" });
         }
       });
@@ -1454,6 +1496,38 @@ export function TerminalCanvas({
     // the PTY rather than the browser.
     focusInput();
   };
+
+  useEffect(() => {
+    if (!isTauriRuntime()) return;
+    let unlisten: UnlistenFn | null = null;
+    let disposed = false;
+
+    listen<{ id: string; kind: "copy" | "paste" }>(
+      GTK_TERMINAL_CLIPBOARD_SHORTCUT_EVENT,
+      (event) => {
+        if (event.payload?.id !== sessionIdRef.current) return;
+        focusInput();
+        if (event.payload.kind === "paste") {
+          void pasteFromClipboardShortcut("gtk");
+        } else {
+          copySelection();
+        }
+      },
+    )
+      .then((dispose) => {
+        if (disposed) {
+          dispose();
+        } else {
+          unlisten = dispose;
+        }
+      })
+      .catch(console.error);
+
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, []);
 
   useEffect(() => {
     const handleBlur = () => {

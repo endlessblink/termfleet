@@ -29,7 +29,15 @@ pub struct FocusedTerminalState(pub Arc<Mutex<Option<String>>>);
 /// Tab-interceptor only claims Tab while a terminal is focused.
 #[tauri::command]
 pub fn set_focused_terminal(state: State<'_, FocusedTerminalState>, id: Option<String>) {
-    *state.0.lock().unwrap() = id;
+    let mut focused = state.0.lock().unwrap();
+    if *focused == id {
+        return;
+    }
+    append_paste_log(&format!(
+        "focus.set terminal={}",
+        id.as_deref().unwrap_or("-")
+    ));
+    *focused = id;
 }
 
 #[derive(Serialize)]
@@ -1042,8 +1050,40 @@ fn plog(corr_id: &str, msg: &str) {
     append_paste_log(&format!("corr={} {}", if corr_id.is_empty() { "-" } else { corr_id }, msg));
 }
 
-/// Append one timestamped diagnostic line. Best-effort, never fails a paste.
-fn append_paste_log(line: &str) {
+fn sanitize_paste_log_line(line: &str) -> String {
+    const MAX_LINE_BYTES: usize = 900;
+    let mut out = String::with_capacity(line.len().min(MAX_LINE_BYTES));
+    for ch in line.chars() {
+        let mapped = if ch == '\n' || ch == '\r' || ch == '\t' {
+            ' '
+        } else if ch.is_ascii_graphic() || ch == ' ' {
+            ch
+        } else {
+            '?'
+        };
+        if out.len() + mapped.len_utf8() > MAX_LINE_BYTES {
+            out.push_str("...");
+            break;
+        }
+        out.push(mapped);
+    }
+    out
+}
+
+fn rotate_paste_log_if_needed(path: &std::path::Path) {
+    const MAX_LOG_BYTES: u64 = 256 * 1024;
+    if std::fs::metadata(path)
+        .map(|metadata| metadata.len() <= MAX_LOG_BYTES)
+        .unwrap_or(true)
+    {
+        return;
+    }
+    let rotated = path.with_extension("log.1");
+    let _ = std::fs::rename(path, rotated);
+}
+
+/// Append one timestamped ASCII diagnostic line. Best-effort, never fails a paste.
+pub(crate) fn append_paste_log(line: &str) {
     use std::io::Write;
     let ms = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -1053,8 +1093,9 @@ fn append_paste_log(line: &str) {
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
+    rotate_paste_log_if_needed(&path);
     if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
-        let _ = writeln!(f, "{ms} {line}");
+        let _ = writeln!(f, "{ms} {}", sanitize_paste_log_line(line));
     }
 }
 
@@ -1271,9 +1312,9 @@ pub fn workspace_persisted_sessions() -> Vec<crate::pty::PersistedSessionSummary
 #[cfg(test)]
 mod tests {
     use super::{
-        is_managed_termfleet_worktree_path, normalize_selected_folder, shell_quote,
-        workstream_prepare_dedicated_worktree, workstream_remove_dedicated_worktree,
-        worktree_branch_for, worktree_target_for,
+        is_managed_termfleet_worktree_path, normalize_selected_folder, sanitize_paste_log_line,
+        shell_quote, workstream_prepare_dedicated_worktree,
+        workstream_remove_dedicated_worktree, worktree_branch_for, worktree_target_for,
     };
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -1335,6 +1376,21 @@ mod tests {
     #[test]
     fn empty_selected_folder_means_cancelled() {
         assert_eq!(normalize_selected_folder("\n"), None);
+    }
+
+    #[test]
+    fn paste_log_lines_are_ascii_single_line() {
+        assert_eq!(
+            sanitize_paste_log_line("read returned len=27 \u{2192} sending\nnext\tfield"),
+            "read returned len=27 ? sending next field"
+        );
+    }
+
+    #[test]
+    fn paste_log_lines_are_bounded() {
+        let sanitized = sanitize_paste_log_line(&"x".repeat(1200));
+        assert!(sanitized.len() <= 903);
+        assert!(sanitized.ends_with("..."));
     }
 
     #[test]
