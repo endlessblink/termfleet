@@ -247,7 +247,10 @@ function fallbackSummary(payload) {
 // endpoint). Cached per pane so polling never hammers Ollama; keep_alive keeps the
 // model warm so the cockpit stays sub-second.
 const OLLAMA_URL = process.env.TERMFLEET_OLLAMA_URL || "http://127.0.0.1:11434/api/generate";
-const CONTEXT_MODEL = process.env.TERMFLEET_CONTEXT_TITLE_MODEL || "llama3.2:latest";
+// gemma4:e4b (edge, 2026): precise grounded one-liners at ~0.5s warm — chosen with
+// the operator (llama3.2 was too roll-dependent). Thinking must be OFF or output
+// lands in the hidden reasoning channel and `response` comes back empty.
+const CONTEXT_MODEL = process.env.TERMFLEET_CONTEXT_TITLE_MODEL || "gemma4:e4b";
 const CONTEXT_TTL_MS = Number(process.env.TERMFLEET_CONTEXT_TITLE_TTL_MS || 45_000);
 const contextCache = new Map(); // key -> { at, line } | { at, promise }
 
@@ -309,7 +312,8 @@ function ollamaLine(prompt) {
       model: CONTEXT_MODEL,
       stream: false,
       keep_alive: "30m",
-      options: { num_predict: 30, temperature: 0.2 },
+      think: false,
+      options: { num_predict: 40, temperature: 0.2 },
       prompt,
     });
     const url = new URL(OLLAMA_URL);
