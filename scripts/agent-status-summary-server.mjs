@@ -330,6 +330,7 @@ function cleanContextLine(raw) {
     .replace(/^["'“”`•*-]+|["'“”`]+$/g, "")
     .replace(/^(?:\d+[.)]\s*)?(?:status line|header|title|goal|now|current activity|activity|status)\s*[:\-]\s*/i, "")
     .replace(/^the\s+(?:terminal\s+)?(?:ai\s+)?agent\s+is\s+/i, "")
+    .replace(/^(?:currently|right now|at the moment)[,\s]+(?:it\s+is\s+|the\s+agent\s+is\s+)?/i, "")
     .replace(/\s+/g, " ")
     .trim();
   if (!line) return "";
