@@ -82,6 +82,12 @@ export function qualityCheckUserAskLabel(value?: string | null): HeaderQualityRe
   const text = clean(value);
   if (!text) return { ok: false, reason: "empty" };
   if (text.length > 96) return { ok: false, reason: "too-long" };
+  // Wrap-cut fragments scraped mid-word/mid-quote (`ke "System Booted`) are not
+  // an ask: unbalanced double quote, or a 1-2 letter lowercase stub opener.
+  if ((text.match(/"/g) ?? []).length % 2 === 1) return { ok: false, reason: "prompt-fragment" };
+  if (/^[a-z]{1,2}\s/.test(text) && !/^(?:i|we|is|it|do|go|if|he|at|on|in|to|my|no|ok|so|up|us|be|by|or|an|as|am)\b/i.test(text)) {
+    return { ok: false, reason: "prompt-fragment" };
+  }
   if (looksLikePackageScript(text)) return { ok: false, reason: "package-script" };
   if (looksLikeCommand(text)) return { ok: false, reason: "command-like" };
   if (looksLikeCode(text)) return { ok: false, reason: "command-like" };

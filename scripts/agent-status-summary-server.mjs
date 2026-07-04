@@ -427,7 +427,9 @@ async function contextTitleFor(payload, heuristic) {
     const context = `${src.ask} ${src.narration} ${src.activity} ${src.tail}`;
     let nowLine = cleanContextLine(rawNow);
     if (nowLine && !groundedIn(nowLine, context)) nowLine = "";
-    let goal = cleanContextLine(rawGoal);
+    let goal = cleanContextLine(rawGoal)
+      .replace(/^the\s+operator\s+wants\s+(?:to\s+)?/i, "")
+      .replace(/^\w/, (c) => c.toUpperCase());
     if (goal && (/^(?:for|with|to|of|in|on|at|by|from|about)\b/i.test(goal) || goal.split(/\s+/).length < 4 || !groundedIn(goal, context))) {
       goal = "";
     }
