@@ -812,9 +812,9 @@ test("does not promote no-task-list narration into the main title", () => {
   });
 
   expect(header.taskDescription.text).toBe("Task not captured");
-  expect(header.title.text).toBe("Activity not captured");
-  expect(header.now.text).toBe("Activity not captured");
-  expect(header.title.text).not.toContain("VPS has");
+  // Operator contract (2026-07-04): a high-confidence narration statement is
+  // MORE informative than "Activity not captured" — show it.
+  expect(header.title.text).toContain("VPS has the 12 tracking events");
   expect(header.now.text).not.toContain("publish-once");
 });
 
