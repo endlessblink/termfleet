@@ -523,12 +523,15 @@ const server = http.createServer(async (request, response) => {
       // never onto an -ing line (that reads as a contradiction).
       const pastTense = /^(?:\w+ed|Ran|Built|Set up|Wrote|Made|Kept|Found|Left)\b/i.test(context.now) && !/^\w+ing\b/i.test(context.now);
       const nowLine = finished && pastTense && context.now.length <= 58 ? `${context.now} · awaiting next task` : context.now;
+      const transcriptEmpty = !cleanText(payload?.transcript);
       sendJson(response, 200, {
         ...heuristic,
         now: nowLine,
         narration: nowLine,
         ...(context.goal && askIsVague(ask) ? { userTask: context.goal } : {}),
-        status: finished ? "idle" : heuristic.status || "working",
+        // An empty/stale grid cannot be "working" — idle lets the header show
+        // the synthesized context instead of a status word.
+        status: finished || transcriptEmpty ? "idle" : heuristic.status || "working",
         confidence: "high",
       });
       return;

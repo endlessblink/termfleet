@@ -287,7 +287,12 @@ export function buildShellTerminalHeaderViewModel(input: {
   // idle/done pane — the operator's rule (2026-07-04): a finished terminal must
   // say what has been done, never just "Awaiting next action".
   const narrationEligible =
-    input.activelyWorking || base.status === "idle" || base.status === "done";
+    input.activelyWorking ||
+    base.status === "idle" ||
+    base.status === "done" ||
+    // A high-confidence contextual line (local summarizer) is displayable even on
+    // a stale pane whose lifecycle is unknown — better than a bare status word.
+    (base.confidence === "high" && Boolean(base.narration ?? input.statusSummary?.narration));
   let rawLiveNarration = narrationEligible
     ? (base.narration ?? input.statusSummary?.narration)?.replace(/\s+/g, " ").trim()
     : undefined;
