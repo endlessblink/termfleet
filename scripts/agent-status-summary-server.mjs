@@ -2,7 +2,7 @@
 import http from "node:http";
 import { spawn } from "node:child_process";
 import { argv } from "node:process";
-import { appendFileSync, mkdirSync, renameSync, statSync, writeFileSync } from "node:fs";
+import { appendFileSync, closeSync, fstatSync, mkdirSync, openSync, readSync, renameSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { statusDir } from "./lib/agent-status-paths.mjs";
 
@@ -258,6 +258,38 @@ function contextCacheKey(payload) {
   return cleanText(payload?.paneId) || cleanText(payload?.projectId) || "unknown";
 }
 
+// The daemon persists every session's scrollback on disk (hex-encoded pane id).
+// When the frontend payload carries no content (background pane whose component
+// never mounted), read the truth from there — the operator's gate can't depend on
+// which React components happen to be alive.
+function stripAnsi(text) {
+  return String(text ?? "")
+    .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, "")
+    .replace(/\x1b\[[0-9;?]*[ -\/]*[@-~]/g, "")
+    .replace(/\x1b[@-_]/g, "")
+    .replace(/[\x00-\x08\x0b-\x1f\x7f]/g, "");
+}
+
+function sessionScrollbackTail(paneId) {
+  try {
+    const hex = Buffer.from(String(paneId ?? ""), "utf8").toString("hex");
+    const file = path.join(statusDir(), "..", "sessions", `${hex}.scrollback`);
+    const fd = openSync(file, "r");
+    try {
+      const size = fstatSync(fd).size;
+      const length = Math.min(8192, size);
+      if (length === 0) return "";
+      const buffer = Buffer.alloc(length);
+      readSync(fd, buffer, 0, length, size - length);
+      return stripAnsi(buffer.toString("utf8"));
+    } finally {
+      closeSync(fd);
+    }
+  } catch {
+    return "";
+  }
+}
+
 function contextSources(payload, heuristic) {
   const workstream = payload?.workstream ?? {};
   return {
@@ -266,6 +298,15 @@ function contextSources(payload, heuristic) {
     activity: cleanText(workstream.currentActivity || heuristic?.now).slice(0, 160),
     tail: cleanText(payload?.transcript).slice(-700),
   };
+}
+
+function contextSourcesWithDisk(payload, heuristic) {
+  const src = contextSources(payload, heuristic);
+  if (src.tail.length < 200) {
+    const diskTail = cleanText(sessionScrollbackTail(payload?.paneId)).slice(-700);
+    if (diskTail.length > src.tail.length) src.tail = diskTail;
+  }
+  return src;
 }
 
 // Never let the model INVENT: with almost no real content it produces generic
@@ -418,10 +459,10 @@ async function contextTitleFor(payload, heuristic) {
   const now = Date.now();
   if (cached && "line" in cached && now - cached.at < CONTEXT_TTL_MS) return cached.line;
   if (cached?.promise) return cached.promise;
-  const src = contextSources(payload, heuristic);
+  const src = contextSourcesWithDisk(payload, heuristic);
   if (!hasEnoughContext(src)) {
-    contextCache.set(key, { at: now, line: null });
-    return null;
+    contextCache.set(key, { at: now, line: { goal: "", now: "", reason: "thin-context" } });
+    return { goal: "", now: "", reason: "thin-context" };
   }
   const finished = looksFinished(heuristic, src.tail);
   const wantGoal = askIsVague(src.ask);
@@ -443,7 +484,11 @@ async function contextTitleFor(payload, heuristic) {
     if (goal && (/^(?:for|with|to|of|in|on|at|by|from|about)\b/i.test(goal) || goal.split(/\s+/).length < 4 || !groundedIn(goal, context))) {
       goal = "";
     }
-    const line = { goal, now: nowLine };
+    const line = {
+      goal,
+      now: nowLine,
+      reason: nowLine ? "ok" : (cleanContextLine(rawNow) ? "grounded-out" : "model-empty"),
+    };
     contextCache.set(key, { at: Date.now(), line });
     return line;
   })().catch(() => {
@@ -554,7 +599,7 @@ const server = http.createServer(async (request, response) => {
     const heuristic = payload?.heuristicCandidate ?? fallbackSummary(payload);
     const context = await contextTitleFor(payload, heuristic);
     const ask = heuristic?.userTask ?? payload?.workstream?.userTask;
-    process.stdout.write(`status ${contextCacheKey(payload)} -> ${context?.now ? `model: ${context.now.slice(0, 60)}` : "heuristic"}${context?.goal && askIsVague(ask) ? ` | goal: ${context.goal.slice(0, 40)}` : ""}\n`);
+    process.stdout.write(`status ${contextCacheKey(payload)} -> ${context?.now ? `model: ${context.now.slice(0, 60)}` : `heuristic(${context?.reason ?? "no-context"})`}${context?.goal && askIsVague(ask) ? ` | goal: ${context.goal.slice(0, 40)}` : ""}\n`);
     // A pane waiting on the OPERATOR keeps its question wording — the model only
     // supplies the goal; "Working" must never mask a question. (Operator gate)
     if (String(heuristic?.status) === "waiting") {
