@@ -135,6 +135,7 @@ export function buildTerminalHeaderState(input: {
   summary?: WorkstreamStatusSummary | null;
   neutralTitle?: string | null;
   trustedActivitySummary?: boolean;
+  activelyWorking?: boolean;
   updatedAt?: number;
   version?: number;
 }): TerminalHeaderState {
@@ -151,6 +152,7 @@ export function buildTerminalHeaderState(input: {
     summary: input.summary,
     neutralTitle: input.neutralTitle,
     trustedActivitySummary: input.trustedActivitySummary,
+    activelyWorking: input.activelyWorking,
   });
   const goalSource = goalSourceFrom(view.taskDescription.source, input.mainUserAsk);
   const goalLabel = view.taskDescription.text;

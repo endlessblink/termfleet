@@ -878,6 +878,13 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
               statusSummary: paneTerminal?.statusSummary,
               summary: shellStatusSummaryBase,
               neutralTitle: shellNeutralTitle ?? null,
+              // A visible "Working (…)" / "esc to interrupt" marker means the agent is
+              // active right now even without a task list → don't render "Awaiting next
+              // action" as the title.
+              activelyWorking:
+                /\bWorking\s+\(|esc to interrupt\b/i.test(
+                  paneTerminal?.terminalVisibleText ?? paneTerminal?.terminalOutput ?? "",
+                ),
               trustedActivitySummary:
                 shellDurableActivityUsable ||
                 shellStatusSummaryBase.task === "Reviewing approval request" ||

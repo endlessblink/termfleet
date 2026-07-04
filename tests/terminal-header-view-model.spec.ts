@@ -1183,3 +1183,46 @@ test("informal typo'd asks still show on the Task row", () => {
   );
   expect(header.taskDescription.text).not.toBe("Task not captured");
 });
+
+test("actively-working pane shows Working, not 'Awaiting next action'", () => {
+  const header = buildShellTerminalHeaderViewModel({
+    project: { id: "g-hermes", name: "hermes", projectRoot: "/repo/hermes" },
+    liveCwd: "/repo/hermes",
+    terminalStatus: "running",
+    taskLineup: [],
+    activelyWorking: true,
+    mainUserAsk: { text: "› I want to do two main changes right now - I › I want to do two main changes right now - II", source: "terminal-prompt", updatedAt: 1000 },
+    statusSummary: {
+      task: "Ready",
+      path: "/repo/hermes",
+      now: "Awaiting command",
+      status: "idle",
+      provider: "shell",
+      confidence: "low",
+      tasksFromTodoWrite: false,
+    },
+  });
+
+  // Task row is cleaned: no prompt markers, no duplicated fragment.
+  expect(header.taskDescription.text).toBe("I want to do two main changes right now");
+  expect(header.taskDescription.text).not.toContain("›");
+  // Title reflects active work, not idle.
+  expect(header.title.text).toBe("Working");
+  expect(header.title.text).not.toBe("Awaiting next action");
+});
+
+test("idle pane with a user ask still reads 'Awaiting next action' (not working)", () => {
+  const header = buildShellTerminalHeaderViewModel({
+    project: { id: "g-hermes", name: "hermes", projectRoot: "/repo/hermes" },
+    liveCwd: "/repo/hermes",
+    terminalStatus: "running",
+    taskLineup: [],
+    activelyWorking: false,
+    mainUserAsk: { text: "fix the login flow", source: "terminal-prompt", updatedAt: 1000 },
+    statusSummary: {
+      task: "Ready", path: "/repo/hermes", now: "Awaiting command",
+      status: "idle", provider: "shell", confidence: "low", tasksFromTodoWrite: false,
+    },
+  });
+  expect(header.title.text).toBe("Awaiting next action");
+});

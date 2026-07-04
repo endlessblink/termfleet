@@ -60,3 +60,14 @@ test("authoritative task labels only reject empty or overlong text", () => {
   expect(qualityCheckAuthoritativeTaskLabel("")).toMatchObject({ ok: false, reason: "empty" });
   expect(qualityCheckAuthoritativeTaskLabel("x".repeat(200))).toMatchObject({ ok: false, reason: "too-long" });
 });
+
+import { sanitizeScrapedAsk } from "../src/lib/terminalHeaderViewModel";
+
+test("sanitizeScrapedAsk strips prompt markers and the duplicated wrapped fragment", () => {
+  expect(
+    sanitizeScrapedAsk("› I want to do two main changes right now - I › I want to do two main changes right now - II"),
+  ).toBe("I want to do two main changes right now");
+  expect(sanitizeScrapedAsk("❯ fix the login flow")).toBe("fix the login flow");
+  expect(sanitizeScrapedAsk("plain ask with no markers")).toBe("plain ask with no markers");
+  expect(sanitizeScrapedAsk("")).toBe("");
+});

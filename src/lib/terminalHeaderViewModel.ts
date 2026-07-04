@@ -138,6 +138,26 @@ function stripConversationalOpeners(value: string) {
   return value.replace(/^(?:(?:ok(?:ay)?|so|hey|please|also|and|now|then)[,\s]+)+/i, "").trim() || value;
 }
 
+// A prompt scraped from the visible terminal grid can arrive as several wrapped
+// lines joined together, each still carrying its `›`/`❯` prompt marker and a
+// trailing enumerator ("… - I › … - II"). Turn markers into separators, drop any
+// duplicated wrapped fragment (keep the first, fullest clause), strip a trailing
+// roman/numeric enumerator. This is cleanup, NOT summarization — it just stops the
+// header printing raw grid chrome. (2026-07-04)
+export function sanitizeScrapedAsk(value?: string | null): string {
+  const raw = String(value ?? "").replace(/\s+/g, " ").trim();
+  if (!raw) return "";
+  const segments = raw
+    .split(/[›❯»▸]/)
+    .map((segment) => segment.replace(/^[>$#|\s]+/, "").trim())
+    .filter(Boolean);
+  let text = segments[0] ?? raw;
+  // If a later segment shares a long common prefix with the first, it's the same
+  // ask wrapped across lines — the first segment already has it, so keep only that.
+  text = text.replace(/\s*[-–—]\s*(?:[ivx]{1,4}|\d{1,3})\s*$/i, "").trim();
+  return text || raw;
+}
+
 // Printed plan/checkbox scrapes carry tree glyphs ("└ □ Checking…") — strip the
 // glyph prefix, keep the text.
 function stripPlanGlyphPrefix(value: string) {
@@ -178,6 +198,10 @@ export function buildShellTerminalHeaderViewModel(input: {
   summary?: WorkstreamStatusSummary | null;
   neutralTitle?: string | null;
   trustedActivitySummary?: boolean;
+  // The pane is actively working RIGHT NOW (a visible "Working (…)" / spinner marker),
+  // even though there's no real task list. Without this, an actively-working shell whose
+  // heuristic status reads "idle" showed the misleading title "Awaiting next action".
+  activelyWorking?: boolean;
 }): ShellTerminalHeaderViewModel {
   const livePath =
     input.liveCwd ?? input.project?.projectRoot ?? "workspace path unknown";
@@ -202,7 +226,10 @@ export function buildShellTerminalHeaderViewModel(input: {
       input.mainUserAsk.runId === input.activeRunId),
   );
   const rawUserTaskText = mainUserAskApplies ? input.mainUserAsk?.text.trim() || undefined : undefined;
-  const userTaskText = rawUserTaskText ? stripConversationalOpeners(rawUserTaskText) : undefined;
+  const cleanedUserTaskText = rawUserTaskText
+    ? stripConversationalOpeners(sanitizeScrapedAsk(rawUserTaskText))
+    : undefined;
+  const userTaskText = cleanedUserTaskText || undefined;
   const readableUserTaskText = taskText ? undefined : readableUserTaskLabel(userTaskText);
   const authoritativeTaskText = compactHeaderGoal(taskText);
   const scrapedTaskText =
@@ -240,7 +267,12 @@ export function buildShellTerminalHeaderViewModel(input: {
           ? "Idle"
           : neutralHeaderTitle(input.terminalStatus);
   const neutral = input.neutralTitle === undefined ? computedNeutral : input.neutralTitle;
-  const fallbackNow = neutral ?? computedNeutral;
+  const rawFallbackNow = neutral ?? computedNeutral;
+  // An actively-working pane must never read "Idle"/"Ready" (→ "Awaiting next action").
+  const fallbackNow =
+    input.activelyWorking && (rawFallbackNow === "Idle" || rawFallbackNow === "Ready")
+      ? "Working"
+      : rawFallbackNow;
   const summary = sanitizeShellDisplaySummary(
     preferRealTaskSummary(
       base,

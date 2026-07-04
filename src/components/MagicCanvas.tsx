@@ -2598,6 +2598,10 @@ function CanvasNodeViewImpl({
     statusSummary: terminalStatusSummary,
     summary: terminalDisplaySummaryBase,
     neutralTitle: terminalActivityLive ? null : terminalNeutralTitle,
+    activelyWorking:
+      /\bWorking\s+\(|esc to interrupt\b/i.test(
+        linkedTerminal?.terminalVisibleText ?? linkedTerminal?.terminalOutput ?? "",
+      ),
     trustedActivitySummary:
       terminalDurableActivityUsable ||
       terminalDisplaySummaryBase.task === "Reviewing approval request" ||
