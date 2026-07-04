@@ -883,6 +883,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
               // active right now even without a task list → don't render "Awaiting next
               // action" as the title.
               activelyWorking:
+                shellActivityLive ||
                 /\bWorking\s+\(|esc to interrupt\b/i.test(
                   paneTerminal?.terminalVisibleText ?? paneTerminal?.terminalOutput ?? "",
                 ),

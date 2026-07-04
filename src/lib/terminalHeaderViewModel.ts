@@ -283,7 +283,12 @@ export function buildShellTerminalHeaderViewModel(input: {
   // The agent's narrated current step, trusted only while the pane is actively
   // working AND it passes the now-line gate (stale/junk persisted narration must
   // not resurface as a title).
-  const rawLiveNarration = input.activelyWorking
+  // Narration shows while actively working AND as the last-outcome line on an
+  // idle/done pane — the operator's rule (2026-07-04): a finished terminal must
+  // say what has been done, never just "Awaiting next action".
+  const narrationEligible =
+    input.activelyWorking || base.status === "idle" || base.status === "done";
+  const rawLiveNarration = narrationEligible
     ? (base.narration ?? input.statusSummary?.narration)?.replace(/\s+/g, " ").trim()
     : undefined;
   const liveNarration =

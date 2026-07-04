@@ -261,9 +261,14 @@ function buildContextPrompt(payload, heuristic) {
   const narration = cleanText(heuristic?.narration).slice(0, 300);
   const activity = cleanText(workstream.currentActivity || heuristic?.now).slice(0, 160);
   const tail = cleanText(payload?.transcript).slice(-700);
+  const finished = ["done", "idle", "stopped"].includes(String(heuristic?.status ?? ""));
   return [
-    "Write ONE short status line (max 14 words) describing what this terminal's AI agent is doing right now, so a non-technical observer understands the goal and the specific thing being worked on.",
-    "Start with a present-participle verb (Verifying/Installing/Fixing/...). Name the concrete object (which bug, which scripts, which page). No quotes, no preamble, no 'The agent'.",
+    finished
+      ? "Write ONE short status line (max 14 words) stating what this terminal's AI agent JUST FINISHED, past tense, so a non-technical observer knows the outcome (e.g. 'Fixed the profile-switch race and pushed the sidebar scripts')."
+      : "Write ONE short status line (max 14 words) describing what this terminal's AI agent is doing right now AND WHY — the purpose, not just the action (e.g. 'Verifying the session-switch diagnosis to fix chats opening the wrong session').",
+    finished
+      ? "Start with a past-tense verb (Fixed/Installed/Verified/...). Name the concrete object. No quotes, no preamble, no 'The agent'."
+      : "Start with a present-participle verb (Verifying/Installing/Fixing/...). Name the concrete object and its purpose ('to ...' / 'so ...'). No quotes, no preamble, no 'The agent'.",
     ask ? `Operator asked: ${ask}` : "",
     narration ? `Agent just said: ${narration}` : "",
     activity ? `Latest activity: ${activity}` : "",
@@ -320,9 +325,10 @@ function cleanContextLine(raw) {
     .trim();
   if (!line) return "";
   line = line.charAt(0).toUpperCase() + line.slice(1);
-  if (line.length > 90) {
+  // Frontend now-line gate rejects >80 chars — clamp below it.
+  if (line.length > 78) {
     const clause = line.split(/,\s+/)[0].trim();
-    line = clause.length >= 24 && clause.length <= 90 ? clause : `${line.slice(0, 87).replace(/\s+\S*$/, "").trim()}…`;
+    line = clause.length >= 24 && clause.length <= 78 ? clause : `${line.slice(0, 75).replace(/\s+\S*$/, "").trim()}…`;
   }
   return line.replace(/[.!?]+$/, "");
 }

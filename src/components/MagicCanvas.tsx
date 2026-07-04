@@ -2601,6 +2601,7 @@ function CanvasNodeViewImpl({
     summary: terminalDisplaySummaryBase,
     neutralTitle: terminalActivityLive ? null : terminalNeutralTitle,
     activelyWorking:
+      terminalActivityLive ||
       /\bWorking\s+\(|esc to interrupt\b/i.test(
         linkedTerminal?.terminalVisibleText ?? linkedTerminal?.terminalOutput ?? "",
       ),

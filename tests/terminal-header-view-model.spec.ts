@@ -1252,7 +1252,8 @@ test("live narration becomes the big title while actively working", () => {
   expect(header.taskDescription.text).toContain("why did this break again");
 });
 
-test("stale narration is suppressed when the pane is no longer working", () => {
+test("idle pane shows the last outcome instead of 'Awaiting next action'", () => {
+  // Operator rule (2026-07-04): a finished terminal must say what has been done.
   const header = buildShellTerminalHeaderViewModel({
     project: { id: "g-cc", name: "cc-linux-enhancments", projectRoot: "/repo/cc" },
     liveCwd: "/repo/cc",
@@ -1263,15 +1264,16 @@ test("stale narration is suppressed when the pane is no longer working", () => {
       task: "Supervised agent run",
       path: "/repo/cc",
       now: "Idle",
-      narration: "Installing the updated scripts into the user systemd services now",
+      narration: "Installed the plasma dock recovery scripts so they survive restarts",
       status: "idle",
       provider: "shell",
-      confidence: "low",
+      confidence: "high",
       tasksFromTodoWrite: false,
     },
   });
 
-  expect(header.title.text).not.toContain("Installing the updated scripts");
+  expect(header.title.text).toBe("Installed the plasma dock recovery scripts so they survive restarts");
+  expect(header.title.text).not.toBe("Awaiting next action");
 });
 
 test("junk persisted narration cannot title the pane", () => {

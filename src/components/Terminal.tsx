@@ -649,7 +649,8 @@ export function TerminalComponent({
         if (statusSummarySequenceRef.current !== sequence) return;
         // Junk protection for gated shell panes: only the agent's real sidecar
         // status may populate a pane that shows no other sign of agent work.
-        if (gatedShellPane && result.source !== "sidecar") return;
+        const contextualResult = result.source === "process" && Boolean(result.summary.narration);
+        if (gatedShellPane && result.source !== "sidecar" && !contextualResult) return;
         const latestStore = useWorkspaceStore.getState();
         const latestTab = latestStore.tabs.find((candidate) => candidate.id === tabId);
         if (!latestTab) return;
