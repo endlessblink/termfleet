@@ -8,6 +8,226 @@ function cleanText(value?: string | null) {
   return value?.replace(/\s+/g, " ").trim() || undefined;
 }
 
+export function terminalTextLooksReadyPrompt(value?: string | null) {
+  const lines = (value ?? "")
+    .replace(/\r/g, "\n")
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .filter((line) => line.trim().length > 0);
+  const candidates = [
+    lines[lines.length - 1],
+    lines.slice(-2).join(""),
+    lines.slice(-3).join(""),
+  ]
+    .map((line) => line?.trim() ?? "")
+    .filter(Boolean);
+  return candidates.some((candidate) =>
+    /^[\w.@-]+@[\w.-]+:.*[$#>]\s*$/.test(candidate) ||
+    /^[\w./~+-]+[$#>]\s*$/.test(candidate)
+  );
+}
+
+export function terminalPurposeFromVisiblePrompt(value?: string | null): TerminalPurpose | undefined {
+  const lines = (value ?? "")
+    .replace(/\r/g, "\n")
+    .split("\n")
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    if (/^(?:reverse-i-search|bck-i-search|fwd-i-search):/i.test(lines[index])) return undefined;
+    const match = lines[index].match(/(?:^|\s)[›❯>$#]\s+(.+)$/);
+    const promptText = match?.[1]?.trim() ?? "";
+    if (!promptText) continue;
+    const afterPrompt = lines.slice(index + 1);
+    const hasPostPromptWork = afterPrompt.some((line) =>
+      !/^(?:[─━-]+|\[OMC\]|⏵⏵|◎ |\/rc active|auto mode\b)/i.test(line) &&
+      /\b(?:Reading|Calling|Bash|Allowed by|Working|Thinking|Coalescing|Cogitating|Orbiting|Cooked|Updated|Edited|Ran|Error|Failed|Passed)\b|^[●✶✻✢*]\s/i.test(line)
+    );
+    if (!hasPostPromptWork) continue;
+    const title = purposeTitleFromPromptText(promptText);
+    if (title) {
+      return {
+        title,
+        source: "inferred",
+        updatedAt: Date.now(),
+      };
+    }
+  }
+  return undefined;
+}
+
+const SHELL_COMMAND_PREFIX_PATTERN =
+  /^(?:\.\/|~\/|\/|cd\b|ls\b|ll\b|pwd\b|cat\b|less\b|tail\b|head\b|sed\b|awk\b|grep\b|rg\b|find\b|printf\b|echo\b|env\b|export\b|unset\b|source\b|clear\b|sleep\b|timeout\b|git\b|gh\b|npm\b|pnpm\b|yarn\b|bun\b|node\b|npx\b|tsx\b|python(?:3)?\b|uv\b|cargo\b|make\b|cmake\b|docker\b|docker-compose\b|kubectl\b|ssh\b|scp\b|rsync\b|curl\b|wget\b|sudo\b|chmod\b|chown\b|mkdir\b|rm\b|mv\b|cp\b|touch\b|vim\b|nvim\b|nano\b|code\b|tmux\b|zellij\b|ps\b|kill\b|pkill\b|systemctl\b|journalctl\b|for\b|while\b|until\b|if\b|case\b|function\b|alias\b)/i;
+
+const SHELL_SYNTAX_PATTERN =
+  /(?:\$\(|\${|&&|\|\||\s;\s|;\s*(?:do|done|then|fi|else|elif|echo|printf|npm|git|for|while|if)\b|\|\s*\w|>\s*\S|<\s*\S|`[^`]+`)/;
+
+function submittedInputLooksLikeUserAsk(value: string) {
+  const text = value.replace(/\s+/g, " ").trim();
+  if (text.length < 8 || text.length > 260) return false;
+  if (!/[a-z][a-z]/i.test(text) || !/\s/.test(text)) return false;
+  if (/^[/\\]/.test(text)) return false;
+  if (/^\d+(?:[.)])?\s*(?:yes|no|chat|type|submit)?$/i.test(text)) return false;
+  if (/^(?:yes|no|y|n|ok|sure|done|continue|chat about this)$/i.test(text)) return false;
+  if (/^(?:press up|enter to select|tab to|esc to|auto mode|thinking\b|working\s*\(|cogitating\b|orbiting\b)/i.test(text)) return false;
+  if (/^[\w.-]+@\d+(?:\.\d+){1,3}\s+[\w:-]+(?:\s|$)/i.test(text)) return false;
+  if (SHELL_COMMAND_PREFIX_PATTERN.test(text)) return false;
+  if (SHELL_SYNTAX_PATTERN.test(text)) return false;
+  return true;
+}
+
+function purposeTitleFromPromptText(promptText: string) {
+  const recoveryTitle = recoveryPurposeTitle(promptText);
+  if (recoveryTitle) return recoveryTitle;
+  const qualityTitle = qualityPurposeTitle(promptText);
+  if (qualityTitle) return qualityTitle;
+  const normalizedPrompt =
+    promptText
+      .replace(/^i\s+(?:want|need)\s+to\s+/i, "")
+      .replace(/\s+for\s+@(?:filename|filepath|file|directory|folder|selection)\b.*$/i, "")
+      .replace(/@(?:filename|filepath|file|directory|folder|selection)\b/gi, "")
+      .replace(/\s+/g, " ")
+      .trim();
+  const directTitle = normalizePurposeTitle(purposeFromTranscriptLine(`› ${promptText}`));
+  if (directTitle) return directTitle;
+  if (!submittedInputLooksLikeUserAsk(normalizedPrompt)) return undefined;
+  return normalizePurposeTitle(activeFormTitle(normalizedPrompt));
+}
+
+function recoveryPurposeTitle(value: string) {
+  const text = cleanText(value) ?? "";
+  if (!/\b(?:restore|restored|recovery|recover|recreate|create it)\b/i.test(text)) return undefined;
+  if (!/\b(?:exactly|state|session|terminal|tmux|everything)\b/i.test(text)) return undefined;
+  return "Create exact terminal session recovery";
+}
+
+function qualityPurposeTitle(value: string) {
+  const text = cleanText(value) ?? "";
+  if (/\b(?:high quality|quality)\s+descriptions?\b/i.test(text)) {
+    return "Improve cockpit header descriptions";
+  }
+  if (!/\b(?:make|get|raise|turn)\s+(?:it\s+|all\s+)?high\b/i.test(text)) return undefined;
+  return "Raise quality across the current work";
+}
+
+export function contextualActivityForTask(activity: string | undefined, task: string | undefined) {
+  const cleanActivity = cleanText(activity);
+  const cleanTask = cleanText(task);
+  if (!cleanActivity || !cleanTask) return cleanActivity;
+  if (!/^(?:Working on|Thinking about)\b/i.test(cleanActivity)) return cleanActivity;
+  if (repeatsTitle(cleanTask, cleanActivity.replace(/^(?:Working on|Thinking about)\s+/i, ""))) {
+    if (/\b(?:terminal session recovery|terminal recovery|session recovery)\b/i.test(cleanTask)) {
+      return /^Thinking/i.test(cleanActivity) ? "Thinking through terminal recovery" : "Building terminal recovery";
+    }
+    if (/\braise quality\b/i.test(cleanTask)) {
+      return /^Thinking/i.test(cleanActivity) ? "Thinking through quality improvements" : "Improving quality";
+    }
+    if (/\b(?:cockpit header descriptions?|header description quality|quality descriptions?)\b/i.test(cleanTask)) {
+      return /^Thinking/i.test(cleanActivity) ? "Reviewing header description quality" : "Improving header descriptions";
+    }
+  }
+  return cleanActivity;
+}
+
+export function terminalPurposeFromSubmittedInput(value?: string | null): TerminalPurpose | undefined {
+  const text = cleanText(value);
+  if (!text) return undefined;
+  const specialTitle = recoveryPurposeTitle(text) ?? qualityPurposeTitle(text);
+  if (specialTitle) {
+    return {
+      title: specialTitle,
+      source: "inferred",
+      updatedAt: Date.now(),
+    };
+  }
+  if (!submittedInputLooksLikeUserAsk(text)) return undefined;
+  const title = purposeTitleFromPromptText(text);
+  if (!title) return undefined;
+  return {
+    title,
+    source: "inferred",
+    updatedAt: Date.now(),
+  };
+}
+
+export function terminalPurposeFromOperatorPrompt(value?: string | null): TerminalPurpose | undefined {
+  const text = cleanText(value);
+  if (!text || !/\benter to select\b/i.test(text)) return undefined;
+  const commitMatch = text.match(/\bHow should I commit\s+(.+?)(?:\?|$)/i);
+  if (commitMatch?.[1]) {
+    return {
+      title: `Choosing commit scope for ${commitMatch[1].trim()}`,
+      source: "inferred",
+      updatedAt: Date.now(),
+    };
+  }
+  if (!/\bHow do you want to proceed\?/i.test(text)) return undefined;
+  const beforeQuestion = text.split(/How do you want to proceed\?/i)[0] ?? "";
+  const subjectMatch = beforeQuestion.match(/.*\b([A-Z][^.!?:]{6,120}?)\s+(?:is|are|was|were)\b/s);
+  const subject = subjectMatch?.[1]?.trim();
+  return {
+    title: subject ? `Choosing next step for ${subject}` : "Choosing next step",
+    source: "inferred",
+    updatedAt: Date.now(),
+  };
+}
+
+export function terminalActivityFromVisibleText(value?: string | null) {
+  const lines = (value ?? "")
+    .replace(/\r/g, "\n")
+    .split("\n")
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    const line = lines[index];
+    const thinking = line.match(/\b(?:thinking|cogitating|orbiting)\b(?:\s+(?:with|at)\s+[^•|]+)?/i)?.[0];
+    if (thinking) {
+      return thinking
+        .replace(/^orbiting\b/i, "Thinking")
+        .replace(/^cogitating\b/i, "Thinking")
+        .replace(/^thinking\b/i, "Thinking")
+        .replace(/\s+/g, " ")
+        .trim();
+    }
+    if (/\bwaiting for (?:operator|input|approval)\b/i.test(line)) {
+      return "Waiting for operator input";
+    }
+    if (/\b(?:requires approval|Do you want to proceed\?|Enter to select)\b/i.test(line)) {
+      return "Waiting for approval";
+    }
+    if (/\bplan mode\b/i.test(line)) {
+      return "Planning";
+    }
+  }
+  return undefined;
+}
+
+export function compactHeaderGoal(value?: string | null) {
+  const text = cleanText(value);
+  if (!text) return undefined;
+  const compacted = text
+    .replace(/`[^`]+`/g, "")
+    .replace(/\/(?:[\w.-]+\/){2,}[\w./-]+/g, "")
+    .replace(/\b(?:FIRST|First)\s+read\b.*$/i, "")
+    .replace(/\b(?:follow|obey)\s+EXACTLY\b.*$/i, "")
+    .replace(/\.\s+The\s+i18n\s+infra\b.*$/i, "")
+    .replace(/\s+\([^)]*(?:rules|path|file|tmp|claude)[^)]*\)/gi, "")
+    .replace(/\s*[-–—]\s*(?:follow|read|use|then)\b.*$/i, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/[,:;.\s]+$/, "");
+  if (!compacted) return text.slice(0, 96).trim();
+  if (compacted.length > 96) return `${compacted.slice(0, 93).trim()}...`;
+  // Prompts scraped from the visible grid are cut at the terminal's wrap width,
+  // leaving a dangling fragment ("…you found out so I", "…built a tool th").
+  // Trim back to the last full word and mark the cut.
+  if (compacted.length >= 55 && !/[.!?)"'`\]]$/.test(compacted)) {
+    const trimmed = compacted.replace(/\s+\S{1,2}(?:\s+\S{1,2})?$/, "");
+    if (trimmed !== compacted && trimmed.length >= 40) return `${trimmed}\u2026`;
+  }
+  return compacted;
+}
+
 function comparableText(value: string) {
   return value
     .toLowerCase()
@@ -65,12 +285,62 @@ function fallbackPathLabels(path: string) {
 
 function compatibleActivityNow(now: string | undefined, fallbackPath: string) {
   if (!now) return "Awaiting command";
+  if (/^(Thinking|Planning|Reviewing|Testing|Building|Running|Waiting|Paused)$/i.test(now)) {
+    return now;
+  }
   // A bare slug in `now` is usually a leaked project/path label, not activity. Keep it
   // only when it matches the live terminal path; richer strings are real activity text.
   if (/^[\w.-]+$/.test(now) && !fallbackPathLabels(fallbackPath).has(now)) {
     return "Awaiting command";
   }
   return now;
+}
+
+export function sanitizeTerminalHeaderNow(
+  now: string | undefined,
+  livePath: string | undefined,
+  fallback = "Awaiting command",
+) {
+  const fallbackPath = cleanPath(livePath) ?? "workspace path unknown";
+  const sanitized = compatibleActivityNow(cleanText(now), fallbackPath);
+  return sanitized === "Awaiting command" ? fallback : sanitized;
+}
+
+export function compactTerminalHeaderPath(
+  summaryPath: string | undefined,
+  livePath: string | undefined,
+  minimumSegments = 5,
+) {
+  const summary = cleanPath(summaryPath);
+  const live = cleanPath(livePath);
+  if (!live) return summary ?? "workspace path unknown";
+  if (summary && looksLikeFilePath(summary)) return summary;
+
+  const liveParts = live.split("/").filter(Boolean);
+  if (liveParts.length <= minimumSegments) return liveParts.join("/") || live;
+
+  const summaryParts = summary?.split("/").filter(Boolean) ?? [];
+  const summaryIsOnlyLiveTail =
+    summaryParts.length > 0 &&
+    summaryParts.length < minimumSegments &&
+    liveParts.slice(-summaryParts.length).join("/") === summaryParts.join("/");
+  if (summaryIsOnlyLiveTail || !summary) {
+    return `.../${liveParts.slice(-minimumSegments).join("/")}`;
+  }
+  return summary;
+}
+
+export function sanitizeShellDisplaySummary<T extends WorkstreamStatusSummary>(
+  summary: T,
+  livePath: string | undefined,
+  fallbackNow = "Awaiting command",
+): T {
+  const fallbackPath = cleanPath(livePath) ?? "workspace path unknown";
+  return {
+    ...summary,
+    path: compatibleSummaryPath(cleanPath(summary.path), fallbackPath),
+    now: sanitizeTerminalHeaderNow(summary.now, fallbackPath, fallbackNow),
+  };
 }
 
 function pathFromCommand(command?: string) {
@@ -136,14 +406,19 @@ function activeFormTitle(value: string) {
     .replace(/^verify\b/i, "Verifying")
     .replace(/^validate\b/i, "Validating")
     .replace(/^check\b/i, "Checking")
+    .replace(/^run\b/i, "Running")
     .replace(/^build\b/i, "Building")
-    .replace(/^test\b/i, "Testing");
+    .replace(/^test\b/i, "Testing")
+    .replace(/^make\b/i, "Making")
+    .replace(/^explain\b/i, "Explaining")
+    .replace(/^promote\b/i, "Promoting")
+    .replace(/\bsmoke-test\b/i, "smoke-testing");
 }
 
 export function looksLikeTypedPromptEcho(value?: string | null) {
   const text = cleanText(value);
   if (!text) return false;
-  if (/^\s*›/.test(text)) return true;
+  if (/^\s*[›❯]/.test(text)) return true;
   if (/(?:^|\s)\/[a-z][\w-]*\b/i.test(text)) return true;
   return /^(?:run|use|try|ask|tell|say|write|fix|add|update|review)\s+\/[a-z][\w-]*\b/i.test(text);
 }
@@ -186,6 +461,9 @@ export function looksLikeNarrativeProse(value?: string | null) {
 function dedupedNow(title: string, now: string | undefined, idleFallback = "Awaiting command") {
   const detail = cleanText(now);
   if (!detail) return idleFallback;
+  if (/^(Thinking about|Working on|Waiting for|Running|Testing|Building|Checking|Reviewing)\b/i.test(detail)) {
+    return boundedTitle(detail);
+  }
   if (repeatsTitle(title, detail) || looksLikeNarrativeProse(detail)) return idleFallback;
   return boundedTitle(detail);
 }
@@ -225,7 +503,7 @@ function purposeFromTranscriptLine(line: string) {
   if (/^(?:reverse-i-search|bck-i-search|fwd-i-search):/i.test(text))
     return undefined;
 
-  const promptText = text.match(/^›\s*(.+)$/)?.[1];
+  const promptText = text.match(/^[›❯]\s*(.+)$/)?.[1];
   if (promptText) {
     // Reject prompt-box chrome / placeholder hints (slash-command suggestions like
     // "Use /skills to list available skills", or bare "/cmd …"); these are not a
@@ -247,6 +525,9 @@ function purposeFromTranscriptLine(line: string) {
     ) {
       return "Saving copy/paste task to memory";
     }
+    if (/\b(?:unclear|not clear|confusing|hard to understand)\b/i.test(promptText)) {
+      return "Clarifying terminal header state";
+    }
     if (
       /\b(?:npm|pnpm|yarn|npx|cargo|git|xdotool|import|xclip)\b/i.test(
         promptText,
@@ -257,7 +538,7 @@ function purposeFromTranscriptLine(line: string) {
     // Arbitrary input-box text or gibberish (e.g. "sfgdsafgd ||> …") must defer to
     // the extracted summary rather than override the header title (TC-033 T5).
     if (
-      !/\b(?:fix|fixing|improve|improving|add|adding|implement|implementing|build|building|verify|verifying|refactor|refactoring|write|writing|update|updating|create|creating|translate|translating|debug|debugging|investigate|review|reviewing|migrate|migrating|test|testing|remove|removing|rename|wire|wiring)\b/i.test(
+      !/\b(?:fix|fixing|improve|improving|add|adding|implement|implementing|build|building|verify|verifying|refactor|refactoring|write|writing|update|updating|create|creating|translate|translating|debug|debugging|investigate|investigating|review|reviewing|migrate|migrating|test|testing|remove|removing|rename|renaming|wire|wiring|make|making|explain|explaining)\b/i.test(
         promptText,
       )
     ) {
@@ -318,19 +599,26 @@ function purposeFromTranscript(output?: string | null) {
       break;
     }
   }
-  const candidateLines =
-    lastWorkingIndex >= 0 ? lines.slice(lastWorkingIndex + 1) : lines;
-  const findPurpose = (candidates: string[]) => {
+  const findPurpose = (candidates: string[], promptOnly = false) => {
     for (let index = candidates.length - 1; index >= 0; index -= 1) {
       const line = candidates[index];
       if (/^(?:reverse-i-search|bck-i-search|fwd-i-search):/i.test(line))
         continue;
+      if (promptOnly && !/^[›❯]\s+/.test(line)) continue;
       const title = normalizePurposeTitle(purposeFromTranscriptLine(line));
       if (title) return title;
     }
     return undefined;
   };
-  return lastWorkingIndex >= 0 ? findPurpose(candidateLines) : findPurpose(lines);
+  // Without an active/just-finished agent marker, transcript lines are just scrollback.
+  // Promoting them to a terminal purpose is what makes old prompts reappear as the
+  // current task when the user scrolls or reopens a terminal.
+  if (lastWorkingIndex < 0) return undefined;
+  const afterWorking = findPurpose(lines.slice(lastWorkingIndex + 1));
+  if (afterWorking) return afterWorking;
+  const promptBeforeWorking = findPurpose(lines.slice(Math.max(0, lastWorkingIndex - 8), lastWorkingIndex), true);
+  if (promptBeforeWorking) return promptBeforeWorking;
+  return undefined;
 }
 
 export function terminalPurposeFromContext(input: {
@@ -382,6 +670,7 @@ export function applyTerminalPurpose(
   return {
     ...summary,
     task: purpose.title,
+    userTask: purpose.title,
     confidence: "high",
   };
 }
@@ -581,6 +870,14 @@ function displayTitle(
   displayPath: string,
   extractedSummary?: WorkstreamStatusSummary,
 ) {
+  if (
+    extractedSummary?.status === "waiting" &&
+    cleanText(extractedSummary.now) === "Waiting for operator selection" &&
+    cleanText(extractedSummary.task)
+  ) {
+    return boundedTitle(cleanText(extractedSummary.task) ?? "Waiting for operator selection");
+  }
+
   const contextual = contextualActivityTitle(activity, extractedSummary);
   if (contextual) return boundedTitle(contextual);
 
@@ -689,9 +986,15 @@ function normalizedPersistedNow(summary: WorkstreamStatusSummary, fallbackPath: 
  * model server being offline). Returns null when no summary has run yet (TC-033 T2).
  */
 export function summarySourceLabel(
-  source?: "fallback" | "process" | null,
+  source?: "fallback" | "process" | "sidecar" | null,
   error?: string | null,
 ): { label: string; detail: string } | null {
+  if (source === "sidecar") {
+    return {
+      label: "live task list",
+      detail: "Read from the agent's own task list",
+    };
+  }
   if (source === "process") {
     return {
       label: "model summary",
@@ -740,7 +1043,7 @@ export function neutralHeaderTitle(status?: string | null): string {
   switch (status) {
     case "running":
     case "reconnected":
-      return "Working";
+      return "Idle";
     case "failed":
       return "Needs attention";
     case "exited":
@@ -763,17 +1066,15 @@ export function preferRealTaskSummary<T extends { task: string; now: string }>(
       now: cleanText(statusSummary.now) ?? base.now,
     };
   }
-  // No task list, but the agent narrated its own work (Stop-hook transcript capture).
-  // That's the model's OWN declared words — reliable, unlike a heuristic scrape — so use
-  // it as the title instead of the bare "Working" neutral. The `now` line keeps the live
-  // activity detail. (TC-033)
+  // No task list means no trustworthy title. Narration is still transcript text from a
+  // previous turn, and promoting it here is what made old agent sentences look like the
+  // terminal's current task after relaunch/scrollback recovery.
   const narration = cleanText(statusSummary?.narration);
-  if (narration) {
-    const task = boundedTitle(narration);
+  if (narration && neutralTitle) {
     return {
       ...base,
-      task,
-      now: cleanText(statusSummary?.now) ?? base.now,
+      task: neutralTitle,
+      now: neutralTitle,
     };
   }
   // No real task list and no narration → the title is a best-effort heuristic scrape.
@@ -836,20 +1137,34 @@ export function summaryFromDurableActivity(
     cleanPath(extractedSummary?.path) ??
     "workspace path unknown";
 
+  const durableNow =
+    extractedSummary?.status === "waiting" &&
+    cleanText(extractedSummary.now) === "Waiting for operator selection"
+      ? "Waiting for operator selection"
+      :
+    purpose?.source === "inferred"
+      ? purpose.title
+      : sanitizeTerminalHeaderNow(terminalActivityDetail(activity), displayPath);
+
+  const durableStatus =
+    extractedSummary?.status === "waiting" &&
+    cleanText(extractedSummary.now) === "Waiting for operator selection"
+      ? "waiting"
+      : activity.status === "success"
+        ? "done"
+        : activity.status === "error"
+          ? "blocked"
+          : activity.status === "idle"
+            ? "idle"
+            : "working";
+
   return applyTerminalPurpose(
     {
       ...extractedSummary,
       task: displayTitle(activity, displayPath, extractedSummary),
       path: displayPath,
-      now: terminalActivityDetail(activity),
-      status:
-        activity.status === "success"
-          ? "done"
-          : activity.status === "error"
-            ? "blocked"
-            : activity.status === "idle"
-              ? "idle"
-              : "working",
+      now: durableNow,
+      status: durableStatus,
       provider: "shell",
       confidence: activity.status === "idle" ? "low" : "high",
     },

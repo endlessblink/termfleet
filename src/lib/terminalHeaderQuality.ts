@@ -1,0 +1,167 @@
+export type HeaderQualityReason =
+  | "empty"
+  | "too-long"
+  | "prompt-fragment"
+  | "raw-thinking-prompt"
+  | "command-like"
+  | "implementation-detail"
+  | "package-script"
+  | "vague"
+  | "gibberish";
+
+export interface HeaderQualityResult {
+  ok: boolean;
+  reason?: HeaderQualityReason;
+}
+
+function clean(value?: string | null) {
+  return value?.replace(/\s+/g, " ").trim() || "";
+}
+
+function looksLikePath(text: string) {
+  return /(?:^|[\s"'])\/(?:home|media|tmp|var|usr|opt|data)\//i.test(text) ||
+    /(?:^|[\s"'])~\//.test(text) ||
+    /\b(?:src|tests|docs|scripts)\/[\w./-]+\.(?:tsx?|jsx?|mjs|cjs|rs|md|json|sh)\b/i.test(text) ||
+    /\b[\w.-]+\.(?:tsx?|jsx?|mjs|cjs|rs|md|json|sh)\b/i.test(text);
+}
+
+function looksLikeCommand(text: string) {
+  return /^(?:\.\/|~\/|\/|cd\b|ls\b|ll\b|pwd\b|cat\b|less\b|tail\b|head\b|sed\b|awk\b|grep\b|rg\b|find\b|printf\b|echo\b|env\b|export\b|source\b|clear\b|sleep\b|timeout\b|git\b|gh\b|npm\b|pnpm\b|yarn\b|bun\b|node\b|npx\b|tsx\b|python(?:3)?\b|uv\b|cargo\b|docker\b|ssh\b|curl\b|sudo\b|chmod\b|mkdir\b|rm\b|mv\b|cp\b|touch\b|vim\b|nvim\b|tmux\b|ps\b|kill\b|pkill\b)\b/i.test(text) ||
+    /(?:&&|\|\||\s;\s|\|\s*\w|>\s*\S|<\s*\S|`[^`]+`|\$\(|\${)/.test(text);
+}
+
+function looksLikePackageScript(text: string) {
+  return /^[\w@./-]+@\d+\.\d+\.\d+\s+[\w:-]+(?:\s|$)/i.test(text) ||
+    /\b(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?[\w:-]+\b/i.test(text) ||
+    /\bnpx\s+[\w@./-]+/i.test(text);
+}
+
+function looksLikePromptFragment(text: string) {
+  return /[?]\s*$/i.test(text) ||
+    /^(?:what now|why|how is this|where is|can you|do you|ok so|so how|this is|it seems|we still|i am|i'm|you keep)\b/i.test(text) ||
+    /\b(?:dont|doesnt|isnt|havent|ahve|querstions|apth|relatd|udpated|descriptuin)\b/i.test(text);
+}
+
+// Pasted source code (a JS snippet once became a pane's Task row). Requires BOTH a
+// code keyword AND code punctuation so prose like "Update the const declaration"
+// stays accepted.
+function looksLikeCode(text: string) {
+  return /\b(?:const|let|var|function|return|import|export|await)\b|=>/.test(text) &&
+    /(?:=>|[{};]|\)\s*\{|\w\()/.test(text);
+}
+
+function looksGibberish(text: string) {
+  const letters = text.replace(/[^a-z]/gi, "");
+  if (letters.length < 5) return false;
+  const vowels = (letters.match(/[aeiou]/gi) ?? []).length;
+  if (letters.length >= 8 && vowels / letters.length < 0.18) return true;
+  return /\b[a-z]{7,}\b/i.test(text) && /\b(?:fgh|dfg|asdf|sdf|ghd|qwe|zx)\w*\b/i.test(text);
+}
+
+function baseQuality(value?: string | null, maxLength = 96): HeaderQualityResult {
+  const text = clean(value);
+  if (!text) return { ok: false, reason: "empty" };
+  if (text.length > maxLength) return { ok: false, reason: "too-long" };
+  if (looksLikePackageScript(text)) return { ok: false, reason: "package-script" };
+  if (looksLikeCommand(text)) return { ok: false, reason: "command-like" };
+  if (looksLikeCode(text)) return { ok: false, reason: "command-like" };
+  if (looksLikePath(text)) return { ok: false, reason: "implementation-detail" };
+  if (looksLikePromptFragment(text)) return { ok: false, reason: "prompt-fragment" };
+  if (looksGibberish(text)) return { ok: false, reason: "gibberish" };
+  return { ok: true };
+}
+
+/**
+ * Gate for the USER'S OWN ASK shown on the Task row. The user's words are the
+ * truth of what they asked — informal phrasing, typos, or a trailing "?" must
+ * not blank the row to "Task not captured" (that hid "ok so go over everything…"
+ * while the agent was visibly working on it). Only structural junk is rejected:
+ * pasted code, shell commands, paths, gibberish.
+ */
+export function qualityCheckUserAskLabel(value?: string | null): HeaderQualityResult {
+  const text = clean(value);
+  if (!text) return { ok: false, reason: "empty" };
+  if (text.length > 96) return { ok: false, reason: "too-long" };
+  if (looksLikePackageScript(text)) return { ok: false, reason: "package-script" };
+  if (looksLikeCommand(text)) return { ok: false, reason: "command-like" };
+  if (looksLikeCode(text)) return { ok: false, reason: "command-like" };
+  if (looksLikePath(text)) return { ok: false, reason: "implementation-detail" };
+  if (looksGibberish(text)) return { ok: false, reason: "gibberish" };
+  return { ok: true };
+}
+
+/**
+ * Gate for the agent's DECLARED task list text (TaskCreate/TaskUpdate via the
+ * status sidecar, or a checklist printed by the agent). Unlike scraped prompt
+ * text, a real task may legitimately say "Run cargo test", name a file, or
+ * mention something "broken" — so the command/path/package heuristics are
+ * skipped (they blanked the whole header to "Idle", the 2026-07-03 regression).
+ * Raw-prompt junk (typo storms, trailing "?", gibberish) is still rejected
+ * because printed checklists are scraped from scrollback and can carry it.
+ */
+export function qualityCheckAuthoritativeTaskLabel(value?: string | null): HeaderQualityResult {
+  const text = clean(value);
+  if (!text) return { ok: false, reason: "empty" };
+  if (text.length > 96) return { ok: false, reason: "too-long" };
+  if (looksLikeCode(text)) return { ok: false, reason: "command-like" };
+  if (looksLikePromptFragment(text)) return { ok: false, reason: "prompt-fragment" };
+  if (looksGibberish(text)) return { ok: false, reason: "gibberish" };
+  return { ok: true };
+}
+
+export function qualityCheckTaskLabel(value?: string | null): HeaderQualityResult {
+  const text = clean(value);
+  if (/^(?:Ready|Terminal|Working|Thinking|Running terminal command)$/i.test(text)) {
+    return { ok: false, reason: "vague" };
+  }
+  return baseQuality(value, 96);
+}
+
+/**
+ * Gate for the small NOW line: momentary activity. A bare tool name ("Using
+ * Skill") is acceptable HERE — it is honest live activity — but structural junk
+ * (files, commands, code, prompt echoes) is not.
+ */
+export function qualityCheckNowLabel(value?: string | null): HeaderQualityResult {
+  const text = clean(value);
+  if (/^(?:Working|Thinking|Ready|Awaiting terminal output|Running terminal command|Command is running)$/i.test(text)) {
+    return { ok: false, reason: "vague" };
+  }
+  if (/^(?:Thinking about|Working on)\s+/i.test(text)) {
+    const target = text.replace(/^(?:Thinking about|Working on)\s+/i, "");
+    if (looksLikePromptFragment(target) || looksGibberish(target)) {
+      return { ok: false, reason: "raw-thinking-prompt" };
+    }
+  }
+  return baseQuality(value, 80);
+}
+
+export function qualityCheckActivityLabel(value?: string | null): HeaderQualityResult {
+  const text = clean(value);
+  if (/^(?:Working|Thinking|Ready|Awaiting terminal output|Running terminal command|Command is running)$/i.test(text)) {
+    return { ok: false, reason: "vague" };
+  }
+  // A bare tool name ("Using Skill", "Running Bash") says nothing about the work
+  // as a TITLE (it is fine on the now line — see qualityCheckNowLabel).
+  if (/^(?:Using|Calling|Invoking|Running|Executing|Loading)\s+[A-Z][A-Za-z]*$/.test(text)) {
+    return { ok: false, reason: "vague" };
+  }
+  if (/^(?:Thinking about|Working on)\s+/i.test(text)) {
+    const target = text.replace(/^(?:Thinking about|Working on)\s+/i, "");
+    if (looksLikePromptFragment(target) || looksGibberish(target)) {
+      return { ok: false, reason: "raw-thinking-prompt" };
+    }
+  }
+  return baseQuality(value, 80);
+}
+
+export function headerLabelsAreDuplicated(task?: string | null, activity?: string | null) {
+  const cleanTask = clean(task).toLowerCase();
+  const cleanActivity = clean(activity).toLowerCase();
+  return Boolean(
+    cleanTask &&
+      cleanActivity &&
+      cleanTask === cleanActivity &&
+      cleanTask.length > 48,
+  );
+}

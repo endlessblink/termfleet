@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { Terminal as XTerminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
@@ -11,12 +12,14 @@ import { syncTerminalLatencyTraceEnv, traceTerminalLatency } from "../lib/termin
 import { refreshProjectRootFromActiveTerminal, useWorkspaceStore } from "../stores/workspace";
 import { agentStatusSummaryInputFromWorkstream, type AgentStatusSummaryInput } from "../lib/agentStatusSummary";
 import { summarizeAgentStatus } from "../lib/agentStatusSummarizer";
-import { activityKindForText, inferActivityFromOutput, isWorkstreamActivityKind, normalizeActivityText } from "../lib/workstreamActivity";
+import { inferActivityFromOutput, isWorkstreamActivityKind, normalizeActivityText } from "../lib/workstreamActivity";
 import { mergeCockpitObjectsFromExtractedItems, mergeExtractedItems, normalizeExtractedItems } from "../lib/workstreamExtraction";
 import { deriveTerminalActivity } from "../lib/terminalActivity";
+import { terminalPurposeFromSubmittedInput } from "../lib/terminalHeaderDisplay";
+import { mainUserAskFromSummary, mainUserAskFromTerminalPurpose, recordTerminalHeaderLog } from "../lib/terminalMainUserAsk";
 import { completeOpenTaskLineup, completeOpenTaskLineupForRun, mergeShellSummaryTaskLineup, normalizeTaskLineupItems, taskLineupFromExtractedItems, terminalOutputClosesTaskLineup } from "../lib/taskLineup";
 import { parseTerminalChecklist } from "../lib/terminalChecklist";
-import type { TaskLineupItem, TerminalActivitySummary, TerminalRuntimeStatus, TerminalState, WorkstreamActivityKind, WorkstreamActivitySource, WorkstreamInput, WorkstreamPhase, WorkstreamReadiness, WorkstreamStatus } from "../lib/types";
+import type { TaskLineupItem, TerminalActivitySummary, TerminalRuntimeStatus, TerminalState, WorkstreamActivityKind, WorkstreamActivitySource, WorkstreamInput, WorkstreamMetadata, WorkstreamPhase, WorkstreamReadiness, WorkstreamStatus, WorkstreamStatusSummary } from "../lib/types";
 import type { GridSnapshot } from "../lib/gridSnapshot";
 
 const LOCALHOST_URL_PATTERN = /https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0):(\d{2,5})(?:[/?#][^\s"'<>]*)?/gi;
@@ -250,18 +253,16 @@ function readableOutputExcerpt(output: string) {
   return lines.slice(-18).join("\n").slice(-1600) || undefined;
 }
 
-// The header/activity text only needs to refresh a few times a second, but grid
-// snapshots arrive at up to 60fps while an agent prints. Cap the (O(rows×cols)
-// string-rebuild + regex + store-write) excerpt work to ~10Hz so a fast spinner
-// can't cascade re-renders across the cockpit panels every frame.
-const SNAPSHOT_EXCERPT_THROTTLE_MS = 100;
+// Header/activity text does not need to track the canvas frame rate. Cap the
+// (O(rows×cols) string rebuild + regex + store write) excerpt work so terminal
+// output cannot cascade whole-cockpit React renders while the user is typing.
+const SNAPSHOT_EXCERPT_THROTTLE_MS = 500;
 
 function readableSnapshotExcerpt(snapshot: GridSnapshot) {
   const lines = snapshot.cells
     .map((row) => row.map((cell) => cell.c && cell.c !== "\u0000" ? cell.c : " ").join("").trimEnd())
     .map((line) => line.replace(/\s+/g, " ").trim())
-    .filter((line) => line.length > 0)
-    .filter((line) => !/^[\w.@:/~+-]+[$#>]\s*$/.test(line));
+    .filter((line) => line.length > 0);
   return lines.slice(-24).join("\n").slice(-1800) || undefined;
 }
 
@@ -280,6 +281,7 @@ interface StructuredAgentSignal {
   risk?: string;
   currentActivity?: string;
   activityKind?: WorkstreamActivityKind;
+  providerSessionId?: string;
   label?: string;
   detail?: string;
 }
@@ -332,6 +334,8 @@ function parseStructuredAgentSignals(output: string) {
       if (typeof parsed.risk === "string") signal.risk = parsed.risk.slice(0, 160);
       if (typeof parsed.activity === "string") signal.currentActivity = normalizeActivityText(parsed.activity, 140);
       if (isWorkstreamActivityKind(parsed.activityKind)) signal.activityKind = parsed.activityKind;
+      if (typeof parsed.providerSessionId === "string") signal.providerSessionId = parsed.providerSessionId.slice(0, 160);
+      if (typeof parsed.sessionId === "string" && !signal.providerSessionId) signal.providerSessionId = parsed.sessionId.slice(0, 160);
       if (typeof parsed.label === "string") signal.label = parsed.label.slice(0, 80);
       if (typeof parsed.detail === "string") signal.detail = parsed.detail.slice(0, 240);
       return Object.keys(signal).length > 0 ? [{ raw, signal }] : [];
@@ -463,6 +467,8 @@ export function TerminalComponent({
   const latestSnapshotRef = useRef<GridSnapshot | null>(null);
   const lastSnapshotRunRef = useRef(0);
   const snapshotThrottleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const submittedInputBufferRef = useRef("");
+  const submittedInputEscapeRef = useRef(false);
   const activeTabId = useWorkspaceStore((s) => s.activeTabId);
   const workspaceMode = useWorkspaceStore((s) => s.workspaceUiState.workspaceMode);
   const terminalRendererMode = useWorkspaceStore((s) => s.workspaceUiState.terminalRendererMode);
@@ -525,7 +531,9 @@ export function TerminalComponent({
     runClosed?: boolean;
     taskLineup?: TaskLineupItem[];
     purpose?: TerminalState["purpose"];
+    mainUserAsk?: TerminalState["mainUserAsk"];
     terminalOutput?: string;
+    terminalVisibleText?: string;
     error?: string;
   }) => {
     const store = useWorkspaceStore.getState();
@@ -553,8 +561,11 @@ export function TerminalComponent({
           runClosed: updates.runClosed ?? previous?.runClosed,
           taskLineup: updates.taskLineup ?? previous?.taskLineup,
           purpose: updates.purpose ?? previous?.purpose,
+          mainUserAsk: updates.mainUserAsk ?? previous?.mainUserAsk,
           taskSidebarCollapsed: previous?.taskSidebarCollapsed,
           terminalOutput: updates.terminalOutput ?? previous?.terminalOutput,
+          terminalVisibleText: updates.terminalVisibleText ?? previous?.terminalVisibleText,
+          terminalVisibleTextUpdatedAt: updates.terminalVisibleText ? Date.now() : previous?.terminalVisibleTextUpdatedAt,
           statusSummary: previous?.statusSummary,
           statusSummaryUpdatedAt: previous?.statusSummaryUpdatedAt,
           statusSummarySource: previous?.statusSummarySource,
@@ -567,6 +578,11 @@ export function TerminalComponent({
   }, [attachToPtyId, paneId, runtimeSessionId, tabId, terminal?.cols, terminal?.rows]);
 
   const scheduleStatusSummaryUpdate = useCallback(() => {
+    const statusEndpointConfigured = Boolean(
+      (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env
+        ?.VITE_AGENT_STATUS_SUMMARY_ENDPOINT,
+    );
+    if (typeof window !== "undefined" && window.location.port !== "1420" && !statusEndpointConfigured) return;
     if (statusSummaryTimeoutRef.current) clearTimeout(statusSummaryTimeoutRef.current);
     const sequence = statusSummarySequenceRef.current + 1;
     statusSummarySequenceRef.current = sequence;
@@ -602,6 +618,22 @@ export function TerminalComponent({
               }
             : null;
       if (!baseInput) return;
+      // Shell panes with no sign of agent work used to SKIP polling entirely (each
+      // poll cost an HTTP call + a spawned worker process, and heuristic results
+      // scraped junk into the header). That created a cold-start hole: a fresh pane
+      // running an agent could never receive its FIRST real task list unless a
+      // "Working (" marker happened to appear. Now that the sidecar is read locally
+      // (cheap file read), gated panes always ASK — but only APPLY authoritative
+      // sidecar-backed results, so heuristic scrapes still can't overwrite the header.
+      let gatedShellPane = false;
+      if (tab.workstream?.kind !== "agent" && terminalState) {
+        const hasActiveAgentMarker = /\bWorking\s+\(/i.test(terminalState.terminalOutput ?? "");
+        const hasRunningDurableActivity =
+          terminalState.durableActivity?.status === "running" &&
+          Date.now() - (terminalState.durableActivity.updatedAt ?? 0) < 60_000;
+        const hasRealTaskList = Boolean(terminalState.statusSummary?.tasksFromTodoWrite);
+        gatedShellPane = !hasActiveAgentMarker && !hasRunningDurableActivity && !hasRealTaskList;
+      }
       // Key the status lookup by this terminal's own pane id (TC-035): the worker
       // prefers the pane-keyed sidecar so two terminals in the same cwd stay
       // independent. Falls back to cwd inside the worker when the pane sidecar isn't
@@ -609,11 +641,14 @@ export function TerminalComponent({
       // Key by this terminal's live session id (TC-035) — the PTY exposes the same
       // value as TERMFLEET_PANE_ID, so two terminals in one cwd stay independent.
       // (`runtimeSessionId` = the id the PTY was spawned with; livePtyId on reattach.)
-      const statusPaneKey = livePtyId ?? runtimeSessionId;
+      const statusPaneKey = runtimeSessionId ?? livePtyId;
       const input: AgentStatusSummaryInput = { ...baseInput, paneId: statusPaneKey };
 
       void summarizeAgentStatus(input).then((result) => {
         if (statusSummarySequenceRef.current !== sequence) return;
+        // Junk protection for gated shell panes: only the agent's real sidecar
+        // status may populate a pane that shows no other sign of agent work.
+        if (gatedShellPane && result.source !== "sidecar") return;
         const latestStore = useWorkspaceStore.getState();
         const latestTab = latestStore.tabs.find((candidate) => candidate.id === tabId);
         if (!latestTab) return;
@@ -625,7 +660,7 @@ export function TerminalComponent({
           const extractedNextActions = mergeExtractedItems(latestTab.workstream.extractedNextActions, result.summary.nextActions, extractedAt);
           const taskLineup = taskLineupFromExtractedItems(
             extractedTasks,
-            result.source === "process" ? "summary" : "structured-signal",
+            result.source !== "fallback" ? "summary" : "structured-signal",
             "pending",
             extractedAt
           );
@@ -654,10 +689,14 @@ export function TerminalComponent({
         latestStore.updateTab(tabId, {
           terminals: latestTab.terminals.map((candidate) =>
             candidate.paneId === paneId
-              ? (() => {
-                  const updatedAt = Date.now();
-                  const runId = candidate.activeRunId;
-                  const closesRun = candidate.runClosed || terminalOutputClosesTaskLineup(candidate.terminalOutput);
+	              ? (() => {
+	                  const updatedAt = Date.now();
+	                  const runId = candidate.activeRunId;
+	                  const closesRun = candidate.runClosed || terminalOutputClosesTaskLineup(candidate.terminalOutput);
+	                  const hasStructuredTaskLineup = candidate.taskLineup?.some((item) =>
+	                    item.source === "todo-write" &&
+	                    (!item.runId || !runId || item.runId === runId)
+	                  );
                   // When the summary's tasks ARE the agent's real Claude TodoWrite
                   // list (captured by the status sidecar), render them as the
                   // authoritative `todo-write` source so the panel/map/header treat
@@ -692,18 +731,58 @@ export function TerminalComponent({
                       : [];
                   // TC-033 T1: never let this summary cycle clobber a live
                   // todo-write list (the sidebar/map only render todo-write items).
+                  const hasCapturedTaskContext = Boolean(
+                    candidate.statusSummary?.tasksFromTodoWrite ||
+                    candidate.mainUserAsk ||
+                    hasStructuredTaskLineup,
+                  );
+                  const shouldCloseRunFromTranscript = closesRun && !hasCapturedTaskContext;
                   const taskLineup = mergeShellSummaryTaskLineup(candidate.taskLineup, extractedLineup, {
-                    closesRun,
+                    closesRun: shouldCloseRunFromTranscript,
                     runId,
                     updatedAt,
                   });
-                  return {
-                    ...candidate,
-                    statusSummary: result.summary,
-                    statusSummaryUpdatedAt: updatedAt,
-                    statusSummarySource: result.source,
-                    statusSummaryError: result.error,
-                    runClosed: closesRun,
+                  const closedRunSummary: WorkstreamStatusSummary | null =
+                    shouldCloseRunFromTranscript && !result.summary.tasksFromTodoWrite
+                      ? {
+                          task: "Idle",
+                          path: liveCwd ?? cwd ?? result.summary.path,
+                          now: "Idle",
+                          status: "idle",
+                          provider: "shell",
+                          confidence: "high",
+                          tasksFromTodoWrite: false,
+                        }
+                      : null;
+                  const nextStatusSummary =
+                    closedRunSummary ??
+                    ((candidate.statusSummary?.tasksFromTodoWrite && !result.summary.tasksFromTodoWrite) ||
+                    (hasStructuredTaskLineup && result.source === "fallback" && candidate.statusSummary)
+                      ? candidate.statusSummary
+                      : result.summary);
+                  const mainUserAsk = mainUserAskFromSummary(nextStatusSummary, "status-sidecar", {
+                    previous: candidate.mainUserAsk,
+                    runId,
+                    now: updatedAt,
+                  });
+                  if (mainUserAsk !== candidate.mainUserAsk) {
+                    recordTerminalHeaderLog({
+                      terminalId: candidate.id,
+                      paneId: candidate.paneId,
+                      field: "mainUserAsk",
+                      source: mainUserAsk?.source,
+                      text: mainUserAsk?.text,
+                      previousText: candidate.mainUserAsk?.text,
+                    });
+                  }
+	                  return {
+	                    ...candidate,
+	                    statusSummary: nextStatusSummary,
+	                    statusSummaryUpdatedAt: updatedAt,
+	                    statusSummarySource: result.source,
+	                    statusSummaryError: result.error,
+                    mainUserAsk,
+                    runClosed: shouldCloseRunFromTranscript,
                     taskLineup,
                   };
                 })()
@@ -724,30 +803,26 @@ export function TerminalComponent({
     const excerpt = readableSnapshotExcerpt(snapshot);
     if (!excerpt || latestSnapshotExcerptRef.current === excerpt) return;
     latestSnapshotExcerptRef.current = excerpt;
-    updateTerminalRuntime({
-      terminalOutput: excerpt,
-    });
     const store = useWorkspaceStore.getState();
     const tab = store.tabs.find((candidate) => candidate.id === tabId);
-    if (tab?.workstream) {
-      const currentActivity = latestReadableOutput(excerpt);
+    if (tab) {
+      const updatedAt = Date.now();
       store.updateTab(tabId, {
-        workstream: {
-          ...tab.workstream,
-          terminalOutput: excerpt,
-          terminalOutputUpdatedAt: Date.now(),
-          currentActivity: currentActivity ?? tab.workstream.currentActivity,
-          activityKind: currentActivity ? activityKindForText(currentActivity) : tab.workstream.activityKind,
-          activitySource: "terminal",
-          activityUpdatedAt: Date.now(),
-          lastActivityAt: Date.now(),
-        },
+        terminals: tab.terminals.map((terminal) => {
+          if (terminal.paneId !== paneId) return terminal;
+          return {
+            ...terminal,
+            terminalVisibleText: excerpt,
+            terminalVisibleTextUpdatedAt: updatedAt,
+          };
+        }),
       });
     }
-    // Keep the header/description live on canvas/map nodes, which update via
-    // snapshots rather than the output callback.
-    scheduleStatusSummaryUpdate();
-  }, [tabId, updateTerminalRuntime, scheduleStatusSummaryUpdate]);
+    // Snapshot excerpts are viewport/render state. They drive map previews only; they
+    // must never update terminalOutput/currentActivity because scrolling would make
+    // Task and header summaries jump between old transcript lines. Real PTY output is
+    // handled in handleOutput(), which is the stable source for task/status summaries.
+  }, [paneId, tabId]);
 
   const handleSnapshot = useCallback((snapshot: GridSnapshot) => {
     // onSnapshot drives the map preview, which throttles itself — leave it on the
@@ -769,6 +844,116 @@ export function TerminalComponent({
       }, SNAPSHOT_EXCERPT_THROTTLE_MS - since);
     }
   }, [onSnapshot, runSnapshotExcerpt]);
+
+  const storeSubmittedAsk = useCallback((line: string) => {
+    const purpose = terminalPurposeFromSubmittedInput(line);
+    if (!purpose) return;
+    const store = useWorkspaceStore.getState();
+    const tab = store.tabs.find((candidate) => candidate.id === tabId);
+    if (!tab) return;
+    const updatedAt = Date.now();
+    store.updateTab(tabId, {
+      terminals: tab.terminals.map((terminal) => {
+        if (terminal.paneId !== paneId) return terminal;
+        const submittedAsk = mainUserAskFromTerminalPurpose(purpose, {
+          previous: terminal.mainUserAsk,
+          runId: terminal.activeRunId,
+          now: updatedAt,
+          preferTerminalPrompt: true,
+        });
+        if (submittedAsk && submittedAsk !== terminal.mainUserAsk) {
+          recordTerminalHeaderLog({
+            terminalId: terminal.id,
+            paneId,
+            field: "mainUserAsk",
+            source: submittedAsk.source,
+            text: submittedAsk.text,
+            previousText: terminal.mainUserAsk?.text,
+          });
+        }
+        return {
+          ...terminal,
+          mainUserAsk: submittedAsk ?? terminal.mainUserAsk,
+        };
+      }),
+    });
+  }, [paneId, tabId]);
+
+  const captureSubmittedInput = useCallback((data: string) => {
+    let buffer = submittedInputBufferRef.current;
+    let skippingEscape = submittedInputEscapeRef.current;
+    const flush = () => {
+      const line = buffer.replace(/\s+/g, " ").trim();
+      buffer = "";
+      if (line) storeSubmittedAsk(line);
+    };
+    for (const char of data) {
+      if (skippingEscape) {
+        if (/[A-Za-z~]/.test(char)) skippingEscape = false;
+        continue;
+      }
+      if (char === "\x1b") {
+        skippingEscape = true;
+        continue;
+      }
+      if (char === "\r" || char === "\n") {
+        flush();
+        continue;
+      }
+      if (char === "\x03" || char === "\x04" || char === "\x15") {
+        buffer = "";
+        continue;
+      }
+      if (char === "\x7f" || char === "\b") {
+        buffer = buffer.slice(0, -1);
+        continue;
+      }
+      if (char >= " " && char !== "\x7f") {
+        buffer += char;
+        if (buffer.length > 320) buffer = buffer.slice(-320);
+      }
+    }
+    submittedInputBufferRef.current = buffer;
+    submittedInputEscapeRef.current = skippingEscape;
+  }, [storeSubmittedAsk]);
+
+  const persistAgentRecoveryManifest = useCallback((
+    ptyId: string | null,
+    workstream: WorkstreamMetadata | undefined,
+    overrides: { providerSessionId?: string; restoreStatus?: WorkstreamMetadata["restoreStatus"]; restoreFailureReason?: string } = {}
+  ) => {
+    if (!ptyId || workstream?.kind !== "agent") return;
+    const providerSessionId = overrides.providerSessionId ?? workstream.providerSessionId;
+    const restoreStatus =
+      overrides.restoreStatus ??
+      workstream.restoreStatus ??
+      (workstream.readiness === "auth-required"
+        ? "needs-auth"
+        : providerSessionId
+          ? "resuming"
+          : undefined);
+    const restoreFailureReason =
+      overrides.restoreFailureReason ??
+      workstream.restoreFailureReason ??
+      (workstream.readiness === "auth-required"
+        ? workstream.providerAvailabilityMessage ?? workstream.lastSummary
+        : undefined);
+    invoke("daemon_update_agent_recovery_manifest", {
+      payload: {
+        id: ptyId,
+        cwd: workstream.cwd ?? cwd,
+        provider: workstream.provider,
+        launchProfile: workstream.launchProfile,
+        providerSessionId,
+        originalCommand: workstream.startupCommand,
+        mission: workstream.mission ?? workstream.prompt,
+        restoreStatus,
+        restoreFailureReason,
+      },
+    }).catch((error) => {
+      console.warn("Could not persist agent recovery manifest", error);
+    });
+  }, [cwd]);
 
   // Cancel any pending trailing excerpt run when this terminal unmounts.
   useEffect(() => () => {
@@ -794,6 +979,9 @@ export function TerminalComponent({
     currentActivity?: string;
     activityKind?: WorkstreamActivityKind;
     activitySource?: WorkstreamActivitySource;
+    providerSessionId?: string;
+    restoreStatus?: WorkstreamMetadata["restoreStatus"];
+    restoreFailureReason?: string;
     structuredStatus?: boolean;
     exitCode?: number;
     activity?: boolean;
@@ -861,6 +1049,9 @@ export function TerminalComponent({
           ? tab.workstream.activitySource
           : updates.activitySource ?? tab.workstream.activitySource,
         activityUpdatedAt: hasActivityUpdate && !preserveStructuredActivity ? Date.now() : tab.workstream.activityUpdatedAt,
+        providerSessionId: updates.providerSessionId ?? tab.workstream.providerSessionId,
+        restoreStatus: updates.restoreStatus ?? tab.workstream.restoreStatus,
+        restoreFailureReason: updates.restoreFailureReason ?? tab.workstream.restoreFailureReason,
         outcome: preserveStructuredState
           ? tab.workstream.outcome
           : updates.lastSummary ?? summary?.lastSummary ?? tab.workstream.outcome,
@@ -917,10 +1108,11 @@ export function TerminalComponent({
     }
     store.setActiveTerminal(ptyId);
     const currentTab = store.tabs.find((candidate) => candidate.id === tabId);
+    persistAgentRecoveryManifest(ptyId, currentTab?.workstream);
     updateWorkstreamRuntime(shouldPreserveWorkstreamOnReady(currentTab?.workstream)
       ? { activity: true }
       : { status: "running", activity: true });
-  }, [paneId, tabId, updateTerminalRuntime, updateWorkstreamRuntime]);
+  }, [paneId, persistAgentRecoveryManifest, tabId, updateTerminalRuntime, updateWorkstreamRuntime]);
 
   const handleStatus = useCallback((status: TerminalRuntimeStatus, details?: { id?: string; error?: string }) => {
     updateTerminalRuntime({
@@ -1065,10 +1257,17 @@ export function TerminalComponent({
         currentActivity: signal.currentActivity,
         activityKind: signal.activityKind,
         activitySource: "structured",
+        providerSessionId: signal.providerSessionId,
         structuredStatus: true,
         exitCode: signal.exitCode,
         activity: true,
       });
+      if (signal.providerSessionId) {
+        persistAgentRecoveryManifest(livePtyId ?? attachToPtyId ?? runtimeSessionId, initialTab?.workstream, {
+          providerSessionId: signal.providerSessionId,
+          restoreStatus: "resuming",
+        });
+      }
       useWorkspaceStore.getState().recordWorkstreamEvent(tabId, {
         kind: "signal",
         label: signal.label ?? "Structured provider signal",
@@ -1086,8 +1285,16 @@ export function TerminalComponent({
     const terminalTranscript = readableOutputExcerpt(heuristicOutput);
     const processExit = inferProcessExit(heuristicOutput);
     const inferredStatus = providerReadiness?.status ?? inferWorkstreamStatus(heuristicOutput);
-    const closesTaskLineup = inferredStatus === "done" || terminalOutputClosesTaskLineup(heuristicOutput);
     const previousTerminal = initialTab?.terminals.find((candidate) => candidate.paneId === paneId);
+    // When the pane's task list comes from the agent's REAL sidecar
+    // (TaskCreate/TaskUpdate), only TaskUpdate may complete items. A terminal
+    // that merely LOOKS idle between turns must not close the lineup — that
+    // was the panel's list ↔ "No list" flicker (transcript closed it, the next
+    // sidecar poll reopened it).
+    const sidecarOwnsTaskLineup = Boolean(previousTerminal?.statusSummary?.tasksFromTodoWrite);
+    const closesTaskLineup =
+      !sidecarOwnsTaskLineup &&
+      (inferredStatus === "done" || terminalOutputClosesTaskLineup(heuristicOutput));
     const durableActivity = deriveTerminalActivity({
       transcript: heuristicOutput,
       previous: previousTerminal?.durableActivity,
@@ -1102,6 +1309,7 @@ export function TerminalComponent({
       activityKind: providerReadiness?.status ? activityKindForStatus(providerReadiness.status) : inferredActivity?.activityKind,
       durableActivity,
       activeRunId,
+      mainUserAsk: runChanged ? undefined : previousTerminal?.mainUserAsk,
       runClosed: closesTaskLineup ? true : runChanged ? false : previousTerminal?.runClosed,
       taskLineup: closesTaskLineup
         ? completeOpenTaskLineupForRun(previousTerminal?.taskLineup, activeRunId)
@@ -1194,7 +1402,7 @@ export function TerminalComponent({
     if (previewNode?.previewPaneId && tab) {
       store.updatePreviewPaneUrl(tab.id, previewNode.previewPaneId, previewUrl);
     }
-  }, [paneId, tabId, updateTerminalRuntime, updateWorkstreamRuntime]);
+  }, [attachToPtyId, livePtyId, paneId, persistAgentRecoveryManifest, runtimeSessionId, tabId, updateTerminalRuntime, updateWorkstreamRuntime]);
 
   const { resize, write } = usePty({
     terminal: !canvasMode && isRuntimeVisible && !nativePane.attached ? terminal : null,
@@ -1228,6 +1436,17 @@ export function TerminalComponent({
     }, 2000);
     return () => clearInterval(interval);
   }, [isTauri, livePtyId]);
+
+  // Sidecar status can change without terminal output (for example a provider hook
+  // records the main user task or current tool activity while the pane is idle). Refresh
+  // visible panes on mount/reattach and then at a modest cadence so the header does not
+  // stay stuck on stale "Ready" or "No task list" text until the next byte arrives.
+  useEffect(() => {
+    if (!isRuntimeVisible) return;
+    scheduleStatusSummaryUpdate();
+    const interval = setInterval(scheduleStatusSummaryUpdate, 10_000);
+    return () => clearInterval(interval);
+  }, [isRuntimeVisible, scheduleStatusSummaryUpdate]);
 
   // Create terminal instance — only once per mount
   useEffect(() => {
@@ -1496,6 +1715,7 @@ export function TerminalComponent({
             onReady={handleReady}
             onStatus={handleStatus}
             onOutput={handleOutput}
+            onInputData={captureSubmittedInput}
             onExit={handleExit}
             onSnapshot={handleSnapshot}
             queuedInput={queuedInput}
