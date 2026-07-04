@@ -101,7 +101,7 @@ function recoveryPurposeTitle(value: string) {
   return "Create exact terminal session recovery";
 }
 
-function qualityPurposeTitle(value: string) {
+export function qualityPurposeTitle(value: string) {
   const text = cleanText(value) ?? "";
   if (/\b(?:high quality|quality)\s+descriptions?\b/i.test(text)) {
     return "Improve cockpit header descriptions";
@@ -1053,10 +1053,11 @@ export function neutralHeaderTitle(status?: string | null): string {
   }
 }
 
-export function preferRealTaskSummary<T extends { task: string; now: string }>(
+export function preferRealTaskSummary<T extends { task: string; now: string; narration?: string }>(
   base: T,
   statusSummary: WorkstreamStatusSummary | null | undefined,
   neutralTitle?: string,
+  options?: { narrationCurrent?: boolean },
 ): T {
   if (statusSummary?.tasksFromTodoWrite) {
     const task = cleanText(statusSummary.task) ?? base.task;
@@ -1066,7 +1067,20 @@ export function preferRealTaskSummary<T extends { task: string; now: string }>(
       now: cleanText(statusSummary.now) ?? base.now,
     };
   }
-  // No task list means no trustworthy title. Narration is still transcript text from a
+  // A narration bullet proven CURRENT by the caller (active-work marker in the same
+  // grid snapshot) IS the trustworthy current step: keep it on the now line and give
+  // the task slot the neutral run-state word (the Task row carries the goal).
+  const currentNarration = options?.narrationCurrent
+    ? cleanText(base.narration ?? statusSummary?.narration)
+    : undefined;
+  if (currentNarration) {
+    return {
+      ...base,
+      task: neutralTitle ?? base.task,
+      now: currentNarration,
+    };
+  }
+  // No task list means no trustworthy title. STALE narration is transcript text from a
   // previous turn, and promoting it here is what made old agent sentences look like the
   // terminal's current task after relaunch/scrollback recovery.
   const narration = cleanText(statusSummary?.narration);

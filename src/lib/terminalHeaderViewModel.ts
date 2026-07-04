@@ -22,6 +22,7 @@ import {
   qualityCheckNowLabel,
   qualityCheckUserAskLabel,
 } from "./terminalHeaderQuality";
+import { qualityPurposeTitle } from "./terminalHeaderDisplay";
 import { visibleTaskLineup } from "./taskLineup";
 
 export type HeaderFieldSource =
@@ -135,7 +136,7 @@ function taskActivityFromUserGoal(value?: string, allowSynth = false) {
 // Leading conversational filler ("ok so ", "hey ", "please ") adds nothing on a
 // cockpit Task row — strip it so the ask starts at the verb/subject.
 function stripConversationalOpeners(value: string) {
-  return value.replace(/^(?:(?:ok(?:ay)?|so|hey|please|also|and|now|then)[,\s]+)+/i, "").trim() || value;
+  return value.replace(/^(?:(?:ok(?:ay)?|so|hey|please|also|and|now|then|sure|yes|yeah|yep|alright|right|cool|great|thanks|thank you)[,\s]+)+/i, "").trim() || value;
 }
 
 // A prompt scraped from the visible terminal grid can arrive as several wrapped
@@ -229,7 +230,13 @@ export function buildShellTerminalHeaderViewModel(input: {
   const cleanedUserTaskText = rawUserTaskText
     ? stripConversationalOpeners(sanitizeScrapedAsk(rawUserTaskText))
     : undefined;
-  const userTaskText = cleanedUserTaskText || undefined;
+  // Terse asks ("make all high") read poorly verbatim — let the existing purpose
+  // mapper expand them; longer asks keep the user's own words.
+  const terseAskRewrite =
+    cleanedUserTaskText && cleanedUserTaskText.split(/\s+/).length <= 6
+      ? qualityPurposeTitle(cleanedUserTaskText)
+      : undefined;
+  const userTaskText = terseAskRewrite ?? (cleanedUserTaskText || undefined);
   const readableUserTaskText = taskText ? undefined : readableUserTaskLabel(userTaskText);
   const authoritativeTaskText = compactHeaderGoal(taskText);
   const scrapedTaskText =
@@ -273,16 +280,26 @@ export function buildShellTerminalHeaderViewModel(input: {
     input.activelyWorking && (rawFallbackNow === "Idle" || rawFallbackNow === "Ready")
       ? "Working"
       : rawFallbackNow;
+  // The agent's narrated current step, trusted only while the pane is actively
+  // working AND it passes the now-line gate (stale/junk persisted narration must
+  // not resurface as a title).
+  const rawLiveNarration = input.activelyWorking
+    ? (base.narration ?? input.statusSummary?.narration)?.replace(/\s+/g, " ").trim()
+    : undefined;
+  const liveNarration =
+    rawLiveNarration && qualityCheckNowLabel(rawLiveNarration).ok ? rawLiveNarration : undefined;
   const summary = sanitizeShellDisplaySummary(
     preferRealTaskSummary(
       base,
       input.statusSummary,
       input.trustedActivitySummary || hasUserTask ? undefined : neutral ?? undefined,
+      { narrationCurrent: Boolean(liveNarration) },
     ),
     livePath,
     fallbackNow,
   );
-  const hasTrustedContext = hasRealTask || hasUserTask || Boolean(input.trustedActivitySummary);
+  const hasTrustedContext =
+    hasRealTask || hasUserTask || Boolean(input.trustedActivitySummary) || Boolean(liveNarration);
   const rawNow = hasTrustedContext
     ? sanitizeTerminalHeaderNow(summary.now, livePath, fallbackNow)
     : fallbackNow;
@@ -315,19 +332,26 @@ export function buildShellTerminalHeaderViewModel(input: {
     !hasRealTask &&
     !hasUserTask &&
     !input.trustedActivitySummary &&
+    !liveNarration &&
     base.status === "working" &&
     input.neutralTitle !== "Idle";
   const title = hasRealTask
     ? realTaskTitle
     : hasUserTask
       ? hasDistinctActivity ? activityTitle : taskDerivedActivity ?? fallbackNow
+    : liveNarration && hasDistinctActivity
+      ? activityTitle
     : input.trustedActivitySummary
       ? summary.task
       : fallbackNow;
-  const candidateReadableTitle =
-    hasUserTask && title === "Idle" ? "Awaiting next action" : title;
-  const candidateReadableNow =
-    hasUserTask && now === "Idle" ? "Awaiting next action" : now;
+  const stripTrailingSeparators = (value: string) =>
+    value.replace(/[;:,]+$/, "").trim() || value;
+  const candidateReadableTitle = stripTrailingSeparators(
+    hasUserTask && title === "Idle" ? "Awaiting next action" : title,
+  );
+  const candidateReadableNow = stripTrailingSeparators(
+    hasUserTask && now === "Idle" ? "Awaiting next action" : now,
+  );
   const titleQuality = qualityCheckActivityLabel(candidateReadableTitle);
   const nowQuality = qualityCheckNowLabel(candidateReadableNow);
   const duplicatedLongLabels = headerLabelsAreDuplicated(taskDescriptionText, candidateReadableTitle);

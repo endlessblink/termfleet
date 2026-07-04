@@ -1226,3 +1226,72 @@ test("idle pane with a user ask still reads 'Awaiting next action' (not working)
   });
   expect(header.title.text).toBe("Awaiting next action");
 });
+
+test("live narration becomes the big title while actively working", () => {
+  const header = buildShellTerminalHeaderViewModel({
+    project: { id: "g-cc", name: "cc-linux-enhancments", projectRoot: "/repo/cc" },
+    liveCwd: "/repo/cc",
+    terminalStatus: "running",
+    taskLineup: [],
+    activelyWorking: true,
+    mainUserAsk: { text: "why did this break again? the fix needs to survive over restarts", source: "terminal-prompt", updatedAt: 1000 },
+    statusSummary: {
+      task: "Supervised agent run",
+      path: "/repo/cc",
+      now: "Installing the updated scripts into the user systemd services now",
+      narration: "Installing the updated scripts into the user systemd services now",
+      status: "working",
+      provider: "shell",
+      confidence: "medium",
+      tasksFromTodoWrite: false,
+    },
+  });
+
+  expect(header.title.text).toBe("Installing the updated scripts into the user systemd services now");
+  expect(header.title.text).not.toBe("Awaiting next action");
+  expect(header.taskDescription.text).toContain("why did this break again");
+});
+
+test("stale narration is suppressed when the pane is no longer working", () => {
+  const header = buildShellTerminalHeaderViewModel({
+    project: { id: "g-cc", name: "cc-linux-enhancments", projectRoot: "/repo/cc" },
+    liveCwd: "/repo/cc",
+    terminalStatus: "running",
+    taskLineup: [],
+    activelyWorking: false,
+    statusSummary: {
+      task: "Supervised agent run",
+      path: "/repo/cc",
+      now: "Idle",
+      narration: "Installing the updated scripts into the user systemd services now",
+      status: "idle",
+      provider: "shell",
+      confidence: "low",
+      tasksFromTodoWrite: false,
+    },
+  });
+
+  expect(header.title.text).not.toContain("Installing the updated scripts");
+});
+
+test("junk persisted narration cannot title the pane", () => {
+  const header = buildShellTerminalHeaderViewModel({
+    project: { id: "g-cc", name: "cc", projectRoot: "/repo/cc" },
+    liveCwd: "/repo/cc",
+    terminalStatus: "running",
+    taskLineup: [],
+    activelyWorking: true,
+    statusSummary: {
+      task: "Supervised agent run",
+      path: "/repo/cc",
+      now: "Editing src/components/Terminal.tsx",
+      narration: "Editing src/components/Terminal.tsx",
+      status: "working",
+      provider: "shell",
+      confidence: "low",
+      tasksFromTodoWrite: false,
+    },
+  });
+
+  expect(header.title.text).not.toContain("Terminal.tsx");
+});

@@ -2398,6 +2398,7 @@ function CanvasNodeViewImpl({
         cwd: liveTerminalRoot,
         currentActivity: linkedTerminal.currentActivity,
         terminalOutput: linkedTerminal.terminalOutput,
+        terminalVisibleText: linkedTerminal.terminalVisibleText,
       }).then((result) => {
         if (cancelled) return;
         if (sidecarOnly && result.source !== "sidecar") return;
@@ -2481,6 +2482,7 @@ function CanvasNodeViewImpl({
     cwdLabel: pathTail(liveTerminalRoot),
     currentActivity: terminalActivity,
     terminalOutput: linkedTerminal?.terminalOutput,
+    terminalVisibleText: linkedTerminal?.terminalVisibleText,
   }, terminalStatusSummary);
   const purposeTaskLineup = visibleTaskLineup(
     workstream?.taskLineup ?? linkedTerminal?.taskLineup,

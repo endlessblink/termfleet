@@ -34,6 +34,10 @@ export interface AgentStatusSummaryInput {
   lastSummary?: string;
   nextAction?: string;
   terminalOutput?: string;
+  // The pane's CURRENT visible grid text (not scrollback). Used ONLY for live
+  // narration extraction — scrollback carries finished-turn bullets and must not
+  // feed it. Optional; absent keeps the legacy fallback behavior byte-identical.
+  terminalVisibleText?: string;
   events?: Array<{
     kind?: string;
     label?: string;
@@ -43,6 +47,8 @@ export interface AgentStatusSummaryInput {
   evidence?: string;
   risk?: string;
 }
+
+import { currentNarrationStep } from "./agentNarration";
 
 const NOISY_ACTIVITY_PATTERNS = [
   /^\/clear$/i,
@@ -321,11 +327,14 @@ function pathFromInput(input: AgentStatusSummaryInput) {
   return label ?? "workspace path unknown";
 }
 
-function fallbackNow(input: AgentStatusSummaryInput, task: string, status: AgentStatusLifecycle, commandSummary?: { now: string } | null) {
+function fallbackNow(input: AgentStatusSummaryInput, task: string, status: AgentStatusLifecycle, commandSummary?: { now: string } | null, narrationStep?: string) {
   if (commandSummary?.now && !isNoisyActivity(commandSummary.now)) return commandSummary.now;
 
   const activity = cleanText(input.currentActivity);
   if (activity && !isNoisyActivity(activity)) return activity;
+
+  // The agent's own narrated current step beats every scrape below it.
+  if (narrationStep) return narrationStep;
 
   const next = cleanText(input.nextAction);
   if (next && !isNoisyActivity(next)) return next;
@@ -365,17 +374,22 @@ export function fallbackAgentStatusSummary(input: AgentStatusSummaryInput): Agen
     commandSummary?.task ??
     transcriptTask ??
     "Supervised agent run";
-  const status = promptSummary ? "waiting" : promptVisible && task === "Ready" ? "idle" : normalizeLifecycle(input);
+  const narrationStep = currentNarrationStep(input.terminalVisibleText);
+  const rawStatus = promptSummary ? "waiting" : promptVisible && task === "Ready" ? "idle" : normalizeLifecycle(input);
+  // A live narration bullet proves the agent is working right now — never report
+  // idle in that case (the "Awaiting next action while visibly working" bug).
+  const status = narrationStep && rawStatus === "idle" ? "working" : rawStatus;
   const excerpt = (input.terminalOutput ?? input.currentActivity ?? input.lastSummary ?? task).slice(-240);
   const extracted = extractionCandidates(input, task, status);
   return {
     task,
     userTask: explicitUserTask,
     path: pathFromInput(input),
-    now: promptSummary?.now ?? (promptVisible && task === "Ready" ? "Awaiting command" : fallbackNow(input, task, status, commandSummary)),
+    now: promptSummary?.now ?? (promptVisible && task === "Ready" && !narrationStep ? "Awaiting command" : fallbackNow(input, task, status, commandSummary, narrationStep)),
+    narration: narrationStep,
     status,
     provider: input.provider ?? "codex",
-    confidence: promptSummary || commandSummary ? "high" : cleanText(input.currentActivity) && !isNoisyActivity(input.currentActivity) ? "medium" : "low",
+    confidence: promptSummary || commandSummary ? "high" : narrationStep ? "medium" : cleanText(input.currentActivity) && !isNoisyActivity(input.currentActivity) ? "medium" : "low",
     proof: cleanText(input.evidence),
     blocker: status === "blocked" ? cleanText(input.risk) ?? cleanText(input.lastSummary) : undefined,
     tasks: normalizeExtractedItems(extracted.tasks, "summary", excerpt),
@@ -495,11 +509,12 @@ export function getDisplaySummary(
 ): AgentStatusSummary {
   const summary = displayAgentStatusSummary(input, persisted);
   if (input.provider === "shell" && summary.task === "Supervised agent run") {
+    const narration = cleanText(summary.narration);
     return {
       ...summary,
       task: "Ready",
-      now: summary.status === "idle" ? "Awaiting command" : "Awaiting next action",
-      confidence: "low",
+      now: narration ?? (summary.status === "idle" ? "Awaiting command" : "Awaiting next action"),
+      confidence: narration ? summary.confidence : "low",
     };
   }
   return summary;

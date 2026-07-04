@@ -615,6 +615,7 @@ export function TerminalComponent({
                 cwd: liveCwd ?? cwd,
                 currentActivity: terminalState.currentActivity,
                 terminalOutput: terminalState.terminalOutput,
+                terminalVisibleText: terminalState.terminalVisibleText,
               }
             : null;
       if (!baseInput) return;

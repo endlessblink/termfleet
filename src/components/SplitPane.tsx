@@ -780,6 +780,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
               cwd: paneCwd,
               currentActivity: paneTerminal.currentActivity,
               terminalOutput: paneTerminal.terminalOutput,
+              terminalVisibleText: paneTerminal.terminalVisibleText,
             }, paneTerminal.statusSummary)
           : null;
         const visibleTaskLineup = pickVisibleTaskLineup(

@@ -1399,3 +1399,45 @@ test("falls back when the configured status process fails", async () => {
   expect(result.summary.now).toBe("Ask operator for credentials");
   expect(result.summary.status).toBe("waiting");
 });
+
+import { fallbackAgentStatusSummary as fallbackForNarration, getDisplaySummary as displayForNarration } from "../src/lib/agentStatusSummary";
+
+const NARRATION_VISIBLE_TEXT = [
+  "• The focused tests and shell syntax checks pass. I'm installing the updated scripts into the",
+  "  user systemd services now, then I'll verify the live units and current attention state.",
+  "",
+  "✻ Cogitating… (12s)",
+].join("\n");
+
+test("fallback summary uses the agent's live narration as the now line", () => {
+  const summary = fallbackForNarration({
+    provider: "shell",
+    status: "running",
+    cwd: "/repo/cc",
+    terminalVisibleText: NARRATION_VISIBLE_TEXT,
+  });
+  expect(summary.now).toBe("Installing the updated scripts into the user systemd services now");
+  expect(summary.narration).toBe("Installing the updated scripts into the user systemd services now");
+  expect(summary.status).toBe("working");
+});
+
+test("fallback summary without visible text keeps legacy behavior", () => {
+  const summary = fallbackForNarration({
+    provider: "shell",
+    status: "running",
+    cwd: "/repo/cc",
+    terminalOutput: "some transcript tail",
+  });
+  expect(summary.narration).toBeUndefined();
+});
+
+test("display summary never blanks live narration to 'Awaiting next action'", () => {
+  const summary = displayForNarration({
+    provider: "shell",
+    status: "running",
+    cwd: "/repo/cc",
+    terminalVisibleText: NARRATION_VISIBLE_TEXT,
+  });
+  expect(summary.now).not.toBe("Awaiting next action");
+  expect(summary.now).toContain("Installing the updated scripts");
+});
