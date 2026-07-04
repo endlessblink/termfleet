@@ -136,6 +136,8 @@ function taskActivityFromUserGoal(value?: string, allowSynth = false) {
 // Leading conversational filler ("ok so ", "hey ", "please ") adds nothing on a
 // cockpit Task row — strip it so the ask starts at the verb/subject.
 function stripConversationalOpeners(value: string) {
+  value = value.replace(/^the\s+operator\s+wants\s+(?:to\s+)?/i, "");
+  value = value.charAt(0).toUpperCase() + value.slice(1);
   return value.replace(/^(?:(?:ok(?:ay)?|so|hey|please|also|and|now|then|sure|yes|yeah|yep|alright|right|cool|great|thanks|thank you)[,\s]+)+/i, "").trim() || value;
 }
 

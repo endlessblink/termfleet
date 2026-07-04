@@ -392,7 +392,7 @@ function parseContextLines(raw) {
 // Anti-hallucination: any number or quoted phrase in the model line must appear in
 // the source context, or the line is rejected (small models invent "Bug 123"-style
 // specifics when context is thin).
-function groundedIn(line, contextText) {
+function groundedIn(line, contextText, soft = false) {
   const context = String(contextText ?? "").toLowerCase();
   for (const number of String(line).match(/\d{2,}/g) ?? []) {
     if (!context.includes(number)) return false;
@@ -403,9 +403,11 @@ function groundedIn(line, contextText) {
   // Content anchoring: a real line shares vocabulary with the pane. Lines whose
   // distinctive words appear NOWHERE in the context are invented filler
   // ("System Booted Successfully") — reject them.
-  const words = String(line).toLowerCase().match(/[a-z]{5,}/g) ?? [];
-  const anchored = words.filter((word) => context.includes(word));
-  if (words.length >= 2 && anchored.length === 0) return false;
+  if (!soft) {
+    const words = String(line).toLowerCase().match(/[a-z]{5,}/g) ?? [];
+    const anchored = words.filter((word) => context.includes(word));
+    if (words.length >= 2 && anchored.length === 0) return false;
+  }
   return true;
 }
 
@@ -430,7 +432,11 @@ async function contextTitleFor(payload, heuristic) {
     ]);
     const context = `${src.ask} ${src.narration} ${src.activity} ${src.tail}`;
     let nowLine = cleanContextLine(rawNow);
-    if (nowLine && !groundedIn(nowLine, context)) nowLine = "";
+    // With real agent narration as source material a paraphrase is fine — only
+    // hard-check numbers/quotes. Full word-anchoring applies when the model had
+    // to work from thin scrape context (that's where invention happens).
+    const softGround = Boolean(src.narration);
+    if (nowLine && !groundedIn(nowLine, context, softGround)) nowLine = "";
     let goal = cleanContextLine(rawGoal)
       .replace(/^the\s+operator\s+wants\s+(?:to\s+)?/i, "")
       .replace(/^\w/, (c) => c.toUpperCase());
