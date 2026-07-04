@@ -2359,7 +2359,9 @@ function CanvasNodeViewImpl({
     : undefined;
 
   useEffect(() => {
-    if (node.type !== "terminal" || !selected || !linkedTab || !linkedTerminal || !linkedTerminalId) return;
+    // Poll for EVERY linked terminal node, not just the selected one — the operator
+    // reads all pane headers at once; background panes need contextual titles too.
+    if (node.type !== "terminal" || !linkedTab || !linkedTerminal || !linkedTerminalId) return;
     const statusEndpointConfigured = Boolean(
       (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env
         ?.VITE_AGENT_STATUS_SUMMARY_ENDPOINT,
@@ -3257,6 +3259,10 @@ function CanvasNodeViewImpl({
                     terminalOutput: linkedTerminal?.terminalOutput?.slice(-1800),
                     terminalVisibleText: terminalVisibleText?.slice(-1800),
                     terminalVisibleTextUpdatedAt: terminalPreview?.updatedAt ?? linkedTerminal?.terminalVisibleTextUpdatedAt,
+                    statusSummarySource: linkedTerminal?.statusSummarySource,
+                    statusSummaryError: linkedTerminal?.statusSummaryError,
+                    statusSummaryUpdatedAt: linkedTerminal?.statusSummaryUpdatedAt,
+                    statusSummaryNarration: (workstream?.statusSummary ?? linkedTerminal?.statusSummary)?.narration,
                     statusSummaryTask: terminalStatusSummary?.task,
                     statusSummaryNow: terminalStatusSummary?.now,
                     statusSummaryPath: terminalStatusSummary?.path,

@@ -31,6 +31,10 @@ export interface CockpitSnapshotEntry {
   terminalOutput?: string;
   terminalVisibleText?: string;
   terminalVisibleTextUpdatedAt?: number;
+  statusSummarySource?: string;
+  statusSummaryError?: string;
+  statusSummaryUpdatedAt?: number;
+  statusSummaryNarration?: string;
   statusSummaryTask?: string;
   statusSummaryNow?: string;
   statusSummaryPath?: string;
