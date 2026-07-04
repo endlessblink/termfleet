@@ -261,20 +261,29 @@ function buildContextPrompt(payload, heuristic) {
   const narration = cleanText(heuristic?.narration).slice(0, 300);
   const activity = cleanText(workstream.currentActivity || heuristic?.now).slice(0, 160);
   const tail = cleanText(payload?.transcript).slice(-700);
-  const finished = ["done", "idle", "stopped"].includes(String(heuristic?.status ?? ""));
+  const finished = looksFinished(heuristic, tail);
   return [
+    "Output EXACTLY two lines for a terminal status header, for a non-technical observer.",
+    "GOAL: <max 12 words - what the operator ultimately wants in this terminal, specific>",
     finished
-      ? "Write ONE short status line (max 14 words) stating what this terminal's AI agent JUST FINISHED, past tense, so a non-technical observer knows the outcome (e.g. 'Fixed the profile-switch race and pushed the sidebar scripts')."
-      : "Write ONE short status line (max 14 words) describing what this terminal's AI agent is doing right now AND WHY — the purpose, not just the action (e.g. 'Verifying the session-switch diagnosis to fix chats opening the wrong session').",
-    finished
-      ? "Start with a past-tense verb (Fixed/Installed/Verified/...). Name the concrete object. No quotes, no preamble, no 'The agent'."
-      : "Start with a present-participle verb (Verifying/Installing/Fixing/...). Name the concrete object and its purpose ('to ...' / 'so ...'). No quotes, no preamble, no 'The agent'.",
+      ? "NOW: <max 12 words - what the agent JUST FINISHED, PAST tense, concrete outcome. It already finished - do NOT use -ing verbs.>"
+      : "NOW: <max 12 words - what the agent is doing right now AND WHY>",
+    "Name concrete objects (which bug, which scripts, which page). Plain words, no file paths, no quotes, no preamble, no 'The agent'.",
     ask ? `Operator asked: ${ask}` : "",
     narration ? `Agent just said: ${narration}` : "",
     activity ? `Latest activity: ${activity}` : "",
     tail ? `Terminal tail: ${tail}` : "",
-    "Status line:",
+    "Two lines:",
   ].filter(Boolean).join("\n");
+}
+
+// Finished-ness must come from the CONTENT, not only a stale lifecycle flag: a tail
+// that reads as a wrap-up report means the work is done even if status says working.
+function looksFinished(heuristic, tail) {
+  if (["done", "idle", "stopped"].includes(String(heuristic?.status ?? ""))) return true;
+  const text = String(tail ?? "");
+  return /\b(?:Verified now|All checks passed|Committed|Pushed|Worked for \d|Done\.|completed successfully)\b/i.test(text) &&
+    !/\besc to interrupt\b|\bWorking\s*\(/i.test(text.slice(-200));
 }
 
 function ollamaContextLine(payload, heuristic) {
@@ -319,7 +328,7 @@ function cleanContextLine(raw) {
   let line = String(raw ?? "").split("\n").map((entry) => entry.trim()).find(Boolean) ?? "";
   line = line
     .replace(/^["'“”`•*-]+|["'“”`]+$/g, "")
-    .replace(/^(?:status line|header|title)\s*[:\-]\s*/i, "")
+    .replace(/^(?:\d+[.)]\s*)?(?:status line|header|title|goal|now)\s*[:\-]\s*/i, "")
     .replace(/^the\s+(?:terminal\s+)?(?:ai\s+)?agent\s+is\s+/i, "")
     .replace(/\s+/g, " ")
     .trim();
@@ -333,23 +342,50 @@ function cleanContextLine(raw) {
   return line.replace(/[.!?]+$/, "");
 }
 
+function askIsVague(ask) {
+  const text = cleanText(ask);
+  if (!text) return true;
+  if (/^(?:go|ok|okay|sure|yes|continue|do it|proceed|fill everything|fix it|make it work|next)[.!]?$/i.test(text)) return true;
+  return text.split(/\s+/).length < 4;
+}
+
+function parseContextLines(raw) {
+  const lines = String(raw ?? "").split("\n").map((line) => line.trim()).filter(Boolean);
+  let goal = "";
+  let now = "";
+  // Pass 1: labeled lines only (the requested format).
+  for (const line of lines) {
+    const goalMatch = line.match(/^[*\s"'`-]*(?:\d+[.)]\s*)?goal\s*[:\-]\s*(.+)$/i);
+    if (goalMatch && !goal) { goal = cleanContextLine(goalMatch[1]); continue; }
+    const nowMatch = line.match(/^[*\s"'`-]*(?:\d+[.)]\s*)?now\s*[:\-]\s*(.+)$/i);
+    if (nowMatch && !now) now = cleanContextLine(nowMatch[1]);
+  }
+  // Pass 2 (labels missing): last substantive line, never chat preamble.
+  if (!now) {
+    const candidate = [...lines].reverse().find((line) =>
+      !/[:：]\s*$/.test(line) && !/two lines|status header|here (?:are|is)\b/i.test(line));
+    now = cleanContextLine(candidate ?? "");
+  }
+  return { goal, now };
+}
+
 async function contextTitleFor(payload, heuristic) {
   // A real declared task list outranks the model — never overwrite it.
-  if (Array.isArray(heuristic?.tasks) && heuristic.tasksFromTodoWrite) return "";
+  if (Array.isArray(heuristic?.tasks) && heuristic.tasksFromTodoWrite) return null;
   const key = contextCacheKey(payload);
   const cached = contextCache.get(key);
   const now = Date.now();
-  if (cached?.line !== undefined && now - cached.at < CONTEXT_TTL_MS) return cached.line;
+  if (cached && "line" in cached && now - cached.at < CONTEXT_TTL_MS) return cached.line;
   if (cached?.promise) return cached.promise;
   const promise = ollamaContextLine(payload, heuristic)
     .then((raw) => {
-      const line = cleanContextLine(raw);
+      const line = parseContextLines(raw);
       contextCache.set(key, { at: Date.now(), line });
       return line;
     })
     .catch(() => {
-      contextCache.set(key, { at: Date.now(), line: "" });
-      return "";
+      contextCache.set(key, { at: Date.now(), line: null });
+      return null;
     });
   contextCache.set(key, { at: now, promise });
   return promise;
@@ -453,15 +489,19 @@ const server = http.createServer(async (request, response) => {
       return;
     }
     const heuristic = payload?.heuristicCandidate ?? fallbackSummary(payload);
-    const contextLine = await contextTitleFor(payload, heuristic);
-    process.stdout.write(`status ${contextCacheKey(payload)} → ${contextLine ? `model: ${contextLine.slice(0, 60)}` : "heuristic"}
-`);
-    if (contextLine) {
+    const context = await contextTitleFor(payload, heuristic);
+    const ask = heuristic?.userTask ?? payload?.workstream?.userTask;
+    process.stdout.write(`status ${contextCacheKey(payload)} -> ${context?.now ? `model: ${context.now.slice(0, 60)}` : "heuristic"}${context?.goal && askIsVague(ask) ? ` | goal: ${context.goal.slice(0, 40)}` : ""}\n`);
+    if (context?.now) {
+      const finished = looksFinished(heuristic, cleanText(payload?.transcript).slice(-700));
+      // Operator rule: a finished pane says BOTH the outcome and that it awaits.
+      const nowLine = finished && context.now.length <= 58 ? `${context.now} · awaiting next task` : context.now;
       sendJson(response, 200, {
         ...heuristic,
-        now: contextLine,
-        narration: contextLine,
-        status: heuristic.status === "idle" ? heuristic.status : heuristic.status || "working",
+        now: nowLine,
+        narration: nowLine,
+        ...(context.goal && askIsVague(ask) ? { userTask: context.goal } : {}),
+        status: finished ? "idle" : heuristic.status || "working",
         confidence: "high",
       });
       return;

@@ -288,9 +288,18 @@ export function buildShellTerminalHeaderViewModel(input: {
   // say what has been done, never just "Awaiting next action".
   const narrationEligible =
     input.activelyWorking || base.status === "idle" || base.status === "done";
-  const rawLiveNarration = narrationEligible
+  let rawLiveNarration = narrationEligible
     ? (base.narration ?? input.statusSummary?.narration)?.replace(/\s+/g, " ").trim()
     : undefined;
+  // Hook narration can be up to 90 chars but the now gate rejects >80 — clamp to a
+  // clause/word boundary instead of silently dropping the outcome line.
+  if (rawLiveNarration && rawLiveNarration.length > 78) {
+    const clause = rawLiveNarration.split(/,\s+/)[0].trim();
+    rawLiveNarration =
+      clause.length >= 24 && clause.length <= 78
+        ? clause
+        : `${rawLiveNarration.slice(0, 75).replace(/\s+\S*$/, "").trim()}\u2026`;
+  }
   const liveNarration =
     rawLiveNarration && qualityCheckNowLabel(rawLiveNarration).ok ? rawLiveNarration : undefined;
   const summary = sanitizeShellDisplaySummary(
@@ -332,7 +341,11 @@ export function buildShellTerminalHeaderViewModel(input: {
   const declaredStepTitle = stripPlanGlyphPrefix(summary.task);
   const realTaskTitle =
     liveStepTitle ??
-    (headerTextsEquivalent(declaredStepTitle, taskDescriptionText) ? fallbackNow : declaredStepTitle);
+    (headerTextsEquivalent(declaredStepTitle, taskDescriptionText)
+      ? (liveNarration && !headerTextsEquivalent(liveNarration, taskDescriptionText)
+          ? liveNarration
+          : fallbackNow)
+      : declaredStepTitle);
   const missingActivity =
     !hasRealTask &&
     !hasUserTask &&
@@ -343,7 +356,7 @@ export function buildShellTerminalHeaderViewModel(input: {
   const title = hasRealTask
     ? realTaskTitle
     : hasUserTask
-      ? hasDistinctActivity ? activityTitle : taskDerivedActivity ?? fallbackNow
+      ? hasDistinctActivity ? activityTitle : liveNarration ?? taskDerivedActivity ?? fallbackNow
     : liveNarration && hasDistinctActivity
       ? activityTitle
     : input.trustedActivitySummary

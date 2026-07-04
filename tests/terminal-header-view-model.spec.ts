@@ -1297,3 +1297,32 @@ test("junk persisted narration cannot title the pane", () => {
 
   expect(header.title.text).not.toContain("Terminal.tsx");
 });
+
+test("fully-completed task list shows the outcome, not 'Awaiting next action'", () => {
+  const header = buildShellTerminalHeaderViewModel({
+    project: { id: "g-termfleet", name: "termfleet", projectRoot: "/repo/termfleet" },
+    liveCwd: "/repo/termfleet",
+    terminalStatus: "running",
+    taskLineup: [{
+      id: "t-done",
+      content: "Show what each terminal is doing in the agent's own words",
+      status: "completed",
+      source: "todo-write",
+      updatedAt: 1000,
+    }],
+    activelyWorking: false,
+    statusSummary: {
+      task: "Show what each terminal is doing in the agent's own words",
+      path: "/repo/termfleet",
+      now: "Idle",
+      narration: "Wired contextual titles through the status server and pushed the commits",
+      status: "idle",
+      provider: "shell",
+      confidence: "high",
+      tasksFromTodoWrite: true,
+    },
+  });
+
+  expect(header.title.text).toBe("Wired contextual titles through the status server and pushed the commits");
+  expect(header.title.text).not.toBe("Awaiting next action");
+});
