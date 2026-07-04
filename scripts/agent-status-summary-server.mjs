@@ -268,7 +268,7 @@ function buildContextPrompt(payload, heuristic) {
     finished
       ? "NOW: <max 12 words - what the agent JUST FINISHED, PAST tense, concrete outcome. It already finished - do NOT use -ing verbs.>"
       : "NOW: <max 12 words - what the agent is doing right now AND WHY>",
-    "Name concrete objects (which bug, which scripts, which page). Plain words, no file paths, no quotes, no preamble, no 'The agent'.",
+    "Use ONLY facts visible in the context below — never invent names, numbers, or ticket ids. If the specific object is unclear, describe what IS known. Plain words, no file paths, no quotes, no preamble, no 'The agent'.",
     ask ? `Operator asked: ${ask}` : "",
     narration ? `Agent just said: ${narration}` : "",
     activity ? `Latest activity: ${activity}` : "",
@@ -328,7 +328,7 @@ function cleanContextLine(raw) {
   let line = String(raw ?? "").split("\n").map((entry) => entry.trim()).find(Boolean) ?? "";
   line = line
     .replace(/^["'“”`•*-]+|["'“”`]+$/g, "")
-    .replace(/^(?:\d+[.)]\s*)?(?:status line|header|title|goal|now)\s*[:\-]\s*/i, "")
+    .replace(/^(?:\d+[.)]\s*)?(?:status line|header|title|goal|now|current activity|activity|status)\s*[:\-]\s*/i, "")
     .replace(/^the\s+(?:terminal\s+)?(?:ai\s+)?agent\s+is\s+/i, "")
     .replace(/\s+/g, " ")
     .trim();
@@ -372,6 +372,21 @@ function parseContextLines(raw) {
     goal = "";
   }
   return { goal, now };
+}
+
+// Anti-hallucination: any number or quoted phrase in the model line must appear in
+// the source context, or the line is rejected (small models invent "Bug 123"-style
+// specifics when context is thin).
+function groundedIn(line, contextText) {
+  const context = String(contextText ?? "").toLowerCase();
+  for (const number of String(line).match(/\d{2,}/g) ?? []) {
+    if (!context.includes(number)) return false;
+  }
+  for (const quoted of String(line).match(/["'“”]([^"'“”]{2,40})["'“”]/g) ?? []) {
+    const inner = quoted.slice(1, -1).toLowerCase();
+    if (!context.includes(inner)) return false;
+  }
+  return true;
 }
 
 async function contextTitleFor(payload, heuristic) {
@@ -497,10 +512,16 @@ const server = http.createServer(async (request, response) => {
     const context = await contextTitleFor(payload, heuristic);
     const ask = heuristic?.userTask ?? payload?.workstream?.userTask;
     process.stdout.write(`status ${contextCacheKey(payload)} -> ${context?.now ? `model: ${context.now.slice(0, 60)}` : "heuristic"}${context?.goal && askIsVague(ask) ? ` | goal: ${context.goal.slice(0, 40)}` : ""}\n`);
+    const promptContext = `${cleanText(payload?.transcript)} ${cleanText(payload?.workstream?.userTask)} ${cleanText(heuristic?.narration)} ${cleanText(heuristic?.now)}`;
+    if (context?.now && !groundedIn(context.now, promptContext)) context.now = "";
+    if (context?.goal && !groundedIn(context.goal, promptContext)) context.goal = "";
     if (context?.now) {
       const finished = looksFinished(heuristic, cleanText(payload?.transcript).slice(-700));
-      // Operator rule: a finished pane says BOTH the outcome and that it awaits.
-      const nowLine = finished && context.now.length <= 58 ? `${context.now} · awaiting next task` : context.now;
+      // Operator rule: a finished pane says BOTH the outcome and that it awaits —
+      // but only glue the suffix onto a past-tense line ("Fixed X · awaiting…"),
+      // never onto an -ing line (that reads as a contradiction).
+      const pastTense = /^(?:\w+ed|Ran|Built|Set up|Wrote|Made|Kept|Found|Left)\b/i.test(context.now) && !/^\w+ing\b/i.test(context.now);
+      const nowLine = finished && pastTense && context.now.length <= 58 ? `${context.now} · awaiting next task` : context.now;
       sendJson(response, 200, {
         ...heuristic,
         now: nowLine,
