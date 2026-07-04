@@ -59,8 +59,8 @@ function shortError(error: unknown) {
   return message.replace(/\s+/g, " ").trim().slice(0, 180);
 }
 
-function buildRequestBody(input: AgentStatusSummaryInput) {
-  const fallback = fallbackAgentStatusSummary(input);
+function buildRequestBody(input: AgentStatusSummaryInput, fallbackOverride?: AgentStatusSummary) {
+  const fallback = fallbackOverride ?? fallbackAgentStatusSummary(input);
   const transcript = cleanTranscriptForSummary(input.terminalOutput, 1800);
   return {
     type: "agent-workstream-status",
@@ -155,23 +155,30 @@ export async function summarizeAgentStatus(
   // Local sidecar first: the agent's REAL task list, read directly from disk via the
   // Rust backend — no helper process to babysit. Same shaping as the node worker.
   const sidecarReader = options.sidecarReader === null ? null : options.sidecarReader ?? tauriSidecarReader();
+  let sidecarShapedFallback: AgentStatusSummary | null = null;
   if (sidecarReader) {
     try {
       const shaped = await readLocalSidecarSummary(input, fallback, sidecarReader);
-      if (shaped) {
+      if (shaped && shaped.tasksFromTodoWrite) {
         return {
           summary: parseAgentStatusSummaryResponse(JSON.stringify(shaped), fallback),
           source: "sidecar",
         };
       }
+      // A sidecar WITHOUT a task list has no authoritative content — keep its
+      // narration/userTask as the heuristic base and continue to the endpoint so
+      // the contextual summarizer can upgrade the line. (Operator gate 2026-07-04:
+      // every pane must say goal + step + specific object.)
+      if (shaped) sidecarShapedFallback = parseAgentStatusSummaryResponse(JSON.stringify(shaped), fallback);
     } catch {
       // Sidecar read failed → fall through to the endpoint / heuristic fallback.
     }
   }
 
+  const effectiveFallback = sidecarShapedFallback ?? fallback;
   const endpoint = options.endpoint ?? configuredEndpoint();
   if (!endpoint) {
-    return { summary: fallback, source: "fallback" };
+    return { summary: effectiveFallback, source: sidecarShapedFallback ? "sidecar" : "fallback" };
   }
 
   try {
@@ -179,15 +186,15 @@ export async function summarizeAgentStatus(
     const response = await fetcher(endpoint, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(buildRequestBody(input)),
+      body: JSON.stringify(buildRequestBody(input, effectiveFallback)),
     });
     const text = await responseText(response);
-    const summary = parseAgentStatusSummaryResponse(text, fallback);
+    const summary = parseAgentStatusSummaryResponse(text, effectiveFallback);
     return { summary, source: "process" };
   } catch (error) {
     return {
-      summary: fallback,
-      source: "fallback",
+      summary: effectiveFallback,
+      source: sidecarShapedFallback ? "sidecar" : "fallback",
       error: shortError(error),
     };
   }

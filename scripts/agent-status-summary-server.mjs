@@ -239,6 +239,116 @@ function fallbackSummary(payload) {
   };
 }
 
+// ---- Local contextual summarizer (2026-07-04, user-approved tiny fast model) ----
+// The operator's gate: every pane header must say goal + current step + the SPECIFIC
+// object ("verifying the session-switch diagnosis before implementing the fix").
+// Heuristics can't synthesize that; a local llama3.2 call (~0.5s warm) can. Applied
+// ONLY when the pane has no real task list (sidecar-backed panes never reach the
+// endpoint). Cached per pane so polling never hammers Ollama; keep_alive keeps the
+// model warm so the cockpit stays sub-second.
+const OLLAMA_URL = process.env.TERMFLEET_OLLAMA_URL || "http://127.0.0.1:11434/api/generate";
+const CONTEXT_MODEL = process.env.TERMFLEET_CONTEXT_TITLE_MODEL || "llama3.2:latest";
+const CONTEXT_TTL_MS = Number(process.env.TERMFLEET_CONTEXT_TITLE_TTL_MS || 45_000);
+const contextCache = new Map(); // key -> { at, line } | { at, promise }
+
+function contextCacheKey(payload) {
+  return cleanText(payload?.paneId) || cleanText(payload?.projectId) || "unknown";
+}
+
+function buildContextPrompt(payload, heuristic) {
+  const workstream = payload?.workstream ?? {};
+  const ask = cleanText(workstream.userTask || workstream.prompt || heuristic?.userTask).slice(0, 220);
+  const narration = cleanText(heuristic?.narration).slice(0, 300);
+  const activity = cleanText(workstream.currentActivity || heuristic?.now).slice(0, 160);
+  const tail = cleanText(payload?.transcript).slice(-700);
+  return [
+    "Write ONE short status line (max 14 words) describing what this terminal's AI agent is doing right now, so a non-technical observer understands the goal and the specific thing being worked on.",
+    "Start with a present-participle verb (Verifying/Installing/Fixing/...). Name the concrete object (which bug, which scripts, which page). No quotes, no preamble, no 'The agent'.",
+    ask ? `Operator asked: ${ask}` : "",
+    narration ? `Agent just said: ${narration}` : "",
+    activity ? `Latest activity: ${activity}` : "",
+    tail ? `Terminal tail: ${tail}` : "",
+    "Status line:",
+  ].filter(Boolean).join("\n");
+}
+
+function ollamaContextLine(payload, heuristic) {
+  return new Promise((resolve, reject) => {
+    const body = JSON.stringify({
+      model: CONTEXT_MODEL,
+      stream: false,
+      keep_alive: "30m",
+      options: { num_predict: 36, temperature: 0.2 },
+      prompt: buildContextPrompt(payload, heuristic),
+    });
+    const url = new URL(OLLAMA_URL);
+    const request = http.request(
+      { hostname: url.hostname, port: url.port, path: url.pathname, method: "POST", headers: { "content-type": "application/json" } },
+      (response) => {
+        let text = "";
+        response.on("data", (chunk) => (text += chunk));
+        response.on("end", () => {
+          if (response.statusCode !== 200) {
+            reject(new Error(`ollama ${response.statusCode}`));
+            return;
+          }
+          try {
+            resolve(String(JSON.parse(text)?.response ?? ""));
+          } catch (error) {
+            reject(error);
+          }
+        });
+      },
+    );
+    request.setTimeout(Number(process.env.TERMFLEET_CONTEXT_TITLE_TIMEOUT_MS || 6000), () => {
+      request.destroy(new Error("ollama timed out"));
+    });
+    request.on("error", reject);
+    request.end(body);
+  });
+}
+
+// Model output hygiene: first line only, strip quotes/bullets/boilerplate, clamp
+// length; empty result → caller keeps the heuristic.
+function cleanContextLine(raw) {
+  let line = String(raw ?? "").split("\n").map((entry) => entry.trim()).find(Boolean) ?? "";
+  line = line
+    .replace(/^["'“”`•*-]+|["'“”`]+$/g, "")
+    .replace(/^(?:status line|header|title)\s*[:\-]\s*/i, "")
+    .replace(/^the\s+(?:terminal\s+)?(?:ai\s+)?agent\s+is\s+/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!line) return "";
+  line = line.charAt(0).toUpperCase() + line.slice(1);
+  if (line.length > 90) {
+    const clause = line.split(/,\s+/)[0].trim();
+    line = clause.length >= 24 && clause.length <= 90 ? clause : `${line.slice(0, 87).replace(/\s+\S*$/, "").trim()}…`;
+  }
+  return line.replace(/[.!?]+$/, "");
+}
+
+async function contextTitleFor(payload, heuristic) {
+  // A real declared task list outranks the model — never overwrite it.
+  if (Array.isArray(heuristic?.tasks) && heuristic.tasksFromTodoWrite) return "";
+  const key = contextCacheKey(payload);
+  const cached = contextCache.get(key);
+  const now = Date.now();
+  if (cached?.line !== undefined && now - cached.at < CONTEXT_TTL_MS) return cached.line;
+  if (cached?.promise) return cached.promise;
+  const promise = ollamaContextLine(payload, heuristic)
+    .then((raw) => {
+      const line = cleanContextLine(raw);
+      contextCache.set(key, { at: Date.now(), line });
+      return line;
+    })
+    .catch(() => {
+      contextCache.set(key, { at: Date.now(), line: "" });
+      return "";
+    });
+  contextCache.set(key, { at: now, promise });
+  return promise;
+}
+
 function readRequestBody(request) {
   return new Promise((resolve, reject) => {
     const chunks = [];
@@ -336,7 +446,21 @@ const server = http.createServer(async (request, response) => {
       response.end(commandOutput.trim());
       return;
     }
-    sendJson(response, 200, fallbackSummary(payload));
+    const heuristic = payload?.heuristicCandidate ?? fallbackSummary(payload);
+    const contextLine = await contextTitleFor(payload, heuristic);
+    process.stdout.write(`status ${contextCacheKey(payload)} → ${contextLine ? `model: ${contextLine.slice(0, 60)}` : "heuristic"}
+`);
+    if (contextLine) {
+      sendJson(response, 200, {
+        ...heuristic,
+        now: contextLine,
+        narration: contextLine,
+        status: heuristic.status === "idle" ? heuristic.status : heuristic.status || "working",
+        confidence: "high",
+      });
+      return;
+    }
+    sendJson(response, 200, heuristic);
   } catch (error) {
     sendJson(response, 500, {
       error: error instanceof Error ? error.message : String(error),

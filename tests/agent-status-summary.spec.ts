@@ -1441,3 +1441,56 @@ test("display summary never blanks live narration to 'Awaiting next action'", ()
   expect(summary.now).not.toBe("Awaiting next action");
   expect(summary.now).toContain("Installing the updated scripts");
 });
+
+import { summarizeAgentStatus as summarizeForContext } from "../src/lib/agentStatusSummarizer";
+
+test("no-task sidecar falls through to the contextual endpoint", async () => {
+  const sidecar = JSON.stringify({
+    updatedAt: Date.now(),
+    userTask: "why did this break again? the fix needs to survive over restarts",
+    narration: "Installing the updated scripts into the user systemd services now",
+    todos: [],
+  });
+  const fetcher = (async (_url: unknown, init: { body?: string } = {}) => {
+    const body = JSON.parse(init.body ?? "{}");
+    // The request must carry the sidecar-derived heuristic (narration included).
+    if (!String(body.heuristicCandidate?.narration ?? "").includes("Installing the updated scripts")) {
+      throw new Error("sidecar narration missing from heuristicCandidate");
+    }
+    return {
+      ok: true,
+      text: async () =>
+        JSON.stringify({
+          ...body.heuristicCandidate,
+          now: "Installing plasma dock recovery scripts into systemd so they survive restarts",
+          narration: "Installing plasma dock recovery scripts into systemd so they survive restarts",
+          confidence: "high",
+        }),
+    } as Response;
+  }) as unknown as typeof fetch;
+
+  const result = await summarizeForContext(
+    { provider: "shell", status: "running", cwd: "/repo/cc", paneId: "pane-x" },
+    { sidecarReader: async () => sidecar, endpoint: "http://test/status", fetcher },
+  );
+  expect(result.source).toBe("process");
+  expect(result.summary.now).toContain("plasma dock recovery scripts");
+});
+
+test("sidecar WITH a task list never reaches the endpoint", async () => {
+  const sidecar = JSON.stringify({
+    updatedAt: Date.now(),
+    todos: [{ id: "1", content: "Fix the reconnect race", status: "in_progress", activeForm: "Fixing the reconnect race" }],
+  });
+  let endpointCalled = false;
+  const fetcher = (async () => {
+    endpointCalled = true;
+    return { ok: true, text: async () => "{}" } as Response;
+  }) as unknown as typeof fetch;
+  const result = await summarizeForContext(
+    { provider: "shell", status: "running", cwd: "/repo/cc", paneId: "pane-y" },
+    { sidecarReader: async () => sidecar, endpoint: "http://test/status", fetcher },
+  );
+  expect(result.source).toBe("sidecar");
+  expect(endpointCalled).toBe(false);
+});
