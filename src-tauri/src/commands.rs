@@ -5,7 +5,10 @@ use crate::daemon::{
 };
 use crate::daemon_ipc::{self, LocalStream};
 use crate::platform_paths;
-use crate::pty::{PtyManager, PtyOutputChunk, PtySessionEvent, PtySessionSummary};
+use crate::pty::{
+    update_agent_recovery_manifest, AgentRecoveryManifestUpdate, PtyManager, PtyOutputChunk,
+    PtySessionEvent, PtySessionSummary,
+};
 use crate::vt_grid::{GridManager, DEFAULT_COLS, DEFAULT_ROWS};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -399,6 +402,22 @@ pub struct PtyStreamEvent {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct AgentRecoveryManifestPayload {
+    id: String,
+    cwd: Option<String>,
+    provider: Option<String>,
+    launch_profile: Option<String>,
+    provider_session_id: Option<String>,
+    original_command: Option<String>,
+    mission: Option<String>,
+    dropoff_path: Option<String>,
+    sanitized_resume_command: Option<String>,
+    restore_status: Option<String>,
+    restore_failure_reason: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct DaemonInputEvent {
     id: String,
     data: String,
@@ -648,6 +667,27 @@ pub fn daemon_ensure_session(
         DaemonResponse::Error { message } => Err(message),
         response => Err(format!("Unexpected daemon response: {response:?}")),
     }
+}
+
+#[tauri::command]
+pub fn daemon_update_agent_recovery_manifest(
+    payload: AgentRecoveryManifestPayload,
+) -> Result<(), String> {
+    update_agent_recovery_manifest(
+        &payload.id,
+        AgentRecoveryManifestUpdate {
+            cwd: payload.cwd,
+            provider: payload.provider,
+            launch_profile: payload.launch_profile,
+            provider_session_id: payload.provider_session_id,
+            original_command: payload.original_command,
+            mission: payload.mission,
+            dropoff_path: payload.dropoff_path,
+            sanitized_resume_command: payload.sanitized_resume_command,
+            restore_status: payload.restore_status,
+            restore_failure_reason: payload.restore_failure_reason,
+        },
+    )
 }
 
 #[tauri::command]
@@ -923,6 +963,43 @@ pub fn fs_home_dir() -> Result<String, String> {
     dirs::home_dir()
         .map(|path| path.to_string_lossy().to_string())
         .ok_or_else(|| "Could not resolve home directory".to_string())
+}
+
+/// Resolve + validate an agent-status sidecar file inside the fixed status directory.
+/// The frontend computes the file NAME (fnv-keyed; see `src/lib/agentStatusSidecar.ts`,
+/// parity with `scripts/lib/agent-status-paths.mjs`); Rust owns the directory so a
+/// hostile name can't escape it. `dirs::data_dir()` honors `XDG_DATA_HOME`, matching
+/// the node hook's `statusDir()`.
+fn agent_status_sidecar_file(file_name: &str) -> Result<std::path::PathBuf, String> {
+    let valid = !file_name.is_empty()
+        && file_name.len() <= 64
+        && file_name.ends_with(".json")
+        && !file_name.contains("..")
+        && file_name
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '.');
+    if !valid {
+        return Err(format!("invalid agent-status file name: {file_name}"));
+    }
+    Ok(dirs::data_dir()
+        .unwrap_or_else(std::env::temp_dir)
+        .join("terminal-workspace")
+        .join("agent-status")
+        .join(file_name))
+}
+
+/// Read an agent-status sidecar file for the cockpit title/TASKS panel. Lets the app
+/// read the agent's real task list directly from disk in EVERY launch mode, instead of
+/// depending on the launcher-lifetime HTTP status server (which desktop launches never
+/// had — the root cause the panel kept going dark). Missing file → `Ok(None)`.
+#[tauri::command]
+pub fn agent_status_read_sidecar(file_name: String) -> Result<Option<String>, String> {
+    let path = agent_status_sidecar_file(&file_name)?;
+    match std::fs::read_to_string(&path) {
+        Ok(text) => Ok(Some(text)),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(format!("read {}: {error}", path.display())),
+    }
 }
 
 /// Read the OS clipboard's text from the backend, NOT the webview.
@@ -1312,14 +1389,42 @@ pub fn workspace_persisted_sessions() -> Vec<crate::pty::PersistedSessionSummary
 #[cfg(test)]
 mod tests {
     use super::{
-        is_managed_termfleet_worktree_path, normalize_selected_folder, sanitize_paste_log_line,
-        shell_quote, workstream_prepare_dedicated_worktree,
+        agent_status_sidecar_file, is_managed_termfleet_worktree_path, normalize_selected_folder,
+        sanitize_paste_log_line, shell_quote, workstream_prepare_dedicated_worktree,
         workstream_remove_dedicated_worktree, worktree_branch_for, worktree_target_for,
     };
     use std::fs;
     use std::path::{Path, PathBuf};
     use std::process::Command;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn agent_status_sidecar_file_accepts_valid_names_inside_status_dir() {
+        let path = agent_status_sidecar_file("pane-0888c672.json").expect("valid pane name");
+        assert!(path.ends_with("terminal-workspace/agent-status/pane-0888c672.json"));
+        let cwd_keyed = agent_status_sidecar_file("41ad229e.json").expect("valid cwd name");
+        assert!(cwd_keyed.ends_with("terminal-workspace/agent-status/41ad229e.json"));
+    }
+
+    #[test]
+    fn agent_status_sidecar_file_rejects_traversal_and_foreign_names() {
+        for name in [
+            "",
+            "../secrets.json",
+            "..%2fsecrets.json",
+            "/etc/passwd",
+            "pane/../../x.json",
+            "pane-0888c672.txt",
+            "PANE-0888C672.JSON",
+            "pane 0888c672.json",
+            "cockpit-header-trace.jsonl",
+        ] {
+            assert!(
+                agent_status_sidecar_file(name).is_err(),
+                "expected rejection for {name:?}"
+            );
+        }
+    }
 
     fn unique_test_dir(name: &str) -> PathBuf {
         let suffix = SystemTime::now()

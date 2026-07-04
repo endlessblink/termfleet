@@ -86,3 +86,121 @@ test("reorderCanvasNodes moves a node by id, honors before/after, and preserves 
   expect(result.movedNodeY).toBe(7);
   expect(result.selfDrop).toEqual(["a", "b", "c"]);
 });
+
+test("canvas layout actions align, distribute, and row project terminals without changing order or viewport", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+
+  const result = await page.evaluate(async () => {
+    (window as typeof window & {
+      __TAURI_INTERNALS__?: {
+        invoke: (cmd: string) => Promise<unknown>;
+        transformCallback: () => number;
+        unregisterCallback: () => void;
+      };
+    }).__TAURI_INTERNALS__ = {
+      invoke: async () => null,
+      transformCallback: () => 1,
+      unregisterCallback: () => {},
+    };
+
+    const { useWorkspaceStore } = await import("/src/stores/workspace.ts");
+
+    const tab = (id: string, groupId: string) => ({
+      id,
+      title: id,
+      emoji: "\u2B1B",
+      color: "#7aa2f7",
+      groupId,
+      terminals: [],
+      splitLayout: { id: `${id}-pane`, type: "terminal" as const },
+      activePaneId: `${id}-pane`,
+    });
+    const terminalNode = (id: string, tabId: string, x: number, y: number, width = 100, height = 50) => ({
+      id,
+      type: "terminal" as const,
+      title: id,
+      terminalTabId: tabId,
+      x,
+      y,
+      width,
+      height,
+    });
+    const noteNode = {
+      id: "note",
+      type: "note" as const,
+      title: "note",
+      x: 999,
+      y: 888,
+      width: 120,
+      height: 80,
+    };
+
+    const seed = () =>
+      useWorkspaceStore.setState({
+        tabs: [tab("tab-a", "project-a"), tab("tab-b", "project-a"), tab("tab-c", "project-a"), tab("tab-d", "project-b")],
+        groups: [
+          { id: "project-a", name: "Project A", color: "#7aa2f7", projectRoot: "/tmp/project-a" },
+          { id: "project-b", name: "Project B", color: "#9ece6a", projectRoot: "/tmp/project-b" },
+        ],
+        activeTabId: "tab-a",
+        canvasState: {
+          selectedNodeId: "a",
+          selectedNodeIds: ["a", "b", "c"],
+          viewport: { x: 12, y: 34, zoom: 0.75 },
+          nodes: [
+            terminalNode("a", "tab-a", 10, 100, 100, 50),
+            terminalNode("b", "tab-b", 260, 200, 80, 50),
+            terminalNode("c", "tab-c", 520, 300, 120, 50),
+            terminalNode("d", "tab-d", 50, 900, 100, 50),
+            noteNode,
+          ],
+        },
+      });
+    const snapshot = () => {
+      const state = useWorkspaceStore.getState();
+      return {
+        order: state.canvasState.nodes.map((node) => node.id),
+        viewport: state.canvasState.viewport,
+        nodes: Object.fromEntries(
+          state.canvasState.nodes.map((node) => [node.id, { x: node.x, y: node.y }])
+        ),
+      };
+    };
+
+    seed();
+    useWorkspaceStore.getState().alignCanvasNodes(["a", "b", "c"], "left");
+    const aligned = snapshot();
+
+    seed();
+    useWorkspaceStore.getState().distributeCanvasNodes(["a", "b", "c"], "horizontal");
+    const distributed = snapshot();
+
+    seed();
+    useWorkspaceStore.getState().arrangeProjectTerminalRow("project-a");
+    const projectRow = snapshot();
+
+    return { aligned, distributed, projectRow };
+  });
+
+  expect(result.aligned.order).toEqual(["a", "b", "c", "d", "note"]);
+  expect(result.aligned.viewport).toEqual({ x: 12, y: 34, zoom: 0.75 });
+  expect(result.aligned.nodes.a.x).toBe(10);
+  expect(result.aligned.nodes.b.x).toBe(10);
+  expect(result.aligned.nodes.c.x).toBe(10);
+  expect(result.aligned.nodes.d).toEqual({ x: 50, y: 900 });
+  expect(result.aligned.nodes.note).toEqual({ x: 999, y: 888 });
+
+  expect(result.distributed.order).toEqual(["a", "b", "c", "d", "note"]);
+  expect(result.distributed.viewport).toEqual({ x: 12, y: 34, zoom: 0.75 });
+  expect(result.distributed.nodes.a.x).toBe(10);
+  expect(result.distributed.nodes.b.x).toBe(275);
+  expect(result.distributed.nodes.c.x).toBe(520);
+  expect(result.distributed.nodes.d).toEqual({ x: 50, y: 900 });
+
+  expect(result.projectRow.order).toEqual(["a", "b", "c", "d", "note"]);
+  expect(result.projectRow.viewport).toEqual({ x: 12, y: 34, zoom: 0.75 });
+  expect(result.projectRow.nodes.a).toEqual({ x: 10, y: 100 });
+  expect(result.projectRow.nodes.b).toEqual({ x: 142, y: 100 });
+  expect(result.projectRow.nodes.c).toEqual({ x: 254, y: 100 });
+  expect(result.projectRow.nodes.d).toEqual({ x: 50, y: 900 });
+});

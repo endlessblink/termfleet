@@ -164,9 +164,10 @@ test("does not promote tool-log labels or code query fragments into shell summar
   );
 
   expect(summary.task).toBe("Ready");
-  expect(summary.now).toBe("Awaiting terminal output");
+  expect(summary.now).toBe("Awaiting next action");
   expect(summary.task).not.toBe("Search");
   expect(summary.now).not.toContain("terminalBody|liveTerminalBody");
+  expect(summary.now).not.toBe("Awaiting terminal output");
 });
 
 test("keeps Playwright shell summaries stable on the test identity", () => {
@@ -833,6 +834,31 @@ test("persisted shell summaries cannot replace the live cwd with a foreign proje
   expect(summary.now).toBe("Awaiting command");
 });
 
+test("durable shell summaries cannot surface a foreign project slug as activity", () => {
+  const header = summaryFromDurableActivity(
+    {
+      title: "Ready",
+      subtitle: "income-zen",
+      status: "idle",
+      source: "command",
+      updatedAt: 1000,
+    },
+    "productivity/flow-state",
+    {
+      task: "Ready",
+      path: "productivity/flow-state",
+      now: "income-zen",
+      status: "idle",
+      provider: "shell",
+      confidence: "high",
+    },
+  );
+
+  expect(header.path).toBe("productivity/flow-state");
+  expect(header.now).toBe("Awaiting command");
+  expect(header.now).not.toContain("income-zen");
+});
+
 test("terminal purpose follows the current active agent prompt", () => {
   const purpose = terminalPurposeFromContext({
     terminalOutput: [
@@ -847,6 +873,40 @@ test("terminal purpose follows the current active agent prompt", () => {
 
   expect(purpose).toEqual({
     title: "Writing tests for selected file",
+    source: "inferred",
+    updatedAt: 1000,
+  });
+});
+
+test("terminal purpose accepts explain prompts as user tasks", () => {
+  const purpose = terminalPurposeFromContext({
+    terminalOutput: [
+      "Working (15m 59s • esc to interrupt)",
+      "› Explain this codebase",
+    ].join("\n"),
+    now: 1000,
+  });
+
+  expect(purpose).toEqual({
+    title: "Explaining this codebase",
+    source: "inferred",
+    updatedAt: 1000,
+  });
+});
+
+test("terminal purpose follows the prompt immediately before the current working marker", () => {
+  const purpose = terminalPurposeFromContext({
+    terminalOutput: [
+      "› Explain this codebase",
+      "gpt-5.5 default · /media/endlessblink/data/my-projects/ai-development/devops/termfleet",
+      "› [Image #1] and now this is unclear",
+      "Working (3s • esc to interrupt)",
+    ].join("\n"),
+    now: 1000,
+  });
+
+  expect(purpose).toEqual({
+    title: "Clarifying terminal header state",
     source: "inferred",
     updatedAt: 1000,
   });
@@ -909,6 +969,44 @@ test("durable shell header keeps current verifier title without stale transcript
   expect(header.task).not.toBe("Checking bracketed paste");
   expect(header.task).toBe("Improving terminal-summary visual headers");
   expect(header.now).toBe("terminal summary visual checks failed");
+});
+
+test("durable shell header drops stale verifier activity after a newer agent prompt", () => {
+  const purpose = terminalPurposeFromContext({
+    terminalOutput: [
+      "Ran git status --short",
+      "Working (1m 05s • esc to interrupt)",
+      "› Write tests for @filename",
+      "reverse-i-search:",
+    ].join("\n"),
+    now: 1000,
+  });
+
+  const header = summaryFromDurableActivity(
+    {
+      title: "Checking keymap",
+      subtitle: "npm run verify:keymap",
+      status: "error",
+      command: "npm run verify:keymap",
+      source: "command",
+      updatedAt: 1000,
+    },
+    "devops/termfleet",
+    {
+      task: "Writing tests for selected file",
+      path: "devops/termfleet",
+      now: "keymap checks failed",
+      status: "blocked",
+      provider: "shell",
+      confidence: "high",
+    },
+    purpose,
+  );
+
+  expect(header.userTask).toBe("Writing tests for selected file");
+  expect(header.task).toBe("Writing tests for selected file");
+  expect(header.now).toBe("Writing tests for selected file");
+  expect(header.now).not.toContain("keymap");
 });
 
 test("summarizes fullscreen htop chrome as process monitoring", () => {
@@ -1098,6 +1196,59 @@ test("display summary rejects persisted prompt or TUI chrome", () => {
 
   expect(summary.task).toBe("Reviewing approval request");
   expect(summary.now).toBe("apply_patch touching src/components/SplitPane.tsx");
+});
+
+test("fallback summary treats next-step selection prompts as waiting for the operator", () => {
+  const summary = fallbackAgentStatusSummary({
+    mission: "Terminal",
+    provider: "shell",
+    status: "running",
+    cwd: "/repo/bina-ve-ze",
+    currentActivity: "npm test",
+    terminalOutput: [
+      "npm test",
+      "This is a clean checkpoint. The fallback from before is intact.",
+      "",
+      "Where to go:",
+      "□ Next step",
+      "",
+      "The GI-lightmap pipeline is proven end-to-end. How do you want to proceed?",
+      "1. Commit + pause here",
+      "2. Push on to full shell now",
+      "3. Commit, then continue",
+      "4. Type something.",
+      "Enter to select · ↑/↓ to navigate · Esc to cancel",
+    ].join("\n"),
+  });
+
+  expect(summary.task).toBe("Reviewing next step");
+  expect(summary.now).toBe("Waiting for operator selection");
+  expect(summary.status).toBe("waiting");
+});
+
+test("durable activity does not outrank an active operator selection prompt", () => {
+  const summary = summaryFromDurableActivity(
+    {
+      title: "npm test",
+      command: "npm test",
+      status: "running",
+      updatedAt: 1000,
+    },
+    "/repo/bina-ve-ze",
+    {
+      task: "Reviewing next step",
+      path: "/repo/bina-ve-ze",
+      now: "Waiting for operator selection",
+      status: "waiting",
+      provider: "shell",
+      confidence: "high",
+      tasksFromTodoWrite: false,
+    },
+  );
+
+  expect(summary.task).toBe("Reviewing next step");
+  expect(summary.now).toBe("Waiting for operator selection");
+  expect(summary.status).toBe("waiting");
 });
 
 test("posts transcript and workstream context to a configured status process", async () => {

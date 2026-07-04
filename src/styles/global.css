@@ -514,7 +514,7 @@ button:active {
 }
 
 .terminal-pane-frame[data-active="true"] .terminal-block-marker--active {
-  animation: terminal-live-pulse 2.4s ease-in-out infinite;
+  animation: none;
 }
 
 .terminal-block-spine {
@@ -597,7 +597,7 @@ button:active {
 .terminal-pane-frame[data-active="true"][data-status="reconnected"] .terminal-pane-status-dot {
   /* Static glow ring (the keyframe no longer animates box-shadow). */
   box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 10%, transparent);
-  animation: terminal-live-pulse 2.4s ease-in-out infinite;
+  animation: none;
 }
 
 .terminal-pane-frame[data-status="failed"] .terminal-pane-status-pill {

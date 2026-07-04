@@ -156,6 +156,7 @@ interface TerminalCanvasProps {
   onReady?: (ptyId: string, details: { reused: boolean }) => void;
   onStatus?: (status: "starting" | "failed", details?: { error?: string }) => void;
   onOutput?: (data: string) => void;
+  onInputData?: (data: string) => void;
   onExit?: (details: { id: string; code: number; success: boolean }) => void;
   onSnapshot?: (snapshot: GridSnapshot) => void;
   queuedInput?: WorkstreamInput;
@@ -176,6 +177,7 @@ export function TerminalCanvas({
   onReady,
   onStatus,
   onOutput,
+  onInputData,
   onExit,
   onSnapshot,
   queuedInput,
@@ -442,14 +444,7 @@ export function TerminalCanvas({
 
     const channel = new Channel<ArrayBuffer>();
     const preservesProjectionSize = () =>
-      mapProjection &&
-      (
-        modesRef.current.altScreen ||
-        modesRef.current.mouseReport ||
-        modesRef.current.alternateScroll ||
-        modesRef.current.alternateScrollSet ||
-        modesRef.current.sgrMouse
-      );
+      mapProjection && modesRef.current.altScreen;
 
     channel.onmessage = (payload) => {
       if (disposed) return;
@@ -850,6 +845,7 @@ export function TerminalCanvas({
   };
 
   const send = (data: string, seqId = nextTerminalInputSequence(), source = "canvas-send") => {
+    onInputData?.(data);
     scheduleScrollToBottom();
     let queue = daemonInputQueueRef.current;
     if (!queue) {
@@ -911,21 +907,44 @@ export function TerminalCanvas({
     claimTerminalKeyboard();
   };
 
+  const elementTakesKeyboard = (element: Element | null) => {
+    if (!(element instanceof HTMLElement)) return false;
+    const tagName = element.tagName.toLowerCase();
+    return (
+      element.isContentEditable ||
+      tagName === "input" ||
+      tagName === "textarea" ||
+      tagName === "select" ||
+      tagName === "button" ||
+      tagName === "a" ||
+      element.getAttribute("role") === "button" ||
+      element.getAttribute("role") === "menuitem"
+    );
+  };
+
+  const handleInputBlur = () => {
+    window.setTimeout(() => {
+      const input = inputRef.current;
+      if (!input) return;
+      if (document.activeElement === input) {
+        claimTerminalKeyboard();
+        return;
+      }
+      if (elementTakesKeyboard(document.activeElement)) {
+        invoke("set_focused_terminal", { id: null }).catch(() => {});
+        return;
+      }
+      focusInput();
+    }, 0);
+  };
+
   const terminalOwnsKeyboard = () => {
     const input = inputRef.current;
     if (!input) return false;
     if (document.activeElement === input) return true;
 
     const active = document.activeElement;
-    if (active instanceof HTMLElement) {
-      const tagName = active.tagName.toLowerCase();
-      const isEditable =
-        active.isContentEditable ||
-        tagName === "input" ||
-        tagName === "textarea" ||
-        tagName === "select";
-      if (isEditable) return false;
-    }
+    if (elementTakesKeyboard(active)) return false;
 
     return useWorkspaceStore.getState().activeTerminalId === sessionIdRef.current;
   };
@@ -1707,9 +1726,7 @@ export function TerminalCanvas({
         onPaste={handlePaste}
         onInput={handleInput}
         onFocus={syncFocusedTerminal}
-        onBlur={() => {
-          invoke("set_focused_terminal", { id: null }).catch(() => {});
-        }}
+        onBlur={handleInputBlur}
         style={{
           position: "absolute",
           top: 0,

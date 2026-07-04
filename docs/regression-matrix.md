@@ -71,9 +71,14 @@ Playwright suite; the per-row specs are the precise guards.
 | 5.1 | **Workspace pill shows parent category, not the project** (e.g. `productivity` instead of `flow-state`) | Stored `projectRoot` is a shallow category folder; label never used the git toplevel. Now `workspaceLabelFor` prefers the git repo name. | `tests/header-project-label.spec.ts` | ✅ |
 | 5.2 | Header title stale/guessed instead of the real task | Title = current task `activeForm` from the real task list (sidecar), never a local model. | `tests/header-real-task-title.spec.ts`, `tests/stable-header.spec.ts`, `tests/terminal-header-view-model.spec.ts`, `verify:terminal-summary-visual` | ✅ |
 | 5.3 | TASKS panel always empty | `TodoWrite` deprecated → capture `TaskCreate`/`TaskUpdate` via hook → sidecar. | `tests/agent-status-sidecar.spec.ts`, `tests/agent-status-summary.spec.ts`, `tests/agent-status-end-to-end.spec.ts`, `verify:agent-status-summary` | ✅ |
-| 5.4 | Each terminal must show its OWN title/list | Per-pane `TERMFLEET_PANE_ID` injection (needs daemon replace to take). | `tests/map-terminal-rendering.spec.ts`, `verify:map-terminals` | 🟡 (dormant until daemon replaced; no guard for the injection itself) |
+| 5.4 | Each terminal must show its OWN title/list | Per-pane `TERMFLEET_PANE_ID` injection (needs daemon replace to take; confirmed live in cockpit panes 2026-07-02). | `tests/map-terminal-rendering.spec.ts`, `verify:map-terminals`, `npm run doctor` (checks the env var is actually injected) | ✅ |
 | 5.5 | Header renders garbage status fragment | Summary source labelling / neutral-floor sanitization. | `tests/summary-source-label.spec.ts`, `tests/task-lineup-*.spec.ts`, `tests/visible-task-lineup.spec.ts`, `tests/terminal-question-rendering.spec.ts` | ✅ |
 | 5.6 | Map "Unassigned" group for folder-picker tabs | Folder-picker tabs got no group → show cwd name. | `tests/project-reconciliation.spec.ts` | ✅ |
+| 5.7 | **Titles + TASKS dead in every desktop launch, "fixed" many times, always came back** | The pipeline's ONLY reader was the HTTP status server (127.0.0.1:37819), and **nothing owns that process**: the dev launcher `trap`-kills it on script exit, and a desktop launch (systemd → release binary) never starts one. Hook → sidecar files worked the whole time. **Fixed 2026-07-02:** the app reads the sidecar files directly — Tauri command `agent_status_read_sidecar` + `src/lib/agentStatusSidecar.ts` (file-name parity with `scripts/lib/agent-status-paths.mjs`); the HTTP server is only an optional override. | `tests/agent-status-local-sidecar.spec.ts` (parity + shaping + precedence), `cargo test agent_status_sidecar`, `npm run doctor` (live wiring) | ✅ |
+| 5.8 | Fresh shell pane can never receive its FIRST task list (stuck on "No task list" + scraped title) | Cold-start chicken-and-egg: the polling gate skipped panes with no `Working (` marker / durable activity / existing task list — but a pane can't get its first list without asking. **Fixed 2026-07-02:** gated panes always ask (local read is cheap) and only apply `source === "sidecar"` results, so heuristics still can't overwrite. | `tests/agent-status-local-sidecar.spec.ts` (sidecar source distinction); gate wiring in `Terminal.tsx`/`MagicCanvas.tsx` has no dedicated guard | 🟡 |
+| 5.9 | Map headers never update in the desktop app (only in dev-launcher runs) | `MagicCanvas` refused to poll unless `window.location.port === "1420"` or an env endpoint was set — never true in a release/desktop launch. **Fixed 2026-07-02:** polls when the Tauri sidecar reader is available; in desktop-only mode applies ONLY sidecar results (heuristic scrapes never overwrite). | none dedicated (mocked-Tauri visual specs exercise the guard indirectly) | 🟡 |
+| 5.10 | Fix is "done" but the running app predates it (stale release binary / stale embed / old process) | Desktop launches run `target/release/terminal-workspace` with the frontend **embedded at build time**; a rebuilt dist means nothing until the binary is rebuilt AND the app relaunched. Cost a full day of "still super bad" reports against an old binary. | `npm run doctor` (binary contains the fix, embed newer than dist, running process newer than binary) | ✅ |
+| 5.11 | Status server's `cockpit-header-trace.jsonl` grew unbounded (reached **8 GB**) | Every cockpit-snapshot POST appended a trace line with no cap. **Fixed 2026-07-02:** rotates at 25 MB (one previous generation kept). | `npm run doctor` (warns on oversized trace); rotation itself has no unit test | 🟡 |
 
 ## 6. Workspace state / lifecycle
 
@@ -117,8 +122,17 @@ Playwright suite; the per-row specs are the precise guards.
    test independent of pixel rendering.
 4. **WebKit stale-cache + productName-title fragility (6.4, 7.1)** are guarded only
    by convention/launcher flags — easy to silently re-break.
-5. **Per-pane status injection (5.4)** is dormant until the daemon is replaced; no
-   guard asserts `TERMFLEET_PANE_ID` is actually injected.
+5. ~~Per-pane status injection (5.4) is dormant~~ — confirmed live 2026-07-02;
+   `npm run doctor` now asserts `TERMFLEET_PANE_ID` is actually injected.
+6. **Status polling gate wiring (5.8, 5.9) has no dedicated guard.** The
+   ask-always/apply-sidecar-only rules live inline in `Terminal.tsx` and
+   `MagicCanvas.tsx`; a refactor could silently reintroduce the cold-start hole or
+   desktop no-poll. Extract the decision into a pure helper + unit spec, or add an
+   anchored source-contract check.
+7. **Runtime wiring rot is a class, not a bug (5.7, 5.10, 5.11).** Unit tests can't
+   see a dead helper process, a stale binary, or a runaway log. `npm run doctor` is
+   the guard for this class — run it FIRST whenever titles/tasks "break again",
+   before touching code.
 
 ## Process — preventing future regressions
 

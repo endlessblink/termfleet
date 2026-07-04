@@ -1,57 +1,96 @@
-# Handoff — 2026-06-21 09:23 Sunday
+# Handoff - 2026-06-30 Tuesday
 
-You are continuing work in **termfleet** on branch **main** (TC-033: the cockpit
-task/activity display — what each agent pane shows as its title + TASKS panel).
+You are continuing work in **termfleet** on branch
+**fix/canvas-perf-and-wrap-spill**.
 
 ## Current task & next step
-The reliable model is in place: title = real task → live running command → clean status;
-plus a **recent-activity feed** (the AI's real actions) in the panel when there's no task
-list. **Next (agreed with the user):** make the activity the **agent's own declared
-words**, not inferred — add a Claude Code **`Stop` hook** that reads the agent's last
-narration from `transcript_path` (in the hook payload) after each turn and writes a short
-"what I'm doing" line into the status sidecar's `now`/`recent`, which the title/summary
-already pick up. i.e. "the model writes in the log, the task summary picks it up."
 
-## Files touched / in flight (all committed, tree clean)
-- `scripts/termfleet-claude-status-hook.mjs` — the status hook (captures TaskCreate/
-  TaskUpdate + tool activity + a rolling `recent` log). **This is where the new Stop-hook
-  narration capture goes.** Registered in `~/.claude/settings.json` → MAIN checkout copy.
-- `scripts/agent-status-summary-sidecar.mjs` — the no-model worker (sidecar → summary,
-  emits `tasksFromTodoWrite`, `recent`).
-- `src/lib/terminalHeaderDisplay.ts` — `preferRealTaskSummary` + `neutralHeaderTitle`.
-- `src/components/SplitPane.tsx` AND `src/components/MagicCanvas.tsx` — BOTH render the
-  title; user mostly views the MAP (MagicCanvas). Recent-feed UI is in MagicCanvas's
-  `TerminalBodyTaskSidebar`; SplitPane's `AgentTaskSidebar` still needs the same feed.
-- `run-native-vte-dev.sh` + `scripts/tauri-dev-with-status.sh` — both launchers.
+TC-041 restart-survivable agent restore is now marked **DONE** in
+`MASTER_PLAN.md`.
 
-## Key decisions & gotchas (high-value)
-- **`TodoWrite` is deprecated** (Claude v2.1.142+) → agents emit **`TaskCreate`/`TaskUpdate`**.
-  The hook captures those into `~/.local/share/terminal-workspace/agent-status/<fnv(cwd)>.json`.
-- **NO local model (Ollama) for status** — too slow (qwen3 25s, thinking-mode); the user
-  killed it twice. Default worker is the no-model sidecar worker.
-- **The window kept looking "stale" but actually had the new code.** VERIFY VISUALLY:
-  `DISPLAY=:0 import -window 0x04200003 /tmp/x.png` then Read it (crop+enlarge with
-  `convert`). Don't assume stale; a normal pane proved the new code was loaded.
-- **WebKitGTK disk-cache** served stale JS across relaunches → disabled in BOTH launchers
-  (`WEBKIT_DISABLE_DISK_CACHE_NOT_RECOMMENDED=1`). `npm run tauri:dev` uses
-  `scripts/tauri-dev-with-status.sh` (not run-native-vte-dev.sh). `Ctrl+Shift+R` is eaten
-  by the terminal; nudge a reload by touching `src/main.tsx`.
-- I CANNOT kill the dev stack / daemon (classifier blocks it — protects live sessions).
-  The user relaunches via `termfleet`. Daemon `855657` owns PTYs — never kill it.
-- Cockpit is for **non-developers** — status must be plain. CLAUDE.md/AGENTS.md now
-  instruct agents to record plans via `TaskCreate` in plain language.
-- Commit only your own files (concurrent agents on this repo). Work on `main` (user pref).
-- Status server runs on `127.0.0.1:37819` (sidecar worker); it spawns the worker per
-  request so worker `.mjs` edits are live without restart; frontend edits need a reload.
+The misplaced `bina-ve-ze` reference artifacts have been moved into this repo:
 
-## Env / run state
-Branch: main | Last commit: 95e9c45 [TC-033] title: command is 'live' only if running AND recent (<60s)
-Running: TermFleet dev app (window id `0x04200003`), vite :1420, daemon 855657, status
-server :37819 (sidecar worker). App launched via `termfleet`.
-Relevant memory files exist (tasks-panel-sidecar-join, status-title-no-local-model,
-dev-window-stale-code-webkit-cache, work-on-main-not-branches) — auto-loaded.
+- `docs/reference/agent-instance-resurrection-tmux-sketch.md`
+- `docs/reference/agent-resurrect-tmux-sketch.sh`
 
-Start by: open `scripts/termfleet-claude-status-hook.mjs`, add a `Stop`-event branch that
-reads the agent's last assistant message from `payload.transcript_path` and writes a
-short plain-language "now" line into the sidecar — then register the Stop hook in
-`~/.claude/settings.json`. Verify by screenshotting the live window.
+They are reference-only. Do not turn them into the supported implementation path.
+
+Done in this pass:
+
+1. Added backend manifest/planner coverage for live attach, Codex durable
+   resume, reconstructed fallback, auth-needed state, and metadata merge.
+2. Extended session metadata with provider, launch profile, durable provider
+   session id, mission/dropoff context, restore status, and restore failure.
+3. Added `daemon_update_agent_recovery_manifest` and a best-effort frontend
+   writer from agent workstream terminals, including structured
+   `providerSessionId` / `sessionId` signals.
+4. Extended `scripts/verify-restart-restore.py` so the real daemon verifier now
+   covers agent resume and reconstructed fallback in addition to the existing
+   live reattach and cold scrollback/cwd/size restore layers.
+5. Surfaced restore state in the existing agent status chip and added a browser
+   hydration regression proving a restored Codex lane survives two reloads as
+   one tab and one map node with `restore · resuming` visible in map and split.
+6. Added `npm run verify:agent-restore-visible`, a live Tauri dev smoke that
+   seeds the desktop disk-layout file plus agent checkpoint, restores the map
+   lane through the real app, verifies the fake Codex resume output in the daemon
+   snapshot, captures screenshots, and proves typed UI input reaches the
+   restored PTY.
+
+Next optional hardening, not required for TC-041 completion:
+
+1. Fold `verify:agent-restore-visible` into a broader release gate if the extra
+   live Tauri runtime cost is acceptable.
+2. Add a second live Tauri screenshot fixture for the reconstructed no-session
+   branch. Backend and browser coverage already prove that branch; this would be
+   redundant visual evidence.
+
+## Key decisions
+
+- Do **not** add tmux as an implementation dependency. tmux/tmux-resurrect is
+  only the reference model: live PTY reattach while the supervisor is alive;
+  after full PC restart, restore durable state and reconstruct/resume provider
+  context.
+- Do **not** claim exact restoration of in-flight commands, process memory,
+  unsaved TUI state, SSH sockets, editor process state, or provider RAM.
+- For Codex, prefer durable provider resume with `codex resume <session-id>`.
+- If no provider session id exists, restore the visible lane from cwd, mission,
+  dropoff/handoff context, launch command, and captured scrollback; label it
+  `reconstructed`.
+- Keep recovery state in metadata/runtime state, not terminal-buffer error text.
+
+## Repo state warning
+
+This checkout already had many unrelated dirty files before this handoff update.
+Keep implementation diffs scoped and do not stage unrelated changes.
+
+Planning files intentionally touched in this pass:
+
+- `MASTER_PLAN.md`
+- `HANDOFF.md`
+
+## Proof expected for TC-041
+
+- Live attach: existing PTY is reused when daemon survives app restart.
+- Snapshot persistence: simulated PC restart restores layout, cwd, provider,
+  launch command, scrollback snapshot, durable session id, and terminal size.
+- Codex resume: fixture launches `codex resume <session-id>` in the restored cwd.
+- Reconstructed fallback: no-session fixture restores mission/dropoff plus
+  scrollback and displays `reconstructed`.
+- Idempotence: repeated restart cycles do not duplicate terminals, map nodes, or
+  workstream cards.
+
+## Verification from this pass
+
+- `npm run verify:agent-restore-visible` passed with
+  `AGENT_RESTORE_VISIBLE_OK`; screenshots:
+  `/tmp/tw-agent-restore-visible/01-restored-agent-map.png` and
+  `/tmp/tw-agent-restore-visible/02-restored-agent-after-input.png`.
+- `python3 scripts/verify-restart-restore.py` passed all three layers: live
+  reattach, cold scrollback/cwd/size restore, and agent resume/reconstruct
+  restore, ending with `PASS: terminals and agent lanes restore across app
+  restart AND PC reboot`.
+- `CARGO_BUILD_JOBS=1 CARGO_PROFILE_DEV_DEBUG=0 cargo test --manifest-path src-tauri/Cargo.toml pty::tests -- --nocapture` passed 23/23.
+- `npx playwright test tests/agent-workstream.spec.ts -g "restored agent lanes keep one visible map node" --reporter=line` passed 1/1.
+- `npm run build` passed.
+- `bash -n scripts/verify-agent-restore-visible.sh` passed.
+- `git diff --check -- MASTER_PLAN.md HANDOFF.md package.json scripts/verify-agent-restore-visible.sh` passed.

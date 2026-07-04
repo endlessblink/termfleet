@@ -28,6 +28,21 @@ function cleanField(value, max = 200) {
     .slice(0, max);
 }
 
+function userTaskFromPayload(payload) {
+  const input = payload?.tool_input ?? payload?.input ?? {};
+  return cleanField(
+    payload?.userTask ??
+      payload?.prompt ??
+      payload?.text ??
+      payload?.message ??
+      input?.userTask ??
+      input?.prompt ??
+      input?.text ??
+      input?.message,
+    220,
+  );
+}
+
 // In a git worktree, Claude's hook payload reports the MAIN checkout path in `cwd`
 // but includes the real worktree path in `worktree` (Claude issue #64851). The
 // terminal's live cwd (what the status worker looks up) is the worktree, so key the
@@ -349,6 +364,7 @@ export function buildSidecar(payload) {
     source: "claude-todowrite",
     todos,
     now: nowFromTodos(todos),
+    userTask: userTaskFromPayload(payload),
   };
 }
 
@@ -381,8 +397,23 @@ async function main() {
   const paneId = statusPaneId();
   // Pane-keyed when termfleet injected TERMFLEET_PANE_ID into the PTY, else cwd-keyed.
   const filePath = statusFilePath(cwd);
+  const prevAtStart = readExistingSidecar(filePath);
+  const submittedUserTask = userTaskFromPayload(payload);
   let sidecar;
-  if (
+  if (payload.hook_event_name === "UserPromptSubmit") {
+    const userTask = submittedUserTask;
+    if (!userTask) process.exit(0);
+    sidecar = {
+      cwd,
+      sessionId: String(payload?.session_id ?? prevAtStart?.sessionId ?? ""),
+      updatedAt: Date.now(),
+      source: "user-prompt",
+      todos: Array.isArray(prevAtStart?.todos) ? prevAtStart.todos : [],
+      userTask,
+      now: cleanField(prevAtStart?.now) || "Prompt submitted",
+      narration: cleanField(prevAtStart?.narration, 90) || undefined,
+    };
+  } else if (
     payload.hook_event_name === "Stop" ||
     (!payload.tool_name && payload.transcript_path)
   ) {
@@ -390,7 +421,7 @@ async function main() {
     // task list (a real plan) outranks it, so don't clobber an in-progress task summary.
     const now = narrationToNow(lastAssistantText(payload.transcript_path));
     if (!now) process.exit(0);
-    const prev = readExistingSidecar(filePath);
+    const prev = prevAtStart;
     const todos = Array.isArray(prev?.todos) ? prev.todos : [];
     const taskNow = nowFromTodos(todos);
     sidecar = {
@@ -401,14 +432,16 @@ async function main() {
       todos,
       now: taskNow || now,
       narration: now,
+      userTask: submittedUserTask || cleanField(prev?.userTask, 220) || undefined,
     };
   } else if (payload.tool_name === "TodoWrite") {
     // Legacy authoritative path (CLAUDE_CODE_ENABLE_TASKS=0): rewrite from the array.
     sidecar = buildSidecar(payload);
+    sidecar.userTask = sidecar.userTask || cleanField(prevAtStart?.userTask, 220) || undefined;
     if (sidecar.todos.length === 0) process.exit(0);
   } else if (TASK_EVENT_TOOLS.has(payload.tool_name)) {
     // Modern task tools: fold this TaskCreate/TaskUpdate into the stateful list.
-    const prev = readExistingSidecar(filePath);
+    const prev = prevAtStart;
     const todos = applyTaskEvent(prev?.todos, payload);
     if (todos.length === 0) process.exit(0);
     sidecar = {
@@ -418,6 +451,7 @@ async function main() {
       source: "claude-task",
       todos,
       now: nowFromTodos(todos),
+      userTask: submittedUserTask || cleanField(prev?.userTask, 220) || cleanField(todos[0]?.content, 220) || undefined,
       ...(payload?.agent_id
         ? {
             agentId: String(payload.agent_id),
@@ -430,7 +464,7 @@ async function main() {
     // known task list so the panel stays populated between task events.
     const now = activityFromTool(payload?.tool_name, payload?.tool_input);
     if (!now) process.exit(0);
-    const prev = readExistingSidecar(filePath);
+    const prev = prevAtStart;
     sidecar = {
       cwd,
       sessionId: String(payload?.session_id ?? prev?.sessionId ?? ""),
@@ -438,6 +472,7 @@ async function main() {
       source: "claude-tool",
       todos: Array.isArray(prev?.todos) ? prev.todos : [],
       now,
+      userTask: submittedUserTask || cleanField(prev?.userTask, 220) || undefined,
     };
   }
   // Roll the agent's actual action into the recent-activity log (what it DID). On a Stop
@@ -454,6 +489,9 @@ async function main() {
   // header title keeps reading the agent's own words instead of falling back to "Working".
   if (sidecar.narration === undefined && prevForRecent?.narration) {
     sidecar.narration = cleanField(prevForRecent.narration, 90);
+  }
+  if (sidecar.userTask === undefined && prevForRecent?.userTask) {
+    sidecar.userTask = cleanField(prevForRecent.userTask, 220);
   }
   // Stamp the pane id so the reader can confirm which terminal this status belongs to.
   if (paneId) sidecar.paneId = paneId;

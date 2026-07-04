@@ -53,6 +53,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::daemon_status,
+            commands::agent_status_read_sidecar,
             commands::agent_provider_statuses,
             commands::workstream_git_context,
             commands::workstream_prepare_dedicated_worktree,
@@ -60,6 +61,7 @@ pub fn run() {
             commands::terminal_latency_trace_enabled,
             commands::daemon_ensure_running,
             commands::daemon_ensure_session,
+            commands::daemon_update_agent_recovery_manifest,
             commands::daemon_write_session,
             commands::daemon_resize_session,
             commands::daemon_snapshot_session,

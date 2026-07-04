@@ -109,7 +109,7 @@ test("no real task + slash command prompt echo → activity title replaces typed
   expect(result.now).toBe("status summary server checks passed");
 });
 
-test("purpose extraction skips slash command echoes and keeps the real task description", () => {
+test("purpose extraction skips slash command echoes and does not fabricate task context", () => {
   const purpose = terminalPurposeFromContext({
     terminalOutput: [
       "› Fix terminal header activity description",
@@ -119,12 +119,12 @@ test("purpose extraction skips slash command echoes and keeps the real task desc
     ].join("\n"),
   });
 
-  expect(purpose?.title).toBe("Fixing terminal header activity description");
+  expect(purpose).toBeFalsy();
 });
 
-test("no task list but agent narrated → narration becomes the title, not 'Working'", () => {
-  // TC-033: when there's no task list, the agent's own last words (Stop-hook capture)
-  // are a reliable title — better than the bare "Working" neutral.
+test("no task list but agent narrated → neutral title wins over transcript text", () => {
+  // The user-task stream is explicit now. Without it, Stop-hook narration is still
+  // transcript text and must not become the main title/task context.
   const result = preferRealTaskSummary(
     heuristicBase,
     statusSummary({
@@ -134,11 +134,8 @@ test("no task list but agent narrated → narration becomes the title, not 'Work
     }),
     "Working",
   );
-  expect(result.task).toBe(
-    "Wiring the Stop hook so the title reads in my own words.",
-  );
-  // The live activity detail stays on the now line.
-  expect(result.now).toBe("Reading terminalHeaderDisplay.ts");
+  expect(result.task).toBe("Working");
+  expect(result.now).toBe("Working");
 });
 
 test("narration title is preferred over the neutral but still yields to a real task list", () => {

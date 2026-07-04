@@ -392,6 +392,9 @@ impl PtyManager {
     ) -> Result<(String, bool), String> {
         let id = id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
         if self.ptys.lock().unwrap().contains_key(&id) {
+            if let Some(dir) = &self.persist_dir {
+                write_agent_restore_status(dir, &id, AgentRestoreStatus::LiveAttached, None);
+            }
             return Ok((id, true));
         }
 
@@ -405,9 +408,12 @@ impl PtyManager {
             .persist_dir
             .as_ref()
             .and_then(|dir| load_persisted(dir, &id));
-        let recovery_command = persisted
+        let recovery_plan = persisted
             .as_ref()
-            .and_then(PersistedSession::agent_resume_command);
+            .map(|entry| plan_agent_restore(entry, false));
+        let recovery_command = recovery_plan
+            .as_ref()
+            .and_then(|plan| plan.command.clone());
         let cwd = cwd.or_else(|| persisted.as_ref().and_then(|entry| entry.cwd.clone()));
         let command = recovery_command
             .or(command)
@@ -541,6 +547,9 @@ impl PtyManager {
                 open_cols,
                 open_rows,
             );
+            if let Some(plan) = recovery_plan.as_ref() {
+                write_agent_restore_status(dir, &id, plan.status.clone(), plan.reason.as_deref());
+            }
         }
         let output = Arc::new(Mutex::new(initial_buffer));
         let output_reader = output.clone();
@@ -950,20 +959,14 @@ struct PersistedSession {
     cols: Option<u16>,
     rows: Option<u16>,
     recovery_kind: Option<SessionRecoveryKind>,
+    provider: Option<String>,
+    launch_profile: Option<String>,
+    provider_session_id: Option<String>,
+    mission: Option<String>,
+    dropoff_path: Option<String>,
     sanitized_resume_command: Option<String>,
-}
-
-impl PersistedSession {
-    fn agent_resume_command(&self) -> Option<String> {
-        if self.recovery_kind != Some(SessionRecoveryKind::AgentTerminal) {
-            return None;
-        }
-        self.sanitized_resume_command
-            .as_deref()
-            .map(str::trim)
-            .filter(|command| !command.is_empty())
-            .map(ToString::to_string)
-    }
+    restore_status: Option<AgentRestoreStatus>,
+    restore_failure_reason: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Default)]
@@ -986,13 +989,25 @@ struct SessionMeta {
     #[serde(default)]
     provider: Option<String>,
     #[serde(default)]
+    launch_profile: Option<String>,
+    #[serde(default)]
+    provider_session_id: Option<String>,
+    #[serde(default)]
     original_command: Option<String>,
+    #[serde(default)]
+    mission: Option<String>,
+    #[serde(default)]
+    dropoff_path: Option<String>,
     #[serde(default)]
     sanitized_resume_command: Option<String>,
     #[serde(default)]
     launched_as_regular_terminal: Option<bool>,
     #[serde(default)]
     last_healthy_ms: Option<u128>,
+    #[serde(default)]
+    restore_status: Option<AgentRestoreStatus>,
+    #[serde(default)]
+    restore_failure_reason: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
@@ -1000,6 +1015,119 @@ struct SessionMeta {
 enum SessionRecoveryKind {
     Shell,
     AgentTerminal,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+enum AgentRestoreStatus {
+    LiveAttached,
+    Resuming,
+    ResumeFailed,
+    Reconstructed,
+    NeedsAuth,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct AgentRestorePlan {
+    status: AgentRestoreStatus,
+    command: Option<String>,
+    reason: Option<String>,
+}
+
+fn plan_agent_restore(persisted: &PersistedSession, live_pty_exists: bool) -> AgentRestorePlan {
+    if live_pty_exists {
+        return AgentRestorePlan {
+            status: AgentRestoreStatus::LiveAttached,
+            command: None,
+            reason: None,
+        };
+    }
+
+    if persisted.recovery_kind != Some(SessionRecoveryKind::AgentTerminal) {
+        return AgentRestorePlan {
+            status: AgentRestoreStatus::Reconstructed,
+            command: persisted.command.clone(),
+            reason: Some("regular shell checkpoint".to_string()),
+        };
+    }
+
+    if persisted.restore_status == Some(AgentRestoreStatus::NeedsAuth)
+        || persisted
+            .restore_failure_reason
+            .as_deref()
+            .is_some_and(|reason| reason.to_ascii_lowercase().contains("auth"))
+    {
+        return AgentRestorePlan {
+            status: AgentRestoreStatus::NeedsAuth,
+            command: None,
+            reason: persisted.restore_failure_reason.clone(),
+        };
+    }
+
+    if let Some(command) = persisted
+        .sanitized_resume_command
+        .as_deref()
+        .map(str::trim)
+        .filter(|command| !command.is_empty())
+    {
+        return AgentRestorePlan {
+            status: AgentRestoreStatus::Resuming,
+            command: Some(command.to_string()),
+            reason: None,
+        };
+    }
+
+    if persisted.provider.as_deref() == Some("codex")
+        && matches!(
+            persisted.launch_profile.as_deref(),
+            None | Some("terminal") | Some("headless")
+        )
+    {
+        if let Some(session_id) = persisted
+            .provider_session_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|session_id| !session_id.is_empty())
+        {
+            return AgentRestorePlan {
+                status: AgentRestoreStatus::Resuming,
+                command: Some(format!("codex resume {}", shell_quote_arg(session_id))),
+                reason: None,
+            };
+        }
+    }
+
+    let has_reconstruction_context = persisted
+        .mission
+        .as_deref()
+        .is_some_and(|value| !value.trim().is_empty())
+        || persisted
+            .dropoff_path
+            .as_deref()
+            .is_some_and(|value| !value.trim().is_empty());
+
+    AgentRestorePlan {
+        status: AgentRestoreStatus::Reconstructed,
+        command: persisted.command.clone(),
+        reason: Some(
+            if has_reconstruction_context {
+                "missing durable provider session id; reconstruct from mission/dropoff and scrollback"
+            } else {
+                "missing durable provider session id"
+            }
+            .to_string(),
+        ),
+    }
+}
+
+fn shell_quote_arg(value: &str) -> String {
+    if value
+        .chars()
+        .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '.' | ':' | '/' | '@'))
+    {
+        return value.to_string();
+    }
+    format!("'{}'", value.replace('\'', "'\\''"))
 }
 
 /// Root of termfleet's per-user durable state (`~/.local/share/terminal-workspace`).
@@ -1068,6 +1196,105 @@ pub fn list_persisted_sessions() -> Vec<PersistedSessionSummary> {
     sessions
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct AgentRecoveryManifestUpdate {
+    pub cwd: Option<String>,
+    pub provider: Option<String>,
+    pub launch_profile: Option<String>,
+    pub provider_session_id: Option<String>,
+    pub original_command: Option<String>,
+    pub mission: Option<String>,
+    pub dropoff_path: Option<String>,
+    pub sanitized_resume_command: Option<String>,
+    pub restore_status: Option<String>,
+    pub restore_failure_reason: Option<String>,
+}
+
+pub fn update_agent_recovery_manifest(
+    id: &str,
+    update: AgentRecoveryManifestUpdate,
+) -> Result<(), String> {
+    let dir =
+        default_persist_dir().ok_or_else(|| "session persistence dir unavailable".to_string())?;
+    fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
+    update_agent_recovery_manifest_in_dir(&dir, id, update)
+}
+
+fn update_agent_recovery_manifest_in_dir(
+    dir: &Path,
+    id: &str,
+    update: AgentRecoveryManifestUpdate,
+) -> Result<(), String> {
+    let previous = fs::read(meta_path(dir, id))
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<SessionMeta>(&bytes).ok())
+        .unwrap_or_default();
+    let restore_status = update
+        .restore_status
+        .as_deref()
+        .and_then(parse_agent_restore_status)
+        .or(previous.restore_status);
+    let meta = SessionMeta {
+        cwd: update.cwd.or(previous.cwd),
+        command: previous.command,
+        cols: previous.cols,
+        rows: previous.rows,
+        recovery_kind: Some(SessionRecoveryKind::AgentTerminal),
+        provider: update.provider.or(previous.provider),
+        launch_profile: update.launch_profile.or(previous.launch_profile),
+        provider_session_id: update.provider_session_id.or(previous.provider_session_id),
+        original_command: update.original_command.or(previous.original_command),
+        mission: update.mission.or(previous.mission),
+        dropoff_path: update.dropoff_path.or(previous.dropoff_path),
+        sanitized_resume_command: update
+            .sanitized_resume_command
+            .or(previous.sanitized_resume_command),
+        launched_as_regular_terminal: Some(true),
+        last_healthy_ms: Some(now_ms()),
+        restore_status,
+        restore_failure_reason: update
+            .restore_failure_reason
+            .or(previous.restore_failure_reason),
+    };
+    let json = serde_json::to_vec(&meta).map_err(|error| error.to_string())?;
+    atomic_write(&meta_path(dir, id), &json).map_err(|error| error.to_string())
+}
+
+fn parse_agent_restore_status(value: &str) -> Option<AgentRestoreStatus> {
+    match value {
+        "live-attached" => Some(AgentRestoreStatus::LiveAttached),
+        "resuming" => Some(AgentRestoreStatus::Resuming),
+        "resume-failed" => Some(AgentRestoreStatus::ResumeFailed),
+        "reconstructed" => Some(AgentRestoreStatus::Reconstructed),
+        "needs-auth" => Some(AgentRestoreStatus::NeedsAuth),
+        _ => None,
+    }
+}
+
+fn write_agent_restore_status(
+    dir: &Path,
+    id: &str,
+    status: AgentRestoreStatus,
+    reason: Option<&str>,
+) {
+    let Some(mut meta) = fs::read(meta_path(dir, id))
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<SessionMeta>(&bytes).ok())
+    else {
+        return;
+    };
+    if meta.recovery_kind != Some(SessionRecoveryKind::AgentTerminal) {
+        return;
+    }
+    meta.restore_status = Some(status);
+    if let Some(reason) = reason {
+        meta.restore_failure_reason = Some(reason.to_string());
+    }
+    if let Ok(json) = serde_json::to_vec(&meta) {
+        let _ = atomic_write(&meta_path(dir, id), &json);
+    }
+}
+
 /// Filesystem-safe, reversible mapping from a session id to a filename stem.
 /// Session ids come from the frontend (uuids, pane paths) and can contain
 /// characters that aren't valid in a filename, so hex-encode the raw bytes.
@@ -1122,10 +1349,16 @@ fn write_session_meta(
         rows: Some(rows),
         recovery_kind: previous.recovery_kind,
         provider: previous.provider,
+        launch_profile: previous.launch_profile,
+        provider_session_id: previous.provider_session_id,
         original_command: previous.original_command,
+        mission: previous.mission,
+        dropoff_path: previous.dropoff_path,
         sanitized_resume_command: previous.sanitized_resume_command,
         launched_as_regular_terminal: previous.launched_as_regular_terminal,
         last_healthy_ms: previous.last_healthy_ms,
+        restore_status: previous.restore_status,
+        restore_failure_reason: previous.restore_failure_reason,
     };
     if let Ok(json) = serde_json::to_vec(&meta) {
         let _ = atomic_write(&meta_path(dir, id), &json);
@@ -1149,7 +1382,14 @@ fn load_persisted(dir: &Path, id: &str) -> Option<PersistedSession> {
         cols: meta.cols,
         rows: meta.rows,
         recovery_kind: meta.recovery_kind,
+        provider: meta.provider,
+        launch_profile: meta.launch_profile,
+        provider_session_id: meta.provider_session_id,
+        mission: meta.mission,
+        dropoff_path: meta.dropoff_path,
         sanitized_resume_command: meta.sanitized_resume_command,
+        restore_status: meta.restore_status,
+        restore_failure_reason: meta.restore_failure_reason,
     })
 }
 
@@ -1217,7 +1457,8 @@ fn discard_partial_replay_prefix(base_offset: u64, data: String) -> (u64, String
 #[cfg(test)]
 mod tests {
     use super::{
-        discard_partial_replay_prefix, replay_boundary_at_or_after, PtyManager, SessionMeta,
+        discard_partial_replay_prefix, plan_agent_restore, replay_boundary_at_or_after,
+        AgentRecoveryManifestUpdate, AgentRestoreStatus, PersistedSession, PtyManager, SessionMeta,
         SessionRecoveryKind,
     };
 
@@ -1250,6 +1491,243 @@ mod tests {
 
         assert_eq!(base_offset, 909);
         assert_eq!(data, "visible line\r\n");
+    }
+
+    fn codex_agent_checkpoint(provider_session_id: Option<&str>) -> PersistedSession {
+        PersistedSession {
+            cwd: Some("/work/termfleet".to_string()),
+            command: Some("codex".to_string()),
+            cols: Some(132),
+            rows: Some(37),
+            recovery_kind: Some(SessionRecoveryKind::AgentTerminal),
+            provider: Some("codex".to_string()),
+            launch_profile: Some("terminal".to_string()),
+            provider_session_id: provider_session_id.map(ToString::to_string),
+            mission: Some("Restore the interrupted agent lane".to_string()),
+            dropoff_path: Some("HANDOFF.md".to_string()),
+            sanitized_resume_command: None,
+            restore_status: None,
+            restore_failure_reason: None,
+        }
+    }
+
+    #[test]
+    fn agent_restore_planner_prefers_live_attach_when_pty_survived() {
+        let plan = plan_agent_restore(&codex_agent_checkpoint(Some("019f-agent-session")), true);
+
+        assert_eq!(plan.status, AgentRestoreStatus::LiveAttached);
+        assert_eq!(plan.command, None);
+        assert_eq!(plan.reason, None);
+    }
+
+    #[test]
+    fn agent_restore_planner_builds_codex_resume_from_durable_session_id() {
+        let plan = plan_agent_restore(&codex_agent_checkpoint(Some("019f-agent-session")), false);
+
+        assert_eq!(plan.status, AgentRestoreStatus::Resuming);
+        assert_eq!(
+            plan.command.as_deref(),
+            Some("codex resume 019f-agent-session")
+        );
+        assert_eq!(plan.reason, None);
+    }
+
+    #[test]
+    fn agent_restore_planner_reconstructs_when_provider_session_id_is_missing() {
+        let plan = plan_agent_restore(&codex_agent_checkpoint(None), false);
+
+        assert_eq!(plan.status, AgentRestoreStatus::Reconstructed);
+        assert_eq!(plan.command.as_deref(), Some("codex"));
+        assert_eq!(
+            plan.reason.as_deref(),
+            Some("missing durable provider session id; reconstruct from mission/dropoff and scrollback")
+        );
+    }
+
+    #[test]
+    fn agent_restore_planner_surfaces_auth_failures_without_fake_resume() {
+        let mut checkpoint = codex_agent_checkpoint(Some("019f-agent-session"));
+        checkpoint.restore_failure_reason = Some("auth required by provider".to_string());
+
+        let plan = plan_agent_restore(&checkpoint, false);
+
+        assert_eq!(plan.status, AgentRestoreStatus::NeedsAuth);
+        assert_eq!(plan.command, None);
+        assert_eq!(plan.reason.as_deref(), Some("auth required by provider"));
+    }
+
+    #[test]
+    fn agent_recovery_manifest_update_preserves_session_checkpoint_fields() {
+        use std::path::PathBuf;
+
+        let dir: PathBuf = std::env::temp_dir().join(format!(
+            "tw-agent-manifest-test-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create manifest dir");
+        let id = "agent-manifest-update-test";
+        let previous = SessionMeta {
+            cwd: Some("/work/termfleet".to_string()),
+            command: Some("codex".to_string()),
+            cols: Some(132),
+            rows: Some(37),
+            ..SessionMeta::default()
+        };
+        let previous_bytes = serde_json::to_vec(&previous).expect("encode previous meta");
+        super::atomic_write(&super::meta_path(&dir, id), &previous_bytes)
+            .expect("seed previous meta");
+
+        super::update_agent_recovery_manifest_in_dir(
+            &dir,
+            id,
+            AgentRecoveryManifestUpdate {
+                provider: Some("codex".to_string()),
+                launch_profile: Some("terminal".to_string()),
+                provider_session_id: Some("019f-agent-session".to_string()),
+                original_command: Some("codex".to_string()),
+                mission: Some("Restore the interrupted agent lane".to_string()),
+                dropoff_path: Some("HANDOFF.md".to_string()),
+                restore_status: Some("resuming".to_string()),
+                ..AgentRecoveryManifestUpdate::default()
+            },
+        )
+        .expect("update agent manifest");
+
+        let updated = std::fs::read(super::meta_path(&dir, id))
+            .ok()
+            .and_then(|bytes| serde_json::from_slice::<SessionMeta>(&bytes).ok())
+            .expect("read updated meta");
+        assert_eq!(updated.cwd.as_deref(), Some("/work/termfleet"));
+        assert_eq!(updated.command.as_deref(), Some("codex"));
+        assert_eq!(updated.cols, Some(132));
+        assert_eq!(updated.rows, Some(37));
+        assert_eq!(
+            updated.recovery_kind,
+            Some(SessionRecoveryKind::AgentTerminal)
+        );
+        assert_eq!(updated.provider.as_deref(), Some("codex"));
+        assert_eq!(
+            updated.provider_session_id.as_deref(),
+            Some("019f-agent-session")
+        );
+        assert_eq!(updated.restore_status, Some(AgentRestoreStatus::Resuming));
+        assert_eq!(updated.launched_as_regular_terminal, Some(true));
+        assert!(updated.last_healthy_ms.is_some());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn live_agent_reattach_records_live_attached_restore_status() {
+        use std::path::PathBuf;
+
+        let dir: PathBuf = std::env::temp_dir().join(format!(
+            "tw-agent-live-status-test-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        let id = "agent-live-status-test".to_string();
+        {
+            let manager = super::PtyManager::with_persistence_dir(dir.clone());
+            manager
+                .ensure_detached(
+                    Some(id.clone()),
+                    Some("/tmp".to_string()),
+                    Some("cat".to_string()),
+                    Some(120),
+                    Some(40),
+                )
+                .expect("spawn live agent PTY");
+            super::update_agent_recovery_manifest_in_dir(
+                &dir,
+                &id,
+                AgentRecoveryManifestUpdate {
+                    provider: Some("codex".to_string()),
+                    launch_profile: Some("terminal".to_string()),
+                    provider_session_id: Some("019f-agent-session".to_string()),
+                    original_command: Some("codex".to_string()),
+                    mission: Some("Restore the interrupted agent lane".to_string()),
+                    ..AgentRecoveryManifestUpdate::default()
+                },
+            )
+            .expect("mark live session as agent");
+
+            let (_reattached, reused) = manager
+                .ensure_detached(Some(id.clone()), None, None, None, None)
+                .expect("reattach live agent PTY");
+            assert!(reused);
+
+            let updated = std::fs::read(super::meta_path(&dir, &id))
+                .ok()
+                .and_then(|bytes| serde_json::from_slice::<SessionMeta>(&bytes).ok())
+                .expect("read live-attached meta");
+            assert_eq!(
+                updated.restore_status,
+                Some(AgentRestoreStatus::LiveAttached)
+            );
+
+            manager.kill(&id).expect("kill live agent PTY");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn cold_agent_restore_records_reconstructed_status_without_session_id() {
+        use std::path::PathBuf;
+
+        let dir: PathBuf = std::env::temp_dir().join(format!(
+            "tw-agent-reconstruct-status-test-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create persistence dir");
+        let id = "agent-reconstruct-status-test".to_string();
+
+        let mut scrollback = Vec::new();
+        scrollback.extend_from_slice(&0_u64.to_le_bytes());
+        scrollback.extend_from_slice(b"previous agent transcript\n");
+        super::atomic_write(&super::scrollback_path(&dir, &id), &scrollback)
+            .expect("seed scrollback");
+        let meta = SessionMeta {
+            cwd: Some("/tmp".to_string()),
+            command: Some("sh".to_string()),
+            cols: Some(120),
+            rows: Some(40),
+            recovery_kind: Some(SessionRecoveryKind::AgentTerminal),
+            provider: Some("codex".to_string()),
+            launch_profile: Some("terminal".to_string()),
+            mission: Some("Restore the interrupted agent lane".to_string()),
+            dropoff_path: Some("HANDOFF.md".to_string()),
+            ..SessionMeta::default()
+        };
+        let meta_bytes = serde_json::to_vec(&meta).expect("encode seeded meta");
+        super::atomic_write(&super::meta_path(&dir, &id), &meta_bytes)
+            .expect("seed metadata");
+
+        let manager = super::PtyManager::with_persistence_dir(dir.clone());
+        manager
+            .ensure_detached(Some(id.clone()), None, None, None, None)
+            .expect("cold restore without provider session id");
+
+        let updated = std::fs::read(super::meta_path(&dir, &id))
+            .ok()
+            .and_then(|bytes| serde_json::from_slice::<SessionMeta>(&bytes).ok())
+            .expect("read reconstructed meta");
+        assert_eq!(
+            updated.restore_status,
+            Some(AgentRestoreStatus::Reconstructed)
+        );
+        assert_eq!(
+            updated.restore_failure_reason.as_deref(),
+            Some("missing durable provider session id; reconstruct from mission/dropoff and scrollback")
+        );
+
+        manager.kill(&id).expect("kill reconstructed agent PTY");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -1670,6 +2148,7 @@ mod tests {
             sanitized_resume_command: Some(resume_command.clone()),
             launched_as_regular_terminal: Some(true),
             last_healthy_ms: Some(123),
+            ..SessionMeta::default()
         };
         let meta_bytes = serde_json::to_vec(&meta).expect("encode seeded meta");
         super::atomic_write(&super::meta_path(&dir, &id), &meta_bytes)

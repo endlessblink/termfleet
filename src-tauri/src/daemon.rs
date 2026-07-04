@@ -235,7 +235,10 @@ pub fn trace_pty(label: &str, details: impl AsRef<str>) {
         let _ = std::fs::OpenOptions::new()
             .create(true)
             .append(true)
-            .open(platform_paths::latency_trace_path(std::process::id(), &thread_id))
+            .open(platform_paths::latency_trace_path(
+                std::process::id(),
+                &thread_id,
+            ))
             .and_then(|mut file| writeln!(file, "{line}"));
     }
     if std::env::var_os("TERMINAL_WORKSPACE_TRACE_PTY").is_none() {
@@ -814,23 +817,28 @@ fn stream_daemon_session(
     id: &str,
     subscriber_id: String,
 ) -> Result<(), String> {
+    let subscriber_id_for_cleanup = subscriber_id.clone();
     let receiver = pty_manager.subscribe(id, subscriber_id)?;
-    write_daemon_response(
-        stream,
-        &DaemonResponse::SnapshotSession {
-            data: pty_manager.snapshot(id)?,
-        },
-    )?;
+    let result = (|| {
+        write_daemon_response(
+            stream,
+            &DaemonResponse::SnapshotSession {
+                data: pty_manager.snapshot(id)?,
+            },
+        )?;
 
-    for data in receiver {
-        trace_pty(
-            "daemon.subscribe.emit",
-            format!("id={id} bytes={} data={data:?}", data.len()),
-        );
-        write_daemon_response(stream, &DaemonResponse::SessionData { data })?;
-    }
+        for data in receiver {
+            trace_pty(
+                "daemon.subscribe.emit",
+                format!("id={id} bytes={} data={data:?}", data.len()),
+            );
+            write_daemon_response(stream, &DaemonResponse::SessionData { data })?;
+        }
 
-    Ok(())
+        Ok(())
+    })();
+    let _ = pty_manager.unsubscribe(id, &subscriber_id_for_cleanup);
+    result
 }
 
 fn external_daemon_status(socket_path: &PathBuf) -> DaemonStatus {

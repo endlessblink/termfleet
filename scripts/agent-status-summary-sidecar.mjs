@@ -57,6 +57,7 @@ export function fallbackSummary(payload) {
   return (
     payload?.heuristicCandidate ?? {
       task: "Shell ready",
+      userTask: cleanText(payload?.workstream?.userTask),
       path: payload?.projectId ?? "workspace",
       now: "Awaiting command",
       status: "idle",
@@ -96,9 +97,18 @@ export function summaryFromSidecar(sidecar, payload) {
   const currentTask =
     cleanText(current?.activeForm || current?.content) ||
     cleanText(lastDone?.content);
+  const userTask =
+    cleanText(sidecar?.userTask) ||
+    cleanText(fallback?.userTask) ||
+    (todos.length > 0 ? cleanText(todos[0]?.content) : "");
+  const activityTitle =
+    currentTask ||
+    (userTask && now && now !== "Prompt submitted" ? now : "") ||
+    fallback.task;
   return {
     ...fallback,
-    task: currentTask || fallback.task,
+    task: activityTitle,
+    userTask: userTask || undefined,
     now: now || fallback.now,
     status: working ? "working" : todos.length > 0 ? "idle" : fallback.status,
     provider: fallback.provider,

@@ -19,7 +19,7 @@ use alacritty_terminal::term::{Config, Term, TermMode};
 use alacritty_terminal::vte::ansi::{Color, NamedColor, Processor, Rgb};
 use serde::Serialize;
 use std::collections::HashMap;
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, ErrorKind, Write};
 use std::net::Shutdown;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
@@ -44,6 +44,7 @@ const GRID_FEED_MAX_RECONNECTS: u32 = 40;
 // A feed that ran at least this long counts as a healthy session and resets the
 // consecutive-failure counter on the next loop.
 const GRID_FEED_HEALTHY_MIN: Duration = Duration::from_secs(2);
+const GRID_FEED_READ_TIMEOUT: Duration = Duration::from_millis(100);
 
 /// Minimal `Dimensions` implementation so we can build/resize the grid without
 /// pulling in the crate's test-only `TermSize` helper.
@@ -299,7 +300,13 @@ impl GridManager {
             .get(id)
             .ok_or_else(|| format!("no grid attached for session {id}"))?;
         let state = session.state.read().map_err(|_| "grid state poisoned")?;
-        Ok(selection_text(&state.term, start_row, start_col, end_row, end_col))
+        Ok(selection_text(
+            &state.term,
+            start_row,
+            start_col,
+            end_row,
+            end_col,
+        ))
     }
 
     /// Register a binary-diff subscriber. Sends an immediate full-sync frame so
@@ -436,7 +443,7 @@ fn run_feed_with_reconnect(id: &str, state: &Arc<RwLock<TermState>>, stop: &Atom
             return;
         }
         let started = std::time::Instant::now();
-        let result = feed_grid_from_daemon(id, state);
+        let result = feed_grid_from_daemon(id, state, stop);
         if stop.load(Ordering::Relaxed) {
             return;
         }
@@ -552,7 +559,11 @@ fn emit_session_diff(session: &Arc<Session>) {
 /// Open a subscriber stream to the daemon for `id` and feed every chunk into the
 /// VT state machine. The daemon sends a full scrollback snapshot first (which
 /// replays the escape sequences and reconstructs the screen), then live deltas.
-fn feed_grid_from_daemon(id: &str, state: &Arc<RwLock<TermState>>) -> Result<(), String> {
+fn feed_grid_from_daemon(
+    id: &str,
+    state: &Arc<RwLock<TermState>>,
+    stop: &AtomicBool,
+) -> Result<(), String> {
     let socket_path = daemon_socket_path();
     let mut stream = match daemon_ipc::connect(&socket_path) {
         Ok(stream) => stream,
@@ -577,14 +588,29 @@ fn feed_grid_from_daemon(id: &str, state: &Arc<RwLock<TermState>>) -> Result<(),
         .write_all(&request)
         .map_err(|error| error.to_string())?;
     let _ = stream.shutdown(Shutdown::Write);
+    stream
+        .set_read_timeout(Some(GRID_FEED_READ_TIMEOUT))
+        .map_err(|error| error.to_string())?;
 
-    let reader = BufReader::new(stream);
-    for line in reader.lines() {
-        let line = line.map_err(|error| error.to_string())?;
+    let mut reader = BufReader::new(stream);
+    let mut line = String::new();
+    loop {
+        if stop.load(Ordering::Relaxed) {
+            return Ok(());
+        }
+        line.clear();
+        match reader.read_line(&mut line) {
+            Ok(0) => break,
+            Ok(_) => {}
+            Err(error) if matches!(error.kind(), ErrorKind::WouldBlock | ErrorKind::TimedOut) => {
+                continue;
+            }
+            Err(error) => return Err(error.to_string()),
+        }
         if line.is_empty() {
             continue;
         }
-        let response = serde_json::from_str::<DaemonResponse>(&line)
+        let response = serde_json::from_str::<DaemonResponse>(line.trim_end())
             .map_err(|error| format!("daemon stream parse failed: {error}"))?;
         match response {
             DaemonResponse::SnapshotSession { data } => {
@@ -1216,7 +1242,10 @@ mod tests {
         assert!(state.dirty, "scroll into history changes the visible grid");
         state.dirty = false;
         state.scroll_to_bottom();
-        assert!(state.dirty, "scroll-to-bottom from history changes the visible grid");
+        assert!(
+            state.dirty,
+            "scroll-to-bottom from history changes the visible grid"
+        );
 
         state.dirty = false;
         state.reset();
@@ -1279,8 +1308,14 @@ mod tests {
         let b1 = grid_feed_reconnect_backoff(1);
         let b2 = grid_feed_reconnect_backoff(2);
         let b3 = grid_feed_reconnect_backoff(3);
-        assert_eq!(b1, GRID_FEED_RECONNECT_BASE, "first retry uses the base delay");
-        assert!(b2 > b1 && b3 > b2, "backoff grows with consecutive failures");
+        assert_eq!(
+            b1, GRID_FEED_RECONNECT_BASE,
+            "first retry uses the base delay"
+        );
+        assert!(
+            b2 > b1 && b3 > b2,
+            "backoff grows with consecutive failures"
+        );
         // Far-out attempts saturate at the cap, never exceeding it.
         for failures in 5..50 {
             assert!(

@@ -88,9 +88,14 @@ function configuredWorkspaceResetState(): boolean {
   return import.meta.env.VITE_WORKSPACE_RESET_STATE === "1";
 }
 
+function configuredTerminalHeaderVerifierFixture(): boolean {
+  return import.meta.env.VITE_TERMINAL_HEADER_VERIFIER_FIXTURE === "1";
+}
+
 const FORCED_TERMINAL_RENDERER_MODE = configuredTerminalRendererMode();
 const FORCED_WORKSPACE_MODE = configuredWorkspaceMode();
 const FORCE_WORKSPACE_RESET_STATE = configuredWorkspaceResetState();
+const TERMINAL_HEADER_VERIFIER_FIXTURE = configuredTerminalHeaderVerifierFixture();
 
 // Reset/verify runs (VITE_WORKSPACE_RESET_STATE=1) clear and re-persist the
 // workspace on load. They run on the SAME origin as the real app, so if they
@@ -127,6 +132,9 @@ type RecentlyClosedTerminal = {
   selectedNodeId: string | null;
   selectedNodeIds: string[];
 };
+
+type CanvasAlignMode = "left" | "center-x" | "right" | "top" | "center-y" | "bottom";
+type CanvasDistributeMode = "horizontal" | "vertical";
 
 function createWorkstreamEvent(input: WorkstreamEventInput): WorkstreamEvent {
   return {
@@ -288,6 +296,11 @@ interface WorkspaceState {
   // mounted. Display-only — NOT persisted and NOT the session's project
   // identity, so a `cd`/`z` shows where you are without renaming the project.
   liveCwds: Record<string, string>;
+  // Git toplevel per PTY id (`git rev-parse --show-toplevel` of the live cwd),
+  // resolved when the cwd changes. Lets the header show the real repo's name as
+  // the project even when the stored project root is a shallow category folder.
+  // Display-only — NOT persisted. "" means resolved-but-not-a-repo.
+  liveGitRoots: Record<string, string>;
   workspaceUiState: WorkspaceUiState;
   canvasState: CanvasState;
   recentlyClosed: RecentlyClosedTerminal[];
@@ -329,6 +342,7 @@ interface WorkspaceState {
   unpinProject: (path: string) => void;
   setActiveTerminal: (id: string | null) => void;
   setLiveCwd: (id: string, cwd: string) => void;
+  setLiveGitRoot: (id: string, gitRoot: string) => void;
   refreshLiveCwd: (id: string) => Promise<void>;
   replaceTerminalTaskLineup: (tabId: string, paneId: string, taskLineup: TaskLineupItem[]) => void;
   setTerminalTaskSidebarCollapsed: (tabId: string, paneId: string, collapsed: boolean, nodeId?: string) => void;
@@ -345,6 +359,9 @@ interface WorkspaceState {
   updateCanvasNode: (id: string, updates: Partial<CanvasNode>) => void;
   renameCanvasNode: (id: string, title: string) => void;
   moveCanvasNodes: (ids: string[], delta: { x: number; y: number }) => void;
+  alignCanvasNodes: (ids: string[], mode: CanvasAlignMode) => void;
+  distributeCanvasNodes: (ids: string[], mode: CanvasDistributeMode) => void;
+  arrangeProjectTerminalRow: (groupId: string) => void;
   reorderCanvasNodes: (draggedId: string, targetId: string, place: "before" | "after") => void;
   removeCanvasNode: (id: string) => void;
   selectCanvasNode: (id: string | null) => void;
@@ -399,6 +416,7 @@ function persistedTerminalSnapshot(terminal: TerminalState): TerminalState {
     durableActivity: terminal.durableActivity,
     taskLineup: terminal.taskLineup,
     purpose: terminal.purpose,
+    mainUserAsk: terminal.mainUserAsk,
     taskSidebarCollapsed: terminal.taskSidebarCollapsed,
     lastStatusAt: Date.now(),
     lastError: "Session will reconnect if the backend is still running; otherwise it will restart.",
@@ -743,6 +761,141 @@ function normalizeCanvasState(canvasState: CanvasState | undefined, tabs: Tab[])
 function loadPersistedWorkspace(): PersistedWorkspace {
   if (FORCE_WORKSPACE_RESET_STATE) {
     localStorage.removeItem(WORKSPACE_STORAGE_KEY);
+    if (TERMINAL_HEADER_VERIFIER_FIXTURE) {
+      const root = import.meta.env.VITE_TERMINAL_HEADER_VERIFIER_ROOT || "/tmp/tw-terminal-header-live-all";
+      const longPath = import.meta.env.VITE_TERMINAL_HEADER_VERIFIER_LONG_PATH || `${root}/deep/workspace/path/for/header/verification`;
+      const now = Date.now();
+      const verifierTerminal = (
+        paneId: string,
+        cwd: string,
+        task: string,
+        activity: string,
+        status: "working" | "idle" = "working",
+      ): TerminalState => ({
+        id: paneId,
+        paneId,
+        cols: 93,
+        rows: 26,
+        status: status === "idle" ? "reconnected" : "running",
+        currentActivity: activity,
+        activityUpdatedAt: now,
+        activeRunId: `${paneId}-run`,
+        mainUserAsk: {
+          text: task,
+          source: "manual",
+          updatedAt: now,
+          runId: `${paneId}-run`,
+        },
+        taskLineup: [{
+          id: `${paneId}-task`,
+          runId: `${paneId}-run`,
+          content: task,
+          status: status === "idle" ? "completed" : "in_progress",
+          priority: "high",
+          source: "operator",
+          updatedAt: now,
+        }],
+        statusSummary: {
+          task,
+          path: cwd,
+          now: activity,
+          status,
+          provider: "shell",
+          confidence: "high",
+          tasksFromTodoWrite: true,
+        },
+        statusSummaryUpdatedAt: now,
+        statusSummarySource: "process",
+        lastStatusAt: now,
+      });
+      const tab: Tab = {
+        id: "terminal-header-verifier-tab",
+        title: "Header verifier",
+        emoji: "\u{1F4CB}",
+        color: "#e0af68",
+        groupId: "terminal-header-verifier-group",
+        initialCwd: root,
+        terminals: [
+          verifierTerminal(
+            "terminal-header-verifier-prompt",
+            root,
+            "Choosing the next GI-lightmap step",
+            "Waiting for the operator decision",
+          ),
+          verifierTerminal(
+            "terminal-header-verifier-stale",
+            root,
+            "Checking stale transcript protection",
+            "Ignoring completed test output",
+          ),
+          verifierTerminal(
+            "terminal-header-verifier-idle",
+            root,
+            "Keeping the idle verifier pane stable",
+            "Idle",
+            "idle",
+          ),
+          verifierTerminal(
+            "terminal-header-verifier-long-path",
+            longPath,
+            "Verifying long path rendering",
+            "Showing the full structured path",
+          ),
+        ],
+        splitLayout: {
+          id: "terminal-header-verifier-root",
+          type: "split",
+          direction: "vertical",
+          sizes: [50, 50],
+          children: [
+            {
+              id: "terminal-header-verifier-top",
+              type: "split",
+              direction: "horizontal",
+              sizes: [50, 50],
+              children: [
+                { id: "terminal-header-verifier-prompt", type: "terminal", cwd: root },
+                { id: "terminal-header-verifier-stale", type: "terminal", cwd: root },
+              ],
+            },
+            {
+              id: "terminal-header-verifier-bottom",
+              type: "split",
+              direction: "horizontal",
+              sizes: [50, 50],
+              children: [
+                { id: "terminal-header-verifier-idle", type: "terminal", cwd: root },
+                { id: "terminal-header-verifier-long-path", type: "terminal", cwd: longPath },
+              ],
+            },
+          ],
+        },
+        activePaneId: "terminal-header-verifier-prompt",
+      };
+      return {
+        tabs: [tab],
+        groups: [{
+          id: "terminal-header-verifier-group",
+          name: "header-verifier",
+          color: "#e0af68",
+          emoji: "\u{1F4CB}",
+          emojiSource: "generated",
+          projectRoot: root,
+          lastActiveTabId: tab.id,
+        }],
+        activeTabId: tab.id,
+        activeGroupId: "terminal-header-verifier-group",
+        activeGroupFilter: "terminal-header-verifier-group",
+        projectRoot: root,
+        workspaceUiState: {
+          workspaceMode: "split",
+          terminalRendererMode: "canvas2d",
+          primarySidebarCollapsed: true,
+          terminalSidebarCollapsed: true,
+          canvasSidebarCollapsed: true,
+        },
+      };
+    }
     return {};
   }
 
@@ -1364,6 +1517,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     (path): path is string => typeof path === "string" && path.trim().length > 0
   ),
   liveCwds: {},
+  liveGitRoots: {},
   workspaceUiState: normalizeWorkspaceUiState(persisted.workspaceUiState),
   canvasState: restoredCanvasState,
   recentlyClosed: [],
@@ -2299,12 +2453,32 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     });
   },
 
+  setLiveGitRoot: (id: string, gitRoot: string) => {
+    set((state) => {
+      if (!id || state.liveGitRoots[id] === gitRoot) return {};
+      return { liveGitRoots: { ...state.liveGitRoots, [id]: gitRoot } };
+    });
+  },
+
   refreshLiveCwd: async (id: string) => {
     if (!id) return;
     try {
       const { invoke } = await import("@tauri-apps/api/core");
       const cwd = await getPtyCwd(id, invoke);
-      if (cwd) useWorkspaceStore.getState().setLiveCwd(id, cwd);
+      if (!cwd) return;
+      const previousCwd = useWorkspaceStore.getState().liveCwds[id];
+      useWorkspaceStore.getState().setLiveCwd(id, cwd);
+      // Resolve the git toplevel only when the cwd actually changed — it's the
+      // authoritative project boundary the header pill names. Failures (not a
+      // repo / no git) clear to "" so the label falls back to the project name.
+      if (cwd !== previousCwd) {
+        try {
+          const ctx = await invoke<{ gitRoot?: string | null }>("workstream_git_context", { cwd });
+          useWorkspaceStore.getState().setLiveGitRoot(id, ctx?.gitRoot?.trim() || "");
+        } catch {
+          // git unavailable; keep the last known git root.
+        }
+      }
     } catch {
       // PTY may be gone or pre-attach; keep the last known cwd.
     }
@@ -2537,6 +2711,113 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         ),
       },
     }));
+  },
+
+  alignCanvasNodes: (ids: string[], mode: CanvasAlignMode) => {
+    if (ids.length < 2) return;
+    const idSet = new Set(ids);
+    set((state) => {
+      const targets = state.canvasState.nodes.filter((node) => idSet.has(node.id));
+      if (targets.length < 2) return {};
+      const minX = Math.min(...targets.map((node) => node.x));
+      const maxX = Math.max(...targets.map((node) => node.x + node.width));
+      const minY = Math.min(...targets.map((node) => node.y));
+      const maxY = Math.max(...targets.map((node) => node.y + node.height));
+      const centerX = minX + (maxX - minX) / 2;
+      const centerY = minY + (maxY - minY) / 2;
+      return {
+        canvasState: {
+          ...state.canvasState,
+          nodes: state.canvasState.nodes.map((node) => {
+            if (!idSet.has(node.id)) return node;
+            if (mode === "left") return { ...node, x: snapCanvasCoordinate(minX) };
+            if (mode === "center-x") return { ...node, x: snapCanvasCoordinate(centerX - node.width / 2) };
+            if (mode === "right") return { ...node, x: snapCanvasCoordinate(maxX - node.width) };
+            if (mode === "top") return { ...node, y: snapCanvasCoordinate(minY) };
+            if (mode === "center-y") return { ...node, y: snapCanvasCoordinate(centerY - node.height / 2) };
+            return { ...node, y: snapCanvasCoordinate(maxY - node.height) };
+          }),
+        },
+      };
+    });
+  },
+
+  distributeCanvasNodes: (ids: string[], mode: CanvasDistributeMode) => {
+    if (ids.length < 3) return;
+    const idSet = new Set(ids);
+    set((state) => {
+      const targets = state.canvasState.nodes.filter((node) => idSet.has(node.id));
+      if (targets.length < 3) return {};
+      const sorted = [...targets].sort((left, right) =>
+        mode === "horizontal" ? left.x - right.x : left.y - right.y
+      );
+      const first = sorted[0];
+      const last = sorted[sorted.length - 1];
+      const start = mode === "horizontal" ? first.x : first.y;
+      const end = mode === "horizontal" ? last.x + last.width : last.y + last.height;
+      const occupied = sorted.reduce(
+        (sum, node) => sum + (mode === "horizontal" ? node.width : node.height),
+        0
+      );
+      const gap = (end - start - occupied) / (sorted.length - 1);
+      let cursor = start;
+      const nextPositions = new Map<string, number>();
+      for (const node of sorted) {
+        nextPositions.set(node.id, cursor);
+        cursor += (mode === "horizontal" ? node.width : node.height) + gap;
+      }
+      return {
+        canvasState: {
+          ...state.canvasState,
+          nodes: state.canvasState.nodes.map((node) => {
+            const next = nextPositions.get(node.id);
+            if (next === undefined) return node;
+            return mode === "horizontal"
+              ? { ...node, x: snapCanvasCoordinate(next) }
+              : { ...node, y: snapCanvasCoordinate(next) };
+          }),
+        },
+      };
+    });
+  },
+
+  arrangeProjectTerminalRow: (groupId: string) => {
+    set((state) => {
+      const tabIds = new Set(
+        state.tabs
+          .filter((tab) => tab.groupId === groupId)
+          .map((tab) => tab.id)
+      );
+      if (tabIds.size === 0) return {};
+      const targets = state.canvasState.nodes.filter((node) =>
+        node.type === "terminal" &&
+        node.terminalTabId &&
+        tabIds.has(node.terminalTabId)
+      );
+      if (targets.length < 2) return {};
+      const rowY = Math.min(...targets.map((node) => node.y));
+      let cursorX = Math.min(...targets.map((node) => node.x));
+      const nextPositions = new Map<string, { x: number; y: number }>();
+      for (const node of targets) {
+        nextPositions.set(node.id, { x: cursorX, y: rowY });
+        cursorX += node.width + 32;
+      }
+      return {
+        canvasState: {
+          ...state.canvasState,
+          nodes: state.canvasState.nodes.map((node) => {
+            const next = nextPositions.get(node.id);
+            return next
+              ? {
+                  ...node,
+                  x: snapCanvasCoordinate(next.x),
+                  y: snapCanvasCoordinate(next.y),
+                }
+              : node;
+          }),
+        },
+      };
+    });
   },
 
   reorderCanvasNodes: (draggedId: string, targetId: string, place: "before" | "after") => {

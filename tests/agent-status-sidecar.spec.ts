@@ -1001,6 +1001,62 @@ test("worker falls back to the heuristic when no sidecar exists for the cwd", as
   expect(summary.tasksFromTodoWrite).toBeFalsy();
 });
 
+test("UserPromptSubmit writes the main user task and later tool activity preserves it", async () => {
+  const dataHome = mkdtempSync(path.join(os.tmpdir(), "tf-status-"));
+  const cwd = "/tmp/tf-codex-user-task";
+  const env = { XDG_DATA_HOME: dataHome, TERMFLEET_PANE_ID: "pane-user-task" };
+
+  const promptResult = runNode(
+    HOOK,
+    {
+      hook_event_name: "UserPromptSubmit",
+      cwd,
+      session_id: "s",
+      prompt: "Fix terminal headers so Task shows the user ask and activity shows current work",
+    },
+    env,
+  );
+  expect(promptResult.status).toBe(0);
+
+  const toolResult = runNode(
+    HOOK,
+    {
+      tool_name: "Read",
+      cwd,
+      session_id: "s",
+      tool_input: { file_path: "/repo/termfleet/src/lib/terminalHeaderViewModel.ts" },
+    },
+    env,
+  );
+  expect(toolResult.status).toBe(0);
+
+  const workerResult = runNode(
+    WORKER,
+    {
+      paneId: "pane-user-task",
+      projectId: cwd,
+      workstream: { path: cwd, provider: "codex" },
+      heuristicCandidate: {
+        task: "Tracing header data flow",
+        path: "termfleet",
+        now: "Reading terminalHeaderViewModel.ts",
+        status: "working",
+        provider: "codex",
+        confidence: "low",
+      },
+    },
+    { XDG_DATA_HOME: dataHome },
+  );
+  expect(workerResult.status).toBe(0);
+  const summary = JSON.parse(workerResult.stdout.trim());
+  expect(summary.userTask).toBe(
+    "Fix terminal headers so Task shows the user ask and activity shows current work",
+  );
+  expect(summary.task).toBe("Reading terminalHeaderViewModel.ts");
+  expect(summary.now).toBe("Reading terminalHeaderViewModel.ts");
+  expect(summary.tasksFromTodoWrite).toBe(false);
+});
+
 test("live-now: a tool call updates the activity and preserves the todo list", async () => {
   const dataHome = mkdtempSync(path.join(os.tmpdir(), "tf-status-"));
   const cwd = "/tmp/tf-demo-live";

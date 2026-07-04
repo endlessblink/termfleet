@@ -19,6 +19,7 @@ export interface AgentStatusSummaryInput {
   paneId?: string;
   mission?: string;
   prompt?: string;
+  userTask?: string;
   provider?: AgentProvider;
   status?: WorkstreamStatus;
   phase?: WorkstreamMetadata["phase"];
@@ -136,6 +137,19 @@ function approvalPromptSummary(lines: string[]) {
   if (!hasChoices && !hasSelectionHint) return null;
   return {
     task: "Reviewing approval request",
+    now: "Waiting for operator selection",
+  };
+}
+
+function nextStepPromptSummary(lines: string[]) {
+  const hasSelectionHint = lines.some((line) => /\bEnter to select\b|\bEsc to cancel\b/i.test(line));
+  const hasNumberedChoices = lines.some((line) => /^\s*\d+[.)]\s+\S+/.test(line));
+  const hasNextStepQuestion = lines.some((line) =>
+    /\bWhere to go:\b|\bNext step\b|\bHow do you want to proceed\?/i.test(line)
+  );
+  if (!hasSelectionHint || !hasNumberedChoices || !hasNextStepQuestion) return null;
+  return {
+    task: "Reviewing next step",
     now: "Waiting for operator selection",
   };
 }
@@ -333,28 +347,35 @@ function fallbackNow(input: AgentStatusSummaryInput, task: string, status: Agent
 export function fallbackAgentStatusSummary(input: AgentStatusSummaryInput): AgentStatusSummary {
   const lines = transcriptLines(input);
   const commandSummary = shellCommandSummary(input);
-  const approvalSummary = input.provider === "shell" ? approvalPromptSummary(rawTranscriptLines(input)) : null;
+  const promptSummary = input.provider === "shell"
+    ? approvalPromptSummary(rawTranscriptLines(input)) ?? nextStepPromptSummary(rawTranscriptLines(input))
+    : null;
   const transcriptTask = cleanText(inferTranscriptTask(lines));
   const promptVisible = hasVisibleShellPrompt(input);
+  const mission = cleanText(input.mission);
+  const explicitUserTask =
+    cleanText(input.userTask) ??
+    (mission && mission !== "Terminal" ? mission : undefined) ??
+    cleanText(input.prompt);
   const readyTask = promptVisible && !transcriptTask ? "Ready" : undefined;
   const task =
-    approvalSummary?.task ??
+    promptSummary?.task ??
     readyTask ??
-    (cleanText(input.mission) && cleanText(input.mission) !== "Terminal" ? cleanText(input.mission) : undefined) ??
-    cleanText(input.prompt) ??
+    explicitUserTask ??
     commandSummary?.task ??
     transcriptTask ??
     "Supervised agent run";
-  const status = approvalSummary ? "waiting" : promptVisible && task === "Ready" ? "idle" : normalizeLifecycle(input);
+  const status = promptSummary ? "waiting" : promptVisible && task === "Ready" ? "idle" : normalizeLifecycle(input);
   const excerpt = (input.terminalOutput ?? input.currentActivity ?? input.lastSummary ?? task).slice(-240);
   const extracted = extractionCandidates(input, task, status);
   return {
     task,
+    userTask: explicitUserTask,
     path: pathFromInput(input),
-    now: approvalSummary?.now ?? (promptVisible && task === "Ready" ? "Awaiting command" : fallbackNow(input, task, status, commandSummary)),
+    now: promptSummary?.now ?? (promptVisible && task === "Ready" ? "Awaiting command" : fallbackNow(input, task, status, commandSummary)),
     status,
     provider: input.provider ?? "codex",
-    confidence: approvalSummary || commandSummary ? "high" : cleanText(input.currentActivity) && !isNoisyActivity(input.currentActivity) ? "medium" : "low",
+    confidence: promptSummary || commandSummary ? "high" : cleanText(input.currentActivity) && !isNoisyActivity(input.currentActivity) ? "medium" : "low",
     proof: cleanText(input.evidence),
     blocker: status === "blocked" ? cleanText(input.risk) ?? cleanText(input.lastSummary) : undefined,
     tasks: normalizeExtractedItems(extracted.tasks, "summary", excerpt),
@@ -368,6 +389,7 @@ export function agentStatusSummaryInputFromWorkstream(workstream: WorkstreamMeta
   return {
     mission: workstream.mission,
     prompt: workstream.prompt,
+    userTask: workstream.mission ?? workstream.prompt,
     provider: workstream.provider,
     status: workstream.status,
     phase: workstream.phase,
@@ -397,6 +419,7 @@ export function parseAgentStatusSummaryResponse(raw: string, fallback: AgentStat
   try {
     const parsed = JSON.parse(raw) as Partial<AgentStatusSummary>;
     const task = cleanText(parsed.task);
+    const userTask = cleanText(parsed.userTask);
     const path = cleanText(parsed.path);
     const now = cleanText(parsed.now);
     if (!task || !path || !now) return fallback;
@@ -404,6 +427,7 @@ export function parseAgentStatusSummaryResponse(raw: string, fallback: AgentStat
       ...fallback,
       ...parsed,
       task,
+      userTask,
       path,
       now: isNoisyActivity(now) ? fallback.now : now,
       status: parsed.status ?? fallback.status,
@@ -474,7 +498,7 @@ export function getDisplaySummary(
     return {
       ...summary,
       task: "Ready",
-      now: summary.status === "idle" ? "Awaiting command" : "Awaiting terminal output",
+      now: summary.status === "idle" ? "Awaiting command" : "Awaiting next action",
       confidence: "low",
     };
   }
@@ -507,9 +531,17 @@ export function agentStatusSummaryFromWorkstream(workstream?: WorkstreamMetadata
 }
 
 export function agentStatusChipText(workstream: WorkstreamMetadata, summary: AgentStatusSummary) {
+  const restoreStatus = workstream.restoreStatus
+    ? `restore · ${workstream.restoreStatus.replace("-", " ")}`
+    : null;
   return [
     summary.provider,
     summary.status,
-    summary.proof ? "has proof" : summary.blocker ? "blocked" : formatWorkstreamIsolation(workstream.isolationMode, workstream.isolationStatus),
+    restoreStatus ??
+      (summary.proof
+        ? "has proof"
+        : summary.blocker
+          ? "blocked"
+          : formatWorkstreamIsolation(workstream.isolationMode, workstream.isolationStatus)),
   ].join(" · ");
 }

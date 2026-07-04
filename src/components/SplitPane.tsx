@@ -6,11 +6,12 @@ import { useWorkspaceStore } from "../stores/workspace";
 import { splitActivePane, closeActivePane } from "../stores/workspace";
 import type { Tab, TaskLineupItem, TerminalRuntimeStatus, WorkstreamMetadata, WorkstreamStatusSummary } from "../lib/types";
 import { pathTail, projectForTab } from "../lib/projectDisplay";
-import { agentStatusSummaryFromWorkstream, getDisplaySummary } from "../lib/agentStatusSummary";
+import { agentStatusChipText, agentStatusSummaryFromWorkstream, getDisplaySummary } from "../lib/agentStatusSummary";
 import { CockpitSnapshotProbe } from "./CockpitSnapshotProbe";
 import { workstreamActivityText } from "../lib/workstreamActivity";
-import { taskLineupNextLabel, taskLineupStats, visibleTaskLineup as pickVisibleTaskLineup } from "../lib/taskLineup";
-import { neutralHeaderTitle, normalizePersistedShellSummary, preferRealTaskSummary, summaryFromDurableActivity, terminalPurposeFromContext } from "../lib/terminalHeaderDisplay";
+import { taskLineupNextLabel, taskLineupStats, terminalOutputClosesTaskLineup, visibleTaskLineup as pickVisibleTaskLineup } from "../lib/taskLineup";
+import { neutralHeaderTitle, normalizePersistedShellSummary, summaryFromDurableActivity, terminalPurposeFromContext, terminalTextLooksReadyPrompt } from "../lib/terminalHeaderDisplay";
+import { buildTerminalHeaderState } from "../lib/terminalHeaderState";
 import { stableHeader } from "../lib/stableHeader";
 import {
   calculatePaneBounds,
@@ -658,6 +659,7 @@ function MeasuringFallback() {
 
 export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
   const groups = useWorkspaceStore((state) => state.groups);
+  const liveGitRoots = useWorkspaceStore((state) => state.liveGitRoots);
   const immersiveTerminal = useWorkspaceStore((state) => state.workspaceUiState.immersiveTerminal);
   const exitImmersiveTerminal = useWorkspaceStore((state) => state.exitImmersiveTerminal);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -761,6 +763,9 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
         const agentStatusSummary = tab.workstream?.kind === "agent"
           ? agentStatusSummaryFromWorkstream(tab.workstream)
           : null;
+        const agentStatusChip = tab.workstream?.kind === "agent" && agentStatusSummary
+          ? agentStatusChipText(tab.workstream, agentStatusSummary)
+          : null;
         const shellExtractedSummary = !agentStatusSummary && !isPreviewPane && paneTerminal
           ? getDisplaySummary({
               mission: "Terminal",
@@ -785,37 +790,114 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
           stored: paneTerminal?.purpose,
           workstreamTitle: tab.workstream?.mission ?? tab.workstream?.prompt,
           activeTaskTitle: visibleTaskLineup.find((item) => item.status === "in_progress")?.content ?? visibleTaskLineup[0]?.content,
-          terminalOutput: !paneTerminal?.durableActivity || /\b(?:Working\s+\(|Worked for\b)/i.test(paneTerminal.terminalOutput ?? "")
+          terminalOutput: !paneTerminal?.durableActivity || /\bWorking\s+\(/i.test(paneTerminal.terminalOutput ?? "")
             ? paneTerminal?.terminalOutput
             : undefined,
         });
-        const shellStatusSummaryBase = !agentStatusSummary && !isPreviewPane && paneTerminal
-          ? paneTerminal.durableActivity
+        const shellOutputClosedRaw = terminalOutputClosesTaskLineup(paneTerminal?.terminalOutput);
+        const shellWaitingForOperator =
+          shellExtractedSummary?.status === "waiting" &&
+          shellExtractedSummary.now === "Waiting for operator selection";
+        const shellAtReadyPrompt =
+          terminalTextLooksReadyPrompt(paneTerminal?.terminalVisibleText);
+        const shellActivityLive =
+          paneTerminal?.durableActivity?.status === "running";
+        const shellDurableActivityUsable = Boolean(
+          paneTerminal?.durableActivity &&
+          paneTerminal.durableActivity.status === "running" &&
+          shellActivityLive
+        );
+        const shellOutputClosed =
+          shellOutputClosedRaw &&
+          !shellDurableActivityUsable &&
+          !visibleTaskLineup.some((item) => item.source === "todo-write");
+        const shellReadyPromptCloses =
+          shellAtReadyPrompt &&
+          !shellActivityLive &&
+          !visibleTaskLineup.some((item) => item.source === "todo-write");
+        const shellClosedSummary: WorkstreamStatusSummary | null = shellOutputClosed || shellReadyPromptCloses
+          ? {
+              ...(shellExtractedSummary ?? {}),
+              task: "Idle",
+              path: paneCwd ?? pathTail(paneCwd) ?? "workspace path unknown",
+              now: "Idle",
+              status: "idle",
+              provider: "shell",
+              confidence: "high",
+              tasksFromTodoWrite: false,
+            }
+          : null;
+        const shellStatusSummaryBaseRaw = !agentStatusSummary && !isPreviewPane && paneTerminal
+          ? shellClosedSummary
+            ? shellClosedSummary
+            : shellDurableActivityUsable && paneTerminal.durableActivity
             ? summaryFromDurableActivity(
                 paneTerminal.durableActivity,
-                pathTail(paneCwd) ?? paneCwd ?? "workspace path unknown",
+                paneCwd ?? pathTail(paneCwd) ?? "workspace path unknown",
                 shellExtractedSummary ?? undefined,
-                terminalPurpose,
+                undefined,
               )
             : shellExtractedSummary
-              ? normalizePersistedShellSummary(shellExtractedSummary, pathTail(paneCwd) ?? paneCwd ?? "workspace path unknown", terminalPurpose)
+              ? normalizePersistedShellSummary(shellExtractedSummary, paneCwd ?? pathTail(paneCwd) ?? "workspace path unknown", terminalPurpose)
               : null
           : null;
+        const shellStatusSummaryBase = shellStatusSummaryBaseRaw;
         // The agent's real task list (sidecar) wins the title/now over heuristic
         // inference — see preferRealTaskSummary. (TC-033)
         // No real task → show the activity description ONLY while a command is actually
         // running; a finished/stale command must not linger as the title (fall to a clean
         // status word instead).
-        const shellStatusSummary = shellStatusSummaryBase
-          ? preferRealTaskSummary(
-              shellStatusSummaryBase,
-              paneTerminal?.statusSummary,
-              paneTerminal?.durableActivity?.status === "running" &&
-              Date.now() - (paneTerminal.durableActivity.updatedAt ?? 0) < 60_000
-                ? undefined
-                : neutralHeaderTitle(terminalStatus),
-            )
-          : shellStatusSummaryBase;
+        const shellNeutralTitle = shellActivityLive
+          ? undefined
+          : shellStatusSummaryBase?.status === "working"
+            ? neutralHeaderTitle(terminalStatus)
+            : shellStatusSummaryBase?.status === "blocked"
+              ? "Needs attention"
+              : shellStatusSummaryBase?.status === "done" || shellStatusSummaryBase?.status === "idle"
+                ? "Idle"
+                : neutralHeaderTitle(terminalStatus);
+        const storedMainUserAskApplies = Boolean(
+          paneTerminal?.mainUserAsk &&
+            (!paneTerminal.mainUserAsk.runId ||
+              !paneTerminal.activeRunId ||
+              paneTerminal.mainUserAsk.runId === paneTerminal.activeRunId),
+        );
+        const shellHeader = shellStatusSummaryBase
+          ? buildTerminalHeaderState({
+              paneId,
+              terminalId: paneTerminal?.id ?? paneId,
+              runId: paneTerminal?.activeRunId,
+              project: projectForTab(tab, useWorkspaceStore.getState().groups),
+              liveCwd: paneCwd,
+              liveGitRoot:
+                (paneTerminal ? liveGitRoots[paneTerminal.id] : undefined) || tab.workstream?.gitRoot || undefined,
+              terminalStatus,
+              taskLineup: tab.workstream?.taskLineup ?? paneTerminal?.taskLineup,
+              activeRunId: paneTerminal?.activeRunId,
+              mainUserAsk: storedMainUserAskApplies ? paneTerminal?.mainUserAsk : undefined,
+              statusSummary: paneTerminal?.statusSummary,
+              summary: shellStatusSummaryBase,
+              neutralTitle: shellNeutralTitle ?? null,
+              trustedActivitySummary:
+                shellDurableActivityUsable ||
+                shellStatusSummaryBase.task === "Reviewing approval request" ||
+                shellStatusSummaryBase.now === "Waiting for operator selection",
+            })
+          : null;
+        const shellStatusSummary = shellHeader && shellStatusSummaryBase
+          ? {
+              ...shellStatusSummaryBase,
+              task: shellHeader.currentActivity,
+              path: shellDurableActivityUsable ? shellStatusSummaryBase.path : shellHeader.fullPath,
+              now:
+                shellDurableActivityUsable
+                  ? shellStatusSummaryBase.now
+                  : shellHeader.sources.goal === "task-tool" &&
+                      shellHeader.currentActivity === shellHeader.goalLabel
+                    ? shellNeutralTitle ?? shellStatusSummaryBase.now
+                    : shellHeader.currentActivity,
+            }
+          : null;
         const isAgentPane = Boolean(agentStatusSummary);
         const isShellSummaryPane = Boolean(shellStatusSummary);
         const taskSidebarCollapsed = paneTerminal?.taskSidebarCollapsed ?? false;
@@ -831,16 +913,22 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
         const stabilizedHeader = stableHeader(
           `split:${tab.id}:${paneId}`,
           {
-            title: ((isAgentPane ? agentStatusSummary?.task : shellStatusSummary?.task) ?? "").toString(),
-            now: ((isAgentPane ? agentStatusSummary?.now : shellStatusSummary?.now ?? paneActivity) ?? "").toString(),
+            title: ((isAgentPane ? agentStatusSummary?.task : shellHeader?.currentActivity) ?? "").toString(),
+            now: ((isAgentPane ? agentStatusSummary?.now : shellStatusSummary?.now ?? shellHeader?.currentActivity ?? paneActivity) ?? "").toString(),
           },
           {
             nowMs: Date.now(),
-            bypass: terminalStatus === "failed" || terminalStatus === "exited",
+            bypass:
+              terminalStatus === "failed" ||
+              terminalStatus === "exited" ||
+              shellHeader?.sources.goal === "task-tool" ||
+              !paneTerminal?.statusSummary?.tasksFromTodoWrite ||
+              Boolean(shellHeader?.debug.titleUsesDistinctActivity),
           },
         );
         const headerTitle = stabilizedHeader.title;
         const headerNow = stabilizedHeader.now;
+        const shellHeaderPath = shellDurableActivityUsable ? shellStatusSummaryBase?.path : shellHeader?.fullPath;
         const paneOutput = !isPreviewPane
           ? tab.workstream?.kind === "agent"
             ? tab.workstream.terminalOutput?.trim()
@@ -857,6 +945,13 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
             className="terminal-pane-frame"
             data-active={isActive ? "true" : "false"}
             data-status={terminalStatus}
+            data-pane-id={shellHeader?.paneId ?? paneId}
+            data-run-id={shellHeader?.runId ?? ""}
+            data-full-path={shellHeader?.fullPath ?? ""}
+            data-goal-source={shellHeader?.sources.goal ?? ""}
+            data-activity-source={shellHeader?.sources.activity ?? ""}
+            data-path-source={shellHeader?.sources.path ?? ""}
+            data-header-version={shellHeader?.version ?? ""}
             style={{
               position: "absolute",
               left: bounds.left,
@@ -892,16 +987,38 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
               <CockpitSnapshotProbe
                 entry={{
                   paneId,
+                  terminalId: paneTerminal?.id,
                   tabId: tab.id,
                   cwd: paneCwd ?? undefined,
+                  path: isAgentPane ? agentStatusSummary?.path : shellHeader?.fullPath,
+                  workspace: isAgentPane
+                    ? projectForTab(tab, useWorkspaceStore.getState().groups)?.name
+                    : shellHeader?.workspace,
                   kind: isAgentPane ? "agent" : "shell",
+                  task: isAgentPane ? agentStatusSummary?.task : shellHeader?.goalLabel,
+                  taskSource: isAgentPane ? "agent-status" : shellHeader?.sources.goal,
                   title: headerTitle,
+                  titleSource: isAgentPane ? "agent-status" : shellHeader?.sources.activity,
                   now: headerNow,
+                  nowSource: isAgentPane ? "agent-status" : shellHeader?.sources.activity,
                   status: terminalStatus,
                   tasksFromTodoWrite: (isAgentPane ? tab.workstream?.statusSummary : paneTerminal?.statusSummary)?.tasksFromTodoWrite,
                   narration: (isAgentPane ? tab.workstream?.statusSummary : paneTerminal?.statusSummary)?.narration,
                   durableActivityTitle: paneTerminal?.durableActivity?.title,
+                  currentActivity: paneTerminal?.currentActivity,
+                  terminalOutput: paneTerminal?.terminalOutput?.slice(-1800),
+                  terminalVisibleText: paneTerminal?.terminalVisibleText?.slice(-1800),
+                  terminalVisibleTextUpdatedAt: paneTerminal?.terminalVisibleTextUpdatedAt,
+                  statusSummaryTask: (isAgentPane ? tab.workstream?.statusSummary : paneTerminal?.statusSummary)?.task,
+                  statusSummaryNow: (isAgentPane ? tab.workstream?.statusSummary : paneTerminal?.statusSummary)?.now,
+                  statusSummaryPath: (isAgentPane ? tab.workstream?.statusSummary : paneTerminal?.statusSummary)?.path,
                   taskLineup: visibleTaskLineup.map((item) => ({ content: item.content, status: item.status })),
+                  debug: isAgentPane
+                    ? undefined
+                    : {
+                        ...shellHeader?.debug,
+                        waitingForOperator: shellWaitingForOperator,
+                      },
                 }}
               />
             )}
@@ -1055,9 +1172,9 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                       fontSize: 10,
                       textTransform: "uppercase",
                     }}
-                    title={`${agentStatusSummary.provider} · ${agentStatusSummary.status}`}
+                    title={agentStatusChip ?? `${agentStatusSummary.provider} · ${agentStatusSummary.status}`}
                   >
-                    {agentStatusSummary.provider} · {agentStatusSummary.status}
+                    {agentStatusChip ?? `${agentStatusSummary.provider} · ${agentStatusSummary.status}`}
                   </span>
                   <PaneToolbar
                     paneId={paneId}
@@ -1070,8 +1187,8 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                   style={{
                     minWidth: 0,
                     display: "grid",
-                    gridTemplateColumns: "minmax(120px, 0.8fr) minmax(180px, 1.2fr)",
-                    gap: 8,
+                    gridTemplateColumns: "minmax(0, 1fr)",
+                    gap: 0,
                     alignItems: "center",
                   }}
                 >
@@ -1198,8 +1315,8 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                   style={{
                     minWidth: 0,
                     display: "grid",
-                    gridTemplateColumns: "minmax(120px, 0.8fr) minmax(180px, 1.2fr)",
-                    gap: 8,
+                    gridTemplateColumns: "minmax(0, 1fr)",
+                    gap: 0,
                     alignItems: "center",
                   }}
                 >
@@ -1210,26 +1327,19 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                       display: "flex",
                       alignItems: "baseline",
                       gap: 5,
-                      overflow: "hidden",
+                      overflow: "visible",
                       color: "var(--text-secondary)",
                       fontSize: 11,
                     }}
-                    title={shellStatusSummary.path}
+                    title={shellHeaderPath}
                   >
                     <span style={{ flexShrink: 0, color: "var(--text-tertiary)", fontSize: 10, textTransform: "uppercase" }}>Path</span>
-                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{shellStatusSummary.path}</span>
+                    <span style={{ minWidth: 0, overflow: "visible", overflowWrap: "anywhere", whiteSpace: "normal" }}>{shellHeaderPath}</span>
                   </div>
                   <div
                     data-testid="split-terminal-summary-now"
                     style={{
-                      minWidth: 0,
-                      display: "flex",
-                      alignItems: "baseline",
-                      gap: 5,
-                      overflow: "hidden",
-                      color: isActive ? "var(--text-secondary)" : "var(--text-secondary)",
-                      fontSize: 11,
-                      fontWeight: 500,
+                      display: "none",
                     }}
                     title={headerNow}
                   >

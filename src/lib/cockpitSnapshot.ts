@@ -8,18 +8,34 @@
 
 export interface CockpitSnapshotEntry {
   paneId: string;
+  terminalId?: string;
   tabId?: string;
   cwd?: string;
+  path?: string;
+  workspace?: string;
+  previewTitle?: string;
   kind: "agent" | "shell";
   // The exact title/now strings the header is displaying right now.
+  task?: string;
+  taskSource?: string;
   title: string;
+  titleSource?: string;
   now: string;
+  nowSource?: string;
   status?: string;
   // Raw source inputs. The reader classifies titleSource from these.
   tasksFromTodoWrite?: boolean;
   narration?: string;
   durableActivityTitle?: string;
+  currentActivity?: string;
+  terminalOutput?: string;
+  terminalVisibleText?: string;
+  terminalVisibleTextUpdatedAt?: number;
+  statusSummaryTask?: string;
+  statusSummaryNow?: string;
+  statusSummaryPath?: string;
   taskLineup: Array<{ content: string; status: string }>;
+  debug?: Record<string, string | number | boolean | undefined>;
   updatedAt: number;
 }
 

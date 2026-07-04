@@ -5,6 +5,19 @@ keyboard-first developer operations center. Terminals are the tactical work
 surface; files, sessions, the canvas/operations map, and (planned) agents are
 supporting instruments. Linux is the first release gate.
 
+## Talking to the user — ALWAYS
+
+- **Before any command, say plainly whether it KILLS THE TERMINALS or not.** State
+  it in one line, up front, every time. e.g. "This kills the running processes in
+  your terminals (a running command/agent stops), but the terminals and their text
+  come back after relaunch" — vs — "This does NOT touch your terminals." Reference:
+  `pkill -f terminal-workspace` / killing the daemon = live processes die but
+  content restores from disk on relaunch; relaunching the app WITHOUT killing the
+  daemon = terminals keep running with processes intact.
+- **Be concise and clear for a non-technical reader.** Short sentences, plain
+  words, no jargon/paths/flags unless asked. Lead with the answer and the
+  terminal-safety note; keep the rest tight.
+
 ## Task names are cockpit-visible — write them for non-developers
 
 TermFleet's TASKS panel + header title show your `TaskCreate`/`TaskUpdate` `subject`
@@ -67,6 +80,18 @@ cd src-tauri && CARGO_BUILD_JOBS=1 cargo check
 `run-dev.sh` / `terminal-workspace-dev` clear stale Vite + Tauri/daemon processes
 before launching, so latency and behavior are measured against a clean runtime.
 Reset persisted layout/theme from the command bar with `Reset layout`.
+
+## Diagnose before debugging — ALWAYS
+
+**If cockpit titles, the TASKS panel, or agent status look wrong/stale/empty, run
+`npm run doctor` FIRST** — before reading code, before proposing fixes. It live-checks
+the whole status pipeline (hook → status files → pane-id injection → built frontend →
+binary age → running-app age → log sizes) and names the broken layer in one second.
+The recurring "broken again" reports were runtime wiring (dead helper process, stale
+binary), not code — a class no unit test catches. Never ask the operator to run
+diagnostics; run them yourself and report the result in plain words. The only actions
+to hand the operator are ones only they can do (e.g. relaunching the app).
+Failure-mode catalog: `docs/regression-matrix.md`.
 
 ## Verification scripts
 

@@ -27,8 +27,10 @@ test("selected map agent panes suppress synchronized-output control residue", ()
 
   const projectionGuard = terminalCanvas.match(/const preservesProjectionSize = \(\) =>[\s\S]*?;\n\n    channel\.onmessage/);
   const projectionClip = terminalCanvas.match(/const applyProjectionClip = \(\) => \{[\s\S]*?\n    \};/);
-  expect(projectionGuard?.[0]).toContain("modesRef.current.mouseReport");
   expect(projectionGuard?.[0]).toContain("modesRef.current.altScreen");
+  expect(projectionGuard?.[0]).not.toContain("modesRef.current.mouseReport");
+  expect(projectionGuard?.[0]).not.toContain("modesRef.current.alternateScroll");
+  expect(projectionGuard?.[0]).not.toContain("modesRef.current.sgrMouse");
   expect(projectionGuard?.[0]).not.toContain("modesRef.current.bracketedPaste");
   expect(projectionGuard?.[0]).not.toContain("modesRef.current.appCursor");
   // Viewport CLIP, not down-scale: render at 1:1 (no Math.min scale-to-fit that
@@ -37,7 +39,7 @@ test("selected map agent panes suppress synchronized-output control residue", ()
   expect(projectionClip?.[0]).toContain("translateY");
   expect(projectionClip?.[0]).not.toContain("scale(");
   expect(terminalCanvas).toContain("syncOverlaySize();\n        if (mapProjection && modesRef.current.altScreen)");
-  expect(terminalCanvas).toContain("interactive TUI mode");
+  expect(terminalCanvas).toContain("true alt-screen TUI mode");
   expect(vtGrid).toContain("strip_unsupported_control_sequences");
   expect(vtGrid).toContain('SYNC_OUTPUT_ON: &[u8] = b"\\x1b[?2026h"');
   expect(vtGrid).toContain('SYNC_OUTPUT_OFF: &[u8] = b"\\x1b[?2026l"');
@@ -54,6 +56,17 @@ test("map terminal activation owns tab, pane, and focused terminal before paste"
   expect(activationBlock).toContain("setActiveTab(terminalTabId)");
   expect(activationBlock).toContain("setActivePane(terminalTabId, terminalPaneId)");
   expect(activationBlock).toContain("setActiveTerminal(linkedTerminalId ?? `terminal-${terminalTabId}-${terminalPaneId}`)");
+});
+
+test("AskUserQuestion mouse-report prompts do not trigger map layout reconciliation", () => {
+  const terminalCanvas = readFileSync("src/components/TerminalCanvas.tsx", "utf8");
+  const projectionGuard = terminalCanvas.match(/const preservesProjectionSize = \(\) =>[\s\S]*?;\n\n    channel\.onmessage/);
+
+  expect(projectionGuard?.[0]).toContain("modesRef.current.altScreen");
+  expect(projectionGuard?.[0]).not.toContain("modesRef.current.mouseReport");
+  expect(projectionGuard?.[0]).not.toContain("modesRef.current.sgrMouse");
+  expect(projectionGuard?.[0]).not.toContain("modesRef.current.alternateScroll");
+  expect(terminalCanvas).toMatch(/AskUserQuestion-style primary-screen\s+\/\/ prompts/);
 });
 
 async function imageRegionStats(
@@ -1137,6 +1150,71 @@ test("manual-sized selected live terminal is not reset to the readable default",
       height: Math.round(node?.getBoundingClientRect().height ?? 0),
     };
   })).toEqual({ width: 820, height: 460 });
+});
+
+test("readable map mounts only the primary live terminal renderer", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.getByRole("button", { name: "Map", exact: true }).click();
+
+  await page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => { workspaceUiState: Record<string, unknown> };
+        setState: (state: Record<string, unknown>) => void;
+      };
+    }).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+
+    const tabs = Array.from({ length: 6 }, (_, index) => ({
+      id: `tab-readable-${index}`,
+      title: `Readable ${index}`,
+      emoji: "[]",
+      color: "#7aa2f7",
+      groupId: null,
+      initialCwd: `/tmp/termfleet-readable-${index}`,
+      terminals: [{
+        id: `pty-readable-${index}`,
+        paneId: `pane-readable-${index}`,
+        cols: 80,
+        rows: 24,
+        status: "running",
+      }],
+      splitLayout: { id: `pane-readable-${index}`, type: "terminal" },
+      activePaneId: `pane-readable-${index}`,
+    }));
+
+    store.setState({
+      workspaceUiState: {
+        ...store.getState().workspaceUiState,
+        workspaceMode: "canvas",
+        primarySidebarPanel: "map",
+      },
+      tabs,
+      activeTabId: "tab-readable-0",
+      canvasState: {
+        nodes: tabs.map((tab, index) => ({
+          id: `node-readable-${index}`,
+          type: "terminal",
+          title: `Readable ${index}`,
+          terminalTabId: tab.id,
+          x: 80 + index * 140,
+          y: 80,
+          width: 820,
+          height: 460,
+        })),
+        selectedNodeId: "node-readable-0",
+        selectedNodeIds: ["node-readable-0"],
+        viewport: { x: 0, y: 0, zoom: 1 },
+      },
+    });
+  });
+
+  await expect(page.locator("[data-testid='canvas-terminal-node']")).toHaveCount(6);
+  await expect(page.locator("[data-testid='canvas-terminal-node'] .terminal-container")).toHaveCount(1);
 });
 
 test("task sidebar docks as an inner column flush inside the card", async ({ page }) => {
@@ -2763,6 +2841,141 @@ test("map shell header uses durable activity instead of stale transcript summary
   await expect(page.getByTestId("canvas-terminal-task-rail")).toContainText("No list");
   await expect(page.getByTestId("canvas-terminal-task-row")).toHaveCount(0);
   await expect(page.getByTestId("canvas-terminal-task-rail")).not.toContainText("Testing checkout flow");
+});
+
+test("map shell header replaces source-file activity with readable task activity", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.getByRole("button", { name: "Map", exact: true }).click();
+
+  await page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => {
+          workspaceUiState: Record<string, unknown>;
+          tabs: Array<{ id: string; title: string; activePaneId?: string; terminals: unknown[] }>;
+          canvasState: { nodes: Array<{ id: string; type: string; terminalTabId?: string }> };
+          updateTab: (id: string, updates: Record<string, unknown>) => void;
+        };
+        setState: (state: Record<string, unknown>) => void;
+      };
+    }).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+    const state = store.getState();
+    store.setState({
+      workspaceUiState: {
+        ...state.workspaceUiState,
+        workspaceMode: "canvas",
+        primarySidebarPanel: "map",
+      },
+    });
+    const node = state.canvasState.nodes.find((candidate) => candidate.type === "terminal");
+    if (!node?.terminalTabId) throw new Error("Terminal map node is unavailable");
+    const tab = state.tabs.find((candidate) => candidate.id === node.terminalTabId);
+    if (!tab) throw new Error("Terminal tab is unavailable");
+    const paneId = tab.activePaneId ?? node.id;
+    store.getState().updateTab(tab.id, {
+      title: "bina-ve-ze",
+      initialCwd: "/media/endlessblink/data/my-projects/ai-development/web-dev/bina-ve-ze",
+      terminals: [{
+        id: "pty-map-source-file-activity",
+        paneId,
+        cols: 100,
+        rows: 30,
+        status: "running",
+        currentActivity: "Editing ModelScene.tsx",
+        statusSummary: {
+          task: "#36 Bottom-sheet pull-up + clearer launcher button",
+          path: "web-dev/bina-ve-ze",
+          now: "Editing ModelScene.tsx",
+          status: "working",
+          provider: "codex",
+          confidence: "high",
+          tasksFromTodoWrite: true,
+        },
+        taskLineup: [{
+          id: "task-36",
+          content: "#36 Bottom-sheet pull-up + clearer launcher button",
+          status: "in_progress",
+          source: "todo-write",
+          updatedAt: Date.now(),
+        }],
+        terminalOutput: "Editing ModelScene.tsx\n[OMC] thinking",
+      }],
+    });
+  });
+
+  await expect(page.getByTestId("canvas-terminal-node-description")).toHaveText("#36 Bottom-sheet pull-up + clearer launcher button");
+  await expect(page.getByTestId("canvas-terminal-node-header-title")).toHaveText("Improving Bottom-sheet pull-up and clearer launcher button");
+  await expect(page.getByTestId("canvas-terminal-node-now")).toHaveText("Improving Bottom-sheet pull-up and clearer launcher button");
+  await expect(page.getByTestId("canvas-terminal-node-header-title")).not.toContainText("ModelScene.tsx");
+});
+
+test("map shell header treats ready prompt as idle instead of capture failure", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.getByRole("button", { name: "Map", exact: true }).click();
+
+  await page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => {
+          workspaceUiState: Record<string, unknown>;
+          tabs: Array<{ id: string; title: string; activePaneId?: string; terminals: unknown[] }>;
+          canvasState: { nodes: Array<{ id: string; type: string; terminalTabId?: string }> };
+          updateTab: (id: string, updates: Record<string, unknown>) => void;
+        };
+        setState: (state: Record<string, unknown>) => void;
+      };
+    }).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+    const state = store.getState();
+    store.setState({
+      workspaceUiState: {
+        ...state.workspaceUiState,
+        workspaceMode: "canvas",
+        primarySidebarPanel: "map",
+      },
+    });
+    const node = state.canvasState.nodes.find((candidate) => candidate.type === "terminal");
+    if (!node?.terminalTabId) throw new Error("Terminal map node is unavailable");
+    const tab = state.tabs.find((candidate) => candidate.id === node.terminalTabId);
+    if (!tab) throw new Error("Terminal tab is unavailable");
+    const paneId = tab.activePaneId ?? node.id;
+    store.getState().updateTab(tab.id, {
+      title: "termfleet",
+      initialCwd: "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
+      terminals: [{
+        id: "pty-map-ready-prompt",
+        paneId,
+        cols: 100,
+        rows: 30,
+        status: "running",
+        currentActivity: "TF_HDR_DONE",
+        terminalVisibleText: "endlessblink@endlessblink:/repo/termfleet$",
+        terminalOutput: "done\nendlessblink@endlessblink:/repo/termfleet$",
+        statusSummary: {
+          task: "Ready",
+          path: "devops/termfleet",
+          now: "Awaiting command",
+          status: "working",
+          provider: "shell",
+          confidence: "low",
+          tasksFromTodoWrite: false,
+        },
+      }],
+    });
+  });
+
+  await expect(page.getByTestId("canvas-terminal-node-description")).toHaveText("Task not captured");
+  await expect(page.getByTestId("canvas-terminal-node-header-title")).toHaveText("Idle");
+  await expect(page.getByTestId("canvas-terminal-node-now")).toHaveText("Idle");
 });
 
 test("split shell header uses the same durable summary policy as the map", async ({ page }) => {

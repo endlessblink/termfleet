@@ -1,6 +1,10 @@
 import { CSSProperties, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
+  AlignHorizontalJustifyCenter,
+  AlignHorizontalJustifyStart,
+  AlignVerticalJustifyCenter,
+  AlignVerticalJustifyStart,
   ArrowUpRight,
   Ban,
   Bot,
@@ -18,8 +22,11 @@ import {
   Plus,
   RefreshCw,
   RotateCcw,
+  Rows3,
   Search,
   Square,
+  StretchHorizontal,
+  StretchVertical,
   TerminalSquare,
   Trash2,
   X,
@@ -32,16 +39,19 @@ import { createNewTab, useWorkspaceStore } from "../stores/workspace";
 import { TerminalComponent } from "./Terminal";
 import { LocalhostPreview } from "./LocalhostPreview";
 import type { GridSnapshot } from "../lib/gridSnapshot";
-import type { Tab, TaskLineupItem, TerminalRuntimeStatus, WorkstreamStatusSummary } from "../lib/types";
+import type { Tab, TaskLineupItem, TerminalRuntimeStatus, WorkstreamStatus, WorkstreamStatusSummary } from "../lib/types";
 import { agentLaneAuthRetryText, agentLaneAuthRetryTitle, agentLaneCleanupRequestText, agentLaneCleanupRequestTitle, agentLaneCloseoutText, agentLaneCloseoutTitle, agentLaneHealthText, agentLaneInterruptText, agentLaneInterruptTitle, agentLaneMemoryRequestText, agentLaneMemoryRequestTitle, agentLaneProofRequestText, agentLaneProofRequestTitle, agentLaneRestartText, agentLaneRestartTitle, agentLaneRiskMitigationText, agentLaneRiskMitigationTitle, agentLaneStatusSweepText, agentLaneStatusSweepTitle, agentLaneStatusText, attentionBreakdownText, cleanupBreakdownText, closeoutBreakdownText, formatAgentLaneBrief, formatAgentMissionControlBrief, formatAgentRunBrief, handoffMemoryPromptForWorkstream, isActiveAgentWorkstream, isAgentReviewCloseoutReady, isAuthRetryableAgentWorkstream, isCleanupRequestableAgentWorkstream, isRestartableAgentWorkstream, isReviewItemCloseoutReady, isStaleAgentWorkstream, isolationBreakdownText, latestMissionControlAskText, missionBreakdownText, missionControlAlternateText, missionControlDispatchBreakdownText, needsAgentProofRequest, proofRequestPromptForWorkstream, providerBreakdownText, readinessBreakdownText, riskBreakdownText, statusCheckPromptForWorkstream, summarizeAgentLane } from "../lib/agentWorkstreamLane";
 import { agentStatusChipText, agentStatusSummaryFromWorkstream, getDisplaySummary } from "../lib/agentStatusSummary";
 import { CockpitSnapshotProbe } from "./CockpitSnapshotProbe";
 import { workstreamActivityMeta, workstreamActivityText } from "../lib/workstreamActivity";
 import { formatWorkstreamBranch, formatWorkstreamIsolation, formatWorkstreamOpsContext } from "../lib/workstreamOpsContext";
 import { snapshotPreviewRows } from "../lib/snapshotPreviewRows";
-import { taskLineupNextLabel, taskLineupStats, visibleTaskLineup } from "../lib/taskLineup";
-import { neutralHeaderTitle, normalizePersistedShellSummary, preferRealTaskSummary, summaryFromDurableActivity } from "../lib/terminalHeaderDisplay";
+import { taskLineupNextLabel, taskLineupStats, terminalOutputClosesTaskLineup, visibleTaskLineup } from "../lib/taskLineup";
+import { neutralHeaderTitle, normalizePersistedShellSummary, summaryFromDurableActivity, terminalPurposeFromContext, terminalTextLooksReadyPrompt } from "../lib/terminalHeaderDisplay";
+import { buildTerminalHeaderState } from "../lib/terminalHeaderState";
+import { mainUserAskFromSummary, recordTerminalHeaderLog } from "../lib/terminalMainUserAsk";
 import { stableHeader } from "../lib/stableHeader";
+import { summarizeAgentStatus } from "../lib/agentStatusSummarizer";
 
 type CanvasRect = {
   minX: number;
@@ -219,6 +229,12 @@ const styles: Record<string, CSSProperties> = {
     textTransform: "uppercase",
     borderRight: "1px solid var(--border-subtle)",
   },
+  toolbarDivider: {
+    width: 1,
+    height: 20,
+    background: "var(--border-subtle)",
+    margin: "0 2px",
+  },
   viewportControls: {
     position: "absolute",
     right: 12,
@@ -254,11 +270,14 @@ const styles: Record<string, CSSProperties> = {
     pointerEvents: "auto",
     transition: "background var(--motion-fast), border-color var(--motion-fast), color var(--motion-fast), transform var(--motion-fast)",
   },
+  buttonDisabled: {
+    opacity: 0.42,
+    cursor: "default",
+  },
   stage: {
     position: "absolute",
     inset: 0,
     transformOrigin: "0 0",
-    willChange: "transform",
     backfaceVisibility: "hidden",
   },
   node: {
@@ -271,7 +290,6 @@ const styles: Record<string, CSSProperties> = {
     boxShadow: "var(--shadow-card)",
     overflow: "visible",
     transition: "border-color var(--motion-med), box-shadow var(--motion-med), transform var(--motion-fast)",
-    animation: "workbench-surface-in var(--motion-med)",
   },
   nodeHeader: {
     minHeight: 42,
@@ -396,9 +414,9 @@ const styles: Record<string, CSSProperties> = {
   },
   terminalTaskValue: {
     minWidth: 0,
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
+    overflow: "visible",
+    overflowWrap: "anywhere",
+    whiteSpace: "normal",
     color: "var(--text-secondary)",
     fontSize: 12,
     fontWeight: 500,
@@ -448,8 +466,8 @@ const styles: Record<string, CSSProperties> = {
   terminalStatusGrid: {
     minWidth: 0,
     display: "grid",
-    gridTemplateColumns: "minmax(90px, 0.56fr) auto minmax(170px, 1.44fr)",
-    gap: 7,
+    gridTemplateColumns: "minmax(0, 1fr)",
+    gap: 0,
     alignItems: "center",
   },
   terminalStatusField: {
@@ -472,9 +490,9 @@ const styles: Record<string, CSSProperties> = {
   },
   terminalStatusFieldValue: {
     minWidth: 0,
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
+    overflow: "visible",
+    overflowWrap: "anywhere",
+    whiteSpace: "normal",
     color: "var(--text-secondary)",
     fontSize: 12,
     lineHeight: 1.25,
@@ -1617,19 +1635,43 @@ const MAP_TERMINAL_RENDER_SCALE = 2;
 // once. Off-screen / over-cap nodes fall back to the cheap DOM snapshot preview
 // (TerminalMapPreview). The selected node and the active tab's node are always
 // live, so the user's work surface always streams.
-const MAX_LIVE_TERMINALS = 24;
+const MAX_LIVE_TERMINALS = 1;
 // Inflate the visible rect (canvas-space px) so nodes warm up just before they
 // scroll into view, avoiding a blank flash on pan.
 const CULL_OVERSCAN_PX = 400;
 // Max preview refresh rate per node (ms between flushes). A busy terminal emits
 // a diff frame far faster than the eye can read a shrunk map preview.
-const PREVIEW_THROTTLE_MS = 100;
+const PREVIEW_THROTTLE_MS = 500;
 
 function workstreamLabel(provider?: string) {
   if (provider === "opencode") return "OpenCode";
   if (provider === "claude") return "Claude";
   if (provider === "shell") return "Shell";
   return "Codex";
+}
+
+function workstreamStatusForTerminal(status?: TerminalRuntimeStatus): WorkstreamStatus {
+  switch (status) {
+    case "running":
+    case "reconnected":
+    case "starting":
+      return "running";
+    case "failed":
+      return "failed";
+    case "exited":
+      return "done";
+    default:
+      return "ready";
+  }
+}
+
+function readableSnapshotText(snapshot?: GridSnapshot) {
+  if (!snapshot?.cells.length) return undefined;
+  const lines = snapshot.cells
+    .map((row) => row.map((cell) => cell.c && cell.c !== "\u0000" ? cell.c : " ").join("").trimEnd())
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter((line) => line.length > 0);
+  return lines.slice(-24).join("\n").slice(-1800) || undefined;
 }
 
 function shortEventTime(at: number) {
@@ -2019,6 +2061,7 @@ function CanvasNodeViewImpl({
   const tabs = useWorkspaceStore((state) => state.tabs);
   const groups = useWorkspaceStore((state) => state.groups);
   const liveCwds = useWorkspaceStore((state) => state.liveCwds);
+  const liveGitRoots = useWorkspaceStore((state) => state.liveGitRoots);
   const selectedNodeId = useWorkspaceStore((state) => state.canvasState.selectedNodeId);
   const storedSelectedNodeIds = useWorkspaceStore((state) => state.canvasState.selectedNodeIds);
   const zoom = useWorkspaceStore((state) => state.canvasState.viewport.zoom);
@@ -2295,19 +2338,18 @@ function CanvasNodeViewImpl({
   // Prefer the live cwd (polled from the PTY) over the initial cwd so the
   // breadcrumb tracks `cd`/`z`; falls back to the spawn cwd before the first poll.
   const liveTerminalRoot = (linkedTerminalId ? liveCwds[linkedTerminalId] : undefined) ?? terminalRoot;
+  // The git toplevel of the live cwd — the authoritative project boundary used to
+  // name the workspace pill when the stored project root is a shallow category
+  // folder. Prefer the per-terminal resolved root, then the agent workstream's.
+  const terminalGitRoot =
+    (linkedTerminalId ? liveGitRoots[linkedTerminalId] : undefined) || workstream?.gitRoot || undefined;
   // Title a terminal node by what it actually points at: a named project wins,
   // otherwise the current directory's name (tracks cd/z via liveTerminalRoot).
   // A manual rename (title differs from the default) is respected.
-  const cwdName = liveTerminalRoot?.split("/").filter(Boolean).pop();
-  const isDefaultName = (value?: string) => !value || value === "Terminal";
-  const terminalTitle =
-    linkedProject?.name ??
-    (isDefaultName(linkedTab?.title) && isDefaultName(node.title)
-      ? cwdName ?? "Terminal"
-      : linkedTab?.title ?? node.title);
-  const workspaceLabel = workspaceLabelFor({
+  const terminalTitle = workspaceLabelFor({
     project: linkedProject,
     cwd: liveTerminalRoot,
+    gitRoot: terminalGitRoot,
     tabTitle: linkedTab?.title,
     nodeTitle: node.title,
   });
@@ -2315,21 +2357,116 @@ function CanvasNodeViewImpl({
   const directlyBoundTask = node.taskBinding
     ? rootTasks.find((task) => task.id.toLowerCase() === node.taskBinding?.taskId.toLowerCase())
     : undefined;
-  const purposeTaskLineup = visibleTaskLineup(
-    workstream?.taskLineup ?? linkedTerminal?.taskLineup,
-    linkedTerminal?.activeRunId
-  );
-  const taskToolLineup = purposeTaskLineup.filter((item) => item.source === "todo-write");
-  const activeTaskToolItem =
-    taskToolLineup.find((item) => item.status === "in_progress") ?? taskToolLineup[0];
-  const hasTerminalTaskDescription = Boolean(
-    activeTaskToolItem?.content ||
-    (terminalStatusSummary?.tasksFromTodoWrite && terminalStatusSummary.task)
-  );
-  const terminalHeaderTaskDescription =
-    activeTaskToolItem?.content ??
-    (terminalStatusSummary?.tasksFromTodoWrite ? terminalStatusSummary.task : undefined) ??
-    "No task list";
+
+  useEffect(() => {
+    if (node.type !== "terminal" || !selected || !linkedTab || !linkedTerminal || !linkedTerminalId) return;
+    const statusEndpointConfigured = Boolean(
+      (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env
+        ?.VITE_AGENT_STATUS_SUMMARY_ENDPOINT,
+    );
+    // The desktop app reads the status sidecar locally (Tauri command), so polling no
+    // longer requires the dev-port HTTP endpoint. Without this, release/desktop
+    // launches never polled at all and the map header stayed on stale scrapes.
+    const tauriSidecarAvailable = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+    if (
+      typeof window === "undefined" ||
+      (window.location.port !== "1420" && !statusEndpointConfigured && !tauriSidecarAvailable)
+    ) {
+      return;
+    }
+    const hasActiveAgentMarker = /\bWorking\s+\(/i.test(linkedTerminal.terminalOutput ?? "");
+    const hasRunningDurableActivity =
+      linkedTerminal.durableActivity?.status === "running" &&
+      Date.now() - (linkedTerminal.durableActivity.updatedAt ?? 0) < 60_000;
+    const hasRealTaskList = Boolean(linkedTerminal.statusSummary?.tasksFromTodoWrite);
+    // Cold-start: gated panes still ask (the local sidecar read is cheap) but only
+    // authoritative sidecar results may be applied — heuristics can't overwrite.
+    // In desktop-only mode (no dev-port endpoint) that applies to EVERY pane: the
+    // endpoint fallback there is just the local heuristic, never better than what
+    // the header already shows.
+    const gatedShellPane = !hasActiveAgentMarker && !hasRunningDurableActivity && !hasRealTaskList;
+    const sidecarOnly =
+      gatedShellPane || (window.location.port !== "1420" && !statusEndpointConfigured);
+    let cancelled = false;
+    const refresh = () => {
+      const statusPaneId = `terminal-${linkedTab.id}-${terminalPaneId}`;
+      void summarizeAgentStatus({
+        paneId: statusPaneId,
+        mission: "Terminal",
+        provider: "shell",
+        status: workstreamStatusForTerminal(linkedTerminal.status),
+        cwd: liveTerminalRoot,
+        currentActivity: linkedTerminal.currentActivity,
+        terminalOutput: linkedTerminal.terminalOutput,
+      }).then((result) => {
+        if (cancelled) return;
+        if (sidecarOnly && result.source !== "sidecar") return;
+        const store = useWorkspaceStore.getState();
+        const latestTab = store.tabs.find((tab) => tab.id === linkedTab.id);
+        if (!latestTab) return;
+        store.updateTab(linkedTab.id, {
+          terminals: latestTab.terminals.map((terminal) =>
+            terminal.id === linkedTerminalId
+              ? (() => {
+                  const updatedAt = Date.now();
+                  const hasStructuredTaskLineup = terminal.taskLineup?.some((item) =>
+                    item.source === "todo-write" &&
+                    (!item.runId || !terminal.activeRunId || item.runId === terminal.activeRunId)
+                  );
+                  const nextStatusSummary =
+                    (terminal.statusSummary?.tasksFromTodoWrite && !result.summary.tasksFromTodoWrite) ||
+                    (hasStructuredTaskLineup && result.source === "fallback" && terminal.statusSummary)
+                      ? terminal.statusSummary
+                      : result.summary;
+                  const mainUserAsk = mainUserAskFromSummary(nextStatusSummary, "status-sidecar", {
+                    previous: terminal.mainUserAsk,
+                    runId: terminal.activeRunId,
+                    now: updatedAt,
+                  });
+                  if (mainUserAsk !== terminal.mainUserAsk) {
+                    recordTerminalHeaderLog({
+                      terminalId: terminal.id,
+                      paneId: terminal.paneId,
+                      field: "mainUserAsk",
+                      source: mainUserAsk?.source,
+                      text: mainUserAsk?.text,
+                      previousText: terminal.mainUserAsk?.text,
+                    });
+                  }
+                  return {
+                    ...terminal,
+                    statusSummary: nextStatusSummary,
+                    statusSummaryUpdatedAt: updatedAt,
+                    statusSummarySource: result.source,
+                    statusSummaryError: result.error,
+                    mainUserAsk,
+                  };
+                })()
+              : terminal,
+          ),
+        });
+      });
+    };
+    refresh();
+    const interval = setInterval(refresh, 10_000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [
+    linkedTab?.id,
+    linkedTerminal?.currentActivity,
+    linkedTerminal?.durableActivity?.status,
+    linkedTerminal?.status,
+    linkedTerminal?.statusSummary?.tasksFromTodoWrite,
+    linkedTerminal?.terminalOutput,
+    linkedTerminalId,
+    liveTerminalRoot,
+    node.type,
+    selected,
+    terminalPaneId,
+  ]);
+
   const terminalExtractedSummary = getDisplaySummary({
     mission: "Terminal",
     provider: "shell",
@@ -2345,16 +2482,78 @@ function CanvasNodeViewImpl({
     currentActivity: terminalActivity,
     terminalOutput: linkedTerminal?.terminalOutput,
   }, terminalStatusSummary);
-  const terminalDisplaySummaryBase = linkedTerminal?.durableActivity
+  const purposeTaskLineup = visibleTaskLineup(
+    workstream?.taskLineup ?? linkedTerminal?.taskLineup,
+    linkedTerminal?.activeRunId
+  );
+  const terminalPurposeOutput = linkedTerminal?.terminalOutput ?? "";
+  const previewVisibleText = readableSnapshotText(terminalPreview?.snapshot);
+  const terminalVisibleText =
+    previewVisibleText && (!linkedTerminal?.terminalVisibleTextUpdatedAt || (terminalPreview?.updatedAt ?? 0) >= linkedTerminal.terminalVisibleTextUpdatedAt)
+      ? previewVisibleText
+      : linkedTerminal?.terminalVisibleText ?? previewVisibleText;
+  const terminalPurpose = terminalPurposeFromContext({
+    stored: linkedTerminal?.purpose,
+    workstreamTitle: workstream?.mission ?? workstream?.prompt,
+    activeTaskTitle:
+      purposeTaskLineup.find((item) => item.status === "in_progress")?.content ??
+      purposeTaskLineup[0]?.content,
+    terminalOutput:
+      !linkedTerminal?.durableActivity ||
+      /\bWorking\s+\(/i.test(terminalPurposeOutput)
+        ? terminalPurposeOutput
+        : undefined,
+  });
+  const terminalOutputClosedRaw = terminalOutputClosesTaskLineup(linkedTerminal?.terminalOutput);
+  const terminalWaitingForOperator =
+    terminalExtractedSummary?.status === "waiting" &&
+    terminalExtractedSummary.now === "Waiting for operator selection";
+  const terminalAtReadyPrompt =
+    terminalTextLooksReadyPrompt(linkedTerminal?.terminalVisibleText);
+  const terminalActivityLive =
+    linkedTerminal?.durableActivity?.status === "running";
+  const terminalDurableActivityUsable = Boolean(
+    linkedTerminal?.durableActivity &&
+    linkedTerminal.durableActivity.status === "running" &&
+    terminalActivityLive
+  );
+  const terminalOutputClosed =
+    terminalOutputClosedRaw &&
+    !terminalDurableActivityUsable &&
+    !purposeTaskLineup.some((item) => item.source === "todo-write") &&
+    !directlyBoundTask &&
+    !node.taskBinding;
+  const terminalReadyPromptCloses =
+    terminalAtReadyPrompt &&
+    !terminalActivityLive &&
+    !purposeTaskLineup.some((item) => item.source === "todo-write");
+  const terminalClosedSummary: WorkstreamStatusSummary | null = terminalOutputClosed || terminalReadyPromptCloses
+    ? {
+        ...(terminalExtractedSummary ?? {}),
+        task: "Idle",
+        path: liveTerminalRoot ?? pathTail(liveTerminalRoot) ?? "workspace path unknown",
+        now: "Idle",
+        status: "idle",
+        provider: "shell",
+        confidence: "high",
+        tasksFromTodoWrite: false,
+      }
+    : null;
+  const terminalDisplaySummaryBaseRaw = terminalClosedSummary
+    ? terminalClosedSummary
+    : terminalDurableActivityUsable && linkedTerminal?.durableActivity
     ? summaryFromDurableActivity(
         linkedTerminal.durableActivity,
-        pathTail(liveTerminalRoot) ?? liveTerminalRoot ?? "workspace path unknown",
+        liveTerminalRoot ?? pathTail(liveTerminalRoot) ?? "workspace path unknown",
         terminalExtractedSummary,
+        undefined,
       )
     : normalizePersistedShellSummary(
         terminalExtractedSummary,
-        pathTail(liveTerminalRoot) ?? liveTerminalRoot ?? "workspace path unknown",
+        liveTerminalRoot ?? pathTail(liveTerminalRoot) ?? "workspace path unknown",
+        terminalPurpose,
       );
+  const terminalDisplaySummaryBase = terminalDisplaySummaryBaseRaw;
   // The agent's real task list (sidecar) wins the title/now over heuristic
   // inference — see preferRealTaskSummary. (TC-033)
   // No real task → show the clean activity description ONLY while a command is actually
@@ -2362,38 +2561,73 @@ function CanvasNodeViewImpl({
   // command (idle/success/error) must NOT linger as the title — fall to a clean status
   // word instead. The reliable "what's it working on" comes from the agent's TaskCreate
   // list; activity inference is a best-effort live indicator only. (TC-033)
-  const terminalActivityLive =
-    linkedTerminal?.durableActivity?.status === "running" &&
-    Date.now() - (linkedTerminal.durableActivity.updatedAt ?? 0) < 60_000;
   const terminalNeutralTitle =
     terminalDisplaySummaryBase.status === "working"
-      ? "Working"
+      ? neutralHeaderTitle(linkedTerminal?.status)
       : terminalDisplaySummaryBase.status === "blocked"
         ? "Needs attention"
         : terminalDisplaySummaryBase.status === "done" || terminalDisplaySummaryBase.status === "idle"
           ? "Idle"
           : neutralHeaderTitle(linkedTerminal?.status);
-  const terminalDisplaySummary = preferRealTaskSummary(
-    terminalDisplaySummaryBase,
-    terminalStatusSummary,
-    terminalActivityLive ? undefined : terminalNeutralTitle,
+  const terminalStoredMainUserAskApplies = Boolean(
+    linkedTerminal?.mainUserAsk &&
+      (!linkedTerminal.mainUserAsk.runId ||
+        !linkedTerminal.activeRunId ||
+        linkedTerminal.mainUserAsk.runId === linkedTerminal.activeRunId),
   );
-  const terminalHeaderTitleRaw = hasTerminalTaskDescription
-    ? terminalHeaderTaskDescription
-    : terminalDisplaySummary.task;
-  const terminalHeaderPath = terminalDisplaySummary.path;
+  const terminalHeaderTaskLineup: TaskLineupItem[] | undefined = directlyBoundTask
+    ? [{
+        id: directlyBoundTask.id,
+        content: directlyBoundTask.title,
+        status: directlyBoundTask.status === "done" ? "completed" : "in_progress",
+        source: "todo-write",
+        updatedAt: 0,
+      }]
+    : workstream?.taskLineup ?? linkedTerminal?.taskLineup;
+  const terminalHeader = buildTerminalHeaderState({
+    paneId: terminalPaneId,
+    terminalId: linkedTerminalId ?? terminalPaneId,
+    runId: linkedTerminal?.activeRunId,
+    project: linkedProject,
+    liveCwd: liveTerminalRoot,
+    liveGitRoot: terminalGitRoot,
+    terminalStatus: linkedTerminal?.status,
+    taskLineup: terminalHeaderTaskLineup,
+    activeRunId: linkedTerminal?.activeRunId,
+    mainUserAsk: terminalStoredMainUserAskApplies ? linkedTerminal?.mainUserAsk : undefined,
+    statusSummary: terminalStatusSummary,
+    summary: terminalDisplaySummaryBase,
+    neutralTitle: terminalActivityLive ? null : terminalNeutralTitle,
+    trustedActivitySummary:
+      terminalDurableActivityUsable ||
+      terminalDisplaySummaryBase.task === "Reviewing approval request" ||
+      terminalDisplaySummaryBase.now === "Waiting for operator selection",
+  });
+  const workspaceLabel = terminalHeader.workspace;
+  const terminalHeaderTaskDescription = terminalHeader.goalLabel;
+  const terminalHeaderTitleRaw = terminalHeader.currentActivity;
+  const terminalHeaderNowRaw =
+    terminalDurableActivityUsable
+      ? terminalDisplaySummaryBase.now
+      : terminalHeader.sources.goal === "task-tool" &&
+          terminalHeader.currentActivity === terminalHeader.goalLabel
+        ? terminalNeutralTitle
+        : terminalHeader.currentActivity;
+  const terminalHeaderPath = terminalDurableActivityUsable ? terminalDisplaySummaryBase.path : terminalHeader.fullPath;
   // Anti-flicker for real sidecar task summaries. Bound MASTER_PLAN tasks and heuristic
   // shell-output fallbacks are authoritative per render, so they bypass the hold. (TC-035)
   const stabilizedNodeHeader = stableHeader(
     `map:${terminalTabId}:${terminalPaneId}:${node.taskBinding?.taskId ?? "unbound"}`,
     {
       title: (terminalHeaderTitleRaw ?? "").toString(),
-      now: (terminalDisplaySummary.now ?? "").toString(),
+      now: terminalHeaderNowRaw,
     },
     {
       nowMs: Date.now(),
       bypass:
+        terminalHeader.sources.goal === "task-tool" ||
         !terminalStatusSummary?.tasksFromTodoWrite ||
+        Boolean(terminalHeader.debug.titleUsesDistinctActivity) ||
         Boolean(directlyBoundTask) ||
         linkedTerminal?.status === "failed" ||
         linkedTerminal?.status === "exited",
@@ -2401,15 +2635,10 @@ function CanvasNodeViewImpl({
   );
   const terminalHeaderTitle = stabilizedNodeHeader.title;
   const terminalHeaderSummarySignal = stabilizedNodeHeader.now;
-  const terminalHeaderHasUsefulNow = terminalHeaderSummarySignal !== "Awaiting terminal output";
-  const terminalHeaderHasUsefulSummary = terminalDisplaySummary.task !== "Ready";
+  const terminalHeaderHasUsefulSummary = terminalHeader.currentActivity !== "Ready";
   const terminalHeaderHasTrustedSummary =
-    terminalHeaderHasUsefulSummary && terminalDisplaySummary.confidence !== "low";
-  const terminalHeaderTaskState = terminalHeaderHasUsefulNow ? "Working" : terminalNeutralTitle;
-  const terminalHeaderNow =
-    terminalHeaderSummarySignal && terminalHeaderSummarySignal !== "Awaiting terminal output"
-      ? terminalHeaderSummarySignal
-      : terminalHeaderTaskState;
+    terminalHeaderHasUsefulSummary && terminalDisplaySummaryBase.confidence !== "low";
+  const terminalHeaderNow = terminalHeaderSummarySignal || terminalHeaderTitle || terminalNeutralTitle;
   const detectedLaneTaskId = node.taskBinding?.taskId ?? firstTaskIdFromText(
     workstream?.mission,
     workstream?.prompt,
@@ -2466,7 +2695,6 @@ function CanvasNodeViewImpl({
     next: item.status === "done" ? "Completed" : taskStatusLabel(item.status),
     meta: `Plan checklist ${index + 1}/${boundTask?.checklist?.length ?? 1}`,
   }));
-  void terminalHeaderTaskState;
   const canonicalTerminalTaskLineup = visibleTaskLineup(
     linkedTerminal?.taskLineup,
     linkedTerminal?.activeRunId
@@ -2949,8 +3177,19 @@ function CanvasNodeViewImpl({
           <div
             style={{ ...styles.terminalStatusBlock, ...labelStatusBlockStyle }}
             data-testid="canvas-terminal-status-block"
+            data-pane-id={terminalHeader.paneId}
+            data-run-id={terminalHeader.runId ?? ""}
+            data-full-path={terminalHeader.fullPath}
+            data-goal-source={terminalHeader.sources.goal}
+            data-activity-source={terminalHeader.sources.activity}
+            data-path-source={terminalHeader.sources.path}
+            data-header-version={terminalHeader.version}
+            data-header-workspace-source={terminalHeader.sources.workspace}
+            data-header-task-source={terminalHeader.sources.goal}
+            data-header-title-source={terminalHeader.sources.activity}
+            data-header-now-source={terminalHeader.sources.activity}
             dir="auto"
-            title={`${workspaceLabel} · ${terminalHeaderTitle} · ${terminalHeaderPath} · ${terminalHeaderSummarySignal}`}
+            title={`${workspaceLabel} · ${terminalHeaderTaskDescription} · ${terminalHeaderTitle} · ${terminalHeaderPath}`}
             onMouseDown={onMouseDown}
             onDoubleClick={onRename}
           >
@@ -2987,16 +3226,36 @@ function CanvasNodeViewImpl({
                 <CockpitSnapshotProbe
                   entry={{
                     paneId: terminalPaneId,
+                    terminalId: linkedTerminalId ?? undefined,
                     tabId: terminalTabId,
                     cwd: liveTerminalRoot ?? undefined,
+                    path: terminalHeaderPath,
+                    workspace: workspaceLabel,
+                    previewTitle: terminalTitle,
                     kind: "shell",
+                    task: terminalHeaderTaskDescription,
+                    taskSource: terminalHeader.sources.goal,
                     title: terminalHeaderTitle,
+                    titleSource: terminalHeader.sources.activity,
                     now: terminalHeaderNow ?? "",
+                    nowSource: terminalHeader.sources.activity,
                     status: linkedTerminal?.status,
                     tasksFromTodoWrite: terminalStatusSummary?.tasksFromTodoWrite,
                     narration: terminalStatusSummary?.narration,
                     durableActivityTitle: linkedTerminal?.durableActivity?.title,
+                    currentActivity: linkedTerminal?.currentActivity,
+                    terminalOutput: linkedTerminal?.terminalOutput?.slice(-1800),
+                    terminalVisibleText: terminalVisibleText?.slice(-1800),
+                    terminalVisibleTextUpdatedAt: terminalPreview?.updatedAt ?? linkedTerminal?.terminalVisibleTextUpdatedAt,
+                    statusSummaryTask: terminalStatusSummary?.task,
+                    statusSummaryNow: terminalStatusSummary?.now,
+                    statusSummaryPath: terminalStatusSummary?.path,
                     taskLineup: canonicalTerminalTaskLineup.map((item) => ({ content: item.content, status: item.status })),
+                    debug: {
+                      ...terminalHeader.debug,
+                      waitingForOperator: terminalWaitingForOperator,
+                      previewVisibleTextUsed: terminalVisibleText === previewVisibleText,
+                    },
                   }}
                 />
               )}
@@ -3011,11 +3270,10 @@ function CanvasNodeViewImpl({
                   >
                     {terminalHeaderPath}
                   </span>
-                  <span style={{ color: "var(--text-tertiary)", fontSize: 11 }}>·</span>
                   <span
-                    style={terminalHeaderHasUsefulNow ? styles.terminalStatusNow : styles.terminalStatusFieldValue}
                     data-testid="canvas-terminal-node-now"
                     title={terminalHeaderNow}
+                    style={{ display: "none" }}
                   >
                     {terminalHeaderNow}
                   </span>
@@ -3758,7 +4016,7 @@ function CanvasNodeViewImpl({
             rows={terminalBodyTasks}
             testIdPrefix={terminalBodyTaskPrefix}
             ariaLabel={workstream?.kind === "agent" ? "Agent terminal tasks" : "Terminal tasks"}
-            recent={terminalDisplaySummary.recent}
+            recent={terminalDisplaySummaryBase.recent}
             collapsed={taskSidebarCollapsed}
             onToggleCollapsed={toggleTaskSidebarCollapsed}
             emptyText={detectedLaneTaskId
@@ -3805,6 +4063,9 @@ export function MagicCanvas() {
   const updateCanvasNode = useWorkspaceStore((state) => state.updateCanvasNode);
   const updateCanvasViewport = useWorkspaceStore((state) => state.updateCanvasViewport);
   const selectCanvasNodes = useWorkspaceStore((state) => state.selectCanvasNodes);
+  const alignCanvasNodes = useWorkspaceStore((state) => state.alignCanvasNodes);
+  const distributeCanvasNodes = useWorkspaceStore((state) => state.distributeCanvasNodes);
+  const arrangeProjectTerminalRow = useWorkspaceStore((state) => state.arrangeProjectTerminalRow);
   const openFiles = useWorkspaceStore((state) => state.openFiles);
   const shellRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
@@ -3878,15 +4139,43 @@ export function MagicCanvas() {
   }, []);
 
   const { viewport, nodes, selectedNodeId, selectedNodeIds } = canvasState;
+  const selectedCanvasNodeIds = selectedNodeIds ?? (selectedNodeId ? [selectedNodeId] : []);
+  const selectedCanvasNodes = useMemo(
+    () => selectedCanvasNodeIds
+      .map((id) => nodes.find((node) => node.id === id))
+      .filter((node): node is CanvasNode => Boolean(node)),
+    [nodes, selectedCanvasNodeIds]
+  );
+  const activeTab = useMemo(
+    () => tabs.find((tab) => tab.id === activeTabId),
+    [activeTabId, tabs]
+  );
+  const projectRowGroupId = useMemo(() => {
+    const selectedTerminalTabId = selectedCanvasNodes.find((node) => node.type === "terminal")?.terminalTabId;
+    const selectedTab = selectedTerminalTabId
+      ? tabs.find((tab) => tab.id === selectedTerminalTabId)
+      : undefined;
+    return selectedTab?.groupId ?? activeTab?.groupId ?? null;
+  }, [activeTab?.groupId, selectedCanvasNodes, tabs]);
+  const projectRowTerminalCount = useMemo(() => {
+    if (!projectRowGroupId) return 0;
+    const tabIds = new Set(tabs.filter((tab) => tab.groupId === projectRowGroupId).map((tab) => tab.id));
+    return nodes.filter((node) =>
+      node.type === "terminal" &&
+      node.terminalTabId &&
+      tabIds.has(node.terminalTabId)
+    ).length;
+  }, [nodes, projectRowGroupId, tabs]);
+  const canAlignCanvasNodes = selectedCanvasNodes.length >= 2;
+  const canDistributeCanvasNodes = selectedCanvasNodes.length >= 3;
+  const canArrangeProjectRow = Boolean(projectRowGroupId) && projectRowTerminalCount >= 2;
   const liveNodeIds = useMemo(() => {
     const live = new Set<string>();
     // Below readable zoom every terminal already renders the cheap DOM preview,
     // so no live renderers are mounted regardless — nothing to cull.
     if (viewport.zoom < READABLE_TERMINAL_ZOOM) return live;
 
-    const selectedSet = new Set(
-      selectedNodeIds ?? (selectedNodeId ? [selectedNodeId] : []),
-    );
+    const primarySelectedNodeId = selectedNodeId ?? selectedNodeIds?.[0] ?? null;
     const { x, y, zoom } = viewport;
     const { width: w, height: h } = containerSize;
     // Invert the stage transform to get the visible rect in canvas space, then
@@ -3904,7 +4193,7 @@ export function MagicCanvas() {
       // The selected node and the active tab's node are the user's work surface
       // — keep them streaming even if off screen.
       const isAlwaysLive =
-        selectedSet.has(node.id) ||
+        node.id === primarySelectedNodeId ||
         (node.terminalTabId != null && node.terminalTabId === activeTabId);
       const intersects =
         w > 0 &&
@@ -4430,6 +4719,79 @@ export function MagicCanvas() {
         </button>
         <button className="magic-canvas-button" style={styles.button} title="Add file" aria-label="Add file" onClick={addFile}>
           <FileText size={14} strokeWidth={1.8} />
+        </button>
+        <span style={styles.toolbarDivider} aria-hidden="true" />
+        <button
+          className="magic-canvas-button"
+          style={{ ...styles.button, ...(!canAlignCanvasNodes ? styles.buttonDisabled : null) }}
+          title="Align selected left"
+          aria-label="Align selected left"
+          disabled={!canAlignCanvasNodes}
+          onClick={() => alignCanvasNodes(selectedCanvasNodeIds, "left")}
+        >
+          <AlignHorizontalJustifyStart size={14} strokeWidth={1.8} />
+        </button>
+        <button
+          className="magic-canvas-button"
+          style={{ ...styles.button, ...(!canAlignCanvasNodes ? styles.buttonDisabled : null) }}
+          title="Align selected top"
+          aria-label="Align selected top"
+          disabled={!canAlignCanvasNodes}
+          onClick={() => alignCanvasNodes(selectedCanvasNodeIds, "top")}
+        >
+          <AlignVerticalJustifyStart size={14} strokeWidth={1.8} />
+        </button>
+        <button
+          className="magic-canvas-button"
+          style={{ ...styles.button, ...(!canAlignCanvasNodes ? styles.buttonDisabled : null) }}
+          title="Center selected horizontally"
+          aria-label="Center selected horizontally"
+          disabled={!canAlignCanvasNodes}
+          onClick={() => alignCanvasNodes(selectedCanvasNodeIds, "center-x")}
+        >
+          <AlignHorizontalJustifyCenter size={14} strokeWidth={1.8} />
+        </button>
+        <button
+          className="magic-canvas-button"
+          style={{ ...styles.button, ...(!canAlignCanvasNodes ? styles.buttonDisabled : null) }}
+          title="Center selected vertically"
+          aria-label="Center selected vertically"
+          disabled={!canAlignCanvasNodes}
+          onClick={() => alignCanvasNodes(selectedCanvasNodeIds, "center-y")}
+        >
+          <AlignVerticalJustifyCenter size={14} strokeWidth={1.8} />
+        </button>
+        <button
+          className="magic-canvas-button"
+          style={{ ...styles.button, ...(!canDistributeCanvasNodes ? styles.buttonDisabled : null) }}
+          title="Distribute selected horizontally"
+          aria-label="Distribute selected horizontally"
+          disabled={!canDistributeCanvasNodes}
+          onClick={() => distributeCanvasNodes(selectedCanvasNodeIds, "horizontal")}
+        >
+          <StretchHorizontal size={14} strokeWidth={1.8} />
+        </button>
+        <button
+          className="magic-canvas-button"
+          style={{ ...styles.button, ...(!canDistributeCanvasNodes ? styles.buttonDisabled : null) }}
+          title="Distribute selected vertically"
+          aria-label="Distribute selected vertically"
+          disabled={!canDistributeCanvasNodes}
+          onClick={() => distributeCanvasNodes(selectedCanvasNodeIds, "vertical")}
+        >
+          <StretchVertical size={14} strokeWidth={1.8} />
+        </button>
+        <button
+          className="magic-canvas-button"
+          style={{ ...styles.button, ...(!canArrangeProjectRow ? styles.buttonDisabled : null) }}
+          title="Arrange current project terminals in one row"
+          aria-label="Arrange current project terminals in one row"
+          disabled={!canArrangeProjectRow}
+          onClick={() => {
+            if (projectRowGroupId) arrangeProjectTerminalRow(projectRowGroupId);
+          }}
+        >
+          <Rows3 size={14} strokeWidth={1.8} />
         </button>
       </div>
 

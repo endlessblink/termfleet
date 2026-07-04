@@ -2,7 +2,7 @@
 import http from "node:http";
 import { spawn } from "node:child_process";
 import { argv } from "node:process";
-import { mkdirSync, renameSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, renameSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { statusDir } from "./lib/agent-status-paths.mjs";
 
@@ -14,9 +14,27 @@ function writeCockpitSnapshot(rawBody) {
   const dir = statusDir();
   mkdirSync(dir, { recursive: true });
   const file = path.join(dir, "cockpit-snapshot.json");
+  const traceFile = path.join(dir, "cockpit-header-trace.jsonl");
   const tmp = `${file}.${process.pid}.tmp`;
-  writeFileSync(tmp, rawBody || "{}");
+  const body = rawBody || "{}";
+  writeFileSync(tmp, body);
   renameSync(tmp, file);
+  let entry;
+  try {
+    entry = JSON.parse(body);
+  } catch {
+    entry = { parseError: true, raw: body.slice(0, 2000) };
+  }
+  // Rotate instead of growing forever: the unbounded append once reached 8 GB on a
+  // long-lived cockpit. Keep one previous generation for debugging.
+  try {
+    if (statSync(traceFile).size > 25 * 1024 * 1024) {
+      renameSync(traceFile, `${traceFile}.1`);
+    }
+  } catch {
+    // Missing trace file → nothing to rotate.
+  }
+  appendFileSync(traceFile, `${JSON.stringify({ receivedAt: Date.now(), ...entry })}\n`);
 }
 
 const host = process.env.TERMFLEET_AGENT_STATUS_HOST || "127.0.0.1";
@@ -160,6 +178,10 @@ function fallbackSummary(payload) {
   const workstream = payload?.workstream ?? {};
   const lines = transcriptLines(payload);
   const mission = cleanText(workstream.mission);
+  const explicitUserTask =
+    cleanText(workstream.userTask) ||
+    (mission && mission !== "Terminal" ? mission : "") ||
+    cleanText(workstream.prompt);
   const transcriptTask = inferTranscriptTask(lines);
   const promptVisible = hasVisibleShellPrompt(payload);
   const task = promptVisible && !transcriptTask
@@ -202,6 +224,7 @@ function fallbackSummary(payload) {
 
   return {
     task,
+    userTask: explicitUserTask || undefined,
     path,
     now,
     status,

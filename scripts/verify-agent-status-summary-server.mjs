@@ -250,8 +250,16 @@ await withServer({ TERMFLEET_AGENT_STATUS_PORT: "37981" }, async (endpoint) => {
     const result = await postCockpitSnapshot(endpoint, body);
     assert.equal(result.ok, true);
     const snapshotFile = join(dataHome, "terminal-workspace", "agent-status", "cockpit-snapshot.json");
+    const traceFile = join(dataHome, "terminal-workspace", "agent-status", "cockpit-header-trace.jsonl");
     await stat(snapshotFile);
     assert.deepEqual(JSON.parse(await readFile(snapshotFile, "utf8")), body);
+    await stat(traceFile);
+    const traceLines = (await readFile(traceFile, "utf8")).trim().split("\n");
+    assert.ok(traceLines.length >= 1);
+    const traceEntry = JSON.parse(traceLines.at(-1));
+    assert.equal(traceEntry.terminals[0].paneId, "terminal-tab-a-pane-b");
+    assert.equal(traceEntry.terminals[0].title, "Running map projection checks");
+    assert.equal(typeof traceEntry.receivedAt, "number");
   });
 }
 

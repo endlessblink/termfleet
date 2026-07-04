@@ -32,6 +32,50 @@ BIN = CARGO_TARGET_DIR / "debug" / "terminal-workspace"
 DAEMON_ARG = "--terminal-workspace-daemon"
 
 
+def encode_id(session_id):
+    return session_id.encode("utf-8").hex()
+
+
+def sessions_dir(env):
+    return os.path.join(env["XDG_DATA_HOME"], "terminal-workspace", "sessions")
+
+
+def scrollback_path(env, session_id):
+    return os.path.join(sessions_dir(env), f"{encode_id(session_id)}.scrollback")
+
+
+def meta_path(env, session_id):
+    return os.path.join(sessions_dir(env), f"{encode_id(session_id)}.meta.json")
+
+
+def seed_checkpoint(env, session_id, scrollback, meta):
+    os.makedirs(sessions_dir(env), exist_ok=True)
+    with open(scrollback_path(env, session_id), "wb") as f:
+        f.write((0).to_bytes(8, "little"))
+        f.write(scrollback.encode("utf-8"))
+    with open(meta_path(env, session_id), "w", encoding="utf-8") as f:
+        json.dump(meta, f)
+
+
+def read_meta(env, session_id):
+    with open(meta_path(env, session_id), "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def write_fake_codex(bin_dir):
+    os.makedirs(bin_dir, exist_ok=True)
+    path = os.path.join(bin_dir, "codex")
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("""#!/bin/sh
+printf 'FAKE_CODEX_PWD=%s\\n' "$PWD"
+printf 'FAKE_CODEX_PANE=%s\\n' "$TERMFLEET_PANE_ID"
+printf 'FAKE_CODEX_ARGS=%s\\n' "$*"
+sleep 30
+""")
+    os.chmod(path, 0o755)
+    return path
+
+
 def send(sock_path, request, *, stream=False, timeout=2.0):
     """Send one JSON request; return a list of decoded response lines."""
     s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -242,23 +286,153 @@ def verify_cold_restore():
         subprocess.run(["rm", "-rf", tmp], check=False)
 
 
-def main():
-    if not BIN.is_file():
-        print(f"building private debug binary at {BIN}")
-        CARGO_TARGET_DIR.mkdir(parents=True, exist_ok=True)
-        result = subprocess.run(
-            ["cargo", "build", "--bin", "terminal-workspace"],
-            cwd=TAURI_ROOT,
-            env=dict(os.environ, CARGO_BUILD_JOBS="1", CARGO_PROFILE_DEV_DEBUG="0",
-                     CARGO_TARGET_DIR=str(CARGO_TARGET_DIR)),
+def verify_agent_restart_restore():
+    """LAYER 3: agent checkpoint -> provider resume or reconstructed fallback."""
+    print("--- LAYER 3: agent restart restore (resume/reconstruct) ---")
+    tmp, env, sock, log_dir = setup_env()
+    fake_bin = os.path.join(tmp, "bin")
+    fake_codex = write_fake_codex(fake_bin)
+    env = dict(env, PATH=f"{fake_bin}:{env.get('PATH', '')}", SHELL="/bin/sh")
+    workspace = os.path.join(tmp, "agent-workspace")
+    os.makedirs(workspace, exist_ok=True)
+    log_path = os.path.join(log_dir, "daemon-agent-restore.log")
+    d = None
+    resume_sid = "agent-resume-e2e"
+    resume_provider_sid = "019f-agent-session"
+    reconstruct_sid = "agent-reconstruct-e2e"
+    try:
+        seed_checkpoint(env, resume_sid, "previous codex transcript\n", {
+            "cwd": workspace,
+            "command": "codex",
+            "cols": 118,
+            "rows": 33,
+            "recoveryKind": "agent-terminal",
+            "provider": "codex",
+            "launchProfile": "terminal",
+            "providerSessionId": resume_provider_sid,
+            "originalCommand": "codex",
+            "sanitizedResumeCommand": f"{fake_codex} resume {resume_provider_sid}",
+            "mission": "Resume durable Codex lane",
+        })
+        seed_checkpoint(env, reconstruct_sid, "previous reconstructed transcript\n", {
+            "cwd": workspace,
+            "command": fake_codex,
+            "cols": 104,
+            "rows": 29,
+            "recoveryKind": "agent-terminal",
+            "provider": "codex",
+            "launchProfile": "terminal",
+            "originalCommand": "codex",
+            "mission": "Reconstruct Codex lane",
+            "dropoffPath": "HANDOFF.md",
+        })
+
+        d = start_daemon(env, log_path)
+        if not wait_up(sock):
+            print("FAIL: daemon never came up for agent restore", file=sys.stderr)
+            print_log_tail(log_path)
+            return False
+
+        resume_ensure = send(sock, {"type": "ensureSession", "id": resume_sid})
+        resume_cols = resume_ensure[0].get("cols") if resume_ensure else None
+        resume_rows = resume_ensure[0].get("rows") if resume_ensure else None
+        resume_snapshot = snapshot_until(sock, resume_sid, "FAKE_CODEX_ARGS=resume 019f-agent-session")
+        resume_meta = read_meta(env, resume_sid)
+        print(f"codex resume restored size={resume_cols}x{resume_rows} status={resume_meta.get('restoreStatus')!r}")
+        if "previous codex transcript" not in resume_snapshot:
+            print("FAIL: resume restore did not replay prior transcript", file=sys.stderr)
+            return False
+        if f"FAKE_CODEX_PWD={workspace}" not in resume_snapshot:
+            print(f"FAIL: resume restore ran in wrong cwd: {resume_snapshot!r}", file=sys.stderr)
+            return False
+        if f"FAKE_CODEX_PANE={resume_sid}" not in resume_snapshot:
+            print(f"FAIL: resume restore missed TERMFLEET_PANE_ID: {resume_snapshot!r}", file=sys.stderr)
+            return False
+        if "FAKE_CODEX_ARGS=resume 019f-agent-session" not in resume_snapshot:
+            print(f"FAIL: restore did not invoke codex resume: {resume_snapshot!r}", file=sys.stderr)
+            return False
+        if (resume_cols, resume_rows) != (118, 33):
+            print(f"FAIL: resume restore wrong winsize {resume_cols}x{resume_rows}", file=sys.stderr)
+            return False
+        if resume_meta.get("restoreStatus") != "resuming":
+            print(f"FAIL: resume restore status not resuming: {resume_meta!r}", file=sys.stderr)
+            return False
+
+        # A second ensure after restore must reuse the live replacement PTY instead
+        # of spawning another provider process or minting another recovery lane.
+        resume_again = send(sock, {"type": "ensureSession", "id": resume_sid})
+        if not resume_again or resume_again[0].get("reused") is not True:
+            print(f"FAIL: second resume ensure was not idempotent: {resume_again!r}", file=sys.stderr)
+            return False
+
+        reconstruct_ensure = send(sock, {"type": "ensureSession", "id": reconstruct_sid})
+        reconstruct_cols = reconstruct_ensure[0].get("cols") if reconstruct_ensure else None
+        reconstruct_rows = reconstruct_ensure[0].get("rows") if reconstruct_ensure else None
+        reconstruct_snapshot = snapshot_until(sock, reconstruct_sid, "FAKE_CODEX_ARGS=")
+        reconstruct_meta = read_meta(env, reconstruct_sid)
+        print(
+            "codex reconstructed restored "
+            f"size={reconstruct_cols}x{reconstruct_rows} "
+            f"status={reconstruct_meta.get('restoreStatus')!r}"
         )
-        if result.returncode != 0:
-            print("FAIL: private debug binary build failed", file=sys.stderr)
-            return result.returncode
+        if "previous reconstructed transcript" not in reconstruct_snapshot:
+            print("FAIL: reconstructed restore did not replay prior transcript", file=sys.stderr)
+            return False
+        if f"FAKE_CODEX_PWD={workspace}" not in reconstruct_snapshot:
+            print(f"FAIL: reconstructed restore ran in wrong cwd: {reconstruct_snapshot!r}", file=sys.stderr)
+            return False
+        if "FAKE_CODEX_ARGS=resume" in reconstruct_snapshot:
+            print(f"FAIL: reconstructed restore falsely resumed provider: {reconstruct_snapshot!r}", file=sys.stderr)
+            return False
+        if (reconstruct_cols, reconstruct_rows) != (104, 29):
+            print(
+                f"FAIL: reconstructed restore wrong winsize {reconstruct_cols}x{reconstruct_rows}",
+                file=sys.stderr,
+            )
+            return False
+        if reconstruct_meta.get("restoreStatus") != "reconstructed":
+            print(f"FAIL: reconstructed restore status wrong: {reconstruct_meta!r}", file=sys.stderr)
+            return False
+        if "mission/dropoff" not in reconstruct_meta.get("restoreFailureReason", ""):
+            print(f"FAIL: reconstructed restore missing reason: {reconstruct_meta!r}", file=sys.stderr)
+            return False
+
+        reconstruct_again = send(sock, {"type": "ensureSession", "id": reconstruct_sid})
+        if not reconstruct_again or reconstruct_again[0].get("reused") is not True:
+            print(f"FAIL: second reconstruct ensure was not idempotent: {reconstruct_again!r}", file=sys.stderr)
+            return False
+
+        sessions = send(sock, {"type": "listSessions"})
+        session_ids = [s.get("id") for s in sessions[0].get("sessions", [])] if sessions else []
+        if session_ids.count(resume_sid) != 1 or session_ids.count(reconstruct_sid) != 1:
+            print(f"FAIL: restored agent sessions duplicated or missing: {session_ids!r}", file=sys.stderr)
+            return False
+
+        print("agent resume + reconstructed fallback restored from checkpoint  ✓\n")
+        return True
+    finally:
+        if d and d.poll() is None:
+            d.kill()
+        subprocess.run(["rm", "-rf", tmp], check=False)
+
+
+def main():
+    print(f"building private debug binary at {BIN}")
+    CARGO_TARGET_DIR.mkdir(parents=True, exist_ok=True)
+    result = subprocess.run(
+        ["cargo", "build", "--bin", "terminal-workspace"],
+        cwd=TAURI_ROOT,
+        env=dict(os.environ, CARGO_BUILD_JOBS="1", CARGO_PROFILE_DEV_DEBUG="0",
+                 CARGO_TARGET_DIR=str(CARGO_TARGET_DIR)),
+    )
+    if result.returncode != 0:
+        print("FAIL: private debug binary build failed", file=sys.stderr)
+        return result.returncode
     layer1 = verify_live_reattach()
     layer2 = verify_cold_restore()
-    if layer1 and layer2:
-        print("PASS: terminals fully restorable across app restart AND PC reboot")
+    layer3 = verify_agent_restart_restore()
+    if layer1 and layer2 and layer3:
+        print("PASS: terminals and agent lanes restore across app restart AND PC reboot")
         return 0
     print("FAIL: see above", file=sys.stderr)
     return 1
