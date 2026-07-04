@@ -2625,7 +2625,11 @@ function CanvasNodeViewImpl({
           terminalHeader.currentActivity === terminalHeader.goalLabel
         ? terminalNeutralTitle
         : terminalHeader.currentActivity;
-  const terminalHeaderPath = terminalDurableActivityUsable ? terminalDisplaySummaryBase.path : terminalHeader.fullPath;
+  const terminalHeaderPath =
+    terminalDurableActivityUsable &&
+    !/\.(?:tsx?|jsx?|mjs|cjs|rs|md|json|sh|py)$/i.test(terminalDisplaySummaryBase.path ?? "")
+      ? terminalDisplaySummaryBase.path
+      : terminalHeader.fullPath;
   // Anti-flicker for real sidecar task summaries. Bound MASTER_PLAN tasks and heuristic
   // shell-output fallbacks are authoritative per render, so they bypass the hold. (TC-035)
   const stabilizedNodeHeader = stableHeader(

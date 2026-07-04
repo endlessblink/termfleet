@@ -255,30 +255,22 @@ function contextCacheKey(payload) {
   return cleanText(payload?.paneId) || cleanText(payload?.projectId) || "unknown";
 }
 
-function buildContextPrompt(payload, heuristic) {
+function contextSources(payload, heuristic) {
   const workstream = payload?.workstream ?? {};
-  const ask = cleanText(workstream.userTask || workstream.prompt || heuristic?.userTask).slice(0, 220);
-  const narration = cleanText(heuristic?.narration).slice(0, 300);
-  const activity = cleanText(workstream.currentActivity || heuristic?.now).slice(0, 160);
-  const tail = cleanText(payload?.transcript).slice(-700);
-  const finished = looksFinished(heuristic, tail);
-  return [
-    "Output EXACTLY two lines for a terminal status header, for a non-technical observer.",
-    "GOAL: <max 12 words - what the operator ultimately wants in this terminal, specific>",
-    finished
-      ? "NOW: <max 12 words - what the agent JUST FINISHED, PAST tense, concrete outcome. It already finished - do NOT use -ing verbs.>"
-      : "NOW: <max 12 words - what the agent is doing right now AND WHY>",
-    "Use ONLY facts visible in the context below — never invent names, numbers, or ticket ids. If the specific object is unclear, describe what IS known. Plain words, no file paths, no quotes, no preamble, no 'The agent'.",
-    ask ? `Operator asked: ${ask}` : "",
-    narration ? `Agent just said: ${narration}` : "",
-    activity ? `Latest activity: ${activity}` : "",
-    tail ? `Terminal tail: ${tail}` : "",
-    "Two lines:",
-  ].filter(Boolean).join("\n");
+  return {
+    ask: cleanText(workstream.userTask || workstream.prompt || heuristic?.userTask).slice(0, 220),
+    narration: cleanText(heuristic?.narration).slice(0, 300),
+    activity: cleanText(workstream.currentActivity || heuristic?.now).slice(0, 160),
+    tail: cleanText(payload?.transcript).slice(-700),
+  };
 }
 
-// Finished-ness must come from the CONTENT, not only a stale lifecycle flag: a tail
-// that reads as a wrap-up report means the work is done even if status says working.
+// Never let the model INVENT: with almost no real content it produces generic
+// filler ("System Booted Successfully"). Below this floor, say nothing.
+function hasEnoughContext(src) {
+  return (src.ask + " " + src.narration + " " + src.activity + " " + src.tail).trim().length >= 80;
+}
+
 function looksFinished(heuristic, tail) {
   if (["done", "idle", "stopped"].includes(String(heuristic?.status ?? ""))) return true;
   const text = String(tail ?? "");
@@ -286,14 +278,39 @@ function looksFinished(heuristic, tail) {
     !/\besc to interrupt\b|\bWorking\s*\(/i.test(text.slice(-200));
 }
 
-function ollamaContextLine(payload, heuristic) {
+function buildNowPrompt(src, finished) {
+  return [
+    finished
+      ? "In ONE line (max 12 words), state what this terminal's AI agent JUST FINISHED — past tense, concrete outcome."
+      : "In ONE line (max 12 words), state what this terminal's AI agent is doing right now AND why.",
+    "Use ONLY facts from the context below. Never invent names, numbers, or events. Plain words, no preamble, no quotes, no labels.",
+    src.ask ? `Operator asked: ${src.ask}` : "",
+    src.narration ? `Agent just said: ${src.narration}` : "",
+    src.activity ? `Latest activity: ${src.activity}` : "",
+    src.tail ? `Terminal tail: ${src.tail}` : "",
+    "Line:",
+  ].filter(Boolean).join("\n");
+}
+
+function buildGoalPrompt(src) {
+  return [
+    "In ONE line (max 10 words), state what the operator ultimately wants in this terminal — the goal, concrete and specific.",
+    "Use ONLY facts from the context below. Never invent. Plain words, no preamble, no quotes, no labels.",
+    src.ask ? `Operator asked: ${src.ask}` : "",
+    src.narration ? `Agent said: ${src.narration}` : "",
+    src.tail ? `Terminal tail: ${src.tail}` : "",
+    "Line:",
+  ].filter(Boolean).join("\n");
+}
+
+function ollamaLine(prompt) {
   return new Promise((resolve, reject) => {
     const body = JSON.stringify({
       model: CONTEXT_MODEL,
       stream: false,
       keep_alive: "30m",
-      options: { num_predict: 36, temperature: 0.2 },
-      prompt: buildContextPrompt(payload, heuristic),
+      options: { num_predict: 30, temperature: 0.2 },
+      prompt,
     });
     const url = new URL(OLLAMA_URL);
     const request = http.request(
@@ -302,15 +319,8 @@ function ollamaContextLine(payload, heuristic) {
         let text = "";
         response.on("data", (chunk) => (text += chunk));
         response.on("end", () => {
-          if (response.statusCode !== 200) {
-            reject(new Error(`ollama ${response.statusCode}`));
-            return;
-          }
-          try {
-            resolve(String(JSON.parse(text)?.response ?? ""));
-          } catch (error) {
-            reject(error);
-          }
+          if (response.statusCode !== 200) { reject(new Error(`ollama ${response.statusCode}`)); return; }
+          try { resolve(String(JSON.parse(text)?.response ?? "")); } catch (error) { reject(error); }
         });
       },
     );
@@ -384,30 +394,50 @@ function groundedIn(line, contextText) {
     if (!context.includes(number)) return false;
   }
   for (const quoted of String(line).match(/["'“”]([^"'“”]{2,40})["'“”]/g) ?? []) {
-    const inner = quoted.slice(1, -1).toLowerCase();
-    if (!context.includes(inner)) return false;
+    if (!context.includes(quoted.slice(1, -1).toLowerCase())) return false;
   }
+  // Content anchoring: a real line shares vocabulary with the pane. Lines whose
+  // distinctive words appear NOWHERE in the context are invented filler
+  // ("System Booted Successfully") — reject them.
+  const words = String(line).toLowerCase().match(/[a-z]{5,}/g) ?? [];
+  const anchored = words.filter((word) => context.includes(word));
+  if (words.length >= 2 && anchored.length === 0) return false;
   return true;
 }
 
 async function contextTitleFor(payload, heuristic) {
-  // A real declared task list outranks the model — never overwrite it.
   if (Array.isArray(heuristic?.tasks) && heuristic.tasksFromTodoWrite) return null;
   const key = contextCacheKey(payload);
   const cached = contextCache.get(key);
   const now = Date.now();
   if (cached && "line" in cached && now - cached.at < CONTEXT_TTL_MS) return cached.line;
   if (cached?.promise) return cached.promise;
-  const promise = ollamaContextLine(payload, heuristic)
-    .then((raw) => {
-      const line = parseContextLines(raw);
-      contextCache.set(key, { at: Date.now(), line });
-      return line;
-    })
-    .catch(() => {
-      contextCache.set(key, { at: Date.now(), line: null });
-      return null;
-    });
+  const src = contextSources(payload, heuristic);
+  if (!hasEnoughContext(src)) {
+    contextCache.set(key, { at: now, line: null });
+    return null;
+  }
+  const finished = looksFinished(heuristic, src.tail);
+  const wantGoal = askIsVague(src.ask);
+  const promise = (async () => {
+    const [rawNow, rawGoal] = await Promise.all([
+      ollamaLine(buildNowPrompt(src, finished)).catch(() => ""),
+      wantGoal ? ollamaLine(buildGoalPrompt(src)).catch(() => "") : Promise.resolve(""),
+    ]);
+    const context = `${src.ask} ${src.narration} ${src.activity} ${src.tail}`;
+    let nowLine = cleanContextLine(rawNow);
+    if (nowLine && !groundedIn(nowLine, context)) nowLine = "";
+    let goal = cleanContextLine(rawGoal);
+    if (goal && (/^(?:for|with|to|of|in|on|at|by|from|about)\b/i.test(goal) || goal.split(/\s+/).length < 4 || !groundedIn(goal, context))) {
+      goal = "";
+    }
+    const line = { goal, now: nowLine };
+    contextCache.set(key, { at: Date.now(), line });
+    return line;
+  })().catch(() => {
+    contextCache.set(key, { at: Date.now(), line: null });
+    return null;
+  });
   contextCache.set(key, { at: now, promise });
   return promise;
 }
@@ -513,9 +543,6 @@ const server = http.createServer(async (request, response) => {
     const context = await contextTitleFor(payload, heuristic);
     const ask = heuristic?.userTask ?? payload?.workstream?.userTask;
     process.stdout.write(`status ${contextCacheKey(payload)} -> ${context?.now ? `model: ${context.now.slice(0, 60)}` : "heuristic"}${context?.goal && askIsVague(ask) ? ` | goal: ${context.goal.slice(0, 40)}` : ""}\n`);
-    const promptContext = `${cleanText(payload?.transcript)} ${cleanText(payload?.workstream?.userTask)} ${cleanText(heuristic?.narration)} ${cleanText(heuristic?.now)}`;
-    if (context?.now && !groundedIn(context.now, promptContext)) context.now = "";
-    if (context?.goal && !groundedIn(context.goal, promptContext)) context.goal = "";
     // A pane waiting on the OPERATOR keeps its question wording — the model only
     // supplies the goal; "Working" must never mask a question. (Operator gate)
     if (String(heuristic?.status) === "waiting") {
