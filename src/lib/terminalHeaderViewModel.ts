@@ -306,7 +306,11 @@ export function buildShellTerminalHeaderViewModel(input: {
         : `${rawLiveNarration.slice(0, 75).replace(/\s+\S*$/, "").trim()}\u2026`;
   }
   const liveNarration =
-    rawLiveNarration && qualityCheckNowLabel(rawLiveNarration).ok ? rawLiveNarration : undefined;
+    rawLiveNarration &&
+    rawLiveNarration.split(/\s+/).length >= 4 &&
+    qualityCheckNowLabel(rawLiveNarration).ok
+      ? rawLiveNarration
+      : undefined;
   const summary = sanitizeShellDisplaySummary(
     preferRealTaskSummary(
       base,

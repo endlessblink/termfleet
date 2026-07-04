@@ -156,6 +156,140 @@ test("terminal folders reconcile into project rows without moving the map viewpo
   })).toEqual({ x: -321, y: 88, zoom: 0.62 });
 });
 
+test("project switch paints selected profile before remounting the terminal surface", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+
+  const result = await page.evaluate(async () => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => {
+          workspaceUiState: Record<string, unknown>;
+          switchProject: (groupId: string | null) => void;
+          tabs: Array<{
+            id: string;
+            terminals: Array<{ id: string; paneId: string; status: string }>;
+          }>;
+          activeGroupFilter: string | null;
+          activeTabId: string | null;
+          activeTerminalId: string | null;
+          projectRoot: string | null;
+          canvasState: { viewport: { x: number; y: number; zoom: number } };
+        };
+        setState: (state: Record<string, unknown>) => void;
+      };
+    }).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+
+    const termfleetGroup = {
+      id: "group-termfleet",
+      name: "termfleet",
+      color: "#7aa2f7",
+      projectRoot: "/repo/termfleet",
+      lastActiveTabId: "tab-termfleet",
+    };
+    const hermesGroup = {
+      id: "group-hermes",
+      name: "hermes",
+      color: "#9ece6a",
+      projectRoot: "/repo/hermes",
+      lastActiveTabId: "tab-hermes",
+    };
+    const tab = (id: string, groupId: string, cwd: string) => ({
+      id,
+      title: id,
+      emoji: "[]",
+      color: "#7aa2f7",
+      groupId,
+      initialCwd: cwd,
+      terminals: [{ id: `pty-${id}`, paneId: `pane-${id}`, cols: 80, rows: 24, status: "running" }],
+      splitLayout: { id: `pane-${id}`, type: "terminal" },
+      activePaneId: `pane-${id}`,
+    });
+
+    store.setState({
+      workspaceUiState: {
+        ...store.getState().workspaceUiState,
+        workspaceMode: "split",
+        primarySidebarCollapsed: false,
+        primarySidebarPanel: "sessions",
+        fileExplorerCollapsed: true,
+      },
+      groups: [termfleetGroup, hermesGroup],
+      terminalGroups: [termfleetGroup, hermesGroup],
+      tabs: [
+        tab("tab-termfleet", "group-termfleet", "/repo/termfleet"),
+        tab("tab-hermes", "group-hermes", "/repo/hermes"),
+      ],
+      activeTabId: "tab-termfleet",
+      activeGroupFilter: "group-termfleet",
+      activeGroupId: "group-termfleet",
+      activeTerminalId: "pty-tab-termfleet",
+      projectRoot: "/repo/termfleet",
+      canvasState: {
+        selectedNodeId: "node-termfleet",
+        selectedNodeIds: ["node-termfleet"],
+        viewport: { x: -12, y: 34, zoom: 0.75 },
+        nodes: [
+          { id: "node-termfleet", type: "terminal", title: "termfleet", terminalTabId: "tab-termfleet", x: 0, y: 0, width: 820, height: 460 },
+          { id: "node-hermes", type: "terminal", title: "hermes", terminalTabId: "tab-hermes", x: 900, y: 0, width: 820, height: 460 },
+        ],
+      },
+    });
+
+    const beforeSessions = store.getState().tabs.map((candidate) => ({
+      id: candidate.id,
+      terminals: candidate.terminals.map((terminal) => ({ id: terminal.id, paneId: terminal.paneId, status: terminal.status })),
+    }));
+    store.getState().switchProject("group-hermes");
+    const immediate = {
+      activeGroupFilter: store.getState().activeGroupFilter,
+      activeTabId: store.getState().activeTabId,
+      activeTerminalId: store.getState().activeTerminalId,
+      projectRoot: store.getState().projectRoot,
+      viewport: store.getState().canvasState.viewport,
+      sessions: store.getState().tabs.map((candidate) => ({
+        id: candidate.id,
+        terminals: candidate.terminals.map((terminal) => ({ id: terminal.id, paneId: terminal.paneId, status: terminal.status })),
+      })),
+    };
+    await new Promise(requestAnimationFrame);
+    const afterFrame = {
+      activeGroupFilter: store.getState().activeGroupFilter,
+      activeTabId: store.getState().activeTabId,
+      activeTerminalId: store.getState().activeTerminalId,
+      projectRoot: store.getState().projectRoot,
+      viewport: store.getState().canvasState.viewport,
+      sessions: store.getState().tabs.map((candidate) => ({
+        id: candidate.id,
+        terminals: candidate.terminals.map((terminal) => ({ id: terminal.id, paneId: terminal.paneId, status: terminal.status })),
+      })),
+    };
+
+    return { beforeSessions, immediate, afterFrame };
+  });
+
+  expect(result.immediate).toMatchObject({
+    activeGroupFilter: "group-hermes",
+    activeTabId: "tab-termfleet",
+    activeTerminalId: "pty-tab-termfleet",
+    projectRoot: "/repo/hermes",
+    viewport: { x: -12, y: 34, zoom: 0.75 },
+  });
+  expect(result.immediate.sessions).toEqual(result.beforeSessions);
+  expect(result.afterFrame).toMatchObject({
+    activeGroupFilter: "group-hermes",
+    activeTabId: "tab-hermes",
+    activeTerminalId: null,
+    projectRoot: "/repo/hermes",
+    viewport: { x: -12, y: 34, zoom: 0.75 },
+  });
+  expect(result.afterFrame.sessions).toEqual(result.beforeSessions);
+});
+
 test("terminal opened in another project path is reassigned from stale active project", async ({ page }) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle");

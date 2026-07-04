@@ -328,7 +328,7 @@ function cleanContextLine(raw) {
   let line = String(raw ?? "").split("\n").map((entry) => entry.trim()).find(Boolean) ?? "";
   line = line
     .replace(/^["'“”`•*-]+|["'“”`]+$/g, "")
-    .replace(/^(?:\d+[.)]\s*)?(?:status line|header|title|goal|now|current activity|activity|status)\s*[:\-]\s*/i, "")
+    .replace(/^(?:\d+[.)]\s*)?(?:status line|header|title|goal|now|current activity|activity|status|previous action|last action|outcome|result|summary)\s*[:\-]\s*/i, "")
     .replace(/^the\s+(?:terminal\s+)?(?:ai\s+)?agent\s+is\s+/i, "")
     .replace(/^(?:currently|right now|at the moment)[,\s]+(?:it\s+is\s+|the\s+agent\s+is\s+)?/i, "")
     .replace(/\s+/g, " ")
@@ -346,7 +346,7 @@ function cleanContextLine(raw) {
 function askIsVague(ask) {
   const text = cleanText(ask);
   if (!text) return true;
-  if (/^(?:go|ok|okay|sure|yes|continue|do it|proceed|fill everything|fix it|make it work|next)[.!]?$/i.test(text)) return true;
+  if (/^(?:go|ok|okay|sure|yes|done|continue|do it|proceed|fill everything|fix it|make it work|next|deploy and \$?done)[.!]?$/i.test(text)) return true;
   return text.split(/\s+/).length < 4;
 }
 
@@ -516,6 +516,16 @@ const server = http.createServer(async (request, response) => {
     const promptContext = `${cleanText(payload?.transcript)} ${cleanText(payload?.workstream?.userTask)} ${cleanText(heuristic?.narration)} ${cleanText(heuristic?.now)}`;
     if (context?.now && !groundedIn(context.now, promptContext)) context.now = "";
     if (context?.goal && !groundedIn(context.goal, promptContext)) context.goal = "";
+    // A pane waiting on the OPERATOR keeps its question wording — the model only
+    // supplies the goal; "Working" must never mask a question. (Operator gate)
+    if (String(heuristic?.status) === "waiting") {
+      sendJson(response, 200, {
+        ...heuristic,
+        ...(context?.goal && askIsVague(ask) ? { userTask: context.goal } : {}),
+        confidence: "high",
+      });
+      return;
+    }
     if (context?.now) {
       const finished = looksFinished(heuristic, cleanText(payload?.transcript).slice(-700));
       // Operator rule: a finished pane says BOTH the outcome and that it awaits —

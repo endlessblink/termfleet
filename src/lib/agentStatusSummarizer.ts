@@ -159,7 +159,10 @@ export async function summarizeAgentStatus(
   if (sidecarReader) {
     try {
       const shaped = await readLocalSidecarSummary(input, fallback, sidecarReader);
-      if (shaped && shaped.tasksFromTodoWrite) {
+      // Authoritative ONLY while a task is actually open — a fully-completed list
+      // must still get a contextual outcome line from the endpoint (operator gate).
+      const hasOpenTask = Boolean(shaped?.tasks?.length) && shaped?.status === "working";
+      if (shaped && shaped.tasksFromTodoWrite && hasOpenTask) {
         return {
           summary: parseAgentStatusSummaryResponse(JSON.stringify(shaped), fallback),
           source: "sidecar",

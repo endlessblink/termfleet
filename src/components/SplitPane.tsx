@@ -897,7 +897,11 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
           ? {
               ...shellStatusSummaryBase,
               task: shellHeader.currentActivity,
-              path: shellDurableActivityUsable ? shellStatusSummaryBase.path : shellHeader.fullPath,
+              path:
+                shellDurableActivityUsable &&
+                !/\.(?:tsx?|jsx?|mjs|cjs|rs|md|json|sh|py)$/i.test(shellStatusSummaryBase.path ?? "")
+                  ? shellStatusSummaryBase.path
+                  : shellHeader.fullPath,
               now:
                 shellDurableActivityUsable
                   ? shellStatusSummaryBase.now
