@@ -236,11 +236,12 @@ export function buildCodexSidecar(payload, prev, now = Date.now()) {
 }
 
 async function main() {
+  // ALWAYS drain stdin first: exiting before Codex finishes writing the payload
+  // surfaces "failed to write hook stdin: Broken pipe" inside the user's session.
+  const raw = await readStdin();
   // Hard guard: only act inside a termfleet pane. Everywhere else this hook is inert.
   const paneId = statusPaneId();
   if (!paneId) process.exit(0);
-
-  const raw = await readStdin();
   let payload = {};
   try {
     payload = raw ? JSON.parse(raw) : {};

@@ -366,6 +366,11 @@ function parseContextLines(raw) {
       !/[:：]\s*$/.test(line) && !/two lines|status header|here (?:are|is)\b/i.test(line));
     now = cleanContextLine(candidate ?? "");
   }
+  // A goal must be a whole statement, not a dangling clause ("for bina-meatzevet
+  // profile") — reject fragments so the Task row never shows half a sentence.
+  if (goal && (/^(?:for|with|to|of|in|on|at|by|from|about)\b/i.test(goal) || goal.split(/\s+/).length < 4)) {
+    goal = "";
+  }
   return { goal, now };
 }
 

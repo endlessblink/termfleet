@@ -2401,7 +2401,10 @@ function CanvasNodeViewImpl({
         terminalVisibleText: linkedTerminal.terminalVisibleText,
       }).then((result) => {
         if (cancelled) return;
-        if (sidecarOnly && result.source !== "sidecar") return;
+        // Contextual (model) results carry narration + a synthesized goal — exactly
+        // what background panes need; only junk heuristics stay gated.
+        const contextualResult = result.source === "process" && Boolean(result.summary.narration);
+        if (sidecarOnly && result.source !== "sidecar" && !contextualResult) return;
         const store = useWorkspaceStore.getState();
         const latestTab = store.tabs.find((tab) => tab.id === linkedTab.id);
         if (!latestTab) return;
