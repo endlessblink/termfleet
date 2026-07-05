@@ -25,6 +25,8 @@ for (const t of dump.terminals ?? []) {
   else if (title.split(/\s+/).length < 4 && !/·|—/.test(title)) problems.push(`title too thin "${title}"`);
   if (task === "Task not captured") problems.push("no goal on the Task row");
   else if (task.split(/\s+/).length < 3) problems.push(`goal too thin "${task}"`);
+  else if (/^(?:stop(?:ped)?|no |not |failed|error|waiting|blocked|done)\b/i.test(task)) problems.push(`task reads as status, not a goal "${task.slice(0, 40)}"`);
+  if (/^the\s+\w+(?:\s+\w+)?\s+(?:was|were|has been|had been)\b/i.test(title)) problems.push(`passive title "${title.slice(0, 40)}"`);
   if (title && task && title.toLowerCase() === task.toLowerCase()) problems.push("title repeats the Task row");
   if (/\.(?:tsx?|mjs|cjs|rs|md|json|sh|py)$/.test(p)) problems.push(`path is a file "${p}"`);
   if (problems.length) failures.push(`✗ ${where}: ${problems.join("; ")}`);

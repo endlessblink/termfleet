@@ -336,9 +336,9 @@ function looksFinished(heuristic, tail) {
 function buildNowPrompt(src, finished) {
   return [
     finished
-      ? "In ONE line (max 12 words), state what this terminal's AI agent JUST FINISHED — past tense, concrete outcome."
-      : "In ONE line (max 12 words), state what this terminal's AI agent is doing right now AND why.",
-    "Use ONLY facts from the context below. Never invent names, numbers, or events. Plain words, no preamble, no quotes, no labels.",
+      ? "In ONE line (max 12 words): what the agent just finished AND what's next or blocked, e.g. 'Fixed the auth tests — ready to commit' or 'Blocked: tests failing, fix them to commit'."
+      : "In ONE line (max 12 words), state what the agent is doing right now AND why.",
+    "ACTIVE voice, start with a verb or 'Blocked:'. Never start with 'The … was'. Use ONLY facts from the context below. Never invent names, numbers, or events. Plain words, no preamble, no quotes, no labels.",
     src.ask ? `Operator asked: ${src.ask}` : "",
     src.narration ? `Agent just said: ${src.narration}` : "",
     src.activity ? `Latest activity: ${src.activity}` : "",
@@ -349,8 +349,8 @@ function buildNowPrompt(src, finished) {
 
 function buildGoalPrompt(src) {
   return [
-    "In ONE line (max 10 words), state what the operator ultimately wants in this terminal — the goal, concrete and specific.",
-    "Use ONLY facts from the context below. Never invent. Plain words a non-programmer understands: no file names, no paths, no preamble, no quotes, no labels.",
+    "In ONE line (max 10 words), state what the operator ultimately WANTS in this terminal, phrased as an imperative wish: 'Get the provider-auth change committed', 'Make the packaged app build cleanly'.",
+    "NEVER phrase as status or events ('Stop because…', 'No commit was made', 'Tests failed'). Active voice. Use ONLY facts from the context. Plain words, no file names, no paths, no preamble, no quotes, no labels.",
     src.ask ? `Operator asked: ${src.ask}` : "",
     src.narration ? `Agent said: ${src.narration}` : "",
     src.tail ? `Terminal tail: ${src.tail}` : "",
@@ -507,6 +507,16 @@ async function contextTitleFor(payload, heuristic) {
     if (!nowLine && prevFresh) nowLine = prevGood.now;
     // Goals stabilize independently: one bad roll must not blank the Task row.
     if (!goal && prevFresh && prevGood.goal) goal = prevGood.goal;
+    // Wording stickiness: if the fresh roll is just a re-phrasing of the last
+    // good line (shared vocabulary), keep the OLD wording — the operator sees a
+    // stable sentence that only changes when the content actually changes.
+    if (nowLine && prevFresh && prevGood.now && nowLine !== prevGood.now) {
+      const tokens = (t) => new Set(String(t).toLowerCase().match(/[a-z]{5,}/g) ?? []);
+      const a = tokens(nowLine);
+      const b = tokens(prevGood.now);
+      const shared = [...a].filter((w) => b.has(w)).length;
+      if (shared >= 2 && shared >= Math.min(a.size, b.size) * 0.5) nowLine = prevGood.now;
+    }
     if (nowLine) lastGoodLines.set(key, { at: Date.now(), now: nowLine, goal });
     const line = {
       goal,
