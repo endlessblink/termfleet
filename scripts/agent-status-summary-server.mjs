@@ -503,10 +503,10 @@ async function contextTitleFor(payload, heuristic) {
     // line — keep serving the last good one (up to 10 min) instead of flickering
     // between a real title and "Awaiting next action".
     const prevGood = lastGoodLines.get(key);
-    if (!nowLine && prevGood && Date.now() - prevGood.at < 10 * 60_000) {
-      nowLine = prevGood.now;
-      if (!goal) goal = prevGood.goal;
-    }
+    const prevFresh = prevGood && Date.now() - prevGood.at < 10 * 60_000;
+    if (!nowLine && prevFresh) nowLine = prevGood.now;
+    // Goals stabilize independently: one bad roll must not blank the Task row.
+    if (!goal && prevFresh && prevGood.goal) goal = prevGood.goal;
     if (nowLine) lastGoodLines.set(key, { at: Date.now(), now: nowLine, goal });
     const line = {
       goal,
