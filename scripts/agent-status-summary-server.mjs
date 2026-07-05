@@ -671,7 +671,8 @@ const server = http.createServer(async (request, response) => {
       // but only glue the suffix onto a past-tense line ("Fixed X · awaiting…"),
       // never onto an -ing line (that reads as a contradiction).
       const pastTense = /^(?:\w+ed|Ran|Built|Set up|Wrote|Made|Kept|Found|Left)\b/i.test(context.now) && !/^\w+ing\b/i.test(context.now);
-      const nowLine = finished && pastTense && context.now.length <= 58 ? `${context.now} · awaiting next task` : context.now;
+      // Suffix must fit INSIDE the 64-char card budget (21 chars for " · awaiting next task").
+      const nowLine = finished && pastTense && context.now.length <= 43 ? `${context.now} · awaiting next task` : context.now;
       const transcriptEmpty = !cleanText(payload?.transcript);
       sendJson(response, 200, {
         ...heuristic,
