@@ -297,6 +297,9 @@ function sessionScrollbackTail(paneId) {
 function realContext(value) {
   const text = cleanText(value);
   if (!text) return "";
+  // Composer placeholder suggestions are UI chrome, not user asks.
+  if (/@filename\b|@filepath\b/i.test(text)) return "";
+  if (/^(?:find and fix a bug in|write tests for|summarize recent commits|use \/\w+ to|improve documentation in|explain this codebase)\b/i.test(text)) return "";
   if (/^(?:idle(?:\s+until.*)?|ready|working(?:\s+on\b.*)?|awaiting\b.*|waiting for input|prompt submitted|supervised agent run|terminal|shell ready|no activity)$/i.test(text)) return "";
   return text;
 }
@@ -495,6 +498,7 @@ function validateStatusResult(parsed, context) {
 function askIsVague(ask) {
   const text = cleanText(ask);
   if (!text) return true;
+  if (/@filename\b|@filepath\b/i.test(text)) return true;
   if ((/\b(?:const|let|var|function|return|=>)\b/.test(text) && /[{};()]/.test(text)) || (text.match(/"/g) ?? []).length % 2 === 1) return true;
   if (/^(?:go|ok|okay|sure|yes|done|continue|do it|proceed|fill everything|fix it|make it work|next|deploy and \$?done)[.!]?$/i.test(text)) return true;
   return text.split(/\s+/).length < 4;

@@ -85,6 +85,11 @@ export function qualityCheckUserAskLabel(value?: string | null): HeaderQualityRe
   // Wrap-cut fragments scraped mid-word/mid-quote (`ke "System Booted`) are not
   // an ask: unbalanced double quote, or a 1-2 letter lowercase stub opener.
   if ((text.match(/"/g) ?? []).length % 2 === 1) return { ok: false, reason: "prompt-fragment" };
+  // Composer placeholder suggestions are UI chrome, never the user's ask.
+  if (/@filename\b|@filepath\b/i.test(text)) return { ok: false, reason: "prompt-fragment" };
+  if (/^(?:find and fix a bug in|write tests for|summarize recent commits|use \/\w+ to|improve documentation in|explain this codebase)\b/i.test(text)) {
+    return { ok: false, reason: "prompt-fragment" };
+  }
   if (/^[a-z]{1,2}\s/.test(text) && !/^(?:i|we|is|it|do|go|if|he|at|on|in|to|my|no|ok|so|up|us|be|by|or|an|as|am)\b/i.test(text)) {
     return { ok: false, reason: "prompt-fragment" };
   }
