@@ -89,9 +89,13 @@ export function qualityCheckUserAskLabel(value?: string | null): HeaderQualityRe
     return { ok: false, reason: "prompt-fragment" };
   }
   // A goal SENTENCE may mention a command ("Build the project using npm run
-  // build"); only a text that IS a command (anchored) is rejected.
+  // build") or start with an English verb that doubles as a program name
+  // ("Find matches for the old secret"); only text that IS a command — short,
+  // or carrying flags/paths/shell syntax — is rejected.
   if (/^(?:npm|pnpm|yarn|bun|npx)\b/i.test(text)) return { ok: false, reason: "package-script" };
-  if (looksLikeCommand(text)) return { ok: false, reason: "command-like" };
+  const commandShaped =
+    text.split(/\s+/).length < 5 || /(?:^|\s)-{1,2}[a-z]|\/|\$|\||&|=/.test(text);
+  if (looksLikeCommand(text) && commandShaped) return { ok: false, reason: "command-like" };
   if (looksLikeCode(text)) return { ok: false, reason: "command-like" };
   if (looksLikePath(text)) return { ok: false, reason: "implementation-detail" };
   if (looksGibberish(text)) return { ok: false, reason: "gibberish" };
