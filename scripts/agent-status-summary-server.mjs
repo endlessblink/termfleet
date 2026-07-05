@@ -405,6 +405,24 @@ function ollamaJsonQueued(prompt) {
   return next;
 }
 
+// Grounding: numbers and quoted names in a generated line must exist in the
+// source context (word-anchoring only when soft=false, i.e. thin context).
+function groundedIn(line, contextText, soft = false) {
+  const context = String(contextText ?? "").toLowerCase();
+  for (const number of String(line).match(/\d{2,}/g) ?? []) {
+    if (!context.includes(number)) return false;
+  }
+  for (const quoted of String(line).match(/["'“”]([^"'“”]{2,40})["'“”]/g) ?? []) {
+    if (!context.includes(quoted.slice(1, -1).toLowerCase())) return false;
+  }
+  if (!soft) {
+    const words = String(line).toLowerCase().match(/[a-z]{5,}/g) ?? [];
+    const anchored = words.filter((word) => context.includes(word));
+    if (words.length >= 2 && anchored.length === 0) return false;
+  }
+  return true;
+}
+
 // The operator's rules as a machine validator. Returns violation strings; empty = pass.
 function validateStatusResult(parsed, context) {
   const violations = [];
@@ -484,7 +502,8 @@ async function contextTitleFor(payload, heuristic) {
     const at = nowLine ? Date.now() : Date.now() - CONTEXT_TTL_MS + 10_000;
     contextCache.set(key, { at, line });
     return line;
-  })().catch(() => {
+  })().catch((error) => {
+    process.stdout.write(`context-error ${key.slice(0, 24)}: ${String(error?.message ?? error).slice(0, 120)}\n`);
     contextCache.set(key, { at: Date.now(), line: null });
     return null;
   });
