@@ -338,7 +338,7 @@ function buildNowPrompt(src, finished) {
     finished
       ? "In ONE line (max 12 words): what the agent just finished AND what's next or blocked, e.g. 'Fixed the auth tests — ready to commit' or 'Blocked: tests failing, fix them to commit'."
       : "In ONE line (max 12 words), state what the agent is doing right now AND why.",
-    "ACTIVE voice, start with a verb or 'Blocked:'. Never start with 'The … was'. Use ONLY facts from the context below. Never invent names, numbers, or events. Plain words, no preamble, no quotes, no labels.",
+    "ONE short clause — no semicolons, no run-ons. ACTIVE voice, start with a verb or 'Blocked:'. Never start with 'The … was'. Use ONLY facts from the context below. Never invent names, numbers, or events. Plain words, no preamble, no quotes, no labels.",
     src.ask ? `Operator asked: ${src.ask}` : "",
     src.narration ? `Agent just said: ${src.narration}` : "",
     src.activity ? `Latest activity: ${src.activity}` : "",
@@ -401,10 +401,13 @@ function cleanContextLine(raw) {
     .trim();
   if (!line) return "";
   line = line.charAt(0).toUpperCase() + line.slice(1);
-  // Frontend now-line gate rejects >80 chars — clamp below it.
-  if (line.length > 78) {
+  // ONE clause that fits the header card: semicolon run-ons keep only their
+  // first clause; then clamp to 64 chars at a word boundary (operator gate:
+  // "Launched X and Y responded; commit…" overflowed and read truncated).
+  line = line.split(/;\s*/)[0].trim();
+  if (line.length > 64) {
     const clause = line.split(/,\s+/)[0].trim();
-    line = clause.length >= 24 && clause.length <= 78 ? clause : `${line.slice(0, 75).replace(/\s+\S*$/, "").trim()}…`;
+    line = clause.length >= 24 && clause.length <= 64 ? clause : `${line.slice(0, 61).replace(/\s+\S*$/, "").trim()}…`;
   }
   return line.replace(/[.!?]+$/, "");
 }
