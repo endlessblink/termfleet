@@ -253,6 +253,7 @@ const OLLAMA_URL = process.env.TERMFLEET_OLLAMA_URL || "http://127.0.0.1:11434/a
 const CONTEXT_MODEL = process.env.TERMFLEET_CONTEXT_TITLE_MODEL || "gemma4:e4b";
 const CONTEXT_TTL_MS = Number(process.env.TERMFLEET_CONTEXT_TITLE_TTL_MS || 45_000);
 const contextCache = new Map(); // key -> { at, line } | { at, promise }
+const lastGoodLines = new Map(); // key -> { at, now, goal } — flicker guard
 
 function contextCacheKey(payload) {
   return cleanText(payload?.paneId) || cleanText(payload?.projectId) || "unknown";
@@ -498,6 +499,15 @@ async function contextTitleFor(payload, heuristic) {
     if (goal && (/^(?:for|with|to|of|in|on|at|by|from|about)\b/i.test(goal) || goal.split(/\s+/).length < 4 || !groundedIn(goal, context))) {
       goal = "";
     }
+    // Title stability: a rejected/empty roll must not blank a previously good
+    // line — keep serving the last good one (up to 10 min) instead of flickering
+    // between a real title and "Awaiting next action".
+    const prevGood = lastGoodLines.get(key);
+    if (!nowLine && prevGood && Date.now() - prevGood.at < 10 * 60_000) {
+      nowLine = prevGood.now;
+      if (!goal) goal = prevGood.goal;
+    }
+    if (nowLine) lastGoodLines.set(key, { at: Date.now(), now: nowLine, goal });
     const line = {
       goal,
       now: nowLine,

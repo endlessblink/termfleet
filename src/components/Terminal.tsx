@@ -759,7 +759,10 @@ export function TerminalComponent({
                   const nextStatusSummary =
                     closedRunSummary ??
                     ((candidate.statusSummary?.tasksFromTodoWrite && !result.summary.tasksFromTodoWrite) ||
-                    (hasStructuredTaskLineup && result.source === "fallback" && candidate.statusSummary)
+                    (hasStructuredTaskLineup && result.source === "fallback" && candidate.statusSummary) ||
+                    // Flicker guard: a narration-less heuristic must not overwrite a
+                    // narration-bearing (contextual) summary.
+                    (candidate.statusSummary?.narration && !result.summary.narration && result.source !== "sidecar")
                       ? candidate.statusSummary
                       : result.summary);
                   const mainUserAsk = mainUserAskFromSummary(nextStatusSummary, "status-sidecar", {
