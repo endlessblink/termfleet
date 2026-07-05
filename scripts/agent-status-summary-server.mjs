@@ -503,6 +503,7 @@ async function contextTitleFor(payload, heuristic) {
     // Imperatives aimed at nobody ("Stop commit because…") are not a status —
     // blocked states must use the 'Blocked: … — …' shape; force a re-roll.
     if (/^(?:stop|do not|don't|never)\b/i.test(nowLine)) nowLine = "";
+    if (/\bblock(?:ed|s|ing)?\b/i.test(nowLine) && !/^Blocked:\s/.test(nowLine)) nowLine = "";
     // Self-referential no-content lines are worse than silence.
     if (/\b(?:finished nothing|was idle|is idle|no activity|nothing to (?:do|report|summarize)|not doing anything|remains idle|context (?:below|provided)|based on the context)\b/i.test(nowLine)) {
       nowLine = "";
@@ -677,7 +678,10 @@ const server = http.createServer(async (request, response) => {
       // never onto an -ing line (that reads as a contradiction).
       const pastTense = /^(?:\w+ed|Ran|Built|Set up|Wrote|Made|Kept|Found|Left)\b/i.test(context.now) && !/^\w+ing\b/i.test(context.now);
       // Suffix must fit INSIDE the 64-char card budget (21 chars for " · awaiting next task").
-      const nowLine = finished && pastTense && context.now.length <= 43 ? `${context.now} · awaiting next task` : context.now;
+      const alreadyHasStatusClause = /—|\bready\b|\bawaiting\b|\bnext\b|^Blocked:/i.test(context.now);
+      const nowLine = finished && pastTense && !alreadyHasStatusClause && context.now.length <= 43
+        ? `${context.now} · awaiting next task`
+        : context.now;
       const transcriptEmpty = !cleanText(payload?.transcript);
       sendJson(response, 200, {
         ...heuristic,
