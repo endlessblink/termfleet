@@ -33,12 +33,13 @@ async function pollOnce() {
   try {
     const store = useWorkspaceStore.getState();
     for (const tab of store.tabs) {
-      if (tab.workstream?.kind === "agent") continue; // agent lanes have their own pipeline
+      // Agent lanes get contextual lines too — their mission/prompt is the ask.
       for (const terminal of tab.terminals ?? []) {
         const liveCwd = store.liveCwds[terminal.id];
         try {
           const result = await summarizeAgentStatus({
             paneId: `terminal-${tab.id}-${terminal.paneId}`,
+            userTask: tab.workstream?.kind === "agent" ? tab.workstream.mission ?? tab.workstream.prompt : undefined,
             mission: "Terminal",
             provider: "shell",
             status: statusForTerminal(terminal.status),

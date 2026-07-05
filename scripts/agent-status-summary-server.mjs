@@ -358,6 +358,17 @@ function buildGoalPrompt(src) {
   ].filter(Boolean).join("\n");
 }
 
+// Serialize model calls: cache-expiry bursts (N panes x 2 prompts) queued at
+// Ollama pushed later calls past the timeout, which then got cached as EMPTY for
+// the full TTL — every pane went model-empty forever. One call at a time keeps
+// each under a second warm.
+let ollamaChain = Promise.resolve();
+function ollamaLineQueued(prompt) {
+  const next = ollamaChain.then(() => ollamaLine(prompt), () => ollamaLine(prompt));
+  ollamaChain = next.catch(() => {});
+  return next;
+}
+
 function ollamaLine(prompt) {
   return new Promise((resolve, reject) => {
     const body = JSON.stringify({
@@ -380,7 +391,7 @@ function ollamaLine(prompt) {
         });
       },
     );
-    request.setTimeout(Number(process.env.TERMFLEET_CONTEXT_TITLE_TIMEOUT_MS || 6000), () => {
+    request.setTimeout(Number(process.env.TERMFLEET_CONTEXT_TITLE_TIMEOUT_MS || 20000), () => {
       request.destroy(new Error("ollama timed out"));
     });
     request.on("error", reject);
@@ -482,8 +493,8 @@ async function contextTitleFor(payload, heuristic) {
   const wantGoal = askIsVague(src.ask);
   const promise = (async () => {
     const [rawNow, rawGoal] = await Promise.all([
-      ollamaLine(buildNowPrompt(src, finished)).catch(() => ""),
-      wantGoal ? ollamaLine(buildGoalPrompt(src)).catch(() => "") : Promise.resolve(""),
+      ollamaLineQueued(buildNowPrompt(src, finished)).catch(() => ""),
+      wantGoal ? ollamaLineQueued(buildGoalPrompt(src)).catch(() => "") : Promise.resolve(""),
     ]);
     const context = `${src.ask} ${src.narration} ${src.activity} ${src.tail}`;
     let nowLine = cleanContextLine(rawNow);
@@ -530,7 +541,10 @@ async function contextTitleFor(payload, heuristic) {
       now: nowLine,
       reason: nowLine ? "ok" : (cleanContextLine(rawNow) ? "grounded-out" : "model-empty"),
     };
-    contextCache.set(key, { at: Date.now(), line });
+    // Empty results must not squat the cache: expire them quickly so the next
+    // poll retries instead of freezing the pane generic for the full TTL.
+    const at = nowLine ? Date.now() : Date.now() - CONTEXT_TTL_MS + 10_000;
+    contextCache.set(key, { at, line });
     return line;
   })().catch(() => {
     contextCache.set(key, { at: Date.now(), line: null });
