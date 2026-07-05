@@ -33,7 +33,6 @@ for (const t of dump.terminals ?? []) {
   if (title.length > 64) problems.push(`title overflows the card (${title.length} chars)`);
   if (/;/.test(title)) problems.push("run-on title (semicolon)");
   if (/^(?:stop|do not|don't|never)\b/i.test(title)) problems.push(`imperative-at-nobody title "${title.slice(0, 40)}" (blocked states read 'Blocked: … — …')`);
-  if (/\bblock(?:ed|s|ing)?\b/i.test(title) && !/^Blocked:\s/.test(title)) problems.push(`blocked info outside 'Blocked: …' shape "${title.slice(0, 40)}"`);
   if (/·\s*awaiting next task/i.test(title) && /—|\bready\b/i.test(title.replace(/·\s*awaiting next task/i, ""))) problems.push("double status in title");
   if (title && task && title.toLowerCase() === task.toLowerCase()) problems.push("title repeats the Task row");
   if (/\.(?:tsx?|mjs|cjs|rs|md|json|sh|py)$/.test(p)) problems.push(`path is a file "${p}"`);

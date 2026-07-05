@@ -342,39 +342,38 @@ function looksFinished(heuristic, tail) {
 const STATUS_SCHEMA = {
   type: "object",
   properties: {
-    brief_reason: { type: "string", maxLength: 60, description: "Short internal note on what the log shows. MAX 60 chars." },
-    state: { type: "string", enum: ["working", "blocked", "finished", "waiting"], description: "Overall state. Be strict." },
-    goal: { type: "string", maxLength: 70, description: "The operator's wish, imperative, 5-10 plain words naming the concrete object. No file names, no paths." },
-    status_line: { type: "string", maxLength: 60, description: "ONE clause, MAX 60 characters, plain words for a non-technical reader. No markdown, no file names." },
+    status: { type: "string", enum: ["success", "error", "warning", "running", "incomplete", "unknown"], description: "Current status of the task" },
+    what_its_doing: { type: "string", maxLength: 120, description: "Clear, non-technical one-sentence description of what the task is doing, in user-friendly language." },
+    related_to: { type: "string", maxLength: 90, description: "What main user goal this relates to, phrased as the user's wish (e.g. 'Get the provider-auth change committed')" },
+    confidence: { type: "number", minimum: 0, maximum: 1, description: "Confidence in this interpretation (lower for very vague logs)" },
   },
-  required: ["brief_reason", "state", "goal", "status_line"],
+  required: ["status", "what_its_doing", "related_to", "confidence"],
 };
 
-// Few-shot system message (research-confirmed for small models): one example per
-// state, in the operator's exact required shapes. brief_reason comes FIRST so the
-// model reasons inside the schema instead of the hidden thinking channel.
+// Few-shot system message — the operator's researched design, verbatim tone:
+// plain non-technical explanations tied to the user's main ask.
 const STATUS_SYSTEM = [
-  "You are an expert terminal status analyzer. Convert noisy agent-terminal context into a structured header for a non-technical observer.",
-  "Rules: use ONLY facts from the context, never invent names/numbers/events; name the concrete object (which bug, which change, which tests); plain words, active voice; never copy raw log lines, file names, or paths.",
-  'Shapes: working → "<Verb-ing> <object> to <why>". blocked → "Blocked: <what fails> - <what to do next>". finished → "<Past-tense verb> <object> - ready for <next>". waiting → "Waiting for <what from the operator>".',
+  "You are an expert at explaining technical agent-terminal activity in simple, user-friendly language for a non-technical observer.",
+  "Use ONLY facts from the provided context — never invent names, numbers, or events. Never copy raw log lines, file names, or paths. Tie the description to the operator's main ask when given.",
   "Examples:",
-  'Context: "Operator asked: commit the provider auth change. Tail: 3 subfailures in content-pool size guards; workflow stops on failing tests."',
-  '{"brief_reason": "Tests failing so commit stopped", "state": "blocked", "goal": "Get the provider-auth change committed", "status_line": "Blocked: 3 content-pool tests failing - fix counts to commit"}',
-  'Context: "Operator asked: make the ambience music stop after 10 seconds. Agent said: changing the loop setting to a one-shot with a fade."',
-  '{"brief_reason": "Editing audio loop config now", "state": "working", "goal": "Make the ambience music stop after ten seconds", "status_line": "Changing the ambience loop to stop music after ten seconds"}',
-  'Context: "Tail: all 165 tests passed, changes committed and pushed. Prompt is empty."',
-  '{"brief_reason": "Work committed, session idle", "state": "finished", "goal": "Get the test fixes committed and pushed", "status_line": "Committed the test fixes - ready for the next task"}',
-  'Context: "Tail: Question 1/3: quick fix or tracked task? enter to submit answer."',
-  '{"brief_reason": "Agent asked the operator a question", "state": "waiting", "goal": "Decide how to track this fix", "status_line": "Waiting for your answer: quick fix or tracked task"}',
+  'Log: "The consolidation now: - removes stale rollout names from the active July..."',
+  '{"status": "incomplete", "what_its_doing": "Cleaning up old rollout names from July", "related_to": "Get the project data cleaned up", "confidence": 0.65}',
+  'Log: "build; passed"',
+  '{"status": "success", "what_its_doing": "Build completed successfully", "related_to": "Get the code building cleanly", "confidence": 0.9}',
+  'Log: "3 subfailures in content-pool size guards; workflow stops on failing tests, no commit was made"',
+  '{"status": "error", "what_its_doing": "Three content checks are failing, so the changes are not saved yet", "related_to": "Get the changes committed", "confidence": 0.85}',
+  'Log: "Question 1/3: quick fix or tracked task? enter to submit answer"',
+  '{"status": "incomplete", "what_its_doing": "Waiting for your answer: quick fix or tracked task", "related_to": "Decide how to track this fix", "confidence": 0.8}',
+  "Now analyze the task and describe it in plain, non-technical English for a regular user. Respond with valid JSON only.",
 ].join("\n");
 
 function buildSchemaMessages(src, finishedHint) {
   const user = [
-    finishedHint ? "Hint: the work appears finished — describe the outcome and what's next." : "",
-    src.ask ? `Operator asked: ${src.ask}` : "",
+    src.ask ? `Operator's main ask: ${src.ask}` : "",
+    finishedHint ? "Hint: the work appears finished — describe the outcome." : "",
     src.narration ? `Agent just said: ${src.narration}` : "",
     src.activity ? `Latest activity: ${src.activity}` : "",
-    src.tail ? `Terminal tail: ${src.tail}` : "",
+    src.tail ? `Task/Log: ${src.tail}` : "",
   ].filter(Boolean).join("\n");
   return [
     { role: "system", content: STATUS_SYSTEM },
@@ -446,61 +445,50 @@ function groundedIn(line, contextText, soft = false) {
 function autoFixStatusResult(parsed) {
   if (!parsed) return parsed;
   const fix = { ...parsed };
-  let line = cleanText(fix.status_line);
-  line = line.replace(/^```(?:json)?|```$/g, "").trim();
-  line = line.split(/;\s*/)[0].trim();
-  if (line.length > 60) {
-    const blocked = line.match(/^(Blocked:\s*)(.*)$/i);
-    const prefix = blocked ? blocked[1] : "";
-    let body = blocked ? blocked[2] : line;
-    const budget = 60 - prefix.length;
-    if (body.length > budget) {
-      const clause = body.split(/,\s+/)[0].trim();
-      if (clause.length >= 20 && clause.length <= budget) {
-        body = clause;
-      } else {
-        body = body.slice(0, budget - 1).replace(/\s+\S*$/, "");
-        // Never end on an orphaned quote/hyphen/preposition fragment.
-        body = body.replace(/[\s'"‘’“”\-–—:,;]+$/, "").replace(/\s+(?:to|for|of|the|a|an|and|or|in|on|at|with)$/i, "");
-        body = `${body.trim()}…`;
-      }
+  let line = cleanText(fix.what_its_doing);
+  line = line.replace(/^```(?:json)?|```$/g, "").trim().split(/;\s*/)[0].trim();
+  if (line.length > 64) {
+    const clause = line.split(/,\s+/)[0].trim();
+    if (clause.length >= 20 && clause.length <= 64) {
+      line = clause;
+    } else {
+      line = line.slice(0, 63).replace(/\s+\S*$/, "");
+      line = line.replace(/[\s'"‘’“”\-–—:,;]+$/, "").replace(/\s+(?:to|for|of|the|a|an|and|or|in|on|at|with)$/i, "");
+      line = `${line.trim()}…`;
     }
-    line = prefix + body;
   }
-  fix.status_line = line;
-  let goal = cleanText(fix.goal);
+  fix.what_its_doing = line;
+  let goal = cleanText(fix.related_to);
   const goalWords = goal.split(/\s+/).filter(Boolean);
   if (goalWords.length > 12) goal = goalWords.slice(0, 12).join(" ");
-  fix.goal = goal;
+  fix.related_to = goal;
   return fix;
 }
 
 // The operator's rules as a machine validator. Returns violation strings; empty = pass.
 function validateStatusResult(parsed, context) {
   const violations = [];
-  const goal = cleanText(parsed?.goal);
-  const line = cleanText(parsed?.status_line);
-  const state = String(parsed?.state ?? "");
+  const goal = cleanText(parsed?.related_to);
+  const line = cleanText(parsed?.what_its_doing);
+  const status = String(parsed?.status ?? "");
+  const confidence = Number(parsed?.confidence ?? 0);
   const words = (t) => t.split(/\s+/).filter(Boolean).length;
-  if (!goal) violations.push("goal is empty");
+  if (!line) violations.push("what_its_doing is empty");
   else {
-    if (words(goal) < 4) violations.push("goal must be 4-10 words naming the object");
-    if (/\.[a-z]{2,4}\b|\//i.test(goal)) violations.push("goal contains a file name or path — use plain words");
-    if (/^(?:stop|no |not |failed|error|blocked|done|waiting)/i.test(goal)) violations.push("goal must be the operator's wish, not a status");
-  }
-  if (!line) violations.push("status_line is empty");
-  else {
-    if (words(line) < 4) violations.push("status_line must be at least 4 words");
-    if (/;/.test(line)) violations.push("no semicolons — one clause");
+    if (words(line) < 4) violations.push("what_its_doing must be a real sentence (4+ words)");
     if (/^the\s+\w+(?:\s+\w+)?\s+(?:was|were|has been|had been)\b/i.test(line)) violations.push("active voice — never 'The X was …'");
     if (/^(?:stop|do not|don't|never)\b/i.test(line)) violations.push("no imperatives aimed at nobody");
-    if (/\bblock(?:ed|s|ing)?\b/i.test(line) && !/^Blocked:\s/.test(line)) violations.push("blocked info must use the exact shape 'Blocked: <what fails> - <what to do next>'");
-    if (state === "blocked" && !/^Blocked:\s/.test(line)) violations.push("state is blocked, so status_line must start with 'Blocked:'");
-    if (/\.[a-z]{2,4}\b|\//i.test(line.replace(/^Blocked:/, ""))) violations.push("no file names or paths — plain words");
+    if (/\.[a-z]{2,4}\b|\//i.test(line)) violations.push("no file names or paths — plain words");
     if (!groundedIn(line, context, true)) violations.push("contains numbers or quoted names not present in the context");
     if (/\b(?:finished nothing|was idle|is idle|no activity|nothing to (?:do|report)|based on the context)\b/i.test(line)) violations.push("self-referential emptiness is not a status");
   }
-  if (!["working", "blocked", "finished", "waiting"].includes(state)) violations.push("state must be one of working/blocked/finished/waiting");
+  if (goal) {
+    if (words(goal) < 4) violations.push("related_to must be 4-12 words phrased as the user's wish");
+    if (/\.[a-z]{2,4}\b|\//i.test(goal)) violations.push("related_to contains a file name or path — plain words");
+    if (/^(?:stop|no |not |failed|error|blocked|done|waiting)/i.test(goal)) violations.push("related_to must be the user's wish, not a status");
+  }
+  if (!["success", "error", "warning", "running", "incomplete", "unknown"].includes(status)) violations.push("invalid status");
+  if (!(confidence >= 0 && confidence <= 1)) violations.push("confidence must be 0..1");
   return violations;
 }
 
@@ -532,7 +520,7 @@ async function contextTitleFor(payload, heuristic) {
     if (violations.length && parsed) {
       // Targeted SINGLE-FIELD repair (converges better than full-object retries
       // with small models): re-ask only for the failing fields, error fed back.
-      const badFields = new Set(violations.map((v) => (v.startsWith("goal") ? "goal" : v.includes("state") ? "state" : "status_line")));
+      const badFields = new Set(violations.map((v) => (v.startsWith("related_to") ? "related_to" : v.includes("status") && !v.includes("what_its_doing") ? "status" : v.includes("confidence") ? "confidence" : "what_its_doing")));
       const fieldSchema = { type: "object", properties: {}, required: [...badFields] };
       for (const field of badFields) fieldSchema.properties[field] = STATUS_SCHEMA.properties[field];
       const repairMessages = [
@@ -547,10 +535,12 @@ async function contextTitleFor(payload, heuristic) {
     let nowLine = "";
     let goal = "";
     let state = "";
-    if (parsed && violations.length === 0) {
-      nowLine = cleanText(parsed.status_line);
-      goal = cleanText(parsed.goal);
-      state = String(parsed.state);
+    // Confidence thresholding (operator's researched design): a low-confidence
+    // interpretation must not display — the last good line holds instead.
+    if (parsed && violations.length === 0 && Number(parsed.confidence ?? 0) >= 0.45) {
+      nowLine = cleanText(parsed.what_its_doing);
+      goal = cleanText(parsed.related_to);
+      state = String(parsed.status);
     }
     const prevGood = lastGoodLines.get(key);
     const prevFresh = prevGood && Date.now() - prevGood.at < 10 * 60_000;
@@ -696,9 +686,10 @@ const server = http.createServer(async (request, response) => {
         narration: context.now,
         ...(context.goal && askIsVague(ask) ? { userTask: context.goal } : {}),
         status:
-          context.state === "blocked" ? "blocked"
-          : context.state === "finished" ? "idle"
-          : context.state === "waiting" ? "waiting"
+          context.state === "error" ? "blocked"
+          : context.state === "success" ? "idle"
+          : context.state === "warning" ? "working"
+          : context.state === "running" || context.state === "incomplete" ? "working"
           : heuristic.status || "working",
         confidence: "high",
       });
