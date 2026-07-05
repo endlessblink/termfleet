@@ -456,9 +456,14 @@ function autoFixStatusResult(parsed) {
     const budget = 60 - prefix.length;
     if (body.length > budget) {
       const clause = body.split(/,\s+/)[0].trim();
-      body = clause.length >= 20 && clause.length <= budget
-        ? clause
-        : `${body.slice(0, budget - 1).replace(/\s+\S*$/, "").trim()}…`;
+      if (clause.length >= 20 && clause.length <= budget) {
+        body = clause;
+      } else {
+        body = body.slice(0, budget - 1).replace(/\s+\S*$/, "");
+        // Never end on an orphaned quote/hyphen/preposition fragment.
+        body = body.replace(/[\s'"‘’“”\-–—:,;]+$/, "").replace(/\s+(?:to|for|of|the|a|an|and|or|in|on|at|with)$/i, "");
+        body = `${body.trim()}…`;
+      }
     }
     line = prefix + body;
   }
