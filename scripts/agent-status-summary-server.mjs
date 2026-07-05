@@ -496,7 +496,7 @@ async function contextTitleFor(payload, heuristic) {
     let goal = cleanContextLine(rawGoal)
       .replace(/^the\s+operator\s+wants\s+(?:to\s+)?/i, "")
       .replace(/^\w/, (c) => c.toUpperCase());
-    if (goal && (/^(?:for|with|to|of|in|on|at|by|from|about)\b/i.test(goal) || goal.split(/\s+/).length < 4 || /\.[a-z]{2,4}\b/i.test(goal) || !groundedIn(goal, context))) {
+    if (goal && (/^(?:for|with|to|of|in|on|at|by|from|about)\b/i.test(goal) || goal.split(/\s+/).length < 4 || /\.[a-z]{2,4}\b/i.test(goal) || !groundedIn(goal, context, softGround))) {
       goal = "";
     }
     // Title stability: a rejected/empty roll must not blank a previously good
