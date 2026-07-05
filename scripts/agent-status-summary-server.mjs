@@ -350,7 +350,7 @@ function buildNowPrompt(src, finished) {
 function buildGoalPrompt(src) {
   return [
     "In ONE line (max 10 words), state what the operator ultimately wants in this terminal — the goal, concrete and specific.",
-    "Use ONLY facts from the context below. Never invent. Plain words, no preamble, no quotes, no labels.",
+    "Use ONLY facts from the context below. Never invent. Plain words a non-programmer understands: no file names, no paths, no preamble, no quotes, no labels.",
     src.ask ? `Operator asked: ${src.ask}` : "",
     src.narration ? `Agent said: ${src.narration}` : "",
     src.tail ? `Terminal tail: ${src.tail}` : "",
@@ -496,7 +496,7 @@ async function contextTitleFor(payload, heuristic) {
     let goal = cleanContextLine(rawGoal)
       .replace(/^the\s+operator\s+wants\s+(?:to\s+)?/i, "")
       .replace(/^\w/, (c) => c.toUpperCase());
-    if (goal && (/^(?:for|with|to|of|in|on|at|by|from|about)\b/i.test(goal) || goal.split(/\s+/).length < 4 || !groundedIn(goal, context))) {
+    if (goal && (/^(?:for|with|to|of|in|on|at|by|from|about)\b/i.test(goal) || goal.split(/\s+/).length < 4 || /\.[a-z]{2,4}\b/i.test(goal) || !groundedIn(goal, context))) {
       goal = "";
     }
     // Title stability: a rejected/empty roll must not blank a previously good
