@@ -1,96 +1,69 @@
-# Handoff - 2026-06-30 Tuesday
+# Handoff — 2026-07-05 15:56 Sunday
 
-You are continuing work in **termfleet** on branch
-**fix/canvas-perf-and-wrap-spill**.
+You are continuing work in **termfleet** on branch **fix/canvas-perf-and-wrap-spill**.
 
 ## Current task & next step
+Cockpit pane headers: every terminal must show, in plain non-technical language,
+the user's goal (Task row) + what the agent is doing/its outcome (title). A local-model
+pipeline now generates these; the operator keeps finding quality failures.
+**Next: implement the operator-approved two-step pipeline in
+`scripts/agent-status-summary-server.mjs` — Analyzer (extract core_action/main_object/
+status from noisy context) → Translator (plain-English user sentence) — with
+`qwen2.5:7b` as default model (pull it first: `ollama pull qwen2.5:7b`) and env
+fallback tiers (qwen2.5:7b → gemma4:e4b → gemma4:e2b via `TERMFLEET_CONTEXT_TITLE_MODEL`).**
 
-TC-041 restart-survivable agent restore is now marked **DONE** in
-`MASTER_PLAN.md`.
+## Files touched / in flight
+- `scripts/agent-status-summary-server.mjs` — the whole contextual pipeline lives here
+  (schema-constrained chat calls, few-shots, validator + single-field repair,
+  deterministic truncation, confidence threshold 0.45, per-pane cache/queue/last-good,
+  disk-scrollback tails). Committed.
+- `scripts/termfleet-gate.mjs` (`npm run gate`) — the operator's rules as a per-pane
+  floor-check. Committed. **Script green ≠ done: the only acceptance gate is the
+  operator approving what they see** (memory: user-approval-is-the-only-gate).
+- `src/lib/statusPollLoop.ts` — central store-driven poll for ALL panes (component
+  polling silently stopped for background panes). Committed.
+- `src/lib/agentNarration.ts`, `terminalHeaderViewModel/Quality/Display/State`,
+  `Terminal/SplitPane/MagicCanvas` — header contract + gates. Committed.
+- `scripts/termfleet-codex-status-hook.mjs` — Codex sidecar hook; **user must run
+  `/hooks` in a fresh Codex session and Trust the entry** (still pending).
+- ` M src/stores/workspace.ts` — NOT mine (concurrent session); leave unstaged.
 
-The misplaced `bina-ve-ze` reference artifacts have been moved into this repo:
+## Key decisions & gotchas
+- **Model quirks (hours lost):** gemma4:e4b is a thinking model — WITHOUT
+  `think:false` its thinking eats the whole `num_predict` and `response` comes back
+  EMPTY (`done_reason: length`). `think:false` + `format` verified WORKING on e4b
+  despite research warnings. Re-verify on qwen2.5:7b (non-thinking; param may differ).
+- **Serialize Ollama calls** (queue in server): burst timeouts got cached as empty
+  for the full TTL → every pane went generic "forever". Empty results expire in 10s.
+- **JSON-schema maxLength is NOT decode-enforced** — deterministic truncation
+  (clause cut → word cut → strip orphan punctuation) owns length.
+- **Never feed our own placeholders to the model** ("Idle until next prompt" →
+  it echoes nonsense). `realContext()` filters them. Composer placeholder suggestions
+  ("Find and fix a bug in @filename") are firewalled from asks.
+- **Remaining known hole (operator-flagged, unfixed):** Claude panes' hook narration
+  displays RAW as title (e.g. my own jargon sentence "That last miss was the smoke's
+  own thin input…"). Sidecar summaries carry confidence "high" so raw narration passes
+  the light gate. Fix: sidecar narration should be model INPUT only — force such panes
+  through the endpoint (like completed-list panes already do) or drop sidecar-narration
+  display confidence.
+- Frontend HMR dies silently after app relaunches — when "tests pass but user sees
+  old behavior", compare the tauri-dev window's start time vs last frontend change
+  (`ps -o lstart`), relaunch with `./run-native-vte-dev.sh` (daemon keeps terminals).
+- Status server restart: `kill $(lsof -t -i :37819)` then
+  `nohup node scripts/agent-status-summary-server.mjs &` — safe, never touches PTYs.
+- Debug per-pane: `npm run gate`, `npm run cockpit:snapshot`, and the server log
+  prints `status <paneId> -> model: …` / `heuristic(<reason>)` per request.
+- **Report style (memory-enforced):** concise; never claim "works/passed" — state
+  "N/M pass the floor-check; your verdict decides"; every operator complaint becomes
+  a gate rule.
 
-- `docs/reference/agent-instance-resurrection-tmux-sketch.md`
-- `docs/reference/agent-resurrect-tmux-sketch.sh`
+## Env / run state
+Branch: fix/canvas-perf-and-wrap-spill | Last commit: 47d3824 composer placeholder fix
+Running: tauri dev app + vite:1420, status server :37819 (repo script), Ollama with
+gemma4:e4b warm; PTY daemon owns all terminals (survives everything).
+Operator research (full transcripts in this session): two-step pipeline design,
+model tiers, few-shot styles — the pasted Python in the last messages is the spec.
 
-They are reference-only. Do not turn them into the supported implementation path.
-
-Done in this pass:
-
-1. Added backend manifest/planner coverage for live attach, Codex durable
-   resume, reconstructed fallback, auth-needed state, and metadata merge.
-2. Extended session metadata with provider, launch profile, durable provider
-   session id, mission/dropoff context, restore status, and restore failure.
-3. Added `daemon_update_agent_recovery_manifest` and a best-effort frontend
-   writer from agent workstream terminals, including structured
-   `providerSessionId` / `sessionId` signals.
-4. Extended `scripts/verify-restart-restore.py` so the real daemon verifier now
-   covers agent resume and reconstructed fallback in addition to the existing
-   live reattach and cold scrollback/cwd/size restore layers.
-5. Surfaced restore state in the existing agent status chip and added a browser
-   hydration regression proving a restored Codex lane survives two reloads as
-   one tab and one map node with `restore · resuming` visible in map and split.
-6. Added `npm run verify:agent-restore-visible`, a live Tauri dev smoke that
-   seeds the desktop disk-layout file plus agent checkpoint, restores the map
-   lane through the real app, verifies the fake Codex resume output in the daemon
-   snapshot, captures screenshots, and proves typed UI input reaches the
-   restored PTY.
-
-Next optional hardening, not required for TC-041 completion:
-
-1. Fold `verify:agent-restore-visible` into a broader release gate if the extra
-   live Tauri runtime cost is acceptable.
-2. Add a second live Tauri screenshot fixture for the reconstructed no-session
-   branch. Backend and browser coverage already prove that branch; this would be
-   redundant visual evidence.
-
-## Key decisions
-
-- Do **not** add tmux as an implementation dependency. tmux/tmux-resurrect is
-  only the reference model: live PTY reattach while the supervisor is alive;
-  after full PC restart, restore durable state and reconstruct/resume provider
-  context.
-- Do **not** claim exact restoration of in-flight commands, process memory,
-  unsaved TUI state, SSH sockets, editor process state, or provider RAM.
-- For Codex, prefer durable provider resume with `codex resume <session-id>`.
-- If no provider session id exists, restore the visible lane from cwd, mission,
-  dropoff/handoff context, launch command, and captured scrollback; label it
-  `reconstructed`.
-- Keep recovery state in metadata/runtime state, not terminal-buffer error text.
-
-## Repo state warning
-
-This checkout already had many unrelated dirty files before this handoff update.
-Keep implementation diffs scoped and do not stage unrelated changes.
-
-Planning files intentionally touched in this pass:
-
-- `MASTER_PLAN.md`
-- `HANDOFF.md`
-
-## Proof expected for TC-041
-
-- Live attach: existing PTY is reused when daemon survives app restart.
-- Snapshot persistence: simulated PC restart restores layout, cwd, provider,
-  launch command, scrollback snapshot, durable session id, and terminal size.
-- Codex resume: fixture launches `codex resume <session-id>` in the restored cwd.
-- Reconstructed fallback: no-session fixture restores mission/dropoff plus
-  scrollback and displays `reconstructed`.
-- Idempotence: repeated restart cycles do not duplicate terminals, map nodes, or
-  workstream cards.
-
-## Verification from this pass
-
-- `npm run verify:agent-restore-visible` passed with
-  `AGENT_RESTORE_VISIBLE_OK`; screenshots:
-  `/tmp/tw-agent-restore-visible/01-restored-agent-map.png` and
-  `/tmp/tw-agent-restore-visible/02-restored-agent-after-input.png`.
-- `python3 scripts/verify-restart-restore.py` passed all three layers: live
-  reattach, cold scrollback/cwd/size restore, and agent resume/reconstruct
-  restore, ending with `PASS: terminals and agent lanes restore across app
-  restart AND PC reboot`.
-- `CARGO_BUILD_JOBS=1 CARGO_PROFILE_DEV_DEBUG=0 cargo test --manifest-path src-tauri/Cargo.toml pty::tests -- --nocapture` passed 23/23.
-- `npx playwright test tests/agent-workstream.spec.ts -g "restored agent lanes keep one visible map node" --reporter=line` passed 1/1.
-- `npm run build` passed.
-- `bash -n scripts/verify-agent-restore-visible.sh` passed.
-- `git diff --check -- MASTER_PLAN.md HANDOFF.md package.json scripts/verify-agent-restore-visible.sh` passed.
+Start by: `ollama pull qwen2.5:7b`, then port the two-step Analyzer→Translator into
+`contextTitleFor()` in scripts/agent-status-summary-server.mjs, restart the server,
+and run `npm run gate` — then ask the operator for their verdict on the board.
