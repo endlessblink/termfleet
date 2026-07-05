@@ -342,43 +342,61 @@ function looksFinished(heuristic, tail) {
 const STATUS_SCHEMA = {
   type: "object",
   properties: {
-    goal: {
-      type: "string",
-      description: "The operator's wish, imperative, 5-10 plain words naming the concrete object, e.g. 'Get the provider-auth change committed'. No file names, no paths.",
-    },
-    status_line: {
-      type: "string",
-      description: "6-10 plain words, ONE clause, under 60 characters, for a non-technical reader. Working: '<Verb-ing> <object> to <why>'. Blocked: 'Blocked: <what fails> - <what to do next>'. Finished: '<Past-tense verb> <object> - ready for <next>'. Never copy raw log text, never file names or paths.",
-    },
-    state: { type: "string", enum: ["working", "blocked", "finished", "waiting"] },
+    brief_reason: { type: "string", maxLength: 60, description: "Short internal note on what the log shows. MAX 60 chars." },
+    state: { type: "string", enum: ["working", "blocked", "finished", "waiting"], description: "Overall state. Be strict." },
+    goal: { type: "string", maxLength: 70, description: "The operator's wish, imperative, 5-10 plain words naming the concrete object. No file names, no paths." },
+    status_line: { type: "string", maxLength: 60, description: "ONE clause, MAX 60 characters, plain words for a non-technical reader. No markdown, no file names." },
   },
-  required: ["goal", "status_line", "state"],
+  required: ["brief_reason", "state", "goal", "status_line"],
 };
 
-function buildSchemaPrompt(src, finishedHint) {
-  return [
-    "You write terminal status headers for a non-technical observer. Use ONLY facts from the context — never invent names, numbers, or events.",
-    "Both text fields must name the concrete object (which bug, which change, which tests). One-word answers are unacceptable. Rephrase in plain words; never copy raw log lines, file names, or paths.",
-    'Example: {"goal": "Get the provider-auth change committed", "status_line": "Blocked: 3 content-pool tests failing - fix prompt counts to commit", "state": "blocked"}',
+// Few-shot system message (research-confirmed for small models): one example per
+// state, in the operator's exact required shapes. brief_reason comes FIRST so the
+// model reasons inside the schema instead of the hidden thinking channel.
+const STATUS_SYSTEM = [
+  "You are an expert terminal status analyzer. Convert noisy agent-terminal context into a structured header for a non-technical observer.",
+  "Rules: use ONLY facts from the context, never invent names/numbers/events; name the concrete object (which bug, which change, which tests); plain words, active voice; never copy raw log lines, file names, or paths.",
+  'Shapes: working → "<Verb-ing> <object> to <why>". blocked → "Blocked: <what fails> - <what to do next>". finished → "<Past-tense verb> <object> - ready for <next>". waiting → "Waiting for <what from the operator>".',
+  "Examples:",
+  'Context: "Operator asked: commit the provider auth change. Tail: 3 subfailures in content-pool size guards; workflow stops on failing tests."',
+  '{"brief_reason": "Tests failing so commit stopped", "state": "blocked", "goal": "Get the provider-auth change committed", "status_line": "Blocked: 3 content-pool tests failing - fix counts to commit"}',
+  'Context: "Operator asked: make the ambience music stop after 10 seconds. Agent said: changing the loop setting to a one-shot with a fade."',
+  '{"brief_reason": "Editing audio loop config now", "state": "working", "goal": "Make the ambience music stop after ten seconds", "status_line": "Changing the ambience loop to stop music after ten seconds"}',
+  'Context: "Tail: all 165 tests passed, changes committed and pushed. Prompt is empty."',
+  '{"brief_reason": "Work committed, session idle", "state": "finished", "goal": "Get the test fixes committed and pushed", "status_line": "Committed the test fixes - ready for the next task"}',
+  'Context: "Tail: Question 1/3: quick fix or tracked task? enter to submit answer."',
+  '{"brief_reason": "Agent asked the operator a question", "state": "waiting", "goal": "Decide how to track this fix", "status_line": "Waiting for your answer: quick fix or tracked task"}',
+].join("\n");
+
+function buildSchemaMessages(src, finishedHint) {
+  const user = [
     finishedHint ? "Hint: the work appears finished — describe the outcome and what's next." : "",
     src.ask ? `Operator asked: ${src.ask}` : "",
     src.narration ? `Agent just said: ${src.narration}` : "",
     src.activity ? `Latest activity: ${src.activity}` : "",
     src.tail ? `Terminal tail: ${src.tail}` : "",
   ].filter(Boolean).join("\n");
+  return [
+    { role: "system", content: STATUS_SYSTEM },
+    { role: "user", content: user },
+  ];
 }
 
-function ollamaJson(prompt) {
+function ollamaJson(messages, schema = STATUS_SCHEMA) {
   return new Promise((resolve, reject) => {
     const body = JSON.stringify({
       model: CONTEXT_MODEL,
       stream: false,
       keep_alive: "30m",
-      format: STATUS_SCHEMA,
-      options: { num_predict: 300, temperature: 0.1 },
-      prompt,
+      format: schema,
+      // Empirically verified on gemma4:e4b: format survives think:false here.
+      // Without it, thinking consumes the whole token budget and content is
+      // empty (done_reason=length). brief_reason stays as in-schema reasoning.
+      think: false,
+      options: { num_predict: 350, temperature: 0 },
+      messages,
     });
-    const url = new URL(OLLAMA_URL);
+    const url = new URL(OLLAMA_URL.replace(/\/api\/generate$/, "/api/chat"));
     const request = http.request(
       { hostname: url.hostname, port: url.port, path: url.pathname, method: "POST", headers: { "content-type": "application/json" } },
       (response) => {
@@ -386,7 +404,7 @@ function ollamaJson(prompt) {
         response.on("data", (chunk) => (text += chunk));
         response.on("end", () => {
           if (response.statusCode !== 200) { reject(new Error(`ollama ${response.statusCode}`)); return; }
-          try { resolve(JSON.parse(String(JSON.parse(text)?.response ?? "{}"))); } catch (error) { reject(error); }
+          try { resolve(JSON.parse(String(JSON.parse(text)?.message?.content ?? "{}"))); } catch (error) { reject(error); }
         });
       },
     );
@@ -399,8 +417,8 @@ function ollamaJson(prompt) {
 }
 
 let ollamaChain = Promise.resolve();
-function ollamaJsonQueued(prompt) {
-  const next = ollamaChain.then(() => ollamaJson(prompt), () => ollamaJson(prompt));
+function ollamaJsonQueued(messages, schema) {
+  const next = ollamaChain.then(() => ollamaJson(messages, schema), () => ollamaJson(messages, schema));
   ollamaChain = next.catch(() => {});
   return next;
 }
@@ -423,6 +441,35 @@ function groundedIn(line, contextText, soft = false) {
   return true;
 }
 
+// Deterministic auto-fix BEFORE validation (research-confirmed): pure length
+// violations are fixed by smart truncation — no model call, no retry.
+function autoFixStatusResult(parsed) {
+  if (!parsed) return parsed;
+  const fix = { ...parsed };
+  let line = cleanText(fix.status_line);
+  line = line.replace(/^```(?:json)?|```$/g, "").trim();
+  line = line.split(/;\s*/)[0].trim();
+  if (line.length > 60) {
+    const blocked = line.match(/^(Blocked:\s*)(.*)$/i);
+    const prefix = blocked ? blocked[1] : "";
+    let body = blocked ? blocked[2] : line;
+    const budget = 60 - prefix.length;
+    if (body.length > budget) {
+      const clause = body.split(/,\s+/)[0].trim();
+      body = clause.length >= 20 && clause.length <= budget
+        ? clause
+        : `${body.slice(0, budget - 1).replace(/\s+\S*$/, "").trim()}…`;
+    }
+    line = prefix + body;
+  }
+  fix.status_line = line;
+  let goal = cleanText(fix.goal);
+  const goalWords = goal.split(/\s+/).filter(Boolean);
+  if (goalWords.length > 12) goal = goalWords.slice(0, 12).join(" ");
+  fix.goal = goal;
+  return fix;
+}
+
 // The operator's rules as a machine validator. Returns violation strings; empty = pass.
 function validateStatusResult(parsed, context) {
   const violations = [];
@@ -433,13 +480,11 @@ function validateStatusResult(parsed, context) {
   if (!goal) violations.push("goal is empty");
   else {
     if (words(goal) < 4) violations.push("goal must be 4-10 words naming the object");
-    if (words(goal) > 12) violations.push("goal too long");
     if (/\.[a-z]{2,4}\b|\//i.test(goal)) violations.push("goal contains a file name or path — use plain words");
     if (/^(?:stop|no |not |failed|error|blocked|done|waiting)/i.test(goal)) violations.push("goal must be the operator's wish, not a status");
   }
   if (!line) violations.push("status_line is empty");
   else {
-    if (line.length > 64) violations.push("status_line must be under 60 characters");
     if (words(line) < 4) violations.push("status_line must be at least 4 words");
     if (/;/.test(line)) violations.push("no semicolons — one clause");
     if (/^the\s+\w+(?:\s+\w+)?\s+(?:was|were|has been|had been)\b/i.test(line)) violations.push("active voice — never 'The X was …'");
@@ -452,6 +497,14 @@ function validateStatusResult(parsed, context) {
   }
   if (!["working", "blocked", "finished", "waiting"].includes(state)) violations.push("state must be one of working/blocked/finished/waiting");
   return violations;
+}
+
+function askIsVague(ask) {
+  const text = cleanText(ask);
+  if (!text) return true;
+  if ((/\b(?:const|let|var|function|return|=>)\b/.test(text) && /[{};()]/.test(text)) || (text.match(/"/g) ?? []).length % 2 === 1) return true;
+  if (/^(?:go|ok|okay|sure|yes|done|continue|do it|proceed|fill everything|fix it|make it work|next|deploy and \$?done)[.!]?$/i.test(text)) return true;
+  return text.split(/\s+/).length < 4;
 }
 
 async function contextTitleFor(payload, heuristic) {
@@ -469,12 +522,21 @@ async function contextTitleFor(payload, heuristic) {
   const finishedHint = looksFinished(heuristic, src.tail);
   const context = `${src.ask} ${src.narration} ${src.activity} ${src.tail}`;
   const promise = (async () => {
-    let parsed = await ollamaJsonQueued(buildSchemaPrompt(src, finishedHint)).catch(() => null);
+    let parsed = autoFixStatusResult(await ollamaJsonQueued(buildSchemaMessages(src, finishedHint)).catch(() => null));
     let violations = parsed ? validateStatusResult(parsed, context) : ["model returned nothing"];
     if (violations.length && parsed) {
-      // ONE repair round with the violations fed back (research-confirmed pattern).
-      const repairPrompt = `${buildSchemaPrompt(src, finishedHint)}\n\nYour previous answer was: ${JSON.stringify(parsed)}\nIt violated these rules: ${violations.join("; ")}.\nReturn corrected JSON only.`;
-      parsed = await ollamaJsonQueued(repairPrompt).catch(() => parsed);
+      // Targeted SINGLE-FIELD repair (converges better than full-object retries
+      // with small models): re-ask only for the failing fields, error fed back.
+      const badFields = new Set(violations.map((v) => (v.startsWith("goal") ? "goal" : v.includes("state") ? "state" : "status_line")));
+      const fieldSchema = { type: "object", properties: {}, required: [...badFields] };
+      for (const field of badFields) fieldSchema.properties[field] = STATUS_SCHEMA.properties[field];
+      const repairMessages = [
+        ...buildSchemaMessages(src, finishedHint),
+        { role: "assistant", content: JSON.stringify(Object.fromEntries([...badFields].map((f) => [f, parsed[f]]))) },
+        { role: "user", content: `That violated: ${violations.join("; ")}. Return ONLY corrected JSON for ${[...badFields].join(", ")}.` },
+      ];
+      const repaired = await ollamaJsonQueued(repairMessages, fieldSchema).catch(() => null);
+      if (repaired) parsed = autoFixStatusResult({ ...parsed, ...repaired });
       violations = parsed ? validateStatusResult(parsed, context) : violations;
     }
     let nowLine = "";
