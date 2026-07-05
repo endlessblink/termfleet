@@ -426,6 +426,8 @@ function cleanContextLine(raw) {
 function askIsVague(ask) {
   const text = cleanText(ask);
   if (!text) return true;
+  // Pasted code or a broken fragment is not an ask — synthesize a goal instead.
+  if ((/\b(?:const|let|var|function|return|=>)\b/.test(text) && /[{};()]/.test(text)) || (text.match(/"/g) ?? []).length % 2 === 1) return true;
   if (/^(?:go|ok|okay|sure|yes|done|continue|do it|proceed|fill everything|fix it|make it work|next|deploy and \$?done)[.!]?$/i.test(text)) return true;
   return text.split(/\s+/).length < 4;
 }

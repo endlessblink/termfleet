@@ -18,7 +18,10 @@ for (const t of dump.terminals ?? []) {
   const title = String(t.title ?? "").trim();
   const task = String(t.task ?? "").trim();
   const p = String(t.path ?? "");
-  const hasAnyData = Boolean(t.terminalVisibleText || t.terminalOutput || t.statusSummaryNarration || (task && task !== "Task not captured"));
+  const hasAnyData = Boolean(
+    t.terminalVisibleText || t.terminalOutput || t.statusSummaryNarration ||
+    (task && task !== "Task not captured" && task.split(/\s+/).length >= 3),
+  );
   if (!hasAnyData) continue; // truly-empty pane: nothing to say yet
   const problems = [];
   if (GENERIC.test(title)) problems.push(`generic title "${title}"`);
