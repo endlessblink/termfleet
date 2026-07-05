@@ -290,12 +290,22 @@ function sessionScrollbackTail(paneId) {
   }
 }
 
+// Our OWN placeholder phrases must never reach the model as "context" — it will
+// faithfully paraphrase them into nonsense ("The agent finished nothing; it was
+// idle until the next prompt").
+function realContext(value) {
+  const text = cleanText(value);
+  if (!text) return "";
+  if (/^(?:idle(?:\s+until.*)?|ready|working(?:\s+on\b.*)?|awaiting\b.*|waiting for input|prompt submitted|supervised agent run|terminal|shell ready|no activity)$/i.test(text)) return "";
+  return text;
+}
+
 function contextSources(payload, heuristic) {
   const workstream = payload?.workstream ?? {};
   return {
-    ask: cleanText(workstream.userTask || workstream.prompt || heuristic?.userTask).slice(0, 220),
-    narration: cleanText(heuristic?.narration).slice(0, 300),
-    activity: cleanText(workstream.currentActivity || heuristic?.now).slice(0, 160),
+    ask: realContext(workstream.userTask || workstream.prompt || heuristic?.userTask).slice(0, 220),
+    narration: realContext(heuristic?.narration).slice(0, 300),
+    activity: realContext(workstream.currentActivity || heuristic?.now).slice(0, 160),
     tail: cleanText(payload?.transcript).slice(-700),
   };
 }
@@ -473,6 +483,10 @@ async function contextTitleFor(payload, heuristic) {
     ]);
     const context = `${src.ask} ${src.narration} ${src.activity} ${src.tail}`;
     let nowLine = cleanContextLine(rawNow);
+    // Self-referential no-content lines are worse than silence.
+    if (/\b(?:finished nothing|was idle|is idle|no activity|nothing to (?:do|report|summarize)|not doing anything|remains idle|context (?:below|provided)|based on the context)\b/i.test(nowLine)) {
+      nowLine = "";
+    }
     // With real agent narration as source material a paraphrase is fine — only
     // hard-check numbers/quotes. Full word-anchoring applies when the model had
     // to work from thin scrape context (that's where invention happens).
