@@ -491,7 +491,11 @@ async function contextTitleFor(payload, heuristic) {
     // With real agent narration as source material a paraphrase is fine — only
     // hard-check numbers/quotes. Full word-anchoring applies when the model had
     // to work from thin scrape context (that's where invention happens).
-    const softGround = Boolean(src.narration) || src.tail.length >= 300;
+    // Word-anchoring is a blunt tool: with the invention firewall + number/quote
+    // grounding in place, hard-anchor ONLY nearly-context-free panes (where the
+    // model has nothing real to work from). Forward-looking lines ("Blocked: …,
+    // fix them to commit") legitimately use words absent from past output.
+    const softGround = Boolean(src.narration) || Boolean(src.ask) || src.tail.length >= 200;
     if (nowLine && !groundedIn(nowLine, context, softGround)) nowLine = "";
     let goal = cleanContextLine(rawGoal)
       .replace(/^the\s+operator\s+wants\s+(?:to\s+)?/i, "")
