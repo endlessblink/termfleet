@@ -333,50 +333,49 @@ function looksFinished(heuristic, tail) {
     !/\besc to interrupt\b|\bWorking\s*\(/i.test(text.slice(-200));
 }
 
-function buildNowPrompt(src, finished) {
+// ---- Schema-constrained generation (2026-07-05 rebuild) ----
+// Research-confirmed design: Ollama structured outputs (JSON schema in `format`)
+// for near-100% parseability + a validator with ONE repair retry that feeds the
+// violations back. Replaces the freeform-line + regex-cleanup approach that
+// needed a new patch for every phrasing failure. NOTE: do NOT set think:false
+// here — on gemma4 variants it can silently disable the format constraint.
+const STATUS_SCHEMA = {
+  type: "object",
+  properties: {
+    goal: {
+      type: "string",
+      description: "The operator's wish, imperative, 5-10 plain words naming the concrete object, e.g. 'Get the provider-auth change committed'. No file names, no paths.",
+    },
+    status_line: {
+      type: "string",
+      description: "6-10 plain words, ONE clause, under 60 characters, for a non-technical reader. Working: '<Verb-ing> <object> to <why>'. Blocked: 'Blocked: <what fails> - <what to do next>'. Finished: '<Past-tense verb> <object> - ready for <next>'. Never copy raw log text, never file names or paths.",
+    },
+    state: { type: "string", enum: ["working", "blocked", "finished", "waiting"] },
+  },
+  required: ["goal", "status_line", "state"],
+};
+
+function buildSchemaPrompt(src, finishedHint) {
   return [
-    finished
-      ? "In ONE line (max 12 words): what the agent just finished AND what's next, e.g. 'Fixed the auth tests — ready to commit'. If work is stopped by a problem, use EXACTLY this shape: 'Blocked: <what fails> — <what to do next>'."
-      : "In ONE line (max 12 words), state what the agent is doing right now AND why. If stopped by a problem: 'Blocked: <what fails> — <what to do next>'.",
-    "ONE short clause — no semicolons, no run-ons. ACTIVE voice, start with a verb or 'Blocked:'. Never start with 'The … was'. Use ONLY facts from the context below. Never invent names, numbers, or events. Plain words, no preamble, no quotes, no labels.",
+    "You write terminal status headers for a non-technical observer. Use ONLY facts from the context — never invent names, numbers, or events.",
+    "Both text fields must name the concrete object (which bug, which change, which tests). One-word answers are unacceptable. Rephrase in plain words; never copy raw log lines, file names, or paths.",
+    'Example: {"goal": "Get the provider-auth change committed", "status_line": "Blocked: 3 content-pool tests failing - fix prompt counts to commit", "state": "blocked"}',
+    finishedHint ? "Hint: the work appears finished — describe the outcome and what's next." : "",
     src.ask ? `Operator asked: ${src.ask}` : "",
     src.narration ? `Agent just said: ${src.narration}` : "",
     src.activity ? `Latest activity: ${src.activity}` : "",
     src.tail ? `Terminal tail: ${src.tail}` : "",
-    "Line:",
   ].filter(Boolean).join("\n");
 }
 
-function buildGoalPrompt(src) {
-  return [
-    "In ONE line (max 10 words), state what the operator ultimately WANTS in this terminal, phrased as an imperative wish: 'Get the provider-auth change committed', 'Make the packaged app build cleanly'.",
-    "NEVER phrase as status or events ('Stop because…', 'No commit was made', 'Tests failed'). Active voice. Use ONLY facts from the context. Plain words, no file names, no paths, no preamble, no quotes, no labels.",
-    src.ask ? `Operator asked: ${src.ask}` : "",
-    src.narration ? `Agent said: ${src.narration}` : "",
-    src.tail ? `Terminal tail: ${src.tail}` : "",
-    "Line:",
-  ].filter(Boolean).join("\n");
-}
-
-// Serialize model calls: cache-expiry bursts (N panes x 2 prompts) queued at
-// Ollama pushed later calls past the timeout, which then got cached as EMPTY for
-// the full TTL — every pane went model-empty forever. One call at a time keeps
-// each under a second warm.
-let ollamaChain = Promise.resolve();
-function ollamaLineQueued(prompt) {
-  const next = ollamaChain.then(() => ollamaLine(prompt), () => ollamaLine(prompt));
-  ollamaChain = next.catch(() => {});
-  return next;
-}
-
-function ollamaLine(prompt) {
+function ollamaJson(prompt) {
   return new Promise((resolve, reject) => {
     const body = JSON.stringify({
       model: CONTEXT_MODEL,
       stream: false,
       keep_alive: "30m",
-      think: false,
-      options: { num_predict: 40, temperature: 0.2 },
+      format: STATUS_SCHEMA,
+      options: { num_predict: 300, temperature: 0.1 },
       prompt,
     });
     const url = new URL(OLLAMA_URL);
@@ -387,11 +386,11 @@ function ollamaLine(prompt) {
         response.on("data", (chunk) => (text += chunk));
         response.on("end", () => {
           if (response.statusCode !== 200) { reject(new Error(`ollama ${response.statusCode}`)); return; }
-          try { resolve(String(JSON.parse(text)?.response ?? "")); } catch (error) { reject(error); }
+          try { resolve(JSON.parse(String(JSON.parse(text)?.response ?? "{}"))); } catch (error) { reject(error); }
         });
       },
     );
-    request.setTimeout(Number(process.env.TERMFLEET_CONTEXT_TITLE_TIMEOUT_MS || 20000), () => {
+    request.setTimeout(Number(process.env.TERMFLEET_CONTEXT_TITLE_TIMEOUT_MS || 25000), () => {
       request.destroy(new Error("ollama timed out"));
     });
     request.on("error", reject);
@@ -399,84 +398,42 @@ function ollamaLine(prompt) {
   });
 }
 
-// Model output hygiene: first line only, strip quotes/bullets/boilerplate, clamp
-// length; empty result → caller keeps the heuristic.
-function cleanContextLine(raw) {
-  let line = String(raw ?? "").split("\n").map((entry) => entry.trim()).find(Boolean) ?? "";
-  line = line
-    .replace(/^["'“”`•*-]+|["'“”`]+$/g, "")
-    .replace(/^(?:\d+[.)]\s*)?(?:status line|header|title|goal|now|current activity|activity|status|previous action|last action|outcome|result|summary)\s*[:\-]\s*/i, "")
-    .replace(/^the\s+(?:terminal\s+)?(?:ai\s+)?agent\s+is\s+/i, "")
-    .replace(/^(?:currently|right now|at the moment)[,\s]+(?:it\s+is\s+|the\s+agent\s+is\s+)?/i, "")
-    .replace(/\s+/g, " ")
-    .trim();
-  if (!line) return "";
-  line = line.charAt(0).toUpperCase() + line.slice(1);
-  // ONE clause that fits the header card: semicolon run-ons keep only their
-  // first clause; then clamp to 64 chars at a word boundary (operator gate:
-  // "Launched X and Y responded; commit…" overflowed and read truncated).
-  line = line.split(/;\s*/)[0].trim();
-  if (line.length > 64) {
-    const clause = line.split(/,\s+/)[0].trim();
-    line = clause.length >= 24 && clause.length <= 64 ? clause : `${line.slice(0, 61).replace(/\s+\S*$/, "").trim()}…`;
-  }
-  return line.replace(/[.!?]+$/, "");
+let ollamaChain = Promise.resolve();
+function ollamaJsonQueued(prompt) {
+  const next = ollamaChain.then(() => ollamaJson(prompt), () => ollamaJson(prompt));
+  ollamaChain = next.catch(() => {});
+  return next;
 }
 
-function askIsVague(ask) {
-  const text = cleanText(ask);
-  if (!text) return true;
-  // Pasted code or a broken fragment is not an ask — synthesize a goal instead.
-  if ((/\b(?:const|let|var|function|return|=>)\b/.test(text) && /[{};()]/.test(text)) || (text.match(/"/g) ?? []).length % 2 === 1) return true;
-  if (/^(?:go|ok|okay|sure|yes|done|continue|do it|proceed|fill everything|fix it|make it work|next|deploy and \$?done)[.!]?$/i.test(text)) return true;
-  return text.split(/\s+/).length < 4;
-}
-
-function parseContextLines(raw) {
-  const lines = String(raw ?? "").split("\n").map((line) => line.trim()).filter(Boolean);
-  let goal = "";
-  let now = "";
-  // Pass 1: labeled lines only (the requested format).
-  for (const line of lines) {
-    const goalMatch = line.match(/^[*\s"'`-]*(?:\d+[.)]\s*)?goal\s*[:\-]\s*(.+)$/i);
-    if (goalMatch && !goal) { goal = cleanContextLine(goalMatch[1]); continue; }
-    const nowMatch = line.match(/^[*\s"'`-]*(?:\d+[.)]\s*)?now\s*[:\-]\s*(.+)$/i);
-    if (nowMatch && !now) now = cleanContextLine(nowMatch[1]);
+// The operator's rules as a machine validator. Returns violation strings; empty = pass.
+function validateStatusResult(parsed, context) {
+  const violations = [];
+  const goal = cleanText(parsed?.goal);
+  const line = cleanText(parsed?.status_line);
+  const state = String(parsed?.state ?? "");
+  const words = (t) => t.split(/\s+/).filter(Boolean).length;
+  if (!goal) violations.push("goal is empty");
+  else {
+    if (words(goal) < 4) violations.push("goal must be 4-10 words naming the object");
+    if (words(goal) > 12) violations.push("goal too long");
+    if (/\.[a-z]{2,4}\b|\//i.test(goal)) violations.push("goal contains a file name or path — use plain words");
+    if (/^(?:stop|no |not |failed|error|blocked|done|waiting)/i.test(goal)) violations.push("goal must be the operator's wish, not a status");
   }
-  // Pass 2 (labels missing): last substantive line, never chat preamble.
-  if (!now) {
-    const candidate = [...lines].reverse().find((line) =>
-      !/[:：]\s*$/.test(line) && !/two lines|status header|here (?:are|is)\b/i.test(line));
-    now = cleanContextLine(candidate ?? "");
+  if (!line) violations.push("status_line is empty");
+  else {
+    if (line.length > 64) violations.push("status_line must be under 60 characters");
+    if (words(line) < 4) violations.push("status_line must be at least 4 words");
+    if (/;/.test(line)) violations.push("no semicolons — one clause");
+    if (/^the\s+\w+(?:\s+\w+)?\s+(?:was|were|has been|had been)\b/i.test(line)) violations.push("active voice — never 'The X was …'");
+    if (/^(?:stop|do not|don't|never)\b/i.test(line)) violations.push("no imperatives aimed at nobody");
+    if (/\bblock(?:ed|s|ing)?\b/i.test(line) && !/^Blocked:\s/.test(line)) violations.push("blocked info must use the exact shape 'Blocked: <what fails> - <what to do next>'");
+    if (state === "blocked" && !/^Blocked:\s/.test(line)) violations.push("state is blocked, so status_line must start with 'Blocked:'");
+    if (/\.[a-z]{2,4}\b|\//i.test(line.replace(/^Blocked:/, ""))) violations.push("no file names or paths — plain words");
+    if (!groundedIn(line, context, true)) violations.push("contains numbers or quoted names not present in the context");
+    if (/\b(?:finished nothing|was idle|is idle|no activity|nothing to (?:do|report)|based on the context)\b/i.test(line)) violations.push("self-referential emptiness is not a status");
   }
-  // A goal must be a whole statement, not a dangling clause ("for bina-meatzevet
-  // profile") — reject fragments so the Task row never shows half a sentence.
-  if (goal && (/^(?:for|with|to|of|in|on|at|by|from|about)\b/i.test(goal) || goal.split(/\s+/).length < 4)) {
-    goal = "";
-  }
-  return { goal, now };
-}
-
-// Anti-hallucination: any number or quoted phrase in the model line must appear in
-// the source context, or the line is rejected (small models invent "Bug 123"-style
-// specifics when context is thin).
-function groundedIn(line, contextText, soft = false) {
-  const context = String(contextText ?? "").toLowerCase();
-  for (const number of String(line).match(/\d{2,}/g) ?? []) {
-    if (!context.includes(number)) return false;
-  }
-  for (const quoted of String(line).match(/["'“”]([^"'“”]{2,40})["'“”]/g) ?? []) {
-    if (!context.includes(quoted.slice(1, -1).toLowerCase())) return false;
-  }
-  // Content anchoring: a real line shares vocabulary with the pane. Lines whose
-  // distinctive words appear NOWHERE in the context are invented filler
-  // ("System Booted Successfully") — reject them.
-  if (!soft) {
-    const words = String(line).toLowerCase().match(/[a-z]{5,}/g) ?? [];
-    const anchored = words.filter((word) => context.includes(word));
-    if (words.length >= 2 && anchored.length === 0) return false;
-  }
-  return true;
+  if (!["working", "blocked", "finished", "waiting"].includes(state)) violations.push("state must be one of working/blocked/finished/waiting");
+  return violations;
 }
 
 async function contextTitleFor(payload, heuristic) {
@@ -488,52 +445,33 @@ async function contextTitleFor(payload, heuristic) {
   if (cached?.promise) return cached.promise;
   const src = contextSourcesWithDisk(payload, heuristic);
   if (!hasEnoughContext(src)) {
-    contextCache.set(key, { at: now, line: { goal: "", now: "", reason: "thin-context" } });
-    return { goal: "", now: "", reason: "thin-context" };
+    contextCache.set(key, { at: now, line: { goal: "", now: "", state: "", reason: "thin-context" } });
+    return { goal: "", now: "", state: "", reason: "thin-context" };
   }
-  const finished = looksFinished(heuristic, src.tail);
-  const wantGoal = askIsVague(src.ask);
+  const finishedHint = looksFinished(heuristic, src.tail);
+  const context = `${src.ask} ${src.narration} ${src.activity} ${src.tail}`;
   const promise = (async () => {
-    const [rawNow, rawGoal] = await Promise.all([
-      ollamaLineQueued(buildNowPrompt(src, finished)).catch(() => ""),
-      wantGoal ? ollamaLineQueued(buildGoalPrompt(src)).catch(() => "") : Promise.resolve(""),
-    ]);
-    const context = `${src.ask} ${src.narration} ${src.activity} ${src.tail}`;
-    let nowLine = cleanContextLine(rawNow);
-    // Imperatives aimed at nobody ("Stop commit because…") are not a status —
-    // blocked states must use the 'Blocked: … — …' shape; force a re-roll.
-    if (/^(?:stop|do not|don't|never)\b/i.test(nowLine)) nowLine = "";
-    if (/\bblock(?:ed|s|ing)?\b/i.test(nowLine) && !/^Blocked:\s/.test(nowLine)) nowLine = "";
-    // Self-referential no-content lines are worse than silence.
-    if (/\b(?:finished nothing|was idle|is idle|no activity|nothing to (?:do|report|summarize)|not doing anything|remains idle|context (?:below|provided)|based on the context)\b/i.test(nowLine)) {
-      nowLine = "";
+    let parsed = await ollamaJsonQueued(buildSchemaPrompt(src, finishedHint)).catch(() => null);
+    let violations = parsed ? validateStatusResult(parsed, context) : ["model returned nothing"];
+    if (violations.length && parsed) {
+      // ONE repair round with the violations fed back (research-confirmed pattern).
+      const repairPrompt = `${buildSchemaPrompt(src, finishedHint)}\n\nYour previous answer was: ${JSON.stringify(parsed)}\nIt violated these rules: ${violations.join("; ")}.\nReturn corrected JSON only.`;
+      parsed = await ollamaJsonQueued(repairPrompt).catch(() => parsed);
+      violations = parsed ? validateStatusResult(parsed, context) : violations;
     }
-    // With real agent narration as source material a paraphrase is fine — only
-    // hard-check numbers/quotes. Full word-anchoring applies when the model had
-    // to work from thin scrape context (that's where invention happens).
-    // Word-anchoring is a blunt tool: with the invention firewall + number/quote
-    // grounding in place, hard-anchor ONLY nearly-context-free panes (where the
-    // model has nothing real to work from). Forward-looking lines ("Blocked: …,
-    // fix them to commit") legitimately use words absent from past output.
-    const softGround = Boolean(src.narration) || Boolean(src.ask) || src.tail.length >= 200;
-    if (nowLine && !groundedIn(nowLine, context, softGround)) nowLine = "";
-    let goal = cleanContextLine(rawGoal)
-      .replace(/^the\s+operator\s+wants\s+(?:to\s+)?/i, "")
-      .replace(/^\w/, (c) => c.toUpperCase());
-    if (goal && (/^(?:for|with|to|of|in|on|at|by|from|about)\b/i.test(goal) || goal.split(/\s+/).length < 4 || /\.[a-z]{2,4}\b/i.test(goal) || !groundedIn(goal, context, softGround))) {
-      goal = "";
+    let nowLine = "";
+    let goal = "";
+    let state = "";
+    if (parsed && violations.length === 0) {
+      nowLine = cleanText(parsed.status_line);
+      goal = cleanText(parsed.goal);
+      state = String(parsed.state);
     }
-    // Title stability: a rejected/empty roll must not blank a previously good
-    // line — keep serving the last good one (up to 10 min) instead of flickering
-    // between a real title and "Awaiting next action".
     const prevGood = lastGoodLines.get(key);
     const prevFresh = prevGood && Date.now() - prevGood.at < 10 * 60_000;
-    if (!nowLine && prevFresh) nowLine = prevGood.now;
-    // Goals stabilize independently: one bad roll must not blank the Task row.
+    if (!nowLine && prevFresh) { nowLine = prevGood.now; state = prevGood.state ?? state; }
     if (!goal && prevFresh && prevGood.goal) goal = prevGood.goal;
-    // Wording stickiness: if the fresh roll is just a re-phrasing of the last
-    // good line (shared vocabulary), keep the OLD wording — the operator sees a
-    // stable sentence that only changes when the content actually changes.
+    // Wording stickiness: a paraphrase keeps the previous wording.
     if (nowLine && prevFresh && prevGood.now && nowLine !== prevGood.now) {
       const tokens = (t) => new Set(String(t).toLowerCase().match(/[a-z]{5,}/g) ?? []);
       const a = tokens(nowLine);
@@ -541,14 +479,8 @@ async function contextTitleFor(payload, heuristic) {
       const shared = [...a].filter((w) => b.has(w)).length;
       if (shared >= 2 && shared >= Math.min(a.size, b.size) * 0.5) nowLine = prevGood.now;
     }
-    if (nowLine) lastGoodLines.set(key, { at: Date.now(), now: nowLine, goal });
-    const line = {
-      goal,
-      now: nowLine,
-      reason: nowLine ? "ok" : (cleanContextLine(rawNow) ? "grounded-out" : "model-empty"),
-    };
-    // Empty results must not squat the cache: expire them quickly so the next
-    // poll retries instead of freezing the pane generic for the full TTL.
+    if (nowLine) lastGoodLines.set(key, { at: Date.now(), now: nowLine, goal, state });
+    const line = { goal, now: nowLine, state, reason: nowLine ? "ok" : `rejected: ${violations.join("; ").slice(0, 120)}` };
     const at = nowLine ? Date.now() : Date.now() - CONTEXT_TTL_MS + 10_000;
     contextCache.set(key, { at, line });
     return line;
@@ -672,25 +604,16 @@ const server = http.createServer(async (request, response) => {
       return;
     }
     if (context?.now) {
-      const finished = looksFinished(heuristic, cleanText(payload?.transcript).slice(-700));
-      // Operator rule: a finished pane says BOTH the outcome and that it awaits —
-      // but only glue the suffix onto a past-tense line ("Fixed X · awaiting…"),
-      // never onto an -ing line (that reads as a contradiction).
-      const pastTense = /^(?:\w+ed|Ran|Built|Set up|Wrote|Made|Kept|Found|Left)\b/i.test(context.now) && !/^\w+ing\b/i.test(context.now);
-      // Suffix must fit INSIDE the 64-char card budget (21 chars for " · awaiting next task").
-      const alreadyHasStatusClause = /—|\bready\b|\bawaiting\b|\bnext\b|^Blocked:/i.test(context.now);
-      const nowLine = finished && pastTense && !alreadyHasStatusClause && context.now.length <= 43
-        ? `${context.now} · awaiting next task`
-        : context.now;
-      const transcriptEmpty = !cleanText(payload?.transcript);
       sendJson(response, 200, {
         ...heuristic,
-        now: nowLine,
-        narration: nowLine,
+        now: context.now,
+        narration: context.now,
         ...(context.goal && askIsVague(ask) ? { userTask: context.goal } : {}),
-        // An empty/stale grid cannot be "working" — idle lets the header show
-        // the synthesized context instead of a status word.
-        status: finished || transcriptEmpty ? "idle" : heuristic.status || "working",
+        status:
+          context.state === "blocked" ? "blocked"
+          : context.state === "finished" ? "idle"
+          : context.state === "waiting" ? "waiting"
+          : heuristic.status || "working",
         confidence: "high",
       });
       return;
