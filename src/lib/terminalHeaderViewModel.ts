@@ -309,10 +309,16 @@ export function buildShellTerminalHeaderViewModel(input: {
         ? clause
         : `${rawLiveNarration.slice(0, 75).replace(/\s+\S*$/, "").trim()}\u2026`;
   }
+  const narrationConfidence =
+    (base.narration ? base.confidence : input.statusSummary?.confidence) ?? "low";
+  // Model-vetted lines (confidence high) may legitimately mention commands or
+  // files — only structural checks apply. Scraped narration keeps the strict gate.
+  const narrationGate =
+    narrationConfidence === "high" ? qualityCheckAuthoritativeTaskLabel : qualityCheckNowLabel;
   const liveNarration =
     rawLiveNarration &&
     rawLiveNarration.split(/\s+/).length >= 4 &&
-    qualityCheckNowLabel(rawLiveNarration).ok
+    narrationGate(rawLiveNarration).ok
       ? rawLiveNarration
       : undefined;
   const summary = sanitizeShellDisplaySummary(

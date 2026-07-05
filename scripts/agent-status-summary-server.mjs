@@ -491,7 +491,7 @@ async function contextTitleFor(payload, heuristic) {
     // With real agent narration as source material a paraphrase is fine — only
     // hard-check numbers/quotes. Full word-anchoring applies when the model had
     // to work from thin scrape context (that's where invention happens).
-    const softGround = Boolean(src.narration);
+    const softGround = Boolean(src.narration) || src.tail.length >= 300;
     if (nowLine && !groundedIn(nowLine, context, softGround)) nowLine = "";
     let goal = cleanContextLine(rawGoal)
       .replace(/^the\s+operator\s+wants\s+(?:to\s+)?/i, "")
