@@ -389,8 +389,14 @@ export function buildShellTerminalHeaderViewModel(input: {
   const candidateReadableNow = stripTrailingSeparators(
     hasUserTask && now === "Idle" ? "Awaiting next action" : now,
   );
-  const titleQuality = qualityCheckActivityLabel(candidateReadableTitle);
-  const nowQuality = qualityCheckNowLabel(candidateReadableNow);
+  // When the candidate IS the model-vetted narration, keep the light gate all the
+  // way down — the strict scrape gates reject legitimate mentions of commands.
+  const titleQuality = (liveNarration && candidateReadableTitle === liveNarration
+    ? qualityCheckAuthoritativeTaskLabel
+    : qualityCheckActivityLabel)(candidateReadableTitle);
+  const nowQuality = (liveNarration && candidateReadableNow === liveNarration
+    ? qualityCheckAuthoritativeTaskLabel
+    : qualityCheckNowLabel)(candidateReadableNow);
   const duplicatedLongLabels = headerLabelsAreDuplicated(taskDescriptionText, candidateReadableTitle);
   // Title and now are gated INDEPENDENTLY: a junk momentary now (e.g.
   // "Editing Terminal.tsx") must not drag a good declared title down with it.

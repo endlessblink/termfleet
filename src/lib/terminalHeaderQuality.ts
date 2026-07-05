@@ -88,7 +88,9 @@ export function qualityCheckUserAskLabel(value?: string | null): HeaderQualityRe
   if (/^[a-z]{1,2}\s/.test(text) && !/^(?:i|we|is|it|do|go|if|he|at|on|in|to|my|no|ok|so|up|us|be|by|or|an|as|am)\b/i.test(text)) {
     return { ok: false, reason: "prompt-fragment" };
   }
-  if (looksLikePackageScript(text)) return { ok: false, reason: "package-script" };
+  // A goal SENTENCE may mention a command ("Build the project using npm run
+  // build"); only a text that IS a command (anchored) is rejected.
+  if (/^(?:npm|pnpm|yarn|bun|npx)\b/i.test(text)) return { ok: false, reason: "package-script" };
   if (looksLikeCommand(text)) return { ok: false, reason: "command-like" };
   if (looksLikeCode(text)) return { ok: false, reason: "command-like" };
   if (looksLikePath(text)) return { ok: false, reason: "implementation-detail" };
