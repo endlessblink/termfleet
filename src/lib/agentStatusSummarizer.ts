@@ -40,14 +40,11 @@ function tauriSidecarReader(): SidecarFileReader | null {
   };
 }
 
-const DEFAULT_AGENT_STATUS_SUMMARY_ENDPOINT = "http://127.0.0.1:37819/status";
-
 function configuredEndpoint() {
   const env = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env;
   const explicit = env?.VITE_AGENT_STATUS_SUMMARY_ENDPOINT?.trim();
   if (explicit) return explicit;
-  if (typeof window !== "undefined" && window.location.port !== "1420") return "";
-  return DEFAULT_AGENT_STATUS_SUMMARY_ENDPOINT;
+  return "";
 }
 
 export function isAgentStatusSummarizerConfigured() {
@@ -159,19 +156,6 @@ export async function summarizeAgentStatus(
   if (sidecarReader) {
     try {
       const shaped = await readLocalSidecarSummary(input, fallback, sidecarReader);
-      // Authoritative ONLY while a task is actually open — a fully-completed list
-      // must still get a contextual outcome line from the endpoint (operator gate).
-      const hasOpenTask = Boolean(shaped?.tasks?.length) && shaped?.status === "working";
-      if (shaped && shaped.tasksFromTodoWrite && hasOpenTask) {
-        return {
-          summary: parseAgentStatusSummaryResponse(JSON.stringify(shaped), fallback),
-          source: "sidecar",
-        };
-      }
-      // A sidecar WITHOUT a task list has no authoritative content — keep its
-      // narration/userTask as the heuristic base and continue to the endpoint so
-      // the contextual summarizer can upgrade the line. (Operator gate 2026-07-04:
-      // every pane must say goal + step + specific object.)
       if (shaped) sidecarShapedFallback = parseAgentStatusSummaryResponse(JSON.stringify(shaped), fallback);
     } catch {
       // Sidecar read failed → fall through to the endpoint / heuristic fallback.

@@ -193,3 +193,30 @@ test("summarizeAgentStatus falls back when no local sidecar exists and no endpoi
   );
   expect(result.source).toBe("fallback");
 });
+
+test("summarizeAgentStatus does not infer the localhost worker endpoint in desktop dev", async () => {
+  const globalWithWindow = globalThis as typeof globalThis & { window?: unknown };
+  const previousWindow = globalWithWindow.window;
+  let fetchCount = 0;
+  globalWithWindow.window = { location: { port: "1420" } };
+  try {
+    const result = await summarizeAgentStatus(
+      { provider: "shell", cwd: "/repo/x", paneId: "terminal-no-implicit-http", currentActivity: "Reading sidecar" },
+      {
+        sidecarReader: async () => null,
+        fetcher: async () => {
+          fetchCount += 1;
+          return new Response("{}", { status: 200 });
+        },
+      },
+    );
+    expect(result.source).toBe("fallback");
+    expect(fetchCount).toBe(0);
+  } finally {
+    if (previousWindow === undefined) {
+      delete globalWithWindow.window;
+    } else {
+      globalWithWindow.window = previousWindow;
+    }
+  }
+});

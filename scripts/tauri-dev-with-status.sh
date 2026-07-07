@@ -53,13 +53,22 @@ status_server_ready() {
     >/dev/null 2>&1
 }
 
-# Default worker = the no-model SIDECAR worker: serves the agent's REAL task list from
-# the status hook. The Ollama model summarizer is opt-in only via
-# TERMFLEET_AGENT_STATUS_WORKER (it produced hallucinated/jargon titles).
+# Status summaries are opt-in for dev launches. Even the no-model sidecar can
+# create a high-frequency polling loop across many panes, so keep it off unless
+# explicitly requested.
+# Enable with TERMFLEET_AGENT_STATUS_ENABLE=1. When enabled, the default worker is
+# the no-model SIDECAR worker; the Ollama worker remains explicitly opt-in via
+# TERMFLEET_AGENT_STATUS_WORKER.
 STATUS_WORKER="${TERMFLEET_AGENT_STATUS_WORKER:-node scripts/agent-status-summary-sidecar.mjs}"
+CONTEXT_TITLE_DISABLE="${TERMFLEET_CONTEXT_TITLE_DISABLE:-0}"
+if [[ "$STATUS_WORKER" == *"agent-status-summary-sidecar.mjs"* && -z "${TERMFLEET_CONTEXT_TITLE_DISABLE+x}" ]]; then
+  CONTEXT_TITLE_DISABLE=1
+fi
 
 start_status_server() {
-  if [[ "${TERMFLEET_AGENT_STATUS_DISABLE:-0}" == "1" ]]; then
+  if [[ "${TERMFLEET_AGENT_STATUS_ENABLE:-0}" != "1" || "${TERMFLEET_AGENT_STATUS_DISABLE:-0}" == "1" ]]; then
+    kill_if_running "agent-status-summary-server.mjs"
+    unset VITE_AGENT_STATUS_SUMMARY_ENDPOINT
     return
   fi
 
@@ -73,6 +82,7 @@ start_status_server() {
     TERMFLEET_AGENT_STATUS_HOST="$STATUS_HOST" \
     TERMFLEET_AGENT_STATUS_PORT="$STATUS_PORT" \
     TERMFLEET_AGENT_STATUS_MODEL="${TERMFLEET_AGENT_STATUS_MODEL:-qwen3:4b}" \
+    TERMFLEET_CONTEXT_TITLE_DISABLE="$CONTEXT_TITLE_DISABLE" \
       node scripts/agent-status-summary-server.mjs ${STATUS_WORKER}
   ) >"$STATUS_LOG" 2>&1 &
   STATUS_PID="$!"

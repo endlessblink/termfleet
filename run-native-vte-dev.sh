@@ -88,22 +88,24 @@ if port_in_use 1420; then
   exit 1
 fi
 
-# Start the status summary server. The default worker is the SIDECAR worker: it serves
-# the agent's REAL task list + activity from the status hook's sidecar (free, accurate,
-# no model). When no sidecar exists (e.g. Codex/OpenCode panes today) it returns the
-# heuristic candidate, which the UI neutralizes — NO model hallucination of scrollback.
-# The Ollama model summarizer is opt-in only (TERMFLEET_AGENT_STATUS_WORKER="node
-# scripts/agent-status-summary-ollama.mjs"); it is no longer used by default — it was
-# the source of the garbage titles. Disable status entirely with
-# TERMFLEET_AGENT_STATUS_DISABLE=1.
+# Status summaries are opt-in for dev launches. Even the no-model sidecar can
+# create a high-frequency polling loop across many panes, so keep it off unless
+# explicitly requested.
+# Enable with TERMFLEET_AGENT_STATUS_ENABLE=1. When enabled, the default worker is
+# the no-model SIDECAR worker; the Ollama worker remains explicitly opt-in via
+# TERMFLEET_AGENT_STATUS_WORKER.
 STATUS_HOST="${TERMFLEET_AGENT_STATUS_HOST:-127.0.0.1}"
 STATUS_PORT="${TERMFLEET_AGENT_STATUS_PORT:-37819}"
 STATUS_ENDPOINT="http://${STATUS_HOST}:${STATUS_PORT}/status"
 STATUS_LOG="${TERMFLEET_AGENT_STATUS_LOG:-/tmp/termfleet-agent-status-summary.log}"
 STATUS_WORKER="${TERMFLEET_AGENT_STATUS_WORKER:-node scripts/agent-status-summary-sidecar.mjs}"
+CONTEXT_TITLE_DISABLE="${TERMFLEET_CONTEXT_TITLE_DISABLE:-0}"
+if [[ "$STATUS_WORKER" == *"agent-status-summary-sidecar.mjs"* && -z "${TERMFLEET_CONTEXT_TITLE_DISABLE+x}" ]]; then
+  CONTEXT_TITLE_DISABLE=1
+fi
 STATUS_PID=""
 
-if [[ "${TERMFLEET_AGENT_STATUS_DISABLE:-0}" != "1" ]]; then
+if [[ "${TERMFLEET_AGENT_STATUS_ENABLE:-0}" == "1" && "${TERMFLEET_AGENT_STATUS_DISABLE:-0}" != "1" ]]; then
   # Always replace our own status server so a worker/code change actually takes effect.
   # Reusing a stale server (e.g. an old model-only worker) silently serves outdated
   # behavior across relaunches — the exact bug that hid the sidecar task list. (TC-033)
@@ -113,6 +115,7 @@ if [[ "${TERMFLEET_AGENT_STATUS_DISABLE:-0}" != "1" ]]; then
     TERMFLEET_AGENT_STATUS_HOST="$STATUS_HOST" \
     TERMFLEET_AGENT_STATUS_PORT="$STATUS_PORT" \
     TERMFLEET_AGENT_STATUS_MODEL="${TERMFLEET_AGENT_STATUS_MODEL:-qwen3:4b}" \
+    TERMFLEET_CONTEXT_TITLE_DISABLE="$CONTEXT_TITLE_DISABLE" \
       node scripts/agent-status-summary-server.mjs ${STATUS_WORKER}
   ) >"$STATUS_LOG" 2>&1 &
   STATUS_PID="$!"
@@ -128,6 +131,9 @@ if [[ "${TERMFLEET_AGENT_STATUS_DISABLE:-0}" != "1" ]]; then
   if [[ -z "${VITE_AGENT_STATUS_SUMMARY_ENDPOINT:-}" ]]; then
     echo "Status summary server not ready; continuing with heuristic summaries. Log: $STATUS_LOG" >&2
   fi
+else
+  kill_if_running "agent-status-summary-server.mjs"
+  unset VITE_AGENT_STATUS_SUMMARY_ENDPOINT
 fi
 
 cleanup_status_server() {
