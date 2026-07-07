@@ -9,9 +9,9 @@ test.use({
 });
 
 // Regression coverage for the Map sidebar's manual drag-reorder: reorderCanvasNodes
-// must move a node within canvasState.nodes (the array that drives sidebar order and
-// persists), honor before/after placement, and never disturb a node's x/y map
-// position. The sidebar renders nodes in array order, so this order IS the feature.
+// must move a node within canvasState.nodes, honor before/after placement, and
+// never disturb a node's x/y map position. Manual mode still uses this stored
+// order; by-project mode derives display order from map coordinates.
 test("reorderCanvasNodes moves a node by id, honors before/after, and preserves x/y", async ({ page }) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
 
@@ -85,6 +85,66 @@ test("reorderCanvasNodes moves a node by id, honors before/after, and preserves 
   expect(result.movedNodeX).toBe(30);
   expect(result.movedNodeY).toBe(7);
   expect(result.selfDrop).toEqual(["a", "b", "c"]);
+});
+
+test("by-project sidebar order follows canvas left-to-right then top-to-bottom without changing project membership", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+
+  const result = await page.evaluate(async () => {
+    const { projectBucketsByCanvasPosition } = await import("/src/lib/mapNodeOrdering.ts");
+
+    const groups = [
+      { id: "termfleet", name: "TermFleet", color: "#7aa2f7", projectRoot: "/work/termfleet" },
+      { id: "bots", name: "Bots", color: "#9ece6a", projectRoot: "/work/bots" },
+      { id: "hermes", name: "Hermes", color: "#bb9af7", projectRoot: "/work/hermes" },
+    ];
+    const tabs = [
+      { id: "tab-termfleet-top", title: "termfleet top", emoji: "x", color: "#fff", groupId: "termfleet", terminals: [], splitLayout: { id: "p1", type: "terminal" as const }, activePaneId: "p1" },
+      { id: "tab-termfleet-low", title: "termfleet low", emoji: "x", color: "#fff", groupId: "termfleet", terminals: [], splitLayout: { id: "p2", type: "terminal" as const }, activePaneId: "p2" },
+      { id: "tab-bots", title: "bots", emoji: "x", color: "#fff", groupId: "bots", terminals: [], splitLayout: { id: "p3", type: "terminal" as const }, activePaneId: "p3" },
+      { id: "tab-hermes", title: "hermes", emoji: "x", color: "#fff", groupId: "hermes", terminals: [], splitLayout: { id: "p4", type: "terminal" as const }, activePaneId: "p4" },
+    ];
+    const node = (id: string, tabId: string, x: number, y: number) => ({
+      id,
+      type: "terminal" as const,
+      title: id,
+      terminalTabId: tabId,
+      x,
+      y,
+      width: 820,
+      height: 460,
+    });
+    const nodes = [
+      node("termfleet-low", "tab-termfleet-low", 420, 260),
+      node("bots", "tab-bots", 40, 180),
+      node("hermes", "tab-hermes", 260, 160),
+      node("termfleet-top", "tab-termfleet-top", 420, 80),
+    ];
+
+    const firstPass = projectBucketsByCanvasPosition(nodes, tabs, groups).map((bucket) => ({
+      label: bucket.label,
+      nodeIds: bucket.nodes.map((n) => n.id),
+    }));
+
+    const movedNodes = nodes.map((n) => n.id === "termfleet-low" ? { ...n, x: 10, y: 320 } : n);
+    const afterMove = projectBucketsByCanvasPosition(movedNodes, tabs, groups).map((bucket) => ({
+      label: bucket.label,
+      nodeIds: bucket.nodes.map((n) => n.id),
+    }));
+
+    return { firstPass, afterMove };
+  });
+
+  expect(result.firstPass).toEqual([
+    { label: "Bots", nodeIds: ["bots"] },
+    { label: "Hermes", nodeIds: ["hermes"] },
+    { label: "TermFleet", nodeIds: ["termfleet-top", "termfleet-low"] },
+  ]);
+  expect(result.afterMove).toEqual([
+    { label: "TermFleet", nodeIds: ["termfleet-low", "termfleet-top"] },
+    { label: "Bots", nodeIds: ["bots"] },
+    { label: "Hermes", nodeIds: ["hermes"] },
+  ]);
 });
 
 test("canvas layout actions align, distribute, and arrange project terminals without changing order or viewport", async ({ page }) => {

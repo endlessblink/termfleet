@@ -1,9 +1,11 @@
 import { CSSProperties, useCallback, useMemo, useState } from "react";
 import { FileText, Globe, Map, NotebookText, TerminalSquare, X } from "lucide-react";
 import type { CanvasNode, Group, Tab } from "../lib/types";
-import { pathTail, projectForTab, projectNameFor } from "../lib/projectDisplay";
+import { pathTail, projectForTab } from "../lib/projectDisplay";
 import { useWorkspaceStore } from "../stores/workspace";
 import { MAP_FILTERS, type MapFilter, nodeMatchesMapFilter } from "../lib/mapNodeFilters";
+import { projectBucketsByCanvasPosition } from "../lib/mapNodeOrdering";
+import { useFlipList } from "../hooks/useFlipList";
 
 const styles: Record<string, CSSProperties> = {
   sidebar: {
@@ -103,7 +105,7 @@ const styles: Record<string, CSSProperties> = {
     borderRadius: "var(--radius-sm)",
     cursor: "pointer",
     border: "1px solid transparent",
-    transition: "background var(--motion-fast)",
+    transition: "background var(--motion-fast), box-shadow var(--motion-fast), opacity var(--motion-fast)",
   },
   icon: {
     width: 30,
@@ -265,6 +267,7 @@ function NodeRow({
   return (
     <div
       className="canvas-sidebar-row"
+      data-flip-key={node.id}
       data-testid="canvas-sidebar-node-row"
       role="button"
       tabIndex={0}
@@ -437,27 +440,15 @@ export function CanvasSidebar() {
   ), [nodeTab, groups, canvasState.selectedNodeId, onSelect, onRename, draggingId, dropTarget, onDragStart, onDragOver, onDrop, clearDrag]);
 
   const projectBuckets = useMemo(() => {
-    const buckets = new globalThis.Map<string | null, CanvasNode[]>();
-    for (const node of terminals) {
-      const gid = nodeTab(node)?.groupId ?? null;
-      const list = buckets.get(gid);
-      if (list) list.push(node);
-      else buckets.set(gid, [node]);
-    }
-    const ordered: { key: string; label: string; nodes: CanvasNode[] }[] = [];
-    for (const group of groups) {
-      const list = buckets.get(group.id);
-      if (list) ordered.push({ key: group.id, label: group.name, nodes: list });
-    }
-    for (const [gid, list] of buckets) {
-      if (gid !== null && !groups.some((group) => group.id === gid)) {
-        ordered.push({ key: gid, label: projectNameFor(gid, groups), nodes: list });
-      }
-    }
-    const unassigned = buckets.get(null);
-    if (unassigned) ordered.push({ key: "__unassigned__", label: projectNameFor(null, groups), nodes: unassigned });
-    return ordered;
-  }, [terminals, groups, nodeTab]);
+    return projectBucketsByCanvasPosition(terminals, tabs, groups);
+  }, [terminals, tabs, groups, nodeTab]);
+  const listOrderKey = [
+    ...(sortMode === "project"
+      ? projectBuckets.flatMap((bucket) => [`header-${bucket.key}`, ...bucket.nodes.map((node) => node.id)])
+      : terminals.map((node) => node.id)),
+    ...others.map((node) => node.id),
+  ].join("|");
+  const listRef = useFlipList<HTMLDivElement>(listOrderKey);
 
   if (workspaceMode !== "canvas" || collapsed) return null;
 
@@ -529,7 +520,7 @@ export function CanvasSidebar() {
         })}
       </div>
       {sortMode === "manual" && <div style={styles.sectionLabel}>Shells</div>}
-      <div style={styles.list} data-testid="canvas-sidebar-node-list">
+      <div style={styles.list} data-testid="canvas-sidebar-node-list" ref={listRef}>
         {terminals.length === 0 ? (
           <div style={styles.empty} data-testid="canvas-sidebar-empty">
             {mapFilter === "all" ? "No canvas terminals yet." : "No map nodes match this filter."}
@@ -537,7 +528,7 @@ export function CanvasSidebar() {
         ) : sortMode === "project" ? (
           projectBuckets.map((bucket) => (
             <div key={bucket.key} data-testid="canvas-sidebar-project-group">
-              <div style={styles.sectionLabel}>{bucket.label}</div>
+              <div data-flip-key={`header-${bucket.key}`} style={styles.sectionLabel}>{bucket.label}</div>
               {bucket.nodes.map((node) => renderRow(node, false))}
             </div>
           ))

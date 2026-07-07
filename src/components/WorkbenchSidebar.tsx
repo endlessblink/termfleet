@@ -38,6 +38,8 @@ import { workstreamActivityText } from "../lib/workstreamActivity";
 import { formatWorkstreamOpsContext, promptWorkstreamIsolation, promptWorkstreamLaunchProfile, resolveWorkstreamOpsContext } from "../lib/workstreamOpsContext";
 import { MAP_FILTERS, type MapFilter, nodeMatchesMapFilter } from "../lib/mapNodeFilters";
 import { formatLocalServiceBrief, summarizeLocalServices, type LocalServiceSummary } from "../lib/localServices";
+import { projectBucketsByCanvasPosition } from "../lib/mapNodeOrdering";
+import { useFlipList } from "../hooks/useFlipList";
 
 const TERMINAL_COLORS = [
   "#d99a45",
@@ -3529,32 +3531,11 @@ function MapPanel({
     clearDrag();
   };
 
-  // By-project view groups map nodes under their project (Group) header. Terminals
-  // resolve their project via the linked tab's groupId; nodes with no project fall
-  // into an "Unassigned" bucket shown last.
+  // By-project view follows the map's visual reading order: left-to-right first,
+  // then top-to-bottom. Moving a node changes display order without changing its
+  // project membership or the persisted node array.
   const projectBuckets = useMemo(() => {
-    const buckets = new globalThis.Map<string | null, CanvasNode[]>();
-    for (const node of visibleNodes) {
-      const gid = node.terminalTabId
-        ? tabs.find((tab) => tab.id === node.terminalTabId)?.groupId ?? null
-        : null;
-      const list = buckets.get(gid);
-      if (list) list.push(node);
-      else buckets.set(gid, [node]);
-    }
-    const ordered: { key: string; label: string; nodes: CanvasNode[] }[] = [];
-    for (const group of groups) {
-      const list = buckets.get(group.id);
-      if (list) ordered.push({ key: group.id, label: group.name, nodes: list });
-    }
-    for (const [gid, list] of buckets) {
-      if (gid !== null && !groups.some((group) => group.id === gid)) {
-        ordered.push({ key: gid, label: projectNameFor(gid, groups), nodes: list });
-      }
-    }
-    const unassigned = buckets.get(null);
-    if (unassigned) ordered.push({ key: "__unassigned__", label: "Unassigned", nodes: unassigned });
-    return ordered;
+    return projectBucketsByCanvasPosition(visibleNodes, tabs, groups, { unassignedLabel: "Unassigned" });
   }, [visibleNodes, tabs, groups]);
 
   type MapListItem =
@@ -3566,6 +3547,10 @@ function MapPanel({
         ...bucket.nodes.map((node) => ({ kind: "node" as const, node })),
       ])
     : visibleNodes.map((node) => ({ kind: "node" as const, node }));
+  const mapListOrderKey = mapListItems
+    .map((item) => item.kind === "header" ? item.key : item.node.id)
+    .join("|");
+  const mapNodeListRef = useFlipList<HTMLDivElement>(mapListOrderKey);
 
   const draggedNode = draggingId ? visibleNodes.find((node) => node.id === draggingId) : undefined;
   const draggedGhostLabel = (() => {
@@ -5007,11 +4992,11 @@ function MapPanel({
             {mapFilter === "all" ? "No map nodes yet." : "No map nodes match this filter."}
           </div>
         ) : (
-          <div data-testid="map-node-list" style={{ order: 1 }}>
+          <div data-testid="map-node-list" ref={mapNodeListRef} style={{ order: 1 }}>
           {mapListItems.map((item) => {
             if (item.kind === "header") {
               return (
-                <div key={item.key} style={styles.sectionLabel} data-testid="map-project-group-header">
+                <div key={item.key} data-flip-key={item.key} style={styles.sectionLabel} data-testid="map-project-group-header">
                   {item.label}
                 </div>
               );
@@ -5057,6 +5042,7 @@ function MapPanel({
               {showGhost && dropTarget?.place === "before" && dragGhost}
               <div
                 className="workspace-sidebar-row"
+                data-flip-key={node.id}
                 data-active={node.id === canvasState.selectedNodeId ? "true" : "false"}
                 draggable={draggable}
                 style={{
