@@ -73,6 +73,25 @@ test("node label keeps the project name while the terminal is inside that projec
   expect(label).toBe("termfleet");
 });
 
+test("node label keeps a real project name when the terminal is in a nested app folder", () => {
+  const label = workspaceLabelFor({
+    project: {
+      name: "flow-state",
+      projectRoot: "/media/endlessblink/data/my-projects/ai-development/productivity/flow-state",
+    },
+    cwd: "/media/endlessblink/data/my-projects/ai-development/productivity/flow-state/watchpost",
+  });
+  expect(label).toBe("flow-state");
+});
+
+test("node label keeps the project name for generic implementation folders", () => {
+  const label = workspaceLabelFor({
+    project: { name: "termfleet", projectRoot: "/home/me/code/termfleet" },
+    cwd: "/home/me/code/termfleet/src-tauri",
+  });
+  expect(label).toBe("termfleet");
+});
+
 test("node label uses the project root folder when the assigned group is a parent category", () => {
   const label = workspaceLabelFor({
     project: {

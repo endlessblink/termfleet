@@ -347,7 +347,7 @@ const checks = [
       /await invoke\("grid_scroll_to_bottom", \{ id: sessionId \}\);/.test(terminalCanvas) &&
       /invoke\("grid_scroll_to_bottom", \{ id: sessionId \}\)/.test(terminalCanvas) &&
       /const scheduleScrollToBottom = \(\) => \{[\s\S]*scrollToBottomPendingRef\.current[\s\S]*requestAnimationFrame/.test(terminalCanvas) &&
-      /const send = \(data: string, seqId = nextTerminalInputSequence\(\), source = "canvas-send"\) => \{\s*scheduleScrollToBottom\(\);/.test(terminalCanvas) &&
+      /const send = \(data: string, seqId = nextTerminalInputSequence\(\), source = "canvas-send"\) => \{[\s\S]*?scheduleScrollToBottom\(\);[\s\S]*?queue\.queue\(data, seqId\);/.test(terminalCanvas) &&
       /send\(bytes, seqId, "canvas-capture-keydown"\)/.test(terminalCanvas) &&
       /createDaemonInputQueue/.test(terminalCanvas) &&
       /send\(bytes, seqId, "canvas-keydown"\)/.test(terminalCanvas) &&
@@ -355,6 +355,8 @@ const checks = [
       /trace_pty\("grid\.scroll"/.test(ptyCommands) &&
       /trace_pty\("grid\.scroll_to_bottom"/.test(ptyCommands) &&
       /cursor_visible: offset == 0 && mode\.contains\(TermMode::SHOW_CURSOR\)/.test(vtGrid) &&
+      /this\.cursorVisible = frame\.displayOffset === 0 && frame\.cursorVisible;/.test(gridBuffer) &&
+      /if \(!snapshot\.cursorVisible \|\| snapshot\.displayOffset > 0\) return;/.test(gridRenderer) &&
       /scrolled_history_hides_cursor_until_bottom_reset/.test(vtGrid),
     message: "Canvas input must return scrolled-back grid viewports to live bottom, and scrolled history must not render the live cursor.",
   },

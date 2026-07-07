@@ -151,9 +151,10 @@ test("decode + apply + partial render of a binary diff", async ({ page }) => {
   expect(result.decodedRedChar).toBe("R");
   expect(result.decodedRedFg).toBe("#cd0000");
 
-  // Full sync marks all rows dirty; diff touches only row 1.
+  // Full sync marks all rows dirty; diff touches row 1 and hides the old live
+  // cursor while scrolled back, so row 0 must repaint too.
   expect(result.fullChangedCount).toBe(2);
-  expect(result.diffChangedRows).toEqual([1]);
+  expect(result.diffChangedRows).toEqual([0, 1]);
 
   // Blue background appears only after the diff is applied.
   expect(result.beforeBlue[2]).toBeLessThan(60); // black before

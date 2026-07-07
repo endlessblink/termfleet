@@ -81,3 +81,20 @@ test("hiding the cursor re-dirties its row", () => {
   const dirty = buffer.apply(decodeFrame(encode(1, { col: 1, line: 0 }, 0, [])));
   expect(dirty.has(0)).toBe(true);
 });
+
+test("scrolling into history hides the cursor even if a frame reports it visible", () => {
+  const buffer = new GridBuffer();
+  buffer.apply(
+    decodeFrame(
+      encode(2, { col: 1, line: 0 }, CURSOR_VISIBLE, [
+        { index: 0, cells: [blank, blank, blank, blank] },
+        { index: 1, cells: [blank, blank, blank, blank] },
+      ]),
+    ),
+  );
+
+  const dirty = buffer.apply(decodeFrame(encode(1, { col: 1, line: 0 }, CURSOR_VISIBLE, [], 5)));
+
+  expect(buffer.toSnapshot().cursorVisible).toBe(false);
+  expect(dirty.has(0)).toBe(true);
+});

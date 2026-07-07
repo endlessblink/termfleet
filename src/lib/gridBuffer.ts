@@ -68,7 +68,7 @@ export class GridBuffer {
     this.cursor = frame.cursor;
     this.displayOffset = frame.displayOffset;
     this.altScreen = frame.altScreen;
-    this.cursorVisible = frame.cursorVisible;
+    this.cursorVisible = frame.displayOffset === 0 && frame.cursorVisible;
     this.appCursor = frame.appCursor;
     this.appKeypad = frame.appKeypad;
     this.bracketedPaste = frame.bracketedPaste;

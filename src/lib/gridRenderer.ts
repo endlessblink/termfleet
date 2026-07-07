@@ -189,7 +189,7 @@ function drawCursor(
   dpr: number,
   theme: RenderTheme,
 ): void {
-  if (!snapshot.cursorVisible) return;
+  if (!snapshot.cursorVisible || snapshot.displayOffset > 0) return;
   const cx = Math.round(snapshot.cursor.col * cellW);
   const cy = Math.round(snapshot.cursor.line * cellH);
   ctx.fillStyle = theme.cursor;
