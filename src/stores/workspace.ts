@@ -190,6 +190,8 @@ const DEFAULT_CANVAS_STATE: CanvasState = {
   viewport: { x: 0, y: 0, zoom: 1 },
 };
 const TERMINAL_MAP_NODE_SIZE = { width: 820, height: 460 };
+const CANVAS_PROJECT_LANE_GAP = 48;
+const CANVAS_PROJECT_TERMINAL_GAP = 40;
 const AUTO_READABLE_TERMINAL_SIZES = new Set(["1180x720", "1180x560"]);
 const MAX_RECENTLY_CLOSED_ITEMS = 10;
 const CANVAS_NODE_MIN_SIZE: Record<CanvasNode["type"], { width: number; height: number }> = {
@@ -2833,25 +2835,28 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
 
       const minX = Math.min(...terminalNodes.map((node) => node.x));
       const minY = Math.min(...terminalNodes.map((node) => node.y));
-      const projectOrder = new Map<string, number>();
       const lanes = new Map<string, CanvasNode[]>();
 
       for (const node of terminalNodes) {
         const tab = tabsById.get(node.terminalTabId!);
         const projectId = tab?.groupId ?? "unassigned";
-        if (!projectOrder.has(projectId)) projectOrder.set(projectId, projectOrder.size);
         const lane = lanes.get(projectId) ?? [];
         lane.push(node);
         lanes.set(projectId, lane);
       }
 
-      const laneGap = 96;
-      const terminalGap = 40;
       let cursorX = minX;
       const nextPositions = new Map<string, { x: number; y: number }>();
 
       const sortedLanes = [...lanes.entries()].sort(
-        ([left], [right]) => (projectOrder.get(left) ?? 0) - (projectOrder.get(right) ?? 0)
+        ([, leftNodes], [, rightNodes]) => {
+          const leftX = Math.min(...leftNodes.map((node) => node.x));
+          const rightX = Math.min(...rightNodes.map((node) => node.x));
+          if (leftX !== rightX) return leftX - rightX;
+          const leftY = Math.min(...leftNodes.map((node) => node.y));
+          const rightY = Math.min(...rightNodes.map((node) => node.y));
+          return leftY - rightY;
+        }
       );
       for (const [, laneNodes] of sortedLanes) {
         const sortedNodes = [...laneNodes].sort((left, right) => left.y - right.y || left.x - right.x);
@@ -2859,9 +2864,9 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         const laneWidth = Math.max(...sortedNodes.map((node) => node.width));
         for (const node of sortedNodes) {
           nextPositions.set(node.id, { x: cursorX, y: cursorY });
-          cursorY += node.height + terminalGap;
+          cursorY += node.height + CANVAS_PROJECT_TERMINAL_GAP;
         }
-        cursorX += laneWidth + laneGap;
+        cursorX += laneWidth + CANVAS_PROJECT_LANE_GAP;
       }
 
       return {

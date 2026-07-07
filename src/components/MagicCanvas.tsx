@@ -4829,8 +4829,8 @@ export function MagicCanvas() {
         <button
           className="magic-canvas-button"
           style={{ ...styles.button, ...(!canArrangeTerminalProjectLanes ? styles.buttonDisabled : null) }}
-          title="Arrange terminal projects in vertical lanes"
-          aria-label="Arrange terminal projects in vertical lanes"
+          title="Compact terminal lanes"
+          aria-label="Compact terminal lanes"
           disabled={!canArrangeTerminalProjectLanes}
           onClick={arrangeTerminalProjectLanes}
         >
@@ -6127,6 +6127,16 @@ export function MagicCanvas() {
           aria-label="Zoom in"
         >
           <Plus size={14} strokeWidth={1.8} />
+        </button>
+        <button
+          className="magic-canvas-button"
+          style={{ ...styles.button, ...(!canArrangeTerminalProjectLanes ? styles.buttonDisabled : null) }}
+          onClick={arrangeTerminalProjectLanes}
+          title="Compact terminal lanes"
+          aria-label="Compact terminal lanes"
+          disabled={!canArrangeTerminalProjectLanes}
+        >
+          <Columns3 size={14} strokeWidth={1.8} />
         </button>
         <button
           className="magic-canvas-button"
