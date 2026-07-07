@@ -1,11 +1,11 @@
 import { useEffect } from "react";
-import { recordCockpitPane, type CockpitSnapshotEntry } from "../lib/cockpitSnapshot";
+import { cockpitSnapshotEnabled, recordCockpitPane, type CockpitSnapshotEntry } from "../lib/cockpitSnapshot";
 import { recordTerminalHeaderLog } from "../lib/terminalMainUserAsk";
 
 // Null-returning probe (TC-035 observability). Rendered once per terminal header so it can
 // report the EXACT title/now/source the header is displaying, without violating the
-// hooks-in-a-`.map()` rule. Records on change and schedules a debounced flush. The recorder
-// is a no-op unless dev mode / VITE_COCKPIT_SNAPSHOT, so this is safe to leave mounted.
+// hooks-in-a-`.map()` rule. Records on change and schedules a debounced flush only when
+// VITE_COCKPIT_SNAPSHOT=1, so normal dev map rendering does not run diagnostics forever.
 export function CockpitSnapshotProbe({
   entry,
 }: {
@@ -14,7 +14,9 @@ export function CockpitSnapshotProbe({
   const lineupKey = entry.taskLineup.map((item) => `${item.status}:${item.content}`).join("|");
   const debugKey = JSON.stringify(entry.debug ?? {});
   useEffect(() => {
-    recordCockpitPane(entry.paneId, { ...entry, updatedAt: Date.now() });
+    if (cockpitSnapshotEnabled()) {
+      recordCockpitPane(entry.paneId, { ...entry, updatedAt: Date.now() });
+    }
     recordTerminalHeaderLog({
       paneId: entry.paneId,
       field: "header",
@@ -61,6 +63,7 @@ export function CockpitSnapshotProbe({
     debugKey,
   ]);
   useEffect(() => {
+    if (!cockpitSnapshotEnabled()) return;
     const timer = window.setInterval(() => {
       recordCockpitPane(entry.paneId, { ...entry, updatedAt: Date.now() });
     }, 2000);

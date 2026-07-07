@@ -109,6 +109,17 @@ trap cleanup EXIT INT TERM
 
 cd "$ROOT_DIR"
 
+if [[ -n "${TERMFLEET_PANE_ID:-}" && "${TERMFLEET_ALLOW_NESTED_DEV_ENV:-0}" != "1" ]]; then
+  unset TERMFLEET_AGENT_STATUS_ENABLE
+  unset TERMFLEET_AGENT_STATUS_DISABLE
+  unset TERMFLEET_AGENT_STATUS_WORKER
+  unset TERMFLEET_COCKPIT_SNAPSHOT_ENABLE
+  unset TERMFLEET_TERMINAL_HEADER_LOG_ENABLE
+  unset VITE_AGENT_STATUS_SUMMARY_ENDPOINT
+  unset VITE_COCKPIT_SNAPSHOT
+  unset VITE_TERMINAL_HEADER_LOG
+fi
+
 kill_app_vite
 if port_in_use 1420; then
   echo "Port 1420 is still in use after cleaning this app's dev processes; refusing to kill an unknown owner." >&2
@@ -117,10 +128,22 @@ fi
 
 start_status_server
 
-if [[ "${TERMFLEET_MAP_LIVE_TERMINALS_ENABLE:-1}" == "0" ]]; then
-  export VITE_MAP_LIVE_TERMINALS=0
+if [[ "${TERMFLEET_DEV_DIAGNOSTICS_ENABLE:-0}" == "1" && "${TERMFLEET_COCKPIT_SNAPSHOT_ENABLE:-0}" == "1" ]]; then
+  export VITE_COCKPIT_SNAPSHOT=1
 else
+  unset VITE_COCKPIT_SNAPSHOT
+fi
+
+if [[ "${TERMFLEET_DEV_DIAGNOSTICS_ENABLE:-0}" == "1" && "${TERMFLEET_TERMINAL_HEADER_LOG_ENABLE:-0}" == "1" ]]; then
+  export VITE_TERMINAL_HEADER_LOG=1
+else
+  unset VITE_TERMINAL_HEADER_LOG
+fi
+
+if [[ "${TERMFLEET_MAP_LIVE_TERMINALS_ENABLE:-0}" == "1" ]]; then
   export VITE_MAP_LIVE_TERMINALS=1
+else
+  export VITE_MAP_LIVE_TERMINALS=0
 fi
 
 export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-1}"

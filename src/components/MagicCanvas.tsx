@@ -1632,6 +1632,8 @@ const MAX_ZOOM = 2.2;
 const READABLE_TERMINAL_ZOOM = 1;
 const FOCUS_TERMINAL_ZOOM = 1;
 const MAP_TERMINAL_RENDER_SCALE = 2;
+const MAP_LIVE_TERMINALS_ENABLED =
+  (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env?.VITE_MAP_LIVE_TERMINALS !== "0";
 // Viewport culling: cap how many terminal nodes mount a full live renderer at
 // once. Off-screen / over-cap nodes fall back to the cheap DOM snapshot preview
 // (TerminalMapPreview). The selected node and the active tab's node are always
@@ -4204,6 +4206,7 @@ export function MagicCanvas() {
   const canArrangeTerminalProjectLanes = terminalProjectLaneCount >= 2;
   const liveNodeIds = useMemo(() => {
     const live = new Set<string>();
+    if (!MAP_LIVE_TERMINALS_ENABLED) return live;
     // Below readable zoom every terminal already renders the cheap DOM preview,
     // so no live renderers are mounted regardless — nothing to cull.
     if (viewport.zoom < READABLE_TERMINAL_ZOOM) return live;

@@ -4,7 +4,9 @@
 // writes it to a file an operator/agent can read, so we can compare "what's shown" against
 // "what each terminal is really working on", for all terminals at once, without screenshots.
 //
-// Gated off unless dev mode or VITE_COCKPIT_SNAPSHOT is set; never active in release.
+// Gated off unless VITE_COCKPIT_SNAPSHOT is set. Keep this opt-in even in dev:
+// a busy map can render many terminal headers, and continuous snapshot POSTs make
+// WebKit do work that is only useful during cockpit/header verification.
 
 export interface CockpitSnapshotEntry {
   paneId: string;
@@ -43,9 +45,9 @@ export interface CockpitSnapshotEntry {
   updatedAt: number;
 }
 
-function snapshotEnabled(): boolean {
+export function cockpitSnapshotEnabled(): boolean {
   const env = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env;
-  return Boolean(env?.DEV) || env?.VITE_COCKPIT_SNAPSHOT === "1";
+  return env?.VITE_COCKPIT_SNAPSHOT === "1";
 }
 
 function snapshotEndpoint(): string {
@@ -59,7 +61,7 @@ const entries = new Map<string, CockpitSnapshotEntry>();
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
 
 function scheduleFlush() {
-  if (!snapshotEnabled() || flushTimer) return;
+  if (!cockpitSnapshotEnabled() || flushTimer) return;
   flushTimer = setTimeout(() => {
     flushTimer = null;
     const payload = JSON.stringify({
@@ -77,7 +79,7 @@ function scheduleFlush() {
 
 /** Record one pane's rendered state and schedule a debounced flush. No-op unless enabled. */
 export function recordCockpitPane(paneId: string, entry: CockpitSnapshotEntry): void {
-  if (!snapshotEnabled() || !paneId) return;
+  if (!cockpitSnapshotEnabled() || !paneId) return;
   entries.set(paneId, entry);
   scheduleFlush();
 }

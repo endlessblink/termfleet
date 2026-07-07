@@ -21,6 +21,11 @@ function cleanAsk(value?: string | null) {
   return text || undefined;
 }
 
+function terminalHeaderLogEnabled(): boolean {
+  const env = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env;
+  return env?.VITE_TERMINAL_HEADER_LOG === "1";
+}
+
 export function mainUserAskFromSummary(
   summary: WorkstreamStatusSummary | null | undefined,
   source: TerminalMainUserAskSource,
@@ -77,10 +82,9 @@ export function mainUserAskFromTerminalPurpose(
 }
 
 export function recordTerminalHeaderLog(entry: Omit<TerminalHeaderLogEntry, "at">) {
+  if (!terminalHeaderLogEnabled()) return;
   if (typeof window === "undefined") return;
   const next: TerminalHeaderLogEntry = { ...entry, at: Date.now() };
   window.__termfleetHeaderLog = [...(window.__termfleetHeaderLog ?? []), next].slice(-200);
-  if (import.meta.env.DEV) {
-    console.info("[termfleet-header]", next);
-  }
+  console.info("[termfleet-header]", next);
 }

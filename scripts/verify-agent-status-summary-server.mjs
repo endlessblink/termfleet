@@ -32,6 +32,17 @@ assert.match(tauriDevWrapper, /agent-status-summary-server\.mjs \$\{STATUS_WORKE
 assert.match(tauriDevWrapper, /VITE_AGENT_STATUS_SUMMARY_ENDPOINT/);
 assert.match(tauriDevWrapper, /TERMFLEET_AGENT_STATUS_DISABLE/);
 assert.match(tauriDevWrapper, /TERMFLEET_AGENT_STATUS_MODEL:-qwen3:4b/);
+assert.match(tauriDevWrapper, /TERMFLEET_ALLOW_NESTED_DEV_ENV/);
+assert.match(tauriDevWrapper, /unset TERMFLEET_AGENT_STATUS_ENABLE/);
+assert.match(tauriDevWrapper, /unset TERMFLEET_COCKPIT_SNAPSHOT_ENABLE/);
+assert.match(tauriDevWrapper, /TERMFLEET_DEV_DIAGNOSTICS_ENABLE/);
+assert.match(tauriDevWrapper, /TERMFLEET_COCKPIT_SNAPSHOT_ENABLE/);
+assert.match(tauriDevWrapper, /unset VITE_COCKPIT_SNAPSHOT/);
+assert.match(tauriDevWrapper, /TERMFLEET_TERMINAL_HEADER_LOG_ENABLE/);
+assert.match(tauriDevWrapper, /unset VITE_TERMINAL_HEADER_LOG/);
+assert.match(tauriDevWrapper, /TERMFLEET_MAP_LIVE_TERMINALS_ENABLE/);
+assert.match(tauriDevWrapper, /TERMFLEET_MAP_LIVE_TERMINALS_ENABLE:-0/);
+assert.match(tauriDevWrapper, /export VITE_MAP_LIVE_TERMINALS=0/);
 assert.match(ollamaAdapterSource, /TERMFLEET_AGENT_STATUS_MODEL \|\| "qwen3:4b"/);
 assert.match(runDev, /npm run tauri:dev/);
 assert.match(runNativeDev, /npm run tauri:dev/);
