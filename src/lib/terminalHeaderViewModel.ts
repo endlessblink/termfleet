@@ -15,7 +15,6 @@ import {
   sanitizeShellDisplaySummary,
   sanitizeTerminalHeaderNow,
   contextualActivityForTask,
-  isGenericVerificationTaskTitle,
 } from "./terminalHeaderDisplay";
 import {
   headerLabelsAreDuplicated,
@@ -23,10 +22,7 @@ import {
   qualityCheckAuthoritativeTaskLabel,
   qualityCheckTrustedActivityLabel,
   qualityCheckNowLabel,
-  qualityCheckTaskLabel,
-  qualityCheckUserAskLabel,
 } from "./terminalHeaderQuality";
-import { qualityPurposeTitle } from "./terminalHeaderDisplay";
 import { resolveTaskIdentity } from "./taskIdentity";
 
 export type HeaderFieldSource =
@@ -248,122 +244,6 @@ function taskActivityFromUserGoal(value?: string, allowSynth = false) {
   return contextualActivityForTask(active, text) ?? active;
 }
 
-function publicTaskGoalFromDeclaredTask(value?: string | null) {
-  const text = value
-    ?.replace(/\s+/g, " ")
-    .replace(/\[Image\s+#?\d+\]\s*/gi, "")
-    .trim();
-  if (!text) return undefined;
-  if (/\b(?:backend\.exit|Primary backend exited)\b/i.test(text) && /\bhermes\b/i.test(text)) {
-    return "Investigate Hermes backend exit diagnostics";
-  }
-  const readable = readableUserTaskLabel(text);
-  if (readable) return readable;
-  if (/^Skipping model calls for clear task sidecars$/i.test(text)) {
-    return "Improve pane header task and title quality";
-  }
-  if (/^Rewrite or refresh memory_summary\.md from finalized memory state and verify references$/i.test(text)) {
-    return "Refresh memory summary and verify references";
-  }
-  if (/^Refresh memory_summary\.md routing\b/i.test(text)) {
-    return "Refresh memory routing rules";
-  }
-  return text;
-}
-
-function readableProjectName(value?: string | null) {
-  const text = value?.replace(/\s+/g, " ").trim();
-  if (!text) return "project";
-  return text
-    .split(/[-_]+/)
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .map((part) => part.replace(/^Mvp$/i, "MVP").replace(/^Ai$/i, "AI").replace(/^Api$/i, "API"))
-    .join(" ");
-}
-
-function contextualVerificationDetail(contextTitle?: string | null, workspace?: string | null) {
-  const detail = contextTitle
-    ?.replace(/^(?:Searching|Search)\s+/i, "")
-    .replace(/\s+/g, " ")
-    .trim();
-  if (!detail || /^Run focused tests/i.test(detail) || detail.split(/\s+/).length < 2) return undefined;
-
-  const workspaceLabel = readableProjectName(workspace);
-  if (/\bonSessionError\s+in\s+use-message-stream\b/i.test(detail)) {
-    return `${workspaceLabel} onSessionError handling`;
-  }
-
-  return detail;
-}
-
-function contextualTaskForGenericVerification(
-  task: string | undefined,
-  contextTitle?: string | null,
-  workspace?: string | null,
-) {
-  if (!task || !contextTitle || !isGenericVerificationTaskTitle(task)) return task;
-  const detail = contextualVerificationDetail(contextTitle, workspace);
-  if (!detail) return task;
-  if (/^Run build, lint, focused tests, and visual checks$/i.test(task)) {
-    return `Run verification for ${detail}`;
-  }
-  return `Run focused tests for ${detail}`;
-}
-
-function publicStatusGoalFromSummary(
-  summary: WorkstreamStatusSummary | undefined | null,
-  workspace?: string | null,
-) {
-  const task = summary?.task?.replace(/\s+/g, " ").trim();
-  const now = summary?.now?.replace(/\s+/g, " ").trim();
-  const narration = summary?.narration?.replace(/\s+/g, " ").trim();
-  const workspaceLabel = readableProjectName(workspace);
-  const readableTask = readableUserTaskLabel(task);
-  if (readableTask) return readableTask;
-  if (/^Status:\s+.+\bis clean and synced\b/i.test(task ?? "")) {
-    return "Verify sidebar custom folders branch sync";
-  }
-  if (/Focused Vitest could not run\b/i.test(task ?? "") && /\bread-only node_modules\b/i.test(task ?? "")) {
-    return "Resolve focused Vitest sandbox write failure";
-  }
-  if (/\bFix the sandbox test blocker\b/i.test(task ?? "") && /\bVitest\b/i.test(task ?? "")) {
-    return "Fix the sandbox test blocker by running Vitest with a temporary config";
-  }
-  if (/fast-track state\b/i.test(task ?? "")) {
-    return "Choose next fast-track work";
-  }
-  if (/^Rewrite or refresh memory_summary\.md\b/i.test(task ?? "")) {
-    return "Refresh memory summary and verify references";
-  }
-  if (/\bNetlify\b/i.test(task ?? "") && /\bdeployment\b/i.test(task ?? "")) {
-    return "Choose Vercel or Netlify deployment option";
-  }
-  if (/^npm test$/i.test(now ?? "")) {
-    return `Run ${workspaceLabel} test suite`;
-  }
-  if (/\bTask to update MASTER_PLAN completed successfully\b/i.test(now ?? "")) {
-    return "Verify project plan update result";
-  }
-  if (/\bPublic screenshot and top crop completed successfully\b/i.test(now ?? "")) {
-    return "Verify public screenshot and top crop result";
-  }
-  if (/\bWebsite content updated successfully\b/i.test(now ?? "") || /\bWebsite content updated successfully\b/i.test(narration ?? "")) {
-    return "Verify website content update result";
-  }
-  return undefined;
-}
-
-// Leading conversational filler ("ok so ", "hey ", "please ") adds nothing on a
-// cockpit Task row — strip it so the ask starts at the verb/subject.
-function stripConversationalOpeners(value: string) {
-  const deBoilerplated = value.replace(/^the\s+operator\s+wants\s+(?:to\s+)?/i, "");
-  if (deBoilerplated !== value) {
-    value = deBoilerplated.charAt(0).toUpperCase() + deBoilerplated.slice(1);
-  }
-  return value.replace(/^(?:(?:ok(?:ay)?|so|hey|please|also|and|now|then|sure|yes|yeah|yep|alright|right|cool|great|thanks|thank you)[,\s]+)+/i, "").trim() || value;
-}
-
 // A prompt scraped from the visible terminal grid can arrive as several wrapped
 // lines joined together, each still carrying its `›`/`❯` prompt marker and a
 // trailing enumerator ("… - I › … - II"). Turn markers into separators, drop any
@@ -391,129 +271,6 @@ export function sanitizeScrapedAsk(value?: string | null): string {
 // glyph prefix, keep the text.
 function stripPlanGlyphPrefix(value: string) {
   return value.replace(/^[\s└├╰╭│┌┐─]*[□■☐✓✔✗]?\s*/, "").trim() || value;
-}
-
-function readableUserTaskLabel(value?: string) {
-  const text = value
-    ?.replace(/\s+/g, " ")
-    .trim();
-  if (!text) return undefined;
-  if (/^what changed\b/i.test(text)) return undefined;
-
-  if (/^restore$/i.test(text)) {
-    return "Restore previous work state";
-  }
-  if (/\b(?:backend\.exit|Primary backend exited)\b/i.test(text) && /\bhermes\b/i.test(text)) {
-    return "Investigate Hermes backend exit diagnostics";
-  }
-  if (/^lets do your plan$/i.test(text)) {
-    return "Execute proposed cleanup plan";
-  }
-  if (/^lets?\s+commit\b/i.test(text) && /\bpush\b/i.test(text) && /\bbranches?\b/i.test(text)) {
-    return "Commit, push, merge, and clean old branches safely";
-  }
-  if (/\bsurvi(?:ve|te)\s+restart\b/i.test(text) && /\bvps\b/i.test(text)) {
-    return "Decide restart and VPS persistence";
-  }
-  if (/\bwhy do I have only one call\b/i.test(text) && /\bmany more before/i.test(text)) {
-    return "Investigate missing Arthouse call records";
-  }
-  if (/\bNew World AI Film Festival\b/i.test(text) && /\bwider\s+array\b/i.test(text) && /\bevents?\b/i.test(text)) {
-    return "Find wider AI film festival sources";
-  }
-  if (/\b(?:reserach|research)\b/i.test(text) && /\b(?:rag|another solution|best implemenation|best implementation)\b/i.test(text)) {
-    return "Research Hermes memory-loading approach";
-  }
-  if (/\bconvert(?:ing)?\s+it\s+e2e\b/i.test(text) && /\btelegram\s+bot\b/i.test(text)) {
-    return "Review end-to-end Telegram bot conversion";
-  }
-  if (/\blow quality\b/i.test(text) && /\b(?:what now|do you understand|understand what|here)\b/i.test(text)) {
-    return "Improve pane header task and title quality";
-  }
-  if (/^make high$/i.test(text)) {
-    return "Improve Hermes chat quality";
-  }
-  if (/\bnothing happens here\b/i.test(text) && /\bafter I send this\b/i.test(text)) {
-    return "Investigate Hermes send action failure";
-  }
-  if (/\bshould we create\b/i.test(text) && /\b(?:daily|once in sev?ral days)\b/i.test(text)) {
-    return "Decide Botson check-in schedule";
-  }
-  if (/\bscrolling up\b/i.test(text) && /\bterminal\b/i.test(text) && /\bglitch/i.test(text)) {
-    return "Resolve terminal scroll glitch";
-  }
-  if (/\bdesign skills?\b/i.test(text) && /\bdesign\b/i.test(text) && /\bimplement\b/i.test(text)) {
-    return "Design and implement project tiles";
-  }
-  if (/\bcreate a loop\b/i.test(text) && /\bdaily\b/i.test(text) && /\b(?:breakage|errors?|bugs?|regressions?)\b/i.test(text)) {
-    return "Create daily regression monitoring loop";
-  }
-  if (/\b(?:close|glose)\s+the\s+gap\b/i.test(text) && /\b(?:all\s+tasks?|tasks?)\b/i.test(text)) {
-    return "Close remaining task gap";
-  }
-  if (/\bafter that\b/i.test(text) && /\bcomm?iting\b/i.test(text) && /\bpushing\b/i.test(text) && /\bverifying\b/i.test(text)) {
-    return "Commit and verify remaining changes";
-  }
-  if (/\bbefore implementation\b/i.test(text) && /\b(?:existing timer state|timer state|VPS)\b/i.test(text)) {
-    return "Verify VPS timer state before implementation";
-  }
-  if (/^Ts:\d+\)\s*-\s*/i.test(text) && /\bproduction audit\b/i.test(text) && /\bCardcom\b/i.test(text)) {
-    return "Audit Cardcom overdue production rows";
-  }
-  if (/\b(?:rag|load data live from obsidian|obsidian)\b/i.test(text) && /\b(?:always have context|have context|write there)\b/i.test(text)) {
-    return "Add Obsidian memory loading for Hermes";
-  }
-  if (/\b(?:investigaate|investigate)\b/i.test(text) && /\bplan\b/i.test(text) && /\b(?:charge\s+)?retro/i.test(text)) {
-    return "Plan retroactive customer invoice charging";
-  }
-  if (/\b(?:crating|creating|create|add)\b/i.test(text) && /\binve?oice\b|\binvoice\b/i.test(text) && /\bpaying cuts?omers|paying customers\b/i.test(text)) {
-    return "Add invoice section for paying customers";
-  }
-  if (/\b(?:resource|design resource)\b/i.test(text) && /\b(?:not being followed|is not being followed|followed)\b/i.test(text)) {
-    return "Improve resource-following design for Watchpost";
-  }
-  if (/\bit got stuck here\b/i.test(text)) {
-    return "Investigate stuck workflow shown in screenshot";
-  }
-  if (/^needs?\s+a\s+full\s+simulation\s+tests?$/i.test(text)) {
-    return "Add full simulation tests";
-  }
-  if (/^should not cry wolf during normal updater auth rehydration$/i.test(text)) {
-    return "Prevent false alerts during updater auth rehydration";
-  }
-  if (/^any leads on why this is happening\??$/i.test(text)) {
-    return "Investigate why the Hermes issue is happening";
-  }
-  if (/\bnew conversation\b/i.test(text) && /\bdropoff\b/i.test(text)) {
-    return "Add dropoff creation for long Hermes chats";
-  }
-  if (/\bconnect\s+hermes\s+to\s+claude-and-conquer\b/i.test(text) && /\bruntime agent\b/i.test(text)) {
-    return "Connect Hermes to Claude and Conquer as runtime agent";
-  }
-  if (/\bflow[-\s]?state\b/i.test(text) && /\bconfigurable toolset\b/i.test(text)) {
-    return "Add Flow State toolset configuration to Hermes";
-  }
-  if (/\bask\s+questions?bout\s+more\s+things\b/i.test(text) && /\badd\b/i.test(text)) {
-    return "Ask follow-up questions for Bina Ve Ze additions";
-  }
-  if (/\bstill\s+looking\s+unclear\b/i.test(text) && /\b(?:search|serach)\b/i.test(text) && /\bgpt\s+image\b/i.test(text)) {
-    return "Improve GPT Image prompting for the Rough Cut icon";
-  }
-
-  const subParSubject = text.match(/^(.{4,48}?)\s+(?:is|are|feels?|seems?)\s+(?:sub[-\s]?par|bad|weak|poor|not\s+good)\b/i)?.[1];
-  if (subParSubject) {
-    return `Improve ${subParSubject.replace(/^the\s+/i, "the ").trim()}`;
-  }
-
-  const beforeQuestionRequest = text
-    .replace(/\s+(?:ask\s+me\s+questions?|question\s+me)\b.*$/i, "")
-    .replace(/\s+(?:so|to)\s+(?:you\s+can\s+)?understand\b.*$/i, "")
-    .trim();
-  if (beforeQuestionRequest && beforeQuestionRequest.length >= 8 && beforeQuestionRequest !== text) {
-    return beforeQuestionRequest;
-  }
-
-  return undefined;
 }
 
 export function buildShellTerminalHeaderViewModel(input: {
@@ -548,7 +305,7 @@ export function buildShellTerminalHeaderViewModel(input: {
     activeRunId: input.activeRunId,
     mainUserAsk: input.mainUserAsk,
     planBindingTitle: input.contextPurposeTitle,
-    planBindingSource: input.contextPurposeSource ?? (input.contextPurposeTitle ? "inferred" : null),
+    planBindingSource: input.contextPurposeSource,
     workstreamTitle: input.workstreamTitle,
     statusSummary: input.statusSummary,
   });
@@ -558,63 +315,27 @@ export function buildShellTerminalHeaderViewModel(input: {
       !input.activeRunId ||
       input.mainUserAsk.runId === input.activeRunId),
   );
-  const rawUserTaskText = mainUserAskApplies ? input.mainUserAsk?.text.trim() || undefined : undefined;
   const taskText = taskIdentity.source === "task-tool" ? taskIdentity.text : undefined;
-  const cleanedUserTaskText = rawUserTaskText
-    ? stripConversationalOpeners(sanitizeScrapedAsk(rawUserTaskText))
-    : undefined;
-  // Terse asks ("make all high") read poorly verbatim — let the existing purpose
-  // mapper expand them; longer asks keep the user's own words.
-  const terseAskRewrite =
-    cleanedUserTaskText && cleanedUserTaskText.split(/\s+/).length <= 6
-      ? qualityPurposeTitle(cleanedUserTaskText)
-      : undefined;
   const userTaskText =
     taskIdentity.source !== "task-tool" && taskIdentity.source !== "missing"
-      ? (cleanedUserTaskText || taskIdentity.text)
-      : terseAskRewrite ?? (cleanedUserTaskText || undefined);
-  const readableUserTaskText = taskText ? undefined : readableUserTaskLabel(userTaskText);
-  const authoritativeTaskText = compactHeaderGoal(
-    contextualTaskForGenericVerification(publicTaskGoalFromDeclaredTask(taskText), input.contextPurposeTitle, workspace),
-  );
-  const statusTaskCandidate = compactHeaderGoal(publicStatusGoalFromSummary(input.statusSummary ?? input.summary, workspace));
-  const scrapedTaskCandidate =
-    compactHeaderGoal(readableUserTaskText) ?? compactHeaderGoal(userTaskText);
-  const scrapedTaskQuality = scrapedTaskCandidate
-    ? qualityCheckUserAskLabel(scrapedTaskCandidate)
-    : { ok: false as const, reason: "empty" as const };
-  const scrapedTaskText = scrapedTaskQuality.ok ? scrapedTaskCandidate : undefined;
+      ? taskIdentity.text
+      : undefined;
   const identityTaskDescriptionText =
-    taskIdentity.source === "task-tool"
-      ? authoritativeTaskText
-      : taskIdentity.source === "missing"
-        ? undefined
-        : scrapedTaskText;
-  // The declared todo-write task is authoritative: it skips the scrape-only
-  // command/path heuristics but still rejects raw-prompt junk.
-  const identityTaskQuality = authoritativeTaskText
-    ? qualityCheckAuthoritativeTaskLabel(authoritativeTaskText)
-    : taskIdentity.source === "missing"
-      ? { ok: false as const, reason: "empty" as const }
-      : scrapedTaskText
-        ? scrapedTaskQuality
-        : qualityCheckTaskLabel(identityTaskDescriptionText);
-  const statusTaskQuality = statusTaskCandidate
-    ? qualityCheckTaskLabel(statusTaskCandidate)
+    taskIdentity.source === "missing"
+      ? undefined
+      : compactHeaderGoal(taskIdentity.text);
+  const identityTaskQuality = identityTaskDescriptionText
+    ? qualityCheckAuthoritativeTaskLabel(identityTaskDescriptionText)
     : { ok: false as const, reason: "empty" as const };
   const taskDescriptionText = identityTaskQuality.ok
     ? identityTaskDescriptionText
-    : statusTaskQuality.ok
-      ? statusTaskCandidate
-      : undefined;
+    : undefined;
   const taskDescriptionSource: HeaderFieldSource | "missing" = identityTaskQuality.ok
     ? taskIdentity.source
-    : statusTaskQuality.ok
-      ? "status-summary"
-      : "missing";
+    : "missing";
   const hasRealTask = Boolean(taskText && taskDescriptionText);
-  const hasUserTask = Boolean(userTaskText && taskDescriptionText && taskDescriptionSource !== "status-summary");
-  const hasStatusTask = Boolean(statusTaskQuality.ok && taskDescriptionSource === "status-summary");
+  const hasUserTask = Boolean(userTaskText && taskDescriptionText);
+  const hasStatusTask = false;
 
   const base =
     input.summary ??
@@ -719,11 +440,7 @@ export function buildShellTerminalHeaderViewModel(input: {
     !headerTextsEquivalent(now, taskDescriptionText)
       ? now
       : undefined;
-  const declaredStepTitle = stripPlanGlyphPrefix(
-    contextualTaskForGenericVerification(publicTaskGoalFromDeclaredTask(summary.task) ?? summary.task, input.contextPurposeTitle, workspace) ??
-      publicTaskGoalFromDeclaredTask(summary.task) ??
-      summary.task,
-  );
+  const declaredStepTitle = stripPlanGlyphPrefix(summary.task);
   const realTaskTitle =
     liveStepTitle ??
     (headerTextsEquivalent(declaredStepTitle, taskDescriptionText)
@@ -874,7 +591,7 @@ export function buildShellTerminalHeaderViewModel(input: {
       titleUsesDistinctActivity: hasDistinctActivity,
       missingActiveTask,
       missingActivity,
-      taskQualityReason: identityTaskQuality.ok ? identityTaskQuality.reason : statusTaskQuality.reason,
+      taskQualityReason: identityTaskQuality.reason,
       titleQualityReason: titleQuality.reason,
       nowQualityReason: nowQuality.reason,
       duplicatedLongLabels,

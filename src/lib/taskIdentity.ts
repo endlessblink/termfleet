@@ -1,9 +1,4 @@
-import type {
-  TaskLineupItem,
-  TerminalMainUserAsk,
-  TerminalPurposeSource,
-  WorkstreamStatusSummary,
-} from "./types";
+import type { TaskLineupItem, TerminalMainUserAsk, TerminalPurposeSource, WorkstreamStatusSummary } from "./types";
 import { visibleTaskLineup } from "./taskLineup";
 
 export const TASK_NOT_CAPTURED = "Task not captured";
@@ -24,7 +19,21 @@ export interface TaskIdentity {
 }
 
 function clean(value?: string | null) {
-  return value?.replace(/\s+/g, " ").trim() || undefined;
+  const text = value
+    ?.replace(/\s+/g, " ")
+    .replace(/\[Image\s+#?\d+\]\s*/gi, "")
+    .trim();
+  return text || undefined;
+}
+
+function cleanPromptText(value?: string | null) {
+  const raw = clean(value);
+  if (!raw) return undefined;
+  const segments = raw
+    .split(/[›❯»▸]/)
+    .map((segment) => segment.replace(/^[>$#|\s]+/, "").trim())
+    .filter(Boolean);
+  return clean((segments[0] ?? raw).replace(/\s*[-–—]\s*(?:[ivx]{1,4}|\d{1,3})\s*$/i, ""));
 }
 
 function activeTodoTask(items: TaskLineupItem[] | undefined, activeRunId?: string) {
@@ -35,7 +44,7 @@ function activeTodoTask(items: TaskLineupItem[] | undefined, activeRunId?: strin
 function scopedAsk(ask: TerminalMainUserAsk | null | undefined, activeRunId?: string) {
   if (!ask) return undefined;
   if (ask.runId && activeRunId && ask.runId !== activeRunId) return undefined;
-  return clean(ask.text);
+  return ask.source === "terminal-prompt" ? cleanPromptText(ask.text) : clean(ask.text);
 }
 
 export function resolveTaskIdentity(input: {
@@ -58,7 +67,7 @@ export function resolveTaskIdentity(input: {
   if (ask && input.mainUserAsk?.source === "task-tool") return { text: ask, rawText: ask, source: "task-tool" };
   if (ask && input.mainUserAsk?.source === "terminal-prompt") return { text: ask, rawText: ask, source: "user-prompt" };
 
-  const planBinding = input.planBindingSource === "task-binding" || input.planBindingSource === "inferred"
+  const planBinding = input.planBindingSource === "task-binding"
     ? clean(input.planBindingTitle)
     : undefined;
   if (planBinding) return { text: planBinding, rawText: planBinding, source: "plan-binding" };

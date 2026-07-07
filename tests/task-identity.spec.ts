@@ -111,6 +111,73 @@ test("sidecar todo is bounded, but model-only status summary is not", () => {
   expect(header.taskDescription.source).toBe("sidecar-todo");
 });
 
+test("sidecar todo text is not semantically rewritten by the header", () => {
+  const header = buildShellTerminalHeaderViewModel({
+    project: { id: "g", name: "repo", projectRoot: "/repo" },
+    liveCwd: "/repo",
+    terminalStatus: "running",
+    taskLineup: [],
+    statusSummary: {
+      task: "still looking unclear serach gpt image",
+      userTask: "still looking unclear serach gpt image",
+      path: "/repo",
+      now: "Working",
+      status: "working",
+      provider: "codex",
+      confidence: "high",
+      tasksFromTodoWrite: true,
+    },
+  });
+
+  expect(header.taskDescription.text).toBe("still looking unclear serach gpt image");
+  expect(header.taskDescription.text).not.toBe("Improve GPT Image prompting for the Rough Cut icon");
+  expect(header.taskDescription.source).toBe("sidecar-todo");
+});
+
+test("inferred terminal purpose is activity context, not plan-binding task identity", () => {
+  const header = buildShellTerminalHeaderViewModel({
+    project: { id: "g", name: "repo", projectRoot: "/repo" },
+    liveCwd: "/repo",
+    terminalStatus: "running",
+    taskLineup: [],
+    contextPurposeTitle: "Check Hermes desktop service status",
+    contextPurposeSource: "inferred",
+    statusSummary: {
+      task: "Ready",
+      path: "/repo",
+      now: "systemctl --user status hermes.service",
+      status: "working",
+      provider: "shell",
+      confidence: "high",
+      tasksFromTodoWrite: false,
+    },
+  });
+
+  expect(header.taskDescription.text).toBe(TASK_NOT_CAPTURED);
+  expect(header.taskDescription.source).toBe("missing");
+});
+
+test("status summary cannot rescue missing task identity", () => {
+  const header = buildShellTerminalHeaderViewModel({
+    project: { id: "g", name: "repo", projectRoot: "/repo" },
+    liveCwd: "/repo",
+    terminalStatus: "running",
+    taskLineup: [],
+    statusSummary: {
+      task: "Fix the sandbox test blocker by running Vitest with a temporary config",
+      path: "/repo",
+      now: "Vitest completed successfully with the temporary config",
+      status: "done",
+      provider: "codex",
+      confidence: "high",
+      tasksFromTodoWrite: false,
+    },
+  });
+
+  expect(header.taskDescription.text).toBe(TASK_NOT_CAPTURED);
+  expect(header.taskDescription.source).toBe("missing");
+});
+
 test("task sidebar ignores operator and summary fallback items", () => {
   expect(visibleTaskLineup([
     {

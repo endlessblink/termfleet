@@ -17,6 +17,11 @@ const doctorSource = readFileSync(new URL("./termfleet-doctor.mjs", import.meta.
 
 assert.match(headerSource, /resolveTaskIdentity/);
 assert.doesNotMatch(headerSource, /source:\s*taskDescriptionText \? taskText \? "task-list"/);
+assert.doesNotMatch(headerSource, /readableUserTaskLabel/);
+assert.doesNotMatch(headerSource, /publicStatusGoalFromSummary/);
+assert.doesNotMatch(headerSource, /publicTaskGoalFromDeclaredTask/);
+assert.doesNotMatch(headerSource, /statusTaskCandidate/);
+assert.doesNotMatch(headerSource, /planBindingSource:\s*input\.contextPurposeSource \?\?/);
 assert.match(taskLineupSource, /must not own the visible TASKS panel/);
 assert.doesNotMatch(taskLineupSource, /falls back to the\s+AI\/heuristic-extracted items/);
 assert.match(snapshotSource, /unsupported-task-source/);
