@@ -85,7 +85,7 @@ fn live_pty_output_reconstructs_into_the_grid() {
 
     // Attach the headless grid; its reader thread subscribes to the daemon.
     let grids = GridManager::new();
-    grids.attach(&id, 80, 24).expect("attach grid");
+    grids.attach(&id, 80, 24, None).expect("attach grid");
 
     // Let bash come up, then emit a deterministic red word. The escape in the
     // typed text is literal (\033 not interpreted) so only the printf *output*

@@ -386,6 +386,7 @@ export function TerminalCanvas({
     let renderScheduled = false;
     let pendingFullRender = false;
     const pendingRenderRows = new Set<number>();
+    const attachToken = crypto.randomUUID();
 
     const syncOverlaySize = () => {
       const overlay = overlayRef.current;
@@ -761,7 +762,7 @@ export function TerminalCanvas({
         await invoke("daemon_resize_session", { id: sessionId, cols: attachCols, rows: attachRows });
         if (disposed) return;
       }
-      await invoke("grid_attach", { id: sessionId, cols: attachCols, rows: attachRows });
+      await invoke("grid_attach", { id: sessionId, cols: attachCols, rows: attachRows, attachToken });
       if (disposed) return;
       await invoke("grid_scroll_to_bottom", { id: sessionId });
       if (disposed) return;
@@ -829,7 +830,7 @@ export function TerminalCanvas({
       daemonInputQueueRef.current?.dispose();
       daemonInputQueueRef.current = null;
       observer.disconnect();
-      invoke("grid_detach", { id: sessionId }).catch(() => {});
+      invoke("grid_detach", { id: sessionId, attachToken }).catch(() => {});
     };
   }, [sessionId, cwd, command, cols, rows, theme, fontsReady, renderScale, mapProjection, dprTick]);
 

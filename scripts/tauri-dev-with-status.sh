@@ -117,6 +117,12 @@ fi
 
 start_status_server
 
+if [[ "${TERMFLEET_MAP_LIVE_TERMINALS_ENABLE:-1}" == "0" ]]; then
+  export VITE_MAP_LIVE_TERMINALS=0
+else
+  export VITE_MAP_LIVE_TERMINALS=1
+fi
+
 export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-1}"
 export CARGO_PROFILE_DEV_DEBUG="${CARGO_PROFILE_DEV_DEBUG:-0}"
 

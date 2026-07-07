@@ -835,11 +835,12 @@ pub fn grid_attach(
     id: String,
     cols: Option<usize>,
     rows: Option<usize>,
+    attach_token: Option<String>,
 ) -> Result<(), String> {
     let cols = cols.filter(|value| *value > 0).unwrap_or(DEFAULT_COLS);
     let rows = rows.filter(|value| *value > 0).unwrap_or(DEFAULT_ROWS);
     crate::daemon::trace_pty("grid.attach", format!("id={id} cols={cols} rows={rows}"));
-    grids.attach(&id, cols, rows)
+    grids.attach(&id, cols, rows, attach_token)
 }
 
 #[tauri::command]
@@ -860,8 +861,8 @@ pub fn grid_selection_text(
 }
 
 #[tauri::command]
-pub fn grid_detach(grids: State<'_, GridManager>, id: String) {
-    grids.detach(&id);
+pub fn grid_detach(grids: State<'_, GridManager>, id: String, attach_token: Option<String>) {
+    grids.detach(&id, attach_token.as_deref());
 }
 
 #[tauri::command]

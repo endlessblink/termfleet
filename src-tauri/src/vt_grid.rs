@@ -206,6 +206,7 @@ struct Session {
     state: Arc<RwLock<TermState>>,
     emit: Arc<Mutex<EmitState>>,
     stop: Arc<AtomicBool>,
+    attach_token: Mutex<Option<String>>,
 }
 
 /// Owns one headless grid per terminal session id.
@@ -244,6 +245,7 @@ impl GridManager {
         id: &str,
         cols: usize,
         rows: usize,
+        attach_token: Option<String>,
     ) -> Result<(Arc<Session>, bool), String> {
         let mut sessions = self.sessions.lock().map_err(|_| "grid lock poisoned")?;
         if let Some(existing) = sessions.get(id) {
@@ -252,12 +254,17 @@ impl GridManager {
                 .write()
                 .map_err(|_| "grid state poisoned")?
                 .resize(cols, rows);
+            *existing
+                .attach_token
+                .lock()
+                .map_err(|_| "grid attach token poisoned")? = attach_token;
             return Ok((Arc::clone(existing), false));
         }
         let session = Arc::new(Session {
             state: Arc::new(RwLock::new(TermState::new(cols, rows))),
             emit: Arc::new(Mutex::new(EmitState::default())),
             stop: Arc::new(AtomicBool::new(false)),
+            attach_token: Mutex::new(attach_token),
         });
         sessions.insert(id.to_string(), Arc::clone(&session));
         Ok((session, true))
@@ -267,9 +274,15 @@ impl GridManager {
     /// run the 60Hz diff emitter. Returns immediately. On a re-attach to an
     /// existing session this resizes the live Term to `cols`x`rows` (see
     /// `upsert_session`) and does not re-spawn its threads.
-    pub fn attach(&self, id: &str, cols: usize, rows: usize) -> Result<(), String> {
+    pub fn attach(
+        &self,
+        id: &str,
+        cols: usize,
+        rows: usize,
+        attach_token: Option<String>,
+    ) -> Result<(), String> {
         {
-            let (session, is_new) = self.upsert_session(id, cols, rows)?;
+            let (session, is_new) = self.upsert_session(id, cols, rows, attach_token)?;
             if !is_new {
                 return Ok(());
             }
@@ -377,12 +390,44 @@ impl GridManager {
     }
 
     /// Detach a session: stop its threads and drop its state.
-    pub fn detach(&self, id: &str) {
+    pub fn detach(&self, id: &str, attach_token: Option<&str>) {
         if let Ok(mut sessions) = self.sessions.lock() {
-            if let Some(session) = sessions.remove(id) {
-                session.stop.store(true, Ordering::Relaxed);
+            let should_detach = sessions
+                .get(id)
+                .and_then(|session| session.attach_token.lock().ok().map(|token| {
+                    match (attach_token, token.as_deref()) {
+                        (Some(expected), Some(current)) => expected == current,
+                        (Some(_), None) => false,
+                        (None, _) => true,
+                    }
+                }))
+                .unwrap_or(false);
+            if should_detach {
+                if let Some(session) = sessions.remove(id) {
+                    session.stop.store(true, Ordering::Relaxed);
+                }
             }
         }
+    }
+
+    #[cfg(test)]
+    fn has_session(&self, id: &str) -> bool {
+        self.sessions
+            .lock()
+            .map(|sessions| sessions.contains_key(id))
+            .unwrap_or(false)
+    }
+
+    #[cfg(test)]
+    fn session_token(&self, id: &str) -> Option<String> {
+        self.sessions
+            .lock()
+            .ok()?
+            .get(id)?
+            .attach_token
+            .lock()
+            .ok()?
+            .clone()
     }
 }
 
@@ -1169,7 +1214,7 @@ mod tests {
     fn reattach_resizes_existing_grid_to_new_size() {
         let manager = GridManager::new();
         let (_first, first_is_new) = manager
-            .upsert_session("regression-session", 80, 24)
+            .upsert_session("regression-session", 80, 24, Some("first".to_string()))
             .expect("first attach");
         assert!(first_is_new, "first upsert creates the session");
 
@@ -1184,7 +1229,7 @@ mod tests {
 
         // Re-attach (e.g. a map zoom toggled `mapProjection`) at a wider size.
         let (session, second_is_new) = manager
-            .upsert_session("regression-session", 100, 30)
+            .upsert_session("regression-session", 100, 30, Some("second".to_string()))
             .expect("re-attach");
         assert!(!second_is_new, "re-attach reuses the existing session");
 
@@ -1201,7 +1246,35 @@ mod tests {
         );
         drop(state);
 
-        manager.detach("regression-session");
+        manager.detach("regression-session", Some("second"));
+    }
+
+    #[test]
+    fn stale_detach_token_does_not_remove_new_grid_session() {
+        let manager = GridManager::new();
+        manager
+            .upsert_session("map-session", 80, 24, Some("old-mount".to_string()))
+            .expect("initial map grid should attach");
+        manager
+            .upsert_session("map-session", 100, 30, Some("new-mount".to_string()))
+            .expect("new map grid should reattach");
+
+        manager.detach("map-session", Some("old-mount"));
+
+        assert!(
+            manager.has_session("map-session"),
+            "a stale map-node cleanup must not detach the current grid session"
+        );
+        assert_eq!(
+            manager.session_token("map-session").as_deref(),
+            Some("new-mount")
+        );
+
+        manager.detach("map-session", Some("new-mount"));
+        assert!(
+            !manager.has_session("map-session"),
+            "the current map-node cleanup should detach its own grid session"
+        );
     }
 
     #[test]
