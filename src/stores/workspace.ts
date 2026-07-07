@@ -362,6 +362,7 @@ interface WorkspaceState {
   alignCanvasNodes: (ids: string[], mode: CanvasAlignMode) => void;
   distributeCanvasNodes: (ids: string[], mode: CanvasDistributeMode) => void;
   arrangeProjectTerminalRow: (groupId: string) => void;
+  arrangeTerminalProjectLanes: () => void;
   reorderCanvasNodes: (draggedId: string, targetId: string, place: "before" | "after") => void;
   removeCanvasNode: (id: string) => void;
   selectCanvasNode: (id: string | null) => void;
@@ -2802,6 +2803,67 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         nextPositions.set(node.id, { x: cursorX, y: rowY });
         cursorX += node.width + 32;
       }
+      return {
+        canvasState: {
+          ...state.canvasState,
+          nodes: state.canvasState.nodes.map((node) => {
+            const next = nextPositions.get(node.id);
+            return next
+              ? {
+                  ...node,
+                  x: snapCanvasCoordinate(next.x),
+                  y: snapCanvasCoordinate(next.y),
+                }
+              : node;
+          }),
+        },
+      };
+    });
+  },
+
+  arrangeTerminalProjectLanes: () => {
+    set((state) => {
+      const tabsById = new Map(state.tabs.map((tab) => [tab.id, tab]));
+      const terminalNodes = state.canvasState.nodes.filter((node) =>
+        node.type === "terminal" &&
+        node.terminalTabId &&
+        tabsById.has(node.terminalTabId)
+      );
+      if (terminalNodes.length < 2) return {};
+
+      const minX = Math.min(...terminalNodes.map((node) => node.x));
+      const minY = Math.min(...terminalNodes.map((node) => node.y));
+      const projectOrder = new Map<string, number>();
+      const lanes = new Map<string, CanvasNode[]>();
+
+      for (const node of terminalNodes) {
+        const tab = tabsById.get(node.terminalTabId!);
+        const projectId = tab?.groupId ?? "unassigned";
+        if (!projectOrder.has(projectId)) projectOrder.set(projectId, projectOrder.size);
+        const lane = lanes.get(projectId) ?? [];
+        lane.push(node);
+        lanes.set(projectId, lane);
+      }
+
+      const laneGap = 96;
+      const terminalGap = 40;
+      let cursorX = minX;
+      const nextPositions = new Map<string, { x: number; y: number }>();
+
+      const sortedLanes = [...lanes.entries()].sort(
+        ([left], [right]) => (projectOrder.get(left) ?? 0) - (projectOrder.get(right) ?? 0)
+      );
+      for (const [, laneNodes] of sortedLanes) {
+        const sortedNodes = [...laneNodes].sort((left, right) => left.y - right.y || left.x - right.x);
+        let cursorY = minY;
+        const laneWidth = Math.max(...sortedNodes.map((node) => node.width));
+        for (const node of sortedNodes) {
+          nextPositions.set(node.id, { x: cursorX, y: cursorY });
+          cursorY += node.height + terminalGap;
+        }
+        cursorX += laneWidth + laneGap;
+      }
+
       return {
         canvasState: {
           ...state.canvasState,

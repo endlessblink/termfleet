@@ -87,7 +87,7 @@ test("reorderCanvasNodes moves a node by id, honors before/after, and preserves 
   expect(result.selfDrop).toEqual(["a", "b", "c"]);
 });
 
-test("canvas layout actions align, distribute, and row project terminals without changing order or viewport", async ({ page }) => {
+test("canvas layout actions align, distribute, and arrange project terminals without changing order or viewport", async ({ page }) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
 
   const result = await page.evaluate(async () => {
@@ -179,7 +179,11 @@ test("canvas layout actions align, distribute, and row project terminals without
     useWorkspaceStore.getState().arrangeProjectTerminalRow("project-a");
     const projectRow = snapshot();
 
-    return { aligned, distributed, projectRow };
+    seed();
+    useWorkspaceStore.getState().arrangeTerminalProjectLanes();
+    const projectLanes = snapshot();
+
+    return { aligned, distributed, projectRow, projectLanes };
   });
 
   expect(result.aligned.order).toEqual(["a", "b", "c", "d", "note"]);
@@ -203,4 +207,12 @@ test("canvas layout actions align, distribute, and row project terminals without
   expect(result.projectRow.nodes.b).toEqual({ x: 142, y: 100 });
   expect(result.projectRow.nodes.c).toEqual({ x: 254, y: 100 });
   expect(result.projectRow.nodes.d).toEqual({ x: 50, y: 900 });
+
+  expect(result.projectLanes.order).toEqual(["a", "b", "c", "d", "note"]);
+  expect(result.projectLanes.viewport).toEqual({ x: 12, y: 34, zoom: 0.75 });
+  expect(result.projectLanes.nodes.a).toEqual({ x: 10, y: 100 });
+  expect(result.projectLanes.nodes.b).toEqual({ x: 10, y: 190 });
+  expect(result.projectLanes.nodes.c).toEqual({ x: 10, y: 280 });
+  expect(result.projectLanes.nodes.d).toEqual({ x: 226, y: 100 });
+  expect(result.projectLanes.nodes.note).toEqual({ x: 999, y: 888 });
 });

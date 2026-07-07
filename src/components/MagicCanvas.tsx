@@ -10,6 +10,7 @@ import {
   Bot,
   CheckCircle2,
   ClipboardCopy,
+  Columns3,
   FileText,
   Globe,
   LocateFixed,
@@ -4086,6 +4087,7 @@ export function MagicCanvas() {
   const alignCanvasNodes = useWorkspaceStore((state) => state.alignCanvasNodes);
   const distributeCanvasNodes = useWorkspaceStore((state) => state.distributeCanvasNodes);
   const arrangeProjectTerminalRow = useWorkspaceStore((state) => state.arrangeProjectTerminalRow);
+  const arrangeTerminalProjectLanes = useWorkspaceStore((state) => state.arrangeTerminalProjectLanes);
   const openFiles = useWorkspaceStore((state) => state.openFiles);
   const shellRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
@@ -4189,6 +4191,17 @@ export function MagicCanvas() {
   const canAlignCanvasNodes = selectedCanvasNodes.length >= 2;
   const canDistributeCanvasNodes = selectedCanvasNodes.length >= 3;
   const canArrangeProjectRow = Boolean(projectRowGroupId) && projectRowTerminalCount >= 2;
+  const terminalProjectLaneCount = useMemo(() => {
+    const tabGroupsById = new Map(tabs.map((tab) => [tab.id, tab.groupId ?? "unassigned"]));
+    const laneIds = new Set<string>();
+    for (const node of nodes) {
+      if (node.type !== "terminal" || !node.terminalTabId) continue;
+      const groupId = tabGroupsById.get(node.terminalTabId);
+      if (groupId) laneIds.add(groupId);
+    }
+    return laneIds.size;
+  }, [nodes, tabs]);
+  const canArrangeTerminalProjectLanes = terminalProjectLaneCount >= 2;
   const liveNodeIds = useMemo(() => {
     const live = new Set<string>();
     // Below readable zoom every terminal already renders the cheap DOM preview,
@@ -4812,6 +4825,16 @@ export function MagicCanvas() {
           }}
         >
           <Rows3 size={14} strokeWidth={1.8} />
+        </button>
+        <button
+          className="magic-canvas-button"
+          style={{ ...styles.button, ...(!canArrangeTerminalProjectLanes ? styles.buttonDisabled : null) }}
+          title="Arrange terminal projects in vertical lanes"
+          aria-label="Arrange terminal projects in vertical lanes"
+          disabled={!canArrangeTerminalProjectLanes}
+          onClick={arrangeTerminalProjectLanes}
+        >
+          <Columns3 size={14} strokeWidth={1.8} />
         </button>
       </div>
 
