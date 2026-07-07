@@ -68,6 +68,34 @@ test("a tool call preserves the existing task list and user ask", () => {
   expect(sidecar?.now).toBe("Build the app");
 });
 
+test("non-narration events do not keep stale assistant narration alive", () => {
+  const previous = {
+    userTask: "old prompt",
+    narration: "Old answer that should not remain the live title",
+    todos: [{ content: "Fix the runtime source gap", status: "in_progress", activeForm: "" }],
+  };
+
+  const prompt = buildCodexSidecar(
+    { hook_event_name: "UserPromptSubmit", prompt: "new prompt", cwd: "/repo" },
+    previous,
+    3100,
+  );
+  const plan = buildCodexSidecar(
+    { tool_name: "update_plan", tool_input: { plan: [{ step: "Fix the runtime source gap", status: "in_progress" }] }, cwd: "/repo" },
+    previous,
+    3200,
+  );
+  const tool = buildCodexSidecar(
+    { hook_event_name: "PostToolUse", tool_name: "exec_command", tool_input: { command: "npm test" }, cwd: "/repo" },
+    previous,
+    3300,
+  );
+
+  expect(prompt?.narration).toBeUndefined();
+  expect(plan?.narration).toBeUndefined();
+  expect(tool?.narration).toBeUndefined();
+});
+
 test("update_plan, when Codex emits it, becomes a real task list", () => {
   const todos = todosFromUpdatePlan({
     plan: [

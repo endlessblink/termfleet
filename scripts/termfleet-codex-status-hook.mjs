@@ -171,7 +171,6 @@ export function buildCodexSidecar(payload, prev, now = Date.now()) {
   const event = payload?.hook_event_name ?? payload?.hookEventName ?? payload?.event;
   const prevTodos = Array.isArray(prev?.todos) ? prev.todos : [];
   const prevUserTask = cleanField(prev?.userTask, 220) || undefined;
-  const prevNarration = cleanField(prev?.narration, 90) || undefined;
   const base = { cwd, sessionId: String(payload?.session_id ?? payload?.sessionId ?? prev?.sessionId ?? ""), updatedAt: now };
 
   if (event === "UserPromptSubmit") {
@@ -183,7 +182,6 @@ export function buildCodexSidecar(payload, prev, now = Date.now()) {
       todos: prevTodos,
       userTask,
       now: cleanField(prev?.now) || "Prompt submitted",
-      narration: prevNarration,
     };
   }
 
@@ -196,7 +194,6 @@ export function buildCodexSidecar(payload, prev, now = Date.now()) {
       todos,
       now: nowFromTodos(todos),
       userTask: prevUserTask,
-      narration: prevNarration,
     };
   }
 
@@ -223,7 +220,6 @@ export function buildCodexSidecar(payload, prev, now = Date.now()) {
       todos: prevTodos,
       now: nowFromTodos(prevTodos) || activity,
       userTask: prevUserTask,
-      narration: prevNarration,
     };
   }
 

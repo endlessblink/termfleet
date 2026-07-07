@@ -506,6 +506,7 @@ export function buildShellTerminalHeaderViewModel(input: {
     taskDerivedActivity &&
       preGuardTitle === taskDerivedActivity &&
       (hasStatusTask ||
+        hasRealTask ||
         /^(?:Verify|Verifying|Find|Finding|Get|Getting|Improve|Improving|Refresh|Refreshing|Report|Reporting|Research|Researching|Review|Reviewing|Ensure|Ensuring|Check|Checking|Run|Running|Update|Updating|Investigate|Investigating|Map|Mapping|Resume|Resuming|Restore|Restoring|Push|Pushing|Add|Adding|Ask|Asking|Audit|Auditing|Close|Closing|Commit|Committing|Connect|Connecting|Create|Creating|Design|Designing|Execute|Executing|Sort|Sorting|Summarize|Summarizing|Choose|Decide|Choosing|Plan|Planning)\b|^Included\b|^Task\s+\d|^two people voted\b|^is that a good idea\??$|^Rechecking .+ approval|^Skipping model calls for clear task sidecars/i.test(taskDescriptionText ?? "") ||
         (input.mainUserAsk?.source === "status-sidecar" && /^(?:Resolve|Resolving)\b/i.test(taskDescriptionText ?? "")) ||
         /\bterminal gap\b/i.test(taskDescriptionText ?? "") ||

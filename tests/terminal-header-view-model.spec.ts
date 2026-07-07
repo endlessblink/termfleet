@@ -1231,6 +1231,43 @@ test("big title uses the task activeForm, never the momentary tool activity", ()
   expect(header.now.text).toBe("Using Skill");
 });
 
+test("real task active form beats a generic working title", () => {
+  const header = buildShellTerminalHeaderViewModel({
+    project: { id: "g-termfleet", name: "termfleet", projectRoot: "/repo/termfleet" },
+    liveCwd: "/repo/termfleet",
+    terminalStatus: "reconnected",
+    taskLineup: [{
+      id: "task-runtime-gap",
+      content: "Fix the runtime source gap",
+      status: "in_progress",
+      source: "todo-write",
+      updatedAt: 1000,
+    }],
+    mainUserAsk: {
+      text: "and nothing got better... why cant you verify yourself in a loop?",
+      source: "status-sidecar",
+      updatedAt: 1000,
+    },
+    statusSummary: {
+      task: "Fix the runtime source gap",
+      userTask: "and nothing got better... why cant you verify yourself in a loop?",
+      path: "/repo/termfleet",
+      now: "Fixing the runtime source gap",
+      status: "working",
+      provider: "codex",
+      confidence: "high",
+      tasksFromTodoWrite: true,
+      narration: "Fixing the runtime source gap",
+    },
+    neutralTitle: null,
+    activelyWorking: true,
+  });
+
+  expect(header.taskDescription.text).toBe("Fix the runtime source gap");
+  expect(header.title.text).toBe("Fixing the runtime source gap");
+  expect(header.title.text).not.toBe("Working");
+});
+
 test("title falls back to distinct activity only when activeForm duplicates the Task row", () => {
   const header = buildShellTerminalHeaderViewModel({
     project: { id: "g-termfleet", name: "termfleet", projectRoot: "/repo/termfleet" },
