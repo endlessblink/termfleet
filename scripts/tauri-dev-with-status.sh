@@ -56,9 +56,9 @@ status_server_ready() {
 # Status summaries are opt-in for dev launches. Even the no-model sidecar can
 # create a high-frequency polling loop across many panes, so keep it off unless
 # explicitly requested.
-# Enable with TERMFLEET_AGENT_STATUS_ENABLE=1. When enabled, the default worker is
-# the no-model SIDECAR worker; the Ollama worker remains explicitly opt-in via
-# TERMFLEET_AGENT_STATUS_WORKER.
+# Enable with TERMFLEET_AGENT_STATUS_ENABLE=1 TERMFLEET_AGENT_STATUS_DISABLE=0.
+# When enabled, the default worker is the no-model SIDECAR worker; the Ollama
+# worker remains explicitly opt-in via TERMFLEET_AGENT_STATUS_WORKER.
 STATUS_WORKER="${TERMFLEET_AGENT_STATUS_WORKER:-node scripts/agent-status-summary-sidecar.mjs}"
 CONTEXT_TITLE_DISABLE="${TERMFLEET_CONTEXT_TITLE_DISABLE:-0}"
 if [[ "$STATUS_WORKER" == *"agent-status-summary-sidecar.mjs"* && -z "${TERMFLEET_CONTEXT_TITLE_DISABLE+x}" ]]; then
@@ -66,7 +66,7 @@ if [[ "$STATUS_WORKER" == *"agent-status-summary-sidecar.mjs"* && -z "${TERMFLEE
 fi
 
 start_status_server() {
-  if [[ "${TERMFLEET_AGENT_STATUS_ENABLE:-0}" != "1" || "${TERMFLEET_AGENT_STATUS_DISABLE:-0}" == "1" ]]; then
+  if [[ "${TERMFLEET_AGENT_STATUS_ENABLE:-0}" != "1" || "${TERMFLEET_AGENT_STATUS_DISABLE:-1}" != "0" ]]; then
     kill_if_running "agent-status-summary-server.mjs"
     unset VITE_AGENT_STATUS_SUMMARY_ENDPOINT
     return

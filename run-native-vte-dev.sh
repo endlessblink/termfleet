@@ -91,9 +91,9 @@ fi
 # Status summaries are opt-in for dev launches. Even the no-model sidecar can
 # create a high-frequency polling loop across many panes, so keep it off unless
 # explicitly requested.
-# Enable with TERMFLEET_AGENT_STATUS_ENABLE=1. When enabled, the default worker is
-# the no-model SIDECAR worker; the Ollama worker remains explicitly opt-in via
-# TERMFLEET_AGENT_STATUS_WORKER.
+# Enable with TERMFLEET_AGENT_STATUS_ENABLE=1 TERMFLEET_AGENT_STATUS_DISABLE=0.
+# When enabled, the default worker is the no-model SIDECAR worker; the Ollama
+# worker remains explicitly opt-in via TERMFLEET_AGENT_STATUS_WORKER.
 STATUS_HOST="${TERMFLEET_AGENT_STATUS_HOST:-127.0.0.1}"
 STATUS_PORT="${TERMFLEET_AGENT_STATUS_PORT:-37819}"
 STATUS_ENDPOINT="http://${STATUS_HOST}:${STATUS_PORT}/status"
@@ -105,7 +105,7 @@ if [[ "$STATUS_WORKER" == *"agent-status-summary-sidecar.mjs"* && -z "${TERMFLEE
 fi
 STATUS_PID=""
 
-if [[ "${TERMFLEET_AGENT_STATUS_ENABLE:-0}" == "1" && "${TERMFLEET_AGENT_STATUS_DISABLE:-0}" != "1" ]]; then
+if [[ "${TERMFLEET_AGENT_STATUS_ENABLE:-0}" == "1" && "${TERMFLEET_AGENT_STATUS_DISABLE:-1}" == "0" ]]; then
   # Always replace our own status server so a worker/code change actually takes effect.
   # Reusing a stale server (e.g. an old model-only worker) silently serves outdated
   # behavior across relaunches — the exact bug that hid the sidecar task list. (TC-033)
