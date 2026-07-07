@@ -19,7 +19,7 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { stdin } from "node:process";
 import { paneSidecarPath, sidecarPath, statusDir, normalizeCwd } from "./lib/agent-status-paths.mjs";
-import { narrationToNow } from "./termfleet-claude-status-hook.mjs";
+import { narrationToNow, readTranscriptTail } from "./termfleet-claude-status-hook.mjs";
 
 function cleanField(value, max = 200) {
   return String(value ?? "")
@@ -68,12 +68,7 @@ export function codexLastAgentMessage(payload) {
   if (direct) return direct;
   const transcriptPath = payload?.transcript_path ?? payload?.transcriptPath;
   if (!transcriptPath) return "";
-  let raw;
-  try {
-    raw = readFileSync(transcriptPath, "utf8");
-  } catch {
-    return "";
-  }
+  const raw = readTranscriptTail(transcriptPath);
   let text = "";
   for (const line of raw.split("\n")) {
     if (!line.trim()) continue;

@@ -1,4 +1,7 @@
 import { expect, test } from "@playwright/test";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import {
   buildCodexSidecar,
   codexActivityFromTool,
@@ -87,6 +90,18 @@ test("update_plan, when Codex emits it, becomes a real task list", () => {
 
 test("codexLastAgentMessage prefers the direct payload field", () => {
   expect(codexLastAgentMessage({ last_assistant_message: "Done wiring it up." })).toBe("Done wiring it up.");
+});
+
+test("codexLastAgentMessage scans only recent transcript tail", () => {
+  const dir = mkdtempSync(join(tmpdir(), "termfleet-codex-hook-"));
+  const transcript = join(dir, "rollout.jsonl");
+  const old = JSON.stringify({ type: "agent_message", message: "Old transcript task that should not be scanned" });
+  const latest = JSON.stringify({ type: "agent_message", message: "Now I will bound the status hook transcript scan." });
+  writeFileSync(transcript, `${old}\n${"x".repeat(300 * 1024)}\n${latest}\n`);
+
+  expect(codexLastAgentMessage({ transcript_path: transcript })).toBe(
+    "Now I will bound the status hook transcript scan.",
+  );
 });
 
 test("nothing worth writing returns null (no empty sidecar churn)", () => {

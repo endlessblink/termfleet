@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import {
   activityFromTool,
+  lastAssistantText,
   narrationToNow,
 } from "../scripts/termfleet-claude-status-hook.mjs";
 import { fnv } from "../scripts/lib/agent-status-paths.mjs";
@@ -387,6 +388,28 @@ test("Stop event: the agent's own last words become the live now line + recent f
   expect(recent).toContain(
     "Wiring the Stop hook so the title reads in my own words.",
   );
+});
+
+test("Stop event transcript scan is bounded to recent tail", () => {
+  const dataHome = mkdtempSync(path.join(os.tmpdir(), "tf-status-tail-"));
+  const transcript = path.join(dataHome, "transcript.jsonl");
+  const oldAssistant = JSON.stringify({
+    type: "assistant",
+    message: {
+      role: "assistant",
+      content: [{ type: "text", text: "Old assistant text that should not be scanned" }],
+    },
+  });
+  const latestAssistant = JSON.stringify({
+    type: "assistant",
+    message: {
+      role: "assistant",
+      content: [{ type: "text", text: "Now I will bound the Claude status transcript scan." }],
+    },
+  });
+  writeFileSync(transcript, `${oldAssistant}\n${"x".repeat(300 * 1024)}\n${latestAssistant}\n`);
+
+  expect(lastAssistantText(transcript)).toBe("Now I will bound the Claude status transcript scan.");
 });
 
 test("Stop event: a live task summary outranks narration for the title, narration still feeds recent", async () => {
