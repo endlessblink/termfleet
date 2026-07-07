@@ -34,6 +34,7 @@
     "verify:readme-recovery": "node scripts/verify-readme-recovery.mjs",
     "verify:developer-preview": "node scripts/verify-developer-preview.mjs",
     "verify:agent-status-summary": "node scripts/verify-agent-status-summary-server.mjs",
+    "verify:task-identity": "node scripts/verify-task-identity.mjs",
     "agent-status:ollama": "node scripts/agent-status-summary-ollama.mjs",
     "termfleetctl": "node scripts/termfleetctl.mjs",
     "verify:termfleetctl": "node scripts/verify-termfleetctl.mjs",

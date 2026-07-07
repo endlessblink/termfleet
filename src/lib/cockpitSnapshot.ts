@@ -16,6 +16,7 @@ export interface CockpitSnapshotEntry {
   path?: string;
   workspace?: string;
   previewTitle?: string;
+  projectEmoji?: string;
   kind: "agent" | "shell";
   // The exact title/now strings the header is displaying right now.
   task?: string;

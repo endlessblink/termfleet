@@ -99,12 +99,26 @@ function analyzeEntry(entry, snapshotAgeS) {
   const visible = clean(entry.terminalVisibleText);
   const prompt = visiblePrompt(entry);
   const flags = [];
+  const supportedTaskSources = new Set([
+    "manual",
+    "task-tool",
+    "user-prompt",
+    "plan-binding",
+    "sidecar-todo",
+    "workstream",
+    "missing",
+    // Agent lanes are not shell terminal task identity; keep this accepted for now.
+    "agent-status",
+  ]);
   const neutralTitle = /^(idle|awaiting next action|waiting for operator selection|needs attention)$/i.test(title);
   const lowerTitle = title.toLowerCase();
   const lowerTask = task.toLowerCase();
 
   if (snapshotAgeS > 30) flags.push(`snapshot-old:${snapshotAgeS}s`);
-  if (!visible && !neutralTitle && !/^(?:user-prompt|task-tool|sidecar|manual|workstream)$/i.test(clean(entry.taskSource))) {
+  if (!supportedTaskSources.has(clean(entry.taskSource))) {
+    flags.push(`unsupported-task-source:${clean(entry.taskSource) || "empty"}`);
+  }
+  if (!visible && !neutralTitle && !/^(?:user-prompt|task-tool|sidecar-todo|manual|workstream|plan-binding)$/i.test(clean(entry.taskSource))) {
     flags.push("no-visible-terminal-text-for-non-neutral-header");
   }
   if (/^working$/i.test(title)) flags.push("generic-title-working");
@@ -121,7 +135,13 @@ function analyzeEntry(entry, snapshotAgeS) {
   if (taskMissing && /^(Thinking|Working on |Waiting for approval|Waiting for operator)/i.test(title)) {
     flags.push("active-title-with-no-task");
   }
-  if (/^task not captured$/i.test(task)) flags.push("task-not-captured");
+  const hasAnyData = Boolean(
+    prompt ||
+      visible ||
+      clean(entry.terminalOutput) ||
+      (task && !taskMissing && task.split(/\s+/).length >= 3),
+  );
+  if (/^task not captured$/i.test(task) && hasAnyData) flags.push("task-not-captured");
   if (activityMissing) flags.push("activity-not-captured");
   if (task.length > 96) flags.push(`task-too-long:${task.length}`);
   if (/(\/tmp\/claude|FIRST read|follow EXACTLY|npm run|npx playwright|--reporter|\/media\/endlessblink)/i.test(task)) {

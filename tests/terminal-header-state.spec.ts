@@ -107,6 +107,38 @@ test("marks active terminals without structured task or activity as capture fail
   expect(header.sources.activity).toBe("missing");
 });
 
+test("marks sidecar task rows as sidecar sourced instead of none", () => {
+  const header = buildTerminalHeaderState({
+    paneId: "pane-hermes",
+    terminalId: "pty-hermes",
+    runId: "run-hermes",
+    project: { id: "g-hermes", name: "hermes", projectRoot: "/repo/hermes" },
+    liveCwd: "/repo/hermes",
+    terminalStatus: "running",
+    neutralTitle: "Working",
+    mainUserAsk: {
+      text: "Included in debug-share bundles with the existing redaction path",
+      source: "status-sidecar",
+      updatedAt: 1000,
+    },
+    statusSummary: {
+      task: "Included in debug-share bundles with the existing redaction path",
+      path: "/repo/hermes",
+      now: "npm test",
+      status: "working",
+      provider: "shell",
+      confidence: "high",
+      tasksFromTodoWrite: false,
+    },
+  });
+
+  expect(header.goalLabel).toBe("Included in debug-share bundles with the existing redaction path");
+  expect(header.currentActivity).toBe("Checking debug-share bundle redaction path");
+  expect(header.userGoal).toBe("Included in debug-share bundles with the existing redaction path");
+  expect(header.sources.goal).toBe("sidecar-todo");
+  expect(header.sources.goal).not.toBe("none");
+});
+
 test("keeps real task-list activity ahead of fallback status wording", () => {
   const header = buildTerminalHeaderState({
     paneId: "pane-c",
@@ -138,6 +170,6 @@ test("keeps real task-list activity ahead of fallback status wording", () => {
 
   expect(header.goalLabel).toBe("Verifying the KDE widget guard");
   expect(header.currentActivity).toBe("Verifying the KDE widget guard");
-  expect(header.sources.goal).toBe("task-tool");
-  expect(header.sources.activity).toBe("task-tool");
+  expect(header.sources.goal).toBe("sidecar-todo");
+  expect(header.sources.activity).toBe("status-summary");
 });

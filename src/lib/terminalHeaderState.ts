@@ -2,6 +2,7 @@ import type {
   Group,
   TaskLineupItem,
   TerminalMainUserAsk,
+  TerminalPurposeSource,
   TerminalRuntimeStatus,
   WorkstreamStatusSummary,
 } from "./types";
@@ -21,7 +22,8 @@ export type TerminalHeaderWorkspaceSource = "workspace";
 export type TerminalHeaderGoalSource =
   | "task-tool"
   | "user-prompt"
-  | "sidecar"
+  | "plan-binding"
+  | "sidecar-todo"
   | "manual"
   | "workstream"
   | "missing"
@@ -65,13 +67,20 @@ function goalSourceFrom(
   mainUserAsk?: TerminalMainUserAsk | null,
 ): TerminalHeaderGoalSource {
   if (fieldSource === "task-list") return "task-tool";
+  if (fieldSource === "task-tool") return "task-tool";
+  if (fieldSource === "manual") return "manual";
+  if (fieldSource === "user-prompt") return "user-prompt";
+  if (fieldSource === "plan-binding") return "plan-binding";
+  if (fieldSource === "sidecar-todo") return "sidecar-todo";
+  if (fieldSource === "workstream") return "workstream";
   if (fieldSource === "missing") return "missing";
+  if (fieldSource === "status-summary") return "missing";
   if (fieldSource !== "user-task") return "none";
   switch (mainUserAsk?.source) {
     case "terminal-prompt":
       return "user-prompt";
     case "status-sidecar":
-      return "sidecar";
+      return "sidecar-todo";
     case "manual":
       return "manual";
     case "workstream":
@@ -79,7 +88,7 @@ function goalSourceFrom(
     case "task-tool":
       return "task-tool";
     default:
-      return "sidecar";
+      return "missing";
   }
 }
 
@@ -135,11 +144,15 @@ export function buildTerminalHeaderState(input: {
   summary?: WorkstreamStatusSummary | null;
   neutralTitle?: string | null;
   trustedActivitySummary?: boolean;
+  contextPurposeTitle?: string | null;
+  contextPurposeSource?: TerminalPurposeSource | null;
+  workstreamTitle?: string | null;
   activelyWorking?: boolean;
   updatedAt?: number;
   version?: number;
 }): TerminalHeaderState {
   const effectiveLiveCwd = input.liveCwd ?? input.spawnCwd ?? input.project?.projectRoot;
+  const effectiveSummary = input.statusSummary?.tasksFromTodoWrite ? undefined : input.summary;
   const view = buildShellTerminalHeaderViewModel({
     project: input.project,
     liveCwd: effectiveLiveCwd,
@@ -149,9 +162,12 @@ export function buildTerminalHeaderState(input: {
     activeRunId: input.activeRunId ?? input.runId,
     mainUserAsk: input.mainUserAsk,
     statusSummary: input.statusSummary,
-    summary: input.summary,
+    summary: effectiveSummary,
     neutralTitle: input.neutralTitle,
     trustedActivitySummary: input.trustedActivitySummary,
+    contextPurposeTitle: input.contextPurposeTitle,
+    contextPurposeSource: input.contextPurposeSource,
+    workstreamTitle: input.workstreamTitle,
     activelyWorking: input.activelyWorking,
   });
   const goalSource = goalSourceFrom(view.taskDescription.source, input.mainUserAsk);

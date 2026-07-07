@@ -1018,3 +1018,391 @@ test("project emoji is stable for generated icons and user emoji wins", async ({
     root: "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
   });
 });
+
+test("generated project emoji updates to semantic mapping on reconciliation", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+
+  const result = await page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => {
+          reconcileProjectGroups: () => void;
+          groups: Array<{ id: string; name: string; emoji?: string; emojiSource?: string; projectRoot?: string }>;
+        };
+        setState: (state: Record<string, unknown>) => void;
+      };
+    }).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+    const root = "/media/endlessblink/data/my-projects/ai-development/misc/designersai";
+    store.setState({
+      groups: [{
+        id: "group-designersai",
+        name: "designersai",
+        color: "#7aa2f7",
+        emoji: "🧱",
+        emojiSource: "generated",
+        projectRoot: root,
+      }],
+      terminalGroups: [],
+      tabs: [],
+      canvasState: { selectedNodeId: null, selectedNodeIds: [], viewport: { x: 0, y: 0, zoom: 1 }, nodes: [] },
+    });
+    store.getState().reconcileProjectGroups();
+    return store.getState().groups.find((group) => group.id === "group-designersai");
+  });
+
+  expect(result?.emoji).toBe("🎨");
+  expect(result?.emojiSource).toBe("generated");
+});
+
+test("category project rows split into concrete project rows with semantic emoji", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+
+  const result = await page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => {
+          reconcileProjectGroups: () => void;
+          tabs: Array<{ id: string; groupId: string | null }>;
+          groups: Array<{ id: string; name: string; emoji?: string; emojiSource?: string; projectRoot?: string }>;
+        };
+        setState: (state: Record<string, unknown>) => void;
+      };
+    }).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+
+    const AI = "/media/endlessblink/data/my-projects/ai-development";
+    const ROUGH = `${AI}/content-creation/rough-cut-mvp`;
+    const DESIGN = `${AI}/misc/designersai`;
+    const tab = (id: string, cwd: string) => ({
+      id,
+      title: id,
+      emoji: "[]",
+      color: "#7aa2f7",
+      groupId: "group-ai",
+      initialCwd: cwd,
+      terminals: [{ id: `pty-${id}`, paneId: `pane-${id}`, cols: 80, rows: 24, status: "running" }],
+      splitLayout: { id: `pane-${id}`, type: "terminal" },
+      activePaneId: `pane-${id}`,
+    });
+
+    store.setState({
+      groups: [{
+        id: "group-ai",
+        name: "ai-development",
+        color: "#7aa2f7",
+        emoji: "📊",
+        emojiSource: "generated",
+        projectRoot: AI,
+      }],
+      terminalGroups: [],
+      tabs: [tab("tab-rough", ROUGH), tab("tab-design", DESIGN)],
+      canvasState: {
+        selectedNodeId: null,
+        selectedNodeIds: [],
+        viewport: { x: 0, y: 0, zoom: 1 },
+        nodes: [
+          { id: "node-rough", type: "terminal", title: "rough", terminalTabId: "tab-rough", terminalCwd: ROUGH, x: 0, y: 0, width: 620, height: 420 },
+          { id: "node-design", type: "terminal", title: "design", terminalTabId: "tab-design", terminalCwd: DESIGN, x: 660, y: 0, width: 620, height: 420 },
+        ],
+      },
+    });
+
+    store.getState().reconcileProjectGroups();
+    const state = store.getState();
+    return {
+      groups: state.groups.map((group) => ({
+        id: group.id,
+        name: group.name,
+        emoji: group.emoji,
+        source: group.emojiSource,
+        root: group.projectRoot,
+        count: state.tabs.filter((candidate) => candidate.groupId === group.id).length,
+      })),
+      tabGroups: Object.fromEntries(state.tabs.map((candidate) => [candidate.id, candidate.groupId])),
+    };
+  });
+
+  expect(result.groups).toEqual([
+    {
+      id: expect.any(String),
+      name: "rough-cut-mvp",
+      emoji: "🎬",
+      source: "generated",
+      root: "/media/endlessblink/data/my-projects/ai-development/content-creation/rough-cut-mvp",
+      count: 1,
+    },
+    {
+      id: expect.any(String),
+      name: "designersai",
+      emoji: "🎨",
+      source: "generated",
+      root: "/media/endlessblink/data/my-projects/ai-development/misc/designersai",
+      count: 1,
+    },
+  ]);
+  expect(result.groups.some((group) => group.name === "ai-development")).toBe(false);
+  expect(result.tabGroups["tab-rough"]).not.toBe(result.tabGroups["tab-design"]);
+});
+
+test("old generated category name repairs to the concrete project name", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+
+  const result = await page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => {
+          reconcileProjectGroups: () => void;
+          groups: Array<{ id: string; name: string; emoji?: string; emojiSource?: string; projectRoot?: string }>;
+        };
+        setState: (state: Record<string, unknown>) => void;
+      };
+    }).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+    const root = "/media/endlessblink/data/my-projects/ai-development/misc/designersai";
+    store.setState({
+      groups: [{
+        id: "group-designersai",
+        name: "ai-development",
+        color: "#7aa2f7",
+        emoji: "📊",
+        emojiSource: "generated",
+        projectRoot: root,
+      }],
+      terminalGroups: [],
+      tabs: [],
+      canvasState: { selectedNodeId: null, selectedNodeIds: [], viewport: { x: 0, y: 0, zoom: 1 }, nodes: [] },
+    });
+    store.getState().reconcileProjectGroups();
+    return store.getState().groups.find((group) => group.id === "group-designersai");
+  });
+
+  expect(result?.name).toBe("designersai");
+  expect(result?.emoji).toBe("🎨");
+  expect(result?.emojiSource).toBe("generated");
+});
+
+test("nested project row repairs ancestor name while preserving user emoji", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+
+  const result = await page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => {
+          reconcileProjectGroups: () => void;
+          groups: Array<{ id: string; name: string; emoji?: string; emojiSource?: string; projectRoot?: string }>;
+        };
+        setState: (state: Record<string, unknown>) => void;
+      };
+    }).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+    const root = "/media/endlessblink/data/my-projects/ai-development/productivity/flow-state/watchpost";
+    store.setState({
+      groups: [{
+        id: "group-watchpost",
+        name: "flow-state",
+        color: "#7aa2f7",
+        emoji: "🛰️",
+        emojiSource: "user",
+        projectRoot: root,
+      }],
+      terminalGroups: [],
+      tabs: [],
+      canvasState: { selectedNodeId: null, selectedNodeIds: [], viewport: { x: 0, y: 0, zoom: 1 }, nodes: [] },
+    });
+    store.getState().reconcileProjectGroups();
+    return store.getState().groups.find((group) => group.id === "group-watchpost");
+  });
+
+  expect(result?.name).toBe("watchpost");
+  expect(result?.emoji).toBe("🛰️");
+  expect(result?.emojiSource).toBe("user");
+});
+
+test("terminal live cwd under an auto-named ancestor becomes its own sidebar project", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+
+  const result = await page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => {
+          reconcileProjectGroups: () => void;
+          groups: Array<{ id: string; name: string; emoji?: string; emojiSource?: string; projectRoot?: string }>;
+          tabs: Array<{ id: string; groupId: string | null }>;
+          activeGroupFilter: string | null;
+          activeGroupId: string | null;
+          projectRoot: string | null;
+        };
+        setState: (state: Record<string, unknown>) => void;
+      };
+    }).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+    const parent = "/media/endlessblink/data/my-projects/ai-development/productivity/flow-state";
+    const child = `${parent}/watchpost`;
+    store.setState({
+      groups: [{
+        id: "group-flow-state",
+        name: "flow-state",
+        color: "#7aa2f7",
+        emoji: "📡",
+        emojiSource: "generated",
+        projectRoot: parent,
+      }],
+      terminalGroups: [],
+      tabs: [{
+        id: "tab-watchpost",
+        title: "watchpost",
+        initialCwd: parent,
+        groupId: "group-flow-state",
+        terminals: [{ id: "terminal-watchpost", paneId: "pane-watchpost", status: "running" }],
+        activePaneId: "pane-watchpost",
+        splitLayout: { id: "pane-watchpost", type: "leaf", paneId: "pane-watchpost" },
+      }],
+      liveCwds: { "terminal-watchpost": child },
+      activeTabId: "tab-watchpost",
+      activeGroupFilter: "group-flow-state",
+      activeGroupId: "group-flow-state",
+      projectRoot: parent,
+      canvasState: { selectedNodeId: null, selectedNodeIds: [], viewport: { x: 0, y: 0, zoom: 1 }, nodes: [] },
+    });
+    store.getState().reconcileProjectGroups();
+    const state = store.getState();
+    const tab = state.tabs.find((candidate) => candidate.id === "tab-watchpost");
+    const group = state.groups.find((candidate) => candidate.id === tab?.groupId);
+    return {
+      groupName: group?.name,
+      groupRoot: group?.projectRoot,
+      tabGroupId: tab?.groupId,
+      activeGroupFilter: state.activeGroupFilter,
+      activeGroupId: state.activeGroupId,
+      projectRoot: state.projectRoot,
+      allGroups: state.groups.map((candidate) => ({ name: candidate.name, root: candidate.projectRoot })),
+    };
+  });
+
+  expect(result.groupName).toBe("watchpost");
+  expect(result.groupRoot).toBe("/media/endlessblink/data/my-projects/ai-development/productivity/flow-state/watchpost");
+  expect(result.activeGroupFilter).toBe(result.tabGroupId);
+  expect(result.activeGroupId).toBe(result.tabGroupId);
+  expect(result.projectRoot).toBe(result.groupRoot);
+  expect(result.allGroups).toEqual([
+    {
+      name: "watchpost",
+      root: "/media/endlessblink/data/my-projects/ai-development/productivity/flow-state/watchpost",
+    },
+  ]);
+});
+
+test("terminal git root rehomes sidebar project to match terminal header identity", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+
+  const result = await page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => {
+          setLiveGitRoot: (id: string, gitRoot: string) => void;
+          groups: Array<{ id: string; name: string; projectRoot?: string }>;
+          tabs: Array<{ id: string; groupId: string | null }>;
+          activeGroupFilter: string | null;
+          activeGroupId: string | null;
+          projectRoot: string | null;
+        };
+        setState: (state: Record<string, unknown>) => void;
+      };
+    }).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+
+    const parent = "/media/endlessblink/data/my-projects/ai-development/productivity/flow-state";
+    const child = `${parent}/watchpost`;
+    store.setState({
+      groups: [{
+        id: "group-flow-state",
+        name: "flow-state",
+        color: "#7aa2f7",
+        emoji: "📡",
+        emojiSource: "generated",
+        projectRoot: parent,
+      }],
+      terminalGroups: [],
+      tabs: [{
+        id: "tab-watchpost",
+        title: "watchpost",
+        initialCwd: parent,
+        groupId: "group-flow-state",
+        terminals: [{ id: "terminal-watchpost", paneId: "pane-watchpost", status: "running" }],
+        activePaneId: "pane-watchpost",
+        splitLayout: { id: "pane-watchpost", type: "leaf", paneId: "pane-watchpost" },
+      }],
+      liveCwds: { "terminal-watchpost": child },
+      liveGitRoots: {},
+      activeTabId: "tab-watchpost",
+      activeGroupFilter: "group-flow-state",
+      activeGroupId: "group-flow-state",
+      projectRoot: parent,
+      canvasState: {
+        selectedNodeId: "node-watchpost",
+        selectedNodeIds: ["node-watchpost"],
+        viewport: { x: -120, y: 40, zoom: 0.8 },
+        nodes: [{
+          id: "node-watchpost",
+          type: "terminal",
+          title: "watchpost",
+          terminalTabId: "tab-watchpost",
+          terminalCwd: parent,
+          x: 0,
+          y: 0,
+          width: 820,
+          height: 460,
+        }],
+      },
+    });
+
+    store.getState().setLiveGitRoot("terminal-watchpost", child);
+    const state = store.getState();
+    const tab = state.tabs.find((candidate) => candidate.id === "tab-watchpost");
+    const group = state.groups.find((candidate) => candidate.id === tab?.groupId);
+    return {
+      tabGroupName: group?.name,
+      tabGroupRoot: group?.projectRoot,
+      activeGroupName: state.groups.find((candidate) => candidate.id === state.activeGroupFilter)?.name,
+      activeGroupId: state.activeGroupId,
+      tabGroupId: tab?.groupId,
+      projectRoot: state.projectRoot,
+      counts: state.groups.map((candidate) => ({
+        name: candidate.name,
+        count: state.tabs.filter((tab) => tab.groupId === candidate.id).length,
+      })),
+    };
+  });
+
+  expect(result.tabGroupName).toBe("watchpost");
+  expect(result.activeGroupName).toBe("watchpost");
+  expect(result.activeGroupId).toBe(result.tabGroupId);
+  expect(result.projectRoot).toBe(result.tabGroupRoot);
+  expect(result.counts).toContainEqual({ name: "watchpost", count: 1 });
+  expect(result.counts).not.toContainEqual({ name: "flow-state", count: 1 });
+});

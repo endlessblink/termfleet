@@ -30,6 +30,7 @@ import { destroyBrowserPtys, writeBrowserPtys } from "../hooks/usePty";
 import type { AgentProviderAvailability } from "../lib/agentProviders";
 import { providerDefinition } from "../lib/agentProviders";
 import type { WorkstreamOpsContext } from "../lib/workstreamOpsContext";
+import { projectEmojiFor } from "../lib/projectEmoji";
 
 const GROUP_COLORS = [
   "#7aa2f7",
@@ -40,8 +41,6 @@ const GROUP_COLORS = [
   "#7dcfff",
   "#ff9e64",
 ];
-const PROJECT_EMOJIS = ["💻", "🧭", "📦", "🧪", "🛠️", "🚀", "🗂️", "🔬", "🧩", "📡", "🧱", "📝"];
-
 const DEFAULT_TAB_EMOJI = "\u2B1B";
 const DEFAULT_TAB_TITLE = "Terminal";
 const DEFAULT_TAB_COLOR = "#7aa2f7";
@@ -393,6 +392,39 @@ interface WorkspaceState {
 
 const initialTab = createDefaultTab();
 
+let pendingProjectSwitchFrame: number | null = null;
+let pendingProjectSwitchToken = 0;
+
+function cancelPendingProjectSwitchActivation() {
+  pendingProjectSwitchToken += 1;
+  if (pendingProjectSwitchFrame !== null && typeof window !== "undefined") {
+    window.cancelAnimationFrame(pendingProjectSwitchFrame);
+  }
+  pendingProjectSwitchFrame = null;
+}
+
+function scheduleProjectSwitchActivation(groupId: string | null, tabId: string | null) {
+  cancelPendingProjectSwitchActivation();
+  if (!tabId) return;
+  const token = pendingProjectSwitchToken;
+  const activate = () => {
+    pendingProjectSwitchFrame = null;
+    if (token !== pendingProjectSwitchToken) return;
+    const state = useWorkspaceStore.getState();
+    if (state.activeGroupFilter !== groupId) return;
+    if (!state.tabs.some((tab) => tab.id === tabId)) return;
+    useWorkspaceStore.setState({
+      activeTabId: tabId,
+      activeTerminalId: null,
+    });
+  };
+  if (typeof window === "undefined") {
+    activate();
+    return;
+  }
+  pendingProjectSwitchFrame = window.requestAnimationFrame(activate);
+}
+
 interface PersistedWorkspace {
   tabs?: Tab[];
   groups?: Group[];
@@ -512,11 +544,25 @@ function generatedProjectNameForRoot(projectRoot?: string | null) {
   return normalizedRoot ? projectNameFromPath(normalizedRoot) : null;
 }
 
+function isCategoryProjectName(name?: string | null) {
+  return /^(?:ai-development|content-creation|web-dev|devops|productivity|freelance|misc|bots\+automation|bots-automation)$/i.test(name?.trim() ?? "");
+}
+
+function groupLooksAutoNamed(group: Group, projectRoot?: string | null) {
+  const root = normalizeProjectPath(projectRoot ?? group.projectRoot);
+  const rootTail = root ? projectNameFromPath(root) : undefined;
+  return Boolean(
+    group.name === rootTail ||
+      projectNameIsRootAncestor(group.name, root) ||
+      isCategoryProjectName(group.name),
+  );
+}
+
 function projectNameAfterRootChange(group: Group, nextRoot?: string | null) {
   const previousGeneratedName = generatedProjectNameForRoot(group.projectRoot);
   const nextGeneratedName = generatedProjectNameForRoot(nextRoot);
   if (!nextGeneratedName) return group.name;
-  return !previousGeneratedName || group.name === previousGeneratedName
+  return !previousGeneratedName || group.name === previousGeneratedName || groupLooksAutoNamed(group, nextRoot)
     ? nextGeneratedName
     : group.name;
 }
@@ -537,18 +583,6 @@ function projectIdFromPath(path: string, groups: Group[]) {
   return candidate;
 }
 
-function hashProjectIdentity(value: string) {
-  let hash = 0;
-  for (let index = 0; index < value.length; index += 1) {
-    hash = ((hash << 5) - hash + value.charCodeAt(index)) | 0;
-  }
-  return Math.abs(hash);
-}
-
-function projectEmojiFor(pathOrName: string) {
-  return PROJECT_EMOJIS[hashProjectIdentity(pathOrName) % PROJECT_EMOJIS.length];
-}
-
 function pathBelongsToProject(path: string, projectRoot?: string | null) {
   const normalizedPath = normalizeProjectPath(path);
   const normalizedRoot = normalizeProjectPath(projectRoot);
@@ -556,14 +590,65 @@ function pathBelongsToProject(path: string, projectRoot?: string | null) {
   return normalizedPath === normalizedRoot || normalizedPath.startsWith(`${normalizedRoot}/`);
 }
 
+function projectNameIsRootAncestor(projectName: string, projectRoot?: string | null) {
+  const root = normalizeProjectPath(projectRoot);
+  if (!root) return false;
+  return root.split("/").filter(Boolean).slice(0, -1).includes(projectName);
+}
+
+function projectGroupIsShallowCategory(group: Group, path: string) {
+  const root = normalizeProjectPath(group.projectRoot);
+  if (!root || root === path || !pathBelongsToProject(path, root)) return false;
+  return groupLooksAutoNamed(group, root) && isCategoryProjectName(projectNameFromPath(root));
+}
+
+function isCommonNonProjectChild(name?: string) {
+  return /^(?:src|source|lib|components|pages|app|tests?|spec|docs?|scripts?|bin|dist|build|target|node_modules|src-tauri|public|assets|static|config|configs?)$/i.test(name ?? "");
+}
+
+function projectGroupIsShallowAncestor(group: Group, path: string) {
+  const root = normalizeProjectPath(group.projectRoot);
+  if (!root || root === path || !pathBelongsToProject(path, root)) return false;
+  if (!groupLooksAutoNamed(group, root)) return false;
+  const relativeParts = path.slice(root.length + 1).split("/").filter(Boolean);
+  if (relativeParts.length !== 1) return false;
+  return !isCommonNonProjectChild(relativeParts[0]);
+}
+
 function bestProjectGroupForPath(path: string, groups: Group[]) {
-  return groups
+  const candidates = groups
     .filter((group) => pathBelongsToProject(path, group.projectRoot))
     .sort((left, right) => {
       const leftRoot = normalizeProjectPath(left.projectRoot) ?? "";
       const rightRoot = normalizeProjectPath(right.projectRoot) ?? "";
       return rightRoot.length - leftRoot.length;
-    })[0];
+    });
+  const best = candidates[0];
+  return best && !projectGroupIsShallowCategory(best, path) && !projectGroupIsShallowAncestor(best, path)
+    ? best
+    : undefined;
+}
+
+function shouldDropEmptyGeneratedProjectGroup(group: Group, usedGroupIds: Set<string>) {
+  return (
+    !usedGroupIds.has(group.id) &&
+    group.emojiSource !== "user" &&
+    (isCategoryProjectName(group.name) ||
+      isCategoryProjectName(projectNameFromPath(group.projectRoot ?? "")) ||
+      projectNameIsRootAncestor(group.name, group.projectRoot))
+  );
+}
+
+function shouldDropEmptyGeneratedAncestorGroup(group: Group, groups: Group[], usedGroupIds: Set<string>) {
+  const root = normalizeProjectPath(group.projectRoot);
+  if (!root || usedGroupIds.has(group.id) || group.emojiSource === "user" || !groupLooksAutoNamed(group, root)) {
+    return false;
+  }
+  return groups.some((candidate) =>
+    candidate.id !== group.id &&
+    usedGroupIds.has(candidate.id) &&
+    pathBelongsToProject(candidate.projectRoot ?? "", root),
+  );
 }
 
 function terminalLiveCwd(tab: Tab, liveCwds?: Record<string, string>) {
@@ -576,18 +661,30 @@ function terminalLiveCwd(tab: Tab, liveCwds?: Record<string, string>) {
 function terminalProjectPath(
   tab: Tab,
   nodesByTabId: Map<string, CanvasNode>,
-  liveCwds?: Record<string, string>
+  liveCwds?: Record<string, string>,
+  liveGitRoots?: Record<string, string>
 ) {
-  return normalizeProjectPath(
-    terminalLiveCwd(tab, liveCwds) ?? nodesByTabId.get(tab.id)?.terminalCwd ?? tab.initialCwd
-  );
+  const activeTerminal = tab.terminals.find((terminal) => terminal.paneId === tab.activePaneId);
+  const terminalIds = [
+    ...(activeTerminal ? [activeTerminal.id] : []),
+    ...tab.terminals.filter((terminal) => terminal.id !== activeTerminal?.id).map((terminal) => terminal.id),
+  ];
+  const liveCwd = terminalLiveCwd(tab, liveCwds);
+  const fallbackCwd = nodesByTabId.get(tab.id)?.terminalCwd ?? tab.initialCwd;
+  const currentPath = normalizeProjectPath(liveCwd ?? fallbackCwd);
+  for (const terminalId of terminalIds) {
+    const gitRoot = normalizeProjectPath(liveGitRoots?.[terminalId]);
+    if (gitRoot && currentPath && pathBelongsToProject(currentPath, gitRoot)) return gitRoot;
+  }
+  return currentPath;
 }
 
 function reconcileProjectGroups(
   tabs: Tab[],
   groups: Group[],
   canvasState: CanvasState,
-  liveCwds?: Record<string, string>
+  liveCwds?: Record<string, string>,
+  liveGitRoots?: Record<string, string>
 ) {
   const nodesByTabId = new Map(
     canvasState.nodes
@@ -603,14 +700,17 @@ function reconcileProjectGroups(
   const nextGroups: Group[] = [];
   for (const group of groups) {
     const projectRoot = normalizeProjectPath(group.projectRoot);
+    const generatedName = projectRoot ? projectNameFromPath(projectRoot) : group.name;
+    const name = projectRoot && groupLooksAutoNamed(group, projectRoot) ? generatedName : group.name;
     const generatedEmoji = projectEmojiFor(projectRoot ?? group.name);
     const emoji = group.emojiSource === "user" ? group.emoji ?? generatedEmoji : generatedEmoji;
     const emojiSource: Group["emojiSource"] = group.emojiSource === "user" ? "user" : "generated";
     const normalizedGroup =
       (projectRoot && projectRoot !== group.projectRoot) ||
+      group.name !== name ||
       group.emoji !== emoji ||
       group.emojiSource !== emojiSource
-      ? { ...group, projectRoot: projectRoot ?? group.projectRoot, emoji, emojiSource }
+      ? { ...group, name, projectRoot: projectRoot ?? group.projectRoot, emoji, emojiSource }
       : group;
     if (projectRoot) {
       const canonical = groupsByRoot.get(projectRoot);
@@ -646,7 +746,7 @@ function reconcileProjectGroups(
     // Path-based project membership: live cwd wins, and when nested project roots
     // match the same cwd, the deepest root wins (e.g. parent checkout vs nested app).
     // Otherwise same-path terminals collapse into one canonical project. (TC-034)
-    const path = terminalProjectPath(tab, nodesByTabId, liveCwds);
+    const path = terminalProjectPath(tab, nodesByTabId, liveCwds, liveGitRoots);
     if (!path && tab.groupId && remap.has(tab.groupId)) {
       return { ...tab, groupId: remap.get(tab.groupId) ?? null };
     }
@@ -657,12 +757,18 @@ function reconcileProjectGroups(
     return { ...tab, groupId: group.id };
   });
 
+  const usedGroupIds = new Set(nextTabs.map((tab) => tab.groupId).filter((id): id is string => Boolean(id)));
+  const finalGroups = nextGroups.filter((group) =>
+    !shouldDropEmptyGeneratedProjectGroup(group, usedGroupIds) &&
+    !shouldDropEmptyGeneratedAncestorGroup(group, nextGroups, usedGroupIds)
+  );
+
   const changed =
-    nextGroups.length !== groups.length ||
-    nextGroups.some((group, index) => group !== groups[index]) ||
+    finalGroups.length !== groups.length ||
+    finalGroups.some((group, index) => group !== groups[index]) ||
     nextTabs.some((tab, index) => tab !== tabs[index]);
 
-  return changed ? { tabs: nextTabs, groups: nextGroups } : { tabs, groups };
+  return changed ? { tabs: nextTabs, groups: finalGroups } : { tabs, groups };
 }
 
 function activeProjectContextAfterReconcile(
@@ -1532,7 +1638,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     set((state) => {
       if (tabs.length === 0) return { hydrating: false };
       const canvasState = normalizeCanvasState(state.canvasState, tabs);
-      const projects = reconcileProjectGroups(tabs, state.groups, canvasState, state.liveCwds);
+      const projects = reconcileProjectGroups(tabs, state.groups, canvasState, state.liveCwds, state.liveGitRoots);
       const nextActive =
         projects.tabs.find((tab) => tab.id === activeTabId)?.id ?? projects.tabs[0].id;
       return {
@@ -1561,7 +1667,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       // Reconcile so the new terminal joins the single project for its path
       // (and any same-path siblings collapse together) instead of forming a
       // separate row. (TC-034)
-      const projects = reconcileProjectGroups(tabs, state.groups, canvasState, state.liveCwds);
+      const projects = reconcileProjectGroups(tabs, state.groups, canvasState, state.liveCwds, state.liveGitRoots);
       const newTabGroupId = projects.tabs.find((tab) => tab.id === newTab.id)?.groupId ?? null;
       const newTabProject = newTabGroupId
         ? projects.groups.find((group) => group.id === newTabGroupId)
@@ -1741,6 +1847,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   },
 
   setActiveTab: (id: string) => {
+    cancelPendingProjectSwitchActivation();
     set((state) => {
       const activeTab = state.tabs.find((tab) => tab.id === id);
       const linkedNode = state.canvasState.nodes.find((node) => node.terminalTabId === id);
@@ -1807,7 +1914,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       // project for that path (collapsing same-path terminals). Only on cwd
       // updates to avoid regrouping work on unrelated updates. (TC-034)
       if (updates.initialCwd !== undefined) {
-        const projects = reconcileProjectGroups(tabs, state.groups, canvasState, state.liveCwds);
+        const projects = reconcileProjectGroups(tabs, state.groups, canvasState, state.liveCwds, state.liveGitRoots);
         return {
           tabs: projects.tabs,
           groups: projects.groups,
@@ -2346,6 +2453,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   },
 
   switchProject: (groupId: string | null) => {
+    let nextTabId: string | null = null;
     set((state) => {
       const project = groupId ? state.groups.find((group) => group.id === groupId) : null;
       const projectTabs = groupId === null
@@ -2360,15 +2468,15 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         groupId === null
           ? nextTab?.initialCwd ?? null
           : project?.projectRoot ?? nextTab?.initialCwd ?? null;
+      nextTabId = nextTab?.id ?? null;
 
       return {
         activeGroupFilter: groupId,
         activeGroupId: groupId,
-        activeTabId: nextTab?.id ?? state.activeTabId,
-        activeTerminalId: null,
         projectRoot: nextRoot,
       };
     });
+    scheduleProjectSwitchActivation(groupId, nextTabId);
   },
 
   setProjectRoot: (path: string | null, syncTerminal = true) => {
@@ -2445,7 +2553,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     set((state) => {
       if (!id || !cwd || state.liveCwds[id] === cwd) return {};
       const liveCwds = { ...state.liveCwds, [id]: cwd };
-      const projects = reconcileProjectGroups(state.tabs, state.groups, state.canvasState, liveCwds);
+      const projects = reconcileProjectGroups(state.tabs, state.groups, state.canvasState, liveCwds, state.liveGitRoots);
       return {
         liveCwds,
         tabs: projects.tabs,
@@ -2459,7 +2567,15 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   setLiveGitRoot: (id: string, gitRoot: string) => {
     set((state) => {
       if (!id || state.liveGitRoots[id] === gitRoot) return {};
-      return { liveGitRoots: { ...state.liveGitRoots, [id]: gitRoot } };
+      const liveGitRoots = { ...state.liveGitRoots, [id]: gitRoot };
+      const projects = reconcileProjectGroups(state.tabs, state.groups, state.canvasState, state.liveCwds, liveGitRoots);
+      return {
+        liveGitRoots,
+        tabs: projects.tabs,
+        groups: projects.groups,
+        terminalGroups: projects.groups,
+        ...activeProjectContextAfterReconcile(state, projects.tabs, projects.groups),
+      };
     });
   },
 
@@ -2544,7 +2660,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   setWorkspaceMode: (mode: WorkspaceMode) => {
     set((state) => {
       const canvasState = normalizeCanvasState(state.canvasState, state.tabs);
-      const projects = reconcileProjectGroups(state.tabs, state.groups, canvasState, state.liveCwds);
+      const projects = reconcileProjectGroups(state.tabs, state.groups, canvasState, state.liveCwds, state.liveGitRoots);
       return {
         workspaceUiState: {
           ...state.workspaceUiState,
@@ -2561,7 +2677,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   reconcileCanvasState: () => {
     set((state) => {
       const canvasState = normalizeCanvasState(state.canvasState, state.tabs);
-      const projects = reconcileProjectGroups(state.tabs, state.groups, canvasState, state.liveCwds);
+      const projects = reconcileProjectGroups(state.tabs, state.groups, canvasState, state.liveCwds, state.liveGitRoots);
       return {
         tabs: projects.tabs,
         groups: projects.groups,
@@ -2573,11 +2689,12 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
 
   reconcileProjectGroups: () => {
     set((state) => {
-      const projects = reconcileProjectGroups(state.tabs, state.groups, state.canvasState, state.liveCwds);
+      const projects = reconcileProjectGroups(state.tabs, state.groups, state.canvasState, state.liveCwds, state.liveGitRoots);
       return {
         tabs: projects.tabs,
         groups: projects.groups,
         terminalGroups: projects.groups,
+        ...activeProjectContextAfterReconcile(state, projects.tabs, projects.groups),
       };
     });
   },

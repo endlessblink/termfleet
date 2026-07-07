@@ -1477,20 +1477,35 @@ test("no-task sidecar falls through to the contextual endpoint", async () => {
   expect(result.summary.now).toContain("plasma dock recovery scripts");
 });
 
-test("sidecar WITH a task list never reaches the endpoint", async () => {
+test("sidecar WITH a task list still reaches the contextual endpoint", async () => {
   const sidecar = JSON.stringify({
     updatedAt: Date.now(),
+    userTask: "make terminal reconnects reliable",
+    narration: "Raw hook narration: apply_patch touching src/lib/session.ts",
     todos: [{ id: "1", content: "Fix the reconnect race", status: "in_progress", activeForm: "Fixing the reconnect race" }],
   });
-  let endpointCalled = false;
-  const fetcher = (async () => {
-    endpointCalled = true;
-    return { ok: true, text: async () => "{}" } as Response;
+  let capturedBody: unknown;
+  const fetcher = (async (_url: unknown, init: { body?: string } = {}) => {
+    const body = JSON.parse(init.body ?? "{}");
+    capturedBody = body;
+    return {
+      ok: true,
+      text: async () =>
+        JSON.stringify({
+          ...body.heuristicCandidate,
+          now: "Fixing the reconnect race so terminals come back cleanly",
+          narration: "Fixing the reconnect race so terminals come back cleanly",
+          confidence: "high",
+        }),
+    } as Response;
   }) as unknown as typeof fetch;
   const result = await summarizeForContext(
     { provider: "shell", status: "running", cwd: "/repo/cc", paneId: "pane-y" },
     { sidecarReader: async () => sidecar, endpoint: "http://test/status", fetcher },
   );
-  expect(result.source).toBe("sidecar");
-  expect(endpointCalled).toBe(false);
+  expect(result.source).toBe("process");
+  expect(result.summary.now).toBe("Fixing the reconnect race so terminals come back cleanly");
+  expect(result.summary.tasksFromTodoWrite).toBe(true);
+  expect((capturedBody as { heuristicCandidate?: { tasksFromTodoWrite?: boolean; narration?: string } }).heuristicCandidate?.tasksFromTodoWrite).toBe(true);
+  expect((capturedBody as { heuristicCandidate?: { narration?: string } }).heuristicCandidate?.narration).toContain("Raw hook narration");
 });

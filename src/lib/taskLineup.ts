@@ -218,21 +218,14 @@ export function mergeShellSummaryTaskLineup(
 }
 
 /**
- * The task lineup the panel should render. Prefers an authoritative `todo-write`
- * list (the agent's real declared todos); when none exists, falls back to the
- * AI/heuristic-extracted items (operator/summary/structured-signal) so the panel
- * isn't permanently empty (nothing emits the todo-write marker by default). Run
- * scoping is applied to whichever source wins (TC-033 list-empty fix).
+ * The task lineup the panel should render. Only authoritative todo-write items
+ * are task identity; operator/model/terminal summaries are activity annotations
+ * and must not own the visible TASKS panel.
  */
 export function visibleTaskLineup(items: TaskLineupItem[] | undefined, runId: string | undefined): TaskLineupItem[] {
   const all = items ?? [];
   const todoWrite = all.filter((item) => item.source === "todo-write");
-  const chosen = todoWrite.length > 0
-    ? taskLineupForVisibleRun(todoWrite, runId)
-    // No authoritative list → fall back to AI/heuristic-extracted items, but re-validate
-    // each through the content contract so stale/junk extractions (e.g. a bare "TERM")
-    // can't surface even when injected directly into the lineup.
-    : taskLineupForVisibleRun(all.filter((item) => cleanTaskLineupContent(item.content) !== undefined), runId);
+  const chosen = taskLineupForVisibleRun(todoWrite, runId);
   // The panel shows what's being worked on. If nothing is live (every item is
   // completed/cancelled), it should be EMPTY — not a graveyard of struck-through done
   // items. When there is at least one live task, show the full list for progress context.
@@ -243,10 +236,14 @@ export function taskLineupForVisibleRun(items: TaskLineupItem[] | undefined, run
   const allItems = items ?? [];
   if (!runId) return allItems;
   const scopedItems = allItems.filter((item) => item.runId === runId);
+  if (scopedItems.length > 0) return scopedItems;
   const hasAnyScopedItems = allItems.some((item) => Boolean(item.runId));
-  if (!hasAnyScopedItems || scopedItems.length > 0) return hasAnyScopedItems ? scopedItems : allItems;
-  const fallbackRunId = latestTaskLineupRunId(allItems);
-  return fallbackRunId ? allItems.filter((item) => item.runId === fallbackRunId) : [];
+  if (!hasAnyScopedItems) return allItems;
+  const hasLiveItems = allItems.some((item) => item.status === "pending" || item.status === "in_progress");
+  const newestRunId = latestTaskLineupRunId(allItems);
+  return !hasLiveItems && newestRunId
+    ? allItems.filter((item) => item.runId === newestRunId)
+    : [];
 }
 
 export function terminalOutputClosesTaskLineup(output: string | undefined) {

@@ -173,6 +173,30 @@ report("info", "Helper server", serverUp
   : "optional status server not running — NOT required; the desktop app reads status files directly");
 
 const icon = { ok: "✔", warn: "⚠", fail: "✘", info: "·" };
+// 9. Snapshot task-source vocabulary. Task identity must be bounded; old
+// `status-summary`/model/scrape ownership is a regression even if the text reads well.
+try {
+  const snapshot = JSON.parse(readFileSync(path.join(dir, "cockpit-snapshot.json"), "utf8"));
+  const allowed = new Set(["manual", "task-tool", "user-prompt", "plan-binding", "sidecar-todo", "workstream", "missing", "agent-status"]);
+  const terminals = Array.isArray(snapshot.terminals) ? snapshot.terminals : [];
+  const snapshotAge = Date.now() - Number(snapshot.updatedAt || 0);
+  const unsupported = terminals
+    .map((entry) => String(entry.taskSource ?? "").trim())
+    .filter((source) => source && !allowed.has(source));
+  if (unsupported.length) {
+    report(
+      snapshotAge <= 30_000 ? "fail" : "info",
+      "Task identity sources",
+      `unsupported task source(s) in ${snapshotAge <= 30_000 ? "fresh" : "stale"} snapshot: ${Array.from(new Set(unsupported)).join(", ")}`,
+    );
+  } else if (terminals.length) {
+    report("ok", "Task identity sources", "snapshot uses bounded task sources only");
+  } else {
+    report("info", "Task identity sources", "snapshot has no terminals to inspect");
+  }
+} catch {
+  report("info", "Task identity sources", "no cockpit snapshot to inspect (enable VITE_COCKPIT_SNAPSHOT=1 for live source checks)");
+}
 let failed = 0;
 let warned = 0;
 for (const { level, name, detail } of results) {

@@ -791,8 +791,11 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
           stored: paneTerminal?.purpose,
           workstreamTitle: tab.workstream?.mission ?? tab.workstream?.prompt,
           activeTaskTitle: visibleTaskLineup.find((item) => item.status === "in_progress")?.content ?? visibleTaskLineup[0]?.content,
-          terminalOutput: !paneTerminal?.durableActivity || /\bWorking\s+\(/i.test(paneTerminal.terminalOutput ?? "")
-            ? paneTerminal?.terminalOutput
+          terminalOutput: !paneTerminal?.durableActivity ||
+            /\bWorking\s+\(|\bImplement this plan\?|\bpress enter to confirm\b|\benter to select\b|\bcodex\s+resume\s+[0-9a-f-]{20,}|\bbackground terminal running\b|\b(?:systemctl|\.service|Loaded:\s+loaded|transient\/run-|--user|Hermes Desktop is running)\b/i.test(
+              paneTerminal?.terminalVisibleText || paneTerminal?.terminalOutput || "",
+            )
+            ? paneTerminal?.terminalVisibleText || paneTerminal?.terminalOutput
             : undefined,
         });
         const shellOutputClosedRaw = terminalOutputClosesTaskLineup(paneTerminal?.terminalOutput);
@@ -863,12 +866,13 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
               !paneTerminal.activeRunId ||
               paneTerminal.mainUserAsk.runId === paneTerminal.activeRunId),
         );
+        const linkedProject = projectForTab(tab, useWorkspaceStore.getState().groups);
         const shellHeader = shellStatusSummaryBase
           ? buildTerminalHeaderState({
               paneId,
               terminalId: paneTerminal?.id ?? paneId,
               runId: paneTerminal?.activeRunId,
-              project: projectForTab(tab, useWorkspaceStore.getState().groups),
+              project: linkedProject,
               liveCwd: paneCwd,
               liveGitRoot:
                 (paneTerminal ? liveGitRoots[paneTerminal.id] : undefined) || tab.workstream?.gitRoot || undefined,
@@ -879,6 +883,9 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
               statusSummary: paneTerminal?.statusSummary,
               summary: shellStatusSummaryBase,
               neutralTitle: shellNeutralTitle ?? null,
+              contextPurposeTitle: terminalPurpose?.title,
+              contextPurposeSource: terminalPurpose?.source,
+              workstreamTitle: tab.workstream?.mission ?? tab.workstream?.prompt,
               // A visible "Working (…)" / "esc to interrupt" marker means the agent is
               // active right now even without a task list → don't render "Awaiting next
               // action" as the title.
@@ -1005,8 +1012,9 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                   cwd: paneCwd ?? undefined,
                   path: isAgentPane ? agentStatusSummary?.path : shellHeader?.fullPath,
                   workspace: isAgentPane
-                    ? projectForTab(tab, useWorkspaceStore.getState().groups)?.name
+                    ? linkedProject?.name
                     : shellHeader?.workspace,
+                  projectEmoji: linkedProject?.emoji,
                   kind: isAgentPane ? "agent" : "shell",
                   task: isAgentPane ? agentStatusSummary?.task : shellHeader?.goalLabel,
                   taskSource: isAgentPane ? "agent-status" : shellHeader?.sources.goal,

@@ -7,10 +7,9 @@ import {
 } from "../src/lib/taskLineup";
 import type { TaskLineupItem } from "../src/lib/types";
 
-// TC-033 (list empty): the panel must show the AI/heuristic-extracted tasks
-// (operator/summary/structured-signal) when there is no authoritative todo-write
-// list — otherwise it is always empty, because nothing emits the todo-write marker.
-// When a real todo-write list exists, it still wins (T1 contract).
+// Provenance-safe task identity: the panel renders authoritative todo-write
+// items only. Operator/model/terminal summaries can annotate activity elsewhere,
+// but they never own visible TASKS.
 
 function items(source: TaskLineupItem["source"], runId?: string): TaskLineupItem[] {
   return normalizeTaskLineupItems(
@@ -24,10 +23,9 @@ function items(source: TaskLineupItem["source"], runId?: string): TaskLineupItem
   );
 }
 
-test("falls back to operator items when there are no todo-write items", () => {
+test("does not fall back to operator items when there are no todo-write items", () => {
   const visible = visibleTaskLineup(items("operator"), undefined);
-  expect(visible.length).toBe(2);
-  expect(visible.every((i) => i.source === "operator")).toBe(true);
+  expect(visible).toEqual([]);
 });
 
 test("todo-write items win when both exist", () => {
@@ -65,24 +63,20 @@ test("drops stale/junk fallback items (e.g. a bare all-caps fragment)", () => {
   expect(visibleTaskLineup(junk, undefined)).toEqual([]);
 });
 
-test("respects run scoping on the fallback source", () => {
+test("non-authoritative fallback sources remain hidden even when run-scoped", () => {
   const a = items("operator", "run-A");
   const b = items("operator", "run-B");
   const visible = visibleTaskLineup([...a, ...b], "run-B");
-  expect(visible.length).toBe(2);
-  expect(visible.every((i) => i.runId === "run-B")).toBe(true);
+  expect(visible).toEqual([]);
 });
 
-// TC-035: the agent's real sidecar list (todo-write) is NOT tied to any one terminal
-// command run. Its items get stamped with whatever run was active when the summary
-// landed, but `activeRunId` rolls forward on every command (`${startedAt}:${command}`),
-// so run-scoping would filter the real list to nothing. The authoritative list must
-// always render, regardless of the current run id.
-test("todo-write list is never run-scoped (real sidecar list always shows)", () => {
+// Operator gate regression: an old sidecar todo list must not keep owning the
+// cockpit header after the pane has moved to a new run. That made the Task row
+// show stale work while the title reacted to the user's new screenshot complaint.
+test("todo-write list is run-scoped so stale sidecar tasks do not own new work", () => {
   const stamped = items("todo-write", "run-OLD");
   const visible = visibleTaskLineup(stamped, "run-NEW-rolled-forward");
-  expect(visible.length).toBe(2);
-  expect(visible.every((i) => i.source === "todo-write")).toBe(true);
+  expect(visible).toEqual([]);
 });
 
 // TC-035 (root cause of "No list"): a terminal-output run-close marker

@@ -74,3 +74,52 @@ test("an unsubstituted @filename prompt placeholder is not surfaced as a title (
   expect(purpose?.title ?? "").not.toMatch(/@filename/i);
   expect(purpose?.title ?? "").not.toMatch(/Improve documentation/i);
 });
+
+test("systemd service output becomes a concrete terminal purpose", () => {
+  const purpose = terminalPurposeFromContext({
+    terminalOutput: [
+      "Ran env DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus systemctl --user status run-u245181.service --no-pager",
+      "Loaded: loaded (/run/user/1000/systemd/transient/run-u245181.service; transient)",
+      "1161557 /home/endlessblink/.hermes/hermes-agent/.venv/bin/python -m hermes --profile film-maker serve --host 127.0.0.1 --port 0",
+    ].join("\n"),
+    now: 1_000,
+  });
+
+  expect(purpose?.title).toBe("Check Hermes desktop service status");
+});
+
+test("codex resume output becomes a resumable session purpose", () => {
+  const purpose = terminalPurposeFromContext({
+    terminalOutput: "To continue this session, run codex resume 019f337c-7c9b-7731-9f20-786053b47fd5",
+    now: 1_000,
+  });
+
+  expect(purpose?.title).toBe("Resume paused Codex session");
+});
+
+test("background terminal notice becomes a concrete terminal purpose", () => {
+  const purpose = terminalPurposeFromContext({
+    terminalOutput: "1 background terminal running · /ps to view · /stop to close",
+    now: 1_000,
+  });
+
+  expect(purpose?.title).toBe("Check background terminal status");
+});
+
+test("done command with placeholder prompt becomes a closeout purpose", () => {
+  const purpose = terminalPurposeFromContext({
+    terminalOutput: ["› $done", "• Working (1s • esc to interrupt)", "› Find and fix a bug in @filename"].join("\n"),
+    now: 1_000,
+  });
+
+  expect(purpose?.title).toBe("Close current agent task");
+});
+
+test("visible Hermes to Flow State connection prompt becomes a purpose", () => {
+  const purpose = terminalPurposeFromContext({
+    terminalOutput: "› I want to be able to connect hermes to flow-state s it could",
+    now: 1_000,
+  });
+
+  expect(purpose?.title).toBe("Connect Hermes to Flow State");
+});

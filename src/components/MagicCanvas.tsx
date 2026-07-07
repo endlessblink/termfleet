@@ -2496,12 +2496,12 @@ function CanvasNodeViewImpl({
     workstream?.taskLineup ?? linkedTerminal?.taskLineup,
     linkedTerminal?.activeRunId
   );
-  const terminalPurposeOutput = linkedTerminal?.terminalOutput ?? "";
   const previewVisibleText = readableSnapshotText(terminalPreview?.snapshot);
   const terminalVisibleText =
     previewVisibleText && (!linkedTerminal?.terminalVisibleTextUpdatedAt || (terminalPreview?.updatedAt ?? 0) >= linkedTerminal.terminalVisibleTextUpdatedAt)
       ? previewVisibleText
       : linkedTerminal?.terminalVisibleText ?? previewVisibleText;
+  const terminalPurposeOutput = terminalVisibleText || linkedTerminal?.terminalOutput || "";
   const terminalPurpose = terminalPurposeFromContext({
     stored: linkedTerminal?.purpose,
     workstreamTitle: workstream?.mission ?? workstream?.prompt,
@@ -2510,7 +2510,7 @@ function CanvasNodeViewImpl({
       purposeTaskLineup[0]?.content,
     terminalOutput:
       !linkedTerminal?.durableActivity ||
-      /\bWorking\s+\(/i.test(terminalPurposeOutput)
+      /\bWorking\s+\(|\bImplement this plan\?|\bpress enter to confirm\b|\benter to select\b|\bcodex\s+resume\s+[0-9a-f-]{20,}|\bbackground terminal running\b|\b(?:systemctl|\.service|Loaded:\s+loaded|transient\/run-|--user|Hermes Desktop is running)\b/i.test(terminalPurposeOutput)
         ? terminalPurposeOutput
         : undefined,
   });
@@ -2608,6 +2608,9 @@ function CanvasNodeViewImpl({
     statusSummary: terminalStatusSummary,
     summary: terminalDisplaySummaryBase,
     neutralTitle: terminalActivityLive ? null : terminalNeutralTitle,
+    contextPurposeTitle: terminalPurpose?.title,
+    contextPurposeSource: terminalPurpose?.source,
+    workstreamTitle: workstream?.mission ?? workstream?.prompt,
     activelyWorking:
       terminalActivityLive ||
       /\bWorking\s+\(|esc to interrupt\b/i.test(
@@ -3251,6 +3254,7 @@ function CanvasNodeViewImpl({
                     path: terminalHeaderPath,
                     workspace: workspaceLabel,
                     previewTitle: terminalTitle,
+                    projectEmoji,
                     kind: "shell",
                     task: terminalHeaderTaskDescription,
                     taskSource: terminalHeader.sources.goal,

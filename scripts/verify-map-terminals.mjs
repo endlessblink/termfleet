@@ -31,6 +31,7 @@ const mapTerminalRenderingSpec = readFileSync(join(root, "tests/map-terminal-ren
 const terminalMouse = readFileSync(join(root, "src/lib/terminalMouse.ts"), "utf8");
 const mapNodeFilters = readFileSync(join(root, "src/lib/mapNodeFilters.ts"), "utf8");
 const localServices = readFileSync(join(root, "src/lib/localServices.ts"), "utf8");
+const projectEmoji = readFileSync(join(root, "src/lib/projectEmoji.ts"), "utf8");
 const terminalMouseSpec = readFileSync(join(root, "tests/terminal-mouse.spec.ts"), "utf8");
 const legacyPromptRepair = readFileSync(join(root, "src/lib/legacyPromptRepair.ts"), "utf8");
 const legacyPromptRepairSpec = readFileSync(join(root, "tests/legacy-prompt-repair.spec.ts"), "utf8");
@@ -673,7 +674,8 @@ const checks = [
   },
   {
     ok: /emoji\?: string;/.test(types) &&
-      /PROJECT_EMOJIS/.test(workspaceStore) &&
+      /FALLBACK_PROJECT_EMOJIS/.test(projectEmoji) &&
+      /export function projectEmojiFor/.test(projectEmoji) &&
       /projectEmojiFor/.test(workspaceStore) &&
       /Project emoji/.test(workbenchSidebar) &&
       /data-testid="project-emoji-picker"/.test(workbenchSidebar) &&

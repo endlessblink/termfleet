@@ -106,8 +106,10 @@ export function qualityPurposeTitle(value: string) {
   if (/\b(?:high quality|quality)\s+descriptions?\b/i.test(text)) {
     return "Improve cockpit header descriptions";
   }
-  if (!/\b(?:make|get|raise|turn)\s+(?:it\s+|all\s+)?high\b/i.test(text)) return undefined;
-  return "Raise quality across the current work";
+  if (/\b(?:pane|terminal|cockpit)\s+headers?\b/i.test(text) && /\b(?:high quality|quality|better|clear|readable)\b/i.test(text)) {
+    return "Improve pane header descriptions";
+  }
+  return undefined;
 }
 
 export function contextualActivityForTask(activity: string | undefined, task: string | undefined) {
@@ -118,9 +120,6 @@ export function contextualActivityForTask(activity: string | undefined, task: st
   if (repeatsTitle(cleanTask, cleanActivity.replace(/^(?:Working on|Thinking about)\s+/i, ""))) {
     if (/\b(?:terminal session recovery|terminal recovery|session recovery)\b/i.test(cleanTask)) {
       return /^Thinking/i.test(cleanActivity) ? "Thinking through terminal recovery" : "Building terminal recovery";
-    }
-    if (/\braise quality\b/i.test(cleanTask)) {
-      return /^Thinking/i.test(cleanActivity) ? "Thinking through quality improvements" : "Improving quality";
     }
     if (/\b(?:cockpit header descriptions?|header description quality|quality descriptions?)\b/i.test(cleanTask)) {
       return /^Thinking/i.test(cleanActivity) ? "Reviewing header description quality" : "Improving header descriptions";
@@ -152,11 +151,18 @@ export function terminalPurposeFromSubmittedInput(value?: string | null): Termin
 
 export function terminalPurposeFromOperatorPrompt(value?: string | null): TerminalPurpose | undefined {
   const text = cleanText(value);
-  if (!text || !/\benter to select\b/i.test(text)) return undefined;
+  if (!text || !/\b(?:enter to select|press enter to confirm)\b/i.test(text)) return undefined;
   const commitMatch = text.match(/\bHow should I commit\s+(.+?)(?:\?|$)/i);
   if (commitMatch?.[1]) {
     return {
       title: `Choosing commit scope for ${commitMatch[1].trim()}`,
+      source: "inferred",
+      updatedAt: Date.now(),
+    };
+  }
+  if (/\bImplement this plan\?/i.test(text)) {
+    return {
+      title: "Choose whether to implement current plan",
       source: "inferred",
       updatedAt: Date.now(),
     };
@@ -170,6 +176,55 @@ export function terminalPurposeFromOperatorPrompt(value?: string | null): Termin
     source: "inferred",
     updatedAt: Date.now(),
   };
+}
+
+function terminalPurposeFromServiceOutput(value?: string | null): TerminalPurpose | undefined {
+  const text = cleanText(value) ?? "";
+  if (!text) return undefined;
+  if (/\bWorking\s+\(/i.test(text) && /[›❯]\s*\$done\b/i.test(text)) {
+    return {
+      title: "Close current agent task",
+      source: "inferred",
+      updatedAt: Date.now(),
+    };
+  }
+  if (/\bconnect\s+hermes\s+to\s+flow-state\b/i.test(text)) {
+    return {
+      title: "Connect Hermes to Flow State",
+      source: "inferred",
+      updatedAt: Date.now(),
+    };
+  }
+  if (/\bcodex\s+resume\s+[0-9a-f-]{20,}/i.test(text)) {
+    return {
+      title: "Resume paused Codex session",
+      source: "inferred",
+      updatedAt: Date.now(),
+    };
+  }
+  if (/\bbackground terminal running\b/i.test(text)) {
+    return {
+      title: "Check background terminal status",
+      source: "inferred",
+      updatedAt: Date.now(),
+    };
+  }
+  if (!/\b(?:systemctl|\.service|Loaded:\s+loaded|transient\/run-|--user|Hermes Desktop is running)\b/i.test(text)) return undefined;
+  if (/\bhermes(?:-desktop|-agent)?\b/i.test(text)) {
+    return {
+      title: "Check Hermes desktop service status",
+      source: "inferred",
+      updatedAt: Date.now(),
+    };
+  }
+  if (/\b(?:systemctl|\.service)\b/i.test(text)) {
+    return {
+      title: "Check user service status",
+      source: "inferred",
+      updatedAt: Date.now(),
+    };
+  }
+  return undefined;
 }
 
 export function terminalActivityFromVisibleText(value?: string | null) {
@@ -372,6 +427,14 @@ function readableTitleFromPath(path: string) {
   return `Validating ${label.toLowerCase()}`;
 }
 
+export function isGenericVerificationTaskTitle(value?: string | null) {
+  const text = cleanText(value);
+  return Boolean(
+    text &&
+      /^Run focused tests(?: and typecheck| and lint\/type checks as feasible)?$/i.test(text),
+  );
+}
+
 function isGenericTaskTitle(value?: string | null) {
   const text = cleanText(value);
   if (!text) return true;
@@ -559,6 +622,10 @@ function purposeFromTranscriptLine(line: string) {
   if (/headed image[-\s]?paste verification/i.test(text))
     return "Verifying headed image paste";
   if (/bracketed paste/i.test(text)) return "Verifying bracketed paste";
+  const searchMatch = text.match(/^Search\s+(.{4,80})$/i);
+  if (searchMatch?.[1]) {
+    return `Searching ${searchMatch[1].trim()}`;
+  }
   if (
     /terminal[-\s]?summary.*visual headers?|visual.*terminal[-\s]?summary.*headers?/i.test(
       text,
@@ -594,7 +661,7 @@ function purposeFromTranscript(output?: string | null) {
     .filter((line): line is string => Boolean(line));
   let lastWorkingIndex = -1;
   for (let index = lines.length - 1; index >= 0; index -= 1) {
-    if (/^(?:Working\s+\(|Worked for\b)/i.test(lines[index])) {
+    if (/^(?:[•●]\s*)?(?:Working\s+\(|Worked for\b)/i.test(lines[index])) {
       lastWorkingIndex = index;
       break;
     }
@@ -643,11 +710,26 @@ export function terminalPurposeFromContext(input: {
   if (workstreamTitle)
     return { title: workstreamTitle, source: "workstream", updatedAt: now };
 
+  if (/\bGoal paused\s*\(\/goal resume\)/i.test(input.terminalOutput ?? "")) {
+    return { title: "Resume paused agent goal", source: "inferred", updatedAt: now };
+  }
+
+  const operatorPromptTitle = terminalPurposeFromOperatorPrompt(input.terminalOutput)?.title;
+  if (operatorPromptTitle)
+    return { title: operatorPromptTitle, source: "inferred", updatedAt: now };
+
+  const servicePurposeTitle = terminalPurposeFromServiceOutput(input.terminalOutput)?.title;
+  if (servicePurposeTitle)
+    return { title: servicePurposeTitle, source: "inferred", updatedAt: now };
+
+  const transcriptTitle = purposeFromTranscript(input.terminalOutput);
+  if (transcriptTitle && isGenericVerificationTaskTitle(input.activeTaskTitle))
+    return { title: transcriptTitle, source: "inferred", updatedAt: now };
+
   const activeTaskTitle = normalizePurposeTitle(input.activeTaskTitle);
   if (activeTaskTitle)
     return { title: activeTaskTitle, source: "inferred", updatedAt: now };
 
-  const transcriptTitle = purposeFromTranscript(input.terminalOutput);
   if (transcriptTitle)
     return { title: transcriptTitle, source: "inferred", updatedAt: now };
 
