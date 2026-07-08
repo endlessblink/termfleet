@@ -17,7 +17,28 @@ function finitePosition(value: number) {
   return Number.isFinite(value) ? value : 0;
 }
 
+function horizontalOverlap(a: CanvasNode, b: CanvasNode) {
+  const left = Math.max(finitePosition(a.x), finitePosition(b.x));
+  const right = Math.min(
+    finitePosition(a.x) + Math.max(0, finitePosition(a.width)),
+    finitePosition(b.x) + Math.max(0, finitePosition(b.width)),
+  );
+  return Math.max(0, right - left);
+}
+
+function sameVisualStack(a: CanvasNode, b: CanvasNode) {
+  const minWidth = Math.min(
+    Math.max(1, finitePosition(a.width)),
+    Math.max(1, finitePosition(b.width)),
+  );
+  return horizontalOverlap(a, b) >= minWidth * 0.35;
+}
+
 export function compareCanvasNodesByPosition(a: CanvasNode, b: CanvasNode) {
+  if (sameVisualStack(a, b)) {
+    const y = finitePosition(a.y) - finitePosition(b.y);
+    if (y !== 0) return y;
+  }
   const x = finitePosition(a.x) - finitePosition(b.x);
   if (x !== 0) return x;
   const y = finitePosition(a.y) - finitePosition(b.y);

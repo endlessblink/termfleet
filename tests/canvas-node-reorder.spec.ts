@@ -87,7 +87,7 @@ test("reorderCanvasNodes moves a node by id, honors before/after, and preserves 
   expect(result.selfDrop).toEqual(["a", "b", "c"]);
 });
 
-test("by-project sidebar order follows canvas left-to-right then top-to-bottom without changing project membership", async ({ page }) => {
+test("by-project sidebar order follows canvas stacks left-to-right and terminals top-to-bottom", async ({ page }) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
 
   const result = await page.evaluate(async () => {
@@ -111,14 +111,14 @@ test("by-project sidebar order follows canvas left-to-right then top-to-bottom w
       terminalTabId: tabId,
       x,
       y,
-      width: 820,
+      width: 160,
       height: 460,
     });
     const nodes = [
-      node("termfleet-low", "tab-termfleet-low", 420, 260),
-      node("bots", "tab-bots", 40, 180),
-      node("hermes", "tab-hermes", 260, 160),
-      node("termfleet-top", "tab-termfleet-top", 420, 80),
+      node("termfleet-low", "tab-termfleet-low", 20, 260),
+      node("bots", "tab-bots", 460, 80),
+      node("hermes", "tab-hermes", 250, 160),
+      node("termfleet-top", "tab-termfleet-top", 40, 120),
     ];
 
     const firstPass = projectBucketsByCanvasPosition(nodes, tabs, groups).map((bucket) => ({
@@ -126,7 +126,7 @@ test("by-project sidebar order follows canvas left-to-right then top-to-bottom w
       nodeIds: bucket.nodes.map((n) => n.id),
     }));
 
-    const movedNodes = nodes.map((n) => n.id === "termfleet-low" ? { ...n, x: 10, y: 320 } : n);
+    const movedNodes = nodes.map((n) => n.id === "termfleet-low" ? { ...n, x: 32, y: 320 } : n);
     const afterMove = projectBucketsByCanvasPosition(movedNodes, tabs, groups).map((bucket) => ({
       label: bucket.label,
       nodeIds: bucket.nodes.map((n) => n.id),
@@ -136,14 +136,14 @@ test("by-project sidebar order follows canvas left-to-right then top-to-bottom w
   });
 
   expect(result.firstPass).toEqual([
-    { label: "Bots", nodeIds: ["bots"] },
-    { label: "Hermes", nodeIds: ["hermes"] },
     { label: "TermFleet", nodeIds: ["termfleet-top", "termfleet-low"] },
+    { label: "Hermes", nodeIds: ["hermes"] },
+    { label: "Bots", nodeIds: ["bots"] },
   ]);
   expect(result.afterMove).toEqual([
-    { label: "TermFleet", nodeIds: ["termfleet-low", "termfleet-top"] },
-    { label: "Bots", nodeIds: ["bots"] },
+    { label: "TermFleet", nodeIds: ["termfleet-top", "termfleet-low"] },
     { label: "Hermes", nodeIds: ["hermes"] },
+    { label: "Bots", nodeIds: ["bots"] },
   ]);
 });
 
