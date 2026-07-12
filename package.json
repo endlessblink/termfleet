@@ -60,6 +60,7 @@
     "verify:standalone-daemon": "scripts/verify-standalone-daemon-smoke.sh",
     "verify:restart-restore": "python3 scripts/verify-restart-restore.py",
     "verify:daemon-survival": "CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS:-1} CARGO_PROFILE_DEV_DEBUG=0 cargo test --manifest-path src-tauri/Cargo.toml --test daemon_survival -- --nocapture",
+    "verify:daemon-restart": "scripts/verify-daemon-survives-restart.sh",
     "verify:daemon-latency": "node scripts/verify-daemon-latency.mjs",
     "verify:rust-warnings": "scripts/verify-rust-warnings.sh",
     "verify:tauri-performance": "scripts/verify-tauri-performance.sh",

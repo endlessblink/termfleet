@@ -153,6 +153,45 @@ try {
   report("warn", "Running app", `could not inspect processes (${error.message})`);
 }
 
+// 6b. Daemon cgroup parenting — the "terminals die on relaunch" check.
+// A daemon in its OWN termfleet-daemon-* unit survives an app relaunch; one still
+// parented under the app's termfleet-desktop-* unit is killed with the app, taking
+// every shell and agent with it. Reads /proc directly so it is honest about the
+// live daemon even before it is rebuilt with the self-report.
+try {
+  const ps = spawnSync("ps", ["-eo", "pid=,args="], { encoding: "utf8" }).stdout;
+  const daemonPids = ps
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.includes("--terminal-workspace-daemon"))
+    .map((line) => line.split(/\s+/)[0]);
+  if (daemonPids.length === 0) {
+    report("info", "Daemon safety", "no terminal daemon running (nothing to protect yet)");
+  } else {
+    const cgroupOf = (pid) => {
+      try {
+        const raw = readFileSync(`/proc/${pid}/cgroup`, "utf8");
+        const unified = raw.split("\n").find((l) => l.startsWith("0::"));
+        return (unified ? unified.slice(3) : raw.split("\n")[0].split(":").pop() || "").trim();
+      } catch {
+        return "";
+      }
+    };
+    const cg = cgroupOf(daemonPids[0]);
+    if (cg.includes("/termfleet-daemon-")) {
+      report("ok", "Daemon safety", "the terminal keeper has its own slot — terminals survive an app relaunch");
+    } else if (cg.includes("/termfleet-desktop-")) {
+      report("fail", "Daemon safety", "the terminal keeper is filed under the app — the next app relaunch will kill every terminal; relaunch once with --fresh-daemon to move it (stops running commands once; text restores from disk)");
+    } else if (cg.includes("/termfleet-rescue")) {
+      report("warn", "Daemon safety", "the terminal keeper is in the temporary rescue slot — safe now, but it vanishes on reboot; land the permanent fix and relaunch once with --fresh-daemon");
+    } else {
+      report("info", "Daemon safety", `terminal keeper cgroup: ${cg || "unknown"}`);
+    }
+  }
+} catch (error) {
+  report("warn", "Daemon safety", `could not inspect the terminal keeper's slot (${error.message})`);
+}
+
 // 7. Trace log growth (regression-matrix 5.11 — once reached 8 GB).
 try {
   const traceSize = statSync(path.join(dir, "cockpit-header-trace.jsonl")).size;
