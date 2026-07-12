@@ -934,6 +934,64 @@ test("shift-drag box-selects terminals while regular and middle drags pan the ma
   })).toBe("|");
 });
 
+test("clicking a selected external page header clears its map selection", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.getByRole("button", { name: "Map", exact: true }).click();
+
+  await page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => { workspaceUiState: Record<string, unknown> };
+        setState: (state: Record<string, unknown>) => void;
+      };
+    }).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+    store.setState({
+      workspaceUiState: {
+        ...store.getState().workspaceUiState,
+        workspaceMode: "canvas",
+        primarySidebarPanel: "map",
+      },
+      canvasState: {
+        nodes: [{
+          id: "node-external-page",
+          type: "preview",
+          title: "External page",
+          previewUrl: "http://127.0.0.1:43210/",
+          x: 80,
+          y: 100,
+          width: 620,
+          height: 420,
+        }],
+        selectedNodeId: "node-external-page",
+        selectedNodeIds: ["node-external-page"],
+        viewport: { x: 0, y: 0, zoom: 1 },
+      },
+    });
+  });
+
+  await page.getByTestId("canvas-node-header").click();
+
+  await expect.poll(async () => page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => { canvasState: { selectedNodeId: string | null; selectedNodeIds?: string[] } };
+      };
+    }).__termfleetWorkspaceStore;
+    const state = store?.getState().canvasState;
+    return `${state?.selectedNodeId ?? ""}|${state?.selectedNodeIds?.join(",") ?? ""}`;
+  })).toBe("|");
+
+  await expect(page.locator('[data-node-id="node-external-page"]')).toBeVisible();
+  await page.locator('[data-node-id="node-external-page"]').screenshot({
+    path: test.info().outputPath("external-page-deselected.png"),
+  });
+});
+
 test("map remains lightweight with more than 100 terminal nodes at overview zoom", async ({ page }) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle");

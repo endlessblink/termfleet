@@ -2132,6 +2132,13 @@ function CanvasNodeViewImpl({
     const currentCanvasState = useWorkspaceStore.getState().canvasState;
     const currentSelectedNodeIds = currentCanvasState.selectedNodeIds ??
       (currentCanvasState.selectedNodeId ? [currentCanvasState.selectedNodeId] : []);
+    const clearSelectedPreviewOnClick =
+      node.type === "preview" &&
+      currentSelectedNodeIds.length === 1 &&
+      currentSelectedNodeIds[0] === node.id &&
+      !event.shiftKey &&
+      !event.metaKey &&
+      !event.ctrlKey;
     if (event.shiftKey || event.metaKey || event.ctrlKey) {
       const nextIds = currentSelectedNodeIds.includes(node.id)
         ? currentSelectedNodeIds.filter((id) => id !== node.id)
@@ -2151,10 +2158,14 @@ function CanvasNodeViewImpl({
       lastDeltaX: 0,
       lastDeltaY: 0,
     };
+    let moved = false;
 
     function onMouseMove(moveEvent: MouseEvent) {
       const drag = dragRef.current;
       if (!drag) return;
+      if (Math.abs(moveEvent.clientX - drag.x) > 3 || Math.abs(moveEvent.clientY - drag.y) > 3) {
+        moved = true;
+      }
       const nextX = drag.nodeX + (moveEvent.clientX - drag.x) / zoom;
       const nextY = drag.nodeY + (moveEvent.clientY - drag.y) / zoom;
       const totalDeltaX = snapTerminalPixel(nextX, node.type, zoom) - node.x;
@@ -2171,6 +2182,9 @@ function CanvasNodeViewImpl({
       dragRef.current = null;
       document.removeEventListener("mousemove", onMouseMove);
       document.removeEventListener("mouseup", onMouseUp);
+      if (clearSelectedPreviewOnClick && !moved) {
+        selectCanvasNodes([]);
+      }
     }
 
     document.addEventListener("mousemove", onMouseMove);
