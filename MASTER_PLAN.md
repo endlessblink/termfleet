@@ -5630,6 +5630,25 @@ GUI-verified lifecycle items remain.
 **Status:** IN_PROGRESS
 **Depends:** TC-009, TC-016, TC-035
 
+#### Reconciliation with TC-041 + TC-054 (2026-07-13)
+
+This lane is split across three tickets — do NOT re-implement the parts already done:
+- **TC-041 (done)** built slices 1–3 for **button-launched** agent workstreams: the
+  `recoveryKind`/provider/`sanitizedResumeCommand` manifest and the daemon planner
+  (`plan_agent_restore`) that relaunches `codex resume …` in the original pane.
+- **TC-054 (done — impl/tests/watchdog)** closes the **hand-started / user-typed** agent
+  gap that this ticket's slice 1 explicitly called out ("detect … from active
+  process/terminal output when the command was typed by the user"). Key correction:
+  recovery is **per-pane** (`terminal-<tabId>-<paneId>`), NOT per-folder — each pane's
+  conversation id is read from its live sidecar (`agent-status/pane-<fnv(paneId)>.json`,
+  written by the codex/claude hooks) via `read_pane_sidecar_recovery`, plus a claude
+  id-only resume fallback. Every node cold-restores ITS OWN chat.
+- **Still open here (NOT covered by TC-041/TC-054):** slice 4 (frontend workspace
+  hydration with no fake surfaces + idempotency across reloads), slice 5 recovery event
+  log, and the `verify:agent-terminal-recovery` Playwright smoke (kill daemon → reload →
+  live output + input reaches PTY) plus the duplicate-prevention negative regression.
+  These are the remaining conditions before TC-036 can be marked DONE.
+
 #### Problem
 
 When the TermFleet daemon or dev launcher kills live PTYs, the app can currently restore
