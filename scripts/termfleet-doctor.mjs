@@ -324,6 +324,23 @@ try {
   report("info", "Load guardrail (TC-055)", `could not read daemon memory limits (${error.message})`);
 }
 
+// 10. TC-055 automatic maintenance: is the reaper+guardrail timer armed?
+try {
+  const active =
+    (spawnSync("systemctl", ["--user", "is-active", "termfleet-reaper.timer"], { encoding: "utf8" }).stdout || "").trim();
+  if (active === "active") {
+    report("ok", "Auto-maintenance (TC-055)", "reaper+guardrail timer is armed (runs every 15 min)");
+  } else {
+    report(
+      "info",
+      "Auto-maintenance (TC-055)",
+      "reaper timer not installed — run scripts/install-reaper-timer.sh to run guardrail+reaper automatically every 15 min",
+    );
+  }
+} catch (error) {
+  report("info", "Auto-maintenance (TC-055)", `could not check reaper timer (${error.message})`);
+}
+
 let failed = 0;
 let warned = 0;
 for (const { level, name, detail } of results) {
