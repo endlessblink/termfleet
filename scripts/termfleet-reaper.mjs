@@ -14,6 +14,8 @@
 //   node scripts/termfleet-reaper.mjs --idle=1800
 import { execFileSync } from "node:child_process";
 import { readFileSync as read } from "node:fs";
+import { requestDaemon } from "./termfleetctl.mjs";
+import { paneSidecarPath } from "./lib/agent-status-paths.mjs";
 
 const AGENT_COMMS = new Set(["claude", "codex", "codex-code-mode"]);
 const REAPABLE_TOOL = /(esbuild|vite|playwright|chrome|chromium|pyright|tsserver|typescript|rust-analyz|gopls|pylsp|basedpyright|node_repl|uv-real)/i;
@@ -40,6 +42,24 @@ export function reapDecision(session, opts = {}) {
     reap: true,
     reason: `idle exited-agent session with ${session.toolProcCount} leftover tool proc(s)`,
   };
+}
+
+/**
+ * Classify a session tree from the comm names of ALL its processes — the root
+ * pid INCLUDED (2026-07-13: agents often run as the session's own root process,
+ * which a descendants-only scan misses and mislabels a bare shell).
+ */
+export function summarizeTree(comms) {
+  return {
+    hasLiveAgent: comms.some((c) => AGENT_COMMS.has(c)),
+    toolProcCount: comms.filter((c) => REAPABLE_TOOL.test(c)).length,
+  };
+}
+
+/** Seconds since the session's last agent activity, from its sidecar `updatedAt`. */
+export function idleSecondsFromSidecar(sidecar, now = Date.now()) {
+  if (!sidecar || typeof sidecar.updatedAt !== "number") return Number.POSITIVE_INFINITY;
+  return Math.max(0, (now - sidecar.updatedAt) / 1000);
 }
 
 // --------------------------------------------------------------------------- //
@@ -74,73 +94,50 @@ function descendants(pid) {
   return out;
 }
 
-function findDaemonCgroupProcs() {
-  // termfleet-daemon-<pid>.service (new) or termfleet-rescue.service (keepalive).
-  const roots = sh("bash", [
-    "-lc",
-    "find /sys/fs/cgroup -type d \\( -name 'termfleet-daemon-*.service' -o -name 'termfleet-rescue.service' \\) 2>/dev/null",
-  ])
-    .split("\n")
-    .map((s) => s.trim())
-    .filter(Boolean);
-  const pids = new Set();
-  for (const root of roots) {
-    for (const p of sh("cat", [`${root}/cgroup.procs`]).split(/\s+/).filter(Boolean)) pids.add(p);
+function readSidecar(sessionId) {
+  try {
+    return JSON.parse(read(paneSidecarPath(sessionId), "utf8"));
+  } catch {
+    return null;
   }
-  return [...pids];
 }
 
-function main() {
+async function main() {
   const argv = process.argv.slice(2);
   const apply = argv.includes("--apply");
   const idleArg = argv.find((a) => a.startsWith("--idle="));
   const idleThresholdSeconds = idleArg ? Number(idleArg.split("=")[1]) : 900;
-
   const now = Date.now();
-  const allPids = findDaemonCgroupProcs();
-  if (!allPids.length) {
-    console.log("reaper: no termfleet daemon cgroup found (is the app running?)");
+
+  // Authoritative session list straight from the daemon — not cgroup guesswork.
+  const resp = await requestDaemon({ type: "listSessions" });
+  if (!resp?.ok || resp.value?.type !== "listSessions") {
+    console.log("reaper: daemon not reachable (is the app running?)");
+    return;
+  }
+  const sessions = resp.value.sessions ?? [];
+  if (!sessions.length) {
+    console.log("reaper: daemon reports no sessions.");
     return;
   }
 
-  // Session-leader shells = one session each.
-  const sessions = allPids.filter((p) => {
-    const c = comm(p);
-    if (c !== "bash" && c !== "sh") return false;
-    const stat = sh("ps", ["-o", "stat=", "-p", p]).trim();
-    return stat.includes("s"); // session leader
-  });
-
   let planned = 0;
   let procsToKill = 0;
-  for (const shell of sessions) {
-    const tree = descendants(shell);
-    const hasLiveAgent = tree.some((p) => AGENT_COMMS.has(comm(p)));
+  for (const s of sessions) {
+    const rootPid = s.pid;
+    if (!rootPid) continue;
+    // The whole tree INCLUDING the root pid (agents often ARE the session root).
+    const tree = [String(rootPid), ...descendants(rootPid)];
+    const { hasLiveAgent, toolProcCount } = summarizeTree(tree.map(comm));
     const toolPids = tree.filter((p) => REAPABLE_TOOL.test(comm(p)));
-    // Idle proxy: newest activity across the tree (mtime of /proc/<pid> ~ start;
-    // fall back to conservative "not idle" if unknown so we never over-reap).
-    let idleSeconds = Number.POSITIVE_INFINITY;
-    try {
-      // youngest descendant age; a session spawning new procs is NOT idle.
-      const ages = [shell, ...tree]
-        .map((p) => Number(sh("ps", ["-o", "etimes=", "-p", p]).trim()))
-        .filter((n) => Number.isFinite(n));
-      if (ages.length) idleSeconds = Math.min(...ages);
-    } catch {
-      idleSeconds = 0;
-    }
-    const cwd = (() => {
-      try {
-        return sh("readlink", [`/proc/${shell}/cwd`]).trim();
-      } catch {
-        return "";
-      }
-    })();
+    const idleSeconds = idleSecondsFromSidecar(readSidecar(s.id), now);
 
-    const decision = reapDecision({ hasLiveAgent, idleSeconds, toolProcCount: toolPids.length }, { idleThresholdSeconds });
-    const proj = cwd.split("ai-development/").pop() || cwd || "(unknown)";
+    const decision = reapDecision({ hasLiveAgent, idleSeconds, toolProcCount }, { idleThresholdSeconds });
+    const cwd = s.initialCwd ?? s.cwd ?? "";
+    const proj = String(cwd).split("ai-development/").pop() || cwd || "(unknown)";
     const tag = decision.reap ? "REAP" : "keep";
-    console.log(`  [${tag}] session ${shell} ${proj} — ${decision.reason}`);
+    const idleStr = Number.isFinite(idleSeconds) ? `${Math.round(idleSeconds)}s idle` : "no sidecar";
+    console.log(`  [${tag}] ${String(s.id).slice(0, 26)} ${proj} (${idleStr}) — ${decision.reason}`);
     if (decision.reap) {
       planned += 1;
       procsToKill += toolPids.length;
@@ -155,11 +152,14 @@ function main() {
   console.log(
     apply
       ? `reaper: reaped ${procsToKill} leftover tool proc(s) across ${planned} idle exited-agent session(s).`
-      : `reaper DRY-RUN: would reap ${procsToKill} leftover tool proc(s) across ${planned} idle exited-agent session(s). Re-run with --apply to act.`,
+      : `reaper DRY-RUN: would reap ${procsToKill} leftover tool proc(s) across ${planned} idle exited-agent session(s). Live agents are never touched — use --apply to act.`,
   );
 }
 
 // Only run the scan when executed directly (not when imported by tests).
 if (import.meta.url === `file://${process.argv[1]}`) {
-  main();
+  main().catch((error) => {
+    console.error(`reaper error: ${error.message}`);
+    process.exitCode = 1;
+  });
 }

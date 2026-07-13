@@ -1,7 +1,32 @@
 import { expect, test } from "@playwright/test";
-import { reapDecision } from "../scripts/termfleet-reaper.mjs";
+import {
+  idleSecondsFromSidecar,
+  reapDecision,
+  summarizeTree,
+} from "../scripts/termfleet-reaper.mjs";
 
 const OPTS = { idleThresholdSeconds: 900 };
+
+// The exact bug found 2026-07-13: an agent running as the session's OWN root
+// process was missed by a descendants-only scan. summarizeTree is fed the whole
+// tree INCLUDING the root, so a root-level agent must count as live.
+test("summarizeTree counts an agent at the session root as live", () => {
+  expect(summarizeTree(["codex"]).hasLiveAgent).toBe(true);
+  expect(summarizeTree(["claude", "node", "esbuild"]).hasLiveAgent).toBe(true);
+});
+
+test("summarizeTree flags no agent and counts leftover tools in a bare tree", () => {
+  const s = summarizeTree(["bash", "esbuild", "vite", "node_repl"]);
+  expect(s.hasLiveAgent).toBe(false);
+  expect(s.toolProcCount).toBe(3);
+});
+
+test("idleSecondsFromSidecar uses updatedAt; missing/invalid sidecar is treated as very idle", () => {
+  const now = 1_000_000_000_000;
+  expect(idleSecondsFromSidecar({ updatedAt: now - 5000 }, now)).toBe(5);
+  expect(idleSecondsFromSidecar(null, now)).toBe(Number.POSITIVE_INFINITY);
+  expect(idleSecondsFromSidecar({ userTask: "x" }, now)).toBe(Number.POSITIVE_INFINITY);
+});
 
 // The safety gate. Today's outage came from a SHALLOW child scan that missed
 // agents nested under a wrapper; `hasLiveAgent` here MUST be a deep-tree result.

@@ -288,6 +288,42 @@ try {
   report("warn", "Agent auto-resume (TC-054)", `could not evaluate recovery readiness (${error.message})`);
 }
 
+// 9. TC-055 load guardrail: the daemon's SOFT memory ceiling and current headroom.
+//    Soft = when exceeded the kernel throttles the daemon (agents slow), it never
+//    kills them. This surfaces pressure BEFORE it bites, so it's never invisible.
+try {
+  const gib = (bytes) => (bytes / 1024 ** 3).toFixed(1);
+  const list =
+    spawnSync("systemctl", ["--user", "list-units", "termfleet-daemon-*.service", "--no-legend", "--plain"], {
+      encoding: "utf8",
+    }).stdout || "";
+  const unit = list.split("\n").map((l) => l.trim().split(/\s+/)[0]).find((u) => u && u.endsWith(".service"));
+  if (!unit) {
+    report("info", "Load guardrail (TC-055)", "no running daemon unit to inspect");
+  } else {
+    const show =
+      spawnSync("systemctl", ["--user", "show", unit, "-p", "MemoryHigh", "-p", "MemoryCurrent"], {
+        encoding: "utf8",
+      }).stdout || "";
+    const high = (show.match(/MemoryHigh=(\S+)/) || [])[1];
+    const cur = Number((show.match(/MemoryCurrent=(\d+)/) || [])[1]);
+    if (!high || high === "infinity") {
+      report(
+        "warn",
+        "Load guardrail (TC-055)",
+        "running daemon has NO soft memory ceiling — it predates the guardrail; relaunch via the launcher to apply it",
+      );
+    } else {
+      const highBytes = Number(high);
+      const pct = Number.isFinite(cur) && highBytes ? Math.round((cur / highBytes) * 100) : null;
+      const detail = `daemon memory ${gib(cur)}G / ${gib(highBytes)}G soft ceiling${pct !== null ? ` (${pct}%)` : ""} — over the ceiling the daemon throttles, agents are never killed`;
+      report(pct !== null && pct >= 85 ? "warn" : "ok", "Load guardrail (TC-055)", detail);
+    }
+  }
+} catch (error) {
+  report("info", "Load guardrail (TC-055)", `could not read daemon memory limits (${error.message})`);
+}
+
 let failed = 0;
 let warned = 0;
 for (const { level, name, detail } of results) {

@@ -42,6 +42,25 @@ fn which_systemd_run() -> Option<String> {
 /// So on systemd we hand the daemon to the user manager as its own transient
 /// unit. Its PTY children inherit that unit's cgroup, not the app's. Elsewhere we
 /// spawn the binary directly, exactly as before.
+/// Soft memory ceiling for the daemon cgroup (systemd size syntax). Default 55G of
+/// a large workstation, leaving headroom for the desktop; override per-machine with
+/// `TERMFLEET_DAEMON_MEMORY_HIGH` (e.g. "40G").
+fn daemon_memory_high() -> String {
+    std::env::var("TERMFLEET_DAEMON_MEMORY_HIGH")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| "55G".to_string())
+}
+
+/// Fork-bomb backstop for the daemon cgroup — far above the normal task peak.
+/// Override with `TERMFLEET_DAEMON_TASKS_MAX`.
+fn daemon_tasks_max() -> String {
+    std::env::var("TERMFLEET_DAEMON_TASKS_MAX")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| "20000".to_string())
+}
+
 pub fn daemon_spawn_argv(exe: &str, arg: &str, unit_suffix: &str) -> Vec<String> {
     if !systemd_run_available() {
         return vec![exe.to_string(), arg.to_string()];
@@ -54,6 +73,15 @@ pub fn daemon_spawn_argv(exe: &str, arg: &str, unit_suffix: &str) -> Vec<String>
         "--collect".to_string(),
         format!("--unit=termfleet-daemon-{unit_suffix}"),
         "--property=KillMode=mixed".to_string(),
+        // Load guardrail (TC-055). SOFT ceiling only: when the daemon cgroup
+        // exceeds MemoryHigh, the kernel reclaims the DAEMON's own pages and
+        // throttles ITS allocations — agents slow down, but the desktop keeps its
+        // headroom. We deliberately set NO hard `MemoryMax`, so an agent is never
+        // OOM-killed (which would be a silent conversation loss). TasksMax is only
+        // a fork-bomb backstop, far above the normal ~3.5k task peak. Both are
+        // env-overridable (TERMFLEET_DAEMON_MEMORY_HIGH / _TASKS_MAX) — no rebuild.
+        format!("--property=MemoryHigh={}", daemon_memory_high()),
+        format!("--property=TasksMax={}", daemon_tasks_max()),
         "--quiet".to_string(),
     ];
     for key in DAEMON_ENV_PASSTHROUGH {
@@ -197,6 +225,20 @@ mod tests {
         } else {
             assert_eq!(argv, vec!["/opt/tw/terminal-workspace", "--terminal-workspace-daemon"]);
         }
+    }
+
+    #[test]
+    fn daemon_argv_sets_a_soft_memory_guardrail_but_never_a_hard_oom_cap() {
+        if !systemd_run_available() {
+            return; // no systemd here → direct spawn, no properties to assert
+        }
+        let argv = daemon_spawn_argv("/opt/tw/terminal-workspace", "--terminal-workspace-daemon", "42");
+        // Soft throttle so the desktop keeps headroom; agents slow, none are killed.
+        assert!(argv.iter().any(|a| a.starts_with("--property=MemoryHigh=")));
+        // Fork-bomb backstop, far above the normal task peak.
+        assert!(argv.iter().any(|a| a.starts_with("--property=TasksMax=")));
+        // A hard MemoryMax would OOM-kill agents (silent conversation loss) — never.
+        assert!(!argv.iter().any(|a| a.starts_with("--property=MemoryMax=")));
     }
 
     #[test]
