@@ -511,6 +511,9 @@ async function main() {
   }
   // Stamp the pane id so the reader can confirm which terminal this status belongs to.
   if (paneId) sidecar.paneId = paneId;
+  // TC-054: stamp the provider so the daemon can build the right resume command
+  // (`claude --resume <id>`) on cold-restore for hand-started agents, without guessing.
+  sidecar.provider = "claude";
   // Guard the task list against the concurrent-hook race: parallel tool calls each spawn a
   // hook that read-modify-writes this file. If THIS write carries no todos but the file on
   // disk already has a task list (written by a sibling hook after we read `prev`), keep the

@@ -236,6 +236,58 @@ try {
 } catch {
   report("info", "Task identity sources", "no cockpit snapshot to inspect (enable VITE_COCKPIT_SNAPSHOT=1 for live source checks)");
 }
+// 8. TC-054: agent auto-resume readiness. Every map node that ran an agent must be
+//    able to cold-restore ITS OWN conversation (per-pane), not the folder's newest.
+try {
+  // a) the daemon must carry the sidecar-recovery path. Dev builds strip symbols, so
+  //    grep the SOURCE for the fix and flag any built binary older than that source
+  //    (a stale binary silently downgrades hand-started agents to bare shells).
+  const ptySrc = path.join(ROOT, "src-tauri", "src", "pty.rs");
+  const srcHasFix = existsSync(ptySrc) && fileContains(ptySrc, "read_pane_sidecar_recovery");
+  if (!srcHasFix) {
+    report("fail", "Agent auto-resume (TC-054)", "source is missing the sidecar-recovery path (pty.rs) — the fix was reverted");
+  } else {
+    const srcMtime = statSync(ptySrc).mtimeMs;
+    const bins = ["debug", "release"]
+      .map((p) => path.join(ROOT, "src-tauri", "target", p, "terminal-workspace"))
+      .filter((b) => existsSync(b));
+    const fresh = bins.filter((b) => statSync(b).mtimeMs >= srcMtime);
+    if (!bins.length) {
+      report("info", "Agent auto-resume (TC-054)", "fix is in source; no daemon binary built yet (dev launcher rebuilds on next launch)");
+    } else if (fresh.length) {
+      report("ok", "Agent auto-resume (TC-054)", "daemon binary carries the sidecar cold-restore fix (hand-started agents auto-resume)");
+    } else {
+      report("warn", "Agent auto-resume (TC-054)", "fix is in source but every built daemon binary is OLDER than it — restart via the launcher (rebuilds) so it takes effect");
+    }
+  }
+  // b) how many current map nodes have a recoverable conversation on disk.
+  const wjPath = path.join(statusDir(), "..", "workspace.json");
+  if (existsSync(wjPath)) {
+    const wj = JSON.parse(readFileSync(wjPath, "utf8"));
+    let nodes = 0;
+    let recoverable = 0;
+    for (const tab of wj.tabs ?? []) {
+      for (const term of tab.terminals ?? []) {
+        nodes += 1;
+        const rt = `terminal-${tab.id}-${term.paneId}`;
+        try {
+          const sc = JSON.parse(readFileSync(paneSidecarPath(rt), "utf8"));
+          if (sc && typeof sc.sessionId === "string" && sc.sessionId.trim()) recoverable += 1;
+        } catch {
+          /* no sidecar → this node never ran an agent; a plain shell is correct */
+        }
+      }
+    }
+    report(
+      "info",
+      "Map node recovery",
+      `${recoverable}/${nodes} map node(s) have a resumable agent conversation; each restores its own chat on restart (the rest are plain shells)`,
+    );
+  }
+} catch (error) {
+  report("warn", "Agent auto-resume (TC-054)", `could not evaluate recovery readiness (${error.message})`);
+}
+
 let failed = 0;
 let warned = 0;
 for (const { level, name, detail } of results) {

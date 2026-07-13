@@ -404,10 +404,38 @@ impl PtyManager {
         // the grid (see the buffer build below) and the fresh shell reopens at the
         // saved working directory. The replay is made safe for dead full-screen
         // apps by appending RESTORE_NORMALIZE_SEQUENCE.
-        let persisted = self
+        let mut persisted = self
             .persist_dir
             .as_ref()
             .and_then(|dir| load_persisted(dir, &id));
+        // TC-054: a hand-started agent (not launched via the agent button) leaves no
+        // AgentTerminal manifest, so it would cold-restore as a bare shell. Its live
+        // per-pane sidecar knows the conversation id — enrich from it so the existing
+        // resume path (`plan_agent_restore`) fires. Seeded/agent-button sessions
+        // already carry the manifest and are left untouched.
+        let needs_sidecar_recovery = persisted.as_ref().map_or(true, |entry| {
+            entry.recovery_kind != Some(SessionRecoveryKind::AgentTerminal)
+                && entry
+                    .sanitized_resume_command
+                    .as_deref()
+                    .map(str::trim)
+                    .unwrap_or("")
+                    .is_empty()
+        });
+        if needs_sidecar_recovery {
+            if let Some((provider, session_id, sidecar_cwd)) = read_pane_sidecar_recovery(&id) {
+                let entry = persisted.get_or_insert_with(PersistedSession::default);
+                entry.recovery_kind = Some(SessionRecoveryKind::AgentTerminal);
+                entry.provider = Some(provider);
+                entry.provider_session_id = Some(session_id);
+                if entry.launch_profile.is_none() {
+                    entry.launch_profile = Some("terminal".to_string());
+                }
+                if entry.cwd.is_none() {
+                    entry.cwd = sidecar_cwd;
+                }
+            }
+        }
         let recovery_plan = persisted
             .as_ref()
             .map(|entry| plan_agent_restore(entry, false));
@@ -953,6 +981,7 @@ fn truncate_trace_detail(details: &str) -> String {
 /// restore (the original process is dead); `cwd` lets the fresh shell reopen
 /// where the old one was. The saved scrollback content is loaded separately by
 /// `load_persisted_scrollback` and replayed (see `ensure_with_sink`).
+#[derive(Default)]
 struct PersistedSession {
     cwd: Option<String>,
     command: Option<String>,
@@ -1034,6 +1063,66 @@ struct AgentRestorePlan {
     reason: Option<String>,
 }
 
+/// FNV-1a 32-bit, lowercase 8-hex. Parity with `scripts/lib/agent-status-paths.mjs`
+/// `fnv()` so the daemon can locate a pane's sidecar file by its session id.
+fn fnv1a_hex(input: &str) -> String {
+    let mut hash: u32 = 2166136261;
+    for byte in input.as_bytes() {
+        hash ^= *byte as u32;
+        hash = hash.wrapping_mul(16777619);
+    }
+    format!("{hash:08x}")
+}
+
+/// Infer the agent provider from a provider session id when the sidecar omits it:
+/// codex uses time-prefixed ULID-style ids (`019f…`); claude uses random uuidv4.
+fn infer_agent_provider(session_id: &str) -> &'static str {
+    if session_id.starts_with("019") {
+        "codex"
+    } else {
+        "claude"
+    }
+}
+
+/// Extract `(provider, session_id)` from a pane sidecar's JSON for cold-restore
+/// resume (TC-054). Provider is the sidecar `provider` field when present, else
+/// inferred from the id shape. Returns None when there is no non-empty sessionId.
+fn agent_recovery_from_sidecar(sidecar_text: &str) -> Option<(String, String)> {
+    let value: serde_json::Value = serde_json::from_str(sidecar_text).ok()?;
+    let session_id = value.get("sessionId")?.as_str()?.trim().to_string();
+    if session_id.is_empty() {
+        return None;
+    }
+    let provider = value
+        .get("provider")
+        .and_then(serde_json::Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| infer_agent_provider(&session_id).to_string());
+    Some((provider, session_id))
+}
+
+/// Read a session's live per-pane sidecar (written continuously by the codex/claude
+/// status hooks, for hand-started agents too) and extract `(provider, session_id,
+/// cwd)` for cold-restore resume. Returns None when there is no sidecar/session id.
+fn read_pane_sidecar_recovery(id: &str) -> Option<(String, String, Option<String>)> {
+    let path = data_root_dir()?
+        .join("agent-status")
+        .join(format!("pane-{}.json", fnv1a_hex(id)));
+    let text = std::fs::read_to_string(path).ok()?;
+    let (provider, session_id) = agent_recovery_from_sidecar(&text)?;
+    let cwd = serde_json::from_str::<serde_json::Value>(&text)
+        .ok()
+        .and_then(|value| {
+            value
+                .get("cwd")
+                .and_then(serde_json::Value::as_str)
+                .filter(|value| !value.trim().is_empty())
+                .map(str::to_string)
+        });
+    Some((provider, session_id, cwd))
+}
+
 fn plan_agent_restore(persisted: &PersistedSession, live_pty_exists: bool) -> AgentRestorePlan {
     if live_pty_exists {
         return AgentRestorePlan {
@@ -1092,6 +1181,26 @@ fn plan_agent_restore(persisted: &PersistedSession, live_pty_exists: bool) -> Ag
             return AgentRestorePlan {
                 status: AgentRestoreStatus::Resuming,
                 command: Some(format!("codex resume {}", shell_quote_arg(session_id))),
+                reason: None,
+            };
+        }
+    }
+
+    if persisted.provider.as_deref() == Some("claude")
+        && matches!(
+            persisted.launch_profile.as_deref(),
+            None | Some("terminal") | Some("headless")
+        )
+    {
+        if let Some(session_id) = persisted
+            .provider_session_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|session_id| !session_id.is_empty())
+        {
+            return AgentRestorePlan {
+                status: AgentRestoreStatus::Resuming,
+                command: Some(format!("claude --resume {}", shell_quote_arg(session_id))),
                 reason: None,
             };
         }
@@ -1457,9 +1566,9 @@ fn discard_partial_replay_prefix(base_offset: u64, data: String) -> (u64, String
 #[cfg(test)]
 mod tests {
     use super::{
-        discard_partial_replay_prefix, plan_agent_restore, replay_boundary_at_or_after,
-        AgentRecoveryManifestUpdate, AgentRestoreStatus, PersistedSession, PtyManager, SessionMeta,
-        SessionRecoveryKind,
+        agent_recovery_from_sidecar, discard_partial_replay_prefix, fnv1a_hex, plan_agent_restore,
+        replay_boundary_at_or_after, AgentRecoveryManifestUpdate, AgentRestoreStatus,
+        PersistedSession, PtyManager, SessionMeta, SessionRecoveryKind,
     };
 
     fn wait_for_snapshot_containing(manager: &PtyManager, id: &str, needle: &str) -> String {
@@ -1511,6 +1620,24 @@ mod tests {
         }
     }
 
+    fn claude_agent_checkpoint(provider_session_id: Option<&str>) -> PersistedSession {
+        PersistedSession {
+            cwd: Some("/work/termfleet".to_string()),
+            command: Some("claude".to_string()),
+            cols: Some(132),
+            rows: Some(37),
+            recovery_kind: Some(SessionRecoveryKind::AgentTerminal),
+            provider: Some("claude".to_string()),
+            launch_profile: Some("terminal".to_string()),
+            provider_session_id: provider_session_id.map(ToString::to_string),
+            mission: Some("Restore the interrupted agent lane".to_string()),
+            dropoff_path: Some("HANDOFF.md".to_string()),
+            sanitized_resume_command: None,
+            restore_status: None,
+            restore_failure_reason: None,
+        }
+    }
+
     #[test]
     fn agent_restore_planner_prefers_live_attach_when_pty_survived() {
         let plan = plan_agent_restore(&codex_agent_checkpoint(Some("019f-agent-session")), true);
@@ -1530,6 +1657,100 @@ mod tests {
             Some("codex resume 019f-agent-session")
         );
         assert_eq!(plan.reason, None);
+    }
+
+    #[test]
+    fn agent_restore_planner_builds_claude_resume_from_durable_session_id() {
+        let plan = plan_agent_restore(&claude_agent_checkpoint(Some("97f9-claude-session")), false);
+
+        assert_eq!(plan.status, AgentRestoreStatus::Resuming);
+        assert_eq!(
+            plan.command.as_deref(),
+            Some("claude --resume 97f9-claude-session")
+        );
+        assert_eq!(plan.reason, None);
+    }
+
+    #[test]
+    fn fnv1a_hex_matches_the_node_sidecar_name_scheme() {
+        // Real pane id -> its on-disk sidecar file pane-0162f700.json.
+        let pane = "terminal-6e9b9476-f2a2-4ec4-949e-660c749727f0-8abd0e41-2a96-4436-9978-1d2ab3c37603";
+        assert_eq!(fnv1a_hex(pane), "0162f700");
+    }
+
+    #[test]
+    fn sidecar_recovery_uses_explicit_provider() {
+        let text = r#"{"sessionId":"97f94c32-4b90-448d-99ac-31876103ab25","provider":"claude","cwd":"/x"}"#;
+        assert_eq!(
+            agent_recovery_from_sidecar(text),
+            Some(("claude".to_string(), "97f94c32-4b90-448d-99ac-31876103ab25".to_string()))
+        );
+    }
+
+    #[test]
+    fn sidecar_recovery_infers_codex_from_ulid_id_when_provider_absent() {
+        let text = r#"{"sessionId":"019f5554-b21a-7de1-be53-35aac426be5a","cwd":"/x"}"#;
+        let (provider, id) = agent_recovery_from_sidecar(text).expect("recovery");
+        assert_eq!(provider, "codex");
+        assert_eq!(id, "019f5554-b21a-7de1-be53-35aac426be5a");
+    }
+
+    #[test]
+    fn sidecar_recovery_infers_claude_from_uuid_id_when_provider_absent() {
+        let text = r#"{"sessionId":"2134def7-6e6d-47be-a000-000000000000"}"#;
+        assert_eq!(agent_recovery_from_sidecar(text).unwrap().0, "claude");
+    }
+
+    #[test]
+    fn sidecar_recovery_is_none_without_a_session_id() {
+        assert_eq!(agent_recovery_from_sidecar(r#"{"cwd":"/x","userTask":"hi"}"#), None);
+        assert_eq!(agent_recovery_from_sidecar(r#"{"sessionId":""}"#), None);
+    }
+
+    #[test]
+    fn sidecar_derived_recovery_resumes_a_hand_started_agent_on_cold_restore() {
+        // A pane that was a bare shell (no manifest) but whose live sidecar knows
+        // the conversation must cold-restore into a resume, not a plain shell.
+        let text = r#"{"sessionId":"019f56e6-a57e-7021-b159-8aaa714ebbae","cwd":"/work"}"#;
+        let (provider, id) = agent_recovery_from_sidecar(text).expect("recovery");
+        let mut persisted = PersistedSession::default();
+        persisted.recovery_kind = Some(SessionRecoveryKind::AgentTerminal);
+        persisted.launch_profile = Some("terminal".to_string());
+        persisted.provider = Some(provider);
+        persisted.provider_session_id = Some(id);
+        let plan = plan_agent_restore(&persisted, false);
+        assert_eq!(plan.status, AgentRestoreStatus::Resuming);
+        assert_eq!(
+            plan.command.as_deref(),
+            Some("codex resume 019f56e6-a57e-7021-b159-8aaa714ebbae")
+        );
+    }
+
+    #[test]
+    fn read_pane_sidecar_recovery_reads_the_live_sidecar_from_its_hashed_path() {
+        let id = format!(
+            "terminal-tc054-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        );
+        let dir = super::data_root_dir().expect("data dir").join("agent-status");
+        std::fs::create_dir_all(&dir).expect("create agent-status dir");
+        let file = dir.join(format!("pane-{}.json", fnv1a_hex(&id)));
+        std::fs::write(
+            &file,
+            r#"{"sessionId":"019f56e6-a57e-7021-b159-8aaa714ebbae","provider":"codex","cwd":"/work/x"}"#,
+        )
+        .expect("write sidecar");
+        let got = super::read_pane_sidecar_recovery(&id);
+        let _ = std::fs::remove_file(&file);
+        assert_eq!(
+            got,
+            Some((
+                "codex".to_string(),
+                "019f56e6-a57e-7021-b159-8aaa714ebbae".to_string(),
+                Some("/work/x".to_string())
+            ))
+        );
     }
 
     #[test]
