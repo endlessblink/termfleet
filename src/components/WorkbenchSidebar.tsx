@@ -3338,8 +3338,8 @@ function SessionsPanel({
                 <div style={styles.rowMeta}>
                   <span
                     data-testid="sidebar-session-attention"
-                    data-attention-state={badgeForAttention(header.attention).state}
-                    style={{ color: badgeForAttention(header.attention).color, fontWeight: 600 }}
+                    data-attention-state={badgeForAttention(terminal?.badgeAttention ?? header.attention).state}
+                    style={{ color: badgeForAttention(terminal?.badgeAttention ?? header.attention).color, fontWeight: 600 }}
                   >
                     <span
                       style={{
@@ -3347,12 +3347,12 @@ function SessionsPanel({
                         width: 6,
                         height: 6,
                         borderRadius: "50%",
-                        background: badgeForAttention(header.attention).color,
+                        background: badgeForAttention(terminal?.badgeAttention ?? header.attention).color,
                         marginInlineEnd: 5,
                         verticalAlign: "middle",
                       }}
                     />
-                    {badgeForAttention(header.attention).label}
+                    {badgeForAttention(terminal?.badgeAttention ?? header.attention).label}
                   </span>
                   {" · "}{pathTail(header.fullPath)}
                 </div>
@@ -5341,8 +5341,8 @@ function MapPanel({
                       <>
                         <span
                           data-testid="sidebar-map-node-attention"
-                          data-attention-state={badgeForAttention(header.attention).state}
-                          style={{ color: badgeForAttention(header.attention).color, fontWeight: 600 }}
+                          data-attention-state={badgeForAttention(liveTerminal?.badgeAttention ?? header.attention).state}
+                          style={{ color: badgeForAttention(liveTerminal?.badgeAttention ?? header.attention).color, fontWeight: 600 }}
                         >
                           <span
                             style={{
@@ -5350,12 +5350,12 @@ function MapPanel({
                               width: 6,
                               height: 6,
                               borderRadius: "50%",
-                              background: badgeForAttention(header.attention).color,
+                              background: badgeForAttention(liveTerminal?.badgeAttention ?? header.attention).color,
                               marginInlineEnd: 5,
                               verticalAlign: "middle",
                             }}
                           />
-                          {badgeForAttention(header.attention).label}
+                          {badgeForAttention(liveTerminal?.badgeAttention ?? header.attention).label}
                         </span>
                         {" · "}{pathTail(header.fullPath)}
                       </>

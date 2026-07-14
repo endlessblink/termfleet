@@ -983,7 +983,9 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
             lastActivityAt: agentStatusSummary?.updatedAt ?? paneTerminal?.durableActivity?.updatedAt,
             now: Date.now(),
           });
-        const splitAttention = badgeForAttention(splitAttentionState);
+        // Read the ONE reconciled badge stored by the poll loop; fall back to the local
+        // computation only until the pane is first polled.
+        const splitAttention = badgeForAttention(paneTerminal?.badgeAttention ?? splitAttentionState);
         const shellHeaderPath = shellDurableActivityUsable ? shellStatusSummaryBase?.path : shellHeader?.fullPath;
         const paneOutput = !isPreviewPane
           ? tab.workstream?.kind === "agent"

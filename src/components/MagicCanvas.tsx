@@ -2709,7 +2709,11 @@ function CanvasNodeViewImpl({
     !terminalHeaderNowActiveVisible && terminalHeaderHasRealTask;
   // Does this terminal need the operator, is it busy, or idle? Orthogonal to the
   // task text; replaces the vague "Working" wording.
-  const terminalHeaderAttention = badgeForAttention(terminalHeader.attention);
+  // Read the ONE reconciled badge stored by the poll loop, so this view can never
+  // disagree with the sidebar/split. Fall back to the header's value only until first poll.
+  const terminalHeaderAttention = badgeForAttention(
+    linkedTerminal?.badgeAttention ?? terminalHeader.attention,
+  );
   const terminalHeaderSummarySignal = stabilizedNodeHeader.now;
   const terminalHeaderHasUsefulSummary = terminalHeader.currentActivity !== "Ready";
   const terminalHeaderHasTrustedSummary =

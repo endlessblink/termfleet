@@ -9,6 +9,7 @@
 // statusSummary + mainUserAsk. Task lineups keep their existing authoritative
 // writers; a live todo-write list still outranks anything from here.
 import { summarizeAgentStatus } from "./agentStatusSummarizer";
+import { reconcileSessionStatus } from "./sessionStatus";
 import { taskLineupFromExtractedItems } from "./taskLineup";
 import { mainUserAskFromSummary } from "./terminalMainUserAsk";
 import { selectStatusPollTargets, type StatusPollTarget } from "./statusPollTargets";
@@ -76,14 +77,40 @@ async function pollOnce() {
           // creates map-wide churn while producing results this loop discards.
           endpoint: "",
         });
-        // Apply only trustworthy results: the agent's real sidecar, or a
-        // contextual (narration-bearing) line from the local summarizer.
         const contextual = result.source === "process" && Boolean(result.summary.narration);
-        if (result.source !== "sidecar" && !contextual) continue;
+        const trusted = result.source === "sidecar" || contextual;
         const latest = useWorkspaceStore.getState();
         const latestTab = latest.tabs.find((candidate) => candidate.id === tab.id);
         const latestTerminal = latestTab?.terminals.find((candidate) => candidate.id === terminal.id);
         if (!latestTab || !latestTerminal) continue;
+
+        // SINGLE SOURCE OF TRUTH: reconcile the Running/Waiting/Idle badge ONCE, here, for
+        // EVERY polled pane — and store it on the terminal so the split header, sidebar,
+        // and map all read the identical value and can never disagree.
+        //
+        // PURE HOOK SIGNAL — deliberately NO terminal-text scanning: scrollback markers
+        // ("esc to interrupt", "Cooked for") are defeated by scrolling (scrolling up
+        // shows an OLD marker and flips the badge to Running). The hook's turn state +
+        // its write freshness is the only scroll-immune signal.
+        const badgeSummary = trusted ? result.summary : latestTerminal.statusSummary;
+        const badgeAttention = reconcileSessionStatus({
+          summaryStatus: badgeSummary?.status,
+          lastActivityAt: badgeSummary?.updatedAt,
+          now: Date.now(),
+        }).attention;
+
+        // An untrusted (plain-shell / heuristic) result must not overwrite the richer
+        // statusSummary, but the badge still has to stay fresh — update just that.
+        if (!trusted) {
+          if (latestTerminal.badgeAttention !== badgeAttention) {
+            latest.updateTab(latestTab.id, {
+              terminals: latestTab.terminals.map((candidate) =>
+                candidate.id === terminal.id ? { ...candidate, badgeAttention } : candidate,
+              ),
+            });
+          }
+          continue;
+        }
         // Never clobber a live declared task list with a modeled line.
         if (latestTerminal.statusSummary?.tasksFromTodoWrite && !result.summary.tasksFromTodoWrite && !contextual) continue;
         const updatedAt = Date.now();
@@ -115,6 +142,7 @@ async function pollOnce() {
                   statusSummaryUpdatedAt: updatedAt,
                   statusSummarySource: result.source,
                   statusSummaryError: result.error,
+                  badgeAttention,
                   mainUserAsk,
                 }
               : candidate,
