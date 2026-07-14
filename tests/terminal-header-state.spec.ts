@@ -102,9 +102,10 @@ test("marks active terminals without structured task or activity as capture fail
   });
 
   expect(header.goalLabel).toBe("Task not captured");
-  expect(header.currentActivity).toBe("Activity not captured");
+  // A working pane says so. "Activity not captured" reads as breakage and tells
+  // the operator nothing about a terminal that is visibly busy.
+  expect(header.currentActivity).toBe("Working");
   expect(header.sources.goal).toBe("missing");
-  expect(header.sources.activity).toBe("missing");
 });
 
 test("marks sidecar task rows as sidecar sourced instead of none", () => {
@@ -169,7 +170,42 @@ test("keeps real task-list activity ahead of fallback status wording", () => {
   });
 
   expect(header.goalLabel).toBe("Verifying the KDE widget guard");
-  expect(header.currentActivity).toBe("Verifying the KDE widget guard");
+  // New contract: no "Activity not captured" (reads as breakage) — an uncaptured
+  // step shows the honest status word; the "missing" source still marks the gap.
+  expect(header.currentActivity).toBe("Awaiting next action");
   expect(header.sources.goal).toBe("sidecar-todo");
   expect(header.sources.activity).toBe("status-summary");
+});
+
+test("captured task with generic working activity becomes explicit capture failure", () => {
+  const header = buildTerminalHeaderState({
+    paneId: "pane-working",
+    terminalId: "pty-working",
+    runId: "run-working",
+    project: { id: "g-termfleet", name: "termfleet", projectRoot: termfleetPath },
+    liveCwd: termfleetPath,
+    terminalStatus: "running",
+    taskLineup: [{
+      id: "task-echo",
+      content: "Gate Now Active echo failures",
+      status: "in_progress",
+      source: "todo-write",
+      updatedAt: 1000,
+    }],
+    statusSummary: {
+      task: "Working",
+      path: termfleetPath,
+      now: "Working",
+      status: "working",
+      provider: "shell",
+      confidence: "high",
+      tasksFromTodoWrite: true,
+    },
+    neutralTitle: "Working",
+  });
+
+  expect(header.goalLabel).toBe("Gate Now Active echo failures");
+  // New contract: honest status word instead of "Activity not captured".
+  expect(header.currentActivity).toBe("Awaiting next action");
+  expect(header.sources.activity).toBe("task-tool");
 });

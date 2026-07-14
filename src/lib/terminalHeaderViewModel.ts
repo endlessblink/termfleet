@@ -885,6 +885,11 @@ export function buildShellTerminalHeaderViewModel(input: {
     );
     return normalizedHeaderTokens(stripped).join(" ") === task;
   })();
+  // NOTE the deliberate contract here: a CONJUGATED active form ("Fix X…" → "Fixing
+  // X…") is a welcome title — the RENDER layer (activityAddsInfo) is what hides it
+  // when it adds nothing beyond the Task row. Only verbatim/generic-verb echoes are
+  // rejected. Tightening this to full headerTextsEquivalent broke ~15 tests that
+  // depend on active-form titles (2026-07-15); don't relitigate in the string factory.
   const genericTaskDerivedTitle =
     taskDerivedActivity &&
     !echoesTaskBehindGenericVerb &&
