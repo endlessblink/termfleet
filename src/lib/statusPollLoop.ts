@@ -189,3 +189,5 @@ export function startStatusPollLoop() {
   void pollOnce();
   window.setInterval(() => void pollOnce(), POLL_INTERVAL_MS);
 }
+
+// HMR nudge: force the running webview to reload the newest badge code.
