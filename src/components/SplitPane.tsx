@@ -14,6 +14,7 @@ import { neutralHeaderTitle, normalizePersistedShellSummary, summaryFromDurableA
 import { buildTerminalHeaderState } from "../lib/terminalHeaderState";
 import { badgeForAttention, type AttentionState } from "../lib/terminalAttention";
 import { sessionAttention } from "../lib/sessionStatus";
+import { useStatusClock } from "../lib/useStatusClock";
 import { stableHeader } from "../lib/stableHeader";
 import {
   calculatePaneBounds,
@@ -660,6 +661,8 @@ function MeasuringFallback() {
 }
 
 export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
+  // Re-render every ~5s so the badge's stale-working → idle check runs without a click.
+  useStatusClock();
   const groups = useWorkspaceStore((state) => state.groups);
   const liveGitRoots = useWorkspaceStore((state) => state.liveGitRoots);
   const immersiveTerminal = useWorkspaceStore((state) => state.workspaceUiState.immersiveTerminal);

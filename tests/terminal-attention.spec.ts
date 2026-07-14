@@ -12,6 +12,14 @@ test("a finished Codex/OMC turn is detected as at-rest, overriding a stale worki
   expect(terminalLooksAtRest("Running 12 tests")).toBe(false);
 });
 
+test("OMC rotating done-verbs (Churned/Baked/…) are all detected as at-rest", () => {
+  expect(terminalLooksAtRest("* Churned for 5m 41s\n› start the LLM classifier")).toBe(true);
+  expect(terminalLooksAtRest("* Baked for 8s\n› ")).toBe(true);
+  expect(terminalLooksAtRest("* Brewed for 1m 03s")).toBe(true);
+  // Prose must NOT match (no duration after "for").
+  expect(terminalLooksAtRest("I worked for the client all day")).toBe(false);
+});
+
 test("Claude's 'Worked for …' plus a persistent mode bar reads as at-rest, not running", () => {
   const finishedClaude =
     "- Worked for 46m 09s\n› Implement {feature}\nweekly 43% left · Context 53% used · Main [default]  Goal paused (/goal resume)";

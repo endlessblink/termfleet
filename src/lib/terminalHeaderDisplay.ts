@@ -66,9 +66,13 @@ export function terminalLooksAtRest(value?: string | null) {
   const tail = value.slice(-600);
   // An active marker always wins — never call a thinking pane "at rest".
   if (terminalLooksActivelyWorking(tail)) return false;
-  // A finished turn: Codex/OMC "Cooked for 13s", Claude "Worked for 46m 09s". Past
-  // tense + no active marker = the operator's turn, not the agent's.
-  return /\b(?:Cooked|Worked) for\b/i.test(tail);
+  // A finished turn. Codex/OMC prints a footer "* <Verb>ed for <Xm Ys>" with a rotating
+  // playful verb (Cooked / Worked / Churned / Baked / Brewed / Crunched …), so match the
+  // PATTERN — a past-tense verb + "for" + a duration — not a fixed word list. The trailing
+  // digit requirement avoids matching prose like "worked for the client".
+  // "<Verb>ed for <Xm Ys>" — the required duration digit is what separates the OMC
+  // footer ("Churned for 5m 41s") from prose ("worked for the client all day").
+  return /\b[A-Za-z]+ed for \d+\s*(?:h\s*)?(?:m\s*)?\d*\s*s?\b/i.test(tail);
 }
 
 export function terminalPurposeFromVisiblePrompt(value?: string | null): TerminalPurpose | undefined {

@@ -52,6 +52,7 @@ import { neutralHeaderTitle, normalizePersistedShellSummary, summaryFromDurableA
 import { buildTerminalHeaderState } from "../lib/terminalHeaderState";
 import { activityAddsInfo } from "../lib/terminalHeaderViewModel";
 import { badgeForAttention } from "../lib/terminalAttention";
+import { useStatusClock } from "../lib/useStatusClock";
 import { stableHeader } from "../lib/stableHeader";
 
 type CanvasRect = {
@@ -2117,6 +2118,9 @@ function CanvasNodeViewImpl({
   const selectedNodeId = useWorkspaceStore((state) => state.canvasState.selectedNodeId);
   const storedSelectedNodeIds = useWorkspaceStore((state) => state.canvasState.selectedNodeIds);
   const zoom = useWorkspaceStore((state) => state.canvasState.viewport.zoom);
+  // Re-render every ~5s so the badge's stale-working → idle check runs on its own
+  // (a finished pane must drop to Idle without the user clicking it).
+  useStatusClock();
   const updateCanvasNode = useWorkspaceStore((state) => state.updateCanvasNode);
   const renameCanvasNode = useWorkspaceStore((state) => state.renameCanvasNode);
   const moveCanvasNodes = useWorkspaceStore((state) => state.moveCanvasNodes);
