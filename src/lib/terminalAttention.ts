@@ -1,4 +1,3 @@
-import type { TerminalHeaderStatus } from "./terminalHeaderState";
 
 /**
  * The one question the cockpit must always answer for a non-technical viewer:
@@ -36,17 +35,3 @@ export function badgeForAttention(state: AttentionState): AttentionBadge {
   return BADGES[state];
 }
 
-/**
- * Collapse the header signals to the three viewer-facing states. Waiting wins
- * (it means the operator is blocked); otherwise a pane is "running" ONLY with
- * positive activity evidence, and "idle" by default — so an attached-but-quiet
- * shell reads Idle, not Running.
- */
-export function attentionStateFrom(input: {
-  headerStatus: TerminalHeaderStatus;
-  activelyWorking?: boolean;
-}): AttentionState {
-  if (input.headerStatus === "waiting" || input.headerStatus === "blocked") return "waiting";
-  if (input.activelyWorking) return "running";
-  return "idle";
-}

@@ -99,10 +99,6 @@ export interface TerminalState {
   statusSummaryUpdatedAt?: number;
   statusSummarySource?: WorkstreamStatusSummarySource;
   statusSummaryError?: string;
-  // THE canonical Running/Waiting/Idle badge, reconciled ONCE by the status poll loop.
-  // Every view (split header, sidebar row, map node) reads this same value so they can
-  // never disagree ("Running here, Idle there"). Undefined until first polled.
-  badgeAttention?: "running" | "waiting" | "idle";
   lastStatusAt?: number;
   lastError?: string;
 }

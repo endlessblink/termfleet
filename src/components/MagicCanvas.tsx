@@ -48,11 +48,10 @@ import { workstreamActivityMeta, workstreamActivityText } from "../lib/workstrea
 import { formatWorkstreamBranch, formatWorkstreamIsolation, formatWorkstreamOpsContext } from "../lib/workstreamOpsContext";
 import { snapshotPreviewRows } from "../lib/snapshotPreviewRows";
 import { taskLineupNextLabel, taskLineupStats, terminalOutputClosesTaskLineup, visibleTaskLineup } from "../lib/taskLineup";
-import { neutralHeaderTitle, normalizePersistedShellSummary, summaryFromDurableActivity, terminalPurposeFromContext, terminalTextLooksReadyPrompt, terminalLooksActivelyWorking, terminalLooksAtRest } from "../lib/terminalHeaderDisplay";
+import { neutralHeaderTitle, normalizePersistedShellSummary, summaryFromDurableActivity, terminalPurposeFromContext, terminalTextLooksReadyPrompt } from "../lib/terminalHeaderDisplay";
 import { buildTerminalHeaderState } from "../lib/terminalHeaderState";
 import { activityAddsInfo } from "../lib/terminalHeaderViewModel";
 import { badgeForAttention } from "../lib/terminalAttention";
-import { useStatusClock } from "../lib/useStatusClock";
 import { paneBadgeAttention } from "../lib/sessionStatus";
 import { stableHeader } from "../lib/stableHeader";
 
@@ -2119,9 +2118,6 @@ function CanvasNodeViewImpl({
   const selectedNodeId = useWorkspaceStore((state) => state.canvasState.selectedNodeId);
   const storedSelectedNodeIds = useWorkspaceStore((state) => state.canvasState.selectedNodeIds);
   const zoom = useWorkspaceStore((state) => state.canvasState.viewport.zoom);
-  // Re-render every ~5s so the badge's stale-working → idle check runs on its own
-  // (a finished pane must drop to Idle without the user clicking it).
-  useStatusClock();
   const updateCanvasNode = useWorkspaceStore((state) => state.updateCanvasNode);
   const renameCanvasNode = useWorkspaceStore((state) => state.renameCanvasNode);
   const moveCanvasNodes = useWorkspaceStore((state) => state.moveCanvasNodes);
@@ -2643,18 +2639,6 @@ function CanvasNodeViewImpl({
       /\bWorking\s+\(|esc to interrupt\b/i.test(
         linkedTerminal?.terminalVisibleText ?? linkedTerminal?.terminalOutput ?? "",
       ),
-    // Stricter, current-only signal for the attention badge: the live "thinking /
-    // esc to interrupt" indicator, or a genuinely running tracked command.
-    activelyRunning:
-      terminalLooksActivelyWorking(
-        linkedTerminal?.terminalVisibleText ?? linkedTerminal?.terminalOutput ?? "",
-      ) || linkedTerminal?.durableActivity?.status === "running",
-    terminalAtRest: terminalLooksAtRest(
-      linkedTerminal?.terminalVisibleText ?? linkedTerminal?.terminalOutput ?? "",
-    ),
-    lastActivityAt:
-      linkedTerminal?.terminalVisibleTextUpdatedAt ?? linkedTerminal?.durableActivity?.updatedAt,
-    nowMs: Date.now(),
     trustedActivitySummary:
       terminalDurableActivityUsable ||
       terminalDisplaySummaryBase.task === "Reviewing approval request" ||

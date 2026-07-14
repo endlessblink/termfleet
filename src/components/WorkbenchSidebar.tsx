@@ -34,9 +34,7 @@ import { pathTail, projectNameFor, workspaceLabelFor } from "../lib/projectDispl
 import { buildTerminalHeaderState, type TerminalHeaderState } from "../lib/terminalHeaderState";
 import { activityAddsInfo } from "../lib/terminalHeaderViewModel";
 import { badgeForAttention } from "../lib/terminalAttention";
-import { terminalLooksActivelyWorking, terminalLooksAtRest } from "../lib/terminalHeaderDisplay";
 import { paneBadgeAttention } from "../lib/sessionStatus";
-import { useStatusClock } from "../lib/useStatusClock";
 import { FileExplorer } from "./FileExplorer";
 import { checkAgentProvider } from "../lib/agentProviders";
 import { agentLaneAuthRetryText, agentLaneAuthRetryTitle, agentLaneCleanupRequestText, agentLaneCleanupRequestTitle, agentLaneCloseoutText, agentLaneCloseoutTitle, agentLaneHealthText, agentLaneInterruptText, agentLaneInterruptTitle, agentLaneMemoryRequestText, agentLaneMemoryRequestTitle, agentLaneProofRequestText, agentLaneProofRequestTitle, agentLaneRestartText, agentLaneRestartTitle, agentLaneRiskMitigationText, agentLaneRiskMitigationTitle, agentLaneStatusSweepText, agentLaneStatusSweepTitle, agentLaneStatusText, attentionBreakdownText, cleanupBreakdownText, closeoutBreakdownText, formatAgentLaneBrief, formatAgentMissionControlBrief, formatAgentRunBrief, handoffMemoryPromptForWorkstream, isActiveAgentWorkstream, isAuthRetryableAgentWorkstream, isCleanupRequestableAgentWorkstream, isRestartableAgentWorkstream, isReviewItemCloseoutReady, isolationBreakdownText, latestMissionControlAskText, missionBreakdownText, missionControlAlternateText, missionControlDispatchBreakdownText, proofRequestPromptForWorkstream, providerBreakdownText, readinessBreakdownText, riskBreakdownText, statusCheckPromptForWorkstream, summarizeAgentLane } from "../lib/agentWorkstreamLane";
@@ -166,15 +164,6 @@ function sidebarHeaderForTerminal(input: {
       workstream?.status === "running" ||
       workstream?.phase === "active" ||
       /\bWorking\s+\(|esc to interrupt\b/i.test(terminalOutput),
-    // Attention badge uses the live on-screen indicator, not the stale workstream
-    // flags — a finished agent turn still carries `phase === "active"` and wrongly
-    // read as Running.
-    activelyRunning:
-      terminalLooksActivelyWorking(terminalOutput) ||
-      terminal?.durableActivity?.status === "running",
-    terminalAtRest: terminalLooksAtRest(terminalOutput),
-    lastActivityAt: terminal?.terminalVisibleTextUpdatedAt ?? terminal?.durableActivity?.updatedAt,
-    nowMs: Date.now(),
     trustedActivitySummary: terminal?.durableActivity?.status === "running",
   });
 }
@@ -1681,8 +1670,6 @@ function SessionsPanel({
   onOpenTerminalMenu: (event: React.MouseEvent, tab: Tab) => void;
   onOpenProjectMenu: (event: React.MouseEvent, project: { id: string; name: string; emoji?: string }) => void;
 }) {
-  // Re-render every ~5s so a finished pane's badge drops to Idle on its own.
-  useStatusClock();
   const tabs = useWorkspaceStore((state) => state.tabs);
   const groups = useWorkspaceStore((state) => state.groups);
   const activeGroupFilter = useWorkspaceStore((state) => state.activeGroupFilter);
@@ -3462,8 +3449,6 @@ function MapPanel({
   onOpenTerminalMenu: (event: React.MouseEvent, tab: Tab) => void;
   onOpenProjectMenu: (event: React.MouseEvent, project: { id: string; name: string; emoji?: string }) => void;
 }) {
-  // Re-render every ~5s so a finished pane's badge drops to Idle on its own.
-  useStatusClock();
   const [mapFilter, setMapFilter] = useState<MapFilter>("all");
   const [serviceActionStatus, setServiceActionStatus] = useState("");
   const [servicesCollapsed, setServicesCollapsed] = useState(false);

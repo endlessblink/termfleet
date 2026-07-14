@@ -8,9 +8,7 @@
 // (sidecar → contextual endpoint → heuristic), and applies only the safe fields:
 // statusSummary + mainUserAsk. Task lineups keep their existing authoritative
 // writers; a live todo-write list still outranks anything from here.
-import { invoke } from "@tauri-apps/api/core";
 import { summarizeAgentStatus } from "./agentStatusSummarizer";
-import { reconcileSessionStatus } from "./sessionStatus";
 import { taskLineupFromExtractedItems } from "./taskLineup";
 import { mainUserAskFromSummary } from "./terminalMainUserAsk";
 import { selectStatusPollTargets, type StatusPollTarget } from "./statusPollTargets";
@@ -85,32 +83,11 @@ async function pollOnce() {
         const latestTerminal = latestTab?.terminals.find((candidate) => candidate.id === terminal.id);
         if (!latestTab || !latestTerminal) continue;
 
-        // SINGLE SOURCE OF TRUTH: reconcile the Running/Waiting/Idle badge ONCE, here, for
-        // EVERY polled pane — and store it on the terminal so the split header, sidebar,
-        // and map all read the identical value and can never disagree.
-        //
-        // PURE HOOK SIGNAL — deliberately NO terminal-text scanning: scrollback markers
-        // ("esc to interrupt", "Cooked for") are defeated by scrolling (scrolling up
-        // shows an OLD marker and flips the badge to Running). The hook's turn state +
-        // its write freshness is the only scroll-immune signal.
-        const badgeSummary = trusted ? result.summary : latestTerminal.statusSummary;
-        const badgeAttention = reconcileSessionStatus({
-          summaryStatus: badgeSummary?.status,
-        }).attention;
-
-        // Update the badge FIRST and UNCONDITIONALLY for every polled pane, before any of
-        // the summary-update guards below can `continue` and skip it. This is why a
-        // background pane's badge used to stay stale until it was clicked.
-        if (latestTerminal.badgeAttention !== badgeAttention) {
-          latest.updateTab(latestTab.id, {
-            terminals: latestTab.terminals.map((candidate) =>
-              candidate.id === terminal.id ? { ...candidate, badgeAttention } : candidate,
-            ),
-          });
-        }
-
-        // An untrusted (plain-shell / heuristic) result must not overwrite the richer
-        // statusSummary — the badge above is enough.
+        // The Running/Waiting/Idle badge is a PURE render-time translation of
+        // `statusSummary.status` (sessionStatus.paneBadgeAttention) — the views compute
+        // it from the store, so this loop only has to keep statusSummary fresh for
+        // EVERY pane. An untrusted (plain-shell / heuristic) result must not overwrite
+        // the richer statusSummary.
         if (!trusted) {
           continue;
         }
@@ -145,7 +122,6 @@ async function pollOnce() {
                   statusSummaryUpdatedAt: updatedAt,
                   statusSummarySource: result.source,
                   statusSummaryError: result.error,
-                  badgeAttention,
                   mainUserAsk,
                 }
               : candidate,
@@ -159,28 +135,6 @@ async function pollOnce() {
   } finally {
     ticking = false;
   }
-  // TEMPORARY live telemetry (uncommitted): snapshot every pane's badge so it can be
-  // watched externally in a loop, without screenshots. Remove after diagnosis.
-  try {
-    const s = useWorkspaceStore.getState();
-    const rows = s.tabs.flatMap((t) =>
-      (t.terminals ?? []).map((tm) => ({
-        tab: t.id.slice(0, 8),
-        pane: String(tm.paneId ?? "").slice(0, 8),
-        cwd: (s.liveCwds[tm.id] ?? t.initialCwd ?? "").split("/").slice(-1)[0],
-        status: tm.statusSummary?.status ?? null,
-        // The same pure translation the views render — telemetry mirrors the UI exactly.
-        badge: reconcileSessionStatus({ summaryStatus: tm.statusSummary?.status }).attention,
-        active: t.id === s.activeTabId,
-      })),
-    );
-    await invoke("fs_write_file", {
-      path: "/media/endlessblink/data/pwt/cockpit-badge-live.json",
-      contents: JSON.stringify({ ts: Date.now(), rows }),
-    });
-  } catch {
-    // telemetry is best-effort
-  }
 }
 
 export function startStatusPollLoop() {
@@ -189,5 +143,3 @@ export function startStatusPollLoop() {
   void pollOnce();
   window.setInterval(() => void pollOnce(), POLL_INTERVAL_MS);
 }
-
-// HMR nudge: force the running webview to reload the newest badge code.

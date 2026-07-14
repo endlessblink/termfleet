@@ -10,11 +10,10 @@ import { agentStatusChipText, agentStatusSummaryFromWorkstream, getDisplaySummar
 import { CockpitSnapshotProbe } from "./CockpitSnapshotProbe";
 import { workstreamActivityText } from "../lib/workstreamActivity";
 import { taskLineupNextLabel, taskLineupStats, terminalOutputClosesTaskLineup, visibleTaskLineup as pickVisibleTaskLineup } from "../lib/taskLineup";
-import { neutralHeaderTitle, normalizePersistedShellSummary, summaryFromDurableActivity, terminalPurposeFromContext, terminalTextLooksReadyPrompt, terminalLooksActivelyWorking, terminalLooksAtRest } from "../lib/terminalHeaderDisplay";
+import { neutralHeaderTitle, normalizePersistedShellSummary, summaryFromDurableActivity, terminalPurposeFromContext, terminalTextLooksReadyPrompt } from "../lib/terminalHeaderDisplay";
 import { buildTerminalHeaderState } from "../lib/terminalHeaderState";
 import { badgeForAttention, type AttentionState } from "../lib/terminalAttention";
 import { paneBadgeAttention } from "../lib/sessionStatus";
-import { useStatusClock } from "../lib/useStatusClock";
 import { stableHeader } from "../lib/stableHeader";
 import {
   calculatePaneBounds,
@@ -661,8 +660,6 @@ function MeasuringFallback() {
 }
 
 export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
-  // Re-render every ~5s so the badge's stale-working → idle check runs without a click.
-  useStatusClock();
   const groups = useWorkspaceStore((state) => state.groups);
   const liveGitRoots = useWorkspaceStore((state) => state.liveGitRoots);
   const immersiveTerminal = useWorkspaceStore((state) => state.workspaceUiState.immersiveTerminal);
@@ -906,16 +903,6 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                 /\bWorking\s+\(|esc to interrupt\b/i.test(
                   paneTerminal?.terminalVisibleText ?? paneTerminal?.terminalOutput ?? "",
                 ),
-              activelyRunning:
-                terminalLooksActivelyWorking(
-                  paneTerminal?.terminalVisibleText ?? paneTerminal?.terminalOutput ?? "",
-                ) || paneTerminal?.durableActivity?.status === "running",
-              terminalAtRest: terminalLooksAtRest(
-                paneTerminal?.terminalVisibleText ?? paneTerminal?.terminalOutput ?? "",
-              ),
-              lastActivityAt:
-                paneTerminal?.terminalVisibleTextUpdatedAt ?? paneTerminal?.durableActivity?.updatedAt,
-              nowMs: Date.now(),
               trustedActivitySummary:
                 shellDurableActivityUsable ||
                 shellStatusSummaryBase.task === "Reviewing approval request" ||

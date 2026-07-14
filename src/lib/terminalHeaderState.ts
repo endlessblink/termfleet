@@ -152,23 +152,6 @@ export function buildTerminalHeaderState(input: {
   contextPurposeSource?: TerminalPurposeSource | null;
   workstreamTitle?: string | null;
   activelyWorking?: boolean;
-  /**
-   * Positive, CURRENT evidence the pane is generating/running right now (a live agent
-   * turn, a running command) — used only for the attention badge. Kept separate from
-   * `activelyWorking` (which also feeds title fallbacks) so the badge can use a stricter,
-   * less-stale signal without shifting title behavior. Falls back to `activelyWorking`.
-   */
-  activelyRunning?: boolean;
-  /**
-   * The on-screen turn-finished signal (Codex/OMC "Cooked for …" + rest prompt). When
-   * true it forces the attention badge to Idle, overriding a stale hook status that is
-   * still stuck on "working" after the turn ended.
-   */
-  terminalAtRest?: boolean;
-  /** When the pane last produced output/changed (ms epoch) — drives the stale-working guard. */
-  lastActivityAt?: number | null;
-  /** Current time (ms epoch); pass Date.now() from the component. */
-  nowMs?: number | null;
   updatedAt?: number;
   version?: number;
 }): TerminalHeaderState {
@@ -195,24 +178,12 @@ export function buildTerminalHeaderState(input: {
   const goalLabel = view.taskDescription.text;
   const hasCapturedGoal = goalSource !== "none" && goalSource !== "missing";
   const headerStatus = statusFromSummary(input.summary ?? input.statusSummary, input.terminalStatus);
-  // "running" needs positive evidence — but of the RIGHT kind. Trust the agent's own
-  // hook status when it explicitly says "working" (the most reliable signal for an agent
-  // mid-turn, even when its on-screen indicator scrolled off or rendered garbled). For
-  // panes WITHOUT such a summary (a bare shell whose only "working" is an attached PTY),
-  // fall back to the live on-screen indicator / running command, so an idle shell reads
-  // Idle rather than busy.
-  // SINGLE SOURCE OF TRUTH: every view derives its badge from this one reconciler so
-  // they can never contradict each other. Priority fusion: on-screen done-marker >
-  // explicit waiting > live generating marker > FRESH "working" hook > stale → idle.
+  // Badge from the agent's reported status ONLY (pure event state — no clock, no
+  // scrollback). Views render paneBadgeAttention(terminal) from the store; this field
+  // mirrors the same computation for consumers of the header state.
   const reconcileSummary = input.summary ?? input.statusSummary;
   const attention = reconcileSessionStatus({
     summaryStatus: reconcileSummary?.status,
-    activelyRunning: input.activelyRunning ?? input.activelyWorking,
-    atRest: input.terminalAtRest,
-    // Prefer the HOOK's write time (summary.updatedAt) over any terminal-output time so a
-    // ticking status bar can't keep a finished pane reading "running".
-    lastActivityAt: reconcileSummary?.updatedAt ?? input.lastActivityAt,
-    now: input.nowMs,
   }).attention;
   const currentActivity =
     hasCapturedGoal &&
