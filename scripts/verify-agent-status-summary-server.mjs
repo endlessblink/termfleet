@@ -16,10 +16,11 @@ const runNativeDevPath = join(root, "run-native-vte-dev.sh");
 const splitPanePath = join(root, "src", "components", "SplitPane.tsx");
 const cockpitSnapshotPath = join(root, "src", "lib", "cockpitSnapshot.ts");
 
-const [packageJson, tauriDevWrapper, ollamaAdapterSource, runDev, runNativeDev, splitPaneSource, cockpitSnapshotSource] = await Promise.all([
+const [packageJson, tauriDevWrapper, ollamaAdapterSource, serverSource, runDev, runNativeDev, splitPaneSource, cockpitSnapshotSource] = await Promise.all([
   readFile(packagePath, "utf8"),
   readFile(tauriDevWrapperPath, "utf8"),
   readFile(ollamaAdapterPath, "utf8"),
+  readFile(serverPath, "utf8"),
   readFile(runDevPath, "utf8"),
   readFile(runNativeDevPath, "utf8"),
   readFile(splitPanePath, "utf8"),
@@ -32,9 +33,36 @@ assert.match(tauriDevWrapper, /agent-status-summary-server\.mjs \$\{STATUS_WORKE
 assert.match(tauriDevWrapper, /VITE_AGENT_STATUS_SUMMARY_ENDPOINT/);
 assert.match(tauriDevWrapper, /TERMFLEET_AGENT_STATUS_DISABLE/);
 assert.match(tauriDevWrapper, /TERMFLEET_AGENT_STATUS_MODEL:-qwen3:4b/);
+assert.match(tauriDevWrapper, /TERMFLEET_ALLOW_NESTED_DEV_ENV/);
+assert.match(tauriDevWrapper, /unset TERMFLEET_AGENT_STATUS_ENABLE/);
+assert.match(tauriDevWrapper, /unset TERMFLEET_COCKPIT_SNAPSHOT_ENABLE/);
+assert.match(tauriDevWrapper, /TERMFLEET_DEV_DIAGNOSTICS_ENABLE/);
+assert.match(tauriDevWrapper, /TERMFLEET_COCKPIT_SNAPSHOT_ENABLE/);
+assert.match(tauriDevWrapper, /unset VITE_COCKPIT_SNAPSHOT/);
+assert.match(tauriDevWrapper, /TERMFLEET_TERMINAL_HEADER_LOG_ENABLE/);
+assert.match(tauriDevWrapper, /unset VITE_TERMINAL_HEADER_LOG/);
+assert.match(tauriDevWrapper, /TERMFLEET_MAP_LIVE_TERMINALS_ENABLE/);
+assert.match(tauriDevWrapper, /TERMFLEET_MAP_LIVE_TERMINALS_ENABLE:-1/);
+assert.match(tauriDevWrapper, /export VITE_MAP_LIVE_TERMINALS=1/);
+assert.match(tauriDevWrapper, /CONTEXT_TITLE_DISABLE="\$\{TERMFLEET_CONTEXT_TITLE_DISABLE:-0\}"/);
+assert.match(tauriDevWrapper, /TERMFLEET_CONTEXT_TITLE_DISABLE="\$CONTEXT_TITLE_DISABLE"/);
 assert.match(ollamaAdapterSource, /TERMFLEET_AGENT_STATUS_MODEL \|\| "qwen3:4b"/);
+assert.match(serverSource, /TERMFLEET_CONTEXT_TITLE_MODEL \|\| "llama3\.2:latest,gemma4:e2b"/);
+assert.match(serverSource, /contextTitleDisabled/);
+assert.match(serverSource, /reason: "context-disabled"/);
+assert.match(serverSource, /TERMFLEET_CONTEXT_TITLE_KEEP_ALIVE \|\| "2m"/);
+assert.match(serverSource, /const ANALYZER_SCHEMA = \{/);
+assert.match(serverSource, /const TRANSLATOR_SCHEMA = \{/);
+assert.match(serverSource, /const CRITIC_SCHEMA = \{/);
+assert.match(serverSource, /buildAnalyzerMessages/);
+assert.match(serverSource, /buildTranslatorMessages/);
+assert.match(serverSource, /buildCriticMessages/);
+assert.match(serverSource, /clearSidecarContextTitle/);
+assert.match(serverSource, /task-sidecar/);
+assert.match(serverSource, /think: false/);
 assert.match(runDev, /npm run tauri:dev/);
 assert.match(runNativeDev, /npm run tauri:dev/);
+assert.match(runNativeDev, /TERMFLEET_CONTEXT_TITLE_DISABLE="\$CONTEXT_TITLE_DISABLE"/);
 assert.match(tauriDevWrapper, /kill_app_vite\(\)/);
 assert.match(tauriDevWrapper, /index\(\$0, root_dir "\/node_modules\/\.bin\/vite"\)/);
 assert.match(tauriDevWrapper, /index\(\$0, "--port 1420"\)/);
@@ -54,6 +82,7 @@ assert.match(cockpitSnapshotSource, /\/cockpit-snapshot/);
 
 function waitForEndpoint(child) {
   return new Promise((resolve, reject) => {
+    let stderr = "";
     const timer = setTimeout(() => reject(new Error("server did not print endpoint")), 5000);
     child.stdout.on("data", (chunk) => {
       const text = chunk.toString("utf8");
@@ -63,6 +92,9 @@ function waitForEndpoint(child) {
         resolve(match[1]);
       }
     });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString("utf8");
+    });
     child.on("error", (error) => {
       clearTimeout(timer);
       reject(error);
@@ -70,7 +102,7 @@ function waitForEndpoint(child) {
     child.on("exit", (code) => {
       if (code !== null && code !== 0) {
         clearTimeout(timer);
-        reject(new Error(`server exited early with ${code}`));
+        reject(new Error(`server exited early with ${code}: ${stderr.slice(-1000)}`));
       }
     });
   });
@@ -81,11 +113,13 @@ async function withServer(env, callback) {
     env: { ...process.env, ...env },
     stdio: ["ignore", "pipe", "pipe"],
   });
+  const exited = new Promise((resolve) => child.once("exit", resolve));
   try {
     const endpoint = await waitForEndpoint(child);
     await callback(endpoint);
   } finally {
-    child.kill("SIGTERM");
+    if (!child.killed) child.kill("SIGTERM");
+    await exited;
   }
 }
 
@@ -94,11 +128,13 @@ async function withServerArgs(env, args, callback) {
     env: { ...process.env, ...env },
     stdio: ["ignore", "pipe", "pipe"],
   });
+  const exited = new Promise((resolve) => child.once("exit", resolve));
   try {
     const endpoint = await waitForEndpoint(child);
     await callback(endpoint);
   } finally {
-    child.kill("SIGTERM");
+    if (!child.killed) child.kill("SIGTERM");
+    await exited;
   }
 }
 
@@ -165,6 +201,54 @@ function withFakeOllama(callback, responseSummary = {
   });
 }
 
+function withFakeChatOllama(callback) {
+  return new Promise((resolve, reject) => {
+    const capturedPayloads = [];
+    const server = http.createServer((request, response) => {
+      if (request.method !== "POST" || request.url !== "/api/chat") {
+        response.writeHead(404).end();
+        return;
+      }
+      let raw = "";
+      request.setEncoding("utf8");
+      request.on("data", (chunk) => {
+        raw += chunk;
+      });
+      request.on("end", () => {
+        const payload = JSON.parse(raw);
+        capturedPayloads.push(payload);
+        const properties = payload.format?.properties ?? {};
+        const content = properties.core_action
+          ? {
+              core_action: "cleaning up",
+              main_object: "pane header wording",
+              status: "running",
+              user_goal: "Make pane headers easy to understand",
+              confidence: 0.82,
+              brief_reason: "The context asks for plain pane titles.",
+            }
+          : {
+              sentence: "Cleaning up pane header wording",
+              confidence: 0.9,
+            };
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(JSON.stringify({ message: { content: JSON.stringify(content) } }));
+      });
+    });
+    server.on("error", reject);
+    server.listen(0, "127.0.0.1", async () => {
+      const address = server.address();
+      try {
+        if (!address || typeof address === "string") throw new Error("fake chat ollama port unavailable");
+        await callback(`http://127.0.0.1:${address.port}/api/generate`, () => capturedPayloads);
+        server.close(() => resolve());
+      } catch (error) {
+        server.close(() => reject(error));
+      }
+    });
+  });
+}
+
 function runOllamaAdapter(body, env = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [ollamaAdapterPath], {
@@ -214,7 +298,7 @@ const payload = {
   },
 };
 
-await withServer({ TERMFLEET_AGENT_STATUS_PORT: "37981" }, async (endpoint) => {
+await withServer({ TERMFLEET_AGENT_STATUS_PORT: "48981", TERMFLEET_OLLAMA_URL: "http://127.0.0.1:9/api/generate" }, async (endpoint) => {
   const summary = await postStatus(endpoint, payload);
   assert.equal(summary.task, "Add local status summary process");
   assert.equal(summary.path, "src/components/Terminal.tsx");
@@ -223,11 +307,92 @@ await withServer({ TERMFLEET_AGENT_STATUS_PORT: "37981" }, async (endpoint) => {
   assert.equal(summary.provider, "codex");
 });
 
+await withFakeChatOllama(async (ollamaEndpoint, capturedPayloads) => {
+  await withServer({
+    TERMFLEET_AGENT_STATUS_PORT: "48983",
+    TERMFLEET_OLLAMA_URL: ollamaEndpoint,
+    TERMFLEET_CONTEXT_TITLE_TTL_MS: "1",
+  }, async (endpoint) => {
+    const summary = await postStatus(endpoint, {
+      type: "agent-workstream-status",
+      projectId: "termfleet",
+      transcript: [
+        "Operator asked for plain pane headers.",
+        "The agent is cleaning up the pane header wording so titles explain the current step.",
+      ].join("\n"),
+      workstream: {
+        mission: "Make pane headers easy to understand",
+        provider: "codex",
+        status: "running",
+        path: "termfleet",
+        currentActivity: "Cleaning up pane header wording",
+      },
+    });
+    assert.equal(summary.now, "Cleaning up pane header wording");
+    assert.equal(summary.narration, "Cleaning up pane header wording");
+    assert.equal(summary.status, "working");
+    assert.equal(summary.confidence, "high");
+  });
+  const requests = capturedPayloads();
+  assert.equal(requests.length, 3);
+  assert.equal(requests[0].model, "llama3.2:latest");
+  assert.equal(requests[0].stream, false);
+  assert.equal(requests[0].keep_alive, "2m");
+  assert.equal(requests[0].think, false);
+  assert.equal(requests[0].format.properties.core_action.type, "string");
+  assert.equal(requests[1].format.properties.sentence.type, "string");
+  assert.equal(requests[2].format.properties.sentence.type, "string");
+  assert.equal(requests[2].format.properties.critique_note.type, "string");
+});
+
+await withFakeChatOllama(async (ollamaEndpoint, capturedPayloads) => {
+  await withServer({
+    TERMFLEET_AGENT_STATUS_PORT: "48988",
+    TERMFLEET_OLLAMA_URL: ollamaEndpoint,
+    TERMFLEET_CONTEXT_TITLE_TTL_MS: "1",
+  }, async (endpoint) => {
+    const summary = await postStatus(endpoint, {
+      type: "agent-workstream-status",
+      projectId: "termfleet",
+      transcript: "apply_patch touching src/lib/terminalHeaderViewModel.ts",
+      heuristicCandidate: {
+        task: "Checking pane header wording approval",
+        userTask: "Waiting for operator verdict",
+        path: "termfleet",
+        now: "Raw hook narration displays as title",
+        narration: "Raw hook narration displays as title",
+        status: "working",
+        provider: "codex",
+        confidence: "high",
+        tasksFromTodoWrite: true,
+        tasks: [
+          {
+            id: "todo:1",
+            text: "in-progress: Checking pane header wording approval",
+            provenance: "summary",
+            at: 1710000000000,
+            excerpt: "Checking pane header wording approval",
+            sourceHash: "todo1",
+          },
+        ],
+      },
+    });
+    assert.equal(summary.now, "Checking pane header wording");
+    assert.equal(summary.narration, "Checking pane header wording");
+    assert.equal(summary.task, "Check TermFleet pane header wording approval.");
+    assert.equal(summary.userTask, "Check TermFleet pane header wording approval.");
+    assert.equal(summary.tasks[0].text, "in-progress: Check TermFleet pane header wording approval.");
+    assert.equal(summary.tasksFromTodoWrite, true);
+    assert.equal(summary.confidence, "high");
+  });
+  assert.equal(capturedPayloads().length, 0);
+});
+
 {
   const dataHome = await mkdtemp(join(tmpdir(), "termfleet-cockpit-snapshot-"));
   await withServer({
     XDG_DATA_HOME: dataHome,
-    TERMFLEET_AGENT_STATUS_PORT: "37986",
+      TERMFLEET_AGENT_STATUS_PORT: "48986",
   }, async (endpoint) => {
     const body = {
       updatedAt: 1710000000000,
@@ -250,12 +415,20 @@ await withServer({ TERMFLEET_AGENT_STATUS_PORT: "37981" }, async (endpoint) => {
     const result = await postCockpitSnapshot(endpoint, body);
     assert.equal(result.ok, true);
     const snapshotFile = join(dataHome, "terminal-workspace", "agent-status", "cockpit-snapshot.json");
+    const traceFile = join(dataHome, "terminal-workspace", "agent-status", "cockpit-header-trace.jsonl");
     await stat(snapshotFile);
     assert.deepEqual(JSON.parse(await readFile(snapshotFile, "utf8")), body);
+    await stat(traceFile);
+    const traceLines = (await readFile(traceFile, "utf8")).trim().split("\n");
+    assert.ok(traceLines.length >= 1);
+    const traceEntry = JSON.parse(traceLines.at(-1));
+    assert.equal(traceEntry.terminals[0].paneId, "terminal-tab-a-pane-b");
+    assert.equal(traceEntry.terminals[0].title, "Running map projection checks");
+    assert.equal(typeof traceEntry.receivedAt, "number");
   });
 }
 
-await withServer({ TERMFLEET_AGENT_STATUS_PORT: "37983" }, async (endpoint) => {
+await withServer({ TERMFLEET_AGENT_STATUS_PORT: "48987", TERMFLEET_OLLAMA_URL: "http://127.0.0.1:9/api/generate" }, async (endpoint) => {
   const summary = await postStatus(endpoint, {
     type: "agent-workstream-status",
     projectId: "workspace root unknown",
@@ -283,7 +456,7 @@ await withServer({ TERMFLEET_AGENT_STATUS_PORT: "37983" }, async (endpoint) => {
   assert.equal(summary.provider, "shell");
 });
 
-await withServer({ TERMFLEET_AGENT_STATUS_PORT: "37985" }, async (endpoint) => {
+await withServer({ TERMFLEET_AGENT_STATUS_PORT: "48985", TERMFLEET_OLLAMA_URL: "http://127.0.0.1:9/api/generate" }, async (endpoint) => {
   const summary = await postStatus(endpoint, {
     type: "agent-workstream-status",
     projectId: "termfleet",
@@ -334,6 +507,7 @@ process.stdin.on("end", () => {
 
 await withServer({
   TERMFLEET_AGENT_STATUS_PORT: "37982",
+  TERMFLEET_OLLAMA_URL: "http://127.0.0.1:9/api/generate",
   TERMFLEET_AGENT_STATUS_COMMAND: process.execPath,
   TERMFLEET_AGENT_STATUS_ARGS: JSON.stringify([fakeCommand]),
 }, async (endpoint) => {
@@ -349,6 +523,7 @@ await withServer({
 
 await withServerArgs({
   TERMFLEET_AGENT_STATUS_PORT: "37984",
+  TERMFLEET_OLLAMA_URL: "http://127.0.0.1:9/api/generate",
 }, [process.execPath, fakeCommand], async (endpoint) => {
   const summary = await postStatus(endpoint, payload);
   assert.equal(summary.task, "Summarize with configured local command");

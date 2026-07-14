@@ -1,10 +1,13 @@
 import { useEffect } from "react";
+import { startStatusPollLoop } from "./lib/statusPollLoop";
 import { StatusBar } from "./components/StatusBar";
 import { WorkbenchSidebar } from "./components/WorkbenchSidebar";
 import { WorkspaceSurface } from "./components/WorkspaceSurface";
 import { WorkbenchHeader } from "./components/WorkbenchHeader";
 import { useKeybindings } from "./hooks/useKeybindings";
 import { hydrateWorkspace, useWorkspaceStore } from "./stores/workspace";
+
+startStatusPollLoop();
 
 function App() {
   useKeybindings();

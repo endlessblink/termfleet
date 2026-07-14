@@ -96,6 +96,153 @@ test("shell terminals do not show the agent task sidebar", async ({ page }) => {
   await expect(page.getByTestId("split-agent-task-sidebar")).toHaveCount(0);
 });
 
+test("restored agent lanes keep one visible map node with restore state after reloads", async ({ page }) => {
+  await resetWorkspace(page);
+  const seeded = {
+    tabId: "tab-restored-agent",
+    paneId: "pane-restored-agent",
+    nodeId: "node-restored-agent",
+    groupId: "group-termfleet",
+    cwd: "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
+    mission: "Resume durable Codex lane",
+    providerSessionId: "019f-agent-session",
+  };
+
+  await page.addInitScript((seed) => {
+    if (localStorage.getItem("termfleet-restore-seed-applied") === "1") return;
+    localStorage.setItem("terminal-workspace.v1", JSON.stringify({
+      tabs: [{
+        id: seed.tabId,
+        title: "Codex restore lane",
+        emoji: "[]",
+        color: "#7aa2f7",
+        groupId: seed.groupId,
+        initialCwd: seed.cwd,
+        terminals: [{
+          id: `terminal-${seed.tabId}-${seed.paneId}`,
+          paneId: seed.paneId,
+          cols: 118,
+          rows: 33,
+          status: "running",
+          reused: true,
+        }],
+        splitLayout: { id: seed.paneId, type: "terminal" },
+        activePaneId: seed.paneId,
+        workstream: {
+          kind: "agent",
+          provider: "codex",
+          role: "Codex",
+          mission: seed.mission,
+          prompt: seed.mission,
+          cwd: seed.cwd,
+          cwdLabel: "termfleet",
+          startupCommand: "codex",
+          launchProfile: "terminal",
+          providerSessionId: seed.providerSessionId,
+          restoreStatus: "resuming",
+          status: "running",
+          phase: "active",
+          currentActivity: "Resuming Codex session",
+          activityKind: "running",
+          activitySource: "structured",
+          lastSummary: "Restoring durable Codex lane",
+          nextAction: "Watch provider resume",
+          terminalOutput: "previous codex transcript",
+          readiness: "provider-ready",
+          readinessCheck: "Provider session id captured",
+          isolationMode: "shared",
+          isolationStatus: "ready",
+          runId: "codex-restored-run",
+          createdAt: Date.now() - 5000,
+          updatedAt: Date.now(),
+          lastActivityAt: Date.now(),
+          events: [],
+          inputQueue: [],
+        },
+      }],
+      groups: [{
+        id: seed.groupId,
+        name: "termfleet",
+        color: "#7aa2f7",
+        projectRoot: seed.cwd,
+        lastActiveTabId: seed.tabId,
+      }],
+      activeTabId: seed.tabId,
+      activeGroupId: seed.groupId,
+      activeGroupFilter: seed.groupId,
+      projectRoot: seed.cwd,
+      workspaceUiState: {
+        workspaceMode: "canvas",
+        terminalRendererMode: "canvas2d",
+        primarySidebarPanel: "map",
+        primarySidebarCollapsed: false,
+        canvasSidebarCollapsed: false,
+      },
+      canvasState: {
+        selectedNodeId: seed.nodeId,
+        selectedNodeIds: [seed.nodeId],
+        viewport: { x: -120, y: 48, zoom: 0.82 },
+        nodes: [{
+          id: seed.nodeId,
+          type: "terminal",
+          title: "Codex restore lane",
+          terminalTabId: seed.tabId,
+          terminalCwd: seed.cwd,
+          x: 240,
+          y: 120,
+          width: 820,
+          height: 460,
+        }],
+      },
+    }));
+    localStorage.setItem("termfleet-restore-seed-applied", "1");
+  }, seeded);
+
+  for (let cycle = 0; cycle < 2; cycle += 1) {
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await page.waitForLoadState("networkidle");
+  }
+
+  await expect(page.getByTestId("canvas-agent-working-on")).toContainText(seeded.mission);
+  await expect(page.getByTestId("canvas-agent-status-now")).toContainText("Resuming Codex session");
+  await expect(page.getByTestId("canvas-agent-status-chips")).toContainText("restore · resuming");
+  await expect(page.getByTestId("canvas-agent-node-workspace")).toContainText("termfleet");
+  await expect(page.getByTestId("canvas-agent-lane-total")).toHaveText("1 agents");
+
+  const hydrated = await page.evaluate((seed) => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => {
+          tabs: Array<{ id: string; workstream?: { kind?: string; providerSessionId?: string; restoreStatus?: string } }>;
+          canvasState: { nodes: Array<{ id: string; terminalTabId?: string }>; selectedNodeId: string | null };
+        };
+      };
+    }).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+    const state = store.getState();
+    return {
+      tabCount: state.tabs.filter((tab) => tab.id === seed.tabId).length,
+      agentCount: state.tabs.filter((tab) => tab.workstream?.kind === "agent").length,
+      nodeCount: state.canvasState.nodes.filter((node) => node.id === seed.nodeId && node.terminalTabId === seed.tabId).length,
+      selectedNodeId: state.canvasState.selectedNodeId,
+      providerSessionId: state.tabs.find((tab) => tab.id === seed.tabId)?.workstream?.providerSessionId,
+      restoreStatus: state.tabs.find((tab) => tab.id === seed.tabId)?.workstream?.restoreStatus,
+    };
+  }, seeded);
+  expect(hydrated).toEqual({
+    tabCount: 1,
+    agentCount: 1,
+    nodeCount: 1,
+    selectedNodeId: seeded.nodeId,
+    providerSessionId: seeded.providerSessionId,
+    restoreStatus: "resuming",
+  });
+
+  await runWorkspaceCommand(page, "show terminal");
+  await expect(page.getByTestId("split-agent-working-on")).toContainText(seeded.mission);
+  await expect(page.getByText("codex · working · restore · resuming")).toBeVisible();
+});
+
 test("agent terminal task sidebar does not rewrite from extracted live summaries", async ({ page }) => {
   await resetWorkspace(page);
   await createAgentWorkstream(page, "Extract checkout follow-ups");

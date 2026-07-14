@@ -60,6 +60,20 @@ export interface TerminalPurpose {
   updatedAt?: number;
 }
 
+export type TerminalMainUserAskSource =
+  | "task-tool"
+  | "status-sidecar"
+  | "terminal-prompt"
+  | "workstream"
+  | "manual";
+
+export interface TerminalMainUserAsk {
+  text: string;
+  source: TerminalMainUserAskSource;
+  updatedAt: number;
+  runId?: string;
+}
+
 export interface TerminalState {
   id: string; // PTY ID
   paneId: string; // Which split pane this belongs to
@@ -76,8 +90,11 @@ export interface TerminalState {
   runClosed?: boolean;
   taskLineup?: TaskLineupItem[];
   purpose?: TerminalPurpose;
+  mainUserAsk?: TerminalMainUserAsk;
   taskSidebarCollapsed?: boolean;
   terminalOutput?: string;
+  terminalVisibleText?: string;
+  terminalVisibleTextUpdatedAt?: number;
   statusSummary?: WorkstreamStatusSummary;
   statusSummaryUpdatedAt?: number;
   statusSummarySource?: WorkstreamStatusSummarySource;
@@ -190,7 +207,7 @@ export type WorkstreamStatusSummaryLifecycle =
   | "stopped"
   | "done";
 export type WorkstreamStatusSummaryConfidence = "low" | "medium" | "high";
-export type WorkstreamStatusSummarySource = "fallback" | "process";
+export type WorkstreamStatusSummarySource = "fallback" | "process" | "sidecar";
 export type WorkstreamExtractionProvenance =
   | "terminal-output"
   | "structured-signal"
@@ -235,6 +252,14 @@ export interface WorkstreamCockpitObject {
 
 export interface WorkstreamStatusSummary {
   task: string;
+  // The status hook's own last-write time (ms epoch). It fires on prompt/tool/turn-end
+  // events and STOPS when the turn ends, so the badge reconciler uses it to tell a live
+  // turn from a finished one — unlike terminal output, which a ticking status bar keeps
+  // fresh forever.
+  updatedAt?: number;
+  // Main operator/user ask for this terminal or agent run. This is distinct from
+  // `task`, which is the current activity/title summary.
+  userTask?: string;
   path: string;
   now: string;
   status: WorkstreamStatusSummaryLifecycle;
@@ -279,6 +304,9 @@ export interface WorkstreamMetadata {
   worktreeCleanupNote?: string;
   startupCommand?: string;
   launchProfile?: WorkstreamLaunchProfile;
+  providerSessionId?: string;
+  restoreStatus?: "live-attached" | "resuming" | "resume-failed" | "reconstructed" | "needs-auth";
+  restoreFailureReason?: string;
   phase?: WorkstreamPhase;
   launchMode?: string;
   readinessCheck?: string;
@@ -383,6 +411,7 @@ export interface WorkspaceUiState {
   fileExplorerWidth: number;
   fileExplorerCollapsed: boolean;
   canvasSidebarCollapsed: boolean;
+  canvasSidebarSortMode: "manual" | "project";
   terminalSidebarCollapsed: boolean;
   primarySidebarCollapsed: boolean;
   primarySidebarPanel: "sessions" | "map";

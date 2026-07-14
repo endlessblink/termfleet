@@ -41,7 +41,11 @@ pub fn run() {
                 use tauri::Manager;
                 if let Some(window) = app.get_webview_window("main") {
                     if let Ok(gtk_window) = window.gtk_window() {
-                        gtk_keys::install_tab_interceptor(&gtk_window, focused_terminal.0.clone());
+                        gtk_keys::install_terminal_key_interceptor(
+                            &gtk_window,
+                            focused_terminal.0.clone(),
+                            app.handle().clone(),
+                        );
                     }
                 }
             }
@@ -49,6 +53,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::daemon_status,
+            commands::agent_status_read_sidecar,
             commands::agent_provider_statuses,
             commands::workstream_git_context,
             commands::workstream_prepare_dedicated_worktree,
@@ -56,6 +61,7 @@ pub fn run() {
             commands::terminal_latency_trace_enabled,
             commands::daemon_ensure_running,
             commands::daemon_ensure_session,
+            commands::daemon_update_agent_recovery_manifest,
             commands::daemon_write_session,
             commands::daemon_resize_session,
             commands::daemon_snapshot_session,
@@ -82,6 +88,9 @@ pub fn run() {
             commands::pty_get_cwd,
             commands::pty_snapshot,
             commands::fs_home_dir,
+            commands::clipboard_read_text,
+            commands::clipboard_write_text,
+            commands::paste_debug_log,
             commands::fs_pick_project_folder,
             commands::fs_list_dir,
             commands::fs_create,

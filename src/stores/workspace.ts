@@ -30,6 +30,7 @@ import { destroyBrowserPtys, writeBrowserPtys } from "../hooks/usePty";
 import type { AgentProviderAvailability } from "../lib/agentProviders";
 import { providerDefinition } from "../lib/agentProviders";
 import type { WorkstreamOpsContext } from "../lib/workstreamOpsContext";
+import { projectEmojiFor } from "../lib/projectEmoji";
 
 const GROUP_COLORS = [
   "#7aa2f7",
@@ -40,8 +41,6 @@ const GROUP_COLORS = [
   "#7dcfff",
   "#ff9e64",
 ];
-const PROJECT_EMOJIS = ["💻", "🧭", "📦", "🧪", "🛠️", "🚀", "🗂️", "🔬", "🧩", "📡", "🧱", "📝"];
-
 const DEFAULT_TAB_EMOJI = "\u2B1B";
 const DEFAULT_TAB_TITLE = "Terminal";
 const DEFAULT_TAB_COLOR = "#7aa2f7";
@@ -88,9 +87,14 @@ function configuredWorkspaceResetState(): boolean {
   return import.meta.env.VITE_WORKSPACE_RESET_STATE === "1";
 }
 
+function configuredTerminalHeaderVerifierFixture(): boolean {
+  return import.meta.env.VITE_TERMINAL_HEADER_VERIFIER_FIXTURE === "1";
+}
+
 const FORCED_TERMINAL_RENDERER_MODE = configuredTerminalRendererMode();
 const FORCED_WORKSPACE_MODE = configuredWorkspaceMode();
 const FORCE_WORKSPACE_RESET_STATE = configuredWorkspaceResetState();
+const TERMINAL_HEADER_VERIFIER_FIXTURE = configuredTerminalHeaderVerifierFixture();
 
 // Reset/verify runs (VITE_WORKSPACE_RESET_STATE=1) clear and re-persist the
 // workspace on load. They run on the SAME origin as the real app, so if they
@@ -128,6 +132,9 @@ type RecentlyClosedTerminal = {
   selectedNodeIds: string[];
 };
 
+type CanvasAlignMode = "left" | "center-x" | "right" | "top" | "center-y" | "bottom";
+type CanvasDistributeMode = "horizontal" | "vertical";
+
 function createWorkstreamEvent(input: WorkstreamEventInput): WorkstreamEvent {
   return {
     id: crypto.randomUUID(),
@@ -159,6 +166,7 @@ const DEFAULT_UI_STATE: WorkspaceUiState = {
   // the work surface by default; open files from the dock rail when needed.
   fileExplorerCollapsed: true,
   canvasSidebarCollapsed: false,
+  canvasSidebarSortMode: "manual",
   terminalSidebarCollapsed: false,
   primarySidebarCollapsed: false,
   primarySidebarPanel: "sessions",
@@ -181,6 +189,8 @@ const DEFAULT_CANVAS_STATE: CanvasState = {
   viewport: { x: 0, y: 0, zoom: 1 },
 };
 const TERMINAL_MAP_NODE_SIZE = { width: 820, height: 460 };
+const CANVAS_PROJECT_LANE_GAP = 48;
+const CANVAS_PROJECT_TERMINAL_GAP = 40;
 const AUTO_READABLE_TERMINAL_SIZES = new Set(["1180x720", "1180x560"]);
 const MAX_RECENTLY_CLOSED_ITEMS = 10;
 const CANVAS_NODE_MIN_SIZE: Record<CanvasNode["type"], { width: number; height: number }> = {
@@ -287,6 +297,11 @@ interface WorkspaceState {
   // mounted. Display-only — NOT persisted and NOT the session's project
   // identity, so a `cd`/`z` shows where you are without renaming the project.
   liveCwds: Record<string, string>;
+  // Git toplevel per PTY id (`git rev-parse --show-toplevel` of the live cwd),
+  // resolved when the cwd changes. Lets the header show the real repo's name as
+  // the project even when the stored project root is a shallow category folder.
+  // Display-only — NOT persisted. "" means resolved-but-not-a-repo.
+  liveGitRoots: Record<string, string>;
   workspaceUiState: WorkspaceUiState;
   canvasState: CanvasState;
   recentlyClosed: RecentlyClosedTerminal[];
@@ -328,6 +343,7 @@ interface WorkspaceState {
   unpinProject: (path: string) => void;
   setActiveTerminal: (id: string | null) => void;
   setLiveCwd: (id: string, cwd: string) => void;
+  setLiveGitRoot: (id: string, gitRoot: string) => void;
   refreshLiveCwd: (id: string) => Promise<void>;
   replaceTerminalTaskLineup: (tabId: string, paneId: string, taskLineup: TaskLineupItem[]) => void;
   setTerminalTaskSidebarCollapsed: (tabId: string, paneId: string, collapsed: boolean, nodeId?: string) => void;
@@ -344,6 +360,11 @@ interface WorkspaceState {
   updateCanvasNode: (id: string, updates: Partial<CanvasNode>) => void;
   renameCanvasNode: (id: string, title: string) => void;
   moveCanvasNodes: (ids: string[], delta: { x: number; y: number }) => void;
+  alignCanvasNodes: (ids: string[], mode: CanvasAlignMode) => void;
+  distributeCanvasNodes: (ids: string[], mode: CanvasDistributeMode) => void;
+  arrangeProjectTerminalRow: (groupId: string) => void;
+  arrangeTerminalProjectLanes: () => void;
+  reorderCanvasNodes: (draggedId: string, targetId: string, place: "before" | "after") => void;
   removeCanvasNode: (id: string) => void;
   selectCanvasNode: (id: string | null) => void;
   selectCanvasNodes: (ids: string[]) => void;
@@ -371,6 +392,39 @@ interface WorkspaceState {
 
 const initialTab = createDefaultTab();
 
+let pendingProjectSwitchFrame: number | null = null;
+let pendingProjectSwitchToken = 0;
+
+function cancelPendingProjectSwitchActivation() {
+  pendingProjectSwitchToken += 1;
+  if (pendingProjectSwitchFrame !== null && typeof window !== "undefined") {
+    window.cancelAnimationFrame(pendingProjectSwitchFrame);
+  }
+  pendingProjectSwitchFrame = null;
+}
+
+function scheduleProjectSwitchActivation(groupId: string | null, tabId: string | null) {
+  cancelPendingProjectSwitchActivation();
+  if (!tabId) return;
+  const token = pendingProjectSwitchToken;
+  const activate = () => {
+    pendingProjectSwitchFrame = null;
+    if (token !== pendingProjectSwitchToken) return;
+    const state = useWorkspaceStore.getState();
+    if (state.activeGroupFilter !== groupId) return;
+    if (!state.tabs.some((tab) => tab.id === tabId)) return;
+    useWorkspaceStore.setState({
+      activeTabId: tabId,
+      activeTerminalId: null,
+    });
+  };
+  if (typeof window === "undefined") {
+    activate();
+    return;
+  }
+  pendingProjectSwitchFrame = window.requestAnimationFrame(activate);
+}
+
 interface PersistedWorkspace {
   tabs?: Tab[];
   groups?: Group[];
@@ -397,6 +451,7 @@ function persistedTerminalSnapshot(terminal: TerminalState): TerminalState {
     durableActivity: terminal.durableActivity,
     taskLineup: terminal.taskLineup,
     purpose: terminal.purpose,
+    mainUserAsk: terminal.mainUserAsk,
     taskSidebarCollapsed: terminal.taskSidebarCollapsed,
     lastStatusAt: Date.now(),
     lastError: "Session will reconnect if the backend is still running; otherwise it will restart.",
@@ -489,11 +544,25 @@ function generatedProjectNameForRoot(projectRoot?: string | null) {
   return normalizedRoot ? projectNameFromPath(normalizedRoot) : null;
 }
 
+function isCategoryProjectName(name?: string | null) {
+  return /^(?:ai-development|content-creation|web-dev|devops|productivity|freelance|misc|bots\+automation|bots-automation)$/i.test(name?.trim() ?? "");
+}
+
+function groupLooksAutoNamed(group: Group, projectRoot?: string | null) {
+  const root = normalizeProjectPath(projectRoot ?? group.projectRoot);
+  const rootTail = root ? projectNameFromPath(root) : undefined;
+  return Boolean(
+    group.name === rootTail ||
+      projectNameIsRootAncestor(group.name, root) ||
+      isCategoryProjectName(group.name),
+  );
+}
+
 function projectNameAfterRootChange(group: Group, nextRoot?: string | null) {
   const previousGeneratedName = generatedProjectNameForRoot(group.projectRoot);
   const nextGeneratedName = generatedProjectNameForRoot(nextRoot);
   if (!nextGeneratedName) return group.name;
-  return !previousGeneratedName || group.name === previousGeneratedName
+  return !previousGeneratedName || group.name === previousGeneratedName || groupLooksAutoNamed(group, nextRoot)
     ? nextGeneratedName
     : group.name;
 }
@@ -514,18 +583,6 @@ function projectIdFromPath(path: string, groups: Group[]) {
   return candidate;
 }
 
-function hashProjectIdentity(value: string) {
-  let hash = 0;
-  for (let index = 0; index < value.length; index += 1) {
-    hash = ((hash << 5) - hash + value.charCodeAt(index)) | 0;
-  }
-  return Math.abs(hash);
-}
-
-function projectEmojiFor(pathOrName: string) {
-  return PROJECT_EMOJIS[hashProjectIdentity(pathOrName) % PROJECT_EMOJIS.length];
-}
-
 function pathBelongsToProject(path: string, projectRoot?: string | null) {
   const normalizedPath = normalizeProjectPath(path);
   const normalizedRoot = normalizeProjectPath(projectRoot);
@@ -533,14 +590,65 @@ function pathBelongsToProject(path: string, projectRoot?: string | null) {
   return normalizedPath === normalizedRoot || normalizedPath.startsWith(`${normalizedRoot}/`);
 }
 
+function projectNameIsRootAncestor(projectName: string, projectRoot?: string | null) {
+  const root = normalizeProjectPath(projectRoot);
+  if (!root) return false;
+  return root.split("/").filter(Boolean).slice(0, -1).includes(projectName);
+}
+
+function projectGroupIsShallowCategory(group: Group, path: string) {
+  const root = normalizeProjectPath(group.projectRoot);
+  if (!root || root === path || !pathBelongsToProject(path, root)) return false;
+  return groupLooksAutoNamed(group, root) && isCategoryProjectName(projectNameFromPath(root));
+}
+
+function isCommonNonProjectChild(name?: string) {
+  return /^(?:src|source|lib|components|pages|app|tests?|spec|docs?|scripts?|bin|dist|build|target|node_modules|src-tauri|public|assets|static|config|configs?)$/i.test(name ?? "");
+}
+
+function projectGroupIsShallowAncestor(group: Group, path: string) {
+  const root = normalizeProjectPath(group.projectRoot);
+  if (!root || root === path || !pathBelongsToProject(path, root)) return false;
+  if (!groupLooksAutoNamed(group, root)) return false;
+  const relativeParts = path.slice(root.length + 1).split("/").filter(Boolean);
+  if (relativeParts.length !== 1) return false;
+  return !isCommonNonProjectChild(relativeParts[0]);
+}
+
 function bestProjectGroupForPath(path: string, groups: Group[]) {
-  return groups
+  const candidates = groups
     .filter((group) => pathBelongsToProject(path, group.projectRoot))
     .sort((left, right) => {
       const leftRoot = normalizeProjectPath(left.projectRoot) ?? "";
       const rightRoot = normalizeProjectPath(right.projectRoot) ?? "";
       return rightRoot.length - leftRoot.length;
-    })[0];
+    });
+  const best = candidates[0];
+  return best && !projectGroupIsShallowCategory(best, path) && !projectGroupIsShallowAncestor(best, path)
+    ? best
+    : undefined;
+}
+
+function shouldDropEmptyGeneratedProjectGroup(group: Group, usedGroupIds: Set<string>) {
+  return (
+    !usedGroupIds.has(group.id) &&
+    group.emojiSource !== "user" &&
+    (isCategoryProjectName(group.name) ||
+      isCategoryProjectName(projectNameFromPath(group.projectRoot ?? "")) ||
+      projectNameIsRootAncestor(group.name, group.projectRoot))
+  );
+}
+
+function shouldDropEmptyGeneratedAncestorGroup(group: Group, groups: Group[], usedGroupIds: Set<string>) {
+  const root = normalizeProjectPath(group.projectRoot);
+  if (!root || usedGroupIds.has(group.id) || group.emojiSource === "user" || !groupLooksAutoNamed(group, root)) {
+    return false;
+  }
+  return groups.some((candidate) =>
+    candidate.id !== group.id &&
+    usedGroupIds.has(candidate.id) &&
+    pathBelongsToProject(candidate.projectRoot ?? "", root),
+  );
 }
 
 function terminalLiveCwd(tab: Tab, liveCwds?: Record<string, string>) {
@@ -553,18 +661,30 @@ function terminalLiveCwd(tab: Tab, liveCwds?: Record<string, string>) {
 function terminalProjectPath(
   tab: Tab,
   nodesByTabId: Map<string, CanvasNode>,
-  liveCwds?: Record<string, string>
+  liveCwds?: Record<string, string>,
+  liveGitRoots?: Record<string, string>
 ) {
-  return normalizeProjectPath(
-    terminalLiveCwd(tab, liveCwds) ?? nodesByTabId.get(tab.id)?.terminalCwd ?? tab.initialCwd
-  );
+  const activeTerminal = tab.terminals.find((terminal) => terminal.paneId === tab.activePaneId);
+  const terminalIds = [
+    ...(activeTerminal ? [activeTerminal.id] : []),
+    ...tab.terminals.filter((terminal) => terminal.id !== activeTerminal?.id).map((terminal) => terminal.id),
+  ];
+  const liveCwd = terminalLiveCwd(tab, liveCwds);
+  const fallbackCwd = nodesByTabId.get(tab.id)?.terminalCwd ?? tab.initialCwd;
+  const currentPath = normalizeProjectPath(liveCwd ?? fallbackCwd);
+  for (const terminalId of terminalIds) {
+    const gitRoot = normalizeProjectPath(liveGitRoots?.[terminalId]);
+    if (gitRoot && currentPath && pathBelongsToProject(currentPath, gitRoot)) return gitRoot;
+  }
+  return currentPath;
 }
 
 function reconcileProjectGroups(
   tabs: Tab[],
   groups: Group[],
   canvasState: CanvasState,
-  liveCwds?: Record<string, string>
+  liveCwds?: Record<string, string>,
+  liveGitRoots?: Record<string, string>
 ) {
   const nodesByTabId = new Map(
     canvasState.nodes
@@ -580,14 +700,17 @@ function reconcileProjectGroups(
   const nextGroups: Group[] = [];
   for (const group of groups) {
     const projectRoot = normalizeProjectPath(group.projectRoot);
+    const generatedName = projectRoot ? projectNameFromPath(projectRoot) : group.name;
+    const name = projectRoot && groupLooksAutoNamed(group, projectRoot) ? generatedName : group.name;
     const generatedEmoji = projectEmojiFor(projectRoot ?? group.name);
     const emoji = group.emojiSource === "user" ? group.emoji ?? generatedEmoji : generatedEmoji;
     const emojiSource: Group["emojiSource"] = group.emojiSource === "user" ? "user" : "generated";
     const normalizedGroup =
       (projectRoot && projectRoot !== group.projectRoot) ||
+      group.name !== name ||
       group.emoji !== emoji ||
       group.emojiSource !== emojiSource
-      ? { ...group, projectRoot: projectRoot ?? group.projectRoot, emoji, emojiSource }
+      ? { ...group, name, projectRoot: projectRoot ?? group.projectRoot, emoji, emojiSource }
       : group;
     if (projectRoot) {
       const canonical = groupsByRoot.get(projectRoot);
@@ -623,7 +746,7 @@ function reconcileProjectGroups(
     // Path-based project membership: live cwd wins, and when nested project roots
     // match the same cwd, the deepest root wins (e.g. parent checkout vs nested app).
     // Otherwise same-path terminals collapse into one canonical project. (TC-034)
-    const path = terminalProjectPath(tab, nodesByTabId, liveCwds);
+    const path = terminalProjectPath(tab, nodesByTabId, liveCwds, liveGitRoots);
     if (!path && tab.groupId && remap.has(tab.groupId)) {
       return { ...tab, groupId: remap.get(tab.groupId) ?? null };
     }
@@ -634,12 +757,18 @@ function reconcileProjectGroups(
     return { ...tab, groupId: group.id };
   });
 
+  const usedGroupIds = new Set(nextTabs.map((tab) => tab.groupId).filter((id): id is string => Boolean(id)));
+  const finalGroups = nextGroups.filter((group) =>
+    !shouldDropEmptyGeneratedProjectGroup(group, usedGroupIds) &&
+    !shouldDropEmptyGeneratedAncestorGroup(group, nextGroups, usedGroupIds)
+  );
+
   const changed =
-    nextGroups.length !== groups.length ||
-    nextGroups.some((group, index) => group !== groups[index]) ||
+    finalGroups.length !== groups.length ||
+    finalGroups.some((group, index) => group !== groups[index]) ||
     nextTabs.some((tab, index) => tab !== tabs[index]);
 
-  return changed ? { tabs: nextTabs, groups: nextGroups } : { tabs, groups };
+  return changed ? { tabs: nextTabs, groups: finalGroups } : { tabs, groups };
 }
 
 function activeProjectContextAfterReconcile(
@@ -741,6 +870,141 @@ function normalizeCanvasState(canvasState: CanvasState | undefined, tabs: Tab[])
 function loadPersistedWorkspace(): PersistedWorkspace {
   if (FORCE_WORKSPACE_RESET_STATE) {
     localStorage.removeItem(WORKSPACE_STORAGE_KEY);
+    if (TERMINAL_HEADER_VERIFIER_FIXTURE) {
+      const root = import.meta.env.VITE_TERMINAL_HEADER_VERIFIER_ROOT || "/tmp/tw-terminal-header-live-all";
+      const longPath = import.meta.env.VITE_TERMINAL_HEADER_VERIFIER_LONG_PATH || `${root}/deep/workspace/path/for/header/verification`;
+      const now = Date.now();
+      const verifierTerminal = (
+        paneId: string,
+        cwd: string,
+        task: string,
+        activity: string,
+        status: "working" | "idle" = "working",
+      ): TerminalState => ({
+        id: paneId,
+        paneId,
+        cols: 93,
+        rows: 26,
+        status: status === "idle" ? "reconnected" : "running",
+        currentActivity: activity,
+        activityUpdatedAt: now,
+        activeRunId: `${paneId}-run`,
+        mainUserAsk: {
+          text: task,
+          source: "manual",
+          updatedAt: now,
+          runId: `${paneId}-run`,
+        },
+        taskLineup: [{
+          id: `${paneId}-task`,
+          runId: `${paneId}-run`,
+          content: task,
+          status: status === "idle" ? "completed" : "in_progress",
+          priority: "high",
+          source: "operator",
+          updatedAt: now,
+        }],
+        statusSummary: {
+          task,
+          path: cwd,
+          now: activity,
+          status,
+          provider: "shell",
+          confidence: "high",
+          tasksFromTodoWrite: true,
+        },
+        statusSummaryUpdatedAt: now,
+        statusSummarySource: "process",
+        lastStatusAt: now,
+      });
+      const tab: Tab = {
+        id: "terminal-header-verifier-tab",
+        title: "Header verifier",
+        emoji: "\u{1F4CB}",
+        color: "#e0af68",
+        groupId: "terminal-header-verifier-group",
+        initialCwd: root,
+        terminals: [
+          verifierTerminal(
+            "terminal-header-verifier-prompt",
+            root,
+            "Choosing the next GI-lightmap step",
+            "Waiting for the operator decision",
+          ),
+          verifierTerminal(
+            "terminal-header-verifier-stale",
+            root,
+            "Checking stale transcript protection",
+            "Ignoring completed test output",
+          ),
+          verifierTerminal(
+            "terminal-header-verifier-idle",
+            root,
+            "Keeping the idle verifier pane stable",
+            "Idle",
+            "idle",
+          ),
+          verifierTerminal(
+            "terminal-header-verifier-long-path",
+            longPath,
+            "Verifying long path rendering",
+            "Showing the full structured path",
+          ),
+        ],
+        splitLayout: {
+          id: "terminal-header-verifier-root",
+          type: "split",
+          direction: "vertical",
+          sizes: [50, 50],
+          children: [
+            {
+              id: "terminal-header-verifier-top",
+              type: "split",
+              direction: "horizontal",
+              sizes: [50, 50],
+              children: [
+                { id: "terminal-header-verifier-prompt", type: "terminal", cwd: root },
+                { id: "terminal-header-verifier-stale", type: "terminal", cwd: root },
+              ],
+            },
+            {
+              id: "terminal-header-verifier-bottom",
+              type: "split",
+              direction: "horizontal",
+              sizes: [50, 50],
+              children: [
+                { id: "terminal-header-verifier-idle", type: "terminal", cwd: root },
+                { id: "terminal-header-verifier-long-path", type: "terminal", cwd: longPath },
+              ],
+            },
+          ],
+        },
+        activePaneId: "terminal-header-verifier-prompt",
+      };
+      return {
+        tabs: [tab],
+        groups: [{
+          id: "terminal-header-verifier-group",
+          name: "header-verifier",
+          color: "#e0af68",
+          emoji: "\u{1F4CB}",
+          emojiSource: "generated",
+          projectRoot: root,
+          lastActiveTabId: tab.id,
+        }],
+        activeTabId: tab.id,
+        activeGroupId: "terminal-header-verifier-group",
+        activeGroupFilter: "terminal-header-verifier-group",
+        projectRoot: root,
+        workspaceUiState: {
+          workspaceMode: "split",
+          terminalRendererMode: "canvas2d",
+          primarySidebarCollapsed: true,
+          terminalSidebarCollapsed: true,
+          canvasSidebarCollapsed: true,
+        },
+      };
+    }
     return {};
   }
 
@@ -1362,6 +1626,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     (path): path is string => typeof path === "string" && path.trim().length > 0
   ),
   liveCwds: {},
+  liveGitRoots: {},
   workspaceUiState: normalizeWorkspaceUiState(persisted.workspaceUiState),
   canvasState: restoredCanvasState,
   recentlyClosed: [],
@@ -1373,7 +1638,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     set((state) => {
       if (tabs.length === 0) return { hydrating: false };
       const canvasState = normalizeCanvasState(state.canvasState, tabs);
-      const projects = reconcileProjectGroups(tabs, state.groups, canvasState, state.liveCwds);
+      const projects = reconcileProjectGroups(tabs, state.groups, canvasState, state.liveCwds, state.liveGitRoots);
       const nextActive =
         projects.tabs.find((tab) => tab.id === activeTabId)?.id ?? projects.tabs[0].id;
       return {
@@ -1402,7 +1667,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       // Reconcile so the new terminal joins the single project for its path
       // (and any same-path siblings collapse together) instead of forming a
       // separate row. (TC-034)
-      const projects = reconcileProjectGroups(tabs, state.groups, canvasState, state.liveCwds);
+      const projects = reconcileProjectGroups(tabs, state.groups, canvasState, state.liveCwds, state.liveGitRoots);
       const newTabGroupId = projects.tabs.find((tab) => tab.id === newTab.id)?.groupId ?? null;
       const newTabProject = newTabGroupId
         ? projects.groups.find((group) => group.id === newTabGroupId)
@@ -1582,6 +1847,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   },
 
   setActiveTab: (id: string) => {
+    cancelPendingProjectSwitchActivation();
     set((state) => {
       const activeTab = state.tabs.find((tab) => tab.id === id);
       const linkedNode = state.canvasState.nodes.find((node) => node.terminalTabId === id);
@@ -1648,7 +1914,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       // project for that path (collapsing same-path terminals). Only on cwd
       // updates to avoid regrouping work on unrelated updates. (TC-034)
       if (updates.initialCwd !== undefined) {
-        const projects = reconcileProjectGroups(tabs, state.groups, canvasState, state.liveCwds);
+        const projects = reconcileProjectGroups(tabs, state.groups, canvasState, state.liveCwds, state.liveGitRoots);
         return {
           tabs: projects.tabs,
           groups: projects.groups,
@@ -2187,6 +2453,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   },
 
   switchProject: (groupId: string | null) => {
+    let nextTabId: string | null = null;
     set((state) => {
       const project = groupId ? state.groups.find((group) => group.id === groupId) : null;
       const projectTabs = groupId === null
@@ -2201,15 +2468,15 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         groupId === null
           ? nextTab?.initialCwd ?? null
           : project?.projectRoot ?? nextTab?.initialCwd ?? null;
+      nextTabId = nextTab?.id ?? null;
 
       return {
         activeGroupFilter: groupId,
         activeGroupId: groupId,
-        activeTabId: nextTab?.id ?? state.activeTabId,
-        activeTerminalId: null,
         projectRoot: nextRoot,
       };
     });
+    scheduleProjectSwitchActivation(groupId, nextTabId);
   },
 
   setProjectRoot: (path: string | null, syncTerminal = true) => {
@@ -2286,9 +2553,24 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     set((state) => {
       if (!id || !cwd || state.liveCwds[id] === cwd) return {};
       const liveCwds = { ...state.liveCwds, [id]: cwd };
-      const projects = reconcileProjectGroups(state.tabs, state.groups, state.canvasState, liveCwds);
+      const projects = reconcileProjectGroups(state.tabs, state.groups, state.canvasState, liveCwds, state.liveGitRoots);
       return {
         liveCwds,
+        tabs: projects.tabs,
+        groups: projects.groups,
+        terminalGroups: projects.groups,
+        ...activeProjectContextAfterReconcile(state, projects.tabs, projects.groups),
+      };
+    });
+  },
+
+  setLiveGitRoot: (id: string, gitRoot: string) => {
+    set((state) => {
+      if (!id || state.liveGitRoots[id] === gitRoot) return {};
+      const liveGitRoots = { ...state.liveGitRoots, [id]: gitRoot };
+      const projects = reconcileProjectGroups(state.tabs, state.groups, state.canvasState, state.liveCwds, liveGitRoots);
+      return {
+        liveGitRoots,
         tabs: projects.tabs,
         groups: projects.groups,
         terminalGroups: projects.groups,
@@ -2302,7 +2584,20 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     try {
       const { invoke } = await import("@tauri-apps/api/core");
       const cwd = await getPtyCwd(id, invoke);
-      if (cwd) useWorkspaceStore.getState().setLiveCwd(id, cwd);
+      if (!cwd) return;
+      const previousCwd = useWorkspaceStore.getState().liveCwds[id];
+      useWorkspaceStore.getState().setLiveCwd(id, cwd);
+      // Resolve the git toplevel only when the cwd actually changed — it's the
+      // authoritative project boundary the header pill names. Failures (not a
+      // repo / no git) clear to "" so the label falls back to the project name.
+      if (cwd !== previousCwd) {
+        try {
+          const ctx = await invoke<{ gitRoot?: string | null }>("workstream_git_context", { cwd });
+          useWorkspaceStore.getState().setLiveGitRoot(id, ctx?.gitRoot?.trim() || "");
+        } catch {
+          // git unavailable; keep the last known git root.
+        }
+      }
     } catch {
       // PTY may be gone or pre-attach; keep the last known cwd.
     }
@@ -2365,7 +2660,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   setWorkspaceMode: (mode: WorkspaceMode) => {
     set((state) => {
       const canvasState = normalizeCanvasState(state.canvasState, state.tabs);
-      const projects = reconcileProjectGroups(state.tabs, state.groups, canvasState, state.liveCwds);
+      const projects = reconcileProjectGroups(state.tabs, state.groups, canvasState, state.liveCwds, state.liveGitRoots);
       return {
         workspaceUiState: {
           ...state.workspaceUiState,
@@ -2382,7 +2677,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   reconcileCanvasState: () => {
     set((state) => {
       const canvasState = normalizeCanvasState(state.canvasState, state.tabs);
-      const projects = reconcileProjectGroups(state.tabs, state.groups, canvasState, state.liveCwds);
+      const projects = reconcileProjectGroups(state.tabs, state.groups, canvasState, state.liveCwds, state.liveGitRoots);
       return {
         tabs: projects.tabs,
         groups: projects.groups,
@@ -2394,11 +2689,12 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
 
   reconcileProjectGroups: () => {
     set((state) => {
-      const projects = reconcileProjectGroups(state.tabs, state.groups, state.canvasState, state.liveCwds);
+      const projects = reconcileProjectGroups(state.tabs, state.groups, state.canvasState, state.liveCwds, state.liveGitRoots);
       return {
         tabs: projects.tabs,
         groups: projects.groups,
         terminalGroups: projects.groups,
+        ...activeProjectContextAfterReconcile(state, projects.tabs, projects.groups),
       };
     });
   },
@@ -2535,6 +2831,192 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         ),
       },
     }));
+  },
+
+  alignCanvasNodes: (ids: string[], mode: CanvasAlignMode) => {
+    if (ids.length < 2) return;
+    const idSet = new Set(ids);
+    set((state) => {
+      const targets = state.canvasState.nodes.filter((node) => idSet.has(node.id));
+      if (targets.length < 2) return {};
+      const minX = Math.min(...targets.map((node) => node.x));
+      const maxX = Math.max(...targets.map((node) => node.x + node.width));
+      const minY = Math.min(...targets.map((node) => node.y));
+      const maxY = Math.max(...targets.map((node) => node.y + node.height));
+      const centerX = minX + (maxX - minX) / 2;
+      const centerY = minY + (maxY - minY) / 2;
+      return {
+        canvasState: {
+          ...state.canvasState,
+          nodes: state.canvasState.nodes.map((node) => {
+            if (!idSet.has(node.id)) return node;
+            if (mode === "left") return { ...node, x: snapCanvasCoordinate(minX) };
+            if (mode === "center-x") return { ...node, x: snapCanvasCoordinate(centerX - node.width / 2) };
+            if (mode === "right") return { ...node, x: snapCanvasCoordinate(maxX - node.width) };
+            if (mode === "top") return { ...node, y: snapCanvasCoordinate(minY) };
+            if (mode === "center-y") return { ...node, y: snapCanvasCoordinate(centerY - node.height / 2) };
+            return { ...node, y: snapCanvasCoordinate(maxY - node.height) };
+          }),
+        },
+      };
+    });
+  },
+
+  distributeCanvasNodes: (ids: string[], mode: CanvasDistributeMode) => {
+    if (ids.length < 3) return;
+    const idSet = new Set(ids);
+    set((state) => {
+      const targets = state.canvasState.nodes.filter((node) => idSet.has(node.id));
+      if (targets.length < 3) return {};
+      const sorted = [...targets].sort((left, right) =>
+        mode === "horizontal" ? left.x - right.x : left.y - right.y
+      );
+      const first = sorted[0];
+      const last = sorted[sorted.length - 1];
+      const start = mode === "horizontal" ? first.x : first.y;
+      const end = mode === "horizontal" ? last.x + last.width : last.y + last.height;
+      const occupied = sorted.reduce(
+        (sum, node) => sum + (mode === "horizontal" ? node.width : node.height),
+        0
+      );
+      const gap = (end - start - occupied) / (sorted.length - 1);
+      let cursor = start;
+      const nextPositions = new Map<string, number>();
+      for (const node of sorted) {
+        nextPositions.set(node.id, cursor);
+        cursor += (mode === "horizontal" ? node.width : node.height) + gap;
+      }
+      return {
+        canvasState: {
+          ...state.canvasState,
+          nodes: state.canvasState.nodes.map((node) => {
+            const next = nextPositions.get(node.id);
+            if (next === undefined) return node;
+            return mode === "horizontal"
+              ? { ...node, x: snapCanvasCoordinate(next) }
+              : { ...node, y: snapCanvasCoordinate(next) };
+          }),
+        },
+      };
+    });
+  },
+
+  arrangeProjectTerminalRow: (groupId: string) => {
+    set((state) => {
+      const tabIds = new Set(
+        state.tabs
+          .filter((tab) => tab.groupId === groupId)
+          .map((tab) => tab.id)
+      );
+      if (tabIds.size === 0) return {};
+      const targets = state.canvasState.nodes.filter((node) =>
+        node.type === "terminal" &&
+        node.terminalTabId &&
+        tabIds.has(node.terminalTabId)
+      );
+      if (targets.length < 2) return {};
+      const rowY = Math.min(...targets.map((node) => node.y));
+      let cursorX = Math.min(...targets.map((node) => node.x));
+      const nextPositions = new Map<string, { x: number; y: number }>();
+      for (const node of targets) {
+        nextPositions.set(node.id, { x: cursorX, y: rowY });
+        cursorX += node.width + 32;
+      }
+      return {
+        canvasState: {
+          ...state.canvasState,
+          nodes: state.canvasState.nodes.map((node) => {
+            const next = nextPositions.get(node.id);
+            return next
+              ? {
+                  ...node,
+                  x: snapCanvasCoordinate(next.x),
+                  y: snapCanvasCoordinate(next.y),
+                }
+              : node;
+          }),
+        },
+      };
+    });
+  },
+
+  arrangeTerminalProjectLanes: () => {
+    set((state) => {
+      const tabsById = new Map(state.tabs.map((tab) => [tab.id, tab]));
+      const terminalNodes = state.canvasState.nodes.filter((node) =>
+        node.type === "terminal" &&
+        node.terminalTabId &&
+        tabsById.has(node.terminalTabId)
+      );
+      if (terminalNodes.length < 2) return {};
+
+      const minX = Math.min(...terminalNodes.map((node) => node.x));
+      const minY = Math.min(...terminalNodes.map((node) => node.y));
+      const lanes = new Map<string, CanvasNode[]>();
+
+      for (const node of terminalNodes) {
+        const tab = tabsById.get(node.terminalTabId!);
+        const projectId = tab?.groupId ?? "unassigned";
+        const lane = lanes.get(projectId) ?? [];
+        lane.push(node);
+        lanes.set(projectId, lane);
+      }
+
+      let cursorX = minX;
+      const nextPositions = new Map<string, { x: number; y: number }>();
+
+      const sortedLanes = [...lanes.entries()].sort(
+        ([, leftNodes], [, rightNodes]) => {
+          const leftX = Math.min(...leftNodes.map((node) => node.x));
+          const rightX = Math.min(...rightNodes.map((node) => node.x));
+          if (leftX !== rightX) return leftX - rightX;
+          const leftY = Math.min(...leftNodes.map((node) => node.y));
+          const rightY = Math.min(...rightNodes.map((node) => node.y));
+          return leftY - rightY;
+        }
+      );
+      for (const [, laneNodes] of sortedLanes) {
+        const sortedNodes = [...laneNodes].sort((left, right) => left.y - right.y || left.x - right.x);
+        let cursorY = minY;
+        const laneWidth = Math.max(...sortedNodes.map((node) => node.width));
+        for (const node of sortedNodes) {
+          nextPositions.set(node.id, { x: cursorX, y: cursorY });
+          cursorY += node.height + CANVAS_PROJECT_TERMINAL_GAP;
+        }
+        cursorX += laneWidth + CANVAS_PROJECT_LANE_GAP;
+      }
+
+      return {
+        canvasState: {
+          ...state.canvasState,
+          nodes: state.canvasState.nodes.map((node) => {
+            const next = nextPositions.get(node.id);
+            return next
+              ? {
+                  ...node,
+                  x: snapCanvasCoordinate(next.x),
+                  y: snapCanvasCoordinate(next.y),
+                }
+              : node;
+          }),
+        },
+      };
+    });
+  },
+
+  reorderCanvasNodes: (draggedId: string, targetId: string, place: "before" | "after") => {
+    if (draggedId === targetId) return;
+    set((state) => {
+      const nodes = [...state.canvasState.nodes];
+      const from = nodes.findIndex((node) => node.id === draggedId);
+      if (from < 0) return {};
+      const [moved] = nodes.splice(from, 1);
+      let to = nodes.findIndex((node) => node.id === targetId);
+      if (to < 0) return {};
+      if (place === "after") to += 1;
+      nodes.splice(to, 0, moved);
+      return { canvasState: { ...state.canvasState, nodes } };
+    });
   },
 
   removeCanvasNode: (id: string) => {

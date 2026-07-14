@@ -160,12 +160,14 @@ function parseOllamaResponse(raw, payload) {
   const parsed = JSON.parse(extractJsonObject(text));
   const fallback = fallbackSummary(payload);
   const task = cleanText(parsed.task);
+  const userTask = cleanText(parsed.userTask) || cleanText(fallback.userTask);
   const path = cleanText(parsed.path);
   const now = cleanText(parsed.now);
   return {
     ...fallback,
     ...parsed,
     task: task && !isNoisy(task) ? task : fallback.task,
+    userTask: userTask && !isNoisy(userTask) ? userTask : undefined,
     path: path && !isNoisy(path) ? path : fallback.path,
     now: now && !isNoisy(now) ? now : fallback.now,
     status: parsed.status || fallback.status,

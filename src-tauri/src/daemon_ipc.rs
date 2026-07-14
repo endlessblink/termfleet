@@ -70,10 +70,7 @@ mod tests {
 
     #[test]
     fn bind_restricts_socket_inode_to_owner() {
-        let dir = std::env::temp_dir().join(format!(
-            "tf-ipc-bind-test-{}",
-            std::process::id()
-        ));
+        let dir = std::env::temp_dir().join(format!("tf-ipc-bind-test-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let sock = dir.join("daemon.sock");
@@ -87,10 +84,7 @@ mod tests {
 
     #[test]
     fn peer_from_same_process_is_authorized() {
-        let dir = std::env::temp_dir().join(format!(
-            "tf-ipc-peer-test-{}",
-            std::process::id()
-        ));
+        let dir = std::env::temp_dir().join(format!("tf-ipc-peer-test-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let sock = dir.join("daemon.sock");

@@ -31,6 +31,7 @@ const mapTerminalRenderingSpec = readFileSync(join(root, "tests/map-terminal-ren
 const terminalMouse = readFileSync(join(root, "src/lib/terminalMouse.ts"), "utf8");
 const mapNodeFilters = readFileSync(join(root, "src/lib/mapNodeFilters.ts"), "utf8");
 const localServices = readFileSync(join(root, "src/lib/localServices.ts"), "utf8");
+const projectEmoji = readFileSync(join(root, "src/lib/projectEmoji.ts"), "utf8");
 const terminalMouseSpec = readFileSync(join(root, "tests/terminal-mouse.spec.ts"), "utf8");
 const legacyPromptRepair = readFileSync(join(root, "src/lib/legacyPromptRepair.ts"), "utf8");
 const legacyPromptRepairSpec = readFileSync(join(root, "tests/legacy-prompt-repair.spec.ts"), "utf8");
@@ -57,6 +58,8 @@ const standaloneDaemonSmoke = readFileSync(join(root, "scripts/verify-standalone
 const evidenceBundle = readFileSync(join(root, "scripts/export-evidence-bundle.mjs"), "utf8");
 const evidenceBundleSpec = readFileSync(join(root, "scripts/verify-evidence-bundle.mjs"), "utf8");
 const canvasLiveSmoke = readFileSync(join(root, "scripts/verify-canvas-live.sh"), "utf8");
+const askUserQuestionLiveSmoke = readFileSync(join(root, "scripts/verify-ask-user-question-live.sh"), "utf8");
+const realDevWindowSmoke = readFileSync(join(root, "scripts/verify-real-dev-window.sh"), "utf8");
 const bracketedPasteSmoke = readFileSync(join(root, "scripts/verify-bracketed-paste.sh"), "utf8");
 const legacyPromptLiveSmoke = readFileSync(join(root, "scripts/verify-legacy-prompt-repair.sh"), "utf8");
 const mapShellAnchorSmoke = readFileSync(join(root, "scripts/verify-map-shell-anchor.sh"), "utf8");
@@ -72,8 +75,12 @@ const design = readOptional(join(root, "../DESIGN.md"));
 const switchProjectBody = workspaceStore.match(
   /switchProject: \(groupId: string \| null\) => \{([\s\S]*?)\n  \},\n\n  setProjectRoot:/
 )?.[1] ?? "";
+const terminalProjectionGuard = terminalCanvas.match(
+  /const preservesProjectionSize = \(\) =>[\s\S]*?;\n\n    channel\.onmessage/
+)?.[0] ?? "";
 const liveHarnesses = [
   canvasLiveSmoke,
+  askUserQuestionLiveSmoke,
   canvasTerminalSmoke,
   bracketedPasteSmoke,
   legacyPromptLiveSmoke,
@@ -292,7 +299,8 @@ const checks = [
       /Math\.min\(0, shell\.clientHeight - logicalH\)/.test(terminalCanvas) &&
       /syncOverlaySize\(\);\s*if \(mapProjection && modesRef\.current\.altScreen\)/.test(terminalCanvas) &&
       !/Math\.max\(projectionMinScale/.test(terminalCanvas) &&
-      /modesRef\.current\.mouseReport/.test(terminalCanvas) &&
+      !/modesRef\.current\.mouseReport/.test(terminalProjectionGuard) &&
+      /AskUserQuestion-style primary-screen\s+\/\/ prompts/.test(terminalCanvas) &&
       /strip_unsupported_control_sequences/.test(vtGrid) &&
       /SYNC_OUTPUT_ON: &\[u8\] = b"\\x1b\[\?2026h"/.test(vtGrid) &&
       /split_synchronized_output_markers_never_render_as_text/.test(vtGrid) &&
@@ -340,7 +348,7 @@ const checks = [
       /await invoke\("grid_scroll_to_bottom", \{ id: sessionId \}\);/.test(terminalCanvas) &&
       /invoke\("grid_scroll_to_bottom", \{ id: sessionId \}\)/.test(terminalCanvas) &&
       /const scheduleScrollToBottom = \(\) => \{[\s\S]*scrollToBottomPendingRef\.current[\s\S]*requestAnimationFrame/.test(terminalCanvas) &&
-      /const send = \(data: string, seqId = nextTerminalInputSequence\(\), source = "canvas-send"\) => \{\s*scheduleScrollToBottom\(\);/.test(terminalCanvas) &&
+      /const send = \(data: string, seqId = nextTerminalInputSequence\(\), source = "canvas-send"\) => \{[\s\S]*?scheduleScrollToBottom\(\);[\s\S]*?queue\.queue\(data, seqId\);/.test(terminalCanvas) &&
       /send\(bytes, seqId, "canvas-capture-keydown"\)/.test(terminalCanvas) &&
       /createDaemonInputQueue/.test(terminalCanvas) &&
       /send\(bytes, seqId, "canvas-keydown"\)/.test(terminalCanvas) &&
@@ -348,6 +356,8 @@ const checks = [
       /trace_pty\("grid\.scroll"/.test(ptyCommands) &&
       /trace_pty\("grid\.scroll_to_bottom"/.test(ptyCommands) &&
       /cursor_visible: offset == 0 && mode\.contains\(TermMode::SHOW_CURSOR\)/.test(vtGrid) &&
+      /this\.cursorVisible = frame\.displayOffset === 0 && frame\.cursorVisible;/.test(gridBuffer) &&
+      /if \(!snapshot\.cursorVisible \|\| snapshot\.displayOffset > 0\) return;/.test(gridRenderer) &&
       /scrolled_history_hides_cursor_until_bottom_reset/.test(vtGrid),
     message: "Canvas input must return scrolled-back grid viewports to live bottom, and scrolled history must not render the live cursor.",
   },
@@ -410,7 +420,7 @@ const checks = [
       !/terminalRenderScaleForZoom/.test(magicCanvas) &&
       !/activeTerminalContent/.test(magicCanvas) &&
       /imageRendering: "auto"/.test(terminalCanvas) &&
-      /willChange: "transform"/.test(magicCanvas) &&
+      !/willChange: "transform"/.test(magicCanvas) &&
       /function snapTerminalPixel/.test(magicCanvas) &&
       /snapTerminalPixel\(nextX, node\.type, nextZoom\)/.test(magicCanvas) &&
       /snapTerminalPixel\(nextY, node\.type, nextZoom\)/.test(magicCanvas) &&
@@ -421,7 +431,7 @@ const checks = [
       /const zoom = 1;/.test(workbenchSidebar) &&
       /const zoom = node\.type === "terminal" \? 1 : canvasState\.viewport\.zoom;/.test(workbenchSidebar) &&
       /Math\.round\(nextX\)/.test(workbenchSidebar),
-    message: "Focused map terminals must preserve map geometry and use fixed backing-store supersampling, not zoom-derived renderer props or inverse CSS scaling that crop/churn live TUIs.",
+    message: "Focused map terminals must preserve map geometry and use fixed backing-store supersampling without permanent transform promotion that keeps WebKitGTK busy on large maps.",
   },
   {
     // Pan perf regression: dragging the map must NOT write canvasState.viewport on
@@ -487,6 +497,32 @@ const checks = [
       /BRACKETED_PASTE_NOT_REPLAYED_AFTER_DISABLED_KEY/.test(bracketedPasteSmoke) &&
       /BRACKETED_PASTE_OK/.test(bracketedPasteSmoke),
     message: "Verification scripts must prove real clipboard paste follows current bracketed-paste mode, preserves long agent-TUI payload handling, and does not replay on later keys.",
+  },
+  {
+    ok: /"verify:ask-user-question-live": "scripts\/verify-ask-user-question-live\.sh"/.test(packageJson) &&
+      /ASK_USER_QUESTION_LIVE_OUT/.test(askUserQuestionLiveSmoke) &&
+      /xvfb-run -a/.test(askUserQuestionLiveSmoke) &&
+      /VITE_WORKSPACE_MODE=canvas/.test(askUserQuestionLiveSmoke) &&
+      /VITE_TERMINAL_RENDERER_MODE=canvas2d/.test(askUserQuestionLiveSmoke) &&
+      /How should the extension authenticate to your arthouse backend/.test(askUserQuestionLiveSmoke) &&
+      /\\033\[\?1000h\\033\[\?1006h/.test(askUserQuestionLiveSmoke) &&
+      /ASK-USER-QUESTION-LIVE-INPUT/.test(askUserQuestionLiveSmoke) &&
+      /snapshotSession/.test(askUserQuestionLiveSmoke) &&
+      /ASK_USER_QUESTION_LIVE_TEXT_ONCE_IN_SNAPSHOT/.test(askUserQuestionLiveSmoke) &&
+      /ASK_USER_QUESTION_LIVE_SCREENSHOT_OK/.test(askUserQuestionLiveSmoke) &&
+      /ASK_USER_QUESTION_LIVE_OK/.test(askUserQuestionLiveSmoke),
+    message: "AskUserQuestion live smoke must drive a real Tauri map terminal PTY, verify one-time prompt text in the daemon snapshot, and save screenshot evidence.",
+  },
+  {
+    ok: /"verify:real-dev-window": "scripts\/verify-real-dev-window\.sh"/.test(packageJson) &&
+      /REAL_DEV_WINDOW_STALE_BINARY/.test(realDevWindowSmoke) &&
+      /REAL_DEV_WINDOW_STALE_FRONTEND/.test(realDevWindowSmoke) &&
+      /buildShellTerminalHeaderViewModel/.test(realDevWindowSmoke) &&
+      /data-header-workspace-source/.test(realDevWindowSmoke) &&
+      /xdotool search --pid/.test(realDevWindowSmoke) &&
+      /import -window/.test(realDevWindowSmoke) &&
+      /REAL_DEV_WINDOW_OK/.test(realDevWindowSmoke),
+    message: "Real dev window verifier must reject stale app/daemon binaries, ensure current header code is served, and save screenshot evidence from the visible Tauri window.",
   },
   {
     ok: /"verify:resize-storm": "scripts\/verify-resize-storm\.sh"/.test(packageJson) &&
@@ -638,7 +674,8 @@ const checks = [
   },
   {
     ok: /emoji\?: string;/.test(types) &&
-      /PROJECT_EMOJIS/.test(workspaceStore) &&
+      /FALLBACK_PROJECT_EMOJIS/.test(projectEmoji) &&
+      /export function projectEmojiFor/.test(projectEmoji) &&
       /projectEmojiFor/.test(workspaceStore) &&
       /Project emoji/.test(workbenchSidebar) &&
       /data-testid="project-emoji-picker"/.test(workbenchSidebar) &&

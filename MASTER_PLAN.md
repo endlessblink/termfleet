@@ -92,13 +92,21 @@ were retired during consolidation.
 | TC-038     | Stale sessions appear randomly in the sessions/scope panel: old/dead sessions surface in the list with no live PTY                                                                                                 | P2       | TODO              | TC-035                  |
 | TC-039     | Task sidebar must be part of the same node unit: the expanded TASKS list floats detached to the right with a gap instead of reading as one card with the terminal                                                   | P1       | DONE (2026-06-23) | TC-037                  |
 | TC-040     | Restarting the app resurrects deleted/closed dead terminals: closed/killed sessions reappear as map nodes on restart instead of staying gone. Fix: orphan-session recovery now self-heals ONLY a genuinely wiped layout; with any saved layout the user's tabs are authoritative so a closed terminal stays closed. Regression now covers both localStorage and disk-layout hydration paths. | P1       | DONE (2026-06-24) | TC-035                  |
-| TC-041     | Full agent resurrection on restart: after closing the app or rebooting the PC, bring the live running agent (Claude/Codex) back, not just its saved scrollback/context text — the agent process should resume, not just be readable                                | P0       | TODO              | TC-036, TC-040          |
+| TC-041     | Restart-survivable agent restore: after app restart or PC reboot, restore agent layout, cwd, provider, launch command, scrollback snapshot, durable provider session id, and resume/reconstruct status without promising process-memory resurrection                  | P0       | DONE (2026-06-30) | TC-036, TC-040          |
 | TC-042     | Harden map terminal node visuals from every direction: kill the large blank gap, vertical anchoring drift, dead space, header/rail/sidebar alignment issues, and empty-state rendering regressions. Closed as the visual-hardening umbrella: selected terminal sizing, task-sidebar docking, shell prompt anchoring, map overview previews, zellij/TUI readability, and wheel/render follow-ups are now covered by source, browser, and live visual canaries. Proof: `npm run verify:map-terminals`, `npm run verify:canvas-all`, `APP_BUDGET=180 npm run verify:map-shell-anchor`, `APP_BUDGET=360 npm run verify:zellij-map`, and the dependent TC-043/TC-047 proof passed on 2026-06-24. | P1       | DONE (2026-06-24) | TC-037, TC-039          |
 | TC-043     | Scroll up dead on agent terminals (Codex+Claude): root cause = mouse-report stole the wheel even on the PRIMARY screen, where the scrollback lives in our grid and the inline agent ignores wheel — so scroll-up black-holed. Fix: mouse-report owns the wheel only on the alternate screen; primary-screen wheel → our history. Regression: `tests/terminal-mouse.spec.ts` asserts primary-screen mouse-report wheel routes to history while alternate-screen mouse-report still sends VT mouse reports. Proof: `npm run verify:terminal-mouse` and `npm run verify:map-terminals` passed on 2026-06-24. | P1       | DONE (2026-06-24) | TC-042                  |
 | TC-044     | Project/group label defaults to "termfleet" when no group is selected: a terminal running in another path (e.g. bots+automation/bina-bot) shows the "termfleet" chip instead of its own project derived from the cwd                                                  | P1       | DONE (2026-06-23) | TC-034                  |
-| TC-045     | Codex-style full-screen TUI rendering broke in the canvas terminal: rows blanked/fragmented with a large empty band even though the content existed. Closed as the rendering-pipeline slice: true alternate-screen TUIs now keep projection-stable sizing instead of destructive reflow, while normal shells still reflow. Proof: `APP_BUDGET=360 npm run verify:canvas-live` rendered live vim/htop/tmux with input/output and repaint evidence, and `APP_BUDGET=360 npm run verify:zellij-map` reproduced the wide-to-map full-screen TUI transition with visual content/repaint and no grid/PTY resize drift. TC-036/TC-041 still own actual Codex/Claude process resurrection after restart. | P1       | DONE (2026-06-24) | TC-037, TC-017          |
-| TC-046     | Terminal copy/paste shortcuts unreliable: Ctrl+Shift+C and Ctrl+Shift+V did not consistently copy the selection / paste from the clipboard in the canvas terminal. Fix keeps copy/paste keydown ownership inside the focused terminal: copy prevents default native/app handling before writing the selected grid text, and paste arms the terminal paste path while still allowing the browser paste event to deliver clipboard data. Proof: `npm run verify:keymap`, `npm run verify:selection`, `npm run build`, `npm run verify:map-terminals`, and `APP_BUDGET=300 npm run verify:bracketed-paste` passed on 2026-06-24 with `BRACKETED_PASTE_OK` and screenshots in `/tmp/tw-bracketed-paste/`. | P1       | DONE (2026-06-24) | TC-017                  |
+| TC-045     | Codex-style full-screen TUI rendering broke in the canvas terminal: rows blanked/fragmented with a large empty band even though the content existed. Closed as the rendering-pipeline slice: true alternate-screen TUIs now keep projection-stable sizing instead of destructive reflow, while normal shells still reflow. Proof: `APP_BUDGET=360 npm run verify:canvas-live` rendered live vim/htop/tmux with input/output and repaint evidence, and `APP_BUDGET=360 npm run verify:zellij-map` reproduced the wide-to-map full-screen TUI transition with visual content/repaint and no grid/PTY resize drift. TC-036/TC-041 still own restart-survivable Codex/Claude restore behavior. | P1       | DONE (2026-06-24) | TC-037, TC-017          |
+| TC-046     | Terminal copy/paste shortcuts unreliable: Ctrl+Shift+C and Ctrl+Shift+V did not consistently copy the selection / paste from the clipboard in the canvas terminal. Fix keeps copy/paste keydown ownership inside the focused terminal: copy prevents default native/app handling before writing the selected grid text, and paste arms the terminal paste path while still allowing the browser paste event to deliver clipboard data. Proof: `npm run verify:keymap`, `npm run verify:selection`, `npm run build`, `npm run verify:map-terminals`, and `APP_BUDGET=300 npm run verify:bracketed-paste` passed on 2026-06-24 with `BRACKETED_PASTE_OK` and screenshots in `/tmp/tw-bracketed-paste/`. Follow-up 2026-06-30 guard: `npm run verify:clipboard-all-launchers` verifies supported launcher drift plus keymap/selection/backend clipboard contracts; `TERMFLEET_CLIPBOARD_LIVE=1 APP_BUDGET=300 npm run verify:clipboard-all-launchers` passed with `BRACKETED_PASTE_OK`, and host desktop `DISPLAY=:0 XAUTHORITY=/run/user/1000/xauth_Mqgwcs npm run verify:clipboard-paste` proved exact X11 clipboard round-trip through `xclip`. | P1       | DONE (2026-06-24) | TC-017                  |
 | TC-047     | Terminal rendering REGRESSION (P0): alt-screen TUIs fragment into "wreckage" and the black-bottom returns, on typing — introduced by TC-037 reflow-on-grow + TC-042 inner-column shrinking alt-screen grids. Fix keeps true alt-screen map TUIs projection-stable while preserving resize reconciliation. Proof: `npm run verify:map-terminals`, `npx playwright test tests/map-terminal-rendering.spec.ts --reporter=line`, `npm run verify:canvas-all`, `APP_BUDGET=360 npm run verify:zellij-map` (screenshots `/tmp/tw-zellij-map/`), and `APP_BUDGET=360 npm run verify:canvas-live` (screenshots `/tmp/tw-canvas-live/`) passed on 2026-06-24. | P0       | DONE (2026-06-24) | TC-037, TC-042          |
+| TC-048     | Severe terminal typing lag in the map: readable map workspaces were mounting too many live terminal renderers, detached grid feeds could stay subscribed while idle, terminal snapshot/header updates refreshed too often for typing, and permanent map layer promotion kept WebKitGTK busy on large terminal maps. Fix limits the live map renderer to the primary work surface, slows preview/header churn, makes grid feed detach/subscriber cleanup explicit, and removes always-on map transform promotion/entry animation. Proof: clean Tauri dev restart on the persisted 12-terminal map dropped WebKit from ~40-55% steady to ~5.5% with grid feed ~0.3%; `npm run build`, `CARGO_BUILD_JOBS=1 cargo test term_state_dirty`, `npm run verify:map-terminals`, and `npx playwright test tests/map-terminal-rendering.spec.ts -g "readable map mounts only the primary live terminal renderer" --reporter=line` passed on 2026-06-25. | P0       | DONE (2026-06-25) | TC-017, TC-047          |
+| TC-049     | Map alignment controls: add a project-lane arranger so terminal nodes group into vertical columns per project with fixed terminal and lane spacing instead of relying only on generic edge/center alignment. Follow-up compact-lanes control closes wide horizontal gaps by current left-to-right lane order and exposes the action in the visible map controls. Proof: `npx playwright test tests/canvas-node-reorder.spec.ts --reporter=line`, `npm run build`, and `npm run verify:map-terminals` passed on 2026-07-07. | P1       | DONE (2026-07-07) | TC-029, TC-034          |
+| TC-050     | Fix two visible map-terminal regressions: scrolled terminal history no longer paints the live cursor over old output, and selected terminals inside a real project keep the project workspace label instead of switching to a nested app folder such as `watchpost`. Proof: `npx playwright test tests/grid-cursor-dirty.spec.ts tests/canvas-renderer.spec.ts tests/grid-diff.spec.ts --reporter=line`, `npx playwright test tests/header-project-label.spec.ts --reporter=line`, `npm run verify:map-terminals`, and `npm run build` passed on 2026-07-07. | P0       | DONE (2026-07-07) | TC-017, TC-044          |
+| TC-051     | Map sidebar project order now follows the live map reading order: left-to-right first, then top-to-bottom. Moving a terminal or project lane updates the sidebar order from node coordinates while keeping project membership unchanged, and sidebar rows animate with a lightweight FLIP transition instead of snapping. Proof: `npx playwright test tests/canvas-node-reorder.spec.ts --reporter=line`, `npm run verify:map-terminals`, and `npm run build` passed on 2026-07-07. | P1       | DONE (2026-07-07) | TC-049, TC-050          |
+| TC-052     | Task identity is provenance-safe: terminal headers and TASKS sidebars now resolve task identity only from bounded structured sources in the order manual > task-tool > user-prompt > plan-binding > sidecar-todo > workstream > missing. Model/Ollama/status-summary text remains activity annotation only, and doctor/snapshot tooling flags unsupported task sources. Proof: `npm run verify:task-identity`, `npm run verify:agent-status-summary`, `npm run build`, `npm run verify:map-terminals`, `npm run doctor`, and `npx playwright test tests/visible-task-lineup.spec.ts --reporter=line` passed on 2026-07-07. `doctor` exits 0 with a local stale release-binary warning and notes an old stale snapshot still contains the retired `sidecar` source. | P0 | DONE (2026-07-07) | TC-033, TC-035          |
+| TC-053     | External-page map cards can be unselected by clicking their selected header again; dragging the header still moves the card and the page remains open. Proof: focused Playwright regression passed with `external-page-deselected.png`, and `npm run build` passed on 2026-07-12. | P1 | DONE (2026-07-12) | TC-020, TC-029 |
+| TC-054     | Reliable map-terminal session binding + auto-resume: 100% of map terminal nodes must reattach to their correct persistent daemon session on open/startup, and auto-resume the agent (`claude --resume <uuid>` / `codex resume <uuid>`) when the session is a bare shell (agent exited), instead of spawning a NEW empty shell each open. Root cause observed 2026-07-13: opening a project makes a fresh `terminal-<uuid>-<uuid>` session (bare shell) rather than reattaching the live one, so resumes orphan and panes show dead shells. Session UUIDs are on disk (agent-fleet snapshot; claude `~/.claude/projects`, codex `~/.codex/sessions`). Investigation-first: map how map nodes bind to daemon sessions (frontend store + EnsureSession id scheme), then design deterministic node→session keying + auto-resume hook. See memory `project_termfleet_daemon_wedge_recovery`. **Root cause found + fixed (2026-07-13):** recovery is PER-PANE (`terminal-<tabId>-<paneId>`), not per-folder; each pane's conversation id lives in `agent-status/pane-<fnv(paneId)>.json`. Daemon cold-restore now (a) resumes claude via id-only fallback (mirrors codex) and (b) enriches a bare/hand-started session from its per-pane sidecar (`read_pane_sidecar_recovery` → `plan_agent_restore`), so every node restores ITS OWN chat on daemon recycle / reboot / shutdown. codex/claude status hooks stamp `provider`. Proof: 105 lib tests pass incl. 7 new (fnv parity vs real sidecar name, sidecar-recovery variants, hand-started cold-restore); `npm run doctor` TC-054 check green + reports 19/19 nodes recoverable; design in `docs/tc-054-agent-autoresume-design.md`. Pending: activates on next launcher restart (running daemon predates the build); full reboot E2E not yet run. | P0 | IN_PROGRESS (impl+tests+watchdog done 2026-07-13) | TC-017, TC-035 |
+| TC-055     | Safe dead-process / session eradicator (reaper): periodically reap DEAD/closed sessions and their orphaned tool servers (dev servers, Playwright browsers, language servers, esbuild watchers, node_repl) that agents leave running after `/exit`. Must gate every kill on a DEEP agent-in-tree scan (a shallow direct-child check gave false positives on 2026-07-13 because agents nest under wrappers) plus an idle-CPU gate, so a live conversation is never killed. Ship dry-run first (log what it would kill), then arm on a timer. Motivated by the 2026-07-13 outage where ~3,500 accumulated processes starved RAM+swap and wedged the daemon. **Dry-run shipped + tested (2026-07-13):** `scripts/termfleet-reaper.mjs` with a pure `reapDecision` safety gate (deep agent-in-tree scan → never reap a session with a live agent anywhere in its tree; idle-window gate; skips sessions with nothing to reclaim). Run `node scripts/termfleet-reaper.mjs` (dry-run) / `--apply` / `--idle=<sec>`. **Coverage fixed + soft load guardrail added (2026-07-13):** reaper now enumerates sessions from the daemon's own `listSessions` (reuse `termfleetctl.requestDaemon`) instead of a cgroup session-leader guess that saw 2 of 15 sessions; the deep agent scan now INCLUDES the session root pid (agents often run as the root — the miss that mislabeled them bare shells); idle now comes from the per-pane sidecar `updatedAt` (reuse `paneSidecarPath`), not process start-age. Live dry-run covers all 15 sessions and keeps every live-agent one. Separately, the daemon's transient systemd unit (`platform_process.rs`) now sets a SOFT `MemoryHigh` (throttle+reclaim, NEVER OOM-kill) + high `TasksMax` fork-bomb backstop (env-overridable `TERMFLEET_DAEMON_MEMORY_HIGH`/`_TASKS_MAX`; no hard `MemoryMax` by design), so daemon load can't wedge the desktop and no agent is silently killed. `npm run doctor` reports daemon memory headroom + flags a daemon predating the guardrail. Proof: 8 reaper policy tests + 106 lib tests (incl. argv guardrail assertion). **Now fully automatic (2026-07-14):** `scripts/install-reaper-timer.sh` installs a systemd `--user` timer (mirrors agent-fleet-snapshot) that every 15 min runs a oneshot which (1) `scripts/termfleet-guardrail-ensure.mjs` applies the soft `MemoryHigh`/`TasksMax` to the running daemon LIVE via `systemctl set-property` (self-healing for a daemon predating the code; idempotent `needsGuardrail` gate, tested) and (2) `termfleet-reaper.mjs --apply` reaps idle leftovers. Guardrail default lowered 55G→40G (leaves desktop headroom). Verified live: guardrail applied to the running daemon (MemoryHigh infinity→40G, no restart, no killed agents), timer armed (`systemctl --user list-timers`), a triggered run kept all live-agent sessions + reaped 0, and `npm run doctor` shows guardrail `ok` (30.6/40G) + "reaper timer is armed". Note: timer install is per-machine via the script; the daemon `MemoryHigh` default in `platform_process.rs` covers fresh launches. | P1 | DONE (2026-07-14) | TC-054 |
 
 ---
 
@@ -347,7 +355,7 @@ Acceptance:
 ### TC-030: Orchestrator terminal lifecycle
 
 **Priority:** P1
-**Status:** TODO
+**Status:** DONE (2026-06-30)
 **Depends:** TC-016, TC-017
 
 Research and design a first-class orchestrator terminal: a parent terminal or
@@ -474,24 +482,175 @@ Progress notes:
   workspace and shows the cleaned current activity, while regressions block raw
   prompt/input fragments from taking over that description. Follow-up hardening
   blocks narrative terminal prose from becoming the title/description when there
-  is no real task list, purpose, or durable live activity, and separates the map
-  header fields so the kicker shows the overarching task description, the title
-  shows the active human task, and `Now` shows proof/status detail. Added
-  `npm run verify:terminal-header-contract` as the focused visual hook for this
-  screenshot-shaped contract.
+  is no real task list, purpose, or durable live activity. Final contract:
+  the map header renders an explicit `Task:` row from authoritative task-tool
+  state, the title mirrors that active task, `No task set` is shown when no
+  task-tool task exists, and `Now` is the only proof/status row. Added
+  `npm run verify:terminal-header-contract` as the focused headed visual hook
+  for this screenshot-shaped contract.
   Current evidence: `npx playwright test tests/agent-status-summary.spec.ts
   --reporter=line` passed 40/40; `npx playwright test
   tests/header-real-task-title.spec.ts --reporter=line` passed 11/11; `npm run
   verify:terminal-header-contract` passed 1/1; `npm run
-  verify:terminal-summary-visual` passed 6/6; `npm run build` passed;
+  verify:terminal-summary-visual` passed 6/6; headed `DISPLAY=:0
+  XAUTHORITY=/run/user/1000/xauth_Mqgwcs npx playwright test
+  tests/terminal-summary-visual.spec.ts -g "map header rejects slash-command
+  prompt echoes" --headed --reporter=line` passed 1/1; `npm run build` passed;
   `TERMFLEET_AGENT_STATUS_PORT=37820 npm run verify:agent-status-summary`
   passed; screenshot proof: `/tmp/tc-033-map-header-no-review-prompt.png`;
   `git diff --check` passed.
+- DONE (2026-06-25): Map and split terminal headers now reject cross-project
+  false-positive `Now` labels at the final render boundary, including stale
+  task-summary values such as `income-zen` on a FlowState terminal and durable
+  activity subtitles such as `arthouse` on another cwd. Long live cwd paths keep
+  a meaningful tail (for example
+  `.../productivity/flow-state/packages/desktop/local-api`) instead of collapsing
+  to the last folder only. Canvas snapshot excerpts still update preview text,
+  but no longer trigger status-summary refreshes from scroll/viewport changes.
+  Current evidence: `npx playwright test tests/agent-status-summary.spec.ts
+  --reporter=line` passed 43/43; `npm run verify:terminal-summary-visual`
+  passed 10/10; `npm run build` passed; `npm run verify:agent-status-summary`
+  passed; `npm run verify:map-terminals` passed; `npm run
+  verify:terminal-rendering` passed; `git diff --check` passed.
+- DONE (2026-06-25): Consolidated shell terminal header text selection behind
+  `buildShellTerminalHeaderViewModel`, so map and split headers use the same
+  source-aware rules for workspace, task row, title, path, and `Now`. Added
+  screenshot-shaped regressions for parent-category projects (`productivity` ->
+  `flow-state`), missing task lists, stale closeout wording, foreign project
+  slugs, and long cwd tails. Also tightened the map projection contract for
+  AskUserQuestion-style prompts: primary-screen mouse-report mode no longer
+  counts as a projection-size transition, preventing an extra map resize/SIGWINCH
+  from duplicating question options while preserving alt-screen freeze behavior.
+  Current evidence: `npx playwright test tests/terminal-header-view-model.spec.ts
+  --reporter=line` passed 3/3; `npx playwright test
+  tests/terminal-question-rendering.spec.ts --reporter=line` passed 3/3,
+  including the exact AskUserQuestion fixture rendered through canvas pixels and
+  a mounted map `TerminalCanvas` fed through the mocked Tauri binary grid stream
+  (screenshot `/tmp/termfleet-ask-user-question-map-terminal.png`); live Tauri
+  canary `APP_BUDGET=240 npm run verify:ask-user-question-live` passed, driving
+  a real map terminal PTY with a local provider-shaped AskUserQuestion prompt,
+  verifying the question/options exactly once in the daemon snapshot, and saving
+  `/tmp/tw-ask-user-question-live/ask-user-question-map.png`; `npx
+  playwright test tests/map-terminal-rendering.spec.ts -g
+  "AskUserQuestion|selected map agent panes" --reporter=line` passed 2/2; `npm
+  run verify:terminal-summary-visual` passed 11/11; `npx playwright test
+  tests/header-project-label.spec.ts --reporter=line` passed 10/10; `npx
+  playwright test tests/agent-status-summary.spec.ts --reporter=line` passed
+  43/43; `npm run verify:map-terminals` passed; `npm run
+  verify:terminal-rendering` passed; `npm run build` passed; `git diff --check`
+  passed.
+- REVERIFIED (2026-06-26): Current reliability-lane proof passed after the live
+  AskUserQuestion canary was added: `npx playwright test
+  tests/terminal-header-view-model.spec.ts --reporter=line` passed 3/3; `npx
+  playwright test tests/terminal-question-rendering.spec.ts --reporter=line`
+  passed 3/3; `npx playwright test tests/map-terminal-rendering.spec.ts -g
+  "AskUserQuestion|selected map agent panes" --reporter=line` passed 2/2; `npx
+  playwright test tests/header-project-label.spec.ts --reporter=line` passed
+  10/10; `npx playwright test tests/agent-status-summary.spec.ts
+  --reporter=line` passed 43/43; `npm run verify:terminal-summary-visual`
+  passed 11/11; `npm run verify:map-terminals` passed; `npm run
+  verify:terminal-rendering` passed; `npm run build` passed; `APP_BUDGET=240
+  npm run verify:ask-user-question-live` passed with
+  `ASK_USER_QUESTION_LIVE_INPUT_REACHED_DAEMON`,
+  `ASK_USER_QUESTION_LIVE_TEXT_ONCE_IN_SNAPSHOT`,
+  `ASK_USER_QUESTION_LIVE_SCREENSHOT_OK lit_pixels=23540
+  path=/tmp/tw-ask-user-question-live/ask-user-question-map.png`, and
+  `ASK_USER_QUESTION_LIVE_OK`.
+- REPAIRED REAL DEV SURFACE (2026-06-26): The open dev app was still backed by
+  stale runtime state: before restart, `ps` showed the visible `tauri dev` app
+  from 10:00 and a daemon from 2026-06-24, with
+  `/proc/<daemon>/exe -> terminal-workspace (deleted)`. Relaunched via
+  `./run-native-vte-dev.sh --fresh-daemon`; after restart both app and daemon
+  pointed at the current `src-tauri/target/debug/terminal-workspace`. The real
+  visible Tauri window still exposed a missing guard: a terminal with `Task: No
+  task list` promoted sidecar narration (`VPS has the 12 tracking events...`)
+  into the main title and `Now`. Added a red/green regression in
+  `tests/terminal-header-view-model.spec.ts` and changed no-task-list narration
+  to fall back to the neutral run-state title/now instead of transcript text.
+  Real-window screenshot evidence after hot reload:
+  `/tmp/termfleet-real-dev-after-now-fix.png` shows the Arthouse no-task-list
+  pane as `Idle · Idle`, not the stale VPS/publish text, and the Bina pane as
+  `Needs attention · Needs attention`, not prompt text. Added
+  `npm run verify:real-dev-window`; current proof passed with
+  `REAL_DEV_WINDOW_OK app_pid=4058302 daemon_pid=4059744 window=62914563
+  screenshot=/tmp/termfleet-real-dev-window.png`. Follow-up checks passed:
+  `npx playwright test tests/terminal-header-view-model.spec.ts --reporter=line`
+  4/4, `npm run verify:terminal-summary-visual` 11/11, `npx playwright test
+  tests/header-project-label.spec.ts --reporter=line` 10/10, `npx playwright
+  test tests/terminal-question-rendering.spec.ts --reporter=line` 3/3, `npx
+  playwright test tests/agent-status-summary.spec.ts --reporter=line` 43/43,
+  `npm run verify:map-terminals`, `npm run verify:terminal-rendering`, `npm run
+  build`, and `APP_BUDGET=240 npm run verify:ask-user-question-live`.
 - Headed app proof: `/tmp/termfleet-headed-final-worked-for-purpose.png`
   captures the current regular TermFleet window after reload. It shows the fixed
   non-bleeding summary behavior on the loaded map, while an old terminal with no
   captured task/output context still falls back to a command-result summary
   instead of inventing a task.
+- REVERIFIED (2026-06-29): Centralized map/split shell header state behind
+  `buildTerminalHeaderState`, with explicit `paneId`, `terminalId`, `runId`,
+  `workspace`, `userGoal`, `currentActivity`, `fullPath`, and source metadata.
+  Background summary refreshes now preserve an existing real task-list or
+  structured task-lineup summary when a fallback/heuristic refresh would
+  downgrade it, so scrollback, slash-command echoes, and fallback status text do
+  not replace the visible task. Current proof: `npx playwright test
+  tests/terminal-header-state.spec.ts tests/terminal-header-view-model.spec.ts
+  --reporter=line` passed 17/17; `npm run verify:terminal-summary-visual`
+  passed 13/13, including stale summary, full live cwd, and cross-project pane
+  isolation cases; `npm run build` passed; `npm run
+  verify:terminal-task-scroll-stability` passed with
+  `TASK_SCROLL_TASK_STABLE` before scroll, after scroll-up, and after stale
+  output, saving `/tmp/tw-task-scroll-stability/02-task-before-scroll.png`,
+  `/tmp/tw-task-scroll-stability/04-scrolled-history.png`, and
+  `/tmp/tw-task-scroll-stability/05-after-stale-output.png`.
+- REPAIRED (2026-06-29): Next-step provider prompts such as the Bina
+  GI-lightmap checkpoint no longer let a stale durable command (`npm test`)
+  become the map header title. The shell summary classifier now treats
+  `Where to go` / `Next step` / `How do you want to proceed?` menus with
+  numbered choices and `Enter to select` hints as an active operator-selection
+  state, and durable command summaries defer to that waiting prompt. Current
+  proof: `npx playwright test tests/agent-status-summary.spec.ts --reporter=line`
+  passed 48/48; `npm run verify:terminal-summary-visual` passed 14/14,
+  including `map header prefers active next-step prompt over stale durable
+  command`; `npx playwright test tests/terminal-header-state.spec.ts
+  tests/terminal-header-view-model.spec.ts --reporter=line` passed 17/17; `npm
+  run build` passed; `npm run verify:terminal-header-prompt-live` passed in a
+  real isolated Tauri window with `HEADER_PROMPT_LIVE_OK`, screenshot proof at
+  `/tmp/tw-header-prompt-live/02-next-step-header.png`, and a visual header title
+  of `Waiting for operator selection` instead of `npm test`.
+- REPAIRED + LIVE-VERIFIED (2026-06-29): Added a four-pane real Tauri/canvas
+  verifier for the failure shape that kept slipping through single-pane checks.
+  `npm run verify:terminal-headers-live-all` launches an isolated desktop window,
+  seeds four real PTYs (operator-selection prompt, completed stale `npm test`,
+  quiet shell, and long-path shell), captures the cockpit snapshot with rendered
+  Task/title/Now/source/path fields plus same-terminal visible grid text, and
+  fails if any visible header leaks a stale command, foreign project label,
+  unjustified task, prompt-as-idle, or ready-prompt-as-working state. The fix
+  preserves prompt rows in the visible grid excerpt and treats wrapped long-path
+  shell prompts as ready prompts, so an idle PTY running a shell no longer appears
+  as `Working`. Current proof: `npm run verify:terminal-headers-live-all` passed
+  with `TERMINAL_HEADERS_LIVE_ALL_OK terminals=4`, report
+  `/tmp/tw-terminal-headers-live-all/report.json`, and screenshot
+  `/tmp/tw-terminal-headers-live-all/02-all-terminals.png` showing
+  `Waiting for operator selection`, `Idle`, `Idle`, `Idle`; `npm run
+  verify:terminal-summary-visual` passed 15/15; `npx playwright test
+  tests/agent-status-summary.spec.ts tests/terminal-header-state.spec.ts
+  tests/terminal-header-view-model.spec.ts --reporter=line` passed 65/65;
+  `npm run build` passed; `git diff --check` passed.
+- REPAIRED + LIVE-VERIFIED (2026-06-30): Header semantics now follow the
+  structured-state contract in `docs/reference/termfleet-terminal-header-research.md`.
+  Active panes without structured task/activity render explicit capture failures
+  (`Task not captured`, `Activity not captured`) instead of vague fallbacks, and
+  verifiers fail on those labels. Stale transcript completion text such as
+  `Worked for...` no longer closes or replaces an existing captured task/main ask.
+  The four-pane live verifier now seeds pane-scoped structured metadata and proves
+  scrollback/output cannot overwrite it. Current proof:
+  `npx playwright test tests/header-project-label.spec.ts
+  tests/terminal-header-state.spec.ts tests/terminal-header-view-model.spec.ts
+  --reporter=line` passed 49/49; `npm run build` passed;
+  `npm run verify:terminal-headers-live-all` passed with
+  `TERMINAL_HEADERS_LIVE_ALL_OK terminals=4`, report
+  `/tmp/tw-terminal-headers-live-all-3/report.json`, and screenshots under
+  `/tmp/tw-terminal-headers-live-all-3/`.
 
 ### TC-001: Freeze Terminal Cockpit target and visual rules
 
@@ -5273,6 +5432,35 @@ cwd (matches the "terminals opened in a path should be a project" intent).
   `tests/task-lineup-content-contract.spec.ts` 4/4; regression
   `task-lineup-source-merge` + `agent-status-summary` + `map-terminal-rendering` 67/67;
   `npm run build` green.
+- **T-TITLES — map task description fallback (DONE 2026-06-25):** map terminal cards no
+  longer use the missing task-list fallback as the main title. The `Task:` row now stays
+  honest as `No task list` when no TodoWrite/task-tool list exists, while the large title
+  uses the terminal activity summary (for example `Reviewing approval request`) and `Now`
+  carries the waiting/proof detail. Approval menus are recognized by the local shell
+  fallback, so the screenshot shape does not depend on the model summary server. Also fixed
+  transcript-purpose extraction so stale text before a current `Working (...)` marker cannot
+  override the current header, and guarded against stale persisted summary path/`Now` values
+  showing a foreign project (for example `income-zen`) instead of the live terminal cwd
+  (`flow-state`).
+  Proof: `npx playwright test tests/terminal-summary-visual.spec.ts --reporter=line` passed
+  8/8; `npx playwright test tests/agent-status-summary.spec.ts --reporter=line` passed 42/42;
+  `npm run verify:map-terminals` passed; `npm run build` passed.
+- **T-TASK-HEADER — deterministic Task row while scrolling (DONE 2026-06-27):** the
+  visible `Task:` row no longer reads directly from moving summaries, inferred transcript
+  purpose, or viewport/canvas snapshots. Terminals now persist one `mainUserAsk` per
+  terminal/run from sidecar status or stable PTY prompt output, and the header view model
+  renders `Task:` only from real task-tool state, that stored main ask, or `No task list`.
+  Snapshot excerpts are explicitly render-only
+  and cannot update `terminalOutput`/activity, so scrolling cannot rewrite the task. The
+  cockpit probe now records rendered Task/title/Now text plus sources, and the dev header
+  log records each rendered header source change.
+  Proof: `npx playwright test tests/terminal-header-view-model.spec.ts tests/agent-status-summary.spec.ts --reporter=line`
+  passed 58/58; `npm run verify:terminal-summary-visual` passed 12/12; `npm run build`
+  passed; `npm run verify:map-terminals` passed; `npm run verify:terminal-task-scroll-stability`
+  launched a real headed Tauri/Xvfb window, printed a prompt-like user ask from inside the
+  PTY without a sidecar, scrolled terminal history, injected stale prompt-like output, and passed
+  `TASK_SCROLL_TASK_STABLE` at `before-scroll`, `after-scroll-up`, and `after-stale-output`
+  with screenshots in `/tmp/tw-task-scroll-stability/`.
 - **T9 — input reliability — UNCONFIRMED (no fix; agent false-positives):** traced both
   reported bugs against the code; neither reproduces.
   - *Ctrl+C "dropped":* `queue()` appends to `pendingInput` (`daemonInputQueue.ts:108`)
@@ -5402,6 +5590,27 @@ GUI-verified lifecycle items remain.
   The sidecar task list keeps its own item statuses as authoritative; run-close completion
   still applies only to heuristic/operator-extracted fallback lists. Regression:
   `npx playwright test visible-task-lineup` passed 9/9; `npm run build` passed.
+- DONE (2026-07-02): **Root-caused why titles + TASKS kept dying "forever": the status
+  pipeline's ONLY reader was the HTTP status server, and nothing owns that process.** The
+  dev launcher starts it and a `trap` kills it when the script exits; a desktop launch of
+  the app (systemd → release binary, the user's normal flow) never starts one at all. The
+  running app had been pointed at a dead 127.0.0.1:37819 since Jul 1 while the hook wrote
+  perfect pane sidecars the whole time. Fix (architectural): **the app now reads the
+  sidecar files directly** — new Tauri command `agent_status_read_sidecar` (validated
+  file name, fixed `agent-status` dir, `commands.rs`) + `src/lib/agentStatusSidecar.ts`
+  (byte-identical fnv/path parity with `scripts/lib/agent-status-paths.mjs`, same shaping
+  as the node sidecar worker) + `summarizeAgentStatus` prefers the local read; the HTTP
+  server is now only an optional override (browser preview, opt-in Ollama). Old-JS/new-Rust
+  and new-JS/old-Rust skews degrade gracefully to the endpoint path. Also capped the
+  status server's `cockpit-header-trace.jsonl` (rotate at 25 MB — it had grown to **8 GB**;
+  truncated on disk). Evidence: `npx playwright test tests/agent-status-local-sidecar.spec.ts`
+  10/10 (parity + shaping + precedence + fallback); agent-status-summary + agent-status-sidecar
+  suites green (110 passed run-wide; the only 2 reds are the untracked
+  terminal-header-view-model WIP's own red tests); `cargo test --lib` 90/90 incl. new
+  path-validation tests; `npm run build` green; `npm run verify:agent-status-summary` OK.
+  NOT yet committed: the tree interleaves several sessions' WIP (userTask lane, TC-041
+  manifest, canvas perf) — a partial commit would not compile standalone; consolidate
+  deliberately.
 - **GUI verification owed (needs a `termfleet` relaunch — can't be done headless):**
   1. In a terminal pane: `env | grep TERMFLEET_PANE_ID` prints `terminal-<tab>-<pane>`.
   2. Open two terminals in the SAME directory, run a different agent/task in each → each
@@ -5420,6 +5629,25 @@ GUI-verified lifecycle items remain.
 **Priority:** P0
 **Status:** IN_PROGRESS
 **Depends:** TC-009, TC-016, TC-035
+
+#### Reconciliation with TC-041 + TC-054 (2026-07-13)
+
+This lane is split across three tickets — do NOT re-implement the parts already done:
+- **TC-041 (done)** built slices 1–3 for **button-launched** agent workstreams: the
+  `recoveryKind`/provider/`sanitizedResumeCommand` manifest and the daemon planner
+  (`plan_agent_restore`) that relaunches `codex resume …` in the original pane.
+- **TC-054 (done — impl/tests/watchdog)** closes the **hand-started / user-typed** agent
+  gap that this ticket's slice 1 explicitly called out ("detect … from active
+  process/terminal output when the command was typed by the user"). Key correction:
+  recovery is **per-pane** (`terminal-<tabId>-<paneId>`), NOT per-folder — each pane's
+  conversation id is read from its live sidecar (`agent-status/pane-<fnv(paneId)>.json`,
+  written by the codex/claude hooks) via `read_pane_sidecar_recovery`, plus a claude
+  id-only resume fallback. Every node cold-restores ITS OWN chat.
+- **Still open here (NOT covered by TC-041/TC-054):** slice 4 (frontend workspace
+  hydration with no fake surfaces + idempotency across reloads), slice 5 recovery event
+  log, and the `verify:agent-terminal-recovery` Playwright smoke (kill daemon → reload →
+  live output + input reaches PTY) plus the duplicate-prevention negative regression.
+  These are the remaining conditions before TC-036 can be marked DONE.
 
 #### Problem
 
@@ -5524,3 +5752,185 @@ prior PTY process survived.
 - Add a negative regression for duplicate prevention across two reloads.
 - Record screenshot evidence of the map with recovered regular terminal nodes and daemon
   session-list evidence showing the matching live PTYs before marking this lane DONE.
+
+### TC-041: Restart-survivable agent restore
+
+**Priority:** P0
+**Status:** TODO
+**Depends:** TC-036, TC-040
+
+#### Problem
+
+TermFleet can preserve terminal session shape and replay scrollback after daemon death, but
+agent workstreams need a stronger durable contract than ordinary shell restore. After a
+full PC restart, the old Codex/Claude process memory is gone. The product still needs to put
+the operator back into the same visible work lane with enough durable state to either resume
+the provider session or clearly mark the lane as reconstructed from saved context.
+
+This lane intentionally follows the tmux-resurrect reference model without depending on
+tmux: live PTY reattach when the supervisor is alive; durable shape/session reconstruction
+after reboot when the process tree is gone.
+
+Moved reference material from the accidental `bina-ve-ze` dropoff now lives in:
+
+- `docs/reference/agent-instance-resurrection-tmux-sketch.md`
+- `docs/reference/agent-resurrect-tmux-sketch.sh`
+
+Those files are reference artifacts only. They capture the live-reattach vs durable
+reconstruction model and the habit of recording provider session ids, but the TermFleet
+implementation must stay on the existing daemon/session checkpoint path.
+
+#### Target behavior
+
+- If the daemon and PTY survived an app restart, TermFleet live-reattaches to the same
+  session id and keeps the existing agent terminal interactive.
+- If the PC rebooted or the daemon/session is gone, TermFleet restores the same cockpit
+  shape: tab, pane, map node, cwd, project grouping, provider, launch command, terminal
+  title/task state, and bounded scrollback snapshot.
+- If a provider session id is available, the replacement PTY launches the provider's durable
+  resume command, starting with `codex resume <session-id>` for Codex.
+- If no provider session id is available, TermFleet reconstructs the lane from saved mission,
+  dropoff/handoff, cwd, command, and scrollback, and labels the status `reconstructed`
+  instead of pretending a live process was resumed.
+- Recovery state is explicit and user-visible: `live-attached`, `resuming`,
+  `resume-failed`, `reconstructed`, or `needs-auth`.
+- tmux/tmux-resurrect may be used as a product reference only. Do not add tmux as an
+  implementation dependency for this lane.
+
+#### Durable manifest
+
+Store one restart manifest per agent terminal/workstream next to the existing session
+metadata, not in ad-hoc localStorage markers:
+
+- stable terminal session id, tab id, pane id, and map node id;
+- provider (`codex`, `claude`, or future provider id) and launch profile
+  (`terminal` or `headless`);
+- cwd, original launch command, sanitized resume command, and environment hints needed for
+  `TERMFLEET_PANE_ID`;
+- provider session id when known, including Codex's durable `codex resume <session-id>`
+  target;
+- mission/user task, latest dropoff/handoff text path when present, last declared agent
+  status, and last evidence/proof pointers;
+- scrollback snapshot pointer, snapshot byte offsets, terminal size, and last healthy
+  timestamp;
+- restore status and failure reason, kept in metadata/runtime state and never written into
+  the terminal buffer as fake output.
+
+#### Implementation slices
+
+1. **Lock the manifest contract with tests.**
+   - Add fixtures for a live Codex lane, a rebooted Codex lane with provider session id, and
+     a rebooted lane with no provider session id.
+   - Assert serialization redacts secrets, preserves cwd/provider/session/layout ids, and
+     generates a deterministic resume/reconstruct decision.
+
+2. **Join existing session recovery with agent metadata.**
+   - Extend the existing daemon/session checkpoint path instead of creating a second
+     persistence system.
+   - Keep `TERMFLEET_AGENT_EVENT` and current workstream fields as the structured source for
+     provider, mission, current activity, evidence, and restore context.
+
+3. **Implement resume/reconstruct planning.**
+   - Plan `live-attached` when the daemon still owns the PTY.
+   - Plan `resuming` with `codex resume <session-id>` when a Codex provider session id exists.
+   - Plan `reconstructed` when only mission/dropoff/scrollback exists.
+   - Plan `needs-auth` or `resume-failed` when the provider CLI cannot resume, and surface a
+     clear operator action without creating fake live agent cards.
+
+4. **Hydrate the same visible lane.**
+   - Restore the original layout and map position before first useful render.
+   - Reuse the original terminal/workstream identity where possible so repeated restarts do
+     not mint duplicates.
+   - Keep recovered agents on the normal terminal surface; supervised workstream controls may
+     reflect status, but restoration must not replace the terminal with a dashboard-only card.
+
+#### Acceptance
+
+- DONE only when a live app restart proves the existing PTY is reattached, not respawned.
+- DONE only when a simulated PC restart proves layout, cwd, provider, launch command,
+  scrollback snapshot, durable session id, and terminal size restore from disk.
+- DONE only when a Codex fixture with a durable provider session id launches
+  `codex resume <session-id>` in the restored cwd and records status as `resuming` or
+  `live-attached` after successful attach.
+- DONE only when a fixture without a provider session id restores from mission/dropoff plus
+  scrollback and labels the lane `reconstructed`.
+- DONE only when repeated restart cycles are idempotent: one restored lane, one live PTY per
+  lane, no duplicate map nodes, and no duplicate agent workstream cards.
+- DONE only when failed resume/auth cases are visible as recovery state and operator action,
+  not as terminal-buffer error spam or fake successful restoration.
+
+#### Verification
+
+- DONE (2026-06-30): First restart-manifest slice landed. Backend session metadata now
+  carries provider, launch profile, durable provider session id, mission/dropoff context,
+  restore status, and restore failure reason. The restore planner distinguishes
+  `live-attached`, Codex `resuming` via `codex resume <session-id>`, `reconstructed`
+  fallback from mission/dropoff plus scrollback, and `needs-auth` without writing fake
+  terminal output. A local Tauri command persists the agent manifest beside the existing
+  session checkpoint, and `Terminal.tsx` writes it for agent workstreams on terminal ready
+  and when structured `TERMFLEET_AGENT_EVENT` data includes `providerSessionId`/`sessionId`.
+  Proof: `CARGO_BUILD_JOBS=1 CARGO_PROFILE_DEV_DEBUG=0 cargo test --manifest-path
+  src-tauri/Cargo.toml pty::tests -- --nocapture` passed 23/23; `npm run build` passed.
+- DONE (2026-06-30): `scripts/verify-restart-restore.py` now proves three restart layers
+  against the real daemon on an isolated socket: live reattach when the daemon survives,
+  cold scrollback/cwd/terminal-size restore after daemon SIGKILL/restart, and agent
+  checkpoint restore. The agent fixture seeds a Codex lane with durable provider session id
+  `019f-agent-session` and proves the restored PTY runs the resume command in the saved
+  cwd, carries the saved pane id, records `restoreStatus: "resuming"`, and reuses the
+  same live PTY on a second ensure. A no-session fixture restores the prior transcript,
+  cwd, size, command, mission/dropoff context, records `restoreStatus: "reconstructed"`,
+  and proves a second ensure is idempotent. Proof: `python3
+  scripts/verify-restart-restore.py` passed with `PASS: terminals and agent lanes restore
+  across app restart AND PC reboot`; `CARGO_BUILD_JOBS=1 CARGO_PROFILE_DEV_DEBUG=0 cargo
+  test --manifest-path src-tauri/Cargo.toml pty::tests -- --nocapture` passed 23/23;
+  `npm run build` passed; `git diff --check -- MASTER_PLAN.md HANDOFF.md
+  src-tauri/src/pty.rs src-tauri/src/commands.rs src-tauri/src/lib.rs
+  src/components/Terminal.tsx src/lib/types.ts scripts/verify-restart-restore.py` passed.
+- DONE (2026-06-30): Browser workspace hydration now has a visible restored-agent
+  regression. A persisted Codex lane with provider session id `019f-agent-session`,
+  restore status `resuming`, saved cwd, tab id, pane id, and map node id is seeded before
+  app initialization, reloaded twice, and asserted to hydrate as one agent tab and one map
+  node with the same selected node. The map and split terminal surfaces both expose
+  `restore · resuming` in the existing agent status chip. Proof: `npx playwright test
+  tests/agent-workstream.spec.ts -g "restored agent lanes keep one visible map node"
+  --reporter=line` passed 1/1; `npm run build` passed; scoped `git diff --check` passed.
+- DONE (2026-06-30): Added `npm run verify:agent-restore-visible`, a live Tauri dev smoke
+  that seeds `$XDG_DATA_HOME/terminal-workspace/workspace.json` plus a per-session agent
+  checkpoint before app start, proving the desktop disk-layout loader restores the agent
+  lane without localStorage. The fixture restores tab `11111111-1111-4111-8111-111111111111`,
+  pane `22222222-2222-4222-8222-222222222222`, session
+  `terminal-11111111-1111-4111-8111-111111111111-22222222-2222-4222-8222-222222222222`,
+  cwd `/tmp/tw-agent-restore-visible/workspace`, provider `codex`, provider session id
+  `019f-agent-visible-session`, saved scrollback `previous visible codex transcript`, and
+  resume command `codex resume 019f-agent-visible-session` through an isolated fake Codex
+  binary. The smoke verifies daemon replay/resume output, captures real map screenshots, and
+  clicks the restored map terminal cursor to prove typed input reaches the restored PTY.
+  Proof: `npm run verify:agent-restore-visible` passed with
+  `AGENT_RESTORE_VISIBLE_OK`; screenshots:
+  `/tmp/tw-agent-restore-visible/01-restored-agent-map.png` and
+  `/tmp/tw-agent-restore-visible/02-restored-agent-after-input.png`.
+- REVERIFIED (2026-06-30): Current completion proof passed:
+  `python3 scripts/verify-restart-restore.py` passed live reattach, cold restore, Codex
+  resume, reconstructed fallback, and idempotence; `CARGO_BUILD_JOBS=1
+  CARGO_PROFILE_DEV_DEBUG=0 cargo test --manifest-path src-tauri/Cargo.toml pty::tests --
+  --nocapture` passed 23/23; `npx playwright test tests/agent-workstream.spec.ts -g
+  "restored agent lanes keep one visible map node" --reporter=line` passed 1/1; `npm run
+  build` passed; `bash -n scripts/verify-agent-restore-visible.sh` passed; scoped
+  `git diff --check` passed.
+- DONE (2026-06-30): Cockpit header descriptions now have a deterministic quality gate
+  before `Task`, title, or `Now` labels render. The gate rejects raw prompt echoes,
+  typo-heavy complaint fragments, command labels (`npm test`, `npx ...`, package scripts),
+  implementation paths/source files, vague active labels (`Working`, `Thinking`, `Awaiting
+  terminal output`), gibberish, and long title/task duplication. Rejected structured labels
+  fall back explicitly to `Task not captured` or `Activity not captured` with debug reject
+  reasons instead of guessing from terminal output. Known complaint prompts about
+  high-quality descriptions are narrowly polished into the durable task `Improve cockpit
+  header descriptions` plus specific current activities. The real-window verifier now
+  fails on low-quality labels across every visible terminal. Proof: `npx playwright test
+  tests/header-project-label.spec.ts tests/terminal-header-state.spec.ts
+  tests/terminal-header-quality.spec.ts tests/terminal-header-view-model.spec.ts
+  --reporter=line` passed 56/56; `npm run build` passed; `APP_BUDGET=700
+  TERMINAL_HEADERS_LIVE_ALL_OUT=/tmp/tw-terminal-headers-live-quality npm run
+  verify:terminal-headers-live-all` passed with `TERMINAL_HEADERS_LIVE_ALL_OK terminals=4`.
+  Evidence saved in `docs/verification/terminal-headers-live-all-quality-2026-06-30*.png`
+  and `docs/verification/terminal-headers-live-all-quality-2026-06-30-report.json`.

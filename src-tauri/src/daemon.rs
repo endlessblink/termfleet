@@ -157,6 +157,12 @@ pub struct DaemonStatus {
     /// compares it to its own build to decide reuse-vs-replace on startup.
     #[serde(default)]
     pub build_id: String,
+    /// The cgroup the *running* daemon lives in (from its own `/proc/self/cgroup`).
+    /// Lets the app and `npm run doctor` tell whether the daemon got its own
+    /// systemd unit or is still parented under the app's unit — where the next
+    /// app relaunch would kill it and every terminal with it. Empty when unknown.
+    #[serde(default)]
+    pub cgroup: Option<String>,
     pub message: String,
 }
 
@@ -235,7 +241,10 @@ pub fn trace_pty(label: &str, details: impl AsRef<str>) {
         let _ = std::fs::OpenOptions::new()
             .create(true)
             .append(true)
-            .open(platform_paths::latency_trace_path(std::process::id(), &thread_id))
+            .open(platform_paths::latency_trace_path(
+                std::process::id(),
+                &thread_id,
+            ))
             .and_then(|mut file| writeln!(file, "{line}"));
     }
     if std::env::var_os("TERMINAL_WORKSPACE_TRACE_PTY").is_none() {
@@ -507,6 +516,24 @@ pub fn run_daemon_forever() -> Result<(), String> {
     // Pin the build identity to the binary this daemon launched from, so a later
     // same-path rebuild can't make us report as current (see DAEMON_BUILD_ID).
     let _ = DAEMON_BUILD_ID.set(current_build_id());
+
+    // Announce our cgroup parenting the moment we start. If we inherited the
+    // app's unit instead of getting our own, this line is the one breadcrumb
+    // that explains why terminals will die on the next app relaunch — the exact
+    // failure that has no unit test.
+    match platform_process::current_cgroup() {
+        Some(cgroup) if platform_process::cgroup_is_own_daemon_unit(&cgroup) => {
+            eprintln!("terminal-workspace-daemon: own systemd unit — terminals survive app relaunch ({cgroup})");
+        }
+        Some(cgroup) if platform_process::cgroup_is_app_unit(&cgroup) => {
+            eprintln!("terminal-workspace-daemon: WARNING parented under the app's unit ({cgroup}) — the next app relaunch will kill every terminal");
+        }
+        Some(cgroup) => {
+            eprintln!("terminal-workspace-daemon: cgroup {cgroup}");
+        }
+        None => {}
+    }
+
     let socket_path = daemon_socket_path();
     prepare_socket_dir(&socket_path)?;
     remove_stale_socket(&socket_path)?;
@@ -572,6 +599,9 @@ fn embedded_fallback_status(socket_path: PathBuf, error: String) -> DaemonStatus
         protocol_version: PROTOCOL_VERSION,
         pid: None,
         build_id: current_build_id(),
+        // The embedded fallback runs inside the app process, so its cgroup would
+        // be the app's — not a daemon parenting fact worth reporting.
+        cgroup: None,
         message: format!(
             "External terminal daemon is not available ({error}); using embedded Tauri PTY owner."
         ),
@@ -814,23 +844,28 @@ fn stream_daemon_session(
     id: &str,
     subscriber_id: String,
 ) -> Result<(), String> {
+    let subscriber_id_for_cleanup = subscriber_id.clone();
     let receiver = pty_manager.subscribe(id, subscriber_id)?;
-    write_daemon_response(
-        stream,
-        &DaemonResponse::SnapshotSession {
-            data: pty_manager.snapshot(id)?,
-        },
-    )?;
+    let result = (|| {
+        write_daemon_response(
+            stream,
+            &DaemonResponse::SnapshotSession {
+                data: pty_manager.snapshot(id)?,
+            },
+        )?;
 
-    for data in receiver {
-        trace_pty(
-            "daemon.subscribe.emit",
-            format!("id={id} bytes={} data={data:?}", data.len()),
-        );
-        write_daemon_response(stream, &DaemonResponse::SessionData { data })?;
-    }
+        for data in receiver {
+            trace_pty(
+                "daemon.subscribe.emit",
+                format!("id={id} bytes={} data={data:?}", data.len()),
+            );
+            write_daemon_response(stream, &DaemonResponse::SessionData { data })?;
+        }
 
-    Ok(())
+        Ok(())
+    })();
+    let _ = pty_manager.unsubscribe(id, &subscriber_id_for_cleanup);
+    result
 }
 
 fn external_daemon_status(socket_path: &PathBuf) -> DaemonStatus {
@@ -846,6 +881,9 @@ fn external_daemon_status(socket_path: &PathBuf) -> DaemonStatus {
             .get()
             .cloned()
             .unwrap_or_else(current_build_id),
+        // Read here (inside the daemon process) so the reported cgroup is the
+        // daemon's own, not the app's. This is what the doctor check inspects.
+        cgroup: platform_process::current_cgroup(),
         message: "External terminal daemon is reachable.".to_string(),
     }
 }
@@ -951,6 +989,7 @@ mod tests {
             protocol_version: PROTOCOL_VERSION,
             pid: Some(42),
             build_id: format!("{PROTOCOL_VERSION}:older-dev-build"),
+            cgroup: None,
             message: "reachable".to_string(),
         };
 
@@ -969,6 +1008,7 @@ mod tests {
             protocol_version: PROTOCOL_VERSION,
             pid: Some(42),
             build_id: current_build_id(),
+            cgroup: None,
             message: "reachable".to_string(),
         };
 
@@ -987,6 +1027,7 @@ mod tests {
             protocol_version: PROTOCOL_VERSION + 1,
             pid: Some(42),
             build_id: format!("{}:future-build", PROTOCOL_VERSION + 1),
+            cgroup: None,
             message: "reachable".to_string(),
         };
 

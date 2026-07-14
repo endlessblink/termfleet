@@ -1,0 +1,59 @@
+diff --git a/src/components/MagicCanvas.tsx b/src/components/MagicCanvas.tsx
+index 517e333..cc283ac 100644
+--- a/src/components/MagicCanvas.tsx
++++ b/src/components/MagicCanvas.tsx
+@@ -2164,18 +2164,28 @@ function CanvasNodeView({
+     currentActivity: terminalActivity,
+     terminalOutput: linkedTerminal?.terminalOutput,
+   }, terminalStatusSummary);
+-  const terminalDisplaySummary = linkedTerminal?.durableActivity
+-    ? summaryFromDurableActivity(
+-        linkedTerminal.durableActivity,
+-        pathTail(liveTerminalRoot) ?? liveTerminalRoot ?? "workspace path unknown",
+-        terminalExtractedSummary,
+-        terminalPurpose,
+-      )
+-    : normalizePersistedShellSummary(
+-        terminalExtractedSummary,
+-        pathTail(liveTerminalRoot) ?? liveTerminalRoot ?? "workspace path unknown",
+-        terminalPurpose,
+-      );
++  // When the status worker (sidecar) reports a fresh, confident summary, it is the
++  // agent's REAL current activity — use it directly so the header tracks reality,
++  // bypassing the local durableActivity heuristic and the transcript "purpose"
++  // override (both of which otherwise stamp stale/generic text on the card).
++  const terminalWorkerLive = Boolean(terminalStatusSummary) && terminalExtractedSummary.confidence === "high" && Boolean(terminalExtractedSummary.now);
++  const terminalDisplaySummary = terminalWorkerLive
++    ? {
++        ...terminalExtractedSummary,
++        path: pathTail(liveTerminalRoot) ?? liveTerminalRoot ?? terminalExtractedSummary.path ?? "workspace path unknown",
++      }
++    : linkedTerminal?.durableActivity
++      ? summaryFromDurableActivity(
++          linkedTerminal.durableActivity,
++          pathTail(liveTerminalRoot) ?? liveTerminalRoot ?? "workspace path unknown",
++          terminalExtractedSummary,
++          terminalPurpose,
++        )
++      : normalizePersistedShellSummary(
++          terminalExtractedSummary,
++          pathTail(liveTerminalRoot) ?? liveTerminalRoot ?? "workspace path unknown",
++          terminalPurpose,
++        );
+   const terminalSummarySource = summarySourceLabel(
+     linkedTerminal?.statusSummarySource ?? workstream?.statusSummarySource,
+     linkedTerminal?.statusSummaryError ?? workstream?.statusSummaryError,
+diff --git a/vite.config.ts b/vite.config.ts
+index 832e23f..ff70362 100644
+--- a/vite.config.ts
++++ b/vite.config.ts
+@@ -9,6 +9,9 @@ export default defineConfig({
+   server: {
+     port: 1420,
+     strictPort: true,
++    // Worktree-run only (uncommitted): node_modules is symlinked to the main
++    // checkout, whose resolved path is outside the project root, so allow it.
++    fs: { allow: [".", "/media/endlessblink/data/my-projects/ai-development/devops/termfleet/node_modules"] },
+     host: host || false,
+     hmr: host
+       ? {

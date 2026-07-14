@@ -135,6 +135,28 @@ controls.
 - Typography: non-terminal UI uses Rubik via `--font-ui`, weights 300/400/500
   only; monospace is reserved for the terminal buffer. `verify:typography` enforces.
 
+## Agent session recovery is PER-PANE, not per-folder (learned)
+
+- Every map terminal node is its OWN distinct agent conversation. Users routinely
+  run several separate codex/claude chats in the SAME project folder (e.g. three
+  different `bina-ve-ze` conversations). Never collapse nodes by cwd.
+- The durable key is the pane's `runtimeSessionId = terminal-<tabId>-<paneId>`
+  (`Terminal.tsx`). It is stable across reopen, daemon recycle, and reboot.
+- Each pane's live conversation id is captured per-pane in
+  `~/.local/share/terminal-workspace/agent-status/pane-*.json` (`paneId` field ==
+  runtimeSessionId, `sessionId` == provider conversation uuid) by the codex/claude
+  status hooks — for HAND-STARTED agents too, not only agent-button launches.
+- To restore/resume a node, use ITS pane's `sessionId`: `codex resume <id>` or
+  `claude --resume <id>`. NEVER use agent-fleet's cwd-keyed "last" snapshot for
+  per-node restore — `pin="last"` keeps only the newest chat per folder and
+  silently loses the others.
+- Daemon cold-restore (`pty.rs plan_agent_restore`) only resumes sessions tagged
+  `recovery_kind = AgentTerminal`; a session with no manifest cold-restores as a
+  plain shell (scrollback replay only, no resume). TC-054 gap: hand-started agents
+  are not tagged yet — see `docs/tc-054-agent-autoresume-design.md`.
+- Never run the SAME conversation id in two live panes at once — it corrupts the
+  rollout/session file. One live pane per conversation.
+
 ## Build / commit hygiene
 
 - Each completed task records build/test commands + screenshot evidence in

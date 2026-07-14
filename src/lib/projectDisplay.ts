@@ -23,16 +23,45 @@ function isPathWithin(path: string, root: string): boolean {
   return p === r || p.startsWith(`${r}/`);
 }
 
+function projectNameIsRootAncestor(projectName: string, projectRoot?: string) {
+  if (!projectRoot) return false;
+  const parts = projectRoot.split("/").filter(Boolean);
+  return parts.slice(0, -1).includes(projectName);
+}
+
 export function workspaceLabelFor(input: {
   project?: Pick<Group, "name" | "projectRoot"> | null;
   cwd?: string | null;
+  gitRoot?: string | null;
   tabTitle?: string | null;
   nodeTitle?: string | null;
 }) {
   const projectName = input.project?.name?.trim() || undefined;
   const projectRoot = input.project?.projectRoot?.trim() || undefined;
   const cwd = input.cwd?.trim() || undefined;
+  const gitRoot = input.gitRoot?.trim() || undefined;
   const cwdTail = cwd?.split("/").filter(Boolean).pop();
+  const projectRootTail = projectRoot?.split("/").filter(Boolean).pop();
+  const gitRootTail = gitRoot?.split("/").filter(Boolean).pop();
+
+  // The git toplevel is the authoritative project boundary. When the stored
+  // project root is only a shallow *category* folder (e.g. ".../productivity")
+  // but the terminal actually lives in a git repo nested below it
+  // (".../productivity/flow-state"), the repo's own name is the truthful project
+  // — prefer it over the category. Guard on `projectName === projectRootTail` so
+  // we only override an auto-derived category name, never a user's custom one.
+  if (
+    gitRoot &&
+    gitRootTail &&
+    cwd &&
+    isPathWithin(cwd, gitRoot) &&
+    (!projectRoot ||
+      (gitRoot !== projectRoot &&
+        isPathWithin(gitRoot, projectRoot) &&
+        projectName === projectRootTail))
+  ) {
+    return gitRootTail;
+  }
 
   // The assigned project names the terminal ONLY while it is actually inside that
   // project's root. If the terminal has cd'd outside it (e.g. an app-default
@@ -40,11 +69,20 @@ export function workspaceLabelFor(input: {
   // the truthful identity — never keep showing a stale/default project label.
   if (projectName) {
     const navigatedAway = !!projectRoot && !!cwd && !isPathWithin(cwd, projectRoot);
+    if (
+      !navigatedAway &&
+      projectRootTail &&
+      projectRootTail !== projectName &&
+      projectNameIsRootAncestor(projectName, projectRoot)
+    ) {
+      return projectRootTail;
+    }
     if (!navigatedAway) return projectName;
     if (cwdTail) return cwdTail;
     return projectName;
   }
 
+  if (gitRoot && gitRootTail && cwd && isPathWithin(cwd, gitRoot)) return gitRootTail;
   if (cwdTail) return cwdTail;
   const tabTitle = input.tabTitle?.trim();
   if (tabTitle && tabTitle !== "Terminal") return tabTitle;

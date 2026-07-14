@@ -124,3 +124,68 @@ test("canvas renderer paints colors, alignment, and HiDPI backing store", async 
   // Atlas cached exactly one tile (the single non-blank glyph).
   expect(result.atlasSize).toBe(1);
 });
+
+test("canvas renderer does not paint the live cursor over scrolled history", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+
+  const result = await page.evaluate(async () => {
+    const { GlyphAtlas, measureCell } = await import("/src/lib/fontAtlas.ts");
+    const { renderSnapshot, sizeCanvasToGrid, DEFAULT_THEME } = await import(
+      "/src/lib/gridRenderer.ts"
+    );
+
+    const dpr = 2;
+    const fontFamily = '"Geist Mono", monospace';
+    const metrics = measureCell(fontFamily, 14, dpr, 1.2);
+    const atlas = new GlyphAtlas(metrics);
+    const cols = 12;
+    const rows = 4;
+    const snapshot = {
+      cols,
+      rows,
+      displayOffset: 7,
+      cursor: { col: 4, line: 2 },
+      altScreen: false,
+      cursorVisible: true,
+      cells: Array.from({ length: rows }, (_, row) =>
+        Array.from({ length: cols }, (_, col) => ({
+          c: row === 2 && col > 2 && col < 8 ? "H" : " ",
+          fg: "#f1f1f1",
+          bg: "#1d2022",
+        })),
+      ),
+    };
+
+    const canvas = document.createElement("canvas");
+    document.body.appendChild(canvas);
+    const ctx = sizeCanvasToGrid(canvas, atlas, cols, rows, dpr);
+    renderSnapshot(ctx, atlas, snapshot, dpr, DEFAULT_THEME);
+
+    const cellW = Math.round(atlas.cellWidth * dpr);
+    const cellH = Math.round(atlas.cellHeight * dpr);
+    const cursorX = Math.round(snapshot.cursor.col * cellW);
+    const cursorY = Math.round(snapshot.cursor.line * cellH);
+    const cursorPixels = ctx.getImageData(
+      cursorX,
+      cursorY,
+      Math.max(2, Math.round(2 * dpr)),
+      Math.ceil(cellH),
+    ).data;
+
+    let cursorColorCount = 0;
+    for (let i = 0; i < cursorPixels.length; i += 4) {
+      if (
+        cursorPixels[i] > 180 &&
+        cursorPixels[i + 1] > 110 &&
+        cursorPixels[i + 1] < 180 &&
+        cursorPixels[i + 2] < 100
+      ) {
+        cursorColorCount += 1;
+      }
+    }
+
+    return { cursorColorCount };
+  });
+
+  expect(result.cursorColorCount).toBe(0);
+});

@@ -89,9 +89,10 @@ export function computeGridSize(
  * otherwise reflow so the terminal fills the grown node instead of leaving a
  * dead (background-colored) band below it.
  *
- * `preservesProjectionSize` is true only for an interactive map node (mouse/SGR/
- * alt-screen/alt-scroll modes). When false (a normal pane, or a non-interactive
- * map node) the answer is always "reflow".
+ * `altScreenOnMap` is true only for a real alt-screen map node. Mouse-report
+ * primary-screen prompts still reflow on real node-size changes, but they must
+ * not be treated as frozen projection transitions; doing that creates extra
+ * resize/SIGWINCH churn and duplicates question-style prompt text.
  */
 export function mapNodeLayoutMode(params: {
   altScreenOnMap: boolean;
@@ -188,7 +189,7 @@ function drawCursor(
   dpr: number,
   theme: RenderTheme,
 ): void {
-  if (!snapshot.cursorVisible) return;
+  if (!snapshot.cursorVisible || snapshot.displayOffset > 0) return;
   const cx = Math.round(snapshot.cursor.col * cellW);
   const cy = Math.round(snapshot.cursor.line * cellH);
   ctx.fillStyle = theme.cursor;

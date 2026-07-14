@@ -19,7 +19,7 @@ use alacritty_terminal::term::{Config, Term, TermMode};
 use alacritty_terminal::vte::ansi::{Color, NamedColor, Processor, Rgb};
 use serde::Serialize;
 use std::collections::HashMap;
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, ErrorKind, Write};
 use std::net::Shutdown;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
@@ -44,6 +44,7 @@ const GRID_FEED_MAX_RECONNECTS: u32 = 40;
 // A feed that ran at least this long counts as a healthy session and resets the
 // consecutive-failure counter on the next loop.
 const GRID_FEED_HEALTHY_MIN: Duration = Duration::from_secs(2);
+const GRID_FEED_READ_TIMEOUT: Duration = Duration::from_millis(100);
 
 /// Minimal `Dimensions` implementation so we can build/resize the grid without
 /// pulling in the crate's test-only `TermSize` helper.
@@ -184,6 +185,9 @@ impl TermState {
     }
 
     fn scroll_to_bottom(&mut self) {
+        if self.term.grid().display_offset() == 0 {
+            return;
+        }
         self.term.scroll_display(Scroll::Bottom);
         self.dirty = true;
     }
@@ -202,6 +206,7 @@ struct Session {
     state: Arc<RwLock<TermState>>,
     emit: Arc<Mutex<EmitState>>,
     stop: Arc<AtomicBool>,
+    attach_token: Mutex<Option<String>>,
 }
 
 /// Owns one headless grid per terminal session id.
@@ -240,6 +245,7 @@ impl GridManager {
         id: &str,
         cols: usize,
         rows: usize,
+        attach_token: Option<String>,
     ) -> Result<(Arc<Session>, bool), String> {
         let mut sessions = self.sessions.lock().map_err(|_| "grid lock poisoned")?;
         if let Some(existing) = sessions.get(id) {
@@ -248,12 +254,17 @@ impl GridManager {
                 .write()
                 .map_err(|_| "grid state poisoned")?
                 .resize(cols, rows);
+            *existing
+                .attach_token
+                .lock()
+                .map_err(|_| "grid attach token poisoned")? = attach_token;
             return Ok((Arc::clone(existing), false));
         }
         let session = Arc::new(Session {
             state: Arc::new(RwLock::new(TermState::new(cols, rows))),
             emit: Arc::new(Mutex::new(EmitState::default())),
             stop: Arc::new(AtomicBool::new(false)),
+            attach_token: Mutex::new(attach_token),
         });
         sessions.insert(id.to_string(), Arc::clone(&session));
         Ok((session, true))
@@ -263,9 +274,15 @@ impl GridManager {
     /// run the 60Hz diff emitter. Returns immediately. On a re-attach to an
     /// existing session this resizes the live Term to `cols`x`rows` (see
     /// `upsert_session`) and does not re-spawn its threads.
-    pub fn attach(&self, id: &str, cols: usize, rows: usize) -> Result<(), String> {
+    pub fn attach(
+        &self,
+        id: &str,
+        cols: usize,
+        rows: usize,
+        attach_token: Option<String>,
+    ) -> Result<(), String> {
         {
-            let (session, is_new) = self.upsert_session(id, cols, rows)?;
+            let (session, is_new) = self.upsert_session(id, cols, rows, attach_token)?;
             if !is_new {
                 return Ok(());
             }
@@ -296,7 +313,13 @@ impl GridManager {
             .get(id)
             .ok_or_else(|| format!("no grid attached for session {id}"))?;
         let state = session.state.read().map_err(|_| "grid state poisoned")?;
-        Ok(selection_text(&state.term, start_row, start_col, end_row, end_col))
+        Ok(selection_text(
+            &state.term,
+            start_row,
+            start_col,
+            end_row,
+            end_col,
+        ))
     }
 
     /// Register a binary-diff subscriber. Sends an immediate full-sync frame so
@@ -367,12 +390,44 @@ impl GridManager {
     }
 
     /// Detach a session: stop its threads and drop its state.
-    pub fn detach(&self, id: &str) {
+    pub fn detach(&self, id: &str, attach_token: Option<&str>) {
         if let Ok(mut sessions) = self.sessions.lock() {
-            if let Some(session) = sessions.remove(id) {
-                session.stop.store(true, Ordering::Relaxed);
+            let should_detach = sessions
+                .get(id)
+                .and_then(|session| session.attach_token.lock().ok().map(|token| {
+                    match (attach_token, token.as_deref()) {
+                        (Some(expected), Some(current)) => expected == current,
+                        (Some(_), None) => false,
+                        (None, _) => true,
+                    }
+                }))
+                .unwrap_or(false);
+            if should_detach {
+                if let Some(session) = sessions.remove(id) {
+                    session.stop.store(true, Ordering::Relaxed);
+                }
             }
         }
+    }
+
+    #[cfg(test)]
+    fn has_session(&self, id: &str) -> bool {
+        self.sessions
+            .lock()
+            .map(|sessions| sessions.contains_key(id))
+            .unwrap_or(false)
+    }
+
+    #[cfg(test)]
+    fn session_token(&self, id: &str) -> Option<String> {
+        self.sessions
+            .lock()
+            .ok()?
+            .get(id)?
+            .attach_token
+            .lock()
+            .ok()?
+            .clone()
     }
 }
 
@@ -433,7 +488,7 @@ fn run_feed_with_reconnect(id: &str, state: &Arc<RwLock<TermState>>, stop: &Atom
             return;
         }
         let started = std::time::Instant::now();
-        let result = feed_grid_from_daemon(id, state);
+        let result = feed_grid_from_daemon(id, state, stop);
         if stop.load(Ordering::Relaxed) {
             return;
         }
@@ -549,7 +604,11 @@ fn emit_session_diff(session: &Arc<Session>) {
 /// Open a subscriber stream to the daemon for `id` and feed every chunk into the
 /// VT state machine. The daemon sends a full scrollback snapshot first (which
 /// replays the escape sequences and reconstructs the screen), then live deltas.
-fn feed_grid_from_daemon(id: &str, state: &Arc<RwLock<TermState>>) -> Result<(), String> {
+fn feed_grid_from_daemon(
+    id: &str,
+    state: &Arc<RwLock<TermState>>,
+    stop: &AtomicBool,
+) -> Result<(), String> {
     let socket_path = daemon_socket_path();
     let mut stream = match daemon_ipc::connect(&socket_path) {
         Ok(stream) => stream,
@@ -574,14 +633,29 @@ fn feed_grid_from_daemon(id: &str, state: &Arc<RwLock<TermState>>) -> Result<(),
         .write_all(&request)
         .map_err(|error| error.to_string())?;
     let _ = stream.shutdown(Shutdown::Write);
+    stream
+        .set_read_timeout(Some(GRID_FEED_READ_TIMEOUT))
+        .map_err(|error| error.to_string())?;
 
-    let reader = BufReader::new(stream);
-    for line in reader.lines() {
-        let line = line.map_err(|error| error.to_string())?;
+    let mut reader = BufReader::new(stream);
+    let mut line = String::new();
+    loop {
+        if stop.load(Ordering::Relaxed) {
+            return Ok(());
+        }
+        line.clear();
+        match reader.read_line(&mut line) {
+            Ok(0) => break,
+            Ok(_) => {}
+            Err(error) if matches!(error.kind(), ErrorKind::WouldBlock | ErrorKind::TimedOut) => {
+                continue;
+            }
+            Err(error) => return Err(error.to_string()),
+        }
         if line.is_empty() {
             continue;
         }
-        let response = serde_json::from_str::<DaemonResponse>(&line)
+        let response = serde_json::from_str::<DaemonResponse>(line.trim_end())
             .map_err(|error| format!("daemon stream parse failed: {error}"))?;
         match response {
             DaemonResponse::SnapshotSession { data } => {
@@ -1140,7 +1214,7 @@ mod tests {
     fn reattach_resizes_existing_grid_to_new_size() {
         let manager = GridManager::new();
         let (_first, first_is_new) = manager
-            .upsert_session("regression-session", 80, 24)
+            .upsert_session("regression-session", 80, 24, Some("first".to_string()))
             .expect("first attach");
         assert!(first_is_new, "first upsert creates the session");
 
@@ -1155,7 +1229,7 @@ mod tests {
 
         // Re-attach (e.g. a map zoom toggled `mapProjection`) at a wider size.
         let (session, second_is_new) = manager
-            .upsert_session("regression-session", 100, 30)
+            .upsert_session("regression-session", 100, 30, Some("second".to_string()))
             .expect("re-attach");
         assert!(!second_is_new, "re-attach reuses the existing session");
 
@@ -1172,7 +1246,35 @@ mod tests {
         );
         drop(state);
 
-        manager.detach("regression-session");
+        manager.detach("regression-session", Some("second"));
+    }
+
+    #[test]
+    fn stale_detach_token_does_not_remove_new_grid_session() {
+        let manager = GridManager::new();
+        manager
+            .upsert_session("map-session", 80, 24, Some("old-mount".to_string()))
+            .expect("initial map grid should attach");
+        manager
+            .upsert_session("map-session", 100, 30, Some("new-mount".to_string()))
+            .expect("new map grid should reattach");
+
+        manager.detach("map-session", Some("old-mount"));
+
+        assert!(
+            manager.has_session("map-session"),
+            "a stale map-node cleanup must not detach the current grid session"
+        );
+        assert_eq!(
+            manager.session_token("map-session").as_deref(),
+            Some("new-mount")
+        );
+
+        manager.detach("map-session", Some("new-mount"));
+        assert!(
+            !manager.has_session("map-session"),
+            "the current map-node cleanup should detach its own grid session"
+        );
     }
 
     #[test]
@@ -1200,7 +1302,23 @@ mod tests {
 
         state.dirty = false;
         state.scroll_to_bottom();
-        assert!(state.dirty, "scroll-to-bottom changes the visible grid");
+        assert!(
+            !state.dirty,
+            "scroll-to-bottom at the live bottom should not wake the emitter"
+        );
+
+        for i in 0..100 {
+            state.feed(format!("line{i}\r\n").as_bytes());
+        }
+        state.dirty = false;
+        state.scroll(100);
+        assert!(state.dirty, "scroll into history changes the visible grid");
+        state.dirty = false;
+        state.scroll_to_bottom();
+        assert!(
+            state.dirty,
+            "scroll-to-bottom from history changes the visible grid"
+        );
 
         state.dirty = false;
         state.reset();
@@ -1228,7 +1346,20 @@ mod tests {
 
         s.dirty = false;
         s.scroll_to_bottom();
-        assert!(s.dirty, "scroll_to_bottom marks the grid dirty");
+        assert!(
+            !s.dirty,
+            "scroll_to_bottom at the live bottom must not mark dirty"
+        );
+
+        for i in 0..100 {
+            s.feed(format!("line{i}\r\n").as_bytes());
+        }
+        s.dirty = false;
+        s.scroll(100);
+        assert!(s.dirty, "scroll into history marks dirty");
+        s.dirty = false;
+        s.scroll_to_bottom();
+        assert!(s.dirty, "scroll_to_bottom from history marks dirty");
 
         s.dirty = false;
         s.resize(100, 30);
@@ -1250,8 +1381,14 @@ mod tests {
         let b1 = grid_feed_reconnect_backoff(1);
         let b2 = grid_feed_reconnect_backoff(2);
         let b3 = grid_feed_reconnect_backoff(3);
-        assert_eq!(b1, GRID_FEED_RECONNECT_BASE, "first retry uses the base delay");
-        assert!(b2 > b1 && b3 > b2, "backoff grows with consecutive failures");
+        assert_eq!(
+            b1, GRID_FEED_RECONNECT_BASE,
+            "first retry uses the base delay"
+        );
+        assert!(
+            b2 > b1 && b3 > b2,
+            "backoff grows with consecutive failures"
+        );
         // Far-out attempts saturate at the cap, never exceeding it.
         for failures in 5..50 {
             assert!(

@@ -51,12 +51,14 @@ const checks = [
     message: "terminal live-state motion must be source-visible and reduced-motion safe.",
   },
   {
-    ok: /SNAPSHOT_EXCERPT_THROTTLE_MS\s*=\s*100/.test(terminal) &&
+    ok: /SNAPSHOT_EXCERPT_THROTTLE_MS\s*=\s*500/.test(terminal) &&
       /latestSnapshotRef\.current\s*=\s*snapshot/.test(terminal) &&
       /snapshotThrottleTimerRef\.current\s*=\s*setTimeout/.test(terminal) &&
       /runSnapshotExcerpt\(\);/.test(terminal) &&
-      /clearTimeout\(snapshotThrottleTimerRef\.current\)/.test(terminal),
-    message: "canvas snapshot excerpt/status-summary work must be throttled with a trailing update and unmount cleanup.",
+      /clearTimeout\(snapshotThrottleTimerRef\.current\)/.test(terminal) &&
+      /Snapshot excerpts are viewport\/render state/.test(terminal) &&
+      /scroll-driven snapshots summarize again/.test(terminal),
+    message: "canvas snapshot excerpt work must be throttled with a trailing update and unmount cleanup, without re-summarizing scroll-driven viewport snapshots.",
   },
   {
     ok: !/box-shadow/.test(livePulseKeyframe) &&

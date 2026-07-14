@@ -19,6 +19,7 @@ export interface AgentStatusSummaryInput {
   paneId?: string;
   mission?: string;
   prompt?: string;
+  userTask?: string;
   provider?: AgentProvider;
   status?: WorkstreamStatus;
   phase?: WorkstreamMetadata["phase"];
@@ -33,6 +34,10 @@ export interface AgentStatusSummaryInput {
   lastSummary?: string;
   nextAction?: string;
   terminalOutput?: string;
+  // The pane's CURRENT visible grid text (not scrollback). Used ONLY for live
+  // narration extraction — scrollback carries finished-turn bullets and must not
+  // feed it. Optional; absent keeps the legacy fallback behavior byte-identical.
+  terminalVisibleText?: string;
   events?: Array<{
     kind?: string;
     label?: string;
@@ -42,6 +47,8 @@ export interface AgentStatusSummaryInput {
   evidence?: string;
   risk?: string;
 }
+
+import { currentNarrationStep } from "./agentNarration";
 
 const NOISY_ACTIVITY_PATTERNS = [
   /^\/clear$/i,
@@ -126,6 +133,31 @@ function hasVisibleShellPrompt(input: AgentStatusSummaryInput) {
 function transcriptLines(input: AgentStatusSummaryInput) {
   return rawTranscriptLines(input)
     .filter((line) => !isNoisyActivity(line));
+}
+
+function approvalPromptSummary(lines: string[]) {
+  const confirmLine = [...lines].reverse().find((line) => /^Confirm:\s+/i.test(line));
+  if (!confirmLine) return null;
+  const hasChoices = lines.some((line) => /^\s*\d+[.)]\s+(?:Yes|No)\b/i.test(line));
+  const hasSelectionHint = lines.some((line) => /\bEnter to select\b|\bEsc to cancel\b/i.test(line));
+  if (!hasChoices && !hasSelectionHint) return null;
+  return {
+    task: "Reviewing approval request",
+    now: "Waiting for operator selection",
+  };
+}
+
+function nextStepPromptSummary(lines: string[]) {
+  const hasSelectionHint = lines.some((line) => /\bEnter to select\b|\bEsc to cancel\b/i.test(line));
+  const hasNumberedChoices = lines.some((line) => /^\s*\d+[.)]\s+\S+/.test(line));
+  const hasNextStepQuestion = lines.some((line) =>
+    /\bWhere to go:\b|\bNext step\b|\bHow do you want to proceed\?/i.test(line)
+  );
+  if (!hasSelectionHint || !hasNumberedChoices || !hasNextStepQuestion) return null;
+  return {
+    task: "Reviewing next step",
+    now: "Waiting for operator selection",
+  };
 }
 
 function explicitLineupTasks(input: AgentStatusSummaryInput) {
@@ -295,11 +327,14 @@ function pathFromInput(input: AgentStatusSummaryInput) {
   return label ?? "workspace path unknown";
 }
 
-function fallbackNow(input: AgentStatusSummaryInput, task: string, status: AgentStatusLifecycle, commandSummary?: { now: string } | null) {
+function fallbackNow(input: AgentStatusSummaryInput, task: string, status: AgentStatusLifecycle, commandSummary?: { now: string } | null, narrationStep?: string) {
   if (commandSummary?.now && !isNoisyActivity(commandSummary.now)) return commandSummary.now;
 
   const activity = cleanText(input.currentActivity);
   if (activity && !isNoisyActivity(activity)) return activity;
+
+  // The agent's own narrated current step beats every scrape below it.
+  if (narrationStep) return narrationStep;
 
   const next = cleanText(input.nextAction);
   if (next && !isNoisyActivity(next)) return next;
@@ -321,25 +356,40 @@ function fallbackNow(input: AgentStatusSummaryInput, task: string, status: Agent
 export function fallbackAgentStatusSummary(input: AgentStatusSummaryInput): AgentStatusSummary {
   const lines = transcriptLines(input);
   const commandSummary = shellCommandSummary(input);
+  const promptSummary = input.provider === "shell"
+    ? approvalPromptSummary(rawTranscriptLines(input)) ?? nextStepPromptSummary(rawTranscriptLines(input))
+    : null;
   const transcriptTask = cleanText(inferTranscriptTask(lines));
   const promptVisible = hasVisibleShellPrompt(input);
+  const mission = cleanText(input.mission);
+  const explicitUserTask =
+    cleanText(input.userTask) ??
+    (mission && mission !== "Terminal" ? mission : undefined) ??
+    cleanText(input.prompt);
+  const readyTask = promptVisible && !transcriptTask ? "Ready" : undefined;
   const task =
-    promptVisible && !transcriptTask ? "Ready" :
-    (cleanText(input.mission) && cleanText(input.mission) !== "Terminal" ? cleanText(input.mission) : undefined) ??
-    cleanText(input.prompt) ??
+    promptSummary?.task ??
+    readyTask ??
+    explicitUserTask ??
     commandSummary?.task ??
     transcriptTask ??
     "Supervised agent run";
-  const status = promptVisible && task === "Ready" ? "idle" : normalizeLifecycle(input);
+  const narrationStep = currentNarrationStep(input.terminalVisibleText);
+  const rawStatus = promptSummary ? "waiting" : promptVisible && task === "Ready" ? "idle" : normalizeLifecycle(input);
+  // A live narration bullet proves the agent is working right now — never report
+  // idle in that case (the "Awaiting next action while visibly working" bug).
+  const status = narrationStep && rawStatus === "idle" ? "working" : rawStatus;
   const excerpt = (input.terminalOutput ?? input.currentActivity ?? input.lastSummary ?? task).slice(-240);
   const extracted = extractionCandidates(input, task, status);
   return {
     task,
+    userTask: explicitUserTask,
     path: pathFromInput(input),
-    now: promptVisible && task === "Ready" ? "Awaiting command" : fallbackNow(input, task, status, commandSummary),
+    now: promptSummary?.now ?? (promptVisible && task === "Ready" && !narrationStep ? "Awaiting command" : fallbackNow(input, task, status, commandSummary, narrationStep)),
+    narration: narrationStep,
     status,
     provider: input.provider ?? "codex",
-    confidence: commandSummary ? "high" : cleanText(input.currentActivity) && !isNoisyActivity(input.currentActivity) ? "medium" : "low",
+    confidence: promptSummary || commandSummary ? "high" : narrationStep ? "medium" : cleanText(input.currentActivity) && !isNoisyActivity(input.currentActivity) ? "medium" : "low",
     proof: cleanText(input.evidence),
     blocker: status === "blocked" ? cleanText(input.risk) ?? cleanText(input.lastSummary) : undefined,
     tasks: normalizeExtractedItems(extracted.tasks, "summary", excerpt),
@@ -353,6 +403,7 @@ export function agentStatusSummaryInputFromWorkstream(workstream: WorkstreamMeta
   return {
     mission: workstream.mission,
     prompt: workstream.prompt,
+    userTask: workstream.mission ?? workstream.prompt,
     provider: workstream.provider,
     status: workstream.status,
     phase: workstream.phase,
@@ -382,6 +433,7 @@ export function parseAgentStatusSummaryResponse(raw: string, fallback: AgentStat
   try {
     const parsed = JSON.parse(raw) as Partial<AgentStatusSummary>;
     const task = cleanText(parsed.task);
+    const userTask = cleanText(parsed.userTask);
     const path = cleanText(parsed.path);
     const now = cleanText(parsed.now);
     if (!task || !path || !now) return fallback;
@@ -389,6 +441,7 @@ export function parseAgentStatusSummaryResponse(raw: string, fallback: AgentStat
       ...fallback,
       ...parsed,
       task,
+      userTask,
       path,
       now: isNoisyActivity(now) ? fallback.now : now,
       status: parsed.status ?? fallback.status,
@@ -456,11 +509,12 @@ export function getDisplaySummary(
 ): AgentStatusSummary {
   const summary = displayAgentStatusSummary(input, persisted);
   if (input.provider === "shell" && summary.task === "Supervised agent run") {
+    const narration = cleanText(summary.narration);
     return {
       ...summary,
       task: "Ready",
-      now: summary.status === "idle" ? "Awaiting command" : "Awaiting terminal output",
-      confidence: "low",
+      now: narration ?? (summary.status === "idle" ? "Awaiting command" : "Awaiting next action"),
+      confidence: narration ? summary.confidence : "low",
     };
   }
   return summary;
@@ -492,9 +546,17 @@ export function agentStatusSummaryFromWorkstream(workstream?: WorkstreamMetadata
 }
 
 export function agentStatusChipText(workstream: WorkstreamMetadata, summary: AgentStatusSummary) {
+  const restoreStatus = workstream.restoreStatus
+    ? `restore · ${workstream.restoreStatus.replace("-", " ")}`
+    : null;
   return [
     summary.provider,
     summary.status,
-    summary.proof ? "has proof" : summary.blocker ? "blocked" : formatWorkstreamIsolation(workstream.isolationMode, workstream.isolationStatus),
+    restoreStatus ??
+      (summary.proof
+        ? "has proof"
+        : summary.blocker
+          ? "blocked"
+          : formatWorkstreamIsolation(workstream.isolationMode, workstream.isolationStatus)),
   ].join(" · ");
 }

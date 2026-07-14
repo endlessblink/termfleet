@@ -9,7 +9,7 @@
 // so a TodoWrite-only hook records nothing. The legacy TodoWrite path is kept for
 // CLAUDE_CODE_ENABLE_TASKS=0 sessions. The sidecar `todos[]` shape is unchanged, so the
 // status worker/UI need no changes.
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { closeSync, mkdirSync, openSync, readFileSync, readSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { stdin } from "node:process";
 import {
   fnv,
@@ -26,6 +26,21 @@ function cleanField(value, max = 200) {
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, max);
+}
+
+function userTaskFromPayload(payload) {
+  const input = payload?.tool_input ?? payload?.input ?? {};
+  return cleanField(
+    payload?.userTask ??
+      payload?.prompt ??
+      payload?.text ??
+      payload?.message ??
+      input?.userTask ??
+      input?.prompt ??
+      input?.text ??
+      input?.message,
+    220,
+  );
 }
 
 // In a git worktree, Claude's hook payload reports the MAIN checkout path in `cwd`
@@ -204,17 +219,33 @@ export function activityFromTool(toolName, toolInput) {
   }
 }
 
+const TRANSCRIPT_TAIL_BYTES = Number(process.env.TERMFLEET_STATUS_HOOK_TRANSCRIPT_TAIL_BYTES || 256 * 1024);
+
+export function readTranscriptTail(transcriptPath, maxBytes = TRANSCRIPT_TAIL_BYTES) {
+  if (!transcriptPath) return "";
+  try {
+    const size = statSync(transcriptPath).size;
+    const bytes = Math.max(0, Math.min(size, maxBytes));
+    const start = Math.max(0, size - bytes);
+    const fd = openSync(transcriptPath, "r");
+    try {
+      const buffer = Buffer.alloc(bytes);
+      readSync(fd, buffer, 0, bytes, start);
+      const text = buffer.toString("utf8");
+      return start > 0 ? text.slice(text.indexOf("\n") + 1) : text;
+    } finally {
+      closeSync(fd);
+    }
+  } catch {
+    return "";
+  }
+}
+
 // Stop event: read the agent's OWN last words (the final assistant text block) from the
 // turn transcript, so the status line is what the model literally said it's doing — not an
 // inference from tool calls. The model writes the log; the summary picks it up. (TC-033)
 export function lastAssistantText(transcriptPath) {
-  if (!transcriptPath) return "";
-  let raw;
-  try {
-    raw = readFileSync(transcriptPath, "utf8");
-  } catch {
-    return "";
-  }
+  const raw = readTranscriptTail(transcriptPath);
   let text = "";
   // Scan forward, keep the last assistant entry that carries a real text block. (Tool-only
   // assistant turns have no text — those are skipped so we land on actual narration.)
@@ -349,6 +380,7 @@ export function buildSidecar(payload) {
     source: "claude-todowrite",
     todos,
     now: nowFromTodos(todos),
+    userTask: userTaskFromPayload(payload),
   };
 }
 
@@ -381,16 +413,47 @@ async function main() {
   const paneId = statusPaneId();
   // Pane-keyed when termfleet injected TERMFLEET_PANE_ID into the PTY, else cwd-keyed.
   const filePath = statusFilePath(cwd);
+  const prevAtStart = readExistingSidecar(filePath);
+  const submittedUserTask = userTaskFromPayload(payload);
   let sidecar;
-  if (
+  if (payload.hook_event_name === "UserPromptSubmit") {
+    const userTask = submittedUserTask;
+    if (!userTask) process.exit(0);
+    sidecar = {
+      cwd,
+      sessionId: String(payload?.session_id ?? prevAtStart?.sessionId ?? ""),
+      updatedAt: Date.now(),
+      source: "user-prompt",
+      todos: Array.isArray(prevAtStart?.todos) ? prevAtStart.todos : [],
+      userTask,
+      now: cleanField(prevAtStart?.now) || "Prompt submitted",
+      narration: cleanField(prevAtStart?.narration, 90) || undefined,
+    };
+  } else if (payload.hook_event_name === "Notification") {
+    // The agent is asking the operator for input or permission → Waiting for you.
+    // Checked BEFORE Stop because a Notification payload can also carry transcript_path.
+    const prev = prevAtStart;
+    sidecar = {
+      cwd,
+      sessionId: String(payload?.session_id ?? prev?.sessionId ?? ""),
+      updatedAt: Date.now(),
+      source: prev?.source || "claude-narration",
+      todos: Array.isArray(prev?.todos) ? prev.todos : [],
+      now: cleanField(prev?.now) || undefined,
+      narration: cleanField(prev?.narration, 90) || undefined,
+      userTask: submittedUserTask || cleanField(prev?.userTask, 220) || undefined,
+      turn: "waiting",
+    };
+  } else if (
     payload.hook_event_name === "Stop" ||
     (!payload.tool_name && payload.transcript_path)
   ) {
     // End-of-turn: capture the agent's own last words as the live "now" line. Only the
     // task list (a real plan) outranks it, so don't clobber an in-progress task summary.
+    // ALWAYS mark the turn idle here — even with no fresh narration — so a pane whose
+    // in-progress todo was never completed stops reading as Running the moment it finishes.
     const now = narrationToNow(lastAssistantText(payload.transcript_path));
-    if (!now) process.exit(0);
-    const prev = readExistingSidecar(filePath);
+    const prev = prevAtStart;
     const todos = Array.isArray(prev?.todos) ? prev.todos : [];
     const taskNow = nowFromTodos(todos);
     sidecar = {
@@ -399,16 +462,19 @@ async function main() {
       updatedAt: Date.now(),
       source: "claude-narration",
       todos,
-      now: taskNow || now,
-      narration: now,
+      now: taskNow || now || cleanField(prev?.now) || undefined,
+      narration: now || cleanField(prev?.narration, 90) || undefined,
+      userTask: submittedUserTask || cleanField(prev?.userTask, 220) || undefined,
+      turn: "idle",
     };
   } else if (payload.tool_name === "TodoWrite") {
     // Legacy authoritative path (CLAUDE_CODE_ENABLE_TASKS=0): rewrite from the array.
     sidecar = buildSidecar(payload);
+    sidecar.userTask = sidecar.userTask || cleanField(prevAtStart?.userTask, 220) || undefined;
     if (sidecar.todos.length === 0) process.exit(0);
   } else if (TASK_EVENT_TOOLS.has(payload.tool_name)) {
     // Modern task tools: fold this TaskCreate/TaskUpdate into the stateful list.
-    const prev = readExistingSidecar(filePath);
+    const prev = prevAtStart;
     const todos = applyTaskEvent(prev?.todos, payload);
     if (todos.length === 0) process.exit(0);
     sidecar = {
@@ -418,6 +484,7 @@ async function main() {
       source: "claude-task",
       todos,
       now: nowFromTodos(todos),
+      userTask: submittedUserTask || cleanField(prev?.userTask, 220) || cleanField(todos[0]?.content, 220) || undefined,
       ...(payload?.agent_id
         ? {
             agentId: String(payload.agent_id),
@@ -430,7 +497,7 @@ async function main() {
     // known task list so the panel stays populated between task events.
     const now = activityFromTool(payload?.tool_name, payload?.tool_input);
     if (!now) process.exit(0);
-    const prev = readExistingSidecar(filePath);
+    const prev = prevAtStart;
     sidecar = {
       cwd,
       sessionId: String(payload?.session_id ?? prev?.sessionId ?? ""),
@@ -438,6 +505,7 @@ async function main() {
       source: "claude-tool",
       todos: Array.isArray(prev?.todos) ? prev.todos : [],
       now,
+      userTask: submittedUserTask || cleanField(prev?.userTask, 220) || undefined,
     };
   }
   // Roll the agent's actual action into the recent-activity log (what it DID). On a Stop
@@ -455,8 +523,19 @@ async function main() {
   if (sidecar.narration === undefined && prevForRecent?.narration) {
     sidecar.narration = cleanField(prevForRecent.narration, 90);
   }
+  if (sidecar.userTask === undefined && prevForRecent?.userTask) {
+    sidecar.userTask = cleanField(prevForRecent.userTask, 220);
+  }
+  // Event-driven turn lifecycle for the Running/Waiting/Idle badge. Stop → idle,
+  // Notification → waiting (set in their branches); every other event is mid-turn work.
+  if (sidecar.turn === undefined) {
+    sidecar.turn = "working";
+  }
   // Stamp the pane id so the reader can confirm which terminal this status belongs to.
   if (paneId) sidecar.paneId = paneId;
+  // TC-054: stamp the provider so the daemon can build the right resume command
+  // (`claude --resume <id>`) on cold-restore for hand-started agents, without guessing.
+  sidecar.provider = "claude";
   // Guard the task list against the concurrent-hook race: parallel tool calls each spawn a
   // hook that read-modify-writes this file. If THIS write carries no todos but the file on
   // disk already has a task list (written by a sibling hook after we read `prev`), keep the

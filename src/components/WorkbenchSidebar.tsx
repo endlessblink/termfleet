@@ -1,4 +1,4 @@
-import { CSSProperties, ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { CSSProperties, Fragment, ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowsClockwise,
   ArrowSquareOut,
@@ -27,10 +27,14 @@ import {
 import { createAgentWorkstream, createAgentWorkstreamRunId, createNewTab, createTerminalTab, currentAgentWorkstreamCwd, splitActivePane, splitActivePreviewPane, useWorkspaceStore } from "../stores/workspace";
 import { FolderPicker } from "./FolderPicker";
 import { EmojiPicker } from "./EmojiPicker";
-import type { CanvasNode, Group, Tab, WorkstreamMetadata } from "../lib/types";
-import { taskStatusColor, taskStatusLabel } from "../lib/masterPlanTasks";
+import type { CanvasNode, Group, Tab, TerminalState, TaskLineupItem, WorkstreamMetadata } from "../lib/types";
+import { taskStatusColor, taskStatusLabel, type MasterPlanTask } from "../lib/masterPlanTasks";
 import { useMasterPlanTasks } from "../hooks/useMasterPlanTasks";
 import { pathTail, projectNameFor, workspaceLabelFor } from "../lib/projectDisplay";
+import { buildTerminalHeaderState, type TerminalHeaderState } from "../lib/terminalHeaderState";
+import { activityAddsInfo } from "../lib/terminalHeaderViewModel";
+import { badgeForAttention } from "../lib/terminalAttention";
+import { paneBadgeAttention } from "../lib/sessionStatus";
 import { FileExplorer } from "./FileExplorer";
 import { checkAgentProvider } from "../lib/agentProviders";
 import { agentLaneAuthRetryText, agentLaneAuthRetryTitle, agentLaneCleanupRequestText, agentLaneCleanupRequestTitle, agentLaneCloseoutText, agentLaneCloseoutTitle, agentLaneHealthText, agentLaneInterruptText, agentLaneInterruptTitle, agentLaneMemoryRequestText, agentLaneMemoryRequestTitle, agentLaneProofRequestText, agentLaneProofRequestTitle, agentLaneRestartText, agentLaneRestartTitle, agentLaneRiskMitigationText, agentLaneRiskMitigationTitle, agentLaneStatusSweepText, agentLaneStatusSweepTitle, agentLaneStatusText, attentionBreakdownText, cleanupBreakdownText, closeoutBreakdownText, formatAgentLaneBrief, formatAgentMissionControlBrief, formatAgentRunBrief, handoffMemoryPromptForWorkstream, isActiveAgentWorkstream, isAuthRetryableAgentWorkstream, isCleanupRequestableAgentWorkstream, isRestartableAgentWorkstream, isReviewItemCloseoutReady, isolationBreakdownText, latestMissionControlAskText, missionBreakdownText, missionControlAlternateText, missionControlDispatchBreakdownText, proofRequestPromptForWorkstream, providerBreakdownText, readinessBreakdownText, riskBreakdownText, statusCheckPromptForWorkstream, summarizeAgentLane } from "../lib/agentWorkstreamLane";
@@ -38,6 +42,8 @@ import { workstreamActivityText } from "../lib/workstreamActivity";
 import { formatWorkstreamOpsContext, promptWorkstreamIsolation, promptWorkstreamLaunchProfile, resolveWorkstreamOpsContext } from "../lib/workstreamOpsContext";
 import { MAP_FILTERS, type MapFilter, nodeMatchesMapFilter } from "../lib/mapNodeFilters";
 import { formatLocalServiceBrief, summarizeLocalServices, type LocalServiceSummary } from "../lib/localServices";
+import { projectBucketsByCanvasPosition } from "../lib/mapNodeOrdering";
+import { useFlipList } from "../hooks/useFlipList";
 
 const TERMINAL_COLORS = [
   "#d99a45",
@@ -94,6 +100,72 @@ function terminalForNode(node: CanvasNode, tab?: Tab) {
     tab.terminals.find((terminal) => terminal.paneId === node.id) ??
     tab.terminals.find((terminal) => terminal.id === node.terminalPtyId) ??
     tab.terminals[0];
+}
+
+function terminalForTab(tab: Tab) {
+  return tab.terminals.find((terminal) => terminal.paneId === tab.activePaneId) ?? tab.terminals[0];
+}
+
+function boundTaskLineup(task?: MasterPlanTask): TaskLineupItem[] | undefined {
+  if (!task) return undefined;
+  return [{
+    id: task.id,
+    content: task.title,
+    status: task.status === "done" ? "completed" : "in_progress",
+    source: "todo-write",
+    updatedAt: 0,
+  }];
+}
+
+function sidebarHeaderForTerminal(input: {
+  tab: Tab;
+  terminal?: TerminalState;
+  project?: Group | null;
+  liveCwd?: string | null;
+  liveGitRoot?: string | null;
+  spawnCwd?: string | null;
+  boundTask?: MasterPlanTask;
+}): TerminalHeaderState {
+  const { tab, terminal, project, liveCwd, liveGitRoot, spawnCwd, boundTask } = input;
+  const workstream = tab.workstream;
+  const taskLineup = boundTaskLineup(boundTask) ?? workstream?.taskLineup ?? terminal?.taskLineup;
+  const mainUserAskApplies = Boolean(
+    terminal?.mainUserAsk &&
+      (!terminal.mainUserAsk.runId ||
+        !terminal.activeRunId ||
+        terminal.mainUserAsk.runId === terminal.activeRunId),
+  );
+  const statusSummary = terminal?.statusSummary ?? workstream?.statusSummary;
+  const liveActivity =
+    terminal?.durableActivity?.title ??
+    terminal?.currentActivity ??
+    workstream?.currentActivity ??
+    workstream?.lastSummary;
+  const terminalOutput = terminal?.terminalVisibleText ?? terminal?.terminalOutput ?? workstream?.terminalOutput ?? "";
+
+  return buildTerminalHeaderState({
+    paneId: terminal?.paneId ?? tab.activePaneId,
+    terminalId: terminal?.id ?? tab.activePaneId,
+    runId: terminal?.activeRunId ?? workstream?.activeRunId ?? workstream?.runId,
+    project,
+    liveCwd: liveCwd ?? spawnCwd ?? tab.initialCwd,
+    spawnCwd: spawnCwd ?? tab.initialCwd,
+    liveGitRoot: liveGitRoot ?? workstream?.gitRoot,
+    terminalStatus: terminal?.status,
+    taskLineup,
+    activeRunId: terminal?.activeRunId ?? workstream?.activeRunId,
+    mainUserAsk: mainUserAskApplies ? terminal?.mainUserAsk : undefined,
+    statusSummary,
+    summary: statusSummary,
+    neutralTitle: liveActivity ?? null,
+    workstreamTitle: workstream?.mission ?? workstream?.prompt,
+    activelyWorking:
+      terminal?.durableActivity?.status === "running" ||
+      workstream?.status === "running" ||
+      workstream?.phase === "active" ||
+      /\bWorking\s+\(|esc to interrupt\b/i.test(terminalOutput),
+    trustedActivitySummary: terminal?.durableActivity?.status === "running",
+  });
 }
 
 function summarizeMapNodes(nodes: CanvasNode[], tabs: Tab[], groups: Group[], liveCwds: Record<string, string>) {
@@ -426,6 +498,21 @@ const styles: Record<string, CSSProperties> = {
     borderColor: "transparent",
     boxShadow: "none",
   },
+  dragGhost: {
+    minHeight: 36,
+    margin: "2px 0",
+    display: "flex",
+    alignItems: "center",
+    padding: "0 12px",
+    border: "1px dashed var(--border-focus)",
+    borderRadius: "var(--radius-sm)",
+    background: "color-mix(in srgb, var(--border-focus) 12%, transparent)",
+    color: "var(--text-secondary)",
+    fontSize: 12,
+    overflow: "hidden",
+    whiteSpace: "nowrap",
+    textOverflow: "ellipsis",
+  },
   hoverRow: {
     background: "var(--surface-hover)",
   },
@@ -467,6 +554,57 @@ const styles: Record<string, CSSProperties> = {
     whiteSpace: "nowrap",
     color: "var(--text-secondary)",
     fontSize: 12,
+  },
+  sidebarHeaderLines: {
+    display: "grid",
+    gap: 7,
+    minWidth: 0,
+    marginTop: 6,
+  },
+  // A "Task | value" column left the value ~18 readable characters in this narrow
+  // card. The label now sits above its value, so the text gets the full width.
+  sidebarHeaderLine: {
+    display: "grid",
+    gap: 1,
+    minWidth: 0,
+  },
+  sidebarHeaderLabel: {
+    color: "var(--text-tertiary)",
+    fontWeight: 500,
+    fontSize: 9,
+    letterSpacing: "0.07em",
+    textTransform: "uppercase",
+    whiteSpace: "nowrap",
+  },
+  sidebarHeaderTask: {
+    minWidth: 0,
+    display: "-webkit-box",
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: "vertical",
+    overflow: "hidden",
+    overflowWrap: "anywhere",
+    fontSize: 12,
+    lineHeight: 1.35,
+    color: "var(--text-secondary)",
+  },
+  sidebarHeaderNow: {
+    minWidth: 0,
+    display: "-webkit-box",
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: "vertical",
+    overflow: "hidden",
+    overflowWrap: "anywhere",
+    fontSize: 13,
+    lineHeight: 1.35,
+    color: "var(--text-primary)",
+    fontWeight: 500,
+  },
+  // "Task not captured" is the ABSENCE of information. Painting it warning-orange
+  // gave the emptiest cards the loudest voice; it recedes instead.
+  sidebarHeaderWarning: {
+    color: "var(--text-tertiary)",
+    fontWeight: 400,
+    fontStyle: "italic",
   },
   agentLanePanel: {
     display: "grid",
@@ -1108,8 +1246,8 @@ function TerminalContextMenu({
       if (ref.current && !ref.current.contains(event.target as Node)) onClose();
     }
 
-    document.addEventListener("mousedown", onPointerDown);
-    return () => document.removeEventListener("mousedown", onPointerDown);
+    document.addEventListener("mousedown", onPointerDown, true);
+    return () => document.removeEventListener("mousedown", onPointerDown, true);
   }, [onClose]);
 
   const commitTitle = () => {
@@ -1266,8 +1404,8 @@ function ProjectContextMenu({
     function onPointerDown(event: MouseEvent) {
       if (ref.current && !ref.current.contains(event.target as Node)) onClose();
     }
-    document.addEventListener("mousedown", onPointerDown);
-    return () => document.removeEventListener("mousedown", onPointerDown);
+    document.addEventListener("mousedown", onPointerDown, true);
+    return () => document.removeEventListener("mousedown", onPointerDown, true);
   }, [onClose]);
 
   useEffect(() => {
@@ -1387,8 +1525,8 @@ function NewTerminalLaunchMenu({
       if (ref.current && !ref.current.contains(event.target as Node)) onClose();
     }
 
-    document.addEventListener("mousedown", onPointerDown);
-    return () => document.removeEventListener("mousedown", onPointerDown);
+    document.addEventListener("mousedown", onPointerDown, true);
+    return () => document.removeEventListener("mousedown", onPointerDown, true);
   }, [onClose]);
 
   useEffect(() => {
@@ -1536,6 +1674,8 @@ function SessionsPanel({
   const groups = useWorkspaceStore((state) => state.groups);
   const activeGroupFilter = useWorkspaceStore((state) => state.activeGroupFilter);
   const projectRoot = useWorkspaceStore((state) => state.projectRoot);
+  const liveCwds = useWorkspaceStore((state) => state.liveCwds);
+  const liveGitRoots = useWorkspaceStore((state) => state.liveGitRoots);
   const activeTabId = useWorkspaceStore((state) => state.activeTabId);
   const canvasState = useWorkspaceStore((state) => state.canvasState);
   const addTab = useWorkspaceStore((state) => state.addTab);
@@ -3132,8 +3272,19 @@ function SessionsPanel({
         ) : visibleTabs.map((tab) => {
           const active = tab.id === activeTabId;
           const group = tab.groupId ? groups.find((candidate) => candidate.id === tab.groupId) : null;
-          const workstream = tab.workstream;
-          const lastWorkstreamEvent = workstream?.events?.[workstream.events.length - 1];
+          const terminal = terminalForTab(tab);
+          const liveCwd = terminal?.id ? liveCwds[terminal.id] : undefined;
+          const liveGitRoot = terminal?.id ? liveGitRoots[terminal.id] : undefined;
+          const header = sidebarHeaderForTerminal({
+            tab,
+            terminal,
+            project: group,
+            liveCwd,
+            liveGitRoot,
+            spawnCwd: tab.initialCwd,
+          });
+          const taskMissing = header.sources.goal === "missing" || header.sources.goal === "none";
+          const activityMissing = header.sources.activity === "missing";
           return (
             <div
               key={tab.id}
@@ -3143,10 +3294,16 @@ function SessionsPanel({
               aria-label={`Open session ${tab.title}`}
               aria-current={active ? "true" : undefined}
               data-active={active ? "true" : "false"}
+              data-pane-id={header.paneId}
+              data-terminal-id={header.terminalId}
+              data-goal-source={header.sources.goal}
+              data-activity-source={header.sources.activity}
+              data-header-version={header.version}
               style={{
                 ...styles.row,
                 ...(active ? styles.activeRow : null),
               }}
+              title={`${header.workspace} · Task: ${header.goalLabel} · Now Active: ${header.currentActivity} · ${header.fullPath}`}
               onClick={() => {
                 setActiveTab(tab.id);
                 setWorkspaceMode("split");
@@ -3164,12 +3321,62 @@ function SessionsPanel({
               <TerminalAvatar tab={tab} active={active} />
               <span style={{ minWidth: 0 }}>
                 <div style={{ ...styles.rowTitle, color: active ? "var(--text-primary)" : "var(--text-secondary)" }}>
-                  {tab.title}
+                  {header.workspace}
                 </div>
                 <div style={styles.rowMeta}>
-                  {workstream?.kind === "agent" ? `${workstreamLabel(workstream.provider)} · ${workstream.phase ?? workstream.status} · ${workstreamActivityText(workstream)} · ${formatWorkstreamOpsContext(workstream)}${workstream.startupCommand ? ` · ${workstream.startupCommand}` : ""}${lastWorkstreamEvent ? ` · ${lastWorkstreamEvent.label}` : ""}${workstream.providerAvailable === false ? ` · ${workstream.providerAvailabilityMessage ?? "unavailable"}` : ""} · ` : ""}
-                  {group ? `${group.name} · ` : ""}
-                  {pathTail(tab.initialCwd)}
+                  <span
+                    data-testid="sidebar-session-attention"
+                    data-attention-state={badgeForAttention(paneBadgeAttention(terminal)).state}
+                    style={{ color: badgeForAttention(paneBadgeAttention(terminal)).color, fontWeight: 600 }}
+                  >
+                    <span
+                      style={{
+                        display: "inline-block",
+                        width: 6,
+                        height: 6,
+                        borderRadius: "50%",
+                        background: badgeForAttention(paneBadgeAttention(terminal)).color,
+                        marginInlineEnd: 5,
+                        verticalAlign: "middle",
+                      }}
+                    />
+                    {badgeForAttention(paneBadgeAttention(terminal)).label}
+                  </span>
+                  {" · "}{pathTail(header.fullPath)}
+                </div>
+                <div style={styles.sidebarHeaderLines}>
+                  <div
+                    style={styles.sidebarHeaderLine}
+                    data-testid="sidebar-session-task-row"
+                    title={`Task: ${header.goalLabel}`}
+                  >
+                    <span style={styles.sidebarHeaderLabel}>Task</span>
+                    <span
+                      style={{
+                        ...styles.sidebarHeaderTask,
+                        ...(taskMissing ? styles.sidebarHeaderWarning : null),
+                      }}
+                    >
+                      {header.goalLabel}
+                    </span>
+                  </div>
+                  {activityAddsInfo(header.goalLabel, header.currentActivity) && (
+                  <div
+                    style={styles.sidebarHeaderLine}
+                    data-testid="sidebar-session-now-row"
+                    title={`Now Active: ${header.currentActivity}`}
+                  >
+                    <span style={styles.sidebarHeaderLabel}>Now</span>
+                    <span
+                      style={{
+                        ...styles.sidebarHeaderNow,
+                        ...(activityMissing ? styles.sidebarHeaderWarning : null),
+                      }}
+                    >
+                      {header.currentActivity}
+                    </span>
+                  </div>
+                  )}
                 </div>
               </span>
               <span className="workspace-sidebar-actions" style={styles.rowActions}>
@@ -3249,6 +3456,7 @@ function MapPanel({
   const tabs = useWorkspaceStore((state) => state.tabs);
   const groups = useWorkspaceStore((state) => state.groups);
   const liveCwds = useWorkspaceStore((state) => state.liveCwds);
+  const liveGitRoots = useWorkspaceStore((state) => state.liveGitRoots);
   const canvasState = useWorkspaceStore((state) => state.canvasState);
   const setActiveTab = useWorkspaceStore((state) => state.setActiveTab);
   const setWorkspaceMode = useWorkspaceStore((state) => state.setWorkspaceMode);
@@ -3258,6 +3466,11 @@ function MapPanel({
   const removeCanvasNode = useWorkspaceStore((state) => state.removeCanvasNode);
   const closeTerminalSession = useWorkspaceStore((state) => state.closeTerminalSession);
   const closePane = useWorkspaceStore((state) => state.closePane);
+  const reorderCanvasNodes = useWorkspaceStore((state) => state.reorderCanvasNodes);
+  const updateWorkspaceUiState = useWorkspaceStore((state) => state.updateWorkspaceUiState);
+  const sortMode = useWorkspaceStore((state) => state.workspaceUiState.canvasSidebarSortMode);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<{ id: string; place: "before" | "after" } | null>(null);
 
   const focusCanvasNode = (node: CanvasNode) => {
     const zoom = node.type === "terminal" ? 1 : canvasState.viewport.zoom;
@@ -3484,6 +3697,64 @@ function MapPanel({
   });
   const tasksByRoot = useMasterPlanTasks(taskRoots);
 
+  const draggable = sortMode === "manual";
+  const clearDrag = () => {
+    setDraggingId(null);
+    setDropTarget(null);
+  };
+  const handleDragStart = (node: CanvasNode, event: React.DragEvent) => {
+    setDraggingId(node.id);
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", node.id);
+  };
+  const handleDragOver = (node: CanvasNode, event: React.DragEvent) => {
+    if (!draggingId || draggingId === node.id) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    const rect = event.currentTarget.getBoundingClientRect();
+    const place: "before" | "after" = event.clientY < rect.top + rect.height / 2 ? "before" : "after";
+    setDropTarget((prev) => (prev?.id === node.id && prev.place === place ? prev : { id: node.id, place }));
+  };
+  const handleDrop = (node: CanvasNode, event: React.DragEvent) => {
+    event.preventDefault();
+    const place = dropTarget?.id === node.id ? dropTarget.place : "before";
+    if (draggingId && draggingId !== node.id) reorderCanvasNodes(draggingId, node.id, place);
+    clearDrag();
+  };
+
+  // By-project view follows the map's visual reading order: left-to-right first,
+  // then top-to-bottom. Moving a node changes display order without changing its
+  // project membership or the persisted node array.
+  const projectBuckets = useMemo(() => {
+    return projectBucketsByCanvasPosition(visibleNodes, tabs, groups, { unassignedLabel: "Unassigned" });
+  }, [visibleNodes, tabs, groups]);
+
+  type MapListItem =
+    | { kind: "header"; key: string; label: string }
+    | { kind: "node"; node: CanvasNode };
+  const mapListItems: MapListItem[] = sortMode === "project"
+    ? projectBuckets.flatMap((bucket) => [
+        { kind: "header" as const, key: `header-${bucket.key}`, label: bucket.label },
+        ...bucket.nodes.map((node) => ({ kind: "node" as const, node })),
+      ])
+    : visibleNodes.map((node) => ({ kind: "node" as const, node }));
+  const mapListOrderKey = mapListItems
+    .map((item) => item.kind === "header" ? item.key : item.node.id)
+    .join("|");
+  const mapNodeListRef = useFlipList<HTMLDivElement>(mapListOrderKey);
+
+  const draggedNode = draggingId ? visibleNodes.find((node) => node.id === draggingId) : undefined;
+  const draggedGhostLabel = (() => {
+    if (!draggedNode) return "";
+    const tab = draggedNode.terminalTabId ? tabs.find((t) => t.id === draggedNode.terminalTabId) : undefined;
+    return tab?.title || draggedNode.title || "Terminal";
+  })();
+  const dragGhost = (
+    <div style={styles.dragGhost} data-testid="map-drag-ghost">
+      Move “{draggedGhostLabel}” here
+    </div>
+  );
+
   return (
     <>
       <div style={styles.header}>
@@ -3492,6 +3763,31 @@ function MapPanel({
           <span>Map</span>
         </div>
         <span style={styles.count}>{visibleNodes.length}</span>
+      </div>
+      <div style={styles.mapFilterBar} aria-label="Arrange terminals">
+        {([
+          { id: "manual", label: "Manual" },
+          { id: "project", label: "By project" },
+        ] as const).map((mode) => {
+          const active = sortMode === mode.id;
+          return (
+            <button
+              key={mode.id}
+              type="button"
+              data-testid={`map-sort-${mode.id}`}
+              aria-pressed={active}
+              style={{
+                ...styles.mapFilterButton,
+                background: active ? "var(--surface-selected)" : "var(--surface-base)",
+                color: active ? "var(--text-primary)" : "var(--text-secondary)",
+                borderColor: active ? "var(--border-strong)" : "transparent",
+              }}
+              onClick={() => updateWorkspaceUiState({ canvasSidebarSortMode: mode.id })}
+            >
+              <span>{mode.label}</span>
+            </button>
+          );
+        })}
       </div>
       <div style={styles.mapFilterBar} aria-label="Map filters">
         {MAP_FILTERS.map((filter) => {
@@ -4887,8 +5183,16 @@ function MapPanel({
             {mapFilter === "all" ? "No map nodes yet." : "No map nodes match this filter."}
           </div>
         ) : (
-          <div data-testid="map-node-list" style={{ order: 1 }}>
-          {visibleNodes.map((node) => {
+          <div data-testid="map-node-list" ref={mapNodeListRef} style={{ order: 1 }}>
+          {mapListItems.map((item) => {
+            if (item.kind === "header") {
+              return (
+                <div key={item.key} data-flip-key={item.key} style={styles.sectionLabel} data-testid="map-project-group-header">
+                  {item.label}
+                </div>
+              );
+            }
+            const node = item.node;
             const linkedTab = node.terminalTabId
               ? tabs.find((tab) => tab.id === node.terminalTabId)
               : undefined;
@@ -4923,16 +5227,49 @@ function MapPanel({
                   task.id.toLowerCase() === node.taskBinding?.taskId.toLowerCase()
                 )
               : undefined;
+            const liveTerminal = linkedTab ? terminalForNode(node, linkedTab) : undefined;
+            const header = linkedTab && node.type !== "preview"
+              ? sidebarHeaderForTerminal({
+                  tab: linkedTab,
+                  terminal: liveTerminal,
+                  project: linkedProject,
+                  liveCwd: liveNodeCwd,
+                  liveGitRoot: liveTerminal?.id ? liveGitRoots[liveTerminal.id] : undefined,
+                  spawnCwd: node.terminalCwd ?? linkedTab.initialCwd,
+                  boundTask,
+                })
+              : null;
+            const taskMissing = header
+              ? header.sources.goal === "missing" || header.sources.goal === "none"
+              : false;
+            const activityMissing = header ? header.sources.activity === "missing" : false;
+            const showGhost = draggable && dropTarget?.id === node.id && draggingId !== node.id;
             return (
+              <Fragment key={node.id}>
+              {showGhost && dropTarget?.place === "before" && dragGhost}
               <div
-                key={node.id}
                 className="workspace-sidebar-row"
+                data-flip-key={node.id}
                 data-active={node.id === canvasState.selectedNodeId ? "true" : "false"}
+                data-pane-id={header?.paneId}
+                data-terminal-id={header?.terminalId}
+                data-goal-source={header?.sources.goal}
+                data-activity-source={header?.sources.activity}
+                data-header-version={header?.version}
+                draggable={draggable}
                 style={{
                   ...styles.row,
                   ...(node.id === canvasState.selectedNodeId ? styles.activeRow : null),
+                  ...(draggingId === node.id ? { opacity: 0.45 } : null),
+                  ...(draggable ? { cursor: "grab" } : null),
                 }}
-                onMouseDown={(event) => event.preventDefault()}
+                onDragStart={(event) => handleDragStart(node, event)}
+                onDragOver={(event) => handleDragOver(node, event)}
+                onDrop={(event) => handleDrop(node, event)}
+                onDragEnd={clearDrag}
+                onMouseDown={(event) => {
+                  if (!draggable) event.preventDefault();
+                }}
                 onClick={() => {
                   if (node.terminalTabId && linkedTab) setActiveTab(linkedTab.id);
                   setWorkspaceMode("canvas");
@@ -4947,6 +5284,9 @@ function MapPanel({
                   if (!linkedTab) return;
                   onOpenTerminalMenu(event, linkedTab);
                 }}
+                title={header
+                  ? `${header.workspace} · Task: ${header.goalLabel} · Now Active: ${header.currentActivity} · ${header.fullPath}`
+                  : undefined}
               >
                 {linkedProject && node.type !== "preview" ? (
                   <button
@@ -4980,15 +5320,75 @@ function MapPanel({
                 )}
                 <span style={{ minWidth: 0 }}>
                   <div style={styles.rowTitle}>
-                    {node.type === "preview" ? node.title : linkedTab ? linkedProjectName : node.title}
+                    {node.type === "preview" ? node.title : header ? header.workspace : linkedTab ? linkedProjectName : node.title}
                   </div>
                   <div style={styles.rowMeta}>
-                    {node.type === "preview"
-                      ? node.previewUrl ?? "Localhost preview"
-                      : node.terminalTabId && linkedTab
-                      ? `${pathTail(liveNodeCwd ?? node.terminalCwd ?? linkedTab.initialCwd)} · ${linkedTab.title}`
-                      : `${Math.round(node.width)} x ${Math.round(node.height)}`}
+                    {header ? (
+                      <>
+                        <span
+                          data-testid="sidebar-map-node-attention"
+                          data-attention-state={badgeForAttention(paneBadgeAttention(liveTerminal)).state}
+                          style={{ color: badgeForAttention(paneBadgeAttention(liveTerminal)).color, fontWeight: 600 }}
+                        >
+                          <span
+                            style={{
+                              display: "inline-block",
+                              width: 6,
+                              height: 6,
+                              borderRadius: "50%",
+                              background: badgeForAttention(paneBadgeAttention(liveTerminal)).color,
+                              marginInlineEnd: 5,
+                              verticalAlign: "middle",
+                            }}
+                          />
+                          {badgeForAttention(paneBadgeAttention(liveTerminal)).label}
+                        </span>
+                        {" · "}{pathTail(header.fullPath)}
+                      </>
+                    ) : node.type === "preview" ? (
+                      node.previewUrl ?? "Localhost preview"
+                    ) : node.terminalTabId && linkedTab ? (
+                      `${pathTail(liveNodeCwd ?? node.terminalCwd ?? linkedTab.initialCwd)} · ${linkedTab.title}`
+                    ) : (
+                      `${Math.round(node.width)} x ${Math.round(node.height)}`
+                    )}
                   </div>
+                  {header && (
+                    <div style={styles.sidebarHeaderLines}>
+                      <div
+                        style={styles.sidebarHeaderLine}
+                        data-testid="sidebar-map-node-task-row"
+                        title={`Task: ${header.goalLabel}`}
+                      >
+                        <span style={styles.sidebarHeaderLabel}>Task</span>
+                        <span
+                          style={{
+                            ...styles.sidebarHeaderTask,
+                            ...(taskMissing ? styles.sidebarHeaderWarning : null),
+                          }}
+                        >
+                          {header.goalLabel}
+                        </span>
+                      </div>
+                      {activityAddsInfo(header.goalLabel, header.currentActivity) && (
+                      <div
+                        style={styles.sidebarHeaderLine}
+                        data-testid="sidebar-map-node-now-row"
+                        title={`Now Active: ${header.currentActivity}`}
+                      >
+                        <span style={styles.sidebarHeaderLabel}>Now</span>
+                        <span
+                          style={{
+                            ...styles.sidebarHeaderNow,
+                            ...(activityMissing ? styles.sidebarHeaderWarning : null),
+                          }}
+                        >
+                          {header.currentActivity}
+                        </span>
+                      </div>
+                      )}
+                    </div>
+                  )}
                   {node.taskBinding && (
                     <div style={styles.taskInlineBadge} title={boundTask?.title ?? "Task not found in MASTER_PLAN.md"}>
                       <span
@@ -5031,6 +5431,8 @@ function MapPanel({
                   </button>
                 </span>
               </div>
+              {showGhost && dropTarget?.place === "after" && dragGhost}
+              </Fragment>
             );
           })}
           </div>

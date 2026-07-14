@@ -13,9 +13,10 @@ export interface KeymapModes {
 const DEFAULT_MODES: KeymapModes = { appCursor: false };
 
 export function isTerminalPasteShortcut(event: KeyboardEvent): boolean {
+  const key = event.key.toLowerCase();
   return (
     event.type === "keydown" &&
-    event.key.toLowerCase() === "v" &&
+    (key === "v" || event.code === "KeyV") &&
     (event.ctrlKey || event.metaKey) &&
     event.shiftKey &&
     !event.altKey &&
@@ -167,6 +168,33 @@ function controlByte(key: string): string | null {
     default:
       return null;
   }
+}
+
+/**
+ * What the terminal's primary (capture-phase) clipboard `paste` handler should do.
+ * The desktop terminal has no image-to-disk pipeline: an image paste is realized
+ * by forwarding Ctrl-V (`\x16`) to the PTY so the running agent reads the image
+ * from the clipboard itself. The contract (TC-033):
+ *   - "ignore" — no text AND no *armed* image: let the native event pass (do NOT
+ *                preventDefault). A plain Ctrl+V image still reaches the agent via
+ *                the `\x16` keydown path, so this branch must not swallow it.
+ *   - "image"  — no text, but an image is on the clipboard and the Ctrl+Shift+V
+ *                paste shortcut was armed in time: forward `\x16`.
+ *   - "text"   — text is present: bracketed-paste it. Text does NOT require arming
+ *                (arming only disambiguates image-paste intent).
+ * Pure + exported so the image branch — previously untested, which is why it
+ * regressed silently "again" — is guarded by tests/paste-image-decision.spec.ts.
+ */
+export type PasteAction = "ignore" | "image" | "text";
+
+export function decidePasteAction(input: {
+  hasText: boolean;
+  hasImage: boolean;
+  armed: boolean;
+}): PasteAction {
+  if (!input.hasText && !(input.armed && input.hasImage)) return "ignore";
+  if (!input.hasText) return "image";
+  return "text";
 }
 
 /** Wrap pasted text in bracketed-paste markers when the app enabled the mode. */
