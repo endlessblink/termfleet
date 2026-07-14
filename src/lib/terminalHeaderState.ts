@@ -10,7 +10,8 @@ import {
   buildShellTerminalHeaderViewModel,
   type HeaderFieldSource,
 } from "./terminalHeaderViewModel";
-import { attentionStateFrom, type AttentionState } from "./terminalAttention";
+import { type AttentionState } from "./terminalAttention";
+import { reconcileSessionStatus } from "./sessionStatus";
 
 export type TerminalHeaderStatus =
   | "idle"
@@ -164,6 +165,10 @@ export function buildTerminalHeaderState(input: {
    * still stuck on "working" after the turn ended.
    */
   terminalAtRest?: boolean;
+  /** When the pane last produced output/changed (ms epoch) — drives the stale-working guard. */
+  lastActivityAt?: number | null;
+  /** Current time (ms epoch); pass Date.now() from the component. */
+  nowMs?: number | null;
   updatedAt?: number;
   version?: number;
 }): TerminalHeaderState {
@@ -196,15 +201,16 @@ export function buildTerminalHeaderState(input: {
   // panes WITHOUT such a summary (a bare shell whose only "working" is an attached PTY),
   // fall back to the live on-screen indicator / running command, so an idle shell reads
   // Idle rather than busy.
-  const summarySaysWorking = (input.summary ?? input.statusSummary)?.status === "working";
-  // A visible "turn finished" marker beats a stale hook still stuck on "working".
-  const running =
-    !input.terminalAtRest &&
-    (summarySaysWorking || (input.activelyRunning ?? input.activelyWorking));
-  const attention = attentionStateFrom({
-    headerStatus,
-    activelyWorking: running,
-  });
+  // SINGLE SOURCE OF TRUTH: every view derives its badge from this one reconciler so
+  // they can never contradict each other. Priority fusion: on-screen done-marker >
+  // explicit waiting > live generating marker > FRESH "working" hook > stale → idle.
+  const attention = reconcileSessionStatus({
+    summaryStatus: (input.summary ?? input.statusSummary)?.status,
+    activelyRunning: input.activelyRunning ?? input.activelyWorking,
+    atRest: input.terminalAtRest,
+    lastActivityAt: input.lastActivityAt,
+    now: input.nowMs,
+  }).attention;
   const currentActivity =
     hasCapturedGoal &&
     headerStatus === "working" &&

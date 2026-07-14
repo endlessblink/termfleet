@@ -171,6 +171,8 @@ function sidebarHeaderForTerminal(input: {
       terminalLooksActivelyWorking(terminalOutput) ||
       terminal?.durableActivity?.status === "running",
     terminalAtRest: terminalLooksAtRest(terminalOutput),
+    lastActivityAt: terminal?.terminalVisibleTextUpdatedAt ?? terminal?.durableActivity?.updatedAt,
+    nowMs: Date.now(),
     trustedActivitySummary: terminal?.durableActivity?.status === "running",
   });
 }

@@ -2647,6 +2647,9 @@ function CanvasNodeViewImpl({
     terminalAtRest: terminalLooksAtRest(
       linkedTerminal?.terminalVisibleText ?? linkedTerminal?.terminalOutput ?? "",
     ),
+    lastActivityAt:
+      linkedTerminal?.terminalVisibleTextUpdatedAt ?? linkedTerminal?.durableActivity?.updatedAt,
+    nowMs: Date.now(),
     trustedActivitySummary:
       terminalDurableActivityUsable ||
       terminalDisplaySummaryBase.task === "Reviewing approval request" ||

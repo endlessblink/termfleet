@@ -13,6 +13,7 @@ import { taskLineupNextLabel, taskLineupStats, terminalOutputClosesTaskLineup, v
 import { neutralHeaderTitle, normalizePersistedShellSummary, summaryFromDurableActivity, terminalPurposeFromContext, terminalTextLooksReadyPrompt, terminalLooksActivelyWorking, terminalLooksAtRest } from "../lib/terminalHeaderDisplay";
 import { buildTerminalHeaderState } from "../lib/terminalHeaderState";
 import { badgeForAttention, type AttentionState } from "../lib/terminalAttention";
+import { sessionAttention } from "../lib/sessionStatus";
 import { stableHeader } from "../lib/stableHeader";
 import {
   calculatePaneBounds,
@@ -909,6 +910,9 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
               terminalAtRest: terminalLooksAtRest(
                 paneTerminal?.terminalVisibleText ?? paneTerminal?.terminalOutput ?? "",
               ),
+              lastActivityAt:
+                paneTerminal?.terminalVisibleTextUpdatedAt ?? paneTerminal?.durableActivity?.updatedAt,
+              nowMs: Date.now(),
               trustedActivitySummary:
                 shellDurableActivityUsable ||
                 shellStatusSummaryBase.task === "Reviewing approval request" ||
@@ -963,14 +967,19 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
         );
         const headerTitle = stabilizedHeader.title;
         const headerNow = stabilizedHeader.now;
-        // Does this pane need me / busy / idle — the same signal the map and sidebar show.
+        // Does this pane need me / busy / idle — read from the SAME reconciler the map and
+        // sidebar use, so the three views can never disagree. For a shell pane the header
+        // already carries it; for an agent pane feed the reconciler the same signals.
         const splitAttentionState: AttentionState =
           shellHeader?.attention ??
-          (agentStatusSummary?.status === "waiting" || agentStatusSummary?.status === "blocked"
-            ? "waiting"
-            : isAgentPane && agentStatusSummary?.status === "working"
-              ? "running"
-              : "idle");
+          sessionAttention({
+            visibleText: paneTerminal?.terminalVisibleText ?? paneTerminal?.terminalOutput,
+            durableActivityStatus: paneTerminal?.durableActivity?.status,
+            summaryStatus: agentStatusSummary?.status,
+            lastActivityAt:
+              paneTerminal?.terminalVisibleTextUpdatedAt ?? paneTerminal?.durableActivity?.updatedAt,
+            now: Date.now(),
+          });
         const splitAttention = badgeForAttention(splitAttentionState);
         const shellHeaderPath = shellDurableActivityUsable ? shellStatusSummaryBase?.path : shellHeader?.fullPath;
         const paneOutput = !isPreviewPane
