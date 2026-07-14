@@ -22,6 +22,18 @@ test("rejects raw prompt echoes and typo-heavy prompt fragments", () => {
     ok: false,
     reason: "raw-thinking-prompt",
   });
+  expect(qualityCheckActivityLabel("Reviewing its not logical that we cant find any its just not")).toMatchObject({
+    ok: false,
+    reason: "raw-thinking-prompt",
+  });
+  expect(qualityCheckActivityLabel("Still in Plan Mode, so I can’t mutate files yet.")).toMatchObject({
+    ok: false,
+    reason: "prompt-fragment",
+  });
+  expect(qualityCheckActivityLabel("You’re now testing the updated packaged app.")).toMatchObject({
+    ok: false,
+    reason: "prompt-fragment",
+  });
 });
 
 test("rejects command-like and implementation-detail labels", () => {
@@ -58,15 +70,29 @@ test("approval and verdict labels must say what is being judged", () => {
 });
 
 test("rejects stale one-word prompt fragments as task goals", () => {
-  for (const label of ["done", "go", "fix it", "so fix it"]) {
+  for (const label of ["done", "go", "fix it", "so fix it", "and this", "this", "both"]) {
     expect(qualityCheckUserAskLabel(label)).toMatchObject({ ok: false, reason: "prompt-fragment" });
   }
   expect(qualityCheckUserAskLabel("go over everything and get it ready to merge").ok).toBe(true);
 });
 
+test("rejects long conversational requirement dumps as visible labels", () => {
+  const raw =
+    "I just need ready high quality calls. that are verifiable e2e. anything else is just adding more";
+  expect(qualityCheckUserAskLabel(raw)).toMatchObject({ ok: false, reason: "prompt-fragment" });
+  expect(qualityCheckTaskLabel(raw)).toMatchObject({ ok: false, reason: "prompt-fragment" });
+  expect(qualityCheckActivityLabel("The production inbox says and explains the real gate: a call is required")).toMatchObject({
+    ok: false,
+  });
+});
+
 test("rejects generic build and test result wrappers", () => {
   for (const label of [
     "Raise quality across the current work",
+    "Task Complete: Files shipped: - - - profile invoice access",
+    "Files shipped: profile invoice access",
+    "Frontend build failed",
+    "Confidence is HIGH after verifying the local surface",
     "Verify Build and tests result",
     "Build and tests completed successfully",
     "Test process completed successfully",
@@ -75,6 +101,10 @@ test("rejects generic build and test result wrappers", () => {
     expect(qualityCheckTaskLabel(label)).toMatchObject({ ok: false, reason: "vague" });
     expect(qualityCheckActivityLabel(label)).toMatchObject({ ok: false, reason: "vague" });
   }
+  expect(qualityCheckTaskLabel("Task 7 — mark IZ-009 in the plan and finalize")).toMatchObject({
+    ok: false,
+    reason: "prompt-fragment",
+  });
   expect(qualityCheckActivityLabel("Running build and visual checks").ok).toBe(true);
 });
 
@@ -83,6 +113,7 @@ test("rejects duplicated long task and activity labels", () => {
     "Fix terminal headers so Task shows the user ask and activity shows current work",
     "Fix terminal headers so Task shows the user ask and activity shows current work",
   )).toBe(true);
+  expect(headerLabelsAreDuplicated("Updating old link locations", "Checking old link replacements")).toBe(true);
   expect(headerLabelsAreDuplicated("Improve header descriptions", "Inspecting quality rules")).toBe(false);
 });
 
@@ -129,11 +160,27 @@ test("trusted pane titles still reject implementation details", () => {
     reason: "prompt-fragment",
   });
   for (const label of [
+    "I fixed it so live clarify prompts opt out of that compact shape",
     "What I fixed now I deployed and pushed a prevention fix",
     "You can test now with either the desktop shortcut",
     "Use this as the E2E task goal",
     "Root cause: desktop launched but injected from the old app",
     "Strong evidence that the hot surface is not the map",
+    "Treat it as a probation window.",
+    "What is now covered: - - / - answer prose like",
+    "What shipped: - Commit on main",
+    "The correct transition is: 1.",
+    "The failure path was: 1.",
+    "Update the highest-impact places first: - profile - homepage",
+    "I left the updated continuous watchdog running",
+    ": I can handle the app/code/audit side.",
+    "I’ll ground this in what already exists",
+    "There’s an existing preview pattern to copy: supports plus",
+    "Cleaned and landed safely.",
+    "Confidence Rating HIGH for the draft-preview 404 fix.",
+    "Right - the Too Much / Live Ink are art exhibitions",
+    "I re-read the relevant store",
+    "I updated the actual launched checkout to current plus all",
     "VNoneoofhtheiabove to separatOptionally",
   ]) {
     expect(qualityCheckTrustedActivityLabel(label)).toMatchObject({

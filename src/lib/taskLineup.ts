@@ -222,9 +222,15 @@ export function mergeShellSummaryTaskLineup(
  * are task identity; operator/model/terminal summaries are activity annotations
  * and must not own the visible TASKS panel.
  */
+// The harness's own placeholder row. It is not work the agent declared, so it must
+// not appear in the panel as if it were a task the operator can follow.
+function isPlaceholderTaskRow(item: TaskLineupItem) {
+  return /^(?:Answering latest prompt|Answering user question)$/i.test((item.content ?? "").trim());
+}
+
 export function visibleTaskLineup(items: TaskLineupItem[] | undefined, runId: string | undefined): TaskLineupItem[] {
   const all = items ?? [];
-  const todoWrite = all.filter((item) => item.source === "todo-write");
+  const todoWrite = all.filter((item) => item.source === "todo-write" && !isPlaceholderTaskRow(item));
   const chosen = taskLineupForVisibleRun(todoWrite, runId);
   // The panel shows what's being worked on. If nothing is live (every item is
   // completed/cancelled), it should be EMPTY — not a graveyard of struck-through done
