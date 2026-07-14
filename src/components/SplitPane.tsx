@@ -13,7 +13,7 @@ import { taskLineupNextLabel, taskLineupStats, terminalOutputClosesTaskLineup, v
 import { neutralHeaderTitle, normalizePersistedShellSummary, summaryFromDurableActivity, terminalPurposeFromContext, terminalTextLooksReadyPrompt, terminalLooksActivelyWorking, terminalLooksAtRest } from "../lib/terminalHeaderDisplay";
 import { buildTerminalHeaderState } from "../lib/terminalHeaderState";
 import { badgeForAttention, type AttentionState } from "../lib/terminalAttention";
-import { sessionAttention } from "../lib/sessionStatus";
+import { paneBadgeAttention } from "../lib/sessionStatus";
 import { useStatusClock } from "../lib/useStatusClock";
 import { stableHeader } from "../lib/stableHeader";
 import {
@@ -970,22 +970,13 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
         );
         const headerTitle = stabilizedHeader.title;
         const headerNow = stabilizedHeader.now;
-        // Does this pane need me / busy / idle — read from the SAME reconciler the map and
-        // sidebar use, so the three views can never disagree. For a shell pane the header
-        // already carries it; for an agent pane feed the reconciler the same signals.
-        const splitAttentionState: AttentionState =
-          shellHeader?.attention ??
-          sessionAttention({
-            visibleText: paneTerminal?.terminalVisibleText ?? paneTerminal?.terminalOutput,
-            durableActivityStatus: paneTerminal?.durableActivity?.status,
-            summaryStatus: agentStatusSummary?.status,
-            // Hook write time, not terminal-output time (a ticking bar keeps output fresh).
-            lastActivityAt: agentStatusSummary?.updatedAt ?? paneTerminal?.durableActivity?.updatedAt,
-            now: Date.now(),
-          });
-        // Read the ONE reconciled badge stored by the poll loop; fall back to the local
-        // computation only until the pane is first polled.
-        const splitAttention = badgeForAttention(paneTerminal?.badgeAttention ?? splitAttentionState);
+        // ONE pure render-time translation of the pane's stored status — identical in
+        // every view, nothing stored separately that can be dropped and flicker.
+        const splitAttentionState: AttentionState = paneBadgeAttention(
+          paneTerminal,
+          agentStatusSummary?.status,
+        );
+        const splitAttention = badgeForAttention(splitAttentionState);
         const shellHeaderPath = shellDurableActivityUsable ? shellStatusSummaryBase?.path : shellHeader?.fullPath;
         const paneOutput = !isPreviewPane
           ? tab.workstream?.kind === "agent"

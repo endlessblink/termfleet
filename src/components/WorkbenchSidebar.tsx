@@ -35,6 +35,7 @@ import { buildTerminalHeaderState, type TerminalHeaderState } from "../lib/termi
 import { activityAddsInfo } from "../lib/terminalHeaderViewModel";
 import { badgeForAttention } from "../lib/terminalAttention";
 import { terminalLooksActivelyWorking, terminalLooksAtRest } from "../lib/terminalHeaderDisplay";
+import { paneBadgeAttention } from "../lib/sessionStatus";
 import { useStatusClock } from "../lib/useStatusClock";
 import { FileExplorer } from "./FileExplorer";
 import { checkAgentProvider } from "../lib/agentProviders";
@@ -3338,8 +3339,8 @@ function SessionsPanel({
                 <div style={styles.rowMeta}>
                   <span
                     data-testid="sidebar-session-attention"
-                    data-attention-state={badgeForAttention(terminal?.badgeAttention ?? header.attention).state}
-                    style={{ color: badgeForAttention(terminal?.badgeAttention ?? header.attention).color, fontWeight: 600 }}
+                    data-attention-state={badgeForAttention(paneBadgeAttention(terminal)).state}
+                    style={{ color: badgeForAttention(paneBadgeAttention(terminal)).color, fontWeight: 600 }}
                   >
                     <span
                       style={{
@@ -3347,12 +3348,12 @@ function SessionsPanel({
                         width: 6,
                         height: 6,
                         borderRadius: "50%",
-                        background: badgeForAttention(terminal?.badgeAttention ?? header.attention).color,
+                        background: badgeForAttention(paneBadgeAttention(terminal)).color,
                         marginInlineEnd: 5,
                         verticalAlign: "middle",
                       }}
                     />
-                    {badgeForAttention(terminal?.badgeAttention ?? header.attention).label}
+                    {badgeForAttention(paneBadgeAttention(terminal)).label}
                   </span>
                   {" · "}{pathTail(header.fullPath)}
                 </div>
@@ -5341,8 +5342,8 @@ function MapPanel({
                       <>
                         <span
                           data-testid="sidebar-map-node-attention"
-                          data-attention-state={badgeForAttention(liveTerminal?.badgeAttention ?? header.attention).state}
-                          style={{ color: badgeForAttention(liveTerminal?.badgeAttention ?? header.attention).color, fontWeight: 600 }}
+                          data-attention-state={badgeForAttention(paneBadgeAttention(liveTerminal)).state}
+                          style={{ color: badgeForAttention(paneBadgeAttention(liveTerminal)).color, fontWeight: 600 }}
                         >
                           <span
                             style={{
@@ -5350,12 +5351,12 @@ function MapPanel({
                               width: 6,
                               height: 6,
                               borderRadius: "50%",
-                              background: badgeForAttention(liveTerminal?.badgeAttention ?? header.attention).color,
+                              background: badgeForAttention(paneBadgeAttention(liveTerminal)).color,
                               marginInlineEnd: 5,
                               verticalAlign: "middle",
                             }}
                           />
-                          {badgeForAttention(liveTerminal?.badgeAttention ?? header.attention).label}
+                          {badgeForAttention(paneBadgeAttention(liveTerminal)).label}
                         </span>
                         {" · "}{pathTail(header.fullPath)}
                       </>

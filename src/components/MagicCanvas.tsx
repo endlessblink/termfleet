@@ -53,6 +53,7 @@ import { buildTerminalHeaderState } from "../lib/terminalHeaderState";
 import { activityAddsInfo } from "../lib/terminalHeaderViewModel";
 import { badgeForAttention } from "../lib/terminalAttention";
 import { useStatusClock } from "../lib/useStatusClock";
+import { paneBadgeAttention } from "../lib/sessionStatus";
 import { stableHeader } from "../lib/stableHeader";
 
 type CanvasRect = {
@@ -2709,10 +2710,10 @@ function CanvasNodeViewImpl({
     !terminalHeaderNowActiveVisible && terminalHeaderHasRealTask;
   // Does this terminal need the operator, is it busy, or idle? Orthogonal to the
   // task text; replaces the vague "Working" wording.
-  // Read the ONE reconciled badge stored by the poll loop, so this view can never
-  // disagree with the sidebar/split. Fall back to the header's value only until first poll.
+  // ONE pure render-time translation of the pane's stored status — identical in every
+  // view, nothing stored separately that can be dropped and flicker.
   const terminalHeaderAttention = badgeForAttention(
-    linkedTerminal?.badgeAttention ?? terminalHeader.attention,
+    paneBadgeAttention(linkedTerminal, terminalStatusSummary?.status),
   );
   const terminalHeaderSummarySignal = stabilizedNodeHeader.now;
   const terminalHeaderHasUsefulSummary = terminalHeader.currentActivity !== "Ready";

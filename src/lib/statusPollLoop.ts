@@ -8,6 +8,7 @@
 // (sidecar → contextual endpoint → heuristic), and applies only the safe fields:
 // statusSummary + mainUserAsk. Task lineups keep their existing authoritative
 // writers; a live todo-write list still outranks anything from here.
+import { invoke } from "@tauri-apps/api/core";
 import { summarizeAgentStatus } from "./agentStatusSummarizer";
 import { reconcileSessionStatus } from "./sessionStatus";
 import { taskLineupFromExtractedItems } from "./taskLineup";
@@ -95,8 +96,6 @@ async function pollOnce() {
         const badgeSummary = trusted ? result.summary : latestTerminal.statusSummary;
         const badgeAttention = reconcileSessionStatus({
           summaryStatus: badgeSummary?.status,
-          lastActivityAt: badgeSummary?.updatedAt,
-          now: Date.now(),
         }).attention;
 
         // Update the badge FIRST and UNCONDITIONALLY for every polled pane, before any of
@@ -159,6 +158,28 @@ async function pollOnce() {
     }
   } finally {
     ticking = false;
+  }
+  // TEMPORARY live telemetry (uncommitted): snapshot every pane's badge so it can be
+  // watched externally in a loop, without screenshots. Remove after diagnosis.
+  try {
+    const s = useWorkspaceStore.getState();
+    const rows = s.tabs.flatMap((t) =>
+      (t.terminals ?? []).map((tm) => ({
+        tab: t.id.slice(0, 8),
+        pane: String(tm.paneId ?? "").slice(0, 8),
+        cwd: (s.liveCwds[tm.id] ?? t.initialCwd ?? "").split("/").slice(-1)[0],
+        status: tm.statusSummary?.status ?? null,
+        // The same pure translation the views render — telemetry mirrors the UI exactly.
+        badge: reconcileSessionStatus({ summaryStatus: tm.statusSummary?.status }).attention,
+        active: t.id === s.activeTabId,
+      })),
+    );
+    await invoke("fs_write_file", {
+      path: "/media/endlessblink/data/pwt/cockpit-badge-live.json",
+      contents: JSON.stringify({ ts: Date.now(), rows }),
+    });
+  } catch {
+    // telemetry is best-effort
   }
 }
 
