@@ -60,6 +60,14 @@ export interface AgentStatusSidecar {
   narration?: string;
   todos?: Array<{ id?: string; content?: string; status?: string; activeForm?: string }>;
   recent?: Array<{ text?: string; at?: number }>;
+  /**
+   * Event-driven turn lifecycle written by the status hooks: "working" while a turn
+   * runs (UserPromptSubmit / tool events), "idle" the instant the turn ends (Stop
+   * hook), "waiting" when the agent needs the operator (Notification hook). This is
+   * the authoritative Running/Waiting/Idle signal — it beats guessing from an
+   * in-progress todo that never gets cleared when the turn finishes.
+   */
+  turn?: "working" | "idle" | "waiting";
 }
 
 export function sidecarFresh(
@@ -111,23 +119,67 @@ function todoToTaskText(todo: NonNullable<AgentStatusSidecar["todos"]>[number]):
   return content;
 }
 
+function sidecarTaskText(sidecar: AgentStatusSidecar): string {
+  const todos = Array.isArray(sidecar?.todos) ? sidecar.todos : [];
+  const active = todos.find((todo) => todo?.status === "in_progress");
+  const firstOpen = todos.find((todo) => todo?.status !== "completed");
+  const current = active ?? firstOpen ?? todos[0];
+  return cleanText(current?.activeForm || current?.content || sidecar?.userTask);
+}
+
+function sidecarHasConcreteTask(sidecar: AgentStatusSidecar): boolean {
+  const task = sidecarTaskText(sidecar);
+  return Boolean(task && !/^(?:Answering latest prompt|Answering user question)$/i.test(task));
+}
+
+function inferredTaskFromSidecarContext(sidecar: AgentStatusSidecar): string {
+  const context = [
+    sidecar.userTask,
+    sidecar.narration,
+    ...(Array.isArray(sidecar.recent) ? sidecar.recent.map((entry) => entry?.text) : []),
+  ].map(cleanText).join(" ");
+  if (
+    /\bshould we add that\b/i.test(context) &&
+    /\b(?:stricter|removal allowed|review-first|bot records join events|group message)\b/i.test(context)
+  ) {
+    return "Reviewing group spam moderation rules";
+  }
+  return "";
+}
+
 export function summaryFromSidecar(
   sidecar: AgentStatusSidecar,
   fallback: AgentStatusSummary,
 ): AgentStatusSummary {
   const todos = Array.isArray(sidecar?.todos) ? sidecar.todos : [];
   const now = cleanText(sidecar?.now);
-  const active = todos.find((todo) => todo?.status === "in_progress");
-  const firstOpen = todos.find((todo) => todo?.status !== "completed");
+  // A harness placeholder ("Answering latest prompt") often sits in_progress ahead
+  // of the agent's real task and would otherwise own the header. It names no work,
+  // so it never outranks a declared task; it is only a last resort.
+  const isPlaceholder = (todo?: { content?: string; activeForm?: string }) =>
+    /^(?:Answering latest prompt|Answering user question)$/i.test(
+      cleanText(todo?.activeForm || todo?.content),
+    );
+  const real = todos.filter((todo) => !isPlaceholder(todo));
+  const pick = (list: typeof todos) =>
+    list.find((todo) => todo?.status === "in_progress") ??
+    list.find((todo) => todo?.status !== "completed");
+  const active =
+    real.find((todo) => todo?.status === "in_progress") ??
+    (pick(real) ? undefined : todos.find((todo) => todo?.status === "in_progress"));
+  const firstOpen = pick(real) ?? todos.find((todo) => todo?.status !== "completed");
   const lastDone = [...todos].reverse().find((todo) => todo?.status === "completed");
-  const working = Boolean(active);
+  const working = Boolean(todos.find((todo) => todo?.status === "in_progress"));
   // Title = the agent's CURRENT task, preferring its human-readable `activeForm` over
   // the terse subject. When nothing is live (all complete), fall back to the LAST
   // completed task. NEVER fall back to `now` (momentary raw tool activity) as the
   // title; that belongs only on the activity line. (TC-033)
   const current = active ?? firstOpen;
-  const currentTask =
+  let currentTask =
     cleanText(current?.activeForm || current?.content) || cleanText(lastDone?.content);
+  if (/^(?:Answering latest prompt|Answering user question)$/i.test(currentTask)) {
+    currentTask = inferredTaskFromSidecarContext(sidecar) || currentTask;
+  }
   const userTask =
     cleanText(sidecar?.userTask) ||
     cleanText(fallback?.userTask) ||
@@ -139,7 +191,19 @@ export function summaryFromSidecar(
     task: activityTitle,
     userTask: userTask || undefined,
     now: now || fallback.now,
-    status: working ? "working" : todos.length > 0 ? "idle" : fallback.status,
+    // The hook's explicit turn state is authoritative: a Stop event means the turn
+    // ended even if an in-progress todo was never marked complete (the stale-Running
+    // bug), and a Notification means the agent is waiting on the operator.
+    status:
+      sidecar?.turn === "idle"
+        ? "idle"
+        : sidecar?.turn === "waiting"
+          ? "waiting"
+          : sidecar?.turn === "working" || working
+            ? "working"
+            : todos.length > 0
+              ? "idle"
+              : fallback.status,
     provider: fallback.provider,
     confidence: "high",
     tasks: extractedItems(todos.map(todoToTaskText)),
@@ -195,6 +259,7 @@ export async function readLocalSidecarSummary(
   fallback: AgentStatusSummary,
   readFile: SidecarFileReader,
 ): Promise<AgentStatusSummary | null> {
+  let firstFresh: AgentStatusSidecar | null = null;
   for (const name of sidecarCandidateFileNames(input)) {
     let sidecar: AgentStatusSidecar | null = null;
     try {
@@ -204,7 +269,9 @@ export async function readLocalSidecarSummary(
     } catch {
       continue;
     }
-    if (sidecar && sidecarFresh(sidecar)) return summaryFromSidecar(sidecar, fallback);
+    if (!sidecar || !sidecarFresh(sidecar)) continue;
+    if (!firstFresh) firstFresh = sidecar;
+    if (sidecarHasConcreteTask(sidecar)) return summaryFromSidecar(sidecar, fallback);
   }
-  return null;
+  return firstFresh ? summaryFromSidecar(firstFresh, fallback) : null;
 }

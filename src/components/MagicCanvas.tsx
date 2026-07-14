@@ -40,7 +40,7 @@ import { createNewTab, useWorkspaceStore } from "../stores/workspace";
 import { TerminalComponent } from "./Terminal";
 import { LocalhostPreview } from "./LocalhostPreview";
 import type { GridSnapshot } from "../lib/gridSnapshot";
-import type { Tab, TaskLineupItem, TerminalRuntimeStatus, WorkstreamStatus, WorkstreamStatusSummary } from "../lib/types";
+import type { Tab, TaskLineupItem, TerminalRuntimeStatus, WorkstreamStatusSummary } from "../lib/types";
 import { agentLaneAuthRetryText, agentLaneAuthRetryTitle, agentLaneCleanupRequestText, agentLaneCleanupRequestTitle, agentLaneCloseoutText, agentLaneCloseoutTitle, agentLaneHealthText, agentLaneInterruptText, agentLaneInterruptTitle, agentLaneMemoryRequestText, agentLaneMemoryRequestTitle, agentLaneProofRequestText, agentLaneProofRequestTitle, agentLaneRestartText, agentLaneRestartTitle, agentLaneRiskMitigationText, agentLaneRiskMitigationTitle, agentLaneStatusSweepText, agentLaneStatusSweepTitle, agentLaneStatusText, attentionBreakdownText, cleanupBreakdownText, closeoutBreakdownText, formatAgentLaneBrief, formatAgentMissionControlBrief, formatAgentRunBrief, handoffMemoryPromptForWorkstream, isActiveAgentWorkstream, isAgentReviewCloseoutReady, isAuthRetryableAgentWorkstream, isCleanupRequestableAgentWorkstream, isRestartableAgentWorkstream, isReviewItemCloseoutReady, isStaleAgentWorkstream, isolationBreakdownText, latestMissionControlAskText, missionBreakdownText, missionControlAlternateText, missionControlDispatchBreakdownText, needsAgentProofRequest, proofRequestPromptForWorkstream, providerBreakdownText, readinessBreakdownText, riskBreakdownText, statusCheckPromptForWorkstream, summarizeAgentLane } from "../lib/agentWorkstreamLane";
 import { agentStatusChipText, agentStatusSummaryFromWorkstream, getDisplaySummary } from "../lib/agentStatusSummary";
 import { CockpitSnapshotProbe } from "./CockpitSnapshotProbe";
@@ -48,11 +48,11 @@ import { workstreamActivityMeta, workstreamActivityText } from "../lib/workstrea
 import { formatWorkstreamBranch, formatWorkstreamIsolation, formatWorkstreamOpsContext } from "../lib/workstreamOpsContext";
 import { snapshotPreviewRows } from "../lib/snapshotPreviewRows";
 import { taskLineupNextLabel, taskLineupStats, terminalOutputClosesTaskLineup, visibleTaskLineup } from "../lib/taskLineup";
-import { neutralHeaderTitle, normalizePersistedShellSummary, summaryFromDurableActivity, terminalPurposeFromContext, terminalTextLooksReadyPrompt } from "../lib/terminalHeaderDisplay";
+import { neutralHeaderTitle, normalizePersistedShellSummary, summaryFromDurableActivity, terminalPurposeFromContext, terminalTextLooksReadyPrompt, terminalLooksActivelyWorking, terminalLooksAtRest } from "../lib/terminalHeaderDisplay";
 import { buildTerminalHeaderState } from "../lib/terminalHeaderState";
-import { mainUserAskFromSummary, recordTerminalHeaderLog } from "../lib/terminalMainUserAsk";
+import { activityAddsInfo } from "../lib/terminalHeaderViewModel";
+import { badgeForAttention } from "../lib/terminalAttention";
 import { stableHeader } from "../lib/stableHeader";
-import { summarizeAgentStatus } from "../lib/agentStatusSummarizer";
 
 type CanvasRect = {
   minX: number;
@@ -74,6 +74,13 @@ type TerminalBodyTaskRow = {
   state: string;
   next: string;
   meta?: string;
+};
+
+type TerminalOverlayBounds = {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
 };
 
 const TERMINAL_LABEL_COLORS = [
@@ -281,6 +288,18 @@ const styles: Record<string, CSSProperties> = {
     transformOrigin: "0 0",
     backfaceVisibility: "hidden",
   },
+  terminalOverlayLayer: {
+    position: "absolute",
+    inset: 0,
+    zIndex: 12,
+    pointerEvents: "none",
+  },
+  terminalOverlayPane: {
+    position: "absolute",
+    overflow: "hidden",
+    pointerEvents: "auto",
+    background: "var(--surface-sunken)",
+  },
   node: {
     position: "absolute",
     display: "flex",
@@ -396,6 +415,25 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 500,
     letterSpacing: 0,
   },
+  attentionBadge: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 5,
+    height: 20,
+    padding: "0 8px",
+    borderRadius: 999,
+    border: "1px solid transparent",
+    fontSize: 11,
+    fontWeight: 600,
+    letterSpacing: 0.2,
+    whiteSpace: "nowrap",
+  },
+  attentionDot: {
+    width: 6,
+    height: 6,
+    borderRadius: "50%",
+    flexShrink: 0,
+  },
   terminalTaskRow: {
     minWidth: 0,
     display: "grid",
@@ -442,13 +480,27 @@ const styles: Record<string, CSSProperties> = {
   },
   terminalStatusTitle: {
     minWidth: 0,
+    display: "grid",
+    gridTemplateColumns: "auto minmax(0, 1fr)",
+    alignItems: "baseline",
+    gap: 7,
     overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
     color: "var(--text-primary)",
     fontSize: 19,
     fontWeight: 600,
     lineHeight: 1.18,
+  },
+  terminalNowActiveLabel: {
+    color: "var(--text-tertiary)",
+    fontSize: 11,
+    fontWeight: 600,
+    letterSpacing: 0,
+  },
+  terminalNowActiveValue: {
+    minWidth: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
   },
   renameInput: {
     width: "100%",
@@ -1120,6 +1172,11 @@ const styles: Record<string, CSSProperties> = {
     display: "grid",
     gridTemplateRows: "minmax(0, 1fr)",
   },
+  liveTerminalOverlayPlaceholder: {
+    height: "100%",
+    minHeight: 0,
+    background: "var(--surface-sunken)",
+  },
   agentCockpit: {
     height: "100%",
     minHeight: 0,
@@ -1631,41 +1688,31 @@ const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 2.2;
 const READABLE_TERMINAL_ZOOM = 1;
 const FOCUS_TERMINAL_ZOOM = 1;
-const MAP_TERMINAL_RENDER_SCALE = 2;
+const MAP_TERMINAL_MAX_RENDER_SCALE = 2;
 const MAP_LIVE_TERMINALS_ENABLED =
   (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env?.VITE_MAP_LIVE_TERMINALS !== "0";
 // Viewport culling: cap how many terminal nodes mount a full live renderer at
 // once. Off-screen / over-cap nodes fall back to the cheap DOM snapshot preview
-// (TerminalMapPreview). The selected node and the active tab's node are always
-// live, so the user's work surface always streams.
+// (TerminalMapPreview). A selected terminal wins over the active tab terminal
+// so the cap remains a real ceiling instead of mounting both live renderers.
 const MAX_LIVE_TERMINALS = 1;
 // Inflate the visible rect (canvas-space px) so nodes warm up just before they
 // scroll into view, avoiding a blank flash on pan.
 const CULL_OVERSCAN_PX = 400;
-// Max preview refresh rate per node (ms between flushes). A busy terminal emits
-// a diff frame far faster than the eye can read a shrunk map preview.
-const PREVIEW_THROTTLE_MS = 500;
+// Max preview refresh rate per node (ms between flushes). A busy live terminal
+// should not drive React map-state churn while the canvas itself is rendering.
+const PREVIEW_THROTTLE_MS = 2000;
+
+function mapTerminalRenderScaleForZoom(zoom: number) {
+  if (!Number.isFinite(zoom)) return 1;
+  return Math.min(MAP_TERMINAL_MAX_RENDER_SCALE, Math.max(1, zoom));
+}
 
 function workstreamLabel(provider?: string) {
   if (provider === "opencode") return "OpenCode";
   if (provider === "claude") return "Claude";
   if (provider === "shell") return "Shell";
   return "Codex";
-}
-
-function workstreamStatusForTerminal(status?: TerminalRuntimeStatus): WorkstreamStatus {
-  switch (status) {
-    case "running":
-    case "reconnected":
-    case "starting":
-      return "running";
-    case "failed":
-      return "failed";
-    case "exited":
-      return "done";
-    default:
-      return "ready";
-  }
 }
 
 function readableSnapshotText(snapshot?: GridSnapshot) {
@@ -2044,6 +2091,7 @@ function TerminalMapPreview({
 function CanvasNodeViewImpl({
   node,
   live,
+  terminalOverlayRoot,
   focusNode,
   terminalPreview,
   onTerminalSnapshot,
@@ -2055,6 +2103,7 @@ function CanvasNodeViewImpl({
   // screen / over the live cap) it shows the cheap snapshot preview instead.
   // Computed once per render by the parent live-node set.
   live: boolean;
+  terminalOverlayRoot: HTMLDivElement | null;
   focusNode: (node: CanvasNode, zoom: number) => void;
   terminalPreview?: TerminalPreviewEntry;
   onTerminalSnapshot: (nodeId: string, snapshot: GridSnapshot) => void;
@@ -2094,6 +2143,7 @@ function CanvasNodeViewImpl({
     direction: ResizeDirection;
   } | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
+  const terminalBodyRef = useRef<HTMLDivElement | null>(null);
   const renameInputRef = useRef<HTMLInputElement | null>(null);
   const [isResizing, setIsResizing] = useState(false);
   const [renaming, setRenaming] = useState(false);
@@ -2102,6 +2152,7 @@ function CanvasNodeViewImpl({
   const [taskPickerOpen, setTaskPickerOpen] = useState(false);
   const [taskPickerQuery, setTaskPickerQuery] = useState("");
   const [manualTaskId, setManualTaskId] = useState(node.taskBinding?.taskId ?? "");
+  const [terminalOverlayBounds, setTerminalOverlayBounds] = useState<TerminalOverlayBounds | null>(null);
   const selectedNodeIds = storedSelectedNodeIds ?? (selectedNodeId ? [selectedNodeId] : []);
   const selected = selectedNodeIds.includes(node.id) || selectedNodeId === node.id;
   const labelColor = node.type === "terminal" ? node.labelColor : undefined;
@@ -2119,6 +2170,71 @@ function CanvasNodeViewImpl({
   // the parent live set decides whether the full renderer should mount.
   const showTerminalPreview = node.type === "terminal" && zoom < READABLE_TERMINAL_ZOOM;
   const shouldMountTerminal = node.type === "terminal" && live && !showTerminalPreview;
+  const shouldOverlayTerminal = shouldMountTerminal && selected && terminalOverlayRoot !== null;
+
+  const syncTerminalOverlayBounds = useCallback(() => {
+    const body = terminalBodyRef.current;
+    const root = terminalOverlayRoot;
+    if (!body || !root || !shouldOverlayTerminal) {
+      setTerminalOverlayBounds(null);
+      return;
+    }
+    const bodyRect = body.getBoundingClientRect();
+    const rootRect = root.getBoundingClientRect();
+    const next: TerminalOverlayBounds = {
+      left: bodyRect.left - rootRect.left,
+      top: bodyRect.top - rootRect.top,
+      width: bodyRect.width,
+      height: bodyRect.height,
+    };
+    setTerminalOverlayBounds((current) => {
+      if (
+        current &&
+        Math.abs(current.left - next.left) < 0.5 &&
+        Math.abs(current.top - next.top) < 0.5 &&
+        Math.abs(current.width - next.width) < 0.5 &&
+        Math.abs(current.height - next.height) < 0.5
+      ) {
+        return current;
+      }
+      return next;
+    });
+  }, [shouldOverlayTerminal, terminalOverlayRoot]);
+
+  useEffect(() => {
+    if (!shouldOverlayTerminal) {
+      setTerminalOverlayBounds(null);
+      return;
+    }
+    const frame = requestAnimationFrame(syncTerminalOverlayBounds);
+    const body = terminalBodyRef.current;
+    const root = terminalOverlayRoot;
+    const observer = typeof ResizeObserver === "function"
+      ? new ResizeObserver(syncTerminalOverlayBounds)
+      : null;
+    if (body) observer?.observe(body);
+    if (root) observer?.observe(root);
+    window.addEventListener("resize", syncTerminalOverlayBounds);
+    window.addEventListener("scroll", syncTerminalOverlayBounds, true);
+    window.addEventListener("termfleet-map-terminal-overlay-sync", syncTerminalOverlayBounds);
+    return () => {
+      cancelAnimationFrame(frame);
+      observer?.disconnect();
+      window.removeEventListener("resize", syncTerminalOverlayBounds);
+      window.removeEventListener("scroll", syncTerminalOverlayBounds, true);
+      window.removeEventListener("termfleet-map-terminal-overlay-sync", syncTerminalOverlayBounds);
+    };
+  }, [
+    node.height,
+    node.width,
+    node.x,
+    node.y,
+    selected,
+    shouldOverlayTerminal,
+    syncTerminalOverlayBounds,
+    terminalOverlayRoot,
+    zoom,
+  ]);
 
   useEffect(() => {
     if (!renaming) return;
@@ -2375,121 +2491,6 @@ function CanvasNodeViewImpl({
     ? rootTasks.find((task) => task.id.toLowerCase() === node.taskBinding?.taskId.toLowerCase())
     : undefined;
 
-  useEffect(() => {
-    // Poll for EVERY linked terminal node, not just the selected one — the operator
-    // reads all pane headers at once; background panes need contextual titles too.
-    if (node.type !== "terminal" || !linkedTab || !linkedTerminal || !linkedTerminalId) return;
-    const statusEndpointConfigured = Boolean(
-      (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env
-        ?.VITE_AGENT_STATUS_SUMMARY_ENDPOINT,
-    );
-    // The desktop app reads the status sidecar locally (Tauri command), so polling no
-    // longer requires the dev-port HTTP endpoint. Without this, release/desktop
-    // launches never polled at all and the map header stayed on stale scrapes.
-    const tauriSidecarAvailable = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
-    if (
-      typeof window === "undefined" ||
-      (window.location.port !== "1420" && !statusEndpointConfigured && !tauriSidecarAvailable)
-    ) {
-      return;
-    }
-    const hasActiveAgentMarker = /\bWorking\s+\(/i.test(linkedTerminal.terminalOutput ?? "");
-    const hasRunningDurableActivity =
-      linkedTerminal.durableActivity?.status === "running" &&
-      Date.now() - (linkedTerminal.durableActivity.updatedAt ?? 0) < 60_000;
-    const hasRealTaskList = Boolean(linkedTerminal.statusSummary?.tasksFromTodoWrite);
-    // Cold-start: gated panes still ask (the local sidecar read is cheap) but only
-    // authoritative sidecar results may be applied — heuristics can't overwrite.
-    // In desktop-only mode (no dev-port endpoint) that applies to EVERY pane: the
-    // endpoint fallback there is just the local heuristic, never better than what
-    // the header already shows.
-    const gatedShellPane = !hasActiveAgentMarker && !hasRunningDurableActivity && !hasRealTaskList;
-    const sidecarOnly =
-      gatedShellPane || (window.location.port !== "1420" && !statusEndpointConfigured);
-    let cancelled = false;
-    const refresh = () => {
-      const statusPaneId = `terminal-${linkedTab.id}-${terminalPaneId}`;
-      void summarizeAgentStatus({
-        paneId: statusPaneId,
-        mission: "Terminal",
-        provider: "shell",
-        status: workstreamStatusForTerminal(linkedTerminal.status),
-        cwd: liveTerminalRoot,
-        currentActivity: linkedTerminal.currentActivity,
-        terminalOutput: linkedTerminal.terminalOutput,
-        terminalVisibleText: linkedTerminal.terminalVisibleText,
-      }).then((result) => {
-        if (cancelled) return;
-        // Contextual (model) results carry narration + a synthesized goal — exactly
-        // what background panes need; only junk heuristics stay gated.
-        const contextualResult = result.source === "process" && Boolean(result.summary.narration);
-        if (sidecarOnly && result.source !== "sidecar" && !contextualResult) return;
-        const store = useWorkspaceStore.getState();
-        const latestTab = store.tabs.find((tab) => tab.id === linkedTab.id);
-        if (!latestTab) return;
-        store.updateTab(linkedTab.id, {
-          terminals: latestTab.terminals.map((terminal) =>
-            terminal.id === linkedTerminalId
-              ? (() => {
-                  const updatedAt = Date.now();
-                  const hasStructuredTaskLineup = terminal.taskLineup?.some((item) =>
-                    item.source === "todo-write" &&
-                    (!item.runId || !terminal.activeRunId || item.runId === terminal.activeRunId)
-                  );
-                  const nextStatusSummary =
-                    (terminal.statusSummary?.tasksFromTodoWrite && !result.summary.tasksFromTodoWrite) ||
-                    (hasStructuredTaskLineup && result.source === "fallback" && terminal.statusSummary)
-                      ? terminal.statusSummary
-                      : result.summary;
-                  const mainUserAsk = mainUserAskFromSummary(nextStatusSummary, "status-sidecar", {
-                    previous: terminal.mainUserAsk,
-                    runId: terminal.activeRunId,
-                    now: updatedAt,
-                  });
-                  if (mainUserAsk !== terminal.mainUserAsk) {
-                    recordTerminalHeaderLog({
-                      terminalId: terminal.id,
-                      paneId: terminal.paneId,
-                      field: "mainUserAsk",
-                      source: mainUserAsk?.source,
-                      text: mainUserAsk?.text,
-                      previousText: terminal.mainUserAsk?.text,
-                    });
-                  }
-                  return {
-                    ...terminal,
-                    statusSummary: nextStatusSummary,
-                    statusSummaryUpdatedAt: updatedAt,
-                    statusSummarySource: result.source,
-                    statusSummaryError: result.error,
-                    mainUserAsk,
-                  };
-                })()
-              : terminal,
-          ),
-        });
-      });
-    };
-    refresh();
-    const interval = setInterval(refresh, 10_000);
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, [
-    linkedTab?.id,
-    linkedTerminal?.currentActivity,
-    linkedTerminal?.durableActivity?.status,
-    linkedTerminal?.status,
-    linkedTerminal?.statusSummary?.tasksFromTodoWrite,
-    linkedTerminal?.terminalOutput,
-    linkedTerminalId,
-    liveTerminalRoot,
-    node.type,
-    selected,
-    terminalPaneId,
-  ]);
-
   const terminalExtractedSummary = getDisplaySummary({
     mission: "Terminal",
     provider: "shell",
@@ -2536,6 +2537,11 @@ function CanvasNodeViewImpl({
     terminalTextLooksReadyPrompt(linkedTerminal?.terminalVisibleText);
   const terminalActivityLive =
     linkedTerminal?.durableActivity?.status === "running";
+  const terminalHasConcreteVisibleSummary = Boolean(
+    terminalExtractedSummary?.provider === "shell" &&
+      terminalExtractedSummary.confidence === "high" &&
+      /^(?:Playwright test|Running daily regression hunt|Running Yahav scrape)$/i.test(terminalExtractedSummary.task),
+  );
   const terminalDurableActivityUsable = Boolean(
     linkedTerminal?.durableActivity &&
     linkedTerminal.durableActivity.status === "running" &&
@@ -2544,12 +2550,14 @@ function CanvasNodeViewImpl({
   const terminalOutputClosed =
     terminalOutputClosedRaw &&
     !terminalDurableActivityUsable &&
+    !terminalHasConcreteVisibleSummary &&
     !purposeTaskLineup.some((item) => item.source === "todo-write") &&
     !directlyBoundTask &&
     !node.taskBinding;
   const terminalReadyPromptCloses =
     terminalAtReadyPrompt &&
     !terminalActivityLive &&
+    !terminalHasConcreteVisibleSummary &&
     !purposeTaskLineup.some((item) => item.source === "todo-write");
   const terminalClosedSummary: WorkstreamStatusSummary | null = terminalOutputClosed || terminalReadyPromptCloses
     ? {
@@ -2630,6 +2638,15 @@ function CanvasNodeViewImpl({
       /\bWorking\s+\(|esc to interrupt\b/i.test(
         linkedTerminal?.terminalVisibleText ?? linkedTerminal?.terminalOutput ?? "",
       ),
+    // Stricter, current-only signal for the attention badge: the live "thinking /
+    // esc to interrupt" indicator, or a genuinely running tracked command.
+    activelyRunning:
+      terminalLooksActivelyWorking(
+        linkedTerminal?.terminalVisibleText ?? linkedTerminal?.terminalOutput ?? "",
+      ) || linkedTerminal?.durableActivity?.status === "running",
+    terminalAtRest: terminalLooksAtRest(
+      linkedTerminal?.terminalVisibleText ?? linkedTerminal?.terminalOutput ?? "",
+    ),
     trustedActivitySummary:
       terminalDurableActivityUsable ||
       terminalDisplaySummaryBase.task === "Reviewing approval request" ||
@@ -2670,6 +2687,22 @@ function CanvasNodeViewImpl({
     },
   );
   const terminalHeaderTitle = stabilizedNodeHeader.title;
+  // Only show a "Now Active" line when it adds something beyond the task; otherwise
+  // the card collapses to the single honest Task line (no duplicate/placeholder row).
+  const terminalHeaderNowActiveVisible = activityAddsInfo(
+    terminalHeaderTaskDescription,
+    terminalHeaderTitle,
+  );
+  const terminalHeaderHasRealTask =
+    !!terminalHeaderTaskDescription &&
+    !/^Task not captured$/i.test(terminalHeaderTaskDescription.trim());
+  // When there is no distinct activity, the task becomes the ONE prominent line —
+  // shown big in the title slot instead of a tiny "Task:" label with nothing under it.
+  const terminalHeaderPromoteTaskToBig =
+    !terminalHeaderNowActiveVisible && terminalHeaderHasRealTask;
+  // Does this terminal need the operator, is it busy, or idle? Orthogonal to the
+  // task text; replaces the vague "Working" wording.
+  const terminalHeaderAttention = badgeForAttention(terminalHeader.attention);
   const terminalHeaderSummarySignal = stabilizedNodeHeader.now;
   const terminalHeaderHasUsefulSummary = terminalHeader.currentActivity !== "Ready";
   const terminalHeaderHasTrustedSummary =
@@ -2757,12 +2790,8 @@ function CanvasNodeViewImpl({
       : node.type === "preview"
         ? "preview"
         : node.type;
-  // Native VTE is disabled app-wide (see useNativeTerminalPane.wantsNativeRenderer):
-  // the GTK overlay could not live on the zoom/pan canvas, which is why map nodes
-  // used to fall back to a static "Open terminal" card. With xterm.js everywhere,
-  // map nodes render a live terminal directly. Kept as a constant so the card
-  // branch and its helpers type-check; restore the old expression alongside the
-  // `native-vte-snapshot` tag if native VTE is reinstated.
+  // Keep map terminals live on desktop. The map is the primary cockpit surface,
+  // so terminal cards must not degrade into split-pane activation cards.
   const shouldUseNativeSplitForInteraction = false;
   void isDesktopNativeRuntime;
   void terminalRendererMode;
@@ -2921,6 +2950,30 @@ function CanvasNodeViewImpl({
     void useWorkspaceStore.getState().executeWorktreeCleanup(linkedTab.id);
   }, [linkedTab]);
 
+  const liveTerminalComponent = shouldMountTerminal ? (
+    <TerminalComponent
+      key={`${terminalTabId}-${terminalPaneId}-${workstream?.generation ?? 0}`}
+      tabId={terminalTabId}
+      paneId={terminalPaneId}
+      cwd={node.terminalCwd ?? linkedTab?.initialCwd}
+      command={workstream?.startupCommand}
+      queuedInput={queuedWorkstreamInput}
+      onQueuedInputSent={(inputId) => {
+        if (linkedTab) useWorkspaceStore.getState().markWorkstreamInputSent(linkedTab.id, inputId);
+      }}
+      attachToPtyId={linkedTerminalId ?? null}
+      runtimeActive={selected}
+      onActivate={activateTerminalNode}
+      standalone
+      renderScale={shouldOverlayTerminal ? 1 : mapTerminalRenderScaleForZoom(zoom)}
+      onSnapshot={(snapshot) => onTerminalSnapshot(node.id, snapshot)}
+      // Preserve alternate-screen agent TUIs on the map so Claude/zellij-style
+      // panes do not rewrap into corrupted fragments. Readability comes from
+      // focusing the map at 100%, not by over-scaling a clipped canvas.
+      mapProjection
+    />
+  ) : null;
+
   const body =
     node.type === "terminal" && shouldUseNativeSplitForInteraction ? (
       <div
@@ -2972,27 +3025,13 @@ function CanvasNodeViewImpl({
         onOpen={openLinkedTerminal}
       />
     ) : shouldMountTerminal ? (
-      <TerminalComponent
-        key={`${terminalTabId}-${terminalPaneId}-${workstream?.generation ?? 0}`}
-        tabId={terminalTabId}
-        paneId={terminalPaneId}
-        cwd={node.terminalCwd ?? linkedTab?.initialCwd}
-        command={workstream?.startupCommand}
-        queuedInput={queuedWorkstreamInput}
-        onQueuedInputSent={(inputId) => {
-          if (linkedTab) useWorkspaceStore.getState().markWorkstreamInputSent(linkedTab.id, inputId);
-        }}
-        attachToPtyId={linkedTerminalId ?? null}
-        runtimeActive={selected}
-        onActivate={activateTerminalNode}
-        standalone
-        renderScale={MAP_TERMINAL_RENDER_SCALE}
-        onSnapshot={(snapshot) => onTerminalSnapshot(node.id, snapshot)}
-        // Preserve alternate-screen agent TUIs on the map so Claude/zellij-style
-        // panes do not rewrap into corrupted fragments. Readability comes from
-        // focusing the map at 100%, not by over-scaling a clipped canvas.
-        mapProjection
-      />
+      shouldOverlayTerminal ? (
+        <div
+          data-testid="canvas-terminal-overlay-placeholder"
+          style={styles.liveTerminalOverlayPlaceholder}
+          aria-hidden="true"
+        />
+      ) : liveTerminalComponent
     ) : node.type === "terminal" ? (
       <TerminalMapPreview
         title={terminalTitle}
@@ -3234,7 +3273,24 @@ function CanvasNodeViewImpl({
               <span style={styles.workspacePill} data-testid="canvas-terminal-node-workspace" title={workspaceLabel}>
                 {workspaceLabel}
               </span>
+              <span
+                style={{
+                  ...styles.attentionBadge,
+                  color: terminalHeaderAttention.color,
+                  borderColor: `color-mix(in srgb, ${terminalHeaderAttention.color} 45%, transparent)`,
+                  background: `color-mix(in srgb, ${terminalHeaderAttention.color} 14%, transparent)`,
+                }}
+                data-testid="canvas-terminal-node-attention"
+                data-attention-state={terminalHeaderAttention.state}
+                title={terminalHeaderAttention.label}
+              >
+                <span
+                  style={{ ...styles.attentionDot, background: terminalHeaderAttention.color }}
+                />
+                {terminalHeaderAttention.label}
+              </span>
             </div>
+            {!terminalHeaderPromoteTaskToBig && (
             <div
               style={styles.terminalTaskRow}
               data-testid="canvas-terminal-node-task-row"
@@ -3249,15 +3305,38 @@ function CanvasNodeViewImpl({
                 {terminalHeaderTaskDescription}
               </span>
             </div>
+            )}
             <div
               style={styles.terminalStatusTitle}
-              data-testid="canvas-terminal-node-header-title"
+              title={
+                terminalHeaderPromoteTaskToBig
+                  ? `Task: ${terminalHeaderTaskDescription}`
+                  : `Now Active: ${terminalHeaderTitle}`
+              }
             >
               {renaming ? (
                 renameEditor
-              ) : (
-                <span style={{ color: labelColor ?? "var(--text-primary)" }}>{terminalHeaderTitle}</span>
-              )}
+              ) : terminalHeaderPromoteTaskToBig ? (
+                <>
+                  <span style={styles.terminalNowActiveLabel}>Task:</span>
+                  <span
+                    data-testid="canvas-terminal-node-description"
+                    style={{ ...styles.terminalNowActiveValue, color: labelColor ?? "var(--text-primary)" }}
+                  >
+                    {terminalHeaderTaskDescription}
+                  </span>
+                </>
+              ) : terminalHeaderNowActiveVisible ? (
+                <>
+                  <span style={styles.terminalNowActiveLabel}>Now Active:</span>
+                  <span
+                    data-testid="canvas-terminal-node-header-title"
+                    style={{ ...styles.terminalNowActiveValue, color: labelColor ?? "var(--text-primary)" }}
+                  >
+                    {terminalHeaderTitle}
+                  </span>
+                </>
+              ) : null}
               {(workstream || linkedTerminal) && (
                 <CockpitSnapshotProbe
                   entry={{
@@ -3717,6 +3796,22 @@ function CanvasNodeViewImpl({
         </>,
         document.body
       )}
+      {shouldOverlayTerminal && terminalOverlayRoot && terminalOverlayBounds && liveTerminalComponent && createPortal(
+        <div
+          data-testid="canvas-terminal-live-overlay"
+          data-node-id={node.id}
+          style={{
+            ...styles.terminalOverlayPane,
+            left: terminalOverlayBounds.left,
+            top: terminalOverlayBounds.top,
+            width: terminalOverlayBounds.width,
+            height: terminalOverlayBounds.height,
+          }}
+        >
+          {liveTerminalComponent}
+        </div>,
+        terminalOverlayRoot
+      )}
       <div
         style={
           node.type === "terminal"
@@ -3749,7 +3844,11 @@ function CanvasNodeViewImpl({
         onWheel={node.type === "terminal" ? (event) => event.stopPropagation() : undefined}
       >
         {node.type === "terminal" ? (
-          <div style={styles.terminalBodyTaskContent} data-testid="canvas-terminal-task-content">
+          <div
+            ref={terminalBodyRef}
+            style={styles.terminalBodyTaskContent}
+            data-testid="canvas-terminal-task-content"
+          >
             {workstream?.kind === "agent" ? (
               <div style={styles.agentCockpit}>
             <div style={styles.agentMissionPanel} data-testid="agent-cockpit-panel">
@@ -4111,6 +4210,7 @@ export function MagicCanvas() {
   const openFiles = useWorkspaceStore((state) => state.openFiles);
   const shellRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
+  const [terminalOverlayRoot, setTerminalOverlayRoot] = useState<HTMLDivElement | null>(null);
   const panRef = useRef<{
     x: number;
     y: number;
@@ -4229,7 +4329,14 @@ export function MagicCanvas() {
     // so no live renderers are mounted regardless — nothing to cull.
     if (viewport.zoom < READABLE_TERMINAL_ZOOM) return live;
 
-    const primarySelectedNodeId = selectedNodeId ?? selectedNodeIds?.[0] ?? null;
+    const selectedIds = selectedNodeIds ?? (selectedNodeId ? [selectedNodeId] : []);
+    const selectedTerminalNodeId = selectedIds.find((id) =>
+      nodes.some((node) => node.id === id && node.type === "terminal")
+    ) ?? null;
+    const activeTabNodeId = activeTabId
+      ? nodes.find((node) => node.type === "terminal" && node.terminalTabId === activeTabId)?.id ?? null
+      : null;
+    const primaryLiveNodeId = selectedTerminalNodeId ?? activeTabNodeId;
     const { x, y, zoom } = viewport;
     const { width: w, height: h } = containerSize;
     // Invert the stage transform to get the visible rect in canvas space, then
@@ -4244,11 +4351,8 @@ export function MagicCanvas() {
     const candidates: string[] = [];
     for (const node of nodes) {
       if (node.type !== "terminal") continue;
-      // The selected node and the active tab's node are the user's work surface
-      // — keep them streaming even if off screen.
-      const isAlwaysLive =
-        node.id === primarySelectedNodeId ||
-        (node.terminalTabId != null && node.terminalTabId === activeTabId);
+      // Keep exactly one primary work surface streaming even if off screen.
+      const isAlwaysLive = node.id === primaryLiveNodeId;
       const intersects =
         w > 0 &&
         h > 0 &&
@@ -4447,10 +4551,10 @@ export function MagicCanvas() {
     }));
   }, []);
 
-  // Coalesce high-frequency snapshots (one per diff frame) down to ~10/s per
-  // node so a busy terminal does not drive a setState + map re-render on every
-  // frame. Leading-edge flush keeps the preview responsive; a trailing timer
-  // delivers the final frame of a burst.
+  // Coalesce high-frequency snapshots (one per diff frame) so a busy terminal
+  // does not drive a setState + map re-render on every frame. Leading-edge flush
+  // keeps the preview responsive; a trailing timer delivers the final frame of a
+  // burst.
   const updateTerminalPreview = useCallback((nodeId: string, snapshot: GridSnapshot) => {
     const map = previewThrottleRef.current;
     let entry = map.get(nodeId);
@@ -4603,6 +4707,7 @@ export function MagicCanvas() {
       if (shellRef.current) {
         shellRef.current.style.backgroundPosition = `${pan.nextX}px ${pan.nextY}px`;
       }
+      window.dispatchEvent(new Event("termfleet-map-terminal-overlay-sync"));
     }
 
     function onMouseMove(moveEvent: MouseEvent) {
@@ -6111,6 +6216,7 @@ export function MagicCanvas() {
             key={node.id}
             node={node}
             live={liveNodeIds.has(node.id)}
+            terminalOverlayRoot={terminalOverlayRoot}
             focusNode={centerNode}
             terminalPreview={terminalPreviews[node.id]}
             onTerminalSnapshot={updateTerminalPreview}
@@ -6119,6 +6225,12 @@ export function MagicCanvas() {
           />
         ))}
       </div>
+
+      <div
+        ref={setTerminalOverlayRoot}
+        data-testid="canvas-terminal-overlay-layer"
+        style={styles.terminalOverlayLayer}
+      />
 
       <div style={styles.viewportControls}>
         <button

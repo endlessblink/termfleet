@@ -20,6 +20,30 @@ test("selected live map terminals preserve alternate-screen projection without c
   expect(liveTerminalBlock?.[0]).not.toContain("projectionMinScale");
 });
 
+test("selected live map terminal renders through non-transformed overlay, not activation card", () => {
+  const source = readFileSync("src/components/MagicCanvas.tsx", "utf8");
+
+  expect(source).toContain("const shouldUseNativeSplitForInteraction = false;");
+  expect(source).toContain("terminal cards must not degrade into split-pane activation cards");
+  expect(source).toContain('data-testid="canvas-terminal-overlay-layer"');
+  expect(source).toContain('data-testid="canvas-terminal-live-overlay"');
+  expect(source).toContain('data-testid="canvas-terminal-overlay-placeholder"');
+  expect(source).toContain('window.dispatchEvent(new Event("termfleet-map-terminal-overlay-sync"));');
+  expect(source).toContain("renderScale={shouldOverlayTerminal ? 1 : mapTerminalRenderScaleForZoom(zoom)}");
+  expect(source).not.toContain("const shouldUseNativeSplitForInteraction = isDesktopNativeRuntime");
+});
+
+test("map Canvas2D terminals do not also mount the xterm renderer or per-pane status poller", () => {
+  const terminal = readFileSync("src/components/Terminal.tsx", "utf8");
+  const magicCanvas = readFileSync("src/components/MagicCanvas.tsx", "utf8");
+
+  expect(terminal).toContain("if (canvasMode) return;");
+  expect(terminal).toContain("if (standalone) return;");
+  expect(terminal).not.toContain("if (canvasMode || !containerRef.current) return;");
+  expect(magicCanvas).not.toContain("summarizeAgentStatus({");
+  expect(magicCanvas).not.toContain("const statusEndpointConfigured");
+});
+
 test("selected map agent panes suppress synchronized-output control residue", () => {
   const terminalCanvas = readFileSync("src/components/TerminalCanvas.tsx", "utf8");
   const vtGrid = readFileSync("src-tauri/src/vt_grid.rs", "utf8");
@@ -1107,11 +1131,12 @@ test("selected default-size map terminal does not resize itself on click", async
     });
   });
 
-  await expect(page.locator("[data-testid='canvas-terminal-node'] .terminal-container")).toBeVisible();
+  await expect(page.locator("[data-testid='canvas-terminal-live-overlay'] .terminal-container")).toBeVisible();
+  await expect(page.locator("[data-testid='canvas-terminal-node'] [data-testid='canvas-terminal-overlay-placeholder']")).toBeVisible();
   await expect.poll(async () => page.evaluate(() => {
-    const container = document.querySelector("[data-testid='canvas-terminal-node'] .terminal-container");
-    const terminalShell = document.querySelector("[data-testid='canvas-terminal-node'] .terminal-block-shell");
-    const xtermScreen = document.querySelector("[data-testid='canvas-terminal-node'] .xterm-screen");
+    const container = document.querySelector("[data-testid='canvas-terminal-live-overlay'] .terminal-container");
+    const terminalShell = document.querySelector("[data-testid='canvas-terminal-live-overlay'] .terminal-block-shell");
+    const xtermScreen = document.querySelector("[data-testid='canvas-terminal-live-overlay'] .xterm-screen");
     const containerRect = container?.getBoundingClientRect();
     const shellRect = terminalShell?.getBoundingClientRect();
     const screenRect = xtermScreen?.getBoundingClientRect();
@@ -1128,12 +1153,20 @@ test("selected default-size map terminal does not resize itself on click", async
 
   const dimensions = await page.evaluate(() => {
     const node = document.querySelector("[data-testid='canvas-terminal-node']");
-    const container = document.querySelector("[data-testid='canvas-terminal-node'] .terminal-container");
-    const terminalShell = document.querySelector("[data-testid='canvas-terminal-node'] .terminal-block-shell");
-    const xtermScreen = document.querySelector("[data-testid='canvas-terminal-node'] .xterm-screen");
+    const content = document.querySelector("[data-testid='canvas-terminal-task-content']");
+    const overlay = document.querySelector("[data-testid='canvas-terminal-live-overlay']");
+    const container = document.querySelector("[data-testid='canvas-terminal-live-overlay'] .terminal-container");
+    const terminalShell = document.querySelector("[data-testid='canvas-terminal-live-overlay'] .terminal-block-shell");
+    const xtermScreen = document.querySelector("[data-testid='canvas-terminal-live-overlay'] .xterm-screen");
+    const contentRect = content?.getBoundingClientRect();
+    const overlayRect = overlay?.getBoundingClientRect();
     return {
       nodeWidth: Math.round(node?.getBoundingClientRect().width ?? 0),
       nodeHeight: Math.round(node?.getBoundingClientRect().height ?? 0),
+      overlayLeftDelta: Math.round(Math.abs((overlayRect?.left ?? 0) - (contentRect?.left ?? 0))),
+      overlayTopDelta: Math.round(Math.abs((overlayRect?.top ?? 0) - (contentRect?.top ?? 0))),
+      overlayWidthDelta: Math.round(Math.abs((overlayRect?.width ?? 0) - (contentRect?.width ?? 0))),
+      overlayHeightDelta: Math.round(Math.abs((overlayRect?.height ?? 0) - (contentRect?.height ?? 0))),
       containerHeight: Math.round(container?.getBoundingClientRect().height ?? 0),
       shellHeight: Math.round(terminalShell?.getBoundingClientRect().height ?? 0),
       screenHeight: Math.round(xtermScreen?.getBoundingClientRect().height ?? 0),
@@ -1141,6 +1174,10 @@ test("selected default-size map terminal does not resize itself on click", async
   });
   expect(dimensions.nodeWidth).toBe(820);
   expect(dimensions.nodeHeight).toBe(460);
+  expect(dimensions.overlayLeftDelta).toBeLessThanOrEqual(2);
+  expect(dimensions.overlayTopDelta).toBeLessThanOrEqual(2);
+  expect(dimensions.overlayWidthDelta).toBeLessThanOrEqual(2);
+  expect(dimensions.overlayHeightDelta).toBeLessThanOrEqual(2);
   expect(dimensions.containerHeight).toBeGreaterThanOrEqual(260);
   expect(dimensions.shellHeight).toBeGreaterThanOrEqual(260);
   expect(dimensions.screenHeight).toBeGreaterThanOrEqual(220);
@@ -1200,7 +1237,8 @@ test("manual-sized selected live terminal is not reset to the readable default",
     });
   });
 
-  await expect(page.locator("[data-testid='canvas-terminal-node'] .terminal-container")).toBeVisible();
+  await expect(page.locator("[data-testid='canvas-terminal-live-overlay'] .terminal-container")).toBeVisible();
+  await expect(page.locator("[data-testid='canvas-terminal-node'] [data-testid='canvas-terminal-overlay-placeholder']")).toBeVisible();
   await expect.poll(async () => page.evaluate(() => {
     const node = document.querySelector("[data-testid='canvas-terminal-node']");
     return {
@@ -1272,7 +1310,9 @@ test("readable map mounts only the primary live terminal renderer", async ({ pag
   });
 
   await expect(page.locator("[data-testid='canvas-terminal-node']")).toHaveCount(6);
-  await expect(page.locator("[data-testid='canvas-terminal-node'] .terminal-container")).toHaveCount(1);
+  await expect(page.getByTestId("canvas-terminal-live-overlay")).toHaveCount(1);
+  await expect(page.locator("[data-testid='canvas-terminal-live-overlay'] .terminal-container")).toHaveCount(1);
+  await expect(page.locator("[data-testid='canvas-terminal-node'] [data-testid='canvas-terminal-overlay-placeholder']")).toHaveCount(1);
 });
 
 test("task sidebar docks as an inner column flush inside the card", async ({ page }) => {
@@ -2966,10 +3006,12 @@ test("map shell header replaces source-file activity with readable task activity
     });
   });
 
+  // The activity only restates the task ("Improving <task>"), so there is no distinct
+  // second line: the task itself becomes the one prominent line and the raw source-file
+  // activity ("ModelScene.tsx") never surfaces.
   await expect(page.getByTestId("canvas-terminal-node-description")).toHaveText("#36 Bottom-sheet pull-up + clearer launcher button");
-  await expect(page.getByTestId("canvas-terminal-node-header-title")).toHaveText("Improving Bottom-sheet pull-up and clearer launcher button");
-  await expect(page.getByTestId("canvas-terminal-node-now")).toHaveText("Improving Bottom-sheet pull-up and clearer launcher button");
-  await expect(page.getByTestId("canvas-terminal-node-header-title")).not.toContainText("ModelScene.tsx");
+  await expect(page.getByTestId("canvas-terminal-node-header-title")).toHaveCount(0);
+  await expect(page.getByTestId("canvas-terminal-node-now")).not.toContainText("ModelScene.tsx");
 });
 
 test("map shell header treats ready prompt as idle instead of capture failure", async ({ page }) => {
@@ -3032,7 +3074,9 @@ test("map shell header treats ready prompt as idle instead of capture failure", 
   });
 
   await expect(page.getByTestId("canvas-terminal-node-description")).toHaveText("Task not captured");
-  await expect(page.getByTestId("canvas-terminal-node-header-title")).toHaveText("Idle");
+  // An idle pane with no distinct step collapses to the single honest Task line — the
+  // "Now Active" row is hidden rather than restating a bare "Idle" status word.
+  await expect(page.getByTestId("canvas-terminal-node-header-title")).toHaveCount(0);
   await expect(page.getByTestId("canvas-terminal-node-now")).toHaveText("Idle");
 });
 

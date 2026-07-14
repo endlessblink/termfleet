@@ -10,6 +10,7 @@ import {
   buildShellTerminalHeaderViewModel,
   type HeaderFieldSource,
 } from "./terminalHeaderViewModel";
+import { attentionStateFrom, type AttentionState } from "./terminalAttention";
 
 export type TerminalHeaderStatus =
   | "idle"
@@ -51,6 +52,8 @@ export interface TerminalHeaderState {
   currentActivity: string;
   fullPath: string;
   status: TerminalHeaderStatus;
+  /** Viewer-facing attention state: does this pane need me / is it busy / idle. */
+  attention: AttentionState;
   sources: {
     workspace: TerminalHeaderWorkspaceSource;
     goal: TerminalHeaderGoalSource;
@@ -148,6 +151,19 @@ export function buildTerminalHeaderState(input: {
   contextPurposeSource?: TerminalPurposeSource | null;
   workstreamTitle?: string | null;
   activelyWorking?: boolean;
+  /**
+   * Positive, CURRENT evidence the pane is generating/running right now (a live agent
+   * turn, a running command) — used only for the attention badge. Kept separate from
+   * `activelyWorking` (which also feeds title fallbacks) so the badge can use a stricter,
+   * less-stale signal without shifting title behavior. Falls back to `activelyWorking`.
+   */
+  activelyRunning?: boolean;
+  /**
+   * The on-screen turn-finished signal (Codex/OMC "Cooked for …" + rest prompt). When
+   * true it forces the attention badge to Idle, overriding a stale hook status that is
+   * still stuck on "working" after the turn ended.
+   */
+  terminalAtRest?: boolean;
   updatedAt?: number;
   version?: number;
 }): TerminalHeaderState {
@@ -172,21 +188,51 @@ export function buildTerminalHeaderState(input: {
   });
   const goalSource = goalSourceFrom(view.taskDescription.source, input.mainUserAsk);
   const goalLabel = view.taskDescription.text;
+  const hasCapturedGoal = goalSource !== "none" && goalSource !== "missing";
+  const headerStatus = statusFromSummary(input.summary ?? input.statusSummary, input.terminalStatus);
+  // "running" needs positive evidence — but of the RIGHT kind. Trust the agent's own
+  // hook status when it explicitly says "working" (the most reliable signal for an agent
+  // mid-turn, even when its on-screen indicator scrolled off or rendered garbled). For
+  // panes WITHOUT such a summary (a bare shell whose only "working" is an attached PTY),
+  // fall back to the live on-screen indicator / running command, so an idle shell reads
+  // Idle rather than busy.
+  const summarySaysWorking = (input.summary ?? input.statusSummary)?.status === "working";
+  // A visible "turn finished" marker beats a stale hook still stuck on "working".
+  const running =
+    !input.terminalAtRest &&
+    (summarySaysWorking || (input.activelyRunning ?? input.activelyWorking));
+  const attention = attentionStateFrom({
+    headerStatus,
+    activelyWorking: running,
+  });
+  const currentActivity =
+    hasCapturedGoal &&
+    headerStatus === "working" &&
+    /^(?:Working|Thinking|Running terminal command|Command is running)$/i.test(view.title.text)
+      ? "Activity not captured"
+      : view.title.text;
+  const activitySource =
+    currentActivity === "Activity not captured"
+      ? "missing"
+      : currentActivity === view.title.text
+      ? activitySourceFrom(view.title.source, input.trustedActivitySummary)
+      : "missing";
 
   return {
     paneId: input.paneId,
     terminalId: input.terminalId,
     runId: input.runId ?? input.activeRunId,
     workspace: view.workspace.text,
-    userGoal: goalSource === "none" || goalSource === "missing" ? null : goalLabel,
+    userGoal: hasCapturedGoal ? goalLabel : null,
     goalLabel,
-    currentActivity: view.title.text,
+    currentActivity,
     fullPath: view.path.text,
-    status: statusFromSummary(input.summary ?? input.statusSummary, input.terminalStatus),
+    status: headerStatus,
+    attention,
     sources: {
       workspace: "workspace",
       goal: goalSource,
-      activity: activitySourceFrom(view.title.source, input.trustedActivitySummary),
+      activity: activitySource,
       path: pathSource(input),
     },
     version: input.version ?? 1,

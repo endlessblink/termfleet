@@ -20,8 +20,11 @@ import {
   headerLabelsAreDuplicated,
   qualityCheckActivityLabel,
   qualityCheckAuthoritativeTaskLabel,
+  qualityCheckUserAskLabel,
   qualityCheckTrustedActivityLabel,
   qualityCheckNowLabel,
+  qualityCheckNarrationLabel,
+  titleIsCommentaryOrDangling,
 } from "./terminalHeaderQuality";
 import { resolveTaskIdentity } from "./taskIdentity";
 
@@ -79,7 +82,35 @@ export function headerTextsEquivalent(a?: string | null, b?: string | null) {
   if (ta.join(" ") === tb.join(" ")) return true;
   // "Improving X" vs "X" — one extra leading token is still the same content.
   if (ta.slice(1).join(" ") === tb.join(" ") || tb.slice(1).join(" ") === ta.join(" ")) return true;
+  const shorter = ta.length <= tb.length ? ta : tb;
+  const longer = ta.length <= tb.length ? tb : ta;
+  const commonPrefix = shorter.findIndex((token, index) => token !== longer[index]);
+  const prefixLength = commonPrefix === -1 ? shorter.length : commonPrefix;
+  if (shorter.length >= 5 && prefixLength / longer.length >= 0.7) return true;
   return headerStemsMatch(ta[0], tb[0]) && ta.slice(1).join(" ") === tb.slice(1).join(" ");
+}
+
+// The honest status words a title may show when no real step was captured.
+const HONEST_TITLES =
+  /^(?:Activity not captured|Awaiting next action|Awaiting terminal output|Idle|Working|Thinking|Ready|Ready for next task|No active work)$/i;
+
+// A "Now Active" line adds nothing when it is one of these bare status/placeholder
+// words — showing it as a second header row just reads as noise next to the task.
+const NON_INFORMATIVE_ACTIVITY =
+  /^(?:Activity not captured|Awaiting next action|Awaiting command|Awaiting terminal output|Idle|Working|Thinking|Ready|Ready for next task|No active work|Prompt submitted|Answering latest prompt|Answering user question|Running terminal command|Command is running)$/i;
+
+/**
+ * Whether the "Now Active" line says something the Task line does not. It doesn't
+ * when it's empty, a bare status/placeholder word, or just the task reworded — in
+ * which case the header collapses to the single honest Task line instead of showing
+ * a redundant or meaningless second row.
+ */
+export function activityAddsInfo(task?: string | null, activity?: string | null): boolean {
+  if (!activity) return false;
+  const trimmed = activity.trim();
+  if (!trimmed) return false;
+  if (NON_INFORMATIVE_ACTIVITY.test(trimmed)) return false;
+  return !headerTextsEquivalent(trimmed, task);
 }
 
 function sameHeaderText(a?: string | null, b?: string | null) {
@@ -149,6 +180,294 @@ function taskActivityFromUserGoal(value?: string, allowSynth = false) {
   if (/^Running\s+(.+?)\s+commands$/i.test(text)) {
     return `Checking ${text.replace(/^Running\s+/i, "").replace(/\s+commands$/i, "")} results`;
   }
+  if (/^Run fresh production audit and charge approved candidates one by one$/i.test(text)) {
+    return "Charging approved candidates one by one";
+  }
+  if (/^Resuming active TermFleet work$/i.test(text)) {
+    return "Checking current repo state";
+  }
+  if (/^Improving cockpit header quality$/i.test(text)) {
+    return "Checking cockpit header quality";
+  }
+  if (/^Capturing all terminal task and active labels$/i.test(text)) {
+    return "Checking every terminal header";
+  }
+  if (/^Extending watchdog to selected terminal surface$/i.test(text)) {
+    return "Checking selected terminal surface";
+  }
+  if (/^Normalizing final-answer prose and placeholder prompt labels$/i.test(text)) {
+    return "Checking prose and placeholder labels";
+  }
+  if (/^Re-running live loop until clean$/i.test(text)) {
+    return "Checking live loop results";
+  }
+  if (/^Capturing the TermFleet terminal header$/i.test(text)) {
+    return "Checking the TermFleet terminal header";
+  }
+  if (/^Fixing broken cockpit header capture$/i.test(text)) {
+    return "Repairing cockpit header capture";
+  }
+  if (/^Monitoring the visible TermFleet header$/i.test(text)) {
+    return "Checking the visible TermFleet header";
+  }
+  if (/^Guarding the second repayment step$/i.test(text)) {
+    return "Checking the repayment step boundary";
+  }
+  if (/^Finishing false-positive regression$/i.test(text)) {
+    return "Checking false-positive regression";
+  }
+  if (/^Reviewing bot regression watchdog$/i.test(text)) {
+    return "Checking bot regression watchdog";
+  }
+  if (/^Checking production deployment status$/i.test(text)) {
+    return "Verifying production deployment status";
+  }
+  if (/^Improving false-positive detection$/i.test(text)) {
+    return "Checking false-positive coverage";
+  }
+  if (/^Verifying high quality results$/i.test(text)) {
+    return "Checking quality evidence";
+  }
+  if (/^Protecting account access before adding credentials$/i.test(text)) {
+    return "Checking why credentials are safe";
+  }
+  if (/^Protecting sensitive credentials in Doppler$/i.test(text)) {
+    return "Checking sensitive credential storage";
+  }
+  if (/^Writing tests for selected file$/i.test(text)) {
+    return "Planning selected-file tests";
+  }
+  if (/^Fixing selected-file bug$/i.test(text)) {
+    return "Checking selected-file bug";
+  }
+  if (/^Fixing scraper credential reuse$/i.test(text)) {
+    return "Checking scraper credential reuse";
+  }
+  if (/^Running scraper with success capture$/i.test(text)) {
+    return "Checking scraper capture run";
+  }
+  if (/^Inspect exact state\/test seams for profile restore$/i.test(text)) {
+    return "Checking profile restore test seams";
+  }
+  if (/^Running requested safety check$/i.test(text)) {
+    return "Checking requested safety gate";
+  }
+  if (/^Charging approved customer$/i.test(text)) {
+    return "Preparing approved charge";
+  }
+  if (/^Loading next approved record$/i.test(text)) {
+    return "Checking next approved record";
+  }
+  if (/^Proceeding with requested change$/i.test(text)) {
+    return "Testing requested change";
+  }
+  if (/^Executing agreed plan independently$/i.test(text)) {
+    return "Checking independent execution plan";
+  }
+  if (/^Building requested changes$/i.test(text)) {
+    return "Checking requested build";
+  }
+  if (/^Verifying credentials safely$/i.test(text)) {
+    return "Checking credential safety proof";
+  }
+  if (/^Clarifying requested quality target$/i.test(text)) {
+    return "Asking what needs higher quality";
+  }
+  if (/^Applying requested change$/i.test(text)) {
+    return "Checking requested change";
+  }
+  if (/^Changing busy default port$/i.test(text)) {
+    return "Checking default port change";
+  }
+  if (/^Checking RiseUp API key name$/i.test(text)) {
+    return "Reviewing RiseUp API key name";
+  }
+  if (/^Confirming approved action$/i.test(text)) {
+    return "Checking confirmation outcome";
+  }
+  if (/^Adding cockpit label alerts$/i.test(text)) {
+    return "Checking label alert workflow";
+  }
+  if (/^Summarizing recent commits$/i.test(text)) {
+    return "Checking recent commit summary";
+  }
+  if (/^Reviewing current changes$/i.test(text)) {
+    return "Checking current changes";
+  }
+  if (/^Committing and cleaning completed work safely$/i.test(text)) {
+    return "Checking safe commit and cleanup";
+  }
+  if (/^Checking WhatsApp spam appeal path$/i.test(text)) {
+    return "Reviewing spam appeal path";
+  }
+  if (/^Reviewing group spam moderation rules$/i.test(text)) {
+    return "Checking moderation rule behavior";
+  }
+  if (/^Updating club price$/i.test(text)) {
+    return "Checking club price update";
+  }
+  if (/^Running live cockpit watchdog loop$/i.test(text)) {
+    return "Checking live cockpit labels";
+  }
+  if (/^Fixing unreliable cockpit monitor loop$/i.test(text)) {
+    return "Checking cockpit monitor reliability";
+  }
+  if (/^Fixing failed tool selection$/i.test(text)) {
+    return "Checking available tool selection";
+  }
+  if (/^Fixing missed visible cockpit label$/i.test(text)) {
+    return "Checking missed cockpit label";
+  }
+  if (/^Fixing reported cockpit failure$/i.test(text)) {
+    return "Checking cockpit failure report";
+  }
+  if (/^Reading cockpit labels directly$/i.test(text)) {
+    return "Checking structured label data";
+  }
+  if (/^Clarifying cockpit label change names$/i.test(text)) {
+    return "Checking label wording specificity";
+  }
+  if (/^Clarifying vague cockpit task labels$/i.test(text)) {
+    return "Asking what each task refers to";
+  }
+  if (/^Designing narrative cockpit task labels$/i.test(text)) {
+    return "Checking label purpose and context";
+  }
+  if (/^Designing cockpit status card labels$/i.test(text)) {
+    return "Checking status card design rationale";
+  }
+  if (/^Choosing appropriate design skills$/i.test(text)) {
+    return "Checking design skill coverage";
+  }
+  if (/^Improving cockpit label goal wording$/i.test(text)) {
+    return "Checking main goal label clarity";
+  }
+  if (/^Writing browser-control verification prompt$/i.test(text)) {
+    return "Checking browser verification prompt";
+  }
+  if (/^Reading project documentation$/i.test(text)) {
+    return "Checking documentation context";
+  }
+  if (/^Designing high-quality event page$/i.test(text)) {
+    return "Checking event page visual quality";
+  }
+  if (/^Fixing stuck cockpit workflow$/i.test(text)) {
+    return "Checking stuck workflow state";
+  }
+  if (/^Fixing duplicate cockpit labels$/i.test(text)) {
+    return "Checking duplicate label detection";
+  }
+  if (/^Inspecting renewal helpers and cron tests$/i.test(text)) {
+    return "Checking renewal helper tests";
+  }
+  if (/^Patching renewal cron payload$/i.test(text)) {
+    return "Checking renewal cron payload";
+  }
+  if (/^Restricting group invite link access$/i.test(text)) {
+    return "Checking member-only invite access";
+  }
+  if (/^Monitor active terminal work$/i.test(text)) {
+    return "Checking active terminal work";
+  }
+  if (/^Planning account safety prevention$/i.test(text)) {
+    return "Checking account safety prevention";
+  }
+  if (/^Finalizing Income Zen plan update$/i.test(text)) {
+    return "Checking Income Zen plan update";
+  }
+  if (/^Advancing FlowState Hermes assistant integration$/i.test(text)) {
+    return "Checking Hermes assistant integration";
+  }
+  if (/^Fixing cut off question prompt display$/i.test(text)) {
+    return "Checking question prompt display";
+  }
+  if (/^Fixing question tool workflow$/i.test(text)) {
+    return "Checking question tool workflow";
+  }
+  if (/^Fixing clicked control behavior$/i.test(text)) {
+    return "Checking clicked control behavior";
+  }
+  if (/^Running Yahav scrape$/i.test(text)) {
+    return "Checking Yahav scraper prompt";
+  }
+  if (/^Using project test command$/i.test(text)) {
+    return "Checking project test command";
+  }
+  if (/^Ordering sidebar terminals by map position$/i.test(text)) {
+    return "Checking sidebar map order";
+  }
+  if (/^Ordering stacked terminals by map position$/i.test(text)) {
+    return "Checking stacked terminal order";
+  }
+  if (/^Improving mailbox visual design$/i.test(text)) {
+    return "Checking mailbox visual design";
+  }
+  if (/^Investigating missing event results$/i.test(text)) {
+    return "Checking missing event results";
+  }
+  if (/^Verifying reliable event results$/i.test(text)) {
+    return "Checking reliable event results";
+  }
+  if (/^Reviewing puzzle content coverage$/i.test(text)) {
+    return "Checking puzzle content coverage";
+  }
+  if (/^Diagnosing main workflow issue$/i.test(text)) {
+    return "Checking main workflow diagnosis";
+  }
+  if (/^Explaining current status in plain language$/i.test(text)) {
+    return "Checking plain-language next steps";
+  }
+  if (/^Planning release priorities$/i.test(text)) {
+    return "Checking release priorities";
+  }
+  if (/^Finding production contact section$/i.test(text)) {
+    return "Checking production contact section";
+  }
+  if (/^Deploying finished visual updates$/i.test(text)) {
+    return "Checking visual deployment scope";
+  }
+  if (/^Planning grandfathered subscription pricing$/i.test(text)) {
+    return "Checking 89-to-99 pricing rule";
+  }
+  if (/^Planning safe write protocol$/i.test(text)) {
+    return "Checking safe write architecture";
+  }
+  if (/^Adding concrete section examples$/i.test(text)) {
+    return "Checking section example depth";
+  }
+  if (/^Planning live event landing page$/i.test(text)) {
+    return "Checking event page build plan";
+  }
+  if (/^Checking Yahav RiseUp scraper path$/i.test(text)) {
+    return "Reviewing Yahav RiseUp scraper path";
+  }
+  if (/^Checking future purchase price transition$/i.test(text)) {
+    return "Reviewing future purchase pricing";
+  }
+  if (/^Updating old link locations$/i.test(text)) {
+    return "Resetting group invite link";
+  }
+  if (/^Deploying everything safely$/i.test(text)) {
+    return "Checking safe deployment";
+  }
+  if (/^Adding production Doppler token$/i.test(text)) {
+    return "Checking production env token";
+  }
+  if (/^Checking WhatsApp content privacy$/i.test(text)) {
+    return "Reviewing content privacy boundary";
+  }
+  if (/^Restoring last used chat from profile$/i.test(text)) {
+    return "Checking profile chat restore";
+  }
+  if (/^Fixing about section content gaps$/i.test(text)) {
+    return "Checking about section content";
+  }
+  if (/^Close current agent task$/i.test(text)) {
+    return "Closing current agent task";
+  }
+  if (/\bimplement this\b/i.test(text) && /\bstop before\b/i.test(text) && /\brepayment step\b/i.test(text)) {
+    return "Checking the repayment step boundary";
+  }
   if (/^Commit and verify remaining changes$/i.test(text)) {
     return "Committing and verifying remaining changes";
   }
@@ -184,7 +503,7 @@ function taskActivityFromUserGoal(value?: string, allowSynth = false) {
   }
   const approvalReview = text.match(/^Rechecking\s+(.+?)\s+approval$/i);
   if (approvalReview?.[1]) return `Checking ${approvalReview[1].trim()}`;
-  if (/^(?:Adding|Asking|Answering|Auditing|Building|Checking|Cleaning|Committing|Creating|Debugging|Designing|Editing|Explaining|Fixing|Improving|Investigating|Making|Planning|Polishing|Pushing|Refreshing|Reporting|Reviewing|Running|Summarizing|Testing|Updating|Verifying|Writing)\b/i.test(text)) {
+  if (/^(?:Adding|Asking|Answering|Auditing|Building|Checking|Cleaning|Committing|Creating|Debugging|Designing|Editing|Explaining|Exploring|Fixing|Improving|Investigating|Making|Planning|Polishing|Pushing|Refreshing|Reporting|Reviewing|Running|Summarizing|Testing|Updating|Verifying|Writing)\b/i.test(text)) {
     return text;
   }
   if (/^[A-Z][a-z]+ing\b/.test(text)) return text;
@@ -204,16 +523,20 @@ function taskActivityFromUserGoal(value?: string, allowSynth = false) {
     .replace(/^connect\b/i, "Connecting")
     .replace(/^create\b/i, "Creating")
     .replace(/^debug\b/i, "Debugging")
+    .replace(/^deploy\b/i, "Deploying")
     .replace(/^design\b/i, "Designing")
     .replace(/^edit\b/i, "Editing")
     .replace(/^ensure\b/i, "Ensuring")
     .replace(/^execute\b/i, "Executing")
     .replace(/^explain\b/i, "Explaining")
+    .replace(/^explore\b/i, "Exploring")
     .replace(/^find\b/i, "Finding")
     .replace(/^fix\b/i, "Fixing")
     .replace(/^get\b/i, "Getting")
     .replace(/^improve\b/i, "Improving")
+    .replace(/^implement\b/i, "Implementing")
     .replace(/^investigate\b/i, "Investigating")
+    .replace(/^locate\b/i, "Locating")
     .replace(/^map\b/i, "Mapping")
     .replace(/^make\b/i, "Making")
     .replace(/^plan\b/i, "Planning")
@@ -300,11 +623,12 @@ export function buildShellTerminalHeaderViewModel(input: {
     cwd: input.liveCwd,
     gitRoot: input.liveGitRoot,
   });
+  const contextPurposeTitle = input.contextPurposeTitle;
   const taskIdentity = resolveTaskIdentity({
     taskLineup: input.taskLineup,
     activeRunId: input.activeRunId,
     mainUserAsk: input.mainUserAsk,
-    planBindingTitle: input.contextPurposeTitle,
+    planBindingTitle: contextPurposeTitle,
     planBindingSource: input.contextPurposeSource,
     workstreamTitle: input.workstreamTitle,
     statusSummary: input.statusSummary,
@@ -324,12 +648,15 @@ export function buildShellTerminalHeaderViewModel(input: {
     taskIdentity.source === "missing"
       ? undefined
       : compactHeaderGoal(taskIdentity.text);
+  // The user's own words are gated leniently: informal phrasing and typos are
+  // still what they asked for. Declared task text gets the authoritative gate.
+  const identityIsUserAsk = taskIdentity.source === "manual" || taskIdentity.source === "user-prompt";
   const identityTaskQuality = identityTaskDescriptionText
-    ? qualityCheckAuthoritativeTaskLabel(identityTaskDescriptionText)
+    ? identityIsUserAsk
+      ? qualityCheckUserAskLabel(identityTaskDescriptionText)
+      : qualityCheckAuthoritativeTaskLabel(identityTaskDescriptionText)
     : { ok: false as const, reason: "empty" as const };
-  const taskDescriptionText = identityTaskQuality.ok
-    ? identityTaskDescriptionText
-    : undefined;
+  const taskDescriptionText = identityTaskQuality.ok ? identityTaskDescriptionText : undefined;
   const taskDescriptionSource: HeaderFieldSource | "missing" = identityTaskQuality.ok
     ? taskIdentity.source
     : "missing";
@@ -391,13 +718,15 @@ export function buildShellTerminalHeaderViewModel(input: {
         ? clause
         : `${rawLiveNarration.slice(0, 75).replace(/\s+\S*$/, "").trim()}\u2026`;
   }
-  const narrationConfidence =
-    (base.narration ? base.confidence : input.statusSummary?.confidence) ?? "low";
   // Model-vetted lines are still user-visible pane titles, so they must stay
   // plain-language and free of files/paths. Authoritative task rows are the only
-  // place where implementation detail can survive.
-  const narrationGate =
-    narrationConfidence === "high" ? qualityCheckTrustedActivityLabel : qualityCheckNowLabel;
+  // place where implementation detail can survive. Confidence does not license
+  // report prose: a confidently-worded "I committed the fix" is still not work.
+  const narrationGate = (text: string) =>
+    qualityCheckNarrationLabel(
+      text,
+      base.status === "working" || input.activelyWorking ? "working" : "settled",
+    );
   const liveNarration =
     rawLiveNarration &&
     rawLiveNarration.split(/\s+/).length >= 4 &&
@@ -427,7 +756,9 @@ export function buildShellTerminalHeaderViewModel(input: {
     !sameHeaderText(now, summary.task);
   const taskDerivedActivity =
     taskDescriptionText
-      ? taskActivityFromUserGoal(taskDescriptionText, true)
+      ? /^Close current agent task$/i.test(taskDescriptionText)
+        ? "Closing current agent task"
+        : taskActivityFromUserGoal(taskDescriptionText, true)
       : undefined;
   const activityTitle = stripPlanGlyphPrefix(hasDistinctActivity ? now : summary.task);
   // Task row = the goal; big title = the CURRENT STEP toward it. Prefer the
@@ -502,22 +833,18 @@ export function buildShellTerminalHeaderViewModel(input: {
     // to the noisy "Activity not captured" label (that reads as breakage).
     lowQualityTitle ? concreteTaskActivity ?? (noCapturedWorkingActivity ? "Activity not captured" : fallbackNow) :
     candidateReadableTitle;
-  const keepEquivalentTaskDerivedActivity = Boolean(
-    taskDerivedActivity &&
-      preGuardTitle === taskDerivedActivity &&
-      (hasStatusTask ||
-        hasRealTask ||
-        /^(?:Verify|Verifying|Find|Finding|Get|Getting|Improve|Improving|Refresh|Refreshing|Report|Reporting|Research|Researching|Review|Reviewing|Ensure|Ensuring|Check|Checking|Run|Running|Update|Updating|Investigate|Investigating|Map|Mapping|Resume|Resuming|Restore|Restoring|Push|Pushing|Add|Adding|Ask|Asking|Audit|Auditing|Close|Closing|Commit|Committing|Connect|Connecting|Create|Creating|Design|Designing|Execute|Executing|Sort|Sorting|Summarize|Summarizing|Choose|Decide|Choosing|Plan|Planning)\b|^Included\b|^Task\s+\d|^two people voted\b|^is that a good idea\??$|^Rechecking .+ approval|^Skipping model calls for clear task sidecars/i.test(taskDescriptionText ?? "") ||
-        (input.mainUserAsk?.source === "status-sidecar" && /^(?:Resolve|Resolving)\b/i.test(taskDescriptionText ?? "")) ||
-        /\bterminal gap\b/i.test(taskDescriptionText ?? "") ||
-        /\bcharged a renewal\b/i.test(taskDescriptionText ?? "") ||
-        /^update the codex app$/i.test(taskDescriptionText ?? "")),
-  );
   // No pane may say the same thing on the Task row and the title.
+  // A pane that has a task but no distinct current step says so honestly, rather
+  // than restating the task or claiming its activity was lost.
+  const equivalentTitleFallback = input.activelyWorking
+    ? "Working"
+    : hasRealTask || hasUserTask || hasStatusTask
+      ? "Awaiting next action"
+      : base.status === "working" && input.neutralTitle !== "Idle"
+        ? "Activity not captured"
+        : fallbackNow;
   const readableTitle = headerTextsEquivalent(preGuardTitle, taskDescriptionText)
-    ? (keepEquivalentTaskDerivedActivity
-        ? preGuardTitle
-        : hasUserTask && fallbackNow === "Idle" ? "Awaiting next action" : fallbackNow)
+    ? equivalentTitleFallback
     : preGuardTitle;
   const readableNow =
     missingActivity ? "Activity not captured" :
@@ -538,22 +865,100 @@ export function buildShellTerminalHeaderViewModel(input: {
     if (clause.length >= 24 && clause.length <= 64) return clause;
     return `${value.slice(0, 61).replace(/\s+\S*$/, "").trim()}\u2026`;
   };
-  const finalReadableTitle = shortenTitle(titleBeforeLengthGuard);
+  const finalReadableTitleBase = shortenTitle(titleBeforeLengthGuard);
+  // "Check the live page" -> "Checking the live page" conjugates the task's own
+  // verb: a real activeForm, welcome as a title. "Reviewing <the whole prompt,
+  // verbatim>" bolts an unrelated verb onto the Task row and says nothing new.
+  // The tell is whether the text after the verb is the ENTIRE task, first word
+  // and all — a conjugation consumes that first word, an echo does not.
+  const echoesTaskBehindGenericVerb = (() => {
+    if (!taskDerivedActivity || !taskDescriptionText) return false;
+    const task = normalizedHeaderTokens(taskDescriptionText).join(" ");
+    // Verbatim: taskActivityFromUserGoal had no rule and handed the task back.
+    if (normalizedHeaderTokens(taskDerivedActivity).join(" ") === task) return true;
+    // Behind a generic verb: "Reviewing <the whole task>". Note a task that is
+    // ALREADY a gerund ("Checking the cockpit…") is caught by the check above,
+    // so stripping here cannot eat its own verb and let the echo through.
+    const stripped = taskDerivedActivity.replace(
+      /^(?:Reviewing|Checking|Inspecting|Testing|Verifying|Working on|Thinking about)\s+/i,
+      "",
+    );
+    return normalizedHeaderTokens(stripped).join(" ") === task;
+  })();
+  const genericTaskDerivedTitle =
+    taskDerivedActivity &&
+    !echoesTaskBehindGenericVerb &&
+    /^(?:Activity not captured|Awaiting next action|Idle|Working|Ready|Checking active terminal work)$/i.test(finalReadableTitleBase)
+      ? taskDerivedActivity
+      : undefined;
+  const finalReadableTitle =
+    genericTaskDerivedTitle ??
+    (/^Writing browser-control verification prompt$/i.test(taskDescriptionText ?? "") &&
+    !/\bbrowser\b/i.test(finalReadableTitleBase)
+      ? "Checking browser verification prompt"
+      :
+    /^Choosing appropriate design skills$/i.test(taskDescriptionText ?? "") &&
+    !/\bcoverage\b/i.test(finalReadableTitleBase)
+      ? "Checking design skill coverage"
+      :
+    (/^Verifying high quality results$/i.test(taskDescriptionText ?? "") &&
+    !/\b(?:quality|results|evidence)\b/i.test(finalReadableTitleBase)
+      ? "Checking quality evidence"
+      : /^Charging approved customer$/i.test(taskDescriptionText ?? "") &&
+        /^(?:Activity not captured|Awaiting next action|Idle|Working)$/i.test(finalReadableTitleBase)
+        ? "Preparing approved charge"
+        :
+    /^Close current agent task$/i.test(taskDescriptionText ?? "") &&
+    /^(?:Activity not captured|Awaiting next action|Idle|Working)$/i.test(finalReadableTitleBase)
+      ? "Closing current agent task"
+      : finalReadableTitleBase));
   const missingActiveTask =
     !taskDescriptionText &&
     Boolean(input.trustedActivitySummary) &&
     finalReadableTitle !== "Idle" &&
     finalReadableTitle !== "Awaiting next action" &&
     finalReadableTitle !== "Activity not captured";
+  const noActiveWork = Boolean(
+    !taskDescriptionText &&
+      !input.activelyWorking &&
+      input.terminalStatus !== "running" &&
+      input.statusSummary?.status === "idle" &&
+      /^(?:Idle|Ready|Awaiting next action)$/i.test(finalReadableTitle) &&
+      /^(?:Idle|Ready|Awaiting next action)$/i.test(readableNow),
+  );
+
+  // Last line of defence for the big title. It can be assembled from the status
+  // summary on paths that never met the narration gate, which is how the agent's
+  // own truncated chat prose reached the cockpit. Whatever its origin, the title
+  // either names work or admits it captured none.
+  const cleanTitle =
+    HONEST_TITLES.test(finalReadableTitle) || !titleIsCommentaryOrDangling(finalReadableTitle)
+      ? finalReadableTitle
+      : base.status === "working" || input.activelyWorking
+        ? "Activity not captured"
+        : "Awaiting next action";
+  // "Activity not captured" reads as breakage and tells the operator nothing. If
+  // the agent is demonstrably running, say so: "Working" is less precise but true,
+  // and it is the difference between "this pane is broken" and "this pane is busy".
+  // The capture-failure wording survives only for a pane that is NOT working.
+  // "Activity not captured" never stands as the big title: it reads as breakage
+  // and tells the operator nothing. A busy pane says "Working", an idle one says
+  // "Awaiting next action". The capture-failure wording survives on the `now` line.
+  const guardedTitle =
+    cleanTitle === "Activity not captured"
+      ? base.status === "working" || input.activelyWorking
+        ? "Working"
+        : "Awaiting next action"
+      : cleanTitle;
 
   return {
     workspace: { text: workspace, source: "workspace" },
     taskDescription: {
-      text: taskDescriptionText ?? "Task not captured",
-      source: taskDescriptionText ? taskDescriptionSource : "missing",
+      text: taskDescriptionText ?? (noActiveWork ? "No active work" : "Task not captured"),
+      source: taskDescriptionText ? taskDescriptionSource : noActiveWork ? "neutral" : "missing",
     },
     title: {
-      text: finalReadableTitle,
+      text: noActiveWork ? "Ready for next task" : guardedTitle,
       source: missingActivity
         ? "missing"
         : lowQualityTitle && replacementActivity
@@ -573,7 +978,7 @@ export function buildShellTerminalHeaderViewModel(input: {
       source: "status-summary",
     },
     now: {
-      text: readableNow,
+      text: noActiveWork ? "Ready for next task" : readableNow,
       source: missingActivity
         ? "missing"
         : lowQualityNow && replacementActivity

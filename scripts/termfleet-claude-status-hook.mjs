@@ -429,14 +429,30 @@ async function main() {
       now: cleanField(prevAtStart?.now) || "Prompt submitted",
       narration: cleanField(prevAtStart?.narration, 90) || undefined,
     };
+  } else if (payload.hook_event_name === "Notification") {
+    // The agent is asking the operator for input or permission → Waiting for you.
+    // Checked BEFORE Stop because a Notification payload can also carry transcript_path.
+    const prev = prevAtStart;
+    sidecar = {
+      cwd,
+      sessionId: String(payload?.session_id ?? prev?.sessionId ?? ""),
+      updatedAt: Date.now(),
+      source: prev?.source || "claude-narration",
+      todos: Array.isArray(prev?.todos) ? prev.todos : [],
+      now: cleanField(prev?.now) || undefined,
+      narration: cleanField(prev?.narration, 90) || undefined,
+      userTask: submittedUserTask || cleanField(prev?.userTask, 220) || undefined,
+      turn: "waiting",
+    };
   } else if (
     payload.hook_event_name === "Stop" ||
     (!payload.tool_name && payload.transcript_path)
   ) {
     // End-of-turn: capture the agent's own last words as the live "now" line. Only the
     // task list (a real plan) outranks it, so don't clobber an in-progress task summary.
+    // ALWAYS mark the turn idle here — even with no fresh narration — so a pane whose
+    // in-progress todo was never completed stops reading as Running the moment it finishes.
     const now = narrationToNow(lastAssistantText(payload.transcript_path));
-    if (!now) process.exit(0);
     const prev = prevAtStart;
     const todos = Array.isArray(prev?.todos) ? prev.todos : [];
     const taskNow = nowFromTodos(todos);
@@ -446,9 +462,10 @@ async function main() {
       updatedAt: Date.now(),
       source: "claude-narration",
       todos,
-      now: taskNow || now,
-      narration: now,
+      now: taskNow || now || cleanField(prev?.now) || undefined,
+      narration: now || cleanField(prev?.narration, 90) || undefined,
       userTask: submittedUserTask || cleanField(prev?.userTask, 220) || undefined,
+      turn: "idle",
     };
   } else if (payload.tool_name === "TodoWrite") {
     // Legacy authoritative path (CLAUDE_CODE_ENABLE_TASKS=0): rewrite from the array.
@@ -508,6 +525,11 @@ async function main() {
   }
   if (sidecar.userTask === undefined && prevForRecent?.userTask) {
     sidecar.userTask = cleanField(prevForRecent.userTask, 220);
+  }
+  // Event-driven turn lifecycle for the Running/Waiting/Idle badge. Stop → idle,
+  // Notification → waiting (set in their branches); every other event is mid-turn work.
+  if (sidecar.turn === undefined) {
+    sidecar.turn = "working";
   }
   // Stamp the pane id so the reader can confirm which terminal this status belongs to.
   if (paneId) sidecar.paneId = paneId;

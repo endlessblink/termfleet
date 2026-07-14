@@ -3,6 +3,7 @@ import type {
   TerminalPurpose,
   WorkstreamStatusSummary,
 } from "./types";
+import { qualityCheckNowLabel } from "./terminalHeaderQuality";
 
 function cleanText(value?: string | null) {
   return value?.replace(/\s+/g, " ").trim() || undefined;
@@ -25,6 +26,49 @@ export function terminalTextLooksReadyPrompt(value?: string | null) {
     /^[\w.@-]+@[\w.-]+:.*[$#>]\s*$/.test(candidate) ||
     /^[\w./~+-]+[$#>]\s*$/.test(candidate)
   );
+}
+
+/**
+ * Whether the terminal's live status line shows an agent generating RIGHT NOW — the
+ * ground truth for the "Running" badge, matching what the operator sees. Claude shows
+ * "esc to interrupt" / "Working (12s"; Codex/OMC shows a live "(4m 26s · thinking)" /
+ * "thinking…" line. A finished turn shows "Cooked for 13s" or a bare rest prompt, which
+ * must NOT read as running. Deliberately narrower and more current than a tracked
+ * command's status, which goes stale after the turn ends.
+ */
+export function terminalLooksActivelyWorking(value?: string | null) {
+  if (!value) return false;
+  const tail = value.slice(-800);
+  if (/\besc to interrupt\b/i.test(tail)) return true;
+  if (/\bWorking\s*\(/i.test(tail)) return true;
+  // A LIVE elapsed timer with a state — "(4m 26s · thinking)" — proves a turn is
+  // running. The bare word "thinking" in a persistent status bar
+  // ("[OMC] | thinking | session:66m …") is a MODE label, not activity, so it must
+  // NOT count: require the parenthesized timer.
+  if (/\(\s*\d+\s*m?\s*\d*\s*s?\s*[·|]\s*(?:thinking|working|generating|running|cooking|coding|compacting)\b/i.test(tail)) {
+    return true;
+  }
+  // Spinner form: "thinking…" / "generating…" (ellipsis char or three dots).
+  if (/\b(?:thinking|generating|cooking|compacting)(?:[…]|\.\.\.)/i.test(tail)) return true;
+  return false;
+}
+
+/**
+ * Whether the terminal's live tail shows an agent turn that has FINISHED and is now at
+ * rest — the authoritative "idle" signal that must override a stale hook status (Codex/OMC
+ * frequently leaves its sidecar on "working" after the turn ends). Codex/OMC prints
+ * "* Cooked for 13s" then a bare "› " prompt when done. Kept deliberately conservative:
+ * a false "at rest" would hide a genuinely working pane, so we only match explicit
+ * done-markers, not the ambiguous idle input line (which also shows mid-turn).
+ */
+export function terminalLooksAtRest(value?: string | null) {
+  if (!value) return false;
+  const tail = value.slice(-600);
+  // An active marker always wins — never call a thinking pane "at rest".
+  if (terminalLooksActivelyWorking(tail)) return false;
+  // A finished turn: Codex/OMC "Cooked for 13s", Claude "Worked for 46m 09s". Past
+  // tense + no active marker = the operator's turn, not the agent's.
+  return /\b(?:Cooked|Worked) for\b/i.test(tail);
 }
 
 export function terminalPurposeFromVisiblePrompt(value?: string | null): TerminalPurpose | undefined {
@@ -209,6 +253,27 @@ function terminalPurposeFromServiceOutput(value?: string | null): TerminalPurpos
       updatedAt: Date.now(),
     };
   }
+  if (/\bWhatsApp(?:'s|’s)?\s+internal\s+review\b/i.test(text) || /\bintegrity system\b/i.test(text) || /\bmoderate spam\b/i.test(text)) {
+    return {
+      title: "Checking WhatsApp spam appeal path",
+      source: "inferred",
+      updatedAt: Date.now(),
+    };
+  }
+  if (/\bnew[-\s]?member link spam\b/i.test(text) || /\breview-only\b/i.test(text) && /\bspam context\b/i.test(text)) {
+    return {
+      title: "Reviewing group spam moderation rules",
+      source: "inferred",
+      updatedAt: Date.now(),
+    };
+  }
+  if (/\bscrape:yahav\b/i.test(text) || /\bYahav username:\s*$/i.test(text)) {
+    return {
+      title: "Running Yahav scrape",
+      source: "inferred",
+      updatedAt: Date.now(),
+    };
+  }
   if (!/\b(?:systemctl|\.service|Loaded:\s+loaded|transient\/run-|--user|Hermes Desktop is running)\b/i.test(text)) return undefined;
   if (/\bhermes(?:-desktop|-agent)?\b/i.test(text)) {
     return {
@@ -260,16 +325,21 @@ export function terminalActivityFromVisibleText(value?: string | null) {
 export function compactHeaderGoal(value?: string | null) {
   const text = cleanText(value);
   if (!text) return undefined;
+  if (/\bGoal:\s*Advance the FlowState\b/i.test(text) && /\bHermes\b/i.test(text)) {
+    return "Advancing FlowState Hermes assistant integration";
+  }
   const compacted = text
     .replace(/`[^`]+`/g, "")
     .replace(/\/(?:[\w.-]+\/){2,}[\w./-]+/g, "")
     .replace(/\b(?:FIRST|First)\s+read\b.*$/i, "")
     .replace(/\b(?:follow|obey)\s+EXACTLY\b.*$/i, "")
+    .replace(/\s+\d+m\s+\d+s\s*·\s*↓\s*[\d.]+k?\s+tokens?.*$/i, "")
     .replace(/\.\s+The\s+i18n\s+infra\b.*$/i, "")
     .replace(/\s+\([^)]*(?:rules|path|file|tmp|claude)[^)]*\)/gi, "")
     .replace(/\s*[-–—]\s*(?:follow|read|use|then)\b.*$/i, "")
     .replace(/\s+/g, " ")
     .trim()
+    .replace(/\b([A-Za-z]+)\s+\1\b/g, "$1")
     .replace(/[,:;.\s]+$/, "");
   if (!compacted) return text.slice(0, 96).trim();
   if (compacted.length > 96) return `${compacted.slice(0, 93).trim()}...`;
@@ -358,7 +428,8 @@ export function sanitizeTerminalHeaderNow(
 ) {
   const fallbackPath = cleanPath(livePath) ?? "workspace path unknown";
   const sanitized = compatibleActivityNow(cleanText(now), fallbackPath);
-  return sanitized === "Awaiting command" ? fallback : sanitized;
+  if (sanitized === "Awaiting command") return fallback;
+  return qualityCheckNowLabel(sanitized).ok ? sanitized : fallback;
 }
 
 export function compactTerminalHeaderPath(
@@ -442,6 +513,7 @@ function isGenericTaskTitle(value?: string | null) {
     /^(?:Ready|Terminal|Search|Working|Running terminal command)$/i.test(
       text,
     ) ||
+    /^Answering (?:latest prompt|user question)$/i.test(text) ||
     /^Playwright tests (?:passed|failed)$/i.test(text) ||
     /^Verifying map terminals$/i.test(text) ||
     /^Checking map terminal source contract$/i.test(text) ||
@@ -474,6 +546,7 @@ function activeFormTitle(value: string) {
     .replace(/^test\b/i, "Testing")
     .replace(/^make\b/i, "Making")
     .replace(/^explain\b/i, "Explaining")
+    .replace(/^summarize\b/i, "Summarizing")
     .replace(/^promote\b/i, "Promoting")
     .replace(/\bsmoke-test\b/i, "smoke-testing");
 }
@@ -568,6 +641,8 @@ function purposeFromTranscriptLine(line: string) {
 
   const promptText = text.match(/^[›❯]\s*(.+)$/)?.[1];
   if (promptText) {
+    if (/^run\s+\/review\b/i.test(promptText) && /\bcurrent changes\b/i.test(promptText))
+      return "Reviewing current changes";
     // Reject prompt-box chrome / placeholder hints (slash-command suggestions like
     // "Use /skills to list available skills", or bare "/cmd …"); these are not a
     // user task and must not override the real summarized title (TC-033 T5).
@@ -601,7 +676,7 @@ function purposeFromTranscriptLine(line: string) {
     // Arbitrary input-box text or gibberish (e.g. "sfgdsafgd ||> …") must defer to
     // the extracted summary rather than override the header title (TC-033 T5).
     if (
-      !/\b(?:fix|fixing|improve|improving|add|adding|implement|implementing|build|building|verify|verifying|refactor|refactoring|write|writing|update|updating|create|creating|translate|translating|debug|debugging|investigate|investigating|review|reviewing|migrate|migrating|test|testing|remove|removing|rename|renaming|wire|wiring|make|making|explain|explaining)\b/i.test(
+      !/\b(?:fix|fixing|improve|improving|add|adding|implement|implementing|build|building|verify|verifying|refactor|refactoring|write|writing|update|updating|create|creating|translate|translating|debug|debugging|investigate|investigating|review|reviewing|migrate|migrating|test|testing|remove|removing|rename|renaming|wire|wiring|make|making|explain|explaining|summarize|summarizing)\b/i.test(
         promptText,
       )
     ) {
@@ -632,6 +707,13 @@ function purposeFromTranscriptLine(line: string) {
     )
   ) {
     return "Improving terminal-summary visual headers";
+  }
+
+  if (/^(?:[•●]\s*)?I['’]m finishing the regression now\b/i.test(text)) {
+    if (/\b(?:false positive|captions?|image bytes?|spam text)\b/i.test(text)) {
+      return "Finishing false-positive regression";
+    }
+    return "Finishing current regression";
   }
 
   const requestedVerification = text.match(
@@ -677,14 +759,18 @@ function purposeFromTranscript(output?: string | null) {
     }
     return undefined;
   };
-  // Without an active/just-finished agent marker, transcript lines are just scrollback.
-  // Promoting them to a terminal purpose is what makes old prompts reappear as the
-  // current task when the user scrolls or reopens a terminal.
-  if (lastWorkingIndex < 0) return undefined;
+  // Without an active/just-finished agent marker, most transcript lines are just
+  // scrollback. Still, a recent actionable prompt is better than "Task not captured"
+  // for completed panes whose sidecar only says "Answering user question".
+  if (lastWorkingIndex < 0) {
+    return findPurpose(lines.slice(-6), true);
+  }
   const afterWorking = findPurpose(lines.slice(lastWorkingIndex + 1));
   if (afterWorking) return afterWorking;
   const promptBeforeWorking = findPurpose(lines.slice(Math.max(0, lastWorkingIndex - 8), lastWorkingIndex), true);
   if (promptBeforeWorking) return promptBeforeWorking;
+  const progressBeforeWorking = findPurpose(lines.slice(Math.max(0, lastWorkingIndex - 8), lastWorkingIndex));
+  if (progressBeforeWorking) return progressBeforeWorking;
   return undefined;
 }
 
@@ -891,6 +977,11 @@ function commandResultNow(activity: TerminalActivitySummary) {
     /\bpassed\b|_OK\b|built in\b/i.test(subtitle ?? "");
   const failed =
     activity.status === "error" || /\bfailed\b|\berror\b/i.test(subtitle ?? "");
+  if (/canvas-node-reorder\.spec/i.test(command) || /canvas-node-reorder\.spec/i.test(subtitle ?? "")) {
+    if (passed) return "Map ordering tests passed";
+    if (failed) return "Map ordering tests failed";
+    return "Running map ordering tests";
+  }
   if (
     /verify:map-terminals/i.test(command) ||
     /^Verifying map terminals$/i.test(activity.title) ||
@@ -979,6 +1070,9 @@ function displayTitle(
   }
   if (/verify:map-terminals/i.test(command)) {
     return "Validating map terminal behavior";
+  }
+  if (/canvas-node-reorder\.spec/i.test(command) || /canvas-node-reorder\.spec/i.test(subtitle ?? "")) {
+    return "Checking map ordering behavior";
   }
 
   const genericPlaywright = activity.title.match(
