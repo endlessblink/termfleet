@@ -979,8 +979,8 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
             visibleText: paneTerminal?.terminalVisibleText ?? paneTerminal?.terminalOutput,
             durableActivityStatus: paneTerminal?.durableActivity?.status,
             summaryStatus: agentStatusSummary?.status,
-            lastActivityAt:
-              paneTerminal?.terminalVisibleTextUpdatedAt ?? paneTerminal?.durableActivity?.updatedAt,
+            // Hook write time, not terminal-output time (a ticking bar keeps output fresh).
+            lastActivityAt: agentStatusSummary?.updatedAt ?? paneTerminal?.durableActivity?.updatedAt,
             now: Date.now(),
           });
         const splitAttention = badgeForAttention(splitAttentionState);

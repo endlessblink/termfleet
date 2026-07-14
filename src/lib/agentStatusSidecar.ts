@@ -188,6 +188,9 @@ export function summaryFromSidecar(
     currentTask || (userTask && now && now !== "Prompt submitted" ? now : "") || fallback.task;
   return {
     ...fallback,
+    // Carry the HOOK's own write time so the badge reconciler can tell a live turn (hook
+    // firing) from a finished one (hook went silent) — immune to a ticking status bar.
+    updatedAt: typeof sidecar?.updatedAt === "number" ? sidecar.updatedAt : fallback.updatedAt,
     task: activityTitle,
     userTask: userTask || undefined,
     now: now || fallback.now,

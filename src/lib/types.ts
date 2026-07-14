@@ -252,6 +252,11 @@ export interface WorkstreamCockpitObject {
 
 export interface WorkstreamStatusSummary {
   task: string;
+  // The status hook's own last-write time (ms epoch). It fires on prompt/tool/turn-end
+  // events and STOPS when the turn ends, so the badge reconciler uses it to tell a live
+  // turn from a finished one — unlike terminal output, which a ticking status bar keeps
+  // fresh forever.
+  updatedAt?: number;
   // Main operator/user ask for this terminal or agent run. This is distinct from
   // `task`, which is the current activity/title summary.
   userTask?: string;

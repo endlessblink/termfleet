@@ -37,7 +37,11 @@ export interface SessionSignals {
   activelyRunning?: boolean;
   /** On-screen "turn finished" marker. */
   atRest?: boolean;
-  /** When the pane last produced output / updated (ms epoch). */
+  /**
+   * The HOOK's own last-write time (ms epoch) — when the status hook last fired on a
+   * prompt/tool/turn-end event. It stops when the turn ends, so it is a reliable
+   * "finished" signal, unlike terminal output which a ticking status bar keeps fresh.
+   */
   lastActivityAt?: number | null;
   /** Current time (ms epoch); pass Date.now() from the component. */
   now?: number | null;
@@ -54,28 +58,35 @@ export function reconcileSessionStatus(signals: SessionSignals): SessionStatus {
 
   const status = String(signals.summaryStatus ?? "").toLowerCase();
 
-  // 1. A visible "done" marker is the strongest signal — it overrides a stale hook.
+  // `lastActivityAt` is the HOOK's own write time (it fires on prompt/tool/turn-end and
+  // stops when the turn ends) — NOT terminal output, which an agent's ticking status bar
+  // keeps "fresh" forever. Fresh hook = the explicit turn state is authoritative.
+  const hookFresh =
+    typeof signals.lastActivityAt === "number" &&
+    typeof signals.now === "number" &&
+    signals.now - signals.lastActivityAt < WORKING_STALE_MS;
+
+  // 1. A visible "done" marker is unambiguous — it overrides everything, including a
+  //    hook still stuck on "working".
   if (signals.atRest) return idle();
 
-  // 2. Explicit waiting → the operator is the blocker.
-  if (status === "waiting" || status === "blocked") return waiting;
-
-  // 3. A live generating marker / running command is current truth.
-  if (signals.activelyRunning) return running;
-
-  // 4/5. Trust a "working" hook only while it is FRESH.
-  if (status === "working") {
-    const fresh =
-      typeof signals.lastActivityAt === "number" &&
-      typeof signals.now === "number" &&
-      signals.now - signals.lastActivityAt < WORKING_STALE_MS;
-    // No timestamps available → trust the hook (better a rare stale Running than flicker).
-    if (fresh || signals.lastActivityAt == null || signals.now == null) return running;
-    return idle(true);
+  // 2. While the hook is FRESH, trust its explicit turn. This is the deterministic path
+  //    for agents that emit turn events (Claude Stop=idle / Notification=waiting): a
+  //    finished turn reads idle the moment the Stop hook writes, not by guessing.
+  if (hookFresh) {
+    if (status === "waiting" || status === "blocked") return waiting;
+    if (status === "idle" || status === "done") return idle();
+    if (status === "working") return running;
   }
 
-  // 6. idle / done / unknown.
-  return idle();
+  // 3. Hook is stale or absent → fall back to what's on screen.
+  //    Explicit waiting persists even when the hook stops updating.
+  if (status === "waiting" || status === "blocked") return waiting;
+  //    A live generating marker (esc to interrupt / thinking timer) or a running command.
+  if (signals.activelyRunning) return running;
+  //    Everything else — including a "working" hook that went silent (finished turn whose
+  //    end signal never arrived) — is idle.
+  return idle(status === "working");
 }
 
 /**

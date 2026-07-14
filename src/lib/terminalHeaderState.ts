@@ -204,11 +204,14 @@ export function buildTerminalHeaderState(input: {
   // SINGLE SOURCE OF TRUTH: every view derives its badge from this one reconciler so
   // they can never contradict each other. Priority fusion: on-screen done-marker >
   // explicit waiting > live generating marker > FRESH "working" hook > stale → idle.
+  const reconcileSummary = input.summary ?? input.statusSummary;
   const attention = reconcileSessionStatus({
-    summaryStatus: (input.summary ?? input.statusSummary)?.status,
+    summaryStatus: reconcileSummary?.status,
     activelyRunning: input.activelyRunning ?? input.activelyWorking,
     atRest: input.terminalAtRest,
-    lastActivityAt: input.lastActivityAt,
+    // Prefer the HOOK's write time (summary.updatedAt) over any terminal-output time so a
+    // ticking status bar can't keep a finished pane reading "running".
+    lastActivityAt: reconcileSummary?.updatedAt ?? input.lastActivityAt,
     now: input.nowMs,
   }).attention;
   const currentActivity =

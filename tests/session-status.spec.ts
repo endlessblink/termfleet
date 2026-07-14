@@ -21,6 +21,15 @@ test("a 'working' hook that stopped updating goes Idle (finished turn, no end ev
   expect(stale.stale).toBe(true);
 });
 
+test("a FRESH idle hook (Stop just fired) is deterministically Idle", () => {
+  // The reliable path: when the turn-end hook writes idle and it's fresh, we KNOW it's done.
+  expect(reconcileSessionStatus({ summaryStatus: "idle", lastActivityAt: NOW, now: NOW }).attention).toBe("idle");
+});
+
+test("a FRESH waiting hook (Notification) is deterministically Waiting", () => {
+  expect(reconcileSessionStatus({ summaryStatus: "waiting", lastActivityAt: NOW, now: NOW }).attention).toBe("waiting");
+});
+
 test("a fresh 'working' hook stays Running (actively working, streaming)", () => {
   const fresh = reconcileSessionStatus({
     summaryStatus: "working",
