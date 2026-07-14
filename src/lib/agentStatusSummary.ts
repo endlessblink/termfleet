@@ -70,6 +70,8 @@ const NOISY_ACTIVITY_PATTERNS = [
   /^›\s*/i,
   /^›\s*use\s+\/\w+/i,
   /^use\s+\/\w+/i,
+  /^⏵⏵\s*auto mode\b/i,
+  /\bauto mode on\b/i,
   /^F\d+\w+\s+F\d+/i,
   /\bF10Quit\b/i,
   /^[«‹›|│┃¦\s•·-]*gpt[-\w. ]+\s+default\b/i,
@@ -116,7 +118,9 @@ export function cleanTranscriptForSummary(output?: string | null, maxChars = 180
 }
 
 function rawTranscriptLines(input: AgentStatusSummaryInput) {
-  return (input.terminalOutput ?? "")
+  return [input.terminalOutput, input.terminalVisibleText]
+    .filter(Boolean)
+    .join("\n")
     .replace(/\r/g, "\n")
     .split("\n")
     .map((line) => line.replace(/\s+/g, " ").trim())
@@ -222,9 +226,24 @@ function fileNameFromCommand(command: string) {
 
 function shellCommandSummary(input: AgentStatusSummaryInput) {
   if (input.provider !== "shell") return null;
+  const transcript = rawTranscriptLines(input).join("\n");
+  if (/\b(?:scrape:yahav|run-yahav\.sh)\b/i.test(transcript)) {
+    return {
+      task: "Running Yahav scrape",
+      now: /\bYahav username:/i.test(transcript)
+        ? "Waiting for Yahav username"
+        : "Checking Yahav scrape output",
+    };
+  }
+  if (/\/regression-hunt\/[^\s]*daily-[^\s]+\.(?:json|md)\b/i.test(transcript)) {
+    return {
+      task: "Running daily regression hunt",
+      now: "Checking daily regression report",
+    };
+  }
   const command = rawTranscriptLines(input)
     .reverse()
-    .find((line) => /\b(?:npx\s+)?playwright\s+test\b|\b(?:npm|pnpm|yarn)\s+(?:run\s+)?(?:test|verify:[\w:-]+)\b/i.test(line));
+    .find((line) => /\b(?:npx\s+)?playwright\s+test\b|\b(?:npm|pnpm|yarn)\s+(?:run\s+)?(?:test|verify:[\w:-]+|regression:[\w:-]+)\b/i.test(line));
   if (!command) return null;
 
   const grep = quotedFlagValue(command, "-g") ?? quotedFlagValue(command, "--grep");
@@ -238,6 +257,12 @@ function shellCommandSummary(input: AgentStatusSummaryInput) {
   }
 
   const script = command.match(/\b(?:npm|pnpm|yarn)\s+(?:run\s+)?([^\s]+)/i)?.[1];
+  if (script === "regression:daily") {
+    return {
+      task: "Running daily regression hunt",
+      now: "Checking daily regression results",
+    };
+  }
   return {
     task: script ? `Running ${script}` : "Running command",
     now: fileName ? `Target: ${fileName}` : command.replace(/^[›$#\s]+/, "").slice(0, 90),
@@ -366,7 +391,7 @@ export function fallbackAgentStatusSummary(input: AgentStatusSummaryInput): Agen
     cleanText(input.userTask) ??
     (mission && mission !== "Terminal" ? mission : undefined) ??
     cleanText(input.prompt);
-  const readyTask = promptVisible && !transcriptTask ? "Ready" : undefined;
+  const readyTask = promptVisible && !transcriptTask && !commandSummary ? "Ready" : undefined;
   const task =
     promptSummary?.task ??
     readyTask ??

@@ -176,7 +176,18 @@ export async function summarizeAgentStatus(
       body: JSON.stringify(buildRequestBody(input, effectiveFallback)),
     });
     const text = await responseText(response);
-    const summary = parseAgentStatusSummaryResponse(text, effectiveFallback);
+    const parsedSummary = parseAgentStatusSummaryResponse(text, effectiveFallback);
+    const summary = sidecarShapedFallback?.tasksFromTodoWrite
+      ? {
+          ...parsedSummary,
+          task: sidecarShapedFallback.task,
+          userTask: sidecarShapedFallback.userTask,
+          now: sidecarShapedFallback.now,
+          status: sidecarShapedFallback.status,
+          tasks: sidecarShapedFallback.tasks,
+          tasksFromTodoWrite: true,
+        }
+      : parsedSummary;
     return { summary, source: "process" };
   } catch (error) {
     return {
