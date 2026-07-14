@@ -99,16 +99,20 @@ async function pollOnce() {
           now: Date.now(),
         }).attention;
 
+        // Update the badge FIRST and UNCONDITIONALLY for every polled pane, before any of
+        // the summary-update guards below can `continue` and skip it. This is why a
+        // background pane's badge used to stay stale until it was clicked.
+        if (latestTerminal.badgeAttention !== badgeAttention) {
+          latest.updateTab(latestTab.id, {
+            terminals: latestTab.terminals.map((candidate) =>
+              candidate.id === terminal.id ? { ...candidate, badgeAttention } : candidate,
+            ),
+          });
+        }
+
         // An untrusted (plain-shell / heuristic) result must not overwrite the richer
-        // statusSummary, but the badge still has to stay fresh — update just that.
+        // statusSummary — the badge above is enough.
         if (!trusted) {
-          if (latestTerminal.badgeAttention !== badgeAttention) {
-            latest.updateTab(latestTab.id, {
-              terminals: latestTab.terminals.map((candidate) =>
-                candidate.id === terminal.id ? { ...candidate, badgeAttention } : candidate,
-              ),
-            });
-          }
           continue;
         }
         // Never clobber a live declared task list with a modeled line.
