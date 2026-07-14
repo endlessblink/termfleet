@@ -1,6 +1,9 @@
 import type { Tab, TerminalState } from "./types";
 
-export const MAX_STATUS_POLL_TARGETS_PER_TICK = 6;
+// The sidebar/map badges must be right AT A GLANCE, so every pane has to be re-read on
+// a short cycle — not just the active one. A finished background pane that never gets
+// polled keeps a stale "working" status forever (the "must click to update" bug).
+export const MAX_STATUS_POLL_TARGETS_PER_TICK = 24;
 const RECENT_ACTIVITY_MS = 60_000;
 
 export interface StatusPollTarget {
@@ -30,7 +33,10 @@ function statusPollPriority(tab: Tab, terminal: TerminalState, activeTabId: stri
   if (realTaskList) return 80;
   if (agentLane && running) return 70;
   if (recentActivity && running) return 60;
-  return 0;
+  // Baseline: EVERY live terminal is still polled (lower priority, rotated by staleness)
+  // so its badge stays correct without the user clicking it. Only truly dead panes drop.
+  if (running || terminal.status === "reconnected") return 20;
+  return 10;
 }
 
 export function selectStatusPollTargets(tabs: Tab[], activeTabId: string | null | undefined, now = Date.now()) {

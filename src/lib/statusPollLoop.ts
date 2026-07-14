@@ -15,11 +15,14 @@ import { selectStatusPollTargets, type StatusPollTarget } from "./statusPollTarg
 import { useWorkspaceStore } from "../stores/workspace";
 import type { Tab, TerminalState, WorkstreamStatus } from "./types";
 
-const POLL_INTERVAL_MS = 15_000;
+const POLL_INTERVAL_MS = 4_000;
 // Stagger requests so N panes don't burst the summarizer at once.
-const PER_PANE_DELAY_MS = 400;
-const ACTIVE_PANE_MIN_POLL_MS = 10_000;
-const BACKGROUND_PANE_MIN_POLL_MS = 60_000;
+const PER_PANE_DELAY_MS = 120;
+// Every pane's badge must stay correct at a glance, so re-read all of them on a short
+// cycle. A finished background pane that isn't polled keeps a stale status (the "I have
+// to click it" bug). Reads are cheap local sidecar files.
+const ACTIVE_PANE_MIN_POLL_MS = 3_000;
+const BACKGROUND_PANE_MIN_POLL_MS = 8_000;
 
 function statusForTerminal(status?: string): WorkstreamStatus {
   if (status === "failed") return "failed";
@@ -67,6 +70,11 @@ async function pollOnce() {
           currentActivity: terminal.currentActivity,
           terminalOutput: terminal.terminalOutput,
           terminalVisibleText: terminal.terminalVisibleText,
+        }, {
+          // Global background polling is for authoritative local sidecar data.
+          // The HTTP worker can fall back to heuristic(context-disabled), which
+          // creates map-wide churn while producing results this loop discards.
+          endpoint: "",
         });
         // Apply only trustworthy results: the agent's real sidecar, or a
         // contextual (narration-bearing) line from the local summarizer.
