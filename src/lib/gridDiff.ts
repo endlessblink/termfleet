@@ -5,15 +5,17 @@
 //   [0] u8 msg type (1=diff, 2=full), [1..3] cols, [3..5] rows,
 //   [5..7] display offset, [7..9] cursor col, [9..11] cursor line,
 //   [11..15] mode flags, [15..17] dirty rows
-// Per dirty row: u16 index, u16 cell count, then 14-byte cells:
-//   [0..4] u32 char, [4..8] u32 fg RGBA, [8..12] u32 bg RGBA, [12..14] u16 style.
+// Per dirty row: u16 index, u16 cell count, then 34-byte cells:
+//   u32 base char, u8 combining count, 3 reserved bytes, four u32 combining
+//   marks, u32 fg RGBA, u32 bg RGBA, u16 style.
 
 import type { GridCell } from "./gridSnapshot";
 
 export const MSG_DIFF = 0x01;
 export const MSG_FULL = 0x02;
 export const HEADER_BYTES = 17;
-export const CELL_BYTES = 14;
+export const CELL_BYTES = 34;
+const LEGACY_CELL_BYTES = 14;
 
 const MODE_ALT_SCREEN = 1 << 0;
 const MODE_CURSOR_VISIBLE = 1 << 1;
@@ -69,6 +71,17 @@ function requireAvailable(buffer: ArrayBuffer, offset: number, bytes: number, la
   }
 }
 
+function matchesCellLayout(view: DataView, dirtyCount: number, cellBytes: number): boolean {
+  let offset = HEADER_BYTES;
+  for (let row = 0; row < dirtyCount; row += 1) {
+    if (offset + 4 > view.byteLength) return false;
+    const cellCount = view.getUint16(offset + 2, true);
+    offset += 4 + cellCount * cellBytes;
+    if (offset > view.byteLength) return false;
+  }
+  return offset === view.byteLength;
+}
+
 export function decodeFrame(buffer: ArrayBuffer): DecodedFrame {
   requireAvailable(buffer, 0, HEADER_BYTES, "header");
   const view = new DataView(buffer);
@@ -91,6 +104,9 @@ export function decodeFrame(buffer: ArrayBuffer): DecodedFrame {
   }
   const mode = view.getUint32(11, true);
   const dirtyCount = view.getUint16(15, true);
+  const legacyLayout = matchesCellLayout(view, dirtyCount, LEGACY_CELL_BYTES);
+  const currentLayout = matchesCellLayout(view, dirtyCount, CELL_BYTES);
+  const cellBytes = currentLayout ? CELL_BYTES : legacyLayout ? LEGACY_CELL_BYTES : CELL_BYTES;
 
   let offset = HEADER_BYTES;
   const dirtyRows: DecodedRow[] = [];
@@ -109,17 +125,31 @@ export function decodeFrame(buffer: ArrayBuffer): DecodedFrame {
     offset += 4;
     const cells: GridCell[] = new Array(cellCount);
     for (let c = 0; c < cellCount; c += 1) {
-      requireAvailable(buffer, offset, CELL_BYTES, `dirty row ${index} cell ${c}`);
+      requireAvailable(buffer, offset, cellBytes, `dirty row ${index} cell ${c}`);
       const ch = view.getUint32(offset, true);
-      const fg = view.getUint32(offset + 4, true);
-      const bg = view.getUint32(offset + 8, true);
-      const style = view.getUint16(offset + 12, true);
-      offset += CELL_BYTES;
+      const combining: number[] = [];
+      if (cellBytes === CELL_BYTES) {
+        const combiningCount = view.getUint8(offset + 4);
+        if (combiningCount > 4) {
+          throw new Error(`Malformed terminal grid diff: invalid combining count ${combiningCount}`);
+        }
+        for (let mark = 0; mark < combiningCount; mark += 1) {
+          const codepoint = view.getUint32(offset + 8 + mark * 4, true);
+          if (codepoint > 0x10ffff) {
+            throw new Error(`Malformed terminal grid diff: invalid combining codepoint ${codepoint}`);
+          }
+          combining.push(codepoint);
+        }
+      }
+      const fg = view.getUint32(offset + (cellBytes === CELL_BYTES ? 24 : 4), true);
+      const bg = view.getUint32(offset + (cellBytes === CELL_BYTES ? 28 : 8), true);
+      const style = view.getUint16(offset + (cellBytes === CELL_BYTES ? 32 : 12), true);
+      offset += cellBytes;
       if (ch > 0x10ffff) {
         throw new Error(`Malformed terminal grid diff: invalid codepoint ${ch}`);
       }
       const cell: GridCell = {
-        c: ch === 0 ? " " : String.fromCodePoint(ch),
+        c: `${ch === 0 ? " " : String.fromCodePoint(ch)}${String.fromCodePoint(...combining)}`,
         fg: rgbHex(fg),
         bg: rgbHex(bg),
       };
