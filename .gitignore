@@ -1,6 +1,7 @@
 node_modules/
 dist/
 test-results/
+.tmp-test/
 src-tauri/target/
 src-tauri/gen/
 *.tsbuildinfo
