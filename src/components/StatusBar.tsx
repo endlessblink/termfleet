@@ -1,8 +1,10 @@
-import { CSSProperties } from "react";
-import { Activity, Folder, Layers3, Server, TerminalSquare } from "lucide-react";
+import { CSSProperties, useEffect, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { Activity, Folder, Gauge, Layers3, Server, TerminalSquare } from "lucide-react";
 import { useWorkspaceStore } from "../stores/workspace";
 import type { TerminalRuntimeStatus } from "../lib/types";
 import { pathTail, projectNameFor, projectRootFor, projectSessionCount } from "../lib/projectDisplay";
+import { classifySystemPressure, type SystemPressureSnapshot, type SystemPressureSummary } from "../lib/systemPressure";
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 
@@ -94,6 +96,7 @@ const STATUS_COLORS: Record<StatusKey, string> = {
 // ── StatusBar ─────────────────────────────────────────────────────────────────
 
 export function StatusBar() {
+  const [systemPressure, setSystemPressure] = useState<SystemPressureSummary | null>(null);
   const tabs = useWorkspaceStore((s) => s.tabs);
   const groups = useWorkspaceStore((s) => s.groups);
   const activeTabId = useWorkspaceStore((s) => s.activeTabId);
@@ -139,6 +142,28 @@ export function StatusBar() {
   const selectedProjectName = projectNameFor(activeGroupFilter, groups);
   const selectedProjectRoot = projectRootFor(activeGroupFilter, groups, activeTab) ?? projectRoot;
   const selectedProjectCount = projectSessionCount(activeGroupFilter, tabs);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !("__TAURI_INTERNALS__" in window)) return;
+    let cancelled = false;
+    const refresh = () => {
+      void invoke<SystemPressureSnapshot>("system_pressure_snapshot")
+        .then((snapshot) => {
+          if (cancelled) return;
+          const summary = classifySystemPressure(snapshot);
+          setSystemPressure(summary.severity === "normal" ? null : summary);
+        })
+        .catch(() => {
+          if (!cancelled) setSystemPressure(null);
+        });
+    };
+    refresh();
+    const interval = window.setInterval(refresh, 10_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, []);
 
   return (
     <div style={styles.bar}>
@@ -189,6 +214,21 @@ export function StatusBar() {
           >
             <Activity size={12} strokeWidth={1.8} color="var(--accent-warning)" style={styles.icon} />
             <span style={styles.muted}>{recoveryText}</span>
+          </span>
+        )}
+        {systemPressure && (
+          <span
+            style={styles.chip}
+            title={systemPressure.title}
+            data-testid="statusbar-system-pressure"
+          >
+            <Gauge
+              size={12}
+              strokeWidth={1.8}
+              color={systemPressure.severity === "high" ? "var(--accent-danger)" : "var(--accent-warning)"}
+              style={styles.icon}
+            />
+            <span style={styles.muted}>{systemPressure.label}</span>
           </span>
         )}
         {groupCount > 0 && (

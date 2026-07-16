@@ -81,6 +81,108 @@ pub struct WorktreeCleanupResult {
     note: String,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SystemPressureSnapshot {
+    cpu_count: usize,
+    load_average_1m: Option<f64>,
+    mem_total_bytes: Option<u64>,
+    mem_available_bytes: Option<u64>,
+    swap_total_bytes: Option<u64>,
+    swap_free_bytes: Option<u64>,
+    swap_used_bytes: Option<u64>,
+    cpu_some_avg10: Option<f64>,
+    memory_some_avg10: Option<f64>,
+    io_some_avg10: Option<f64>,
+    procs_running: Option<u64>,
+    procs_blocked: Option<u64>,
+}
+
+fn parse_meminfo_bytes(contents: &str) -> HashMap<String, u64> {
+    contents
+        .lines()
+        .filter_map(|line| {
+            let (key, rest) = line.split_once(':')?;
+            let value_kib = rest
+                .split_whitespace()
+                .next()
+                .and_then(|value| value.parse::<u64>().ok())?;
+            Some((key.to_string(), value_kib.saturating_mul(1024)))
+        })
+        .collect()
+}
+
+fn parse_pressure_avg10(contents: &str) -> Option<f64> {
+    contents
+        .lines()
+        .find(|line| line.starts_with("some "))
+        .and_then(|line| {
+            line.split_whitespace()
+                .find_map(|part| part.strip_prefix("avg10="))
+        })
+        .and_then(|value| value.parse::<f64>().ok())
+}
+
+fn read_pressure_avg10(path: &str) -> Option<f64> {
+    fs::read_to_string(path)
+        .ok()
+        .and_then(|contents| parse_pressure_avg10(&contents))
+}
+
+fn read_load_average_1m() -> Option<f64> {
+    fs::read_to_string("/proc/loadavg")
+        .ok()
+        .and_then(|contents| contents.split_whitespace().next()?.parse::<f64>().ok())
+}
+
+fn read_proc_stat_counts() -> (Option<u64>, Option<u64>) {
+    let Ok(contents) = fs::read_to_string("/proc/stat") else {
+        return (None, None);
+    };
+    let mut running = None;
+    let mut blocked = None;
+    for line in contents.lines() {
+        if let Some(value) = line.strip_prefix("procs_running ") {
+            running = value.trim().parse::<u64>().ok();
+        }
+        if let Some(value) = line.strip_prefix("procs_blocked ") {
+            blocked = value.trim().parse::<u64>().ok();
+        }
+    }
+    (running, blocked)
+}
+
+#[tauri::command]
+pub fn system_pressure_snapshot() -> SystemPressureSnapshot {
+    let meminfo = fs::read_to_string("/proc/meminfo")
+        .map(|contents| parse_meminfo_bytes(&contents))
+        .unwrap_or_default();
+    let swap_total_bytes = meminfo.get("SwapTotal").copied();
+    let swap_free_bytes = meminfo.get("SwapFree").copied();
+    let swap_used_bytes = match (swap_total_bytes, swap_free_bytes) {
+        (Some(total), Some(free)) => Some(total.saturating_sub(free)),
+        _ => None,
+    };
+    let (procs_running, procs_blocked) = read_proc_stat_counts();
+
+    SystemPressureSnapshot {
+        cpu_count: std::thread::available_parallelism()
+            .map(|count| count.get())
+            .unwrap_or(1),
+        load_average_1m: read_load_average_1m(),
+        mem_total_bytes: meminfo.get("MemTotal").copied(),
+        mem_available_bytes: meminfo.get("MemAvailable").copied(),
+        swap_total_bytes,
+        swap_free_bytes,
+        swap_used_bytes,
+        cpu_some_avg10: read_pressure_avg10("/proc/pressure/cpu"),
+        memory_some_avg10: read_pressure_avg10("/proc/pressure/memory"),
+        io_some_avg10: read_pressure_avg10("/proc/pressure/io"),
+        procs_running,
+        procs_blocked,
+    }
+}
+
 fn shell_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\\''"))
 }
@@ -1033,23 +1135,46 @@ pub async fn clipboard_read_text(corr_id: Option<String>) -> Result<String, Stri
         match tokio::process::Command::new(bin).args(args).output().await {
             Ok(output) if output.status.success() => {
                 let text = String::from_utf8_lossy(&output.stdout).to_string();
-                plog(&cid, &format!(
-                    "backend.read OK tool={} len={} ms={} display={}",
-                    bin, text.len(), start.elapsed().as_millis(), display_backend()
-                ));
+                plog(
+                    &cid,
+                    &format!(
+                        "backend.read OK tool={} len={} ms={} display={}",
+                        bin,
+                        text.len(),
+                        start.elapsed().as_millis(),
+                        display_backend()
+                    ),
+                );
                 return Ok(text);
             }
-            Ok(output) => plog(&cid, &format!(
-                "backend.read miss tool={} exit={:?} stderr={:?} ms={}",
-                bin, output.status.code(),
-                String::from_utf8_lossy(&output.stderr).trim(), start.elapsed().as_millis()
-            )),
-            Err(err) => plog(&cid, &format!(
-                "backend.read spawn-fail tool={} err={} ms={}", bin, err, start.elapsed().as_millis()
-            )),
+            Ok(output) => plog(
+                &cid,
+                &format!(
+                    "backend.read miss tool={} exit={:?} stderr={:?} ms={}",
+                    bin,
+                    output.status.code(),
+                    String::from_utf8_lossy(&output.stderr).trim(),
+                    start.elapsed().as_millis()
+                ),
+            ),
+            Err(err) => plog(
+                &cid,
+                &format!(
+                    "backend.read spawn-fail tool={} err={} ms={}",
+                    bin,
+                    err,
+                    start.elapsed().as_millis()
+                ),
+            ),
         }
     }
-    plog(&cid, &format!("backend.read EMPTY (all tools exhausted) display={}", display_backend()));
+    plog(
+        &cid,
+        &format!(
+            "backend.read EMPTY (all tools exhausted) display={}",
+            display_backend()
+        ),
+    );
     Ok(String::new())
 }
 
@@ -1080,7 +1205,10 @@ pub async fn clipboard_write_text(text: String, corr_id: Option<String>) -> Resu
         let mut child = match spawned {
             Ok(child) => child,
             Err(err) => {
-                plog(&cid, &format!("backend.write spawn-fail tool={} err={}", bin, err));
+                plog(
+                    &cid,
+                    &format!("backend.write spawn-fail tool={} err={}", bin, err),
+                );
                 continue; // tool not installed / wrong display server
             }
         };
@@ -1091,13 +1219,25 @@ pub async fn clipboard_write_text(text: String, corr_id: Option<String>) -> Resu
         // The foreground process forks a daemon to serve the selection and exits;
         // waiting on it returns promptly while the daemon keeps the clipboard set.
         let _ = child.wait().await;
-        plog(&cid, &format!(
-            "backend.write OK tool={} len={} ms={} display={}",
-            bin, text.len(), start.elapsed().as_millis(), display_backend()
-        ));
+        plog(
+            &cid,
+            &format!(
+                "backend.write OK tool={} len={} ms={} display={}",
+                bin,
+                text.len(),
+                start.elapsed().as_millis(),
+                display_backend()
+            ),
+        );
         return Ok(());
     }
-    plog(&cid, &format!("backend.write FAILED (no clipboard tool) display={}", display_backend()));
+    plog(
+        &cid,
+        &format!(
+            "backend.write FAILED (no clipboard tool) display={}",
+            display_backend()
+        ),
+    );
     Err("no clipboard tool available".into())
 }
 
@@ -1125,7 +1265,11 @@ fn display_backend() -> &'static str {
 /// (generated per copy/paste in the frontend) threads the webview keystroke, this
 /// backend read/write, and the PTY injection into one ordered trace.
 fn plog(corr_id: &str, msg: &str) {
-    append_paste_log(&format!("corr={} {}", if corr_id.is_empty() { "-" } else { corr_id }, msg));
+    append_paste_log(&format!(
+        "corr={} {}",
+        if corr_id.is_empty() { "-" } else { corr_id },
+        msg
+    ));
 }
 
 fn sanitize_paste_log_line(line: &str) -> String {
@@ -1172,7 +1316,11 @@ pub(crate) fn append_paste_log(line: &str) {
         let _ = std::fs::create_dir_all(parent);
     }
     rotate_paste_log_if_needed(&path);
-    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+    {
         let _ = writeln!(f, "{ms} {}", sanitize_paste_log_line(line));
     }
 }
@@ -1391,13 +1539,35 @@ pub fn workspace_persisted_sessions() -> Vec<crate::pty::PersistedSessionSummary
 mod tests {
     use super::{
         agent_status_sidecar_file, is_managed_termfleet_worktree_path, normalize_selected_folder,
-        sanitize_paste_log_line, shell_quote, workstream_prepare_dedicated_worktree,
-        workstream_remove_dedicated_worktree, worktree_branch_for, worktree_target_for,
+        parse_meminfo_bytes, parse_pressure_avg10, sanitize_paste_log_line, shell_quote,
+        workstream_prepare_dedicated_worktree, workstream_remove_dedicated_worktree,
+        worktree_branch_for, worktree_target_for,
     };
     use std::fs;
     use std::path::{Path, PathBuf};
     use std::process::Command;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn system_pressure_meminfo_parser_converts_kib_to_bytes() {
+        let parsed = parse_meminfo_bytes(
+            "MemTotal:       81788928 kB\nMemAvailable:   30408704 kB\nSwapTotal:      33554428 kB\nSwapFree:       11534336 kB\n",
+        );
+
+        assert_eq!(parsed.get("MemTotal"), Some(&(81788928 * 1024)));
+        assert_eq!(parsed.get("MemAvailable"), Some(&(30408704 * 1024)));
+        assert_eq!(parsed.get("SwapTotal"), Some(&(33554428 * 1024)));
+        assert_eq!(parsed.get("SwapFree"), Some(&(11534336 * 1024)));
+    }
+
+    #[test]
+    fn system_pressure_psi_parser_reads_some_avg10() {
+        let parsed = parse_pressure_avg10(
+            "some avg10=4.25 avg60=2.00 avg300=1.00 total=123\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0\n",
+        );
+
+        assert_eq!(parsed, Some(4.25));
+    }
 
     #[test]
     fn agent_status_sidecar_file_accepts_valid_names_inside_status_dir() {
