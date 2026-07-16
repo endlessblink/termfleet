@@ -2770,4 +2770,61 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    // Password prompts and SSH password entry rely on the TTY disabling echo:
+    // typed bytes must reach the program without being painted back. This
+    // characterizes the daemon-owned real PTY behavior without needing an sshd
+    // fixture.
+    #[test]
+    fn password_prompt_does_not_echo_typed_input() {
+        let manager = PtyManager::new();
+        let id = "no-echo-password-test".to_string();
+        manager
+            .ensure_detached(
+                Some(id.clone()),
+                None,
+                Some(
+                    "stty -echo; printf READY; read secret; stty echo; printf 'GOT[%s]' \"$secret\""
+                        .to_string(),
+                ),
+                None,
+                None,
+            )
+            .expect("spawn no-echo PTY");
+
+        let mut snapshot = String::new();
+        for _ in 0..40 {
+            snapshot = manager.snapshot(&id).expect("snapshot");
+            if snapshot.contains("READY") {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(25));
+        }
+        assert!(
+            snapshot.contains("READY"),
+            "program never reached the no-echo read prompt, got {snapshot:?}"
+        );
+
+        manager.write(&id, "swordfish42\n").expect("write secret");
+
+        let mut out = String::new();
+        for _ in 0..40 {
+            out = manager.snapshot(&id).expect("snapshot");
+            if out.contains("GOT[swordfish42]") {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(25));
+        }
+        assert!(
+            out.contains("GOT[swordfish42]"),
+            "program did not receive the typed secret through the PTY, got {out:?}"
+        );
+        assert_eq!(
+            out.matches("swordfish42").count(),
+            1,
+            "typed password was echoed to the terminal, got {out:?}"
+        );
+
+        manager.kill(&id).expect("kill no-echo session");
+    }
 }
