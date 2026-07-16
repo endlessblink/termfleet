@@ -465,6 +465,8 @@ export function TerminalComponent({
   const fitAddonRef = useRef<FitAddon | null>(null);
   const resizeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const outputStatusWindowRef = useRef("");
+  const pendingMapOutputMetadataRef = useRef("");
+  const mapOutputMetadataTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const structuredSignalKeysRef = useRef<Set<string>>(new Set());
   const statusSummaryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const statusSummarySequenceRef = useRef(0);
@@ -585,6 +587,11 @@ export function TerminalComponent({
   }, [attachToPtyId, paneId, runtimeSessionId, tabId, terminal?.cols, terminal?.rows]);
 
   const scheduleStatusSummaryUpdate = useCallback(() => {
+    // Map terminals are hosted as standalone renderers. The global
+    // statusPollLoop already keeps their headers current; running this visible
+    // pane updater from every output burst makes active map typing compete with
+    // repeated sidecar/header work.
+    if (standalone) return;
     const statusEndpointConfigured = Boolean(
       (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env
         ?.VITE_AGENT_STATUS_SUMMARY_ENDPOINT,
@@ -804,7 +811,7 @@ export function TerminalComponent({
         });
       });
     }, wait);
-  }, [cwd, livePtyId, paneId, tabId]);
+  }, [cwd, livePtyId, paneId, standalone, tabId]);
 
   // The actual excerpt rebuild + store write, run from the throttled scheduler
   // below (never directly off the per-frame snapshot). Reads the latest snapshot
@@ -1246,7 +1253,7 @@ export function TerminalComponent({
     }
   }, [canvasMode, paneId, tabId, updateTerminalRuntime, updateWorkstreamRuntime]);
 
-  const handleOutput = useCallback((data: string) => {
+  const processOutputMetadata = useCallback((data: string) => {
     outputStatusWindowRef.current = `${outputStatusWindowRef.current}${data}`.slice(-4000);
     const heuristicOutput = outputStatusWindowRef.current
       .replace(STRUCTURED_AGENT_SIGNAL_PATTERN, "")
@@ -1464,6 +1471,40 @@ export function TerminalComponent({
     }
   }, [attachToPtyId, livePtyId, paneId, persistAgentRecoveryManifest, runtimeSessionId, tabId, updateTerminalRuntime, updateWorkstreamRuntime]);
 
+  const flushMapOutputMetadata = useCallback(() => {
+    const data = pendingMapOutputMetadataRef.current;
+    pendingMapOutputMetadataRef.current = "";
+    if (mapOutputMetadataTimeoutRef.current !== null) {
+      clearTimeout(mapOutputMetadataTimeoutRef.current);
+      mapOutputMetadataTimeoutRef.current = null;
+    }
+    if (data) processOutputMetadata(data);
+  }, [processOutputMetadata]);
+
+  const handleOutput = useCallback((data: string) => {
+    if (!standalone || !canvasMode) {
+      processOutputMetadata(data);
+      return;
+    }
+
+    pendingMapOutputMetadataRef.current = `${pendingMapOutputMetadataRef.current}${data}`.slice(-4000);
+    // Keep real structured task/status events prompt, but keep ordinary echoed
+    // characters and spinner frames out of the React/store hot path.
+    if (/\[\[TERMFLEET_(?:AGENT_EVENT|TODO_WRITE)\s/.test(data)) {
+      flushMapOutputMetadata();
+      return;
+    }
+    if (mapOutputMetadataTimeoutRef.current !== null) return;
+    mapOutputMetadataTimeoutRef.current = setTimeout(flushMapOutputMetadata, 500);
+  }, [canvasMode, flushMapOutputMetadata, processOutputMetadata, standalone]);
+
+  useEffect(() => () => {
+    if (mapOutputMetadataTimeoutRef.current !== null) {
+      clearTimeout(mapOutputMetadataTimeoutRef.current);
+      mapOutputMetadataTimeoutRef.current = null;
+    }
+  }, []);
+
   useEffect(() => () => {
     if (recoveryRestartTimeoutRef.current) clearTimeout(recoveryRestartTimeoutRef.current);
     if (recoveryHealthyTimeoutRef.current) clearTimeout(recoveryHealthyTimeoutRef.current);
@@ -1515,6 +1556,7 @@ export function TerminalComponent({
 
   // Create terminal instance — only once per mount
   useEffect(() => {
+    if (canvasMode) return;
     if (!containerRef.current) return;
     syncTerminalLatencyTraceEnv().catch(console.error);
     const terminalTheme = terminalThemeFromTokens(containerRef.current);
@@ -1626,10 +1668,11 @@ export function TerminalComponent({
       term.dispose();
       setTerminal(null);
     };
-  }, [applyFallbackSize, paneId, tabId, write]);
+  }, [applyFallbackSize, canvasMode, paneId, tabId, write]);
 
   // Re-fit and refresh when this terminal becomes visible.
   useEffect(() => {
+    if (canvasMode) return;
     if (!isRuntimeVisible || !fitAddonRef.current || !terminal) return;
 
     const refresh = () => {
@@ -1644,10 +1687,11 @@ export function TerminalComponent({
     const timeout = setTimeout(refresh, 80);
 
     return () => clearTimeout(timeout);
-  }, [isRuntimeVisible, terminal, resize, fitTerminal]);
+  }, [canvasMode, isRuntimeVisible, terminal, resize, fitTerminal]);
 
   // Handle resizing with debounce
   const handleResize = useCallback(() => {
+    if (canvasMode) return;
     if (resizeTimeoutRef.current) {
       clearTimeout(resizeTimeoutRef.current);
     }
@@ -1657,15 +1701,16 @@ export function TerminalComponent({
         resize(terminal.cols, terminal.rows);
       }
     }, 50);
-  }, [terminal, resize, fitTerminal]);
+  }, [canvasMode, terminal, resize, fitTerminal]);
 
   // ResizeObserver for container
   useEffect(() => {
+    if (canvasMode) return;
     if (!containerRef.current) return;
     const observer = new ResizeObserver(handleResize);
     observer.observe(containerRef.current);
     return () => observer.disconnect();
-  }, [handleResize]);
+  }, [canvasMode, handleResize]);
 
   // Focus terminal when this pane becomes the active pane
   const activePaneId = useWorkspaceStore((s) => {
@@ -1674,12 +1719,12 @@ export function TerminalComponent({
   });
 
   useEffect(() => {
-    if (activePaneId === paneId && activeTabId === tabId && workspaceMode === "split" && terminal && !nativePane.attached) {
+    if (!canvasMode && activePaneId === paneId && activeTabId === tabId && workspaceMode === "split" && terminal && !nativePane.attached) {
       requestAnimationFrame(() => {
         terminal.focus();
       });
     }
-  }, [activePaneId, paneId, activeTabId, tabId, terminal, workspaceMode, nativePane.attached]);
+  }, [activePaneId, paneId, activeTabId, tabId, canvasMode, terminal, workspaceMode, nativePane.attached]);
 
   useEffect(() => {
     if (activePaneId !== paneId || activeTabId !== tabId || !isRuntimeVisible) return;
@@ -1701,20 +1746,20 @@ export function TerminalComponent({
   }, [activePaneId, paneId, activeTabId, tabId, isRuntimeVisible]);
 
   useEffect(() => {
-    if (standalone && runtimeActive && terminal && !nativePane.attached) {
+    if (!canvasMode && standalone && runtimeActive && terminal && !nativePane.attached) {
       requestAnimationFrame(() => {
         fitTerminal();
         resize(terminal.cols, terminal.rows);
         terminal.focus();
       });
     }
-  }, [standalone, runtimeActive, terminal, resize, fitTerminal, nativePane.attached]);
+  }, [canvasMode, standalone, runtimeActive, terminal, resize, fitTerminal, nativePane.attached]);
 
   const focusWebTerminal = useCallback(() => {
-    if (!nativePane.attached) {
+    if (!canvasMode && !nativePane.attached) {
       terminal?.focus();
     }
-  }, [nativePane.attached, terminal]);
+  }, [canvasMode, nativePane.attached, terminal]);
 
   return (
     <div

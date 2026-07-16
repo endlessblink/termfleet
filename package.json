@@ -67,6 +67,8 @@
     "verify:daemon-survival": "CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS:-1} CARGO_PROFILE_DEV_DEBUG=0 cargo test --manifest-path src-tauri/Cargo.toml --test daemon_survival -- --nocapture",
     "verify:daemon-restart": "scripts/verify-daemon-survives-restart.sh",
     "verify:daemon-latency": "node scripts/verify-daemon-latency.mjs",
+    "verify:map-terminal-latency": "node scripts/verify-map-terminal-latency.mjs",
+    "verify:map-terminal-latency:live": "scripts/verify-map-terminal-latency-live.sh",
     "verify:rust-warnings": "scripts/verify-rust-warnings.sh",
     "verify:tauri-performance": "scripts/verify-tauri-performance.sh",
     "trace:terminal-latency": "node scripts/summarize-terminal-latency-trace.mjs",
