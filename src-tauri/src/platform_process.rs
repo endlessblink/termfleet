@@ -209,14 +209,22 @@ mod tests {
 
     #[test]
     fn daemon_argv_targets_the_binary_and_daemon_flag() {
-        let argv = daemon_spawn_argv("/opt/tw/terminal-workspace", "--terminal-workspace-daemon", "42");
+        let argv = daemon_spawn_argv(
+            "/opt/tw/terminal-workspace",
+            "--terminal-workspace-daemon",
+            "42",
+        );
         assert_eq!(argv[argv.len() - 2], "/opt/tw/terminal-workspace");
         assert_eq!(argv[argv.len() - 1], "--terminal-workspace-daemon");
     }
 
     #[test]
     fn daemon_argv_uses_a_transient_unit_when_systemd_is_available() {
-        let argv = daemon_spawn_argv("/opt/tw/terminal-workspace", "--terminal-workspace-daemon", "42");
+        let argv = daemon_spawn_argv(
+            "/opt/tw/terminal-workspace",
+            "--terminal-workspace-daemon",
+            "42",
+        );
         if systemd_run_available() {
             // The daemon must land in its OWN cgroup, not the app's unit, or the
             // app's KillMode=control-group takes the user's shells down with it.
@@ -224,7 +232,10 @@ mod tests {
             assert!(argv.iter().any(|a| a == "--user"));
             assert!(argv.iter().any(|a| a == "--unit=termfleet-daemon-42"));
         } else {
-            assert_eq!(argv, vec!["/opt/tw/terminal-workspace", "--terminal-workspace-daemon"]);
+            assert_eq!(
+                argv,
+                vec!["/opt/tw/terminal-workspace", "--terminal-workspace-daemon"]
+            );
         }
     }
 
@@ -233,7 +244,11 @@ mod tests {
         if !systemd_run_available() {
             return; // no systemd here → direct spawn, no properties to assert
         }
-        let argv = daemon_spawn_argv("/opt/tw/terminal-workspace", "--terminal-workspace-daemon", "42");
+        let argv = daemon_spawn_argv(
+            "/opt/tw/terminal-workspace",
+            "--terminal-workspace-daemon",
+            "42",
+        );
         // Soft throttle so the desktop keeps headroom; agents slow, none are killed.
         assert!(argv.iter().any(|a| a.starts_with("--property=MemoryHigh=")));
         // Fork-bomb backstop, far above the normal task peak.
@@ -244,14 +259,16 @@ mod tests {
 
     #[test]
     fn cgroup_classifier_distinguishes_own_unit_from_app_unit() {
-        let own = "/user.slice/user-1000.slice/user@1000.service/app.slice/termfleet-daemon-1234.service";
+        let own =
+            "/user.slice/user-1000.slice/user@1000.service/app.slice/termfleet-daemon-1234.service";
         let app = "/user.slice/user-1000.slice/user@1000.service/app.slice/termfleet-desktop-9876.service";
         assert!(cgroup_is_own_daemon_unit(own));
         assert!(!cgroup_is_app_unit(own));
         assert!(cgroup_is_app_unit(app));
         assert!(!cgroup_is_own_daemon_unit(app));
         // The hand-made rescue unit is neither — reported verbatim, not judged.
-        let rescue = "/user.slice/user-1000.slice/user@1000.service/app.slice/termfleet-rescue.service";
+        let rescue =
+            "/user.slice/user-1000.slice/user@1000.service/app.slice/termfleet-rescue.service";
         assert!(!cgroup_is_own_daemon_unit(rescue));
         assert!(!cgroup_is_app_unit(rescue));
     }
@@ -262,7 +279,13 @@ mod tests {
             return;
         }
         std::env::set_var("XDG_DATA_HOME", "/tmp/tw-data");
-        let argv = daemon_spawn_argv("/opt/tw/terminal-workspace", "--terminal-workspace-daemon", "7");
-        assert!(argv.iter().any(|a| a == "--setenv=XDG_DATA_HOME=/tmp/tw-data"));
+        let argv = daemon_spawn_argv(
+            "/opt/tw/terminal-workspace",
+            "--terminal-workspace-daemon",
+            "7",
+        );
+        assert!(argv
+            .iter()
+            .any(|a| a == "--setenv=XDG_DATA_HOME=/tmp/tw-data"));
     }
 }

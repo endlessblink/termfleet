@@ -394,13 +394,15 @@ impl GridManager {
         if let Ok(mut sessions) = self.sessions.lock() {
             let should_detach = sessions
                 .get(id)
-                .and_then(|session| session.attach_token.lock().ok().map(|token| {
-                    match (attach_token, token.as_deref()) {
-                        (Some(expected), Some(current)) => expected == current,
-                        (Some(_), None) => false,
-                        (None, _) => true,
-                    }
-                }))
+                .and_then(|session| {
+                    session.attach_token.lock().ok().map(|token| {
+                        match (attach_token, token.as_deref()) {
+                            (Some(expected), Some(current)) => expected == current,
+                            (Some(_), None) => false,
+                            (None, _) => true,
+                        }
+                    })
+                })
                 .unwrap_or(false);
             if should_detach {
                 if let Some(session) = sessions.remove(id) {
