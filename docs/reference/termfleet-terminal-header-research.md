@@ -98,7 +98,7 @@ Reject as low quality:
   `descriptuin`
 - command labels such as `npm test`, `npm run ...`, `npx ...`, `git ...`, or
   package-script names
-- implementation details such as `/media/...`, `src/...`, `tests/...`,
+- implementation details such as machine-local absolute paths, `src/...`, `tests/...`,
   `scripts/...`, or source filenames
 - vague active labels such as `Working`, `Thinking`, `Ready`, `Awaiting
   terminal output`, or `Running terminal command`
