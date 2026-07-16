@@ -1,3 +1,4 @@
+mod bidi;
 mod commands;
 pub mod daemon;
 mod daemon_ipc;

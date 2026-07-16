@@ -743,35 +743,60 @@ fn is_false(value: &bool) -> bool {
     !*value
 }
 
+fn apply_bidi_order<T>(logical: Vec<T>, order: &crate::bidi::RowOrder) -> Vec<T> {
+    if order.identity {
+        return logical;
+    }
+    let mut slots: Vec<Option<T>> = logical.into_iter().map(Some).collect();
+    order
+        .vis_to_log
+        .iter()
+        .map(|&logical_col| {
+            slots[logical_col]
+                .take()
+                .expect("bidi permutation must visit every column once")
+        })
+        .collect()
+}
+
 impl GridSnapshot {
     fn capture(term: &Term<VoidListener>) -> Self {
         let cols = term.columns();
         let rows = term.screen_lines();
         let mode = *term.mode();
         let content = term.renderable_content();
-        let cursor = CursorSnapshot {
-            col: content.cursor.point.column.0,
-            line: content.cursor.point.line.0,
-        };
+        let cursor_col = content.cursor.point.column.0;
+        let cursor_line = content.cursor.point.line.0;
 
         let grid = term.grid();
         // Honor the scroll position: visible row `r` maps to buffer line
         // `r - display_offset` (0 when not scrolled), so scrollback shows history.
         let offset = grid.display_offset() as i32;
         let mut cells = Vec::with_capacity(rows);
+        let mut cursor_visual_col = cursor_col;
         for row in 0..rows {
             let line = &grid[Line(row as i32 - offset)];
             let mut row_cells = Vec::with_capacity(cols);
+            let mut row_text = Vec::with_capacity(cols);
             for col in 0..cols {
                 let cell = &line[Column(col)];
                 let flags = cell.flags;
+                row_text.push(if flags.contains(Flags::WIDE_CHAR_SPACER) {
+                    None
+                } else {
+                    Some(cell.c)
+                });
                 // Emit every column (including wide-char spacers) so the
                 // serialized row index maps 1:1 to the grid column; the renderer
                 // relies on `cells[row][col]` positional alignment. A spacer
                 // trails a wide char and renders as blank (the wide glyph itself
                 // carries the `wide` flag on its base cell).
+                let mut grapheme = cell.c.to_string();
+                if let Some(marks) = cell.zerowidth() {
+                    grapheme.extend(marks.iter());
+                }
                 row_cells.push(CellSnapshot {
-                    c: cell.c.to_string(),
+                    c: grapheme,
                     fg: hex(resolve_color(cell.fg, true)),
                     bg: hex(resolve_color(cell.bg, false)),
                     bold: flags.intersects(Flags::BOLD | Flags::DIM_BOLD),
@@ -781,8 +806,21 @@ impl GridSnapshot {
                     wide: flags.contains(Flags::WIDE_CHAR),
                 });
             }
-            cells.push(row_cells);
+            let order = crate::bidi::order_row(&row_text, crate::bidi::BaseDir::Ltr);
+            if row as i32 == cursor_line && !order.identity {
+                cursor_visual_col = order
+                    .log_to_vis
+                    .get(cursor_col)
+                    .copied()
+                    .unwrap_or(cursor_col);
+            }
+            cells.push(apply_bidi_order(row_cells, &order));
         }
+
+        let cursor = CursorSnapshot {
+            col: cursor_visual_col,
+            line: cursor_line,
+        };
 
         Self {
             cols,
@@ -914,11 +952,14 @@ fn cube_step(value: u8) -> u8 {
 //   [15..17] u16  dirty row count
 // Then, per dirty row:
 //   u16 row index, u16 cell count (== cols), then `cell count` cells.
-// Cell (14 bytes):
+// Cell (34 bytes):
 //   [0..4]   u32  character (UTF-32 code point; 0 = blank)
-//   [4..8]   u32  foreground 0xRRGGBBAA
-//   [8..12]  u32  background 0xRRGGBBAA
-//   [12..14] u16  style flags: bit0 bold, bit1 italic, bit2 underline,
+//   [4]      u8   combining-mark count (0..4)
+//   [5..8]        reserved
+//   [8..24]  4 x u32 combining-mark code points
+//   [24..28] u32  foreground 0xRRGGBBAA
+//   [28..32] u32  background 0xRRGGBBAA
+//   [32..34] u16  style flags: bit0 bold, bit1 italic, bit2 underline,
 //                 bit3 inverse, bit4 wide
 //
 // A full sync marks every row dirty; a diff carries only changed rows (but the
@@ -927,7 +968,7 @@ fn cube_step(value: u8) -> u8 {
 
 pub const MSG_DIFF: u8 = 0x01;
 pub const MSG_FULL: u8 = 0x02;
-pub const CELL_BYTES: usize = 14;
+pub const CELL_BYTES: usize = 34;
 pub const HEADER_BYTES: usize = 17;
 
 const MODE_ALT_SCREEN: u32 = 1 << 0;
@@ -959,6 +1000,8 @@ const STYLE_WIDE: u16 = 1 << 4;
 #[derive(Clone, Copy, PartialEq, Eq)]
 struct WireCell {
     ch: u32,
+    combining_len: u8,
+    combining: [u32; 4],
     fg: u32,
     bg: u32,
     style: u16,
@@ -1003,14 +1046,21 @@ impl WireFrame {
         // viewport reads history (0 when not scrolled).
         let offset = grid.display_offset() as i32;
         let cursor = term.renderable_content().cursor.point;
+        let mut cursor_visual_col = cursor.column.0;
 
         let mut rows_cells = Vec::with_capacity(rows);
         for row in 0..rows {
             let line = &grid[Line(row as i32 - offset)];
             let mut cells = Vec::with_capacity(cols);
+            let mut row_text = Vec::with_capacity(cols);
             for col in 0..cols {
                 let cell = &line[Column(col)];
                 let flags = cell.flags;
+                row_text.push(if flags.contains(Flags::WIDE_CHAR_SPACER) {
+                    None
+                } else {
+                    Some(cell.c)
+                });
                 let mut style = 0u16;
                 if flags.intersects(Flags::BOLD | Flags::DIM_BOLD) {
                     style |= STYLE_BOLD;
@@ -1032,21 +1082,39 @@ impl WireFrame {
                 } else {
                     cell.c as u32
                 };
+                let mut combining = [0; 4];
+                let mut combining_len = 0;
+                if let Some(marks) = cell.zerowidth() {
+                    for (index, mark) in marks.iter().take(combining.len()).enumerate() {
+                        combining[index] = *mark as u32;
+                        combining_len += 1;
+                    }
+                }
                 cells.push(WireCell {
                     ch,
+                    combining_len,
+                    combining,
                     fg: rgba_u32(resolve_color(cell.fg, true)),
                     bg: rgba_u32(resolve_color(cell.bg, false)),
                     style,
                 });
             }
-            rows_cells.push(cells);
+            let order = crate::bidi::order_row(&row_text, crate::bidi::BaseDir::Ltr);
+            if row as i32 == cursor.line.0 && !order.identity {
+                cursor_visual_col = order
+                    .log_to_vis
+                    .get(cursor.column.0)
+                    .copied()
+                    .unwrap_or(cursor.column.0);
+            }
+            rows_cells.push(apply_bidi_order(cells, &order));
         }
 
         Self {
             cols: cols as u16,
             rows: rows as u16,
             display_offset: grid.display_offset().min(u16::MAX as usize) as u16,
-            cursor_col: cursor.column.0 as u16,
+            cursor_col: cursor_visual_col as u16,
             cursor_line: cursor.line.0.max(0) as u16,
             alt_screen: mode.contains(TermMode::ALT_SCREEN),
             cursor_visible: offset == 0 && mode.contains(TermMode::SHOW_CURSOR),
@@ -1128,6 +1196,11 @@ fn push_row(buffer: &mut Vec<u8>, index: usize, cells: &[WireCell]) {
     push_u16(buffer, cells.len() as u16);
     for cell in cells {
         push_u32(buffer, cell.ch);
+        buffer.push(cell.combining_len);
+        buffer.extend_from_slice(&[0, 0, 0]);
+        for mark in cell.combining {
+            push_u32(buffer, mark);
+        }
         push_u32(buffer, cell.fg);
         push_u32(buffer, cell.bg);
         push_u16(buffer, cell.style);
@@ -1201,8 +1274,12 @@ fn selection_text(
         let mut text = String::new();
         let line = &grid[Line(row)];
         for col in from..=to {
-            let ch = line[Column(col)].c;
+            let cell = &line[Column(col)];
+            let ch = cell.c;
             text.push(if ch == '\0' { ' ' } else { ch });
+            if let Some(marks) = cell.zerowidth() {
+                text.extend(marks.iter());
+            }
         }
         lines.push(text.trim_end().to_string());
     }
@@ -1221,7 +1298,11 @@ fn collect_search_lines(term: &Term<VoidListener>) -> Vec<(i32, String)> {
         let line = &grid[Line(line_index)];
         let mut text = String::with_capacity(cols);
         for col in 0..cols {
-            text.push(line[Column(col)].c);
+            let cell = &line[Column(col)];
+            text.push(cell.c);
+            if let Some(marks) = cell.zerowidth() {
+                text.extend(marks.iter());
+            }
         }
         lines.push((line_index, text.trim_end_matches([' ', '\0']).to_string()));
     }
@@ -1259,6 +1340,36 @@ mod tests {
             crate::search::find_in_lines(&collect_search_lines(&state.term), "NEEDLEWORD", false);
         assert_eq!(hits.len(), 1, "needle should be found in scrollback");
         assert!(hits[0].line < 0, "needle should be in history");
+    }
+
+    #[test]
+    fn hebrew_nikud_stays_on_base_cells_in_json_and_wire_frames() {
+        let mut state = TermState::new(20, 4);
+        state.feed("שָׁלוֹם".as_bytes());
+
+        let snapshot = GridSnapshot::capture(&state.term);
+        let visible: Vec<&str> = snapshot.cells[0]
+            .iter()
+            .filter(|cell| cell.c.trim().len() > 0)
+            .map(|cell| cell.c.as_str())
+            .collect();
+        assert_eq!(visible.len(), 4, "nikud must not consume grid columns");
+        assert!(visible.contains(&"שָׁ"));
+        assert!(visible.contains(&"וֹ"));
+
+        let frame = WireFrame::capture(&state.term);
+        let occupied: Vec<&WireCell> = frame.rows_cells[0]
+            .iter()
+            .filter(|cell| cell.ch != 0)
+            .collect();
+        assert_eq!(occupied.len(), 4, "wire frame must keep four base cells");
+        let shin = occupied
+            .iter()
+            .find(|cell| cell.ch == 'ש' as u32)
+            .expect("shin cell");
+        assert_eq!(shin.combining_len, 2);
+        assert_eq!(shin.combining[0], 'ָ' as u32);
+        assert_eq!(shin.combining[1], 'ׁ' as u32);
     }
 
     // Regression: re-attaching to a lingering grid session MUST resize its Term
@@ -1504,8 +1615,11 @@ mod tests {
     fn wire_text_at(frame: &WireFrame, row: usize) -> String {
         frame.rows_cells[row]
             .iter()
-            .filter_map(|cell| char::from_u32(cell.ch))
-            .filter(|ch| *ch != '\0')
+            .flat_map(|cell| {
+                std::iter::once(if cell.ch == 0 { ' ' as u32 } else { cell.ch })
+                    .chain(cell.combining.into_iter().take(cell.combining_len as usize))
+                    .filter_map(char::from_u32)
+            })
             .collect::<String>()
             .trim_end()
             .to_string()
@@ -1576,6 +1690,28 @@ mod tests {
         WireFrame::capture_state(&state)
     }
 
+    #[test]
+    fn hebrew_is_visually_reordered_in_snapshot_and_wire_frame() {
+        let snapshot = feed("שלום");
+        assert_eq!(text_at(&snapshot, 0), "םולש");
+
+        let wire = frame("שלום");
+        assert_eq!(wire_text_at(&wire, 0), "םולש");
+    }
+
+    #[test]
+    fn mixed_bidi_reorders_only_the_rtl_run() {
+        let snapshot = feed("abc שלום def");
+        assert_eq!(text_at(&snapshot, 0), "abc םולש def");
+    }
+
+    #[test]
+    fn ascii_capture_remains_identity_ordered() {
+        let snapshot = feed("hello world");
+        assert_eq!(text_at(&snapshot, 0), "hello world");
+        assert_eq!(wire_text_at(&frame("hello world"), 0), "hello world");
+    }
+
     fn read_u16(buffer: &[u8], offset: usize) -> u16 {
         u16::from_le_bytes([buffer[offset], buffer[offset + 1]])
     }
@@ -1632,7 +1768,7 @@ mod tests {
         // First cell of row 0: char 'R', red fg.
         let cell0 = HEADER_BYTES + 4;
         assert_eq!(read_u32(&buffer, cell0), 'R' as u32);
-        assert_eq!(read_u32(&buffer, cell0 + 4), rgba_u32((0xcd, 0x00, 0x00)));
+        assert_eq!(read_u32(&buffer, cell0 + 24), rgba_u32((0xcd, 0x00, 0x00)));
     }
 
     #[test]

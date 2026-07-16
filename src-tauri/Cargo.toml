@@ -30,6 +30,7 @@ uuid = { version = "1", features = ["v4"] }
 dirs = "5"
 alacritty_terminal = "0.25"
 tauri-plugin-opener = "2"
+unicode-bidi = "0.3"
 
 [dev-dependencies]
 tauri = { version = "2", features = ["test"] }

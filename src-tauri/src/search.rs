@@ -26,7 +26,7 @@ pub fn find_in_lines(lines: &[(i32, String)], query: &str, case_sensitive: bool)
     } else {
         query.to_lowercase()
     };
-    let needle_cols = query.chars().count();
+    let needle_cols = terminal_columns(query);
 
     let mut matches = Vec::new();
     for (line, text) in lines {
@@ -38,7 +38,7 @@ pub fn find_in_lines(lines: &[(i32, String)], query: &str, case_sensitive: bool)
         let mut from = 0;
         while let Some(rel) = haystack[from..].find(&needle) {
             let byte = from + rel;
-            let col = haystack[..byte].chars().count();
+            let col = terminal_columns(&haystack[..byte]);
             matches.push(Match {
                 line: *line,
                 col,
@@ -50,6 +50,28 @@ pub fn find_in_lines(lines: &[(i32, String)], query: &str, case_sensitive: bool)
         }
     }
     matches
+}
+
+/// Count terminal cells rather than Unicode scalar values. Alacritty stores
+/// combining marks (including Hebrew nikud) on their base cell, so they must
+/// not move search highlights one column to the right.
+fn terminal_columns(text: &str) -> usize {
+    text.chars().filter(|&ch| !is_combining_mark(ch)).count()
+}
+
+fn is_combining_mark(ch: char) -> bool {
+    matches!(ch as u32,
+        0x0300..=0x036F   // Combining Diacritical Marks
+        | 0x0591..=0x05BD // Hebrew accents and points
+        | 0x05BF          // Hebrew point rafe
+        | 0x05C1..=0x05C2 // Hebrew shin/sin dots
+        | 0x05C4..=0x05C5 // Hebrew upper/lower dots
+        | 0x05C7          // Hebrew point qamats qatan
+        | 0x1AB0..=0x1AFF // Combining Diacritical Marks Extended
+        | 0x1DC0..=0x1DFF // Combining Diacritical Marks Supplement
+        | 0x20D0..=0x20FF // Combining Diacritical Marks for Symbols
+        | 0xFE20..=0xFE2F // Combining Half Marks
+    )
 }
 
 #[cfg(test)]
@@ -162,6 +184,23 @@ mod tests {
                 len: 4
             }]
         );
+    }
+
+    #[test]
+    fn hebrew_nikud_does_not_consume_terminal_columns() {
+        let lines = vec![(0, "אב שָׁלוֹם עולם".to_string())];
+        let hits = find_in_lines(&lines, "שָׁלוֹם", false);
+        assert_eq!(
+            hits,
+            vec![Match {
+                line: 0,
+                col: 3,
+                len: 4
+            }]
+        );
+
+        let later = find_in_lines(&lines, "עולם", false);
+        assert_eq!(later[0].col, 8, "nikud before the match is zero-width");
     }
 
     #[test]
