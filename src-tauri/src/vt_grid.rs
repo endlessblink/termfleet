@@ -322,6 +322,21 @@ impl GridManager {
         ))
     }
 
+    /// Find `query` across scrollback history and the visible screen.
+    pub fn search(
+        &self,
+        id: &str,
+        query: &str,
+        case_sensitive: bool,
+    ) -> Result<Vec<crate::search::Match>, String> {
+        let session = self
+            .get(id)
+            .ok_or_else(|| format!("no grid attached for session {id}"))?;
+        let state = session.state.read().map_err(|_| "grid state poisoned")?;
+        let lines = collect_search_lines(&state.term);
+        Ok(crate::search::find_in_lines(&lines, query, case_sensitive))
+    }
+
     /// Register a binary-diff subscriber. Sends an immediate full-sync frame so
     /// the new subscriber has a baseline, then the emitter pushes diffs at 60Hz.
     pub fn subscribe_diffs(
@@ -1194,6 +1209,25 @@ fn selection_text(
     lines.join("\n")
 }
 
+/// Collect scrollback and visible grid lines in terminal buffer coordinates.
+fn collect_search_lines(term: &Term<VoidListener>) -> Vec<(i32, String)> {
+    let grid = term.grid();
+    let screen = grid.screen_lines() as i32;
+    let total = grid.total_lines() as i32;
+    let top = screen - total;
+    let cols = grid.columns();
+    let mut lines = Vec::with_capacity(total.max(0) as usize);
+    for line_index in top..screen {
+        let line = &grid[Line(line_index)];
+        let mut text = String::with_capacity(cols);
+        for col in 0..cols {
+            text.push(line[Column(col)].c);
+        }
+        lines.push((line_index, text.trim_end_matches([' ', '\0']).to_string()));
+    }
+    lines
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1202,6 +1236,29 @@ mod tests {
         let mut state = TermState::new(DEFAULT_COLS, DEFAULT_ROWS);
         state.feed(bytes.as_bytes());
         GridSnapshot::capture(&state.term)
+    }
+
+    #[test]
+    fn search_finds_text_on_the_visible_screen() {
+        let mut state = TermState::new(DEFAULT_COLS, DEFAULT_ROWS);
+        state.feed(b"line one\r\nfind me here\r\nlast");
+        let hits =
+            crate::search::find_in_lines(&collect_search_lines(&state.term), "find me", false);
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].col, 0);
+    }
+
+    #[test]
+    fn search_covers_scrollback_history() {
+        let mut state = TermState::new(DEFAULT_COLS, DEFAULT_ROWS);
+        state.feed(b"NEEDLEWORD\r\n");
+        for _ in 0..40 {
+            state.feed(b"\r\n");
+        }
+        let hits =
+            crate::search::find_in_lines(&collect_search_lines(&state.term), "NEEDLEWORD", false);
+        assert_eq!(hits.len(), 1, "needle should be found in scrollback");
+        assert!(hits[0].line < 0, "needle should be in history");
     }
 
     // Regression: re-attaching to a lingering grid session MUST resize its Term

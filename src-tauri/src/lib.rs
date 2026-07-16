@@ -9,6 +9,7 @@ mod platform_paths;
 mod platform_process;
 mod platform_tty;
 mod pty;
+mod search;
 pub mod vt_grid;
 
 use commands::FocusedTerminalState;
@@ -76,6 +77,7 @@ pub fn run() {
             commands::grid_attach,
             commands::grid_snapshot,
             commands::grid_selection_text,
+            commands::grid_search,
             commands::grid_detach,
             commands::grid_resize,
             commands::grid_scroll,
