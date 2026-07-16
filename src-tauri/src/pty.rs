@@ -464,9 +464,7 @@ impl PtyManager {
         let recovery_plan = persisted
             .as_ref()
             .map(|entry| plan_agent_restore(entry, false));
-        let recovery_command = recovery_plan
-            .as_ref()
-            .and_then(|plan| plan.command.clone());
+        let recovery_command = recovery_plan.as_ref().and_then(|plan| plan.command.clone());
         let cwd = cwd.or_else(|| persisted.as_ref().and_then(|entry| entry.cwd.clone()));
         let command = recovery_command
             .or(command)
@@ -1729,7 +1727,8 @@ mod tests {
     #[test]
     fn fnv1a_hex_matches_the_node_sidecar_name_scheme() {
         // Real pane id -> its on-disk sidecar file pane-0162f700.json.
-        let pane = "terminal-6e9b9476-f2a2-4ec4-949e-660c749727f0-8abd0e41-2a96-4436-9978-1d2ab3c37603";
+        let pane =
+            "terminal-6e9b9476-f2a2-4ec4-949e-660c749727f0-8abd0e41-2a96-4436-9978-1d2ab3c37603";
         assert_eq!(fnv1a_hex(pane), "0162f700");
     }
 
@@ -1738,7 +1737,10 @@ mod tests {
         let text = r#"{"sessionId":"97f94c32-4b90-448d-99ac-31876103ab25","provider":"claude","cwd":"/x"}"#;
         assert_eq!(
             agent_recovery_from_sidecar(text),
-            Some(("claude".to_string(), "97f94c32-4b90-448d-99ac-31876103ab25".to_string()))
+            Some((
+                "claude".to_string(),
+                "97f94c32-4b90-448d-99ac-31876103ab25".to_string()
+            ))
         );
     }
 
@@ -1758,7 +1760,10 @@ mod tests {
 
     #[test]
     fn sidecar_recovery_is_none_without_a_session_id() {
-        assert_eq!(agent_recovery_from_sidecar(r#"{"cwd":"/x","userTask":"hi"}"#), None);
+        assert_eq!(
+            agent_recovery_from_sidecar(r#"{"cwd":"/x","userTask":"hi"}"#),
+            None
+        );
         assert_eq!(agent_recovery_from_sidecar(r#"{"sessionId":""}"#), None);
     }
 
@@ -1788,7 +1793,9 @@ mod tests {
             std::process::id(),
             std::thread::current().id()
         );
-        let dir = super::data_root_dir().expect("data dir").join("agent-status");
+        let dir = super::data_root_dir()
+            .expect("data dir")
+            .join("agent-status");
         std::fs::create_dir_all(&dir).expect("create agent-status dir");
         let file = dir.join(format!("pane-{}.json", fnv1a_hex(&id)));
         std::fs::write(
@@ -1981,8 +1988,7 @@ mod tests {
             ..SessionMeta::default()
         };
         let meta_bytes = serde_json::to_vec(&meta).expect("encode seeded meta");
-        super::atomic_write(&super::meta_path(&dir, &id), &meta_bytes)
-            .expect("seed metadata");
+        super::atomic_write(&super::meta_path(&dir, &id), &meta_bytes).expect("seed metadata");
 
         let manager = super::PtyManager::with_persistence_dir(dir.clone());
         manager

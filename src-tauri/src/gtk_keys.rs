@@ -26,8 +26,7 @@ use crate::daemon::{send_daemon_request, DaemonRequest};
 /// when focus is on app chrome. Set from the frontend via `set_focused_terminal`.
 pub type FocusedSession = Arc<Mutex<Option<String>>>;
 
-pub const GTK_TERMINAL_CLIPBOARD_SHORTCUT_EVENT: &str =
-    "terminal-workspace-gtk-clipboard-shortcut";
+pub const GTK_TERMINAL_CLIPBOARD_SHORTCUT_EVENT: &str = "terminal-workspace-gtk-clipboard-shortcut";
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
