@@ -121,32 +121,29 @@ function todoToTaskText(todo: NonNullable<AgentStatusSidecar["todos"]>[number]):
   return content;
 }
 
+function isNonDescriptiveTaskText(value: unknown): boolean {
+  const text = cleanText(value);
+  return /^(?:Answering latest prompt|Answering user question|Prompt submitted|go|continue|this|that|these|those|both|and this|and that|should we add (?:it|that))\??$/i.test(text);
+}
+
+function visibleSidecarTodos(sidecar: AgentStatusSidecar) {
+  return (Array.isArray(sidecar?.todos) ? sidecar.todos : [])
+    .filter((todo) => !isNonDescriptiveTaskText(todo?.activeForm || todo?.content));
+}
+
 function sidecarTaskText(sidecar: AgentStatusSidecar): string {
-  const todos = Array.isArray(sidecar?.todos) ? sidecar.todos : [];
+  const todos = visibleSidecarTodos(sidecar);
   const active = todos.find((todo) => todo?.status === "in_progress");
   const firstOpen = todos.find((todo) => todo?.status !== "completed");
   const current = active ?? firstOpen ?? todos[0];
-  return cleanText(current?.activeForm || current?.content || sidecar?.userTask);
+  const declaredTask = cleanText(current?.activeForm || current?.content);
+  const userTask = cleanText(sidecar?.userTask);
+  return declaredTask || (isNonDescriptiveTaskText(userTask) ? "" : userTask);
 }
 
 function sidecarHasConcreteTask(sidecar: AgentStatusSidecar): boolean {
   const task = sidecarTaskText(sidecar);
-  return Boolean(task && !/^(?:Answering latest prompt|Answering user question)$/i.test(task));
-}
-
-function inferredTaskFromSidecarContext(sidecar: AgentStatusSidecar): string {
-  const context = [
-    sidecar.userTask,
-    sidecar.narration,
-    ...(Array.isArray(sidecar.recent) ? sidecar.recent.map((entry) => entry?.text) : []),
-  ].map(cleanText).join(" ");
-  if (
-    /\bshould we add that\b/i.test(context) &&
-    /\b(?:stricter|removal allowed|review-first|bot records join events|group message)\b/i.test(context)
-  ) {
-    return "Reviewing group spam moderation rules";
-  }
-  return "";
+  return Boolean(task);
 }
 
 export function summaryFromSidecar(
@@ -154,40 +151,32 @@ export function summaryFromSidecar(
   fallback: AgentStatusSummary,
 ): AgentStatusSummary {
   const todos = Array.isArray(sidecar?.todos) ? sidecar.todos : [];
+  const visibleTodos = visibleSidecarTodos(sidecar);
   const now = cleanText(sidecar?.now);
   // A harness placeholder ("Answering latest prompt") often sits in_progress ahead
   // of the agent's real task and would otherwise own the header. It names no work,
   // so it never outranks a declared task; it is only a last resort.
-  const isPlaceholder = (todo?: { content?: string; activeForm?: string }) =>
-    /^(?:Answering latest prompt|Answering user question)$/i.test(
-      cleanText(todo?.activeForm || todo?.content),
-    );
-  const real = todos.filter((todo) => !isPlaceholder(todo));
-  const pick = (list: typeof todos) =>
+  const pick = (list: typeof visibleTodos) =>
     list.find((todo) => todo?.status === "in_progress") ??
     list.find((todo) => todo?.status !== "completed");
-  const active =
-    real.find((todo) => todo?.status === "in_progress") ??
-    (pick(real) ? undefined : todos.find((todo) => todo?.status === "in_progress"));
-  const firstOpen = pick(real) ?? todos.find((todo) => todo?.status !== "completed");
-  const lastDone = [...todos].reverse().find((todo) => todo?.status === "completed");
+  const active = visibleTodos.find((todo) => todo?.status === "in_progress");
+  const firstOpen = pick(visibleTodos);
+  const lastDone = [...visibleTodos].reverse().find((todo) => todo?.status === "completed");
   const working = Boolean(todos.find((todo) => todo?.status === "in_progress"));
   // Title = the agent's CURRENT task, preferring its human-readable `activeForm` over
   // the terse subject. When nothing is live (all complete), fall back to the LAST
   // completed task. NEVER fall back to `now` (momentary raw tool activity) as the
   // title; that belongs only on the activity line. (TC-033)
   const current = active ?? firstOpen;
-  let currentTask =
+  const currentTask =
     cleanText(current?.activeForm || current?.content) || cleanText(lastDone?.content);
-  if (/^(?:Answering latest prompt|Answering user question)$/i.test(currentTask)) {
-    currentTask = inferredTaskFromSidecarContext(sidecar) || currentTask;
-  }
   const userTask =
     cleanText(sidecar?.userTask) ||
     cleanText(fallback?.userTask) ||
     (todos.length > 0 ? cleanText(todos[0]?.content) : "");
-  const activityTitle =
-    currentTask || (userTask && now && now !== "Prompt submitted" ? now : "") || fallback.task;
+  const declaredUserTask = isNonDescriptiveTaskText(userTask) ? "" : userTask;
+  const currentActivityTask = declaredUserTask && !isNonDescriptiveTaskText(now) ? now : "";
+  const activityTitle = currentTask || currentActivityTask || declaredUserTask || fallback.task;
   return {
     ...fallback,
     provider: sidecar.provider ?? fallback.provider,
@@ -211,10 +200,10 @@ export function summaryFromSidecar(
               ? "idle"
               : fallback.status,
     confidence: "high",
-    tasks: extractedItems(todos.map(todoToTaskText)),
+    tasks: extractedItems(visibleTodos.map(todoToTaskText)),
     // These ARE the agent's real task list (captured by the status hook), not
     // heuristic summary items — flag them as the authoritative `todo-write` source.
-    tasksFromTodoWrite: todos.length > 0,
+    tasksFromTodoWrite: visibleTodos.length > 0,
     narration: cleanText(sidecar?.narration).slice(0, 90) || undefined,
     recent: (Array.isArray(sidecar?.recent) ? sidecar.recent : [])
       .filter((entry) => entry && cleanText(entry.text))
