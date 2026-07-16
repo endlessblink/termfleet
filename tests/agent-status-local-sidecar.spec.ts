@@ -8,6 +8,7 @@ import {
   sidecarFresh,
   summaryFromSidecar,
 } from "../src/lib/agentStatusSidecar";
+import { summaryFromSidecar as summaryFromNodeSidecar } from "../scripts/agent-status-summary-sidecar.mjs";
 import { summarizeAgentStatus } from "../src/lib/agentStatusSummarizer";
 import { fallbackAgentStatusSummary } from "../src/lib/agentStatusSummary";
 import {
@@ -175,6 +176,112 @@ test("readLocalSidecarSummary falls back to a cwd sidecar and rejects stale file
   expect(rejected).toBeNull();
 });
 
+test("readLocalSidecarSummary prefers concrete cwd task over generic pane task", async () => {
+  const cwd = "/repo/project";
+  const paneId = "terminal-generic-pane";
+  const files = new Map<string, string>([
+    [
+      paneSidecarFileName(paneId),
+      JSON.stringify({
+        updatedAt: Date.now(),
+        now: "Answering latest prompt",
+        todos: [{ id: "1", content: "Answering latest prompt", status: "in_progress" }],
+      }),
+    ],
+    [
+      cwdSidecarFileName(cwd),
+      JSON.stringify({
+        updatedAt: Date.now(),
+        now: "Checking map order",
+        todos: [{ id: "2", content: "Fix sidebar order", status: "in_progress", activeForm: "Fixing the sidebar map order rule" }],
+      }),
+    ],
+  ]);
+
+  const summary = await readLocalSidecarSummary(
+    { provider: "shell", cwd, paneId },
+    fallbackFor(cwd),
+    async (name) => files.get(name) ?? null,
+  );
+
+  expect(summary?.task).toBe("Fixing the sidebar map order rule");
+});
+
+test("readLocalSidecarSummary does not invent a task from a vague prompt and narration", async () => {
+  const cwd = "/repo/bot";
+  const paneId = "terminal-bot";
+  const files = new Map<string, string>([
+    [
+      paneSidecarFileName(paneId),
+      JSON.stringify({
+        updatedAt: Date.now(),
+        now: "Answering user question",
+        userTask: "should we add that?",
+        narration: "A safe version is: stricter, removal allowed; review-first for borderline cases",
+        recent: [{ text: "The bot records join events, then checks each group message" }],
+        todos: [{ id: "1", content: "Answering user question", status: "in_progress" }],
+      }),
+    ],
+  ]);
+
+  const summary = await readLocalSidecarSummary(
+    { provider: "shell", cwd, paneId },
+    fallbackFor(cwd),
+    async (name) => files.get(name) ?? null,
+  );
+
+  expect(summary?.task).toBe(fallbackFor(cwd).task);
+  expect(summary?.task).not.toContain("spam moderation");
+  expect(summary?.tasksFromTodoWrite).toBe(false);
+});
+
+test("browser and node sidecar readers share placeholder, provider, and turn semantics", () => {
+  const fallback = fallbackFor("/repo/project");
+  const sidecar = {
+    provider: "codex" as const,
+    updatedAt: Date.now(),
+    turn: "idle" as const,
+    now: "Waiting for the next prompt",
+    todos: [
+      { id: "placeholder", content: "Answering latest prompt", status: "in_progress" },
+      { id: "real", content: "Check map ordering", activeForm: "Checking map ordering", status: "pending" },
+    ],
+  };
+
+  const browserSummary = summaryFromSidecar(sidecar, fallback);
+  const nodeSummary = summaryFromNodeSidecar(sidecar, { heuristicCandidate: fallback });
+
+  for (const summary of [browserSummary, nodeSummary]) {
+    expect(summary.task).toBe("Checking map ordering");
+    expect(summary.provider).toBe("codex");
+    expect(summary.status).toBe("idle");
+    expect(summary.tasksFromTodoWrite).toBe(true);
+    expect(summary.tasks.map((task: { text: string }) => task.text)).toEqual(["Check map ordering"]);
+  }
+});
+
+test("placeholder-only sidecars preserve lifecycle without promoting the placeholder to a task", () => {
+  const fallback = fallbackFor("/repo/project");
+  const sidecar = {
+    provider: "claude" as const,
+    updatedAt: Date.now(),
+    turn: "working" as const,
+    now: "Answering user question",
+    todos: [{ id: "placeholder", content: "Answering user question", status: "in_progress" }],
+  };
+
+  const browserSummary = summaryFromSidecar(sidecar, fallback);
+  const nodeSummary = summaryFromNodeSidecar(sidecar, { heuristicCandidate: fallback });
+
+  for (const summary of [browserSummary, nodeSummary]) {
+    expect(summary.task).toBe(fallback.task);
+    expect(summary.provider).toBe("claude");
+    expect(summary.status).toBe("working");
+    expect(summary.tasks).toEqual([]);
+    expect(summary.tasksFromTodoWrite).toBe(false);
+  }
+});
+
 test("summarizeAgentStatus uses an available local sidecar before any endpoint", async () => {
   const paneId = "terminal-abc-def";
   const files = new Map<string, string>([
@@ -197,6 +304,48 @@ test("summarizeAgentStatus uses an available local sidecar before any endpoint",
   expect(result.source).toBe("sidecar");
   expect(result.summary.task).toBe("Fixing it");
   expect(result.summary.tasksFromTodoWrite).toBe(true);
+});
+
+test("summarizeAgentStatus keeps sidecar tasks authoritative over endpoint rewrites", async () => {
+  const paneId = "terminal-authoritative-sidecar";
+  const files = new Map<string, string>([
+    [
+      paneSidecarFileName(paneId),
+      JSON.stringify({
+        updatedAt: Date.now(),
+        now: "Verifying the running cockpit",
+        userTask: "go",
+        todos: [
+          { content: "Verifying the running cockpit", status: "in_progress", activeForm: "Verifying the running cockpit" },
+        ],
+      }),
+    ],
+  ]);
+
+  const result = await summarizeAgentStatus(
+    { provider: "shell", cwd: "/repo/x", paneId },
+    {
+      endpoint: "http://status.test/status",
+      sidecarReader: async (name) => files.get(name) ?? null,
+      fetcher: async () =>
+        new Response(JSON.stringify({
+          task: "Verify TermFleet the running cockpit",
+          userTask: "go",
+          path: "/repo/x",
+          now: "Verify TermFleet the running cockpit",
+          status: "working",
+          provider: "shell",
+          confidence: "high",
+          tasksFromTodoWrite: true,
+          tasks: [{ text: "in-progress: Verify TermFleet the running cockpit" }],
+        }), { status: 200 }),
+    },
+  );
+
+  expect(result.source).toBe("process");
+  expect(result.summary.task).toBe("Verifying the running cockpit");
+  expect(result.summary.now).toBe("Verifying the running cockpit");
+  expect(result.summary.tasks.map((task) => task.text)).toContain("in-progress: Verifying the running cockpit");
 });
 
 test("summarizeAgentStatus falls back when no local sidecar exists and no endpoint is set", async () => {

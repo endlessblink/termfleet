@@ -78,13 +78,39 @@ function todoToTaskText(todo) {
   return content;
 }
 
+function isNonDescriptiveTaskText(value) {
+  const text = cleanText(value);
+  return /^(?:Answering latest prompt|Answering user question|Prompt submitted|go|continue|this|that|these|those|both|and this|and that|should we add (?:it|that))\??$/i.test(text);
+}
+
+function visibleSidecarTodos(sidecar) {
+  return (Array.isArray(sidecar?.todos) ? sidecar.todos : [])
+    .filter((todo) => !isNonDescriptiveTaskText(todo?.activeForm || todo?.content));
+}
+
+function sidecarTaskText(sidecar) {
+  const todos = visibleSidecarTodos(sidecar);
+  const active = todos.find((todo) => todo.status === "in_progress");
+  const firstOpen = todos.find((todo) => todo.status !== "completed");
+  const current = active ?? firstOpen ?? todos[0];
+  const declaredTask = cleanText(current?.activeForm || current?.content);
+  const userTask = cleanText(sidecar?.userTask);
+  return declaredTask || (isNonDescriptiveTaskText(userTask) ? "" : userTask);
+}
+
+function sidecarHasConcreteTask(sidecar) {
+  const task = sidecarTaskText(sidecar);
+  return Boolean(task);
+}
+
 export function summaryFromSidecar(sidecar, payload) {
   const fallback = fallbackSummary(payload);
   const todos = Array.isArray(sidecar?.todos) ? sidecar.todos : [];
+  const visibleTodos = visibleSidecarTodos(sidecar);
   const now = cleanText(sidecar?.now);
-  const active = todos.find((todo) => todo.status === "in_progress");
-  const firstOpen = todos.find((todo) => todo.status !== "completed");
-  const lastDone = [...todos]
+  const active = visibleTodos.find((todo) => todo.status === "in_progress");
+  const firstOpen = visibleTodos.find((todo) => todo.status !== "completed");
+  const lastDone = [...visibleTodos]
     .reverse()
     .find((todo) => todo.status === "completed");
   const working = Boolean(active);
@@ -101,25 +127,32 @@ export function summaryFromSidecar(sidecar, payload) {
     cleanText(sidecar?.userTask) ||
     cleanText(fallback?.userTask) ||
     (todos.length > 0 ? cleanText(todos[0]?.content) : "");
-  const activityTitle =
-    currentTask ||
-    (userTask && now && now !== "Prompt submitted" ? now : "") ||
-    fallback.task;
+  const declaredUserTask = isNonDescriptiveTaskText(userTask) ? "" : userTask;
+  const currentActivityTask = declaredUserTask && !isNonDescriptiveTaskText(now) ? now : "";
+  const activityTitle = currentTask || currentActivityTask || declaredUserTask || fallback.task;
   return {
     ...fallback,
+    provider: sidecar?.provider ?? fallback.provider,
+    updatedAt: typeof sidecar?.updatedAt === "number" ? sidecar.updatedAt : fallback.updatedAt,
     task: activityTitle,
     userTask: userTask || undefined,
     now: now || fallback.now,
-    status: working ? "working" : todos.length > 0 ? "idle" : fallback.status,
-    provider: fallback.provider,
+    status:
+      sidecar?.turn === "idle"
+        ? "idle"
+        : sidecar?.turn === "waiting"
+          ? "waiting"
+          : sidecar?.turn === "working" || working
+            ? "working"
+            : visibleTodos.length > 0
+              ? "idle"
+              : fallback.status,
     confidence: "high",
-    tasks: extractedItems(todos.map(todoToTaskText)),
+    tasks: extractedItems(visibleTodos.map(todoToTaskText)),
     // These tasks ARE the agent's real Claude TodoWrite list (captured by the
-    // status hook), not heuristic summary items. Flag it so the consumer renders
-    // them as the authoritative `todo-write` source. Todos only ever originate
-    // from a TodoWrite call (the live-now path merely preserves them), so a
-    // non-empty list is sufficient proof.
-    tasksFromTodoWrite: todos.length > 0,
+    // status hook), not heuristic summary items. Generic lifecycle placeholders
+    // are filtered above, so only concrete items grant `todo-write` ownership.
+    tasksFromTodoWrite: visibleTodos.length > 0,
     // The agent's own last words (from the Stop-hook transcript capture) — a reliable
     // title source when there's no task list, since it's what the model SAID it's doing
     // (not a heuristic scrape of terminal output). (TC-033)
@@ -148,10 +181,14 @@ export function readSidecarForPayload(
   // through to the cwd candidates when the pane sidecar is missing/stale (the pane id
   // isn't injected into the PTY yet, or this is a non-termfleet shell) → legacy behavior.
   const paneId = payload?.paneId;
+  let firstFresh = null;
   if (paneId) {
     try {
       const sidecar = JSON.parse(read(paneSidecarPath(paneId)));
-      if (sidecarFresh(sidecar)) return sidecar;
+      if (sidecarFresh(sidecar)) {
+        firstFresh = sidecar;
+        if (sidecarHasConcreteTask(sidecar)) return sidecar;
+      }
     } catch {
       // no fresh pane sidecar → fall through to cwd keying
     }
@@ -175,12 +212,14 @@ export function readSidecarForPayload(
   for (const key of candidates) {
     try {
       const sidecar = JSON.parse(read(sidecarPath(key)));
-      if (sidecarFresh(sidecar)) return sidecar;
+      if (!sidecarFresh(sidecar)) continue;
+      if (!firstFresh) firstFresh = sidecar;
+      if (sidecarHasConcreteTask(sidecar)) return sidecar;
     } catch {
       // missing/stale/unreadable → try the next candidate key
     }
   }
-  return null;
+  return firstFresh;
 }
 
 function readStdin() {

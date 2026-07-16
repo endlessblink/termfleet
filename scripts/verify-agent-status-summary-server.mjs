@@ -35,7 +35,9 @@ assert.match(tauriDevWrapper, /TERMFLEET_AGENT_STATUS_DISABLE/);
 assert.match(tauriDevWrapper, /TERMFLEET_AGENT_STATUS_MODEL:-qwen3:4b/);
 assert.match(tauriDevWrapper, /TERMFLEET_ALLOW_NESTED_DEV_ENV/);
 assert.match(tauriDevWrapper, /unset TERMFLEET_AGENT_STATUS_ENABLE/);
+assert.match(tauriDevWrapper, /TERMFLEET_DEV_DIAGNOSTICS_ENABLE:-0/);
 assert.match(tauriDevWrapper, /unset TERMFLEET_COCKPIT_SNAPSHOT_ENABLE/);
+assert.match(tauriDevWrapper, /cockpit_snapshot_requested=1/);
 assert.match(tauriDevWrapper, /TERMFLEET_DEV_DIAGNOSTICS_ENABLE/);
 assert.match(tauriDevWrapper, /TERMFLEET_COCKPIT_SNAPSHOT_ENABLE/);
 assert.match(tauriDevWrapper, /unset VITE_COCKPIT_SNAPSHOT/);
@@ -79,6 +81,8 @@ assert.match(splitPaneSource, /now: headerNow/);
 assert.match(splitPaneSource, /taskLineup: visibleTaskLineup\.map/);
 assert.match(cockpitSnapshotSource, /VITE_COCKPIT_SNAPSHOT/);
 assert.match(cockpitSnapshotSource, /\/cockpit-snapshot/);
+assert.match(cockpitSnapshotSource, /COCKPIT_SNAPSHOT_HEARTBEAT_MS/);
+assert.match(cockpitSnapshotSource, /removeCockpitPane/);
 
 function waitForEndpoint(child) {
   return new Promise((resolve, reject) => {

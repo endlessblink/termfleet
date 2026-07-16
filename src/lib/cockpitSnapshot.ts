@@ -60,13 +60,20 @@ function snapshotEndpoint(): string {
 
 const entries = new Map<string, CockpitSnapshotEntry>();
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
+export const COCKPIT_SNAPSHOT_HEARTBEAT_MS = 10_000;
+export const COCKPIT_SNAPSHOT_FLUSH_DELAY_MS = 500;
+const COCKPIT_SNAPSHOT_ENTRY_TTL_MS = 30_000;
 
 function scheduleFlush() {
   if (!cockpitSnapshotEnabled() || flushTimer) return;
   flushTimer = setTimeout(() => {
     flushTimer = null;
+    const now = Date.now();
+    for (const [paneId, entry] of entries) {
+      if (now - entry.updatedAt > COCKPIT_SNAPSHOT_ENTRY_TTL_MS) entries.delete(paneId);
+    }
     const payload = JSON.stringify({
-      updatedAt: Date.now(),
+      updatedAt: now,
       terminals: Array.from(entries.values()),
     });
     // Fire-and-forget; never let a debug write affect the UI.
@@ -75,12 +82,18 @@ function scheduleFlush() {
       headers: { "content-type": "application/json" },
       body: payload,
     }).catch(() => {});
-  }, 500);
+  }, COCKPIT_SNAPSHOT_FLUSH_DELAY_MS);
 }
 
 /** Record one pane's rendered state and schedule a debounced flush. No-op unless enabled. */
 export function recordCockpitPane(paneId: string, entry: CockpitSnapshotEntry): void {
   if (!cockpitSnapshotEnabled() || !paneId) return;
   entries.set(paneId, entry);
+  scheduleFlush();
+}
+
+/** Remove an unmounted pane immediately so snapshots never depend on TTL expiry. */
+export function removeCockpitPane(paneId: string): void {
+  if (!cockpitSnapshotEnabled() || !paneId || !entries.delete(paneId)) return;
   scheduleFlush();
 }
