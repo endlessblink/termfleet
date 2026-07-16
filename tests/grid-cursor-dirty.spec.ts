@@ -8,7 +8,7 @@ import { GridBuffer } from "../src/lib/gridBuffer";
 // locks the existing fix in gridBuffer.ts (prevCursorCol tracking).
 
 const HEADER = 17;
-const CELL = 14;
+const CELL = 34;
 const cols = 4;
 const rows = 2;
 const blank = { ch: 0, fg: 0xd0d0d0ff, bg: 0x000000ff, style: 0 };
@@ -38,9 +38,9 @@ function encode(
     off += 4;
     for (const c of row.cells) {
       view.setUint32(off, c.ch, true);
-      view.setUint32(off + 4, c.fg, true);
-      view.setUint32(off + 8, c.bg, true);
-      view.setUint16(off + 12, c.style, true);
+      view.setUint32(off + 24, c.fg, true);
+      view.setUint32(off + 28, c.bg, true);
+      view.setUint16(off + 32, c.style, true);
       off += CELL;
     }
   }

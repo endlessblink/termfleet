@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { readFileSync } from "node:fs";
 
 const HEADER = 17;
-const CELL = 14;
+const CELL = 34;
 const FG = 0xf1f1f1ff;
 const MUTED = 0x9da3aaff;
 const BG = 0x000000ff;
@@ -44,9 +44,9 @@ function encodeGridFrame(params: {
     offset += 4;
     for (const cell of row.cells) {
       view.setUint32(offset, cell.ch, true);
-      view.setUint32(offset + 4, cell.fg, true);
-      view.setUint32(offset + 8, cell.bg, true);
-      view.setUint16(offset + 12, cell.style, true);
+      view.setUint32(offset + 24, cell.fg, true);
+      view.setUint32(offset + 28, cell.bg, true);
+      view.setUint16(offset + 32, cell.style, true);
       offset += CELL;
     }
   }
@@ -244,6 +244,7 @@ test("AskUserQuestion prompt renders through the mounted map TerminalCanvas stre
       workspaceUiState: {
         ...store.getState().workspaceUiState,
         workspaceMode: "canvas",
+        terminalRendererMode: "canvas2d",
         primarySidebarCollapsed: true,
         canvasSidebarCollapsed: true,
       },
@@ -308,10 +309,12 @@ test("AskUserQuestion prompt renders through the mounted map TerminalCanvas stre
   const node = page.getByTestId("canvas-terminal-node").filter({ hasText: "arthouse" });
   await expect(node.getByTestId("canvas-terminal-node-workspace")).toHaveText("arthouse");
   await expect(node.getByTestId("canvas-terminal-node-description")).toHaveText("Answering authentication question");
-  await expect(node.getByTestId("canvas-terminal-node-header-title")).toHaveText("Answering authentication question");
-  await expect(node.getByTestId("canvas-terminal-node-now")).toHaveText("Using AskUserQuestion");
+  await expect(node.getByTestId("canvas-terminal-node-header-title")).toHaveText("Asking clarifying questions");
+  await expect(node.getByTestId("canvas-terminal-node-now")).toHaveText("Asking clarifying questions");
 
-  const canvas = node.locator("canvas.terminal-canvas");
+  // The selected map terminal is portaled into the fixed interaction overlay,
+  // so its live canvas is intentionally outside the node's DOM subtree.
+  const canvas = page.locator("canvas.terminal-canvas");
   await expect(canvas).toBeVisible();
   await expect.poll(async () => canvas.evaluate((element) => {
     const canvas = element as HTMLCanvasElement;

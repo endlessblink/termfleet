@@ -14,6 +14,40 @@ test.use({
   },
 });
 
+test("combining marks stay attached to one terminal cell", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+
+  const result = await page.evaluate(async () => {
+    const { decodeFrame, HEADER_BYTES, CELL_BYTES } = await import("/src/lib/gridDiff.ts");
+    const { GridBuffer } = await import("/src/lib/gridBuffer.ts");
+    const view = new DataView(new ArrayBuffer(HEADER_BYTES + 4 + CELL_BYTES));
+    view.setUint8(0, 2);
+    view.setUint16(1, 1, true);
+    view.setUint16(3, 1, true);
+    view.setUint16(15, 1, true);
+    view.setUint16(HEADER_BYTES, 0, true);
+    view.setUint16(HEADER_BYTES + 2, 1, true);
+    const cell = HEADER_BYTES + 4;
+    view.setUint32(cell, 0x05e9, true); // Hebrew shin.
+    view.setUint8(cell + 4, 2);
+    view.setUint32(cell + 8, 0x05b8, true); // Qamats.
+    view.setUint32(cell + 12, 0x05c1, true); // Shin dot.
+    view.setUint32(cell + 24, 0xd0d0d0ff, true);
+    view.setUint32(cell + 28, 0x000000ff, true);
+
+    const buffer = new GridBuffer();
+    buffer.apply(decodeFrame(view.buffer));
+    const renderedCell = buffer.toSnapshot().cells[0]?.[0]?.c ?? "";
+    return {
+      text: renderedCell,
+      columns: buffer.cols,
+      scalars: Array.from(renderedCell).length,
+    };
+  });
+
+  expect(result).toEqual({ text: "שָׁ", columns: 1, scalars: 3 });
+});
+
 test("decode + apply + partial render of a binary diff", async ({ page }) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
 
@@ -26,7 +60,7 @@ test("decode + apply + partial render of a binary diff", async ({ page }) => {
     );
 
     const HEADER = 17;
-    const CELL = 14;
+    const CELL = 34;
     const cols = 4;
     const rows = 2;
 
@@ -57,9 +91,9 @@ test("decode + apply + partial render of a binary diff", async ({ page }) => {
         off += 4;
         for (const c of row.cells) {
           view.setUint32(off, c.ch, true);
-          view.setUint32(off + 4, c.fg, true);
-          view.setUint32(off + 8, c.bg, true);
-          view.setUint16(off + 12, c.style, true);
+          view.setUint32(off + 24, c.fg, true);
+          view.setUint32(off + 28, c.bg, true);
+          view.setUint16(off + 32, c.style, true);
           off += CELL;
         }
       }
@@ -174,7 +208,7 @@ test("full sync is authoritative and clears stale same-size buffer state", async
     const { GridBuffer } = await import("/src/lib/gridBuffer.ts");
 
     const HEADER = 17;
-    const CELL = 14;
+    const CELL = 34;
     const cols = 5;
     const rows = 3;
     const FG = 0xd0d0d0ff;
@@ -209,9 +243,9 @@ test("full sync is authoritative and clears stale same-size buffer state", async
         off += 4;
         for (const c of row.cells) {
           view.setUint32(off, c.ch, true);
-          view.setUint32(off + 4, c.fg, true);
-          view.setUint32(off + 8, c.bg, true);
-          view.setUint16(off + 12, c.style, true);
+          view.setUint32(off + 24, c.fg, true);
+          view.setUint32(off + 28, c.bg, true);
+          view.setUint16(off + 32, c.style, true);
           off += CELL;
         }
       }
@@ -265,7 +299,7 @@ test("malformed binary frames fail explicitly before mutating the grid buffer", 
     const { GridBuffer } = await import("/src/lib/gridBuffer.ts");
 
     const HEADER = 17;
-    const CELL = 14;
+    const CELL = 34;
     const FG = 0xd0d0d0ff;
     const BLACK = 0x000000ff;
     const blank = { ch: 0, fg: FG, bg: BLACK, style: 0 };
@@ -301,9 +335,9 @@ test("malformed binary frames fail explicitly before mutating the grid buffer", 
         off += 4;
         for (const c of row.cells) {
           view.setUint32(off, c.ch, true);
-          view.setUint32(off + 4, c.fg, true);
-          view.setUint32(off + 8, c.bg, true);
-          view.setUint16(off + 12, c.style, true);
+          view.setUint32(off + 24, c.fg, true);
+          view.setUint32(off + 28, c.bg, true);
+          view.setUint16(off + 32, c.style, true);
           off += CELL;
         }
       }
