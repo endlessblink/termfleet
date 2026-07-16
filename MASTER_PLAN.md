@@ -1714,6 +1714,13 @@ Hard constraints (carried forward): no optimistic local echo / no PTY echo
 suppression. Keep xterm.js behind a flag as the working fallback until the canvas
 renderer passes a TUI-correctness + latency bar, then delete it (TC-017g).
 
+- DONE (2026-07-17): Recovered the stale no-echo regression onto current main and
+  adapted it to the daemon-owned detached PTY API. The test disables TTY echo before
+  accepting a password, proves the program receives the secret, and proves the terminal
+  paints it exactly once rather than echoing the typed bytes. Proof:
+  `XDG_DATA_HOME=/tmp/termfleet-no-echo-tests CARGO_BUILD_JOBS=1 cargo test
+  password_prompt_does_not_echo_typed_input --lib -- --test-threads=1` passed 1/1.
+
 Crate decision: **`alacritty_terminal` (v0.22+)**, used headless. Feed it PTY
 bytes (`process_new_bytes`), read its grid (`grid().display_iter()`); it must NOT
 own the PTY — the existing daemon stays the PTY authority. Rejected: `vt100`
