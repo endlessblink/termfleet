@@ -85,6 +85,7 @@ const TRANSIENT_ATTACH_RETRY_DELAYS_MS = [150, 400, 900];
 // rendering with whatever faces resolved (fallback metrics). Guards against a
 // stalled WebKitGTK font load blanking the terminal indefinitely.
 const FONT_LOAD_TIMEOUT_MS = 1500;
+const MAP_PROJECTION_MAX_DPR = 1.25;
 const GTK_TERMINAL_CLIPBOARD_SHORTCUT_EVENT = "terminal-workspace-gtk-clipboard-shortcut";
 
 const DEFAULT_TERMINAL_MODES = {
@@ -140,9 +141,9 @@ interface TerminalCanvasProps {
   cols?: number;
   rows?: number;
   theme?: RenderTheme;
-  // Backing-store supersample factor. Map nodes (under the canvas CSS scale()
-  // transform) pass 2 so glyphs stay crisp when the compositor scales the bitmap;
-  // split panes leave it 1. Constant per mount — see the effect's dpr note.
+  // Backing-store supersample factor. Map nodes can pass a zoom-aware factor so
+  // glyphs stay readable under CSS scale(); split panes leave it 1. Constant per
+  // mount — see the effect's dpr note.
   renderScale?: number;
   // Read-only map projection. When true and the session is in an interactive TUI
   // mode, the grid/PTY is NOT shrunk to the node; it stays at its working width and
@@ -190,6 +191,7 @@ export function TerminalCanvas({
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const daemonInputQueueRef = useRef<DaemonInputQueue | null>(null);
   const scrollToBottomPendingRef = useRef(false);
+  const lastInputAtRef = useRef(0);
   const pasteShortcutArmedUntilRef = useRef(0);
   // Guards against two overlapping Ctrl+Shift+V reads (capture + bubble handlers)
   // racing the async backend clipboard read and double-pasting.
@@ -369,7 +371,8 @@ export function TerminalCanvas({
     // sets style.width from cellWidth, not dpr), so a 2x renderScale just packs 2x
     // more device pixels behind the same on-screen size — crisp under CSS scale().
     // renderScale is constant per mount, so it's safe in this effect's deps.
-    const dpr = (window.devicePixelRatio || 1) * Math.max(1, renderScale);
+    const requestedDpr = (window.devicePixelRatio || 1) * Math.max(1, renderScale);
+    const dpr = mapProjection ? Math.min(requestedDpr, MAP_PROJECTION_MAX_DPR) : requestedDpr;
     const metrics = measureCell(FONT_FAMILY, FONT_SIZE_PX, dpr, LINE_HEIGHT, FONT_WEIGHT_BOOST_PX);
     // Shared across all terminal instances at this metrics identity — do not
     // dispose on unmount (see getSharedAtlas).
@@ -383,6 +386,8 @@ export function TerminalCanvas({
     let visibleContentSeen = false;
     let refreshTimer: ReturnType<typeof setTimeout> | null = null;
     let blankGuardTimer: ReturnType<typeof setTimeout> | null = null;
+    let renderThrottleTimer: ReturnType<typeof setTimeout> | null = null;
+    let lastRenderAt = 0;
     let reusedSession = false;
     let legacyPromptRepairSent = false;
     let renderScheduled = false;
@@ -400,11 +405,27 @@ export function TerminalCanvas({
     };
 
     const scheduleRender = () => {
+      const interactiveRender = performance.now() - lastInputAtRef.current < 120;
+      if (mapProjection && !pendingFullRender) {
+        const now = performance.now();
+        const minFrameGapMs = interactiveRender ? 0 : 125;
+        const waitMs = minFrameGapMs - (now - lastRenderAt);
+        if (waitMs > 0) {
+          if (renderThrottleTimer === null) {
+            renderThrottleTimer = setTimeout(() => {
+              renderThrottleTimer = null;
+              scheduleRender();
+            }, waitMs);
+          }
+          return;
+        }
+      }
       if (renderScheduled) return;
       renderScheduled = true;
       requestAnimationFrame(() => {
         if (disposed) return;
         renderScheduled = false;
+        lastRenderAt = performance.now();
         const full = pendingFullRender;
         const rowsToRender = new Set(pendingRenderRows);
         pendingFullRender = false;
@@ -421,11 +442,22 @@ export function TerminalCanvas({
           id: sessionId,
           full,
           changedRows: rowsToRender.size,
+          interactive: interactiveRender,
         });
         traceTerminalLatency("frontend.canvas.render.raf", {
           id: sessionId,
           full,
           changedRows: rowsToRender.size,
+          interactive: interactiveRender,
+        });
+        requestAnimationFrame(() => {
+          if (disposed) return;
+          traceTerminalLatency("frontend.canvas.after_paint", {
+            id: sessionId,
+            full,
+            changedRows: rowsToRender.size,
+            interactive: interactiveRender,
+          });
         });
         syncOverlaySize();
         if (mapProjection && modesRef.current.altScreen) {
@@ -461,6 +493,7 @@ export function TerminalCanvas({
           full: frame.full,
           changedRows: changed.size,
           bytes: payload.byteLength,
+          interactive: performance.now() - lastInputAtRef.current < 120,
         });
       } catch (error) {
         const message = `Terminal grid diff failed: ${String(error)}`;
@@ -487,24 +520,27 @@ export function TerminalCanvas({
         firstFrameWaitersRef.current = [];
         for (const resolve of waiters) resolve();
       }
-      for (const row of changed) {
-        pendingRenderRows.add(row);
-      }
-      pendingFullRender = pendingFullRender || frame.full;
-      visibleContentSeen =
-        visibleContentSeen ||
-        (frame.full
-          ? buffer.cells.some((row) => row.some((cell) => cell.c.trim() !== ""))
-          : [...changed].some((row) =>
-              buffer.cells[row]?.some((cell) => cell.c.trim() !== "")
-            ));
-      if (onOutputRef.current) {
-        const changedText = [...changed]
-          .sort((a, b) => a - b)
-          .map((row) => buffer.cells[row]?.map((cell) => cell.c).join("").trimEnd() ?? "")
-          .filter(Boolean)
-          .join("\n");
-        if (changedText) onOutputRef.current(changedText);
+      const hasRenderableChange = frame.full || changed.size > 0;
+      if (hasRenderableChange) {
+        for (const row of changed) {
+          pendingRenderRows.add(row);
+        }
+        pendingFullRender = pendingFullRender || frame.full;
+        visibleContentSeen =
+          visibleContentSeen ||
+          (frame.full
+            ? buffer.cells.some((row) => row.some((cell) => cell.c.trim() !== ""))
+            : [...changed].some((row) =>
+                buffer.cells[row]?.some((cell) => cell.c.trim() !== "")
+              ));
+        if (onOutputRef.current && changed.size > 0) {
+          const changedText = [...changed]
+            .sort((a, b) => a - b)
+            .map((row) => buffer.cells[row]?.map((cell) => cell.c).join("").trimEnd() ?? "")
+            .filter(Boolean)
+            .join("\n");
+          if (changedText) onOutputRef.current(changedText);
+        }
       }
       if (reusedSession && firstFrame && !legacyPromptRepairSent) {
         const snapshot = buffer.toSnapshot();
@@ -514,7 +550,7 @@ export function TerminalCanvas({
           invoke("daemon_write_session", { id: sessionId, data: "\x0c" }).catch(console.error);
         }
       }
-      scheduleRender();
+      if (hasRenderableChange) scheduleRender();
       // Keep the map node fitted to the current mode: re-fit the frozen canvas
       // after a full sync (which resets canvas size), and switch freeze/reflow
       // when the inner app enters/leaves a true alt-screen TUI mode. Mouse-report
@@ -827,6 +863,7 @@ export function TerminalCanvas({
       cancelSelectionAutoScroll();
       if (refreshTimer !== null) clearTimeout(refreshTimer);
       if (blankGuardTimer !== null) clearTimeout(blankGuardTimer);
+      if (renderThrottleTimer !== null) clearTimeout(renderThrottleTimer);
       unregisterExitWatch(sessionId);
       if (resizeTimer !== null) clearTimeout(resizeTimer);
       daemonInputQueueRef.current?.dispose();
@@ -850,6 +887,7 @@ export function TerminalCanvas({
   const send = (data: string, seqId = nextTerminalInputSequence(), source = "canvas-send") => {
     onInputData?.(data);
     scheduleScrollToBottom();
+    lastInputAtRef.current = performance.now();
     let queue = daemonInputQueueRef.current;
     if (!queue) {
       queue = createDaemonInputQueue({

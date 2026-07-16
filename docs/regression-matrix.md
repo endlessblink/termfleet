@@ -115,8 +115,11 @@ Playwright suite; the per-row specs are the precise guards.
    the copied payload is not overwritten by destination focus. This is the only guard that would
    have caught the text-paste and map/TUI-to-TUI runtime regressions — source
    contracts lock wiring but not GTK/WebKit/runtime focus behavior.
-2. **Typing-lag has no UI-level assertion (2.7)** — only backend latency. A
-   key-to-pixel trace threshold in a Playwright run would guard perceived lag.
+2. **Typing-lag has a live guard but should become cheaper (2.7)** — backend
+   latency remains covered by `verify:daemon-latency`; the map surface now has
+   `verify:map-terminal-latency:live`, which drives a private Tauri/Xvfb run and
+   gates both internal canvas trace buckets and external screenshot pixel
+   latency. Keep working toward a faster headless/pixel harness for routine CI.
 3. **Map-node freeze-path heuristic under-covered (4.2)** — the
    reflow-on-grow/freeze-on-shrink decision (`mapNodeLayoutMode`) deserves a unit
    test independent of pixel rendering.

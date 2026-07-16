@@ -57,6 +57,9 @@ const releaseGate = readFileSync(join(root, "scripts/verify-release.sh"), "utf8"
 const standaloneDaemonSmoke = readFileSync(join(root, "scripts/verify-standalone-daemon-smoke.sh"), "utf8");
 const evidenceBundle = readFileSync(join(root, "scripts/export-evidence-bundle.mjs"), "utf8");
 const evidenceBundleSpec = readFileSync(join(root, "scripts/verify-evidence-bundle.mjs"), "utf8");
+const latencyTraceSummary = readFileSync(join(root, "scripts/summarize-terminal-latency-trace.mjs"), "utf8");
+const mapTerminalLatencyVerifier = readFileSync(join(root, "scripts/verify-map-terminal-latency.mjs"), "utf8");
+const mapTerminalLatencyLive = readFileSync(join(root, "scripts/verify-map-terminal-latency-live.sh"), "utf8");
 const canvasLiveSmoke = readFileSync(join(root, "scripts/verify-canvas-live.sh"), "utf8");
 const askUserQuestionLiveSmoke = readFileSync(join(root, "scripts/verify-ask-user-question-live.sh"), "utf8");
 const realDevWindowSmoke = readFileSync(join(root, "scripts/verify-real-dev-window.sh"), "utf8");
@@ -269,6 +272,21 @@ const checks = [
       /const shouldMountTerminal = node\.type === "terminal" && live && !showTerminalPreview;/.test(magicCanvas) &&
       /const MAX_LIVE_TERMINALS = \d+;/.test(magicCanvas) &&
       /const liveNodeIds = useMemo\(/.test(magicCanvas) &&
+      /const selectedTerminalNodeId = selectedIds\.find/.test(magicCanvas) &&
+      /const primaryLiveNodeId = selectedTerminalNodeId \?\? activeTabNodeId;/.test(magicCanvas) &&
+      /const isAlwaysLive = node\.id === primaryLiveNodeId;/.test(magicCanvas) &&
+      !/node\.id === primarySelectedNodeId\s*\|\|/.test(magicCanvas) &&
+      /const shouldUseNativeSplitForInteraction = false;/.test(magicCanvas) &&
+      /terminal cards must not degrade into split-pane activation cards/.test(magicCanvas) &&
+      /data-testid="canvas-terminal-overlay-layer"/.test(magicCanvas) &&
+      /data-testid="canvas-terminal-live-overlay"/.test(magicCanvas) &&
+      /data-testid="canvas-terminal-overlay-placeholder"/.test(magicCanvas) &&
+      /window\.dispatchEvent\(new Event\("termfleet-map-terminal-overlay-sync"\)\);/.test(magicCanvas) &&
+      !/summarizeAgentStatus\(\{/.test(magicCanvas) &&
+      !/const statusEndpointConfigured/.test(magicCanvas) &&
+      /if \(standalone\) return;/.test(terminalComponent) &&
+      /if \(canvasMode\) return;/.test(terminalComponent) &&
+      !/if \(canvasMode \|\| !containerRef\.current\) return;/.test(terminalComponent) &&
       /fn spawn_shared_emitter/.test(vtGrid) &&
       /fn run_shared_emitter/.test(vtGrid) &&
       !/name\(format!\("vt-emit-\{id\}"\)\)/.test(vtGrid) &&
@@ -415,11 +433,25 @@ const checks = [
   },
   {
     ok: /const FOCUS_TERMINAL_ZOOM = 1;/.test(magicCanvas) &&
-      /const MAP_TERMINAL_RENDER_SCALE = 2;/.test(magicCanvas) &&
-      /renderScale=\{MAP_TERMINAL_RENDER_SCALE\}/.test(magicCanvas) &&
-      !/terminalRenderScaleForZoom/.test(magicCanvas) &&
+      /const MAP_TERMINAL_MAX_RENDER_SCALE = 2;/.test(magicCanvas) &&
+      /function mapTerminalRenderScaleForZoom\(zoom: number\)/.test(magicCanvas) &&
+      /Math\.min\(MAP_TERMINAL_MAX_RENDER_SCALE, Math\.max\(1, zoom\)\)/.test(magicCanvas) &&
+      /renderScale=\{shouldOverlayTerminal \? 1 : mapTerminalRenderScaleForZoom\(zoom\)\}/.test(magicCanvas) &&
       !/activeTerminalContent/.test(magicCanvas) &&
       /imageRendering: "auto"/.test(terminalCanvas) &&
+      /const MAP_PROJECTION_MAX_DPR = 1\.25;/.test(terminalCanvas) &&
+      /const requestedDpr = \(window\.devicePixelRatio \|\| 1\) \* Math\.max\(1, renderScale\);/.test(terminalCanvas) &&
+      /const dpr = mapProjection \? Math\.min\(requestedDpr, MAP_PROJECTION_MAX_DPR\) : requestedDpr;/.test(terminalCanvas) &&
+      /frontend\.canvas\.after_paint/.test(terminalCanvas) &&
+      /"verify:map-terminal-latency": "node scripts\/verify-map-terminal-latency\.mjs"/.test(packageJson) &&
+      /"verify:map-terminal-latency:live": "scripts\/verify-map-terminal-latency-live\.sh"/.test(packageJson) &&
+      /process\.argv\.slice\(2\)/.test(mapTerminalLatencyVerifier) &&
+      /MAP_TERMINAL_PIXEL_LATENCY/.test(mapTerminalLatencyLive) &&
+      /pixel-latency-report\.json/.test(mapTerminalLatencyLive) &&
+      /TERMINAL_WORKSPACE_TRACE_LATENCY=1/.test(mapTerminalLatencyLive) &&
+      /XDG_RUNTIME_DIR="\$RUN_DIR"/.test(mapTerminalLatencyLive) &&
+      /XDG_DATA_HOME="\$DATA_DIR"/.test(mapTerminalLatencyLive) &&
+      /canvas_keydown_to_after_paint/.test(latencyTraceSummary) &&
       !/willChange: "transform"/.test(magicCanvas) &&
       /function snapTerminalPixel/.test(magicCanvas) &&
       /snapTerminalPixel\(nextX, node\.type, nextZoom\)/.test(magicCanvas) &&
@@ -892,7 +924,7 @@ const checks = [
       /daemonOutputChannelRef\.current = outputChannel/.test(usePty) &&
       /daemonSubscriberIdRef/.test(usePty) &&
       /DAEMON_INPUT_EVENT = "terminal-workspace-daemon-input";/.test(daemonInputQueue) &&
-      /emit\(DAEMON_INPUT_EVENT, \{ id, data, seqIds \}\)/.test(daemonInputQueue) &&
+      /sendEvent\(DAEMON_INPUT_EVENT, \{ id, data, seqIds \}\)/.test(daemonInputQueue) &&
       /createDaemonInputQueue/.test(usePty) &&
       /source: "xterm-onData"/.test(usePty) &&
       /activeInputListeners/.test(usePty) &&
