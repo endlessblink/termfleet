@@ -61,7 +61,7 @@ Create `tests/terminal-header-view-model.spec.ts`:
 import { expect, test } from "@playwright/test";
 import { buildShellTerminalHeaderViewModel } from "../src/lib/terminalHeaderViewModel";
 
-const flowStatePath = "/media/endlessblink/data/my-projects/ai-development/productivity/flow-state";
+const flowStatePath = "/workspace/productivity/flow-state";
 
 test("uses project root folder instead of parent category workspace", () => {
   const header = buildShellTerminalHeaderViewModel({
