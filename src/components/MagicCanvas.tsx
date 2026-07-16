@@ -54,6 +54,8 @@ import { activityAddsInfo } from "../lib/terminalHeaderViewModel";
 import { badgeForAttention } from "../lib/terminalAttention";
 import { paneBadgeAttention } from "../lib/sessionStatus";
 import { stableHeader } from "../lib/stableHeader";
+import { agentProviderIdentity } from "../lib/agentProviderIdentity";
+import { AgentProviderIdentity } from "./AgentProviderIdentity";
 
 type CanvasRect = {
   minX: number;
@@ -2488,6 +2490,8 @@ function CanvasNodeViewImpl({
     nodeTitle: node.title,
   });
   const terminalStatusSummary = linkedTerminal?.statusSummary;
+  const terminalAgentProvider = workstream?.provider ?? linkedTerminal?.agentProvider ?? terminalStatusSummary?.provider;
+  const terminalAgentLabel = agentProviderIdentity(terminalAgentProvider);
   const directlyBoundTask = node.taskBinding
     ? rootTasks.find((task) => task.id.toLowerCase() === node.taskBinding?.taskId.toLowerCase())
     : undefined;
@@ -3222,6 +3226,11 @@ function CanvasNodeViewImpl({
               <span style={styles.workspacePill} data-testid="canvas-agent-node-workspace" title={workspaceLabel}>
                 {workspaceLabel}
               </span>
+              {terminalAgentLabel && (
+                <span style={styles.agentStatusChip} data-testid="canvas-terminal-agent-provider">
+                  <AgentProviderIdentity provider={terminalAgentProvider} />
+                </span>
+              )}
             </div>
             <div style={styles.agentWorkingLine} data-testid="canvas-agent-working-on">
               <span style={styles.agentStatusLabel}>Working on</span>
@@ -3269,6 +3278,11 @@ function CanvasNodeViewImpl({
               <span style={styles.workspacePill} data-testid="canvas-terminal-node-workspace" title={workspaceLabel}>
                 {workspaceLabel}
               </span>
+              {terminalAgentLabel && (
+                <span style={styles.agentStatusChip} data-testid="canvas-terminal-agent-provider">
+                  <AgentProviderIdentity provider={terminalAgentProvider} />
+                </span>
+              )}
               <span
                 style={{
                   ...styles.attentionBadge,

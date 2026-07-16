@@ -46,7 +46,7 @@ const READER_THREAD_STACK_BYTES: usize = 256 * 1024;
 struct PtyEntry {
     master: Box<dyn MasterPty + Send>,
     writer: Box<dyn Write + Send>,
-    child: Box<dyn Child + Send + Sync>,
+    child: Arc<Mutex<Box<dyn Child + Send + Sync>>>,
     output: Arc<Mutex<PtyOutputBuffer>>,
     subscribers: Arc<Mutex<Vec<PtySubscriber>>>,
     initial_cwd: Option<String>,
@@ -64,38 +64,49 @@ struct PtyEntry {
     reader_stop: Arc<AtomicBool>,
     reader: Option<JoinHandle<()>>,
     last_exit: Arc<Mutex<Option<PtyExitStatus>>>,
+    ended: Arc<AtomicBool>,
 }
 
 impl PtyEntry {
     /// Stop the reader thread and reap the child. Idempotent.
     fn shutdown(&mut self, reason: &str, events: &Arc<Mutex<Vec<PtySessionEvent>>>, id: &str) {
         self.reader_stop.store(true, Ordering::Relaxed);
+        if self.ended.load(Ordering::Acquire) {
+            if let Some(handle) = self.reader.take() {
+                let _ = handle.join();
+            }
+            return;
+        }
+        let pid = self.child.lock().unwrap().process_id();
         push_session_event(
             events,
             PtySessionEvent::new(id, "kill-requested")
-                .with_pid(self.child.process_id())
+                .with_pid(pid)
                 .with_reason(reason),
         );
-        let _ = self.child.kill();
+        let _ = self.child.lock().unwrap().kill();
         // Dropping all writers/clones of the master closes the PTY master fd, so
         // the reader's blocking read() returns EOF and the loop exits.
         if let Some(handle) = self.reader.take() {
             let _ = handle.join();
         }
-        let exit_status = match self.child.try_wait() {
+        let mut child = self.child.lock().unwrap();
+        let exit_status = match child.try_wait() {
             Ok(Some(status)) => PtyExitStatus::from(status),
-            Ok(None) => self
-                .child
+            Ok(None) => child
                 .wait()
                 .map(PtyExitStatus::from)
                 .unwrap_or_else(|error| PtyExitStatus::error(error.to_string())),
             Err(error) => PtyExitStatus::error(error.to_string()),
         };
+        drop(child);
         *self.last_exit.lock().unwrap() = Some(exit_status.clone());
+        self.ended.store(true, Ordering::Release);
+        self.subscribers.lock().unwrap().clear();
         push_session_event(
             events,
             PtySessionEvent::new(id, "killed")
-                .with_pid(self.child.process_id())
+                .with_pid(pid)
                 .with_reason(reason)
                 .with_exit_status(exit_status),
         );
@@ -391,13 +402,27 @@ impl PtyManager {
         rows: Option<u16>,
     ) -> Result<(String, bool), String> {
         let id = id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-        if self.ptys.lock().unwrap().contains_key(&id) {
-            if let Some(dir) = &self.persist_dir {
-                write_agent_restore_status(dir, &id, AgentRestoreStatus::LiveAttached, None);
+        let ended_entry = {
+            let mut ptys = self.ptys.lock().unwrap();
+            match ptys.get(&id) {
+                Some(entry) if entry.ended.load(Ordering::Acquire) => ptys.remove(&id),
+                Some(_) => {
+                    if let Some(dir) = &self.persist_dir {
+                        write_agent_restore_status(
+                            dir,
+                            &id,
+                            AgentRestoreStatus::LiveAttached,
+                            None,
+                        );
+                    }
+                    return Ok((id, true));
+                }
+                None => None,
             }
-            return Ok((id, true));
+        };
+        if let Some(mut entry) = ended_entry {
+            entry.shutdown("replace naturally ended session", &self.session_events, &id);
         }
-
         // A persisted checkpoint for this id means the original shell died with a
         // previous daemon (dev relaunch, OOM) or the machine rebooted. Restore the
         // session so it comes back *fully*: the saved scrollback is replayed into
@@ -524,6 +549,7 @@ impl PtyManager {
         // Spawn the child process on the slave side
         let child = pair.slave.spawn_command(cmd).map_err(|e| e.to_string())?;
         let child_pid = child.process_id();
+        let child = Arc::new(Mutex::new(child));
         push_session_event(
             &self.session_events,
             PtySessionEvent::new(&id, "spawned")
@@ -586,6 +612,10 @@ impl PtyManager {
         let reader_stop = Arc::new(AtomicBool::new(false));
         let reader_stop_thread = reader_stop.clone();
         let last_exit: Arc<Mutex<Option<PtyExitStatus>>> = Arc::new(Mutex::new(None));
+        let last_exit_reader = last_exit.clone();
+        let ended = Arc::new(AtomicBool::new(false));
+        let ended_reader = ended.clone();
+        let child_reader = child.clone();
         let reader_events = self.session_events.clone();
         let reader_event_id = id.clone();
         let reader_pid = child_pid;
@@ -641,7 +671,28 @@ impl PtyManager {
                         }
                     }
                 };
-                if let Some(event) = end_event {
+                if let Some(mut event) = end_event {
+                    if !reader_stop_thread.load(Ordering::Relaxed) {
+                        let mut child = child_reader.lock().unwrap();
+                        let exit_status = match child.try_wait() {
+                            Ok(Some(status)) => PtyExitStatus::from(status),
+                            Ok(None) => {
+                                if event.kind != "eof" {
+                                    let _ = child.kill();
+                                }
+                                child
+                                    .wait()
+                                    .map(PtyExitStatus::from)
+                                    .unwrap_or_else(|error| PtyExitStatus::error(error.to_string()))
+                            }
+                            Err(error) => PtyExitStatus::error(error.to_string()),
+                        };
+                        drop(child);
+                        *last_exit_reader.lock().unwrap() = Some(exit_status.clone());
+                        subscribers_reader.lock().unwrap().clear();
+                        ended_reader.store(true, Ordering::Release);
+                        event = event.with_exit_status(exit_status);
+                    }
                     trace_pty(
                         "pty.session.event",
                         format!(
@@ -673,6 +724,7 @@ impl PtyManager {
                 reader_stop,
                 reader: Some(reader_handle),
                 last_exit,
+                ended,
             };
             loser.shutdown(
                 "duplicate stable session lost creation race",
@@ -696,6 +748,7 @@ impl PtyManager {
                 reader_stop,
                 reader: Some(reader_handle),
                 last_exit,
+                ended,
             },
         );
 
@@ -811,6 +864,8 @@ impl PtyManager {
             .ok_or_else(|| format!("PTY {} not found", id))?;
         let pid = entry
             .child
+            .lock()
+            .unwrap()
             .process_id()
             .ok_or_else(|| "Cannot get process ID".to_string())?;
         let link = format!("/proc/{}/cwd", pid);
@@ -872,7 +927,7 @@ impl PtyManager {
         ptys.iter()
             .map(|(id, entry)| PtySessionSummary {
                 id: id.clone(),
-                pid: entry.child.process_id(),
+                pid: entry.child.lock().unwrap().process_id(),
                 initial_cwd: entry.initial_cwd.clone(),
                 command: entry.command.clone(),
                 scrollback_bytes: entry.output.lock().unwrap().data.len(),
@@ -2451,6 +2506,64 @@ mod tests {
         assert_eq!(sessions[0].initial_cwd.as_deref(), Some("/tmp"));
 
         manager.kill(&id).expect("kill detached PTY");
+    }
+
+    #[test]
+    fn natural_exit_is_reaped_reported_and_disconnects_subscribers() {
+        let manager = PtyManager::new();
+        let id = "detached-natural-exit-test".to_string();
+
+        manager
+            .ensure_detached(
+                Some(id.clone()),
+                Some("/tmp".to_string()),
+                Some("printf natural-exit-marker".to_string()),
+                None,
+                None,
+            )
+            .expect("spawn short-lived PTY");
+        let receiver = manager
+            .subscribe(&id, "natural-exit-subscriber".to_string())
+            .expect("subscribe before exit");
+
+        let mut last_exit = None;
+        for _ in 0..80 {
+            last_exit = manager
+                .list_sessions()
+                .into_iter()
+                .find(|session| session.id == id)
+                .and_then(|session| session.last_exit);
+            if last_exit.is_some() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(25));
+        }
+
+        let exit = last_exit.expect("natural exit should be reported");
+        assert!(exit.success, "short-lived command should exit successfully");
+        assert_eq!(exit.code, 0);
+        while receiver.try_recv().is_ok() {}
+        assert!(
+            matches!(
+                receiver.try_recv(),
+                Err(std::sync::mpsc::TryRecvError::Disconnected)
+            ),
+            "natural exit should release subscribers"
+        );
+
+        let (restarted, reused) = manager
+            .ensure_detached(
+                Some(id.clone()),
+                Some("/tmp".to_string()),
+                Some("cat".to_string()),
+                None,
+                None,
+            )
+            .expect("restart the stable session id");
+        assert_eq!(restarted, id);
+        assert!(!reused, "an ended child must never be reported as reused");
+        assert_eq!(manager.list_sessions()[0].last_exit, None);
+        manager.kill(&id).expect("kill restarted PTY");
     }
 
     #[test]

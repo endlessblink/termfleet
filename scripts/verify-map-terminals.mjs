@@ -725,12 +725,13 @@ const checks = [
     message: "Terminal panes must use stable tab/pane runtime session ids instead of random mount ids.",
   },
   {
-    ok: ptyBackend.includes("if self.ptys.lock().unwrap().contains_key(&id)") &&
+    ok: ptyBackend.includes("entry.ended.load(Ordering::Acquire)") &&
       ptyBackend.includes("return Ok((id, true));") &&
       ptyBackend.includes("if ptys.contains_key(&id)") &&
       /loser\.shutdown\([\s\S]*duplicate stable session lost creation race/.test(ptyBackend) &&
-      ptyBackend.includes("let _ = self.child.kill();"),
-    message: "Backend PTY spawn must reuse existing stable session ids, including concurrent attach races.",
+      ptyBackend.includes("self.child.lock().unwrap().kill()") &&
+      /replace naturally ended session/.test(ptyBackend),
+    message: "Backend PTY spawn must reuse live stable ids, replace ended children, and close concurrent attach races.",
   },
   {
     ok: !/if \(cancelled\) \{[\s\S]*pty_kill/.test(usePty),

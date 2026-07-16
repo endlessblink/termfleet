@@ -5648,6 +5648,28 @@ This lane is split across three tickets — do NOT re-implement the parts alread
   log, and the `verify:agent-terminal-recovery` Playwright smoke (kill daemon → reload →
   live output + input reaches PTY) plus the duplicate-prevention negative regression.
   These are the remaining conditions before TC-036 can be marked DONE.
+- **DONE (2026-07-16 — natural-exit recovery + visible provider identity):** The PTY
+  reader now reaps naturally exited children, records their real exit status, releases
+  subscribers, and refuses to reuse an ended stable pane. An active Codex/Claude pane
+  automatically reconnects the same pane/conversation once after an unexpected exit;
+  completed work and plain shells remain stopped, and a repeated immediate failure does
+  not loop. The terminal header and sessions sidebar now identify the running provider as
+  `GPT` or `CLAUDE`, including agents started by hand from their per-pane sidecar. Proof:
+  `XDG_DATA_HOME=/tmp/termfleet-pty-tests CARGO_BUILD_JOBS=1 cargo test pty::tests --lib
+  -- --test-threads=1` passed 32/32; focused provider/recovery policy tests passed 5/5;
+  the headed identity regression passed 1/1 for GPT and Claude; `npm run build` passed;
+  the live Tauri window was checked against a hand-started GPT pane and showed the
+  provider in both requested locations.
+  Screenshots: `/tmp/termfleet-agent-identity-gpt.png` and
+  `/tmp/termfleet-live-gpt-selected.png`.
+- **DONE (2026-07-16 — stable provider lockups):** Provider identity now lives as
+  durable per-pane state instead of being derived from each transient status summary,
+  so a generic shell fallback cannot make `GPT`/`CLAUDE` blink or disappear. The compact
+  header/sidebar lockup includes a static Claude Code spark or Codex/OpenAI knot with no
+  animation. Proof: provider stability tests passed 3/3; the headed regression passed
+  after deliberately replacing the live status summary with a shell fallback; the map
+  source verifier and frontend build passed. Live screenshot:
+  `/tmp/termfleet-live-stable-agent-logos.png`.
 
 #### Problem
 

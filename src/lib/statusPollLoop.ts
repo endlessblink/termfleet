@@ -14,6 +14,7 @@ import { mainUserAskFromSummary } from "./terminalMainUserAsk";
 import { selectStatusPollTargets, type StatusPollTarget } from "./statusPollTargets";
 import { useWorkspaceStore } from "../stores/workspace";
 import type { Tab, TerminalState, WorkstreamStatus } from "./types";
+import { stableAgentProvider } from "./agentProviderIdentity";
 
 const POLL_INTERVAL_MS = 4_000;
 // Stagger requests so N panes don't burst the summarizer at once.
@@ -119,6 +120,7 @@ async function pollOnce() {
                   ...candidate,
                   ...(taskLineup && taskLineup.length > 0 ? { taskLineup } : {}),
                   statusSummary: result.summary,
+                  agentProvider: stableAgentProvider(candidate.agentProvider, result.summary.provider),
                   statusSummaryUpdatedAt: updatedAt,
                   statusSummarySource: result.source,
                   statusSummaryError: result.error,

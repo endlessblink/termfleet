@@ -156,6 +156,84 @@ async function seedSplitTerminal(
   }, { taskText: noisyTask, activity, includePurpose: options.includePurpose ?? true, outputLines: options.outputLines });
 }
 
+test("running agent identity is visible in the terminal header and sidebar", async ({ page }) => {
+  await mockTauri(page);
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await seedSplitTerminal(page);
+
+  await page.evaluate(() => {
+    type Store = {
+      getState: () => Record<string, any>;
+      setState: (state: Record<string, unknown>) => void;
+    };
+    const store = (window as typeof window & { __termfleetWorkspaceStore?: Store }).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+    const state = store.getState();
+    store.setState({
+      workspaceUiState: {
+        ...state.workspaceUiState,
+        workspaceMode: "canvas",
+        primarySidebarCollapsed: false,
+        canvasSidebarCollapsed: false,
+      },
+      tabs: state.tabs.map((tab: Record<string, any>) => ({
+        ...tab,
+        terminals: tab.terminals.map((terminal: Record<string, any>) => ({
+          ...terminal,
+          agentProvider: "codex",
+          statusSummary: { ...terminal.statusSummary, provider: "codex", status: "working" },
+        })),
+      })),
+    });
+  });
+
+  await expect(page.getByTestId("canvas-terminal-agent-provider")).toHaveText("GPT");
+  await expect(page.getByTestId("sidebar-session-agent-provider")).toContainText("GPT");
+  await expect(page.getByTestId("canvas-terminal-agent-provider").getByTestId("agent-provider-logo-codex")).toBeVisible();
+  await page.screenshot({ path: "/tmp/termfleet-agent-identity-gpt.png" });
+
+  await page.evaluate(() => {
+    type Store = { getState: () => Record<string, any>; setState: (state: Record<string, unknown>) => void };
+    const store = (window as typeof window & { __termfleetWorkspaceStore?: Store }).__termfleetWorkspaceStore!;
+    const state = store.getState();
+    store.setState({
+      tabs: state.tabs.map((tab: Record<string, any>) => ({
+        ...tab,
+        terminals: tab.terminals.map((terminal: Record<string, any>) => ({
+          ...terminal,
+          statusSummary: { ...terminal.statusSummary, provider: "shell" },
+        })),
+      })),
+    });
+  });
+  await expect(page.getByTestId("canvas-terminal-agent-provider")).toHaveText("GPT");
+
+  await page.evaluate(() => {
+    type Store = { getState: () => Record<string, any>; setState: (state: Record<string, unknown>) => void };
+    const store = (window as typeof window & { __termfleetWorkspaceStore?: Store }).__termfleetWorkspaceStore!;
+    const state = store.getState();
+    store.setState({
+      tabs: state.tabs.map((tab: Record<string, any>) => ({
+        ...tab,
+        terminals: tab.terminals.map((terminal: Record<string, any>) => ({
+          ...terminal,
+          agentProvider: "claude",
+          statusSummary: { ...terminal.statusSummary, provider: "claude" },
+        })),
+      })),
+    });
+  });
+
+  await expect(page.getByTestId("canvas-terminal-agent-provider")).toHaveText("CLAUDE");
+  await expect(page.getByTestId("sidebar-session-agent-provider")).toContainText("CLAUDE");
+  await expect(page.getByTestId("canvas-terminal-agent-provider").getByTestId("agent-provider-logo-claude")).toBeVisible();
+  await page.screenshot({ path: "/tmp/termfleet-agent-identity-claude.png" });
+});
+
 test("regular split header rejects noisy scrollback titles and fits the current activity title", async ({ page }) => {
   await mockTauri(page);
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });

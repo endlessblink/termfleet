@@ -81,6 +81,7 @@ export interface TerminalState {
   rows: number;
   status?: TerminalRuntimeStatus;
   reused?: boolean;
+  agentProvider?: AgentProvider;
   previewUrl?: string;
   currentActivity?: string;
   activityKind?: WorkstreamActivityKind;
