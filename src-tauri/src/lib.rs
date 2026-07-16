@@ -55,6 +55,7 @@ pub fn run() {
             commands::daemon_status,
             commands::agent_status_read_sidecar,
             commands::agent_provider_statuses,
+            commands::system_pressure_snapshot,
             commands::workstream_git_context,
             commands::workstream_prepare_dedicated_worktree,
             commands::workstream_remove_dedicated_worktree,
