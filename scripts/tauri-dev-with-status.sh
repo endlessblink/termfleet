@@ -66,7 +66,12 @@ if [[ "$STATUS_WORKER" == *"agent-status-summary-sidecar.mjs"* && -z "${TERMFLEE
 fi
 
 start_status_server() {
-  if [[ "${TERMFLEET_AGENT_STATUS_ENABLE:-0}" != "1" || "${TERMFLEET_AGENT_STATUS_DISABLE:-1}" != "0" ]]; then
+  local cockpit_snapshot_requested=0
+  if [[ "${TERMFLEET_DEV_DIAGNOSTICS_ENABLE:-0}" == "1" && "${TERMFLEET_COCKPIT_SNAPSHOT_ENABLE:-0}" == "1" ]]; then
+    cockpit_snapshot_requested=1
+  fi
+
+  if [[ "$cockpit_snapshot_requested" != "1" && ( "${TERMFLEET_AGENT_STATUS_ENABLE:-0}" != "1" || "${TERMFLEET_AGENT_STATUS_DISABLE:-1}" != "0" ) ]]; then
     kill_if_running "agent-status-summary-server.mjs"
     unset VITE_AGENT_STATUS_SUMMARY_ENDPOINT
     return
@@ -113,8 +118,11 @@ if [[ -n "${TERMFLEET_PANE_ID:-}" && "${TERMFLEET_ALLOW_NESTED_DEV_ENV:-0}" != "
   unset TERMFLEET_AGENT_STATUS_ENABLE
   unset TERMFLEET_AGENT_STATUS_DISABLE
   unset TERMFLEET_AGENT_STATUS_WORKER
-  unset TERMFLEET_COCKPIT_SNAPSHOT_ENABLE
-  unset TERMFLEET_TERMINAL_HEADER_LOG_ENABLE
+  if [[ "${TERMFLEET_ALLOW_NESTED_DEV_DIAGNOSTICS:-0}" != "1" ]]; then
+    unset TERMFLEET_DEV_DIAGNOSTICS_ENABLE
+    unset TERMFLEET_COCKPIT_SNAPSHOT_ENABLE
+    unset TERMFLEET_TERMINAL_HEADER_LOG_ENABLE
+  fi
   unset VITE_AGENT_STATUS_SUMMARY_ENDPOINT
   unset VITE_COCKPIT_SNAPSHOT
   unset VITE_TERMINAL_HEADER_LOG
