@@ -524,7 +524,7 @@ test("terminal map labels can be recolored from the right-click menu", async ({ 
     });
   });
 
-  await page.getByTestId("canvas-terminal-node-header-title").click({ button: "right" });
+  await page.getByTestId("canvas-terminal-status-block").dispatchEvent("contextmenu");
   await page.getByRole("menu", { name: "Terminal label color" }).getByRole("menuitem", { name: "Set terminal label color Amber" }).click();
   await expect(page.getByTestId("canvas-terminal-status-block")).toHaveCSS("border-left-color", "rgb(212, 164, 79)");
 
@@ -724,7 +724,7 @@ test("project emojis identify map terminals by path without using task colors", 
   await expect(page.getByTestId("canvas-terminal-project-emoji").filter({ hasText: "📝" })).toHaveCount(1);
   await expect(page.getByTestId("map-node-project-emoji").filter({ hasText: "🚀" })).toHaveCount(2);
 
-  await page.getByTestId("canvas-terminal-node-header-title").first().click({ button: "right" });
+  await page.getByTestId("canvas-terminal-status-block").first().dispatchEvent("contextmenu");
   await page.getByRole("menu", { name: "Terminal label color" }).getByRole("menuitem", { name: "Set terminal label color Amber" }).click();
   await expect(page.getByTestId("canvas-terminal-project-emoji").filter({ hasText: "🚀" })).toHaveCount(2);
   await expect.poll(async () => page.evaluate(() => {
@@ -879,7 +879,7 @@ test("shift-drag box-selects terminals while regular and middle drags pan the ma
     return store?.getState().canvasState.selectedNodeIds?.sort().join(",");
   })).toBe("node-one,node-two");
 
-  const firstNode = page.locator("[data-magic-canvas-shell] [data-testid='canvas-terminal-node-header']").filter({ hasText: "Build one" });
+  const firstNode = page.locator("[data-magic-canvas-shell] [data-node-id='node-one'] [data-testid='canvas-terminal-node-header']");
   const firstBox = await firstNode.boundingBox();
   if (!firstBox) throw new Error("Selected node header not found");
   await page.mouse.move(firstBox.x + 24, firstBox.y + 18);
@@ -1071,7 +1071,7 @@ test("map remains lightweight with more than 100 terminal nodes at overview zoom
     });
   });
 
-  await expect(page.getByTestId("canvas-terminal-node-header-title")).toHaveCount(120);
+  await expect(page.getByTestId("canvas-terminal-status-block")).toHaveCount(120);
   await expect(page.locator(".terminal-container")).toHaveCount(0);
 });
 
@@ -1991,7 +1991,7 @@ test("Delete closes the selected terminal map node and Ctrl+Z restores it", asyn
     });
   });
 
-  await expect(page.getByTestId("canvas-terminal-node-header-title").filter({ hasText: "Delete me" })).toBeVisible();
+  await expect(page.locator("[data-testid='canvas-terminal-node'][data-node-id='node-delete']")).toBeVisible();
   await page.locator("[data-magic-canvas-shell]").focus();
   await page.keyboard.press("Delete");
 
@@ -3530,8 +3530,8 @@ test("terminal folders reconcile into project rows without moving the map viewpo
     const state = store?.getState();
     return state?.groups.find((group) => group.id === state.activeGroupFilter)?.name;
   })).toBe("docs-site");
-  await expect(sidebar.getByText("Docs shell")).toBeVisible();
-  await expect(sidebar.getByText("TermFleet shell")).not.toBeVisible();
+  await expect(sidebar.getByRole("button", { name: "Open session Docs shell" })).toBeVisible();
+  await expect(sidebar.getByRole("button", { name: "Open session TermFleet shell" })).not.toBeVisible();
   await expect.poll(async () => page.evaluate(() => {
     const store = (window as typeof window & {
       __termfleetWorkspaceStore?: {
@@ -3715,19 +3715,19 @@ test("map sidebar filters operations nodes by visible work state", async ({ page
   })).toBe("service-preview-tab-preview-5177");
 
   await mapPanel.getByTestId("map-filter-failed").click();
-  await expect(mapPanel.getByTestId("map-node-list")).toContainText("Failed build");
-  await expect(mapPanel.getByTestId("map-node-list")).not.toContainText("Active shell");
+  await expect(mapPanel.getByTestId("map-node-list")).toContainText("cargo check failed");
+  await expect(mapPanel.getByTestId("map-node-list")).not.toContainText("npm run dev");
 
   await mapPanel.getByTestId("map-filter-waiting").click();
-  await expect(mapPanel.getByTestId("map-node-list")).toContainText("Waiting agent");
-  await expect(mapPanel.getByTestId("map-node-list")).not.toContainText("Failed build");
+  await expect(mapPanel.getByTestId("map-node-list")).toContainText("Review deploy error");
+  await expect(mapPanel.getByTestId("map-node-list")).not.toContainText("cargo check failed");
 
   await mapPanel.getByTestId("map-filter-testing").click();
-  await expect(mapPanel.getByTestId("map-node-list")).toContainText("Test runner");
-  await expect(mapPanel.getByTestId("map-node-list")).not.toContainText("Waiting agent");
+  await expect(mapPanel.getByTestId("map-node-list")).toContainText("npm test running");
+  await expect(mapPanel.getByTestId("map-node-list")).not.toContainText("Review deploy error");
 
   await mapPanel.getByTestId("map-filter-preview").click();
-  await expect(mapPanel.getByTestId("map-node-list")).toContainText("Preview service");
+  await expect(mapPanel.getByTestId("map-node-list").locator(".workspace-sidebar-row")).toHaveCount(2);
   await expect(mapPanel.getByTestId("map-node-list")).toContainText("Preview localhost");
   await mapPanel.getByText("Preview localhost:5177").hover();
   await mapPanel.getByRole("button", { name: "Close Preview localhost:5177" }).click();
@@ -3752,7 +3752,7 @@ test("map sidebar filters operations nodes by visible work state", async ({ page
     terminalNodeExists: true,
     terminalTabExists: true,
   });
-  await expect(mapPanel.getByTestId("map-node-list")).toContainText("Preview service");
+  await expect(mapPanel.getByTestId("map-node-list").locator(".workspace-sidebar-row")).toHaveCount(1);
   await expect(mapPanel.getByTestId("map-node-list")).not.toContainText("Preview localhost");
   await mapPanel.getByRole("button", { name: "Open http://localhost:5177 on map" }).click();
   await expect(mapPanel.getByTestId("map-local-service-action-status")).toHaveText("Map window opened");
