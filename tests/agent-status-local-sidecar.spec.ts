@@ -77,6 +77,22 @@ test("summaryFromSidecar prefers the current task's activeForm as the title", ()
   expect(texts).toEqual(["done: Find the bug", "in-progress: Fix titles for good"]);
 });
 
+test("summaryFromSidecar keeps the pane provider instead of calling every hand-started agent a shell", () => {
+  const summary = summaryFromSidecar(
+    { provider: "codex", updatedAt: Date.now(), userTask: "Continue the current task" },
+    {
+      task: "Terminal",
+      path: "/repo",
+      now: "Working",
+      status: "working",
+      provider: "shell",
+      confidence: "low",
+    },
+  );
+
+  expect(summary.provider).toBe("codex");
+});
+
 test("summaryFromSidecar falls back to the last completed task when nothing is live", () => {
   const summary = summaryFromSidecar(
     {

@@ -8,6 +8,8 @@ import "@xterm/xterm/css/xterm.css";
 import { useNativeTerminalPane } from "../hooks/useNativeTerminalPane";
 import { usePty } from "../hooks/usePty";
 import { TerminalCanvas } from "./TerminalCanvas";
+import { shouldAutoRecoverAgent } from "../lib/terminalAutoRecovery";
+import { stableAgentProvider } from "../lib/agentProviderIdentity";
 import { syncTerminalLatencyTraceEnv, traceTerminalLatency } from "../lib/terminalLatencyTrace";
 import { refreshProjectRootFromActiveTerminal, useWorkspaceStore } from "../stores/workspace";
 import { agentStatusSummaryInputFromWorkstream, type AgentStatusSummaryInput } from "../lib/agentStatusSummary";
@@ -456,6 +458,10 @@ export function TerminalComponent({
   const [containerElement, setContainerElement] = useState<HTMLDivElement | null>(null);
   const [terminal, setTerminal] = useState<XTerminal | null>(null);
   const [livePtyId, setLivePtyId] = useState<string | null>(null);
+  const [recoveryGeneration, setRecoveryGeneration] = useState(0);
+  const recoveryAttemptedRef = useRef(false);
+  const recoveryRestartTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const recoveryHealthyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const resizeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const outputStatusWindowRef = useRef("");
@@ -552,6 +558,7 @@ export function TerminalComponent({
           rows: terminal?.rows ?? previous?.rows ?? 24,
           status: updates.status ?? previous?.status,
           reused: updates.reused ?? previous?.reused,
+          agentProvider: previous?.agentProvider,
           previewUrl: updates.previewUrl ?? previous?.previewUrl,
           currentActivity: updates.currentActivity ?? previous?.currentActivity,
           activityKind: updates.activityKind ?? previous?.activityKind,
@@ -783,6 +790,7 @@ export function TerminalComponent({
 	                  return {
 	                    ...candidate,
 	                    statusSummary: nextStatusSummary,
+	                    agentProvider: stableAgentProvider(candidate.agentProvider, result.summary.provider),
 	                    statusSummaryUpdatedAt: updatedAt,
 	                    statusSummarySource: result.source,
 	                    statusSummaryError: result.error,
@@ -1117,6 +1125,13 @@ export function TerminalComponent({
     updateWorkstreamRuntime(shouldPreserveWorkstreamOnReady(currentTab?.workstream)
       ? { activity: true }
       : { status: "running", activity: true });
+    if (recoveryAttemptedRef.current) {
+      if (recoveryHealthyTimeoutRef.current) clearTimeout(recoveryHealthyTimeoutRef.current);
+      recoveryHealthyTimeoutRef.current = setTimeout(() => {
+        recoveryAttemptedRef.current = false;
+        recoveryHealthyTimeoutRef.current = null;
+      }, 10_000);
+    }
   }, [paneId, persistAgentRecoveryManifest, tabId, updateTerminalRuntime, updateWorkstreamRuntime]);
 
   const handleStatus = useCallback((status: TerminalRuntimeStatus, details?: { id?: string; error?: string }) => {
@@ -1133,6 +1148,46 @@ export function TerminalComponent({
     const store = useWorkspaceStore.getState();
     const tab = store.tabs.find((candidate) => candidate.id === tabId);
     const previousTerminal = tab?.terminals.find((candidate) => candidate.paneId === paneId);
+    const provider = tab?.workstream?.provider ?? previousTerminal?.agentProvider ?? previousTerminal?.statusSummary?.provider;
+    const taskLineup = tab?.workstream?.taskLineup ?? previousTerminal?.taskLineup;
+    if (
+      canvasMode &&
+      !recoveryAttemptedRef.current &&
+      shouldAutoRecoverAgent({
+        provider,
+        taskStatuses: taskLineup?.map((task) => task.status),
+        terminalStatus: previousTerminal?.statusSummary?.status,
+        workstreamStatus: tab?.workstream?.status,
+        workstreamPhase: tab?.workstream?.phase,
+        durableActivityStatus: previousTerminal?.durableActivity?.status,
+      })
+    ) {
+      recoveryAttemptedRef.current = true;
+      updateTerminalRuntime({
+        id: details.id,
+        status: "starting",
+        error: "The agent stopped unexpectedly. Reconnecting to the same conversation…",
+      });
+      updateWorkstreamRuntime({
+        status: "running",
+        phase: "launching",
+        currentActivity: "Reconnecting to the same conversation",
+        activityKind: "starting",
+        activitySource: "system",
+        activity: true,
+      });
+      store.recordWorkstreamEvent(tabId, {
+        kind: "provider",
+        label: "Recovering interrupted agent",
+        detail: "reconnecting to the same conversation",
+        status: "running",
+      });
+      recoveryRestartTimeoutRef.current = setTimeout(() => {
+        recoveryRestartTimeoutRef.current = null;
+        setRecoveryGeneration((generation) => generation + 1);
+      }, 750);
+      return;
+    }
     const previousActivity = previousTerminal?.durableActivity;
     const activeRunId = previousTerminal?.activeRunId ?? taskRunIdForActivity(previousActivity, `${tabId}:${paneId}`);
     const completedTaskLineup = details.success
@@ -1189,7 +1244,7 @@ export function TerminalComponent({
     ) {
       store.exitImmersiveTerminal();
     }
-  }, [paneId, tabId, updateTerminalRuntime, updateWorkstreamRuntime]);
+  }, [canvasMode, paneId, tabId, updateTerminalRuntime, updateWorkstreamRuntime]);
 
   const handleOutput = useCallback((data: string) => {
     outputStatusWindowRef.current = `${outputStatusWindowRef.current}${data}`.slice(-4000);
@@ -1408,6 +1463,11 @@ export function TerminalComponent({
       store.updatePreviewPaneUrl(tab.id, previewNode.previewPaneId, previewUrl);
     }
   }, [attachToPtyId, livePtyId, paneId, persistAgentRecoveryManifest, runtimeSessionId, tabId, updateTerminalRuntime, updateWorkstreamRuntime]);
+
+  useEffect(() => () => {
+    if (recoveryRestartTimeoutRef.current) clearTimeout(recoveryRestartTimeoutRef.current);
+    if (recoveryHealthyTimeoutRef.current) clearTimeout(recoveryHealthyTimeoutRef.current);
+  }, []);
 
   const { resize, write } = usePty({
     terminal: !canvasMode && isRuntimeVisible && !nativePane.attached ? terminal : null,
@@ -1717,6 +1777,7 @@ export function TerminalComponent({
             command={command}
             renderScale={renderScale}
             mapProjection={mapProjection}
+            recoveryGeneration={recoveryGeneration}
             onReady={handleReady}
             onStatus={handleStatus}
             onOutput={handleOutput}

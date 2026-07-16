@@ -10,6 +10,7 @@
 // scheme MUST stay byte-identical to the node side; parity is enforced by
 // `tests/agent-status-local-sidecar.spec.ts`.
 import type { AgentStatusSummary, AgentStatusSummaryInput } from "./agentStatusSummary";
+import type { AgentProvider } from "./types";
 
 export function fnv(value: unknown): string {
   let hash = 2166136261;
@@ -54,6 +55,7 @@ export function cwdSidecarFileName(cwd: unknown): string {
 const SIDECAR_TTL_MS = 30 * 60 * 1000;
 
 export interface AgentStatusSidecar {
+  provider?: AgentProvider;
   updatedAt?: number;
   now?: string;
   userTask?: string;
@@ -188,6 +190,7 @@ export function summaryFromSidecar(
     currentTask || (userTask && now && now !== "Prompt submitted" ? now : "") || fallback.task;
   return {
     ...fallback,
+    provider: sidecar.provider ?? fallback.provider,
     // Carry the HOOK's own write time so the badge reconciler can tell a live turn (hook
     // firing) from a finished one (hook went silent) — immune to a ticking status bar.
     updatedAt: typeof sidecar?.updatedAt === "number" ? sidecar.updatedAt : fallback.updatedAt,
@@ -207,7 +210,6 @@ export function summaryFromSidecar(
             : todos.length > 0
               ? "idle"
               : fallback.status,
-    provider: fallback.provider,
     confidence: "high",
     tasks: extractedItems(todos.map(todoToTaskText)),
     // These ARE the agent's real task list (captured by the status hook), not

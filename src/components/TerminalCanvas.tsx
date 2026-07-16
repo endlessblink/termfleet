@@ -149,6 +149,7 @@ interface TerminalCanvasProps {
   // the canvas is CSS-scaled to fit, so a wide agent/zellij frame is never reflowed
   // into garbage on a small map node. Plain shells still reflow.
   mapProjection?: boolean;
+  recoveryGeneration?: number;
   // Lifecycle reporting so the workspace store can track the canvas-owned PTY.
   // Without these, tab.terminals is never populated for canvas terminals (the
   // production default), so the status bar shows "0 ptys" and store ops that map
@@ -174,6 +175,7 @@ export function TerminalCanvas({
   theme = DEFAULT_THEME,
   renderScale = 1,
   mapProjection = false,
+  recoveryGeneration = 0,
   onReady,
   onStatus,
   onOutput,
@@ -832,7 +834,7 @@ export function TerminalCanvas({
       observer.disconnect();
       invoke("grid_detach", { id: sessionId, attachToken }).catch(() => {});
     };
-  }, [sessionId, cwd, command, cols, rows, theme, fontsReady, renderScale, mapProjection, dprTick]);
+  }, [sessionId, cwd, command, cols, rows, theme, fontsReady, renderScale, mapProjection, dprTick, recoveryGeneration]);
 
   const scheduleScrollToBottom = () => {
     const buffer = bufferRef.current;

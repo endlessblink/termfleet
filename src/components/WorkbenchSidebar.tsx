@@ -44,6 +44,8 @@ import { MAP_FILTERS, type MapFilter, nodeMatchesMapFilter } from "../lib/mapNod
 import { formatLocalServiceBrief, summarizeLocalServices, type LocalServiceSummary } from "../lib/localServices";
 import { projectBucketsByCanvasPosition } from "../lib/mapNodeOrdering";
 import { useFlipList } from "../hooks/useFlipList";
+import { agentProviderIdentity } from "../lib/agentProviderIdentity";
+import { AgentProviderIdentity } from "./AgentProviderIdentity";
 
 const TERMINAL_COLORS = [
   "#d99a45",
@@ -3285,6 +3287,8 @@ function SessionsPanel({
           });
           const taskMissing = header.sources.goal === "missing" || header.sources.goal === "none";
           const activityMissing = header.sources.activity === "missing";
+          const agentProvider = tab.workstream?.provider ?? terminal?.agentProvider ?? terminal?.statusSummary?.provider;
+          const agentLabel = agentProviderIdentity(agentProvider);
           return (
             <div
               key={tab.id}
@@ -3342,6 +3346,9 @@ function SessionsPanel({
                     />
                     {badgeForAttention(paneBadgeAttention(terminal)).label}
                   </span>
+                  {agentLabel && (
+                    <span data-testid="sidebar-session-agent-provider"> · <AgentProviderIdentity provider={agentProvider} /></span>
+                  )}
                   {" · "}{pathTail(header.fullPath)}
                 </div>
                 <div style={styles.sidebarHeaderLines}>
@@ -5243,6 +5250,8 @@ function MapPanel({
               ? header.sources.goal === "missing" || header.sources.goal === "none"
               : false;
             const activityMissing = header ? header.sources.activity === "missing" : false;
+            const agentProvider = linkedTab?.workstream?.provider ?? liveTerminal?.agentProvider ?? liveTerminal?.statusSummary?.provider;
+            const agentLabel = agentProviderIdentity(agentProvider);
             const showGhost = draggable && dropTarget?.id === node.id && draggingId !== node.id;
             return (
               <Fragment key={node.id}>
@@ -5343,6 +5352,9 @@ function MapPanel({
                           />
                           {badgeForAttention(paneBadgeAttention(liveTerminal)).label}
                         </span>
+                        {agentLabel && (
+                          <span data-testid="sidebar-map-node-agent-provider"> · <AgentProviderIdentity provider={agentProvider} /></span>
+                        )}
                         {" · "}{pathTail(header.fullPath)}
                       </>
                     ) : node.type === "preview" ? (

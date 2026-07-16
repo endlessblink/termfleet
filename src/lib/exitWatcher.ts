@@ -44,12 +44,16 @@ async function poll(): Promise<void> {
   polling = true;
   try {
     const events = await invoke<SessionEvent[]>("daemon_list_session_events");
-    // Latest event per session wins; we only care about registered, unreported ones.
+    // Latest event per session wins. This matters when a stable pane id is
+    // restarted: the new `spawned` event must mask the previous process's EOF.
+    const seenSessions = new Set<string>();
     for (let i = events.length - 1; i >= 0; i -= 1) {
       const event = events[i];
-      if (reported.has(event.id)) continue;
+      if (seenSessions.has(event.id)) continue;
       const cb = callbacks.get(event.id);
-      if (!cb || !isExitKind(event.kind)) continue;
+      if (!cb) continue;
+      seenSessions.add(event.id);
+      if (reported.has(event.id) || !isExitKind(event.kind)) continue;
       reported.add(event.id);
       const code = event.exit_status?.code ?? (event.kind === "read-error" ? 1 : 0);
       const success = event.exit_status?.success ?? event.kind !== "read-error";
