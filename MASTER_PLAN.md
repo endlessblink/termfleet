@@ -5513,6 +5513,26 @@ cwd (matches the "terminals opened in a path should be a project" intent).
   that backend change, then the gated global Claude `TodoWrite` hook (+ `cmd.env("TERMFLEET","1")`
   in `pty.rs`) becomes safe. Until then, the model-extracted list (above) is the path.
 
+### 2026-07-17 operational hardening follow-up (TC-035, TC-048)
+
+- DONE: Cockpit snapshots now keep one bounded per-pane heartbeat, flush changes without
+  duplicate global timers, reject vague prompt/status placeholders as task identity, and
+  keep the Node sidecar and frontend parser behavior in parity. The monitor and target
+  verifier use injected clocks so stale/echo decisions are deterministic. Nested dev
+  launches scrub inherited TermFleet diagnostics unless the diagnostic override is set.
+- DONE: The status bar exposes host pressure only when it is elevated, while normal reads
+  and read failures stay quiet. Browser regressions cover normal, warning, high, and error
+  states.
+- DONE: Map input batching now flushes on a microtask instead of a timer-clamped delay, and
+  the live latency gate isolates interactive frames from intentionally throttled idle map
+  projections. The real desktop run passed with visible pixel latency at 83 ms p95,
+  input dispatch at 1 ms p95, keydown-to-render at 64 ms p95, and diff-to-render at 17 ms
+  p95. Evidence: `npm run verify:map-terminal-latency:live`, `npm run build`,
+  `npm run verify:map-terminals`, and `npx playwright test
+  tests/map-terminal-rendering.spec.ts --reporter=line --max-failures=1` (40/40).
+  Screenshots: `/tmp/tw-map-terminal-latency/20260717-005011-1589807-10841/01-map-boot.png`
+  and `/tmp/tw-map-terminal-latency/20260717-005011-1589807-10841/02-map-after-pixel-typing.png`.
+
 ### TC-035: Per-terminal standalone status (key status by pane, not cwd)
 
 **Priority:** P1
