@@ -4,7 +4,6 @@ import { traceTerminalLatency } from "./terminalLatencyTrace";
 
 export const DAEMON_INPUT_EVENT = "terminal-workspace-daemon-input";
 
-const DAEMON_INPUT_BATCH_MS = 1;
 const DAEMON_IMMEDIATE_INPUT_PATTERN = /[\r\n\u0003\u0004\u0015\u001b]/;
 
 let terminalInputSequence = 0;
@@ -17,6 +16,7 @@ export function nextTerminalInputSequence() {
 interface DaemonInputQueueOptions {
   getId: () => string | null;
   source: string;
+  sendEvent?: (event: string, payload: { id: string; data: string; seqIds: number[] }) => Promise<void>;
   tracePty?: (label: string, details?: Record<string, unknown>) => void;
   onFallbackError?: (error: unknown) => void;
 }
@@ -30,21 +30,22 @@ export interface DaemonInputQueue {
 export function createDaemonInputQueue({
   getId,
   source,
+  sendEvent = emit,
   tracePty,
   onFallbackError,
 }: DaemonInputQueueOptions): DaemonInputQueue {
   let pendingInput = "";
   let pendingSeqIds: number[] = [];
-  let flushTimeout: ReturnType<typeof setTimeout> | null = null;
+  let flushScheduled = false;
+  let flushGeneration = 0;
 
-  const clearFlushTimeout = () => {
-    if (flushTimeout === null) return;
-    clearTimeout(flushTimeout);
-    flushTimeout = null;
+  const clearScheduledFlush = () => {
+    flushScheduled = false;
+    flushGeneration += 1;
   };
 
   const flush = () => {
-    flushTimeout = null;
+    clearScheduledFlush();
     const id = getId();
     if (!id || !pendingInput) return;
 
@@ -68,7 +69,7 @@ export function createDaemonInputQueue({
       data,
     });
 
-    emit(DAEMON_INPUT_EVENT, { id, data, seqIds })
+    sendEvent(DAEMON_INPUT_EVENT, { id, data, seqIds })
       .catch((writeError) => {
         tracePty?.("frontend.daemon.write.emit.failed", {
           id,
@@ -108,20 +109,29 @@ export function createDaemonInputQueue({
     pendingInput += data;
     pendingSeqIds.push(seqId);
     const shouldFlushImmediately = DAEMON_IMMEDIATE_INPUT_PATTERN.test(data);
-    if (shouldFlushImmediately && flushTimeout) {
-      clearFlushTimeout();
+    if (shouldFlushImmediately && flushScheduled) {
+      clearScheduledFlush();
       flush();
       return;
     }
-    if (flushTimeout) return;
-    flushTimeout = setTimeout(flush, shouldFlushImmediately ? 0 : DAEMON_INPUT_BATCH_MS);
+    if (shouldFlushImmediately) {
+      flush();
+      return;
+    }
+    if (flushScheduled) return;
+    flushScheduled = true;
+    const generation = ++flushGeneration;
+    queueMicrotask(() => {
+      if (!flushScheduled || generation !== flushGeneration) return;
+      flush();
+    });
   };
 
   return {
     queue,
     flush,
     dispose: () => {
-      clearFlushTimeout();
+      clearScheduledFlush();
       pendingInput = "";
       pendingSeqIds = [];
     },
