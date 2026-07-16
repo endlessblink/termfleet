@@ -50,6 +50,11 @@ import { useWorkspaceStore } from "../stores/workspace";
 import type { GridSnapshot } from "../lib/gridSnapshot";
 import type { WorkstreamInput } from "../lib/types";
 import { syncTerminalLatencyTraceEnv, traceTerminalLatency } from "../lib/terminalLatencyTrace";
+import {
+  cycleMatchIndex,
+  scrollDeltaToReveal,
+  type SearchMatch,
+} from "../lib/searchOverlay";
 
 // Hack is the terminal buffer font (Warp's default terminal font), bundled via
 // @font-face. Fallbacks keep things sane before the face loads / on other systems.
@@ -231,6 +236,9 @@ export function TerminalCanvas({
   const selectionRef = useRef<SelectionRange | null>(null);
   const anchorRef = useRef<CellPoint | null>(null);
   const selectionPointerIdRef = useRef<number | null>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const searchMatchesRef = useRef<SearchMatch[]>([]);
+  const activeSearchIndexRef = useRef(-1);
   const lastSelectionClientRef = useRef<{ x: number; y: number } | null>(null);
   const autoScrollRafRef = useRef<number | null>(null);
   const autoScrollInFlightRef = useRef(false);
@@ -242,6 +250,11 @@ export function TerminalCanvas({
       : TERMINAL_FONT_FACES.every((face) => document.fonts.check(face)),
   );
   const [attachError, setAttachError] = useState<string | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchMatches, setSearchMatches] = useState<SearchMatch[]>([]);
+  const [activeSearchIndex, setActiveSearchIndex] = useState(-1);
+  const [searchCaseSensitive, setSearchCaseSensitive] = useState(false);
   // TC-047 per-terminal debug HUD state. Updated at render + layout-decision points.
   const hudRef = useRef({
     cols: 0, rows: 0, pxW: 0, pxH: 0, boxW: 0, boxH: 0,
@@ -328,6 +341,12 @@ export function TerminalCanvas({
     autoScrollInFlightRef.current = false;
   };
 
+  useEffect(() => {
+    searchMatchesRef.current = searchMatches;
+    activeSearchIndexRef.current = activeSearchIndex;
+    drawSelectionOverlay();
+  }, [searchMatches, activeSearchIndex]);
+
   const drawSelectionOverlay = () => {
     const overlay = overlayRef.current;
     const buffer = bufferRef.current;
@@ -336,18 +355,33 @@ export function TerminalCanvas({
     if (!octx) return;
     octx.clearRect(0, 0, overlay.width, overlay.height);
     const range = selectionRef.current;
-    if (!range) return;
 
     const { width, height, dpr } = cellRef.current;
     const cellW = width * dpr;
     const cellH = height * dpr;
-    octx.fillStyle = "rgba(90, 140, 220, 0.35)";
-    for (let row = 0; row < buffer.rows; row += 1) {
-      const span = visibleRowSpan(range, row, buffer.displayOffset, buffer.cols);
-      if (!span) continue;
-      const x = Math.round(span[0] * cellW);
-      const w = Math.ceil((span[1] - span[0] + 1) * cellW);
-      octx.fillRect(x, Math.round(row * cellH), w, Math.ceil(cellH));
+    if (range) {
+      octx.fillStyle = "rgba(90, 140, 220, 0.35)";
+      for (let row = 0; row < buffer.rows; row += 1) {
+        const span = visibleRowSpan(range, row, buffer.displayOffset, buffer.cols);
+        if (!span) continue;
+        const x = Math.round(span[0] * cellW);
+        const w = Math.ceil((span[1] - span[0] + 1) * cellW);
+        octx.fillRect(x, Math.round(row * cellH), w, Math.ceil(cellH));
+      }
+    }
+
+    for (const [index, match] of searchMatchesRef.current.entries()) {
+      const visibleRow = match.line + buffer.displayOffset;
+      if (visibleRow < 0 || visibleRow >= buffer.rows) continue;
+      octx.fillStyle = index === activeSearchIndexRef.current
+        ? "rgba(255, 184, 74, 0.72)"
+        : "rgba(229, 201, 92, 0.38)";
+      octx.fillRect(
+        Math.round(match.col * cellW),
+        Math.round(visibleRow * cellH),
+        Math.max(1, Math.ceil(match.len * cellW)),
+        Math.ceil(cellH),
+      );
     }
   };
 
@@ -948,6 +982,77 @@ export function TerminalCanvas({
     claimTerminalKeyboard();
   };
 
+  const openSearch = () => {
+    setSearchOpen(true);
+    window.setTimeout(() => {
+      searchInputRef.current?.focus({ preventScroll: true });
+      searchInputRef.current?.select();
+    }, 0);
+  };
+
+  const closeSearch = () => {
+    setSearchOpen(false);
+    setSearchMatches([]);
+    setActiveSearchIndex(-1);
+    window.setTimeout(focusInput, 0);
+  };
+
+  const navigateSearch = (direction: 1 | -1) => {
+    const nextIndex = cycleMatchIndex(
+      activeSearchIndexRef.current,
+      searchMatchesRef.current.length,
+      direction,
+    );
+    setActiveSearchIndex(nextIndex);
+    const match = searchMatchesRef.current[nextIndex];
+    const buffer = bufferRef.current;
+    if (!match || !buffer) return;
+    const delta = scrollDeltaToReveal(match.line, buffer.displayOffset, buffer.rows);
+    if (delta !== 0) {
+      invoke("grid_scroll", { id: sessionIdRef.current, delta }).catch(console.error);
+    } else {
+      window.requestAnimationFrame(drawSelectionOverlay);
+    }
+  };
+
+  useEffect(() => {
+    if (!searchOpen || !isTauriRuntime()) return;
+    const query = searchQuery.trim();
+    if (!query) {
+      setSearchMatches([]);
+      setActiveSearchIndex(-1);
+      return;
+    }
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      invoke<SearchMatch[]>("grid_search", {
+        id: sessionId,
+        query,
+        caseSensitive: searchCaseSensitive,
+      })
+        .then((matches) => {
+          if (cancelled) return;
+          setSearchMatches(matches);
+          setActiveSearchIndex(matches.length > 0 ? 0 : -1);
+          if (matches.length > 0) {
+            const buffer = bufferRef.current;
+            if (!buffer) return;
+            const delta = scrollDeltaToReveal(matches[0].line, buffer.displayOffset, buffer.rows);
+            if (delta !== 0) {
+              invoke("grid_scroll", { id: sessionId, delta }).catch(console.error);
+            }
+          }
+        })
+        .catch((error) => {
+          if (!cancelled) console.error("Terminal buffer search failed", error);
+        });
+    }, 120);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [searchOpen, searchQuery, searchCaseSensitive, sessionId]);
+
   const elementTakesKeyboard = (element: Element | null) => {
     if (!(element instanceof HTMLElement)) return false;
     const tagName = element.tagName.toLowerCase();
@@ -1029,6 +1134,12 @@ export function TerminalCanvas({
     // Copy/paste shortcuts are handled by the browser/clipboard, not as PTY keys.
     clearHiddenInput();
     const key = event.key.toLowerCase();
+    if ((event.ctrlKey || event.metaKey) && !event.shiftKey && key === "f") {
+      event.preventDefault();
+      event.stopPropagation();
+      openSearch();
+      return;
+    }
     if (event.ctrlKey && event.shiftKey && key === "f") {
       event.preventDefault();
       event.stopPropagation();
@@ -1084,6 +1195,12 @@ export function TerminalCanvas({
       focusInput();
       clearHiddenInput();
       const key = event.key.toLowerCase();
+      if ((event.ctrlKey || event.metaKey) && !event.shiftKey && key === "f") {
+        event.preventDefault();
+        event.stopPropagation();
+        openSearch();
+        return;
+      }
       const immersiveTerminal = useWorkspaceStore.getState().workspaceUiState.immersiveTerminal;
       const isImmersivePane =
         immersiveTerminal.enabled &&
@@ -1707,6 +1824,64 @@ export function TerminalCanvas({
             </div>
           );
         })()
+      ) : null}
+      {searchOpen ? (
+        <div
+          role="search"
+          aria-label="Find in terminal"
+          data-testid="terminal-buffer-search"
+          onPointerDown={(event) => event.stopPropagation()}
+          style={{
+            position: "absolute",
+            top: 8,
+            right: 8,
+            zIndex: 30,
+            display: "flex",
+            alignItems: "center",
+            gap: 4,
+            padding: "5px 6px",
+            border: "1px solid rgba(255,255,255,0.14)",
+            borderRadius: 7,
+            background: "rgba(23, 27, 30, 0.96)",
+            boxShadow: "0 10px 28px rgba(0,0,0,0.36)",
+            color: "#d8dce0",
+            fontFamily: FONT_FAMILY,
+            fontSize: 12,
+          }}
+        >
+          <input
+            ref={searchInputRef}
+            aria-label="Search terminal buffer"
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            onKeyDown={(event) => {
+              event.stopPropagation();
+              if (event.key === "Escape") {
+                event.preventDefault();
+                closeSearch();
+              } else if (event.key === "Enter") {
+                event.preventDefault();
+                navigateSearch(event.shiftKey ? -1 : 1);
+              }
+            }}
+            placeholder="Find in terminal"
+            style={{
+              width: 190,
+              border: 0,
+              outline: 0,
+              background: "transparent",
+              color: "inherit",
+              font: "inherit",
+            }}
+          />
+          <span data-testid="terminal-buffer-search-count" aria-live="polite" style={{ minWidth: 40, textAlign: "center", color: "#9ba3aa" }}>
+            {searchMatches.length > 0 ? `${activeSearchIndex + 1}/${searchMatches.length}` : "0/0"}
+          </span>
+          <button type="button" aria-label="Match case" aria-pressed={searchCaseSensitive} onClick={() => setSearchCaseSensitive((value) => !value)} style={{ color: searchCaseSensitive ? "#ffb84a" : "#9ba3aa", background: "transparent", border: 0, font: "inherit", cursor: "pointer" }}>Aa</button>
+          <button type="button" aria-label="Previous terminal match" onClick={() => navigateSearch(-1)} disabled={searchMatches.length === 0} style={{ color: "inherit", background: "transparent", border: 0, cursor: "pointer" }}>↑</button>
+          <button type="button" aria-label="Next terminal match" onClick={() => navigateSearch(1)} disabled={searchMatches.length === 0} style={{ color: "inherit", background: "transparent", border: 0, cursor: "pointer" }}>↓</button>
+          <button type="button" aria-label="Close terminal search" onClick={closeSearch} style={{ color: "#9ba3aa", background: "transparent", border: 0, cursor: "pointer" }}>×</button>
+        </div>
       ) : null}
       <canvas
         ref={canvasRef}
