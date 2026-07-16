@@ -69,7 +69,7 @@ were retired during consolidation.
 | TC-016h    | Live terminal activity + agent status list                                                                                                                                                                      | P1       | DONE              | TC-016         |
 | TC-016i    | LLM-summarized agent work status: visible task/path/now in terminal and map cards                                                                                                                               | P1       | DONE              | TC-016h        |
 | TC-017     | Headless-VT (Rust) + canvas renderer — now the desktop default (replaces xterm)                                                                                                                                 | P2       | DONE              | -              |
-| TC-018     | BiDi/RTL + text shaping (Hebrew nikud) in the headless grid — depends on TC-017                                                                                                                                 | P2       | TODO              | -              |
+| TC-018     | BiDi/RTL + Hebrew nikud in the headless grid: Rust reorders logical cells into visual order, remaps the cursor, and carries up to four combining marks with each base cell through the binary diff; Canvas2D uses native font shaping so `שָׁלוֹם` remains four cells. Proof: 128 Rust library tests, focused Chromium wire/buffer/render tests, frontend build, and live canvas verification passed on 2026-07-17. | P2 | DONE (2026-07-17) | TC-017 |
 | TC-019     | Warp-style chrome redesign: neutral fill-only design system (no outlines), terminal-first layout, Hack terminal font + #1d2022 gray, themed folder picker, DESIGN.md + CI-enforced no-outlines/typography rules | P2       | IN_PROGRESS       | -              |
 | TC-020     | Split-pane and canvas localhost preview surface                                                                                                                                                                 | P2       | DONE (2026-06-01) | -              |
 | TC-021     | Open-source developer preview lane: differentiate TermFleet as a local-first agent/ops cockpit                                                                                                                  | P2       | DONE (2026-06-18) | -              |
@@ -108,6 +108,8 @@ were retired during consolidation.
 | TC-054     | Reliable map-terminal session binding + auto-resume: 100% of map terminal nodes must reattach to their correct persistent daemon session on open/startup, and auto-resume the agent (`claude --resume <uuid>` / `codex resume <uuid>`) when the session is a bare shell (agent exited), instead of spawning a NEW empty shell each open. Root cause observed 2026-07-13: opening a project makes a fresh `terminal-<uuid>-<uuid>` session (bare shell) rather than reattaching the live one, so resumes orphan and panes show dead shells. Session UUIDs are on disk (agent-fleet snapshot; claude `~/.claude/projects`, codex `~/.codex/sessions`). Investigation-first: map how map nodes bind to daemon sessions (frontend store + EnsureSession id scheme), then design deterministic node→session keying + auto-resume hook. See memory `project_termfleet_daemon_wedge_recovery`. **Root cause found + fixed (2026-07-13):** recovery is PER-PANE (`terminal-<tabId>-<paneId>`), not per-folder; each pane's conversation id lives in `agent-status/pane-<fnv(paneId)>.json`. Daemon cold-restore now (a) resumes claude via id-only fallback (mirrors codex) and (b) enriches a bare/hand-started session from its per-pane sidecar (`read_pane_sidecar_recovery` → `plan_agent_restore`), so every node restores ITS OWN chat on daemon recycle / reboot / shutdown. codex/claude status hooks stamp `provider`. Proof: 105 lib tests pass incl. 7 new (fnv parity vs real sidecar name, sidecar-recovery variants, hand-started cold-restore); `npm run doctor` TC-054 check green + reports 19/19 nodes recoverable; design in `docs/tc-054-agent-autoresume-design.md`. Pending: activates on next launcher restart (running daemon predates the build); full reboot E2E not yet run. | P0 | IN_PROGRESS (impl+tests+watchdog done 2026-07-13) | TC-017, TC-035 |
 | TC-055     | Safe dead-process / session eradicator (reaper): periodically reap DEAD/closed sessions and their orphaned tool servers (dev servers, Playwright browsers, language servers, esbuild watchers, node_repl) that agents leave running after `/exit`. Must gate every kill on a DEEP agent-in-tree scan (a shallow direct-child check gave false positives on 2026-07-13 because agents nest under wrappers) plus an idle-CPU gate, so a live conversation is never killed. Ship dry-run first (log what it would kill), then arm on a timer. Motivated by the 2026-07-13 outage where ~3,500 accumulated processes starved RAM+swap and wedged the daemon. **Dry-run shipped + tested (2026-07-13):** `scripts/termfleet-reaper.mjs` with a pure `reapDecision` safety gate (deep agent-in-tree scan → never reap a session with a live agent anywhere in its tree; idle-window gate; skips sessions with nothing to reclaim). Run `node scripts/termfleet-reaper.mjs` (dry-run) / `--apply` / `--idle=<sec>`. **Coverage fixed + soft load guardrail added (2026-07-13):** reaper now enumerates sessions from the daemon's own `listSessions` (reuse `termfleetctl.requestDaemon`) instead of a cgroup session-leader guess that saw 2 of 15 sessions; the deep agent scan now INCLUDES the session root pid (agents often run as the root — the miss that mislabeled them bare shells); idle now comes from the per-pane sidecar `updatedAt` (reuse `paneSidecarPath`), not process start-age. Live dry-run covers all 15 sessions and keeps every live-agent one. Separately, the daemon's transient systemd unit (`platform_process.rs`) now sets a SOFT `MemoryHigh` (throttle+reclaim, NEVER OOM-kill) + high `TasksMax` fork-bomb backstop (env-overridable `TERMFLEET_DAEMON_MEMORY_HIGH`/`_TASKS_MAX`; no hard `MemoryMax` by design), so daemon load can't wedge the desktop and no agent is silently killed. `npm run doctor` reports daemon memory headroom + flags a daemon predating the guardrail. Proof: 8 reaper policy tests + 106 lib tests (incl. argv guardrail assertion). **Now fully automatic (2026-07-14):** `scripts/install-reaper-timer.sh` installs a systemd `--user` timer (mirrors agent-fleet-snapshot) that every 15 min runs a oneshot which (1) `scripts/termfleet-guardrail-ensure.mjs` applies the soft `MemoryHigh`/`TasksMax` to the running daemon LIVE via `systemctl set-property` (self-healing for a daemon predating the code; idempotent `needsGuardrail` gate, tested) and (2) `termfleet-reaper.mjs --apply` reaps idle leftovers. Guardrail default lowered 55G→40G (leaves desktop headroom). Verified live: guardrail applied to the running daemon (MemoryHigh infinity→40G, no restart, no killed agents), timer armed (`systemctl --user list-timers`), a triggered run kept all live-agent sessions + reaped 0, and `npm run doctor` shows guardrail `ok` (30.6/40G) + "reaper timer is armed". Note: timer install is per-machine via the script; the daemon `MemoryHigh` default in `platform_process.rs` covers fresh launches. | P1 | DONE (2026-07-14) | TC-054 |
 | TC-056     | Find in the complete terminal buffer: Ctrl/Cmd+F opens a compact Canvas2D search overlay, searches visible rows plus daemon-owned scrollback, highlights every visible match, supports case sensitivity and wrapped next/previous navigation, and scrolls history matches into view. Recovered from the stale `feat-buffer-search` branch and completed against the current grid API. Proof: 9 Rust search/grid tests, 2 frontend overlay/wiring tests, `cargo check`, and `npm run build` passed on 2026-07-17. | P1 | DONE (2026-07-17) | TC-017 |
+| TC-057     | Replayable agent run journals + per-call cost accounting for cockpit-orchestrated agents. Borrowed pattern from OpenHuman's checkpointed-graph run journals (design study only — `tinyagents` is GPL-3.0, do NOT copy code). Every agent turn a cockpit terminal drives records an append-only journal (prompt/tool-calls/outputs, timestamps, token+cost per model call) that can be replayed and inspected per session. Builds on the per-pane sidecar (TC-035/TC-054) and doctor tooling. Goal: stop guessing what an agent did/spent — make each pane's run auditable and replayable. | P1 | TODO | TC-035, TC-054 |
+| TC-058     | Stuck-agent steering + halt-with-root-cause for agent-fleet. Borrowed pattern from OpenHuman's harness ("stuck agents get steered, halted ones return a root cause"). Detect wedged/idle agent panes (extends the reaper's deep agent-in-tree + idle-CPU gates from TC-055), attempt a bounded steer/nudge, and on halt emit a structured root-cause instead of a silent dead shell. Design study of `tinyagents` (GPL-3.0) for ideas only; implement independently. | P1 | TODO | TC-054, TC-055 |
 
 ---
 
@@ -2411,43 +2413,42 @@ keypress→flagged-diff in React) — confirmation only, not a blocker to the de
 ### TC-018: BiDi/RTL + text shaping (Hebrew nikud) in the headless grid
 
 **Priority:** P2
-**Status:** Todo
+**Status:** Done (2026-07-17)
 
-Future pass, layered on the completed TC-017 renderer (needs the binary IPC
-payload from TC-017c and the shared font atlas from TC-017b/g). Goal: an
+Implemented on the completed TC-017 renderer. The result is an
 RTL-safe grid that mixes English (LTR commands) and Hebrew (RTL, with nikud /
 combining marks) without breaking the fixed-width cell model. Do the layout math
 headlessly in Rust; React still receives a plain visual coordinate grid.
 
 Pipeline (split the flow into a logical buffer and a visual grid buffer):
-`PTY → logical buffer (alacritty grid) → (1) unicode-bidi reorder → (2) rustybuzz
-shape → visual grid buffer → binary IPC diff → canvas`.
+`PTY → logical buffer (alacritty grid) → unicode-bidi reorder → visual grid
+buffer with base+combining marks → binary IPC diff → native canvas font shaping`.
 
-- **Stage 1 — logical vs. visual grid split (Rust).** Add a secondary
-  `visual_grid` in `vt_grid.rs` (the alacritty grid is the logical/history
-  buffer). A conversion pass clones the active viewport into `visual_grid` as a
-  baseline. Verify: ASCII flows identically through both grids, zero perf drop.
-- **Stage 2 — BiDi reorder (`unicode-bidi = 0.3`).** For each modified viewport
-  line, run `BidiInfo::new(&text, None)`, walk the visual runs, reverse RTL runs
-  when copying into `visual_grid`. Cursor tracks the _visual_ endpoint, not the
-  logical one. Verify: `echo "שלום"` shows ש rightmost, ם leftmost.
-- **Stage 3 — shaping & diacritics (`rustybuzz = 0.12`).** Load the bundled
-  monospace font as a `rustybuzz::Face`; shape BiDi-reordered runs. Combining
-  marks (nikud) with nonzero x/y offset stay in the _base_ cell as packed
-  metadata — no extra grid cell. Verify: `שָׁלוֹם` occupies exactly 4 cells with
-  vowel offsets attached.
-- **Stage 4 — extend binary cell payload to 16 bytes:** `[0..4]` u32 glyph index
-  (from rustybuzz, replacing raw UTF-32), `[4..6]` packed i8 x/y micro-offsets,
-  `[6..10]` u32 fg RGBA, `[10..14]` u32 bg RGBA, `[14..16]` u16 style flags.
-- **Stage 5 — canvas glyph pipeline (`Terminal*.tsx`).** Re-key the font atlas by
-  glyph ID (not ASCII); `drawImage` by glyph ID; shift draw target by the cell's
-  micro-offsets for diacritics.
+- **Stage 1 — logical vs. visual grid split (Rust).** The alacritty grid remains
+  the untouched logical/history buffer. Both snapshot capture paths create a
+  separate visual row, so ASCII stays byte-for-byte identity ordered.
+- **Stage 2 — BiDi reorder (`unicode-bidi = 0.3`).** Each visible viewport line
+  runs through `BidiInfo` only when it contains strong RTL characters. Visual
+  runs reorder the captured row and remap the cursor while leaving history in
+  logical order. `echo "שלום"` therefore shows ש rightmost and ם leftmost.
+- **Stages 3–5 — grapheme transport and shaping.** Alacritty already associates
+  zero-width combining marks with their base cell, and Canvas2D already shapes
+  a complete cell string with the selected terminal font. The binary cell grew
+  from 14 to 34 bytes: base codepoint, count plus four combining codepoints,
+  colors, and style. This avoids a second font engine and glyph-ID protocol while
+  keeping `שָׁלוֹם` at exactly four cells. The decoder temporarily accepts the
+  legacy 14-byte frame during a rolling frontend/backend restart.
 
-Risks/mitigations: (1) BiDi/shaping per byte is expensive on fast dumps (`cat`)
-→ compute **lazily**, only on visible viewport lines, and cache per-line; skip
-unchanged lines. (2) Backend layout vs. frontend drawing must use the _same_
-font → bundle one monospace font in Tauri assets; Rust loads it from disk, React
-builds its atlas from the identical file.
+Risks/mitigations: BiDi work has an ASCII identity fast path and runs only while
+capturing visible viewport rows. Combining marks are capped at four per cell to
+keep frames fixed-width and bounded; Hebrew nikud fits inside that bound.
+
+Verification (2026-07-17): 128 Rust library tests are accounted for (126 inside
+the restricted runner plus both Unix-socket security tests on the host), the
+Canvas2D browser suite passed 60/60, the production frontend build and map source
+verifier passed, and `verify:canvas-live` proved daemon input/output, resizing,
+vim, htop, and tmux in the real Tauri canvas. Screenshots:
+`/tmp/tw-canvas-live/01-default.png` through `09-tmux-cmd.png`.
 
 ### MC-001: Preserve canvas workspace mode
 
@@ -5984,3 +5985,52 @@ metadata, not in ad-hoc localStorage markers:
   verify:terminal-headers-live-all` passed with `TERMINAL_HEADERS_LIVE_ALL_OK terminals=4`.
   Evidence saved in `docs/verification/terminal-headers-live-all-quality-2026-06-30*.png`
   and `docs/verification/terminal-headers-live-all-quality-2026-06-30-report.json`.
+
+### TC-057: Replayable agent run journals + per-call cost accounting
+
+**Status:** TODO · **Priority:** P1 · **Deps:** TC-035, TC-054
+
+**Provenance / license.** Pattern borrowed from OpenHuman's checkpointed-graph
+"replayable run journals + per-call cost accounting" (harness on `tinyagents`).
+`tinyagents` and the OpenHuman app are **GPL-3.0** — design study only, no code
+copied. Implement independently on TermFleet's own daemon/sidecar substrate.
+
+**Goal.** Make every cockpit-driven agent run auditable and replayable. For each
+agent turn a terminal pane drives, record an append-only journal entry:
+prompt, tool calls, outputs, timestamps, and per-model-call token + cost. Let an
+operator replay a session and see exactly what an agent did and spent, instead
+of guessing from scrollback.
+
+**Approach.**
+1. Extend the per-pane sidecar (TC-035/TC-054) with a journal stream keyed by
+   `terminal-<tabId>-<paneId>` + conversation id.
+2. Capture provider/model, token counts, and cost per call (reuse the
+   codex/claude status hooks that already stamp `provider`).
+3. Add a replay/inspect view (doctor or cockpit panel) that lists journal
+   entries per session with rolled-up cost.
+
+**Acceptance.** A driven agent turn produces a journal entry with per-call cost;
+the session can be replayed/inspected; `npm run doctor` surfaces journal health.
+
+### TC-058: Stuck-agent steering + halt-with-root-cause (agent-fleet)
+
+**Status:** TODO · **Priority:** P1 · **Deps:** TC-054, TC-055
+
+**Provenance / license.** Pattern borrowed from OpenHuman's harness ("stuck
+agents get steered, halted ones return a root cause"). GPL-3.0 source —
+design study only.
+
+**Goal.** Turn silent dead/wedged agent panes into either a recovered run or a
+structured root cause. Detect stuck/idle agents, attempt a bounded steer, and on
+halt emit a reason instead of leaving a bare shell.
+
+**Approach.**
+1. Reuse TC-055's deep agent-in-tree scan + idle-CPU/idle-sidecar gates to
+   classify a pane as live / stuck / halted (never misfire on a live conversation).
+2. On "stuck", attempt a bounded nudge/steer via the daemon input path.
+3. On "halted", write a structured root cause to the pane sidecar and surface it
+   in the map card + doctor, tied to the TC-054 auto-resume flow.
+
+**Acceptance.** A wedged agent pane is either steered back to progress or shows a
+structured root cause (not a silent dead shell); live conversations are never
+touched.
