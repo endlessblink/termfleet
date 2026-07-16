@@ -10,6 +10,12 @@ const globalCss = readFileSync(join(root, "src/styles/global.css"), "utf8");
 const themeCss = readFileSync(join(root, "src/styles/theme.css"), "utf8");
 const pty = readFileSync(join(root, "src-tauri/src/pty.rs"), "utf8");
 const livePulseKeyframe = globalCss.match(/@keyframes terminal-live-pulse\s*\{([\s\S]*?)\n\}/)?.[1] ?? "";
+const snapshotExcerptBlock = terminal.match(
+  /const runSnapshotExcerpt\s*=\s*useCallback\([\s\S]*?(?=\n\s*const handleSnapshot)/,
+)?.[0] ?? "";
+const snapshotHandlerBlock = terminal.match(
+  /const handleSnapshot\s*=\s*useCallback\([\s\S]*?(?=\n\s*const storeSubmittedAsk)/,
+)?.[0] ?? "";
 
 const checks = [
   {
@@ -56,8 +62,9 @@ const checks = [
       /snapshotThrottleTimerRef\.current\s*=\s*setTimeout/.test(terminal) &&
       /runSnapshotExcerpt\(\);/.test(terminal) &&
       /clearTimeout\(snapshotThrottleTimerRef\.current\)/.test(terminal) &&
-      /Snapshot excerpts are viewport\/render state/.test(terminal) &&
-      /scroll-driven snapshots summarize again/.test(terminal),
+      /terminalVisibleText:\s*excerpt/.test(snapshotExcerptBlock) &&
+      !/terminalOutput\s*:|currentActivity\s*:|scheduleStatusSummaryUpdate\(/.test(snapshotExcerptBlock) &&
+      !/scheduleStatusSummaryUpdate\(/.test(snapshotHandlerBlock),
     message: "canvas snapshot excerpt work must be throttled with a trailing update and unmount cleanup, without re-summarizing scroll-driven viewport snapshots.",
   },
   {
