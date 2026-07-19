@@ -202,6 +202,7 @@ export type WorktreeCleanupStatus =
 export type WorkstreamLaunchProfile = "terminal" | "headless";
 export type WorkstreamStatusSummaryLifecycle =
   | "working"
+  | "unavailable"
   | "idle"
   | "waiting"
   | "blocked"

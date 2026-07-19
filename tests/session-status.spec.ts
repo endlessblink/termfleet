@@ -8,6 +8,7 @@ test("the badge is the agent's reported status, nothing else", () => {
   expect(reconcileSessionStatus({ summaryStatus: "waiting" }).attention).toBe("waiting");
   expect(reconcileSessionStatus({ summaryStatus: "blocked" }).attention).toBe("waiting");
   expect(reconcileSessionStatus({ summaryStatus: undefined }).attention).toBe("idle");
+  expect(reconcileSessionStatus({ summaryStatus: "unavailable" }).attention).toBe("unavailable");
 });
 
 test("it is a PURE function of the status — same input always gives same output (cannot flash)", () => {

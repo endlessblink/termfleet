@@ -219,6 +219,10 @@ export function summaryFromSidecar(
 }
 
 export type SidecarFileReader = (fileName: string) => Promise<string | null>;
+export interface LocalSidecarStatus {
+  state: "fresh" | "stale" | "missing" | "error";
+  summary: AgentStatusSummary | null;
+}
 
 /**
  * Candidate sidecar file names in the same precedence order as the node worker's
@@ -244,16 +248,18 @@ export function sidecarCandidateFileNames(
 }
 
 /**
- * Read the freshest matching sidecar via the injected file reader and shape it into a
- * summary. Returns null when no fresh sidecar exists (caller falls back to the HTTP
- * endpoint or the local heuristic, exactly like the worker's fallback path).
+ * Read the freshest matching sidecar and distinguish a confirmed expiry from a missing
+ * or temporarily unreadable file. The compatibility wrapper below still returns only
+ * the shaped summary or null.
  */
-export async function readLocalSidecarSummary(
+export async function readLocalSidecarStatus(
   input: AgentStatusSummaryInput,
   fallback: AgentStatusSummary,
   readFile: SidecarFileReader,
-): Promise<AgentStatusSummary | null> {
+): Promise<LocalSidecarStatus> {
   let firstFresh: AgentStatusSidecar | null = null;
+  let staleSeen = false;
+  let errorSeen = false;
   for (const name of sidecarCandidateFileNames(input)) {
     let sidecar: AgentStatusSidecar | null = null;
     try {
@@ -261,11 +267,29 @@ export async function readLocalSidecarSummary(
       if (!text) continue;
       sidecar = JSON.parse(text) as AgentStatusSidecar;
     } catch {
+      errorSeen = true;
       continue;
     }
-    if (!sidecar || !sidecarFresh(sidecar)) continue;
+    if (!sidecar) continue;
+    if (!sidecarFresh(sidecar)) {
+      staleSeen = true;
+      continue;
+    }
     if (!firstFresh) firstFresh = sidecar;
-    if (sidecarHasConcreteTask(sidecar)) return summaryFromSidecar(sidecar, fallback);
+    if (sidecarHasConcreteTask(sidecar)) {
+      return { state: "fresh", summary: summaryFromSidecar(sidecar, fallback) };
+    }
   }
-  return firstFresh ? summaryFromSidecar(firstFresh, fallback) : null;
+  if (firstFresh) return { state: "fresh", summary: summaryFromSidecar(firstFresh, fallback) };
+  if (staleSeen) return { state: "stale", summary: null };
+  if (errorSeen) return { state: "error", summary: null };
+  return { state: "missing", summary: null };
+}
+
+export async function readLocalSidecarSummary(
+  input: AgentStatusSummaryInput,
+  fallback: AgentStatusSummary,
+  readFile: SidecarFileReader,
+): Promise<AgentStatusSummary | null> {
+  return (await readLocalSidecarStatus(input, fallback, readFile)).summary;
 }

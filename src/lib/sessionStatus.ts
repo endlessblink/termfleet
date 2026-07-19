@@ -12,7 +12,7 @@ import type { AttentionState } from "./terminalAttention";
  *  - Scrollback markers ("esc to interrupt", "Cooked for") are defeated by scrolling.
  * Event status changes only on a real event, so the badge cannot flash or drift.
  */
-export type SessionLifecycle = "running" | "waiting" | "idle";
+export type SessionLifecycle = "running" | "waiting" | "idle" | "unavailable";
 
 export interface SessionStatus {
   lifecycle: SessionLifecycle;
@@ -29,6 +29,7 @@ export function reconcileSessionStatus(signals: SessionSignals): SessionStatus {
   const idle: SessionStatus = { lifecycle: "idle", attention: "idle", stale: false };
   const running: SessionStatus = { lifecycle: "running", attention: "running", stale: false };
   const waiting: SessionStatus = { lifecycle: "waiting", attention: "waiting", stale: false };
+  const unavailable: SessionStatus = { lifecycle: "unavailable", attention: "unavailable", stale: true };
 
   // PURE EVENT STATE — no clock, no freshness timeout, no scrollback. The badge changes
   // ONLY when the agent's own reported status changes (the status hook writes it on a
@@ -38,6 +39,7 @@ export function reconcileSessionStatus(signals: SessionSignals): SessionStatus {
   const status = String(signals.summaryStatus ?? "").toLowerCase();
   if (status === "waiting" || status === "blocked") return waiting;
   if (status === "working") return running;
+  if (status === "unavailable") return unavailable;
   // idle / done / stopped / unknown → idle.
   return idle;
 }

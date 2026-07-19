@@ -3,6 +3,7 @@ import path from "node:path";
 import {
   cwdSidecarFileName,
   paneSidecarFileName,
+  readLocalSidecarStatus,
   readLocalSidecarSummary,
   sidecarCandidateFileNames,
   sidecarFresh,
@@ -174,6 +175,32 @@ test("readLocalSidecarSummary falls back to a cwd sidecar and rejects stale file
     async (name) => stale.get(name) ?? null,
   );
   expect(rejected).toBeNull();
+});
+
+test("the sidecar lookup distinguishes expiry from a missing or unreadable file", async () => {
+  const cwd = "/repo/project";
+  const staleName = cwdSidecarFileName(cwd);
+  const stale = await readLocalSidecarStatus(
+    { provider: "shell", cwd },
+    fallbackFor(cwd),
+    async (name) => name === staleName
+      ? JSON.stringify({ updatedAt: Date.now() - 60 * 60 * 1000, todos: [] })
+      : null,
+  );
+  const missing = await readLocalSidecarStatus(
+    { provider: "shell", cwd },
+    fallbackFor(cwd),
+    async () => null,
+  );
+  const unreadable = await readLocalSidecarStatus(
+    { provider: "shell", cwd },
+    fallbackFor(cwd),
+    async () => { throw new Error("temporary read failure"); },
+  );
+
+  expect(stale.state).toBe("stale");
+  expect(missing.state).toBe("missing");
+  expect(unreadable.state).toBe("error");
 });
 
 test("readLocalSidecarSummary prefers concrete cwd task over generic pane task", async () => {
@@ -357,6 +384,26 @@ test("summarizeAgentStatus falls back when no local sidecar exists and no endpoi
     },
   );
   expect(result.source).toBe("fallback");
+  expect(result.sidecarState).toBe("missing");
+});
+
+test("summarizeAgentStatus reports an expired sidecar without trusting its old task", async () => {
+  const result = await summarizeAgentStatus(
+    { provider: "shell", cwd: "/repo/x", paneId: "terminal-stale" },
+    {
+      endpoint: "",
+      sidecarReader: async (name) => name === paneSidecarFileName("terminal-stale")
+        ? JSON.stringify({
+            updatedAt: Date.now() - 60 * 60 * 1000,
+            todos: [{ content: "Old task", status: "in_progress" }],
+          })
+        : null,
+    },
+  );
+
+  expect(result.source).toBe("fallback");
+  expect(result.sidecarState).toBe("stale");
+  expect(result.summary.task).not.toBe("Old task");
 });
 
 test("summarizeAgentStatus does not infer the localhost worker endpoint in desktop dev", async () => {

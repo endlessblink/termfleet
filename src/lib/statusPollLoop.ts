@@ -15,6 +15,7 @@ import { selectStatusPollTargets, type StatusPollTarget } from "./statusPollTarg
 import { useWorkspaceStore } from "../stores/workspace";
 import type { Tab, TerminalState, WorkstreamStatus } from "./types";
 import { stableAgentProvider } from "./agentProviderIdentity";
+import { projectStatusPollResult } from "./statusPollProjection";
 
 const POLL_INTERVAL_MS = 4_000;
 // Stagger requests so N panes don't burst the summarizer at once.
@@ -83,6 +84,16 @@ async function pollOnce() {
         const latestTab = latest.tabs.find((candidate) => candidate.id === tab.id);
         const latestTerminal = latestTab?.terminals.find((candidate) => candidate.id === terminal.id);
         if (!latestTab || !latestTerminal) continue;
+
+        const expiredProjection = projectStatusPollResult(latestTerminal, result, Date.now());
+        if (expiredProjection) {
+          latest.updateTab(latestTab.id, {
+            terminals: latestTab.terminals.map((candidate) =>
+              candidate.id === terminal.id ? { ...candidate, ...expiredProjection } : candidate,
+            ),
+          });
+          continue;
+        }
 
         // The Running/Waiting/Idle badge is a PURE render-time translation of
         // `statusSummary.status` (sessionStatus.paneBadgeAttention) — the views compute

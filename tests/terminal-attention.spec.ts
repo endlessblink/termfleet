@@ -10,6 +10,7 @@ test("badge labels are plain language for a non-technical viewer", () => {
   expect(badgeForAttention("waiting").label).toBe("Waiting for you");
   expect(badgeForAttention("running").label).toBe("Running");
   expect(badgeForAttention("idle").label).toBe("Idle");
+  expect(badgeForAttention("unavailable").label).toBe("Status unavailable");
 });
 
 test("each state carries a distinct color token", () => {

@@ -10,7 +10,7 @@
  * `activelyWorking` signal the header already computes (a live agent turn, a
  * running command, a visible "esc to interrupt" marker) for running. No model.
  */
-export type AttentionState = "waiting" | "running" | "idle";
+export type AttentionState = "waiting" | "running" | "idle" | "unavailable";
 
 export interface AttentionBadge {
   state: AttentionState;
@@ -26,6 +26,7 @@ const BADGES: Record<AttentionState, AttentionBadge> = {
   waiting: { state: "waiting", label: "Waiting for you", color: "var(--accent-warning)" },
   // Green — a command or agent turn is actively working right now (positive evidence).
   running: { state: "running", label: "Running", color: "var(--accent-success)" },
+  unavailable: { state: "unavailable", label: "Status unavailable", color: "var(--text-tertiary)" },
   // Grey — empty prompt, nothing running, nobody waiting. The DEFAULT: an attached
   // shell sitting at a prompt is idle, not "running".
   idle: { state: "idle", label: "Idle", color: "var(--text-tertiary)" },
@@ -34,4 +35,3 @@ const BADGES: Record<AttentionState, AttentionBadge> = {
 export function badgeForAttention(state: AttentionState): AttentionBadge {
   return BADGES[state];
 }
-

@@ -6,13 +6,14 @@ import {
   type AgentStatusSummary,
   type AgentStatusSummaryInput,
 } from "./agentStatusSummary";
-import { readLocalSidecarSummary, type SidecarFileReader } from "./agentStatusSidecar";
+import { readLocalSidecarStatus, type SidecarFileReader } from "./agentStatusSidecar";
 
 export interface AgentStatusSummarizerResult {
   summary: AgentStatusSummary;
   // "sidecar" = the agent's REAL task list read straight from the status file —
   // authoritative; "process" = the HTTP status worker; "fallback" = local heuristic.
   source: "fallback" | "process" | "sidecar";
+  sidecarState?: "fresh" | "stale" | "missing" | "error";
   error?: string;
 }
 
@@ -153,11 +154,15 @@ export async function summarizeAgentStatus(
   // Rust backend — no helper process to babysit. Same shaping as the node worker.
   const sidecarReader = options.sidecarReader === null ? null : options.sidecarReader ?? tauriSidecarReader();
   let sidecarShapedFallback: AgentStatusSummary | null = null;
+  let sidecarState: AgentStatusSummarizerResult["sidecarState"];
   if (sidecarReader) {
     try {
-      const shaped = await readLocalSidecarSummary(input, fallback, sidecarReader);
+      const lookup = await readLocalSidecarStatus(input, fallback, sidecarReader);
+      sidecarState = lookup.state;
+      const shaped = lookup.summary;
       if (shaped) sidecarShapedFallback = parseAgentStatusSummaryResponse(JSON.stringify(shaped), fallback);
     } catch {
+      sidecarState = "error";
       // Sidecar read failed → fall through to the endpoint / heuristic fallback.
     }
   }
@@ -165,7 +170,7 @@ export async function summarizeAgentStatus(
   const effectiveFallback = sidecarShapedFallback ?? fallback;
   const endpoint = options.endpoint ?? configuredEndpoint();
   if (!endpoint) {
-    return { summary: effectiveFallback, source: sidecarShapedFallback ? "sidecar" : "fallback" };
+    return { summary: effectiveFallback, source: sidecarShapedFallback ? "sidecar" : "fallback", sidecarState };
   }
 
   try {
@@ -188,11 +193,12 @@ export async function summarizeAgentStatus(
           tasksFromTodoWrite: true,
         }
       : parsedSummary;
-    return { summary, source: "process" };
+    return { summary, source: "process", sidecarState };
   } catch (error) {
     return {
       summary: effectiveFallback,
       source: sidecarShapedFallback ? "sidecar" : "fallback",
+      sidecarState,
       error: shortError(error),
     };
   }

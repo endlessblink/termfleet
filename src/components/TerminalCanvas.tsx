@@ -419,7 +419,6 @@ export function TerminalCanvas({
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     let visibleContentSeen = false;
     let refreshTimer: ReturnType<typeof setTimeout> | null = null;
-    let blankGuardTimer: ReturnType<typeof setTimeout> | null = null;
     let renderThrottleTimer: ReturnType<typeof setTimeout> | null = null;
     let lastRenderAt = 0;
     let reusedSession = false;
@@ -771,15 +770,6 @@ export function TerminalCanvas({
       }
     };
 
-    const failIfStillBlank = () => {
-      if (disposed || visibleContentSeen) return;
-      const message =
-        "No visible terminal content was received from the grid stream after attach.";
-      console.error(message);
-      setAttachError(message);
-      onStatusRef.current?.("failed", { error: message });
-    };
-
     const attachGrid = async (): Promise<void> => {
       // Ensure the daemon owns the PTY (the daemon is the PTY authority), then
       // attach the headless grid and subscribe to its binary diff stream.
@@ -845,7 +835,6 @@ export function TerminalCanvas({
       refreshTimer = setTimeout(() => {
         void forceSnapshotRefresh();
       }, 900);
-      blankGuardTimer = setTimeout(failIfStillBlank, 3000);
       // One shared poller for the whole process fans out exit events to each
       // registered session (see exitWatcher) — instead of one interval + a
       // full daemon_list_session_events scan per terminal.
@@ -896,7 +885,6 @@ export function TerminalCanvas({
       disposed = true;
       cancelSelectionAutoScroll();
       if (refreshTimer !== null) clearTimeout(refreshTimer);
-      if (blankGuardTimer !== null) clearTimeout(blankGuardTimer);
       if (renderThrottleTimer !== null) clearTimeout(renderThrottleTimer);
       unregisterExitWatch(sessionId);
       if (resizeTimer !== null) clearTimeout(resizeTimer);
@@ -908,8 +896,6 @@ export function TerminalCanvas({
   }, [sessionId, cwd, command, cols, rows, theme, fontsReady, renderScale, mapProjection, dprTick, recoveryGeneration]);
 
   const scheduleScrollToBottom = () => {
-    const buffer = bufferRef.current;
-    if (!buffer || buffer.displayOffset === 0) return;
     if (scrollToBottomPendingRef.current) return;
     scrollToBottomPendingRef.current = true;
     requestAnimationFrame(() => {

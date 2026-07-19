@@ -340,10 +340,10 @@ const checks = [
       /forceSnapshotRefresh/.test(terminalCanvas) &&
       /invoke<string>\("grid_snapshot"/.test(terminalCanvas) &&
       /visibleContentSeen/.test(terminalCanvas) &&
-      /failIfStillBlank/.test(terminalCanvas) &&
-      /No visible terminal content was received/.test(terminalCanvas) &&
+      !/failIfStillBlank/.test(terminalCanvas) &&
+      !/No visible terminal content was received/.test(terminalCanvas) &&
       /terminal-canvas-error/.test(terminalCanvas),
-    message: "Canvas terminals must not fail as silent blank panes; they need an initial paint, snapshot retry, blank guard, and visible attach failure state.",
+    message: "Canvas terminals must retry their initial snapshot and show actual attach failures without mislabeling a valid blank grid as a dead stream.",
   },
   {
     ok: /const DEFAULT_TERMINAL_MODES = \{/.test(terminalCanvas) &&

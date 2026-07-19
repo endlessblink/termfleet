@@ -5548,6 +5548,14 @@ cwd (matches the "terminals opened in a path should be a project" intent).
 **Status:** TODO
 **Depends:** TC-033, TC-034
 
+- DONE (2026-07-19): Expired per-pane agent status can no longer leave a false Running
+  task in the cockpit. The local reader distinguishes genuine expiry from missing or
+  temporarily unreadable files; only expiry clears sidecar-owned work into Status
+  unavailable. Canvas reattachment now returns input to live output and no longer calls
+  a valid blank grid dead after three seconds. Proof: focused status regressions,
+  task-identity and canvas suites, production build, Rust check, live reattach repaint,
+  and the four-pane header sweep passed.
+
 #### Problem
 
 The cockpit title + TASKS panel are shared by **directory**, not by terminal. The
