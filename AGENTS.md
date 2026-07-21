@@ -63,6 +63,19 @@ cd src-tauri && CARGO_BUILD_JOBS=1 cargo check
 before launching, so latency and behavior are measured against a clean runtime.
 Reset persisted layout/theme from the command bar with `Reset layout`.
 
+## Automatic regression protection
+
+- For every bug report, behavior correction, repeated failure, or risky fix,
+  automatically apply `.agents/skills/termfleet-regression-planner/SKILL.md`
+  before changing production code. The user never needs to name the skill.
+- Before declaring changed behavior complete, committing, pushing, or merging,
+  automatically continue with
+  `.agents/skills/termfleet-regression-verifier/SKILL.md`. Do not ask the user to
+  invoke it or start a new session.
+- If repo-local skill discovery is unavailable on an agent surface, read and
+  follow those two files directly. Missing discovery must not make regression
+  protection manual or optional.
+
 ## Verification scripts
 
 Verifiers force the canvas renderer + split mode via `VITE_*` env overrides

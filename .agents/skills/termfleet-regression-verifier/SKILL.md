@@ -1,11 +1,13 @@
 ---
 name: termfleet-regression-verifier
-description: Verify a TermFleet fix sequentially on the failure surface that matters before completion, commit, push, or merge. Use when proving terminal, map, Canvas2D, task-status, daemon, persistence, release, or packaged desktop behavior and when deciding whether regression coverage is complete or only partial.
+description: Automatically verify every TermFleet behavior change or bug fix sequentially on the failure surface that matters before completion, commit, push, or merge. Apply implicitly without requiring the user to name the skill when proving terminal, map, Canvas2D, task-status, daemon, persistence, release, or packaged desktop behavior and when deciding whether regression coverage is complete or only partial.
 ---
 
 # TermFleet Regression Verifier
 
 Prove the user-facing claim with fresh evidence from the narrowest relevant guard through the required integration surface.
+
+Run this workflow automatically after regression planning or whenever changed behavior is about to be declared complete, committed, pushed, or merged. Never ask the user to invoke the skill or start another session.
 
 ## Verification Loop
 
