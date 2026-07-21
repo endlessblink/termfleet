@@ -1,4 +1,6 @@
 interface:
   display_name: "TermFleet Regression Verifier"
   short_description: "Prove TermFleet fixes on the right runtime surface"
-  default_prompt: "Use $termfleet-regression-verifier to verify this TermFleet fix before shipping it."
+  default_prompt: "Apply $termfleet-regression-verifier automatically before shipping this TermFleet fix."
+policy:
+  allow_implicit_invocation: true
