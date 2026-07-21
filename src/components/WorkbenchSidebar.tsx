@@ -8,14 +8,18 @@ import {
   CaretDoubleRight,
   ClipboardText,
   Browser,
+  CaretDown,
+  CaretRight,
   Robot,
   FileText,
   FolderOpen,
   ListBullets,
   MapTrifold,
+  MagnifyingGlass,
   Note,
   Palette,
   Plus,
+  PushPin,
   Smiley,
   SquaresFour,
   TerminalWindow,
@@ -46,6 +50,7 @@ import { projectBucketsByCanvasPosition } from "../lib/mapNodeOrdering";
 import { useFlipList } from "../hooks/useFlipList";
 import { agentProviderIdentity } from "../lib/agentProviderIdentity";
 import { AgentProviderIdentity } from "./AgentProviderIdentity";
+import { buildProjectSidebarModel, type ProjectSidebarItem } from "../lib/projectSidebarModel";
 
 const TERMINAL_COLORS = [
   "#d99a45",
@@ -392,10 +397,10 @@ const styles: Record<string, CSSProperties> = {
     flex: 1,
     minHeight: 0,
     overflow: "auto",
-    padding: 8,
+    padding: 7,
     display: "flex",
     flexDirection: "column",
-    gap: 8,
+    gap: 3,
   },
   mapFilterBar: {
     display: "grid",
@@ -429,8 +434,35 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 500,
   },
   projectList: {
-    padding: "8px 8px 6px",
+    padding: "6px 7px",
     borderBottom: "1px solid var(--border-subtle)",
+    overflowX: "hidden",
+  },
+  projectBrowserToggle: {
+    minWidth: 0,
+    flex: 1,
+    height: 28,
+    display: "grid",
+    gridTemplateColumns: "14px minmax(0, 1fr) auto",
+    alignItems: "center",
+    gap: 6,
+    padding: "0 5px",
+    border: "none",
+    borderRadius: "var(--radius-xs)",
+    background: "transparent",
+    color: "var(--text-secondary)",
+    fontFamily: "var(--font-ui)",
+    fontSize: 11,
+    fontWeight: 500,
+    textAlign: "left",
+    textTransform: "uppercase",
+    cursor: "pointer",
+  },
+  projectBrowserContent: {
+    maxHeight: "min(54vh, 490px)",
+    overflowX: "hidden",
+    overflowY: "auto",
+    paddingTop: 4,
   },
   sectionLabel: {
     display: "flex",
@@ -446,12 +478,13 @@ const styles: Record<string, CSSProperties> = {
   },
   projectRow: {
     position: "relative",
-    minHeight: 40,
+    minWidth: 0,
+    minHeight: 34,
     display: "grid",
-    gridTemplateColumns: "30px minmax(0, 1fr) auto",
-    gap: 11,
+    gridTemplateColumns: "24px minmax(0, 1fr) auto",
+    gap: 8,
     alignItems: "center",
-    padding: "9px 10px",
+    padding: "5px 6px",
     border: "none",
     borderRadius: "var(--radius-sm)",
     background: "transparent",
@@ -465,9 +498,9 @@ const styles: Record<string, CSSProperties> = {
     boxShadow: "none",
   },
   projectDot: {
-    width: 30,
-    height: 30,
-    borderRadius: 8,
+    width: 24,
+    height: 24,
+    borderRadius: 6,
     display: "grid",
     placeItems: "center",
     background: "var(--surface-raised)",
@@ -475,16 +508,99 @@ const styles: Record<string, CSSProperties> = {
   },
   projectGrid: {
     display: "grid",
+    gap: 2,
+  },
+  projectSection: {
+    display: "grid",
+    gap: 2,
+    marginTop: 7,
+  },
+  projectSectionToggle: {
+    width: "100%",
+    height: 28,
+    display: "grid",
+    gridTemplateColumns: "16px minmax(0, 1fr) auto",
+    alignItems: "center",
     gap: 5,
+    padding: "0 6px",
+    border: "none",
+    borderRadius: "var(--radius-xs)",
+    background: "transparent",
+    color: "var(--text-secondary)",
+    fontFamily: "var(--font-ui)",
+    fontSize: 11,
+    fontWeight: 500,
+    textAlign: "left",
+    cursor: "pointer",
+  },
+  projectSectionCount: {
+    color: "var(--text-tertiary)",
+    fontSize: 10,
+    fontWeight: 400,
+  },
+  projectSectionLabel: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+    margin: "8px 6px 4px",
+    color: "var(--text-tertiary)",
+    fontSize: 10,
+    fontWeight: 500,
+    letterSpacing: 0,
+    textTransform: "uppercase",
+  },
+  projectRailRow: {
+    minWidth: 0,
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr) auto",
+    alignItems: "center",
+    borderRadius: "var(--radius-sm)",
+  },
+  projectRowTrailing: {
+    display: "flex",
+    alignItems: "center",
+    gap: 2,
+    paddingRight: 3,
+  },
+  projectSearch: {
+    width: "100%",
+    height: 30,
+    marginBottom: 6,
+    padding: "0 9px",
+    border: "none",
+    borderRadius: "var(--radius-sm)",
+    background: "var(--surface-raised)",
+    color: "var(--text-primary)",
+    fontFamily: "var(--font-ui)",
+    fontSize: 12,
+    outline: "none",
+  },
+  projectHeaderActions: {
+    display: "flex",
+    alignItems: "center",
+    gap: 2,
+  },
+  projectHeaderButton: {
+    width: 24,
+    height: 24,
+    display: "grid",
+    placeItems: "center",
+    border: "none",
+    borderRadius: "var(--radius-xs)",
+    background: "transparent",
+    color: "var(--text-secondary)",
+    cursor: "pointer",
   },
   row: {
     position: "relative",
-    minHeight: 48,
+    height: 54,
+    minHeight: 54,
     display: "grid",
-    gridTemplateColumns: "30px minmax(0, 1fr) auto",
-    gap: 11,
+    gridTemplateColumns: "30px minmax(0, 1fr)",
+    gap: 9,
     alignItems: "center",
-    padding: "9px 10px",
+    padding: "6px 7px",
     border: "1px solid transparent",
     borderRadius: "var(--radius-sm)",
     background: "transparent",
@@ -494,6 +610,49 @@ const styles: Record<string, CSSProperties> = {
     boxShadow: "none",
     WebkitTapHighlightColor: "transparent",
     transition: "background var(--motion-fast), box-shadow var(--motion-fast)",
+    overflow: "hidden",
+  },
+  mapNodeRow: {
+    height: "auto",
+    minWidth: 0,
+    gridTemplateColumns: "30px minmax(0, 1fr) auto",
+    alignItems: "start",
+    padding: "8px 7px",
+  },
+  sessionContent: {
+    minWidth: 0,
+    display: "grid",
+    gap: 3,
+    transition: "padding-right var(--motion-fast)",
+  },
+  sessionSummary: {
+    minWidth: 0,
+    display: "flex",
+    alignItems: "center",
+    gap: 5,
+    overflow: "hidden",
+    color: "var(--text-secondary)",
+    fontSize: 11,
+    lineHeight: 1.2,
+    whiteSpace: "nowrap",
+  },
+  sessionSummaryText: {
+    minWidth: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  sessionRowActions: {
+    position: "absolute",
+    right: 6,
+    top: "50%",
+    display: "flex",
+    alignItems: "center",
+    gap: 3,
+    opacity: 0,
+    transform: "translate(2px, -50%)",
+    pointerEvents: "none",
+    transition: "opacity var(--motion-fast), transform var(--motion-fast)",
   },
   activeRow: {
     background: "var(--surface-selected)",
@@ -1150,7 +1309,13 @@ function FileTreeButton() {
 function PreviewButton() {
   const activeTabId = useWorkspaceStore((state) => state.activeTabId);
   const activeTab = useWorkspaceStore((state) => state.tabs.find((tab) => tab.id === activeTabId));
-  const active = activeTab ? JSON.stringify(activeTab.splitLayout).includes('"type":"preview"') : false;
+  const workspaceMode = useWorkspaceStore((state) => state.workspaceUiState.workspaceMode);
+  const mapPreviewActive = useWorkspaceStore((state) => state.canvasState.nodes.some((node) =>
+    node.type === "preview" && node.terminalTabId === activeTabId
+  ));
+  const active = workspaceMode === "canvas"
+    ? mapPreviewActive
+    : activeTab ? JSON.stringify(activeTab.splitLayout).includes('"type":"preview"') : false;
   const activePanePreviewUrl = activeTab?.terminals.find((terminal) => terminal.paneId === activeTab.activePaneId)?.previewUrl;
   const hasPreviewUrl = Boolean(activePanePreviewUrl ?? activeTab?.terminals.find((terminal) => terminal.previewUrl)?.previewUrl);
 
@@ -1166,7 +1331,9 @@ function PreviewButton() {
         cursor: hasPreviewUrl ? "pointer" : "not-allowed",
         opacity: hasPreviewUrl ? 1 : 0.44,
       }}
-      title={hasPreviewUrl ? "Open preview pane for active terminal" : "Preview unavailable until the active terminal prints a localhost URL"}
+      title={hasPreviewUrl
+        ? workspaceMode === "canvas" ? "Open preview on map for active terminal" : "Open preview pane for active terminal"
+        : "Preview unavailable until the active terminal prints a localhost URL"}
       aria-label="Preview"
       aria-pressed={active}
       onClick={() => splitActivePreviewPane()}
@@ -1397,10 +1564,15 @@ function ProjectContextMenu({
 }) {
   const updateGroup = useWorkspaceStore((state) => state.updateGroup);
   const removeGroup = useWorkspaceStore((state) => state.removeGroup);
+  const pinnedProjects = useWorkspaceStore((state) => state.pinnedProjects);
+  const pinProject = useWorkspaceStore((state) => state.pinProject);
+  const unpinProject = useWorkspaceStore((state) => state.unpinProject);
   const currentGroup = useWorkspaceStore((state) => state.groups.find((group) => group.id === id));
   const [value, setValue] = useState(name);
   const ref = useRef<HTMLDivElement>(null);
   const selectedEmoji = currentGroup?.emoji ?? emoji;
+  const projectRoot = currentGroup?.projectRoot;
+  const pinned = Boolean(projectRoot && pinnedProjects.includes(projectRoot));
 
   useEffect(() => {
     function onPointerDown(event: MouseEvent) {
@@ -1472,6 +1644,37 @@ function ProjectContextMenu({
           onSelect={(picked) => updateGroup(id, { emoji: picked, emojiSource: "user" })}
         />
       </div>
+
+      {projectRoot && (
+        <button
+          type="button"
+          className="workspace-explorer-context-item"
+          style={{
+            width: "100%",
+            marginTop: 6,
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "8px",
+            border: "none",
+            borderRadius: "var(--radius-sm)",
+            background: "transparent",
+            color: "var(--text-primary)",
+            cursor: "pointer",
+            fontFamily: "var(--font-ui)",
+            fontSize: 13,
+            textAlign: "left",
+          }}
+          onClick={() => {
+            if (pinned) unpinProject(projectRoot);
+            else pinProject(projectRoot);
+            onClose();
+          }}
+        >
+          <PushPin size={13} weight={pinned ? "fill" : "regular"} />
+          <span>{pinned ? "Unpin project" : "Pin project"}</span>
+        </button>
+      )}
 
       <button
         type="button"
@@ -1665,6 +1868,75 @@ function NewTerminalLaunchMenu({
   );
 }
 
+function ProjectRailRow({
+  project,
+  onSwitch,
+  onContextMenu,
+  onTogglePin,
+}: {
+  project: ProjectSidebarItem;
+  onSwitch: () => void;
+  onContextMenu: (event: React.MouseEvent) => void;
+  onTogglePin: () => void;
+}) {
+  return (
+    <div
+      className="workspace-sidebar-row project-rail-row"
+      data-testid="project-row"
+      data-active={project.current ? "true" : "false"}
+      style={styles.projectRailRow}
+    >
+      <button
+        type="button"
+        className="project-rail-main"
+        style={styles.projectRow}
+        title={`Switch to ${project.name}${project.projectRoot ? ` · ${project.projectRoot}` : ""}`}
+        aria-label={`Switch to ${project.name}`}
+        aria-current={project.current ? "page" : undefined}
+        onClick={onSwitch}
+        onContextMenu={onContextMenu}
+      >
+        <span style={styles.projectDot}>
+          <span data-testid="project-row-emoji" aria-hidden="true">{project.emoji ?? "💻"}</span>
+        </span>
+        <span style={{ ...styles.rowTitle, color: project.current ? "var(--text-primary)" : "var(--text-secondary)" }}>
+          {project.name}
+        </span>
+        {project.count > 0 && (
+          <span style={{ ...styles.rowMeta, marginTop: 0 }} aria-hidden="true">{project.count}</span>
+        )}
+      </button>
+      <span style={styles.projectRowTrailing}>
+        <span
+          className="workspace-sidebar-actions"
+          style={{
+            ...styles.rowActions,
+            opacity: project.pinned ? 1 : 0,
+            transform: "translateX(0)",
+            pointerEvents: project.pinned ? "auto" : "none",
+          }}
+        >
+          <button
+            type="button"
+            className="workspace-sidebar-action"
+            data-testid="project-pin"
+            style={{ ...styles.rowActionButton, width: 24, height: 24, background: "transparent" }}
+            title={project.pinned ? `Unpin ${project.name}` : `Pin ${project.name}`}
+            aria-label={project.pinned ? `Unpin ${project.name}` : `Pin ${project.name}`}
+            aria-pressed={project.pinned}
+            onClick={(event) => {
+              event.stopPropagation();
+              onTogglePin();
+            }}
+          >
+            <PushPin size={12} weight={project.pinned ? "fill" : "regular"} />
+          </button>
+        </span>
+      </span>
+    </div>
+  );
+}
+
 function SessionsPanel({
   onOpenTerminalMenu,
   onOpenProjectMenu,
@@ -1674,6 +1946,7 @@ function SessionsPanel({
 }) {
   const tabs = useWorkspaceStore((state) => state.tabs);
   const groups = useWorkspaceStore((state) => state.groups);
+  const pinnedProjects = useWorkspaceStore((state) => state.pinnedProjects);
   const activeGroupFilter = useWorkspaceStore((state) => state.activeGroupFilter);
   const projectRoot = useWorkspaceStore((state) => state.projectRoot);
   const liveCwds = useWorkspaceStore((state) => state.liveCwds);
@@ -1689,11 +1962,18 @@ function SessionsPanel({
   const updateCanvasViewport = useWorkspaceStore((state) => state.updateCanvasViewport);
   const addCanvasNode = useWorkspaceStore((state) => state.addCanvasNode);
   const closeTerminalSession = useWorkspaceStore((state) => state.closeTerminalSession);
+  const pinProject = useWorkspaceStore((state) => state.pinProject);
+  const unpinProject = useWorkspaceStore((state) => state.unpinProject);
+  const updateWorkspaceUiState = useWorkspaceStore((state) => state.updateWorkspaceUiState);
+  const expandedProjectSections = useWorkspaceStore((state) => state.workspaceUiState.projectSidebarExpandedSections);
   const [showLauncher, setShowLauncher] = useState(false);
   const [newTerminalMenu, setNewTerminalMenu] = useState<{ x: number; y: number } | null>(null);
   const [projectName, setProjectName] = useState("");
   const [projectPath, setProjectPath] = useState(projectRoot ?? "");
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [projectBrowserOpen, setProjectBrowserOpen] = useState(false);
+  const [projectSearchOpen, setProjectSearchOpen] = useState(false);
+  const [projectQuery, setProjectQuery] = useState("");
   const visibleTabs =
     activeGroupFilter === null
       ? tabs
@@ -1704,13 +1984,13 @@ function SessionsPanel({
       ? groups.find((group) => group.id === activeGroupFilter)?.projectRoot ?? null
       : null;
   const hasProjects = groups.length > 0;
-  const projects = groups.map((group) => ({
-    id: group.id as string | null,
-    name: group.name,
-    emoji: group.emoji,
-    color: group.color,
-    count: tabs.filter((tab) => tab.groupId === group.id).length,
-  }));
+  const projectModel = useMemo(() => buildProjectSidebarModel({
+    groups,
+    tabs,
+    activeGroupFilter,
+    pinnedProjects,
+    query: projectQuery,
+  }), [activeGroupFilter, groups, pinnedProjects, projectQuery, tabs]);
   const agentLane = summarizeAgentLane(visibleTabs);
   const activeAgentWorkstreams = agentLane.workstreams.filter(({ workstream }) => isActiveAgentWorkstream(workstream));
   const restartableAgentWorkstreams = agentLane.workstreams.filter(({ workstream }) => isRestartableAgentWorkstream(workstream));
@@ -1927,6 +2207,36 @@ function SessionsPanel({
     });
   };
 
+  const toggleProjectSection = (sectionId: string) => {
+    const nextSections = expandedProjectSections.includes(sectionId)
+      ? expandedProjectSections.filter((candidate) => candidate !== sectionId)
+      : [...expandedProjectSections, sectionId];
+    updateWorkspaceUiState({ projectSidebarExpandedSections: nextSections });
+  };
+
+  const renderProjectRow = (project: ProjectSidebarItem) => (
+    <ProjectRailRow
+      key={project.id}
+      project={project}
+      onSwitch={() => {
+        switchProject(project.id);
+        setProjectBrowserOpen(false);
+        setProjectSearchOpen(false);
+        setProjectQuery("");
+      }}
+      onContextMenu={(event) => onOpenProjectMenu(event, {
+        id: project.id,
+        name: project.name,
+        emoji: project.emoji,
+      })}
+      onTogglePin={() => {
+        if (!project.projectRoot) return;
+        if (project.pinned) unpinProject(project.projectRoot);
+        else pinProject(project.projectRoot);
+      }}
+    />
+  );
+
   return (
     <>
       <div style={styles.header}>
@@ -2044,11 +2354,70 @@ function SessionsPanel({
           </div>
         </div>
       )}
-      <div style={styles.projectList}>
-        <div style={styles.sectionLabel}>
-          <span>Projects</span>
-          <span>{groups.length}</span>
+      <div style={styles.projectList} data-testid="project-rail">
+        <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+          <button
+            type="button"
+            style={styles.projectBrowserToggle}
+            aria-label="Projects"
+            aria-expanded={projectBrowserOpen}
+            onClick={() => {
+              setProjectBrowserOpen((open) => !open);
+              if (projectBrowserOpen) {
+                setProjectSearchOpen(false);
+                setProjectQuery("");
+              }
+            }}
+          >
+            {projectBrowserOpen ? <CaretDown size={12} /> : <CaretRight size={12} />}
+            <span>Projects</span>
+            <span style={styles.projectSectionCount}>{projectModel.total}</span>
+          </button>
+          <span style={styles.projectHeaderActions}>
+            {projectBrowserOpen && hasProjects && (
+              <button
+              type="button"
+              style={styles.projectHeaderButton}
+              title={projectSearchOpen ? "Close project search" : "Search projects"}
+              aria-label={projectSearchOpen ? "Close project search" : "Search projects"}
+              aria-pressed={projectSearchOpen}
+              onClick={() => {
+                setProjectSearchOpen((open) => !open);
+                if (projectSearchOpen) setProjectQuery("");
+              }}
+            >
+              <MagnifyingGlass size={13} />
+              </button>
+            )}
+            <button
+              type="button"
+              style={styles.projectHeaderButton}
+              title="Open a project"
+              aria-label="Project"
+              onClick={openProjectLauncher}
+            >
+              <Plus size={13} weight="bold" />
+            </button>
+          </span>
         </div>
+        {projectBrowserOpen && (
+        <div style={styles.projectBrowserContent}>
+        {projectSearchOpen && (
+          <input
+            autoFocus
+            data-testid="project-search"
+            style={styles.projectSearch}
+            value={projectQuery}
+            placeholder="Search projects"
+            aria-label="Search projects"
+            onChange={(event) => setProjectQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key !== "Escape") return;
+              setProjectQuery("");
+              setProjectSearchOpen(false);
+            }}
+          />
+        )}
         {!hasProjects ? (
           <div style={styles.onboard}>
             <span style={styles.onboardTitle}>No project open</span>
@@ -2060,50 +2429,54 @@ function SessionsPanel({
               Open a project
             </button>
           </div>
+        ) : projectQuery.trim() ? (
+          <div style={styles.projectGrid} aria-label="Project search results">
+            <div style={styles.projectSectionLabel}>
+              <span>Results</span>
+              <span>{projectModel.searchResults.length}</span>
+            </div>
+            {projectModel.searchResults.length > 0
+              ? projectModel.searchResults.map(renderProjectRow)
+              : <span style={{ ...styles.onboardText, padding: "8px 6px 10px" }}>No matching projects</span>}
+          </div>
         ) : (
-        <div style={styles.projectGrid}>
-          {projects.map((project) => {
-            const active = project.id === activeGroupFilter;
-            return (
-              <button
-                key={project.id ?? "all-projects"}
-                className="workspace-sidebar-row"
-                data-active={active ? "true" : "false"}
-                style={styles.projectRow}
-                title={project.id ? `Switch to ${project.name} — right-click to rename` : `Switch to ${project.name}`}
-                aria-label={`Switch to ${project.name}`}
-                onClick={() => switchProject(project.id)}
-                onContextMenu={(event) => {
-                  if (!project.id) return;
-                  onOpenProjectMenu(event, { id: project.id, name: project.name, emoji: project.emoji });
-                }}
-              >
-                <span
-                  style={{
-                    ...styles.projectDot,
-                    color: active ? "var(--text-primary)" : "var(--text-secondary)",
-                  }}
-                >
-                  {project.id === null ? (
-                    <SquaresFour size={12} weight="duotone" />
-                  ) : (
-                    <span data-testid="project-row-emoji" aria-hidden="true">{project.emoji ?? "💻"}</span>
-                  )}
-                </span>
-                <span style={{ minWidth: 0, display: "flex", alignItems: "baseline", gap: 7 }}>
-                  <span
-                    style={{
-                      ...styles.rowTitle,
-                      color: active ? "var(--text-primary)" : "var(--text-secondary)",
-                    }}
+          <div style={styles.projectGrid}>
+            {projectModel.inUse.length > 0 && (
+              <section aria-labelledby="project-section-in-use">
+                <div id="project-section-in-use" style={styles.projectSectionLabel}>
+                  <span>In use</span>
+                  <span>{projectModel.inUse.length}</span>
+                </div>
+                <div style={styles.projectGrid}>{projectModel.inUse.map(renderProjectRow)}</div>
+              </section>
+            )}
+            {projectModel.sections.map((section) => {
+              const expanded = expandedProjectSections.includes(section.id);
+              const contentId = `project-section-${section.id}`;
+              return (
+                <section key={section.id} style={styles.projectSection} data-testid={contentId}>
+                  <button
+                    type="button"
+                    data-testid="project-section-toggle"
+                    style={styles.projectSectionToggle}
+                    aria-expanded={expanded}
+                    aria-controls={contentId}
+                    onClick={() => toggleProjectSection(section.id)}
                   >
-                    {project.name}
-                  </span>
-                  <span style={{ ...styles.rowMeta, marginTop: 0 }}>{project.count}</span>
-                </span>
-              </button>
-            );
-          })}
+                    {expanded ? <CaretDown size={12} /> : <CaretRight size={12} />}
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{section.label}</span>
+                    <span style={styles.projectSectionCount}>{section.projects.length}</span>
+                  </button>
+                  {expanded && (
+                    <div id={contentId} style={styles.projectGrid}>
+                      {section.projects.map(renderProjectRow)}
+                    </div>
+                  )}
+                </section>
+              );
+            })}
+          </div>
+        )}
         </div>
         )}
       </div>
@@ -3287,12 +3660,13 @@ function SessionsPanel({
           });
           const taskMissing = header.sources.goal === "missing" || header.sources.goal === "none";
           const activityMissing = header.sources.activity === "missing";
+          const sessionSummary = taskMissing && !activityMissing ? header.currentActivity : header.goalLabel;
           const agentProvider = tab.workstream?.provider ?? terminal?.agentProvider ?? terminal?.statusSummary?.provider;
           const agentLabel = agentProviderIdentity(agentProvider);
           return (
             <div
               key={tab.id}
-              className="workspace-sidebar-row"
+              className="workspace-sidebar-row session-sidebar-row"
               role="button"
               tabIndex={0}
               aria-label={`Open session ${tab.title}`}
@@ -3323,15 +3697,15 @@ function SessionsPanel({
               onContextMenu={(event) => onOpenTerminalMenu(event, tab)}
             >
               <TerminalAvatar tab={tab} active={active} />
-              <span style={{ minWidth: 0 }}>
+              <span className="session-sidebar-content" style={styles.sessionContent}>
                 <div style={{ ...styles.rowTitle, color: active ? "var(--text-primary)" : "var(--text-secondary)" }}>
                   {header.workspace}
                 </div>
-                <div style={styles.rowMeta}>
+                <div style={styles.sessionSummary} data-testid="sidebar-session-summary">
                   <span
                     data-testid="sidebar-session-attention"
                     data-attention-state={badgeForAttention(paneBadgeAttention(terminal)).state}
-                    style={{ color: badgeForAttention(paneBadgeAttention(terminal)).color, fontWeight: 600 }}
+                    style={{ color: badgeForAttention(paneBadgeAttention(terminal)).color, fontWeight: 500, flexShrink: 0 }}
                   >
                     <span
                       style={{
@@ -3349,44 +3723,11 @@ function SessionsPanel({
                   {agentLabel && (
                     <span data-testid="sidebar-session-agent-provider"> · <AgentProviderIdentity provider={agentProvider} /></span>
                   )}
-                  {" · "}{pathTail(header.fullPath)}
-                </div>
-                <div style={styles.sidebarHeaderLines}>
-                  <div
-                    style={styles.sidebarHeaderLine}
-                    data-testid="sidebar-session-task-row"
-                    title={`Task: ${header.goalLabel}`}
-                  >
-                    <span style={styles.sidebarHeaderLabel}>Task</span>
-                    <span
-                      style={{
-                        ...styles.sidebarHeaderTask,
-                        ...(taskMissing ? styles.sidebarHeaderWarning : null),
-                      }}
-                    >
-                      {header.goalLabel}
-                    </span>
-                  </div>
-                  {activityAddsInfo(header.goalLabel, header.currentActivity) && (
-                  <div
-                    style={styles.sidebarHeaderLine}
-                    data-testid="sidebar-session-now-row"
-                    title={`Now Active: ${header.currentActivity}`}
-                  >
-                    <span style={styles.sidebarHeaderLabel}>Now</span>
-                    <span
-                      style={{
-                        ...styles.sidebarHeaderNow,
-                        ...(activityMissing ? styles.sidebarHeaderWarning : null),
-                      }}
-                    >
-                      {header.currentActivity}
-                    </span>
-                  </div>
-                  )}
+                  <span aria-hidden="true" style={{ color: "var(--text-tertiary)", flexShrink: 0 }}>·</span>
+                  <span style={styles.sessionSummaryText} title={sessionSummary}>{sessionSummary}</span>
                 </div>
               </span>
-              <span className="workspace-sidebar-actions" style={styles.rowActions}>
+              <span className="workspace-sidebar-actions" style={styles.sessionRowActions}>
                 <button
                   className="workspace-sidebar-action"
                   style={{
@@ -3431,12 +3772,6 @@ function SessionsPanel({
             </div>
           );
         })}
-      </div>
-      <div style={styles.footer}>
-        <button className="workspace-primary-button" style={styles.primaryButton} onClick={openProjectLauncher}>
-          <Plus size={14} />
-          Project
-        </button>
       </div>
       {pickerOpen && (
         <FolderPicker
@@ -5268,6 +5603,7 @@ function MapPanel({
                 draggable={draggable}
                 style={{
                   ...styles.row,
+                  ...styles.mapNodeRow,
                   ...(node.id === canvasState.selectedNodeId ? styles.activeRow : null),
                   ...(draggingId === node.id ? { opacity: 0.45 } : null),
                   ...(draggable ? { cursor: "grab" } : null),

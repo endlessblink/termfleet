@@ -1694,11 +1694,11 @@ const FOCUS_TERMINAL_ZOOM = 1;
 const MAP_TERMINAL_MAX_RENDER_SCALE = 2;
 const MAP_LIVE_TERMINALS_ENABLED =
   (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env?.VITE_MAP_LIVE_TERMINALS !== "0";
-// Viewport culling: cap how many terminal nodes mount a full live renderer at
-// once. Off-screen / over-cap nodes fall back to the cheap DOM snapshot preview
-// (TerminalMapPreview). A selected terminal wins over the active tab terminal
-// so the cap remains a real ceiling instead of mounting both live renderers.
-const MAX_LIVE_TERMINALS = 1;
+// Viewport culling: keep the visible working set live while bounding renderer
+// pressure on very large maps. Off-screen / over-cap nodes fall back to the
+// cheap DOM snapshot preview. Six covers the normal on-screen project row and
+// avoids the empty-card experience caused by mounting only the selected node.
+const MAX_LIVE_TERMINALS = 6;
 // Inflate the visible rect (canvas-space px) so nodes warm up just before they
 // scroll into view, avoiding a blank flash on pan.
 const CULL_OVERSCAN_PX = 400;
@@ -3050,6 +3050,7 @@ function CanvasNodeViewImpl({
     ) : node.type === "preview" ? (
       <LocalhostPreview
         previewUrl={node.previewUrl}
+        active={selected}
         onPreviewUrlChange={(previewUrl) => {
           if (linkedTab && node.previewPaneId) {
             updatePreviewPaneUrl(linkedTab.id, node.previewPaneId, previewUrl);

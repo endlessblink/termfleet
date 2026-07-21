@@ -1817,6 +1817,7 @@ export function TerminalComponent({
             command={command}
             renderScale={renderScale}
             mapProjection={mapProjection}
+            runtimeActive={runtimeActive}
             recoveryGeneration={recoveryGeneration}
             onReady={handleReady}
             onStatus={handleStatus}
