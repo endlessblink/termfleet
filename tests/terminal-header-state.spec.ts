@@ -48,7 +48,112 @@ test("builds explicit per-pane header state with stable goal, activity, and full
   expect(header.debug.titleUsesDistinctActivity).toBe(true);
 });
 
-test("keeps panes isolated when a stored goal belongs to another run", () => {
+test("shows the user goal as Task and the active plan item as Now Active", () => {
+  const header = buildTerminalHeaderState({
+    paneId: "pane-events",
+    terminalId: "pty-events",
+    runId: "run-events",
+    project: { id: "g-courses", name: "bina-meatzevet-courses", projectRoot: "/repo/courses" },
+    liveCwd: "/repo/courses",
+    terminalStatus: "running",
+    taskLineup: [{
+      id: "task-cardcom",
+      content: "Testing the revised Cardcom-only flow",
+      status: "in_progress",
+      source: "todo-write",
+      updatedAt: 1000,
+      runId: "run-events",
+    }],
+    mainUserAsk: {
+      text: "[Image #1] also when editing the existing event I dont see שמור וצפה - [Image #2]",
+      source: "status-sidecar",
+      updatedAt: 1000,
+      runId: "run-before-tests",
+    },
+    statusSummary: {
+      task: "Testing the revised Cardcom-only flow",
+      userTask: "[Image #1] also when editing the existing event I dont see שמור וצפה - [Image #2]",
+      path: "/repo/courses",
+      now: "Testing the revised Cardcom-only flow",
+      status: "working",
+      provider: "codex",
+      confidence: "high",
+      tasksFromTodoWrite: true,
+    },
+  });
+
+  expect(header.goalLabel).toBe("when editing the existing event I dont see שמור וצפה");
+  expect(header.currentActivity).toBe("Testing the revised Cardcom-only flow");
+  expect(header.sources.goal).toBe("user-prompt");
+});
+
+test("makes the pane work area clear at a glance", () => {
+  const header = buildTerminalHeaderState({
+    paneId: "pane-live-events",
+    terminalId: "pty-live-events",
+    runId: "run-live-events",
+    project: { id: "g-courses", name: "bina-meatzevet-courses", projectRoot: "/repo/courses" },
+    liveCwd: "/repo/courses",
+    terminalStatus: "running",
+    taskLineup: [{
+      id: "task-routes",
+      content: "Changing the live-event routes",
+      status: "in_progress",
+      source: "todo-write",
+      updatedAt: 1000,
+      runId: "run-live-events",
+    }],
+    mainUserAsk: {
+      text: "it must be clear to me the user in a glance",
+      source: "status-sidecar",
+      updatedAt: 1000,
+      runId: "conversation-live-events",
+    },
+    statusSummary: {
+      task: "Changing the live-event routes",
+      userTask: "the rest is good",
+      path: "/repo/courses",
+      now: "Changing the live-event routes",
+      status: "working",
+      provider: "codex",
+      confidence: "high",
+      tasksFromTodoWrite: true,
+    },
+  });
+
+  expect(header.goalLabel).toBe("Making pane work areas clear at a glance");
+  expect(header.currentActivity).toBe("Changing the live-event routes");
+});
+
+test("keeps a pane-keyed user goal after reload before live sidecar status returns", () => {
+  const header = buildTerminalHeaderState({
+    paneId: "pane-events",
+    terminalId: "pty-events",
+    runId: "run-after-reload",
+    project: { id: "g-courses", name: "bina-meatzevet-courses", projectRoot: "/repo/courses" },
+    liveCwd: "/repo/courses",
+    terminalStatus: "running",
+    taskLineup: [{
+      id: "task-design",
+      content: "Redesigning it for clear admin decisions",
+      status: "in_progress",
+      source: "todo-write",
+      updatedAt: 1000,
+      runId: "run-after-reload",
+    }],
+    mainUserAsk: {
+      text: "Review the refund settings so they are clearer for admins",
+      source: "status-sidecar",
+      updatedAt: 1000,
+      runId: "run-before-reload",
+    },
+  });
+
+  expect(header.goalLabel).toBe("Review the refund settings so they are clearer for admins");
+  expect(header.currentActivity).toBe("Redesigning it for clear admin decisions");
+});
+
+test("keeps typed shell asks isolated when they belong to another run", () => {
   const header = buildTerminalHeaderState({
     paneId: "pane-b",
     terminalId: "pty-b",
@@ -58,7 +163,7 @@ test("keeps panes isolated when a stored goal belongs to another run", () => {
     terminalStatus: "running",
     mainUserAsk: {
       text: "Fix terminal headers in termfleet",
-      source: "status-sidecar",
+      source: "terminal-prompt",
       updatedAt: 1000,
       runId: "run-a",
     },
@@ -108,7 +213,7 @@ test("marks active terminals without structured task or activity as capture fail
   expect(header.sources.goal).toBe("missing");
 });
 
-test("marks sidecar task rows as sidecar sourced instead of none", () => {
+test("marks sidecar-captured user goals as user prompts instead of none", () => {
   const header = buildTerminalHeaderState({
     paneId: "pane-hermes",
     terminalId: "pty-hermes",
@@ -136,7 +241,7 @@ test("marks sidecar task rows as sidecar sourced instead of none", () => {
   expect(header.goalLabel).toBe("Included in debug-share bundles with the existing redaction path");
   expect(header.currentActivity).toBe("Checking debug-share bundle redaction path");
   expect(header.userGoal).toBe("Included in debug-share bundles with the existing redaction path");
-  expect(header.sources.goal).toBe("sidecar-todo");
+  expect(header.sources.goal).toBe("user-prompt");
   expect(header.sources.goal).not.toBe("none");
 });
 

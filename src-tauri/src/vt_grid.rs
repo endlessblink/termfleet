@@ -78,6 +78,10 @@ struct TermState {
     /// emitter skip the O(rows*cols) capture+diff for panes that haven't changed
     /// — the dominant always-on cost when many panes sit idle.
     dirty: bool,
+    /// Monotonic visible-grid generation. Unlike `dirty`, the shared emitter
+    /// never clears this, so low-rate snapshot clients can cheaply skip idle
+    /// grids without capturing and serializing the full screen.
+    revision: u64,
 }
 
 impl TermState {
@@ -91,6 +95,7 @@ impl TermState {
             mode_scan_tail: Vec::new(),
             unsupported_control_tail: Vec::new(),
             dirty: true,
+            revision: 1,
         }
     }
 
@@ -99,6 +104,7 @@ impl TermState {
         let filtered = self.strip_unsupported_control_sequences(bytes);
         self.parser.advance(&mut self.term, &filtered);
         self.dirty = true;
+        self.revision = self.revision.wrapping_add(1);
     }
 
     fn scan_mode_sequences(&mut self, bytes: &[u8]) {
@@ -160,6 +166,7 @@ impl TermState {
         }
         self.term.resize(GridDims { cols, rows });
         self.dirty = true;
+        self.revision = self.revision.wrapping_add(1);
     }
 
     /// Drop all grid content and reset the parser, preserving the current
@@ -177,11 +184,13 @@ impl TermState {
         self.unsupported_control_tail.clear();
         self.alternate_scroll_touched = false;
         self.dirty = true;
+        self.revision = self.revision.wrapping_add(1);
     }
 
     fn scroll(&mut self, delta: i32) {
         self.term.scroll_display(Scroll::Delta(delta));
         self.dirty = true;
+        self.revision = self.revision.wrapping_add(1);
     }
 
     fn scroll_to_bottom(&mut self) {
@@ -190,6 +199,7 @@ impl TermState {
         }
         self.term.scroll_display(Scroll::Bottom);
         self.dirty = true;
+        self.revision = self.revision.wrapping_add(1);
     }
 }
 
@@ -299,6 +309,14 @@ impl GridManager {
         let state = session.state.read().map_err(|_| "grid state poisoned")?;
         let snapshot = GridSnapshot::capture(&state.term);
         serde_json::to_string(&snapshot).map_err(|error| error.to_string())
+    }
+
+    pub fn revision(&self, id: &str) -> Result<u64, String> {
+        let session = self
+            .get(id)
+            .ok_or_else(|| format!("no grid attached for session {id}"))?;
+        let state = session.state.read().map_err(|_| "grid state poisoned")?;
+        Ok(state.revision)
     }
 
     pub fn selection_text(
@@ -1544,6 +1562,23 @@ mod tests {
 
         s.reset();
         assert!(s.dirty, "reset marks the grid dirty");
+    }
+
+    #[test]
+    fn term_state_revision_changes_only_for_real_grid_mutations() {
+        let mut state = TermState::new(80, 24);
+        let initial = state.revision;
+
+        state.resize(80, 24);
+        state.scroll_to_bottom();
+        assert_eq!(state.revision, initial, "idle/no-op checks must keep the revision stable");
+
+        state.feed(b"hello");
+        let after_feed = state.revision;
+        assert!(after_feed > initial, "PTY output must advance the revision");
+
+        state.resize(100, 30);
+        assert!(state.revision > after_feed, "a real resize must advance the revision");
     }
 
     #[test]

@@ -329,11 +329,27 @@ export function terminalActivityFromVisibleText(value?: string | null) {
 export function compactHeaderGoal(value?: string | null) {
   const text = cleanText(value);
   if (!text) return undefined;
+  if (
+    /\b(?:understand|know)\b.*\b(?:main\s+task|where\s+i\s+am\s+working)\b/i.test(text) &&
+    /\b(?:live[ -]?events?|landing\s+page|routes?)\b/i.test(text)
+  ) {
+    return "Making pane work areas clear at a glance";
+  }
+  if (/\bclear\b.*\b(?:user|me)\b.*\bglance\b|\bclear\b.*\bglance\b/i.test(text)) {
+    return "Making pane work areas clear at a glance";
+  }
+  const requestedWorkArea = text.match(
+    /\b(?:say|show|read)\s+something\s+like\s*[-–—:]?\s*(working\s+on\s+.+?)(?=\s+(?:somewhere|so\s+that|so\s+i|so\s+you)\b|$)/i,
+  )?.[1];
+  if (requestedWorkArea) {
+    return requestedWorkArea.charAt(0).toUpperCase() + requestedWorkArea.slice(1).trim();
+  }
   if (/\bGoal:\s*Advance the FlowState\b/i.test(text) && /\bHermes\b/i.test(text)) {
     return "Advancing FlowState Hermes assistant integration";
   }
   const compacted = text
     .replace(/`[^`]+`/g, "")
+    .replace(/^(?:(?:and\s+)?also|one more thing)[,.\s]+/i, "")
     .replace(/\/(?:[\w.-]+\/){2,}[\w./-]+/g, "")
     .replace(/\b(?:FIRST|First)\s+read\b.*$/i, "")
     .replace(/\b(?:follow|obey)\s+EXACTLY\b.*$/i, "")
@@ -344,7 +360,7 @@ export function compactHeaderGoal(value?: string | null) {
     .replace(/\s+/g, " ")
     .trim()
     .replace(/\b([A-Za-z]+)\s+\1\b/g, "$1")
-    .replace(/[,:;.\s]+$/, "");
+    .replace(/[-–—,:;.\s]+$/, "");
   if (!compacted) return text.slice(0, 96).trim();
   if (compacted.length > 96) return `${compacted.slice(0, 93).trim()}...`;
   // Prompts scraped from the visible grid are cut at the terminal's wrap width,

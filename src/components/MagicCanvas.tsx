@@ -2683,11 +2683,16 @@ function CanvasNodeViewImpl({
     },
   );
   const terminalHeaderTitle = stabilizedNodeHeader.title;
+  const terminalHeaderAttentionState = paneBadgeAttention(
+    linkedTerminal,
+    terminalStatusSummary?.status,
+  );
   // Only show a "Now Active" line when it adds something beyond the task; otherwise
   // the card collapses to the single honest Task line (no duplicate/placeholder row).
   const terminalHeaderNowActiveVisible = activityAddsInfo(
     terminalHeaderTaskDescription,
     terminalHeaderTitle,
+    terminalHeaderAttentionState,
   );
   const terminalHeaderHasRealTask =
     !!terminalHeaderTaskDescription &&
@@ -2701,7 +2706,7 @@ function CanvasNodeViewImpl({
   // ONE pure render-time translation of the pane's stored status — identical in every
   // view, nothing stored separately that can be dropped and flicker.
   const terminalHeaderAttention = badgeForAttention(
-    paneBadgeAttention(linkedTerminal, terminalStatusSummary?.status),
+    terminalHeaderAttentionState,
   );
   const terminalHeaderSummarySignal = stabilizedNodeHeader.now;
   const terminalHeaderHasUsefulSummary = terminalHeader.currentActivity !== "Ready";

@@ -31,6 +31,7 @@ import type { AgentProviderAvailability } from "../lib/agentProviders";
 import { providerDefinition } from "../lib/agentProviders";
 import type { WorkstreamOpsContext } from "../lib/workstreamOpsContext";
 import { projectEmojiFor } from "../lib/projectEmoji";
+import { persistedMainUserAsk } from "../lib/terminalMainUserAsk";
 
 const GROUP_COLORS = [
   "#7aa2f7",
@@ -170,6 +171,7 @@ const DEFAULT_UI_STATE: WorkspaceUiState = {
   terminalSidebarCollapsed: false,
   primarySidebarCollapsed: false,
   primarySidebarPanel: "sessions",
+  projectSidebarExpandedSections: [],
   previewUrl: "http://127.0.0.1:3000",
 };
 const DEFAULT_CANVAS_STATE: CanvasState = {
@@ -451,7 +453,7 @@ function persistedTerminalSnapshot(terminal: TerminalState): TerminalState {
     durableActivity: terminal.durableActivity,
     taskLineup: terminal.taskLineup,
     purpose: terminal.purpose,
-    mainUserAsk: terminal.mainUserAsk,
+    mainUserAsk: persistedMainUserAsk(terminal.mainUserAsk),
     taskSidebarCollapsed: terminal.taskSidebarCollapsed,
     lastStatusAt: Date.now(),
     lastError: "Session will reconnect if the backend is still running; otherwise it will restart.",
@@ -466,6 +468,7 @@ function withRestartableTerminals(tab: Tab): Tab {
       .filter((terminal) => leafIds.has(terminal.paneId))
       .map((terminal) => ({
         ...terminal,
+        mainUserAsk: persistedMainUserAsk(terminal.mainUserAsk),
         status: "stale",
         reused: false,
         previewUrl: terminal.previewUrl,
@@ -501,6 +504,9 @@ function normalizeWorkspaceUiState(uiState: Partial<WorkspaceUiState> | undefine
     terminalRendererMode,
     immersiveTerminal,
     primarySidebarPanel: uiState?.primarySidebarPanel === "map" ? "map" : "sessions",
+    projectSidebarExpandedSections: Array.isArray(uiState?.projectSidebarExpandedSections)
+      ? uiState.projectSidebarExpandedSections.filter((section): section is string => typeof section === "string")
+      : [],
     previewUrl: typeof uiState?.previewUrl === "string" && uiState.previewUrl.trim()
       ? uiState.previewUrl
       : DEFAULT_UI_STATE.previewUrl,
@@ -1386,15 +1392,6 @@ export function splitActivePreviewPane(previewUrl?: string) {
   if (!resolvedPreviewUrl) return false;
   const targetPaneId = activeTerminal?.paneId ?? tab.activePaneId;
 
-  const newPaneId = store.splitPane(
-    tab.id,
-    targetPaneId,
-    "horizontal",
-    undefined,
-    "preview",
-    resolvedPreviewUrl,
-    targetPaneId,
-  );
   store.updateWorkspaceUiState({ previewUrl: resolvedPreviewUrl });
   if (activeTerminal?.previewUrl !== resolvedPreviewUrl) {
     store.updateTab(tab.id, {
@@ -1405,9 +1402,50 @@ export function splitActivePreviewPane(previewUrl?: string) {
       ),
     });
   }
-  store.setWorkspaceMode("split");
 
   const terminalNode = store.canvasState.nodes.find((node) => node.terminalTabId === tab.id && node.type === "terminal");
+  if (store.workspaceUiState.workspaceMode === "canvas") {
+    const existingPreviewNode = store.canvasState.nodes.find((node) =>
+      node.type === "preview" &&
+      node.terminalTabId === tab.id &&
+      (node.linkedTerminalPaneId === targetPaneId || node.previewUrl === resolvedPreviewUrl)
+    );
+    if (existingPreviewNode) {
+      store.updateCanvasNode(existingPreviewNode.id, {
+        title: titleForPreviewUrl(resolvedPreviewUrl),
+        previewUrl: resolvedPreviewUrl,
+        linkedTerminalPaneId: targetPaneId,
+      });
+      store.selectCanvasNode(existingPreviewNode.id);
+      return true;
+    }
+
+    store.addCanvasNode({
+      id: `preview-map-${tab.id}-${targetPaneId}`,
+      type: "preview",
+      title: titleForPreviewUrl(resolvedPreviewUrl),
+      x: (terminalNode?.x ?? 120) + (terminalNode?.width ?? TERMINAL_MAP_NODE_SIZE.width) + 36,
+      y: terminalNode?.y ?? 90,
+      width: 620,
+      height: 420,
+      terminalTabId: tab.id,
+      linkedTerminalPaneId: targetPaneId,
+      previewUrl: resolvedPreviewUrl,
+    });
+    return true;
+  }
+
+  const newPaneId = store.splitPane(
+    tab.id,
+    targetPaneId,
+    "horizontal",
+    undefined,
+    "preview",
+    resolvedPreviewUrl,
+    targetPaneId,
+  );
+  store.setWorkspaceMode("split");
+
   const existingPreviewNode = store.canvasState.nodes.find((node) =>
     node.type === "preview" && node.terminalTabId === tab.id && node.previewPaneId === newPaneId
   );
@@ -1423,7 +1461,7 @@ export function splitActivePreviewPane(previewUrl?: string) {
     height: 420,
     terminalTabId: tab.id,
     previewPaneId: newPaneId,
-    linkedTerminalPaneId: tab.activePaneId,
+    linkedTerminalPaneId: targetPaneId,
     previewUrl: resolvedPreviewUrl,
   });
   return true;

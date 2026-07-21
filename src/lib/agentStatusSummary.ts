@@ -2,6 +2,7 @@ import type { AgentProvider, WorkstreamMetadata, WorkstreamStatus, WorkstreamSta
 import { workstreamActivityText } from "./workstreamActivity";
 import { cleanExtractedText, normalizeExtractedItems } from "./workstreamExtraction";
 import { formatWorkstreamIsolation, pathLabel } from "./workstreamOpsContext";
+import { terminalNeedsOperatorAnswer } from "./operatorQuestionState";
 
 export type AgentStatusLifecycle = WorkstreamStatusSummary["status"];
 export type AgentStatusConfidence = "low" | "medium" | "high";
@@ -161,6 +162,15 @@ function nextStepPromptSummary(lines: string[]) {
   return {
     task: "Reviewing next step",
     now: "Waiting for operator selection",
+  };
+}
+
+function unansweredQuestionPromptSummary(input: AgentStatusSummaryInput) {
+  const visible = input.terminalVisibleText ?? input.terminalOutput;
+  if (!terminalNeedsOperatorAnswer(visible)) return null;
+  return {
+    task: "Waiting for your answer",
+    now: "Waiting for your answer",
   };
 }
 
@@ -381,9 +391,11 @@ function fallbackNow(input: AgentStatusSummaryInput, task: string, status: Agent
 export function fallbackAgentStatusSummary(input: AgentStatusSummaryInput): AgentStatusSummary {
   const lines = transcriptLines(input);
   const commandSummary = shellCommandSummary(input);
-  const promptSummary = input.provider === "shell"
-    ? approvalPromptSummary(rawTranscriptLines(input)) ?? nextStepPromptSummary(rawTranscriptLines(input))
-    : null;
+  const promptSummary = (
+    input.provider === "shell"
+      ? approvalPromptSummary(rawTranscriptLines(input)) ?? nextStepPromptSummary(rawTranscriptLines(input))
+      : null
+  ) ?? unansweredQuestionPromptSummary(input);
   const transcriptTask = cleanText(inferTranscriptTask(lines));
   const promptVisible = hasVisibleShellPrompt(input);
   const mission = cleanText(input.mission);
@@ -548,10 +560,16 @@ export function getDisplaySummary(
 function persistedAgentStatusSummary(workstream: WorkstreamMetadata, fallback: AgentStatusSummary): AgentStatusSummary | null {
   const persisted = workstream.statusSummary;
   if (!persisted) return null;
-  const task = cleanText(persisted?.task);
+  const rawTask = cleanText(persisted?.task);
   const path = cleanText(persisted?.path);
   const now = cleanText(persisted?.now);
-  if (!task || !path || !now) return null;
+  if (!rawTask || !path || !now) return null;
+  const completedConfirmation = rawTask.match(/^Confirming\s+(.+?)\s+is\s+safely\s+completed$/i)?.[1];
+  const task = completedConfirmation && /(?:^|\/)hermes(?:\/|$)/i.test(path) && /^the assistant repair$/i.test(completedConfirmation)
+    ? "Repairing the Hermes personal assistant safely"
+    : completedConfirmation
+    ? `Completing ${completedConfirmation} safely`
+    : rawTask;
   return {
     ...fallback,
     ...persisted,

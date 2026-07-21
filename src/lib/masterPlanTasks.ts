@@ -15,6 +15,33 @@ export interface MasterPlanTaskChecklistItem {
   rawStatus: string;
 }
 
+export interface MasterPlanTaskCacheEntry {
+  contents: string;
+  tasks: MasterPlanTask[];
+}
+
+export function cachedMasterPlanTasks(
+  previous: MasterPlanTaskCacheEntry | undefined,
+  contents: string,
+): MasterPlanTaskCacheEntry {
+  if (previous?.contents === contents) return previous;
+  return { contents, tasks: parseMasterPlanTasks(contents) };
+}
+
+export function masterPlanTaskMapsEqual(
+  previous: Record<string, MasterPlanTask[]>,
+  next: Record<string, MasterPlanTask[]>,
+) {
+  const previousRoots = Object.keys(previous);
+  const nextRoots = Object.keys(next);
+  if (previousRoots.length !== nextRoots.length) return false;
+  for (const root of previousRoots) {
+    if (!(root in next)) return false;
+    if (JSON.stringify(previous[root]) !== JSON.stringify(next[root])) return false;
+  }
+  return true;
+}
+
 export function masterPlanPath(projectRoot: string) {
   return `${projectRoot.replace(/\/+$/, "")}/MASTER_PLAN.md`;
 }

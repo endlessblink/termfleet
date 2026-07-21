@@ -111,6 +111,34 @@ select:focus-visible,
   color: var(--accent-danger) !important;
 }
 
+.project-rail-main:focus-visible,
+[data-testid="project-section-toggle"]:focus-visible,
+[data-testid="project-search"]:focus-visible {
+  box-shadow: inset 0 0 0 1px var(--border-focus) !important;
+}
+
+[data-testid="project-section-toggle"]:hover {
+  background: var(--surface-hover) !important;
+  color: var(--text-primary) !important;
+}
+
+.session-sidebar-row[data-active="true"] .workspace-sidebar-actions {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+.session-sidebar-row:hover .workspace-sidebar-actions,
+.session-sidebar-row:focus-within .workspace-sidebar-actions {
+  opacity: 1 !important;
+  transform: translate(0, -50%) !important;
+  pointer-events: auto !important;
+}
+
+.session-sidebar-row:hover .session-sidebar-content,
+.session-sidebar-row:focus-within .session-sidebar-content {
+  padding-right: 82px;
+}
+
 .workspace-rail-button:hover,
 .workspace-rail-button:focus-visible {
   background: var(--surface-hover) !important;

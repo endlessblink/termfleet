@@ -417,6 +417,7 @@ export interface WorkspaceUiState {
   terminalSidebarCollapsed: boolean;
   primarySidebarCollapsed: boolean;
   primarySidebarPanel: "sessions" | "map";
+  projectSidebarExpandedSections: string[];
   previewUrl: string;
 }
 

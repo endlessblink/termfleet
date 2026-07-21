@@ -18,6 +18,7 @@ import {
   sidecarPath,
   statusDir,
 } from "./lib/agent-status-paths.mjs";
+import { shouldWriteStatusCandidate } from "./lib/agent-status-lifecycle.mjs";
 
 const TASK_EVENT_TOOLS = new Set(["TaskCreate", "TaskUpdate"]);
 
@@ -26,6 +27,24 @@ function cleanField(value, max = 200) {
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, max);
+}
+
+export function lifecycleFromNotification(payload, previousTurn) {
+  const notificationType = cleanField(
+    payload?.notification_type ?? payload?.notificationType ?? payload?.matcher,
+    80,
+  ).toLowerCase();
+  if (notificationType === "idle_prompt") return "idle";
+  if (notificationType === "agent_needs_input" && payload?.agent_id) {
+    return ["working", "waiting", "idle"].includes(previousTurn) ? previousTurn : null;
+  }
+  if (["permission_prompt", "elicitation_dialog", "agent_needs_input"].includes(notificationType)) {
+    return "waiting";
+  }
+  if (["elicitation_complete", "elicitation_response"].includes(notificationType)) {
+    return "working";
+  }
+  return ["working", "waiting", "idle"].includes(previousTurn) ? previousTurn : null;
 }
 
 function userTaskFromPayload(payload) {
@@ -41,6 +60,11 @@ function userTaskFromPayload(payload) {
       input?.message,
     220,
   );
+}
+
+function declaredGoalText(value) {
+  const text = cleanField(value, 220);
+  return /^Goal:\s*\S/i.test(text) ? text.replace(/^Goal:\s*/i, "") : "";
 }
 
 // In a git worktree, Claude's hook payload reports the MAIN checkout path in `cwd`
@@ -315,6 +339,9 @@ export function narrationToNow(text) {
     .replace(/\s+/g, " ")
     .trim();
   if (!clean) return "";
+  // A completed response's hand-off checklist describes what the operator may do
+  // next; it is not what the pane is doing now.
+  if (/(?:^|[.!?]\s+)(?:Next\s+steps|Steps)\s*[-:]/i.test(clean)) return "";
   // Split into sentences and keep substantive ones (drop terse fragments / pure status).
   const sentences = (clean.match(/[^.!?]+[.!?]?/g) ?? [clean])
     .map((sentence) => sentence.trim())
@@ -402,6 +429,7 @@ function appendRecent(prevRecent, text, at) {
 }
 
 async function main() {
+  const eventAt = Date.now();
   const raw = await readStdin();
   let payload = {};
   try {
@@ -415,6 +443,10 @@ async function main() {
   const filePath = statusFilePath(cwd);
   const prevAtStart = readExistingSidecar(filePath);
   const submittedUserTask = userTaskFromPayload(payload);
+  const previousMainTask = cleanField(prevAtStart?.mainTask, 220) || undefined;
+  const previousMainTaskSource = prevAtStart?.mainTaskSource === "plan-explanation" || prevAtStart?.mainTaskSource === "goal-task"
+    ? prevAtStart.mainTaskSource
+    : undefined;
   let sidecar;
   if (payload.hook_event_name === "UserPromptSubmit") {
     const userTask = submittedUserTask;
@@ -425,13 +457,13 @@ async function main() {
       updatedAt: Date.now(),
       source: "user-prompt",
       todos: Array.isArray(prevAtStart?.todos) ? prevAtStart.todos : [],
+      mainTask: previousMainTask,
+      mainTaskSource: previousMainTaskSource,
       userTask,
       now: cleanField(prevAtStart?.now) || "Prompt submitted",
       narration: cleanField(prevAtStart?.narration, 90) || undefined,
     };
-  } else if (payload.hook_event_name === "Notification") {
-    // The agent is asking the operator for input or permission → Waiting for you.
-    // Checked BEFORE Stop because a Notification payload can also carry transcript_path.
+  } else if (payload.hook_event_name === "PermissionRequest") {
     const prev = prevAtStart;
     sidecar = {
       cwd,
@@ -441,8 +473,32 @@ async function main() {
       todos: Array.isArray(prev?.todos) ? prev.todos : [],
       now: cleanField(prev?.now) || undefined,
       narration: cleanField(prev?.narration, 90) || undefined,
-      userTask: submittedUserTask || cleanField(prev?.userTask, 220) || undefined,
+      mainTask: cleanField(prev?.mainTask, 220) || undefined,
+      mainTaskSource: prev?.mainTaskSource,
+      userTask: cleanField(prev?.userTask, 220) || undefined,
       turn: "waiting",
+      turnReason: "permission_request",
+    };
+  } else if (payload.hook_event_name === "Notification") {
+    // Notification is a family of events, not a synonym for operator attention.
+    // idle_prompt means the turn is simply resting; background completion/auth events
+    // preserve the current lifecycle; only concrete prompts become Waiting for you.
+    const prev = prevAtStart;
+    const turn = lifecycleFromNotification(payload, prev?.turn);
+    if (!turn) process.exit(0);
+    sidecar = {
+      cwd,
+      sessionId: String(payload?.session_id ?? prev?.sessionId ?? ""),
+      updatedAt: Date.now(),
+      source: prev?.source || "claude-narration",
+      todos: Array.isArray(prev?.todos) ? prev.todos : [],
+      now: cleanField(prev?.now) || undefined,
+      narration: cleanField(prev?.narration, 90) || undefined,
+      mainTask: cleanField(prev?.mainTask, 220) || undefined,
+      mainTaskSource: prev?.mainTaskSource,
+      userTask: cleanField(prev?.userTask, 220) || undefined,
+      turn,
+      turnReason: cleanField(payload?.notification_type ?? payload?.notificationType, 80) || "notification",
     };
   } else if (
     payload.hook_event_name === "Stop" ||
@@ -464,6 +520,8 @@ async function main() {
       todos,
       now: taskNow || now || cleanField(prev?.now) || undefined,
       narration: now || cleanField(prev?.narration, 90) || undefined,
+      mainTask: cleanField(prev?.mainTask, 220) || undefined,
+      mainTaskSource: prev?.mainTaskSource,
       userTask: submittedUserTask || cleanField(prev?.userTask, 220) || undefined,
       turn: "idle",
     };
@@ -471,12 +529,22 @@ async function main() {
     // Legacy authoritative path (CLAUDE_CODE_ENABLE_TASKS=0): rewrite from the array.
     sidecar = buildSidecar(payload);
     sidecar.userTask = sidecar.userTask || cleanField(prevAtStart?.userTask, 220) || undefined;
+    const goalTodo = sidecar.todos.find((todo) => declaredGoalText(todo?.content));
+    const declaredGoal = declaredGoalText(goalTodo?.content);
+    sidecar.todos = sidecar.todos.filter((todo) => !declaredGoalText(todo?.content));
+    sidecar.mainTask = declaredGoal || previousMainTask;
+    sidecar.mainTaskSource = declaredGoal ? "goal-task" : previousMainTaskSource;
     if (sidecar.todos.length === 0) process.exit(0);
   } else if (TASK_EVENT_TOOLS.has(payload.tool_name)) {
     // Modern task tools: fold this TaskCreate/TaskUpdate into the stateful list.
     const prev = prevAtStart;
-    const todos = applyTaskEvent(prev?.todos, payload);
-    if (todos.length === 0) process.exit(0);
+    const declaredGoal = payload.tool_name === "TaskCreate"
+      ? declaredGoalText(payload?.tool_input?.subject ?? payload?.tool_input?.content)
+      : "";
+    const todos = declaredGoal
+      ? (Array.isArray(prev?.todos) ? prev.todos : [])
+      : applyTaskEvent(prev?.todos, payload);
+    if (todos.length === 0 && !declaredGoal) process.exit(0);
     sidecar = {
       cwd,
       sessionId: String(payload?.session_id ?? prev?.sessionId ?? ""),
@@ -484,6 +552,8 @@ async function main() {
       source: "claude-task",
       todos,
       now: nowFromTodos(todos),
+      mainTask: declaredGoal || cleanField(prev?.mainTask, 220) || undefined,
+      mainTaskSource: declaredGoal ? "goal-task" : prev?.mainTaskSource,
       userTask: submittedUserTask || cleanField(prev?.userTask, 220) || cleanField(todos[0]?.content, 220) || undefined,
       ...(payload?.agent_id
         ? {
@@ -505,9 +575,13 @@ async function main() {
       source: "claude-tool",
       todos: Array.isArray(prev?.todos) ? prev.todos : [],
       now,
+      mainTask: cleanField(prev?.mainTask, 220) || undefined,
+      mainTaskSource: prev?.mainTaskSource,
       userTask: submittedUserTask || cleanField(prev?.userTask, 220) || undefined,
     };
   }
+  sidecar.updatedAt = eventAt;
+  sidecar.turnEventAt = eventAt;
   // Roll the agent's actual action into the recent-activity log (what it DID). On a Stop
   // event prefer the agent's own narration over a task summary, so the feed reads in the
   // model's voice.
@@ -526,8 +600,14 @@ async function main() {
   if (sidecar.userTask === undefined && prevForRecent?.userTask) {
     sidecar.userTask = cleanField(prevForRecent.userTask, 220);
   }
-  // Event-driven turn lifecycle for the Running/Waiting/Idle badge. Stop → idle,
-  // Notification → waiting (set in their branches); every other event is mid-turn work.
+  if (sidecar.mainTask === undefined && prevForRecent?.mainTask) {
+    sidecar.mainTask = cleanField(prevForRecent.mainTask, 220);
+  }
+  if (sidecar.mainTaskSource === undefined && prevForRecent?.mainTaskSource) {
+    sidecar.mainTaskSource = prevForRecent.mainTaskSource;
+  }
+  // Event-driven turn lifecycle for the Running/Waiting/Idle badge. Stop → idle;
+  // notification types are classified above; every other event is mid-turn work.
   if (sidecar.turn === undefined) {
     sidecar.turn = "working";
   }
@@ -547,6 +627,9 @@ async function main() {
       sidecar.todos = onDisk.todos;
       if (!sidecar.now) sidecar.now = nowFromTodos(onDisk.todos);
     }
+  }
+  if (!shouldWriteStatusCandidate(sidecar, readExistingSidecar(filePath))) {
+    process.exit(0);
   }
   try {
     mkdirSync(statusDir(), { recursive: true });

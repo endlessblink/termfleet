@@ -1,4 +1,5 @@
 import type { CanvasNode, Tab } from "./types";
+import { paneBadgeAttention } from "./sessionStatus";
 
 export type MapFilter = "all" | "active" | "failed" | "waiting" | "testing" | "preview";
 
@@ -30,13 +31,12 @@ export function nodeMatchesMapFilter(node: CanvasNode, linkedTab: Tab | undefine
 
   const terminal = linkedTerminalForMapNode(node, linkedTab);
   const workstream = linkedTab?.workstream;
+  const badgeAttention = paneBadgeAttention(
+    terminal,
+    workstream?.statusSummary?.status ?? workstream?.status,
+  );
   if (filter === "active") {
-    return terminal?.status === "starting" ||
-      terminal?.status === "running" ||
-      terminal?.status === "reconnected" ||
-      workstream?.status === "running" ||
-      workstream?.phase === "active" ||
-      workstream?.phase === "launching";
+    return badgeAttention === "running";
   }
   if (filter === "failed") {
     return terminal?.status === "failed" ||
@@ -45,9 +45,7 @@ export function nodeMatchesMapFilter(node: CanvasNode, linkedTab: Tab | undefine
       workstream?.readiness === "auth-required";
   }
   if (filter === "waiting") {
-    return workstream?.status === "waiting" ||
-      workstream?.phase === "needs-input" ||
-      workstream?.activityKind === "waiting";
+    return badgeAttention === "waiting";
   }
   if (filter === "testing") {
     const text = [

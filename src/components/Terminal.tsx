@@ -18,11 +18,12 @@ import { inferActivityFromOutput, isWorkstreamActivityKind, normalizeActivityTex
 import { mergeCockpitObjectsFromExtractedItems, mergeExtractedItems, normalizeExtractedItems } from "../lib/workstreamExtraction";
 import { deriveTerminalActivity } from "../lib/terminalActivity";
 import { terminalPurposeFromSubmittedInput } from "../lib/terminalHeaderDisplay";
-import { mainUserAskFromSummary, mainUserAskFromTerminalPurpose, recordTerminalHeaderLog } from "../lib/terminalMainUserAsk";
+import { mainUserAskForRunChange, mainUserAskFromSummary, mainUserAskFromTerminalPurpose, recordTerminalHeaderLog } from "../lib/terminalMainUserAsk";
 import { completeOpenTaskLineup, completeOpenTaskLineupForRun, mergeShellSummaryTaskLineup, normalizeTaskLineupItems, taskLineupFromExtractedItems, terminalOutputClosesTaskLineup } from "../lib/taskLineup";
 import { parseTerminalChecklist } from "../lib/terminalChecklist";
 import type { TaskLineupItem, TerminalActivitySummary, TerminalRuntimeStatus, TerminalState, WorkstreamActivityKind, WorkstreamActivitySource, WorkstreamInput, WorkstreamMetadata, WorkstreamPhase, WorkstreamReadiness, WorkstreamStatus, WorkstreamStatusSummary } from "../lib/types";
 import type { GridSnapshot } from "../lib/gridSnapshot";
+import { providerReadinessCue } from "../lib/providerReadinessCue";
 
 const LOCALHOST_URL_PATTERN = /https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0):(\d{2,5})(?:[/?#][^\s"'<>]*)?/gi;
 const LOCALHOST_HOST_PORT_PATTERN = /(?:localhost|127\.0\.0\.1|0\.0\.0\.0):(\d{2,5})(?:[/?#][^\s"'<>]*)?/gi;
@@ -94,47 +95,41 @@ function inferProviderReadiness(output: string): {
   lastSummary?: string;
   nextAction?: string;
 } | null {
-  const text = output.toLowerCase();
-  const cues = [
-    ...[...text.matchAll(/\b(not authenticated|authentication required|log in|login|api key|oauth|sign in)\b/g)].map((match) => ({
-      index: match.index ?? 0,
-      result: {
-        readiness: "auth-required" as const,
-        label: "Provider auth required",
-        detail: "CLI output indicates login, API key, or sign-in is required.",
-        status: "waiting" as const,
-        phase: "needs-input" as const,
-        lastSummary: "Provider requires authentication",
-        nextAction: "Authenticate the CLI, then restart or send a recovery prompt",
-      },
-    })),
-    ...[...text.matchAll(/\b(welcome|ready|session started|authenticated|logged in)\b/g)].map((match) => ({
-      index: match.index ?? 0,
-      result: {
-        readiness: "provider-ready" as const,
-        label: "Provider session ready",
-        detail: "CLI output indicates provider session readiness.",
-        status: "running" as const,
-        phase: "active" as const,
-        lastSummary: "Provider session is ready",
-        nextAction: "Send a task or watch provider response",
-      },
-    })),
-    ...[...text.matchAll(/\b(cancelled|canceled|interrupted|aborted)\b/g)].map((match) => ({
-      index: match.index ?? 0,
-      result: {
-        readiness: "provider-ready" as const,
-        label: "Provider interrupted",
-        detail: "CLI output indicates the run was interrupted or canceled.",
-        status: "stopped" as const,
-        phase: "interrupted" as const,
-        lastSummary: "Provider acknowledged cancellation",
-        nextAction: "Restart or close the workstream",
-      },
-    })),
-  ].sort((a, b) => b.index - a.index);
-
-  return cues[0]?.result ?? null;
+  const cue = providerReadinessCue(output);
+  if (cue === "auth-required") {
+    return {
+      readiness: "auth-required",
+      label: "Provider auth required",
+      detail: "CLI output indicates login, API key, or sign-in is required.",
+      status: "waiting",
+      phase: "needs-input",
+      lastSummary: "Provider requires authentication",
+      nextAction: "Authenticate the CLI, then restart or send a recovery prompt",
+    };
+  }
+  if (cue === "provider-ready") {
+    return {
+      readiness: "provider-ready",
+      label: "Provider session ready",
+      detail: "CLI output indicates provider session readiness.",
+      status: "running",
+      phase: "active",
+      lastSummary: "Provider session is ready",
+      nextAction: "Send a task or watch provider response",
+    };
+  }
+  if (cue === "interrupted") {
+    return {
+      readiness: "provider-ready",
+      label: "Provider interrupted",
+      detail: "CLI output indicates the run was interrupted or canceled.",
+      status: "stopped",
+      phase: "interrupted",
+      lastSummary: "Provider acknowledged cancellation",
+      nextAction: "Restart or close the workstream",
+    };
+  }
+  return null;
 }
 
 function phaseForStatus(status: WorkstreamStatus): WorkstreamPhase {
@@ -1376,7 +1371,7 @@ export function TerminalComponent({
       activityKind: providerReadiness?.status ? activityKindForStatus(providerReadiness.status) : inferredActivity?.activityKind,
       durableActivity,
       activeRunId,
-      mainUserAsk: runChanged ? undefined : previousTerminal?.mainUserAsk,
+      mainUserAsk: mainUserAskForRunChange(previousTerminal?.mainUserAsk, runChanged),
       runClosed: closesTaskLineup ? true : runChanged ? false : previousTerminal?.runClosed,
       taskLineup: closesTaskLineup
         ? completeOpenTaskLineupForRun(previousTerminal?.taskLineup, activeRunId)

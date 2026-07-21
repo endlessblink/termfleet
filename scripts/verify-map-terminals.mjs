@@ -175,7 +175,9 @@ const checks = [
     ok: /export type MapFilter = "all" \| "active" \| "failed" \| "waiting" \| "testing" \| "preview";/.test(mapNodeFilters) &&
       /export function nodeMatchesMapFilter/.test(mapNodeFilters) &&
       /terminal\?\.status === "failed"/.test(mapNodeFilters) &&
-      /workstream\?\.phase === "needs-input"/.test(mapNodeFilters) &&
+      /paneBadgeAttention/.test(mapNodeFilters) &&
+      /badgeAttention === "running"/.test(mapNodeFilters) &&
+      /badgeAttention === "waiting"/.test(mapNodeFilters) &&
       /terminal\?\.activityKind/.test(mapNodeFilters) &&
       /terminal\.previewUrl/.test(mapNodeFilters) &&
       /data-testid=\{`map-filter-\$\{filter\.id\}`\}/.test(canvasSidebar) &&

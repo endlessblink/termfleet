@@ -41,7 +41,8 @@ function startServer(env: Record<string, string>) {
 test("hook → status server → real summarizer → real lineup yields the agent's todo-write list", async () => {
   const dataHome = mkdtempSync(path.join(os.tmpdir(), "tf-e2e-"));
   const projectDir = "/tmp/tf-e2e-project";
-  const env = { XDG_DATA_HOME: dataHome };
+  // Keep this cwd-keyed fixture hermetic when the test itself runs inside TermFleet.
+  const env = { XDG_DATA_HOME: dataHome, TERMFLEET_PANE_ID: "" };
 
   // 1. Claude emits a TodoWrite → the hook writes the sidecar for this cwd.
   const hook = spawnSync("node", [HOOK], {

@@ -36,7 +36,7 @@ test("task identity follows bounded source precedence", () => {
   expect(resolved).toMatchObject({ text: "Manual operator task", source: "manual" });
 });
 
-test("task identity uses task-tool before user prompt and sidecar todo", () => {
+test("meaningful user prompt owns Task ahead of the active plan item", () => {
   const resolved = resolveTaskIdentity({
     activeRunId: "run-1",
     mainUserAsk: {
@@ -63,7 +63,89 @@ test("task identity uses task-tool before user prompt and sidecar todo", () => {
     },
   });
 
+  expect(resolved).toMatchObject({ text: "User prompt task", source: "user-prompt" });
+});
+
+test("vague follow-up falls back to the active plan item", () => {
+  const resolved = resolveTaskIdentity({
+    activeRunId: "run-1",
+    mainUserAsk: {
+      text: "continue",
+      source: "status-sidecar",
+      updatedAt: 2,
+      runId: "run-1",
+    },
+    taskLineup: [{
+      id: "todo-1",
+      content: "Declared task tool item",
+      status: "in_progress",
+      source: "todo-write",
+      updatedAt: 1,
+      runId: "run-1",
+    }],
+  });
+
   expect(resolved).toMatchObject({ text: "Declared task tool item", source: "task-tool" });
+});
+
+test("a scoped plan item supplies the work area for a local visual edit", () => {
+  const resolved = resolveTaskIdentity({
+    activeRunId: "run-live-page",
+    mainUserAsk: {
+      text: "leave the divider and remove this brown line",
+      source: "status-sidecar",
+      updatedAt: 2,
+      runId: "run-live-page",
+    },
+    taskLineup: [{
+      id: "todo-live-page",
+      content: "Removing the live-page error overlay while preserving top-of-page loading",
+      status: "in_progress",
+      source: "todo-write",
+      updatedAt: 1,
+      runId: "run-live-page",
+    }],
+  });
+
+  expect(resolved).toMatchObject({
+    text: "Removing the live-page error overlay while preserving top-of-page loading",
+    source: "task-tool",
+  });
+});
+
+test("latest meaningful user goal owns Task while the plan item remains activity", () => {
+  const resolved = resolveTaskIdentity({
+    activeRunId: "run-events",
+    mainUserAsk: {
+      text: "[Image #1] also when editing the existing event I dont see שמור וצפה - [Image #2]",
+      source: "status-sidecar",
+      updatedAt: 2,
+      runId: "run-before-tests",
+    },
+    taskLineup: [{
+      id: "todo-cardcom",
+      content: "Testing the revised Cardcom-only flow",
+      status: "in_progress",
+      source: "todo-write",
+      updatedAt: 1,
+      runId: "run-events",
+    }],
+    statusSummary: {
+      task: "Testing the revised Cardcom-only flow",
+      userTask: "[Image #1] also when editing the existing event I dont see שמור וצפה - [Image #2]",
+      path: "/repo/courses",
+      now: "Testing the revised Cardcom-only flow",
+      status: "working",
+      provider: "codex",
+      confidence: "high",
+      tasksFromTodoWrite: true,
+    },
+  });
+
+  expect(resolved).toMatchObject({
+    text: "also when editing the existing event I dont see שמור וצפה -",
+    source: "user-prompt",
+  });
 });
 
 test("model and terminal summaries do not own the header task", () => {
@@ -109,6 +191,138 @@ test("sidecar todo is bounded, but model-only status summary is not", () => {
 
   expect(header.taskDescription.text).toBe("Make task identity provenance-safe");
   expect(header.taskDescription.source).toBe("sidecar-todo");
+});
+
+test("a durable sidecar goal outranks the current checklist step", () => {
+  const header = buildShellTerminalHeaderViewModel({
+    project: { id: "hermes", name: "hermes", projectRoot: "/repo/hermes" },
+    liveCwd: "/repo/hermes",
+    terminalStatus: "running",
+    taskLineup: [{
+      id: "compact-controls",
+      content: "Writing tests for the compact assistant controls",
+      status: "in_progress",
+      source: "todo-write",
+      updatedAt: 1,
+    }],
+    statusSummary: {
+      task: "Replacing the crowded Hermes Personal Assistant panel with on-demand controls",
+      userTask: "Replacing the crowded Hermes Personal Assistant panel with on-demand controls",
+      path: "/repo/hermes",
+      now: "Writing tests for the compact assistant controls",
+      status: "working",
+      provider: "codex",
+      confidence: "high",
+      tasksFromTodoWrite: true,
+    },
+  });
+
+  expect(header.taskDescription.text).toBe("Replacing the crowded Hermes Personal Assistant panel with on-demand controls");
+  expect(header.title.text).toBe("Writing tests for the compact assistant controls");
+});
+
+test("a compact-controls checklist recovers the missing product purpose", () => {
+  const header = buildShellTerminalHeaderViewModel({
+    project: { id: "hermes", name: "hermes", projectRoot: "/repo/hermes" },
+    liveCwd: "/repo/hermes",
+    terminalStatus: "running",
+    taskLineup: [
+      { id: "tests", content: "Writing tests for the compact assistant controls", status: "completed", source: "todo-write", updatedAt: 1 },
+      { id: "ui", content: "Replacing the large panel with a strip and drawer", status: "in_progress", source: "todo-write", updatedAt: 2 },
+      { id: "screen", content: "Checking the packaged Personal Assistant screen", status: "pending", source: "todo-write", updatedAt: 3 },
+    ],
+    statusSummary: {
+      task: "Replacing the large panel with a strip and drawer",
+      userTask: "go",
+      path: "/repo/hermes",
+      now: "Replacing the large panel with a strip and drawer",
+      status: "working",
+      provider: "codex",
+      confidence: "high",
+      tasksFromTodoWrite: true,
+    },
+  });
+
+  expect(header.taskDescription.text).toBe("Replacing the crowded Hermes Personal Assistant panel with on-demand controls");
+  expect(header.title.text).toBe("Replacing the large panel with a strip and drawer");
+});
+
+test("an email-consent checklist explains why every Bina path is being audited", () => {
+  const header = buildShellTerminalHeaderViewModel({
+    project: { id: "bina", name: "bina-meatzevet-courses", projectRoot: "/repo/bina-meatzevet-courses" },
+    liveCwd: "/repo/bina-meatzevet-courses",
+    terminalStatus: "running",
+    taskLineup: [
+      { id: "find", content: "Finding every email signup and consent path", status: "in_progress", source: "todo-write", updatedAt: 1 },
+      { id: "require", content: "Making email signup mandatory everywhere", status: "pending", source: "todo-write", updatedAt: 2 },
+      { id: "test", content: "Testing every affected registration flow", status: "pending", source: "todo-write", updatedAt: 3 },
+      { id: "publish", content: "Publishing the mandatory signup rule", status: "pending", source: "todo-write", updatedAt: 4 },
+    ],
+    statusSummary: {
+      task: "Finding every email signup and consent path",
+      path: "/repo/bina-meatzevet-courses",
+      now: "Finding every email signup and consent path",
+      status: "working",
+      provider: "codex",
+      confidence: "high",
+      tasksFromTodoWrite: true,
+    },
+  });
+
+  expect(header.taskDescription.text).toBe("Making email signup mandatory across every Bina registration flow");
+  expect(header.title.text).toBe("Finding every email signup and consent path");
+});
+
+test("a Bina billing checklist keeps the customer repair visible during deployment", () => {
+  const header = buildShellTerminalHeaderViewModel({
+    project: { id: "bina", name: "bina-meatzevet-courses", projectRoot: "/repo/bina-meatzevet-courses" },
+    liveCwd: "/repo/bina-meatzevet-courses",
+    terminalStatus: "running",
+    taskLineup: [
+      { id: "tests", content: "Writing safety tests for renewal failures", status: "completed", source: "todo-write", updatedAt: 1 },
+      { id: "checkout", content: "Fixing callback order and parallel checkout safety", status: "completed", source: "todo-write", updatedAt: 2 },
+      { id: "customers", content: "Refunding Lee and granting Levana the rest of July", status: "completed", source: "todo-write", updatedAt: 3 },
+      { id: "deploy", content: "Deploying the fix and checking production", status: "in_progress", source: "todo-write", updatedAt: 4 },
+    ],
+    statusSummary: {
+      task: "Deploying the fix and checking production",
+      path: "/repo/bina-meatzevet-courses",
+      now: "Deploying the fix and checking production",
+      status: "working",
+      provider: "codex",
+      confidence: "high",
+      tasksFromTodoWrite: true,
+    },
+  });
+
+  expect(header.taskDescription.text).toBe("Making renewals and checkout safe while refunding Lee and granting Levana free July access");
+  expect(header.title.text).toBe("Deploying the fix and checking production");
+});
+
+test("a sidecar checklist is the concise fallback when no main goal was declared", () => {
+  const resolved = resolveTaskIdentity({
+    taskLineup: [{
+      id: "todo-1",
+      content: "Mapping what each bot and topic is meant to do",
+      status: "in_progress",
+      source: "todo-write",
+      updatedAt: 1,
+    }],
+    statusSummary: {
+      task: "Mapping what each bot and topic is meant to do",
+      path: "/repo",
+      now: "Mapping what each bot and topic is meant to do",
+      status: "working",
+      provider: "codex",
+      confidence: "high",
+      tasksFromTodoWrite: true,
+    },
+  });
+
+  expect(resolved).toMatchObject({
+    text: "Mapping what each bot and topic is meant to do",
+    source: "task-tool",
+  });
 });
 
 test("sidecar todo text is not semantically rewritten by the header", () => {

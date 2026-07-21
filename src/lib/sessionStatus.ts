@@ -1,16 +1,17 @@
 import type { AttentionState } from "./terminalAttention";
+import { terminalScreenAttention } from "./operatorQuestionState";
 
 /**
  * THE single source of truth for a terminal's Running/Waiting/Idle state.
  *
  * Every UI surface (split header, sidebar row, map node) reads ONE value stored on the
- * terminal (`badgeAttention`), reconciled here from the agent's own reported status. It
- * uses ONLY the explicit event status the hook writes — no clock, no freshness timeout,
- * no scrollback scanning. That is deliberate:
+ * terminal, reconciled here from the agent's reported status plus exact lifecycle chrome
+ * on the current terminal screen. It uses no clock or freshness timeout. That is deliberate:
  *  - A time-based "went stale → idle" rule re-evaluated against the clock FLASHED the
  *    badge between Running and Idle as time crossed the threshold.
- *  - Scrollback markers ("esc to interrupt", "Cooked for") are defeated by scrolling.
- * Event status changes only on a real event, so the badge cannot flash or drift.
+ *  - Generic prose never counts as state. The screen fallback recognizes only paired TUI
+ *    prompts/completion markers, and the newest marker wins over visible history.
+ * Hook state remains authoritative whenever the screen has no exact lifecycle marker.
  */
 export type SessionLifecycle = "running" | "waiting" | "idle" | "unavailable";
 
@@ -31,7 +32,7 @@ export function reconcileSessionStatus(signals: SessionSignals): SessionStatus {
   const waiting: SessionStatus = { lifecycle: "waiting", attention: "waiting", stale: false };
   const unavailable: SessionStatus = { lifecycle: "unavailable", attention: "unavailable", stale: true };
 
-  // PURE EVENT STATE — no clock, no freshness timeout, no scrollback. The badge changes
+  // PURE EVENT STATE — no clock and no freshness timeout. The badge changes
   // ONLY when the agent's own reported status changes (the status hook writes it on a
   // prompt/tool/turn-end event), so it CANNOT flash: a time-based "went stale → idle"
   // rule re-evaluated against the clock is exactly what made it flicker between Running
@@ -44,7 +45,7 @@ export function reconcileSessionStatus(signals: SessionSignals): SessionStatus {
   return idle;
 }
 
-/** Convenience wrapper: the badge state from the agent's reported status alone. */
+/** Convenience wrapper for callers that only have the agent's reported status. */
 export function sessionAttention(input: { summaryStatus?: string | null }): AttentionState {
   return reconcileSessionStatus({ summaryStatus: input.summaryStatus }).attention;
 }
@@ -57,9 +58,24 @@ export function sessionAttention(input: { summaryStatus?: string | null }): Atte
  * render-time translation of the same store field has nothing to drop or resync.
  */
 export function paneBadgeAttention(
-  terminal?: { statusSummary?: { status?: string | null } | null } | null,
+  terminal?: {
+    statusSummary?: { status?: string | null; updatedAt?: number | null } | null;
+    statusSummaryUpdatedAt?: number | null;
+    terminalVisibleText?: string | null;
+    terminalVisibleTextUpdatedAt?: number | null;
+  } | null,
   fallbackStatus?: string | null,
 ): AttentionState {
+  const screenAttention = terminalScreenAttention(terminal?.terminalVisibleText);
+  const screenUpdatedAt = terminal?.terminalVisibleTextUpdatedAt ?? 0;
+  const summaryUpdatedAt = terminal?.statusSummaryUpdatedAt ?? terminal?.statusSummary?.updatedAt ?? 0;
+  // A paired unanswered-question prompt on the current screen is stronger than
+  // hook ordering: the hook event may be the transition that opened the prompt.
+  // Requiring its timestamp to be newer leaves a visible question labeled Running.
+  if (screenAttention === "waiting") return "waiting";
+  if (screenAttention && (!summaryUpdatedAt || !screenUpdatedAt || screenUpdatedAt >= summaryUpdatedAt)) {
+    return screenAttention;
+  }
   return reconcileSessionStatus({
     summaryStatus: terminal?.statusSummary?.status ?? fallbackStatus,
   }).attention;

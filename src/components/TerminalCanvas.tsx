@@ -20,6 +20,7 @@ import { register as registerExitWatch, unregister as unregisterExitWatch } from
 import { GridBuffer } from "../lib/gridBuffer";
 import { decodeFrame } from "../lib/gridDiff";
 import { needsLegacyPromptRepair } from "../lib/legacyPromptRepair";
+import { mapTerminalFrameGapMs, mapTerminalTransportMode, shouldRefreshMapSnapshot } from "../lib/mapRenderCadence";
 import {
   computeGridSize,
   mapNodeLayoutMode,
@@ -155,6 +156,7 @@ interface TerminalCanvasProps {
   // the canvas is CSS-scaled to fit, so a wide agent/zellij frame is never reflowed
   // into garbage on a small map node. Plain shells still reflow.
   mapProjection?: boolean;
+  runtimeActive?: boolean;
   recoveryGeneration?: number;
   // Lifecycle reporting so the workspace store can track the canvas-owned PTY.
   // Without these, tab.terminals is never populated for canvas terminals (the
@@ -181,6 +183,7 @@ export function TerminalCanvas({
   theme = DEFAULT_THEME,
   renderScale = 1,
   mapProjection = false,
+  runtimeActive = true,
   recoveryGeneration = 0,
   onReady,
   onStatus,
@@ -206,6 +209,8 @@ export function TerminalCanvas({
   // which is registered once and must not close over a stale prop.
   const sessionIdRef = useRef(sessionId);
   sessionIdRef.current = sessionId;
+  const runtimeActiveRef = useRef(runtimeActive);
+  runtimeActiveRef.current = runtimeActive;
   const shellRef = useRef<HTMLDivElement>(null);
   // Latest terminal modes, kept current by the diff stream, read by input.
   const modesRef = useRef({ ...DEFAULT_TERMINAL_MODES });
@@ -419,6 +424,10 @@ export function TerminalCanvas({
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     let visibleContentSeen = false;
     let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+    let backgroundSnapshotInterval: ReturnType<typeof setInterval> | null = null;
+    let snapshotRefreshInFlight = false;
+    let revisionCheckInFlight = false;
+    let lastBackgroundRevision: number | null = null;
     let renderThrottleTimer: ReturnType<typeof setTimeout> | null = null;
     let lastRenderAt = 0;
     let reusedSession = false;
@@ -439,9 +448,9 @@ export function TerminalCanvas({
 
     const scheduleRender = () => {
       const interactiveRender = performance.now() - lastInputAtRef.current < 120;
-      if (mapProjection && !pendingFullRender) {
+      if (mapProjection && (!pendingFullRender || !runtimeActiveRef.current)) {
         const now = performance.now();
-        const minFrameGapMs = interactiveRender ? 0 : 125;
+        const minFrameGapMs = mapTerminalFrameGapMs(mapProjection, runtimeActiveRef.current, interactiveRender);
         const waitMs = minFrameGapMs - (now - lastRenderAt);
         if (waitMs > 0) {
           if (renderThrottleTimer === null) {
@@ -746,17 +755,19 @@ export function TerminalCanvas({
     const observer = new ResizeObserver(scheduleResize);
     if (shellRef.current) observer.observe(shellRef.current);
 
-    const forceSnapshotRefresh = async () => {
-      if (disposed || visibleContentSeen) return;
+    const forceSnapshotRefresh = async (force = false) => {
+      if (disposed || snapshotRefreshInFlight || (!force && visibleContentSeen)) return;
+      snapshotRefreshInFlight = true;
       try {
         const json = await invoke<string>("grid_snapshot", { id: sessionId });
-        if (disposed || visibleContentSeen) return;
+        if (disposed || (!force && visibleContentSeen)) return;
         const snapshot = JSON.parse(json) as GridSnapshot;
         if (!snapshot?.cells?.length) return;
         ctx = sizeCanvasToGrid(canvas, atlas, snapshot.cols, snapshot.rows, dpr);
         renderSnapshot(ctx, atlas, snapshot, dpr, theme);
         syncOverlaySize();
         drawSelectionOverlay();
+        onSnapshotRef.current?.(snapshot);
         visibleContentSeen = snapshot.cells.some((row) =>
           row.some((cell) => cell.c.trim() !== "")
         );
@@ -767,6 +778,23 @@ export function TerminalCanvas({
           setAttachError(message);
           onStatusRef.current?.("failed", { error: message });
         }
+      } finally {
+        snapshotRefreshInFlight = false;
+      }
+    };
+
+    const refreshBackgroundIfChanged = async () => {
+      if (disposed || revisionCheckInFlight) return;
+      revisionCheckInFlight = true;
+      try {
+        const revision = await invoke<number>("grid_revision", { id: sessionId });
+        if (disposed || !shouldRefreshMapSnapshot(lastBackgroundRevision, revision)) return;
+        lastBackgroundRevision = revision;
+        await forceSnapshotRefresh(true);
+      } catch (error) {
+        if (!disposed) console.error("Terminal grid revision check failed:", error);
+      } finally {
+        revisionCheckInFlight = false;
       }
     };
 
@@ -828,13 +856,20 @@ export function TerminalCanvas({
       if (disposed) return;
       await invoke("grid_scroll_to_bottom", { id: sessionId });
       if (disposed) return;
-      await invoke("grid_subscribe_diffs", { id: sessionId, onDiff: channel });
       attached = true;
       lastCols = attachCols;
       lastRows = attachRows;
-      refreshTimer = setTimeout(() => {
-        void forceSnapshotRefresh();
-      }, 900);
+      if (mapTerminalTransportMode(mapProjection, runtimeActiveRef.current) === "snapshot") {
+        await refreshBackgroundIfChanged();
+        backgroundSnapshotInterval = setInterval(() => {
+          void refreshBackgroundIfChanged();
+        }, 1000);
+      } else {
+        await invoke("grid_subscribe_diffs", { id: sessionId, onDiff: channel });
+        refreshTimer = setTimeout(() => {
+          void forceSnapshotRefresh();
+        }, 900);
+      }
       // One shared poller for the whole process fans out exit events to each
       // registered session (see exitWatcher) — instead of one interval + a
       // full daemon_list_session_events scan per terminal.
@@ -885,6 +920,7 @@ export function TerminalCanvas({
       disposed = true;
       cancelSelectionAutoScroll();
       if (refreshTimer !== null) clearTimeout(refreshTimer);
+      if (backgroundSnapshotInterval !== null) clearInterval(backgroundSnapshotInterval);
       if (renderThrottleTimer !== null) clearTimeout(renderThrottleTimer);
       unregisterExitWatch(sessionId);
       if (resizeTimer !== null) clearTimeout(resizeTimer);
@@ -893,7 +929,7 @@ export function TerminalCanvas({
       observer.disconnect();
       invoke("grid_detach", { id: sessionId, attachToken }).catch(() => {});
     };
-  }, [sessionId, cwd, command, cols, rows, theme, fontsReady, renderScale, mapProjection, dprTick, recoveryGeneration]);
+  }, [sessionId, cwd, command, cols, rows, theme, fontsReady, renderScale, mapProjection, runtimeActive, dprTick, recoveryGeneration]);
 
   const scheduleScrollToBottom = () => {
     if (scrollToBottomPendingRef.current) return;

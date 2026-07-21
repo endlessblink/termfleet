@@ -76,6 +76,30 @@ test("cockpit activity may differ from the authoritative task without failing th
   expect(echo.problems).toContain("now-active-echo");
 });
 
+test("cockpit target compares a user-goal Task with the sidecar user goal, not the active todo", () => {
+  const entry = {
+    paneId: "terminal-events",
+    terminalId: "terminal-events",
+    cwd: "/repo/courses",
+    task: "when editing the existing event I dont see שמור וצפה",
+    taskSource: "user-prompt",
+    title: "Testing the revised Cardcom-only flow",
+    titleSource: "task-list",
+    now: "Testing the revised Cardcom-only flow",
+    nowSource: "agent-status",
+    updatedAt: 99_000,
+  };
+  const sidecar = {
+    task: "Testing the revised Cardcom-only flow",
+    userTask: "[Image #1] also when editing the existing event I dont see שמור וצפה - [Image #2]",
+    todoCount: 4,
+  };
+
+  const target = analyzeTargetEntry(entry, sidecar, { now: 100_000, maxAgeS: 15 });
+  expect(target.problems).not.toContain("task-mismatches-sidecar");
+  expect(target.problems).toEqual([]);
+});
+
 test("monitor equality checks report one deterministic task activity echo", () => {
   const row = analyzeEntry({
     paneId: "terminal-a",

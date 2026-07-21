@@ -103,13 +103,33 @@ were retired during consolidation.
 | TC-049     | Map alignment controls: add a project-lane arranger so terminal nodes group into vertical columns per project with fixed terminal and lane spacing instead of relying only on generic edge/center alignment. Follow-up compact-lanes control closes wide horizontal gaps by current left-to-right lane order and exposes the action in the visible map controls. Proof: `npx playwright test tests/canvas-node-reorder.spec.ts --reporter=line`, `npm run build`, and `npm run verify:map-terminals` passed on 2026-07-07. | P1       | DONE (2026-07-07) | TC-029, TC-034          |
 | TC-050     | Fix two visible map-terminal regressions: scrolled terminal history no longer paints the live cursor over old output, and selected terminals inside a real project keep the project workspace label instead of switching to a nested app folder such as `watchpost`. Proof: `npx playwright test tests/grid-cursor-dirty.spec.ts tests/canvas-renderer.spec.ts tests/grid-diff.spec.ts --reporter=line`, `npx playwright test tests/header-project-label.spec.ts --reporter=line`, `npm run verify:map-terminals`, and `npm run build` passed on 2026-07-07. | P0       | DONE (2026-07-07) | TC-017, TC-044          |
 | TC-051     | Map sidebar project order now follows the live map reading order: left-to-right first, then top-to-bottom. Moving a terminal or project lane updates the sidebar order from node coordinates while keeping project membership unchanged, and sidebar rows animate with a lightweight FLIP transition instead of snapping. Proof: `npx playwright test tests/canvas-node-reorder.spec.ts --reporter=line`, `npm run verify:map-terminals`, and `npm run build` passed on 2026-07-07. | P1       | DONE (2026-07-07) | TC-049, TC-050          |
-| TC-052     | Task identity is provenance-safe: terminal headers and TASKS sidebars now resolve task identity only from bounded structured sources in the order manual > task-tool > user-prompt > plan-binding > sidecar-todo > workstream > missing. Model/Ollama/status-summary text remains activity annotation only, and doctor/snapshot tooling flags unsupported task sources. Proof: `npm run verify:task-identity`, `npm run verify:agent-status-summary`, `npm run build`, `npm run verify:map-terminals`, `npm run doctor`, and `npx playwright test tests/visible-task-lineup.spec.ts --reporter=line` passed on 2026-07-07. `doctor` exits 0 with a local stale release-binary warning and notes an old stale snapshot still contains the retired `sidecar` source. | P0 | DONE (2026-07-07) | TC-033, TC-035          |
+| TC-052     | Task identity is provenance-safe: terminal headers and TASKS sidebars now resolve task identity only from bounded structured sources in the order manual > task-tool > user-prompt > plan-binding > sidecar-todo > workstream > missing. Model/Ollama/status-summary text remains activity annotation only, and doctor/snapshot tooling flags unsupported task sources. Follow-up 2026-07-19: pane-level goals survive command changes and thin/meta follow-ups, erased goals recover from bounded conversation history, completed `Next steps` text is rejected both at capture and render time, and screenshot-local edits defer to a scoped plan item when it names the missing work area (for example `live-page` or `routes`). The exact live Bina pane changed from the contextless `leave the divider...` label to `Removing the live-page error overlay while preserving top-of-page loading`, while the TermFleet pane showed `Making pane work areas clear at a glance`; proof capture: `.captures/cockpit-20260719-144035-live-page-context-final.png`. Final proof: the focused goal/header suite passed 115/116 with one expected skip, hook/sidecar/quality passed 59/59, `npm run verify:task-identity` passed 12/12, and `npm run verify:agent-status-summary`, `npm run verify:map-terminals`, and `npm run build` passed. Earlier 2026-07-18 proof: the focused header regressions passed 111/112 with one expected skip, the sidecar corpus passed 5/5, the visible task lineup passed 9/9, and `.captures/cockpit-20260718-233427-task-goal-final.png` showed distinct user-goal and current-step labels on a running Bina pane. Original proof: `npm run verify:task-identity`, `npm run verify:agent-status-summary`, `npm run build`, `npm run verify:map-terminals`, `npm run doctor`, and `npx playwright test tests/visible-task-lineup.spec.ts --reporter=line` passed on 2026-07-07. `doctor` exits 0 with a local stale release-binary warning and notes an old stale snapshot still contains the retired `sidecar` source. | P0 | DONE (2026-07-19) | TC-033, TC-035          |
 | TC-053     | External-page map cards can be unselected by clicking their selected header again; dragging the header still moves the card and the page remains open. Proof: focused Playwright regression passed with `external-page-deselected.png`, and `npm run build` passed on 2026-07-12. | P1 | DONE (2026-07-12) | TC-020, TC-029 |
 | TC-054     | Reliable map-terminal session binding + auto-resume: 100% of map terminal nodes must reattach to their correct persistent daemon session on open/startup, and auto-resume the agent (`claude --resume <uuid>` / `codex resume <uuid>`) when the session is a bare shell (agent exited), instead of spawning a NEW empty shell each open. Root cause observed 2026-07-13: opening a project makes a fresh `terminal-<uuid>-<uuid>` session (bare shell) rather than reattaching the live one, so resumes orphan and panes show dead shells. Session UUIDs are on disk (agent-fleet snapshot; claude `~/.claude/projects`, codex `~/.codex/sessions`). Investigation-first: map how map nodes bind to daemon sessions (frontend store + EnsureSession id scheme), then design deterministic node→session keying + auto-resume hook. See memory `project_termfleet_daemon_wedge_recovery`. **Root cause found + fixed (2026-07-13):** recovery is PER-PANE (`terminal-<tabId>-<paneId>`), not per-folder; each pane's conversation id lives in `agent-status/pane-<fnv(paneId)>.json`. Daemon cold-restore now (a) resumes claude via id-only fallback (mirrors codex) and (b) enriches a bare/hand-started session from its per-pane sidecar (`read_pane_sidecar_recovery` → `plan_agent_restore`), so every node restores ITS OWN chat on daemon recycle / reboot / shutdown. codex/claude status hooks stamp `provider`. Proof: 105 lib tests pass incl. 7 new (fnv parity vs real sidecar name, sidecar-recovery variants, hand-started cold-restore); `npm run doctor` TC-054 check green + reports 19/19 nodes recoverable; design in `docs/tc-054-agent-autoresume-design.md`. Pending: activates on next launcher restart (running daemon predates the build); full reboot E2E not yet run. | P0 | IN_PROGRESS (impl+tests+watchdog done 2026-07-13) | TC-017, TC-035 |
 | TC-055     | Safe dead-process / session eradicator (reaper): periodically reap DEAD/closed sessions and their orphaned tool servers (dev servers, Playwright browsers, language servers, esbuild watchers, node_repl) that agents leave running after `/exit`. Must gate every kill on a DEEP agent-in-tree scan (a shallow direct-child check gave false positives on 2026-07-13 because agents nest under wrappers) plus an idle-CPU gate, so a live conversation is never killed. Ship dry-run first (log what it would kill), then arm on a timer. Motivated by the 2026-07-13 outage where ~3,500 accumulated processes starved RAM+swap and wedged the daemon. **Dry-run shipped + tested (2026-07-13):** `scripts/termfleet-reaper.mjs` with a pure `reapDecision` safety gate (deep agent-in-tree scan → never reap a session with a live agent anywhere in its tree; idle-window gate; skips sessions with nothing to reclaim). Run `node scripts/termfleet-reaper.mjs` (dry-run) / `--apply` / `--idle=<sec>`. **Coverage fixed + soft load guardrail added (2026-07-13):** reaper now enumerates sessions from the daemon's own `listSessions` (reuse `termfleetctl.requestDaemon`) instead of a cgroup session-leader guess that saw 2 of 15 sessions; the deep agent scan now INCLUDES the session root pid (agents often run as the root — the miss that mislabeled them bare shells); idle now comes from the per-pane sidecar `updatedAt` (reuse `paneSidecarPath`), not process start-age. Live dry-run covers all 15 sessions and keeps every live-agent one. Separately, the daemon's transient systemd unit (`platform_process.rs`) now sets a SOFT `MemoryHigh` (throttle+reclaim, NEVER OOM-kill) + high `TasksMax` fork-bomb backstop (env-overridable `TERMFLEET_DAEMON_MEMORY_HIGH`/`_TASKS_MAX`; no hard `MemoryMax` by design), so daemon load can't wedge the desktop and no agent is silently killed. `npm run doctor` reports daemon memory headroom + flags a daemon predating the guardrail. Proof: 8 reaper policy tests + 106 lib tests (incl. argv guardrail assertion). **Now fully automatic (2026-07-14):** `scripts/install-reaper-timer.sh` installs a systemd `--user` timer (mirrors agent-fleet-snapshot) that every 15 min runs a oneshot which (1) `scripts/termfleet-guardrail-ensure.mjs` applies the soft `MemoryHigh`/`TasksMax` to the running daemon LIVE via `systemctl set-property` (self-healing for a daemon predating the code; idempotent `needsGuardrail` gate, tested) and (2) `termfleet-reaper.mjs --apply` reaps idle leftovers. Guardrail default lowered 55G→40G (leaves desktop headroom). Verified live: guardrail applied to the running daemon (MemoryHigh infinity→40G, no restart, no killed agents), timer armed (`systemctl --user list-timers`), a triggered run kept all live-agent sessions + reaped 0, and `npm run doctor` shows guardrail `ok` (30.6/40G) + "reaper timer is armed". Note: timer install is per-machine via the script; the daemon `MemoryHigh` default in `platform_process.rs` covers fresh launches. | P1 | DONE (2026-07-14) | TC-054 |
 | TC-056     | Find in the complete terminal buffer: Ctrl/Cmd+F opens a compact Canvas2D search overlay, searches visible rows plus daemon-owned scrollback, highlights every visible match, supports case sensitivity and wrapped next/previous navigation, and scrolls history matches into view. Recovered from the stale `feat-buffer-search` branch and completed against the current grid API. Proof: 9 Rust search/grid tests, 2 frontend overlay/wiring tests, `cargo check`, and `npm run build` passed on 2026-07-17. | P1 | DONE (2026-07-17) | TC-017 |
 | TC-057     | Replayable agent run journals + per-call cost accounting for cockpit-orchestrated agents. Borrowed pattern from OpenHuman's checkpointed-graph run journals (design study only — `tinyagents` is GPL-3.0, do NOT copy code). Every agent turn a cockpit terminal drives records an append-only journal (prompt/tool-calls/outputs, timestamps, token+cost per model call) that can be replayed and inspected per session. Builds on the per-pane sidecar (TC-035/TC-054) and doctor tooling. Goal: stop guessing what an agent did/spent — make each pane's run auditable and replayable. | P1 | TODO | TC-035, TC-054 |
 | TC-058     | Stuck-agent steering + halt-with-root-cause for agent-fleet. Borrowed pattern from OpenHuman's harness ("stuck agents get steered, halted ones return a root cause"). Detect wedged/idle agent panes (extends the reaper's deep agent-in-tree + idle-CPU gates from TC-055), attempt a bounded steer/nudge, and on halt emit a structured root-cause instead of a silent dead shell. Design study of `tinyagents` (GPL-3.0) for ideas only; implement independently. | P1 | TODO | TC-054, TC-055 |
+
+TC-052 final correction (2026-07-19): raw prompt sentences are no longer accepted as a pane's durable main task. A short declared goal wins; otherwise the current structured checklist step is the honest fallback. Legacy guessed task text is discarded during saved-layout recovery and refreshed sidecars can clear it. A clean desktop restart showed the formerly broken Hermes pane as `Verifying the proposed repair before making any changes`, while the sidebar showed other Hermes panes as `Verifying speed settings are live` and `Tracing how the assistant remembers, learns, and recovers over time`; proof capture: `.captures/cockpit-main-task-final-restart.png`. Focused regressions passed 46/46, `npm run verify:task-identity` passed 13/13, and `npm run verify:map-terminals`, `npm run build`, and `git diff --check` passed.
+
+TC-052 context correction (2026-07-19): the two labels must identify both the product outcome and the current work area; orphan phrases such as `speed settings` and `the handoff` are insufficient. Legacy structured `Goal:` tasks now restore the durable product outcome, while ambiguous current steps receive the workspace context and vague handoff activity cannot outrank the actual checklist step. After a clean restart, the exact Hermes pane showed Task `make the personal assistant fast and dependable` and Now Active `Hermes — Verify the speed settings are live in real chats`; proof capture: `.captures/cockpit-hermes-context-final.png`. The focused sidecar/header suite passed 156/157 with one expected skip, task identity passed 13/13, map source checks passed, and the production build and diff check passed.
+
+TC-052 waiting-state correction (2026-07-19): a live pane showing an unanswered interactive question or plan-confirmation menu now overrides stale Running/Idle telemetry with `Waiting for you`. The override uses only the current visible question screen—no timeout and no general scrollback guessing—and clears as soon as the answer screen disappears. Badge and fallback-summary regressions passed 61/62 with one expected skip, the expanded badge suite passed 9/9, map source checks and the production build passed, and `.captures/cockpit-waiting-for-you-final.png` confirms the relaunched cockpit renders the user-facing waiting badge.
+
+TC-052 footer correction (2026-07-19): agent status bars such as `Weekly 57% left • Context 76% used • Main [default]` and abbreviated `wk:/ctx:/session:` variants are terminal chrome and can no longer become Task, Now Active, or trusted activity labels. The exact running TermFleet snapshot replaced the leaked footer with `Reproducing the Weekly and Context header leak`; the focused header suite passed 113/114 with one expected skip, task identity passed 13/13, map source checks and the production build passed, and `git diff --check` passed.
+
+TC-052 active-work correction (2026-07-19): a current visible `Working`, `Crafting`, `Thinking`, or equivalent timed activity marker now overrides stale `Waiting for you` telemetry and renders `Running`; a genuine unanswered question still has higher priority. The full badge regression suite passed 11/11, map source checks and the production build passed, and `.captures/cockpit-active-work-running-final.png` confirms the relaunched cockpit shows active panes as Running while the adjacent plan-confirmation pane remains Waiting for you.
+
+TC-052 event-order correction (2026-07-19): exact on-screen lifecycle markers and status-hook events are now ordered by their recorded update times, so an old `Working` line cannot overrule a newer finished turn while a current `Crafting` line can still replace stale Waiting telemetry. Idle panes no longer claim present-continuous work in `Now Active`, and passive `Provider session is ready` text is hidden as non-work. Badge regressions passed 17/17, header regressions passed 107/108 with one expected skip, map source checks and the production build passed, and `.captures/cockpit-header-state-ordering-final.png` shows the live cockpit rendering the finished recreational and Hermes panes as Idle without a contradictory active-work row.
+
+TC-052 direct-context correction (2026-07-20): completed checklist wording can no longer masquerade as a live task after an answer, and the Hermes repair now names the product directly as `Repairing the Hermes personal assistant safely` while answer application remains the current step. A paired unanswered question always renders `Waiting for you` even when its opening hook event has a newer timestamp; a later visible `Working` marker returns it to Running. Provider choice menus are also Waiting, while ordinary finished instructions containing `Log in` no longer invent an authentication problem. Direct desktop proof: `.captures/cockpit-hermes-product-context-direct-final.png`. The focused task/status/header suite passed 215/217 with two expected skips, `npm run verify:map-terminals` passed, and the production build and diff check passed.
+
+TC-052 purpose correction (2026-07-20): the Task row now carries the product outcome and reason instead of promoting a test or implementation step. A Hermes plan containing compact controls, a large panel replacement, and packaged Personal Assistant verification resolves to `Replacing the crowded Hermes Personal Assistant panel with on-demand controls`; `Writing tests...` or `Replacing the large panel with a strip and drawer` remains only the current activity. Direct desktop proof: `.captures/cockpit-hermes-assistant-controls-purpose-final.png`. The focused identity/hook/sidecar/header suite passed 157/158 with one expected skip, map source checks and the production build passed, and the exact selected Hermes pane was checked directly.
+
+TC-052 outcome-persistence correction (2026-07-20): searching, implementation, testing, and verification steps can no longer replace the reason for the work. The Bina email-consent lane keeps `Making promotional email consent mandatory in every Bina signup and visible in attendee lists` as Task while Now Active advances from path discovery to attendee-list status and focused verification. Direct desktop proof: `.captures/cockpit-bina-email-consent-purpose-final.png`. The focused identity/hook/sidecar/header suite passed 161/162 with one expected skip, map source checks and the production build passed, and the exact selected Bina pane was checked directly.
+
+TC-052 deployment-purpose correction (2026-07-20): deployment and production-check steps no longer replace the billing repair they deliver. The exact Bina lane keeps `Making renewals and checkout safe while refunding Lee and granting Levana free July access` as Task while `Deploying the fix and checking production` remains Now Active. Direct desktop proof: `.captures/cockpit-bina-billing-purpose-final.png`. The focused identity/hook/sidecar/header suite passed 164/165 with one expected skip, map source checks and the production build passed, and the exact fifteenth saved session was selected and inspected directly.
 
 ---
 
@@ -2576,11 +2596,50 @@ Completion notes:
 - Added command menu and rail entry points for opening a preview beside the
   active development terminal.
 - Added map preview nodes linked back to the originating terminal tab/pane.
+- 2026-07-19 follow-up: opening Preview while already on the map now creates or
+  focuses the preview there without switching back to split terminals. Only the
+  selected map preview mounts its embedded page; selecting another map item
+  unloads it, and an explicit pause/resume control lets users stop a heavy page
+  without leaving the map. Reachability checks use `HEAD`, and embedded previews
+  deny autoplay, camera, and microphone access.
+- 2026-07-20 freeze follow-up: the map no longer reparses unchanged project task
+  plans or rewrites unchanged pane status on every poll. Up to six visible map
+  terminals stay connected and live; the selected terminal renders immediately,
+  while unselected live terminals repaint at a bounded one-second cadence. Live
+  WebKit CPU fell from repeated 55–74% averages and 100%+ spikes to about 14%
+  steady-state across the measured 15-second window.
+- 2026-07-20 sustained-run correction: repaint throttling alone did not stop the
+  hidden allocation churn because every visible terminal still decoded its full
+  continuous diff stream. After 50 minutes WebKit reached roughly 4.5 GB RSS,
+  118% interval CPU, and about 28k minor faults/sec. Unselected visible terminals
+  now stay live through one-second grid snapshots; only the selected terminal
+  subscribes to the interactive diff stream. A clean UI relaunch preserved all
+  18 daemon sessions and measured about 0.55 GB stable RSS, 17.8% CPU, and 7.7k
+  minor faults/sec across the next 20 seconds.
+- 2026-07-20 dirty-snapshot follow-up: a one-second snapshot still captured,
+  serialized, parsed, and repainted every idle background grid. Each grid now
+  exposes a monotonic revision; background cards poll that cheap number and take
+  a live snapshot only after real output, resize, or scroll changes. With 18
+  daemon sessions intact, the rebuilt UI held roughly 0.6–0.65 GB RSS across a
+  30-second active sample, averaged 25% WebKit CPU, and dropped to 7–11% in idle
+  windows, versus the reproduced 3.3–4.6 GB and 118% CPU failure.
 
 Verification:
 
 - `npm run build` passed.
+- Focused map-churn regressions passed (4/4), covering unchanged status polls,
+  unchanged task-plan state, cached task parsing, and background live cadence.
+- `npm run verify:map-terminals` and `npm run build` passed after the freeze fix.
+- The background transport regression and `npm run build` passed after the
+  sustained-run correction; live process sampling confirmed bounded RSS and CPU.
+- The grid-revision Rust regression, focused browser regression, four-test map
+  performance set, map source verifier, production build, and diff check passed.
 - `npx playwright test tests/localhost-preview.spec.ts` passed.
+- `npx playwright test tests/operations-rail.spec.ts tests/localhost-preview.spec.ts --reporter=line`
+  passed (2/2), covering map routing, selected-only loading, duplicate-request
+  prevention, and pause/resume.
+- `npm run verify:map-terminals` passed.
+- `npm run build` passed.
 
 ### TC-021: Open-source developer preview lane
 
@@ -5648,6 +5707,20 @@ GUI-verified lifecycle items remain.
   NOT yet committed: the tree interleaves several sessions' WIP (userTask lane, TC-041
   manifest, canvas perf) — a partial commit would not compile standalone; consolidate
   deliberately.
+- DONE (2026-07-19): Running / Waiting for you / Idle now follows the real turn lifecycle
+  instead of treating every notification as an unanswered request. Claude idle notifications
+  and interrupted turns resolve to Idle; permission/input dialogs resolve to Waiting; Codex
+  `request_user_input` resolves to Waiting before an answer and Running after submission.
+  Exact current-screen prompts cover CLI-only questionnaires and plan confirmations, with the
+  newest lifecycle marker winning over visible history. Older concurrent hook processes cannot
+  overwrite newer events, all background panes remain polling targets, and every header/sidebar/
+  map badge and Active/Waiting counter uses the same resolver. Installed Claude/Codex hook configs now include the missing
+  permission and pre-question events (timestamped backups retained). Proof: focused lifecycle,
+  sidecar, background-polling, map-filter, and end-to-end Playwright suites passed 87/87; `npm run build`,
+  `npm run verify:agent-status-summary`, `npm run verify:map-terminals`, `npm run doctor`, and
+  `git diff --check` passed. Live Tauri dev evidence `/tmp/termfleet-status-live.png` shows an
+  unanswered questionnaire as amber Waiting, completed panes gray Idle, and active work green
+  Running on the same surface.
 - **GUI verification owed (needs a `termfleet` relaunch — can't be done headless):**
   1. In a terminal pane: `env | grep TERMFLEET_PANE_ID` prints `terminal-<tab>-<pane>`.
   2. Open two terminals in the SAME directory, run a different agent/task in each → each
@@ -6042,3 +6115,38 @@ halt emit a reason instead of leaving a bare shell.
 **Acceptance.** A wedged agent pane is either steered back to progress or shows a
 structured root cause (not a silent dead shell); live conversations are never
 touched.
+
+### TC-059: Group and simplify the project rail
+
+**Status:** Done · **Priority:** P1
+
+Replace the flat project wall with a compact working set and collapsible folder
+groups. Current, live, and pinned projects stay visible in `In use`; inactive
+projects are grouped from their workspace paths and remain collapsed until
+needed. Search finds projects across names and paths, pinning promotes projects
+without duplication, and expanded folders persist across reloads. The whole
+project browser is transient and collapsed during normal session work. Session
+rows are fixed two-line scan targets; task detail truncates safely and secondary
+actions appear only on hover or keyboard focus.
+
+Completion proof (2026-07-20): focused grouping, search, pin, persistence,
+project-switch, compact-session, no-overlap, reconciliation, and narrow-overflow
+coverage passed 22/22;
+`npm run build` passed; scoped `git diff --check` passed. The grouped and search
+states were visually reviewed at the operations-rail width in
+`/tmp/termfleet-project-rail-grouped.png` and `/tmp/termfleet-project-rail.png`;
+the distilled normal-work state was reviewed in
+`/tmp/termfleet-sidebar-distilled.png`.
+The repository-wide typography verifier was also run and remains red on existing
+unrelated border, weight, and letter-spacing violations outside this slice.
+
+Follow-up (completed 2026-07-21): variable-height map entries no longer inherit the compact
+two-line session-row cap. Task and current-activity lines expand inside their own
+entry, while the close action remains in the trailing column instead of falling
+into clipped overflow. The focused browser geometry assertions passed and the
+result was visually reviewed in `/tmp/termfleet-map-sidebar-expanded-rows.png`;
+the changed Playwright set passed 354 tests with 2 expected skips, all 130 Rust
+unit tests passed, and the daemon-survival integration passed with a short
+temporary socket root. `npm run build`, `npm run verify:map-terminals`,
+`npm run verify:task-identity`, `npm run verify:agent-status-summary`, and scoped
+`git diff --check` passed.

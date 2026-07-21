@@ -196,6 +196,70 @@ Acceptance:
   ]);
 });
 
+test("unchanged MASTER_PLAN tasks do not refresh the whole map", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  const result = await page.evaluate(async () => {
+    const { masterPlanTaskMapsEqual } = await import("/src/lib/masterPlanTasks.ts");
+    const previous = {
+      "/project": [{ id: "TC-001", title: "Keep terminals live", status: "in-progress", rawStatus: "IN_PROGRESS" }],
+    };
+    return {
+      unchanged: masterPlanTaskMapsEqual(previous, JSON.parse(JSON.stringify(previous))),
+      changed: masterPlanTaskMapsEqual(previous, {
+        "/project": [{ ...previous["/project"][0], status: "done", rawStatus: "DONE" }],
+      }),
+    };
+  });
+
+  expect(result).toEqual({ unchanged: true, changed: false });
+});
+
+test("unchanged MASTER_PLAN contents reuse the parsed task tree", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  const result = await page.evaluate(async () => {
+    const { cachedMasterPlanTasks } = await import("/src/lib/masterPlanTasks.ts");
+    const contents = "| ID | Title | Status |\n| - | - | - |\n| TC-001 | Keep terminals live | IN_PROGRESS |";
+    const first = cachedMasterPlanTasks(undefined, contents);
+    const second = cachedMasterPlanTasks(first, contents);
+    return {
+      reusedEntry: first === second,
+      reusedTasks: first.tasks === second.tasks,
+    };
+  });
+
+  expect(result).toEqual({ reusedEntry: true, reusedTasks: true });
+});
+
+test("background live map terminals render at a bounded cadence", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  const result = await page.evaluate(async () => {
+    const { mapTerminalFrameGapMs, mapTerminalTransportMode, shouldRefreshMapSnapshot } = await import("/src/lib/mapRenderCadence.ts");
+    return {
+      selectedInput: mapTerminalFrameGapMs(true, true, true),
+      selectedIdle: mapTerminalFrameGapMs(true, true, false),
+      background: mapTerminalFrameGapMs(true, false, false),
+      split: mapTerminalFrameGapMs(false, true, false),
+      selectedTransport: mapTerminalTransportMode(true, true),
+      backgroundTransport: mapTerminalTransportMode(true, false),
+      firstSnapshot: shouldRefreshMapSnapshot(null, 7),
+      unchangedSnapshot: shouldRefreshMapSnapshot(7, 7),
+      changedSnapshot: shouldRefreshMapSnapshot(7, 8),
+    };
+  });
+
+  expect(result).toEqual({
+    selectedInput: 0,
+    selectedIdle: 125,
+    background: 1000,
+    split: 0,
+    selectedTransport: "diffs",
+    backgroundTransport: "snapshot",
+    firstSnapshot: true,
+    unchangedSnapshot: false,
+    changedSnapshot: true,
+  });
+});
+
 test("terminal task binding uses an in-app searchable picker", async ({ page }) => {
   const plan = `
 | ID         | Title                            | Priority | Status            | Dependencies |
@@ -3474,6 +3538,7 @@ test("terminal folders reconcile into project rows without moving the map viewpo
   });
 
   const sidebar = page.getByRole("complementary", { name: "Workspace sidebar" });
+  await sidebar.getByRole("button", { name: "Projects", exact: true }).click();
   await expect(sidebar.getByRole("button", { name: "Switch to TermFleet OSS" })).toBeVisible();
   await expect(sidebar.getByRole("button", { name: "Switch to docs-site" })).toBeVisible();
   await expect(sidebar.getByRole("button", { name: "Switch to inner-dialogue" })).toBeVisible();
@@ -3596,6 +3661,7 @@ test("map sidebar filters operations nodes by visible work state", async ({ page
       tabs: [
         terminalTab("tab-active", "Active shell", "pane-active", {
           status: "running",
+          statusSummary: { status: "working", now: "npm run dev", updatedAt: now },
           currentActivity: "npm run dev",
           activityKind: "running",
         }),
@@ -3616,6 +3682,7 @@ test("map sidebar filters operations nodes by visible work state", async ({ page
         }),
         terminalTab("tab-tests", "Test runner", "pane-tests", {
           status: "running",
+          statusSummary: { status: "working", now: "npm test running", updatedAt: now },
           currentActivity: "npm test running",
           activityKind: "testing",
         }),
@@ -3642,6 +3709,29 @@ test("map sidebar filters operations nodes by visible work state", async ({ page
 
   const mapPanel = page.locator('[aria-label="Operations panel"]');
   await expect(mapPanel.getByTestId("map-filter-all")).toContainText("5");
+  await mapPanel.getByTestId("map-sort-project").click();
+  await expect(mapPanel.getByTestId("map-sort-project")).toHaveAttribute("aria-pressed", "true");
+  const clippedMapRows = await mapPanel.getByTestId("map-node-list").locator(".workspace-sidebar-row").evaluateAll((rows) =>
+    rows.filter((row) => row.scrollHeight > row.clientHeight).map((row) => ({
+      text: row.textContent,
+      clientHeight: row.clientHeight,
+      scrollHeight: row.scrollHeight,
+    }))
+  );
+  expect(clippedMapRows).toEqual([]);
+  const misplacedMapActions = await mapPanel.getByTestId("map-node-list").locator(".workspace-sidebar-row").evaluateAll((rows) =>
+    rows.flatMap((row) => {
+      const action = row.querySelector(".workspace-sidebar-actions");
+      if (!action) return [];
+      const rowBounds = row.getBoundingClientRect();
+      const actionBounds = action.getBoundingClientRect();
+      return actionBounds.left >= rowBounds.left && actionBounds.right <= rowBounds.right &&
+        actionBounds.top >= rowBounds.top && actionBounds.bottom <= rowBounds.bottom
+        ? []
+        : [{ row: row.textContent, rowBounds: rowBounds.toJSON(), actionBounds: actionBounds.toJSON() }];
+    })
+  );
+  expect(misplacedMapActions).toEqual([]);
   await expect(mapPanel.getByTestId("map-filter-active")).toContainText("2");
   await expect(mapPanel.getByTestId("map-filter-failed")).toContainText("1");
   await expect(mapPanel.getByTestId("map-filter-waiting")).toContainText("1");
@@ -3723,7 +3813,8 @@ test("map sidebar filters operations nodes by visible work state", async ({ page
   await expect(mapPanel.getByTestId("map-node-list")).not.toContainText("cargo check failed");
 
   await mapPanel.getByTestId("map-filter-testing").click();
-  await expect(mapPanel.getByTestId("map-node-list")).toContainText("npm test running");
+  await expect(mapPanel.getByTestId("map-node-list").locator(".workspace-sidebar-row")).toHaveCount(1);
+  await expect(mapPanel.getByTestId("sidebar-map-node-attention")).toContainText("Running");
   await expect(mapPanel.getByTestId("map-node-list")).not.toContainText("Review deploy error");
 
   await mapPanel.getByTestId("map-filter-preview").click();

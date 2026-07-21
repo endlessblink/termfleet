@@ -26,7 +26,7 @@ import {
   qualityCheckNarrationLabel,
   titleIsCommentaryOrDangling,
 } from "./terminalHeaderQuality";
-import { resolveTaskIdentity } from "./taskIdentity";
+import { activeTodoTask, resolveTaskIdentity } from "./taskIdentity";
 
 export type HeaderFieldSource =
   | "workspace"
@@ -97,7 +97,7 @@ const HONEST_TITLES =
 // A "Now Active" line adds nothing when it is one of these bare status/placeholder
 // words — showing it as a second header row just reads as noise next to the task.
 const NON_INFORMATIVE_ACTIVITY =
-  /^(?:Activity not captured|Awaiting next action|Awaiting command|Awaiting terminal output|Idle|Working|Thinking|Ready|Ready for next task|No active work|Prompt submitted|Answering latest prompt|Answering user question|Running terminal command|Command is running)$/i;
+  /^(?:Activity not captured|Awaiting next action|Awaiting command|Awaiting terminal output|Idle|Working|Thinking|Ready|Ready for next task|No active work|Prompt submitted|Provider session is ready|Answering latest prompt|Answering user question|Running terminal command|Command is running)$/i;
 
 /**
  * Whether the "Now Active" line says something the Task line does not. It doesn't
@@ -105,11 +105,22 @@ const NON_INFORMATIVE_ACTIVITY =
  * which case the header collapses to the single honest Task line instead of showing
  * a redundant or meaningless second row.
  */
-export function activityAddsInfo(task?: string | null, activity?: string | null): boolean {
+export function activityAddsInfo(
+  task?: string | null,
+  activity?: string | null,
+  attention?: "running" | "waiting" | "idle" | "unavailable",
+): boolean {
   if (!activity) return false;
   const trimmed = activity.trim();
   if (!trimmed) return false;
+  if (/^Provider requires authentication$/i.test(trimmed) && attention !== "waiting") return false;
   if (NON_INFORMATIVE_ACTIVITY.test(trimmed)) return false;
+  if (
+    attention === "idle" &&
+    /^(?:Checking|Running|Verifying|Testing|Building|Fixing|Reviewing|Confirming|Preparing|Writing|Reading|Tracing|Investigating|Making|Adding|Updating|Removing|Publishing|Deploying)\b/i.test(trimmed)
+  ) {
+    return false;
+  }
   return !headerTextsEquivalent(trimmed, task);
 }
 
@@ -596,6 +607,19 @@ function stripPlanGlyphPrefix(value: string) {
   return value.replace(/^[\s└├╰╭│┌┐─]*[□■☐✓✔✗]?\s*/, "").trim() || value;
 }
 
+function qualifyAmbiguousLabel(value: string, workspace: string) {
+  if (!/\b(?:speed settings|the handoff|proposed repair|the repair|behavior rules)\b/i.test(value)) {
+    return value;
+  }
+  if (new RegExp(`\\b${workspace.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(value)) {
+    return value;
+  }
+  const workspaceLabel = workspace
+    .replace(/[-_]+/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+  return `${workspaceLabel} — ${value}`;
+}
+
 export function buildShellTerminalHeaderViewModel(input: {
   project?: Pick<Group, "id" | "name" | "projectRoot"> | null;
   liveCwd?: string | null;
@@ -633,11 +657,13 @@ export function buildShellTerminalHeaderViewModel(input: {
     workstreamTitle: input.workstreamTitle,
     statusSummary: input.statusSummary,
   });
+  const activePlanItem = activeTodoTask(input.taskLineup, input.activeRunId);
   const mainUserAskApplies = Boolean(
     input.mainUserAsk &&
-    (!input.mainUserAsk.runId ||
+      (!input.mainUserAsk.runId ||
       !input.activeRunId ||
-      input.mainUserAsk.runId === input.activeRunId),
+      input.mainUserAsk.runId === input.activeRunId ||
+      input.mainUserAsk.source === "status-sidecar"),
   );
   const taskText = taskIdentity.source === "task-tool" ? taskIdentity.text : undefined;
   const userTaskText =
@@ -753,13 +779,16 @@ export function buildShellTerminalHeaderViewModel(input: {
   const hasDistinctActivity =
     now !== fallbackNow &&
     !sameHeaderText(now, activeTaskTitle) &&
-    !sameHeaderText(now, summary.task);
+    (hasUserTask || !sameHeaderText(now, summary.task));
   const taskDerivedActivity =
     taskDescriptionText
       ? /^Close current agent task$/i.test(taskDescriptionText)
         ? "Closing current agent task"
         : taskActivityFromUserGoal(taskDescriptionText, true)
       : undefined;
+  const activePlanStep = activePlanItem?.content
+    ? stripPlanGlyphPrefix(activePlanItem.content)
+    : undefined;
   const activityTitle = stripPlanGlyphPrefix(hasDistinctActivity ? now : summary.task);
   // Task row = the goal; big title = the CURRENT STEP toward it. Prefer the
   // live activity when it's meaningful, fall back to the declared activeForm
@@ -790,7 +819,11 @@ export function buildShellTerminalHeaderViewModel(input: {
   const title = hasRealTask
     ? realTaskTitle
     : hasUserTask || hasStatusTask
-      ? hasDistinctActivity ? activityTitle : liveNarration ?? taskDerivedActivity ?? fallbackNow
+      ? hasDistinctActivity
+        ? activityTitle
+        : activePlanStep && !headerTextsEquivalent(activePlanStep, taskDescriptionText)
+          ? activePlanStep
+          : liveNarration ?? taskDerivedActivity ?? fallbackNow
     : liveNarration && hasDistinctActivity
       ? activityTitle
     : input.trustedActivitySummary
@@ -818,7 +851,19 @@ export function buildShellTerminalHeaderViewModel(input: {
   const lowQualityTitle = !titleQuality.ok || duplicatedLongLabels;
   const lowQualityNow = !nowQuality.ok;
   const lowQualityActivity = lowQualityTitle || lowQualityNow;
-  const replacementActivity = lowQualityActivity ? taskDerivedActivity : undefined;
+  const declaredTaskActivity =
+    qualityCheckActivityLabel(declaredStepTitle).ok &&
+    !headerTextsEquivalent(declaredStepTitle, taskDescriptionText)
+      ? declaredStepTitle
+      : undefined;
+  const orphanedHandoffActivity = /^(?:Commit(?:ting)? and push(?:ing)?|Publish(?:ing)?) the handoff$/i.test(
+    candidateReadableTitle,
+  );
+  const replacementActivity = lowQualityActivity
+    ? orphanedHandoffActivity
+      ? declaredTaskActivity ?? taskDerivedActivity
+      : taskDerivedActivity
+    : undefined;
   const concreteTaskActivity = replacementActivity ?? taskDerivedActivity;
   const noCapturedWorkingActivity = Boolean(
     !taskDescriptionText &&
@@ -955,15 +1000,19 @@ export function buildShellTerminalHeaderViewModel(input: {
         ? "Working"
         : "Awaiting next action"
       : cleanTitle;
+  const displayTaskDescription = taskDescriptionText
+    ? qualifyAmbiguousLabel(taskDescriptionText, workspace)
+    : undefined;
+  const displayTitle = qualifyAmbiguousLabel(guardedTitle, workspace);
 
   return {
     workspace: { text: workspace, source: "workspace" },
     taskDescription: {
-      text: taskDescriptionText ?? (noActiveWork ? "No active work" : "Task not captured"),
-      source: taskDescriptionText ? taskDescriptionSource : noActiveWork ? "neutral" : "missing",
+      text: displayTaskDescription ?? (noActiveWork ? "No active work" : "Task not captured"),
+      source: displayTaskDescription ? taskDescriptionSource : noActiveWork ? "neutral" : "missing",
     },
     title: {
-      text: noActiveWork ? "Ready for next task" : guardedTitle,
+      text: noActiveWork ? "Ready for next task" : displayTitle,
       source: missingActivity
         ? "missing"
         : lowQualityTitle && replacementActivity

@@ -95,6 +95,82 @@ test("summaryFromSidecar keeps the pane provider instead of calling every hand-s
   expect(summary.provider).toBe("codex");
 });
 
+test("summaryFromSidecar exposes the durable main task instead of the latest message", () => {
+  const sidecar = {
+    provider: "codex" as const,
+    updatedAt: Date.now(),
+    mainTask: "Improving the live-events landing page and routes",
+    mainTaskSource: "plan-explanation" as const,
+    userTask: "you will inform me when you are done and give me a count",
+    now: "Reviewing the landing page on mobile",
+    todos: [{
+      content: "Reviewing the landing page on mobile",
+      status: "in_progress",
+      activeForm: "Reviewing the landing page on mobile",
+    }],
+  };
+
+  const browserSummary = summaryFromSidecar(sidecar, fallbackFor("/repo/x"));
+  const nodeSummary = summaryFromNodeSidecar(sidecar, {
+    projectId: "/repo/x",
+    workstream: { path: "/repo/x", provider: "shell" },
+  });
+
+  expect(browserSummary.userTask).toBe(sidecar.mainTask);
+  expect(nodeSummary.userTask).toBe(sidecar.mainTask);
+  expect(browserSummary.task).toBe(sidecar.mainTask);
+  expect(nodeSummary.task).toBe(sidecar.mainTask);
+  expect(browserSummary.now).toBe("Reviewing the landing page on mobile");
+});
+
+test("summaryFromSidecar rejects an unproven raw main task", () => {
+  const summary = summaryFromSidecar(
+    {
+      updatedAt: Date.now(),
+      mainTask: "do the same review for all bots and topics and then suggest a plan to all of them based on each needs",
+      userTask: "do the same review for all bots and topics and then suggest a plan to all of them based on each needs",
+      todos: [{ content: "Mapping what each bot and topic is meant to do", status: "in_progress" }],
+    },
+    fallbackFor("/repo/x"),
+  );
+  expect(summary.userTask).toBeUndefined();
+});
+
+test("summaryFromSidecar recovers a specific legacy Goal task as the durable work area", () => {
+  const sidecar = {
+    provider: "claude" as const,
+    updatedAt: Date.now(),
+    mainTask: "ok sending to queue works",
+    now: "Commit and push the handoff",
+    todos: [
+      { content: "Goal: make the personal assistant fast and dependable", activeForm: "Making the assistant fast and dependable", status: "completed" },
+      { content: "Goal: finish all safe remaining assistant work", activeForm: "Finishing safe remaining assistant work", status: "completed" },
+      { content: "Verify the speed settings are live in real chats", activeForm: "Verifying speed settings are live", status: "pending" },
+    ],
+  };
+
+  expect(summaryFromSidecar(sidecar, fallbackFor("/repo/hermes")).userTask)
+    .toBe("make the personal assistant fast and dependable");
+  expect(summaryFromNodeSidecar(sidecar, {
+    projectId: "/repo/hermes",
+    workstream: { path: "/repo/hermes", provider: "shell" },
+  }).userTask).toBe("make the personal assistant fast and dependable");
+});
+
+test("summaryFromSidecar rejects an overlong plan explanation", () => {
+  const summary = summaryFromSidecar(
+    {
+      updatedAt: Date.now(),
+      mainTaskSource: "plan-explanation",
+      mainTask: "The evidence review and per-bot plans are complete; the remaining work depends on the user's topic-ownership decisions.",
+      todos: [{ content: "Waiting for your decisions about unclear topic ownership", status: "in_progress" }],
+    },
+    fallbackFor("/repo/x"),
+  );
+  expect(summary.userTask).toBeUndefined();
+  expect(summary.task).toBe("Waiting for your decisions about unclear topic ownership");
+});
+
 test("summaryFromSidecar falls back to the last completed task when nothing is live", () => {
   const summary = summaryFromSidecar(
     {
@@ -108,6 +184,87 @@ test("summaryFromSidecar falls back to the last completed task when nothing is l
   );
   expect(summary.task).toBe("Ship the fix");
   expect(summary.status).toBe("idle");
+});
+
+test("a resumed turn turns the completed assistant check into current contextual work", () => {
+  const sidecar = {
+    updatedAt: Date.now(),
+    turn: "working" as const,
+    now: "Continuing after your answer",
+    todos: [
+      { content: "Confirming the assistant repair is safely completed", status: "completed", activeForm: "" },
+    ],
+  };
+  const browserSummary = summaryFromSidecar(sidecar, fallbackFor("/repo/hermes"));
+  const nodeSummary = summaryFromNodeSidecar(sidecar, {
+    projectId: "/repo/hermes",
+    workstream: { path: "/repo/hermes", provider: "shell" },
+  });
+  expect(browserSummary.task).toBe("Repairing the Hermes personal assistant safely");
+  expect(browserSummary.now).toBe("Applying your answer to the Hermes personal-assistant repair");
+  expect(nodeSummary.task).toBe(browserSummary.task);
+  expect(nodeSummary.now).toBe(browserSummary.now);
+});
+
+test("a Bina consent audit explains the mandatory signup outcome", () => {
+  const sidecar = {
+    cwd: "/repo/bina-meatzevet-courses",
+    updatedAt: Date.now(),
+    turn: "working" as const,
+    userTask: "you didnt make the sign up to emails mandatory. it must be mandatory everywhere all the time.",
+    now: "Auditing newsletter consent across forms, data, and tests",
+    todos: [{ content: "Auditing newsletter consent across forms, data, and tests", status: "in_progress" }],
+  };
+  const browserSummary = summaryFromSidecar(sidecar, fallbackFor("/repo/bina-meatzevet-courses"));
+  const nodeSummary = summaryFromNodeSidecar(sidecar, {
+    projectId: "/repo/bina-meatzevet-courses",
+    workstream: { path: "/repo/bina-meatzevet-courses", provider: "shell" },
+  });
+
+  expect(browserSummary.task).toBe("Making email signup mandatory across every Bina registration flow");
+  expect(browserSummary.now).toBe("Auditing newsletter consent across forms, data, and tests");
+  expect(nodeSummary.task).toBe(browserSummary.task);
+});
+
+test("the Bina mandatory-consent purpose survives later attendee-list verification", () => {
+  const summary = summaryFromSidecar({
+    cwd: "/repo/bina-meatzevet-courses",
+    updatedAt: Date.now(),
+    turn: "working",
+    userTask: "because you did not make it mandatory",
+    mainTask: "Expanded the fix to include clear promotional-email status in every attendee list while preserving honest status for historical records.",
+    mainTaskSource: "plan-explanation",
+    now: "Running focused verification",
+    todos: [
+      { content: "Writing regression tests for admin email-consent visibility", status: "completed" },
+      { content: "Showing and exporting status in attendee lists", status: "completed" },
+      { content: "Running focused verification", status: "in_progress" },
+    ],
+  }, fallbackFor("/repo/bina-meatzevet-courses"));
+
+  expect(summary.task).toBe("Making promotional email consent mandatory in every Bina signup and visible in attendee lists");
+  expect(summary.now).toBe("Running focused verification");
+});
+
+test("the Bina billing repair purpose survives deployment", () => {
+  const summary = summaryFromSidecar({
+    cwd: "/repo/bina-meatzevet-courses",
+    updatedAt: Date.now(),
+    turn: "working",
+    userTask: "dont skip anything; fix it end to end and give Levana the rest of July free",
+    mainTask: "Independent review found unsafe callback-order and concurrent-checkout cases.",
+    mainTaskSource: "plan-explanation",
+    now: "Deploying the fix and checking production",
+    todos: [
+      { content: "Writing safety tests for renewal failures", status: "completed" },
+      { content: "Fixing callback order and parallel checkout safety", status: "completed" },
+      { content: "Refunding Lee and granting Levana the rest of July", status: "completed" },
+      { content: "Deploying the fix and checking production", status: "in_progress" },
+    ],
+  }, fallbackFor("/repo/bina-meatzevet-courses"));
+
+  expect(summary.task).toBe("Making renewals and checkout safe while refunding Lee and granting Levana free July access");
+  expect(summary.now).toBe("Deploying the fix and checking production");
 });
 
 test("candidate file names try the pane sidecar first, then cwd keys", () => {

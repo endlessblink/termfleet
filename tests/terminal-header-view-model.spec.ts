@@ -1,9 +1,157 @@
 import { expect, test } from "@playwright/test";
 import { summaryFromDurableActivity, terminalActivityFromVisibleText, terminalPurposeFromContext, terminalPurposeFromOperatorPrompt, terminalPurposeFromSubmittedInput, terminalPurposeFromVisiblePrompt } from "../src/lib/terminalHeaderDisplay";
 import { buildShellTerminalHeaderViewModel } from "../src/lib/terminalHeaderViewModel";
-import { mainUserAskFromTerminalPurpose } from "../src/lib/terminalMainUserAsk";
+import { mainUserAskForRunChange, mainUserAskFromSummary, mainUserAskFromTerminalPurpose, persistedMainUserAsk } from "../src/lib/terminalMainUserAsk";
 
 const flowStatePath = "/media/endlessblink/data/my-projects/ai-development/productivity/flow-state";
+
+test("vague follow-up keeps the previous meaningful user goal", () => {
+  const previous = {
+    text: "Fix Save and Preview for existing events",
+    source: "status-sidecar" as const,
+    updatedAt: 1000,
+    runId: "run-events",
+  };
+
+  expect(mainUserAskFromSummary(
+    {
+      task: "Testing the revised Cardcom-only flow",
+      userTask: "and this",
+      path: "/repo/courses",
+      now: "Testing the revised Cardcom-only flow",
+      status: "working",
+    },
+    "status-sidecar",
+    { previous, runId: "run-events", now: 2000 },
+  )).toBe(previous);
+});
+
+test("a command run change and incomplete screenshot follow-up keep the pane goal", () => {
+  const previous = {
+    text: "Working on the live-events landing page",
+    source: "status-sidecar" as const,
+    updatedAt: 1000,
+    runId: "conversation-run",
+  };
+  const afterCommand = mainUserAskForRunChange(previous, true);
+
+  expect(afterCommand).toBe(previous);
+  expect(mainUserAskFromSummary(
+    {
+      task: "Ready",
+      userTask: "[Image #1] it doesnt...",
+      path: "/repo/courses",
+      now: "Steps - Select the live-events pane and confirm the labels.",
+      status: "idle",
+    },
+    "status-sidecar",
+    { previous: afterCommand, runId: "command-run", now: 2000 },
+  )).toBe(previous);
+});
+
+test("task-tool visibility requests do not replace the product goal", () => {
+  const previous = {
+    text: "Redesign the live-events landing page",
+    source: "status-sidecar" as const,
+    updatedAt: 1000,
+    runId: "run-events",
+  };
+
+  expect(mainUserAskFromSummary(
+    {
+      task: "Making the hero readable",
+      userTask: "and I want you to use the tasks list tool so I can see all the tasks you are working on",
+      path: "/repo/courses",
+      now: "Making the hero readable",
+      status: "working",
+    },
+    "status-sidecar",
+    { previous, runId: "run-events", now: 2000 },
+  )).toBe(previous);
+});
+
+test("an authoritative checklist clears a previously guessed raw prompt", () => {
+  const previous = {
+    text: "do the same review for all bots and topics and then suggest a plan to all of them",
+    source: "status-sidecar" as const,
+    updatedAt: 1000,
+  };
+  expect(mainUserAskFromSummary(
+    {
+      task: "Mapping what each bot and topic is meant to do",
+      path: "/repo/hermes",
+      now: "Mapping what each bot and topic is meant to do",
+      status: "working",
+      tasksFromTodoWrite: true,
+    },
+    "status-sidecar",
+    { previous, now: 2000 },
+  )).toBeUndefined();
+});
+
+test("a fresh sidecar clears a stale guessed task even when no checklist remains", () => {
+  expect(mainUserAskFromSummary(
+    {
+      task: "Shell",
+      path: "/repo/hermes",
+      status: "idle",
+      provider: "shell",
+      confidence: "high",
+      tasksFromTodoWrite: false,
+    },
+    "status-sidecar",
+    {
+      previous: {
+        text: "do the same review for all bots and topics and then suggest a plan to all of them",
+        source: "status-sidecar",
+      },
+    },
+  )).toBeUndefined();
+});
+
+test("restart keeps declared goals but drops guessed task sentences", () => {
+  expect(persistedMainUserAsk({ text: "Working on live events", source: "manual" }))
+    .toEqual({ text: "Working on live events", source: "manual" });
+  expect(persistedMainUserAsk({
+    text: "do the same review for all bots and topics and then suggest a plan to all of them",
+    source: "status-sidecar",
+  })).toBeUndefined();
+  expect(persistedMainUserAsk({ text: "I must know where I am working", source: "terminal-prompt" }))
+    .toBeUndefined();
+});
+
+test("Hermes speed work keeps the product outcome in Task and qualifies the current step", () => {
+  const header = buildShellTerminalHeaderViewModel({
+    project: { id: "hermes", name: "hermes", projectRoot: "/repo/hermes" },
+    liveCwd: "/repo/hermes",
+    terminalStatus: "running",
+    mainUserAsk: {
+      text: "make the personal assistant fast and dependable",
+      source: "status-sidecar",
+    },
+    taskLineup: [{
+      id: "speed-live",
+      content: "Verifying speed settings are live",
+      status: "pending",
+      source: "todo-write",
+      updatedAt: 1000,
+    }],
+    statusSummary: {
+      task: "Verifying speed settings are live",
+      userTask: "make the personal assistant fast and dependable",
+      path: "/repo/hermes",
+      now: "Commit and push the handoff",
+      status: "working",
+      provider: "claude",
+      confidence: "high",
+      tasksFromTodoWrite: true,
+    },
+    trustedActivitySummary: true,
+  });
+
+  expect(header.taskDescription.text).toBe("make the personal assistant fast and dependable");
+  expect(header.title.text).toBe("Hermes — Verifying speed settings are live");
+});
 
 test("uses project root folder instead of parent category workspace", () => {
   const header = buildShellTerminalHeaderViewModel({
@@ -148,6 +296,34 @@ test("completion prose cannot replace the current task title", () => {
   expect(header.now.text).not.toContain("Files shipped");
 });
 
+test("a resumed turn does not present its completed checklist item as the current Task", () => {
+  const cwd = "/media/endlessblink/data/my-projects/ai-development/devops/hermes";
+  const header = buildShellTerminalHeaderViewModel({
+    project: { id: "g-hermes", name: "hermes", projectRoot: cwd },
+    liveCwd: cwd,
+    terminalStatus: "running",
+    taskLineup: [{
+      id: "assistant-repair",
+      content: "Confirming the assistant repair is safely completed",
+      status: "completed",
+      source: "todo-write",
+      updatedAt: 1000,
+    }],
+    statusSummary: {
+      task: "Completing the assistant repair safely",
+      path: cwd,
+      now: "Applying your answer to the assistant repair",
+      status: "working",
+      provider: "codex",
+      confidence: "high",
+      tasksFromTodoWrite: true,
+    },
+    activelyWorking: true,
+  });
+  expect(header.taskDescription.text).toBe("Completing the assistant repair safely");
+  expect(header.title.text).toBe("Applying your answer to the assistant repair");
+});
+
 test("shows the main user ask in Task while current activity stays in title and now", () => {
   const header = buildShellTerminalHeaderViewModel({
     project: { id: "g-termfleet", name: "termfleet", projectRoot: "/repo/termfleet" },
@@ -174,7 +350,7 @@ test("shows the main user ask in Task while current activity stays in title and 
   expect(header.taskDescription.text).toBe(
     "Fix terminal headers so Task shows the user ask and activity shows current work",
   );
-  expect(header.taskDescription.source).toBe("sidecar-todo");
+  expect(header.taskDescription.source).toBe("user-prompt");
   // Contract: with no distinct current step the title is the task's ACTIVE FORM
   // (conjugation). The render layer (activityAddsInfo) hides it on cards when it
   // adds nothing beyond the Task row — dedup lives at render, not here.
@@ -983,7 +1159,7 @@ test("submitted prompt task can replace stale sidecar task text", () => {
   expect(header.title.text).toBe("Thinking about the intro sfx still aren't audible on refresh");
 });
 
-test("does not show a stored main user ask from a different terminal run", () => {
+test("does not show a typed shell ask from a different terminal run", () => {
   const header = buildShellTerminalHeaderViewModel({
     project: { id: "g-termfleet", name: "termfleet", projectRoot: "/repo/termfleet" },
     liveCwd: "/repo/termfleet",
@@ -992,7 +1168,7 @@ test("does not show a stored main user ask from a different terminal run", () =>
     taskLineup: [],
     mainUserAsk: {
       text: "Fix terminal headers from the previous run",
-      source: "status-sidecar",
+      source: "terminal-prompt",
       updatedAt: 1000,
       runId: "run-old",
     },
@@ -1012,7 +1188,7 @@ test("does not show a stored main user ask from a different terminal run", () =>
   expect(header.debug.mainUserAskRunMatches).toBe(false);
 });
 
-test("task-tool state outranks userTask for the Task row", () => {
+test("userTask owns Task while task-tool state supplies current activity", () => {
   const header = buildShellTerminalHeaderViewModel({
     project: { id: "g-termfleet", name: "termfleet", projectRoot: "/repo/termfleet" },
     liveCwd: "/repo/termfleet",
@@ -1041,9 +1217,9 @@ test("task-tool state outranks userTask for the Task row", () => {
     },
   });
 
-  expect(header.taskDescription.text).toBe("Editing the sidecar writer");
-  expect(header.taskDescription.source).toBe("task-tool");
-  expect(header.title.text.toLowerCase()).not.toBe(header.taskDescription.text.toLowerCase());
+  expect(header.taskDescription.text).toBe("Fix terminal headers so Task shows the user ask");
+  expect(header.taskDescription.source).toBe("user-prompt");
+  expect(header.title.text).toBe("Editing the sidecar writer");
 });
 
 test("replaces bare source-file activity with a readable task-derived activity", () => {

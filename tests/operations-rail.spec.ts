@@ -66,9 +66,18 @@ test("operations rail exposes one clear job per icon and gates preview until a U
 
   await expect(preview).toBeEnabled();
   await expect(preview).toHaveAttribute("title", "Open preview pane for active terminal");
+  await map.click();
+  await expect(page.locator("[data-magic-canvas-shell]")).toBeVisible();
   await preview.click();
-  await expect(page.getByRole("region", { name: "Localhost preview" })).toBeVisible();
-  await expect(page.getByRole("textbox", { name: "Preview URL" })).toHaveValue("http://127.0.0.1:43210");
+  await expect(page.locator("[data-magic-canvas-shell]")).toBeVisible();
+  const mapPreview = page.locator("[data-magic-canvas-shell]").getByRole("region", { name: "Localhost preview" });
+  await expect(mapPreview).toBeVisible();
+  await expect(mapPreview.getByRole("textbox", { name: "Preview URL" })).toHaveValue("http://127.0.0.1:43210");
   await expect(preview).toHaveAttribute("aria-pressed", "true");
+  await page.getByTestId("canvas-terminal-node").first().click();
+  await expect(mapPreview.locator('iframe[title="Localhost preview"]')).toHaveCount(0);
+  await expect(mapPreview.getByRole("status", { name: "Preview paused" })).toBeVisible();
+  await mapPreview.click({ position: { x: 24, y: 24 } });
+  await expect(mapPreview.locator('iframe[title="Localhost preview"]')).toHaveCount(1);
   await sidebar.screenshot({ path: "/tmp/termfleet-operations-rail-preview.png" });
 });

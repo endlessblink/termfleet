@@ -12,9 +12,11 @@ test.use({
 
 let previewServer: Server;
 let previewOrigin = "";
+const previewRequests: Array<{ method: string; url: string }> = [];
 
 test.beforeAll(async () => {
-  previewServer = createServer((_request, response) => {
+  previewServer = createServer((request, response) => {
+    previewRequests.push({ method: request.method ?? "", url: request.url ?? "" });
     response.writeHead(200, {
       "Access-Control-Allow-Origin": "*",
       "Content-Type": "text/html; charset=utf-8",
@@ -111,6 +113,12 @@ test("localhost preview opens from command menu and updates iframe URL", async (
   await expect(page.frameLocator('iframe[title="Localhost preview"]')).toBeDefined();
   await expect(page.locator('iframe[title="Localhost preview"]')).toHaveAttribute("src", previewOrigin);
   await expect(page.getByText("live", { exact: true })).toBeVisible();
+  await expect(page.frameLocator('iframe[title="Localhost preview"]').getByRole("heading", { name: "TermFleet live localhost preview" })).toBeVisible();
+  await expect.poll(() => previewRequests.filter((request) => request.method === "GET" && request.url === "/").length).toBe(1);
+  await page.getByRole("button", { name: "Pause preview" }).click();
+  await expect(page.locator('iframe[title="Localhost preview"]')).toHaveCount(0);
+  await expect(page.getByRole("status", { name: "Preview paused" })).toBeVisible();
+  await page.getByRole("button", { name: "Resume preview" }).click();
   await expect(page.frameLocator('iframe[title="Localhost preview"]').getByRole("heading", { name: "TermFleet live localhost preview" })).toBeVisible();
   await page.getByRole("region", { name: "Localhost preview" }).screenshot({
     path: test.info().outputPath("localhost-preview-rendered.png"),

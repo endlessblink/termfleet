@@ -524,6 +524,17 @@ test("narration: pure status / report wrap-ups yield nothing (title falls back t
   }
 });
 
+test("narration: completed response next steps never become current work", () => {
+  expect(
+    narrationToNow(
+      "The task label is fixed. Next steps - Select the live-events pane and confirm the two labels read correctly.",
+    ),
+  ).toBe("");
+  expect(
+    narrationToNow("Steps - Hard-refresh the landing page and confirm the new route."),
+  ).toBe("");
+});
+
 test("activity line: trivial nav/inspection commands are filtered out", () => {
   // These keep the previous (meaningful) now line instead of showing "Running: cd ...".
   expect(activityFromTool("Bash", { command: "cd /media/foo/bar" })).toBe("");
@@ -1024,7 +1035,7 @@ test("worker falls back to the heuristic when no sidecar exists for the cwd", as
   expect(summary.tasksFromTodoWrite).toBeFalsy();
 });
 
-test("UserPromptSubmit writes the main user task and later tool activity preserves it", async () => {
+test("UserPromptSubmit stays conversational until a main task is declared", async () => {
   const dataHome = mkdtempSync(path.join(os.tmpdir(), "tf-status-"));
   const cwd = "/tmp/tf-codex-user-task";
   const env = { XDG_DATA_HOME: dataHome, TERMFLEET_PANE_ID: "pane-user-task" };
@@ -1072,12 +1083,61 @@ test("UserPromptSubmit writes the main user task and later tool activity preserv
   );
   expect(workerResult.status).toBe(0);
   const summary = JSON.parse(workerResult.stdout.trim());
-  expect(summary.userTask).toBe(
-    "Fix terminal headers so Task shows the user ask and activity shows current work",
-  );
-  expect(summary.task).toBe("Reading terminalHeaderViewModel.ts");
+  expect(summary.userTask).toBeUndefined();
+  expect(summary.task).toBe("Tracing header data flow");
   expect(summary.now).toBe("Reading terminalHeaderViewModel.ts");
   expect(summary.tasksFromTodoWrite).toBe(false);
+});
+
+test("Claude keeps the declared main task when later messages arrive", () => {
+  const dataHome = mkdtempSync(path.join(os.tmpdir(), "tf-status-"));
+  const cwd = "/tmp/tf-claude-main-task";
+  const env = { XDG_DATA_HOME: dataHome, TERMFLEET_PANE_ID: "pane-claude-main-task" };
+
+  runNode(HOOK, {
+    hook_event_name: "UserPromptSubmit",
+    cwd,
+    session_id: "s",
+    prompt: "Improve the live-events landing page and routes",
+  }, env);
+  runNode(HOOK, {
+    hook_event_name: "PostToolUse",
+    tool_name: "TaskCreate",
+    cwd,
+    session_id: "s",
+    tool_input: {
+      subject: "Goal: Improve the live-events landing page and routes",
+      activeForm: "Improving the live-events landing page and routes",
+    },
+    tool_response: { task: { id: "1" } },
+  }, env);
+  runNode(HOOK, {
+    hook_event_name: "PostToolUse",
+    tool_name: "TaskCreate",
+    cwd,
+    session_id: "s",
+    tool_input: {
+      subject: "Review the landing page on mobile",
+      activeForm: "Reviewing the landing page on mobile",
+    },
+    tool_response: { task: { id: "2" } },
+  }, env);
+  runNode(HOOK, {
+    hook_event_name: "UserPromptSubmit",
+    cwd,
+    session_id: "s",
+    prompt: "you will inform me when you are done and give me a count",
+  }, env);
+
+  const result = runNode(WORKER, {
+    paneId: "pane-claude-main-task",
+    projectId: cwd,
+    workstream: { path: cwd, provider: "claude" },
+  }, { XDG_DATA_HOME: dataHome });
+  const summary = JSON.parse(result.stdout.trim());
+  expect(summary.userTask).toBe("Improve the live-events landing page and routes");
+  expect(summary.tasksFromTodoWrite).toBe(true);
+  expect(summary.tasks.map((task: { text: string }) => task.text)).not.toContainEqual(expect.stringContaining("Goal:"));
 });
 
 test("live-now: a tool call updates the activity and preserves the todo list", async () => {

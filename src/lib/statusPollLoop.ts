@@ -15,7 +15,7 @@ import { selectStatusPollTargets, type StatusPollTarget } from "./statusPollTarg
 import { useWorkspaceStore } from "../stores/workspace";
 import type { Tab, TerminalState, WorkstreamStatus } from "./types";
 import { stableAgentProvider } from "./agentProviderIdentity";
-import { projectStatusPollResult } from "./statusPollProjection";
+import { projectStatusPollResult, statusPollProjectionChanged } from "./statusPollProjection";
 
 const POLL_INTERVAL_MS = 4_000;
 // Stagger requests so N panes don't burst the summarizer at once.
@@ -114,7 +114,7 @@ async function pollOnce() {
           candidateAsk.split(/\s+/).length >= 4 ||
           (!previousAsk && Boolean(candidateAsk)) ||
           candidateAsk.split(/\s+/).length > previousAsk.split(/\s+/).length;
-        const mainUserAsk = askImproves
+        const mainUserAsk = result.source === "sidecar" || askImproves
           ? mainUserAskFromSummary(result.summary, "status-sidecar", {
               previous: latestTerminal.mainUserAsk,
               runId: latestTerminal.activeRunId,
@@ -124,20 +124,19 @@ async function pollOnce() {
         const taskLineup = result.summary.tasksFromTodoWrite
           ? taskLineupFromExtractedItems(result.summary.tasks, "todo-write", "pending", updatedAt, latestTerminal.activeRunId)
           : undefined;
+        const projection: Partial<TerminalState> = {
+          ...(taskLineup && taskLineup.length > 0 ? { taskLineup } : {}),
+          statusSummary: result.summary,
+          agentProvider: stableAgentProvider(latestTerminal.agentProvider, result.summary.provider),
+          statusSummaryUpdatedAt: updatedAt,
+          statusSummarySource: result.source,
+          statusSummaryError: result.error,
+          mainUserAsk,
+        };
+        if (!statusPollProjectionChanged(latestTerminal, projection)) continue;
         latest.updateTab(latestTab.id, {
           terminals: latestTab.terminals.map((candidate) =>
-            candidate.id === terminal.id
-              ? {
-                  ...candidate,
-                  ...(taskLineup && taskLineup.length > 0 ? { taskLineup } : {}),
-                  statusSummary: result.summary,
-                  agentProvider: stableAgentProvider(candidate.agentProvider, result.summary.provider),
-                  statusSummaryUpdatedAt: updatedAt,
-                  statusSummarySource: result.source,
-                  statusSummaryError: result.error,
-                  mainUserAsk,
-                }
-              : candidate,
+            candidate.id === terminal.id ? { ...candidate, ...projection } : candidate,
           ),
         });
       } catch {

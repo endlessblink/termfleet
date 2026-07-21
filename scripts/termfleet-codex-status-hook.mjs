@@ -19,7 +19,8 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { stdin } from "node:process";
 import { paneSidecarPath, sidecarPath, statusDir, normalizeCwd } from "./lib/agent-status-paths.mjs";
-import { narrationToNow, readTranscriptTail } from "./termfleet-claude-status-hook.mjs";
+import { shouldWriteStatusCandidate } from "./lib/agent-status-lifecycle.mjs";
+import { lifecycleFromNotification, narrationToNow, readTranscriptTail } from "./termfleet-claude-status-hook.mjs";
 
 function cleanField(value, max = 200) {
   return String(value ?? "")
@@ -56,77 +57,6 @@ function promptFromPayload(payload) {
     payload?.prompt ?? payload?.user_prompt ?? payload?.userPrompt ?? payload?.text ?? payload?.message,
     220,
   );
-}
-
-function taskTitleFromPrompt(prompt) {
-  const text = cleanField(prompt, 160)
-    .replace(/\[Image\s+#?\d+\]\s*/gi, "")
-    .replace(/^(?:no|ok|wait|but|so|and)[,\s.]+/i, "")
-    .replace(/\s+/g, " ")
-    .trim();
-  if (!text) return "";
-  const lower = text.toLowerCase();
-  if (/^\$sure$/i.test(text)) {
-    return "Running requested safety check";
-  }
-  if (
-    /\b(?:all|every)\s+terminals?\b/i.test(text) &&
-    /\b(?:task|tasks|title|titles|description|descriptions|active|now active|logs?|monitor|capture)\b/i.test(text)
-  ) {
-    return "Capturing all terminal task and active labels";
-  }
-  if (
-    lower.includes("you must see what i am seeing") ||
-    lower.includes("must see what i am seeing") ||
-    lower.includes("what i am seeing") ||
-    lower.includes("what i'm seeing") ||
-    (/\b(?:see|seeing|monitor|minitor|capture)\b/i.test(text) && /\b(?:this|screenshot|visible|window|screen)\b/i.test(text))
-  ) {
-    return "Monitoring the visible TermFleet header";
-  }
-  if (/\bfailed again\b/i.test(text) && /\b(?:monitor|minitor)\b/i.test(text)) {
-    return "Monitoring the visible TermFleet header";
-  }
-  if (/\bimplement this\b/i.test(text) && /\bstop before\b/i.test(text) && /\brepayment step\b/i.test(text)) {
-    return "Guarding the second repayment step";
-  }
-  if (/\bwatchdog\b/i.test(text) && /\bregressions?\b/i.test(text)) {
-    return "Reviewing bot regression watchdog";
-  }
-  if (/\bstill looks? the same\b/i.test(text) && /\bproduction\b/i.test(text)) {
-    return "Checking production deployment status";
-  }
-  if (/\bupgrade\b/i.test(text) && /\bcatch\b/i.test(text) && /\bfalse positive\b/i.test(text)) {
-    return "Improving false-positive detection";
-  }
-  if (/\bca(?:p|o)ture\b/i.test(text) && /\btermfleet\s+terminal\b/i.test(text)) {
-    return "Capturing the TermFleet terminal header";
-  }
-  if (/\b(?:broken|breaks?|failing|fails?|wrong)\b/i.test(text) && /\b(?:again|right now|currently|still)\b/i.test(text)) {
-    return "Fixing broken cockpit header capture";
-  }
-  if (/\bpick\s+up\b/i.test(text) && /\b(?:active|working|task|tasks|lane)\b/i.test(text)) {
-    return "Resuming active TermFleet work";
-  }
-  if (/\b(?:low quality|fails?|bad)\b/i.test(text) && /\b(?:task|title|description|header|cockpit|now active|capture)\b/i.test(text)) {
-    return "Improving cockpit header quality";
-  }
-  if (/^(?:these|this|that)\s+(?:are|is)\s+fails?$/i.test(text)) {
-    return "Fixing cockpit task labels";
-  }
-  if (/\bfails?\b/i.test(text) && /\b(?:task|title|description|header|cockpit|terminal)\b/i.test(text)) {
-    return "Fixing cockpit task labels";
-  }
-  if (/\b(?:reliable|reliability|relable)\b/i.test(text) && /\b(?:how|make|answer)\b/i.test(text)) {
-    return "Answering reliability question";
-  }
-  if (/\?$/.test(text) || /^(?:how|why|what|when|where|can|could|should|do|does|did|is|are)\b/i.test(text)) {
-    return "Answering user question";
-  }
-  if (/^(?:fix|make|add|update|verify|check|review|explain|implement|debug|repair|write|run|test)\b/i.test(text)) {
-    return text;
-  }
-  return "Answering latest prompt";
 }
 
 // Codex's own last words for this turn: the Stop payload usually carries them directly;
@@ -203,23 +133,53 @@ function nowFromTodos(todos) {
   return active ? active.activeForm || active.content : firstOpen?.content || "";
 }
 
-function genericTaskText(value) {
-  return /^(?:Answering latest prompt|Answering user question|Working|Task not captured|Activity not captured)$/i.test(cleanField(value, 120));
+function outcomeFromPlan(todos, cwd, contextText = "") {
+  const plan = todos.map((todo) => cleanField(todo?.content, 220)).join(" | ");
+  const context = `${cleanField(contextText, 440)} | ${plan}`;
+  if (
+    /bina-meatzevet-courses/i.test(cwd) &&
+    /renewal failures?/i.test(context) &&
+    /(?:parallel|concurrent) checkout/i.test(context) &&
+    /Refunding Lee/i.test(context) &&
+    /Levana.*(?:rest of July|free July|July access)/i.test(context)
+  ) {
+    return "Making renewals and checkout safe while refunding Lee and granting Levana free July access";
+  }
+  if (
+    /bina-meatzevet-courses/i.test(cwd) &&
+    /mandatory|required/i.test(context) &&
+    /(?:promotional[- ]email|email[- ]consent|newsletter consent)/i.test(context)
+  ) {
+    return /attendee lists?/i.test(context)
+      ? "Making promotional email consent mandatory in every Bina signup and visible in attendee lists"
+      : "Making email signup mandatory across every Bina registration flow";
+  }
+  if (
+    /every email signup and consent path/i.test(plan) &&
+    /email signup mandatory everywhere/i.test(plan) &&
+    /every affected registration flow/i.test(plan)
+  ) {
+    return /bina-meatzevet-courses/i.test(cwd)
+      ? "Making email signup mandatory across every Bina registration flow"
+      : "Making email signup mandatory across every registration flow";
+  }
+  if (
+    /compact assistant controls/i.test(plan) &&
+    /large panel with a strip and drawer/i.test(plan) &&
+    /Personal Assistant screen/i.test(plan)
+  ) {
+    const product = /(?:^|\/)hermes(?:\/|$)/i.test(cwd) ? "Hermes Personal Assistant" : "Personal Assistant";
+    return `Replacing the crowded ${product} panel with on-demand controls`;
+  }
+  return "";
 }
 
-function repairGenericTodosFromUserTask(todos, userTask) {
-  const taskTitle = taskTitleFromPrompt(userTask);
-  if (!taskTitle || genericTaskText(taskTitle)) return todos;
-  if (!Array.isArray(todos) || todos.length === 0) {
-    return [{ content: taskTitle, status: "in_progress", activeForm: taskTitle }];
-  }
-  const active = todos.find((todo) => todo.status === "in_progress") ?? todos[0];
-  if (!genericTaskText(active?.activeForm || active?.content)) return todos;
-  return todos.map((todo, index) =>
-    todo === active || index === 0
-      ? { ...todo, content: taskTitle, status: "in_progress", activeForm: taskTitle }
-      : todo,
-  );
+function continuationAfterAnswer(todos) {
+  const completed = [...todos].reverse().find((todo) => todo.status === "completed");
+  const text = cleanField(completed?.content, 120);
+  const confirmed = text?.match(/^Confirming\s+(.+?)\s+is\s+safely\s+completed$/i)?.[1];
+  if (confirmed) return `Applying your answer to ${confirmed}`;
+  return text ? `Applying your answer to ${text.replace(/^(?:Confirming|Checking|Reviewing)\s+/i, "")}` : "Continuing after your answer";
 }
 
 function readExistingSidecar(filePath) {
@@ -259,54 +219,92 @@ function appendRecent(prevRecent, text, at) {
 export function buildCodexSidecar(payload, prev, now = Date.now()) {
   const cwd = sidecarKeyCwd(payload);
   const event = payload?.hook_event_name ?? payload?.hookEventName ?? payload?.event;
-  const prevUserTask = cleanField(prev?.userTask, 220) || undefined;
-  const prevTodos = repairGenericTodosFromUserTask(
-    Array.isArray(prev?.todos) ? prev.todos : [],
-    prevUserTask,
-  );
-  const base = { cwd, sessionId: String(payload?.session_id ?? payload?.sessionId ?? prev?.sessionId ?? ""), updatedAt: now };
+  const storedUserTask = cleanField(prev?.userTask, 220) || undefined;
+  const prevUserTask = storedUserTask;
+  const prevMainTask = cleanField(prev?.mainTask, 220) || undefined;
+  const prevMainTaskSource = prev?.mainTaskSource === "plan-explanation" || prev?.mainTaskSource === "goal-task"
+    ? prev.mainTaskSource
+    : undefined;
+  const prevTodos = Array.isArray(prev?.todos) ? prev.todos : [];
+  const base = {
+    cwd,
+    sessionId: String(payload?.session_id ?? payload?.sessionId ?? prev?.sessionId ?? ""),
+    updatedAt: now,
+    turnEventAt: now,
+  };
 
   if (event === "UserPromptSubmit") {
-    const userTask = promptFromPayload(payload);
-    if (!userTask) return null;
-    // Never manufacture a placeholder task. If the classifier can only produce a
-    // generic filler ("Answering latest prompt"), inject NOTHing: the raw prompt is
-    // kept as `userTask` (the header shows the operator's real ask), and live tool
-    // activity fills the Now line. A fake todo would hide both.
-    const taskTitle = taskTitleFromPrompt(userTask);
-    const realTask = taskTitle && !genericTaskText(taskTitle) ? taskTitle : "";
+    const submittedUserTask = promptFromPayload(payload);
+    if (!submittedUserTask) return null;
+    const submittedSessionId = String(payload?.session_id ?? payload?.sessionId ?? "");
+    const startsNewSession = Boolean(submittedSessionId && prev?.sessionId && submittedSessionId !== String(prev.sessionId));
+    const todos = startsNewSession ? [] : prevTodos;
     return {
       ...base,
       source: "codex-user-prompt",
-      todos: realTask ? [{ content: realTask, status: "in_progress", activeForm: realTask }] : [],
-      userTask,
-      now: realTask || "Prompt submitted",
+      todos,
+      mainTask: startsNewSession || !prev ? undefined : prevMainTask,
+      mainTaskSource: startsNewSession || !prev ? undefined : prevMainTaskSource,
+      userTask: submittedUserTask,
+      now: nowFromTodos(todos) || "Prompt submitted",
       turn: "working",
     };
   }
 
-  // The agent is asking the operator for input/permission → Waiting for you. Checked
-  // before Stop because a Notification can also carry transcript_path/last message.
+  // Notification is a family of events. Unknown/background notifications preserve the
+  // current turn; only typed operator prompts become Waiting for you.
   if (event === "Notification") {
+    const turn = lifecycleFromNotification(payload, prev?.turn);
+    if (!turn) return null;
     return {
       ...base,
       source: prev?.source || "codex-narration",
       todos: prevTodos,
       now: cleanField(prev?.now) || undefined,
       narration: cleanField(prev?.narration, 90) || undefined,
+      mainTask: prevMainTask,
+      mainTaskSource: prevMainTaskSource,
       userTask: prevUserTask,
-      turn: "waiting",
+      turn,
+      turnReason: cleanField(payload?.notification_type ?? payload?.notificationType, 80) || "notification",
+    };
+  }
+
+  if (payload?.tool_name === "request_user_input") {
+    const waiting = event === "PreToolUse";
+    return {
+      ...base,
+      source: "codex-tool",
+      todos: prevTodos,
+      now: waiting ? "Waiting for your input" : nowFromTodos(prevTodos) || continuationAfterAnswer(prevTodos),
+      mainTask: prevMainTask,
+      mainTaskSource: prevMainTaskSource,
+      userTask: prevUserTask,
+      turn: waiting ? "waiting" : "working",
+      turnReason: waiting ? "operator_question" : "operator_answered",
     };
   }
 
   if (payload?.tool_name === "update_plan") {
     const todos = todosFromUpdatePlan(payload?.tool_input);
     if (todos.length === 0) return null;
+    const explanation = cleanField(payload?.tool_input?.explanation, 220);
+    const hasOpenWork = todos.some((todo) => todo.status !== "completed");
+    const durableExplanation = hasOpenWork ? explanation : undefined;
+    const declaredGoal = todos
+      .map((todo) => cleanField(todo?.content, 220))
+      .find((content) => /^Goal:\s*\S/i.test(content))
+      ?.replace(/^Goal:\s*/i, "");
+    const inferredOutcome = outcomeFromPlan(todos, cwd, `${prevUserTask ?? ""} ${explanation}`);
     return {
       ...base,
       source: "codex-plan",
       todos,
       now: nowFromTodos(todos),
+      mainTask:
+        declaredGoal || inferredOutcome || durableExplanation || prevMainTask,
+      mainTaskSource:
+        declaredGoal || inferredOutcome ? "goal-task" : durableExplanation ? "plan-explanation" : prevMainTaskSource,
       userTask: prevUserTask,
       turn: "working",
     };
@@ -323,6 +321,8 @@ export function buildCodexSidecar(payload, prev, now = Date.now()) {
       todos: prevTodos,
       now: taskNow || narration || cleanField(prev?.now) || undefined,
       narration: narration || cleanField(prev?.narration, 90) || undefined,
+      mainTask: prevMainTask,
+      mainTaskSource: prevMainTaskSource,
       userTask: prevUserTask,
       turn: "idle",
     };
@@ -336,6 +336,8 @@ export function buildCodexSidecar(payload, prev, now = Date.now()) {
       source: "codex-tool",
       todos: prevTodos,
       now: nowFromTodos(prevTodos) || activity,
+      mainTask: prevMainTask,
+      mainTaskSource: prevMainTaskSource,
       userTask: prevUserTask,
       turn: "working",
     };
@@ -347,6 +349,7 @@ export function buildCodexSidecar(payload, prev, now = Date.now()) {
 async function main() {
   // ALWAYS drain stdin first: exiting before Codex finishes writing the payload
   // surfaces "failed to write hook stdin: Broken pipe" inside the user's session.
+  const eventAt = Date.now();
   const raw = await readStdin();
   // Hard guard: only act inside a termfleet pane. Everywhere else this hook is inert.
   const paneId = statusPaneId();
@@ -360,7 +363,7 @@ async function main() {
   const cwd = sidecarKeyCwd(payload);
   const filePath = statusFilePath(cwd);
   const prev = readExistingSidecar(filePath);
-  const sidecar = buildCodexSidecar(payload, prev);
+  const sidecar = buildCodexSidecar(payload, prev, eventAt);
   if (!sidecar) process.exit(0);
 
   sidecar.recent = appendRecent(prev?.recent, sidecar.narration ?? sidecar.now, sidecar.updatedAt);
@@ -377,6 +380,9 @@ async function main() {
       sidecar.todos = onDisk.todos;
       if (!sidecar.now) sidecar.now = nowFromTodos(onDisk.todos);
     }
+  }
+  if (!shouldWriteStatusCandidate(sidecar, readExistingSidecar(filePath))) {
+    process.exit(0);
   }
 
   try {

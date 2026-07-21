@@ -1,10 +1,33 @@
 import { expect, test } from "@playwright/test";
 import {
   displayAgentStatusSummary,
+  agentStatusSummaryFromWorkstream,
   fallbackAgentStatusSummary,
   getDisplaySummary,
   parseAgentStatusSummaryResponse,
 } from "../src/lib/agentStatusSummary";
+
+test("a resumed live pane does not show a completed confirmation as its Task", () => {
+  const summary = agentStatusSummaryFromWorkstream({
+    kind: "agent",
+    provider: "codex",
+    mission: "Assistant repair",
+    prompt: "Repair the assistant",
+    status: "running",
+    phase: "active",
+    statusSummary: {
+      task: "Confirming the assistant repair is safely completed",
+      path: "/workspace/hermes",
+      now: "Applying your answer to the assistant repair",
+      status: "working",
+      provider: "codex",
+      confidence: "high",
+      tasksFromTodoWrite: true,
+    },
+  });
+
+  expect(summary?.task).toBe("Repairing the Hermes personal assistant safely");
+});
 import { deriveTerminalActivity } from "../src/lib/terminalActivity";
 import {
   normalizePersistedShellSummary,
@@ -1211,6 +1234,25 @@ test("fallback summary treats next-step selection prompts as waiting for the ope
   expect(summary.task).toBe("Reviewing next step");
   expect(summary.now).toBe("Waiting for operator selection");
   expect(summary.status).toBe("waiting");
+});
+
+test("fallback summary treats unanswered interactive questions as waiting for the user", () => {
+  const summary = fallbackAgentStatusSummary({
+    mission: "Terminal",
+    provider: "shell",
+    status: "running",
+    cwd: "/repo/termfleet",
+    terminalVisibleText: [
+      "Question 1/1 (1 unanswered)",
+      "When the agent process is alive but its status hook has stopped updating, what should the pane show?",
+      "1. Status unavailable",
+      "2. Keep last task",
+      "tab to add notes | enter to submit answer | esc to interrupt",
+    ].join("\n"),
+  });
+
+  expect(summary.status).toBe("waiting");
+  expect(summary.now).toBe("Waiting for your answer");
 });
 
 test("durable activity does not outrank an active operator selection prompt", () => {

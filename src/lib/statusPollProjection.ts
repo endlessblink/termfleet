@@ -1,6 +1,27 @@
 import type { AgentStatusSummarizerResult } from "./agentStatusSummarizer";
 import type { TerminalState } from "./types";
 
+function statusPollProjectionFingerprint(terminal: TerminalState) {
+  return JSON.stringify({
+    agentProvider: terminal.agentProvider ?? null,
+    statusSummary: terminal.statusSummary ?? null,
+    statusSummarySource: terminal.statusSummarySource ?? null,
+    statusSummaryError: terminal.statusSummaryError ?? null,
+    mainUserAsk: terminal.mainUserAsk ?? null,
+    taskLineup: terminal.taskLineup ?? null,
+  });
+}
+
+export function statusPollProjectionChanged(
+  current: TerminalState,
+  projection: Partial<TerminalState>,
+) {
+  return statusPollProjectionFingerprint(current) !== statusPollProjectionFingerprint({
+    ...current,
+    ...projection,
+  });
+}
+
 /**
  * Convert an authoritative sidecar expiry into an honest cockpit state.
  * Missing or unreadable sidecars are deliberately left alone so a transient read

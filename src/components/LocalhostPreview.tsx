@@ -1,5 +1,5 @@
 import { CSSProperties, FormEvent, useEffect, useMemo, useState } from "react";
-import { ExternalLink, RefreshCcw } from "lucide-react";
+import { ExternalLink, Pause, Play, RefreshCcw } from "lucide-react";
 import { useWorkspaceStore } from "../stores/workspace";
 
 const DEFAULT_PREVIEW_URL = "http://127.0.0.1:3000";
@@ -131,29 +131,40 @@ function normalizePreviewUrl(value: string) {
 interface LocalhostPreviewProps {
   previewUrl?: string;
   onPreviewUrlChange?: (previewUrl: string) => void;
+  active?: boolean;
 }
 
-export function LocalhostPreview({ previewUrl: controlledPreviewUrl, onPreviewUrlChange }: LocalhostPreviewProps = {}) {
+export function LocalhostPreview({
+  previewUrl: controlledPreviewUrl,
+  onPreviewUrlChange,
+  active = true,
+}: LocalhostPreviewProps = {}) {
   const storedPreviewUrl = useWorkspaceStore((state) => state.workspaceUiState.previewUrl);
   const updateUiState = useWorkspaceStore((state) => state.updateWorkspaceUiState);
   const previewUrl = controlledPreviewUrl ?? storedPreviewUrl;
   const [draftUrl, setDraftUrl] = useState(previewUrl);
   const [frameKey, setFrameKey] = useState(0);
   const [reachability, setReachability] = useState<Reachability>("checking");
+  const [manuallyPaused, setManuallyPaused] = useState(false);
 
   const normalizedUrl = useMemo(() => normalizePreviewUrl(previewUrl), [previewUrl]);
+  const previewActive = active && !manuallyPaused;
 
   useEffect(() => {
     setDraftUrl(previewUrl);
   }, [previewUrl]);
 
   useEffect(() => {
+    if (!previewActive) {
+      setReachability("checking");
+      return;
+    }
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 1800);
     setReachability("checking");
 
     fetch(normalizedUrl, {
-      method: "GET",
+      method: "HEAD",
       mode: "no-cors",
       cache: "no-store",
       signal: controller.signal,
@@ -166,7 +177,7 @@ export function LocalhostPreview({ previewUrl: controlledPreviewUrl, onPreviewUr
       window.clearTimeout(timeout);
       controller.abort();
     };
-  }, [normalizedUrl, frameKey]);
+  }, [previewActive, normalizedUrl, frameKey]);
 
   const setPreviewUrl = (url: string) => {
     const normalized = normalizePreviewUrl(url);
@@ -219,6 +230,16 @@ export function LocalhostPreview({ previewUrl: controlledPreviewUrl, onPreviewUr
           >
             <RefreshCcw size={14} />
           </button>
+          <button
+            style={styles.button}
+            type="button"
+            title={manuallyPaused ? "Resume preview" : "Pause preview"}
+            aria-label={manuallyPaused ? "Resume preview" : "Pause preview"}
+            onClick={() => setManuallyPaused((paused) => !paused)}
+            disabled={!active}
+          >
+            {manuallyPaused ? <Play size={14} /> : <Pause size={14} />}
+          </button>
         </form>
         <button style={styles.quickButton} type="button" onClick={() => setPreviewUrl("http://127.0.0.1:3000")}>
           :3000
@@ -231,13 +252,26 @@ export function LocalhostPreview({ previewUrl: controlledPreviewUrl, onPreviewUr
         </span>
       </div>
       <div style={styles.frameWrap}>
-        <iframe
-          key={`${normalizedUrl}:${frameKey}`}
-          style={styles.iframe}
-          src={normalizedUrl}
-          title="Localhost preview"
-          sandbox="allow-forms allow-modals allow-popups allow-same-origin allow-scripts"
-        />
+        {previewActive ? (
+          <iframe
+            key={`${normalizedUrl}:${frameKey}`}
+            style={styles.iframe}
+            src={normalizedUrl}
+            title="Localhost preview"
+            loading="lazy"
+            allow="autoplay 'none'; camera 'none'; microphone 'none'"
+            sandbox="allow-forms allow-modals allow-popups allow-same-origin allow-scripts"
+          />
+        ) : (
+          <div style={styles.offlineOverlay} role="status" aria-label="Preview paused">
+            <div>
+              <p style={styles.offlineTitle}>Preview paused</p>
+              <p style={styles.offlineDetail}>
+                {active ? "Resume the preview when you are ready." : "Select this preview window to load the local site."}
+              </p>
+            </div>
+          </div>
+        )}
         {reachability === "offline" && (
           <div style={styles.offlineOverlay} role="status" aria-label="Preview server offline">
             <div>

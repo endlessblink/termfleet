@@ -1,6 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { masterPlanPath, parseMasterPlanTasks, type MasterPlanTask } from "../lib/masterPlanTasks";
+import {
+  cachedMasterPlanTasks,
+  masterPlanPath,
+  masterPlanTaskMapsEqual,
+  type MasterPlanTask,
+  type MasterPlanTaskCacheEntry,
+} from "../lib/masterPlanTasks";
 
 export function useMasterPlanTasks(projectRoots: Array<string | null | undefined>) {
   const roots = useMemo(
@@ -9,6 +15,7 @@ export function useMasterPlanTasks(projectRoots: Array<string | null | undefined
   );
   const rootsKey = roots.join("\n");
   const [tasksByRoot, setTasksByRoot] = useState<Record<string, MasterPlanTask[]>>({});
+  const taskCacheRef = useRef<Record<string, MasterPlanTaskCacheEntry>>({});
 
   useEffect(() => {
     let cancelled = false;
@@ -18,14 +25,19 @@ export function useMasterPlanTasks(projectRoots: Array<string | null | undefined
         roots.map(async (root) => {
           try {
             const contents = await invoke<string>("fs_read_file", { path: masterPlanPath(root) });
-            return [root, parseMasterPlanTasks(contents)] as const;
+            const cached = cachedMasterPlanTasks(taskCacheRef.current[root], contents);
+            taskCacheRef.current[root] = cached;
+            return [root, cached.tasks] as const;
           } catch {
             return [root, []] as const;
           }
         })
       );
 
-      if (!cancelled) setTasksByRoot(Object.fromEntries(entries));
+      if (!cancelled) {
+        const next = Object.fromEntries(entries);
+        setTasksByRoot((previous) => masterPlanTaskMapsEqual(previous, next) ? previous : next);
+      }
     }
 
     void load();

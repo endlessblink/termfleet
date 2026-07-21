@@ -35,6 +35,10 @@ const RESTORE_NORMALIZE_SEQUENCE: &str = "\x1b[?1049l\x1b[?2004l\x1b[0m\r\n";
 /// so a relaunched daemon can restore each session's content. Throttled so a
 /// fast PTY dump doesn't rewrite the (≤200KB) file on every read.
 const PERSIST_FLUSH_INTERVAL: Duration = Duration::from_millis(750);
+// Let an append-only checkpoint grow modestly beyond the in-memory window,
+// then compact it in one atomic rewrite. Without this slack, every small write
+// to a full scrollback advances base_offset and rewrites the entire 4 MB file.
+const PERSIST_COMPACT_SLACK_BYTES: usize = 1_000_000;
 const MAX_SESSION_EVENTS: usize = 200;
 /// Stack size for each PTY's reader thread. The daemon owns one of these per
 /// live session, so at ~100 parallel terminals the default 2MB-per-thread stack
@@ -228,6 +232,8 @@ struct PersistHandle {
     path: PathBuf,
     last_flush: Option<Instant>,
     dirty: bool,
+    persisted_base_offset: Option<u64>,
+    persisted_data_len: usize,
 }
 
 impl PersistHandle {
@@ -236,7 +242,45 @@ impl PersistHandle {
             path,
             last_flush: None,
             dirty: false,
+            persisted_base_offset: None,
+            persisted_data_len: 0,
         }
+    }
+
+    fn write_checkpoint(&mut self, base_offset: u64, data: &str) -> std::io::Result<()> {
+        let current_end = base_offset.saturating_add(data.len() as u64);
+        if let Some(persisted_base) = self.persisted_base_offset {
+            let persisted_end = persisted_base.saturating_add(self.persisted_data_len as u64);
+            if persisted_end >= base_offset && persisted_end <= current_end {
+                let suffix_start = (persisted_end - base_offset) as usize;
+                let suffix = &data.as_bytes()[suffix_start..];
+                let projected_len = self.persisted_data_len.saturating_add(suffix.len());
+                if suffix.is_empty() {
+                    return Ok(());
+                }
+                if projected_len <= MAX_SCROLLBACK_BYTES + PERSIST_COMPACT_SLACK_BYTES {
+                    let append_result = (|| {
+                        let mut file = fs::OpenOptions::new().append(true).open(&self.path)?;
+                        file.write_all(suffix)?;
+                        file.sync_data()
+                    })();
+                    if append_result.is_ok() {
+                        self.persisted_data_len = projected_len;
+                        return Ok(());
+                    }
+                    // A partial/failed append is repaired by the atomic full
+                    // checkpoint below; never retry a suffix against unknown disk state.
+                }
+            }
+        }
+
+        let mut bytes = Vec::with_capacity(8 + data.len());
+        bytes.extend_from_slice(&base_offset.to_le_bytes());
+        bytes.extend_from_slice(data.as_bytes());
+        atomic_write(&self.path, &bytes)?;
+        self.persisted_base_offset = Some(base_offset);
+        self.persisted_data_len = data.len();
+        Ok(())
     }
 
     /// Persist `data` (with its `base_offset` header) if dirty and the throttle
@@ -252,10 +296,7 @@ impl PersistHandle {
         if !due {
             return;
         }
-        let mut bytes = Vec::with_capacity(8 + data.len());
-        bytes.extend_from_slice(&base_offset.to_le_bytes());
-        bytes.extend_from_slice(data.as_bytes());
-        if atomic_write(&self.path, &bytes).is_ok() {
+        if self.write_checkpoint(base_offset, data).is_ok() {
             self.last_flush = Some(Instant::now());
             self.dirty = false;
         }
@@ -265,10 +306,7 @@ impl PersistHandle {
         if !self.dirty {
             return;
         }
-        let mut bytes = Vec::with_capacity(8 + data.len());
-        bytes.extend_from_slice(&base_offset.to_le_bytes());
-        bytes.extend_from_slice(data.as_bytes());
-        if atomic_write(&self.path, &bytes).is_ok() {
+        if self.write_checkpoint(base_offset, data).is_ok() {
             self.last_flush = Some(Instant::now());
             self.dirty = false;
         }
@@ -1566,8 +1604,14 @@ fn load_persisted_scrollback(dir: &Path, id: &str) -> Option<(u64, String)> {
     }
     let mut header = [0u8; 8];
     header.copy_from_slice(&raw[..8]);
-    let base_offset = u64::from_le_bytes(header);
-    let data = String::from_utf8_lossy(&raw[8..]).into_owned();
+    let mut base_offset = u64::from_le_bytes(header);
+    let mut data = String::from_utf8_lossy(&raw[8..]).into_owned();
+    if data.len() > MAX_SCROLLBACK_BYTES {
+        let trim_to = data.len() - MAX_SCROLLBACK_BYTES;
+        let boundary = replay_boundary_at_or_after(&data, trim_to);
+        data.drain(..boundary);
+        base_offset = base_offset.saturating_add(boundary as u64);
+    }
     Some((base_offset, data))
 }
 
@@ -2767,6 +2811,48 @@ mod tests {
             );
             manager.kill(&id).expect("kill restored session");
         }
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn full_scrollback_checkpoint_appends_the_new_tail_instead_of_rewriting_everything() {
+        let dir = std::env::temp_dir().join(format!(
+            "tw-persist-append-test-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create persistence test dir");
+        let id = "persist-append-test";
+        let path = super::scrollback_path(&dir, id);
+        let line = "123456789\n";
+        let initial = line.repeat(super::MAX_SCROLLBACK_BYTES / line.len());
+
+        let mut persist = super::PersistHandle::new(path.clone());
+        persist.dirty = true;
+        persist.flush_now(0, &initial);
+
+        // Once the in-memory buffer is full, appending one line advances the
+        // replay boundary by two lines. Persisting that tiny tail must not
+        // replace the entire 4 MB checkpoint on every flush.
+        let advanced = (line.len() * 2) as u64;
+        let mut current = initial[advanced as usize..].to_string();
+        current.push_str("abcdefghi\n");
+        persist.dirty = true;
+        persist.flush_now(advanced, &current);
+
+        let raw_len = std::fs::metadata(&path).expect("checkpoint metadata").len() as usize;
+        assert_eq!(
+            raw_len,
+            8 + initial.len() + line.len(),
+            "a small tail should append to the checkpoint instead of rewriting the 4 MB window"
+        );
+
+        let (loaded_base, loaded) = super::load_persisted_scrollback(&dir, id)
+            .expect("load incrementally persisted scrollback");
+        assert_eq!(loaded_base, advanced);
+        assert_eq!(loaded, current);
 
         let _ = std::fs::remove_dir_all(&dir);
     }

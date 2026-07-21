@@ -51,21 +51,21 @@ try {
 }
 
 // 1b. Badge turn events (WATCHDOG): the Running/Waiting/Idle badge is driven purely by
-// the hooks' explicit turn state — Stop (→ idle) and Notification (→ waiting) MUST be
-// registered for BOTH providers or panes silently stick on Running/Idle again. This is
+// the hooks' explicit turn state. Typed prompts and permissions must be registered too,
+// or panes silently stick on Running/Idle again. This is
 // runtime wiring no unit test can catch (the class behind every "broken again" report).
 try {
   const settingsPath = path.join(os.homedir(), ".claude", "settings.json");
   const hooks = JSON.parse(readFileSync(settingsPath, "utf8")).hooks ?? {};
   const hookRegistered = (event) =>
     JSON.stringify(hooks[event] ?? []).includes("termfleet-claude-status-hook");
-  const missing = ["Stop", "Notification", "UserPromptSubmit", "PostToolUse"].filter(
+  const missing = ["Stop", "Notification", "PermissionRequest", "UserPromptSubmit", "PostToolUse"].filter(
     (event) => !hookRegistered(event),
   );
   if (missing.length) {
     report("fail", "Badge turn events (Claude)", `status hook missing on: ${missing.join(", ")} — finished/waiting panes will show the wrong badge until re-registered`);
   } else {
-    report("ok", "Badge turn events (Claude)", "Stop→idle, Notification→waiting, prompt/tool→working all registered");
+    report("ok", "Badge turn events (Claude)", "finish, idle, permission, prompt, and tool lifecycle events all registered");
   }
 } catch (error) {
   report("warn", "Badge turn events (Claude)", `could not verify (${error.message})`);
@@ -78,13 +78,13 @@ try {
     const hooks = JSON.parse(readFileSync(codexHooksPath, "utf8")).hooks ?? {};
     const hookRegistered = (event) =>
       JSON.stringify(hooks[event] ?? []).includes("termfleet-codex-status-hook");
-    const missing = ["Stop", "Notification", "UserPromptSubmit", "PostToolUse"].filter(
+    const missing = ["Stop", "Notification", "UserPromptSubmit", "PreToolUse", "PostToolUse"].filter(
       (event) => !hookRegistered(event),
     );
     if (missing.length) {
       report("fail", "Badge turn events (Codex)", `status hook missing on: ${missing.join(", ")} — Codex panes will stick on the wrong badge`);
     } else {
-      report("ok", "Badge turn events (Codex)", "Stop→idle, Notification→waiting, prompt/tool→working all registered");
+      report("ok", "Badge turn events (Codex)", "finish, notification, prompt, pre-tool, and post-tool lifecycle events all registered");
     }
   }
 } catch (error) {

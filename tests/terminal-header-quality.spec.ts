@@ -3,6 +3,7 @@ import {
   headerLabelsAreDuplicated,
   qualityCheckActivityLabel,
   qualityCheckAuthoritativeTaskLabel,
+  qualityCheckNowLabel,
   qualityCheckTrustedActivityLabel,
   qualityCheckTaskLabel,
   qualityCheckUserAskLabel,
@@ -11,6 +12,16 @@ import {
 test("accepts concise operator-readable task and activity labels", () => {
   expect(qualityCheckTaskLabel("Improve cockpit header descriptions").ok).toBe(true);
   expect(qualityCheckActivityLabel("Inspecting header quality rules").ok).toBe(true);
+});
+
+test("rejects saved final-answer steps as current activity", () => {
+  for (const label of [
+    "Steps - Open the landing page and confirm the route.",
+    "Next steps: hard-refresh production.",
+  ]) {
+    expect(qualityCheckNowLabel(label)).toMatchObject({ ok: false, reason: "prompt-fragment" });
+    expect(qualityCheckActivityLabel(label)).toMatchObject({ ok: false, reason: "prompt-fragment" });
+  }
 });
 
 test("rejects raw prompt echoes and typo-heavy prompt fragments", () => {
@@ -50,6 +61,19 @@ test("rejects command-like and implementation-detail labels", () => {
   ]) {
     expect(qualityCheckTaskLabel(label).ok).toBe(false);
     expect(qualityCheckActivityLabel(label).ok).toBe(false);
+  }
+});
+
+test("rejects agent footer metrics from every visible header field", () => {
+  for (const label of [
+    "Weekly 57% left • Context 76% used • Main [default]",
+    "wk:26%(5d2h) | ctx:8% | session:5m | Fable 5",
+  ]) {
+    expect(qualityCheckTaskLabel(label)).toMatchObject({ ok: false, reason: "terminal-chrome" });
+    expect(qualityCheckAuthoritativeTaskLabel(label)).toMatchObject({ ok: false, reason: "terminal-chrome" });
+    expect(qualityCheckUserAskLabel(label)).toMatchObject({ ok: false, reason: "terminal-chrome" });
+    expect(qualityCheckNowLabel(label)).toMatchObject({ ok: false, reason: "terminal-chrome" });
+    expect(qualityCheckActivityLabel(label)).toMatchObject({ ok: false, reason: "terminal-chrome" });
   }
 });
 

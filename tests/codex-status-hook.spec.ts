@@ -9,189 +9,135 @@ import {
   todosFromUpdatePlan,
 } from "../scripts/termfleet-codex-status-hook.mjs";
 
-test("user prompt becomes the Task row (the reliable Codex signal)", () => {
+test("a new session does not promote its raw prompt to the main task", () => {
   const sidecar = buildCodexSidecar(
-    { hook_event_name: "UserPromptSubmit", prompt: "go over everything and get it ready to merge", cwd: "/repo", session_id: "s1" },
+    {
+      hook_event_name: "UserPromptSubmit",
+      prompt: "Improve the live-events landing page and routes",
+      cwd: "/repo",
+      session_id: "s1",
+    },
     null,
-    1000,
+    1_000,
   );
-  expect(sidecar?.source).toBe("codex-user-prompt");
-  // The operator's real ask is kept verbatim; the header shows it as the Task row.
-  expect(sidecar?.userTask).toBe("go over everything and get it ready to merge");
-  // No fake placeholder task is injected — a manufactured "Answering latest prompt"
-  // todo used to hide both the real ask and the live activity.
+  expect(sidecar?.mainTask).toBeUndefined();
+  expect(sidecar?.userTask).toBe("Improve the live-events landing page and routes");
   expect(sidecar?.todos).toEqual([]);
   expect(sidecar?.now).toBe("Prompt submitted");
 });
 
-test("new prompt replaces completed todos with a fresh current task", () => {
+test("follow-ups keep the declared main task and real checklist", () => {
+  const previous = {
+    sessionId: "s1",
+    mainTask: "Improving the live-events landing page and routes",
+    mainTaskSource: "plan-explanation",
+    userTask: "Make it clear where I am working",
+    todos: [{ content: "Reviewing the landing page on mobile", status: "in_progress", activeForm: "" }],
+  };
   const sidecar = buildCodexSidecar(
-    { hook_event_name: "UserPromptSubmit", prompt: "no you havent... how do we make you relable? answer", cwd: "/repo", session_id: "s1" },
     {
-      now: "Old final answer text",
-      todos: [
-        { content: "Removing merge markers blocking the app", status: "completed", activeForm: "" },
-        { content: "Looping visible verification until improved", status: "completed", activeForm: "" },
-      ],
+      hook_event_name: "UserPromptSubmit",
+      prompt: "you will inform me when you are done and give me a count",
+      cwd: "/repo",
+      session_id: "s1",
     },
-    1100,
+    previous,
+    1_100,
   );
-
-  expect(sidecar?.userTask).toBe("no you havent... how do we make you relable? answer");
-  expect(sidecar?.todos).toEqual([{
-    content: "Answering reliability question",
-    status: "in_progress",
-    activeForm: "Answering reliability question",
-  }]);
-  expect(sidecar?.now).toBe("Answering reliability question");
-  expect(sidecar?.now).not.toBe("Old final answer text");
+  expect(sidecar?.mainTask).toBe(previous.mainTask);
+  expect(sidecar?.mainTaskSource).toBe(previous.mainTaskSource);
+  expect(sidecar?.userTask).toBe("you will inform me when you are done and give me a count");
+  expect(sidecar?.todos).toEqual(previous.todos);
+  expect(sidecar?.now).toBe("Reviewing the landing page on mobile");
 });
 
-test("cockpit failure prompts become specific task labels", () => {
-  const labelFailure = buildCodexSidecar(
-    { hook_event_name: "UserPromptSubmit", prompt: "[Image #1] these are fails", cwd: "/repo", session_id: "s1" },
-    null,
-    1200,
-  );
-  expect(labelFailure?.todos?.[0]).toMatchObject({
-    content: "Fixing cockpit task labels",
-    activeForm: "Fixing cockpit task labels",
-  });
-
-  const monitorRequest = buildCodexSidecar(
+test("a declared plan owns the main task and current step separately", () => {
+  const mission = "Improving the live-events landing page and routes";
+  const sidecar = buildCodexSidecar(
     {
-      hook_event_name: "UserPromptSubmit",
-      prompt: "you must be able to see all terminals with all their task and task descriptions at all time as logs you can monitor",
+      tool_name: "update_plan",
+      tool_input: {
+        explanation: mission,
+        plan: [
+          { step: "Changing the live-event routes", status: "completed" },
+          { step: "Reviewing the landing page on mobile", status: "in_progress" },
+        ],
+      },
       cwd: "/repo",
-      session_id: "s1",
     },
-    null,
-    1300,
+    { userTask: "Make it clear where I am working", todos: [] },
+    1_200,
   );
-  expect(monitorRequest?.todos?.[0]).toMatchObject({
-    content: "Capturing all terminal task and active labels",
-    activeForm: "Capturing all terminal task and active labels",
-  });
-
-  const explicitAllHeaders = buildCodexSidecar(
-    {
-      hook_event_name: "UserPromptSubmit",
-      prompt: "make sure that you capture all terminals task and active!!!!",
-      cwd: "/repo",
-      session_id: "s1",
-    },
-    null,
-    1350,
-  );
-  expect(explicitAllHeaders?.todos?.[0]).toMatchObject({
-    content: "Capturing all terminal task and active labels",
-    activeForm: "Capturing all terminal task and active labels",
-  });
-
-  const termfleetCapture = buildCodexSidecar(
-    {
-      hook_event_name: "UserPromptSubmit",
-      prompt: "for example can you caoture termfleet terminal?",
-      cwd: "/repo",
-      session_id: "s1",
-    },
-    null,
-    1360,
-  );
-  expect(termfleetCapture?.todos?.[0]).toMatchObject({
-    content: "Capturing the TermFleet terminal header",
-    activeForm: "Capturing the TermFleet terminal header",
-  });
-
-  const brokenAgain = buildCodexSidecar(
-    {
-      hook_event_name: "UserPromptSubmit",
-      prompt: "it is broken again right now",
-      cwd: "/repo",
-      session_id: "s1",
-    },
-    null,
-    1370,
-  );
-  expect(brokenAgain?.todos?.[0]).toMatchObject({
-    content: "Fixing broken cockpit header capture",
-    activeForm: "Fixing broken cockpit header capture",
-  });
-
-  const monitorVisible = buildCodexSidecar(
-    {
-      hook_event_name: "UserPromptSubmit",
-      prompt: "[Image #1] you must see this or you failed again to minitor",
-      cwd: "/repo",
-      session_id: "s1",
-    },
-    null,
-    1380,
-  );
-  expect(monitorVisible?.todos?.[0]).toMatchObject({
-    content: "Monitoring the visible TermFleet header",
-    activeForm: "Monitoring the visible TermFleet header",
-  });
-
-  const resumeRequest = buildCodexSidecar(
-    {
-      hook_event_name: "UserPromptSubmit",
-      prompt: "pick up the task and now active working tasks",
-      cwd: "/repo/termfleet",
-      session_id: "s1",
-    },
-    null,
-    1400,
-  );
-  expect(resumeRequest?.todos?.[0]).toMatchObject({
-    content: "Resuming active TermFleet work",
-    activeForm: "Resuming active TermFleet work",
-  });
-
-  const qualityComplaint = buildCodexSidecar(
-    {
-      hook_event_name: "UserPromptSubmit",
-      prompt: "both are low quality... why didnt you capture them and make sure that they work better?",
-      cwd: "/repo/termfleet",
-      session_id: "s1",
-    },
-    null,
-    1500,
-  );
-  expect(qualityComplaint?.todos?.[0]).toMatchObject({
-    content: "Improving cockpit header quality",
-    activeForm: "Improving cockpit header quality",
-  });
+  expect(sidecar?.mainTask).toBe(mission);
+  expect(sidecar?.mainTaskSource).toBe("plan-explanation");
+  expect(sidecar?.now).toBe("Reviewing the landing page on mobile");
+  expect(sidecar?.todos).toHaveLength(2);
 });
 
-test("stop event uses the agent's own last message as the activity line", () => {
+test("turn completion cannot replace the declared main task", () => {
+  const previous = {
+    mainTask: "Improving the live-events landing page and routes",
+    mainTaskSource: "plan-explanation",
+    userTask: "you will inform me when you are done and give me a count",
+    todos: [{ content: "Reviewing the landing page on mobile", status: "in_progress", activeForm: "" }],
+  };
   const sidecar = buildCodexSidecar(
     {
       hook_event_name: "Stop",
-      last_assistant_message: "Let me wire the daemon reconnect path so sessions survive a restart.",
+      last_assistant_message: "Done. Next steps: check desktop and mobile.",
       cwd: "/repo",
-      session_id: "s1",
     },
-    { userTask: "make restart reliable", todos: [] },
-    2000,
+    previous,
+    1_300,
   );
-  expect(sidecar?.source).toBe("codex-narration");
-  expect(sidecar?.narration).toContain("Wire the daemon reconnect path");
-  // The earlier user ask is carried forward, not lost.
-  expect(sidecar?.userTask).toBe("make restart reliable");
+  expect(sidecar?.mainTask).toBe(previous.mainTask);
+  expect(sidecar?.userTask).toBe(previous.userTask);
+  expect(sidecar?.turn).toBe("idle");
 });
 
-test("exec_command maps to a readable running-line, navigation is ignored", () => {
-  expect(codexActivityFromTool("exec_command", { command: "cargo test --workspace" })).toBe(
-    "Running: cargo test --workspace",
+test("a new session clears the prior pane mission until a goal is declared", () => {
+  const sidecar = buildCodexSidecar(
+    {
+      hook_event_name: "UserPromptSubmit",
+      prompt: "Fix the checkout page",
+      cwd: "/repo",
+      session_id: "s2",
+    },
+    {
+      sessionId: "s1",
+      mainTask: "Improve the landing page",
+      mainTaskSource: "plan-explanation",
+      userTask: "old follow-up",
+      todos: [{ content: "Review mobile", status: "completed", activeForm: "" }],
+    },
+    1_400,
   );
+  expect(sidecar?.mainTask).toBeUndefined();
+  expect(sidecar?.todos).toEqual([]);
+});
+
+test("an ordinary prompt never manufactures checklist work", () => {
+  const sidecar = buildCodexSidecar(
+    { hook_event_name: "UserPromptSubmit", prompt: "why did this fail?", cwd: "/repo", session_id: "s1" },
+    {
+      sessionId: "s1",
+      mainTask: "Improving deployment reliability",
+      mainTaskSource: "plan-explanation",
+      todos: [{ content: "Verify production", status: "completed", activeForm: "" }],
+    },
+    1_500,
+  );
+  expect(sidecar?.todos).toEqual([{ content: "Verify production", status: "completed", activeForm: "" }]);
+  expect(sidecar?.mainTask).toBe("Improving deployment reliability");
+});
+
+test("exec_command maps to readable activity and ignores navigation", () => {
+  expect(codexActivityFromTool("exec_command", { command: "cargo test --workspace" })).toBe("Running: cargo test --workspace");
   expect(codexActivityFromTool("exec_command", { command: "cd /some/very/long/path" })).toBe("");
-  expect(codexActivityFromTool("exec_command", { command: "cd repo && npm run build" })).toBe(
-    "Running: npm run build",
-  );
+  expect(codexActivityFromTool("exec_command", { command: "cd repo && npm run build" })).toBe("Running: npm run build");
 });
 
-test("inline code / heredoc bodies never leak into the activity line", () => {
+test("inline command bodies never leak into activity", () => {
   const activity = codexActivityFromTool("exec_command", {
     command: `node -e "const cases = ['a','b']; console.log(cases)"`,
   });
@@ -199,162 +145,46 @@ test("inline code / heredoc bodies never leak into the activity line", () => {
   expect(activity).not.toContain("const cases");
 });
 
-test("a tool call preserves the existing task list and user ask", () => {
+test("tool activity preserves the mission and task list", () => {
+  const previous = {
+    mainTask: "Preparing the release",
+    mainTaskSource: "plan-explanation",
+    userTask: "ship it",
+    todos: [{ content: "Build the app", status: "in_progress", activeForm: "" }],
+  };
   const sidecar = buildCodexSidecar(
     { hook_event_name: "PostToolUse", tool_name: "exec_command", tool_input: { command: "npm run build" }, cwd: "/repo" },
-    { userTask: "ship it", todos: [{ content: "Build the app", status: "in_progress", activeForm: "" }] },
-    3000,
+    previous,
+    2_000,
   );
-  expect(sidecar?.source).toBe("codex-tool");
-  expect(sidecar?.userTask).toBe("ship it");
-  expect(sidecar?.todos).toHaveLength(1);
-  // A live task list drives the now line over the raw command.
+  expect(sidecar?.mainTask).toBe(previous.mainTask);
+  expect(sidecar?.mainTaskSource).toBe(previous.mainTaskSource);
+  expect(sidecar?.todos).toEqual(previous.todos);
   expect(sidecar?.now).toBe("Build the app");
 });
 
-test("a tool call repairs a generic prior task from the stored user ask", () => {
-  const sidecar = buildCodexSidecar(
-    { hook_event_name: "PostToolUse", tool_name: "exec_command", tool_input: { command: "npm test" }, cwd: "/repo" },
-    {
-      userTask: "you must see what I am seeing",
-      todos: [{ content: "Answering latest prompt", status: "in_progress", activeForm: "Answering latest prompt" }],
-    },
-    3050,
-  );
-  expect(sidecar?.source).toBe("codex-tool");
-  expect(sidecar?.todos?.[0]).toMatchObject({
-    content: "Monitoring the visible TermFleet header",
-    status: "in_progress",
-    activeForm: "Monitoring the visible TermFleet header",
-  });
-  expect(sidecar?.now).toBe("Monitoring the visible TermFleet header");
-});
-
-test("a tool call repairs all-terminal capture prompts from generic prior tasks", () => {
-  const sidecar = buildCodexSidecar(
-    { hook_event_name: "PostToolUse", tool_name: "exec_command", tool_input: { command: "npm test" }, cwd: "/repo" },
-    {
-      userTask: "make sure that you capture all terminals task and active!!!!",
-      todos: [{ content: "Answering latest prompt", status: "in_progress", activeForm: "Answering latest prompt" }],
-    },
-    3060,
-  );
-  expect(sidecar?.todos?.[0]).toMatchObject({
-    content: "Capturing all terminal task and active labels",
-    activeForm: "Capturing all terminal task and active labels",
-  });
-  expect(sidecar?.now).toBe("Capturing all terminal task and active labels");
-});
-
-test("a tool call repairs repayment-step prompts from generic prior tasks", () => {
-  const sidecar = buildCodexSidecar(
-    { hook_event_name: "PostToolUse", tool_name: "exec_command", tool_input: { command: "npm test" }, cwd: "/repo" },
-    {
-      userTask: "implement this and then lets stop before the secondery repayment step",
-      todos: [{ content: "Answering latest prompt", status: "in_progress", activeForm: "Answering latest prompt" }],
-    },
-    3070,
-  );
-  expect(sidecar?.todos?.[0]).toMatchObject({
-    content: "Guarding the second repayment step",
-    activeForm: "Guarding the second repayment step",
-  });
-  expect(sidecar?.now).toBe("Guarding the second repayment step");
-});
-
-test("a tool call repairs watchdog prompts from generic prior tasks", () => {
-  const sidecar = buildCodexSidecar(
-    { hook_event_name: "PostToolUse", tool_name: "exec_command", tool_input: { command: "npm test" }, cwd: "/repo" },
-    {
-      userTask: "should we add a watchdog to find regressions?",
-      todos: [{ content: "Answering latest prompt", status: "in_progress", activeForm: "Answering latest prompt" }],
-    },
-    3080,
-  );
-  expect(sidecar?.todos?.[0]).toMatchObject({
-    content: "Reviewing bot regression watchdog",
-    activeForm: "Reviewing bot regression watchdog",
-  });
-  expect(sidecar?.now).toBe("Reviewing bot regression watchdog");
-});
-
-test("a tool call repairs production-mismatch prompts from generic prior tasks", () => {
-  const sidecar = buildCodexSidecar(
-    { hook_event_name: "PostToolUse", tool_name: "exec_command", tool_input: { command: "npm test" }, cwd: "/repo" },
-    {
-      userTask: "[Image #1] still looks the same... because this is not in production?",
-      todos: [{ content: "Answering user question", status: "in_progress", activeForm: "Answering user question" }],
-    },
-    3090,
-  );
-  expect(sidecar?.todos?.[0]).toMatchObject({
-    content: "Checking production deployment status",
-    activeForm: "Checking production deployment status",
-  });
-  expect(sidecar?.now).toBe("Checking production deployment status");
-});
-
-test("a tool call repairs false-positive upgrade prompts from generic prior tasks", () => {
-  const sidecar = buildCodexSidecar(
-    { hook_event_name: "PostToolUse", tool_name: "exec_command", tool_input: { command: "npm test" }, cwd: "/repo" },
-    {
-      userTask: "lets maybe upgrade it to catch every false positive?",
-      todos: [{ content: "Answering user question", status: "in_progress", activeForm: "Answering user question" }],
-    },
-    3100,
-  );
-  expect(sidecar?.todos?.[0]).toMatchObject({
-    content: "Improving false-positive detection",
-    activeForm: "Improving false-positive detection",
-  });
-  expect(sidecar?.now).toBe("Improving false-positive detection");
-});
-
-test("a tool call repairs $sure prompts from generic prior tasks", () => {
-  const sidecar = buildCodexSidecar(
-    { hook_event_name: "PostToolUse", tool_name: "exec_command", tool_input: { command: "npm test" }, cwd: "/repo" },
-    {
-      userTask: "$sure",
-      todos: [{ content: "Answering latest prompt", status: "in_progress", activeForm: "Answering latest prompt" }],
-    },
-    3110,
-  );
-  expect(sidecar?.todos?.[0]).toMatchObject({
-    content: "Running requested safety check",
-    activeForm: "Running requested safety check",
-  });
-  expect(sidecar?.now).toBe("Running requested safety check");
-});
-
-test("non-narration events do not keep stale assistant narration alive", () => {
+test("non-narration events do not retain stale narration", () => {
   const previous = {
+    mainTask: "Fix restart",
     userTask: "old prompt",
-    narration: "Old answer that should not remain the live title",
+    narration: "Old answer",
     todos: [{ content: "Fix the runtime source gap", status: "in_progress", activeForm: "" }],
   };
-
   const prompt = buildCodexSidecar(
-    { hook_event_name: "UserPromptSubmit", prompt: "new prompt", cwd: "/repo" },
-    previous,
-    3100,
+    { hook_event_name: "UserPromptSubmit", prompt: "new prompt", cwd: "/repo" }, previous, 3_100,
   );
   const plan = buildCodexSidecar(
-    { tool_name: "update_plan", tool_input: { plan: [{ step: "Fix the runtime source gap", status: "in_progress" }] }, cwd: "/repo" },
-    previous,
-    3200,
+    { tool_name: "update_plan", tool_input: { plan: [{ step: "Fix the runtime source gap", status: "in_progress" }] }, cwd: "/repo" }, previous, 3_200,
   );
   const tool = buildCodexSidecar(
-    { hook_event_name: "PostToolUse", tool_name: "exec_command", tool_input: { command: "npm test" }, cwd: "/repo" },
-    previous,
-    3300,
+    { hook_event_name: "PostToolUse", tool_name: "exec_command", tool_input: { command: "npm test" }, cwd: "/repo" }, previous, 3_300,
   );
-
   expect(prompt?.narration).toBeUndefined();
   expect(plan?.narration).toBeUndefined();
   expect(tool?.narration).toBeUndefined();
 });
 
-test("update_plan, when Codex emits it, becomes a real task list", () => {
+test("update_plan becomes the real task list", () => {
   const todos = todosFromUpdatePlan({
     plan: [
       { step: "Read the failing test", status: "completed" },
@@ -364,45 +194,138 @@ test("update_plan, when Codex emits it, becomes a real task list", () => {
   });
   expect(todos).toHaveLength(3);
   expect(todos[1]).toMatchObject({ content: "Fix the reconnect race", status: "in_progress" });
-
-  const sidecar = buildCodexSidecar(
-    { tool_name: "update_plan", tool_input: { plan: [{ step: "Fix the reconnect race", status: "in_progress" }] }, cwd: "/repo" },
-    { userTask: "fix restart" },
-    4000,
-  );
-  expect(sidecar?.source).toBe("codex-plan");
-  expect(sidecar?.now).toBe("Fix the reconnect race");
 });
 
-test("codexLastAgentMessage prefers the direct payload field", () => {
+test("a Personal Assistant layout plan captures the user-facing outcome", () => {
+  const sidecar = buildCodexSidecar({
+    cwd: "/repo/hermes",
+    tool_name: "update_plan",
+    tool_input: {
+      plan: [
+        { step: "Writing tests for the compact assistant controls", status: "in_progress" },
+        { step: "Replacing the large panel with a strip and drawer", status: "pending" },
+        { step: "Checking the packaged Personal Assistant screen", status: "pending" },
+      ],
+    },
+  }, {
+    mainTask: "An unrelated completion report from the previous task.",
+    mainTaskSource: "plan-explanation",
+  }, 20);
+
+  expect(sidecar?.mainTask).toBe("Replacing the crowded Hermes Personal Assistant panel with on-demand controls");
+  expect(sidecar?.now).toBe("Writing tests for the compact assistant controls");
+});
+
+test("an email-consent plan captures why every signup path is being searched", () => {
+  const sidecar = buildCodexSidecar({
+    cwd: "/repo/bina-meatzevet-courses",
+    tool_name: "update_plan",
+    tool_input: {
+      plan: [
+        { step: "Finding every email signup and consent path", status: "in_progress" },
+        { step: "Making email signup mandatory everywhere", status: "pending" },
+        { step: "Testing every affected registration flow", status: "pending" },
+        { step: "Publishing the mandatory signup rule", status: "pending" },
+      ],
+    },
+  }, { userTask: "make it mandatory everywhere" }, 21);
+
+  expect(sidecar?.mainTask).toBe("Making email signup mandatory across every Bina registration flow");
+  expect(sidecar?.now).toBe("Finding every email signup and consent path");
+});
+
+test("a billing deployment plan preserves the customer outcome", () => {
+  const sidecar = buildCodexSidecar({
+    cwd: "/repo/bina-meatzevet-courses",
+    tool_name: "update_plan",
+    tool_input: {
+      plan: [
+        { step: "Writing safety tests for renewal failures", status: "completed" },
+        { step: "Fixing callback order and parallel checkout safety", status: "completed" },
+        { step: "Refunding Lee and granting Levana the rest of July", status: "completed" },
+        { step: "Deploying the fix and checking production", status: "in_progress" },
+      ],
+    },
+  }, { userTask: "fix it end to end and give Levana the rest of July free" }, 22);
+
+  expect(sidecar?.mainTask).toBe("Making renewals and checkout safe while refunding Lee and granting Levana free July access");
+  expect(sidecar?.now).toBe("Deploying the fix and checking production");
+});
+
+test("codexLastAgentMessage prefers the direct payload", () => {
   expect(codexLastAgentMessage({ last_assistant_message: "Done wiring it up." })).toBe("Done wiring it up.");
 });
 
-test("codexLastAgentMessage scans only recent transcript tail", () => {
+test("codexLastAgentMessage scans only the recent transcript tail", () => {
   const dir = mkdtempSync(join(tmpdir(), "termfleet-codex-hook-"));
   const transcript = join(dir, "rollout.jsonl");
-  const old = JSON.stringify({ type: "agent_message", message: "Old transcript task that should not be scanned" });
+  const old = JSON.stringify({ type: "agent_message", message: "Old transcript task" });
   const latest = JSON.stringify({ type: "agent_message", message: "Now I will bound the status hook transcript scan." });
   writeFileSync(transcript, `${old}\n${"x".repeat(300 * 1024)}\n${latest}\n`);
-
-  expect(codexLastAgentMessage({ transcript_path: transcript })).toBe(
-    "Now I will bound the status hook transcript scan.",
-  );
+  expect(codexLastAgentMessage({ transcript_path: transcript })).toBe("Now I will bound the status hook transcript scan.");
 });
 
-test("nothing worth writing returns null (no empty sidecar churn)", () => {
+test("empty events do not churn the sidecar", () => {
   expect(buildCodexSidecar({ hook_event_name: "UserPromptSubmit", prompt: "" }, null, 1)).toBeNull();
   expect(buildCodexSidecar({ hook_event_name: "PostToolUse", tool_name: "write_stdin", tool_input: {} }, null, 1)).toBeNull();
 });
 
-test("Stop always marks the turn idle, even with no fresh narration", () => {
-  // The turn-end signal must fire regardless of narration, so a pane whose plan step
-  // was never completed stops reading as Running the moment the turn finishes.
-  const sidecar = buildCodexSidecar({ hook_event_name: "Stop" }, null, 1);
-  expect(sidecar?.turn).toBe("idle");
+test("a typed permission notification marks waiting without changing the mission", () => {
+  const sidecar = buildCodexSidecar(
+    { hook_event_name: "Notification", notification_type: "permission_prompt" },
+    { mainTask: "Fix restart", mainTaskSource: "plan-explanation", todos: [], userTask: "x" },
+    1,
+  );
+  expect(sidecar?.turn).toBe("waiting");
+  expect(sidecar?.mainTask).toBe("Fix restart");
+  expect(sidecar?.mainTaskSource).toBe("plan-explanation");
 });
 
-test("Notification marks the turn waiting", () => {
-  const sidecar = buildCodexSidecar({ hook_event_name: "Notification" }, { todos: [], userTask: "x" }, 1);
-  expect(sidecar?.turn).toBe("waiting");
+test("request_user_input waits before the answer and resumes after it", () => {
+  const previous = {
+    mainTask: "Completing the assistant repair safely",
+    mainTaskSource: "plan-explanation",
+    todos: [{ content: "Confirming the assistant repair is safely completed", status: "completed", activeForm: "" }],
+    userTask: "x",
+  };
+  const waiting = buildCodexSidecar({
+    hook_event_name: "PreToolUse",
+    tool_name: "request_user_input",
+    tool_input: { questions: [{ question: "Which behavior?" }] },
+  }, previous, 10);
+  expect(waiting?.turn).toBe("waiting");
+
+  const resumed = buildCodexSidecar({
+    hook_event_name: "PostToolUse",
+    tool_name: "request_user_input",
+    tool_input: { questions: [{ question: "Which behavior?" }] },
+  }, waiting, 11);
+  expect(resumed?.turn).toBe("working");
+  expect(resumed?.now).toBe("Applying your answer to the assistant repair");
+});
+
+test("a completed plan update cannot replace the durable goal with completion prose", () => {
+  const previous = {
+    mainTask: "Making the personal assistant fast and dependable",
+    mainTaskSource: "plan-explanation",
+    todos: [{ content: "Verifying the assistant repair", status: "in_progress" }],
+  };
+  const sidecar = buildCodexSidecar({
+    tool_name: "update_plan",
+    tool_input: {
+      explanation: "The Personal Assistant repair is committed and present on the remote branch.",
+      plan: [{ step: "Confirming the assistant repair is safely completed", status: "completed" }],
+    },
+  }, previous, 12);
+  expect(sidecar?.mainTask).toBe(previous.mainTask);
+  expect(sidecar?.mainTaskSource).toBe(previous.mainTaskSource);
+});
+
+test("an untyped notification preserves the prior lifecycle", () => {
+  const sidecar = buildCodexSidecar(
+    { hook_event_name: "Notification" },
+    { todos: [], userTask: "x", turn: "idle" },
+    1,
+  );
+  expect(sidecar?.turn).toBe("idle");
 });

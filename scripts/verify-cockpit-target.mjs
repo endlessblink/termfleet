@@ -19,6 +19,17 @@ function clean(value) {
   return String(value ?? "").replace(/\s+/g, " ").trim();
 }
 
+function normalizedSidecarUserGoal(value) {
+  const text = clean(value)
+    .replace(/\[Image\s+#?\d+\]\s*/gi, "")
+    .replace(/^(?:(?:and\s+)?also|one more thing)[,.\s]+/i, "")
+    .replace(/[-–—,:;.\s]+$/, "");
+  if (/^(?:Prompt submitted|go|continue|this|that|these|those|both|and this|and that|should we add (?:it|that)|[$/][a-z][\w:-]*)\??$/i.test(text)) {
+    return "";
+  }
+  return text;
+}
+
 function readJson(file) {
   return JSON.parse(readFileSync(file, "utf8"));
 }
@@ -78,7 +89,18 @@ export function analyzeTargetEntry(entry, sidecar, options = {}) {
   if (task.length > 18 && now.length > 18 && textsEquivalent(task, now)) problems.push("now-echo");
   if (entry.flags?.length) problems.push(...entry.flags);
   if (!sidecar) problems.push("missing-fresh-sidecar");
-  if (sidecar?.task && task && !textsEquivalent(task, sidecar.task)) problems.push("task-mismatches-sidecar");
+  const sidecarGoal = /^user-prompt$/i.test(clean(entry.taskSource))
+    ? normalizedSidecarUserGoal(sidecar?.userTask)
+    : "";
+  const expectedTask = sidecarGoal || clean(sidecar?.task);
+  if (
+    expectedTask &&
+    task &&
+    !/^manual$/i.test(clean(entry.taskSource)) &&
+    !textsEquivalent(task, expectedTask)
+  ) {
+    problems.push("task-mismatches-sidecar");
+  }
 
   return {
     ok: problems.length === 0,

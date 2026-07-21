@@ -59,6 +59,12 @@ function looksLikePackageScript(text: string) {
     /\bnpx\s+[\w@./-]+/i.test(text);
 }
 
+function looksLikeTerminalStatusBar(text: string) {
+  return /\bweekly\s+\d+%\s+left\b/i.test(text) && /\bcontext\s+\d+%\s+used\b/i.test(text) ||
+    /\bwk:\s*\d+%/i.test(text) && /\bctx:\s*\d+%/i.test(text) ||
+    /\bsession:\s*\d+[smh]\b/i.test(text) && /\bctx:\s*\d+%/i.test(text);
+}
+
 /**
  * The user's own voice, quoted verbatim into an activity label ("Reviewing I
  * want to do two main changes"). A leading first/second-person pronoun means the
@@ -210,6 +216,7 @@ function lacksDecisionObject(text: string) {
 function baseQuality(value?: string | null, maxLength = 96): HeaderQualityResult {
   const text = clean(value);
   if (!text) return { ok: false, reason: "empty" };
+  if (looksLikeTerminalStatusBar(text)) return { ok: false, reason: "terminal-chrome" };
   if (looksLikePromptFragment(text)) return { ok: false, reason: "prompt-fragment" };
   if (text.length > maxLength) return { ok: false, reason: "too-long" };
   if (lacksDecisionObject(text)) return { ok: false, reason: "vague" };
@@ -232,6 +239,7 @@ function baseQuality(value?: string | null, maxLength = 96): HeaderQualityResult
 export function qualityCheckUserAskLabel(value?: string | null): HeaderQualityResult {
   const text = clean(value);
   if (!text) return { ok: false, reason: "empty" };
+  if (looksLikeTerminalStatusBar(text)) return { ok: false, reason: "terminal-chrome" };
   if (text.length > 96) return { ok: false, reason: "too-long" };
   if (/^(?:go|done|fix it|fix this too|so fix it|ok|okay|sure|yes|continue|do it|proceed)$/i.test(text)) {
     return { ok: false, reason: "prompt-fragment" };
@@ -284,6 +292,7 @@ export function qualityCheckUserAskLabel(value?: string | null): HeaderQualityRe
 export function qualityCheckAuthoritativeTaskLabel(value?: string | null): HeaderQualityResult {
   const text = clean(value);
   if (!text) return { ok: false, reason: "empty" };
+  if (looksLikeTerminalStatusBar(text)) return { ok: false, reason: "terminal-chrome" };
   if (text.length > 96) return { ok: false, reason: "too-long" };
   if (/^(?:Ready|Idle|Terminal|Working|Thinking|Running terminal command|Supervised agent run|Context compacted|done|go|fix it)$/i.test(text)) {
     return { ok: false, reason: "vague" };
@@ -411,6 +420,9 @@ export function qualityCheckTaskLabel(value?: string | null): HeaderQualityResul
  */
 export function qualityCheckNowLabel(value?: string | null): HeaderQualityResult {
   const text = clean(value);
+  if (/^(?:Next\s+steps|Steps)\s*[-:]/i.test(text)) {
+    return { ok: false, reason: "prompt-fragment" };
+  }
   if (isPlaceholderActivity(text)) return { ok: false, reason: "vague" };
   if (/^(?:Working|Thinking|Ready|Activity not captured|Awaiting terminal output|Running terminal command|Command is running)$/i.test(text)) {
     return { ok: false, reason: "vague" };
@@ -441,11 +453,17 @@ export function qualityCheckNowLabel(value?: string | null): HeaderQualityResult
 
 export function qualityCheckActivityLabel(value?: string | null): HeaderQualityResult {
   const text = clean(value);
+  if (/^(?:Next\s+steps|Steps)\s*[-:]/i.test(text)) {
+    return { ok: false, reason: "prompt-fragment" };
+  }
   if (isPlaceholderActivity(text)) return { ok: false, reason: "vague" };
   if (/^(?:Working|Thinking|Ready|Idle|Activity not captured|Awaiting next action|Awaiting terminal output|Running terminal command|Command is running)$/i.test(text)) {
     return { ok: false, reason: "vague" };
   }
   if (/^(?:make (?:it |all )?high(?: and continue)?|add it|confirm)$/i.test(text)) {
+    return { ok: false, reason: "vague" };
+  }
+  if (/^(?:Commit(?:ting)? and push(?:ing)?|Publish(?:ing)?) the handoff$/i.test(text)) {
     return { ok: false, reason: "vague" };
   }
   if (/\.(?:png|jpe?g|webp)\b/i.test(text) || /\bFull capture\b/i.test(text)) {

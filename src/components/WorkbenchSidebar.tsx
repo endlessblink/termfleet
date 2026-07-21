@@ -5382,7 +5382,7 @@ function MapPanel({
                           {header.goalLabel}
                         </span>
                       </div>
-                      {activityAddsInfo(header.goalLabel, header.currentActivity) && (
+                      {activityAddsInfo(header.goalLabel, header.currentActivity, paneBadgeAttention(liveTerminal)) && (
                       <div
                         style={styles.sidebarHeaderLine}
                         data-testid="sidebar-map-node-now-row"
