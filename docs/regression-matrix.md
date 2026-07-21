@@ -139,6 +139,13 @@ Playwright suite; the per-row specs are the precise guards.
 
 ## Process — preventing future regressions
 
+- Use `$termfleet-regression-planner` when a bug is reported or a failure comes
+  back. It selects a guard that exercises the original failure surface and keeps
+  runtime-only defects from being mislabeled as fully covered by source checks.
+- Use `$termfleet-regression-verifier` before completion, commit, or merge. It
+  runs the focused guard first, then the required integration and real desktop
+  proof sequentially, and leaves the task open when the decisive surface was not
+  exercised.
 - **Every bug fix adds a row here + a guard.** No fix is "done" (per `/done`) until
   a test/verify would fail if it regressed. A fix with no guard is a future "again".
 - **Prefer the cheapest guard that actually covers the failure mode.** Pure-logic

@@ -1,0 +1,4 @@
+interface:
+  display_name: "TermFleet Regression Planner"
+  short_description: "Choose the right guard for each TermFleet bug"
+  default_prompt: "Use $termfleet-regression-planner to turn this TermFleet bug into a regression plan."
