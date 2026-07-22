@@ -1746,3 +1746,244 @@ mod tests {
         fs::remove_dir_all(root).unwrap();
     }
 }
+
+// ---------------------------------------------------------------------------
+// TC-060: vendor session records + a pane's running command.
+//
+// Claude Code and Codex each write a complete session record to disk on their
+// own, with no hook involvement, so these cover hand-started and long-running
+// panes — the exact class that used to render "Task not captured". Rust owns the
+// directories so a hostile session id can't escape them; the frontend supplies
+// only the id and does all parsing (see `src/lib/sessionTranscript.ts`).
+// ---------------------------------------------------------------------------
+
+/// Rollouts reach 11.7 MB; only the tail carries current state.
+pub const TRANSCRIPT_TAIL_BYTES: usize = 262_144;
+
+fn valid_session_id(session_id: &str) -> bool {
+    !session_id.is_empty()
+        && session_id.len() <= 64
+        && session_id
+            .chars()
+            .all(|c| c.is_ascii_hexdigit() || c == '-')
+}
+
+fn read_tail(path: &std::path::Path, max_bytes: usize) -> Result<String, String> {
+    use std::io::{Read, Seek, SeekFrom};
+    let mut file =
+        std::fs::File::open(path).map_err(|e| format!("open {}: {e}", path.display()))?;
+    let len = file
+        .metadata()
+        .map_err(|e| format!("stat {}: {e}", path.display()))?
+        .len();
+    let take = std::cmp::min(max_bytes as u64, len);
+    file.seek(SeekFrom::Start(len - take))
+        .map_err(|e| format!("seek {}: {e}", path.display()))?;
+    let mut buf = vec![0u8; take as usize];
+    file.read_exact(&mut buf)
+        .map_err(|e| format!("read {}: {e}", path.display()))?;
+    Ok(String::from_utf8_lossy(&buf).into_owned())
+}
+
+fn find_file_named(
+    root: &std::path::Path,
+    depth: usize,
+    matches: &dyn Fn(&str) -> bool,
+) -> Option<std::path::PathBuf> {
+    let entries = std::fs::read_dir(root).ok()?;
+    let mut dirs = Vec::new();
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        let is_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
+        if is_dir {
+            dirs.push(entry.path());
+        } else if matches(&name) {
+            return Some(entry.path());
+        }
+    }
+    if depth == 0 {
+        return None;
+    }
+    for dir in dirs {
+        if let Some(found) = find_file_named(&dir, depth - 1, matches) {
+            return Some(found);
+        }
+    }
+    None
+}
+
+fn session_transcript_path_in(
+    home: &std::path::Path,
+    provider: &str,
+    session_id: &str,
+) -> Result<Option<std::path::PathBuf>, String> {
+    if !valid_session_id(session_id) {
+        return Err(format!("invalid session id: {session_id}"));
+    }
+    match provider {
+        "claude" => {
+            let wanted = format!("{session_id}.jsonl");
+            Ok(find_file_named(
+                &home.join(".claude").join("projects"),
+                2,
+                &|name| name == wanted,
+            ))
+        }
+        "codex" => {
+            let suffix = format!("-{session_id}.jsonl");
+            Ok(find_file_named(
+                &home.join(".codex").join("sessions"),
+                4,
+                &|name| name.starts_with("rollout-") && name.ends_with(&suffix),
+            ))
+        }
+        other => Err(format!("unknown provider: {other}")),
+    }
+}
+
+pub fn session_transcript_path(
+    provider: &str,
+    session_id: &str,
+) -> Result<Option<std::path::PathBuf>, String> {
+    let home = dirs::home_dir().ok_or_else(|| "no home directory".to_string())?;
+    session_transcript_path_in(&home, provider, session_id)
+}
+
+/// Tail of a vendor session record for the cockpit task line. Missing file → `Ok(None)`.
+#[tauri::command]
+pub fn session_transcript_read(
+    provider: String,
+    session_id: String,
+) -> Result<Option<String>, String> {
+    match session_transcript_path(&provider, &session_id)? {
+        Some(path) => Ok(Some(read_tail(&path, TRANSCRIPT_TAIL_BYTES)?)),
+        None => Ok(None),
+    }
+}
+
+/// A plain shell has no declared task, so the honest answer is what it is actually
+/// running. The daemon already owns each pane's PTY and pid, so this needs no
+/// cooperation from anything. `root` is injectable so the parse is testable.
+pub fn foreground_command_from_proc(root: &std::path::Path, pid: u32) -> Option<String> {
+    let stat = std::fs::read_to_string(root.join(pid.to_string()).join("stat")).ok()?;
+    // The comm field is parenthesised and may contain spaces; fields resume after ") ".
+    let rest = stat.rsplit_once(") ")?.1;
+    // After ") " the fields are state, ppid, pgrp, session, tty_nr, tpgid.
+    let tpgid: i32 = rest.split_whitespace().nth(5)?.parse().ok()?;
+    if tpgid <= 0 || tpgid as u32 == pid {
+        return None;
+    }
+    let raw = std::fs::read(root.join(tpgid.to_string()).join("cmdline")).ok()?;
+    let text = String::from_utf8_lossy(&raw)
+        .split('\0')
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ");
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.chars().take(80).collect())
+    }
+}
+
+/// The command a pane is running right now, or `None` when it sits at its prompt.
+#[tauri::command]
+pub fn pane_foreground_command(pid: u32) -> Result<Option<String>, String> {
+    Ok(foreground_command_from_proc(
+        std::path::Path::new("/proc"),
+        pid,
+    ))
+}
+
+#[cfg(test)]
+mod tc060_tests {
+    use super::*;
+
+    #[test]
+    fn rejects_hostile_session_ids() {
+        let home = std::path::Path::new("/nonexistent-home");
+        assert!(session_transcript_path_in(home, "claude", "../../etc/passwd").is_err());
+        assert!(session_transcript_path_in(home, "claude", "").is_err());
+        assert!(session_transcript_path_in(
+            home,
+            "nope",
+            "abcdef12-1111-2222-3333-444444444444"
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn finds_a_session_record_by_id() {
+        let home = std::env::temp_dir().join("tf-tc060-home");
+        std::fs::remove_dir_all(&home).ok();
+        let claude = home.join(".claude").join("projects").join("-some-project");
+        std::fs::create_dir_all(&claude).unwrap();
+        let id = "abcdef12-1111-2222-3333-444444444444";
+        std::fs::write(claude.join(format!("{id}.jsonl")), "{}\n").unwrap();
+        let found = session_transcript_path_in(&home, "claude", id).unwrap();
+        assert!(found.is_some(), "claude record should be found");
+
+        let codex = home.join(".codex").join("sessions").join("2026").join("07");
+        std::fs::create_dir_all(&codex).unwrap();
+        std::fs::write(
+            codex.join(format!("rollout-2026-07-22T10-00-00-{id}.jsonl")),
+            "{}\n",
+        )
+        .unwrap();
+        assert!(session_transcript_path_in(&home, "codex", id)
+            .unwrap()
+            .is_some());
+        std::fs::remove_dir_all(&home).ok();
+    }
+
+    #[test]
+    fn tails_only_the_last_bytes_of_a_large_file() {
+        let dir = std::env::temp_dir().join("tf-tc060-tail");
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("big.jsonl");
+        std::fs::write(&file, "x".repeat(TRANSCRIPT_TAIL_BYTES + 5000)).unwrap();
+        let tail = read_tail(&file, TRANSCRIPT_TAIL_BYTES).unwrap();
+        assert_eq!(tail.len(), TRANSCRIPT_TAIL_BYTES);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    fn write_fake_proc(root: &std::path::Path, pid: u32, tpgid: i32, cmdline: &str) {
+        let dir = root.join(pid.to_string());
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("stat"),
+            format!("{pid} (bash) S 1 2 3 4 {tpgid} 0 0 0 0"),
+        )
+        .unwrap();
+        std::fs::write(dir.join("cmdline"), cmdline.replace(' ', "\0")).unwrap();
+    }
+
+    #[test]
+    fn reports_the_foreground_command() {
+        let root = std::env::temp_dir().join("tf-tc060-proc");
+        std::fs::remove_dir_all(&root).ok();
+        write_fake_proc(&root, 100, 200, "bash");
+        write_fake_proc(&root, 200, 200, "npm run build");
+        assert_eq!(
+            foreground_command_from_proc(&root, 100).as_deref(),
+            Some("npm run build")
+        );
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn reports_none_when_the_shell_itself_is_in_front() {
+        let root = std::env::temp_dir().join("tf-tc060-proc2");
+        std::fs::remove_dir_all(&root).ok();
+        write_fake_proc(&root, 100, 100, "bash");
+        assert_eq!(foreground_command_from_proc(&root, 100), None);
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn a_missing_process_is_not_an_error() {
+        let root = std::env::temp_dir().join("tf-tc060-missing");
+        assert_eq!(foreground_command_from_proc(&root, 999_999), None);
+    }
+}
