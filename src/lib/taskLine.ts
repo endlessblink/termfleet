@@ -11,6 +11,7 @@ export type TaskLineSource =
   | "declared"
   | "session-title"
   | "operator-request"
+  | "agent-said"
   | "current-tool"
   | "running-command"
   | "shell-state";
@@ -45,7 +46,20 @@ const TOOL_VERBS: Record<string, string> = {
   WebFetch: "Reading a web page",
   TaskCreate: "Planning the work",
   TaskUpdate: "Updating the plan",
-  exec_command: "Running a command",
+  exec_command: "Running",
+  exec: "Running",
+  shell: "Running",
+  local_shell: "Running",
+  wait: "Waiting for a command to finish",
+  write_stdin: "Answering a running command",
+  apply_patch: "Editing files",
+  update_plan: "Updating the plan",
+};
+
+// A verb that needs its object to read as a sentence falls back to a complete
+// phrase when the tool call carried no readable object.
+const VERB_WITHOUT_OBJECT: Record<string, string> = {
+  Running: "Running a command",
 };
 
 const TOOL_TTL_MS = 30_000;
@@ -64,7 +78,8 @@ function readsPlainly(text: string): boolean {
 
 function templateTool(tool: { name: string; arg?: string }): string {
   const verb = TOOL_VERBS[tool.name] ?? `Using ${tool.name}`;
-  return tool.arg ? `${verb} ${tool.arg}` : verb;
+  if (tool.arg) return `${verb} ${tool.arg}`;
+  return VERB_WITHOUT_OBJECT[verb] ?? verb;
 }
 
 export function resolvePaneTaskLine(input: TaskLineInput): PaneTaskLine {
@@ -111,6 +126,19 @@ export function resolvePaneTaskLine(input: TaskLineInput): PaneTaskLine {
     return {
       text: request,
       source: "operator-request",
+      capturedAt: now,
+      expiresAt: null,
+      rejected,
+    };
+  }
+
+  // Codex declares no short task, so its own sentence is the most specific true
+  // line available before falling back to a template.
+  const said = consider(facts.agentSaid);
+  if (said) {
+    return {
+      text: said,
+      source: "agent-said",
       capturedAt: now,
       expiresAt: null,
       rejected,

@@ -10,6 +10,9 @@ export interface TranscriptFacts {
   title?: string;
   /** The operator's own last request, verbatim. The floor rule's source. */
   operatorRequest?: string;
+  /** The agent's own last sentence about the work. Truncated at a sentence
+   *  boundary — the agent's words, never reworded. */
+  agentSaid?: string;
   lastTool?: { name: string; arg?: string };
   /** Turn boundary observed in the record itself — no hook required. */
   lastTurnEndAt?: number;
@@ -25,9 +28,42 @@ function cleanText(value: unknown): string | undefined {
   return text.length >= 4 ? text : undefined;
 }
 
+// A shell command is the truest thing an exec-style tool call carries, but the
+// whole command line is unreadable to a non-developer (flags, quotes, absolute
+// paths). Keep the leading words up to the first flag/path — still the agent's
+// own command, just the part a person can read.
+function readableCommand(command: string): string | undefined {
+  const words: string[] = [];
+  for (const word of command.trim().split(/\s+/)) {
+    if (
+      !word ||
+      word.startsWith("-") ||
+      word.includes("/") ||
+      /["'`$(|;]/.test(word)
+    )
+      break;
+    words.push(word);
+    if (words.length === 3) break;
+  }
+  return words.length ? words.join(" ") : undefined;
+}
+
 function shortArg(input: unknown): string | undefined {
+  // Codex passes tool arguments as a JSON *string*.
+  if (typeof input === "string") {
+    const trimmed = input.trim();
+    if (!trimmed.startsWith("{")) return undefined;
+    try {
+      return shortArg(JSON.parse(trimmed));
+    } catch {
+      return undefined;
+    }
+  }
   if (!input || typeof input !== "object") return undefined;
   const record = input as Record<string, unknown>;
+  const command = record.cmd ?? record.command;
+  if (typeof command === "string" && command.trim())
+    return readableCommand(command);
   const raw =
     record.file_path ??
     record.path ??
@@ -37,6 +73,17 @@ function shortArg(input: unknown): string | undefined {
   if (typeof raw !== "string" || !raw.trim()) return undefined;
   const tail = raw.split("/").pop() ?? raw;
   return tail.slice(0, 48);
+}
+
+// Codex writes prose and nothing shorter, so its own first sentence is the most
+// specific true thing available. Cutting at a sentence boundary is truncation,
+// not rewriting — every remaining word is the agent's.
+function firstSentence(value: unknown): string | undefined {
+  const text = cleanText(value);
+  if (!text || text.startsWith("{") || text.startsWith("[")) return undefined;
+  const cut = text.search(/[.!?](?:\s|$)/);
+  const sentence = (cut > 0 ? text.slice(0, cut + 1) : text).trim();
+  return sentence.length >= 12 && sentence.length <= 96 ? sentence : undefined;
 }
 
 function parseTime(value: unknown): number | undefined {
@@ -110,6 +157,9 @@ export function parseCodexRollout(text: string): TranscriptFacts {
       case "user_message":
         facts.operatorRequest =
           cleanText(payload.message) ?? facts.operatorRequest;
+        break;
+      case "agent_message":
+        facts.agentSaid = firstSentence(payload.message) ?? facts.agentSaid;
         break;
       case "task_complete":
         facts.lastTurnEndAt = at;

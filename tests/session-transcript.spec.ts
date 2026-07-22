@@ -121,3 +121,22 @@ test("parseTranscript dispatches on provider", () => {
   );
   expect(parseTranscript("mystery", CODEX_TAIL)).toEqual({});
 });
+
+test("codex: the agent's own first sentence is captured, JSON blobs are not", () => {
+  const withProse = `${CODEX_TAIL}\n${JSON.stringify({
+    timestamp: "2026-07-22T09:00:12.000Z",
+    type: "event_msg",
+    payload: {
+      type: "agent_message",
+      message: "I am checking the live persisted interview again. If it is still waiting, I will harden the next boundary.",
+    },
+  })}`;
+  expect(parseCodexRollout(withProse).agentSaid).toBe("I am checking the live persisted interview again.");
+
+  const withJson = `${CODEX_TAIL}\n${JSON.stringify({
+    timestamp: "2026-07-22T09:00:13.000Z",
+    type: "event_msg",
+    payload: { type: "agent_message", message: '{"risk_level":"medium","outcome":"allow"}' },
+  })}`;
+  expect(parseCodexRollout(withJson).agentSaid).toBeUndefined();
+});
