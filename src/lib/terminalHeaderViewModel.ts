@@ -730,7 +730,7 @@ export function buildShellTerminalHeaderViewModel(input: {
     planBindingSource: input.contextPurposeSource,
     workstreamTitle: input.workstreamTitle,
     statusSummary: input.statusSummary,
-    taskLine: input.taskLine,
+    // TC-060: consulted only at the final render fallback, below.
   });
   const activePlanItem = activeTodoTask(input.taskLineup, input.activeRunId);
   const mainUserAskApplies = Boolean(
@@ -754,16 +754,11 @@ export function buildShellTerminalHeaderViewModel(input: {
   // still what they asked for. Declared task text gets the authoritative gate.
   const identityIsUserAsk =
     taskIdentity.source === "manual" || taskIdentity.source === "user-prompt";
-  // The ladder already applied a STRICTER plain-language check than this gate, and
-  // re-gating it would let a rejection fall back to the placeholder we just removed.
-  const identityTaskQuality =
-    taskIdentity.source === "task-line"
-      ? { ok: true as const }
-      : identityTaskDescriptionText
-        ? identityIsUserAsk
-          ? qualityCheckUserAskLabel(identityTaskDescriptionText)
-          : qualityCheckAuthoritativeTaskLabel(identityTaskDescriptionText)
-        : { ok: false as const, reason: "empty" as const };
+  const identityTaskQuality = identityTaskDescriptionText
+    ? identityIsUserAsk
+      ? qualityCheckUserAskLabel(identityTaskDescriptionText)
+      : qualityCheckAuthoritativeTaskLabel(identityTaskDescriptionText)
+    : { ok: false as const, reason: "empty" as const };
   const taskDescriptionText = identityTaskQuality.ok
     ? identityTaskDescriptionText
     : undefined;

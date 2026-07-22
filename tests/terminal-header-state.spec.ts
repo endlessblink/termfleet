@@ -181,10 +181,13 @@ test("keeps typed shell asks isolated when they belong to another run", () => {
   expect(header.paneId).toBe("pane-b");
   expect(header.workspace).toBe("flow-state");
   expect(header.userGoal).toBeNull();
-  expect(header.goalLabel).toBe("Task not captured");
+  // TC-060 R1: never blank — the header falls back to a true state line.
+  expect(header.goalLabel).not.toMatch(/task not captured/i);
+  expect(header.goalLabel.length).toBeGreaterThan(0);
   expect(header.currentActivity).toBe("Idle");
   expect(header.fullPath).toBe("/repo/flow-state");
-  expect(header.sources.goal).toBe("missing");
+  // TC-060: no DECLARED task, but the row still carries a true fallback line.
+  expect(header.sources.goal).toBe("task-line");
 });
 
 test("marks active terminals without structured task or activity as capture failures", () => {
@@ -206,11 +209,14 @@ test("marks active terminals without structured task or activity as capture fail
     },
   });
 
-  expect(header.goalLabel).toBe("Task not captured");
+  // TC-060 R1: never blank — the header falls back to a true state line.
+  expect(header.goalLabel).not.toMatch(/task not captured/i);
+  expect(header.goalLabel.length).toBeGreaterThan(0);
   // A working pane says so. "Activity not captured" reads as breakage and tells
   // the operator nothing about a terminal that is visibly busy.
   expect(header.currentActivity).toBe("Working");
-  expect(header.sources.goal).toBe("missing");
+  // TC-060: no DECLARED task, but the row still carries a true fallback line.
+  expect(header.sources.goal).toBe("task-line");
 });
 
 test("marks sidecar-captured user goals as user prompts instead of none", () => {

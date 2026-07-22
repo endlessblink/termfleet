@@ -2447,7 +2447,10 @@ Acceptance:
   // buffer) is NOT a captured task — the row admits it honestly, and none of the
   // model-chrome junk ("gpt-5.5 default") leaks anywhere.
   await expect(page.getByTestId("canvas-terminal-node-header-title")).toHaveCount(0);
-  await expect(page.getByTestId("canvas-terminal-node-description")).toHaveText("Task not captured");
+  // TC-060 R1: no declared task is no longer a blank — the card falls back to a
+  // true state line, and must never show the old placeholder.
+  await expect(page.getByTestId("canvas-terminal-node-description")).not.toHaveText("Task not captured");
+  await expect(page.getByTestId("canvas-terminal-node-description")).not.toBeEmpty();
   await expect(page.getByTestId("canvas-terminal-node-now")).not.toContainText("gpt-5.5 default");
 
   await page.evaluate(() => {
@@ -2500,7 +2503,10 @@ Acceptance:
   // candidate (gibberish prompt, "Supervised agent run") is rejected — the card
   // collapses to the honest Task line with no Now Active row.
   await expect(page.getByTestId("canvas-terminal-node-header-title")).toHaveCount(0);
-  await expect(page.getByTestId("canvas-terminal-node-description")).toHaveText("Task not captured");
+  // TC-060 R1: no declared task is no longer a blank — the card falls back to a
+  // true state line, and must never show the old placeholder.
+  await expect(page.getByTestId("canvas-terminal-node-description")).not.toHaveText("Task not captured");
+  await expect(page.getByTestId("canvas-terminal-node-description")).not.toBeEmpty();
   await expect(page.getByTestId("canvas-terminal-node-now")).not.toContainText("sfgdsafgd");
   await expect(page.getByTestId("canvas-terminal-node-description")).not.toContainText("Supervised agent run");
 
@@ -2555,7 +2561,10 @@ Acceptance:
   // Contract update: the scraped ask is not a captured task; the card admits it and
   // the junk candidates (/skills chrome, model banner) never leak.
   await expect(page.getByTestId("canvas-terminal-node-header-title")).toHaveCount(0);
-  await expect(page.getByTestId("canvas-terminal-node-description")).toHaveText("Task not captured");
+  // TC-060 R1: no declared task is no longer a blank — the card falls back to a
+  // true state line, and must never show the old placeholder.
+  await expect(page.getByTestId("canvas-terminal-node-description")).not.toHaveText("Task not captured");
+  await expect(page.getByTestId("canvas-terminal-node-description")).not.toBeEmpty();
   await expect(page.getByTestId("canvas-terminal-node-now")).not.toContainText("/skills");
   await expect(page.getByTestId("canvas-terminal-node-now")).not.toContainText("gpt-5.5 default");
 
@@ -2604,7 +2613,10 @@ Acceptance:
 
   // Contract update: with no bound/declared task the card admits "Task not captured";
   // the stale scrape line never shows anywhere.
-  await expect(page.getByTestId("canvas-terminal-node-description")).toHaveText("Task not captured");
+  // TC-060 R1: no declared task is no longer a blank — the card falls back to a
+  // true state line, and must never show the old placeholder.
+  await expect(page.getByTestId("canvas-terminal-node-description")).not.toHaveText("Task not captured");
+  await expect(page.getByTestId("canvas-terminal-node-description")).not.toBeEmpty();
   await expect(page.getByTestId("canvas-terminal-node-now")).not.toContainText("stale");
 
   await page.evaluate(() => {
@@ -3154,7 +3166,10 @@ test("map shell header treats ready prompt as idle instead of capture failure", 
     });
   });
 
-  await expect(page.getByTestId("canvas-terminal-node-description")).toHaveText("Task not captured");
+  // TC-060 R1: no declared task is no longer a blank — the card falls back to a
+  // true state line, and must never show the old placeholder.
+  await expect(page.getByTestId("canvas-terminal-node-description")).not.toHaveText("Task not captured");
+  await expect(page.getByTestId("canvas-terminal-node-description")).not.toBeEmpty();
   // An idle pane with no distinct step collapses to the single honest Task line — the
   // "Now Active" row is hidden rather than restating a bare "Idle" status word.
   await expect(page.getByTestId("canvas-terminal-node-header-title")).toHaveCount(0);
@@ -3339,7 +3354,7 @@ test("map summary cards expose workspace labels for parallel sessions", async ({
   // KNOWN GAP (tracked with the description-text work): a workstream mission no longer
   // auto-populates the Task row after the scraped-ask hardening — cards admit "Task not
   // captured" instead. This test's real subject is the WORKSPACE labels above.
-  await expect(page.getByTestId("canvas-terminal-node-description").first()).toHaveText("Task not captured");
+  await expect(page.getByTestId("canvas-terminal-node-description").first()).not.toHaveText("Task not captured");
 });
 
 test("map panel summarizes visible nodes by workspace branch role and service", async ({ page }) => {

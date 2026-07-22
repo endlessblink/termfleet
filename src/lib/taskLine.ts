@@ -33,6 +33,9 @@ export interface TaskLineInput {
   runningCommand?: string | null;
   folder?: string | null;
   branch?: string | null;
+  /** The pane's authoritative badge state. Only used by the last rung, so the
+   *  fallback never claims a busy terminal is sitting idle at a prompt. */
+  busy?: boolean;
 }
 
 const TOOL_VERBS: Record<string, string> = {
@@ -168,10 +171,11 @@ export function resolvePaneTaskLine(input: TaskLineInput): PaneTaskLine {
 
   const folder = input.folder?.trim() || "this folder";
   const branch = input.branch?.trim();
+  const where = branch ? `${folder} on ${branch}` : folder;
   return {
-    text: branch
-      ? `Sitting at a command prompt in ${folder} on ${branch}`
-      : `Sitting at a command prompt in ${folder}`,
+    text: input.busy
+      ? `Working in ${where}`
+      : `Sitting at a command prompt in ${where}`,
     source: "shell-state",
     capturedAt: now,
     expiresAt: null,

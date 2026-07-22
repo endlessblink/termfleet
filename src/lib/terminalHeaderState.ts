@@ -12,7 +12,7 @@ import {
 } from "./terminalHeaderViewModel";
 import { type AttentionState } from "./terminalAttention";
 import { reconcileSessionStatus } from "./sessionStatus";
-import type { PaneTaskLine } from "./taskLine";
+import { resolvePaneTaskLine, type PaneTaskLine } from "./taskLine";
 
 export type TerminalHeaderStatus =
   | "idle"
@@ -167,6 +167,17 @@ export function buildTerminalHeaderState(input: {
   const effectiveSummary = input.statusSummary?.tasksFromTodoWrite
     ? undefined
     : input.summary;
+  // TC-060 R1: a pane that has not polled yet — or one only ever drawn in the
+  // sidebar, never mounted — still gets a true line. The last rung needs no I/O,
+  // so nothing can fall through to "Task not captured".
+  const effectiveTaskLine =
+    input.taskLine ??
+    resolvePaneTaskLine({
+      now: Date.now(),
+      folder: effectiveLiveCwd?.split("/").filter(Boolean).pop() ?? null,
+      busy:
+        input.terminalStatus === "running" || input.activelyWorking === true,
+    });
   const view = buildShellTerminalHeaderViewModel({
     project: input.project,
     liveCwd: effectiveLiveCwd,
@@ -183,14 +194,20 @@ export function buildTerminalHeaderState(input: {
     contextPurposeSource: input.contextPurposeSource,
     workstreamTitle: input.workstreamTitle,
     activelyWorking: input.activelyWorking,
-    taskLine: input.taskLine,
+    taskLine: effectiveTaskLine,
   });
   const goalSource = goalSourceFrom(
     view.taskDescription.source,
     input.mainUserAsk,
   );
   const goalLabel = view.taskDescription.text;
-  const hasCapturedGoal = goalSource !== "none" && goalSource !== "missing";
+  // TC-060: the fallback line always fills the Task row, but it is NOT a declared
+  // goal — the activity line must keep treating those panes as goal-less, or a
+  // visibly busy terminal stops saying so.
+  const hasCapturedGoal =
+    goalSource !== "none" &&
+    goalSource !== "missing" &&
+    goalSource !== "task-line";
   const headerStatus = statusFromSummary(
     input.summary ?? input.statusSummary,
     input.terminalStatus,

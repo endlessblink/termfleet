@@ -400,12 +400,9 @@ export function resolveTaskIdentity(input: {
       source: "workstream",
     };
 
-  if (input.taskLine?.text) {
-    return {
-      text: input.taskLine.text,
-      rawText: input.taskLine.text,
-      source: "task-line",
-    };
-  }
+  // The ladder is deliberately NOT consulted here. Task identity means a DECLARED
+  // task, and every title/activity heuristic downstream keys on that meaning. The
+  // always-true line is applied at render time instead (terminalHeaderViewModel),
+  // so the Task row is never blank without changing what "declared" means.
   return { text: TASK_NOT_CAPTURED, source: "missing" };
 }
