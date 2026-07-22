@@ -841,13 +841,31 @@ export function TerminalComponent({
         // status may populate a pane that shows no other sign of agent work.
         const contextualResult =
           result.source === "process" && Boolean(result.summary.narration);
-        if (gatedShellPane && result.source !== "sidecar" && !contextualResult)
-          return;
         const latestStore = useWorkspaceStore.getState();
         const latestTab = latestStore.tabs.find(
           (candidate) => candidate.id === tabId,
         );
         if (!latestTab) return;
+        if (
+          gatedShellPane &&
+          result.source !== "sidecar" &&
+          !contextualResult
+        ) {
+          // TC-060: the heuristic SUMMARY stays gated (it produced junk headers),
+          // but the task line is provenance-checked and can never invent text, so
+          // an agent-less shell still gets its honest "what this terminal is doing"
+          // line instead of "Task not captured".
+          if (result.taskLine) {
+            latestStore.updateTab(tabId, {
+              terminals: latestTab.terminals.map((candidate) =>
+                candidate.paneId === paneId
+                  ? { ...candidate, taskLine: result.taskLine }
+                  : candidate,
+              ),
+            });
+          }
+          return;
+        }
         if (latestTab.workstream?.kind === "agent") {
           const extractedAt = Date.now();
           const extractedTasks = mergeExtractedItems(
