@@ -7,7 +7,7 @@
 // titles or TASKS panel "break again", before touching code.
 //
 // Usage: npm run doctor   (safe: reads files/process list only, changes nothing)
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { closeSync, existsSync, openSync, readFileSync, readdirSync, readSync, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
@@ -380,6 +380,41 @@ try {
   }
 } catch (error) {
   report("info", "Auto-maintenance (TC-055)", `could not check reaper timer (${error.message})`);
+}
+
+// TC-060: the vendor session records are fallible probes. Public docs already
+// disagree with reality about them, so drift must be loud, not silent.
+{
+  const probeFor = (root, depth, needles, label) => {
+    let newest = null;
+    const walk = (dir, level) => {
+      let entries;
+      try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+      for (const entry of entries) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) { if (level > 0) walk(full, level - 1); continue; }
+        if (!entry.name.endsWith(".jsonl")) continue;
+        const stat = statSync(full);
+        if (!newest || stat.mtimeMs > newest.mtimeMs) newest = { full, mtimeMs: stat.mtimeMs };
+      }
+    };
+    walk(root, depth);
+    if (!newest) { report("info", label, "no session records on this machine yet"); return; }
+    const size = statSync(newest.full).size;
+    const take = Math.min(262144, size);
+    const buf = Buffer.alloc(take);
+    const fd = openSync(newest.full, "r");
+    readSync(fd, buf, 0, take, size - take);
+    closeSync(fd);
+    const text = buf.toString("utf8");
+    if (needles.some((needle) => text.includes(needle))) {
+      report("ok", label, "the cockpit can still read this provider's own session record");
+    } else {
+      report("warn", label, `probes ${needles.join(", ")} found nothing in the newest session — the format may have changed, task lines will fall back`);
+    }
+  };
+  probeFor(path.join(os.homedir(), ".claude", "projects"), 2, ['"tool_use"', '"ai-title"', '"last-prompt"'], "Session record (Claude)");
+  probeFor(path.join(os.homedir(), ".codex", "sessions"), 4, ['"task_complete"', '"agent_message"', '"user_message"', '"function_call"'], "Session record (Codex)");
 }
 
 let failed = 0;

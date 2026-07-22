@@ -78,7 +78,8 @@
     "tauri:dev": "scripts/tauri-dev-with-status.sh",
     "verify:zellij-shortcuts": "scripts/verify-zellij-shortcuts.sh",
     "cockpit:snapshot": "node scripts/cockpit-snapshot.mjs",
-    "gate": "node scripts/termfleet-gate.mjs"
+    "gate": "node scripts/termfleet-gate.mjs",
+    "verify:task-line": "npx playwright test tests/task-line-sweep.spec.ts tests/task-line.spec.ts tests/session-transcript.spec.ts tests/task-identity-ladder.spec.ts --reporter=line"
   },
   "dependencies": {
     "@fontsource/geist-mono": "^5.2.8",
