@@ -6,7 +6,13 @@ import {
   type AgentStatusSummary,
   type AgentStatusSummaryInput,
 } from "./agentStatusSummary";
-import { readLocalSidecarStatus, type SidecarFileReader } from "./agentStatusSidecar";
+import {
+  readLocalSidecarStatus,
+  type AgentStatusSidecar,
+  type SidecarFileReader,
+} from "./agentStatusSidecar";
+import { parseTranscript } from "./sessionTranscript";
+import { resolvePaneTaskLine, type PaneTaskLine } from "./taskLine";
 
 export interface AgentStatusSummarizerResult {
   summary: AgentStatusSummary;
@@ -15,6 +21,9 @@ export interface AgentStatusSummarizerResult {
   source: "fallback" | "process" | "sidecar";
   sidecarState?: "fresh" | "stale" | "missing" | "error";
   error?: string;
+  // TC-060: an always-true, plain-language line for this pane, resolved from the
+  // agent's declared task, the vendor's own session record, or the running process.
+  taskLine?: PaneTaskLine;
 }
 
 export interface AgentStatusSummarizerOptions {
@@ -36,13 +45,17 @@ function isTauriRuntime() {
 function tauriSidecarReader(): SidecarFileReader | null {
   if (!isTauriRuntime()) return null;
   return async (fileName) => {
-    const text = await invoke<string | null>("agent_status_read_sidecar", { fileName });
+    const text = await invoke<string | null>("agent_status_read_sidecar", {
+      fileName,
+    });
     return typeof text === "string" ? text : null;
   };
 }
 
 function configuredEndpoint() {
-  const env = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env;
+  const env = (
+    import.meta as ImportMeta & { env?: Record<string, string | undefined> }
+  ).env;
   const explicit = env?.VITE_AGENT_STATUS_SUMMARY_ENDPOINT?.trim();
   if (explicit) return explicit;
   return "";
@@ -57,7 +70,10 @@ function shortError(error: unknown) {
   return message.replace(/\s+/g, " ").trim().slice(0, 180);
 }
 
-function buildRequestBody(input: AgentStatusSummaryInput, fallbackOverride?: AgentStatusSummary) {
+function buildRequestBody(
+  input: AgentStatusSummaryInput,
+  fallbackOverride?: AgentStatusSummary,
+) {
   const fallback = fallbackOverride ?? fallbackAgentStatusSummary(input);
   const transcript = cleanTranscriptForSummary(input.terminalOutput, 1800);
   return {
@@ -106,8 +122,10 @@ function buildRequestBody(input: AgentStatusSummaryInput, fallbackOverride?: Age
       blocker: "optional string",
       tasks: "array of extracted task strings or { text, excerpt }",
       blockers: "array of extracted blocker strings or { text, excerpt }",
-      evidence: "array of extracted proof/evidence strings or { text, excerpt }",
-      nextActions: "array of extracted next-action strings or { text, excerpt }",
+      evidence:
+        "array of extracted proof/evidence strings or { text, excerpt }",
+      nextActions:
+        "array of extracted next-action strings or { text, excerpt }",
     },
     examples: [
       {
@@ -122,7 +140,8 @@ function buildRequestBody(input: AgentStatusSummaryInput, fallbackOverride?: Age
         },
       },
       {
-        transcript: "gpt-5.5 default · ~\\n› Use /skills to list available skills",
+        transcript:
+          "gpt-5.5 default · ~\\n› Use /skills to list available skills",
         summary: {
           task: "Shell ready",
           path: "workspace",
@@ -139,38 +158,109 @@ function buildRequestBody(input: AgentStatusSummaryInput, fallbackOverride?: Age
 async function responseText(response: Response) {
   const text = await response.text();
   if (!response.ok) {
-    throw new Error(`status summarizer returned ${response.status}: ${text.slice(0, 120)}`);
+    throw new Error(
+      `status summarizer returned ${response.status}: ${text.slice(0, 120)}`,
+    );
   }
   return text;
 }
 
+/**
+ * TC-060. Build this pane's always-true line.
+ *
+ * The vendor session records are written by Claude Code / Codex themselves with no
+ * hook involvement, so this works for hand-started and long-running panes — the
+ * class that used to render "Task not captured". The read is a best-effort probe:
+ * any failure simply yields fewer facts, and the ladder falls through to a rung
+ * that cannot fail.
+ */
+async function resolveTaskLineFor(
+  input: AgentStatusSummaryInput,
+  sidecar: AgentStatusSidecar | null,
+): Promise<PaneTaskLine> {
+  let facts = null;
+  const sessionId =
+    typeof sidecar?.sessionId === "string" ? sidecar.sessionId : "";
+  if (isTauriRuntime() && /^[0-9a-f][0-9a-f-]{7,63}$/i.test(sessionId)) {
+    // `provider` is absent on most sidecars, so try both records and let the id decide.
+    for (const provider of ["claude", "codex"] as const) {
+      try {
+        const text = await invoke<string | null>("session_transcript_read", {
+          provider,
+          sessionId,
+        });
+        if (typeof text === "string" && text) {
+          facts = parseTranscript(provider, text);
+          break;
+        }
+      } catch {
+        // A changed vendor layout is not an error worth surfacing — fall through.
+      }
+    }
+  }
+  const activeTodo = (sidecar?.todos ?? []).find(
+    (todo) => todo?.status === "in_progress",
+  );
+  const cwd = sidecar?.cwd ?? input.cwd ?? input.cwdLabel ?? null;
+  return resolvePaneTaskLine({
+    now: Date.now(),
+    declaredTask:
+      sidecar?.mainTask ??
+      activeTodo?.activeForm ??
+      activeTodo?.content ??
+      null,
+    facts,
+    folder: cwd ? (cwd.split("/").filter(Boolean).pop() ?? null) : null,
+  });
+}
+
 export async function summarizeAgentStatus(
   input: AgentStatusSummaryInput,
-  options: AgentStatusSummarizerOptions = {}
+  options: AgentStatusSummarizerOptions = {},
 ): Promise<AgentStatusSummarizerResult> {
   const fallback = fallbackAgentStatusSummary(input);
 
   // Local sidecar first: the agent's REAL task list, read directly from disk via the
   // Rust backend — no helper process to babysit. Same shaping as the node worker.
-  const sidecarReader = options.sidecarReader === null ? null : options.sidecarReader ?? tauriSidecarReader();
+  const sidecarReader =
+    options.sidecarReader === null
+      ? null
+      : (options.sidecarReader ?? tauriSidecarReader());
   let sidecarShapedFallback: AgentStatusSummary | null = null;
   let sidecarState: AgentStatusSummarizerResult["sidecarState"];
+  let rawSidecar: AgentStatusSidecar | null = null;
   if (sidecarReader) {
     try {
-      const lookup = await readLocalSidecarStatus(input, fallback, sidecarReader);
+      const lookup = await readLocalSidecarStatus(
+        input,
+        fallback,
+        sidecarReader,
+      );
       sidecarState = lookup.state;
+      rawSidecar = lookup.sidecar ?? null;
       const shaped = lookup.summary;
-      if (shaped) sidecarShapedFallback = parseAgentStatusSummaryResponse(JSON.stringify(shaped), fallback);
+      if (shaped)
+        sidecarShapedFallback = parseAgentStatusSummaryResponse(
+          JSON.stringify(shaped),
+          fallback,
+        );
     } catch {
       sidecarState = "error";
       // Sidecar read failed → fall through to the endpoint / heuristic fallback.
     }
   }
 
+  const taskLine = await resolveTaskLineFor(input, rawSidecar);
+
   const effectiveFallback = sidecarShapedFallback ?? fallback;
   const endpoint = options.endpoint ?? configuredEndpoint();
   if (!endpoint) {
-    return { summary: effectiveFallback, source: sidecarShapedFallback ? "sidecar" : "fallback", sidecarState };
+    return {
+      summary: effectiveFallback,
+      source: sidecarShapedFallback ? "sidecar" : "fallback",
+      sidecarState,
+      taskLine,
+    };
   }
 
   try {
@@ -181,7 +271,10 @@ export async function summarizeAgentStatus(
       body: JSON.stringify(buildRequestBody(input, effectiveFallback)),
     });
     const text = await responseText(response);
-    const parsedSummary = parseAgentStatusSummaryResponse(text, effectiveFallback);
+    const parsedSummary = parseAgentStatusSummaryResponse(
+      text,
+      effectiveFallback,
+    );
     const summary = sidecarShapedFallback?.tasksFromTodoWrite
       ? {
           ...parsedSummary,

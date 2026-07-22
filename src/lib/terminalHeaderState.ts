@@ -12,6 +12,7 @@ import {
 } from "./terminalHeaderViewModel";
 import { type AttentionState } from "./terminalAttention";
 import { reconcileSessionStatus } from "./sessionStatus";
+import type { PaneTaskLine } from "./taskLine";
 
 export type TerminalHeaderStatus =
   | "idle"
@@ -28,6 +29,8 @@ export type TerminalHeaderGoalSource =
   | "sidecar-todo"
   | "manual"
   | "workstream"
+  // TC-060: derived from the vendor's own session record or the running process.
+  | "task-line"
   | "missing"
   | "none";
 export type TerminalHeaderActivitySource =
@@ -77,6 +80,7 @@ function goalSourceFrom(
   if (fieldSource === "plan-binding") return "plan-binding";
   if (fieldSource === "sidecar-todo") return "sidecar-todo";
   if (fieldSource === "workstream") return "workstream";
+  if (fieldSource === "task-line") return "task-line";
   if (fieldSource === "missing") return "missing";
   if (fieldSource === "status-summary") return "missing";
   if (fieldSource !== "user-task") return "none";
@@ -117,7 +121,8 @@ function statusFromSummary(
   if (summary?.status === "working") return "working";
   if (terminalStatus === "failed") return "blocked";
   if (terminalStatus === "exited") return "done";
-  if (terminalStatus === "running" || terminalStatus === "reconnected") return "working";
+  if (terminalStatus === "running" || terminalStatus === "reconnected")
+    return "working";
   return "idle";
 }
 
@@ -154,9 +159,14 @@ export function buildTerminalHeaderState(input: {
   activelyWorking?: boolean;
   updatedAt?: number;
   version?: number;
+  // TC-060: the always-true line from the vendor's own session record / process.
+  taskLine?: PaneTaskLine | null;
 }): TerminalHeaderState {
-  const effectiveLiveCwd = input.liveCwd ?? input.spawnCwd ?? input.project?.projectRoot;
-  const effectiveSummary = input.statusSummary?.tasksFromTodoWrite ? undefined : input.summary;
+  const effectiveLiveCwd =
+    input.liveCwd ?? input.spawnCwd ?? input.project?.projectRoot;
+  const effectiveSummary = input.statusSummary?.tasksFromTodoWrite
+    ? undefined
+    : input.summary;
   const view = buildShellTerminalHeaderViewModel({
     project: input.project,
     liveCwd: effectiveLiveCwd,
@@ -173,11 +183,18 @@ export function buildTerminalHeaderState(input: {
     contextPurposeSource: input.contextPurposeSource,
     workstreamTitle: input.workstreamTitle,
     activelyWorking: input.activelyWorking,
+    taskLine: input.taskLine,
   });
-  const goalSource = goalSourceFrom(view.taskDescription.source, input.mainUserAsk);
+  const goalSource = goalSourceFrom(
+    view.taskDescription.source,
+    input.mainUserAsk,
+  );
   const goalLabel = view.taskDescription.text;
   const hasCapturedGoal = goalSource !== "none" && goalSource !== "missing";
-  const headerStatus = statusFromSummary(input.summary ?? input.statusSummary, input.terminalStatus);
+  const headerStatus = statusFromSummary(
+    input.summary ?? input.statusSummary,
+    input.terminalStatus,
+  );
   // Badge from the agent's reported status ONLY (pure event state — no clock, no
   // scrollback). Views render paneBadgeAttention(terminal) from the store; this field
   // mirrors the same computation for consumers of the header state.
@@ -188,15 +205,17 @@ export function buildTerminalHeaderState(input: {
   const currentActivity =
     hasCapturedGoal &&
     headerStatus === "working" &&
-    /^(?:Working|Thinking|Running terminal command|Command is running)$/i.test(view.title.text)
+    /^(?:Working|Thinking|Running terminal command|Command is running)$/i.test(
+      view.title.text,
+    )
       ? "Activity not captured"
       : view.title.text;
   const activitySource =
     currentActivity === "Activity not captured"
       ? "missing"
       : currentActivity === view.title.text
-      ? activitySourceFrom(view.title.source, input.trustedActivitySummary)
-      : "missing";
+        ? activitySourceFrom(view.title.source, input.trustedActivitySummary)
+        : "missing";
 
   return {
     paneId: input.paneId,

@@ -9,7 +9,10 @@
 // so the app reads the files directly through a Tauri command. The file-name
 // scheme MUST stay byte-identical to the node side; parity is enforced by
 // `tests/agent-status-local-sidecar.spec.ts`.
-import type { AgentStatusSummary, AgentStatusSummaryInput } from "./agentStatusSummary";
+import type {
+  AgentStatusSummary,
+  AgentStatusSummaryInput,
+} from "./agentStatusSummary";
 import type { AgentProvider } from "./types";
 
 export function fnv(value: unknown): string {
@@ -63,7 +66,12 @@ export interface AgentStatusSidecar {
   mainTaskSource?: "plan-explanation" | "goal-task";
   userTask?: string;
   narration?: string;
-  todos?: Array<{ id?: string; content?: string; status?: string; activeForm?: string }>;
+  todos?: Array<{
+    id?: string;
+    content?: string;
+    status?: string;
+    activeForm?: string;
+  }>;
   recent?: Array<{ text?: string; at?: number }>;
   /**
    * Event-driven turn lifecycle written by the status hooks: "working" while a turn
@@ -73,6 +81,13 @@ export interface AgentStatusSidecar {
    * in-progress todo that never gets cleared when the turn finishes.
    */
   turn?: "working" | "idle" | "waiting";
+  /**
+   * The provider's own conversation id, stamped by the status hooks. TC-060 uses it
+   * to find the vendor's session record on disk, which carries a true description
+   * even when the agent declared no task at all.
+   */
+  sessionId?: string;
+  paneId?: string;
 }
 
 export function sidecarFresh(
@@ -101,7 +116,12 @@ function explicitMainTask(sidecar: AgentStatusSidecar): string {
   const legacyGoals = (Array.isArray(sidecar?.todos) ? sidecar.todos : [])
     .map((todo) => cleanText(todo?.content).match(/^Goal:\s*(.+)$/i)?.[1] ?? "")
     .filter((goal) => goal && goal.length <= 90)
-    .filter((goal) => !/^(?:finish|complete) all (?:safe )?(?:remaining|current)\b/i.test(goal));
+    .filter(
+      (goal) =>
+        !/^(?:finish|complete) all (?:safe )?(?:remaining|current)\b/i.test(
+          goal,
+        ),
+    );
   return legacyGoals[legacyGoals.length - 1] ?? "";
 }
 
@@ -121,14 +141,18 @@ function extractedItems(values: string[]) {
         sourceHash,
       };
     })
-    .filter((item) => (seen.has(item.sourceHash) ? false : (seen.add(item.sourceHash), true)))
+    .filter((item) =>
+      seen.has(item.sourceHash) ? false : (seen.add(item.sourceHash), true),
+    )
     .slice(0, 8);
 }
 
 // Encode a todo into task text whose prefix termfleet's inferStatus maps back to a
 // status ("done:" → completed, "in-progress:" → in_progress); cleanTaskLineupContent
 // then strips the prefix for display. Must match the node worker exactly.
-function todoToTaskText(todo: NonNullable<AgentStatusSidecar["todos"]>[number]): string {
+function todoToTaskText(
+  todo: NonNullable<AgentStatusSidecar["todos"]>[number],
+): string {
   const content = cleanText(todo?.content);
   if (!content) return "";
   if (todo?.status === "completed") return `done: ${content}`;
@@ -138,33 +162,52 @@ function todoToTaskText(todo: NonNullable<AgentStatusSidecar["todos"]>[number]):
 
 function isNonDescriptiveTaskText(value: unknown): boolean {
   const text = cleanText(value);
-  return /^(?:Answering latest prompt|Answering user question|Prompt submitted|go|continue|this|that|these|those|both|and this|and that|should we add (?:it|that))\??$/i.test(text);
+  return /^(?:Answering latest prompt|Answering user question|Prompt submitted|go|continue|this|that|these|those|both|and this|and that|should we add (?:it|that))\??$/i.test(
+    text,
+  );
 }
 
 function workingTaskFromCompleted(value: unknown, cwd?: unknown): string {
   const text = cleanText(value);
-  const confirmed = text.match(/^Confirming\s+(.+?)\s+is\s+safely\s+completed$/i)?.[1];
-  if (confirmed && /(?:^|\/)hermes(?:\/|$)/i.test(cleanText(cwd)) && /^the assistant repair$/i.test(confirmed)) {
+  const confirmed = text.match(
+    /^Confirming\s+(.+?)\s+is\s+safely\s+completed$/i,
+  )?.[1];
+  if (
+    confirmed &&
+    /(?:^|\/)hermes(?:\/|$)/i.test(cleanText(cwd)) &&
+    /^the assistant repair$/i.test(confirmed)
+  ) {
     return "Repairing the Hermes personal assistant safely";
   }
   if (confirmed) return `Completing ${confirmed} safely`;
   return text;
 }
 
-function contextualWorkingActivity(value: unknown, completedTask: unknown, cwd?: unknown): string {
+function contextualWorkingActivity(
+  value: unknown,
+  completedTask: unknown,
+  cwd?: unknown,
+): string {
   const activity = cleanText(value);
   if (!/^Continuing after your answer$/i.test(activity)) return activity;
   const completed = cleanText(completedTask);
-  const confirmed = completed.match(/^Confirming\s+(.+?)\s+is\s+safely\s+completed$/i)?.[1];
-  if (confirmed && /(?:^|\/)hermes(?:\/|$)/i.test(cleanText(cwd)) && /^the assistant repair$/i.test(confirmed)) {
+  const confirmed = completed.match(
+    /^Confirming\s+(.+?)\s+is\s+safely\s+completed$/i,
+  )?.[1];
+  if (
+    confirmed &&
+    /(?:^|\/)hermes(?:\/|$)/i.test(cleanText(cwd)) &&
+    /^the assistant repair$/i.test(confirmed)
+  ) {
     return "Applying your answer to the Hermes personal-assistant repair";
   }
   return confirmed ? `Applying your answer to ${confirmed}` : activity;
 }
 
 function visibleSidecarTodos(sidecar: AgentStatusSidecar) {
-  return (Array.isArray(sidecar?.todos) ? sidecar.todos : [])
-    .filter((todo) => !isNonDescriptiveTaskText(todo?.activeForm || todo?.content));
+  return (Array.isArray(sidecar?.todos) ? sidecar.todos : []).filter(
+    (todo) => !isNonDescriptiveTaskText(todo?.activeForm || todo?.content),
+  );
 }
 
 function sidecarTaskText(sidecar: AgentStatusSidecar): string {
@@ -182,8 +225,13 @@ function sidecarHasConcreteTask(sidecar: AgentStatusSidecar): boolean {
   return Boolean(task);
 }
 
-function inferredPlanOutcome(sidecar: AgentStatusSidecar, fallbackPath?: string): string {
-  const plan = (sidecar.todos ?? []).map((todo) => cleanText(todo?.content)).join(" | ");
+function inferredPlanOutcome(
+  sidecar: AgentStatusSidecar,
+  fallbackPath?: string,
+): string {
+  const plan = (sidecar.todos ?? [])
+    .map((todo) => cleanText(todo?.content))
+    .join(" | ");
   const request = cleanText(sidecar.userTask);
   const path = cleanText(sidecar.cwd) || cleanText(fallbackPath);
   const context = `${request} | ${cleanText(sidecar.mainTask)} | ${plan}`;
@@ -199,15 +247,21 @@ function inferredPlanOutcome(sidecar: AgentStatusSidecar, fallbackPath?: string)
   if (
     /bina-meatzevet-courses/i.test(path) &&
     /mandatory|required/i.test(context) &&
-    /(?:promotional[- ]email|email[- ]consent|newsletter consent)/i.test(context)
+    /(?:promotional[- ]email|email[- ]consent|newsletter consent)/i.test(
+      context,
+    )
   ) {
     return /attendee lists?/i.test(context)
       ? "Making promotional email consent mandatory in every Bina signup and visible in attendee lists"
       : "Making email signup mandatory across every Bina registration flow";
   }
   if (
-    /(?:email|emails).*(?:mandatory|required)|(?:mandatory|required).*(?:email|emails)/i.test(request) &&
-    /(?:newsletter|email).*(?:consent|signup)|(?:consent|signup).*(?:newsletter|email)/i.test(plan)
+    /(?:email|emails).*(?:mandatory|required)|(?:mandatory|required).*(?:email|emails)/i.test(
+      request,
+    ) &&
+    /(?:newsletter|email).*(?:consent|signup)|(?:consent|signup).*(?:newsletter|email)/i.test(
+      plan,
+    )
   ) {
     return /bina-meatzevet-courses/i.test(path)
       ? "Making email signup mandatory across every Bina registration flow"
@@ -218,7 +272,9 @@ function inferredPlanOutcome(sidecar: AgentStatusSidecar, fallbackPath?: string)
     /large panel with a strip and drawer/i.test(plan) &&
     /Personal Assistant screen/i.test(plan)
   ) {
-    const product = /(?:^|\/)hermes(?:\/|$)/i.test(path) ? "Hermes Personal Assistant" : "Personal Assistant";
+    const product = /(?:^|\/)hermes(?:\/|$)/i.test(path)
+      ? "Hermes Personal Assistant"
+      : "Personal Assistant";
     return `Replacing the crowded ${product} panel with on-demand controls`;
   }
   return "";
@@ -239,11 +295,14 @@ export function summaryFromSidecar(
     list.find((todo) => todo?.status !== "completed");
   const active = visibleTodos.find((todo) => todo?.status === "in_progress");
   const firstOpen = pick(visibleTodos);
-  const lastDone = [...visibleTodos].reverse().find((todo) => todo?.status === "completed");
+  const lastDone = [...visibleTodos]
+    .reverse()
+    .find((todo) => todo?.status === "completed");
   const contextPath = sidecar.cwd || fallback.path;
-  const now = sidecar.turn === "working"
-    ? contextualWorkingActivity(rawNow, lastDone?.content, contextPath)
-    : rawNow;
+  const now =
+    sidecar.turn === "working"
+      ? contextualWorkingActivity(rawNow, lastDone?.content, contextPath)
+      : rawNow;
   const working = Boolean(todos.find((todo) => todo?.status === "in_progress"));
   // Title = the agent's CURRENT task, preferring its human-readable `activeForm` over
   // the terse subject. When nothing is live (all complete), fall back to the LAST
@@ -255,16 +314,22 @@ export function summaryFromSidecar(
     (sidecar.turn === "working"
       ? workingTaskFromCompleted(lastDone?.content, contextPath)
       : cleanText(lastDone?.content));
-  const userTask = inferredPlanOutcome(sidecar, fallback.path) || explicitMainTask(sidecar);
+  const userTask =
+    inferredPlanOutcome(sidecar, fallback.path) || explicitMainTask(sidecar);
   const declaredUserTask = isNonDescriptiveTaskText(userTask) ? "" : userTask;
-  const currentActivityTask = declaredUserTask && !isNonDescriptiveTaskText(now) ? now : "";
-  const activityTitle = declaredUserTask || currentTask || currentActivityTask || fallback.task;
+  const currentActivityTask =
+    declaredUserTask && !isNonDescriptiveTaskText(now) ? now : "";
+  const activityTitle =
+    declaredUserTask || currentTask || currentActivityTask || fallback.task;
   return {
     ...fallback,
     provider: sidecar.provider ?? fallback.provider,
     // Carry the HOOK's own write time so the badge reconciler can tell a live turn (hook
     // firing) from a finished one (hook went silent) — immune to a ticking status bar.
-    updatedAt: typeof sidecar?.updatedAt === "number" ? sidecar.updatedAt : fallback.updatedAt,
+    updatedAt:
+      typeof sidecar?.updatedAt === "number"
+        ? sidecar.updatedAt
+        : fallback.updatedAt,
     task: activityTitle,
     userTask: userTask || undefined,
     now: now || fallback.now,
@@ -304,6 +369,9 @@ export type SidecarFileReader = (fileName: string) => Promise<string | null>;
 export interface LocalSidecarStatus {
   state: "fresh" | "stale" | "missing" | "error";
   summary: AgentStatusSummary | null;
+  // TC-060: the raw record too — the task-line ladder needs the pane's session id
+  // to find the vendor's own session record on disk.
+  sidecar?: AgentStatusSidecar | null;
 }
 
 /**
@@ -312,7 +380,10 @@ export interface LocalSidecarStatus {
  * then the cwd-keyed candidates the request body would have carried.
  */
 export function sidecarCandidateFileNames(
-  input: Pick<AgentStatusSummaryInput, "paneId" | "worktreePath" | "gitRoot" | "cwd" | "cwdLabel">,
+  input: Pick<
+    AgentStatusSummaryInput,
+    "paneId" | "worktreePath" | "gitRoot" | "cwd" | "cwdLabel"
+  >,
 ): string[] {
   const names: string[] = [];
   if (input.paneId) names.push(paneSidecarFileName(input.paneId));
@@ -359,10 +430,19 @@ export async function readLocalSidecarStatus(
     }
     if (!firstFresh) firstFresh = sidecar;
     if (sidecarHasConcreteTask(sidecar)) {
-      return { state: "fresh", summary: summaryFromSidecar(sidecar, fallback) };
+      return {
+        state: "fresh",
+        summary: summaryFromSidecar(sidecar, fallback),
+        sidecar,
+      };
     }
   }
-  if (firstFresh) return { state: "fresh", summary: summaryFromSidecar(firstFresh, fallback) };
+  if (firstFresh)
+    return {
+      state: "fresh",
+      summary: summaryFromSidecar(firstFresh, fallback),
+      sidecar: firstFresh,
+    };
   if (staleSeen) return { state: "stale", summary: null };
   if (errorSeen) return { state: "error", summary: null };
   return { state: "missing", summary: null };

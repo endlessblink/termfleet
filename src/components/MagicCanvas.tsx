@@ -2633,6 +2633,7 @@ function CanvasNodeViewImpl({
     activeRunId: linkedTerminal?.activeRunId,
     mainUserAsk: terminalStoredMainUserAskApplies ? linkedTerminal?.mainUserAsk : undefined,
     statusSummary: terminalStatusSummary,
+    taskLine: linkedTerminal?.taskLine,
     summary: terminalDisplaySummaryBase,
     neutralTitle: terminalActivityLive ? null : terminalNeutralTitle,
     contextPurposeTitle: terminalPurpose?.title,

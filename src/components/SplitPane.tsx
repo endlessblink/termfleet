@@ -1,18 +1,58 @@
-import { useRef, useEffect, useLayoutEffect, useState, useCallback, CSSProperties } from "react";
-import { Globe, ListTodo, Minimize2, PanelRight, PanelRightClose, PanelBottom, X, TerminalSquare } from "lucide-react";
+import {
+  useRef,
+  useEffect,
+  useLayoutEffect,
+  useState,
+  useCallback,
+  CSSProperties,
+} from "react";
+import {
+  Globe,
+  ListTodo,
+  Minimize2,
+  PanelRight,
+  PanelRightClose,
+  PanelBottom,
+  X,
+  TerminalSquare,
+} from "lucide-react";
 import { TerminalComponent } from "./Terminal";
 import { LocalhostPreview } from "./LocalhostPreview";
 import { useWorkspaceStore } from "../stores/workspace";
 import { splitActivePane, closeActivePane } from "../stores/workspace";
-import type { Tab, TaskLineupItem, TerminalRuntimeStatus, WorkstreamMetadata, WorkstreamStatusSummary } from "../lib/types";
+import type {
+  Tab,
+  TaskLineupItem,
+  TerminalRuntimeStatus,
+  WorkstreamMetadata,
+  WorkstreamStatusSummary,
+} from "../lib/types";
 import { pathTail, projectForTab } from "../lib/projectDisplay";
-import { agentStatusChipText, agentStatusSummaryFromWorkstream, getDisplaySummary } from "../lib/agentStatusSummary";
+import {
+  agentStatusChipText,
+  agentStatusSummaryFromWorkstream,
+  getDisplaySummary,
+} from "../lib/agentStatusSummary";
 import { CockpitSnapshotProbe } from "./CockpitSnapshotProbe";
 import { workstreamActivityText } from "../lib/workstreamActivity";
-import { taskLineupNextLabel, taskLineupStats, terminalOutputClosesTaskLineup, visibleTaskLineup as pickVisibleTaskLineup } from "../lib/taskLineup";
-import { neutralHeaderTitle, normalizePersistedShellSummary, summaryFromDurableActivity, terminalPurposeFromContext, terminalTextLooksReadyPrompt } from "../lib/terminalHeaderDisplay";
+import {
+  taskLineupNextLabel,
+  taskLineupStats,
+  terminalOutputClosesTaskLineup,
+  visibleTaskLineup as pickVisibleTaskLineup,
+} from "../lib/taskLineup";
+import {
+  neutralHeaderTitle,
+  normalizePersistedShellSummary,
+  summaryFromDurableActivity,
+  terminalPurposeFromContext,
+  terminalTextLooksReadyPrompt,
+} from "../lib/terminalHeaderDisplay";
 import { buildTerminalHeaderState } from "../lib/terminalHeaderState";
-import { badgeForAttention, type AttentionState } from "../lib/terminalAttention";
+import {
+  badgeForAttention,
+  type AttentionState,
+} from "../lib/terminalAttention";
 import { paneBadgeAttention } from "../lib/sessionStatus";
 import { stableHeader } from "../lib/stableHeader";
 import {
@@ -71,29 +111,49 @@ function AgentTaskSidebar({
     ? taskLineup.map((item) => ({
         id: item.id,
         task: item.content,
-        state: item.status === "completed" ? "Done" : item.status === "in_progress" ? "Working" : item.status === "cancelled" ? "Cancelled" : "Not done",
+        state:
+          item.status === "completed"
+            ? "Done"
+            : item.status === "in_progress"
+              ? "Working"
+              : item.status === "cancelled"
+                ? "Cancelled"
+                : "Not done",
         next: taskLineupNextLabel(item),
       }))
     : [];
   void workstream;
   void summary;
-  const stats = taskLineupStats(rows.map((row) => ({
-    id: row.id,
-    content: row.task,
-    status: row.state === "Done" ? "completed" : row.state === "Working" ? "in_progress" : "pending",
-    source: "summary",
-    updatedAt: 0,
-  })));
+  const stats = taskLineupStats(
+    rows.map((row) => ({
+      id: row.id,
+      content: row.task,
+      status:
+        row.state === "Done"
+          ? "completed"
+          : row.state === "Working"
+            ? "in_progress"
+            : "pending",
+      source: "summary",
+      updatedAt: 0,
+    })),
+  );
 
   if (collapsed) {
     return (
       <button
         type="button"
         data-testid="split-agent-task-rail"
-        aria-label={stats.total > 0
-          ? `Agent terminal tasks: ${stats.open} open, ${stats.done} done. Expand tasks.`
-          : "Agent terminal tasks: no task list captured for this run. Expand tasks."}
-        title={stats.total > 0 ? `${stats.open} open · ${stats.done} done` : "No task list captured"}
+        aria-label={
+          stats.total > 0
+            ? `Agent terminal tasks: ${stats.open} open, ${stats.done} done. Expand tasks.`
+            : "Agent terminal tasks: no task list captured for this run. Expand tasks."
+        }
+        title={
+          stats.total > 0
+            ? `${stats.open} open · ${stats.done} done`
+            : "No task list captured"
+        }
         onClick={(event) => {
           event.stopPropagation();
           onToggleCollapsed();
@@ -110,22 +170,80 @@ function AgentTaskSidebar({
           padding: "12px 6px",
           border: "none",
           borderLeft: "1px solid var(--border-subtle)",
-          background: "color-mix(in srgb, var(--surface-base) 78%, var(--surface-sunken))",
+          background:
+            "color-mix(in srgb, var(--surface-base) 78%, var(--surface-sunken))",
           color: "var(--text-secondary)",
           fontFamily: "var(--font-ui)",
           cursor: "pointer",
         }}
       >
         <ListTodo size={14} strokeWidth={1.8} />
-        <span style={{ writingMode: "vertical-rl", textTransform: "uppercase", color: "var(--text-primary)", fontSize: 10, fontWeight: 600, letterSpacing: 0 }}>Tasks</span>
+        <span
+          style={{
+            writingMode: "vertical-rl",
+            textTransform: "uppercase",
+            color: "var(--text-primary)",
+            fontSize: 10,
+            fontWeight: 600,
+            letterSpacing: 0,
+          }}
+        >
+          Tasks
+        </span>
         {stats.total > 0 ? (
           <>
-            <span style={{ minWidth: 22, height: 22, display: "inline-flex", alignItems: "center", justifyContent: "center", borderRadius: 6, background: "color-mix(in srgb, var(--accent-live) 16%, var(--surface-raised))", color: "var(--text-primary)", fontSize: 11, fontWeight: 600 }}>{stats.total}</span>
-            <span style={{ writingMode: "vertical-rl", color: "var(--text-tertiary)", fontSize: 9, lineHeight: 1, whiteSpace: "nowrap" }}>{stats.open} open</span>
-            <span style={{ writingMode: "vertical-rl", color: "var(--text-tertiary)", fontSize: 9, lineHeight: 1, whiteSpace: "nowrap" }}>{stats.done} done</span>
+            <span
+              style={{
+                minWidth: 22,
+                height: 22,
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                borderRadius: 6,
+                background:
+                  "color-mix(in srgb, var(--accent-live) 16%, var(--surface-raised))",
+                color: "var(--text-primary)",
+                fontSize: 11,
+                fontWeight: 600,
+              }}
+            >
+              {stats.total}
+            </span>
+            <span
+              style={{
+                writingMode: "vertical-rl",
+                color: "var(--text-tertiary)",
+                fontSize: 9,
+                lineHeight: 1,
+                whiteSpace: "nowrap",
+              }}
+            >
+              {stats.open} open
+            </span>
+            <span
+              style={{
+                writingMode: "vertical-rl",
+                color: "var(--text-tertiary)",
+                fontSize: 9,
+                lineHeight: 1,
+                whiteSpace: "nowrap",
+              }}
+            >
+              {stats.done} done
+            </span>
           </>
         ) : (
-          <span style={{ writingMode: "vertical-rl", color: "var(--text-tertiary)", fontSize: 9, lineHeight: 1, whiteSpace: "nowrap" }}>No list</span>
+          <span
+            style={{
+              writingMode: "vertical-rl",
+              color: "var(--text-tertiary)",
+              fontSize: 9,
+              lineHeight: 1,
+              whiteSpace: "nowrap",
+            }}
+          >
+            No list
+          </span>
         )}
       </button>
     );
@@ -145,7 +263,8 @@ function AgentTaskSidebar({
         gap: 8,
         padding: "10px 10px 11px",
         borderLeft: "1px solid var(--border-subtle)",
-        background: "color-mix(in srgb, var(--surface-base) 72%, var(--surface-sunken))",
+        background:
+          "color-mix(in srgb, var(--surface-base) 72%, var(--surface-sunken))",
         color: "var(--text-secondary)",
         fontFamily: "var(--font-ui)",
         overflow: "hidden",
@@ -160,10 +279,24 @@ function AgentTaskSidebar({
           minHeight: 18,
         }}
       >
-        <span style={{ color: "var(--text-primary)", fontSize: 11, fontWeight: 500 }}>
+        <span
+          style={{
+            color: "var(--text-primary)",
+            fontSize: 11,
+            fontWeight: 500,
+          }}
+        >
           Tasks
         </span>
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 8, color: "var(--text-tertiary)", fontSize: 10 }}>
+        <span
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 8,
+            color: "var(--text-tertiary)",
+            fontSize: 10,
+          }}
+        >
           <span>{rows.length > 0 ? rows.length : "No list"}</span>
           <button
             type="button"
@@ -182,7 +315,8 @@ function AgentTaskSidebar({
               padding: 0,
               border: "1px solid var(--border-subtle)",
               borderRadius: 6,
-              background: "color-mix(in srgb, var(--surface-raised) 82%, transparent)",
+              background:
+                "color-mix(in srgb, var(--surface-raised) 82%, transparent)",
               color: "var(--text-secondary)",
               cursor: "pointer",
             }}
@@ -191,7 +325,15 @@ function AgentTaskSidebar({
           </button>
         </span>
       </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 7, minHeight: 0, overflow: "hidden" }}>
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 7,
+          minHeight: 0,
+          overflow: "hidden",
+        }}
+      >
         {rows.map((row) => {
           const done = row.state === "Done";
           return (
@@ -215,7 +357,8 @@ function AgentTaskSidebar({
                     overflow: "hidden",
                     textOverflow: "ellipsis",
                     whiteSpace: "nowrap",
-                    color: "color-mix(in srgb, var(--text-secondary) 70%, transparent)",
+                    color:
+                      "color-mix(in srgb, var(--text-secondary) 70%, transparent)",
                     fontSize: 9,
                     fontWeight: 500,
                   }}
@@ -261,7 +404,12 @@ function AgentTaskSidebar({
                   data-testid="split-agent-task-state"
                   style={{
                     flexShrink: 0,
-                    color: row.state === "Blocked" ? "var(--accent-danger)" : row.state === "Waiting" ? "var(--accent-warning)" : "var(--text-secondary)",
+                    color:
+                      row.state === "Blocked"
+                        ? "var(--accent-danger)"
+                        : row.state === "Waiting"
+                          ? "var(--accent-warning)"
+                          : "var(--text-secondary)",
                   }}
                 >
                   {row.state}
@@ -269,7 +417,12 @@ function AgentTaskSidebar({
                 <span style={{ color: "var(--text-tertiary)" }}>·</span>
                 <span
                   data-testid="split-agent-task-next"
-                  style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                  style={{
+                    minWidth: 0,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
                 >
                   Next: {row.next}
                 </span>
@@ -315,7 +468,8 @@ function PaneToolbar({ paneId, tabId, canClose, visible }: PaneToolbarProps) {
     cursor: "pointer",
     lineHeight: 1,
     padding: 0,
-    transition: "color var(--motion-fast), background var(--motion-fast), border-color var(--motion-fast)",
+    transition:
+      "color var(--motion-fast), background var(--motion-fast), border-color var(--motion-fast)",
   };
 
   return (
@@ -376,7 +530,14 @@ interface PaneContextMenuProps {
   onDismiss: () => void;
 }
 
-function PaneContextMenu({ x, y, paneId, tabId, canClose, onDismiss }: PaneContextMenuProps) {
+function PaneContextMenu({
+  x,
+  y,
+  paneId,
+  tabId,
+  canClose,
+  onDismiss,
+}: PaneContextMenuProps) {
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -481,7 +642,12 @@ function PaneContextMenu({ x, y, paneId, tabId, canClose, onDismiss }: PaneConte
       />
       {canClose && (
         <>
-          <div style={{ borderTop: "1px solid var(--border-subtle)", margin: "4px 4px" }} />
+          <div
+            style={{
+              borderTop: "1px solid var(--border-subtle)",
+              margin: "4px 4px",
+            }}
+          />
           <MenuItem
             label="Close Pane"
             shortcut="Ctrl+Shift+W"
@@ -522,7 +688,11 @@ function ResizeHandle({ handle, tabId }: ResizeHandleProps) {
         const currentPos = isH ? ev.clientX : ev.clientY;
         const delta = currentPos - startPos;
         const deltaPercent = (delta / available) * 100;
-        const newSizes = resizeSizes(startSizes, handle.handleIndex, deltaPercent);
+        const newSizes = resizeSizes(
+          startSizes,
+          handle.handleIndex,
+          deltaPercent,
+        );
         updateSplitSizes(tabId, handle.splitNodeId, newSizes);
       }
 
@@ -538,7 +708,7 @@ function ResizeHandle({ handle, tabId }: ResizeHandleProps) {
       document.body.style.cursor = isH ? "col-resize" : "row-resize";
       document.body.classList.add("no-select");
     },
-    [isH, handle, tabId, updateSplitSizes]
+    [isH, handle, tabId, updateSplitSizes],
   );
 
   // Expand the hit area for easier grabbing
@@ -567,7 +737,8 @@ function ResizeHandle({ handle, tabId }: ResizeHandleProps) {
           height: isH ? "100%" : SPLIT_GAP,
           background: "var(--border-strong)",
           opacity: 0.4,
-          transition: "opacity var(--motion-fast), background var(--motion-fast)",
+          transition:
+            "opacity var(--motion-fast), background var(--motion-fast)",
           borderRadius: 1,
         }}
         onMouseEnter={(e) => {
@@ -612,7 +783,8 @@ function MeasuringFallback() {
           gap: 8,
           padding: "0 8px",
           borderBottom: "1px solid var(--border-subtle)",
-          background: "linear-gradient(180deg, var(--surface-raised), var(--surface-wash))",
+          background:
+            "linear-gradient(180deg, var(--surface-raised), var(--surface-wash))",
         }}
       >
         <span
@@ -649,7 +821,8 @@ function MeasuringFallback() {
               width: `${width}%`,
               height: 10,
               borderRadius: "var(--radius-xs)",
-              background: "linear-gradient(90deg, rgba(216, 222, 231, 0.42), rgba(216, 222, 231, 0.08))",
+              background:
+                "linear-gradient(90deg, rgba(216, 222, 231, 0.42), rgba(216, 222, 231, 0.08))",
               opacity: 0.7,
             }}
           />
@@ -662,11 +835,19 @@ function MeasuringFallback() {
 export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
   const groups = useWorkspaceStore((state) => state.groups);
   const liveGitRoots = useWorkspaceStore((state) => state.liveGitRoots);
-  const immersiveTerminal = useWorkspaceStore((state) => state.workspaceUiState.immersiveTerminal);
-  const exitImmersiveTerminal = useWorkspaceStore((state) => state.exitImmersiveTerminal);
+  const immersiveTerminal = useWorkspaceStore(
+    (state) => state.workspaceUiState.immersiveTerminal,
+  );
+  const exitImmersiveTerminal = useWorkspaceStore(
+    (state) => state.exitImmersiveTerminal,
+  );
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; paneId: string } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    paneId: string;
+  } | null>(null);
   const [hoveredPaneId, setHoveredPaneId] = useState<string | null>(null);
 
   const measureContainer = useCallback(() => {
@@ -692,7 +873,8 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
     const observer = new ResizeObserver((entries) => {
       const entry = entries[0];
       if (entry) {
-        if (entry.contentRect.width <= 0 || entry.contentRect.height <= 0) return;
+        if (entry.contentRect.width <= 0 || entry.contentRect.height <= 0)
+          return;
         setContainerSize({
           width: entry.contentRect.width,
           height: entry.contentRect.height,
@@ -717,7 +899,9 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
       ? immersiveTerminal.paneId
       : null;
   const leafIds = immersivePaneId
-    ? getAllLeafIds(tab.splitLayout).filter((paneId) => paneId === immersivePaneId)
+    ? getAllLeafIds(tab.splitLayout).filter(
+        (paneId) => paneId === immersivePaneId,
+      )
     : getAllLeafIds(tab.splitLayout);
   const multiplePanes = countLeaves(tab.splitLayout) > 1;
 
@@ -738,12 +922,12 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
       ref={containerRef}
       style={{ position: "relative", width: "100%", height: "100%" }}
     >
-      {(containerSize.width <= 0 || containerSize.height <= 0) && <MeasuringFallback />}
+      {(containerSize.width <= 0 || containerSize.height <= 0) && (
+        <MeasuringFallback />
+      )}
       {/* Terminal panes — stable keys, absolute positioning */}
       {leafIds.map((paneId) => {
-        const bounds = immersivePaneId
-          ? containerRect
-          : paneBounds.get(paneId);
+        const bounds = immersivePaneId ? containerRect : paneBounds.get(paneId);
         if (!bounds || bounds.width <= 0 || bounds.height <= 0) return null;
 
         const isActive = paneId === tab.activePaneId;
@@ -754,69 +938,96 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
         const project = projectForTab(tab, groups);
         const paneContext = project
           ? `${project.name} · ${pathTail(paneCwd)}`
-          : paneCwd ?? sessionLabel ?? tab.title;
-        const paneTerminal = tab.terminals.find((terminal) => terminal.paneId === paneId);
+          : (paneCwd ?? sessionLabel ?? tab.title);
+        const paneTerminal = tab.terminals.find(
+          (terminal) => terminal.paneId === paneId,
+        );
         const terminalStatus = paneTerminal?.status ?? "starting";
         const terminalStatusLabel = STATUS_LABELS[terminalStatus];
-        const queuedWorkstreamInput = tab.workstream?.inputQueue?.find((input) => !input.sentAt);
+        const queuedWorkstreamInput = tab.workstream?.inputQueue?.find(
+          (input) => !input.sentAt,
+        );
         const workstreamInputs = tab.workstream?.inputQueue ?? [];
-        const latestWorkstreamInput = workstreamInputs[workstreamInputs.length - 1];
-        const latestMissionControlInput = latestWorkstreamInput?.source === "mission-control" ? latestWorkstreamInput : undefined;
-        const agentStatusSummary = tab.workstream?.kind === "agent"
-          ? agentStatusSummaryFromWorkstream(tab.workstream)
-          : null;
-        const agentStatusChip = tab.workstream?.kind === "agent" && agentStatusSummary
-          ? agentStatusChipText(tab.workstream, agentStatusSummary)
-          : null;
-        const shellExtractedSummary = !agentStatusSummary && !isPreviewPane && paneTerminal
-          ? getDisplaySummary({
-              mission: "Terminal",
-              provider: "shell",
-              status: terminalStatus === "failed"
-                ? "failed"
-                : terminalStatus === "exited"
-                  ? "done"
-                  : terminalStatus === "running" || terminalStatus === "reconnected"
-                    ? "running"
-                    : "ready",
-              cwd: paneCwd,
-              currentActivity: paneTerminal.currentActivity,
-              terminalOutput: paneTerminal.terminalOutput,
-              terminalVisibleText: paneTerminal.terminalVisibleText,
-            }, paneTerminal.statusSummary)
-          : null;
+        const latestWorkstreamInput =
+          workstreamInputs[workstreamInputs.length - 1];
+        const latestMissionControlInput =
+          latestWorkstreamInput?.source === "mission-control"
+            ? latestWorkstreamInput
+            : undefined;
+        const agentStatusSummary =
+          tab.workstream?.kind === "agent"
+            ? agentStatusSummaryFromWorkstream(tab.workstream)
+            : null;
+        const agentStatusChip =
+          tab.workstream?.kind === "agent" && agentStatusSummary
+            ? agentStatusChipText(tab.workstream, agentStatusSummary)
+            : null;
+        const shellExtractedSummary =
+          !agentStatusSummary && !isPreviewPane && paneTerminal
+            ? getDisplaySummary(
+                {
+                  mission: "Terminal",
+                  provider: "shell",
+                  status:
+                    terminalStatus === "failed"
+                      ? "failed"
+                      : terminalStatus === "exited"
+                        ? "done"
+                        : terminalStatus === "running" ||
+                            terminalStatus === "reconnected"
+                          ? "running"
+                          : "ready",
+                  cwd: paneCwd,
+                  currentActivity: paneTerminal.currentActivity,
+                  terminalOutput: paneTerminal.terminalOutput,
+                  terminalVisibleText: paneTerminal.terminalVisibleText,
+                },
+                paneTerminal.statusSummary,
+              )
+            : null;
         const visibleTaskLineup = pickVisibleTaskLineup(
           tab.workstream?.taskLineup ?? paneTerminal?.taskLineup,
-          paneTerminal?.activeRunId
+          paneTerminal?.activeRunId,
         );
         const terminalPurpose = terminalPurposeFromContext({
           stored: paneTerminal?.purpose,
           workstreamTitle: tab.workstream?.mission ?? tab.workstream?.prompt,
-          activeTaskTitle: visibleTaskLineup.find((item) => item.status === "in_progress")?.content ?? visibleTaskLineup[0]?.content,
-          terminalOutput: !paneTerminal?.durableActivity ||
+          activeTaskTitle:
+            visibleTaskLineup.find((item) => item.status === "in_progress")
+              ?.content ?? visibleTaskLineup[0]?.content,
+          terminalOutput:
+            !paneTerminal?.durableActivity ||
             /\bWorking\s+\(|\bImplement this plan\?|\bpress enter to confirm\b|\benter to select\b|\bcodex\s+resume\s+[0-9a-f-]{20,}|\bbackground terminal running\b|\b(?:systemctl|\.service|Loaded:\s+loaded|transient\/run-|--user|Hermes Desktop is running)\b/i.test(
-              paneTerminal?.terminalVisibleText || paneTerminal?.terminalOutput || "",
+              paneTerminal?.terminalVisibleText ||
+                paneTerminal?.terminalOutput ||
+                "",
             )
-            ? paneTerminal?.terminalVisibleText || paneTerminal?.terminalOutput
-            : undefined,
+              ? paneTerminal?.terminalVisibleText ||
+                paneTerminal?.terminalOutput
+              : undefined,
         });
-        const shellOutputClosedRaw = terminalOutputClosesTaskLineup(paneTerminal?.terminalOutput);
+        const shellOutputClosedRaw = terminalOutputClosesTaskLineup(
+          paneTerminal?.terminalOutput,
+        );
         const shellWaitingForOperator =
           shellExtractedSummary?.status === "waiting" &&
           shellExtractedSummary.now === "Waiting for operator selection";
-        const shellAtReadyPrompt =
-          terminalTextLooksReadyPrompt(paneTerminal?.terminalVisibleText);
+        const shellAtReadyPrompt = terminalTextLooksReadyPrompt(
+          paneTerminal?.terminalVisibleText,
+        );
         const shellActivityLive =
           paneTerminal?.durableActivity?.status === "running";
         const shellHasConcreteVisibleSummary = Boolean(
           shellExtractedSummary?.provider === "shell" &&
-            shellExtractedSummary.confidence === "high" &&
-            /^(?:Playwright test|Running daily regression hunt|Running Yahav scrape)$/i.test(shellExtractedSummary.task),
+          shellExtractedSummary.confidence === "high" &&
+          /^(?:Playwright test|Running daily regression hunt|Running Yahav scrape)$/i.test(
+            shellExtractedSummary.task,
+          ),
         );
         const shellDurableActivityUsable = Boolean(
           paneTerminal?.durableActivity &&
           paneTerminal.durableActivity.status === "running" &&
-          shellActivityLive
+          shellActivityLive,
         );
         const shellOutputClosed =
           shellOutputClosedRaw &&
@@ -828,32 +1039,38 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
           !shellActivityLive &&
           !shellHasConcreteVisibleSummary &&
           !visibleTaskLineup.some((item) => item.source === "todo-write");
-        const shellClosedSummary: WorkstreamStatusSummary | null = shellOutputClosed || shellReadyPromptCloses
-          ? {
-              ...(shellExtractedSummary ?? {}),
-              task: "Idle",
-              path: paneCwd ?? pathTail(paneCwd) ?? "workspace path unknown",
-              now: "Idle",
-              status: "idle",
-              provider: "shell",
-              confidence: "high",
-              tasksFromTodoWrite: false,
-            }
-          : null;
-        const shellStatusSummaryBaseRaw = !agentStatusSummary && !isPreviewPane && paneTerminal
-          ? shellClosedSummary
+        const shellClosedSummary: WorkstreamStatusSummary | null =
+          shellOutputClosed || shellReadyPromptCloses
+            ? {
+                ...(shellExtractedSummary ?? {}),
+                task: "Idle",
+                path: paneCwd ?? pathTail(paneCwd) ?? "workspace path unknown",
+                now: "Idle",
+                status: "idle",
+                provider: "shell",
+                confidence: "high",
+                tasksFromTodoWrite: false,
+              }
+            : null;
+        const shellStatusSummaryBaseRaw =
+          !agentStatusSummary && !isPreviewPane && paneTerminal
             ? shellClosedSummary
-            : shellDurableActivityUsable && paneTerminal.durableActivity
-            ? summaryFromDurableActivity(
-                paneTerminal.durableActivity,
-                paneCwd ?? pathTail(paneCwd) ?? "workspace path unknown",
-                shellExtractedSummary ?? undefined,
-                undefined,
-              )
-            : shellExtractedSummary
-              ? normalizePersistedShellSummary(shellExtractedSummary, paneCwd ?? pathTail(paneCwd) ?? "workspace path unknown", terminalPurpose)
-              : null
-          : null;
+              ? shellClosedSummary
+              : shellDurableActivityUsable && paneTerminal.durableActivity
+                ? summaryFromDurableActivity(
+                    paneTerminal.durableActivity,
+                    paneCwd ?? pathTail(paneCwd) ?? "workspace path unknown",
+                    shellExtractedSummary ?? undefined,
+                    undefined,
+                  )
+                : shellExtractedSummary
+                  ? normalizePersistedShellSummary(
+                      shellExtractedSummary,
+                      paneCwd ?? pathTail(paneCwd) ?? "workspace path unknown",
+                      terminalPurpose,
+                    )
+                  : null
+            : null;
         const shellStatusSummaryBase = shellStatusSummaryBaseRaw;
         // The agent's real task list (sidecar) wins the title/now over heuristic
         // inference — see preferRealTaskSummary. (TC-033)
@@ -866,16 +1083,20 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
             ? neutralHeaderTitle(terminalStatus)
             : shellStatusSummaryBase?.status === "blocked"
               ? "Needs attention"
-              : shellStatusSummaryBase?.status === "done" || shellStatusSummaryBase?.status === "idle"
+              : shellStatusSummaryBase?.status === "done" ||
+                  shellStatusSummaryBase?.status === "idle"
                 ? "Idle"
                 : neutralHeaderTitle(terminalStatus);
         const storedMainUserAskApplies = Boolean(
           paneTerminal?.mainUserAsk &&
-            (!paneTerminal.mainUserAsk.runId ||
-              !paneTerminal.activeRunId ||
-              paneTerminal.mainUserAsk.runId === paneTerminal.activeRunId),
+          (!paneTerminal.mainUserAsk.runId ||
+            !paneTerminal.activeRunId ||
+            paneTerminal.mainUserAsk.runId === paneTerminal.activeRunId),
         );
-        const linkedProject = projectForTab(tab, useWorkspaceStore.getState().groups);
+        const linkedProject = projectForTab(
+          tab,
+          useWorkspaceStore.getState().groups,
+        );
         const shellHeader = shellStatusSummaryBase
           ? buildTerminalHeaderState({
               paneId,
@@ -884,24 +1105,33 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
               project: linkedProject,
               liveCwd: paneCwd,
               liveGitRoot:
-                (paneTerminal ? liveGitRoots[paneTerminal.id] : undefined) || tab.workstream?.gitRoot || undefined,
+                (paneTerminal ? liveGitRoots[paneTerminal.id] : undefined) ||
+                tab.workstream?.gitRoot ||
+                undefined,
               terminalStatus,
-              taskLineup: tab.workstream?.taskLineup ?? paneTerminal?.taskLineup,
+              taskLineup:
+                tab.workstream?.taskLineup ?? paneTerminal?.taskLineup,
               activeRunId: paneTerminal?.activeRunId,
-              mainUserAsk: storedMainUserAskApplies ? paneTerminal?.mainUserAsk : undefined,
+              mainUserAsk: storedMainUserAskApplies
+                ? paneTerminal?.mainUserAsk
+                : undefined,
               statusSummary: paneTerminal?.statusSummary,
+              taskLine: paneTerminal?.taskLine,
               summary: shellStatusSummaryBase,
               neutralTitle: shellNeutralTitle ?? null,
               contextPurposeTitle: terminalPurpose?.title,
               contextPurposeSource: terminalPurpose?.source,
-              workstreamTitle: tab.workstream?.mission ?? tab.workstream?.prompt,
+              workstreamTitle:
+                tab.workstream?.mission ?? tab.workstream?.prompt,
               // A visible "Working (…)" / "esc to interrupt" marker means the agent is
               // active right now even without a task list → don't render "Awaiting next
               // action" as the title.
               activelyWorking:
                 shellActivityLive ||
                 /\bWorking\s+\(|esc to interrupt\b/i.test(
-                  paneTerminal?.terminalVisibleText ?? paneTerminal?.terminalOutput ?? "",
+                  paneTerminal?.terminalVisibleText ??
+                    paneTerminal?.terminalOutput ??
+                    "",
                 ),
               trustedActivitySummary:
                 shellDurableActivityUsable ||
@@ -909,30 +1139,34 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                 shellStatusSummaryBase.now === "Waiting for operator selection",
             })
           : null;
-        const shellStatusSummary = shellHeader && shellStatusSummaryBase
-          ? {
-              ...shellStatusSummaryBase,
-              task: shellHeader.currentActivity,
-              path:
-                shellDurableActivityUsable &&
-                !/\.(?:tsx?|jsx?|mjs|cjs|rs|md|json|sh|py)$/i.test(shellStatusSummaryBase.path ?? "")
-                  ? shellStatusSummaryBase.path
-                  : shellHeader.fullPath,
-              now:
-                shellDurableActivityUsable
+        const shellStatusSummary =
+          shellHeader && shellStatusSummaryBase
+            ? {
+                ...shellStatusSummaryBase,
+                task: shellHeader.currentActivity,
+                path:
+                  shellDurableActivityUsable &&
+                  !/\.(?:tsx?|jsx?|mjs|cjs|rs|md|json|sh|py)$/i.test(
+                    shellStatusSummaryBase.path ?? "",
+                  )
+                    ? shellStatusSummaryBase.path
+                    : shellHeader.fullPath,
+                now: shellDurableActivityUsable
                   ? shellStatusSummaryBase.now
                   : shellHeader.sources.goal === "task-tool" &&
                       shellHeader.currentActivity === shellHeader.goalLabel
-                    ? shellNeutralTitle ?? shellStatusSummaryBase.now
+                    ? (shellNeutralTitle ?? shellStatusSummaryBase.now)
                     : shellHeader.currentActivity,
-            }
-          : null;
+              }
+            : null;
         const isAgentPane = Boolean(agentStatusSummary);
         const isShellSummaryPane = Boolean(shellStatusSummary);
-        const taskSidebarCollapsed = paneTerminal?.taskSidebarCollapsed ?? false;
+        const taskSidebarCollapsed =
+          paneTerminal?.taskSidebarCollapsed ?? false;
         const paneActivity = !isPreviewPane
           ? tab.workstream?.kind === "agent"
-            ? agentStatusSummary?.now ?? workstreamActivityText(tab.workstream)
+            ? (agentStatusSummary?.now ??
+              workstreamActivityText(tab.workstream))
             : shellStatusSummary?.now
           : null;
         // Anti-flicker: the title + activity line re-derive on every ~1.2–2s poll and the
@@ -942,8 +1176,18 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
         const stabilizedHeader = stableHeader(
           `split:${tab.id}:${paneId}`,
           {
-            title: ((isAgentPane ? agentStatusSummary?.task : shellHeader?.currentActivity) ?? "").toString(),
-            now: ((isAgentPane ? agentStatusSummary?.now : shellStatusSummary?.now ?? shellHeader?.currentActivity ?? paneActivity) ?? "").toString(),
+            title: (
+              (isAgentPane
+                ? agentStatusSummary?.task
+                : shellHeader?.currentActivity) ?? ""
+            ).toString(),
+            now: (
+              (isAgentPane
+                ? agentStatusSummary?.now
+                : (shellStatusSummary?.now ??
+                  shellHeader?.currentActivity ??
+                  paneActivity)) ?? ""
+            ).toString(),
           },
           {
             nowMs: Date.now(),
@@ -964,7 +1208,9 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
           agentStatusSummary?.status,
         );
         const splitAttention = badgeForAttention(splitAttentionState);
-        const shellHeaderPath = shellDurableActivityUsable ? shellStatusSummaryBase?.path : shellHeader?.fullPath;
+        const shellHeaderPath = shellDurableActivityUsable
+          ? shellStatusSummaryBase?.path
+          : shellHeader?.fullPath;
         const paneOutput = !isPreviewPane
           ? tab.workstream?.kind === "agent"
             ? tab.workstream.terminalOutput?.trim()
@@ -972,7 +1218,9 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
           : undefined;
         const chromeHeight = isAgentPane
           ? 68 + (latestMissionControlInput ? 16 : 0) + (paneOutput ? 16 : 0)
-          : isShellSummaryPane ? 58 : 24;
+          : isShellSummaryPane
+            ? 58
+            : 24;
         const showActions = hoveredPaneId === paneId || isActive;
 
         return (
@@ -1002,11 +1250,15 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
               borderRadius: isImmersivePane ? 0 : "var(--radius-md)",
               boxShadow: isImmersivePane
                 ? "none"
-                : isActive ? "var(--shadow-active-pane)" : "0 0 0 1px rgba(0, 0, 0, 0.12)",
+                : isActive
+                  ? "var(--shadow-active-pane)"
+                  : "0 0 0 1px rgba(0, 0, 0, 0.12)",
               transition: isImmersivePane
                 ? "none"
                 : "box-shadow var(--motion-med), border-color var(--motion-med), background var(--motion-med)",
-              animation: isImmersivePane ? "none" : "workbench-surface-in var(--motion-med)",
+              animation: isImmersivePane
+                ? "none"
+                : "workbench-surface-in var(--motion-med)",
             }}
             onClick={() => {
               useWorkspaceStore.getState().setActivePane(tab.id, paneId);
@@ -1017,7 +1269,11 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
               setContextMenu({ x: e.clientX, y: e.clientY, paneId });
             }}
             onMouseEnter={() => setHoveredPaneId(paneId)}
-            onMouseLeave={() => setHoveredPaneId((current) => current === paneId ? null : current)}
+            onMouseLeave={() =>
+              setHoveredPaneId((current) =>
+                current === paneId ? null : current,
+              )
+            }
           >
             {(isAgentPane || isShellSummaryPane) && (
               <CockpitSnapshotProbe
@@ -1026,34 +1282,67 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                   terminalId: paneTerminal?.id,
                   tabId: tab.id,
                   cwd: paneCwd ?? undefined,
-                  path: isAgentPane ? agentStatusSummary?.path : shellHeader?.fullPath,
+                  path: isAgentPane
+                    ? agentStatusSummary?.path
+                    : shellHeader?.fullPath,
                   workspace: isAgentPane
                     ? linkedProject?.name
                     : shellHeader?.workspace,
                   projectEmoji: linkedProject?.emoji,
                   kind: isAgentPane ? "agent" : "shell",
-                  task: isAgentPane ? agentStatusSummary?.task : shellHeader?.goalLabel,
-                  taskSource: isAgentPane ? "agent-status" : shellHeader?.sources.goal,
+                  task: isAgentPane
+                    ? agentStatusSummary?.task
+                    : shellHeader?.goalLabel,
+                  taskSource: isAgentPane
+                    ? "agent-status"
+                    : shellHeader?.sources.goal,
                   title: headerTitle,
-                  titleSource: isAgentPane ? "agent-status" : shellHeader?.sources.activity,
+                  titleSource: isAgentPane
+                    ? "agent-status"
+                    : shellHeader?.sources.activity,
                   now: headerNow,
-                  nowSource: isAgentPane ? "agent-status" : shellHeader?.sources.activity,
+                  nowSource: isAgentPane
+                    ? "agent-status"
+                    : shellHeader?.sources.activity,
                   status: terminalStatus,
-                  tasksFromTodoWrite: (isAgentPane ? tab.workstream?.statusSummary : paneTerminal?.statusSummary)?.tasksFromTodoWrite,
-                  narration: (isAgentPane ? tab.workstream?.statusSummary : paneTerminal?.statusSummary)?.narration,
+                  tasksFromTodoWrite: (isAgentPane
+                    ? tab.workstream?.statusSummary
+                    : paneTerminal?.statusSummary
+                  )?.tasksFromTodoWrite,
+                  narration: (isAgentPane
+                    ? tab.workstream?.statusSummary
+                    : paneTerminal?.statusSummary
+                  )?.narration,
                   durableActivityTitle: paneTerminal?.durableActivity?.title,
                   currentActivity: paneTerminal?.currentActivity,
                   terminalOutput: paneTerminal?.terminalOutput?.slice(-1800),
-                  terminalVisibleText: paneTerminal?.terminalVisibleText?.slice(-1800),
-                  terminalVisibleTextUpdatedAt: paneTerminal?.terminalVisibleTextUpdatedAt,
+                  terminalVisibleText:
+                    paneTerminal?.terminalVisibleText?.slice(-1800),
+                  terminalVisibleTextUpdatedAt:
+                    paneTerminal?.terminalVisibleTextUpdatedAt,
                   statusSummarySource: paneTerminal?.statusSummarySource,
                   statusSummaryError: paneTerminal?.statusSummaryError,
                   statusSummaryUpdatedAt: paneTerminal?.statusSummaryUpdatedAt,
-                  statusSummaryNarration: (isAgentPane ? tab.workstream?.statusSummary : paneTerminal?.statusSummary)?.narration,
-                  statusSummaryTask: (isAgentPane ? tab.workstream?.statusSummary : paneTerminal?.statusSummary)?.task,
-                  statusSummaryNow: (isAgentPane ? tab.workstream?.statusSummary : paneTerminal?.statusSummary)?.now,
-                  statusSummaryPath: (isAgentPane ? tab.workstream?.statusSummary : paneTerminal?.statusSummary)?.path,
-                  taskLineup: visibleTaskLineup.map((item) => ({ content: item.content, status: item.status })),
+                  statusSummaryNarration: (isAgentPane
+                    ? tab.workstream?.statusSummary
+                    : paneTerminal?.statusSummary
+                  )?.narration,
+                  statusSummaryTask: (isAgentPane
+                    ? tab.workstream?.statusSummary
+                    : paneTerminal?.statusSummary
+                  )?.task,
+                  statusSummaryNow: (isAgentPane
+                    ? tab.workstream?.statusSummary
+                    : paneTerminal?.statusSummary
+                  )?.now,
+                  statusSummaryPath: (isAgentPane
+                    ? tab.workstream?.statusSummary
+                    : paneTerminal?.statusSummary
+                  )?.path,
+                  taskLineup: visibleTaskLineup.map((item) => ({
+                    content: item.content,
+                    status: item.status,
+                  })),
                   debug: isAgentPane
                     ? undefined
                     : {
@@ -1072,7 +1361,8 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                   left: 0,
                   right: 0,
                   height: 1,
-                  background: "linear-gradient(90deg, transparent, var(--accent-live) 8%, var(--accent-live) 92%, transparent)",
+                  background:
+                    "linear-gradient(90deg, transparent, var(--accent-live) 8%, var(--accent-live) 92%, transparent)",
                   zIndex: 2,
                 }}
               />
@@ -1125,9 +1415,11 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                     alignItems: "center",
                     gap: 7,
                     padding: "0 10px",
-                    border: "1px solid color-mix(in srgb, var(--accent-live) 42%, transparent)",
+                    border:
+                      "1px solid color-mix(in srgb, var(--accent-live) 42%, transparent)",
                     borderRadius: 6,
-                    background: "color-mix(in srgb, var(--accent-live) 16%, var(--surface-raised))",
+                    background:
+                      "color-mix(in srgb, var(--accent-live) 16%, var(--surface-raised))",
                     color: "var(--text-primary)",
                     fontSize: 12,
                     fontWeight: 500,
@@ -1140,443 +1432,639 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
               </div>
             )}
             {!isImmersivePane && (
-            <div
-              style={{
-                height: chromeHeight,
-                minHeight: chromeHeight,
-                display: isAgentPane || isShellSummaryPane ? "grid" : "flex",
-                gridTemplateRows: isAgentPane || isShellSummaryPane ? "auto auto" : undefined,
-                alignItems: isAgentPane || isShellSummaryPane ? "stretch" : "center",
-                gap: isAgentPane ? 6 : isShellSummaryPane ? 5 : 8,
-                padding: isAgentPane ? "8px 9px 7px" : isShellSummaryPane ? "7px 8px 6px" : "0 7px",
-                borderBottom: "1px solid var(--border-subtle)",
-                background: isActive ? "#202527" : "#1d2224",
-                color: "var(--text-secondary)",
-                cursor: "default",
-              }}
-            >
-              {isAgentPane && agentStatusSummary ? (
-                <>
-                <div
-                  style={{
-                    minWidth: 0,
-                    display: "grid",
-                    gridTemplateColumns: "auto auto minmax(0, 1fr) auto auto",
-                    alignItems: "center",
-                    gap: 8,
-                  }}
-                >
-                  <span
-                    className="terminal-pane-status-dot"
-                    style={{
-                      width: 7,
-                      height: 7,
-                      borderRadius: "50%",
-                      background: STATUS_COLORS[terminalStatus],
-                      opacity: isActive ? 1 : 0.7,
-                      boxShadow: isActive ? `0 0 0 3px color-mix(in srgb, ${STATUS_COLORS[terminalStatus]} 16%, transparent)` : "none",
-                    }}
-                    title={`Terminal ${terminalStatusLabel}`}
-                  />
-                  <TerminalSquare
-                    size={13}
-                    strokeWidth={1.8}
-                    color={isActive ? "var(--accent-live)" : "var(--text-secondary)"}
-                  />
-                  <div
-                    style={{
-                      minWidth: 0,
-                      display: "flex",
-                      alignItems: "baseline",
-                      gap: 5,
-                      overflow: "hidden",
-                      color: isActive ? "var(--text-primary)" : "var(--text-secondary)",
-                      fontSize: 13,
-                      fontWeight: 500,
-                    }}
-                    title={`Now Active: ${headerTitle}`}
-                  >
-                    <span style={{ flexShrink: 0, color: "var(--text-tertiary)", fontSize: 10, fontWeight: 600, textTransform: "uppercase" }}>Now Active:</span>
-                    <span
-                      data-testid="split-agent-working-on"
-                      style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-                    >
-                      {headerTitle}
-                    </span>
-                  </div>
-                  <span
-                    data-testid="split-attention"
-                    data-attention-state={splitAttentionState}
-                    style={{
-                      flexShrink: 0,
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 5,
-                      height: 20,
-                      padding: "0 8px",
-                      borderRadius: 999,
-                      fontSize: 11,
-                      fontWeight: 600,
-                      whiteSpace: "nowrap",
-                      color: splitAttention.color,
-                      border: `1px solid color-mix(in srgb, ${splitAttention.color} 45%, transparent)`,
-                      background: `color-mix(in srgb, ${splitAttention.color} 14%, transparent)`,
-                    }}
-                    title={splitAttention.label}
-                  >
-                    <span style={{ width: 6, height: 6, borderRadius: "50%", background: splitAttention.color, flexShrink: 0 }} />
-                    {splitAttention.label}
-                  </span>
-                  <span
-                    style={{
-                      minWidth: 92,
-                      height: 18,
-                      display: "inline-flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      padding: "0 7px",
-                      border: "1px solid var(--border-subtle)",
-                      borderRadius: "var(--radius-xs)",
-                      background: "var(--surface-base)",
-                      color: "var(--text-secondary)",
-                      fontSize: 10,
-                      textTransform: "uppercase",
-                    }}
-                    title={agentStatusChip ?? `${agentStatusSummary.provider} · ${agentStatusSummary.status}`}
-                  >
-                    {agentStatusChip ?? `${agentStatusSummary.provider} · ${agentStatusSummary.status}`}
-                  </span>
-                  <PaneToolbar
-                    paneId={paneId}
-                    tabId={tab.id}
-                    canClose={multiplePanes}
-                    visible={showActions}
-                  />
-                </div>
-                <div
-                  style={{
-                    minWidth: 0,
-                    display: "grid",
-                    gridTemplateColumns: "minmax(0, 1fr)",
-                    gap: 0,
-                    alignItems: "center",
-                  }}
-                >
-                  <div
-                    data-testid="split-agent-status-path"
-                    style={{
-                      minWidth: 0,
-                      display: "flex",
-                      alignItems: "baseline",
-                      gap: 5,
-                      overflow: "hidden",
-                      color: "var(--text-secondary)",
-                      fontSize: 11,
-                    }}
-                    title={agentStatusSummary.path}
-                  >
-                    <span style={{ flexShrink: 0, color: "var(--text-tertiary)", fontSize: 10 }}>Path</span>
-                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{agentStatusSummary.path}</span>
-                  </div>
-                  <div
-                    data-testid="split-agent-pane-now"
-                    style={{
-                      minWidth: 0,
-                      display: "flex",
-                      alignItems: "baseline",
-                      gap: 5,
-                      overflow: "hidden",
-                      color: isActive ? "var(--text-primary)" : "var(--text-secondary)",
-                      fontSize: 11,
-                      fontWeight: 500,
-                    }}
-                    title={headerNow}
-                  >
-                    <span style={{ flexShrink: 0, color: "var(--text-tertiary)", fontSize: 10, textTransform: "uppercase" }}>Now</span>
-                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{headerNow}</span>
-                  </div>
-                </div>
-                {latestMissionControlInput && (
-                  <div
-                    data-testid="split-agent-pane-ask"
-                    style={{
-                      minWidth: 0,
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                      color: "var(--text-secondary)",
-                      fontSize: 10,
-                      fontWeight: 500,
-                    }}
-                    title={latestMissionControlInput.text}
-                  >
-                    Ask · {latestMissionControlInput.label ?? "Mission control"} · {latestMissionControlInput.sentAt ? "sent" : "queued"} · {latestMissionControlInput.text}
-                  </div>
-                )}
-                {paneOutput && (
-                  <div
-                    data-testid="split-agent-pane-output"
-                    style={{
-                      minWidth: 0,
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                      color: "var(--text-secondary)",
-                      fontSize: 10,
-                      fontWeight: 500,
-                    }}
-                    title={paneOutput}
-                  >
-                    Output: {paneOutput}
-                  </div>
-                )}
-                </>
-              ) : shellStatusSummary ? (
-                <>
-                <div
-                  style={{
-                    minWidth: 0,
-                    display: "grid",
-                    gridTemplateColumns: "auto auto minmax(0, 1fr) auto",
-                    alignItems: "center",
-                    gap: 7,
-                  }}
-                >
-                  <span
-                    className="terminal-pane-status-dot"
-                    style={{
-                      width: 7,
-                      height: 7,
-                      borderRadius: "50%",
-                      background: STATUS_COLORS[terminalStatus],
-                      opacity: isActive ? 1 : 0.7,
-                      boxShadow: isActive ? `0 0 0 3px color-mix(in srgb, ${STATUS_COLORS[terminalStatus]} 16%, transparent)` : "none",
-                    }}
-                    title={`Terminal ${terminalStatusLabel}`}
-                  />
-                  <TerminalSquare
-                    size={13}
-                    strokeWidth={1.8}
-                    color={isActive ? "var(--accent-live)" : "var(--text-secondary)"}
-                  />
-                  <div
-                    style={{
-                      minWidth: 0,
-                      display: "flex",
-                      alignItems: "baseline",
-                      gap: 5,
-                      overflow: "hidden",
-                      color: isActive ? "var(--text-primary)" : "var(--text-secondary)",
-                      fontSize: 13,
-                      fontWeight: 500,
-                    }}
-                    title={`Now Active: ${headerTitle}`}
-                  >
-                    <span style={{ flexShrink: 0, color: "var(--text-tertiary)", fontSize: 10, fontWeight: 600, textTransform: "uppercase" }}>Now Active:</span>
-                    <span
-                      data-testid="split-terminal-summary-task"
-                      style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-                    >
-                      {headerTitle}
-                    </span>
-                  </div>
-                  <span
-                    data-testid="split-attention"
-                    data-attention-state={splitAttentionState}
-                    style={{
-                      flexShrink: 0,
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 5,
-                      height: 20,
-                      padding: "0 8px",
-                      borderRadius: 999,
-                      fontSize: 11,
-                      fontWeight: 600,
-                      whiteSpace: "nowrap",
-                      color: splitAttention.color,
-                      border: `1px solid color-mix(in srgb, ${splitAttention.color} 45%, transparent)`,
-                      background: `color-mix(in srgb, ${splitAttention.color} 14%, transparent)`,
-                    }}
-                    title={splitAttention.label}
-                  >
-                    <span style={{ width: 6, height: 6, borderRadius: "50%", background: splitAttention.color, flexShrink: 0 }} />
-                    {splitAttention.label}
-                  </span>
-                  <PaneToolbar
-                    paneId={paneId}
-                    tabId={tab.id}
-                    canClose={multiplePanes}
-                    visible={showActions}
-                  />
-                </div>
-                <div
-                  style={{
-                    minWidth: 0,
-                    display: "grid",
-                    gridTemplateColumns: "minmax(0, 1fr)",
-                    gap: 0,
-                    alignItems: "center",
-                  }}
-                >
-                  <div
-                    data-testid="split-terminal-summary-path"
-                    style={{
-                      minWidth: 0,
-                      display: "flex",
-                      alignItems: "baseline",
-                      gap: 5,
-                      overflow: "visible",
-                      color: "var(--text-secondary)",
-                      fontSize: 11,
-                    }}
-                    title={shellHeaderPath}
-                  >
-                    <span style={{ flexShrink: 0, color: "var(--text-tertiary)", fontSize: 10, textTransform: "uppercase" }}>Path</span>
-                    <span style={{ minWidth: 0, overflow: "visible", overflowWrap: "anywhere", whiteSpace: "normal" }}>{shellHeaderPath}</span>
-                  </div>
-                  <div
-                    data-testid="split-terminal-summary-now"
-                    style={{
-                      display: "none",
-                    }}
-                    title={headerNow}
-                  >
-                    <span style={{ flexShrink: 0, color: "var(--text-tertiary)", fontSize: 10 }}>Now</span>
-                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{headerNow}</span>
-                  </div>
-                </div>
-                </>
-              ) : (
-              <>
-              <span
-                className="terminal-pane-status-dot"
+              <div
                 style={{
-                  width: 7,
-                  height: 7,
-                  borderRadius: "50%",
-                  background: STATUS_COLORS[terminalStatus],
-                  opacity: isActive ? 1 : 0.7,
-                  boxShadow: isActive ? `0 0 0 3px color-mix(in srgb, ${STATUS_COLORS[terminalStatus]} 16%, transparent)` : "none",
-                  flexShrink: 0,
+                  height: chromeHeight,
+                  minHeight: chromeHeight,
+                  display: isAgentPane || isShellSummaryPane ? "grid" : "flex",
+                  gridTemplateRows:
+                    isAgentPane || isShellSummaryPane ? "auto auto" : undefined,
+                  alignItems:
+                    isAgentPane || isShellSummaryPane ? "stretch" : "center",
+                  gap: isAgentPane ? 6 : isShellSummaryPane ? 5 : 8,
+                  padding: isAgentPane
+                    ? "8px 9px 7px"
+                    : isShellSummaryPane
+                      ? "7px 8px 6px"
+                      : "0 7px",
+                  borderBottom: "1px solid var(--border-subtle)",
+                  background: isActive ? "#202527" : "#1d2224",
+                  color: "var(--text-secondary)",
+                  cursor: "default",
                 }}
-                title={isPreviewPane ? "Localhost preview" : `Terminal ${terminalStatusLabel}`}
-              />
-              {isPreviewPane ? (
-                <Globe
-                  size={13}
-                  strokeWidth={1.8}
-                  color={isActive ? "var(--accent-live)" : "var(--text-secondary)"}
-                />
-              ) : (
-                <TerminalSquare
-                  size={13}
-                  strokeWidth={1.8}
-                  color={isActive ? "var(--accent-live)" : "var(--text-secondary)"}
-                />
-              )}
-              <span
-                className="terminal-pane-status-pill"
-                data-testid={agentStatusSummary ? "split-agent-working-on" : paneActivity ? "split-agent-pane-context" : undefined}
-                data-status={terminalStatus}
-                style={{
-                  minWidth: 0,
-                  flex: paneActivity ? "0 1 45%" : 1,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                  color: isActive ? "var(--text-primary)" : "var(--text-secondary)",
-                  fontSize: 12,
-                  fontWeight: 500,
-                }}
-                title={agentStatusSummary ? agentStatusSummary.path : isPreviewPane ? paneNode.previewUrl : project?.projectRoot ?? paneCwd ?? tab.title}
               >
-                {agentStatusSummary ? `Working on: ${headerTitle}` : isPreviewPane ? paneNode.previewUrl ?? "Localhost preview" : paneContext}
-              </span>
-              {paneActivity && (
-                <span
-                  data-testid="split-agent-pane-now"
-                  style={{
-                    minWidth: 0,
-                    flex: paneOutput ? "1 1 40%" : "1 1 auto",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                    color: isActive ? "var(--text-primary)" : "var(--text-secondary)",
-                    fontSize: 11,
-                    fontWeight: 500,
-                  }}
-                  title={headerNow || paneActivity}
-                >
-                  Now: {headerNow || paneActivity}
-                </span>
-              )}
-              {latestMissionControlInput && (
-                <span
-                  data-testid="split-agent-pane-ask"
-                  style={{
-                    minWidth: 0,
-                    flex: "1 1 28%",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                    color: isActive ? "var(--text-primary)" : "var(--text-secondary)",
-                    fontSize: 11,
-                    fontWeight: 500,
-                  }}
-                  title={latestMissionControlInput.text}
-                >
-                  Ask: {latestMissionControlInput.label ?? "Mission control"} · {latestMissionControlInput.sentAt ? "sent" : "queued"} · {latestMissionControlInput.text}
-                </span>
-              )}
-              {paneOutput && (
-                <span
-                  data-testid="split-agent-pane-output"
-                  style={{
-                    minWidth: 0,
-                    flex: "1 1 28%",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                    color: isActive ? "var(--text-primary)" : "var(--text-secondary)",
-                    fontSize: 11,
-                    fontWeight: 500,
-                  }}
-                  title={paneOutput}
-                >
-                  Output: {paneOutput}
-                </span>
-              )}
-              <span
-                style={{
-                  color: STATUS_COLORS[terminalStatus],
-                  fontSize: 10,
-                  lineHeight: 1,
-                  textTransform: "none",
-                  fontWeight: 500,
-                  letterSpacing: 0,
-                  padding: "0 6px",
-                  height: 17,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  border: "1px solid color-mix(in srgb, currentColor 28%, transparent)",
-                  borderRadius: 999,
-                  background: "color-mix(in srgb, currentColor 10%, transparent)",
-                  flexShrink: 0,
-                }}
-                title={isPreviewPane ? "Preview pane" : paneTerminal?.lastError ?? `Terminal ${terminalStatusLabel}`}
-              >
-                {isPreviewPane ? "preview" : terminalStatusLabel}
-              </span>
-              <PaneToolbar
-                paneId={paneId}
-                tabId={tab.id}
-                canClose={multiplePanes}
-                visible={showActions}
-              />
-              </>
-              )}
-            </div>
+                {isAgentPane && agentStatusSummary ? (
+                  <>
+                    <div
+                      style={{
+                        minWidth: 0,
+                        display: "grid",
+                        gridTemplateColumns:
+                          "auto auto minmax(0, 1fr) auto auto",
+                        alignItems: "center",
+                        gap: 8,
+                      }}
+                    >
+                      <span
+                        className="terminal-pane-status-dot"
+                        style={{
+                          width: 7,
+                          height: 7,
+                          borderRadius: "50%",
+                          background: STATUS_COLORS[terminalStatus],
+                          opacity: isActive ? 1 : 0.7,
+                          boxShadow: isActive
+                            ? `0 0 0 3px color-mix(in srgb, ${STATUS_COLORS[terminalStatus]} 16%, transparent)`
+                            : "none",
+                        }}
+                        title={`Terminal ${terminalStatusLabel}`}
+                      />
+                      <TerminalSquare
+                        size={13}
+                        strokeWidth={1.8}
+                        color={
+                          isActive
+                            ? "var(--accent-live)"
+                            : "var(--text-secondary)"
+                        }
+                      />
+                      <div
+                        style={{
+                          minWidth: 0,
+                          display: "flex",
+                          alignItems: "baseline",
+                          gap: 5,
+                          overflow: "hidden",
+                          color: isActive
+                            ? "var(--text-primary)"
+                            : "var(--text-secondary)",
+                          fontSize: 13,
+                          fontWeight: 500,
+                        }}
+                        title={`Now Active: ${headerTitle}`}
+                      >
+                        <span
+                          style={{
+                            flexShrink: 0,
+                            color: "var(--text-tertiary)",
+                            fontSize: 10,
+                            fontWeight: 600,
+                            textTransform: "uppercase",
+                          }}
+                        >
+                          Now Active:
+                        </span>
+                        <span
+                          data-testid="split-agent-working-on"
+                          style={{
+                            minWidth: 0,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {headerTitle}
+                        </span>
+                      </div>
+                      <span
+                        data-testid="split-attention"
+                        data-attention-state={splitAttentionState}
+                        style={{
+                          flexShrink: 0,
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 5,
+                          height: 20,
+                          padding: "0 8px",
+                          borderRadius: 999,
+                          fontSize: 11,
+                          fontWeight: 600,
+                          whiteSpace: "nowrap",
+                          color: splitAttention.color,
+                          border: `1px solid color-mix(in srgb, ${splitAttention.color} 45%, transparent)`,
+                          background: `color-mix(in srgb, ${splitAttention.color} 14%, transparent)`,
+                        }}
+                        title={splitAttention.label}
+                      >
+                        <span
+                          style={{
+                            width: 6,
+                            height: 6,
+                            borderRadius: "50%",
+                            background: splitAttention.color,
+                            flexShrink: 0,
+                          }}
+                        />
+                        {splitAttention.label}
+                      </span>
+                      <span
+                        style={{
+                          minWidth: 92,
+                          height: 18,
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          padding: "0 7px",
+                          border: "1px solid var(--border-subtle)",
+                          borderRadius: "var(--radius-xs)",
+                          background: "var(--surface-base)",
+                          color: "var(--text-secondary)",
+                          fontSize: 10,
+                          textTransform: "uppercase",
+                        }}
+                        title={
+                          agentStatusChip ??
+                          `${agentStatusSummary.provider} · ${agentStatusSummary.status}`
+                        }
+                      >
+                        {agentStatusChip ??
+                          `${agentStatusSummary.provider} · ${agentStatusSummary.status}`}
+                      </span>
+                      <PaneToolbar
+                        paneId={paneId}
+                        tabId={tab.id}
+                        canClose={multiplePanes}
+                        visible={showActions}
+                      />
+                    </div>
+                    <div
+                      style={{
+                        minWidth: 0,
+                        display: "grid",
+                        gridTemplateColumns: "minmax(0, 1fr)",
+                        gap: 0,
+                        alignItems: "center",
+                      }}
+                    >
+                      <div
+                        data-testid="split-agent-status-path"
+                        style={{
+                          minWidth: 0,
+                          display: "flex",
+                          alignItems: "baseline",
+                          gap: 5,
+                          overflow: "hidden",
+                          color: "var(--text-secondary)",
+                          fontSize: 11,
+                        }}
+                        title={agentStatusSummary.path}
+                      >
+                        <span
+                          style={{
+                            flexShrink: 0,
+                            color: "var(--text-tertiary)",
+                            fontSize: 10,
+                          }}
+                        >
+                          Path
+                        </span>
+                        <span
+                          style={{
+                            minWidth: 0,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {agentStatusSummary.path}
+                        </span>
+                      </div>
+                      <div
+                        data-testid="split-agent-pane-now"
+                        style={{
+                          minWidth: 0,
+                          display: "flex",
+                          alignItems: "baseline",
+                          gap: 5,
+                          overflow: "hidden",
+                          color: isActive
+                            ? "var(--text-primary)"
+                            : "var(--text-secondary)",
+                          fontSize: 11,
+                          fontWeight: 500,
+                        }}
+                        title={headerNow}
+                      >
+                        <span
+                          style={{
+                            flexShrink: 0,
+                            color: "var(--text-tertiary)",
+                            fontSize: 10,
+                            textTransform: "uppercase",
+                          }}
+                        >
+                          Now
+                        </span>
+                        <span
+                          style={{
+                            minWidth: 0,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {headerNow}
+                        </span>
+                      </div>
+                    </div>
+                    {latestMissionControlInput && (
+                      <div
+                        data-testid="split-agent-pane-ask"
+                        style={{
+                          minWidth: 0,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                          color: "var(--text-secondary)",
+                          fontSize: 10,
+                          fontWeight: 500,
+                        }}
+                        title={latestMissionControlInput.text}
+                      >
+                        Ask ·{" "}
+                        {latestMissionControlInput.label ?? "Mission control"} ·{" "}
+                        {latestMissionControlInput.sentAt ? "sent" : "queued"} ·{" "}
+                        {latestMissionControlInput.text}
+                      </div>
+                    )}
+                    {paneOutput && (
+                      <div
+                        data-testid="split-agent-pane-output"
+                        style={{
+                          minWidth: 0,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                          color: "var(--text-secondary)",
+                          fontSize: 10,
+                          fontWeight: 500,
+                        }}
+                        title={paneOutput}
+                      >
+                        Output: {paneOutput}
+                      </div>
+                    )}
+                  </>
+                ) : shellStatusSummary ? (
+                  <>
+                    <div
+                      style={{
+                        minWidth: 0,
+                        display: "grid",
+                        gridTemplateColumns: "auto auto minmax(0, 1fr) auto",
+                        alignItems: "center",
+                        gap: 7,
+                      }}
+                    >
+                      <span
+                        className="terminal-pane-status-dot"
+                        style={{
+                          width: 7,
+                          height: 7,
+                          borderRadius: "50%",
+                          background: STATUS_COLORS[terminalStatus],
+                          opacity: isActive ? 1 : 0.7,
+                          boxShadow: isActive
+                            ? `0 0 0 3px color-mix(in srgb, ${STATUS_COLORS[terminalStatus]} 16%, transparent)`
+                            : "none",
+                        }}
+                        title={`Terminal ${terminalStatusLabel}`}
+                      />
+                      <TerminalSquare
+                        size={13}
+                        strokeWidth={1.8}
+                        color={
+                          isActive
+                            ? "var(--accent-live)"
+                            : "var(--text-secondary)"
+                        }
+                      />
+                      <div
+                        style={{
+                          minWidth: 0,
+                          display: "flex",
+                          alignItems: "baseline",
+                          gap: 5,
+                          overflow: "hidden",
+                          color: isActive
+                            ? "var(--text-primary)"
+                            : "var(--text-secondary)",
+                          fontSize: 13,
+                          fontWeight: 500,
+                        }}
+                        title={`Now Active: ${headerTitle}`}
+                      >
+                        <span
+                          style={{
+                            flexShrink: 0,
+                            color: "var(--text-tertiary)",
+                            fontSize: 10,
+                            fontWeight: 600,
+                            textTransform: "uppercase",
+                          }}
+                        >
+                          Now Active:
+                        </span>
+                        <span
+                          data-testid="split-terminal-summary-task"
+                          style={{
+                            minWidth: 0,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {headerTitle}
+                        </span>
+                      </div>
+                      <span
+                        data-testid="split-attention"
+                        data-attention-state={splitAttentionState}
+                        style={{
+                          flexShrink: 0,
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 5,
+                          height: 20,
+                          padding: "0 8px",
+                          borderRadius: 999,
+                          fontSize: 11,
+                          fontWeight: 600,
+                          whiteSpace: "nowrap",
+                          color: splitAttention.color,
+                          border: `1px solid color-mix(in srgb, ${splitAttention.color} 45%, transparent)`,
+                          background: `color-mix(in srgb, ${splitAttention.color} 14%, transparent)`,
+                        }}
+                        title={splitAttention.label}
+                      >
+                        <span
+                          style={{
+                            width: 6,
+                            height: 6,
+                            borderRadius: "50%",
+                            background: splitAttention.color,
+                            flexShrink: 0,
+                          }}
+                        />
+                        {splitAttention.label}
+                      </span>
+                      <PaneToolbar
+                        paneId={paneId}
+                        tabId={tab.id}
+                        canClose={multiplePanes}
+                        visible={showActions}
+                      />
+                    </div>
+                    <div
+                      style={{
+                        minWidth: 0,
+                        display: "grid",
+                        gridTemplateColumns: "minmax(0, 1fr)",
+                        gap: 0,
+                        alignItems: "center",
+                      }}
+                    >
+                      <div
+                        data-testid="split-terminal-summary-path"
+                        style={{
+                          minWidth: 0,
+                          display: "flex",
+                          alignItems: "baseline",
+                          gap: 5,
+                          overflow: "visible",
+                          color: "var(--text-secondary)",
+                          fontSize: 11,
+                        }}
+                        title={shellHeaderPath}
+                      >
+                        <span
+                          style={{
+                            flexShrink: 0,
+                            color: "var(--text-tertiary)",
+                            fontSize: 10,
+                            textTransform: "uppercase",
+                          }}
+                        >
+                          Path
+                        </span>
+                        <span
+                          style={{
+                            minWidth: 0,
+                            overflow: "visible",
+                            overflowWrap: "anywhere",
+                            whiteSpace: "normal",
+                          }}
+                        >
+                          {shellHeaderPath}
+                        </span>
+                      </div>
+                      <div
+                        data-testid="split-terminal-summary-now"
+                        style={{
+                          display: "none",
+                        }}
+                        title={headerNow}
+                      >
+                        <span
+                          style={{
+                            flexShrink: 0,
+                            color: "var(--text-tertiary)",
+                            fontSize: 10,
+                          }}
+                        >
+                          Now
+                        </span>
+                        <span
+                          style={{
+                            minWidth: 0,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {headerNow}
+                        </span>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <span
+                      className="terminal-pane-status-dot"
+                      style={{
+                        width: 7,
+                        height: 7,
+                        borderRadius: "50%",
+                        background: STATUS_COLORS[terminalStatus],
+                        opacity: isActive ? 1 : 0.7,
+                        boxShadow: isActive
+                          ? `0 0 0 3px color-mix(in srgb, ${STATUS_COLORS[terminalStatus]} 16%, transparent)`
+                          : "none",
+                        flexShrink: 0,
+                      }}
+                      title={
+                        isPreviewPane
+                          ? "Localhost preview"
+                          : `Terminal ${terminalStatusLabel}`
+                      }
+                    />
+                    {isPreviewPane ? (
+                      <Globe
+                        size={13}
+                        strokeWidth={1.8}
+                        color={
+                          isActive
+                            ? "var(--accent-live)"
+                            : "var(--text-secondary)"
+                        }
+                      />
+                    ) : (
+                      <TerminalSquare
+                        size={13}
+                        strokeWidth={1.8}
+                        color={
+                          isActive
+                            ? "var(--accent-live)"
+                            : "var(--text-secondary)"
+                        }
+                      />
+                    )}
+                    <span
+                      className="terminal-pane-status-pill"
+                      data-testid={
+                        agentStatusSummary
+                          ? "split-agent-working-on"
+                          : paneActivity
+                            ? "split-agent-pane-context"
+                            : undefined
+                      }
+                      data-status={terminalStatus}
+                      style={{
+                        minWidth: 0,
+                        flex: paneActivity ? "0 1 45%" : 1,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                        color: isActive
+                          ? "var(--text-primary)"
+                          : "var(--text-secondary)",
+                        fontSize: 12,
+                        fontWeight: 500,
+                      }}
+                      title={
+                        agentStatusSummary
+                          ? agentStatusSummary.path
+                          : isPreviewPane
+                            ? paneNode.previewUrl
+                            : (project?.projectRoot ?? paneCwd ?? tab.title)
+                      }
+                    >
+                      {agentStatusSummary
+                        ? `Working on: ${headerTitle}`
+                        : isPreviewPane
+                          ? (paneNode.previewUrl ?? "Localhost preview")
+                          : paneContext}
+                    </span>
+                    {paneActivity && (
+                      <span
+                        data-testid="split-agent-pane-now"
+                        style={{
+                          minWidth: 0,
+                          flex: paneOutput ? "1 1 40%" : "1 1 auto",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                          color: isActive
+                            ? "var(--text-primary)"
+                            : "var(--text-secondary)",
+                          fontSize: 11,
+                          fontWeight: 500,
+                        }}
+                        title={headerNow || paneActivity}
+                      >
+                        Now: {headerNow || paneActivity}
+                      </span>
+                    )}
+                    {latestMissionControlInput && (
+                      <span
+                        data-testid="split-agent-pane-ask"
+                        style={{
+                          minWidth: 0,
+                          flex: "1 1 28%",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                          color: isActive
+                            ? "var(--text-primary)"
+                            : "var(--text-secondary)",
+                          fontSize: 11,
+                          fontWeight: 500,
+                        }}
+                        title={latestMissionControlInput.text}
+                      >
+                        Ask:{" "}
+                        {latestMissionControlInput.label ?? "Mission control"} ·{" "}
+                        {latestMissionControlInput.sentAt ? "sent" : "queued"} ·{" "}
+                        {latestMissionControlInput.text}
+                      </span>
+                    )}
+                    {paneOutput && (
+                      <span
+                        data-testid="split-agent-pane-output"
+                        style={{
+                          minWidth: 0,
+                          flex: "1 1 28%",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                          color: isActive
+                            ? "var(--text-primary)"
+                            : "var(--text-secondary)",
+                          fontSize: 11,
+                          fontWeight: 500,
+                        }}
+                        title={paneOutput}
+                      >
+                        Output: {paneOutput}
+                      </span>
+                    )}
+                    <span
+                      style={{
+                        color: STATUS_COLORS[terminalStatus],
+                        fontSize: 10,
+                        lineHeight: 1,
+                        textTransform: "none",
+                        fontWeight: 500,
+                        letterSpacing: 0,
+                        padding: "0 6px",
+                        height: 17,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        border:
+                          "1px solid color-mix(in srgb, currentColor 28%, transparent)",
+                        borderRadius: 999,
+                        background:
+                          "color-mix(in srgb, currentColor 10%, transparent)",
+                        flexShrink: 0,
+                      }}
+                      title={
+                        isPreviewPane
+                          ? "Preview pane"
+                          : (paneTerminal?.lastError ??
+                            `Terminal ${terminalStatusLabel}`)
+                      }
+                    >
+                      {isPreviewPane ? "preview" : terminalStatusLabel}
+                    </span>
+                    <PaneToolbar
+                      paneId={paneId}
+                      tabId={tab.id}
+                      canClose={multiplePanes}
+                      visible={showActions}
+                    />
+                  </>
+                )}
+              </div>
             )}
             <div
               style={{
@@ -1586,73 +2074,98 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                 display: "flex",
               }}
             >
-              <div style={{ flex: 1, minHeight: 0, minWidth: 0, height: "100%", display: "flex", flexDirection: "column" }}>
-              {isPreviewPane ? (
-                <LocalhostPreview
-                  previewUrl={paneNode.previewUrl}
-                  onPreviewUrlChange={(previewUrl) =>
-                    useWorkspaceStore.getState().updatePreviewPaneUrl(tab.id, paneId, previewUrl)
-                  }
-                />
-              ) : tab.workstream?.kind === "agent" && tab.workstream.providerAvailable === false ? (
-                <div
-                  role="status"
-                  style={{
-                    height: "100%",
-                    display: "flex",
-                    flexDirection: "column",
-                    justifyContent: "center",
-                    gap: 8,
-                    padding: 24,
-                    background: "var(--terminal-bg)",
-                    color: "var(--text-secondary)",
-                    fontFamily: "var(--font-ui)",
-                    fontSize: 13,
-                  }}
-                >
-                  <strong style={{ color: "var(--text-primary)", fontWeight: 500 }}>
-                    {tab.workstream.role} provider unavailable
-                  </strong>
-                  <span>{tab.workstream.providerAvailabilityMessage ?? "Provider command was not found."}</span>
-                </div>
-              ) : (
-                <TerminalComponent
-                  key={`${tab.id}-${paneId}-${tab.workstream?.generation ?? 0}`}
-                  tabId={tab.id}
-                  paneId={paneId}
-                  cwd={paneCwd}
-                  command={tab.workstream?.startupCommand}
-                  queuedInput={queuedWorkstreamInput}
-                  onQueuedInputSent={(inputId) =>
-                    useWorkspaceStore.getState().markWorkstreamInputSent(tab.id, inputId)
-                  }
-                />
-              )}
+              <div
+                style={{
+                  flex: 1,
+                  minHeight: 0,
+                  minWidth: 0,
+                  height: "100%",
+                  display: "flex",
+                  flexDirection: "column",
+                }}
+              >
+                {isPreviewPane ? (
+                  <LocalhostPreview
+                    previewUrl={paneNode.previewUrl}
+                    onPreviewUrlChange={(previewUrl) =>
+                      useWorkspaceStore
+                        .getState()
+                        .updatePreviewPaneUrl(tab.id, paneId, previewUrl)
+                    }
+                  />
+                ) : tab.workstream?.kind === "agent" &&
+                  tab.workstream.providerAvailable === false ? (
+                  <div
+                    role="status"
+                    style={{
+                      height: "100%",
+                      display: "flex",
+                      flexDirection: "column",
+                      justifyContent: "center",
+                      gap: 8,
+                      padding: 24,
+                      background: "var(--terminal-bg)",
+                      color: "var(--text-secondary)",
+                      fontFamily: "var(--font-ui)",
+                      fontSize: 13,
+                    }}
+                  >
+                    <strong
+                      style={{ color: "var(--text-primary)", fontWeight: 500 }}
+                    >
+                      {tab.workstream.role} provider unavailable
+                    </strong>
+                    <span>
+                      {tab.workstream.providerAvailabilityMessage ??
+                        "Provider command was not found."}
+                    </span>
+                  </div>
+                ) : (
+                  <TerminalComponent
+                    key={`${tab.id}-${paneId}-${tab.workstream?.generation ?? 0}`}
+                    tabId={tab.id}
+                    paneId={paneId}
+                    cwd={paneCwd}
+                    command={tab.workstream?.startupCommand}
+                    queuedInput={queuedWorkstreamInput}
+                    onQueuedInputSent={(inputId) =>
+                      useWorkspaceStore
+                        .getState()
+                        .markWorkstreamInputSent(tab.id, inputId)
+                    }
+                  />
+                )}
               </div>
-              {isAgentPane && agentStatusSummary && tab.workstream?.kind === "agent" && !isPreviewPane && (
-                <AgentTaskSidebar
-                  workstream={tab.workstream}
-                  summary={agentStatusSummary}
-                  taskLineup={visibleTaskLineup}
-                  collapsed={taskSidebarCollapsed}
-                  onToggleCollapsed={() =>
-                    useWorkspaceStore.getState().setTerminalTaskSidebarCollapsed(
-                      tab.id,
-                      paneId,
-                      !taskSidebarCollapsed
-                    )
-                  }
-                />
-              )}
+              {isAgentPane &&
+                agentStatusSummary &&
+                tab.workstream?.kind === "agent" &&
+                !isPreviewPane && (
+                  <AgentTaskSidebar
+                    workstream={tab.workstream}
+                    summary={agentStatusSummary}
+                    taskLineup={visibleTaskLineup}
+                    collapsed={taskSidebarCollapsed}
+                    onToggleCollapsed={() =>
+                      useWorkspaceStore
+                        .getState()
+                        .setTerminalTaskSidebarCollapsed(
+                          tab.id,
+                          paneId,
+                          !taskSidebarCollapsed,
+                        )
+                    }
+                  />
+                )}
             </div>
           </div>
         );
       })}
 
       {/* Resize handles */}
-      {!immersivePaneId && handles.map((handle, i) => (
-        <ResizeHandle key={i} handle={handle} tabId={tab.id} />
-      ))}
+      {!immersivePaneId &&
+        handles.map((handle, i) => (
+          <ResizeHandle key={i} handle={handle} tabId={tab.id} />
+        ))}
 
       {/* Context menu */}
       {!immersivePaneId && contextMenu && (

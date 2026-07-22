@@ -27,6 +27,7 @@ import {
   titleIsCommentaryOrDangling,
 } from "./terminalHeaderQuality";
 import { activeTodoTask, resolveTaskIdentity } from "./taskIdentity";
+import type { PaneTaskLine } from "./taskLine";
 
 export type HeaderFieldSource =
   | "workspace"
@@ -39,6 +40,9 @@ export type HeaderFieldSource =
   | "sidecar-todo"
   | "workstream"
   | "status-summary"
+  // TC-060: resolved by the task-line ladder from the vendor's own session record
+  // or the running process.
+  | "task-line"
   | "neutral"
   | "missing";
 
@@ -65,7 +69,12 @@ function normalizedHeaderTokens(value: string) {
     .replace(/[^a-z0-9]+/g, " ")
     .trim()
     .split(/\s+/)
-    .filter((token) => token && !["the", "a", "an", "and", "or"].includes(token) && !/^\d+$/.test(token));
+    .filter(
+      (token) =>
+        token &&
+        !["the", "a", "an", "and", "or"].includes(token) &&
+        !/^\d+$/.test(token),
+    );
 }
 
 function headerStemsMatch(a?: string, b?: string) {
@@ -81,13 +90,22 @@ export function headerTextsEquivalent(a?: string | null, b?: string | null) {
   if (!ta.length || !tb.length) return false;
   if (ta.join(" ") === tb.join(" ")) return true;
   // "Improving X" vs "X" — one extra leading token is still the same content.
-  if (ta.slice(1).join(" ") === tb.join(" ") || tb.slice(1).join(" ") === ta.join(" ")) return true;
+  if (
+    ta.slice(1).join(" ") === tb.join(" ") ||
+    tb.slice(1).join(" ") === ta.join(" ")
+  )
+    return true;
   const shorter = ta.length <= tb.length ? ta : tb;
   const longer = ta.length <= tb.length ? tb : ta;
-  const commonPrefix = shorter.findIndex((token, index) => token !== longer[index]);
+  const commonPrefix = shorter.findIndex(
+    (token, index) => token !== longer[index],
+  );
   const prefixLength = commonPrefix === -1 ? shorter.length : commonPrefix;
   if (shorter.length >= 5 && prefixLength / longer.length >= 0.7) return true;
-  return headerStemsMatch(ta[0], tb[0]) && ta.slice(1).join(" ") === tb.slice(1).join(" ");
+  return (
+    headerStemsMatch(ta[0], tb[0]) &&
+    ta.slice(1).join(" ") === tb.slice(1).join(" ")
+  );
 }
 
 // The honest status words a title may show when no real step was captured.
@@ -113,11 +131,17 @@ export function activityAddsInfo(
   if (!activity) return false;
   const trimmed = activity.trim();
   if (!trimmed) return false;
-  if (/^Provider requires authentication$/i.test(trimmed) && attention !== "waiting") return false;
+  if (
+    /^Provider requires authentication$/i.test(trimmed) &&
+    attention !== "waiting"
+  )
+    return false;
   if (NON_INFORMATIVE_ACTIVITY.test(trimmed)) return false;
   if (
     attention === "idle" &&
-    /^(?:Checking|Running|Verifying|Testing|Building|Fixing|Reviewing|Confirming|Preparing|Writing|Reading|Tracing|Investigating|Making|Adding|Updating|Removing|Publishing|Deploying)\b/i.test(trimmed)
+    /^(?:Checking|Running|Verifying|Testing|Building|Fixing|Reviewing|Confirming|Preparing|Writing|Reading|Tracing|Investigating|Making|Adding|Updating|Removing|Publishing|Deploying)\b/i.test(
+      trimmed,
+    )
   ) {
     return false;
   }
@@ -127,9 +151,9 @@ export function activityAddsInfo(
 function sameHeaderText(a?: string | null, b?: string | null) {
   return Boolean(
     a &&
-      b &&
-      a.replace(/\s+/g, " ").trim().toLowerCase() ===
-        b.replace(/\s+/g, " ").trim().toLowerCase(),
+    b &&
+    a.replace(/\s+/g, " ").trim().toLowerCase() ===
+      b.replace(/\s+/g, " ").trim().toLowerCase(),
   );
 }
 
@@ -143,7 +167,11 @@ function taskActivityFromUserGoal(value?: string, allowSynth = false) {
   if (/^Run build,\s*lint,\s*focused tests,\s*and visual checks$/i.test(text)) {
     return "Running build and visual checks";
   }
-  if (/^Run a reference audit for stale rollout names and verify summary\/schema consistency$/i.test(text)) {
+  if (
+    /^Run a reference audit for stale rollout names and verify summary\/schema consistency$/i.test(
+      text,
+    )
+  ) {
     return "Running reference audit and schema checks";
   }
   if (/^Run focused tests and quality gates$/i.test(text)) {
@@ -155,13 +183,21 @@ function taskActivityFromUserGoal(value?: string, allowSynth = false) {
   if (/^Skipping model calls for clear task sidecars$/i.test(text)) {
     return "Reducing model calls for clear tasks";
   }
-  if (/^Verify schema, reference integrity, and that deleted inputs no longer drive memory$/i.test(text)) {
+  if (
+    /^Verify schema, reference integrity, and that deleted inputs no longer drive memory$/i.test(
+      text,
+    )
+  ) {
     return "Verifying memory schema and references";
   }
   if (/^Refresh memory_summary\.md routing\b/i.test(text)) {
     return "Refreshing memory routing rules";
   }
-  if (/^Visually verify live private and public flows in connected Chrome$/i.test(text)) {
+  if (
+    /^Visually verify live private and public flows in connected Chrome$/i.test(
+      text,
+    )
+  ) {
     return "Verifying live Arthouse flows";
   }
   if (/^Run verification and summarize$/i.test(text)) {
@@ -182,7 +218,10 @@ function taskActivityFromUserGoal(value?: string, allowSynth = false) {
   if (/^Ts:\d+\)\s*-\s*/i.test(text) && /\bCardcom\b/i.test(text)) {
     return "Auditing Cardcom overdue production rows";
   }
-  if (/\bbefore implementation\b/i.test(text) && /\b(?:existing timer state|timer state|VPS)\b/i.test(text)) {
+  if (
+    /\bbefore implementation\b/i.test(text) &&
+    /\b(?:existing timer state|timer state|VPS)\b/i.test(text)
+  ) {
     return "Verifying VPS timer state before implementation";
   }
   if (/^Running desktop verification commands$/i.test(text)) {
@@ -191,7 +230,11 @@ function taskActivityFromUserGoal(value?: string, allowSynth = false) {
   if (/^Running\s+(.+?)\s+commands$/i.test(text)) {
     return `Checking ${text.replace(/^Running\s+/i, "").replace(/\s+commands$/i, "")} results`;
   }
-  if (/^Run fresh production audit and charge approved candidates one by one$/i.test(text)) {
+  if (
+    /^Run fresh production audit and charge approved candidates one by one$/i.test(
+      text,
+    )
+  ) {
     return "Charging approved candidates one by one";
   }
   if (/^Resuming active TermFleet work$/i.test(text)) {
@@ -206,7 +249,9 @@ function taskActivityFromUserGoal(value?: string, allowSynth = false) {
   if (/^Extending watchdog to selected terminal surface$/i.test(text)) {
     return "Checking selected terminal surface";
   }
-  if (/^Normalizing final-answer prose and placeholder prompt labels$/i.test(text)) {
+  if (
+    /^Normalizing final-answer prose and placeholder prompt labels$/i.test(text)
+  ) {
     return "Checking prose and placeholder labels";
   }
   if (/^Re-running live loop until clean$/i.test(text)) {
@@ -476,7 +521,11 @@ function taskActivityFromUserGoal(value?: string, allowSynth = false) {
   if (/^Close current agent task$/i.test(text)) {
     return "Closing current agent task";
   }
-  if (/\bimplement this\b/i.test(text) && /\bstop before\b/i.test(text) && /\brepayment step\b/i.test(text)) {
+  if (
+    /\bimplement this\b/i.test(text) &&
+    /\bstop before\b/i.test(text) &&
+    /\brepayment step\b/i.test(text)
+  ) {
     return "Checking the repayment step boundary";
   }
   if (/^Commit and verify remaining changes$/i.test(text)) {
@@ -486,7 +535,10 @@ function taskActivityFromUserGoal(value?: string, allowSynth = false) {
     return "Closing remaining task gap";
   }
   if (/^Task\s+\d+(?:[-–]\d+)?:\s*(.+)$/i.test(text)) {
-    const object = text.replace(/^Task\s+\d+(?:[-–]\d+)?:\s*/i, "").replace(/\s+and\s+/i, " ").trim();
+    const object = text
+      .replace(/^Task\s+\d+(?:[-–]\d+)?:\s*/i, "")
+      .replace(/\s+and\s+/i, " ")
+      .trim();
     return `Reviewing ${object}`;
   }
   if (/\bterminal gap\b/i.test(text) && /\bproject lanes?\b/i.test(text)) {
@@ -501,7 +553,11 @@ function taskActivityFromUserGoal(value?: string, allowSynth = false) {
   if (/^is that a good idea\??$/i.test(text)) {
     return "Reviewing whether the idea is sound";
   }
-  if (/^Decide on either starting a new task or freeing up token space$/i.test(text)) {
+  if (
+    /^Decide on either starting a new task or freeing up token space$/i.test(
+      text,
+    )
+  ) {
     return "Choosing task or token-space mode";
   }
   const decideTask = text.match(/^Decide\s+(.+)$/i);
@@ -514,7 +570,11 @@ function taskActivityFromUserGoal(value?: string, allowSynth = false) {
   }
   const approvalReview = text.match(/^Rechecking\s+(.+?)\s+approval$/i);
   if (approvalReview?.[1]) return `Checking ${approvalReview[1].trim()}`;
-  if (/^(?:Adding|Asking|Answering|Auditing|Building|Checking|Cleaning|Committing|Creating|Debugging|Designing|Editing|Explaining|Exploring|Fixing|Improving|Investigating|Making|Planning|Polishing|Pushing|Refreshing|Reporting|Reviewing|Running|Summarizing|Testing|Updating|Verifying|Writing)\b/i.test(text)) {
+  if (
+    /^(?:Adding|Asking|Answering|Auditing|Building|Checking|Cleaning|Committing|Creating|Debugging|Designing|Editing|Explaining|Exploring|Fixing|Improving|Investigating|Making|Planning|Polishing|Pushing|Refreshing|Reporting|Reviewing|Running|Summarizing|Testing|Updating|Verifying|Writing)\b/i.test(
+      text,
+    )
+  ) {
     return text;
   }
   if (/^[A-Z][a-z]+ing\b/.test(text)) return text;
@@ -585,7 +645,9 @@ function taskActivityFromUserGoal(value?: string, allowSynth = false) {
 // roman/numeric enumerator. This is cleanup, NOT summarization — it just stops the
 // header printing raw grid chrome. (2026-07-04)
 export function sanitizeScrapedAsk(value?: string | null): string {
-  const raw = String(value ?? "").replace(/\s+/g, " ").trim();
+  const raw = String(value ?? "")
+    .replace(/\s+/g, " ")
+    .trim();
   if (!raw) return "";
   const segments = raw
     .split(/[›❯»▸]/)
@@ -608,10 +670,19 @@ function stripPlanGlyphPrefix(value: string) {
 }
 
 function qualifyAmbiguousLabel(value: string, workspace: string) {
-  if (!/\b(?:speed settings|the handoff|proposed repair|the repair|behavior rules)\b/i.test(value)) {
+  if (
+    !/\b(?:speed settings|the handoff|proposed repair|the repair|behavior rules)\b/i.test(
+      value,
+    )
+  ) {
     return value;
   }
-  if (new RegExp(`\\b${workspace.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(value)) {
+  if (
+    new RegExp(
+      `\\b${workspace.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`,
+      "i",
+    ).test(value)
+  ) {
     return value;
   }
   const workspaceLabel = workspace
@@ -639,6 +710,9 @@ export function buildShellTerminalHeaderViewModel(input: {
   // even though there's no real task list. Without this, an actively-working shell whose
   // heuristic status reads "idle" showed the misleading title "Awaiting next action".
   activelyWorking?: boolean;
+  // TC-060: the always-true line resolved from the vendor's own session record or
+  // the running process. Last in precedence, but never blank.
+  taskLine?: PaneTaskLine | null;
 }): ShellTerminalHeaderViewModel {
   const livePath =
     input.liveCwd ?? input.project?.projectRoot ?? "workspace path unknown";
@@ -656,16 +730,18 @@ export function buildShellTerminalHeaderViewModel(input: {
     planBindingSource: input.contextPurposeSource,
     workstreamTitle: input.workstreamTitle,
     statusSummary: input.statusSummary,
+    taskLine: input.taskLine,
   });
   const activePlanItem = activeTodoTask(input.taskLineup, input.activeRunId);
   const mainUserAskApplies = Boolean(
     input.mainUserAsk &&
-      (!input.mainUserAsk.runId ||
+    (!input.mainUserAsk.runId ||
       !input.activeRunId ||
       input.mainUserAsk.runId === input.activeRunId ||
       input.mainUserAsk.source === "status-sidecar"),
   );
-  const taskText = taskIdentity.source === "task-tool" ? taskIdentity.text : undefined;
+  const taskText =
+    taskIdentity.source === "task-tool" ? taskIdentity.text : undefined;
   const userTaskText =
     taskIdentity.source !== "task-tool" && taskIdentity.source !== "missing"
       ? taskIdentity.text
@@ -676,16 +752,23 @@ export function buildShellTerminalHeaderViewModel(input: {
       : compactHeaderGoal(taskIdentity.text);
   // The user's own words are gated leniently: informal phrasing and typos are
   // still what they asked for. Declared task text gets the authoritative gate.
-  const identityIsUserAsk = taskIdentity.source === "manual" || taskIdentity.source === "user-prompt";
-  const identityTaskQuality = identityTaskDescriptionText
-    ? identityIsUserAsk
-      ? qualityCheckUserAskLabel(identityTaskDescriptionText)
-      : qualityCheckAuthoritativeTaskLabel(identityTaskDescriptionText)
-    : { ok: false as const, reason: "empty" as const };
-  const taskDescriptionText = identityTaskQuality.ok ? identityTaskDescriptionText : undefined;
-  const taskDescriptionSource: HeaderFieldSource | "missing" = identityTaskQuality.ok
-    ? taskIdentity.source
-    : "missing";
+  const identityIsUserAsk =
+    taskIdentity.source === "manual" || taskIdentity.source === "user-prompt";
+  // The ladder already applied a STRICTER plain-language check than this gate, and
+  // re-gating it would let a rejection fall back to the placeholder we just removed.
+  const identityTaskQuality =
+    taskIdentity.source === "task-line"
+      ? { ok: true as const }
+      : identityTaskDescriptionText
+        ? identityIsUserAsk
+          ? qualityCheckUserAskLabel(identityTaskDescriptionText)
+          : qualityCheckAuthoritativeTaskLabel(identityTaskDescriptionText)
+        : { ok: false as const, reason: "empty" as const };
+  const taskDescriptionText = identityTaskQuality.ok
+    ? identityTaskDescriptionText
+    : undefined;
+  const taskDescriptionSource: HeaderFieldSource | "missing" =
+    identityTaskQuality.ok ? taskIdentity.source : "missing";
   const hasRealTask = Boolean(taskText && taskDescriptionText);
   const hasUserTask = Boolean(userTaskText && taskDescriptionText);
   const hasStatusTask = false;
@@ -712,11 +795,13 @@ export function buildShellTerminalHeaderViewModel(input: {
         : base.status === "done" || base.status === "idle"
           ? "Idle"
           : neutralHeaderTitle(input.terminalStatus);
-  const neutral = input.neutralTitle === undefined ? computedNeutral : input.neutralTitle;
+  const neutral =
+    input.neutralTitle === undefined ? computedNeutral : input.neutralTitle;
   const rawFallbackNow = neutral ?? computedNeutral;
   // An actively-working pane must never read "Idle"/"Ready" (→ "Awaiting next action").
   const fallbackNow =
-    input.activelyWorking && (rawFallbackNow === "Idle" || rawFallbackNow === "Ready")
+    input.activelyWorking &&
+    (rawFallbackNow === "Idle" || rawFallbackNow === "Ready")
       ? "Working"
       : rawFallbackNow;
   // The agent's narrated current step, trusted only while the pane is actively
@@ -731,9 +816,12 @@ export function buildShellTerminalHeaderViewModel(input: {
     base.status === "done" ||
     // A high-confidence contextual line (local summarizer) is displayable even on
     // a stale pane whose lifecycle is unknown — better than a bare status word.
-    (base.confidence === "high" && Boolean(base.narration ?? input.statusSummary?.narration));
+    (base.confidence === "high" &&
+      Boolean(base.narration ?? input.statusSummary?.narration));
   let rawLiveNarration = narrationEligible
-    ? (base.narration ?? input.statusSummary?.narration)?.replace(/\s+/g, " ").trim()
+    ? (base.narration ?? input.statusSummary?.narration)
+        ?.replace(/\s+/g, " ")
+        .trim()
     : undefined;
   // Hook narration can be up to 90 chars but the now gate rejects >80 — clamp to a
   // clause/word boundary instead of silently dropping the outcome line.
@@ -742,7 +830,10 @@ export function buildShellTerminalHeaderViewModel(input: {
     rawLiveNarration =
       clause.length >= 24 && clause.length <= 78
         ? clause
-        : `${rawLiveNarration.slice(0, 75).replace(/\s+\S*$/, "").trim()}\u2026`;
+        : `${rawLiveNarration
+            .slice(0, 75)
+            .replace(/\s+\S*$/, "")
+            .trim()}\u2026`;
   }
   // Model-vetted lines are still user-visible pane titles, so they must stay
   // plain-language and free of files/paths. Authoritative task rows are the only
@@ -751,7 +842,9 @@ export function buildShellTerminalHeaderViewModel(input: {
   const narrationGate = (text: string) =>
     qualityCheckNarrationLabel(
       text,
-      base.status === "working" || input.activelyWorking ? "working" : "settled",
+      base.status === "working" || input.activelyWorking
+        ? "working"
+        : "settled",
     );
   const liveNarration =
     rawLiveNarration &&
@@ -763,33 +856,41 @@ export function buildShellTerminalHeaderViewModel(input: {
     preferRealTaskSummary(
       base,
       input.statusSummary,
-      input.trustedActivitySummary || hasUserTask ? undefined : neutral ?? undefined,
+      input.trustedActivitySummary || hasUserTask
+        ? undefined
+        : (neutral ?? undefined),
       { narrationCurrent: Boolean(liveNarration) },
     ),
     livePath,
     fallbackNow,
   );
   const hasTrustedContext =
-    hasRealTask || hasUserTask || hasStatusTask || Boolean(input.trustedActivitySummary) || Boolean(liveNarration);
+    hasRealTask ||
+    hasUserTask ||
+    hasStatusTask ||
+    Boolean(input.trustedActivitySummary) ||
+    Boolean(liveNarration);
   const rawNow = hasTrustedContext
     ? sanitizeTerminalHeaderNow(summary.now, livePath, fallbackNow)
     : fallbackNow;
-  const now = contextualActivityForTask(rawNow, taskText ?? userTaskText) ?? rawNow;
+  const now =
+    contextualActivityForTask(rawNow, taskText ?? userTaskText) ?? rawNow;
   const activeTaskTitle = taskText ?? userTaskText;
   const hasDistinctActivity =
     now !== fallbackNow &&
     !sameHeaderText(now, activeTaskTitle) &&
     (hasUserTask || !sameHeaderText(now, summary.task));
-  const taskDerivedActivity =
-    taskDescriptionText
-      ? /^Close current agent task$/i.test(taskDescriptionText)
-        ? "Closing current agent task"
-        : taskActivityFromUserGoal(taskDescriptionText, true)
-      : undefined;
+  const taskDerivedActivity = taskDescriptionText
+    ? /^Close current agent task$/i.test(taskDescriptionText)
+      ? "Closing current agent task"
+      : taskActivityFromUserGoal(taskDescriptionText, true)
+    : undefined;
   const activePlanStep = activePlanItem?.content
     ? stripPlanGlyphPrefix(activePlanItem.content)
     : undefined;
-  const activityTitle = stripPlanGlyphPrefix(hasDistinctActivity ? now : summary.task);
+  const activityTitle = stripPlanGlyphPrefix(
+    hasDistinctActivity ? now : summary.task,
+  );
   // Task row = the goal; big title = the CURRENT STEP toward it. Prefer the
   // live activity when it's meaningful, fall back to the declared activeForm
   // only when it actually differs from the Task row, and never echo the Task
@@ -804,9 +905,10 @@ export function buildShellTerminalHeaderViewModel(input: {
   const realTaskTitle =
     liveStepTitle ??
     (headerTextsEquivalent(declaredStepTitle, taskDescriptionText)
-      ? (liveNarration && !headerTextsEquivalent(liveNarration, taskDescriptionText)
-          ? liveNarration
-          : taskDerivedActivity ?? fallbackNow)
+      ? liveNarration &&
+        !headerTextsEquivalent(liveNarration, taskDescriptionText)
+        ? liveNarration
+        : (taskDerivedActivity ?? fallbackNow)
       : declaredStepTitle);
   const missingActivity =
     !hasRealTask &&
@@ -821,14 +923,17 @@ export function buildShellTerminalHeaderViewModel(input: {
     : hasUserTask || hasStatusTask
       ? hasDistinctActivity
         ? activityTitle
-        : activePlanStep && !headerTextsEquivalent(activePlanStep, taskDescriptionText)
+        : activePlanStep &&
+            !headerTextsEquivalent(activePlanStep, taskDescriptionText)
           ? activePlanStep
-          : liveNarration ?? taskDerivedActivity ?? fallbackNow
-    : liveNarration && hasDistinctActivity
-      ? activityTitle
-    : input.trustedActivitySummary
-      ? (hasDistinctActivity ? activityTitle : summary.task)
-      : fallbackNow;
+          : (liveNarration ?? taskDerivedActivity ?? fallbackNow)
+      : liveNarration && hasDistinctActivity
+        ? activityTitle
+        : input.trustedActivitySummary
+          ? hasDistinctActivity
+            ? activityTitle
+            : summary.task
+          : fallbackNow;
   const stripTrailingSeparators = (value: string) =>
     value.replace(/[;:,]+$/, "").trim() || value;
   const candidateReadableTitle = stripTrailingSeparators(
@@ -839,13 +944,20 @@ export function buildShellTerminalHeaderViewModel(input: {
   );
   // When the candidate IS the model-vetted narration, keep the light gate all the
   // way down, but still reject implementation detail in the visible title.
-  const titleQuality = (liveNarration && candidateReadableTitle === liveNarration
-    ? qualityCheckTrustedActivityLabel
-    : qualityCheckActivityLabel)(candidateReadableTitle);
-  const nowQuality = (liveNarration && candidateReadableNow === liveNarration
-    ? qualityCheckTrustedActivityLabel
-    : qualityCheckNowLabel)(candidateReadableNow);
-  const duplicatedLongLabels = headerLabelsAreDuplicated(taskDescriptionText, candidateReadableTitle);
+  const titleQuality = (
+    liveNarration && candidateReadableTitle === liveNarration
+      ? qualityCheckTrustedActivityLabel
+      : qualityCheckActivityLabel
+  )(candidateReadableTitle);
+  const nowQuality = (
+    liveNarration && candidateReadableNow === liveNarration
+      ? qualityCheckTrustedActivityLabel
+      : qualityCheckNowLabel
+  )(candidateReadableNow);
+  const duplicatedLongLabels = headerLabelsAreDuplicated(
+    taskDescriptionText,
+    candidateReadableTitle,
+  );
   // Title and now are gated INDEPENDENTLY: a junk momentary now (e.g.
   // "Editing Terminal.tsx") must not drag a good declared title down with it.
   const lowQualityTitle = !titleQuality.ok || duplicatedLongLabels;
@@ -856,28 +968,31 @@ export function buildShellTerminalHeaderViewModel(input: {
     !headerTextsEquivalent(declaredStepTitle, taskDescriptionText)
       ? declaredStepTitle
       : undefined;
-  const orphanedHandoffActivity = /^(?:Commit(?:ting)? and push(?:ing)?|Publish(?:ing)?) the handoff$/i.test(
-    candidateReadableTitle,
-  );
+  const orphanedHandoffActivity =
+    /^(?:Commit(?:ting)? and push(?:ing)?|Publish(?:ing)?) the handoff$/i.test(
+      candidateReadableTitle,
+    );
   const replacementActivity = lowQualityActivity
     ? orphanedHandoffActivity
-      ? declaredTaskActivity ?? taskDerivedActivity
+      ? (declaredTaskActivity ?? taskDerivedActivity)
       : taskDerivedActivity
     : undefined;
   const concreteTaskActivity = replacementActivity ?? taskDerivedActivity;
   const noCapturedWorkingActivity = Boolean(
     !taskDescriptionText &&
-      base.status === "working" &&
-      input.neutralTitle !== "Idle" &&
-      !liveNarration &&
-      !taskDerivedActivity,
+    base.status === "working" &&
+    input.neutralTitle !== "Idle" &&
+    !liveNarration &&
+    !taskDerivedActivity,
   );
-  const preGuardTitle =
-    missingActivity ? "Activity not captured" :
-    // A rejected title candidate falls back to an honest status word — never
-    // to the noisy "Activity not captured" label (that reads as breakage).
-    lowQualityTitle ? concreteTaskActivity ?? (noCapturedWorkingActivity ? "Activity not captured" : fallbackNow) :
-    candidateReadableTitle;
+  const preGuardTitle = missingActivity
+    ? "Activity not captured"
+    : // A rejected title candidate falls back to an honest status word — never
+      // to the noisy "Activity not captured" label (that reads as breakage).
+      lowQualityTitle
+      ? (concreteTaskActivity ??
+        (noCapturedWorkingActivity ? "Activity not captured" : fallbackNow))
+      : candidateReadableTitle;
   // No pane may say the same thing on the Task row and the title.
   // A pane that has a task but no distinct current step says so honestly, rather
   // than restating the task or claiming its activity was lost.
@@ -888,27 +1003,43 @@ export function buildShellTerminalHeaderViewModel(input: {
       : base.status === "working" && input.neutralTitle !== "Idle"
         ? "Activity not captured"
         : fallbackNow;
-  const readableTitle = headerTextsEquivalent(preGuardTitle, taskDescriptionText)
+  const readableTitle = headerTextsEquivalent(
+    preGuardTitle,
+    taskDescriptionText,
+  )
     ? equivalentTitleFallback
     : preGuardTitle;
-  const readableNow =
-    missingActivity ? "Activity not captured" :
-    lowQualityNow ? (noCapturedWorkingActivity ? "Activity not captured" : fallbackNow) :
-    candidateReadableNow;
+  const readableNow = missingActivity
+    ? "Activity not captured"
+    : lowQualityNow
+      ? noCapturedWorkingActivity
+        ? "Activity not captured"
+        : fallbackNow
+      : candidateReadableNow;
   const titleBeforeLengthGuard =
-    /^Verify schema, reference integrity, and that deleted inputs no longer drive memory$/i.test(taskDescriptionText ?? "")
+    /^Verify schema, reference integrity, and that deleted inputs no longer drive memory$/i.test(
+      taskDescriptionText ?? "",
+    )
       ? "Verifying memory schema and references"
-      : /\bdebug-share bundles?\b/i.test(taskDescriptionText ?? "") && /^(?:Working|Idle|Awaiting next action)$/i.test(readableTitle)
+      : /\bdebug-share bundles?\b/i.test(taskDescriptionText ?? "") &&
+          /^(?:Working|Idle|Awaiting next action)$/i.test(readableTitle)
         ? "Checking debug-share bundle redaction path"
         : readableTitle;
   const shortenTitle = (value: string) => {
     if (value.length <= 64) return value;
-    if (taskDerivedActivity && taskDerivedActivity.length <= 64 && !headerTextsEquivalent(taskDerivedActivity, taskDescriptionText)) {
+    if (
+      taskDerivedActivity &&
+      taskDerivedActivity.length <= 64 &&
+      !headerTextsEquivalent(taskDerivedActivity, taskDescriptionText)
+    ) {
       return taskDerivedActivity;
     }
     const clause = value.split(/,\s+/)[0].trim();
     if (clause.length >= 24 && clause.length <= 64) return clause;
-    return `${value.slice(0, 61).replace(/\s+\S*$/, "").trim()}\u2026`;
+    return `${value
+      .slice(0, 61)
+      .replace(/\s+\S*$/, "")
+      .trim()}\u2026`;
   };
   const finalReadableTitleBase = shortenTitle(titleBeforeLengthGuard);
   // "Check the live page" -> "Checking the live page" conjugates the task's own
@@ -920,7 +1051,8 @@ export function buildShellTerminalHeaderViewModel(input: {
     if (!taskDerivedActivity || !taskDescriptionText) return false;
     const task = normalizedHeaderTokens(taskDescriptionText).join(" ");
     // Verbatim: taskActivityFromUserGoal had no rule and handed the task back.
-    if (normalizedHeaderTokens(taskDerivedActivity).join(" ") === task) return true;
+    if (normalizedHeaderTokens(taskDerivedActivity).join(" ") === task)
+      return true;
     // Behind a generic verb: "Reviewing <the whole task>". Note a task that is
     // ALREADY a gerund ("Checking the cockpit…") is caught by the check above,
     // so stripping here cannot eat its own verb and let the echo through.
@@ -938,30 +1070,35 @@ export function buildShellTerminalHeaderViewModel(input: {
   const genericTaskDerivedTitle =
     taskDerivedActivity &&
     !echoesTaskBehindGenericVerb &&
-    /^(?:Activity not captured|Awaiting next action|Idle|Working|Ready|Checking active terminal work)$/i.test(finalReadableTitleBase)
+    /^(?:Activity not captured|Awaiting next action|Idle|Working|Ready|Checking active terminal work)$/i.test(
+      finalReadableTitleBase,
+    )
       ? taskDerivedActivity
       : undefined;
   const finalReadableTitle =
     genericTaskDerivedTitle ??
-    (/^Writing browser-control verification prompt$/i.test(taskDescriptionText ?? "") &&
-    !/\bbrowser\b/i.test(finalReadableTitleBase)
+    (/^Writing browser-control verification prompt$/i.test(
+      taskDescriptionText ?? "",
+    ) && !/\bbrowser\b/i.test(finalReadableTitleBase)
       ? "Checking browser verification prompt"
-      :
-    /^Choosing appropriate design skills$/i.test(taskDescriptionText ?? "") &&
-    !/\bcoverage\b/i.test(finalReadableTitleBase)
-      ? "Checking design skill coverage"
-      :
-    (/^Verifying high quality results$/i.test(taskDescriptionText ?? "") &&
-    !/\b(?:quality|results|evidence)\b/i.test(finalReadableTitleBase)
-      ? "Checking quality evidence"
-      : /^Charging approved customer$/i.test(taskDescriptionText ?? "") &&
-        /^(?:Activity not captured|Awaiting next action|Idle|Working)$/i.test(finalReadableTitleBase)
-        ? "Preparing approved charge"
-        :
-    /^Close current agent task$/i.test(taskDescriptionText ?? "") &&
-    /^(?:Activity not captured|Awaiting next action|Idle|Working)$/i.test(finalReadableTitleBase)
-      ? "Closing current agent task"
-      : finalReadableTitleBase));
+      : /^Choosing appropriate design skills$/i.test(
+            taskDescriptionText ?? "",
+          ) && !/\bcoverage\b/i.test(finalReadableTitleBase)
+        ? "Checking design skill coverage"
+        : /^Verifying high quality results$/i.test(taskDescriptionText ?? "") &&
+            !/\b(?:quality|results|evidence)\b/i.test(finalReadableTitleBase)
+          ? "Checking quality evidence"
+          : /^Charging approved customer$/i.test(taskDescriptionText ?? "") &&
+              /^(?:Activity not captured|Awaiting next action|Idle|Working)$/i.test(
+                finalReadableTitleBase,
+              )
+            ? "Preparing approved charge"
+            : /^Close current agent task$/i.test(taskDescriptionText ?? "") &&
+                /^(?:Activity not captured|Awaiting next action|Idle|Working)$/i.test(
+                  finalReadableTitleBase,
+                )
+              ? "Closing current agent task"
+              : finalReadableTitleBase);
   const missingActiveTask =
     !taskDescriptionText &&
     Boolean(input.trustedActivitySummary) &&
@@ -970,11 +1107,11 @@ export function buildShellTerminalHeaderViewModel(input: {
     finalReadableTitle !== "Activity not captured";
   const noActiveWork = Boolean(
     !taskDescriptionText &&
-      !input.activelyWorking &&
-      input.terminalStatus !== "running" &&
-      input.statusSummary?.status === "idle" &&
-      /^(?:Idle|Ready|Awaiting next action)$/i.test(finalReadableTitle) &&
-      /^(?:Idle|Ready|Awaiting next action)$/i.test(readableNow),
+    !input.activelyWorking &&
+    input.terminalStatus !== "running" &&
+    input.statusSummary?.status === "idle" &&
+    /^(?:Idle|Ready|Awaiting next action)$/i.test(finalReadableTitle) &&
+    /^(?:Idle|Ready|Awaiting next action)$/i.test(readableNow),
   );
 
   // Last line of defence for the big title. It can be assembled from the status
@@ -982,7 +1119,8 @@ export function buildShellTerminalHeaderViewModel(input: {
   // own truncated chat prose reached the cockpit. Whatever its origin, the title
   // either names work or admits it captured none.
   const cleanTitle =
-    HONEST_TITLES.test(finalReadableTitle) || !titleIsCommentaryOrDangling(finalReadableTitle)
+    HONEST_TITLES.test(finalReadableTitle) ||
+    !titleIsCommentaryOrDangling(finalReadableTitle)
       ? finalReadableTitle
       : base.status === "working" || input.activelyWorking
         ? "Activity not captured"
@@ -1008,24 +1146,37 @@ export function buildShellTerminalHeaderViewModel(input: {
   return {
     workspace: { text: workspace, source: "workspace" },
     taskDescription: {
-      text: displayTaskDescription ?? (noActiveWork ? "No active work" : "Task not captured"),
-      source: displayTaskDescription ? taskDescriptionSource : noActiveWork ? "neutral" : "missing",
+      // TC-060 R1: never blank. The ladder always carries a true sentence, so the
+      // old placeholder is only reachable when no ladder ran at all.
+      text:
+        displayTaskDescription ??
+        input.taskLine?.text ??
+        (noActiveWork ? "No active work" : "Task not captured"),
+      source: displayTaskDescription
+        ? taskDescriptionSource
+        : input.taskLine
+          ? "task-line"
+          : noActiveWork
+            ? "neutral"
+            : "missing",
     },
     title: {
       text: noActiveWork ? "Ready for next task" : displayTitle,
       source: missingActivity
         ? "missing"
         : lowQualityTitle && replacementActivity
-        ? hasRealTask ? "task-list" : "status-summary"
-        : lowQualityTitle
-          ? "missing"
-        : hasRealTask
-        ? "task-list"
-        : hasUserTask || hasStatusTask
-          ? "status-summary"
-        : title === neutral
-          ? "neutral"
-          : "status-summary",
+          ? hasRealTask
+            ? "task-list"
+            : "status-summary"
+          : lowQualityTitle
+            ? "missing"
+            : hasRealTask
+              ? "task-list"
+              : hasUserTask || hasStatusTask
+                ? "status-summary"
+                : title === neutral
+                  ? "neutral"
+                  : "status-summary",
     },
     path: {
       text: livePath,
@@ -1036,10 +1187,14 @@ export function buildShellTerminalHeaderViewModel(input: {
       source: missingActivity
         ? "missing"
         : lowQualityNow && replacementActivity
-          ? hasRealTask ? "task-list" : "status-summary"
-        : lowQualityNow
-          ? "missing"
-        : hasTrustedContext && now !== fallbackNow ? "status-summary" : "neutral",
+          ? hasRealTask
+            ? "task-list"
+            : "status-summary"
+          : lowQualityNow
+            ? "missing"
+            : hasTrustedContext && now !== fallbackNow
+              ? "status-summary"
+              : "neutral",
     },
     debug: {
       livePath,
@@ -1047,7 +1202,8 @@ export function buildShellTerminalHeaderViewModel(input: {
       hasUserTask,
       hasStatusTask,
       hasTrustedContext,
-      titleDuplicatedUserTask: hasUserTask && sameHeaderText(summary.task, userTaskText),
+      titleDuplicatedUserTask:
+        hasUserTask && sameHeaderText(summary.task, userTaskText),
       titleUsesDistinctActivity: hasDistinctActivity,
       missingActiveTask,
       missingActivity,
@@ -1058,7 +1214,9 @@ export function buildShellTerminalHeaderViewModel(input: {
       replacementActivity,
       tasksFromTodoWrite: input.statusSummary?.tasksFromTodoWrite,
       taskIdentitySource: taskIdentity.source,
-      mainUserAskSource: mainUserAskApplies ? input.mainUserAsk?.source : undefined,
+      mainUserAskSource: mainUserAskApplies
+        ? input.mainUserAsk?.source
+        : undefined,
       mainUserAskRunMatches: mainUserAskApplies,
     },
   };

@@ -10,26 +10,73 @@ import { usePty } from "../hooks/usePty";
 import { TerminalCanvas } from "./TerminalCanvas";
 import { shouldAutoRecoverAgent } from "../lib/terminalAutoRecovery";
 import { stableAgentProvider } from "../lib/agentProviderIdentity";
-import { syncTerminalLatencyTraceEnv, traceTerminalLatency } from "../lib/terminalLatencyTrace";
-import { refreshProjectRootFromActiveTerminal, useWorkspaceStore } from "../stores/workspace";
-import { agentStatusSummaryInputFromWorkstream, type AgentStatusSummaryInput } from "../lib/agentStatusSummary";
+import {
+  syncTerminalLatencyTraceEnv,
+  traceTerminalLatency,
+} from "../lib/terminalLatencyTrace";
+import {
+  refreshProjectRootFromActiveTerminal,
+  useWorkspaceStore,
+} from "../stores/workspace";
+import {
+  agentStatusSummaryInputFromWorkstream,
+  type AgentStatusSummaryInput,
+} from "../lib/agentStatusSummary";
 import { summarizeAgentStatus } from "../lib/agentStatusSummarizer";
-import { inferActivityFromOutput, isWorkstreamActivityKind, normalizeActivityText } from "../lib/workstreamActivity";
-import { mergeCockpitObjectsFromExtractedItems, mergeExtractedItems, normalizeExtractedItems } from "../lib/workstreamExtraction";
+import {
+  inferActivityFromOutput,
+  isWorkstreamActivityKind,
+  normalizeActivityText,
+} from "../lib/workstreamActivity";
+import {
+  mergeCockpitObjectsFromExtractedItems,
+  mergeExtractedItems,
+  normalizeExtractedItems,
+} from "../lib/workstreamExtraction";
 import { deriveTerminalActivity } from "../lib/terminalActivity";
 import { terminalPurposeFromSubmittedInput } from "../lib/terminalHeaderDisplay";
-import { mainUserAskForRunChange, mainUserAskFromSummary, mainUserAskFromTerminalPurpose, recordTerminalHeaderLog } from "../lib/terminalMainUserAsk";
-import { completeOpenTaskLineup, completeOpenTaskLineupForRun, mergeShellSummaryTaskLineup, normalizeTaskLineupItems, taskLineupFromExtractedItems, terminalOutputClosesTaskLineup } from "../lib/taskLineup";
+import {
+  mainUserAskForRunChange,
+  mainUserAskFromSummary,
+  mainUserAskFromTerminalPurpose,
+  recordTerminalHeaderLog,
+} from "../lib/terminalMainUserAsk";
+import {
+  completeOpenTaskLineup,
+  completeOpenTaskLineupForRun,
+  mergeShellSummaryTaskLineup,
+  normalizeTaskLineupItems,
+  taskLineupFromExtractedItems,
+  terminalOutputClosesTaskLineup,
+} from "../lib/taskLineup";
 import { parseTerminalChecklist } from "../lib/terminalChecklist";
-import type { TaskLineupItem, TerminalActivitySummary, TerminalRuntimeStatus, TerminalState, WorkstreamActivityKind, WorkstreamActivitySource, WorkstreamInput, WorkstreamMetadata, WorkstreamPhase, WorkstreamReadiness, WorkstreamStatus, WorkstreamStatusSummary } from "../lib/types";
+import type {
+  TaskLineupItem,
+  TerminalActivitySummary,
+  TerminalRuntimeStatus,
+  TerminalState,
+  WorkstreamActivityKind,
+  WorkstreamActivitySource,
+  WorkstreamInput,
+  WorkstreamMetadata,
+  WorkstreamPhase,
+  WorkstreamReadiness,
+  WorkstreamStatus,
+  WorkstreamStatusSummary,
+} from "../lib/types";
 import type { GridSnapshot } from "../lib/gridSnapshot";
 import { providerReadinessCue } from "../lib/providerReadinessCue";
 
-const LOCALHOST_URL_PATTERN = /https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0):(\d{2,5})(?:[/?#][^\s"'<>]*)?/gi;
-const LOCALHOST_HOST_PORT_PATTERN = /(?:localhost|127\.0\.0\.1|0\.0\.0\.0):(\d{2,5})(?:[/?#][^\s"'<>]*)?/gi;
-const STRUCTURED_AGENT_SIGNAL_PATTERN = /\[\[TERMFLEET_AGENT_EVENT\s+({[^\]]+})\]\]/g;
-const STRUCTURED_TODO_WRITE_PATTERN = /\[\[TERMFLEET_TODO_WRITE\s+([\s\S]*?)\]\]/g;
-const ANSI_SEQUENCE_PATTERN = /\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))/g;
+const LOCALHOST_URL_PATTERN =
+  /https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0):(\d{2,5})(?:[/?#][^\s"'<>]*)?/gi;
+const LOCALHOST_HOST_PORT_PATTERN =
+  /(?:localhost|127\.0\.0\.1|0\.0\.0\.0):(\d{2,5})(?:[/?#][^\s"'<>]*)?/gi;
+const STRUCTURED_AGENT_SIGNAL_PATTERN =
+  /\[\[TERMFLEET_AGENT_EVENT\s+({[^\]]+})\]\]/g;
+const STRUCTURED_TODO_WRITE_PATTERN =
+  /\[\[TERMFLEET_TODO_WRITE\s+([\s\S]*?)\]\]/g;
+const ANSI_SEQUENCE_PATTERN =
+  /\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))/g;
 
 function validPreviewPort(port: string) {
   const value = Number(port);
@@ -58,22 +105,37 @@ function detectLocalhostPreviewUrl(output: string): string | null {
   return null;
 }
 
-function inferWorkstreamStatus(output: string): "waiting" | "failed" | "done" | null {
+function inferWorkstreamStatus(
+  output: string,
+): "waiting" | "failed" | "done" | null {
   const text = output.toLowerCase();
-  if (/\b(waiting for input|needs input|press enter|continue\?|yes\/no|y\/n)\b/.test(text)) {
+  if (
+    /\b(waiting for input|needs input|press enter|continue\?|yes\/no|y\/n)\b/.test(
+      text,
+    )
+  ) {
     return "waiting";
   }
   if (/\b(failed|error|panic|exception|fatal)\b/.test(text)) {
     return "failed";
   }
-  if (terminalOutputClosesTaskLineup(output) || /\b(done|completed|complete|successfully|all tests passed)\b/.test(text)) {
+  if (
+    terminalOutputClosesTaskLineup(output) ||
+    /\b(done|completed|complete|successfully|all tests passed)\b/.test(text)
+  ) {
     return "done";
   }
   return null;
 }
 
-function inferProcessExit(output: string): { code: number; success: boolean } | null {
-  const matches = [...output.matchAll(/\b(?:process|provider|command)\s+exited\s+with\s+(?:code|status)\s+(-?\d+)\b/gi)];
+function inferProcessExit(
+  output: string,
+): { code: number; success: boolean } | null {
+  const matches = [
+    ...output.matchAll(
+      /\b(?:process|provider|command)\s+exited\s+with\s+(?:code|status)\s+(-?\d+)\b/gi,
+    ),
+  ];
   const match = matches[matches.length - 1];
   if (!match) return null;
   const code = Number(match[1]);
@@ -81,7 +143,10 @@ function inferProcessExit(output: string): { code: number; success: boolean } | 
   return { code, success: code === 0 };
 }
 
-function taskRunIdForActivity(activity: TerminalActivitySummary | undefined, fallback: string) {
+function taskRunIdForActivity(
+  activity: TerminalActivitySummary | undefined,
+  fallback: string,
+) {
   if (!activity?.command) return fallback;
   return `${activity.startedAt ?? activity.updatedAt}:${activity.command}`;
 }
@@ -104,7 +169,8 @@ function inferProviderReadiness(output: string): {
       status: "waiting",
       phase: "needs-input",
       lastSummary: "Provider requires authentication",
-      nextAction: "Authenticate the CLI, then restart or send a recovery prompt",
+      nextAction:
+        "Authenticate the CLI, then restart or send a recovery prompt",
     };
   }
   if (cue === "provider-ready") {
@@ -141,7 +207,10 @@ function phaseForStatus(status: WorkstreamStatus): WorkstreamPhase {
   return "active";
 }
 
-function summaryForWorkstreamStatus(status: WorkstreamStatus): { lastSummary: string; nextAction: string } {
+function summaryForWorkstreamStatus(status: WorkstreamStatus): {
+  lastSummary: string;
+  nextAction: string;
+} {
   if (status === "waiting") {
     return {
       lastSummary: "Provider is waiting for operator input",
@@ -178,7 +247,9 @@ function summaryForWorkstreamStatus(status: WorkstreamStatus): { lastSummary: st
   };
 }
 
-function activityKindForStatus(status: WorkstreamStatus): WorkstreamActivityKind {
+function activityKindForStatus(
+  status: WorkstreamStatus,
+): WorkstreamActivityKind {
   if (status === "waiting") return "waiting";
   if (status === "failed") return "blocked";
   if (status === "done") return "complete";
@@ -187,26 +258,42 @@ function activityKindForStatus(status: WorkstreamStatus): WorkstreamActivityKind
   return "running";
 }
 
-function workstreamStatusForTerminalStatus(status?: TerminalRuntimeStatus): WorkstreamStatus {
+function workstreamStatusForTerminalStatus(
+  status?: TerminalRuntimeStatus,
+): WorkstreamStatus {
   if (status === "failed") return "failed";
   if (status === "exited") return "stopped";
   if (status === "starting") return "ready";
   return "running";
 }
 
-function isTerminalStateDowngrade(updates: { status?: WorkstreamStatus; phase?: WorkstreamPhase; structuredStatus?: boolean }, current: { phase?: WorkstreamPhase; structuredStatus?: boolean }) {
+function isTerminalStateDowngrade(
+  updates: {
+    status?: WorkstreamStatus;
+    phase?: WorkstreamPhase;
+    structuredStatus?: boolean;
+  },
+  current: { phase?: WorkstreamPhase; structuredStatus?: boolean },
+) {
   if (!current.structuredStatus || updates.structuredStatus) return false;
-  const finalPhase = current.phase === "complete" ||
+  const finalPhase =
+    current.phase === "complete" ||
     current.phase === "blocked" ||
     current.phase === "reviewed" ||
     current.phase === "interrupted";
   if (!finalPhase) return false;
-  if (updates.status === "stopped" || updates.phase === "interrupted") return false;
+  if (updates.status === "stopped" || updates.phase === "interrupted")
+    return false;
   return Boolean(updates.status || updates.phase);
 }
 
-function shouldPreserveWorkstreamOnReady(current?: { status?: WorkstreamStatus; phase?: WorkstreamPhase; readiness?: WorkstreamReadiness }) {
-  return current?.phase === "needs-input" ||
+function shouldPreserveWorkstreamOnReady(current?: {
+  status?: WorkstreamStatus;
+  phase?: WorkstreamPhase;
+  readiness?: WorkstreamReadiness;
+}) {
+  return (
+    current?.phase === "needs-input" ||
     current?.phase === "blocked" ||
     current?.phase === "complete" ||
     current?.phase === "reviewed" ||
@@ -216,7 +303,8 @@ function shouldPreserveWorkstreamOnReady(current?: { status?: WorkstreamStatus; 
     current?.status === "failed" ||
     current?.status === "done" ||
     current?.status === "stopped" ||
-    current?.readiness === "auth-required";
+    current?.readiness === "auth-required"
+  );
 }
 
 function latestReadableOutput(output: string) {
@@ -257,7 +345,12 @@ const SNAPSHOT_EXCERPT_THROTTLE_MS = 500;
 
 function readableSnapshotExcerpt(snapshot: GridSnapshot) {
   const lines = snapshot.cells
-    .map((row) => row.map((cell) => cell.c && cell.c !== "\u0000" ? cell.c : " ").join("").trimEnd())
+    .map((row) =>
+      row
+        .map((cell) => (cell.c && cell.c !== "\u0000" ? cell.c : " "))
+        .join("")
+        .trimEnd(),
+    )
     .map((line) => line.replace(/\s+/g, " ").trim())
     .filter((line) => line.length > 0);
   return lines.slice(-24).join("\n").slice(-1800) || undefined;
@@ -284,16 +377,19 @@ interface StructuredAgentSignal {
 }
 
 function isWorkstreamStatus(value: unknown): value is WorkstreamStatus {
-  return value === "ready" ||
+  return (
+    value === "ready" ||
     value === "running" ||
     value === "waiting" ||
     value === "failed" ||
     value === "done" ||
-    value === "stopped";
+    value === "stopped"
+  );
 }
 
 function isWorkstreamPhase(value: unknown): value is WorkstreamPhase {
-  return value === "queued" ||
+  return (
+    value === "queued" ||
     value === "launching" ||
     value === "active" ||
     value === "needs-input" ||
@@ -301,69 +397,100 @@ function isWorkstreamPhase(value: unknown): value is WorkstreamPhase {
     value === "reviewed" ||
     value === "cancelling" ||
     value === "interrupted" ||
-    value === "blocked";
+    value === "blocked"
+  );
 }
 
 function isWorkstreamReadiness(value: unknown): value is WorkstreamReadiness {
-  return value === "path-checked" ||
+  return (
+    value === "path-checked" ||
     value === "provider-ready" ||
     value === "auth-required" ||
-    value === "unknown";
+    value === "unknown"
+  );
 }
 
 function parseStructuredAgentSignals(output: string) {
-  return [...output.matchAll(STRUCTURED_AGENT_SIGNAL_PATTERN)].flatMap((match) => {
-    const raw = match[0];
-    try {
-      const parsed = JSON.parse(match[1]) as Record<string, unknown>;
-      const signal: StructuredAgentSignal = {};
-      if (isWorkstreamStatus(parsed.status)) signal.status = parsed.status;
-      if (isWorkstreamPhase(parsed.phase)) signal.phase = parsed.phase;
-      if (isWorkstreamReadiness(parsed.readiness)) signal.readiness = parsed.readiness;
-      if (Number.isInteger(parsed.exitCode)) signal.exitCode = parsed.exitCode as number;
-      if (typeof parsed.summary === "string") signal.summary = parsed.summary.slice(0, 160);
-      if (typeof parsed.nextAction === "string") signal.nextAction = parsed.nextAction.slice(0, 160);
-      if (typeof parsed.evidence === "string") signal.evidence = parsed.evidence.slice(0, 160);
-      if (typeof parsed.memory === "string") signal.memory = parsed.memory.slice(0, 240);
-      if (typeof parsed.stage === "string") signal.stage = parsed.stage.slice(0, 80);
-      if (typeof parsed.artifact === "string") signal.artifact = parsed.artifact.slice(0, 160);
-      if (typeof parsed.confidence === "string") signal.confidence = parsed.confidence.slice(0, 80);
-      if (typeof parsed.risk === "string") signal.risk = parsed.risk.slice(0, 160);
-      if (typeof parsed.activity === "string") signal.currentActivity = normalizeActivityText(parsed.activity, 140);
-      if (isWorkstreamActivityKind(parsed.activityKind)) signal.activityKind = parsed.activityKind;
-      if (typeof parsed.providerSessionId === "string") signal.providerSessionId = parsed.providerSessionId.slice(0, 160);
-      if (typeof parsed.sessionId === "string" && !signal.providerSessionId) signal.providerSessionId = parsed.sessionId.slice(0, 160);
-      if (typeof parsed.label === "string") signal.label = parsed.label.slice(0, 80);
-      if (typeof parsed.detail === "string") signal.detail = parsed.detail.slice(0, 240);
-      return Object.keys(signal).length > 0 ? [{ raw, signal }] : [];
-    } catch {
-      return [];
-    }
-  });
+  return [...output.matchAll(STRUCTURED_AGENT_SIGNAL_PATTERN)].flatMap(
+    (match) => {
+      const raw = match[0];
+      try {
+        const parsed = JSON.parse(match[1]) as Record<string, unknown>;
+        const signal: StructuredAgentSignal = {};
+        if (isWorkstreamStatus(parsed.status)) signal.status = parsed.status;
+        if (isWorkstreamPhase(parsed.phase)) signal.phase = parsed.phase;
+        if (isWorkstreamReadiness(parsed.readiness))
+          signal.readiness = parsed.readiness;
+        if (Number.isInteger(parsed.exitCode))
+          signal.exitCode = parsed.exitCode as number;
+        if (typeof parsed.summary === "string")
+          signal.summary = parsed.summary.slice(0, 160);
+        if (typeof parsed.nextAction === "string")
+          signal.nextAction = parsed.nextAction.slice(0, 160);
+        if (typeof parsed.evidence === "string")
+          signal.evidence = parsed.evidence.slice(0, 160);
+        if (typeof parsed.memory === "string")
+          signal.memory = parsed.memory.slice(0, 240);
+        if (typeof parsed.stage === "string")
+          signal.stage = parsed.stage.slice(0, 80);
+        if (typeof parsed.artifact === "string")
+          signal.artifact = parsed.artifact.slice(0, 160);
+        if (typeof parsed.confidence === "string")
+          signal.confidence = parsed.confidence.slice(0, 80);
+        if (typeof parsed.risk === "string")
+          signal.risk = parsed.risk.slice(0, 160);
+        if (typeof parsed.activity === "string")
+          signal.currentActivity = normalizeActivityText(parsed.activity, 140);
+        if (isWorkstreamActivityKind(parsed.activityKind))
+          signal.activityKind = parsed.activityKind;
+        if (typeof parsed.providerSessionId === "string")
+          signal.providerSessionId = parsed.providerSessionId.slice(0, 160);
+        if (typeof parsed.sessionId === "string" && !signal.providerSessionId)
+          signal.providerSessionId = parsed.sessionId.slice(0, 160);
+        if (typeof parsed.label === "string")
+          signal.label = parsed.label.slice(0, 80);
+        if (typeof parsed.detail === "string")
+          signal.detail = parsed.detail.slice(0, 240);
+        return Object.keys(signal).length > 0 ? [{ raw, signal }] : [];
+      } catch {
+        return [];
+      }
+    },
+  );
 }
 
 function parseStructuredTodoWrites(output: string) {
-  return [...output.matchAll(STRUCTURED_TODO_WRITE_PATTERN)].flatMap((match) => {
-    const raw = match[0];
-    try {
-      const parsed = JSON.parse(match[1]) as Record<string, unknown>;
-      const rawItems = Array.isArray(parsed.tasks)
-        ? parsed.tasks
-        : Array.isArray(parsed.todos)
-          ? parsed.todos
-          : [];
-      const taskLineup = normalizeTaskLineupItems(
-        rawItems.flatMap((item) => item && typeof item === "object" ? [item as Partial<TaskLineupItem> & { text?: string }] : []),
-        "todo-write"
-      );
-      return [{ raw, taskLineup }];
-    } catch {
-      return [];
-    }
-  });
+  return [...output.matchAll(STRUCTURED_TODO_WRITE_PATTERN)].flatMap(
+    (match) => {
+      const raw = match[0];
+      try {
+        const parsed = JSON.parse(match[1]) as Record<string, unknown>;
+        const rawItems = Array.isArray(parsed.tasks)
+          ? parsed.tasks
+          : Array.isArray(parsed.todos)
+            ? parsed.todos
+            : [];
+        const taskLineup = normalizeTaskLineupItems(
+          rawItems.flatMap((item) =>
+            item && typeof item === "object"
+              ? [item as Partial<TaskLineupItem> & { text?: string }]
+              : [],
+          ),
+          "todo-write",
+        );
+        return [{ raw, taskLineup }];
+      } catch {
+        return [];
+      }
+    },
+  );
 }
 
-function resolveCssToken(styles: CSSStyleDeclaration, token: string, fallback: string): string {
+function resolveCssToken(
+  styles: CSSStyleDeclaration,
+  token: string,
+  fallback: string,
+): string {
   const raw = styles.getPropertyValue(token).trim();
   if (!raw) return fallback;
 
@@ -377,7 +504,8 @@ function resolveCssToken(styles: CSSStyleDeclaration, token: string, fallback: s
 
 function terminalThemeFromTokens(element: HTMLElement) {
   const styles = getComputedStyle(element);
-  const color = (token: string, fallback: string) => resolveCssToken(styles, token, fallback);
+  const color = (token: string, fallback: string) =>
+    resolveCssToken(styles, token, fallback);
 
   return {
     background: color("--terminal-bg", "#080c10"),
@@ -430,7 +558,7 @@ interface TerminalProps {
    * small node; it stays at its working width and the canvas is CSS-scaled to
    * fit, so a wide alt-screen frame never reflows into garbage. Plain shells
    * still reflow to the node size. Off for split panes. See TerminalCanvas.
-  */
+   */
   mapProjection?: boolean;
 }
 
@@ -450,40 +578,57 @@ export function TerminalComponent({
   mapProjection = false,
 }: TerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [containerElement, setContainerElement] = useState<HTMLDivElement | null>(null);
+  const [containerElement, setContainerElement] =
+    useState<HTMLDivElement | null>(null);
   const [terminal, setTerminal] = useState<XTerminal | null>(null);
   const [livePtyId, setLivePtyId] = useState<string | null>(null);
   const [recoveryGeneration, setRecoveryGeneration] = useState(0);
   const recoveryAttemptedRef = useRef(false);
-  const recoveryRestartTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const recoveryHealthyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const recoveryRestartTimeoutRef = useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null);
+  const recoveryHealthyTimeoutRef = useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const resizeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const outputStatusWindowRef = useRef("");
   const pendingMapOutputMetadataRef = useRef("");
-  const mapOutputMetadataTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mapOutputMetadataTimeoutRef = useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null);
   const structuredSignalKeysRef = useRef<Set<string>>(new Set());
-  const statusSummaryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const statusSummaryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
   const statusSummarySequenceRef = useRef(0);
   const lastSummaryRunRef = useRef(0);
   const latestSnapshotExcerptRef = useRef<string | null>(null);
   const latestSnapshotRef = useRef<GridSnapshot | null>(null);
   const lastSnapshotRunRef = useRef(0);
-  const snapshotThrottleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const snapshotThrottleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
   const submittedInputBufferRef = useRef("");
   const submittedInputEscapeRef = useRef(false);
   const activeTabId = useWorkspaceStore((s) => s.activeTabId);
-  const workspaceMode = useWorkspaceStore((s) => s.workspaceUiState.workspaceMode);
-  const terminalRendererMode = useWorkspaceStore((s) => s.workspaceUiState.terminalRendererMode);
+  const workspaceMode = useWorkspaceStore(
+    (s) => s.workspaceUiState.workspaceMode,
+  );
+  const terminalRendererMode = useWorkspaceStore(
+    (s) => s.workspaceUiState.terminalRendererMode,
+  );
   const runtimeSessionId = `terminal-${tabId}-${paneId}`;
   // TC-017g: the headless-VT + Canvas2D renderer is now the production desktop
   // terminal — it replaces xterm.js in the Tauri app. xterm.js remains ONLY the
   // browser-preview fallback (no Tauri runtime). `auto` and `canvas2d` both use
   // the canvas renderer on desktop; set VITE_TERMINAL_RENDERER_MODE=web-xterm to
   // force the legacy xterm path on desktop for comparison/escape-hatch.
-  const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+  const isTauri =
+    typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
   const canvasMode =
-    isTauri && (terminalRendererMode === "canvas2d" || terminalRendererMode === "auto");
+    isTauri &&
+    (terminalRendererMode === "canvas2d" || terminalRendererMode === "auto");
   const isRuntimeVisible = standalone
     ? workspaceMode === "canvas" && runtimeActive
     : workspaceMode === "split" && activeTabId === tabId;
@@ -522,64 +667,82 @@ export function TerminalComponent({
     applyFallbackSize(terminal);
   }, [applyFallbackSize, terminal]);
 
-  const updateTerminalRuntime = useCallback((updates: {
-    id?: string;
-    status?: TerminalRuntimeStatus;
-    reused?: boolean;
-    previewUrl?: string;
-    currentActivity?: string;
-    activityKind?: WorkstreamActivityKind;
-    durableActivity?: TerminalActivitySummary;
-    activeRunId?: string;
-    runClosed?: boolean;
-    taskLineup?: TaskLineupItem[];
-    purpose?: TerminalState["purpose"];
-    mainUserAsk?: TerminalState["mainUserAsk"];
-    terminalOutput?: string;
-    terminalVisibleText?: string;
-    error?: string;
-  }) => {
-    const store = useWorkspaceStore.getState();
-    const tab = store.tabs.find((t) => t.id === tabId);
-    if (!tab) return;
+  const updateTerminalRuntime = useCallback(
+    (updates: {
+      id?: string;
+      status?: TerminalRuntimeStatus;
+      reused?: boolean;
+      previewUrl?: string;
+      currentActivity?: string;
+      activityKind?: WorkstreamActivityKind;
+      durableActivity?: TerminalActivitySummary;
+      activeRunId?: string;
+      runClosed?: boolean;
+      taskLineup?: TaskLineupItem[];
+      purpose?: TerminalState["purpose"];
+      mainUserAsk?: TerminalState["mainUserAsk"];
+      terminalOutput?: string;
+      terminalVisibleText?: string;
+      error?: string;
+    }) => {
+      const store = useWorkspaceStore.getState();
+      const tab = store.tabs.find((t) => t.id === tabId);
+      if (!tab) return;
 
-    const previous = tab.terminals.find((t) => t.paneId === paneId);
-    const id = updates.id ?? previous?.id ?? attachToPtyId ?? runtimeSessionId;
-    store.updateTab(tabId, {
-      terminals: [
-        ...tab.terminals.filter((t) => t.paneId !== paneId),
-        {
-          id,
-          paneId,
-          cols: terminal?.cols ?? previous?.cols ?? 80,
-          rows: terminal?.rows ?? previous?.rows ?? 24,
-          status: updates.status ?? previous?.status,
-          reused: updates.reused ?? previous?.reused,
-          agentProvider: previous?.agentProvider,
-          previewUrl: updates.previewUrl ?? previous?.previewUrl,
-          currentActivity: updates.currentActivity ?? previous?.currentActivity,
-          activityKind: updates.activityKind ?? previous?.activityKind,
-          activityUpdatedAt: updates.currentActivity ? Date.now() : previous?.activityUpdatedAt,
-          durableActivity: updates.durableActivity ?? previous?.durableActivity,
-          activeRunId: updates.activeRunId ?? previous?.activeRunId,
-          runClosed: updates.runClosed ?? previous?.runClosed,
-          taskLineup: updates.taskLineup ?? previous?.taskLineup,
-          purpose: updates.purpose ?? previous?.purpose,
-          mainUserAsk: updates.mainUserAsk ?? previous?.mainUserAsk,
-          taskSidebarCollapsed: previous?.taskSidebarCollapsed,
-          terminalOutput: updates.terminalOutput ?? previous?.terminalOutput,
-          terminalVisibleText: updates.terminalVisibleText ?? previous?.terminalVisibleText,
-          terminalVisibleTextUpdatedAt: updates.terminalVisibleText ? Date.now() : previous?.terminalVisibleTextUpdatedAt,
-          statusSummary: previous?.statusSummary,
-          statusSummaryUpdatedAt: previous?.statusSummaryUpdatedAt,
-          statusSummarySource: previous?.statusSummarySource,
-          statusSummaryError: previous?.statusSummaryError,
-          lastStatusAt: Date.now(),
-          lastError: updates.error,
-        },
-      ],
-    });
-  }, [attachToPtyId, paneId, runtimeSessionId, tabId, terminal?.cols, terminal?.rows]);
+      const previous = tab.terminals.find((t) => t.paneId === paneId);
+      const id =
+        updates.id ?? previous?.id ?? attachToPtyId ?? runtimeSessionId;
+      store.updateTab(tabId, {
+        terminals: [
+          ...tab.terminals.filter((t) => t.paneId !== paneId),
+          {
+            id,
+            paneId,
+            cols: terminal?.cols ?? previous?.cols ?? 80,
+            rows: terminal?.rows ?? previous?.rows ?? 24,
+            status: updates.status ?? previous?.status,
+            reused: updates.reused ?? previous?.reused,
+            agentProvider: previous?.agentProvider,
+            previewUrl: updates.previewUrl ?? previous?.previewUrl,
+            currentActivity:
+              updates.currentActivity ?? previous?.currentActivity,
+            activityKind: updates.activityKind ?? previous?.activityKind,
+            activityUpdatedAt: updates.currentActivity
+              ? Date.now()
+              : previous?.activityUpdatedAt,
+            durableActivity:
+              updates.durableActivity ?? previous?.durableActivity,
+            activeRunId: updates.activeRunId ?? previous?.activeRunId,
+            runClosed: updates.runClosed ?? previous?.runClosed,
+            taskLineup: updates.taskLineup ?? previous?.taskLineup,
+            purpose: updates.purpose ?? previous?.purpose,
+            mainUserAsk: updates.mainUserAsk ?? previous?.mainUserAsk,
+            taskSidebarCollapsed: previous?.taskSidebarCollapsed,
+            terminalOutput: updates.terminalOutput ?? previous?.terminalOutput,
+            terminalVisibleText:
+              updates.terminalVisibleText ?? previous?.terminalVisibleText,
+            terminalVisibleTextUpdatedAt: updates.terminalVisibleText
+              ? Date.now()
+              : previous?.terminalVisibleTextUpdatedAt,
+            statusSummary: previous?.statusSummary,
+            statusSummaryUpdatedAt: previous?.statusSummaryUpdatedAt,
+            statusSummarySource: previous?.statusSummarySource,
+            statusSummaryError: previous?.statusSummaryError,
+            lastStatusAt: Date.now(),
+            lastError: updates.error,
+          },
+        ],
+      });
+    },
+    [
+      attachToPtyId,
+      paneId,
+      runtimeSessionId,
+      tabId,
+      terminal?.cols,
+      terminal?.rows,
+    ],
+  );
 
   const scheduleStatusSummaryUpdate = useCallback(() => {
     // Map terminals are hosted as standalone renderers. The global
@@ -588,11 +751,17 @@ export function TerminalComponent({
     // repeated sidecar/header work.
     if (standalone) return;
     const statusEndpointConfigured = Boolean(
-      (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env
-        ?.VITE_AGENT_STATUS_SUMMARY_ENDPOINT,
+      (import.meta as ImportMeta & { env?: Record<string, string | undefined> })
+        .env?.VITE_AGENT_STATUS_SUMMARY_ENDPOINT,
     );
-    if (typeof window !== "undefined" && window.location.port !== "1420" && !statusEndpointConfigured) return;
-    if (statusSummaryTimeoutRef.current) clearTimeout(statusSummaryTimeoutRef.current);
+    if (
+      typeof window !== "undefined" &&
+      window.location.port !== "1420" &&
+      !statusEndpointConfigured
+    )
+      return;
+    if (statusSummaryTimeoutRef.current)
+      clearTimeout(statusSummaryTimeoutRef.current);
     const sequence = statusSummarySequenceRef.current + 1;
     statusSummarySequenceRef.current = sequence;
 
@@ -607,7 +776,9 @@ export function TerminalComponent({
       const store = useWorkspaceStore.getState();
       const tab = store.tabs.find((candidate) => candidate.id === tabId);
       if (!tab) return;
-      const terminalState = tab.terminals.find((candidate) => candidate.paneId === paneId);
+      const terminalState = tab.terminals.find(
+        (candidate) => candidate.paneId === paneId,
+      );
       // Join with the agent's status sidecar by the terminal's LIVE cwd (the dir a
       // `cd`/`z` moved into, where the user actually launched Claude), not the pane's
       // spawn cwd. The Claude TodoWrite hook keys the sidecar by Claude's live cwd, so
@@ -637,12 +808,19 @@ export function TerminalComponent({
       // sidecar-backed results, so heuristic scrapes still can't overwrite the header.
       let gatedShellPane = false;
       if (tab.workstream?.kind !== "agent" && terminalState) {
-        const hasActiveAgentMarker = /\bWorking\s+\(/i.test(terminalState.terminalOutput ?? "");
+        const hasActiveAgentMarker = /\bWorking\s+\(/i.test(
+          terminalState.terminalOutput ?? "",
+        );
         const hasRunningDurableActivity =
           terminalState.durableActivity?.status === "running" &&
           Date.now() - (terminalState.durableActivity.updatedAt ?? 0) < 60_000;
-        const hasRealTaskList = Boolean(terminalState.statusSummary?.tasksFromTodoWrite);
-        gatedShellPane = !hasActiveAgentMarker && !hasRunningDurableActivity && !hasRealTaskList;
+        const hasRealTaskList = Boolean(
+          terminalState.statusSummary?.tasksFromTodoWrite,
+        );
+        gatedShellPane =
+          !hasActiveAgentMarker &&
+          !hasRunningDurableActivity &&
+          !hasRealTaskList;
       }
       // Key the status lookup by this terminal's own pane id (TC-035): the worker
       // prefers the pane-keyed sidecar so two terminals in the same cwd stay
@@ -652,33 +830,57 @@ export function TerminalComponent({
       // value as TERMFLEET_PANE_ID, so two terminals in one cwd stay independent.
       // (`runtimeSessionId` = the id the PTY was spawned with; livePtyId on reattach.)
       const statusPaneKey = runtimeSessionId ?? livePtyId;
-      const input: AgentStatusSummaryInput = { ...baseInput, paneId: statusPaneKey };
+      const input: AgentStatusSummaryInput = {
+        ...baseInput,
+        paneId: statusPaneKey,
+      };
 
       void summarizeAgentStatus(input).then((result) => {
         if (statusSummarySequenceRef.current !== sequence) return;
         // Junk protection for gated shell panes: only the agent's real sidecar
         // status may populate a pane that shows no other sign of agent work.
-        const contextualResult = result.source === "process" && Boolean(result.summary.narration);
-        if (gatedShellPane && result.source !== "sidecar" && !contextualResult) return;
+        const contextualResult =
+          result.source === "process" && Boolean(result.summary.narration);
+        if (gatedShellPane && result.source !== "sidecar" && !contextualResult)
+          return;
         const latestStore = useWorkspaceStore.getState();
-        const latestTab = latestStore.tabs.find((candidate) => candidate.id === tabId);
+        const latestTab = latestStore.tabs.find(
+          (candidate) => candidate.id === tabId,
+        );
         if (!latestTab) return;
         if (latestTab.workstream?.kind === "agent") {
           const extractedAt = Date.now();
-          const extractedTasks = mergeExtractedItems(latestTab.workstream.extractedTasks, result.summary.tasks, extractedAt);
-          const extractedBlockers = mergeExtractedItems(latestTab.workstream.extractedBlockers, result.summary.blockers, extractedAt);
-          const extractedEvidence = mergeExtractedItems(latestTab.workstream.extractedEvidence, result.summary.evidence, extractedAt);
-          const extractedNextActions = mergeExtractedItems(latestTab.workstream.extractedNextActions, result.summary.nextActions, extractedAt);
+          const extractedTasks = mergeExtractedItems(
+            latestTab.workstream.extractedTasks,
+            result.summary.tasks,
+            extractedAt,
+          );
+          const extractedBlockers = mergeExtractedItems(
+            latestTab.workstream.extractedBlockers,
+            result.summary.blockers,
+            extractedAt,
+          );
+          const extractedEvidence = mergeExtractedItems(
+            latestTab.workstream.extractedEvidence,
+            result.summary.evidence,
+            extractedAt,
+          );
+          const extractedNextActions = mergeExtractedItems(
+            latestTab.workstream.extractedNextActions,
+            result.summary.nextActions,
+            extractedAt,
+          );
           const taskLineup = taskLineupFromExtractedItems(
             extractedTasks,
             result.source !== "fallback" ? "summary" : "structured-signal",
             "pending",
-            extractedAt
+            extractedAt,
           );
           latestStore.updateTab(tabId, {
             workstream: {
               ...latestTab.workstream,
               statusSummary: result.summary,
+              taskLine: result.taskLine,
               statusSummaryUpdatedAt: extractedAt,
               statusSummarySource: result.source,
               statusSummaryError: result.error,
@@ -687,12 +889,17 @@ export function TerminalComponent({
               extractedEvidence,
               extractedNextActions,
               taskLineup,
-              cockpitObjects: mergeCockpitObjectsFromExtractedItems(latestTab.workstream.cockpitObjects, tabId, {
-                task: extractedTasks,
-                blocker: extractedBlockers,
-                evidence: extractedEvidence,
-                "next-action": extractedNextActions,
-              }, extractedAt),
+              cockpitObjects: mergeCockpitObjectsFromExtractedItems(
+                latestTab.workstream.cockpitObjects,
+                tabId,
+                {
+                  task: extractedTasks,
+                  blocker: extractedBlockers,
+                  evidence: extractedEvidence,
+                  "next-action": extractedNextActions,
+                },
+                extractedAt,
+              ),
             },
           });
           return;
@@ -700,14 +907,17 @@ export function TerminalComponent({
         latestStore.updateTab(tabId, {
           terminals: latestTab.terminals.map((candidate) =>
             candidate.paneId === paneId
-	              ? (() => {
-	                  const updatedAt = Date.now();
-	                  const runId = candidate.activeRunId;
-	                  const closesRun = candidate.runClosed || terminalOutputClosesTaskLineup(candidate.terminalOutput);
-	                  const hasStructuredTaskLineup = candidate.taskLineup?.some((item) =>
-	                    item.source === "todo-write" &&
-	                    (!item.runId || !runId || item.runId === runId)
-	                  );
+              ? (() => {
+                  const updatedAt = Date.now();
+                  const runId = candidate.activeRunId;
+                  const closesRun =
+                    candidate.runClosed ||
+                    terminalOutputClosesTaskLineup(candidate.terminalOutput);
+                  const hasStructuredTaskLineup = candidate.taskLineup?.some(
+                    (item) =>
+                      item.source === "todo-write" &&
+                      (!item.runId || !runId || item.runId === runId),
+                  );
                   // When the summary's tasks ARE the agent's real Claude TodoWrite
                   // list (captured by the status sidecar), render them as the
                   // authoritative `todo-write` source so the panel/map/header treat
@@ -726,20 +936,28 @@ export function TerminalComponent({
                   // still PRINT their plan as a checkbox list in the terminal — surface that
                   // as the authoritative task list so the panel shows it instead of "NO LIST".
                   // (TC-035, Image #8)
-                  const printedChecklist = result.summary.tasksFromTodoWrite && result.summary.tasks?.length
-                    ? null
-                    : parseTerminalChecklist(candidate.terminalOutput);
-                  const extractedLineup = result.summary.tasksFromTodoWrite && result.summary.tasks?.length
-                    ? taskLineupFromExtractedItems(
-                        result.summary.tasks,
-                        "todo-write",
-                        "pending",
-                        updatedAt,
-                        runId
-                      )
-                    : printedChecklist && printedChecklist.length
-                      ? normalizeTaskLineupItems(printedChecklist, "todo-write", updatedAt)
-                      : [];
+                  const printedChecklist =
+                    result.summary.tasksFromTodoWrite &&
+                    result.summary.tasks?.length
+                      ? null
+                      : parseTerminalChecklist(candidate.terminalOutput);
+                  const extractedLineup =
+                    result.summary.tasksFromTodoWrite &&
+                    result.summary.tasks?.length
+                      ? taskLineupFromExtractedItems(
+                          result.summary.tasks,
+                          "todo-write",
+                          "pending",
+                          updatedAt,
+                          runId,
+                        )
+                      : printedChecklist && printedChecklist.length
+                        ? normalizeTaskLineupItems(
+                            printedChecklist,
+                            "todo-write",
+                            updatedAt,
+                          )
+                        : [];
                   // TC-033 T1: never let this summary cycle clobber a live
                   // todo-write list (the sidebar/map only render todo-write items).
                   const hasCapturedTaskContext = Boolean(
@@ -747,14 +965,20 @@ export function TerminalComponent({
                     candidate.mainUserAsk ||
                     hasStructuredTaskLineup,
                   );
-                  const shouldCloseRunFromTranscript = closesRun && !hasCapturedTaskContext;
-                  const taskLineup = mergeShellSummaryTaskLineup(candidate.taskLineup, extractedLineup, {
-                    closesRun: shouldCloseRunFromTranscript,
-                    runId,
-                    updatedAt,
-                  });
+                  const shouldCloseRunFromTranscript =
+                    closesRun && !hasCapturedTaskContext;
+                  const taskLineup = mergeShellSummaryTaskLineup(
+                    candidate.taskLineup,
+                    extractedLineup,
+                    {
+                      closesRun: shouldCloseRunFromTranscript,
+                      runId,
+                      updatedAt,
+                    },
+                  );
                   const closedRunSummary: WorkstreamStatusSummary | null =
-                    shouldCloseRunFromTranscript && !result.summary.tasksFromTodoWrite
+                    shouldCloseRunFromTranscript &&
+                    !result.summary.tasksFromTodoWrite
                       ? {
                           task: "Idle",
                           path: liveCwd ?? cwd ?? result.summary.path,
@@ -767,18 +991,27 @@ export function TerminalComponent({
                       : null;
                   const nextStatusSummary =
                     closedRunSummary ??
-                    ((candidate.statusSummary?.tasksFromTodoWrite && !result.summary.tasksFromTodoWrite) ||
-                    (hasStructuredTaskLineup && result.source === "fallback" && candidate.statusSummary) ||
+                    ((candidate.statusSummary?.tasksFromTodoWrite &&
+                      !result.summary.tasksFromTodoWrite) ||
+                    (hasStructuredTaskLineup &&
+                      result.source === "fallback" &&
+                      candidate.statusSummary) ||
                     // Flicker guard: a narration-less heuristic must not overwrite a
                     // narration-bearing (contextual) summary.
-                    (candidate.statusSummary?.narration && !result.summary.narration && result.source !== "sidecar")
+                    (candidate.statusSummary?.narration &&
+                      !result.summary.narration &&
+                      result.source !== "sidecar")
                       ? candidate.statusSummary
                       : result.summary);
-                  const mainUserAsk = mainUserAskFromSummary(nextStatusSummary, "status-sidecar", {
-                    previous: candidate.mainUserAsk,
-                    runId,
-                    now: updatedAt,
-                  });
+                  const mainUserAsk = mainUserAskFromSummary(
+                    nextStatusSummary,
+                    "status-sidecar",
+                    {
+                      previous: candidate.mainUserAsk,
+                      runId,
+                      now: updatedAt,
+                    },
+                  );
                   if (mainUserAsk !== candidate.mainUserAsk) {
                     recordTerminalHeaderLog({
                       terminalId: candidate.id,
@@ -789,19 +1022,24 @@ export function TerminalComponent({
                       previousText: candidate.mainUserAsk?.text,
                     });
                   }
-	                  return {
-	                    ...candidate,
-	                    statusSummary: nextStatusSummary,
-	                    agentProvider: stableAgentProvider(candidate.agentProvider, result.summary.provider),
-	                    statusSummaryUpdatedAt: updatedAt,
-	                    statusSummarySource: result.source,
-	                    statusSummaryError: result.error,
+                  return {
+                    ...candidate,
+                    statusSummary: nextStatusSummary,
+                    // TC-060: the always-true line for this pane.
+                    taskLine: result.taskLine ?? candidate.taskLine,
+                    agentProvider: stableAgentProvider(
+                      candidate.agentProvider,
+                      result.summary.provider,
+                    ),
+                    statusSummaryUpdatedAt: updatedAt,
+                    statusSummarySource: result.source,
+                    statusSummaryError: result.error,
                     mainUserAsk,
                     runClosed: shouldCloseRunFromTranscript,
                     taskLineup,
                   };
                 })()
-              : candidate
+              : candidate,
           ),
         });
       });
@@ -839,632 +1077,893 @@ export function TerminalComponent({
     // handled in handleOutput(), which is the stable source for task/status summaries.
   }, [paneId, tabId]);
 
-  const handleSnapshot = useCallback((snapshot: GridSnapshot) => {
-    // onSnapshot drives the map preview, which throttles itself — leave it on the
-    // raw per-frame stream. Only the expensive excerpt/store work is throttled.
-    onSnapshot?.(snapshot);
-    latestSnapshotRef.current = snapshot;
-    const since = Date.now() - lastSnapshotRunRef.current;
-    if (since >= SNAPSHOT_EXCERPT_THROTTLE_MS) {
+  const handleSnapshot = useCallback(
+    (snapshot: GridSnapshot) => {
+      // onSnapshot drives the map preview, which throttles itself — leave it on the
+      // raw per-frame stream. Only the expensive excerpt/store work is throttled.
+      onSnapshot?.(snapshot);
+      latestSnapshotRef.current = snapshot;
+      const since = Date.now() - lastSnapshotRunRef.current;
+      if (since >= SNAPSHOT_EXCERPT_THROTTLE_MS) {
+        if (snapshotThrottleTimerRef.current) {
+          clearTimeout(snapshotThrottleTimerRef.current);
+          snapshotThrottleTimerRef.current = null;
+        }
+        runSnapshotExcerpt();
+      } else if (snapshotThrottleTimerRef.current === null) {
+        // Trailing run guarantees the final frame is captured after a burst.
+        snapshotThrottleTimerRef.current = setTimeout(() => {
+          snapshotThrottleTimerRef.current = null;
+          runSnapshotExcerpt();
+        }, SNAPSHOT_EXCERPT_THROTTLE_MS - since);
+      }
+    },
+    [onSnapshot, runSnapshotExcerpt],
+  );
+
+  const storeSubmittedAsk = useCallback(
+    (line: string) => {
+      const purpose = terminalPurposeFromSubmittedInput(line);
+      if (!purpose) return;
+      const store = useWorkspaceStore.getState();
+      const tab = store.tabs.find((candidate) => candidate.id === tabId);
+      if (!tab) return;
+      const updatedAt = Date.now();
+      store.updateTab(tabId, {
+        terminals: tab.terminals.map((terminal) => {
+          if (terminal.paneId !== paneId) return terminal;
+          const submittedAsk = mainUserAskFromTerminalPurpose(purpose, {
+            previous: terminal.mainUserAsk,
+            runId: terminal.activeRunId,
+            now: updatedAt,
+            preferTerminalPrompt: true,
+          });
+          if (submittedAsk && submittedAsk !== terminal.mainUserAsk) {
+            recordTerminalHeaderLog({
+              terminalId: terminal.id,
+              paneId,
+              field: "mainUserAsk",
+              source: submittedAsk.source,
+              text: submittedAsk.text,
+              previousText: terminal.mainUserAsk?.text,
+            });
+          }
+          return {
+            ...terminal,
+            mainUserAsk: submittedAsk ?? terminal.mainUserAsk,
+          };
+        }),
+      });
+    },
+    [paneId, tabId],
+  );
+
+  const captureSubmittedInput = useCallback(
+    (data: string) => {
+      let buffer = submittedInputBufferRef.current;
+      let skippingEscape = submittedInputEscapeRef.current;
+      const flush = () => {
+        const line = buffer.replace(/\s+/g, " ").trim();
+        buffer = "";
+        if (line) storeSubmittedAsk(line);
+      };
+      for (const char of data) {
+        if (skippingEscape) {
+          if (/[A-Za-z~]/.test(char)) skippingEscape = false;
+          continue;
+        }
+        if (char === "\x1b") {
+          skippingEscape = true;
+          continue;
+        }
+        if (char === "\r" || char === "\n") {
+          flush();
+          continue;
+        }
+        if (char === "\x03" || char === "\x04" || char === "\x15") {
+          buffer = "";
+          continue;
+        }
+        if (char === "\x7f" || char === "\b") {
+          buffer = buffer.slice(0, -1);
+          continue;
+        }
+        if (char >= " " && char !== "\x7f") {
+          buffer += char;
+          if (buffer.length > 320) buffer = buffer.slice(-320);
+        }
+      }
+      submittedInputBufferRef.current = buffer;
+      submittedInputEscapeRef.current = skippingEscape;
+    },
+    [storeSubmittedAsk],
+  );
+
+  const persistAgentRecoveryManifest = useCallback(
+    (
+      ptyId: string | null,
+      workstream: WorkstreamMetadata | undefined,
+      overrides: {
+        providerSessionId?: string;
+        restoreStatus?: WorkstreamMetadata["restoreStatus"];
+        restoreFailureReason?: string;
+      } = {},
+    ) => {
+      if (!ptyId || workstream?.kind !== "agent") return;
+      const providerSessionId =
+        overrides.providerSessionId ?? workstream.providerSessionId;
+      const restoreStatus =
+        overrides.restoreStatus ??
+        workstream.restoreStatus ??
+        (workstream.readiness === "auth-required"
+          ? "needs-auth"
+          : providerSessionId
+            ? "resuming"
+            : undefined);
+      const restoreFailureReason =
+        overrides.restoreFailureReason ??
+        workstream.restoreFailureReason ??
+        (workstream.readiness === "auth-required"
+          ? (workstream.providerAvailabilityMessage ?? workstream.lastSummary)
+          : undefined);
+      invoke("daemon_update_agent_recovery_manifest", {
+        payload: {
+          id: ptyId,
+          cwd: workstream.cwd ?? cwd,
+          provider: workstream.provider,
+          launchProfile: workstream.launchProfile,
+          providerSessionId,
+          originalCommand: workstream.startupCommand,
+          mission: workstream.mission ?? workstream.prompt,
+          restoreStatus,
+          restoreFailureReason,
+        },
+      }).catch((error) => {
+        console.warn("Could not persist agent recovery manifest", error);
+      });
+    },
+    [cwd],
+  );
+
+  // Cancel any pending trailing excerpt run when this terminal unmounts.
+  useEffect(
+    () => () => {
       if (snapshotThrottleTimerRef.current) {
         clearTimeout(snapshotThrottleTimerRef.current);
         snapshotThrottleTimerRef.current = null;
       }
-      runSnapshotExcerpt();
-    } else if (snapshotThrottleTimerRef.current === null) {
-      // Trailing run guarantees the final frame is captured after a burst.
-      snapshotThrottleTimerRef.current = setTimeout(() => {
-        snapshotThrottleTimerRef.current = null;
-        runSnapshotExcerpt();
-      }, SNAPSHOT_EXCERPT_THROTTLE_MS - since);
-    }
-  }, [onSnapshot, runSnapshotExcerpt]);
+    },
+    [],
+  );
 
-  const storeSubmittedAsk = useCallback((line: string) => {
-    const purpose = terminalPurposeFromSubmittedInput(line);
-    if (!purpose) return;
-    const store = useWorkspaceStore.getState();
-    const tab = store.tabs.find((candidate) => candidate.id === tabId);
-    if (!tab) return;
-    const updatedAt = Date.now();
-    store.updateTab(tabId, {
-      terminals: tab.terminals.map((terminal) => {
-        if (terminal.paneId !== paneId) return terminal;
-        const submittedAsk = mainUserAskFromTerminalPurpose(purpose, {
-          previous: terminal.mainUserAsk,
-          runId: terminal.activeRunId,
-          now: updatedAt,
-          preferTerminalPrompt: true,
-        });
-        if (submittedAsk && submittedAsk !== terminal.mainUserAsk) {
-          recordTerminalHeaderLog({
-            terminalId: terminal.id,
-            paneId,
-            field: "mainUserAsk",
-            source: submittedAsk.source,
-            text: submittedAsk.text,
-            previousText: terminal.mainUserAsk?.text,
-          });
-        }
-        return {
-          ...terminal,
-          mainUserAsk: submittedAsk ?? terminal.mainUserAsk,
-        };
-      }),
-    });
-  }, [paneId, tabId]);
-
-  const captureSubmittedInput = useCallback((data: string) => {
-    let buffer = submittedInputBufferRef.current;
-    let skippingEscape = submittedInputEscapeRef.current;
-    const flush = () => {
-      const line = buffer.replace(/\s+/g, " ").trim();
-      buffer = "";
-      if (line) storeSubmittedAsk(line);
-    };
-    for (const char of data) {
-      if (skippingEscape) {
-        if (/[A-Za-z~]/.test(char)) skippingEscape = false;
-        continue;
-      }
-      if (char === "\x1b") {
-        skippingEscape = true;
-        continue;
-      }
-      if (char === "\r" || char === "\n") {
-        flush();
-        continue;
-      }
-      if (char === "\x03" || char === "\x04" || char === "\x15") {
-        buffer = "";
-        continue;
-      }
-      if (char === "\x7f" || char === "\b") {
-        buffer = buffer.slice(0, -1);
-        continue;
-      }
-      if (char >= " " && char !== "\x7f") {
-        buffer += char;
-        if (buffer.length > 320) buffer = buffer.slice(-320);
-      }
-    }
-    submittedInputBufferRef.current = buffer;
-    submittedInputEscapeRef.current = skippingEscape;
-  }, [storeSubmittedAsk]);
-
-  const persistAgentRecoveryManifest = useCallback((
-    ptyId: string | null,
-    workstream: WorkstreamMetadata | undefined,
-    overrides: { providerSessionId?: string; restoreStatus?: WorkstreamMetadata["restoreStatus"]; restoreFailureReason?: string } = {}
-  ) => {
-    if (!ptyId || workstream?.kind !== "agent") return;
-    const providerSessionId = overrides.providerSessionId ?? workstream.providerSessionId;
-    const restoreStatus =
-      overrides.restoreStatus ??
-      workstream.restoreStatus ??
-      (workstream.readiness === "auth-required"
-        ? "needs-auth"
-        : providerSessionId
-          ? "resuming"
-          : undefined);
-    const restoreFailureReason =
-      overrides.restoreFailureReason ??
-      workstream.restoreFailureReason ??
-      (workstream.readiness === "auth-required"
-        ? workstream.providerAvailabilityMessage ?? workstream.lastSummary
-        : undefined);
-    invoke("daemon_update_agent_recovery_manifest", {
-      payload: {
-        id: ptyId,
-        cwd: workstream.cwd ?? cwd,
-        provider: workstream.provider,
-        launchProfile: workstream.launchProfile,
-        providerSessionId,
-        originalCommand: workstream.startupCommand,
-        mission: workstream.mission ?? workstream.prompt,
-        restoreStatus,
-        restoreFailureReason,
-      },
-    }).catch((error) => {
-      console.warn("Could not persist agent recovery manifest", error);
-    });
-  }, [cwd]);
-
-  // Cancel any pending trailing excerpt run when this terminal unmounts.
-  useEffect(() => () => {
-    if (snapshotThrottleTimerRef.current) {
-      clearTimeout(snapshotThrottleTimerRef.current);
-      snapshotThrottleTimerRef.current = null;
-    }
-  }, []);
-
-  const updateWorkstreamRuntime = useCallback((updates: {
-    status?: WorkstreamStatus;
-    phase?: WorkstreamPhase;
-    readiness?: WorkstreamReadiness;
-    lastSummary?: string;
-    nextAction?: string;
-    evidence?: string;
-    memory?: string;
-    stage?: string;
-    artifact?: string;
-    confidence?: string;
-    risk?: string;
-    terminalOutput?: string;
-    currentActivity?: string;
-    activityKind?: WorkstreamActivityKind;
-    activitySource?: WorkstreamActivitySource;
-    providerSessionId?: string;
-    restoreStatus?: WorkstreamMetadata["restoreStatus"];
-    restoreFailureReason?: string;
-    structuredStatus?: boolean;
-    exitCode?: number;
-    activity?: boolean;
-  }) => {
-    const store = useWorkspaceStore.getState();
-    const tab = store.tabs.find((candidate) => candidate.id === tabId);
-    if (!tab?.workstream) return;
-    const summary = updates.status ? summaryForWorkstreamStatus(updates.status) : null;
-    const completed = updates.status === "done" || updates.phase === "complete";
-    const hasActivityUpdate = Boolean(updates.currentActivity || updates.activityKind || updates.activitySource);
-    const structuredAt = Date.now();
-    const structuredExcerpt = [
-      updates.lastSummary,
-      updates.currentActivity,
-      updates.evidence,
-      updates.risk,
-      updates.nextAction,
-    ].filter(Boolean).join(" · ");
-    const extractedTasks = normalizeExtractedItems(updates.lastSummary, "structured-signal", structuredExcerpt, structuredAt, 1);
-    const extractedBlockers = normalizeExtractedItems(updates.risk, "structured-signal", structuredExcerpt, structuredAt, 1);
-    const extractedEvidence = normalizeExtractedItems(updates.evidence, "structured-signal", structuredExcerpt, structuredAt, 1);
-    const extractedNextActions = normalizeExtractedItems(updates.nextAction, "structured-signal", structuredExcerpt, structuredAt, 1);
-    const nextExtractedTasks = mergeExtractedItems(tab.workstream.extractedTasks, extractedTasks, structuredAt);
-    const nextExtractedBlockers = mergeExtractedItems(tab.workstream.extractedBlockers, extractedBlockers, structuredAt);
-    const nextExtractedEvidence = mergeExtractedItems(tab.workstream.extractedEvidence, extractedEvidence, structuredAt);
-    const nextExtractedNextActions = mergeExtractedItems(tab.workstream.extractedNextActions, extractedNextActions, structuredAt);
-    const nextTaskLineup = completed
-      ? completeOpenTaskLineup(tab.workstream.taskLineup, structuredAt)
-      : taskLineupFromExtractedItems(nextExtractedTasks, "structured-signal", "pending", structuredAt);
-    const preserveStructuredActivity =
-      updates.activitySource === "terminal" &&
-      tab.workstream.activitySource === "structured" &&
-      tab.workstream.structuredStatus;
-    const preserveStructuredState = isTerminalStateDowngrade(updates, tab.workstream);
-    const statusChanged = !preserveStructuredState && updates.status && updates.status !== tab.workstream.status;
-    store.updateTab(tabId, {
-      workstream: {
-        ...tab.workstream,
-        status: preserveStructuredState ? tab.workstream.status : updates.status ?? tab.workstream.status,
-        readiness: preserveStructuredState ? tab.workstream.readiness : updates.readiness ?? tab.workstream.readiness,
-        phase: preserveStructuredState
-          ? tab.workstream.phase
-          : updates.phase ?? (updates.status ? phaseForStatus(updates.status) : tab.workstream.phase),
-        lastSummary: preserveStructuredState
-          ? tab.workstream.lastSummary
-          : updates.lastSummary ?? summary?.lastSummary ?? tab.workstream.lastSummary,
-        nextAction: preserveStructuredState
-          ? tab.workstream.nextAction
-          : updates.nextAction ?? summary?.nextAction ?? tab.workstream.nextAction,
-        evidence: updates.evidence ?? tab.workstream.evidence,
-        memory: updates.memory ?? tab.workstream.memory,
-        stage: updates.stage ?? tab.workstream.stage,
-        artifact: updates.artifact ?? tab.workstream.artifact,
-        confidence: updates.confidence ?? tab.workstream.confidence,
-        risk: updates.risk ?? tab.workstream.risk,
-        terminalOutput: updates.terminalOutput ?? tab.workstream.terminalOutput,
-        terminalOutputUpdatedAt: updates.terminalOutput ? Date.now() : tab.workstream.terminalOutputUpdatedAt,
-        currentActivity: preserveStructuredActivity
-          ? tab.workstream.currentActivity
-          : updates.currentActivity ?? tab.workstream.currentActivity,
-        activityKind: preserveStructuredActivity
-          ? tab.workstream.activityKind
-          : updates.activityKind ?? tab.workstream.activityKind,
-        activitySource: preserveStructuredActivity
-          ? tab.workstream.activitySource
-          : updates.activitySource ?? tab.workstream.activitySource,
-        activityUpdatedAt: hasActivityUpdate && !preserveStructuredActivity ? Date.now() : tab.workstream.activityUpdatedAt,
-        providerSessionId: updates.providerSessionId ?? tab.workstream.providerSessionId,
-        restoreStatus: updates.restoreStatus ?? tab.workstream.restoreStatus,
-        restoreFailureReason: updates.restoreFailureReason ?? tab.workstream.restoreFailureReason,
-        outcome: preserveStructuredState
-          ? tab.workstream.outcome
-          : updates.lastSummary ?? summary?.lastSummary ?? tab.workstream.outcome,
-        structuredStatus: updates.structuredStatus ?? tab.workstream.structuredStatus,
-        exitCode: updates.exitCode ?? tab.workstream.exitCode,
-        completedAt: completed ? tab.workstream.completedAt ?? Date.now() : tab.workstream.completedAt,
-        lastActivityAt: updates.activity ? Date.now() : tab.workstream.lastActivityAt,
-        extractedTasks: nextExtractedTasks,
-        extractedBlockers: nextExtractedBlockers,
-        extractedEvidence: nextExtractedEvidence,
-        extractedNextActions: nextExtractedNextActions,
-        taskLineup: nextTaskLineup.length > 0 ? nextTaskLineup : tab.workstream.taskLineup,
-        cockpitObjects: mergeCockpitObjectsFromExtractedItems(tab.workstream.cockpitObjects, tabId, {
-          task: nextExtractedTasks,
-          blocker: nextExtractedBlockers,
-          evidence: nextExtractedEvidence,
-          "next-action": nextExtractedNextActions,
-        }, structuredAt),
-      },
-    });
-    if (statusChanged && updates.status) {
-      store.recordWorkstreamEvent(tabId, {
-        kind: "status",
-        label: `Status changed to ${updates.status}`,
-        status: updates.status,
-      });
-    }
-    if (
-      tab.workstream.kind === "agent" &&
-      (updates.activity ||
-        updates.status ||
-        updates.phase ||
-        updates.currentActivity ||
-        updates.lastSummary ||
-        updates.nextAction ||
-        updates.terminalOutput)
-    ) {
-      scheduleStatusSummaryUpdate();
-    }
-  }, [scheduleStatusSummaryUpdate, tabId]);
-
-  const handleReady = useCallback((ptyId: string, details: { reused: boolean }) => {
-    updateTerminalRuntime({
-      id: ptyId,
-      status: details.reused ? "reconnected" : "running",
-      reused: details.reused,
-    });
-    setLivePtyId(ptyId);
-
-    const store = useWorkspaceStore.getState();
-    const linkedNode = store.canvasState.nodes.find((node) => node.terminalTabId === tabId);
-    if (linkedNode && linkedNode.terminalPtyId !== ptyId) {
-      store.updateCanvasNode(linkedNode.id, { terminalPtyId: ptyId });
-    }
-    store.setActiveTerminal(ptyId);
-    const currentTab = store.tabs.find((candidate) => candidate.id === tabId);
-    persistAgentRecoveryManifest(ptyId, currentTab?.workstream);
-    updateWorkstreamRuntime(shouldPreserveWorkstreamOnReady(currentTab?.workstream)
-      ? { activity: true }
-      : { status: "running", activity: true });
-    if (recoveryAttemptedRef.current) {
-      if (recoveryHealthyTimeoutRef.current) clearTimeout(recoveryHealthyTimeoutRef.current);
-      recoveryHealthyTimeoutRef.current = setTimeout(() => {
-        recoveryAttemptedRef.current = false;
-        recoveryHealthyTimeoutRef.current = null;
-      }, 10_000);
-    }
-  }, [paneId, persistAgentRecoveryManifest, tabId, updateTerminalRuntime, updateWorkstreamRuntime]);
-
-  const handleStatus = useCallback((status: TerminalRuntimeStatus, details?: { id?: string; error?: string }) => {
-    updateTerminalRuntime({
-      id: details?.id,
-      status,
-      error: details?.error,
-      reused: status === "reconnected" ? true : undefined,
-    });
-    if (status === "failed") updateWorkstreamRuntime({ status: "failed", activity: true });
-  }, [updateTerminalRuntime, updateWorkstreamRuntime]);
-
-  const handleExit = useCallback((details: { id: string; code: number; success: boolean }) => {
-    const store = useWorkspaceStore.getState();
-    const tab = store.tabs.find((candidate) => candidate.id === tabId);
-    const previousTerminal = tab?.terminals.find((candidate) => candidate.paneId === paneId);
-    const provider = tab?.workstream?.provider ?? previousTerminal?.agentProvider ?? previousTerminal?.statusSummary?.provider;
-    const taskLineup = tab?.workstream?.taskLineup ?? previousTerminal?.taskLineup;
-    if (
-      canvasMode &&
-      !recoveryAttemptedRef.current &&
-      shouldAutoRecoverAgent({
-        provider,
-        taskStatuses: taskLineup?.map((task) => task.status),
-        terminalStatus: previousTerminal?.statusSummary?.status,
-        workstreamStatus: tab?.workstream?.status,
-        workstreamPhase: tab?.workstream?.phase,
-        durableActivityStatus: previousTerminal?.durableActivity?.status,
-      })
-    ) {
-      recoveryAttemptedRef.current = true;
-      updateTerminalRuntime({
-        id: details.id,
-        status: "starting",
-        error: "The agent stopped unexpectedly. Reconnecting to the same conversation…",
-      });
-      updateWorkstreamRuntime({
-        status: "running",
-        phase: "launching",
-        currentActivity: "Reconnecting to the same conversation",
-        activityKind: "starting",
-        activitySource: "system",
-        activity: true,
-      });
-      store.recordWorkstreamEvent(tabId, {
-        kind: "provider",
-        label: "Recovering interrupted agent",
-        detail: "reconnecting to the same conversation",
-        status: "running",
-      });
-      recoveryRestartTimeoutRef.current = setTimeout(() => {
-        recoveryRestartTimeoutRef.current = null;
-        setRecoveryGeneration((generation) => generation + 1);
-      }, 750);
-      return;
-    }
-    const previousActivity = previousTerminal?.durableActivity;
-    const activeRunId = previousTerminal?.activeRunId ?? taskRunIdForActivity(previousActivity, `${tabId}:${paneId}`);
-    const completedTaskLineup = details.success
-      ? completeOpenTaskLineupForRun(previousTerminal?.taskLineup, activeRunId)
-      : previousTerminal?.taskLineup;
-    updateTerminalRuntime({
-      id: details.id,
-      status: "exited",
-      runClosed: details.success,
-      taskLineup: completedTaskLineup,
-      durableActivity: previousActivity
-        ? {
-            ...previousActivity,
-            title: details.success
-              ? `${previousActivity.title.replace(/\s+(passed|failed|completed)$/i, "")} completed`
-              : `${previousActivity.title.replace(/\s+(passed|failed|completed)$/i, "")} failed`,
-            status: details.success ? "success" : "error",
-            completedAt: Date.now(),
-            exitCode: details.code,
-            source: "system",
-            updatedAt: Date.now(),
-          }
-        : undefined,
-    });
-    updateWorkstreamRuntime({
-      status: details.success ? "done" : "failed",
-      phase: details.success ? "complete" : "blocked",
-      exitCode: details.code,
-      lastSummary: `Provider process exited with code ${details.code}`,
-      nextAction: details.success ? "Review output or restart" : "Inspect output and send recovery prompt",
-      currentActivity: `Provider process exited with code ${details.code}`,
-      activityKind: details.success ? "complete" : "blocked",
-      activitySource: "system",
-      activity: true,
-    });
-    const alreadyRecorded = tab?.workstream?.events?.some((event) =>
-      event.kind === "provider" &&
-      event.label === "Provider process exited" &&
-      event.detail === `exit code ${details.code}`
-    );
-    if (!alreadyRecorded) {
-      store.recordWorkstreamEvent(tabId, {
-        kind: "provider",
-        label: "Provider process exited",
-        detail: `exit code ${details.code}`,
-        status: details.success ? "done" : "failed",
-      });
-    }
-    const immersiveTerminal = store.workspaceUiState.immersiveTerminal;
-    if (
-      immersiveTerminal.enabled &&
-      immersiveTerminal.tabId === tabId &&
-      immersiveTerminal.paneId === paneId
-    ) {
-      store.exitImmersiveTerminal();
-    }
-  }, [canvasMode, paneId, tabId, updateTerminalRuntime, updateWorkstreamRuntime]);
-
-  const processOutputMetadata = useCallback((data: string) => {
-    outputStatusWindowRef.current = `${outputStatusWindowRef.current}${data}`.slice(-4000);
-    const heuristicOutput = outputStatusWindowRef.current
-      .replace(STRUCTURED_AGENT_SIGNAL_PATTERN, "")
-      .replace(STRUCTURED_TODO_WRITE_PATTERN, "");
-    const initialStore = useWorkspaceStore.getState();
-    const initialTab = initialStore.tabs.find((candidate) => candidate.id === tabId);
-    const processedStructuredSignals = new Set(initialTab?.workstream?.processedStructuredSignals ?? []);
-    const todoWrites = parseStructuredTodoWrites(outputStatusWindowRef.current)
-      .filter(({ raw }) => {
-        if (structuredSignalKeysRef.current.has(raw) || processedStructuredSignals.has(raw)) return false;
-        structuredSignalKeysRef.current.add(raw);
-        return true;
-      });
-    if (todoWrites.length > 0) {
-      const previousTerminal = initialTab?.terminals.find((candidate) => candidate.paneId === paneId);
-      const runId = previousTerminal?.activeRunId ?? taskRunIdForActivity(previousTerminal?.durableActivity, `${tabId}:${paneId}`);
-      const scopedTaskLineup = todoWrites[todoWrites.length - 1].taskLineup.map((item) => ({
-        ...item,
-        runId: item.runId ?? runId,
-      }));
-      const latestTaskLineup = previousTerminal?.runClosed
-        ? completeOpenTaskLineupForRun(scopedTaskLineup, runId)
-        : scopedTaskLineup;
-      initialStore.replaceTerminalTaskLineup(tabId, paneId, latestTaskLineup);
-      if (initialTab?.workstream) {
-        initialStore.updateTab(tabId, {
-          workstream: {
-            ...initialTab.workstream,
-            taskLineup: latestTaskLineup,
-            processedStructuredSignals: [
-              ...(initialTab.workstream.processedStructuredSignals ?? []),
-              ...todoWrites.map(({ raw }) => raw),
-            ].slice(-50),
-          },
-        });
-      }
-    }
-    const structuredSignals = parseStructuredAgentSignals(outputStatusWindowRef.current)
-      .filter(({ raw }) => {
-        if (structuredSignalKeysRef.current.has(raw) || processedStructuredSignals.has(raw)) return false;
-        structuredSignalKeysRef.current.add(raw);
-        return true;
-      });
-    if (structuredSignals.length > 0 && initialTab?.workstream) {
-      initialStore.updateTab(tabId, {
-        workstream: {
-          ...initialTab.workstream,
-          processedStructuredSignals: [
-            ...(initialTab.workstream.processedStructuredSignals ?? []),
-            ...structuredSignals.map(({ raw }) => raw),
-          ].slice(-50),
-        },
-      });
-    }
-    for (const { signal } of structuredSignals) {
-      updateWorkstreamRuntime({
-        status: signal.status,
-        phase: signal.phase,
-        readiness: signal.readiness,
-        lastSummary: signal.summary,
-        nextAction: signal.nextAction,
-        evidence: signal.evidence,
-        memory: signal.memory,
-        stage: signal.stage,
-        artifact: signal.artifact,
-        confidence: signal.confidence,
-        risk: signal.risk,
-        currentActivity: signal.currentActivity,
-        activityKind: signal.activityKind,
-        activitySource: "structured",
-        providerSessionId: signal.providerSessionId,
-        structuredStatus: true,
-        exitCode: signal.exitCode,
-        activity: true,
-      });
-      if (signal.providerSessionId) {
-        persistAgentRecoveryManifest(livePtyId ?? attachToPtyId ?? runtimeSessionId, initialTab?.workstream, {
-          providerSessionId: signal.providerSessionId,
-          restoreStatus: "resuming",
-        });
-      }
-      useWorkspaceStore.getState().recordWorkstreamEvent(tabId, {
-        kind: "signal",
-        label: signal.label ?? "Structured provider signal",
-        detail: signal.detail ?? signal.summary,
-        status: signal.status,
-      });
-    }
-    if (structuredSignals.length > 0) {
-      outputStatusWindowRef.current = "";
-      return;
-    }
-    const providerReadiness = inferProviderReadiness(heuristicOutput);
-    const inferredActivity = inferActivityFromOutput(heuristicOutput);
-    const terminalOutput = latestReadableOutput(heuristicOutput);
-    const terminalTranscript = readableOutputExcerpt(heuristicOutput);
-    const processExit = inferProcessExit(heuristicOutput);
-    const inferredStatus = providerReadiness?.status ?? inferWorkstreamStatus(heuristicOutput);
-    const previousTerminal = initialTab?.terminals.find((candidate) => candidate.paneId === paneId);
-    // When the pane's task list comes from the agent's REAL sidecar
-    // (TaskCreate/TaskUpdate), only TaskUpdate may complete items. A terminal
-    // that merely LOOKS idle between turns must not close the lineup — that
-    // was the panel's list ↔ "No list" flicker (transcript closed it, the next
-    // sidecar poll reopened it).
-    const sidecarOwnsTaskLineup = Boolean(previousTerminal?.statusSummary?.tasksFromTodoWrite);
-    const closesTaskLineup =
-      !sidecarOwnsTaskLineup &&
-      (inferredStatus === "done" || terminalOutputClosesTaskLineup(heuristicOutput));
-    const durableActivity = deriveTerminalActivity({
-      transcript: heuristicOutput,
-      previous: previousTerminal?.durableActivity,
-      runtimeStatus: previousTerminal?.status,
-      cwd,
-    });
-    const activeRunId = taskRunIdForActivity(durableActivity, previousTerminal?.activeRunId ?? `${tabId}:${paneId}`);
-    const runChanged = Boolean(previousTerminal?.activeRunId && previousTerminal.activeRunId !== activeRunId);
-    updateTerminalRuntime({
-      terminalOutput: terminalTranscript ?? terminalOutput,
-      currentActivity: providerReadiness?.lastSummary ?? inferredActivity?.currentActivity,
-      activityKind: providerReadiness?.status ? activityKindForStatus(providerReadiness.status) : inferredActivity?.activityKind,
-      durableActivity,
-      activeRunId,
-      mainUserAsk: mainUserAskForRunChange(previousTerminal?.mainUserAsk, runChanged),
-      runClosed: closesTaskLineup ? true : runChanged ? false : previousTerminal?.runClosed,
-      taskLineup: closesTaskLineup
-        ? completeOpenTaskLineupForRun(previousTerminal?.taskLineup, activeRunId)
-        : runChanged
-          ? previousTerminal?.taskLineup?.filter((item) => item.runId !== activeRunId)
-        : previousTerminal?.taskLineup,
-    });
-    updateWorkstreamRuntime({
-      terminalOutput: terminalTranscript ?? terminalOutput,
-      currentActivity: providerReadiness?.lastSummary ?? inferredActivity?.currentActivity,
-      activityKind: providerReadiness?.status ? activityKindForStatus(providerReadiness.status) : inferredActivity?.activityKind,
-      activitySource: "terminal",
-      activity: Boolean(providerReadiness?.lastSummary ?? inferredActivity?.currentActivity ?? terminalTranscript ?? terminalOutput),
-    });
-    scheduleStatusSummaryUpdate();
-    if (processExit) {
-      updateTerminalRuntime({
-        status: "exited",
-        runClosed: processExit.success,
-        taskLineup: processExit.success
-          ? completeOpenTaskLineupForRun(previousTerminal?.taskLineup, activeRunId)
-          : previousTerminal?.taskLineup,
-      });
-      updateWorkstreamRuntime({
-        status: processExit.success ? "done" : "failed",
-        phase: processExit.success ? "complete" : "blocked",
-        exitCode: processExit.code,
-        lastSummary: `Provider process exited with code ${processExit.code}`,
-        nextAction: processExit.success ? "Review output or restart" : "Inspect output and send recovery prompt",
-        terminalOutput,
-        currentActivity: `Provider process exited with code ${processExit.code}`,
-        activityKind: processExit.success ? "complete" : "blocked",
-        activitySource: "system",
-        activity: true,
-      });
+  const updateWorkstreamRuntime = useCallback(
+    (updates: {
+      status?: WorkstreamStatus;
+      phase?: WorkstreamPhase;
+      readiness?: WorkstreamReadiness;
+      lastSummary?: string;
+      nextAction?: string;
+      evidence?: string;
+      memory?: string;
+      stage?: string;
+      artifact?: string;
+      confidence?: string;
+      risk?: string;
+      terminalOutput?: string;
+      currentActivity?: string;
+      activityKind?: WorkstreamActivityKind;
+      activitySource?: WorkstreamActivitySource;
+      providerSessionId?: string;
+      restoreStatus?: WorkstreamMetadata["restoreStatus"];
+      restoreFailureReason?: string;
+      structuredStatus?: boolean;
+      exitCode?: number;
+      activity?: boolean;
+    }) => {
       const store = useWorkspaceStore.getState();
       const tab = store.tabs.find((candidate) => candidate.id === tabId);
-      const alreadyRecorded = tab?.workstream?.events?.some((event) =>
-        event.kind === "provider" &&
-        event.label === "Provider process exited" &&
-        event.detail === `exit code ${processExit.code}`
+      if (!tab?.workstream) return;
+      const summary = updates.status
+        ? summaryForWorkstreamStatus(updates.status)
+        : null;
+      const completed =
+        updates.status === "done" || updates.phase === "complete";
+      const hasActivityUpdate = Boolean(
+        updates.currentActivity ||
+        updates.activityKind ||
+        updates.activitySource,
+      );
+      const structuredAt = Date.now();
+      const structuredExcerpt = [
+        updates.lastSummary,
+        updates.currentActivity,
+        updates.evidence,
+        updates.risk,
+        updates.nextAction,
+      ]
+        .filter(Boolean)
+        .join(" · ");
+      const extractedTasks = normalizeExtractedItems(
+        updates.lastSummary,
+        "structured-signal",
+        structuredExcerpt,
+        structuredAt,
+        1,
+      );
+      const extractedBlockers = normalizeExtractedItems(
+        updates.risk,
+        "structured-signal",
+        structuredExcerpt,
+        structuredAt,
+        1,
+      );
+      const extractedEvidence = normalizeExtractedItems(
+        updates.evidence,
+        "structured-signal",
+        structuredExcerpt,
+        structuredAt,
+        1,
+      );
+      const extractedNextActions = normalizeExtractedItems(
+        updates.nextAction,
+        "structured-signal",
+        structuredExcerpt,
+        structuredAt,
+        1,
+      );
+      const nextExtractedTasks = mergeExtractedItems(
+        tab.workstream.extractedTasks,
+        extractedTasks,
+        structuredAt,
+      );
+      const nextExtractedBlockers = mergeExtractedItems(
+        tab.workstream.extractedBlockers,
+        extractedBlockers,
+        structuredAt,
+      );
+      const nextExtractedEvidence = mergeExtractedItems(
+        tab.workstream.extractedEvidence,
+        extractedEvidence,
+        structuredAt,
+      );
+      const nextExtractedNextActions = mergeExtractedItems(
+        tab.workstream.extractedNextActions,
+        extractedNextActions,
+        structuredAt,
+      );
+      const nextTaskLineup = completed
+        ? completeOpenTaskLineup(tab.workstream.taskLineup, structuredAt)
+        : taskLineupFromExtractedItems(
+            nextExtractedTasks,
+            "structured-signal",
+            "pending",
+            structuredAt,
+          );
+      const preserveStructuredActivity =
+        updates.activitySource === "terminal" &&
+        tab.workstream.activitySource === "structured" &&
+        tab.workstream.structuredStatus;
+      const preserveStructuredState = isTerminalStateDowngrade(
+        updates,
+        tab.workstream,
+      );
+      const statusChanged =
+        !preserveStructuredState &&
+        updates.status &&
+        updates.status !== tab.workstream.status;
+      store.updateTab(tabId, {
+        workstream: {
+          ...tab.workstream,
+          status: preserveStructuredState
+            ? tab.workstream.status
+            : (updates.status ?? tab.workstream.status),
+          readiness: preserveStructuredState
+            ? tab.workstream.readiness
+            : (updates.readiness ?? tab.workstream.readiness),
+          phase: preserveStructuredState
+            ? tab.workstream.phase
+            : (updates.phase ??
+              (updates.status
+                ? phaseForStatus(updates.status)
+                : tab.workstream.phase)),
+          lastSummary: preserveStructuredState
+            ? tab.workstream.lastSummary
+            : (updates.lastSummary ??
+              summary?.lastSummary ??
+              tab.workstream.lastSummary),
+          nextAction: preserveStructuredState
+            ? tab.workstream.nextAction
+            : (updates.nextAction ??
+              summary?.nextAction ??
+              tab.workstream.nextAction),
+          evidence: updates.evidence ?? tab.workstream.evidence,
+          memory: updates.memory ?? tab.workstream.memory,
+          stage: updates.stage ?? tab.workstream.stage,
+          artifact: updates.artifact ?? tab.workstream.artifact,
+          confidence: updates.confidence ?? tab.workstream.confidence,
+          risk: updates.risk ?? tab.workstream.risk,
+          terminalOutput:
+            updates.terminalOutput ?? tab.workstream.terminalOutput,
+          terminalOutputUpdatedAt: updates.terminalOutput
+            ? Date.now()
+            : tab.workstream.terminalOutputUpdatedAt,
+          currentActivity: preserveStructuredActivity
+            ? tab.workstream.currentActivity
+            : (updates.currentActivity ?? tab.workstream.currentActivity),
+          activityKind: preserveStructuredActivity
+            ? tab.workstream.activityKind
+            : (updates.activityKind ?? tab.workstream.activityKind),
+          activitySource: preserveStructuredActivity
+            ? tab.workstream.activitySource
+            : (updates.activitySource ?? tab.workstream.activitySource),
+          activityUpdatedAt:
+            hasActivityUpdate && !preserveStructuredActivity
+              ? Date.now()
+              : tab.workstream.activityUpdatedAt,
+          providerSessionId:
+            updates.providerSessionId ?? tab.workstream.providerSessionId,
+          restoreStatus: updates.restoreStatus ?? tab.workstream.restoreStatus,
+          restoreFailureReason:
+            updates.restoreFailureReason ?? tab.workstream.restoreFailureReason,
+          outcome: preserveStructuredState
+            ? tab.workstream.outcome
+            : (updates.lastSummary ??
+              summary?.lastSummary ??
+              tab.workstream.outcome),
+          structuredStatus:
+            updates.structuredStatus ?? tab.workstream.structuredStatus,
+          exitCode: updates.exitCode ?? tab.workstream.exitCode,
+          completedAt: completed
+            ? (tab.workstream.completedAt ?? Date.now())
+            : tab.workstream.completedAt,
+          lastActivityAt: updates.activity
+            ? Date.now()
+            : tab.workstream.lastActivityAt,
+          extractedTasks: nextExtractedTasks,
+          extractedBlockers: nextExtractedBlockers,
+          extractedEvidence: nextExtractedEvidence,
+          extractedNextActions: nextExtractedNextActions,
+          taskLineup:
+            nextTaskLineup.length > 0
+              ? nextTaskLineup
+              : tab.workstream.taskLineup,
+          cockpitObjects: mergeCockpitObjectsFromExtractedItems(
+            tab.workstream.cockpitObjects,
+            tabId,
+            {
+              task: nextExtractedTasks,
+              blocker: nextExtractedBlockers,
+              evidence: nextExtractedEvidence,
+              "next-action": nextExtractedNextActions,
+            },
+            structuredAt,
+          ),
+        },
+      });
+      if (statusChanged && updates.status) {
+        store.recordWorkstreamEvent(tabId, {
+          kind: "status",
+          label: `Status changed to ${updates.status}`,
+          status: updates.status,
+        });
+      }
+      if (
+        tab.workstream.kind === "agent" &&
+        (updates.activity ||
+          updates.status ||
+          updates.phase ||
+          updates.currentActivity ||
+          updates.lastSummary ||
+          updates.nextAction ||
+          updates.terminalOutput)
+      ) {
+        scheduleStatusSummaryUpdate();
+      }
+    },
+    [scheduleStatusSummaryUpdate, tabId],
+  );
+
+  const handleReady = useCallback(
+    (ptyId: string, details: { reused: boolean }) => {
+      updateTerminalRuntime({
+        id: ptyId,
+        status: details.reused ? "reconnected" : "running",
+        reused: details.reused,
+      });
+      setLivePtyId(ptyId);
+
+      const store = useWorkspaceStore.getState();
+      const linkedNode = store.canvasState.nodes.find(
+        (node) => node.terminalTabId === tabId,
+      );
+      if (linkedNode && linkedNode.terminalPtyId !== ptyId) {
+        store.updateCanvasNode(linkedNode.id, { terminalPtyId: ptyId });
+      }
+      store.setActiveTerminal(ptyId);
+      const currentTab = store.tabs.find((candidate) => candidate.id === tabId);
+      persistAgentRecoveryManifest(ptyId, currentTab?.workstream);
+      updateWorkstreamRuntime(
+        shouldPreserveWorkstreamOnReady(currentTab?.workstream)
+          ? { activity: true }
+          : { status: "running", activity: true },
+      );
+      if (recoveryAttemptedRef.current) {
+        if (recoveryHealthyTimeoutRef.current)
+          clearTimeout(recoveryHealthyTimeoutRef.current);
+        recoveryHealthyTimeoutRef.current = setTimeout(() => {
+          recoveryAttemptedRef.current = false;
+          recoveryHealthyTimeoutRef.current = null;
+        }, 10_000);
+      }
+    },
+    [
+      paneId,
+      persistAgentRecoveryManifest,
+      tabId,
+      updateTerminalRuntime,
+      updateWorkstreamRuntime,
+    ],
+  );
+
+  const handleStatus = useCallback(
+    (
+      status: TerminalRuntimeStatus,
+      details?: { id?: string; error?: string },
+    ) => {
+      updateTerminalRuntime({
+        id: details?.id,
+        status,
+        error: details?.error,
+        reused: status === "reconnected" ? true : undefined,
+      });
+      if (status === "failed")
+        updateWorkstreamRuntime({ status: "failed", activity: true });
+    },
+    [updateTerminalRuntime, updateWorkstreamRuntime],
+  );
+
+  const handleExit = useCallback(
+    (details: { id: string; code: number; success: boolean }) => {
+      const store = useWorkspaceStore.getState();
+      const tab = store.tabs.find((candidate) => candidate.id === tabId);
+      const previousTerminal = tab?.terminals.find(
+        (candidate) => candidate.paneId === paneId,
+      );
+      const provider =
+        tab?.workstream?.provider ??
+        previousTerminal?.agentProvider ??
+        previousTerminal?.statusSummary?.provider;
+      const taskLineup =
+        tab?.workstream?.taskLineup ?? previousTerminal?.taskLineup;
+      if (
+        canvasMode &&
+        !recoveryAttemptedRef.current &&
+        shouldAutoRecoverAgent({
+          provider,
+          taskStatuses: taskLineup?.map((task) => task.status),
+          terminalStatus: previousTerminal?.statusSummary?.status,
+          workstreamStatus: tab?.workstream?.status,
+          workstreamPhase: tab?.workstream?.phase,
+          durableActivityStatus: previousTerminal?.durableActivity?.status,
+        })
+      ) {
+        recoveryAttemptedRef.current = true;
+        updateTerminalRuntime({
+          id: details.id,
+          status: "starting",
+          error:
+            "The agent stopped unexpectedly. Reconnecting to the same conversation…",
+        });
+        updateWorkstreamRuntime({
+          status: "running",
+          phase: "launching",
+          currentActivity: "Reconnecting to the same conversation",
+          activityKind: "starting",
+          activitySource: "system",
+          activity: true,
+        });
+        store.recordWorkstreamEvent(tabId, {
+          kind: "provider",
+          label: "Recovering interrupted agent",
+          detail: "reconnecting to the same conversation",
+          status: "running",
+        });
+        recoveryRestartTimeoutRef.current = setTimeout(() => {
+          recoveryRestartTimeoutRef.current = null;
+          setRecoveryGeneration((generation) => generation + 1);
+        }, 750);
+        return;
+      }
+      const previousActivity = previousTerminal?.durableActivity;
+      const activeRunId =
+        previousTerminal?.activeRunId ??
+        taskRunIdForActivity(previousActivity, `${tabId}:${paneId}`);
+      const completedTaskLineup = details.success
+        ? completeOpenTaskLineupForRun(
+            previousTerminal?.taskLineup,
+            activeRunId,
+          )
+        : previousTerminal?.taskLineup;
+      updateTerminalRuntime({
+        id: details.id,
+        status: "exited",
+        runClosed: details.success,
+        taskLineup: completedTaskLineup,
+        durableActivity: previousActivity
+          ? {
+              ...previousActivity,
+              title: details.success
+                ? `${previousActivity.title.replace(/\s+(passed|failed|completed)$/i, "")} completed`
+                : `${previousActivity.title.replace(/\s+(passed|failed|completed)$/i, "")} failed`,
+              status: details.success ? "success" : "error",
+              completedAt: Date.now(),
+              exitCode: details.code,
+              source: "system",
+              updatedAt: Date.now(),
+            }
+          : undefined,
+      });
+      updateWorkstreamRuntime({
+        status: details.success ? "done" : "failed",
+        phase: details.success ? "complete" : "blocked",
+        exitCode: details.code,
+        lastSummary: `Provider process exited with code ${details.code}`,
+        nextAction: details.success
+          ? "Review output or restart"
+          : "Inspect output and send recovery prompt",
+        currentActivity: `Provider process exited with code ${details.code}`,
+        activityKind: details.success ? "complete" : "blocked",
+        activitySource: "system",
+        activity: true,
+      });
+      const alreadyRecorded = tab?.workstream?.events?.some(
+        (event) =>
+          event.kind === "provider" &&
+          event.label === "Provider process exited" &&
+          event.detail === `exit code ${details.code}`,
       );
       if (!alreadyRecorded) {
         store.recordWorkstreamEvent(tabId, {
           kind: "provider",
           label: "Provider process exited",
-          detail: `exit code ${processExit.code}`,
-          status: processExit.success ? "done" : "failed",
+          detail: `exit code ${details.code}`,
+          status: details.success ? "done" : "failed",
         });
       }
-      return;
-    }
-    updateWorkstreamRuntime({
-      status: inferredStatus ?? undefined,
-      phase: providerReadiness?.phase ?? (closesTaskLineup ? "complete" : undefined),
-      readiness: providerReadiness?.readiness,
-      lastSummary: providerReadiness?.lastSummary ?? (closesTaskLineup ? "Task run completed" : undefined),
-      nextAction: providerReadiness?.nextAction ?? (closesTaskLineup ? "Review output or start the next task" : undefined),
-      terminalOutput,
-      currentActivity: providerReadiness?.lastSummary ?? inferredActivity?.currentActivity,
-      activityKind: providerReadiness?.status ? activityKindForStatus(providerReadiness.status) : inferredActivity?.activityKind,
-      activitySource: providerReadiness ? "terminal" : inferredActivity?.activitySource,
-      activity: true,
-    });
-    if (providerReadiness) {
+      const immersiveTerminal = store.workspaceUiState.immersiveTerminal;
+      if (
+        immersiveTerminal.enabled &&
+        immersiveTerminal.tabId === tabId &&
+        immersiveTerminal.paneId === paneId
+      ) {
+        store.exitImmersiveTerminal();
+      }
+    },
+    [canvasMode, paneId, tabId, updateTerminalRuntime, updateWorkstreamRuntime],
+  );
+
+  const processOutputMetadata = useCallback(
+    (data: string) => {
+      outputStatusWindowRef.current =
+        `${outputStatusWindowRef.current}${data}`.slice(-4000);
+      const heuristicOutput = outputStatusWindowRef.current
+        .replace(STRUCTURED_AGENT_SIGNAL_PATTERN, "")
+        .replace(STRUCTURED_TODO_WRITE_PATTERN, "");
+      const initialStore = useWorkspaceStore.getState();
+      const initialTab = initialStore.tabs.find(
+        (candidate) => candidate.id === tabId,
+      );
+      const processedStructuredSignals = new Set(
+        initialTab?.workstream?.processedStructuredSignals ?? [],
+      );
+      const todoWrites = parseStructuredTodoWrites(
+        outputStatusWindowRef.current,
+      ).filter(({ raw }) => {
+        if (
+          structuredSignalKeysRef.current.has(raw) ||
+          processedStructuredSignals.has(raw)
+        )
+          return false;
+        structuredSignalKeysRef.current.add(raw);
+        return true;
+      });
+      if (todoWrites.length > 0) {
+        const previousTerminal = initialTab?.terminals.find(
+          (candidate) => candidate.paneId === paneId,
+        );
+        const runId =
+          previousTerminal?.activeRunId ??
+          taskRunIdForActivity(
+            previousTerminal?.durableActivity,
+            `${tabId}:${paneId}`,
+          );
+        const scopedTaskLineup = todoWrites[
+          todoWrites.length - 1
+        ].taskLineup.map((item) => ({
+          ...item,
+          runId: item.runId ?? runId,
+        }));
+        const latestTaskLineup = previousTerminal?.runClosed
+          ? completeOpenTaskLineupForRun(scopedTaskLineup, runId)
+          : scopedTaskLineup;
+        initialStore.replaceTerminalTaskLineup(tabId, paneId, latestTaskLineup);
+        if (initialTab?.workstream) {
+          initialStore.updateTab(tabId, {
+            workstream: {
+              ...initialTab.workstream,
+              taskLineup: latestTaskLineup,
+              processedStructuredSignals: [
+                ...(initialTab.workstream.processedStructuredSignals ?? []),
+                ...todoWrites.map(({ raw }) => raw),
+              ].slice(-50),
+            },
+          });
+        }
+      }
+      const structuredSignals = parseStructuredAgentSignals(
+        outputStatusWindowRef.current,
+      ).filter(({ raw }) => {
+        if (
+          structuredSignalKeysRef.current.has(raw) ||
+          processedStructuredSignals.has(raw)
+        )
+          return false;
+        structuredSignalKeysRef.current.add(raw);
+        return true;
+      });
+      if (structuredSignals.length > 0 && initialTab?.workstream) {
+        initialStore.updateTab(tabId, {
+          workstream: {
+            ...initialTab.workstream,
+            processedStructuredSignals: [
+              ...(initialTab.workstream.processedStructuredSignals ?? []),
+              ...structuredSignals.map(({ raw }) => raw),
+            ].slice(-50),
+          },
+        });
+      }
+      for (const { signal } of structuredSignals) {
+        updateWorkstreamRuntime({
+          status: signal.status,
+          phase: signal.phase,
+          readiness: signal.readiness,
+          lastSummary: signal.summary,
+          nextAction: signal.nextAction,
+          evidence: signal.evidence,
+          memory: signal.memory,
+          stage: signal.stage,
+          artifact: signal.artifact,
+          confidence: signal.confidence,
+          risk: signal.risk,
+          currentActivity: signal.currentActivity,
+          activityKind: signal.activityKind,
+          activitySource: "structured",
+          providerSessionId: signal.providerSessionId,
+          structuredStatus: true,
+          exitCode: signal.exitCode,
+          activity: true,
+        });
+        if (signal.providerSessionId) {
+          persistAgentRecoveryManifest(
+            livePtyId ?? attachToPtyId ?? runtimeSessionId,
+            initialTab?.workstream,
+            {
+              providerSessionId: signal.providerSessionId,
+              restoreStatus: "resuming",
+            },
+          );
+        }
+        useWorkspaceStore.getState().recordWorkstreamEvent(tabId, {
+          kind: "signal",
+          label: signal.label ?? "Structured provider signal",
+          detail: signal.detail ?? signal.summary,
+          status: signal.status,
+        });
+      }
+      if (structuredSignals.length > 0) {
+        outputStatusWindowRef.current = "";
+        return;
+      }
+      const providerReadiness = inferProviderReadiness(heuristicOutput);
+      const inferredActivity = inferActivityFromOutput(heuristicOutput);
+      const terminalOutput = latestReadableOutput(heuristicOutput);
+      const terminalTranscript = readableOutputExcerpt(heuristicOutput);
+      const processExit = inferProcessExit(heuristicOutput);
+      const inferredStatus =
+        providerReadiness?.status ?? inferWorkstreamStatus(heuristicOutput);
+      const previousTerminal = initialTab?.terminals.find(
+        (candidate) => candidate.paneId === paneId,
+      );
+      // When the pane's task list comes from the agent's REAL sidecar
+      // (TaskCreate/TaskUpdate), only TaskUpdate may complete items. A terminal
+      // that merely LOOKS idle between turns must not close the lineup — that
+      // was the panel's list ↔ "No list" flicker (transcript closed it, the next
+      // sidecar poll reopened it).
+      const sidecarOwnsTaskLineup = Boolean(
+        previousTerminal?.statusSummary?.tasksFromTodoWrite,
+      );
+      const closesTaskLineup =
+        !sidecarOwnsTaskLineup &&
+        (inferredStatus === "done" ||
+          terminalOutputClosesTaskLineup(heuristicOutput));
+      const durableActivity = deriveTerminalActivity({
+        transcript: heuristicOutput,
+        previous: previousTerminal?.durableActivity,
+        runtimeStatus: previousTerminal?.status,
+        cwd,
+      });
+      const activeRunId = taskRunIdForActivity(
+        durableActivity,
+        previousTerminal?.activeRunId ?? `${tabId}:${paneId}`,
+      );
+      const runChanged = Boolean(
+        previousTerminal?.activeRunId &&
+        previousTerminal.activeRunId !== activeRunId,
+      );
+      updateTerminalRuntime({
+        terminalOutput: terminalTranscript ?? terminalOutput,
+        currentActivity:
+          providerReadiness?.lastSummary ?? inferredActivity?.currentActivity,
+        activityKind: providerReadiness?.status
+          ? activityKindForStatus(providerReadiness.status)
+          : inferredActivity?.activityKind,
+        durableActivity,
+        activeRunId,
+        mainUserAsk: mainUserAskForRunChange(
+          previousTerminal?.mainUserAsk,
+          runChanged,
+        ),
+        runClosed: closesTaskLineup
+          ? true
+          : runChanged
+            ? false
+            : previousTerminal?.runClosed,
+        taskLineup: closesTaskLineup
+          ? completeOpenTaskLineupForRun(
+              previousTerminal?.taskLineup,
+              activeRunId,
+            )
+          : runChanged
+            ? previousTerminal?.taskLineup?.filter(
+                (item) => item.runId !== activeRunId,
+              )
+            : previousTerminal?.taskLineup,
+      });
+      updateWorkstreamRuntime({
+        terminalOutput: terminalTranscript ?? terminalOutput,
+        currentActivity:
+          providerReadiness?.lastSummary ?? inferredActivity?.currentActivity,
+        activityKind: providerReadiness?.status
+          ? activityKindForStatus(providerReadiness.status)
+          : inferredActivity?.activityKind,
+        activitySource: "terminal",
+        activity: Boolean(
+          providerReadiness?.lastSummary ??
+          inferredActivity?.currentActivity ??
+          terminalTranscript ??
+          terminalOutput,
+        ),
+      });
+      scheduleStatusSummaryUpdate();
+      if (processExit) {
+        updateTerminalRuntime({
+          status: "exited",
+          runClosed: processExit.success,
+          taskLineup: processExit.success
+            ? completeOpenTaskLineupForRun(
+                previousTerminal?.taskLineup,
+                activeRunId,
+              )
+            : previousTerminal?.taskLineup,
+        });
+        updateWorkstreamRuntime({
+          status: processExit.success ? "done" : "failed",
+          phase: processExit.success ? "complete" : "blocked",
+          exitCode: processExit.code,
+          lastSummary: `Provider process exited with code ${processExit.code}`,
+          nextAction: processExit.success
+            ? "Review output or restart"
+            : "Inspect output and send recovery prompt",
+          terminalOutput,
+          currentActivity: `Provider process exited with code ${processExit.code}`,
+          activityKind: processExit.success ? "complete" : "blocked",
+          activitySource: "system",
+          activity: true,
+        });
+        const store = useWorkspaceStore.getState();
+        const tab = store.tabs.find((candidate) => candidate.id === tabId);
+        const alreadyRecorded = tab?.workstream?.events?.some(
+          (event) =>
+            event.kind === "provider" &&
+            event.label === "Provider process exited" &&
+            event.detail === `exit code ${processExit.code}`,
+        );
+        if (!alreadyRecorded) {
+          store.recordWorkstreamEvent(tabId, {
+            kind: "provider",
+            label: "Provider process exited",
+            detail: `exit code ${processExit.code}`,
+            status: processExit.success ? "done" : "failed",
+          });
+        }
+        return;
+      }
+      updateWorkstreamRuntime({
+        status: inferredStatus ?? undefined,
+        phase:
+          providerReadiness?.phase ??
+          (closesTaskLineup ? "complete" : undefined),
+        readiness: providerReadiness?.readiness,
+        lastSummary:
+          providerReadiness?.lastSummary ??
+          (closesTaskLineup ? "Task run completed" : undefined),
+        nextAction:
+          providerReadiness?.nextAction ??
+          (closesTaskLineup
+            ? "Review output or start the next task"
+            : undefined),
+        terminalOutput,
+        currentActivity:
+          providerReadiness?.lastSummary ?? inferredActivity?.currentActivity,
+        activityKind: providerReadiness?.status
+          ? activityKindForStatus(providerReadiness.status)
+          : inferredActivity?.activityKind,
+        activitySource: providerReadiness
+          ? "terminal"
+          : inferredActivity?.activitySource,
+        activity: true,
+      });
+      if (providerReadiness) {
+        const store = useWorkspaceStore.getState();
+        const tab = store.tabs.find((candidate) => candidate.id === tabId);
+        if (
+          tab?.workstream &&
+          isTerminalStateDowngrade(providerReadiness, tab.workstream)
+        )
+          return;
+        const alreadyRecorded = tab?.workstream?.events?.some(
+          (event) => event.label === providerReadiness.label,
+        );
+        if (!alreadyRecorded) {
+          store.recordWorkstreamEvent(tabId, {
+            kind: "provider",
+            label: providerReadiness.label,
+            detail: providerReadiness.detail,
+            status: providerReadiness.status,
+          });
+        }
+      }
+      const previewUrl = detectLocalhostPreviewUrl(data);
+      if (!previewUrl) return;
+
+      updateTerminalRuntime({ previewUrl });
       const store = useWorkspaceStore.getState();
       const tab = store.tabs.find((candidate) => candidate.id === tabId);
-      if (tab?.workstream && isTerminalStateDowngrade(providerReadiness, tab.workstream)) return;
-      const alreadyRecorded = tab?.workstream?.events?.some((event) => event.label === providerReadiness.label);
-      if (!alreadyRecorded) {
-        store.recordWorkstreamEvent(tabId, {
-          kind: "provider",
-          label: providerReadiness.label,
-          detail: providerReadiness.detail,
-          status: providerReadiness.status,
-        });
+      const previewNode = store.canvasState.nodes.find(
+        (node) =>
+          node.type === "preview" &&
+          node.terminalTabId === tabId &&
+          node.linkedTerminalPaneId === paneId,
+      );
+      if (previewNode?.previewPaneId && tab) {
+        store.updatePreviewPaneUrl(
+          tab.id,
+          previewNode.previewPaneId,
+          previewUrl,
+        );
       }
-    }
-    const previewUrl = detectLocalhostPreviewUrl(data);
-    if (!previewUrl) return;
-
-    updateTerminalRuntime({ previewUrl });
-    const store = useWorkspaceStore.getState();
-    const tab = store.tabs.find((candidate) => candidate.id === tabId);
-    const previewNode = store.canvasState.nodes.find((node) =>
-      node.type === "preview" &&
-      node.terminalTabId === tabId &&
-      node.linkedTerminalPaneId === paneId
-    );
-    if (previewNode?.previewPaneId && tab) {
-      store.updatePreviewPaneUrl(tab.id, previewNode.previewPaneId, previewUrl);
-    }
-  }, [attachToPtyId, livePtyId, paneId, persistAgentRecoveryManifest, runtimeSessionId, tabId, updateTerminalRuntime, updateWorkstreamRuntime]);
+    },
+    [
+      attachToPtyId,
+      livePtyId,
+      paneId,
+      persistAgentRecoveryManifest,
+      runtimeSessionId,
+      tabId,
+      updateTerminalRuntime,
+      updateWorkstreamRuntime,
+    ],
+  );
 
   const flushMapOutputMetadata = useCallback(() => {
     const data = pendingMapOutputMetadataRef.current;
@@ -1476,37 +1975,53 @@ export function TerminalComponent({
     if (data) processOutputMetadata(data);
   }, [processOutputMetadata]);
 
-  const handleOutput = useCallback((data: string) => {
-    if (!standalone || !canvasMode) {
-      processOutputMetadata(data);
-      return;
-    }
+  const handleOutput = useCallback(
+    (data: string) => {
+      if (!standalone || !canvasMode) {
+        processOutputMetadata(data);
+        return;
+      }
 
-    pendingMapOutputMetadataRef.current = `${pendingMapOutputMetadataRef.current}${data}`.slice(-4000);
-    // Keep real structured task/status events prompt, but keep ordinary echoed
-    // characters and spinner frames out of the React/store hot path.
-    if (/\[\[TERMFLEET_(?:AGENT_EVENT|TODO_WRITE)\s/.test(data)) {
-      flushMapOutputMetadata();
-      return;
-    }
-    if (mapOutputMetadataTimeoutRef.current !== null) return;
-    mapOutputMetadataTimeoutRef.current = setTimeout(flushMapOutputMetadata, 500);
-  }, [canvasMode, flushMapOutputMetadata, processOutputMetadata, standalone]);
+      pendingMapOutputMetadataRef.current =
+        `${pendingMapOutputMetadataRef.current}${data}`.slice(-4000);
+      // Keep real structured task/status events prompt, but keep ordinary echoed
+      // characters and spinner frames out of the React/store hot path.
+      if (/\[\[TERMFLEET_(?:AGENT_EVENT|TODO_WRITE)\s/.test(data)) {
+        flushMapOutputMetadata();
+        return;
+      }
+      if (mapOutputMetadataTimeoutRef.current !== null) return;
+      mapOutputMetadataTimeoutRef.current = setTimeout(
+        flushMapOutputMetadata,
+        500,
+      );
+    },
+    [canvasMode, flushMapOutputMetadata, processOutputMetadata, standalone],
+  );
 
-  useEffect(() => () => {
-    if (mapOutputMetadataTimeoutRef.current !== null) {
-      clearTimeout(mapOutputMetadataTimeoutRef.current);
-      mapOutputMetadataTimeoutRef.current = null;
-    }
-  }, []);
+  useEffect(
+    () => () => {
+      if (mapOutputMetadataTimeoutRef.current !== null) {
+        clearTimeout(mapOutputMetadataTimeoutRef.current);
+        mapOutputMetadataTimeoutRef.current = null;
+      }
+    },
+    [],
+  );
 
-  useEffect(() => () => {
-    if (recoveryRestartTimeoutRef.current) clearTimeout(recoveryRestartTimeoutRef.current);
-    if (recoveryHealthyTimeoutRef.current) clearTimeout(recoveryHealthyTimeoutRef.current);
-  }, []);
+  useEffect(
+    () => () => {
+      if (recoveryRestartTimeoutRef.current)
+        clearTimeout(recoveryRestartTimeoutRef.current);
+      if (recoveryHealthyTimeoutRef.current)
+        clearTimeout(recoveryHealthyTimeoutRef.current);
+    },
+    [],
+  );
 
   const { resize, write } = usePty({
-    terminal: !canvasMode && isRuntimeVisible && !nativePane.attached ? terminal : null,
+    terminal:
+      !canvasMode && isRuntimeVisible && !nativePane.attached ? terminal : null,
     cwd,
     command,
     attachToPtyId,
@@ -1519,10 +2034,20 @@ export function TerminalComponent({
 
   useEffect(() => {
     if (canvasMode || !livePtyId || !queuedInput || queuedInput.sentAt) return;
-    const text = queuedInput.text.endsWith("\r") ? queuedInput.text : `${queuedInput.text}\r`;
+    const text = queuedInput.text.endsWith("\r")
+      ? queuedInput.text
+      : `${queuedInput.text}\r`;
     onQueuedInputSent?.(queuedInput.id);
     write(text);
-  }, [canvasMode, livePtyId, onQueuedInputSent, queuedInput?.id, queuedInput?.sentAt, queuedInput?.text, write]);
+  }, [
+    canvasMode,
+    livePtyId,
+    onQueuedInputSent,
+    queuedInput?.id,
+    queuedInput?.sentAt,
+    queuedInput?.text,
+    write,
+  ]);
 
   // Poll the PTY's live cwd (/proc/<pid>/cwd) so a `cd`/`z` to another path
   // updates the node subtitle, top-bar breadcrumb, and project identity. ~2s
@@ -1565,7 +2090,8 @@ export function TerminalComponent({
       fontSize: 14,
       fontWeight: 400,
       fontWeightBold: 700,
-      fontFamily: '"JetBrains Mono", "FiraCode Nerd Font", "MesloLGS NF", "Geist Mono", "Cascadia Code", "Consolas", monospace',
+      fontFamily:
+        '"JetBrains Mono", "FiraCode Nerd Font", "MesloLGS NF", "Geist Mono", "Cascadia Code", "Consolas", monospace',
       letterSpacing: 0,
       lineHeight: 1.16,
       minimumContrastRatio: 1,
@@ -1588,7 +2114,10 @@ export function TerminalComponent({
         paneId,
       });
     } catch (error) {
-      console.warn("xterm WebGL renderer unavailable; falling back to DOM renderer", error);
+      console.warn(
+        "xterm WebGL renderer unavailable; falling back to DOM renderer",
+        error,
+      );
       traceTerminalLatency("frontend.xterm.webgl.failed", {
         tabId,
         paneId,
@@ -1621,7 +2150,8 @@ export function TerminalComponent({
         });
       }
       const key = event.key.toLowerCase();
-      const copyShortcut = (event.ctrlKey || event.metaKey) && event.shiftKey && key === "c";
+      const copyShortcut =
+        (event.ctrlKey || event.metaKey) && event.shiftKey && key === "c";
       const pasteShortcut =
         ((event.ctrlKey || event.metaKey) && event.shiftKey && key === "v") ||
         ((event.ctrlKey || event.metaKey) && key === "v");
@@ -1635,7 +2165,8 @@ export function TerminalComponent({
       }
 
       if (pasteShortcut && event.type === "keydown") {
-        navigator.clipboard?.readText()
+        navigator.clipboard
+          ?.readText()
           .then((text) => {
             if (text) write(text);
           })
@@ -1714,15 +2245,32 @@ export function TerminalComponent({
   });
 
   useEffect(() => {
-    if (!canvasMode && activePaneId === paneId && activeTabId === tabId && workspaceMode === "split" && terminal && !nativePane.attached) {
+    if (
+      !canvasMode &&
+      activePaneId === paneId &&
+      activeTabId === tabId &&
+      workspaceMode === "split" &&
+      terminal &&
+      !nativePane.attached
+    ) {
       requestAnimationFrame(() => {
         terminal.focus();
       });
     }
-  }, [activePaneId, paneId, activeTabId, tabId, canvasMode, terminal, workspaceMode, nativePane.attached]);
+  }, [
+    activePaneId,
+    paneId,
+    activeTabId,
+    tabId,
+    canvasMode,
+    terminal,
+    workspaceMode,
+    nativePane.attached,
+  ]);
 
   useEffect(() => {
-    if (activePaneId !== paneId || activeTabId !== tabId || !isRuntimeVisible) return;
+    if (activePaneId !== paneId || activeTabId !== tabId || !isRuntimeVisible)
+      return;
 
     let refreshing = false;
     const refreshCwd = () => {
@@ -1741,14 +2289,28 @@ export function TerminalComponent({
   }, [activePaneId, paneId, activeTabId, tabId, isRuntimeVisible]);
 
   useEffect(() => {
-    if (!canvasMode && standalone && runtimeActive && terminal && !nativePane.attached) {
+    if (
+      !canvasMode &&
+      standalone &&
+      runtimeActive &&
+      terminal &&
+      !nativePane.attached
+    ) {
       requestAnimationFrame(() => {
         fitTerminal();
         resize(terminal.cols, terminal.rows);
         terminal.focus();
       });
     }
-  }, [canvasMode, standalone, runtimeActive, terminal, resize, fitTerminal, nativePane.attached]);
+  }, [
+    canvasMode,
+    standalone,
+    runtimeActive,
+    terminal,
+    resize,
+    fitTerminal,
+    nativePane.attached,
+  ]);
 
   const focusWebTerminal = useCallback(() => {
     if (!canvasMode && !nativePane.attached) {
@@ -1794,7 +2356,8 @@ export function TerminalComponent({
           return;
         }
 
-        navigator.clipboard?.readText()
+        navigator.clipboard
+          ?.readText()
           .then((text) => {
             if (text) write(text);
           })

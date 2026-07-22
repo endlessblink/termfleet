@@ -1,4 +1,12 @@
-export type TerminalRuntimeStatus = "starting" | "running" | "reconnected" | "stale" | "failed" | "exited";
+import type { PaneTaskLine } from "./taskLine";
+
+export type TerminalRuntimeStatus =
+  | "starting"
+  | "running"
+  | "reconnected"
+  | "stale"
+  | "failed"
+  | "exited";
 export type TerminalActivityStatus =
   | "idle"
   | "running"
@@ -100,6 +108,9 @@ export interface TerminalState {
   statusSummaryUpdatedAt?: number;
   statusSummarySource?: WorkstreamStatusSummarySource;
   statusSummaryError?: string;
+  // TC-060: the always-true task line for this pane (vendor session record /
+  // running process). Never blank, so the header never says "Task not captured".
+  taskLine?: PaneTaskLine;
   lastStatusAt?: number;
   lastError?: string;
 }
@@ -307,7 +318,12 @@ export interface WorkstreamMetadata {
   startupCommand?: string;
   launchProfile?: WorkstreamLaunchProfile;
   providerSessionId?: string;
-  restoreStatus?: "live-attached" | "resuming" | "resume-failed" | "reconstructed" | "needs-auth";
+  restoreStatus?:
+    | "live-attached"
+    | "resuming"
+    | "resume-failed"
+    | "reconstructed"
+    | "needs-auth";
   restoreFailureReason?: string;
   phase?: WorkstreamPhase;
   launchMode?: string;
@@ -335,6 +351,9 @@ export interface WorkstreamMetadata {
   statusSummaryUpdatedAt?: number;
   statusSummarySource?: WorkstreamStatusSummarySource;
   statusSummaryError?: string;
+  // TC-060: the always-true task line for this pane (vendor session record /
+  // running process). Never blank, so the header never says "Task not captured".
+  taskLine?: PaneTaskLine;
   taskLineup?: TaskLineupItem[];
   activeRunId?: string;
   extractedTasks?: WorkstreamExtractedItem[];
