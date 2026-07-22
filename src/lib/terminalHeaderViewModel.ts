@@ -722,7 +722,7 @@ export function buildShellTerminalHeaderViewModel(input: {
     gitRoot: input.liveGitRoot,
   });
   const contextPurposeTitle = input.contextPurposeTitle;
-  const taskIdentity = resolveTaskIdentity({
+  const declaredIdentity = resolveTaskIdentity({
     taskLineup: input.taskLineup,
     activeRunId: input.activeRunId,
     mainUserAsk: input.mainUserAsk,
@@ -733,6 +733,27 @@ export function buildShellTerminalHeaderViewModel(input: {
     // TC-060: consulted only at the final render fallback, below.
   });
   const activePlanItem = activeTodoTask(input.taskLineup, input.activeRunId);
+  // TC-060 R3 (never stale): a sidecar "task" assembled from todos that are ALL
+  // completed describes FINISHED work, not the current turn. When no declared step
+  // is still in progress and the live ladder carries a fresher current-work line
+  // (the agent's own current sentence / tool / the operator's latest ask), that
+  // line is the honest Task — a completed checklist item must not linger as the
+  // header while the agent has visibly moved on.
+  const ladderIsLiveWork =
+    input.taskLine != null &&
+    /^(?:declared|session-title|operator-request|agent-said|current-tool)$/.test(
+      input.taskLine.source,
+    );
+  const taskIdentity =
+    declaredIdentity.source === "sidecar-todo" &&
+    !activePlanItem &&
+    ladderIsLiveWork
+      ? {
+          text: input.taskLine!.text,
+          rawText: input.taskLine!.text,
+          source: "task-line" as const,
+        }
+      : declaredIdentity;
   const mainUserAskApplies = Boolean(
     input.mainUserAsk &&
     (!input.mainUserAsk.runId ||
