@@ -56,6 +56,38 @@ test("templates the current tool when nothing was said", () => {
   expect(line.expiresAt).toBe(NOW + 30_000);
 });
 
+// "Always show the main plan": the session's own plan title leads over the current
+// step — the step is a part of the plan, not the plan itself.
+test("the main plan leads over the current step", () => {
+  const line = resolvePaneTaskLine({
+    now: NOW,
+    facts: { title: "Make the terminal status line reliable" },
+    currentStep: "Running the task-line verification",
+  });
+  expect(line.text).toBe("Make the terminal status line reliable");
+  expect(line.source).toBe("session-title");
+});
+
+test("an explicit goal still leads over everything", () => {
+  const line = resolvePaneTaskLine({
+    now: NOW,
+    mainGoal: "Make the terminal status line reliable",
+    facts: { title: "Something narrower" },
+    currentStep: "Running the task-line verification",
+  });
+  expect(line.text).toBe("Make the terminal status line reliable");
+  expect(line.source).toBe("declared");
+});
+
+test("the current step is used when there is no overarching plan", () => {
+  const line = resolvePaneTaskLine({
+    now: NOW,
+    currentStep: "Running the task-line verification",
+  });
+  expect(line.text).toBe("Running the task-line verification");
+  expect(line.source).toBe("current-step");
+});
+
 // A finished, idle agent shows what it just did, not "sitting at a prompt".
 test("an idle finished agent shows its last completed step, not the folder", () => {
   const line = resolvePaneTaskLine({

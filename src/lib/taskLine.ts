@@ -11,6 +11,7 @@ export type TaskLineSource =
   | "declared"
   | "session-title"
   | "operator-request"
+  | "current-step"
   | "agent-said"
   | "current-tool"
   | "completed-task"
@@ -29,6 +30,14 @@ export interface PaneTaskLine {
 
 export interface TaskLineInput {
   now: number;
+  /** The overarching goal — an explicitly declared main task. This is "what the
+   *  whole terminal is about", so it leads the line. */
+  mainGoal?: string | null;
+  /** The current in-progress step. It's a STEP toward the goal, not the goal, so
+   *  it ranks BELOW the goal and the session's own plan title. */
+  currentStep?: string | null;
+  /** @deprecated use mainGoal / currentStep. Kept so existing callers/tests still
+   *  resolve; treated as a goal-or-step depending on nothing better being present. */
   declaredTask?: string | null;
   facts?: TranscriptFacts | null;
   /** The most recent COMPLETED declared step. For an agent that finished its work
@@ -104,11 +113,14 @@ export function resolvePaneTaskLine(input: TaskLineInput): PaneTaskLine {
     return null;
   };
 
+  // MAIN-PLAN sources lead the line: the whole point is "what is this part of".
+  // An explicit overarching goal, then the session's own plan title, then the
+  // operator's main request — all rank ABOVE the momentary in-progress step.
   if (!turnEnded) {
-    const declared = consider(input.declaredTask);
-    if (declared) {
+    const goal = consider(input.mainGoal ?? input.declaredTask);
+    if (goal) {
       return {
-        text: declared,
+        text: goal,
         source: "declared",
         capturedAt: now,
         expiresAt: null,
@@ -127,7 +139,8 @@ export function resolvePaneTaskLine(input: TaskLineInput): PaneTaskLine {
     }
   }
 
-  // The operator's floor rule: when nothing better is known, show what they asked for.
+  // The operator's floor rule: when no explicit goal exists, their own request is
+  // the plan. Ranked above the step because it is the "why", not the "how".
   const request = consider(facts.operatorRequest);
   if (request) {
     return {
@@ -137,6 +150,21 @@ export function resolvePaneTaskLine(input: TaskLineInput): PaneTaskLine {
       expiresAt: null,
       rejected,
     };
+  }
+
+  // The current in-progress step — a STEP toward the goal, used as the line only
+  // when no overarching plan above was available.
+  if (!turnEnded) {
+    const step = consider(input.currentStep);
+    if (step) {
+      return {
+        text: step,
+        source: "current-step",
+        capturedAt: now,
+        expiresAt: null,
+        rejected,
+      };
+    }
   }
 
   // Codex declares no short task, so its own sentence is the most specific true

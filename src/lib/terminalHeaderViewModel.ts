@@ -741,19 +741,31 @@ export function buildShellTerminalHeaderViewModel(input: {
   // header while the agent has visibly moved on.
   const ladderIsLiveWork =
     input.taskLine != null &&
-    /^(?:declared|session-title|operator-request|agent-said|current-tool|completed-task)$/.test(
+    /^(?:declared|session-title|operator-request|current-step|agent-said|current-tool|completed-task)$/.test(
       input.taskLine.source,
     );
-  const taskIdentity =
-    declaredIdentity.source === "sidecar-todo" &&
-    !activePlanItem &&
-    ladderIsLiveWork
-      ? {
-          text: input.taskLine!.text,
-          rawText: input.taskLine!.text,
-          source: "task-line" as const,
-        }
-      : declaredIdentity;
+  // TC-060 "always show the main plan": the Task row is meant to answer "what is
+  // this part of". A MAIN-PLAN line (an explicit goal / the session's own plan
+  // title / the operator's main request) therefore leads even over a live
+  // in-progress step — the step still surfaces on the Now Active line below.
+  const ladderIsMainPlan =
+    input.taskLine != null &&
+    /^(?:declared|session-title|operator-request)$/.test(input.taskLine.source);
+  const preferLadder =
+    input.taskLine != null &&
+    ((declaredIdentity.source === "sidecar-todo" &&
+      !activePlanItem &&
+      ladderIsLiveWork) ||
+      (ladderIsMainPlan &&
+        (declaredIdentity.source === "sidecar-todo" ||
+          declaredIdentity.source === "missing")));
+  const taskIdentity = preferLadder
+    ? {
+        text: input.taskLine!.text,
+        rawText: input.taskLine!.text,
+        source: "task-line" as const,
+      }
+    : declaredIdentity;
   const mainUserAskApplies = Boolean(
     input.mainUserAsk &&
     (!input.mainUserAsk.runId ||

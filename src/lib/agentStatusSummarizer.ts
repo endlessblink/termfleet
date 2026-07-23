@@ -208,11 +208,9 @@ async function resolveTaskLineFor(
   const cwd = sidecar?.cwd ?? input.cwd ?? input.cwdLabel ?? null;
   return resolvePaneTaskLine({
     now: Date.now(),
-    declaredTask:
-      sidecar?.mainTask ??
-      activeTodo?.activeForm ??
-      activeTodo?.content ??
-      null,
+    // The overarching goal leads the line; the in-progress todo is only the step.
+    mainGoal: sidecar?.mainTask ?? null,
+    currentStep: activeTodo?.activeForm ?? activeTodo?.content ?? null,
     facts,
     lastCompletedTask:
       lastCompleted?.activeForm ?? lastCompleted?.content ?? null,
