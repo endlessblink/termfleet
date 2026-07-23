@@ -198,9 +198,13 @@ async function resolveTaskLineFor(
       }
     }
   }
-  const activeTodo = (sidecar?.todos ?? []).find(
-    (todo) => todo?.status === "in_progress",
-  );
+  const todos = sidecar?.todos ?? [];
+  const activeTodo = todos.find((todo) => todo?.status === "in_progress");
+  // The most recent COMPLETED step — for an agent that finished and went idle,
+  // "what it just did" beats "sitting at a prompt".
+  const lastCompleted = [...todos]
+    .reverse()
+    .find((todo) => todo?.status === "completed");
   const cwd = sidecar?.cwd ?? input.cwd ?? input.cwdLabel ?? null;
   return resolvePaneTaskLine({
     now: Date.now(),
@@ -210,6 +214,8 @@ async function resolveTaskLineFor(
       activeTodo?.content ??
       null,
     facts,
+    lastCompletedTask:
+      lastCompleted?.activeForm ?? lastCompleted?.content ?? null,
     folder: cwd ? (cwd.split("/").filter(Boolean).pop() ?? null) : null,
   });
 }

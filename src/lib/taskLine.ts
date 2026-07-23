@@ -13,6 +13,7 @@ export type TaskLineSource =
   | "operator-request"
   | "agent-said"
   | "current-tool"
+  | "completed-task"
   | "running-command"
   | "shell-state";
 
@@ -30,6 +31,9 @@ export interface TaskLineInput {
   now: number;
   declaredTask?: string | null;
   facts?: TranscriptFacts | null;
+  /** The most recent COMPLETED declared step. For an agent that finished its work
+   *  and went idle, "what it just did" is a far better answer than the folder. */
+  lastCompletedTask?: string | null;
   runningCommand?: string | null;
   folder?: string | null;
   branch?: string | null;
@@ -154,6 +158,20 @@ export function resolvePaneTaskLine(input: TaskLineInput): PaneTaskLine {
       source: "current-tool",
       capturedAt: now,
       expiresAt: now + TOOL_TTL_MS,
+      rejected,
+    };
+  }
+
+  // An agent that finished its checklist and went idle: its last completed step is
+  // what this terminal is about — far better than "sitting at a prompt". Ranks below
+  // every LIVE source, so a working pane never shows finished work over current work.
+  const done = consider(input.lastCompletedTask);
+  if (done) {
+    return {
+      text: done,
+      source: "completed-task",
+      capturedAt: now,
+      expiresAt: null,
       rejected,
     };
   }

@@ -741,7 +741,7 @@ export function buildShellTerminalHeaderViewModel(input: {
   // header while the agent has visibly moved on.
   const ladderIsLiveWork =
     input.taskLine != null &&
-    /^(?:declared|session-title|operator-request|agent-said|current-tool)$/.test(
+    /^(?:declared|session-title|operator-request|agent-said|current-tool|completed-task)$/.test(
       input.taskLine.source,
     );
   const taskIdentity =

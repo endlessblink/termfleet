@@ -56,6 +56,28 @@ test("templates the current tool when nothing was said", () => {
   expect(line.expiresAt).toBe(NOW + 30_000);
 });
 
+// A finished, idle agent shows what it just did, not "sitting at a prompt".
+test("an idle finished agent shows its last completed step, not the folder", () => {
+  const line = resolvePaneTaskLine({
+    now: NOW,
+    lastCompletedTask: "Correcting the Diet bot's Telegram destination",
+    folder: "hermes",
+  });
+  expect(line.text).toBe("Correcting the Diet bot's Telegram destination");
+  expect(line.source).toBe("completed-task");
+});
+
+// ...but live work still outranks a completed step.
+test("live work outranks a completed step", () => {
+  const line = resolvePaneTaskLine({
+    now: NOW,
+    lastCompletedTask: "Correcting the Diet bot's Telegram destination",
+    facts: { agentSaid: "Restarting the gateway service" },
+    folder: "hermes",
+  });
+  expect(line.source).toBe("agent-said");
+});
+
 test("a shell shows what it is actually doing", () => {
   expect(
     resolvePaneTaskLine({
