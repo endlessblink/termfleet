@@ -188,8 +188,15 @@ Evidence:
 - `sh scripts/verify-agent-provider-adapter-headless.sh` OK (real OpenCode argv).
 - `node scripts/verify-map-terminals.mjs` back to its pre-change baseline.
 
-Open: the operator still has to relaunch the app to see the resize fix live, and a
-hand-started OpenCode only becomes reflow-safe once its plugin has claimed the pane.
+Follow-up (same day): a hand-started OpenCode (the normal case — the operator just
+types `opencode` in a shell) had no signal at all: launch command `/bin/bash`, and no
+sidecar until the vendor plugin is installed AND the agent restarted. TermFleet now
+reads the process table instead (`src-tauri/src/pane_process.rs` +
+`pane_agent_provider`), keyed by the TERMFLEET_PANE_ID every PTY already exports, so
+the pane is recognised within seconds however the agent was started — no install, no
+restart, no daemon protocol change. Confirmed live on the running hermes pane: it was
+detected and the terminal resized itself (96x28 -> 94x29) with nothing restarted.
+The status plugin remains the source of the task list and resume id.
 
 ### TC-024: Session/map cards show project/workspace name
 
