@@ -221,6 +221,9 @@ export function TerminalCanvas({
   // and re-running the attach effect would tear down a live terminal to learn that.
   const reflowSafeTuiRef = useRef(reflowSafeTui);
   reflowSafeTuiRef.current = reflowSafeTui;
+  // Handle to the live layout reconciler, so identifying the pane as an agent TUI
+  // mid-run un-freezes it at once instead of waiting for the next redraw or resize.
+  const reconcileLayoutRef = useRef<(() => void) | null>(null);
   const shellRef = useRef<HTMLDivElement>(null);
   // Latest terminal modes, kept current by the diff stream, read by input.
   const modesRef = useRef({ ...DEFAULT_TERMINAL_MODES });
@@ -399,6 +402,13 @@ export function TerminalCanvas({
       );
     }
   };
+
+  // The pane's provider can be learned after attach (its status hook/plugin stamps
+  // the sidecar a moment after the agent starts). Re-run the freeze/reflow decision
+  // the instant that changes, so an agent TUI is not left frozen at a stale size.
+  useEffect(() => {
+    reconcileLayoutRef.current?.();
+  }, [reflowSafeTui]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -750,6 +760,7 @@ export function TerminalCanvas({
       clearProjectionScale();
       void applyResize();
     };
+    reconcileLayoutRef.current = reconcileLayout;
 
     // Coalesce ResizeObserver bursts. On the map a node animates/zooms into place
     // and the shell's pixel box steps through several intermediate sizes before it
