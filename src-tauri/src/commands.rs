@@ -431,6 +431,16 @@ pub fn workstream_remove_dedicated_worktree(path: String) -> Result<WorktreeClea
     })
 }
 
+/// Which agent is actually running in a pane, read from the process table.
+///
+/// This is what makes a HAND-STARTED agent work with no setup: the operator just
+/// types `opencode`, and the pane is recognised immediately — no plugin, no restart,
+/// no special launch command. Returns None for a plain shell.
+#[tauri::command]
+pub fn pane_agent_provider(pane_id: String) -> Option<String> {
+    crate::pane_process::pane_agent_provider(&pane_id)
+}
+
 #[tauri::command]
 pub fn agent_provider_statuses() -> Vec<AgentProviderStatus> {
     let adapter_path = std::env::current_dir()

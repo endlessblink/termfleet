@@ -12,6 +12,10 @@ import { shouldAutoRecoverAgent } from "../lib/terminalAutoRecovery";
 import { stableAgentProvider } from "../lib/agentProviderIdentity";
 import { isReflowSafeAgentTui } from "../lib/agentTui";
 import {
+  PANE_AGENT_POLL_MS,
+  readPaneAgentProvider,
+} from "../lib/paneAgentProcess";
+import {
   syncTerminalLatencyTraceEnv,
   traceTerminalLatency,
 } from "../lib/terminalLatencyTrace";
@@ -51,7 +55,7 @@ import {
   terminalOutputClosesTaskLineup,
 } from "../lib/taskLineup";
 import { parseTerminalChecklist } from "../lib/terminalChecklist";
-import type {
+import type { AgentProvider,
   TaskLineupItem,
   TerminalActivitySummary,
   TerminalRuntimeStatus,
@@ -2276,9 +2280,30 @@ export function TerminalComponent({
       pane?.statusSummary?.provider
     );
   });
+  // What is ACTUALLY running in this pane, straight from the process table. This is
+  // the signal that works when the operator just types `opencode` in a shell: no
+  // launch command to read, no status sidecar yet, nothing to install. Polled while
+  // unidentified, because the agent can be started at any moment.
+  const [runningAgent, setRunningAgent] = useState<AgentProvider | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const poll = async () => {
+      const found = await readPaneAgentProvider(runtimeSessionId);
+      if (cancelled) return;
+      setRunningAgent(found);
+      timer = setTimeout(poll, PANE_AGENT_POLL_MS);
+    };
+    void poll();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [runtimeSessionId]);
+
   const reflowSafeTui = isReflowSafeAgentTui({
     command,
-    provider: paneAgentProvider,
+    provider: runningAgent ?? paneAgentProvider,
   });
 
   useEffect(() => {

@@ -6,6 +6,7 @@ mod default_shell;
 #[cfg(target_os = "linux")]
 mod gtk_keys;
 mod native_terminal;
+mod pane_process;
 mod platform_paths;
 mod platform_process;
 mod platform_tty;
@@ -59,6 +60,7 @@ pub fn run() {
             commands::session_transcript_read,
             commands::pane_foreground_command,
             commands::agent_provider_statuses,
+            commands::pane_agent_provider,
             commands::system_pressure_snapshot,
             commands::workstream_git_context,
             commands::workstream_prepare_dedicated_worktree,
