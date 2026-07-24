@@ -317,7 +317,13 @@ const checks = [
       /preservesProjectionSize/.test(terminalCanvas) &&
       /applyProjectionClip/.test(terminalCanvas) &&
       /Math\.min\(0, shell\.clientHeight - logicalH\)/.test(terminalCanvas) &&
-      /syncOverlaySize\(\);\s*if \(mapProjection && modesRef\.current\.altScreen\)/.test(terminalCanvas) &&
+      // The 1:1 clip still guards alt-screen map nodes, through the named
+      // predicate: map projection + alt screen, MINUS agent TUIs that repaint
+      // themselves on resize (OpenCode), which must reflow to the node instead of
+      // freezing at a stale size. See src/lib/agentTui.ts.
+      /syncOverlaySize\(\);\s*if \(preservesProjectionSize\(\)\)/.test(terminalCanvas) &&
+      /const preservesProjectionSize = \(\) =>\s*mapProjection && modesRef\.current\.altScreen && !reflowSafeTuiRef\.current;/.test(terminalCanvas) &&
+      /reflowSafeTui: reflowSafeTuiRef\.current,/.test(terminalCanvas) &&
       !/Math\.max\(projectionMinScale/.test(terminalCanvas) &&
       !/modesRef\.current\.mouseReport/.test(terminalProjectionGuard) &&
       /AskUserQuestion-style primary-screen\s+\/\/ prompts/.test(terminalCanvas) &&

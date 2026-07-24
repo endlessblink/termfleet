@@ -10,6 +10,7 @@ import { usePty } from "../hooks/usePty";
 import { TerminalCanvas } from "./TerminalCanvas";
 import { shouldAutoRecoverAgent } from "../lib/terminalAutoRecovery";
 import { stableAgentProvider } from "../lib/agentProviderIdentity";
+import { isReflowSafeAgentTui } from "../lib/agentTui";
 import {
   syncTerminalLatencyTraceEnv,
   traceTerminalLatency,
@@ -2262,6 +2263,24 @@ export function TerminalComponent({
     return tab?.activePaneId;
   });
 
+  // Which agent this pane runs, from whichever source knows first: the tab's
+  // workstream (TermFleet launched it), the recorded provider, or the status
+  // sidecar (a hand-started agent, stamped by its status hook). Decides whether a
+  // full-screen agent TUI may be reflowed on the map — see lib/agentTui.ts.
+  const paneAgentProvider = useWorkspaceStore((s) => {
+    const tab = s.tabs.find((t) => t.id === tabId);
+    const pane = tab?.terminals.find((t) => t.paneId === paneId);
+    return (
+      tab?.workstream?.provider ??
+      pane?.agentProvider ??
+      pane?.statusSummary?.provider
+    );
+  });
+  const reflowSafeTui = isReflowSafeAgentTui({
+    command,
+    provider: paneAgentProvider,
+  });
+
   useEffect(() => {
     if (
       !canvasMode &&
@@ -2398,6 +2417,7 @@ export function TerminalComponent({
             command={command}
             renderScale={renderScale}
             mapProjection={mapProjection}
+            reflowSafeTui={reflowSafeTui}
             runtimeActive={runtimeActive}
             recoveryGeneration={recoveryGeneration}
             onReady={handleReady}

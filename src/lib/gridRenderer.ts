@@ -96,7 +96,17 @@ export function computeGridSize(
  */
 export function mapNodeLayoutMode(params: {
   altScreenOnMap: boolean;
+  /**
+   * The alt-screen app is known to repaint its WHOLE frame on SIGWINCH (an agent
+   * TUI like OpenCode), so reflowing it is safe in both directions and freezing it
+   * is the bug: the node grows and the TUI stays pinned at its old size with dead
+   * space around it. Measured, not assumed — scripts/verify-opencode-tui-resize.py.
+   */
+  reflowSafeTui?: boolean;
 }): "reflow" | "freeze" {
+  // A TUI that repaints itself at the new size can never fragment, so it always
+  // reflows and fills the node — what it would do in any other terminal.
+  if (params.reflowSafeTui) return "reflow";
   // Freeze + clip ONLY a true full-screen ALT-SCREEN TUI (vim/htop, and any agent
   // that switches to the alternate screen). Reflowing one of those re-runs its
   // redraw at a different width and fragments it into visual wreckage — that's the

@@ -100,12 +100,27 @@ test("only alt-screen map nodes freeze; everything else reflows", async ({ page 
 
   const r = await page.evaluate(async () => {
     const { mapNodeLayoutMode } = await import("/src/lib/gridRenderer.ts");
+    const { isReflowSafeAgentTui } = await import("/src/lib/agentTui.ts");
     return {
       nonAltReflows: mapNodeLayoutMode({ altScreenOnMap: false }),
       altScreenFreezes: mapNodeLayoutMode({ altScreenOnMap: true }),
+      agentTuiReflows: mapNodeLayoutMode({ altScreenOnMap: true, reflowSafeTui: true }),
+      opencodeByCommand: isReflowSafeAgentTui({ command: "opencode" }),
+      opencodeByPath: isReflowSafeAgentTui({ command: "/home/me/.opencode/bin/opencode --model x" }),
+      opencodeByProvider: isReflowSafeAgentTui({ command: "bash -l", provider: "opencode" }),
+      zellijStaysFrozen: isReflowSafeAgentTui({ command: "zellij attach" }),
+      claudeNotClaimed: isReflowSafeAgentTui({ command: "claude", provider: "claude" }),
     };
   });
 
   expect(r.nonAltReflows).toBe("reflow");
   expect(r.altScreenFreezes).toBe("freeze");
+  // OpenCode's TUI repaints its whole frame on SIGWINCH (verified against a real
+  // PTY), so it must track the node instead of freezing at a stale size.
+  expect(r.agentTuiReflows).toBe("reflow");
+  expect(r.opencodeByCommand).toBe(true);
+  expect(r.opencodeByPath).toBe(true);
+  expect(r.opencodeByProvider).toBe(true);
+  expect(r.zellijStaysFrozen).toBe(false);
+  expect(r.claudeNotClaimed).toBe(false);
 });

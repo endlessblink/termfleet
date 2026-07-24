@@ -156,6 +156,10 @@ interface TerminalCanvasProps {
   // the canvas is CSS-scaled to fit, so a wide agent/zellij frame is never reflowed
   // into garbage on a small map node. Plain shells still reflow.
   mapProjection?: boolean;
+  // The pane runs a full-screen agent TUI that repaints itself on resize
+  // (OpenCode). Map projection then reflows it to the node instead of freezing +
+  // clipping it, so it tracks the node/window size like it does in any terminal.
+  reflowSafeTui?: boolean;
   runtimeActive?: boolean;
   recoveryGeneration?: number;
   // Lifecycle reporting so the workspace store can track the canvas-owned PTY.
@@ -183,6 +187,7 @@ export function TerminalCanvas({
   theme = DEFAULT_THEME,
   renderScale = 1,
   mapProjection = false,
+  reflowSafeTui = false,
   runtimeActive = true,
   recoveryGeneration = 0,
   onReady,
@@ -211,6 +216,11 @@ export function TerminalCanvas({
   sessionIdRef.current = sessionId;
   const runtimeActiveRef = useRef(runtimeActive);
   runtimeActiveRef.current = runtimeActive;
+  // Read through a ref, never the attach effect's deps: a pane can be identified as
+  // an agent TUI AFTER it attaches (its status hook stamps the provider mid-run),
+  // and re-running the attach effect would tear down a live terminal to learn that.
+  const reflowSafeTuiRef = useRef(reflowSafeTui);
+  reflowSafeTuiRef.current = reflowSafeTui;
   const shellRef = useRef<HTMLDivElement>(null);
   // Latest terminal modes, kept current by the diff stream, read by input.
   const modesRef = useRef({ ...DEFAULT_TERMINAL_MODES });
@@ -502,7 +512,7 @@ export function TerminalCanvas({
           });
         });
         syncOverlaySize();
-        if (mapProjection && modesRef.current.altScreen) {
+        if (preservesProjectionSize()) {
           applyProjectionClip();
         }
         drawSelectionOverlay();
@@ -520,8 +530,12 @@ export function TerminalCanvas({
     };
 
     const channel = new Channel<ArrayBuffer>();
+    // "Frozen projection": the node keeps the terminal's working grid size and
+    // clips it instead of reflowing. Only a full-screen TUI that would FRAGMENT on
+    // reflow gets that; an agent TUI that repaints itself (OpenCode) reflows so it
+    // tracks the node instead of sitting at a stale size with dead space around it.
     const preservesProjectionSize = () =>
-      mapProjection && modesRef.current.altScreen;
+      mapProjection && modesRef.current.altScreen && !reflowSafeTuiRef.current;
 
     channel.onmessage = (payload) => {
       if (disposed) return;
@@ -720,6 +734,7 @@ export function TerminalCanvas({
       // terminal fills the grown node instead of leaving dead space below it.
       const mode = mapNodeLayoutMode({
         altScreenOnMap: mapProjection && modesRef.current.altScreen,
+        reflowSafeTui: reflowSafeTuiRef.current,
       });
       if (DEBUG_TERM_HUD) {
         bumpHud({
@@ -836,6 +851,9 @@ export function TerminalCanvas({
       // prior size, so it spawns at the node size like split panes.
       const keepWorkingSize =
         mapProjection &&
+        // An agent TUI repaints on resize, so attach it at the NODE's size: it fills
+        // the node immediately instead of coming back at a stale working size.
+        !reflowSafeTuiRef.current &&
         ensured.reused &&
         typeof ensured.cols === "number" &&
         ensured.cols > 0 &&

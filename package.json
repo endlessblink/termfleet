@@ -24,6 +24,7 @@
     "verify:terminal-reliability": "scripts/verify-terminal-reliability.sh",
     "verify:terminal-reliability:live": "TERMFLEET_TERMINAL_RELIABILITY_LIVE=1 scripts/verify-terminal-reliability.sh",
     "verify:release": "scripts/verify-release.sh",
+    "verify:opencode-tui-resize": "python3 scripts/verify-opencode-tui-resize.py",
     "verify:map-terminals": "node scripts/verify-map-terminals.mjs",
     "verify:terminal-summary-visual": "playwright test tests/terminal-summary-visual.spec.ts --reporter=line",
     "verify:terminal-header-contract": "playwright test tests/terminal-summary-visual.spec.ts -g \"map header rejects slash-command prompt echoes\" --reporter=line",
