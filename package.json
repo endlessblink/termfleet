@@ -24,6 +24,8 @@
     "verify:terminal-reliability": "scripts/verify-terminal-reliability.sh",
     "verify:terminal-reliability:live": "TERMFLEET_TERMINAL_RELIABILITY_LIVE=1 scripts/verify-terminal-reliability.sh",
     "verify:release": "scripts/verify-release.sh",
+    "opencode:install-plugin": "node scripts/termfleet-install-opencode-plugin.mjs",
+    "verify:opencode-status": "playwright test opencode-status-plugin",
     "verify:opencode-tui-resize": "python3 scripts/verify-opencode-tui-resize.py",
     "verify:map-terminals": "node scripts/verify-map-terminals.mjs",
     "verify:terminal-summary-visual": "playwright test tests/terminal-summary-visual.spec.ts --reporter=line",

@@ -7,7 +7,7 @@
 // titles or TASKS panel "break again", before touching code.
 //
 // Usage: npm run doctor   (safe: reads files/process list only, changes nothing)
-import { closeSync, existsSync, openSync, readFileSync, readdirSync, readSync, statSync } from "node:fs";
+import { closeSync, existsSync, openSync, readFileSync, readdirSync, readSync, realpathSync, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
@@ -89,6 +89,28 @@ try {
   }
 } catch (error) {
   report("warn", "Badge turn events (Codex)", `could not verify (${error.message})`);
+}
+
+// 1c. OpenCode status plugin. OpenCode has no external hook process; it loads a
+// plugin module from its config dir, and that plugin is what gives OpenCode panes a
+// Task row, a task list and a badge. A missing symlink is the whole feature missing.
+try {
+  const configDir =
+    process.env.OPENCODE_CONFIG_DIR ??
+    path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), ".config"), "opencode");
+  const link = path.join(configDir, "plugin", "termfleet-status.js");
+  const source = path.join(ROOT, "scripts", "termfleet-opencode-status-plugin.js");
+  if (!existsSync(configDir)) {
+    report("info", "OpenCode status plugin", "OpenCode is not configured on this machine");
+  } else if (!existsSync(link)) {
+    report("fail", "OpenCode status plugin", `not installed at ${link} — OpenCode panes will show no task (run: node scripts/termfleet-install-opencode-plugin.mjs)`);
+  } else if (realpathSync(link) !== realpathSync(source)) {
+    report("fail", "OpenCode status plugin", `installed but points at ${realpathSync(link)} instead of ${source} — reinstall it`);
+  } else {
+    report("ok", "OpenCode status plugin", `installed → ${link}`);
+  }
+} catch (error) {
+  report("warn", "OpenCode status plugin", `could not verify (${error.message})`);
 }
 
 // 2. Sidecar files: the hook's output. Fresh pane files prove the whole write side.
