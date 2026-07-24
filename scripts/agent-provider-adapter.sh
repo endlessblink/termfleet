@@ -69,8 +69,9 @@ if [ "$mode" = "headless" ]; then
       claude -p --output-format=stream-json "$mission" &
       ;;
     opencode)
-      emit '[[TERMFLEET_AGENT_EVENT {"status":"failed","phase":"blocked","activity":"OpenCode headless launch is not configured","activityKind":"blocked","summary":"OpenCode headless launch is not configured","nextAction":"Use terminal launch mode for OpenCode","label":"Headless adapter unavailable"}]]'
-      exit 64
+      # OpenCode's non-interactive mode; --format json streams raw events, the
+      # same shape of machine-readable output codex exec/claude -p give.
+      opencode run --format json "$mission" &
       ;;
   esac
 else

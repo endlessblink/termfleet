@@ -1168,7 +1168,9 @@ fn fnv1a_hex(input: &str) -> String {
 /// Infer the agent provider from a provider session id when the sidecar omits it:
 /// codex uses time-prefixed ULID-style ids (`019f…`); claude uses random uuidv4.
 fn infer_agent_provider(session_id: &str) -> &'static str {
-    if session_id.starts_with("019") {
+    if session_id.starts_with("ses_") {
+        "opencode"
+    } else if session_id.starts_with("019") {
         "codex"
     } else {
         "claude"
@@ -1292,6 +1294,28 @@ fn plan_agent_restore(persisted: &PersistedSession, live_pty_exists: bool) -> Ag
             return AgentRestorePlan {
                 status: AgentRestoreStatus::Resuming,
                 command: Some(format!("claude --resume {}", shell_quote_arg(session_id))),
+                reason: None,
+            };
+        }
+    }
+
+    // OpenCode resumes a conversation by id with `--session`; its ids are the
+    // `ses_...` strings its own status plugin stamps into the pane sidecar.
+    if persisted.provider.as_deref() == Some("opencode")
+        && matches!(
+            persisted.launch_profile.as_deref(),
+            None | Some("terminal") | Some("headless")
+        )
+    {
+        if let Some(session_id) = persisted
+            .provider_session_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|session_id| !session_id.is_empty())
+        {
+            return AgentRestorePlan {
+                status: AgentRestoreStatus::Resuming,
+                command: Some(format!("opencode --session {}", shell_quote_arg(session_id))),
                 reason: None,
             };
         }
@@ -1766,6 +1790,59 @@ mod tests {
             Some("claude --resume 97f9-claude-session")
         );
         assert_eq!(plan.reason, None);
+    }
+
+    fn opencode_agent_checkpoint(provider_session_id: Option<&str>) -> PersistedSession {
+        PersistedSession {
+            cwd: Some("/work/termfleet".to_string()),
+            command: Some("opencode".to_string()),
+            cols: Some(132),
+            rows: Some(37),
+            recovery_kind: Some(SessionRecoveryKind::AgentTerminal),
+            provider: Some("opencode".to_string()),
+            launch_profile: Some("terminal".to_string()),
+            provider_session_id: provider_session_id.map(ToString::to_string),
+            mission: None,
+            dropoff_path: None,
+            sanitized_resume_command: None,
+            restore_status: None,
+            restore_failure_reason: None,
+        }
+    }
+
+    #[test]
+    fn agent_restore_planner_builds_opencode_resume_from_durable_session_id() {
+        let plan = plan_agent_restore(
+            &opencode_agent_checkpoint(Some("ses_4b6273738ffer1UqWIk6zevIQA")),
+            false,
+        );
+
+        assert_eq!(plan.status, AgentRestoreStatus::Resuming);
+        assert_eq!(
+            plan.command.as_deref(),
+            Some("opencode --session ses_4b6273738ffer1UqWIk6zevIQA")
+        );
+        assert_eq!(plan.reason, None);
+    }
+
+    #[test]
+    fn agent_restore_planner_reconstructs_opencode_without_a_session_id() {
+        let plan = plan_agent_restore(&opencode_agent_checkpoint(None), false);
+
+        assert_eq!(plan.status, AgentRestoreStatus::Reconstructed);
+        assert_eq!(plan.command.as_deref(), Some("opencode"));
+    }
+
+    #[test]
+    fn sidecar_provider_is_inferred_from_an_opencode_session_id() {
+        let text = r#"{"sessionId":"ses_4b6273738ffer1UqWIk6zevIQA","cwd":"/x"}"#;
+        assert_eq!(
+            agent_recovery_from_sidecar(text),
+            Some((
+                "opencode".to_string(),
+                "ses_4b6273738ffer1UqWIk6zevIQA".to_string()
+            ))
+        );
     }
 
     #[test]

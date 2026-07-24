@@ -24,7 +24,10 @@ PROVIDER
 cat > "$TMP_DIR/opencode" <<'PROVIDER'
 #!/usr/bin/env sh
 printf 'FAKE_OPENCODE_ARGS:%s\n' "$*"
-exit 0
+test "$1" = "run"
+test "$2" = "--format"
+test "$3" = "json"
+test "$4" = "Summarize release blockers"
 PROVIDER
 
 chmod +x "$TMP_DIR/codex" "$TMP_DIR/claude" "$TMP_DIR/opencode"
@@ -39,12 +42,10 @@ grep -q '"label":"Headless adapter launched"' "$TMP_DIR/claude.out"
 grep -q 'FAKE_CLAUDE_ARGS:-p --output-format=stream-json Summarize release blockers' "$TMP_DIR/claude.out"
 grep -q '"status":"done"' "$TMP_DIR/claude.out"
 
-set +e
 PATH="$TMP_DIR:$PATH" sh "$ROOT_DIR/scripts/agent-provider-adapter.sh" opencode headless "Summarize release blockers" > "$TMP_DIR/opencode.out"
-status=$?
-set -e
-test "$status" -eq 64
-grep -q '"label":"Headless adapter unavailable"' "$TMP_DIR/opencode.out"
+grep -q '"label":"Headless adapter launched"' "$TMP_DIR/opencode.out"
+grep -q 'FAKE_OPENCODE_ARGS:run --format json Summarize release blockers' "$TMP_DIR/opencode.out"
+grep -q '"status":"done"' "$TMP_DIR/opencode.out"
 
 set +e
 PATH="$TMP_DIR:$PATH" sh "$ROOT_DIR/scripts/agent-provider-adapter.sh" codex headless > "$TMP_DIR/missing-mission.out"
