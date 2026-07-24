@@ -152,6 +152,45 @@ Do not split them into unrelated cleanup/design buckets; execute them in order s
 the visual system, shell, navigation, terminal surface, map, command layer, run
 state, and visual QA converge on one product direction.
 
+### TC-061: Full OpenCode support (TUI resize, status, resume, headless)
+
+**Priority:** P1
+**Status:** Done (2026-07-24) — pending operator confirmation in the live app
+
+OpenCode was a listed provider but a second-class one: its full-screen TUI froze at
+a stale size inside a map node, its panes never published a task, it cold-restored
+as a plain shell, and headless launch was refused outright.
+
+Acceptance:
+
+- DONE: The OpenCode TUI resizes with its terminal/window instead of freezing.
+  Map nodes freeze alt-screen terminals to stop a multiplexer fragmenting on
+  shrink; OpenCode repaints its whole frame on SIGWINCH, so it now reflows
+  (`isReflowSafeAgentTui`, `src/lib/agentTui.ts`). zellij/tmux/vim keep the freeze.
+- DONE: OpenCode panes get a Task row, a live TASKS list and a Running/Waiting/Idle
+  badge, from OpenCode's own events via a status plugin
+  (`scripts/termfleet-opencode-status-plugin.js`, installed with
+  `npm run opencode:install-plugin`, checked by `npm run doctor`).
+- DONE: A pane running OpenCode cold-restores with `opencode --session <id>` from
+  the session id the plugin stamps into the pane sidecar.
+- DONE: Headless launch runs `opencode run --format json <mission>`.
+
+Evidence:
+
+- `npm run verify:opencode-tui-resize` — real PTY: grown 100x30 → 150x45 OpenCode
+  paints to 149x45; shrunk to 80x24 it paints 79x24 (so reflow is safe).
+- `npx playwright test grid-resize` 2/2 (agent TUI reflows, zellij still freezes).
+- `npm run verify:opencode-status` 8/8 (event mapping, sidecar path parity,
+  claim/merge rules, plain-language activity).
+- Live end-to-end against a local Ollama model: the sidecar came back with a real
+  2-item task list, the session title, the session id and an idle turn at the end.
+- `cargo test` 139/139 (3 new OpenCode restore/inference tests).
+- `sh scripts/verify-agent-provider-adapter-headless.sh` OK (real OpenCode argv).
+- `node scripts/verify-map-terminals.mjs` back to its pre-change baseline.
+
+Open: the operator still has to relaunch the app to see the resize fix live, and a
+hand-started OpenCode only becomes reflow-safe once its plugin has claimed the pane.
+
 ### TC-024: Session/map cards show project/workspace name
 
 **Priority:** P1
