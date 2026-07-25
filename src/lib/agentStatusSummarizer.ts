@@ -177,6 +177,10 @@ async function responseText(response: Response) {
 async function resolveTaskLineFor(
   input: AgentStatusSummaryInput,
   sidecar: AgentStatusSidecar | null,
+  // An expired record may still answer "what is this terminal about" (goal, session
+  // plan, last finished step) but may NOT answer "what is it doing right now" — the
+  // in-progress step is the one rung that goes stale with the record.
+  expired = false,
 ): Promise<PaneTaskLine> {
   let facts = null;
   const sessionId =
@@ -210,7 +214,9 @@ async function resolveTaskLineFor(
     now: Date.now(),
     // The overarching goal leads the line; the in-progress todo is only the step.
     mainGoal: sidecar?.mainTask ?? null,
-    currentStep: activeTodo?.activeForm ?? activeTodo?.content ?? null,
+    currentStep: expired
+      ? null
+      : (activeTodo?.activeForm ?? activeTodo?.content ?? null),
     facts,
     lastCompletedTask:
       lastCompleted?.activeForm ?? lastCompleted?.content ?? null,
@@ -254,7 +260,11 @@ export async function summarizeAgentStatus(
     }
   }
 
-  const taskLine = await resolveTaskLineFor(input, rawSidecar);
+  const taskLine = await resolveTaskLineFor(
+    input,
+    rawSidecar,
+    sidecarState === "stale",
+  );
 
   const effectiveFallback = sidecarShapedFallback ?? fallback;
   const endpoint = options.endpoint ?? configuredEndpoint();

@@ -204,3 +204,62 @@ test("sidecar expiry preserves manually owned task identity", () => {
 
   expect(projection?.mainUserAsk).toEqual(manualAsk);
 });
+
+// Live report 2026-07-25: a hermes pane whose agent had gone quiet showed
+// "Sitting at a command prompt in hermes". The agent going quiet does not
+// invalidate what the terminal is ABOUT — only what it is doing right now.
+test("an expired sidecar keeps the last real task and only marks activity unavailable", () => {
+  const stale = terminal("stale-keeps-task", {
+    statusSummarySource: "sidecar",
+    statusSummary: {
+      task: "Make the timer job fast and calm",
+      path: "hermes",
+      now: "Editing the timer card",
+      status: "working",
+      tasksFromTodoWrite: true,
+    },
+  });
+
+  const projection = projectStatusPollResult(stale, {
+    source: "fallback",
+    sidecarState: "stale",
+    summary: {
+      task: "Shell ready",
+      path: "hermes",
+      now: "Awaiting command",
+      status: "idle",
+      provider: "shell",
+      confidence: "low",
+    },
+  }, 1_700_000_000_000);
+
+  expect(projection?.statusSummary?.task).toBe("Make the timer job fast and calm");
+  expect(projection?.statusSummary?.now).toBe("Status unavailable");
+});
+
+test("an expired sidecar with no real task still says so honestly", () => {
+  const stale = terminal("stale-no-task", {
+    statusSummarySource: "sidecar",
+    statusSummary: {
+      task: "Working",
+      path: "hermes",
+      now: "Working",
+      status: "working",
+    },
+  });
+
+  const projection = projectStatusPollResult(stale, {
+    source: "fallback",
+    sidecarState: "stale",
+    summary: {
+      task: "Shell ready",
+      path: "hermes",
+      now: "Awaiting command",
+      status: "idle",
+      provider: "shell",
+      confidence: "low",
+    },
+  }, 1_700_000_000_000);
+
+  expect(projection?.statusSummary?.task).toBe("Task not captured");
+});

@@ -411,6 +411,7 @@ export async function readLocalSidecarStatus(
   readFile: SidecarFileReader,
 ): Promise<LocalSidecarStatus> {
   let firstFresh: AgentStatusSidecar | null = null;
+  let freshestStale: AgentStatusSidecar | null = null;
   let staleSeen = false;
   let errorSeen = false;
   for (const name of sidecarCandidateFileNames(input)) {
@@ -426,6 +427,17 @@ export async function readLocalSidecarStatus(
     if (!sidecar) continue;
     if (!sidecarFresh(sidecar)) {
       staleSeen = true;
+      // An expired record still says what this terminal is ABOUT (its session id and
+      // its task list). Only "what it is doing right now" expires, so the record is
+      // kept as an identity source while `summary` stays null and the badge reads
+      // unavailable. Dropping it entirely is how an idle agent pane ended up
+      // claiming "Sitting at a command prompt in <folder>" (live report 2026-07-25).
+      if (
+        !freshestStale ||
+        (sidecar.updatedAt ?? 0) > (freshestStale.updatedAt ?? 0)
+      ) {
+        freshestStale = sidecar;
+      }
       continue;
     }
     if (!firstFresh) firstFresh = sidecar;
@@ -443,7 +455,8 @@ export async function readLocalSidecarStatus(
       summary: summaryFromSidecar(firstFresh, fallback),
       sidecar: firstFresh,
     };
-  if (staleSeen) return { state: "stale", summary: null };
+  if (staleSeen)
+    return { state: "stale", summary: null, sidecar: freshestStale };
   if (errorSeen) return { state: "error", summary: null };
   return { state: "missing", summary: null };
 }

@@ -589,3 +589,30 @@ test("summarizeAgentStatus does not infer the localhost worker endpoint in deskt
     }
   }
 });
+
+// An expired record is still the only thing that knows this pane's session id and
+// task list. Throwing it away left the task-line ladder with nothing but the folder
+// name, which is how "Sitting at a command prompt in hermes" reached the cockpit.
+test("an expired sidecar is still returned as an identity source", async () => {
+  const cwd = "/repo/hermes";
+  const name = cwdSidecarFileName(cwd);
+  const expired = JSON.stringify({
+    cwd,
+    sessionId: "cefa1bf3-8530-436f-9494-b2db1e998fe3",
+    updatedAt: Date.now() - 6 * 60 * 60 * 1000,
+    todos: [
+      { id: "1", content: "Make the timer job fast and calm", status: "completed" },
+    ],
+  });
+
+  const result = await readLocalSidecarStatus(
+    { provider: "claude", cwd },
+    fallbackAgentStatusSummary({ provider: "claude", cwd }),
+    async (file) => (file === name ? expired : null),
+  );
+
+  expect(result.state).toBe("stale");
+  expect(result.summary).toBeNull();
+  expect(result.sidecar?.sessionId).toBe("cefa1bf3-8530-436f-9494-b2db1e998fe3");
+  expect(result.sidecar?.todos?.[0]?.content).toBe("Make the timer job fast and calm");
+});

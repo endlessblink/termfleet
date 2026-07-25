@@ -36,9 +36,21 @@ export function projectStatusPollResult(
     return null;
   }
 
+  // The pane's task is not invalidated by the agent going quiet — only its live
+  // activity is. Keeping the last real task (with the badge reading unavailable) is
+  // both truer and more useful than replacing it with a placeholder.
+  const knownTask = terminal.statusSummary?.task?.trim();
+  const lastRealTask =
+    knownTask &&
+    !/^(?:Task not captured|Activity not captured|Idle|Working|Ready|Unknown)$/i.test(
+      knownTask,
+    )
+      ? knownTask
+      : undefined;
+
   return {
     statusSummary: {
-      task: "Task not captured",
+      task: lastRealTask ?? "Task not captured",
       path: terminal.statusSummary?.path ?? result.summary.path,
       now: "Status unavailable",
       status: "unavailable",
