@@ -50,7 +50,8 @@ export function narrationToNow(text: unknown): string {
     .replace(/\s+/g, " ")
     .trim();
   if (!clean) return "";
-  const sentences = (clean.match(/[^.!?]+[.!?]?/g) ?? [clean])
+  const sentences = clean
+    .split(/(?<=[.!?])\s+/)
     .map((sentence) => sentence.trim())
     .filter(
       (sentence) =>

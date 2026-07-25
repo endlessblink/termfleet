@@ -228,3 +228,13 @@ test("sanitizeScrapedAsk strips prompt markers and the duplicated wrapped fragme
   expect(sanitizeScrapedAsk("plain ask with no markers")).toBe("plain ask with no markers");
   expect(sanitizeScrapedAsk("")).toBe("");
 });
+
+import { titleIsCommentaryOrDangling } from "../src/lib/terminalHeaderQuality";
+
+test("a line that starts mid-sentence is rejected as a scrape fragment", () => {
+  expect(titleIsCommentaryOrDangling("07s, both calm single-button cards.")).toBe(true);
+  expect(titleIsCommentaryOrDangling("and then wiring the resume path")).toBe(true);
+  expect(titleIsCommentaryOrDangling("both calm single-button cards")).toBe(true);
+  expect(titleIsCommentaryOrDangling("Installing the updated scripts…")).toBe(false);
+  expect(titleIsCommentaryOrDangling("Making the timer job fast and calm")).toBe(false);
+});

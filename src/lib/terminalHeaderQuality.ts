@@ -348,6 +348,12 @@ export function titleIsCommentaryOrDangling(value?: string | null) {
   if (/^(?:I|We|You|They|It|This|That|There|Those|These)\b/.test(text)) return true;
   const body = text.replace(/(?:…|\.\.\.)$/, "").trim();
   if (/[,;:—-]$/.test(body)) return true;
+  // A line that STARTS mid-sentence is a scrape fragment, however clean its tail
+  // reads: a bare number ("07s, both calm single-button cards." — the live 2026-07-25
+  // report, a decimal split at "0.07s") or a continuation connective.
+  if (/^\d/.test(body)) return true;
+  if (/^(?:and|but|or|so|also|both|plus|then|because|however|which|that's|too)\b/i.test(body))
+    return true;
   return /\b(?:and|but|or|with|from|to|in|of|for|the|a|an)$/i.test(body);
 }
 

@@ -343,7 +343,8 @@ export function narrationToNow(text) {
   // next; it is not what the pane is doing now.
   if (/(?:^|[.!?]\s+)(?:Next\s+steps|Steps)\s*[-:]/i.test(clean)) return "";
   // Split into sentences and keep substantive ones (drop terse fragments / pure status).
-  const sentences = (clean.match(/[^.!?]+[.!?]?/g) ?? [clean])
+  const sentences = clean
+    .split(/(?<=[.!?])\s+/)
     .map((sentence) => sentence.trim())
     .filter(
       (sentence) =>

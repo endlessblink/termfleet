@@ -128,3 +128,14 @@ test("condenser parity with the status hook is byte-identical", () => {
     expect(narrationToNow(sample)).toBe(hookNarrationToNow(sample));
   }
 });
+
+// Live report 2026-07-25: the hermes pane's activity line read
+// "07s, both calm single-button cards." — a decimal point ("0.07s") was treated as a
+// sentence boundary, so the condenser handed the cockpit the tail of a sentence.
+test("a decimal point is not a sentence boundary", () => {
+  const sample =
+    "Both timer cards now render in 0.07s, both calm single-button cards with no spinner.";
+  const now = narrationToNow(sample);
+  expect(now.startsWith("07s")).toBe(false);
+  expect(now).toBe(hookNarrationToNow(sample));
+});
