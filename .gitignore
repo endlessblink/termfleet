@@ -9,3 +9,6 @@ src-tauri/gen/
 
 # Cockpit visual capture output (scripts/capture-cockpit.mjs)
 .captures/
+
+# live pane-label audit output (machine-specific, contains real prompts)
+.audit/

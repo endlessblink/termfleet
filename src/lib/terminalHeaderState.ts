@@ -170,10 +170,31 @@ export function buildTerminalHeaderState(input: {
   // TC-060 R1: a pane that has not polled yet — or one only ever drawn in the
   // sidebar, never mounted — still gets a true line. The last rung needs no I/O,
   // so nothing can fall through to "Task not captured".
+  // Everything this caller ALREADY knows has to be offered to the ladder. Passing only
+  // the folder guaranteed the last rung, which is how a pane whose own task list was
+  // visible on screen still rendered "Sitting at a command prompt in hermes"
+  // (live report 2026-07-25). Filler is only ever legitimate when nothing is known.
+  // Deliberately narrow: the in-progress todo and the status summary have their OWN
+  // paths through the view model, and feeding them here stole their provenance. Only
+  // the two facts nothing else offers the ladder are passed — the last FINISHED step,
+  // and the operator's ask for THIS run (an ask from a previous run is not the plan).
+  const lastCompletedLineupItem = [...(input.taskLineup ?? [])]
+    .reverse()
+    .find((item) => item.status === "completed");
+  const currentRunId = input.activeRunId ?? input.runId;
+  const askIsForThisRun =
+    !input.mainUserAsk?.runId ||
+    !currentRunId ||
+    input.mainUserAsk.runId === currentRunId;
   const effectiveTaskLine =
     input.taskLine ??
     resolvePaneTaskLine({
       now: Date.now(),
+      lastCompletedTask: lastCompletedLineupItem?.content ?? null,
+      facts:
+        input.mainUserAsk?.text && askIsForThisRun
+          ? { operatorRequest: input.mainUserAsk.text }
+          : null,
       folder: effectiveLiveCwd?.split("/").filter(Boolean).pop() ?? null,
       busy:
         input.terminalStatus === "running" || input.activelyWorking === true,

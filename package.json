@@ -43,6 +43,7 @@
     "monitor:cockpit-tasks": "node scripts/monitor-cockpit-tasks.mjs --watch --jsonl",
     "watchdog:cockpit-labels": "node scripts/monitor-cockpit-tasks.mjs --watch --jsonl --alert-on-fail --notify-on-fail --interval-ms=2000 --max-age-s=30",
     "verify:cockpit-all": "node scripts/monitor-cockpit-tasks.mjs --verify",
+    "audit:panes": "playwright test tests/pane-label-audit.spec.ts --reporter=line",
     "agent-status:ollama": "node scripts/agent-status-summary-ollama.mjs",
     "termfleetctl": "node scripts/termfleetctl.mjs",
     "verify:termfleetctl": "node scripts/verify-termfleetctl.mjs",
