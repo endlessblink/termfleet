@@ -17,6 +17,10 @@ export interface BoardDocument {
   thumbnail?: string;
 }
 
+// Below roughly 730px wide the drawing editor drops to a cramped phone
+// layout, so a new board opens comfortably clear of that at 1x map zoom.
+export const BOARD_DEFAULT_SIZE = { width: 900, height: 640 };
+
 const BOARD_SOURCE = "termfleet";
 const BROWSER_KEY_PREFIX = "termfleet.board.";
 

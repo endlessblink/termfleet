@@ -36,6 +36,7 @@ import {
   TreeStructure,
   X,
 } from "@phosphor-icons/react";
+import { BOARD_DEFAULT_SIZE } from "../lib/boardStore";
 import {
   createAgentWorkstream,
   createAgentWorkstreamRunId,
@@ -1537,6 +1538,75 @@ function PreviewButton() {
   );
 }
 
+function DrawingBoardButton() {
+  const workspaceMode = useWorkspaceStore(
+    (state) => state.workspaceUiState.workspaceMode,
+  );
+  const updateUi = useWorkspaceStore((state) => state.updateWorkspaceUiState);
+  const setWorkspaceMode = useWorkspaceStore((state) => state.setWorkspaceMode);
+  const addCanvasNode = useWorkspaceStore((state) => state.addCanvasNode);
+  const selectCanvasNode = useWorkspaceStore((state) => state.selectCanvasNode);
+  const updateCanvasViewport = useWorkspaceStore(
+    (state) => state.updateCanvasViewport,
+  );
+  const existingBoardId = useWorkspaceStore(
+    (state) => state.canvasState.nodes.find((node) => node.type === "board")?.id ?? null,
+  );
+  const active = workspaceMode === "canvas" && existingBoardId !== null;
+
+  return (
+    <button
+      className="workspace-rail-button"
+      data-active={active ? "true" : "false"}
+      style={{
+        ...styles.railButton,
+        background: active ? "var(--surface-selected)" : "transparent",
+        borderColor: active ? "var(--border-focus)" : "var(--border-subtle)",
+        color: active ? "var(--accent-live)" : "var(--text-secondary)",
+      }}
+      title={existingBoardId ? "Show the drawing board" : "Open a drawing board"}
+      aria-label="Drawing board"
+      aria-pressed={active}
+      onClick={() => {
+        const { viewport, nodes } = useWorkspaceStore.getState().canvasState;
+        // A board is only drawable at 100% or closer — below that the map shows
+        // a still picture of it, which reads as a dead panel to anyone who just
+        // asked for a drawing board.
+        const zoom = Math.max(1, viewport.zoom);
+        setWorkspaceMode("canvas");
+        updateUi({ primarySidebarCollapsed: false, primarySidebarPanel: "map" });
+
+        const existing = existingBoardId
+          ? nodes.find((node) => node.id === existingBoardId)
+          : undefined;
+        if (existing) {
+          // Frame the board near the top-left of the map view so it is on
+          // screen wherever the map happened to be scrolled to.
+          updateCanvasViewport({
+            x: -existing.x * zoom + 80,
+            y: -existing.y * zoom + 80,
+            zoom,
+          });
+          selectCanvasNode(existing.id);
+          return;
+        }
+
+        updateCanvasViewport({ zoom });
+        addCanvasNode({
+          type: "board",
+          title: "Drawing board",
+          x: Math.round((-viewport.x + 80) / zoom),
+          y: Math.round((-viewport.y + 80) / zoom),
+          width: BOARD_DEFAULT_SIZE.width,
+          height: BOARD_DEFAULT_SIZE.height,
+        });
+      }}
+    >
+      <Palette size={15} weight="duotone" />
+    </button>
+  );
+}
+
 function SidebarRail({ collapsed }: { collapsed: boolean }) {
   const updateUi = useWorkspaceStore((state) => state.updateWorkspaceUiState);
 
@@ -1552,6 +1622,7 @@ function SidebarRail({ collapsed }: { collapsed: boolean }) {
       <div style={styles.railSeparator} aria-hidden="true" />
       <PanelButton panel="sessions" />
       <PanelButton panel="map" />
+      <DrawingBoardButton />
       <PreviewButton />
       <div style={styles.railSpacer} aria-hidden="true" />
       <button

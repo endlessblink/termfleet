@@ -358,6 +358,56 @@ test("a drawing survives a reload and shows in the zoomed-out preview", async ({
   await expect(preview.locator("img")).toBeVisible();
 });
 
+test("dock opens a drawing board, and opens it ready to draw on", async ({
+  page,
+}) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => {
+    localStorage.removeItem("terminal-workspace.v1");
+    localStorage.removeItem("terminal-workspace.test");
+  });
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+
+  const rail = page
+    .getByRole("complementary", { name: "Workspace sidebar" })
+    .getByRole("navigation", { name: "Operations rail" });
+  const board = rail.getByRole("button", { name: "Drawing board" });
+  await expect(board).toBeVisible();
+
+  // From anywhere in the app, one click gets you a live board — no hunting for
+  // the map first, and not the dead-looking still preview you get below 100%.
+  await board.click();
+  await expect(page.locator("[data-magic-canvas-shell]")).toBeVisible();
+  await expect(page.getByTestId("canvas-board-live")).toBeVisible();
+  await expect(
+    page.locator(".excalidraw__canvas.interactive").first(),
+  ).toBeVisible({
+    timeout: 30_000,
+  });
+  expect(
+    await mapZoom(page),
+    "opens at a zoom you can actually draw at",
+  ).toBeGreaterThanOrEqual(1);
+
+  // Clicking again must find the board it already made, not pile up new ones.
+  await zoomUntil(page, (zoom) => zoom < 0.9, "out");
+  await expect(page.getByTestId("canvas-board-preview")).toBeVisible();
+  await board.click();
+  await expect(page.getByTestId("canvas-board-live")).toBeVisible();
+  const boardCount = await page.evaluate(() => {
+    const raw =
+      localStorage.getItem("terminal-workspace.v1") ??
+      localStorage.getItem("terminal-workspace.test");
+    const parsed = raw ? JSON.parse(raw) : null;
+    return (parsed?.canvasState?.nodes ?? []).filter(
+      (node: { type: string }) => node.type === "board",
+    ).length;
+  });
+  expect(boardCount, "one board, not one per click").toBe(1);
+});
+
 test("drawing board wears the workbench skin, not the stock editor look", async ({
   page,
 }) => {

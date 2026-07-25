@@ -284,6 +284,16 @@ Evidence: `tests/map-drawing-board.spec.ts` 7/7, including a skin guard assertin
 selected-surface and island colours resolve to the workbench tokens and that the desktop
 layout is in use.
 
+Dock entry (2026-07-25): a board is now launchable from the operations rail rather than
+only from the map's own toolbar. The button switches to the map, and — because a board
+below 100% zoom renders as a still picture that reads as a dead panel — it also lifts the
+map to at least 1x and frames the board near the top-left of the view. A second click
+finds the board it already made instead of piling up new ones.
+
+Note: `BOARD_DEFAULT_SIZE` now lives in `src/lib/boardStore.ts` for the dock's use;
+`MagicCanvas.tsx` still carries its own copy because that file was mid-rewrite in another
+session when this landed. Unify them when that work settles.
+
 Not done yet: the agent write path.
 
 ### TC-024: Session/map cards show project/workspace name
