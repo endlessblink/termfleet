@@ -265,8 +265,26 @@ so none of them can pass vacuously: resizing the card (the editor must grow into
 fails if box tracking is frozen) and a drawing surviving a full reload and coming back
 as the zoomed-out preview picture (fails if saving is disabled).
 
-Not done yet: the styling pass toward a quieter, tldraw-like look (the default UI still
-shows its own share/menu chrome), and the agent write path.
+Styling pass (2026-07-25): the board now wears the workbench's own chrome rather than
+the stock editor look. Done almost entirely by reassigning the editor's own theme
+variables in a scoped stylesheet (`src/styles/board.css`, under `.termfleet-board`), so
+it survives a library upgrade where overriding internal class names would not. The one
+that mattered was `--color-surface-primary-container`, which paints every selected tool
+and swatch and was the editor's indigo — the loudest thing on the map. Also: hairline
+island borders at the app's radii, keyboard-shortcut numerals dropped from the tools,
+dimmed hint/label text, and the shape-library and help triggers hidden (cloud/onboarding
+features that do not apply to a local board). The stock menu — mostly links, sign-in and
+collaboration — is replaced with a three-item one.
+
+A new board also opens at 900x640 instead of 640x440: below roughly 730px wide the
+editor drops to a cramped phone layout, which is what a default board was getting at 1x
+map zoom.
+
+Evidence: `tests/map-drawing-board.spec.ts` 7/7, including a skin guard asserting the
+selected-surface and island colours resolve to the workbench tokens and that the desktop
+layout is in use.
+
+Not done yet: the agent write path.
 
 ### TC-024: Session/map cards show project/workspace name
 

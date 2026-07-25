@@ -268,12 +268,29 @@ test("drawing board keeps ink under the cursor after the card is resized", async
   const section = page.locator(
     'section:has([data-testid="canvas-board-live"])',
   );
+  // Pull the card left first so its bottom-right corner — and the room to grow
+  // into — stay inside the window.
+  const header = section.locator('[data-testid="canvas-node-header"]');
+  const headerBox = await header.boundingBox();
+  if (!headerBox) throw new Error("no node header");
+  await page.mouse.move(headerBox.x + 40, headerBox.y + headerBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(
+    headerBox.x + 40 - 320,
+    headerBox.y + headerBox.height / 2 - 40,
+    {
+      steps: 10,
+    },
+  );
+  await page.mouse.up();
+  await page.waitForTimeout(500);
+
   const canvasBefore = await page
     .locator(".excalidraw__canvas.interactive")
     .first()
     .boundingBox();
   if (!canvasBefore) throw new Error("no board canvas");
-  await section.locator('[data-testid="canvas-node-header"]').click();
+  await header.click();
   const handle = section.locator('[title="Resize SE"]');
   const handleBox = await handle.boundingBox();
   if (!handleBox) throw new Error("no resize handle — is the board selected?");
@@ -283,8 +300,8 @@ test("drawing board keeps ink under the cursor after the card is resized", async
   );
   await page.mouse.down();
   await page.mouse.move(
-    handleBox.x + handleBox.width / 2 + 140,
-    handleBox.y + handleBox.height / 2 + 110,
+    handleBox.x + handleBox.width / 2 + 80,
+    handleBox.y + handleBox.height / 2 + 60,
     { steps: 10 },
   );
   await page.mouse.up();
@@ -300,7 +317,7 @@ test("drawing board keeps ink under the cursor after the card is resized", async
   expect(
     canvasAfter.width - canvasBefore.width,
     "editor widened with the card",
-  ).toBeGreaterThan(100);
+  ).toBeGreaterThan(50);
 
   const afterResize = await drawRectAndSampleEdge(page);
   expect(
@@ -339,6 +356,48 @@ test("a drawing survives a reload and shows in the zoomed-out preview", async ({
   const preview = page.getByTestId("canvas-board-preview");
   await expect(preview).toBeVisible();
   await expect(preview.locator("img")).toBeVisible();
+});
+
+test("drawing board wears the workbench skin, not the stock editor look", async ({
+  page,
+}) => {
+  await openMapWithBoard(page);
+
+  const skin = await page.evaluate(() => {
+    const root = document.querySelector(".termfleet-board .excalidraw");
+    if (!root) return null;
+    const style = getComputedStyle(root);
+    const value = (name: string) => style.getPropertyValue(name).trim();
+    return {
+      // The variable that paints every selected tool and swatch. Unskinned it
+      // is the editor's indigo, the loudest thing on the map.
+      selected: value("--color-surface-primary-container"),
+      island: value("--island-bg-color"),
+      // Full desktop layout, not the cramped phone one a narrow card triggers.
+      mobile: root.classList.contains("excalidraw--mobile"),
+      libraryTriggers: document.querySelectorAll(
+        ".termfleet-board .excalidraw .sidebar-trigger",
+      ).length,
+    };
+  });
+
+  expect(skin, "board editor is mounted").not.toBeNull();
+  // The workbench surfaces are dark; the stock indigo and white are not.
+  expect(skin?.selected.toLowerCase()).toBe("#313841");
+  expect(skin?.island.toLowerCase()).toBe("#20252a");
+  expect(skin?.mobile, "board opens wide enough for the desktop layout").toBe(
+    false,
+  );
+
+  // Cloud/onboarding chrome that does not apply to a local board.
+  await expect(
+    page.locator(".termfleet-board .excalidraw .help-icon"),
+  ).toBeHidden();
+  if (skin && skin.libraryTriggers > 0) {
+    await expect(
+      page.locator(".termfleet-board .excalidraw .sidebar-trigger").first(),
+    ).toBeHidden();
+  }
 });
 
 test("drawing board falls back to a still preview when the map zooms out", async ({

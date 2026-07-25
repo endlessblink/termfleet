@@ -1697,6 +1697,9 @@ const NODE_MIN_SIZE = {
   note: { width: 220, height: 120 },
   board: { width: 380, height: 280 },
 };
+// The drawing editor drops to a cramped phone layout below ~730px wide, so a
+// new board is opened comfortably clear of that at 1x map zoom.
+const BOARD_DEFAULT_SIZE = { width: 900, height: 640 };
 const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 2.2;
 const READABLE_TERMINAL_ZOOM = 1;
@@ -4874,8 +4877,8 @@ export function MagicCanvas() {
       title: "Drawing board",
       x: pos.x,
       y: pos.y,
-      width: 640,
-      height: 440,
+      width: BOARD_DEFAULT_SIZE.width,
+      height: BOARD_DEFAULT_SIZE.height,
     });
   }, [addCanvasNode, canvasState.nodes.length]);
 
@@ -6397,8 +6400,8 @@ export function MagicCanvas() {
                     title: "Drawing board",
                     x: Math.round(menu.canvasX),
                     y: Math.round(menu.canvasY),
-                    width: 640,
-                    height: 440,
+                    width: BOARD_DEFAULT_SIZE.width,
+                    height: BOARD_DEFAULT_SIZE.height,
                   }),
               },
             ].map((item) => (

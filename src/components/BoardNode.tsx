@@ -25,9 +25,22 @@ import {
 
 const SAVE_DEBOUNCE_MS = 600;
 
+type MenuComponent = React.ComponentType<{ children?: React.ReactNode }>;
+
 type ExcalidrawModule = {
   Excalidraw: React.ComponentType<Record<string, unknown>>;
   exportToSvg: (opts: Record<string, unknown>) => Promise<SVGSVGElement>;
+  // Supplying our own menu replaces the stock one, which is mostly links,
+  // sign-in and collaboration — none of which belong on a local board.
+  MainMenu: MenuComponent & {
+    Item: React.ComponentType<Record<string, unknown>>;
+    Separator: React.ComponentType;
+    DefaultItems: {
+      SaveAsImage: React.ComponentType;
+      ClearCanvas: React.ComponentType;
+      ChangeCanvasBackground: React.ComponentType;
+    };
+  };
 };
 
 type ExcalidrawApi = {
@@ -51,6 +64,8 @@ function loadExcalidraw(): Promise<ExcalidrawModule> {
         window as unknown as { EXCALIDRAW_ASSET_PATH?: string }
       ).EXCALIDRAW_ASSET_PATH = "/excalidraw/";
       await import("@excalidraw/excalidraw/index.css");
+      // Our skin has to land after the editor's own stylesheet.
+      await import("../styles/board.css");
       const mod =
         (await import("@excalidraw/excalidraw")) as unknown as ExcalidrawModule;
       return mod;
@@ -322,14 +337,16 @@ export function BoardNode({
   }
 
   const Excalidraw = mod?.Excalidraw;
+  const MainMenu = mod?.MainMenu;
   const compensated = zoom || 1;
   const ready = Boolean(
-    Excalidraw && initialData && box.width > 0 && box.height > 0,
+    Excalidraw && MainMenu && initialData && box.width > 0 && box.height > 0,
   );
 
   return (
     <div
       ref={shellRef}
+      className="termfleet-board"
       style={styles.liveShell}
       data-testid="canvas-board-live"
       // Belt and braces for every other way a board can move without resizing —
@@ -346,7 +363,7 @@ export function BoardNode({
     >
       {loadError ? (
         <div style={styles.previewEmpty}>Drawing board failed to load</div>
-      ) : !ready || !Excalidraw ? (
+      ) : !ready || !Excalidraw || !MainMenu ? (
         <div style={styles.previewEmpty}>Loading board…</div>
       ) : (
         <div
@@ -381,7 +398,14 @@ export function BoardNode({
                 export: false,
               },
             }}
-          />
+          >
+            <MainMenu>
+              <MainMenu.DefaultItems.SaveAsImage />
+              <MainMenu.DefaultItems.ChangeCanvasBackground />
+              <MainMenu.Separator />
+              <MainMenu.DefaultItems.ClearCanvas />
+            </MainMenu>
+          </Excalidraw>
         </div>
       )}
     </div>

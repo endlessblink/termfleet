@@ -1,0 +1,144 @@
+/* Drawing-board skin.
+ *
+ * The editor ships a full set of theme variables, so almost all of this is
+ * variable reassignment rather than class-name surgery — the same restyle
+ * survives a library upgrade, where overriding internal class names would not.
+ * Everything is scoped under .termfleet-board so none of it leaks into the rest
+ * of the workbench.
+ *
+ * Target look: the quiet, compact, neutral chrome the rest of TermFleet uses —
+ * hairline borders, depth from fills rather than outlines, no colourful accent.
+ */
+
+.termfleet-board .excalidraw {
+  /* Floating panels ("islands") read as the app's raised surfaces. */
+  --island-bg-color: var(--surface-raised);
+  --color-surface-lowest: var(--surface-floor);
+  --color-surface-low: var(--surface-base);
+  --color-surface-mid: var(--surface-raised);
+  --color-surface-high: var(--surface-hover);
+  --color-on-surface: var(--text-primary);
+
+  --popup-bg-color: var(--surface-raised);
+  --popup-secondary-bg-color: var(--surface-base);
+  --popup-text-color: var(--text-primary);
+
+  --input-bg-color: var(--surface-sunken);
+  --input-border-color: var(--border-subtle);
+  --input-hover-bg-color: var(--surface-hover);
+  --input-label-color: var(--text-secondary);
+
+  --sidebar-bg-color: var(--surface-raised);
+  --sidebar-border-color: var(--border-subtle);
+  --dialog-border-color: var(--border-subtle);
+  --default-border-color: var(--border-subtle);
+
+  /* The app barely uses a coloured accent: selection is a background step with
+     a near-white edge, not a blue fill. */
+  --color-primary: var(--accent-live);
+  --color-primary-hover: var(--accent-live);
+  --color-primary-darker: var(--accent-live);
+  --color-primary-darkest: var(--accent-live);
+  --color-primary-light: var(--surface-selected);
+  --color-primary-light-darker: var(--surface-hover);
+  --color-selection: var(--accent-live);
+  --color-brand-hover: var(--accent-live);
+  --color-brand-active: var(--accent-live);
+
+  /* The one that actually paints every selected tool and swatch. Left alone it
+     is the editor's indigo, which is the loudest thing on the map. */
+  --color-surface-primary-container: var(--surface-selected);
+  --color-on-primary-container: var(--text-primary);
+  --button-selected-bg: var(--surface-selected);
+  --button-selected-border: var(--border-focus);
+  --button-selected-hover-bg: var(--surface-hover);
+
+  --border-radius-md: var(--radius-xs);
+  --border-radius-lg: var(--radius-sm);
+  --shadow-island: var(--shadow-card);
+  --modal-shadow: var(--shadow-menu);
+
+  font-family: var(--font-ui);
+}
+
+/* Islands: hairline edge, app radius, no heavy outline. */
+.termfleet-board .excalidraw .Island {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-card);
+  padding: 6px;
+}
+
+/* Tool buttons: compact, quiet, selected state is a fill rather than a colour. */
+.termfleet-board .excalidraw .ToolIcon__icon {
+  border-radius: var(--radius-xs);
+}
+
+.termfleet-board .excalidraw .ToolIcon__icon:hover,
+.termfleet-board .excalidraw .ToolIcon_type_button:hover {
+  background: var(--surface-hover);
+}
+
+.termfleet-board .excalidraw .ToolIcon_type_radio:checked + .ToolIcon__icon,
+.termfleet-board .excalidraw .ToolIcon--selected .ToolIcon__icon,
+.termfleet-board .excalidraw .ToolIcon__icon[aria-checked="true"] {
+  background: var(--surface-selected);
+  color: var(--text-primary);
+}
+
+/* The keyboard-shortcut numerals on each tool are pure noise at this size. */
+.termfleet-board .excalidraw .ToolIcon__keybinding {
+  display: none;
+}
+
+/* Properties panel: quieter labels, tighter rhythm. */
+.termfleet-board .excalidraw .App-menu__left {
+  padding: 8px;
+}
+
+.termfleet-board .excalidraw legend,
+.termfleet-board .excalidraw .control-label,
+.termfleet-board .excalidraw .buttonList legend {
+  color: var(--text-tertiary);
+  font-size: var(--font-size-ui-meta);
+  font-weight: var(--font-weight-ui);
+  letter-spacing: 0.02em;
+}
+
+/* Hint line under the toolbar shouts on a small card. */
+.termfleet-board .excalidraw .HintViewer {
+  color: var(--text-tertiary);
+  font-size: var(--font-size-ui-meta);
+  opacity: 0.7;
+}
+
+/* Zoom / undo cluster: same quiet treatment as everything else. */
+.termfleet-board .excalidraw .zoom-actions .ToolIcon__icon,
+.termfleet-board .excalidraw .undo-redo-buttons .ToolIcon__icon {
+  background: transparent;
+}
+
+.termfleet-board .excalidraw .zoom-actions,
+.termfleet-board .excalidraw .undo-redo-buttons {
+  border-radius: var(--radius-sm);
+}
+
+/* Shape library and help are cloud/onboarding features that do not apply to a
+   local board on the map. */
+.termfleet-board .excalidraw .sidebar-trigger,
+.termfleet-board .excalidraw .sidebar-trigger__label-element,
+.termfleet-board .excalidraw .layer-ui__wrapper__top-right,
+.termfleet-board .excalidraw .help-icon {
+  display: none;
+}
+
+/* Colour swatches keep their own colours, but lose the loud active ring. */
+.termfleet-board .excalidraw .color-picker__button {
+  border-radius: var(--radius-xs);
+  border-color: var(--border-subtle);
+}
+
+.termfleet-board .excalidraw .color-picker__button--is-transparent,
+.termfleet-board .excalidraw .color-picker__button.active {
+  box-shadow: 0 0 0 1px var(--border-focus);
+}
