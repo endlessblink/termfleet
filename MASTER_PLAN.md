@@ -235,7 +235,7 @@ Two bugs the verifier caught, both in the save path:
 
 Evidence:
 
-- `npx playwright test tests/map-drawing-board.spec.ts` 2/2 — samples the editor's own
+- `npx playwright test tests/map-drawing-board.spec.ts` 6/6 — samples the editor's own
   canvas pixels through its on-screen box, so it fails if ink does not land where the
   pointer dragged; run at 100% and at 214% map zoom. Second test proves the still
   preview replaces the editor on zoom-out and the drawing survives the round trip.
@@ -259,6 +259,11 @@ calls disabled and pass with them, confirmed by toggling. Display scale was rule
 first: pointer mapping is exact at devicePixelRatio 1, 1.25 and 2.
 Research queries for replacing the poll with something event-driven:
 `docs/embedded-canvas-editor-offset-research.md`.
+
+Coverage was then widened to 6 tests, each checked against a deliberately broken build
+so none of them can pass vacuously: resizing the card (the editor must grow into it —
+fails if box tracking is frozen) and a drawing surviving a full reload and coming back
+as the zoomed-out preview picture (fails if saving is disabled).
 
 Not done yet: the styling pass toward a quieter, tldraw-like look (the default UI still
 shows its own share/menu chrome), and the agent write path.

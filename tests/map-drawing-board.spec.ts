@@ -258,6 +258,89 @@ test("drawing board keeps ink under the cursor after the node is dragged", async
   ).toBeGreaterThan(40);
 });
 
+test("drawing board keeps ink under the cursor after the card is resized", async ({
+  page,
+}) => {
+  await openMapWithBoard(page);
+
+  // Resizing is its own path: the board re-measures its box and re-lays out the
+  // editor, which must stay in step with the pointer.
+  const section = page.locator(
+    'section:has([data-testid="canvas-board-live"])',
+  );
+  const canvasBefore = await page
+    .locator(".excalidraw__canvas.interactive")
+    .first()
+    .boundingBox();
+  if (!canvasBefore) throw new Error("no board canvas");
+  await section.locator('[data-testid="canvas-node-header"]').click();
+  const handle = section.locator('[title="Resize SE"]');
+  const handleBox = await handle.boundingBox();
+  if (!handleBox) throw new Error("no resize handle — is the board selected?");
+  await page.mouse.move(
+    handleBox.x + handleBox.width / 2,
+    handleBox.y + handleBox.height / 2,
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    handleBox.x + handleBox.width / 2 + 140,
+    handleBox.y + handleBox.height / 2 + 110,
+    { steps: 10 },
+  );
+  await page.mouse.up();
+  await page.waitForTimeout(600);
+
+  // The editor has to actually grow into the bigger card, not sit at its
+  // original size inside it.
+  const canvasAfter = await page
+    .locator(".excalidraw__canvas.interactive")
+    .first()
+    .boundingBox();
+  if (!canvasAfter) throw new Error("no board canvas after resize");
+  expect(
+    canvasAfter.width - canvasBefore.width,
+    "editor widened with the card",
+  ).toBeGreaterThan(100);
+
+  const afterResize = await drawRectAndSampleEdge(page);
+  expect(
+    afterResize.backgroundNoise,
+    "untouched board area is flat after resize",
+  ).toBeLessThan(12);
+  expect(
+    afterResize.inkDifference,
+    "stroke drawn where the pointer dragged after resizing the card",
+  ).toBeGreaterThan(40);
+});
+
+test("a drawing survives a reload and shows in the zoomed-out preview", async ({
+  page,
+}) => {
+  await openMapWithBoard(page);
+  await drawRectAndSampleEdge(page);
+  // Let the debounced save land before throwing the page away.
+  await page.waitForTimeout(1200);
+
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  if (!(await page.locator("[data-magic-canvas-shell]").isVisible())) {
+    await page
+      .getByRole("complementary", { name: "Workspace sidebar" })
+      .getByRole("navigation", { name: "Operations rail" })
+      .getByRole("button", { name: "Map" })
+      .click();
+  }
+  await expect(page.locator("[data-magic-canvas-shell]")).toBeVisible();
+
+  // Zoomed out, the board must show the saved drawing as a picture rather than
+  // the empty-board placeholder — which proves the drawing round-tripped
+  // through storage and back into the UI, not just that a file was written.
+  await zoomUntil(page, (zoom) => zoom < 0.9, "out");
+  const preview = page.getByTestId("canvas-board-preview");
+  await expect(preview).toBeVisible();
+  await expect(preview.locator("img")).toBeVisible();
+});
+
 test("drawing board falls back to a still preview when the map zooms out", async ({
   page,
 }) => {
