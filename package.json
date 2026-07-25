@@ -85,6 +85,7 @@
     "verify:task-line": "npx playwright test tests/task-line-sweep.spec.ts tests/task-line.spec.ts tests/session-transcript.spec.ts tests/task-identity-ladder.spec.ts --reporter=line"
   },
   "dependencies": {
+    "@excalidraw/excalidraw": "^0.18.1",
     "@fontsource/geist-mono": "^5.2.8",
     "@fontsource/rubik": "^5.2.8",
     "@phosphor-icons/react": "^2.1.10",

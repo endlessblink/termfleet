@@ -200,6 +200,7 @@ const CANVAS_NODE_MIN_SIZE: Record<CanvasNode["type"], { width: number; height: 
   preview: { width: 620, height: 420 },
   file: { width: 260, height: 120 },
   note: { width: 220, height: 120 },
+  board: { width: 380, height: 280 },
 };
 
 function snapCanvasCoordinate(value: number) {

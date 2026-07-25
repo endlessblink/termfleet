@@ -1,0 +1,226 @@
+import { expect, test, type Page } from "@playwright/test";
+
+// The drawing board is the one map node that owns a pointer-driven editor, so
+// the thing worth proving is that ink lands under the cursor at more than one
+// map zoom — the classic failure when a drawing tool is dropped onto a
+// CSS-scaled canvas — plus the zoomed-out still-image fallback.
+
+test.use({
+  viewport: { width: 1440, height: 920 },
+  launchOptions: {
+    executablePath: "/usr/bin/chromium",
+    args: ["--disable-crash-reporter", "--disable-crashpad", "--disable-gpu"],
+  },
+});
+
+async function openMapWithBoard(page: Page) {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => {
+    localStorage.removeItem("terminal-workspace.v1");
+    localStorage.removeItem("terminal-workspace.test");
+    Object.keys(localStorage)
+      .filter((key) => key.startsWith("termfleet.board."))
+      .forEach((key) => localStorage.removeItem(key));
+  });
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+
+  const rail = page
+    .getByRole("complementary", { name: "Workspace sidebar" })
+    .getByRole("navigation", { name: "Operations rail" });
+  await rail.getByRole("button", { name: "Map" }).click();
+  await expect(page.locator("[data-magic-canvas-shell]")).toBeVisible();
+
+  await page.getByRole("button", { name: "Add drawing board" }).click();
+  await expect(page.getByTestId("canvas-board-live")).toBeVisible();
+  // The editor bundle and its fonts load on demand.
+  await expect(page.locator(".excalidraw canvas").first()).toBeVisible({
+    timeout: 30_000,
+  });
+  await page.waitForTimeout(600);
+}
+
+async function mapZoom(page: Page) {
+  return page.evaluate(() => {
+    const raw =
+      localStorage.getItem("terminal-workspace.v1") ??
+      localStorage.getItem("terminal-workspace.test");
+    if (!raw) return 1;
+    try {
+      const parsed = JSON.parse(raw) as {
+        canvasState?: { viewport?: { zoom?: number } };
+      };
+      return parsed?.canvasState?.viewport?.zoom ?? 1;
+    } catch {
+      return 1;
+    }
+  });
+}
+
+// The zoom buttons step by a fixed ratio, so asking for an exact zoom is
+// fragile; step until the map is past the level the test cares about.
+async function zoomUntil(
+  page: Page,
+  done: (zoom: number) => boolean,
+  direction: "in" | "out",
+) {
+  // Scoped to the map's own controls: the editor ships its own zoom buttons
+  // with the same labels.
+  const button = page.locator(
+    `.magic-canvas-button[aria-label="${direction === "in" ? "Zoom in" : "Zoom out"}"]`,
+  );
+  for (let step = 0; step < 30; step += 1) {
+    const zoom = await mapZoom(page);
+    if (done(zoom)) return zoom;
+    await button.click();
+    await page.waitForTimeout(120);
+  }
+  throw new Error(`map zoom never satisfied the ${direction} condition`);
+}
+
+// Drags a rectangle on the board and reports whether the interactive canvas has
+// ink along the dragged edge, sampled through the canvas's own on-screen box so
+// the check is genuinely "screen position in, drawn pixel out".
+async function drawRectAndSampleEdge(page: Page) {
+  // Excalidraw stacks a static and an interactive canvas; the interactive one
+  // owns pointer events, so drive the mouse directly rather than via a locator.
+  const canvas = page.locator(".excalidraw__canvas.interactive").first();
+  const box = await canvas.boundingBox();
+  if (!box) throw new Error("no board canvas box");
+
+  // Stay in the middle of the board: the editor's tool island sits along the
+  // top and its properties panel down the left, both of which would swallow
+  // the drag.
+  const startX = box.x + box.width * 0.4;
+  const startY = box.y + box.height * 0.4;
+  const endX = startX + box.width * 0.2;
+  const endY = startY + box.height * 0.2;
+
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.up();
+  await page.keyboard.press("r");
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move((startX + endX) / 2, (startY + endY) / 2, { steps: 8 });
+  await page.mouse.move(endX, endY, { steps: 8 });
+  await page.mouse.up();
+  await page.waitForTimeout(500);
+
+  // Sample the midpoint of the rectangle's top edge and compare it against an
+  // untouched corner of the same board. The board has an opaque background, so
+  // "is there ink here" is a colour difference, not an alpha test. Screen
+  // coordinates are converted into canvas pixels through the canvas's own
+  // on-screen box, which is exactly the mapping a mis-scaled editor gets wrong.
+  return page.evaluate(
+    ({ edge, away }) => {
+      const element = document.querySelector<HTMLCanvasElement>(
+        ".excalidraw__canvas.static",
+      );
+      const ctx = element?.getContext("2d");
+      if (!element || !ctx) return { inkDifference: -1, backgroundNoise: -1 };
+      const rect = element.getBoundingClientRect();
+      const scaleX = element.width / rect.width;
+      const scaleY = element.height / rect.height;
+
+      const window7 = (clientX: number, clientY: number) => {
+        const px = Math.round((clientX - rect.left) * scaleX);
+        const py = Math.round((clientY - rect.top) * scaleY);
+        return ctx.getImageData(Math.max(0, px - 3), Math.max(0, py - 3), 7, 7)
+          .data;
+      };
+
+      const reference = window7(away.x, away.y);
+      const refR = reference[0] ?? 0;
+      const refG = reference[1] ?? 0;
+      const refB = reference[2] ?? 0;
+      const spread = (data: Uint8ClampedArray) => {
+        let worst = 0;
+        for (let i = 0; i < data.length; i += 4) {
+          worst = Math.max(
+            worst,
+            Math.abs((data[i] ?? 0) - refR) +
+              Math.abs((data[i + 1] ?? 0) - refG) +
+              Math.abs((data[i + 2] ?? 0) - refB),
+          );
+        }
+        return worst;
+      };
+
+      return {
+        inkDifference: spread(window7(edge.x, edge.y)),
+        backgroundNoise: spread(reference),
+      };
+    },
+    {
+      edge: { x: (startX + endX) / 2, y: startY },
+      away: { x: box.x + box.width - 10, y: box.y + box.height - 10 },
+    },
+  );
+}
+
+test("drawing board puts ink under the cursor at 100% and 200% map zoom", async ({
+  page,
+}) => {
+  await openMapWithBoard(page);
+
+  const atOne = await drawRectAndSampleEdge(page);
+  expect(atOne.backgroundNoise, "untouched board area is flat").toBeLessThan(
+    12,
+  );
+  expect(
+    atOne.inkDifference,
+    "stroke drawn where the pointer dragged at 100%",
+  ).toBeGreaterThan(40);
+
+  const zoomedIn = await zoomUntil(page, (zoom) => zoom >= 1.8, "in");
+  expect(zoomedIn).toBeGreaterThanOrEqual(1.8);
+  await expect(page.getByTestId("canvas-board-live")).toBeVisible();
+  await page.waitForTimeout(500);
+
+  const atTwo = await drawRectAndSampleEdge(page);
+  expect(
+    atTwo.backgroundNoise,
+    "untouched board area is flat zoomed in",
+  ).toBeLessThan(12);
+  expect(
+    atTwo.inkDifference,
+    "stroke drawn where the pointer dragged while zoomed in",
+  ).toBeGreaterThan(40);
+});
+
+test("drawing board falls back to a still preview when the map zooms out", async ({
+  page,
+}) => {
+  await openMapWithBoard(page);
+  await drawRectAndSampleEdge(page);
+
+  await zoomUntil(page, (zoom) => zoom < 0.9, "out");
+  await expect(page.getByTestId("canvas-board-preview")).toBeVisible();
+  await expect(page.getByTestId("canvas-board-live")).toHaveCount(0);
+
+  // The drawing survives the round trip and comes back live on zoom in.
+  await zoomUntil(page, (zoom) => zoom >= 1, "in");
+  await expect(page.getByTestId("canvas-board-live")).toBeVisible();
+  await expect(page.locator(".excalidraw canvas").first()).toBeVisible({
+    timeout: 30_000,
+  });
+  await page.waitForTimeout(600);
+  await expect
+    .poll(
+      async () =>
+        page.evaluate(() => {
+          const key = Object.keys(localStorage).find((entry) =>
+            entry.startsWith("termfleet.board."),
+          );
+          if (!key) return "no-board-key";
+          const doc = JSON.parse(localStorage.getItem(key) ?? "null") as {
+            elements?: unknown[];
+          } | null;
+          return doc?.elements?.length ?? 0;
+        }),
+      { timeout: 10_000 },
+    )
+    .toBeGreaterThan(0);
+});

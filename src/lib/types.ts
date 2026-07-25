@@ -440,7 +440,7 @@ export interface WorkspaceUiState {
   previewUrl: string;
 }
 
-export type CanvasNodeType = "terminal" | "file" | "note" | "preview";
+export type CanvasNodeType = "terminal" | "file" | "note" | "preview" | "board";
 
 export type MasterPlanTaskStatus =
   | "todo"

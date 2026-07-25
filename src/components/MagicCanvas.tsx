@@ -20,6 +20,7 @@ import {
   Minus,
   NotebookText,
   PanelRightClose,
+  PenLine,
   Plus,
   RefreshCw,
   RotateCcw,
@@ -39,6 +40,7 @@ import { pathTail, projectForTab, workspaceLabelFor } from "../lib/projectDispla
 import { createNewTab, useWorkspaceStore } from "../stores/workspace";
 import { TerminalComponent } from "./Terminal";
 import { LocalhostPreview } from "./LocalhostPreview";
+import { BoardNode } from "./BoardNode";
 import type { GridSnapshot } from "../lib/gridSnapshot";
 import type { Tab, TaskLineupItem, TerminalRuntimeStatus, WorkstreamStatusSummary } from "../lib/types";
 import { agentLaneAuthRetryText, agentLaneAuthRetryTitle, agentLaneCleanupRequestText, agentLaneCleanupRequestTitle, agentLaneCloseoutText, agentLaneCloseoutTitle, agentLaneHealthText, agentLaneInterruptText, agentLaneInterruptTitle, agentLaneMemoryRequestText, agentLaneMemoryRequestTitle, agentLaneProofRequestText, agentLaneProofRequestTitle, agentLaneRestartText, agentLaneRestartTitle, agentLaneRiskMitigationText, agentLaneRiskMitigationTitle, agentLaneStatusSweepText, agentLaneStatusSweepTitle, agentLaneStatusText, attentionBreakdownText, cleanupBreakdownText, closeoutBreakdownText, formatAgentLaneBrief, formatAgentMissionControlBrief, formatAgentRunBrief, handoffMemoryPromptForWorkstream, isActiveAgentWorkstream, isAgentReviewCloseoutReady, isAuthRetryableAgentWorkstream, isCleanupRequestableAgentWorkstream, isRestartableAgentWorkstream, isReviewItemCloseoutReady, isStaleAgentWorkstream, isolationBreakdownText, latestMissionControlAskText, missionBreakdownText, missionControlAlternateText, missionControlDispatchBreakdownText, needsAgentProofRequest, proofRequestPromptForWorkstream, providerBreakdownText, readinessBreakdownText, riskBreakdownText, statusCheckPromptForWorkstream, summarizeAgentLane } from "../lib/agentWorkstreamLane";
@@ -992,6 +994,13 @@ const styles: Record<string, CSSProperties> = {
     lineHeight: 1.45,
     overflow: "auto",
   },
+  boardBody: {
+    flex: 1,
+    minHeight: 0,
+    position: "relative",
+    padding: 0,
+    overflow: "hidden",
+  },
   noteBody: {
     flex: 1,
     minHeight: 0,
@@ -1686,6 +1695,7 @@ const NODE_MIN_SIZE = {
   preview: { width: 620, height: 420 },
   file: { width: 260, height: 120 },
   note: { width: 220, height: 120 },
+  board: { width: 380, height: 280 },
 };
 const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 2.2;
@@ -3063,6 +3073,14 @@ function CanvasNodeViewImpl({
           });
         }}
       />
+    ) : node.type === "board" ? (
+      <BoardNode
+        boardId={node.id}
+        title={node.title}
+        zoom={zoom}
+        liveZoom={READABLE_TERMINAL_ZOOM}
+        onActivate={() => selectCanvasNode(node.id)}
+      />
     ) : node.type === "file" ? (
       <div dir="auto">{node.filePath ?? "No file attached yet"}</div>
     ) : node.type === "note" ? (
@@ -3849,7 +3867,9 @@ function CanvasNodeViewImpl({
               }
             : node.type === "note"
               ? styles.noteBody
-              : styles.nodeBody
+              : node.type === "board"
+                ? styles.boardBody
+                : styles.nodeBody
         }
         onMouseDown={node.type === "terminal"
           ? (event) => {
@@ -4847,6 +4867,18 @@ export function MagicCanvas() {
     });
   }, [addCanvasNode, canvasState.nodes.length]);
 
+  const addBoard = useCallback(() => {
+    const pos = nextNodePosition(canvasState.nodes.length);
+    addCanvasNode({
+      type: "board",
+      title: "Drawing board",
+      x: pos.x,
+      y: pos.y,
+      width: 640,
+      height: 440,
+    });
+  }, [addCanvasNode, canvasState.nodes.length]);
+
   const addTerminal = useCallback(() => {
     createNewTab();
   }, []);
@@ -4887,6 +4919,9 @@ export function MagicCanvas() {
           <Layers3 size={13} strokeWidth={1.8} />
           Map
         </span>
+        <button className="magic-canvas-button" style={styles.button} title="Add drawing board" aria-label="Add drawing board" onClick={addBoard}>
+          <PenLine size={14} strokeWidth={1.8} />
+        </button>
         <button className="magic-canvas-button" style={styles.button} title="Add note" aria-label="Add note" onClick={addNote}>
           <NotebookText size={14} strokeWidth={1.8} />
         </button>
@@ -6351,6 +6386,19 @@ export function MagicCanvas() {
                     width: 280,
                     height: 160,
                     content: "Capture the command, blocker, or next action for this run.",
+                  }),
+              },
+              {
+                icon: <PenLine size={14} strokeWidth={1.8} />,
+                label: "New drawing board here",
+                run: () =>
+                  addCanvasNode({
+                    type: "board",
+                    title: "Drawing board",
+                    x: Math.round(menu.canvasX),
+                    y: Math.round(menu.canvasY),
+                    width: 640,
+                    height: 440,
                   }),
               },
             ].map((item) => (
