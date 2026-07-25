@@ -246,6 +246,20 @@ Evidence:
 - Fonts are self-hosted (`public/excalidraw/fonts`, 520K, CJK excluded) so the editor
   never reaches for its CDN.
 
+Follow-up (same day): the operator reported clicks landing in the wrong place in the
+live app — the browser verifier had missed it because it never panned. Excalidraw caches
+its container's screen offsets and only recomputes them when its own box _resizes_.
+Panning the map, dragging the card, collapsing a sidebar or moving the window all move
+the board without resizing it, so every click stayed wrong by however far it had moved
+since mount. Fixed with `excalidrawAPI.refresh()` driven from four places: the map
+viewport (pan/zoom), window resize, pointer entry, and a 200 ms watcher on the board's
+own on-screen position (the catch-all, since there is no browser event for "this element
+moved"). Two new tests — pan the map, then drag the card — both fail with the refresh
+calls disabled and pass with them, confirmed by toggling. Display scale was ruled out
+first: pointer mapping is exact at devicePixelRatio 1, 1.25 and 2.
+Research queries for replacing the poll with something event-driven:
+`docs/embedded-canvas-editor-offset-research.md`.
+
 Not done yet: the styling pass toward a quieter, tldraw-like look (the default UI still
 shows its own share/menu chrome), and the agent write path.
 

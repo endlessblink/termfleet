@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useWorkspaceStore } from "../stores/workspace";
 import {
   emptyBoard,
   loadBoard,
@@ -34,6 +35,9 @@ type ExcalidrawApi = {
   getAppState: () => Record<string, unknown>;
   getFiles: () => Record<string, unknown>;
   updateScene: (scene: Record<string, unknown>) => void;
+  // Recomputes the editor's idea of where it sits on screen. It only does this
+  // by itself when its own box changes size.
+  refresh: () => void;
 };
 
 let modulePromise: Promise<ExcalidrawModule> | null = null;
@@ -92,6 +96,8 @@ export function BoardNode({
   onActivate,
 }: BoardNodeProps) {
   const live = zoom >= liveZoom;
+  const panX = useWorkspaceStore((state) => state.canvasState.viewport.x);
+  const panY = useWorkspaceStore((state) => state.canvasState.viewport.y);
   const [mod, setMod] = useState<ExcalidrawModule | null>(null);
   const [document, setDocument] = useState<BoardDocument | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -214,6 +220,46 @@ export function BoardNode({
     [flushSave],
   );
 
+  // Panning the map slides the board across the screen without changing its
+  // size, and the editor only recomputes its screen offsets when its own box
+  // resizes. Left alone it keeps using the offsets from where the board was
+  // when it mounted, so every click lands wrong by however far the map has been
+  // panned since. Nudge it whenever the map viewport moves, and on any window
+  // resize that could shift the surrounding chrome.
+  useEffect(() => {
+    apiRef.current?.refresh();
+  }, [panX, panY, zoom, box.width, box.height, live]);
+
+  // There are too many ways for a board to slide across the screen without
+  // resizing — panning, dragging the card, collapsing a sidebar, moving the
+  // window, a neighbouring panel reflowing — to enumerate them all as events.
+  // Watching the board's own on-screen position catches every one of them for
+  // the cost of a rect read a few times a second.
+  useEffect(() => {
+    if (!live) return;
+    let lastLeft = Number.NaN;
+    let lastTop = Number.NaN;
+    const check = () => {
+      const shell = shellRef.current;
+      if (!shell) return;
+      const rect = shell.getBoundingClientRect();
+      if (
+        Math.abs(rect.left - lastLeft) < 0.5 &&
+        Math.abs(rect.top - lastTop) < 0.5
+      )
+        return;
+      lastLeft = rect.left;
+      lastTop = rect.top;
+      apiRef.current?.refresh();
+    };
+    const timer = window.setInterval(check, 200);
+    window.addEventListener("resize", check);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("resize", check);
+    };
+  }, [live]);
+
   // Keep the editor's own zoom locked to the map's, preserving any zooming the
   // user has done inside the board.
   useEffect(() => {
@@ -286,6 +332,11 @@ export function BoardNode({
       ref={shellRef}
       style={styles.liveShell}
       data-testid="canvas-board-live"
+      // Belt and braces for every other way a board can move without resizing —
+      // dragging the node, collapsing a sidebar, moving the window. The pointer
+      // always enters the board before it draws on it, so this is the last
+      // chance to correct the editor's screen offsets, and it is cheap.
+      onPointerEnter={() => apiRef.current?.refresh()}
       onPointerDown={(event) => {
         event.stopPropagation();
         onActivate();

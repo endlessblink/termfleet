@@ -190,6 +190,74 @@ test("drawing board puts ink under the cursor at 100% and 200% map zoom", async 
   ).toBeGreaterThan(40);
 });
 
+test("drawing board keeps ink under the cursor after the map is panned", async ({
+  page,
+}) => {
+  await openMapWithBoard(page);
+
+  // Pan the map with a middle-drag on empty canvas. This moves the board across
+  // the screen without resizing it — the case where an embedded editor keeps
+  // using stale screen offsets and puts every stroke in the wrong place.
+  const shell = await page.locator("[data-magic-canvas-shell]").boundingBox();
+  if (!shell) throw new Error("no map shell");
+  await page.mouse.move(shell.x + 40, shell.y + shell.height - 60);
+  await page.mouse.down({ button: "middle" });
+  await page.mouse.move(shell.x + 200, shell.y + shell.height - 200, {
+    steps: 10,
+  });
+  await page.mouse.up({ button: "middle" });
+  await page.waitForTimeout(400);
+
+  const afterPan = await drawRectAndSampleEdge(page);
+  expect(
+    afterPan.backgroundNoise,
+    "untouched board area is flat after pan",
+  ).toBeLessThan(12);
+  expect(
+    afterPan.inkDifference,
+    "stroke drawn where the pointer dragged after panning the map",
+  ).toBeGreaterThan(40);
+});
+
+test("drawing board keeps ink under the cursor after the node is dragged", async ({
+  page,
+}) => {
+  await openMapWithBoard(page);
+
+  // Dragging the card by its header moves the editor without resizing it — the
+  // same stale-offset trap as panning, reached a different way.
+  // The board's own header, not whichever card happens to be first on the map.
+  const header = page.locator(
+    'section:has([data-testid="canvas-board-live"]) [data-testid="canvas-node-header"]',
+  );
+  const handle = await header.boundingBox();
+  if (!handle) throw new Error("no node header");
+  await page.mouse.move(
+    handle.x + handle.width / 2,
+    handle.y + handle.height / 2,
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    handle.x + handle.width / 2 - 120,
+    handle.y + handle.height / 2 + 90,
+    {
+      steps: 10,
+    },
+  );
+  await page.mouse.up();
+  await page.waitForTimeout(400);
+
+  const afterDrag = await drawRectAndSampleEdge(page);
+  expect(
+    afterDrag.backgroundNoise,
+    "untouched board area is flat after drag",
+  ).toBeLessThan(12);
+  expect(
+    afterDrag.inkDifference,
+    "stroke drawn where the pointer dragged after moving the node",
+  ).toBeGreaterThan(40);
+});
+
 test("drawing board falls back to a still preview when the map zooms out", async ({
   page,
 }) => {
