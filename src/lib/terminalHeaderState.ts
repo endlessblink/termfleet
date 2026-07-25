@@ -186,8 +186,14 @@ export function buildTerminalHeaderState(input: {
     !input.mainUserAsk?.runId ||
     !currentRunId ||
     input.mainUserAsk.runId === currentRunId;
+  // A STORED line that is itself the folder template must not outrank what this caller
+  // knows. `Terminal.tsx` re-stores the resolver's line on every poll, so a template
+  // computed from a thin status file was permanently winning here — the enrichment
+  // below could never run. Treat that one source as "nothing known" and re-resolve.
+  const storedTaskLine =
+    input.taskLine?.source === "shell-state" ? null : input.taskLine;
   const effectiveTaskLine =
-    input.taskLine ??
+    storedTaskLine ??
     resolvePaneTaskLine({
       now: Date.now(),
       lastCompletedTask: lastCompletedLineupItem?.content ?? null,

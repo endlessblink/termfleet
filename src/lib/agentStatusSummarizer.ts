@@ -210,6 +210,16 @@ async function resolveTaskLineFor(
     .reverse()
     .find((todo) => todo?.status === "completed");
   const cwd = sidecar?.cwd ?? input.cwd ?? input.cwdLabel ?? null;
+  // The Task row answers "what is being done in relation to what the USER asked for"
+  // (operator, 2026-07-25). The sidecar has carried that ask all along — 201 of 241
+  // live records have a `userTask` — and this resolver never read it, so a pane with
+  // no usable todo list fell straight to the folder template.
+  const sidecarUserTask =
+    typeof sidecar?.userTask === "string" ? sidecar.userTask.trim() : "";
+  const effectiveFacts =
+    sidecarUserTask && !facts?.operatorRequest
+      ? { ...(facts ?? {}), operatorRequest: sidecarUserTask }
+      : facts;
   return resolvePaneTaskLine({
     now: Date.now(),
     // The overarching goal leads the line; the in-progress todo is only the step.
@@ -217,7 +227,7 @@ async function resolveTaskLineFor(
     currentStep: expired
       ? null
       : (activeTodo?.activeForm ?? activeTodo?.content ?? null),
-    facts,
+    facts: effectiveFacts,
     lastCompletedTask:
       lastCompleted?.activeForm ?? lastCompleted?.content ?? null,
     folder: cwd ? (cwd.split("/").filter(Boolean).pop() ?? null) : null,

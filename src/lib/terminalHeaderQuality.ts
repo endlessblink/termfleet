@@ -501,11 +501,32 @@ export function titleIsCommentaryOrDangling(value?: string | null) {
   return /\b(?:and|but|or|with|from|to|in|of|for|the|a|an)$/i.test(body);
 }
 
-// Base-form verbs that open an instruction to the operator. A gerund ("Confirming")
-// and a past-tense outcome ("Confirmed") are both fine — only the bare command form
-// is disqualifying, so the list holds base forms only.
-const IMPERATIVE_INSTRUCTION =
-  /^(?:confirm|verify|check|run|scan|clean|park|implement|restart|relaunch|open|close|log|test|fix|add|remove|update|make|keep|use|read|write|commit|push|pull|merge|install|build|deploy|review|ask|tell|try|see|look|continue|resume|start|stop|enable|disable|set|create|delete|copy|move|rename|send|report|summarize|explain|answer|approve|reject|retry|rerun|reboot)\b/i;
+// An activity line describes something HAPPENING. Exactly two shapes qualify:
+//
+//   in progress — a gerund leads:        "Locating the master frame reference"
+//   finished    — a past-tense outcome:  "Fixed the compressor timeout"
+//
+// Stated positively on purpose. The previous version was a blacklist of imperative
+// verbs, and "Locate the master frame reference and asset" reached a live pane simply
+// because "locate" was not on the list (2026-07-25) — a blacklist of English verbs
+// never converges. As a whitelist an unknown verb fails CLOSED: the pane falls back to
+// an honest status word instead of printing an instruction as if it were activity.
+//
+// Irregular past forms have no suffix to match, so the common ones are named. This list
+// only ever ADMITS text — a missing entry costs a good title, never a bad one.
+const ACTIVITY_IN_PROGRESS = /^[A-Z][a-z]+ing\b/;
+const ACTIVITY_OUTCOME =
+  /^(?:[A-Z][a-z]+(?:ed|d)\b|Ran|Built|Wrote|Made|Sent|Found|Set|Kept|Left|Got|Took|Put|Cut|Split|Read|Rebuilt|Undid|Redid|Began|Broke|Chose|Drew|Grew|Held|Knew|Lost|Met|Paid|Said|Saw|Sold|Spent|Told|Won)\b/;
+
+export function readsAsActivity(value?: string | null) {
+  const text = clean(value);
+  if (!text) return false;
+  return ACTIVITY_IN_PROGRESS.test(text) || ACTIVITY_OUTCOME.test(text);
+}
+
+function looksLikeActivity(text: string) {
+  return readsAsActivity(text);
+}
 
 // Tool identifiers, env-var command lines, file names, urls/absolute paths, ticket
 // ids and test tallies. Every one of these came off a live pane on 2026-07-25.
@@ -599,10 +620,11 @@ export function qualityCheckTrustedActivityLabel(
   if (/^(?:Next\s+steps|Steps)\b\s*[-:—]/i.test(text)) {
     return { ok: false, reason: "prompt-fragment" };
   }
-  // 2. A bare imperative is an instruction, not an activity: "Confirm Tailscale is
-  //    actually running", "Clean up and commit.", "Scan the journal for errors".
-  //    A real activity is a gerund ("Confirming …") or a stated outcome ("Fixed …").
-  if (IMPERATIVE_INSTRUCTION.test(text)) return { ok: false, reason: "vague" };
+  // 2. The line must READ as activity — in progress or finished. This rejects the
+  //    instruction ("Confirm Tailscale is actually running", "Locate the master frame
+  //    reference and asset") and the report ("TH is on the board and verified.",
+  //    "CI is green and the PR is clean.") without naming either verb.
+  if (!looksLikeActivity(text)) return { ok: false, reason: "vague" };
   // 3. Raw developer detail is unreadable in a cockpit built for a non-developer:
   //    tool identifiers ("Using mcp__…__ctx_execute"), env-var command lines
   //    ("Running: HERMES_HOME=/home/…"), and source file names ("Editing release.py").
@@ -804,7 +826,15 @@ export function qualityCheckActivityLabel(
       return { ok: false, reason: "raw-thinking-prompt" };
     }
   }
-  return baseQuality(value, 64);
+  const base = baseQuality(value, 64);
+  if (!base.ok) return base;
+  // Last: the title must READ as activity. The checks above are a decade of one-off
+  // strings; this is the general rule they were each approximating. It is what stops
+  // an instruction ("Fix context compressor timeouts…", "Organize files into
+  // subfolders") or a bare status phrase ("Prompt submitted", "Lane E — Dedup +
+  // restore…") from standing as the big title, without naming any of them.
+  if (!looksLikeActivity(text)) return { ok: false, reason: "vague" };
+  return base;
 }
 
 export function headerLabelsAreDuplicated(

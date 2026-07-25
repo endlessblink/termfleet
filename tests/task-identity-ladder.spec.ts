@@ -35,9 +35,7 @@ test("a shell pane is no longer starved of a description", () => {
       branch: "main",
     }),
   });
-  expect(header.goalLabel).toBe(
-    "Sitting at a command prompt in termfleet on main",
-  );
+  expect(header.goalLabel).toBe("No task declared");
 });
 
 test("the rendered header shows the ladder's line, not 'Task not captured'", () => {
@@ -136,15 +134,16 @@ test("a pane with no supplied line still never says 'Task not captured'", () => 
     terminalId: "pane-2",
     liveCwd: "/tmp/termfleet",
   });
-  expect(idle.goalLabel).toBe("Sitting at a command prompt in termfleet");
+  expect(idle.goalLabel).toBe("No task declared");
 
-  // ...and it never claims a busy pane is idle at a prompt.
+  // Busy or idle, with nothing known the row says the same true thing. It used to
+  // template over the folder name, which read like content and hid the gap.
   const busy = buildTerminalHeaderState({
     paneId: "pane-3",
     terminalId: "pane-3",
     liveCwd: "/tmp/termfleet",
     terminalStatus: "running",
   });
-  expect(busy.goalLabel).toBe("Working in termfleet");
+  expect(busy.goalLabel).toBe("No task declared");
   expect(busy.goalLabel).not.toMatch(/task not captured/i);
 });

@@ -49,6 +49,7 @@ import {
   terminalTextLooksReadyPrompt,
 } from "../lib/terminalHeaderDisplay";
 import { buildTerminalHeaderState } from "../lib/terminalHeaderState";
+import { durableActivityIsLive } from "../lib/terminalActivity";
 import {
   badgeForAttention,
   type AttentionState,
@@ -1015,8 +1016,11 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
         const shellAtReadyPrompt = terminalTextLooksReadyPrompt(
           paneTerminal?.terminalVisibleText,
         );
-        const shellActivityLive =
-          paneTerminal?.durableActivity?.status === "running";
+        // A command label that stopped being refreshed has latched, not carried on
+        // running — see durableActivityIsLive.
+        const shellActivityLive = durableActivityIsLive(
+          paneTerminal?.durableActivity,
+        );
         const shellHasConcreteVisibleSummary = Boolean(
           shellExtractedSummary?.provider === "shell" &&
           shellExtractedSummary.confidence === "high" &&
@@ -1025,9 +1029,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
           ),
         );
         const shellDurableActivityUsable = Boolean(
-          paneTerminal?.durableActivity &&
-          paneTerminal.durableActivity.status === "running" &&
-          shellActivityLive,
+          paneTerminal?.durableActivity && shellActivityLive,
         );
         const shellOutputClosed =
           shellOutputClosedRaw &&

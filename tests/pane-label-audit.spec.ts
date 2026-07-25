@@ -8,7 +8,8 @@ import {
 import path from "node:path";
 import { expect, test } from "@playwright/test";
 import { summaryFromSidecar } from "../src/lib/agentStatusSidecar";
-import { buildShellTerminalHeaderViewModel } from "../src/lib/terminalHeaderViewModel";
+import { buildTerminalHeaderState } from "../src/lib/terminalHeaderState";
+import { resolvePaneTaskLine } from "../src/lib/taskLine";
 
 /**
  * Read what EVERY pane on this machine actually renders — Task row and Now Active —
@@ -83,6 +84,13 @@ const CHECKS: { name: string; test: RegExp; appliesToTask?: boolean }[] = [
   },
 ];
 
+// Now Active only. Stated positively (see ACTIVITY_IN_PROGRESS in terminalHeaderQuality):
+// an activity line is an action in progress or a stated outcome. Anything else is an
+// instruction ("Locate the master frame reference and asset") or a report ("TH is on the
+// board and verified.") — both reached live panes on 2026-07-25.
+const NON_ACTIVITY_SHAPE =
+  /^(?!(?:[A-Z][a-z]+ing\b|[A-Z][a-z]+(?:ed|d)\b|Ran\b|Built\b|Wrote\b|Made\b|Sent\b|Found\b|Set\b|Kept\b|Left\b|Got\b|Took\b|Put\b|Cut\b|Split\b|Read\b|Rebuilt\b|Began\b|Broke\b|Chose\b|Drew\b|Grew\b|Held\b|Knew\b|Lost\b|Met\b|Paid\b|Said\b|Saw\b|Sold\b|Spent\b|Told\b|Won\b))/;
+
 function corpusDir() {
   const dataHome =
     process.env.XDG_DATA_HOME ??
@@ -90,7 +98,19 @@ function corpusDir() {
   return path.join(dataHome, "terminal-workspace", "agent-status");
 }
 
-function headerFor(sidecar: Record<string, unknown>) {
+/**
+ * Render a pane the way the APP renders it.
+ *
+ * The first version of this audit called `buildShellTerminalHeaderViewModel` with no
+ * stored task line — a path `SplitPane`/`MagicCanvas` never take. It therefore reported
+ * 240/240 clean while the live cockpit showed "Working in termfleet" on four panes at
+ * once. The app's entry point is `buildTerminalHeaderState`, and `Terminal.tsx` feeds it
+ * a task line it re-stores on every poll, so BOTH cases have to be rendered.
+ */
+function headerFor(
+  sidecar: Record<string, unknown>,
+  mode: "with-stored-line" | "no-stored-line",
+) {
   const cwd = typeof sidecar.cwd === "string" ? sidecar.cwd : "/repo";
   const fallback = {
     task: "Ready",
@@ -115,13 +135,39 @@ function headerFor(sidecar: Record<string, unknown>) {
     source: "todo-write" as const,
     updatedAt: Number(sidecar.updatedAt ?? 0),
   }));
-  return buildShellTerminalHeaderViewModel({
+  // What `Terminal.tsx` stores after a poll: the resolver's line, folder-only inputs —
+  // exactly the shape that produced the filler on screen.
+  const storedTaskLine =
+    mode === "with-stored-line"
+      ? resolvePaneTaskLine({
+          now: Date.now(),
+          mainGoal:
+            typeof sidecar.mainTask === "string" ? sidecar.mainTask : null,
+          currentStep:
+            todos.find((todo) => todo.status === "in_progress")?.content ??
+            null,
+          facts:
+            typeof sidecar.userTask === "string" && sidecar.userTask.trim()
+              ? { operatorRequest: sidecar.userTask.trim() }
+              : null,
+          lastCompletedTask:
+            [...todos].reverse().find((todo) => todo.status === "completed")
+              ?.content ?? null,
+          folder: path.basename(cwd),
+        })
+      : undefined;
+
+  const header = buildTerminalHeaderState({
+    paneId: `pane-${path.basename(cwd)}`,
+    terminalId: `pty-${path.basename(cwd)}`,
     project: { id: "g", name: path.basename(cwd), projectRoot: cwd },
     liveCwd: cwd,
     terminalStatus: "running",
     taskLineup,
     statusSummary: summary,
+    taskLine: storedTaskLine,
   });
+  return { task: header.goalLabel, now: header.currentActivity };
 }
 
 test("every pane on this machine renders a readable Task row and Now Active line", () => {
@@ -144,34 +190,43 @@ test("every pane on this machine renders a readable Task row and Now Active line
     } catch {
       continue;
     }
-    let task: string;
-    let now: string;
-    try {
-      const header = headerFor(sidecar);
-      task = header.taskDescription.text;
-      now = header.title.text;
-    } catch (error) {
-      offenders.push(`${id}: threw ${(error as Error).message}`);
-      continue;
-    }
-
     const ageMin = Math.round(
       (Date.now() - Number(sidecar.updatedAt ?? 0)) / 60000,
     );
-    rows.push(
-      `${id} | ${ageMin}m | ${path.basename(String(sidecar.cwd ?? "?"))} | TASK=${task} | NOW=${now}`,
-    );
 
-    for (const check of CHECKS) {
-      if (!HONEST_FALLBACKS.has(now) && check.test.test(now)) {
-        offenders.push(`${id}: ${check.name} as Now Active -> ${now}`);
+    // Both cases: the pane as first drawn, and the pane after a poll has stored a line.
+    for (const mode of ["no-stored-line", "with-stored-line"] as const) {
+      let task: string;
+      let now: string;
+      try {
+        ({ task, now } = headerFor(sidecar, mode));
+      } catch (error) {
+        offenders.push(`${id} [${mode}]: threw ${(error as Error).message}`);
+        continue;
       }
-      if (
-        check.appliesToTask &&
-        !HONEST_FALLBACKS.has(task) &&
-        check.test.test(task)
-      ) {
-        offenders.push(`${id}: ${check.name} as Task -> ${task}`);
+
+      rows.push(
+        `${id} | ${ageMin}m | ${path.basename(String(sidecar.cwd ?? "?"))} | ${mode} | TASK=${task} | NOW=${now}`,
+      );
+
+      if (!HONEST_FALLBACKS.has(now) && NON_ACTIVITY_SHAPE.test(now)) {
+        offenders.push(
+          `${id} [${mode}]: non-activity-shape as Now Active -> ${now}`,
+        );
+      }
+      for (const check of CHECKS) {
+        if (!HONEST_FALLBACKS.has(now) && check.test.test(now)) {
+          offenders.push(
+            `${id} [${mode}]: ${check.name} as Now Active -> ${now}`,
+          );
+        }
+        if (
+          check.appliesToTask &&
+          !HONEST_FALLBACKS.has(task) &&
+          check.test.test(task)
+        ) {
+          offenders.push(`${id} [${mode}]: ${check.name} as Task -> ${task}`);
+        }
       }
     }
   }

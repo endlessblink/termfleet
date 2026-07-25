@@ -38,7 +38,10 @@ import {
   mergeExtractedItems,
   normalizeExtractedItems,
 } from "../lib/workstreamExtraction";
-import { deriveTerminalActivity } from "../lib/terminalActivity";
+import {
+  deriveTerminalActivity,
+  durableActivityIsLive,
+} from "../lib/terminalActivity";
 import { terminalPurposeFromSubmittedInput } from "../lib/terminalHeaderDisplay";
 import {
   mainUserAskForRunChange,
@@ -55,7 +58,8 @@ import {
   terminalOutputClosesTaskLineup,
 } from "../lib/taskLineup";
 import { parseTerminalChecklist } from "../lib/terminalChecklist";
-import type { AgentProvider,
+import type {
+  AgentProvider,
   TaskLineupItem,
   TerminalActivitySummary,
   TerminalRuntimeStatus,
@@ -816,9 +820,9 @@ export function TerminalComponent({
         const hasActiveAgentMarker = /\bWorking\s+\(/i.test(
           terminalState.terminalOutput ?? "",
         );
-        const hasRunningDurableActivity =
-          terminalState.durableActivity?.status === "running" &&
-          Date.now() - (terminalState.durableActivity.updatedAt ?? 0) < 60_000;
+        const hasRunningDurableActivity = durableActivityIsLive(
+          terminalState.durableActivity,
+        );
         const hasRealTaskList = Boolean(
           terminalState.statusSummary?.tasksFromTodoWrite,
         );
@@ -1048,8 +1052,18 @@ export function TerminalComponent({
                   return {
                     ...candidate,
                     statusSummary: nextStatusSummary,
-                    // TC-060: the always-true line for this pane.
-                    taskLine: result.taskLine ?? candidate.taskLine,
+                    // TC-060: the always-true line for this pane. A fresh line that is
+                    // only the folder template must NOT replace a real one we already
+                    // have — that overwrite is what made the template stick (2026-07-25).
+                    taskLine:
+                      result.taskLine &&
+                      !(
+                        result.taskLine.source === "shell-state" &&
+                        candidate.taskLine &&
+                        candidate.taskLine.source !== "shell-state"
+                      )
+                        ? result.taskLine
+                        : candidate.taskLine,
                     agentProvider: stableAgentProvider(
                       candidate.agentProvider,
                       result.summary.provider,

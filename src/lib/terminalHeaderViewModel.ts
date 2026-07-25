@@ -25,6 +25,7 @@ import {
   qualityCheckNowLabel,
   qualityCheckNarrationLabel,
   titleIsCommentaryOrDangling,
+  readsAsActivity,
 } from "./terminalHeaderQuality";
 import { activeTodoTask, resolveTaskIdentity } from "./taskIdentity";
 import type { PaneTaskLine } from "./taskLine";
@@ -908,10 +909,20 @@ export function buildShellTerminalHeaderViewModel(input: {
     now !== fallbackNow &&
     !sameHeaderText(now, activeTaskTitle) &&
     (hasUserTask || !sameHeaderText(now, summary.task));
-  const taskDerivedActivity = taskDescriptionText
+  // A task item is often written as an instruction ("Isolate a clean feature branch",
+  // "Verify nothing of mine is left uncommitted") — correct for the Task row, which
+  // states the GOAL, but the big title promises what is HAPPENING. Anything that does
+  // not already read as activity is REJECTED rather than reworded (TC-060 R2: reject,
+  // never rewrite), and the title falls back to an honest status word while the Task
+  // row keeps the full text. 17 live panes titled themselves with an instruction or a
+  // report before this gate (2026-07-25).
+  const taskDerivedActivityRaw = taskDescriptionText
     ? /^Close current agent task$/i.test(taskDescriptionText)
       ? "Closing current agent task"
       : taskActivityFromUserGoal(taskDescriptionText, true)
+    : undefined;
+  const taskDerivedActivity = readsAsActivity(taskDerivedActivityRaw)
+    ? taskDerivedActivityRaw
     : undefined;
   const activePlanStep = activePlanItem?.content
     ? stripPlanGlyphPrefix(activePlanItem.content)

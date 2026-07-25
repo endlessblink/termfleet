@@ -215,13 +215,16 @@ export function resolvePaneTaskLine(input: TaskLineInput): PaneTaskLine {
     };
   }
 
-  const folder = input.folder?.trim() || "this folder";
-  const branch = input.branch?.trim();
-  const where = branch ? `${folder} on ${branch}` : folder;
+  // Nothing is known: no goal, no session plan, no operator ask, no step, no tool, no
+  // finished work, no running command. The old wording here was a template over the
+  // folder name ("Working in <folder>", "Sitting at a command prompt in <folder>"), and
+  // the operator rejected it twice as low quality — correctly: the Task row promises
+  // what is being done in relation to what they asked for, and the folder name answers
+  // neither. It also READ like content, which hid a broken pipeline behind a full-
+  // looking line. Saying so plainly is both true and visibly a gap. The row is still
+  // never blank (TC-060 R1).
   return {
-    text: input.busy
-      ? `Working in ${where}`
-      : `Sitting at a command prompt in ${where}`,
+    text: "No task declared",
     source: "shell-state",
     capturedAt: now,
     expiresAt: null,

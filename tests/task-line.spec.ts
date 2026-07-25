@@ -121,10 +121,14 @@ test("a shell shows what it is actually doing", () => {
     text: "Running npm run build",
     source: "running-command",
   });
+  // With nothing known the row says so. It used to template over the folder name
+  // ("Sitting at a command prompt in termfleet on main"), which reads like content
+  // while answering neither "what was asked" nor "what is being done" (operator
+  // rejected it twice, 2026-07-25).
   expect(
     resolvePaneTaskLine({ now: NOW, folder: "termfleet", branch: "main" }),
   ).toMatchObject({
-    text: "Sitting at a command prompt in termfleet on main",
+    text: "No task declared",
     source: "shell-state",
   });
 });
