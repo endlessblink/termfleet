@@ -898,6 +898,11 @@ const styles: Record<string, CSSProperties> = {
     textTransform: "uppercase",
     whiteSpace: "nowrap",
   },
+  // FIXED line boxes, not just clamps. A clamp caps the maximum but still lets a
+  // one-line value render shorter than a two-line one, so every task text change
+  // re-flowed this list and everything below the changed row jumped (live report
+  // 2026-07-26). Height is now the same whatever the text says: 2 lines for the task,
+  // 1 for the activity. The full text stays in each row's tooltip.
   sidebarHeaderTask: {
     minWidth: 0,
     display: "-webkit-box",
@@ -907,17 +912,19 @@ const styles: Record<string, CSSProperties> = {
     overflowWrap: "anywhere",
     fontSize: 12,
     lineHeight: 1.35,
+    height: "2.7em",
     color: "var(--text-secondary)",
   },
   sidebarHeaderNow: {
     minWidth: 0,
     display: "-webkit-box",
-    WebkitLineClamp: 2,
+    WebkitLineClamp: 1,
     WebkitBoxOrient: "vertical",
     overflow: "hidden",
     overflowWrap: "anywhere",
     fontSize: 13,
     lineHeight: 1.35,
+    height: "1.35em",
     color: "var(--text-primary)",
     fontWeight: 500,
   },
@@ -1550,7 +1557,8 @@ function DrawingBoardButton() {
     (state) => state.updateCanvasViewport,
   );
   const existingBoardId = useWorkspaceStore(
-    (state) => state.canvasState.nodes.find((node) => node.type === "board")?.id ?? null,
+    (state) =>
+      state.canvasState.nodes.find((node) => node.type === "board")?.id ?? null,
   );
   const active = workspaceMode === "canvas" && existingBoardId !== null;
 
@@ -1564,7 +1572,9 @@ function DrawingBoardButton() {
         borderColor: active ? "var(--border-focus)" : "var(--border-subtle)",
         color: active ? "var(--accent-live)" : "var(--text-secondary)",
       }}
-      title={existingBoardId ? "Show the drawing board" : "Open a drawing board"}
+      title={
+        existingBoardId ? "Show the drawing board" : "Open a drawing board"
+      }
       aria-label="Drawing board"
       aria-pressed={active}
       onClick={() => {
@@ -1574,7 +1584,10 @@ function DrawingBoardButton() {
         // asked for a drawing board.
         const zoom = Math.max(1, viewport.zoom);
         setWorkspaceMode("canvas");
-        updateUi({ primarySidebarCollapsed: false, primarySidebarPanel: "map" });
+        updateUi({
+          primarySidebarCollapsed: false,
+          primarySidebarPanel: "map",
+        });
 
         const existing = existingBoardId
           ? nodes.find((node) => node.id === existingBoardId)
@@ -7635,29 +7648,51 @@ function MapPanel({
                               {header.goalLabel}
                             </span>
                           </div>
-                          {activityAddsInfo(
-                            header.goalLabel,
-                            header.currentActivity,
-                            paneBadgeAttention(liveTerminal),
-                          ) && (
-                            <div
-                              style={styles.sidebarHeaderLine}
-                              data-testid="sidebar-map-node-now-row"
-                              title={`Now Active: ${header.currentActivity}`}
-                            >
-                              <span style={styles.sidebarHeaderLabel}>Now</span>
-                              <span
+                          {/* The activity row keeps its space even when it says nothing.
+                              It used to be added and removed as the text changed, which
+                              re-flowed the whole list and jumped every row below it
+                              (live report 2026-07-26). Hidden rather than absent: the
+                              row is still invisible when it would only repeat the task,
+                              so nothing reads as filler and the height never moves. */}
+                          {(() => {
+                            const showsActivity = activityAddsInfo(
+                              header.goalLabel,
+                              header.currentActivity,
+                              paneBadgeAttention(liveTerminal),
+                            );
+                            return (
+                              <div
                                 style={{
-                                  ...styles.sidebarHeaderNow,
-                                  ...(activityMissing
-                                    ? styles.sidebarHeaderWarning
-                                    : null),
+                                  ...styles.sidebarHeaderLine,
+                                  ...(showsActivity
+                                    ? null
+                                    : { visibility: "hidden" as const }),
                                 }}
+                                data-testid="sidebar-map-node-now-row"
+                                data-reserved={showsActivity ? "false" : "true"}
+                                aria-hidden={showsActivity ? undefined : true}
+                                title={
+                                  showsActivity
+                                    ? `Now Active: ${header.currentActivity}`
+                                    : undefined
+                                }
                               >
-                                {header.currentActivity}
-                              </span>
-                            </div>
-                          )}
+                                <span style={styles.sidebarHeaderLabel}>
+                                  Now
+                                </span>
+                                <span
+                                  style={{
+                                    ...styles.sidebarHeaderNow,
+                                    ...(activityMissing
+                                      ? styles.sidebarHeaderWarning
+                                      : null),
+                                  }}
+                                >
+                                  {showsActivity ? header.currentActivity : " "}
+                                </span>
+                              </div>
+                            );
+                          })()}
                         </div>
                       )}
                       {node.taskBinding && (

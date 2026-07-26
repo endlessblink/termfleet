@@ -188,15 +188,46 @@ if (!existsSync(binaryPath)) {
   if (!fileContains(binaryPath, "agent_status_read_sidecar")) {
     report("fail", "Desktop binary", "release binary predates the status fix — rebuild: cd src-tauri && cargo build --release");
   } else if (newestDistJs && binaryMtime < newestDistJs.mtime) {
-    // NOTE the rebuild command: cargo alone tracks only Rust sources, so after a
-    // frontend-only change it relinks nothing and the binary keeps its OLD embedded UI
-    // while looking freshly built. `src-tauri/build.rs` now declares
-    // `rerun-if-changed=../dist`, which fixes this going forward; touching build.rs is
-    // the escape hatch for a binary built before that landed (2026-07-26).
-    report("warn", "Desktop binary", `binary (built ${fmtAge(Date.now() - binaryMtime)}) is OLDER than the frontend build — its embedded UI is stale; rebuild: npm run build && touch src-tauri/build.rs && (cd src-tauri && cargo build --release)`);
+    // Only relevant if the operator LAUNCHES this release binary. The dock entry runs
+    // `run-dev.sh` -> `npm run tauri:dev`, which serves the frontend from Vite and uses
+    // target/debug, so for a dock user this binary's age means nothing and chasing it
+    // wasted a whole session (2026-07-26). See the "How it is launched" line below.
+    report("info", "Desktop binary", `release binary (built ${fmtAge(Date.now() - binaryMtime)}) predates the frontend build — only matters if you launch the RELEASE build; the dock launcher does not`);
   } else {
     report("ok", "Desktop binary", `contains the status fix (built ${fmtAge(Date.now() - binaryMtime)})`);
   }
+}
+
+// 5b. HOW IT IS LAUNCHED. Report this before any "rebuild X" advice: the dock entry
+// resolves through a wrapper and a symlink to `run-dev.sh` -> `npm run tauri:dev`, which
+// serves the frontend from Vite and runs target/debug. A whole session was spent telling
+// the operator to rebuild the release binary they never launch (2026-07-26).
+try {
+  const desktopEntry = path.join(
+    process.env.HOME ?? "",
+    ".local/share/applications/termfleet.desktop",
+  );
+  if (existsSync(desktopEntry)) {
+    const exec = readFileSync(desktopEntry, "utf8").match(/^Exec=(.*)$/m)?.[1]?.trim();
+    let target = exec ?? "unknown";
+    // Follow the wrapper's TERMFLEET_CMD and any symlink, so the report names the
+    // script that actually starts the app rather than the shortcut.
+    if (exec && existsSync(exec)) {
+      const wrapper = readFileSync(exec, "utf8");
+      const cmd = wrapper.match(/^TERMFLEET_CMD="([^"]+)"/m)?.[1];
+      if (cmd) target = existsSync(cmd) ? realpathSync(cmd) : cmd;
+    }
+    const devMode = /run-dev\.sh$|tauri:dev/.test(target);
+    report(
+      "info",
+      "How it is launched",
+      devMode
+        ? `dock entry runs ${path.basename(target)} = DEV mode (Vite + target/debug). A frontend change needs only a relaunch — no npm build, no cargo build`
+        : `dock entry runs ${target} — verify this is the artifact your rebuilds produce`,
+    );
+  }
+} catch {
+  // Not fatal: the launch path is advisory.
 }
 
 // 6. Running app process vs binary: a rebuilt binary changes nothing until relaunch.
