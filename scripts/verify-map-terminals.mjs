@@ -6,81 +6,94 @@ import { join } from "node:path";
 const readOptional = (path) => (existsSync(path) ? readFileSync(path, "utf8") : "");
 
 const root = process.cwd();
-const magicCanvas = readFileSync(join(root, "src/components/MagicCanvas.tsx"), "utf8");
-const canvasSidebar = readFileSync(join(root, "src/components/CanvasSidebar.tsx"), "utf8");
-const workbenchHeader = readFileSync(join(root, "src/components/WorkbenchHeader.tsx"), "utf8");
-const workbenchSidebar = readFileSync(join(root, "src/components/WorkbenchSidebar.tsx"), "utf8");
-const statusBar = readFileSync(join(root, "src/components/StatusBar.tsx"), "utf8");
-const workspaceStore = readFileSync(join(root, "src/stores/workspace.ts"), "utf8");
-const usePty = readFileSync(join(root, "src/hooks/usePty.ts"), "utf8");
-const daemonInputQueue = readFileSync(join(root, "src/lib/daemonInputQueue.ts"), "utf8");
-const useNativeTerminalPane = readFileSync(join(root, "src/hooks/useNativeTerminalPane.ts"), "utf8");
-const terminalComponent = readFileSync(join(root, "src/components/Terminal.tsx"), "utf8");
-const terminalCanvas = readFileSync(join(root, "src/components/TerminalCanvas.tsx"), "utf8");
-const workspaceSurface = readFileSync(join(root, "src/components/WorkspaceSurface.tsx"), "utf8");
-const splitPane = readFileSync(join(root, "src/components/SplitPane.tsx"), "utf8");
-const types = readFileSync(join(root, "src/lib/types.ts"), "utf8");
-const masterPlanTasks = readFileSync(join(root, "src/lib/masterPlanTasks.ts"), "utf8");
-const gridBuffer = readFileSync(join(root, "src/lib/gridBuffer.ts"), "utf8");
-const gridRenderer = readFileSync(join(root, "src/lib/gridRenderer.ts"), "utf8");
-const gridDiff = readFileSync(join(root, "src/lib/gridDiff.ts"), "utf8");
-const snapshotPreviewRows = readFileSync(join(root, "src/lib/snapshotPreviewRows.ts"), "utf8");
-const gridDiffSpec = readFileSync(join(root, "tests/grid-diff.spec.ts"), "utf8");
-const boxGlyphSpec = readFileSync(join(root, "tests/box-glyph.spec.ts"), "utf8");
-const mapTerminalRenderingSpec = readFileSync(join(root, "tests/map-terminal-rendering.spec.ts"), "utf8");
-const terminalMouse = readFileSync(join(root, "src/lib/terminalMouse.ts"), "utf8");
-const mapNodeFilters = readFileSync(join(root, "src/lib/mapNodeFilters.ts"), "utf8");
-const localServices = readFileSync(join(root, "src/lib/localServices.ts"), "utf8");
-const projectEmoji = readFileSync(join(root, "src/lib/projectEmoji.ts"), "utf8");
-const terminalMouseSpec = readFileSync(join(root, "tests/terminal-mouse.spec.ts"), "utf8");
-const legacyPromptRepair = readFileSync(join(root, "src/lib/legacyPromptRepair.ts"), "utf8");
-const legacyPromptRepairSpec = readFileSync(join(root, "tests/legacy-prompt-repair.spec.ts"), "utf8");
-const cargoToml = readFileSync(join(root, "src-tauri/Cargo.toml"), "utf8");
-const cargoBuild = readFileSync(join(root, "src-tauri/build.rs"), "utf8");
-const ptyBackend = readFileSync(join(root, "src-tauri/src/pty.rs"), "utf8");
-const ptyCommands = readFileSync(join(root, "src-tauri/src/commands.rs"), "utf8");
-const platformPaths = readFileSync(join(root, "src-tauri/src/platform_paths.rs"), "utf8");
-const nativeTerminalBackend = readFileSync(join(root, "src-tauri/src/native_terminal.rs"), "utf8");
-const daemonBackend = readFileSync(join(root, "src-tauri/src/daemon.rs"), "utf8");
-const daemonIpc = readFileSync(join(root, "src-tauri/src/daemon_ipc.rs"), "utf8");
-const vtGrid = readFileSync(join(root, "src-tauri/src/vt_grid.rs"), "utf8");
-const daemonBin = readFileSync(join(root, "src-tauri/src/bin/terminal-workspace-daemon.rs"), "utf8");
-const tauriLib = readFileSync(join(root, "src-tauri/src/lib.rs"), "utf8");
-const tauriMain = readFileSync(join(root, "src-tauri/src/main.rs"), "utf8");
-const packageJson = readFileSync(join(root, "package.json"), "utf8");
-const readme = readFileSync(join(root, "README.md"), "utf8");
-const runDev = readFileSync(join(root, "run-dev.sh"), "utf8");
-const runNativeDev = readFileSync(join(root, "run-native-vte-dev.sh"), "utf8");
-const canvasTerminalSmoke = readFileSync(join(root, "scripts/verify-canvas-terminal.sh"), "utf8");
-const terminalReliabilityGate = readFileSync(join(root, "scripts/verify-terminal-reliability.sh"), "utf8");
-const releaseGate = readFileSync(join(root, "scripts/verify-release.sh"), "utf8");
-const standaloneDaemonSmoke = readFileSync(join(root, "scripts/verify-standalone-daemon-smoke.sh"), "utf8");
-const evidenceBundle = readFileSync(join(root, "scripts/export-evidence-bundle.mjs"), "utf8");
-const evidenceBundleSpec = readFileSync(join(root, "scripts/verify-evidence-bundle.mjs"), "utf8");
-const latencyTraceSummary = readFileSync(join(root, "scripts/summarize-terminal-latency-trace.mjs"), "utf8");
-const mapTerminalLatencyVerifier = readFileSync(join(root, "scripts/verify-map-terminal-latency.mjs"), "utf8");
-const mapTerminalLatencyLive = readFileSync(join(root, "scripts/verify-map-terminal-latency-live.sh"), "utf8");
-const canvasLiveSmoke = readFileSync(join(root, "scripts/verify-canvas-live.sh"), "utf8");
-const askUserQuestionLiveSmoke = readFileSync(join(root, "scripts/verify-ask-user-question-live.sh"), "utf8");
-const realDevWindowSmoke = readFileSync(join(root, "scripts/verify-real-dev-window.sh"), "utf8");
-const bracketedPasteSmoke = readFileSync(join(root, "scripts/verify-bracketed-paste.sh"), "utf8");
-const legacyPromptLiveSmoke = readFileSync(join(root, "scripts/verify-legacy-prompt-repair.sh"), "utf8");
-const mapShellAnchorSmoke = readFileSync(join(root, "scripts/verify-map-shell-anchor.sh"), "utf8");
-const resizeStormSmoke = readFileSync(join(root, "scripts/verify-resize-storm.sh"), "utf8");
-const scrollbackReattachSmoke = readFileSync(join(root, "scripts/verify-scrollback-reattach.sh"), "utf8");
-const tauriPerformanceSmoke = readFileSync(join(root, "scripts/verify-tauri-performance.sh"), "utf8");
-const zellijMapSmoke = readFileSync(join(root, "scripts/verify-zellij-map.sh"), "utf8");
-const zellijShortcutSmoke = readFileSync(join(root, "scripts/verify-zellij-shortcuts.sh"), "utf8");
-const visualEvidenceSmoke = readFileSync(join(root, "scripts/verify-visual-evidence.sh"), "utf8");
-const visualQaReview = readFileSync(join(root, "docs/visual-qa-review.md"), "utf8");
-const app = readFileSync(join(root, "src/App.tsx"), "utf8");
-const design = readOptional(join(root, "../DESIGN.md"));
-const switchProjectBody = workspaceStore.match(
+// Source-contract checks assert on code SHAPE, not line wrapping: an editor or
+// prettier pass that rewraps untouched code must not turn these gates red.
+// Collapsing whitespace runs to a single space keeps the assertions meaningful
+// (identifiers, order, and punctuation still have to match) while surviving
+// reformatting. Block slicing below needs real newlines, so it reads raw text
+// and flattens the slice.
+const flattenSource = (text) => text.replace(/\s+/g, " ");
+const readSource = (path) => flattenSource(readFileSync(join(root, path), "utf8"));
+const readRawSource = (path) => readFileSync(join(root, path), "utf8");
+const readOptionalSource = (path) => flattenSource(readOptional(join(root, path)));
+
+const magicCanvas = readSource("src/components/MagicCanvas.tsx");
+const canvasSidebar = readSource("src/components/CanvasSidebar.tsx");
+const workbenchHeader = readSource("src/components/WorkbenchHeader.tsx");
+const workbenchSidebar = readSource("src/components/WorkbenchSidebar.tsx");
+const statusBar = readSource("src/components/StatusBar.tsx");
+const workspaceStore = readSource("src/stores/workspace.ts");
+const usePty = readSource("src/hooks/usePty.ts");
+const daemonInputQueue = readSource("src/lib/daemonInputQueue.ts");
+const useNativeTerminalPane = readSource("src/hooks/useNativeTerminalPane.ts");
+const terminalComponent = readSource("src/components/Terminal.tsx");
+const terminalCanvas = readSource("src/components/TerminalCanvas.tsx");
+const workspaceSurface = readSource("src/components/WorkspaceSurface.tsx");
+const splitPane = readSource("src/components/SplitPane.tsx");
+const types = readSource("src/lib/types.ts");
+const masterPlanTasks = readSource("src/lib/masterPlanTasks.ts");
+const gridBuffer = readSource("src/lib/gridBuffer.ts");
+const gridRenderer = readSource("src/lib/gridRenderer.ts");
+const gridDiff = readSource("src/lib/gridDiff.ts");
+const snapshotPreviewRows = readSource("src/lib/snapshotPreviewRows.ts");
+const gridDiffSpec = readSource("tests/grid-diff.spec.ts");
+const boxGlyphSpec = readSource("tests/box-glyph.spec.ts");
+const mapTerminalRenderingSpec = readSource("tests/map-terminal-rendering.spec.ts");
+const terminalMouse = readSource("src/lib/terminalMouse.ts");
+const mapNodeFilters = readSource("src/lib/mapNodeFilters.ts");
+const localServices = readSource("src/lib/localServices.ts");
+const projectEmoji = readSource("src/lib/projectEmoji.ts");
+const terminalMouseSpec = readSource("tests/terminal-mouse.spec.ts");
+const legacyPromptRepair = readSource("src/lib/legacyPromptRepair.ts");
+const legacyPromptRepairSpec = readSource("tests/legacy-prompt-repair.spec.ts");
+const cargoToml = readSource("src-tauri/Cargo.toml");
+const cargoBuild = readSource("src-tauri/build.rs");
+const ptyBackend = readSource("src-tauri/src/pty.rs");
+const ptyCommands = readSource("src-tauri/src/commands.rs");
+const platformPaths = readSource("src-tauri/src/platform_paths.rs");
+const nativeTerminalBackend = readSource("src-tauri/src/native_terminal.rs");
+const daemonBackend = readSource("src-tauri/src/daemon.rs");
+const daemonIpc = readSource("src-tauri/src/daemon_ipc.rs");
+const vtGrid = readSource("src-tauri/src/vt_grid.rs");
+const daemonBin = readSource("src-tauri/src/bin/terminal-workspace-daemon.rs");
+const tauriLib = readSource("src-tauri/src/lib.rs");
+const tauriMain = readSource("src-tauri/src/main.rs");
+const packageJson = readSource("package.json");
+const readme = readSource("README.md");
+const runDev = readSource("run-dev.sh");
+const runNativeDev = readSource("run-native-vte-dev.sh");
+const canvasTerminalSmoke = readSource("scripts/verify-canvas-terminal.sh");
+const terminalReliabilityGate = readSource("scripts/verify-terminal-reliability.sh");
+const releaseGate = readSource("scripts/verify-release.sh");
+const standaloneDaemonSmoke = readSource("scripts/verify-standalone-daemon-smoke.sh");
+const evidenceBundle = readSource("scripts/export-evidence-bundle.mjs");
+const evidenceBundleSpec = readSource("scripts/verify-evidence-bundle.mjs");
+const latencyTraceSummary = readSource("scripts/summarize-terminal-latency-trace.mjs");
+const mapTerminalLatencyVerifier = readSource("scripts/verify-map-terminal-latency.mjs");
+const mapTerminalLatencyLive = readSource("scripts/verify-map-terminal-latency-live.sh");
+const canvasLiveSmoke = readSource("scripts/verify-canvas-live.sh");
+const askUserQuestionLiveSmoke = readSource("scripts/verify-ask-user-question-live.sh");
+const realDevWindowSmoke = readSource("scripts/verify-real-dev-window.sh");
+const bracketedPasteSmoke = readSource("scripts/verify-bracketed-paste.sh");
+const legacyPromptLiveSmoke = readSource("scripts/verify-legacy-prompt-repair.sh");
+const mapShellAnchorSmoke = readSource("scripts/verify-map-shell-anchor.sh");
+const resizeStormSmoke = readSource("scripts/verify-resize-storm.sh");
+const scrollbackReattachSmoke = readSource("scripts/verify-scrollback-reattach.sh");
+const tauriPerformanceSmoke = readSource("scripts/verify-tauri-performance.sh");
+const zellijMapSmoke = readSource("scripts/verify-zellij-map.sh");
+const zellijShortcutSmoke = readSource("scripts/verify-zellij-shortcuts.sh");
+const visualEvidenceSmoke = readSource("scripts/verify-visual-evidence.sh");
+const visualQaReview = readSource("docs/visual-qa-review.md");
+const app = readSource("src/App.tsx");
+const design = readOptionalSource("../DESIGN.md");
+const workspaceStoreRaw = readRawSource("src/stores/workspace.ts");
+const terminalCanvasRaw = readRawSource("src/components/TerminalCanvas.tsx");
+const switchProjectBody = flattenSource(workspaceStoreRaw.match(
   /switchProject: \(groupId: string \| null\) => \{([\s\S]*?)\n  \},\n\n  setProjectRoot:/
-)?.[1] ?? "";
-const terminalProjectionGuard = terminalCanvas.match(
+)?.[1] ?? "");
+const terminalProjectionGuard = flattenSource(terminalCanvasRaw.match(
   /const preservesProjectionSize = \(\) =>[\s\S]*?;\n\n    channel\.onmessage/
-)?.[0] ?? "";
+)?.[0] ?? "");
 const liveHarnesses = [
   canvasLiveSmoke,
   askUserQuestionLiveSmoke,
@@ -155,7 +168,7 @@ const checks = [
     message: "MagicCanvas must import the real terminal renderer.",
   },
   {
-    ok: /const linkedPaneTerminalId = linkedTab\?\.terminals\.find\(\(terminal\) => terminal\.paneId === terminalPaneId\)\?\.id;/.test(magicCanvas) &&
+    ok: /const linkedPaneTerminalId = linkedTab\?\.terminals\.find\(\s*\(terminal\) => terminal\.paneId === terminalPaneId,?\s*\)\?\.id;/.test(magicCanvas) &&
       /const linkedTerminalId = linkedPaneTerminalId \?\? node\.terminalPtyId \?\? linkedTab\?\.terminals\[0\]\?\.id;/.test(magicCanvas),
     message: "Map terminals must attach to the active pane runtime PTY when one exists.",
   },
@@ -238,8 +251,8 @@ const checks = [
     message: "Map and split terminal headers must render from the shared display-summary helper.",
   },
   {
-    ok: /onMouseDown=\{node\.type === "terminal"[\s\S]*event\.stopPropagation\(\);[\s\S]*activateTerminalNode\(\);/.test(magicCanvas) &&
-      /onClick=\{node\.type === "terminal" \? \(event\) => event\.stopPropagation\(\) : undefined\}/.test(magicCanvas),
+    ok: /onMouseDown=\{\s*node\.type === "terminal"[\s\S]*event\.stopPropagation\(\);[\s\S]*activateTerminalNode\(\);/.test(magicCanvas) &&
+      /onClick=\{\s*node\.type === "terminal" \? \(event\) => event\.stopPropagation\(\) : undefined\s*\}/.test(magicCanvas),
     message: "Terminal map node bodies must stop canvas/node mouse events so terminal focus and input are not stolen.",
   },
   {
@@ -444,7 +457,7 @@ const checks = [
       /const MAP_TERMINAL_MAX_RENDER_SCALE = 2;/.test(magicCanvas) &&
       /function mapTerminalRenderScaleForZoom\(zoom: number\)/.test(magicCanvas) &&
       /Math\.min\(MAP_TERMINAL_MAX_RENDER_SCALE, Math\.max\(1, zoom\)\)/.test(magicCanvas) &&
-      /renderScale=\{shouldOverlayTerminal \? 1 : mapTerminalRenderScaleForZoom\(zoom\)\}/.test(magicCanvas) &&
+      /renderScale=\{\s*shouldOverlayTerminal \? 1 : mapTerminalRenderScaleForZoom\(zoom\)\s*\}/.test(magicCanvas) &&
       !/activeTerminalContent/.test(magicCanvas) &&
       /imageRendering: "auto"/.test(terminalCanvas) &&
       /const MAP_PROJECTION_MAX_DPR = 1\.25;/.test(terminalCanvas) &&
@@ -880,7 +893,7 @@ const checks = [
       /this\.reset\(frame\.cols, frame\.rows\)/.test(gridBuffer) &&
       /normalizeRow\(row\.cells, this\.cols\)/.test(gridBuffer) &&
       /full sync is authoritative and clears stale same-size buffer state/.test(gridDiffSpec) &&
-      /expect\(result\.rowText\[1\]\)\.toBe\("     "\)/.test(gridDiffSpec),
+      /expect\(result\.rowText\[1\]\)\.toBe\("\s+"\)/.test(gridDiffSpec),
     message: "Frontend grid buffer must treat full sync as authoritative and clear stale same-size rows before rendering.",
   },
   {
@@ -895,7 +908,7 @@ const checks = [
       /Terminal grid diff failed/.test(terminalCanvas) &&
       /onStatusRef\.current\?\.\("failed", \{ error: message \}\)/.test(terminalCanvas) &&
       /malformed binary frames fail explicitly before mutating the grid buffer/.test(gridDiffSpec) &&
-      /expect\(result\.text\)\.toEqual\(\["safe", "    "\]\)/.test(gridDiffSpec),
+      /expect\(result\.text\)\.toEqual\(\["safe", "\s+"\]\)/.test(gridDiffSpec),
     message: "Malformed binary grid frames must fail explicitly, preserve the current buffer, and surface a visible terminal failure state.",
   },
   {
@@ -1047,7 +1060,7 @@ const checks = [
     message: "README must expose a reproducible restore-workspace proof path.",
   },
   {
-    ok: /export type TerminalRuntimeStatus = "starting" \| "running" \| "reconnected" \| "stale" \| "failed" \| "exited";/.test(types) &&
+    ok: /export type TerminalRuntimeStatus =\s*\|?\s*"starting" \| "running" \| "reconnected" \| "stale" \| "failed" \| "exited";/.test(types) &&
       /status\?: TerminalRuntimeStatus;/.test(types) &&
       /lastError\?: string;/.test(types),
     message: "Terminal state must record explicit runtime status metadata for recovery UI.",

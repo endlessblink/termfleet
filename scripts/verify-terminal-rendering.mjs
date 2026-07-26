@@ -2,20 +2,32 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const root = process.cwd();
-const terminal = readFileSync(join(root, "src/components/Terminal.tsx"), "utf8");
-const splitPane = readFileSync(join(root, "src/components/SplitPane.tsx"), "utf8");
-const header = readFileSync(join(root, "src/components/WorkbenchHeader.tsx"), "utf8");
-const sidebar = readFileSync(join(root, "src/components/WorkbenchSidebar.tsx"), "utf8");
-const globalCss = readFileSync(join(root, "src/styles/global.css"), "utf8");
-const themeCss = readFileSync(join(root, "src/styles/theme.css"), "utf8");
-const pty = readFileSync(join(root, "src-tauri/src/pty.rs"), "utf8");
-const livePulseKeyframe = globalCss.match(/@keyframes terminal-live-pulse\s*\{([\s\S]*?)\n\}/)?.[1] ?? "";
-const snapshotExcerptBlock = terminal.match(
+// Source-contract checks assert on code SHAPE, not line wrapping: an editor or
+// prettier pass that rewraps untouched code must not turn these gates red.
+// Collapsing whitespace runs to a single space keeps the assertions meaningful
+// (identifiers, order, and punctuation still have to match) while surviving
+// reformatting. Block slicing below needs real newlines, so it reads raw text
+// and flattens the slice.
+const flattenSource = (text) => text.replace(/\s+/g, " ");
+const readSource = (path) => flattenSource(readFileSync(join(root, path), "utf8"));
+const readRawSource = (path) => readFileSync(join(root, path), "utf8");
+
+const terminal = readSource("src/components/Terminal.tsx");
+const splitPane = readSource("src/components/SplitPane.tsx");
+const header = readSource("src/components/WorkbenchHeader.tsx");
+const sidebar = readSource("src/components/WorkbenchSidebar.tsx");
+const globalCss = readSource("src/styles/global.css");
+const themeCss = readSource("src/styles/theme.css");
+const pty = readSource("src-tauri/src/pty.rs");
+const terminalRaw = readRawSource("src/components/Terminal.tsx");
+const globalCssRaw = readRawSource("src/styles/global.css");
+const livePulseKeyframe = flattenSource(globalCssRaw.match(/@keyframes terminal-live-pulse\s*\{([\s\S]*?)\n\}/)?.[1] ?? "");
+const snapshotExcerptBlock = flattenSource(terminalRaw.match(
   /const runSnapshotExcerpt\s*=\s*useCallback\([\s\S]*?(?=\n\s*const handleSnapshot)/,
-)?.[0] ?? "";
-const snapshotHandlerBlock = terminal.match(
+)?.[0] ?? "");
+const snapshotHandlerBlock = flattenSource(terminalRaw.match(
   /const handleSnapshot\s*=\s*useCallback\([\s\S]*?(?=\n\s*const storeSubmittedAsk)/,
-)?.[0] ?? "";
+)?.[0] ?? "");
 
 const checks = [
   {
@@ -86,7 +98,7 @@ const checks = [
   },
   {
     ok: /style=\{\{\s*flex:\s*1,\s*minHeight:\s*0,\s*minWidth:\s*0,\s*display:\s*"flex",\s*\}\}/.test(splitPane) &&
-      /style=\{\{ flex: 1, minHeight: 0, minWidth: 0, height: "100%", display: "flex", flexDirection: "column" \}\}/.test(splitPane) &&
+      /style=\{\{\s*flex: 1, minHeight: 0, minWidth: 0, height: "100%", display: "flex", flexDirection: "column",?\s*\}\}/.test(splitPane) &&
       !/terminalHeight/.test(splitPane),
     message: "split panes must flex-fill terminal bodies instead of subtracting manual heights.",
   },
