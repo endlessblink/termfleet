@@ -540,10 +540,20 @@ const NOT_A_VERB_DESPITE_SUFFIX =
  * the caller falls through the ladder instead of showing chrome.
  */
 export function stripComposerChrome(value?: string | null) {
-  return clean(value)
-    .replace(/\[(?:Image|Screenshot|File|Pasted)\s*#?\d*[^\]]*\]/gi, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  return (
+    clean(value)
+      .replace(/\[(?:Image|Screenshot|File|Pasted)\s*#?\d*[^\]]*\]/gi, " ")
+      // A pasted LINK is never the goal — "lets get termfleet ready for sharing. I want
+      // to share it here - https://…" reached a live Task row whole (2026-07-26). The
+      // sentence still says what they asked for once the url is gone, and Class C2 of
+      // docs/cockpit-label-quality-matrix.md bans urls outright.
+      .replace(/\b(?:https?:\/\/|www\.)\S+/gi, " ")
+      // A dangling connector left behind by the removal ("share it here - ") would then
+      // trip the cut-off-line check, so tidy the seam.
+      .replace(/\s*[-–—:]\s*$/, "")
+      .replace(/\s+/g, " ")
+      .trim()
+  );
 }
 
 export function readsAsActivity(value?: string | null) {

@@ -6356,3 +6356,54 @@ unit tests passed, and the daemon-survival integration passed with a short
 temporary socket root. `npm run build`, `npm run verify:map-terminals`,
 `npm run verify:task-identity`, `npm run verify:agent-status-summary`, and scoped
 `git diff --check` passed.
+
+### TC-063: Cockpit label quality — a written definition plus a live audit
+
+**Priority:** P1
+**Status:** Done (2026-07-26) — pending operator confirmation in the live app
+
+The Task row and Now Active line kept shipping text a non-technical viewer cannot use,
+and each report was answered with one more special case. The missing piece was a
+DEFINITION. `docs/cockpit-label-quality-matrix.md` now states it: four classes and ~20
+named rules, each with the live example it came from and the layer that enforces it.
+
+The operator's own definition anchors the Task row: *"it needs to understand the main
+goal — the task is what is being done in relation to what the user asked for."* So the
+operator's ask outranks the momentary step, the folder-name template is gone (with
+nothing known the row says `No task declared`), and the activity line is a POSITIVE
+contract — an action in progress or a stated outcome — because the previous blacklist of
+imperative verbs let "Locate the master frame reference and asset" through simply for
+being an unlisted verb.
+
+Root causes fixed, each traced to a line rather than inferred:
+
+- The decimal in "renders in 0.07s" was treated as a sentence boundary, so the tail of a
+  sentence became a pane's activity ("07s, both calm single-button cards.").
+- The 30-minute sidecar TTL discarded the whole record, taking the pane's session id and
+  task list with it; identity now survives expiry and only the live lines go unavailable.
+  A second instance of the same class also cleared `mainUserAsk` and the todo-write
+  lineup, which is what left a pane with 8 finished tasks saying `No task declared`.
+- `activeForm: ""` plus `??` blanked the step text (`||` is correct — the sidecar shaper
+  had it right all along).
+- A real request was discarded for failing ONLY the 96-character limit (43 of 216 live
+  records); a long ask is now fitted at a word boundary.
+- A stored last-rung line outranked everything the pane knew, and was re-stored on every
+  poll, so enrichment could never run.
+- A command-derived title latched forever (cargo build has no completion branch, an agent
+  pane emits no shell-integration end event); `durableActivityIsLive` is now the single
+  freshness rule for all three consumers.
+- Pasted composer chrome and links rode into the Task row through two separate routes.
+
+**Evidence:** `npm run audit:panes` renders EVERY sidecar on the machine through
+`buildTerminalHeaderState` — the app's real entry point — in both the stored-line and
+first-draw states, and fails on every matrix class. 146 of 239 panes rendered junk before
+this work; 0 of 242 do now, and the full table lands in `.audit/pane-labels.txt` with the
+chosen `goal=<source>` per row so the failing layer is named. 287 frontend tests pass
+(`tests/terminal-header-*`, `tests/task-*`, `tests/agent-status-*`, `tests/status-poll-loop`,
+`tests/agent-narration`, `tests/pane-label-audit`), `npx tsc --noEmit` clean.
+
+**Also fixed while chasing this:** the audit itself was rendering a code path the app
+never takes, which is why it reported "240/240 clean" while four panes were visibly
+broken on screen; and `npm run doctor` now resolves the dock launcher through its wrapper
+and symlink, so its advice names the artifact the operator actually launches (dev mode)
+instead of a release binary that is never started.

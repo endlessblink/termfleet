@@ -57,13 +57,13 @@ missed the longest, because every junk-shape check passes it.
 
 ## Class C — unreadable to a non-developer
 
-| Class                     | Live example                                        | Rule                                    |
-| ------------------------- | --------------------------------------------------- | --------------------------------------- |
-| C1 tool identifier        | `Using mcp__plugin_context-mode__ctx_execute`       | No raw tool ids                         |
-| C2 command line / env var | `Running: HERMES_HOME=/home/endlessblink/.hermes/…` | No env vars, no absolute paths, no urls |
-| C3 file name              | `Editing release.py`, `… a task in master_plan.md`  | No source file names                    |
-| C4 ticket id              | `-fast-track started: T-055 RTL/LTR cleanup.`       | No internal ids                         |
-| C5 test tally             | `Changed-test suite passed: 15 files, 142 tests.`   | No test counts                          |
+| Class                     | Live example                                       | Rule                                    |
+| ------------------------- | -------------------------------------------------- | --------------------------------------- |
+| C1 tool identifier        | `Using mcp__plugin_context-mode__ctx_execute`      | No raw tool ids                         |
+| C2 command line / env var | `Running: HERMES_HOME=~/.hermes/…`                 | No env vars, no absolute paths, no urls |
+| C3 file name              | `Editing release.py`, `… a task in master_plan.md` | No source file names                    |
+| C4 ticket id              | `-fast-track started: T-055 RTL/LTR cleanup.`      | No internal ids                         |
+| C5 test tally             | `Changed-test suite passed: 15 files, 142 tests.`  | No test counts                          |
 
 ## Class D — damaged text
 

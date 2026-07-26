@@ -6,6 +6,7 @@ import type {
 } from "./types";
 import { visibleTaskLineup } from "./taskLineup";
 import type { PaneTaskLine } from "./taskLine";
+import { stripComposerChrome } from "./terminalHeaderQuality";
 
 export const TASK_NOT_CAPTURED = "Task not captured";
 
@@ -213,10 +214,16 @@ function scopedAsk(
     ask.source !== "status-sidecar"
   )
     return undefined;
+  // Composer chrome and pasted links are dropped from the operator's own words here —
+  // this is the ONE place every ask enters the identity ladder, and the task-line ladder
+  // strips them separately. Without it a pasted url rode into a live Task row whole
+  // ("…I want to share it here - https://…", 2026-07-26): the same class the task-line
+  // rung had already been taught to remove, arriving by the other route.
+  const stripped = stripComposerChrome(ask.text);
   const text =
     ask.source === "terminal-prompt" || ask.source === "status-sidecar"
-      ? cleanPromptText(ask.text)
-      : clean(ask.text);
+      ? cleanPromptText(stripped)
+      : clean(stripped);
   return text ? normalizedOperatorAsk(text) : undefined;
 }
 
