@@ -101,27 +101,44 @@ Key docs:
 
 ## Visual Tour
 
-### Agent Cockpit
+Screenshots below are the running Linux app, captured by
+`scripts/capture-showcase-shots.sh` on a private display against a scripted demo
+workspace (invented projects and task lists, so nothing from a real machine
+appears). Reproduce them with:
 
-Supervise Codex, Claude, OpenCode, and shell workstreams from the same canvas
-where terminal sessions live.
+```bash
+cd src-tauri && cargo build && cd ..
+scripts/capture-showcase-shots.sh          # writes /tmp/tf-showcase/shots
+```
 
-<img src="docs/assets/termfleet-agent-cockpit.png" alt="termfleet agent cockpit with workstream map, run status, provider controls, and operator follow-up panel" width="1280">
+### Split Terminals
 
-### Canvas Terminals
+The production terminal is a headless VT grid drawn to a canvas: split panes, a
+live dev server, a finished test run, and a full-screen editor in one window.
+Each pane header carries that pane's task and what it is doing right now.
 
-The production terminal surface uses a headless VT grid rendered through
-Canvas2D, with split panes, file context, and a strategic map in the same
-workspace.
+<img src="docs/assets/termfleet-ui-split-terminals.png" alt="TermFleet split into three terminal panes: a running dev server, a passing test suite, and a file open in vim, each pane header showing its task and current activity" width="1280">
 
-<img src="docs/assets/termfleet-canvas-terminals.png" alt="termfleet split terminal workspace with Canvas2D renderer, PTY daemon status, file explorer, and map preview" width="1280">
+### Operations Map
+
+Every session is a node on a zoomable map. A node keeps its own task, its
+current activity, its path, and its task list — so a fleet of sessions stays
+readable without opening each one.
+
+<img src="docs/assets/termfleet-ui-operations-map.png" alt="TermFleet operations map with a live terminal node showing its task, current activity, path, and task list, next to a panel listing every session and its task" width="1280">
+
+### Command Bar
+
+One keystroke reaches every action, session, pane, and file — including the
+splits and views above.
+
+<img src="docs/assets/termfleet-ui-command-bar.png" alt="TermFleet command bar filtered to split actions, showing matching commands with their keyboard shortcuts" width="1280">
 
 ### Recoverable Sessions
 
 PTYs are daemon-owned, so the UI can restart and reattach to live sessions
-instead of treating the app window as the owner of terminal processes.
-
-<img src="docs/assets/termfleet-daemon-recovery.png" alt="termfleet daemon recovery view showing reattached terminal sessions, recovery timeline, and daemon-owned PTY status" width="1280">
+instead of treating the app window as the owner of terminal processes — proof
+path in [Restore Workspace Proof](#restore-workspace-proof) below.
 
 ## Restore Workspace Proof
 
