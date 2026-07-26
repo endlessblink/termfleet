@@ -16,10 +16,13 @@ export function statusPollProjectionChanged(
   current: TerminalState,
   projection: Partial<TerminalState>,
 ) {
-  return statusPollProjectionFingerprint(current) !== statusPollProjectionFingerprint({
-    ...current,
-    ...projection,
-  });
+  return (
+    statusPollProjectionFingerprint(current) !==
+    statusPollProjectionFingerprint({
+      ...current,
+      ...projection,
+    })
+  );
 }
 
 /**
@@ -32,7 +35,10 @@ export function projectStatusPollResult(
   result: AgentStatusSummarizerResult,
   updatedAt: number,
 ): Partial<TerminalState> | null {
-  if (terminal.statusSummarySource !== "sidecar" || result.sidecarState !== "stale") {
+  if (
+    terminal.statusSummarySource !== "sidecar" ||
+    result.sidecarState !== "stale"
+  ) {
     return null;
   }
 
@@ -60,9 +66,14 @@ export function projectStatusPollResult(
     statusSummaryUpdatedAt: updatedAt,
     statusSummarySource: "fallback",
     statusSummaryError: undefined,
-    mainUserAsk: terminal.mainUserAsk?.source === "status-sidecar"
-      ? undefined
-      : terminal.mainUserAsk,
-    taskLineup: terminal.taskLineup?.filter((item) => item.source !== "todo-write") ?? [],
+    // The operator's request and the pane's task list are IDENTITY, not live activity:
+    // "there were tasks in the past and there was a goal — why isn't it stated?" (live
+    // report 2026-07-26, on a pane with 8 finished tasks and a fresh request). Clearing
+    // them here left the task ladder with nothing to say, so the row fell to "No task
+    // declared" and the TASKS panel to "No list" while both were known. Only the live
+    // lines above go unavailable — the badge and the activity line carry that fact, so
+    // keeping these cannot make the pane look busy.
+    mainUserAsk: terminal.mainUserAsk,
+    taskLineup: terminal.taskLineup,
   };
 }

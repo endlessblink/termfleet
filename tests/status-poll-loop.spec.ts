@@ -1,9 +1,18 @@
 import { expect, test } from "@playwright/test";
-import { MAX_STATUS_POLL_TARGETS_PER_TICK, selectStatusPollTargets } from "../src/lib/statusPollTargets";
-import { projectStatusPollResult, statusPollProjectionChanged } from "../src/lib/statusPollProjection";
+import {
+  MAX_STATUS_POLL_TARGETS_PER_TICK,
+  selectStatusPollTargets,
+} from "../src/lib/statusPollTargets";
+import {
+  projectStatusPollResult,
+  statusPollProjectionChanged,
+} from "../src/lib/statusPollProjection";
 import type { Tab, TerminalState } from "../src/lib/types";
 
-function terminal(id: string, overrides: Partial<TerminalState> = {}): TerminalState {
+function terminal(
+  id: string,
+  overrides: Partial<TerminalState> = {},
+): TerminalState {
   return {
     id,
     paneId: `pane-${id}`,
@@ -14,7 +23,11 @@ function terminal(id: string, overrides: Partial<TerminalState> = {}): TerminalS
   };
 }
 
-function tab(id: string, terminals: TerminalState[], overrides: Partial<Tab> = {}): Tab {
+function tab(
+  id: string,
+  terminals: TerminalState[],
+  overrides: Partial<Tab> = {},
+): Tab {
   return {
     id,
     title: id,
@@ -22,7 +35,11 @@ function tab(id: string, terminals: TerminalState[], overrides: Partial<Tab> = {
     color: "#000",
     groupId: null,
     terminals,
-    splitLayout: { id: `split-${id}`, type: "terminal", linkedTerminalPaneId: terminals[0]?.paneId },
+    splitLayout: {
+      id: `split-${id}`,
+      type: "terminal",
+      linkedTerminalPaneId: terminals[0]?.paneId,
+    },
     activePaneId: terminals[0]?.paneId ?? "",
     ...overrides,
   };
@@ -47,14 +64,25 @@ test("status poll targets every pane so background badges update without a click
       },
     }),
   ]);
-  const recent = tab("recent", [terminal("recent", { activityUpdatedAt: now - 10_000 })]);
-  const stale = Array.from({ length: 10 }, (_, index) => tab(`stale-${index}`, [terminal(`stale-${index}`)]));
+  const recent = tab("recent", [
+    terminal("recent", { activityUpdatedAt: now - 10_000 }),
+  ]);
+  const stale = Array.from({ length: 10 }, (_, index) =>
+    tab(`stale-${index}`, [terminal(`stale-${index}`)]),
+  );
 
-  const targets = selectStatusPollTargets([active, taskList, recent, ...stale], "active", now);
+  const targets = selectStatusPollTargets(
+    [active, taskList, recent, ...stale],
+    "active",
+    now,
+  );
   const ids = targets.map(({ terminal: candidate }) => candidate.id);
 
   expect(ids).toEqual([
-    "active-1", "active-2", "todo", "recent",
+    "active-1",
+    "active-2",
+    "todo",
+    "recent",
     ...Array.from({ length: 10 }, (_, index) => `stale-${index}`),
   ]);
   expect(targets).toHaveLength(14);
@@ -63,10 +91,14 @@ test("status poll targets every pane so background badges update without a click
 test("status poll targets are capped per tick", () => {
   const now = 1_700_000_000_000;
   const busyTabs = Array.from({ length: 30 }, (_, index) =>
-    tab(`recent-${index}`, [terminal(`recent-${index}`, { activityUpdatedAt: now - index })]),
+    tab(`recent-${index}`, [
+      terminal(`recent-${index}`, { activityUpdatedAt: now - index }),
+    ]),
   );
 
-  expect(selectStatusPollTargets(busyTabs, null, now)).toHaveLength(MAX_STATUS_POLL_TARGETS_PER_TICK);
+  expect(selectStatusPollTargets(busyTabs, null, now)).toHaveLength(
+    MAX_STATUS_POLL_TARGETS_PER_TICK,
+  );
 });
 
 test("an unchanged status poll does not rewrite a live map terminal", () => {
@@ -90,22 +122,26 @@ test("an unchanged status poll does not rewrite a live map terminal", () => {
     },
   });
 
-  expect(statusPollProjectionChanged(current, {
-    agentProvider: "codex",
-    statusSummarySource: "sidecar",
-    statusSummaryError: undefined,
-    statusSummary: { ...current.statusSummary! },
-    mainUserAsk: current.mainUserAsk,
-  })).toBe(false);
-  expect(statusPollProjectionChanged(current, {
-    agentProvider: "codex",
-    statusSummarySource: "sidecar",
-    statusSummary: { ...current.statusSummary!, now: "Applying the fix" },
-    mainUserAsk: current.mainUserAsk,
-  })).toBe(true);
+  expect(
+    statusPollProjectionChanged(current, {
+      agentProvider: "codex",
+      statusSummarySource: "sidecar",
+      statusSummaryError: undefined,
+      statusSummary: { ...current.statusSummary! },
+      mainUserAsk: current.mainUserAsk,
+    }),
+  ).toBe(false);
+  expect(
+    statusPollProjectionChanged(current, {
+      agentProvider: "codex",
+      statusSummarySource: "sidecar",
+      statusSummary: { ...current.statusSummary!, now: "Applying the fix" },
+      mainUserAsk: current.mainUserAsk,
+    }),
+  ).toBe(true);
 });
 
-test("an expired sidecar clears stale work instead of preserving a false running task", () => {
+test("an expired sidecar stops claiming live work but KEEPS the goal and the task list", () => {
   const stale = terminal("stale", {
     statusSummarySource: "sidecar",
     statusSummary: {
@@ -120,32 +156,45 @@ test("an expired sidecar clears stale work instead of preserving a false running
       source: "status-sidecar",
       updatedAt: 1_699_999_000_000,
     },
-    taskLineup: [{
-      id: "stale-task",
-      content: "Confirming every unclear topic",
-      status: "in_progress",
-      source: "todo-write",
-      updatedAt: 1_699_999_000_000,
-    }],
+    taskLineup: [
+      {
+        id: "stale-task",
+        content: "Confirming every unclear topic",
+        status: "in_progress",
+        source: "todo-write",
+        updatedAt: 1_699_999_000_000,
+      },
+    ],
   });
 
-  const projection = projectStatusPollResult(stale, {
-    source: "fallback",
-    sidecarState: "stale",
-    summary: {
-      task: "Shell ready",
-      path: "hermes",
-      now: "Awaiting command",
-      status: "idle",
-      provider: "shell",
-      confidence: "low",
+  const projection = projectStatusPollResult(
+    stale,
+    {
+      source: "fallback",
+      sidecarState: "stale",
+      summary: {
+        task: "Shell ready",
+        path: "hermes",
+        now: "Awaiting command",
+        status: "idle",
+        provider: "shell",
+        confidence: "low",
+      },
     },
-  }, 1_700_000_000_000);
+    1_700_000_000_000,
+  );
 
+  // The live lines say so — that is what stops a false "running" claim.
   expect(projection?.statusSummary?.status).toBe("unavailable");
   expect(projection?.statusSummary?.now).toBe("Status unavailable");
-  expect(projection?.mainUserAsk).toBeUndefined();
-  expect(projection?.taskLineup).toEqual([]);
+  // ...but the goal and the list are IDENTITY and survive. Clearing them left the Task
+  // row at "No task declared" and the TASKS panel at "No list" on a pane that had 8
+  // finished tasks and a fresh request (live report 2026-07-26).
+  expect(projection?.mainUserAsk?.text).toBe("Confirming every unclear topic");
+  expect(projection?.taskLineup).toHaveLength(1);
+  expect(projection?.statusSummary?.task).toBe(
+    "Confirming every unclear topic",
+  );
 });
 
 test("a temporary sidecar read miss preserves the last trustworthy state", () => {
@@ -160,18 +209,24 @@ test("a temporary sidecar read miss preserves the last trustworthy state", () =>
     },
   });
 
-  expect(projectStatusPollResult(live, {
-    source: "fallback",
-    sidecarState: "error",
-    summary: {
-      task: "Shell ready",
-      path: "hermes",
-      now: "Awaiting command",
-      status: "idle",
-      provider: "shell",
-      confidence: "low",
-    },
-  }, 1_700_000_000_000)).toBeNull();
+  expect(
+    projectStatusPollResult(
+      live,
+      {
+        source: "fallback",
+        sidecarState: "error",
+        summary: {
+          task: "Shell ready",
+          path: "hermes",
+          now: "Awaiting command",
+          status: "idle",
+          provider: "shell",
+          confidence: "low",
+        },
+      },
+      1_700_000_000_000,
+    ),
+  ).toBeNull();
 });
 
 test("sidecar expiry preserves manually owned task identity", () => {
@@ -180,27 +235,31 @@ test("sidecar expiry preserves manually owned task identity", () => {
     source: "manual" as const,
     updatedAt: 1_700_000_000_000,
   };
-  const projection = projectStatusPollResult(terminal("manual", {
-    statusSummarySource: "sidecar",
-    statusSummary: {
-      task: "Old sidecar activity",
-      path: "hermes",
-      now: "Old sidecar activity",
-      status: "working",
+  const projection = projectStatusPollResult(
+    terminal("manual", {
+      statusSummarySource: "sidecar",
+      statusSummary: {
+        task: "Old sidecar activity",
+        path: "hermes",
+        now: "Old sidecar activity",
+        status: "working",
+      },
+      mainUserAsk: manualAsk,
+    }),
+    {
+      source: "fallback",
+      sidecarState: "stale",
+      summary: {
+        task: "Shell ready",
+        path: "hermes",
+        now: "Awaiting command",
+        status: "idle",
+        provider: "shell",
+        confidence: "low",
+      },
     },
-    mainUserAsk: manualAsk,
-  }), {
-    source: "fallback",
-    sidecarState: "stale",
-    summary: {
-      task: "Shell ready",
-      path: "hermes",
-      now: "Awaiting command",
-      status: "idle",
-      provider: "shell",
-      confidence: "low",
-    },
-  }, 1_700_000_001_000);
+    1_700_000_001_000,
+  );
 
   expect(projection?.mainUserAsk).toEqual(manualAsk);
 });
@@ -220,20 +279,26 @@ test("an expired sidecar keeps the last real task and only marks activity unavai
     },
   });
 
-  const projection = projectStatusPollResult(stale, {
-    source: "fallback",
-    sidecarState: "stale",
-    summary: {
-      task: "Shell ready",
-      path: "hermes",
-      now: "Awaiting command",
-      status: "idle",
-      provider: "shell",
-      confidence: "low",
+  const projection = projectStatusPollResult(
+    stale,
+    {
+      source: "fallback",
+      sidecarState: "stale",
+      summary: {
+        task: "Shell ready",
+        path: "hermes",
+        now: "Awaiting command",
+        status: "idle",
+        provider: "shell",
+        confidence: "low",
+      },
     },
-  }, 1_700_000_000_000);
+    1_700_000_000_000,
+  );
 
-  expect(projection?.statusSummary?.task).toBe("Make the timer job fast and calm");
+  expect(projection?.statusSummary?.task).toBe(
+    "Make the timer job fast and calm",
+  );
   expect(projection?.statusSummary?.now).toBe("Status unavailable");
 });
 
@@ -248,18 +313,22 @@ test("an expired sidecar with no real task still says so honestly", () => {
     },
   });
 
-  const projection = projectStatusPollResult(stale, {
-    source: "fallback",
-    sidecarState: "stale",
-    summary: {
-      task: "Shell ready",
-      path: "hermes",
-      now: "Awaiting command",
-      status: "idle",
-      provider: "shell",
-      confidence: "low",
+  const projection = projectStatusPollResult(
+    stale,
+    {
+      source: "fallback",
+      sidecarState: "stale",
+      summary: {
+        task: "Shell ready",
+        path: "hermes",
+        now: "Awaiting command",
+        status: "idle",
+        provider: "shell",
+        confidence: "low",
+      },
     },
-  }, 1_700_000_000_000);
+    1_700_000_000_000,
+  );
 
   expect(projection?.statusSummary?.task).toBe("Task not captured");
 });

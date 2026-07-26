@@ -192,10 +192,24 @@ export function buildTerminalHeaderState(input: {
   // below could never run. Treat that one source as "nothing known" and re-resolve.
   const storedTaskLine =
     input.taskLine?.source === "shell-state" ? null : input.taskLine;
+  // The in-progress item is normally the summary path's to own (`tasksFromTodoWrite`),
+  // and feeding it here stole that provenance — two tests catch it. But when the summary
+  // CANNOT use it, withholding it just loses the task: 26 panes whose list named their
+  // work still rendered "No task declared" on first draw (live report 2026-07-26). So it
+  // is offered only in exactly that case.
+  // Offered unconditionally. The earlier guard withheld it whenever the summary CLAIMED
+  // the list (`tasksFromTodoWrite`), but claiming is not producing: 6 panes whose only
+  // item named their work still rendered "No task declared" because the summary then
+  // yielded no task row either. Provenance is safe without the guard — the view model
+  // takes the summary's description FIRST and only falls back to this line.
+  const activeLineupItem = (input.taskLineup ?? []).find(
+    (item) => item.status === "in_progress",
+  );
   const effectiveTaskLine =
     storedTaskLine ??
     resolvePaneTaskLine({
       now: Date.now(),
+      currentStep: activeLineupItem?.content ?? null,
       lastCompletedTask: lastCompletedLineupItem?.content ?? null,
       facts:
         input.mainUserAsk?.text && askIsForThisRun

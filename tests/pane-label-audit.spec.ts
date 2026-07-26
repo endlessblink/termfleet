@@ -10,6 +10,7 @@ import { expect, test } from "@playwright/test";
 import { summaryFromSidecar } from "../src/lib/agentStatusSidecar";
 import { buildTerminalHeaderState } from "../src/lib/terminalHeaderState";
 import { resolvePaneTaskLine } from "../src/lib/taskLine";
+import { qualityCheckAuthoritativeTaskLabel } from "../src/lib/terminalHeaderQuality";
 
 /**
  * Read what EVERY pane on this machine actually renders — Task row and Now Active —
@@ -127,7 +128,9 @@ function headerFor(
     : [];
   const taskLineup = todos.map((todo, index) => ({
     id: String(todo.id ?? index),
-    content: String(todo.activeForm ?? todo.content ?? ""),
+    // `||`, not `??` — the hooks write `activeForm: ""` and `??` keeps the empty string,
+    // which silently blanked every item on records written that way.
+    content: String(todo.activeForm || todo.content || ""),
     status: (todo.status ?? "pending") as
       | "pending"
       | "in_progress"
@@ -157,6 +160,19 @@ function headerFor(
         })
       : undefined;
 
+  // The app stores the operator's ask on the terminal (Terminal.tsx keeps `mainUserAsk`
+  // from the same record), so the audit has to supply it in BOTH modes. Omitting it made
+  // the first-draw case report 21 panes as broken that the app renders correctly — an
+  // audit that lies in the pessimistic direction still wastes the session.
+  const mainUserAsk =
+    typeof sidecar.userTask === "string" && sidecar.userTask.trim()
+      ? {
+          text: sidecar.userTask.trim(),
+          source: "status-sidecar" as const,
+          updatedAt: Number(sidecar.updatedAt ?? 0),
+        }
+      : undefined;
+
   const header = buildTerminalHeaderState({
     paneId: `pane-${path.basename(cwd)}`,
     terminalId: `pty-${path.basename(cwd)}`,
@@ -164,10 +180,18 @@ function headerFor(
     liveCwd: cwd,
     terminalStatus: "running",
     taskLineup,
+    mainUserAsk,
     statusSummary: summary,
     taskLine: storedTaskLine,
   });
-  return { task: header.goalLabel, now: header.currentActivity };
+  // The chosen SOURCE is in every row: "No task declared" from the last rung and the
+  // same words from the operator's ask look identical in a table, and only the source
+  // says which layer to fix.
+  return {
+    task: header.goalLabel,
+    now: header.currentActivity,
+    goalSource: header.sources.goal,
+  };
 }
 
 test("every pane on this machine renders a readable Task row and Now Active line", () => {
@@ -198,17 +222,45 @@ test("every pane on this machine renders a readable Task row and Now Active line
     for (const mode of ["no-stored-line", "with-stored-line"] as const) {
       let task: string;
       let now: string;
+      let goalSource = "?";
       try {
-        ({ task, now } = headerFor(sidecar, mode));
+        ({ task, now, goalSource } = headerFor(sidecar, mode));
       } catch (error) {
         offenders.push(`${id} [${mode}]: threw ${(error as Error).message}`);
         continue;
       }
 
       rows.push(
-        `${id} | ${ageMin}m | ${path.basename(String(sidecar.cwd ?? "?"))} | ${mode} | TASK=${task} | NOW=${now}`,
+        `${id} | ${ageMin}m | ${path.basename(String(sidecar.cwd ?? "?"))} | ${mode} | goal=${goalSource} | TASK=${task} | NOW=${now}`,
       );
 
+      // The invariant that would have caught the 2026-07-26 report: this pane had a
+      // fresh request and 8 finished tasks, and still rendered "No task declared". A
+      // placeholder is only honest when the record genuinely holds nothing to say, so
+      // it is an OFFENCE whenever the sidecar carries a goal, a request or a list.
+      // "Knows something" means something SAYABLE. A record whose only content is
+      // "/dropoff", "$done", "continue" or "make all high" genuinely has no task to
+      // state, and the placeholder is the honest answer there — demanding otherwise
+      // would push the header back into inventing text.
+      const sayable = (value: unknown) =>
+        typeof value === "string" &&
+        value.trim().length > 0 &&
+        qualityCheckAuthoritativeTaskLabel(value.trim()).ok;
+      const sidecarKnowsSomething =
+        sayable(sidecar.userTask) ||
+        sayable(sidecar.mainTask) ||
+        (Array.isArray(sidecar.todos) &&
+          (sidecar.todos as Record<string, unknown>[]).some(
+            (todo) => sayable(todo.activeForm) || sayable(todo.content),
+          ));
+      if (
+        sidecarKnowsSomething &&
+        /^(?:No task declared|Task not captured)$/i.test(task)
+      ) {
+        offenders.push(
+          `${id} [${mode}]: placeholder Task while the record holds a goal/request/list -> ${task}`,
+        );
+      }
       if (!HONEST_FALLBACKS.has(now) && NON_ACTIVITY_SHAPE.test(now)) {
         offenders.push(
           `${id} [${mode}]: non-activity-shape as Now Active -> ${now}`,

@@ -229,10 +229,14 @@ async function resolveTaskLineFor(
     mainGoal: sidecar?.mainTask ?? null,
     currentStep: expired
       ? null
-      : (activeTodo?.activeForm ?? activeTodo?.content ?? null),
+      : // `||`, not `??`: the hooks write `activeForm: ""` when the agent gave none, and
+        // `??` treats that empty string as a value — so the step text was replaced by
+        // nothing and the row fell to a placeholder while the task list named the work
+        // (live report 2026-07-26). agentStatusSidecar.ts had this right all along.
+        activeTodo?.activeForm || activeTodo?.content || null,
     facts: effectiveFacts,
     lastCompletedTask:
-      lastCompleted?.activeForm ?? lastCompleted?.content ?? null,
+      lastCompleted?.activeForm || lastCompleted?.content || null,
     folder: cwd ? (cwd.split("/").filter(Boolean).pop() ?? null) : null,
   });
 }

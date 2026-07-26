@@ -116,6 +116,29 @@ export function resolvePaneTaskLine(input: TaskLineInput): PaneTaskLine {
     return null;
   };
 
+  // Length alone must not throw the operator's goal away. 43 of the 216 records on this
+  // machine held a real request that failed ONLY the 96-character limit, and the row
+  // then said "No task declared" while the goal sat right there (live report
+  // 2026-07-26). The row renders one ellipsised line anyway, so a long ask is fitted at
+  // a word boundary — the operator's own words, cut, with the full text in the tooltip.
+  // Anything that fails for a REASON other than length is still skipped, never trimmed
+  // into looking acceptable.
+  const considerLongAsk = (
+    candidate: string | null | undefined,
+  ): string | null => {
+    const value = candidate?.trim();
+    if (!value) return null;
+    const direct = consider(value);
+    if (direct) return direct;
+    if (qualityCheckAuthoritativeTaskLabel(value).reason !== "too-long")
+      return null;
+    const fitted = `${value
+      .slice(0, 92)
+      .replace(/\s+\S*$/, "")
+      .trim()}…`;
+    return readsPlainly(fitted) ? fitted : null;
+  };
+
   // MAIN-PLAN sources lead the line: the whole point is "what is this part of".
   // An explicit overarching goal, then the session's own plan title, then the
   // operator's main request — all rank ABOVE the momentary in-progress step.
@@ -147,7 +170,7 @@ export function resolvePaneTaskLine(input: TaskLineInput): PaneTaskLine {
   // Composer chrome from a pasted attachment ("[Image #1] got stuck") is dropped first:
   // the placeholder belongs to the input box, the words after it are the operator's.
   // That is normalisation of their own text, not the rewriting R2 forbids.
-  const request = consider(stripComposerChrome(facts.operatorRequest));
+  const request = considerLongAsk(stripComposerChrome(facts.operatorRequest));
   if (request) {
     return {
       text: request,
