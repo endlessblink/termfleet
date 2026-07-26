@@ -188,7 +188,12 @@ if (!existsSync(binaryPath)) {
   if (!fileContains(binaryPath, "agent_status_read_sidecar")) {
     report("fail", "Desktop binary", "release binary predates the status fix — rebuild: cd src-tauri && cargo build --release");
   } else if (newestDistJs && binaryMtime < newestDistJs.mtime) {
-    report("warn", "Desktop binary", `binary (built ${fmtAge(Date.now() - binaryMtime)}) is OLDER than the frontend build — its embedded UI is stale; rebuild: cd src-tauri && cargo build --release`);
+    // NOTE the rebuild command: cargo alone tracks only Rust sources, so after a
+    // frontend-only change it relinks nothing and the binary keeps its OLD embedded UI
+    // while looking freshly built. `src-tauri/build.rs` now declares
+    // `rerun-if-changed=../dist`, which fixes this going forward; touching build.rs is
+    // the escape hatch for a binary built before that landed (2026-07-26).
+    report("warn", "Desktop binary", `binary (built ${fmtAge(Date.now() - binaryMtime)}) is OLDER than the frontend build — its embedded UI is stale; rebuild: npm run build && touch src-tauri/build.rs && (cd src-tauri && cargo build --release)`);
   } else {
     report("ok", "Desktop binary", `contains the status fix (built ${fmtAge(Date.now() - binaryMtime)})`);
   }
