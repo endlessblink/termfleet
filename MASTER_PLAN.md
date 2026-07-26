@@ -296,6 +296,60 @@ session when this landed. Unify them when that work settles.
 
 Not done yet: the agent write path.
 
+### ~~TC-063~~: ✅ Map toolbar redesign — labelled, collapsible, contextual
+
+**Priority:** P2
+**Status:** ✅ **DONE** (2026-07-25)
+
+The map toolbar was twelve icon-only buttons in an opaque slab pinned over the
+top-left of the canvas. The operator's complaints, verbatim: it covers content, it
+looks flat, everything is shown at once, several icons do not read, and there is no
+way to minimise it. Eight of the twelve were align/distribute/arrange glyphs that are
+disabled unless a multi-node selection exists — so most of the time the bar was mostly
+dead weight sitting on top of terminal text.
+
+Three changes, in the order they matter:
+
+- **Contextual, not permanent.** Align and distribute moved out of the toolbar into
+  their own bar that only exists when 2+ nodes are selected, anchored above the
+  selection's bounding box in screen space (`selectionToolbarAnchor`) and clamped so it
+  cannot leave the viewport. Distribute needs three nodes, so below three it is absent
+  rather than greyed out. Nothing disabled is ever on screen.
+- **Collapsible and sticky.** The `Map` label became the collapse toggle: expanded it
+  shows four labelled creation buttons, collapsed it is a single chip at 62% opacity
+  (full on hover). Persisted under `termfleet.mapToolbar.open`, defaulting to open so
+  the buttons stay discoverable and the existing Playwright suites still find them.
+- **Readable and translucent.** Icon-only buttons became icon + word
+  (Board / Note / Terminal / File), and the two arrange-lane glyphs collapsed into one
+  labelled `Tidy` popover with plain-language items. The panels are translucent with a
+  `backdrop-filter` blur (`.magic-canvas-glass`) so the grid and node text underneath
+  stay visible — the first blur in this app, with an `@supports not` fallback to a
+  94%-opaque panel where WebKitGTK declines it. Per-button filled boxes were dropped
+  for ghost buttons that fill only on hover, which is most of what made the old bar
+  read as a row of grey slabs.
+
+Accessible names of the four creation buttons and the two lane actions were kept
+verbatim (`Add drawing board`, `Add note`, `Add terminal`, `Add file`,
+`Compact terminal lanes`) because four existing specs match on them; only the lane
+action's location changed, so `canvas-node-reorder` now opens `Tidy` first.
+
+Evidence:
+
+- `tests/map-toolbar.spec.ts` 4/4 — new. Labelled buttons render; collapse hides them,
+  survives a reload, and restores; the selection bar is absent at 1 node, present at 2
+  with distribute absent, and gains distribute at 3; and align-top from the selection
+  bar collapses three nodes to one `y`.
+- `npx playwright test map-toolbar canvas-node-reorder map-drawing-board` 16/16.
+- `npx tsc --noEmit` clean. `npm run verify:map-terminals` passes.
+- `npm run verify:typography` 16 FAILs — identical to the pre-change baseline measured
+  by stashing the change; letter-spacing on the Map chip was reverted to 0 to keep it
+  that way.
+
+Note: `MagicCanvas.tsx` was mid-edit in another session while this landed, so this
+commit also carries that session's `durableActivityIsLive` change and a Prettier
+reformat of the file. Confirmed compiling and green, but the two are entangled in one
+commit by necessity, not by choice.
+
 ### TC-024: Session/map cards show project/workspace name
 
 **Priority:** P1

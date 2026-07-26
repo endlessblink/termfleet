@@ -12,17 +12,21 @@ test.use({
 // must move a node within canvasState.nodes, honor before/after placement, and
 // never disturb a node's x/y map position. Manual mode still uses this stored
 // order; by-project mode derives display order from map coordinates.
-test("reorderCanvasNodes moves a node by id, honors before/after, and preserves x/y", async ({ page }) => {
+test("reorderCanvasNodes moves a node by id, honors before/after, and preserves x/y", async ({
+  page,
+}) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
 
   const result = await page.evaluate(async () => {
-    (window as typeof window & {
-      __TAURI_INTERNALS__?: {
-        invoke: (cmd: string) => Promise<unknown>;
-        transformCallback: () => number;
-        unregisterCallback: () => void;
-      };
-    }).__TAURI_INTERNALS__ = {
+    (
+      window as typeof window & {
+        __TAURI_INTERNALS__?: {
+          invoke: (cmd: string) => Promise<unknown>;
+          transformCallback: () => number;
+          unregisterCallback: () => void;
+        };
+      }
+    ).__TAURI_INTERNALS__ = {
       invoke: async () => null,
       transformCallback: () => 1,
       unregisterCallback: () => {},
@@ -50,7 +54,8 @@ test("reorderCanvasNodes moves a node by id, honors before/after, and preserves 
           nodes: [node("a", 10), node("b", 20), node("c", 30)],
         },
       });
-    const order = () => useWorkspaceStore.getState().canvasState.nodes.map((n) => n.id);
+    const order = () =>
+      useWorkspaceStore.getState().canvasState.nodes.map((n) => n.id);
 
     seed();
     // Move the first node to AFTER the last → a should land at the end.
@@ -87,22 +92,71 @@ test("reorderCanvasNodes moves a node by id, honors before/after, and preserves 
   expect(result.selfDrop).toEqual(["a", "b", "c"]);
 });
 
-test("by-project sidebar order follows canvas stacks left-to-right and terminals top-to-bottom", async ({ page }) => {
+test("by-project sidebar order follows canvas stacks left-to-right and terminals top-to-bottom", async ({
+  page,
+}) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
 
   const result = await page.evaluate(async () => {
-    const { projectBucketsByCanvasPosition } = await import("/src/lib/mapNodeOrdering.ts");
+    const { projectBucketsByCanvasPosition } =
+      await import("/src/lib/mapNodeOrdering.ts");
 
     const groups = [
-      { id: "termfleet", name: "TermFleet", color: "#7aa2f7", projectRoot: "/work/termfleet" },
+      {
+        id: "termfleet",
+        name: "TermFleet",
+        color: "#7aa2f7",
+        projectRoot: "/work/termfleet",
+      },
       { id: "bots", name: "Bots", color: "#9ece6a", projectRoot: "/work/bots" },
-      { id: "hermes", name: "Hermes", color: "#bb9af7", projectRoot: "/work/hermes" },
+      {
+        id: "hermes",
+        name: "Hermes",
+        color: "#bb9af7",
+        projectRoot: "/work/hermes",
+      },
     ];
     const tabs = [
-      { id: "tab-termfleet-top", title: "termfleet top", emoji: "x", color: "#fff", groupId: "termfleet", terminals: [], splitLayout: { id: "p1", type: "terminal" as const }, activePaneId: "p1" },
-      { id: "tab-termfleet-low", title: "termfleet low", emoji: "x", color: "#fff", groupId: "termfleet", terminals: [], splitLayout: { id: "p2", type: "terminal" as const }, activePaneId: "p2" },
-      { id: "tab-bots", title: "bots", emoji: "x", color: "#fff", groupId: "bots", terminals: [], splitLayout: { id: "p3", type: "terminal" as const }, activePaneId: "p3" },
-      { id: "tab-hermes", title: "hermes", emoji: "x", color: "#fff", groupId: "hermes", terminals: [], splitLayout: { id: "p4", type: "terminal" as const }, activePaneId: "p4" },
+      {
+        id: "tab-termfleet-top",
+        title: "termfleet top",
+        emoji: "x",
+        color: "#fff",
+        groupId: "termfleet",
+        terminals: [],
+        splitLayout: { id: "p1", type: "terminal" as const },
+        activePaneId: "p1",
+      },
+      {
+        id: "tab-termfleet-low",
+        title: "termfleet low",
+        emoji: "x",
+        color: "#fff",
+        groupId: "termfleet",
+        terminals: [],
+        splitLayout: { id: "p2", type: "terminal" as const },
+        activePaneId: "p2",
+      },
+      {
+        id: "tab-bots",
+        title: "bots",
+        emoji: "x",
+        color: "#fff",
+        groupId: "bots",
+        terminals: [],
+        splitLayout: { id: "p3", type: "terminal" as const },
+        activePaneId: "p3",
+      },
+      {
+        id: "tab-hermes",
+        title: "hermes",
+        emoji: "x",
+        color: "#fff",
+        groupId: "hermes",
+        terminals: [],
+        splitLayout: { id: "p4", type: "terminal" as const },
+        activePaneId: "p4",
+      },
     ];
     const node = (id: string, tabId: string, x: number, y: number) => ({
       id,
@@ -121,13 +175,21 @@ test("by-project sidebar order follows canvas stacks left-to-right and terminals
       node("termfleet-top", "tab-termfleet-top", 40, 120),
     ];
 
-    const firstPass = projectBucketsByCanvasPosition(nodes, tabs, groups).map((bucket) => ({
-      label: bucket.label,
-      nodeIds: bucket.nodes.map((n) => n.id),
-    }));
+    const firstPass = projectBucketsByCanvasPosition(nodes, tabs, groups).map(
+      (bucket) => ({
+        label: bucket.label,
+        nodeIds: bucket.nodes.map((n) => n.id),
+      }),
+    );
 
-    const movedNodes = nodes.map((n) => n.id === "termfleet-low" ? { ...n, x: 32, y: 320 } : n);
-    const afterMove = projectBucketsByCanvasPosition(movedNodes, tabs, groups).map((bucket) => ({
+    const movedNodes = nodes.map((n) =>
+      n.id === "termfleet-low" ? { ...n, x: 32, y: 320 } : n,
+    );
+    const afterMove = projectBucketsByCanvasPosition(
+      movedNodes,
+      tabs,
+      groups,
+    ).map((bucket) => ({
       label: bucket.label,
       nodeIds: bucket.nodes.map((n) => n.id),
     }));
@@ -147,17 +209,21 @@ test("by-project sidebar order follows canvas stacks left-to-right and terminals
   ]);
 });
 
-test("canvas layout actions align, distribute, and arrange project terminals without changing order or viewport", async ({ page }) => {
+test("canvas layout actions align, distribute, and arrange project terminals without changing order or viewport", async ({
+  page,
+}) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
 
   const result = await page.evaluate(async () => {
-    (window as typeof window & {
-      __TAURI_INTERNALS__?: {
-        invoke: (cmd: string) => Promise<unknown>;
-        transformCallback: () => number;
-        unregisterCallback: () => void;
-      };
-    }).__TAURI_INTERNALS__ = {
+    (
+      window as typeof window & {
+        __TAURI_INTERNALS__?: {
+          invoke: (cmd: string) => Promise<unknown>;
+          transformCallback: () => number;
+          unregisterCallback: () => void;
+        };
+      }
+    ).__TAURI_INTERNALS__ = {
       invoke: async () => null,
       transformCallback: () => 1,
       unregisterCallback: () => {},
@@ -175,7 +241,14 @@ test("canvas layout actions align, distribute, and arrange project terminals wit
       splitLayout: { id: `${id}-pane`, type: "terminal" as const },
       activePaneId: `${id}-pane`,
     });
-    const terminalNode = (id: string, tabId: string, x: number, y: number, width = 100, height = 50) => ({
+    const terminalNode = (
+      id: string,
+      tabId: string,
+      x: number,
+      y: number,
+      width = 100,
+      height = 50,
+    ) => ({
       id,
       type: "terminal" as const,
       title: id,
@@ -197,10 +270,25 @@ test("canvas layout actions align, distribute, and arrange project terminals wit
 
     const seed = () =>
       useWorkspaceStore.setState({
-        tabs: [tab("tab-a", "project-a"), tab("tab-b", "project-a"), tab("tab-c", "project-a"), tab("tab-d", "project-b")],
+        tabs: [
+          tab("tab-a", "project-a"),
+          tab("tab-b", "project-a"),
+          tab("tab-c", "project-a"),
+          tab("tab-d", "project-b"),
+        ],
         groups: [
-          { id: "project-a", name: "Project A", color: "#7aa2f7", projectRoot: "/tmp/project-a" },
-          { id: "project-b", name: "Project B", color: "#9ece6a", projectRoot: "/tmp/project-b" },
+          {
+            id: "project-a",
+            name: "Project A",
+            color: "#7aa2f7",
+            projectRoot: "/tmp/project-a",
+          },
+          {
+            id: "project-b",
+            name: "Project B",
+            color: "#9ece6a",
+            projectRoot: "/tmp/project-b",
+          },
         ],
         activeTabId: "tab-a",
         canvasState: {
@@ -222,7 +310,10 @@ test("canvas layout actions align, distribute, and arrange project terminals wit
         order: state.canvasState.nodes.map((node) => node.id),
         viewport: state.canvasState.viewport,
         nodes: Object.fromEntries(
-          state.canvasState.nodes.map((node) => [node.id, { x: node.x, y: node.y }])
+          state.canvasState.nodes.map((node) => [
+            node.id,
+            { x: node.x, y: node.y },
+          ]),
         ),
       };
     };
@@ -232,7 +323,9 @@ test("canvas layout actions align, distribute, and arrange project terminals wit
     const aligned = snapshot();
 
     seed();
-    useWorkspaceStore.getState().distributeCanvasNodes(["a", "b", "c"], "horizontal");
+    useWorkspaceStore
+      .getState()
+      .distributeCanvasNodes(["a", "b", "c"], "horizontal");
     const distributed = snapshot();
 
     seed();
@@ -277,17 +370,21 @@ test("canvas layout actions align, distribute, and arrange project terminals wit
   expect(result.projectLanes.nodes.note).toEqual({ x: 999, y: 888 });
 });
 
-test("visible compact lanes button closes horizontal gaps by current lane order", async ({ page }) => {
+test("visible compact lanes button closes horizontal gaps by current lane order", async ({
+  page,
+}) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
 
   await page.evaluate(async () => {
-    (window as typeof window & {
-      __TAURI_INTERNALS__?: {
-        invoke: (cmd: string) => Promise<unknown>;
-        transformCallback: () => number;
-        unregisterCallback: () => void;
-      };
-    }).__TAURI_INTERNALS__ = {
+    (
+      window as typeof window & {
+        __TAURI_INTERNALS__?: {
+          invoke: (cmd: string) => Promise<unknown>;
+          transformCallback: () => number;
+          unregisterCallback: () => void;
+        };
+      }
+    ).__TAURI_INTERNALS__ = {
       invoke: async () => null,
       transformCallback: () => 1,
       unregisterCallback: () => {},
@@ -315,10 +412,24 @@ test("visible compact lanes button closes horizontal gaps by current lane order"
       height: 50,
     });
     useWorkspaceStore.setState({
-      tabs: [tab("tab-a", "project-a"), tab("tab-b", "project-a"), tab("tab-c", "project-b")],
+      tabs: [
+        tab("tab-a", "project-a"),
+        tab("tab-b", "project-a"),
+        tab("tab-c", "project-b"),
+      ],
       groups: [
-        { id: "project-a", name: "Project A", color: "#7aa2f7", projectRoot: "/tmp/project-a" },
-        { id: "project-b", name: "Project B", color: "#9ece6a", projectRoot: "/tmp/project-b" },
+        {
+          id: "project-a",
+          name: "Project A",
+          color: "#7aa2f7",
+          projectRoot: "/tmp/project-a",
+        },
+        {
+          id: "project-b",
+          name: "Project B",
+          color: "#9ece6a",
+          projectRoot: "/tmp/project-b",
+        },
       ],
       activeTabId: "tab-a",
       workspaceUiState: {
@@ -338,12 +449,18 @@ test("visible compact lanes button closes horizontal gaps by current lane order"
     });
   });
 
-  await page.getByRole("button", { name: "Compact terminal lanes" }).last().click();
+  // Lane arranging now lives behind the toolbar's Tidy popover.
+  await page
+    .getByRole("button", { name: "Tidy the terminals on this map" })
+    .click();
+  await page.getByRole("menuitem", { name: "Compact terminal lanes" }).click();
 
   const nodes = await page.evaluate(async () => {
     const { useWorkspaceStore } = await import("/src/stores/workspace.ts");
     return Object.fromEntries(
-      useWorkspaceStore.getState().canvasState.nodes.map((node) => [node.id, { x: node.x, y: node.y }])
+      useWorkspaceStore
+        .getState()
+        .canvasState.nodes.map((node) => [node.id, { x: node.x, y: node.y }]),
     );
   });
 

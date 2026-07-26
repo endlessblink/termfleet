@@ -107,7 +107,11 @@ select:focus-visible,
 .workspace-sidebar-action--danger:hover,
 .workspace-sidebar-action--danger:focus-visible {
   background: var(--danger-muted) !important;
-  border-color: color-mix(in srgb, var(--accent-danger) 38%, var(--border-subtle)) !important;
+  border-color: color-mix(
+    in srgb,
+    var(--accent-danger) 38%,
+    var(--border-subtle)
+  ) !important;
   color: var(--accent-danger) !important;
 }
 
@@ -148,7 +152,11 @@ select:focus-visible,
 
 .workspace-rail-button[data-active="true"]:hover,
 .workspace-rail-button[data-active="true"]:focus-visible {
-  background: color-mix(in srgb, var(--surface-selected) 82%, var(--accent-live)) !important;
+  background: color-mix(
+    in srgb,
+    var(--surface-selected) 82%,
+    var(--accent-live)
+  ) !important;
   border-color: var(--border-focus) !important;
   color: var(--accent-live) !important;
 }
@@ -179,7 +187,7 @@ select:focus-visible,
 }
 
 .workspace-header-create-button[data-menu-open="true"] {
-  background: rgba(255, 255, 255, 0.10) !important;
+  background: rgba(255, 255, 255, 0.1) !important;
   border-color: var(--border-focus) !important;
   box-shadow: var(--shadow-command) !important;
 }
@@ -210,7 +218,10 @@ select:focus-visible,
 }
 
 .workspace-explorer-footer-tab {
-  transition: background var(--motion-fast), border-color var(--motion-fast), color var(--motion-fast);
+  transition:
+    background var(--motion-fast),
+    border-color var(--motion-fast),
+    color var(--motion-fast);
 }
 
 .workspace-explorer-row[data-selected="false"]:hover,
@@ -330,6 +341,44 @@ select:focus-visible,
   background: var(--surface-hover) !important;
   border-color: var(--border-strong) !important;
   color: var(--text-primary) !important;
+}
+
+.magic-canvas-button:disabled:hover,
+.magic-canvas-button[disabled]:hover {
+  background: transparent !important;
+  border-color: transparent !important;
+  color: var(--text-secondary) !important;
+}
+
+/* Floating map surfaces read as glass: the grid and node text underneath stay
+   visible instead of being blanked out by an opaque panel. */
+.magic-canvas-glass {
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+}
+
+/* Where backdrop blur is unavailable, fall back to a more opaque panel so the
+   toolbar never turns into unreadable transparent text. */
+@supports not (
+  (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))
+) {
+  .magic-canvas-glass {
+    background: color-mix(
+      in srgb,
+      var(--surface-raised) 94%,
+      transparent
+    ) !important;
+  }
+}
+
+.magic-canvas-toolbar-collapsed:hover {
+  opacity: 1 !important;
+}
+
+.magic-canvas-chip:hover,
+.magic-canvas-chip:focus-visible {
+  background: var(--surface-hover);
+  color: var(--text-primary);
 }
 
 html,
@@ -530,7 +579,10 @@ button:active {
   border-radius: 50%;
   background: var(--terminal-block-marker);
   opacity: 0.52;
-  transition: opacity var(--motion-fast), transform var(--motion-fast), background var(--motion-fast);
+  transition:
+    opacity var(--motion-fast),
+    transform var(--motion-fast),
+    background var(--motion-fast);
 }
 
 .terminal-block-marker--active {
@@ -538,7 +590,8 @@ button:active {
   height: 6px;
   background: var(--terminal-block-marker-active);
   opacity: 1;
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--terminal-block-marker-active) 16%, transparent);
+  box-shadow: 0 0 0 3px
+    color-mix(in srgb, var(--terminal-block-marker-active) 16%, transparent);
 }
 
 .terminal-pane-frame[data-active="true"] .terminal-block-marker--active {
@@ -549,7 +602,13 @@ button:active {
   width: 1px;
   height: 100%;
   min-height: 28px;
-  background: linear-gradient(180deg, color-mix(in srgb, var(--accent-live) 50%, transparent), var(--terminal-block-spine) 24%, var(--terminal-block-spine) 74%, transparent);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--accent-live) 50%, transparent),
+    var(--terminal-block-spine) 24%,
+    var(--terminal-block-spine) 74%,
+    transparent
+  );
   opacity: 0.42;
 }
 
@@ -557,8 +616,10 @@ button:active {
   display: none;
 }
 
-.terminal-block-shell:hover .terminal-block-marker:not(.terminal-block-marker--active),
-.terminal-block-shell:focus-within .terminal-block-marker:not(.terminal-block-marker--active) {
+.terminal-block-shell:hover
+  .terminal-block-marker:not(.terminal-block-marker--active),
+.terminal-block-shell:focus-within
+  .terminal-block-marker:not(.terminal-block-marker--active) {
   opacity: 0.78;
 }
 
@@ -578,7 +639,9 @@ button:active {
 .terminal-container .xterm {
   height: 100%;
   font-variant-ligatures: none;
-  font-feature-settings: "liga" 0, "calt" 0;
+  font-feature-settings:
+    "liga" 0,
+    "calt" 0;
 }
 
 .terminal-container .xterm-viewport {
@@ -621,8 +684,10 @@ button:active {
   color: var(--text-primary) !important;
 }
 
-.terminal-pane-frame[data-active="true"][data-status="running"] .terminal-pane-status-dot,
-.terminal-pane-frame[data-active="true"][data-status="reconnected"] .terminal-pane-status-dot {
+.terminal-pane-frame[data-active="true"][data-status="running"]
+  .terminal-pane-status-dot,
+.terminal-pane-frame[data-active="true"][data-status="reconnected"]
+  .terminal-pane-status-dot {
   /* Static glow ring (the keyframe no longer animates box-shadow). */
   box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 10%, transparent);
   animation: none;
@@ -635,7 +700,11 @@ button:active {
 .terminal-pane-action--danger:hover,
 .terminal-pane-action--danger:focus-visible {
   background: var(--danger-muted) !important;
-  border-color: color-mix(in srgb, var(--accent-danger) 38%, var(--border-subtle)) !important;
+  border-color: color-mix(
+    in srgb,
+    var(--accent-danger) 38%,
+    var(--border-subtle)
+  ) !important;
   color: var(--accent-danger) !important;
 }
 
@@ -672,7 +741,7 @@ button:active {
   overflow: hidden;
   position: relative;
   background:
-    linear-gradient(180deg, rgba(255,255,255,0.025), transparent 54px),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent 54px),
     linear-gradient(180deg, #202426, #171b1d 58%);
   padding: 0;
 }
