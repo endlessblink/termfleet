@@ -139,6 +139,8 @@ function pathSource(input: {
 
 export function buildTerminalHeaderState(input: {
   paneId: string;
+  /** The pane's own name; names the pane when no folder is known. */
+  paneName?: string | null;
   terminalId: string;
   runId?: string;
   project?: Pick<Group, "id" | "name" | "projectRoot"> | null;
@@ -221,6 +223,7 @@ export function buildTerminalHeaderState(input: {
     });
   const view = buildShellTerminalHeaderViewModel({
     project: input.project,
+    paneName: input.paneName,
     liveCwd: effectiveLiveCwd,
     liveGitRoot: input.liveGitRoot,
     terminalStatus: input.terminalStatus,

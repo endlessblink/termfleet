@@ -694,6 +694,10 @@ function qualifyAmbiguousLabel(value: string, workspace: string) {
 
 export function buildShellTerminalHeaderViewModel(input: {
   project?: Pick<Group, "id" | "name" | "projectRoot"> | null;
+  // The pane's own name (tab or map-node title). Used ONLY when no folder,
+  // project, or git root is known, so a pane still reads as itself instead of
+  // the generic word "Workspace".
+  paneName?: string | null;
   liveCwd?: string | null;
   liveGitRoot?: string | null;
   terminalStatus?: TerminalRuntimeStatus | null;
@@ -719,6 +723,7 @@ export function buildShellTerminalHeaderViewModel(input: {
     input.liveCwd ?? input.project?.projectRoot ?? "workspace path unknown";
   const workspace = workspaceLabelFor({
     project: input.project,
+    tabTitle: input.paneName,
     cwd: input.liveCwd,
     gitRoot: input.liveGitRoot,
   });

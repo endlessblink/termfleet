@@ -251,6 +251,7 @@ function boundTaskLineup(task?: MasterPlanTask): TaskLineupItem[] | undefined {
 
 function sidebarHeaderForTerminal(input: {
   tab: Tab;
+  nodeTitle?: string | null;
   terminal?: TerminalState;
   project?: Group | null;
   liveCwd?: string | null;
@@ -260,6 +261,7 @@ function sidebarHeaderForTerminal(input: {
 }): TerminalHeaderState {
   const { tab, terminal, project, liveCwd, liveGitRoot, spawnCwd, boundTask } =
     input;
+  const paneName = input.nodeTitle?.trim() || tab.title?.trim() || null;
   const workstream = tab.workstream;
   const taskLineup =
     boundTaskLineup(boundTask) ??
@@ -284,6 +286,7 @@ function sidebarHeaderForTerminal(input: {
     "";
 
   return buildTerminalHeaderState({
+    paneName,
     paneId: terminal?.paneId ?? tab.activePaneId,
     terminalId: terminal?.id ?? tab.activePaneId,
     runId:
@@ -7455,6 +7458,7 @@ function MapPanel({
                 linkedTab && node.type !== "preview"
                   ? sidebarHeaderForTerminal({
                       tab: linkedTab,
+                      nodeTitle: node.title,
                       terminal: liveTerminal,
                       project: linkedProject,
                       liveCwd: liveNodeCwd,

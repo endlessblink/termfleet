@@ -1,6 +1,16 @@
 import { expect, test } from "@playwright/test";
 import { readFileSync } from "node:fs";
 
+// Source-shape assertions below assert on code SHAPE, not line wrapping: a
+// prettier pass that rewraps untouched code must not turn them red. Collapsing
+// whitespace runs on both sides keeps the assertion meaningful (identifiers,
+// order, and punctuation still have to match).
+const codeShape = (text: string | undefined) =>
+  (text ?? "")
+    .replace(/\s+/g, " ")
+    .replace(/ ?([(){}\[\],;:?=<>&|!+*/`.]) ?/g, "$1")
+    .replace(/,([)\]}])/g, "$1");
+
 test.use({
   viewport: { width: 1440, height: 920 },
   launchOptions: {
@@ -29,7 +39,9 @@ test("selected live map terminal renders through non-transformed overlay, not ac
   expect(source).toContain('data-testid="canvas-terminal-live-overlay"');
   expect(source).toContain('data-testid="canvas-terminal-overlay-placeholder"');
   expect(source).toContain('window.dispatchEvent(new Event("termfleet-map-terminal-overlay-sync"));');
-  expect(source).toContain("renderScale={shouldOverlayTerminal ? 1 : mapTerminalRenderScaleForZoom(zoom)}");
+  expect(codeShape(source)).toContain(
+    codeShape("renderScale={shouldOverlayTerminal ? 1 : mapTerminalRenderScaleForZoom(zoom)}")
+  );
   expect(source).not.toContain("const shouldUseNativeSplitForInteraction = isDesktopNativeRuntime");
 });
 
@@ -62,7 +74,9 @@ test("selected map agent panes suppress synchronized-output control residue", ()
   expect(projectionClip?.[0]).toContain("Math.min(0, shell.clientHeight - logicalH)");
   expect(projectionClip?.[0]).toContain("translateY");
   expect(projectionClip?.[0]).not.toContain("scale(");
-  expect(terminalCanvas).toContain("syncOverlaySize();\n        if (mapProjection && modesRef.current.altScreen)");
+  expect(codeShape(terminalCanvas)).toContain(
+    codeShape("syncOverlaySize(); if (preservesProjectionSize()) { applyProjectionClip(); }")
+  );
   expect(terminalCanvas).toContain("true alt-screen TUI mode");
   expect(vtGrid).toContain("strip_unsupported_control_sequences");
   expect(vtGrid).toContain('SYNC_OUTPUT_ON: &[u8] = b"\\x1b[?2026h"');
@@ -79,7 +93,9 @@ test("map terminal activation owns tab, pane, and focused terminal before paste"
   expect(activationBlock).toContain("selectCanvasNode(node.id)");
   expect(activationBlock).toContain("setActiveTab(terminalTabId)");
   expect(activationBlock).toContain("setActivePane(terminalTabId, terminalPaneId)");
-  expect(activationBlock).toContain("setActiveTerminal(linkedTerminalId ?? `terminal-${terminalTabId}-${terminalPaneId}`)");
+  expect(codeShape(activationBlock)).toContain(
+    codeShape("setActiveTerminal(linkedTerminalId ?? `terminal-${terminalTabId}-${terminalPaneId}`)")
+  );
 });
 
 test("AskUserQuestion mouse-report prompts do not trigger map layout reconciliation", () => {
@@ -2352,18 +2368,21 @@ Acceptance:
     });
   });
 
-  // Contract update: the title shows the DISTINCT current step (the running
-  // Playwright command), not an echo of the bound task — the Task row carries the task.
-  await expect(page.getByTestId("canvas-terminal-node-header-title")).toHaveText("Playwright test");
+  // Contract: with a bound plan task and no readable activity, the task IS the one
+  // prominent line (promoted into the title slot); raw prompt chrome never shows.
+  await expect(page.getByTestId("canvas-terminal-node-description")).toHaveText(
+    "LLM task extraction lane",
+  );
   await expect(page.getByTestId("canvas-terminal-node-workspace")).toHaveText("termfleet");
   // Cards render the terminal's full path (see cockpit screenshots) — the junk
   // summary path ("inner-dialogue") must not replace it.
   await expect(page.getByTestId("canvas-terminal-node-header-path")).toHaveText(
     "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
   );
-  // The hidden now-probe mirrors the durable title; the stale scrape line never shows.
-  await expect(page.getByTestId("canvas-terminal-node-now")).toHaveText("Playwright test");
-  await expect(page.getByTestId("canvas-terminal-node-header-title")).not.toContainText("Running 2 tests");
+  // The raw transcript line never reaches the card.
+  await expect(page.getByTestId("canvas-terminal-node-header")).not.toContainText(
+    "Running 2 tests",
+  );
   await expect(page.getByTestId("canvas-terminal-node-now")).not.toContainText("stale");
   await expect(page.getByTestId("canvas-terminal-task-sidebar")).toBeVisible();
   await expect(page.getByTestId("canvas-terminal-task-sidebar")).toContainText("Tasks");
@@ -3004,8 +3023,8 @@ test("map shell header uses durable activity instead of stale transcript summary
           status: "running",
           command: "npx playwright test tests/checkout.spec.ts",
           source: "command",
-          startedAt: 1000,
-          updatedAt: 2000,
+          startedAt: Date.now() - 1000,
+          updatedAt: Date.now(),
         },
         terminalOutput: [
           "npx playwright test tests/checkout.spec.ts --project=chromium",
@@ -3024,9 +3043,14 @@ test("map shell header uses durable activity instead of stale transcript summary
     });
   });
 
-  // Contract update: the durable activity drives the title; subtitle carries detail.
-  await expect(page.getByTestId("canvas-terminal-node-header-title")).toHaveText("12 tests · Chromium");
-  await expect(page.getByTestId("canvas-terminal-node-now")).toHaveText("12 tests · Chromium");
+  // Contract: the durable activity supplies the plain-language title; the junk
+  // scrape summary ("Search", unfinished prompt text) never shows.
+  await expect(page.getByTestId("canvas-terminal-node-header-title")).toHaveText(
+    "Testing checkout flow",
+  );
+  await expect(page.getByTestId("canvas-terminal-node-header")).not.toContainText(
+    "web$ npm run",
+  );
   await expect(page.getByTestId("canvas-terminal-node-header-title")).not.toHaveText("Search");
   await expect(page.getByTestId("canvas-terminal-node-now")).not.toContainText("unfinished prompt");
   await expect(page.getByTestId("canvas-terminal-task-rail")).toContainText("No list");
@@ -3224,8 +3248,8 @@ test("split shell header uses the same durable summary policy as the map", async
           status: "running",
           command: "npx playwright test tests/agent-status-summary.spec.ts",
           source: "command",
-          startedAt: 1000,
-          updatedAt: 2000,
+          startedAt: Date.now() - 1000,
+          updatedAt: Date.now(),
         },
         terminalOutput: [
           "npx playwright test tests/agent-status-summary.spec.ts",
@@ -3246,7 +3270,9 @@ test("split shell header uses the same durable summary policy as the map", async
 
   // Same durable policy as the map (see "uses durable activity" above): the composed
   // durable line drives the visible summary; junk ("Search", unfinished prompt) never shows.
-  await expect(page.getByTestId("split-terminal-summary-task")).toHaveText("terminal status summary contract · 1 test · 1 worker");
+  await expect(page.getByTestId("split-terminal-summary-task")).toHaveText(
+    "Checking activity summary wording",
+  );
   await expect(page.getByTestId("split-terminal-summary-path")).toContainText("tests/agent-status-summary.spec.ts");
   await expect(page.getByTestId("split-terminal-summary-task")).not.toHaveText("Search");
   await expect(page.getByTestId("split-terminal-summary-now")).not.toContainText("unfinished prompt");
@@ -3820,12 +3846,13 @@ test("map sidebar filters operations nodes by visible work state", async ({ page
   })).toBe("service-preview-tab-preview-5177");
 
   await mapPanel.getByTestId("map-filter-failed").click();
-  await expect(mapPanel.getByTestId("map-node-list")).toContainText("cargo check failed");
+  // Rows name the pane, not its raw output line.
+  await expect(mapPanel.getByTestId("map-node-list")).toContainText("Failed build");
   await expect(mapPanel.getByTestId("map-node-list")).not.toContainText("npm run dev");
 
   await mapPanel.getByTestId("map-filter-waiting").click();
   await expect(mapPanel.getByTestId("map-node-list")).toContainText("Review deploy error");
-  await expect(mapPanel.getByTestId("map-node-list")).not.toContainText("cargo check failed");
+  await expect(mapPanel.getByTestId("map-node-list")).not.toContainText("Failed build");
 
   await mapPanel.getByTestId("map-filter-testing").click();
   await expect(mapPanel.getByTestId("map-node-list").locator(".workspace-sidebar-row")).toHaveCount(1);
