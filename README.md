@@ -29,9 +29,21 @@ nodes, recovery state, and agent runs stay visible as one workspace.
 - Not a generic terminal theme project.
 - Not cross-platform yet. Linux is the first release gate.
 
+## Download
+
+Linux preview builds (unsigned) are published on the
+[Releases page](https://github.com/endlessblink/termfleet/releases/latest):
+an `.AppImage` that runs as-is, and a `.deb` for Debian/Ubuntu. Each release
+ships `SHA256SUMS.txt` — verify a download with
+`sha256sum -c SHA256SUMS.txt --ignore-missing`.
+
+```bash
+chmod +x TermFleet_*.AppImage && ./TermFleet_*.AppImage   # or: sudo dpkg -i TermFleet_*.deb
+```
+
 ## Quick Start
 
-Prerequisites:
+Building from source instead. Prerequisites:
 
 - Linux desktop with WebKitGTK/Tauri runtime dependencies.
 - Node.js 20+ and npm.
