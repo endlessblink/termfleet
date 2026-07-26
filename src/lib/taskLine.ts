@@ -1,5 +1,8 @@
 import type { TranscriptFacts } from "./sessionTranscript";
-import { qualityCheckAuthoritativeTaskLabel } from "./terminalHeaderQuality";
+import {
+  qualityCheckAuthoritativeTaskLabel,
+  stripComposerChrome,
+} from "./terminalHeaderQuality";
 
 // TC-060. One ladder, one owner. Every rung is either the agent's own words, the
 // operator's own words, or a fixed template over a verified fact — nothing here
@@ -141,7 +144,10 @@ export function resolvePaneTaskLine(input: TaskLineInput): PaneTaskLine {
 
   // The operator's floor rule: when no explicit goal exists, their own request is
   // the plan. Ranked above the step because it is the "why", not the "how".
-  const request = consider(facts.operatorRequest);
+  // Composer chrome from a pasted attachment ("[Image #1] got stuck") is dropped first:
+  // the placeholder belongs to the input box, the words after it are the operator's.
+  // That is normalisation of their own text, not the rewriting R2 forbids.
+  const request = consider(stripComposerChrome(facts.operatorRequest));
   if (request) {
     return {
       text: request,

@@ -440,6 +440,11 @@ export function qualityCheckAuthoritativeTaskLabel(
   if (/^(?:you|your|you're|you are)\b/i.test(text)) {
     return { ok: false, reason: "prompt-fragment" };
   }
+  // Prompt-box chrome for an attachment the operator pasted. "[Image #5]" stood as a
+  // whole pane's Task row on 2026-07-25 — it is the composer's placeholder, not a task.
+  if (/^\[(?:Image|Screenshot|File|Pasted)[^\]]*\]$/i.test(text)) {
+    return { ok: false, reason: "prompt-fragment" };
+  }
   // A slash command and a numbered scrollback line are junk on ANY path — a real
   // task list never carries them, and this gate is where the sidecar ask lands.
   if (looksLikeSlashCommand(text)) return { ok: false, reason: "command-like" };
@@ -518,9 +523,33 @@ const ACTIVITY_IN_PROGRESS = /^[A-Z][a-z]+ing\b/;
 const ACTIVITY_OUTCOME =
   /^(?:[A-Z][a-z]+(?:ed|d)\b|Ran|Built|Wrote|Made|Sent|Found|Set|Kept|Left|Got|Took|Put|Cut|Split|Read|Rebuilt|Undid|Redid|Began|Broke|Chose|Drew|Grew|Held|Knew|Lost|Met|Paid|Said|Saw|Sold|Spent|Told|Won)\b/;
 
+// Words that END in "ing" or "ed" without being verbs. Without this, "Everything is
+// reconnected: the new bot token is saved…" passes as a gerund because `[a-z]+ing`
+// matches "verything" — a report sails through the activity contract on a spelling
+// coincidence. Found by reading the live table after the contract went in.
+const NOT_A_VERB_DESPITE_SUFFIX =
+  /^(?:Everything|Anything|Nothing|Something|Morning|Evening|Ceiling|Building blocks|During|Nothing|Thing|Things|King|Ring|String|Spring|Wing|Bring|Sing|Swing|Sterling|Willing|Missing|Pending|Ongoing|Interesting|Amazing|Indeed|Embed|Speed|Need|Needs|Feed|Seed|Deed|Red|Bed|Bad|Sad|Old|Cold|Good|Word|Weird|Hundred|Ahead|Instead|Failed builds)\b/;
+
+/**
+ * Drop composer chrome from the operator's own words.
+ *
+ * A pasted attachment leaves a placeholder in the prompt text — "[Image #1] got stuck",
+ * "[Image #3] after saving the path" — and that reached seven live Task rows on
+ * 2026-07-25. The placeholder is the composer's, not the operator's; what they actually
+ * said is the rest of the line and must be kept. Returns "" when nothing survives, so
+ * the caller falls through the ladder instead of showing chrome.
+ */
+export function stripComposerChrome(value?: string | null) {
+  return clean(value)
+    .replace(/\[(?:Image|Screenshot|File|Pasted)\s*#?\d*[^\]]*\]/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export function readsAsActivity(value?: string | null) {
   const text = clean(value);
   if (!text) return false;
+  if (NOT_A_VERB_DESPITE_SUFFIX.test(text)) return false;
   return ACTIVITY_IN_PROGRESS.test(text) || ACTIVITY_OUTCOME.test(text);
 }
 

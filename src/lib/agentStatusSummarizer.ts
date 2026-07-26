@@ -13,6 +13,7 @@ import {
 } from "./agentStatusSidecar";
 import { parseTranscript } from "./sessionTranscript";
 import { resolvePaneTaskLine, type PaneTaskLine } from "./taskLine";
+import { stripComposerChrome } from "./terminalHeaderQuality";
 
 export interface AgentStatusSummarizerResult {
   summary: AgentStatusSummary;
@@ -215,7 +216,9 @@ async function resolveTaskLineFor(
   // live records have a `userTask` — and this resolver never read it, so a pane with
   // no usable todo list fell straight to the folder template.
   const sidecarUserTask =
-    typeof sidecar?.userTask === "string" ? sidecar.userTask.trim() : "";
+    typeof sidecar?.userTask === "string"
+      ? stripComposerChrome(sidecar.userTask)
+      : "";
   const effectiveFacts =
     sidecarUserTask && !facts?.operatorRequest
       ? { ...(facts ?? {}), operatorRequest: sidecarUserTask }
