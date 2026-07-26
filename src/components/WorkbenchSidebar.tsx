@@ -72,7 +72,6 @@ import {
   buildTerminalHeaderState,
   type TerminalHeaderState,
 } from "../lib/terminalHeaderState";
-import { activityAddsInfo } from "../lib/terminalHeaderViewModel";
 import { badgeForAttention } from "../lib/terminalAttention";
 import { paneBadgeAttention } from "../lib/sessionStatus";
 import { FileExplorer } from "./FileExplorer";
@@ -879,9 +878,9 @@ const styles: Record<string, CSSProperties> = {
   },
   sidebarHeaderLines: {
     display: "grid",
-    gap: 7,
+    gap: 2,
     minWidth: 0,
-    marginTop: 6,
+    marginTop: 3,
   },
   // A "Task | value" column left the value ~18 readable characters in this narrow
   // card. The label now sits above its value, so the text gets the full width.
@@ -903,16 +902,17 @@ const styles: Record<string, CSSProperties> = {
   // re-flowed this list and everything below the changed row jumped (live report
   // 2026-07-26). Height is now the same whatever the text says: 2 lines for the task,
   // 1 for the activity. The full text stays in each row's tooltip.
+  // One line, always full. A fixed box that can never be half empty keeps every
+  // row the same height without reserving blank space; the full task text stays
+  // in the row's tooltip and on the card itself.
   sidebarHeaderTask: {
     minWidth: 0,
-    display: "-webkit-box",
-    WebkitLineClamp: 2,
-    WebkitBoxOrient: "vertical",
     overflow: "hidden",
-    overflowWrap: "anywhere",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
     fontSize: 12,
-    lineHeight: 1.35,
-    height: "2.7em",
+    lineHeight: 1.4,
+    height: "1.4em",
     color: "var(--text-secondary)",
   },
   sidebarHeaderNow: {
@@ -7469,9 +7469,6 @@ function MapPanel({
                 ? header.sources.goal === "missing" ||
                   header.sources.goal === "none"
                 : false;
-              const activityMissing = header
-                ? header.sources.activity === "missing"
-                : false;
               const agentProvider =
                 linkedTab?.workstream?.provider ??
                 liveTerminal?.agentProvider ??
@@ -7632,67 +7629,17 @@ function MapPanel({
                       {header && (
                         <div style={styles.sidebarHeaderLines}>
                           <div
-                            style={styles.sidebarHeaderLine}
+                            style={{
+                              ...styles.sidebarHeaderTask,
+                              ...(taskMissing
+                                ? styles.sidebarHeaderWarning
+                                : null),
+                            }}
                             data-testid="sidebar-map-node-task-row"
                             title={`Task: ${header.goalLabel}`}
                           >
-                            <span style={styles.sidebarHeaderLabel}>Task</span>
-                            <span
-                              style={{
-                                ...styles.sidebarHeaderTask,
-                                ...(taskMissing
-                                  ? styles.sidebarHeaderWarning
-                                  : null),
-                              }}
-                            >
-                              {header.goalLabel}
-                            </span>
+                            {header.goalLabel}
                           </div>
-                          {/* The activity row keeps its space even when it says nothing.
-                              It used to be added and removed as the text changed, which
-                              re-flowed the whole list and jumped every row below it
-                              (live report 2026-07-26). Hidden rather than absent: the
-                              row is still invisible when it would only repeat the task,
-                              so nothing reads as filler and the height never moves. */}
-                          {(() => {
-                            const showsActivity = activityAddsInfo(
-                              header.goalLabel,
-                              header.currentActivity,
-                              paneBadgeAttention(liveTerminal),
-                            );
-                            return (
-                              <div
-                                style={{
-                                  ...styles.sidebarHeaderLine,
-                                  ...(showsActivity
-                                    ? null
-                                    : { visibility: "hidden" as const }),
-                                }}
-                                data-testid="sidebar-map-node-now-row"
-                                data-reserved={showsActivity ? "false" : "true"}
-                                aria-hidden={showsActivity ? undefined : true}
-                                title={
-                                  showsActivity
-                                    ? `Now Active: ${header.currentActivity}`
-                                    : undefined
-                                }
-                              >
-                                <span style={styles.sidebarHeaderLabel}>
-                                  Now
-                                </span>
-                                <span
-                                  style={{
-                                    ...styles.sidebarHeaderNow,
-                                    ...(activityMissing
-                                      ? styles.sidebarHeaderWarning
-                                      : null),
-                                  }}
-                                >
-                                  {showsActivity ? header.currentActivity : " "}
-                                </span>
-                              </div>
-                            );
-                          })()}
                         </div>
                       )}
                       {node.taskBinding && (
