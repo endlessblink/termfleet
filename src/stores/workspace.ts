@@ -458,6 +458,10 @@ function persistedTerminalSnapshot(terminal: TerminalState): TerminalState {
     previewUrl: terminal.previewUrl,
     durableActivity: terminal.durableActivity,
     taskLineup: terminal.taskLineup,
+    // TC-060: the last known Task line is persisted so the FIRST paint after a relaunch
+    // states what the pane was about. Without it every card started with no line and the
+    // header's own factless fallback printed "No task declared" until a poll landed.
+    taskLine: terminal.taskLine,
     purpose: terminal.purpose,
     mainUserAsk: persistedMainUserAsk(terminal.mainUserAsk),
     taskSidebarCollapsed: terminal.taskSidebarCollapsed,

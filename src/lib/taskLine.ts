@@ -14,10 +14,12 @@ export type TaskLineSource =
   | "declared"
   | "session-title"
   | "operator-request"
+  | "pending-question"
   | "current-step"
   | "agent-said"
   | "current-tool"
   | "completed-task"
+  | "recent-activity"
   | "running-command"
   | "shell-state";
 
@@ -46,6 +48,10 @@ export interface TaskLineInput {
   /** The most recent COMPLETED declared step. For an agent that finished its work
    *  and went idle, "what it just did" is a far better answer than the folder. */
   lastCompletedTask?: string | null;
+  /** The agent's own most recent plain-language note about its work (the status
+   *  record's narration / newest activity entry). It is written by the agent for a
+   *  human, so it is a far better last resort than saying nothing was declared. */
+  recentActivity?: string | null;
   runningCommand?: string | null;
   folder?: string | null;
   branch?: string | null;
@@ -99,6 +105,56 @@ function templateTool(tool: { name: string; arg?: string }): string {
   const verb = TOOL_VERBS[tool.name] ?? `Using ${tool.name}`;
   if (tool.arg) return `${verb} ${tool.arg}`;
   return VERB_WITHOUT_OBJECT[verb] ?? verb;
+}
+
+/**
+ * Which of two lines a pane should keep.
+ *
+ * `shell-state` is the rung that means "this pane has nothing to say", so it must never
+ * replace a line that named the work — that overwrite is how the old folder template
+ * used to stick. Every writer (the central poll loop, the per-pane poll, the header)
+ * goes through this, because a rule that lives in only one of them leaks.
+ */
+export function preferPaneTaskLine(
+  current: PaneTaskLine | null | undefined,
+  next: PaneTaskLine | null | undefined,
+): PaneTaskLine | undefined {
+  if (!next) return current ?? undefined;
+  if (!current) return next;
+  if (next.source === "shell-state" && current.source !== "shell-state")
+    return current;
+  return next;
+}
+
+/**
+ * "Waiting on your answer: <the agent's question>", or the short subject when the
+ * question itself is too long to read in one row. Both forms go through the same
+ * plain-language gate as every other rung.
+ */
+function questionLine(
+  pending: { question?: string; header?: string } | undefined,
+  consider: (candidate: string | null | undefined) => string | null,
+): string | null {
+  if (!pending) return null;
+  const asked = pending.question?.trim().replace(/\?+$/, "").trim();
+  if (asked) {
+    const full = consider(`Waiting on your answer: ${lowerFirst(asked)}`);
+    if (full) return full;
+  }
+  const subject = pending.header?.trim().replace(/\?+$/, "").trim();
+  if (subject)
+    return consider(`Waiting on your answer about ${lowerFirst(subject)}`);
+  return null;
+}
+
+// Only the first character changes case, and only when the word is not an acronym or a
+// proper name the agent capitalised on purpose.
+function lowerFirst(text: string): string {
+  if (/^[A-Z]{2,}/.test(text)) return text;
+  const [first = "", ...rest] = text;
+  return /^[A-Z]$/.test(first) && !/^[A-Z]/.test(rest[0] ?? "")
+    ? `${first.toLowerCase()}${rest.join("")}`
+    : text;
 }
 
 export function resolvePaneTaskLine(input: TaskLineInput): PaneTaskLine {
@@ -181,6 +237,21 @@ export function resolvePaneTaskLine(input: TaskLineInput): PaneTaskLine {
     };
   }
 
+  // A pane that has stopped to ask the operator something: the question IS the
+  // current state of the work, and it is the operator's own decision that is pending.
+  // Templated (never echoed raw) because a bare question fails the plain-language gate
+  // on its trailing "?" — the words after the prefix are still the agent's own.
+  const question = questionLine(facts.pendingQuestion, consider);
+  if (question) {
+    return {
+      text: question,
+      source: "pending-question",
+      capturedAt: now,
+      expiresAt: null,
+      rejected,
+    };
+  }
+
   // The current in-progress step — a STEP toward the goal, used as the line only
   // when no overarching plan above was available.
   if (!turnEnded) {
@@ -227,6 +298,19 @@ export function resolvePaneTaskLine(input: TaskLineInput): PaneTaskLine {
     return {
       text: done,
       source: "completed-task",
+      capturedAt: now,
+      expiresAt: null,
+      rejected,
+    };
+  }
+
+  // The agent's own newest note about what it is doing. Ranks under everything
+  // declared, but above admitting nothing is known — the words are the agent's.
+  const recent = consider(input.recentActivity);
+  if (recent) {
+    return {
+      text: recent,
+      source: "recent-activity",
       capturedAt: now,
       expiresAt: null,
       rejected,

@@ -9,6 +9,9 @@ function statusPollProjectionFingerprint(terminal: TerminalState) {
     statusSummaryError: terminal.statusSummaryError ?? null,
     mainUserAsk: terminal.mainUserAsk ?? null,
     taskLineup: terminal.taskLineup ?? null,
+    // Without this the loop computed a better Task line and then decided nothing had
+    // changed, so the line never reached the store.
+    taskLine: terminal.taskLine ?? null,
   });
 }
 

@@ -21,6 +21,11 @@ export interface CockpitSnapshotEntry {
   // The exact title/now strings the header is displaying right now.
   task?: string;
   taskSource?: string;
+  // WHICH RUNG of the task-line ladder won, and what it turned down. Neither was ever
+  // recorded anywhere, so "the row says No task declared" could not be told apart from
+  // "the row's text was rejected" without re-deriving the whole ladder by hand.
+  taskLineSource?: string;
+  taskLineRejected?: string;
   title: string;
   titleSource?: string;
   now: string;

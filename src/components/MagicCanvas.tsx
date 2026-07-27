@@ -3188,6 +3188,7 @@ function CanvasNodeViewImpl({
           },
         ]
       : (workstream?.taskLineup ?? linkedTerminal?.taskLineup);
+  const terminalHeaderTaskLine = linkedTerminal?.taskLine ?? workstream?.taskLine;
   const terminalHeader = buildTerminalHeaderState({
     paneId: terminalPaneId,
     terminalId: linkedTerminalId ?? terminalPaneId,
@@ -3202,7 +3203,9 @@ function CanvasNodeViewImpl({
       ? linkedTerminal?.mainUserAsk
       : undefined,
     statusSummary: terminalStatusSummary,
-    taskLine: linkedTerminal?.taskLine,
+    // Agent-kind tabs store the resolved line on the WORKSTREAM, shell tabs on the
+    // terminal. Reading only one of the two is how a whole class of panes lost it.
+    taskLine: terminalHeaderTaskLine,
     summary: terminalDisplaySummaryBase,
     neutralTitle: terminalActivityLive ? null : terminalNeutralTitle,
     contextPurposeTitle: terminalPurpose?.title,
@@ -4173,6 +4176,8 @@ function CanvasNodeViewImpl({
                     statusSummaryTask: terminalStatusSummary?.task,
                     statusSummaryNow: terminalStatusSummary?.now,
                     statusSummaryPath: terminalStatusSummary?.path,
+                    taskLineSource: terminalHeaderTaskLine?.source,
+                    taskLineRejected: terminalHeaderTaskLine?.rejected,
                     taskLineup: canonicalTerminalTaskLineup.map((item) => ({
                       content: item.content,
                       status: item.status,

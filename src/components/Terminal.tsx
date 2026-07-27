@@ -58,6 +58,7 @@ import {
   terminalOutputClosesTaskLineup,
 } from "../lib/taskLineup";
 import { parseTerminalChecklist } from "../lib/terminalChecklist";
+import { preferPaneTaskLine } from "../lib/taskLine";
 import type {
   AgentProvider,
   TaskLineupItem,
@@ -1055,15 +1056,10 @@ export function TerminalComponent({
                     // TC-060: the always-true line for this pane. A fresh line that is
                     // only the folder template must NOT replace a real one we already
                     // have — that overwrite is what made the template stick (2026-07-25).
-                    taskLine:
-                      result.taskLine &&
-                      !(
-                        result.taskLine.source === "shell-state" &&
-                        candidate.taskLine &&
-                        candidate.taskLine.source !== "shell-state"
-                      )
-                        ? result.taskLine
-                        : candidate.taskLine,
+                    taskLine: preferPaneTaskLine(
+                      candidate.taskLine,
+                      result.taskLine,
+                    ),
                     agentProvider: stableAgentProvider(
                       candidate.agentProvider,
                       result.summary.provider,

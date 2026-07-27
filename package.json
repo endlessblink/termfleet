@@ -84,7 +84,8 @@
     "verify:zellij-shortcuts": "scripts/verify-zellij-shortcuts.sh",
     "cockpit:snapshot": "node scripts/cockpit-snapshot.mjs",
     "gate": "node scripts/termfleet-gate.mjs",
-    "verify:task-line": "npx playwright test tests/task-line-sweep.spec.ts tests/task-line.spec.ts tests/session-transcript.spec.ts tests/task-identity-ladder.spec.ts --reporter=line"
+    "verify:task-line": "npx playwright test tests/task-line-sweep.spec.ts tests/task-line.spec.ts tests/task-line-plumbing.spec.ts tests/task-line-live-records.spec.ts tests/task-line-coverage.spec.ts tests/session-transcript.spec.ts tests/task-identity-ladder.spec.ts --reporter=line",
+    "cockpit:why": "npx playwright test tests/task-line-coverage.spec.ts tests/task-line-live-records.spec.ts --reporter=line"
   },
   "dependencies": {
     "@excalidraw/excalidraw": "^0.18.1",

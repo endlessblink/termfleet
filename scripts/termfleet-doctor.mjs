@@ -475,6 +475,60 @@ try {
   probeFor(path.join(os.homedir(), ".codex", "sessions"), 4, ['"task_complete"', '"agent_message"', '"user_message"', '"function_call"'], "Session record (Codex)");
 }
 
+// How many panes can the Task row actually speak for? A record with a conversation id
+// whose session file is still on disk is a pane the ladder can describe; one without is
+// a pane that will honestly say nothing. Counting it here is what turns "the tasks are
+// broken again" into a number. The rungs themselves are never re-implemented here —
+// `npm run cockpit:why` renders the real resolver over these same records.
+{
+  const findRecord = (root, depth, matches) => {
+    let entries;
+    try { entries = readdirSync(root, { withFileTypes: true }); } catch { return null; }
+    const dirs = [];
+    for (const entry of entries) {
+      if (entry.isDirectory()) { dirs.push(path.join(root, entry.name)); continue; }
+      if (matches(entry.name)) return path.join(root, entry.name);
+    }
+    if (depth === 0) return null;
+    for (const dir of dirs) {
+      const found = findRecord(dir, depth - 1, matches);
+      if (found) return found;
+    }
+    return null;
+  };
+  let live = 0;
+  let describable = 0;
+  try {
+    for (const name of readdirSync(statusDir())) {
+      if (!name.startsWith("pane-") || !name.endsWith(".json")) continue;
+      let record;
+      try { record = JSON.parse(readFileSync(path.join(statusDir(), name), "utf8")); } catch { continue; }
+      // "Live" = the pane's own record is inside the 30-minute freshness window.
+      if (Date.now() - Number(record.updatedAt ?? 0) > 30 * 60 * 1000) continue;
+      live += 1;
+      const id = typeof record.sessionId === "string" ? record.sessionId : "";
+      if (!id) continue;
+      const found =
+        findRecord(path.join(os.homedir(), ".claude", "projects"), 2, (file) => file === `${id}.jsonl`) ??
+        findRecord(path.join(os.homedir(), ".codex", "sessions"), 4, (file) => file.startsWith("rollout-") && file.endsWith(`-${id}.jsonl`));
+      if (found) describable += 1;
+    }
+  } catch {
+    // No status directory yet — nothing to report.
+  }
+  if (live === 0) {
+    report("info", "Task line coverage", "no active terminals recorded in the last 30 minutes");
+  } else if (describable === live) {
+    report("ok", "Task line coverage", `${describable}/${live} active terminal(s) have a readable session record — the Task row can state what each is about`);
+  } else {
+    report(
+      describable * 2 >= live ? "info" : "warn",
+      "Task line coverage",
+      `${describable}/${live} active terminal(s) have a readable session record; the rest can only show what their own status file carries — run \`npm run cockpit:why\` for the per-pane reason`,
+    );
+  }
+}
+
 let failed = 0;
 let warned = 0;
 for (const { level, name, detail } of results) {

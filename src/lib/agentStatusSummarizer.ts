@@ -33,7 +33,17 @@ export interface AgentStatusSummarizerOptions {
   // Injectable sidecar file reader (tests). `null` disables the local sidecar path;
   // undefined uses the Tauri command when running in the desktop app.
   sidecarReader?: SidecarFileReader | null;
+  // Injectable vendor session-record reader. Same seam as `sidecarReader`, and for the
+  // same reason: without it the transcript rungs of the ladder can only run inside the
+  // desktop app, so a regression there is invisible to every test — which is how panes
+  // whose own session record named the work still rendered "No task declared".
+  transcriptReader?: SessionTranscriptReader | null;
 }
+
+export type SessionTranscriptReader = (
+  provider: "claude" | "codex",
+  sessionId: string,
+) => Promise<string | null>;
 
 function isTauriRuntime() {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -48,6 +58,17 @@ function tauriSidecarReader(): SidecarFileReader | null {
   return async (fileName) => {
     const text = await invoke<string | null>("agent_status_read_sidecar", {
       fileName,
+    });
+    return typeof text === "string" ? text : null;
+  };
+}
+
+function tauriTranscriptReader(): SessionTranscriptReader | null {
+  if (!isTauriRuntime()) return null;
+  return async (provider, sessionId) => {
+    const text = await invoke<string | null>("session_transcript_read", {
+      provider,
+      sessionId,
     });
     return typeof text === "string" ? text : null;
   };
@@ -182,18 +203,16 @@ async function resolveTaskLineFor(
   // plan, last finished step) but may NOT answer "what is it doing right now" — the
   // in-progress step is the one rung that goes stale with the record.
   expired = false,
+  readTranscript: SessionTranscriptReader | null = null,
 ): Promise<PaneTaskLine> {
   let facts = null;
   const sessionId =
     typeof sidecar?.sessionId === "string" ? sidecar.sessionId : "";
-  if (isTauriRuntime() && /^[0-9a-f][0-9a-f-]{7,63}$/i.test(sessionId)) {
+  if (readTranscript && /^[0-9a-f][0-9a-f-]{7,63}$/i.test(sessionId)) {
     // `provider` is absent on most sidecars, so try both records and let the id decide.
     for (const provider of ["claude", "codex"] as const) {
       try {
-        const text = await invoke<string | null>("session_transcript_read", {
-          provider,
-          sessionId,
-        });
+        const text = await readTranscript(provider, sessionId);
         if (typeof text === "string" && text) {
           facts = parseTranscript(provider, text);
           break;
@@ -237,8 +256,62 @@ async function resolveTaskLineFor(
     facts: effectiveFacts,
     lastCompletedTask:
       lastCompleted?.activeForm || lastCompleted?.content || null,
+    // The agent's own newest note. `narration` is the sentence it wrote about the work;
+    // `recent` is the activity trail. Both were only ever used for the activity row, so
+    // a pane with plenty to say still fell to the placeholder.
+    recentActivity: expired
+      ? null
+      : (sidecar?.narration ??
+        [...(sidecar?.recent ?? [])].reverse().find((entry) => entry?.text)
+          ?.text ??
+        null),
     folder: cwd ? (cwd.split("/").filter(Boolean).pop() ?? null) : null,
   });
+}
+
+/**
+ * The pane's task line, resolved from the local records alone.
+ *
+ * `summarizeAgentStatus` only runs for a pane whose runtime is currently on screen
+ * (`isRuntimeVisible` in `Terminal.tsx`), and the line is not part of the persisted
+ * snapshot, so every other pane — most cards on the operations map, and every card in
+ * the first seconds after a relaunch — had no line at all and its header printed the
+ * placeholder. This entry point is the cheap one the workspace-wide sweep uses: local
+ * file reads only, no HTTP, no summary shaping.
+ */
+export async function resolvePaneTaskLineFromDisk(
+  input: AgentStatusSummaryInput,
+  options: Pick<
+    AgentStatusSummarizerOptions,
+    "sidecarReader" | "transcriptReader"
+  > = {},
+): Promise<{ taskLine: PaneTaskLine; sidecarUpdatedAt: number } | null> {
+  const sidecarReader =
+    options.sidecarReader === null
+      ? null
+      : (options.sidecarReader ?? tauriSidecarReader());
+  if (!sidecarReader) return null;
+  const transcriptReader =
+    options.transcriptReader === null
+      ? null
+      : (options.transcriptReader ?? tauriTranscriptReader());
+  const fallback = fallbackAgentStatusSummary(input);
+  let lookup;
+  try {
+    lookup = await readLocalSidecarStatus(input, fallback, sidecarReader);
+  } catch {
+    return null;
+  }
+  const taskLine = await resolveTaskLineFor(
+    input,
+    lookup.sidecar ?? null,
+    lookup.state === "stale",
+    transcriptReader,
+  );
+  return {
+    taskLine,
+    sidecarUpdatedAt: Number(lookup.sidecar?.updatedAt ?? 0),
+  };
 }
 
 export async function summarizeAgentStatus(
@@ -277,10 +350,15 @@ export async function summarizeAgentStatus(
     }
   }
 
+  const transcriptReader =
+    options.transcriptReader === null
+      ? null
+      : (options.transcriptReader ?? tauriTranscriptReader());
   const taskLine = await resolveTaskLineFor(
     input,
     rawSidecar,
     sidecarState === "stale",
+    transcriptReader,
   );
 
   const effectiveFallback = sidecarShapedFallback ?? fallback;
@@ -317,13 +395,18 @@ export async function summarizeAgentStatus(
           tasksFromTodoWrite: true,
         }
       : parsedSummary;
-    return { summary, source: "process", sidecarState };
+    // The line rides on EVERY return path. It used to be attached only to the
+    // no-endpoint branch, so any launch that configured the optional status worker
+    // dropped the ladder line for every pane and the header fell back to its own
+    // factless re-resolve — i.e. "No task declared".
+    return { summary, source: "process", sidecarState, taskLine };
   } catch (error) {
     return {
       summary: effectiveFallback,
       source: sidecarShapedFallback ? "sidecar" : "fallback",
       sidecarState,
       error: shortError(error),
+      taskLine,
     };
   }
 }

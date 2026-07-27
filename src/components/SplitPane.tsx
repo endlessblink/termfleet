@@ -1118,7 +1118,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                 ? paneTerminal?.mainUserAsk
                 : undefined,
               statusSummary: paneTerminal?.statusSummary,
-              taskLine: paneTerminal?.taskLine,
+              taskLine: paneTerminal?.taskLine ?? tab.workstream?.taskLine,
               summary: shellStatusSummaryBase,
               neutralTitle: shellNeutralTitle ?? null,
               contextPurposeTitle: terminalPurpose?.title,

@@ -14,6 +14,12 @@ export interface TranscriptFacts {
    *  boundary — the agent's words, never reworded. */
   agentSaid?: string;
   lastTool?: { name: string; arg?: string };
+  /** A question the agent is putting to the OPERATOR right now, from its own record.
+   *  When an agent stops to ask, that question is the clearest statement of what is
+   *  being decided — and a pane that was blocked on one used to render the placeholder
+   *  while the question sat on screen (operator report 2026-07-27). Only set while the
+   *  ask is the agent's most recent tool call. */
+  pendingQuestion?: { question?: string; header?: string };
   /** Turn boundary observed in the record itself — no hook required. */
   lastTurnEndAt?: number;
   lastActivityAt?: number;
@@ -111,6 +117,30 @@ function eachRecord(
   }
 }
 
+/** The first question of an `AskUserQuestion` call, as the agent wrote it. */
+function firstQuestion(
+  input: unknown,
+): { question?: string; header?: string } | undefined {
+  const parsed =
+    typeof input === "string"
+      ? (() => {
+          try {
+            return JSON.parse(input);
+          } catch {
+            return null;
+          }
+        })()
+      : input;
+  if (!parsed || typeof parsed !== "object") return undefined;
+  const questions = (parsed as { questions?: unknown }).questions;
+  const first = Array.isArray(questions) ? questions[0] : null;
+  if (!first || typeof first !== "object") return undefined;
+  const record = first as { question?: unknown; header?: unknown };
+  const question = cleanText(record.question);
+  const header = cleanText(record.header);
+  return question || header ? { question, header } : undefined;
+}
+
 export function parseClaudeTranscript(text: string): TranscriptFacts {
   const facts: TranscriptFacts = {};
   eachRecord(text, (record) => {
@@ -136,6 +166,12 @@ export function parseClaudeTranscript(text: string): TranscriptFacts {
         const tool = block as { name?: string; input?: unknown };
         if (typeof tool.name === "string") {
           facts.lastTool = { name: tool.name, arg: shortArg(tool.input) };
+          // A question counts as pending only while it is the LAST thing the agent did;
+          // any later tool call means the operator already answered.
+          facts.pendingQuestion =
+            tool.name === "AskUserQuestion"
+              ? (firstQuestion(tool.input) ?? facts.pendingQuestion)
+              : undefined;
         }
       }
     }

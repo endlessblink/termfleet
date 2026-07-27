@@ -9,6 +9,7 @@
 // statusSummary + mainUserAsk. Task lineups keep their existing authoritative
 // writers; a live todo-write list still outranks anything from here.
 import { summarizeAgentStatus } from "./agentStatusSummarizer";
+import { preferPaneTaskLine } from "./taskLine";
 import { taskLineupFromExtractedItems } from "./taskLineup";
 import { mainUserAskFromSummary } from "./terminalMainUserAsk";
 import { selectStatusPollTargets, type StatusPollTarget } from "./statusPollTargets";
@@ -87,9 +88,17 @@ async function pollOnce() {
 
         const expiredProjection = projectStatusPollResult(latestTerminal, result, Date.now());
         if (expiredProjection) {
+          // An expired record still says what the pane is ABOUT, so the line rides along.
+          const expiredLine = preferPaneTaskLine(latestTerminal.taskLine, result.taskLine);
           latest.updateTab(latestTab.id, {
             terminals: latestTab.terminals.map((candidate) =>
-              candidate.id === terminal.id ? { ...candidate, ...expiredProjection } : candidate,
+              candidate.id === terminal.id
+                ? {
+                    ...candidate,
+                    ...expiredProjection,
+                    ...(expiredLine ? { taskLine: expiredLine } : {}),
+                  }
+                : candidate,
             ),
           });
           continue;
@@ -101,6 +110,24 @@ async function pollOnce() {
         // EVERY pane. An untrusted (plain-shell / heuristic) result must not overwrite
         // the richer statusSummary.
         if (!trusted) {
+          // The SUMMARY stays gated (heuristic scrapes produced junk headers), but the
+          // task line is provenance-checked and cannot invent text — and this is the
+          // only loop that visits panes whose runtime is not on screen. Discarding it
+          // here is why most cards on the operations map rendered "No task declared"
+          // over a record whose own session title named the work.
+          const untrustedLine = preferPaneTaskLine(
+            latestTerminal.taskLine,
+            result.taskLine,
+          );
+          if (untrustedLine && untrustedLine !== latestTerminal.taskLine) {
+            latest.updateTab(latestTab.id, {
+              terminals: latestTab.terminals.map((candidate) =>
+                candidate.id === terminal.id
+                  ? { ...candidate, taskLine: untrustedLine }
+                  : candidate,
+              ),
+            });
+          }
           continue;
         }
         // Never clobber a live declared task list with a modeled line.
@@ -124,8 +151,13 @@ async function pollOnce() {
         const taskLineup = result.summary.tasksFromTodoWrite
           ? taskLineupFromExtractedItems(result.summary.tasks, "todo-write", "pending", updatedAt, latestTerminal.activeRunId)
           : undefined;
+        const taskLine = preferPaneTaskLine(
+          latestTerminal.taskLine,
+          result.taskLine,
+        );
         const projection: Partial<TerminalState> = {
           ...(taskLineup && taskLineup.length > 0 ? { taskLineup } : {}),
+          ...(taskLine ? { taskLine } : {}),
           statusSummary: result.summary,
           agentProvider: stableAgentProvider(latestTerminal.agentProvider, result.summary.provider),
           statusSummaryUpdatedAt: updatedAt,
