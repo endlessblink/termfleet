@@ -152,6 +152,56 @@ Do not split them into unrelated cleanup/design buckets; execute them in order s
 the visual system, shell, navigation, terminal surface, map, command layer, run
 state, and visual QA converge on one product direction.
 
+### ~~TC-064~~: ✅ Ready to share — green checks, a real download, real screenshots
+
+**Priority:** P1
+**Status:** ✅ **DONE** (2026-07-26)
+
+Prep for submitting TermFleet to a public showcase. Four things stood between the
+repo and a visitor arriving cold:
+
+- **The checks were red, and not for the reason they looked.** Both CI jobs failed
+  on a prettier pass that rewrapped untouched code: `verify:map-terminals` and
+  `verify:terminal-rendering` compare source text letter-for-letter, and three spec
+  assertions do the same. They now normalize whitespace before matching (block
+  slicing keeps a raw read), so a reformat can no longer redden the gates. Three
+  further failures were genuinely stale: two header tests still asserted the
+  pre-TC-063 contract (durable activity's technical subtitle as the big line), and
+  two durable-activity fixtures stamped a "running" activity at epoch+2s, which the
+  freshness rule correctly discarded while the test asserted it won.
+- **A pane with no known folder called itself "Workspace".** `workspaceLabelFor`
+  already had a name fallback; nothing ever passed one, so a failed build rendered
+  as "Workspace · No task declared". The pane's own name (map-node title, else tab
+  title) is now threaded through the header pipeline and used last.
+- **The README's screenshots were mockups** — illustrated concept art with Mac
+  window buttons on a Linux-first app. `scripts/capture-showcase-shots.sh` now runs
+  the built app on a private Xvfb with a throwaway HOME/XDG (never the operator's
+  desktop, daemon, or terminals), seeds a demo project tree, a neutral prompt, and
+  status sidecars (the same files the hooks write), and captures the real UI. Three
+  of those shots ship: split terminals, operations map, command bar.
+- **Nothing to download.** v0.1.0 was tagged; the release workflow published an
+  unsigned AppImage + .deb + `SHA256SUMS.txt`, and the README leads with them.
+
+Also fixed on the way out: stripping an absolute path out of a task line orphaned
+the clause that pointed at it, so a real pane rendered "In , find every place …"
+(live audit 2026-07-27, pane 1fb04acb). Regression:
+`tests/header-goal-path-stripping.spec.ts`.
+
+**Proof:** CI green on `a00fba3` (build-and-test + playwright); `gh release view
+v0.1.0` lists `TermFleet_0.1.0_amd64.AppImage`, `TermFleet_0.1.0_amd64.deb`,
+`SHA256SUMS.txt`; `npm run verify:map-terminals`, `verify:terminal-rendering`,
+`verify:oss-readiness`, `verify:public-audit`, `verify:readme-recovery`,
+`verify:rust-warnings`, `npm run build`, `cargo test --lib` (142 passed),
+`npm run audit:panes` (516 live panes, zero violations), and the canvas suite all
+pass locally.
+
+**Known red, owned elsewhere:** `header-real-task-title.spec.ts` fails two
+assertions on `main` (purpose extraction fabricating "Reviewing current changes";
+`neutralHeaderTitle("running")` returning "Idle") — pre-existing, from in-flight
+header work, and outside the CI gate list. A failed pane's badge still reads
+"Idle" because runtime failure is not part of the attention vocabulary; new wording
+is an operator decision.
+
 ### TC-061: Full OpenCode support (TUI resize, status, resume, headless)
 
 **Priority:** P1
@@ -6367,8 +6417,8 @@ and each report was answered with one more special case. The missing piece was a
 DEFINITION. `docs/cockpit-label-quality-matrix.md` now states it: four classes and ~20
 named rules, each with the live example it came from and the layer that enforces it.
 
-The operator's own definition anchors the Task row: *"it needs to understand the main
-goal — the task is what is being done in relation to what the user asked for."* So the
+The operator's own definition anchors the Task row: _"it needs to understand the main
+goal — the task is what is being done in relation to what the user asked for."_ So the
 operator's ask outranks the momentary step, the folder-name template is gone (with
 nothing known the row says `No task declared`), and the activity line is a POSITIVE
 contract — an action in progress or a stated outcome — because the previous blacklist of

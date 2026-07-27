@@ -351,6 +351,11 @@ export function compactHeaderGoal(value?: string | null) {
     .replace(/`[^`]+`/g, "")
     .replace(/^(?:(?:and\s+)?also|one more thing)[,.\s]+/i, "")
     .replace(/\/(?:[\w.-]+\/){2,}[\w./-]+/g, "")
+    // Stripping the path can orphan the clause that pointed at it ("In <path>,
+    // find every place ..." -> "In , find every place ..."). Drop the stranded
+    // locator rather than render a half-sentence.
+    .replace(/^\s*(?:in|inside|within|under|at|from|for)\s*,\s*/i, "")
+    .replace(/\s+([,.;:])/g, "$1")
     .replace(/\b(?:FIRST|First)\s+read\b.*$/i, "")
     .replace(/\b(?:follow|obey)\s+EXACTLY\b.*$/i, "")
     .replace(/\s+\d+m\s+\d+s\s*·\s*↓\s*[\d.]+k?\s+tokens?.*$/i, "")
@@ -361,16 +366,20 @@ export function compactHeaderGoal(value?: string | null) {
     .trim()
     .replace(/\b([A-Za-z]+)\s+\1\b/g, "$1")
     .replace(/[-–—,:;.\s]+$/, "");
-  if (!compacted) return text.slice(0, 96).trim();
-  if (compacted.length > 96) return `${compacted.slice(0, 93).trim()}...`;
+  const restored =
+    compacted && compacted !== text
+      ? compacted.charAt(0).toUpperCase() + compacted.slice(1)
+      : compacted;
+  if (!restored) return text.slice(0, 96).trim();
+  if (restored.length > 96) return `${restored.slice(0, 93).trim()}...`;
   // Prompts scraped from the visible grid are cut at the terminal's wrap width,
   // leaving a dangling fragment ("…you found out so I", "…built a tool th").
   // Trim back to the last full word and mark the cut.
-  if (compacted.length >= 55 && !/[.!?)"'`\]]$/.test(compacted)) {
-    const trimmed = compacted.replace(/\s+\S{1,2}(?:\s+\S{1,2})?$/, "");
-    if (trimmed !== compacted && trimmed.length >= 40) return `${trimmed}\u2026`;
+  if (restored.length >= 55 && !/[.!?)"'`\]]$/.test(restored)) {
+    const trimmed = restored.replace(/\s+\S{1,2}(?:\s+\S{1,2})?$/, "");
+    if (trimmed !== restored && trimmed.length >= 40) return `${trimmed}\u2026`;
   }
-  return compacted;
+  return restored;
 }
 
 function comparableText(value: string) {
