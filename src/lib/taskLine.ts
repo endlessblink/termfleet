@@ -97,6 +97,10 @@ const TOOL_TTL_MS = 30_000;
 const UNREADABLE =
   /(?:&&|\|\||[|;]\s|\s--?[a-z][\w-]*|(?:^|\s)\/(?:home|media|usr|etc|var|tmp)\/|```|^#{1,6}\s)/i;
 
+// Harness plumbing that arrives inside the operator's own prompt field: task
+// notifications, tool-result envelopes, command wrappers. None of it is a request.
+const SYSTEM_BLOCK = /^\s*<\/?[a-z][\w-]*[\s>]|<\/?(?:task-notification|system-reminder|tool-use-id|output-file|command-name|command-message)\b/i;
+
 function readsPlainly(text: string): boolean {
   return qualityCheckAuthoritativeTaskLabel(text).ok && !UNREADABLE.test(text);
 }
@@ -167,6 +171,10 @@ export function resolvePaneTaskLine(input: TaskLineInput): PaneTaskLine {
   const consider = (candidate: string | null | undefined): string | null => {
     const value = candidate?.trim();
     if (!value) return null;
+    if (SYSTEM_BLOCK.test(value)) {
+      if (!rejected) rejected = value;
+      return null;
+    }
     if (readsPlainly(value)) return value;
     if (!rejected) rejected = value;
     return null;
@@ -188,6 +196,16 @@ export function resolvePaneTaskLine(input: TaskLineInput): PaneTaskLine {
     if (direct) return direct;
     if (qualityCheckAuthoritativeTaskLabel(value).reason !== "too-long")
       return null;
+    // Fitting is for a long REQUEST, not for a pasted document. The status hooks cap the
+    // recorded ask at 220 characters, so anything at that scale is text the operator
+    // pasted or a harness injected — 30 of the 53 over-length records on this machine
+    // were exactly that (a Hebrew spec sheet, `<task-notification>` blocks, subagent
+    // preambles, JS snippets), and one of them rendered as the Task row on a live pane
+    // (operator report 2026-07-28). Its first 92 characters are never the ask.
+    if (value.length >= 200 || SYSTEM_BLOCK.test(value)) {
+      if (!rejected) rejected = value;
+      return null;
+    }
     const fitted = `${value
       .slice(0, 92)
       .replace(/\s+\S*$/, "")

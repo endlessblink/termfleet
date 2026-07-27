@@ -223,3 +223,37 @@ test("the agent's own newest note beats admitting nothing is known", () => {
   expect(line.source).toBe("recent-activity");
   expect(line.text).toBe("Checking the admin layout width constraints");
 });
+
+test("a pasted document is not the operator's request", () => {
+  // The live pane that rendered a Hebrew spec sheet as its Task row (2026-07-28). The
+  // hooks cap the recorded ask at 220 characters, so text at that scale was pasted.
+  const pasted = "לפני חודש (1) עודכן אין עדיין עוקבים מסוף טסטים לביצוע בדיקות מערכת אישורית זהב פרופיל נמוך: על מנת לבדוק את הממשקים קיים מסוף בדיקות מיוחד התומך בכל סוגי הממשקים. מספר המסוף = TerminalNumber = 1000 משתמש ממשקים";
+  const line = resolvePaneTaskLine({
+    now: 1,
+    facts: { operatorRequest: pasted },
+  });
+  expect(line.source).toBe("shell-state");
+  expect(line.rejected).toBe(pasted);
+});
+
+test("a genuinely long request is still fitted to the row", () => {
+  const line = resolvePaneTaskLine({
+    now: 1,
+    facts: {
+      operatorRequest:
+        "I want to be able to switch codex sessions without being logged out - last time when I did that all services that were running stopped",
+    },
+  });
+  expect(line.source).toBe("operator-request");
+  expect(line.text.endsWith("…")).toBe(true);
+});
+
+test("harness plumbing in the prompt field is never a task", () => {
+  for (const text of [
+    "<task-notification> <task-id>bpaut11e6</task-id> <tool-use-id>toolu_01UJ</tool-use-id> <output-file>/tmp/x.log</output-file>",
+    "<system-reminder> the task tools have not been used recently </system-reminder>",
+  ]) {
+    const line = resolvePaneTaskLine({ now: 1, facts: { operatorRequest: text } });
+    expect(line.source, text.slice(0, 30)).toBe("shell-state");
+  }
+});
