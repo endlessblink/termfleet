@@ -73,6 +73,7 @@ The `run-native-vte-dev.sh` launcher name is kept for muscle memory but now
 builds the default (canvas) target.
 
 Rust-only compile check (non-interactive, no display needed):
+
 ```bash
 cd src-tauri && CARGO_BUILD_JOBS=1 cargo check
 ```
@@ -110,6 +111,7 @@ release evidence into an xterm/map smoke. Prefer these over ad-hoc checks.
 ## Architecture
 
 Frontend (`src/`):
+
 - `components/Terminal.tsx` — terminal pane; routes to `TerminalCanvas` (headless-VT + Canvas2D) on desktop, xterm.js fallback in browser
 - `components/TerminalCanvas.tsx` — production desktop terminal: Canvas2D renderer over the Rust grid (`grid_*` commands), hidden-textarea input
 - `lib/gridSnapshot|gridDiff|gridBuffer|fontAtlas|gridRenderer|keymap|selection|boxGlyph.ts` — the canvas renderer pipeline (decode/apply/draw/input)
@@ -121,9 +123,10 @@ Frontend (`src/`):
 - `lib/types.ts`, `lib/terminalLatencyTrace.ts`
 
 Backend (`src-tauri/src/`):
+
 - `pty.rs` — `PtyManager`, bounded scrollback with monotonic byte offsets
 - `daemon.rs` — user-local Unix-socket daemon: owns detached PTYs, stdio bridge, input streams
-- `commands.rs` — Tauri command surface (daemon_*, pty_*, fs_*) + daemon input worker
+- `commands.rs` — Tauri command surface (daemon*\*, pty*_, fs\__) + daemon input worker
 - `native_terminal.rs` — legacy capability probe; always reports the native pane as unavailable (retired, no GTK/VTE linked)
 
 Key docs in `docs/`: `terminal-cockpit-design-contract.md`, `native-terminal-pane-architecture.md`,
@@ -152,6 +155,14 @@ Key docs in `docs/`: `terminal-cockpit-design-contract.md`, `native-terminal-pan
 - **The canvas terminal is a plain DOM `<canvas>`**, so it pans/zooms with CSS
   transforms — it works identically in split panes and on the zoom/pan map
   (unlike the retired GTK overlay, which couldn't live on the canvas).
+- **Map arranging is card-type-agnostic.** Tidy/align/distribute must move
+  EVERY card on the operations map — terminals, notes, files, drawing boards,
+  localhost previews, and whatever card type ships next. Layout code lives in
+  `src/lib/canvasArrange.ts` and must never branch on a card's kind; membership
+  comes from links (`terminalTabId`, `linkedTerminalPaneId`) first, then from
+  where the card is sitting. `tests/canvas-arrange.spec.ts` reads the
+  `CanvasNodeType` union from source and fails if a new type is left out, so a
+  new map feature is covered by default rather than quietly buried.
 - Typography: non-terminal UI uses Rubik via `--font-ui`, weights 300/400/500
   only; monospace is reserved for the terminal buffer. `verify:typography` enforces.
 

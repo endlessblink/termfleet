@@ -58,6 +58,10 @@ import {
   workspaceLabelFor,
 } from "../lib/projectDisplay";
 import { createNewTab, useWorkspaceStore } from "../stores/workspace";
+import {
+  countCanvasLanes,
+  resolveCanvasNodeProjects,
+} from "../lib/canvasArrange";
 import { TerminalComponent } from "./Terminal";
 import { LocalhostPreview } from "./LocalhostPreview";
 import { BoardNode } from "./BoardNode";
@@ -5524,11 +5528,11 @@ export function MagicCanvas() {
   const distributeCanvasNodes = useWorkspaceStore(
     (state) => state.distributeCanvasNodes,
   );
-  const arrangeProjectTerminalRow = useWorkspaceStore(
-    (state) => state.arrangeProjectTerminalRow,
+  const arrangeProjectRow = useWorkspaceStore(
+    (state) => state.arrangeProjectRow,
   );
-  const arrangeTerminalProjectLanes = useWorkspaceStore(
-    (state) => state.arrangeTerminalProjectLanes,
+  const arrangeCanvasProjectLanes = useWorkspaceStore(
+    (state) => state.arrangeCanvasProjectLanes,
   );
   const openFiles = useWorkspaceStore((state) => state.openFiles);
   const shellRef = useRef<HTMLDivElement>(null);
@@ -5634,46 +5638,34 @@ export function MagicCanvas() {
     () => tabs.find((tab) => tab.id === activeTabId),
     [activeTabId, tabs],
   );
+  // Which project a tidy would act on, and how many cards of ANY kind belong
+  // to it. Notes, boards and localhost previews count exactly like terminals —
+  // tidy moves every card, so it must be enabled by every card too.
+  const canvasNodeProjects = useMemo(
+    () => resolveCanvasNodeProjects(nodes, tabs),
+    [nodes, tabs],
+  );
   const projectRowGroupId = useMemo(() => {
-    const selectedTerminalTabId = selectedCanvasNodes.find(
-      (node) => node.type === "terminal",
-    )?.terminalTabId;
-    const selectedTab = selectedTerminalTabId
-      ? tabs.find((tab) => tab.id === selectedTerminalTabId)
-      : undefined;
-    return selectedTab?.groupId ?? activeTab?.groupId ?? null;
-  }, [activeTab?.groupId, selectedCanvasNodes, tabs]);
-  const projectRowTerminalCount = useMemo(() => {
+    const selectedProjectId = selectedCanvasNodes
+      .map((node) => canvasNodeProjects.get(node.id))
+      .find((projectId) => Boolean(projectId));
+    return selectedProjectId ?? activeTab?.groupId ?? null;
+  }, [activeTab?.groupId, canvasNodeProjects, selectedCanvasNodes]);
+  const projectRowMemberCount = useMemo(() => {
     if (!projectRowGroupId) return 0;
-    const tabIds = new Set(
-      tabs
-        .filter((tab) => tab.groupId === projectRowGroupId)
-        .map((tab) => tab.id),
-    );
     return nodes.filter(
-      (node) =>
-        node.type === "terminal" &&
-        node.terminalTabId &&
-        tabIds.has(node.terminalTabId),
+      (node) => canvasNodeProjects.get(node.id) === projectRowGroupId,
     ).length;
-  }, [nodes, projectRowGroupId, tabs]);
+  }, [canvasNodeProjects, nodes, projectRowGroupId]);
   const canDistributeCanvasNodes = selectedCanvasNodes.length >= 3;
   const canArrangeProjectRow =
-    Boolean(projectRowGroupId) && projectRowTerminalCount >= 2;
-  const terminalProjectLaneCount = useMemo(() => {
-    const tabGroupsById = new Map(
-      tabs.map((tab) => [tab.id, tab.groupId ?? "unassigned"]),
-    );
-    const laneIds = new Set<string>();
-    for (const node of nodes) {
-      if (node.type !== "terminal" || !node.terminalTabId) continue;
-      const groupId = tabGroupsById.get(node.terminalTabId);
-      if (groupId) laneIds.add(groupId);
-    }
-    return laneIds.size;
-  }, [nodes, tabs]);
-  const canArrangeTerminalProjectLanes = terminalProjectLaneCount >= 2;
-  const canTidyCanvas = canArrangeProjectRow || canArrangeTerminalProjectLanes;
+    Boolean(projectRowGroupId) && projectRowMemberCount >= 2;
+  const canvasLaneCount = useMemo(
+    () => countCanvasLanes(nodes, tabs),
+    [nodes, tabs],
+  );
+  const canArrangeCanvasProjectLanes = canvasLaneCount >= 2;
+  const canTidyCanvas = canArrangeProjectRow || canArrangeCanvasProjectLanes;
   // Screen-space anchor for the contextual align/distribute bar: centred on the
   // selection's bounding box, floating just above its top edge.
   const selectionToolbarAnchor = useMemo(() => {
@@ -6514,8 +6506,8 @@ export function MagicCanvas() {
                   ...styles.toolButton,
                   ...(!canTidyCanvas ? styles.buttonDisabled : null),
                 }}
-                title="Tidy the terminals on this map"
-                aria-label="Tidy the terminals on this map"
+                title="Tidy everything on this map"
+                aria-label="Tidy everything on this map"
                 aria-haspopup="menu"
                 aria-expanded={tidyMenuOpen}
                 disabled={!canTidyCanvas}
@@ -6542,11 +6534,11 @@ export function MagicCanvas() {
                       ...(!canArrangeProjectRow ? styles.buttonDisabled : null),
                     }}
                     role="menuitem"
-                    aria-label="Arrange current project terminals in one row"
+                    aria-label="Arrange this project's cards in one row"
                     disabled={!canArrangeProjectRow}
                     onClick={() => {
                       if (projectRowGroupId)
-                        arrangeProjectTerminalRow(projectRowGroupId);
+                        arrangeProjectRow(projectRowGroupId);
                       setTidyMenuOpen(false);
                     }}
                   >
@@ -6557,15 +6549,15 @@ export function MagicCanvas() {
                     className="magic-canvas-button"
                     style={{
                       ...styles.tidyMenuItem,
-                      ...(!canArrangeTerminalProjectLanes
+                      ...(!canArrangeCanvasProjectLanes
                         ? styles.buttonDisabled
                         : null),
                     }}
                     role="menuitem"
-                    aria-label="Compact terminal lanes"
-                    disabled={!canArrangeTerminalProjectLanes}
+                    aria-label="Group every card into project lanes"
+                    disabled={!canArrangeCanvasProjectLanes}
                     onClick={() => {
-                      arrangeTerminalProjectLanes();
+                      arrangeCanvasProjectLanes();
                       setTidyMenuOpen(false);
                     }}
                   >
@@ -8851,12 +8843,12 @@ export function MagicCanvas() {
           className="magic-canvas-button"
           style={{
             ...styles.button,
-            ...(!canArrangeTerminalProjectLanes ? styles.buttonDisabled : null),
+            ...(!canArrangeCanvasProjectLanes ? styles.buttonDisabled : null),
           }}
-          onClick={arrangeTerminalProjectLanes}
-          title="Compact terminal lanes"
-          aria-label="Compact terminal lanes"
-          disabled={!canArrangeTerminalProjectLanes}
+          onClick={arrangeCanvasProjectLanes}
+          title="Group every card into project lanes"
+          aria-label="Group every card into project lanes"
+          disabled={!canArrangeCanvasProjectLanes}
         >
           <Columns3 size={14} strokeWidth={1.8} />
         </button>

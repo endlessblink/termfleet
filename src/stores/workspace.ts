@@ -32,6 +32,11 @@ import { providerDefinition } from "../lib/agentProviders";
 import type { WorkstreamOpsContext } from "../lib/workstreamOpsContext";
 import { projectEmojiFor } from "../lib/projectEmoji";
 import { persistedMainUserAsk } from "../lib/terminalMainUserAsk";
+import {
+  planCanvasLanes,
+  planCanvasRow,
+  resolveCanvasNodeProjects,
+} from "../lib/canvasArrange";
 
 const GROUP_COLORS = [
   "#7aa2f7",
@@ -365,8 +370,8 @@ interface WorkspaceState {
   moveCanvasNodes: (ids: string[], delta: { x: number; y: number }) => void;
   alignCanvasNodes: (ids: string[], mode: CanvasAlignMode) => void;
   distributeCanvasNodes: (ids: string[], mode: CanvasDistributeMode) => void;
-  arrangeProjectTerminalRow: (groupId: string) => void;
-  arrangeTerminalProjectLanes: () => void;
+  arrangeProjectRow: (groupId: string) => void;
+  arrangeCanvasProjectLanes: () => void;
   reorderCanvasNodes: (draggedId: string, targetId: string, place: "before" | "after") => void;
   removeCanvasNode: (id: string) => void;
   selectCanvasNode: (id: string | null) => void;
@@ -2940,27 +2945,13 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     });
   },
 
-  arrangeProjectTerminalRow: (groupId: string) => {
+  arrangeProjectRow: (groupId: string) => {
     set((state) => {
-      const tabIds = new Set(
-        state.tabs
-          .filter((tab) => tab.groupId === groupId)
-          .map((tab) => tab.id)
-      );
-      if (tabIds.size === 0) return {};
-      const targets = state.canvasState.nodes.filter((node) =>
-        node.type === "terminal" &&
-        node.terminalTabId &&
-        tabIds.has(node.terminalTabId)
-      );
+      const projects = resolveCanvasNodeProjects(state.canvasState.nodes, state.tabs);
+      const targets = state.canvasState.nodes.filter((node) => projects.get(node.id) === groupId);
       if (targets.length < 2) return {};
-      const rowY = Math.min(...targets.map((node) => node.y));
-      let cursorX = Math.min(...targets.map((node) => node.x));
-      const nextPositions = new Map<string, { x: number; y: number }>();
-      for (const node of targets) {
-        nextPositions.set(node.id, { x: cursorX, y: rowY });
-        cursorX += node.width + 32;
-      }
+      const nextPositions = planCanvasRow(targets);
+      if (nextPositions.size === 0) return {};
       return {
         canvasState: {
           ...state.canvasState,
@@ -2979,56 +2970,20 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     });
   },
 
-  arrangeTerminalProjectLanes: () => {
+  arrangeCanvasProjectLanes: () => {
     set((state) => {
-      const tabsById = new Map(state.tabs.map((tab) => [tab.id, tab]));
-      const terminalNodes = state.canvasState.nodes.filter((node) =>
-        node.type === "terminal" &&
-        node.terminalTabId &&
-        tabsById.has(node.terminalTabId)
-      );
-      if (terminalNodes.length < 2) return {};
-
-      const minX = Math.min(...terminalNodes.map((node) => node.x));
-      const minY = Math.min(...terminalNodes.map((node) => node.y));
-      const lanes = new Map<string, CanvasNode[]>();
-
-      for (const node of terminalNodes) {
-        const tab = tabsById.get(node.terminalTabId!);
-        const projectId = tab?.groupId ?? "unassigned";
-        const lane = lanes.get(projectId) ?? [];
-        lane.push(node);
-        lanes.set(projectId, lane);
-      }
-
-      let cursorX = minX;
-      const nextPositions = new Map<string, { x: number; y: number }>();
-
-      const sortedLanes = [...lanes.entries()].sort(
-        ([, leftNodes], [, rightNodes]) => {
-          const leftX = Math.min(...leftNodes.map((node) => node.x));
-          const rightX = Math.min(...rightNodes.map((node) => node.x));
-          if (leftX !== rightX) return leftX - rightX;
-          const leftY = Math.min(...leftNodes.map((node) => node.y));
-          const rightY = Math.min(...rightNodes.map((node) => node.y));
-          return leftY - rightY;
-        }
-      );
-      for (const [, laneNodes] of sortedLanes) {
-        const sortedNodes = [...laneNodes].sort((left, right) => left.y - right.y || left.x - right.x);
-        let cursorY = minY;
-        const laneWidth = Math.max(...sortedNodes.map((node) => node.width));
-        for (const node of sortedNodes) {
-          nextPositions.set(node.id, { x: cursorX, y: cursorY });
-          cursorY += node.height + CANVAS_PROJECT_TERMINAL_GAP;
-        }
-        cursorX += laneWidth + CANVAS_PROJECT_LANE_GAP;
-      }
-
+      const nodes = state.canvasState.nodes;
+      if (nodes.length < 2) return {};
+      const projects = resolveCanvasNodeProjects(nodes, state.tabs);
+      const nextPositions = planCanvasLanes(nodes, projects, {
+        laneGap: CANVAS_PROJECT_LANE_GAP,
+        itemGap: CANVAS_PROJECT_TERMINAL_GAP,
+      });
+      if (nextPositions.size === 0) return {};
       return {
         canvasState: {
           ...state.canvasState,
-          nodes: state.canvasState.nodes.map((node) => {
+          nodes: nodes.map((node) => {
             const next = nextPositions.get(node.id);
             return next
               ? {

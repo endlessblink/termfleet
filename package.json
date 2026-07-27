@@ -28,6 +28,7 @@
     "verify:opencode-status": "playwright test opencode-status-plugin",
     "verify:opencode-tui-resize": "python3 scripts/verify-opencode-tui-resize.py",
     "verify:map-terminals": "node scripts/verify-map-terminals.mjs",
+    "verify:canvas-arrange": "playwright test canvas-arrange canvas-node-reorder map-toolbar --reporter=line",
     "verify:terminal-summary-visual": "playwright test tests/terminal-summary-visual.spec.ts --reporter=line",
     "verify:terminal-header-contract": "playwright test tests/terminal-summary-visual.spec.ts -g \"map header rejects slash-command prompt echoes\" --reporter=line",
     "evidence:bundle": "node scripts/export-evidence-bundle.mjs",

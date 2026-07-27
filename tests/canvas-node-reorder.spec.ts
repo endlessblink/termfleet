@@ -329,11 +329,11 @@ test("canvas layout actions align, distribute, and arrange project terminals wit
     const distributed = snapshot();
 
     seed();
-    useWorkspaceStore.getState().arrangeProjectTerminalRow("project-a");
+    useWorkspaceStore.getState().arrangeProjectRow("project-a");
     const projectRow = snapshot();
 
     seed();
-    useWorkspaceStore.getState().arrangeTerminalProjectLanes();
+    useWorkspaceStore.getState().arrangeCanvasProjectLanes();
     const projectLanes = snapshot();
 
     return { aligned, distributed, projectRow, projectLanes };
@@ -366,8 +366,10 @@ test("canvas layout actions align, distribute, and arrange project terminals wit
   expect(result.projectLanes.nodes.a).toEqual({ x: 10, y: 100 });
   expect(result.projectLanes.nodes.b).toEqual({ x: 10, y: 190 });
   expect(result.projectLanes.nodes.c).toEqual({ x: 10, y: 280 });
-  expect(result.projectLanes.nodes.d).toEqual({ x: 178, y: 100 });
-  expect(result.projectLanes.nodes.note).toEqual({ x: 999, y: 888 });
+  // The note overlaps project-b's terminal, so it joins that lane and is laid
+  // out with it — tidy leaves no card behind and never stacks one on another.
+  expect(result.projectLanes.nodes.note).toEqual({ x: 178, y: 100 });
+  expect(result.projectLanes.nodes.d).toEqual({ x: 178, y: 220 });
 });
 
 test("visible compact lanes button closes horizontal gaps by current lane order", async ({
@@ -451,9 +453,11 @@ test("visible compact lanes button closes horizontal gaps by current lane order"
 
   // Lane arranging now lives behind the toolbar's Tidy popover.
   await page
-    .getByRole("button", { name: "Tidy the terminals on this map" })
+    .getByRole("button", { name: "Tidy everything on this map" })
     .click();
-  await page.getByRole("menuitem", { name: "Compact terminal lanes" }).click();
+  await page
+    .getByRole("menuitem", { name: "Group every card into project lanes" })
+    .click();
 
   const nodes = await page.evaluate(async () => {
     const { useWorkspaceStore } = await import("/src/stores/workspace.ts");
