@@ -3434,21 +3434,23 @@ test("map panel summarizes visible nodes by workspace branch role and service", 
       terminalGroups: [group],
       activeGroupFilter: null,
       tabs: [
-        tab("tab-shell", "Terminal", "pane-shell", "/media/endlessblink/data/my-projects/ai-development/devops/termfleet", "group-termfleet", {
-          status: "running",
-          currentActivity: "npm run dev",
-          previewUrl: "http://127.0.0.1:5177",
-        }, {
+         tab("tab-shell", "Terminal", "pane-shell", "/media/endlessblink/data/my-projects/ai-development/devops/termfleet", "group-termfleet", {
+           status: "running",
+           statusSummary: { status: "idle", updatedAt: now },
+           currentActivity: "npm run dev",
+           previewUrl: "http://127.0.0.1:5177",
+         }, {
           kind: "terminal",
           status: "running",
           phase: "active",
           gitBranch: "feat/map-intel",
           createdAt: now,
         }),
-        tab("tab-agent", "Agent", "pane-agent", "/media/endlessblink/data/my-projects/ai-development/devops/termfleet", "group-termfleet", {
-          status: "running",
-          currentActivity: "coding",
-        }, {
+         tab("tab-agent", "Agent", "pane-agent", "/media/endlessblink/data/my-projects/ai-development/devops/termfleet", "group-termfleet", {
+           status: "running",
+           statusSummary: { status: "working", updatedAt: now },
+           currentActivity: "coding",
+         }, {
           kind: "agent",
           provider: "codex",
           role: "verifier",
@@ -3458,10 +3460,11 @@ test("map panel summarizes visible nodes by workspace branch role and service", 
           mission: "Verify map intelligence",
           createdAt: now,
         }),
-        tab("tab-docs", "Terminal", "pane-docs", "/media/endlessblink/data/my-projects/ai-development/docs-site", null, {
-          status: "running",
-          currentActivity: "pnpm docs",
-        }, {
+         tab("tab-docs", "Terminal", "pane-docs", "/media/endlessblink/data/my-projects/ai-development/docs-site", null, {
+           status: "running",
+           statusSummary: { status: "working", updatedAt: now },
+           currentActivity: "pnpm docs",
+         }, {
           kind: "terminal",
           status: "running",
           phase: "active",
@@ -3482,7 +3485,6 @@ test("map panel summarizes visible nodes by workspace branch role and service", 
       },
     });
   });
-
   const mapPanel = page.locator('[aria-label="Operations panel"]');
   await mapPanel.getByTestId("map-workspace-summary-toggle").click();
   await expect(mapPanel.getByTestId("map-workspace-summary")).toContainText("2 workspaces");
@@ -3496,10 +3498,10 @@ test("map panel summarizes visible nodes by workspace branch role and service", 
   await expect(mapPanel.getByTestId("map-workspace-summary-facets")).toContainText("verifier");
   await expect(mapPanel.getByTestId("map-workspace-summary-facets")).toContainText("preview");
 
-  await mapPanel.getByTestId("map-filter-preview").click();
+  await mapPanel.getByTestId("map-filter-idle").click();
   await expect(mapPanel.getByTestId("map-workspace-summary-toggle")).toHaveAttribute("aria-expanded", "true");
   await expect(mapPanel.getByTestId("map-workspace-summary")).toContainText("1 workspace");
-  await expect(mapPanel.getByTestId("map-workspace-group").filter({ hasText: "TermFleet OSS" })).toContainText("2 nodes");
+  await expect(mapPanel.getByTestId("map-workspace-group").filter({ hasText: "TermFleet OSS" })).toContainText("1 node");
   await expect(mapPanel.getByTestId("map-workspace-summary-facets")).toContainText("preview");
   await expect(mapPanel.getByTestId("map-workspace-summary-facets")).not.toContainText("docs/homepage");
 });
@@ -3648,6 +3650,67 @@ test("terminal folders reconcile into project rows without moving the map viewpo
   })).toEqual({ x: -321, y: 88, zoom: 0.62 });
 });
 
+test("idle map filter uses the shared terminal lifecycle", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+
+  const result = await page.evaluate(async () => {
+    const { MAP_FILTERS, nodeMatchesMapFilter } = await import("/src/lib/mapNodeFilters.ts");
+    const terminalNode = {
+      id: "node-terminal",
+      type: "terminal",
+      title: "Terminal",
+      terminalTabId: "tab-terminal",
+      x: 0,
+      y: 0,
+      width: 820,
+      height: 460,
+    };
+    const previewNode = {
+      ...terminalNode,
+      id: "node-preview",
+      type: "preview",
+      previewUrl: "http://localhost:5177",
+    };
+    const tab = (status: string, completedByCommand = false) => ({
+      id: "tab-terminal",
+      title: "Terminal",
+      emoji: "[]",
+      color: "#7aa2f7",
+      groupId: null,
+      terminals: [{
+        id: "pty-terminal",
+        paneId: "pane-terminal",
+        cols: 80,
+        rows: 24,
+        statusSummary: { status, completedByCommand },
+      }],
+      splitLayout: { id: "pane-terminal", type: "terminal" },
+      activePaneId: "pane-terminal",
+    });
+
+    return {
+      filters: MAP_FILTERS,
+      idleTerminalMatches: nodeMatchesMapFilter(terminalNode as never, tab("idle") as never, "idle" as never),
+      runningTerminalMatches: nodeMatchesMapFilter(terminalNode as never, tab("working") as never, "idle" as never),
+      previewNodeMatches: nodeMatchesMapFilter(previewNode as never, tab("idle") as never, "idle" as never),
+      doneTerminalMatches: nodeMatchesMapFilter(terminalNode as never, tab("done") as never, "done" as never),
+      completedDoneCommandMatches: nodeMatchesMapFilter(terminalNode as never, tab("idle", true) as never, "done" as never),
+      idleTerminalIsDone: nodeMatchesMapFilter(terminalNode as never, tab("idle") as never, "done" as never),
+    };
+  });
+
+  expect(result.filters).toContainEqual({ id: "idle", label: "Idle" });
+  expect(result.filters).toContainEqual({ id: "done", label: "Done" });
+  expect(result.filters).not.toContainEqual({ id: "preview", label: "Preview" });
+  expect(result.filters).not.toContainEqual({ id: "testing", label: "Tests" });
+  expect(result.idleTerminalMatches).toBe(true);
+  expect(result.runningTerminalMatches).toBe(false);
+  expect(result.previewNodeMatches).toBe(false);
+  expect(result.doneTerminalMatches).toBe(true);
+  expect(result.completedDoneCommandMatches).toBe(true);
+  expect(result.idleTerminalIsDone).toBe(false);
+});
+
 test("map sidebar filters operations nodes by visible work state", async ({ page }) => {
   await page.addInitScript(() => {
     Object.defineProperty(navigator, "clipboard", {
@@ -3706,10 +3769,11 @@ test("map sidebar filters operations nodes by visible work state", async ({ page
           currentActivity: "npm run dev",
           activityKind: "running",
         }),
-        terminalTab("tab-failed", "Failed build", "pane-failed", {
-          status: "failed",
-          currentActivity: "cargo check failed",
-        }),
+         terminalTab("tab-failed", "Failed build", "pane-failed", {
+           status: "failed",
+           statusSummary: { status: "idle", updatedAt: now },
+           currentActivity: "cargo check failed",
+         }),
         terminalTab("tab-waiting", "Waiting agent", "pane-waiting", {
           status: "exited",
         }, {
@@ -3721,16 +3785,16 @@ test("map sidebar filters operations nodes by visible work state", async ({ page
           mission: "Review deploy error",
           createdAt: now,
         }),
-        terminalTab("tab-tests", "Test runner", "pane-tests", {
-          status: "running",
-          statusSummary: { status: "working", now: "npm test running", updatedAt: now },
-          currentActivity: "npm test running",
-          activityKind: "testing",
-        }),
-        terminalTab("tab-preview", "Preview service", "pane-preview", {
+        terminalTab("tab-done", "Finished task", "pane-done", {
           status: "exited",
-          previewUrl: "http://localhost:5177",
-          terminalOutput: "VITE ready at http://localhost:5177\nGET / 200",
+          statusSummary: { status: "idle", completedByCommand: true, now: "Ready for review", updatedAt: now },
+          currentActivity: "Ready for review",
+        }),
+         terminalTab("tab-preview", "Preview service", "pane-preview", {
+           status: "exited",
+           statusSummary: { status: "idle", updatedAt: now },
+           previewUrl: "http://localhost:5177",
+           terminalOutput: "VITE ready at http://localhost:5177\nGET / 200",
         }),
       ],
       activeTabId: "tab-active",
@@ -3741,13 +3805,12 @@ test("map sidebar filters operations nodes by visible work state", async ({ page
           { id: "node-active", type: "terminal", title: "Active shell", terminalTabId: "tab-active", x: 0, y: 0, width: 820, height: 460 },
           { id: "node-failed", type: "terminal", title: "Failed build", terminalTabId: "tab-failed", x: 860, y: 0, width: 820, height: 460 },
           { id: "node-waiting", type: "terminal", title: "Waiting agent", terminalTabId: "tab-waiting", x: 0, y: 500, width: 820, height: 460 },
-          { id: "node-tests", type: "terminal", title: "Test runner", terminalTabId: "tab-tests", x: 860, y: 500, width: 820, height: 460 },
+          { id: "node-done", type: "terminal", title: "Finished task", terminalTabId: "tab-done", x: 860, y: 500, width: 820, height: 460 },
           { id: "node-preview-terminal", type: "terminal", title: "Preview service", terminalTabId: "tab-preview", x: 1720, y: 0, width: 820, height: 460 },
         ],
       },
     });
   });
-
   const mapPanel = page.locator('[aria-label="Operations panel"]');
   await expect(mapPanel.getByTestId("map-filter-all")).toContainText("5");
   await mapPanel.getByTestId("map-sort-project").click();
@@ -3773,11 +3836,11 @@ test("map sidebar filters operations nodes by visible work state", async ({ page
     })
   );
   expect(misplacedMapActions).toEqual([]);
-  await expect(mapPanel.getByTestId("map-filter-active")).toContainText("2");
+  await expect(mapPanel.getByTestId("map-filter-active")).toContainText("1");
   await expect(mapPanel.getByTestId("map-filter-failed")).toContainText("1");
   await expect(mapPanel.getByTestId("map-filter-waiting")).toContainText("1");
-  await expect(mapPanel.getByTestId("map-filter-testing")).toContainText("1");
-  await expect(mapPanel.getByTestId("map-filter-preview")).toContainText("1");
+  await expect(mapPanel.getByTestId("map-filter-done")).toContainText("1");
+  await expect(mapPanel.getByTestId("map-filter-idle")).toContainText("3");
   await expect(mapPanel.getByTestId("map-local-services")).toContainText("1 detected");
   await expect(mapPanel.getByTestId("map-local-services-toggle")).toHaveAttribute("aria-expanded", "true");
   await mapPanel.getByTestId("map-local-services-toggle").click();
@@ -3854,13 +3917,21 @@ test("map sidebar filters operations nodes by visible work state", async ({ page
   await expect(mapPanel.getByTestId("map-node-list")).toContainText("Review deploy error");
   await expect(mapPanel.getByTestId("map-node-list")).not.toContainText("Failed build");
 
-  await mapPanel.getByTestId("map-filter-testing").click();
+  await mapPanel.getByTestId("map-filter-done").click();
   await expect(mapPanel.getByTestId("map-node-list").locator(".workspace-sidebar-row")).toHaveCount(1);
-  await expect(mapPanel.getByTestId("sidebar-map-node-attention")).toContainText("Running");
+  await expect(mapPanel.getByTestId("map-node-list")).toContainText("Finished task");
+  await expect(mapPanel.getByTestId("sidebar-map-node-attention")).toContainText("Idle");
   await expect(mapPanel.getByTestId("map-node-list")).not.toContainText("Review deploy error");
 
-  await mapPanel.getByTestId("map-filter-preview").click();
-  await expect(mapPanel.getByTestId("map-node-list").locator(".workspace-sidebar-row")).toHaveCount(2);
+  await mapPanel.getByTestId("map-filter-idle").click();
+  await expect(mapPanel.getByTestId("map-node-list").locator(".workspace-sidebar-row")).toHaveCount(3);
+  await expect(mapPanel.getByTestId("map-node-list")).toContainText("Failed build");
+  await expect(mapPanel.getByTestId("map-node-list")).toContainText("Finished task");
+  await expect(mapPanel.getByTestId("map-node-list")).toContainText("Preview service");
+  await expect(mapPanel.getByTestId("map-node-list")).not.toContainText("Active shell");
+  await expect(mapPanel.getByTestId("map-node-list")).not.toContainText("Waiting agent");
+
+  await mapPanel.getByTestId("map-filter-all").click();
   await expect(mapPanel.getByTestId("map-node-list")).toContainText("Preview localhost");
   await mapPanel.getByText("Preview localhost:5177").hover();
   await mapPanel.getByRole("button", { name: "Close Preview localhost:5177" }).click();
@@ -3885,7 +3956,7 @@ test("map sidebar filters operations nodes by visible work state", async ({ page
     terminalNodeExists: true,
     terminalTabExists: true,
   });
-  await expect(mapPanel.getByTestId("map-node-list").locator(".workspace-sidebar-row")).toHaveCount(1);
+  await expect(mapPanel.getByTestId("map-node-list").locator(".workspace-sidebar-row")).toHaveCount(5);
   await expect(mapPanel.getByTestId("map-node-list")).not.toContainText("Preview localhost");
   await mapPanel.getByRole("button", { name: "Open http://localhost:5177 on map" }).click();
   await expect(mapPanel.getByTestId("map-local-service-action-status")).toHaveText("Map window opened");

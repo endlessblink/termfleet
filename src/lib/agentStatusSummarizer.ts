@@ -8,6 +8,7 @@ import {
 } from "./agentStatusSummary";
 import {
   readLocalSidecarStatus,
+  sidecarCompletedByCommand,
   type AgentStatusSidecar,
   type SidecarFileReader,
 } from "./agentStatusSidecar";
@@ -361,7 +362,10 @@ export async function summarizeAgentStatus(
     transcriptReader,
   );
 
-  const effectiveFallback = sidecarShapedFallback ?? fallback;
+  const effectiveFallback = sidecarShapedFallback ??
+    (rawSidecar && sidecarCompletedByCommand(rawSidecar)
+      ? { ...fallback, completedByCommand: true }
+      : fallback);
   const endpoint = options.endpoint ?? configuredEndpoint();
   if (!endpoint) {
     return {

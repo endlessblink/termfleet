@@ -33,6 +33,11 @@ function explicitMainTask(sidecar) {
   return legacyGoals[legacyGoals.length - 1] ?? "";
 }
 
+function completedByDoneCommand(sidecar) {
+  return sidecar?.turn === "idle" &&
+    /^[$/]done$/i.test(cleanText(sidecar?.userTask));
+}
+
 function hashText(value) {
   let hash = 2166136261;
   const text = String(value ?? "");
@@ -214,6 +219,7 @@ export function summaryFromSidecar(sidecar, payload) {
     updatedAt: typeof sidecar?.updatedAt === "number" ? sidecar.updatedAt : fallback.updatedAt,
     task: activityTitle,
     userTask: userTask || undefined,
+    completedByCommand: completedByDoneCommand(sidecar),
     now: now || fallback.now,
     status:
       sidecar?.turn === "idle"

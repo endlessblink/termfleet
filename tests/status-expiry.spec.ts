@@ -50,8 +50,49 @@ test("confirmed sidecar expiry clears false running work", () => {
 
   expect(projection?.statusSummary?.status).toBe("unavailable");
   expect(projection?.statusSummary?.now).toBe("Status unavailable");
-  expect(projection?.mainUserAsk).toBeUndefined();
-  expect(projection?.taskLineup).toEqual([]);
+  expect(projection?.mainUserAsk?.text).toBe("Confirming every unclear topic");
+  expect(projection?.taskLineup).toHaveLength(1);
+});
+
+test("sidecar expiry preserves completed command identity", () => {
+  const projection = projectStatusPollResult(
+    terminal(),
+    {
+      ...fallback,
+      sidecarState: "stale",
+      summary: {
+        ...fallback.summary,
+        completedByCommand: true,
+      },
+    },
+    2,
+  );
+
+  expect(projection?.statusSummary?.status).toBe("unavailable");
+  expect(projection?.statusSummary?.completedByCommand).toBe(true);
+});
+
+test("stale completion reaches terminals already projected to fallback", () => {
+  const projection = projectStatusPollResult(
+    terminal({
+      statusSummarySource: "fallback",
+      statusSummary: {
+        ...fallback.summary,
+        status: "unavailable",
+      },
+    }),
+    {
+      ...fallback,
+      sidecarState: "stale",
+      summary: {
+        ...fallback.summary,
+        completedByCommand: true,
+      },
+    },
+    2,
+  );
+
+  expect(projection?.statusSummary?.completedByCommand).toBe(true);
 });
 
 test("temporary sidecar read failures preserve the last trustworthy state", () => {

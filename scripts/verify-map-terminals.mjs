@@ -185,20 +185,22 @@ const checks = [
     message: "Terminal map nodes must render a live TerminalComponent.",
   },
   {
-    ok: /export type MapFilter = "all" \| "active" \| "failed" \| "waiting" \| "testing" \| "preview";/.test(mapNodeFilters) &&
+    ok: /export type MapFilter = "all" \| "active" \| "failed" \| "waiting" \| "done" \| "idle";/.test(mapNodeFilters) &&
       /export function nodeMatchesMapFilter/.test(mapNodeFilters) &&
       /terminal\?\.status === "failed"/.test(mapNodeFilters) &&
       /paneBadgeAttention/.test(mapNodeFilters) &&
       /badgeAttention === "running"/.test(mapNodeFilters) &&
       /badgeAttention === "waiting"/.test(mapNodeFilters) &&
-      /terminal\?\.activityKind/.test(mapNodeFilters) &&
-      /terminal\.previewUrl/.test(mapNodeFilters) &&
+      /badgeAttention === "idle"/.test(mapNodeFilters) &&
+      /statusSummaryMarksDone\(terminal\?\.statusSummary\)/.test(mapNodeFilters) &&
+      /summary\?\.completedByCommand === true/.test(mapNodeFilters) &&
+      /workstream\?\.phase === "complete"/.test(mapNodeFilters) &&
       /data-testid=\{`map-filter-\$\{filter\.id\}`\}/.test(canvasSidebar) &&
       /nodeMatchesMapFilter\(node, nodeTab\(node\), mapFilter\)/.test(canvasSidebar) &&
       /data-testid=\{`map-filter-\$\{filter\.id\}`\}/.test(workbenchSidebar) &&
       /nodeMatchesMapFilter\(node, nodeTab\(node\), mapFilter\)/.test(workbenchSidebar) &&
       /data-testid="map-node-list"/.test(workbenchSidebar),
-    message: "Map sidebar must provide active/failed/waiting/testing/preview filters derived from terminal and workstream state.",
+    message: "Map sidebar must provide active/failed/waiting/done/idle filters derived from terminal and workstream state.",
   },
   {
     ok: /function summarizeMapNodes/.test(workbenchSidebar) &&

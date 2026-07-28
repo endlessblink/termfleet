@@ -125,6 +125,11 @@ function explicitMainTask(sidecar: AgentStatusSidecar): string {
   return legacyGoals[legacyGoals.length - 1] ?? "";
 }
 
+export function sidecarCompletedByCommand(sidecar: AgentStatusSidecar): boolean {
+  return sidecar.turn === "idle" &&
+    /^[$/]done$/i.test(cleanText(sidecar.userTask));
+}
+
 function extractedItems(values: string[]) {
   const seen = new Set<string>();
   return values
@@ -332,6 +337,7 @@ export function summaryFromSidecar(
         : fallback.updatedAt,
     task: activityTitle,
     userTask: userTask || undefined,
+    completedByCommand: sidecarCompletedByCommand(sidecar),
     now: now || fallback.now,
     // The hook's explicit turn state is authoritative: a Stop event means the turn
     // ended even if an in-progress todo was never marked complete (the stale-Running

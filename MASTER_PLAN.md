@@ -469,6 +469,16 @@ Acceptance:
 - DONE: Browser review covers the narrow sidebar at the same width as the user
   screenshots and proves no horizontal sliding is needed for common filters.
   Evidence screenshot: `/tmp/termfleet-map-sidebar-collapsible.png`.
+- DONE (2026-07-28): Replaced the preview-linked and heuristic test filters
+  with `Idle` and `Done`. Idle uses the same lifecycle as terminal badges; Done
+  preserves completed `$done`/`/done` turns as structured sidecar state while
+  keeping their lifecycle Idle, including after the 30-minute sidecar expiry and
+  after a pane has already been projected to fallback state. `Failed` remains
+  available for actionable breakage. Proof: the focused expiry/filter
+  regressions passed 35/35; `npm run build`,
+  `npm run verify:map-terminals`, `npm run doctor`, and `git diff --check`
+  passed. Live desktop evidence `/tmp/termfleet-done-fallback-fixed.png`
+  showed `Done 4`, matching the four real expired completion records.
 
 ### TC-026: Redesign local-services panel
 

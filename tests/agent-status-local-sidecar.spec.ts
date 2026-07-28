@@ -444,6 +444,27 @@ test("browser and node sidecar readers share placeholder, provider, and turn sem
   }
 });
 
+test("browser and node sidecar readers preserve completed done commands as structured state", () => {
+  const fallback = fallbackFor("/repo/project");
+
+  for (const userTask of ["$done", "/done"]) {
+    const sidecar = {
+      provider: "codex" as const,
+      updatedAt: Date.now(),
+      turn: "idle" as const,
+      userTask,
+      todos: [{ content: "Finish the map filter", status: "completed" }],
+    };
+    const browserSummary = summaryFromSidecar(sidecar, fallback);
+    const nodeSummary = summaryFromNodeSidecar(sidecar, { heuristicCandidate: fallback });
+
+    expect(browserSummary.completedByCommand).toBe(true);
+    expect(nodeSummary.completedByCommand).toBe(true);
+    expect(browserSummary.status).toBe("idle");
+    expect(nodeSummary.status).toBe("idle");
+  }
+});
+
 test("placeholder-only sidecars preserve lifecycle without promoting the placeholder to a task", () => {
   const fallback = fallbackFor("/repo/project");
   const sidecar = {
@@ -550,17 +571,20 @@ test("summarizeAgentStatus reports an expired sidecar without trusting its old t
     {
       endpoint: "",
       sidecarReader: async (name) => name === paneSidecarFileName("terminal-stale")
-        ? JSON.stringify({
-            updatedAt: Date.now() - 60 * 60 * 1000,
-            todos: [{ content: "Old task", status: "in_progress" }],
-          })
-        : null,
+          ? JSON.stringify({
+              updatedAt: Date.now() - 60 * 60 * 1000,
+              turn: "idle",
+              userTask: "/done",
+              todos: [{ content: "Old task", status: "completed" }],
+            })
+          : null,
     },
   );
 
   expect(result.source).toBe("fallback");
   expect(result.sidecarState).toBe("stale");
   expect(result.summary.task).not.toBe("Old task");
+  expect(result.summary.completedByCommand).toBe(true);
 });
 
 test("summarizeAgentStatus does not infer the localhost worker endpoint in desktop dev", async () => {

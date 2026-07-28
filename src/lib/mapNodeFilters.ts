@@ -1,15 +1,15 @@
 import type { CanvasNode, Tab } from "./types";
 import { paneBadgeAttention } from "./sessionStatus";
 
-export type MapFilter = "all" | "active" | "failed" | "waiting" | "testing" | "preview";
+export type MapFilter = "all" | "active" | "failed" | "waiting" | "done" | "idle";
 
 export const MAP_FILTERS: Array<{ id: MapFilter; label: string }> = [
   { id: "all", label: "All" },
   { id: "active", label: "Active" },
   { id: "failed", label: "Failed" },
   { id: "waiting", label: "Waiting" },
-  { id: "testing", label: "Tests" },
-  { id: "preview", label: "Preview" },
+  { id: "done", label: "Done" },
+  { id: "idle", label: "Idle" },
 ];
 
 export function linkedTerminalForMapNode(node: CanvasNode, linkedTab?: Tab) {
@@ -20,13 +20,15 @@ export function linkedTerminalForMapNode(node: CanvasNode, linkedTab?: Tab) {
     linkedTab.terminals[0];
 }
 
+function statusSummaryMarksDone(summary?: {
+  status?: string | null;
+  completedByCommand?: boolean;
+} | null) {
+  return summary?.status === "done" || summary?.completedByCommand === true;
+}
+
 export function nodeMatchesMapFilter(node: CanvasNode, linkedTab: Tab | undefined, filter: MapFilter) {
   if (filter === "all") return true;
-  if (filter === "preview") {
-    return node.type === "preview" ||
-      Boolean(node.previewUrl) ||
-      Boolean(linkedTab?.terminals.some((terminal) => terminal.previewUrl));
-  }
   if (node.type !== "terminal") return false;
 
   const terminal = linkedTerminalForMapNode(node, linkedTab);
@@ -47,18 +49,15 @@ export function nodeMatchesMapFilter(node: CanvasNode, linkedTab: Tab | undefine
   if (filter === "waiting") {
     return badgeAttention === "waiting";
   }
-  if (filter === "testing") {
-    const text = [
-      terminal?.activityKind,
-      terminal?.currentActivity,
-      terminal?.statusSummary?.task,
-      terminal?.statusSummary?.now,
-      workstream?.activityKind,
-      workstream?.currentActivity,
-      workstream?.statusSummary?.task,
-      workstream?.statusSummary?.now,
-    ].filter(Boolean).join(" ");
-    return /\b(test|tests|testing|spec|playwright|cargo test|npm test|verify)\b/i.test(text);
+  if (filter === "idle") {
+    return badgeAttention === "idle";
+  }
+  if (filter === "done") {
+    return statusSummaryMarksDone(terminal?.statusSummary) ||
+      statusSummaryMarksDone(workstream?.statusSummary) ||
+      workstream?.status === "done" ||
+      workstream?.phase === "complete" ||
+      workstream?.phase === "reviewed";
   }
   return false;
 }

@@ -38,11 +38,24 @@ export function projectStatusPollResult(
   result: AgentStatusSummarizerResult,
   updatedAt: number,
 ): Partial<TerminalState> | null {
-  if (
-    terminal.statusSummarySource !== "sidecar" ||
-    result.sidecarState !== "stale"
-  ) {
+  if (result.sidecarState !== "stale") {
     return null;
+  }
+
+  if (terminal.statusSummarySource !== "sidecar") {
+    if (
+      !result.summary.completedByCommand ||
+      terminal.statusSummary?.completedByCommand
+    ) {
+      return null;
+    }
+    return {
+      statusSummary: {
+        ...(terminal.statusSummary ?? result.summary),
+        completedByCommand: true,
+      },
+      statusSummaryUpdatedAt: updatedAt,
+    };
   }
 
   // The pane's task is not invalidated by the agent going quiet — only its live
@@ -65,6 +78,10 @@ export function projectStatusPollResult(
       status: "unavailable",
       provider: terminal.statusSummary?.provider ?? result.summary.provider,
       confidence: "high",
+      completedByCommand:
+        result.summary.completedByCommand ||
+        terminal.statusSummary?.completedByCommand ||
+        undefined,
     },
     statusSummaryUpdatedAt: updatedAt,
     statusSummarySource: "fallback",
