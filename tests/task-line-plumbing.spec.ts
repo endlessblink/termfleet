@@ -401,3 +401,33 @@ test("leniency for the operator stops at readability", () => {
     ).toBe("shell-state");
   }
 });
+
+test("the newest real request wins, a reaction to it does not", () => {
+  const opening = "is there a completly free excersize visualization tool for my fitness bot?";
+  const newest =
+    "why cant I ask for multiple excersizes so it can generate many for later usage?";
+  // A long session drifts: the row must follow the work, not the session's first line.
+  expect(
+    resolvePaneTaskLine({
+      now: 1,
+      facts: { openingRequest: opening, operatorRequest: newest },
+    }),
+  ).toMatchObject({ source: "operator-request", text: newest });
+
+  // ...but a reaction ("this keeps reseting", "still seeing only this") names no work,
+  // so the opening request keeps the row.
+  for (const reaction of [
+    "this keeps reseting",
+    "still seeing only this",
+    "make all high",
+  ]) {
+    const facts = parseClaudeTranscript(
+      JSON.stringify({ type: "last-prompt", lastPrompt: reaction }),
+    );
+    expect(facts.operatorRequest, reaction).toBeUndefined();
+    expect(
+      resolvePaneTaskLine({ now: 1, facts: { ...facts, openingRequest: opening } }),
+      reaction,
+    ).toMatchObject({ source: "opening-request" });
+  }
+});

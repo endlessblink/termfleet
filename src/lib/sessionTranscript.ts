@@ -167,7 +167,40 @@ function opensAsRequest(text: string | undefined): string | undefined {
   // caveat, and the agent preambles subagents receive.
   if (/^[<$/]/.test(value)) return undefined;
   if (/^(?:caveat:|you are\b|##\s)/i.test(value)) return undefined;
+  // A nudge or a complaint is not a goal. "this keeps reseting" is the operator's own
+  // text, but it names no work — as the Task row it says less than the request it would
+  // replace. Four words minimum, and a short message that opens with a demonstrative
+  // ("this/that/it") is pointing at something rather than asking for it.
+  const words = value.split(/\s+/);
+  if (words.length < 4) return undefined;
+  if (words.length < 8 && /^(?:this|that|it|these|those)\b/i.test(value))
+    return undefined;
+  // A short remark ("still seeing only this", "it keeps resetting") is the operator
+  // reacting, not stating work. A short message therefore has to name an action or a
+  // question; anything of real length speaks for itself.
+  if (words.length < 8 && !ASKS_FOR_SOMETHING.test(value)) return undefined;
   return value;
+}
+
+// Verbs and question openers that make a short message a request rather than a reaction.
+const ASKS_FOR_SOMETHING =
+  /\b(?:add|allow|build|change|check|convert|create|debug|delete|design|disable|enable|find|fix|generate|handle|implement|improve|integrate|investigate|make|merge|move|plan|prevent|refactor|remove|rename|research|run|show|split|support|test|update|use|verify|write|why|how|what|can we|can you|i want|i need|we should|should we|let's|lets|please)\b/i;
+
+/** The text of a Claude `user` record, whether it is a string or content blocks. */
+function userMessageText(record: Record<string, unknown>): string {
+  const message = record.message as { content?: unknown } | undefined;
+  const content = message?.content;
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content
+    .filter(
+      (block) =>
+        block &&
+        typeof block === "object" &&
+        (block as { type?: string }).type === "text",
+    )
+    .map((block) => (block as { text?: string }).text ?? "")
+    .join(" ");
 }
 
 /** The operator's first real request, from the START of a Claude record. */
@@ -175,23 +208,7 @@ export function parseClaudeOpeningRequest(text: string): string | undefined {
   let found: string | undefined;
   eachRecord(text, (record) => {
     if (found || record.type !== "user" || record.isSidechain === true) return;
-    const message = record.message as { content?: unknown } | undefined;
-    const content = message?.content;
-    const raw =
-      typeof content === "string"
-        ? content
-        : Array.isArray(content)
-          ? content
-              .filter(
-                (block) =>
-                  block &&
-                  typeof block === "object" &&
-                  (block as { type?: string }).type === "text",
-              )
-              .map((block) => (block as { text?: string }).text ?? "")
-              .join(" ")
-          : "";
-    found = opensAsRequest(cleanText(raw));
+    found = opensAsRequest(cleanText(userMessageText(record)));
   });
   return found;
 }
@@ -233,11 +250,22 @@ export function parseClaudeTranscript(text: string): TranscriptFacts {
       }
     }
     if (record.type === "last-prompt") {
-      facts.operatorRequest =
-        cleanText(record.lastPrompt) ?? facts.operatorRequest;
+      // Gated like every other operator message: this record holds whatever was typed
+      // last, including "go", "$done" and "this keeps reseting" — none of which name the
+      // work, and all of which used to take the row from a real request.
+      const asked = opensAsRequest(cleanText(record.lastPrompt));
+      if (asked) facts.operatorRequest = asked;
     }
     // A subagent's work is not the pane's work.
     if (record.isSidechain === true) return;
+    // The NEWEST thing the operator actually asked. `last-prompt` is usually a thin
+    // follow-up ("/done", "go"), and without this the row fell back to the session's
+    // opening question long after the work had moved on — the operator saw the goal
+    // "keep resetting" to where the session started (report 2026-07-28).
+    if (record.type === "user") {
+      const asked = opensAsRequest(cleanText(userMessageText(record)));
+      if (asked) facts.operatorRequest = asked;
+    }
     const message = record.message as { content?: unknown } | undefined;
     const content = message?.content;
     if (!Array.isArray(content)) return;
@@ -274,10 +302,13 @@ export function parseCodexRollout(text: string): TranscriptFacts {
       case "thread_goal_updated":
         facts.title = cleanText(payload.goal) ?? facts.title;
         break;
-      case "user_message":
+      case "user_message": {
+        // Same rule as Claude: a thin follow-up must not erase the real request.
+        const asked = opensAsRequest(cleanText(payload.message));
         facts.operatorRequest =
-          cleanText(payload.message) ?? facts.operatorRequest;
+          asked ?? cleanText(payload.message) ?? facts.operatorRequest;
         break;
+      }
       case "agent_message":
         facts.agentSaid = firstSentence(payload.message) ?? facts.agentSaid;
         break;

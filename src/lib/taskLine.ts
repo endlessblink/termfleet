@@ -268,7 +268,22 @@ export function resolvePaneTaskLine(input: TaskLineInput): PaneTaskLine {
         rejected,
       };
     }
-    // What the OPERATOR asked for when this pane started — the one line that still means
+    // The NEWEST thing the operator asked leads: a long session drifts, and pinning the
+    // row to the session's first question made the goal look like it kept resetting to
+    // where the work began (report 2026-07-28). A thin follow-up ("/done", "go", "make
+    // all high") fails the gate here and the opening request below takes over, so the
+    // row never degrades into an acknowledgement.
+    const latestAsk = considerLongAsk(stripComposerChrome(facts.operatorRequest));
+    if (latestAsk) {
+      return {
+        text: latestAsk,
+        source: "operator-request",
+        capturedAt: now,
+        expiresAt: null,
+        rejected,
+      };
+    }
+    // What the OPERATOR asked when this pane started — the line that still means
     // something a week later. It outranks the agent's own session title because that
     // title is sometimes a slug ("exercise-demo-gif-pipeline"), which answers nothing.
     const opening = considerLongAsk(stripComposerChrome(facts.openingRequest));
