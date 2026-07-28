@@ -15,6 +15,10 @@ import {
 } from "../src/lib/agentStatusSummarizer";
 import { preferPaneTaskLine, resolvePaneTaskLine } from "../src/lib/taskLine";
 import { statusPollProjectionChanged } from "../src/lib/statusPollProjection";
+import {
+  buildTerminalHeaderState,
+  resetKnownTaskLines,
+} from "../src/lib/terminalHeaderState";
 import { parseClaudeTranscript } from "../src/lib/sessionTranscript";
 import type { AgentStatusSummaryInput } from "../src/lib/agentStatusSummary";
 import type { TerminalState } from "../src/lib/types";
@@ -256,4 +260,38 @@ test("harness plumbing in the prompt field is never a task", () => {
     const line = resolvePaneTaskLine({ now: 1, facts: { operatorRequest: text } });
     expect(line.source, text.slice(0, 30)).toBe("shell-state");
   }
+});
+
+test("the row never flips back to the placeholder once a pane has spoken", () => {
+  resetKnownTaskLines();
+  const base = {
+    paneId: "pane-flap",
+    terminalId: "pty-flap",
+    project: { id: "g", name: "bina", projectRoot: "/repo" },
+    liveCwd: "/repo",
+    terminalStatus: "running" as const,
+  };
+  const withLine = buildTerminalHeaderState({
+    ...base,
+    taskLine: {
+      text: "push to production safely",
+      source: "operator-request" as const,
+      capturedAt: 1,
+      expiresAt: null,
+    },
+  });
+  expect(withLine.goalLabel).toBe("push to production safely");
+
+  // The same pane re-rendered by a route holding nothing: a reattach, a store rebuild,
+  // a map pane-id switch. This is what made the row flap every few seconds.
+  const withoutLine = buildTerminalHeaderState({ ...base });
+  expect(withoutLine.goalLabel).toBe("push to production safely");
+
+  // A different pane must not inherit it.
+  const otherPane = buildTerminalHeaderState({
+    ...base,
+    paneId: "pane-other",
+    terminalId: "pty-other",
+  });
+  expect(otherPane.goalLabel).toBe("No task declared");
 });

@@ -137,6 +137,29 @@ function pathSource(input: {
   return "unknown";
 }
 
+/**
+ * The last line each pane actually displayed, so a render that arrives without one
+ * repeats the pane's own words instead of falling to the placeholder. Bounded, and
+ * every entry is replaced by the next poll.
+ */
+const lastKnownTaskLine = new Map<string, PaneTaskLine>();
+const LAST_KNOWN_LIMIT = 400;
+
+function rememberTaskLine(key: string, line: PaneTaskLine) {
+  if (lastKnownTaskLine.get(key) === line) return;
+  lastKnownTaskLine.delete(key);
+  lastKnownTaskLine.set(key, line);
+  if (lastKnownTaskLine.size > LAST_KNOWN_LIMIT) {
+    const oldest = lastKnownTaskLine.keys().next();
+    if (!oldest.done) lastKnownTaskLine.delete(oldest.value);
+  }
+}
+
+/** Tests only: the memory is process-wide by design. */
+export function resetKnownTaskLines() {
+  lastKnownTaskLine.clear();
+}
+
 export function buildTerminalHeaderState(input: {
   paneId: string;
   /** The pane's own name; names the pane when no folder is known. */
@@ -194,6 +217,18 @@ export function buildTerminalHeaderState(input: {
   // below could never run. Treat that one source as "nothing known" and re-resolve.
   const storedTaskLine =
     input.taskLine?.source === "shell-state" ? null : input.taskLine;
+  // A pane's line arrives from several routes (the central poll, the pane's own poll,
+  // the persisted snapshot) and any single render can arrive before or between them —
+  // a reattach, a pane-id switch on the map, a store rebuild. The row then flipped
+  // between the real task and "No task declared" every few seconds (operator report
+  // 2026-07-28). Remembering the pane's OWN last resolved line makes that flap
+  // impossible: a render with nothing in hand repeats what this pane last said instead
+  // of announcing that nothing is known. Nothing is invented — it is the same line the
+  // ladder produced for this pane, and the next poll overwrites it.
+  const memoryKey = input.paneId ?? input.terminalId ?? null;
+  const rememberedTaskLine = memoryKey
+    ? lastKnownTaskLine.get(memoryKey)
+    : undefined;
   // The in-progress item is normally the summary path's to own (`tasksFromTodoWrite`),
   // and feeding it here stole that provenance — two tests catch it. But when the summary
   // CANNOT use it, withholding it just loses the task: 26 panes whose list named their
@@ -209,6 +244,7 @@ export function buildTerminalHeaderState(input: {
   );
   const effectiveTaskLine =
     storedTaskLine ??
+    rememberedTaskLine ??
     resolvePaneTaskLine({
       now: Date.now(),
       currentStep: activeLineupItem?.content ?? null,
@@ -221,6 +257,9 @@ export function buildTerminalHeaderState(input: {
       busy:
         input.terminalStatus === "running" || input.activelyWorking === true,
     });
+  if (memoryKey && effectiveTaskLine && effectiveTaskLine.source !== "shell-state") {
+    rememberTaskLine(memoryKey, effectiveTaskLine);
+  }
   const view = buildShellTerminalHeaderViewModel({
     project: input.project,
     paneName: input.paneName,
