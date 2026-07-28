@@ -372,3 +372,32 @@ test("a two-line goal is kept whole; a document is still refused", () => {
     }).source,
   ).toBe("shell-state");
 });
+
+test("the operator's own typing is not judged like a scrape", () => {
+  // Both verbatim from live records that rendered the agent's session slug instead: the
+  // strict gate rejected the first for the typo "dont" and the second for its opener.
+  for (const ask of [
+    "tasks still dont appear properly - do a super deep dive",
+    "is there a completly free excersize visualization tool I can use for my fitness bot?",
+  ]) {
+    const line = resolvePaneTaskLine({
+      now: 1,
+      facts: { openingRequest: ask, title: "exercise-demo-gif-pipeline" },
+    });
+    expect(line, ask).toMatchObject({ source: "opening-request", text: ask });
+  }
+});
+
+test("leniency for the operator stops at readability", () => {
+  // A command, a path or a bare acknowledgement is still not a goal, however it arrived.
+  for (const ask of [
+    "npm run build",
+    "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
+    "sure",
+  ]) {
+    expect(
+      resolvePaneTaskLine({ now: 1, facts: { openingRequest: ask } }).source,
+      ask,
+    ).toBe("shell-state");
+  }
+});

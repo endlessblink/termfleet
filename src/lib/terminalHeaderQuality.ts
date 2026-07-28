@@ -327,12 +327,15 @@ function baseQuality(
  */
 export function qualityCheckUserAskLabel(
   value?: string | null,
+  // The map card's Task row is a fixed TWO-line box; other callers keep the one-line rule.
+  options: { maxLength?: number } = {},
 ): HeaderQualityResult {
   const text = clean(value);
   if (!text) return { ok: false, reason: "empty" };
   if (looksLikeTerminalStatusBar(text))
     return { ok: false, reason: "terminal-chrome" };
-  if (text.length > 96) return { ok: false, reason: "too-long" };
+  if (text.length > (options.maxLength ?? 96))
+    return { ok: false, reason: "too-long" };
   if (
     /^(?:go|done|fix it|fix this too|so fix it|ok|okay|sure|yes|continue|do it|proceed)$/i.test(
       text,

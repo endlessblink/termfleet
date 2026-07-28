@@ -1,6 +1,7 @@
 import { looksLikeSlug, type TranscriptFacts } from "./sessionTranscript";
 import {
   qualityCheckAuthoritativeTaskLabel,
+  qualityCheckUserAskLabel,
   stripComposerChrome,
 } from "./terminalHeaderQuality";
 
@@ -202,16 +203,38 @@ export function resolvePaneTaskLine(input: TaskLineInput): PaneTaskLine {
   // a word boundary — the operator's own words, cut, with the full text in the tooltip.
   // Anything that fails for a REASON other than length is still skipped, never trimmed
   // into looking acceptable.
+  // The OPERATOR's own words get the operator's gate, not the agent's.
+  //
+  // The strict gate exists to stop scraped junk from becoming a task, so it rejects typos
+  // ("dont"), first-person openers and report shapes — reasonable for text the app found
+  // on a screen, wrong for a message the operator actually typed, which is authoritative
+  // by definition. It threw away "tasks still dont appear properly - do a super deep
+  // dive" and left the card showing the agent's own session slug (report 2026-07-28).
+  // Readability rules still apply in full: length, code, paths, commands, pastes,
+  // harness blocks, slash commands, bare acknowledgements.
+  const readsAsAsk = (text: string): boolean =>
+    qualityCheckUserAskLabel(text, { maxLength: TASK_LINE_MAX }).ok &&
+    !UNREADABLE.test(text) &&
+    !SYSTEM_BLOCK.test(text);
+
+  const considerAsk = (candidate: string | null | undefined): string | null => {
+    const value = candidate?.trim();
+    if (!value) return null;
+    if (readsAsAsk(value)) return value;
+    if (!rejected) rejected = value;
+    return null;
+  };
+
   const considerLongAsk = (
     candidate: string | null | undefined,
   ): string | null => {
     const value = candidate?.trim();
     if (!value) return null;
-    const direct = consider(value);
+    const direct = considerAsk(value);
     if (direct) return direct;
     if (
-      qualityCheckAuthoritativeTaskLabel(value, { maxLength: TASK_LINE_MAX })
-        .reason !== "too-long"
+      qualityCheckUserAskLabel(value, { maxLength: TASK_LINE_MAX }).reason !==
+      "too-long"
     )
       return null;
     // Fitting is for a long REQUEST, not for a pasted document. The status hooks cap the
@@ -228,7 +251,7 @@ export function resolvePaneTaskLine(input: TaskLineInput): PaneTaskLine {
       .slice(0, TASK_LINE_MAX - 4)
       .replace(/\s+\S*$/, "")
       .trim()}…`;
-    return readsPlainly(fitted) ? fitted : null;
+    return readsAsAsk(fitted) ? fitted : null;
   };
 
   // MAIN-PLAN sources lead the line: the whole point is "what is this part of".
