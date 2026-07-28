@@ -5,6 +5,11 @@
 import { test, expect } from "@playwright/test";
 import { badgeForAttention } from "../src/lib/terminalAttention";
 import { terminalLooksActivelyWorking, terminalLooksAtRest } from "../src/lib/terminalHeaderDisplay";
+import {
+  terminalNeedsOperatorAnswer,
+  terminalScreenAttention,
+} from "../src/lib/operatorQuestionState";
+import { paneBadgeAttention } from "../src/lib/sessionStatus";
 
 test("badge labels are plain language for a non-technical viewer", () => {
   expect(badgeForAttention("waiting").label).toBe("Waiting for you");
@@ -33,4 +38,38 @@ test("live generating markers vs persistent mode labels", () => {
   expect(terminalLooksActivelyWorking("Getting there… (4m 26s · thinking)")).toBe(true);
   expect(terminalLooksActivelyWorking("[OMC] | thinking | session:66m | ctx:28% | Opus 4.8")).toBe(false);
   expect(terminalLooksActivelyWorking("user@host:~/proj$ ")).toBe(false);
+});
+
+test("a tool-permission prompt on screen means the pane is waiting for you", () => {
+  // Verbatim shape of the prompt the operator screenshotted (2026-07-28): a pane in
+  // hermes sitting on a Web Search permission ask showed "Status unavailable" and the
+  // Waiting filter counted zero.
+  const screen = [
+    "Tool use",
+    "",
+    '  Web Search("codex cli \\"image_generation\\" tool enable feature config.toml 2026")',
+    "  Claude wants to search the web for: codex cli image_generation tool",
+    "",
+    "Do you want to proceed?",
+    "❯ 1. Yes",
+    "  2. Yes, and don't ask again for Web Search commands in /repo",
+    "  3. No",
+    "",
+    "Esc to cancel · Tab to amend",
+  ].join("\n");
+  expect(terminalScreenAttention(screen)).toBe("waiting");
+  expect(terminalNeedsOperatorAnswer(screen)).toBe(true);
+  expect(paneBadgeAttention({ terminalVisibleText: screen })).toBe("waiting");
+});
+
+test("an answered permission prompt does not keep the pane amber", () => {
+  const screen = [
+    "Do you want to proceed?",
+    "❯ 1. Yes",
+    "Esc to cancel · Tab to amend",
+    "",
+    "  Web Search completed",
+    "Working… (12s · esc to interrupt)",
+  ].join("\n");
+  expect(terminalScreenAttention(screen)).toBe("running");
 });

@@ -51,6 +51,16 @@ export function terminalScreenAttention(value?: string | null): TerminalScreenAt
     /\bQuestions?\s+\d+\/\d+\s+\([1-9]\d*\s+unanswered\)/gi,
     /\benter to submit answer\b/i,
   ));
+  // The tool-permission prompt — the most common way a pane is blocked on the operator.
+  // It was missing, so a pane sitting on "Do you want to proceed?" showed Idle (or
+  // "Status unavailable" once its record aged out) and the Waiting filter counted zero
+  // while the prompt was on screen (operator report 2026-07-28). Paired with the prompt's
+  // own footer so an answered prompt scrolled up in history cannot keep the pane amber.
+  add("waiting", pairedMarkerIndex(
+    tail,
+    /\b(?:Do|Would) you (?:want|like) (?:to|me to) proceed\?/gi,
+    /\b(?:esc to cancel|tab to amend|enter to (?:select|confirm))\b/i,
+  ));
 
   add("running", lastMatchIndex(
     tail,

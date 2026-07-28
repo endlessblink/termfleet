@@ -90,13 +90,25 @@ export interface AgentStatusSidecar {
   paneId?: string;
 }
 
+/**
+ * An agent that is BLOCKED on the operator writes nothing while it waits — that is the
+ * whole point of waiting. Ageing such a record out turned a pane sitting on a permission
+ * prompt into "Status unavailable", and the Waiting filter counted zero while the prompt
+ * was on screen (operator report 2026-07-28). Waiting is a steady state, so it holds far
+ * longer than "what is it doing right now"; the cap only stops a pane that was abandoned
+ * mid-prompt from claiming to be waiting forever.
+ */
+const WAITING_TTL_MS = 12 * 60 * 60 * 1000;
+
 export function sidecarFresh(
   sidecar: AgentStatusSidecar | null | undefined,
   ttlMs: number = SIDECAR_TTL_MS,
   now: number = Date.now(),
 ): boolean {
   if (!sidecar || typeof sidecar.updatedAt !== "number") return false;
-  return now - sidecar.updatedAt <= ttlMs;
+  const limit =
+    sidecar.turn === "waiting" ? Math.max(ttlMs, WAITING_TTL_MS) : ttlMs;
+  return now - sidecar.updatedAt <= limit;
 }
 
 function cleanText(value: unknown): string {
