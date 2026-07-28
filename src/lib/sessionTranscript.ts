@@ -167,6 +167,9 @@ function opensAsRequest(text: string | undefined): string | undefined {
   // caveat, and the agent preambles subagents receive.
   if (/^[<$/]/.test(value)) return undefined;
   if (/^(?:caveat:|you are\b|##\s)/i.test(value)) return undefined;
+  // Bracketed harness notices ride inside user messages ("[Request interrupted by user
+  // for tool use]") and are not the operator speaking.
+  if (/^\[[^\]]+\]$/.test(value)) return undefined;
   // A nudge or a complaint is not a goal. "this keeps reseting" is the operator's own
   // text, but it names no work — as the Task row it says less than the request it would
   // replace. Four words minimum, and a short message that opens with a demonstrative

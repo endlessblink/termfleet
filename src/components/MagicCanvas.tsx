@@ -681,7 +681,8 @@ const styles: Record<string, CSSProperties> = {
     minWidth: 0,
     display: "grid",
     gridTemplateColumns: "auto minmax(0, 1fr)",
-    alignItems: "baseline",
+    // Top-aligned so a two-line value keeps its label on the first line.
+    alignItems: "start",
     gap: 6,
     // Reserved line box - see terminalStatusTitle.
     minHeight: 15,
@@ -695,6 +696,8 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 11,
     fontWeight: 600,
     letterSpacing: 0,
+    // Same rule as the big row: matched to the small row's first line box (12 x 1.35).
+    lineHeight: "16px",
   },
   terminalTaskValue: {
     minWidth: 0,
@@ -760,6 +763,9 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 11,
     fontWeight: 600,
     letterSpacing: 0,
+    // Matched to the FIRST line box of the value (19px x 1.18) so the label sits on that
+    // line rather than floating above it or sinking to the second line.
+    lineHeight: "22px",
   },
   terminalNowActiveValue: {
     minWidth: 0,

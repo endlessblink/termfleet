@@ -441,13 +441,14 @@ test("a momentary line never takes the row from a known goal", () => {
     capturedAt: 1,
     expiresAt: null,
   };
+  // The session title is NOT in this list: it is the overarching description of the
+  // pane, as steady as the request itself, so it may take the row.
   for (const weaker of [
     "current-tool",
     "current-step",
     "agent-said",
     "recent-activity",
     "completed-task",
-    "session-title",
   ] as const) {
     const line = { text: "Running git status", source: weaker, capturedAt: 2, expiresAt: null };
     expect(preferPaneTaskLine(goal, line), weaker).toEqual(goal);
@@ -463,4 +464,33 @@ test("a momentary line never takes the row from a known goal", () => {
     expiresAt: null,
   };
   expect(preferPaneTaskLine(goal, declared)).toEqual(declared);
+});
+
+test("the overarching description leads over mid-conversation replies", () => {
+  // Live rows read "add it yoyurself" and "how can I find this from the cms?" — the
+  // operator's own words, but chatter to anyone who was not in the room. The vendor keeps
+  // a session title that follows the work, so it answers "what is this pane about".
+  const line = resolvePaneTaskLine({
+    now: 1,
+    facts: {
+      title: "Add missing elements to events page",
+      operatorRequest: "add it yoyurself",
+      openingRequest: "the events page is missing the ticket link",
+    },
+  });
+  expect(line).toMatchObject({
+    source: "session-title",
+    text: "Add missing elements to events page",
+  });
+
+  // A slug title is not a description: the operator's own request keeps the row.
+  expect(
+    resolvePaneTaskLine({
+      now: 1,
+      facts: {
+        title: "fix-cockpit-task-display",
+        operatorRequest: "make the cards show what each terminal is working on",
+      },
+    }),
+  ).toMatchObject({ source: "operator-request" });
 });

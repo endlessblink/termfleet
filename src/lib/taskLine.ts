@@ -143,9 +143,9 @@ function templateTool(tool: { name: string; arg?: string }): string {
  */
 const RUNG_RANK: Record<TaskLineSource, number> = {
   declared: 0,
+  "session-title": 1,
   "operator-request": 1,
   "opening-request": 1,
-  "session-title": 2,
   "pending-question": 3,
   "current-step": 4,
   "agent-said": 5,
@@ -290,11 +290,28 @@ export function resolvePaneTaskLine(input: TaskLineInput): PaneTaskLine {
         rejected,
       };
     }
-    // The NEWEST thing the operator asked leads: a long session drifts, and pinning the
+    // An OVERARCHING description leads when the vendor wrote one. Claude keeps its own
+    // session title current as the work drifts, so it answers "what is this pane about"
+    // in a way no single message does: the rows underneath are mid-conversation replies
+    // ("add it yoyurself", "how can I find this from the cms?") that read as chatter to
+    // anyone who was not in the room (operator, 2026-07-28). A SLUG title is not a
+    // description, so it stays below the operator's own words, de-slugged, further down.
+    const readableTitle =
+      facts.title && !looksLikeSlug(facts.title) ? consider(facts.title) : null;
+    if (readableTitle) {
+      return {
+        text: readableTitle,
+        source: "session-title",
+        capturedAt: now,
+        expiresAt: null,
+        rejected,
+      };
+    }
+    // Then the NEWEST thing the operator asked: a long session drifts, and pinning the
     // row to the session's first question made the goal look like it kept resetting to
-    // where the work began (report 2026-07-28). A thin follow-up ("/done", "go", "make
-    // all high") fails the gate here and the opening request below takes over, so the
-    // row never degrades into an acknowledgement.
+    // where the work began. A thin follow-up ("/done", "go", "make all high") fails the
+    // gate and the opening request below takes over, so the row never degrades into an
+    // acknowledgement.
     const latestAsk = considerLongAsk(stripComposerChrome(facts.operatorRequest));
     if (latestAsk) {
       return {
