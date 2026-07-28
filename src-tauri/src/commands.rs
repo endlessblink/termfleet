@@ -1871,6 +1871,37 @@ pub fn session_transcript_read(
     }
 }
 
+/// The operator's opening request lives at the START of the record, so the tail can never
+/// carry it — the tail holds the latest prompt ("/done", "go"). Without this the Task row
+/// had to fall back to the agent's own session title, which is sometimes a slug
+/// ("exercise-demo-gif-pipeline") that says nothing a week later.
+pub const TRANSCRIPT_HEAD_BYTES: usize = 65_536;
+
+fn read_head(path: &std::path::Path, max_bytes: usize) -> Result<String, String> {
+    use std::io::Read;
+    let mut file =
+        std::fs::File::open(path).map_err(|e| format!("open {}: {e}", path.display()))?;
+    let mut buf = vec![0u8; max_bytes];
+    let read = file
+        .read(&mut buf)
+        .map_err(|e| format!("read {}: {e}", path.display()))?;
+    buf.truncate(read);
+    Ok(String::from_utf8_lossy(&buf).into_owned())
+}
+
+/// Head of a vendor session record — the opening request. Missing file → `Ok(None)`.
+/// Same allowlisted directories and the same session-id validation as the tail reader.
+#[tauri::command]
+pub fn session_transcript_head_read(
+    provider: String,
+    session_id: String,
+) -> Result<Option<String>, String> {
+    match session_transcript_path(&provider, &session_id)? {
+        Some(path) => Ok(Some(read_head(&path, TRANSCRIPT_HEAD_BYTES)?)),
+        None => Ok(None),
+    }
+}
+
 /// A plain shell has no declared task, so the honest answer is what it is actually
 /// running. The daemon already owns each pane's PTY and pid, so this needs no
 /// cooperation from anything. `root` is injectable so the parse is testable.
@@ -1945,6 +1976,21 @@ mod tc060_tests {
             .unwrap()
             .is_some());
         std::fs::remove_dir_all(&home).ok();
+    }
+
+    #[test]
+    fn reads_the_opening_lines_of_a_large_file() {
+        // The operator's first request lives at the START; the tail can never carry it.
+        let dir = std::env::temp_dir().join("tf-tc060-head");
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("big.jsonl");
+        let mut body = String::from("{\"first\":\"the opening ask\"}\n");
+        body.push_str(&"y".repeat(TRANSCRIPT_HEAD_BYTES * 2));
+        std::fs::write(&file, body).unwrap();
+        let head = read_head(&file, TRANSCRIPT_HEAD_BYTES).unwrap();
+        assert!(head.starts_with("{\"first\":\"the opening ask\"}"));
+        assert!(head.len() <= TRANSCRIPT_HEAD_BYTES);
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]

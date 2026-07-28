@@ -261,6 +261,12 @@ test("every pane on this machine renders a readable Task row and Now Active line
           `${id} [${mode}]: placeholder Task while the record holds a goal/request/list -> ${task}`,
         );
       }
+      // A slug is a name for a machine. "exercise-demo-gif-pipeline" told the operator
+      // nothing a week later (report 2026-07-28), so it may never reach the row — the
+      // ladder de-slugs it into words before it gets here.
+      if (/^[a-z0-9]+(?:[-_][a-z0-9]+){1,}$/.test(task.trim())) {
+        offenders.push(`${id} [${mode}]: slug as the Task row -> ${task}`);
+      }
       if (!HONEST_FALLBACKS.has(now) && NON_ACTIVITY_SHAPE.test(now)) {
         offenders.push(
           `${id} [${mode}]: non-activity-shape as Now Active -> ${now}`,

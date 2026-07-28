@@ -1,4 +1,4 @@
-import type { TranscriptFacts } from "./sessionTranscript";
+import { looksLikeSlug, type TranscriptFacts } from "./sessionTranscript";
 import {
   qualityCheckAuthoritativeTaskLabel,
   stripComposerChrome,
@@ -12,6 +12,7 @@ import {
 
 export type TaskLineSource =
   | "declared"
+  | "opening-request"
   | "session-title"
   | "operator-request"
   | "pending-question"
@@ -101,8 +102,22 @@ const UNREADABLE =
 // notifications, tool-result envelopes, command wrappers. None of it is a request.
 const SYSTEM_BLOCK = /^\s*<\/?[a-z][\w-]*[\s>]|<\/?(?:task-notification|system-reminder|tool-use-id|output-file|command-name|command-message)\b/i;
 
+/** `fix-cockpit-task-display` → `Fix cockpit task display`. Non-slugs pass through. */
+function deslug(text: string | undefined): string | undefined {
+  if (!text || !looksLikeSlug(text)) return text;
+  const words = text.trim().replace(/[-_]+/g, " ");
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+// The row is a fixed two-line box, so a request may run to two lines before it is cut.
+// The paste ceiling (200) still applies — a document is never fitted, only a request.
+const TASK_LINE_MAX = 150;
+
 function readsPlainly(text: string): boolean {
-  return qualityCheckAuthoritativeTaskLabel(text).ok && !UNREADABLE.test(text);
+  return (
+    qualityCheckAuthoritativeTaskLabel(text, { maxLength: TASK_LINE_MAX }).ok &&
+    !UNREADABLE.test(text)
+  );
 }
 
 function templateTool(tool: { name: string; arg?: string }): string {
@@ -194,7 +209,10 @@ export function resolvePaneTaskLine(input: TaskLineInput): PaneTaskLine {
     if (!value) return null;
     const direct = consider(value);
     if (direct) return direct;
-    if (qualityCheckAuthoritativeTaskLabel(value).reason !== "too-long")
+    if (
+      qualityCheckAuthoritativeTaskLabel(value, { maxLength: TASK_LINE_MAX })
+        .reason !== "too-long"
+    )
       return null;
     // Fitting is for a long REQUEST, not for a pasted document. The status hooks cap the
     // recorded ask at 220 characters, so anything at that scale is text the operator
@@ -207,7 +225,7 @@ export function resolvePaneTaskLine(input: TaskLineInput): PaneTaskLine {
       return null;
     }
     const fitted = `${value
-      .slice(0, 92)
+      .slice(0, TASK_LINE_MAX - 4)
       .replace(/\s+\S*$/, "")
       .trim()}…`;
     return readsPlainly(fitted) ? fitted : null;
@@ -227,7 +245,22 @@ export function resolvePaneTaskLine(input: TaskLineInput): PaneTaskLine {
         rejected,
       };
     }
-    const title = consider(facts.title);
+    // What the OPERATOR asked for when this pane started — the one line that still means
+    // something a week later. It outranks the agent's own session title because that
+    // title is sometimes a slug ("exercise-demo-gif-pipeline"), which answers nothing.
+    const opening = considerLongAsk(stripComposerChrome(facts.openingRequest));
+    if (opening) {
+      return {
+        text: opening,
+        source: "opening-request",
+        capturedAt: now,
+        expiresAt: null,
+        rejected,
+      };
+    }
+    // A slug is the agent's own words, just written for a machine. Spacing it out is
+    // formatting, not invention — and it is only ever reached when nothing above spoke.
+    const title = consider(deslug(facts.title));
     if (title) {
       return {
         text: title,

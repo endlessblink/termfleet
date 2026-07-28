@@ -38,15 +38,28 @@ test("map card headline row always renders a label and a value", () => {
   expect(titleBlock).toMatch(/visibility:\s*"hidden"/);
 });
 
-test("map card task line stays on one line", () => {
+test("map card task line is a FIXED two-line box", () => {
+  // Changed deliberately 2026-07-28: the operator asked for two lines so a real goal is
+  // readable ("exercise-demo-gif-pipeline" told them nothing a week later). The jiggle
+  // came from a row whose height VARIED with the text, not from two lines as such — so
+  // wrapping is allowed only while the height stays fixed and the text stays clamped.
   const style = magicCanvas.match(
     /terminalTaskValue:\s*\{[\s\S]*?\n {2}\},/,
   )?.[0];
   expect(style, "terminalTaskValue style block").toBeTruthy();
-  expect(style).toMatch(/whiteSpace:\s*"nowrap"/);
-  expect(style, "wrapping ties header height to task length").not.toMatch(
-    /whiteSpace:\s*"normal"/,
+  expect(style).toMatch(/WebkitLineClamp:\s*2/);
+  expect(style, "the box must not grow with the text").toMatch(
+    /height:\s*"[\d.]+em"/,
   );
+  expect(style, "a minimum lets the row grow again").not.toMatch(
+    /minHeight:/,
+  );
+
+  const bigRow = magicCanvas.match(
+    /terminalNowActiveValue:\s*\{[\s\S]*?\n {2}\},/,
+  )?.[0];
+  expect(bigRow, "terminalNowActiveValue style block").toBeTruthy();
+  expect(bigRow).toMatch(/WebkitLineClamp:\s*2/);
 });
 
 test("fleet list rows reserve no blank lines", () => {

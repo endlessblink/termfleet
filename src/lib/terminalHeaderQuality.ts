@@ -403,12 +403,16 @@ export function qualityCheckUserAskLabel(
  */
 export function qualityCheckAuthoritativeTaskLabel(
   value?: string | null,
+  // The Task row on a map card is a fixed TWO-line box, so it can carry more than the
+  // one-line callers. Defaulted, so every existing caller keeps the 96-character rule.
+  options: { maxLength?: number } = {},
 ): HeaderQualityResult {
   const text = clean(value);
   if (!text) return { ok: false, reason: "empty" };
   if (looksLikeTerminalStatusBar(text))
     return { ok: false, reason: "terminal-chrome" };
-  if (text.length > 96) return { ok: false, reason: "too-long" };
+  if (text.length > (options.maxLength ?? 96))
+    return { ok: false, reason: "too-long" };
   if (
     /^(?:Ready|Idle|Terminal|Working|Thinking|Running terminal command|Supervised agent run|Context compacted|done|go|fix it)$/i.test(
       text,

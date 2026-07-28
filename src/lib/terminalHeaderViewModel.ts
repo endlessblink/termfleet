@@ -747,7 +747,7 @@ export function buildShellTerminalHeaderViewModel(input: {
   // header while the agent has visibly moved on.
   const ladderIsLiveWork =
     input.taskLine != null &&
-    /^(?:declared|session-title|operator-request|pending-question|current-step|agent-said|current-tool|completed-task|recent-activity)$/.test(
+    /^(?:declared|opening-request|session-title|operator-request|pending-question|current-step|agent-said|current-tool|completed-task|recent-activity)$/.test(
       input.taskLine.source,
     );
   // TC-060 "always show the main plan": the Task row is meant to answer "what is
@@ -756,7 +756,7 @@ export function buildShellTerminalHeaderViewModel(input: {
   // in-progress step — the step still surfaces on the Now Active line below.
   const ladderIsMainPlan =
     input.taskLine != null &&
-    /^(?:declared|session-title|operator-request|pending-question)$/.test(
+    /^(?:declared|opening-request|session-title|operator-request|pending-question)$/.test(
       input.taskLine.source,
     );
   const preferLadder =

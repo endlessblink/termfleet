@@ -12,7 +12,7 @@ import {
   type AgentStatusSidecar,
   type SidecarFileReader,
 } from "./agentStatusSidecar";
-import { parseTranscript } from "./sessionTranscript";
+import { parseOpeningRequest, parseTranscript } from "./sessionTranscript";
 import { resolvePaneTaskLine, type PaneTaskLine } from "./taskLine";
 import { stripComposerChrome } from "./terminalHeaderQuality";
 
@@ -44,6 +44,8 @@ export interface AgentStatusSummarizerOptions {
 export type SessionTranscriptReader = (
   provider: "claude" | "codex",
   sessionId: string,
+  /** "tail" = what is happening now; "head" = the operator's opening request. */
+  part?: "head" | "tail",
 ) => Promise<string | null>;
 
 function isTauriRuntime() {
@@ -66,13 +68,45 @@ function tauriSidecarReader(): SidecarFileReader | null {
 
 function tauriTranscriptReader(): SessionTranscriptReader | null {
   if (!isTauriRuntime()) return null;
-  return async (provider, sessionId) => {
-    const text = await invoke<string | null>("session_transcript_read", {
-      provider,
-      sessionId,
-    });
+  return async (provider, sessionId, part = "tail") => {
+    const text = await invoke<string | null>(
+      part === "head" ? "session_transcript_head_read" : "session_transcript_read",
+      { provider, sessionId },
+    );
     return typeof text === "string" ? text : null;
   };
+}
+
+/**
+ * The opening request never changes, so it is read ONCE per session and then reused —
+ * otherwise every pane would re-read the start of its record on every poll.
+ * `null` records "this session has no usable opening line", so it is not retried either.
+ */
+const openingRequestBySession = new Map<string, string | null>();
+const OPENING_CACHE_LIMIT = 500;
+
+async function openingRequestFor(
+  provider: "claude" | "codex",
+  sessionId: string,
+  readTranscript: SessionTranscriptReader,
+): Promise<string | undefined> {
+  const key = `${provider}:${sessionId}`;
+  const cached = openingRequestBySession.get(key);
+  if (cached !== undefined) return cached ?? undefined;
+  let opening: string | undefined;
+  try {
+    const head = await readTranscript(provider, sessionId, "head");
+    if (typeof head === "string" && head)
+      opening = parseOpeningRequest(provider, head);
+  } catch {
+    // Same rule as the tail: fewer facts, never an error on screen.
+  }
+  if (openingRequestBySession.size > OPENING_CACHE_LIMIT) {
+    const oldest = openingRequestBySession.keys().next();
+    if (!oldest.done) openingRequestBySession.delete(oldest.value);
+  }
+  openingRequestBySession.set(key, opening ?? null);
+  return opening;
 }
 
 function configuredEndpoint() {
@@ -213,9 +247,15 @@ async function resolveTaskLineFor(
     // `provider` is absent on most sidecars, so try both records and let the id decide.
     for (const provider of ["claude", "codex"] as const) {
       try {
-        const text = await readTranscript(provider, sessionId);
+        const text = await readTranscript(provider, sessionId, "tail");
         if (typeof text === "string" && text) {
           facts = parseTranscript(provider, text);
+          const opening = await openingRequestFor(
+            provider,
+            sessionId,
+            readTranscript,
+          );
+          if (opening) facts = { ...facts, openingRequest: opening };
           break;
         }
       } catch {

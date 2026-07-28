@@ -698,11 +698,18 @@ const styles: Record<string, CSSProperties> = {
   },
   terminalTaskValue: {
     minWidth: 0,
-    // One line, ellipsised (the full task stays in the row's title tooltip).
-    // Wrapping made the header height depend on the live task text length.
+    // TWO lines, at a FIXED height (the operator asked for two so a long goal is
+    // readable). Height must never depend on the text: a header that grows and shrinks
+    // resizes the terminal underneath, which is what made the view jump. So the box is
+    // always exactly two lines tall, whether the task is one word or a full sentence.
+    display: "-webkit-box",
+    WebkitBoxOrient: "vertical" as const,
+    WebkitLineClamp: 2,
     overflow: "hidden",
     textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
+    whiteSpace: "normal" as const,
+    lineHeight: "1.35em",
+    height: "2.7em",
     color: "var(--text-secondary)",
     fontSize: 12,
     fontWeight: 500,
@@ -729,7 +736,9 @@ const styles: Record<string, CSSProperties> = {
     minWidth: 0,
     display: "grid",
     gridTemplateColumns: "auto minmax(0, 1fr)",
-    alignItems: "baseline",
+    // Top-aligned, not baseline: with a two-line value the label must stay on the first
+    // line instead of dropping to the last one.
+    alignItems: "start",
     gap: 7,
     overflow: "hidden",
     color: "var(--text-primary)",
@@ -739,8 +748,12 @@ const styles: Record<string, CSSProperties> = {
     // FIXED height, not a minimum. Measured live: this row was 32px with a label
     // and value on a shared baseline, 23px in the placeholder state, and every
     // switch between them resized the terminal below the header (the up/down
-    // shove the operator reported). One fixed line box removes the variable.
-    height: 32,
+    // shove the operator reported). A fixed box removes the variable.
+    //
+    // TWO lines now (operator, 2026-07-28: a one-line goal cut short is unreadable a
+    // week later). The height is still fixed and still independent of the text — a
+    // short goal simply leaves the second line empty rather than shrinking the row.
+    height: 52,
   },
   terminalNowActiveLabel: {
     color: "var(--text-tertiary)",
@@ -750,9 +763,14 @@ const styles: Record<string, CSSProperties> = {
   },
   terminalNowActiveValue: {
     minWidth: 0,
+    // Clamped to the same two lines the row reserves, so text can never push it taller.
+    display: "-webkit-box",
+    WebkitBoxOrient: "vertical" as const,
+    WebkitLineClamp: 2,
     overflow: "hidden",
     textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
+    whiteSpace: "normal" as const,
+    lineHeight: 1.18,
   },
   renameInput: {
     width: "100%",

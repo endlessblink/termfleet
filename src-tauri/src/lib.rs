@@ -58,6 +58,7 @@ pub fn run() {
             commands::daemon_status,
             commands::agent_status_read_sidecar,
             commands::session_transcript_read,
+            commands::session_transcript_head_read,
             commands::pane_foreground_command,
             commands::agent_provider_statuses,
             commands::pane_agent_provider,

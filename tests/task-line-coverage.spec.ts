@@ -54,6 +54,19 @@ function findFileNamed(
   return null;
 }
 
+function readHead(file: string) {
+  const size = statSync(file).size;
+  const take = Math.min(65_536, size); // matches commands.rs TRANSCRIPT_HEAD_BYTES
+  const buffer = Buffer.alloc(take);
+  const fd = openSync(file, "r");
+  try {
+    readSync(fd, buffer, 0, take, 0);
+  } finally {
+    closeSync(fd);
+  }
+  return buffer.toString("utf8");
+}
+
 function readTail(file: string) {
   const size = statSync(file).size;
   const take = Math.min(TAIL_BYTES, size);
@@ -71,6 +84,7 @@ const home = process.env.HOME ?? "";
 const readTranscript = async (
   provider: "claude" | "codex",
   sessionId: string,
+  part: "head" | "tail" = "tail",
 ) => {
   const file =
     provider === "claude"
@@ -85,7 +99,10 @@ const readTranscript = async (
           (name) =>
             name.startsWith("rollout-") && name.endsWith(`-${sessionId}.jsonl`),
         );
-  return file ? readTail(file) : null;
+  if (!file) return null;
+  // The app reads the START for the operator's opening request and the END for what is
+  // happening now; the audit has to do both or it cannot see the row the app renders.
+  return part === "head" ? readHead(file) : readTail(file);
 };
 
 test("every ACTIVE terminal that has something sayable gets a task line", async () => {

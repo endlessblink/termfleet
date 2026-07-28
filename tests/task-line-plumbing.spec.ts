@@ -19,7 +19,10 @@ import {
   buildTerminalHeaderState,
   resetKnownTaskLines,
 } from "../src/lib/terminalHeaderState";
-import { parseClaudeTranscript } from "../src/lib/sessionTranscript";
+import {
+  parseClaudeOpeningRequest,
+  parseClaudeTranscript,
+} from "../src/lib/sessionTranscript";
 import type { AgentStatusSummaryInput } from "../src/lib/agentStatusSummary";
 import type { TerminalState } from "../src/lib/types";
 
@@ -244,12 +247,14 @@ test("a genuinely long request is still fitted to the row", () => {
   const line = resolvePaneTaskLine({
     now: 1,
     facts: {
+      // Longer than the two-line box (150), shorter than the paste ceiling (200).
       operatorRequest:
-        "I want to be able to switch codex sessions without being logged out - last time when I did that all services that were running stopped",
+        "I want to be able to switch codex sessions without being logged out, because last time I did that every running service stopped and I had to start them again by hand",
     },
   });
   expect(line.source).toBe("operator-request");
   expect(line.text.endsWith("…")).toBe(true);
+  expect(line.text.length).toBeLessThanOrEqual(150);
 });
 
 test("harness plumbing in the prompt field is never a task", () => {
@@ -294,4 +299,76 @@ test("the row never flips back to the placeholder once a pane has spoken", () =>
     terminalId: "pty-other",
   });
   expect(otherPane.goalLabel).toBe("No task declared");
+});
+
+test("the operator's opening ask leads, and a slug never reaches the row", () => {
+  // Verbatim from the operator's screenshot: this pane read "exercise-demo-gif-pipeline".
+  const opening = "Make the exercise bot generate its own demo animations";
+  expect(
+    resolvePaneTaskLine({
+      now: 1,
+      facts: { openingRequest: opening, title: "exercise-demo-gif-pipeline" },
+    }),
+  ).toMatchObject({ source: "opening-request", text: opening });
+
+  // With no opening ask, the slug is spaced into words rather than printed raw.
+  expect(
+    resolvePaneTaskLine({ now: 1, facts: { title: "fix-cockpit-task-display" } }),
+  ).toMatchObject({ source: "session-title", text: "Fix cockpit task display" });
+});
+
+test("the clearest session title wins, not the newest", () => {
+  // The exercise session carried BOTH: the readable one first, the slug later. The app
+  // took the last and showed the slug.
+  const facts = parseClaudeTranscript(
+    [
+      JSON.stringify({
+        type: "ai-title",
+        aiTitle: "Find free exercise visualization tool for fitness bot",
+      }),
+      JSON.stringify({ type: "ai-title", aiTitle: "exercise-demo-gif-pipeline" }),
+    ].join("\n"),
+  );
+  expect(facts.title).toBe("Find free exercise visualization tool for fitness bot");
+});
+
+test("the opening ask is the first REAL request, not plumbing", () => {
+  const head = [
+    JSON.stringify({ type: "user", message: { content: "/dropoff" } }),
+    JSON.stringify({
+      type: "user",
+      message: { content: "<task-notification> <task-id>bx1</task-id> </task-notification>" },
+    }),
+    JSON.stringify({
+      type: "user",
+      isSidechain: true,
+      message: { content: "You are a subagent. Investigate the failing test." },
+    }),
+    JSON.stringify({
+      type: "user",
+      message: {
+        content: [
+          { type: "text", text: "I need a way to censor parts of the screen while zoomed" },
+        ],
+      },
+    }),
+  ].join("\n");
+  expect(parseClaudeOpeningRequest(head)).toBe(
+    "I need a way to censor parts of the screen while zoomed",
+  );
+});
+
+test("a two-line goal is kept whole; a document is still refused", () => {
+  const long =
+    "I want to be able to switch codex sessions without being logged out, because last time every service that was running stopped and I had to start them all again by hand";
+  const line = resolvePaneTaskLine({ now: 1, facts: { openingRequest: long } });
+  expect(line.source).toBe("opening-request");
+  expect(line.text.length).toBeGreaterThan(96);
+  expect(line.text.length).toBeLessThanOrEqual(150);
+  expect(
+    resolvePaneTaskLine({
+      now: 1,
+      facts: { openingRequest: "x".repeat(205) },
+    }).source,
+  ).toBe("shell-state");
 });

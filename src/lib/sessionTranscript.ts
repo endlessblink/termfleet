@@ -10,6 +10,11 @@ export interface TranscriptFacts {
   title?: string;
   /** The operator's own last request, verbatim. The floor rule's source. */
   operatorRequest?: string;
+  /** The operator's FIRST substantive request of the session — what this pane is about,
+   *  read from the start of the record. The tail can never carry it (the tail holds the
+   *  latest prompt, "/done"), and the agent's own session title is sometimes a slug, so
+   *  without this the row said "exercise-demo-gif-pipeline" a week later. */
+  openingRequest?: string;
   /** The agent's own last sentence about the work. Truncated at a sentence
    *  boundary — the agent's words, never reworded. */
   agentSaid?: string;
@@ -29,6 +34,9 @@ function cleanText(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const text = value
     .replace(/\[Image\s+#?\d+\]/gi, "")
+    // The composer's own prompt glyph rides along in the recorded prompt ("❯ I want…").
+    // It belongs to the input box, not to what the operator said.
+    .replace(/^\s*[❯➜»>]+\s*/u, "")
     .replace(/\s+/g, " ")
     .trim();
   return text.length >= 4 ? text : undefined;
@@ -141,13 +149,89 @@ function firstQuestion(
   return question || header ? { question, header } : undefined;
 }
 
+/** `fix-cockpit-task-display` — a name for a machine, not a sentence for a person. */
+export function looksLikeSlug(text: string): boolean {
+  return /^[a-z0-9]+(?:[-_][a-z0-9]+){1,}$/.test(text.trim());
+}
+
+/**
+ * Is this message the operator ASKING for something, rather than harness plumbing, a
+ * slash command or a pasted document? Deliberately narrow: the opening line of a pane is
+ * shown for as long as the session lives, so a wrong pick is worse than none.
+ */
+function opensAsRequest(text: string | undefined): string | undefined {
+  if (!text) return undefined;
+  const value = text.trim();
+  if (value.length < 12) return undefined;
+  // Harness blocks, tool envelopes, command wrappers, slash commands, Claude's local-command
+  // caveat, and the agent preambles subagents receive.
+  if (/^[<$/]/.test(value)) return undefined;
+  if (/^(?:caveat:|you are\b|##\s)/i.test(value)) return undefined;
+  return value;
+}
+
+/** The operator's first real request, from the START of a Claude record. */
+export function parseClaudeOpeningRequest(text: string): string | undefined {
+  let found: string | undefined;
+  eachRecord(text, (record) => {
+    if (found || record.type !== "user" || record.isSidechain === true) return;
+    const message = record.message as { content?: unknown } | undefined;
+    const content = message?.content;
+    const raw =
+      typeof content === "string"
+        ? content
+        : Array.isArray(content)
+          ? content
+              .filter(
+                (block) =>
+                  block &&
+                  typeof block === "object" &&
+                  (block as { type?: string }).type === "text",
+              )
+              .map((block) => (block as { text?: string }).text ?? "")
+              .join(" ")
+          : "";
+    found = opensAsRequest(cleanText(raw));
+  });
+  return found;
+}
+
+/** The same, from the START of a Codex rollout. */
+export function parseCodexOpeningRequest(text: string): string | undefined {
+  let found: string | undefined;
+  eachRecord(text, (record) => {
+    if (found) return;
+    const payload = record.payload as Record<string, unknown> | undefined;
+    if (payload?.type !== "user_message") return;
+    found = opensAsRequest(cleanText(payload.message));
+  });
+  return found;
+}
+
+export function parseOpeningRequest(
+  provider: string,
+  text: string,
+): string | undefined {
+  if (provider === "claude") return parseClaudeOpeningRequest(text);
+  if (provider === "codex") return parseCodexOpeningRequest(text);
+  return undefined;
+}
+
 export function parseClaudeTranscript(text: string): TranscriptFacts {
   const facts: TranscriptFacts = {};
   eachRecord(text, (record) => {
     const at = parseTime(record.timestamp);
     if (at) facts.lastActivityAt = at;
-    if (record.type === "ai-title")
-      facts.title = cleanText(record.aiTitle) ?? facts.title;
+    if (record.type === "ai-title") {
+      // The vendor REWRITES this title as the session goes on, and the newest is not the
+      // clearest: the exercise session's readable "Find free exercise visualization tool
+      // for fitness bot" was replaced by the slug "exercise-demo-gif-pipeline", which is
+      // what reached the operator's screen. Keep the first title that reads as words.
+      const next = cleanText(record.aiTitle);
+      if (next && (!facts.title || (looksLikeSlug(facts.title) && !looksLikeSlug(next)))) {
+        facts.title = next;
+      }
+    }
     if (record.type === "last-prompt") {
       facts.operatorRequest =
         cleanText(record.lastPrompt) ?? facts.operatorRequest;
