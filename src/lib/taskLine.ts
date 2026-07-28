@@ -135,14 +135,36 @@ function templateTool(tool: { name: string; arg?: string }): string {
  * used to stick. Every writer (the central poll loop, the per-pane poll, the header)
  * goes through this, because a rule that lives in only one of them leaks.
  */
+/**
+ * How steady each rung is. The top four answer "what is this pane FOR" and barely change;
+ * the rest are momentary — the tool of the second, the step of the minute — and a pane
+ * that swapped between them looked like it was resetting itself while the operator sat
+ * and watched ("still jumpy even without me typing anything", 2026-07-28).
+ */
+const RUNG_RANK: Record<TaskLineSource, number> = {
+  declared: 0,
+  "operator-request": 1,
+  "opening-request": 1,
+  "session-title": 2,
+  "pending-question": 3,
+  "current-step": 4,
+  "agent-said": 5,
+  "current-tool": 6,
+  "completed-task": 7,
+  "recent-activity": 8,
+  "running-command": 9,
+  "shell-state": 10,
+};
+
 export function preferPaneTaskLine(
   current: PaneTaskLine | null | undefined,
   next: PaneTaskLine | null | undefined,
 ): PaneTaskLine | undefined {
   if (!next) return current ?? undefined;
   if (!current) return next;
-  if (next.source === "shell-state" && current.source !== "shell-state")
-    return current;
+  // A weaker rung never takes the row from a stronger one. Same rung → the newer text
+  // wins, so a genuinely new request still lands and a live step still follows the work.
+  if (RUNG_RANK[next.source] > RUNG_RANK[current.source]) return current;
   return next;
 }
 

@@ -12,7 +12,11 @@ import {
 } from "./terminalHeaderViewModel";
 import { type AttentionState } from "./terminalAttention";
 import { reconcileSessionStatus } from "./sessionStatus";
-import { resolvePaneTaskLine, type PaneTaskLine } from "./taskLine";
+import {
+  preferPaneTaskLine,
+  resolvePaneTaskLine,
+  type PaneTaskLine,
+} from "./taskLine";
 
 export type TerminalHeaderStatus =
   | "idle"
@@ -146,9 +150,13 @@ const lastKnownTaskLine = new Map<string, PaneTaskLine>();
 const LAST_KNOWN_LIMIT = 400;
 
 function rememberTaskLine(key: string, line: PaneTaskLine) {
-  if (lastKnownTaskLine.get(key) === line) return;
+  const known = lastKnownTaskLine.get(key);
+  if (known === line) return;
+  // Rank-aware: a momentary line (the tool of the second) must not become the pane's
+  // remembered answer once its goal is known, or the row flips between them.
+  const best = preferPaneTaskLine(known, line) ?? line;
   lastKnownTaskLine.delete(key);
-  lastKnownTaskLine.set(key, line);
+  lastKnownTaskLine.set(key, best);
   if (lastKnownTaskLine.size > LAST_KNOWN_LIMIT) {
     const oldest = lastKnownTaskLine.keys().next();
     if (!oldest.done) lastKnownTaskLine.delete(oldest.value);

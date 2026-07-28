@@ -431,3 +431,36 @@ test("the newest real request wins, a reaction to it does not", () => {
     ).toMatchObject({ source: "opening-request" });
   }
 });
+
+test("a momentary line never takes the row from a known goal", () => {
+  // "still jumpy even without me typing anything" (2026-07-28): the row swapped between
+  // the goal and whatever the agent happened to be doing that second.
+  const goal = {
+    text: "why cant I ask multiple excersizes so it can generate many for later usage?",
+    source: "operator-request" as const,
+    capturedAt: 1,
+    expiresAt: null,
+  };
+  for (const weaker of [
+    "current-tool",
+    "current-step",
+    "agent-said",
+    "recent-activity",
+    "completed-task",
+    "session-title",
+  ] as const) {
+    const line = { text: "Running git status", source: weaker, capturedAt: 2, expiresAt: null };
+    expect(preferPaneTaskLine(goal, line), weaker).toEqual(goal);
+  }
+
+  // A NEW request of the same rank still lands, and a declared goal outranks everything.
+  const newer = { ...goal, text: "now make it export webp", capturedAt: 3 };
+  expect(preferPaneTaskLine(goal, newer)).toEqual(newer);
+  const declared = {
+    text: "Ship the exercise animation pipeline",
+    source: "declared" as const,
+    capturedAt: 4,
+    expiresAt: null,
+  };
+  expect(preferPaneTaskLine(goal, declared)).toEqual(declared);
+});
