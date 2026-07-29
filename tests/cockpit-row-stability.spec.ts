@@ -98,5 +98,5 @@ test("the card shows the goal on top and the moment under it, always", () => {
   );
   expect(nowRow.slice(0, 1600)).toContain(">\n                Now:\n              <");
   // Reserved, never unmounted: an empty second row must not change the card's height.
-  expect(nowRow.slice(0, 1600)).toMatch(/visibility: terminalHeaderNowActiveVisible/);
+  expect(nowRow.slice(0, 1600)).toMatch(/visibility: terminalHeaderNowRowVisible/);
 });

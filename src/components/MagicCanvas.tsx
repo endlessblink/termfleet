@@ -3315,6 +3315,26 @@ function CanvasNodeViewImpl({
     terminalDisplaySummaryBase.confidence !== "low";
   const terminalHeaderNow =
     terminalHeaderSummarySignal || terminalHeaderTitle || terminalNeutralTitle;
+  // The second row the operator asked for: what this pane is doing RIGHT NOW, under the
+  // goal. `activityAddsInfo` is deliberately strict (it was built to suppress a
+  // duplicate/filler line when the activity was the BIG line), so on its own it left the
+  // row blank on panes that were plainly working — "relaunched nothing changed". When it
+  // declines, the pane's own live status line is used instead, minus the filler words.
+  const terminalHeaderNowRowText = (() => {
+    if (terminalHeaderNowActiveVisible) return terminalHeaderTitle;
+    const candidate = (terminalHeaderNow ?? "").trim();
+    if (!candidate) return "";
+    if (candidate === terminalHeaderTaskDescription.trim()) return "";
+    if (
+      /^(?:Idle|Working|Ready|Terminal|Awaiting command|Awaiting next action|Ready for next task|Activity not captured|Status unavailable|No task declared|Task not captured)$/i.test(
+        candidate,
+      )
+    ) {
+      return "";
+    }
+    return candidate;
+  })();
+  const terminalHeaderNowRowVisible = Boolean(terminalHeaderNowRowText);
   const detectedLaneTaskId =
     node.taskBinding?.taskId ??
     firstTaskIdFromText(
@@ -4167,16 +4187,16 @@ function CanvasNodeViewImpl({
               style={styles.terminalTaskRow}
               data-testid="canvas-terminal-node-task-row"
               title={
-                terminalHeaderNowActiveVisible
-                  ? `Now: ${terminalHeaderTitle}`
+                terminalHeaderNowRowVisible
+                  ? `Now: ${terminalHeaderNowRowText}`
                   : undefined
               }
-              data-reserved={terminalHeaderNowActiveVisible ? "false" : "true"}
+              data-reserved={terminalHeaderNowRowVisible ? "false" : "true"}
             >
               <span
                 style={{
                   ...styles.terminalTaskLabel,
-                  visibility: terminalHeaderNowActiveVisible
+                  visibility: terminalHeaderNowRowVisible
                     ? "visible"
                     : "hidden",
                 }}
@@ -4187,12 +4207,12 @@ function CanvasNodeViewImpl({
                 data-testid="canvas-terminal-node-header-title"
                 style={{
                   ...styles.terminalTaskValue,
-                  visibility: terminalHeaderNowActiveVisible
+                  visibility: terminalHeaderNowRowVisible
                     ? "visible"
                     : "hidden",
                 }}
               >
-                {terminalHeaderNowActiveVisible ? terminalHeaderTitle : " "}
+                {terminalHeaderNowRowVisible ? terminalHeaderNowRowText : " "}
               </span>
             </div>
             <div
