@@ -3326,6 +3326,14 @@ function CanvasNodeViewImpl({
     const resolved = linkedTerminal?.nowLine?.text?.trim();
     if (resolved && resolved !== terminalHeaderTaskDescription.trim())
       return resolved;
+    // The agent's own in-progress item, straight from the store. It is already there for
+    // every pane with a live task list, so the row has content even before (or without)
+    // a resolver pass.
+    const liveStep = (workstream?.taskLineup ?? linkedTerminal?.taskLineup ?? [])
+      .find((item) => item.status === "in_progress")
+      ?.content?.trim();
+    if (liveStep && liveStep !== terminalHeaderTaskDescription.trim())
+      return liveStep;
     if (terminalHeaderNowActiveVisible) return terminalHeaderTitle;
     const candidate = (terminalHeaderNow ?? "").trim();
     if (!candidate) return "";

@@ -90,6 +90,8 @@ async function pollOnce() {
         if (expiredProjection) {
           // An expired record still says what the pane is ABOUT, so the line rides along.
           const expiredLine = preferPaneTaskLine(latestTerminal.taskLine, result.taskLine);
+          // An expired record has no LIVE step to report, so the second row clears.
+          const expiredNow = null;
           latest.updateTab(latestTab.id, {
             terminals: latestTab.terminals.map((candidate) =>
               candidate.id === terminal.id
@@ -97,6 +99,7 @@ async function pollOnce() {
                     ...candidate,
                     ...expiredProjection,
                     ...(expiredLine ? { taskLine: expiredLine } : {}),
+                    nowLine: expiredNow,
                   }
                 : candidate,
             ),
@@ -119,11 +122,22 @@ async function pollOnce() {
             latestTerminal.taskLine,
             result.taskLine,
           );
-          if (untrustedLine && untrustedLine !== latestTerminal.taskLine) {
+          const untrustedNow = result.nowLine ?? null;
+          if (
+            (untrustedLine && untrustedLine !== latestTerminal.taskLine) ||
+            untrustedNow?.text !== latestTerminal.nowLine?.text
+          ) {
             latest.updateTab(latestTab.id, {
               terminals: latestTab.terminals.map((candidate) =>
                 candidate.id === terminal.id
-                  ? { ...candidate, taskLine: untrustedLine }
+                  ? {
+                      ...candidate,
+                      ...(untrustedLine ? { taskLine: untrustedLine } : {}),
+                      // The second row is provenance-checked exactly like the first, so
+                      // it rides the untrusted path too — otherwise every plain-shell
+                      // pane (most of the map) had a blank "Now" line forever.
+                      nowLine: untrustedNow,
+                    }
                   : candidate,
               ),
             });
