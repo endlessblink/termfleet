@@ -35,7 +35,13 @@ test("map card headline row always renders a label and a value", () => {
   expect(titleBlock, "empty headline must not unmount the row").not.toMatch(
     /\)\s*:\s*null\}/,
   );
-  expect(titleBlock).toMatch(/visibility:\s*"hidden"/);
+  // The headline now ALWAYS carries the goal, so it has no empty state of its own to
+  // reserve — the reserved/hidden row moved below it, to the "Now:" line (pinned by
+  // "the card shows the goal on top and the moment under it, always").
+  const style = magicCanvas.match(
+    /terminalStatusTitle:\s*\{[\s\S]*?\n {2}\},/,
+  )?.[0];
+  expect(style).toMatch(/height:\s*\d+,/);
 });
 
 test("map card task line is a FIXED two-line box", () => {
@@ -72,4 +78,25 @@ test("fleet list rows reserve no blank lines", () => {
   expect(style, "a two-line box is half empty for one-line tasks").not.toMatch(
     /WebkitLineClamp:\s*2/,
   );
+});
+
+test("the card shows the goal on top and the moment under it, always", () => {
+  // The operator's chosen layout (2026-07-28): "Goal on top, current step under it".
+  // Before this the two swapped places depending on whether an activity existed, so the
+  // big line was sometimes the goal and sometimes the moment.
+  const bigRow = magicCanvas.slice(
+    magicCanvas.indexOf("styles.terminalStatusTitle}"),
+  );
+  expect(bigRow.slice(0, 1200)).toContain(">Task:<");
+  expect(
+    bigRow.slice(0, 1200),
+    "the big row must not switch between Task and Now",
+  ).not.toContain("Now Active:");
+
+  const nowRow = magicCanvas.slice(
+    magicCanvas.indexOf('data-testid="canvas-terminal-node-task-row"') - 400,
+  );
+  expect(nowRow.slice(0, 1600)).toContain(">\n                Now:\n              <");
+  // Reserved, never unmounted: an empty second row must not change the card's height.
+  expect(nowRow.slice(0, 1600)).toMatch(/visibility: terminalHeaderNowActiveVisible/);
 });

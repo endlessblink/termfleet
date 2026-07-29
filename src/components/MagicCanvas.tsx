@@ -3297,10 +3297,9 @@ function CanvasNodeViewImpl({
   const terminalHeaderHasRealTask =
     !!terminalHeaderTaskDescription &&
     !/^Task not captured$/i.test(terminalHeaderTaskDescription.trim());
-  // When there is no distinct activity, the task becomes the ONE prominent line —
-  // shown big in the title slot instead of a tiny "Task:" label with nothing under it.
-  const terminalHeaderPromoteTaskToBig =
-    !terminalHeaderNowActiveVisible && terminalHeaderHasRealTask;
+  // The goal now ALWAYS holds the prominent line and the moment sits under it, so there
+  // is no longer a promotion decision — the two rows never swap places.
+  void terminalHeaderHasRealTask;
   // Does this terminal need the operator, is it busy, or idle? Orthogonal to the
   // task text; replaces the vague "Working" wording.
   // ONE pure render-time translation of the pane's stored status — identical in every
@@ -4079,41 +4078,20 @@ function CanvasNodeViewImpl({
                 {terminalHeaderAttention.label}
               </span>
             </div>
-            <div
-              style={{
-                ...styles.terminalTaskRow,
-                visibility: terminalHeaderPromoteTaskToBig
-                  ? "hidden"
-                  : "visible",
-              }}
-              data-testid="canvas-terminal-node-task-row"
-              title={`Task: ${terminalHeaderTaskDescription}`}
-              data-reserved={terminalHeaderPromoteTaskToBig ? "true" : "false"}
-            >
-              <span style={styles.terminalTaskLabel}>Task:</span>
-              {!terminalHeaderPromoteTaskToBig ? (
-                <span
-                  data-testid="canvas-terminal-node-description"
-                  title={terminalHeaderTaskDescription}
-                  style={styles.terminalTaskValue}
-                >
-                  {terminalHeaderTaskDescription}
-                </span>
-              ) : (
-                <span style={styles.terminalTaskValue}>&nbsp;</span>
-              )}
-            </div>
+            {/* The operator's chosen layout (2026-07-28): the GOAL on top, big, and
+                what the pane is doing right now underneath it. Previously the two
+                swapped places depending on whether an activity existed, so the big line
+                was sometimes the goal and sometimes the moment — which read as the card
+                rewriting itself. Both rows are always present at a fixed height; the
+                lower one goes invisible rather than unmounting, so the terminal below
+                never moves. */}
             <div
               style={styles.terminalStatusTitle}
-              title={
-                terminalHeaderPromoteTaskToBig
-                  ? `Task: ${terminalHeaderTaskDescription}`
-                  : `Now Active: ${terminalHeaderTitle}`
-              }
+              title={`Task: ${terminalHeaderTaskDescription}`}
             >
               {renaming ? (
                 renameEditor
-              ) : terminalHeaderPromoteTaskToBig ? (
+              ) : (
                 <>
                   <span style={styles.terminalNowActiveLabel}>Task:</span>
                   <span
@@ -4126,41 +4104,10 @@ function CanvasNodeViewImpl({
                     {terminalHeaderTaskDescription}
                   </span>
                 </>
-              ) : terminalHeaderNowActiveVisible ? (
-                <>
-                  <span style={styles.terminalNowActiveLabel}>Now Active:</span>
-                  <span
-                    data-testid="canvas-terminal-node-header-title"
-                    style={{
-                      ...styles.terminalNowActiveValue,
-                      color: labelColor ?? "var(--text-primary)",
-                    }}
-                  >
-                    {terminalHeaderTitle}
-                  </span>
-                </>
-              ) : (
-                <>
-                  <span
-                    style={{
-                      ...styles.terminalNowActiveLabel,
-                      visibility: "hidden",
-                    }}
-                  >
-                    Now Active:
-                  </span>
-                  <span
-                    style={{
-                      ...styles.terminalNowActiveValue,
-                      visibility: "hidden",
-                    }}
-                  >
-                    &nbsp;
-                  </span>
-                </>
               )}
               {(workstream || linkedTerminal) && (
                 <CockpitSnapshotProbe
+                  key="cockpit-snapshot-probe"
                   entry={{
                     paneId: terminalPaneId,
                     terminalId: linkedTerminalId ?? undefined,
@@ -4215,6 +4162,38 @@ function CanvasNodeViewImpl({
                   }}
                 />
               )}
+            </div>
+            <div
+              style={styles.terminalTaskRow}
+              data-testid="canvas-terminal-node-task-row"
+              title={
+                terminalHeaderNowActiveVisible
+                  ? `Now: ${terminalHeaderTitle}`
+                  : undefined
+              }
+              data-reserved={terminalHeaderNowActiveVisible ? "false" : "true"}
+            >
+              <span
+                style={{
+                  ...styles.terminalTaskLabel,
+                  visibility: terminalHeaderNowActiveVisible
+                    ? "visible"
+                    : "hidden",
+                }}
+              >
+                Now:
+              </span>
+              <span
+                data-testid="canvas-terminal-node-header-title"
+                style={{
+                  ...styles.terminalTaskValue,
+                  visibility: terminalHeaderNowActiveVisible
+                    ? "visible"
+                    : "hidden",
+                }}
+              >
+                {terminalHeaderNowActiveVisible ? terminalHeaderTitle : " "}
+              </span>
             </div>
             <div
               style={
