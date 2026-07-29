@@ -1,69 +1,76 @@
-# Handoff — 2026-07-05 15:56 Sunday
+# Handoff — 2026-07-29 17:32 Wednesday
 
-You are continuing work in **termfleet** on branch **fix/canvas-perf-and-wrap-spill**.
+You are continuing work in **termfleet** on branch **main**.
 
 ## Current task & next step
-Cockpit pane headers: every terminal must show, in plain non-technical language,
-the user's goal (Task row) + what the agent is doing/its outcome (title). A local-model
-pipeline now generates these; the operator keeps finding quality failures.
-**Next: implement the operator-approved two-step pipeline in
-`scripts/agent-status-summary-server.mjs` — Analyzer (extract core_action/main_object/
-status from noisy context) → Translator (plain-English user sentence) — with
-`qwen2.5:7b` as default model (pull it first: `ollama pull qwen2.5:7b`) and env
-fallback tiers (qwen2.5:7b → gemma4:e4b → gemma4:e2b via `TERMFLEET_CONTEXT_TITLE_MODEL`).**
+
+The cockpit card now shows a stable GOAL on top and a live "Now:" line under it — next:
+have the operator relaunch from the dock and confirm on screen, then chase whichever card
+still reads "No task declared" while its session clearly has a goal.
 
 ## Files touched / in flight
-- `scripts/agent-status-summary-server.mjs` — the whole contextual pipeline lives here
-  (schema-constrained chat calls, few-shots, validator + single-field repair,
-  deterministic truncation, confidence threshold 0.45, per-pane cache/queue/last-good,
-  disk-scrollback tails). Committed.
-- `scripts/termfleet-gate.mjs` (`npm run gate`) — the operator's rules as a per-pane
-  floor-check. Committed. **Script green ≠ done: the only acceptance gate is the
-  operator approving what they see** (memory: user-approval-is-the-only-gate).
-- `src/lib/statusPollLoop.ts` — central store-driven poll for ALL panes (component
-  polling silently stopped for background panes). Committed.
-- `src/lib/agentNarration.ts`, `terminalHeaderViewModel/Quality/Display/State`,
-  `Terminal/SplitPane/MagicCanvas` — header contract + gates. Committed.
-- `scripts/termfleet-codex-status-hook.mjs` — Codex sidecar hook; **user must run
-  `/hooks` in a fresh Codex session and Trust the entry** (still pending).
-- ` M src/stores/workspace.ts` — NOT mine (concurrent session); leave unstaged.
+
+All of this session's work is COMMITTED and PUSHED (HEAD `2d3926f`). Touched:
+
+- `src/lib/taskLine.ts` — the ladder. Goal rungs only (`declared` → `session-title` →
+  `operator-request` → `opening-request` → `pending-question` → `running-command` →
+  `shell-state`), plus `resolvePaneNowLine` for the second row and `preferPaneTaskLine`
+  (rank-based, never downgrades).
+- `src/lib/sessionTranscript.ts` — `openingRequest`, `pendingQuestion`, `looksLikeSlug`,
+  `opensAsRequest` (the "is this a request or a reaction" rule used everywhere).
+- `src/lib/agentStatusSummarizer.ts` — injectable readers, head/tail transcript reads,
+  per-session opening-request cache, returns `{taskLine, nowLine}` on EVERY path.
+- `src/lib/statusPollLoop.ts`, `statusPollProjection.ts`, `stores/workspace.ts`,
+  `components/Terminal.tsx` — both lines written for every pane and persisted.
+- `src/components/MagicCanvas.tsx` — the card: fixed two-line goal row + reserved "Now:" row.
+- `src-tauri/src/commands.rs` + `lib.rs` — `session_transcript_head_read` (64 KiB head).
+- Specs: `task-line*.spec.ts`, `cockpit-card-shot.spec.ts` (renders + screenshots a card),
+  `cockpit-row-stability.spec.ts`, `pane-label-audit.spec.ts`, `terminal-attention.spec.ts`.
+
+**Uncommitted files in the tree are NOT yours** — another session is doing icon/branding
+work (`src-tauri/icons/*`, `index.html`, `render-icon.mjs`, `docs/*`). Never `git add -A`.
 
 ## Key decisions & gotchas
-- **Model quirks (hours lost):** gemma4:e4b is a thinking model — WITHOUT
-  `think:false` its thinking eats the whole `num_predict` and `response` comes back
-  EMPTY (`done_reason: length`). `think:false` + `format` verified WORKING on e4b
-  despite research warnings. Re-verify on qwen2.5:7b (non-thinking; param may differ).
-- **Serialize Ollama calls** (queue in server): burst timeouts got cached as empty
-  for the full TTL → every pane went generic "forever". Empty results expire in 10s.
-- **JSON-schema maxLength is NOT decode-enforced** — deterministic truncation
-  (clause cut → word cut → strip orphan punctuation) owns length.
-- **Never feed our own placeholders to the model** ("Idle until next prompt" →
-  it echoes nonsense). `realContext()` filters them. Composer placeholder suggestions
-  ("Find and fix a bug in @filename") are firewalled from asks.
-- **Remaining known hole (operator-flagged, unfixed):** Claude panes' hook narration
-  displays RAW as title (e.g. my own jargon sentence "That last miss was the smoke's
-  own thin input…"). Sidecar summaries carry confidence "high" so raw narration passes
-  the light gate. Fix: sidecar narration should be model INPUT only — force such panes
-  through the endpoint (like completed-list panes already do) or drop sidecar-narration
-  display confidence.
-- Frontend HMR dies silently after app relaunches — when "tests pass but user sees
-  old behavior", compare the tauri-dev window's start time vs last frontend change
-  (`ps -o lstart`), relaunch with `./run-native-vte-dev.sh` (daemon keeps terminals).
-- Status server restart: `kill $(lsof -t -i :37819)` then
-  `nohup node scripts/agent-status-summary-server.mjs &` — safe, never touches PTYs.
-- Debug per-pane: `npm run gate`, `npm run cockpit:snapshot`, and the server log
-  prints `status <paneId> -> model: …` / `heuristic(<reason>)` per request.
-- **Report style (memory-enforced):** concise; never claim "works/passed" — state
-  "N/M pass the floor-check; your verdict decides"; every operator complaint becomes
-  a gate rule.
+
+- **Goal row = goal sources only.** Momentary sources (current step, agent sentence,
+  current tool, last finished step, note) are barred from it — that is what produced
+  "Task: Updating the plan" changing every few seconds. They belong to `resolvePaneNowLine`.
+- **The operator's own words get the lenient gate** (`qualityCheckUserAskLabel`), not the
+  strict one: typos ("dont") and openers ("is there…") are theirs and are valid. The strict
+  gate is for text scraped off a screen.
+- **A reply is not a goal.** `opensAsRequest` rejects <4 words, short demonstrative
+  openers, reactions with no action word, slash/`$` commands, harness blocks, pasted code,
+  and ≥200-char pastes. That one rule guards the sidecar prompt field, the vendor
+  `last-prompt` record, and both transcript scans.
+- **The card renders in `MagicCanvas.tsx`, not `SplitPane.tsx`** — a whole round was wasted
+  editing the wrong header. MagicCanvas also has TWO card headers: the agent-status block
+  (`Working on`/`Path`/`Now`) and the terminal-status block (`Task:`); the operator sees the
+  second.
+- **Verify by RENDERING, never by unit test alone.** Three "relaunched, nothing changed"
+  rounds came from shipping unrendered changes. `npx playwright test
+  tests/cockpit-card-shot.spec.ts` draws a real card and writes
+  `.captures/cockpit-card-goal-and-now.png` — look at it.
+- Playwright's chromium had to be installed once (`npx playwright install chromium`).
+- **13 failures in `terminal-summary-visual.spec.ts` are PRE-EXISTING** (identical on the
+  pre-session baseline `e93885b`) — another session's in-flight header work. Same for
+  `terminal-header-state.spec.ts:51` and ~9 in `agent-workstream.spec.ts`. Check a
+  suspicious failure against a worktree of the baseline before "fixing" it.
+- The dock entry runs `run-dev.sh` (DEV mode: Vite + `target/debug`), so a relaunch is
+  enough; `npm run build` still matters because the release path loads `dist/`.
+- To settle "is my code even loaded", GET `127.0.0.1:1420/src/...` from the running dev
+  server and grep the response for your identifier.
+- The doctor's "desktop app is not currently running" line is unreliable from an agent
+  shell — the sandbox hides the process table.
 
 ## Env / run state
-Branch: fix/canvas-perf-and-wrap-spill | Last commit: 47d3824 composer placeholder fix
-Running: tauri dev app + vite:1420, status server :37819 (repo script), Ollama with
-gemma4:e4b warm; PTY daemon owns all terminals (survives everything).
-Operator research (full transcripts in this session): two-step pipeline design,
-model tiers, few-shot styles — the pasted Python in the last messages is the spec.
 
-Start by: `ollama pull qwen2.5:7b`, then port the two-step Analyzer→Translator into
-`contextTitleFor()` in scripts/agent-status-summary-server.mjs, restart the server,
-and run `npm run gate` — then ask the operator for their verdict on the board.
+Branch: main | Last commit: `2d3926f` fix(cockpit): the goal row states a goal; the moment
+lives on its own row
+Running: TermFleet dev instance (Vite on 1420) launched from the dock; the PTY daemon owns
+the terminals and survives relaunch.
+Gates: `npm run verify:task-line` (54/54), `npm run audit:panes`, `npm run cockpit:why`
+(per-pane goal + rung over the REAL records), `npm run doctor` (now reports "Task line
+coverage").
+
+Start by: running `npm run cockpit:why` and comparing its per-terminal goal against what
+the operator sees after relaunching from the dock.

@@ -155,7 +155,7 @@ state, and visual QA converge on one product direction.
 ### TC-065: 🟡 Premium first-paint loading screen and ship-in-terminal identity
 
 **Priority:** P1
-**Status:** 🟡 **IMPLEMENTED — LIVE DESKTOP APPROVAL PENDING** (2026-07-28)
+**Status:** 🟡 **IMPLEMENTED — IDENTITY APPROVED, LIVE PACKAGED PROOF PENDING** (2026-07-29)
 
 TermFleet now owns the first webview paint instead of opening on a blank frame or
 partially mounted cockpit. A static startup gate keeps the application inert while
@@ -163,32 +163,57 @@ the durable workspace layout is restored, then exits after the restored surface
 has painted; the existing terminal hydration gate remains authoritative, so no
 default-pane PTY can mount early.
 
-The initial animated-workboat treatment and the later ship-as-prompt treatment
-were rejected because they changed the familiar terminal idea. The corrected
-mark keeps the terminal frame and `>` prompt intact and replaces only the `_`
-cursor position with a small boat-shaped glyph. The loading screen uses one
-near-static entrance followed by complete stillness. Status copy remains hidden
-during normal startup and appears only after a genuinely slow restore.
+The operator approved the side-profile vessel with a terminal chevron, then
+requested the final inverted palette on 2026-07-29: navy field, bone vessel.
+Production uses one optically centered 100-unit SVG master with a continuous
+curved hull, rounded stern and stack details, and a round-joined terminal
+chevron. Favicon, startup, and Linux launcher all load that same master directly;
+status copy remains hidden during normal startup and appears only after a
+genuinely slow restore.
 
-Brand assets now come from `public/termfleet-brand.svg`; the browser favicon,
-startup screen, source package icon, and generated platform icon set share that
-geometry. The icon renderer uses the installed system Chromium when Playwright's
-downloaded browser is absent.
+Platform shells cannot consume SVG icons directly, so their PNG/ICO/ICNS sets
+are generated from the same master. Native Linux PNG sizes are rendered directly at
+32, 64, 128, 256, and 512 pixels rather than being resampled from one large
+raster. The renderer preserves geometric antialiasing and adds the RGBA channel
+required by Tauri. SHA-256 guards lock the smooth master and its single-source wiring.
 
 Fresh evidence:
 
-- `npx playwright test tests/startup-splash.spec.ts tests/app-shell.spec.ts --reporter=line`
-  — 3 passed; delayed hydration kept the app inert and prevented terminal spawn,
-  ready handoff removed the gate, and reduced motion remained static.
+- `npx playwright test tests/app-shell.spec.ts` — 1 passed after first proving
+  the new hash guard failed against the previous production artwork.
+- `npx playwright test tests/startup-splash.spec.ts` — 2 passed; delayed
+  hydration kept the app inert and prevented terminal spawn, ready handoff
+  removed the gate, and reduced motion remained static.
 - `npm run build` — passed (`tsc && vite build`).
 - `/tmp/termfleet-startup-final.png` — final 1440×920 held-hydration capture,
-  SHA-256 `8c6093fb2bd8412a249b5c2c5359f1cb2b7fb6a1820a49623ed9fa394261eb57`.
-  The dedicated SVG Logo Designer workflow compared three construction systems
-  at splash, 64px, 32px, and 16px sizes. The selected Drydock direction replaces
-  the mixed stroked/pictogram language with a modular filled prompt and reduced
-  two-mass workboat; independent review confirmed a defining industrial-maritime
-  character and improved small-size survival. Live operator approval remains the
-  release gate.
+  SHA-256 `9448cf4816118bd571c810917764534b8af5bb14b7b0cca05abd13eff3c37aac`;
+  visual inspection passed the inverted palette, centering, proportions, smooth
+  SVG geometry, and absence of blur, halos, or color fringing.
+- `node scripts/regenerate-icons.mjs` regenerated the complete Tauri platform
+  icon set, then replaced Linux 32/64/128/256/512 PNGs with direct native-size
+  RGBA renders from the vector source.
+- `/tmp/termfleet-antialiased-platform-icons.png` — point-enlarged 32/64/128
+  native-size comparison, SHA-256
+  `f413aa51b50df2eb74126ff806e4f40b4223b1e377b28250f86a033bc361a15d`;
+  strict review found controlled one-pixel antialiasing, no resampling blur,
+  halo, or fringe, correct centering, and a professional dock family.
+- The complete platform icon set and both debug and release binaries were
+  rebuilt. `/tmp/termfleet-smooth-master-live.png`, SHA-256
+  `4edad57a288441c0d78b3dbb19224fcbce9334721c971d8e9038959e577c4687`,
+  captured the actual relaunched desktop; strict inspection passed the title-bar
+  icon as a smooth vector miniature with low blur, no fringing, centered
+  placement, and only normal micro-size antialiasing.
+- Plasma blur correction: Tauri previously published only `_NET_WM_ICON`
+  `32x32` because the 32px bundle icon was listed first; the dock enlarged that
+  bitmap. The bundle now lists 128px first, the UI process was terminated without
+  touching the PTY daemon, and the fresh window publishes `_NET_WM_ICON`
+  `128x128`. `/tmp/termfleet-128-window-icon-live.png`, SHA-256
+  `748019e3e8ed517866609735ca7adf6d81c08f15ac0822bfe5c93b3a002ff246`,
+  passed strict live dock/title inspection with low softness, no blur halo or
+  fringing, and the current navy/bone master.
+- `CARGO_BUILD_JOBS=1 CARGO_PROFILE_RELEASE_DEBUG=0 npm run tauri -- build --no-bundle`
+  passed and rebuilt the release desktop binary with the approved asset.
+- `npm run doctor` passed with `DOCTOR_OK`.
 - `npm run verify:typography` — pre-existing failures remain across
   `CanvasSidebar`, `LinksView`, `LocalhostPreview`, `MagicCanvas`, `SplitPane`,
   `TerminalCanvas`, and `WorkbenchSidebar`; none point to the new startup shell.
