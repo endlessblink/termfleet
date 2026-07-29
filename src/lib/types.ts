@@ -111,6 +111,8 @@ export interface TerminalState {
   // TC-060: the always-true task line for this pane (vendor session record /
   // running process). Never blank, so the header never says "Task not captured".
   taskLine?: PaneTaskLine;
+  // The second header row: what this pane is doing right now, under its goal.
+  nowLine?: PaneTaskLine | null;
   lastStatusAt?: number;
   lastError?: string;
 }

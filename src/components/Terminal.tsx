@@ -869,7 +869,11 @@ export function TerminalComponent({
             latestStore.updateTab(tabId, {
               terminals: latestTab.terminals.map((candidate) =>
                 candidate.paneId === paneId
-                  ? { ...candidate, taskLine: result.taskLine }
+                  ? {
+                      ...candidate,
+                      taskLine: result.taskLine,
+                      nowLine: result.nowLine ?? null,
+                    }
                   : candidate,
               ),
             });
@@ -1060,6 +1064,7 @@ export function TerminalComponent({
                       candidate.taskLine,
                       result.taskLine,
                     ),
+                    nowLine: result.nowLine ?? null,
                     agentProvider: stableAgentProvider(
                       candidate.agentProvider,
                       result.summary.provider,

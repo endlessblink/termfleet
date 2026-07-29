@@ -462,6 +462,7 @@ function persistedTerminalSnapshot(terminal: TerminalState): TerminalState {
     // states what the pane was about. Without it every card started with no line and the
     // header's own factless fallback printed "No task declared" until a poll landed.
     taskLine: terminal.taskLine,
+    nowLine: terminal.nowLine,
     purpose: terminal.purpose,
     mainUserAsk: persistedMainUserAsk(terminal.mainUserAsk),
     taskSidebarCollapsed: terminal.taskSidebarCollapsed,

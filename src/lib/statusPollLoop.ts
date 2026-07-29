@@ -158,6 +158,7 @@ async function pollOnce() {
         const projection: Partial<TerminalState> = {
           ...(taskLineup && taskLineup.length > 0 ? { taskLineup } : {}),
           ...(taskLine ? { taskLine } : {}),
+          nowLine: result.nowLine ?? null,
           statusSummary: result.summary,
           agentProvider: stableAgentProvider(latestTerminal.agentProvider, result.summary.provider),
           statusSummaryUpdatedAt: updatedAt,

@@ -159,7 +159,7 @@ export function looksLikeSlug(text: string): boolean {
  * slash command or a pasted document? Deliberately narrow: the opening line of a pane is
  * shown for as long as the session lives, so a wrong pick is worse than none.
  */
-function opensAsRequest(text: string | undefined): string | undefined {
+export function opensAsRequest(text: string | undefined): string | undefined {
   if (!text) return undefined;
   const value = text.trim();
   if (value.length < 12) return undefined;

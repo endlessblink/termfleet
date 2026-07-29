@@ -3321,6 +3321,11 @@ function CanvasNodeViewImpl({
   // row blank on panes that were plainly working — "relaunched nothing changed". When it
   // declines, the pane's own live status line is used instead, minus the filler words.
   const terminalHeaderNowRowText = (() => {
+    // The resolver's own second line first: the agent's in-progress step, its pending
+    // question, its own sentence — plain language, gated exactly like the goal above.
+    const resolved = linkedTerminal?.nowLine?.text?.trim();
+    if (resolved && resolved !== terminalHeaderTaskDescription.trim())
+      return resolved;
     if (terminalHeaderNowActiveVisible) return terminalHeaderTitle;
     const candidate = (terminalHeaderNow ?? "").trim();
     if (!candidate) return "";

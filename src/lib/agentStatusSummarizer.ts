@@ -13,7 +13,12 @@ import {
   type SidecarFileReader,
 } from "./agentStatusSidecar";
 import { parseOpeningRequest, parseTranscript } from "./sessionTranscript";
-import { resolvePaneTaskLine, type PaneTaskLine } from "./taskLine";
+import {
+  resolvePaneNowLine,
+  resolvePaneTaskLine,
+  type PaneTaskLine,
+} from "./taskLine";
+import { opensAsRequest } from "./sessionTranscript";
 import { stripComposerChrome } from "./terminalHeaderQuality";
 
 export interface AgentStatusSummarizerResult {
@@ -26,6 +31,9 @@ export interface AgentStatusSummarizerResult {
   // TC-060: an always-true, plain-language line for this pane, resolved from the
   // agent's declared task, the vendor's own session record, or the running process.
   taskLine?: PaneTaskLine;
+  // The second row: what the pane is doing RIGHT NOW, under the goal. Null when it has
+  // nothing live to say — the row is then reserved but blank.
+  nowLine?: PaneTaskLine | null;
 }
 
 export interface AgentStatusSummarizerOptions {
@@ -239,7 +247,7 @@ async function resolveTaskLineFor(
   // in-progress step is the one rung that goes stale with the record.
   expired = false,
   readTranscript: SessionTranscriptReader | null = null,
-): Promise<PaneTaskLine> {
+): Promise<{ taskLine: PaneTaskLine; nowLine: PaneTaskLine | null }> {
   let facts = null;
   const sessionId =
     typeof sidecar?.sessionId === "string" ? sidecar.sessionId : "";
@@ -275,15 +283,20 @@ async function resolveTaskLineFor(
   // (operator, 2026-07-25). The sidecar has carried that ask all along — 201 of 241
   // live records have a `userTask` — and this resolver never read it, so a pane with
   // no usable todo list fell straight to the folder template.
+  // The status hook records the prompt field verbatim, so it holds replies as well as
+  // requests ("how about 6?", "lets go with this", "i dont see that tab"). Those read as
+  // chatter on a card, so the same rule the session record uses applies here: a request
+  // names work, a reply does not. When it is only a reply the overarching description
+  // above takes the row instead.
   const sidecarUserTask =
     typeof sidecar?.userTask === "string"
-      ? stripComposerChrome(sidecar.userTask)
+      ? (opensAsRequest(stripComposerChrome(sidecar.userTask)) ?? "")
       : "";
   const effectiveFacts =
     sidecarUserTask && !facts?.operatorRequest
       ? { ...(facts ?? {}), operatorRequest: sidecarUserTask }
       : facts;
-  return resolvePaneTaskLine({
+  const ladderInput = {
     now: Date.now(),
     // The overarching goal leads the line; the in-progress todo is only the step.
     mainGoal: sidecar?.mainTask ?? null,
@@ -307,7 +320,10 @@ async function resolveTaskLineFor(
           ?.text ??
         null),
     folder: cwd ? (cwd.split("/").filter(Boolean).pop() ?? null) : null,
-  });
+  };
+  // Both rows come from ONE resolution, so the second can never repeat the first.
+  const taskLine = resolvePaneTaskLine(ladderInput);
+  return { taskLine, nowLine: resolvePaneNowLine(ladderInput, taskLine.text) };
 }
 
 /**
@@ -343,7 +359,7 @@ export async function resolvePaneTaskLineFromDisk(
   } catch {
     return null;
   }
-  const taskLine = await resolveTaskLineFor(
+  const { taskLine } = await resolveTaskLineFor(
     input,
     lookup.sidecar ?? null,
     lookup.state === "stale",
@@ -395,7 +411,7 @@ export async function summarizeAgentStatus(
     options.transcriptReader === null
       ? null
       : (options.transcriptReader ?? tauriTranscriptReader());
-  const taskLine = await resolveTaskLineFor(
+  const { taskLine, nowLine } = await resolveTaskLineFor(
     input,
     rawSidecar,
     sidecarState === "stale",
@@ -413,6 +429,7 @@ export async function summarizeAgentStatus(
       source: sidecarShapedFallback ? "sidecar" : "fallback",
       sidecarState,
       taskLine,
+      nowLine,
     };
   }
 
@@ -443,7 +460,13 @@ export async function summarizeAgentStatus(
     // no-endpoint branch, so any launch that configured the optional status worker
     // dropped the ladder line for every pane and the header fell back to its own
     // factless re-resolve — i.e. "No task declared".
-    return { summary, source: "process", sidecarState, taskLine };
+    return {
+      summary,
+      source: "process",
+      sidecarState,
+      taskLine,
+      nowLine,
+    };
   } catch (error) {
     return {
       summary: effectiveFallback,
@@ -451,6 +474,7 @@ export async function summarizeAgentStatus(
       sidecarState,
       error: shortError(error),
       taskLine,
+      nowLine,
     };
   }
 }

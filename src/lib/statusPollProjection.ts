@@ -12,6 +12,7 @@ function statusPollProjectionFingerprint(terminal: TerminalState) {
     // Without this the loop computed a better Task line and then decided nothing had
     // changed, so the line never reached the store.
     taskLine: terminal.taskLine ?? null,
+    nowLine: terminal.nowLine ?? null,
   });
 }
 

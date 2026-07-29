@@ -199,6 +199,70 @@ function lowerFirst(text: string): string {
     : text;
 }
 
+/**
+ * The pane's SECOND line: what it is doing right now, under the goal.
+ *
+ * Same inputs, same gates, but only the momentary rungs — the ones deliberately kept OUT
+ * of the goal row so it stops flickering. The operator asked for both at once: "Goal on
+ * top, current step under it". Returns null when the pane has nothing live to say, and
+ * never repeats the goal it sits under.
+ */
+export function resolvePaneNowLine(
+  input: TaskLineInput,
+  goalText?: string | null,
+): PaneTaskLine | null {
+  const { now } = input;
+  const facts = input.facts ?? {};
+  const goal = (goalText ?? "").trim().toLowerCase();
+  const take = (
+    text: string | null | undefined,
+    source: TaskLineSource,
+    expiresAt: number | null = null,
+  ): PaneTaskLine | null => {
+    const value = text?.trim();
+    if (!value) return null;
+    if (value.toLowerCase() === goal) return null;
+    if (!readsPlainly(value)) return null;
+    return { text: value, source, capturedAt: now, expiresAt };
+  };
+
+  // The agent's own in-progress step is the plainest statement of "right now" there is.
+  const step = take(input.currentStep, "current-step");
+  if (step) return step;
+
+  const question = questionLine(facts.pendingQuestion, (candidate) => {
+    const value = candidate?.trim();
+    return value && readsPlainly(value) ? value : null;
+  });
+  if (question)
+    return {
+      text: question,
+      source: "pending-question",
+      capturedAt: now,
+      expiresAt: null,
+    };
+
+  const said = take(facts.agentSaid, "agent-said");
+  if (said) return said;
+
+  const note = take(input.recentActivity, "recent-activity");
+  if (note) return note;
+
+  if (facts.lastTool) {
+    const tool = take(
+      templateTool(facts.lastTool),
+      "current-tool",
+      now + TOOL_TTL_MS,
+    );
+    if (tool) return tool;
+  }
+
+  const done = take(input.lastCompletedTask, "completed-task");
+  if (done) return done;
+
+  return null;
+}
+
 export function resolvePaneTaskLine(input: TaskLineInput): PaneTaskLine {
   const { now } = input;
   const facts = input.facts ?? {};

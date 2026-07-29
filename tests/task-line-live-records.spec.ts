@@ -19,6 +19,7 @@ import {
 import path from "node:path";
 import { test, expect } from "@playwright/test";
 import { summarizeAgentStatus } from "../src/lib/agentStatusSummarizer";
+import { parseTranscript } from "../src/lib/sessionTranscript";
 import { buildTerminalHeaderState } from "../src/lib/terminalHeaderState";
 import type { AgentStatusSummaryInput } from "../src/lib/agentStatusSummary";
 
@@ -176,6 +177,20 @@ test("a pane whose vendor session record names the work never renders the placeh
     // 1. The resolver itself must find something in the records. `shell-state` here
     //    means every on-disk source came up empty for a pane whose session record is
     //    readable — the failure the operator kept reporting.
+    // A readable record is not automatically a record with something to SAY: a session
+    // where the operator typed "gl" and the agent never spoke carries no title, no
+    // request and no step, and the honest answer there is the placeholder.
+    const facts = parseTranscript(
+      transcript.includes('"ai-title"') || transcript.includes('"last-prompt"')
+        ? "claude"
+        : "codex",
+      transcript,
+    );
+    const hasSomethingToSay = Boolean(
+      facts.title ?? facts.operatorRequest ?? facts.agentSaid ?? facts.lastTool,
+    );
+    if (!hasSomethingToSay) continue;
+
     if (!result.taskLine || result.taskLine.source === "shell-state") {
       offenders.push(
         `${name}: resolver found nothing while the session record is readable (rejected="${result.taskLine?.rejected ?? ""}")`,
