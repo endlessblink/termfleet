@@ -90,6 +90,7 @@ Playwright suite; the per-row specs are the precise guards.
 | 6.3 | Duplicate project groups on folder re-open | Canonical group per normalized root (TC-034). | `tests/project-reconciliation.spec.ts` | ✅ |
 | 6.4 | Dev window shows stale code | WebKitGTK disk cache served stale JS (now disabled in launchers). | _launcher-level; no automated guard_ | ❌ |
 | 6.5 | App-shell smoke (boot without crash) | App mounts. | `tests/app-shell.spec.ts` | ✅ |
+| 6.6 | Startup opens on a blank or distracting partial workspace, or terminals mount before the restored layout is ready | The webview had no first-paint shell, while the existing hydration fallback covered only the workspace surface. A static branded gate now owns first paint, keeps the app inert, and exits only after hydration plus a painted frame. | `tests/startup-splash.spec.ts`, `tests/app-shell.spec.ts` | ⚠️ Browser runtime + source contract; packaged WebKit first paint still needs live release proof |
 
 ## 7. Release / packaging / OSS
 
@@ -98,6 +99,7 @@ Playwright suite; the per-row specs are the precise guards.
 | 7.1 | Renaming productName broke GUI verifiers | Verifiers search the window by title. | `verify:real-dev-window`, `verify:release` | 🟡 |
 | 7.2 | OSS readiness / public audit / README recovery | Packaging + repo hygiene. | `verify:oss-readiness`, `verify:public-audit`, `verify:readme-recovery`, `verify:developer-preview` | ✅ |
 | 7.3 | Rust warnings creep | — | `verify:rust-warnings` | ✅ |
+| 7.4 | **The vessel logo looks blurry, jagged, off-center, or like pixel art despite using SVG files** | Size-specific integer rectangles and `crispEdges` defeated SVG smoothing; after the smooth master landed, Tauri still published only the first configured 32px bitmap through `_NET_WM_ICON`, so Plasma enlarged it for the dock. Production now uses one inverted navy/bone 100-unit smooth master for every source and puts the 128px render first in the Tauri icon list, making Plasma downsample instead of enlarge. | `tests/app-shell.spec.ts` (master hash, smooth geometry, single-source wiring, RGBA outputs, 128-first bundle order), `scripts/regenerate-icons.mjs`, live `_NET_WM_ICON` inspection and relaunched desktop capture | ✅ live dock/title proof + browser startup and source guards |
 
 ---
 

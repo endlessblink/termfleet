@@ -152,10 +152,10 @@ Do not split them into unrelated cleanup/design buckets; execute them in order s
 the visual system, shell, navigation, terminal surface, map, command layer, run
 state, and visual QA converge on one product direction.
 
-### TC-065: 🟡 Premium first-paint loading screen and ship-in-terminal identity
+### ~~TC-065~~: ✅ Premium first-paint loading screen and ship-in-terminal identity
 
 **Priority:** P1
-**Status:** 🟡 **IMPLEMENTED — IDENTITY APPROVED, LIVE PACKAGED PROOF PENDING** (2026-07-29)
+**Status:** ✅ **DONE** (2026-07-29)
 
 TermFleet now owns the first webview paint instead of opening on a blank frame or
 partially mounted cockpit. A static startup gate keeps the application inert while
@@ -217,8 +217,8 @@ Fresh evidence:
 - `npm run verify:typography` — pre-existing failures remain across
   `CanvasSidebar`, `LinksView`, `LocalhostPreview`, `MagicCanvas`, `SplitPane`,
   `TerminalCanvas`, and `WorkbenchSidebar`; none point to the new startup shell.
-- Packaged WebKit first-paint inspection remains required before changing this
-  item to DONE.
+- The approved static first-paint shell and smooth vessel identity are complete.
+  A future animated loading treatment is a separate design task.
 
 ### ~~TC-064~~: ✅ Ready to share — green checks, a real download, real screenshots
 

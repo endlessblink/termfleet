@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-labelledby="title desc" shape-rendering="geometricPrecision">
+  <title id="title">TermFleet vessel logo</title>
+  <desc id="desc">A smooth bone side-profile vessel with a terminal chevron on a navy field.</desc>
+  <rect width="100" height="100" fill="#17313f"/>
+  <g fill="#ece9e2">
+    <path d="M26 37h61c2.4 0 4 2.4 3 4.6L75 75.5c-.8 1.8-2.6 2.9-4.6 2.9H27c-2.8 0-5-2.2-5-5V42c0-2.8 1.2-5 4-5Z"/>
+    <rect x="13" y="44" width="13" height="8" rx="2"/>
+    <rect x="16" y="56" width="10" height="8" rx="2"/>
+    <rect x="19" y="68" width="7" height="8" rx="2"/>
+    <rect x="38" y="24" width="23" height="8" rx="2"/>
+    <rect x="45" y="13" width="9" height="8" rx="2"/>
+  </g>
+  <path d="m57 48 13 10-13 10" fill="none" stroke="#17313f" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

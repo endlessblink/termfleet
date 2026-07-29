@@ -1,13 +1,33 @@
-// Render src-tauri/icons/icon.svg -> a 1024px PNG via headless Chromium (full
-// SVG fidelity: gradients + glow). Then run: npx tauri icon <out.png>
-import { chromium } from "playwright";
+// Render every platform icon from the same smooth vector master.
 import { readFileSync } from "node:fs";
+import { chromium } from "playwright";
+
+const source = "public/brand/termfleet-vessel-master.svg";
 const out = process.argv[2] ?? "/tmp/termfleet-icon-1024.png";
-const svg = readFileSync("src-tauri/icons/icon.svg", "utf8");
-const html = `<!doctype html><html><head><style>*{margin:0;padding:0}html,body{width:1024px;height:1024px;background:transparent}</style></head><body>${svg}</body></html>`;
-const browser = await chromium.launch();
-const page = await browser.newPage({ viewport: { width: 1024, height: 1024 }, deviceScaleFactor: 1 });
-await page.setContent(html, { waitUntil: "networkidle" });
-await (await page.$("svg")).screenshot({ path: out, omitBackground: true });
-await browser.close();
-console.log(`rendered ${out}`);
+const size = Number.parseInt(process.argv[3] ?? "1024", 10);
+
+if (!Number.isInteger(size) || size < 16) {
+  throw new Error(`Icon size must be an integer of at least 16 pixels; received ${process.argv[3]}`);
+}
+
+const browser = await chromium.launch({
+  headless: true,
+  executablePath: "/usr/bin/chromium",
+  args: ["--disable-crash-reporter", "--disable-crashpad", "--disable-gpu"],
+});
+
+try {
+  const page = await browser.newPage({ viewport: { width: size, height: size } });
+  const svg = readFileSync(source, "utf8");
+  await page.setContent(`
+    <style>
+      html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; }
+      svg { display: block; width: ${size}px; height: ${size}px; }
+    </style>
+    ${svg}
+  `);
+  await page.screenshot({ path: out, omitBackground: true });
+  console.log(`rendered ${source} to ${out}`);
+} finally {
+  await browser.close();
+}
