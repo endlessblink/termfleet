@@ -300,6 +300,7 @@ async function resolveTaskLineFor(
     now: Date.now(),
     // The overarching goal leads the line; the in-progress todo is only the step.
     mainGoal: sidecar?.mainTask ?? null,
+    mainGoalSource: sidecar?.mainTaskSource ?? null,
     currentStep: expired
       ? null
       : // `||`, not `??`: the hooks write `activeForm: ""` when the agent gave none, and

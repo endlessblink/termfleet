@@ -40,6 +40,11 @@ export interface TaskLineInput {
   /** The overarching goal — an explicitly declared main task. This is "what the
    *  whole terminal is about", so it leads the line. */
   mainGoal?: string | null;
+  /** Where that declared task came from. Codex's "plan explanation" is a progress NOTE
+   *  as often as a goal ("The rendered warning exposed a second bug: draft existence was
+   *  treated as proof of unsaved changes"), which tells the operator nothing about what
+   *  the pane is for — so it is held back behind the session title and their own ask. */
+  mainGoalSource?: "plan-explanation" | "goal-task" | null;
   /** The current in-progress step. It's a STEP toward the goal, not the goal, so
    *  it ranks BELOW the goal and the session's own plan title. */
   currentStep?: string | null;
@@ -269,8 +274,10 @@ export function resolvePaneNowLine(
 export function resolvePaneTaskLine(input: TaskLineInput): PaneTaskLine {
   const { now } = input;
   const facts = input.facts ?? {};
+  // Kept for the NOW resolver below; the goal rungs deliberately ignore it.
   const turnEnded =
     typeof facts.lastTurnEndAt === "number" && facts.lastTurnEndAt <= now;
+  void turnEnded;
   let rejected: string | undefined;
 
   const consider = (candidate: string | null | undefined): string | null => {
@@ -346,8 +353,15 @@ export function resolvePaneTaskLine(input: TaskLineInput): PaneTaskLine {
   // MAIN-PLAN sources lead the line: the whole point is "what is this part of".
   // An explicit overarching goal, then the session's own plan title, then the
   // operator's main request — all rank ABOVE the momentary in-progress step.
-  if (!turnEnded) {
-    const goal = considerLongAsk(input.mainGoal ?? input.declaredTask);
+  // A GOAL does not expire when a turn ends: what the pane is ABOUT is still true while
+  // it sits idle, and blanking it left finished panes saying "No task declared" with a
+  // perfectly good goal on record. Only the moment expires — that is `resolvePaneNowLine`
+  // and the summarizer's `expired` flag.
+  {
+    const planNote = input.mainGoalSource === "plan-explanation";
+    const goal = planNote
+      ? null
+      : considerLongAsk(input.mainGoal ?? input.declaredTask);
     if (goal) {
       return {
         text: goal,
@@ -405,6 +419,20 @@ export function resolvePaneTaskLine(input: TaskLineInput): PaneTaskLine {
         expiresAt: null,
         rejected,
       };
+    }
+    // Only now the agent's plan NOTE, when nothing above spoke. It is still the agent's
+    // own statement about the work, so it beats saying nothing.
+    if (planNote) {
+      const note = considerLongAsk(input.mainGoal ?? input.declaredTask);
+      if (note) {
+        return {
+          text: note,
+          source: "declared",
+          capturedAt: now,
+          expiresAt: null,
+          rejected,
+        };
+      }
     }
     // A slug is the agent's own words, just written for a machine. Spacing it out is
     // formatting, not invention — and it is only ever reached when nothing above spoke.

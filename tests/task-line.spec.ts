@@ -21,17 +21,22 @@ test("the agent's declared task wins", () => {
 });
 
 // R3: a finished turn demotes the declared task immediately.
-test("a turn that ended demotes the declared task", () => {
-  const line = resolvePaneTaskLine({
+// A finished turn ends the pane's MOMENT, not what it is about: an idle pane keeps its
+// goal on the row (blanking it is how a finished pane ended up saying "No task declared"
+// with a perfectly good goal on record).
+test("a turn that ended keeps the goal and clears only the moment", () => {
+  const input = {
     now: NOW,
     declaredTask: "Cleaning up messy terminal text",
+    currentStep: "Running the last check",
     facts: {
       lastTurnEndAt: NOW - 1000,
       operatorRequest: "sort the sidebar by name",
     },
-  });
-  expect(line.source).toBe("operator-request");
-  expect(line.text).toBe("sort the sidebar by name");
+  };
+  const line = resolvePaneTaskLine(input);
+  expect(line.source).toBe("declared");
+  expect(line.text).toBe("Cleaning up messy terminal text");
 });
 
 // The operator's floor rule, verbatim: "in the least — write the main user goal".

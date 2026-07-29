@@ -195,7 +195,7 @@ export function opensAsRequest(text: string | undefined): string | undefined {
 
 // Verbs and question openers that make a short message a request rather than a reaction.
 const ASKS_FOR_SOMETHING =
-  /\b(?:add|allow|build|change|check|convert|create|debug|delete|design|disable|enable|find|fix|generate|handle|implement|improve|integrate|investigate|make|merge|move|plan|prevent|refactor|remove|rename|research|run|show|split|support|test|update|use|verify|write|why|how|what|can we|can you|i want|i need|we should|should we|let's|lets|please)\b/i;
+  /\b(?:add|allow|build|change|check|clean|clear|close|commit|connect|convert|create|debug|delete|deploy|design|disable|enable|find|fix|generate|handle|implement|improve|install|integrate|investigate|make|merge|migrate|move|open|plan|prevent|publish|pull|push|refactor|release|remove|rename|research|restart|restore|revert|run|show|split|start|stop|support|test|update|upgrade|use|verify|write|why|how|what|can we|can you|i want|i need|we should|should we|let's|lets|please)\b/i;
 
 /** The text of a Claude `user` record, whether it is a string or content blocks. */
 function userMessageText(record: Record<string, unknown>): string {
