@@ -123,7 +123,9 @@ function cleanText(value: unknown): string {
 function explicitMainTask(sidecar: AgentStatusSidecar): string {
   if (sidecar?.mainTaskSource) {
     const text = cleanText(sidecar.mainTask);
-    return text.length <= 90 ? text : "";
+    // 150, not 90: the card's goal row is a two-line box now, and a declared main task
+    // was being thrown away for being a sentence long — leaving the pane with no goal.
+    return text.length <= 150 ? text : "";
   }
   const legacyGoals = (Array.isArray(sidecar?.todos) ? sidecar.todos : [])
     .map((todo) => cleanText(todo?.content).match(/^Goal:\s*(.+)$/i)?.[1] ?? "")

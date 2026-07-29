@@ -161,7 +161,12 @@ export function looksLikeSlug(text: string): boolean {
  */
 export function opensAsRequest(text: string | undefined): string | undefined {
   if (!text) return undefined;
-  const value = text.trim();
+  // Operators append their own shortcuts to a real request ("… and $save", "… /done").
+  // The words before the shortcut are the request; the shortcut belongs to the composer.
+  const value = text
+    .trim()
+    .replace(/\s+(?:and\s+)?[$/][a-z][\w:-]*\s*$/i, "")
+    .trim();
   if (value.length < 12) return undefined;
   // Harness blocks, tool envelopes, command wrappers, slash commands, Claude's local-command
   // caveat, and the agent preambles subagents receive.
@@ -170,6 +175,9 @@ export function opensAsRequest(text: string | undefined): string | undefined {
   // Bracketed harness notices ride inside user messages ("[Request interrupted by user
   // for tool use]") and are not the operator speaking.
   if (/^\[[^\]]+\]$/.test(value)) return undefined;
+  // Snippets the operator pasted into the prompt to be RUN are not requests.
+  if (/=>|\(\)|document\.|window\.|querySelector|console\.|;\s*\w+\(/.test(value))
+    return undefined;
   // A nudge or a complaint is not a goal. "this keeps reseting" is the operator's own
   // text, but it names no work — as the Task row it says less than the request it would
   // replace. Four words minimum, and a short message that opens with a demonstrative
@@ -306,10 +314,11 @@ export function parseCodexRollout(text: string): TranscriptFacts {
         facts.title = cleanText(payload.goal) ?? facts.title;
         break;
       case "user_message": {
-        // Same rule as Claude: a thin follow-up must not erase the real request.
+        // Same rule as Claude: a thin follow-up must not erase the real request, and it
+        // must not become one either — "$done" kept reaching the goal row through this
+        // fallback and was then rejected downstream, leaving the pane silent.
         const asked = opensAsRequest(cleanText(payload.message));
-        facts.operatorRequest =
-          asked ?? cleanText(payload.message) ?? facts.operatorRequest;
+        if (asked) facts.operatorRequest = asked;
         break;
       }
       case "agent_message":

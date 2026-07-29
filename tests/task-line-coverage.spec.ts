@@ -18,6 +18,7 @@ import path from "node:path";
 import { test, expect } from "@playwright/test";
 import { summarizeAgentStatus } from "../src/lib/agentStatusSummarizer";
 import { qualityCheckAuthoritativeTaskLabel } from "../src/lib/terminalHeaderQuality";
+import { opensAsRequest } from "../src/lib/sessionTranscript";
 import type { AgentStatusSummaryInput } from "../src/lib/agentStatusSummary";
 
 const TAIL_BYTES = 262_144;
@@ -153,20 +154,20 @@ test("every ACTIVE terminal that has something sayable gets a task line", async 
     byRung.set(rung, (byRung.get(rung) ?? 0) + 1);
     if (rung !== "shell-state") continue;
 
-    // Nothing sayable is an honest silence: no session record, no goal, no request that
-    // survives the plain-language gate, no task list, no note.
+    // The GOAL row answers "what is this pane about", so only goal-shaped content counts
+    // here: the operator's request and an explicitly declared main task. A step, a note
+    // or a tool is the pane's MOMENT — it belongs to the second row and is checked there,
+    // and treating it as a goal is what produced changing, vague headlines.
     const sayable = (value: unknown) =>
       typeof value === "string" &&
       value.trim().length > 0 &&
       qualityCheckAuthoritativeTaskLabel(value.trim()).ok;
+    // The same rule the app applies: a REQUEST names work, a reaction does not
+    // ("it didnt work", "IU am in!"). A reaction is not a goal, so a pane whose record
+    // holds only reactions has nothing to state on the goal row.
     const knows =
-      sayable(record.userTask) ||
-      sayable(record.mainTask) ||
-      sayable(record.narration) ||
-      (Array.isArray(record.todos) &&
-        (record.todos as Record<string, unknown>[]).some(
-          (todo) => sayable(todo.activeForm) || sayable(todo.content),
-        ));
+      Boolean(opensAsRequest(String(record.userTask ?? "").trim())) ||
+      sayable(record.mainTask);
     silent.push(
       `${name} (sessionId=${record.sessionId ? "yes" : "no"}, rejected="${result.taskLine?.rejected ?? ""}")`,
     );

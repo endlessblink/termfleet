@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { resolvePaneTaskLine } from "../src/lib/taskLine";
+import { resolvePaneNowLine, resolvePaneTaskLine } from "../src/lib/taskLine";
 
 const NOW = Date.parse("2026-07-22T12:00:00.000Z");
 
@@ -46,14 +46,16 @@ test("falls to the operator's own request before any template", () => {
   expect(line.source).toBe("operator-request");
 });
 
-test("templates the current tool when nothing was said", () => {
-  const line = resolvePaneTaskLine({
-    now: NOW,
-    facts: { lastTool: { name: "Read", arg: "gridRenderer.ts" } },
-  });
-  expect(line.text).toBe("Reading gridRenderer.ts");
-  expect(line.source).toBe("current-tool");
-  expect(line.expiresAt).toBe(NOW + 30_000);
+// The moment belongs to the SECOND row now (the operator's layout: goal on top, what it
+// is doing under it). A tool of the second is not a goal — leaving it in the goal ladder
+// is what put "Updating the plan" on a card and changed it every few seconds.
+test("the tool of the second is the NOW line, never the goal", () => {
+  const facts = { lastTool: { name: "Read", arg: "gridRenderer.ts" } };
+  expect(resolvePaneTaskLine({ now: NOW, facts }).source).toBe("shell-state");
+  const now = resolvePaneNowLine({ now: NOW, facts });
+  expect(now?.text).toBe("Reading gridRenderer.ts");
+  expect(now?.source).toBe("current-tool");
+  expect(now?.expiresAt).toBe(NOW + 30_000);
 });
 
 // "Always show the main plan": the session's own plan title leads over the current
@@ -79,35 +81,38 @@ test("an explicit goal still leads over everything", () => {
   expect(line.source).toBe("declared");
 });
 
-test("the current step is used when there is no overarching plan", () => {
-  const line = resolvePaneTaskLine({
+test("the current step is the NOW line, under the goal", () => {
+  const input = {
     now: NOW,
     currentStep: "Running the task-line verification",
-  });
-  expect(line.text).toBe("Running the task-line verification");
-  expect(line.source).toBe("current-step");
+  };
+  expect(resolvePaneTaskLine(input).source).toBe("shell-state");
+  const now = resolvePaneNowLine(input);
+  expect(now?.text).toBe("Running the task-line verification");
+  expect(now?.source).toBe("current-step");
 });
 
 // A finished, idle agent shows what it just did, not "sitting at a prompt".
-test("an idle finished agent shows its last completed step, not the folder", () => {
-  const line = resolvePaneTaskLine({
+test("an idle finished agent shows what it just did on the NOW line", () => {
+  const input = {
     now: NOW,
     lastCompletedTask: "Correcting the Diet bot's Telegram destination",
     folder: "hermes",
-  });
-  expect(line.text).toBe("Correcting the Diet bot's Telegram destination");
-  expect(line.source).toBe("completed-task");
+  };
+  const now = resolvePaneNowLine(input);
+  expect(now?.text).toBe("Correcting the Diet bot's Telegram destination");
+  expect(now?.source).toBe("completed-task");
 });
 
 // ...but live work still outranks a completed step.
-test("live work outranks a completed step", () => {
-  const line = resolvePaneTaskLine({
+test("live work outranks a completed step on the NOW line", () => {
+  const now = resolvePaneNowLine({
     now: NOW,
     lastCompletedTask: "Correcting the Diet bot's Telegram destination",
     facts: { agentSaid: "Restarting the gateway service" },
     folder: "hermes",
   });
-  expect(line.source).toBe("agent-said");
+  expect(now?.source).toBe("agent-said");
 });
 
 test("a shell shows what it is actually doing", () => {

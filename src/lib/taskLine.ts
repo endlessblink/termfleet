@@ -96,8 +96,11 @@ const TOOL_TTL_MS = 30_000;
 // command flags, absolute paths, code fences and markdown headings are all things
 // a non-technical viewer cannot read, so they disqualify a candidate here. The
 // shared gate is left untouched — its other callers have different needs.
+// A semicolon inside a SENTENCE is ordinary punctuation ("Verification only; no code
+// changes."), so only a shell-shaped chain disqualifies a line: `;` or `|` followed by a
+// bare command word.
 const UNREADABLE =
-  /(?:&&|\|\||[|;]\s|\s--?[a-z][\w-]*|(?:^|\s)\/(?:home|media|usr|etc|var|tmp)\/|```|^#{1,6}\s)/i;
+  /(?:&&|\|\||[|;]\s*[a-z][\w-]*\s+-{1,2}[a-z]|\s--?[a-z][\w-]*|(?:^|\s)\/(?:home|media|usr|etc|var|tmp)\/|```|^#{1,6}\s)/i;
 
 // Harness plumbing that arrives inside the operator's own prompt field: task
 // notifications, tool-result envelopes, command wrappers. None of it is a request.
@@ -360,8 +363,14 @@ export function resolvePaneTaskLine(input: TaskLineInput): PaneTaskLine {
     // ("add it yoyurself", "how can I find this from the cms?") that read as chatter to
     // anyone who was not in the room (operator, 2026-07-28). A SLUG title is not a
     // description, so it stays below the operator's own words, de-slugged, further down.
+    // A session title is a summary the vendor wrote FOR a person, so it is judged for
+    // readability, not for polish: the strict gate called "Debug mobile audio and boot
+    // sequence on real device" an implementation detail and threw away a perfectly clear
+    // description of the pane.
     const readableTitle =
-      facts.title && !looksLikeSlug(facts.title) ? consider(facts.title) : null;
+      facts.title && !looksLikeSlug(facts.title)
+        ? considerAsk(facts.title)
+        : null;
     if (readableTitle) {
       return {
         text: readableTitle,
@@ -444,70 +453,12 @@ export function resolvePaneTaskLine(input: TaskLineInput): PaneTaskLine {
     };
   }
 
-  // The current in-progress step — a STEP toward the goal, used as the line only
-  // when no overarching plan above was available.
-  if (!turnEnded) {
-    const step = consider(input.currentStep);
-    if (step) {
-      return {
-        text: step,
-        source: "current-step",
-        capturedAt: now,
-        expiresAt: null,
-        rejected,
-      };
-    }
-  }
-
-  // Codex declares no short task, so its own sentence is the most specific true
-  // line available before falling back to a template.
-  const said = consider(facts.agentSaid);
-  if (said) {
-    return {
-      text: said,
-      source: "agent-said",
-      capturedAt: now,
-      expiresAt: null,
-      rejected,
-    };
-  }
-
-  if (facts.lastTool) {
-    return {
-      text: templateTool(facts.lastTool),
-      source: "current-tool",
-      capturedAt: now,
-      expiresAt: now + TOOL_TTL_MS,
-      rejected,
-    };
-  }
-
-  // An agent that finished its checklist and went idle: its last completed step is
-  // what this terminal is about — far better than "sitting at a prompt". Ranks below
-  // every LIVE source, so a working pane never shows finished work over current work.
-  const done = consider(input.lastCompletedTask);
-  if (done) {
-    return {
-      text: done,
-      source: "completed-task",
-      capturedAt: now,
-      expiresAt: null,
-      rejected,
-    };
-  }
-
-  // The agent's own newest note about what it is doing. Ranks under everything
-  // declared, but above admitting nothing is known — the words are the agent's.
-  const recent = consider(input.recentActivity);
-  if (recent) {
-    return {
-      text: recent,
-      source: "recent-activity",
-      capturedAt: now,
-      expiresAt: null,
-      rejected,
-    };
-  }
+  // Everything momentary — the in-progress step, the agent's last sentence, the tool of
+  // the second, the last finished step, the latest note — is NOT a goal, and no longer
+  // competes for this row. `resolvePaneNowLine` resolves those separately and the card
+  // renders them UNDER the goal, which is the layout the operator chose. Leaving them
+  // here is what put "Updating the plan" in the goal row and changed it every few
+  // seconds (report 2026-07-28).
 
   const command = input.runningCommand?.trim();
   if (command) {

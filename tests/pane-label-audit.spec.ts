@@ -11,6 +11,7 @@ import { summaryFromSidecar } from "../src/lib/agentStatusSidecar";
 import { buildTerminalHeaderState } from "../src/lib/terminalHeaderState";
 import { resolvePaneTaskLine } from "../src/lib/taskLine";
 import { qualityCheckAuthoritativeTaskLabel } from "../src/lib/terminalHeaderQuality";
+import { opensAsRequest } from "../src/lib/sessionTranscript";
 
 /**
  * Read what EVERY pane on this machine actually renders — Task row and Now Active —
@@ -246,13 +247,17 @@ test("every pane on this machine renders a readable Task row and Now Active line
         typeof value === "string" &&
         value.trim().length > 0 &&
         qualityCheckAuthoritativeTaskLabel(value.trim()).ok;
+      // The Task row is the GOAL row (operator's layout, 2026-07-28: goal on top, what
+      // the pane is doing under it). So only goal-shaped content obliges it to speak: a
+      // request that names work, or an explicitly declared main task. A task list is a
+      // list of STEPS — those are the second row's job, and treating one as the goal is
+      // what produced changing, vague headlines like "Updating the plan".
       const sidecarKnowsSomething =
-        sayable(sidecar.userTask) ||
-        sayable(sidecar.mainTask) ||
-        (Array.isArray(sidecar.todos) &&
-          (sidecar.todos as Record<string, unknown>[]).some(
-            (todo) => sayable(todo.activeForm) || sayable(todo.content),
-          ));
+        Boolean(opensAsRequest(String(sidecar.userTask ?? "").trim())) ||
+        sayable(sidecar.mainTask);
+      // The goal row may honestly say nothing when the record holds only steps and
+      // reactions — the pane's moment is stated on the second row instead. It is only an
+      // offence when the record holds a real REQUEST or a declared goal.
       if (
         sidecarKnowsSomething &&
         /^(?:No task declared|Task not captured)$/i.test(task)

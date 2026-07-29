@@ -13,7 +13,11 @@ import {
   summarizeAgentStatus,
   type SessionTranscriptReader,
 } from "../src/lib/agentStatusSummarizer";
-import { preferPaneTaskLine, resolvePaneTaskLine } from "../src/lib/taskLine";
+import {
+  preferPaneTaskLine,
+  resolvePaneNowLine,
+  resolvePaneTaskLine,
+} from "../src/lib/taskLine";
 import { statusPollProjectionChanged } from "../src/lib/statusPollProjection";
 import {
   buildTerminalHeaderState,
@@ -222,13 +226,16 @@ test("a long question falls back to its short subject", () => {
   expect(line.text).toBe("Waiting on your answer about shared file");
 });
 
-test("the agent's own newest note beats admitting nothing is known", () => {
-  const line = resolvePaneTaskLine({
+test("the agent's own newest note is the NOW line, under the goal", () => {
+  const input = {
     now: 1,
     recentActivity: "Checking the admin layout width constraints",
-  });
-  expect(line.source).toBe("recent-activity");
-  expect(line.text).toBe("Checking the admin layout width constraints");
+  };
+  // A note about the moment is not a goal: it belongs to the second row.
+  expect(resolvePaneTaskLine(input).source).toBe("shell-state");
+  const now = resolvePaneNowLine(input);
+  expect(now?.source).toBe("recent-activity");
+  expect(now?.text).toBe("Checking the admin layout width constraints");
 });
 
 test("a pasted document is not the operator's request", () => {

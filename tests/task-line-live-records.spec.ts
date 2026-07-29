@@ -19,7 +19,8 @@ import {
 import path from "node:path";
 import { test, expect } from "@playwright/test";
 import { summarizeAgentStatus } from "../src/lib/agentStatusSummarizer";
-import { parseTranscript } from "../src/lib/sessionTranscript";
+import { opensAsRequest, parseTranscript } from "../src/lib/sessionTranscript";
+import { qualityCheckUserAskLabel } from "../src/lib/terminalHeaderQuality";
 import { buildTerminalHeaderState } from "../src/lib/terminalHeaderState";
 import type { AgentStatusSummaryInput } from "../src/lib/agentStatusSummary";
 
@@ -186,9 +187,16 @@ test("a pane whose vendor session record names the work never renders the placeh
         : "codex",
       transcript,
     );
-    const hasSomethingToSay = Boolean(
-      facts.title ?? facts.operatorRequest ?? facts.agentSaid ?? facts.lastTool,
-    );
+    // Goal-shaped facts only, judged the way the app judges them: a session title the
+    // vendor wrote, or a message that reads as a REQUEST and fits the row. The agent's
+    // sentence and its current tool describe the MOMENT and belong to the second row;
+    // a vague line, a pasted quote or a reaction is nobody's goal.
+    const request = facts.operatorRequest ?? "";
+    const usableRequest =
+      Boolean(opensAsRequest(request)) &&
+      request.length <= 200 &&
+      qualityCheckUserAskLabel(request, { maxLength: 150 }).ok;
+    const hasSomethingToSay = Boolean(facts.title) || usableRequest;
     if (!hasSomethingToSay) continue;
 
     if (!result.taskLine || result.taskLine.source === "shell-state") {

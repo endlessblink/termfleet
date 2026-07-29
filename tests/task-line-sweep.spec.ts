@@ -11,7 +11,7 @@ import {
 import { join } from "node:path";
 import os from "node:os";
 import { parseTranscript } from "../src/lib/sessionTranscript";
-import { resolvePaneTaskLine } from "../src/lib/taskLine";
+import { resolvePaneNowLine, resolvePaneTaskLine } from "../src/lib/taskLine";
 
 // TC-060 release gate. Sweeps every live pane on THIS machine and fails on any
 // violation of the four invariants: never blank, never invented, never stale,
@@ -23,8 +23,10 @@ const BASE = join(
   "terminal-workspace",
 );
 const PLACEHOLDER = /task not captured|activity not captured|^\s*$/i;
+// Mirrors the resolver's own rule. A semicolon inside a SENTENCE is punctuation
+// ("Verification only; no code changes."), so only a shell-shaped chain disqualifies.
 const UNREADABLE =
-  /(?:&&|\|\||[|;]\s|\s--?[a-z][\w-]*|(?:^|\s)\/(?:home|media|usr|etc|var|tmp)\/|```|^#{1,6}\s)/i;
+  /(?:&&|\|\||[|;]\s*[a-z][\w-]*\s+-{1,2}[a-z]|\s--?[a-z][\w-]*|(?:^|\s)\/(?:home|media|usr|etc|var|tmp)\/|```|^#{1,6}\s)/i;
 const TAIL_BYTES = 262_144;
 
 function tail(path: string) {
@@ -118,27 +120,31 @@ test("every live pane yields a true, plain, non-placeholder line", () => {
           content?: string;
         }[]) ?? [];
       const active = todos.find((todo) => todo?.status === "in_progress");
-      const line = resolvePaneTaskLine({
+      const ladderInput = {
         now,
-        declaredTask:
-          (sidecar?.mainTask as string) ??
-          active?.activeForm ??
-          active?.content ??
-          null,
+        declaredTask: (sidecar?.mainTask as string) ?? null,
+        currentStep: active?.activeForm ?? active?.content ?? null,
         facts,
         folder:
           String(tab.initialCwd ?? "")
             .split("/")
             .filter(Boolean)
             .pop() ?? null,
-      });
+      };
+      const line = resolvePaneTaskLine(ladderInput);
+      // The card carries TWO rows now (operator's layout): the goal, and what the pane
+      // is doing under it. A pane with no goal source is allowed to say so on the first
+      // row — as long as the second row speaks. Silence on BOTH is the failure.
+      const nowLine = resolvePaneNowLine(ladderInput, line.text);
 
       panes += 1;
       bySource[line.source] = (bySource[line.source] ?? 0) + 1;
       const where = `${tab.title ?? "tab"}/${terminal.id?.slice(-8) ?? "?"}`;
       if (!line.text.trim()) failures.push(`R1 blank line on ${where}`);
-      if (PLACEHOLDER.test(line.text))
-        failures.push(`R1 placeholder on ${where}: ${line.text}`);
+      if (PLACEHOLDER.test(line.text) && !nowLine)
+        failures.push(`R1 nothing to say at all on ${where}: ${line.text}`);
+      if (nowLine && UNREADABLE.test(nowLine.text))
+        failures.push(`R4 unreadable NOW line on ${where}: ${nowLine.text}`);
       if (UNREADABLE.test(line.text))
         failures.push(`R4 unreadable on ${where}: ${line.text}`);
       if (line.expiresAt !== null && line.expiresAt < now) {

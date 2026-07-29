@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { resolveTaskIdentity } from "../src/lib/taskIdentity";
-import { resolvePaneTaskLine } from "../src/lib/taskLine";
+import { resolvePaneNowLine, resolvePaneTaskLine } from "../src/lib/taskLine";
 import { buildTerminalHeaderState } from "../src/lib/terminalHeaderState";
 
 const NOW = Date.parse("2026-07-22T12:00:00.000Z");
@@ -82,19 +82,29 @@ test("all-completed checklist defers to the agent's live current line", () => {
       tasksFromTodoWrite: true,
       status: "working",
     } as never,
-    // The ladder's live current-work line.
+    // The agent's live sentence is the pane's MOMENT, so it now arrives as the second
+    // row rather than as the goal (the operator's layout: goal on top, moment under it).
     taskLine: resolvePaneTaskLine({
       now: NOW,
       facts: {
+        title: "Stop the two Telegram bots mixing messages",
         agentSaid:
           "Correcting the Diet bot's durable Telegram destination to topic 306",
       },
     }),
   });
-  expect(header.goalLabel).toBe(
-    "Correcting the Diet bot's durable Telegram destination to topic 306",
-  );
+  // The completed step must not hold the row while the agent has moved on.
+  expect(header.goalLabel).toBe("Stop the two Telegram bots mixing messages");
   expect(header.goalLabel).not.toMatch(/Tracing why/);
+  expect(
+    resolvePaneNowLine({
+      now: NOW,
+      facts: {
+        agentSaid:
+          "Correcting the Diet bot's durable Telegram destination to topic 306",
+      },
+    })?.text,
+  ).toBe("Correcting the Diet bot's durable Telegram destination to topic 306");
 });
 
 // The override is scoped: an IN-PROGRESS declared step still wins over the ladder.
