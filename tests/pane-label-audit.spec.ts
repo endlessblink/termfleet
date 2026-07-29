@@ -11,6 +11,7 @@ import { summaryFromSidecar } from "../src/lib/agentStatusSidecar";
 import { buildTerminalHeaderState } from "../src/lib/terminalHeaderState";
 import { resolvePaneTaskLine } from "../src/lib/taskLine";
 import { qualityCheckAuthoritativeTaskLabel } from "../src/lib/terminalHeaderQuality";
+import { qualityCheckUserAskLabel } from "../src/lib/terminalHeaderQuality";
 import { opensAsRequest } from "../src/lib/sessionTranscript";
 
 /**
@@ -195,6 +196,13 @@ function headerFor(
   };
 }
 
+const usableAsk = (value: string) => {
+  const asked = opensAsRequest(value.trim());
+  // Same two gates the resolver applies: it must read as a request, and it must survive
+  // the operator-ask check (a request that is mostly a file reference is not a goal).
+  return Boolean(asked) && qualityCheckUserAskLabel(asked, { maxLength: 150 }).ok;
+};
+
 test("every pane on this machine renders a readable Task row and Now Active line", () => {
   const dir = corpusDir();
   const names = existsSync(dir)
@@ -253,7 +261,7 @@ test("every pane on this machine renders a readable Task row and Now Active line
       // list of STEPS — those are the second row's job, and treating one as the goal is
       // what produced changing, vague headlines like "Updating the plan".
       const sidecarKnowsSomething =
-        Boolean(opensAsRequest(String(sidecar.userTask ?? "").trim())) ||
+        usableAsk(String(sidecar.userTask ?? "")) ||
         sayable(sidecar.mainTask);
       // The goal row may honestly say nothing when the record holds only steps and
       // reactions — the pane's moment is stated on the second row instead. It is only an

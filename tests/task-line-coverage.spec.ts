@@ -18,6 +18,7 @@ import path from "node:path";
 import { test, expect } from "@playwright/test";
 import { summarizeAgentStatus } from "../src/lib/agentStatusSummarizer";
 import { qualityCheckAuthoritativeTaskLabel } from "../src/lib/terminalHeaderQuality";
+import { qualityCheckUserAskLabel } from "../src/lib/terminalHeaderQuality";
 import { opensAsRequest } from "../src/lib/sessionTranscript";
 import type { AgentStatusSummaryInput } from "../src/lib/agentStatusSummary";
 
@@ -106,6 +107,13 @@ const readTranscript = async (
   return part === "head" ? readHead(file) : readTail(file);
 };
 
+const usableAsk = (value: string) => {
+  const asked = opensAsRequest(value.trim());
+  // Same two gates the resolver applies: it must read as a request, and it must survive
+  // the operator-ask check (a request that is mostly a file reference is not a goal).
+  return Boolean(asked) && qualityCheckUserAskLabel(asked, { maxLength: 150 }).ok;
+};
+
 test("every ACTIVE terminal that has something sayable gets a task line", async () => {
   const dir = statusDir();
   const names = existsSync(dir)
@@ -166,7 +174,7 @@ test("every ACTIVE terminal that has something sayable gets a task line", async 
     // ("it didnt work", "IU am in!"). A reaction is not a goal, so a pane whose record
     // holds only reactions has nothing to state on the goal row.
     const knows =
-      Boolean(opensAsRequest(String(record.userTask ?? "").trim())) ||
+      usableAsk(String(record.userTask ?? "")) ||
       sayable(record.mainTask);
     silent.push(
       `${name} (sessionId=${record.sessionId ? "yes" : "no"}, rejected="${result.taskLine?.rejected ?? ""}")`,

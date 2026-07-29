@@ -380,29 +380,27 @@ export function resolvePaneTaskLine(input: TaskLineInput): PaneTaskLine {
         rejected,
       };
     }
-    // Then the NEWEST thing the operator asked: a long session drifts, and pinning the
-    // row to the session's first question made the goal look like it kept resetting to
-    // where the work began. A thin follow-up ("/done", "go", "make all high") fails the
-    // gate and the opening request below takes over, so the row never degrades into an
-    // acknowledgement.
-    const latestAsk = considerLongAsk(stripComposerChrome(facts.operatorRequest));
-    if (latestAsk) {
-      return {
-        text: latestAsk,
-        source: "operator-request",
-        capturedAt: now,
-        expiresAt: null,
-        rejected,
-      };
-    }
-    // What the OPERATOR asked when this pane started — the line that still means
-    // something a week later. It outranks the agent's own session title because that
-    // title is sometimes a slug ("exercise-demo-gif-pipeline"), which answers nothing.
+    // Then the operator's OPENING ask for this session — the closest thing to an
+    // overarching description when the vendor wrote no title. Reading the live table
+    // decided this: the newest message is usually a reply inside a conversation ("yes
+    // remove it if you are sure", "it works! commit, push and create regression tetsts"),
+    // which tells a bystander nothing about what the pane is for.
     const opening = considerLongAsk(stripComposerChrome(facts.openingRequest));
     if (opening) {
       return {
         text: opening,
         source: "opening-request",
+        capturedAt: now,
+        expiresAt: null,
+        rejected,
+      };
+    }
+    // Only then the newest request — for a session whose opening message was a nudge.
+    const latestAsk = considerLongAsk(stripComposerChrome(facts.operatorRequest));
+    if (latestAsk) {
+      return {
+        text: latestAsk,
+        source: "operator-request",
         capturedAt: now,
         expiresAt: null,
         rejected,

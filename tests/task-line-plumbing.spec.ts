@@ -413,12 +413,17 @@ test("the newest real request wins, a reaction to it does not", () => {
   const opening = "is there a completly free excersize visualization tool for my fitness bot?";
   const newest =
     "why cant I ask for multiple excersizes so it can generate many for later usage?";
-  // A long session drifts: the row must follow the work, not the session's first line.
+  // The OPENING ask is the overarching one — reading the live table showed the newest
+  // message is usually a reply inside a conversation, useless to a bystander.
   expect(
     resolvePaneTaskLine({
       now: 1,
       facts: { openingRequest: opening, operatorRequest: newest },
     }),
+  ).toMatchObject({ source: "opening-request", text: opening });
+  // With no opening ask, a real newer request takes the row.
+  expect(
+    resolvePaneTaskLine({ now: 1, facts: { operatorRequest: newest } }),
   ).toMatchObject({ source: "operator-request", text: newest });
 
   // ...but a reaction ("this keeps reseting", "still seeing only this") names no work,
