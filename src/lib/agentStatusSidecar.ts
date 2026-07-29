@@ -123,9 +123,12 @@ function cleanText(value: unknown): string {
 function explicitMainTask(sidecar: AgentStatusSidecar): string {
   if (sidecar?.mainTaskSource) {
     const text = cleanText(sidecar.mainTask);
-    // 150, not 90: the card's goal row is a two-line box now, and a declared main task
-    // was being thrown away for being a sentence long — leaving the pane with no goal.
-    return text.length <= 150 ? text : "";
+    // The row fits long text at a word boundary (see `considerLongAsk`), so a declared
+    // goal is passed through and cut there instead of being discarded for length. A pane
+    // whose agent HAD stated its goal was falling back to its current checklist step —
+    // "doesn't answer what workflow and for what" (operator, 2026-07-29). Only a paste
+    // (the 220-char hook cap) is refused outright.
+    return text.length < 220 ? text : "";
   }
   const legacyGoals = (Array.isArray(sidecar?.todos) ? sidecar.todos : [])
     .map((todo) => cleanText(todo?.content).match(/^Goal:\s*(.+)$/i)?.[1] ?? "")

@@ -347,7 +347,7 @@ export function resolvePaneTaskLine(input: TaskLineInput): PaneTaskLine {
   // An explicit overarching goal, then the session's own plan title, then the
   // operator's main request — all rank ABOVE the momentary in-progress step.
   if (!turnEnded) {
-    const goal = consider(input.mainGoal ?? input.declaredTask);
+    const goal = considerLongAsk(input.mainGoal ?? input.declaredTask);
     if (goal) {
       return {
         text: goal,

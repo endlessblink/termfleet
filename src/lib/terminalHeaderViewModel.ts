@@ -759,14 +759,19 @@ export function buildShellTerminalHeaderViewModel(input: {
     /^(?:declared|opening-request|session-title|operator-request|pending-question)$/.test(
       input.taskLine.source,
     );
+  // A GOAL always outranks a step, whatever produced the step. The old condition only
+  // let the goal through when the identity came from the sidecar or was missing, so an
+  // in-progress checklist item ("Running checks and testing the finished workflow")
+  // still took the headline while the pane's declared goal named the actual work —
+  // "doesn't answer what workflow and for what" (operator, 2026-07-29). The step keeps
+  // its place on the Now row underneath. Only a goal the OPERATOR set by hand outranks
+  // the resolver.
   const preferLadder =
     input.taskLine != null &&
     ((declaredIdentity.source === "sidecar-todo" &&
       !activePlanItem &&
       ladderIsLiveWork) ||
-      (ladderIsMainPlan &&
-        (declaredIdentity.source === "sidecar-todo" ||
-          declaredIdentity.source === "missing")));
+      (ladderIsMainPlan && declaredIdentity.source !== "manual"));
   const taskIdentity = preferLadder
     ? {
         text: input.taskLine!.text,
