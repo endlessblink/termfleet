@@ -36,6 +36,7 @@ import {
   TreeStructure,
   X,
 } from "@phosphor-icons/react";
+import { invoke } from "@tauri-apps/api/core";
 import { BOARD_DEFAULT_SIZE } from "../lib/boardStore";
 import {
   createAgentWorkstream,
@@ -76,6 +77,17 @@ import { badgeForAttention } from "../lib/terminalAttention";
 import { paneBadgeAttention } from "../lib/sessionStatus";
 import { FileExplorer } from "./FileExplorer";
 import { checkAgentProvider } from "../lib/agentProviders";
+import {
+  formatAgentReconnectResult,
+  reconnectStoppedAgents,
+  type AgentRecoveryTarget,
+  type AgentReconnectResult,
+} from "../lib/agentReconnect";
+import {
+  paneSidecarFileName,
+  type AgentStatusSidecar,
+} from "../lib/agentStatusSidecar";
+import { readPaneAgentProvider } from "../lib/paneAgentProcess";
 import {
   agentLaneAuthRetryText,
   agentLaneAuthRetryTitle,
@@ -638,6 +650,31 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 500,
     letterSpacing: 0,
     textTransform: "uppercase",
+  },
+  reconnectAgentsButton: {
+    minHeight: 24,
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 5,
+    padding: "3px 7px",
+    border: "1px solid var(--border-subtle)",
+    borderRadius: "var(--radius-xs)",
+    background: "var(--surface-base)",
+    color: "var(--text-secondary)",
+    fontFamily: "var(--font-ui)",
+    fontSize: 10,
+    fontWeight: 500,
+    lineHeight: 1,
+    textTransform: "none",
+    cursor: "pointer",
+    transition:
+      "transform var(--motion-fast), border-color var(--motion-fast), color var(--motion-fast)",
+  },
+  reconnectAgentsStatus: {
+    margin: "-2px 2px 7px",
+    color: "var(--text-secondary)",
+    fontSize: 10,
+    lineHeight: 1.35,
   },
   projectRow: {
     position: "relative",
@@ -2369,6 +2406,8 @@ function SessionsPanel({
   const [projectBrowserOpen, setProjectBrowserOpen] = useState(false);
   const [projectSearchOpen, setProjectSearchOpen] = useState(false);
   const [projectQuery, setProjectQuery] = useState("");
+  const [reconnectingAgents, setReconnectingAgents] = useState(false);
+  const [reconnectAgentsStatus, setReconnectAgentsStatus] = useState("");
   const visibleTabs =
     activeGroupFilter === null
       ? tabs
@@ -2379,6 +2418,66 @@ function SessionsPanel({
       ? (groups.find((group) => group.id === activeGroupFilter)?.projectRoot ??
         null)
       : null;
+  const reconnectPaneIds = useMemo(
+    () => tabs.flatMap((tab) => tab.terminals.map((terminal) => terminal.id)),
+    [tabs],
+  );
+  const hasTauriRuntime =
+    typeof window !== "undefined" &&
+    "__TAURI_INTERNALS__" in (window as unknown as Record<string, unknown>);
+
+  async function reconnectAgentPanes() {
+    if (reconnectingAgents || !hasTauriRuntime) return;
+    setReconnectingAgents(true);
+    setReconnectAgentsStatus("Checking saved conversations…");
+    try {
+      const result: AgentReconnectResult = await reconnectStoppedAgents(
+        reconnectPaneIds,
+        {
+          readRunningProvider: readPaneAgentProvider,
+          readRecovery: async (paneId): Promise<AgentRecoveryTarget | null> => {
+            const text = await invoke<string | null>(
+              "agent_status_read_sidecar",
+              { fileName: paneSidecarFileName(paneId) },
+            );
+            if (!text) return null;
+            const sidecar = JSON.parse(text) as AgentStatusSidecar;
+            const provider =
+              sidecar.provider === "codex" ||
+              sidecar.provider === "claude" ||
+              sidecar.provider === "opencode"
+                ? sidecar.provider
+                : null;
+            const sessionId = sidecar.sessionId?.trim();
+            return provider && sessionId ? { provider, sessionId } : null;
+          },
+          sessionExists: async (provider, sessionId) => {
+            if (provider === "opencode") return true;
+            return (
+              (await invoke<string | null>("session_transcript_head_read", {
+                provider,
+                sessionId,
+              })) !== null
+            );
+          },
+          writeResumeCommand: async (paneId, command) => {
+            await invoke("daemon_write_session", {
+              id: paneId,
+              data: command,
+            });
+          },
+        },
+      );
+      setReconnectAgentsStatus(formatAgentReconnectResult(result));
+    } catch (error) {
+      setReconnectAgentsStatus(
+        error instanceof Error ? error.message : "Reconnect failed",
+      );
+    } finally {
+      setReconnectingAgents(false);
+    }
+  }
+
   const hasProjects = groups.length > 0;
   const projectModel = useMemo(
     () =>
@@ -3023,8 +3122,50 @@ function SessionsPanel({
       <div style={styles.list}>
         <div style={styles.sectionLabel}>
           <span>Sessions</span>
-          <span>{activeProjectName}</span>
+          <button
+            type="button"
+            data-testid="sidebar-reconnect-agents"
+            style={{
+              ...styles.reconnectAgentsButton,
+              opacity:
+                reconnectingAgents ||
+                !hasTauriRuntime ||
+                reconnectPaneIds.length === 0
+                  ? 0.5
+                  : 1,
+            }}
+            title={
+              hasTauriRuntime
+                ? "Resume stopped agents in their original panes"
+                : "Available in the desktop app"
+            }
+            disabled={
+              reconnectingAgents ||
+              !hasTauriRuntime ||
+              reconnectPaneIds.length === 0
+            }
+            onClick={() => void reconnectAgentPanes()}
+          >
+            <ArrowsClockwise
+              size={12}
+              weight="duotone"
+              aria-hidden="true"
+            />
+            <span>
+              {reconnectingAgents ? "Reconnecting…" : "Reconnect agents"}
+            </span>
+          </button>
         </div>
+        {reconnectAgentsStatus && (
+          <div
+            data-testid="sidebar-reconnect-agents-status"
+            style={styles.reconnectAgentsStatus}
+            role="status"
+            title={activeProjectName}
+          >
+            {reconnectAgentsStatus}
+          </div>
+        )}
         {agentLane.total > 0 && (
           <div
             style={styles.agentLanePanel}

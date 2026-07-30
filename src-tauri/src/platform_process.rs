@@ -1,4 +1,5 @@
 use std::process::{Command, Stdio};
+use std::{ffi::OsStr, path::PathBuf};
 
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
@@ -17,9 +18,15 @@ const DAEMON_ENV_PASSTHROUGH: &[&str] = &[
     "XDG_RUNTIME_DIR",
 ];
 
+fn systemd_user_bus_available(runtime_dir: Option<&OsStr>) -> bool {
+    runtime_dir
+        .map(PathBuf::from)
+        .is_some_and(|runtime_dir| runtime_dir.join("bus").exists())
+}
+
 pub fn systemd_run_available() -> bool {
     cfg!(target_os = "linux")
-        && std::env::var_os("XDG_RUNTIME_DIR").is_some()
+        && systemd_user_bus_available(std::env::var_os("XDG_RUNTIME_DIR").as_deref())
         && which_systemd_run().is_some()
 }
 
@@ -206,6 +213,17 @@ pub fn force_terminate_process(pid: u32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn private_runtime_without_user_bus_disables_systemd_run() {
+        let runtime = std::env::temp_dir().join(format!(
+            "termfleet-no-user-bus-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&runtime).expect("create private runtime");
+
+        assert!(!systemd_user_bus_available(Some(runtime.as_os_str())));
+    }
 
     #[test]
     fn daemon_argv_targets_the_binary_and_daemon_flag() {
