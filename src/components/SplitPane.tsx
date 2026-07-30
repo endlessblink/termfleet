@@ -17,6 +17,7 @@ import {
   TerminalSquare,
 } from "lucide-react";
 import { TerminalComponent } from "./Terminal";
+import { TokenBudgetIndicator } from "./TokenBudgetIndicator";
 import { LocalhostPreview } from "./LocalhostPreview";
 import { useWorkspaceStore } from "../stores/workspace";
 import { splitActivePane, closeActivePane } from "../stores/workspace";
@@ -56,6 +57,8 @@ import {
 } from "../lib/terminalAttention";
 import { paneBadgeAttention } from "../lib/sessionStatus";
 import { stableHeader } from "../lib/stableHeader";
+import { agentBudgetSignal } from "../lib/agentBudget";
+import { openCodexModelPicker } from "../lib/codexModelPicker";
 import {
   calculatePaneBounds,
   calculateHandles,
@@ -1213,6 +1216,11 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
         const shellHeaderPath = shellDurableActivityUsable
           ? shellStatusSummaryBase?.path
           : shellHeader?.fullPath;
+        const budgetSnapshot =
+          paneTerminal?.statusSummary?.budget ?? agentStatusSummary?.budget;
+        const budgetSignal = budgetSnapshot
+          ? agentBudgetSignal(budgetSnapshot, `${headerTitle} ${headerNow}`)
+          : null;
         const paneOutput = !isPreviewPane
           ? tab.workstream?.kind === "agent"
             ? tab.workstream.terminalOutput?.trim()
@@ -1351,6 +1359,24 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                         ...shellHeader?.debug,
                         waitingForOperator: shellWaitingForOperator,
                       },
+                }}
+              />
+            )}
+            {budgetSignal?.level === "critical" && !isImmersivePane && (
+              <div
+                data-testid="terminal-token-budget-rail"
+                aria-hidden="true"
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  bottom: 0,
+                  left: 0,
+                  width: 4,
+                  zIndex: 3,
+                  background: "var(--accent-danger)",
+                  boxShadow:
+                    "inset -1px 0 color-mix(in srgb, var(--accent-danger) 45%, var(--surface-sunken))",
+                  pointerEvents: "none",
                 }}
               />
             )}
@@ -1559,29 +1585,42 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                         />
                         {splitAttention.label}
                       </span>
-                      <span
-                        style={{
-                          minWidth: 92,
-                          height: 18,
-                          display: "inline-flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          padding: "0 7px",
-                          border: "1px solid var(--border-subtle)",
-                          borderRadius: "var(--radius-xs)",
-                          background: "var(--surface-base)",
-                          color: "var(--text-secondary)",
-                          fontSize: 10,
-                          textTransform: "uppercase",
-                        }}
-                        title={
-                          agentStatusChip ??
-                          `${agentStatusSummary.provider} · ${agentStatusSummary.status}`
-                        }
-                      >
-                        {agentStatusChip ??
-                          `${agentStatusSummary.provider} · ${agentStatusSummary.status}`}
-                      </span>
+                      {budgetSignal ? (
+                        <TokenBudgetIndicator
+                          signal={budgetSignal}
+                          detailsAlign="left"
+                          onOpenModelPicker={() =>
+                            openCodexModelPicker(
+                              `terminal-${tab.id}-${paneId}`,
+                              paneTerminal?.id,
+                            )
+                          }
+                        />
+                      ) : (
+                        <span
+                          style={{
+                            minWidth: 92,
+                            height: 18,
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            padding: "0 7px",
+                            border: "1px solid var(--border-subtle)",
+                            borderRadius: "var(--radius-xs)",
+                            background: "var(--surface-base)",
+                            color: "var(--text-secondary)",
+                            fontSize: 10,
+                            textTransform: "uppercase",
+                          }}
+                          title={
+                            agentStatusChip ??
+                            `${agentStatusSummary.provider} · ${agentStatusSummary.status}`
+                          }
+                        >
+                          {agentStatusChip ??
+                            `${agentStatusSummary.provider} · ${agentStatusSummary.status}`}
+                        </span>
+                      )}
                       <PaneToolbar
                         paneId={paneId}
                         tabId={tab.id}
@@ -1810,6 +1849,18 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                         />
                         {splitAttention.label}
                       </span>
+                      {budgetSignal && (
+                          <TokenBudgetIndicator
+                            signal={budgetSignal}
+                            detailsAlign="left"
+                            onOpenModelPicker={() =>
+                              openCodexModelPicker(
+                                `terminal-${tab.id}-${paneId}`,
+                                paneTerminal?.id,
+                              )
+                            }
+                          />
+                      )}
                       <PaneToolbar
                         paneId={paneId}
                         tabId={tab.id}

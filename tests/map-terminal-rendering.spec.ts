@@ -604,9 +604,122 @@ test("terminal map labels can be recolored from the right-click menu", async ({ 
     });
   });
 
-  await page.getByTestId("canvas-terminal-status-block").dispatchEvent("contextmenu");
-  await page.getByRole("menu", { name: "Terminal label color" }).getByRole("menuitem", { name: "Set terminal label color Amber" }).click();
-  await expect(page.getByTestId("canvas-terminal-status-block")).toHaveCSS("border-left-color", "rgb(212, 164, 79)");
+  await page
+    .getByTestId("canvas-terminal-status-block")
+    .dispatchEvent("contextmenu");
+  await page
+    .getByRole("menu", { name: "Terminal label color" })
+    .getByRole("menuitem", { name: "Set terminal label color Amber" })
+    .click();
+  await expect(page.getByTestId("canvas-terminal-status-block")).toHaveCSS(
+    "border-left-color",
+    "rgb(212, 164, 79)",
+  );
+
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const store = (
+          window as typeof window & {
+            __termfleetWorkspaceStore?: {
+              getState: () => {
+                canvasState: {
+                  nodes: Array<{ id: string; labelColor?: string }>;
+                };
+              };
+            };
+          }
+        ).__termfleetWorkspaceStore;
+        return store
+          ?.getState()
+          .canvasState.nodes.find((node) => node.id === "node-color")
+          ?.labelColor;
+      }),
+    )
+    .toBe("#d4a44f");
+});
+
+test("high token pressure is unmistakable on the expanded map terminal header", async ({
+  page,
+}) => {
+  await page.goto("http://127.0.0.1:5177/", {
+    waitUntil: "domcontentloaded",
+  });
+  await page.waitForLoadState("networkidle");
+  await page.getByRole("button", { name: "Map", exact: true }).click();
+
+  await page.evaluate(() => {
+    const store = (
+      window as typeof window & {
+        __termfleetWorkspaceStore?: {
+          getState: () => { workspaceUiState: Record<string, unknown> };
+          setState: (state: Record<string, unknown>) => void;
+        };
+      }
+    ).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+    store.setState({
+      workspaceUiState: {
+        ...store.getState().workspaceUiState,
+        workspaceMode: "canvas",
+        primarySidebarPanel: "map",
+      },
+      tabs: [
+        {
+          id: "tab-budget",
+          title: "Token-heavy Codex chat",
+          emoji: "[]",
+          color: "#7aa2f7",
+          groupId: null,
+          initialCwd: "/tmp/termfleet-budget",
+          terminals: [
+            {
+              id: "pty-budget",
+              paneId: "pane-budget",
+              cols: 80,
+              rows: 24,
+              status: "running",
+              statusSummary: {
+                task: "Updating labels and running focused tests",
+                path: "termfleet",
+                now: "Checking the interface",
+                status: "working",
+                provider: "codex",
+                confidence: "high",
+                budget: {
+                  model: "gpt-5.6-sol",
+                  reasoningEffort: "high",
+                  contextTokens: 220_000,
+                  contextWindow: 258_400,
+                  rateLimitUsedPercent: 58,
+                },
+              },
+            },
+          ],
+          splitLayout: { id: "pane-budget", type: "terminal" },
+          activePaneId: "pane-budget",
+        },
+      ],
+      activeTabId: "tab-budget",
+      canvasState: {
+        nodes: [
+          {
+            id: "node-budget",
+            type: "terminal",
+            title: "Token-heavy Codex chat",
+            terminalTabId: "tab-budget",
+            x: 100,
+            y: 100,
+            width: 820,
+            height: 460,
+          },
+        ],
+        selectedNodeId: "node-budget",
+        selectedNodeIds: ["node-budget"],
+        viewport: { x: 0, y: 0, zoom: 1 },
+      },
+    });
+  });
 
   await expect.poll(async () => page.evaluate(() => {
     const store = (window as typeof window & {

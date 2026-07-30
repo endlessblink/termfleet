@@ -106,6 +106,53 @@ test("codex: operator words, current tool, and a real turn end", () => {
   expect(facts.lastTurnEndAt).toBe(Date.parse("2026-07-22T09:00:09.000Z"));
 });
 
+test("codex: captures the live model, reasoning level, context load, and account pressure", () => {
+  const usageTail = [
+    CODEX_TAIL,
+    JSON.stringify({
+      timestamp: "2026-07-22T09:00:10.000Z",
+      type: "event_msg",
+      payload: {
+        type: "thread_settings_applied",
+        thread_settings: {
+          model: "gpt-5.6-sol",
+          reasoning_effort: "high",
+        },
+      },
+    }),
+    JSON.stringify({
+      timestamp: "2026-07-22T09:00:11.000Z",
+      type: "event_msg",
+      payload: {
+        type: "token_count",
+        info: {
+          last_token_usage: {
+            input_tokens: 201_400,
+            cached_input_tokens: 190_000,
+            output_tokens: 2_800,
+            reasoning_output_tokens: 2_100,
+            total_tokens: 204_200,
+          },
+          model_context_window: 258_400,
+        },
+        rate_limits: {
+          primary: { used_percent: 73 },
+        },
+      },
+    }),
+  ].join("\n");
+
+  expect(parseCodexRollout(usageTail).budget).toEqual({
+    model: "gpt-5.6-sol",
+    reasoningEffort: "high",
+    contextTokens: 201_400,
+    contextWindow: 258_400,
+    outputTokens: 2_800,
+    reasoningTokens: 2_100,
+    rateLimitUsedPercent: 73,
+  });
+});
+
 test("a turn end that precedes newer work is not treated as the latest state", () => {
   const resumed = `${CODEX_TAIL}\n${JSON.stringify({
     timestamp: "2026-07-22T09:00:20.000Z",

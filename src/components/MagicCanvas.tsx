@@ -63,6 +63,7 @@ import {
   resolveCanvasNodeProjects,
 } from "../lib/canvasArrange";
 import { TerminalComponent } from "./Terminal";
+import { TokenBudgetIndicator } from "./TokenBudgetIndicator";
 import { LocalhostPreview } from "./LocalhostPreview";
 import { BoardNode } from "./BoardNode";
 import { BOARD_DEFAULT_SIZE } from "../lib/boardStore";
@@ -151,6 +152,8 @@ import {
   terminalTextLooksReadyPrompt,
 } from "../lib/terminalHeaderDisplay";
 import { buildTerminalHeaderState } from "../lib/terminalHeaderState";
+import { agentBudgetSignal } from "../lib/agentBudget";
+import { openCodexModelPicker } from "../lib/codexModelPicker";
 import { durableActivityIsLive } from "../lib/terminalActivity";
 import { activityAddsInfo } from "../lib/terminalHeaderViewModel";
 import { badgeForAttention } from "../lib/terminalAttention";
@@ -3316,6 +3319,12 @@ function CanvasNodeViewImpl({
   const terminalHeaderNow =
     terminalHeaderSummarySignal || terminalHeaderTitle || terminalNeutralTitle;
   // The second row the operator asked for: what this pane is doing RIGHT NOW, under the
+  const terminalBudgetSignal = terminalStatusSummary?.budget
+    ? agentBudgetSignal(
+        terminalStatusSummary.budget,
+        `${terminalHeaderTaskDescription} ${terminalHeaderNow}`,
+      )
+    : null;
   // goal. `activityAddsInfo` is deliberately strict (it was built to suppress a
   // duplicate/filler line when the activity was the BIG line), so on its own it left the
   // row blank on panes that were plainly working — "relaunched nothing changed". When it
@@ -4129,6 +4138,18 @@ function CanvasNodeViewImpl({
                   <span style={styles.terminalNowActiveLabel}>Task:</span>
                   <span
                     data-testid="canvas-terminal-node-description"
+              {terminalBudgetSignal && (
+                <TokenBudgetIndicator
+                  signal={terminalBudgetSignal}
+                  testId="canvas-terminal-token-budget"
+                  onOpenModelPicker={() =>
+                    openCodexModelPicker(
+                      `terminal-${terminalTabId}-${terminalPaneId}`,
+                      linkedTerminalId ?? undefined,
+                    )
+                  }
+                />
+              )}
                     style={{
                       ...styles.terminalNowActiveValue,
                       color: labelColor ?? "var(--text-primary)",

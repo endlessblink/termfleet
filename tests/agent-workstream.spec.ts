@@ -96,7 +96,108 @@ test("shell terminals do not show the agent task sidebar", async ({ page }) => {
   await expect(page.getByTestId("split-agent-task-sidebar")).toHaveCount(0);
 });
 
-test("restored agent lanes keep one visible map node with restore state after reloads", async ({ page }) => {
+test("a high-token chat gets a strong rail and a live model recommendation", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 900, height: 700 });
+  await resetWorkspace(page);
+  await page.getByRole("button", { name: "New terminal" }).click();
+  await expect
+    .poll(async () =>
+      page.evaluate(
+        () =>
+          (
+            window as typeof window & {
+              __termfleetWorkspaceStore?: {
+                getState: () => {
+                  tabs: Array<{ terminals: Array<unknown> }>;
+                };
+              };
+            }
+          ).__termfleetWorkspaceStore
+            ?.getState()
+            .tabs.some((tab) => tab.terminals.length > 0) ?? false,
+      ),
+    )
+    .toBe(true);
+  await page.evaluate(() => {
+    const store = (
+      window as typeof window & {
+        __termfleetWorkspaceStore?: {
+          getState: () => {
+            tabs: Array<{
+              id: string;
+              terminals: Array<Record<string, unknown>>;
+            }>;
+            updateTab: (
+              id: string,
+              updates: { terminals: Array<Record<string, unknown>> },
+            ) => void;
+          };
+        };
+      }
+    ).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+    const state = store.getState();
+    const tab = state.tabs.find((candidate) => candidate.terminals.length > 0);
+    const terminal = tab?.terminals[0];
+    if (!tab || !terminal) throw new Error("Terminal not found");
+    state.updateTab(tab.id, {
+      terminals: tab.terminals.map((candidate) =>
+        candidate === terminal
+          ? {
+              ...candidate,
+              statusSummary: {
+                task: "Updating labels and running focused tests",
+                path: "termfleet",
+                now: "Checking the interface",
+                status: "working",
+                provider: "codex",
+                confidence: "high",
+                budget: {
+                  model: "gpt-5.6-sol",
+                  reasoningEffort: "high",
+                  contextTokens: 210_000,
+                  contextWindow: 258_400,
+                  rateLimitUsedPercent: 68,
+                },
+              },
+            }
+          : candidate,
+      ),
+    });
+  });
+
+  const indicator = page.getByTestId("terminal-token-budget");
+  await expect(indicator).toBeVisible();
+  await expect(indicator).toHaveAttribute("data-budget-level", "critical");
+  await expect(indicator).toContainText("Token budget");
+  await expect(indicator).toContainText("Sol");
+  await expect(indicator).toContainText("high");
+  await expect(indicator).toContainText("81%");
+  await expect(indicator).not.toContainText("Switch to Luna");
+  await indicator.click();
+  const details = page.getByTestId("token-budget-details");
+  await expect(details).toContainText("Recommendation: Switch to Luna");
+  const panelOpensInsidePane = await Promise.all([
+    indicator.boundingBox(),
+    details.boundingBox(),
+  ]).then(
+    ([indicatorBox, detailsBox]) =>
+      Boolean(indicatorBox && detailsBox) &&
+      detailsBox!.x >= indicatorBox!.x - 1,
+  );
+  expect(panelOpensInsidePane).toBe(true);
+  await expect(page.getByTestId("terminal-token-budget-rail")).toBeVisible();
+  await page.screenshot({
+    path: "test-results/token-budget-critical.png",
+    fullPage: true,
+  });
+});
+
+test("restored agent lanes keep one visible map node with restore state after reloads", async ({
+  page,
+}) => {
   await resetWorkspace(page);
   const seeded = {
     tabId: "tab-restored-agent",

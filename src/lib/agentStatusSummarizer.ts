@@ -12,7 +12,11 @@ import {
   type AgentStatusSidecar,
   type SidecarFileReader,
 } from "./agentStatusSidecar";
-import { parseOpeningRequest, parseTranscript } from "./sessionTranscript";
+import {
+  parseOpeningRequest,
+  parseTranscript,
+  type TranscriptFacts,
+} from "./sessionTranscript";
 import {
   resolvePaneNowLine,
   resolvePaneTaskLine,
@@ -247,7 +251,11 @@ async function resolveTaskLineFor(
   // in-progress step is the one rung that goes stale with the record.
   expired = false,
   readTranscript: SessionTranscriptReader | null = null,
-): Promise<{ taskLine: PaneTaskLine; nowLine: PaneTaskLine | null }> {
+): Promise<{
+  taskLine: PaneTaskLine;
+  nowLine: PaneTaskLine | null;
+  budget?: TranscriptFacts["budget"];
+}> {
   let facts = null;
   const sessionId =
     typeof sidecar?.sessionId === "string" ? sidecar.sessionId : "";
@@ -324,7 +332,11 @@ async function resolveTaskLineFor(
   };
   // Both rows come from ONE resolution, so the second can never repeat the first.
   const taskLine = resolvePaneTaskLine(ladderInput);
-  return { taskLine, nowLine: resolvePaneNowLine(ladderInput, taskLine.text) };
+  return {
+    taskLine,
+    nowLine: resolvePaneNowLine(ladderInput, taskLine.text),
+    budget: facts?.budget,
+  };
 }
 
 /**
@@ -412,17 +424,20 @@ export async function summarizeAgentStatus(
     options.transcriptReader === null
       ? null
       : (options.transcriptReader ?? tauriTranscriptReader());
-  const { taskLine, nowLine } = await resolveTaskLineFor(
+  const { taskLine, nowLine, budget } = await resolveTaskLineFor(
     input,
     rawSidecar,
     sidecarState === "stale",
     transcriptReader,
   );
 
-  const effectiveFallback = sidecarShapedFallback ??
+  const effectiveFallbackBase = sidecarShapedFallback ??
     (rawSidecar && sidecarCompletedByCommand(rawSidecar)
       ? { ...fallback, completedByCommand: true }
       : fallback);
+  const effectiveFallback = budget
+    ? { ...effectiveFallbackBase, budget }
+    : effectiveFallbackBase;
   const endpoint = options.endpoint ?? configuredEndpoint();
   if (!endpoint) {
     return {

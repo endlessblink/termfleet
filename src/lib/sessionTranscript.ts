@@ -4,6 +4,7 @@
 // render "Task not captured". Every reader here is a fallible probe: a changed
 // vendor format yields fewer facts, never an exception and never a blank pane.
 // Drift is caught loudly by the doctor probe, not silently by an empty header.
+import type { AgentBudgetSnapshot } from "./agentBudget";
 
 export interface TranscriptFacts {
   /** A short session title the vendor wrote itself. Never composed here. */
@@ -28,6 +29,8 @@ export interface TranscriptFacts {
   /** Turn boundary observed in the record itself — no hook required. */
   lastTurnEndAt?: number;
   lastActivityAt?: number;
+  /** Live Codex resource facts written by the vendor into its rollout. */
+  budget?: AgentBudgetSnapshot;
 }
 
 function cleanText(value: unknown): string | undefined {
@@ -310,6 +313,53 @@ export function parseCodexRollout(text: string): TranscriptFacts {
     const payload = record.payload as Record<string, unknown> | undefined;
     if (!payload) return;
     switch (payload.type) {
+      case "thread_settings_applied": {
+        const settings = payload.thread_settings as
+          | Record<string, unknown>
+          | undefined;
+        facts.budget = {
+          ...facts.budget,
+          ...(typeof settings?.model === "string"
+            ? { model: settings.model }
+            : {}),
+          ...(typeof settings?.reasoning_effort === "string"
+            ? { reasoningEffort: settings.reasoning_effort }
+            : {}),
+        };
+        break;
+      }
+      case "token_count": {
+        const info = payload.info as Record<string, unknown> | undefined;
+        const usage = info?.last_token_usage as
+          | Record<string, unknown>
+          | undefined;
+        const rateLimits = payload.rate_limits as
+          | Record<string, unknown>
+          | undefined;
+        const primary = rateLimits?.primary as
+          | Record<string, unknown>
+          | undefined;
+        const number = (value: unknown) =>
+          typeof value === "number" && Number.isFinite(value)
+            ? value
+            : undefined;
+        facts.budget = {
+          ...facts.budget,
+          contextTokens:
+            number(usage?.input_tokens) ?? facts.budget?.contextTokens,
+          contextWindow:
+            number(info?.model_context_window) ?? facts.budget?.contextWindow,
+          outputTokens:
+            number(usage?.output_tokens) ?? facts.budget?.outputTokens,
+          reasoningTokens:
+            number(usage?.reasoning_output_tokens) ??
+            facts.budget?.reasoningTokens,
+          rateLimitUsedPercent:
+            number(primary?.used_percent) ??
+            facts.budget?.rateLimitUsedPercent,
+        };
+        break;
+      }
       case "thread_goal_updated":
         facts.title = cleanText(payload.goal) ?? facts.title;
         break;

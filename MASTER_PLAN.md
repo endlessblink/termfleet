@@ -152,6 +152,68 @@ Do not split them into unrelated cleanup/design buckets; execute them in order s
 the visual system, shell, navigation, terminal surface, map, command layer, run
 state, and visual QA converge on one product direction.
 
+### ~~TC-068~~: ✅ Make expensive chats unmistakable
+
+**Priority:** P1
+**Status:** ✅ **DONE** (2026-07-30)
+
+Every Codex pane now reads the provider's live model, reasoning level, context
+window, per-turn usage, and account pressure from its own conversation record.
+The terminal header stays quiet at normal usage, becomes explicit at elevated
+usage, and at critical pressure shows a red `Token budget` identifier, the current
+model and context percentage, a full-height warning rail, and a grounded
+recommendation such as `Switch to Luna` or `Keep Sol`.
+
+Fresh evidence:
+
+- `npx playwright test tests/session-transcript.spec.ts
+  tests/agent-budget.spec.ts --reporter=line` — 12 passed.
+- `npx playwright test tests/agent-workstream.spec.ts -g "high-token chat"
+  --reporter=line` — 1 passed against the rendered browser surface.
+- `npm run build` — passed.
+- `test-results/token-budget-critical.png` — critical-state render; SHA-256
+  `8cc7f18d0d6ee2a1204d1c8961b01939982121cb80a9fc56288bc779e8b571de`.
+Visual review confirmed `Token budget Sol high 81% Switch to Luna` is unmistakable,
+high contrast, compact, and does not obscure terminal content or controls.
+- The user's real cockpit exposed a missed surface: the expanded map terminal
+  header did not render the warning. The split and map headers now share one
+  indicator component.
+- `npx playwright test tests/map-terminal-rendering.spec.ts -g "high token
+  pressure" --reporter=line` — 1 passed.
+- `npm run verify:map-terminals` — passed.
+- `npm run doctor` — status wiring healthy; the dock launcher uses dev mode and
+  needs a relaunch for the frontend change.
+- `test-results/map-token-budget-critical.png` — expanded map render; SHA-256
+  `7b1fca96fd07cc4ea676f6b31d0f4d74e04c14eaa7fb3eab35aa821de13978c4`.
+  Visual review confirmed the compact warning and click-open detail panel are
+  readable, unobstructed, and do not cover the task or core controls.
+- The compact recommendation no longer traps its clipped text: hover reveals the
+  entire guidance temporarily, while click pins it open until another click,
+  outside click, or Escape. The focused map regression covers both interactions.
+- Narrow headers keep only `Token budget`, model, reasoning, and context in the
+  badge; the recommendation stays in the detail panel. Split panels open inward
+  from the left and map panels inward from the right.
+- `test-results/token-budget-critical.png` — 900×700 narrow split render; SHA-256
+  `63d91200de868c81af50a65e417ead7560749be5d385a783289ee59226007935`.
+  Visual review confirmed the badge and complete popup are unclipped and do not
+  overlap nearby controls.
+- The guidance dialog now renders in the application overlay layer, clamps to
+  the viewport, and no longer triggers the terminal card's unrelated native
+  tooltip or disappears behind terminal layers.
+- Every recommendation now states its confidence, evidence, and downside.
+  Multiple task-risk categories raise confidence; otherwise the UI stays
+  explicitly advisory. Lighter models receive a Sol recommendation for
+  high-stakes, diagnostic, or system-level work.
+- `Open model picker` writes `/model` to the same pane's stable daemon session,
+  preserving the conversation and leaving the final model choice to the user.
+- `test-results/map-token-budget-critical.png` — viewport-overlay render;
+  SHA-256 `945c3d35506ec9c938cbf110eb4b31643b592409bc81bb91ccbaec27c5af1ab1`.
+  Visual review confirmed the dialog is unclipped, above terminal layers, and
+  shows the full recommendation, confidence, tradeoff, and picker result.
+- The dock-launched cockpit was exercised by the operator through the compact
+  warning, hover/click guidance, narrow-pane layout, confidence/tradeoff copy,
+  and model-picker workflow.
+
 ### ~~TC-067~~: ✅ Reconnect stopped agents in their original panes
 
 **Priority:** P0

@@ -299,6 +299,8 @@ export interface WorkstreamStatusSummary {
   // Used as the header title when there's no task list — what the model SAID it's doing,
   // not a heuristic scrape of terminal output.
   narration?: string;
+  /** Provider-reported model and token pressure for this exact conversation. */
+  budget?: import("./agentBudget").AgentBudgetSnapshot;
 }
 
 export interface WorkstreamMetadata {
