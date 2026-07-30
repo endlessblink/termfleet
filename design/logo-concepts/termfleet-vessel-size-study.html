@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>TermFleet vessel size study</title>
+    <style>
+      :root { color-scheme: dark; font-family: Rubik, system-ui, sans-serif; }
+      * { box-sizing: border-box; }
+      body {
+        display: grid;
+        place-items: center;
+        min-height: 100vh;
+        margin: 0;
+        background: #101517;
+        color: #e6e9ec;
+      }
+      main { width: 920px; padding: 52px; }
+      h1 { margin: 0 0 8px; font-size: 24px; font-weight: 500; letter-spacing: -.03em; }
+      p { margin: 0 0 38px; color: #90999f; font-size: 13px; }
+      .sizes {
+        display: grid;
+        grid-template-columns: repeat(6, 1fr);
+        align-items: end;
+        gap: 18px;
+      }
+      figure {
+        display: grid;
+        place-items: center;
+        align-content: end;
+        min-height: 210px;
+        margin: 0;
+        padding: 20px 10px 16px;
+        border-top: 1px solid #30373b;
+      }
+      img { display: block; width: var(--size); height: var(--size); }
+      figcaption {
+        margin-top: 18px;
+        color: #aab2b8;
+        font-size: 12px;
+        font-variant-numeric: tabular-nums;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Naval vessel · optically tuned vectors</h1>
+      <p>Review only · dedicated geometry for every target size · judge the smallest previews first</p>
+      <div class="sizes">
+        <figure style="--size: 16px"><img src="vessel-vector/termfleet-vessel-16.svg" alt=""><figcaption>16 px</figcaption></figure>
+        <figure style="--size: 24px"><img src="vessel-vector/termfleet-vessel-24.svg" alt=""><figcaption>24 px</figcaption></figure>
+        <figure style="--size: 32px"><img src="vessel-vector/termfleet-vessel-32.svg" alt=""><figcaption>32 px</figcaption></figure>
+        <figure style="--size: 48px"><img src="vessel-vector/termfleet-vessel-48.svg" alt=""><figcaption>48 px</figcaption></figure>
+        <figure style="--size: 64px"><img src="vessel-vector/termfleet-vessel-64.svg" alt=""><figcaption>64 px</figcaption></figure>
+        <figure style="--size: 96px"><img src="vessel-vector/termfleet-vessel-96.svg" alt=""><figcaption>96 px</figcaption></figure>
+      </div>
+    </main>
+  </body>
+</html>

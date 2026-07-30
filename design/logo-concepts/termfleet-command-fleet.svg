@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title desc">
+  <title id="title">TermFleet Command Fleet</title>
+  <desc id="desc">A sea-glass command chevron directing four terminal blocks.</desc>
+  <rect width="64" height="64" rx="14" fill="#10191D"/>
+  <path d="M8.5 21H14L27 32L14 43H8.5L21.5 32Z" fill="#63B79F"/>
+  <g fill="#63B79F">
+    <rect x="25.5" y="23.5" width="9.75" height="3"/>
+    <rect x="36.5" y="27.5" width="8.25" height="3"/>
+    <rect x="30" y="30.75" width="5.5" height="3"/>
+    <rect x="45.75" y="30.5" width="7.75" height="3"/>
+    <rect x="36.5" y="34.5" width="8.25" height="2.75"/>
+    <rect x="25.5" y="38" width="9.75" height="2.75"/>
+  </g>
+</svg>

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title desc">
+  <title id="title">TermFleet Drydock logo</title>
+  <desc id="desc">A sturdy terminal prompt and geometric boat built from matching modular blocks.</desc>
+  <rect width="64" height="64" rx="14" fill="#15191B"/>
+  <rect x="8.5" y="11.5" width="47" height="41" rx="8.5" fill="none" stroke="#879197" stroke-width="2"/>
+  <path d="M16 26h4l8 8-8 8h-4l8-8z" fill="#D5A64F"/>
+  <path d="M29 41h21l-4 5H33zM34 37h9l3 4H32z" fill="#D5A64F"/>
+</svg>

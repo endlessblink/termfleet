@@ -27,7 +27,13 @@ test("TermFleet app shell owns first paint and package metadata", async () => {
   expect(indexHtml).toContain("Starting TermFleet");
   expect(indexHtml).toContain('<div id="root" inert aria-hidden="true"></div>');
   expect(indexHtml).toContain('src="/src/main.tsx"');
-  expect(indexHtml.match(/termfleet-vessel-master\.svg/g)).toHaveLength(3);
+  expect(indexHtml.match(/termfleet-vessel-master\.svg/g)).toHaveLength(2);
+  expect(indexHtml).toContain('class="termfleet-startup__mark"');
+  expect(indexHtml).toContain('class="termfleet-loader__prompt"');
+  expect(indexHtml).toContain('class="termfleet-loader__vessel"');
+  expect(indexHtml).toContain("termfleet-prompt-draw");
+  expect(indexHtml).toContain("termfleet-vessel-assemble");
+  expect(indexHtml).toContain("termfleet-vessel-idle");
   expect(indexHtml).not.toContain("srcset=");
   expect(indexHtml).not.toContain("FlowState");
   expect(indexHtml).not.toContain("fs-loader");

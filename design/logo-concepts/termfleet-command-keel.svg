@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title desc">
+  <title id="title">TermFleet Command Keel</title>
+  <desc id="desc">A single dockyard stencil combining a command chevron with a forward cursor keel.</desc>
+  <rect width="64" height="64" rx="14" fill="#15191B"/>
+  <path d="M11 22h6l11 10-8 7h10l3-6h11l4 6h5l-5 6H20l-4-4 7-9z" fill="#D5A64F"/>
+  <path d="M36 29h8l3 4H34z" fill="#D5A64F"/>
+</svg>

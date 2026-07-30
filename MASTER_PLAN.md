@@ -152,6 +152,35 @@ Do not split them into unrelated cleanup/design buckets; execute them in order s
 the visual system, shell, navigation, terminal surface, map, command layer, run
 state, and visual QA converge on one product direction.
 
+### ~~TC-066~~: ✅ Signature terminal-to-vessel startup animation
+
+**Priority:** P1
+**Status:** ✅ **DONE** (2026-07-29)
+
+The static first-paint lockup now performs one branded, truthful sequence before
+settling. The colored icon square is gone: prompt and hull establish the vessel
+together in open space, stern, stack, and terminal details resolve before the
+wordmark takes focus, then all nine letters reveal in order through crisp masks
+without changing font weight or fading through a blurry state. The completed
+ship uses a restrained 1.25px harbor idle while restoration continues; the
+animation never holds the ready handoff, status text remains reserved for
+genuinely slow restoration, and `prefers-reduced-motion` renders the complete
+lockup with no running animation.
+
+Fresh evidence:
+
+- `npx playwright test tests/app-shell.spec.ts tests/startup-splash.spec.ts` —
+  4 passed, including the first-paint contract, hydration/terminal-spawn guard,
+  no-background-rectangle and fixed-weight nine-letter contracts, reduced-motion
+  contract, and controlled 160/600/840/1200ms narrative phases.
+- `/tmp/termfleet-startup-letters-frames-refined.png` — eleven-frame contact
+  sheet from 0–1200ms, SHA-256
+  `e2f9aef9be6a55e442f3aa10aa06a0cbd3e213f7bfaf11613b752ed23d3039dd`;
+  strict visual review passed the open-space vessel construction, early icon
+  completion, crisp letter sequence, stable spacing and weight, and centering.
+- The identity study page exposes all eleven exact frames for direct review.
+- `npm run build` passed. The loader intentionally never delays readiness.
+
 ### ~~TC-065~~: ✅ Premium first-paint loading screen and ship-in-terminal identity
 
 **Priority:** P1

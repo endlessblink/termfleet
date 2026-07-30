@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title desc">
+  <title id="title">TermFleet Command Vessel</title>
+  <desc id="desc">A low industrial command vessel with a terminal prompt cut into its cursor-like hull.</desc>
+  <rect width="64" height="64" rx="14" fill="#15191B"/>
+  <path fill="#D5A64F" fill-rule="evenodd"
+    d="M10 27H27L31 21H42L47 27H50L55 30L49 44H15L10 39V27ZM17 29L29 35L17 41V36L23 35L17 34V29Z"/>
+</svg>
