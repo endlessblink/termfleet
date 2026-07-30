@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>TermFleet logo concepts</title>
+    <style>
+      :root { color-scheme: dark; font-family: Rubik, system-ui, sans-serif; }
+      * { box-sizing: border-box; }
+      body { margin: 0; min-height: 100vh; background: #101315; color: #e6e9ec; }
+      main { width: min(1120px, calc(100% - 64px)); margin: 0 auto; padding: 72px 0 88px; }
+      header { display: flex; align-items: end; justify-content: space-between; gap: 32px; margin-bottom: 48px; }
+      h1 { margin: 0; font-size: 30px; font-weight: 500; letter-spacing: -.04em; }
+      header p { max-width: 460px; margin: 0; color: #90999f; font-size: 14px; line-height: 1.5; }
+      .round { margin-top: 64px; }
+      .round:first-of-type { margin-top: 0; }
+      .round-heading { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-bottom: 22px; }
+      .round-heading h2 { margin: 0; font-size: 20px; letter-spacing: -.025em; }
+      .round-heading p { max-width: 560px; margin: 0; color: #90999f; font-size: 13px; line-height: 1.5; }
+      .generated { display: block; width: 100%; height: auto; background: #e8e7e3; }
+      .frame-grid {
+        display: grid;
+        grid-template-columns: repeat(6, minmax(0, 1fr));
+        gap: 1px;
+        background: #0b0f11;
+      }
+      .frame {
+        grid-column: span 2;
+        min-width: 0;
+        margin: 0;
+        padding: 18px 16px 14px;
+        background: #111a1e;
+      }
+      .frame:nth-last-child(-n + 2) {
+        grid-column: span 3;
+      }
+      .frame img {
+        display: block;
+        width: 100%;
+        height: auto;
+      }
+      .frame figcaption {
+        margin-top: 11px;
+        color: #69747a;
+        font-size: 12px;
+      }
+      .concepts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+      article { min-width: 0; padding-top: 18px; border-top: 1px solid #30373b; }
+      .stage { display: grid; place-items: center; aspect-ratio: 1; margin-bottom: 20px; background: #15191b; }
+      .stage img { width: 58%; height: 58%; }
+      h2 { margin: 0 0 6px; font-size: 16px; font-weight: 500; }
+      article p { margin: 0 0 18px; min-height: 42px; color: #90999f; font-size: 13px; line-height: 1.55; }
+      .sizes { display: flex; align-items: end; gap: 16px; min-height: 72px; }
+      .sizes img:nth-child(1) { width: 64px; height: 64px; }
+      .sizes img:nth-child(2) { width: 32px; height: 32px; }
+      .sizes img:nth-child(3) { width: 16px; height: 16px; }
+      @media (max-width: 760px) {
+        main { width: min(420px, calc(100% - 32px)); padding-top: 40px; }
+        header { display: grid; }
+        .round-heading { display: grid; }
+        .concepts { grid-template-columns: 1fr; }
+        .frame-grid { grid-template-columns: 1fr; }
+        .frame,
+        .frame:nth-last-child(-n + 2) { grid-column: auto; }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>TermFleet identity study</h1>
+        <p>All concept rounds in one place, newest first. Generated sheets are exploratory references, not production artwork.</p>
+      </header>
+      <section class="round">
+        <div class="round-heading">
+          <h2>Startup animation — frame-by-frame review</h2>
+          <p>Eleven exact browser renders from 0–1200ms. Inspect the open-space vessel construction, fixed-weight letter reveal, alignment, and antialiasing in one complete grid.</p>
+        </div>
+        <div class="frame-grid" aria-label="Startup animation frames">
+          <figure class="frame"><img src="termfleet-startup-frame-0000.png" alt="TermFleet startup animation at 0 milliseconds"><figcaption>0ms</figcaption></figure>
+          <figure class="frame"><img src="termfleet-startup-frame-0120.png" alt="TermFleet startup animation at 120 milliseconds"><figcaption>120ms</figcaption></figure>
+          <figure class="frame"><img src="termfleet-startup-frame-0240.png" alt="TermFleet startup animation at 240 milliseconds"><figcaption>240ms</figcaption></figure>
+          <figure class="frame"><img src="termfleet-startup-frame-0360.png" alt="TermFleet startup animation at 360 milliseconds"><figcaption>360ms</figcaption></figure>
+          <figure class="frame"><img src="termfleet-startup-frame-0480.png" alt="TermFleet startup animation at 480 milliseconds"><figcaption>480ms</figcaption></figure>
+          <figure class="frame"><img src="termfleet-startup-frame-0600.png" alt="TermFleet startup animation at 600 milliseconds"><figcaption>600ms</figcaption></figure>
+          <figure class="frame"><img src="termfleet-startup-frame-0720.png" alt="TermFleet startup animation at 720 milliseconds"><figcaption>720ms</figcaption></figure>
+          <figure class="frame"><img src="termfleet-startup-frame-0840.png" alt="TermFleet startup animation at 840 milliseconds"><figcaption>840ms</figcaption></figure>
+          <figure class="frame"><img src="termfleet-startup-frame-0960.png" alt="TermFleet startup animation at 960 milliseconds"><figcaption>960ms</figcaption></figure>
+          <figure class="frame"><img src="termfleet-startup-frame-1080.png" alt="TermFleet startup animation at 1080 milliseconds"><figcaption>1080ms</figcaption></figure>
+          <figure class="frame"><img src="termfleet-startup-frame-1200.png" alt="TermFleet startup animation at 1200 milliseconds"><figcaption>1200ms</figcaption></figure>
+        </div>
+      </section>
+      <section class="round">
+        <div class="round-heading">
+          <h2>Review round — naval vessel vector proof</h2>
+          <p>The selected vessel rebuilt as optically tuned SVG geometry for exact 16, 24, 32, 48, 64, and 96px sizes.</p>
+        </div>
+        <img class="generated" src="termfleet-vessel-vector-size-study.png" alt="The selected naval vessel logo rebuilt as six optically tuned vector sizes">
+      </section>
+      <section class="round">
+        <div class="round-heading">
+          <h2>Review round — crisp dock glyphs</h2>
+          <p>Six deterministic SVG corrections shown enlarged and at their true 48px dock size. Nothing in this round is approved.</p>
+        </div>
+        <img class="generated" src="termfleet-dock-glyph-study.png" alt="Six unapproved crisp TermFleet dock glyph variants shown large and at 48 pixels">
+      </section>
+      <section class="round">
+        <div class="round-heading">
+          <h2>Review round — option 6 refinements</h2>
+          <p>Eight unapproved refinements of option 6, varying only corner softness, module rise, spacing, and cadence.</p>
+        </div>
+        <img class="generated" src="termfleet-gpt-option-6-refinements.png" alt="Eight unapproved refinements of TermFleet logo option 6">
+      </section>
+      <section class="round">
+        <div class="round-heading">
+          <h2>Review round — proportion and corner radius</h2>
+          <p>Twelve unapproved refinements: sharp across row one, subtly softened across row two, and visibly softer across row three.</p>
+        </div>
+        <img class="generated" src="termfleet-gpt-radius-proportion-variants.png" alt="Twelve unapproved command-fleet logo refinements exploring chevron proportions, module spacing, and corner radius">
+      </section>
+      <section class="round">
+        <div class="round-heading">
+          <h2>Review round — fleet module spacing</h2>
+          <p>Six unapproved refinements with smaller modules and distinct spacing rhythms. Numbered 1–3 across the top, then 4–6.</p>
+        </div>
+        <img class="generated" src="termfleet-gpt-module-spacing-variants.png" alt="Six unapproved command-fleet logo refinements with smaller, differently spaced modules">
+      </section>
+      <section class="round">
+        <div class="round-heading">
+          <h2>GPT Image — elegant command fleet</h2>
+          <p>Eight earlier refinements of the command-to-fleet idea. None are approved.</p>
+        </div>
+        <img class="generated" src="termfleet-gpt-elegant-variants.png" alt="Eight elegant command-fleet logo variants">
+      </section>
+      <section class="round">
+        <div class="round-heading">
+          <h2>Earlier vector interpretation — Command Fleet</h2>
+          <p>An unapproved redraw of one command chevron directing four terminal blocks.</p>
+        </div>
+        <div class="concepts">
+          <article>
+            <div class="stage"><img src="termfleet-command-fleet.svg" alt="Earlier Command Fleet vector interpretation"></div>
+            <h2>Command Fleet</h2>
+            <p>Sea-glass on blue-black, with no literal boat imagery.</p>
+            <div class="sizes">
+              <img src="termfleet-command-fleet.svg" alt="">
+              <img src="termfleet-command-fleet.svg" alt="">
+              <img src="termfleet-command-fleet.svg" alt="">
+            </div>
+          </article>
+        </div>
+      </section>
+      <section class="round">
+        <div class="round-heading">
+          <h2>GPT Image — color study</h2>
+          <p>The four liked marks compared in amber, sea-glass, bone and naval ink, and signal coral.</p>
+        </div>
+        <img class="generated" src="termfleet-gpt-color-study.png" alt="Four TermFleet logo concepts shown in four color systems">
+      </section>
+      <section class="round">
+        <div class="round-heading">
+          <h2>GPT Image — sea-glass family</h2>
+          <p>Eight new terminal-maritime fusions derived from the four liked marks.</p>
+        </div>
+        <img class="generated" src="termfleet-gpt-seaglass-variants.png" alt="Eight sea-glass TermFleet logo variants">
+      </section>
+      <section class="round">
+        <div class="round-heading">
+          <h2>GPT Image — focused vessel variants</h2>
+          <p>Six refinements of the selected low command-vessel premise. Bottom-middle is candidate 5.</p>
+        </div>
+        <img class="generated" src="termfleet-gpt-command-vessel-variants.png" alt="Six generated command-vessel logo variants">
+      </section>
+      <section class="round">
+        <div class="round-heading">
+          <h2>GPT Image — broad exploration</h2>
+          <p>Eight initial identity directions. The top-right mark became the focused premise above.</p>
+        </div>
+        <img class="generated" src="termfleet-gpt-image-concepts.png" alt="Eight generated TermFleet logo concepts">
+      </section>
+      <section class="round">
+        <div class="round-heading">
+          <h2>Vector redraw — command vessel</h2>
+          <p>A deterministic SVG redraw of the generated premise, shown at production sizes.</p>
+        </div>
+        <div class="concepts">
+          <article>
+            <div class="stage"><img src="termfleet-command-vessel.svg" alt="Command Vessel logo"></div>
+            <h2>Command Vessel</h2>
+            <p>One connected hull with a terminal prompt cut into the silhouette.</p>
+            <div class="sizes">
+              <img src="termfleet-command-vessel.svg" alt="">
+              <img src="termfleet-command-vessel.svg" alt="">
+              <img src="termfleet-command-vessel.svg" alt="">
+            </div>
+          </article>
+        </div>
+      </section>
+      <section class="round">
+        <div class="round-heading">
+          <h2>Hand-built round two</h2>
+          <p>Dockyard stencils designed at favicon scale before the GPT Image exploration.</p>
+        </div>
+        <div class="concepts">
+        <article>
+          <div class="stage"><img src="termfleet-dock-stencil.svg" alt="Dock Stencil logo"></div>
+          <h2>01 — Dock Stencil</h2>
+          <p>A heavy cursor plate with a bridge cut. Blunt and mechanical.</p>
+          <div class="sizes">
+            <img src="termfleet-dock-stencil.svg" alt="">
+            <img src="termfleet-dock-stencil.svg" alt="">
+            <img src="termfleet-dock-stencil.svg" alt="">
+          </div>
+        </article>
+        <article>
+          <div class="stage"><img src="termfleet-harbor-block.svg" alt="Harbor Block logo"></div>
+          <h2>02 — Harbor Block</h2>
+          <p>The simplest legible tug silhouette, compressed into a cursor.</p>
+          <div class="sizes">
+            <img src="termfleet-harbor-block.svg" alt="">
+            <img src="termfleet-harbor-block.svg" alt="">
+            <img src="termfleet-harbor-block.svg" alt="">
+          </div>
+        </article>
+        <article>
+          <div class="stage"><img src="termfleet-command-keel.svg" alt="Command Keel logo"></div>
+          <h2>03 — Command Keel</h2>
+          <p>Prompt and vessel fused into one continuous command mark.</p>
+          <div class="sizes">
+            <img src="termfleet-command-keel.svg" alt="">
+            <img src="termfleet-command-keel.svg" alt="">
+            <img src="termfleet-command-keel.svg" alt="">
+          </div>
+        </article>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16" role="img" aria-labelledby="title desc" shape-rendering="geometricPrecision">
+  <title id="title">TermFleet vessel icon at 16 pixels</title>
+  <desc id="desc">A simplified naval vessel containing a terminal chevron.</desc>
+  <rect width="16" height="16" fill="#ece9e2"/>
+  <g fill="#17313f">
+    <path d="M4 5h10l-2 7H4Z"/>
+    <rect x="7" y="2" width="4" height="2"/>
+  </g>
+  <path fill="#ece9e2" d="M7 6h2l4 3-4 3H7l4-3Z"/>
+</svg>

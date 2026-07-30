@@ -1,0 +1,95 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 840 520" role="img" aria-labelledby="title desc">
+  <title id="title">TermFleet dock glyph study</title>
+  <desc id="desc">Six crisp dock-scale variations of the approved terminal prompt and fleet module mark.</desc>
+  <defs>
+    <style>
+      .board { fill: #101517; }
+      .tile { fill: #171d20; stroke: #2c3539; stroke-width: 1; }
+      .plate { fill: #26343b; }
+      .mark { fill: none; stroke: #9bd8c8; stroke-width: 3.25; stroke-linecap: round; stroke-linejoin: round; }
+      .module { fill: #9bd8c8; }
+      .label { fill: #e6e9ec; font: 500 15px Rubik, system-ui, sans-serif; }
+      .note { fill: #8f999f; font: 400 12px Rubik, system-ui, sans-serif; }
+    </style>
+
+    <g id="plate">
+      <rect class="plate" width="48" height="48" rx="10"/>
+      <path class="mark" d="M13 14.5 22.5 24 13 33.5"/>
+    </g>
+
+    <g id="v1">
+      <use href="#plate"/>
+      <rect class="module" x="27" y="22.5" width="6" height="3" rx="1"/>
+      <rect class="module" x="36" y="22.5" width="5" height="3" rx="1"/>
+    </g>
+    <g id="v2">
+      <use href="#plate"/>
+      <rect class="module" x="27" y="24" width="6" height="3" rx="1"/>
+      <rect class="module" x="36" y="20.5" width="5" height="3" rx="1"/>
+    </g>
+    <g id="v3">
+      <use href="#plate"/>
+      <rect class="module" x="27" y="24.5" width="5" height="2.5" rx=".75"/>
+      <rect class="module" x="34" y="22" width="5" height="2.5" rx=".75"/>
+      <rect class="module" x="41" y="19.5" width="4" height="2.5" rx=".75"/>
+    </g>
+    <g id="v4">
+      <use href="#plate"/>
+      <rect class="module" x="27" y="24.25" width="5.5" height="2.75" rx=".9"/>
+      <rect class="module" x="34.5" y="23" width="5" height="2.75" rx=".9"/>
+      <rect class="module" x="41.5" y="21.75" width="3.5" height="2.75" rx=".9"/>
+    </g>
+    <g id="v5">
+      <use href="#plate"/>
+      <rect class="module" x="27" y="23.5" width="7" height="3" rx="1"/>
+      <rect class="module" x="37" y="20.5" width="5.5" height="3" rx="1"/>
+    </g>
+    <g id="v6">
+      <use href="#plate"/>
+      <rect class="module" x="27" y="22.5" width="6" height="3" rx="1"/>
+      <rect class="module" x="35.5" y="22.5" width="5" height="3" rx="1"/>
+      <rect class="module" x="43" y="22.5" width="3" height="3" rx="1"/>
+    </g>
+  </defs>
+
+  <rect class="board" width="840" height="520"/>
+  <text class="label" x="36" y="38">Dock glyph study</text>
+  <text class="note" x="36" y="60">Large view plus true 48px preview · review only</text>
+
+  <g transform="translate(36 88)">
+    <rect class="tile" width="244" height="184" rx="12"/>
+    <text class="label" x="18" y="28">1 · calm pair</text>
+    <use href="#v1" transform="translate(18 46) scale(2.25)"/>
+    <use href="#v1" transform="translate(174 94)"/>
+  </g>
+  <g transform="translate(298 88)">
+    <rect class="tile" width="244" height="184" rx="12"/>
+    <text class="label" x="18" y="28">2 · rising pair</text>
+    <use href="#v2" transform="translate(18 46) scale(2.25)"/>
+    <use href="#v2" transform="translate(174 94)"/>
+  </g>
+  <g transform="translate(560 88)">
+    <rect class="tile" width="244" height="184" rx="12"/>
+    <text class="label" x="18" y="28">3 · clear ascent</text>
+    <use href="#v3" transform="translate(18 46) scale(2.25)"/>
+    <use href="#v3" transform="translate(174 94)"/>
+  </g>
+  <g transform="translate(36 290)">
+    <rect class="tile" width="244" height="184" rx="12"/>
+    <text class="label" x="18" y="28">4 · shallow cadence</text>
+    <use href="#v4" transform="translate(18 46) scale(2.25)"/>
+    <use href="#v4" transform="translate(174 94)"/>
+  </g>
+  <g transform="translate(298 290)">
+    <rect class="tile" width="244" height="184" rx="12"/>
+    <text class="label" x="18" y="28">5 · weighted pair</text>
+    <use href="#v5" transform="translate(18 46) scale(2.25)"/>
+    <use href="#v5" transform="translate(174 94)"/>
+  </g>
+  <g transform="translate(560 290)">
+    <rect class="tile" width="244" height="184" rx="12"/>
+    <text class="label" x="18" y="28">6 · terminal line</text>
+    <use href="#v6" transform="translate(18 46) scale(2.25)"/>
+    <use href="#v6" transform="translate(174 94)"/>
+  </g>
+</svg>

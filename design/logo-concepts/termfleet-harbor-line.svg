@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title desc">
+  <title id="title">TermFleet Harbor Line logo</title>
+  <desc id="desc">A reduced terminal prompt and boat cursor cut from one continuous industrial line.</desc>
+  <rect width="64" height="64" rx="14" fill="#15191B"/>
+  <rect x="8.5" y="11.5" width="47" height="41" rx="8.5" fill="none" stroke="#7F898F" stroke-width="2"/>
+  <path d="M16.5 27 24 34l-7.5 7M29 43h4l2.5-5h7l2.5 5h4l-3 3H33z"
+    fill="none" stroke="#D5A64F" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M39 38v-4" stroke="#D5A64F" stroke-width="3" stroke-linecap="round"/>
+</svg>

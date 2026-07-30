@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title desc">
+  <title id="title">TermFleet Dock Stencil</title>
+  <desc id="desc">A heavy terminal prompt and low dockyard cursor with a workboat bridge cut.</desc>
+  <rect width="64" height="64" rx="14" fill="#15191B"/>
+  <path fill="#D5A64F" fill-rule="evenodd"
+    d="M12 22h6l11 10-11 10h-6l11-10zm19 12h21v10H31zm6-5h9l4 5H34zM40 31h3v3h-3z
+       M35 37h11v4H35z"/>
+</svg>

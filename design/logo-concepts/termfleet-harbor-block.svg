@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title desc">
+  <title id="title">TermFleet Harbor Block</title>
+  <desc id="desc">A terminal prompt and cursor block shaped like a compact harbor tug.</desc>
+  <rect width="64" height="64" rx="14" fill="#15191B"/>
+  <path d="M12 22h6l11 10-11 10h-6l11-10z" fill="#D5A64F"/>
+  <path d="M30 37h22l-4 7H34z" fill="#D5A64F"/>
+  <path d="M36 32h10l3 5H33z" fill="#D5A64F"/>
+</svg>

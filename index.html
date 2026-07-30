@@ -36,30 +36,87 @@
         align-items: center;
         gap: 27px;
         width: min(430px, calc(100vw - 48px));
-        opacity: 0;
-        transform: translateY(calc(-3vh + 3px));
-        animation: termfleet-lockup-arrive 360ms cubic-bezier(0.22, 1, 0.36, 1) 40ms both;
+        opacity: 1;
+        transform: translateY(-3vh);
       }
 
       .termfleet-startup__mark {
+        display: block;
         width: 92px;
         height: 92px;
         overflow: visible;
+      }
+
+      .termfleet-loader__prompt,
+      .termfleet-loader__cursor,
+      .termfleet-loader__hull,
+      .termfleet-loader__stern,
+      .termfleet-loader__stack,
+      .termfleet-loader__terminal {
+        transform-box: fill-box;
+        transform-origin: center;
+      }
+
+      .termfleet-loader__prompt {
+        stroke-dasharray: 34;
+        stroke-dashoffset: 34;
+        opacity: 0;
+        animation: termfleet-prompt-draw 520ms cubic-bezier(0.22, 1, 0.36, 1) 40ms both;
+      }
+
+      .termfleet-loader__cursor {
+        opacity: 0;
+        animation: termfleet-cursor-depart 460ms cubic-bezier(0.22, 1, 0.36, 1) 80ms both;
+      }
+
+      .termfleet-loader__vessel {
+        animation: termfleet-vessel-idle 2400ms cubic-bezier(0.37, 0, 0.63, 1) 760ms infinite alternate;
+      }
+
+      .termfleet-loader__hull {
+        opacity: 0;
+        animation: termfleet-vessel-assemble 560ms cubic-bezier(0.16, 1, 0.3, 1) 20ms both;
+      }
+
+      .termfleet-loader__stern {
+        opacity: 0;
+        animation: termfleet-stern-assemble 300ms cubic-bezier(0.16, 1, 0.3, 1) 220ms both;
+      }
+
+      .termfleet-loader__stack {
+        opacity: 0;
+        animation: termfleet-stack-assemble 260ms cubic-bezier(0.16, 1, 0.3, 1) 280ms both;
+      }
+
+      .termfleet-loader__terminal {
+        opacity: 0;
+        animation: termfleet-terminal-arrive 220ms cubic-bezier(0.22, 1, 0.36, 1) 380ms both;
       }
 
       .termfleet-startup__copy {
         display: grid;
         gap: 9px;
         min-width: 0;
+        opacity: 1;
+        transform: none;
       }
 
       .termfleet-startup__name {
+        display: flex;
         margin: 0;
         color: #e6e9ec;
         font-size: 1.875rem;
         font-weight: 500;
         letter-spacing: -0.035em;
         line-height: 1;
+      }
+
+      .termfleet-startup__letter {
+        display: inline-block;
+        clip-path: inset(0 100% 0 0);
+        transform: translateY(5px);
+        animation: termfleet-letter-arrive 300ms cubic-bezier(0.16, 1, 0.3, 1)
+          calc(600ms + (var(--letter-index) * 40ms)) both;
       }
 
       .termfleet-startup__status {
@@ -79,14 +136,113 @@
         opacity: 1;
       }
 
-      @keyframes termfleet-lockup-arrive {
+      @keyframes termfleet-prompt-draw {
+        0% {
+          stroke-dashoffset: 34;
+          opacity: 0;
+        }
+        18% {
+          opacity: 1;
+        }
+        58% {
+          stroke-dashoffset: 0;
+          opacity: 1;
+        }
+        78% {
+          stroke-dashoffset: 0;
+          opacity: 1;
+        }
+        100% {
+          stroke-dashoffset: 0;
+          opacity: 0;
+        }
+      }
+
+      @keyframes termfleet-cursor-depart {
+        0%,
+        24% {
+          opacity: 0;
+          transform: translateX(-4px);
+        }
+        42%,
+        68% {
+          opacity: 0.72;
+          transform: translateX(0);
+        }
+        100% {
+          opacity: 0;
+          transform: translateX(7px);
+        }
+      }
+
+      @keyframes termfleet-vessel-assemble {
+        0% {
+          opacity: 0;
+          transform: translateX(-6px) scaleX(0.9);
+        }
+        18% {
+          opacity: 0.45;
+        }
+        76%,
+        100% {
+          opacity: 1;
+          transform: translateX(0) scaleX(1);
+        }
+      }
+
+      @keyframes termfleet-stern-assemble {
+        0%,
+        28% {
+          opacity: 0;
+          transform: translateX(7px);
+        }
+        100% {
+          opacity: 1;
+          transform: translateX(0);
+        }
+      }
+
+      @keyframes termfleet-stack-assemble {
+        0%,
+        24% {
+          opacity: 0;
+          transform: translateY(7px);
+        }
+        100% {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      @keyframes termfleet-terminal-arrive {
         from {
           opacity: 0;
-          transform: translateY(calc(-3vh + 3px));
+          transform: translateX(-5px);
         }
         to {
           opacity: 1;
-          transform: translateY(-3vh);
+          transform: translateX(0);
+        }
+      }
+
+      @keyframes termfleet-vessel-idle {
+        from {
+          transform: translateY(0);
+        }
+        to {
+          transform: translateY(-1.25px);
+        }
+      }
+
+      @keyframes termfleet-letter-arrive {
+        0% {
+          clip-path: inset(0 100% 0 0);
+          transform: translateY(5px);
+        }
+        68%,
+        100% {
+          clip-path: inset(0 0 0 0);
+          transform: translateY(0);
         }
       }
 
@@ -113,9 +269,26 @@
         }
 
         .termfleet-startup__lockup {
-          animation: none;
           opacity: 1;
           transform: translateY(-3vh);
+        }
+
+        .termfleet-loader__prompt,
+        .termfleet-loader__cursor {
+          display: none;
+        }
+
+        .termfleet-loader__vessel,
+        .termfleet-loader__hull,
+        .termfleet-loader__stern,
+        .termfleet-loader__stack,
+        .termfleet-loader__terminal,
+        .termfleet-startup__copy,
+        .termfleet-startup__letter {
+          animation: none;
+          opacity: 1;
+          transform: none;
+          clip-path: none;
         }
       }
     </style>
@@ -129,14 +302,67 @@
       aria-label="Starting TermFleet"
     >
       <div class="termfleet-startup__lockup">
-        <img
+        <svg
           class="termfleet-startup__mark"
-          src="/brand/termfleet-vessel-master.svg"
-          alt=""
+          viewBox="0 0 100 100"
+          role="presentation"
           aria-hidden="true"
         >
+          <g class="termfleet-loader__vessel">
+            <path
+              class="termfleet-loader__hull"
+              fill="#ece9e2"
+              d="M26 37h61c2.4 0 4 2.4 3 4.6L75 75.5c-.8 1.8-2.6 2.9-4.6 2.9H27c-2.8 0-5-2.2-5-5V42c0-2.8 1.2-5 4-5Z"
+            />
+            <g class="termfleet-loader__stern" fill="#ece9e2">
+              <rect x="13" y="44" width="13" height="8" rx="2"/>
+              <rect x="16" y="56" width="10" height="8" rx="2"/>
+              <rect x="19" y="68" width="7" height="8" rx="2"/>
+            </g>
+            <g class="termfleet-loader__stack" fill="#ece9e2">
+              <rect x="38" y="24" width="23" height="8" rx="2"/>
+              <rect x="45" y="13" width="9" height="8" rx="2"/>
+            </g>
+            <path
+              class="termfleet-loader__terminal"
+              d="m57 48 13 10-13 10"
+              fill="none"
+              stroke="#17313f"
+              stroke-width="6"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </g>
+          <path
+            class="termfleet-loader__prompt"
+            d="m57 48 13 10-13 10"
+            fill="none"
+            stroke="#ece9e2"
+            stroke-width="5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+          <path
+            class="termfleet-loader__cursor"
+            d="M73 68h10"
+            fill="none"
+            stroke="#ece9e2"
+            stroke-width="4"
+            stroke-linecap="round"
+          />
+        </svg>
         <div class="termfleet-startup__copy">
-          <p class="termfleet-startup__name">TermFleet</p>
+          <p class="termfleet-startup__name" aria-label="TermFleet">
+            <span class="termfleet-startup__letter" aria-hidden="true" style="--letter-index: 0">T</span>
+            <span class="termfleet-startup__letter" aria-hidden="true" style="--letter-index: 1">e</span>
+            <span class="termfleet-startup__letter" aria-hidden="true" style="--letter-index: 2">r</span>
+            <span class="termfleet-startup__letter" aria-hidden="true" style="--letter-index: 3">m</span>
+            <span class="termfleet-startup__letter" aria-hidden="true" style="--letter-index: 4">F</span>
+            <span class="termfleet-startup__letter" aria-hidden="true" style="--letter-index: 5">l</span>
+            <span class="termfleet-startup__letter" aria-hidden="true" style="--letter-index: 6">e</span>
+            <span class="termfleet-startup__letter" aria-hidden="true" style="--letter-index: 7">e</span>
+            <span class="termfleet-startup__letter" aria-hidden="true" style="--letter-index: 8">t</span>
+          </p>
           <p class="termfleet-startup__status">Starting TermFleet</p>
         </div>
       </div>
