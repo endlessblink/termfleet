@@ -152,6 +152,21 @@ Do not split them into unrelated cleanup/design buckets; execute them in order s
 the visual system, shell, navigation, terminal surface, map, command layer, run
 state, and visual QA converge on one product direction.
 
+### ~~TC-069~~: ✅ Stop invalid agent resume loops
+
+**Priority:** P0
+**Status:** ✅ **DONE** (2026-07-30)
+
+Codex panes now stop retrying when their saved conversation no longer exists.
+Recovery records the invalid target, ignores stale errors replayed from old
+scrollback, and returns the pane to a regular shell after the failed attempt.
+
+Fresh evidence:
+
+- `CARGO_BUILD_JOBS=1 cargo test --lib` — 148 passed.
+- `TMPDIR=/tmp npm run verify:restart-restore` — passed all three recovery layers.
+- `TMPDIR=/tmp npm run verify:standalone-daemon` — passed the headed cold-restore smoke.
+
 ### ~~TC-068~~: ✅ Make expensive chats unmistakable
 
 **Priority:** P1
@@ -6660,3 +6675,27 @@ never takes, which is why it reported "240/240 clean" while four panes were visi
 broken on screen; and `npm run doctor` now resolves the dock launcher through its wrapper
 and symlink, so its advice names the artifact the operator actually launches (dev mode)
 instead of a release binary that is never started.
+
+### ~~TC-069~~: ✅ Stop invalid agent resume loops
+
+**Priority:** P0
+**Status:** DONE (2026-07-30)
+
+When Codex reports that a pane's saved conversation no longer exists, recovery now
+records the failed target and returns the pane to a regular shell instead of repeatedly
+launching the same invalid resume command. Classification is limited to output from
+the current attempt so an old error in replayed scrollback cannot poison a later
+valid resume. The reported screenshot is preserved at
+`/media/endlessblink/data/.dev-tmp/endlessblink/codex-clipboard-sqLjkQ.png`
+(SHA-256 `c5983e4358a6ce6816d9cd6177d5a8b8593cb354806b40e507c8c543f6e60397`).
+
+**Evidence:** the regression failed before the production change.
+`CARGO_BUILD_JOBS=1 cargo test failed_agent_resume_is_persisted_and_not_planned_again --lib`
+and `CARGO_BUILD_JOBS=1 cargo test replayed_old_resume_error_does_not_poison_a_new_attempt --lib`
+each pass; `CARGO_BUILD_JOBS=1 cargo test --lib` passes 148 tests; and
+`CARGO_BUILD_JOBS=1 cargo check` passes. With `TMPDIR=/tmp` keeping the private Unix
+socket below the platform path limit, `npm run verify:restart-restore` passes live
+reattach, cold restore, and agent resume/reconstruction. `npm run verify:standalone-daemon`
+passes live app restart, daemon cold restore, visible repaint, and post-restart input
+against the rebuilt release app. `rustfmt --check` passes for the changed backend file;
+`cargo clippy --lib` completes with the repository's ten pre-existing warnings.

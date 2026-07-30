@@ -504,9 +504,19 @@ impl PtyManager {
             .map(|entry| plan_agent_restore(entry, false));
         let recovery_command = recovery_plan.as_ref().and_then(|plan| plan.command.clone());
         let cwd = cwd.or_else(|| persisted.as_ref().and_then(|entry| entry.cwd.clone()));
-        let command = recovery_command
-            .or(command)
-            .or_else(|| persisted.as_ref().and_then(|entry| entry.command.clone()));
+        let suppress_agent_relaunch = recovery_plan.as_ref().is_some_and(|plan| {
+            matches!(
+                plan.status,
+                AgentRestoreStatus::ResumeFailed | AgentRestoreStatus::NeedsAuth
+            )
+        });
+        let command = if suppress_agent_relaunch {
+            None
+        } else {
+            recovery_command
+                .or(command)
+                .or_else(|| persisted.as_ref().and_then(|entry| entry.command.clone()))
+        };
 
         let pty_system = native_pty_system();
         // Open the PTY at the caller's measured size when known so a freshly
@@ -641,6 +651,7 @@ impl PtyManager {
                 write_agent_restore_status(dir, &id, plan.status.clone(), plan.reason.as_deref());
             }
         }
+        let resume_output_start = initial_buffer.data.len();
         let output = Arc::new(Mutex::new(initial_buffer));
         let output_reader = output.clone();
         let subscribers: Arc<Mutex<Vec<PtySubscriber>>> = Arc::new(Mutex::new(Vec::new()));
@@ -655,6 +666,10 @@ impl PtyManager {
         let reader_events = self.session_events.clone();
         let reader_event_id = id.clone();
         let reader_pid = child_pid;
+        let reader_persist_dir = self.persist_dir.clone();
+        let reader_was_resuming = recovery_plan
+            .as_ref()
+            .is_some_and(|plan| plan.status == AgentRestoreStatus::Resuming);
 
         let reader_handle = std::thread::Builder::new()
             .name(format!("pty-reader-{id}"))
@@ -728,6 +743,24 @@ impl PtyManager {
                         subscribers_reader.lock().unwrap().clear();
                         ended_reader.store(true, Ordering::Release);
                         event = event.with_exit_status(exit_status);
+                        if reader_was_resuming {
+                            let resume_failure = {
+                                let output = output_reader.lock().unwrap();
+                                classify_agent_resume_failure(
+                                    output.data.get(resume_output_start..).unwrap_or_default(),
+                                )
+                            };
+                            if let (Some(dir), Some(reason)) =
+                                (reader_persist_dir.as_deref(), resume_failure)
+                            {
+                                write_agent_restore_status(
+                                    dir,
+                                    &reader_event_id,
+                                    AgentRestoreStatus::ResumeFailed,
+                                    Some(reason),
+                                );
+                            }
+                        }
                     }
                     trace_pty(
                         "pty.session.event",
@@ -1246,6 +1279,14 @@ fn plan_agent_restore(persisted: &PersistedSession, live_pty_exists: bool) -> Ag
         };
     }
 
+    if persisted.restore_status == Some(AgentRestoreStatus::ResumeFailed) {
+        return AgentRestorePlan {
+            status: AgentRestoreStatus::ResumeFailed,
+            command: None,
+            reason: persisted.restore_failure_reason.clone(),
+        };
+    }
+
     if let Some(command) = persisted
         .sanitized_resume_command
         .as_deref()
@@ -1315,7 +1356,10 @@ fn plan_agent_restore(persisted: &PersistedSession, live_pty_exists: bool) -> Ag
         {
             return AgentRestorePlan {
                 status: AgentRestoreStatus::Resuming,
-                command: Some(format!("opencode --session {}", shell_quote_arg(session_id))),
+                command: Some(format!(
+                    "opencode --session {}",
+                    shell_quote_arg(session_id)
+                )),
                 reason: None,
             };
         }
@@ -1341,6 +1385,14 @@ fn plan_agent_restore(persisted: &PersistedSession, live_pty_exists: bool) -> Ag
             }
             .to_string(),
         ),
+    }
+}
+
+fn classify_agent_resume_failure(output: &str) -> Option<&'static str> {
+    if output.contains("No saved session found with ID") {
+        Some("saved agent session no longer exists")
+    } else {
+        None
     }
 }
 
@@ -1687,9 +1739,9 @@ fn discard_partial_replay_prefix(base_offset: u64, data: String) -> (u64, String
 #[cfg(test)]
 mod tests {
     use super::{
-        agent_recovery_from_sidecar, discard_partial_replay_prefix, fnv1a_hex, plan_agent_restore,
-        replay_boundary_at_or_after, AgentRecoveryManifestUpdate, AgentRestoreStatus,
-        PersistedSession, PtyManager, SessionMeta, SessionRecoveryKind,
+        agent_recovery_from_sidecar, classify_agent_resume_failure, discard_partial_replay_prefix,
+        fnv1a_hex, plan_agent_restore, replay_boundary_at_or_after, AgentRecoveryManifestUpdate,
+        AgentRestoreStatus, PersistedSession, PtyManager, SessionMeta, SessionRecoveryKind,
     };
 
     fn wait_for_snapshot_containing(manager: &PtyManager, id: &str, needle: &str) -> String {
@@ -1778,6 +1830,33 @@ mod tests {
             Some("codex resume 019f-agent-session")
         );
         assert_eq!(plan.reason, None);
+    }
+
+    #[test]
+    fn agent_restore_planner_does_not_retry_a_failed_resume() {
+        let mut checkpoint = codex_agent_checkpoint(Some("019f-missing-session"));
+        checkpoint.restore_status = Some(AgentRestoreStatus::ResumeFailed);
+        checkpoint.restore_failure_reason = Some("resume command exited".to_string());
+
+        let plan = plan_agent_restore(&checkpoint, false);
+
+        assert_eq!(plan.status, AgentRestoreStatus::ResumeFailed);
+        assert_eq!(plan.command, None);
+        assert_eq!(plan.reason.as_deref(), Some("resume command exited"));
+    }
+
+    #[test]
+    fn missing_codex_session_output_marks_the_resume_as_failed() {
+        assert_eq!(
+            classify_agent_resume_failure(
+                "ERROR: No saved session found with ID 019f-missing-session."
+            ),
+            Some("saved agent session no longer exists")
+        );
+        assert_eq!(
+            classify_agent_resume_failure("agent completed normally"),
+            None
+        );
     }
 
     #[test]
@@ -2596,6 +2675,119 @@ mod tests {
         assert_eq!(rewritten.rows, Some(41));
 
         manager.kill(&id).expect("kill restored agent terminal");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn failed_agent_resume_is_persisted_and_not_planned_again() {
+        use std::path::PathBuf;
+
+        let dir: PathBuf = std::env::temp_dir().join(format!(
+            "tw-agent-resume-failure-test-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create persistence dir");
+        let id = "agent-resume-failure-test".to_string();
+
+        let mut scrollback = Vec::new();
+        scrollback.extend_from_slice(&0_u64.to_le_bytes());
+        scrollback.extend_from_slice(b"previous agent transcript\n");
+        super::atomic_write(&super::scrollback_path(&dir, &id), &scrollback)
+            .expect("seed scrollback");
+        let meta = SessionMeta {
+            cwd: Some("/tmp".to_string()),
+            command: Some("codex".to_string()),
+            recovery_kind: Some(SessionRecoveryKind::AgentTerminal),
+            provider: Some("codex".to_string()),
+            provider_session_id: Some("019f-missing-session".to_string()),
+            sanitized_resume_command: Some(
+                "printf 'ERROR: No saved session found with ID 019f-missing-session.\\n'"
+                    .to_string(),
+            ),
+            ..SessionMeta::default()
+        };
+        let meta_bytes = serde_json::to_vec(&meta).expect("encode seeded meta");
+        super::atomic_write(&super::meta_path(&dir, &id), &meta_bytes).expect("seed metadata");
+
+        let manager = super::PtyManager::with_persistence_dir(dir.clone());
+        manager
+            .ensure_detached(Some(id.clone()), None, None, None, None)
+            .expect("attempt saved resume");
+
+        let updated = (0..80)
+            .find_map(|_| {
+                let meta = std::fs::read(super::meta_path(&dir, &id))
+                    .ok()
+                    .and_then(|bytes| serde_json::from_slice::<SessionMeta>(&bytes).ok())?;
+                if meta.restore_status == Some(AgentRestoreStatus::ResumeFailed) {
+                    Some(meta)
+                } else {
+                    std::thread::sleep(std::time::Duration::from_millis(25));
+                    None
+                }
+            })
+            .expect("failed resume status was not persisted");
+        assert_eq!(
+            updated.restore_failure_reason.as_deref(),
+            Some("saved agent session no longer exists")
+        );
+
+        let persisted = super::load_persisted(&dir, &id).expect("reload failed checkpoint");
+        let plan = super::plan_agent_restore(&persisted, false);
+        assert_eq!(plan.status, AgentRestoreStatus::ResumeFailed);
+        assert_eq!(plan.command, None, "failed resume must not be retried");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn replayed_old_resume_error_does_not_poison_a_new_attempt() {
+        use std::path::PathBuf;
+
+        let dir: PathBuf = std::env::temp_dir().join(format!(
+            "tw-agent-old-resume-error-test-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create persistence dir");
+        let id = "agent-old-resume-error-test".to_string();
+
+        let mut scrollback = Vec::new();
+        scrollback.extend_from_slice(&0_u64.to_le_bytes());
+        scrollback.extend_from_slice(b"ERROR: No saved session found with ID old-session.\n");
+        super::atomic_write(&super::scrollback_path(&dir, &id), &scrollback)
+            .expect("seed stale error scrollback");
+        let meta = SessionMeta {
+            cwd: Some("/tmp".to_string()),
+            command: Some("codex".to_string()),
+            recovery_kind: Some(SessionRecoveryKind::AgentTerminal),
+            provider: Some("codex".to_string()),
+            provider_session_id: Some("019f-valid-session".to_string()),
+            sanitized_resume_command: Some("printf 'resume completed\\n'".to_string()),
+            ..SessionMeta::default()
+        };
+        let meta_bytes = serde_json::to_vec(&meta).expect("encode seeded meta");
+        super::atomic_write(&super::meta_path(&dir, &id), &meta_bytes).expect("seed metadata");
+
+        let manager = super::PtyManager::with_persistence_dir(dir.clone());
+        manager
+            .ensure_detached(Some(id.clone()), None, None, None, None)
+            .expect("run clean resume attempt");
+        std::thread::sleep(std::time::Duration::from_millis(150));
+
+        let updated = std::fs::read(super::meta_path(&dir, &id))
+            .ok()
+            .and_then(|bytes| serde_json::from_slice::<SessionMeta>(&bytes).ok())
+            .expect("read updated metadata");
+        assert_eq!(
+            updated.restore_status,
+            Some(AgentRestoreStatus::Resuming),
+            "an error from replayed scrollback must not poison the new attempt"
+        );
+
         let _ = std::fs::remove_dir_all(&dir);
     }
 
