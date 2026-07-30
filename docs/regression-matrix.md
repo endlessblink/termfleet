@@ -52,6 +52,8 @@ Playwright suite; the per-row specs are the precise guards.
 | 3.3 | React unmount kills PTY | Unmount must detach, never kill. | `verify:map-terminals` | ✅ |
 | 3.4 | Transport errors written into terminal buffer | `[pty write/read failed]` must be runtime state, not buffer text. | `verify:map-terminals` | ✅ |
 | 3.5 | Daemon/PTY latency regression | p95 budget (~1ms). | `verify:daemon-latency` | ✅ |
+| 3.6 | **All panes remain at shell prompts after their agent processes are killed, even though each pane has a saved conversation** | A surviving daemon correctly keeps each PTY alive, so cold-restore never runs and relaunching the window only reattaches to the idle shells. The Sessions panel now offers **Reconnect agents**: it keys recovery by pane, skips processes already running, verifies local Codex/Claude records, rejects unsafe ids, and writes each valid provider resume command only to its original idle pane. | `tests/agent-reconnect.spec.ts`, `tests/agent-reconnect-button.spec.ts`, `verify:map-terminals`, live desktop multi-pane action | ✅ |
+| 3.7 | Private verifier/runtime directory has no user systemd bus | Do not launch a transient systemd daemon unit unless the runtime directory exposes the user bus; fall back to the detached binary so the daemon socket still appears. | `cargo test platform_process`, `verify:standalone-daemon` | ✅ |
 
 ## 4. Map (operations canvas) ↔ split
 

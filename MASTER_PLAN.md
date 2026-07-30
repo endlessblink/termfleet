@@ -152,6 +152,40 @@ Do not split them into unrelated cleanup/design buckets; execute them in order s
 the visual system, shell, navigation, terminal surface, map, command layer, run
 state, and visual QA converge on one product direction.
 
+### ~~TC-067~~: ✅ Reconnect stopped agents in their original panes
+
+**Priority:** P0
+**Status:** ✅ **DONE** (2026-07-30)
+
+The Sessions panel now provides one bounded recovery action for the failure mode
+where the daemon and pane survive but an agent process has exited. It reads the
+conversation saved for each full daemon session id, skips agents that are still
+running, verifies that Codex or Claude history exists locally, rejects unsafe
+conversation ids, and writes the matching resume command only to the original
+idle pane.
+
+Fresh evidence:
+
+- `npx playwright test tests/agent-reconnect.spec.ts
+  tests/agent-reconnect-button.spec.ts --reporter=line` — 7 passed. The browser
+  interaction proof clicks the real Sessions control and observes the exact
+  `codex resume` command being sent to the original full daemon session id.
+- `npm run build` — passed.
+- `npm run verify:map-terminals` — passed.
+- `CARGO_BUILD_JOBS=1 cargo test platform_process --lib` — 6 passed, including
+  the private-runtime/no-user-bus fallback regression.
+- `CARGO_BUILD_JOBS=1 cargo check` — passed.
+- `npm run verify:standalone-daemon` — passed app relaunch, daemon survival,
+  cold restore, scrollback replay, visual repaint, and post-restore input against
+  the private release app.
+- `/tmp/termfleet-reconnect-live-sessions.png` — the real desktop Sessions panel
+  before activation, SHA-256
+  `1ae2fa74d0acfac44c5bdc6af5218d2c06c5cfb0c155497b5466328f472b8edd`.
+- `/tmp/termfleet-reconnect-live-after.png` — one live desktop activation
+  settled at `7 resumed · 15 already running · 1 missing locally`, SHA-256
+  `e2087b01440f6e6a6621a92fa2b8fe424777f1a3304c01f853242e37ada3b531`.
+  The already-running panes were detected and left untouched.
+
 ### ~~TC-066~~: ✅ Signature terminal-to-vessel startup animation
 
 **Priority:** P1
