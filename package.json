@@ -78,6 +78,7 @@
     "verify:tauri-performance": "scripts/verify-tauri-performance.sh",
     "trace:terminal-latency": "node scripts/summarize-terminal-latency-trace.mjs",
     "verify:typography": "node scripts/verify-typography.mjs",
+    "verify:file-explorer": "playwright test tests/file-explorer.spec.ts --reporter=line",
     "verify:visual": "scripts/verify-visual-evidence.sh",
     "tauri": "tauri",
     "tauri:dev": "scripts/tauri-dev-with-status.sh",

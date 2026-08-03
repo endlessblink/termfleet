@@ -16,7 +16,7 @@ use std::fs;
 use std::io::{BufRead, BufReader, Write};
 use std::net::Shutdown;
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex, OnceLock};
 use tauri::ipc::Channel;
@@ -1521,6 +1521,29 @@ pub fn fs_read_file(path: String) -> Result<String, String> {
     fs::read_to_string(path).map_err(|error| error.to_string())
 }
 
+#[tauri::command]
+pub fn fs_open_external(path: String) -> Result<(), String> {
+    let launchers: [(&str, &[&str]); 3] = [
+        ("kate", &[]),
+        ("xdg-open", &[]),
+        ("gio", &["open"]),
+    ];
+
+    for (command, args) in launchers {
+        let mut child = Command::new(command);
+        child
+            .args(args)
+            .arg(&path)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        if child.spawn().is_ok() {
+            return Ok(());
+        }
+    }
+
+    Err("Could not find Kate or another desktop opener (tried kate, xdg-open, and gio).".to_string())
+}
 #[tauri::command]
 pub fn fs_write_file(path: String, contents: String) -> Result<(), String> {
     fs::write(path, contents).map_err(|error| error.to_string())

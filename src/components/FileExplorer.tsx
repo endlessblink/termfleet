@@ -1,9 +1,10 @@
 import { CSSProperties, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { openPath, revealItemInDir } from "@tauri-apps/plugin-opener";
+import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import {
   ExternalLink,
   FilePlus,
+  FileText,
   FolderOpen,
   FolderPlus,
   FolderSearch,
@@ -13,6 +14,7 @@ import {
   RefreshCw,
   TerminalSquare,
   Trash2,
+  X,
 } from "lucide-react";
 import type { FileEntry } from "../lib/types";
 import { createTerminalTab, useWorkspaceStore } from "../stores/workspace";
@@ -284,6 +286,95 @@ const styles: Record<string, CSSProperties> = {
   contextDivider: {
     borderTop: "1px solid var(--border-subtle)",
     margin: "4px 4px",
+  },
+  previewBackdrop: {
+    position: "fixed",
+    inset: 0,
+    zIndex: 1100,
+    display: "grid",
+    placeItems: "center",
+    padding: 28,
+    background: "rgba(10, 13, 15, 0.72)",
+  },
+  previewPanel: {
+    width: "min(960px, 92vw)",
+    height: "min(720px, 84vh)",
+    display: "flex",
+    flexDirection: "column",
+    overflow: "hidden",
+    background: "var(--surface-raised)",
+    border: "1px solid var(--border-subtle)",
+    borderRadius: "var(--radius-lg, 14px)",
+    boxShadow: "var(--shadow-menu)",
+  },
+  previewHeader: {
+    minHeight: 48,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    padding: "8px 12px 8px 16px",
+    borderBottom: "1px solid var(--border-subtle)",
+  },
+  previewTitle: {
+    minWidth: 0,
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    color: "var(--text-primary)",
+    fontSize: 13,
+    fontWeight: 500,
+  },
+  previewPath: {
+    minWidth: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    color: "var(--text-tertiary)",
+    fontSize: 11,
+    fontWeight: 400,
+  },
+  previewActions: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    flexShrink: 0,
+  },
+  previewExternal: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    minHeight: 28,
+    padding: "0 9px",
+    color: "var(--text-secondary)",
+    background: "var(--surface-sunken)",
+    border: "1px solid var(--border-subtle)",
+    borderRadius: "var(--radius-sm)",
+    cursor: "pointer",
+    fontFamily: "var(--font-ui)",
+    fontSize: 11,
+  },
+  previewBody: {
+    minHeight: 0,
+    flex: 1,
+    overflow: "auto",
+    background: "var(--surface-sunken)",
+  },
+  previewCode: {
+    minHeight: "100%",
+    margin: 0,
+    padding: "18px 20px",
+    color: "var(--text-primary)",
+    fontFamily: "var(--font-mono, monospace)",
+    fontSize: 12,
+    lineHeight: 1.55,
+    whiteSpace: "pre-wrap",
+    overflowWrap: "anywhere",
+  },
+  previewError: {
+    padding: 20,
+    color: "var(--accent-danger)",
+    fontSize: 12,
   },
 };
 
@@ -623,6 +714,7 @@ export function FileExplorer() {
   const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [preview, setPreview] = useState<{ entry: FileEntry; content: string; loading: boolean; error: string | null } | null>(null);
 
   const resolvedRoot = useMemo(() => projectRoot ?? rootInput, [projectRoot, rootInput]);
 
@@ -723,7 +815,34 @@ export function FileExplorer() {
 
   const handleOpenFile = useCallback((entry: FileEntry) => {
     addOpenFile({ path: entry.path, name: entry.name, dirty: false });
-  }, [addOpenFile]);
+    setPreview({ entry, content: "", loading: true, error: null });
+    if (!tauriAvailable) {
+      setPreview({
+        entry,
+        content: "Browser preview cannot read local files. Use the desktop app to preview this file.",
+        loading: false,
+        error: null,
+      });
+      return;
+    }
+    invoke<string>("fs_read_file", { path: entry.path })
+      .then((content) => {
+        if (content.includes("\u0000")) {
+          setPreview({ entry, content: "", loading: false, error: "This file looks binary and cannot be previewed as text." });
+          return;
+        }
+        const maxPreviewChars = 200_000;
+        setPreview({
+          entry,
+          content: content.length > maxPreviewChars
+            ? `${content.slice(0, maxPreviewChars)}\n\n[Preview truncated at 200,000 characters]`
+            : content,
+          loading: false,
+          error: null,
+        });
+      })
+      .catch((requestError) => setPreview({ entry, content: "", loading: false, error: formatExplorerError(requestError) }));
+  }, [addOpenFile, tauriAvailable]);
 
   const chooseProjectFolder = useCallback(() => {
     if (!tauriAvailable) {
@@ -806,7 +925,7 @@ export function FileExplorer() {
       return;
     }
     try {
-      await openPath(entry.path);
+      await invoke("fs_open_external", { path: entry.path });
     } catch (requestError) {
       setError(formatExplorerError(requestError));
     }
@@ -1004,8 +1123,15 @@ export function FileExplorer() {
             <>
               {!contextMenu.entry.isDir && (
                 <ExplorerContextItem
+                  icon={<FileText size={14} strokeWidth={1.8} />}
+                  label="Preview file"
+                  onClick={() => { handleOpenFile(contextMenu.entry!); setContextMenu(null); }}
+                />
+              )}
+              {contextMenu.entry && !contextMenu.entry.isDir && (
+                <ExplorerContextItem
                   icon={<ExternalLink size={14} strokeWidth={1.8} />}
-                  label="Open file"
+                  label="Open externally"
                   onClick={() => { openEntryFile(contextMenu.entry!); setContextMenu(null); }}
                 />
               )}
@@ -1055,6 +1181,39 @@ export function FileExplorer() {
           }}
           onClose={() => setPickerOpen(false)}
         />
+      )}
+      {preview && (
+        <div style={styles.previewBackdrop} onMouseDown={() => setPreview(null)} role="presentation">
+          <section
+            style={styles.previewPanel}
+            onMouseDown={(event) => event.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Preview ${preview.entry.name}`}
+          >
+            <header style={styles.previewHeader}>
+              <div style={styles.previewTitle}>
+                <FileText size={15} strokeWidth={1.8} />
+                <span>{preview.entry.name}</span>
+                <span style={styles.previewPath} title={preview.entry.path}>{preview.entry.path}</span>
+              </div>
+              <div style={styles.previewActions}>
+                <button style={styles.previewExternal} onClick={() => openEntryFile(preview.entry)}>
+                  <ExternalLink size={13} strokeWidth={1.8} />
+                  Open externally
+                </button>
+                <button style={styles.iconButton} onClick={() => setPreview(null)} aria-label="Close file preview" title="Close">
+                  <X size={14} strokeWidth={1.8} />
+                </button>
+              </div>
+            </header>
+            <div style={styles.previewBody}>
+              {preview.loading && <div style={styles.muted}>Reading file...</div>}
+              {preview.error && <div style={styles.previewError}>{preview.error}</div>}
+              {!preview.loading && !preview.error && <pre style={styles.previewCode}>{preview.content}</pre>}
+            </div>
+          </section>
+        </div>
       )}
     </aside>
   );
