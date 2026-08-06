@@ -1624,7 +1624,7 @@ export function TerminalCanvas({
 
   const handlePointerDown = (event: React.PointerEvent) => {
     focusInput();
-    if (modesRef.current.mouseReport) {
+    if (modesRef.current.mouseReport && !event.shiftKey) {
       if (sendPointerMouseReport(event)) {
         event.preventDefault();
         event.stopPropagation();
@@ -1708,6 +1708,14 @@ export function TerminalCanvas({
   };
 
   const handlePointerUp = (event: React.PointerEvent) => {
+    const activeSelectionPointerId = selectionPointerIdRef.current;
+    if (activeSelectionPointerId !== null) {
+      if (activeSelectionPointerId !== event.pointerId) return;
+      stopSelectionDrag(event);
+      if (hasSelectionExtent(selectionRef.current)) copySelection();
+      focusInput();
+      return;
+    }
     if (modesRef.current.mouseReport) {
       if (sendPointerMouseReport(event, true)) {
         event.preventDefault();
@@ -1717,17 +1725,6 @@ export function TerminalCanvas({
       focusInput();
       return;
     }
-    const activeSelectionPointerId = selectionPointerIdRef.current;
-    if (activeSelectionPointerId === null) {
-      focusInput();
-      return;
-    }
-    if (activeSelectionPointerId !== event.pointerId) return;
-    stopSelectionDrag(event);
-    if (hasSelectionExtent(selectionRef.current)) copySelection();
-    // A selection drag ends with the pointer up; make sure the textarea keeps
-    // keyboard focus so terminal shortcuts (Shift+Tab back-tab, Ctrl keys) go to
-    // the PTY rather than the browser.
     focusInput();
   };
 

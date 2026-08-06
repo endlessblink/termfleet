@@ -100,10 +100,25 @@ test("terminal pointer-up only auto-copies an active selection drag", () => {
 
   expect(block).toContain("const activeSelectionPointerId = selectionPointerIdRef.current");
   expect(block).toMatch(
-    /if \(activeSelectionPointerId === null\) \{[\s\S]*focusInput\(\);[\s\S]*return;[\s\S]*\}/
+    /if \(activeSelectionPointerId !== null\) \{[\s\S]*focusInput\(\);[\s\S]*return;[\s\S]*\}/
   );
   expect(block).toContain("if (activeSelectionPointerId !== event.pointerId) return;");
   expect(block.indexOf("activeSelectionPointerId === null")).toBeLessThan(
     block.indexOf("copySelection()")
   );
+});
+
+test("mouse-report terminals keep Shift-drag available for highlighting", () => {
+  const source = readFileSync("src/components/TerminalCanvas.tsx", "utf8");
+  const down = source.match(
+    /const handlePointerDown = \(event: React\.PointerEvent\) => \{[\s\S]*?\n  \};/
+  )?.[0] ?? "";
+  const up = source.match(
+    /const handlePointerUp = \(event: React\.PointerEvent\) => \{[\s\S]*?\n  \};/
+  )?.[0] ?? "";
+
+  expect(down).toContain("if (modesRef.current.mouseReport && !event.shiftKey)");
+  expect(up).toContain("const activeSelectionPointerId = selectionPointerIdRef.current");
+  expect(up.indexOf("if (activeSelectionPointerId !== null)"))
+    .toBeLessThan(up.indexOf("if (modesRef.current.mouseReport)"));
 });
