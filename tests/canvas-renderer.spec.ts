@@ -189,3 +189,20 @@ test("canvas renderer does not paint the live cursor over scrolled history", asy
 
   expect(result.cursorColorCount).toBe(0);
 });
+
+test("glyph atlas evicts unbounded unique color tiles", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+
+  const result = await page.evaluate(async () => {
+    const { GlyphAtlas, measureCell } = await import("/src/lib/fontAtlas.ts");
+    const metrics = measureCell('"Geist Mono", monospace', 14, 2, 1.2);
+    const atlas = new GlyphAtlas(metrics);
+    for (let index = 0; index < 5000; index += 1) {
+      const color = `#${index.toString(16).padStart(6, "0")}`;
+      atlas.tile("X", color, false, false);
+    }
+    return atlas.size;
+  });
+
+  expect(result).toBeLessThanOrEqual(4096);
+});

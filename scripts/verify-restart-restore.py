@@ -158,7 +158,10 @@ def start_daemon(env, log_path):
 
 
 def setup_env():
-    tmp = tempfile.mkdtemp(prefix="tw-restart-restore-")
+    # Unix-domain sockets have a small platform-defined path limit. Keep the
+    # isolated runtime tree short even when the workspace has a long TMPDIR.
+    tmp_root = "/tmp" if os.name == "posix" else None
+    tmp = tempfile.mkdtemp(prefix="tw-restart-restore-", dir=tmp_root)
     run_dir = os.path.join(tmp, "run")
     data_dir = os.path.join(tmp, "data")
     log_dir = os.path.join(tmp, "logs")

@@ -56,7 +56,16 @@ async function pollOnce() {
   ticking = true;
   try {
     const store = useWorkspaceStore.getState();
-    const targets = selectStatusPollTargets(store.tabs, store.activeTabId, Date.now());
+    const targets = selectStatusPollTargets(
+      store.tabs,
+      store.activeTabId,
+      Date.now(),
+      ({ tab, terminal }) => lastPolledByPane.get(panePollKey(tab, terminal)) ?? 0,
+    );
+    const liveKeys = new Set(targets.map(({ tab, terminal }) => panePollKey(tab, terminal)));
+    for (const key of lastPolledByPane.keys()) {
+      if (!liveKeys.has(key)) lastPolledByPane.delete(key);
+    }
     for (const target of targets) {
       if (!shouldPollTarget(target, store.activeTabId, Date.now())) continue;
       const { tab, terminal } = target;
@@ -78,6 +87,13 @@ async function pollOnce() {
           // The HTTP worker can fall back to heuristic(context-disabled), which
           // creates map-wide churn while producing results this loop discards.
           endpoint: "",
+          // The visible terminal can afford transcript/context enrichment because it
+          // is the pane the operator is looking at. The workspace-wide sweep must stay
+          // sidecar-only: transcript probing tries both provider layouts and can invoke
+          // context enrichment for every background pane, turning a 4s refresh into a
+          // long serial filesystem/IPC workload.
+          transcriptReader: null,
+          contextTaskSummarizer: null,
         });
         const contextual = result.source === "process" && Boolean(result.summary.narration);
         const trusted = result.source === "sidecar" || contextual;
@@ -123,9 +139,14 @@ async function pollOnce() {
             result.taskLine,
           );
           const untrustedNow = result.nowLine ?? null;
+          const inferredProvider = stableAgentProvider(
+            latestTerminal.agentProvider,
+            result.summary.provider,
+          );
           if (
             (untrustedLine && untrustedLine !== latestTerminal.taskLine) ||
-            untrustedNow?.text !== latestTerminal.nowLine?.text
+            untrustedNow?.text !== latestTerminal.nowLine?.text ||
+            inferredProvider !== latestTerminal.agentProvider
           ) {
             latest.updateTab(latestTab.id, {
               terminals: latestTab.terminals.map((candidate) =>
@@ -137,6 +158,7 @@ async function pollOnce() {
                       // it rides the untrusted path too — otherwise every plain-shell
                       // pane (most of the map) had a blank "Now" line forever.
                       nowLine: untrustedNow,
+                      agentProvider: inferredProvider,
                     }
                   : candidate,
               ),

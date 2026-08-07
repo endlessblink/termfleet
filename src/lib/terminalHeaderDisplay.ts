@@ -4,6 +4,7 @@ import type {
   WorkstreamStatusSummary,
 } from "./types";
 import { qualityCheckNowLabel } from "./terminalHeaderQuality";
+import { truncateAtWordBoundary } from "./textTruncation";
 
 function cleanText(value?: string | null) {
   return value?.replace(/\s+/g, " ").trim() || undefined;
@@ -327,7 +328,12 @@ export function terminalActivityFromVisibleText(value?: string | null) {
 }
 
 export function compactHeaderGoal(value?: string | null) {
-  const text = cleanText(value);
+  const text = cleanText(
+    value?.replace(
+      /\[{1,3}\s*(?:Image|Screenshot|File|Pasted)\s*#?\d*[^\]]*\]+/gi,
+      " ",
+    ),
+  );
   if (!text) return undefined;
   if (
     /\b(?:understand|know)\b.*\b(?:main\s+task|where\s+i\s+am\s+working)\b/i.test(text) &&
@@ -371,7 +377,9 @@ export function compactHeaderGoal(value?: string | null) {
       ? compacted.charAt(0).toUpperCase() + compacted.slice(1)
       : compacted;
   if (!restored) return text.slice(0, 96).trim();
-  if (restored.length > 96) return `${restored.slice(0, 93).trim()}...`;
+  if (restored.length > 96) {
+    return truncateAtWordBoundary(restored, 96);
+  }
   // Prompts scraped from the visible grid are cut at the terminal's wrap width,
   // leaving a dangling fragment ("…you found out so I", "…built a tool th").
   // Trim back to the last full word and mark the cut.
@@ -557,7 +565,7 @@ function isGenericTaskTitle(value?: string | null) {
 
 function boundedTitle(value: string) {
   const text = cleanText(value) ?? "Terminal activity";
-  return text.length > 64 ? `${text.slice(0, 61).trimEnd()}...` : text;
+  return truncateAtWordBoundary(text, 64);
 }
 
 function activeFormTitle(value: string) {

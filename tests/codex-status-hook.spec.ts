@@ -9,7 +9,7 @@ import {
   todosFromUpdatePlan,
 } from "../scripts/termfleet-codex-status-hook.mjs";
 
-test("a new session does not promote its raw prompt to the main task", () => {
+test("a new session persists its first substantive request as the main goal", () => {
   const sidecar = buildCodexSidecar(
     {
       hook_event_name: "UserPromptSubmit",
@@ -20,10 +20,31 @@ test("a new session does not promote its raw prompt to the main task", () => {
     null,
     1_000,
   );
-  expect(sidecar?.mainTask).toBeUndefined();
+  expect(sidecar?.mainTask).toBe("Improve the live-events landing page and routes");
+  expect(sidecar?.mainTaskSource).toBe("opening-request");
   expect(sidecar?.userTask).toBe("Improve the live-events landing page and routes");
   expect(sidecar?.todos).toEqual([]);
   expect(sidecar?.now).toBe("Prompt submitted");
+});
+
+test("a doubled attachment marker is never persisted as the opening goal", () => {
+  const sidecar = buildCodexSidecar(
+    {
+      hook_event_name: "UserPromptSubmit",
+      prompt:
+        "[[Image #1] for the millionth time it glitches. fix it, test it.",
+      cwd: "/repo",
+      session_id: "s1",
+    },
+    null,
+    1_000,
+  );
+  expect(sidecar?.mainTask).toBe(
+    "for the millionth time it glitches. fix it, test it.",
+  );
+  expect(sidecar?.userTask).toBe(
+    "[[Image #1] for the millionth time it glitches. fix it, test it.",
+  );
 });
 
 test("follow-ups keep the declared main task and real checklist", () => {
@@ -51,7 +72,7 @@ test("follow-ups keep the declared main task and real checklist", () => {
   expect(sidecar?.now).toBe("Reviewing the landing page on mobile");
 });
 
-test("a declared plan owns the main task and current step separately", () => {
+test("a plan explanation cannot replace the durable user goal", () => {
   const mission = "Improving the live-events landing page and routes";
   const sidecar = buildCodexSidecar(
     {
@@ -65,11 +86,16 @@ test("a declared plan owns the main task and current step separately", () => {
       },
       cwd: "/repo",
     },
-    { userTask: "Make it clear where I am working", todos: [] },
+    {
+      mainTask: "Make it clear where I am working",
+      mainTaskSource: "opening-request",
+      userTask: "Make it clear where I am working",
+      todos: [],
+    },
     1_200,
   );
-  expect(sidecar?.mainTask).toBe(mission);
-  expect(sidecar?.mainTaskSource).toBe("plan-explanation");
+  expect(sidecar?.mainTask).toBe("Make it clear where I am working");
+  expect(sidecar?.mainTaskSource).toBe("opening-request");
   expect(sidecar?.now).toBe("Reviewing the landing page on mobile");
   expect(sidecar?.todos).toHaveLength(2);
 });
@@ -95,7 +121,7 @@ test("turn completion cannot replace the declared main task", () => {
   expect(sidecar?.turn).toBe("idle");
 });
 
-test("a new session clears the prior pane mission until a goal is declared", () => {
+test("a new session replaces the prior goal with its own opening request", () => {
   const sidecar = buildCodexSidecar(
     {
       hook_event_name: "UserPromptSubmit",
@@ -112,7 +138,8 @@ test("a new session clears the prior pane mission until a goal is declared", () 
     },
     1_400,
   );
-  expect(sidecar?.mainTask).toBeUndefined();
+  expect(sidecar?.mainTask).toBe("Fix the checkout page");
+  expect(sidecar?.mainTaskSource).toBe("opening-request");
   expect(sidecar?.todos).toEqual([]);
 });
 
@@ -196,7 +223,7 @@ test("update_plan becomes the real task list", () => {
   expect(todos[1]).toMatchObject({ content: "Fix the reconnect race", status: "in_progress" });
 });
 
-test("a Personal Assistant layout plan captures the user-facing outcome", () => {
+test("a plan cannot invent a product goal or preserve an old completion report", () => {
   const sidecar = buildCodexSidecar({
     cwd: "/repo/hermes",
     tool_name: "update_plan",
@@ -212,11 +239,11 @@ test("a Personal Assistant layout plan captures the user-facing outcome", () => 
     mainTaskSource: "plan-explanation",
   }, 20);
 
-  expect(sidecar?.mainTask).toBe("Replacing the crowded Hermes Personal Assistant panel with on-demand controls");
+  expect(sidecar?.mainTask).toBeUndefined();
   expect(sidecar?.now).toBe("Writing tests for the compact assistant controls");
 });
 
-test("an email-consent plan captures why every signup path is being searched", () => {
+test("a project-specific plan cannot manufacture a Bina goal", () => {
   const sidecar = buildCodexSidecar({
     cwd: "/repo/bina-meatzevet-courses",
     tool_name: "update_plan",
@@ -230,11 +257,11 @@ test("an email-consent plan captures why every signup path is being searched", (
     },
   }, { userTask: "make it mandatory everywhere" }, 21);
 
-  expect(sidecar?.mainTask).toBe("Making email signup mandatory across every Bina registration flow");
+  expect(sidecar?.mainTask).toBeUndefined();
   expect(sidecar?.now).toBe("Finding every email signup and consent path");
 });
 
-test("a billing deployment plan preserves the customer outcome", () => {
+test("a deployment checklist stays activity when no durable goal was captured", () => {
   const sidecar = buildCodexSidecar({
     cwd: "/repo/bina-meatzevet-courses",
     tool_name: "update_plan",
@@ -248,7 +275,7 @@ test("a billing deployment plan preserves the customer outcome", () => {
     },
   }, { userTask: "fix it end to end and give Levana the rest of July free" }, 22);
 
-  expect(sidecar?.mainTask).toBe("Making renewals and checkout safe while refunding Lee and granting Levana free July access");
+  expect(sidecar?.mainTask).toBeUndefined();
   expect(sidecar?.now).toBe("Deploying the fix and checking production");
 });
 
@@ -304,7 +331,7 @@ test("request_user_input waits before the answer and resumes after it", () => {
   expect(resumed?.now).toBe("Applying your answer to the assistant repair");
 });
 
-test("a completed plan update cannot replace the durable goal with completion prose", () => {
+test("a completed plan update drops a legacy plan explanation instead of treating it as a goal", () => {
   const previous = {
     mainTask: "Making the personal assistant fast and dependable",
     mainTaskSource: "plan-explanation",
@@ -317,8 +344,8 @@ test("a completed plan update cannot replace the durable goal with completion pr
       plan: [{ step: "Confirming the assistant repair is safely completed", status: "completed" }],
     },
   }, previous, 12);
-  expect(sidecar?.mainTask).toBe(previous.mainTask);
-  expect(sidecar?.mainTaskSource).toBe(previous.mainTaskSource);
+  expect(sidecar?.mainTask).toBeUndefined();
+  expect(sidecar?.mainTaskSource).toBeUndefined();
 });
 
 test("an untyped notification preserves the prior lifecycle", () => {

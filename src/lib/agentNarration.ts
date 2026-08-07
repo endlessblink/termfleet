@@ -10,6 +10,7 @@
 // hook module imports node:fs at top level so it cannot be imported here; parity
 // is pinned by tests/agent-narration.spec.ts (same pattern as agentStatusSidecar).
 import { qualityCheckNowLabel } from "./terminalHeaderQuality";
+import { truncateAtWordBoundary } from "./textTruncation";
 
 function cleanField(value: unknown, max = 200): string {
   return String(value ?? "")
@@ -159,7 +160,7 @@ export function currentNarrationStep(visibleText?: string | null): string | unde
     condensed =
       clause.length >= 24 && clause.length <= 80
         ? clause
-        : `${condensed.slice(0, 77).replace(/\s+\S*$/, "").trim()}…`;
+        : truncateAtWordBoundary(condensed, 80);
   }
   if (!qualityCheckNowLabel(condensed).ok) return undefined;
   return condensed;

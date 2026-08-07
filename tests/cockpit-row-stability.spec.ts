@@ -68,16 +68,16 @@ test("map card task line is a FIXED two-line box", () => {
   expect(bigRow).toMatch(/WebkitLineClamp:\s*2/);
 });
 
-test("fleet list rows reserve no blank lines", () => {
-  // Reserving an invisible activity row left large dead gaps in the list.
+test("fleet list tasks reserve two readable lines without changing height", () => {
+  // The compact one-line version cut ordinary task names after three or four words.
+  // Two fixed lines keep the list stable while making each card useful at a glance.
   expect(sidebar).not.toContain("sidebar-map-node-now-row");
   const style = sidebar.match(/sidebarHeaderTask:\s*\{[\s\S]*?\n {2}\},/)?.[0];
   expect(style, "sidebarHeaderTask style block").toBeTruthy();
-  expect(style).toMatch(/whiteSpace:\s*"nowrap"/);
-  expect(style).toMatch(/height:\s*"1\.4em"/);
-  expect(style, "a two-line box is half empty for one-line tasks").not.toMatch(
-    /WebkitLineClamp:\s*2/,
-  );
+  expect(style).toMatch(/WebkitLineClamp:\s*2/);
+  expect(style).toMatch(/height:\s*"2\.8em"/);
+  expect(style).not.toMatch(/whiteSpace:\s*"nowrap"/);
+  expect(sidebar).toContain("truncateAtWordBoundary(header.goalLabel, 52)");
 });
 
 test("the card shows the goal on top and the moment under it, always", () => {

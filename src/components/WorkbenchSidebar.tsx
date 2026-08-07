@@ -134,6 +134,7 @@ import {
   summarizeAgentLane,
 } from "../lib/agentWorkstreamLane";
 import { workstreamActivityText } from "../lib/workstreamActivity";
+import { truncateAtWordBoundary } from "../lib/textTruncation";
 import {
   formatWorkstreamOpsContext,
   promptWorkstreamIsolation,
@@ -357,9 +358,7 @@ function summarizeMapNodes(
     if (linkedTab?.workstream?.gitBranch)
       branchValues.push(linkedTab.workstream.gitBranch);
     if (node.type === "preview" || node.previewUrl || terminal?.previewUrl)
-      serviceValues.push(
-        node.previewUrl ?? terminal?.previewUrl ?? "localhost preview",
-      );
+      serviceValues.push("preview");
 
     if (node.type === "preview") {
       roleValues.push("preview");
@@ -823,6 +822,7 @@ const styles: Record<string, CSSProperties> = {
     minWidth: 0,
     display: "grid",
     gap: 3,
+    pointerEvents: "none",
     transition: "padding-right var(--motion-fast)",
   },
   sessionSummary: {
@@ -846,12 +846,13 @@ const styles: Record<string, CSSProperties> = {
     position: "absolute",
     right: 6,
     top: "50%",
+    zIndex: 1,
     display: "flex",
     alignItems: "center",
     gap: 3,
     opacity: 0,
     transform: "translate(2px, -50%)",
-    pointerEvents: "none",
+    pointerEvents: "auto",
     transition: "opacity var(--motion-fast), transform var(--motion-fast)",
   },
   activeRow: {
@@ -937,22 +938,19 @@ const styles: Record<string, CSSProperties> = {
     textTransform: "uppercase",
     whiteSpace: "nowrap",
   },
-  // FIXED line boxes, not just clamps. A clamp caps the maximum but still lets a
-  // one-line value render shorter than a two-line one, so every task text change
-  // re-flowed this list and everything below the changed row jumped (live report
-  // 2026-07-26). Height is now the same whatever the text says: 2 lines for the task,
-  // 1 for the activity. The full text stays in each row's tooltip.
-  // One line, always full. A fixed box that can never be half empty keeps every
-  // row the same height without reserving blank space; the full task text stays
-  // in the row's tooltip and on the card itself.
+  // Two fixed lines keep the fleet stable without reducing ordinary task names to
+  // three or four words. The height never changes, and the tooltip retains the full text.
   sidebarHeaderTask: {
     minWidth: 0,
+    display: "-webkit-box",
+    WebkitBoxOrient: "vertical",
+    WebkitLineClamp: 2,
     overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
+    overflowWrap: "normal",
+    wordBreak: "normal",
     fontSize: 12,
     lineHeight: 1.4,
-    height: "1.4em",
+    height: "2.8em",
     color: "var(--text-secondary)",
   },
   sidebarHeaderNow: {
@@ -7614,6 +7612,9 @@ function MapPanel({
                 ? header.sources.goal === "missing" ||
                   header.sources.goal === "none"
                 : false;
+              const sidebarTaskLabel = header
+                ? truncateAtWordBoundary(header.goalLabel, 52)
+                : "";
               const agentProvider =
                 linkedTab?.workstream?.provider ??
                 liveTerminal?.agentProvider ??
@@ -7783,7 +7784,7 @@ function MapPanel({
                             data-testid="sidebar-map-node-task-row"
                             title={`Task: ${header.goalLabel}`}
                           >
-                            {header.goalLabel}
+                            {sidebarTaskLabel}
                           </div>
                         </div>
                       )}

@@ -55,19 +55,18 @@ work (`src-tauri/icons/*`, `index.html`, `render-icon.mjs`, `docs/*`). Never `gi
   pre-session baseline `e93885b`) — another session's in-flight header work. Same for
   `terminal-header-state.spec.ts:51` and ~9 in `agent-workstream.spec.ts`. Check a
   suspicious failure against a worktree of the baseline before "fixing" it.
-- The dock entry runs `run-dev.sh` (DEV mode: Vite + `target/debug`), so a relaunch is
-  enough; `npm run build` still matters because the release path loads `dist/`.
-- To settle "is my code even loaded", GET `127.0.0.1:1420/src/...` from the running dev
-  server and grep the response for your identifier.
-- The doctor's "desktop app is not currently running" line is unreliable from an agent
-  shell — the sandbox hides the process table.
+- Normal operator use and acceptance are dock-only. The dock opens the immutable
+  installed release; source changes do not count until `release:install`,
+  `verify:installed-release`, and the installed restart smoke pass.
+- To settle "is my code even loaded", run `doctor`: it compares the installed
+  dock checksum with the current release build and fails when they differ.
 
 ## Env / run state
 
 Branch: main | Last commit: `2d3926f` fix(cockpit): the goal row states a goal; the moment
 lives on its own row
-Running: TermFleet dev instance (Vite on 1420) launched from the dock; the PTY daemon owns
-the terminals and survives relaunch.
+Running: the dock targets the immutable installed release; the PTY daemon owns the
+terminals and survives relaunch.
 Gates: `npm run verify:task-line` (54/54), `npm run audit:panes`, `npm run cockpit:why`
 (per-pane goal + rung over the REAL records), `npm run doctor` (now reports "Task line
 coverage").

@@ -16,7 +16,17 @@ fn unique_runtime_dir() -> std::path::PathBuf {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    let dir = std::env::temp_dir().join(format!("tw-grid-test-{}-{nanos}", std::process::id()));
+    let base = std::env::var_os("TERMFLEET_TEST_TMPDIR")
+        .map(std::path::PathBuf::from)
+        .or_else(|| {
+            if cfg!(unix) {
+                Some(std::path::PathBuf::from("/tmp"))
+            } else {
+                std::env::temp_dir().into()
+            }
+        })
+        .expect("test temp root");
+    let dir = base.join(format!("tw-grid-test-{}-{nanos}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     dir
 }

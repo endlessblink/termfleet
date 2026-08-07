@@ -150,8 +150,13 @@ function MapSurfaceFallback() {
   );
 }
 
-function SplitWorkspace({ tabs, activeTabId }: { tabs: Tab[]; activeTabId: string | null }) {
-  const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? tabs[0];
+function SplitWorkspace({
+  activeTab,
+  activeTabIndex,
+}: {
+  activeTab?: Tab;
+  activeTabIndex: number;
+}) {
   if (!activeTab) return null;
 
   return (
@@ -167,7 +172,7 @@ function SplitWorkspace({ tabs, activeTabId }: { tabs: Tab[]; activeTabId: strin
         <Suspense fallback={<TerminalSurfaceFallback />}>
           <SplitPaneLayout
             tab={activeTab}
-            sessionLabel={`${activeTab.title} ${tabs.findIndex((tab) => tab.id === activeTab.id) + 1}`}
+            sessionLabel={`${activeTab.title} ${activeTabIndex + 1}`}
           />
         </Suspense>
       </div>
@@ -176,8 +181,12 @@ function SplitWorkspace({ tabs, activeTabId }: { tabs: Tab[]; activeTabId: strin
 }
 
 export function WorkspaceSurface() {
-  const tabs = useWorkspaceStore((state) => state.tabs);
-  const activeTabId = useWorkspaceStore((state) => state.activeTabId);
+  const activeTab = useWorkspaceStore((state) =>
+    state.tabs.find((tab) => tab.id === state.activeTabId),
+  );
+  const activeTabIndex = useWorkspaceStore((state) =>
+    state.tabs.findIndex((tab) => tab.id === state.activeTabId),
+  );
   const workspaceMode = useWorkspaceStore((state) => state.workspaceUiState.workspaceMode);
   const immersiveTerminal = useWorkspaceStore((state) => state.workspaceUiState.immersiveTerminal);
   const hydrating = useWorkspaceStore((state) => state.hydrating);
@@ -215,7 +224,10 @@ export function WorkspaceSurface() {
         )}
         {effectiveWorkspaceMode === "split" && (
           <div style={{ ...styles.surfacePane, zIndex: 1 }}>
-            <SplitWorkspace tabs={tabs} activeTabId={activeTabId} />
+            <SplitWorkspace
+              activeTab={activeTab}
+              activeTabIndex={activeTabIndex}
+            />
           </div>
         )}
         {effectiveWorkspaceMode === "graph" && (

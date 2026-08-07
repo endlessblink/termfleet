@@ -63,7 +63,7 @@ export interface AgentStatusSidecar {
   updatedAt?: number;
   now?: string;
   mainTask?: string;
-  mainTaskSource?: "plan-explanation" | "goal-task";
+  mainTaskSource?: "plan-explanation" | "goal-task" | "opening-request";
   userTask?: string;
   narration?: string;
   todos?: Array<{

@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { readFileSync } from "node:fs";
 import { decodeFrame } from "../src/lib/gridDiff";
 import { GridBuffer } from "../src/lib/gridBuffer";
 
@@ -49,6 +50,12 @@ function encode(
 
 const CURSOR_VISIBLE = 0b10;
 
+test("canvas output attribution ignores cursor-only repaint rows", () => {
+  const source = readFileSync("src/components/TerminalCanvas.tsx", "utf8");
+  expect(source).toContain("buffer.contentDirtyRows");
+  expect(source).not.toContain("changedRows.map((row) => buffer.rowText(row))");
+});
+
 test("a same-row cursor move re-dirties the cursor row (no ghost-bar trail)", () => {
   const buffer = new GridBuffer();
   // Full sync: cursor at col 1, line 0, visible.
@@ -65,6 +72,7 @@ test("a same-row cursor move re-dirties the cursor row (no ghost-bar trail)", ()
   const dirty = buffer.apply(decodeFrame(encode(1, { col: 3, line: 0 }, CURSOR_VISIBLE, [])));
 
   expect(dirty.has(0)).toBe(true);
+  expect(buffer.contentDirtyRows.size).toBe(0);
 });
 
 test("hiding the cursor re-dirties its row", () => {
@@ -80,6 +88,7 @@ test("hiding the cursor re-dirties its row", () => {
   // Cursor hidden (mode 0), same position, no cell changes.
   const dirty = buffer.apply(decodeFrame(encode(1, { col: 1, line: 0 }, 0, [])));
   expect(dirty.has(0)).toBe(true);
+  expect(buffer.contentDirtyRows.size).toBe(0);
 });
 
 test("scrolling into history hides the cursor even if a frame reports it visible", () => {

@@ -5,6 +5,7 @@
 // vendor format yields fewer facts, never an exception and never a blank pane.
 // Drift is caught loudly by the doctor probe, not silently by an empty header.
 import type { AgentBudgetSnapshot } from "./agentBudget";
+import { selectPlanPurpose } from "./taskPurpose";
 
 export interface TranscriptFacts {
   /** A short session title the vendor wrote itself. Never composed here. */
@@ -16,6 +17,8 @@ export interface TranscriptFacts {
    *  latest prompt, "/done"), and the agent's own session title is sometimes a slug, so
    *  without this the row said "exercise-demo-gif-pipeline" a week later. */
   openingRequest?: string;
+  /** The clearest outcome-bearing step from the agent's structured plan. */
+  planPurpose?: string;
   /** The agent's own last sentence about the work. Truncated at a sentence
    *  boundary — the agent's words, never reworded. */
   agentSaid?: string;
@@ -36,7 +39,7 @@ export interface TranscriptFacts {
 function cleanText(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const text = value
-    .replace(/\[Image\s+#?\d+\]/gi, "")
+    .replace(/\[{1,3}\s*(?:Image|Screenshot|File|Pasted)\s*#?\d*[^\]]*\]+/gi, "")
     // The composer's own prompt glyph rides along in the recorded prompt ("❯ I want…").
     // It belongs to the input box, not to what the operator said.
     .replace(/^\s*[❯➜»>]+\s*/u, "")
@@ -171,10 +174,14 @@ export function opensAsRequest(text: string | undefined): string | undefined {
     .replace(/\s+(?:and\s+)?[$/][a-z][\w:-]*\s*$/i, "")
     .trim();
   if (value.length < 12) return undefined;
+  if (refersOnlyToExistingWork(value)) return undefined;
   // Harness blocks, tool envelopes, command wrappers, slash commands, Claude's local-command
   // caveat, and the agent preambles subagents receive.
   if (/^[<$/]/.test(value)) return undefined;
-  if (/^(?:caveat:|you are\b|##\s)/i.test(value)) return undefined;
+  if (/^#\s*(?:AGENTS|CLAUDE)\.md instructions for\b/i.test(value))
+    return undefined;
+  if (/^(?:caveat:|you are\b|##\s|base directory for this skill:)/i.test(value))
+    return undefined;
   // Bracketed harness notices ride inside user messages ("[Request interrupted by user
   // for tool use]") and are not the operator speaking.
   if (/^\[[^\]]+\]$/.test(value)) return undefined;
@@ -199,6 +206,22 @@ export function opensAsRequest(text: string | undefined): string | undefined {
 // Verbs and question openers that make a short message a request rather than a reaction.
 const ASKS_FOR_SOMETHING =
   /\b(?:add|allow|build|change|check|clean|clear|close|commit|connect|convert|create|debug|delete|deploy|design|disable|enable|find|fix|generate|handle|implement|improve|install|integrate|investigate|make|merge|migrate|move|open|plan|prevent|publish|pull|push|refactor|release|remove|rename|research|restart|restore|revert|run|show|split|start|stop|support|test|update|upgrade|use|verify|write|why|how|what|can we|can you|i want|i need|we should|should we|let's|lets|please)\b/i;
+const DIRECT_REQUEST_START =
+  /^(?:(?:please|can you|could you|would you|let'?s)\s+)?(?:add|allow|build|change|check|clean|clear|close|commit|connect|convert|create|debug|delete|deploy|design|disable|enable|find|fix|generate|handle|implement|improve|install|integrate|investigate|make|merge|migrate|move|open|plan|prevent|publish|pull|push|refactor|release|remove|rename|research|restart|restore|revert|run|show|split|start|stop|support|test|update|upgrade|use|verify|write)\b/i;
+
+export function startsWithRequestAction(text: string): boolean {
+  return DIRECT_REQUEST_START.test(text.trim());
+}
+
+// These messages direct the agent back to context it already has, but do not name that
+// work. Treating them as durable requests makes a restored pane say only "continue" or
+// "the first task" while the concrete request sits elsewhere in the transcript.
+const REFERENCES_ONLY_EXISTING_WORK =
+  /^(?:(?:let'?s|please)\s+)?(?:(?:continue|resume|pick\s+up)(?:\s+(?:from\s+)?where\s+we\s+left\s+off|\s+(?:the\s+)?(?:work|session)|\s+previous\s+coding\s+session)?|(?:start|stat|continue|work)(?:\s+on)?\s+(?:the\s+)?(?:first|next|current|last)\s+(?:task|step|one))[\s.!?]*$/i;
+
+export function refersOnlyToExistingWork(text: string): boolean {
+  return REFERENCES_ONLY_EXISTING_WORK.test(text.trim());
+}
 
 /** The text of a Claude `user` record, whether it is a string or content blocks. */
 function userMessageText(record: Record<string, unknown>): string {
@@ -233,8 +256,27 @@ export function parseCodexOpeningRequest(text: string): string | undefined {
   eachRecord(text, (record) => {
     if (found) return;
     const payload = record.payload as Record<string, unknown> | undefined;
-    if (payload?.type !== "user_message") return;
-    found = opensAsRequest(cleanText(payload.message));
+    if (payload?.type === "user_message") {
+      found = opensAsRequest(cleanText(payload.message));
+      return;
+    }
+    if (
+      record.type !== "response_item" ||
+      payload?.type !== "message" ||
+      payload.role !== "user" ||
+      !Array.isArray(payload.content)
+    )
+      return;
+    const message = payload.content
+      .filter(
+        (block) =>
+          block &&
+          typeof block === "object" &&
+          (block as { type?: string }).type === "input_text",
+      )
+      .map((block) => (block as { text?: string }).text ?? "")
+      .join(" ");
+    found = opensAsRequest(cleanText(message));
   });
   return found;
 }
@@ -277,6 +319,11 @@ export function parseClaudeTranscript(text: string): TranscriptFacts {
     // opening question long after the work had moved on — the operator saw the goal
     // "keep resetting" to where the session started (report 2026-07-28).
     if (record.type === "user") {
+      // AskUserQuestion is complete as soon as the pane receives its next user record.
+      // Claude records structured answers as a user tool_result rather than another tool
+      // call, so waiting for a later tool left already-answered questions stuck on screen.
+      facts.pendingQuestion = undefined;
+      if (facts.lastTool?.name === "AskUserQuestion") facts.lastTool = undefined;
       const asked = opensAsRequest(cleanText(userMessageText(record)));
       if (asked) facts.operatorRequest = asked;
     }
@@ -385,6 +432,34 @@ export function parseCodexRollout(text: string): TranscriptFacts {
       case "function_call":
       case "custom_tool_call":
         if (typeof payload.name === "string") {
+          if (payload.name === "update_plan") {
+            let args: Record<string, unknown> | undefined;
+            try {
+              args =
+                typeof payload.arguments === "string"
+                  ? (JSON.parse(payload.arguments) as Record<string, unknown>)
+                  : (payload.arguments as Record<string, unknown> | undefined);
+            } catch {
+              args = undefined;
+            }
+            const rawPlan = Array.isArray(args?.plan)
+              ? args.plan
+              : Array.isArray(args?.steps)
+                ? args.steps
+                : [];
+            const planSteps: string[] = [];
+            for (const item of rawPlan) {
+              const record = item as Record<string, unknown>;
+              const step = cleanText(
+                record.step ?? record.content ?? record.title ?? record.text,
+              );
+              if (step) planSteps.push(step);
+            }
+            // Each update carries the complete current plan. A later verification-only
+            // plan must not erase the last outcome-bearing plan, while an old task from
+            // earlier in the conversation must not keep winning forever.
+            facts.planPurpose = selectPlanPurpose(planSteps) ?? facts.planPurpose;
+          }
           facts.lastTool = {
             name: payload.name,
             arg: shortArg(payload.arguments),

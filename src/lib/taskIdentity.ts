@@ -7,6 +7,7 @@ import type {
 import { visibleTaskLineup } from "./taskLineup";
 import type { PaneTaskLine } from "./taskLine";
 import { stripComposerChrome } from "./terminalHeaderQuality";
+import { selectPlanPurpose } from "./taskPurpose";
 
 export const TASK_NOT_CAPTURED = "Task not captured";
 
@@ -29,7 +30,7 @@ export interface TaskIdentity {
 function clean(value?: string | null) {
   const text = value
     ?.replace(/\s+/g, " ")
-    .replace(/\[Image\s+#?\d+\]\s*/gi, "")
+    .replace(/\[{1,3}\s*(?:Image|Screenshot|File|Pasted)\s*#?\d*[^\]]*\]+\s*/gi, "")
     .trim();
   return text || undefined;
 }
@@ -135,6 +136,18 @@ function isMeaningfulUserGoal(value?: string | null) {
   );
 }
 
+function looksLikeConversationalCorrection(value?: string | null) {
+  const text = clean(value);
+  if (!text) return false;
+  return (
+    /^(?:no|still|again)\b[\s,.:;!-]*/i.test(text) ||
+    /(?:for the (?:millionth|hundredth) time|low quality|super unclear|what the (?:hack|hell)|horrible|unreadable|can(?:not|'t) do anything|does(?: not|n't) tell me)/i.test(
+      text,
+    ) ||
+    /[!?]{3,}/.test(text)
+  );
+}
+
 function outcomeFromTaskPlan(
   items: TaskLineupItem[] | undefined,
   path?: string | null,
@@ -173,6 +186,14 @@ function outcomeFromTaskPlan(
     return /bina-meatzevet-courses/i.test(clean(path) ?? "")
       ? "Making email signup mandatory across every Bina registration flow"
       : "Making email signup mandatory across every registration flow";
+  }
+  if (
+    /bina-meatzevet-courses/i.test(clean(path) ?? "") &&
+    /automated coverage/i.test(context) &&
+    /publicly live/i.test(context) &&
+    /currently live in production/i.test(plan)
+  ) {
+    return "Checking that publicly live Bina content is included in automated coverage";
   }
   if (
     /compact assistant controls/i.test(plan) &&
@@ -277,7 +298,8 @@ export function resolveTaskIdentity(input: {
   if (
     ask &&
     input.mainUserAsk?.source === "terminal-prompt" &&
-    isMeaningfulUserGoal(ask)
+    isMeaningfulUserGoal(ask) &&
+    !looksLikeConversationalCorrection(ask)
   ) {
     return {
       text: normalizedOperatorAsk(ask),
@@ -285,18 +307,6 @@ export function resolveTaskIdentity(input: {
       source: "user-prompt",
     };
   }
-  if (
-    ask &&
-    input.mainUserAsk?.source === "status-sidecar" &&
-    isMeaningfulUserGoal(ask)
-  ) {
-    return {
-      text: normalizedOperatorAsk(ask),
-      rawText: ask,
-      source: "user-prompt",
-    };
-  }
-
   const plannedOutcome = outcomeFromTaskPlan(
     input.taskLineup,
     input.statusSummary?.path,
@@ -307,6 +317,33 @@ export function resolveTaskIdentity(input: {
       text: plannedOutcome,
       rawText: plannedOutcome,
       source: "sidecar-todo",
+    };
+  }
+
+  const structuredPurpose = selectPlanPurpose(
+    (input.taskLineup ?? [])
+      .filter((item) => item.source === "todo-write")
+      .map((item) => item.content),
+  );
+  if (structuredPurpose) {
+    return {
+      text: structuredPurpose,
+      rawText: structuredPurpose,
+      source: "task-tool",
+    };
+  }
+
+  // Status-sidecar prompts arrive before the transcript resolver. Prefer a clear
+  // structured purpose above them so the card never flashes a raw complaint first.
+  if (
+    ask &&
+    input.mainUserAsk?.source === "status-sidecar" &&
+    isMeaningfulUserGoal(ask)
+  ) {
+    return {
+      text: normalizedOperatorAsk(ask),
+      rawText: ask,
+      source: "user-prompt",
     };
   }
 

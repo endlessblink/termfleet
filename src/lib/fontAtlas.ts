@@ -29,6 +29,11 @@ export interface CellMetrics {
 
 type TileCanvas = HTMLCanvasElement | OffscreenCanvas;
 
+// Terminal output can contain arbitrary true-colour sequences. Keep the atlas
+// useful for normal redraws without allowing a long-lived pane to retain one
+// canvas per unique (character, colour, style) forever.
+const MAX_GLYPH_ATLAS_TILES = 4096;
+
 function createCanvas(width: number, height: number): TileCanvas {
   if (typeof OffscreenCanvas !== "undefined") {
     return new OffscreenCanvas(width, height);
@@ -110,7 +115,13 @@ export class GlyphAtlas {
     const tileCells = Math.max(1, Math.ceil(widthCells));
     const key = this.key(char, fg, bold, italic, tileCells);
     const cached = this.tiles.get(key);
-    if (cached) return cached;
+    if (cached) {
+      // Map insertion order supplies a small LRU: recently visible glyphs stay
+      // hot while old colours become collectible once the cap is reached.
+      this.tiles.delete(key);
+      this.tiles.set(key, cached);
+      return cached;
+    }
 
     const canvas = createCanvas(this.tileW * tileCells, this.tileH);
     const ctx = tileContext(canvas);
@@ -131,6 +142,11 @@ export class GlyphAtlas {
     }
 
     this.tiles.set(key, canvas);
+    while (this.tiles.size > MAX_GLYPH_ATLAS_TILES) {
+      const oldest = this.tiles.keys().next().value;
+      if (typeof oldest !== "string") break;
+      this.tiles.delete(oldest);
+    }
     return canvas;
   }
 

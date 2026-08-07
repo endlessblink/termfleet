@@ -549,7 +549,7 @@ const NOT_A_VERB_DESPITE_SUFFIX =
 export function stripComposerChrome(value?: string | null) {
   return (
     clean(value)
-      .replace(/\[(?:Image|Screenshot|File|Pasted)\s*#?\d*[^\]]*\]/gi, " ")
+      .replace(/\[{1,3}\s*(?:Image|Screenshot|File|Pasted)\s*#?\d*[^\]]*\]+/gi, " ")
       // A pasted LINK is never the goal — "lets get termfleet ready for sharing. I want
       // to share it here - https://…" reached a live Task row whole (2026-07-26). The
       // sentence still says what they asked for once the url is gone, and Class C2 of

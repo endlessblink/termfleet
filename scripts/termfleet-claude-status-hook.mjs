@@ -19,6 +19,7 @@ import {
   statusDir,
 } from "./lib/agent-status-paths.mjs";
 import { shouldWriteStatusCandidate } from "./lib/agent-status-lifecycle.mjs";
+import { durableGoalForPrompt } from "./lib/agent-status-goal.mjs";
 
 const TASK_EVENT_TOOLS = new Set(["TaskCreate", "TaskUpdate"]);
 
@@ -445,21 +446,34 @@ async function main() {
   const prevAtStart = readExistingSidecar(filePath);
   const submittedUserTask = userTaskFromPayload(payload);
   const previousMainTask = cleanField(prevAtStart?.mainTask, 220) || undefined;
-  const previousMainTaskSource = prevAtStart?.mainTaskSource === "plan-explanation" || prevAtStart?.mainTaskSource === "goal-task"
+  const previousMainTaskSource = prevAtStart?.mainTaskSource === "plan-explanation" || prevAtStart?.mainTaskSource === "goal-task" || prevAtStart?.mainTaskSource === "opening-request"
     ? prevAtStart.mainTaskSource
     : undefined;
   let sidecar;
   if (payload.hook_event_name === "UserPromptSubmit") {
     const userTask = submittedUserTask;
     if (!userTask) process.exit(0);
+    const submittedSessionId = String(payload?.session_id ?? "");
+    const { startsNewSession, mainTask, mainTaskSource } =
+      durableGoalForPrompt({
+        prompt: userTask,
+        previousGoal: previousMainTask,
+        previousSource: previousMainTaskSource,
+        previousSessionId: prevAtStart?.sessionId,
+        sessionId: submittedSessionId,
+      });
     sidecar = {
       cwd,
       sessionId: String(payload?.session_id ?? prevAtStart?.sessionId ?? ""),
       updatedAt: Date.now(),
       source: "user-prompt",
-      todos: Array.isArray(prevAtStart?.todos) ? prevAtStart.todos : [],
-      mainTask: previousMainTask,
-      mainTaskSource: previousMainTaskSource,
+      todos: startsNewSession
+        ? []
+        : Array.isArray(prevAtStart?.todos)
+          ? prevAtStart.todos
+          : [],
+      mainTask,
+      mainTaskSource,
       userTask,
       now: cleanField(prevAtStart?.now) || "Prompt submitted",
       narration: cleanField(prevAtStart?.narration, 90) || undefined,

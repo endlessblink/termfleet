@@ -1680,6 +1680,18 @@ export function TerminalComponent({
     [canvasMode, paneId, tabId, updateTerminalRuntime, updateWorkstreamRuntime],
   );
 
+  const rememberStructuredSignal = useCallback((raw: string) => {
+    const keys = structuredSignalKeysRef.current;
+    if (keys.has(raw)) return false;
+    keys.add(raw);
+    while (keys.size > 256) {
+      const oldest = keys.values().next().value;
+      if (typeof oldest !== "string") break;
+      keys.delete(oldest);
+    }
+    return true;
+  }, []);
+
   const processOutputMetadata = useCallback(
     (data: string) => {
       outputStatusWindowRef.current =
@@ -1697,12 +1709,8 @@ export function TerminalComponent({
       const todoWrites = parseStructuredTodoWrites(
         outputStatusWindowRef.current,
       ).filter(({ raw }) => {
-        if (
-          structuredSignalKeysRef.current.has(raw) ||
-          processedStructuredSignals.has(raw)
-        )
+        if (processedStructuredSignals.has(raw) || !rememberStructuredSignal(raw))
           return false;
-        structuredSignalKeysRef.current.add(raw);
         return true;
       });
       if (todoWrites.length > 0) {
@@ -1741,12 +1749,8 @@ export function TerminalComponent({
       const structuredSignals = parseStructuredAgentSignals(
         outputStatusWindowRef.current,
       ).filter(({ raw }) => {
-        if (
-          structuredSignalKeysRef.current.has(raw) ||
-          processedStructuredSignals.has(raw)
-        )
+        if (processedStructuredSignals.has(raw) || !rememberStructuredSignal(raw))
           return false;
-        structuredSignalKeysRef.current.add(raw);
         return true;
       });
       if (structuredSignals.length > 0 && initialTab?.workstream) {
@@ -1996,6 +2000,7 @@ export function TerminalComponent({
       livePtyId,
       paneId,
       persistAgentRecoveryManifest,
+      rememberStructuredSignal,
       runtimeSessionId,
       tabId,
       updateTerminalRuntime,
@@ -2397,7 +2402,7 @@ export function TerminalComponent({
 
   return (
     <div
-      className="terminal-block-shell"
+      className={`terminal-block-shell${standalone ? " terminal-block-shell--standalone" : ""}`}
       // No tabIndex: the wrapper must NOT be a Tab stop. With tabIndex={0} a
       // Shift+Tab inside the terminal moved focus from the hidden input to this
       // wrapper (off the textarea), so the keystroke never reached the PTY and

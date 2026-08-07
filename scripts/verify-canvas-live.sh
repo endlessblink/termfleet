@@ -22,11 +22,24 @@ DRIVER_LOG="$OUT_DIR/driver.log"
 TRACE_FILE="$OUT_DIR/pty-trace.log"
 RUN_DIR="$OUT_DIR/run"
 DATA_DIR="$OUT_DIR/data"
-CARGO_TARGET_DIR="$OUT_DIR/target"
+CARGO_TARGET_DIR="${CANVAS_LIVE_CARGO_TARGET_DIR:-$OUT_DIR/target}"
 SOCKET="$RUN_DIR/terminal-workspace/daemon.sock"
 TMUX_SOCKET="$OUT_DIR/tmux.sock"
-PORT="${CANVAS_LIVE_PORT:-$((17000 + RANDOM % 1000))}"
-APP_BUDGET="${APP_BUDGET:-150}"
+if [[ -n "${CANVAS_LIVE_PORT:-}" ]]; then
+  PORT="$CANVAS_LIVE_PORT"
+else
+  PORT="$(python3 - <<'PYEOF'
+import socket
+
+with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+    sock.bind(("127.0.0.1", 0))
+    print(sock.getsockname()[1])
+PYEOF
+)"
+fi
+# A disposable Cargo target is intentionally used, so the first run may need
+# several minutes to compile WebKitGTK/Tauri before a window can appear.
+APP_BUDGET="${APP_BUDGET:-360}"
 APP_RUN_PID=""
 
 mkdir -p "$OUT_DIR" "$RUN_DIR" "$DATA_DIR"
@@ -80,11 +93,21 @@ cleanup() {
   if [[ -n "$daemon_pid" ]]; then
     kill "$daemon_pid" >/dev/null 2>&1 || true
   fi
+  # The private Rust target can exceed a gigabyte and is only a build cache for
+  # this verifier. Keep screenshots/logs for inspection, but never leave the
+  # disposable target behind to pressure /tmp between runs.
+  if [[ "${CANVAS_LIVE_KEEP_TARGET:-0}" != "1" ]]; then
+    rm -rf -- "$CARGO_TARGET_DIR"
+  fi
 }
 trap cleanup EXIT
 cleanup
 
-shot() { import -window "$1" "$OUT_DIR/$2" 2>>"$DRIVER_LOG" || true; }
+shot() {
+  timeout "${CANVAS_LIVE_SCREENSHOT_TIMEOUT:-15}" \
+    import -window "$1" "$OUT_DIR/$2" 2>>"$DRIVER_LOG" ||
+    echo "screenshot timed out or failed: $2" >>"$DRIVER_LOG"
+}
 
 assert_visual_change() {
   local before="$1"
@@ -281,4 +304,4 @@ grep -c "canvas2d" "$LOG_FILE" 2>/dev/null || echo 0
 echo "=== native overlay log lines (should be 0 for canvas mode) ==="
 grep -c "native-terminal-vte" "$LOG_FILE" 2>/dev/null || echo 0
 echo "=== backend latency traces ==="
-ls -1 /tmp/terminal-workspace-latency-trace-*.jsonl 2>/dev/null | wc -l
+find /tmp -maxdepth 1 -type f -name 'terminal-workspace-latency-trace-*.jsonl' -print | wc -l

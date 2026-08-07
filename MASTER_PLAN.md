@@ -38,6 +38,110 @@ the current line of the project formerly built as "Magic Canvas"; Linux is the
 first release gate. The design preserves the canvas/operations-map workflow
 instead of replacing it with a terminal-only split-pane app.
 
+Pressure recovery (2026-08-06): recurring pressure was traced to host I/O and
+swap contention plus stale verifier processes, not a current TermFleet OOM. The
+stale Puppeteer and private daemon processes were stopped without touching the
+live daemon or desktop. The pressure watchdog is now installed as a restarting
+user service, with focused regression coverage; the service and real cockpit
+were verified active after installation.
+
+Canvas E2E recovery (2026-08-06): the live verifier was failing before launch
+because its random port overlapped a fixed host service and its disposable cold
+build exceeded the GUI timeout. The verifier now obtains an OS-free port and
+allows a cold Tauri/WebKit build to finish. Focused guards and the full live
+Canvas2D input/output, resize, Vim, htop, and tmux flow pass.
+
+File explorer preview (2026-08-02): file clicks now open a bounded, read-only text
+preview inside the cockpit; binary/unreadable files show a clear error and every
+file retains an explicit Open externally action. `npm run verify:file-explorer` and
+`npm run build` passed. Headed installed-app proof remains required before release
+promotion.
+
+External-open correction (2026-08-02): the Linux action now dispatches through a
+Rust desktop command that prefers Kate, then uses `xdg-open` and `gio` fallback,
+instead of relying only on the WebView opener bridge. `npm run
+verify:file-explorer`, `CARGO_BUILD_JOBS=1 cargo check --manifest-path
+src-tauri/Cargo.toml`, and `npm run build` passed; installed dock verification
+remains the final proof.
+
+Canvas map reattachment correction (2026-08-03): a persisted map `terminalPtyId`
+could outlive its live tab entry, leaving the task-bearing header visible while
+the Canvas2D body attached to an empty session. The map now falls back to the
+canonical pane session identity. Evidence: the focused stale-PTY regression was
+red before the fix and green after it; `npm run build`, `npm run
+verify:installed-release`, `npm run verify:installed-restart`, and `git diff
+--check` passed. Fresh dock screenshot SHA-256
+`d27fa9711e9c3751443532fa78a4e0d2088d7e9fd357cf7d8b634c0e8e859fcf` visibly
+contained terminal output and live task text. `npm run verify:canvas-all` remains
+partial because two existing map UI assertions failed and the 66-test run then
+hit the 120-second runner timeout.
+
+Dock blank-frame recovery (2026-08-03): the cockpit process and X11 window could
+remain alive while WebKitGTK rendered a uniform dark frame. The dock launcher now
+passes software GL and disables the unreliable WebKit compositing/DMA-BUF path to
+its systemd child. Evidence: `python3 -m unittest
+tests/test_desktop_launcher_guard.py`, `npm run verify:installed-release`, `npm run
+verify:installed-restart`, and `git diff --check` passed. Fresh active-window
+screenshot SHA-256
+`cce1e2ddb9b1e548247e985245d667b967cd305dd379b7f417d1defd359867c9` showed the
+workspace and terminal content; the earlier capture was confirmed uniformly
+blank, so the previous screenshot-color smoke was insufficient.
+
+Terminal selection correction (2026-08-03): mouse-report TUIs previously consumed
+every pointer drag, so Shift-drag could not highlight terminal content. Shift-drag
+now uses the existing Canvas2D selection/copy path while ordinary drags continue to
+send TUI mouse reports. Evidence: `npx playwright test tests/selection.spec.ts`
+passed 3/3; `npm run build` passed; `npm run verify:canvas-all` reached 62 passing
+tests and 5 existing map/status failures before its 180-second timeout. Packaged
+proof: `npm run release:install`, `npm run verify:installed-release`, and
+`npm run verify:installed-restart` passed with release
+`71531f32704e-d506c53d79e2` and a live `termfleet/Termfleet` window; fresh visual
+Shift-drag interaction in the dock remains a manual acceptance check.
+
+Pane close cleanup correction (2026-08-04): explicit pane close now gives each
+PTY its own delegated Linux cgroup and recursively kills that cgroup, with a
+pane-scoped `/proc` ancestry sweep for environments without delegated cgroups;
+this covers detached agents, test runners, local servers, and descendants that
+drop the pane marker, while excluding the daemon and unrelated panes. Evidence:
+`cargo test pty::tests::kill_ -- --nocapture` passed all 4 close guards; the
+detached-marker guard verified the PTY cgroup boundary and descendant removal.
+`npm run verify:installed-pane-close` also passed against the promoted installed
+binary, proving the same daemon kill path removes a detached marker-less child,
+preserves an unrelated pane, and leaves the daemon reachable. `CARGO_BUILD_JOBS=1
+cargo check` and `git diff --check` remain required; literal installed dock X
+interaction remains the final runtime proof.
+
+The browser close-button guard `tests/terminal-close-button.spec.ts` now proves
+the visible X control destroys its terminal session; the installed daemon guard
+proves the same close command removes detached marker-less descendants and
+preserves an unrelated pane. Desktop control-group exit proof also passed: the
+new dock unit removed its WebKit child when the UI was ended while the daemon
+remained alive.
+
+Desktop child cleanup correction (2026-08-04): the dock desktop unit now uses
+`KillMode=control-group`, so WebKit workers are terminated with the UI instead of
+surviving a crashed or restarted window; the PTY daemon remains in its separate
+unit. The launcher contract regression is now covered by
+`python3 -m unittest tests/test_desktop_launcher_guard.py`.
+
+Canvas responsiveness correction (2026-08-06): cursor-only grid frames still
+correctly repaint the old and new cursor rows, but those rows are no longer fed
+into PTY-output/status updates. This removes avoidable React/store/persistence
+work during cursor motion without changing the rendered terminal. Evidence:
+`npx playwright test tests/grid-cursor-dirty.spec.ts --reporter=line` passed 3/3
+and `npm run build` passed. Full Canvas2D live latency and installed dock proof
+remain required before claiming a measured end-to-end improvement.
+
+Performance fan-out correction (2026-08-06): map nodes now subscribe only to
+their linked tab and PTY metadata, and the workspace surface selects only the
+active tab instead of the entire tab array. This prevents unrelated pane output
+from waking every map node and the top-level surface. Evidence: focused map/grid
+guards passed 7/7, `npm run build` passed, the fresh release was promoted and
+matched by `npm run verify:installed-release`, and the isolated live map verifier
+passed with pixel typing p95 85ms against a 150ms budget. The full 70-test Canvas
+suite reached 62 passing with 8 existing map/status failures; standalone-daemon
+verification timed out after 300s, so backend restore coverage remains open.
+
 Extracted from `cc-linux-enhancments/terminal-workspace-tauri` on 2026-05-30;
 full prior history remains in that monorepo. Superseded predecessors
 (terminaltron, terminal-workspace, the web Magic Canvas, zellij-masterplan-tabbar)
@@ -136,6 +240,26 @@ TC-052 outcome-persistence correction (2026-07-20): searching, implementation, t
 
 TC-052 deployment-purpose correction (2026-07-20): deployment and production-check steps no longer replace the billing repair they deliver. The exact Bina lane keeps `Making renewals and checkout safe while refunding Lee and granting Levana free July access` as Task while `Deploying the fix and checking production` remains Now Active. Direct desktop proof: `.captures/cockpit-bina-billing-purpose-final.png`. The focused identity/hook/sidecar/header suite passed 164/165 with one expected skip, map source checks and the production build passed, and the exact fifteenth saved session was selected and inspected directly.
 
+TC-052 public-content coverage correction (2026-07-30): a vague Bina follow-up such as `what to add here?` no longer becomes the durable Task when the checklist shows that automated coverage is being compared with content currently live in production. The header now explains the purpose as `Checking that publicly live Bina content is included in automated coverage`, while the current production verification remains the active step. The new focused regression passed 18/18, `npm run build` passed, and `git diff --check` passed.
+
+TC-060 task-label clarity correction (2026-07-30): vendor session titles that are really completion reports, such as a committed redesign with an open pull request and passed checks, no longer take over the Task row as a long status dump. The ladder now prefers the captured opening goal and otherwise uses a concise purpose such as `Reviewing the redesign pull request`. The focused task-line regressions passed 38/38 and `npm run build` passed.
+
+TC-060 durable-goal correction (2026-07-30): the repeated completion-report screenshots exposed a source-contract bug rather than a wording bug. Codex and Claude status hooks now persist the first substantive user request as an `opening-request` goal for each conversation; only an explicit `Goal:` may replace it. Generated session titles, plan explanations, follow-up prompts, and completion prose remain fallback context and cannot rewrite the goal. Project-specific outcome inference was removed from the Codex hook. Fresh proof: 47 focused hook/ladder regressions passed, `verify:task-line` passed 58/58 against the live-record corpus, both hook scripts passed syntax checks, and `npm run build` passed.
+
+TC-060 concise-task correction (2026-07-30): the next live screenshot showed that a stable raw request can still be a poor visible label. Task now uses the active structured plan step when no explicit `Goal:` exists, so the exact TermFleet pane resolves to `Checking every task-label source` instead of the operator's long complaint; the raw request remains provenance, not presentation. `verify:task-line` passed 59/59, including the exact rendered regression, and the live-record sweep confirmed the affected pane now resolves through `current-step`. The corrected immutable release was promoted to the dock as `a6cae40c9b03-36e38a5eb818`; `verify:installed-release` matched checksum `36e38a5eb8182da4270d270334242867ace2fcf6c92245146ac622e1331f5fb0`, `doctor` confirmed the dock and current build match, and `verify:installed-restart` opened the installed desktop window, captured 2319 colors, restored the isolated agent session, and opened zero external terminals.
+
+TC-060 dock-only acceptance correction (2026-07-30): repeated “fixed” screenshots were stale because source/build verification did not promote the immutable artifact opened by the desktop dock. Normal operator use and acceptance are now declared dock-only in `AGENTS.md`, `CLAUDE.md`, and `README.md`; agents must install and verify the release and must never hand the operator a development-launch command. `doctor` now fails when the installed dock checksum differs from the current release build. The installed restart verifier was repaired after this proof exposed two harness bugs: its window probes did not inherit `DISPLAY`, and numeric sorting violated `comm`'s lexical-order contract. `tests/test_installed_release.py` passed 9/9, `verify:task-line` passed 59/59, the installed checksum gate passed, and the headed installed restart/restore smoke passed with a nonblank 2319-color capture and no external terminals.
+
+TC-060 durable-purpose correction (2026-07-30): direct follow-up prompts such as `no. I need to see the preview on the suite!!!!!!!!` no longer displace a clear structured plan. The transcript resolver retains the last meaningful purpose across later verification-only plans, attachment markers are removed before persistence and rendering, completed turns clear stale `Now` text, and corrective/emotional prompts defer to the agent's plain-language plan. The exact Bina case now resolves to `Applying approved course covers on the live site`; the Rough Cut case resolves to `Controlling preview and export end to end in the headed app`. The focused task-label suite passed 75/75, `verify:task-line` passed 63/63, `verify:map-terminals` passed, and `npm run build` passed.
+
+TC-060 readable-truncation correction (2026-07-30): task labels no longer use scattered character-level `...` truncators or one-line fleet rows that cut through the last word. One shared word-boundary formatter now serves task, activity, narration, and header summaries; fleet cards reserve two stable task lines and pre-fit their text to a complete word. The installed dock release `a6cae40c9b03-6b7700061fdf` passed checksum verification, the headed installed restart smoke, `doctor`, and a live dock-only capture. Pixel review passed: no raw complaint, attachment token, repeated punctuation, literal three-dot task ending, or mid-word task cut remained.
+
+TC-060 processed-context persistence correction (2026-08-01): idle/stale panes now derive their durable Task from the clearest model-authored outcome in the full plan rather than copying a later complaint/rationale, promoting a waiting/checking step, or falling to `No task declared`. The focused regression failed first on the exact Bina rationale and Flow State placeholder cases, then passed 2/2; `npm run verify:task-line` passed 71/71 across 135 live pane records, `npm run build`, `git diff --check`, `verify:installed-release`, `verify:installed-restart`, and `doctor` all passed. The immutable dock release `a6cae40c9b03-57e62a9ca6e8` matched checksum `57e62a9ca6e81e3b7aa4d80124b5c21ab70ae12935a02724ad3d3f1ea646e4bd`; the actual dock process was fully replaced while the daemon retained 12/12 sessions. Direct installed captures prove the exact Bina pane renders Task `Redesigning the reusable mobile event feed` with Now `Waiting for remote checks and content-backed mobile review` (`.captures/cockpit-20260801-092408-bina-context-selected-final.png`, SHA-256 `0bf29ec20464ccb33f966cd27a981d21edf33bb8db24e6830e73a44252c3e1fd`) and the exact Flow State pane renders Task `Updating grouped task creation to keep dates` with no placeholder (`.captures/cockpit-20260801-092720-flow-context-selected-final-3.png`, SHA-256 `ad0fd2efa146106e856e2e18f3e0980dacd912e26f44875e17cbf31579261bbb`).
+
+TC-060 whole-conversation model correction (2026-08-02): checklist labels such as `Adding isolated sandbox reservation coverage` no longer become the durable Task. The local model receives the workspace, original operator request, latest request, declared task, complete plan, and current activity once per durable fingerprint; unsafe drafts are corrected or reshaped from model-grounded context while raw implementation/checking language stays rejected. Live tracing exposed two deeper causes in the exact Codex conversation: oversized startup instructions pushed the real request beyond the old fixed head window, and an injected `AGENTS.md` block appeared as an earlier user-role record. The bounded reader now collects several early operator-role records so the parser skips wrappers and finds the first real request. Capped background polling now rotates by least-recently-polled pane instead of starving the same older cards. Proof: the focused 6-test context/reader/rotation set passed, both Rust oversized-startup and instruction-wrapper guards passed, `npm run verify:task-line` passed 76/76, the full poll suite passed 9/9, `CARGO_BUILD_JOBS=1 cargo check`, `git diff --check`, `npm run doctor`, `verify:installed-release`, and `verify:installed-restart` all passed. The immutable dock release `a6cae40c9b03-8d8a6aa31c04` matched checksum `8d8a6aa31c048ecae2e3a7209a8f7d2fc528973f0279f4950568511b74e83b4f`; direct model trace includes the original paid-reservation request and generated `Making Bina paid reservations and refunds safe end to end`. The exact selected installed pane visibly renders that Task with Now `Documenting remaining production resilience gaps` (`.captures/cockpit-main-window-bina-final.png`, SHA-256 `9c63944588d7bc30d5c9ef509aa28f3bd5066ae4c2a861dfae401a0f0181d8c0`).
+
+TC-060 pane-owned model-context correction (2026-08-03): the remaining vague/cross-project titles came from four independent leaks: Codex startup instructions were accepted as the opening request, the local prompt contained a Bina-specific answer, processed agent outcomes were omitted from the durable model fingerprint, and the 24-pane cap permanently starved quiet panes because priority sorted ahead of age. Live model tracing then exposed three final quality failures: Qwen replaced the concrete `Catalog` subject with generic `fix`, a later checklist fallback could overwrite an accepted model title, and the split header ignored the durable title and rendered bare `Working`. The prompt and correction pass are now domain-neutral and require the exact named subject; output is schema-constrained and safely normalized; product-only grounding cannot validate invented subjects; oldest-pane rotation prevents starvation; `context-summary` outranks checklist fallbacks; and the top strip reads the durable pane Task while activity remains separate. Red/green proof covers every leak. `npm run verify:task-line` passed 84/84, the poll suite passed 10/10, Rust TC-060 passed 10/10, `CARGO_BUILD_JOBS=1 cargo check`, `npm run verify:map-terminals`, `npm run build`, and `git diff --check` passed. The immutable dock release `71531f32704e-2f834b3e7ac5` matched checksum `2f834b3e7ac508d6eddefeec578d5d18113f5e61979f364503510d1e2851ec23`; its running executable matched that release. Direct installed readback showed pane-owned Flow State context, `Keeping bina reservations and refunds safe end to end`, `Keeping rough-cut-mvp view consistent and editable`, and `Keeping Flow-State event display accurate`. Fresh installed screenshot `/tmp/termfleet-context-accepted-final.png` (SHA-256 `a10a06f1ff58351b4bc74e6ca9522f37cb0cf06d19acf0ab141cc775029ab518`) visibly contains contextual task titles with no `No task declared`, `Task not captured`, or bare `Working` regression; the disposable visual verifier accepted it. During dock acceptance, a defunct cockpit process also exposed a relaunch blocker; a red/green launcher regression proves zombies cannot suppress a fresh window, and the corrected launcher was promoted with the same immutable release.
+
 ---
 
 ## Active Work
@@ -151,6 +275,78 @@ Watchpost phase scope: TC-001 through TC-008 are one cohesive redesign phase.
 Do not split them into unrelated cleanup/design buckets; execute them in order so
 the visual system, shell, navigation, terminal surface, map, command layer, run
 state, and visual QA converge on one product direction.
+
+### ~~TC-070~~: ✅ Restore live sessions after competing desktop windows
+
+**Priority:** P0
+**Status:** ✅ **DONE** (2026-07-30)
+
+A restart briefly ran multiple TermFleet windows, and each window mirrored its
+own in-memory tab set to one shared workspace file. The stale last writer hid 14
+still-running panes and the desktop metadata pointed at a generic terminal icon.
+Hydration now restores daemon-live sessions missing from a saved layout while
+continuing to reject dead persisted sessions, the installed launcher reuses one
+window, and release promotion owns the branded desktop entry and icon.
+
+Fresh evidence:
+
+- `npx playwright test tests/workspace-hydration.spec.ts` — 3 passed, including
+  live-session recovery with the TC-040 closed-history guard unchanged.
+- `python3 -m unittest tests.test_installed_release` — 11 passed, including
+  existing-window reuse and branded release ownership.
+- `npm run build` and `npm run verify:map-terminals` — passed.
+- Promoted release `a6cae40c9b03-4c8cddc54d44`; `npm run
+  verify:installed-release` matched checksum
+  `4c8cddc54d444f028905f93a21bfb0b12d460bbb328358184646732236aea51a`.
+- A real dock relaunch recovered 24/24 daemon-live sessions with no live tab
+  missing, and a second dock launch kept the same single TermFleet PID.
+- `npm run verify:installed-restart` — passed with a 2357-color installed window,
+  isolated restore, and zero external terminals.
+- `/tmp/termfleet-restored-dock-20260730.png` — SHA-256
+  `5754a1e384a253bb67006c24f6e54bc382ef0c6b9c62277b9b82462dc27b957d`;
+  visual review confirmed a healthy 24-session cockpit and the branded vessel
+  icon in the visible OS dock.
+- `npm run doctor` and `git diff --check` — passed.
+
+Taskbar icon identity correction (2026-07-31): the first repair was incomplete.
+Matching the installed window's real `WM_CLASS = "termfleet", "Termfleet"`
+fixed the running-window identity, but the operator still saw a separate `?`
+because Plasma retained its own pinned `plasma_icons/*.desktop` copy with the old
+external launcher, source-tree icon, and case-mismatched class. Release promotion
+now synchronizes every TermFleet pinned copy with the immutable desktop entry,
+the installed verifier rejects stale pins, and a changed pin triggers KDE cache
+and live-shell refreshes. Fresh proof: `tests/test_installed_release.py` passed
+13/13; `verify:installed-release` matched checksum
+`276d9f97b7b5052c73f925a59566675363014fa7e2ab77a94083905d256db0b1`;
+`verify:installed-restart` opened a 2062-color installed window with
+`wm_class=termfleet/Termfleet` and zero external terminals; and
+`.captures/taskbar-icon-fix/termfleet-after-real-panel-reload.png` (SHA-256
+`62e19f5364a9c96e562606a051796834364f50ef18ecf17ce21b7754015e3490`)
+shows one vessel-mark TermFleet taskbar entry with no adjacent question mark.
+
+### ~~TC-071~~: ✅ Restore meaningful pane identity from long agent transcripts
+
+**Priority:** P0
+**Status:** ✅ **DONE** (2026-07-31)
+
+A restored Claude pane could show only “lets continue from where we left off,”
+retain an already-answered question, and render as SHELL because its concrete
+request lived in the middle of a multi-megabyte transcript while provider
+metadata was absent or expired. TermFleet now scans a bounded set of relevant
+request records across the transcript, rejects continuation titles and injected
+skill text, clears answered questions, infers the provider from the transcript,
+and persists that identity across relaunches.
+
+Fresh evidence:
+
+- `npm run verify:task-line` — 69 passed; `tests/status-expiry.spec.ts` passed.
+- Rust transcript-context regression and the release build passed.
+- Promoted dock release `a6cae40c9b03-276d9f97b7b5`; installed restart matched
+  checksum `276d9f97b7b5052c73f925a59566675363014fa7e2ab77a94083905d256db0b1`,
+  opened a 2356-color TermFleet window, and opened zero external terminals.
+- A real dock relaunch restored the exact `bina-ve-ze` pane with its game-lane,
+  postponed-leaderboard, and redesign request; the stale waiting question was
+  absent and the persisted provider was `claude`.
 
 ### ~~TC-069~~: ✅ Stop invalid agent resume loops
 
@@ -6676,6 +6872,36 @@ broken on screen; and `npm run doctor` now resolves the dock launcher through it
 and symlink, so its advice names the artifact the operator actually launches (dev mode)
 instead of a release binary that is never started.
 
+### TC-064: Restart-safe installed desktop releases
+
+**Priority:** P0
+**Status:** In verification (2026-07-30)
+
+The dock command had resolved to `run-dev.sh`, making every ordinary launch depend on
+Vite and the current dirty source tree. The release installer now runs the frontend and
+Tauri release builds before it creates an immutable, checksummed release and atomically
+promotes `current`; the previous release remains addressable as `previous`. Installed
+command verification rejects development launchers, build trees, missing manifests, and
+checksum drift. The desktop integration launcher independently refuses any executable
+outside the promoted release directory.
+
+The headed restart smoke is isolated under temporary runtime and data directories. It
+checks the packaged process, daemon socket, visible nonblank window, and continuously
+watches for new Konsole or xterm processes without touching the operator's persistent
+daemon or sessions.
+
+**Evidence:** focused source and fixture regressions are required before promotion.
+`npm run build`, `npm run tauri build`, `npm run verify:installed-release`, and
+`npm run verify:installed-restart` remain the sequential completion gates; the last gate
+must run on the headed host before this task is marked done.
+
+**Verification update (2026-07-30):** `python3 -m unittest tests/test_installed_release.py -v`
+passed 7/7; `npm run build`, `CARGO_BUILD_JOBS=1 npm run tauri build`,
+`npm run release:install`, and `npm run verify:installed-release` passed, promoting release
+`c1ff5cda2b99-e1b1fce16540`. `npm run verify:installed-restart` reached the packaged binary,
+isolated daemon socket, and exact Codex resume marker on both sandbox and host reruns, but
+failed the required visible-window assertion; TC-064 remains in verification.
+
 ### ~~TC-069~~: ✅ Stop invalid agent resume loops
 
 **Priority:** P0
@@ -6699,3 +6925,181 @@ reattach, cold restore, and agent resume/reconstruction. `npm run verify:standal
 passes live app restart, daemon cold restore, visible repaint, and post-restart input
 against the rebuilt release app. `rustfmt --check` passes for the changed backend file;
 `cargo clippy --lib` completes with the repository's ten pre-existing warnings.
+
+### TC-070: Bound Canvas2D glyph memory
+
+**Priority:** P0
+**Status:** DONE (2026-08-05)
+
+Long-running terminals could grow the WebKit renderer because the shared glyph
+atlas retained every unique character/color/style tile forever. The atlas now
+evicts least-recently-used tiles after 4,096 entries; the daemon and PTY ownership
+boundary is unchanged.
+
+**Evidence so far:** the new regression failed before the fix with 5,000 retained
+tiles and passes after the fix; `npm run build` passes; the focused Canvas2D guard
+passes. `npm run verify:canvas-all` reaches 61/68, with seven existing map UI
+assertions failing; the new eviction case passes. The promoted release and
+installed restart both pass, and the real dock-launched WebKit process remained
+around 515-518 MiB for 19 minutes with desktop cgroup usage below 768 MiB, zero
+`memory.events` high/max/OOM events, zero memory PSI, and the daemon alive. The
+The canonical live verifier now passes with Canvas2D routing, real shell input,
+Vim, htop, tmux, resize/repaint, daemon snapshot output, and a 222,730-pixel
+htop repaint. Its private target is configurable and disposable targets are
+removed on exit, preventing verifier runs from recreating the earlier 1.4 GiB
+temporary build pressure. The real dock-launched WebKit process remained around
+504-518 MiB for more than 20 minutes with desktop cgroup usage below 768 MiB,
+zero high/max/OOM events, zero memory PSI, and the daemon alive; installed
+release, restart, pane-close, focused eviction, build, and `git diff --check`
+checks pass. `npm run verify:canvas-all` still reports seven pre-existing map UI
+assertion failures, but the new eviction case and all renderer-focused cases pass.
+
+## TC-071 — Desktop launch pressure guard
+
+**Priority:** P0
+**Status:** DONE (2026-08-05)
+
+Concurrent launcher calls could pass the single-window check before the first
+cockpit process became visible, creating duplicate WebKit renderer trees. The
+launcher now serializes startup with a lock and keeps it held until the cockpit
+is observable. `python3 -m unittest tests/test_desktop_launcher_guard.py` passes
+with 9 tests; `git diff --check`, `npm run verify:installed-release`, and
+`npm run verify:installed-restart` pass. The installed restart reports one
+TermFleet window, zero external terminals, the daemon socket, and zero memory
+PSI; remaining I/O PSI is host writeback outside the TermFleet process tree.
+
+## TC-072 — Pressure watchdog prompt
+
+**Priority:** P0
+**Status:** DONE (2026-08-05)
+
+The recurring renderer and host-pressure events had no durable alert channel.
+The local watchdog now monitors WebKit D-state/size plus memory and I/O PSI,
+writes actionable PID/RSS/PGID/PSI details, raises a desktop notification with
+the user-session D-Bus address, and recycles only the desktop group before
+relaunching it; the daemon and PTYs remain alive. It deduplicates one alert per
+incident, rate-limits flapping host-I/O alerts, and clearly says host pressure
+does not recycle the desktop. It now runs as a user systemd service with
+automatic restart rather than a shell-owned background job. `python3 -m
+unittest tests/test_pressure_watchdog.py tests/test_desktop_launcher_guard.py`
+passes with 10 tests; the supervised watchdog is live, the desktop is restored
+as one renderer, and memory/I/O PSI are currently near zero.
+
+## TC-074 — Make promoted releases actually replace stale windows
+
+**Priority:** P0
+**Status:** In verification (2026-08-06)
+
+The performance work was not reaching the operator because the dock launcher
+kept reusing the old WebKit process. Replacing it exposed three launch defects:
+the child reacquired the parent lock, the no-user-bus fallback lacked GTK session
+environment, and a troubleshooting daemon inherited the lock. The launcher now
+compares the running executable with the promoted release, replaces only stale
+desktop UI, keeps the child out of the parent lock, and propagates the active
+display/session environment on fallback.
+
+Evidence: `python3 -m unittest tests/test_desktop_launcher_guard.py
+tests/test_pressure_watchdog.py -q` passes 13/13; the focused Canvas2D/status
+suite passes 15/15; the focused map subscription guards pass 2/2;
+`npm run release:install`, `npm run doctor`, and `git diff --check` pass. The live process is now the
+promoted release, WebKit is ~377 MiB / 7% CPU after startup, and memory PSI is
+zero; the daemon PID and PTY ownership remain unchanged.
+
+## TC-073 — Keep background status refresh cheap
+
+**Priority:** P0
+**Status:** In verification (2026-08-06)
+
+The live pressure scan found that the background status poll was not actually
+sidecar-only: each of up to 24 serial targets still tried both provider
+transcript layouts and optional context enrichment. The sweep now explicitly
+disables transcript and context readers, preserving the richer path for the
+visible terminal while removing repeated provider-file and IPC work from the
+map-wide refresh.
+
+Evidence: the focused status suite passes 11/11; `npm run build`,
+`CARGO_BUILD_JOBS=1 cargo check --manifest-path src-tauri/Cargo.toml`,
+`npm run release:install`, `npm run verify:installed-release`, and
+`git diff --check` pass. `npm run verify:tauri-performance` reached startup,
+daemon readiness, and the burst stage but failed its echo marker against the
+existing shared daemon session, so fresh live before/after pressure proof is
+still pending; the current host also has unrelated Ollama CPU load and a large
+existing daemon process tree.
+
+## TC-075 — Open-source Linux preview release readiness lane
+
+**Priority:** P0
+**Status:** DONE (2026-08-06)
+
+The maintainer has used TermFleet as a daily driver for roughly six weeks. That
+is strong evidence for the primary Linux workflow, PTY ownership model, restart
+habits, and practical cockpit ergonomics on the maintainer's machine. It does
+not by itself establish a reproducible public release across fresh checkouts,
+supported Linux environments, or clean installed-release runtimes.
+
+This lane turns the release decision into one end-to-end sequence:
+
+1. **Baseline and scope:** preserve the current daily-driver evidence, define the
+   supported Linux preview boundary, and keep the public README honest about
+   unsigned preview artifacts, native-app requirements, Canvas2D limitations,
+   recovery semantics, and deferred RTL shaping.
+2. **Regression lock:** reproduce each current blocker and add or reuse the
+   smallest guard for OSS readiness, map pane attachment, isolated live
+   verifier runtime, daemon-survival socket setup, and the seven failing Canvas
+   cases.
+3. **Implementation:** fix blockers without weakening the release gates or the
+   daemon-owned PTY, per-pane identity, no-optimistic-echo, and packaged-app
+   constraints.
+4. **Sequential proof:** run focused guards, frontend and Rust checks, the
+   canonical terminal/map/restart verifiers, a rebuilt dock-installed release,
+   and the real desktop end-to-end smoke on the promoted binary.
+5. **Public handoff:** run the OSS/public audits, inspect dependency and license
+   posture, record exact commands and artifacts here, and publish only an
+   explicitly labeled Linux preview unless the broader compatibility evidence
+   supports stronger claims.
+
+**Closed blockers and evidence:** the README now documents the development
+launcher; map attachment and isolated verifier contracts pass; daemon and
+restart/restore harnesses use short Unix-socket runtime roots; malformed map
+metadata and durable activity summaries no longer crash or lose identity; and
+the full Canvas2D suite is 70/70. The daemon latency verifier now tolerates
+valid shell echo framing while keeping the Enter-result check meaningful.
+
+Fresh proof: `npm run verify:developer-preview` passes all prerequisite, OSS,
+public-audit, recovery, evidence-bundle, agent-status, map-contract, and build
+checks. `npm run verify:terminal-reliability` passes map contracts, 70/70
+Canvas2D tests, focused VT/grid and PTY tests, daemon survival, Rust warnings,
+and build; `npm run verify:restart-restore` passes live reattach, cold restore,
+and agent resume/reconstruction; the isolated latency check reports p95 1.4 ms
+and max 1.4 ms. The promoted installed release passes installed-release and
+installed-restart checks; the latter reports one visible TermFleet window,
+2,418 nonblank colors, and zero external terminals. The standalone daemon
+smoke passes reconnect and cold-restore markers with changed pixels.
+
+The publication handoff is now repository-ready: `LICENSE` is Apache-2.0,
+`package.json` is public and declares `Apache-2.0`, and `SECURITY.md`,
+`CONTRIBUTING.md`, and `CODE_OF_CONDUCT.md` are present and linked from the
+README. A clean `npm ci` passes; Vite is locked at 6.4.3; `npm audit
+--audit-level=high` passes with only three moderate upstream Nanoid findings
+remaining behind the current Excalidraw dependency. The updated
+`npm run verify:oss-readiness`, `npm run verify:public-audit`,
+`npm run verify:developer-preview`, `npm run release:install`,
+`npm run verify:installed-release`, `npm run verify:installed-restart`, and
+`git diff --check` all pass. The promoted binary SHA-256 is
+`47a8a710adc65f4b817d14de56b75db4be898c1b8e1ccd9f614af1326f8e51dc`.
+
+The aggregate `npm run verify:release` invocation itself exceeded the tool's
+five-minute response limit, so its result is not claimed; every constituent
+gate was rerun individually and passed, including the GUI standalone smoke.
+
+The support boundary remains an explicitly labeled Linux preview on the tested
+host and dependency set, not a claim of cross-distro stability. Artifact
+signing, GitHub release creation, and publication remain external handoff
+actions; this lane does not push or publish them automatically.
+
+**Acceptance:** the source, dependency, documentation, installed-release, and
+desktop end-to-end gates are green, with the aggregate release command's
+constituent checks rerun individually because the orchestration tool has a
+five-minute response ceiling. The lane is ready for an explicitly labeled
+Linux preview publication, pending the external artifact-signing and GitHub
+release handoff.

@@ -126,9 +126,9 @@ select:focus-visible,
   color: var(--text-primary) !important;
 }
 
-.session-sidebar-row[data-active="true"] .workspace-sidebar-actions {
+.session-sidebar-row[data-active="true"]:not(:hover):not(:focus-within)
+  .workspace-sidebar-actions {
   opacity: 0 !important;
-  pointer-events: none !important;
 }
 
 .session-sidebar-row:hover .workspace-sidebar-actions,
@@ -141,6 +141,12 @@ select:focus-visible,
 .session-sidebar-row:hover .session-sidebar-content,
 .session-sidebar-row:focus-within .session-sidebar-content {
   padding-right: 82px;
+  pointer-events: none !important;
+}
+
+.session-sidebar-row:hover .session-sidebar-content > *,
+.session-sidebar-row:focus-within .session-sidebar-content > * {
+  pointer-events: none !important;
 }
 
 .workspace-rail-button:hover,
@@ -561,6 +567,13 @@ button:active {
   overflow: hidden;
   position: relative;
   background: #1d2123;
+}
+
+/* Map terminals need a readable minimum viewport even while their surrounding
+   card is still settling its fixed-height task/status columns. Split panes keep
+   their normal flex sizing. */
+.terminal-block-shell--standalone {
+  min-height: 260px;
 }
 
 .terminal-block-rail {

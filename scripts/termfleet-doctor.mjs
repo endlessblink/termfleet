@@ -34,6 +34,11 @@ function fileContains(filePath, needle) {
   return out.status === 0;
 }
 
+function fileSha256(filePath) {
+  const out = spawnSync("sha256sum", [filePath], { encoding: "utf8" });
+  return out.status === 0 ? out.stdout.trim().split(/\s+/)[0] : null;
+}
+
 // 1. Claude status hook registered and pointing at a real file.
 try {
   const settingsPath = path.join(os.homedir(), ".claude", "settings.json");
@@ -178,56 +183,57 @@ try {
   report("warn", "Built frontend", "no dist/ build found — run `npm run build` (dev launcher builds its own)");
 }
 
-// 5. Release binary: contains the Rust command, and its embed is not older than dist.
+// 5. Current release build: this is the candidate that must be promoted to the dock.
 const binaryPath = path.join(ROOT, "src-tauri", "target", "release", "terminal-workspace");
 let binaryMtime = null;
+let builtBinarySha = null;
 if (!existsSync(binaryPath)) {
-  report("info", "Desktop binary", "no release binary built (fine if you only use the dev launcher)");
+  report("info", "Current release build", "no release build exists yet");
 } else {
   binaryMtime = statSync(binaryPath).mtimeMs;
+  builtBinarySha = fileSha256(binaryPath);
   if (!fileContains(binaryPath, "agent_status_read_sidecar")) {
-    report("fail", "Desktop binary", "release binary predates the status fix — rebuild: cd src-tauri && cargo build --release");
+    report("fail", "Current release build", "release build predates the status fix");
   } else if (newestDistJs && binaryMtime < newestDistJs.mtime) {
-    // Only relevant if the operator LAUNCHES this release binary. The dock entry runs
-    // `run-dev.sh` -> `npm run tauri:dev`, which serves the frontend from Vite and uses
-    // target/debug, so for a dock user this binary's age means nothing and chasing it
-    // wasted a whole session (2026-07-26). See the "How it is launched" line below.
-    report("info", "Desktop binary", `release binary (built ${fmtAge(Date.now() - binaryMtime)}) predates the frontend build — only matters if you launch the RELEASE build; the dock launcher does not`);
+    report("fail", "Current release build", `release build predates the frontend build by ${fmtAge(newestDistJs.mtime - binaryMtime)}`);
   } else {
-    report("ok", "Desktop binary", `contains the status fix (built ${fmtAge(Date.now() - binaryMtime)})`);
+    report("ok", "Current release build", `ready for dock installation (built ${fmtAge(Date.now() - binaryMtime)})`);
   }
 }
 
-// 5b. HOW IT IS LAUNCHED. Report this before any "rebuild X" advice: the dock entry
-// resolves through a wrapper and a symlink to `run-dev.sh` -> `npm run tauri:dev`, which
-// serves the frontend from Vite and runs target/debug. A whole session was spent telling
-// the operator to rebuild the release binary they never launch (2026-07-26).
+// 5b. Installed dock release. The operator launches only from the dock, so source
+// and build success are incomplete until this immutable installed artifact matches.
+let installedBinaryMtime = null;
+let installedBinarySha = null;
 try {
+  const home = process.env.HOME ?? "";
   const desktopEntry = path.join(
-    process.env.HOME ?? "",
+    home,
     ".local/share/applications/termfleet.desktop",
   );
-  if (existsSync(desktopEntry)) {
+  if (!existsSync(desktopEntry)) {
+    report("fail", "Installed dock release", "TermFleet desktop entry is missing");
+  } else {
     const exec = readFileSync(desktopEntry, "utf8").match(/^Exec=(.*)$/m)?.[1]?.trim();
-    let target = exec ?? "unknown";
-    // Follow the wrapper's TERMFLEET_CMD and any symlink, so the report names the
-    // script that actually starts the app rather than the shortcut.
-    if (exec && existsSync(exec)) {
-      const wrapper = readFileSync(exec, "utf8");
-      const cmd = wrapper.match(/^TERMFLEET_CMD="([^"]+)"/m)?.[1];
-      if (cmd) target = existsSync(cmd) ? realpathSync(cmd) : cmd;
+    const commandPath = path.join(home, ".local", "bin", "termfleet");
+    const target = existsSync(commandPath) ? realpathSync(commandPath) : commandPath;
+    const releasePrefix = path.join(home, ".local", "share", "termfleet", "releases") + path.sep;
+    if (!exec || !existsSync(exec)) {
+      report("fail", "Installed dock release", `dock launcher is missing: ${exec ?? "unknown"}`);
+    } else if (!target.startsWith(releasePrefix)) {
+      report("fail", "Installed dock release", `dock resolves outside immutable releases: ${target}`);
+    } else {
+      installedBinaryMtime = statSync(target).mtimeMs;
+      installedBinarySha = fileSha256(target);
+      if (builtBinarySha && installedBinarySha !== builtBinarySha) {
+        report("fail", "Installed dock release", "dock is stale — install the current release before acceptance");
+      } else {
+        report("ok", "Installed dock release", `dock uses the current verified build: ${target}`);
+      }
     }
-    const devMode = /run-dev\.sh$|tauri:dev/.test(target);
-    report(
-      "info",
-      "How it is launched",
-      devMode
-        ? `dock entry runs ${path.basename(target)} = DEV mode (Vite + target/debug). A frontend change needs only a relaunch — no npm build, no cargo build`
-        : `dock entry runs ${target} — verify this is the artifact your rebuilds produce`,
-    );
   }
-} catch {
-  // Not fatal: the launch path is advisory.
+} catch (error) {
+  report("fail", "Installed dock release", `could not verify the dock artifact (${error.message})`);
 }
 
 // 6. Running app process vs binary: a rebuilt binary changes nothing until relaunch.
@@ -236,15 +242,20 @@ try {
   const appProcs = ps
     .split("\n")
     .map((line) => line.trim())
-    .filter((line) => line.includes("target/release/terminal-workspace") && !line.includes("--terminal-workspace-daemon"))
+    .filter((line) =>
+      !line.includes("--terminal-workspace-daemon") &&
+      (line.includes("target/release/terminal-workspace") ||
+        line.includes("/.local/bin/termfleet") ||
+        line.includes("/termfleet/releases/"))
+    )
     .map((line) => {
       const [pid, etimes] = line.split(/\s+/);
       return { pid, startedAt: Date.now() - Number(etimes) * 1000 };
     });
   if (appProcs.length === 0) {
     report("info", "Running app", "desktop app is not currently running");
-  } else if (binaryMtime && appProcs.some((proc) => proc.startedAt < binaryMtime)) {
-    report("warn", "Running app", "the running app was started BEFORE the current binary was built — relaunch the app to pick up fixes (terminals survive; the daemon owns them)");
+  } else if ((installedBinaryMtime ?? binaryMtime) && appProcs.some((proc) => proc.startedAt < (installedBinaryMtime ?? binaryMtime))) {
+    report("warn", "Running app", "the running dock app predates the installed release — relaunch it from the dock");
   } else {
     report("ok", "Running app", `running and newer than the binary build (pid ${appProcs[0].pid})`);
   }

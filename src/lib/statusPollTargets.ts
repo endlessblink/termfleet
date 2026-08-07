@@ -39,7 +39,12 @@ function statusPollPriority(tab: Tab, terminal: TerminalState, activeTabId: stri
   return 10;
 }
 
-export function selectStatusPollTargets(tabs: Tab[], activeTabId: string | null | undefined, now = Date.now()) {
+export function selectStatusPollTargets(
+  tabs: Tab[],
+  activeTabId: string | null | undefined,
+  now = Date.now(),
+  lastPolledAt: (target: StatusPollTarget) => number = () => 0,
+) {
   return tabs
     .flatMap((tab) =>
       (tab.terminals ?? []).map((terminal): StatusPollTarget => ({
@@ -49,6 +54,16 @@ export function selectStatusPollTargets(tabs: Tab[], activeTabId: string | null 
       })),
     )
     .filter(({ priority }) => priority > 0)
-    .sort((a, b) => b.priority - a.priority || statusPollTerminalTimestamp(b.terminal) - statusPollTerminalTimestamp(a.terminal))
+    .sort((a, b) => {
+      const activeOrder =
+        Number(b.tab.id === activeTabId) - Number(a.tab.id === activeTabId);
+      if (activeOrder !== 0) return activeOrder;
+      return (
+        lastPolledAt(a) - lastPolledAt(b) ||
+        b.priority - a.priority ||
+        statusPollTerminalTimestamp(b.terminal) -
+          statusPollTerminalTimestamp(a.terminal)
+      );
+    })
     .slice(0, MAX_STATUS_POLL_TARGETS_PER_TICK);
 }

@@ -216,10 +216,8 @@ mod tests {
 
     #[test]
     fn private_runtime_without_user_bus_disables_systemd_run() {
-        let runtime = std::env::temp_dir().join(format!(
-            "termfleet-no-user-bus-{}",
-            std::process::id()
-        ));
+        let runtime =
+            std::env::temp_dir().join(format!("termfleet-no-user-bus-{}", std::process::id()));
         std::fs::create_dir_all(&runtime).expect("create private runtime");
 
         assert!(!systemd_user_bus_available(Some(runtime.as_os_str())));

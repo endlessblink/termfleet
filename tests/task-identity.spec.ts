@@ -79,6 +79,37 @@ test("meaningful user prompt owns Task ahead of the active plan item", () => {
   });
 });
 
+test("a corrective terminal prompt cannot replace a clear plan purpose", () => {
+  const resolved = resolveTaskIdentity({
+    mainUserAsk: {
+      text: "no. I need to see the preview on the suite!!!!!!!!",
+      source: "terminal-prompt",
+      updatedAt: 2,
+    },
+    taskLineup: [
+      {
+        id: "apply",
+        content: "Applying approved course covers on the live site",
+        status: "in_progress",
+        source: "todo-write",
+        updatedAt: 1,
+      },
+      {
+        id: "preview",
+        content: "Showing the approved course redesign in the live preview",
+        status: "pending",
+        source: "todo-write",
+        updatedAt: 1,
+      },
+    ],
+  });
+
+  expect(resolved).toMatchObject({
+    text: "Applying approved course covers on the live site",
+    source: "task-tool",
+  });
+});
+
 test("vague follow-up falls back to the active plan item", () => {
   const resolved = resolveTaskIdentity({
     activeRunId: "run-1",
@@ -102,6 +133,44 @@ test("vague follow-up falls back to the active plan item", () => {
 
   expect(resolved).toMatchObject({
     text: "Declared task tool item",
+    source: "task-tool",
+  });
+});
+
+test("a clear plan purpose beats a raw status-sidecar complaint immediately", () => {
+  const resolved = resolveTaskIdentity({
+    mainUserAsk: {
+      text: "[[Image #1] for the millionth time it glitches. fix it, test it.",
+      source: "status-sidecar",
+      updatedAt: 2,
+    },
+    taskLineup: [
+      {
+        id: "trace",
+        content: "Tracing the exact unclear card",
+        status: "in_progress",
+        source: "todo-write",
+        updatedAt: 1,
+      },
+      {
+        id: "purpose",
+        content: "Making every card state its real purpose",
+        status: "pending",
+        source: "todo-write",
+        updatedAt: 1,
+      },
+      {
+        id: "verify",
+        content: "Testing all live task labels",
+        status: "pending",
+        source: "todo-write",
+        updatedAt: 1,
+      },
+    ],
+  });
+
+  expect(resolved).toMatchObject({
+    text: "Making every card state its real purpose",
     source: "task-tool",
   });
 });
@@ -414,6 +483,51 @@ test("a Bina billing checklist keeps the customer repair visible during deployme
     "Making renewals and checkout safe while refunding Lee and granting Levana free July access",
   );
   expect(header.title.text).toBe("Deploying the fix and checking production");
+});
+
+test("a Bina audit explains that public live content must be covered", () => {
+  const header = buildShellTerminalHeaderViewModel({
+    project: {
+      id: "bina",
+      name: "bina-meatzevet-courses",
+      projectRoot: "/repo/bina-meatzevet-courses",
+    },
+    liveCwd: "/repo/bina-meatzevet-courses",
+    terminalStatus: "running",
+    taskLineup: [
+      {
+        id: "audit",
+        content: "Checking automated coverage against publicly live content",
+        status: "in_progress",
+        source: "todo-write",
+        updatedAt: 1,
+      },
+      {
+        id: "verify",
+        content: "Verifying the content currently live in production",
+        status: "pending",
+        source: "todo-write",
+        updatedAt: 2,
+      },
+    ],
+    statusSummary: {
+      task: "Checking automated coverage against publicly live content",
+      userTask: "what to add here?",
+      path: "/repo/bina-meatzevet-courses",
+      now: "Verifying the content currently live in production",
+      status: "working",
+      provider: "codex",
+      confidence: "high",
+      tasksFromTodoWrite: true,
+    },
+  });
+
+  expect(header.taskDescription.text).toBe(
+    "Checking that publicly live Bina content is included in automated coverage",
+  );
+  expect(header.title.text).toBe(
+    "Verifying the content currently live in production",
+  );
 });
 
 test("a sidecar checklist is the concise fallback when no main goal was declared", () => {

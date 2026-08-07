@@ -34,6 +34,10 @@ export class GridBuffer {
   alternateScrollSet = false;
   sgrMouse = false;
   cells: GridCell[][] = [];
+  // Rows with actual cell payload changes, excluding cursor-only repaint rows.
+  // The renderer needs cursor rows dirty, but status/output consumers must not
+  // mistake cursor motion for new PTY output.
+  contentDirtyRows = new Set<number>();
 
   private reset(cols: number, rows: number): void {
     this.cols = cols;
@@ -48,6 +52,7 @@ export class GridBuffer {
    */
   apply(frame: DecodedFrame): Set<number> {
     const dirty = new Set<number>();
+    const contentDirty = new Set<number>();
     const prevCursorLine = this.cursor.line;
     const prevCursorCol = this.cursor.col;
     const prevCursorVisible = this.cursorVisible;
@@ -56,14 +61,18 @@ export class GridBuffer {
       this.reset(frame.cols, frame.rows);
       // A full sync carries every row; mark all dirty.
       for (let r = 0; r < this.rows; r += 1) dirty.add(r);
+      for (let r = 0; r < this.rows; r += 1) contentDirty.add(r);
     }
 
     for (const row of frame.dirtyRows) {
       if (row.index < this.rows) {
         this.cells[row.index] = normalizeRow(row.cells, this.cols);
         dirty.add(row.index);
+        contentDirty.add(row.index);
       }
     }
+
+    this.contentDirtyRows = contentDirty;
 
     this.cursor = frame.cursor;
     this.displayOffset = frame.displayOffset;

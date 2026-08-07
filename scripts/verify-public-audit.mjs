@@ -36,6 +36,8 @@ const readme = readFileSync(join(root, "README.md"), "utf8");
 const packageJson = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
 const licenseExists = existsSync(join(root, "LICENSE"));
 const securityExists = existsSync(join(root, "SECURITY.md"));
+const contributingExists = existsSync(join(root, "CONTRIBUTING.md"));
+const conductExists = existsSync(join(root, "CODE_OF_CONDUCT.md"));
 
 const checks = [
   {
@@ -43,8 +45,8 @@ const checks = [
     message: `Public docs must not contain obvious token-shaped secrets or private machine paths:\n${findings.join("\n")}`,
   },
   {
-    ok: packageJson.private === true,
-    message: "package.json must remain private until license/security publishing decisions are complete.",
+    ok: packageJson.private === false && packageJson.license === "Apache-2.0",
+    message: "package.json must be public and declare the Apache-2.0 license before release.",
   },
   {
     // Publishing decision made: the repo ships under a real license (Apache-2.0).
@@ -55,6 +57,14 @@ const checks = [
     // Publishing decision made: a real vulnerability-intake path exists.
     ok: securityExists && /SECURITY\.md/.test(readme),
     message: "SECURITY.md must exist and be referenced in the README before public release.",
+  },
+  {
+    ok: contributingExists && /CONTRIBUTING\.md/.test(readme),
+    message: "CONTRIBUTING.md must exist and be referenced in the README before public release.",
+  },
+  {
+    ok: conductExists && /CODE_OF_CONDUCT\.md/.test(readme),
+    message: "CODE_OF_CONDUCT.md must exist and be referenced in the README before public release.",
   },
   {
     ok: /Do not include secrets/.test(readme) && /npm run evidence:bundle/.test(readme),

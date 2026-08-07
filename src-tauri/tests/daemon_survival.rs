@@ -13,7 +13,17 @@ fn unique_temp_dir(name: &str) -> std::path::PathBuf {
         .duration_since(UNIX_EPOCH)
         .expect("clock before unix epoch")
         .as_millis();
-    std::env::temp_dir().join(format!("{name}-{}-{nonce}", std::process::id()))
+    let base = std::env::var_os("TERMFLEET_TEST_TMPDIR")
+        .map(std::path::PathBuf::from)
+        .or_else(|| {
+            if cfg!(unix) {
+                Some(std::path::PathBuf::from("/tmp"))
+            } else {
+                std::env::temp_dir().into()
+            }
+        })
+        .expect("test temp root");
+    base.join(format!("{name}-{}-{nonce}", std::process::id()))
 }
 
 fn start_private_daemon(run_dir: &std::path::Path, data_dir: &std::path::Path) -> Child {

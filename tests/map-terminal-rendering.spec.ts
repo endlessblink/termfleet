@@ -21,7 +21,9 @@ test.use({
 
 test("selected live map terminals preserve alternate-screen projection without clipping overscale", () => {
   const source = readFileSync("src/components/MagicCanvas.tsx", "utf8");
-  const liveTerminalBlock = source.match(/<TerminalComponent[\s\S]*?onSnapshot=\{\(snapshot\) => onTerminalSnapshot\(node\.id, snapshot\)\}[\s\S]*?\/>/);
+  const liveTerminalBlock = source.match(
+    /<TerminalComponent[\s\S]*?onSnapshot=\{\(snapshot\) => onTerminalSnapshot\(node\.id, snapshot\)\}[\s\S]*?\/>/,
+  );
 
   expect(liveTerminalBlock?.[0]).toContain("standalone");
   expect(liveTerminalBlock?.[0]).toContain("runtimeActive={selected}");
@@ -34,15 +36,37 @@ test("selected live map terminal renders through non-transformed overlay, not ac
   const source = readFileSync("src/components/MagicCanvas.tsx", "utf8");
 
   expect(source).toContain("const shouldUseNativeSplitForInteraction = false;");
-  expect(source).toContain("terminal cards must not degrade into split-pane activation cards");
+  expect(source).toContain(
+    "terminal cards must not degrade into split-pane activation cards",
+  );
   expect(source).toContain('data-testid="canvas-terminal-overlay-layer"');
   expect(source).toContain('data-testid="canvas-terminal-live-overlay"');
   expect(source).toContain('data-testid="canvas-terminal-overlay-placeholder"');
-  expect(source).toContain('window.dispatchEvent(new Event("termfleet-map-terminal-overlay-sync"));');
-  expect(codeShape(source)).toContain(
-    codeShape("renderScale={shouldOverlayTerminal ? 1 : mapTerminalRenderScaleForZoom(zoom)}")
+  expect(source).toContain(
+    'window.dispatchEvent(new Event("termfleet-map-terminal-overlay-sync"));',
   );
-  expect(source).not.toContain("const shouldUseNativeSplitForInteraction = isDesktopNativeRuntime");
+  expect(codeShape(source)).toContain(
+    codeShape(
+      "renderScale={shouldOverlayTerminal ? 1 : mapTerminalRenderScaleForZoom(zoom)}",
+    ),
+  );
+  expect(source).not.toContain(
+    "const shouldUseNativeSplitForInteraction = isDesktopNativeRuntime",
+  );
+});
+
+test("map reattachment ignores a stale persisted PTY id", () => {
+  const source = readFileSync("src/components/MagicCanvas.tsx", "utf8");
+  const linkedTerminalBlock = source.match(
+    /const linkedPaneTerminalId = [\s\S]*?const linkedTerminal =/,
+  )?.[0];
+
+  expect(codeShape(linkedTerminalBlock)).toContain(
+    codeShape(
+      "const linkedTerminalId = linkedPaneTerminalId ?? linkedTab?.terminals[0]?.id;",
+    ),
+  );
+  expect(codeShape(linkedTerminalBlock)).not.toContain("node.terminalPtyId");
 });
 
 test("map Canvas2D terminals do not also mount the xterm renderer or per-pane status poller", () => {
@@ -51,108 +75,196 @@ test("map Canvas2D terminals do not also mount the xterm renderer or per-pane st
 
   expect(terminal).toContain("if (canvasMode) return;");
   expect(terminal).toContain("if (standalone) return;");
-  expect(terminal).not.toContain("if (canvasMode || !containerRef.current) return;");
+  expect(terminal).not.toContain(
+    "if (canvasMode || !containerRef.current) return;",
+  );
   expect(magicCanvas).not.toContain("summarizeAgentStatus({");
   expect(magicCanvas).not.toContain("const statusEndpointConfigured");
 });
 
+test("map nodes subscribe to their own tab and live PTY metadata", () => {
+  const source = readFileSync("src/components/MagicCanvas.tsx", "utf8");
+  const nodeView = source.match(
+    /function CanvasNodeViewImpl[\s\S]*?(?=const CanvasNodeView = memo)/,
+  )?.[0] ?? "";
+
+  expect(nodeView).toContain(
+    "const linkedTab = useWorkspaceStore((state) =>",
+  );
+  expect(nodeView).toContain(
+    "state.tabs.find((tab) => tab.id === node.terminalTabId)",
+  );
+  expect(nodeView).toContain(
+    "linkedTerminalId ? state.liveCwds[linkedTerminalId] : undefined",
+  );
+  expect(nodeView).toContain(
+    "linkedTerminalId ? state.liveGitRoots[linkedTerminalId] : undefined",
+  );
+  expect(nodeView).not.toContain(
+    "const tabs = useWorkspaceStore((state) => state.tabs);",
+  );
+  expect(nodeView).not.toContain(
+    "const liveCwds = useWorkspaceStore((state) => state.liveCwds);",
+  );
+});
+
+test("workspace surface subscribes to the active tab instead of every pane", () => {
+  const source = readFileSync("src/components/WorkspaceSurface.tsx", "utf8");
+
+  expect(source).toContain(
+    "state.tabs.find((tab) => tab.id === state.activeTabId)",
+  );
+  expect(source).toContain("activeTabIndex");
+  expect(source).not.toContain(
+    "const tabs = useWorkspaceStore((state) => state.tabs);",
+  );
+});
+
 test("selected map agent panes suppress synchronized-output control residue", () => {
-  const terminalCanvas = readFileSync("src/components/TerminalCanvas.tsx", "utf8");
+  const terminalCanvas = readFileSync(
+    "src/components/TerminalCanvas.tsx",
+    "utf8",
+  );
   const vtGrid = readFileSync("src-tauri/src/vt_grid.rs", "utf8");
   const mapVerifier = readFileSync("scripts/verify-map-terminals.mjs", "utf8");
 
-  const projectionGuard = terminalCanvas.match(/const preservesProjectionSize = \(\) =>[\s\S]*?;\n\n    channel\.onmessage/);
-  const projectionClip = terminalCanvas.match(/const applyProjectionClip = \(\) => \{[\s\S]*?\n    \};/);
+  const projectionGuard = terminalCanvas.match(
+    /const preservesProjectionSize = \(\) =>[\s\S]*?;\n\n    channel\.onmessage/,
+  );
+  const projectionClip = terminalCanvas.match(
+    /const applyProjectionClip = \(\) => \{[\s\S]*?\n    \};/,
+  );
   expect(projectionGuard?.[0]).toContain("modesRef.current.altScreen");
   expect(projectionGuard?.[0]).not.toContain("modesRef.current.mouseReport");
-  expect(projectionGuard?.[0]).not.toContain("modesRef.current.alternateScroll");
+  expect(projectionGuard?.[0]).not.toContain(
+    "modesRef.current.alternateScroll",
+  );
   expect(projectionGuard?.[0]).not.toContain("modesRef.current.sgrMouse");
   expect(projectionGuard?.[0]).not.toContain("modesRef.current.bracketedPaste");
   expect(projectionGuard?.[0]).not.toContain("modesRef.current.appCursor");
   // Viewport CLIP, not down-scale: render at 1:1 (no Math.min scale-to-fit that
   // made text tiny) and anchor the bottom rows; the shell's overflow:hidden clips.
-  expect(projectionClip?.[0]).toContain("Math.min(0, shell.clientHeight - logicalH)");
+  expect(projectionClip?.[0]).toContain(
+    "Math.min(0, shell.clientHeight - logicalH)",
+  );
   expect(projectionClip?.[0]).toContain("translateY");
   expect(projectionClip?.[0]).not.toContain("scale(");
   expect(codeShape(terminalCanvas)).toContain(
-    codeShape("syncOverlaySize(); if (preservesProjectionSize()) { applyProjectionClip(); }")
+    codeShape(
+      "syncOverlaySize(); if (preservesProjectionSize()) { applyProjectionClip(); }",
+    ),
   );
   expect(terminalCanvas).toContain("true alt-screen TUI mode");
   expect(vtGrid).toContain("strip_unsupported_control_sequences");
   expect(vtGrid).toContain('SYNC_OUTPUT_ON: &[u8] = b"\\x1b[?2026h"');
   expect(vtGrid).toContain('SYNC_OUTPUT_OFF: &[u8] = b"\\x1b[?2026l"');
   expect(vtGrid).toContain("synchronized_output_markers_never_render_as_text");
-  expect(vtGrid).toContain("split_synchronized_output_markers_never_render_as_text");
-  expect(mapVerifier).toContain("preserve alternate-screen terminals with a 1:1 viewport clip (no down-scale)");
+  expect(vtGrid).toContain(
+    "split_synchronized_output_markers_never_render_as_text",
+  );
+  expect(mapVerifier).toContain(
+    "preserve alternate-screen terminals with a 1:1 viewport clip (no down-scale)",
+  );
 });
 
 test("map terminal activation owns tab, pane, and focused terminal before paste", () => {
   const source = readFileSync("src/components/MagicCanvas.tsx", "utf8");
-  const activationBlock = source.match(/const activateTerminalNode = useCallback\(\(\) => \{[\s\S]*?\n  \}, \[/)?.[0] ?? "";
+  const activationBlock =
+    source.match(
+      /const activateTerminalNode = useCallback\(\(\) => \{[\s\S]*?\n  \}, \[/,
+    )?.[0] ?? "";
 
   expect(activationBlock).toContain("selectCanvasNode(node.id)");
   expect(activationBlock).toContain("setActiveTab(terminalTabId)");
-  expect(activationBlock).toContain("setActivePane(terminalTabId, terminalPaneId)");
+  expect(activationBlock).toContain(
+    "setActivePane(terminalTabId, terminalPaneId)",
+  );
   expect(codeShape(activationBlock)).toContain(
-    codeShape("setActiveTerminal(linkedTerminalId ?? `terminal-${terminalTabId}-${terminalPaneId}`)")
+    codeShape(
+      "setActiveTerminal(linkedTerminalId ?? `terminal-${terminalTabId}-${terminalPaneId}`)",
+    ),
   );
 });
 
 test("AskUserQuestion mouse-report prompts do not trigger map layout reconciliation", () => {
-  const terminalCanvas = readFileSync("src/components/TerminalCanvas.tsx", "utf8");
-  const projectionGuard = terminalCanvas.match(/const preservesProjectionSize = \(\) =>[\s\S]*?;\n\n    channel\.onmessage/);
+  const terminalCanvas = readFileSync(
+    "src/components/TerminalCanvas.tsx",
+    "utf8",
+  );
+  const projectionGuard = terminalCanvas.match(
+    /const preservesProjectionSize = \(\) =>[\s\S]*?;\n\n    channel\.onmessage/,
+  );
 
   expect(projectionGuard?.[0]).toContain("modesRef.current.altScreen");
   expect(projectionGuard?.[0]).not.toContain("modesRef.current.mouseReport");
   expect(projectionGuard?.[0]).not.toContain("modesRef.current.sgrMouse");
-  expect(projectionGuard?.[0]).not.toContain("modesRef.current.alternateScroll");
-  expect(terminalCanvas).toMatch(/AskUserQuestion-style primary-screen\s+\/\/ prompts/);
+  expect(projectionGuard?.[0]).not.toContain(
+    "modesRef.current.alternateScroll",
+  );
+  expect(terminalCanvas).toMatch(
+    /AskUserQuestion-style primary-screen\s+\/\/ prompts/,
+  );
 });
 
 async function imageRegionStats(
   page: import("@playwright/test").Page,
   screenshot: Buffer,
-  box: { x: number; y: number; width: number; height: number }
+  box: { x: number; y: number; width: number; height: number },
 ) {
-  return page.evaluate(async ({ dataUrl, box }) => {
-    const image = new Image();
-    await new Promise<void>((resolve, reject) => {
-      image.onload = () => resolve();
-      image.onerror = () => reject(new Error("Failed to decode screenshot"));
-      image.src = dataUrl;
-    });
-    const canvas = document.createElement("canvas");
-    canvas.width = image.width;
-    canvas.height = image.height;
-    const context = canvas.getContext("2d");
-    if (!context) throw new Error("Canvas 2D context is unavailable");
-    context.drawImage(image, 0, 0);
-    const x = Math.max(0, Math.floor(box.x));
-    const y = Math.max(0, Math.floor(box.y));
-    const width = Math.max(1, Math.min(canvas.width - x, Math.floor(box.width)));
-    const height = Math.max(1, Math.min(canvas.height - y, Math.floor(box.height)));
-    const pixels = context.getImageData(x, y, width, height).data;
-    let brightPixels = 0;
-    let edgePixels = 0;
-    let previous = 0;
-    for (let index = 0; index < pixels.length; index += 4) {
-      const luminance = (pixels[index] * 0.2126) + (pixels[index + 1] * 0.7152) + (pixels[index + 2] * 0.0722);
-      if (luminance > 120) brightPixels += 1;
-      if (index > 0 && Math.abs(luminance - previous) > 26) edgePixels += 1;
-      previous = luminance;
-    }
-    return { brightPixels, edgePixels, width, height };
-  }, {
-    dataUrl: `data:image/png;base64,${screenshot.toString("base64")}`,
-    box,
-  });
+  return page.evaluate(
+    async ({ dataUrl, box }) => {
+      const image = new Image();
+      await new Promise<void>((resolve, reject) => {
+        image.onload = () => resolve();
+        image.onerror = () => reject(new Error("Failed to decode screenshot"));
+        image.src = dataUrl;
+      });
+      const canvas = document.createElement("canvas");
+      canvas.width = image.width;
+      canvas.height = image.height;
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("Canvas 2D context is unavailable");
+      context.drawImage(image, 0, 0);
+      const x = Math.max(0, Math.floor(box.x));
+      const y = Math.max(0, Math.floor(box.y));
+      const width = Math.max(
+        1,
+        Math.min(canvas.width - x, Math.floor(box.width)),
+      );
+      const height = Math.max(
+        1,
+        Math.min(canvas.height - y, Math.floor(box.height)),
+      );
+      const pixels = context.getImageData(x, y, width, height).data;
+      let brightPixels = 0;
+      let edgePixels = 0;
+      let previous = 0;
+      for (let index = 0; index < pixels.length; index += 4) {
+        const luminance =
+          pixels[index] * 0.2126 +
+          pixels[index + 1] * 0.7152 +
+          pixels[index + 2] * 0.0722;
+        if (luminance > 120) brightPixels += 1;
+        if (index > 0 && Math.abs(luminance - previous) > 26) edgePixels += 1;
+        previous = luminance;
+      }
+      return { brightPixels, edgePixels, width, height };
+    },
+    {
+      dataUrl: `data:image/png;base64,${screenshot.toString("base64")}`,
+      box,
+    },
+  );
 }
 
-test("MASTER_PLAN task parser keeps summary table titles and statuses readable", async ({ page }) => {
+test("MASTER_PLAN task parser keeps summary table titles and statuses readable", async ({
+  page,
+}) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
 
   const result = await page.evaluate(async () => {
-    const { parseMasterPlanTasks } = await import("/src/lib/masterPlanTasks.ts");
+    const { parseMasterPlanTasks } =
+      await import("/src/lib/masterPlanTasks.ts");
     return parseMasterPlanTasks(`
 | ID         | Title                            | Priority | Status            | Dependencies |
 | ---------- | -------------------------------- | -------- | ----------------- | ------------ |
@@ -212,17 +324,32 @@ Acceptance:
   ]);
 });
 
-test("unchanged MASTER_PLAN tasks do not refresh the whole map", async ({ page }) => {
+test("unchanged MASTER_PLAN tasks do not refresh the whole map", async ({
+  page,
+}) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
   const result = await page.evaluate(async () => {
-    const { masterPlanTaskMapsEqual } = await import("/src/lib/masterPlanTasks.ts");
+    const { masterPlanTaskMapsEqual } =
+      await import("/src/lib/masterPlanTasks.ts");
     const previous = {
-      "/project": [{ id: "TC-001", title: "Keep terminals live", status: "in-progress", rawStatus: "IN_PROGRESS" }],
+      "/project": [
+        {
+          id: "TC-001",
+          title: "Keep terminals live",
+          status: "in-progress",
+          rawStatus: "IN_PROGRESS",
+        },
+      ],
     };
     return {
-      unchanged: masterPlanTaskMapsEqual(previous, JSON.parse(JSON.stringify(previous))),
+      unchanged: masterPlanTaskMapsEqual(
+        previous,
+        JSON.parse(JSON.stringify(previous)),
+      ),
       changed: masterPlanTaskMapsEqual(previous, {
-        "/project": [{ ...previous["/project"][0], status: "done", rawStatus: "DONE" }],
+        "/project": [
+          { ...previous["/project"][0], status: "done", rawStatus: "DONE" },
+        ],
       }),
     };
   });
@@ -230,11 +357,15 @@ test("unchanged MASTER_PLAN tasks do not refresh the whole map", async ({ page }
   expect(result).toEqual({ unchanged: true, changed: false });
 });
 
-test("unchanged MASTER_PLAN contents reuse the parsed task tree", async ({ page }) => {
+test("unchanged MASTER_PLAN contents reuse the parsed task tree", async ({
+  page,
+}) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
   const result = await page.evaluate(async () => {
-    const { cachedMasterPlanTasks } = await import("/src/lib/masterPlanTasks.ts");
-    const contents = "| ID | Title | Status |\n| - | - | - |\n| TC-001 | Keep terminals live | IN_PROGRESS |";
+    const { cachedMasterPlanTasks } =
+      await import("/src/lib/masterPlanTasks.ts");
+    const contents =
+      "| ID | Title | Status |\n| - | - | - |\n| TC-001 | Keep terminals live | IN_PROGRESS |";
     const first = cachedMasterPlanTasks(undefined, contents);
     const second = cachedMasterPlanTasks(first, contents);
     return {
@@ -246,10 +377,16 @@ test("unchanged MASTER_PLAN contents reuse the parsed task tree", async ({ page 
   expect(result).toEqual({ reusedEntry: true, reusedTasks: true });
 });
 
-test("background live map terminals render at a bounded cadence", async ({ page }) => {
+test("background live map terminals render at a bounded cadence", async ({
+  page,
+}) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
   const result = await page.evaluate(async () => {
-    const { mapTerminalFrameGapMs, mapTerminalTransportMode, shouldRefreshMapSnapshot } = await import("/src/lib/mapRenderCadence.ts");
+    const {
+      mapTerminalFrameGapMs,
+      mapTerminalTransportMode,
+      shouldRefreshMapSnapshot,
+    } = await import("/src/lib/mapRenderCadence.ts");
     return {
       selectedInput: mapTerminalFrameGapMs(true, true, true),
       selectedIdle: mapTerminalFrameGapMs(true, true, false),
@@ -276,7 +413,9 @@ test("background live map terminals render at a bounded cadence", async ({ page 
   });
 });
 
-test("terminal task binding uses an in-app searchable picker", async ({ page }) => {
+test("terminal task binding uses an in-app searchable picker", async ({
+  page,
+}) => {
   const plan = `
 | ID         | Title                            | Priority | Status            | Dependencies |
 | ---------- | -------------------------------- | -------- | ----------------- | ------------ |
@@ -291,8 +430,15 @@ test("terminal task binding uses an in-app searchable picker", async ({ page }) 
     window.prompt = () => {
       throw new Error("Task binding must not use window.prompt");
     };
-    (window as typeof window & { __TAURI_INTERNALS__?: Record<string, unknown> }).__TAURI_INTERNALS__ = {
-      metadata: { currentWindow: { label: "main" }, currentWebview: { label: "main" } },
+    (
+      window as typeof window & {
+        __TAURI_INTERNALS__?: Record<string, unknown>;
+      }
+    ).__TAURI_INTERNALS__ = {
+      metadata: {
+        currentWindow: { label: "main" },
+        currentWebview: { label: "main" },
+      },
       callbacks,
       transformCallback(callback: unknown) {
         const id = callbackId++;
@@ -304,8 +450,10 @@ test("terminal task binding uses an in-app searchable picker", async ({ page }) 
       },
       async invoke(command: string) {
         if (command === "fs_read_file") return masterPlan;
-        if (command === "daemon_status") return { reachable: false, mode: "browser" };
-        if (command === "daemon_ensure_running") return { reachable: false, mode: "browser", message: "browser" };
+        if (command === "daemon_status")
+          return { reachable: false, mode: "browser" };
+        if (command === "daemon_ensure_running")
+          return { reachable: false, mode: "browser", message: "browser" };
         if (command === "grid_snapshot") {
           return JSON.stringify({
             cols: 80,
@@ -331,12 +479,17 @@ test("terminal task binding uses an in-app searchable picker", async ({ page }) 
   await page.waitForLoadState("networkidle");
 
   await page.evaluate(() => {
-    const store = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => { workspaceUiState: Record<string, unknown>; reconcileProjectGroups: () => void };
-        setState: (state: Record<string, unknown>) => void;
-      };
-    }).__termfleetWorkspaceStore;
+    const store = (
+      window as typeof window & {
+        __termfleetWorkspaceStore?: {
+          getState: () => {
+            workspaceUiState: Record<string, unknown>;
+            reconcileProjectGroups: () => void;
+          };
+          setState: (state: Record<string, unknown>) => void;
+        };
+      }
+    ).__termfleetWorkspaceStore;
     if (!store) throw new Error("TermFleet test store is unavailable");
     const group = {
       id: "group-termfleet",
@@ -354,32 +507,44 @@ test("terminal task binding uses an in-app searchable picker", async ({ page }) 
       },
       groups: [group],
       terminalGroups: [group],
-      tabs: [{
-        id: "tab-shell",
-        title: "Terminal",
-        emoji: "[]",
-        color: "#7aa2f7",
-        groupId: "group-termfleet",
-        initialCwd: "/workspace/termfleet",
-        terminals: [{ id: "pty-shell", paneId: "pane-shell", cols: 80, rows: 24, status: "running" }],
-        splitLayout: { id: "pane-shell", type: "terminal" },
-        activePaneId: "pane-shell",
-      }],
+      tabs: [
+        {
+          id: "tab-shell",
+          title: "Terminal",
+          emoji: "[]",
+          color: "#7aa2f7",
+          groupId: "group-termfleet",
+          initialCwd: "/workspace/termfleet",
+          terminals: [
+            {
+              id: "pty-shell",
+              paneId: "pane-shell",
+              cols: 80,
+              rows: 24,
+              status: "running",
+            },
+          ],
+          splitLayout: { id: "pane-shell", type: "terminal" },
+          activePaneId: "pane-shell",
+        },
+      ],
       activeTabId: "tab-shell",
       canvasState: {
         selectedNodeId: "node-shell",
         selectedNodeIds: ["node-shell"],
         viewport: { x: 80, y: 80, zoom: 1 },
-        nodes: [{
-          id: "node-shell",
-          type: "terminal",
-          title: "Terminal",
-          terminalTabId: "tab-shell",
-          x: 0,
-          y: 0,
-          width: 820,
-          height: 460,
-        }],
+        nodes: [
+          {
+            id: "node-shell",
+            type: "terminal",
+            title: "Terminal",
+            terminalTabId: "tab-shell",
+            x: 0,
+            y: 0,
+            width: 820,
+            height: 460,
+          },
+        ],
       },
     });
     store.getState().reconcileProjectGroups();
@@ -387,60 +552,121 @@ test("terminal task binding uses an in-app searchable picker", async ({ page }) 
 
   await page.getByLabel("Bind MASTER_PLAN task").click();
   await expect(page.getByTestId("task-binding-picker")).toBeVisible();
-  await expect(page.getByTestId("task-binding-option").filter({ hasText: "Warp-style chrome redesign" })).toBeVisible();
-  await expect(page.getByTestId("task-binding-option").filter({ hasText: "Unknown DONE" })).toHaveCount(0);
+  await expect(
+    page
+      .getByTestId("task-binding-option")
+      .filter({ hasText: "Warp-style chrome redesign" }),
+  ).toBeVisible();
+  await expect(
+    page.getByTestId("task-binding-option").filter({ hasText: "Unknown DONE" }),
+  ).toHaveCount(0);
 
   await page.getByTestId("task-binding-search").fill("warp");
   await expect(page.getByTestId("task-binding-option")).toHaveCount(1);
   await page.getByTestId("task-binding-option").click();
 
-  await expect.poll(async () => page.evaluate(() => {
-    const store = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => {
-          canvasState: { nodes: Array<{ id: string; taskBinding?: { taskId: string; planPath?: string } }> };
-        };
-      };
-    }).__termfleetWorkspaceStore;
-    return store?.getState().canvasState.nodes.find((node) => node.id === "node-shell")?.taskBinding;
-  })).toEqual({ taskId: "TC-019", planPath: "/workspace/termfleet/MASTER_PLAN.md" });
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const store = (
+          window as typeof window & {
+            __termfleetWorkspaceStore?: {
+              getState: () => {
+                canvasState: {
+                  nodes: Array<{
+                    id: string;
+                    taskBinding?: { taskId: string; planPath?: string };
+                  }>;
+                };
+              };
+            };
+          }
+        ).__termfleetWorkspaceStore;
+        return store
+          ?.getState()
+          .canvasState.nodes.find((node) => node.id === "node-shell")
+          ?.taskBinding;
+      }),
+    )
+    .toEqual({
+      taskId: "TC-019",
+      planPath: "/workspace/termfleet/MASTER_PLAN.md",
+    });
 
   await page.getByLabel("Change task binding").click();
   await page.getByTestId("task-binding-clear").click();
-  await expect.poll(async () => page.evaluate(() => {
-    const store = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => {
-          canvasState: { nodes: Array<{ id: string; taskBinding?: { taskId: string } }> };
-        };
-      };
-    }).__termfleetWorkspaceStore;
-    return store?.getState().canvasState.nodes.find((node) => node.id === "node-shell")?.taskBinding ?? null;
-  })).toBeNull();
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const store = (
+          window as typeof window & {
+            __termfleetWorkspaceStore?: {
+              getState: () => {
+                canvasState: {
+                  nodes: Array<{
+                    id: string;
+                    taskBinding?: { taskId: string };
+                  }>;
+                };
+              };
+            };
+          }
+        ).__termfleetWorkspaceStore;
+        return (
+          store
+            ?.getState()
+            .canvasState.nodes.find((node) => node.id === "node-shell")
+            ?.taskBinding ?? null
+        );
+      }),
+    )
+    .toBeNull();
 
   await page.getByLabel("Bind MASTER_PLAN task").click();
   await page.getByTestId("task-binding-manual-input").fill("TC-777");
   await page.getByTestId("task-binding-manual-bind").click();
-  await expect.poll(async () => page.evaluate(() => {
-    const store = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => {
-          canvasState: { nodes: Array<{ id: string; taskBinding?: { taskId: string; planPath?: string } }> };
-        };
-      };
-    }).__termfleetWorkspaceStore;
-    return store?.getState().canvasState.nodes.find((node) => node.id === "node-shell")?.taskBinding;
-  })).toEqual({ taskId: "TC-777", planPath: "/workspace/termfleet/MASTER_PLAN.md" });
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const store = (
+          window as typeof window & {
+            __termfleetWorkspaceStore?: {
+              getState: () => {
+                canvasState: {
+                  nodes: Array<{
+                    id: string;
+                    taskBinding?: { taskId: string; planPath?: string };
+                  }>;
+                };
+              };
+            };
+          }
+        ).__termfleetWorkspaceStore;
+        return store
+          ?.getState()
+          .canvasState.nodes.find((node) => node.id === "node-shell")
+          ?.taskBinding;
+      }),
+    )
+    .toEqual({
+      taskId: "TC-777",
+      planPath: "/workspace/termfleet/MASTER_PLAN.md",
+    });
 });
 
-test("map terminal rendering avoids pixelated live canvases and grouped preview DOM churn", async ({ page }) => {
+test("map terminal rendering avoids pixelated live canvases and grouped preview DOM churn", async ({
+  page,
+}) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
 
   const result = await page.evaluate(async () => {
     const ReactModule = await import("/node_modules/.vite/deps/react.js");
-    const ReactDom = await import("/node_modules/.vite/deps/react-dom_client.js");
-    const { TerminalCanvas } = await import("/src/components/TerminalCanvas.tsx");
-    const { snapshotPreviewRows } = await import("/src/lib/snapshotPreviewRows.ts");
+    const ReactDom =
+      await import("/node_modules/.vite/deps/react-dom_client.js");
+    const { TerminalCanvas } =
+      await import("/src/components/TerminalCanvas.tsx");
+    const { snapshotPreviewRows } =
+      await import("/src/lib/snapshotPreviewRows.ts");
     const React = ReactModule.default ?? ReactModule;
 
     const host = document.createElement("div");
@@ -458,15 +684,19 @@ test("map terminal rendering avoids pixelated live canvases and grouped preview 
         rows: 24,
       }),
     );
-    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    await new Promise((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(resolve)),
+    );
 
-    const canvasStyles = Array.from(host.querySelectorAll("canvas")).map((canvas) => {
-      const element = canvas as HTMLCanvasElement;
-      return {
-        inline: element.style.imageRendering,
-        computed: getComputedStyle(element).imageRendering,
-      };
-    });
+    const canvasStyles = Array.from(host.querySelectorAll("canvas")).map(
+      (canvas) => {
+        const element = canvas as HTMLCanvasElement;
+        return {
+          inline: element.style.imageRendering,
+          computed: getComputedStyle(element).imageRendering,
+        };
+      },
+    );
     root.unmount();
 
     const magenta = { c: "[", fg: "#ff00ff", bg: "#000000" };
@@ -504,11 +734,14 @@ test("map terminal rendering avoids pixelated live canvases and grouped preview 
   expect(result.segmentText.length).toBe(96);
 });
 
-test("overview preview sampling is capped and groups noisy terminal rows", async ({ page }) => {
+test("overview preview sampling is capped and groups noisy terminal rows", async ({
+  page,
+}) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
 
   const result = await page.evaluate(async () => {
-    const { snapshotPreviewRows } = await import("/src/lib/snapshotPreviewRows.ts");
+    const { snapshotPreviewRows } =
+      await import("/src/lib/snapshotPreviewRows.ts");
 
     const colors = ["#ff00ff", "#00ff00", "#00d0ff", "#d0d0d0"];
     const cells = Array.from({ length: 120 }, (_, rowIndex) =>
@@ -551,7 +784,9 @@ test("overview preview sampling is capped and groups noisy terminal rows", async
   expect(result.totalSegments).toBeLessThan(14 * 72);
 });
 
-test("terminal map labels can be recolored from the right-click menu", async ({ page }) => {
+test("terminal map labels can be recolored from the right-click menu", async ({
+  page,
+}) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle");
   await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
@@ -560,12 +795,14 @@ test("terminal map labels can be recolored from the right-click menu", async ({ 
   await page.getByRole("button", { name: "Map", exact: true }).click();
 
   await page.evaluate(() => {
-    const store = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => { workspaceUiState: Record<string, unknown> };
-        setState: (state: Record<string, unknown>) => void;
-      };
-    }).__termfleetWorkspaceStore;
+    const store = (
+      window as typeof window & {
+        __termfleetWorkspaceStore?: {
+          getState: () => { workspaceUiState: Record<string, unknown> };
+          setState: (state: Record<string, unknown>) => void;
+        };
+      }
+    ).__termfleetWorkspaceStore;
     if (!store) throw new Error("TermFleet test store is unavailable");
 
     store.setState({
@@ -574,29 +811,41 @@ test("terminal map labels can be recolored from the right-click menu", async ({ 
         workspaceMode: "canvas",
         primarySidebarPanel: "map",
       },
-      tabs: [{
-        id: "tab-color",
-        title: "Build release lane",
-        emoji: "[]",
-        color: "#7aa2f7",
-        groupId: null,
-        initialCwd: "/tmp/termfleet-color",
-        terminals: [{ id: "pty-color", paneId: "pane-color", cols: 80, rows: 24, status: "running" }],
-        splitLayout: { id: "pane-color", type: "terminal" },
-        activePaneId: "pane-color",
-      }],
+      tabs: [
+        {
+          id: "tab-color",
+          title: "Build release lane",
+          emoji: "[]",
+          color: "#7aa2f7",
+          groupId: null,
+          initialCwd: "/tmp/termfleet-color",
+          terminals: [
+            {
+              id: "pty-color",
+              paneId: "pane-color",
+              cols: 80,
+              rows: 24,
+              status: "running",
+            },
+          ],
+          splitLayout: { id: "pane-color", type: "terminal" },
+          activePaneId: "pane-color",
+        },
+      ],
       activeTabId: "tab-color",
       canvasState: {
-        nodes: [{
-          id: "node-color",
-          type: "terminal",
-          title: "Build release lane",
-          terminalTabId: "tab-color",
-          x: 100,
-          y: 100,
-          width: 820,
-          height: 460,
-        }],
+        nodes: [
+          {
+            id: "node-color",
+            type: "terminal",
+            title: "Build release lane",
+            terminalTabId: "tab-color",
+            x: 100,
+            y: 100,
+            width: 820,
+            height: 460,
+          },
+        ],
         selectedNodeId: "node-color",
         selectedNodeIds: ["node-color"],
         viewport: { x: 0, y: 0, zoom: 1 },
@@ -721,17 +970,97 @@ test("high token pressure is unmistakable on the expanded map terminal header", 
     });
   });
 
-  await expect.poll(async () => page.evaluate(() => {
-    const store = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => { canvasState: { nodes: Array<{ id: string; labelColor?: string }> } };
+  const warning = page.getByTestId("canvas-terminal-token-budget");
+  await expect(warning).toBeVisible();
+  await expect(warning).toContainText("Token budget");
+  await expect(warning).toContainText("Sol");
+  await expect(warning).toContainText("high");
+  await expect(warning).toContainText("85%");
+  await expect(warning).not.toContainText("Switch to Luna");
+  const badgeFitsHeader = await warning.evaluate((element) => {
+    const header = element.parentElement?.parentElement;
+    if (!header) return false;
+    const badgeBox = element.getBoundingClientRect();
+    const headerBox = header.getBoundingClientRect();
+    return (
+      badgeBox.left >= headerBox.left &&
+      badgeBox.right <= headerBox.right &&
+      element.scrollWidth <= element.clientWidth
+    );
+  });
+  expect(badgeFitsHeader).toBe(true);
+  const details = page.getByTestId("token-budget-details");
+  await warning.hover();
+  await expect(details).toBeVisible();
+  await page.locator("body").hover({ position: { x: 1, y: 1 } });
+  await expect(details).toBeHidden();
+  await warning.click();
+  await expect(details).toBeVisible();
+  await expect(details).toContainText("220K / 258K context");
+  await expect(details).toContainText("high reasoning");
+  await expect(details).toContainText("58% account budget");
+  await expect(details).toContainText("Switch to Luna");
+  await expect(details).toContainText("Confidence: medium");
+  await expect(details).toContainText(
+    "The current task looks clear and repeatable.",
+  );
+  await expect(details).toContainText("Minimal downside for clear work");
+  await page.evaluate(() => {
+    const runtime = window as typeof window & {
+      __TAURI_INTERNALS__?: {
+        invoke: (
+          command: string,
+          args?: Record<string, unknown>,
+        ) => Promise<unknown>;
+        transformCallback: () => number;
+        unregisterCallback: () => void;
       };
-    }).__termfleetWorkspaceStore;
-    return store?.getState().canvasState.nodes.find((node) => node.id === "node-color")?.labelColor;
-  })).toBe("#d4a44f");
+      __modelPickerCalls?: Array<{
+        command: string;
+        args?: Record<string, unknown>;
+      }>;
+    };
+    runtime.__modelPickerCalls = [];
+    runtime.__TAURI_INTERNALS__ = {
+      invoke: async (command, args) => {
+        runtime.__modelPickerCalls?.push({ command, args });
+        return null;
+      },
+      transformCallback: () => 1,
+      unregisterCallback: () => undefined,
+    };
+  });
+  await details.getByRole("button", { name: "Open model picker" }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (
+            window as typeof window & {
+              __modelPickerCalls?: Array<{
+                command: string;
+                args?: Record<string, unknown>;
+              }>;
+            }
+          ).__modelPickerCalls,
+      ),
+    )
+    .toContainEqual({
+      command: "daemon_write_session",
+      args: {
+        id: "terminal-tab-budget-pane-budget",
+        data: "/model\r",
+      },
+    });
+  await page.screenshot({
+    path: "test-results/map-token-budget-critical.png",
+    fullPage: true,
+  });
 });
 
-test("terminal map renaming uses in-app inputs and keeps linked tab titles in sync", async ({ page }) => {
+test("terminal map renaming uses in-app inputs and keeps linked tab titles in sync", async ({
+  page,
+}) => {
   await page.addInitScript(() => {
     window.prompt = () => {
       throw new Error("Terminal rename must not use window.prompt");
@@ -745,12 +1074,14 @@ test("terminal map renaming uses in-app inputs and keeps linked tab titles in sy
   await page.getByRole("button", { name: "Map", exact: true }).click();
 
   await page.evaluate(() => {
-    const store = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => { workspaceUiState: Record<string, unknown> };
-        setState: (state: Record<string, unknown>) => void;
-      };
-    }).__termfleetWorkspaceStore;
+    const store = (
+      window as typeof window & {
+        __termfleetWorkspaceStore?: {
+          getState: () => { workspaceUiState: Record<string, unknown> };
+          setState: (state: Record<string, unknown>) => void;
+        };
+      }
+    ).__termfleetWorkspaceStore;
     if (!store) throw new Error("TermFleet test store is unavailable");
 
     store.setState({
@@ -759,29 +1090,41 @@ test("terminal map renaming uses in-app inputs and keeps linked tab titles in sy
         workspaceMode: "canvas",
         primarySidebarPanel: "map",
       },
-      tabs: [{
-        id: "tab-rename",
-        title: "Old terminal name",
-        emoji: "[]",
-        color: "#7aa2f7",
-        groupId: null,
-        initialCwd: "/tmp/termfleet-rename",
-        terminals: [{ id: "pty-rename", paneId: "pane-rename", cols: 80, rows: 24, status: "running" }],
-        splitLayout: { id: "pane-rename", type: "terminal" },
-        activePaneId: "pane-rename",
-      }],
+      tabs: [
+        {
+          id: "tab-rename",
+          title: "Old terminal name",
+          emoji: "[]",
+          color: "#7aa2f7",
+          groupId: null,
+          initialCwd: "/tmp/termfleet-rename",
+          terminals: [
+            {
+              id: "pty-rename",
+              paneId: "pane-rename",
+              cols: 80,
+              rows: 24,
+              status: "running",
+            },
+          ],
+          splitLayout: { id: "pane-rename", type: "terminal" },
+          activePaneId: "pane-rename",
+        },
+      ],
       activeTabId: "tab-rename",
       canvasState: {
-        nodes: [{
-          id: "node-rename",
-          type: "terminal",
-          title: "Old terminal name",
-          terminalTabId: "tab-rename",
-          x: 100,
-          y: 100,
-          width: 820,
-          height: 460,
-        }],
+        nodes: [
+          {
+            id: "node-rename",
+            type: "terminal",
+            title: "Old terminal name",
+            terminalTabId: "tab-rename",
+            x: 100,
+            y: 100,
+            width: 820,
+            height: 460,
+          },
+        ],
         selectedNodeId: "node-rename",
         selectedNodeIds: ["node-rename"],
         viewport: { x: 0, y: 0, zoom: 1 },
@@ -790,47 +1133,75 @@ test("terminal map renaming uses in-app inputs and keeps linked tab titles in sy
   });
 
   await page.getByTestId("canvas-terminal-status-block").dblclick();
-  await page.getByTestId("canvas-terminal-rename-input").fill("Map rename from card");
+  await page
+    .getByTestId("canvas-terminal-rename-input")
+    .fill("Map rename from card");
   await page.getByTestId("canvas-terminal-rename-input").press("Enter");
 
-  await expect.poll(async () => page.evaluate(() => {
-    const store = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => {
-          tabs: Array<{ id: string; title: string }>;
-          canvasState: { nodes: Array<{ id: string; title: string }> };
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const store = (
+          window as typeof window & {
+            __termfleetWorkspaceStore?: {
+              getState: () => {
+                tabs: Array<{ id: string; title: string }>;
+                canvasState: { nodes: Array<{ id: string; title: string }> };
+              };
+            };
+          }
+        ).__termfleetWorkspaceStore;
+        const state = store?.getState();
+        return {
+          tabTitle: state?.tabs.find((tab) => tab.id === "tab-rename")?.title,
+          nodeTitle: state?.canvasState.nodes.find(
+            (node) => node.id === "node-rename",
+          )?.title,
         };
-      };
-    }).__termfleetWorkspaceStore;
-    const state = store?.getState();
-    return {
-      tabTitle: state?.tabs.find((tab) => tab.id === "tab-rename")?.title,
-      nodeTitle: state?.canvasState.nodes.find((node) => node.id === "node-rename")?.title,
-    };
-  })).toEqual({ tabTitle: "Map rename from card", nodeTitle: "Map rename from card" });
+      }),
+    )
+    .toEqual({
+      tabTitle: "Map rename from card",
+      nodeTitle: "Map rename from card",
+    });
 
   await page.getByTestId("canvas-sidebar-node-row").dblclick();
-  await page.getByTestId("canvas-sidebar-rename-input").fill("Sidebar rename works");
+  await page
+    .getByTestId("canvas-sidebar-rename-input")
+    .fill("Sidebar rename works");
   await page.getByTestId("canvas-sidebar-rename-input").press("Enter");
 
-  await expect.poll(async () => page.evaluate(() => {
-    const store = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => {
-          tabs: Array<{ id: string; title: string }>;
-          canvasState: { nodes: Array<{ id: string; title: string }> };
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const store = (
+          window as typeof window & {
+            __termfleetWorkspaceStore?: {
+              getState: () => {
+                tabs: Array<{ id: string; title: string }>;
+                canvasState: { nodes: Array<{ id: string; title: string }> };
+              };
+            };
+          }
+        ).__termfleetWorkspaceStore;
+        const state = store?.getState();
+        return {
+          tabTitle: state?.tabs.find((tab) => tab.id === "tab-rename")?.title,
+          nodeTitle: state?.canvasState.nodes.find(
+            (node) => node.id === "node-rename",
+          )?.title,
         };
-      };
-    }).__termfleetWorkspaceStore;
-    const state = store?.getState();
-    return {
-      tabTitle: state?.tabs.find((tab) => tab.id === "tab-rename")?.title,
-      nodeTitle: state?.canvasState.nodes.find((node) => node.id === "node-rename")?.title,
-    };
-  })).toEqual({ tabTitle: "Sidebar rename works", nodeTitle: "Sidebar rename works" });
+      }),
+    )
+    .toEqual({
+      tabTitle: "Sidebar rename works",
+      nodeTitle: "Sidebar rename works",
+    });
 });
 
-test("project emojis identify map terminals by path without using task colors", async ({ page }) => {
+test("project emojis identify map terminals by path without using task colors", async ({
+  page,
+}) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle");
   await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
@@ -839,12 +1210,14 @@ test("project emojis identify map terminals by path without using task colors", 
   await page.getByRole("button", { name: "Map", exact: true }).click();
 
   await page.evaluate(() => {
-    const store = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => { workspaceUiState: Record<string, unknown> };
-        setState: (state: Record<string, unknown>) => void;
-      };
-    }).__termfleetWorkspaceStore;
+    const store = (
+      window as typeof window & {
+        __termfleetWorkspaceStore?: {
+          getState: () => { workspaceUiState: Record<string, unknown> };
+          setState: (state: Record<string, unknown>) => void;
+        };
+      }
+    ).__termfleetWorkspaceStore;
     if (!store) throw new Error("TermFleet test store is unavailable");
 
     const tab = (id: string, groupId: string, cwd: string, paneId: string) => ({
@@ -854,7 +1227,9 @@ test("project emojis identify map terminals by path without using task colors", 
       color: "#7aa2f7",
       groupId,
       initialCwd: cwd,
-      terminals: [{ id: `pty-${id}`, paneId, cols: 80, rows: 24, status: "running" }],
+      terminals: [
+        { id: `pty-${id}`, paneId, cols: 80, rows: 24, status: "running" },
+      ],
       splitLayout: { id: paneId, type: "terminal" },
       activePaneId: paneId,
     });
@@ -863,14 +1238,16 @@ test("project emojis identify map terminals by path without using task colors", 
       name: "termfleet",
       color: "#7aa2f7",
       emoji: "🧭",
-      projectRoot: "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
+      projectRoot:
+        "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
     };
     const docs = {
       id: "group-docs",
       name: "docs-site",
       color: "#9ece6a",
       emoji: "📝",
-      projectRoot: "/media/endlessblink/data/my-projects/ai-development/docs-site",
+      projectRoot:
+        "/media/endlessblink/data/my-projects/ai-development/docs-site",
     };
 
     store.setState({
@@ -887,57 +1264,150 @@ test("project emojis identify map terminals by path without using task colors", 
       activeGroupId: null,
       activeTabId: "tab-termfleet-a",
       tabs: [
-        tab("tab-termfleet-a", "group-termfleet", "/media/endlessblink/data/my-projects/ai-development/devops/termfleet", "pane-termfleet-a"),
-        tab("tab-termfleet-b", "group-termfleet", "/media/endlessblink/data/my-projects/ai-development/devops/termfleet", "pane-termfleet-b"),
-        tab("tab-docs", "group-docs", "/media/endlessblink/data/my-projects/ai-development/docs-site", "pane-docs"),
+        tab(
+          "tab-termfleet-a",
+          "group-termfleet",
+          "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
+          "pane-termfleet-a",
+        ),
+        tab(
+          "tab-termfleet-b",
+          "group-termfleet",
+          "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
+          "pane-termfleet-b",
+        ),
+        tab(
+          "tab-docs",
+          "group-docs",
+          "/media/endlessblink/data/my-projects/ai-development/docs-site",
+          "pane-docs",
+        ),
       ],
       canvasState: {
         selectedNodeId: "node-termfleet-a",
         selectedNodeIds: ["node-termfleet-a"],
         viewport: { x: 0, y: 0, zoom: 0.42 },
         nodes: [
-          { id: "node-termfleet-a", type: "terminal", title: "Terminal", terminalTabId: "tab-termfleet-a", terminalCwd: "/media/endlessblink/data/my-projects/ai-development/devops/termfleet", x: 0, y: 0, width: 820, height: 460 },
-          { id: "node-termfleet-b", type: "terminal", title: "Terminal", terminalTabId: "tab-termfleet-b", terminalCwd: "/media/endlessblink/data/my-projects/ai-development/devops/termfleet", x: 860, y: 0, width: 820, height: 460 },
-          { id: "node-docs", type: "terminal", title: "Terminal", terminalTabId: "tab-docs", terminalCwd: "/media/endlessblink/data/my-projects/ai-development/docs-site", x: 1720, y: 0, width: 820, height: 460 },
+          {
+            id: "node-termfleet-a",
+            type: "terminal",
+            title: "Terminal",
+            terminalTabId: "tab-termfleet-a",
+            terminalCwd:
+              "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
+            x: 0,
+            y: 0,
+            width: 820,
+            height: 460,
+          },
+          {
+            id: "node-termfleet-b",
+            type: "terminal",
+            title: "Terminal",
+            terminalTabId: "tab-termfleet-b",
+            terminalCwd:
+              "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
+            x: 860,
+            y: 0,
+            width: 820,
+            height: 460,
+          },
+          {
+            id: "node-docs",
+            type: "terminal",
+            title: "Terminal",
+            terminalTabId: "tab-docs",
+            terminalCwd:
+              "/media/endlessblink/data/my-projects/ai-development/docs-site",
+            x: 1720,
+            y: 0,
+            width: 820,
+            height: 460,
+          },
         ],
       },
     });
   });
 
-  await expect(page.getByTestId("canvas-terminal-project-emoji").filter({ hasText: "🧭" })).toHaveCount(2);
-  await expect(page.getByTestId("canvas-terminal-project-emoji").filter({ hasText: "📝" })).toHaveCount(1);
-  await expect(page.getByTestId("canvas-terminal-project-emoji-zoom")).toHaveCount(3);
-  await expect(page.getByTestId("map-node-project-emoji").filter({ hasText: "🧭" })).toHaveCount(2);
+  await expect(
+    page.getByTestId("canvas-terminal-project-emoji").filter({ hasText: "🧭" }),
+  ).toHaveCount(2);
+  await expect(
+    page.getByTestId("canvas-terminal-project-emoji").filter({ hasText: "📝" }),
+  ).toHaveCount(1);
+  await expect(
+    page.getByTestId("canvas-terminal-project-emoji-zoom"),
+  ).toHaveCount(3);
+  await expect(
+    page.getByTestId("map-node-project-emoji").filter({ hasText: "🧭" }),
+  ).toHaveCount(2);
 
-  await page.getByTestId("map-node-project-emoji").filter({ hasText: "🧭" }).first().click();
+  await page
+    .getByTestId("map-node-project-emoji")
+    .filter({ hasText: "🧭" })
+    .first()
+    .click();
   // Full emoji picker: search by emoji name and pick from the searchable grid.
-  await page.getByTestId("project-emoji-picker").getByLabel("Search emoji").fill("rocket");
-  await page.getByTestId("project-emoji-picker").getByRole("option", { name: "rocket", exact: true }).click();
-  await expect(page.getByTestId("canvas-terminal-project-emoji").filter({ hasText: "🚀" })).toHaveCount(2);
-  await expect(page.getByTestId("canvas-terminal-project-emoji").filter({ hasText: "📝" })).toHaveCount(1);
-  await expect(page.getByTestId("map-node-project-emoji").filter({ hasText: "🚀" })).toHaveCount(2);
+  await page
+    .getByTestId("project-emoji-picker")
+    .getByLabel("Search emoji")
+    .fill("rocket");
+  await page
+    .getByTestId("project-emoji-picker")
+    .getByRole("option", { name: "rocket", exact: true })
+    .click();
+  await expect(
+    page.getByTestId("canvas-terminal-project-emoji").filter({ hasText: "🚀" }),
+  ).toHaveCount(2);
+  await expect(
+    page.getByTestId("canvas-terminal-project-emoji").filter({ hasText: "📝" }),
+  ).toHaveCount(1);
+  await expect(
+    page.getByTestId("map-node-project-emoji").filter({ hasText: "🚀" }),
+  ).toHaveCount(2);
 
-  await page.getByTestId("canvas-terminal-status-block").first().dispatchEvent("contextmenu");
-  await page.getByRole("menu", { name: "Terminal label color" }).getByRole("menuitem", { name: "Set terminal label color Amber" }).click();
-  await expect(page.getByTestId("canvas-terminal-project-emoji").filter({ hasText: "🚀" })).toHaveCount(2);
-  await expect.poll(async () => page.evaluate(() => {
-    const store = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => {
-          groups: Array<{ id: string; emoji?: string }>;
-          canvasState: { nodes: Array<{ id: string; labelColor?: string }> };
+  await page
+    .getByTestId("canvas-terminal-status-block")
+    .first()
+    .dispatchEvent("contextmenu");
+  await page
+    .getByRole("menu", { name: "Terminal label color" })
+    .getByRole("menuitem", { name: "Set terminal label color Amber" })
+    .click();
+  await expect(
+    page.getByTestId("canvas-terminal-project-emoji").filter({ hasText: "🚀" }),
+  ).toHaveCount(2);
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const store = (
+          window as typeof window & {
+            __termfleetWorkspaceStore?: {
+              getState: () => {
+                groups: Array<{ id: string; emoji?: string }>;
+                canvasState: {
+                  nodes: Array<{ id: string; labelColor?: string }>;
+                };
+              };
+            };
+          }
+        ).__termfleetWorkspaceStore;
+        const state = store?.getState();
+        return {
+          emoji: state?.groups.find((group) => group.id === "group-termfleet")
+            ?.emoji,
+          labelColor: state?.canvasState.nodes.find(
+            (node) => node.id === "node-termfleet-a",
+          )?.labelColor,
         };
-      };
-    }).__termfleetWorkspaceStore;
-    const state = store?.getState();
-    return {
-      emoji: state?.groups.find((group) => group.id === "group-termfleet")?.emoji,
-      labelColor: state?.canvasState.nodes.find((node) => node.id === "node-termfleet-a")?.labelColor,
-    };
-  })).toEqual({ emoji: "🚀", labelColor: "#d4a44f" });
+      }),
+    )
+    .toEqual({ emoji: "🚀", labelColor: "#d4a44f" });
 });
 
-test("shift-drag box-selects terminals while regular and middle drags pan the map", async ({ page }) => {
+test("shift-drag box-selects terminals while regular and middle drags pan the map", async ({
+  page,
+}) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle");
   await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
@@ -946,12 +1416,14 @@ test("shift-drag box-selects terminals while regular and middle drags pan the ma
   await page.getByRole("button", { name: "Map", exact: true }).click();
 
   await page.evaluate(() => {
-    const store = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => { workspaceUiState: Record<string, unknown> };
-        setState: (state: Record<string, unknown>) => void;
-      };
-    }).__termfleetWorkspaceStore;
+    const store = (
+      window as typeof window & {
+        __termfleetWorkspaceStore?: {
+          getState: () => { workspaceUiState: Record<string, unknown> };
+          setState: (state: Record<string, unknown>) => void;
+        };
+      }
+    ).__termfleetWorkspaceStore;
     if (!store) throw new Error("TermFleet test store is unavailable");
 
     const terminalTab = (id: string, title: string) => ({
@@ -961,7 +1433,15 @@ test("shift-drag box-selects terminals while regular and middle drags pan the ma
       color: "#7aa2f7",
       groupId: null,
       initialCwd: `/tmp/${id}`,
-      terminals: [{ id: `pty-${id}`, paneId: `pane-${id}`, cols: 80, rows: 24, status: "running" }],
+      terminals: [
+        {
+          id: `pty-${id}`,
+          paneId: `pane-${id}`,
+          cols: 80,
+          rows: 24,
+          status: "running",
+        },
+      ],
       splitLayout: { id: `pane-${id}`, type: "terminal" },
       activePaneId: `pane-${id}`,
     });
@@ -980,9 +1460,36 @@ test("shift-drag box-selects terminals while regular and middle drags pan the ma
       activeTabId: "tab-one",
       canvasState: {
         nodes: [
-          { id: "node-one", type: "terminal", title: "Build one", terminalTabId: "tab-one", x: 40, y: 80, width: 820, height: 460 },
-          { id: "node-two", type: "terminal", title: "Build two", terminalTabId: "tab-two", x: 920, y: 80, width: 820, height: 460 },
-          { id: "node-three", type: "terminal", title: "Build three", terminalTabId: "tab-three", x: 1840, y: 80, width: 820, height: 460 },
+          {
+            id: "node-one",
+            type: "terminal",
+            title: "Build one",
+            terminalTabId: "tab-one",
+            x: 40,
+            y: 80,
+            width: 820,
+            height: 460,
+          },
+          {
+            id: "node-two",
+            type: "terminal",
+            title: "Build two",
+            terminalTabId: "tab-two",
+            x: 920,
+            y: 80,
+            width: 820,
+            height: 460,
+          },
+          {
+            id: "node-three",
+            type: "terminal",
+            title: "Build three",
+            terminalTabId: "tab-three",
+            x: 1840,
+            y: 80,
+            width: 820,
+            height: 460,
+          },
         ],
         selectedNodeId: null,
         selectedNodeIds: [],
@@ -991,7 +1498,9 @@ test("shift-drag box-selects terminals while regular and middle drags pan the ma
     });
   });
 
-  const shellBox = await page.locator("[data-magic-canvas-shell]").boundingBox();
+  const shellBox = await page
+    .locator("[data-magic-canvas-shell]")
+    .boundingBox();
   if (!shellBox) throw new Error("Map shell not found");
 
   await page.mouse.move(shellBox.x + 20, shellBox.y + 650);
@@ -999,23 +1508,36 @@ test("shift-drag box-selects terminals while regular and middle drags pan the ma
   await page.mouse.move(shellBox.x + 140, shellBox.y + 610, { steps: 4 });
   await page.mouse.up();
 
-  await expect.poll(async () => page.evaluate(() => {
-    const store = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => { canvasState: { selectedNodeIds?: string[]; viewport: { x: number; y: number } } };
-      };
-    }).__termfleetWorkspaceStore;
-    const state = store?.getState().canvasState;
-    return `${state?.selectedNodeIds?.join(",") ?? ""}|${state?.viewport.x}:${state?.viewport.y}`;
-  })).toBe("|120:-40");
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const store = (
+          window as typeof window & {
+            __termfleetWorkspaceStore?: {
+              getState: () => {
+                canvasState: {
+                  selectedNodeIds?: string[];
+                  viewport: { x: number; y: number };
+                };
+              };
+            };
+          }
+        ).__termfleetWorkspaceStore;
+        const state = store?.getState().canvasState;
+        return `${state?.selectedNodeIds?.join(",") ?? ""}|${state?.viewport.x}:${state?.viewport.y}`;
+      }),
+    )
+    .toBe("|120:-40");
 
   await page.evaluate(() => {
-    const store = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => { canvasState: Record<string, unknown> };
-        setState: (state: Record<string, unknown>) => void;
-      };
-    }).__termfleetWorkspaceStore;
+    const store = (
+      window as typeof window & {
+        __termfleetWorkspaceStore?: {
+          getState: () => { canvasState: Record<string, unknown> };
+          setState: (state: Record<string, unknown>) => void;
+        };
+      }
+    ).__termfleetWorkspaceStore;
     if (!store) throw new Error("TermFleet test store is unavailable");
     store.setState({
       canvasState: {
@@ -1030,23 +1552,36 @@ test("shift-drag box-selects terminals while regular and middle drags pan the ma
   await page.mouse.move(shellBox.x + 95, shellBox.y + 580, { steps: 4 });
   await page.mouse.up({ button: "middle" });
 
-  await expect.poll(async () => page.evaluate(() => {
-    const store = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => { canvasState: { selectedNodeIds?: string[]; viewport: { x: number; y: number } } };
-      };
-    }).__termfleetWorkspaceStore;
-    const state = store?.getState().canvasState;
-    return `${state?.selectedNodeIds?.join(",") ?? ""}|${state?.viewport.x}:${state?.viewport.y}`;
-  })).toBe("|75:-70");
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const store = (
+          window as typeof window & {
+            __termfleetWorkspaceStore?: {
+              getState: () => {
+                canvasState: {
+                  selectedNodeIds?: string[];
+                  viewport: { x: number; y: number };
+                };
+              };
+            };
+          }
+        ).__termfleetWorkspaceStore;
+        const state = store?.getState().canvasState;
+        return `${state?.selectedNodeIds?.join(",") ?? ""}|${state?.viewport.x}:${state?.viewport.y}`;
+      }),
+    )
+    .toBe("|75:-70");
 
   await page.evaluate(() => {
-    const store = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => { canvasState: Record<string, unknown> };
-        setState: (state: Record<string, unknown>) => void;
-      };
-    }).__termfleetWorkspaceStore;
+    const store = (
+      window as typeof window & {
+        __termfleetWorkspaceStore?: {
+          getState: () => { canvasState: Record<string, unknown> };
+          setState: (state: Record<string, unknown>) => void;
+        };
+      }
+    ).__termfleetWorkspaceStore;
     if (!store) throw new Error("TermFleet test store is unavailable");
     store.setState({
       canvasState: {
@@ -1063,16 +1598,24 @@ test("shift-drag box-selects terminals while regular and middle drags pan the ma
   await page.mouse.up();
   await page.keyboard.up("Shift");
 
-  await expect.poll(async () => page.evaluate(() => {
-    const store = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => { canvasState: { selectedNodeIds?: string[] } };
-      };
-    }).__termfleetWorkspaceStore;
-    return store?.getState().canvasState.selectedNodeIds?.sort().join(",");
-  })).toBe("node-one,node-two");
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const store = (
+          window as typeof window & {
+            __termfleetWorkspaceStore?: {
+              getState: () => { canvasState: { selectedNodeIds?: string[] } };
+            };
+          }
+        ).__termfleetWorkspaceStore;
+        return store?.getState().canvasState.selectedNodeIds?.sort().join(",");
+      }),
+    )
+    .toBe("node-one,node-two");
 
-  const firstNode = page.locator("[data-magic-canvas-shell] [data-node-id='node-one'] [data-testid='canvas-terminal-node-header']");
+  const firstNode = page.locator(
+    "[data-magic-canvas-shell] [data-node-id='node-one'] [data-testid='canvas-terminal-node-header']",
+  );
   const firstBox = await firstNode.boundingBox();
   if (!firstBox) throw new Error("Selected node header not found");
   await page.mouse.move(firstBox.x + 24, firstBox.y + 18);
@@ -1080,23 +1623,38 @@ test("shift-drag box-selects terminals while regular and middle drags pan the ma
   await page.mouse.move(firstBox.x + 140, firstBox.y + 54, { steps: 4 });
   await page.mouse.up();
 
-  await expect.poll(async () => page.evaluate(() => {
-    const store = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => { canvasState: { nodes: Array<{ id: string; x: number; y: number }> } };
-      };
-    }).__termfleetWorkspaceStore;
-    const nodes = store?.getState().canvasState.nodes ?? [];
-    return nodes.map((node) => `${node.id}:${node.x}:${node.y}`).sort().join("|");
-  })).toBe("node-one:156:116|node-three:1840:80|node-two:1036:116");
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const store = (
+          window as typeof window & {
+            __termfleetWorkspaceStore?: {
+              getState: () => {
+                canvasState: {
+                  nodes: Array<{ id: string; x: number; y: number }>;
+                };
+              };
+            };
+          }
+        ).__termfleetWorkspaceStore;
+        const nodes = store?.getState().canvasState.nodes ?? [];
+        return nodes
+          .map((node) => `${node.id}:${node.x}:${node.y}`)
+          .sort()
+          .join("|");
+      }),
+    )
+    .toBe("node-one:156:116|node-three:1840:80|node-two:1036:116");
 
   await page.evaluate(() => {
-    const store = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => { canvasState: Record<string, unknown> };
-        setState: (state: Record<string, unknown>) => void;
-      };
-    }).__termfleetWorkspaceStore;
+    const store = (
+      window as typeof window & {
+        __termfleetWorkspaceStore?: {
+          getState: () => { canvasState: Record<string, unknown> };
+          setState: (state: Record<string, unknown>) => void;
+        };
+      }
+    ).__termfleetWorkspaceStore;
     if (!store) throw new Error("TermFleet test store is unavailable");
     store.setState({
       canvasState: {
@@ -1113,45 +1671,73 @@ test("shift-drag box-selects terminals while regular and middle drags pan the ma
   await page.mouse.move(movedBox.x + 104, movedBox.y - 42, { steps: 4 });
   await page.mouse.up({ button: "middle" });
 
-  await expect.poll(async () => page.evaluate(() => {
-    const store = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => {
-          canvasState: {
-            viewport: { x: number; y: number };
-            nodes: Array<{ id: string; x: number; y: number }>;
-          };
-        };
-      };
-    }).__termfleetWorkspaceStore;
-    const state = store?.getState().canvasState;
-    const nodes = state?.nodes.map((node) => `${node.id}:${node.x}:${node.y}`).sort().join("|");
-    return `${state?.viewport.x}:${state?.viewport.y}|${nodes}`;
-  })).toBe("80:-60|node-one:156:116|node-three:1840:80|node-two:1036:116");
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const store = (
+          window as typeof window & {
+            __termfleetWorkspaceStore?: {
+              getState: () => {
+                canvasState: {
+                  viewport: { x: number; y: number };
+                  nodes: Array<{ id: string; x: number; y: number }>;
+                };
+              };
+            };
+          }
+        ).__termfleetWorkspaceStore;
+        const state = store?.getState().canvasState;
+        const nodes = state?.nodes
+          .map((node) => `${node.id}:${node.x}:${node.y}`)
+          .sort()
+          .join("|");
+        return `${state?.viewport.x}:${state?.viewport.y}|${nodes}`;
+      }),
+    )
+    .toBe("80:-60|node-one:156:116|node-three:1840:80|node-two:1036:116");
 
-  await expect.poll(async () => page.evaluate(() => {
-    const store = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => { canvasState: { selectedNodeIds?: string[] } };
-      };
-    }).__termfleetWorkspaceStore;
-    return store?.getState().canvasState.selectedNodeIds?.sort().join(",");
-  })).toBe("node-one,node-two");
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const store = (
+          window as typeof window & {
+            __termfleetWorkspaceStore?: {
+              getState: () => { canvasState: { selectedNodeIds?: string[] } };
+            };
+          }
+        ).__termfleetWorkspaceStore;
+        return store?.getState().canvasState.selectedNodeIds?.sort().join(",");
+      }),
+    )
+    .toBe("node-one,node-two");
 
   await page.mouse.click(shellBox.x + 20, shellBox.y + 650);
 
-  await expect.poll(async () => page.evaluate(() => {
-    const store = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => { canvasState: { selectedNodeId: string | null; selectedNodeIds?: string[] } };
-      };
-    }).__termfleetWorkspaceStore;
-    const state = store?.getState().canvasState;
-    return `${state?.selectedNodeId ?? ""}|${state?.selectedNodeIds?.join(",") ?? ""}`;
-  })).toBe("|");
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const store = (
+          window as typeof window & {
+            __termfleetWorkspaceStore?: {
+              getState: () => {
+                canvasState: {
+                  selectedNodeId: string | null;
+                  selectedNodeIds?: string[];
+                };
+              };
+            };
+          }
+        ).__termfleetWorkspaceStore;
+        const state = store?.getState().canvasState;
+        return `${state?.selectedNodeId ?? ""}|${state?.selectedNodeIds?.join(",") ?? ""}`;
+      }),
+    )
+    .toBe("|");
 });
 
-test("clicking a selected external page header clears its map selection", async ({ page }) => {
+test("clicking a selected external page header clears its map selection", async ({
+  page,
+}) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle");
   await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
@@ -1160,12 +1746,14 @@ test("clicking a selected external page header clears its map selection", async 
   await page.getByRole("button", { name: "Map", exact: true }).click();
 
   await page.evaluate(() => {
-    const store = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => { workspaceUiState: Record<string, unknown> };
-        setState: (state: Record<string, unknown>) => void;
-      };
-    }).__termfleetWorkspaceStore;
+    const store = (
+      window as typeof window & {
+        __termfleetWorkspaceStore?: {
+          getState: () => { workspaceUiState: Record<string, unknown> };
+          setState: (state: Record<string, unknown>) => void;
+        };
+      }
+    ).__termfleetWorkspaceStore;
     if (!store) throw new Error("TermFleet test store is unavailable");
     store.setState({
       workspaceUiState: {
@@ -1174,16 +1762,18 @@ test("clicking a selected external page header clears its map selection", async 
         primarySidebarPanel: "map",
       },
       canvasState: {
-        nodes: [{
-          id: "node-external-page",
-          type: "preview",
-          title: "External page",
-          previewUrl: "http://127.0.0.1:43210/",
-          x: 80,
-          y: 100,
-          width: 620,
-          height: 420,
-        }],
+        nodes: [
+          {
+            id: "node-external-page",
+            type: "preview",
+            title: "External page",
+            previewUrl: "http://127.0.0.1:43210/",
+            x: 80,
+            y: 100,
+            width: 620,
+            height: 420,
+          },
+        ],
         selectedNodeId: "node-external-page",
         selectedNodeIds: ["node-external-page"],
         viewport: { x: 0, y: 0, zoom: 1 },
@@ -1193,23 +1783,38 @@ test("clicking a selected external page header clears its map selection", async 
 
   await page.getByTestId("canvas-node-header").click();
 
-  await expect.poll(async () => page.evaluate(() => {
-    const store = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => { canvasState: { selectedNodeId: string | null; selectedNodeIds?: string[] } };
-      };
-    }).__termfleetWorkspaceStore;
-    const state = store?.getState().canvasState;
-    return `${state?.selectedNodeId ?? ""}|${state?.selectedNodeIds?.join(",") ?? ""}`;
-  })).toBe("|");
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const store = (
+          window as typeof window & {
+            __termfleetWorkspaceStore?: {
+              getState: () => {
+                canvasState: {
+                  selectedNodeId: string | null;
+                  selectedNodeIds?: string[];
+                };
+              };
+            };
+          }
+        ).__termfleetWorkspaceStore;
+        const state = store?.getState().canvasState;
+        return `${state?.selectedNodeId ?? ""}|${state?.selectedNodeIds?.join(",") ?? ""}`;
+      }),
+    )
+    .toBe("|");
 
-  await expect(page.locator('[data-node-id="node-external-page"]')).toBeVisible();
+  await expect(
+    page.locator('[data-node-id="node-external-page"]'),
+  ).toBeVisible();
   await page.locator('[data-node-id="node-external-page"]').screenshot({
     path: test.info().outputPath("external-page-deselected.png"),
   });
 });
 
-test("map remains lightweight with more than 100 terminal nodes at overview zoom", async ({ page }) => {
+test("map remains lightweight with more than 100 terminal nodes at overview zoom", async ({
+  page,
+}) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle");
   await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
@@ -1218,12 +1823,14 @@ test("map remains lightweight with more than 100 terminal nodes at overview zoom
   await page.getByRole("button", { name: "Map", exact: true }).click();
 
   await page.evaluate(() => {
-    const store = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => { workspaceUiState: Record<string, unknown> };
-        setState: (state: Record<string, unknown>) => void;
-      };
-    }).__termfleetWorkspaceStore;
+    const store = (
+      window as typeof window & {
+        __termfleetWorkspaceStore?: {
+          getState: () => { workspaceUiState: Record<string, unknown> };
+          setState: (state: Record<string, unknown>) => void;
+        };
+      }
+    ).__termfleetWorkspaceStore;
     if (!store) throw new Error("TermFleet test store is unavailable");
 
     const tabs = Array.from({ length: 120 }, (_, index) => ({
@@ -1233,7 +1840,15 @@ test("map remains lightweight with more than 100 terminal nodes at overview zoom
       color: "#7aa2f7",
       groupId: null,
       initialCwd: `/tmp/fleet-${index}`,
-      terminals: [{ id: `pty-${index}`, paneId: `pane-${index}`, cols: 80, rows: 24, status: "running" }],
+      terminals: [
+        {
+          id: `pty-${index}`,
+          paneId: `pane-${index}`,
+          cols: 80,
+          rows: 24,
+          status: "running",
+        },
+      ],
       splitLayout: { id: `pane-${index}`, type: "terminal" },
       activePaneId: `pane-${index}`,
     }));
@@ -1264,11 +1879,15 @@ test("map remains lightweight with more than 100 terminal nodes at overview zoom
     });
   });
 
-  await expect(page.getByTestId("canvas-terminal-status-block")).toHaveCount(120);
+  await expect(page.getByTestId("canvas-terminal-status-block")).toHaveCount(
+    120,
+  );
   await expect(page.locator(".terminal-container")).toHaveCount(0);
 });
 
-test("selected default-size map terminal does not resize itself on click", async ({ page }) => {
+test("selected default-size map terminal does not resize itself on click", async ({
+  page,
+}) => {
   const source = readFileSync("src/components/MagicCanvas.tsx", "utf8");
   expect(source).not.toContain("READABLE_LIVE_TERMINAL_SIZE");
 
@@ -1280,12 +1899,14 @@ test("selected default-size map terminal does not resize itself on click", async
   await page.getByRole("button", { name: "Map", exact: true }).click();
 
   await page.evaluate(() => {
-    const store = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => { workspaceUiState: Record<string, unknown> };
-        setState: (state: Record<string, unknown>) => void;
-      };
-    }).__termfleetWorkspaceStore;
+    const store = (
+      window as typeof window & {
+        __termfleetWorkspaceStore?: {
+          getState: () => { workspaceUiState: Record<string, unknown> };
+          setState: (state: Record<string, unknown>) => void;
+        };
+      }
+    ).__termfleetWorkspaceStore;
     if (!store) throw new Error("TermFleet test store is unavailable");
 
     store.setState({
@@ -1294,29 +1915,41 @@ test("selected default-size map terminal does not resize itself on click", async
         workspaceMode: "canvas",
         primarySidebarPanel: "map",
       },
-      tabs: [{
-        id: "tab-live-default",
-        title: "Default live terminal",
-        emoji: "[]",
-        color: "#7aa2f7",
-        groupId: null,
-        initialCwd: "/tmp/termfleet-live-default",
-        terminals: [{ id: "pty-live-default", paneId: "pane-live-default", cols: 80, rows: 24, status: "running" }],
-        splitLayout: { id: "pane-live-default", type: "terminal" },
-        activePaneId: "pane-live-default",
-      }],
+      tabs: [
+        {
+          id: "tab-live-default",
+          title: "Default live terminal",
+          emoji: "[]",
+          color: "#7aa2f7",
+          groupId: null,
+          initialCwd: "/tmp/termfleet-live-default",
+          terminals: [
+            {
+              id: "pty-live-default",
+              paneId: "pane-live-default",
+              cols: 80,
+              rows: 24,
+              status: "running",
+            },
+          ],
+          splitLayout: { id: "pane-live-default", type: "terminal" },
+          activePaneId: "pane-live-default",
+        },
+      ],
       activeTabId: "tab-live-default",
       canvasState: {
-        nodes: [{
-          id: "node-live-default",
-          type: "terminal",
-          title: "Default live terminal",
-          terminalTabId: "tab-live-default",
-          x: 80,
-          y: 80,
-          width: 820,
-          height: 460,
-        }],
+        nodes: [
+          {
+            id: "node-live-default",
+            type: "terminal",
+            title: "Default live terminal",
+            terminalTabId: "tab-live-default",
+            x: 80,
+            y: 80,
+            width: 820,
+            height: 460,
+          },
+        ],
         selectedNodeId: "node-live-default",
         selectedNodeIds: ["node-live-default"],
         viewport: { x: 0, y: 0, zoom: 1 },
@@ -1324,45 +1957,87 @@ test("selected default-size map terminal does not resize itself on click", async
     });
   });
 
-  await expect(page.locator("[data-testid='canvas-terminal-live-overlay'] .terminal-container")).toBeVisible();
-  await expect(page.locator("[data-testid='canvas-terminal-node'] [data-testid='canvas-terminal-overlay-placeholder']")).toBeVisible();
-  await expect.poll(async () => page.evaluate(() => {
-    const container = document.querySelector("[data-testid='canvas-terminal-live-overlay'] .terminal-container");
-    const terminalShell = document.querySelector("[data-testid='canvas-terminal-live-overlay'] .terminal-block-shell");
-    const xtermScreen = document.querySelector("[data-testid='canvas-terminal-live-overlay'] .xterm-screen");
-    const containerRect = container?.getBoundingClientRect();
-    const shellRect = terminalShell?.getBoundingClientRect();
-    const screenRect = xtermScreen?.getBoundingClientRect();
-    return {
-      containerHeight: Math.round(containerRect?.height ?? 0),
-      shellHeight: Math.round(shellRect?.height ?? 0),
-      screenHeight: Math.round(screenRect?.height ?? 0),
-    };
-  })).toMatchObject({
-    containerHeight: expect.any(Number),
-    shellHeight: expect.any(Number),
-    screenHeight: expect.any(Number),
-  });
+  await expect(
+    page.locator(
+      "[data-testid='canvas-terminal-live-overlay'] .terminal-container",
+    ),
+  ).toBeVisible();
+  await expect(
+    page.locator(
+      "[data-testid='canvas-terminal-node'] [data-testid='canvas-terminal-overlay-placeholder']",
+    ),
+  ).toBeVisible();
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const container = document.querySelector(
+          "[data-testid='canvas-terminal-live-overlay'] .terminal-container",
+        );
+        const terminalShell = document.querySelector(
+          "[data-testid='canvas-terminal-live-overlay'] .terminal-block-shell",
+        );
+        const xtermScreen = document.querySelector(
+          "[data-testid='canvas-terminal-live-overlay'] .xterm-screen",
+        );
+        const containerRect = container?.getBoundingClientRect();
+        const shellRect = terminalShell?.getBoundingClientRect();
+        const screenRect = xtermScreen?.getBoundingClientRect();
+        return {
+          containerHeight: Math.round(containerRect?.height ?? 0),
+          shellHeight: Math.round(shellRect?.height ?? 0),
+          screenHeight: Math.round(screenRect?.height ?? 0),
+        };
+      }),
+    )
+    .toMatchObject({
+      containerHeight: expect.any(Number),
+      shellHeight: expect.any(Number),
+      screenHeight: expect.any(Number),
+    });
 
   const dimensions = await page.evaluate(() => {
     const node = document.querySelector("[data-testid='canvas-terminal-node']");
-    const content = document.querySelector("[data-testid='canvas-terminal-task-content']");
-    const overlay = document.querySelector("[data-testid='canvas-terminal-live-overlay']");
-    const container = document.querySelector("[data-testid='canvas-terminal-live-overlay'] .terminal-container");
-    const terminalShell = document.querySelector("[data-testid='canvas-terminal-live-overlay'] .terminal-block-shell");
-    const xtermScreen = document.querySelector("[data-testid='canvas-terminal-live-overlay'] .xterm-screen");
+    const content = document.querySelector(
+      "[data-testid='canvas-terminal-task-content']",
+    );
+    const overlay = document.querySelector(
+      "[data-testid='canvas-terminal-live-overlay']",
+    );
+    const container = document.querySelector(
+      "[data-testid='canvas-terminal-live-overlay'] .terminal-container",
+    );
+    const terminalShell = document.querySelector(
+      "[data-testid='canvas-terminal-live-overlay'] .terminal-block-shell",
+    );
+    const xtermScreen = document.querySelector(
+      "[data-testid='canvas-terminal-live-overlay'] .xterm-screen",
+    );
     const contentRect = content?.getBoundingClientRect();
     const overlayRect = overlay?.getBoundingClientRect();
     return {
       nodeWidth: Math.round(node?.getBoundingClientRect().width ?? 0),
       nodeHeight: Math.round(node?.getBoundingClientRect().height ?? 0),
-      overlayLeftDelta: Math.round(Math.abs((overlayRect?.left ?? 0) - (contentRect?.left ?? 0))),
-      overlayTopDelta: Math.round(Math.abs((overlayRect?.top ?? 0) - (contentRect?.top ?? 0))),
-      overlayWidthDelta: Math.round(Math.abs((overlayRect?.width ?? 0) - (contentRect?.width ?? 0))),
-      overlayHeightDelta: Math.round(Math.abs((overlayRect?.height ?? 0) - (contentRect?.height ?? 0))),
-      containerHeight: Math.round(container?.getBoundingClientRect().height ?? 0),
-      shellHeight: Math.round(terminalShell?.getBoundingClientRect().height ?? 0),
-      screenHeight: Math.round(xtermScreen?.getBoundingClientRect().height ?? 0),
+      overlayLeftDelta: Math.round(
+        Math.abs((overlayRect?.left ?? 0) - (contentRect?.left ?? 0)),
+      ),
+      overlayTopDelta: Math.round(
+        Math.abs((overlayRect?.top ?? 0) - (contentRect?.top ?? 0)),
+      ),
+      overlayWidthDelta: Math.round(
+        Math.abs((overlayRect?.width ?? 0) - (contentRect?.width ?? 0)),
+      ),
+      overlayHeightDelta: Math.round(
+        Math.abs((overlayRect?.height ?? 0) - (contentRect?.height ?? 0)),
+      ),
+      containerHeight: Math.round(
+        container?.getBoundingClientRect().height ?? 0,
+      ),
+      shellHeight: Math.round(
+        terminalShell?.getBoundingClientRect().height ?? 0,
+      ),
+      screenHeight: Math.round(
+        xtermScreen?.getBoundingClientRect().height ?? 0,
+      ),
     };
   });
   expect(dimensions.nodeWidth).toBe(820);
@@ -1376,7 +2051,9 @@ test("selected default-size map terminal does not resize itself on click", async
   expect(dimensions.screenHeight).toBeGreaterThanOrEqual(220);
 });
 
-test("manual-sized selected live terminal is not reset to the readable default", async ({ page }) => {
+test("manual-sized selected live terminal is not reset to the readable default", async ({
+  page,
+}) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle");
   await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
@@ -1385,12 +2062,14 @@ test("manual-sized selected live terminal is not reset to the readable default",
   await page.getByRole("button", { name: "Map", exact: true }).click();
 
   await page.evaluate(() => {
-    const store = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => { workspaceUiState: Record<string, unknown> };
-        setState: (state: Record<string, unknown>) => void;
-      };
-    }).__termfleetWorkspaceStore;
+    const store = (
+      window as typeof window & {
+        __termfleetWorkspaceStore?: {
+          getState: () => { workspaceUiState: Record<string, unknown> };
+          setState: (state: Record<string, unknown>) => void;
+        };
+      }
+    ).__termfleetWorkspaceStore;
     if (!store) throw new Error("TermFleet test store is unavailable");
 
     store.setState({
@@ -1399,30 +2078,42 @@ test("manual-sized selected live terminal is not reset to the readable default",
         workspaceMode: "canvas",
         primarySidebarPanel: "map",
       },
-      tabs: [{
-        id: "tab-user-sized",
-        title: "User sized terminal",
-        emoji: "[]",
-        color: "#7aa2f7",
-        groupId: null,
-        initialCwd: "/tmp/termfleet-user-sized",
-        terminals: [{ id: "pty-user-sized", paneId: "pane-user-sized", cols: 80, rows: 24, status: "running" }],
-        splitLayout: { id: "pane-user-sized", type: "terminal" },
-        activePaneId: "pane-user-sized",
-      }],
+      tabs: [
+        {
+          id: "tab-user-sized",
+          title: "User sized terminal",
+          emoji: "[]",
+          color: "#7aa2f7",
+          groupId: null,
+          initialCwd: "/tmp/termfleet-user-sized",
+          terminals: [
+            {
+              id: "pty-user-sized",
+              paneId: "pane-user-sized",
+              cols: 80,
+              rows: 24,
+              status: "running",
+            },
+          ],
+          splitLayout: { id: "pane-user-sized", type: "terminal" },
+          activePaneId: "pane-user-sized",
+        },
+      ],
       activeTabId: "tab-user-sized",
       canvasState: {
-        nodes: [{
-          id: "node-user-sized",
-          type: "terminal",
-          title: "User sized terminal",
-          terminalTabId: "tab-user-sized",
-          x: 80,
-          y: 80,
-          width: 820,
-          height: 460,
-          userSized: true,
-        }],
+        nodes: [
+          {
+            id: "node-user-sized",
+            type: "terminal",
+            title: "User sized terminal",
+            terminalTabId: "tab-user-sized",
+            x: 80,
+            y: 80,
+            width: 820,
+            height: 460,
+            userSized: true,
+          },
+        ],
         selectedNodeId: "node-user-sized",
         selectedNodeIds: ["node-user-sized"],
         viewport: { x: 0, y: 0, zoom: 1 },
@@ -1430,18 +2121,34 @@ test("manual-sized selected live terminal is not reset to the readable default",
     });
   });
 
-  await expect(page.locator("[data-testid='canvas-terminal-live-overlay'] .terminal-container")).toBeVisible();
-  await expect(page.locator("[data-testid='canvas-terminal-node'] [data-testid='canvas-terminal-overlay-placeholder']")).toBeVisible();
-  await expect.poll(async () => page.evaluate(() => {
-    const node = document.querySelector("[data-testid='canvas-terminal-node']");
-    return {
-      width: Math.round(node?.getBoundingClientRect().width ?? 0),
-      height: Math.round(node?.getBoundingClientRect().height ?? 0),
-    };
-  })).toEqual({ width: 820, height: 460 });
+  await expect(
+    page.locator(
+      "[data-testid='canvas-terminal-live-overlay'] .terminal-container",
+    ),
+  ).toBeVisible();
+  await expect(
+    page.locator(
+      "[data-testid='canvas-terminal-node'] [data-testid='canvas-terminal-overlay-placeholder']",
+    ),
+  ).toBeVisible();
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const node = document.querySelector(
+          "[data-testid='canvas-terminal-node']",
+        );
+        return {
+          width: Math.round(node?.getBoundingClientRect().width ?? 0),
+          height: Math.round(node?.getBoundingClientRect().height ?? 0),
+        };
+      }),
+    )
+    .toEqual({ width: 820, height: 460 });
 });
 
-test("readable map mounts only the primary live terminal renderer", async ({ page }) => {
+test("readable map mounts only the primary live terminal renderer", async ({
+  page,
+}) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle");
   await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
@@ -1450,12 +2157,14 @@ test("readable map mounts only the primary live terminal renderer", async ({ pag
   await page.getByRole("button", { name: "Map", exact: true }).click();
 
   await page.evaluate(() => {
-    const store = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => { workspaceUiState: Record<string, unknown> };
-        setState: (state: Record<string, unknown>) => void;
-      };
-    }).__termfleetWorkspaceStore;
+    const store = (
+      window as typeof window & {
+        __termfleetWorkspaceStore?: {
+          getState: () => { workspaceUiState: Record<string, unknown> };
+          setState: (state: Record<string, unknown>) => void;
+        };
+      }
+    ).__termfleetWorkspaceStore;
     if (!store) throw new Error("TermFleet test store is unavailable");
 
     const tabs = Array.from({ length: 6 }, (_, index) => ({
@@ -1465,13 +2174,15 @@ test("readable map mounts only the primary live terminal renderer", async ({ pag
       color: "#7aa2f7",
       groupId: null,
       initialCwd: `/tmp/termfleet-readable-${index}`,
-      terminals: [{
-        id: `pty-readable-${index}`,
-        paneId: `pane-readable-${index}`,
-        cols: 80,
-        rows: 24,
-        status: "running",
-      }],
+      terminals: [
+        {
+          id: `pty-readable-${index}`,
+          paneId: `pane-readable-${index}`,
+          cols: 80,
+          rows: 24,
+          status: "running",
+        },
+      ],
       splitLayout: { id: `pane-readable-${index}`, type: "terminal" },
       activePaneId: `pane-readable-${index}`,
     }));
@@ -1502,13 +2213,25 @@ test("readable map mounts only the primary live terminal renderer", async ({ pag
     });
   });
 
-  await expect(page.locator("[data-testid='canvas-terminal-node']")).toHaveCount(6);
+  await expect(
+    page.locator("[data-testid='canvas-terminal-node']"),
+  ).toHaveCount(6);
   await expect(page.getByTestId("canvas-terminal-live-overlay")).toHaveCount(1);
-  await expect(page.locator("[data-testid='canvas-terminal-live-overlay'] .terminal-container")).toHaveCount(1);
-  await expect(page.locator("[data-testid='canvas-terminal-node'] [data-testid='canvas-terminal-overlay-placeholder']")).toHaveCount(1);
+  await expect(
+    page.locator(
+      "[data-testid='canvas-terminal-live-overlay'] .terminal-container",
+    ),
+  ).toHaveCount(1);
+  await expect(
+    page.locator(
+      "[data-testid='canvas-terminal-node'] [data-testid='canvas-terminal-overlay-placeholder']",
+    ),
+  ).toHaveCount(1);
 });
 
-test("task sidebar docks as an inner column flush inside the card", async ({ page }) => {
+test("task sidebar docks as an inner column flush inside the card", async ({
+  page,
+}) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle");
   await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
@@ -1517,12 +2240,14 @@ test("task sidebar docks as an inner column flush inside the card", async ({ pag
   await page.getByRole("button", { name: "Map", exact: true }).click();
 
   await page.evaluate(() => {
-    const store = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => { workspaceUiState: Record<string, unknown> };
-        setState: (state: Record<string, unknown>) => void;
-      };
-    }).__termfleetWorkspaceStore;
+    const store = (
+      window as typeof window & {
+        __termfleetWorkspaceStore?: {
+          getState: () => { workspaceUiState: Record<string, unknown> };
+          setState: (state: Record<string, unknown>) => void;
+        };
+      }
+    ).__termfleetWorkspaceStore;
     if (!store) throw new Error("TermFleet test store is unavailable");
 
     store.setState({
@@ -1531,46 +2256,52 @@ test("task sidebar docks as an inner column flush inside the card", async ({ pag
         workspaceMode: "canvas",
         primarySidebarPanel: "map",
       },
-      tabs: [{
-        id: "tab-empty-tasks",
-        title: "Empty tasks terminal",
-        emoji: "[]",
-        color: "#7aa2f7",
-        groupId: null,
-        initialCwd: "/tmp/termfleet-empty-tasks",
-        terminals: [{
-          id: "pty-empty-tasks",
-          paneId: "pane-empty-tasks",
-          cols: 80,
-          rows: 24,
-          status: "running",
-          taskSidebarCollapsed: false,
-          statusSummary: {
-            task: "Running",
-            path: "termfleet",
-            now: "watching output",
-            status: "working",
-            provider: "shell",
-            confidence: "medium",
-            tasks: [],
-            tasksFromTodoWrite: false,
-          },
-        }],
-        splitLayout: { id: "pane-empty-tasks", type: "terminal" },
-        activePaneId: "pane-empty-tasks",
-      }],
+      tabs: [
+        {
+          id: "tab-empty-tasks",
+          title: "Empty tasks terminal",
+          emoji: "[]",
+          color: "#7aa2f7",
+          groupId: null,
+          initialCwd: "/tmp/termfleet-empty-tasks",
+          terminals: [
+            {
+              id: "pty-empty-tasks",
+              paneId: "pane-empty-tasks",
+              cols: 80,
+              rows: 24,
+              status: "running",
+              taskSidebarCollapsed: false,
+              statusSummary: {
+                task: "Running",
+                path: "termfleet",
+                now: "watching output",
+                status: "working",
+                provider: "shell",
+                confidence: "medium",
+                tasks: [],
+                tasksFromTodoWrite: false,
+              },
+            },
+          ],
+          splitLayout: { id: "pane-empty-tasks", type: "terminal" },
+          activePaneId: "pane-empty-tasks",
+        },
+      ],
       activeTabId: "tab-empty-tasks",
       canvasState: {
-        nodes: [{
-          id: "node-empty-tasks",
-          type: "terminal",
-          title: "Empty tasks terminal",
-          terminalTabId: "tab-empty-tasks",
-          x: 80,
-          y: 80,
-          width: 820,
-          height: 460,
-        }],
+        nodes: [
+          {
+            id: "node-empty-tasks",
+            type: "terminal",
+            title: "Empty tasks terminal",
+            terminalTabId: "tab-empty-tasks",
+            x: 80,
+            y: 80,
+            width: 820,
+            height: 460,
+          },
+        ],
         selectedNodeId: "node-empty-tasks",
         selectedNodeIds: ["node-empty-tasks"],
         viewport: { x: 0, y: 0, zoom: 1 },
@@ -1582,33 +2313,60 @@ test("task sidebar docks as an inner column flush inside the card", async ({ pag
   // terminal makes room for it, the list sits flush against the terminal content
   // (no gap) and stays INSIDE the node (no detached overhanging slab).
   await expect(page.getByTestId("canvas-terminal-task-sidebar")).toBeVisible();
-  const openContentBox = await page.getByTestId("canvas-terminal-task-content").boundingBox();
-  const openNodeBox = await page.getByTestId("canvas-terminal-node").boundingBox();
-  const openSidebarBox = await page.getByTestId("canvas-terminal-task-sidebar").boundingBox();
-  if (!openContentBox || !openNodeBox || !openSidebarBox) throw new Error("Open terminal content, sidebar, or node is not visible");
+  const openContentBox = await page
+    .getByTestId("canvas-terminal-task-content")
+    .boundingBox();
+  const openNodeBox = await page
+    .getByTestId("canvas-terminal-node")
+    .boundingBox();
+  const openSidebarBox = await page
+    .getByTestId("canvas-terminal-task-sidebar")
+    .boundingBox();
+  if (!openContentBox || !openNodeBox || !openSidebarBox)
+    throw new Error("Open terminal content, sidebar, or node is not visible");
   // List is flush against the terminal content — no gap.
-  expect(Math.abs(openSidebarBox.x - (openContentBox.x + openContentBox.width))).toBeLessThanOrEqual(2);
+  expect(
+    Math.abs(openSidebarBox.x - (openContentBox.x + openContentBox.width)),
+  ).toBeLessThanOrEqual(2);
   // List stays inside the card — its right edge does not overhang the node.
-  expect(openSidebarBox.x + openSidebarBox.width).toBeLessThanOrEqual(openNodeBox.x + openNodeBox.width + 2);
+  expect(openSidebarBox.x + openSidebarBox.width).toBeLessThanOrEqual(
+    openNodeBox.x + openNodeBox.width + 2,
+  );
   await page.getByLabel("Minimize tasks").click();
   await expect(page.getByTestId("canvas-terminal-task-sidebar")).toHaveCount(0);
-  const collapsedContentBox = await page.getByTestId("canvas-terminal-task-content").boundingBox();
-  if (!collapsedContentBox) throw new Error("Collapsed terminal content is not visible");
+  const collapsedContentBox = await page
+    .getByTestId("canvas-terminal-task-content")
+    .boundingBox();
+  if (!collapsedContentBox)
+    throw new Error("Collapsed terminal content is not visible");
   // Collapsing the list to the slim rail gives the terminal its room back.
   expect(collapsedContentBox.width).toBeGreaterThan(openContentBox.width + 100);
   await page.getByTestId("canvas-terminal-task-rail").click();
   await expect(page.getByTestId("canvas-terminal-task-sidebar")).toBeVisible();
-  const reopenedContentBox = await page.getByTestId("canvas-terminal-task-content").boundingBox();
-  const reopenedSidebarBox = await page.getByTestId("canvas-terminal-task-sidebar").boundingBox();
-  if (!reopenedContentBox || !reopenedSidebarBox) throw new Error("Reopened terminal content or sidebar is not visible");
-  expect(Math.round(reopenedContentBox.width)).toBe(Math.round(openContentBox.width));
-  expect(Math.abs(reopenedSidebarBox.x - (reopenedContentBox.x + reopenedContentBox.width))).toBeLessThanOrEqual(2);
+  const reopenedContentBox = await page
+    .getByTestId("canvas-terminal-task-content")
+    .boundingBox();
+  const reopenedSidebarBox = await page
+    .getByTestId("canvas-terminal-task-sidebar")
+    .boundingBox();
+  if (!reopenedContentBox || !reopenedSidebarBox)
+    throw new Error("Reopened terminal content or sidebar is not visible");
+  expect(Math.round(reopenedContentBox.width)).toBe(
+    Math.round(openContentBox.width),
+  );
+  expect(
+    Math.abs(
+      reopenedSidebarBox.x - (reopenedContentBox.x + reopenedContentBox.width),
+    ),
+  ).toBeLessThanOrEqual(2);
 });
 
 // TC-039/TC-042 — the expanded task list must read as ONE card with the terminal,
 // not a detached floating panel. It's an in-flow inner column of the card: flush
 // against the terminal content, contained within the node bounds, full height.
-test("expanded task list reads as one card with the terminal", async ({ page }) => {
+test("expanded task list reads as one card with the terminal", async ({
+  page,
+}) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle");
   await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
@@ -1617,12 +2375,14 @@ test("expanded task list reads as one card with the terminal", async ({ page }) 
   await page.getByRole("button", { name: "Map", exact: true }).click();
 
   await page.evaluate(() => {
-    const store = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => { workspaceUiState: Record<string, unknown> };
-        setState: (state: Record<string, unknown>) => void;
-      };
-    }).__termfleetWorkspaceStore;
+    const store = (
+      window as typeof window & {
+        __termfleetWorkspaceStore?: {
+          getState: () => { workspaceUiState: Record<string, unknown> };
+          setState: (state: Record<string, unknown>) => void;
+        };
+      }
+    ).__termfleetWorkspaceStore;
     if (!store) throw new Error("TermFleet test store is unavailable");
     store.setState({
       workspaceUiState: {
@@ -1630,35 +2390,52 @@ test("expanded task list reads as one card with the terminal", async ({ page }) 
         workspaceMode: "canvas",
         primarySidebarPanel: "map",
       },
-      tabs: [{
-        id: "tab-onecard",
-        title: "One card terminal",
-        emoji: "[]",
-        color: "#7aa2f7",
-        groupId: null,
-        initialCwd: "/tmp/termfleet-onecard",
-        terminals: [{
-          id: "pty-onecard",
-          paneId: "pane-onecard",
-          cols: 80,
-          rows: 24,
-          status: "running",
-          taskSidebarCollapsed: false,
-          statusSummary: {
-            task: "Running", path: "termfleet", now: "watching output",
-            status: "working", provider: "shell", confidence: "medium",
-            tasks: [], tasksFromTodoWrite: false,
-          },
-        }],
-        splitLayout: { id: "pane-onecard", type: "terminal" },
-        activePaneId: "pane-onecard",
-      }],
+      tabs: [
+        {
+          id: "tab-onecard",
+          title: "One card terminal",
+          emoji: "[]",
+          color: "#7aa2f7",
+          groupId: null,
+          initialCwd: "/tmp/termfleet-onecard",
+          terminals: [
+            {
+              id: "pty-onecard",
+              paneId: "pane-onecard",
+              cols: 80,
+              rows: 24,
+              status: "running",
+              taskSidebarCollapsed: false,
+              statusSummary: {
+                task: "Running",
+                path: "termfleet",
+                now: "watching output",
+                status: "working",
+                provider: "shell",
+                confidence: "medium",
+                tasks: [],
+                tasksFromTodoWrite: false,
+              },
+            },
+          ],
+          splitLayout: { id: "pane-onecard", type: "terminal" },
+          activePaneId: "pane-onecard",
+        },
+      ],
       activeTabId: "tab-onecard",
       canvasState: {
-        nodes: [{
-          id: "node-onecard", type: "terminal", title: "One card terminal",
-          terminalTabId: "tab-onecard", x: 80, y: 80, width: 820, height: 460,
-        }],
+        nodes: [
+          {
+            id: "node-onecard",
+            type: "terminal",
+            title: "One card terminal",
+            terminalTabId: "tab-onecard",
+            x: 80,
+            y: 80,
+            width: 820,
+            height: 460,
+          },
+        ],
         selectedNodeId: "node-onecard",
         selectedNodeIds: ["node-onecard"],
         viewport: { x: 0, y: 0, zoom: 1 },
@@ -1677,16 +2454,25 @@ test("expanded task list reads as one card with the terminal", async ({ page }) 
   const nodeBox = await nodeEl.boundingBox();
   const sidebarBox = await sidebar.boundingBox();
   const contentBox = await content.boundingBox();
-  if (!nodeBox || !sidebarBox || !contentBox) throw new Error("node, content, or sidebar not visible");
+  if (!nodeBox || !sidebarBox || !contentBox)
+    throw new Error("node, content, or sidebar not visible");
   // Flush against the terminal content — no gap.
-  expect(Math.abs(sidebarBox.x - (contentBox.x + contentBox.width))).toBeLessThanOrEqual(2);
+  expect(
+    Math.abs(sidebarBox.x - (contentBox.x + contentBox.width)),
+  ).toBeLessThanOrEqual(2);
   // Contained within the card — the right edge does not overhang the node.
-  expect(sidebarBox.x + sidebarBox.width).toBeLessThanOrEqual(nodeBox.x + nodeBox.width + 2);
+  expect(sidebarBox.x + sidebarBox.width).toBeLessThanOrEqual(
+    nodeBox.x + nodeBox.width + 2,
+  );
   // Spans the card's height (one unit with the terminal, not a floating panel).
-  expect(Math.abs(sidebarBox.height - contentBox.height)).toBeLessThanOrEqual(2);
+  expect(Math.abs(sidebarBox.height - contentBox.height)).toBeLessThanOrEqual(
+    2,
+  );
 });
 
-test("status bar summarizes durable terminal recovery states", async ({ page }) => {
+test("status bar summarizes durable terminal recovery states", async ({
+  page,
+}) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle");
   await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
@@ -1694,14 +2480,16 @@ test("status bar summarizes durable terminal recovery states", async ({ page }) 
   await page.waitForLoadState("networkidle");
 
   await page.evaluate(() => {
-    const store = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => {
-          workspaceUiState: Record<string, unknown>;
+    const store = (
+      window as typeof window & {
+        __termfleetWorkspaceStore?: {
+          getState: () => {
+            workspaceUiState: Record<string, unknown>;
+          };
+          setState: (state: Record<string, unknown>) => void;
         };
-        setState: (state: Record<string, unknown>) => void;
-      };
-    }).__termfleetWorkspaceStore;
+      }
+    ).__termfleetWorkspaceStore;
     if (!store) throw new Error("TermFleet test store is unavailable");
 
     const terminalTab = (id: string, status: string, title = "Terminal") => ({
@@ -1711,14 +2499,16 @@ test("status bar summarizes durable terminal recovery states", async ({ page }) 
       color: "#7aa2f7",
       groupId: null,
       initialCwd: `/tmp/${id}`,
-      terminals: [{
-        id: `pty-${id}`,
-        paneId: `pane-${id}`,
-        cols: 80,
-        rows: 24,
-        status,
-        lastError: status === "failed" ? "daemon write failed" : undefined,
-      }],
+      terminals: [
+        {
+          id: `pty-${id}`,
+          paneId: `pane-${id}`,
+          cols: 80,
+          rows: 24,
+          status,
+          lastError: status === "failed" ? "daemon write failed" : undefined,
+        },
+      ],
       splitLayout: { id: `pane-${id}`, type: "terminal" },
       activePaneId: `pane-${id}`,
     });
@@ -1742,14 +2532,24 @@ test("status bar summarizes durable terminal recovery states", async ({ page }) 
     });
   });
 
-  await expect(page.getByTestId("statusbar-recovery-summary")).toContainText("1 reconnected");
-  await expect(page.getByTestId("statusbar-recovery-summary")).toContainText("1 stale");
-  await expect(page.getByTestId("statusbar-recovery-summary")).toContainText("1 failed");
-  await expect(page.getByTestId("statusbar-recovery-summary")).toContainText("1 exited");
+  await expect(page.getByTestId("statusbar-recovery-summary")).toContainText(
+    "1 reconnected",
+  );
+  await expect(page.getByTestId("statusbar-recovery-summary")).toContainText(
+    "1 stale",
+  );
+  await expect(page.getByTestId("statusbar-recovery-summary")).toContainText(
+    "1 failed",
+  );
+  await expect(page.getByTestId("statusbar-recovery-summary")).toContainText(
+    "1 exited",
+  );
   await expect(page.getByText("2 ptys")).toBeVisible();
 });
 
-test("split terminal body fills the available pane height", async ({ page }) => {
+test("split terminal body fills the available pane height", async ({
+  page,
+}) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle");
   await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
@@ -1757,12 +2557,14 @@ test("split terminal body fills the available pane height", async ({ page }) => 
   await page.waitForLoadState("networkidle");
 
   await page.evaluate(() => {
-    const store = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => { workspaceUiState: Record<string, unknown> };
-        setState: (state: Record<string, unknown>) => void;
-      };
-    }).__termfleetWorkspaceStore;
+    const store = (
+      window as typeof window & {
+        __termfleetWorkspaceStore?: {
+          getState: () => { workspaceUiState: Record<string, unknown> };
+          setState: (state: Record<string, unknown>) => void;
+        };
+      }
+    ).__termfleetWorkspaceStore;
     if (!store) throw new Error("TermFleet test store is unavailable");
 
     store.setState({
@@ -1772,51 +2574,71 @@ test("split terminal body fills the available pane height", async ({ page }) => 
         primarySidebarCollapsed: false,
         primarySidebarPanel: "sessions",
       },
-      tabs: [{
-        id: "tab-fill",
-        title: "Tall terminal",
-        emoji: "[]",
-        color: "#7aa2f7",
-        groupId: null,
-        initialCwd: "/tmp/termfleet-fill",
-        terminals: [{
-          id: "pty-fill",
-          paneId: "pane-fill",
-          cols: 80,
-          rows: 24,
-          status: "running",
-        }],
-        splitLayout: { id: "pane-fill", type: "terminal", cwd: "/tmp/termfleet-fill" },
-        activePaneId: "pane-fill",
-      }],
+      tabs: [
+        {
+          id: "tab-fill",
+          title: "Tall terminal",
+          emoji: "[]",
+          color: "#7aa2f7",
+          groupId: null,
+          initialCwd: "/tmp/termfleet-fill",
+          terminals: [
+            {
+              id: "pty-fill",
+              paneId: "pane-fill",
+              cols: 80,
+              rows: 24,
+              status: "running",
+            },
+          ],
+          splitLayout: {
+            id: "pane-fill",
+            type: "terminal",
+            cwd: "/tmp/termfleet-fill",
+          },
+          activePaneId: "pane-fill",
+        },
+      ],
       activeTabId: "tab-fill",
       activeTerminalId: "pty-fill",
     });
   });
 
   await expect(page.locator(".terminal-pane-frame")).toBeVisible();
-  await expect(page.locator(".terminal-pane-frame .terminal-container")).toBeVisible();
+  await expect(
+    page.locator(".terminal-pane-frame .terminal-container"),
+  ).toBeVisible();
 
   const dimensions = await page.evaluate(() => {
     const pane = document.querySelector(".terminal-pane-frame");
-    const container = document.querySelector(".terminal-pane-frame .terminal-container");
+    const container = document.querySelector(
+      ".terminal-pane-frame .terminal-container",
+    );
     const paneRect = pane?.getBoundingClientRect();
     const containerRect = container?.getBoundingClientRect();
     return {
       paneHeight: Math.round(paneRect?.height ?? 0),
       containerHeight: Math.round(containerRect?.height ?? 0),
-      containerBottomGap: Math.round((paneRect?.bottom ?? 0) - (containerRect?.bottom ?? 0)),
-      containerTopGap: Math.round((containerRect?.top ?? 0) - (paneRect?.top ?? 0)),
+      containerBottomGap: Math.round(
+        (paneRect?.bottom ?? 0) - (containerRect?.bottom ?? 0),
+      ),
+      containerTopGap: Math.round(
+        (containerRect?.top ?? 0) - (paneRect?.top ?? 0),
+      ),
     };
   });
 
   expect(dimensions.paneHeight).toBeGreaterThan(500);
-  expect(dimensions.containerHeight).toBeGreaterThan(dimensions.paneHeight - 96);
+  expect(dimensions.containerHeight).toBeGreaterThan(
+    dimensions.paneHeight - 96,
+  );
   expect(dimensions.containerBottomGap).toBeLessThanOrEqual(2);
   expect(dimensions.containerTopGap).toBeGreaterThanOrEqual(20);
 });
 
-test("map notes can be edited without dragging the canvas", async ({ page }) => {
+test("map notes can be edited without dragging the canvas", async ({
+  page,
+}) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle");
   await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
@@ -1827,26 +2649,45 @@ test("map notes can be edited without dragging the canvas", async ({ page }) => 
   await page.getByLabel("Add note").click();
   const editor = page.getByTestId("canvas-note-editor").last();
   await editor.fill("Check failing build, capture blocker, then re-run proof.");
-  await expect(editor).toHaveValue("Check failing build, capture blocker, then re-run proof.");
+  await expect(editor).toHaveValue(
+    "Check failing build, capture blocker, then re-run proof.",
+  );
 
-  await expect.poll(async () => page.evaluate(() => {
-    const store = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => {
-          canvasState: {
-            viewport: { x: number; y: number };
-            nodes: Array<{ type: string; title: string; content?: string }>;
-          };
-        };
-      };
-    }).__termfleetWorkspaceStore;
-    const state = store?.getState().canvasState;
-    const note = state?.nodes.find((candidate) => candidate.type === "note" && candidate.title === "Run note");
-    return note ? `${state?.viewport.x}:${state?.viewport.y}:${note.content}` : null;
-  })).toBe("0:0:Check failing build, capture blocker, then re-run proof.");
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const store = (
+          window as typeof window & {
+            __termfleetWorkspaceStore?: {
+              getState: () => {
+                canvasState: {
+                  viewport: { x: number; y: number };
+                  nodes: Array<{
+                    type: string;
+                    title: string;
+                    content?: string;
+                  }>;
+                };
+              };
+            };
+          }
+        ).__termfleetWorkspaceStore;
+        const state = store?.getState().canvasState;
+        const note = state?.nodes.find(
+          (candidate) =>
+            candidate.type === "note" && candidate.title === "Run note",
+        );
+        return note
+          ? `${state?.viewport.x}:${state?.viewport.y}:${note.content}`
+          : null;
+      }),
+    )
+    .toBe("0:0:Check failing build, capture blocker, then re-run proof.");
 });
 
-test("workspace store supports multi-select canvas movement and label colors", async ({ page }) => {
+test("workspace store supports multi-select canvas movement and label colors", async ({
+  page,
+}) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle");
   await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
@@ -1854,22 +2695,45 @@ test("workspace store supports multi-select canvas movement and label colors", a
   await page.waitForLoadState("networkidle");
 
   const result = await page.evaluate(() => {
-    const store = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => {
-          activeTabId: string | null;
-          canvasState: {
-            selectedNodeId: string | null;
-            selectedNodeIds?: string[];
-            nodes: Array<{ id: string; type: string; title: string; x: number; y: number; labelColor?: string; terminalTabId?: string }>;
+    const store = (
+      window as typeof window & {
+        __termfleetWorkspaceStore?: {
+          getState: () => {
+            activeTabId: string | null;
+            canvasState: {
+              selectedNodeId: string | null;
+              selectedNodeIds?: string[];
+              nodes: Array<{
+                id: string;
+                type: string;
+                title: string;
+                x: number;
+                y: number;
+                labelColor?: string;
+                terminalTabId?: string;
+              }>;
+            };
+            addCanvasNode: (node: {
+              id: string;
+              type: string;
+              title: string;
+              x: number;
+              y: number;
+              width: number;
+              height: number;
+              labelColor?: string;
+              terminalTabId?: string;
+            }) => void;
+            selectCanvasNodes: (ids: string[]) => void;
+            moveCanvasNodes: (
+              ids: string[],
+              delta: { x: number; y: number },
+            ) => void;
+            removeCanvasNode: (id: string) => void;
           };
-          addCanvasNode: (node: { id: string; type: string; title: string; x: number; y: number; width: number; height: number; labelColor?: string; terminalTabId?: string }) => void;
-          selectCanvasNodes: (ids: string[]) => void;
-          moveCanvasNodes: (ids: string[], delta: { x: number; y: number }) => void;
-          removeCanvasNode: (id: string) => void;
         };
-      };
-    }).__termfleetWorkspaceStore;
+      }
+    ).__termfleetWorkspaceStore;
     if (!store) throw new Error("TermFleet test store is unavailable");
     const state = store.getState();
     state.addCanvasNode({
@@ -1903,7 +2767,12 @@ test("workspace store supports multi-select canvas movement and label colors", a
       selectedNodeIds: moved.selectedNodeIds,
       nodes: moved.nodes
         .filter((node) => node.id === "node-a" || node.id === "node-b")
-        .map((node) => ({ id: node.id, x: node.x, y: node.y, labelColor: node.labelColor })),
+        .map((node) => ({
+          id: node.id,
+          x: node.x,
+          y: node.y,
+          labelColor: node.labelColor,
+        })),
       afterRemoveSelectedNodeId: afterRemove.selectedNodeId,
       afterRemoveSelectedNodeIds: afterRemove.selectedNodeIds,
     };
@@ -1911,15 +2780,19 @@ test("workspace store supports multi-select canvas movement and label colors", a
 
   expect(result.selectedNodeId).toBe("node-b");
   expect(result.selectedNodeIds).toEqual(["node-b", "node-a"]);
-  expect(result.nodes).toEqual(expect.arrayContaining([
-    { id: "node-a", x: 13, y: 17, labelColor: "#7dbac3" },
-    { id: "node-b", x: 103, y: 197, labelColor: "#d4a44f" },
-  ]));
+  expect(result.nodes).toEqual(
+    expect.arrayContaining([
+      { id: "node-a", x: 13, y: 17, labelColor: "#7dbac3" },
+      { id: "node-b", x: 103, y: 197, labelColor: "#d4a44f" },
+    ]),
+  );
   expect(result.afterRemoveSelectedNodeId).toBe("node-a");
   expect(result.afterRemoveSelectedNodeIds).toEqual(["node-a"]);
 });
 
-test("workspace store renames terminal map nodes and their linked tabs together", async ({ page }) => {
+test("workspace store renames terminal map nodes and their linked tabs together", async ({
+  page,
+}) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle");
   await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
@@ -1927,19 +2800,35 @@ test("workspace store renames terminal map nodes and their linked tabs together"
   await page.waitForLoadState("networkidle");
 
   const result = await page.evaluate(() => {
-    const store = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => {
-          activeTabId: string | null;
-          tabs: Array<{ id: string; title: string }>;
-          canvasState: {
-            nodes: Array<{ id: string; type: string; title: string; terminalTabId?: string }>;
+    const store = (
+      window as typeof window & {
+        __termfleetWorkspaceStore?: {
+          getState: () => {
+            activeTabId: string | null;
+            tabs: Array<{ id: string; title: string }>;
+            canvasState: {
+              nodes: Array<{
+                id: string;
+                type: string;
+                title: string;
+                terminalTabId?: string;
+              }>;
+            };
+            addCanvasNode: (node: {
+              id: string;
+              type: string;
+              title: string;
+              x: number;
+              y: number;
+              width: number;
+              height: number;
+              terminalTabId?: string;
+            }) => void;
+            renameCanvasNode: (id: string, title: string) => void;
           };
-          addCanvasNode: (node: { id: string; type: string; title: string; x: number; y: number; width: number; height: number; terminalTabId?: string }) => void;
-          renameCanvasNode: (id: string, title: string) => void;
         };
-      };
-    }).__termfleetWorkspaceStore;
+      }
+    ).__termfleetWorkspaceStore;
     if (!store) throw new Error("TermFleet test store is unavailable");
     const state = store.getState();
     const activeTabId = state.activeTabId;
@@ -1960,7 +2849,9 @@ test("workspace store renames terminal map nodes and their linked tabs together"
 
     const next = store.getState();
     return {
-      nodeTitle: next.canvasState.nodes.find((node) => node.id === "terminal-rename-node")?.title,
+      nodeTitle: next.canvasState.nodes.find(
+        (node) => node.id === "terminal-rename-node",
+      )?.title,
       tabTitle: next.tabs.find((tab) => tab.id === activeTabId)?.title,
     };
   });
@@ -1971,7 +2862,9 @@ test("workspace store renames terminal map nodes and their linked tabs together"
   });
 });
 
-test("Ctrl+Z restores the last closed terminal map session from app chrome", async ({ page }) => {
+test("Ctrl+Z restores the last closed terminal map session from app chrome", async ({
+  page,
+}) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle");
   await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
@@ -1979,15 +2872,17 @@ test("Ctrl+Z restores the last closed terminal map session from app chrome", asy
   await page.waitForLoadState("networkidle");
 
   await page.evaluate(async () => {
-    const store = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => {
-          closeTerminalSession: (id: string) => Promise<void>;
-          workspaceUiState: Record<string, unknown>;
+    const store = (
+      window as typeof window & {
+        __termfleetWorkspaceStore?: {
+          getState: () => {
+            closeTerminalSession: (id: string) => Promise<void>;
+            workspaceUiState: Record<string, unknown>;
+          };
+          setState: (state: Record<string, unknown>) => void;
         };
-        setState: (state: Record<string, unknown>) => void;
-      };
-    }).__termfleetWorkspaceStore;
+      }
+    ).__termfleetWorkspaceStore;
     if (!store) throw new Error("TermFleet test store is unavailable");
 
     store.setState({
@@ -1996,33 +2891,49 @@ test("Ctrl+Z restores the last closed terminal map session from app chrome", asy
         workspaceMode: "canvas",
         primarySidebarPanel: "map",
       },
-      tabs: [{
-        id: "tab-undo",
-        title: "Undo build",
-        emoji: "[]",
-        color: "#7aa2f7",
-        groupId: null,
-        initialCwd: "/tmp/undo-build",
-        terminals: [{ id: "pty-undo", paneId: "pane-undo", cols: 80, rows: 24, status: "running" }],
-        splitLayout: { id: "pane-undo", type: "terminal", cwd: "/tmp/undo-build" },
-        activePaneId: "pane-undo",
-      }],
+      tabs: [
+        {
+          id: "tab-undo",
+          title: "Undo build",
+          emoji: "[]",
+          color: "#7aa2f7",
+          groupId: null,
+          initialCwd: "/tmp/undo-build",
+          terminals: [
+            {
+              id: "pty-undo",
+              paneId: "pane-undo",
+              cols: 80,
+              rows: 24,
+              status: "running",
+            },
+          ],
+          splitLayout: {
+            id: "pane-undo",
+            type: "terminal",
+            cwd: "/tmp/undo-build",
+          },
+          activePaneId: "pane-undo",
+        },
+      ],
       activeTabId: "tab-undo",
       activeTerminalId: "pty-undo",
       canvasState: {
-        nodes: [{
-          id: "node-undo",
-          type: "terminal",
-          title: "Undo build",
-          terminalTabId: "tab-undo",
-          terminalCwd: "/tmp/undo-build",
-          x: 320,
-          y: 180,
-          width: 820,
-          height: 460,
-          labelColor: "#d4a44f",
-          taskBinding: { taskId: "TC-029", planPath: "MASTER_PLAN.md" },
-        }],
+        nodes: [
+          {
+            id: "node-undo",
+            type: "terminal",
+            title: "Undo build",
+            terminalTabId: "tab-undo",
+            terminalCwd: "/tmp/undo-build",
+            x: 320,
+            y: 180,
+            width: 820,
+            height: 460,
+            labelColor: "#d4a44f",
+            taskBinding: { taskId: "TC-029", planPath: "MASTER_PLAN.md" },
+          },
+        ],
         selectedNodeId: "node-undo",
         selectedNodeIds: ["node-undo"],
         viewport: { x: 12, y: 24, zoom: 0.8 },
@@ -2032,18 +2943,24 @@ test("Ctrl+Z restores the last closed terminal map session from app chrome", asy
     await store.getState().closeTerminalSession("tab-undo");
   });
 
-  await expect.poll(async () => page.evaluate(() => {
-    const store = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => {
-          tabs: Array<{ id: string }>;
-          canvasState: { nodes: Array<{ id: string }> };
-        };
-      };
-    }).__termfleetWorkspaceStore;
-    const state = store?.getState();
-    return `${state?.tabs.some((tab) => tab.id === "tab-undo")}:${state?.canvasState.nodes.some((node) => node.id === "node-undo")}`;
-  })).toBe("false:false");
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const store = (
+          window as typeof window & {
+            __termfleetWorkspaceStore?: {
+              getState: () => {
+                tabs: Array<{ id: string }>;
+                canvasState: { nodes: Array<{ id: string }> };
+              };
+            };
+          }
+        ).__termfleetWorkspaceStore;
+        const state = store?.getState();
+        return `${state?.tabs.some((tab) => tab.id === "tab-undo")}:${state?.canvasState.nodes.some((node) => node.id === "node-undo")}`;
+      }),
+    )
+    .toBe("false:false");
 
   await page.evaluate(async () => {
     const { TERMINAL_INPUT_CLASS } = await import("/src/lib/terminalFocus.ts");
@@ -2069,35 +2986,39 @@ test("Ctrl+Z restores the last closed terminal map session from app chrome", asy
   await page.keyboard.press("Control+Z");
 
   const restored = await page.evaluate(() => {
-    const store = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => {
-          activeTabId: string | null;
-          activeTerminalId: string | null;
-          tabs: Array<{
-            id: string;
-            title: string;
-            initialCwd?: string;
-            terminals: Array<unknown>;
-          }>;
-          canvasState: {
-            selectedNodeId: string | null;
-            selectedNodeIds?: string[];
-            nodes: Array<{
+    const store = (
+      window as typeof window & {
+        __termfleetWorkspaceStore?: {
+          getState: () => {
+            activeTabId: string | null;
+            activeTerminalId: string | null;
+            tabs: Array<{
               id: string;
-              terminalTabId?: string;
-              x: number;
-              y: number;
-              labelColor?: string;
-              taskBinding?: { taskId: string };
+              title: string;
+              initialCwd?: string;
+              terminals: Array<unknown>;
             }>;
+            canvasState: {
+              selectedNodeId: string | null;
+              selectedNodeIds?: string[];
+              nodes: Array<{
+                id: string;
+                terminalTabId?: string;
+                x: number;
+                y: number;
+                labelColor?: string;
+                taskBinding?: { taskId: string };
+              }>;
+            };
           };
         };
-      };
-    }).__termfleetWorkspaceStore;
+      }
+    ).__termfleetWorkspaceStore;
     const state = store?.getState();
     const tab = state?.tabs.find((candidate) => candidate.id === "tab-undo");
-    const node = state?.canvasState.nodes.find((candidate) => candidate.id === "node-undo");
+    const node = state?.canvasState.nodes.find(
+      (candidate) => candidate.id === "node-undo",
+    );
     return {
       activeTabId: state?.activeTabId,
       activeTerminalId: state?.activeTerminalId,
@@ -2128,7 +3049,9 @@ test("Ctrl+Z restores the last closed terminal map session from app chrome", asy
   expect(restored.selectedNodeIds).toEqual(["node-undo"]);
 });
 
-test("Delete closes the selected terminal map node and Ctrl+Z restores it", async ({ page }) => {
+test("Delete closes the selected terminal map node and Ctrl+Z restores it", async ({
+  page,
+}) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle");
   await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
@@ -2137,12 +3060,14 @@ test("Delete closes the selected terminal map node and Ctrl+Z restores it", asyn
   await page.getByRole("button", { name: "Map", exact: true }).click();
 
   await page.evaluate(() => {
-    const store = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => { workspaceUiState: Record<string, unknown> };
-        setState: (state: Record<string, unknown>) => void;
-      };
-    }).__termfleetWorkspaceStore;
+    const store = (
+      window as typeof window & {
+        __termfleetWorkspaceStore?: {
+          getState: () => { workspaceUiState: Record<string, unknown> };
+          setState: (state: Record<string, unknown>) => void;
+        };
+      }
+    ).__termfleetWorkspaceStore;
     if (!store) throw new Error("TermFleet test store is unavailable");
 
     store.setState({
@@ -2151,32 +3076,48 @@ test("Delete closes the selected terminal map node and Ctrl+Z restores it", asyn
         workspaceMode: "canvas",
         primarySidebarPanel: "map",
       },
-      tabs: [{
-        id: "tab-delete",
-        title: "Delete me",
-        emoji: "[]",
-        color: "#7aa2f7",
-        groupId: null,
-        initialCwd: "/tmp/delete-me",
-        terminals: [{ id: "pty-delete", paneId: "pane-delete", cols: 80, rows: 24, status: "running" }],
-        splitLayout: { id: "pane-delete", type: "terminal", cwd: "/tmp/delete-me" },
-        activePaneId: "pane-delete",
-      }],
+      tabs: [
+        {
+          id: "tab-delete",
+          title: "Delete me",
+          emoji: "[]",
+          color: "#7aa2f7",
+          groupId: null,
+          initialCwd: "/tmp/delete-me",
+          terminals: [
+            {
+              id: "pty-delete",
+              paneId: "pane-delete",
+              cols: 80,
+              rows: 24,
+              status: "running",
+            },
+          ],
+          splitLayout: {
+            id: "pane-delete",
+            type: "terminal",
+            cwd: "/tmp/delete-me",
+          },
+          activePaneId: "pane-delete",
+        },
+      ],
       activeTabId: "tab-delete",
       activeTerminalId: "pty-delete",
       canvasState: {
-        nodes: [{
-          id: "node-delete",
-          type: "terminal",
-          title: "Delete me",
-          terminalTabId: "tab-delete",
-          terminalCwd: "/tmp/delete-me",
-          x: 220,
-          y: 140,
-          width: 820,
-          height: 460,
-          labelColor: "#7dbac3",
-        }],
+        nodes: [
+          {
+            id: "node-delete",
+            type: "terminal",
+            title: "Delete me",
+            terminalTabId: "tab-delete",
+            terminalCwd: "/tmp/delete-me",
+            x: 220,
+            y: 140,
+            width: 820,
+            height: 460,
+            labelColor: "#7dbac3",
+          },
+        ],
         selectedNodeId: "node-delete",
         selectedNodeIds: ["node-delete"],
         viewport: { x: 0, y: 0, zoom: 1 },
@@ -2184,27 +3125,37 @@ test("Delete closes the selected terminal map node and Ctrl+Z restores it", asyn
     });
   });
 
-  await expect(page.locator("[data-testid='canvas-terminal-node'][data-node-id='node-delete']")).toBeVisible();
+  await expect(
+    page.locator(
+      "[data-testid='canvas-terminal-node'][data-node-id='node-delete']",
+    ),
+  ).toBeVisible();
   await page.locator("[data-magic-canvas-shell]").focus();
   await page.keyboard.press("Delete");
 
-  await expect.poll(async () => page.evaluate(() => {
-    const store = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => {
-          tabs: Array<{ id: string }>;
-          canvasState: { nodes: Array<{ id: string }> };
-          recentlyClosed: Array<{ tab: { id: string } }>;
-        };
-      };
-    }).__termfleetWorkspaceStore;
-    const state = store?.getState();
-    return [
-      state?.tabs.some((tab) => tab.id === "tab-delete"),
-      state?.canvasState.nodes.some((node) => node.id === "node-delete"),
-      state?.recentlyClosed[0]?.tab.id,
-    ].join(":");
-  })).toBe("false:false:tab-delete");
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const store = (
+          window as typeof window & {
+            __termfleetWorkspaceStore?: {
+              getState: () => {
+                tabs: Array<{ id: string }>;
+                canvasState: { nodes: Array<{ id: string }> };
+                recentlyClosed: Array<{ tab: { id: string } }>;
+              };
+            };
+          }
+        ).__termfleetWorkspaceStore;
+        const state = store?.getState();
+        return [
+          state?.tabs.some((tab) => tab.id === "tab-delete"),
+          state?.canvasState.nodes.some((node) => node.id === "node-delete"),
+          state?.recentlyClosed[0]?.tab.id,
+        ].join(":");
+      }),
+    )
+    .toBe("false:false:tab-delete");
 
   await page.evaluate(async () => {
     const { TERMINAL_INPUT_CLASS } = await import("/src/lib/terminalFocus.ts");
@@ -2215,29 +3166,48 @@ test("Delete closes the selected terminal map node and Ctrl+Z restores it", asyn
   });
   await page.keyboard.press("Control+Z");
 
-  await expect.poll(async () => page.evaluate(() => {
-    const store = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => { activeTabId: string | null };
-      };
-    }).__termfleetWorkspaceStore;
-    return store?.getState().activeTabId;
-  })).toBe("tab-delete");
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const store = (
+          window as typeof window & {
+            __termfleetWorkspaceStore?: {
+              getState: () => { activeTabId: string | null };
+            };
+          }
+        ).__termfleetWorkspaceStore;
+        return store?.getState().activeTabId;
+      }),
+    )
+    .toBe("tab-delete");
 
   const restored = await page.evaluate(() => {
-    const store = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => {
-          activeTabId: string | null;
-          tabs: Array<{ id: string; title: string; terminals: Array<unknown>; initialCwd?: string }>;
-          canvasState: {
-            selectedNodeId: string | null;
-            selectedNodeIds?: string[];
-            nodes: Array<{ id: string; terminalTabId?: string; x: number; y: number; labelColor?: string }>;
+    const store = (
+      window as typeof window & {
+        __termfleetWorkspaceStore?: {
+          getState: () => {
+            activeTabId: string | null;
+            tabs: Array<{
+              id: string;
+              title: string;
+              terminals: Array<unknown>;
+              initialCwd?: string;
+            }>;
+            canvasState: {
+              selectedNodeId: string | null;
+              selectedNodeIds?: string[];
+              nodes: Array<{
+                id: string;
+                terminalTabId?: string;
+                x: number;
+                y: number;
+                labelColor?: string;
+              }>;
+            };
           };
         };
-      };
-    }).__termfleetWorkspaceStore;
+      }
+    ).__termfleetWorkspaceStore;
     const state = store?.getState();
     return {
       activeTabId: state?.activeTabId,
@@ -2271,7 +3241,9 @@ test("Delete closes the selected terminal map node and Ctrl+Z restores it", asyn
   expect(restored.selectedNodeIds).toEqual(["node-delete"]);
 });
 
-test("closing a localhost preview pane never removes the linked terminal", async ({ page }) => {
+test("closing a localhost preview pane never removes the linked terminal", async ({
+  page,
+}) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle");
   await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
@@ -2280,15 +3252,17 @@ test("closing a localhost preview pane never removes the linked terminal", async
 
   const result = await page.evaluate(async () => {
     const { closeActivePane } = await import("/src/stores/workspace.ts");
-    const store = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => {
-          setActivePane: (tabId: string, paneId: string) => void;
-          workspaceUiState: Record<string, unknown>;
+    const store = (
+      window as typeof window & {
+        __termfleetWorkspaceStore?: {
+          getState: () => {
+            setActivePane: (tabId: string, paneId: string) => void;
+            workspaceUiState: Record<string, unknown>;
+          };
+          setState: (state: Record<string, unknown>) => void;
         };
-        setState: (state: Record<string, unknown>) => void;
-      };
-    }).__termfleetWorkspaceStore;
+      }
+    ).__termfleetWorkspaceStore;
     if (!store) throw new Error("TermFleet test store is unavailable");
 
     store.setState({
@@ -2297,39 +3271,73 @@ test("closing a localhost preview pane never removes the linked terminal", async
         workspaceMode: "canvas",
         primarySidebarPanel: "map",
       },
-      tabs: [{
-        id: "tab-preview-safe",
-        title: "Preview owner",
-        emoji: "[]",
-        color: "#7aa2f7",
-        groupId: null,
-        initialCwd: "/tmp/preview-safe",
-        terminals: [{
-          id: "pty-preview-owner",
-          paneId: "pane-terminal",
-          cols: 80,
-          rows: 24,
-          status: "running",
-          previewUrl: "http://127.0.0.1:43210",
-        }],
-        splitLayout: {
-          id: "split-root",
-          type: "split",
-          direction: "horizontal",
-          sizes: [50, 50],
-          children: [
-            { id: "pane-terminal", type: "terminal", cwd: "/tmp/preview-safe" },
-            { id: "pane-preview", type: "preview", previewUrl: "http://127.0.0.1:43210", linkedTerminalPaneId: "pane-terminal" },
+      tabs: [
+        {
+          id: "tab-preview-safe",
+          title: "Preview owner",
+          emoji: "[]",
+          color: "#7aa2f7",
+          groupId: null,
+          initialCwd: "/tmp/preview-safe",
+          terminals: [
+            {
+              id: "pty-preview-owner",
+              paneId: "pane-terminal",
+              cols: 80,
+              rows: 24,
+              status: "running",
+              previewUrl: "http://127.0.0.1:43210",
+            },
           ],
+          splitLayout: {
+            id: "split-root",
+            type: "split",
+            direction: "horizontal",
+            sizes: [50, 50],
+            children: [
+              {
+                id: "pane-terminal",
+                type: "terminal",
+                cwd: "/tmp/preview-safe",
+              },
+              {
+                id: "pane-preview",
+                type: "preview",
+                previewUrl: "http://127.0.0.1:43210",
+                linkedTerminalPaneId: "pane-terminal",
+              },
+            ],
+          },
+          activePaneId: "pane-preview",
         },
-        activePaneId: "pane-preview",
-      }],
+      ],
       activeTabId: "tab-preview-safe",
       activeTerminalId: "pty-preview-owner",
       canvasState: {
         nodes: [
-          { id: "node-terminal-safe", type: "terminal", title: "Preview owner", terminalTabId: "tab-preview-safe", x: 0, y: 0, width: 820, height: 460 },
-          { id: "node-preview-safe", type: "preview", title: "Preview localhost", terminalTabId: "tab-preview-safe", previewPaneId: "pane-preview", linkedTerminalPaneId: "pane-terminal", previewUrl: "http://127.0.0.1:43210", x: 860, y: 0, width: 620, height: 420 },
+          {
+            id: "node-terminal-safe",
+            type: "terminal",
+            title: "Preview owner",
+            terminalTabId: "tab-preview-safe",
+            x: 0,
+            y: 0,
+            width: 820,
+            height: 460,
+          },
+          {
+            id: "node-preview-safe",
+            type: "preview",
+            title: "Preview localhost",
+            terminalTabId: "tab-preview-safe",
+            previewPaneId: "pane-preview",
+            linkedTerminalPaneId: "pane-terminal",
+            previewUrl: "http://127.0.0.1:43210",
+            x: 860,
+            y: 0,
+            width: 620,
+            height: 420,
+          },
         ],
         selectedNodeId: "node-preview-safe",
         selectedNodeIds: ["node-preview-safe"],
@@ -2338,14 +3346,25 @@ test("closing a localhost preview pane never removes the linked terminal", async
     });
 
     await closeActivePane();
-    const state = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => {
-          tabs: Array<{ id: string; activePaneId: string; terminals: Array<{ id: string; paneId: string; previewUrl?: string }>; splitLayout: unknown }>;
-          canvasState: { nodes: Array<{ id: string; type: string }> };
+    const state = (
+      window as typeof window & {
+        __termfleetWorkspaceStore?: {
+          getState: () => {
+            tabs: Array<{
+              id: string;
+              activePaneId: string;
+              terminals: Array<{
+                id: string;
+                paneId: string;
+                previewUrl?: string;
+              }>;
+              splitLayout: unknown;
+            }>;
+            canvasState: { nodes: Array<{ id: string; type: string }> };
+          };
         };
-      };
-    }).__termfleetWorkspaceStore?.getState();
+      }
+    ).__termfleetWorkspaceStore?.getState();
     return {
       tab: state?.tabs.find((tab) => tab.id === "tab-preview-safe"),
       nodes: state?.canvasState.nodes,
@@ -2355,21 +3374,29 @@ test("closing a localhost preview pane never removes the linked terminal", async
   expect(result.tab).toMatchObject({
     id: "tab-preview-safe",
     activePaneId: "pane-terminal",
-    terminals: [{
-      id: "pty-preview-owner",
-      paneId: "pane-terminal",
-      previewUrl: "http://127.0.0.1:43210",
-    }],
+    terminals: [
+      {
+        id: "pty-preview-owner",
+        paneId: "pane-terminal",
+        previewUrl: "http://127.0.0.1:43210",
+      },
+    ],
   });
-  expect(result.nodes).toEqual(expect.arrayContaining([
-    expect.objectContaining({ id: "node-terminal-safe", type: "terminal" }),
-  ]));
-  expect(result.nodes).not.toEqual(expect.arrayContaining([
-    expect.objectContaining({ id: "node-preview-safe" }),
-  ]));
+  expect(result.nodes).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ id: "node-terminal-safe", type: "terminal" }),
+    ]),
+  );
+  expect(result.nodes).not.toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ id: "node-preview-safe" }),
+    ]),
+  );
 });
 
-test("map shell header prefers summarized task path and now over raw prompt chrome", async ({ page }) => {
+test("map shell header prefers summarized task path and now over raw prompt chrome", async ({
+  page,
+}) => {
   const lanePlan = `
 | ID         | Title                            | Priority | Status            | Dependencies |
 | ---------- | -------------------------------- | -------- | ----------------- | ------------ |
@@ -2386,8 +3413,15 @@ Acceptance:
   await page.addInitScript((masterPlan) => {
     let callbackId = 1;
     const callbacks = new Map<number, unknown>();
-    (window as typeof window & { __TAURI_INTERNALS__?: Record<string, unknown> }).__TAURI_INTERNALS__ = {
-      metadata: { currentWindow: { label: "main" }, currentWebview: { label: "main" } },
+    (
+      window as typeof window & {
+        __TAURI_INTERNALS__?: Record<string, unknown>;
+      }
+    ).__TAURI_INTERNALS__ = {
+      metadata: {
+        currentWindow: { label: "main" },
+        currentWebview: { label: "main" },
+      },
       callbacks,
       transformCallback(callback: unknown) {
         const id = callbackId++;
@@ -2399,8 +3433,10 @@ Acceptance:
       },
       async invoke(command: string) {
         if (command === "fs_read_file") return masterPlan;
-        if (command === "daemon_status") return { reachable: false, mode: "browser" };
-        if (command === "daemon_ensure_running") return { reachable: false, mode: "browser", message: "browser" };
+        if (command === "daemon_status")
+          return { reachable: false, mode: "browser" };
+        if (command === "daemon_ensure_running")
+          return { reachable: false, mode: "browser", message: "browser" };
         if (command === "grid_snapshot") {
           return JSON.stringify({
             cols: 80,
@@ -2423,18 +3459,34 @@ Acceptance:
   await page.getByRole("button", { name: "Map", exact: true }).click();
 
   await page.evaluate(() => {
-    const store = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => {
-          workspaceUiState: Record<string, unknown>;
-          tabs: Array<{ id: string; title: string; activePaneId?: string; terminals: unknown[] }>;
-          canvasState: { nodes: Array<{ id: string; type: string; terminalTabId?: string }> };
-          updateTab: (id: string, updates: Record<string, unknown>) => void;
-          updateCanvasNode: (id: string, updates: Record<string, unknown>) => void;
+    const store = (
+      window as typeof window & {
+        __termfleetWorkspaceStore?: {
+          getState: () => {
+            workspaceUiState: Record<string, unknown>;
+            tabs: Array<{
+              id: string;
+              title: string;
+              activePaneId?: string;
+              terminals: unknown[];
+            }>;
+            canvasState: {
+              nodes: Array<{
+                id: string;
+                type: string;
+                terminalTabId?: string;
+              }>;
+            };
+            updateTab: (id: string, updates: Record<string, unknown>) => void;
+            updateCanvasNode: (
+              id: string,
+              updates: Record<string, unknown>,
+            ) => void;
+          };
+          setState: (state: Record<string, unknown>) => void;
         };
-        setState: (state: Record<string, unknown>) => void;
-      };
-    }).__termfleetWorkspaceStore;
+      }
+    ).__termfleetWorkspaceStore;
     if (!store) throw new Error("TermFleet test store is unavailable");
     const state = store.getState();
     store.setState({
@@ -2444,40 +3496,52 @@ Acceptance:
         primarySidebarPanel: "map",
       },
     });
-    const node = state.canvasState.nodes.find((candidate) => candidate.type === "terminal");
-    if (!node?.terminalTabId) throw new Error("Terminal map node is unavailable");
-    const tab = state.tabs.find((candidate) => candidate.id === node.terminalTabId);
+    const node = state.canvasState.nodes.find(
+      (candidate) => candidate.type === "terminal",
+    );
+    if (!node?.terminalTabId)
+      throw new Error("Terminal map node is unavailable");
+    const tab = state.tabs.find(
+      (candidate) => candidate.id === node.terminalTabId,
+    );
     if (!tab) throw new Error("Terminal tab is unavailable");
     store.getState().updateCanvasNode(node.id, {
-      taskBinding: { taskId: "TC-027", planPath: "/media/endlessblink/data/my-projects/ai-development/devops/termfleet/MASTER_PLAN.md" },
+      taskBinding: {
+        taskId: "TC-027",
+        planPath:
+          "/media/endlessblink/data/my-projects/ai-development/devops/termfleet/MASTER_PLAN.md",
+      },
     });
     store.getState().updateTab(tab.id, {
       title: "endlessblink",
-      initialCwd: "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
-      terminals: [{
-        id: "pty-summary-fixture",
-        paneId: node.id,
-        cols: 100,
-        rows: 30,
-        status: "running",
-        currentActivity: "Running 2 tests using 1 worker",
-        terminalOutput: [
-          "npx playwright test tests/map-terminal-rendering.spec.ts -g \"map shell header prefers summarized task path and now\" --reporter=line",
-          "Running 2 tests using 1 worker",
-          "… +35 lines (ctrl + t to view transcript)",
-          "1 passed (10.5s)",
-          "The next assertion was still expecting the sidebar to disappear when the terminal summary becomes stale. That is exactly the old changing behavior.",
-          "Working (10m 52s • esc to interrupt)",
-        ].join("\n"),
-        statusSummary: {
-          task: "Running 2 tests using 1 worker",
-          path: "inner-dialogue",
-          now: "stale. That is exactly the old changing behavior.",
-          status: "working",
-          provider: "shell",
-          confidence: "medium",
+      initialCwd:
+        "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
+      terminals: [
+        {
+          id: "pty-summary-fixture",
+          paneId: node.id,
+          cols: 100,
+          rows: 30,
+          status: "running",
+          currentActivity: "Running 2 tests using 1 worker",
+          terminalOutput: [
+            'npx playwright test tests/map-terminal-rendering.spec.ts -g "map shell header prefers summarized task path and now" --reporter=line',
+            "Running 2 tests using 1 worker",
+            "… +35 lines (ctrl + t to view transcript)",
+            "1 passed (10.5s)",
+            "The next assertion was still expecting the sidebar to disappear when the terminal summary becomes stale. That is exactly the old changing behavior.",
+            "Working (10m 52s • esc to interrupt)",
+          ].join("\n"),
+          statusSummary: {
+            task: "Running 2 tests using 1 worker",
+            path: "inner-dialogue",
+            now: "stale. That is exactly the old changing behavior.",
+            status: "working",
+            provider: "shell",
+            confidence: "medium",
+          },
         },
-      }],
+      ],
     });
   });
 
@@ -2486,260 +3550,402 @@ Acceptance:
   await expect(page.getByTestId("canvas-terminal-node-description")).toHaveText(
     "LLM task extraction lane",
   );
-  await expect(page.getByTestId("canvas-terminal-node-workspace")).toHaveText("termfleet");
+  await expect(page.getByTestId("canvas-terminal-node-workspace")).toHaveText(
+    "termfleet",
+  );
   // Cards render the terminal's full path (see cockpit screenshots) — the junk
   // summary path ("inner-dialogue") must not replace it.
   await expect(page.getByTestId("canvas-terminal-node-header-path")).toHaveText(
     "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
   );
   // The raw transcript line never reaches the card.
-  await expect(page.getByTestId("canvas-terminal-node-header")).not.toContainText(
-    "Running 2 tests",
+  await expect(
+    page.getByTestId("canvas-terminal-node-header"),
+  ).not.toContainText("Running 2 tests");
+  await expect(page.getByTestId("canvas-terminal-node-now")).not.toContainText(
+    "stale",
   );
-  await expect(page.getByTestId("canvas-terminal-node-now")).not.toContainText("stale");
   await expect(page.getByTestId("canvas-terminal-task-sidebar")).toBeVisible();
-  await expect(page.getByTestId("canvas-terminal-task-sidebar")).toContainText("Tasks");
-  await expect(page.getByTestId("canvas-terminal-task-sidebar")).toContainText("3");
+  await expect(page.getByTestId("canvas-terminal-task-sidebar")).toContainText(
+    "Tasks",
+  );
+  await expect(page.getByTestId("canvas-terminal-task-sidebar")).toContainText(
+    "3",
+  );
   await expect(page.getByTestId("canvas-terminal-task-row")).toHaveCount(3);
-  const contentBox = await page.getByTestId("canvas-terminal-task-content").boundingBox();
-  const tasksBox = await page.getByTestId("canvas-terminal-task-sidebar").boundingBox();
-  if (!contentBox || !tasksBox) throw new Error("Terminal content column or task sidebar is not visible");
-  expect(tasksBox.x).toBeGreaterThanOrEqual(contentBox.x + contentBox.width - 1);
+  const contentBox = await page
+    .getByTestId("canvas-terminal-task-content")
+    .boundingBox();
+  const tasksBox = await page
+    .getByTestId("canvas-terminal-task-sidebar")
+    .boundingBox();
+  if (!contentBox || !tasksBox)
+    throw new Error("Terminal content column or task sidebar is not visible");
+  expect(tasksBox.x).toBeGreaterThanOrEqual(
+    contentBox.x + contentBox.width - 1,
+  );
   expect(tasksBox.width).toBeGreaterThanOrEqual(220);
   expect(contentBox.width).toBeGreaterThan(560);
   expect(Math.abs(tasksBox.y - contentBox.y)).toBeLessThanOrEqual(1);
   const viewportBeforeTaskScroll = await page.evaluate(() => {
-    const store = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => { canvasState: { viewport: { x: number; y: number; zoom: number } } };
-      };
-    }).__termfleetWorkspaceStore;
+    const store = (
+      window as typeof window & {
+        __termfleetWorkspaceStore?: {
+          getState: () => {
+            canvasState: { viewport: { x: number; y: number; zoom: number } };
+          };
+        };
+      }
+    ).__termfleetWorkspaceStore;
     return store?.getState().canvasState.viewport;
   });
-  await page.mouse.move(tasksBox.x + tasksBox.width / 2, tasksBox.y + Math.min(tasksBox.height - 8, 80));
+  await page.mouse.move(
+    tasksBox.x + tasksBox.width / 2,
+    tasksBox.y + Math.min(tasksBox.height - 8, 80),
+  );
   await page.mouse.wheel(0, -420);
-  await expect.poll(async () => page.evaluate(() => {
-    const store = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => { canvasState: { viewport: { x: number; y: number; zoom: number } } };
-      };
-    }).__termfleetWorkspaceStore;
-    return store?.getState().canvasState.viewport;
-  })).toEqual(viewportBeforeTaskScroll);
-  await expect(page.getByRole("main").getByRole("button", { name: "Close endlessblink" })).toBeVisible();
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const store = (
+          window as typeof window & {
+            __termfleetWorkspaceStore?: {
+              getState: () => {
+                canvasState: {
+                  viewport: { x: number; y: number; zoom: number };
+                };
+              };
+            };
+          }
+        ).__termfleetWorkspaceStore;
+        return store?.getState().canvasState.viewport;
+      }),
+    )
+    .toEqual(viewportBeforeTaskScroll);
+  await expect(
+    page.getByRole("main").getByRole("button", { name: "Close endlessblink" }),
+  ).toBeVisible();
 
   await page.evaluate(() => {
-    const store = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => {
-          tabs: Array<{ id: string; title: string; activePaneId?: string; terminals: Array<{ paneId?: string }> }>;
-          canvasState: { nodes: Array<{ id: string; type: string; terminalTabId?: string }> };
-          updateTab: (id: string, updates: Record<string, unknown>) => void;
-          updateCanvasNode: (id: string, updates: Record<string, unknown>) => void;
+    const store = (
+      window as typeof window & {
+        __termfleetWorkspaceStore?: {
+          getState: () => {
+            tabs: Array<{
+              id: string;
+              title: string;
+              activePaneId?: string;
+              terminals: Array<{ paneId?: string }>;
+            }>;
+            canvasState: {
+              nodes: Array<{
+                id: string;
+                type: string;
+                terminalTabId?: string;
+              }>;
+            };
+            updateTab: (id: string, updates: Record<string, unknown>) => void;
+            updateCanvasNode: (
+              id: string,
+              updates: Record<string, unknown>,
+            ) => void;
+          };
         };
-      };
-    }).__termfleetWorkspaceStore;
+      }
+    ).__termfleetWorkspaceStore;
     if (!store) throw new Error("TermFleet test store is unavailable");
     const state = store.getState();
-    const node = state.canvasState.nodes.find((candidate) => candidate.type === "terminal");
-    if (!node?.terminalTabId) throw new Error("Terminal map node is unavailable");
-    const tab = state.tabs.find((candidate) => candidate.id === node.terminalTabId);
+    const node = state.canvasState.nodes.find(
+      (candidate) => candidate.type === "terminal",
+    );
+    if (!node?.terminalTabId)
+      throw new Error("Terminal map node is unavailable");
+    const tab = state.tabs.find(
+      (candidate) => candidate.id === node.terminalTabId,
+    );
     if (!tab) throw new Error("Terminal tab is unavailable");
     store.getState().updateCanvasNode(node.id, { taskBinding: undefined });
     store.getState().updateTab(tab.id, {
       title: "Terminal",
-      terminals: [{
-        id: "pty-stale-summary-fixture",
-        paneId: node.id,
-        cols: 100,
-        rows: 30,
-        status: "running",
-        currentActivity: "« | gpt-5.5 default · -",
-        terminalOutput: [
-          "translate to hebrew",
-          "What changed:",
-          "- server-side quality gate now validates generated posts",
-          "- editor button regression passed",
-          "› Use /skills to list available skills",
-          "gpt-5.5 default · ~",
-        ].join("\n"),
-        statusSummary: {
-          task: "Terminal",
-          path: "workspace root unknown",
-          now: "« | gpt-5.5 default · -",
-          status: "working",
-          provider: "shell",
-          confidence: "low",
+      terminals: [
+        {
+          id: "pty-stale-summary-fixture",
+          paneId: node.id,
+          cols: 100,
+          rows: 30,
+          status: "running",
+          currentActivity: "« | gpt-5.5 default · -",
+          terminalOutput: [
+            "translate to hebrew",
+            "What changed:",
+            "- server-side quality gate now validates generated posts",
+            "- editor button regression passed",
+            "› Use /skills to list available skills",
+            "gpt-5.5 default · ~",
+          ].join("\n"),
+          statusSummary: {
+            task: "Terminal",
+            path: "workspace root unknown",
+            now: "« | gpt-5.5 default · -",
+            status: "working",
+            provider: "shell",
+            confidence: "low",
+          },
         },
-      }],
+      ],
     });
   });
 
   // Contract update: a raw scrollback scrape ("translate to hebrew" typed in the
-  // buffer) is NOT a captured task — the row admits it honestly, and none of the
-  // model-chrome junk ("gpt-5.5 default") leaks anywhere.
-  await expect(page.getByTestId("canvas-terminal-node-header-title")).toHaveCount(0);
+  // buffer) is NOT a captured task — the reserved Now row stays mounted but hidden,
+  // and none of the model-chrome junk ("gpt-5.5 default") leaks anywhere.
+  await expect(
+    page.getByTestId("canvas-terminal-node-header-title"),
+  ).toHaveCSS("visibility", "hidden");
   // TC-060 R1: no declared task is no longer a blank — the card falls back to a
   // true state line, and must never show the old placeholder.
-  await expect(page.getByTestId("canvas-terminal-node-description")).not.toHaveText("Task not captured");
-  await expect(page.getByTestId("canvas-terminal-node-description")).not.toBeEmpty();
-  await expect(page.getByTestId("canvas-terminal-node-now")).not.toContainText("gpt-5.5 default");
+  await expect(
+    page.getByTestId("canvas-terminal-node-description"),
+  ).not.toHaveText("Task not captured");
+  await expect(
+    page.getByTestId("canvas-terminal-node-description"),
+  ).not.toBeEmpty();
+  await expect(page.getByTestId("canvas-terminal-node-now")).not.toContainText(
+    "gpt-5.5 default",
+  );
 
   await page.evaluate(() => {
-    const store = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => {
-          tabs: Array<{ id: string; title: string; terminals: Array<{ paneId?: string }> }>;
-          canvasState: { nodes: Array<{ id: string; type: string; terminalTabId?: string }> };
-          updateTab: (id: string, updates: Record<string, unknown>) => void;
+    const store = (
+      window as typeof window & {
+        __termfleetWorkspaceStore?: {
+          getState: () => {
+            tabs: Array<{
+              id: string;
+              title: string;
+              terminals: Array<{ paneId?: string }>;
+            }>;
+            canvasState: {
+              nodes: Array<{
+                id: string;
+                type: string;
+                terminalTabId?: string;
+              }>;
+            };
+            updateTab: (id: string, updates: Record<string, unknown>) => void;
+          };
         };
-      };
-    }).__termfleetWorkspaceStore;
+      }
+    ).__termfleetWorkspaceStore;
     if (!store) throw new Error("TermFleet test store is unavailable");
     const state = store.getState();
-    const node = state.canvasState.nodes.find((candidate) => candidate.type === "terminal");
-    if (!node?.terminalTabId) throw new Error("Terminal map node is unavailable");
-    const tab = state.tabs.find((candidate) => candidate.id === node.terminalTabId);
+    const node = state.canvasState.nodes.find(
+      (candidate) => candidate.type === "terminal",
+    );
+    if (!node?.terminalTabId)
+      throw new Error("Terminal map node is unavailable");
+    const tab = state.tabs.find(
+      (candidate) => candidate.id === node.terminalTabId,
+    );
     if (!tab) throw new Error("Terminal tab is unavailable");
     store.getState().updateTab(tab.id, {
       title: "Terminal",
-      terminals: [{
-        id: "pty-gibberish-summary-fixture",
-        paneId: node.id,
-        cols: 100,
-        rows: 30,
-        status: "running",
-        currentActivity: "› sfgdsafgd ||> sfgdsafg ||> sfgdsaf",
-        terminalOutput: [
-          "translate to hebrew",
-          "Verified:",
-          "- production route: 200 OK",
-          "- Live UI smoke test clicked the real production menu action",
-          "You can start the process now.",
-          "› sfgdsafgd ||> sfgdsafg ||> sfgdsaf",
-          "gpt-5.5 default · ~",
-        ].join("\n"),
-        statusSummary: {
-          task: "Supervised agent run",
-          path: "home/endlessblink",
-          now: "› sfgdsafgd ||> sfgdsafg ||> sfgdsaf",
-          status: "working",
-          provider: "shell",
-          confidence: "low",
+      terminals: [
+        {
+          id: "pty-gibberish-summary-fixture",
+          paneId: node.id,
+          cols: 100,
+          rows: 30,
+          status: "running",
+          currentActivity: "› sfgdsafgd ||> sfgdsafg ||> sfgdsaf",
+          terminalOutput: [
+            "translate to hebrew",
+            "Verified:",
+            "- production route: 200 OK",
+            "- Live UI smoke test clicked the real production menu action",
+            "You can start the process now.",
+            "› sfgdsafgd ||> sfgdsafg ||> sfgdsaf",
+            "gpt-5.5 default · ~",
+          ].join("\n"),
+          statusSummary: {
+            task: "Supervised agent run",
+            path: "home/endlessblink",
+            now: "› sfgdsafgd ||> sfgdsafg ||> sfgdsaf",
+            status: "working",
+            provider: "shell",
+            confidence: "low",
+          },
         },
-      }],
+      ],
     });
   });
 
   // Contract update: scraped buffer text is not a captured task, and every junk
   // candidate (gibberish prompt, "Supervised agent run") is rejected — the card
   // collapses to the honest Task line with no Now Active row.
-  await expect(page.getByTestId("canvas-terminal-node-header-title")).toHaveCount(0);
+  await expect(
+    page.getByTestId("canvas-terminal-node-header-title"),
+  ).toHaveCSS("visibility", "hidden");
   // TC-060 R1: no declared task is no longer a blank — the card falls back to a
   // true state line, and must never show the old placeholder.
-  await expect(page.getByTestId("canvas-terminal-node-description")).not.toHaveText("Task not captured");
-  await expect(page.getByTestId("canvas-terminal-node-description")).not.toBeEmpty();
-  await expect(page.getByTestId("canvas-terminal-node-now")).not.toContainText("sfgdsafgd");
-  await expect(page.getByTestId("canvas-terminal-node-description")).not.toContainText("Supervised agent run");
+  await expect(
+    page.getByTestId("canvas-terminal-node-description"),
+  ).not.toHaveText("Task not captured");
+  await expect(
+    page.getByTestId("canvas-terminal-node-description"),
+  ).not.toBeEmpty();
+  await expect(page.getByTestId("canvas-terminal-node-now")).not.toContainText(
+    "sfgdsafgd",
+  );
+  await expect(
+    page.getByTestId("canvas-terminal-node-description"),
+  ).not.toContainText("Supervised agent run");
 
   await page.evaluate(() => {
-    const store = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => {
-          tabs: Array<{ id: string; title: string; terminals: Array<{ paneId?: string }> }>;
-          canvasState: { nodes: Array<{ id: string; type: string; terminalTabId?: string }> };
-          updateTab: (id: string, updates: Record<string, unknown>) => void;
+    const store = (
+      window as typeof window & {
+        __termfleetWorkspaceStore?: {
+          getState: () => {
+            tabs: Array<{
+              id: string;
+              title: string;
+              terminals: Array<{ paneId?: string }>;
+            }>;
+            canvasState: {
+              nodes: Array<{
+                id: string;
+                type: string;
+                terminalTabId?: string;
+              }>;
+            };
+            updateTab: (id: string, updates: Record<string, unknown>) => void;
+          };
         };
-      };
-    }).__termfleetWorkspaceStore;
+      }
+    ).__termfleetWorkspaceStore;
     if (!store) throw new Error("TermFleet test store is unavailable");
     const state = store.getState();
-    const node = state.canvasState.nodes.find((candidate) => candidate.type === "terminal");
-    if (!node?.terminalTabId) throw new Error("Terminal map node is unavailable");
-    const tab = state.tabs.find((candidate) => candidate.id === node.terminalTabId);
+    const node = state.canvasState.nodes.find(
+      (candidate) => candidate.type === "terminal",
+    );
+    if (!node?.terminalTabId)
+      throw new Error("Terminal map node is unavailable");
+    const tab = state.tabs.find(
+      (candidate) => candidate.id === node.terminalTabId,
+    );
     if (!tab) throw new Error("Terminal tab is unavailable");
     store.getState().updateTab(tab.id, {
       title: "Terminal",
-      terminals: [{
-        id: "pty-skills-summary-fixture",
-        paneId: node.id,
-        cols: 100,
-        rows: 30,
-        status: "running",
-        currentActivity: "«│ gpt-5.5 default • -",
-        terminalOutput: [
-          "mirror that architecture for post rewrites instead of adding a one-off",
-          "The editor already has a screenplay conversion preview pattern; I'll mirror that architecture for post rewrites.",
-          "Explored",
-          "Search .impeccable.md in .",
-          "Read screenplay-convert-dialog.tsx, smoke.spec.ts, editor-ai-regression.spec.ts",
-          "Reviewing approval request (1m 48s • esc to interrupt)",
-          "apply_patch touching /media/endlessblink/data/my-projects/ai-development/inner-dialogue",
-          "Use /skills to list available skills",
-          "«│ gpt-5.5 default • -",
-        ].join("\n"),
-        statusSummary: {
-          task: "Terminal",
-          path: "home/endlessblink",
-          now: "Use /skills to list available skills",
-          status: "working",
-          provider: "shell",
-          confidence: "low",
+      terminals: [
+        {
+          id: "pty-skills-summary-fixture",
+          paneId: node.id,
+          cols: 100,
+          rows: 30,
+          status: "running",
+          currentActivity: "«│ gpt-5.5 default • -",
+          terminalOutput: [
+            "mirror that architecture for post rewrites instead of adding a one-off",
+            "The editor already has a screenplay conversion preview pattern; I'll mirror that architecture for post rewrites.",
+            "Explored",
+            "Search .impeccable.md in .",
+            "Read screenplay-convert-dialog.tsx, smoke.spec.ts, editor-ai-regression.spec.ts",
+            "Reviewing approval request (1m 48s • esc to interrupt)",
+            "apply_patch touching /media/endlessblink/data/my-projects/ai-development/inner-dialogue",
+            "Use /skills to list available skills",
+            "«│ gpt-5.5 default • -",
+          ].join("\n"),
+          statusSummary: {
+            task: "Terminal",
+            path: "home/endlessblink",
+            now: "Use /skills to list available skills",
+            status: "working",
+            provider: "shell",
+            confidence: "low",
+          },
         },
-      }],
+      ],
     });
   });
 
   // Contract update: the scraped ask is not a captured task; the card admits it and
   // the junk candidates (/skills chrome, model banner) never leak.
-  await expect(page.getByTestId("canvas-terminal-node-header-title")).toHaveCount(0);
+  await expect(
+    page.getByTestId("canvas-terminal-node-header-title"),
+  ).toHaveCSS("visibility", "hidden");
   // TC-060 R1: no declared task is no longer a blank — the card falls back to a
   // true state line, and must never show the old placeholder.
-  await expect(page.getByTestId("canvas-terminal-node-description")).not.toHaveText("Task not captured");
-  await expect(page.getByTestId("canvas-terminal-node-description")).not.toBeEmpty();
-  await expect(page.getByTestId("canvas-terminal-node-now")).not.toContainText("/skills");
-  await expect(page.getByTestId("canvas-terminal-node-now")).not.toContainText("gpt-5.5 default");
+  await expect(
+    page.getByTestId("canvas-terminal-node-description"),
+  ).not.toHaveText("Task not captured");
+  await expect(
+    page.getByTestId("canvas-terminal-node-description"),
+  ).not.toBeEmpty();
+  await expect(page.getByTestId("canvas-terminal-node-now")).not.toContainText(
+    "/skills",
+  );
+  await expect(page.getByTestId("canvas-terminal-node-now")).not.toContainText(
+    "gpt-5.5 default",
+  );
 
   await page.evaluate(() => {
-    const store = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => {
-          tabs: Array<{ id: string; title: string; terminals: Array<{ paneId?: string }> }>;
-          canvasState: { nodes: Array<{ id: string; type: string; terminalTabId?: string }> };
-          updateTab: (id: string, updates: Record<string, unknown>) => void;
+    const store = (
+      window as typeof window & {
+        __termfleetWorkspaceStore?: {
+          getState: () => {
+            tabs: Array<{
+              id: string;
+              title: string;
+              terminals: Array<{ paneId?: string }>;
+            }>;
+            canvasState: {
+              nodes: Array<{
+                id: string;
+                type: string;
+                terminalTabId?: string;
+              }>;
+            };
+            updateTab: (id: string, updates: Record<string, unknown>) => void;
+          };
         };
-      };
-    }).__termfleetWorkspaceStore;
+      }
+    ).__termfleetWorkspaceStore;
     if (!store) throw new Error("TermFleet test store is unavailable");
     const state = store.getState();
-    const node = state.canvasState.nodes.find((candidate) => candidate.type === "terminal");
-    if (!node?.terminalTabId) throw new Error("Terminal map node is unavailable");
-    const tab = state.tabs.find((candidate) => candidate.id === node.terminalTabId);
+    const node = state.canvasState.nodes.find(
+      (candidate) => candidate.type === "terminal",
+    );
+    if (!node?.terminalTabId)
+      throw new Error("Terminal map node is unavailable");
+    const tab = state.tabs.find(
+      (candidate) => candidate.id === node.terminalTabId,
+    );
     if (!tab) throw new Error("Terminal tab is unavailable");
     store.getState().updateTab(tab.id, {
       title: "Terminal",
-      terminals: [{
-        id: "pty-playwright-summary-fixture",
-        paneId: node.id,
-        cols: 100,
-        rows: 30,
-        status: "running",
-        currentActivity: "Running 2 tests using 1 worker",
-        terminalOutput: [
-          "npx playwright test tests/map-terminal-rendering.spec.ts -g \"map shell header prefers summarized task path and now\" --reporter=line",
-          "Running 2 tests using 1 worker",
-          "… +35 lines (ctrl + t to view transcript)",
-          "1 passed (10.5s)",
-        ].join("\n"),
-        statusSummary: {
-          task: "Running 2 tests using 1 worker",
-          path: "devops/termfleet",
-          now: "stale. That is exactly the old changing behavior.",
-          status: "working",
-          provider: "shell",
-          confidence: "medium",
+      terminals: [
+        {
+          id: "pty-playwright-summary-fixture",
+          paneId: node.id,
+          cols: 100,
+          rows: 30,
+          status: "running",
+          currentActivity: "Running 2 tests using 1 worker",
+          terminalOutput: [
+            'npx playwright test tests/map-terminal-rendering.spec.ts -g "map shell header prefers summarized task path and now" --reporter=line',
+            "Running 2 tests using 1 worker",
+            "… +35 lines (ctrl + t to view transcript)",
+            "1 passed (10.5s)",
+          ].join("\n"),
+          statusSummary: {
+            task: "Running 2 tests using 1 worker",
+            path: "devops/termfleet",
+            now: "stale. That is exactly the old changing behavior.",
+            status: "working",
+            provider: "shell",
+            confidence: "medium",
+          },
         },
-      }],
+      ],
     });
   });
 
@@ -2747,261 +3953,387 @@ Acceptance:
   // the stale scrape line never shows anywhere.
   // TC-060 R1: no declared task is no longer a blank — the card falls back to a
   // true state line, and must never show the old placeholder.
-  await expect(page.getByTestId("canvas-terminal-node-description")).not.toHaveText("Task not captured");
-  await expect(page.getByTestId("canvas-terminal-node-description")).not.toBeEmpty();
-  await expect(page.getByTestId("canvas-terminal-node-now")).not.toContainText("stale");
+  await expect(
+    page.getByTestId("canvas-terminal-node-description"),
+  ).not.toHaveText("Task not captured");
+  await expect(
+    page.getByTestId("canvas-terminal-node-description"),
+  ).not.toBeEmpty();
+  await expect(page.getByTestId("canvas-terminal-node-now")).not.toContainText(
+    "stale",
+  );
 
   await page.evaluate(() => {
-    const store = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => {
-          tabs: Array<{ id: string; title: string; terminals: Array<{ paneId?: string }> }>;
-          canvasState: { nodes: Array<{ id: string; type: string; terminalTabId?: string }> };
-          updateTab: (id: string, updates: Record<string, unknown>) => void;
+    const store = (
+      window as typeof window & {
+        __termfleetWorkspaceStore?: {
+          getState: () => {
+            tabs: Array<{
+              id: string;
+              title: string;
+              terminals: Array<{ paneId?: string }>;
+            }>;
+            canvasState: {
+              nodes: Array<{
+                id: string;
+                type: string;
+                terminalTabId?: string;
+              }>;
+            };
+            updateTab: (id: string, updates: Record<string, unknown>) => void;
+          };
         };
-      };
-    }).__termfleetWorkspaceStore;
+      }
+    ).__termfleetWorkspaceStore;
     if (!store) throw new Error("TermFleet test store is unavailable");
     const state = store.getState();
-    const node = state.canvasState.nodes.find((candidate) => candidate.type === "terminal");
-    if (!node?.terminalTabId) throw new Error("Terminal map node is unavailable");
-    const tab = state.tabs.find((candidate) => candidate.id === node.terminalTabId);
+    const node = state.canvasState.nodes.find(
+      (candidate) => candidate.type === "terminal",
+    );
+    if (!node?.terminalTabId)
+      throw new Error("Terminal map node is unavailable");
+    const tab = state.tabs.find(
+      (candidate) => candidate.id === node.terminalTabId,
+    );
     if (!tab) throw new Error("Terminal tab is unavailable");
     store.getState().updateTab(tab.id, {
       title: "Terminal",
-      terminals: [{
-        id: "pty-tool-log-summary-fixture",
-        paneId: node.id,
-        cols: 100,
-        rows: 30,
-        status: "running",
-        currentActivity: "Search",
-        terminalOutput: [
-          "I’m going to wire the real sidebar into the terminal body now. The key change is: the terminal output area becomes a two-column layout only when task rows exist; otherwise it stays unchanged.",
-          "Explored",
-          "Read MagicCanvas.tsx",
-          "Search",
-          "terminalTaskPanel|canvas-terminal-task-sidebar|agentTaskPanel|TerminalComponent|nodeBody|terminalBody|liveTerminalBody|node.type === \"terminal\" ? in MagicCanvas.tsx",
-          "Read MagicCanvas.tsx",
-        ].join("\n"),
-        statusSummary: {
-          task: "Search",
-          path: "devops/termfleet",
-          now: "terminalBody|liveTerminalBody|node.type ...",
-          status: "working",
-          provider: "shell",
-          confidence: "low",
+      terminals: [
+        {
+          id: "pty-tool-log-summary-fixture",
+          paneId: node.id,
+          cols: 100,
+          rows: 30,
+          status: "running",
+          currentActivity: "Search",
+          terminalOutput: [
+            "I’m going to wire the real sidebar into the terminal body now. The key change is: the terminal output area becomes a two-column layout only when task rows exist; otherwise it stays unchanged.",
+            "Explored",
+            "Read MagicCanvas.tsx",
+            "Search",
+            'terminalTaskPanel|canvas-terminal-task-sidebar|agentTaskPanel|TerminalComponent|nodeBody|terminalBody|liveTerminalBody|node.type === "terminal" ? in MagicCanvas.tsx',
+            "Read MagicCanvas.tsx",
+          ].join("\n"),
+          statusSummary: {
+            task: "Search",
+            path: "devops/termfleet",
+            now: "terminalBody|liveTerminalBody|node.type ...",
+            status: "working",
+            provider: "shell",
+            confidence: "low",
+          },
         },
-      }],
+      ],
     });
   });
 
   // Junk "Search" tool-log never stands as a title — the row is hidden entirely.
-  await expect(page.getByTestId("canvas-terminal-node-header-title")).toHaveCount(0);
-  await expect(page.getByTestId("canvas-terminal-node-now")).not.toContainText("terminalBody|liveTerminalBody");
+  await expect(
+    page.getByTestId("canvas-terminal-node-header-title"),
+  ).toHaveCSS("visibility", "hidden");
+  await expect(page.getByTestId("canvas-terminal-node-now")).not.toContainText(
+    "terminalBody|liveTerminalBody",
+  );
   await expect(page.getByTestId("canvas-terminal-task-sidebar")).toHaveCount(0);
-  await expect(page.getByTestId("canvas-terminal-task-rail")).toContainText("Tasks");
-  await expect(page.getByTestId("canvas-terminal-task-rail")).toContainText("No list");
+  await expect(page.getByTestId("canvas-terminal-task-rail")).toContainText(
+    "Tasks",
+  );
+  await expect(page.getByTestId("canvas-terminal-task-rail")).toContainText(
+    "No list",
+  );
   await expect(page.getByTestId("canvas-terminal-task-row")).toHaveCount(0);
   await expect(page.getByTestId("canvas-terminal-task-empty")).toHaveCount(0);
 
   await page.evaluate(() => {
-    const store = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => {
-          tabs: Array<{ id: string; title: string; terminals: Array<{ paneId?: string }> }>;
-          canvasState: { nodes: Array<{ id: string; type: string; terminalTabId?: string }> };
-          updateTab: (id: string, updates: Record<string, unknown>) => void;
+    const store = (
+      window as typeof window & {
+        __termfleetWorkspaceStore?: {
+          getState: () => {
+            tabs: Array<{
+              id: string;
+              title: string;
+              terminals: Array<{ paneId?: string }>;
+            }>;
+            canvasState: {
+              nodes: Array<{
+                id: string;
+                type: string;
+                terminalTabId?: string;
+              }>;
+            };
+            updateTab: (id: string, updates: Record<string, unknown>) => void;
+          };
         };
-      };
-    }).__termfleetWorkspaceStore;
+      }
+    ).__termfleetWorkspaceStore;
     if (!store) throw new Error("TermFleet test store is unavailable");
     const state = store.getState();
-    const node = state.canvasState.nodes.find((candidate) => candidate.type === "terminal");
-    if (!node?.terminalTabId) throw new Error("Terminal map node is unavailable");
-    const tab = state.tabs.find((candidate) => candidate.id === node.terminalTabId);
+    const node = state.canvasState.nodes.find(
+      (candidate) => candidate.type === "terminal",
+    );
+    if (!node?.terminalTabId)
+      throw new Error("Terminal map node is unavailable");
+    const tab = state.tabs.find(
+      (candidate) => candidate.id === node.terminalTabId,
+    );
     if (!tab) throw new Error("Terminal tab is unavailable");
     store.getState().updateTab(tab.id, {
-      terminals: [{
-        id: "pty-plan-mode-menu-fixture",
-        paneId: node.id,
-        cols: 100,
-        rows: 30,
-        status: "running",
-        currentActivity: "Working",
-        statusSummary: {
-          task: "Running verify:canvas-all",
-          path: "devops/termfleet",
-          now: "Press enter to confirm or esc to go back",
-          status: "working",
-          provider: "shell",
-          confidence: "medium",
-          tasks: [{
-            id: "stale-term",
-            text: "TERM",
-            provenance: "summary",
-            at: Date.now(),
-            excerpt: "stale bad task",
-            sourceHash: "stale-term",
-          }],
+      terminals: [
+        {
+          id: "pty-plan-mode-menu-fixture",
+          paneId: node.id,
+          cols: 100,
+          rows: 30,
+          status: "running",
+          currentActivity: "Working",
+          statusSummary: {
+            task: "Running verify:canvas-all",
+            path: "devops/termfleet",
+            now: "Press enter to confirm or esc to go back",
+            status: "working",
+            provider: "shell",
+            confidence: "medium",
+            tasks: [
+              {
+                id: "stale-term",
+                text: "TERM",
+                provenance: "summary",
+                at: Date.now(),
+                excerpt: "stale bad task",
+                sourceHash: "stale-term",
+              },
+            ],
+          },
+          taskLineup: [
+            {
+              id: "stale-term",
+              content: "TERM",
+              status: "pending",
+              source: "summary",
+              updatedAt: Date.now(),
+            },
+          ],
+          terminalOutput: [
+            "Implement this plan?",
+            "› Implement the plan.",
+            "1. Yes, implement this plan",
+            "2. Yes, clear context and implement",
+            "3. No, stay in Plan mode",
+            "Press enter to confirm or esc to go back",
+          ].join("\n"),
         },
-        taskLineup: [{
-          id: "stale-term",
-          content: "TERM",
-          status: "pending",
-          source: "summary",
-          updatedAt: Date.now(),
-        }],
-        terminalOutput: [
-          "Implement this plan?",
-          "› Implement the plan.",
-          "1. Yes, implement this plan",
-          "2. Yes, clear context and implement",
-          "3. No, stay in Plan mode",
-          "Press enter to confirm or esc to go back",
-        ].join("\n"),
-      }],
+      ],
     });
   });
 
   await expect(page.getByTestId("canvas-terminal-task-row")).toHaveCount(0);
 
   await page.evaluate(() => {
-    const store = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => {
-          tabs: Array<{ id: string; title: string; terminals: Array<{ paneId?: string }> }>;
-          canvasState: { nodes: Array<{ id: string; type: string; terminalTabId?: string }> };
-          updateTab: (id: string, updates: Record<string, unknown>) => void;
+    const store = (
+      window as typeof window & {
+        __termfleetWorkspaceStore?: {
+          getState: () => {
+            tabs: Array<{
+              id: string;
+              title: string;
+              terminals: Array<{ paneId?: string }>;
+            }>;
+            canvasState: {
+              nodes: Array<{
+                id: string;
+                type: string;
+                terminalTabId?: string;
+              }>;
+            };
+            updateTab: (id: string, updates: Record<string, unknown>) => void;
+          };
         };
-      };
-    }).__termfleetWorkspaceStore;
+      }
+    ).__termfleetWorkspaceStore;
     if (!store) throw new Error("TermFleet test store is unavailable");
     const state = store.getState();
-    const node = state.canvasState.nodes.find((candidate) => candidate.type === "terminal");
-    if (!node?.terminalTabId) throw new Error("Terminal map node is unavailable");
-    const tab = state.tabs.find((candidate) => candidate.id === node.terminalTabId);
+    const node = state.canvasState.nodes.find(
+      (candidate) => candidate.type === "terminal",
+    );
+    if (!node?.terminalTabId)
+      throw new Error("Terminal map node is unavailable");
+    const tab = state.tabs.find(
+      (candidate) => candidate.id === node.terminalTabId,
+    );
     if (!tab) throw new Error("Terminal tab is unavailable");
     const paneId = tab.activePaneId ?? node.id;
     store.getState().updateTab(tab.id, {
-      terminals: [{
-        id: "pty-real-prompt-fixture",
-        paneId,
-        cols: 100,
-        rows: 30,
-        status: "running",
-        currentActivity: "Working",
-        terminalOutput: [
-          "Working (48s • esc to interrupt)",
-          "› Find and fix a bug in @filename",
-          "gpt-5.5 default",
-        ].join("\n"),
-      }],
+      terminals: [
+        {
+          id: "pty-real-prompt-fixture",
+          paneId,
+          cols: 100,
+          rows: 30,
+          status: "running",
+          currentActivity: "Working",
+          terminalOutput: [
+            "Working (48s • esc to interrupt)",
+            "› Find and fix a bug in @filename",
+            "gpt-5.5 default",
+          ].join("\n"),
+        },
+      ],
     });
   });
 
   await expect(page.getByTestId("canvas-terminal-task-row")).toHaveCount(0);
 
   await page.evaluate(() => {
-    const store = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => {
-          tabs: Array<{ id: string; title: string; activePaneId?: string; terminals: Array<{ paneId?: string }> }>;
-          canvasState: { nodes: Array<{ id: string; type: string; terminalTabId?: string }> };
-          updateTab: (id: string, updates: Record<string, unknown>) => void;
+    const store = (
+      window as typeof window & {
+        __termfleetWorkspaceStore?: {
+          getState: () => {
+            tabs: Array<{
+              id: string;
+              title: string;
+              activePaneId?: string;
+              terminals: Array<{ paneId?: string }>;
+            }>;
+            canvasState: {
+              nodes: Array<{
+                id: string;
+                type: string;
+                terminalTabId?: string;
+              }>;
+            };
+            updateTab: (id: string, updates: Record<string, unknown>) => void;
+          };
         };
-      };
-    }).__termfleetWorkspaceStore;
+      }
+    ).__termfleetWorkspaceStore;
     if (!store) throw new Error("TermFleet test store is unavailable");
     const state = store.getState();
-    const node = state.canvasState.nodes.find((candidate) => candidate.type === "terminal");
-    if (!node?.terminalTabId) throw new Error("Terminal map node is unavailable");
-    const tab = state.tabs.find((candidate) => candidate.id === node.terminalTabId);
+    const node = state.canvasState.nodes.find(
+      (candidate) => candidate.type === "terminal",
+    );
+    if (!node?.terminalTabId)
+      throw new Error("Terminal map node is unavailable");
+    const tab = state.tabs.find(
+      (candidate) => candidate.id === node.terminalTabId,
+    );
     if (!tab) throw new Error("Terminal tab is unavailable");
     const paneId = tab.activePaneId ?? node.id;
     store.getState().updateTab(tab.id, {
-      terminals: [{
-        id: "pty-lineup-state-fixture",
-        paneId,
-        cols: 100,
-        rows: 30,
-        status: "running",
-        currentActivity: "Working",
-        terminalOutput: [
-          "Random terminal text that must not become tasks.",
-          "› Delete text in the TUI",
-          "Working on the task sidebar.",
-        ].join("\n"),
-        taskLineup: [
-          {
-            id: "todo-sidebar-canonical",
-            content: "Make the sidebar source canonical",
-            status: "in_progress",
-            source: "todo-write",
-            updatedAt: 1000,
-          },
-          {
-            id: "todo-sidebar-scope",
-            content: "Show only the agent/current lane's lineup",
-            status: "pending",
-            source: "todo-write",
-            updatedAt: 1000,
-          },
-          {
-            id: "todo-sidebar-done",
-            content: "Render completed tasks crossed and muted",
-            status: "completed",
-            source: "todo-write",
-            updatedAt: 1000,
-          },
-        ],
-      }],
+      terminals: [
+        {
+          id: "pty-lineup-state-fixture",
+          paneId,
+          cols: 100,
+          rows: 30,
+          status: "running",
+          currentActivity: "Working",
+          terminalOutput: [
+            "Random terminal text that must not become tasks.",
+            "› Delete text in the TUI",
+            "Working on the task sidebar.",
+          ].join("\n"),
+          taskLineup: [
+            {
+              id: "todo-sidebar-canonical",
+              content: "Make the sidebar source canonical",
+              status: "in_progress",
+              source: "todo-write",
+              updatedAt: 1000,
+            },
+            {
+              id: "todo-sidebar-scope",
+              content: "Show only the agent/current lane's lineup",
+              status: "pending",
+              source: "todo-write",
+              updatedAt: 1000,
+            },
+            {
+              id: "todo-sidebar-done",
+              content: "Render completed tasks crossed and muted",
+              status: "completed",
+              source: "todo-write",
+              updatedAt: 1000,
+            },
+          ],
+        },
+      ],
     });
   });
 
   await expect(page.getByTestId("canvas-terminal-task-sidebar")).toBeVisible();
-  await expect(page.getByTestId("canvas-terminal-task-sidebar")).toContainText("Tasks");
-  await expect(page.getByTestId("canvas-terminal-task-sidebar")).toContainText("3");
+  await expect(page.getByTestId("canvas-terminal-task-sidebar")).toContainText(
+    "Tasks",
+  );
+  await expect(page.getByTestId("canvas-terminal-task-sidebar")).toContainText(
+    "3",
+  );
   await expect(page.getByTestId("canvas-terminal-task-row")).toHaveCount(3);
 
   await page.evaluate(() => {
-    const store = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => {
-          tabs: Array<{ id: string; title: string; terminals: Array<Record<string, unknown>> }>;
-          canvasState: { nodes: Array<{ id: string; type: string; terminalTabId?: string }> };
-          updateTab: (id: string, updates: Record<string, unknown>) => void;
+    const store = (
+      window as typeof window & {
+        __termfleetWorkspaceStore?: {
+          getState: () => {
+            tabs: Array<{
+              id: string;
+              title: string;
+              terminals: Array<Record<string, unknown>>;
+            }>;
+            canvasState: {
+              nodes: Array<{
+                id: string;
+                type: string;
+                terminalTabId?: string;
+              }>;
+            };
+            updateTab: (id: string, updates: Record<string, unknown>) => void;
+          };
         };
-      };
-    }).__termfleetWorkspaceStore;
+      }
+    ).__termfleetWorkspaceStore;
     if (!store) throw new Error("TermFleet test store is unavailable");
     const state = store.getState();
-    const node = state.canvasState.nodes.find((candidate) => candidate.type === "terminal");
-    if (!node?.terminalTabId) throw new Error("Terminal map node is unavailable");
-    const tab = state.tabs.find((candidate) => candidate.id === node.terminalTabId);
+    const node = state.canvasState.nodes.find(
+      (candidate) => candidate.type === "terminal",
+    );
+    if (!node?.terminalTabId)
+      throw new Error("Terminal map node is unavailable");
+    const tab = state.tabs.find(
+      (candidate) => candidate.id === node.terminalTabId,
+    );
     if (!tab) throw new Error("Terminal tab is unavailable");
     const terminal = tab.terminals[0];
     store.getState().updateTab(tab.id, {
-      terminals: [{
-        ...terminal,
-        terminalOutput: [
-          "Implement this plan?",
-          "1. Yes, implement this plan",
-          "2. No, stay in Plan mode",
-          "TERM",
-        ].join("\n"),
-      }],
+      terminals: [
+        {
+          ...terminal,
+          terminalOutput: [
+            "Implement this plan?",
+            "1. Yes, implement this plan",
+            "2. No, stay in Plan mode",
+            "TERM",
+          ].join("\n"),
+        },
+      ],
     });
   });
 
   await expect(page.getByTestId("canvas-terminal-task-sidebar")).toBeVisible();
   await expect(page.getByTestId("canvas-terminal-task-row")).toHaveCount(3);
-  await expect(page.getByTestId("canvas-terminal-task-row").nth(0)).toContainText("Make the sidebar source canonical");
-  await expect(page.getByTestId("canvas-terminal-task-row").nth(1)).toContainText("Show only the agent/current lane");
-  await expect(page.getByTestId("canvas-terminal-task-row").nth(2)).toContainText("Render completed tasks crossed and muted");
+  await expect(
+    page.getByTestId("canvas-terminal-task-row").nth(0),
+  ).toContainText("Make the sidebar source canonical");
+  await expect(
+    page.getByTestId("canvas-terminal-task-row").nth(1),
+  ).toContainText("Show only the agent/current lane");
+  await expect(
+    page.getByTestId("canvas-terminal-task-row").nth(2),
+  ).toContainText("Render completed tasks crossed and muted");
 });
 
-test("map terminal task rail opens a visible canonical checklist", async ({ page }) => {
+test("map terminal task rail opens a visible canonical checklist", async ({
+  page,
+}) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle");
   await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
@@ -3010,22 +4342,43 @@ test("map terminal task rail opens a visible canonical checklist", async ({ page
   await page.getByRole("button", { name: "Map", exact: true }).click();
 
   await page.evaluate(() => {
-    const store = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => {
-          tabs: Array<{ id: string; title: string; activePaneId?: string; terminals: Array<Record<string, unknown>> }>;
-          canvasState: { nodes: Array<{ id: string; type: string; terminalTabId?: string }> };
-          updateTab: (id: string, updates: Record<string, unknown>) => void;
-          updateCanvasNode: (id: string, updates: Record<string, unknown>) => void;
-          selectCanvasNode: (id: string) => void;
+    const store = (
+      window as typeof window & {
+        __termfleetWorkspaceStore?: {
+          getState: () => {
+            tabs: Array<{
+              id: string;
+              title: string;
+              activePaneId?: string;
+              terminals: Array<Record<string, unknown>>;
+            }>;
+            canvasState: {
+              nodes: Array<{
+                id: string;
+                type: string;
+                terminalTabId?: string;
+              }>;
+            };
+            updateTab: (id: string, updates: Record<string, unknown>) => void;
+            updateCanvasNode: (
+              id: string,
+              updates: Record<string, unknown>,
+            ) => void;
+            selectCanvasNode: (id: string) => void;
+          };
         };
-      };
-    }).__termfleetWorkspaceStore;
+      }
+    ).__termfleetWorkspaceStore;
     if (!store) throw new Error("TermFleet test store is unavailable");
     const state = store.getState();
-    const node = state.canvasState.nodes.find((candidate) => candidate.type === "terminal");
-    if (!node?.terminalTabId) throw new Error("Terminal map node is unavailable");
-    const tab = state.tabs.find((candidate) => candidate.id === node.terminalTabId);
+    const node = state.canvasState.nodes.find(
+      (candidate) => candidate.type === "terminal",
+    );
+    if (!node?.terminalTabId)
+      throw new Error("Terminal map node is unavailable");
+    const tab = state.tabs.find(
+      (candidate) => candidate.id === node.terminalTabId,
+    );
     if (!tab) throw new Error("Terminal tab is unavailable");
     const paneId = tab.activePaneId ?? node.id;
     store.getState().updateCanvasNode(node.id, {
@@ -3036,34 +4389,80 @@ test("map terminal task rail opens a visible canonical checklist", async ({ page
     });
     store.getState().selectCanvasNode(node.id);
     store.getState().updateTab(tab.id, {
-      terminals: [{
-        id: "pty-task-rail-click-visual",
-        paneId,
-        cols: 100,
-        rows: 30,
-        status: "running",
-        activeRunId: "run-2",
-        currentActivity: "Working",
-        taskSidebarCollapsed: true,
-        terminalOutput: [
-          "Implement this plan?",
-          "1. Yes, implement this plan",
-          "TERM",
-        ].join("\n"),
-        taskLineup: [
-          { id: "legacy-random", content: "This stale operator row must not render", status: "in_progress", source: "operator", updatedAt: 1 },
-          { id: "summary-random", content: "This stale summary row must not render", status: "pending", source: "summary", updatedAt: 1 },
-          { id: "todo-old-run", runId: "run-1", content: "Summarize recent commits", status: "completed", source: "todo-write", updatedAt: 1 },
-          { id: "todo-one", runId: "run-2", content: "Keep task state canonical", status: "in_progress", source: "todo-write", updatedAt: 2 },
-          { id: "todo-two", runId: "run-2", content: "Open the rail into a stable list", status: "pending", source: "todo-write", updatedAt: 2 },
-          { id: "todo-three", runId: "run-2", content: "Show completed tasks crossed out", status: "completed", source: "todo-write", updatedAt: 2 },
-        ],
-      }],
+      terminals: [
+        {
+          id: "pty-task-rail-click-visual",
+          paneId,
+          cols: 100,
+          rows: 30,
+          status: "running",
+          activeRunId: "run-2",
+          currentActivity: "Working",
+          taskSidebarCollapsed: true,
+          terminalOutput: [
+            "Implement this plan?",
+            "1. Yes, implement this plan",
+            "TERM",
+          ].join("\n"),
+          taskLineup: [
+            {
+              id: "legacy-random",
+              content: "This stale operator row must not render",
+              status: "in_progress",
+              source: "operator",
+              updatedAt: 1,
+            },
+            {
+              id: "summary-random",
+              content: "This stale summary row must not render",
+              status: "pending",
+              source: "summary",
+              updatedAt: 1,
+            },
+            {
+              id: "todo-old-run",
+              runId: "run-1",
+              content: "Summarize recent commits",
+              status: "completed",
+              source: "todo-write",
+              updatedAt: 1,
+            },
+            {
+              id: "todo-one",
+              runId: "run-2",
+              content: "Keep task state canonical",
+              status: "in_progress",
+              source: "todo-write",
+              updatedAt: 2,
+            },
+            {
+              id: "todo-two",
+              runId: "run-2",
+              content: "Open the rail into a stable list",
+              status: "pending",
+              source: "todo-write",
+              updatedAt: 2,
+            },
+            {
+              id: "todo-three",
+              runId: "run-2",
+              content: "Show completed tasks crossed out",
+              status: "completed",
+              source: "todo-write",
+              updatedAt: 2,
+            },
+          ],
+        },
+      ],
     });
   });
 
-  await expect(page.getByTestId("canvas-terminal-task-rail")).toContainText("Tasks");
-  await expect(page.getByTestId("canvas-terminal-task-rail")).toContainText("3");
+  await expect(page.getByTestId("canvas-terminal-task-rail")).toContainText(
+    "Tasks",
+  );
+  await expect(page.getByTestId("canvas-terminal-task-rail")).toContainText(
+    "3",
+  );
   await page.getByTestId("canvas-terminal-task-rail").click();
 
   await expect(page.getByTestId("canvas-terminal-task-sidebar")).toBeVisible();
@@ -3073,12 +4472,22 @@ test("map terminal task rail opens a visible canonical checklist", async ({ page
     "Open the rail into a stable list",
     "Show completed tasks crossed out",
   ]);
-  await expect(page.getByTestId("canvas-terminal-task-sidebar")).not.toContainText("stale operator");
-  await expect(page.getByTestId("canvas-terminal-task-sidebar")).not.toContainText("stale summary");
-  await expect(page.getByTestId("canvas-terminal-task-sidebar")).not.toContainText("Summarize recent commits");
-  await expect(page.getByTestId("canvas-terminal-task-sidebar")).not.toContainText(/Task 1\/|operator task list|summary/i);
+  await expect(
+    page.getByTestId("canvas-terminal-task-sidebar"),
+  ).not.toContainText("stale operator");
+  await expect(
+    page.getByTestId("canvas-terminal-task-sidebar"),
+  ).not.toContainText("stale summary");
+  await expect(
+    page.getByTestId("canvas-terminal-task-sidebar"),
+  ).not.toContainText("Summarize recent commits");
+  await expect(
+    page.getByTestId("canvas-terminal-task-sidebar"),
+  ).not.toContainText(/Task 1\/|operator task list|summary/i);
 
-  const sidebarBox = await page.getByTestId("canvas-terminal-task-sidebar").boundingBox();
+  const sidebarBox = await page
+    .getByTestId("canvas-terminal-task-sidebar")
+    .boundingBox();
   expect(sidebarBox).toBeTruthy();
   const screenshot = await page.screenshot({ fullPage: true });
   const stats = await imageRegionStats(page, screenshot, sidebarBox!);
@@ -3086,7 +4495,9 @@ test("map terminal task rail opens a visible canonical checklist", async ({ page
   expect(stats.edgePixels).toBeGreaterThan(260);
 });
 
-test("map shell header uses durable activity instead of stale transcript summary", async ({ page }) => {
+test("map shell header uses durable activity instead of stale transcript summary", async ({
+  page,
+}) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle");
   await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
@@ -3095,17 +4506,25 @@ test("map shell header uses durable activity instead of stale transcript summary
   await page.getByRole("button", { name: "Map", exact: true }).click();
 
   await page.evaluate(() => {
-    const store = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => {
-          workspaceUiState: Record<string, unknown>;
-          tabs: Array<{ id: string; title: string; terminals: unknown[] }>;
-          canvasState: { nodes: Array<{ id: string; type: string; terminalTabId?: string }> };
-          updateTab: (id: string, updates: Record<string, unknown>) => void;
+    const store = (
+      window as typeof window & {
+        __termfleetWorkspaceStore?: {
+          getState: () => {
+            workspaceUiState: Record<string, unknown>;
+            tabs: Array<{ id: string; title: string; terminals: unknown[] }>;
+            canvasState: {
+              nodes: Array<{
+                id: string;
+                type: string;
+                terminalTabId?: string;
+              }>;
+            };
+            updateTab: (id: string, updates: Record<string, unknown>) => void;
+          };
+          setState: (state: Record<string, unknown>) => void;
         };
-        setState: (state: Record<string, unknown>) => void;
-      };
-    }).__termfleetWorkspaceStore;
+      }
+    ).__termfleetWorkspaceStore;
     if (!store) throw new Error("TermFleet test store is unavailable");
     const state = store.getState();
     store.setState({
@@ -3115,63 +4534,81 @@ test("map shell header uses durable activity instead of stale transcript summary
         primarySidebarPanel: "map",
       },
     });
-    const node = state.canvasState.nodes.find((candidate) => candidate.type === "terminal");
-    if (!node?.terminalTabId) throw new Error("Terminal map node is unavailable");
-    const tab = state.tabs.find((candidate) => candidate.id === node.terminalTabId);
+    const node = state.canvasState.nodes.find(
+      (candidate) => candidate.type === "terminal",
+    );
+    if (!node?.terminalTabId)
+      throw new Error("Terminal map node is unavailable");
+    const tab = state.tabs.find(
+      (candidate) => candidate.id === node.terminalTabId,
+    );
     if (!tab) throw new Error("Terminal tab is unavailable");
     const paneId = tab.activePaneId ?? node.id;
     store.getState().updateTab(tab.id, {
       title: "Terminal",
-      initialCwd: "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
-      terminals: [{
-        id: "pty-durable-activity-fixture",
-        paneId,
-        cols: 100,
-        rows: 30,
-        status: "running",
-        currentActivity: "web$ npm run unfinished prompt text",
-        durableActivity: {
-          title: "Testing checkout flow",
-          subtitle: "12 tests · Chromium",
+      initialCwd:
+        "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
+      terminals: [
+        {
+          id: "pty-durable-activity-fixture",
+          paneId,
+          cols: 100,
+          rows: 30,
           status: "running",
-          command: "npx playwright test tests/checkout.spec.ts",
-          source: "command",
-          startedAt: Date.now() - 1000,
-          updatedAt: Date.now(),
+          currentActivity: "web$ npm run unfinished prompt text",
+          durableActivity: {
+            title: "Testing checkout flow",
+            subtitle: "12 tests · Chromium",
+            status: "running",
+            command: "npx playwright test tests/checkout.spec.ts",
+            source: "command",
+            startedAt: Date.now() - 1000,
+            updatedAt: Date.now(),
+          },
+          terminalOutput: [
+            "npx playwright test tests/checkout.spec.ts --project=chromium",
+            "Running 12 tests using 1 worker",
+            "web$ npm run unfinished prompt text",
+          ].join("\n"),
+          statusSummary: {
+            task: "Search",
+            path: "devops/termfleet",
+            now: "web$ npm run unfinished prompt text",
+            status: "working",
+            provider: "shell",
+            confidence: "high",
+          },
         },
-        terminalOutput: [
-          "npx playwright test tests/checkout.spec.ts --project=chromium",
-          "Running 12 tests using 1 worker",
-          "web$ npm run unfinished prompt text",
-        ].join("\n"),
-        statusSummary: {
-          task: "Search",
-          path: "devops/termfleet",
-          now: "web$ npm run unfinished prompt text",
-          status: "working",
-          provider: "shell",
-          confidence: "high",
-        },
-      }],
+      ],
     });
   });
 
   // Contract: the durable activity supplies the plain-language title; the junk
   // scrape summary ("Search", unfinished prompt text) never shows.
-  await expect(page.getByTestId("canvas-terminal-node-header-title")).toHaveText(
+  await expect(
+    page.getByTestId("canvas-terminal-node-header-title"),
+  ).toHaveText("Testing checkout flow");
+  await expect(
+    page.getByTestId("canvas-terminal-node-header"),
+  ).not.toContainText("web$ npm run");
+  await expect(
+    page.getByTestId("canvas-terminal-node-header-title"),
+  ).not.toHaveText("Search");
+  await expect(page.getByTestId("canvas-terminal-node-now")).not.toContainText(
+    "unfinished prompt",
+  );
+  await expect(page.getByTestId("canvas-terminal-task-rail")).toContainText(
+    "No list",
+  );
+  await expect(page.getByTestId("canvas-terminal-task-row")).toHaveCount(0);
+  await expect(page.getByTestId("canvas-terminal-task-rail")).not.toContainText(
     "Testing checkout flow",
   );
-  await expect(page.getByTestId("canvas-terminal-node-header")).not.toContainText(
-    "web$ npm run",
-  );
-  await expect(page.getByTestId("canvas-terminal-node-header-title")).not.toHaveText("Search");
-  await expect(page.getByTestId("canvas-terminal-node-now")).not.toContainText("unfinished prompt");
-  await expect(page.getByTestId("canvas-terminal-task-rail")).toContainText("No list");
-  await expect(page.getByTestId("canvas-terminal-task-row")).toHaveCount(0);
-  await expect(page.getByTestId("canvas-terminal-task-rail")).not.toContainText("Testing checkout flow");
 });
 
-test("map shell header replaces source-file activity with readable task activity", async ({ page }) => {
+test("map shell header replaces source-file activity with readable task activity", async ({
+  page,
+}) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle");
   await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
@@ -3180,17 +4617,30 @@ test("map shell header replaces source-file activity with readable task activity
   await page.getByRole("button", { name: "Map", exact: true }).click();
 
   await page.evaluate(() => {
-    const store = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => {
-          workspaceUiState: Record<string, unknown>;
-          tabs: Array<{ id: string; title: string; activePaneId?: string; terminals: unknown[] }>;
-          canvasState: { nodes: Array<{ id: string; type: string; terminalTabId?: string }> };
-          updateTab: (id: string, updates: Record<string, unknown>) => void;
+    const store = (
+      window as typeof window & {
+        __termfleetWorkspaceStore?: {
+          getState: () => {
+            workspaceUiState: Record<string, unknown>;
+            tabs: Array<{
+              id: string;
+              title: string;
+              activePaneId?: string;
+              terminals: unknown[];
+            }>;
+            canvasState: {
+              nodes: Array<{
+                id: string;
+                type: string;
+                terminalTabId?: string;
+              }>;
+            };
+            updateTab: (id: string, updates: Record<string, unknown>) => void;
+          };
+          setState: (state: Record<string, unknown>) => void;
         };
-        setState: (state: Record<string, unknown>) => void;
-      };
-    }).__termfleetWorkspaceStore;
+      }
+    ).__termfleetWorkspaceStore;
     if (!store) throw new Error("TermFleet test store is unavailable");
     const state = store.getState();
     store.setState({
@@ -3200,51 +4650,69 @@ test("map shell header replaces source-file activity with readable task activity
         primarySidebarPanel: "map",
       },
     });
-    const node = state.canvasState.nodes.find((candidate) => candidate.type === "terminal");
-    if (!node?.terminalTabId) throw new Error("Terminal map node is unavailable");
-    const tab = state.tabs.find((candidate) => candidate.id === node.terminalTabId);
+    const node = state.canvasState.nodes.find(
+      (candidate) => candidate.type === "terminal",
+    );
+    if (!node?.terminalTabId)
+      throw new Error("Terminal map node is unavailable");
+    const tab = state.tabs.find(
+      (candidate) => candidate.id === node.terminalTabId,
+    );
     if (!tab) throw new Error("Terminal tab is unavailable");
     const paneId = tab.activePaneId ?? node.id;
     store.getState().updateTab(tab.id, {
       title: "bina-ve-ze",
-      initialCwd: "/media/endlessblink/data/my-projects/ai-development/web-dev/bina-ve-ze",
-      terminals: [{
-        id: "pty-map-source-file-activity",
-        paneId,
-        cols: 100,
-        rows: 30,
-        status: "running",
-        currentActivity: "Editing ModelScene.tsx",
-        statusSummary: {
-          task: "#36 Bottom-sheet pull-up + clearer launcher button",
-          path: "web-dev/bina-ve-ze",
-          now: "Editing ModelScene.tsx",
-          status: "working",
-          provider: "codex",
-          confidence: "high",
-          tasksFromTodoWrite: true,
+      initialCwd:
+        "/media/endlessblink/data/my-projects/ai-development/web-dev/bina-ve-ze",
+      terminals: [
+        {
+          id: "pty-map-source-file-activity",
+          paneId,
+          cols: 100,
+          rows: 30,
+          status: "running",
+          currentActivity: "Editing ModelScene.tsx",
+          statusSummary: {
+            task: "#36 Bottom-sheet pull-up + clearer launcher button",
+            path: "web-dev/bina-ve-ze",
+            now: "Editing ModelScene.tsx",
+            status: "working",
+            provider: "codex",
+            confidence: "high",
+            tasksFromTodoWrite: true,
+          },
+          taskLineup: [
+            {
+              id: "task-36",
+              content: "#36 Bottom-sheet pull-up + clearer launcher button",
+              status: "in_progress",
+              source: "todo-write",
+              updatedAt: Date.now(),
+            },
+          ],
+          terminalOutput: "Editing ModelScene.tsx\n[OMC] thinking",
         },
-        taskLineup: [{
-          id: "task-36",
-          content: "#36 Bottom-sheet pull-up + clearer launcher button",
-          status: "in_progress",
-          source: "todo-write",
-          updatedAt: Date.now(),
-        }],
-        terminalOutput: "Editing ModelScene.tsx\n[OMC] thinking",
-      }],
+      ],
     });
   });
 
   // The activity only restates the task ("Improving <task>"), so there is no distinct
   // second line: the task itself becomes the one prominent line and the raw source-file
   // activity ("ModelScene.tsx") never surfaces.
-  await expect(page.getByTestId("canvas-terminal-node-description")).toHaveText("#36 Bottom-sheet pull-up + clearer launcher button");
-  await expect(page.getByTestId("canvas-terminal-node-header-title")).toHaveCount(0);
-  await expect(page.getByTestId("canvas-terminal-node-now")).not.toContainText("ModelScene.tsx");
+  await expect(page.getByTestId("canvas-terminal-node-description")).toHaveText(
+    "#36 Bottom-sheet pull-up + clearer launcher button",
+  );
+  await expect(
+    page.getByTestId("canvas-terminal-node-header-title"),
+  ).toHaveCSS("visibility", "hidden");
+  await expect(page.getByTestId("canvas-terminal-node-now")).not.toContainText(
+    "ModelScene.tsx",
+  );
 });
 
-test("map shell header treats ready prompt as idle instead of capture failure", async ({ page }) => {
+test("map shell header treats ready prompt as idle instead of capture failure", async ({
+  page,
+}) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle");
   await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
@@ -3253,17 +4721,30 @@ test("map shell header treats ready prompt as idle instead of capture failure", 
   await page.getByRole("button", { name: "Map", exact: true }).click();
 
   await page.evaluate(() => {
-    const store = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => {
-          workspaceUiState: Record<string, unknown>;
-          tabs: Array<{ id: string; title: string; activePaneId?: string; terminals: unknown[] }>;
-          canvasState: { nodes: Array<{ id: string; type: string; terminalTabId?: string }> };
-          updateTab: (id: string, updates: Record<string, unknown>) => void;
+    const store = (
+      window as typeof window & {
+        __termfleetWorkspaceStore?: {
+          getState: () => {
+            workspaceUiState: Record<string, unknown>;
+            tabs: Array<{
+              id: string;
+              title: string;
+              activePaneId?: string;
+              terminals: unknown[];
+            }>;
+            canvasState: {
+              nodes: Array<{
+                id: string;
+                type: string;
+                terminalTabId?: string;
+              }>;
+            };
+            updateTab: (id: string, updates: Record<string, unknown>) => void;
+          };
+          setState: (state: Record<string, unknown>) => void;
         };
-        setState: (state: Record<string, unknown>) => void;
-      };
-    }).__termfleetWorkspaceStore;
+      }
+    ).__termfleetWorkspaceStore;
     if (!store) throw new Error("TermFleet test store is unavailable");
     const state = store.getState();
     store.setState({
@@ -3273,47 +4754,64 @@ test("map shell header treats ready prompt as idle instead of capture failure", 
         primarySidebarPanel: "map",
       },
     });
-    const node = state.canvasState.nodes.find((candidate) => candidate.type === "terminal");
-    if (!node?.terminalTabId) throw new Error("Terminal map node is unavailable");
-    const tab = state.tabs.find((candidate) => candidate.id === node.terminalTabId);
+    const node = state.canvasState.nodes.find(
+      (candidate) => candidate.type === "terminal",
+    );
+    if (!node?.terminalTabId)
+      throw new Error("Terminal map node is unavailable");
+    const tab = state.tabs.find(
+      (candidate) => candidate.id === node.terminalTabId,
+    );
     if (!tab) throw new Error("Terminal tab is unavailable");
     const paneId = tab.activePaneId ?? node.id;
     store.getState().updateTab(tab.id, {
       title: "termfleet",
-      initialCwd: "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
-      terminals: [{
-        id: "pty-map-ready-prompt",
-        paneId,
-        cols: 100,
-        rows: 30,
-        status: "running",
-        currentActivity: "TF_HDR_DONE",
-        terminalVisibleText: "endlessblink@endlessblink:/repo/termfleet$",
-        terminalOutput: "done\nendlessblink@endlessblink:/repo/termfleet$",
-        statusSummary: {
-          task: "Ready",
-          path: "devops/termfleet",
-          now: "Awaiting command",
-          status: "working",
-          provider: "shell",
-          confidence: "low",
-          tasksFromTodoWrite: false,
+      initialCwd:
+        "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
+      terminals: [
+        {
+          id: "pty-map-ready-prompt",
+          paneId,
+          cols: 100,
+          rows: 30,
+          status: "running",
+          currentActivity: "TF_HDR_DONE",
+          terminalVisibleText: "endlessblink@endlessblink:/repo/termfleet$",
+          terminalOutput: "done\nendlessblink@endlessblink:/repo/termfleet$",
+          statusSummary: {
+            task: "Ready",
+            path: "devops/termfleet",
+            now: "Awaiting command",
+            status: "working",
+            provider: "shell",
+            confidence: "low",
+            tasksFromTodoWrite: false,
+          },
         },
-      }],
+      ],
     });
   });
 
   // TC-060 R1: no declared task is no longer a blank — the card falls back to a
   // true state line, and must never show the old placeholder.
-  await expect(page.getByTestId("canvas-terminal-node-description")).not.toHaveText("Task not captured");
-  await expect(page.getByTestId("canvas-terminal-node-description")).not.toBeEmpty();
+  await expect(
+    page.getByTestId("canvas-terminal-node-description"),
+  ).not.toHaveText("Task not captured");
+  await expect(
+    page.getByTestId("canvas-terminal-node-description"),
+  ).not.toBeEmpty();
   // An idle pane with no distinct step collapses to the single honest Task line — the
-  // "Now Active" row is hidden rather than restating a bare "Idle" status word.
-  await expect(page.getByTestId("canvas-terminal-node-header-title")).toHaveCount(0);
+  // "Now Active" row stays reserved but hidden rather than restating a bare "Idle"
+  // status word.
+  await expect(
+    page.getByTestId("canvas-terminal-node-header-title"),
+  ).toHaveCSS("visibility", "hidden");
   await expect(page.getByTestId("canvas-terminal-node-now")).toHaveText("Idle");
 });
 
-test("split shell header uses the same durable summary policy as the map", async ({ page }) => {
+test("split shell header uses the same durable summary policy as the map", async ({
+  page,
+}) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle");
   await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
@@ -3321,17 +4819,24 @@ test("split shell header uses the same durable summary policy as the map", async
   await page.waitForLoadState("networkidle");
 
   await page.evaluate(() => {
-    const store = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => {
-          workspaceUiState: Record<string, unknown>;
-          tabs: Array<{ id: string; title: string; activePaneId?: string; terminals: unknown[] }>;
-          updateTab: (id: string, updates: Record<string, unknown>) => void;
-          setWorkspaceMode: (mode: "split" | "canvas" | "graph") => void;
+    const store = (
+      window as typeof window & {
+        __termfleetWorkspaceStore?: {
+          getState: () => {
+            workspaceUiState: Record<string, unknown>;
+            tabs: Array<{
+              id: string;
+              title: string;
+              activePaneId?: string;
+              terminals: unknown[];
+            }>;
+            updateTab: (id: string, updates: Record<string, unknown>) => void;
+            setWorkspaceMode: (mode: "split" | "canvas" | "graph") => void;
+          };
+          setState: (state: Record<string, unknown>) => void;
         };
-        setState: (state: Record<string, unknown>) => void;
-      };
-    }).__termfleetWorkspaceStore;
+      }
+    ).__termfleetWorkspaceStore;
     if (!store) throw new Error("TermFleet test store is unavailable");
     const state = store.getState();
     store.setState({
@@ -3346,38 +4851,41 @@ test("split shell header uses the same durable summary policy as the map", async
     const paneId = tab.activePaneId ?? "root";
     store.getState().updateTab(tab.id, {
       title: "Terminal",
-      initialCwd: "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
-      terminals: [{
-        id: "pty-split-durable-policy-fixture",
-        paneId,
-        cols: 100,
-        rows: 30,
-        status: "running",
-        currentActivity: "Search",
-        durableActivity: {
-          title: "Checking activity summary wording",
-          subtitle: "terminal status summary contract · 1 test · 1 worker",
-          targetPath: "tests/agent-status-summary.spec.ts",
+      initialCwd:
+        "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
+      terminals: [
+        {
+          id: "pty-split-durable-policy-fixture",
+          paneId,
+          cols: 100,
+          rows: 30,
           status: "running",
-          command: "npx playwright test tests/agent-status-summary.spec.ts",
-          source: "command",
-          startedAt: Date.now() - 1000,
-          updatedAt: Date.now(),
+          currentActivity: "Search",
+          durableActivity: {
+            title: "Checking activity summary wording",
+            subtitle: "terminal status summary contract · 1 test · 1 worker",
+            targetPath: "tests/agent-status-summary.spec.ts",
+            status: "running",
+            command: "npx playwright test tests/agent-status-summary.spec.ts",
+            source: "command",
+            startedAt: Date.now() - 1000,
+            updatedAt: Date.now(),
+          },
+          terminalOutput: [
+            "npx playwright test tests/agent-status-summary.spec.ts",
+            "Running 1 test using 1 worker",
+            "web$ npm run unfinished prompt text",
+          ].join("\n"),
+          statusSummary: {
+            task: "Search",
+            path: "stale/project",
+            now: "web$ npm run unfinished prompt text",
+            status: "working",
+            provider: "shell",
+            confidence: "high",
+          },
         },
-        terminalOutput: [
-          "npx playwright test tests/agent-status-summary.spec.ts",
-          "Running 1 test using 1 worker",
-          "web$ npm run unfinished prompt text",
-        ].join("\n"),
-        statusSummary: {
-          task: "Search",
-          path: "stale/project",
-          now: "web$ npm run unfinished prompt text",
-          status: "working",
-          provider: "shell",
-          confidence: "high",
-        },
-      }],
+      ],
     });
   });
 
@@ -3386,12 +4894,20 @@ test("split shell header uses the same durable summary policy as the map", async
   await expect(page.getByTestId("split-terminal-summary-task")).toHaveText(
     "Checking activity summary wording",
   );
-  await expect(page.getByTestId("split-terminal-summary-path")).toContainText("tests/agent-status-summary.spec.ts");
-  await expect(page.getByTestId("split-terminal-summary-task")).not.toHaveText("Search");
-  await expect(page.getByTestId("split-terminal-summary-now")).not.toContainText("unfinished prompt");
+  await expect(page.getByTestId("split-terminal-summary-path")).toContainText(
+    "tests/agent-status-summary.spec.ts",
+  );
+  await expect(page.getByTestId("split-terminal-summary-task")).not.toHaveText(
+    "Search",
+  );
+  await expect(
+    page.getByTestId("split-terminal-summary-now"),
+  ).not.toContainText("unfinished prompt");
 });
 
-test("map summary cards expose workspace labels for parallel sessions", async ({ page }) => {
+test("map summary cards expose workspace labels for parallel sessions", async ({
+  page,
+}) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle");
   await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
@@ -3400,14 +4916,16 @@ test("map summary cards expose workspace labels for parallel sessions", async ({
   await page.getByRole("button", { name: "Map", exact: true }).click();
 
   await page.evaluate(() => {
-    const store = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => {
-          workspaceUiState: Record<string, unknown>;
+    const store = (
+      window as typeof window & {
+        __termfleetWorkspaceStore?: {
+          getState: () => {
+            workspaceUiState: Record<string, unknown>;
+          };
+          setState: (state: Record<string, unknown>) => void;
         };
-        setState: (state: Record<string, unknown>) => void;
-      };
-    }).__termfleetWorkspaceStore;
+      }
+    ).__termfleetWorkspaceStore;
     if (!store) throw new Error("TermFleet test store is unavailable");
 
     const terminalTab = (
@@ -3424,23 +4942,25 @@ test("map summary cards expose workspace labels for parallel sessions", async ({
       color: "#7aa2f7",
       groupId,
       initialCwd,
-      terminals: [{
-        id: `pty-${id}`,
-        paneId,
-        cols: 80,
-        rows: 24,
-        status: "running",
-        currentActivity: "npm run dev",
-        terminalOutput: task,
-        statusSummary: {
-          task,
-          path: initialCwd.split("/").filter(Boolean).slice(-2).join("/"),
-          now: "Serving localhost preview",
-          status: "working",
-          provider: "shell",
-          confidence: "medium",
+      terminals: [
+        {
+          id: `pty-${id}`,
+          paneId,
+          cols: 80,
+          rows: 24,
+          status: "running",
+          currentActivity: "npm run dev",
+          terminalOutput: task,
+          statusSummary: {
+            task,
+            path: initialCwd.split("/").filter(Boolean).slice(-2).join("/"),
+            now: "Serving localhost preview",
+            status: "working",
+            provider: "shell",
+            confidence: "medium",
+          },
         },
-      }],
+      ],
       splitLayout: { id: paneId, type: "terminal" },
       activePaneId: paneId,
     });
@@ -3458,7 +4978,8 @@ test("map summary cards expose workspace labels for parallel sessions", async ({
           id: "group-termfleet",
           name: "TermFleet OSS",
           color: "#7aa2f7",
-          projectRoot: "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
+          projectRoot:
+            "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
           lastActiveTabId: "tab-termfleet",
         },
       ],
@@ -3467,36 +4988,77 @@ test("map summary cards expose workspace labels for parallel sessions", async ({
           id: "group-termfleet",
           name: "TermFleet OSS",
           color: "#7aa2f7",
-          projectRoot: "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
+          projectRoot:
+            "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
           lastActiveTabId: "tab-termfleet",
         },
       ],
       tabs: [
-        terminalTab("tab-termfleet", "Terminal", "pane-termfleet", "/media/endlessblink/data/my-projects/ai-development/devops/termfleet", "group-termfleet", "Run TermFleet checks"),
-        terminalTab("tab-arthouse", "Terminal", "pane-arthouse", "/media/endlessblink/data/my-projects/ai-development/content-creation/arthouse", null, "Run Arthouse checks"),
+        terminalTab(
+          "tab-termfleet",
+          "Terminal",
+          "pane-termfleet",
+          "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
+          "group-termfleet",
+          "Run TermFleet checks",
+        ),
+        terminalTab(
+          "tab-arthouse",
+          "Terminal",
+          "pane-arthouse",
+          "/media/endlessblink/data/my-projects/ai-development/content-creation/arthouse",
+          null,
+          "Run Arthouse checks",
+        ),
       ],
       activeTabId: "tab-termfleet",
       canvasState: {
         selectedNodeId: "node-termfleet",
         viewport: { x: 0, y: 0, zoom: 1 },
         nodes: [
-          { id: "node-termfleet", type: "terminal", title: "Terminal", terminalTabId: "tab-termfleet", x: 0, y: 0, width: 620, height: 420 },
-          { id: "node-arthouse", type: "terminal", title: "Terminal", terminalTabId: "tab-arthouse", terminalCwd: "/media/endlessblink/data/my-projects/ai-development/content-creation/arthouse", x: 660, y: 0, width: 620, height: 420 },
+          {
+            id: "node-termfleet",
+            type: "terminal",
+            title: "Terminal",
+            terminalTabId: "tab-termfleet",
+            x: 0,
+            y: 0,
+            width: 620,
+            height: 420,
+          },
+          {
+            id: "node-arthouse",
+            type: "terminal",
+            title: "Terminal",
+            terminalTabId: "tab-arthouse",
+            terminalCwd:
+              "/media/endlessblink/data/my-projects/ai-development/content-creation/arthouse",
+            x: 660,
+            y: 0,
+            width: 620,
+            height: 420,
+          },
         ],
       },
     });
   });
 
   const workspaceLabels = page.getByTestId("canvas-terminal-node-workspace");
-  await expect(workspaceLabels.filter({ hasText: "TermFleet OSS" })).toBeVisible();
+  await expect(
+    workspaceLabels.filter({ hasText: "TermFleet OSS" }),
+  ).toBeVisible();
   await expect(workspaceLabels.filter({ hasText: "arthouse" })).toBeVisible();
   // KNOWN GAP (tracked with the description-text work): a workstream mission no longer
   // auto-populates the Task row after the scraped-ask hardening — cards admit "Task not
   // captured" instead. This test's real subject is the WORKSPACE labels above.
-  await expect(page.getByTestId("canvas-terminal-node-description").first()).not.toHaveText("Task not captured");
+  await expect(
+    page.getByTestId("canvas-terminal-node-description").first(),
+  ).not.toHaveText("Task not captured");
 });
 
-test("map panel summarizes visible nodes by workspace branch role and service", async ({ page }) => {
+test("map panel summarizes visible nodes by workspace branch role and service", async ({
+  page,
+}) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle");
   await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
@@ -3505,24 +5067,35 @@ test("map panel summarizes visible nodes by workspace branch role and service", 
   await page.getByRole("button", { name: "Map", exact: true }).click();
 
   await page.evaluate(() => {
-    const store = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => {
-          workspaceUiState: Record<string, unknown>;
+    const store = (
+      window as typeof window & {
+        __termfleetWorkspaceStore?: {
+          getState: () => {
+            workspaceUiState: Record<string, unknown>;
+          };
+          setState: (state: Record<string, unknown>) => void;
         };
-        setState: (state: Record<string, unknown>) => void;
-      };
-    }).__termfleetWorkspaceStore;
+      }
+    ).__termfleetWorkspaceStore;
     if (!store) throw new Error("TermFleet test store is unavailable");
     const now = Date.now();
     const group = {
       id: "group-termfleet",
       name: "TermFleet OSS",
       color: "#7aa2f7",
-      projectRoot: "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
+      projectRoot:
+        "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
       lastActiveTabId: "tab-shell",
     };
-    const tab = (id: string, title: string, paneId: string, initialCwd: string, groupId: string | null, terminal: Record<string, unknown>, workstream?: Record<string, unknown>) => ({
+    const tab = (
+      id: string,
+      title: string,
+      paneId: string,
+      initialCwd: string,
+      groupId: string | null,
+      terminal: Record<string, unknown>,
+      workstream?: Record<string, unknown>,
+    ) => ({
       id,
       title,
       emoji: "[]",
@@ -3547,79 +5120,181 @@ test("map panel summarizes visible nodes by workspace branch role and service", 
       terminalGroups: [group],
       activeGroupFilter: null,
       tabs: [
-         tab("tab-shell", "Terminal", "pane-shell", "/media/endlessblink/data/my-projects/ai-development/devops/termfleet", "group-termfleet", {
-           status: "running",
-           statusSummary: { status: "idle", updatedAt: now },
-           currentActivity: "npm run dev",
-           previewUrl: "http://127.0.0.1:5177",
-         }, {
-          kind: "terminal",
-          status: "running",
-          phase: "active",
-          gitBranch: "feat/map-intel",
-          createdAt: now,
-        }),
-         tab("tab-agent", "Agent", "pane-agent", "/media/endlessblink/data/my-projects/ai-development/devops/termfleet", "group-termfleet", {
-           status: "running",
-           statusSummary: { status: "working", updatedAt: now },
-           currentActivity: "coding",
-         }, {
-          kind: "agent",
-          provider: "codex",
-          role: "verifier",
-          status: "running",
-          phase: "active",
-          gitBranch: "feat/map-intel",
-          mission: "Verify map intelligence",
-          createdAt: now,
-        }),
-         tab("tab-docs", "Terminal", "pane-docs", "/media/endlessblink/data/my-projects/ai-development/docs-site", null, {
-           status: "running",
-           statusSummary: { status: "working", updatedAt: now },
-           currentActivity: "pnpm docs",
-         }, {
-          kind: "terminal",
-          status: "running",
-          phase: "active",
-          gitBranch: "docs/homepage",
-          createdAt: now,
-        }),
+        tab(
+          "tab-shell",
+          "Terminal",
+          "pane-shell",
+          "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
+          "group-termfleet",
+          {
+            status: "running",
+            statusSummary: { status: "idle", updatedAt: now },
+            currentActivity: "npm run dev",
+            previewUrl: "http://127.0.0.1:5177",
+          },
+          {
+            kind: "terminal",
+            status: "running",
+            phase: "active",
+            gitBranch: "feat/map-intel",
+            createdAt: now,
+          },
+        ),
+        tab(
+          "tab-agent",
+          "Agent",
+          "pane-agent",
+          "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
+          "group-termfleet",
+          {
+            status: "running",
+            statusSummary: { status: "working", updatedAt: now },
+            currentActivity: "coding",
+          },
+          {
+            kind: "agent",
+            provider: "codex",
+            role: "verifier",
+            status: "running",
+            phase: "active",
+            gitBranch: "feat/map-intel",
+            mission: "Verify map intelligence",
+            createdAt: now,
+          },
+        ),
+        tab(
+          "tab-docs",
+          "Terminal",
+          "pane-docs",
+          "/media/endlessblink/data/my-projects/ai-development/docs-site",
+          null,
+          {
+            status: "running",
+            statusSummary: { status: "working", updatedAt: now },
+            currentActivity: "pnpm docs",
+          },
+          {
+            kind: "terminal",
+            status: "running",
+            phase: "active",
+            gitBranch: "docs/homepage",
+            createdAt: now,
+          },
+        ),
       ],
       activeTabId: "tab-shell",
       canvasState: {
         selectedNodeId: "node-shell",
         viewport: { x: 0, y: 0, zoom: 1 },
         nodes: [
-          { id: "node-shell", type: "terminal", title: "Terminal", terminalTabId: "tab-shell", x: 0, y: 0, width: 620, height: 420 },
-          { id: "node-agent", type: "terminal", title: "Agent", terminalTabId: "tab-agent", x: 660, y: 0, width: 620, height: 420 },
-          { id: "node-docs", type: "terminal", title: "Terminal", terminalTabId: "tab-docs", terminalCwd: "/media/endlessblink/data/my-projects/ai-development/docs-site", x: 0, y: 460, width: 620, height: 420 },
-          { id: "node-preview", type: "preview", title: "Preview docs", terminalTabId: "tab-shell", previewPaneId: "pane-preview", previewUrl: "http://127.0.0.1:5177", x: 660, y: 460, width: 620, height: 420 },
+          {
+            id: "node-shell",
+            type: "terminal",
+            title: "Terminal",
+            terminalTabId: "tab-shell",
+            x: 0,
+            y: 0,
+            width: 620,
+            height: 420,
+          },
+          {
+            id: "node-agent",
+            type: "terminal",
+            title: "Agent",
+            terminalTabId: "tab-agent",
+            x: 660,
+            y: 0,
+            width: 620,
+            height: 420,
+          },
+          {
+            id: "node-docs",
+            type: "terminal",
+            title: "Terminal",
+            terminalTabId: "tab-docs",
+            terminalCwd:
+              "/media/endlessblink/data/my-projects/ai-development/docs-site",
+            x: 0,
+            y: 460,
+            width: 620,
+            height: 420,
+          },
+          {
+            id: "node-preview",
+            type: "preview",
+            title: "Preview docs",
+            terminalTabId: "tab-shell",
+            previewPaneId: "pane-preview",
+            previewUrl: "http://127.0.0.1:5177",
+            x: 660,
+            y: 460,
+            width: 620,
+            height: 420,
+          },
         ],
       },
     });
   });
   const mapPanel = page.locator('[aria-label="Operations panel"]');
   await mapPanel.getByTestId("map-workspace-summary-toggle").click();
-  await expect(mapPanel.getByTestId("map-workspace-summary")).toContainText("2 workspaces");
-  await expect(mapPanel.getByTestId("map-workspace-summary")).toContainText("3 roles");
-  await expect(mapPanel.getByTestId("map-workspace-summary")).toContainText("2 branches");
-  await expect(mapPanel.getByTestId("map-workspace-summary")).toContainText("1 service");
-  await expect(mapPanel.getByTestId("map-workspace-group").filter({ hasText: "TermFleet OSS" })).toContainText("3 nodes");
-  await expect(mapPanel.getByTestId("map-workspace-group").filter({ hasText: "docs-site" })).toContainText("1 node");
-  await expect(mapPanel.getByTestId("map-workspace-summary-facets")).toContainText("feat/map-intel");
-  await expect(mapPanel.getByTestId("map-workspace-summary-facets")).toContainText("docs/homepage");
-  await expect(mapPanel.getByTestId("map-workspace-summary-facets")).toContainText("verifier");
-  await expect(mapPanel.getByTestId("map-workspace-summary-facets")).toContainText("preview");
+  await expect(mapPanel.getByTestId("map-workspace-summary")).toContainText(
+    "2 workspaces",
+  );
+  await expect(mapPanel.getByTestId("map-workspace-summary")).toContainText(
+    "3 roles",
+  );
+  await expect(mapPanel.getByTestId("map-workspace-summary")).toContainText(
+    "2 branches",
+  );
+  await expect(mapPanel.getByTestId("map-workspace-summary")).toContainText(
+    "1 service",
+  );
+  await expect(
+    mapPanel
+      .getByTestId("map-workspace-group")
+      .filter({ hasText: "TermFleet OSS" }),
+  ).toContainText("3 nodes");
+  await expect(
+    mapPanel
+      .getByTestId("map-workspace-group")
+      .filter({ hasText: "docs-site" }),
+  ).toContainText("1 node");
+  await expect(
+    mapPanel.getByTestId("map-workspace-summary-facets"),
+  ).toContainText("feat/map-intel");
+  await expect(
+    mapPanel.getByTestId("map-workspace-summary-facets"),
+  ).toContainText("docs/homepage");
+  await expect(
+    mapPanel.getByTestId("map-workspace-summary-facets"),
+  ).toContainText("verifier");
+  await expect(
+    mapPanel.getByTestId("map-workspace-summary-facets"),
+  ).toContainText("preview");
 
   await mapPanel.getByTestId("map-filter-idle").click();
-  await expect(mapPanel.getByTestId("map-workspace-summary-toggle")).toHaveAttribute("aria-expanded", "true");
-  await expect(mapPanel.getByTestId("map-workspace-summary")).toContainText("1 workspace");
-  await expect(mapPanel.getByTestId("map-workspace-group").filter({ hasText: "TermFleet OSS" })).toContainText("1 node");
-  await expect(mapPanel.getByTestId("map-workspace-summary-facets")).toContainText("preview");
-  await expect(mapPanel.getByTestId("map-workspace-summary-facets")).not.toContainText("docs/homepage");
+  await expect(
+    mapPanel.getByTestId("map-workspace-summary-toggle"),
+  ).toHaveAttribute("aria-expanded", "true");
+  await expect(mapPanel.getByTestId("map-workspace-summary")).toContainText(
+    "1 workspace",
+  );
+  await expect(
+    mapPanel
+      .getByTestId("map-workspace-group")
+      .filter({ hasText: "TermFleet OSS" }),
+  ).toContainText("1 node");
+  await expect(
+    mapPanel.getByTestId("map-workspace-summary-facets"),
+  ).toContainText("preview");
+  await expect(
+    mapPanel.getByTestId("map-workspace-summary-facets"),
+  ).not.toContainText("docs/homepage");
 });
 
-test("terminal folders reconcile into project rows without moving the map viewport", async ({ page }) => {
+test("terminal folders reconcile into project rows without moving the map viewport", async ({
+  page,
+}) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle");
   await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
@@ -3627,25 +5302,34 @@ test("terminal folders reconcile into project rows without moving the map viewpo
   await page.waitForLoadState("networkidle");
 
   await page.evaluate(() => {
-    const store = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => {
-          workspaceUiState: Record<string, unknown>;
-          reconcileProjectGroups: () => void;
+    const store = (
+      window as typeof window & {
+        __termfleetWorkspaceStore?: {
+          getState: () => {
+            workspaceUiState: Record<string, unknown>;
+            reconcileProjectGroups: () => void;
+          };
+          setState: (state: Record<string, unknown>) => void;
         };
-        setState: (state: Record<string, unknown>) => void;
-      };
-    }).__termfleetWorkspaceStore;
+      }
+    ).__termfleetWorkspaceStore;
     if (!store) throw new Error("TermFleet test store is unavailable");
 
-    const terminalTab = (id: string, title: string, paneId: string, initialCwd?: string) => ({
+    const terminalTab = (
+      id: string,
+      title: string,
+      paneId: string,
+      initialCwd?: string,
+    ) => ({
       id,
       title,
       emoji: "[]",
       color: "#7aa2f7",
       groupId: null,
       initialCwd,
-      terminals: [{ id: `pty-${id}`, paneId, cols: 80, rows: 24, status: "running" }],
+      terminals: [
+        { id: `pty-${id}`, paneId, cols: 80, rows: 24, status: "running" },
+      ],
       splitLayout: { id: paneId, type: "terminal" },
       activePaneId: paneId,
     });
@@ -3658,21 +5342,37 @@ test("terminal folders reconcile into project rows without moving the map viewpo
         primarySidebarCollapsed: false,
         canvasSidebarCollapsed: false,
       },
-      groups: [{
-        id: "group-termfleet",
-        name: "TermFleet OSS",
-        color: "#7aa2f7",
-        projectRoot: "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
-      }],
-      terminalGroups: [{
-        id: "group-termfleet",
-        name: "TermFleet OSS",
-        color: "#7aa2f7",
-        projectRoot: "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
-      }],
+      groups: [
+        {
+          id: "group-termfleet",
+          name: "TermFleet OSS",
+          color: "#7aa2f7",
+          projectRoot:
+            "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
+        },
+      ],
+      terminalGroups: [
+        {
+          id: "group-termfleet",
+          name: "TermFleet OSS",
+          color: "#7aa2f7",
+          projectRoot:
+            "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
+        },
+      ],
       tabs: [
-        terminalTab("tab-termfleet", "TermFleet shell", "pane-termfleet", "/media/endlessblink/data/my-projects/ai-development/devops/termfleet"),
-        terminalTab("tab-docs", "Docs shell", "pane-docs", "/media/endlessblink/data/my-projects/ai-development/docs-site"),
+        terminalTab(
+          "tab-termfleet",
+          "TermFleet shell",
+          "pane-termfleet",
+          "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
+        ),
+        terminalTab(
+          "tab-docs",
+          "Docs shell",
+          "pane-docs",
+          "/media/endlessblink/data/my-projects/ai-development/docs-site",
+        ),
         terminalTab("tab-inner", "Inner Dialogue shell", "pane-inner"),
       ],
       activeTabId: "tab-termfleet",
@@ -3684,31 +5384,70 @@ test("terminal folders reconcile into project rows without moving the map viewpo
         selectedNodeIds: ["node-termfleet"],
         viewport: { x: -321, y: 88, zoom: 0.62 },
         nodes: [
-          { id: "node-termfleet", type: "terminal", title: "TermFleet shell", terminalTabId: "tab-termfleet", x: 0, y: 0, width: 620, height: 420 },
-          { id: "node-docs", type: "terminal", title: "Docs shell", terminalTabId: "tab-docs", x: 660, y: 0, width: 620, height: 420 },
-          { id: "node-inner", type: "terminal", title: "Inner Dialogue shell", terminalTabId: "tab-inner", terminalCwd: "/media/endlessblink/data/my-projects/ai-development/content-creation/inner-dialogue", x: 1320, y: 0, width: 620, height: 420 },
+          {
+            id: "node-termfleet",
+            type: "terminal",
+            title: "TermFleet shell",
+            terminalTabId: "tab-termfleet",
+            x: 0,
+            y: 0,
+            width: 620,
+            height: 420,
+          },
+          {
+            id: "node-docs",
+            type: "terminal",
+            title: "Docs shell",
+            terminalTabId: "tab-docs",
+            x: 660,
+            y: 0,
+            width: 620,
+            height: 420,
+          },
+          {
+            id: "node-inner",
+            type: "terminal",
+            title: "Inner Dialogue shell",
+            terminalTabId: "tab-inner",
+            terminalCwd:
+              "/media/endlessblink/data/my-projects/ai-development/content-creation/inner-dialogue",
+            x: 1320,
+            y: 0,
+            width: 620,
+            height: 420,
+          },
         ],
       },
     });
     store.getState().reconcileProjectGroups();
   });
 
-  const sidebar = page.getByRole("complementary", { name: "Workspace sidebar" });
+  const sidebar = page.getByRole("complementary", {
+    name: "Workspace sidebar",
+  });
   await sidebar.getByRole("button", { name: "Projects", exact: true }).click();
-  await expect(sidebar.getByRole("button", { name: "Switch to TermFleet OSS" })).toBeVisible();
-  await expect(sidebar.getByRole("button", { name: "Switch to docs-site" })).toBeVisible();
-  await expect(sidebar.getByRole("button", { name: "Switch to inner-dialogue" })).toBeVisible();
+  await expect(
+    sidebar.getByRole("button", { name: "Switch to TermFleet OSS" }),
+  ).toBeVisible();
+  await expect(
+    sidebar.getByRole("button", { name: "Switch to docs-site" }),
+  ).toBeVisible();
+  await expect(
+    sidebar.getByRole("button", { name: "Switch to inner-dialogue" }),
+  ).toBeVisible();
 
   const reconciled = await page.evaluate(() => {
-    const store = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => {
-          tabs: Array<{ id: string; groupId: string | null }>;
-          groups: Array<{ id: string; name: string; projectRoot?: string }>;
-          canvasState: { viewport: { x: number; y: number; zoom: number } };
+    const store = (
+      window as typeof window & {
+        __termfleetWorkspaceStore?: {
+          getState: () => {
+            tabs: Array<{ id: string; groupId: string | null }>;
+            groups: Array<{ id: string; name: string; projectRoot?: string }>;
+            canvasState: { viewport: { x: number; y: number; zoom: number } };
+          };
         };
-      };
-    }).__termfleetWorkspaceStore;
+      }
+    ).__termfleetWorkspaceStore;
     const state = store?.getState();
     return {
       groups: state?.groups.map((group) => ({
@@ -3739,35 +5478,58 @@ test("terminal folders reconcile into project rows without moving the map viewpo
   expect(reconciled.viewport).toEqual({ x: -321, y: 88, zoom: 0.62 });
 
   await sidebar.getByRole("button", { name: "Switch to docs-site" }).click();
-  await expect.poll(async () => page.evaluate(() => {
-    const store = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => {
-          activeGroupFilter: string | null;
-          groups: Array<{ id: string; name: string }>;
-        };
-      };
-    }).__termfleetWorkspaceStore;
-    const state = store?.getState();
-    return state?.groups.find((group) => group.id === state.activeGroupFilter)?.name;
-  })).toBe("docs-site");
-  await expect(sidebar.getByRole("button", { name: "Open session Docs shell" })).toBeVisible();
-  await expect(sidebar.getByRole("button", { name: "Open session TermFleet shell" })).not.toBeVisible();
-  await expect.poll(async () => page.evaluate(() => {
-    const store = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => { canvasState: { viewport: { x: number; y: number; zoom: number } } };
-      };
-    }).__termfleetWorkspaceStore;
-    return store?.getState().canvasState.viewport;
-  })).toEqual({ x: -321, y: 88, zoom: 0.62 });
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const store = (
+          window as typeof window & {
+            __termfleetWorkspaceStore?: {
+              getState: () => {
+                activeGroupFilter: string | null;
+                groups: Array<{ id: string; name: string }>;
+              };
+            };
+          }
+        ).__termfleetWorkspaceStore;
+        const state = store?.getState();
+        return state?.groups.find(
+          (group) => group.id === state.activeGroupFilter,
+        )?.name;
+      }),
+    )
+    .toBe("docs-site");
+  await expect(
+    sidebar.getByRole("button", { name: "Open session Docs shell" }),
+  ).toBeVisible();
+  await expect(
+    sidebar.getByRole("button", { name: "Open session TermFleet shell" }),
+  ).not.toBeVisible();
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const store = (
+          window as typeof window & {
+            __termfleetWorkspaceStore?: {
+              getState: () => {
+                canvasState: {
+                  viewport: { x: number; y: number; zoom: number };
+                };
+              };
+            };
+          }
+        ).__termfleetWorkspaceStore;
+        return store?.getState().canvasState.viewport;
+      }),
+    )
+    .toEqual({ x: -321, y: 88, zoom: 0.62 });
 });
 
 test("idle map filter uses the shared terminal lifecycle", async ({ page }) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
 
   const result = await page.evaluate(async () => {
-    const { MAP_FILTERS, nodeMatchesMapFilter } = await import("/src/lib/mapNodeFilters.ts");
+    const { MAP_FILTERS, nodeMatchesMapFilter } =
+      await import("/src/lib/mapNodeFilters.ts");
     const terminalNode = {
       id: "node-terminal",
       type: "terminal",
@@ -3790,31 +5552,60 @@ test("idle map filter uses the shared terminal lifecycle", async ({ page }) => {
       emoji: "[]",
       color: "#7aa2f7",
       groupId: null,
-      terminals: [{
-        id: "pty-terminal",
-        paneId: "pane-terminal",
-        cols: 80,
-        rows: 24,
-        statusSummary: { status, completedByCommand },
-      }],
+      terminals: [
+        {
+          id: "pty-terminal",
+          paneId: "pane-terminal",
+          cols: 80,
+          rows: 24,
+          statusSummary: { status, completedByCommand },
+        },
+      ],
       splitLayout: { id: "pane-terminal", type: "terminal" },
       activePaneId: "pane-terminal",
     });
 
     return {
       filters: MAP_FILTERS,
-      idleTerminalMatches: nodeMatchesMapFilter(terminalNode as never, tab("idle") as never, "idle" as never),
-      runningTerminalMatches: nodeMatchesMapFilter(terminalNode as never, tab("working") as never, "idle" as never),
-      previewNodeMatches: nodeMatchesMapFilter(previewNode as never, tab("idle") as never, "idle" as never),
-      doneTerminalMatches: nodeMatchesMapFilter(terminalNode as never, tab("done") as never, "done" as never),
-      completedDoneCommandMatches: nodeMatchesMapFilter(terminalNode as never, tab("idle", true) as never, "done" as never),
-      idleTerminalIsDone: nodeMatchesMapFilter(terminalNode as never, tab("idle") as never, "done" as never),
+      idleTerminalMatches: nodeMatchesMapFilter(
+        terminalNode as never,
+        tab("idle") as never,
+        "idle" as never,
+      ),
+      runningTerminalMatches: nodeMatchesMapFilter(
+        terminalNode as never,
+        tab("working") as never,
+        "idle" as never,
+      ),
+      previewNodeMatches: nodeMatchesMapFilter(
+        previewNode as never,
+        tab("idle") as never,
+        "idle" as never,
+      ),
+      doneTerminalMatches: nodeMatchesMapFilter(
+        terminalNode as never,
+        tab("done") as never,
+        "done" as never,
+      ),
+      completedDoneCommandMatches: nodeMatchesMapFilter(
+        terminalNode as never,
+        tab("idle", true) as never,
+        "done" as never,
+      ),
+      idleTerminalIsDone: nodeMatchesMapFilter(
+        terminalNode as never,
+        tab("idle") as never,
+        "done" as never,
+      ),
     };
   });
 
   expect(result.filters).toContainEqual({ id: "idle", label: "Idle" });
   expect(result.filters).toContainEqual({ id: "done", label: "Done" });
-  expect(result.filters).not.toContainEqual({ id: "preview", label: "Preview" });
+  expect(result.filters).not.toContainEqual({
+    id: "preview",
+    label: "Preview",
+  });
   expect(result.filters).not.toContainEqual({ id: "testing", label: "Tests" });
   expect(result.idleTerminalMatches).toBe(true);
   expect(result.runningTerminalMatches).toBe(false);
@@ -3824,14 +5615,20 @@ test("idle map filter uses the shared terminal lifecycle", async ({ page }) => {
   expect(result.idleTerminalIsDone).toBe(false);
 });
 
-test("map sidebar filters operations nodes by visible work state", async ({ page }) => {
+test("map sidebar filters operations nodes by visible work state", async ({
+  page,
+}) => {
   await page.addInitScript(() => {
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
       value: {
         writeText: async (text: string) => {
-          (window as typeof window & { __termfleetCopied?: string[] }).__termfleetCopied ??= [];
-          (window as typeof window & { __termfleetCopied?: string[] }).__termfleetCopied?.push(text);
+          (
+            window as typeof window & { __termfleetCopied?: string[] }
+          ).__termfleetCopied ??= [];
+          (
+            window as typeof window & { __termfleetCopied?: string[] }
+          ).__termfleetCopied?.push(text);
         },
       },
     });
@@ -3844,18 +5641,26 @@ test("map sidebar filters operations nodes by visible work state", async ({ page
   await page.getByRole("button", { name: "Map", exact: true }).click();
 
   await page.evaluate(() => {
-    const store = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => {
-          workspaceUiState: Record<string, unknown>;
+    const store = (
+      window as typeof window & {
+        __termfleetWorkspaceStore?: {
+          getState: () => {
+            workspaceUiState: Record<string, unknown>;
+          };
+          setState: (state: Record<string, unknown>) => void;
         };
-        setState: (state: Record<string, unknown>) => void;
-      };
-    }).__termfleetWorkspaceStore;
+      }
+    ).__termfleetWorkspaceStore;
     if (!store) throw new Error("TermFleet test store is unavailable");
 
     const now = Date.now();
-    const terminalTab = (id: string, title: string, paneId: string, terminal: Record<string, unknown>, workstream?: Record<string, unknown>) => ({
+    const terminalTab = (
+      id: string,
+      title: string,
+      paneId: string,
+      terminal: Record<string, unknown>,
+      workstream?: Record<string, unknown>,
+    ) => ({
       id,
       title,
       emoji: "[]",
@@ -3878,36 +5683,51 @@ test("map sidebar filters operations nodes by visible work state", async ({ page
       tabs: [
         terminalTab("tab-active", "Active shell", "pane-active", {
           status: "running",
-          statusSummary: { status: "working", now: "npm run dev", updatedAt: now },
+          statusSummary: {
+            status: "working",
+            now: "npm run dev",
+            updatedAt: now,
+          },
           currentActivity: "npm run dev",
           activityKind: "running",
         }),
-         terminalTab("tab-failed", "Failed build", "pane-failed", {
-           status: "failed",
-           statusSummary: { status: "idle", updatedAt: now },
-           currentActivity: "cargo check failed",
-         }),
-        terminalTab("tab-waiting", "Waiting agent", "pane-waiting", {
-          status: "exited",
-        }, {
-          kind: "agent",
-          provider: "codex",
-          status: "waiting",
-          phase: "needs-input",
-          activityKind: "waiting",
-          mission: "Review deploy error",
-          createdAt: now,
+        terminalTab("tab-failed", "Failed build", "pane-failed", {
+          status: "failed",
+          statusSummary: { status: "idle", updatedAt: now },
+          currentActivity: "cargo check failed",
         }),
+        terminalTab(
+          "tab-waiting",
+          "Waiting agent",
+          "pane-waiting",
+          {
+            status: "exited",
+          },
+          {
+            kind: "agent",
+            provider: "codex",
+            status: "waiting",
+            phase: "needs-input",
+            activityKind: "waiting",
+            mission: "Review deploy error",
+            createdAt: now,
+          },
+        ),
         terminalTab("tab-done", "Finished task", "pane-done", {
           status: "exited",
-          statusSummary: { status: "idle", completedByCommand: true, now: "Ready for review", updatedAt: now },
+          statusSummary: {
+            status: "idle",
+            completedByCommand: true,
+            now: "Ready for review",
+            updatedAt: now,
+          },
           currentActivity: "Ready for review",
         }),
-         terminalTab("tab-preview", "Preview service", "pane-preview", {
-           status: "exited",
-           statusSummary: { status: "idle", updatedAt: now },
-           previewUrl: "http://localhost:5177",
-           terminalOutput: "VITE ready at http://localhost:5177\nGET / 200",
+        terminalTab("tab-preview", "Preview service", "pane-preview", {
+          status: "exited",
+          statusSummary: { status: "idle", updatedAt: now },
+          previewUrl: "http://localhost:5177",
+          terminalOutput: "VITE ready at http://localhost:5177\nGET / 200",
         }),
       ],
       activeTabId: "tab-active",
@@ -3915,11 +5735,56 @@ test("map sidebar filters operations nodes by visible work state", async ({ page
         selectedNodeId: "node-active",
         viewport: { x: 0, y: 0, zoom: 1 },
         nodes: [
-          { id: "node-active", type: "terminal", title: "Active shell", terminalTabId: "tab-active", x: 0, y: 0, width: 820, height: 460 },
-          { id: "node-failed", type: "terminal", title: "Failed build", terminalTabId: "tab-failed", x: 860, y: 0, width: 820, height: 460 },
-          { id: "node-waiting", type: "terminal", title: "Waiting agent", terminalTabId: "tab-waiting", x: 0, y: 500, width: 820, height: 460 },
-          { id: "node-done", type: "terminal", title: "Finished task", terminalTabId: "tab-done", x: 860, y: 500, width: 820, height: 460 },
-          { id: "node-preview-terminal", type: "terminal", title: "Preview service", terminalTabId: "tab-preview", x: 1720, y: 0, width: 820, height: 460 },
+          {
+            id: "node-active",
+            type: "terminal",
+            title: "Active shell",
+            terminalTabId: "tab-active",
+            x: 0,
+            y: 0,
+            width: 820,
+            height: 460,
+          },
+          {
+            id: "node-failed",
+            type: "terminal",
+            title: "Failed build",
+            terminalTabId: "tab-failed",
+            x: 860,
+            y: 0,
+            width: 820,
+            height: 460,
+          },
+          {
+            id: "node-waiting",
+            type: "terminal",
+            title: "Waiting agent",
+            terminalTabId: "tab-waiting",
+            x: 0,
+            y: 500,
+            width: 820,
+            height: 460,
+          },
+          {
+            id: "node-done",
+            type: "terminal",
+            title: "Finished task",
+            terminalTabId: "tab-done",
+            x: 860,
+            y: 500,
+            width: 820,
+            height: 460,
+          },
+          {
+            id: "node-preview-terminal",
+            type: "terminal",
+            title: "Preview service",
+            terminalTabId: "tab-preview",
+            x: 1720,
+            y: 0,
+            width: 820,
+            height: 460,
+          },
         ],
       },
     });
@@ -3927,172 +5792,345 @@ test("map sidebar filters operations nodes by visible work state", async ({ page
   const mapPanel = page.locator('[aria-label="Operations panel"]');
   await expect(mapPanel.getByTestId("map-filter-all")).toContainText("5");
   await mapPanel.getByTestId("map-sort-project").click();
-  await expect(mapPanel.getByTestId("map-sort-project")).toHaveAttribute("aria-pressed", "true");
-  const clippedMapRows = await mapPanel.getByTestId("map-node-list").locator(".workspace-sidebar-row").evaluateAll((rows) =>
-    rows.filter((row) => row.scrollHeight > row.clientHeight).map((row) => ({
-      text: row.textContent,
-      clientHeight: row.clientHeight,
-      scrollHeight: row.scrollHeight,
-    }))
+  await expect(mapPanel.getByTestId("map-sort-project")).toHaveAttribute(
+    "aria-pressed",
+    "true",
   );
+  const clippedMapRows = await mapPanel
+    .getByTestId("map-node-list")
+    .locator(".workspace-sidebar-row")
+    .evaluateAll((rows) =>
+      rows
+        .filter((row) => row.scrollHeight > row.clientHeight)
+        .map((row) => ({
+          text: row.textContent,
+          clientHeight: row.clientHeight,
+          scrollHeight: row.scrollHeight,
+        })),
+    );
   expect(clippedMapRows).toEqual([]);
-  const misplacedMapActions = await mapPanel.getByTestId("map-node-list").locator(".workspace-sidebar-row").evaluateAll((rows) =>
-    rows.flatMap((row) => {
-      const action = row.querySelector(".workspace-sidebar-actions");
-      if (!action) return [];
-      const rowBounds = row.getBoundingClientRect();
-      const actionBounds = action.getBoundingClientRect();
-      return actionBounds.left >= rowBounds.left && actionBounds.right <= rowBounds.right &&
-        actionBounds.top >= rowBounds.top && actionBounds.bottom <= rowBounds.bottom
-        ? []
-        : [{ row: row.textContent, rowBounds: rowBounds.toJSON(), actionBounds: actionBounds.toJSON() }];
-    })
-  );
+  const misplacedMapActions = await mapPanel
+    .getByTestId("map-node-list")
+    .locator(".workspace-sidebar-row")
+    .evaluateAll((rows) =>
+      rows.flatMap((row) => {
+        const action = row.querySelector(".workspace-sidebar-actions");
+        if (!action) return [];
+        const rowBounds = row.getBoundingClientRect();
+        const actionBounds = action.getBoundingClientRect();
+        return actionBounds.left >= rowBounds.left &&
+          actionBounds.right <= rowBounds.right &&
+          actionBounds.top >= rowBounds.top &&
+          actionBounds.bottom <= rowBounds.bottom
+          ? []
+          : [
+              {
+                row: row.textContent,
+                rowBounds: rowBounds.toJSON(),
+                actionBounds: actionBounds.toJSON(),
+              },
+            ];
+      }),
+    );
   expect(misplacedMapActions).toEqual([]);
   await expect(mapPanel.getByTestId("map-filter-active")).toContainText("1");
   await expect(mapPanel.getByTestId("map-filter-failed")).toContainText("1");
   await expect(mapPanel.getByTestId("map-filter-waiting")).toContainText("1");
   await expect(mapPanel.getByTestId("map-filter-done")).toContainText("1");
   await expect(mapPanel.getByTestId("map-filter-idle")).toContainText("3");
-  await expect(mapPanel.getByTestId("map-local-services")).toContainText("1 detected");
-  await expect(mapPanel.getByTestId("map-local-services-toggle")).toHaveAttribute("aria-expanded", "true");
+  await expect(mapPanel.getByTestId("map-local-services")).toContainText(
+    "1 detected",
+  );
+  await expect(
+    mapPanel.getByTestId("map-local-services-toggle"),
+  ).toHaveAttribute("aria-expanded", "true");
   await mapPanel.getByTestId("map-local-services-toggle").click();
-  await expect(mapPanel.getByTestId("map-local-services-toggle")).toHaveAttribute("aria-expanded", "false");
+  await expect(
+    mapPanel.getByTestId("map-local-services-toggle"),
+  ).toHaveAttribute("aria-expanded", "false");
   await expect(mapPanel.getByTestId("map-local-service-row")).toHaveCount(0);
   await mapPanel.getByTestId("map-local-services-toggle").click();
-  await expect(mapPanel.getByTestId("map-local-service-row")).toContainText("localhost:5177");
-  await expect(mapPanel.getByTestId("map-local-service-row")).toContainText("stopped");
-  await expect(mapPanel.getByTestId("map-local-service-row")).toContainText("Preview service");
+  await expect(mapPanel.getByTestId("map-local-service-row")).toContainText(
+    "localhost:5177",
+  );
+  await expect(mapPanel.getByTestId("map-local-service-row")).toContainText(
+    "stopped",
+  );
+  await expect(mapPanel.getByTestId("map-local-service-row")).toContainText(
+    "Preview service",
+  );
   await expect(mapPanel.getByTestId("map-local-service-row")).not.toContainText("localhost:5177:5177");
-  await expect(mapPanel.getByTestId("map-local-service-row")).not.toContainText("VITE ready");
-  await expect(mapPanel.getByRole("button", { name: "Copy http://localhost:5177" })).toBeVisible();
-  await expect(mapPanel.getByRole("button", { name: "Copy logs for http://localhost:5177" })).toBeVisible();
-  await expect(mapPanel.getByRole("button", { name: "Open http://localhost:5177 on map" })).toBeVisible();
+  await expect(mapPanel.getByTestId("map-local-service-row")).not.toContainText(
+    "VITE ready",
+  );
+  await expect(
+    mapPanel.getByRole("button", { name: "Copy http://localhost:5177" }),
+  ).toBeVisible();
+  await expect(
+    mapPanel.getByRole("button", {
+      name: "Copy logs for http://localhost:5177",
+    }),
+  ).toBeVisible();
+  await expect(
+    mapPanel.getByRole("button", { name: "Open http://localhost:5177 on map" }),
+  ).toBeVisible();
 
-  await mapPanel.getByRole("button", { name: "Copy http://localhost:5177" }).click();
-  await expect.poll(async () => page.evaluate(() =>
-    (window as typeof window & { __termfleetCopied?: string[] }).__termfleetCopied?.at(-1)
-  )).toBe("http://localhost:5177");
+  await mapPanel
+    .getByRole("button", { name: "Copy http://localhost:5177" })
+    .click();
+  await expect
+    .poll(async () =>
+      page.evaluate(() =>
+        (
+          window as typeof window & { __termfleetCopied?: string[] }
+        ).__termfleetCopied?.at(-1),
+      ),
+    )
+    .toBe("http://localhost:5177");
   if (await mapPanel.getByTestId("map-local-service-action-status").count()) {
-    await expect(mapPanel.getByTestId("map-local-service-action-status")).toHaveText("URL copied");
+    await expect(
+      mapPanel.getByTestId("map-local-service-action-status"),
+    ).toHaveText("URL copied");
   }
 
-  await mapPanel.getByRole("button", { name: "Copy logs for http://localhost:5177" }).click();
-  await expect.poll(async () => page.evaluate(() =>
-    (window as typeof window & { __termfleetCopied?: string[] }).__termfleetCopied?.at(-1)
-  )).toContain("GET / 200");
+  await mapPanel
+    .getByRole("button", { name: "Copy logs for http://localhost:5177" })
+    .click();
+  await expect
+    .poll(async () =>
+      page.evaluate(() =>
+        (
+          window as typeof window & { __termfleetCopied?: string[] }
+        ).__termfleetCopied?.at(-1),
+      ),
+    )
+    .toContain("GET / 200");
   if (await mapPanel.getByTestId("map-local-service-action-status").count()) {
-    await expect(mapPanel.getByTestId("map-local-service-action-status")).toHaveText("Logs copied");
+    await expect(
+      mapPanel.getByTestId("map-local-service-action-status"),
+    ).toHaveText("Logs copied");
   }
 
-  await mapPanel.getByRole("button", { name: "Open http://localhost:5177 on map" }).click();
-  await expect(mapPanel.getByTestId("map-local-service-action-status")).toHaveText("Map window opened");
-  await expect.poll(async () => page.evaluate(() => {
-    const store = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => {
-          canvasState: { selectedNodeId: string | null; nodes: Array<{ id: string; type: string; previewUrl?: string }> };
+  await mapPanel
+    .getByRole("button", { name: "Open http://localhost:5177 on map" })
+    .click();
+  await expect(
+    mapPanel.getByTestId("map-local-service-action-status"),
+  ).toHaveText("Map window opened");
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const store = (
+          window as typeof window & {
+            __termfleetWorkspaceStore?: {
+              getState: () => {
+                canvasState: {
+                  selectedNodeId: string | null;
+                  nodes: Array<{
+                    id: string;
+                    type: string;
+                    previewUrl?: string;
+                  }>;
+                };
+              };
+            };
+          }
+        ).__termfleetWorkspaceStore;
+        const state = store?.getState().canvasState;
+        const node = state?.nodes.find(
+          (candidate) =>
+            candidate.type === "preview" &&
+            candidate.previewUrl === "http://localhost:5177",
+        );
+        return node ? `${state?.selectedNodeId}:${node.id}` : null;
+      }),
+    )
+    .toBe("service-preview-tab-preview-5177:service-preview-tab-preview-5177");
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const raw = localStorage.getItem("terminal-workspace.v1");
+        if (!raw) return null;
+        const workspace = JSON.parse(raw) as {
+          canvasState?: {
+            nodes?: Array<{
+              id: string;
+              type: string;
+              previewUrl?: string;
+              linkedTerminalPaneId?: string;
+            }>;
+          };
         };
-      };
-    }).__termfleetWorkspaceStore;
-    const state = store?.getState().canvasState;
-    const node = state?.nodes.find((candidate) => candidate.type === "preview" && candidate.previewUrl === "http://localhost:5177");
-    return node ? `${state?.selectedNodeId}:${node.id}` : null;
-  })).toBe("service-preview-tab-preview-5177:service-preview-tab-preview-5177");
-  await expect.poll(async () => page.evaluate(() => {
-    const raw = localStorage.getItem("terminal-workspace.v1");
-    if (!raw) return null;
-    const workspace = JSON.parse(raw) as {
-      canvasState?: { nodes?: Array<{ id: string; type: string; previewUrl?: string; linkedTerminalPaneId?: string }> };
-    };
-    const node = workspace.canvasState?.nodes?.find((candidate) => candidate.id === "service-preview-tab-preview-5177");
-    return node ? `${node.type}:${node.previewUrl}:${node.linkedTerminalPaneId}` : null;
-  })).toBe("preview:http://localhost:5177:pane-preview");
+        const node = workspace.canvasState?.nodes?.find(
+          (candidate) => candidate.id === "service-preview-tab-preview-5177",
+        );
+        return node
+          ? `${node.type}:${node.previewUrl}:${node.linkedTerminalPaneId}`
+          : null;
+      }),
+    )
+    .toBe("preview:http://localhost:5177:pane-preview");
 
   await mapPanel.getByTestId("map-local-service-row").click();
-  await expect.poll(async () => page.evaluate(() => {
-    const store = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => {
-          canvasState: { selectedNodeId: string | null };
-        };
-      };
-    }).__termfleetWorkspaceStore;
-    return store?.getState().canvasState.selectedNodeId;
-  })).toBe("service-preview-tab-preview-5177");
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const store = (
+          window as typeof window & {
+            __termfleetWorkspaceStore?: {
+              getState: () => {
+                canvasState: { selectedNodeId: string | null };
+              };
+            };
+          }
+        ).__termfleetWorkspaceStore;
+        return store?.getState().canvasState.selectedNodeId;
+      }),
+    )
+    .toBe("service-preview-tab-preview-5177");
 
   await mapPanel.getByTestId("map-filter-failed").click();
   // Rows name the pane, not its raw output line.
-  await expect(mapPanel.getByTestId("map-node-list")).toContainText("Failed build");
-  await expect(mapPanel.getByTestId("map-node-list")).not.toContainText("npm run dev");
+  await expect(mapPanel.getByTestId("map-node-list")).toContainText(
+    "Failed build",
+  );
+  await expect(mapPanel.getByTestId("map-node-list")).not.toContainText(
+    "npm run dev",
+  );
 
   await mapPanel.getByTestId("map-filter-waiting").click();
-  await expect(mapPanel.getByTestId("map-node-list")).toContainText("Review deploy error");
-  await expect(mapPanel.getByTestId("map-node-list")).not.toContainText("Failed build");
+  await expect(mapPanel.getByTestId("map-node-list")).toContainText(
+    "Review deploy error",
+  );
+  await expect(mapPanel.getByTestId("map-node-list")).not.toContainText(
+    "Failed build",
+  );
 
   await mapPanel.getByTestId("map-filter-done").click();
-  await expect(mapPanel.getByTestId("map-node-list").locator(".workspace-sidebar-row")).toHaveCount(1);
-  await expect(mapPanel.getByTestId("map-node-list")).toContainText("Finished task");
-  await expect(mapPanel.getByTestId("sidebar-map-node-attention")).toContainText("Idle");
-  await expect(mapPanel.getByTestId("map-node-list")).not.toContainText("Review deploy error");
+  await expect(
+    mapPanel.getByTestId("map-node-list").locator(".workspace-sidebar-row"),
+  ).toHaveCount(1);
+  await expect(mapPanel.getByTestId("map-node-list")).toContainText(
+    "Finished task",
+  );
+  await expect(
+    mapPanel.getByTestId("sidebar-map-node-attention"),
+  ).toContainText("Idle");
+  await expect(mapPanel.getByTestId("map-node-list")).not.toContainText(
+    "Review deploy error",
+  );
 
   await mapPanel.getByTestId("map-filter-idle").click();
-  await expect(mapPanel.getByTestId("map-node-list").locator(".workspace-sidebar-row")).toHaveCount(3);
-  await expect(mapPanel.getByTestId("map-node-list")).toContainText("Failed build");
-  await expect(mapPanel.getByTestId("map-node-list")).toContainText("Finished task");
-  await expect(mapPanel.getByTestId("map-node-list")).toContainText("Preview service");
-  await expect(mapPanel.getByTestId("map-node-list")).not.toContainText("Active shell");
-  await expect(mapPanel.getByTestId("map-node-list")).not.toContainText("Waiting agent");
+  await expect(
+    mapPanel.getByTestId("map-node-list").locator(".workspace-sidebar-row"),
+  ).toHaveCount(3);
+  await expect(mapPanel.getByTestId("map-node-list")).toContainText(
+    "Failed build",
+  );
+  await expect(mapPanel.getByTestId("map-node-list")).toContainText(
+    "Finished task",
+  );
+  await expect(mapPanel.getByTestId("map-node-list")).toContainText(
+    "Preview service",
+  );
+  await expect(mapPanel.getByTestId("map-node-list")).not.toContainText(
+    "Active shell",
+  );
+  await expect(mapPanel.getByTestId("map-node-list")).not.toContainText(
+    "Waiting agent",
+  );
 
   await mapPanel.getByTestId("map-filter-all").click();
-  await expect(mapPanel.getByTestId("map-node-list")).toContainText("Preview localhost");
+  await expect(mapPanel.getByTestId("map-node-list")).toContainText(
+    "Preview localhost",
+  );
   await mapPanel.getByText("Preview localhost:5177").hover();
-  await mapPanel.getByRole("button", { name: "Close Preview localhost:5177" }).click();
-  await expect.poll(async () => page.evaluate(() => {
-    const store = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => {
-          tabs: Array<{ id: string }>;
-          canvasState: { nodes: Array<{ id: string; type: string; terminalTabId?: string }> };
+  await mapPanel
+    .getByRole("button", { name: "Close Preview localhost:5177" })
+    .click();
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const store = (
+          window as typeof window & {
+            __termfleetWorkspaceStore?: {
+              getState: () => {
+                tabs: Array<{ id: string }>;
+                canvasState: {
+                  nodes: Array<{
+                    id: string;
+                    type: string;
+                    terminalTabId?: string;
+                  }>;
+                };
+              };
+            };
+          }
+        ).__termfleetWorkspaceStore;
+        const state = store?.getState();
+        if (!state) return null;
+        return {
+          previewExists: state.canvasState.nodes.some(
+            (node) => node.id === "service-preview-tab-preview-5177",
+          ),
+          terminalNodeExists: state.canvasState.nodes.some(
+            (node) => node.id === "node-preview-terminal",
+          ),
+          terminalTabExists: state.tabs.some((tab) => tab.id === "tab-preview"),
         };
-      };
-    }).__termfleetWorkspaceStore;
-    const state = store?.getState();
-    if (!state) return null;
-    return {
-      previewExists: state.canvasState.nodes.some((node) => node.id === "service-preview-tab-preview-5177"),
-      terminalNodeExists: state.canvasState.nodes.some((node) => node.id === "node-preview-terminal"),
-      terminalTabExists: state.tabs.some((tab) => tab.id === "tab-preview"),
-    };
-  })).toEqual({
-    previewExists: false,
-    terminalNodeExists: true,
-    terminalTabExists: true,
-  });
-  await expect(mapPanel.getByTestId("map-node-list").locator(".workspace-sidebar-row")).toHaveCount(5);
-  await expect(mapPanel.getByTestId("map-node-list")).not.toContainText("Preview localhost");
-  await mapPanel.getByRole("button", { name: "Open http://localhost:5177 on map" }).click();
-  await expect(mapPanel.getByTestId("map-local-service-action-status")).toHaveText("Map window opened");
+      }),
+    )
+    .toEqual({
+      previewExists: false,
+      terminalNodeExists: true,
+      terminalTabExists: true,
+    });
+  await expect(
+    mapPanel.getByTestId("map-node-list").locator(".workspace-sidebar-row"),
+  ).toHaveCount(5);
+  await expect(mapPanel.getByTestId("map-node-list")).not.toContainText(
+    "Preview localhost",
+  );
+  await mapPanel
+    .getByRole("button", { name: "Open http://localhost:5177 on map" })
+    .click();
+  await expect(
+    mapPanel.getByTestId("map-local-service-action-status"),
+  ).toHaveText("Map window opened");
 
   await page.reload({ waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle");
-  await expect(mapPanel.getByTestId("map-local-services")).toContainText("1 detected");
-  await expect(mapPanel.getByTestId("map-local-service-row")).toContainText("localhost:5177");
-  await expect(mapPanel.getByTestId("map-local-service-row")).toContainText("Preview service");
+  await expect(mapPanel.getByTestId("map-local-services")).toContainText(
+    "1 detected",
+  );
+  await expect(mapPanel.getByTestId("map-local-service-row")).toContainText(
+    "localhost:5177",
+  );
+  await expect(mapPanel.getByTestId("map-local-service-row")).toContainText(
+    "Preview service",
+  );
   await mapPanel.getByTestId("map-local-service-row").click();
-  await expect.poll(async () => page.evaluate(() => {
-    const store = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => {
-          canvasState: { selectedNodeId: string | null };
-        };
-      };
-    }).__termfleetWorkspaceStore;
-    return store?.getState().canvasState.selectedNodeId;
-  })).toBe("service-preview-tab-preview-5177");
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const store = (
+          window as typeof window & {
+            __termfleetWorkspaceStore?: {
+              getState: () => {
+                canvasState: { selectedNodeId: string | null };
+              };
+            };
+          }
+        ).__termfleetWorkspaceStore;
+        return store?.getState().canvasState.selectedNodeId;
+      }),
+    )
+    .toBe("service-preview-tab-preview-5177");
 });
 
-test("map sidebar lists every visible map terminal even when a project filter is active", async ({ page }) => {
+test("map sidebar lists every visible map terminal even when a project filter is active", async ({
+  page,
+}) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle");
   await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
@@ -4101,14 +6139,16 @@ test("map sidebar lists every visible map terminal even when a project filter is
   await page.locator('.workspace-rail-button[aria-label="Map"]').click();
 
   await page.evaluate(() => {
-    const store = (window as typeof window & {
-      __termfleetWorkspaceStore?: {
-        getState: () => {
-          workspaceUiState: Record<string, unknown>;
+    const store = (
+      window as typeof window & {
+        __termfleetWorkspaceStore?: {
+          getState: () => {
+            workspaceUiState: Record<string, unknown>;
+          };
+          setState: (state: Record<string, unknown>) => void;
         };
-        setState: (state: Record<string, unknown>) => void;
-      };
-    }).__termfleetWorkspaceStore;
+      }
+    ).__termfleetWorkspaceStore;
     if (!store) throw new Error("TermFleet test store is unavailable");
 
     const tab = (id: string, groupId: string, cwd: string, paneId: string) => ({
@@ -4118,7 +6158,9 @@ test("map sidebar lists every visible map terminal even when a project filter is
       color: "#7aa2f7",
       groupId,
       initialCwd: cwd,
-      terminals: [{ id: `pty-${id}`, paneId, cols: 80, rows: 24, status: "running" }],
+      terminals: [
+        { id: `pty-${id}`, paneId, cols: 80, rows: 24, status: "running" },
+      ],
       splitLayout: { id: paneId, type: "terminal" },
       activePaneId: paneId,
     });
@@ -4128,19 +6170,22 @@ test("map sidebar lists every visible map terminal even when a project filter is
         id: "group-termfleet",
         name: "termfleet",
         color: "#7aa2f7",
-        projectRoot: "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
+        projectRoot:
+          "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
       },
       {
         id: "group-paperbot",
         name: "paper-bot",
         color: "#9ece6a",
-        projectRoot: "/media/endlessblink/data/my-projects/ai-development/bots+automation/paper-bot",
+        projectRoot:
+          "/media/endlessblink/data/my-projects/ai-development/bots+automation/paper-bot",
       },
       {
         id: "group-bina",
         name: "bina-veze",
         color: "#bb9af7",
-        projectRoot: "/media/endlessblink/data/my-projects/ai-development/web-dev/bina-veze",
+        projectRoot:
+          "/media/endlessblink/data/my-projects/ai-development/web-dev/bina-veze",
       },
     ];
 
@@ -4158,18 +6203,66 @@ test("map sidebar lists every visible map terminal even when a project filter is
       activeGroupId: "group-termfleet",
       activeTabId: "tab-termfleet",
       tabs: [
-        tab("tab-termfleet", "group-termfleet", "/media/endlessblink/data/my-projects/ai-development/devops/termfleet", "pane-termfleet"),
-        tab("tab-paperbot", "group-paperbot", "/media/endlessblink/data/my-projects/ai-development/bots+automation/paper-bot", "pane-paperbot"),
-        tab("tab-bina", "group-bina", "/media/endlessblink/data/my-projects/ai-development/web-dev/bina-veze", "pane-bina"),
+        tab(
+          "tab-termfleet",
+          "group-termfleet",
+          "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
+          "pane-termfleet",
+        ),
+        tab(
+          "tab-paperbot",
+          "group-paperbot",
+          "/media/endlessblink/data/my-projects/ai-development/bots+automation/paper-bot",
+          "pane-paperbot",
+        ),
+        tab(
+          "tab-bina",
+          "group-bina",
+          "/media/endlessblink/data/my-projects/ai-development/web-dev/bina-veze",
+          "pane-bina",
+        ),
       ],
       canvasState: {
         selectedNodeId: "node-termfleet",
         selectedNodeIds: ["node-termfleet"],
         viewport: { x: 0, y: 0, zoom: 0.7 },
         nodes: [
-          { id: "node-termfleet", type: "terminal", title: "Terminal", terminalTabId: "tab-termfleet", terminalCwd: "/media/endlessblink/data/my-projects/ai-development/devops/termfleet", x: 0, y: 0, width: 620, height: 420 },
-          { id: "node-paperbot", type: "terminal", title: "Terminal", terminalTabId: "tab-paperbot", terminalCwd: "/media/endlessblink/data/my-projects/ai-development/bots+automation/paper-bot", x: 660, y: 0, width: 620, height: 420 },
-          { id: "node-bina", type: "terminal", title: "Terminal", terminalTabId: "tab-bina", terminalCwd: "/media/endlessblink/data/my-projects/ai-development/web-dev/bina-veze", x: 1320, y: 0, width: 620, height: 420 },
+          {
+            id: "node-termfleet",
+            type: "terminal",
+            title: "Terminal",
+            terminalTabId: "tab-termfleet",
+            terminalCwd:
+              "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
+            x: 0,
+            y: 0,
+            width: 620,
+            height: 420,
+          },
+          {
+            id: "node-paperbot",
+            type: "terminal",
+            title: "Terminal",
+            terminalTabId: "tab-paperbot",
+            terminalCwd:
+              "/media/endlessblink/data/my-projects/ai-development/bots+automation/paper-bot",
+            x: 660,
+            y: 0,
+            width: 620,
+            height: 420,
+          },
+          {
+            id: "node-bina",
+            type: "terminal",
+            title: "Terminal",
+            terminalTabId: "tab-bina",
+            terminalCwd:
+              "/media/endlessblink/data/my-projects/ai-development/web-dev/bina-veze",
+            x: 1320,
+            y: 0,
+            width: 620,
+            height: 420,
+          },
         ],
       },
     });

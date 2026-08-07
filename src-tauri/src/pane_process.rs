@@ -60,9 +60,10 @@ fn scan_processes() -> Vec<(String, String)> {
     };
     for entry in entries.flatten() {
         let name = entry.file_name();
-        let Some(pid) = name.to_str().filter(|value| {
-            !value.is_empty() && value.bytes().all(|byte| byte.is_ascii_digit())
-        }) else {
+        let Some(pid) = name
+            .to_str()
+            .filter(|value| !value.is_empty() && value.bytes().all(|byte| byte.is_ascii_digit()))
+        else {
             continue;
         };
         // Read the process name FIRST: it is one tiny file, and only a handful of

@@ -463,6 +463,7 @@ function persistedTerminalSnapshot(terminal: TerminalState): TerminalState {
     // header's own factless fallback printed "No task declared" until a poll landed.
     taskLine: terminal.taskLine,
     nowLine: terminal.nowLine,
+    agentProvider: terminal.agentProvider,
     purpose: terminal.purpose,
     mainUserAsk: persistedMainUserAsk(terminal.mainUserAsk),
     taskSidebarCollapsed: terminal.taskSidebarCollapsed,
@@ -1067,12 +1068,17 @@ interface PersistedSessionSummary {
   scrollbackBytes: number;
 }
 
+interface LiveSessionSummary {
+  id: string;
+  cwd: string | null;
+}
+
 // Sessions below this are just a fresh prompt / empty shell — not worth recovering.
 const ORPHAN_MIN_BYTES = 256;
 
 /** Build a single-pane tab whose derived session id (`terminal-<tabId>-<paneId>`)
- *  matches an orphaned on-disk session, so mounting it replays that content. */
-function tabFromOrphanedSession(session: PersistedSessionSummary): Tab | null {
+ *  matches a daemon or on-disk session, so mounting it reattaches that pane. */
+function tabFromRecoverableSession(session: LiveSessionSummary): Tab | null {
   const prefix = "terminal-";
   if (!session.id.startsWith(prefix)) return null;
   const body = session.id.slice(prefix.length);
@@ -1133,14 +1139,29 @@ export async function hydrateWorkspace() {
       }
     }
 
-    // 2. Reconcile orphaned content: any saved session with real scrollback whose
-    //    tab isn't present gets re-added. This is ONLY a self-heal for a genuinely
-    //    wiped / never-saved layout. With any saved layout present, the user's tab
-    //    set is authoritative — a terminal they closed must STAY closed, even if
-    //    its on-disk session checkpoint outlived it. Recovering orphans on top of a
-    //    valid layout is exactly what resurrected dead terminals on restart (TC-040).
+    // 2. Reconcile sessions that are still live in the daemon. A closed pane is
+    //    explicitly killed, so a live session omitted by the saved layout is not
+    //    historical clutter — another UI window dropped its tab while overwriting
+    //    the shared workspace snapshot. Always restore these live panes.
     const seen = new Set(baseTabs.map((tab) => tab.id));
     const recovered: Tab[] = [];
+    let liveSessions: LiveSessionSummary[] = [];
+    try {
+      const result = await invoke<LiveSessionSummary[]>("daemon_list_sessions");
+      if (Array.isArray(result)) liveSessions = result;
+    } catch (error) {
+      console.warn("Could not list live daemon sessions:", error);
+    }
+    for (const session of [...liveSessions].sort((a, b) => a.id.localeCompare(b.id))) {
+      const tab = tabFromRecoverableSession(session);
+      if (!tab || seen.has(tab.id)) continue;
+      seen.add(tab.id);
+      recovered.push(tab);
+    }
+
+    // 3. Dead persisted sessions remain recoverable only when there is no saved
+    //    layout at all. This preserves TC-040: intentionally closed historical
+    //    tabs must not return merely because their scrollback checkpoint remains.
     if (!hadSavedLayout) {
       let sessions: PersistedSessionSummary[] = [];
       try {
@@ -1153,7 +1174,7 @@ export async function hydrateWorkspace() {
         // can't be replayed without garbling), so its value is reopening the right
         // directory. A cwd-less orphan would just be a home-shell — clutter, skip it.
         if (session.scrollbackBytes < ORPHAN_MIN_BYTES || !session.cwd) continue;
-        const tab = tabFromOrphanedSession(session);
+        const tab = tabFromRecoverableSession(session);
         if (!tab || seen.has(tab.id)) continue;
         seen.add(tab.id);
         recovered.push(tab);
@@ -1594,6 +1615,12 @@ export async function refreshProjectRootFromActiveTerminal() {
 async function killPtys(ptyIds: string[]) {
   if (ptyIds.length === 0) return;
   destroyBrowserPtys(ptyIds);
+  if (
+    typeof window === "undefined" ||
+    !("__TAURI_INTERNALS__" in window)
+  ) {
+    return;
+  }
 
   try {
     const { invoke } = await import("@tauri-apps/api/core");

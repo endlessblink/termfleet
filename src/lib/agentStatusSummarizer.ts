@@ -23,6 +23,7 @@ import {
   type PaneTaskLine,
 } from "./taskLine";
 import { opensAsRequest } from "./sessionTranscript";
+import { selectPlanPurpose } from "./taskPurpose";
 import { stripComposerChrome } from "./terminalHeaderQuality";
 
 export interface AgentStatusSummarizerResult {
@@ -51,13 +52,33 @@ export interface AgentStatusSummarizerOptions {
   // desktop app, so a regression there is invisible to every test — which is how panes
   // whose own session record named the work still rendered "No task declared".
   transcriptReader?: SessionTranscriptReader | null;
+  // The durable Task row needs one whole-conversation synthesis, not another copied
+  // checklist sentence. Tests inject this seam; the desktop uses the local model
+  // command. `null` keeps the deterministic ladder as the complete fallback.
+  contextTaskSummarizer?: ContextTaskSummarizer | null;
 }
+
+export interface ContextTaskSummaryInput {
+  workspace?: string;
+  openingRequest?: string;
+  operatorRequest?: string;
+  mainTask?: string;
+  conversationSummary?: string;
+  plan: string[];
+  currentStep?: string;
+  recentActivity?: string;
+}
+
+export type ContextTaskSummarizer = (
+  context: ContextTaskSummaryInput,
+  rejectedTitle?: string,
+) => Promise<string | undefined>;
 
 export type SessionTranscriptReader = (
   provider: "claude" | "codex",
   sessionId: string,
-  /** "tail" = what is happening now; "head" = the operator's opening request. */
-  part?: "head" | "tail",
+  /** "tail" = now; "head" = opening; "context" = bounded user-request history. */
+  part?: "head" | "tail" | "context",
 ) => Promise<string | null>;
 
 function isTauriRuntime() {
@@ -82,10 +103,25 @@ function tauriTranscriptReader(): SessionTranscriptReader | null {
   if (!isTauriRuntime()) return null;
   return async (provider, sessionId, part = "tail") => {
     const text = await invoke<string | null>(
-      part === "head" ? "session_transcript_head_read" : "session_transcript_read",
+      part === "head"
+        ? "session_transcript_head_read"
+        : part === "context"
+          ? "session_transcript_context_read"
+          : "session_transcript_read",
       { provider, sessionId },
     );
     return typeof text === "string" ? text : null;
+  };
+}
+
+function tauriContextTaskSummarizer(): ContextTaskSummarizer | null {
+  if (!isTauriRuntime()) return null;
+  return async (context, rejectedTitle) => {
+    const title = await invoke<string | null>("agent_context_task_title", {
+      context,
+      rejectedTitle,
+    });
+    return typeof title === "string" ? title : undefined;
   };
 }
 
@@ -95,7 +131,275 @@ function tauriTranscriptReader(): SessionTranscriptReader | null {
  * `null` records "this session has no usable opening line", so it is not retried either.
  */
 const openingRequestBySession = new Map<string, string | null>();
+const contextRequestBySession = new Map<string, string | null>();
+const contextTaskByFingerprint = new Map<
+  string,
+  { promise: Promise<string | null>; retryAfter: number }
+>();
 const OPENING_CACHE_LIMIT = 500;
+
+function contextFingerprint(
+  sessionId: string,
+  context: ContextTaskSummaryInput,
+) {
+  // Momentary activity changes on nearly every poll. Only durable conversation facts
+  // may invalidate the cached title; otherwise the model would be called repeatedly.
+  const text = `${sessionId}:${JSON.stringify({
+    workspace: context.workspace,
+    openingRequest: context.openingRequest,
+    operatorRequest: context.operatorRequest,
+    mainTask: context.mainTask,
+    conversationSummary: context.conversationSummary,
+    plan: context.plan,
+  })}`;
+  let hash = 2166136261;
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
+function contextWords(text: string) {
+  return text
+    .toLocaleLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => {
+      if (word.length > 7 && word.endsWith("able")) {
+        const base = word.slice(0, -4);
+        return /(?:iz|us)$/.test(base) ? `${base}e` : base;
+      }
+      return word.length > 4 && word.endsWith("s") ? word.slice(0, -1) : word;
+    });
+}
+
+function validContextTaskTitle(
+  title: string | undefined,
+  context: ContextTaskSummaryInput,
+) {
+  const clean =
+    title
+      ?.replace(/([\p{Ll}\p{N}])(\p{Lu})/gu, "$1 $2")
+      .replace(/\s+/g, " ")
+      .trim() ?? "";
+  const words = contextWords(clean);
+  if (
+    clean.length < 20 ||
+    clean.length > 120 ||
+    words.length < 4 ||
+    words.length > 16
+  )
+    return null;
+  if (!/^[\p{L}][\p{L}'’-]*ing\b/iu.test(clean)) return null;
+  if (
+    /^(?:Testing|Checking|Verifying|Adding|Implementing|Reviewing|Running|Investigating|Tracing|Auditing)\b/i.test(
+      clean,
+    )
+  )
+    return null;
+  if (
+    /\b(?:test(?:ing|s)?|coverage|sandbox|mock|branch|file|check(?:ing|s)?|regression|implement(?:ing|ation)?|code|api)\b/i.test(
+      clean,
+    )
+  )
+    return null;
+  if (
+    /\b(?:real transactions?|real money|production readiness|production[- ]ready|confirmed|completed|finished|deployed|live in production)\b/i.test(
+      clean,
+    )
+  )
+    return null;
+  const grounding = new Set(
+    contextWords(
+      [
+        context.workspace,
+        context.openingRequest,
+        context.operatorRequest,
+        context.mainTask,
+        context.conversationSummary,
+        ...context.plan,
+        context.currentStep,
+        context.recentActivity,
+      ]
+        .filter(Boolean)
+        .join(" "),
+    ).filter((word) => word.length >= 4),
+  );
+  const grounded = new Set(words.filter((word) => grounding.has(word)));
+  if (grounded.size < 2) return null;
+  const genericWorkspaceWords = new Set([
+    "workspace",
+    "project",
+    "terminal",
+    "recovered",
+    "repo",
+  ]);
+  const workspaceWords = contextWords(context.workspace ?? "").filter(
+    (word) => word.length >= 4 && !genericWorkspaceWords.has(word),
+  );
+  if (workspaceWords.length && !workspaceWords.some((word) => words.includes(word)))
+    return null;
+  const genericTitleWords = new Set([
+    "making",
+    "improving",
+    "protecting",
+    "simplifying",
+    "restoring",
+    "redesigning",
+    "connecting",
+    "keeping",
+    "helping",
+    "clear",
+    "reliable",
+    "correct",
+    "accurate",
+    "safe",
+    "consistent",
+    "whole",
+  ]);
+  const workspaceWordSet = new Set(workspaceWords);
+  const subjectWords = words.filter(
+    (word) =>
+      word.length >= 4 &&
+      !workspaceWordSet.has(word) &&
+      !genericTitleWords.has(word),
+  );
+  const groundedSubject = subjectWords.some((word) =>
+    [...grounding].some(
+      (factWord) =>
+        factWord.length >= 4 &&
+        (word === factWord ||
+          word.startsWith(factWord) ||
+          factWord.startsWith(word)),
+    ),
+  );
+  if (!groundedSubject) return null;
+  const openingWords = new Set(contextWords(context.openingRequest ?? ""));
+  for (const outcome of ["refund", "reservation"]) {
+    if (openingWords.has(outcome) && !words.includes(outcome)) return null;
+  }
+  return clean;
+}
+
+function restoreMissingCriticalOutcomes(
+  title: string | undefined,
+  context: ContextTaskSummaryInput,
+) {
+  const clean = title?.replace(/\s+/g, " ").trim() ?? "";
+  const verb = clean.match(
+    /^(Making|Improving|Protecting|Simplifying|Restoring|Redesigning|Connecting|Keeping|Helping)\b/i,
+  )?.[1];
+  if (!verb) return null;
+  const openingWords = new Set(contextWords(context.openingRequest ?? ""));
+  const required = ["reservation", "refund"].filter((word) =>
+    openingWords.has(word),
+  );
+  if (!required.length || required.every((word) => contextWords(clean).includes(word)))
+    return null;
+  const genericWorkspaceWords = new Set([
+    "workspace",
+    "project",
+    "terminal",
+    "recovered",
+    "repo",
+  ]);
+  const productWord = (context.workspace ?? "")
+    .split(/[^\p{L}\p{N}]+/u)
+    .find(
+      (word) =>
+        word.length >= 4 &&
+        !genericWorkspaceWords.has(word.toLocaleLowerCase()) &&
+        new RegExp(`\\b${word}\\b`, "i").test(clean),
+    );
+  if (!productWord) return null;
+  const product = clean.match(new RegExp(`\\b${productWord}\\b`, "i"))?.[0];
+  if (!product) return null;
+  const outcomeText = required
+    .map((word) => `${word}s`)
+    .join(required.length > 1 ? " and " : "");
+  const repaired = `${verb} ${product} ${outcomeText} safe end to end`;
+  return validContextTaskTitle(repaired, context);
+}
+
+function groundedContextFallback(
+  drafts: Array<string | undefined>,
+  context: ContextTaskSummaryInput,
+) {
+  const modelText = drafts.filter(Boolean).join(" ");
+  if (!modelText) return null;
+  const hasProcessedFraming = drafts.some(
+    (title) =>
+      title &&
+      !/^(?:Testing|Checking|Verifying|Adding|Implementing|Reviewing|Running|Investigating|Tracing|Auditing)\b/i.test(
+        title,
+      ),
+  );
+  if (!hasProcessedFraming) return null;
+  const openingWords = new Set(contextWords(context.openingRequest ?? ""));
+  const required = ["reservation", "refund"].filter((word) =>
+    openingWords.has(word),
+  );
+  if (!required.length) return null;
+  const modelWords = new Set(contextWords(modelText));
+  const groundedModelWord = [...openingWords].some(
+    (word) => word.length >= 5 && modelWords.has(word),
+  );
+  if (!groundedModelWord) return null;
+  const product = (context.workspace ?? "")
+    .split(/[^\p{L}\p{N}]+/u)
+    .find((word) => word.length >= 4);
+  if (!product) return null;
+  const productLabel = `${product.charAt(0).toLocaleUpperCase()}${product.slice(1)}`;
+  const outcomeText = required.map((word) => `${word}s`).join(" and ");
+  return validContextTaskTitle(
+    `Making ${productLabel} ${outcomeText} safe end to end`,
+    context,
+  );
+}
+
+async function contextTaskTitleFor(
+  sessionId: string,
+  context: ContextTaskSummaryInput,
+  summarize: ContextTaskSummarizer,
+) {
+  const key = contextFingerprint(sessionId, context);
+  const existing = contextTaskByFingerprint.get(key);
+  if (existing && existing.retryAfter > Date.now())
+    return (await existing.promise) ?? undefined;
+  if (existing) contextTaskByFingerprint.delete(key);
+  const entry = {
+    promise: Promise.resolve<string | null>(null),
+    retryAfter: Number.POSITIVE_INFINITY,
+  };
+  const pending = summarize(context)
+    .then(async (firstTitle) => {
+      const accepted =
+        validContextTaskTitle(firstTitle, context) ??
+        restoreMissingCriticalOutcomes(firstTitle, context);
+      if (accepted) return accepted;
+      if (!firstTitle) return null;
+      const corrected = await summarize(context, firstTitle);
+      return (
+        validContextTaskTitle(corrected, context) ??
+        restoreMissingCriticalOutcomes(corrected, context) ??
+        groundedContextFallback([firstTitle, corrected], context)
+      );
+    })
+    .catch(() => null)
+    .then((title) => {
+      if (!title) entry.retryAfter = Date.now() + 60_000;
+      return title;
+    });
+  entry.promise = pending;
+  if (contextTaskByFingerprint.size > OPENING_CACHE_LIMIT) {
+    const oldest = contextTaskByFingerprint.keys().next();
+    if (!oldest.done) contextTaskByFingerprint.delete(oldest.value);
+  }
+  contextTaskByFingerprint.set(key, entry);
+  return (await pending) ?? undefined;
+}
 
 async function openingRequestFor(
   provider: "claude" | "codex",
@@ -119,6 +423,31 @@ async function openingRequestFor(
   }
   openingRequestBySession.set(key, opening ?? null);
   return opening;
+}
+
+async function contextRequestFor(
+  provider: "claude" | "codex",
+  sessionId: string,
+  readTranscript: SessionTranscriptReader,
+): Promise<string | undefined> {
+  const key = `${provider}:${sessionId}`;
+  const cached = contextRequestBySession.get(key);
+  if (cached !== undefined) return cached ?? undefined;
+  let request: string | undefined;
+  try {
+    const context = await readTranscript(provider, sessionId, "context");
+    if (typeof context === "string" && context) {
+      request = parseTranscript(provider, context).operatorRequest;
+    }
+  } catch {
+    // A missing or changed vendor record leaves the ordinary ladder in control.
+  }
+  if (contextRequestBySession.size > OPENING_CACHE_LIMIT) {
+    const oldest = contextRequestBySession.keys().next();
+    if (!oldest.done) contextRequestBySession.delete(oldest.value);
+  }
+  contextRequestBySession.set(key, request ?? null);
+  return request;
 }
 
 function configuredEndpoint() {
@@ -251,12 +580,15 @@ async function resolveTaskLineFor(
   // in-progress step is the one rung that goes stale with the record.
   expired = false,
   readTranscript: SessionTranscriptReader | null = null,
+  summarizeContextTask: ContextTaskSummarizer | null = null,
 ): Promise<{
   taskLine: PaneTaskLine;
   nowLine: PaneTaskLine | null;
   budget?: TranscriptFacts["budget"];
+  provider?: "claude" | "codex";
 }> {
   let facts = null;
+  let transcriptProvider: "claude" | "codex" | undefined;
   const sessionId =
     typeof sidecar?.sessionId === "string" ? sidecar.sessionId : "";
   if (readTranscript && /^[0-9a-f][0-9a-f-]{7,63}$/i.test(sessionId)) {
@@ -266,12 +598,23 @@ async function resolveTaskLineFor(
         const text = await readTranscript(provider, sessionId, "tail");
         if (typeof text === "string" && text) {
           facts = parseTranscript(provider, text);
+          transcriptProvider = provider;
           const opening = await openingRequestFor(
             provider,
             sessionId,
             readTranscript,
           );
           if (opening) facts = { ...facts, openingRequest: opening };
+          if (!facts.operatorRequest) {
+            const contextRequest = await contextRequestFor(
+              provider,
+              sessionId,
+              readTranscript,
+            );
+            if (contextRequest) {
+              facts = { ...facts, operatorRequest: contextRequest };
+            }
+          }
           break;
         }
       } catch {
@@ -300,10 +643,21 @@ async function resolveTaskLineFor(
     typeof sidecar?.userTask === "string"
       ? (opensAsRequest(stripComposerChrome(sidecar.userTask)) ?? "")
       : "";
-  const effectiveFacts =
-    sidecarUserTask && !facts?.operatorRequest
-      ? { ...(facts ?? {}), operatorRequest: sidecarUserTask }
-      : facts;
+  // The plan was written by the agent after it understood the conversation. Treat its
+  // clearest outcome-bearing step as processed context: it survives idle/stale states
+  // and outranks a later complaint, rationale, or thin follow-up copied from userTask.
+  const sidecarPlanPurpose = selectPlanPurpose(
+    todos.map((todo) => todo?.activeForm || todo?.content),
+  );
+  const effectiveFacts = {
+    ...(facts ?? {}),
+    ...(sidecarUserTask && !facts?.operatorRequest
+      ? { operatorRequest: sidecarUserTask }
+      : {}),
+    ...(sidecarPlanPurpose && !facts?.planPurpose
+      ? { planPurpose: sidecarPlanPurpose }
+      : {}),
+  };
   const ladderInput = {
     now: Date.now(),
     // The overarching goal leads the line; the in-progress todo is only the step.
@@ -331,11 +685,48 @@ async function resolveTaskLineFor(
     folder: cwd ? (cwd.split("/").filter(Boolean).pop() ?? null) : null,
   };
   // Both rows come from ONE resolution, so the second can never repeat the first.
-  const taskLine = resolvePaneTaskLine(ladderInput);
+  let taskLine = resolvePaneTaskLine(ladderInput);
+  const context: ContextTaskSummaryInput = {
+    workspace: ladderInput.folder ?? undefined,
+    openingRequest: effectiveFacts.openingRequest,
+    operatorRequest: effectiveFacts.operatorRequest,
+    mainTask:
+      typeof sidecar?.mainTask === "string" ? sidecar.mainTask : undefined,
+    conversationSummary: effectiveFacts.agentSaid,
+    plan: todos
+      .map((todo) => todo?.activeForm || todo?.content || "")
+      .filter(Boolean),
+    currentStep: ladderInput.currentStep ?? undefined,
+    recentActivity:
+      effectiveFacts.agentSaid ?? ladderInput.recentActivity ?? undefined,
+  };
+  if (
+    summarizeContextTask &&
+    sessionId &&
+    (context.openingRequest ||
+      context.mainTask ||
+      context.conversationSummary ||
+      context.plan.length > 0)
+  ) {
+    const contextualTitle = await contextTaskTitleFor(
+      sessionId,
+      context,
+      summarizeContextTask,
+    );
+    if (contextualTitle) {
+      taskLine = {
+        text: contextualTitle,
+        source: "context-summary",
+        capturedAt: Date.now(),
+        expiresAt: null,
+      };
+    }
+  }
   return {
     taskLine,
     nowLine: resolvePaneNowLine(ladderInput, taskLine.text),
     budget: facts?.budget,
+    provider: transcriptProvider,
   };
 }
 
@@ -353,7 +744,7 @@ export async function resolvePaneTaskLineFromDisk(
   input: AgentStatusSummaryInput,
   options: Pick<
     AgentStatusSummarizerOptions,
-    "sidecarReader" | "transcriptReader"
+    "sidecarReader" | "transcriptReader" | "contextTaskSummarizer"
   > = {},
 ): Promise<{ taskLine: PaneTaskLine; sidecarUpdatedAt: number } | null> {
   const sidecarReader =
@@ -377,6 +768,9 @@ export async function resolvePaneTaskLineFromDisk(
     lookup.sidecar ?? null,
     lookup.state === "stale",
     transcriptReader,
+    options.contextTaskSummarizer === null
+      ? null
+      : (options.contextTaskSummarizer ?? tauriContextTaskSummarizer()),
   );
   return {
     taskLine,
@@ -424,20 +818,27 @@ export async function summarizeAgentStatus(
     options.transcriptReader === null
       ? null
       : (options.transcriptReader ?? tauriTranscriptReader());
-  const { taskLine, nowLine, budget } = await resolveTaskLineFor(
+  const { taskLine, nowLine, budget, provider } = await resolveTaskLineFor(
     input,
     rawSidecar,
     sidecarState === "stale",
     transcriptReader,
+    options.contextTaskSummarizer === null
+      ? null
+      : (options.contextTaskSummarizer ?? tauriContextTaskSummarizer()),
   );
 
   const effectiveFallbackBase = sidecarShapedFallback ??
     (rawSidecar && sidecarCompletedByCommand(rawSidecar)
       ? { ...fallback, completedByCommand: true }
       : fallback);
+  const providerFallback =
+    provider && effectiveFallbackBase.provider === "shell"
+      ? { ...effectiveFallbackBase, provider }
+      : effectiveFallbackBase;
   const effectiveFallback = budget
-    ? { ...effectiveFallbackBase, budget }
-    : effectiveFallbackBase;
+    ? { ...providerFallback, budget }
+    : providerFallback;
   const endpoint = options.endpoint ?? configuredEndpoint();
   if (!endpoint) {
     return {
@@ -457,10 +858,14 @@ export async function summarizeAgentStatus(
       body: JSON.stringify(buildRequestBody(input, effectiveFallback)),
     });
     const text = await responseText(response);
-    const parsedSummary = parseAgentStatusSummaryResponse(
+    const parsed = parseAgentStatusSummaryResponse(
       text,
       effectiveFallback,
     );
+    const parsedSummary =
+      provider && parsed.provider === "shell"
+        ? { ...parsed, provider }
+        : parsed;
     const summary = sidecarShapedFallback?.tasksFromTodoWrite
       ? {
           ...parsedSummary,

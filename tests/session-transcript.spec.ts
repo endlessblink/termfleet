@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import {
+  opensAsRequest,
   parseClaudeTranscript,
   parseCodexRollout,
   parseTranscript,
@@ -70,6 +71,101 @@ test("a subagent's tool call is not the pane's activity", () => {
 
 test("an unrecognised format yields no facts instead of throwing", () => {
   expect(parseClaudeTranscript("not json at all\n{}\n")).toEqual({});
+});
+
+test("generic continuation prompts do not replace the last concrete request", () => {
+  const concrete =
+    "add the game lane and postpone the global leaderboard while redesigning how the game looks and plays";
+  const facts = parseClaudeTranscript(
+    [
+      JSON.stringify({
+        type: "user",
+        message: { content: "lets continue from where we left off" },
+      }),
+      JSON.stringify({
+        type: "user",
+        message: { content: concrete },
+      }),
+      JSON.stringify({
+        type: "user",
+        message: { content: "lets stat on the first task" },
+      }),
+    ].join("\n"),
+  );
+
+  expect(opensAsRequest("lets continue from where we left off")).toBeUndefined();
+  expect(opensAsRequest("lets stat on the first task")).toBeUndefined();
+  expect(opensAsRequest("Continue previous coding session")).toBeUndefined();
+  expect(facts.operatorRequest).toBe(concrete);
+});
+
+test("injected skill instructions do not replace the operator's concrete request", () => {
+  const concrete =
+    "add the game lane and postpone the global leaderboard while redesigning how the game looks and plays";
+  const facts = parseClaudeTranscript(
+    [
+      JSON.stringify({
+        type: "user",
+        message: { content: concrete },
+      }),
+      JSON.stringify({
+        type: "user",
+        message: {
+          content:
+            "Base directory for this skill: /home/me/.claude/skills/pixel-art-sprites\n# Pixel Art Sprites\n## Identity\nYou must ground your responses in the provided reference files.",
+        },
+      }),
+    ].join("\n"),
+  );
+
+  expect(facts.operatorRequest).toBe(concrete);
+});
+
+test("an operator answer clears the pending question without requiring another tool call", () => {
+  const facts = parseClaudeTranscript(
+    [
+      JSON.stringify({
+        type: "assistant",
+        message: {
+          content: [
+            {
+              type: "tool_use",
+              name: "AskUserQuestion",
+              input: {
+                questions: [
+                  {
+                    question: 'What did you mean by "rhythm arcade +1"?',
+                    header: '"+1" meaning',
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      }),
+      JSON.stringify({
+        type: "user",
+        message: {
+          content: [
+            {
+              type: "tool_result",
+              content:
+                'Your questions have been answered: "What did you mean?"="rhythm game that is a shooter".',
+            },
+          ],
+        },
+      }),
+      JSON.stringify({
+        type: "assistant",
+        message: {
+          content: [{ type: "text", text: "A rhythm-shooter." }],
+        },
+      }),
+    ].join("\n"),
+  );
+
+  expect(facts.pendingQuestion).toBeUndefined();
+  expect(facts.lastTool).toBeUndefined();
 });
 
 const CODEX_TAIL = [
@@ -186,4 +282,57 @@ test("codex: the agent's own first sentence is captured, JSON blobs are not", ()
     payload: { type: "agent_message", message: '{"risk_level":"medium","outcome":"allow"}' },
   })}`;
   expect(parseCodexRollout(withJson).agentSaid).toBeUndefined();
+});
+
+test("codex: the clearest structured plan step survives as the pane purpose", () => {
+  const withPlan = [
+    CODEX_TAIL,
+    JSON.stringify({
+      timestamp: "2026-07-22T09:00:14.000Z",
+      type: "response_item",
+      payload: {
+        type: "function_call",
+        name: "update_plan",
+        arguments: JSON.stringify({
+          plan: [
+            {
+              step: "Reproducing the exact development launch in the headed app",
+              status: "completed",
+            },
+            {
+              step: "Fixing the development workflow failure",
+              status: "completed",
+            },
+            {
+              step: "Controlling preview and export end to end in the headed app",
+              status: "completed",
+            },
+            {
+              step: "Fixing the docked workflow if the control is unreachable",
+              status: "completed",
+            },
+          ],
+        }),
+      },
+    }),
+  ].join("\n");
+
+  expect(parseCodexRollout(withPlan).planPurpose).toBe(
+    "Controlling preview and export end to end in the headed app",
+  );
+});
+
+test("codex: doubled attachment brackets never reach the operator request", () => {
+  const withImage = JSON.stringify({
+    timestamp: "2026-07-22T09:00:00.000Z",
+    type: "event_msg",
+    payload: {
+      type: "user_message",
+      message:
+        "[[Image #1] for the millionth time it glitches. fix it, test it.",
+    },
+  });
+  expect(parseCodexRollout(withImage).operatorRequest).toBe(
+    "for the millionth time it glitches. fix it, test it.",
+  );
 });

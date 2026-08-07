@@ -666,7 +666,8 @@ export function sanitizeScrapedAsk(value?: string | null): string {
 
 // Printed plan/checkbox scrapes carry tree glyphs ("└ □ Checking…") — strip the
 // glyph prefix, keep the text.
-function stripPlanGlyphPrefix(value: string) {
+function stripPlanGlyphPrefix(value?: string | null) {
+  if (!value) return "";
   return value.replace(/^[\s└├╰╭│┌┐─]*[□■☐✓✔✗]?\s*/, "").trim() || value;
 }
 
@@ -747,7 +748,7 @@ export function buildShellTerminalHeaderViewModel(input: {
   // header while the agent has visibly moved on.
   const ladderIsLiveWork =
     input.taskLine != null &&
-    /^(?:declared|opening-request|session-title|operator-request|pending-question|current-step|agent-said|current-tool|completed-task|recent-activity)$/.test(
+    /^(?:declared|context-summary|opening-request|plan-purpose|session-title|operator-request|pending-question|current-step|agent-said|current-tool|completed-task|recent-activity)$/.test(
       input.taskLine.source,
     );
   // TC-060 "always show the main plan": the Task row is meant to answer "what is
@@ -756,7 +757,7 @@ export function buildShellTerminalHeaderViewModel(input: {
   // in-progress step — the step still surfaces on the Now Active line below.
   const ladderIsMainPlan =
     input.taskLine != null &&
-    /^(?:declared|opening-request|session-title|operator-request|pending-question)$/.test(
+    /^(?:declared|context-summary|opening-request|plan-purpose|session-title|operator-request|pending-question|current-step)$/.test(
       input.taskLine.source,
     );
   // A GOAL always outranks a step, whatever produced the step. The old condition only

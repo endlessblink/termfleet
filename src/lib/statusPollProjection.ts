@@ -1,5 +1,6 @@
 import type { AgentStatusSummarizerResult } from "./agentStatusSummarizer";
 import type { TerminalState } from "./types";
+import { stableAgentProvider } from "./agentProviderIdentity";
 
 function statusPollProjectionFingerprint(terminal: TerminalState) {
   return JSON.stringify({
@@ -72,6 +73,10 @@ export function projectStatusPollResult(
       : undefined;
 
   return {
+    agentProvider: stableAgentProvider(
+      terminal.agentProvider,
+      result.summary.provider,
+    ),
     statusSummary: {
       task: lastRealTask ?? "Task not captured",
       path: terminal.statusSummary?.path ?? result.summary.path,

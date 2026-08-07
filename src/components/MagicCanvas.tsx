@@ -2560,10 +2560,7 @@ function CanvasNodeViewImpl({
   onOpenNodeLabelMenu: (nodeId: string, event: React.MouseEvent) => void;
   onPanStart: (event: React.MouseEvent) => void;
 }) {
-  const tabs = useWorkspaceStore((state) => state.tabs);
   const groups = useWorkspaceStore((state) => state.groups);
-  const liveCwds = useWorkspaceStore((state) => state.liveCwds);
-  const liveGitRoots = useWorkspaceStore((state) => state.liveGitRoots);
   const selectedNodeId = useWorkspaceStore(
     (state) => state.canvasState.selectedNodeId,
   );
@@ -2950,9 +2947,13 @@ function CanvasNodeViewImpl({
     />
   );
 
-  const linkedTab = node.terminalTabId
-    ? tabs.find((tab) => tab.id === node.terminalTabId)
-    : undefined;
+  // Subscribe only to this node's tab. Subscribing to the whole tabs array made
+  // every map node re-render whenever any pane emitted output or status.
+  const linkedTab = useWorkspaceStore((state) =>
+    node.terminalTabId
+      ? state.tabs.find((tab) => tab.id === node.terminalTabId)
+      : undefined,
+  );
   const linkedProject = projectForTab(linkedTab, groups);
   const projectEmoji = linkedProject?.emoji;
   const workstream = linkedTab?.workstream;
@@ -2996,10 +2997,16 @@ function CanvasNodeViewImpl({
     (terminal) => terminal.paneId === terminalPaneId,
   )?.id;
   const linkedTerminalId =
-    linkedPaneTerminalId ?? node.terminalPtyId ?? linkedTab?.terminals[0]?.id;
+    linkedPaneTerminalId ?? linkedTab?.terminals[0]?.id;
   const linkedTerminal = linkedTerminalId
     ? linkedTab?.terminals.find((terminal) => terminal.id === linkedTerminalId)
     : undefined;
+  const liveTerminalRoot = useWorkspaceStore((state) =>
+    linkedTerminalId ? state.liveCwds[linkedTerminalId] : undefined,
+  );
+  const terminalGitRoot = useWorkspaceStore((state) =>
+    linkedTerminalId ? state.liveGitRoots[linkedTerminalId] : undefined,
+  );
   const activateTerminalNode = useCallback(() => {
     selectCanvasNode(node.id);
     if (node.type === "terminal") {
@@ -3028,22 +3035,18 @@ function CanvasNodeViewImpl({
     linkedTerminal?.durableActivity?.title ?? linkedTerminal?.currentActivity;
   // Prefer the live cwd (polled from the PTY) over the initial cwd so the
   // breadcrumb tracks `cd`/`z`; falls back to the spawn cwd before the first poll.
-  const liveTerminalRoot =
-    (linkedTerminalId ? liveCwds[linkedTerminalId] : undefined) ?? terminalRoot;
+  const resolvedTerminalRoot = liveTerminalRoot ?? terminalRoot;
   // The git toplevel of the live cwd — the authoritative project boundary used to
   // name the workspace pill when the stored project root is a shallow category
   // folder. Prefer the per-terminal resolved root, then the agent workstream's.
-  const terminalGitRoot =
-    (linkedTerminalId ? liveGitRoots[linkedTerminalId] : undefined) ||
-    workstream?.gitRoot ||
-    undefined;
+  const resolvedTerminalGitRoot = terminalGitRoot || workstream?.gitRoot || undefined;
   // Title a terminal node by what it actually points at: a named project wins,
   // otherwise the current directory's name (tracks cd/z via liveTerminalRoot).
   // A manual rename (title differs from the default) is respected.
   const terminalTitle = workspaceLabelFor({
     project: linkedProject,
-    cwd: liveTerminalRoot,
-    gitRoot: terminalGitRoot,
+    cwd: resolvedTerminalRoot,
+    gitRoot: resolvedTerminalGitRoot,
     tabTitle: linkedTab?.title,
     nodeTitle: node.title,
   });
@@ -3215,14 +3218,15 @@ function CanvasNodeViewImpl({
           },
         ]
       : (workstream?.taskLineup ?? linkedTerminal?.taskLineup);
-  const terminalHeaderTaskLine = linkedTerminal?.taskLine ?? workstream?.taskLine;
+  const terminalHeaderTaskLine =
+    linkedTerminal?.taskLine ?? workstream?.taskLine;
   const terminalHeader = buildTerminalHeaderState({
     paneId: terminalPaneId,
     terminalId: linkedTerminalId ?? terminalPaneId,
     runId: linkedTerminal?.activeRunId,
     project: linkedProject,
-    liveCwd: liveTerminalRoot,
-    liveGitRoot: terminalGitRoot,
+    liveCwd: resolvedTerminalRoot,
+    liveGitRoot: resolvedTerminalGitRoot,
     terminalStatus: linkedTerminal?.status,
     taskLineup: terminalHeaderTaskLineup,
     activeRunId: linkedTerminal?.activeRunId,
@@ -3318,13 +3322,13 @@ function CanvasNodeViewImpl({
     terminalDisplaySummaryBase.confidence !== "low";
   const terminalHeaderNow =
     terminalHeaderSummarySignal || terminalHeaderTitle || terminalNeutralTitle;
-  // The second row the operator asked for: what this pane is doing RIGHT NOW, under the
   const terminalBudgetSignal = terminalStatusSummary?.budget
     ? agentBudgetSignal(
         terminalStatusSummary.budget,
         `${terminalHeaderTaskDescription} ${terminalHeaderNow}`,
       )
     : null;
+  // The second row the operator asked for: what this pane is doing RIGHT NOW, under the
   // goal. `activityAddsInfo` is deliberately strict (it was built to suppress a
   // duplicate/filler line when the activity was the BIG line), so on its own it left the
   // row blank on panes that were plainly working — "relaunched nothing changed". When it
@@ -3338,7 +3342,11 @@ function CanvasNodeViewImpl({
     // The agent's own in-progress item, straight from the store. It is already there for
     // every pane with a live task list, so the row has content even before (or without)
     // a resolver pass.
-    const liveStep = (workstream?.taskLineup ?? linkedTerminal?.taskLineup ?? [])
+    const liveStep = (
+      workstream?.taskLineup ??
+      linkedTerminal?.taskLineup ??
+      []
+    )
       .find((item) => item.status === "in_progress")
       ?.content?.trim();
     if (liveStep && liveStep !== terminalHeaderTaskDescription.trim())
@@ -4083,42 +4091,68 @@ function CanvasNodeViewImpl({
             onMouseDown={onMouseDown}
             onDoubleClick={onRename}
           >
-            <div style={styles.terminalStatusKicker}>
-              <span>Workspace</span>
-              <span
-                style={styles.workspacePill}
-                data-testid="canvas-terminal-node-workspace"
-                title={workspaceLabel}
-              >
-                {workspaceLabel}
-              </span>
-              {terminalAgentLabel && (
-                <span
-                  style={styles.agentStatusChip}
-                  data-testid="canvas-terminal-agent-provider"
-                >
-                  <AgentProviderIdentity provider={terminalAgentProvider} />
-                </span>
-              )}
+            <div
+              style={{
+                ...styles.terminalStatusKicker,
+                justifyContent: "space-between",
+              }}
+            >
               <span
                 style={{
-                  ...styles.attentionBadge,
-                  color: terminalHeaderAttention.color,
-                  borderColor: `color-mix(in srgb, ${terminalHeaderAttention.color} 45%, transparent)`,
-                  background: `color-mix(in srgb, ${terminalHeaderAttention.color} 14%, transparent)`,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 5,
+                  minWidth: 0,
                 }}
-                data-testid="canvas-terminal-node-attention"
-                data-attention-state={terminalHeaderAttention.state}
-                title={terminalHeaderAttention.label}
               >
+                <span>Workspace</span>
+                <span
+                  style={styles.workspacePill}
+                  data-testid="canvas-terminal-node-workspace"
+                  title={workspaceLabel}
+                >
+                  {workspaceLabel}
+                </span>
+                {terminalAgentLabel && (
+                  <span
+                    style={styles.agentStatusChip}
+                    data-testid="canvas-terminal-agent-provider"
+                  >
+                    <AgentProviderIdentity provider={terminalAgentProvider} />
+                  </span>
+                )}
                 <span
                   style={{
-                    ...styles.attentionDot,
-                    background: terminalHeaderAttention.color,
+                    ...styles.attentionBadge,
+                    color: terminalHeaderAttention.color,
+                    borderColor: `color-mix(in srgb, ${terminalHeaderAttention.color} 45%, transparent)`,
+                    background: `color-mix(in srgb, ${terminalHeaderAttention.color} 14%, transparent)`,
                   }}
-                />
-                {terminalHeaderAttention.label}
+                  data-testid="canvas-terminal-node-attention"
+                  data-attention-state={terminalHeaderAttention.state}
+                  title={terminalHeaderAttention.label}
+                >
+                  <span
+                    style={{
+                      ...styles.attentionDot,
+                      background: terminalHeaderAttention.color,
+                    }}
+                  />
+                  {terminalHeaderAttention.label}
+                </span>
               </span>
+              {terminalBudgetSignal && (
+                <TokenBudgetIndicator
+                  signal={terminalBudgetSignal}
+                  testId="canvas-terminal-token-budget"
+                  onOpenModelPicker={() =>
+                    openCodexModelPicker(
+                      `terminal-${terminalTabId}-${terminalPaneId}`,
+                      linkedTerminalId ?? undefined,
+                    )
+                  }
+                />
+              )}
             </div>
             {/* The operator's chosen layout (2026-07-28): the GOAL on top, big, and
                 what the pane is doing right now underneath it. Previously the two
@@ -4138,18 +4172,6 @@ function CanvasNodeViewImpl({
                   <span style={styles.terminalNowActiveLabel}>Task:</span>
                   <span
                     data-testid="canvas-terminal-node-description"
-              {terminalBudgetSignal && (
-                <TokenBudgetIndicator
-                  signal={terminalBudgetSignal}
-                  testId="canvas-terminal-token-budget"
-                  onOpenModelPicker={() =>
-                    openCodexModelPicker(
-                      `terminal-${terminalTabId}-${terminalPaneId}`,
-                      linkedTerminalId ?? undefined,
-                    )
-                  }
-                />
-              )}
                     style={{
                       ...styles.terminalNowActiveValue,
                       color: labelColor ?? "var(--text-primary)",

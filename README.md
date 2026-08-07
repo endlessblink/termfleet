@@ -57,11 +57,22 @@ npm install
 npm run review
 ```
 
-Run the native Tauri app:
+Install the current source build, then launch TermFleet from the desktop dock:
+
+```bash
+npm run release:install
+npm run verify:installed-release
+```
+
+For development-only native troubleshooting, launch the Tauri app with:
 
 ```bash
 npm run tauri:dev
 ```
+
+The dock is the normal operator and acceptance surface. Development launchers
+are for internal troubleshooting only and are not a substitute for installing
+and checking the release that the dock actually opens.
 
 Run the fast frontend build gate:
 
@@ -76,9 +87,7 @@ install/build commands. If a fresh checkout cannot build, start there: the
 script reports the missing system package family instead of letting Tauri fail
 deep in a native build.
 
-The historical launcher name `run-native-vte-dev.sh` is retained for muscle
-memory, but the production desktop terminal path is Canvas2D over the headless
-VT grid.
+The production desktop terminal path is Canvas2D over the headless VT grid.
 
 ## Architecture
 
@@ -169,25 +178,10 @@ visible until restarted or closed.
 ## Local Agent Status Summaries
 
 TermFleet can summarize live terminal and agent output into compact
-Task/Path/Now header text. The app always has a deterministic fallback; for a
-local small-LLM pass, the normal Tauri dev launcher starts the status-summary
-server automatically:
-
-```bash
-npm run tauri:dev
-```
-
-The launcher uses `http://127.0.0.1:37819/status` and defaults the Ollama adapter
-to `qwen3:4b` on this workstation. Override it when another tiny local model is
-installed:
-
-```bash
-TERMFLEET_AGENT_STATUS_MODEL=gemma4:e2b-it npm run tauri:dev
-```
-
-Disable the sidecar with `TERMFLEET_AGENT_STATUS_DISABLE=1`. The app still shows
-deterministic summaries if Ollama is unavailable or the sidecar is disabled.
-Override the Ollama URL with `TERMFLEET_OLLAMA_URL`.
+Task/Path/Now header text. The installed dock app reads deterministic local
+status records directly, so it does not require a development server or Ollama.
+Optional local-model experiments remain internal development work and never
+change the dock-only operator workflow.
 
 ## Evidence Bundles
 
@@ -238,7 +232,8 @@ preview feedback is still welcome when it includes:
 
 Keep changes small, regression-backed, and focused on visible cockpit behavior.
 Do not add dependencies or cloud services without a design note and explicit
-approval.
+approval. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the development checks
+and [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) for community expectations.
 
 ## Security
 
@@ -253,6 +248,11 @@ Security disclosure: report vulnerabilities privately via the process in
 [`SECURITY.md`](SECURITY.md) (GitHub private reporting or the maintainer email) —
 not in public issues. The daemon listens only on a `0700` user-owned Unix socket
 with a `0600` inode and rejects connections whose peer uid differs from its own.
+
+## License
+
+TermFleet is released under the [Apache License 2.0](LICENSE). The package
+metadata and source license are aligned as `Apache-2.0`.
 
 ## Limitations
 

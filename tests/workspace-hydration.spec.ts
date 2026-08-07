@@ -92,6 +92,98 @@ test("saved workspace layout blocks stale persisted sessions from resurrecting a
   expect(result.nodeTabIds).toEqual(["saved-tab"]);
 });
 
+test("saved workspace layout recovers live daemon sessions that another window dropped", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+
+  const result = await page.evaluate(async () => {
+    const calls: string[] = [];
+    (window as typeof window & {
+      __TAURI_INTERNALS__?: {
+        invoke: (cmd: string) => Promise<unknown>;
+        transformCallback: () => number;
+        unregisterCallback: () => void;
+      };
+    }).__TAURI_INTERNALS__ = {
+      invoke: async (cmd: string) => {
+        calls.push(cmd);
+        if (cmd === "daemon_list_sessions") {
+          return [{
+            id: "terminal-11111111-1111-4111-8111-111111111111-22222222-2222-4222-8222-222222222222",
+            cwd: "/tmp/live",
+            command: "/bin/bash",
+            pid: 4242,
+          }];
+        }
+        if (cmd === "workspace_persisted_sessions") {
+          return [{
+            id: "terminal-closed-tab-closed-pane",
+            cwd: "/tmp/closed",
+            scrollbackBytes: 4096,
+          }];
+        }
+        return null;
+      },
+      transformCallback: () => 1,
+      unregisterCallback: () => {},
+    };
+
+    const { hydrateWorkspace, useWorkspaceStore } = await import("/src/stores/workspace.ts");
+    useWorkspaceStore.setState({
+      hydrating: false,
+      tabs: [{
+        id: "saved-tab",
+        title: "Saved terminal",
+        emoji: "[]",
+        color: "#7aa2f7",
+        groupId: null,
+        initialCwd: "/tmp/saved",
+        terminals: [{
+          id: "terminal-saved-tab-saved-pane",
+          paneId: "saved-pane",
+          cols: 80,
+          rows: 24,
+          status: "starting",
+        }],
+        splitLayout: { id: "saved-pane", type: "terminal" },
+        activePaneId: "saved-pane",
+      }],
+      activeTabId: "saved-tab",
+      groups: [],
+      terminalGroups: [],
+      canvasState: {
+        selectedNodeId: "node-saved",
+        selectedNodeIds: ["node-saved"],
+        viewport: { x: 0, y: 0, zoom: 1 },
+        nodes: [{
+          id: "node-saved",
+          type: "terminal",
+          title: "Saved terminal",
+          terminalTabId: "saved-tab",
+          x: 0,
+          y: 0,
+          width: 820,
+          height: 460,
+        }],
+      },
+    });
+
+    await hydrateWorkspace();
+    const state = useWorkspaceStore.getState();
+    return {
+      calls,
+      tabIds: state.tabs.map((tab) => tab.id),
+      nodeTabIds: state.canvasState.nodes
+        .filter((node) => node.type === "terminal")
+        .map((node) => node.terminalTabId),
+    };
+  });
+
+  expect(result.calls).toContain("daemon_list_sessions");
+  expect(result.calls).not.toContain("workspace_persisted_sessions");
+  expect(result.tabIds).toEqual(["saved-tab", "11111111-1111-4111-8111-111111111111"]);
+  expect(result.nodeTabIds).toEqual(["saved-tab", "11111111-1111-4111-8111-111111111111"]);
+});
+
 test("disk workspace layout is authoritative over orphan persisted sessions", async ({ page }) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
 

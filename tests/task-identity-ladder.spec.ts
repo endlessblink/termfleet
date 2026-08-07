@@ -24,6 +24,33 @@ test("with no declared task, the ladder supplies the rendered text", () => {
   expect(header.sources.goal).toBe("task-line");
 });
 
+test("a concise active plan step replaces a raw complaint in the rendered Task row", () => {
+  const taskLine = resolvePaneTaskLine({
+    now: NOW,
+    mainGoal:
+      "low quality, and the way the sentence is gettting elongated is ugly",
+    mainGoalSource: "opening-request",
+    currentStep: "Checking every task-label source",
+  });
+  const header = buildTerminalHeaderState({
+    paneId: "pane-clear-task",
+    terminalId: "pane-clear-task",
+    liveCwd: "/tmp/termfleet",
+    mainUserAsk: {
+      text: "low quality, and the way the sentence is gettting elongated is ugly",
+      source: "status-sidecar",
+      updatedAt: NOW,
+    },
+    taskLine,
+  });
+
+  expect(taskLine).toMatchObject({
+    source: "current-step",
+    text: "Checking every task-label source",
+  });
+  expect(header.goalLabel).toBe("Checking every task-label source");
+});
+
 test("a shell pane is no longer starved of a description", () => {
   const header = buildTerminalHeaderState({
     paneId: "pane-1",

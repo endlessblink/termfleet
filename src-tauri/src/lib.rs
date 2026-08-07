@@ -57,8 +57,10 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::daemon_status,
             commands::agent_status_read_sidecar,
+            commands::agent_context_task_title,
             commands::session_transcript_read,
             commands::session_transcript_head_read,
+            commands::session_transcript_context_read,
             commands::pane_foreground_command,
             commands::agent_provider_statuses,
             commands::pane_agent_provider,

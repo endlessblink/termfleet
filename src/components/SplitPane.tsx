@@ -946,6 +946,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
         const paneTerminal = tab.terminals.find(
           (terminal) => terminal.paneId === paneId,
         );
+        const paneTaskLine = paneTerminal?.taskLine ?? tab.workstream?.taskLine;
         const terminalStatus = paneTerminal?.status ?? "starting";
         const terminalStatusLabel = STATUS_LABELS[terminalStatus];
         const queuedWorkstreamInput = tab.workstream?.inputQueue?.find(
@@ -1121,13 +1122,17 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                 ? paneTerminal?.mainUserAsk
                 : undefined,
               statusSummary: paneTerminal?.statusSummary,
-              taskLine: paneTerminal?.taskLine ?? tab.workstream?.taskLine,
+              taskLine: paneTaskLine,
               summary: shellStatusSummaryBase,
               neutralTitle: shellNeutralTitle ?? null,
               contextPurposeTitle: terminalPurpose?.title,
               contextPurposeSource: terminalPurpose?.source,
               workstreamTitle:
-                tab.workstream?.mission ?? tab.workstream?.prompt,
+                tab.workstream?.mission ??
+                tab.workstream?.prompt ??
+                (shellDurableActivityUsable
+                  ? paneTerminal?.durableActivity?.title
+                  : undefined),
               // A visible "Working (…)" / "esc to interrupt" marker means the agent is
               // active right now even without a task list → don't render "Awaiting next
               // action" as the title.
@@ -1183,8 +1188,8 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
           {
             title: (
               (isAgentPane
-                ? agentStatusSummary?.task
-                : shellHeader?.currentActivity) ?? ""
+                ? (paneTaskLine?.text ?? agentStatusSummary?.task)
+                : (shellHeader?.goalLabel ?? shellHeader?.currentActivity)) ?? ""
             ).toString(),
             now: (
               (isAgentPane
@@ -1529,7 +1534,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                           fontSize: 13,
                           fontWeight: 500,
                         }}
-                        title={`Now Active: ${headerTitle}`}
+                        title={`Task: ${headerTitle}`}
                       >
                         <span
                           style={{
@@ -1540,7 +1545,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                             textTransform: "uppercase",
                           }}
                         >
-                          Now Active:
+                          Task:
                         </span>
                         <span
                           data-testid="split-agent-working-on"
@@ -1793,7 +1798,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                           fontSize: 13,
                           fontWeight: 500,
                         }}
-                        title={`Now Active: ${headerTitle}`}
+                        title={`Task: ${headerTitle}`}
                       >
                         <span
                           style={{
@@ -1804,7 +1809,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                             textTransform: "uppercase",
                           }}
                         >
-                          Now Active:
+                          Task:
                         </span>
                         <span
                           data-testid="split-terminal-summary-task"

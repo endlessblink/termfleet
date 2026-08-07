@@ -1571,14 +1571,20 @@ mod tests {
 
         state.resize(80, 24);
         state.scroll_to_bottom();
-        assert_eq!(state.revision, initial, "idle/no-op checks must keep the revision stable");
+        assert_eq!(
+            state.revision, initial,
+            "idle/no-op checks must keep the revision stable"
+        );
 
         state.feed(b"hello");
         let after_feed = state.revision;
         assert!(after_feed > initial, "PTY output must advance the revision");
 
         state.resize(100, 30);
-        assert!(state.revision > after_feed, "a real resize must advance the revision");
+        assert!(
+            state.revision > after_feed,
+            "a real resize must advance the revision"
+        );
     }
 
     #[test]

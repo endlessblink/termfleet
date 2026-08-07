@@ -599,8 +599,8 @@ export function TerminalCanvas({
             : [...changed].some((row) =>
                 buffer.cells[row]?.some((cell) => cell.c.trim() !== "")
               ));
-        if (onOutputRef.current && changed.size > 0) {
-          const changedText = [...changed]
+        if (onOutputRef.current && buffer.contentDirtyRows.size > 0) {
+          const changedText = [...buffer.contentDirtyRows]
             .sort((a, b) => a - b)
             .map((row) => buffer.cells[row]?.map((cell) => cell.c).join("").trimEnd() ?? "")
             .filter(Boolean)

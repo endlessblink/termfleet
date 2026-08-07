@@ -41,26 +41,27 @@ nikud) and TC-015/TC-016 are TODO backlog.
 ## Build & run
 
 First Rust build compiles from scratch and can OOM-`Killed` under memory pressure.
-The dev launchers already set `CARGO_BUILD_JOBS=1` / `CARGO_PROFILE_DEV_DEBUG=0` —
-use them rather than raw `tauri dev`.
+Normal operator use and acceptance testing are dock-only. Never ask the operator
+to run a development launcher or a terminal command to pick up a fix. Build and
+promote the immutable release, then verify the actual dock-launched app.
 
 ```bash
 npm install
-./run-native-vte-dev.sh        # = npm run tauri:dev — default local dev (Canvas2D terminal)
+npm run release:install        # build and atomically promote the dock release
+npm run verify:installed-release
 npm run build                  # frontend only: tsc && vite build
 npm run review                 # browser-only preview on http://127.0.0.1:5177
 ```
 
-The launcher name is kept for muscle memory but builds the default (canvas)
-target; the desktop terminal is always the Canvas2D renderer.
+Development launchers are internal troubleshooting tools only; they are never
+the user handoff or acceptance surface. The desktop terminal is always the
+Canvas2D renderer.
 
 Rust-only compile check (non-interactive, no display needed):
 ```bash
 cd src-tauri && CARGO_BUILD_JOBS=1 cargo check
 ```
 
-`run-dev.sh` / `terminal-workspace-dev` clear stale Vite + Tauri/daemon processes
-before launching, so latency and behavior are measured against a clean runtime.
 Reset persisted layout/theme from the command bar with `Reset layout`.
 
 ## Automatic regression protection

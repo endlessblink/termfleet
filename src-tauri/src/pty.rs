@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
@@ -69,6 +69,7 @@ struct PtyEntry {
     reader: Option<JoinHandle<()>>,
     last_exit: Arc<Mutex<Option<PtyExitStatus>>>,
     ended: Arc<AtomicBool>,
+    pane_cgroup: Option<PathBuf>,
 }
 
 impl PtyEntry {
@@ -88,6 +89,7 @@ impl PtyEntry {
                 .with_pid(pid)
                 .with_reason(reason),
         );
+        kill_pane_processes(id, pid, self.pane_cgroup.as_ref());
         let _ = self.child.lock().unwrap().kill();
         // Dropping all writers/clones of the master closes the PTY master fd, so
         // the reader's blocking read() returns EOF and the loop exits.
@@ -107,6 +109,7 @@ impl PtyEntry {
         *self.last_exit.lock().unwrap() = Some(exit_status.clone());
         self.ended.store(true, Ordering::Release);
         self.subscribers.lock().unwrap().clear();
+        remove_pane_cgroup(self.pane_cgroup.take());
         push_session_event(
             events,
             PtySessionEvent::new(id, "killed")
@@ -114,6 +117,191 @@ impl PtyEntry {
                 .with_reason(reason)
                 .with_exit_status(exit_status),
         );
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn kill_pane_processes(
+    pane_id: &str,
+    process_group_leader: Option<u32>,
+    pane_cgroup: Option<&PathBuf>,
+) {
+    // A cgroup is the hard boundary: descendants keep it even after they call
+    // setsid(), daemonize, or are reparented, and cgroup.kill is recursive.
+    kill_pane_cgroup(pane_cgroup);
+
+    // Capture the live descendant tree before killing the leader. This catches
+    // children that called setsid() but have not yet been reparented, even when
+    // the daemon is running outside a delegated systemd cgroup.
+    let descendants = process_tree(process_group_leader);
+
+    // portable-pty creates a fresh session for every PTY. Killing its process
+    // group handles normal descendants, including shells, agents, and test
+    // runners that stay in the PTY session.
+    if let Some(pid) = process_group_leader.filter(|pid| *pid > 1) {
+        unsafe {
+            let _ = libc::kill(-(pid as libc::pid_t), libc::SIGKILL);
+        }
+    }
+    for pid in descendants {
+        unsafe {
+            let _ = libc::kill(pid, libc::SIGKILL);
+        }
+    }
+
+    // A child can deliberately create a new session (for example via setsid,
+    // nohup, or a test server). Every PTY child inherits this stable identity,
+    // so sweep matching /proc environments as a second, pane-scoped boundary.
+    let needle = format!("TERMFLEET_PANE_ID={pane_id}");
+    let Ok(entries) = std::fs::read_dir("/proc") else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let file_name = entry.file_name();
+        let Some(pid) = file_name
+            .to_str()
+            .filter(|value| !value.is_empty() && value.bytes().all(|byte| byte.is_ascii_digit()))
+            .and_then(|value| value.parse::<libc::pid_t>().ok())
+            .filter(|pid| *pid > 1)
+        else {
+            continue;
+        };
+        if pid == std::process::id() as libc::pid_t {
+            continue;
+        }
+        let Ok(environ) = std::fs::read(entry.path().join("environ")) else {
+            continue;
+        };
+        if environ
+            .split(|byte| *byte == 0)
+            .any(|variable| variable == needle.as_bytes())
+        {
+            unsafe {
+                let _ = libc::kill(pid, libc::SIGKILL);
+            }
+        }
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn process_tree(root: Option<u32>) -> Vec<libc::pid_t> {
+    let Some(root) = root.filter(|pid| *pid > 1) else {
+        return Vec::new();
+    };
+    let Ok(entries) = fs::read_dir("/proc") else {
+        return Vec::new();
+    };
+    let mut parents = Vec::new();
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let Some(pid) = name
+            .to_str()
+            .filter(|value| !value.is_empty() && value.bytes().all(|byte| byte.is_ascii_digit()))
+            .and_then(|value| value.parse::<libc::pid_t>().ok())
+            .filter(|pid| *pid > 1)
+        else {
+            continue;
+        };
+        let Ok(stat) = fs::read_to_string(entry.path().join("stat")) else {
+            continue;
+        };
+        let Some((_, rest)) = stat.rsplit_once(") ") else {
+            continue;
+        };
+        let Some(parent) = rest
+            .split_whitespace()
+            .nth(1)
+            .and_then(|value| value.parse::<libc::pid_t>().ok())
+        else {
+            continue;
+        };
+        parents.push((pid, parent));
+    }
+
+    let mut descendants = Vec::new();
+    let mut frontier = vec![root as libc::pid_t];
+    while let Some(parent) = frontier.pop() {
+        for (pid, ppid) in &parents {
+            if *ppid == parent && *pid != root as libc::pid_t && !descendants.contains(pid) {
+                descendants.push(*pid);
+                frontier.push(*pid);
+            }
+        }
+    }
+    descendants
+}
+
+#[cfg(not(target_os = "linux"))]
+fn kill_pane_processes(
+    _pane_id: &str,
+    _process_group_leader: Option<u32>,
+    _pane_cgroup: Option<&PathBuf>,
+) {
+}
+
+#[cfg(not(target_os = "linux"))]
+fn process_tree(_root: Option<u32>) -> Vec<i32> {
+    Vec::new()
+}
+
+#[cfg(target_os = "linux")]
+static NEXT_PANE_CGROUP: AtomicU64 = AtomicU64::new(1);
+
+#[cfg(target_os = "linux")]
+fn pane_cgroup_parent() -> Option<PathBuf> {
+    let contents = fs::read_to_string("/proc/self/cgroup").ok()?;
+    let path = contents
+        .lines()
+        .find_map(|line| line.strip_prefix("0::"))?
+        .trim();
+    if path.is_empty() {
+        return None;
+    }
+    Some(PathBuf::from("/sys/fs/cgroup").join(path.trim_start_matches('/')))
+}
+
+#[cfg(target_os = "linux")]
+fn pane_cgroup_hash(id: &str) -> u32 {
+    id.bytes().fold(2166136261u32, |hash, byte| {
+        (hash ^ u32::from(byte)).wrapping_mul(16777619)
+    })
+}
+
+#[cfg(target_os = "linux")]
+fn create_pane_cgroup(id: &str, pid: Option<u32>) -> Option<PathBuf> {
+    let pid = pid.filter(|pid| *pid > 1)?;
+    let parent = pane_cgroup_parent()?;
+    let sequence = NEXT_PANE_CGROUP.fetch_add(1, Ordering::Relaxed);
+    let path = parent.join(format!(
+        "termfleet-pane-{:08x}-{sequence}",
+        pane_cgroup_hash(id)
+    ));
+    fs::create_dir(&path).ok()?;
+    if fs::write(path.join("cgroup.procs"), pid.to_string()).is_err() {
+        let _ = fs::remove_dir(&path);
+        return None;
+    }
+    Some(path)
+}
+
+#[cfg(not(target_os = "linux"))]
+fn create_pane_cgroup(_id: &str, _pid: Option<u32>) -> Option<PathBuf> {
+    None
+}
+
+#[cfg(target_os = "linux")]
+fn kill_pane_cgroup(path: Option<&PathBuf>) {
+    if let Some(path) = path {
+        let _ = fs::write(path.join("cgroup.kill"), b"1");
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn kill_pane_cgroup(_path: Option<&PathBuf>) {}
+
+fn remove_pane_cgroup(path: Option<PathBuf>) {
+    if let Some(path) = path {
+        let _ = fs::remove_dir(path);
     }
 }
 
@@ -595,6 +783,7 @@ impl PtyManager {
         // Spawn the child process on the slave side
         let child = pair.slave.spawn_command(cmd).map_err(|e| e.to_string())?;
         let child_pid = child.process_id();
+        let pane_cgroup = create_pane_cgroup(&id, child_pid);
         let child = Arc::new(Mutex::new(child));
         push_session_event(
             &self.session_events,
@@ -667,6 +856,7 @@ impl PtyManager {
         let reader_event_id = id.clone();
         let reader_pid = child_pid;
         let reader_persist_dir = self.persist_dir.clone();
+        let reader_pane_cgroup = pane_cgroup.clone();
         let reader_was_resuming = recovery_plan
             .as_ref()
             .is_some_and(|plan| plan.status == AgentRestoreStatus::Resuming);
@@ -742,6 +932,7 @@ impl PtyManager {
                         *last_exit_reader.lock().unwrap() = Some(exit_status.clone());
                         subscribers_reader.lock().unwrap().clear();
                         ended_reader.store(true, Ordering::Release);
+                        remove_pane_cgroup(reader_pane_cgroup);
                         event = event.with_exit_status(exit_status);
                         if reader_was_resuming {
                             let resume_failure = {
@@ -794,6 +985,7 @@ impl PtyManager {
                 reader: Some(reader_handle),
                 last_exit,
                 ended,
+                pane_cgroup,
             };
             loser.shutdown(
                 "duplicate stable session lost creation race",
@@ -818,6 +1010,7 @@ impl PtyManager {
                 reader: Some(reader_handle),
                 last_exit,
                 ended,
+                pane_cgroup,
             },
         );
 
@@ -2274,6 +2467,139 @@ mod tests {
             output_weak.upgrade().is_none(),
             "reader thread leaked: output buffer still strong-referenced after kill"
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn kill_terminates_processes_started_inside_the_pty_session() {
+        use std::thread;
+        use std::time::{Duration, Instant};
+
+        let app = tauri::test::mock_app();
+        let manager = PtyManager::new();
+        let id = "kill-process-tree-test".to_string();
+
+        manager
+            .spawn(
+                app.handle(),
+                Some(id.clone()),
+                None,
+                Some("sh -c 'setsid sleep 30 & printf \"%s\\n\" \"$!\"; wait'".to_string()),
+            )
+            .expect("spawn process-tree test PTY");
+        let unrelated_id = "kill-process-tree-unrelated-test".to_string();
+        manager
+            .spawn(
+                app.handle(),
+                Some(unrelated_id.clone()),
+                None,
+                Some("sleep 30".to_string()),
+            )
+            .expect("spawn unrelated PTY");
+
+        let child_pid = {
+            let deadline = Instant::now() + Duration::from_secs(2);
+            loop {
+                let output = manager.snapshot(&id).expect("snapshot process-tree PTY");
+                if let Some(pid) = output
+                    .lines()
+                    .filter_map(|line| line.trim().parse::<libc::pid_t>().ok())
+                    .find(|pid| *pid > 1)
+                {
+                    break pid;
+                }
+                assert!(
+                    Instant::now() < deadline,
+                    "child process pid was not printed"
+                );
+                thread::sleep(Duration::from_millis(20));
+            }
+        };
+
+        manager.kill(&id).expect("kill process-tree test PTY");
+
+        let deadline = Instant::now() + Duration::from_secs(2);
+        loop {
+            let process_gone = unsafe { libc::kill(child_pid, 0) == -1 };
+            if process_gone {
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "child process {child_pid} survived PTY close"
+            );
+            thread::sleep(Duration::from_millis(20));
+        }
+        assert!(manager.write(&unrelated_id, "still alive\n").is_ok());
+        manager
+            .kill(&unrelated_id)
+            .expect("kill unrelated test PTY");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn kill_terminates_detached_descendant_that_drops_pane_marker() {
+        use std::thread;
+        use std::time::{Duration, Instant};
+
+        let app = tauri::test::mock_app();
+        let manager = PtyManager::new();
+        let id = "kill-detached-unmarked-test".to_string();
+        manager
+            .spawn(
+                app.handle(),
+                Some(id.clone()),
+                None,
+                Some("setsid sh -c 'env -u TERMFLEET_PANE_ID sleep 30 & printf \"%s\\n\" \"$!\"; wait'".to_string()),
+            )
+            .expect("spawn detached unmarked process PTY");
+        let pane_pid = manager
+            .ptys
+            .lock()
+            .unwrap()
+            .get(&id)
+            .and_then(|entry| entry.child.lock().unwrap().process_id())
+            .expect("detached PTY pid");
+        let pane_cgroup = std::fs::read_to_string(format!("/proc/{pane_pid}/cgroup"))
+            .expect("read detached PTY cgroup");
+
+        let child_pid = {
+            let deadline = Instant::now() + Duration::from_secs(2);
+            loop {
+                let output = manager.snapshot(&id).expect("snapshot detached PTY");
+                if let Some(pid) = output
+                    .lines()
+                    .filter_map(|line| line.trim().parse::<libc::pid_t>().ok())
+                    .find(|pid| *pid > 1)
+                {
+                    break pid;
+                }
+                assert!(
+                    Instant::now() < deadline,
+                    "detached child pid was not printed"
+                );
+                thread::sleep(Duration::from_millis(20));
+            }
+        };
+        assert!(
+            pane_cgroup.contains("/termfleet-pane-")
+                || super::process_tree(Some(pane_pid)).contains(&child_pid),
+            "detached child was neither cgroup-owned nor in the pane tree: {pane_cgroup:?}"
+        );
+
+        manager.kill(&id).expect("kill detached unmarked PTY");
+
+        let deadline = Instant::now() + Duration::from_secs(2);
+        loop {
+            if unsafe { libc::kill(child_pid, 0) == -1 } {
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "detached descendant {child_pid} survived PTY close"
+            );
+            thread::sleep(Duration::from_millis(20));
+        }
     }
 
     #[test]

@@ -1093,6 +1093,154 @@ pub fn fs_home_dir() -> Result<String, String> {
         .ok_or_else(|| "Could not resolve home directory".to_string())
 }
 
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ContextTaskSummaryInput {
+    workspace: Option<String>,
+    opening_request: Option<String>,
+    operator_request: Option<String>,
+    main_task: Option<String>,
+    conversation_summary: Option<String>,
+    plan: Vec<String>,
+    current_step: Option<String>,
+    recent_activity: Option<String>,
+}
+
+fn clipped(value: Option<&str>, limit: usize) -> Option<String> {
+    value.map(|text| text.chars().take(limit).collect())
+}
+
+/// Ask the operator's local model to name the whole conversation once. The frontend
+/// fingerprints and caches the result, so the four-second status poll never turns into
+/// repeated inference. Failure is intentionally quiet: the deterministic task ladder
+/// remains the complete offline fallback.
+#[tauri::command]
+pub async fn agent_context_task_title(
+    context: ContextTaskSummaryInput,
+    rejected_title: Option<String>,
+) -> Result<Option<String>, String> {
+    use tokio::io::AsyncWriteExt;
+
+    let endpoint = std::env::var("TERMFLEET_OLLAMA_URL")
+        .ok()
+        .filter(|url| url.starts_with("http://127.0.0.1:") || url.starts_with("http://localhost:"))
+        .unwrap_or_else(|| "http://127.0.0.1:11434".to_string());
+    let endpoint = endpoint.trim_end_matches('/');
+    let endpoint = if endpoint.ends_with("/api/generate") {
+        endpoint.to_string()
+    } else {
+        format!("{endpoint}/api/generate")
+    };
+    let timeout_ms = std::env::var("TERMFLEET_CONTEXT_TITLE_TIMEOUT_MS")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .unwrap_or(25_000)
+        .clamp(1_000, 60_000);
+    let timeout_seconds = format!("{:.3}", timeout_ms as f64 / 1000.0);
+    let model =
+        std::env::var("TERMFLEET_TASK_CONTEXT_MODEL").unwrap_or_else(|_| "qwen2.5:7b".to_string());
+    let bounded_context = serde_json::json!({
+        "workspace": clipped(context.workspace.as_deref(), 160),
+        "originalRequest": clipped(context.opening_request.as_deref(), 5000),
+        "latestRequest": clipped(context.operator_request.as_deref(), 1200),
+        "declaredTask": clipped(context.main_task.as_deref(), 600),
+        "conversationSummary": clipped(context.conversation_summary.as_deref(), 1200),
+        "plan": context.plan.iter().take(16).map(|item| item.chars().take(500).collect::<String>()).collect::<Vec<_>>(),
+        "currentStep": clipped(context.current_step.as_deref(), 600),
+        "recentActivity": clipped(context.recent_activity.as_deref(), 600),
+    });
+    let correction = rejected_title
+        .as_deref()
+        .map(|title| format!(" Previous draft was rejected: {title}. It omitted or distorted the concrete subject. Identify the most specific named feature or object in conversationSummary first, then include that exact subject in the rewrite."))
+        .unwrap_or_default();
+    let prompt = format!(
+        "Return only JSON: {{\"title\":string}}. Name the WHOLE conversation for a nontechnical person. Use 6 to 12 ordinary words separated by spaces; concatenated words are invalid. Follow this spacing shape only: {{\"title\":\"Keeping Example Product customer outcome clear and reliable\"}}. Replace every word after Keeping with words from the supplied context; Example, Product, customer, and outcome may not appear in the answer. The FIRST WORD MUST BE one of: Making, Improving, Protecting, Simplifying, Restoring, Redesigning, Connecting, Keeping, Helping. NEVER begin with Testing, Checking, Verifying, Adding, Implementing, Reviewing, Running, Investigating, Tracing, or Auditing. Include the recognizable workspace or product name AND the central user-facing subject from the original request, processed agent outcome, or plan. If the processed agent outcome names a concrete feature or object, preserve that subject verbatim. Never replace a named subject with a generic stand-in such as fix, task, work, issue, change, process, or outcome. Preserve every distinct user-facing outcome explicitly named in the original request; do not collapse a multi-part goal into a generic flow. Say the shared user or product outcome, not one plan step. Never name implementation, tests, coverage, tools, branches, sandboxes, files, checks, progress, or the latest reply. Never claim real transactions, production readiness, deployment, completion, or success. Ground every product, subject, and outcome noun in the supplied context; do not introduce a domain or feature that the context does not name.{correction} Context={bounded_context}"
+    );
+    let body = serde_json::json!({
+        "model": model,
+        "prompt": prompt,
+        "stream": false,
+        "format": {
+            "type": "object",
+            "properties": {
+                "title": {
+                    "type": "string",
+                    "minLength": 20,
+                    "maxLength": 120,
+                    "pattern": r"^[^\s]+(?:\s+[^\s]+){5,11}$"
+                }
+            },
+            "required": ["title"]
+        },
+        "options": {
+            "temperature": 0,
+            "num_ctx": 4096,
+            "num_predict": 80
+        }
+    })
+    .to_string();
+
+    let mut child = tokio::process::Command::new("curl")
+        .args([
+            "--silent",
+            "--show-error",
+            "--fail",
+            "--max-time",
+            timeout_seconds.as_str(),
+            "--header",
+            "content-type: application/json",
+            "--data-binary",
+            "@-",
+            endpoint.as_str(),
+        ])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map_err(|error| format!("start local task model: {error}"))?;
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin
+            .write_all(body.as_bytes())
+            .await
+            .map_err(|error| format!("write local task model request: {error}"))?;
+    }
+    let output = child
+        .wait_with_output()
+        .await
+        .map_err(|error| format!("wait for local task model: {error}"))?;
+    if !output.status.success() {
+        return Ok(None);
+    }
+    let outer: serde_json::Value = match serde_json::from_slice(&output.stdout) {
+        Ok(value) => value,
+        Err(_) => return Ok(None),
+    };
+    let generated = match outer.get("response").and_then(|value| value.as_str()) {
+        Some(value) => value.trim(),
+        None => return Ok(None),
+    };
+    if std::env::var("TERMFLEET_CONTEXT_TITLE_TRACE").as_deref() == Ok("1") {
+        eprintln!(
+            "TERMFLEET_CONTEXT_TITLE_TRACE context={} generated={}",
+            bounded_context, generated
+        );
+    }
+    let json = match (generated.find('{'), generated.rfind('}')) {
+        (Some(start), Some(end)) if end > start => &generated[start..=end],
+        _ => generated,
+    };
+    let parsed: serde_json::Value = match serde_json::from_str(json) {
+        Ok(value) => value,
+        Err(_) => return Ok(None),
+    };
+    Ok(parsed
+        .get("title")
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string))
+}
+
 /// Resolve + validate an agent-status sidecar file inside the fixed status directory.
 /// The frontend computes the file NAME (fnv-keyed; see `src/lib/agentStatusSidecar.ts`,
 /// parity with `scripts/lib/agent-status-paths.mjs`); Rust owns the directory so a
@@ -1523,11 +1671,7 @@ pub fn fs_read_file(path: String) -> Result<String, String> {
 
 #[tauri::command]
 pub fn fs_open_external(path: String) -> Result<(), String> {
-    let launchers: [(&str, &[&str]); 3] = [
-        ("kate", &[]),
-        ("xdg-open", &[]),
-        ("gio", &["open"]),
-    ];
+    let launchers: [(&str, &[&str]); 3] = [("kate", &[]), ("xdg-open", &[]), ("gio", &["open"])];
 
     for (command, args) in launchers {
         let mut child = Command::new(command);
@@ -1542,8 +1686,12 @@ pub fn fs_open_external(path: String) -> Result<(), String> {
         }
     }
 
-    Err("Could not find Kate or another desktop opener (tried kate, xdg-open, and gio).".to_string())
+    Err(
+        "Could not find Kate or another desktop opener (tried kate, xdg-open, and gio)."
+            .to_string(),
+    )
 }
+
 #[tauri::command]
 pub fn fs_write_file(path: String, contents: String) -> Result<(), String> {
     fs::write(path, contents).map_err(|error| error.to_string())
@@ -1792,6 +1940,7 @@ mod tests {
 
 /// Rollouts reach 11.7 MB; only the tail carries current state.
 pub const TRANSCRIPT_TAIL_BYTES: usize = 262_144;
+pub const TRANSCRIPT_CONTEXT_BYTES: usize = 262_144;
 
 fn valid_session_id(session_id: &str) -> bool {
     !session_id.is_empty()
@@ -1816,6 +1965,62 @@ fn read_tail(path: &std::path::Path, max_bytes: usize) -> Result<String, String>
     file.read_exact(&mut buf)
         .map_err(|e| format!("read {}: {e}", path.display()))?;
     Ok(String::from_utf8_lossy(&buf).into_owned())
+}
+
+fn is_relevant_transcript_record(line: &str) -> bool {
+    let Ok(record) = serde_json::from_str::<serde_json::Value>(line) else {
+        return false;
+    };
+    if record.get("isSidechain").and_then(|value| value.as_bool()) == Some(true) {
+        return false;
+    }
+    if record.get("type").and_then(|value| value.as_str()) == Some("user") {
+        let content = record
+            .get("message")
+            .and_then(|message| message.get("content"));
+        return content.is_some_and(|content| {
+            content.is_string()
+                || content.as_array().is_some_and(|blocks| {
+                    blocks.iter().any(|block| {
+                        block.get("type").and_then(|value| value.as_str()) == Some("text")
+                    })
+                })
+        });
+    }
+    record
+        .get("payload")
+        .and_then(|payload| payload.get("type"))
+        .and_then(|value| value.as_str())
+        == Some("user_message")
+}
+
+fn read_relevant_transcript_records(
+    path: &std::path::Path,
+    max_bytes: usize,
+) -> Result<String, String> {
+    use std::collections::VecDeque;
+    use std::io::BufRead;
+
+    let file = std::fs::File::open(path).map_err(|e| format!("open {}: {e}", path.display()))?;
+    let mut records: VecDeque<String> = VecDeque::new();
+    let mut bytes = 0usize;
+    for line in std::io::BufReader::new(file).lines() {
+        let line = line.map_err(|e| format!("read {}: {e}", path.display()))?;
+        let line_bytes = line.len() + 1;
+        if line_bytes > max_bytes || !is_relevant_transcript_record(&line) {
+            continue;
+        }
+        while bytes + line_bytes > max_bytes {
+            if let Some(removed) = records.pop_front() {
+                bytes -= removed.len() + 1;
+            } else {
+                break;
+            }
+        }
+        bytes += line_bytes;
+        records.push_back(line);
+    }
+    Ok(records.into_iter().collect::<Vec<_>>().join("\n"))
 }
 
 fn find_file_named(
@@ -1894,11 +2099,28 @@ pub fn session_transcript_read(
     }
 }
 
+/// Bounded request history from across the record. This recovers concrete goals that
+/// verbose tool output pushed out of both the opening and tail windows.
+#[tauri::command]
+pub fn session_transcript_context_read(
+    provider: String,
+    session_id: String,
+) -> Result<Option<String>, String> {
+    match session_transcript_path(&provider, &session_id)? {
+        Some(path) => Ok(Some(read_relevant_transcript_records(
+            &path,
+            TRANSCRIPT_CONTEXT_BYTES,
+        )?)),
+        None => Ok(None),
+    }
+}
+
 /// The operator's opening request lives at the START of the record, so the tail can never
 /// carry it — the tail holds the latest prompt ("/done", "go"). Without this the Task row
 /// had to fall back to the agent's own session title, which is sometimes a slug
 /// ("exercise-demo-gif-pipeline") that says nothing a week later.
 pub const TRANSCRIPT_HEAD_BYTES: usize = 65_536;
+pub const TRANSCRIPT_OPENING_SCAN_BYTES: usize = 4 * 1024 * 1024;
 
 fn read_head(path: &std::path::Path, max_bytes: usize) -> Result<String, String> {
     use std::io::Read;
@@ -1912,6 +2134,66 @@ fn read_head(path: &std::path::Path, max_bytes: usize) -> Result<String, String>
     Ok(String::from_utf8_lossy(&buf).into_owned())
 }
 
+fn is_opening_record(record: &serde_json::Value, provider: &str) -> bool {
+    match provider {
+        "claude" => {
+            record.get("type").and_then(serde_json::Value::as_str) == Some("user")
+                && record
+                    .get("isSidechain")
+                    .and_then(serde_json::Value::as_bool)
+                    != Some(true)
+        }
+        "codex" => {
+            let payload = match record.get("payload") {
+                Some(value) => value,
+                None => return false,
+            };
+            payload.get("type").and_then(serde_json::Value::as_str) == Some("user_message")
+                || (record.get("type").and_then(serde_json::Value::as_str) == Some("response_item")
+                    && payload.get("type").and_then(serde_json::Value::as_str) == Some("message")
+                    && payload.get("role").and_then(serde_json::Value::as_str) == Some("user"))
+        }
+        _ => false,
+    }
+}
+
+fn read_opening_record(
+    path: &std::path::Path,
+    provider: &str,
+    max_bytes: usize,
+) -> Result<String, String> {
+    use std::io::BufRead;
+
+    let file = std::fs::File::open(path).map_err(|e| format!("open {}: {e}", path.display()))?;
+    let mut reader = std::io::BufReader::new(file);
+    let mut line = String::new();
+    let mut scanned = 0usize;
+    let mut records = Vec::new();
+    while scanned < max_bytes {
+        line.clear();
+        let read = reader
+            .read_line(&mut line)
+            .map_err(|e| format!("read {}: {e}", path.display()))?;
+        if read == 0 {
+            break;
+        }
+        scanned = scanned.saturating_add(read);
+        if let Ok(record) = serde_json::from_str::<serde_json::Value>(&line) {
+            if is_opening_record(&record, provider) {
+                records.push(line.trim_end_matches(['\r', '\n']).to_string());
+                if records.len() >= 8 {
+                    break;
+                }
+            }
+        }
+    }
+    if records.is_empty() {
+        read_head(path, TRANSCRIPT_HEAD_BYTES)
+    } else {
+        Ok(records.join("\n"))
+    }
+}
+
 /// Head of a vendor session record — the opening request. Missing file → `Ok(None)`.
 /// Same allowlisted directories and the same session-id validation as the tail reader.
 #[tauri::command]
@@ -1920,7 +2202,11 @@ pub fn session_transcript_head_read(
     session_id: String,
 ) -> Result<Option<String>, String> {
     match session_transcript_path(&provider, &session_id)? {
-        Some(path) => Ok(Some(read_head(&path, TRANSCRIPT_HEAD_BYTES)?)),
+        Some(path) => Ok(Some(read_opening_record(
+            &path,
+            &provider,
+            TRANSCRIPT_OPENING_SCAN_BYTES,
+        )?)),
         None => Ok(None),
     }
 }
@@ -1969,12 +2255,10 @@ mod tc060_tests {
         let home = std::path::Path::new("/nonexistent-home");
         assert!(session_transcript_path_in(home, "claude", "../../etc/passwd").is_err());
         assert!(session_transcript_path_in(home, "claude", "").is_err());
-        assert!(session_transcript_path_in(
-            home,
-            "nope",
-            "abcdef12-1111-2222-3333-444444444444"
-        )
-        .is_err());
+        assert!(
+            session_transcript_path_in(home, "nope", "abcdef12-1111-2222-3333-444444444444")
+                .is_err()
+        );
     }
 
     #[test]
@@ -2017,6 +2301,44 @@ mod tc060_tests {
     }
 
     #[test]
+    fn finds_the_first_codex_user_message_after_oversized_startup_context() {
+        let dir = std::env::temp_dir().join("tf-tc060-large-codex-opening");
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("rollout.jsonl");
+        let oversized = serde_json::json!({
+            "type": "response_item",
+            "payload": {
+                "type": "message",
+                "role": "developer",
+                "content": [{"type": "input_text", "text": "x".repeat(TRANSCRIPT_HEAD_BYTES * 2)}]
+            }
+        });
+        let opening = r#"{"type":"event_msg","payload":{"type":"user_message","message":"Continue the Bina paid-reservation work with refunds"}}"#;
+        std::fs::write(&file, format!("{oversized}\n{opening}\n")).unwrap();
+
+        let head = read_opening_record(&file, "codex", TRANSCRIPT_OPENING_SCAN_BYTES).unwrap();
+
+        assert_eq!(head, opening);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn keeps_scanning_after_a_codex_user_role_instruction_wrapper() {
+        let dir = std::env::temp_dir().join("tf-tc060-codex-wrapper");
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("rollout.jsonl");
+        let wrapper = r##"{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"# AGENTS.md instructions for the project"}]}}"##;
+        let opening = r#"{"type":"event_msg","payload":{"type":"user_message","message":"Continue the Bina paid-reservation work with refunds"}}"#;
+        std::fs::write(&file, format!("{wrapper}\n{opening}\n")).unwrap();
+
+        let head = read_opening_record(&file, "codex", TRANSCRIPT_OPENING_SCAN_BYTES).unwrap();
+
+        assert!(head.contains(wrapper));
+        assert!(head.contains(opening));
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
     fn tails_only_the_last_bytes_of_a_large_file() {
         let dir = std::env::temp_dir().join("tf-tc060-tail");
         std::fs::create_dir_all(&dir).unwrap();
@@ -2024,6 +2346,30 @@ mod tc060_tests {
         std::fs::write(&file, "x".repeat(TRANSCRIPT_TAIL_BYTES + 5000)).unwrap();
         let tail = read_tail(&file, TRANSCRIPT_TAIL_BYTES).unwrap();
         assert_eq!(tail.len(), TRANSCRIPT_TAIL_BYTES);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn recovers_relevant_user_records_from_the_transcript_middle() {
+        let dir = std::env::temp_dir().join("tf-tc060-context");
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("big.jsonl");
+        let concrete =
+            r#"{"type":"user","message":{"content":"redesign the arcade game and its controls"}}"#;
+        let body = [
+            r#"{"type":"user","message":{"content":"lets continue from where we left off"}}"#,
+            &"x".repeat(TRANSCRIPT_TAIL_BYTES),
+            concrete,
+            &"y".repeat(TRANSCRIPT_TAIL_BYTES),
+            r#"{"type":"user","message":{"content":"lets start on the first task"}}"#,
+        ]
+        .join("\n");
+        std::fs::write(&file, body).unwrap();
+
+        let context = read_relevant_transcript_records(&file, TRANSCRIPT_CONTEXT_BYTES).unwrap();
+
+        assert!(context.contains(concrete));
+        assert!(context.len() <= TRANSCRIPT_CONTEXT_BYTES);
         std::fs::remove_dir_all(&dir).ok();
     }
 

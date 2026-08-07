@@ -1,4 +1,5 @@
 import type { WorkstreamActivityKind, WorkstreamActivitySource, WorkstreamMetadata } from "./types";
+import { truncateAtWordBoundary } from "./textTruncation";
 
 const ANSI_PATTERN = /\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07]*(?:\x07|\x1b\\)|\x1b[@-Z\\-_]/g;
 const STRUCTURED_MARKER_PATTERN = /\[\[TERMFLEET_AGENT_EVENT\s+{.*?}\]\]/g;
@@ -29,7 +30,7 @@ export function normalizeActivityText(value: string, maxLength = 140) {
     .trim();
 
   if (!normalized) return undefined;
-  return normalized.length > maxLength ? `${normalized.slice(0, maxLength - 3)}...` : normalized;
+  return truncateAtWordBoundary(normalized, maxLength);
 }
 
 function isPromptOnlyLine(line: string) {

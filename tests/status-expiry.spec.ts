@@ -54,6 +54,21 @@ test("confirmed sidecar expiry clears false running work", () => {
   expect(projection?.taskLineup).toHaveLength(1);
 });
 
+test("confirmed transcript provider survives sidecar expiry", () => {
+  const projection = projectStatusPollResult(
+    terminal({ agentProvider: undefined }),
+    {
+      ...fallback,
+      sidecarState: "stale",
+      summary: { ...fallback.summary, provider: "claude" },
+    },
+    2,
+  );
+
+  expect(projection?.agentProvider).toBe("claude");
+  expect(projection?.statusSummary?.provider).toBe("claude");
+});
+
 test("sidecar expiry preserves completed command identity", () => {
   const projection = projectStatusPollResult(
     terminal(),

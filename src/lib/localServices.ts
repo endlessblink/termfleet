@@ -27,7 +27,7 @@ function trimServiceLogs(value?: string) {
 }
 
 function normalizeLocalUrl(value?: string) {
-  if (!value?.trim()) return null;
+  if (typeof value !== "string" || !value.trim()) return null;
   try {
     const url = new URL(value.replace("0.0.0.0", "127.0.0.1"));
     if (!["localhost", "127.0.0.1", "::1", "[::1]"].includes(url.hostname)) return null;

@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { readFileSync } from "node:fs";
 import {
   MAX_STATUS_POLL_TARGETS_PER_TICK,
   selectStatusPollTargets,
@@ -8,6 +9,11 @@ import {
   statusPollProjectionChanged,
 } from "../src/lib/statusPollProjection";
 import type { Tab, TerminalState } from "../src/lib/types";
+
+const STATUS_POLL_SOURCE = readFileSync(
+  new URL("../src/lib/statusPollLoop.ts", import.meta.url),
+  "utf8",
+);
 
 function terminal(
   id: string,
@@ -88,6 +94,11 @@ test("status poll targets every pane so background badges update without a click
   expect(targets).toHaveLength(14);
 });
 
+test("background status polling does not probe provider transcripts", () => {
+  expect(STATUS_POLL_SOURCE).toContain("transcriptReader: null");
+  expect(STATUS_POLL_SOURCE).toContain("contextTaskSummarizer: null");
+});
+
 test("status poll targets are capped per tick", () => {
   const now = 1_700_000_000_000;
   const busyTabs = Array.from({ length: 30 }, (_, index) =>
@@ -99,6 +110,45 @@ test("status poll targets are capped per tick", () => {
   expect(selectStatusPollTargets(busyTabs, null, now)).toHaveLength(
     MAX_STATUS_POLL_TARGETS_PER_TICK,
   );
+});
+
+test("the cap rotates toward panes that have waited longest", () => {
+  const now = 1_700_000_000_000;
+  const busyTabs = Array.from({ length: 30 }, (_, index) =>
+    tab(`recent-${index}`, [terminal(`recent-${index}`)]),
+  );
+
+  const targets = selectStatusPollTargets(
+    busyTabs,
+    null,
+    now,
+    ({ terminal: candidate }) =>
+      Number(candidate.id.replace("recent-", "")) < 24 ? now : 0,
+  );
+
+  expect(targets.slice(0, 6).map(({ terminal: candidate }) => candidate.id)).toEqual(
+    Array.from({ length: 6 }, (_, index) => `recent-${index + 24}`),
+  );
+});
+
+test("the cap cannot starve a quiet pane behind recently polled busy panes", () => {
+  const now = 1_700_000_000_000;
+  const recentlyPolledBusyTabs = Array.from({ length: 24 }, (_, index) =>
+    tab(`busy-${index}`, [
+      terminal(`busy-${index}`, { activityUpdatedAt: now - index }),
+    ]),
+  );
+  const quietTab = tab("quiet", [terminal("quiet")]);
+
+  const targets = selectStatusPollTargets(
+    [...recentlyPolledBusyTabs, quietTab],
+    null,
+    now,
+    ({ terminal: candidate }) => candidate.id === "quiet" ? 0 : now,
+  );
+
+  expect(targets.map(({ terminal: candidate }) => candidate.id)).toContain("quiet");
+  expect(targets).toHaveLength(MAX_STATUS_POLL_TARGETS_PER_TICK);
 });
 
 test("an unchanged status poll does not rewrite a live map terminal", () => {

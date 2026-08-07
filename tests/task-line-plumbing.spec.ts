@@ -26,6 +26,7 @@ import {
 import {
   parseClaudeOpeningRequest,
   parseClaudeTranscript,
+  parseCodexOpeningRequest,
 } from "../src/lib/sessionTranscript";
 import type { AgentStatusSummaryInput } from "../src/lib/agentStatusSummary";
 import type { TerminalState } from "../src/lib/types";
@@ -72,8 +73,13 @@ test("the central poll loop applies the line for every pane, trusted or not", ()
   );
   // This loop is the ONLY one that visits panes whose runtime is off screen.
   expect(source).toContain("preferPaneTaskLine");
-  const untrusted = source.slice(source.indexOf("if (!trusted)"));
+  const untrusted = source.slice(
+    source.indexOf("if (!trusted)"),
+    source.indexOf("// Never clobber a live declared task list"),
+  );
   expect(untrusted).toContain("taskLine");
+  expect(untrusted).toContain("const inferredProvider = stableAgentProvider");
+  expect(untrusted).toContain("agentProvider: inferredProvider");
 });
 
 test("the persisted workspace snapshot keeps the last known line", () => {
@@ -85,6 +91,9 @@ test("the persisted workspace snapshot keeps the last known line", () => {
     source.indexOf("function persistedTerminalSnapshot"),
   );
   expect(snapshot.slice(0, 1200)).toContain("taskLine: terminal.taskLine");
+  expect(snapshot.slice(0, 1200)).toContain(
+    "agentProvider: terminal.agentProvider",
+  );
 });
 
 test("every header route reads both places the line is stored", () => {
@@ -98,6 +107,21 @@ test("every header route reads both places the line is stored", () => {
       /[\w?.]*\.taskLine \?\? [\w?.]*\.taskLine/,
     );
   }
+});
+
+test("the split header shows the durable task instead of bare Working state", () => {
+  const source = readFileSync(
+    path.join(REPO, "src", "components", "SplitPane.tsx"),
+    "utf8",
+  );
+  const header = source.slice(
+    source.indexOf("const stabilizedHeader = stableHeader("),
+    source.indexOf("const headerNow = stabilizedHeader.now"),
+  );
+
+  expect(header).toContain("paneTaskLine?.text");
+  expect(header).toContain("shellHeader?.goalLabel");
+  expect(header).not.toContain("shellHeader?.currentActivity) ??");
 });
 
 function summaryInput(): AgentStatusSummaryInput {
@@ -152,6 +176,444 @@ test("the line survives an endpoint failure", async () => {
   });
   expect(result.error).toContain("connection refused");
   expect(result.taskLine?.text).toBe("Fix course page sections not displaying");
+});
+
+test("an idle pane keeps the model-authored purpose instead of promoting the latest rationale", async () => {
+  const rationale =
+    "because we dont have all the content in local dev we need to push this for proper verification by me";
+  const result = await summarizeAgentStatus(summaryInput(), {
+    sidecarReader: async () =>
+      JSON.stringify({
+        cwd: "/repo/bina-meatzevet-courses",
+        sessionId: "019fb770-2450-7603-8d86-d62c3e3e5655",
+        updatedAt: Date.now() - 60 * 60 * 1000,
+        turn: "idle",
+        userTask: rationale,
+        todos: [
+          { content: "Inspecting mobile event feed behavior", status: "completed" },
+          { content: "Redesigning the reusable mobile event feed", status: "completed" },
+          { content: "Waiting for remote checks and content-backed mobile review", status: "in_progress" },
+        ],
+      }),
+    transcriptReader: async (_provider, _sessionId, part) =>
+      part === "tail"
+        ? JSON.stringify({
+            type: "event_msg",
+            payload: { type: "user_message", message: rationale },
+          })
+        : null,
+    endpoint: "",
+  });
+
+  expect(result.taskLine).toMatchObject({
+    source: "plan-purpose",
+    text: "Redesigning the reusable mobile event feed",
+  });
+});
+
+test("a pane with a thin follow-up retains its model-authored purpose", async () => {
+  const result = await summarizeAgentStatus(summaryInput(), {
+    sidecarReader: async () =>
+      JSON.stringify({
+        cwd: "/repo/flow-state",
+        updatedAt: Date.now() - 60 * 60 * 1000,
+        turn: "idle",
+        userTask: "go",
+        todos: [
+          { content: "Writing failing tests for inherited task dates", status: "completed" },
+          { content: "Updating grouped task creation to keep dates", status: "completed" },
+          { content: "Running tests and desktop verification", status: "in_progress" },
+        ],
+      }),
+    endpoint: "",
+  });
+
+  expect(result.taskLine).toMatchObject({
+    source: "plan-purpose",
+    text: "Updating grouped task creation to keep dates",
+  });
+});
+
+test("the Bina reservation pane gets one whole-conversation task title", async () => {
+  const originalRequest =
+    "Continue the Bina paid-reservation E2E work. First preserve the passing reservation regression. Add isolated mock or sandbox coverage for deposit checkout, Cardcom webhook settlement, balance payment, cutoff behavior, Bina-cancelled full refunds, and queued-refund execution. Never claim real money movement unless a sandbox provider confirms it.";
+  let receivedContext:
+    | {
+        workspace?: string;
+        openingRequest?: string;
+        plan: string[];
+      }
+    | undefined;
+  const result = await summarizeAgentStatus(summaryInput(), {
+    sidecarReader: async () =>
+      JSON.stringify({
+        cwd: "/repo/bina-meatzevet-courses",
+        sessionId: "019fc26d-587e-7643-b9f2-f45b9109e5a2",
+        updatedAt: Date.now(),
+        turn: "idle",
+        userTask: "ran it",
+        todos: [
+          { content: "Reading the rules and reservation handoff", status: "completed" },
+          { content: "Running the required reservation regression", status: "completed" },
+          { content: "Adding isolated sandbox reservation coverage", status: "completed" },
+          { content: "Running focused checks and documenting boundaries", status: "completed" },
+        ],
+      }),
+    transcriptReader: async (_provider, _sessionId, part) => {
+      if (part === "head") {
+        return JSON.stringify({
+          type: "user",
+          message: { content: originalRequest },
+        });
+      }
+      return JSON.stringify({
+        type: "assistant",
+        message: { content: "The isolated reservation checks are complete." },
+      });
+    },
+    contextTaskSummarizer: async (context) => {
+      receivedContext = context;
+      return "Making Bina course reservations and refunds safe end to end";
+    },
+    endpoint: "",
+  });
+
+  expect(receivedContext).toMatchObject({
+    workspace: "bina-meatzevet-courses",
+    openingRequest: originalRequest,
+    plan: [
+      "Reading the rules and reservation handoff",
+      "Running the required reservation regression",
+      "Adding isolated sandbox reservation coverage",
+      "Running focused checks and documenting boundaries",
+    ],
+  });
+  expect(result.taskLine).toMatchObject({
+    source: "context-summary",
+    text: "Making Bina course reservations and refunds safe end to end",
+  });
+});
+
+test("a whole-conversation title is cached across changing activity", async () => {
+  let calls = 0;
+  let narration = "Reading the grouped task behavior";
+  const options = {
+    sidecarReader: async () =>
+      JSON.stringify({
+        cwd: "/repo/flow-state",
+        sessionId: "019fc26d-587e-7643-b9f2-f45b9109e5b",
+        updatedAt: Date.now(),
+        narration,
+        todos: [
+          { content: "Keeping grouped task creation dates", status: "in_progress" },
+        ],
+      }),
+    transcriptReader: async (_provider: "claude" | "codex", _sessionId: string, part?: "head" | "tail" | "context") =>
+      part === "head"
+        ? JSON.stringify({
+            type: "user",
+            message: { content: "Keep grouped Flow State task dates correct when creating tasks" },
+          })
+        : JSON.stringify({ type: "assistant", message: { content: narration } }),
+    contextTaskSummarizer: async () => {
+      calls += 1;
+      return "Keeping grouped Flow State task dates correct";
+    },
+    endpoint: "",
+  };
+
+  await summarizeAgentStatus(summaryInput(), options);
+  narration = "Checking the finished grouped task behavior";
+  const second = await summarizeAgentStatus(summaryInput(), options);
+
+  expect(calls).toBe(1);
+  expect(second.taskLine).toMatchObject({
+    source: "context-summary",
+    text: "Keeping grouped Flow State task dates correct",
+  });
+});
+
+test("a local model title with joined words is normalized instead of discarded", async () => {
+  const result = await summarizeAgentStatus(summaryInput(), {
+    sidecarReader: async () =>
+      JSON.stringify({
+        cwd: "/repo/flow-state",
+        sessionId: "019fc26d-587e-7643-b9f2-f45b9109e5e",
+        updatedAt: Date.now(),
+        todos: [
+          { content: "Keeping Calendar Inbox tasks visible", status: "completed" },
+        ],
+      }),
+    transcriptReader: async (provider, _sessionId, part) =>
+      provider === "codex" && part === "head"
+        ? JSON.stringify({
+            type: "response_item",
+            payload: {
+              type: "message",
+              role: "user",
+              content: [
+                {
+                  type: "input_text",
+                  text: "Keep Flow State Calendar Inbox tasks visible until their due date",
+                },
+              ],
+            },
+          })
+        : provider === "codex"
+          ? JSON.stringify({ type: "event_msg", payload: { type: "task_complete" } })
+          : null,
+    contextTaskSummarizer: async () => "KeepingFlowStateCalendarInboxTasksVisible",
+    endpoint: "",
+  });
+
+  expect(result.taskLine).toMatchObject({
+    source: "context-summary",
+    text: "Keeping Flow State Calendar Inbox Tasks Visible",
+  });
+});
+
+test("a model title may use ordinary derived words from the real request", async () => {
+  const result = await summarizeAgentStatus(summaryInput(), {
+    sidecarReader: async () =>
+      JSON.stringify({
+        cwd: "/repo/rough-cut-mvp",
+        sessionId: "019fc26d-587e-7643-b9f2-f45b9109e5f",
+        updatedAt: Date.now(),
+        mainTask:
+          "why cant we edit it e2e if its code and open source? cant we just map it e2e?",
+        todos: [],
+      }),
+    transcriptReader: async (provider, _sessionId, part) =>
+      provider === "codex" && part === "head"
+        ? JSON.stringify({
+            type: "response_item",
+            payload: {
+              type: "message",
+              role: "user",
+              content: [
+                {
+                  type: "input_text",
+                  text:
+                    "is this even possible in regards to freecut? is the fact that freecut is a library - makes it hard to edit and customize?",
+                },
+              ],
+            },
+          })
+        : provider === "codex"
+          ? JSON.stringify({ type: "event_msg", payload: { type: "task_complete" } })
+          : null,
+    contextTaskSummarizer: async () =>
+      "Keeping RoughCutMVP Interface Editable And Customizable",
+    endpoint: "",
+  });
+
+  expect(result.taskLine).toMatchObject({
+    source: "context-summary",
+    text: "Keeping Rough Cut MVP Interface Editable And Customizable",
+  });
+});
+
+test("the model receives the agent's processed outcome when the user request was an image", async () => {
+  let receivedContext:
+    | { recentActivity?: string; conversationSummary?: string }
+    | undefined;
+  const agentOutcome =
+    "Catalog completion no longer fails during a brief refresh race.";
+  await summarizeAgentStatus(summaryInput(), {
+    sidecarReader: async () =>
+      JSON.stringify({
+        cwd: "/repo/flow-state",
+        sessionId: "019fc26d-587e-7643-b9f2-f45b9109e5f",
+        updatedAt: Date.now(),
+        narration: "Checking the shipped fix and final worktree",
+        todos: [
+          { content: "Checking the shipped fix and final worktree", status: "completed" },
+        ],
+      }),
+    transcriptReader: async (provider, _sessionId, part) =>
+      provider === "codex" && part !== "head"
+        ? JSON.stringify({
+            type: "event_msg",
+            payload: { type: "agent_message", message: agentOutcome },
+          })
+        : null,
+    contextTaskSummarizer: async (context) => {
+      receivedContext = context;
+      return "Keeping Flow State Catalog completion reliable";
+    },
+    endpoint: "",
+  });
+
+  expect(receivedContext?.recentActivity).toBe(agentOutcome);
+  expect(receivedContext?.conversationSummary).toBe(agentOutcome);
+});
+
+test("a product-grounded title with an invented subject is rewritten", async () => {
+  const drafts: Array<string | undefined> = [];
+  const result = await summarizeAgentStatus(summaryInput(), {
+    sidecarReader: async () =>
+      JSON.stringify({
+        cwd: "/repo/flow-state",
+        sessionId: "019fc26d-587e-7643-b9f2-f45b9109e60",
+        updatedAt: Date.now(),
+        todos: [{ content: "Checking the shipped fix", status: "completed" }],
+      }),
+    transcriptReader: async (provider, _sessionId, part) =>
+      provider === "codex" && part !== "head"
+        ? JSON.stringify({
+            type: "event_msg",
+            payload: {
+              type: "agent_message",
+              message: "Catalog completion now survives a brief refresh race.",
+            },
+          })
+        : null,
+    contextTaskSummarizer: async (_context, rejectedTitle) => {
+      drafts.push(rejectedTitle);
+      return rejectedTitle
+        ? "Keeping Flow State catalog completion reliable"
+        : "Keeping Flow State transaction clear and reliable";
+    },
+    endpoint: "",
+  });
+
+  expect(drafts).toEqual([
+    undefined,
+    "Keeping Flow State transaction clear and reliable",
+  ]);
+  expect(result.taskLine).toMatchObject({
+    source: "context-summary",
+    text: "Keeping Flow State catalog completion reliable",
+  });
+});
+
+test("an overclaiming draft is corrected with the whole Bina context", async () => {
+  const drafts: Array<string | undefined> = [];
+  const result = await summarizeAgentStatus(summaryInput(), {
+    sidecarReader: async () =>
+      JSON.stringify({
+        cwd: "/repo/bina-meatzevet-courses",
+        sessionId: "019fc26d-587e-7643-b9f2-f45b9109e5d",
+        updatedAt: Date.now(),
+        todos: [
+          { content: "Verifying deposit and balance settlement", status: "pending" },
+          { content: "Verifying webhook and refund execution", status: "pending" },
+        ],
+      }),
+    transcriptReader: async (_provider, _sessionId, part) =>
+      part === "head"
+        ? JSON.stringify({
+            type: "user",
+            message: {
+              content:
+                "Make Bina paid reservations and refunds safe without claiming real money movement unless Cardcom sandbox confirms it",
+            },
+          })
+        : JSON.stringify({ type: "assistant", message: { content: "Checking boundaries" } }),
+    contextTaskSummarizer: async (_context, rejectedTitle) => {
+      drafts.push(rejectedTitle);
+      return rejectedTitle
+        ? "Ensuring Cardcom sandbox tests cover the payment flow"
+        : "Verifying real transactions and production readiness for Cardcom integration";
+    },
+    endpoint: "",
+  });
+
+  expect(drafts).toEqual([
+    undefined,
+    "Verifying real transactions and production readiness for Cardcom integration",
+  ]);
+  expect(result.taskLine).toMatchObject({
+    source: "context-summary",
+    text: "Making Bina reservations and refunds safe end to end",
+  });
+});
+
+test("implementation-heavy model output falls back to the proven ladder", async () => {
+  const result = await summarizeAgentStatus(summaryInput(), {
+    sidecarReader: async () =>
+      JSON.stringify({
+        cwd: "/repo/bina-meatzevet-courses",
+        sessionId: "019fc26d-587e-7643-b9f2-f45b9109e5c",
+        updatedAt: Date.now(),
+        todos: [
+          { content: "Adding isolated sandbox reservation coverage", status: "completed" },
+        ],
+      }),
+    transcriptReader: async (_provider, _sessionId, part) =>
+      part === "head"
+        ? JSON.stringify({
+            type: "user",
+            message: { content: "Make Bina reservations and refunds safe for course customers" },
+          })
+        : JSON.stringify({ type: "assistant", message: { content: "Done" } }),
+    contextTaskSummarizer: async () =>
+      "Adding isolated sandbox reservation coverage",
+    endpoint: "",
+  });
+
+  expect(result.taskLine?.source).not.toBe("context-summary");
+});
+
+test("a restored pane recovers its concrete goal from the transcript middle", async () => {
+  const concrete =
+    "add the game lane and postpone the global leaderboard for later down the line. regarding the gmae it needs massive redesign because it doesnt look good or plays well. do we need to find new skills for this?";
+  const requestedParts: string[] = [];
+  const reader: SessionTranscriptReader = async (_provider, _sessionId, part) => {
+    requestedParts.push(part ?? "tail");
+    if ((part as string) === "context") {
+      return [
+        JSON.stringify({
+          type: "user",
+          message: { content: "lets continue from where we left off" },
+        }),
+        JSON.stringify({
+          type: "user",
+          message: { content: concrete },
+        }),
+        JSON.stringify({
+          type: "user",
+          message: { content: "lets stat on the first task" },
+        }),
+      ].join("\n");
+    }
+    if (part === "head") {
+      return JSON.stringify({
+        type: "user",
+        message: { content: "lets continue from where we left off" },
+      });
+    }
+    return [
+      JSON.stringify({
+        type: "ai-title",
+        aiTitle: "Continue previous coding session",
+      }),
+      JSON.stringify({
+        type: "user",
+        message: { content: "lets stat on the first task" },
+      }),
+    ].join("\n");
+  };
+  const result = await summarizeAgentStatus(summaryInput(), {
+    sidecarReader: async () =>
+      JSON.stringify({
+        cwd: "/repo",
+        sessionId: "5d08990f-f461-4a4b-84ce-7626b3614267",
+        updatedAt: Date.now(),
+        todos: [],
+        mainTask: "lets continue from where we left off",
+        mainTaskSource: "opening-request",
+      }),
+    transcriptReader: reader,
+    endpoint: "",
+  });
+
+  expect(requestedParts).toContain("context");
+  expect(result.taskLine).toMatchObject({
+    source: "operator-request",
+    text: "add the game lane and postpone the global leaderboard for later down the line. regarding the gmae it needs massive redesign because it doesnt look…",
+  });
+  expect(result.summary.provider).toBe("claude");
 });
 
 test("a pending question becomes the line, and stops being it once answered", () => {
@@ -339,6 +801,51 @@ test("the clearest session title wins, not the newest", () => {
   expect(facts.title).toBe("Find free exercise visualization tool for fitness bot");
 });
 
+test("a completion report becomes a clear purpose instead of the task label", () => {
+  const line = resolvePaneTaskLine({
+    now: 1,
+    facts: {
+      title:
+        "The redesign is committed on a clean branch and pull request 462 is open; local unit, type, and build checks passed",
+      openingRequest: "Make the Bina course redesign ready for review",
+    },
+  });
+
+  expect(line).toMatchObject({
+    source: "opening-request",
+    text: "Make the Bina course redesign ready for review",
+  });
+});
+
+test("a completion report still has a clear fallback when no request was captured", () => {
+  const line = resolvePaneTaskLine({
+    now: 1,
+    facts: {
+      title:
+        "The redesign is committed on a clean branch and pull request 462 is open; local unit, type, and build checks passed",
+    },
+  });
+
+  expect(line).toMatchObject({
+    source: "session-title",
+    text: "Reviewing the redesign pull request",
+  });
+});
+
+test("the original user goal outranks a later generated progress report", () => {
+  const opening = "Fix the editor host-display failure and verify its first screen";
+  const line = resolvePaneTaskLine({
+    now: 1,
+    facts: {
+      openingRequest: opening,
+      title:
+        "The existing smoke reproduced an Electron host-display failure; the editor fix is now in place",
+    },
+  });
+
+  expect(line).toMatchObject({ source: "opening-request", text: opening });
+});
+
 test("the opening ask is the first REAL request, not plumbing", () => {
   const head = [
     JSON.stringify({ type: "user", message: { content: "/dropoff" } }),
@@ -363,6 +870,79 @@ test("the opening ask is the first REAL request, not plumbing", () => {
   expect(parseClaudeOpeningRequest(head)).toBe(
     "I need a way to censor parts of the screen while zoomed",
   );
+});
+
+test("the opening ask is recovered from a Codex response item", () => {
+  const head = JSON.stringify({
+    type: "response_item",
+    payload: {
+      type: "message",
+      role: "user",
+      content: [
+        {
+          type: "input_text",
+          text: "Continue the Bina paid-reservation work with full refunds",
+        },
+      ],
+    },
+  });
+
+  expect(parseCodexOpeningRequest(head)).toBe(
+    "Continue the Bina paid-reservation work with full refunds",
+  );
+});
+
+test("Codex startup instructions cannot replace the pane's real opening request", () => {
+  const head = [
+    JSON.stringify({
+      type: "response_item",
+      payload: {
+        type: "message",
+        role: "user",
+        content: [
+          {
+            type: "input_text",
+            text: "# AGENTS.md instructions for /repo/flow-state\n<INSTRUCTIONS>\nKeep exactly one task active.\n</INSTRUCTIONS>\n<environment_context><cwd>/repo/flow-state</cwd></environment_context>",
+          },
+        ],
+      },
+    }),
+    JSON.stringify({
+      type: "response_item",
+      payload: {
+        type: "message",
+        role: "user",
+        content: [
+          {
+            type: "input_text",
+            text: "Keep calendar inbox tasks visible until their due date",
+          },
+        ],
+      },
+    }),
+  ].join("\n");
+
+  expect(parseCodexOpeningRequest(head)).toBe(
+    "Keep calendar inbox tasks visible until their due date",
+  );
+});
+
+test("the generic local title prompt contains no pane-specific answer", () => {
+  const commands = readFileSync(
+    path.join(REPO, "src-tauri/src/commands.rs"),
+    "utf8",
+  );
+  const prompt = commands.slice(
+    commands.indexOf('let prompt = format!('),
+    commands.indexOf('let body = serde_json::json!({'),
+  );
+
+  expect(prompt).not.toMatch(/Bina|reservations and refunds|Cardcom/i);
+  expect(prompt).toContain("preserve that subject verbatim");
+  expect(commands).toContain("most specific named feature or object");
+  expect(prompt).toContain("fix, task, work, issue, change, process, or outcome");
+  expect(commands).not.toContain('"format": "json"');
+  expect(commands).toContain('"required": ["title"]');
 });
 
 test("a two-line goal is kept whole; a document is still refused", () => {
@@ -457,7 +1037,6 @@ test("a momentary line never takes the row from a known goal", () => {
   // pane, as steady as the request itself, so it may take the row.
   for (const weaker of [
     "current-tool",
-    "current-step",
     "agent-said",
     "recent-activity",
     "completed-task",
@@ -465,6 +1044,13 @@ test("a momentary line never takes the row from a known goal", () => {
     const line = { text: "Running git status", source: weaker, capturedAt: 2, expiresAt: null };
     expect(preferPaneTaskLine(goal, line), weaker).toEqual(goal);
   }
+  const structuredStep = {
+    text: "Checking the task labels",
+    source: "current-step" as const,
+    capturedAt: 2,
+    expiresAt: null,
+  };
+  expect(preferPaneTaskLine(goal, structuredStep)).toEqual(structuredStep);
 
   // A NEW request of the same rank still lands, and a declared goal outranks everything.
   const newer = { ...goal, text: "now make it export webp", capturedAt: 3 };
@@ -478,7 +1064,24 @@ test("a momentary line never takes the row from a known goal", () => {
   expect(preferPaneTaskLine(goal, declared)).toEqual(declared);
 });
 
-test("the overarching description leads over mid-conversation replies", () => {
+test("a model-authored purpose cannot be replaced by a checklist fallback", () => {
+  const contextual = {
+    text: "Keeping Rough Cut MVP editing clear and reliable",
+    source: "context-summary" as const,
+    capturedAt: 1,
+    expiresAt: null,
+  };
+  const fallback = {
+    text: "Rebuilding the corrected packaged artifact and verifying its identity",
+    source: "plan-purpose" as const,
+    capturedAt: 2,
+    expiresAt: null,
+  };
+
+  expect(preferPaneTaskLine(contextual, fallback)).toEqual(contextual);
+});
+
+test("the original user goal leads over generated descriptions and replies", () => {
   // Live rows read "add it yoyurself" and "how can I find this from the cms?" — the
   // operator's own words, but chatter to anyone who was not in the room. The vendor keeps
   // a session title that follows the work, so it answers "what is this pane about".
@@ -491,8 +1094,8 @@ test("the overarching description leads over mid-conversation replies", () => {
     },
   });
   expect(line).toMatchObject({
-    source: "session-title",
-    text: "Add missing elements to events page",
+    source: "opening-request",
+    text: "the events page is missing the ticket link",
   });
 
   // A slug title is not a description: the operator's own request keeps the row.

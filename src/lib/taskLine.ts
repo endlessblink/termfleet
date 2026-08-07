@@ -1,9 +1,16 @@
-import { looksLikeSlug, type TranscriptFacts } from "./sessionTranscript";
+import {
+  looksLikeSlug,
+  opensAsRequest,
+  refersOnlyToExistingWork,
+  startsWithRequestAction,
+  type TranscriptFacts,
+} from "./sessionTranscript";
 import {
   qualityCheckAuthoritativeTaskLabel,
   qualityCheckUserAskLabel,
   stripComposerChrome,
 } from "./terminalHeaderQuality";
+import { truncateAtWordBoundary } from "./textTruncation";
 
 // TC-060. One ladder, one owner. Every rung is either the agent's own words, the
 // operator's own words, or a fixed template over a verified fact — nothing here
@@ -13,7 +20,9 @@ import {
 
 export type TaskLineSource =
   | "declared"
+  | "context-summary"
   | "opening-request"
+  | "plan-purpose"
   | "session-title"
   | "operator-request"
   | "pending-question"
@@ -44,7 +53,7 @@ export interface TaskLineInput {
    *  as often as a goal ("The rendered warning exposed a second bug: draft existence was
    *  treated as proof of unsaved changes"), which tells the operator nothing about what
    *  the pane is for — so it is held back behind the session title and their own ask. */
-  mainGoalSource?: "plan-explanation" | "goal-task" | null;
+  mainGoalSource?: "plan-explanation" | "goal-task" | "opening-request" | null;
   /** The current in-progress step. It's a STEP toward the goal, not the goal, so
    *  it ranks BELOW the goal and the session's own plan title. */
   currentStep?: string | null;
@@ -129,6 +138,29 @@ function readsPlainly(text: string): boolean {
   );
 }
 
+// Session titles sometimes become release notes after the agent finishes a turn.
+// They are useful evidence, but they are not a durable answer to "what is this pane
+// about?" Prefer the opening request or another real goal over a sentence that only
+// reports commits, pull requests, and checks.
+function isCompletionReport(text: string): boolean {
+  return (
+    /\b(?:committed|merged|deployed|passed|failed|released)\b/i.test(text) &&
+    /\b(?:branch|pull request|checks?|tests?|build|production)\b/i.test(text)
+  );
+}
+
+function completionReportPurpose(text: string): string | null {
+  if (!isCompletionReport(text)) return null;
+  if (/\bredesign\b/i.test(text) && /\bpull request\b/i.test(text)) {
+    return "Reviewing the redesign pull request";
+  }
+  if (/\bproduction\b|\bdeployed\b/i.test(text)) {
+    return "Checking the production release";
+  }
+  if (/\bpull request\b/i.test(text)) return "Reviewing the pull request";
+  return "Reviewing the completed changes";
+}
+
 function templateTool(tool: { name: string; arg?: string }): string {
   const verb = TOOL_VERBS[tool.name] ?? `Using ${tool.name}`;
   if (tool.arg) return `${verb} ${tool.arg}`;
@@ -151,11 +183,13 @@ function templateTool(tool: { name: string; arg?: string }): string {
  */
 const RUNG_RANK: Record<TaskLineSource, number> = {
   declared: 0,
-  "session-title": 1,
-  "operator-request": 1,
-  "opening-request": 1,
+  "context-summary": 1,
+  "session-title": 2,
+  "operator-request": 2,
+  "opening-request": 2,
+  "plan-purpose": 2,
+  "current-step": 2,
   "pending-question": 3,
-  "current-step": 4,
   "agent-said": 5,
   "current-tool": 6,
   "completed-task": 7,
@@ -234,10 +268,6 @@ export function resolvePaneNowLine(
     return { text: value, source, capturedAt: now, expiresAt };
   };
 
-  // The agent's own in-progress step is the plainest statement of "right now" there is.
-  const step = take(input.currentStep, "current-step");
-  if (step) return step;
-
   const question = questionLine(facts.pendingQuestion, (candidate) => {
     const value = candidate?.trim();
     return value && readsPlainly(value) ? value : null;
@@ -249,6 +279,16 @@ export function resolvePaneNowLine(
       capturedAt: now,
       expiresAt: null,
     };
+
+  // A completed turn has no live activity. Hooks can leave the final step, report sentence,
+  // or tool call in the sidecar, but keeping any of those under "Now" makes an idle card lie.
+  const turnEnded =
+    typeof facts.lastTurnEndAt === "number" && facts.lastTurnEndAt <= now;
+  if (turnEnded) return null;
+
+  // The agent's own in-progress step is the plainest statement of "right now" there is.
+  const step = take(input.currentStep, "current-step");
+  if (step) return step;
 
   const said = take(facts.agentSaid, "agent-said");
   if (said) return said;
@@ -274,10 +314,6 @@ export function resolvePaneNowLine(
 export function resolvePaneTaskLine(input: TaskLineInput): PaneTaskLine {
   const { now } = input;
   const facts = input.facts ?? {};
-  // Kept for the NOW resolver below; the goal rungs deliberately ignore it.
-  const turnEnded =
-    typeof facts.lastTurnEndAt === "number" && facts.lastTurnEndAt <= now;
-  void turnEnded;
   let rejected: string | undefined;
 
   const consider = (candidate: string | null | undefined): string | null => {
@@ -339,14 +375,15 @@ export function resolvePaneTaskLine(input: TaskLineInput): PaneTaskLine {
     // were exactly that (a Hebrew spec sheet, `<task-notification>` blocks, subagent
     // preambles, JS snippets), and one of them rendered as the Task row on a live pane
     // (operator report 2026-07-28). Its first 92 characters are never the ask.
-    if (value.length >= 200 || SYSTEM_BLOCK.test(value)) {
+    if (
+      value.length >= 1_000 ||
+      (value.length >= 200 && !startsWithRequestAction(value)) ||
+      SYSTEM_BLOCK.test(value)
+    ) {
       if (!rejected) rejected = value;
       return null;
     }
-    const fitted = `${value
-      .slice(0, TASK_LINE_MAX - 4)
-      .replace(/\s+\S*$/, "")
-      .trim()}…`;
+    const fitted = truncateAtWordBoundary(value, TASK_LINE_MAX);
     return readsAsAsk(fitted) ? fitted : null;
   };
 
@@ -359,13 +396,38 @@ export function resolvePaneTaskLine(input: TaskLineInput): PaneTaskLine {
   // and the summarizer's `expired` flag.
   {
     const planNote = input.mainGoalSource === "plan-explanation";
-    const goal = planNote
-      ? null
-      : considerLongAsk(input.mainGoal ?? input.declaredTask);
+    const explicitlyDeclaredGoal =
+      !input.mainGoalSource || input.mainGoalSource === "goal-task";
+    const goal = explicitlyDeclaredGoal
+      ? considerLongAsk(input.mainGoal ?? input.declaredTask)
+      : null;
     if (goal) {
       return {
         text: goal,
         source: "declared",
+        capturedAt: now,
+        expiresAt: null,
+        rejected,
+      };
+    }
+    const planPurpose = consider(facts.planPurpose);
+    if (planPurpose) {
+      return {
+        text: planPurpose,
+        source: "plan-purpose",
+        capturedAt: now,
+        expiresAt: null,
+        rejected,
+      };
+    }
+    // A structured active plan step is already written for the cockpit in concise,
+    // present-continuous language. It is safer and clearer than displaying a raw user
+    // complaint or a mutable vendor title as the visible Task.
+    const step = consider(input.currentStep);
+    if (step) {
+      return {
+        text: step,
+        source: "current-step",
         capturedAt: now,
         expiresAt: null,
         rejected,
@@ -381,29 +443,36 @@ export function resolvePaneTaskLine(input: TaskLineInput): PaneTaskLine {
     // readability, not for polish: the strict gate called "Debug mobile audio and boot
     // sequence on real device" an implementation detail and threw away a perfectly clear
     // description of the pane.
+    // The operator's OPENING ask is the durable source of intent. Vendor-generated
+    // titles can mutate into slugs or completion reports as a session progresses, so
+    // they may summarize a goal only when the original request is unavailable.
+    const opening = considerLongAsk(
+      stripComposerChrome(
+        input.mainGoalSource === "opening-request"
+          ? (opensAsRequest(input.mainGoal ?? undefined) ? input.mainGoal : null)
+          : facts.openingRequest,
+      ),
+    );
+    if (opening) {
+      return {
+        text: opening,
+        source: "opening-request",
+        capturedAt: now,
+        expiresAt: null,
+        rejected,
+      };
+    }
     const readableTitle =
-      facts.title && !looksLikeSlug(facts.title)
+      facts.title &&
+      !looksLikeSlug(facts.title) &&
+      !isCompletionReport(facts.title) &&
+      !refersOnlyToExistingWork(facts.title)
         ? considerAsk(facts.title)
         : null;
     if (readableTitle) {
       return {
         text: readableTitle,
         source: "session-title",
-        capturedAt: now,
-        expiresAt: null,
-        rejected,
-      };
-    }
-    // Then the operator's OPENING ask for this session — the closest thing to an
-    // overarching description when the vendor wrote no title. Reading the live table
-    // decided this: the newest message is usually a reply inside a conversation ("yes
-    // remove it if you are sure", "it works! commit, push and create regression tetsts"),
-    // which tells a bystander nothing about what the pane is for.
-    const opening = considerLongAsk(stripComposerChrome(facts.openingRequest));
-    if (opening) {
-      return {
-        text: opening,
-        source: "opening-request",
         capturedAt: now,
         expiresAt: null,
         rejected,
@@ -433,6 +502,18 @@ export function resolvePaneTaskLine(input: TaskLineInput): PaneTaskLine {
           rejected,
         };
       }
+    }
+    const reportPurpose = facts.title
+      ? consider(completionReportPurpose(facts.title))
+      : null;
+    if (reportPurpose) {
+      return {
+        text: reportPurpose,
+        source: "session-title",
+        capturedAt: now,
+        expiresAt: null,
+        rejected,
+      };
     }
     // A slug is the agent's own words, just written for a machine. Spacing it out is
     // formatting, not invention — and it is only ever reached when nothing above spoke.
@@ -491,6 +572,26 @@ export function resolvePaneTaskLine(input: TaskLineInput): PaneTaskLine {
     return {
       text: `Running ${command}`,
       source: "running-command",
+      capturedAt: now,
+      expiresAt: null,
+      rejected,
+    };
+  }
+
+  // The pane's own FINISHED plan, before giving up: an idle agent whose only record of
+  // the work is its completed task list still has a goal on record — the last completed
+  // step is the agent's own one-line statement of what the pane was about ("Closing the
+  // payment release with evidence"). It sits this low because it is history, not intent:
+  // any declared goal, ask, title or live command above it still wins, and it is static
+  // while the pane idles so the row cannot flicker (the reason momentary sources were
+  // banished from this row). Junk is filtered by the same plain-language gate as
+  // everything else. Live case: pane-6d077586 (2026-07-30) — ask was "go", all todos
+  // completed with empty activeForms, row said "No task declared".
+  const finishedPlan = consider(input.lastCompletedTask);
+  if (finishedPlan) {
+    return {
+      text: finishedPlan,
+      source: "completed-task",
       capturedAt: now,
       expiresAt: null,
       rejected,

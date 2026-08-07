@@ -1,0 +1,13 @@
+[Unit]
+Description=TermFleet pressure watchdog
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/share/termfleet/libexec/termfleet-pressure-watchdog
+Restart=always
+RestartSec=5
+Environment=TERMFLEET_PRESSURE_WATCHDOG_RECOVER=1
+
+[Install]
+WantedBy=default.target

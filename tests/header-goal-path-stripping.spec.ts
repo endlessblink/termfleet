@@ -31,3 +31,14 @@ test("a goal with no path is left alone", () => {
     "Fix the checkout page on small screens",
   );
 });
+
+test("long goals are shortened only at a word boundary", () => {
+  const goal = compactHeaderGoal(
+    "[[Image #1] for the millionth time it glitches. fix it, test it. I want to run from the dock only and keep every card readable",
+  );
+
+  expect(goal).not.toContain("[Image #1]");
+  expect(goal).not.toMatch(/\bo\.\.\.$/);
+  expect(goal).toMatch(/…$/);
+  expect(goal!.length).toBeLessThanOrEqual(96);
+});

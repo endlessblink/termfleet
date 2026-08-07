@@ -70,11 +70,15 @@ async function openSubscription(id) {
   return socket;
 }
 
-function waitForEcho(received, expected, startMs, timeoutMs = 1_500) {
+function waitForEcho(received, expected, startMs, timeoutMs = 1_500, { compact = false } = {}) {
   return new Promise((resolve, reject) => {
     const deadline = startMs + timeoutMs;
     const check = () => {
-      if (normalizeTerminalText(received.text).includes(expected)) {
+      const actual = normalizeTerminalText(received.text);
+      const observed = compact ? actual.replace(/\s+/g, "") : actual;
+      const normalizedTarget = normalizeTerminalText(expected);
+      const target = compact ? normalizedTarget.replace(/\s+/g, "") : normalizedTarget;
+      if (observed.includes(target)) {
         resolve(performance.now() - startMs);
         return;
       }
@@ -141,14 +145,15 @@ async function main() {
     const startMs = performance.now();
     input.write(char);
     expected += char;
-    latencies.push(await waitForEcho(received, expected, startMs));
+    latencies.push(await waitForEcho(received, expected, startMs, 1_500, { compact: true }));
   }
 
   const newlineStartMs = performance.now();
   input.write("\r");
-  await waitForEcho(received, `${expected}\r\n`, newlineStartMs).catch(() =>
-    waitForEcho(received, `${expected}\n`, newlineStartMs)
-  );
+  // The shell's line ending may be split or rewritten by readline; the
+  // command-result marker proves Enter was processed without depending on
+  // one particular CR/LF framing.
+  await waitForEcho(received, "command not found", newlineStartMs);
 
   input.end();
   subscription.destroy();

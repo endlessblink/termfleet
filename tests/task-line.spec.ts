@@ -65,14 +65,14 @@ test("the tool of the second is the NOW line, never the goal", () => {
 
 // "Always show the main plan": the session's own plan title leads over the current
 // step — the step is a part of the plan, not the plan itself.
-test("the main plan leads over the current step", () => {
+test("a structured current step leads over a generated session title", () => {
   const line = resolvePaneTaskLine({
     now: NOW,
     facts: { title: "Make the terminal status line reliable" },
     currentStep: "Running the task-line verification",
   });
-  expect(line.text).toBe("Make the terminal status line reliable");
-  expect(line.source).toBe("session-title");
+  expect(line.text).toBe("Running the task-line verification");
+  expect(line.source).toBe("current-step");
 });
 
 test("an explicit goal still leads over everything", () => {
@@ -86,15 +86,33 @@ test("an explicit goal still leads over everything", () => {
   expect(line.source).toBe("declared");
 });
 
-test("the current step is the NOW line, under the goal", () => {
+test("the current step becomes Task when no explicit goal exists", () => {
   const input = {
     now: NOW,
     currentStep: "Running the task-line verification",
   };
-  expect(resolvePaneTaskLine(input).source).toBe("shell-state");
-  const now = resolvePaneNowLine(input);
-  expect(now?.text).toBe("Running the task-line verification");
-  expect(now?.source).toBe("current-step");
+  const task = resolvePaneTaskLine(input);
+  expect(task.source).toBe("current-step");
+  expect(task.text).toBe("Running the task-line verification");
+  expect(resolvePaneNowLine(input, task.text)).toBeNull();
+});
+
+test("a structured plan purpose replaces a raw opening complaint", () => {
+  expect(
+    resolvePaneTaskLine({
+      now: 1_000,
+      mainGoal:
+        "[[Image #1] for the millionth time it glitches. fix it, test it.",
+      mainGoalSource: "opening-request",
+      currentStep: null,
+      facts: {
+        planPurpose: "Making every card state its real purpose",
+      },
+    }),
+  ).toMatchObject({
+    text: "Making every card state its real purpose",
+    source: "plan-purpose",
+  });
 });
 
 // A finished, idle agent shows what it just did, not "sitting at a prompt".
@@ -107,6 +125,23 @@ test("an idle finished agent shows what it just did on the NOW line", () => {
   const now = resolvePaneNowLine(input);
   expect(now?.text).toBe("Correcting the Diet bot's Telegram destination");
   expect(now?.source).toBe("completed-task");
+});
+
+test("a finished turn clears every stale NOW candidate", () => {
+  const now = resolvePaneNowLine({
+    now: NOW,
+    currentStep: "Running every automated and headed app check",
+    recentActivity: "Imported stabilized clips previously failed during export.",
+    lastCompletedTask: "Running every automated and headed app check",
+    facts: {
+      agentSaid: "Imported stabilized clips previously failed during export.",
+      lastTool: { name: "Shell", input: "npm test" },
+      lastTurnEndAt: NOW - 1,
+    },
+    folder: "rough-cut-mvp",
+  });
+
+  expect(now).toBeNull();
 });
 
 // ...but live work still outranks a completed step.
@@ -141,6 +176,40 @@ test("a shell shows what it is actually doing", () => {
     text: "No task declared",
     source: "shell-state",
   });
+});
+
+// A finished pane whose ONLY record of the work is its completed task list must state
+// that work, not the placeholder. Live case (pane-6d077586, bina-meatzevet-courses,
+// 2026-07-30): the operator's prompt was literally "go" (rightly rejected), every todo
+// was completed with an empty activeForm, and the row said "No task declared" while the
+// list plainly held "Closing the payment release with evidence".
+test("an idle pane's finished plan speaks before the placeholder", () => {
+  const line = resolvePaneTaskLine({
+    now: NOW,
+    lastCompletedTask: "Closing the payment release with evidence",
+    facts: { operatorRequest: "go", lastTurnEndAt: NOW - 1000 },
+    folder: "bina-meatzevet-courses",
+  });
+  expect(line.text).toBe("Closing the payment release with evidence");
+  expect(line.source).toBe("completed-task");
+});
+
+// The finished-plan rung is a LAST resort: junk never rides in through it, and every
+// higher rung still wins.
+test("finished-plan rung stays below real goals and rejects junk", () => {
+  expect(
+    resolvePaneTaskLine({
+      now: NOW,
+      lastCompletedTask: "Closing the payment release with evidence",
+      facts: { operatorRequest: "sort the sidebar by name" },
+    }),
+  ).toMatchObject({ source: "operator-request" });
+  expect(
+    resolvePaneTaskLine({
+      now: NOW,
+      lastCompletedTask: "npm run build && ./x.sh --flag",
+    }),
+  ).toMatchObject({ text: "No task declared", source: "shell-state" });
 });
 
 // R4 + R2: reject, never rewrite; and record that something was rejected.

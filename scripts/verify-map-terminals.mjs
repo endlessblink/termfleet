@@ -169,7 +169,8 @@ const checks = [
   },
   {
     ok: /const linkedPaneTerminalId = linkedTab\?\.terminals\.find\(\s*\(terminal\) => terminal\.paneId === terminalPaneId,?\s*\)\?\.id;/.test(magicCanvas) &&
-      /const linkedTerminalId = linkedPaneTerminalId \?\? node\.terminalPtyId \?\? linkedTab\?\.terminals\[0\]\?\.id;/.test(magicCanvas),
+      /const linkedTerminalId = linkedPaneTerminalId \?\? linkedTab\?\.terminals\[0\]\?\.id;/.test(magicCanvas) &&
+      !/const linkedTerminalId = linkedPaneTerminalId \?\? node\.terminalPtyId/.test(magicCanvas),
     message: "Map terminals must attach to the active pane runtime PTY when one exists.",
   },
   {
@@ -641,7 +642,7 @@ const checks = [
       /xvfb-run -a/.test(standaloneDaemonSmoke) &&
       /XDG_RUNTIME_DIR="\$RUN_DIR"/.test(tauriPerformanceSmoke) &&
       /XDG_DATA_HOME="\$DATA_DIR"/.test(tauriPerformanceSmoke) &&
-      /CARGO_TARGET_DIR="\$OUT_DIR\/target"/.test(canvasLiveSmoke) &&
+      /CARGO_TARGET_DIR="(?:\$OUT_DIR\/target|\$\{CANVAS_LIVE_CARGO_TARGET_DIR:-\$OUT_DIR\/target\})"/.test(canvasLiveSmoke) &&
       /CARGO_TARGET_DIR="\$OUT_DIR\/target"/.test(bracketedPasteSmoke) &&
       /CARGO_TARGET_DIR="\$OUT_DIR\/target"/.test(resizeStormSmoke) &&
       /CARGO_TARGET_DIR="\$OUT_DIR\/target"/.test(zellijMapSmoke) &&

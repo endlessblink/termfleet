@@ -20,6 +20,7 @@ import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { stdin } from "node:process";
 import { paneSidecarPath, sidecarPath, statusDir, normalizeCwd } from "./lib/agent-status-paths.mjs";
 import { shouldWriteStatusCandidate } from "./lib/agent-status-lifecycle.mjs";
+import { durableGoalForPrompt } from "./lib/agent-status-goal.mjs";
 import { lifecycleFromNotification, narrationToNow, readTranscriptTail } from "./termfleet-claude-status-hook.mjs";
 
 function cleanField(value, max = 200) {
@@ -133,47 +134,6 @@ function nowFromTodos(todos) {
   return active ? active.activeForm || active.content : firstOpen?.content || "";
 }
 
-function outcomeFromPlan(todos, cwd, contextText = "") {
-  const plan = todos.map((todo) => cleanField(todo?.content, 220)).join(" | ");
-  const context = `${cleanField(contextText, 440)} | ${plan}`;
-  if (
-    /bina-meatzevet-courses/i.test(cwd) &&
-    /renewal failures?/i.test(context) &&
-    /(?:parallel|concurrent) checkout/i.test(context) &&
-    /Refunding Lee/i.test(context) &&
-    /Levana.*(?:rest of July|free July|July access)/i.test(context)
-  ) {
-    return "Making renewals and checkout safe while refunding Lee and granting Levana free July access";
-  }
-  if (
-    /bina-meatzevet-courses/i.test(cwd) &&
-    /mandatory|required/i.test(context) &&
-    /(?:promotional[- ]email|email[- ]consent|newsletter consent)/i.test(context)
-  ) {
-    return /attendee lists?/i.test(context)
-      ? "Making promotional email consent mandatory in every Bina signup and visible in attendee lists"
-      : "Making email signup mandatory across every Bina registration flow";
-  }
-  if (
-    /every email signup and consent path/i.test(plan) &&
-    /email signup mandatory everywhere/i.test(plan) &&
-    /every affected registration flow/i.test(plan)
-  ) {
-    return /bina-meatzevet-courses/i.test(cwd)
-      ? "Making email signup mandatory across every Bina registration flow"
-      : "Making email signup mandatory across every registration flow";
-  }
-  if (
-    /compact assistant controls/i.test(plan) &&
-    /large panel with a strip and drawer/i.test(plan) &&
-    /Personal Assistant screen/i.test(plan)
-  ) {
-    const product = /(?:^|\/)hermes(?:\/|$)/i.test(cwd) ? "Hermes Personal Assistant" : "Personal Assistant";
-    return `Replacing the crowded ${product} panel with on-demand controls`;
-  }
-  return "";
-}
-
 function continuationAfterAnswer(todos) {
   const completed = [...todos].reverse().find((todo) => todo.status === "completed");
   const text = cleanField(completed?.content, 120);
@@ -222,7 +182,7 @@ export function buildCodexSidecar(payload, prev, now = Date.now()) {
   const storedUserTask = cleanField(prev?.userTask, 220) || undefined;
   const prevUserTask = storedUserTask;
   const prevMainTask = cleanField(prev?.mainTask, 220) || undefined;
-  const prevMainTaskSource = prev?.mainTaskSource === "plan-explanation" || prev?.mainTaskSource === "goal-task"
+  const prevMainTaskSource = prev?.mainTaskSource === "plan-explanation" || prev?.mainTaskSource === "goal-task" || prev?.mainTaskSource === "opening-request"
     ? prev.mainTaskSource
     : undefined;
   const prevTodos = Array.isArray(prev?.todos) ? prev.todos : [];
@@ -237,14 +197,21 @@ export function buildCodexSidecar(payload, prev, now = Date.now()) {
     const submittedUserTask = promptFromPayload(payload);
     if (!submittedUserTask) return null;
     const submittedSessionId = String(payload?.session_id ?? payload?.sessionId ?? "");
-    const startsNewSession = Boolean(submittedSessionId && prev?.sessionId && submittedSessionId !== String(prev.sessionId));
+    const { startsNewSession, mainTask, mainTaskSource } =
+      durableGoalForPrompt({
+        prompt: submittedUserTask,
+        previousGoal: prevMainTask,
+        previousSource: prevMainTaskSource,
+        previousSessionId: prev?.sessionId,
+        sessionId: submittedSessionId,
+      });
     const todos = startsNewSession ? [] : prevTodos;
     return {
       ...base,
       source: "codex-user-prompt",
       todos,
-      mainTask: startsNewSession || !prev ? undefined : prevMainTask,
-      mainTaskSource: startsNewSession || !prev ? undefined : prevMainTaskSource,
+      mainTask,
+      mainTaskSource,
       userTask: submittedUserTask,
       now: nowFromTodos(todos) || "Prompt submitted",
       turn: "working",
@@ -290,21 +257,31 @@ export function buildCodexSidecar(payload, prev, now = Date.now()) {
     if (todos.length === 0) return null;
     const explanation = cleanField(payload?.tool_input?.explanation, 220);
     const hasOpenWork = todos.some((todo) => todo.status !== "completed");
-    const durableExplanation = hasOpenWork ? explanation : undefined;
+    const durableExplanation = hasOpenWork && explanation ? explanation : undefined;
     const declaredGoal = todos
       .map((todo) => cleanField(todo?.content, 220))
       .find((content) => /^Goal:\s*\S/i.test(content))
       ?.replace(/^Goal:\s*/i, "");
-    const inferredOutcome = outcomeFromPlan(todos, cwd, `${prevUserTask ?? ""} ${explanation}`);
+    const durablePreviousGoal =
+      prevMainTaskSource === "goal-task" ||
+      prevMainTaskSource === "opening-request"
+        ? prevMainTask
+        : undefined;
     return {
       ...base,
       source: "codex-plan",
       todos,
       now: nowFromTodos(todos),
       mainTask:
-        declaredGoal || inferredOutcome || durableExplanation || prevMainTask,
+        declaredGoal || durablePreviousGoal || durableExplanation,
       mainTaskSource:
-        declaredGoal || inferredOutcome ? "goal-task" : durableExplanation ? "plan-explanation" : prevMainTaskSource,
+        declaredGoal
+          ? "goal-task"
+          : durablePreviousGoal
+            ? prevMainTaskSource
+            : durableExplanation
+              ? "plan-explanation"
+              : undefined,
       userTask: prevUserTask,
       turn: "working",
     };
