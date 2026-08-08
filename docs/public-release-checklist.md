@@ -20,8 +20,8 @@ out in the release notes.
   runtime help command.
 - [x] The Debian artifact is a Debian binary package in format 2.0.
 - [x] Local artifact hashes were recorded during the build audit:
-  - AppImage: `33c3085a46baf1b1db59f983c87df4b0c9aec3d3e4afc70be35b897934ed4daf`
-  - Debian: `10158f316f2a66acfa758f10f818cb3e00425280f6be21780194ee96bd4cc650`
+  - AppImage: `e89f33fcde2e175278ddb51dbaf3f030910d3df45a4117b6838b256ff927e9d6`
+  - Debian: `15ea33b3db5e7edc1fe4071bd8151e2bbacb2db324e5bd31c44af1eed52710f3`
 - [x] The installed dock release and restart smoke checks pass on the current
   Linux workstation.
 
@@ -29,12 +29,10 @@ out in the release notes.
 
 - [x] Finish and commit the task-label identity change set. Completed checklist
   items no longer become durable goals, status-sidecar user goals outrank live
-  todo steps, and supervised meta-process labels fall back to `No task declared`.
+  todo steps, and supervised meta-process labels fall back to `What should change?`.
   The focused task-label suite and canonical task-line gate are green.
-- [ ] Resolve the separate shared-worktree guardrail/launcher workstream before
-  publishing. Seven files remain modified outside the task-label commits; review
-  and commit them as their own coherent change set, or restore only after their
-  owner confirms they are not release work.
+- [x] Resolve and commit the separate guardrail/launcher workstream; its focused
+  Playwright, launcher/watchdog, and Rust platform checks are green.
 - [ ] Re-run the full release gate from the final commit, including the live
   desktop checks; the live reliability wrapper has previously hit the five-minute
   orchestration timeout and must not be reported as a pass without its constituent

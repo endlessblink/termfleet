@@ -124,6 +124,18 @@ verify:installed-restart`, and `git diff --check` passed. The rendered card show
 `07a38fc8fed38ddb29ef5e632df323c63e1a3c5664c5fce4eef80d81089e6eef`. Installed
 release SHA-256 `7c95ac8b3fca3fdb0d4716f0226928495542152a10e4e83bd1526c816c0e5d88`.
 
+Final release-candidate task-label and guardrail pass (2026-08-08): the Task row
+now distinguishes a missing signal (`No task declared`) from a rejected
+meta-process signal (`What should change?`), completed checklist items do not
+become durable goals, and the launcher/pressure guardrails passed their focused
+coverage. Fresh evidence: focused task-label suite 110 passed; guardrail
+Playwright 3 passed; launcher/watchdog Python tests 16 passed; Rust platform
+tests 6 passed; `npm run verify:task-line` 85 passed; `npm run
+verify:developer-preview`; `npm run release:install`; installed release,
+restart, and pane-close checks passed. The rendered cockpit card evidence SHA-256
+is `07a38fc8fed38ddb29ef5e632df323c63e1a3c5664c5fce4eef80d81089e6eef`; the
+installed release SHA-256 is `6bc95d8bd3e5ec74409ceb209bd0f422219d95806ba8256482ea4381994db591`.
+
 Task-label fallback correction (2026-08-08): `No task declared` was itself too
 technical and unhelpful when a rejected internal label was visible. The card now
 shows `What should change?` in that case, while panes with no task signal retain
