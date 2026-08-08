@@ -45,7 +45,7 @@ jobs:
       - run: npm ci
 
       - name: Build AppImage + .deb bundles
-        run: npx tauri build --bundles appimage deb
+        run: npx tauri build --bundles=appimage,deb
 
       - name: Collect artifacts and SHA256 checksums
         id: artifacts
