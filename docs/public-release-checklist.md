@@ -28,7 +28,7 @@ out in the release notes.
 ## Blocking before publication
 
 - [ ] Finish and commit the concurrent terminal-header/task-label change set.
-  The current worktree contains seven related modified files, and its focused
+  The current worktree contains eight related modified files, and its focused
   suite currently reports 88 passing and 22 failing tests. The failures include
   stale expectations for the old `Task not captured` label, but they must be
   deliberately updated or disproven before release.
