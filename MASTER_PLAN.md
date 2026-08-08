@@ -45,6 +45,14 @@ live daemon or desktop. The pressure watchdog is now installed as a restarting
 user service, with focused regression coverage; the service and real cockpit
 were verified active after installation.
 
+Cockpit task context correction (2026-08-08): terminal cards now show the live
+repository branch beside the workspace name, so release/PR work is identifiable
+before reading the task sentence. `npx playwright test
+tests/cockpit-card-shot.spec.ts`, `npm run build`, `npm run release:install`,
+`npm run verify:installed-release`, and `git diff --check` passed. Rendered
+evidence: `.captures/cockpit-card-goal-and-now.png`, SHA-256
+`85e9443c889f5ba41d9c85f2c6407e64ec4ac6092a20b00ac7b943b2ed6f44c3`.
+
 Canvas E2E recovery (2026-08-06): the live verifier was failing before launch
 because its random port overlapped a fixed host service and its disposable cold
 build exceeded the GUI timeout. The verifier now obtains an OS-free port and

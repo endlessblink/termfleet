@@ -3056,6 +3056,7 @@ function CanvasNodeViewImpl({
     linkedTerminal?.agentProvider ??
     terminalStatusSummary?.provider;
   const terminalAgentLabel = agentProviderIdentity(terminalAgentProvider);
+  const terminalBranch = workstream?.gitBranch?.trim() || undefined;
   const directlyBoundTask = node.taskBinding
     ? rootTasks.find(
         (task) =>
@@ -4113,6 +4114,15 @@ function CanvasNodeViewImpl({
                 >
                   {workspaceLabel}
                 </span>
+                {terminalBranch && (
+                  <span
+                    style={styles.workspacePill}
+                    data-testid="canvas-terminal-node-branch"
+                    title={`Branch: ${terminalBranch}`}
+                  >
+                    {terminalBranch}
+                  </span>
+                )}
                 {terminalAgentLabel && (
                   <span
                     style={styles.agentStatusChip}

@@ -79,6 +79,10 @@ test("a map card shows the goal on top and the current step under it", async ({
         projectRoot: "/home/op/projects/screenix",
         lastActiveTabId: "tab-censor",
       };
+      const workstream = {
+        kind: "terminal",
+        gitBranch: "release/bina-courses-august",
+      };
       store.setState({
         workspaceUiState: {
           ...store.getState().workspaceUiState,
@@ -117,6 +121,7 @@ test("a map card shows the goal on top and the current step under it", async ({
             emoji: "[]",
             color: "#d69a2d",
             groupId: group.id,
+            workstream,
             initialCwd: group.projectRoot,
             activePaneId: "pane-censor",
             splitLayout: { type: "leaf", paneId: "pane-censor" },
@@ -168,6 +173,9 @@ test("a map card shows the goal on top and the current step under it", async ({
 
   await expect(goalRow).toHaveText(GOAL);
   await expect(nowRow).toHaveText(STEP);
+  await expect(page.getByTestId("canvas-terminal-node-branch")).toHaveText(
+    "release/bina-courses-august",
+  );
 
   // The goal must be the PROMINENT line, and the step must sit under it.
   const goalBox = await goalRow.boundingBox();
