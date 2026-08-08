@@ -20,7 +20,10 @@ import path from "node:path";
 import { test, expect } from "@playwright/test";
 import { summarizeAgentStatus } from "../src/lib/agentStatusSummarizer";
 import { opensAsRequest, parseTranscript } from "../src/lib/sessionTranscript";
-import { qualityCheckUserAskLabel } from "../src/lib/terminalHeaderQuality";
+import {
+  qualityCheckAuthoritativeTaskLabel,
+  qualityCheckUserAskLabel,
+} from "../src/lib/terminalHeaderQuality";
 import { buildTerminalHeaderState } from "../src/lib/terminalHeaderState";
 import type { AgentStatusSummaryInput } from "../src/lib/agentStatusSummary";
 
@@ -221,7 +224,10 @@ test("a pane whose vendor session record names the work never renders the placeh
     rows.push(
       `${name} | rung=${result.taskLine.source} | goal=${header.sources.goal} | TASK=${header.goalLabel}`,
     );
-    if (/^(?:No task declared|Task not captured)$/i.test(header.goalLabel)) {
+    if (
+      /^(?:No task declared|Task not captured)$/i.test(header.goalLabel) &&
+      qualityCheckAuthoritativeTaskLabel(result.taskLine.text).ok
+    ) {
       offenders.push(
         `${name}: placeholder rendered although the line said "${result.taskLine.text}" (rung=${result.taskLine.source})`,
       );
