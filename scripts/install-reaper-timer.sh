@@ -37,6 +37,7 @@ WorkingDirectory=$REPO/scripts
 # The reaper connects to the daemon Unix socket under XDG_RUNTIME_DIR; pin it so a
 # stripped service environment can never silently miss the daemon (falls back to /tmp).
 Environment=XDG_RUNTIME_DIR=$RUNTIME_DIR
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=$RUNTIME_DIR/bus
 # 1) apply the soft memory ceiling to whatever daemon is running (live, no restart).
 ExecStart=$NODE $REPO/scripts/termfleet-guardrail-ensure.mjs
 # 2) reap idle exited-agent leftover tool servers (never touches live agents).

@@ -822,6 +822,10 @@ export function buildShellTerminalHeaderViewModel(input: {
   const taskDescriptionText = identityTaskQuality.ok
     ? identityTaskDescriptionText
     : undefined;
+  const rejectedIdentityTaskText =
+    identityTaskDescriptionText && !identityTaskQuality.ok
+      ? identityTaskDescriptionText
+      : undefined;
   const taskDescriptionSource: HeaderFieldSource | "missing" =
     identityTaskQuality.ok ? taskIdentity.source : "missing";
   const hasRealTask = Boolean(taskText && taskDescriptionText);
@@ -1208,15 +1212,20 @@ export function buildShellTerminalHeaderViewModel(input: {
     : undefined;
   const displayTitle = qualifyAmbiguousLabel(guardedTitle, workspace);
   const taskDescriptionIsUsable = Boolean(displayTaskDescription);
+  const rejectedTaskDescription = Boolean(rejectedIdentityTaskText);
 
   return {
     workspace: { text: workspace, source: "workspace" },
     taskDescription: {
       // TC-060 R1: never blank. The ladder always carries a true sentence, so the
       // old placeholder is only reachable when no ladder ran at all.
-      text:
-        displayTaskDescription ??
-        (noActiveWork ? "No active work" : "No task declared"),
+        text:
+          displayTaskDescription ??
+          (rejectedTaskDescription
+            ? "What should change?"
+            : noActiveWork
+              ? "No active work"
+              : "No task declared"),
       source: taskDescriptionIsUsable
         ? taskDescriptionSource
         : "neutral",

@@ -14,6 +14,10 @@ class PressureWatchdogTests(unittest.TestCase):
     def test_watchdog_recycles_only_the_desktop_group_and_preserves_the_daemon(self):
         script = WATCHDOG.read_text()
         self.assertIn("WebKitWebProcess", script)
+        self.assertIn("desktop_info", script)
+        self.assertIn("desktop-blocked", script)
+        self.assertIn("desktop-memory", script)
+        self.assertIn("/termfleet$", script)
         self.assertIn("/proc/pressure/memory", script)
         self.assertIn("/proc/pressure/io", script)
         self.assertIn("pressure-alert.prompt", script)
@@ -25,7 +29,7 @@ class PressureWatchdogTests(unittest.TestCase):
         self.assertIn("NOTIFY_REPLACE_ID", script)
         self.assertIn("--replace-id=", script)
         self.assertIn("last_host_alert_epoch", script)
-        self.assertIn('kill -- "-$webkit_pgid"', script)
+        self.assertIn('kill -- "-$recovery_pgid"', script)
         self.assertIn("host pressure detected; TermFleet desktop will not be recycled", script)
         self.assertIn("renderer pressure detected; desktop group will be recycled", script)
         self.assertIn("daemon=preserved", script)
@@ -40,6 +44,10 @@ class PressureWatchdogTests(unittest.TestCase):
         self.assertIn("install -m 0755", installer)
         self.assertIn("systemctl --user enable --now termfleet-pressure-watchdog.service", installer)
         self.assertNotIn("systemctl --user stop", installer)
+
+    def test_reaper_timer_exports_the_user_session_bus(self):
+        installer = (ROOT / "scripts" / "install-reaper-timer.sh").read_text()
+        self.assertIn("Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=$RUNTIME_DIR/bus", installer)
 
 
 if __name__ == "__main__":

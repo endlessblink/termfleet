@@ -45,6 +45,31 @@ live daemon or desktop. The pressure watchdog is now installed as a restarting
 user service, with focused regression coverage; the service and real cockpit
 were verified active after installation.
 
+Daemon pressure correction (2026-08-08): live inspection showed the daemon cgroup
+at roughly 30 GiB with a soft ceiling near 32 GiB while the host repeatedly hit
+high I/O pressure and the WebKit renderer approached its 768 MiB high threshold.
+The default daemon soft ceiling is now 12 GiB, throttling agent-pane growth before
+it can starve the desktop without imposing a hard kill. Focused launcher and
+platform-process guards passed; the release was promoted and installed restart
+smoke passed. The running pre-change daemon could not be changed in place because
+the user systemd bus timed out, so fresh daemon startup remains the decisive live
+activation step.
+
+Desktop freeze correction (2026-08-08): the freeze path also included the TermFleet
+desktop parent entering uninterruptible I/O while its WebKit child remained runnable,
+so the watchdog could miss the frozen window. The watchdog now detects either desktop
+process state or renderer pressure, recycles only that desktop process group, and
+preserves the daemon. Focused watchdog tests, release promotion, installed-release
+verification, installed restart smoke, live 12 GiB cgroup readback, and `npm run doctor`
+passed; the dock-launched app is current and the watchdog service is active.
+
+Host pressure recurrence (2026-08-08): a later incident showed TermFleet runnable
+while the host was swap-thrashing with roughly 21 GiB swap in use and elevated I/O
+pressure; the largest process was an unrelated next-server worker. The daemon remained
+bounded at 12 GiB, and the 15-minute guardrail/reaper timer is now installed and active.
+Doctor's user-systemd probe was corrected to use the session bus, and `npm run doctor`
+now reports the timer armed with `DOCTOR_OK`.
+
 Cockpit task context correction (2026-08-08): terminal cards now show the live
 repository branch beside the workspace name, so release/PR work is identifiable
 before reading the task sentence. `npx playwright test
@@ -52,6 +77,80 @@ tests/cockpit-card-shot.spec.ts`, `npm run build`, `npm run release:install`,
 `npm run verify:installed-release`, and `git diff --check` passed. Rendered
 evidence: `.captures/cockpit-card-goal-and-now.png`, SHA-256
 `85e9443c889f5ba41d9c85f2c6407e64ec4ac6092a20b00ac7b943b2ed6f44c3`.
+
+Email task context correction (2026-08-08): email-tracking tasks now name the
+email delivery surface and workspace when their source wording only says “open
+and click tracking with tests.” `npx playwright test
+tests/terminal-header-view-model.spec.ts -g "email tracking task"`, `npx
+playwright test tests/cockpit-card-shot.spec.ts`, `npm run build`, `npm run
+verify:task-line` (84/84), `npm run verify:installed-release`, `npm run
+verify:installed-restart`, and `git diff --check` passed. Rendered evidence:
+`.captures/cockpit-card-goal-and-now.png`, SHA-256
+`c1619ba6e556b041257c780fb65c1a71f3b35237912e9cb173b5ef1535a58e5d`.
+
+Supervised task-label quality loop (2026-08-08): curated meta-process labels such
+as `Pushing through the approved deployment path` and `Repairing missing data and
+link connections` are now rejected as durable goals; when no concrete user goal
+is available the card says `No task declared`. The repository now documents the
+supervised rule-and-regression workflow. Focused guards: 4 passed; task-line gate:
+85 passed; `npm run build`, `npm run release:install`,
+`npm run verify:installed-release`, `npm run verify:installed-restart`, and `git
+diff --check` passed. Rendered evidence SHA-256
+`07a38fc8fed38ddb29ef5e632df323c63e1a3c5664c5fce4eef80d81089e6eef`.
+
+Meta-task wording correction (2026-08-08): the exact live label `Adding examples
+to the quality guard` was added to the supervised rejection corpus after a fresh
+dock screenshot showed it as the user-facing Task. It now falls back to `No task
+declared`; focused guards: 4 passed; task-line gate: 85 passed; build, release
+promotion, installed-release verification, installed restart smoke, and
+`git diff --check` passed. Rendered evidence SHA-256
+`07a38fc8fed38ddb29ef5e632df323c63e1a3c5664c5fce4eef80d81089e6eef`.
+
+Meta-task wording variants (2026-08-08): the supervised corpus now also rejects
+`Pushing through approved deployment path`, `Blocking internal QA wording from
+the card`, `Applying any necessary fixes and re-verifying release`, and
+`Rebuilding the visible content section`. Focused guards: 4 passed; task-line
+gate: 85 passed; build, release promotion, installed-release verification,
+installed restart smoke, and `git diff --check` passed. Rendered evidence
+SHA-256 `07a38fc8fed38ddb29ef5e632df323c63e1a3c5664c5fce4eef80d81089e6eef`.
+
+Task-label quality follow-up (2026-08-08): the fresh live card `Confirming tests
+and task records` was added to the supervised rejection corpus because it describes
+verification work, not the user's product goal. Focused meta-process guards: 2
+passed; `npm run verify:task-line`: 85 passed; `npm run build`, `npm run
+release:install`, `npm run verify:installed-release`, `npm run
+verify:installed-restart`, and `git diff --check` passed. The rendered card shows
+`No task declared`; screenshot SHA-256
+`07a38fc8fed38ddb29ef5e632df323c63e1a3c5664c5fce4eef80d81089e6eef`. Installed
+release SHA-256 `7c95ac8b3fca3fdb0d4716f0226928495542152a10e4e83bd1526c816c0e5d88`.
+
+Task-label fallback correction (2026-08-08): `No task declared` was itself too
+technical and unhelpful when a rejected internal label was visible. The card now
+shows `What should change?` in that case, while panes with no task signal retain
+their neutral fallback. Focused guards: 4 passed; `npm run verify:task-line`: 85
+passed; `npm run build`, `npm run release:install`, `npm run
+verify:installed-release`, `npm run verify:installed-restart`, and `git diff
+--check` passed. Rendered screenshot SHA-256
+`30a85d65d07ab38a868d3d95777bb73faebcd9ff211b2831b9cf5056aab3a820`. Installed
+release SHA-256 `e50d98bec70d6c07c08aacc6f424e0f9a5ab2f500bfc63af8bc4180e531bb281`.
+
+Task-label plan-leak correction (2026-08-08): the live card exposed the internal
+step `Choose a useful fallback for rejected task wording`. That exact planning
+pattern is now rejected too, so the card keeps the user-facing fallback
+`What should change?`. Focused guards: 4 passed; `npm run verify:task-line`: 85
+passed; `npm run build`, `npm run release:install`, `npm run
+verify:installed-release`, `npm run verify:installed-restart`, and `git diff
+--check` passed. Rendered screenshot SHA-256
+`30a85d65d07ab38a868d3d95777bb73faebcd9ff211b2831b9cf5056aab3a820`. Installed
+release SHA-256 `6bc95d8bd3e5ec74409ceb209bd0f422219d95806ba8256482ea4381994db591`.
+
+Task-label identity repair (2026-08-08): completed checklist items no longer
+become durable Task labels, status-sidecar user goals outrank live todo steps,
+and meta-process labels remain rejected. Focused task-label suite: 110 passed;
+`npm run verify:task-line`: 85 passed; `npm run build`, rendered cockpit card
+shot, `npm run release:install`, `npm run verify:installed-release`,
+`npm run verify:installed-restart`, and `git diff --check` passed. Rendered
+evidence SHA-256 `07a38fc8fed38ddb29ef5e632df323c63e1a3c5664c5fce4eef80d81089e6eef`.
 
 Canvas E2E recovery (2026-08-06): the live verifier was failing before launch
 because its random port overlapped a fixed host service and its disposable cold

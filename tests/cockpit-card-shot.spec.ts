@@ -47,8 +47,8 @@ async function mockTauri(page: import("@playwright/test").Page) {
   });
 }
 
-const GOAL = "Covering the shorter deployment wording";
-const DISPLAYED_GOAL = "No task declared";
+const GOAL = "Choose a useful fallback for rejected task wording";
+const DISPLAYED_GOAL = "What should change?";
 const STEP = "Verifying the whole path still tracks at the new analysis size";
 
 test("a map card rejects a meta-process task and shows an honest fallback", async ({

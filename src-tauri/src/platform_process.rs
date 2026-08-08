@@ -49,15 +49,15 @@ fn which_systemd_run() -> Option<String> {
 /// So on systemd we hand the daemon to the user manager as its own transient
 /// unit. Its PTY children inherit that unit's cgroup, not the app's. Elsewhere we
 /// spawn the binary directly, exactly as before.
-/// Soft memory ceiling for the daemon cgroup (systemd size syntax). Default 40G:
-/// on a 78G workstation, non-daemon apps (Plasma, browsers) use ~30G, so this
-/// guarantees the desktop keeps headroom while the daemon+agents grow. Override
-/// per-machine with `TERMFLEET_DAEMON_MEMORY_HIGH` (e.g. "48G").
+/// Soft memory ceiling for the daemon cgroup (systemd size syntax). Default 12G:
+/// the daemon owns every agent pane, so a high ceiling lets resumed agents
+/// accumulate enough cache and I/O pressure to freeze the desktop. This is a soft
+/// throttle, not a hard kill; override it for larger workloads when needed.
 fn daemon_memory_high() -> String {
     std::env::var("TERMFLEET_DAEMON_MEMORY_HIGH")
         .ok()
         .filter(|value| !value.trim().is_empty())
-        .unwrap_or_else(|| "40G".to_string())
+        .unwrap_or_else(|| "12G".to_string())
 }
 
 /// Fork-bomb backstop for the daemon cgroup — far above the normal task peak.

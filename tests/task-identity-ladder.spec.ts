@@ -36,7 +36,7 @@ test("a meta-process task is not accepted as the pane goal", () => {
     taskLine,
   });
 
-  expect(header.goalLabel).toBe("No task declared");
+  expect(header.goalLabel).toBe("What should change?");
 });
 
 test("a concise active plan step replaces a raw complaint in the rendered Task row", () => {

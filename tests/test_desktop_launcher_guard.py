@@ -134,6 +134,7 @@ class DesktopLauncherGuardTests(unittest.TestCase):
 
     def test_desktop_unit_bounds_renderer_memory_without_bounding_daemon(self):
         script = LAUNCHER.read_text()
+        self.assertIn('export TERMFLEET_DAEMON_MEMORY_HIGH="${TERMFLEET_DAEMON_MEMORY_HIGH:-12G}"', script)
         self.assertIn('export TERMFLEET_DESKTOP_MEMORY_HIGH="${TERMFLEET_DESKTOP_MEMORY_HIGH:-768M}"', script)
         self.assertIn('export TERMFLEET_DESKTOP_MEMORY_MAX="${TERMFLEET_DESKTOP_MEMORY_MAX:-1G}"', script)
         self.assertIn('-p MemoryHigh="$TERMFLEET_DESKTOP_MEMORY_HIGH"', script)

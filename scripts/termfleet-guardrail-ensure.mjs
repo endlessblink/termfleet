@@ -9,8 +9,16 @@
 // it never OOM-kills. No hard MemoryMax is ever set (that would kill agents silently).
 import { execFileSync } from "node:child_process";
 
-const MEMORY_HIGH = process.env.TERMFLEET_DAEMON_MEMORY_HIGH || "40G";
+const MEMORY_HIGH = process.env.TERMFLEET_DAEMON_MEMORY_HIGH || "12G";
 const TASKS_MAX = process.env.TERMFLEET_DAEMON_TASKS_MAX || "20000";
+const DEFAULT_MEMORY_HIGH_BYTES = 12 * 1024 ** 3;
+
+function memoryHighBytes(value) {
+  const match = String(value ?? "").trim().match(/^(\d+(?:\.\d+)?)([KMG]?)$/i);
+  if (!match) return null;
+  const units = { "": 1, k: 1024, m: 1024 ** 2, g: 1024 ** 3 };
+  return Number(match[1]) * units[match[2].toLowerCase()];
+}
 
 /**
  * A running daemon that predates the guardrail reports `MemoryHigh=infinity` (or
@@ -19,7 +27,9 @@ const TASKS_MAX = process.env.TERMFLEET_DAEMON_TASKS_MAX || "20000";
  */
 export function needsGuardrail(currentMemoryHigh) {
   const value = (currentMemoryHigh ?? "").toString().trim();
-  return value === "" || value === "infinity";
+  if (value === "" || value === "infinity") return true;
+  const bytes = memoryHighBytes(value);
+  return bytes == null || bytes > DEFAULT_MEMORY_HIGH_BYTES;
 }
 
 function sh(cmd, args) {
@@ -58,13 +68,19 @@ function main() {
     console.log(`guardrail-ensure: ${unit} already has MemoryHigh=${current} — no change.`);
     return;
   }
-  sh("systemctl", [
-    "--user",
-    "set-property",
-    unit,
-    `MemoryHigh=${MEMORY_HIGH}`,
-    `TasksMax=${TASKS_MAX}`,
-  ]);
+  try {
+    execFileSync("systemctl", [
+      "--user",
+      "set-property",
+      unit,
+      `MemoryHigh=${MEMORY_HIGH}`,
+      `TasksMax=${TASKS_MAX}`,
+    ], { stdio: "ignore" });
+  } catch {
+    console.error(`guardrail-ensure: failed to apply MemoryHigh=${MEMORY_HIGH} to ${unit}.`);
+    process.exitCode = 1;
+    return;
+  }
   console.log(
     `guardrail-ensure: applied MemoryHigh=${MEMORY_HIGH} TasksMax=${TASKS_MAX} to ${unit} (live, no restart).`,
   );

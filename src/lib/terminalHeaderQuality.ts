@@ -276,7 +276,11 @@ function looksLikeGenericResult(text: string) {
 // regression example, never from an unconstrained rewrite heuristic.
 function looksLikeMetaProcessTask(text: string) {
   return (
-    /^(?:adding|applying|addressing|blocking|building|checking|confirming|covering|fixing|handling|improving|promoting|rebuilding|refreshing|re-?checking|re-?running|re-?verifying|testing|updating|verifying|writing)\b.*\b(?:task|label|wording|quality|fallback|release|deployment|card|screenshot|guard|matrix|dock|test(?:s|ing)?|record(?:s)?|evidence)\b/i.test(
+    /^(?:adding|applying|addressing|blocking|building|checking|covering|fixing|handling|improving|promoting|rebuilding|refreshing|re-?checking|re-?running|re-?verifying|testing|updating|verifying|writing)\b.*\b(?:task|label|wording|quality|fallback|release|deployment|card|screenshot|guard|matrix|dock)\b/i.test(
+      text,
+    ) ||
+    /^confirming\b.*\b(?:task\s+records?|deployment\s+evidence)\b/i.test(text) ||
+    /^choos(?:e|ing)\s+(?:a\s+)?useful\s+fallback\s+for\s+rejected\s+task\s+wording$/i.test(
       text,
     ) ||
     /^(?:making|improving|clarifying|fixing|rewriting|describing)\s+(?:the\s+)?(?:task|task\s+line|task\s+label|description|wording|header|title)\b/i.test(

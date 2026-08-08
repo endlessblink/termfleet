@@ -436,8 +436,15 @@ try {
 
 // 10. TC-055 automatic maintenance: is the reaper+guardrail timer armed?
 try {
+  const userSessionEnv = {
+    ...process.env,
+    XDG_RUNTIME_DIR: process.env.XDG_RUNTIME_DIR || `/run/user/${process.getuid?.() ?? "1000"}`,
+    DBUS_SESSION_BUS_ADDRESS:
+      process.env.DBUS_SESSION_BUS_ADDRESS ||
+      `unix:path=${process.env.XDG_RUNTIME_DIR || `/run/user/${process.getuid?.() ?? "1000"}`}/bus`,
+  };
   const active =
-    (spawnSync("systemctl", ["--user", "is-active", "termfleet-reaper.timer"], { encoding: "utf8" }).stdout || "").trim();
+    (spawnSync("systemctl", ["--user", "is-active", "termfleet-reaper.timer"], { encoding: "utf8", env: userSessionEnv }).stdout || "").trim();
   if (active === "active") {
     report("ok", "Auto-maintenance (TC-055)", "reaper+guardrail timer is armed (runs every 15 min)");
   } else {

@@ -234,6 +234,7 @@ test("meta-process labels fall back instead of pretending to be the product goal
     "Covering the shorter deployment wording",
     "Repairing missing data and link connections",
     "Confirming tests and task records",
+    "Choose a useful fallback for rejected task wording",
   ]) {
     const header = buildShellTerminalHeaderViewModel({
       project: {
@@ -263,7 +264,7 @@ test("meta-process labels fall back instead of pretending to be the product goal
       },
     });
 
-    expect(header.taskDescription.text).toBe("No task declared");
+    expect(header.taskDescription.text).toBe("What should change?");
     expect(header.taskDescription.text).not.toBe(task);
   }
 });
@@ -432,7 +433,7 @@ test("completion prose cannot replace the current task title", () => {
     },
   });
 
-  expect(header.taskDescription.text).toBe("No task declared");
+  expect(header.taskDescription.text).toBe("What should change?");
   expect(header.title.text).toBe("Idle");
   expect(header.title.text).not.toContain("Task Complete");
   expect(header.now.text).not.toContain("Files shipped");
@@ -1328,7 +1329,7 @@ test("rejects low-quality structured labels instead of rendering them", () => {
     },
   });
 
-  expect(header.taskDescription.text).toBe("No task declared");
+  expect(header.taskDescription.text).toBe("What should change?");
   expect(header.taskDescription.source).toBe("neutral");
   expect(header.title.text).toBe("Working");
   expect(header.title.source).toBe("missing");
@@ -1363,7 +1364,7 @@ test("rejects stored generic quality task when no live activity is available", (
     },
   });
 
-  expect(header.taskDescription.text).toBe("No task declared");
+  expect(header.taskDescription.text).toBe("What should change?");
   expect(header.title.text).toBe("Idle");
   expect(header.title.text).not.toBe("Improving quality");
 });
@@ -2170,7 +2171,7 @@ test("pasted code never becomes the Task row", () => {
     },
   });
 
-  expect(header.taskDescription.text).toBe("No task declared");
+  expect(header.taskDescription.text).toBe("What should change?");
 });
 
 test("informal typo'd asks still show on the Task row", () => {
@@ -2259,7 +2260,7 @@ test("long conversational requirement dumps do not render as task labels", () =>
     },
   });
 
-  expect(header.taskDescription.text).toBe("No task declared");
+  expect(header.taskDescription.text).toBe("What should change?");
   expect(header.title.text).toBe("Working");
   expect(header.taskDescription.text).not.toContain("I just need");
   expect(header.title.text).not.toContain("production inbox says");
@@ -2785,7 +2786,7 @@ test("thin acknowledgment sidecar text is not treated as a task", () => {
     },
   });
 
-  expect(header.taskDescription.text).toBe("No task declared");
+  expect(header.taskDescription.text).toBe("What should change?");
   expect(header.title.text).toBe("Idle");
   expect(header.debug.hasUserTask).toBe(false);
 });
@@ -2815,7 +2816,7 @@ test("thin fix-this sidecar text is not treated as a task", () => {
     },
   });
 
-  expect(header.taskDescription.text).toBe("No task declared");
+  expect(header.taskDescription.text).toBe("What should change?");
   expect(header.title.text).toBe("Working");
   expect(header.debug.hasUserTask).toBe(false);
 });

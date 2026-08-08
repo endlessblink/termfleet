@@ -28,6 +28,8 @@ read_psi_avg10() {
 while :; do
   webkit_info="$(ps -eo pid=,ppid=,pgid=,state=,rss=,args= | awk '$6 ~ /WebKitWebProcess/ { print $1 "|" $3 "|" $4 "|" $5; exit }')"
   IFS='|' read -r webkit_pid webkit_pgid webkit_state webkit_rss <<<"$webkit_info"
+  desktop_info="$(ps -eo pid=,ppid=,pgid=,state=,rss=,args= | awk '$6 ~ /\/termfleet$/ && $0 !~ /--terminal-workspace-daemon/ { print $1 "|" $3 "|" $4 "|" $5; exit }')"
+  IFS='|' read -r desktop_pid desktop_pgid desktop_state desktop_rss <<<"$desktop_info"
   memory_psi="$(read_psi_avg10 /proc/pressure/memory)"
   io_psi="$(read_psi_avg10 /proc/pressure/io)"
 
@@ -39,6 +41,12 @@ while :; do
   elif [[ -n "$webkit_rss" ]] && (( webkit_rss > MEMORY_LIMIT_KB )); then
     reason="webkit-memory"
     detail="pid=$webkit_pid rss_kb=$webkit_rss limit_kb=$MEMORY_LIMIT_KB pgid=$webkit_pgid state=$webkit_state memory_psi_avg10=$memory_psi io_psi_avg10=$io_psi"
+  elif [[ "$desktop_state" == D* ]]; then
+    reason="desktop-blocked"
+    detail="pid=$desktop_pid rss_kb=$desktop_rss pgid=$desktop_pgid state=$desktop_state memory_psi_avg10=$memory_psi io_psi_avg10=$io_psi"
+  elif [[ -n "$desktop_rss" ]] && (( desktop_rss > MEMORY_LIMIT_KB )); then
+    reason="desktop-memory"
+    detail="pid=$desktop_pid rss_kb=$desktop_rss limit_kb=$MEMORY_LIMIT_KB pgid=$desktop_pgid state=$desktop_state memory_psi_avg10=$memory_psi io_psi_avg10=$io_psi"
   elif awk -v value="$memory_psi" 'BEGIN { exit !(value >= 5) }'; then
     reason="host-memory-pressure"
     detail="memory_psi_avg10=$memory_psi"
@@ -62,7 +70,7 @@ while :; do
       printf '%s\n' "$prompt" >"$PROMPT_FILE"
       printf '%s\n' "$prompt" >>"$ALERT_LOG"
       recovery_text="host pressure detected; TermFleet desktop will not be recycled"
-      if [[ "$reason" == webkit-* ]]; then
+      if [[ "$reason" == webkit-* || "$reason" == desktop-* ]]; then
         recovery_text="renderer pressure detected; desktop group will be recycled and relaunched"
       fi
       if command -v notify-send >/dev/null 2>&1 && [[ -S "${NOTIFY_BUS#unix:path=}" ]]; then
@@ -70,9 +78,13 @@ while :; do
           notify-send --replace-id="$NOTIFY_REPLACE_ID" --urgency=critical "TermFleet pressure alert" "$reason: $detail; $recovery_text" \
           >>"$ALERT_LOG" 2>&1 || true
       fi
-      if [[ "$RECOVER" == "1" && "$reason" == webkit-* && "$webkit_pgid" =~ ^[0-9]+$ && "$webkit_pgid" -gt 1 ]]; then
-        printf '%s recovery=desktop-group-%s daemon=preserved\n' "$timestamp" "$webkit_pgid" >>"$ALERT_LOG"
-        kill -- "-$webkit_pgid" 2>>"$ALERT_LOG" || true
+      recovery_pgid="$webkit_pgid"
+      if [[ "$reason" == desktop-* ]]; then
+        recovery_pgid="$desktop_pgid"
+      fi
+      if [[ "$RECOVER" == "1" && ( "$reason" == webkit-* || "$reason" == desktop-* ) && "$recovery_pgid" =~ ^[0-9]+$ && "$recovery_pgid" -gt 1 ]]; then
+        printf '%s recovery=desktop-group-%s daemon=preserved\n' "$timestamp" "$recovery_pgid" >>"$ALERT_LOG"
+        kill -- "-$recovery_pgid" 2>>"$ALERT_LOG" || true
         sleep 1
         "$DESKTOP_LAUNCHER" >>"$ALERT_LOG" 2>&1 &
       fi

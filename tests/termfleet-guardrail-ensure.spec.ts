@@ -11,6 +11,11 @@ test("needsGuardrail is true when the daemon has no soft ceiling", () => {
 });
 
 test("needsGuardrail is false once a finite ceiling is already set", () => {
-  expect(needsGuardrail("42949672960")).toBe(false); // 40G in bytes
-  expect(needsGuardrail("59055800320")).toBe(false); // some other finite value
+  expect(needsGuardrail("12884901888")).toBe(false); // 12G in bytes
+  expect(needsGuardrail("8G")).toBe(false); // deliberate tighter limit
+});
+
+test("needsGuardrail lowers an unsafe finite ceiling", () => {
+  expect(needsGuardrail("34359738368")).toBe(true); // 32G in bytes
+  expect(needsGuardrail("40G")).toBe(true);
 });
