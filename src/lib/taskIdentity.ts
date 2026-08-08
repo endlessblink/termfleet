@@ -103,11 +103,12 @@ export function activeTodoTask(
     (item) => item.source === "todo-write",
   );
   const real = visible.filter((item) => !isGenericDeclaredTask(item.content));
+  const live = real.filter((item) => item.status !== "completed");
   const pick = (list: TaskLineupItem[]) =>
     list.find((item) => item.status === "in_progress") ??
     list.find((item) => item.status === "pending") ??
     list[0];
-  return pick(real) ?? pick(visible);
+  return pick(live);
 }
 
 function isGenericDeclaredTask(value?: string | null) {
@@ -320,9 +321,26 @@ export function resolveTaskIdentity(input: {
     };
   }
 
+  // A status-sidecar userTask is the operator's durable goal, while todo-write
+  // content is the current step. Keep the goal in Task even when a live step is
+  // present; the step belongs in the activity rows underneath it.
+  if (
+    ask &&
+    input.mainUserAsk?.source === "status-sidecar" &&
+    isMeaningfulUserGoal(ask)
+  ) {
+    return {
+      text: normalizedOperatorAsk(ask),
+      rawText: ask,
+      source: "user-prompt",
+    };
+  }
+
   const structuredPurpose = selectPlanPurpose(
     (input.taskLineup ?? [])
-      .filter((item) => item.source === "todo-write")
+      .filter(
+        (item) => item.source === "todo-write" && item.status !== "completed",
+      )
       .map((item) => item.content),
   );
   if (structuredPurpose) {

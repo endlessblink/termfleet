@@ -133,7 +133,12 @@ const TASK_LINE_MAX = 150;
 
 function readsPlainly(text: string): boolean {
   return (
-    qualityCheckAuthoritativeTaskLabel(text, { maxLength: TASK_LINE_MAX }).ok &&
+    qualityCheckAuthoritativeTaskLabel(text, {
+      maxLength: TASK_LINE_MAX,
+      // Capture the candidate for diagnostics and render-time quality review; do not
+      // erase the only pane-owned evidence before the header can choose an honest fallback.
+      allowMetaProcess: true,
+    }).ok &&
     !UNREADABLE.test(text)
   );
 }

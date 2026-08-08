@@ -24,13 +24,28 @@ test("with no declared task, the ladder supplies the rendered text", () => {
   expect(header.sources.goal).toBe("task-line");
 });
 
+test("a meta-process task is not accepted as the pane goal", () => {
+  const taskLine = resolvePaneTaskLine({
+    now: NOW,
+    currentStep: "Pushing through the approved deployment path",
+  });
+  const header = buildTerminalHeaderState({
+    paneId: "pane-meta-process",
+    terminalId: "pane-meta-process",
+    liveCwd: "/tmp/termfleet",
+    taskLine,
+  });
+
+  expect(header.goalLabel).toBe("No task declared");
+});
+
 test("a concise active plan step replaces a raw complaint in the rendered Task row", () => {
   const taskLine = resolvePaneTaskLine({
     now: NOW,
     mainGoal:
       "low quality, and the way the sentence is gettting elongated is ugly",
     mainGoalSource: "opening-request",
-    currentStep: "Checking every task-label source",
+    currentStep: "Displaying the user's goal in each cockpit card",
   });
   const header = buildTerminalHeaderState({
     paneId: "pane-clear-task",
@@ -46,9 +61,9 @@ test("a concise active plan step replaces a raw complaint in the rendered Task r
 
   expect(taskLine).toMatchObject({
     source: "current-step",
-    text: "Checking every task-label source",
+    text: "Displaying the user's goal in each cockpit card",
   });
-  expect(header.goalLabel).toBe("Checking every task-label source");
+  expect(header.goalLabel).toBe("Displaying the user's goal in each cockpit card");
 });
 
 test("a shell pane is no longer starved of a description", () => {

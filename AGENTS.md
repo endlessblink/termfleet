@@ -69,6 +69,9 @@ Reset persisted layout/theme from the command bar with `Reset layout`.
 - For every bug report, behavior correction, repeated failure, or risky fix,
   automatically apply `.agents/skills/termfleet-regression-planner/SKILL.md`
   before changing production code. The user never needs to name the skill.
+- For every cockpit screenshot or audit that calls a Task label vague, meta-process,
+  or unusable, also apply `.agents/skills/termfleet-task-label-quality/SKILL.md` and
+  add the reviewed example to the quality matrix and a focused regression.
 - Before declaring changed behavior complete, committing, pushing, or merging,
   automatically continue with
   `.agents/skills/termfleet-regression-verifier/SKILL.md`. Do not ask the user to

@@ -270,6 +270,39 @@ function looksLikeGenericResult(text: string) {
   return false;
 }
 
+// Curated meta-process labels are not durable work goals. They describe the agent's
+// cleanup/release choreography instead of the product or problem being changed. Keep
+// this list supervised: every new pattern must come from a rejected live card and a
+// regression example, never from an unconstrained rewrite heuristic.
+function looksLikeMetaProcessTask(text: string) {
+  return (
+    /^(?:adding|applying|addressing|blocking|building|checking|confirming|covering|fixing|handling|improving|promoting|rebuilding|refreshing|re-?checking|re-?running|re-?verifying|testing|updating|verifying|writing)\b.*\b(?:task|label|wording|quality|fallback|release|deployment|card|screenshot|guard|matrix|dock|test(?:s|ing)?|record(?:s)?|evidence)\b/i.test(
+      text,
+    ) ||
+    /^(?:making|improving|clarifying|fixing|rewriting|describing)\s+(?:the\s+)?(?:task|task\s+line|task\s+label|description|wording|header|title)\b/i.test(
+      text,
+    ) ||
+    /^(?:pushing through|following|moving through)\s+(?:the\s+)?approved\s+deployment\s+path\b/i.test(
+      text,
+    ) ||
+    /^(?:adding|updating|writing|testing|checking|improving)\s+(?:examples?|regressions?|tests?)\s+(?:to|for)\s+(?:the\s+)?(?:quality\s+guard|quality\s+matrix|task\s+labels?|acceptance\s+rules?)\b/i.test(
+      text,
+    ) ||
+    /^(?:blocking|fixing|improving|cleaning up)\s+(?:the\s+)?(?:internal\s+)?(?:qa|quality)\s+(?:wording|labels?|descriptions?)\b/i.test(
+      text,
+    ) ||
+    /\b(?:necessary|required|final)\s+fixes?\s+and\s+re-?verif(?:y|ying)\s+(?:the\s+)?release\b/i.test(
+      text,
+    ) ||
+    /^(?:rebuilding|updating|fixing|improving)\s+(?:the\s+)?(?:visible\s+)?content\s+section\b/i.test(
+      text,
+    ) ||
+    /^(?:repairing|fixing)\s+missing\s+data\s+and\s+link\s+connections$/i.test(
+      text,
+    )
+  );
+}
+
 function lacksDecisionObject(text: string) {
   if (
     !/\b(?:operator|user|human|reviewer)?'?s?\s*(?:approval|verdict|decision|response|reply|follow-up)\b|\b(?:approval|verdict|decision)\b/i.test(
@@ -408,7 +441,7 @@ export function qualityCheckAuthoritativeTaskLabel(
   value?: string | null,
   // The Task row on a map card is a fixed TWO-line box, so it can carry more than the
   // one-line callers. Defaulted, so every existing caller keeps the 96-character rule.
-  options: { maxLength?: number } = {},
+  options: { maxLength?: number; allowMetaProcess?: boolean } = {},
 ): HeaderQualityResult {
   const text = clean(value);
   if (!text) return { ok: false, reason: "empty" };
@@ -424,6 +457,9 @@ export function qualityCheckAuthoritativeTaskLabel(
     return { ok: false, reason: "vague" };
   }
   if (/^Answering (?:latest prompt|user question)$/i.test(text)) {
+    return { ok: false, reason: "vague" };
+  }
+  if (!options.allowMetaProcess && looksLikeMetaProcessTask(text)) {
     return { ok: false, reason: "vague" };
   }
   // A bare acknowledgment is not a task.

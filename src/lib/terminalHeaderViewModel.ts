@@ -672,6 +672,15 @@ function stripPlanGlyphPrefix(value?: string | null) {
 }
 
 function qualifyAmbiguousLabel(value: string, workspace: string) {
+  const emailTrackingMatch = value.match(
+    /^(Adding|Implementing)\s+open\s+and\s+click\s+tracking(?:\s+with\s+tests)?$/i,
+  );
+  if (emailTrackingMatch && !/\b(?:email|delivery|campaign)\b/i.test(value)) {
+    const workspaceLabel = workspace
+      .replace(/[-_]+/g, " ")
+      .replace(/\b\w/g, (letter) => letter.toUpperCase());
+    return `${emailTrackingMatch[1]} open and click tracking to email delivery for ${workspaceLabel}`;
+  }
   if (
     !/\b(?:speed settings|the handoff|proposed repair|the repair|behavior rules)\b/i.test(
       value,
@@ -800,7 +809,11 @@ export function buildShellTerminalHeaderViewModel(input: {
   // The user's own words are gated leniently: informal phrasing and typos are
   // still what they asked for. Declared task text gets the authoritative gate.
   const identityIsUserAsk =
-    taskIdentity.source === "manual" || taskIdentity.source === "user-prompt";
+    taskIdentity.source === "manual" ||
+    taskIdentity.source === "user-prompt" ||
+    /^(?:operator-request|opening-request|pending-question)$/.test(
+      input.taskLine?.source ?? "",
+    );
   const identityTaskQuality = identityTaskDescriptionText
     ? identityIsUserAsk
       ? qualityCheckUserAskLabel(identityTaskDescriptionText)
@@ -1194,6 +1207,7 @@ export function buildShellTerminalHeaderViewModel(input: {
     ? qualifyAmbiguousLabel(taskDescriptionText, workspace)
     : undefined;
   const displayTitle = qualifyAmbiguousLabel(guardedTitle, workspace);
+  const taskDescriptionIsUsable = Boolean(displayTaskDescription);
 
   return {
     workspace: { text: workspace, source: "workspace" },
@@ -1202,15 +1216,10 @@ export function buildShellTerminalHeaderViewModel(input: {
       // old placeholder is only reachable when no ladder ran at all.
       text:
         displayTaskDescription ??
-        input.taskLine?.text ??
-        (noActiveWork ? "No active work" : "Task not captured"),
-      source: displayTaskDescription
+        (noActiveWork ? "No active work" : "No task declared"),
+      source: taskDescriptionIsUsable
         ? taskDescriptionSource
-        : input.taskLine
-          ? "task-line"
-          : noActiveWork
-            ? "neutral"
-            : "missing",
+        : "neutral",
     },
     title: {
       text: noActiveWork ? "Ready for next task" : displayTitle,

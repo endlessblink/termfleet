@@ -188,6 +188,86 @@ test("Hermes speed work keeps the product outcome in Task and qualifies the curr
   expect(header.title.text).toBe("Hermes — Verifying speed settings are live");
 });
 
+test("email tracking task names the delivery surface it changes", () => {
+  const header = buildShellTerminalHeaderViewModel({
+    project: {
+      id: "bina",
+      name: "bina-meatzevet-courses",
+      projectRoot: "/repo/bina-meatzevet-courses",
+    },
+    liveCwd: "/repo/bina-meatzevet-courses",
+    terminalStatus: "running",
+    taskLineup: [
+      {
+        id: "tracking",
+        content: "Adding open and click tracking with tests",
+        status: "in_progress",
+        source: "todo-write",
+        updatedAt: 1000,
+      },
+    ],
+    statusSummary: {
+      task: "Adding open and click tracking with tests",
+      path: "/repo/bina-meatzevet-courses",
+      now: "Auditing the email tracking path and preparing a clean fix",
+      status: "working",
+      provider: "claude",
+      confidence: "high",
+      tasksFromTodoWrite: true,
+    },
+  });
+
+  expect(header.taskDescription.text).toBe(
+    "Adding open and click tracking to email delivery for Bina Meatzevet Courses",
+  );
+});
+
+test("meta-process labels fall back instead of pretending to be the product goal", () => {
+  for (const task of [
+    "Making the task say what it changes",
+    "Pushing through the approved deployment path",
+    "Pushing through approved deployment path",
+    "Adding examples to the quality guard",
+    "Blocking internal QA wording from the card",
+    "Applying any necessary fixes and re-verifying release",
+    "Rebuilding the visible content section",
+    "Covering the shorter deployment wording",
+    "Repairing missing data and link connections",
+    "Confirming tests and task records",
+  ]) {
+    const header = buildShellTerminalHeaderViewModel({
+      project: {
+        id: "bina",
+        name: "bina-meatzevet-courses",
+        projectRoot: "/repo/bina-meatzevet-courses",
+      },
+      liveCwd: "/repo/bina-meatzevet-courses",
+      terminalStatus: "running",
+      taskLineup: [
+        {
+          id: "meta-task",
+          content: task,
+          status: "in_progress",
+          source: "todo-write",
+          updatedAt: 1000,
+        },
+      ],
+      statusSummary: {
+        task,
+        path: "/repo/bina-meatzevet-courses",
+        now: "Checking the concrete delivery work",
+        status: "working",
+        provider: "claude",
+        confidence: "high",
+        tasksFromTodoWrite: true,
+      },
+    });
+
+    expect(header.taskDescription.text).toBe("No task declared");
+    expect(header.taskDescription.text).not.toBe(task);
+  }
+});
+
 test("uses project root folder instead of parent category workspace", () => {
   const header = buildShellTerminalHeaderViewModel({
     project: { id: "g-flow", name: "productivity", projectRoot: flowStatePath },
@@ -206,7 +286,7 @@ test("uses project root folder instead of parent category workspace", () => {
   });
 
   expect(header.workspace.text).toBe("flow-state");
-  expect(header.taskDescription.text).toBe("Task not captured");
+  expect(header.taskDescription.text).toBe("No task declared");
   expect(header.title.text).toBe("Idle");
   expect(header.now.text).toBe("Idle");
   expect(header.title.text).not.toContain("Verify the working tree");
@@ -352,7 +432,7 @@ test("completion prose cannot replace the current task title", () => {
     },
   });
 
-  expect(header.taskDescription.text).toBe("Task not captured");
+  expect(header.taskDescription.text).toBe("No task declared");
   expect(header.title.text).toBe("Idle");
   expect(header.title.text).not.toContain("Task Complete");
   expect(header.now.text).not.toContain("Files shipped");
@@ -465,7 +545,7 @@ test("compacts raw checklist task text for the visible Task row", () => {
   });
 
   expect(header.taskDescription.text).toBe(
-    "Finish bilingual coverage for 4 shared components in the bina-ve-ze React site that the page-...",
+    "Finish bilingual coverage for 4 shared components in the bina-ve-ze React site that the…",
   );
   expect(header.taskDescription.text.length).toBeLessThanOrEqual(96);
   expect(header.taskDescription.text).not.toContain("FIRST read");
@@ -737,8 +817,8 @@ test("ignores moving summary userTask unless it has been stored as the main user
     },
   });
 
-  expect(header.taskDescription.text).toBe("Task not captured");
-  expect(header.taskDescription.source).toBe("missing");
+  expect(header.taskDescription.text).toBe("No task declared");
+  expect(header.taskDescription.source).toBe("neutral");
   expect(header.title.text).toBe("Working");
   expect(header.title.source).toBe("missing");
   expect(header.now.text).toBe("Activity not captured");
@@ -766,7 +846,7 @@ test("rejects trusted visible activity when it is still generic", () => {
     },
   });
 
-  expect(header.taskDescription.text).toBe("Task not captured");
+  expect(header.taskDescription.text).toBe("No task declared");
   expect(header.title.text).toBe("Working");
   // Generic trusted activity ("Ready"/"Thinking") is rejected; the now line falls
   // back to an honest status word, never the raw generic text.
@@ -797,7 +877,7 @@ test("rejects broken markdown path fragments as pane titles", () => {
   });
 
   expect(header.workspace.text).toBe("flow-state");
-  expect(header.taskDescription.text).toBe("Task not captured");
+  expect(header.taskDescription.text).toBe("No task declared");
   expect(header.title.text).toBe("Working");
   expect(header.title.text).not.toContain("/home");
 });
@@ -1132,7 +1212,7 @@ test("does not turn vague make-all-high prompts into a fake task", () => {
   });
 
   expect(mainUserAsk).toBeUndefined();
-  expect(header.taskDescription.text).toBe("Task not captured");
+  expect(header.taskDescription.text).toBe("No task declared");
   expect(header.title.text).toBe("Working");
   expect(header.title.text).not.toContain("making all high");
 });
@@ -1248,8 +1328,8 @@ test("rejects low-quality structured labels instead of rendering them", () => {
     },
   });
 
-  expect(header.taskDescription.text).toBe("Task not captured");
-  expect(header.taskDescription.source).toBe("missing");
+  expect(header.taskDescription.text).toBe("No task declared");
+  expect(header.taskDescription.source).toBe("neutral");
   expect(header.title.text).toBe("Working");
   expect(header.title.source).toBe("missing");
   expect(header.now.text).toBe("Activity not captured");
@@ -1283,7 +1363,7 @@ test("rejects stored generic quality task when no live activity is available", (
     },
   });
 
-  expect(header.taskDescription.text).toBe("Task not captured");
+  expect(header.taskDescription.text).toBe("No task declared");
   expect(header.title.text).toBe("Idle");
   expect(header.title.text).not.toBe("Improving quality");
 });
@@ -1457,8 +1537,8 @@ test("does not show a typed shell ask from a different terminal run", () => {
     },
   });
 
-  expect(header.taskDescription.text).toBe("Task not captured");
-  expect(header.taskDescription.source).toBe("missing");
+  expect(header.taskDescription.text).toBe("No task declared");
+  expect(header.taskDescription.source).toBe("neutral");
   expect(header.debug.mainUserAskRunMatches).toBe(false);
 });
 
@@ -1596,7 +1676,7 @@ test("does not promote no-task-list narration into the main title", () => {
     },
   });
 
-  expect(header.taskDescription.text).toBe("Task not captured");
+  expect(header.taskDescription.text).toBe("No task declared");
   // Operator contract (2026-07-09, supersedes 2026-07-04): on a WORKING pane the
   // title must name an action in progress. A high-confidence statement of fact
   // ("VPS has the 12 tracking events") is a report, not work — it does not qualify,
@@ -1631,7 +1711,7 @@ test("does not promote durable activity summaries when there is no task list", (
     neutralTitle: null,
   });
 
-  expect(header.taskDescription.text).toBe("Task not captured");
+  expect(header.taskDescription.text).toBe("No task declared");
   expect(header.title.text).toBe("Working");
   expect(header.now.text).toBe("Activity not captured");
   expect(header.title.text).not.toContain("frontend build");
@@ -1661,7 +1741,7 @@ test("trusted activity without a captured task makes the missing task explicit",
     trustedActivitySummary: true,
   });
 
-  expect(header.taskDescription.text).toBe("Task not captured");
+  expect(header.taskDescription.text).toBe("No task declared");
   expect(header.debug.missingActiveTask).toBe(true);
   // "headed app terminal summary visual contract" is a scrape fragment, not activity.
   // Since 2026-07-25 the title must read as an action in progress or a stated outcome,
@@ -1691,8 +1771,8 @@ test("active terminal without a structured activity reports activity capture fai
     },
   });
 
-  expect(header.taskDescription.text).toBe("Task not captured");
-  expect(header.taskDescription.source).toBe("missing");
+  expect(header.taskDescription.text).toBe("No task declared");
+  expect(header.taskDescription.source).toBe("neutral");
   expect(header.title.text).toBe("Working");
   expect(header.title.source).toBe("missing");
   expect(header.now.text).toBe("Activity not captured");
@@ -1720,7 +1800,7 @@ test("ready prompt neutral state renders idle instead of activity capture failur
     neutralTitle: "Idle",
   });
 
-  expect(header.taskDescription.text).toBe("Task not captured");
+  expect(header.taskDescription.text).toBe("No task declared");
   expect(header.title.text).toBe("Idle");
   expect(header.now.text).toBe("Idle");
 });
@@ -1924,14 +2004,14 @@ test("duplicated active task title still signals the main task", () => {
     taskLineup: [
       {
         id: "task-header-approval",
-        content: "Rechecking pane header wording approval",
+        content: "Showing release approval state in the TermFleet pane header",
         status: "in_progress",
         source: "todo-write",
         updatedAt: 1000,
       },
     ],
     statusSummary: {
-      task: "Rechecking pane header wording approval",
+      task: "Showing release approval state in the TermFleet pane header",
       path: "/repo/termfleet",
       now: "Idle",
       status: "working",
@@ -1942,11 +2022,9 @@ test("duplicated active task title still signals the main task", () => {
   });
 
   expect(header.taskDescription.text).toBe(
-    "Rechecking pane header wording approval",
+    "Showing release approval state in the TermFleet pane header",
   );
-  expect(header.title.text).toBe("Checking pane header wording");
-  expect(header.title.text).not.toBe("Awaiting next action");
-  expect(header.title.text).not.toBe("Idle");
+  expect(header.title.text).toBe("Awaiting next action");
 });
 
 test("junk momentary now does not drag a good declared title down", () => {
@@ -2092,7 +2170,7 @@ test("pasted code never becomes the Task row", () => {
     },
   });
 
-  expect(header.taskDescription.text).toBe("Task not captured");
+  expect(header.taskDescription.text).toBe("No task declared");
 });
 
 test("informal typo'd asks still show on the Task row", () => {
@@ -2150,7 +2228,7 @@ test("deictic screenshot prompts do not render as task or active labels", () => 
     },
   });
 
-  expect(header.taskDescription.text).toBe("Task not captured");
+  expect(header.taskDescription.text).toBe("No task declared");
   expect(header.title.text).toBe("Working");
   expect(header.taskDescription.text).not.toBe("and this");
   expect(header.title.text).not.toBe("and this");
@@ -2181,7 +2259,7 @@ test("long conversational requirement dumps do not render as task labels", () =>
     },
   });
 
-  expect(header.taskDescription.text).toBe("Task not captured");
+  expect(header.taskDescription.text).toBe("No task declared");
   expect(header.title.text).toBe("Working");
   expect(header.taskDescription.text).not.toContain("I just need");
   expect(header.title.text).not.toContain("production inbox says");
@@ -2707,7 +2785,7 @@ test("thin acknowledgment sidecar text is not treated as a task", () => {
     },
   });
 
-  expect(header.taskDescription.text).toBe("Task not captured");
+  expect(header.taskDescription.text).toBe("No task declared");
   expect(header.title.text).toBe("Idle");
   expect(header.debug.hasUserTask).toBe(false);
 });
@@ -2737,7 +2815,7 @@ test("thin fix-this sidecar text is not treated as a task", () => {
     },
   });
 
-  expect(header.taskDescription.text).toBe("Task not captured");
+  expect(header.taskDescription.text).toBe("No task declared");
   expect(header.title.text).toBe("Working");
   expect(header.debug.hasUserTask).toBe(false);
 });

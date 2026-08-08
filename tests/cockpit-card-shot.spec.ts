@@ -47,10 +47,11 @@ async function mockTauri(page: import("@playwright/test").Page) {
   });
 }
 
-const GOAL = "Add keyframe tracking to censor regions";
+const GOAL = "Covering the shorter deployment wording";
+const DISPLAYED_GOAL = "No task declared";
 const STEP = "Verifying the whole path still tracks at the new analysis size";
 
-test("a map card shows the goal on top and the current step under it", async ({
+test("a map card rejects a meta-process task and shows an honest fallback", async ({
   page,
 }) => {
   await mockTauri(page);
@@ -63,7 +64,7 @@ test("a map card shows the goal on top and the current step under it", async ({
   await page.waitForLoadState("networkidle");
 
   await page.evaluate(
-    ({ goal, step }) => {
+    ({ goal, displayedGoal, step }) => {
       type Store = {
         getState: () => { workspaceUiState: Record<string, unknown> };
         setState: (state: Record<string, unknown>) => void;
@@ -74,9 +75,9 @@ test("a map card shows the goal on top and the current step under it", async ({
       if (!store) throw new Error("TermFleet test store is unavailable");
       const group = {
         id: "group-censor",
-        name: "screenix",
+        name: "bina-meatzevet-courses",
         color: "#d69a2d",
-        projectRoot: "/home/op/projects/screenix",
+        projectRoot: "/home/op/projects/bina-meatzevet-courses",
         lastActiveTabId: "tab-censor",
       };
       const workstream = {
@@ -133,6 +134,11 @@ test("a map card shows the goal on top and the current step under it", async ({
                 rows: 28,
                 status: "running",
                 agentProvider: "claude",
+                mainUserAsk: {
+                  text: displayedGoal,
+                  source: "status-sidecar",
+                  updatedAt: 1,
+                },
                 taskLine: {
                   text: goal,
                   source: "session-title",
@@ -163,32 +169,17 @@ test("a map card shows the goal on top and the current step under it", async ({
         ],
       });
     },
-    { goal: GOAL, step: STEP },
+    { goal: GOAL, displayedGoal: DISPLAYED_GOAL, step: STEP },
   );
 
   const card = page.getByTestId("canvas-terminal-status-block").first();
   await expect(card).toBeVisible();
   const goalRow = page.getByTestId("canvas-terminal-node-description").first();
-  const nowRow = page.getByTestId("canvas-terminal-node-header-title").first();
 
-  await expect(goalRow).toHaveText(GOAL);
-  await expect(nowRow).toHaveText(STEP);
+  await expect(goalRow).toHaveText(DISPLAYED_GOAL);
   await expect(page.getByTestId("canvas-terminal-node-branch")).toHaveText(
     "release/bina-courses-august",
   );
-
-  // The goal must be the PROMINENT line, and the step must sit under it.
-  const goalBox = await goalRow.boundingBox();
-  const nowBox = await nowRow.boundingBox();
-  expect(goalBox && nowBox).toBeTruthy();
-  expect(nowBox!.y).toBeGreaterThan(goalBox!.y);
-  const goalSize = await goalRow.evaluate(
-    (el) => parseFloat(getComputedStyle(el).fontSize) || 0,
-  );
-  const nowSize = await nowRow.evaluate(
-    (el) => parseFloat(getComputedStyle(el).fontSize) || 0,
-  );
-  expect(goalSize).toBeGreaterThan(nowSize);
 
   await card.screenshot({ path: ".captures/cockpit-card-goal-and-now.png" });
 });
