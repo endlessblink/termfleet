@@ -27,11 +27,14 @@ out in the release notes.
 
 ## Blocking before publication
 
-- [ ] Finish and commit the concurrent terminal-header/task-label change set.
-  The current worktree contains eight related modified files, and its focused
-  suite currently reports 88 passing and 22 failing tests. The failures include
-  stale expectations for the old `Task not captured` label, but they must be
-  deliberately updated or disproven before release.
+- [x] Finish and commit the task-label identity change set. Completed checklist
+  items no longer become durable goals, status-sidecar user goals outrank live
+  todo steps, and supervised meta-process labels fall back to `No task declared`.
+  The focused task-label suite and canonical task-line gate are green.
+- [ ] Resolve the separate shared-worktree guardrail/launcher workstream before
+  publishing. Seven files remain modified outside the task-label commits; review
+  and commit them as their own coherent change set, or restore only after their
+  owner confirms they are not release work.
 - [ ] Re-run the full release gate from the final commit, including the live
   desktop checks; the live reliability wrapper has previously hit the five-minute
   orchestration timeout and must not be reported as a pass without its constituent
