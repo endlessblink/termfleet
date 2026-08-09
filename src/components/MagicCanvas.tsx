@@ -661,6 +661,23 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 500,
     letterSpacing: 0,
   },
+  terminalConnectAction: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+    height: 24,
+    padding: "0 8px",
+    border: "1px solid color-mix(in srgb, var(--accent-live) 38%, var(--border-subtle))",
+    borderRadius: "var(--radius-sm)",
+    background: "color-mix(in srgb, var(--accent-live) 12%, var(--surface-raised))",
+    color: "var(--text-primary)",
+    cursor: "pointer",
+    fontFamily: "var(--font-ui)",
+    fontSize: 11,
+    fontWeight: 600,
+    whiteSpace: "nowrap",
+  },
   attentionBadge: {
     display: "inline-flex",
     alignItems: "center",
@@ -3477,8 +3494,20 @@ function CanvasNodeViewImpl({
   const openLinkedTerminal = useCallback(() => {
     if (!linkedTab) return;
     setActiveTab(linkedTab.id);
+    setActivePane(linkedTab.id, terminalPaneId);
+    setActiveTerminal(
+      linkedTerminalId ?? `terminal-${linkedTab.id}-${terminalPaneId}`,
+    );
     setWorkspaceMode("split");
-  }, [linkedTab, setActiveTab, setWorkspaceMode]);
+  }, [
+    linkedTab,
+    linkedTerminalId,
+    setActivePane,
+    setActiveTab,
+    setActiveTerminal,
+    setWorkspaceMode,
+    terminalPaneId,
+  ]);
 
   const toggleTaskSidebarCollapsed = useCallback(() => {
     if (!linkedTab) {
@@ -4014,13 +4043,22 @@ function CanvasNodeViewImpl({
           >
             {renaming && renameEditor}
             <div style={styles.terminalStatusKicker}>
-              <span>Workspace</span>
               <span
-                style={styles.workspacePill}
-                data-testid="canvas-agent-node-workspace"
-                title={workspaceLabel}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 5,
+                  minWidth: 0,
+                }}
               >
-                {workspaceLabel}
+                <span>Workspace</span>
+                <span
+                  style={styles.workspacePill}
+                  data-testid="canvas-agent-node-workspace"
+                  title={workspaceLabel}
+                >
+                  {workspaceLabel}
+                </span>
               </span>
               {terminalAgentLabel && (
                 <span
@@ -4029,6 +4067,23 @@ function CanvasNodeViewImpl({
                 >
                   <AgentProviderIdentity provider={terminalAgentProvider} />
                 </span>
+              )}
+              {linkedTab && (
+                <button
+                  type="button"
+                  style={styles.terminalConnectAction}
+                  data-testid="canvas-agent-connect-terminal"
+                  title="Connect terminal"
+                  aria-label="Connect terminal"
+                  onMouseDown={(event) => event.stopPropagation()}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    openLinkedTerminal();
+                  }}
+                >
+                  <TerminalSquare size={13} strokeWidth={1.8} />
+                  <span>Connect terminal</span>
+                </button>
               )}
             </div>
             <div
@@ -4123,7 +4178,7 @@ function CanvasNodeViewImpl({
                     {terminalBranch}
                   </span>
                 )}
-                {terminalAgentLabel && (
+              {terminalAgentLabel && (
                   <span
                     style={styles.agentStatusChip}
                     data-testid="canvas-terminal-agent-provider"
@@ -4150,6 +4205,23 @@ function CanvasNodeViewImpl({
                   />
                   {terminalHeaderAttention.label}
                 </span>
+                {linkedTab && (
+                  <button
+                    type="button"
+                    style={styles.terminalConnectAction}
+                    data-testid="canvas-terminal-connect-terminal"
+                    title="Connect terminal"
+                    aria-label="Connect terminal"
+                    onMouseDown={(event) => event.stopPropagation()}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      openLinkedTerminal();
+                    }}
+                  >
+                    <TerminalSquare size={13} strokeWidth={1.8} />
+                    <span>Connect terminal</span>
+                  </button>
+                )}
               </span>
               {terminalBudgetSignal && (
                 <TokenBudgetIndicator

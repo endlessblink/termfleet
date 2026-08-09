@@ -186,6 +186,19 @@ test("map terminal activation owns tab, pane, and focused terminal before paste"
   );
 });
 
+test("agent cards expose a direct terminal connection", () => {
+  const source = readFileSync("src/components/MagicCanvas.tsx", "utf8");
+  const connectButton = source.match(
+    /<button[\s\S]*?data-testid=\"canvas-agent-connect-terminal\"[\s\S]*?<\/button>/,
+  )?.[0] ?? "";
+
+  expect(connectButton).toContain('data-testid="canvas-agent-connect-terminal"');
+  expect(connectButton).toContain('title="Connect terminal"');
+  expect(connectButton).toContain("openLinkedTerminal()");
+  expect(source).toContain('data-testid="canvas-terminal-connect-terminal"');
+  expect(source).toContain(">Connect terminal</span>");
+});
+
 test("AskUserQuestion mouse-report prompts do not trigger map layout reconciliation", () => {
   const terminalCanvas = readFileSync(
     "src/components/TerminalCanvas.tsx",
@@ -853,6 +866,10 @@ test("terminal map labels can be recolored from the right-click menu", async ({
     });
   });
 
+  await expect(page.getByTestId("canvas-terminal-connect-terminal")).toBeVisible();
+  await expect(page.getByTestId("canvas-terminal-connect-terminal")).toContainText(
+    "Connect terminal",
+  );
   await page
     .getByTestId("canvas-terminal-status-block")
     .dispatchEvent("contextmenu");
