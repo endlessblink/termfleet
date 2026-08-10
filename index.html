@@ -228,10 +228,144 @@
         .termfleet-loader__fleet,
         .termfleet-loader__fleet-block,
         .termfleet-startup__copy,
-        .termfleet-startup__letter { animation: none; opacity: 1; transform: none; stroke-dashoffset: 0; }
+        .termfleet-startup__letter,
+        .termfleet-loader__waves,
+        .termfleet-loader__speed rect,
+        .termfleet-loader__hull,
+        .termfleet-loader__hull-chevron,
+        .termfleet-loader__hull-block { animation: none; opacity: 1; transform: none; stroke-dashoffset: 0; }
 
         #termfleet-startup::before,
         #termfleet-startup::after { animation: none; }
+      }
+
+      /* The approved Remotion reveal, expressed on the startup surface. */
+      .termfleet-startup__lockup {
+        display: flex;
+        flex-direction: column;
+        gap: 26px;
+        width: auto;
+        transform: translateY(-32px);
+      }
+
+      .termfleet-startup__mark {
+        width: 220px;
+        height: 220px;
+        filter: none;
+      }
+
+      .termfleet-startup__copy {
+        display: block;
+        text-align: center;
+        transform: none;
+        animation: none;
+      }
+
+      .termfleet-startup__status {
+        position: static;
+        margin: 16px 0 0;
+        color: #b9c5c0;
+        font-size: 1.375rem;
+        letter-spacing: 0.03em;
+      }
+
+      .termfleet-startup__name {
+        justify-content: center;
+        font-size: 3.875rem;
+      }
+
+      .termfleet-startup__letter {
+        animation-delay: calc(2040ms + (var(--letter-index) * 42ms));
+        transform: translateY(22px);
+      }
+
+      .termfleet-loader__plate,
+      .termfleet-loader__chevron,
+      .termfleet-loader__fleet,
+      .termfleet-loader__fleet-block { animation: none; }
+
+      .termfleet-loader__plate { display: none; }
+
+      .termfleet-loader__waves {
+        fill: none;
+        stroke: #78cbb0;
+        stroke-linecap: round;
+        opacity: 0;
+        animation: termfleet-wave-in 600ms ease-out 540ms forwards;
+      }
+
+      .termfleet-loader__wave {
+        stroke-dasharray: 15 8;
+        animation: termfleet-wave-drift 1800ms linear 540ms infinite;
+      }
+
+      .termfleet-loader__wave--low {
+        stroke-dasharray: 11 10;
+        opacity: 0.7;
+        animation-duration: 2200ms;
+        animation-direction: reverse;
+      }
+
+      .termfleet-loader__speed {
+        fill: #b7c9c1;
+      }
+
+      .termfleet-loader__speed rect {
+        opacity: 0;
+        animation: termfleet-speed-trail 720ms linear infinite;
+      }
+
+      .termfleet-loader__speed rect:nth-child(2) { animation-delay: 180ms; }
+      .termfleet-loader__speed rect:nth-child(3) { animation-delay: 360ms; }
+
+      .termfleet-loader__hull-group {
+        transform-box: fill-box;
+        transform-origin: center;
+        animation: termfleet-vessel-sway 1800ms ease-in-out 0ms infinite alternate;
+      }
+
+      .termfleet-loader__hull,
+      .termfleet-loader__hull-chevron {
+        opacity: 0;
+        animation: termfleet-hull-arrive 900ms cubic-bezier(0.16, 1, 0.3, 1) 240ms forwards;
+      }
+
+      .termfleet-loader__hull-block {
+        transform-box: fill-box;
+        transform-origin: bottom center;
+        transform: scaleY(0);
+        animation: termfleet-block-grow 480ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      }
+
+      .termfleet-loader__hull-block--one { animation-delay: 960ms; }
+      .termfleet-loader__hull-block--two { animation-delay: 1080ms; }
+
+      @keyframes termfleet-wave-in { to { opacity: 0.42; } }
+      @keyframes termfleet-wave-drift { from { stroke-dashoffset: 0; } to { stroke-dashoffset: -46; } }
+      @keyframes termfleet-speed-trail {
+        0% { opacity: 0; transform: translateX(16px); }
+        18% { opacity: 0.72; }
+        100% { opacity: 0; transform: translateX(-16px); }
+      }
+      @keyframes termfleet-vessel-sway {
+        from { transform: translateY(-0.7px) rotate(-1.25deg); }
+        to { transform: translateY(0.7px) rotate(1.25deg); }
+      }
+      @keyframes termfleet-hull-arrive {
+        from { opacity: 0; transform: translateX(-20px); }
+        to { opacity: 1; transform: translateX(0); }
+      }
+      @keyframes termfleet-block-grow { to { transform: scaleY(1); } }
+
+      @media (prefers-reduced-motion: reduce) {
+        .termfleet-loader__waves,
+        .termfleet-loader__wave,
+        .termfleet-loader__speed rect,
+        .termfleet-loader__hull-group,
+        .termfleet-loader__hull,
+        .termfleet-loader__hull-chevron,
+        .termfleet-loader__hull-block,
+        .termfleet-startup__letter { animation: none; opacity: 1; transform: none; stroke-dashoffset: 0; }
       }
     </style>
   </head>
@@ -250,19 +384,20 @@
           role="presentation"
           aria-hidden="true"
         >
-          <rect class="termfleet-loader__plate" width="100" height="100" rx="14" fill="#10191d" stroke="#78cbb0" stroke-opacity="0.34" stroke-width="1.2" />
-          <path
-            class="termfleet-loader__chevron"
-            d="M8.5 21H14L27 32L14 43H8.5L21.5 32Z"
-            fill="#78cbb0"
-          />
-          <g class="termfleet-loader__fleet" fill="#78cbb0">
-            <rect class="termfleet-loader__fleet-block" style="--block-index: 0" x="25.5" y="23.5" width="9.75" height="3" />
-            <rect class="termfleet-loader__fleet-block" style="--block-index: 1" x="36.5" y="27.5" width="8.25" height="3" />
-            <rect class="termfleet-loader__fleet-block" style="--block-index: 2" x="30" y="30.75" width="5.5" height="3" />
-            <rect class="termfleet-loader__fleet-block" style="--block-index: 3" x="45.75" y="30.5" width="7.75" height="3" />
-            <rect class="termfleet-loader__fleet-block" style="--block-index: 4" x="36.5" y="34.5" width="8.25" height="2.75" />
-            <rect class="termfleet-loader__fleet-block" style="--block-index: 5" x="25.5" y="38" width="9.75" height="2.75" />
+          <g class="termfleet-loader__waves">
+            <path class="termfleet-loader__wave" d="M18 84 C28 80 38 88 48 84 S68 80 82 84" stroke-width="0.9" />
+            <path class="termfleet-loader__wave termfleet-loader__wave--low" d="M25 89 C34 86 42 92 52 89 S69 86 77 89" stroke-width="0.6" />
+          </g>
+          <g class="termfleet-loader__speed">
+            <rect x="2" y="44" width="16" height="3.5" rx="1.75" />
+            <rect x="7" y="56" width="13" height="3.5" rx="1.75" />
+            <rect x="12" y="68" width="10" height="3.5" rx="1.75" />
+          </g>
+          <g class="termfleet-loader__hull-group" fill="#ece9e2">
+            <path class="termfleet-loader__hull" d="M26 37h61c2.4 0 4 2.4 3 4.6L75 75.5c-.8 1.8-2.6 2.9-4.6 2.9H27c-2.8 0-5-2.2-5-5V42c0-2.8 1.2-5 4-5Z" />
+            <rect class="termfleet-loader__hull-block termfleet-loader__hull-block--one" x="38" y="24" width="23" height="8" rx="2" />
+            <rect class="termfleet-loader__hull-block termfleet-loader__hull-block--two" x="45" y="13" width="9" height="8" rx="2" />
+            <path class="termfleet-loader__hull-chevron" d="m57 48 13 10-13 10" fill="none" stroke="#17313f" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" />
           </g>
         </svg>
         <div class="termfleet-startup__copy">

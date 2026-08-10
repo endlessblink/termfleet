@@ -58,33 +58,33 @@ test("startup screen holds the app until workspace restoration is painted", asyn
 
   const motionContract = await startup.evaluate((element) => {
     const lockup = element.querySelector(".termfleet-startup__lockup");
-    const plate = element.querySelector(".termfleet-loader__plate");
-    const chevron = element.querySelector(".termfleet-loader__chevron");
-    const fleet = element.querySelector(".termfleet-loader__fleet");
-    const wordmark = element.querySelector(".termfleet-startup__copy");
+    const waves = element.querySelector(".termfleet-loader__wave");
+    const speed = element.querySelector(".termfleet-loader__speed");
+    const hull = element.querySelector(".termfleet-loader__hull");
+    const wordmark = element.querySelector(".termfleet-startup__letter");
     return {
       lockupIterations: lockup ? getComputedStyle(lockup).animationIterationCount : "",
       lockupAnimation: lockup ? getComputedStyle(lockup).animationName : "",
-      plateIterations: plate ? getComputedStyle(plate).animationIterationCount : "",
-      plateAnimation: plate ? getComputedStyle(plate).animationName : "",
-      chevronIterations: chevron ? getComputedStyle(chevron).animationIterationCount : "",
-      chevronAnimation: chevron ? getComputedStyle(chevron).animationName : "",
-      fleetIterations: fleet ? getComputedStyle(fleet).animationIterationCount : "",
-      fleetAnimation: fleet ? getComputedStyle(fleet).animationName : "",
+      wavesIterations: waves ? getComputedStyle(waves).animationIterationCount : "",
+      wavesAnimation: waves ? getComputedStyle(waves).animationName : "",
+      speedIterations: speed ? getComputedStyle(speed.querySelector("rect")!).animationIterationCount : "",
+      speedAnimation: speed ? getComputedStyle(speed.querySelector("rect")!).animationName : "",
+      hullIterations: hull ? getComputedStyle(hull).animationIterationCount : "",
+      hullAnimation: hull ? getComputedStyle(hull).animationName : "",
       wordmarkIterations: wordmark ? getComputedStyle(wordmark).animationIterationCount : "",
       wordmarkAnimation: wordmark ? getComputedStyle(wordmark).animationName : "",
     };
   });
   expect(motionContract.lockupIterations).toBe("1");
   expect(motionContract.lockupAnimation).toBe("none");
-  expect(motionContract.plateIterations).toBe("1");
-  expect(motionContract.plateAnimation).toContain("termfleet-plate-reveal");
-  expect(motionContract.chevronIterations).toBe("1");
-  expect(motionContract.chevronAnimation).toContain("termfleet-command-draw");
-  expect(motionContract.fleetIterations).toBe("1");
-  expect(motionContract.fleetAnimation).toContain("termfleet-fleet-reveal");
+  expect(motionContract.wavesIterations).toBe("infinite");
+  expect(motionContract.wavesAnimation).toContain("termfleet-wave-drift");
+  expect(motionContract.speedIterations).toBe("infinite");
+  expect(motionContract.speedAnimation).toContain("termfleet-speed-trail");
+  expect(motionContract.hullIterations).toBe("1");
+  expect(motionContract.hullAnimation).toContain("termfleet-hull-arrive");
   expect(motionContract.wordmarkIterations).toBe("1");
-  expect(motionContract.wordmarkAnimation).toContain("termfleet-wordmark-frame");
+  expect(motionContract.wordmarkAnimation).toContain("termfleet-wordmark-letter");
 
   const startupScreenshot = "/tmp/termfleet-startup-final.png";
   await page.waitForTimeout(900);
@@ -129,8 +129,8 @@ test("startup animation reveals the command-fleet mark", async ({ page }, testIn
 
   const startup = page.locator("#termfleet-startup");
   await expect(startup).toHaveAttribute("data-startup-state", "restoring");
-  await expect(startup.locator(".termfleet-loader__plate")).toHaveCount(1);
-  await expect(startup.locator(".termfleet-loader__hull")).toHaveCount(0);
+  await expect(startup.locator(".termfleet-loader__hull")).toHaveCount(1);
+  await expect(startup.locator(".termfleet-loader__speed rect")).toHaveCount(3);
 
   const letters = startup.locator(".termfleet-startup__letter");
   await expect(letters).toHaveCount(9);
@@ -163,12 +163,12 @@ test("startup animation reveals the command-fleet mark", async ({ page }, testIn
   };
 
   await capturePhase("command", 520);
-  await expect(startup.locator(".termfleet-loader__chevron")).not.toHaveCSS("opacity", "0");
+  await expect(startup.locator(".termfleet-loader__hull")).not.toHaveCSS("opacity", "0");
 
   await capturePhase("fleet", 960);
-  await expect(startup.locator(".termfleet-loader__fleet")).not.toHaveCSS("opacity", "0");
+  await expect(startup.locator(".termfleet-loader__hull-block--one")).not.toHaveCSS("transform", "none");
 
-  await capturePhase("wordmark", 2100);
+  await capturePhase("wordmark", 2400);
   expect(
     await letters.evaluateAll((elements) =>
       elements.filter(
@@ -178,7 +178,7 @@ test("startup animation reveals the command-fleet mark", async ({ page }, testIn
   ).toBeGreaterThan(4);
 
   await capturePhase("complete", 2900);
-  await expect(startup.locator(".termfleet-loader__fleet")).toHaveCSS("opacity", "1");
+  await expect(startup.locator(".termfleet-loader__hull")).toHaveCSS("opacity", "1");
   expect(
     await letters.evaluateAll((elements) =>
       elements.every((element) => Number(getComputedStyle(element).opacity) > 0),
@@ -198,9 +198,9 @@ test("startup animation reveals the command-fleet mark", async ({ page }, testIn
 
     const frameVisibility = await startup.evaluate((element) => {
       const selectors = [
-        ".termfleet-loader__plate",
-        ".termfleet-loader__chevron",
-        ".termfleet-loader__fleet",
+        ".termfleet-loader__waves",
+        ".termfleet-loader__speed",
+        ".termfleet-loader__hull",
         ".termfleet-startup__name",
       ];
       return selectors.map((selector) => {
