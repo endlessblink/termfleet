@@ -58,28 +58,33 @@ test("startup screen holds the app until workspace restoration is painted", asyn
 
   const motionContract = await startup.evaluate((element) => {
     const lockup = element.querySelector(".termfleet-startup__lockup");
-    const prompt = element.querySelector(".termfleet-loader__prompt");
-    const vessel = element.querySelector(".termfleet-loader__vessel");
-    const hull = element.querySelector(".termfleet-loader__hull");
+    const plate = element.querySelector(".termfleet-loader__plate");
+    const chevron = element.querySelector(".termfleet-loader__chevron");
+    const fleet = element.querySelector(".termfleet-loader__fleet");
+    const wordmark = element.querySelector(".termfleet-startup__copy");
     return {
       lockupIterations: lockup ? getComputedStyle(lockup).animationIterationCount : "",
       lockupAnimation: lockup ? getComputedStyle(lockup).animationName : "",
-      promptIterations: prompt ? getComputedStyle(prompt).animationIterationCount : "",
-      promptAnimation: prompt ? getComputedStyle(prompt).animationName : "",
-      vesselIterations: vessel ? getComputedStyle(vessel).animationIterationCount : "",
-      vesselAnimation: vessel ? getComputedStyle(vessel).animationName : "",
-      hullIterations: hull ? getComputedStyle(hull).animationIterationCount : "",
-      hullAnimation: hull ? getComputedStyle(hull).animationName : "",
+      plateIterations: plate ? getComputedStyle(plate).animationIterationCount : "",
+      plateAnimation: plate ? getComputedStyle(plate).animationName : "",
+      chevronIterations: chevron ? getComputedStyle(chevron).animationIterationCount : "",
+      chevronAnimation: chevron ? getComputedStyle(chevron).animationName : "",
+      fleetIterations: fleet ? getComputedStyle(fleet).animationIterationCount : "",
+      fleetAnimation: fleet ? getComputedStyle(fleet).animationName : "",
+      wordmarkIterations: wordmark ? getComputedStyle(wordmark).animationIterationCount : "",
+      wordmarkAnimation: wordmark ? getComputedStyle(wordmark).animationName : "",
     };
   });
   expect(motionContract.lockupIterations).toBe("1");
   expect(motionContract.lockupAnimation).toBe("none");
-  expect(motionContract.promptIterations).toBe("1");
-  expect(motionContract.promptAnimation).toContain("termfleet-prompt-draw");
-  expect(motionContract.vesselIterations).toBe("infinite");
-  expect(motionContract.vesselAnimation).toContain("termfleet-vessel-idle");
-  expect(motionContract.hullIterations).toBe("1");
-  expect(motionContract.hullAnimation).toContain("termfleet-vessel-assemble");
+  expect(motionContract.plateIterations).toBe("1");
+  expect(motionContract.plateAnimation).toContain("termfleet-plate-reveal");
+  expect(motionContract.chevronIterations).toBe("1");
+  expect(motionContract.chevronAnimation).toContain("termfleet-command-draw");
+  expect(motionContract.fleetIterations).toBe("1");
+  expect(motionContract.fleetAnimation).toContain("termfleet-fleet-reveal");
+  expect(motionContract.wordmarkIterations).toBe("1");
+  expect(motionContract.wordmarkAnimation).toContain("termfleet-wordmark-frame");
 
   const startupScreenshot = "/tmp/termfleet-startup-final.png";
   await page.waitForTimeout(900);
@@ -119,12 +124,13 @@ test("reduced motion keeps the startup mark still", async ({ page }) => {
   expect(animations).toEqual([]);
 });
 
-test("startup animation tells a terminal-to-vessel story", async ({ page }, testInfo) => {
+test("startup animation reveals the command-fleet mark", async ({ page }, testInfo) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
 
   const startup = page.locator("#termfleet-startup");
   await expect(startup).toHaveAttribute("data-startup-state", "restoring");
-  await expect(startup.locator(".termfleet-startup__mark > rect")).toHaveCount(0);
+  await expect(startup.locator(".termfleet-loader__plate")).toHaveCount(1);
+  await expect(startup.locator(".termfleet-loader__hull")).toHaveCount(0);
 
   const letters = startup.locator(".termfleet-startup__letter");
   await expect(letters).toHaveCount(9);
@@ -140,8 +146,8 @@ test("startup animation tells a terminal-to-vessel story", async ({ page }, test
       };
     }),
   );
-  expect(letterMotion.every(({ animationName }) => animationName === "termfleet-letter-arrive")).toBe(true);
-  expect(new Set(letterMotion.map(({ delay }) => delay)).size).toBe(9);
+  expect(letterMotion.every(({ animationName }) => animationName === "termfleet-wordmark-letter")).toBe(true);
+  expect(new Set(letterMotion.map(({ delay }) => delay)).size).toBeGreaterThan(1);
   expect(new Set(letterMotion.map(({ weight }) => weight)).size).toBe(1);
 
   const capturePhase = async (name: string, time: number) => {
@@ -156,35 +162,30 @@ test("startup animation tells a terminal-to-vessel story", async ({ page }, test
     await testInfo.attach(`startup ${name}`, { path, contentType: "image/png" });
   };
 
-  await capturePhase("command", 160);
-  await expect(startup.locator(".termfleet-loader__prompt")).not.toHaveCSS("opacity", "0");
-  await expect(startup.locator(".termfleet-loader__hull")).not.toHaveCSS("opacity", "0");
+  await capturePhase("command", 520);
+  await expect(startup.locator(".termfleet-loader__chevron")).not.toHaveCSS("opacity", "0");
 
-  await capturePhase("vessel", 600);
-  await expect(startup.locator(".termfleet-loader__hull")).toHaveCSS("opacity", "1");
-  await expect(startup.locator(".termfleet-loader__stern")).toHaveCSS("opacity", "1");
-  await expect(startup.locator(".termfleet-loader__stack")).toHaveCSS("opacity", "1");
-  await expect(startup.locator(".termfleet-loader__terminal")).toHaveCSS("opacity", "1");
+  await capturePhase("fleet", 960);
+  await expect(startup.locator(".termfleet-loader__fleet")).not.toHaveCSS("opacity", "0");
 
-  await capturePhase("wordmark", 840);
-  await expect(startup.locator(".termfleet-loader__prompt")).toHaveCSS("opacity", "0");
+  await capturePhase("wordmark", 2100);
   expect(
     await letters.evaluateAll((elements) =>
       elements.filter(
-        (element) => getComputedStyle(element).clipPath !== "inset(0px 100% 0px 0px)",
+        (element) => Number(getComputedStyle(element).opacity) > 0,
       ).length,
     ),
   ).toBeGreaterThan(4);
 
-  await capturePhase("complete", 1200);
-  await expect(startup.locator(".termfleet-loader__terminal")).toHaveCSS("opacity", "1");
+  await capturePhase("complete", 2900);
+  await expect(startup.locator(".termfleet-loader__fleet")).toHaveCSS("opacity", "1");
   expect(
     await letters.evaluateAll((elements) =>
-      elements.every((element) => getComputedStyle(element).clipPath === "inset(0px)"),
+      elements.every((element) => Number(getComputedStyle(element).opacity) > 0),
     ),
   ).toBe(true);
 
-  for (const time of [0, 120, 240, 360, 480, 600, 720, 840, 960, 1080, 1200]) {
+  for (const time of [0, 300, 600, 900, 1200, 1500, 1800, 2100, 2400, 2700, 2900]) {
     await startup.evaluate((element, currentTime) => {
       element.getAnimations({ subtree: true }).forEach((animation) => {
         animation.pause();
@@ -194,5 +195,26 @@ test("startup animation tells a terminal-to-vessel story", async ({ page }, test
     await startup.locator(".termfleet-startup__lockup").screenshot({
       path: `/tmp/termfleet-startup-frame-${String(time).padStart(4, "0")}.png`,
     });
+
+    const frameVisibility = await startup.evaluate((element) => {
+      const selectors = [
+        ".termfleet-loader__plate",
+        ".termfleet-loader__chevron",
+        ".termfleet-loader__fleet",
+        ".termfleet-startup__name",
+      ];
+      return selectors.map((selector) => {
+        const node = element.querySelector<HTMLElement>(selector);
+        const style = node ? getComputedStyle(node) : null;
+        const rect = node?.getBoundingClientRect();
+        return {
+          selector,
+          opacity: Number(style?.opacity ?? 0),
+          width: rect?.width ?? 0,
+          height: rect?.height ?? 0,
+        };
+      });
+    });
+    expect(frameVisibility.every(({ width, height }) => width > 0 && height > 0)).toBe(true);
   }
 });
