@@ -30,9 +30,11 @@ dependencies available. The `.deb` expresses the Debian/Ubuntu packaging
 boundary. Both artifacts are unsigned; verify the published checksum file before
 installing.
 
-The local Debian build was verified as a Debian format-2 package
-(`7be7f2360e009569d31cd187bcc9f8d5014ff446c993810bf052b82a1961e23d`). The
-AppImage checksum remains pending until the linuxdeploy bundling step completes.
+The tagged CI build published both artifacts and `SHA256SUMS.txt`. The published
+checksums are:
+
+- AppImage: `f95ecdbbb8716f2251bb773605644240c9424829ebf412f4f62ed45419e67e77`
+- Debian: `3673fb65b461c184120662b3641dbe285f1eacb758a4f5e20f95d9a377f53371`
 
 ## Known limitations
 

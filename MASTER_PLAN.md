@@ -205,9 +205,16 @@ the Node, Rust, Tauri, lockfile, README, checklist, and release-note surfaces.
 `npm run verify:readme-recovery`, the TypeScript/Vite build, and `git diff --check`
 passed. The fresh Debian bundle is a format-2 package with SHA-256
 `7be7f2360e009569d31cd187bcc9f8d5014ff446c993810bf052b82a1961e23d`.
-The AppImage linuxdeploy helper stalled twice during local packaging, so its
-artifact and checksum remain intentionally unchecked; no release tag or push was
-performed.
+The local AppImage linuxdeploy helper stalled twice during local packaging, so
+the final AppImage proof was deferred to the tagged CI build.
+
+End-to-end publication follow-up (2026-08-11): commit `716c5fc` was pushed to
+`main`, tag `v0.1.1` was pushed without moving the existing `v0.1.0` tag, and
+GitHub Actions run `31468309832` completed successfully. Clean CI built and
+published the AppImage, Debian package, and `SHA256SUMS.txt`; downloaded remote
+readback matched AppImage SHA-256
+`f95ecdbbb8716f2251bb773605644240c9424829ebf412f4f62ed45419e67e77` and Debian
+SHA-256 `3673fb65b461c184120662b3641dbe285f1eacb758a4f5e20f95d9a377f53371`.
 
 Watchdog false-positive correction (2026-08-10): the pressure notification shown
 to the user reported two daemon processes because its `ps | awk` inspection counted
@@ -7710,12 +7717,42 @@ passed. Installed binary SHA-256:
 
 ## 2026-08-11 — Copy an exact agent conversation reconnect command
 
-Agent panes now expose a copy action in the hover toolbar and pane context menu.
-For Codex it copies `codex resume <conversation-id>`; for Claude Code it copies
-`claude --resume <conversation-id>`. The command is built from the pane's saved
-provider session identity, while automatic daemon recovery keeps its existing
-internal `exec ...` input format.
+Agent panes and map terminal nodes expose a copy action in the visible terminal
+menu. For Codex it copies `codex resume <conversation-id>`; for Claude Code it
+copies `claude --resume <conversation-id>`. The command is built from the pane's
+saved provider session identity, while automatic daemon recovery keeps its
+existing internal `exec ...` input format.
 
 **Evidence:** `npx playwright test tests/agent-reconnect.spec.ts` passed 6/6;
-`npm run build` passed; `npm run verify:map-terminals` passed; and `git diff --check`
-passed. Installed desktop interaction remains unverified.
+`npm run build` passed; `npm run verify:map-terminals` passed; `git diff --check`
+passed; and `npm run verify:installed-restart` passed with installed release
+SHA-256 `be88b78f92b299bd47a98e76d371d68ca1fc0dbd72b08a8c2e0c2666d08e5537`.
+
+## 2026-08-11 — Make chat reconnect discoverable
+
+The reconnect action no longer hides behind an unlabeled icon or disappears
+when the provider ID is missing. Agent menus now have a dedicated “Reconnect
+this chat” group with a clear copy action, paste guidance, and an explicit
+missing-ID explanation.
+
+**Evidence:** `npm run build` passed; `npm run verify:map-terminals` passed;
+`npm run verify:installed-restart` passed with installed release SHA-256
+`dca7dbd720d9307776fa18a8384f3796917fcfd72bd2d9c752ebb3477f924900`; and
+`git diff --check` passed.
+
+## 2026-08-11 — Keep goal-management commands out of Task
+
+The visible failure showed `make this a goal` becoming the durable Task while
+`Committing, tagging, and pushing the candidate` appeared only as Now. The header
+pipeline now rejects goal-management commands and release choreography as durable
+goals, carries explicit captured-goal/context provenance through shared state, and
+omits fabricated Task/Goal rows when those sources are absent. Current process
+information remains in Now and the status state.
+
+**Evidence:** the new goal-management and release-choreography regressions passed;
+the missing-goal state guard passed; cockpit row stability passed 11/11; frontend
+build and release promotion passed; installed release SHA-256
+`dca7dbd720d9307776fa18a8384f3796917fcfd72bd2d9c752ebb3477f924900`; the canonical
+dock was relaunched; OCR of the real dock capture contains current Now lines and
+no `make this a goal`, `Goal not captured`, or `Project intent not captured` text.
+Live capture SHA-256: `e7fa4b0ec3f1c4411c288880f2bb71799b63941edd470cf73440925eb176c35d`.

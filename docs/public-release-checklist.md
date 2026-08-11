@@ -14,15 +14,14 @@ out in the release notes.
 - [x] The Tauri bundle targets are AppImage and Debian packages.
 - [x] The release workflow passes bundle targets to Tauri using the supported
   `--bundles=appimage,deb` form.
-- [ ] A local release build produced both Linux artifacts for x86-64:
-  `TermFleet_0.1.1_amd64.AppImage` and `TermFleet_0.1.1_amd64.deb`. The Debian
-  artifact is fresh; the AppImage helper stalled during linuxdeploy bundling.
-- [ ] The AppImage is an executable ELF image and responds to its AppImage
-  runtime help command.
+- [x] Tagged CI produced both Linux artifacts for x86-64:
+  `TermFleet_0.1.1_amd64.AppImage` and `TermFleet_0.1.1_amd64.deb`.
+- [x] The published AppImage is an executable ELF image, and the release
+  workflow completed its AppImage bundling step successfully.
 - [x] The Debian artifact is a Debian binary package in format 2.0.
-- [ ] Local artifact hashes were recorded for both publishable artifacts:
-  - AppImage: pending successful linuxdeploy bundling.
-  - Debian: `7be7f2360e009569d31cd187bcc9f8d5014ff446c993810bf052b82a1961e23d`
+- [x] Published artifact hashes were read back from GitHub's checksum file:
+  - AppImage: `f95ecdbbb8716f2251bb773605644240c9424829ebf412f4f62ed45419e67e77`
+  - Debian: `3673fb65b461c184120662b3641dbe285f1eacb758a4f5e20f95d9a377f53371`
 - [x] `npm ci` and `npm audit --audit-level=high` pass with zero vulnerabilities;
   the release keeps Excalidraw 0.18.1 and narrowly overrides its nested Nanoid
   copies to the patched 5.1.16 release.
@@ -41,8 +40,9 @@ out in the release notes.
   desktop checks; the live reliability wrapper has previously hit the five-minute
   orchestration timeout and must not be reported as a pass without its constituent
   results.
-- [ ] Build the final tagged artifacts in clean CI and publish `SHA256SUMS.txt`
-  beside them. The local artifacts above are evidence, not the public release.
+- [x] Build the final tagged artifacts in clean CI and publish `SHA256SUMS.txt`
+  beside them. The v0.1.1 GitHub release contains both artifacts and the
+  checksum file.
 - [ ] Test installation and first launch from a clean Linux environment for both
   formats, including the documented WebKitGTK runtime dependency boundary.
 
