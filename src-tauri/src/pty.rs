@@ -48,10 +48,20 @@ const MAX_SESSION_EVENTS: usize = 200;
 /// buffer plus a few Arc clones. A small fixed stack keeps the footprint flat as
 /// the number of terminals grows.
 const READER_THREAD_STACK_BYTES: usize = 256 * 1024;
+/// How long `shutdown` waits for an already-SIGKILLed child to be reaped before
+/// giving up and leaving it unreaped. Bounded on purpose: the `child` mutex is
+/// also read by `list_sessions`, so an unbounded wait here is a daemon-wide
+/// freeze rather than one stuck session.
+const CHILD_REAP_TIMEOUT: Duration = Duration::from_secs(5);
 
 struct PtyEntry {
     master: Box<dyn MasterPty + Send>,
-    writer: Box<dyn Write + Send>,
+    // Behind its own mutex so `write` can release the registry lock before it
+    // blocks on the PTY master. A PTY write blocks whenever the foreground
+    // process stops draining its input (stopped job, wedged TUI, full kernel
+    // buffer); with the writer inline that block was held *under the registry
+    // lock* and froze every other session's requests too.
+    writer: Arc<Mutex<Box<dyn Write + Send>>>,
     child: Arc<Mutex<Box<dyn Child + Send + Sync>>>,
     output: Arc<Mutex<PtyOutputBuffer>>,
     subscribers: Arc<Mutex<Vec<PtySubscriber>>>,
@@ -100,13 +110,28 @@ impl PtyEntry {
             let _ = handle.join();
         }
         let mut child = self.child.lock().unwrap();
-        let exit_status = match child.try_wait() {
-            Ok(Some(status)) => PtyExitStatus::from(status),
-            Ok(None) => child
-                .wait()
-                .map(PtyExitStatus::from)
-                .unwrap_or_else(|error| PtyExitStatus::error(error.to_string())),
-            Err(error) => PtyExitStatus::error(error.to_string()),
+        // Poll instead of blocking in `wait()`. We already SIGKILLed the child,
+        // so it normally reaps within milliseconds — but a child stuck in
+        // uninterruptible IO never exits, and a blocking `wait()` here held the
+        // `child` mutex forever. `list_sessions` reads that same mutex, so one
+        // unreapable shell used to wedge every request in the daemon. Give up
+        // after the deadline and record it: a lingering zombie is cheap, a
+        // frozen daemon is not.
+        let deadline = Instant::now() + CHILD_REAP_TIMEOUT;
+        let exit_status = loop {
+            match child.try_wait() {
+                Ok(Some(status)) => break PtyExitStatus::from(status),
+                Err(error) => break PtyExitStatus::error(error.to_string()),
+                Ok(None) => {
+                    if Instant::now() >= deadline {
+                        break PtyExitStatus::error(format!(
+                            "child did not exit within {:?} of SIGKILL; left unreaped",
+                            CHILD_REAP_TIMEOUT
+                        ));
+                    }
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+            }
         };
         drop(child);
         *self.last_exit.lock().unwrap() = Some(exit_status.clone());
@@ -858,7 +883,8 @@ impl PtyManager {
 
         // Get reader and writer from master
         let mut reader = pair.master.try_clone_reader().map_err(|e| e.to_string())?;
-        let writer = pair.master.take_writer().map_err(|e| e.to_string())?;
+        let writer: Arc<Mutex<Box<dyn Write + Send>>> =
+            Arc::new(Mutex::new(pair.master.take_writer().map_err(|e| e.to_string())?));
 
         // Spawn reader thread that emits events to frontend
         let event_id = id.clone();
@@ -1057,6 +1083,11 @@ impl PtyManager {
                 pane_cgroup,
                 _resume_lock: resume_lock,
             };
+            // Release the registry first: shutdown kills the child, joins the
+            // reader thread and reaps the process, none of which is bounded in
+            // time. Doing it under the registry lock let one stuck loser freeze
+            // every other session's requests.
+            drop(ptys);
             loser.shutdown(
                 "duplicate stable session lost creation race",
                 &self.session_events,
@@ -1120,15 +1151,18 @@ impl PtyManager {
             "pty.write.start",
             format!("id={id} bytes={} data={data:?}", data.len()),
         );
-        let mut ptys = self.ptys.lock().unwrap();
-        let entry = ptys
-            .get_mut(id)
-            .ok_or_else(|| format!("PTY {} not found", id))?;
-        entry
-            .writer
-            .write_all(data.as_bytes())
-            .map_err(|e| e.to_string())?;
-        entry.writer.flush().map_err(|e| e.to_string())?;
+        // Resolve the session's writer under the registry lock, then release the
+        // registry before the (potentially blocking) PTY write. Typing into a
+        // wedged pane must never stall the other panes.
+        let writer = {
+            let ptys = self.ptys.lock().unwrap();
+            ptys.get(id)
+                .map(|entry| entry.writer.clone())
+                .ok_or_else(|| format!("PTY {} not found", id))?
+        };
+        let mut writer = writer.lock().unwrap();
+        writer.write_all(data.as_bytes()).map_err(|e| e.to_string())?;
+        writer.flush().map_err(|e| e.to_string())?;
         trace_pty("pty.write.end", format!("id={id} bytes={}", data.len()));
         Ok(())
     }
@@ -1149,17 +1183,15 @@ impl PtyManager {
             .map_err(|e| e.to_string())?;
         entry.cols = cols;
         entry.rows = rows;
+        let meta = (entry.initial_cwd.clone(), entry.command.clone());
         // Keep the persisted winsize current so a cold restore reopens at the
-        // user's latest size, not the spawn size.
+        // user's latest size, not the spawn size. The disk write happens after
+        // the registry lock is released: on a thrashing disk this fsync-ish path
+        // can stall for seconds, and holding the registry through it stalls every
+        // other session too.
+        drop(ptys);
         if let Some(dir) = &self.persist_dir {
-            write_session_meta(
-                dir,
-                id,
-                entry.initial_cwd.as_deref(),
-                &entry.command,
-                cols,
-                rows,
-            );
+            write_session_meta(dir, id, meta.0.as_deref(), &meta.1, cols, rows);
         }
         Ok(())
     }
@@ -1256,17 +1288,46 @@ impl PtyManager {
     }
 
     pub fn list_sessions(&self) -> Vec<PtySessionSummary> {
-        let ptys = self.ptys.lock().unwrap();
-        ptys.iter()
-            .map(|(id, entry)| PtySessionSummary {
-                id: id.clone(),
-                pid: entry.child.lock().unwrap().process_id(),
-                initial_cwd: entry.initial_cwd.clone(),
-                command: entry.command.clone(),
-                scrollback_bytes: entry.output.lock().unwrap().data.len(),
-                subscriber_count: entry.subscribers.lock().unwrap().len(),
-                last_exit: entry.last_exit.lock().unwrap().clone(),
-            })
+        // Take only cheap clones (Arc handles + small fields) under the registry
+        // lock, then release it before touching any per-session mutex. Holding
+        // the registry while locking `child`/`output`/`subscribers` made one slow
+        // session freeze the whole daemon: a shutdown holding `child` across a
+        // blocking wait, or a reader holding `output` across a slow scrollback
+        // checkpoint, would park this call *with the registry lock held*, and
+        // every other request (write, resize, kill, ensure, list) piled up behind
+        // it forever. See docs/termfleet-reliability-plan.md.
+        let handles: Vec<_> = {
+            let ptys = self.ptys.lock().unwrap();
+            ptys.iter()
+                .map(|(id, entry)| {
+                    (
+                        id.clone(),
+                        entry.child.clone(),
+                        entry.output.clone(),
+                        entry.subscribers.clone(),
+                        entry.last_exit.clone(),
+                        entry.initial_cwd.clone(),
+                        entry.command.clone(),
+                    )
+                })
+                .collect()
+        };
+
+        handles
+            .into_iter()
+            .map(
+                |(id, child, output, subscribers, last_exit, initial_cwd, command)| {
+                    PtySessionSummary {
+                        id,
+                        pid: child.lock().unwrap().process_id(),
+                        initial_cwd,
+                        command,
+                        scrollback_bytes: output.lock().unwrap().data.len(),
+                        subscriber_count: subscribers.lock().unwrap().len(),
+                        last_exit: last_exit.lock().unwrap().clone(),
+                    }
+                },
+            )
             .collect()
     }
 
@@ -2728,6 +2789,80 @@ mod tests {
             output_weak.upgrade().is_none(),
             "reader thread leaked: output buffer still strong-referenced after kill"
         );
+    }
+
+    /// A pane whose foreground process stopped draining its input must not be
+    /// able to freeze the whole daemon.
+    ///
+    /// Regression for the 2026-08-11 wedge: `write` held the global registry
+    /// lock across the blocking PTY write, so once one pane's input buffer
+    /// filled, every other request (`listSessions`, writes to other panes,
+    /// kill, ensure) blocked behind it forever — 1000+ parked threads, and the
+    /// app fell back to an embedded PTY owner while all terminals were alive.
+    #[cfg(unix)]
+    #[test]
+    fn a_pane_that_never_drains_input_does_not_block_other_sessions() {
+        use std::sync::{mpsc, Arc};
+        use std::thread;
+        use std::time::{Duration, Instant};
+
+        let app = tauri::test::mock_app();
+        let manager = Arc::new(PtyManager::new());
+        let stuck = "wedge-writer-stuck".to_string();
+        let other = "wedge-writer-other".to_string();
+
+        for id in [&stuck, &other] {
+            manager
+                .spawn(
+                    app.handle(),
+                    Some(id.clone()),
+                    None,
+                    Some("sleep 30".to_string()),
+                )
+                .expect("spawn PTY");
+        }
+
+        // Stand in for the real-world stall (a pane whose foreground process
+        // stopped draining input, so `write_all` parks in the kernel) by holding
+        // that one session's writer. Deterministic, and it exercises the exact
+        // ordering that matters: a caller blocked on ONE session's writer must
+        // not still be holding the registry that every other session needs.
+        let stuck_writer = {
+            let ptys = manager.ptys.lock().unwrap();
+            ptys.get(&stuck).expect("stuck session").writer.clone()
+        };
+        let held = stuck_writer.lock().unwrap();
+
+        let blocked = manager.clone();
+        let blocked_id = stuck.clone();
+        thread::spawn(move || {
+            let _ = blocked.write(&blocked_id, "input nobody drains\n");
+        });
+        thread::sleep(Duration::from_millis(200));
+
+        let (tx, rx) = mpsc::channel();
+        let probe = manager.clone();
+        let probe_other = other.clone();
+        thread::spawn(move || {
+            let started = Instant::now();
+            let listed = probe.list_sessions().len();
+            let wrote = probe.write(&probe_other, "echo hi\n").is_ok();
+            let _ = tx.send((listed, wrote, started.elapsed()));
+        });
+
+        let (listed, wrote, elapsed) = rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("listSessions/write froze behind a pane that never drains its input");
+        assert_eq!(listed, 2, "both sessions should still be listed");
+        assert!(wrote, "writing to a healthy pane must still succeed");
+        assert!(
+            elapsed < Duration::from_secs(2),
+            "registry was stalled by the wedged pane for {elapsed:?}"
+        );
+
+        drop(held);
+        let _ = manager.kill(&stuck);
+        let _ = manager.kill(&other);
     }
 
     #[cfg(unix)]

@@ -532,10 +532,48 @@ fn spawn_current_binary_as_daemon() -> Result<(), String> {
     platform_process::spawn_detached_current_binary(DAEMON_ARG)
 }
 
+/// Raise this process's open-file soft limit to its hard limit.
+///
+/// The daemon holds one fd per PTY master plus one per connected client, and the
+/// cockpit opens a fresh control connection per poll. The inherited soft limit is
+/// the shell default of 1024, and once it is reached `accept()` fails for *every*
+/// caller: the app then reports "socket is owned but status is temporarily
+/// unavailable" and falls back to an embedded PTY owner even though the daemon
+/// and all its terminals are alive. Done here rather than in the launcher so it
+/// holds however the daemon was started (systemd unit, dev run, direct spawn).
+fn raise_open_file_limit() {
+    #[cfg(unix)]
+    {
+        // SAFETY: both calls take a pointer to a fully-initialized `rlimit` we own.
+        unsafe {
+            let mut limit = libc::rlimit {
+                rlim_cur: 0,
+                rlim_max: 0,
+            };
+            if libc::getrlimit(libc::RLIMIT_NOFILE, &mut limit) != 0 {
+                return;
+            }
+            if limit.rlim_cur >= limit.rlim_max {
+                return;
+            }
+            let previous = limit.rlim_cur;
+            limit.rlim_cur = limit.rlim_max;
+            if libc::setrlimit(libc::RLIMIT_NOFILE, &limit) == 0 {
+                eprintln!(
+                    "terminal-workspace-daemon: raised open-file limit {} -> {}",
+                    previous, limit.rlim_max
+                );
+            }
+        }
+    }
+}
+
 pub fn run_daemon_forever() -> Result<(), String> {
     // Pin the build identity to the binary this daemon launched from, so a later
     // same-path rebuild can't make us report as current (see DAEMON_BUILD_ID).
     let _ = DAEMON_BUILD_ID.set(current_build_id());
+
+    raise_open_file_limit();
 
     // Announce our cgroup parenting the moment we start. If we inherited the
     // app's unit instead of getting our own, this line is the one breadcrumb
