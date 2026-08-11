@@ -1223,12 +1223,16 @@ impl PtyManager {
     }
 
     pub fn get_cwd(&self, id: &str) -> Result<String, String> {
-        let ptys = self.ptys.lock().unwrap();
-        let entry = ptys
-            .get(id)
-            .ok_or_else(|| format!("PTY {} not found", id))?;
-        let pid = entry
-            .child
+        // Registry released before touching `child` (held by shutdown while it
+        // reaps) and before the /proc read, which blocks if the shell is stuck
+        // in uninterruptible IO.
+        let child = {
+            let ptys = self.ptys.lock().unwrap();
+            ptys.get(id)
+                .map(|entry| entry.child.clone())
+                .ok_or_else(|| format!("PTY {} not found", id))?
+        };
+        let pid = child
             .lock()
             .unwrap()
             .process_id()
@@ -1239,33 +1243,44 @@ impl PtyManager {
             .map_err(|e| e.to_string())
     }
 
-    pub fn snapshot(&self, id: &str) -> Result<String, String> {
+    /// Resolve a session's output buffer and release the registry before using
+    /// it. `snapshot`/`read_since` both call `flush_persist`, which writes the
+    /// whole scrollback (up to MAX_SCROLLBACK_BYTES) to disk synchronously — so
+    /// holding the registry across them turns one slow disk into a frozen
+    /// daemon, and the cockpit calls them constantly.
+    fn output_handle(&self, id: &str) -> Result<Arc<Mutex<PtyOutputBuffer>>, String> {
         let ptys = self.ptys.lock().unwrap();
-        let entry = ptys
-            .get(id)
-            .ok_or_else(|| format!("PTY {} not found", id))?;
-        let mut output = entry.output.lock().unwrap();
-        let snapshot = output.snapshot();
+        ptys.get(id)
+            .map(|entry| entry.output.clone())
+            .ok_or_else(|| format!("PTY {} not found", id))
+    }
+
+    pub fn snapshot(&self, id: &str) -> Result<String, String> {
+        let output = self.output_handle(id)?;
+        let snapshot = output.lock().unwrap().snapshot();
         Ok(snapshot)
     }
 
     pub fn read_since(&self, id: &str, offset: u64) -> Result<PtyOutputChunk, String> {
-        let ptys = self.ptys.lock().unwrap();
-        let entry = ptys
-            .get(id)
-            .ok_or_else(|| format!("PTY {} not found", id))?;
-        let mut output = entry.output.lock().unwrap();
-        let chunk = output.read_since(offset);
+        let output = self.output_handle(id)?;
+        let chunk = output.lock().unwrap().read_since(offset);
         Ok(chunk)
     }
 
-    pub fn subscribe(&self, id: &str, subscriber_id: String) -> Result<Receiver<String>, String> {
+    /// Same hoist as `output_handle`: the reader thread holds `subscribers`
+    /// while broadcasting a burst of output, so taking it under the registry
+    /// couples every session to the busiest one.
+    fn subscribers_handle(&self, id: &str) -> Result<Arc<Mutex<Vec<PtySubscriber>>>, String> {
         let ptys = self.ptys.lock().unwrap();
-        let entry = ptys
-            .get(id)
-            .ok_or_else(|| format!("PTY {} not found", id))?;
+        ptys.get(id)
+            .map(|entry| entry.subscribers.clone())
+            .ok_or_else(|| format!("PTY {} not found", id))
+    }
+
+    pub fn subscribe(&self, id: &str, subscriber_id: String) -> Result<Receiver<String>, String> {
+        let handle = self.subscribers_handle(id)?;
         let (sender, receiver) = mpsc::channel();
-        let mut subscribers = entry.subscribers.lock().unwrap();
+        let mut subscribers = handle.lock().unwrap();
         subscribers.retain(|subscriber| subscriber.id != subscriber_id);
         subscribers.push(PtySubscriber {
             id: subscriber_id,
@@ -1275,12 +1290,8 @@ impl PtyManager {
     }
 
     pub fn unsubscribe(&self, id: &str, subscriber_id: &str) -> Result<(), String> {
-        let ptys = self.ptys.lock().unwrap();
-        let entry = ptys
-            .get(id)
-            .ok_or_else(|| format!("PTY {} not found", id))?;
-        entry
-            .subscribers
+        let handle = self.subscribers_handle(id)?;
+        handle
             .lock()
             .unwrap()
             .retain(|subscriber| subscriber.id != subscriber_id);
@@ -1313,18 +1324,34 @@ impl PtyManager {
                 .collect()
         };
 
+        // Every per-session read here is a `try_lock`. A session summary must
+        // never block: `output` is held across scrollback flushes to disk and
+        // `child` across a reap, so a blocking read made "list my terminals"
+        // hang whenever any ONE pane was mid-flush — which is how a single slow
+        // session still took the cockpit down after the registry was freed.
+        // A momentarily-busy session reports its cheap fields and omits the
+        // contended ones rather than stalling the whole listing.
         handles
             .into_iter()
             .map(
                 |(id, child, output, subscribers, last_exit, initial_cwd, command)| {
                     PtySessionSummary {
                         id,
-                        pid: child.lock().unwrap().process_id(),
+                        pid: child.try_lock().ok().and_then(|c| c.process_id()),
                         initial_cwd,
                         command,
-                        scrollback_bytes: output.lock().unwrap().data.len(),
-                        subscriber_count: subscribers.lock().unwrap().len(),
-                        last_exit: last_exit.lock().unwrap().clone(),
+                        scrollback_bytes: output
+                            .try_lock()
+                            .map(|buffer| buffer.data.len())
+                            .unwrap_or(0),
+                        subscriber_count: subscribers
+                            .try_lock()
+                            .map(|list| list.len())
+                            .unwrap_or(0),
+                        last_exit: last_exit
+                            .try_lock()
+                            .ok()
+                            .and_then(|status| status.clone()),
                     }
                 },
             )
@@ -2862,6 +2889,75 @@ mod tests {
 
         drop(held);
         let _ = manager.kill(&stuck);
+        let _ = manager.kill(&other);
+    }
+
+    /// Reading one pane's scrollback must not freeze the others.
+    ///
+    /// `snapshot`/`read_since` call `flush_persist`, which writes the whole
+    /// scrollback to disk synchronously. Those ran with the registry lock held,
+    /// so on a stalled disk — exactly the state this workstation was in during
+    /// the 2026-08-11 tmpfs storm — a single scrollback flush froze every pane.
+    /// The cockpit polls these constantly, which is what made it total.
+    #[cfg(unix)]
+    #[test]
+    fn reading_one_panes_scrollback_does_not_block_other_sessions() {
+        use std::sync::{mpsc, Arc};
+        use std::thread;
+        use std::time::{Duration, Instant};
+
+        let app = tauri::test::mock_app();
+        let manager = Arc::new(PtyManager::new());
+        let slow = "slow-scrollback-session".to_string();
+        let other = "healthy-scrollback-session".to_string();
+
+        for id in [&slow, &other] {
+            manager
+                .spawn(
+                    app.handle(),
+                    Some(id.clone()),
+                    None,
+                    Some("sleep 30".to_string()),
+                )
+                .expect("spawn PTY");
+        }
+
+        // Stand in for a scrollback flush stalled on a thrashing disk.
+        let slow_output = {
+            let ptys = manager.ptys.lock().unwrap();
+            ptys.get(&slow).expect("slow session").output.clone()
+        };
+        let held = slow_output.lock().unwrap();
+
+        let blocked = manager.clone();
+        let blocked_id = slow.clone();
+        thread::spawn(move || {
+            let _ = blocked.snapshot(&blocked_id);
+        });
+        thread::sleep(Duration::from_millis(200));
+
+        let (tx, rx) = mpsc::channel();
+        let probe = manager.clone();
+        let probe_other = other.clone();
+        thread::spawn(move || {
+            let started = Instant::now();
+            let listed = probe.list_sessions().len();
+            let snapped = probe.snapshot(&probe_other).is_ok();
+            let _ = tx.send((listed, snapped, started.elapsed()));
+        });
+
+        let (listed, snapped, elapsed) = rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("registry froze behind one session's scrollback flush");
+        assert_eq!(listed, 2);
+        assert!(snapped, "a healthy pane's scrollback must still be readable");
+        assert!(
+            elapsed < Duration::from_secs(2),
+            "registry was stalled for {elapsed:?}"
+        );
+
+        drop(held);
+        let _ = manager.kill(&slow);
         let _ = manager.kill(&other);
     }
 

@@ -16,6 +16,10 @@ use std::sync::{
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const STATUS_COMMAND: &[u8] = b"status\n";
+/// Ceiling on a single control request, so a malformed client that never sends
+/// a newline cannot grow the daemon's memory without bound. Large enough for a
+/// full-buffer paste; small enough to be an obvious error.
+const MAX_REQUEST_BYTES: usize = 16 * 1024 * 1024;
 const PROTOCOL_VERSION: u16 = 1;
 pub const DAEMON_ARG: &str = "--terminal-workspace-daemon";
 pub const DAEMON_STDIO_ARG: &str = "--terminal-workspace-daemon-stdio";
@@ -748,21 +752,31 @@ fn handle_daemon_client(
         .set_write_timeout(Some(Duration::from_millis(500)))
         .map_err(|error| error.to_string())?;
 
-    let mut buffer = [0_u8; 8192];
-    let count = stream
-        .read(&mut buffer)
-        .map_err(|error| error.to_string())?;
+    // Read until the request's terminating newline instead of trusting one
+    // read() to deliver it whole. The old single 8192-byte read rejected every
+    // request larger than the buffer — verified against a live daemon: an 8.1KB
+    // `writeSession` failed with "EOF while parsing a string at line 1 column
+    // 8192" — so pasting more than ~8KB through the control socket silently
+    // failed. A short read could truncate a small request the same way.
+    let (buffer, count) = match read_request_frame(stream)? {
+        Some(frame) => frame,
+        None => {
+            return write_daemon_response(
+                stream,
+                &DaemonResponse::Error {
+                    message: format!("request exceeds {MAX_REQUEST_BYTES} bytes"),
+                },
+            )
+        }
+    };
     if &buffer[..count] != STATUS_COMMAND {
         if let Some(header_end) = buffer[..count].iter().position(|byte| *byte == b'\n') {
             if let Ok(DaemonRequest::InputStream { id }) =
                 serde_json::from_slice::<DaemonRequest>(&buffer[..header_end])
             {
-                return handle_daemon_input_stream(
-                    stream,
-                    pty_manager,
-                    &id,
-                    &buffer[(header_end + 1)..count],
-                );
+                // Anything already buffered past the header is stream payload.
+                let leftover = buffer[(header_end + 1)..].to_vec();
+                return handle_daemon_input_stream(stream, pty_manager, &id, &leftover);
             }
         }
 
@@ -784,6 +798,34 @@ fn handle_daemon_client(
         stream,
         &DaemonResponse::Status(external_daemon_status(socket_path)),
     )
+}
+
+/// Read one newline-terminated request, however many reads that takes.
+///
+/// Returns the whole buffer plus the length of the framed request (bytes past
+/// the newline belong to a following input stream). `None` means the client
+/// exceeded `MAX_REQUEST_BYTES` without terminating its request.
+///
+/// A single fixed-size read was the bug this replaces: any request larger than
+/// the buffer was handed to the JSON parser truncated and rejected, so a paste
+/// over ~8KB through the control socket could never succeed.
+fn read_request_frame(reader: &mut impl Read) -> Result<Option<(Vec<u8>, usize)>, String> {
+    let mut buffer: Vec<u8> = Vec::with_capacity(8192);
+    let mut chunk = [0_u8; 8192];
+    loop {
+        if let Some(index) = buffer.iter().position(|byte| *byte == b'\n') {
+            return Ok(Some((buffer, index + 1)));
+        }
+        if buffer.len() > MAX_REQUEST_BYTES {
+            return Ok(None);
+        }
+        let read = reader.read(&mut chunk).map_err(|error| error.to_string())?;
+        if read == 0 {
+            let len = buffer.len();
+            return Ok(Some((buffer, len)));
+        }
+        buffer.extend_from_slice(&chunk[..read]);
+    }
 }
 
 fn handle_daemon_request(
@@ -975,9 +1017,120 @@ mod tests {
     use super::{
         current_build_id, daemon_socket_path, daemon_status, daemon_stdio_bridge_argv,
         embedded_fallback_status, prepare_socket_dir, remove_stale_socket,
-        should_reuse_running_daemon_with_fresh_request, DaemonMode, DaemonRequest, DaemonResponse,
-        DaemonStatus, DAEMON_STDIO_ARG, PROTOCOL_VERSION,
+        read_request_frame, should_reuse_running_daemon_with_fresh_request, DaemonMode,
+        DaemonRequest, DaemonResponse, DaemonStatus, DAEMON_STDIO_ARG, PROTOCOL_VERSION,
     };
+
+    /// Delivers its payload in small pieces, the way a socket actually does.
+    struct ChunkedReader {
+        data: Vec<u8>,
+        position: usize,
+        chunk: usize,
+    }
+
+    impl std::io::Read for ChunkedReader {
+        fn read(&mut self, out: &mut [u8]) -> std::io::Result<usize> {
+            let remaining = self.data.len() - self.position;
+            let take = remaining.min(self.chunk).min(out.len());
+            out[..take].copy_from_slice(&self.data[self.position..self.position + take]);
+            self.position += take;
+            Ok(take)
+        }
+    }
+
+    /// A request bigger than one read buffer must still arrive intact.
+    ///
+    /// Regression: the handler used a single 8192-byte read, so every larger
+    /// request reached the parser truncated. Verified live against the running
+    /// daemon on 2026-08-11 — an 8.1KB `writeSession` failed with "EOF while
+    /// parsing a string at line 1 column 8192", i.e. pasting more than ~8KB
+    /// through the control socket could not work.
+    #[test]
+    fn a_request_larger_than_one_read_buffer_is_framed_whole() {
+        let big = "p".repeat(200_000);
+        let request = serde_json::to_vec(&DaemonRequest::WriteSession {
+            id: "pane".to_string(),
+            data: big.clone(),
+        })
+        .unwrap();
+        assert!(request.len() > 8192, "test payload must exceed the old cap");
+
+        let mut wire = request.clone();
+        wire.push(b'\n');
+        let mut reader = ChunkedReader {
+            data: wire,
+            position: 0,
+            chunk: 1024,
+        };
+
+        let (buffer, count) = read_request_frame(&mut reader)
+            .expect("framing must not error")
+            .expect("payload is under the ceiling");
+        assert_eq!(count, request.len() + 1);
+
+        match serde_json::from_slice::<DaemonRequest>(&buffer[..count]).expect("parses") {
+            DaemonRequest::WriteSession { id, data } => {
+                assert_eq!(id, "pane");
+                assert_eq!(data, big, "payload must survive framing intact");
+            }
+            other => panic!("wrong request decoded: {other:?}"),
+        }
+    }
+
+    /// Bytes after the newline belong to the input stream that follows. Framing
+    /// may stop as soon as it sees the newline, so those bytes are split between
+    /// what was already buffered and what is still unread — but none may be
+    /// dropped or duplicated, or the first keystrokes of a pane vanish.
+    #[test]
+    fn no_typed_bytes_are_lost_at_the_request_boundary() {
+        let header = serde_json::to_vec(&DaemonRequest::InputStream {
+            id: "pane".to_string(),
+        })
+        .unwrap();
+        let typed = b"already typed";
+
+        // Every chunk size lands the newline in a different place, including
+        // exactly on a boundary.
+        for chunk in [1_usize, 3, 7, 64, 8192] {
+            let mut wire = header.clone();
+            wire.push(b'\n');
+            wire.extend_from_slice(typed);
+
+            let mut reader = ChunkedReader {
+                data: wire,
+                position: 0,
+                chunk,
+            };
+            let (buffer, count) = read_request_frame(&mut reader).unwrap().unwrap();
+            assert_eq!(count, header.len() + 1, "chunk={chunk}");
+            assert!(
+                serde_json::from_slice::<DaemonRequest>(&buffer[..count]).is_ok(),
+                "header must decode at chunk={chunk}"
+            );
+
+            let mut recovered = buffer[count..].to_vec();
+            let mut rest = Vec::new();
+            std::io::Read::read_to_end(&mut reader, &mut rest).unwrap();
+            recovered.extend_from_slice(&rest);
+            assert_eq!(
+                recovered, typed,
+                "typed bytes must be recoverable exactly once at chunk={chunk}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_client_that_never_terminates_its_request_is_rejected_not_buffered_forever() {
+        let mut reader = ChunkedReader {
+            data: vec![b'x'; super::MAX_REQUEST_BYTES + 4096],
+            position: 0,
+            chunk: 65536,
+        };
+        assert!(
+            read_request_frame(&mut reader).unwrap().is_none(),
+            "an unterminated oversized request must be refused"
+        );
+    }
 
     #[test]
     fn prepare_socket_dir_creates_owner_only_dir() {
