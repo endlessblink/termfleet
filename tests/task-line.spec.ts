@@ -65,14 +65,14 @@ test("the tool of the second is the NOW line, never the goal", () => {
 
 // "Always show the main plan": the session's own plan title leads over the current
 // step — the step is a part of the plan, not the plan itself.
-test("a structured current step leads over a generated session title", () => {
+test("a structured current step stays progress when no durable goal exists", () => {
   const line = resolvePaneTaskLine({
     now: NOW,
     facts: { title: "Make the terminal status line reliable" },
     currentStep: "Running the task-line verification",
   });
-  expect(line.text).toBe("Running the task-line verification");
-  expect(line.source).toBe("current-step");
+  expect(line.source).toBe("session-title");
+  expect(line.text).toBe("Make the terminal status line reliable");
 });
 
 test("an explicit goal still leads over everything", () => {
@@ -86,15 +86,18 @@ test("an explicit goal still leads over everything", () => {
   expect(line.source).toBe("declared");
 });
 
-test("the current step becomes Task when no explicit goal exists", () => {
+test("the current step stays out of Task when no explicit goal exists", () => {
   const input = {
     now: NOW,
     currentStep: "Running the task-line verification",
   };
   const task = resolvePaneTaskLine(input);
-  expect(task.source).toBe("current-step");
-  expect(task.text).toBe("Running the task-line verification");
-  expect(resolvePaneNowLine(input, task.text)).toBeNull();
+  expect(task.source).toBe("shell-state");
+  expect(task.rejected).toBe("Running the task-line verification");
+  expect(resolvePaneNowLine(input)).toMatchObject({
+    text: "Running the task-line verification",
+    source: "current-step",
+  });
 });
 
 test("a structured plan purpose replaces a raw opening complaint", () => {

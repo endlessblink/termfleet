@@ -13,9 +13,15 @@ RECOVER="${TERMFLEET_PRESSURE_WATCHDOG_RECOVER:-1}"
 DESKTOP_LAUNCHER="${TERMFLEET_DESKTOP_LAUNCHER:-$HOME/.local/bin/termfleet-desktop}"
 ALERT_COOLDOWN_SECONDS="${TERMFLEET_PRESSURE_WATCHDOG_ALERT_COOLDOWN:-300}"
 HOST_ALERT_COOLDOWN_SECONDS="${TERMFLEET_PRESSURE_WATCHDOG_HOST_ALERT_COOLDOWN:-1800}"
+BLOCKED_CONFIRMATIONS="${TERMFLEET_PRESSURE_WATCHDOG_BLOCKED_CONFIRMATIONS:-3}"
+RECOVERY_COOLDOWN_SECONDS="${TERMFLEET_PRESSURE_WATCHDOG_RECOVERY_COOLDOWN:-120}"
 NOTIFY_REPLACE_ID="${TERMFLEET_PRESSURE_WATCHDOG_NOTIFY_ID:-4242}"
+RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$UID}"
 last_alert_epoch=0
 last_host_alert_epoch=0
+last_recovery_epoch=0
+webkit_blocked_count=0
+desktop_blocked_count=0
 
 mkdir -p "$STATE_DIR"
 exec 9>"$LOCK_FILE"
@@ -32,16 +38,36 @@ while :; do
   IFS='|' read -r desktop_pid desktop_pgid desktop_state desktop_rss <<<"$desktop_info"
   memory_psi="$(read_psi_avg10 /proc/pressure/memory)"
   io_psi="$(read_psi_avg10 /proc/pressure/io)"
+  # Match only real TermFleet daemon commands whose final argument is the
+  # daemon flag. A broad ps/awk substring match also counts the inspection
+  # command itself, producing the false daemon_processes=2 alert.
+  daemon_pids="$(pgrep -u "$UID" -f -- '[t]ermfleet.*--terminal-workspace-daemon$' || true)"
+  daemon_count="$(printf '%s\n' "$daemon_pids" | awk 'NF { count++ } END { print count + 0 }')"
+  socket_count="$(ss -xlpn 2>/dev/null | awk -v socket="$RUNTIME_DIR/terminal-workspace/daemon.sock" '$0 ~ socket && $0 ~ /LISTEN/ { count++ } END { print count + 0 }')"
 
   reason=""
   detail=""
   if [[ "$webkit_state" == D* ]]; then
+    ((webkit_blocked_count += 1))
+  else
+    webkit_blocked_count=0
+  fi
+  if [[ "$desktop_state" == D* ]]; then
+    ((desktop_blocked_count += 1))
+  else
+    desktop_blocked_count=0
+  fi
+
+  if (( daemon_count > 1 || socket_count > 1 )); then
+    reason="daemon-split-brain"
+    detail="daemon_processes=$daemon_count daemon_pids=$(printf '%s' "$daemon_pids" | tr '\n' ',') socket_listeners=$socket_count socket=$RUNTIME_DIR/terminal-workspace/daemon.sock"
+  elif (( webkit_blocked_count >= BLOCKED_CONFIRMATIONS )); then
     reason="webkit-blocked"
     detail="pid=$webkit_pid rss_kb=$webkit_rss pgid=$webkit_pgid state=$webkit_state memory_psi_avg10=$memory_psi io_psi_avg10=$io_psi"
   elif [[ -n "$webkit_rss" ]] && (( webkit_rss > MEMORY_LIMIT_KB )); then
     reason="webkit-memory"
     detail="pid=$webkit_pid rss_kb=$webkit_rss limit_kb=$MEMORY_LIMIT_KB pgid=$webkit_pgid state=$webkit_state memory_psi_avg10=$memory_psi io_psi_avg10=$io_psi"
-  elif [[ "$desktop_state" == D* ]]; then
+  elif (( desktop_blocked_count >= BLOCKED_CONFIRMATIONS )); then
     reason="desktop-blocked"
     detail="pid=$desktop_pid rss_kb=$desktop_rss pgid=$desktop_pgid state=$desktop_state memory_psi_avg10=$memory_psi io_psi_avg10=$io_psi"
   elif [[ -n "$desktop_rss" ]] && (( desktop_rss > MEMORY_LIMIT_KB )); then
@@ -64,6 +90,10 @@ while :; do
     if [[ "$reason" == host-* ]] && (( now_epoch - last_host_alert_epoch < HOST_ALERT_COOLDOWN_SECONDS )); then
       host_alert_allowed=0
     fi
+    recovery_allowed=1
+    if (( now_epoch - last_recovery_epoch < RECOVERY_COOLDOWN_SECONDS )); then
+      recovery_allowed=0
+    fi
     if [[ "${last_signature:-}" != "$signature" ]] && (( now_epoch - last_alert_epoch >= ALERT_COOLDOWN_SECONDS )) && (( host_alert_allowed == 1 )); then
       timestamp="$(date --iso-8601=seconds)"
       prompt="TERM FLEET PRESSURE ALERT at $timestamp: $reason. $detail. Inspect the exact process tree before cleanup; keep the daemon alive."
@@ -82,11 +112,12 @@ while :; do
       if [[ "$reason" == desktop-* ]]; then
         recovery_pgid="$desktop_pgid"
       fi
-      if [[ "$RECOVER" == "1" && ( "$reason" == webkit-* || "$reason" == desktop-* ) && "$recovery_pgid" =~ ^[0-9]+$ && "$recovery_pgid" -gt 1 ]]; then
+      if [[ "$RECOVER" == "1" && "$recovery_allowed" == "1" && ( "$reason" == webkit-* || "$reason" == desktop-* ) && "$recovery_pgid" =~ ^[0-9]+$ && "$recovery_pgid" -gt 1 ]]; then
         printf '%s recovery=desktop-group-%s daemon=preserved\n' "$timestamp" "$recovery_pgid" >>"$ALERT_LOG"
         kill -- "-$recovery_pgid" 2>>"$ALERT_LOG" || true
         sleep 1
         "$DESKTOP_LAUNCHER" >>"$ALERT_LOG" 2>&1 &
+        last_recovery_epoch="$now_epoch"
       fi
       last_signature="$signature"
       last_alert_epoch="$now_epoch"

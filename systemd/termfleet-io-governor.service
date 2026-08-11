@@ -1,0 +1,12 @@
+[Unit]
+Description=TermFleet background I/O pressure governor
+
+[Service]
+ExecStart=/usr/bin/node %h/.local/share/termfleet/io-governor/termfleet-io-governor.mjs
+Restart=always
+RestartSec=2
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus
+
+[Install]
+WantedBy=default.target

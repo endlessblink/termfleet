@@ -55,6 +55,7 @@ export interface TerminalHeaderState {
   terminalId: string;
   runId?: string;
   workspace: string;
+  contextLabel: string;
   userGoal: string | null;
   goalLabel: string;
   currentActivity: string;
@@ -65,6 +66,7 @@ export interface TerminalHeaderState {
   sources: {
     workspace: TerminalHeaderWorkspaceSource;
     goal: TerminalHeaderGoalSource;
+    context: HeaderFieldSource;
     activity: TerminalHeaderActivitySource;
     path: TerminalHeaderPathSource;
   };
@@ -224,7 +226,9 @@ export function buildTerminalHeaderState(input: {
   // computed from a thin status file was permanently winning here — the enrichment
   // below could never run. Treat that one source as "nothing known" and re-resolve.
   const storedTaskLine =
-    input.taskLine?.source === "shell-state" ? null : input.taskLine;
+    input.taskLine?.source === "shell-state" && !input.taskLine.rejected
+      ? null
+      : input.taskLine;
   // A pane's line arrives from several routes (the central poll, the pane's own poll,
   // the persisted snapshot) and any single render can arrive before or between them —
   // a reattach, a pane-id switch on the map, a store rebuild. The row then flipped
@@ -292,6 +296,32 @@ export function buildTerminalHeaderState(input: {
     input.mainUserAsk,
   );
   const goalLabel = view.taskDescription.text;
+  const normalizedContext = view.context.text.trim().toLowerCase();
+  const normalizedActivity = view.title.text.trim().toLowerCase();
+  const contextIsCaptured =
+    view.context.text.trim() !== "" &&
+    view.context.text.trim() !== "Context not captured" &&
+    normalizedContext !== normalizedActivity;
+  // The display contract needs one stable project-intent value. A missing context
+  // must not erase a real goal that the same resolver already captured, otherwise
+  // each surface invents a different fallback (or shows "Project intent not captured").
+  const goalCanBeProjectIntent =
+    goalSource !== "none" &&
+    goalSource !== "missing" &&
+    goalSource !== "task-line" &&
+    !/^(?:No task declared|No active work|What should change\?|Waiting for a clear goal)$/i.test(
+      goalLabel.trim(),
+    );
+  const resolvedContextLabel = contextIsCaptured
+    ? view.context.text
+    : goalCanBeProjectIntent
+      ? goalLabel
+      : "Goal not captured";
+  const resolvedContextSource: HeaderFieldSource = contextIsCaptured
+    ? view.context.source
+    : !goalCanBeProjectIntent
+      ? "missing"
+      : goalSource;
   // TC-060: the fallback line always fills the Task row, but it is NOT a declared
   // goal — the activity line must keep treating those panes as goal-less, or a
   // visibly busy terminal stops saying so.
@@ -330,6 +360,7 @@ export function buildTerminalHeaderState(input: {
     terminalId: input.terminalId,
     runId: input.runId ?? input.activeRunId,
     workspace: view.workspace.text,
+    contextLabel: resolvedContextLabel,
     userGoal: hasCapturedGoal ? goalLabel : null,
     goalLabel,
     currentActivity,
@@ -339,6 +370,7 @@ export function buildTerminalHeaderState(input: {
     sources: {
       workspace: "workspace",
       goal: goalSource,
+      context: resolvedContextSource,
       activity: activitySource,
       path: pathSource(input),
     },

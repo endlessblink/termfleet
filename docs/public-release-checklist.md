@@ -14,14 +14,18 @@ out in the release notes.
 - [x] The Tauri bundle targets are AppImage and Debian packages.
 - [x] The release workflow passes bundle targets to Tauri using the supported
   `--bundles=appimage,deb` form.
-- [x] A local release build produced both Linux artifacts for x86-64:
-  `TermFleet_0.1.0_amd64.AppImage` and `TermFleet_0.1.0_amd64.deb`.
-- [x] The AppImage is an executable ELF image and responds to its AppImage
+- [ ] A local release build produced both Linux artifacts for x86-64:
+  `TermFleet_0.1.1_amd64.AppImage` and `TermFleet_0.1.1_amd64.deb`. The Debian
+  artifact is fresh; the AppImage helper stalled during linuxdeploy bundling.
+- [ ] The AppImage is an executable ELF image and responds to its AppImage
   runtime help command.
 - [x] The Debian artifact is a Debian binary package in format 2.0.
-- [x] Local artifact hashes were recorded during the build audit:
-  - AppImage: `e89f33fcde2e175278ddb51dbaf3f030910d3df45a4117b6838b256ff927e9d6`
-  - Debian: `15ea33b3db5e7edc1fe4071bd8151e2bbacb2db324e5bd31c44af1eed52710f3`
+- [ ] Local artifact hashes were recorded for both publishable artifacts:
+  - AppImage: pending successful linuxdeploy bundling.
+  - Debian: `7be7f2360e009569d31cd187bcc9f8d5014ff446c993810bf052b82a1961e23d`
+- [x] `npm ci` and `npm audit --audit-level=high` pass with zero vulnerabilities;
+  the release keeps Excalidraw 0.18.1 and narrowly overrides its nested Nanoid
+  copies to the patched 5.1.16 release.
 - [x] The installed dock release and restart smoke checks pass on the current
   Linux workstation.
 
@@ -44,7 +48,7 @@ out in the release notes.
 
 ## Release policy decisions
 
-- [ ] Keep this first release explicitly Linux-only and preview-quality.
-- [ ] Label artifacts unsigned unless Linux signing is added and verified.
-- [ ] Choose and document the public version/tag, release notes, support matrix,
-  and rollback path before pushing the tag.
+- [x] Keep this first release explicitly Linux-only and preview-quality.
+- [x] Label artifacts unsigned unless Linux signing is added and verified.
+- [x] Choose and document the public version/tag, release notes, support matrix,
+  and rollback path in `docs/release-notes-v0.1.1.md` before pushing the tag.

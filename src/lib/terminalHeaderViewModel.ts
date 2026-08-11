@@ -23,6 +23,8 @@ import {
   qualityCheckUserAskLabel,
   qualityCheckTrustedActivityLabel,
   qualityCheckNowLabel,
+  isSupervisedMetaProcessActivity,
+  isSupervisedMetaProcessTask,
   qualityCheckNarrationLabel,
   titleIsCommentaryOrDangling,
   readsAsActivity,
@@ -54,6 +56,7 @@ export interface HeaderField {
 
 export interface ShellTerminalHeaderViewModel {
   workspace: HeaderField;
+  context: HeaderField;
   taskDescription: HeaderField;
   title: HeaderField;
   path: HeaderField;
@@ -82,6 +85,29 @@ function headerStemsMatch(a?: string, b?: string) {
   if (!a || !b) return false;
   const stem = (word: string) => word.replace(/ing$/, "").replace(/e$/, "");
   return stem(a) === stem(b) || a.startsWith(b) || b.startsWith(a);
+}
+
+// A regression step can still carry the user's concrete product object. Preserve that
+// object as a restrained outcome only for this reviewed shape; never paraphrase a generic
+// process label into a made-up goal.
+export function productGoalFromRegressionStep(value?: string | null): string | undefined {
+  const match = value
+    ?.trim()
+    .match(/^(?:adding|writing|creating)\s+(?:a\s+)?regression\s+for\s+(.+)$/i);
+  const subject = match?.[1]?.trim().replace(/[.!?]+$/, "");
+  if (
+    !subject ||
+    subject.length > 64 ||
+    /\b(?:test|tests|verification|build|release|quality|task|label|header|card|terminal|process|pane|workflow)\b/i.test(
+      subject,
+    )
+  ) {
+    return undefined;
+  }
+  const candidate = `Keeping ${subject} reliable`;
+  return qualityCheckAuthoritativeTaskLabel(candidate).ok
+    ? candidate
+    : undefined;
 }
 
 export function headerTextsEquivalent(a?: string | null, b?: string | null) {
@@ -749,6 +775,13 @@ export function buildShellTerminalHeaderViewModel(input: {
     // TC-060: consulted only at the final render fallback, below.
   });
   const activePlanItem = activeTodoTask(input.taskLineup, input.activeRunId);
+  const mainUserAskApplies = Boolean(
+    input.mainUserAsk &&
+    (!input.mainUserAsk.runId ||
+      !input.activeRunId ||
+      input.mainUserAsk.runId === input.activeRunId ||
+      input.mainUserAsk.source === "status-sidecar"),
+  );
   // TC-060 R3 (never stale): a sidecar "task" assembled from todos that are ALL
   // completed describes FINISHED work, not the current turn. When no declared step
   // is still in progress and the live ladder carries a fresher current-work line
@@ -757,7 +790,7 @@ export function buildShellTerminalHeaderViewModel(input: {
   // header while the agent has visibly moved on.
   const ladderIsLiveWork =
     input.taskLine != null &&
-    /^(?:declared|context-summary|opening-request|plan-purpose|session-title|operator-request|pending-question|current-step|agent-said|current-tool|completed-task|recent-activity)$/.test(
+    /^(?:declared|context-summary|opening-request|plan-purpose|session-title|operator-request|pending-question|agent-said|current-tool|completed-task|recent-activity)$/.test(
       input.taskLine.source,
     );
   // TC-060 "always show the main plan": the Task row is meant to answer "what is
@@ -766,7 +799,7 @@ export function buildShellTerminalHeaderViewModel(input: {
   // in-progress step — the step still surfaces on the Now Active line below.
   const ladderIsMainPlan =
     input.taskLine != null &&
-    /^(?:declared|context-summary|opening-request|plan-purpose|session-title|operator-request|pending-question|current-step)$/.test(
+    /^(?:declared|context-summary|opening-request|plan-purpose|session-title|operator-request|pending-question)$/.test(
       input.taskLine.source,
     );
   // A GOAL always outranks a step, whatever produced the step. The old condition only
@@ -778,6 +811,7 @@ export function buildShellTerminalHeaderViewModel(input: {
   // the resolver.
   const preferLadder =
     input.taskLine != null &&
+    !mainUserAskApplies &&
     ((declaredIdentity.source === "sidecar-todo" &&
       !activePlanItem &&
       ladderIsLiveWork) ||
@@ -789,13 +823,6 @@ export function buildShellTerminalHeaderViewModel(input: {
         source: "task-line" as const,
       }
     : declaredIdentity;
-  const mainUserAskApplies = Boolean(
-    input.mainUserAsk &&
-    (!input.mainUserAsk.runId ||
-      !input.activeRunId ||
-      input.mainUserAsk.runId === input.activeRunId ||
-      input.mainUserAsk.source === "status-sidecar"),
-  );
   const taskText =
     taskIdentity.source === "task-tool" ? taskIdentity.text : undefined;
   const userTaskText =
@@ -819,18 +846,27 @@ export function buildShellTerminalHeaderViewModel(input: {
       ? qualityCheckUserAskLabel(identityTaskDescriptionText)
       : qualityCheckAuthoritativeTaskLabel(identityTaskDescriptionText)
     : { ok: false as const, reason: "empty" as const };
-  const taskDescriptionText = identityTaskQuality.ok
-    ? identityTaskDescriptionText
-    : undefined;
   const rejectedIdentityTaskText =
     identityTaskDescriptionText && !identityTaskQuality.ok
       ? identityTaskDescriptionText
-      : undefined;
+      : taskIdentity.source === "missing" && input.taskLine?.rejected
+        ? compactHeaderGoal(input.taskLine.rejected)
+        : undefined;
+  const contextualRejectedGoal = productGoalFromRegressionStep(
+    rejectedIdentityTaskText,
+  );
+  const taskDescriptionText = identityTaskQuality.ok
+    ? identityTaskDescriptionText
+    : contextualRejectedGoal;
   const taskDescriptionSource: HeaderFieldSource | "missing" =
-    identityTaskQuality.ok ? taskIdentity.source : "missing";
+    identityTaskQuality.ok
+      ? taskIdentity.source
+      : contextualRejectedGoal
+        ? "task-line"
+        : "missing";
   const hasRealTask = Boolean(taskText && taskDescriptionText);
   const hasUserTask = Boolean(userTaskText && taskDescriptionText);
-  const hasStatusTask = false;
+  const hasStatusTask = Boolean(contextualRejectedGoal);
 
   const base =
     input.summary ??
@@ -857,9 +893,14 @@ export function buildShellTerminalHeaderViewModel(input: {
   const neutral =
     input.neutralTitle === undefined ? computedNeutral : input.neutralTitle;
   const rawFallbackNow = neutral ?? computedNeutral;
+  const metaProcessNow = isSupervisedMetaProcessActivity(
+    input.statusSummary?.now ?? input.summary?.now,
+  );
   // An actively-working pane must never read "Idle"/"Ready" (→ "Awaiting next action").
   const fallbackNow =
-    input.activelyWorking &&
+    metaProcessNow && base.status === "working"
+      ? "Working"
+      : input.activelyWorking &&
     (rawFallbackNow === "Idle" || rawFallbackNow === "Ready")
       ? "Working"
       : rawFallbackNow;
@@ -1052,7 +1093,8 @@ export function buildShellTerminalHeaderViewModel(input: {
     base.status === "working" &&
     input.neutralTitle !== "Idle" &&
     !liveNarration &&
-    !taskDerivedActivity,
+    !taskDerivedActivity &&
+    !isSupervisedMetaProcessActivity(now),
   );
   const preGuardTitle = missingActivity
     ? "Activity not captured"
@@ -1081,9 +1123,11 @@ export function buildShellTerminalHeaderViewModel(input: {
   const readableNow = missingActivity
     ? "Activity not captured"
     : lowQualityNow
-      ? noCapturedWorkingActivity
-        ? "Activity not captured"
-        : fallbackNow
+      ? metaProcessNow || isSupervisedMetaProcessActivity(now)
+        ? "Working"
+        : noCapturedWorkingActivity
+          ? "Activity not captured"
+          : fallbackNow
       : candidateReadableNow;
   const titleBeforeLengthGuard =
     /^Verify schema, reference integrity, and that deleted inputs no longer drive memory$/i.test(
@@ -1210,24 +1254,49 @@ export function buildShellTerminalHeaderViewModel(input: {
   const displayTaskDescription = taskDescriptionText
     ? qualifyAmbiguousLabel(taskDescriptionText, workspace)
     : undefined;
+  const contextCandidate = [input.workstreamTitle, input.contextPurposeTitle]
+    .map((value) => compactHeaderGoal(value))
+    .find((value) => {
+      if (!value) return false;
+      return (
+        qualityCheckAuthoritativeTaskLabel(value).ok &&
+        !isSupervisedMetaProcessTask(value) &&
+        !isSupervisedMetaProcessActivity(value)
+      );
+    });
+  const displayContext = contextCandidate
+    ? qualifyAmbiguousLabel(contextCandidate, workspace)
+    : undefined;
   const displayTitle = qualifyAmbiguousLabel(guardedTitle, workspace);
-  const taskDescriptionIsUsable = Boolean(displayTaskDescription);
+  const effectiveTaskDescription = displayTaskDescription ?? displayContext;
+  const taskDescriptionIsUsable = Boolean(effectiveTaskDescription);
   const rejectedTaskDescription = Boolean(rejectedIdentityTaskText);
+  const rejectedMetaProcessTask = isSupervisedMetaProcessTask(
+    rejectedIdentityTaskText,
+  );
 
   return {
     workspace: { text: workspace, source: "workspace" },
+    context: {
+      text: displayContext ?? "Context not captured",
+      source: displayContext ? "status-summary" : "missing",
+    },
     taskDescription: {
       // TC-060 R1: never blank. The ladder always carries a true sentence, so the
       // old placeholder is only reachable when no ladder ran at all.
         text:
-          displayTaskDescription ??
+          effectiveTaskDescription ??
           (rejectedTaskDescription
-            ? "What should change?"
+            ? rejectedMetaProcessTask
+              ? "Goal not captured"
+              : "What should change?"
             : noActiveWork
               ? "No active work"
               : "No task declared"),
       source: taskDescriptionIsUsable
-        ? taskDescriptionSource
+        ? displayTaskDescription
+          ? taskDescriptionSource
+          : "status-summary"
         : "neutral",
     },
     title: {

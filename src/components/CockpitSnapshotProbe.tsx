@@ -32,11 +32,13 @@ export function CockpitSnapshotProbe({
       field: "header",
       source: [
         entry.taskSource ? `task:${entry.taskSource}` : undefined,
+        entry.contextSource ? `context:${entry.contextSource}` : undefined,
         entry.titleSource ? `title:${entry.titleSource}` : undefined,
         entry.nowSource ? `now:${entry.nowSource}` : undefined,
       ].filter(Boolean).join(" "),
       text: [
         entry.task ? `Task=${entry.task}` : undefined,
+        entry.context ? `Goal=${entry.context}` : undefined,
         `Title=${entry.title}`,
         `Now=${entry.now}`,
       ].filter(Boolean).join(" | "),
@@ -59,6 +61,8 @@ export function CockpitSnapshotProbe({
     entry.kind,
     entry.task,
     entry.taskSource,
+    entry.context,
+    entry.contextSource,
     entry.title,
     entry.titleSource,
     entry.now,

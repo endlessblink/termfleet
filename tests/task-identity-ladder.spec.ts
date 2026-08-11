@@ -36,10 +36,10 @@ test("a meta-process task is not accepted as the pane goal", () => {
     taskLine,
   });
 
-  expect(header.goalLabel).toBe("What should change?");
+  expect(header.goalLabel).toBe("Goal not captured");
 });
 
-test("a concise active plan step replaces a raw complaint in the rendered Task row", () => {
+test("a current step cannot replace a raw complaint with a fake durable goal", () => {
   const taskLine = resolvePaneTaskLine({
     now: NOW,
     mainGoal:
@@ -60,10 +60,12 @@ test("a concise active plan step replaces a raw complaint in the rendered Task r
   });
 
   expect(taskLine).toMatchObject({
-    source: "current-step",
-    text: "Displaying the user's goal in each cockpit card",
+    source: "opening-request",
+    text: "low quality, and the way the sentence is gettting elongated is ugly",
   });
-  expect(header.goalLabel).toBe("Displaying the user's goal in each cockpit card");
+  expect(header.goalLabel).toBe(
+    "low quality, and the way the sentence is gettting elongated is ugly",
+  );
 });
 
 test("a shell pane is no longer starved of a description", () => {

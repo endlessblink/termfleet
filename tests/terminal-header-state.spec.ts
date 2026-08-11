@@ -48,6 +48,36 @@ test("builds explicit per-pane header state with stable goal, activity, and full
   expect(header.debug.titleUsesDistinctActivity).toBe(true);
 });
 
+test("uses the captured goal as project intent when no separate context exists", () => {
+  const header = buildTerminalHeaderState({
+    paneId: "pane-goal-fallback",
+    terminalId: "pty-goal-fallback",
+    runId: "run-goal-fallback",
+    project: { id: "g-termfleet", name: "termfleet", projectRoot: termfleetPath },
+    liveCwd: termfleetPath,
+    terminalStatus: "running",
+    mainUserAsk: {
+      text: "Harden agent persistence and startup boundaries",
+      source: "terminal-prompt",
+      updatedAt: 1000,
+      runId: "run-goal-fallback",
+    },
+    statusSummary: {
+      task: "Hardening agent, persistence, resource, and startup boundaries",
+      path: termfleetPath,
+      now: "Working",
+      status: "working",
+      provider: "codex",
+      confidence: "high",
+      tasksFromTodoWrite: false,
+    },
+  });
+
+  expect(header.contextLabel).toBe("Harden agent persistence and startup boundaries");
+  expect(header.sources.context).toBe("user-prompt");
+  expect(header.contextLabel).not.toMatch(/not captured/i);
+});
+
 test("shows the user goal as Task and the active plan item as Now Active", () => {
   const header = buildTerminalHeaderState({
     paneId: "pane-events",

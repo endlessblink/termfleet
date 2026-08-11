@@ -2,8 +2,10 @@ use crate::{default_shell, platform_paths};
 use portable_pty::{native_pty_system, Child, CommandBuilder, ExitStatus, MasterPty, PtySize};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::fs;
+use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
+#[cfg(unix)]
+use std::os::fd::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
@@ -70,6 +72,7 @@ struct PtyEntry {
     last_exit: Arc<Mutex<Option<PtyExitStatus>>>,
     ended: Arc<AtomicBool>,
     pane_cgroup: Option<PathBuf>,
+    _resume_lock: Option<File>,
 }
 
 impl PtyEntry {
@@ -307,6 +310,10 @@ fn remove_pane_cgroup(path: Option<PathBuf>) {
 
 pub struct PtyManager {
     ptys: Mutex<HashMap<String, PtyEntry>>,
+    // Serialize session creation so concurrent renderer attaches cannot launch
+    // two copies of the same provider conversation before the first PTY is
+    // inserted. Codex rejects that second writer as an active-writer error.
+    ensure_lock: Mutex<()>,
     session_events: Arc<Mutex<Vec<PtySessionEvent>>>,
     /// When set, sessions checkpoint their scrollback + metadata under this
     /// directory so they survive a daemon restart. `None` disables persistence
@@ -573,6 +580,7 @@ impl PtyManager {
     pub fn new() -> Self {
         Self {
             ptys: Mutex::new(HashMap::new()),
+            ensure_lock: Mutex::new(()),
             session_events: Arc::new(Mutex::new(Vec::new())),
             persist_dir: None,
         }
@@ -586,6 +594,7 @@ impl PtyManager {
             default_persist_dir().and_then(|dir| fs::create_dir_all(&dir).ok().map(|_| dir));
         Self {
             ptys: Mutex::new(HashMap::new()),
+            ensure_lock: Mutex::new(()),
             session_events: Arc::new(Mutex::new(Vec::new())),
             persist_dir,
         }
@@ -596,6 +605,7 @@ impl PtyManager {
         let _ = fs::create_dir_all(&dir);
         Self {
             ptys: Mutex::new(HashMap::new()),
+            ensure_lock: Mutex::new(()),
             session_events: Arc::new(Mutex::new(Vec::new())),
             persist_dir: Some(dir),
         }
@@ -628,6 +638,7 @@ impl PtyManager {
         rows: Option<u16>,
     ) -> Result<(String, bool), String> {
         let id = id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+        let _ensure_guard = self.ensure_lock.lock().unwrap();
         let ended_entry = {
             let mut ptys = self.ptys.lock().unwrap();
             match ptys.get(&id) {
@@ -698,13 +709,60 @@ impl PtyManager {
                 AgentRestoreStatus::ResumeFailed | AgentRestoreStatus::NeedsAuth
             )
         });
-        let command = if suppress_agent_relaunch {
+        let mut command = if suppress_agent_relaunch {
             None
         } else {
             recovery_command
                 .or(command)
                 .or_else(|| persisted.as_ref().and_then(|entry| entry.command.clone()))
         };
+        let mut resume_lock = None;
+        let mut resume_blocked = false;
+        if recovery_plan
+            .as_ref()
+            .is_some_and(|plan| plan.status == AgentRestoreStatus::Resuming)
+        {
+            if let Some(session_id) = persisted
+                .as_ref()
+                .and_then(|entry| entry.provider_session_id.as_deref())
+            {
+                let provider = persisted
+                    .as_ref()
+                    .and_then(|entry| entry.provider.as_deref())
+                    .unwrap_or("unknown");
+                let orphaned_writer = provider_writer_is_alive(&id, provider);
+                let lock_result = if orphaned_writer {
+                    None
+                } else {
+                    let lock_dir = self
+                        .persist_dir
+                        .clone()
+                        .or_else(default_persist_dir)
+                        .ok_or_else(|| "resume lock directory unavailable".to_string())?;
+                    try_acquire_resume_lock(&lock_dir, provider, session_id)?
+                };
+                match lock_result {
+                    Some(lock) => resume_lock = Some(lock),
+                    None => {
+                        let reason = if orphaned_writer {
+                            "agent conversation is already owned by an orphaned live provider process"
+                        } else {
+                            "agent conversation is already owned by another live writer"
+                        };
+                        if let Some(dir) = self.persist_dir.as_deref() {
+                            write_agent_restore_status(
+                                dir,
+                                &id,
+                                AgentRestoreStatus::ResumeFailed,
+                                Some(reason),
+                            );
+                        }
+                        resume_blocked = true;
+                        command = None;
+                    }
+                }
+            }
+        }
 
         let pty_system = native_pty_system();
         // Open the PTY at the caller's measured size when known so a freshly
@@ -837,7 +895,20 @@ impl PtyManager {
                 open_rows,
             );
             if let Some(plan) = recovery_plan.as_ref() {
-                write_agent_restore_status(dir, &id, plan.status.clone(), plan.reason.as_deref());
+                write_agent_restore_status(
+                    dir,
+                    &id,
+                    if resume_blocked {
+                        AgentRestoreStatus::ResumeFailed
+                    } else {
+                        plan.status.clone()
+                    },
+                    if resume_blocked {
+                        Some("agent conversation is already owned by another live writer")
+                    } else {
+                        plan.reason.as_deref()
+                    },
+                );
             }
         }
         let resume_output_start = initial_buffer.data.len();
@@ -857,9 +928,7 @@ impl PtyManager {
         let reader_pid = child_pid;
         let reader_persist_dir = self.persist_dir.clone();
         let reader_pane_cgroup = pane_cgroup.clone();
-        let reader_was_resuming = recovery_plan
-            .as_ref()
-            .is_some_and(|plan| plan.status == AgentRestoreStatus::Resuming);
+        let reader_was_resuming = resume_lock.is_some();
 
         let reader_handle = std::thread::Builder::new()
             .name(format!("pty-reader-{id}"))
@@ -986,6 +1055,7 @@ impl PtyManager {
                 last_exit,
                 ended,
                 pane_cgroup,
+                _resume_lock: resume_lock,
             };
             loser.shutdown(
                 "duplicate stable session lost creation race",
@@ -1011,6 +1081,7 @@ impl PtyManager {
                 last_exit,
                 ended,
                 pane_cgroup,
+                _resume_lock: resume_lock,
             },
         );
 
@@ -1584,6 +1655,8 @@ fn plan_agent_restore(persisted: &PersistedSession, live_pty_exists: bool) -> Ag
 fn classify_agent_resume_failure(output: &str) -> Option<&'static str> {
     if output.contains("No saved session found with ID") {
         Some("saved agent session no longer exists")
+    } else if output.contains("already has an active writer") {
+        Some("agent session is already active in another writer")
     } else {
         None
     }
@@ -1608,6 +1681,95 @@ pub fn data_root_dir() -> Option<PathBuf> {
 
 fn default_persist_dir() -> Option<PathBuf> {
     data_root_dir().map(|dir| dir.join("sessions"))
+}
+
+fn try_acquire_resume_lock(
+    dir: &Path,
+    provider: &str,
+    session_id: &str,
+) -> Result<Option<File>, String> {
+    fs::create_dir_all(dir).map_err(|error| error.to_string())?;
+    let path = dir.join(format!(
+        "resume-{}.lock",
+        encode_id(&format!("{provider}:{session_id}"))
+    ));
+    let file = OpenOptions::new()
+        .create(true)
+        .read(true)
+        .write(true)
+        .open(path)
+        .map_err(|error| error.to_string())?;
+
+    #[cfg(unix)]
+    {
+        let result = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
+        if result == 0 {
+            return Ok(Some(file));
+        }
+        if std::io::Error::last_os_error().kind() == std::io::ErrorKind::WouldBlock {
+            return Ok(None);
+        }
+        return Err(std::io::Error::last_os_error().to_string());
+    }
+
+    #[cfg(not(unix))]
+    {
+        Ok(Some(file))
+    }
+}
+
+/// A daemon can die while a PTY child remains alive. In that case the old
+/// daemon's in-memory resume lease is gone, but the provider process still owns
+/// the conversation. Refuse to launch a second provider when its pane-scoped
+/// process is still present; Codex otherwise rejects the duplicate with
+/// `thread/resume ... already has an active writer`.
+fn provider_writer_is_alive(pane_id: &str, provider: &str) -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        let provider = provider.to_ascii_lowercase();
+        let Ok(entries) = fs::read_dir("/proc") else {
+            return false;
+        };
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let Some(_pid) = name
+                .to_str()
+                .filter(|value| !value.is_empty() && value.bytes().all(|byte| byte.is_ascii_digit()))
+                .and_then(|value| value.parse::<u32>().ok())
+                .filter(|pid| *pid > 1 && *pid != std::process::id())
+            else {
+                continue;
+            };
+            let path = entry.path();
+            let Ok(environ) = fs::read(path.join("environ")) else {
+                continue;
+            };
+            let pane_marker = format!("TERMFLEET_PANE_ID={pane_id}");
+            if !environ
+                .split(|byte| *byte == 0)
+                .any(|variable| variable == pane_marker.as_bytes())
+            {
+                continue;
+            }
+            let Ok(command_line) = fs::read(path.join("cmdline")) else {
+                continue;
+            };
+            let command_line = String::from_utf8_lossy(&command_line).to_ascii_lowercase();
+            if command_line
+                .split('\0')
+                .any(|argument| argument.contains(&provider))
+            {
+                return true;
+            }
+        }
+        false
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = (pane_id, provider);
+        false
+    }
 }
 
 /// Summary of a session whose content is checkpointed on disk (whether or not it
@@ -1845,6 +2007,12 @@ fn load_persisted(dir: &Path, id: &str) -> Option<PersistedSession> {
         .ok()
         .and_then(|bytes| serde_json::from_slice::<SessionMeta>(&bytes).ok())
         .unwrap_or_default();
+    let provider_session_id = meta
+        .provider_session_id
+        .clone()
+        .or_else(|| extract_provider_session_id(meta.command.as_deref()))
+        .or_else(|| extract_provider_session_id(meta.sanitized_resume_command.as_deref()))
+        .or_else(|| extract_provider_session_id(meta.original_command.as_deref()));
     Some(PersistedSession {
         cwd: meta.cwd,
         command: meta.command,
@@ -1853,12 +2021,38 @@ fn load_persisted(dir: &Path, id: &str) -> Option<PersistedSession> {
         recovery_kind: meta.recovery_kind,
         provider: meta.provider,
         launch_profile: meta.launch_profile,
-        provider_session_id: meta.provider_session_id,
+        provider_session_id,
         mission: meta.mission,
         dropoff_path: meta.dropoff_path,
         sanitized_resume_command: meta.sanitized_resume_command,
         restore_status: meta.restore_status,
         restore_failure_reason: meta.restore_failure_reason,
+    })
+}
+
+fn extract_provider_session_id(command: Option<&str>) -> Option<String> {
+    let tokens: Vec<&str> = command?.split_whitespace().collect();
+    tokens.windows(2).find_map(|pair| {
+        let marker = pair[0].trim_matches(|ch: char| ch == '\'' || ch == '"' || ch == ';');
+        let candidate = pair[1].trim_matches(|ch: char| {
+            ch == '\'' || ch == '"' || ch == ';' || ch == ')' || ch == '('
+        });
+        if marker != "resume" && marker != "--resume" {
+            return None;
+        }
+        if candidate.len() == 36
+            && candidate.chars().enumerate().all(|(index, ch)| {
+                if [8, 13, 18, 23].contains(&index) {
+                    ch == '-'
+                } else {
+                    ch.is_ascii_hexdigit()
+                }
+            })
+        {
+            Some(candidate.to_string())
+        } else {
+            None
+        }
     })
 }
 
@@ -1933,8 +2127,9 @@ fn discard_partial_replay_prefix(base_offset: u64, data: String) -> (u64, String
 mod tests {
     use super::{
         agent_recovery_from_sidecar, classify_agent_resume_failure, discard_partial_replay_prefix,
-        fnv1a_hex, plan_agent_restore, replay_boundary_at_or_after, AgentRecoveryManifestUpdate,
-        AgentRestoreStatus, PersistedSession, PtyManager, SessionMeta, SessionRecoveryKind,
+        extract_provider_session_id, fnv1a_hex, plan_agent_restore, replay_boundary_at_or_after,
+        provider_writer_is_alive, AgentRecoveryManifestUpdate, AgentRestoreStatus,
+        PersistedSession, PtyManager, SessionMeta, SessionRecoveryKind,
     };
 
     fn wait_for_snapshot_containing(manager: &PtyManager, id: &str, needle: &str) -> String {
@@ -1947,6 +2142,23 @@ mod tests {
             std::thread::sleep(std::time::Duration::from_millis(25));
         }
         snapshot
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn orphaned_provider_process_is_detected_by_pane_and_provider() {
+        let pane_id = format!("orphan-writer-test-{}", std::process::id());
+        let mut child = std::process::Command::new("bash")
+            .args(["-c", "exec -a codex sleep 5"])
+            .env("TERMFLEET_PANE_ID", &pane_id)
+            .spawn()
+            .expect("spawn fake orphaned provider");
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        assert!(provider_writer_is_alive(&pane_id, "codex"));
+        assert!(!provider_writer_is_alive(&pane_id, "claude"));
+        let _ = child.kill();
+        let _ = child.wait();
+        assert!(!provider_writer_is_alive(&pane_id, "codex"));
     }
 
     #[test]
@@ -1966,6 +2178,55 @@ mod tests {
 
         assert_eq!(base_offset, 909);
         assert_eq!(data, "visible line\r\n");
+    }
+
+    #[test]
+    fn manager_handles_one_hundred_consecutive_pty_sessions() {
+        let dir = std::env::temp_dir().join(format!(
+            "tw-one-hundred-pty-test-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        let manager = PtyManager::with_persistence_dir(dir.clone());
+        let ids: Vec<String> = (0..100).map(|index| format!("load-{index}")).collect();
+
+        for id in &ids {
+            let (actual_id, reused) = manager
+                .ensure_detached(
+                    Some(id.clone()),
+                    Some("/tmp".to_string()),
+                    Some("cat".to_string()),
+                    Some(100),
+                    Some(30),
+                )
+                .expect("100-session PTY load must remain attachable");
+            assert_eq!(&actual_id, id);
+            assert!(!reused);
+        }
+        assert_eq!(manager.active_count(), 100);
+
+        for id in &ids {
+            manager
+                .kill(id)
+                .expect("load session must be cleanly stoppable");
+        }
+        assert_eq!(manager.active_count(), 0);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn resume_command_fallback_extracts_provider_session_id() {
+        assert_eq!(
+            extract_provider_session_id(Some(
+                "export TERMFLEET=1; exec codex resume 019fe29c-6f6b-7d23-98f6-05c99d8970ce",
+            )),
+            Some("019fe29c-6f6b-7d23-98f6-05c99d8970ce".to_string())
+        );
+        assert_eq!(
+            extract_provider_session_id(Some("claude --resume not-a-session")),
+            None
+        );
     }
 
     fn codex_agent_checkpoint(provider_session_id: Option<&str>) -> PersistedSession {
@@ -2618,8 +2879,8 @@ mod tests {
             .expect("first ensure");
         assert!(!reused_first);
 
-        // Second ensure for the same id spawns a shell, loses the insert race, and
-        // must fully shut down its loser reader (not leak it). Manager keeps one.
+        // A second ensure for the same id reuses the existing PTY without starting
+        // another child or leaking a reader. Manager keeps one.
         let (second, reused_second) = manager
             .ensure(
                 app.handle(),
@@ -3114,6 +3375,195 @@ mod tests {
             "an error from replayed scrollback must not poison the new attempt"
         );
 
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn active_writer_resume_error_is_persisted_and_not_planned_again() {
+        use std::path::PathBuf;
+
+        let dir: PathBuf = std::env::temp_dir().join(format!(
+            "tw-agent-active-writer-test-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create persistence dir");
+        let id = "agent-active-writer-test".to_string();
+        let meta = SessionMeta {
+            cwd: Some("/tmp".to_string()),
+            command: Some("codex".to_string()),
+            recovery_kind: Some(SessionRecoveryKind::AgentTerminal),
+            provider: Some("codex".to_string()),
+            provider_session_id: Some("019f-active-session".to_string()),
+            sanitized_resume_command: Some(
+                "printf 'thread/resume failed during TUI bootstrap: thread/resume failed: thread 019f-active already has an active writer (code -32600)\\n'".to_string(),
+            ),
+            ..SessionMeta::default()
+        };
+        let meta_bytes = serde_json::to_vec(&meta).expect("encode seeded meta");
+        super::atomic_write(&super::meta_path(&dir, &id), &meta_bytes).expect("seed metadata");
+        let mut scrollback = Vec::new();
+        scrollback.extend_from_slice(&0_u64.to_le_bytes());
+        scrollback.extend_from_slice(b"previous agent transcript\n");
+        super::atomic_write(&super::scrollback_path(&dir, &id), &scrollback)
+            .expect("seed scrollback");
+
+        let manager = super::PtyManager::with_persistence_dir(dir.clone());
+        manager
+            .ensure_detached(Some(id.clone()), None, None, None, None)
+            .expect("attempt active-writer resume");
+
+        let updated = (0..80)
+            .find_map(|_| {
+                let meta = std::fs::read(super::meta_path(&dir, &id))
+                    .ok()
+                    .and_then(|bytes| serde_json::from_slice::<SessionMeta>(&bytes).ok())?;
+                if meta.restore_status == Some(AgentRestoreStatus::ResumeFailed) {
+                    Some(meta)
+                } else {
+                    std::thread::sleep(std::time::Duration::from_millis(25));
+                    None
+                }
+            })
+            .expect("active-writer failure was not persisted");
+        assert_eq!(
+            updated.restore_failure_reason.as_deref(),
+            Some("agent session is already active in another writer")
+        );
+
+        let persisted = super::load_persisted(&dir, &id).expect("reload failed checkpoint");
+        let plan = super::plan_agent_restore(&persisted, false);
+        assert_eq!(plan.status, AgentRestoreStatus::ResumeFailed);
+        assert_eq!(
+            plan.command, None,
+            "active-writer resume must not be retried"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn resume_lock_blocks_a_second_process_before_it_launches_codex() {
+        use std::path::PathBuf;
+
+        let dir: PathBuf = std::env::temp_dir().join(format!(
+            "tw-agent-resume-lock-test-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create persistence dir");
+        let id = "agent-resume-lock-test".to_string();
+        let session_id = "019f-locked-session";
+        let meta = SessionMeta {
+            cwd: Some("/tmp".to_string()),
+            command: Some("codex".to_string()),
+            recovery_kind: Some(SessionRecoveryKind::AgentTerminal),
+            provider: Some("codex".to_string()),
+            provider_session_id: Some(session_id.to_string()),
+            sanitized_resume_command: Some("printf should-not-launch\\n".to_string()),
+            ..SessionMeta::default()
+        };
+        let meta_bytes = serde_json::to_vec(&meta).expect("encode seeded meta");
+        super::atomic_write(&super::meta_path(&dir, &id), &meta_bytes).expect("seed metadata");
+        let mut scrollback = Vec::new();
+        scrollback.extend_from_slice(&0_u64.to_le_bytes());
+        scrollback.extend_from_slice(b"previous agent transcript\n");
+        super::atomic_write(&super::scrollback_path(&dir, &id), &scrollback)
+            .expect("seed scrollback");
+        let held_lock = super::try_acquire_resume_lock(&dir, "codex", session_id)
+            .expect("acquire first writer lock")
+            .expect("first writer lock must be available");
+
+        let manager = super::PtyManager::with_persistence_dir(dir.clone());
+        manager
+            .ensure_detached(Some(id.clone()), None, None, None, None)
+            .expect("fallback shell after lock contention");
+        let updated = std::fs::read(super::meta_path(&dir, &id))
+            .ok()
+            .and_then(|bytes| serde_json::from_slice::<SessionMeta>(&bytes).ok())
+            .expect("read lock-contention metadata");
+        assert_eq!(
+            updated.restore_failure_reason.as_deref(),
+            Some("agent conversation is already owned by another live writer")
+        );
+        assert_eq!(
+            updated.restore_status,
+            Some(AgentRestoreStatus::ResumeFailed)
+        );
+        assert_eq!(
+            manager.list_sessions()[0].command,
+            crate::default_shell::shell_command(None),
+            "lock contention must launch only a regular shell"
+        );
+
+        drop(held_lock);
+        manager.kill(&id).expect("kill fallback shell");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn orphaned_provider_writer_forces_a_shell_instead_of_duplicate_resume() {
+        use std::path::PathBuf;
+
+        let dir: PathBuf = std::env::temp_dir().join(format!(
+            "tw-agent-orphan-writer-test-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create persistence dir");
+        let id = format!("agent-orphan-writer-{}", std::process::id());
+        let mut orphan = std::process::Command::new("bash")
+            .args(["-c", "exec -a codex sleep 10"])
+            .env("TERMFLEET_PANE_ID", &id)
+            .spawn()
+            .expect("spawn orphaned provider");
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        assert!(provider_writer_is_alive(&id, "codex"));
+
+        let meta = SessionMeta {
+            cwd: Some("/tmp".to_string()),
+            command: Some("codex".to_string()),
+            recovery_kind: Some(SessionRecoveryKind::AgentTerminal),
+            provider: Some("codex".to_string()),
+            provider_session_id: Some("019f-orphaned-session".to_string()),
+            ..SessionMeta::default()
+        };
+        let meta_bytes = serde_json::to_vec(&meta).expect("encode metadata");
+        super::atomic_write(&super::meta_path(&dir, &id), &meta_bytes).expect("seed metadata");
+        let mut scrollback = Vec::new();
+        scrollback.extend_from_slice(&0_u64.to_le_bytes());
+        scrollback.extend_from_slice(b"previous transcript\n");
+        super::atomic_write(&super::scrollback_path(&dir, &id), &scrollback)
+            .expect("seed scrollback");
+
+        let manager = super::PtyManager::with_persistence_dir(dir.clone());
+        manager
+            .ensure_detached(Some(id.clone()), None, None, None, None)
+            .expect("fall back to a shell");
+        assert_eq!(
+            manager.list_sessions()[0].command,
+            crate::default_shell::shell_command(None),
+            "an orphaned provider must never receive a duplicate resume"
+        );
+        let updated = std::fs::read(super::meta_path(&dir, &id))
+            .ok()
+            .and_then(|bytes| serde_json::from_slice::<SessionMeta>(&bytes).ok())
+            .expect("read orphan metadata");
+        assert!(matches!(
+            updated.restore_failure_reason.as_deref(),
+            Some(
+                "agent conversation is already owned by an orphaned live provider process"
+                    | "agent conversation is already owned by another live writer"
+            )
+        ));
+
+        manager.kill(&id).expect("kill fallback shell");
+        let _ = orphan.kill();
+        let _ = orphan.wait();
         let _ = std::fs::remove_dir_all(&dir);
     }
 

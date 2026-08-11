@@ -2,7 +2,7 @@
   "name": "terminal-workspace-tauri",
   "private": false,
   "license": "Apache-2.0",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
@@ -11,6 +11,7 @@
     "preview": "vite preview",
     "cockpit:capture": "node scripts/capture-cockpit.mjs --crop-header",
     "doctor": "node scripts/termfleet-doctor.mjs",
+    "migrate:session-ids": "node scripts/migrate-session-ids.mjs --apply",
     "verify:prerequisites": "node scripts/verify-prerequisites.mjs",
     "verify:canvas-renderer": "playwright test canvas-renderer",
     "verify:grid-diff": "playwright test grid-diff",
@@ -76,6 +77,9 @@
     "verify:restart-restore": "python3 scripts/verify-restart-restore.py",
     "verify:daemon-survival": "CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS:-1} CARGO_PROFILE_DEV_DEBUG=0 cargo test --manifest-path src-tauri/Cargo.toml --test daemon_survival -- --nocapture",
     "verify:daemon-restart": "scripts/verify-daemon-survives-restart.sh",
+    "verify:pty-100": "CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS:-1} cargo test --manifest-path src-tauri/Cargo.toml manager_handles_one_hundred_consecutive_pty_sessions -- --nocapture",
+    "verify:isolated-stress": "node scripts/verify-isolated-stress.mjs",
+    "verify:reliability-loop": "node scripts/termfleet-doctor.mjs && npm run verify:pty-100 && npm run verify:daemon-restart",
     "verify:daemon-latency": "node scripts/verify-daemon-latency.mjs",
     "verify:map-terminal-latency": "node scripts/verify-map-terminal-latency.mjs",
     "verify:map-terminal-latency:live": "scripts/verify-map-terminal-latency-live.sh",
@@ -120,6 +124,12 @@
     "vite": "^6.4.3"
   },
   "overrides": {
-    "lodash-es": "4.18.1"
+    "lodash-es": "4.18.1",
+    "@excalidraw/excalidraw": {
+      "nanoid": "5.1.16",
+      "@excalidraw/mermaid-to-excalidraw": {
+        "nanoid": "5.1.16"
+      }
+    }
   }
 }

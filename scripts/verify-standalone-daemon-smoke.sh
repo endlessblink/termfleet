@@ -19,10 +19,26 @@ COLD_RESTORE_NEEDLE="STANDALONE_COLD_RESTORE_OK_682"
 WINDOW_ID=""
 APP_PID=""
 DAEMON_PID=""
+BUILD_PID=""
+BUILD_LOCK_FILE="${XDG_RUNTIME_DIR:-/tmp}/termfleet-build.lock"
 
 mkdir -p "$OUT_DIR" "$RUN_DIR" "$DATA_DIR"
 chmod 700 "$RUN_DIR"
 : >"$DRIVER_LOG"
+
+exec 9>"$BUILD_LOCK_FILE"
+if ! flock -n 9; then
+  echo "Another TermFleet build is already running; refusing concurrent standalone work." >&2
+  exit 1
+fi
+
+run_background_build() {
+  if command -v ionice >/dev/null 2>&1; then
+    ionice -c 3 nice -n "${TERMFLEET_BUILD_NICE:-10}" "$@"
+  else
+    nice -n "${TERMFLEET_BUILD_NICE:-10}" "$@"
+  fi
+}
 
 log() {
   printf '[standalone-daemon] %s\n' "$*" | tee -a "$DRIVER_LOG" >&2
@@ -51,8 +67,15 @@ if [[ -z "${STANDALONE_DAEMON_INNER:-}" ]]; then
 fi
 
 cleanup() {
+  if [[ -n "$BUILD_PID" ]]; then
+    kill -- "-$BUILD_PID" >/dev/null 2>&1 || true
+    wait "$BUILD_PID" >/dev/null 2>&1 || true
+    BUILD_PID=""
+  fi
   if [[ -n "$APP_PID" ]]; then
-    kill "$APP_PID" >/dev/null 2>&1 || true
+    kill -- "-$APP_PID" >/dev/null 2>&1 || kill "$APP_PID" >/dev/null 2>&1 || true
+    wait "$APP_PID" >/dev/null 2>&1 || true
+    APP_PID=""
   fi
   if [[ -n "$DAEMON_PID" ]]; then
     kill "$DAEMON_PID" >/dev/null 2>&1 || true
@@ -65,13 +88,23 @@ if [[ ! -x "$APP_BIN" ]]; then
 fi
 
 log "building standalone release app in private target $CARGO_TARGET_DIR"
-(
-  cd "$APP_ROOT"
-  CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-1}" \
-  CARGO_TARGET_DIR="$CARGO_TARGET_DIR" \
-    npm run tauri -- build --no-bundle \
-      --config '{"build":{"beforeBuildCommand":"npm run build"}}'
-)
+cd "$APP_ROOT"
+if command -v ionice >/dev/null 2>&1; then
+  setsid ionice -c 3 nice -n "${TERMFLEET_BUILD_NICE:-10}" env \
+    CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-1}" \
+    CARGO_TARGET_DIR="$CARGO_TARGET_DIR" \
+      npm run tauri -- build --no-bundle \
+        --config '{"build":{"beforeBuildCommand":"npm run build"}}' &
+else
+  setsid nice -n "${TERMFLEET_BUILD_NICE:-10}" env \
+    CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-1}" \
+    CARGO_TARGET_DIR="$CARGO_TARGET_DIR" \
+      npm run tauri -- build --no-bundle \
+        --config '{"build":{"beforeBuildCommand":"npm run build"}}' &
+fi
+BUILD_PID=$!
+wait "$BUILD_PID"
+BUILD_PID=""
 
 if [[ ! -x "$APP_BIN" ]]; then
   echo "Missing release app binary after standalone build: $APP_BIN" >&2
@@ -83,7 +116,7 @@ launch_app() {
   WINDOW_ID=""
   : >"$APP_LOG"
   log "launching app with private XDG runtime $RUN_DIR"
-  DISPLAY="$DISPLAY_VALUE" XAUTHORITY="$XAUTHORITY_VALUE" XDG_RUNTIME_DIR="$RUN_DIR" XDG_DATA_HOME="$DATA_DIR" "$APP_BIN" >"$APP_LOG" 2>&1 &
+  setsid env DISPLAY="$DISPLAY_VALUE" XAUTHORITY="$XAUTHORITY_VALUE" XDG_RUNTIME_DIR="$RUN_DIR" XDG_DATA_HOME="$DATA_DIR" "$APP_BIN" >"$APP_LOG" 2>&1 &
   APP_PID=$!
 
   for _ in {1..50}; do

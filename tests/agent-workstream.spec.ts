@@ -1,6 +1,20 @@
 import { expect, test } from "@playwright/test";
+import { workspaceGroupLabel } from "../src/lib/agentWorkstreamLane";
+import type { WorkstreamMetadata } from "../src/lib/types";
 
 const PRIMARY_MISSION = "Investigate flaky checkout flow";
+
+test("agent workspace cards use the project root instead of a stale cwd label", () => {
+  const workstream = {
+    kind: "agent",
+    isolationMode: "shared-worktree",
+    cwd: "/media/endlessblink/data",
+    cwdLabel: "data",
+    gitRoot: "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
+  } as WorkstreamMetadata;
+
+  expect(workspaceGroupLabel(workstream)).toBe("termfleet");
+});
 
 test.use({
   viewport: { width: 1440, height: 920 },

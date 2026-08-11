@@ -3,7 +3,10 @@ import type { Tab, TerminalState } from "./types";
 // The sidebar/map badges must be right AT A GLANCE, so every pane has to be re-read on
 // a short cycle — not just the active one. A finished background pane that never gets
 // polled keeps a stale "working" status forever (the "must click to update" bug).
-export const MAX_STATUS_POLL_TARGETS_PER_TICK = 24;
+// Every live pane is part of the cockpit contract. Keep the export for callers and
+// diagnostics, but do not silently drop panes once the workspace grows past an
+// arbitrary batch size.
+export const MAX_STATUS_POLL_TARGETS_PER_TICK = Number.POSITIVE_INFINITY;
 const RECENT_ACTIVITY_MS = 60_000;
 
 export interface StatusPollTarget {

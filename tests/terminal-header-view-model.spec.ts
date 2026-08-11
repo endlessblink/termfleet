@@ -7,7 +7,10 @@ import {
   terminalPurposeFromSubmittedInput,
   terminalPurposeFromVisiblePrompt,
 } from "../src/lib/terminalHeaderDisplay";
-import { buildShellTerminalHeaderViewModel } from "../src/lib/terminalHeaderViewModel";
+import {
+  buildShellTerminalHeaderViewModel,
+  productGoalFromRegressionStep,
+} from "../src/lib/terminalHeaderViewModel";
 import {
   mainUserAskForRunChange,
   mainUserAskFromSummary,
@@ -17,6 +20,13 @@ import {
 
 const flowStatePath =
   "/media/endlessblink/data/my-projects/ai-development/productivity/flow-state";
+
+test("a regression step keeps its named product object as a restrained outcome", () => {
+  expect(productGoalFromRegressionStep("Adding a regression for folder detection")).toBe(
+    "Keeping folder detection reliable",
+  );
+  expect(productGoalFromRegressionStep("Adding a regression for release verification")).toBeUndefined();
+});
 
 test("vague follow-up keeps the previous meaningful user goal", () => {
   const previous = {
@@ -151,6 +161,15 @@ test("restart keeps declared goals but drops guessed task sentences", () => {
   ).toBeUndefined();
 });
 
+test("does not persist a stretched conversational prompt as the durable goal", () => {
+  expect(
+    persistedMainUserAsk({
+      text: "what are you doinggggggggggggggggggggg",
+      source: "manual",
+    }),
+  ).toBeUndefined();
+});
+
 test("Hermes speed work keeps the product outcome in Task and qualifies the current step", () => {
   const header = buildShellTerminalHeaderViewModel({
     project: { id: "hermes", name: "hermes", projectRoot: "/repo/hermes" },
@@ -222,6 +241,37 @@ test("email tracking task names the delivery surface it changes", () => {
   );
 });
 
+test("a concrete regression object becomes the task outcome while the process stays current activity", () => {
+  const header = buildShellTerminalHeaderViewModel({
+    project: {
+      id: "termfleet",
+      name: "termfleet",
+      projectRoot: "/repo/termfleet",
+    },
+    liveCwd: "/repo/termfleet",
+    terminalStatus: "running",
+    taskLine: {
+      text: "Adding a regression for folder detection",
+      source: "task-line",
+      capturedAt: 1000,
+      expiresAt: null,
+    },
+    statusSummary: {
+      task: "Adding a regression for folder detection",
+      path: "/repo/termfleet",
+      now: "Tracing how projects are recognized",
+      status: "working",
+      provider: "shell",
+      confidence: "high",
+      tasksFromTodoWrite: true,
+    },
+  });
+
+  expect(header.taskDescription.text).toBe("Keeping folder detection reliable");
+  expect(header.taskDescription.text).not.toContain("regression");
+  expect(header.title.text).toContain("Tracing how projects are recognized");
+});
+
 test("meta-process labels fall back instead of pretending to be the product goal", () => {
   for (const task of [
     "Making the task say what it changes",
@@ -235,6 +285,13 @@ test("meta-process labels fall back instead of pretending to be the product goal
     "Repairing missing data and link connections",
     "Confirming tests and task records",
     "Choose a useful fallback for rejected task wording",
+    "Verify the installed card stays user-facing",
+    "Locking the card and recording-link behavior with tests",
+    "Adding fresh campaign and browser proof checks",
+    "Reject the new proof-check and harness wording",
+    "Centering one-card sections",
+    "Creating and running regression tests",
+    "Updating the editor and responsive text layout",
   ]) {
     const header = buildShellTerminalHeaderViewModel({
       project: {
@@ -264,9 +321,325 @@ test("meta-process labels fall back instead of pretending to be the product goal
       },
     });
 
-    expect(header.taskDescription.text).toBe("What should change?");
+    expect(header.taskDescription.text).toBe("Goal not captured");
     expect(header.taskDescription.text).not.toBe(task);
   }
+});
+
+test("cross-system recheck summaries never become the durable Task title", () => {
+  const header = buildShellTerminalHeaderViewModel({
+    project: {
+      id: "bina",
+      name: "bina-meatzevet-courses",
+      projectRoot: "/repo/bina-meatzevet-courses",
+    },
+    liveCwd: "/repo/bina-meatzevet-courses",
+    terminalStatus: "running",
+    taskLineup: [
+      {
+        id: "recheck",
+        content: "Rechecking PR, Actions, runner, and billing state",
+        status: "in_progress",
+        source: "todo-write",
+        updatedAt: 1000,
+      },
+    ],
+    statusSummary: {
+      task: "Rechecking PR, Actions, runner, and billing state",
+      path: "/repo/bina-meatzevet-courses",
+      now: "Prompt submitted",
+      status: "working",
+      provider: "codex",
+      confidence: "high",
+      tasksFromTodoWrite: true,
+    },
+  });
+
+  expect(header.taskDescription.text).toBe("Goal not captured");
+  expect(header.taskDescription.text).not.toContain("Rechecking PR");
+});
+
+test("a current local-page test step cannot stand in for a missing durable goal", () => {
+  const header = buildShellTerminalHeaderViewModel({
+    project: {
+      id: "bina",
+      name: "bina-meatzevet-courses",
+      projectRoot: "/repo/bina-meatzevet-courses",
+    },
+    liveCwd: "/repo/bina-meatzevet-courses",
+    terminalStatus: "running",
+    mainUserAsk: {
+      text: "running this through local host will get the same needed result?",
+      source: "status-sidecar",
+      updatedAt: 1000,
+    },
+    taskLineup: [
+      {
+        id: "local-page-step",
+        content: "Refreshing the local page with the new test option",
+        status: "in_progress",
+        source: "todo-write",
+        updatedAt: 1000,
+      },
+    ],
+    statusSummary: {
+      task: "Refreshing the local page with the new test option",
+      path: "/repo/bina-meatzevet-courses",
+      now: "Refreshing the local page with the new test option",
+      status: "idle",
+      provider: "codex",
+      confidence: "high",
+      tasksFromTodoWrite: true,
+    },
+  });
+
+  expect(header.taskDescription.text).toBe("Goal not captured");
+  expect(header.taskDescription.text).not.toContain("Refreshing");
+});
+
+test("verification and regression-writing procedures cannot become the durable Task", () => {
+  for (const task of [
+    "Run the live installed terminal verification",
+    "Adding a regression for empty and settled terminal cards",
+  ]) {
+    const header = buildShellTerminalHeaderViewModel({
+      project: {
+        id: "termfleet",
+        name: "termfleet",
+        projectRoot: "/repo/termfleet",
+      },
+      liveCwd: "/repo/termfleet",
+      terminalStatus: "running",
+      taskLineup: [
+        {
+          id: "procedure",
+          content: task,
+          status: "in_progress",
+          source: "todo-write",
+          updatedAt: 1000,
+        },
+      ],
+      statusSummary: {
+        task,
+        path: "/repo/termfleet",
+        now: task,
+        status: "working",
+        provider: "codex",
+        confidence: "high",
+        tasksFromTodoWrite: true,
+      },
+    });
+
+    expect(header.taskDescription.text).toBe("Goal not captured");
+    expect(header.taskDescription.text).not.toBe(task);
+  }
+});
+
+test("keeps a stable broad Goal line when only a progress step is present", () => {
+  const header = buildShellTerminalHeaderViewModel({
+    project: {
+      id: "termfleet",
+      name: "termfleet",
+      projectRoot: "/repo/termfleet",
+    },
+    liveCwd: "/repo/termfleet",
+    terminalStatus: "working",
+    contextPurposeTitle: "Proving desktop terminal reliability",
+    taskLine: {
+      text: "Record the fresh verification outcome",
+      source: "current-step",
+      capturedAt: 1000,
+      expiresAt: null,
+      rejected: "Record the fresh verification outcome",
+    },
+    statusSummary: {
+      task: "Record the fresh verification outcome",
+      path: "/repo/termfleet",
+      now: "Record the fresh verification outcome",
+      status: "working",
+      provider: "shell",
+      confidence: "high",
+      tasksFromTodoWrite: true,
+    },
+  });
+
+  expect(header.context.text).toBe("Proving desktop terminal reliability");
+  expect(header.taskDescription.text).toBe(
+    "Proving desktop terminal reliability",
+  );
+  expect(header.taskDescription.text).not.toBe(
+    "Goal not captured",
+  );
+});
+
+test("internal regression-test activity falls back to a neutral Now line", () => {
+  const header = buildShellTerminalHeaderViewModel({
+    project: {
+      id: "bina",
+      name: "bina-meatzevet-courses",
+      projectRoot: "/repo/bina-meatzevet-courses",
+    },
+    liveCwd: "/repo/bina-meatzevet-courses",
+    terminalStatus: "running",
+    taskLineup: [
+      {
+        id: "real-task",
+        content: "Improve the course card layout",
+        status: "in_progress",
+        source: "todo-write",
+        updatedAt: 1000,
+      },
+    ],
+    statusSummary: {
+      task: "Improve the course card layout",
+      path: "/repo/bina-meatzevet-courses",
+      now: "Adding and running the width regression test",
+      status: "working",
+      provider: "claude",
+      confidence: "high",
+      tasksFromTodoWrite: true,
+    },
+  });
+
+  expect(header.now.text).toBe("Working");
+  expect(header.now.text).not.toContain("regression test");
+});
+
+test("visual-gate publishing activity falls back to a neutral Now line", () => {
+  const header = buildShellTerminalHeaderViewModel({
+    project: {
+      id: "bina",
+      name: "bina-meatzevet-courses",
+      projectRoot: "/repo/bina-meatzevet-courses",
+    },
+    liveCwd: "/repo/bina-meatzevet-courses",
+    terminalStatus: "running",
+    taskLineup: [
+      {
+        id: "real-task",
+        content: "Improve the recording link experience",
+        status: "in_progress",
+        source: "todo-write",
+        updatedAt: 1000,
+      },
+    ],
+    statusSummary: {
+      task: "Improve the recording link experience",
+      path: "/repo/bina-meatzevet-courses",
+      now: "Publishing only after the visual gate passes",
+      status: "working",
+      provider: "claude",
+      confidence: "high",
+      tasksFromTodoWrite: true,
+    },
+  });
+
+  expect(header.now.text).toBe("Working");
+  expect(header.now.text).not.toContain("visual gate");
+});
+
+test("internal layout-constraint activity falls back to a neutral Now line", () => {
+  const header = buildShellTerminalHeaderViewModel({
+    project: {
+      id: "bina",
+      name: "bina-meatzevet-courses",
+      projectRoot: "/repo/bina-meatzevet-courses",
+    },
+    liveCwd: "/repo/bina-meatzevet-courses",
+    terminalStatus: "running",
+    trustedActivitySummary: true,
+    taskLineup: [],
+    statusSummary: {
+      task: "Ready",
+      path: "/repo/bina-meatzevet-courses",
+      now: "Reducing card density while preserving the approved three-card layout",
+      status: "working",
+      provider: "claude",
+      confidence: "high",
+      tasksFromTodoWrite: false,
+    },
+  });
+
+  expect(header.now.text).toBe("Working");
+  expect(header.now.text).not.toContain("three-card layout");
+});
+
+test("local-server harness activity falls back to a neutral Now line", () => {
+  const header = buildShellTerminalHeaderViewModel({
+    project: {
+      id: "bina",
+      name: "bina-meatzevet-courses",
+      projectRoot: "/repo/bina-meatzevet-courses",
+    },
+    liveCwd: "/repo/bina-meatzevet-courses",
+    terminalStatus: "running",
+    trustedActivitySummary: true,
+    taskLineup: [],
+    statusSummary: {
+      task: "Ready",
+      path: "/repo/bina-meatzevet-courses",
+      now: "Building the fail-closed local server workflow",
+      status: "working",
+      provider: "claude",
+      confidence: "high",
+      tasksFromTodoWrite: false,
+    },
+  });
+
+  expect(header.now.text).toBe("Working");
+  expect(header.now.text).not.toContain("fail-closed");
+});
+
+test("task-line verification activity falls back to a neutral Now line", () => {
+  const header = buildShellTerminalHeaderViewModel({
+    project: {
+      id: "termfleet",
+      name: "termfleet",
+      projectRoot: "/repo/termfleet",
+    },
+    liveCwd: "/repo/termfleet",
+    terminalStatus: "running",
+    trustedActivitySummary: true,
+    taskLineup: [],
+    statusSummary: {
+      task: "Ready",
+      path: "/repo/termfleet",
+      now: "running task line verification",
+      status: "working",
+      provider: "codex",
+      confidence: "high",
+      tasksFromTodoWrite: false,
+    },
+  });
+
+  expect(header.now.text).toBe("Working");
+  expect(header.now.text).not.toContain("task line verification");
+});
+
+test("restart-review activity falls back to a neutral Now line", () => {
+  const header = buildShellTerminalHeaderViewModel({
+    project: {
+      id: "termfleet",
+      name: "termfleet",
+      projectRoot: "/repo/termfleet",
+    },
+    liveCwd: "/repo/termfleet",
+    terminalStatus: "running",
+    trustedActivitySummary: true,
+    taskLineup: [],
+    statusSummary: {
+      task: "Ready",
+      path: "/repo/termfleet",
+      now: "Reviewing the restart fix changes",
+      status: "working",
+      provider: "codex",
+      confidence: "high",
+      tasksFromTodoWrite: false,
+    },
+  });
+
+  expect(header.now.text).toBe("Working");
+  expect(header.now.text).not.toContain("restart fix");
 });
 
 test("uses project root folder instead of parent category workspace", () => {

@@ -1017,11 +1017,11 @@ function workspaceGroupKey(workstream: WorkstreamMetadata) {
   return `shared:${workstream.gitRoot ?? workstream.cwd ?? workstream.cwdLabel ?? "unknown"}`;
 }
 
-function workspaceGroupLabel(workstream: WorkstreamMetadata) {
+export function workspaceGroupLabel(workstream: WorkstreamMetadata) {
   if (workstream.isolationMode === "dedicated-worktree") {
-    return workstream.cwdLabel ?? pathLabel(workstream.worktreePath ?? workstream.cwd);
+    return pathLabel(workstream.worktreePath ?? workstream.gitRoot ?? workstream.cwd);
   }
-  return workstream.cwdLabel ?? pathLabel(workstream.gitRoot ?? workstream.cwd);
+  return pathLabel(workstream.gitRoot ?? workstream.cwd);
 }
 
 function workspaceGroupDetail(workstream: WorkstreamMetadata) {

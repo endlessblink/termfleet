@@ -14,13 +14,28 @@ ICON_SOURCE="$APP_ROOT/public/brand/termfleet-vessel-master.svg"
 
 cd "$APP_ROOT"
 
+BUILD_LOCK_FILE="${XDG_RUNTIME_DIR:-/tmp}/termfleet-build.lock"
+exec 9>"$BUILD_LOCK_FILE"
+if ! flock -n 9; then
+  printf 'Another TermFleet build is already running; refusing concurrent release work.\n' >&2
+  exit 1
+fi
+
+run_background_build() {
+  if command -v ionice >/dev/null 2>&1; then
+    ionice -c 3 nice -n "${TERMFLEET_BUILD_NICE:-10}" "$@"
+  else
+    nice -n "${TERMFLEET_BUILD_NICE:-10}" "$@"
+  fi
+}
+
 printf 'Building TermFleet frontend...\n'
-npm run build
+run_background_build npm run build
 
 printf 'Building safe TermFleet desktop release...\n'
 # The installed desktop entry runs the immutable binary directly. Building an AppImage
 # here adds an unrelated linuxdeploy failure surface without producing an install input.
-CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-1}" npm run tauri build -- --no-bundle
+run_background_build env CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-1}" npm run tauri build -- --no-bundle
 
 [[ -x "$SOURCE_BINARY" ]] || {
   printf 'Release build did not produce %s\n' "$SOURCE_BINARY" >&2

@@ -139,6 +139,8 @@ class DesktopLauncherGuardTests(unittest.TestCase):
         self.assertIn('export TERMFLEET_DESKTOP_MEMORY_MAX="${TERMFLEET_DESKTOP_MEMORY_MAX:-1G}"', script)
         self.assertIn('-p MemoryHigh="$TERMFLEET_DESKTOP_MEMORY_HIGH"', script)
         self.assertIn('-p MemoryMax="$TERMFLEET_DESKTOP_MEMORY_MAX"', script)
+        self.assertIn("-p CPUWeight=1000", script)
+        self.assertIn("-p IOWeight=1000", script)
         self.assertIn('printf \'%s\\n\' "$TERMFLEET_DESKTOP_MEMORY_HIGH" >"$desktop_cgroup/memory.high"', script)
         self.assertIn('printf \'%s\\n\' "$TERMFLEET_DESKTOP_MEMORY_MAX" >"$desktop_cgroup/memory.max"', script)
 
@@ -162,7 +164,7 @@ class DesktopLauncherGuardTests(unittest.TestCase):
         self.assertIn('nohup "$0" --child', script)
         self.assertIn('set_display_credentials', script)
         self.assertIn('for candidate in "/run/user/${UID}"/xauth_*', script)
-        self.assertIn('export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/${UID}}"', script)
+        self.assertIn('export XDG_RUNTIME_DIR="/run/user/${UID}"', script)
         self.assertIn('export DBUS_SESSION_BUS_ADDRESS=', script)
 
     def test_systemd_child_receives_x11_credentials_before_launch(self):

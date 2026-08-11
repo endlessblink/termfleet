@@ -44,7 +44,9 @@ now_ms() {
 cleanup() {
   stop_cpu_stress
   if [[ -n "$APP_PID" ]]; then
-    kill "$APP_PID" >/dev/null 2>&1 || true
+    kill -- "-$APP_PID" >/dev/null 2>&1 || kill "$APP_PID" >/dev/null 2>&1 || true
+    wait "$APP_PID" >/dev/null 2>&1 || true
+    APP_PID=""
   fi
   if [[ -n "$DAEMON_PID" ]]; then
     kill "$DAEMON_PID" >/dev/null 2>&1 || true
@@ -83,9 +85,9 @@ launch_app() {
   WINDOW_ID=""
   APP_WINDOW_PID=""
   if [[ "$PERF_MODE" == "dev" ]]; then
-    DISPLAY="$DISPLAY_VALUE" XAUTHORITY="$XAUTHORITY_VALUE" XDG_RUNTIME_DIR="$RUN_DIR" XDG_DATA_HOME="$DATA_DIR" "$APP_ROOT/run-dev.sh" &
+    setsid env DISPLAY="$DISPLAY_VALUE" XAUTHORITY="$XAUTHORITY_VALUE" XDG_RUNTIME_DIR="$RUN_DIR" XDG_DATA_HOME="$DATA_DIR" "$APP_ROOT/run-dev.sh" &
   else
-    DISPLAY="$DISPLAY_VALUE" XAUTHORITY="$XAUTHORITY_VALUE" XDG_RUNTIME_DIR="$RUN_DIR" XDG_DATA_HOME="$DATA_DIR" "$APP_BIN" &
+    setsid env DISPLAY="$DISPLAY_VALUE" XAUTHORITY="$XAUTHORITY_VALUE" XDG_RUNTIME_DIR="$RUN_DIR" XDG_DATA_HOME="$DATA_DIR" "$APP_BIN" &
   fi
   APP_PID=$!
 

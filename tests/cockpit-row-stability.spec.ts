@@ -15,6 +15,10 @@ const sidebar = readFileSync(
   new URL("../src/components/WorkbenchSidebar.tsx", import.meta.url),
   "utf8",
 );
+const splitPane = readFileSync(
+  new URL("../src/components/SplitPane.tsx", import.meta.url),
+  "utf8",
+);
 
 test("map card headline row keeps a fixed height", () => {
   const style = magicCanvas.match(
@@ -99,4 +103,53 @@ test("the card shows the goal on top and the moment under it, always", () => {
   expect(nowRow.slice(0, 1600)).toContain(">\n                Now:\n              <");
   // Reserved, never unmounted: an empty second row must not change the card's height.
   expect(nowRow.slice(0, 1600)).toMatch(/visibility: terminalHeaderNowRowVisible/);
+});
+
+test("a missing goal still renders an explicit Task row instead of hiding it", () => {
+  expect(magicCanvas).toContain('terminalHeader.sources.goal === "missing"');
+  expect(magicCanvas).toContain("Waiting for a clear goal");
+  expect(magicCanvas).toContain("const terminalHeaderHasTask = true;");
+});
+
+test("map cards keep the broad Goal separate from the specific Task and Now rows", () => {
+  expect(magicCanvas).toContain("terminalHeaderContextDescription");
+  expect(magicCanvas).toContain('data-testid="canvas-terminal-node-goal"');
+  expect(magicCanvas).toContain("Goal:");
+  expect(magicCanvas).toContain("terminalHeaderHasContext");
+});
+
+test("split terminal headers show a compact stable Goal line when context exists", () => {
+  expect(splitPane).toContain("contextLabel");
+  expect(splitPane).toContain('data-testid="split-terminal-summary-goal"');
+  expect(splitPane).toContain('data-testid="split-agent-pane-goal"');
+  expect(splitPane).toContain(">\n                            Goal\n");
+  expect(splitPane).toContain('headerContext !== "Context not captured"');
+  expect(splitPane).toContain("contextSource");
+});
+
+test("agent split headers keep the live work, broad goal, and current moment legible together", () => {
+  const agentHeader = splitPane.slice(
+    splitPane.indexOf("{isAgentPane && agentStatusSummary ?"),
+    splitPane.indexOf(") : shellStatusSummary ?", splitPane.indexOf("{isAgentPane && agentStatusSummary ?")),
+  );
+
+  expect(agentHeader, "the agent header branch must exist").toContain("Task:");
+  expect(agentHeader, "the broad goal must have its own labeled row").toContain(
+    'data-testid="split-agent-pane-goal"',
+  );
+  expect(agentHeader, "the current moment must have its own labeled row").toContain(
+    'data-testid="split-agent-pane-now"',
+  );
+  expect(agentHeader, "the agent branch must not hide the moment in an inline strip").toContain(
+    "Now",
+  );
+});
+
+test("regular split headers keep the current moment visible beside the path", () => {
+  const shellStart = splitPane.indexOf(") : shellStatusSummary ?");
+  const shellHeader = splitPane.slice(shellStart);
+
+  expect(shellHeader).toContain('data-testid="split-terminal-summary-now"');
+  expect(shellHeader).not.toContain('display: "none"');
+  expect(shellHeader).toContain('gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)"');
 });

@@ -39,6 +39,100 @@ function fileSha256(filePath) {
   return out.status === 0 ? out.stdout.trim().split(/\s+/)[0] : null;
 }
 
+function commandOutput(command, args) {
+  const out = spawnSync(command, args, { encoding: "utf8" });
+  return out.status === 0 ? out.stdout : "";
+}
+
+// 0. Daemon/session ownership: these are the invariants that protect live chats
+// during app relaunches and prevent a slow daemon from being replaced behind its
+// socket. Keep this read-only so it is safe to run before every restart.
+const processRows = commandOutput("ps", ["-eo", "pid=,args="])
+  .split("\n")
+  .map((line) => {
+    const match = line.trim().match(/^(\d+)\s+(.*)$/);
+    return match ? { pid: match[1], args: match[2] } : null;
+  })
+  .filter((row) => row?.args.includes("--terminal-workspace-daemon"));
+const runtimeDir = process.env.XDG_RUNTIME_DIR || `/run/user/${process.getuid?.() ?? ""}`;
+const daemonSocket = path.join(runtimeDir, "terminal-workspace", "daemon.sock");
+const socketListeners = commandOutput("ss", ["-xlpn"])
+  .split("\n")
+  .filter((line) => line.includes(daemonSocket) && line.includes("LISTEN"));
+const canonicalListenerPids = new Set(
+  socketListeners.flatMap((line) => [...line.matchAll(/pid=(\d+)/g)].map((match) => match[1])),
+);
+const daemonProcesses = processRows.filter((row) => canonicalListenerPids.has(row.pid));
+
+if (daemonProcesses.length === 1 && socketListeners.length === 1) {
+  report("ok", "Daemon ownership", "one daemon process and one canonical socket listener");
+} else if (daemonProcesses.length === 0 && socketListeners.length === 0) {
+  report("info", "Daemon ownership", "no daemon is running; startup may create one");
+} else {
+  report(
+    "fail",
+    "Daemon ownership",
+    `${daemonProcesses.length} canonical daemon process(es), ${socketListeners.length} canonical socket listener(s) — refusing an unsafe restart`,
+  );
+}
+
+const privateDaemonCount = processRows.length - daemonProcesses.length;
+if (privateDaemonCount > 0) {
+  report("info", "Private verifier daemons", `${privateDaemonCount} isolated daemon process(es) are outside the canonical socket`);
+}
+
+const sessionDir = path.join(os.homedir(), ".local", "share", "terminal-workspace", "sessions");
+const liveWriterIds = new Set();
+for (const line of processRows.map((row) => row.args)) {
+  if (!line.includes("/vendor/") || !line.includes("codex resume")) continue;
+  const match = line.match(/codex\s+resume\s+([0-9a-f-]{36})/i);
+  if (match) liveWriterIds.add(match[1]);
+}
+const persistedIds = new Map();
+let unreadableSessions = 0;
+let legacyCommandIds = 0;
+try {
+  for (const name of readdirSync(sessionDir).filter((entry) => entry.endsWith(".meta.json"))) {
+    try {
+      const meta = JSON.parse(readFileSync(path.join(sessionDir, name), "utf8"));
+      const command = [meta.command, meta.sanitizedResumeCommand, meta.originalCommand]
+        .filter(Boolean)
+        .join(" ");
+      const match = command.match(/(?:codex\s+resume|claude\s+(?:--)?resume)\s+([0-9a-f-]{36})/i);
+      const providerId = meta.providerSessionId || match?.[1];
+      if (!providerId) continue;
+      if (!meta.providerSessionId) legacyCommandIds += 1;
+      persistedIds.set(providerId, (persistedIds.get(providerId) || 0) + 1);
+    } catch {
+      unreadableSessions += 1;
+    }
+  }
+} catch {
+  // A missing session directory is valid on a new installation.
+}
+
+const duplicateIds = [...persistedIds].filter(([, count]) => count > 1);
+const liveDuplicateIds = duplicateIds.filter(([id]) => liveWriterIds.has(id));
+if (unreadableSessions) {
+  report("fail", "Session registry", `${unreadableSessions} session record(s) cannot be read`);
+} else if (liveDuplicateIds.length) {
+  report("warn", "Session registry", `${liveDuplicateIds.length} active provider chat ID(s) appear in multiple terminal records; live-writer locks still prevent duplicate resumes`);
+} else if (duplicateIds.length) {
+  report("info", "Session registry", `${duplicateIds.length} historical provider chat ID(s) have duplicate records; no duplicated live writer is present`);
+} else {
+  report("ok", "Session registry", `${persistedIds.size} provider chat ID(s) map uniquely`);
+}
+if (legacyCommandIds) {
+  report("info", "Legacy session IDs", `${legacyCommandIds} record(s) use command-derived IDs; locks still protect them until migration`);
+}
+
+const unregisteredWriters = [...liveWriterIds].filter((id) => !persistedIds.has(id));
+if (unregisteredWriters.length) {
+  report("fail", "Live chat ownership", `${unregisteredWriters.length} live writer(s) are missing from the persistence registry`);
+} else if (liveWriterIds.size) {
+  report("ok", "Live chat ownership", `${liveWriterIds.size} live writer(s) are represented in the registry`);
+}
+
 // 1. Claude status hook registered and pointing at a real file.
 try {
   const settingsPath = path.join(os.homedir(), ".claude", "settings.json");
@@ -490,7 +584,7 @@ try {
     }
   };
   probeFor(path.join(os.homedir(), ".claude", "projects"), 2, ['"tool_use"', '"ai-title"', '"last-prompt"'], "Session record (Claude)");
-  probeFor(path.join(os.homedir(), ".codex", "sessions"), 4, ['"task_complete"', '"agent_message"', '"user_message"', '"function_call"'], "Session record (Codex)");
+  probeFor(path.join(os.homedir(), ".codex", "sessions"), 4, ['"event_msg"', '"task_started"', '"task_complete"', '"agent_message"', '"user_message"', '"function_call"'], "Session record (Codex)");
 }
 
 // How many panes can the Task row actually speak for? A record with a conversation id

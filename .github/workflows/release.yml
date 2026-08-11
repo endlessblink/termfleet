@@ -1,6 +1,6 @@
 name: Release
 
-# Cut a Linux release by pushing a version tag, e.g. `git tag v0.1.0 && git push --tags`.
+# Cut a Linux release by pushing a version tag, e.g. `git tag v0.1.1 && git push --tags`.
 on:
   push:
     tags: ["v*"]

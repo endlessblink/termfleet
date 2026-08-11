@@ -419,6 +419,106 @@ def verify_agent_restart_restore():
         subprocess.run(["rm", "-rf", tmp], check=False)
 
 
+def verify_orphaned_provider_writer():
+    """LAYER 4: daemon loss -> surviving provider blocks duplicate resume."""
+    print("--- LAYER 4: orphaned provider writer after daemon loss ---")
+    tmp, env, sock, log_dir = setup_env()
+    fake_bin = os.path.join(tmp, "bin")
+    fake_codex = write_fake_codex(fake_bin)
+    env = dict(env, PATH=f"{fake_bin}:{env.get('PATH', '')}", SHELL="/bin/sh")
+    workspace = os.path.join(tmp, "orphan-workspace")
+    os.makedirs(workspace, exist_ok=True)
+    log1 = os.path.join(log_dir, "daemon-orphan-1.log")
+    log2 = os.path.join(log_dir, "daemon-orphan-2.log")
+    sid = "agent-orphan-writer-e2e"
+    provider_sid = "019f-orphan-writer-session"
+    d1 = d2 = None
+    provider_pid = None
+    holder_pid = None
+    try:
+        seed_checkpoint(env, sid, "previous orphan transcript\n", {
+            "cwd": workspace,
+            "command": "codex",
+            "cols": 118,
+            "rows": 33,
+            "recoveryKind": "agent-terminal",
+            "provider": "codex",
+            "launchProfile": "terminal",
+            "providerSessionId": provider_sid,
+            "originalCommand": "codex",
+            "sanitizedResumeCommand": f"{fake_codex} resume {provider_sid}",
+        })
+        d1 = start_daemon(env, log1)
+        if not wait_up(sock):
+            print("FAIL: daemon #1 never came up for orphan test", file=sys.stderr)
+            print_log_tail(log1)
+            return False
+        holder_sid = "orphan-daemon-holder"
+        holder = send(sock, {"type": "ensureSession", "id": holder_sid, "cwd": "/tmp", "command": "/bin/sh"})
+        if not holder:
+            print("FAIL: daemon #1 did not create its holder session", file=sys.stderr)
+            return False
+        holder_pid = send(sock, {"type": "listSessions"})[0]["sessions"][0].get("pid")
+        provider = subprocess.Popen(
+            [fake_codex, "resume", provider_sid],
+            cwd=workspace,
+            env=dict(env, TERMFLEET_PANE_ID=sid),
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        provider_pid = provider.pid
+        time.sleep(0.2)
+        if provider.poll() is not None:
+            print("FAIL: orphan provider fixture exited before daemon replacement", file=sys.stderr)
+            return False
+
+        d1.kill(); d1.wait(timeout=5); wait_down(sock)
+        print("daemon #1 SIGKILLed while provider was active  ✓")
+        if provider.poll() is not None:
+            print("FAIL: provider fixture did not survive daemon replacement", file=sys.stderr)
+            return False
+
+        d2 = start_daemon(env, log2)
+        if not wait_up(sock):
+            print("FAIL: daemon #2 never came up for orphan test", file=sys.stderr)
+            print_log_tail(log2)
+            return False
+        second = send(sock, {"type": "ensureSession", "id": sid})
+        if not second or second[0].get("reused") is not False:
+            print(f"FAIL: replacement daemon did not create the safe fallback shell: {second!r}", file=sys.stderr)
+            return False
+        fallback = snapshot_until(sock, sid, "previous orphan transcript")
+        meta = read_meta(env, sid)
+        if f"FAKE_CODEX_ARGS=resume {provider_sid}" in fallback:
+            print("FAIL: replacement daemon launched a duplicate provider resume", file=sys.stderr)
+            return False
+        if "already owned" not in meta.get("restoreFailureReason", ""):
+            print(f"FAIL: orphan ownership was not persisted: {meta!r}", file=sys.stderr)
+            return False
+        if not provider_pid or provider_pid == second[0].get("pid"):
+            print("FAIL: orphan test did not retain the original provider pid", file=sys.stderr)
+            return False
+        print("replacement daemon blocked duplicate provider resume and opened a shell  ✓\n")
+        return True
+    finally:
+        for d in (d2, d1):
+            if d and d.poll() is None:
+                d.kill()
+        if provider_pid:
+            try:
+                os.kill(provider_pid, 9)
+            except ProcessLookupError:
+                pass
+        if holder_pid:
+            try:
+                os.kill(holder_pid, 9)
+            except ProcessLookupError:
+                pass
+        subprocess.run(["rm", "-rf", tmp], check=False)
+
+
 def main():
     print(f"building private debug binary at {BIN}")
     CARGO_TARGET_DIR.mkdir(parents=True, exist_ok=True)
@@ -434,8 +534,9 @@ def main():
     layer1 = verify_live_reattach()
     layer2 = verify_cold_restore()
     layer3 = verify_agent_restart_restore()
-    if layer1 and layer2 and layer3:
-        print("PASS: terminals and agent lanes restore across app restart AND PC reboot")
+    layer4 = verify_orphaned_provider_writer()
+    if layer1 and layer2 and layer3 and layer4:
+        print("PASS: terminals and agent lanes restore safely across app restart, PC reboot, and daemon loss")
         return 0
     print("FAIL: see above", file=sys.stderr)
     return 1

@@ -210,6 +210,7 @@ for index, entry in enumerate(terminals):
     title = clean(entry.get("title"))
     now = clean(entry.get("now"))
     task = clean(entry.get("task"))
+    context = clean(entry.get("context"))
     path = clean(entry.get("path") or entry.get("cwd"))
     visible = clean(entry.get("terminalVisibleText"))
     output = clean(entry.get("terminalOutput"))
@@ -221,6 +222,8 @@ for index, entry in enumerate(terminals):
         "path": path,
         "task": task,
         "taskSource": entry.get("taskSource"),
+        "context": context,
+        "contextSource": entry.get("contextSource"),
         "title": title,
         "titleSource": entry.get("titleSource"),
         "now": now,
@@ -245,6 +248,8 @@ for index, entry in enumerate(terminals):
             failures.append(f"{pane}: task {task!r} is not justified by source or terminal text")
     if task == "Task not captured":
         failures.append(f"{pane}: durable task was not captured")
+    if task == "Waiting for a task" and now not in {"", "Activity not captured"}:
+        failures.append(f"{pane}: generic waiting headline hides meaningful current work")
     if missing_activity(title, now):
         failures.append(f"{pane}: current activity was not captured")
     if not missing_task(task):

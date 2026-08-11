@@ -135,9 +135,9 @@ function readsPlainly(text: string): boolean {
   return (
     qualityCheckAuthoritativeTaskLabel(text, {
       maxLength: TASK_LINE_MAX,
-      // Capture the candidate for diagnostics and render-time quality review; do not
-      // erase the only pane-owned evidence before the header can choose an honest fallback.
-      allowMetaProcess: true,
+      // Internal plan actions are progress metadata, not user goals. They must remain
+      // available for diagnostics but cannot become the pane's user-facing identity.
+      allowMetaProcess: false,
     }).ok &&
     !UNREADABLE.test(text)
   );
@@ -357,6 +357,12 @@ export function resolvePaneTaskLine(input: TaskLineInput): PaneTaskLine {
   const considerAsk = (candidate: string | null | undefined): string | null => {
     const value = candidate?.trim();
     if (!value) return null;
+    // A machine slug can arrive through the sidecar's operatorRequest field even
+    // when it is not a vendor title; it names a workspace, not the work itself.
+    if (looksLikeSlug(value)) {
+      if (!rejected) rejected = value;
+      return null;
+    }
     if (readsAsAsk(value)) return value;
     if (!rejected) rejected = value;
     return null;
@@ -425,19 +431,9 @@ export function resolvePaneTaskLine(input: TaskLineInput): PaneTaskLine {
         rejected,
       };
     }
-    // A structured active plan step is already written for the cockpit in concise,
-    // present-continuous language. It is safer and clearer than displaying a raw user
-    // complaint or a mutable vendor title as the visible Task.
-    const step = consider(input.currentStep);
-    if (step) {
-      return {
-        text: step,
-        source: "current-step",
-        capturedAt: now,
-        expiresAt: null,
-        rejected,
-      };
-    }
+    // The active plan step is progress, not the durable goal. It is resolved by
+    // resolvePaneNowLine and must never fill the Task row when no user-facing goal
+    // was captured first.
     // An OVERARCHING description leads when the vendor wrote one. Claude keeps its own
     // session title current as the work drifts, so it answers "what is this pane about"
     // in a way no single message does: the rows underneath are mid-conversation replies
@@ -616,6 +612,6 @@ export function resolvePaneTaskLine(input: TaskLineInput): PaneTaskLine {
     source: "shell-state",
     capturedAt: now,
     expiresAt: null,
-    rejected,
+    rejected: rejected ?? input.currentStep?.trim(),
   };
 }

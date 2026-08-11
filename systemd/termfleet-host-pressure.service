@@ -1,0 +1,11 @@
+[Unit]
+Description=TermFleet host pressure protection (compressed swap)
+After=systemd-modules-load.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c 'modprobe zswap; if [ -e /sys/module/zswap/parameters/enabled ]; then echo 1 > /sys/module/zswap/parameters/enabled; fi; if [ -e /sys/module/zswap/parameters/max_pool_percent ]; then echo 20 > /sys/module/zswap/parameters/max_pool_percent; fi'
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

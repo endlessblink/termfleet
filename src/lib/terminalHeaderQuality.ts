@@ -104,6 +104,7 @@ function looksLikeSpokenPrompt(text: string) {
 
 function looksLikePromptFragment(text: string) {
   return (
+    /([a-z])\1{3,}/i.test(text) ||
     /[?]\s*$/i.test(text) ||
     /^(?:and\s+)?(?:this|that|these|those|both)$/i.test(text) ||
     /^and\s+\w+(?:\s+\w+){0,4}$/i.test(text) ||
@@ -274,8 +275,30 @@ function looksLikeGenericResult(text: string) {
 // cleanup/release choreography instead of the product or problem being changed. Keep
 // this list supervised: every new pattern must come from a rejected live card and a
 // regression example, never from an unconstrained rewrite heuristic.
+export function isSupervisedMetaProcessTask(value?: string | null) {
+  return looksLikeMetaProcessTask(clean(value));
+}
+
 function looksLikeMetaProcessTask(text: string) {
+  const processLead = /^(?:adding|applying|building|checking|centering|choosing|confirming|covering|creating|entering|fixing|handling|improving|locking|preserving|promoting|rebuilding|reducing|reject(?:ing)?|refreshing|running|testing|updating|verifying|writing)\b/i.test(
+    text,
+  );
+  const internalObject =
+    /\b(?:proof(?:[- ]checks?)?|regression\s+tests?|visual\s+gate|fail-closed|local\s+server\s+workflow|task(?:\s+line)?\s+verification|verification\s+wording|fallback|user-facing|with\s+tests?|tests?\s+and\s+task\s+records?|approved\s+deployment|approved\s+three-card\s+layout|one-card\s+sections?|responsive\s+text\s+layout|editor\s+and\s+responsive|quality\s+(?:guard|matrix)|task\s+(?:wording|label))\b/i.test(
+      text,
+    );
+  const knownConcreteEmailGoal =
+    /^(?:adding|implementing)\s+open\s+and\s+click\s+tracking(?:\s+with\s+tests)?$/i.test(
+      text,
+    );
+  if (processLead && internalObject && !knownConcreteEmailGoal) return true;
   return (
+    // A cross-system recheck is a status report about the agent's proof surface,
+    // not the user's durable product goal. Keep it out of the Task row even when
+    // the individual systems include a legitimate domain word such as billing.
+    /^(?:re-?checking|re-?running|re-?verifying)\b.*\b(?:pr|pull\s+request|actions?|runner|billing|state)\b.*(?:,|\band\b).*\b(?:pr|pull\s+request|actions?|runner|billing|state)\b/i.test(
+      text,
+    ) ||
     /^(?:adding|applying|addressing|blocking|building|checking|covering|fixing|handling|improving|promoting|rebuilding|refreshing|re-?checking|re-?running|re-?verifying|testing|updating|verifying|writing)\b.*\b(?:task|label|wording|quality|fallback|release|deployment|card|screenshot|guard|matrix|dock)\b/i.test(
       text,
     ) ||
@@ -283,6 +306,21 @@ function looksLikeMetaProcessTask(text: string) {
     /^choos(?:e|ing)\s+(?:a\s+)?useful\s+fallback\s+for\s+rejected\s+task\s+wording$/i.test(
       text,
     ) ||
+    /^verif(?:y|ying)\s+the\s+installed\s+card\s+stays\s+user-facing$/i.test(
+      text,
+    ) ||
+    /^locking\s+the\s+card\s+and\s+recording-link\s+behavior\s+with\s+tests$/i.test(
+      text,
+    ) ||
+    /^adding\s+fresh\s+campaign\s+and\s+browser\s+proof\s+checks$/i.test(text) ||
+    /^run\s+the\s+live\s+installed\s+terminal\s+verification$/i.test(text) ||
+    /^(?:record|recording)\b.*\b(?:verification|test|build|install|release)\s+outcome\b/i.test(
+      text,
+    ) ||
+    /^adding\s+(?:a\s+)?regression\s+for\s+empty\s+and\s+settled\s+terminal\s+cards$/i.test(
+      text,
+    ) ||
+    /^(?:adding|writing|creating)\s+(?:a\s+)?regression\s+for\s+.+$/i.test(text) ||
     /^(?:making|improving|clarifying|fixing|rewriting|describing)\s+(?:the\s+)?(?:task|task\s+line|task\s+label|description|wording|header|title)\b/i.test(
       text,
     ) ||
@@ -303,8 +341,36 @@ function looksLikeMetaProcessTask(text: string) {
     ) ||
     /^(?:repairing|fixing)\s+missing\s+data\s+and\s+link\s+connections$/i.test(
       text,
+    ) ||
+    // A current verification step is not the durable concept of the terminal.
+    // If no real goal was captured, keep the card honest instead of promoting it.
+    /^(?:refreshing|reloading|checking|re-?checking|testing|verifying|running)\b.*\b(?:local\s+page|test\s+option|test\s+flow|test\s+case|checks?|runner|actions?|pull\s+request|pr)\b/i.test(
+      text,
     )
   );
+}
+
+function looksLikeMetaProcessActivity(text: string) {
+  const processLead = /^(?:adding|building|checking|centering|confirming|creating|entering|preserving|publishing|reducing|rejecting|reviewing|running|testing|verifying|writing)\b/i.test(
+    text,
+  );
+  const internalObject =
+    /\b(?:regression\s+tests?|visual\s+gate|fail-closed|task\s+line\s+verification|approved\s+three-card\s+layout|one-card\s+sections?|local\s+server\s+workflow|proof\s+checks?|harness|quality\s+gate|restart\s+fix\s+changes?)\b/i.test(
+      text,
+    );
+  if (processLead && internalObject) return true;
+  return (
+    /^adding\s+and\s+running\s+the\s+width\s+regression\s+test$/i.test(text) ||
+    /^publishing\s+only\s+after\s+the\s+visual\s+gate\s+passes$/i.test(text) ||
+    /^reducing\s+card\s+density\s+while\s+preserving\s+the\s+approved\s+three-card\s+layout$/i.test(
+      text,
+    )
+    || /^building\s+the\s+fail-closed\s+local\s+server\s+workflow$/i.test(text)
+  );
+}
+
+export function isSupervisedMetaProcessActivity(value?: string | null) {
+  return looksLikeMetaProcessActivity(clean(value));
 }
 
 function lacksDecisionObject(text: string) {
@@ -373,6 +439,10 @@ export function qualityCheckUserAskLabel(
     return { ok: false, reason: "terminal-chrome" };
   if (text.length > (options.maxLength ?? 96))
     return { ok: false, reason: "too-long" };
+  // Curly-brace tokens are vendor template placeholders (for example
+  // "Implement {feature}"), never a real user goal or work item.
+  if (/\{[^{}]+\}/.test(text))
+    return { ok: false, reason: "prompt-fragment" };
   if (
     /^(?:go|done|fix it|fix this too|so fix it|ok|okay|sure|yes|continue|do it|proceed)$/i.test(
       text,
@@ -453,6 +523,8 @@ export function qualityCheckAuthoritativeTaskLabel(
     return { ok: false, reason: "terminal-chrome" };
   if (text.length > (options.maxLength ?? 96))
     return { ok: false, reason: "too-long" };
+  if (/\{[^{}]+\}/.test(text))
+    return { ok: false, reason: "prompt-fragment" };
   if (
     /^(?:Ready|Idle|Terminal|Working|Thinking|Running terminal command|Supervised agent run|Context compacted|done|go|fix it)$/i.test(
       text,
@@ -747,6 +819,9 @@ export function qualityCheckNowLabel(
   value?: string | null,
 ): HeaderQualityResult {
   const text = clean(value);
+  if (looksLikeMetaProcessActivity(text)) {
+    return { ok: false, reason: "vague" };
+  }
   if (/^(?:Next\s+steps|Steps)\s*[-:]/i.test(text)) {
     return { ok: false, reason: "prompt-fragment" };
   }
@@ -810,6 +885,9 @@ export function qualityCheckActivityLabel(
   value?: string | null,
 ): HeaderQualityResult {
   const text = clean(value);
+  if (looksLikeMetaProcessActivity(text)) {
+    return { ok: false, reason: "vague" };
+  }
   if (/^(?:Next\s+steps|Steps)\s*[-:]/i.test(text)) {
     return { ok: false, reason: "prompt-fragment" };
   }

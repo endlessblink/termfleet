@@ -73,7 +73,10 @@ cockpit_pid() {
 
 set_display_credentials() {
   export DISPLAY="${DISPLAY:-:0}"
-  export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/${UID}}"
+  # The dock is the production owner. Never let inherited test/recovery
+  # environments redirect the desktop or its daemon to a temporary socket.
+  # Private verifiers launch the binary directly with their own explicit runtime.
+  export XDG_RUNTIME_DIR="/run/user/${UID}"
   export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=${XDG_RUNTIME_DIR}/bus}"
   if [[ -z "${XAUTHORITY:-}" ]]; then
     local candidate
@@ -154,6 +157,8 @@ if command -v systemd-run >/dev/null 2>&1; then
     -p KillMode=control-group \
     -p MemoryHigh="$TERMFLEET_DESKTOP_MEMORY_HIGH" \
     -p MemoryMax="$TERMFLEET_DESKTOP_MEMORY_MAX" \
+     -p CPUWeight=1000 \
+     -p IOWeight=1000 \
     --setenv="DISPLAY=${DISPLAY:-:0}" \
     --setenv="XAUTHORITY=${XAUTHORITY:-}" \
     --setenv="PATH=${PATH:-/usr/local/bin:/usr/bin:/bin}" \

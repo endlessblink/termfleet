@@ -1,5 +1,16 @@
 # MASTER_PLAN.md - termfleet
 
+> **2026-08-11 map reconnect correction:** Map-card **Connect terminal** now stays on
+> the map, selects the linked node/pane/PTTY, and mounts the live renderer even when
+> the card was not already selected. The action no longer routes through split mode;
+> **Open full terminal** remains the explicit split-view action. The focused map
+> regression, `npm run build`, `npm run verify:map-terminals`, `npm run release:install`,
+> `npm run verify:installed-release`, `npm run verify:installed-restart`, and
+> `git diff --check` passed. Release `5054401780be-e0659ac4664f` was promoted and
+> restarted successfully; direct dock click proof remains a manual visual follow-up.
+
+> **2026-08-11 map-card context correction:** Goal now prefers the captured user goal, then project context, then a real task fallback, so cards no longer say “Project intent not captured” when the goal is visible elsewhere. Running panes show `Working` when no richer current step exists; build, focused browser regressions, map source checks, installed-release verification, and installed restart passed. A full legacy visual-file run still has unrelated expectation drift against the newer Task/Now contract.
+
 > **⏯️ AFTER RESTART — DO THIS FIRST (TC-035, updated 2026-06-23).**
 >
 > **State at save:** All TC-035 code is committed+pushed (per-pane keying, `TERMFLEET_PANE_ID`
@@ -38,6 +49,46 @@ the current line of the project formerly built as "Magic Canvas"; Linux is the
 first release gate. The design preserves the canvas/operations-map workflow
 instead of replacing it with a terminal-only split-pane app.
 
+Project identity correction (2026-08-10): agent workspace cards now prefer the
+authoritative Git project root over a stale cached cwd label, preventing several
+projects launched below `/media/endlessblink/data` from appearing as `data`.
+`npx playwright test tests/agent-workstream.spec.ts -g "workspace cards use the project root"`
+passed, `npm run build` passed, `npm run verify:map-terminals` passed, and
+`git diff --check` passed. Release `5054401780be-27d0aca6dbb5` passed
+`npm run verify:installed-release` and `npm run verify:installed-restart` with
+the real TermFleet window and zero external terminals. `npm run doctor` still
+reports the already-running window predates the newly promoted release; relaunch
+the dock app to clear that host-state warning.
+
+Map card readability correction (2026-08-10): narrow terminal cards no longer
+reserve an impossible fixed-width secondary column or render Goal and Now as
+faint ungrouped metadata. The summary surface now remains inside the card and
+uses stronger Task/Goal/Now hierarchy with explicit intent/current-state rails.
+`npm run build` passed and `npx playwright test tests/terminal-summary-visual.spec.ts
+-g "map header shows the full live cwd"` passed. The noisy-map fixture still has
+an unrelated pre-existing timing/fixture failure before the new visual assertion;
+release `5054401780be-191a4acb217e` passed `npm run verify:installed-release` and
+`npm run verify:installed-restart` with zero external terminals. Automated cockpit
+capture could not find a live window after the smoke exited, so a fresh screenshot
+artifact remains pending.
+
+Map card scale and empty-state correction (2026-08-10): the visible Goal/Now
+rows are now 14px values with 12px labels, the summary block no longer reserves
+an invisible minimum height, and missing status sources render explicit copy
+instead of blank space. `npm run build` and the focused long-path map browser
+ check passed. Release `5054401780be-195ffdbf2229` passed the installed-release
+ and restart smoke with zero external terminals; a fresh screenshot artifact
+ remains pending.
+
+Startup animation continuation (2026-08-10): the terminal-to-vessel startup
+sequence was visually reviewed from dense 30fps captures. The focused startup
+suite passed 3/3, `npm run build` passed, and `git diff --check` passed. The
+visual review found the restrained motion clean and legible; representative
+capture hashes were `7641cc75ffe315e9ff69946cbc8a95a6d089d4ab55ac9e08b2420cdbd2d2f291`
+and `5290b080921ec327f59eb8a0eb8c6775dd0918a71a8b202da07ab56ad989c054`.
+`npm run verify:typography` remains red on pre-existing UI violations outside
+the startup surface.
+
 Pressure recovery (2026-08-06): recurring pressure was traced to host I/O and
 swap contention plus stale verifier processes, not a current TermFleet OOM. The
 stale Puppeteer and private daemon processes were stopped without touching the
@@ -69,6 +120,117 @@ pressure; the largest process was an unrelated next-server worker. The daemon re
 bounded at 12 GiB, and the 15-minute guardrail/reaper timer is now installed and active.
 Doctor's user-systemd probe was corrected to use the session bus, and `npm run doctor`
 now reports the timer armed with `DOCTOR_OK`.
+
+Concurrent workload support (2026-08-08): live workload sampling showed 24 CPU
+threads, concurrent TypeScript/Rust builds, multiple Next servers, browser/Electron
+renderers, and Hermes services. TermFleet desktop units now receive CPUWeight=250 and
+IOWeight=250, daemon units receive CPUWeight=200 and IOWeight=200, and the daemon keeps
+the 12 GiB soft memory ceiling; focused Python/Rust tests, release promotion, installed
+restart smoke, live cgroup readback, and `npm run doctor` passed. Host zswap remains
+disabled and requires a privileged kernel setting outside the repository boundary.
+
+Duplicate agent resume correction (2026-08-09): Codex could report `thread/resume`
+already having an active writer when concurrent pane restoration launched the same
+conversation twice. Session creation is serialized, and an OS-level provider/session
+lock now blocks duplicate writers across daemon processes; active-writer failures are
+persisted as terminal recovery failures, and later restores fall back to a regular
+shell instead of retrying the same writer. All 155 Rust unit tests, `cargo check`,
+`npm run verify:restart-restore`, `npm run verify:map-terminals`, release promotion,
+`npm run verify:installed-release`, `npm run verify:installed-restart`, and
+`npm run doctor` passed; the current dock app is running and doctor reports
+`DOCTOR_OK`.
+
+Orphaned provider resume hardening (2026-08-10): daemon loss can leave a provider
+child alive after the daemon's in-memory lease disappears. Cold restore now checks
+the pane-scoped process environment and provider command line before launching a
+resume; an existing provider owner forces a regular shell and persists a recovery
+failure instead of producing a second `thread/resume`. Focused Rust tests passed for
+provider detection, lock contention, active-writer persistence, and the fallback
+shell invariant. The live daemon-replacement proof remains pending.
+
+Load stress verification (2026-08-10): the isolated Unix-socket daemon completed
+500 PTY sessions across 20 concurrent waves in 15.2s with zero sessions left behind;
+the 100-session capacity guard also passed. Full Rust coverage passed 162 tests across
+six suites, and `npm run build` passed. The 71-test Canvas2D/map browser gate found
+67 passes and four deterministic map-summary failures (rename input not appearing,
+ready-prompt summaries remaining empty, and workspace-label summaries falling back),
+so broad UI coverage remains red pending those existing failures. Live daemon
+replacement was intentionally not run because it would disrupt active user sessions.
+
+Sluggish cockpit investigation (2026-08-10): the user-visible dock process was
+running an older release than the installed verified build; after promotion and a
+real dock relaunch, doctor confirmed current binary provenance. The live WebKit
+renderer was consuming roughly 20–22% CPU before the change and 16.6–18.4% after
+reducing the map's full Canvas2D renderer cap from six terminals to the selected
+surface plus one nearby warm terminal. The focused live-map mount test passed,
+the promoted-binary performance smoke passed with 8.1% isolated idle CPU, 328ms
+terminal echo, 33ms last-character echo, and 375ms 300-line burst; the private map
+latency harness still lacks a window and remains unverified.
+
+Freeze incident hardening (2026-08-10): the reported freeze was reproduced as host
+pressure rather than memory exhaustion: a release `rustc` reached 100% CPU while
+WebKit rose to roughly 38%, with TypeScript/Playwright/package jobs competing for
+the same machine. The dock launcher now forces the canonical user runtime directory;
+release and standalone verification builds take a nonblocking shared lock, use one
+Rust build job with low CPU/IO priority, and clean up their complete process groups.
+Static pressure guards passed, and the authoritative socket audit now shows exactly
+one TermFleet owner on `/run/user/1000/terminal-workspace/daemon.sock`; the reported
+`.dev-tmp` secondary socket is absent. The installed app's real mouse/keyboard
+keyboard focus, reversible typed-input round trip, and resize round trip passed
+against the dock-launched window; the canonical daemon PID and socket remained
+stable, supporting session continuity. Physical mouse interaction and the private
+mouse title-bar focus also passed on the live window. The private map latency
+window remains UNVERIFIED.
+
+Release acceptance follow-up (2026-08-10): guarded promotion completed as release
+`6464556e98a5-0347333cbfd0`; `npm run verify:installed-release`, `npm run doctor`,
+and `npm run verify:installed-restart` passed, and the dock launcher started the
+current installed binary while reusing the canonical daemon.
+
+Publish-readiness follow-up (2026-08-10): `npm ci`, `npm audit --audit-level=high`,
+`npm run build`, `npm run verify:canvas-arrange`, and
+`npm run verify:developer-preview` passed after keeping Excalidraw 0.18.1 and
+overriding only its nested Nanoid copies to 5.1.16. Local `npx tauri build
+--bundles=appimage,deb` produced valid x86-64 AppImage and Debian format-2
+artifacts; hashes are `37b73fea45bbc1e87b1d7c6c543fa4752c7bd84f100bd58710619fe6b447eac2`
+and `4f244de4209e31e16be36192fd32f4f8131eeacc8e24b78c94ac0d495ac5d66a`.
+The remaining publication gates are clean-environment installation and final
+tagged CI artifact publication/checksums; public version/tag, support, rollback,
+and unsigned-preview policy are documented in `docs/release-notes-v0.1.1.md`.
+
+Version-alignment follow-up (2026-08-11): the existing remote `v0.1.0` tag is
+preserved and the publish candidate is now consistently versioned as `0.1.1` in
+the Node, Rust, Tauri, lockfile, README, checklist, and release-note surfaces.
+`npm ci`, `npm audit --audit-level=high`, `npm run verify:public-audit`,
+`npm run verify:readme-recovery`, the TypeScript/Vite build, and `git diff --check`
+passed. The fresh Debian bundle is a format-2 package with SHA-256
+`7be7f2360e009569d31cd187bcc9f8d5014ff446c993810bf052b82a1961e23d`.
+The AppImage linuxdeploy helper stalled twice during local packaging, so its
+artifact and checksum remain intentionally unchecked; no release tag or push was
+performed.
+
+Watchdog false-positive correction (2026-08-10): the pressure notification shown
+to the user reported two daemon processes because its `ps | awk` inspection counted
+the inspection command itself; an anchored real-process match now reports only the
+actual daemon PID. The installed watchdog was refreshed, 19 focused pressure/build/
+launcher tests passed, and a live follow-up poll produced no new split-brain alert.
+
+Fresh Canvas2D verification (2026-08-10): `npm run verify:canvas-live` passed daemon
+input, snapshot output, visual repaint (`changed_pixels=207156`), resize, vim, htop,
+and tmux checks. `npm run verify:canvas-all` completed 67/71; four known map-summary
+and rename cases remain red, while the installed app stayed current and doctor again
+reported one daemon process, one canonical listener, and 18/18 resumable map nodes.
+
+Second freeze investigation (2026-08-10): a fresh user freeze coincided with an
+unrelated Vite build at roughly 184% CPU and several Electron processes consuming
+hundreds more CPU points; TermFleet's renderer remained alive but had desktop cgroup
+`CPUWeight=250`. The installed launcher was promoted with desktop `CPUWeight=1000`
+and `IOWeight=1000`, then the dock window was relaunched without replacing the
+canonical daemon. A real stale development daemon was also found on the temporary
+`tw-gui-reconnect-6` socket; it had no clients or children and was terminated only
+after ownership checks. Final doctor is `DOCTOR_OK`, the installed release verifier
+passed, and the live audit shows one production daemon/socket and 17/17 resumable
+map nodes; mouse focus, keyboard input, and resize passed again.
 
 Cockpit task context correction (2026-08-08): terminal cards now show the live
 repository branch beside the workspace name, so release/PR work is identifiable
@@ -155,6 +317,97 @@ verify:installed-release`, `npm run verify:installed-restart`, and `git diff
 --check` passed. Rendered screenshot SHA-256
 `30a85d65d07ab38a868d3d95777bb73faebcd9ff211b2831b9cf5056aab3a820`. Installed
 release SHA-256 `6bc95d8bd3e5ec74409ceb209bd0f422219d95806ba8256482ea4381994db591`.
+
+Task/Now glance correction (2026-08-10): regular shell headers no longer hide the
+current moment behind the path row, and agent/shell headers keep the task, broader
+context, and Now value legible together. A rejected process-only task now says
+`Goal not captured` instead of the contradictory `Waiting for a task` while Now is
+meaningful. Focused row-stability guard: 10 passed; focused meta-process guard: 4
+passed; `npm run verify:task-line`: 85 passed; `npm run build`; final release
+promotion; `npm run verify:installed-release`; `npm run verify:installed-restart`;
+`npm run verify:terminal-headers-live-all`; and `git diff --check` passed. Live
+header evidence: `/tmp/tw-terminal-headers-live-all/02-all-terminals.png`,
+SHA-256 `c5b994c9241f59532286e478af33e0633408ea81e40653336734d56b3a72c33d`;
+installed release SHA-256
+`aa27f9fabae29337b3d451450ff247a593408837a78e729fdddc15749ba9aa5f`.
+
+Task-label verification-step correction (2026-08-09): the live card exposed the
+internal step `Verify the installed card stays user-facing`. That exact release
+verification pattern is now rejected too, and the card keeps the user-facing
+fallback `What should change?`. Focused guards: 4 passed; `npm run
+verify:task-line`: 85 passed; `npm run build`, `npm run release:install`, `npm run
+verify:installed-release`, `npm run verify:installed-restart`, and `git diff
+--check` passed. Rendered screenshot SHA-256
+`30a85d65d07ab38a868d3d95777bb73faebcd9ff211b2831b9cf5056aab3a820`. Installed
+release SHA-256 `d72d221e08fc1d27b9f80b80d9e22658e0c28af8c76f162733065265611b8d4f`.
+
+Now-line QA choreography correction (2026-08-09): the live card exposed
+`Adding and running the width regression test` as current activity. The supervised
+activity gate now rejects that internal test choreography and falls back to a
+neutral `Now:` status. Focused activity guards: 2 passed; `npm run
+verify:task-line`: 85 passed; `npm run build`, `npm run release:install`, `npm run
+verify:installed-release`, `npm run verify:installed-restart`, and `git diff
+--check` passed. Rendered screenshot SHA-256
+`30a85d65d07ab38a868d3d95777bb73faebcd9ff211b2831b9cf5056aab3a820`. Installed
+release SHA-256 `30fda2e04f33c600daccebe1379ed6a2ef37ec67215fc9c8155064239d49741b`.
+
+Task and Now QA-release correction (2026-08-09): the live card exposed
+`Locking the card and recording-link behavior with tests` as its Task and
+`Publishing only after the visual gate passes` as its Now line. Both exact
+internal-process patterns are now rejected; the Task uses `What should change?`
+and the Now line uses a neutral status. Focused guards: 5 passed; `npm run
+verify:task-line`: 85 passed; `npm run build`, `npm run release:install`, `npm run
+verify:installed-release`, `npm run verify:installed-restart`, and `git diff
+--check` passed. Rendered screenshot SHA-256
+`30a85d65d07ab38a868d3d95777bb73faebcd9ff211b2831b9cf5056aab3a820`. Installed
+release SHA-256 `62c12ab42d841038226af5b768bf6c10295b6dae16494e3852d01b19ea0d22fe`.
+
+Now-line layout choreography correction (2026-08-09): the live card exposed
+`Reducing card density while preserving the approved three-card layout`. The
+supervised activity gate now rejects that internal layout constraint and uses
+`Working` as the neutral live status, avoiding both the implementation sentence
+and `Activity not captured`. Focused guards: 4 passed; `npm run
+verify:task-line`: 85 passed; `npm run build`, `npm run release:install`, `npm run
+verify:installed-release`, `npm run verify:installed-restart`, and `git diff
+--check` passed. Rendered screenshot SHA-256
+`30a85d65d07ab38a868d3d95777bb73faebcd9ff211b2831b9cf5056aab3a820`. Installed
+release SHA-256 `7e8bbc7180497bbd2be523471eb33bbffc569ab188e4531d76598d78c4037461`.
+
+Task-label provenance correction (2026-08-09): repeated screenshots showed that
+exact-string rejection was accumulating symptoms while process-led plan steps still
+entered the visible card. The quality guard now rejects the category of internal
+proof, verification, harness, gate, fallback, and task-line wording, while retaining
+the concrete email-tracking exception. The latest focused cases cover `Adding fresh
+campaign and browser proof checks`, `Reject the new proof-check and harness wording`,
+`Centering one-card sections`, `Creating and running regression tests`, and
+`Reviewing the restart fix changes`. Focused cases: 6 passed; `npm run
+verify:task-line`: 85 passed; `npm run build`, `npm run release:install`, `npm run
+verify:installed-release`, `npm run verify:installed-restart`, and `git diff
+--check` passed. Rendered screenshot SHA-256
+`fb514b59885d568dd59f1d845b9751b4981cbe4935dace1e03f0486fb55b06da`. Installed
+release SHA-256 `9d9741bf8c3b612652b88d4bc8ff45dfbf89d056a32c42277b80d137f8e84870`.
+
+Task fallback correction (2026-08-09): `What should change?` was itself too
+question-like for an empty card. Rejected internal labels now use the calmer
+`Waiting for a task`, while real user goals still appear unchanged. The latest
+responsive-layout example is covered; focused checks: 4 passed; `npm run
+verify:task-line`: 85 passed; `npm run build`, `npm run release:install`, `npm run
+verify:installed-release`, `npm run verify:installed-restart`, and `git diff
+--check` passed. Rendered screenshot SHA-256
+`fb514b59885d568dd59f1d845b9751b4981cbe4935dace1e03f0486fb55b06da`. Installed
+release SHA-256 `d49822fa854aaa920a53c2542b291444c6af41c079371c856c57bf6b68e9dc02`.
+
+Empty-task rendering correction (2026-08-09): generic fallback titles such as
+`What should change?` and `Waiting for a task` were still low-quality because they
+pretended an empty state was a task. The card now omits the Task row entirely when
+the only candidate is rejected internal work; real goals remain visible, and the
+current activity/status rows remain available. Focused rendered coverage passed;
+`npm run verify:task-line`: 85 passed; `npm run build`, `npm run
+release:install`, `npm run verify:installed-release`, `npm run
+verify:installed-restart`, and `git diff --check` passed. Rendered screenshot
+SHA-256 `ca5df6f14f6c0665ee3b80df0abc5ed539a1f440e5ca05f100b965b3306916f5`.
+Installed release SHA-256
+`b0cf66f1ea699fba548f1da4b6e46b2ffe7b6ded268eb44fe4a6c51b8e28b25d`.
 
 Task-label identity repair (2026-08-08): completed checklist items no longer
 become durable Task labels, status-sidecar user goals outrank live todo steps,
@@ -380,6 +633,29 @@ TC-060 whole-conversation model correction (2026-08-02): checklist labels such a
 TC-060 pane-owned model-context correction (2026-08-03): the remaining vague/cross-project titles came from four independent leaks: Codex startup instructions were accepted as the opening request, the local prompt contained a Bina-specific answer, processed agent outcomes were omitted from the durable model fingerprint, and the 24-pane cap permanently starved quiet panes because priority sorted ahead of age. Live model tracing then exposed three final quality failures: Qwen replaced the concrete `Catalog` subject with generic `fix`, a later checklist fallback could overwrite an accepted model title, and the split header ignored the durable title and rendered bare `Working`. The prompt and correction pass are now domain-neutral and require the exact named subject; output is schema-constrained and safely normalized; product-only grounding cannot validate invented subjects; oldest-pane rotation prevents starvation; `context-summary` outranks checklist fallbacks; and the top strip reads the durable pane Task while activity remains separate. Red/green proof covers every leak. `npm run verify:task-line` passed 84/84, the poll suite passed 10/10, Rust TC-060 passed 10/10, `CARGO_BUILD_JOBS=1 cargo check`, `npm run verify:map-terminals`, `npm run build`, and `git diff --check` passed. The immutable dock release `71531f32704e-2f834b3e7ac5` matched checksum `2f834b3e7ac508d6eddefeec578d5d18113f5e61979f364503510d1e2851ec23`; its running executable matched that release. Direct installed readback showed pane-owned Flow State context, `Keeping bina reservations and refunds safe end to end`, `Keeping rough-cut-mvp view consistent and editable`, and `Keeping Flow-State event display accurate`. Fresh installed screenshot `/tmp/termfleet-context-accepted-final.png` (SHA-256 `a10a06f1ff58351b4bc74e6ca9522f37cb0cf06d19acf0ab141cc775029ab518`) visibly contains contextual task titles with no `No task declared`, `Task not captured`, or bare `Working` regression; the disposable visual verifier accepted it. During dock acceptance, a defunct cockpit process also exposed a relaunch blocker; a red/green launcher regression proves zombies cannot suppress a fresh window, and the corrected launcher was promoted with the same immutable release.
 
 ---
+
+### Startup loader reliability correction (2026-08-09)
+
+**Status:** ✅ **DONE**
+
+The first-paint loader now keeps the complete vessel and `TermFleet` wordmark
+visible in every animation frame, while retaining restrained terminal-to-vessel
+motion and a static reduced-motion mode. The previous opacity/clip-path gates
+could leave a delayed or paused compositor frame showing only a partial prompt.
+
+Fresh evidence:
+
+- `npx playwright test tests/startup-splash.spec.ts` — 3 passed, including
+  eleven paused frame samples from 0ms through 1200ms.
+- `npm run build` and `git diff --check` — passed.
+- Rendered frames reviewed: `/tmp/termfleet-startup-frame-0000.png`,
+  `/tmp/termfleet-startup-frame-0600.png`, `/tmp/termfleet-startup-frame-1200.png`;
+  all show the full vessel and readable wordmark.
+- `npm run release:install` promoted release `b5cf88c1ce0c-9f745eb55d2d`;
+  `npm run verify:installed-release` matched SHA-256
+  `9f745eb55d2db178d639a092d1c41c79e0b3f231026c936f0dc8c33718bd18fd`.
+- `npm run verify:installed-restart` — passed with the real window
+  `termfleet/Termfleet`, 613 colors, and zero external terminals.
 
 ## Active Work
 
@@ -7045,6 +7321,31 @@ passes live app restart, daemon cold restore, visible repaint, and post-restart 
 against the rebuilt release app. `rustfmt --check` passes for the changed backend file;
 `cargo clippy --lib` completes with the repository's ten pre-existing warnings.
 
+### TC-076: Prevent duplicate provider writers after daemon loss
+
+**Priority:** P0
+**Status:** DONE (2026-08-10)
+
+When the daemon dies while a Codex or Claude child survives, the replacement
+daemon no longer treats the missing in-memory lease as permission to launch the
+same conversation again. Cold restore checks the pane-scoped provider process
+before acquiring the normal lock; an existing owner is recorded as failed
+recovery and the pane opens as a regular shell.
+
+**Evidence:** focused Rust coverage passes in the full 160-test library run,
+including provider detection, lock contention, persisted active-writer failure,
+and the orphan-provider shell fallback. `npm run verify:restart-restore` passes
+all four live layers: reattach, cold restore, agent resume/reconstruction, and
+daemon loss with a surviving provider. `npm run verify:standalone-daemon` passes
+visible app restart and daemon cold restore. The final dock promotion and
+installed checks pass with release SHA-256
+`0347333cbfd02f70f0bda25b030c000c12f2e3b6aa71e3402ed13cc8e95728c9`:
+`npm run release:install`, `npm run verify:installed-release`, and
+`npm run verify:installed-restart`. `npm run doctor` passes with one existing
+warning about duplicate historical provider records; live chat ownership and
+daemon safety are green, and the warning explicitly notes that live-writer locks
+prevent duplicate resumes.
+
 ### TC-070: Bound Canvas2D glyph memory
 
 **Priority:** P0
@@ -7222,3 +7523,199 @@ constituent checks rerun individually because the orchestration tool has a
 five-minute response ceiling. The lane is ready for an explicitly labeled
 Linux preview publication, pending the external artifact-signing and GitHub
 release handoff.
+
+## 2026-08-09 — Direct terminal connection from agent cards
+
+Agent cards now show a labeled terminal connection control. It activates the
+card's linked tab, pane, and PTY before switching to the terminal surface, so
+connecting from a task card cannot land on another pane.
+
+Fresh proof: focused map activation, source, and visible-card regressions passed
+(3/3); `npm run build`, `npm run verify:map-terminals`, and `git diff --check`
+passed. `npm run release:install` promoted release
+`b5cf88c1ce0c-235da13ef817`; `npm run verify:installed-release` matched SHA-256
+`235da13ef817312151b191ed6f3e665e14a4c2a5fe9f3fd8a699d941e66c4ab4`, and
+`npm run verify:installed-restart` passed with one TermFleet window, 2,580
+ nonblank colors, and zero external terminals.
+
+## 2026-08-09 — Restored card activity no longer exposes internal work
+
+The remaining restart leak was a separate restored-summary path that bypassed
+the shared quality gate and could display a raw tool identifier as `Now`. The
+card now hides fabricated Task titles when no real user goal exists and applies
+the same activity gate to restored summaries before rendering them.
+
+Fresh proof: focused quality/card checks passed (9/9), `npm run verify:task-line`
+passed all 85 tests, `npm run build` passed, and `git diff --check` passed.
+`npm run release:install` promoted release `6464556e98a5-76948ae229bb` with
+SHA-256 `76948ae229bb9a8f3f6cc4976745ce68c4c018e408897aaecc450dff4da66e83`;
+ installed-release and installed-restart both passed with one TermFleet window
+ and zero external terminals.
+
+## 2026-08-09 — Stretched prompt echoes no longer become Task titles
+
+The reported `what are you doinggggg...` card was a raw prompt echo accepted by
+the authoritative-task gate. Repeated-letter prompt storms are now rejected as
+prompt fragments, so the resolver must fall back to a real product goal or leave
+the fabricated Task row absent.
+
+Fresh proof: the new regression failed before the fix and passed after it;
+focused quality checks passed 2/2, `npm run verify:task-line` passed 85/85,
+`npm run build` passed, and the installed release was promoted as
+`6464556e98a5-ffef913e956b` with SHA-256
+`ffef913e956b7b6f0e2c17ad4783bb3f9f988c0a9b5bd745b0058c74434165a5`.
+ Installed-release, installed-restart, and `git diff --check` passed.
+
+## 2026-08-09 — Prompt echoes are rejected before durable task capture
+
+The previous fix still allowed a stretched conversational prompt to enter the
+manual/task identity path before the card-level validator ran. Durable capture
+now rejects repeated-letter prompt storms and preserves an earlier valid goal;
+the identity resolver applies the same rule to manual, task-tool, and workstream
+sources.
+
+Fresh proof: the upstream regression failed before the fix and passed after it;
+focused checks passed 5/5, `npm run verify:task-line` passed 85/85, `npm run build`
+passed, and the installed release `6464556e98a5-665a786cb5d8` passed release and
+restart verification with SHA-256
+`665a786cb5d811fe906834bb82c79abeed02e17ae84b13af6b75fb9d4136185f`.
+
+## 2026-08-10 — Task row always shows the durable concept, never only the step
+
+The previous verification was incomplete. A real Bina pane still showed
+`Refreshing the local page with the new test option` as its Task because the
+current checklist step was promoted when its main goal was only a question or
+process note. Another settled pane hid the Task row entirely. The shared gate
+now rejects local-page test steps as durable goals, and every map card renders a
+Task row; if no real goal was captured it says `Waiting for a clear goal`.
+
+Fresh proof: the exact pane record now resolves to no durable goal instead of the
+refresh step; focused quality, header, and cockpit-row regressions pass; the full
+85-test task-line lane passes. Installed release/restart and live four-terminal
+header verification remain required before this entry is marked complete.
+
+## 2026-08-10 — Cross-system check summaries no longer become Task titles
+
+The cockpit must always answer what the work is about, what was worked on, and
+why it matters. A task such as `Rechecking PR, Actions, runner, and billing
+state` only describes the agent's proof checklist; it is not the durable product
+goal. The shared Task gate now rejects this cross-system recheck shape, and the
+header falls back to a real goal or the honest `Waiting for a task` state.
+
+Fresh proof: the new regression failed before the fix and passed after it;
+`npx playwright test tests/terminal-header-quality.spec.ts --reporter=line`
+passed 19/19, and the focused rendered-header regression passed 1/1.
+
+## 2026-08-10 — New terminals require a durable goal before progress appears
+
+The goal capture ladder previously promoted an active checklist step when no
+user-facing goal had been captured. That made a new pane's Task answer “what is
+the agent doing right now?” instead of “what is this work about?”, while the
+same step was unavailable to the Now line. Current steps now remain progress;
+they only appear under Now, and a pane without a durable goal stays explicitly
+goal-less.
+
+Fresh proof: `npm run verify:task-line` passed 85/85; the focused header/card
+suite passed 139/139 with one skipped; `npm run build` passed; the installed
+release/restart checks passed with SHA-256
+`42c4a57b30cc716cd7fe15d1bd82db2f52380cefcb928c6b3d460ac9fba2acd0`; the live
+four-terminal installed header check passed with zero failures; and
+`npm run audit:panes` passed.
+
+## 2026-08-10 — Procedure labels are rejected on every visible cockpit surface
+
+The latest screenshots exposed two more failures: `Run the live installed
+terminal verification` and `Adding a regression for empty and settled terminal
+cards` were being shown as the main Task, and the active cockpit plan itself
+could temporarily produce those same procedure labels. The shared gate now
+rejects both exact forms; the cockpit plan was also corrected so its active and
+pending entries describe the user-facing outcome rather than the verification
+work.
+
+Fresh proof: the focused quality, view-model, row, and rendered-card suite passed
+139/139 with one skipped; `npm run verify:task-line` passed 85/85; `npm run
+audit:panes` passed; the promoted installed release passed release and restart
+verification with SHA-256
+`fad74db2a7af38b0139917f7e6601faebf3e1def469f1a881dacef8f6f798b75`; and the
+live four-terminal installed header check passed with zero failures.
+
+## 2026-08-10 — Exact reported card failure is closed on the installed surface
+
+The follow-up regression covered the exact Bina sidecar: a question plus
+`Refreshing the local page with the new test option` must not turn that transient
+step into the Task concept. The card now keeps the Task row structurally present
+and shows an explicit missing-goal label when no durable work concept was
+captured; the current step remains momentary activity only.
+
+Fresh proof: the focused header and card suite passed 136/136 with one skipped,
+the exact rendered card screenshot passed 1/1, `npm run verify:task-line` passed
+85/85, `npm run audit:panes` passed, `npm run build` passed, and the installed
+release/restart checks passed for SHA-256
+`e00b7eb8f9e30af19d557d79f7670eb607cdad51f31588c2a79302ee151395a4`. The live
+installed four-terminal header check passed with 4 terminals and zero failures.
+
+## 2026-08-10 — Every terminal header keeps the broad work context visible
+
+The cockpit previously allowed a meaningful Now line such as “Record the fresh
+verification outcome” to sit under the generic Task headline “Waiting for a
+task”. A compact Goal line now carries the durable broad purpose on split and
+map terminal cards; progress stays in Now, and the live header verifier fails if
+the generic headline hides meaningful work.
+
+Fresh proof: focused Goal/header regressions passed 14/14; the full quality,
+view-model, and row suite passed 141/142 with one skipped; `npm run
+verify:task-line` passed 85/85; `npm run audit:panes` passed; the final build
+passed; and the final installed release passed with SHA-256
+`889d301899893e14074584568fedfae737569dd747b2ebb8968b31c864020275`.
+`npm run verify:terminal-headers-live-all` passed with four rendered terminals and
+zero failures.
+
+## TC-077 — Make doctor green on historical records and current Codex sessions
+
+**Priority:** P0
+**Status:** DONE (2026-08-10)
+
+Doctor previously treated every repeated provider ID as a warning and probed
+only older Codex rollout event names. That made harmless historical records and
+the current Codex session format look unhealthy. It now distinguishes live
+duplicate writers from historical records, accepts current Codex event markers,
+and the four isolated temporary verifier daemons were removed after confirming
+their private sockets and binaries were outside the canonical runtime.
+
+**Evidence:** `python3 -m unittest tests/test_doctor_ownership.py` passes all
+four focused guards; `npm run build` passes; the current promoted release passes
+`npm run verify:installed-release` and `npm run verify:installed-restart` with
+SHA-256 `7ef12b93891d0ffe361fccd4b31f1121d841c165938f803f147622cdc3c137b6`;
+the real dock launcher was relaunched; and `npm run doctor` ends with
+`DOCTOR_OK — status pipeline wiring is healthy`, one canonical daemon, no
+private verifier daemons, current release provenance, and 14/14 task records.
+
+## Task context correction (2026-08-10)
+
+The user-facing cockpit screenshot exposed a false completion claim: the isolated
+header verifier passed while the visible dock window was still running an older
+release and showed `Waiting for a task` without the current work context. The
+header regressions now cover the product goal, current task, current moment, and
+regular-shell path/Now pairing. The canonical dock launcher was then relaunched
+after promoting release `5054401780be-195ffdbf2229`; `npm run doctor` now ends
+`DOCTOR_OK` and reports the running app newer than the installed binary build.
+
+**Evidence:** `npx playwright test tests/cockpit-row-stability.spec.ts` 10 passed;
+`npx playwright test tests/terminal-header-view-model.spec.ts` 115 passed, 1
+skipped; `npm run verify:task-line` passed; `npm run verify:installed-release`
+passed; `npm run verify:terminal-headers-live-all` passed with no failures;
+`git diff --check` passed; canonical dock relaunch passed; `npm run doctor`
+passed. Installed binary SHA-256:
+`195ffdbf22299acb3f30b11f1d2d2c7fa2e3c2ecf79ee429cfba5add788ec985`.
+
+## 2026-08-11 — Copy an exact agent conversation reconnect command
+
+Agent panes now expose a copy action in the hover toolbar and pane context menu.
+For Codex it copies `codex resume <conversation-id>`; for Claude Code it copies
+`claude --resume <conversation-id>`. The command is built from the pane's saved
+provider session identity, while automatic daemon recovery keeps its existing
+internal `exec ...` input format.
+
+**Evidence:** `npx playwright test tests/agent-reconnect.spec.ts` passed 6/6;
+`npm run build` passed; `npm run verify:map-terminals` passed; and `git diff --check`
+passed. Installed desktop interaction remains unverified.

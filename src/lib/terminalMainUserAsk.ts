@@ -21,6 +21,10 @@ function cleanAsk(value?: string | null) {
   return text || undefined;
 }
 
+function isPromptStorm(value?: string | null) {
+  return /([a-z])\1{3,}/i.test(value ?? "");
+}
+
 function isThinFollowUp(value?: string) {
   if (!value) return true;
   const text = value
@@ -51,6 +55,7 @@ export function persistedMainUserAsk(
   ask: TerminalMainUserAsk | undefined,
 ): TerminalMainUserAsk | undefined {
   if (!ask) return undefined;
+  if (isPromptStorm(ask.text)) return undefined;
   return ask.source === "manual" || ask.source === "task-tool" || ask.source === "workstream"
     ? ask
     : undefined;
@@ -73,6 +78,7 @@ export function mainUserAskFromSummary(
   const text = cleanAsk(summary?.userTask);
   if (!text && source === "status-sidecar") return undefined;
   if (!text) return options.previous;
+  if (isPromptStorm(text)) return options.previous;
   if (isThinFollowUp(text)) return options.previous;
   if (options.previous?.text === text && options.previous.source === source) {
     return options.previous;
@@ -96,6 +102,7 @@ export function mainUserAskFromTerminalPurpose(
 ): TerminalMainUserAsk | undefined {
   const text = purpose?.source === "inferred" ? cleanAsk(purpose.title) : undefined;
   if (!text) return options.previous;
+  if (isPromptStorm(text)) return options.previous;
   const previous = options.previous;
   const sameRun =
     !previous?.runId ||

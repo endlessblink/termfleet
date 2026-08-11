@@ -292,11 +292,18 @@ impl GridManager {
         attach_token: Option<String>,
     ) -> Result<(), String> {
         {
+            let cleanup_token = attach_token.clone();
             let (session, is_new) = self.upsert_session(id, cols, rows, attach_token)?;
             if !is_new {
                 return Ok(());
             }
-            spawn_session_threads(id, &session)?;
+            if let Err(error) = spawn_session_threads(id, &session) {
+                // Do not leave a half-created session behind when the OS refuses
+                // the reader thread with EAGAIN. A later retry must be allowed to
+                // create the feed, rather than treating this dead session as live.
+                self.detach(id, cleanup_token.as_deref());
+                return Err(error);
+            }
         }
         Ok(())
     }

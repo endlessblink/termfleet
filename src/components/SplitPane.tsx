@@ -13,6 +13,7 @@ import {
   PanelRight,
   PanelRightClose,
   PanelBottom,
+  ClipboardCopy,
   X,
   TerminalSquare,
 } from "lucide-react";
@@ -59,6 +60,7 @@ import { paneBadgeAttention } from "../lib/sessionStatus";
 import { stableHeader } from "../lib/stableHeader";
 import { agentBudgetSignal } from "../lib/agentBudget";
 import { openCodexModelPicker } from "../lib/codexModelPicker";
+import { agentReconnectCommand } from "../lib/agentReconnect";
 import {
   calculatePaneBounds,
   calculateHandles,
@@ -449,6 +451,19 @@ interface PaneToolbarProps {
 }
 
 function PaneToolbar({ paneId, tabId, canClose, visible }: PaneToolbarProps) {
+  const tab = useWorkspaceStore((state) =>
+    state.tabs.find((candidate) => candidate.id === tabId),
+  );
+  const reconnectTarget =
+    tab?.workstream?.provider &&
+    tab.workstream.provider !== "shell" &&
+    tab.workstream.provider !== "opencode" &&
+    tab.workstream.providerSessionId
+      ? {
+          provider: tab.workstream.provider,
+          sessionId: tab.workstream.providerSessionId,
+        }
+      : null;
   const toolbarStyle: CSSProperties = {
     display: "flex",
     alignItems: "center",
@@ -478,6 +493,22 @@ function PaneToolbar({ paneId, tabId, canClose, visible }: PaneToolbarProps) {
 
   return (
     <div className="terminal-pane-toolbar" style={toolbarStyle}>
+      {reconnectTarget && (
+        <button
+          className="terminal-pane-action"
+          style={btnStyle}
+          title={`Copy ${reconnectTarget.provider} reconnect command`}
+          aria-label={`Copy ${reconnectTarget.provider} reconnect command`}
+          onClick={(e) => {
+            e.stopPropagation();
+            void navigator.clipboard?.writeText(
+              agentReconnectCommand(reconnectTarget),
+            );
+          }}
+        >
+          <ClipboardCopy size={13} strokeWidth={1.8} />
+        </button>
+      )}
       <button
         className="terminal-pane-action"
         style={btnStyle}
@@ -543,6 +574,19 @@ function PaneContextMenu({
   onDismiss,
 }: PaneContextMenuProps) {
   const ref = useRef<HTMLDivElement>(null);
+  const tab = useWorkspaceStore((state) =>
+    state.tabs.find((candidate) => candidate.id === tabId),
+  );
+  const reconnectTarget =
+    tab?.workstream?.provider &&
+    tab.workstream.provider !== "shell" &&
+    tab.workstream.provider !== "opencode" &&
+    tab.workstream.providerSessionId
+      ? {
+          provider: tab.workstream.provider,
+          sessionId: tab.workstream.providerSessionId,
+        }
+      : null;
 
   useEffect(() => {
     function handle(e: MouseEvent) {
@@ -644,6 +688,17 @@ function PaneContextMenu({
           onDismiss();
         }}
       />
+      {reconnectTarget && (
+        <MenuItem
+          label={`Copy ${reconnectTarget.provider} reconnect command`}
+          onClick={() => {
+            void navigator.clipboard?.writeText(
+              agentReconnectCommand(reconnectTarget),
+            );
+            onDismiss();
+          }}
+        />
+      )}
       {canClose && (
         <>
           <div
@@ -1211,6 +1266,10 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
         );
         const headerTitle = stabilizedHeader.title;
         const headerNow = stabilizedHeader.now;
+        const headerContext =
+          (isAgentPane
+            ? tab.workstream?.mission ?? tab.workstream?.prompt
+            : shellHeader?.contextLabel) ?? "";
         // ONE pure render-time translation of the pane's stored status — identical in
         // every view, nothing stored separately that can be dropped and flicker.
         const splitAttentionState: AttentionState = paneBadgeAttention(
@@ -1311,6 +1370,10 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                   taskSource: isAgentPane
                     ? "agent-status"
                     : shellHeader?.sources.goal,
+                  context: headerContext,
+                  contextSource: isAgentPane
+                    ? "workstream"
+                    : shellHeader?.sources.context,
                   title: headerTitle,
                   titleSource: isAgentPane
                     ? "agent-status"
@@ -1559,6 +1622,42 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                           {headerTitle}
                         </span>
                       </div>
+                      {headerContext && headerContext !== "Context not captured" && (
+                        <div
+                          data-testid="split-agent-pane-goal"
+                          style={{
+                            minWidth: 0,
+                            display: "flex",
+                            alignItems: "baseline",
+                            gap: 5,
+                            overflow: "hidden",
+                            color: "var(--text-secondary)",
+                            fontSize: 11,
+                          }}
+                          title={headerContext}
+                        >
+                          <span
+                            style={{
+                              flexShrink: 0,
+                              color: "var(--text-tertiary)",
+                              fontSize: 10,
+                              textTransform: "uppercase",
+                            }}
+                          >
+                            Goal
+                          </span>
+                          <span
+                            style={{
+                              minWidth: 0,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {headerContext}
+                          </span>
+                        </div>
+                      )}
                       <span
                         data-testid="split-attention"
                         data-attention-state={splitAttentionState}
@@ -1637,8 +1736,8 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                       style={{
                         minWidth: 0,
                         display: "grid",
-                        gridTemplateColumns: "minmax(0, 1fr)",
-                        gap: 0,
+                        gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
+                        gap: 8,
                         alignItems: "center",
                       }}
                     >
@@ -1712,6 +1811,42 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                           {headerNow}
                         </span>
                       </div>
+                      {headerContext && headerContext !== "Context not captured" && (
+                        <div
+                          data-testid="split-terminal-summary-goal"
+                          style={{
+                            minWidth: 0,
+                            display: "flex",
+                            alignItems: "baseline",
+                            gap: 5,
+                            overflow: "hidden",
+                            color: "var(--text-secondary)",
+                            fontSize: 11,
+                          }}
+                          title={headerContext}
+                        >
+                          <span
+                            style={{
+                              flexShrink: 0,
+                              color: "var(--text-tertiary)",
+                              fontSize: 10,
+                              textTransform: "uppercase",
+                            }}
+                          >
+                            Goal
+                          </span>
+                          <span
+                            style={{
+                              minWidth: 0,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {headerContext}
+                          </span>
+                        </div>
+                      )}
                     </div>
                     {latestMissionControlInput && (
                       <div
@@ -1823,6 +1958,42 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                           {headerTitle}
                         </span>
                       </div>
+                      {headerContext && headerContext !== "Context not captured" && (
+                        <div
+                          data-testid="split-terminal-summary-goal"
+                          style={{
+                            minWidth: 0,
+                            display: "flex",
+                            alignItems: "baseline",
+                            gap: 5,
+                            overflow: "hidden",
+                            color: "var(--text-secondary)",
+                            fontSize: 11,
+                          }}
+                          title={headerContext}
+                        >
+                          <span
+                            style={{
+                              flexShrink: 0,
+                              color: "var(--text-tertiary)",
+                              fontSize: 10,
+                              textTransform: "uppercase",
+                            }}
+                          >
+                            Goal
+                          </span>
+                          <span
+                            style={{
+                              minWidth: 0,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {headerContext}
+                          </span>
+                        </div>
+                      )}
                       <span
                         data-testid="split-attention"
                         data-attention-state={splitAttentionState}
@@ -1877,8 +2048,8 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                       style={{
                         minWidth: 0,
                         display: "grid",
-                        gridTemplateColumns: "minmax(0, 1fr)",
-                        gap: 0,
+                        gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
+                        gap: 8,
                         alignItems: "center",
                       }}
                     >
@@ -1908,9 +2079,9 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                         <span
                           style={{
                             minWidth: 0,
-                            overflow: "visible",
-                            overflowWrap: "anywhere",
-                            whiteSpace: "normal",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
                           }}
                         >
                           {shellHeaderPath}
@@ -1919,7 +2090,16 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                       <div
                         data-testid="split-terminal-summary-now"
                         style={{
-                          display: "none",
+                          minWidth: 0,
+                          display: "flex",
+                          alignItems: "baseline",
+                          gap: 5,
+                          overflow: "hidden",
+                          color: isActive
+                            ? "var(--text-primary)"
+                            : "var(--text-secondary)",
+                          fontSize: 11,
+                          fontWeight: 500,
                         }}
                         title={headerNow}
                       >

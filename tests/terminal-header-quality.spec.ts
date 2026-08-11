@@ -14,6 +14,16 @@ test("accepts concise operator-readable task and activity labels", () => {
   expect(qualityCheckActivityLabel("Inspecting header quality rules").ok).toBe(true);
 });
 
+test("rejects vendor template placeholders as goals", () => {
+  expect(qualityCheckUserAskLabel("Implement {feature}")).toMatchObject({
+    ok: false,
+    reason: "prompt-fragment",
+  });
+  expect(qualityCheckAuthoritativeTaskLabel("Adding borrowed-feature tasks to the project plans")).toMatchObject({
+    ok: true,
+  });
+});
+
 test("rejects saved final-answer steps as current activity", () => {
   for (const label of [
     "Steps - Open the landing page and confirm the route.",
@@ -64,6 +74,19 @@ test("rejects command-like and implementation-detail labels", () => {
   }
 });
 
+test("rejects restored raw tool names from the visible Now line", () => {
+  expect(qualityCheckNowLabel("Using mcp__lean_ctx__ctx_shell")).toMatchObject({
+    ok: false,
+    reason: "implementation-detail",
+  });
+});
+
+test("rejects stretched prompt text from the permanent Task title", () => {
+  expect(
+    qualityCheckAuthoritativeTaskLabel("what are you doinggggggggggggggggggggg"),
+  ).toMatchObject({ ok: false, reason: "prompt-fragment" });
+});
+
 test("rejects agent footer metrics from every visible header field", () => {
   for (const label of [
     "Weekly 57% left • Context 76% used • Main [default]",
@@ -90,7 +113,39 @@ test("approval and verdict labels must say what is being judged", () => {
     expect(qualityCheckAuthoritativeTaskLabel(label)).toMatchObject({ ok: false, reason: "vague" });
   }
   expect(qualityCheckTaskLabel("Waiting for operator verdict on pane header wording").ok).toBe(true);
-  expect(qualityCheckAuthoritativeTaskLabel("Rechecking pane header wording approval").ok).toBe(true);
+  expect(qualityCheckAuthoritativeTaskLabel("Rechecking pane header wording approval")).toMatchObject({
+    ok: false,
+    reason: "vague",
+  });
+});
+
+test("rejects cross-system recheck summaries as the terminal goal", () => {
+  expect(
+    qualityCheckAuthoritativeTaskLabel(
+      "Rechecking PR, Actions, runner, and billing state",
+    ),
+  ).toMatchObject({ ok: false, reason: "vague" });
+});
+
+test("rejects a local-page test step as the durable terminal goal", () => {
+  expect(
+    qualityCheckAuthoritativeTaskLabel(
+      "Refreshing the local page with the new test option",
+    ),
+  ).toMatchObject({ ok: false, reason: "vague" });
+});
+
+test("rejects verification and regression-writing procedures as durable goals", () => {
+  for (const label of [
+    "Run the live installed terminal verification",
+    "Adding a regression for empty and settled terminal cards",
+    "Record the fresh verification outcome",
+  ]) {
+    expect(qualityCheckAuthoritativeTaskLabel(label)).toMatchObject({
+      ok: false,
+      reason: "vague",
+    });
+  }
 });
 
 test("rejects stale one-word prompt fragments as task goals", () => {

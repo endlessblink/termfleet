@@ -193,6 +193,26 @@ pub fn daemon_ensure_running() -> DaemonStatus {
             return status;
         }
         replace_running_daemon(&socket_path, status.pid);
+    } else if socket_path.exists() {
+        // A saturated daemon may accept a connection but miss the short status
+        // deadline.  Never spawn a replacement while the socket is still owned:
+        // doing so can unlink the live socket and create two PTY owners.
+        match daemon_ipc::connect(&socket_path) {
+            Ok(_) => {
+                return embedded_fallback_status(
+                    socket_path,
+                    "terminal daemon socket is owned but status is temporarily unavailable; refusing to start a second daemon".to_string(),
+                );
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::ConnectionRefused => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                return embedded_fallback_status(
+                    socket_path,
+                    format!("terminal daemon socket could not be verified; refusing to start a second daemon: {error}"),
+                );
+            }
+        }
     }
 
     if let Err(error) = spawn_current_binary_as_daemon() {
@@ -654,11 +674,25 @@ fn remove_stale_socket(socket_path: &PathBuf) -> Result<(), String> {
         return Ok(());
     }
 
-    if query_daemon_status(socket_path).is_ok() {
-        return Err(format!(
-            "terminal-workspace-daemon is already running at {}",
-            socket_path.to_string_lossy()
-        ));
+    // A live daemon can be too overloaded to answer the status protocol.  Do
+    // not use a protocol timeout as evidence that the socket is stale: unlinking
+    // a live Unix socket lets a second daemon bind the same pathname while the
+    // first daemon still owns existing PTYs, creating split-brain reconnects.
+    match daemon_ipc::connect(socket_path) {
+        Ok(_) => {
+            return Err(format!(
+                "terminal-workspace-daemon socket is already owned at {}",
+                socket_path.to_string_lossy()
+            ));
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::ConnectionRefused => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => {
+            return Err(format!(
+                "cannot verify terminal-workspace-daemon socket at {}: {error}; refusing to remove it",
+                socket_path.to_string_lossy()
+            ));
+        }
     }
 
     fs::remove_file(socket_path).map_err(|error| error.to_string())
@@ -902,7 +936,7 @@ fn write_daemon_response(
 mod tests {
     use super::{
         current_build_id, daemon_socket_path, daemon_status, daemon_stdio_bridge_argv,
-        embedded_fallback_status, prepare_socket_dir,
+        embedded_fallback_status, prepare_socket_dir, remove_stale_socket,
         should_reuse_running_daemon_with_fresh_request, DaemonMode, DaemonRequest, DaemonResponse,
         DaemonStatus, DAEMON_STDIO_ARG, PROTOCOL_VERSION,
     };
@@ -935,6 +969,21 @@ mod tests {
 
         let result = prepare_socket_dir(&socket_path);
         assert!(result.is_err(), "a symlinked socket dir must be refused");
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn live_socket_is_never_unlinked_when_status_is_unavailable() {
+        let base = std::env::temp_dir().join(format!("tf-live-socket-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        let socket_path = base.join("daemon.sock");
+        let _listener = crate::daemon_ipc::bind(&socket_path).unwrap();
+
+        let result = remove_stale_socket(&socket_path);
+        assert!(result.is_err(), "a live socket must block a second daemon");
+        assert!(socket_path.exists(), "the live socket must remain in place");
 
         let _ = std::fs::remove_dir_all(&base);
     }

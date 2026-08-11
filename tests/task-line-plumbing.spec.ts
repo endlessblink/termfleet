@@ -784,6 +784,10 @@ test("the operator's opening ask leads, and a slug never reaches the row", () =>
   expect(
     resolvePaneTaskLine({ now: 1, facts: { title: "fix-cockpit-task-display" } }),
   ).toMatchObject({ source: "session-title", text: "Fix cockpit task display" });
+
+  expect(
+    resolvePaneTaskLine({ now: 1, facts: { operatorRequest: "a-meatzevet-courses" } }),
+  ).toMatchObject({ source: "shell-state", text: "No task declared" });
 });
 
 test("the clearest session title wins, not the newest", () => {

@@ -1,9 +1,19 @@
 import { expect, test } from "@playwright/test";
 import {
+  agentReconnectCommand,
   formatAgentReconnectResult,
   reconnectStoppedAgents,
   type AgentReconnectDependencies,
 } from "../src/lib/agentReconnect";
+
+test("builds a standalone reconnect command for each supported chat provider", () => {
+  expect(
+    agentReconnectCommand({ provider: "codex", sessionId: "019fae67-safe-id" }),
+  ).toBe("codex resume 019fae67-safe-id");
+  expect(
+    agentReconnectCommand({ provider: "claude", sessionId: "2492d5a8-safe-id" }),
+  ).toBe("claude --resume 2492d5a8-safe-id");
+});
 
 function dependencies(
   overrides: Partial<AgentReconnectDependencies> = {},

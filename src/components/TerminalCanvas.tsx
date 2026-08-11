@@ -1981,6 +1981,7 @@ export function TerminalCanvas({
       <textarea
         ref={inputRef}
         className="terminal-canvas-input"
+        data-terminal-session-id={sessionId}
         aria-label="Terminal input"
         autoCapitalize="off"
         autoCorrect="off"

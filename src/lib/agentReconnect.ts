@@ -50,15 +50,19 @@ export function formatAgentReconnectResult(result: AgentReconnectResult): string
 
 const SAFE_SESSION_ID = /^[A-Za-z0-9_-]{8,160}$/;
 
-function resumeCommand(target: AgentRecoveryTarget): string {
+export function agentReconnectCommand(target: AgentRecoveryTarget): string {
   switch (target.provider) {
     case "codex":
-      return `exec codex resume ${target.sessionId}\n`;
+      return `codex resume ${target.sessionId}`;
     case "claude":
-      return `exec claude --resume ${target.sessionId}\n`;
+      return `claude --resume ${target.sessionId}`;
     case "opencode":
-      return `exec opencode --session ${target.sessionId}\n`;
+      return `opencode --session ${target.sessionId}`;
   }
+}
+
+function resumeCommand(target: AgentRecoveryTarget): string {
+  return `exec ${agentReconnectCommand(target)}\n`;
 }
 
 function errorMessage(error: unknown): string {

@@ -249,7 +249,7 @@ test("regular split header rejects noisy scrollback titles and fits the current 
 
   await expect(title).toHaveText("frontend build passed");
   await expect(title).not.toContainText("The visual app surface");
-  await expect(now).toBeHidden();
+  await expect(now).toBeVisible();
   await expect(now).not.toContainText("The visual app surface");
   await expect(path).toContainText("/media/endlessblink/data/my-projects/ai-development/devops/termfleet");
 
@@ -276,7 +276,7 @@ test("regular split header rejects noisy scrollback titles and fits the current 
   });
 
   await expect(title).toHaveText("frontend build passed");
-  await expect(now).toBeHidden();
+  await expect(now).toBeVisible();
   await expect(now).not.toContainText("The visual app surface");
   const afterCommandChange = await title.evaluate((element) => element.textContent?.trim() ?? "");
   expect(afterCommandChange).toBe(metrics.text);
@@ -308,7 +308,7 @@ test("regular split header neutralizes stale verifier text when there is no real
 
   await expect(page.getByTestId("split-terminal-summary-task")).toHaveText("Idle");
   await expect(page.getByTestId("split-terminal-summary-task")).not.toContainText("bracketed paste");
-  await expect(page.getByTestId("split-terminal-summary-now")).toBeHidden();
+  await expect(page.getByTestId("split-terminal-summary-now")).toBeVisible();
 });
 
 test("regular split header uses current agent prompt over stale verifier command", async ({ page }) => {
@@ -337,7 +337,7 @@ test("regular split header uses current agent prompt over stale verifier command
 
   await expect(page.getByTestId("split-terminal-summary-task")).toHaveText("Needs attention");
   await expect(page.getByTestId("split-terminal-summary-task")).not.toContainText("keymap");
-  await expect(page.getByTestId("split-terminal-summary-now")).toBeHidden();
+  await expect(page.getByTestId("split-terminal-summary-now")).toBeVisible();
   await expect(page.getByTestId("split-terminal-summary-now")).not.toContainText("keymap");
 });
 
@@ -382,6 +382,9 @@ test("regular map header rejects noisy scrollback titles and fits the current ac
   await expect(description).not.toContainText("unfinished prompt");
   await expect(now).not.toContainText("The visual app surface");
   await expect(path).toContainText("devops/termfleet");
+  await expect(page.getByTestId("canvas-terminal-node-goal")).toContainText("Improving terminal-summary visual headers");
+  await expect(page.getByTestId("canvas-terminal-node-goal")).toHaveCSS("font-size", "15px");
+  await expect(page.getByTestId("canvas-terminal-node-goal")).toHaveCSS("border-left-width", "2px");
   await expect(page.getByTestId("canvas-terminal-status-block")).not.toContainText("running activity");
   await expect(page.getByTestId("canvas-terminal-status-block")).not.toContainText("model summary");
 
@@ -878,7 +881,7 @@ test("map header drops stale task-summary now labels from another project", asyn
 
   const block = page.getByTestId("canvas-terminal-status-block").filter({ hasText: "flow-state" });
   await expect(block.getByTestId("canvas-terminal-node-header-path")).toContainText("productivity/flow-state");
-  await expect(block.getByTestId("canvas-terminal-node-header-title")).toHaveText("Verifying the KDE widget guard");
+  await expect(block.getByTestId("canvas-terminal-node-header-title")).toHaveText("Working");
   await expect(block.getByTestId("canvas-terminal-node-now")).toHaveText("Working");
   await expect(block).not.toContainText("income-zen");
 });

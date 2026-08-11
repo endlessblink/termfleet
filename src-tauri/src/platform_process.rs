@@ -90,6 +90,10 @@ pub fn daemon_spawn_argv(exe: &str, arg: &str, unit_suffix: &str) -> Vec<String>
         // env-overridable (TERMFLEET_DAEMON_MEMORY_HIGH / _TASKS_MAX) — no rebuild.
         format!("--property=MemoryHigh={}", daemon_memory_high()),
         format!("--property=TasksMax={}", daemon_tasks_max()),
+        // Keep the terminal keeper responsive when user builds and browsers
+        // compete for the same storage and CPU, without starving them.
+        "--property=CPUWeight=200".to_string(),
+        "--property=IOWeight=200".to_string(),
         "--quiet".to_string(),
     ];
     for key in DAEMON_ENV_PASSTHROUGH {

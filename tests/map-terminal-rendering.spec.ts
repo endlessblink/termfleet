@@ -194,9 +194,124 @@ test("agent cards expose a direct terminal connection", () => {
 
   expect(connectButton).toContain('data-testid="canvas-agent-connect-terminal"');
   expect(connectButton).toContain('title="Connect terminal"');
-  expect(connectButton).toContain("openLinkedTerminal()");
+  expect(connectButton).toContain("connectLinkedTerminal()");
   expect(source).toContain('data-testid="canvas-terminal-connect-terminal"');
   expect(source).toContain(">Connect terminal</span>");
+});
+
+test("map Connect terminal selects the pane without leaving the map", () => {
+  const source = readFileSync("src/components/MagicCanvas.tsx", "utf8");
+  const terminalCanvas = readFileSync("src/components/TerminalCanvas.tsx", "utf8");
+  const connectionBlock = source.match(
+    /const connectLinkedTerminal = useCallback\(\(\) => \{[\s\S]*?\n  \}, \[/,
+  )?.[0] ?? "";
+
+  expect(connectionBlock).toContain("selectCanvasNode(node.id)");
+  expect(connectionBlock).toContain("setActiveTab(linkedTab.id)");
+  expect(connectionBlock).toContain("setActivePane(linkedTab.id, terminalPaneId)");
+  expect(connectionBlock).toContain("setActiveTerminal(");
+  expect(connectionBlock).toContain("focusConnectedInput");
+  expect(connectionBlock).toContain("requestAnimationFrame(focusConnectedInput)");
+  expect(connectionBlock).not.toContain('setWorkspaceMode("split")');
+  expect(terminalCanvas).toContain('data-terminal-session-id={sessionId}');
+  expect(source).toContain('title="Open full terminal"');
+  expect(source).toContain("openLinkedTerminal();");
+});
+
+test("clicking map Connect terminal reconnects an unselected session in canvas", async ({
+  page,
+}) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.getByRole("button", { name: "Map", exact: true }).click();
+
+  await page.evaluate(() => {
+    const store = (
+      window as typeof window & {
+        __termfleetWorkspaceStore?: {
+          getState: () => { workspaceUiState: Record<string, unknown> };
+          setState: (state: Record<string, unknown>) => void;
+        };
+      }
+    ).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+    store.setState({
+      workspaceUiState: {
+        ...store.getState().workspaceUiState,
+        workspaceMode: "canvas",
+        primarySidebarPanel: "map",
+      },
+      tabs: [
+        {
+          id: "tab-reconnect",
+          title: "Reconnect session",
+          groupId: null,
+          initialCwd: "/tmp/termfleet-reconnect",
+          terminals: [
+            {
+              id: "pty-reconnect",
+              paneId: "pane-reconnect",
+              cols: 80,
+              rows: 24,
+              status: "running",
+            },
+          ],
+          splitLayout: { id: "pane-reconnect", type: "terminal" },
+          activePaneId: "pane-reconnect",
+        },
+      ],
+      activeTabId: null,
+      activeTerminalId: null,
+      canvasState: {
+        nodes: [
+          {
+            id: "node-reconnect",
+            type: "terminal",
+            title: "Reconnect session",
+            terminalTabId: "tab-reconnect",
+            x: 100,
+            y: 100,
+            width: 820,
+            height: 460,
+          },
+        ],
+        selectedNodeId: null,
+        selectedNodeIds: [],
+        viewport: { x: 0, y: 0, zoom: 1 },
+      },
+    });
+  });
+
+  const connect = page.getByTestId("canvas-terminal-connect-terminal");
+  await expect(connect).toBeVisible();
+  await connect.click();
+
+  const state = await page.evaluate(() => {
+    const store = (
+      window as typeof window & {
+        __termfleetWorkspaceStore?: { getState: () => Record<string, unknown> };
+      }
+    ).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+    const current = store.getState();
+    const ui = current.workspaceUiState as Record<string, unknown>;
+    const canvas = current.canvasState as Record<string, unknown>;
+    return {
+      workspaceMode: ui.workspaceMode,
+      activeTabId: current.activeTabId,
+      activeTerminalId: current.activeTerminalId,
+      selectedNodeId: canvas.selectedNodeId,
+      focusedInput: document.activeElement?.getAttribute("data-terminal-session-id"),
+    };
+  });
+
+  expect(state.workspaceMode).toBe("canvas");
+  expect(state.activeTabId).toBe("tab-reconnect");
+  expect(state.activeTerminalId).toBe("terminal-tab-reconnect-pane-reconnect");
+  expect(state.selectedNodeId).toBe("node-reconnect");
 });
 
 test("AskUserQuestion mouse-report prompts do not trigger map layout reconciliation", () => {
@@ -4879,7 +4994,7 @@ test("split shell header uses the same durable summary policy as the map", async
           status: "running",
           currentActivity: "Search",
           durableActivity: {
-            title: "Checking activity summary wording",
+             title: "Improve terminal status summaries",
             subtitle: "terminal status summary contract · 1 test · 1 worker",
             targetPath: "tests/agent-status-summary.spec.ts",
             status: "running",
@@ -4909,7 +5024,7 @@ test("split shell header uses the same durable summary policy as the map", async
   // Same durable policy as the map (see "uses durable activity" above): the composed
   // durable line drives the visible summary; junk ("Search", unfinished prompt) never shows.
   await expect(page.getByTestId("split-terminal-summary-task")).toHaveText(
-    "Checking activity summary wording",
+     "Improve terminal status summaries",
   );
   await expect(page.getByTestId("split-terminal-summary-path")).toContainText(
     "tests/agent-status-summary.spec.ts",

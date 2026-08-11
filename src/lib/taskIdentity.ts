@@ -8,6 +8,7 @@ import { visibleTaskLineup } from "./taskLineup";
 import type { PaneTaskLine } from "./taskLine";
 import { stripComposerChrome } from "./terminalHeaderQuality";
 import { selectPlanPurpose } from "./taskPurpose";
+import { looksLikeSlug } from "./sessionTranscript";
 
 export const TASK_NOT_CAPTURED = "Task not captured";
 
@@ -124,6 +125,8 @@ function isGenericDeclaredTask(value?: string | null) {
 function isMeaningfulUserGoal(value?: string | null) {
   const text = clean(value);
   if (!text || looksLikeBareQuestion(text)) return false;
+  if (looksLikeSlug(text)) return false;
+  if (/([a-z])\1{3,}/i.test(text)) return false;
   if (
     text.endsWith("?") &&
     /\b(?:what|why|how|when|where|who|which|should|can|could|would|will|do|does|did|is|are|was|were)\b/i.test(
@@ -264,7 +267,12 @@ export function resolveTaskIdentity(input: {
   taskLine?: PaneTaskLine | null;
 }): TaskIdentity {
   const ask = scopedAsk(input.mainUserAsk, input.activeRunId);
-  if (ask && input.mainUserAsk?.source === "manual")
+  if (
+    ask &&
+    input.mainUserAsk?.source === "manual" &&
+    isMeaningfulUserGoal(ask) &&
+    !looksLikeConversationalCorrection(ask)
+  )
     return { text: ask, rawText: ask, source: "manual" };
   const taskToolTask = activeTodoTask(input.taskLineup, input.activeRunId);
   const taskToolText = clean(taskToolTask?.content);
@@ -399,7 +407,7 @@ export function resolveTaskIdentity(input: {
     };
   }
 
-  if (ask && input.mainUserAsk?.source === "task-tool")
+  if (ask && input.mainUserAsk?.source === "task-tool" && isMeaningfulUserGoal(ask))
     return {
       text: normalizedOperatorAsk(ask),
       rawText: ask,
@@ -452,7 +460,7 @@ export function resolveTaskIdentity(input: {
     };
   }
 
-  if (ask && input.mainUserAsk?.source === "workstream")
+  if (ask && input.mainUserAsk?.source === "workstream" && isMeaningfulUserGoal(ask))
     return { text: ask, rawText: ask, source: "workstream" };
   const workstreamTitle = clean(input.workstreamTitle);
   if (workstreamTitle)

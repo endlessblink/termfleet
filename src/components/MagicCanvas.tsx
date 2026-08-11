@@ -68,6 +68,7 @@ import { LocalhostPreview } from "./LocalhostPreview";
 import { BoardNode } from "./BoardNode";
 import { BOARD_DEFAULT_SIZE } from "../lib/boardStore";
 import type { GridSnapshot } from "../lib/gridSnapshot";
+import { qualityCheckNowLabel } from "../lib/terminalHeaderQuality";
 import type {
   Tab,
   TaskLineupItem,
@@ -155,7 +156,10 @@ import { buildTerminalHeaderState } from "../lib/terminalHeaderState";
 import { agentBudgetSignal } from "../lib/agentBudget";
 import { openCodexModelPicker } from "../lib/codexModelPicker";
 import { durableActivityIsLive } from "../lib/terminalActivity";
-import { activityAddsInfo } from "../lib/terminalHeaderViewModel";
+import {
+  activityAddsInfo,
+  headerTextsEquivalent,
+} from "../lib/terminalHeaderViewModel";
 import { badgeForAttention } from "../lib/terminalAttention";
 import { paneBadgeAttention } from "../lib/sessionStatus";
 import { stableHeader } from "../lib/stableHeader";
@@ -262,7 +266,9 @@ const SELECTION_TOOLBAR_MIN_TOP = 58;
 // (8) + one-line task row (15) + gap (8) + the 19px/1.18 title row (23). The
 // header renders a VARIABLE number of these rows as live status changes, so the
 // block reserves the maximum and never resizes the terminal beneath it.
-const TERMINAL_STATUS_BLOCK_MIN_HEIGHT = 74;
+// Goal and Now are always rendered, so the summary has a stable natural height.
+// Reserving an additional invisible minimum only creates dead space in compact cards.
+const TERMINAL_STATUS_BLOCK_MIN_HEIGHT = 0;
 
 const styles: Record<string, CSSProperties> = {
   shell: {
@@ -630,8 +636,12 @@ const styles: Record<string, CSSProperties> = {
     minWidth: 0,
     gridColumn: "1 / -1",
     display: "grid",
-    gap: 8,
+    gap: 6,
     alignContent: "start",
+    padding: "10px 11px 11px",
+    border: "1px solid var(--border-subtle)",
+    borderRadius: "var(--radius-sm)",
+    background: "color-mix(in srgb, var(--surface-base) 72%, transparent)",
     // Reserve the tallest header layout (kicker + task row + big title row) so
     // the block keeps ONE height no matter which rows the live status renders.
     // A header that grows or drops a line resizes the terminal underneath it,
@@ -642,7 +652,7 @@ const styles: Record<string, CSSProperties> = {
   terminalStatusLayout: {
     minWidth: 0,
     display: "grid",
-    gridTemplateColumns: "minmax(0, 1fr) minmax(240px, 30%)",
+    gridTemplateColumns: "minmax(0, 1fr) minmax(0, 30%)",
     gap: 10,
     alignItems: "start",
   },
@@ -657,7 +667,7 @@ const styles: Record<string, CSSProperties> = {
     alignItems: "center",
     gap: 5,
     color: "color-mix(in srgb, var(--text-secondary) 78%, transparent)",
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: 500,
     letterSpacing: 0,
   },
@@ -674,7 +684,7 @@ const styles: Record<string, CSSProperties> = {
     color: "var(--text-primary)",
     cursor: "pointer",
     fontFamily: "var(--font-ui)",
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: 600,
     whiteSpace: "nowrap",
   },
@@ -712,8 +722,8 @@ const styles: Record<string, CSSProperties> = {
     letterSpacing: 0,
   },
   terminalTaskLabel: {
-    color: "var(--text-tertiary)",
-    fontSize: 11,
+    color: "var(--accent-live)",
+    fontSize: 12,
     fontWeight: 600,
     letterSpacing: 0,
     // Same rule as the big row: matched to the small row's first line box (12 x 1.35).
@@ -731,11 +741,33 @@ const styles: Record<string, CSSProperties> = {
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "normal" as const,
-    lineHeight: "1.35em",
-    height: "2.7em",
-    color: "var(--text-secondary)",
-    fontSize: 12,
+    lineHeight: "1.3em",
+    height: "2.6em",
+    color: "var(--text-primary)",
+    fontSize: 14,
     fontWeight: 500,
+  },
+  terminalContextRow: {
+    padding: "5px 7px",
+    borderLeft: "2px solid var(--accent-live)",
+    borderRadius: "0 var(--radius-xs) var(--radius-xs) 0",
+    background: "color-mix(in srgb, var(--accent-live) 7%, transparent)",
+  },
+  terminalContextValue: {
+    minWidth: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    color: "var(--text-secondary)",
+    fontSize: 15,
+    fontWeight: 500,
+    lineHeight: "19px",
+  },
+  terminalNowRow: {
+    padding: "5px 7px",
+    borderLeft: "2px solid var(--text-secondary)",
+    borderRadius: "0 var(--radius-xs) var(--radius-xs) 0",
+    background: "color-mix(in srgb, var(--text-primary) 5%, transparent)",
   },
   workspacePill: {
     minWidth: 0,
@@ -2008,12 +2040,14 @@ const MAP_LIVE_TERMINALS_ENABLED =
     ?.VITE_MAP_LIVE_TERMINALS !== "0";
 // Viewport culling: keep the visible working set live while bounding renderer
 // pressure on very large maps. Off-screen / over-cap nodes fall back to the
-// cheap DOM snapshot preview. Six covers the normal on-screen project row and
-// avoids the empty-card experience caused by mounting only the selected node.
-const MAX_LIVE_TERMINALS = 6;
-// Inflate the visible rect (canvas-space px) so nodes warm up just before they
-// scroll into view, avoiding a blank flash on pan.
+// cheap DOM snapshot preview.
+// Inflate the visible rect (canvas-space px) so the one nearby warm node starts
+// just before it scrolls into view, avoiding a blank flash on pan.
 const CULL_OVERSCAN_PX = 400;
+// Keep only the selected work surface fully live. More full WebKitGTK
+// canvas/grid renderers make a busy multi-pane map feel sluggish; everything
+// else uses the cheap DOM snapshot preview and warms when selected.
+const MAX_LIVE_TERMINALS = 1;
 // Max preview refresh rate per node (ms between flushes). A busy live terminal
 // should not drive React map-state churn while the canvas itself is rendering.
 const PREVIEW_THROTTLE_MS = 2000;
@@ -3273,10 +3307,25 @@ function CanvasNodeViewImpl({
       terminalDisplaySummaryBase.now === "Waiting for operator selection",
   });
   const workspaceLabel = terminalHeader.workspace;
-  const terminalHeaderTaskDescription = terminalHeader.goalLabel;
+  const terminalHeaderTaskDescription =
+    terminalHeader.sources.goal === "missing" ||
+    terminalHeader.sources.goal === "task-line"
+      ? "Goal not captured"
+      : terminalHeader.goalLabel;
+  const terminalHeaderContextDescription =
+    terminalHeader.contextLabel?.trim() || "Goal not captured";
+  // Keep the Goal row present even when the status source has no trusted context;
+  // an explicit missing state is more useful than silently collapsing the hierarchy.
+  const terminalHeaderHasContext = true;
+  // The Task row is structural: every card must state its durable goal, or say
+  // plainly that the goal was not captured. Never hide it and let the current
+  // step become the only apparent task.
+  const terminalHeaderHasTask = true;
   const terminalHeaderTitleRaw = terminalHeader.currentActivity;
-  const terminalHeaderNowRaw = terminalDurableActivityUsable
-    ? terminalDisplaySummaryBase.now
+  const restoredNow = terminalDisplaySummaryBase.now;
+  const terminalHeaderNowRaw =
+    terminalDurableActivityUsable && qualityCheckNowLabel(restoredNow).ok
+    ? restoredNow
     : terminalHeader.sources.goal === "task-tool" &&
         terminalHeader.currentActivity === terminalHeader.goalLabel
       ? terminalNeutralTitle
@@ -3318,7 +3367,7 @@ function CanvasNodeViewImpl({
     terminalHeaderTaskDescription,
     terminalHeaderTitle,
     terminalHeaderAttentionState,
-  );
+  ) && !headerTextsEquivalent(terminalHeaderTitle, terminalHeaderContextDescription);
   const terminalHeaderHasRealTask =
     !!terminalHeaderTaskDescription &&
     !/^Task not captured$/i.test(terminalHeaderTaskDescription.trim());
@@ -3355,7 +3404,11 @@ function CanvasNodeViewImpl({
     // The resolver's own second line first: the agent's in-progress step, its pending
     // question, its own sentence — plain language, gated exactly like the goal above.
     const resolved = linkedTerminal?.nowLine?.text?.trim();
-    if (resolved && resolved !== terminalHeaderTaskDescription.trim())
+    if (
+      resolved &&
+      resolved !== terminalHeaderTaskDescription.trim() &&
+      !headerTextsEquivalent(resolved, terminalHeaderContextDescription)
+    )
       return resolved;
     // The agent's own in-progress item, straight from the store. It is already there for
     // every pane with a live task list, so the row has content even before (or without)
@@ -3367,22 +3420,33 @@ function CanvasNodeViewImpl({
     )
       .find((item) => item.status === "in_progress")
       ?.content?.trim();
-    if (liveStep && liveStep !== terminalHeaderTaskDescription.trim())
+    if (
+      liveStep &&
+      liveStep !== terminalHeaderTaskDescription.trim() &&
+      !headerTextsEquivalent(liveStep, terminalHeaderContextDescription)
+    )
       return liveStep;
     if (terminalHeaderNowActiveVisible) return terminalHeaderTitle;
     const candidate = (terminalHeaderNow ?? "").trim();
     if (!candidate) return "";
-    if (candidate === terminalHeaderTaskDescription.trim()) return "";
     if (
-      /^(?:Idle|Working|Ready|Terminal|Awaiting command|Awaiting next action|Ready for next task|Activity not captured|Status unavailable|No task declared|Task not captured)$/i.test(
+      candidate === terminalHeaderTaskDescription.trim() ||
+      headerTextsEquivalent(candidate, terminalHeaderContextDescription)
+    )
+      return "";
+    if (
+      /^(?:Working|Ready|Terminal|Awaiting command|Awaiting next action|Ready for next task|Activity not captured|Status unavailable|No task declared|Task not captured)$/i.test(
         candidate,
       )
     ) {
       return "";
     }
     return candidate;
-  })();
-  const terminalHeaderNowRowVisible = Boolean(terminalHeaderNowRowText);
+  })() ||
+    (terminalHeaderAttentionState === "running"
+      ? "Working"
+      : "No current activity recorded");
+  const terminalHeaderNowRowVisible = true;
   const detectedLaneTaskId =
     node.taskBinding?.taskId ??
     firstTaskIdFromText(
@@ -3491,23 +3555,45 @@ function CanvasNodeViewImpl({
   const shouldUseNativeSplitForInteraction = false;
   void isDesktopNativeRuntime;
   void terminalRendererMode;
-  const openLinkedTerminal = useCallback(() => {
+  const connectLinkedTerminal = useCallback(() => {
     if (!linkedTab) return;
+    const targetTerminalId =
+      linkedTerminalId ?? `terminal-${linkedTab.id}-${terminalPaneId}`;
+    selectCanvasNode(node.id);
     setActiveTab(linkedTab.id);
     setActivePane(linkedTab.id, terminalPaneId);
-    setActiveTerminal(
-      linkedTerminalId ?? `terminal-${linkedTab.id}-${terminalPaneId}`,
-    );
-    setWorkspaceMode("split");
+    setActiveTerminal(targetTerminalId);
+    let attempts = 0;
+    const focusConnectedInput = () => {
+      const input = Array.from(
+        document.querySelectorAll<HTMLTextAreaElement>(
+          ".terminal-canvas-input[data-terminal-session-id]",
+        ),
+      ).find((candidate) => candidate.dataset.terminalSessionId === targetTerminalId);
+      if (input) {
+        input.focus({ preventScroll: true });
+        return;
+      }
+      if (attempts < 4) {
+        attempts += 1;
+        window.requestAnimationFrame(focusConnectedInput);
+      }
+    };
+    window.requestAnimationFrame(focusConnectedInput);
   }, [
     linkedTab,
     linkedTerminalId,
+    node.id,
+    selectCanvasNode,
     setActivePane,
     setActiveTab,
     setActiveTerminal,
-    setWorkspaceMode,
     terminalPaneId,
   ]);
+  const openLinkedTerminal = useCallback(() => {
+    connectLinkedTerminal();
+    setWorkspaceMode("split");
+  }, [connectLinkedTerminal, setWorkspaceMode]);
 
   const toggleTaskSidebarCollapsed = useCallback(() => {
     if (!linkedTab) {
@@ -4076,10 +4162,10 @@ function CanvasNodeViewImpl({
                   title="Connect terminal"
                   aria-label="Connect terminal"
                   onMouseDown={(event) => event.stopPropagation()}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    openLinkedTerminal();
-                  }}
+      onClick={(event) => {
+        event.stopPropagation();
+        openLinkedTerminal();
+      }}
                 >
                   <TerminalSquare size={13} strokeWidth={1.8} />
                   <span>Connect terminal</span>
@@ -4215,7 +4301,7 @@ function CanvasNodeViewImpl({
                     onMouseDown={(event) => event.stopPropagation()}
                     onClick={(event) => {
                       event.stopPropagation();
-                      openLinkedTerminal();
+                      connectLinkedTerminal();
                     }}
                   >
                     <TerminalSquare size={13} strokeWidth={1.8} />
@@ -4243,26 +4329,43 @@ function CanvasNodeViewImpl({
                 rewriting itself. Both rows are always present at a fixed height; the
                 lower one goes invisible rather than unmounting, so the terminal below
                 never moves. */}
-            <div
-              style={styles.terminalStatusTitle}
-              title={`Task: ${terminalHeaderTaskDescription}`}
-            >
-              {renaming ? (
-                renameEditor
-              ) : (
-                <>
-                  <span style={styles.terminalNowActiveLabel}>Task:</span>
-                  <span
-                    data-testid="canvas-terminal-node-description"
-                    style={{
-                      ...styles.terminalNowActiveValue,
-                      color: labelColor ?? "var(--text-primary)",
-                    }}
-                  >
-                    {terminalHeaderTaskDescription}
-                  </span>
-                </>
-              )}
+            {terminalHeaderHasTask && (
+              <div
+                style={styles.terminalStatusTitle}
+                title={`Task: ${terminalHeaderTaskDescription}`}
+              >
+                {renaming ? (
+                  renameEditor
+                ) : (
+                  <>
+                    <span style={styles.terminalNowActiveLabel}>Task:</span>
+                    <span
+                      data-testid="canvas-terminal-node-description"
+                      style={{
+                        ...styles.terminalNowActiveValue,
+                        color: labelColor ?? "var(--text-primary)",
+                      }}
+                    >
+                      {terminalHeaderTaskDescription}
+                    </span>
+                  </>
+                )}
+              </div>
+            )}
+            {terminalHeaderHasContext && (
+              <div
+                style={{ ...styles.terminalTaskRow, ...styles.terminalContextRow }}
+                data-testid="canvas-terminal-node-goal"
+                title={`Goal: ${terminalHeaderContextDescription}`}
+              >
+                <span style={styles.terminalTaskLabel}>Goal:</span>
+                <span
+                  style={styles.terminalContextValue}
+                >
+                  {terminalHeaderContextDescription}
+                </span>
+              </div>
+            )}
               {(workstream || linkedTerminal) && (
                 <CockpitSnapshotProbe
                   key="cockpit-snapshot-probe"
@@ -4276,8 +4379,12 @@ function CanvasNodeViewImpl({
                     previewTitle: terminalTitle,
                     projectEmoji,
                     kind: "shell",
-                    task: terminalHeaderTaskDescription,
+                    task: terminalHeaderHasTask
+                      ? terminalHeaderTaskDescription
+                      : undefined,
                     taskSource: terminalHeader.sources.goal,
+                    context: terminalHeader.contextLabel,
+                    contextSource: terminalHeader.sources.context,
                     title: terminalHeaderTitle,
                     titleSource: terminalHeader.sources.activity,
                     now: terminalHeaderNow ?? "",
@@ -4320,9 +4427,8 @@ function CanvasNodeViewImpl({
                   }}
                 />
               )}
-            </div>
             <div
-              style={styles.terminalTaskRow}
+              style={{ ...styles.terminalTaskRow, ...styles.terminalNowRow }}
               data-testid="canvas-terminal-node-task-row"
               title={
                 terminalHeaderNowRowVisible
@@ -4595,7 +4701,7 @@ function CanvasNodeViewImpl({
               onMouseDown={(event) => event.stopPropagation()}
               onClick={(event) => {
                 event.stopPropagation();
-                openLinkedTerminal();
+                      connectLinkedTerminal();
               }}
             >
               <ArrowUpRight size={13} strokeWidth={1.8} />

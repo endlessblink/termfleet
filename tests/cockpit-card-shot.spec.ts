@@ -47,9 +47,9 @@ async function mockTauri(page: import("@playwright/test").Page) {
   });
 }
 
-const GOAL = "Choose a useful fallback for rejected task wording";
-const DISPLAYED_GOAL = "What should change?";
-const STEP = "Verifying the whole path still tracks at the new analysis size";
+const GOAL = "Run the live installed terminal verification";
+const DISPLAYED_GOAL = "Goal not captured";
+const STEP = "Adding a regression for empty and settled terminal cards";
 
 test("a map card rejects a meta-process task and shows an honest fallback", async ({
   page,
@@ -174,9 +174,9 @@ test("a map card rejects a meta-process task and shows an honest fallback", asyn
 
   const card = page.getByTestId("canvas-terminal-status-block").first();
   await expect(card).toBeVisible();
-  const goalRow = page.getByTestId("canvas-terminal-node-description").first();
-
-  await expect(goalRow).toHaveText(DISPLAYED_GOAL);
+  await expect(
+    page.getByTestId("canvas-terminal-node-description"),
+  ).toHaveText("Goal not captured");
   await expect(page.getByTestId("canvas-terminal-node-branch")).toHaveText(
     "release/bina-courses-august",
   );
