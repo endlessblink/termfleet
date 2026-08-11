@@ -454,13 +454,17 @@ function PaneToolbar({ paneId, tabId, canClose, visible }: PaneToolbarProps) {
   const tab = useWorkspaceStore((state) =>
     state.tabs.find((candidate) => candidate.id === tabId),
   );
+  const reconnectProvider =
+    tab?.workstream?.kind === "agent" &&
+    (tab.workstream.provider === "codex" ||
+      tab.workstream.provider === "claude")
+      ? tab.workstream.provider
+      : null;
   const reconnectTarget =
-    tab?.workstream?.provider &&
-    tab.workstream.provider !== "shell" &&
-    tab.workstream.provider !== "opencode" &&
-    tab.workstream.providerSessionId
+    reconnectProvider &&
+    tab?.workstream?.providerSessionId
       ? {
-          provider: tab.workstream.provider,
+          provider: reconnectProvider,
           sessionId: tab.workstream.providerSessionId,
         }
       : null;
@@ -577,13 +581,17 @@ function PaneContextMenu({
   const tab = useWorkspaceStore((state) =>
     state.tabs.find((candidate) => candidate.id === tabId),
   );
+  const reconnectProvider =
+    tab?.workstream?.kind === "agent" &&
+    (tab.workstream.provider === "codex" ||
+      tab.workstream.provider === "claude")
+      ? tab.workstream.provider
+      : null;
   const reconnectTarget =
-    tab?.workstream?.provider &&
-    tab.workstream.provider !== "shell" &&
-    tab.workstream.provider !== "opencode" &&
-    tab.workstream.providerSessionId
+    reconnectProvider &&
+    tab?.workstream?.providerSessionId
       ? {
-          provider: tab.workstream.provider,
+          provider: reconnectProvider,
           sessionId: tab.workstream.providerSessionId,
         }
       : null;
@@ -688,16 +696,52 @@ function PaneContextMenu({
           onDismiss();
         }}
       />
-      {reconnectTarget && (
-        <MenuItem
-          label={`Copy ${reconnectTarget.provider} reconnect command`}
-          onClick={() => {
-            void navigator.clipboard?.writeText(
-              agentReconnectCommand(reconnectTarget),
-            );
-            onDismiss();
-          }}
-        />
+      {reconnectProvider && (
+        <>
+          <div
+            style={{
+              borderTop: "1px solid var(--border-subtle)",
+              margin: "4px 4px",
+            }}
+          />
+          <div
+            style={{
+              padding: "5px 9px 3px",
+              color: "var(--text-tertiary)",
+              fontSize: 10,
+              fontWeight: 600,
+              letterSpacing: "0.04em",
+              textTransform: "uppercase",
+            }}
+          >
+            Reconnect this chat
+          </div>
+          <MenuItem
+            label={
+              reconnectTarget
+                ? `Copy exact ${reconnectProvider} command`
+                : "Conversation ID not captured"
+            }
+            onClick={() => {
+              if (!reconnectTarget) return;
+              void navigator.clipboard?.writeText(
+                agentReconnectCommand(reconnectTarget),
+              );
+              onDismiss();
+            }}
+          />
+          <div
+            style={{
+              padding: "0 9px 4px",
+              color: "var(--text-tertiary)",
+              fontSize: 10,
+            }}
+          >
+            {reconnectTarget
+              ? "Paste it into a terminal to reopen this chat"
+              : "This chat cannot produce an exact command yet"}
+          </div>
+        </>
       )}
       {canClose && (
         <>
@@ -1244,7 +1288,9 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
             title: (
               (isAgentPane
                 ? (paneTaskLine?.text ?? agentStatusSummary?.task)
-                : (shellHeader?.goalLabel ?? shellHeader?.currentActivity)) ?? ""
+                : (shellHeader?.hasCapturedGoal
+                    ? shellHeader.goalLabel
+                    : shellHeader?.currentActivity)) ?? ""
             ).toString(),
             now: (
               (isAgentPane
@@ -1269,7 +1315,9 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
         const headerContext =
           (isAgentPane
             ? tab.workstream?.mission ?? tab.workstream?.prompt
-            : shellHeader?.contextLabel) ?? "";
+            : shellHeader?.hasCapturedContext
+              ? shellHeader.contextLabel
+              : "") ?? "";
         // ONE pure render-time translation of the pane's stored status — identical in
         // every view, nothing stored separately that can be dropped and flicker.
         const splitAttentionState: AttentionState = paneBadgeAttention(
@@ -1608,7 +1656,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                             textTransform: "uppercase",
                           }}
                         >
-                          Task:
+                          {shellHeader?.hasCapturedGoal ? "Task:" : "State:"}
                         </span>
                         <span
                           data-testid="split-agent-working-on"

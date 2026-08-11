@@ -133,6 +133,12 @@ import {
   workstreamActivityMeta,
   workstreamActivityText,
 } from "../lib/workstreamActivity";
+import { invoke } from "@tauri-apps/api/core";
+import {
+  paneSidecarFileName,
+  type AgentStatusSidecar,
+} from "../lib/agentStatusSidecar";
+import type { AgentRecoveryTarget } from "../lib/agentReconnect";
 import {
   formatWorkstreamBranch,
   formatWorkstreamIsolation,
@@ -165,6 +171,7 @@ import { paneBadgeAttention } from "../lib/sessionStatus";
 import { stableHeader } from "../lib/stableHeader";
 import { agentProviderIdentity } from "../lib/agentProviderIdentity";
 import { AgentProviderIdentity } from "./AgentProviderIdentity";
+import { agentReconnectCommand } from "../lib/agentReconnect";
 
 type CanvasRect = {
   minX: number;
@@ -2675,6 +2682,7 @@ function CanvasNodeViewImpl({
   );
   const [terminalOverlayBounds, setTerminalOverlayBounds] =
     useState<TerminalOverlayBounds | null>(null);
+  const [connectionGeneration, setConnectionGeneration] = useState(0);
   const selectedNodeIds =
     storedSelectedNodeIds ?? (selectedNodeId ? [selectedNodeId] : []);
   const selected =
@@ -3307,20 +3315,16 @@ function CanvasNodeViewImpl({
       terminalDisplaySummaryBase.now === "Waiting for operator selection",
   });
   const workspaceLabel = terminalHeader.workspace;
-  const terminalHeaderTaskDescription =
-    terminalHeader.sources.goal === "missing" ||
-    terminalHeader.sources.goal === "task-line"
-      ? "Goal not captured"
-      : terminalHeader.goalLabel;
-  const terminalHeaderContextDescription =
-    terminalHeader.contextLabel?.trim() || "Goal not captured";
-  // Keep the Goal row present even when the status source has no trusted context;
-  // an explicit missing state is more useful than silently collapsing the hierarchy.
-  const terminalHeaderHasContext = true;
-  // The Task row is structural: every card must state its durable goal, or say
-  // plainly that the goal was not captured. Never hide it and let the current
-  // step become the only apparent task.
-  const terminalHeaderHasTask = true;
+  const terminalHeaderTaskDescription = terminalHeader.hasCapturedGoal
+    ? terminalHeader.goalLabel
+    : "";
+  const terminalHeaderContextDescription = terminalHeader.hasCapturedContext
+    ? terminalHeader.contextLabel
+    : "";
+  // Missing provenance is represented by an omitted row; never turn it into a
+  // made-up Task or Goal sentence that looks like user intent.
+  const terminalHeaderHasContext = terminalHeader.hasCapturedContext;
+  const terminalHeaderHasTask = terminalHeader.hasCapturedGoal;
   const terminalHeaderTitleRaw = terminalHeader.currentActivity;
   const restoredNow = terminalDisplaySummaryBase.now;
   const terminalHeaderNowRaw =
@@ -3563,6 +3567,7 @@ function CanvasNodeViewImpl({
     setActiveTab(linkedTab.id);
     setActivePane(linkedTab.id, terminalPaneId);
     setActiveTerminal(targetTerminalId);
+    setConnectionGeneration((generation) => generation + 1);
     let attempts = 0;
     const focusConnectedInput = () => {
       const input = Array.from(
@@ -3800,7 +3805,7 @@ function CanvasNodeViewImpl({
 
   const liveTerminalComponent = shouldMountTerminal ? (
     <TerminalComponent
-      key={`${terminalTabId}-${terminalPaneId}-${workstream?.generation ?? 0}`}
+      key={`${terminalTabId}-${terminalPaneId}-${workstream?.generation ?? 0}-${connectionGeneration}`}
       tabId={terminalTabId}
       paneId={terminalPaneId}
       cwd={node.terminalCwd ?? linkedTab?.initialCwd}
@@ -3879,7 +3884,7 @@ function CanvasNodeViewImpl({
         ptyCount={linkedTab?.terminals.length ?? 0}
         preview={terminalPreview}
         onActivate={activateTerminalNode}
-        onOpen={openLinkedTerminal}
+        onOpen={connectLinkedTerminal}
       />
     ) : shouldMountTerminal ? (
       shouldOverlayTerminal ? (
@@ -3899,7 +3904,7 @@ function CanvasNodeViewImpl({
         ptyCount={linkedTab?.terminals.length ?? 0}
         preview={terminalPreview}
         onActivate={activateTerminalNode}
-        onOpen={openLinkedTerminal}
+        onOpen={connectLinkedTerminal}
       />
     ) : node.type === "preview" ? (
       <LocalhostPreview
@@ -6093,6 +6098,34 @@ export function MagicCanvas() {
     x: number;
     y: number;
   } | null>(null);
+  const [labelMenuRecovery, setLabelMenuRecovery] =
+    useState<AgentRecoveryTarget | null>(null);
+  const [labelMenuRecoveryLoading, setLabelMenuRecoveryLoading] =
+    useState(false);
+  const labelMenuNode = labelMenu
+    ? canvasState.nodes.find((node) => node.id === labelMenu.nodeId)
+    : undefined;
+  const labelMenuTab = labelMenuNode?.terminalTabId
+    ? tabs.find((tab) => tab.id === labelMenuNode.terminalTabId)
+    : undefined;
+  const labelMenuReconnectProvider =
+    labelMenuTab?.workstream?.kind === "agent" &&
+    (labelMenuTab.workstream.provider === "codex" ||
+      labelMenuTab.workstream.provider === "claude")
+      ? labelMenuTab.workstream.provider
+      : null;
+  const labelMenuReconnectTarget =
+    labelMenuReconnectProvider &&
+    labelMenuTab?.workstream?.providerSessionId
+      ? {
+          provider: labelMenuReconnectProvider,
+          sessionId: labelMenuTab.workstream.providerSessionId,
+        }
+      : null;
+  const resolvedLabelMenuReconnectTarget =
+    labelMenuRecovery ?? labelMenuReconnectTarget;
+  const resolvedLabelMenuReconnectProvider =
+    labelMenuRecovery?.provider ?? labelMenuReconnectProvider;
   const agentLane = summarizeAgentLane(tabs);
   const activeAgentWorkstreams = agentLane.workstreams.filter(
     ({ workstream }) => isActiveAgentWorkstream(workstream),
@@ -6272,6 +6305,36 @@ export function MagicCanvas() {
       event.stopPropagation();
       setMenu(null);
       setLabelMenu({ nodeId, x: event.clientX, y: event.clientY });
+      setLabelMenuRecovery(null);
+      const node = useWorkspaceStore
+        .getState()
+        .canvasState.nodes.find((candidate) => candidate.id === nodeId);
+      const tab = node?.terminalTabId
+        ? useWorkspaceStore
+            .getState()
+            .tabs.find((candidate) => candidate.id === node.terminalTabId)
+        : undefined;
+      const paneId = tab?.activePaneId ?? tab?.terminals[0]?.paneId;
+      if (!tab || !paneId) return;
+      setLabelMenuRecoveryLoading(true);
+      void invoke<string | null>("agent_status_read_sidecar", {
+        fileName: paneSidecarFileName(`terminal-${tab.id}-${paneId}`),
+      })
+        .then((text) => {
+          if (!text) return;
+          const sidecar = JSON.parse(text) as AgentStatusSidecar;
+          if (
+            (sidecar.provider === "codex" || sidecar.provider === "claude") &&
+            sidecar.sessionId?.trim()
+          ) {
+            setLabelMenuRecovery({
+              provider: sidecar.provider,
+              sessionId: sidecar.sessionId.trim(),
+            });
+          }
+        })
+        .catch(() => undefined)
+        .finally(() => setLabelMenuRecoveryLoading(false));
     },
     [],
   );
@@ -9253,7 +9316,7 @@ export function MagicCanvas() {
             style={{
               position: "fixed",
               left: Math.min(labelMenu.x, window.innerWidth - 220),
-              top: Math.min(labelMenu.y, window.innerHeight - 220),
+              top: Math.min(labelMenu.y, window.innerHeight - 280),
               zIndex: 51,
               minWidth: 196,
               padding: 6,
@@ -9263,6 +9326,91 @@ export function MagicCanvas() {
               border: "none",
             }}
           >
+            {resolvedLabelMenuReconnectProvider && (
+              <>
+                <div
+                  style={{
+                    padding: "7px 9px 4px",
+                    color: "var(--text-tertiary)",
+                    fontFamily: "var(--font-ui)",
+                    fontSize: 10,
+                    fontWeight: 600,
+                    letterSpacing: "0.04em",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  Reconnect this chat
+                </div>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="workspace-launch-config-item"
+                  aria-label={
+                    resolvedLabelMenuReconnectTarget
+                      ? `Copy exact ${resolvedLabelMenuReconnectProvider} reconnect command`
+                      : "Conversation ID not captured"
+                  }
+                  disabled={!resolvedLabelMenuReconnectTarget || labelMenuRecoveryLoading}
+                  style={{
+                    width: "100%",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 9,
+                    padding: "9px",
+                    border: "none",
+                    borderRadius: "var(--radius-sm)",
+                    background: resolvedLabelMenuReconnectTarget
+                      ? "color-mix(in srgb, var(--accent-info) 12%, transparent)"
+                      : "transparent",
+                    color: resolvedLabelMenuReconnectTarget
+                      ? "var(--text-primary)"
+                      : "var(--text-tertiary)",
+                    fontFamily: "var(--font-ui)",
+                    fontSize: 13,
+                    cursor: resolvedLabelMenuReconnectTarget ? "pointer" : "default",
+                    textAlign: "left",
+                    opacity: resolvedLabelMenuReconnectTarget ? 1 : 0.72,
+                  }}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => {
+                    if (!resolvedLabelMenuReconnectTarget || labelMenuRecoveryLoading) return;
+                    void navigator.clipboard?.writeText(
+                      agentReconnectCommand(resolvedLabelMenuReconnectTarget),
+                    );
+                    setLabelMenu(null);
+                  }}
+                >
+                  <ClipboardCopy size={15} strokeWidth={1.8} />
+                  <span style={{ display: "grid", gap: 2 }}>
+                    <span>
+                      {labelMenuRecoveryLoading
+                        ? "Finding this chat…"
+                        : resolvedLabelMenuReconnectTarget
+                          ? `Copy exact ${resolvedLabelMenuReconnectProvider} command`
+                          : "Conversation ID not captured"}
+                    </span>
+                    <span
+                      style={{
+                        color: "var(--text-tertiary)",
+                        fontSize: 10,
+                      }}
+                    >
+                      {labelMenuRecoveryLoading
+                        ? "Reading the pane's saved chat identity"
+                        : resolvedLabelMenuReconnectTarget
+                        ? "Paste it into a terminal to reopen this chat"
+                        : "This chat cannot produce an exact command yet"}
+                    </span>
+                  </span>
+                </button>
+                <div
+                  style={{
+                    borderTop: "1px solid var(--border-subtle)",
+                    margin: "4px 4px 2px",
+                  }}
+                />
+              </>
+            )}
             {TERMINAL_LABEL_COLORS.map((item) => (
               <button
                 key={item.label}
@@ -9287,6 +9435,16 @@ export function MagicCanvas() {
                 }}
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={() => {
+                  const linkedTabId = useWorkspaceStore
+                    .getState()
+                    .canvasState.nodes.find(
+                      (candidate) => candidate.id === labelMenu.nodeId,
+                    )?.terminalTabId;
+                  if (linkedTabId) {
+                    useWorkspaceStore.getState().updateTab(linkedTabId, {
+                      color: item.value,
+                    });
+                  }
                   updateCanvasNode(labelMenu.nodeId, {
                     labelColor: item.value,
                   });

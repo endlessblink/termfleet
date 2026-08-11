@@ -19,6 +19,69 @@ test.use({
   },
 });
 
+test("map terminal menu visibly offers the exact Codex reconnect command", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.__TAURI_INTERNALS__ = {
+      transformCallback: () => 1,
+      invoke: async (command: string) =>
+        command === "agent_status_read_sidecar"
+          ? JSON.stringify({ provider: "codex", sessionId: "visual-codex-session" })
+          : null,
+    };
+  });
+
+  await page.goto("http://127.0.0.1:5177/");
+  await page.evaluate(() => {
+    const store = window.__termfleetWorkspaceStore;
+    const state = store.getState();
+    const tabId = "visual-reconnect-tab";
+    const paneId = "visual-reconnect-pane";
+    const ptyId = "visual-reconnect-pty";
+    store.setState({
+      ...state,
+      tabs: [{
+        id: tabId,
+        title: "Visual reconnect session",
+        groupId: null,
+        initialCwd: "/tmp/termfleet-visual-reconnect",
+        terminals: [{ id: ptyId, paneId, cols: 80, rows: 24, status: "running" }],
+        splitLayout: { id: paneId, type: "terminal" },
+        activePaneId: paneId,
+        workstream: { kind: "agent", provider: "codex", status: "running", phase: "active", createdAt: Date.now() },
+      }],
+      activeTabId: tabId,
+      activeTerminalId: ptyId,
+      workspaceUiState: { ...state.workspaceUiState, workspaceMode: "canvas", primarySidebarPanel: "map" },
+      canvasState: {
+        nodes: [{ id: "visual-reconnect-node", type: "terminal", title: "Visual reconnect session", x: 80, y: 80, width: 820, height: 460, terminalTabId: tabId, terminalPtyId: ptyId }],
+        selectedNodeId: "visual-reconnect-node",
+        selectedNodeIds: ["visual-reconnect-node"],
+        viewport: { x: 0, y: 0, zoom: 1 },
+      },
+    });
+  });
+  await page.setViewportSize({ width: 1600, height: 900 });
+  await page.waitForTimeout(500);
+  await page.mouse.click(900, 450, { button: "right" });
+
+  const menu = page.getByRole("menu", { name: "Terminal label color" });
+  await expect(menu).toContainText("Reconnect this chat");
+  await expect(menu).toContainText("Copy exact codex command");
+  await expect(menu).toContainText("Paste it into a terminal to reopen this chat");
+
+  await page.evaluate(() => {
+    window.__termfleetCopied = [];
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText: async (text: string) => window.__termfleetCopied.push(text) },
+    });
+  });
+  await page.getByRole("menuitem", { name: "Copy exact codex reconnect command" }).click();
+  await expect.poll(() => page.evaluate(() => window.__termfleetCopied)).toEqual([
+    "codex resume visual-codex-session",
+  ]);
+});
+
 test("selected live map terminals preserve alternate-screen projection without clipping overscale", () => {
   const source = readFileSync("src/components/MagicCanvas.tsx", "utf8");
   const liveTerminalBlock = source.match(
@@ -210,12 +273,17 @@ test("map Connect terminal selects the pane without leaving the map", () => {
   expect(connectionBlock).toContain("setActiveTab(linkedTab.id)");
   expect(connectionBlock).toContain("setActivePane(linkedTab.id, terminalPaneId)");
   expect(connectionBlock).toContain("setActiveTerminal(");
+  expect(connectionBlock).toContain("setConnectionGeneration");
   expect(connectionBlock).toContain("focusConnectedInput");
   expect(connectionBlock).toContain("requestAnimationFrame(focusConnectedInput)");
   expect(connectionBlock).not.toContain('setWorkspaceMode("split")');
   expect(terminalCanvas).toContain('data-terminal-session-id={sessionId}');
+  expect(terminalCanvas).toContain("if (!runtimeActive) return;");
+  expect(terminalCanvas).toContain("focusInput();");
   expect(source).toContain('title="Open full terminal"');
   expect(source).toContain("openLinkedTerminal();");
+  expect(source).toContain("onOpen={connectLinkedTerminal}");
+  expect(source).not.toContain("onOpen={openLinkedTerminal}");
 });
 
 test("clicking map Connect terminal reconnects an unselected session in canvas", async ({
@@ -1018,6 +1086,31 @@ test("terminal map labels can be recolored from the right-click menu", async ({
       }),
     )
     .toBe("#d4a44f");
+
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const store = (
+          window as typeof window & {
+            __termfleetWorkspaceStore?: {
+              getState: () => {
+                tabs: Array<{ id: string; color?: string }>;
+              };
+            };
+          }
+        ).__termfleetWorkspaceStore;
+        return store
+          ?.getState()
+          .tabs.find((tab) => tab.id === "tab-color")
+          ?.color;
+      }),
+    )
+    .toBe("#d4a44f");
+
+  await page.getByRole("button", { name: "Sessions", exact: true }).click();
+  await expect(
+    page.locator('[data-pane-id="pane-color"].session-sidebar-row'),
+  ).toHaveCSS("box-shadow", /rgb\(212, 164, 79\)/);
 });
 
 test("high token pressure is unmistakable on the expanded map terminal header", async ({

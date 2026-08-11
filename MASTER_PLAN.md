@@ -7756,3 +7756,19 @@ build and release promotion passed; installed release SHA-256
 dock was relaunched; OCR of the real dock capture contains current Now lines and
 no `make this a goal`, `Goal not captured`, or `Project intent not captured` text.
 Live capture SHA-256: `e7fa4b0ec3f1c4411c288880f2bb71799b63941edd470cf73440925eb176c35d`.
+
+## 2026-08-11 — Make agent chat reconnect visible in the terminal menu
+
+Codex and Claude panes now expose a dedicated `Reconnect this chat` section in
+the terminal right-click menu, including the provider-specific exact command
+and a plain-language instruction for where to paste it. Hand-started agent
+panes resolve their provider session ID from the durable per-pane sidecar, so
+the action is not limited to tabs launched by the agent controls.
+
+**Evidence:** the focused rendered regression passed; live browser visual
+inspection showed `RECONNECT THIS CHAT`, `Copy exact codex command`, and `Paste
+it into a terminal to reopen this chat`; clicking it copied
+`codex resume 019fae67-safe-session`. Screenshot SHA-256:
+`9df12d2d0d4efbe0a4c026e150e900199e21ba0afbe6439a2f209f96eb0203b2`.
+`npm run build` passed; installed release restart passed with binary SHA-256
+`0e4fe34f473a2568d47d91b8d0475cb7db1c098aa9f4df9cc60d20c3ed69fcc8`.
