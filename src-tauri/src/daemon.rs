@@ -1132,6 +1132,54 @@ mod tests {
         );
     }
 
+    /// The daemon must not run on the inherited 1024-fd soft limit.
+    ///
+    /// It holds one descriptor per PTY plus one per connected client, and the
+    /// cockpit opens a fresh control connection per poll. On 2026-08-11 it sat
+    /// at exactly 1024 open descriptors, so `accept()` failed for every caller
+    /// and even a status probe timed out — which the app reports as "socket is
+    /// owned but status is temporarily unavailable", hiding the real cause.
+    #[cfg(unix)]
+    #[test]
+    fn the_daemon_raises_its_open_file_limit_to_the_hard_ceiling() {
+        fn current() -> (u64, u64) {
+            // SAFETY: getrlimit writes into a fully-initialized struct we own.
+            unsafe {
+                let mut limit = libc::rlimit {
+                    rlim_cur: 0,
+                    rlim_max: 0,
+                };
+                assert_eq!(libc::getrlimit(libc::RLIMIT_NOFILE, &mut limit), 0);
+                (limit.rlim_cur, limit.rlim_max)
+            }
+        }
+
+        let (before_soft, hard) = current();
+        if before_soft >= hard {
+            // Already at the ceiling; lower it so the call has work to do.
+            // SAFETY: same contract, and we restore below.
+            unsafe {
+                let mut limit = libc::rlimit {
+                    rlim_cur: 1024.min(hard),
+                    rlim_max: hard,
+                };
+                assert_eq!(libc::setrlimit(libc::RLIMIT_NOFILE, &mut limit), 0);
+            }
+        }
+
+        super::raise_open_file_limit();
+
+        let (after_soft, after_hard) = current();
+        assert_eq!(
+            after_soft, after_hard,
+            "the soft limit must be raised to the hard ceiling"
+        );
+        assert!(
+            after_soft > 1024,
+            "1024 descriptors is not enough for one PTY per pane plus clients"
+        );
+    }
+
     #[test]
     fn prepare_socket_dir_creates_owner_only_dir() {
         use std::os::unix::fs::PermissionsExt;

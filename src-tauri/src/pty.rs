@@ -2961,6 +2961,84 @@ mod tests {
         let _ = manager.kill(&other);
     }
 
+    /// The remaining per-session entry points must be hoisted too.
+    ///
+    /// `get_cwd` reads `/proc/<pid>/cwd` (blocks on a shell stuck in
+    /// uninterruptible IO) and `subscribe` takes the list the reader holds while
+    /// broadcasting a burst. Both used to do that with the registry held, so a
+    /// single busy pane stalled every other pane's requests.
+    #[cfg(unix)]
+    #[test]
+    fn cwd_and_subscribe_on_a_busy_pane_do_not_block_other_sessions() {
+        use std::sync::{mpsc, Arc};
+        use std::thread;
+        use std::time::{Duration, Instant};
+
+        let app = tauri::test::mock_app();
+        let manager = Arc::new(PtyManager::new());
+        let busy = "busy-entrypoint-session".to_string();
+        let other = "healthy-entrypoint-session".to_string();
+
+        for id in [&busy, &other] {
+            manager
+                .spawn(
+                    app.handle(),
+                    Some(id.clone()),
+                    None,
+                    Some("sleep 30".to_string()),
+                )
+                .expect("spawn PTY");
+        }
+
+        // Hold both of the mutexes those two entry points reach for.
+        let (child, subscribers) = {
+            let ptys = manager.ptys.lock().unwrap();
+            let entry = ptys.get(&busy).expect("busy session");
+            (entry.child.clone(), entry.subscribers.clone())
+        };
+        let held_child = child.lock().unwrap();
+        let held_subs = subscribers.lock().unwrap();
+
+        for (m, id) in [(manager.clone(), busy.clone()), (manager.clone(), busy.clone())] {
+            thread::spawn(move || {
+                let _ = m.get_cwd(&id);
+            });
+        }
+        let sub_manager = manager.clone();
+        let sub_id = busy.clone();
+        thread::spawn(move || {
+            let _ = sub_manager.subscribe(&sub_id, "probe".to_string());
+        });
+        thread::sleep(Duration::from_millis(200));
+
+        let (tx, rx) = mpsc::channel();
+        let probe = manager.clone();
+        let probe_other = other.clone();
+        thread::spawn(move || {
+            let started = Instant::now();
+            let cwd_ok = probe.get_cwd(&probe_other).is_ok();
+            let sub_ok = probe.subscribe(&probe_other, "healthy".to_string()).is_ok();
+            let listed = probe.list_sessions().len();
+            let _ = tx.send((cwd_ok, sub_ok, listed, started.elapsed()));
+        });
+
+        let (cwd_ok, sub_ok, listed, elapsed) = rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("healthy pane froze behind a busy one");
+        assert!(cwd_ok, "a healthy pane's cwd must still be readable");
+        assert!(sub_ok, "a healthy pane must still accept a subscriber");
+        assert_eq!(listed, 2);
+        assert!(
+            elapsed < Duration::from_secs(2),
+            "registry was stalled for {elapsed:?}"
+        );
+
+        drop(held_subs);
+        drop(held_child);
+        let _ = manager.kill(&busy);
+        let _ = manager.kill(&other);
+    }
+
     #[cfg(unix)]
     #[test]
     fn kill_terminates_processes_started_inside_the_pty_session() {
