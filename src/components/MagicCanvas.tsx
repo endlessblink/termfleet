@@ -3624,9 +3624,20 @@ function CanvasNodeViewImpl({
         (terminal) => terminal.paneId === currentTab.activePaneId,
       ) ??
       currentTab.terminals[0];
-    const targetPaneId = currentTerminal?.paneId ?? terminalPaneId;
-    const targetTerminalId =
-      currentTerminal?.id ?? `terminal-${currentTab.id}-${targetPaneId}`;
+    // Never fabricate a terminal id. The old fallback synthesised
+    // `terminal-<tabId>-<paneId>` when no existing terminal matched, and
+    // activating an id that does not exist makes the app CREATE a new empty
+    // pane — the "Workspace / workspace path unknown / No task declared" cards
+    // that appeared instead of the terminal being reattached. Reattaching the
+    // wrong-or-new terminal is worse than saying so.
+    if (!currentTerminal) {
+      setCanvasNotice(
+        "This card is not linked to a live terminal any more — open the terminal from its tab.",
+      );
+      return;
+    }
+    const targetPaneId = currentTerminal.paneId ?? terminalPaneId;
+    const targetTerminalId = currentTerminal.id;
     traceTerminalLatency("frontend.map.connect.click", {
       nodeId: node.id,
       tabId: currentTab.id,
