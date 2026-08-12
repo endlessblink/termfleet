@@ -3,9 +3,11 @@ import { Award, Check, ChevronDown, Trophy, X } from "lucide-react";
 import { useWorkspaceStore } from "../stores/workspace";
 import {
   collectGamificationFacts,
+  loadGamificationReset,
   loadGamificationRecord,
   mergeGamificationRecord,
   saveGamificationRecord,
+  saveGamificationReset,
   rewardForTransition,
   summarizeGamification,
   type GamificationSummary,
@@ -60,6 +62,11 @@ export function GamificationPanel() {
   const resetProgress = () => {
     skipNextGamificationSyncRef.current = true;
     const facts = collectGamificationFacts(tabs);
+    saveGamificationReset(window.localStorage, {
+      completedTaskIds: facts.completedTaskIds,
+      baselineConcurrentTerminals: facts.activeWorkstreams,
+      resetAt: Date.now(),
+    });
     saveGamificationRecord(window.localStorage, {
       version: 1,
       completedTaskIds: [],
@@ -88,7 +95,7 @@ export function GamificationPanel() {
       return;
     }
     const current = loadGamificationRecord(window.localStorage);
-    const next = mergeGamificationRecord(current, collectGamificationFacts(tabs), Date.now());
+    const next = mergeGamificationRecord(current, collectGamificationFacts(tabs), Date.now(), loadGamificationReset(window.localStorage));
     const nextSummary = summarizeGamification(next);
     const previousSummary = previousSummaryRef.current;
     const reward = rewardForTransition(previousSummary, nextSummary);

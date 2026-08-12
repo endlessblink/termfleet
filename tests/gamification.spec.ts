@@ -104,4 +104,16 @@ test.describe("gamification", () => {
     );
     expect(summarizeGamification(future).points).toBe(35);
   });
+
+  test("reset marker survives a stale progress writer", () => {
+    const afterReset = mergeGamificationRecord(
+      { ...EMPTY_GAMIFICATION_RECORD, completedTaskIds: ["old-goal"], maxConcurrentTerminals: 2 },
+      { completedTaskIds: ["old-goal", "new-goal"], activeWorkstreams: 2 },
+      200,
+      { completedTaskIds: ["old-goal"], baselineConcurrentTerminals: 2, resetAt: 200 },
+    );
+
+    expect(summarizeGamification(afterReset).points).toBe(25);
+    expect(afterReset.completedTaskIds).toEqual(["new-goal"]);
+  });
 });

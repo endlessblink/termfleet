@@ -1,6 +1,7 @@
 import type { Tab } from "./types";
 
 export const GAMIFICATION_STORAGE_KEY = "termfleet.gamification.v1";
+export const GAMIFICATION_RESET_STORAGE_KEY = "termfleet.gamification.reset.v1";
 
 export interface GamificationRecord {
   version: 1;
@@ -14,6 +15,12 @@ export interface GamificationRecord {
 export interface GamificationFacts {
   completedTaskIds: string[];
   activeWorkstreams: number;
+}
+
+interface GamificationResetMarker {
+  completedTaskIds: string[];
+  baselineConcurrentTerminals: number;
+  resetAt: number;
 }
 
 export interface GamificationSummary {
@@ -98,19 +105,25 @@ export function mergeGamificationRecord(
   record: GamificationRecord,
   facts: GamificationFacts,
   updatedAt: number,
+  resetMarker?: GamificationResetMarker,
 ): GamificationRecord {
+  const ignoredTaskIds = [...new Set([
+    ...(record.ignoredTaskIds ?? []),
+    ...(resetMarker?.completedTaskIds ?? []),
+  ])];
+  const ignored = new Set(ignoredTaskIds);
   return {
     version: 1,
     completedTaskIds: [...new Set([
-      ...record.completedTaskIds,
-      ...facts.completedTaskIds.filter((id) => !(record.ignoredTaskIds ?? []).includes(id)),
+      ...record.completedTaskIds.filter((id) => !ignored.has(id)),
+      ...facts.completedTaskIds.filter((id) => !ignored.has(id)),
     ])].sort(),
     maxConcurrentTerminals: Math.max(
-      record.maxConcurrentTerminals,
-      Math.max(0, facts.activeWorkstreams - (record.baselineConcurrentTerminals ?? 0)),
+      resetMarker ? 0 : record.maxConcurrentTerminals,
+      Math.max(0, facts.activeWorkstreams - (resetMarker?.baselineConcurrentTerminals ?? record.baselineConcurrentTerminals ?? 0)),
     ),
-    ignoredTaskIds: record.ignoredTaskIds ?? [],
-    baselineConcurrentTerminals: record.baselineConcurrentTerminals ?? 0,
+    ignoredTaskIds,
+    baselineConcurrentTerminals: resetMarker?.baselineConcurrentTerminals ?? record.baselineConcurrentTerminals ?? 0,
     updatedAt,
   };
 }
@@ -167,6 +180,29 @@ export function loadGamificationRecord(storage: Pick<Storage, "getItem"> | undef
 export function saveGamificationRecord(storage: Pick<Storage, "setItem"> | undefined, record: GamificationRecord) {
   try {
     storage?.setItem(GAMIFICATION_STORAGE_KEY, JSON.stringify(record));
+  } catch {
+    // Progress is useful but must never make the cockpit fail in restricted storage contexts.
+  }
+}
+
+export function loadGamificationReset(storage: Pick<Storage, "getItem"> | undefined): GamificationResetMarker | undefined {
+  if (!storage) return undefined;
+  try {
+    const parsed = JSON.parse(storage.getItem(GAMIFICATION_RESET_STORAGE_KEY) ?? "null") as Partial<GamificationResetMarker> | null;
+    if (!parsed || !Array.isArray(parsed.completedTaskIds) || typeof parsed.resetAt !== "number") return undefined;
+    return {
+      completedTaskIds: parsed.completedTaskIds.filter((id): id is string => typeof id === "string"),
+      baselineConcurrentTerminals: typeof parsed.baselineConcurrentTerminals === "number" ? parsed.baselineConcurrentTerminals : 0,
+      resetAt: parsed.resetAt,
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+export function saveGamificationReset(storage: Pick<Storage, "setItem"> | undefined, marker: GamificationResetMarker) {
+  try {
+    storage?.setItem(GAMIFICATION_RESET_STORAGE_KEY, JSON.stringify(marker));
   } catch {
     // Progress is useful but must never make the cockpit fail in restricted storage contexts.
   }
