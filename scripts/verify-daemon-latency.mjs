@@ -10,6 +10,7 @@ const socketPath =
   path.join(process.env.XDG_RUNTIME_DIR ?? os.tmpdir(), "terminal-workspace", "daemon.sock");
 const sessionId = `latency-${process.pid}-${Date.now()}`;
 const text = `lat_${Math.floor(Math.random() * 1_000)}_abcdefghi`;
+const commandPrefix = "echo ";
 const p95LimitMs = Number(process.env.TERMINAL_WORKSPACE_DAEMON_P95_LIMIT_MS ?? 80);
 const maxLimitMs = Number(process.env.TERMINAL_WORKSPACE_DAEMON_MAX_LIMIT_MS ?? 250);
 
@@ -138,6 +139,8 @@ async function main() {
   await new Promise((resolve) => setTimeout(resolve, 250));
   input.write("\u0015");
   await new Promise((resolve) => setTimeout(resolve, 50));
+  input.write(commandPrefix);
+  await waitForEcho(received, commandPrefix, performance.now(), 1_500, { compact: true });
 
   const latencies = [];
   let expected = "";
@@ -151,9 +154,9 @@ async function main() {
   const newlineStartMs = performance.now();
   input.write("\r");
   // The shell's line ending may be split or rewritten by readline; the
-  // command-result marker proves Enter was processed without depending on
-  // one particular CR/LF framing.
-  await waitForEcho(received, "command not found", newlineStartMs);
+  // echoed marker proves Enter was processed without depending on one
+  // particular CR/LF framing or shell error wording.
+  await waitForEcho(received, text, newlineStartMs, 1_500, { compact: true });
 
   input.end();
   subscription.destroy();
