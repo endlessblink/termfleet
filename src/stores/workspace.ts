@@ -321,7 +321,12 @@ interface WorkspaceState {
   // Tab actions
   addTab: (tab?: Partial<Tab>) => void;
   /** Replace the restored tab set after async disk-hydration + orphan reconcile. */
-  hydrateRestoredWorkspace: (payload: { tabs: Tab[]; activeTabId: string | null }) => void;
+  hydrateRestoredWorkspace: (payload: {
+    tabs: Tab[];
+    activeTabId: string | null;
+    liveCwds?: Record<string, string>;
+    liveGitRoots?: Record<string, string>;
+  }) => void;
   removeTab: (id: string) => void;
   closeTerminalSession: (id: string) => Promise<void>;
   restoreLastClosed: () => boolean;
@@ -563,14 +568,14 @@ function generatedProjectNameForRoot(projectRoot?: string | null) {
 }
 
 function isCategoryProjectName(name?: string | null) {
-  return /^(?:ai-development|content-creation|web-dev|devops|productivity|freelance|misc|bots\+automation|bots-automation)$/i.test(name?.trim() ?? "");
+  return /^(?:data|ai-development|content-creation|web-dev|devops|productivity|freelance|misc|bots\+automation|bots-automation)$/i.test(name?.trim() ?? "");
 }
 
 function groupLooksAutoNamed(group: Group, projectRoot?: string | null) {
   const root = normalizeProjectPath(projectRoot ?? group.projectRoot);
   const rootTail = root ? projectNameFromPath(root) : undefined;
   return Boolean(
-    group.name === rootTail ||
+      group.name?.toLocaleLowerCase() === rootTail?.toLocaleLowerCase() ||
       projectNameIsRootAncestor(group.name, root) ||
       isCategoryProjectName(group.name),
   );
@@ -669,6 +674,34 @@ function shouldDropEmptyGeneratedAncestorGroup(group: Group, groups: Group[], us
   );
 }
 
+function disambiguateGeneratedProjectNames(groups: Group[]) {
+  const byName = new Map<string, Group[]>();
+  for (const group of groups) {
+    const root = normalizeProjectPath(group.projectRoot);
+    if (!root || group.emojiSource === "user") continue;
+    const generatedName = projectNameFromPath(root);
+    if (group.name !== generatedName && !group.name.startsWith(`${generatedName} · `)) continue;
+    const key = generatedName.toLocaleLowerCase();
+    byName.set(key, [...(byName.get(key) ?? []), group]);
+  }
+
+  const duplicateNames = new Set(
+    [...byName.values()].filter((candidates) => candidates.length > 1).flat().map((group) => group.id),
+  );
+  if (duplicateNames.size === 0) return groups;
+
+  return groups.map((group) => {
+    if (!duplicateNames.has(group.id)) return group;
+    const root = normalizeProjectPath(group.projectRoot) ?? "";
+    const parts = root.split("/").filter(Boolean);
+    const generatedName = projectNameFromPath(root);
+    const parent = parts[parts.length - 2];
+    return parent && parent !== generatedName
+      ? { ...group, name: `${generatedName} · ${parent}` }
+      : group;
+  });
+}
+
 function terminalLiveCwd(tab: Tab, liveCwds?: Record<string, string>) {
   if (!liveCwds) return undefined;
   const activeTerminal = tab.terminals.find((terminal) => terminal.paneId === tab.activePaneId);
@@ -714,13 +747,15 @@ function reconcileProjectGroups(
   // re-opened, which used to mint a fresh random group id each time) — they are
   // dropped and their tabs remapped onto the canonical group. (TC-034)
   const groupsByRoot = new Map<string, Group>();
+  const generatedEmojis = new Set<string>();
   const remap = new Map<string, string>(); // duplicate group id -> canonical id
   const nextGroups: Group[] = [];
   for (const group of groups) {
     const projectRoot = normalizeProjectPath(group.projectRoot);
     const generatedName = projectRoot ? projectNameFromPath(projectRoot) : group.name;
     const name = projectRoot && groupLooksAutoNamed(group, projectRoot) ? generatedName : group.name;
-    const generatedEmoji = projectEmojiFor(projectRoot ?? group.name);
+    const generatedEmoji = projectEmojiFor(projectRoot ?? group.name, generatedEmojis);
+    generatedEmojis.add(generatedEmoji);
     const emoji = group.emojiSource === "user" ? group.emoji ?? generatedEmoji : generatedEmoji;
     const emojiSource: Group["emojiSource"] = group.emojiSource === "user" ? "user" : "generated";
     const normalizedGroup =
@@ -750,10 +785,11 @@ function reconcileProjectGroups(
       id: projectIdFromPath(path, nextGroups),
       name: projectNameFromPath(path),
       color: GROUP_COLORS[nextGroups.length % GROUP_COLORS.length],
-      emoji: projectEmojiFor(path),
+      emoji: projectEmojiFor(path, generatedEmojis),
       emojiSource: "generated",
       projectRoot: path,
     };
+    if (group.emoji) generatedEmojis.add(group.emoji);
     nextGroups.push(group);
     groupsByRoot.set(path, group);
     groupIds.add(group.id);
@@ -776,10 +812,10 @@ function reconcileProjectGroups(
   });
 
   const usedGroupIds = new Set(nextTabs.map((tab) => tab.groupId).filter((id): id is string => Boolean(id)));
-  const finalGroups = nextGroups.filter((group) =>
+  const finalGroups = disambiguateGeneratedProjectNames(nextGroups.filter((group) =>
     !shouldDropEmptyGeneratedProjectGroup(group, usedGroupIds) &&
     !shouldDropEmptyGeneratedAncestorGroup(group, nextGroups, usedGroupIds)
-  );
+  ));
 
   const changed =
     finalGroups.length !== groups.length ||
@@ -959,7 +995,7 @@ function loadPersistedWorkspace(): PersistedWorkspace {
             "terminal-header-verifier-idle",
             root,
             "Keeping the idle verifier pane stable",
-            "Idle",
+            "Paused after verifying the terminal identity",
             "idle",
           ),
           verifierTerminal(
@@ -1158,6 +1194,26 @@ export async function hydrateWorkspace() {
       seen.add(tab.id);
       recovered.push(tab);
     }
+    const liveCwds = Object.fromEntries(
+      liveSessions
+        .filter((session): session is LiveSessionSummary & { cwd: string } => Boolean(session.cwd))
+        .map((session) => [session.id, session.cwd]),
+    );
+    const liveGitRoots = Object.fromEntries(
+      (await Promise.all(
+        liveSessions
+          .filter((session): session is LiveSessionSummary & { cwd: string } => Boolean(session.cwd))
+          .map(async (session) => {
+            try {
+              const context = await invoke<{ gitRoot?: string | null }>("workstream_git_context", { cwd: session.cwd });
+              const gitRoot = context?.gitRoot?.trim();
+              return gitRoot ? [session.id, gitRoot] as const : null;
+            } catch {
+              return null;
+            }
+          }),
+      )).filter((entry): entry is readonly [string, string] => Boolean(entry)),
+    );
 
     // 3. Dead persisted sessions remain recoverable only when there is no saved
     //    layout at all. This preserves TC-040: intentionally closed historical
@@ -1181,8 +1237,20 @@ export async function hydrateWorkspace() {
       }
     }
 
-    if (!store.hydrating && recovered.length === 0) return; // happy path, nothing to do
-    store.hydrateRestoredWorkspace({ tabs: [...baseTabs, ...recovered], activeTabId: baseActive });
+    if (
+      !store.hydrating &&
+      recovered.length === 0 &&
+      Object.keys(liveCwds).length === 0 &&
+      Object.keys(liveGitRoots).length === 0
+    ) {
+      return; // happy path, nothing to do
+    }
+    store.hydrateRestoredWorkspace({
+      tabs: [...baseTabs, ...recovered],
+      activeTabId: baseActive,
+      liveCwds,
+      liveGitRoots,
+    });
   } catch (error) {
     console.warn("Workspace hydration failed:", error);
     clearGate();
@@ -1710,11 +1778,13 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
 
   // --- Tab actions ---
 
-  hydrateRestoredWorkspace: ({ tabs, activeTabId }) => {
+  hydrateRestoredWorkspace: ({ tabs, activeTabId, liveCwds = {}, liveGitRoots = {} }) => {
     set((state) => {
       if (tabs.length === 0) return { hydrating: false };
       const canvasState = normalizeCanvasState(state.canvasState, tabs);
-      const projects = reconcileProjectGroups(tabs, state.groups, canvasState, state.liveCwds, state.liveGitRoots);
+      const nextLiveCwds = { ...state.liveCwds, ...liveCwds };
+      const nextLiveGitRoots = { ...state.liveGitRoots, ...liveGitRoots };
+      const projects = reconcileProjectGroups(tabs, state.groups, canvasState, nextLiveCwds, nextLiveGitRoots);
       const nextActive =
         projects.tabs.find((tab) => tab.id === activeTabId)?.id ?? projects.tabs[0].id;
       return {
@@ -1729,6 +1799,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   },
 
   addTab: (overrides?: Partial<Tab>) => {
+        liveCwds: nextLiveCwds,
+        liveGitRoots: nextLiveGitRoots,
     const newTab = createDefaultTab(overrides);
     set((state) => {
       const tabs = [...state.tabs, newTab];

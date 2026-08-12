@@ -282,3 +282,57 @@ test("disk workspace layout is authoritative over orphan persisted sessions", as
   expect(result.tabIds).toEqual(["disk-tab"]);
   expect(result.nodeTabIds).toEqual(["disk-tab"]);
 });
+
+test("saved panes use live daemon folders before the first click", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+
+  const result = await page.evaluate(async () => {
+    (window as typeof window & { __TAURI_INTERNALS__?: { invoke: (cmd: string) => Promise<unknown>; transformCallback: () => number; unregisterCallback: () => void } }).__TAURI_INTERNALS__ = {
+      invoke: async (cmd: string, args?: { cwd?: string }) => cmd === "daemon_list_sessions"
+        ? [
+          { id: "terminal-saved-a-pane", cwd: "/repo/data/ai-development/data/src" },
+          { id: "terminal-saved-b-pane", cwd: "/repo/data/recreational/data/src" },
+        ]
+        : cmd === "workstream_git_context"
+          ? args?.cwd?.includes("ai-development")
+            ? { gitRoot: "/repo/data/ai-development/data" }
+            : { gitRoot: "/repo/data/recreational/data" }
+          : null,
+      transformCallback: () => 1,
+      unregisterCallback: () => {},
+    };
+    const { hydrateWorkspace, useWorkspaceStore } = await import("/src/stores/workspace.ts");
+    const tab = (id: string, terminalId: string) => ({
+      id,
+      title: "Terminal",
+      emoji: "⬛",
+      color: "#7aa2f7",
+      groupId: "group-data",
+      initialCwd: "/repo/category",
+      terminals: [{ id: terminalId, paneId: terminalId.split("-").pop()!, cols: 80, rows: 24, status: "starting" }],
+      splitLayout: { id: terminalId.split("-").pop()!, type: "terminal" as const },
+      activePaneId: terminalId.split("-").pop()!,
+    });
+    useWorkspaceStore.setState({
+      hydrating: false,
+      tabs: [tab("saved-a", "terminal-saved-a-pane"), tab("saved-b", "terminal-saved-b-pane")],
+      activeTabId: "saved-a",
+      groups: [{ id: "group-data", name: "DATA", color: "#7aa2f7", emoji: "📝", emojiSource: "generated", projectRoot: "/repo/data" }],
+      terminalGroups: [{ id: "group-data", name: "DATA", color: "#7aa2f7", emoji: "📝", emojiSource: "generated", projectRoot: "/repo/data" }],
+      canvasState: { selectedNodeId: null, selectedNodeIds: [], viewport: { x: 0, y: 0, zoom: 1 }, nodes: [] },
+    });
+    await hydrateWorkspace();
+    const state = useWorkspaceStore.getState();
+    return {
+      groups: state.groups.map((group) => ({ name: group.name, root: group.projectRoot, emoji: group.emoji })),
+      tabGroups: state.tabs.map((candidate) => state.groups.find((group) => group.id === candidate.groupId)?.name),
+    };
+  });
+
+  expect(result.groups.map(({ name, root }) => ({ name, root }))).toEqual([
+    { name: "data · ai-development", root: "/repo/data/ai-development/data" },
+    { name: "data · recreational", root: "/repo/data/recreational/data" },
+  ]);
+  expect(result.tabGroups).toEqual(["data · ai-development", "data · recreational"]);
+  expect(new Set(result.groups.map(({ emoji }) => emoji)).size).toBe(2);
+});

@@ -24,10 +24,77 @@ const FALLBACK_PROJECT_EMOJIS = [
   "🧰",
   "🪄",
   "✨",
+  "🪴",
+  "🌱",
+  "🌿",
+  "🌻",
+  "🌙",
+  "☀️",
+  "🌈",
+  "🔥",
+  "💡",
+  "🔭",
+  "🛰️",
+  "🛸",
+  "🗺️",
+  "🪐",
+  "🌍",
+  "🌊",
+  "🏔️",
+  "🏗️",
+  "🏠",
+  "🏛️",
+  "🏭",
+  "🚂",
+  "🚲",
+  "🛵",
+  "🚦",
+  "🛡️",
+  "⚡",
+  "🔧",
+  "🔩",
+  "🪛",
+  "🧲",
+  "⚖️",
+  "🧯",
+  "🧬",
+  "🧫",
+  "🧮",
+  "🗃️",
+  "🗄️",
+  "📁",
+  "📌",
+  "📍",
+  "🔗",
+  "🔑",
+  "🔎",
+  "🧵",
+  "🧶",
+  "🖋️",
+  "✏️",
+  "📐",
+  "📏",
+  "🖼️",
+  "🎼",
+  "🎵",
+  "🎙️",
+  "🎮",
+  "🕹️",
+  "🏁",
+  "🎲",
+  "🃏",
+  "🦊",
+  "🐙",
+  "🦉",
+  "🐝",
+  "🦋",
+  "🐳",
+  "🦄",
 ];
 
 function normalizeProjectIdentity(value: string) {
-  return value
+  const leaf = value.split(/[\\/]/).filter(Boolean).pop() ?? value;
+  return leaf
     .toLowerCase()
     .replace(/\\/g, "/")
     .replace(/[_\s]+/g, "-");
@@ -41,21 +108,32 @@ function hashProjectIdentity(value: string) {
   return Math.abs(hash);
 }
 
-export function projectEmojiFor(pathOrName: string) {
+export function projectEmojiFor(pathOrName: string, avoid: Iterable<string> = []) {
   const identity = normalizeProjectIdentity(pathOrName);
-  if (/\bdesigners?ai\b|designersai|design-ai|design/.test(identity)) return "🎨";
-  if (/rough-cut|video|film|editor|content-creation/.test(identity)) return "🎬";
-  if (/bina-ve-ze|course|learning|academy|education/.test(identity)) return "🎓";
-  if (/bina-meatzevet|payment|billing|invoice|freelance/.test(identity)) return "💼";
-  if (/hermes|launcher|desktop/.test(identity)) return "🪽";
-  if (/termfleet|terminal|devops|ops|infrastructure/.test(identity)) return "🧭";
-  if (/flow-state|watchpost|monitor|watch|status|observability/.test(identity)) return "📡";
-  if (/bot|automation|agent/.test(identity)) return "🤖";
-  if (/arthouse|art|gallery|creative/.test(identity)) return "🎭";
-  if (/contract|client|proposal/.test(identity)) return "📄";
-  if (/linux|cc-linux|system|shell/.test(identity)) return "🐧";
-  if (/security|auth|secret|vault/.test(identity)) return "🔐";
-  if (/data|analytics|report|metrics/.test(identity)) return "📊";
-  if (/web|site|frontend|browser/.test(identity)) return "🌐";
-  return FALLBACK_PROJECT_EMOJIS[hashProjectIdentity(identity) % FALLBACK_PROJECT_EMOJIS.length];
+  const used = new Set(avoid);
+  const semantic = [
+    [/\bdesigners?ai\b|designersai|design-ai|design/, "🎨"],
+    [/rough-cut|video|film|editor/, "🎬"],
+    [/bina-ve-ze|course|learning|academy|education/, "🎓"],
+    [/bina-meatzevet|payment|billing|invoice|freelance/, "💼"],
+    [/hermes|launcher|desktop/, "🪽"],
+    [/termfleet|terminal|devops|ops|infrastructure/, "🧭"],
+    [/flow-state|watchpost|monitor|watch|status|observability/, "📡"],
+    [/bot|automation|agent/, "🤖"],
+    [/arthouse|art|gallery|creative/, "🎭"],
+    [/contract|client|proposal/, "📄"],
+    [/linux|cc-linux|system|shell/, "🐧"],
+    [/security|auth|secret|vault/, "🔐"],
+    [/data|analytics|report|metrics/, "📊"],
+    [/web|site|frontend|browser/, "🌐"],
+  ] as const;
+  const semanticEmoji = semantic.find(([pattern]) => pattern.test(identity))?.[1];
+  if (semanticEmoji && !used.has(semanticEmoji)) return semanticEmoji;
+
+  const start = hashProjectIdentity(identity) % FALLBACK_PROJECT_EMOJIS.length;
+  for (let offset = 0; offset < FALLBACK_PROJECT_EMOJIS.length; offset += 1) {
+    const candidate = FALLBACK_PROJECT_EMOJIS[(start + offset) % FALLBACK_PROJECT_EMOJIS.length];
+    if (!used.has(candidate)) return candidate;
+  }
+  return semanticEmoji ?? FALLBACK_PROJECT_EMOJIS[start];
 }

@@ -13,3 +13,18 @@ test("generated project emojis are semantic for known project families", () => {
 test("generated project emojis avoid the brick fallback for unknown projects", () => {
   expect(projectEmojiFor("/tmp/some-random-local-checkout")).not.toBe("🧱");
 });
+
+test("parent folders do not force unrelated projects to share an emoji", () => {
+  const alpha = projectEmojiFor("/repo/devops/alpha");
+  const beta = projectEmojiFor("/repo/devops/beta", [alpha]);
+  expect(beta).not.toBe(alpha);
+});
+
+test("the fallback pool stays varied across a large project list", () => {
+  const assigned: string[] = [];
+  for (let index = 0; index < 60; index += 1) {
+    assigned.push(projectEmojiFor(`/repo/team/project-${index}`, assigned));
+  }
+
+  expect(new Set(assigned).size).toBe(assigned.length);
+});
