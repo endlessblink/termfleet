@@ -8,10 +8,7 @@
 // SOFT only: MemoryHigh throttles + reclaims the daemon's own memory when exceeded;
 // it never OOM-kills. No hard MemoryMax is ever set (that would kill agents silently).
 import { execFileSync } from "node:child_process";
-
-const MEMORY_HIGH = process.env.TERMFLEET_DAEMON_MEMORY_HIGH || "12G";
-const TASKS_MAX = process.env.TERMFLEET_DAEMON_TASKS_MAX || "20000";
-const DEFAULT_MEMORY_HIGH_BYTES = 12 * 1024 ** 3;
+import { readFileSync } from "node:fs";
 
 function memoryHighBytes(value) {
   const match = String(value ?? "").trim().match(/^(\d+(?:\.\d+)?)([KMG]?)$/i);
@@ -21,15 +18,49 @@ function memoryHighBytes(value) {
 }
 
 /**
- * A running daemon that predates the guardrail reports `MemoryHigh=infinity` (or
- * nothing). Those need the ceiling applied. A finite value means it's already set
- * (by us or a deliberate override) — leave it (idempotent, respects manual tuning).
+ * The safe ceiling is HALF OF INSTALLED RAM (floored at 8G), not a fixed 12G.
+ *
+ * The old fixed 12G was actively harmful on a large workstation. On 2026-08-11
+ * this box ran ~22 panes whose cgroup legitimately held 32G; pinning MemoryHigh
+ * at 12G does not "protect" anything — it makes the kernel reclaim ~20G
+ * continuously and push live agent sessions onto the swapfile, which is exactly
+ * the freeze the guardrail exists to prevent. It also fought the memory-guard
+ * timer, which re-raises the ceiling every 2 minutes: the two flipped the ceiling
+ * back and forth on 2- and 15-minute cycles, and that — not the installer alone —
+ * is why a raised ceiling kept "reverting" on its own.
  */
-export function needsGuardrail(currentMemoryHigh) {
+export function safeMemoryHighBytes(memTotalBytes = readMemTotalBytes()) {
+  const half = Math.floor(memTotalBytes / 2);
+  return Math.max(half, 8 * 1024 ** 3);
+}
+
+function readMemTotalBytes() {
+  try {
+    const line = readFileSync("/proc/meminfo", "utf8")
+      .split("\n")
+      .find((l) => l.startsWith("MemTotal:"));
+    return Number(line.split(/\s+/)[1]) * 1024;
+  } catch {
+    return 16 * 1024 ** 3;
+  }
+}
+
+const MEMORY_HIGH =
+  process.env.TERMFLEET_DAEMON_MEMORY_HIGH || String(safeMemoryHighBytes());
+const TASKS_MAX = process.env.TERMFLEET_DAEMON_TASKS_MAX || "20000";
+
+/**
+ * Apply the ceiling when the daemon has none (`infinity`/empty — it predates the
+ * guardrail) or when its ceiling is ABOVE what this machine can safely give it.
+ *
+ * Deliberately does NOT lower a ceiling that merely exceeds some fixed constant:
+ * a ceiling below the safe value is not a safety win, it is the freeze mechanism.
+ */
+export function needsGuardrail(currentMemoryHigh, safeBytes = safeMemoryHighBytes()) {
   const value = (currentMemoryHigh ?? "").toString().trim();
   if (value === "" || value === "infinity") return true;
   const bytes = memoryHighBytes(value);
-  return bytes == null || bytes > DEFAULT_MEMORY_HIGH_BYTES;
+  return bytes == null || bytes > safeBytes;
 }
 
 function sh(cmd, args) {
