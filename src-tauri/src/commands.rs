@@ -1268,6 +1268,67 @@ fn agent_status_sidecar_file(file_name: &str) -> Result<std::path::PathBuf, Stri
 /// read the agent's real task list directly from disk in EVERY launch mode, instead of
 /// depending on the launcher-lifetime HTTP status server (which desktop launches never
 /// had — the root cause the panel kept going dark). Missing file → `Ok(None)`.
+/// Is this provider conversation already open in a live agent OTHER than the
+/// one in `pane_id`?
+///
+/// Answers the question the cockpit must ask before typing a resume command
+/// into a terminal. A pane can be an empty shell while its original agent is
+/// still running, because the PTY daemon deliberately survives a window
+/// replacement — so "no agent in this pane" does not mean "nobody owns this
+/// conversation". Resuming anyway makes the provider reject it with "already
+/// has an active writer", and when two writers briefly overlap the transcript
+/// gains a duplicated record, which permanently breaks forking that
+/// conversation (observed 2026-08-12).
+///
+/// Ownership is determined the only way that cannot lie: whether a live process
+/// holds the conversation's transcript open. Fails closed — an error answers
+/// "owned", because a missed reconnect is fixable by hand and a corrupted
+/// transcript is not.
+#[tauri::command]
+pub fn agent_conversation_has_other_owner(
+    provider: String,
+    session_id: String,
+    pane_id: String,
+) -> Result<bool, String> {
+    if session_id.trim().is_empty() {
+        return Ok(true);
+    }
+    let _ = (&provider, &pane_id);
+
+    let Ok(entries) = fs::read_dir("/proc") else {
+        return Ok(true);
+    };
+    let self_pid = std::process::id();
+    for entry in entries.flatten() {
+        let Some(pid) = entry
+            .file_name()
+            .to_str()
+            .filter(|value| value.bytes().all(|byte| byte.is_ascii_digit()))
+            .and_then(|value| value.parse::<u32>().ok())
+            .filter(|pid| *pid > 1 && *pid != self_pid)
+        else {
+            continue;
+        };
+        let fd_dir = entry.path().join("fd");
+        let Ok(fds) = fs::read_dir(&fd_dir) else {
+            continue; // not ours to inspect
+        };
+        for fd in fds.flatten() {
+            let Ok(target) = fs::read_link(fd.path()) else {
+                continue;
+            };
+            let target = target.to_string_lossy();
+            let is_transcript =
+                target.contains("/.codex/sessions/") || target.contains("/.claude/projects/");
+            if is_transcript && target.contains(session_id.trim()) {
+                let _ = pid;
+                return Ok(true);
+            }
+        }
+    }
+    Ok(false)
+}
+
 #[tauri::command]
 pub fn agent_status_read_sidecar(file_name: String) -> Result<Option<String>, String> {
     let path = agent_status_sidecar_file(&file_name)?;

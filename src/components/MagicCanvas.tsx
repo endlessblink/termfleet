@@ -2697,6 +2697,10 @@ function CanvasNodeViewImpl({
   const [connectedTerminalId, setConnectedTerminalId] = useState<string | null>(
     null,
   );
+  // Outcome of the last "Connect terminal" click. Previously every reconnect
+  // failure went to console.warn, so the button looked inert while it had in
+  // fact refused (or worse, collided with a live agent). Surfaced in the card.
+  const [canvasNotice, setCanvasNotice] = useState<string | null>(null);
   const selectedNodeIds =
     storedSelectedNodeIds ?? (selectedNodeId ? [selectedNodeId] : []);
   const selected =
@@ -3604,6 +3608,7 @@ function CanvasNodeViewImpl({
   void terminalRendererMode;
   const connectLinkedTerminal = useCallback(() => {
     if (!linkedTab) return;
+    setCanvasNotice(null);
     const currentState = useWorkspaceStore.getState();
     const currentTab =
       currentState.tabs.find((tab) => tab.id === linkedTab.id) ?? linkedTab;
@@ -3672,12 +3677,51 @@ function CanvasNodeViewImpl({
             })) !== null
           );
         },
+        // The pane can be an empty shell while the ORIGINAL agent is still
+        // running elsewhere (a rebuilt window leaves it alive, because the PTY
+        // daemon survives a window replace). Typing a second resume then draws
+        // "already has an active writer" from the provider, and an overlap
+        // duplicates a transcript record and permanently breaks forking that
+        // conversation. Ask the daemon who owns it before typing anything.
+        conversationOwnedElsewhere: async (provider, sessionId, paneId) => {
+          try {
+            return await invoke<boolean>("agent_conversation_has_other_owner", {
+              provider,
+              sessionId,
+              paneId,
+            });
+          } catch {
+            // If we cannot tell, do NOT resume: a missed reconnect is
+            // recoverable by hand, a corrupted transcript is not.
+            return true;
+          }
+        },
         writeResumeCommand: async (paneId, command) => {
           await invoke("daemon_write_session", { id: paneId, data: command });
         },
-      }).catch((error) => {
-        console.warn("Could not reconnect the saved agent session", error);
-      });
+      })
+        .then((result) => {
+          // Never fail silently — a button that looks inert is why this went
+          // unnoticed for so long.
+          if (result.ownedElsewhere.length) {
+            setCanvasNotice(
+              "That conversation is still open in another terminal — close it there first, or free it and try again.",
+            );
+          } else if (result.failed.length) {
+            setCanvasNotice(
+              `Could not reconnect the saved chat: ${result.failed[0].reason}`,
+            );
+          } else if (result.missingSession.length) {
+            setCanvasNotice("The saved conversation is no longer on this machine.");
+          }
+        })
+        .catch((error) => {
+          setCanvasNotice(
+            `Could not reconnect the saved chat: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+        });
     }
     let attempts = 0;
     const focusConnectedInput = () => {
@@ -4328,6 +4372,25 @@ function CanvasNodeViewImpl({
                   <TerminalSquare size={13} strokeWidth={1.8} />
                   <span>Connect terminal</span>
                 </button>
+              )}
+              {canvasNotice && (
+                <span
+                  role="status"
+                  aria-live="polite"
+                  data-testid="canvas-connect-terminal-notice"
+                  title={canvasNotice}
+                  style={{
+                    marginLeft: 8,
+                    fontSize: 11,
+                    color: "var(--text-warning, #d9a441)",
+                    maxWidth: 320,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {canvasNotice}
+                </span>
               )}
             </div>
             <div

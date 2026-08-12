@@ -30,6 +30,67 @@ function dependencies(
   };
 }
 
+// Regression for the 2026-08-12 incident. Rebuilding TermFleet replaces the
+// cockpit window, but the PTY daemon deliberately survives — so the original
+// agent keeps running while its pane comes back as an empty shell. Clicking
+// "Connect terminal" then typed a second `codex resume` for a conversation that
+// still had a live owner: the provider answered "already has an active writer",
+// and where the two writers overlapped the transcript gained a duplicated record
+// (verified: ordinal 33955 written twice, 20s apart, in a 599MB rollout), which
+// permanently breaks forking that conversation. The button must never type a
+// resume into a terminal for a conversation someone else still owns.
+test("never types a resume for a conversation a live agent still owns", async () => {
+  const writes: string[] = [];
+  const result = await reconnectStoppedAgents(
+    ["terminal-orphaned", "terminal-free"],
+    dependencies({
+      conversationOwnedElsewhere: async (_provider, _sessionId, paneId) =>
+        paneId === "terminal-orphaned",
+      writeResumeCommand: async (paneId) => {
+        writes.push(paneId);
+      },
+    }),
+  );
+
+  expect(writes).toEqual(["terminal-free"]);
+  expect(result.ownedElsewhere).toEqual(["terminal-orphaned"]);
+  expect(result.resumed).toEqual(["terminal-free"]);
+  expect(result.failed).toEqual([]);
+});
+
+test("reports conversations held elsewhere so the click is not silent", () => {
+  expect(
+    formatAgentReconnectResult({
+      resumed: [],
+      alreadyRunning: [],
+      missingRecovery: [],
+      missingSession: [],
+      ownedElsewhere: ["terminal-orphaned"],
+      failed: [],
+    }),
+  ).toBe("1 still open elsewhere");
+});
+
+test("the ownership gate is consulted only after cheaper checks pass", async () => {
+  const consulted: string[] = [];
+  await reconnectStoppedAgents(
+    ["terminal-running", "terminal-missing", "terminal-ok"],
+    dependencies({
+      readRunningProvider: async (paneId) =>
+        paneId === "terminal-running" ? "codex" : null,
+      sessionExists: async (_p, _s, paneId) => paneId !== "terminal-missing",
+      conversationOwnedElsewhere: async (_p, _s, paneId) => {
+        consulted.push(paneId);
+        return false;
+      },
+    }),
+  );
+
+  // A pane with a running agent, or no local transcript, is settled without
+  // paying for the ownership lookup.
+  expect(consulted).toEqual(["terminal-ok"]);
+});
+
 test("reconnects each stopped pane once with its own saved conversation", async () => {
   const writes: Array<{ paneId: string; command: string }> = [];
   const result = await reconnectStoppedAgents(
@@ -132,6 +193,7 @@ test("summarizes complete and partial reconnect outcomes plainly", () => {
       alreadyRunning: ["c"],
       missingRecovery: [],
       missingSession: [],
+      ownedElsewhere: [],
       failed: [],
     }),
   ).toBe("2 resumed · 1 already running");
@@ -142,6 +204,7 @@ test("summarizes complete and partial reconnect outcomes plainly", () => {
       alreadyRunning: [],
       missingRecovery: ["b"],
       missingSession: ["c"],
+      ownedElsewhere: [],
       failed: [{ paneId: "d", reason: "write failed" }],
     }),
   ).toBe("1 resumed · 1 missing path · 1 missing locally · 1 failed");
