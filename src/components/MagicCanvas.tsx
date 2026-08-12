@@ -3718,11 +3718,30 @@ function CanvasNodeViewImpl({
         },
       })
         .then((result) => {
+          // The click already traced that it fired, resolved a terminal and
+          // focused it. Trace the RECONNECT decision too: without this the log
+          // proved the button worked but said nothing about why the chat did
+          // not come back, which is what turned every round of this into
+          // guesswork from screenshots.
+          traceTerminalLatency("frontend.map.connect.reconnect", {
+            nodeId: node.id,
+            terminalId: currentTerminal.id,
+            resumed: result.resumed.length,
+            alreadyRunning: result.alreadyRunning.length,
+            missingRecovery: result.missingRecovery.length,
+            missingSession: result.missingSession.length,
+            ownedElsewhere: result.ownedElsewhere.length,
+            failed: result.failed.length,
+            firstFailure: result.failed[0]?.reason ?? null,
+          });
           // Never fail silently — a button that looks inert is why this went
           // unnoticed for so long.
+          // EVERY outcome speaks. Covering only some of them is why the click
+          // still looked dead: a pane whose agent exited cleanly has no saved
+          // conversation, which landed in `missingRecovery` and said nothing.
           if (result.ownedElsewhere.length) {
             setCanvasNotice(
-              "That conversation is still open in another terminal — close it there first, or free it and try again.",
+              "That chat is still open in another terminal — go to it there, or free it first.",
             );
           } else if (result.failed.length) {
             setCanvasNotice(
@@ -3730,14 +3749,24 @@ function CanvasNodeViewImpl({
             );
           } else if (result.missingSession.length) {
             setCanvasNotice("The saved conversation is no longer on this machine.");
+          } else if (result.missingRecovery.length) {
+            setCanvasNotice(
+              "No saved chat for this terminal — connected to the shell instead.",
+            );
+          } else if (result.alreadyRunning.length) {
+            setCanvasNotice("Connected — the agent is already running here.");
+          } else if (result.resumed.length) {
+            setCanvasNotice("Reconnecting the saved chat…");
           }
         })
         .catch((error) => {
-          setCanvasNotice(
-            `Could not reconnect the saved chat: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
-          );
+          const reason = error instanceof Error ? error.message : String(error);
+          traceTerminalLatency("frontend.map.connect.reconnect", {
+            nodeId: node.id,
+            terminalId: currentTerminal.id,
+            threw: reason,
+          });
+          setCanvasNotice(`Could not reconnect the saved chat: ${reason}`);
         });
     }
     let attempts = 0;

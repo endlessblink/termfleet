@@ -184,6 +184,7 @@ if command -v systemd-run >/dev/null 2>&1; then
     --setenv="TERMFLEET_TASK_CONTEXT_MODEL=${TERMFLEET_TASK_CONTEXT_MODEL:-qwen2.5:7b}" \
     --setenv="TERMFLEET_AGENT_STATUS_TIMEOUT_MS=${TERMFLEET_AGENT_STATUS_TIMEOUT_MS:-1000}" \
     --setenv="TERMFLEET_AGENT_STATUS_DISABLE=${TERMFLEET_AGENT_STATUS_DISABLE:-1}" \
+    --setenv="TERMINAL_WORKSPACE_TRACE_LATENCY=${TERMINAL_WORKSPACE_TRACE_LATENCY:-}" \
     "$0" --child >>"$LOG_FILE" 2>&1; then
     desktop_cgroup="/sys/fs/cgroup/user.slice/user-${UID}.slice/user@${UID}.service/app.slice/${unit_name}"
     for _ in {1..50}; do
