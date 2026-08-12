@@ -1,5 +1,32 @@
 # MASTER_PLAN.md - termfleet
 
+> **2026-08-12 gamification reset usability correction:** The reward toast now says
+> `First tracked goal completed` and `+25 points` instead of the ambiguous `First
+> finish` achievement wording. Reset now uses an in-panel confirmation that works
+> in the installed desktop surface, immediately returns the visible trigger to
+> Level 1 / 0 points, and preserves the workspace. Focused gamification coverage
+> passed 7/7; `npm run build`, `npm run verify:map-terminals`, and `git diff --check`
+> passed. The fix was promoted and `npm run verify:installed-release` plus
+> `npm run verify:installed-restart` passed for the current dock binary.
+
+> **2026-08-12 final release-gate verification:** The standalone daemon smoke was
+> corrected to use the current sessions-panel click target and newline-framed daemon
+> probes. The full `npm run verify:release` gate passed with `TERMFLEET_RELEASE_CHECK_OK
+> gui=1`; it created a real terminal, typed markers, survived app restart, restored
+> scrollback after daemon restart, and passed visual content/repaint checks. The
+> corrected daemon-latency probe passed at p95 1.8 ms. Clean AppImage/deb installation
+> on a separate Linux environment remains UNVERIFIED.
+
+> **2026-08-12 gamification reset and meaning correction:** Reset now records a
+> local baseline so already-finished goals and already-active work do not immediately
+> restore the old level. Points now come from completed tracked goals (+25) and new
+> peaks of live terminals that are actually carrying in-progress tracked work (+10);
+> idle/open terminals earn nothing. The panel names this as active workstreams and
+> reward toasts identify the exact event. Focused gamification coverage passed 7/7,
+> the frontend build, map regression, diff check, installed-release verification,
+> and installed restart smoke passed. The promoted release is `ff506652d009-0f82585744b3`
+> with SHA-256 `0f82585744b33377aacf20dfec6393aeaddc92185a8224a89fe0900c2f86b211`.
+
 > **2026-08-12 publication-readiness verification:** Fixed the live trusted-command
 > title path so durable activity such as `Testing checkout flow` remains visible on
 > map cards, updated stale browser expectations to the current Task/Goal/Now contract,

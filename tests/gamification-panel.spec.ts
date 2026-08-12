@@ -33,7 +33,7 @@ test("progress is discoverable in the header and explains rewards", async ({ pag
   await expect(panel).toContainText("How points work");
   await expect(panel).toContainText("+25");
   await expect(panel).toContainText("+10");
-  await expect(panel).toContainText("2 finished goals and a peak of 3 terminals = 80 points.");
+  await expect(panel).toContainText("2 finished goals and 3 terminals actively carrying work = 80 points.");
   await expect(panel.getByTestId("gamification-reset")).toContainText("Reset my progress");
 
   await trigger.press("Escape");
@@ -51,14 +51,14 @@ test("reset progress clears only the gamification record", async ({ page }) => {
   const trigger = page.getByTestId("gamification-trigger");
   await expect(trigger).toHaveAttribute("aria-label", "Progress level 1, 80 points");
   await trigger.click();
-  page.once("dialog", (dialog) => dialog.accept());
   await page.getByTestId("gamification-reset").click({ force: true });
+  await expect(page.getByTestId("gamification-reset-confirm")).toBeVisible();
+  await page.getByTestId("gamification-reset-confirm").click();
   await expect(trigger).toContainText("0 pts");
+  await expect(trigger).toContainText("Lv 1");
   await expect(await page.evaluate(() => localStorage.getItem("terminal-workspace.v1"))).not.toBeNull();
   expect(await page.evaluate(() => {
-    const raw = localStorage.getItem("termfleet.gamification.v1");
-    if (!raw) return true;
-    const record = JSON.parse(raw);
-    return record.version === 1 && record.completedTaskIds.length === 0 && record.maxConcurrentTerminals === 1;
+    const record = JSON.parse(localStorage.getItem("termfleet.gamification.v1") ?? "null");
+    return record?.version === 1 && record.completedTaskIds.length === 0 && record.maxConcurrentTerminals === 0;
   })).toBe(true);
 });

@@ -6,12 +6,14 @@ export interface GamificationRecord {
   version: 1;
   completedTaskIds: string[];
   maxConcurrentTerminals: number;
+  ignoredTaskIds?: string[];
+  baselineConcurrentTerminals?: number;
   updatedAt: number;
 }
 
 export interface GamificationFacts {
   completedTaskIds: string[];
-  concurrentTerminals: number;
+  activeWorkstreams: number;
 }
 
 export interface GamificationSummary {
@@ -41,18 +43,27 @@ export interface GamificationReward {
 const LEVEL_THRESHOLDS = [0, 100, 250, 500, 1000];
 
 export const GAMIFICATION_ACHIEVEMENTS = [
-  { id: "first-finish", title: "First finish", description: "Complete your first tracked goal." },
+  { id: "first-finish", title: "First tracked goal", description: "Complete your first tracked goal." },
   { id: "finisher", title: "Finisher", description: "Complete 10 tracked goals." },
-  { id: "multi-tasker", title: "Multi-tasker", description: "Keep 3 live terminals working together." },
-  { id: "control-room", title: "Control room", description: "Reach 6 simultaneous live terminals." },
+  { id: "multi-tasker", title: "Parallel operator", description: "Keep 3 tracked workstreams active together." },
+  { id: "control-room", title: "Control room", description: "Coordinate 6 tracked workstreams at once." },
 ] as const;
 
 export function rewardForTransition(previous: GamificationSummary, next: GamificationSummary): GamificationReward | null {
   const achievement = next.achievements.find(
     (candidate) => candidate.unlocked && !previous.achievements.some((old) => old.id === candidate.id && old.unlocked),
   );
+  if (achievement?.id === "first-finish") {
+    return { title: "First tracked goal completed", detail: "+25 points" };
+  }
   if (achievement) return { title: "Achievement unlocked", detail: achievement.title };
   if (next.level > previous.level) return { title: `Level ${next.level} reached`, detail: `${next.points} points earned` };
+  if (next.completedGoals > previous.completedGoals) {
+    return { title: "Goal completed", detail: `+${(next.completedGoals - previous.completedGoals) * 25} points` };
+  }
+  if (next.maxConcurrentTerminals > previous.maxConcurrentTerminals) {
+    return { title: "New active-work peak", detail: `+${(next.maxConcurrentTerminals - previous.maxConcurrentTerminals) * 10} points` };
+  }
   return null;
 }
 
@@ -60,25 +71,27 @@ export const EMPTY_GAMIFICATION_RECORD: GamificationRecord = {
   version: 1,
   completedTaskIds: [],
   maxConcurrentTerminals: 0,
+  ignoredTaskIds: [],
+  baselineConcurrentTerminals: 0,
   updatedAt: 0,
 };
 
 export function collectGamificationFacts(tabs: Tab[]): GamificationFacts {
   const completedTaskIds = new Set<string>();
-  let concurrentTerminals = 0;
+  let activeWorkstreams = 0;
 
   for (const tab of tabs) {
     for (const terminal of tab.terminals) {
-      if (terminal.status === "running" || terminal.status === "reconnected") {
-        concurrentTerminals += 1;
-      }
+      const isLive = terminal.status === "running" || terminal.status === "reconnected";
+      const isWorking = terminal.taskLineup?.some((task) => task.status === "in_progress") || terminal.durableActivity?.status === "running";
+      if (isLive && isWorking) activeWorkstreams += 1;
       for (const task of terminal.taskLineup ?? []) {
         if (task.status === "completed") completedTaskIds.add(task.id);
       }
     }
   }
 
-  return { completedTaskIds: [...completedTaskIds], concurrentTerminals };
+  return { completedTaskIds: [...completedTaskIds], activeWorkstreams };
 }
 
 export function mergeGamificationRecord(
@@ -88,8 +101,16 @@ export function mergeGamificationRecord(
 ): GamificationRecord {
   return {
     version: 1,
-    completedTaskIds: [...new Set([...record.completedTaskIds, ...facts.completedTaskIds])].sort(),
-    maxConcurrentTerminals: Math.max(record.maxConcurrentTerminals, facts.concurrentTerminals),
+    completedTaskIds: [...new Set([
+      ...record.completedTaskIds,
+      ...facts.completedTaskIds.filter((id) => !(record.ignoredTaskIds ?? []).includes(id)),
+    ])].sort(),
+    maxConcurrentTerminals: Math.max(
+      record.maxConcurrentTerminals,
+      Math.max(0, facts.activeWorkstreams - (record.baselineConcurrentTerminals ?? 0)),
+    ),
+    ignoredTaskIds: record.ignoredTaskIds ?? [],
+    baselineConcurrentTerminals: record.baselineConcurrentTerminals ?? 0,
     updatedAt,
   };
 }
@@ -134,6 +155,8 @@ export function loadGamificationRecord(storage: Pick<Storage, "getItem"> | undef
       version: 1,
       completedTaskIds: parsed.completedTaskIds.filter((id): id is string => typeof id === "string"),
       maxConcurrentTerminals: typeof parsed.maxConcurrentTerminals === "number" ? parsed.maxConcurrentTerminals : 0,
+      ignoredTaskIds: Array.isArray(parsed.ignoredTaskIds) ? parsed.ignoredTaskIds.filter((id): id is string => typeof id === "string") : [],
+      baselineConcurrentTerminals: typeof parsed.baselineConcurrentTerminals === "number" ? parsed.baselineConcurrentTerminals : 0,
       updatedAt: typeof parsed.updatedAt === "number" ? parsed.updatedAt : 0,
     };
   } catch {

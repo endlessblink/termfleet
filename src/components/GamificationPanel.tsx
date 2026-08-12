@@ -47,6 +47,7 @@ const styles = {
 export function GamificationPanel() {
   const tabs = useWorkspaceStore((state) => state.tabs);
   const [open, setOpen] = useState(false);
+  const [resetArmed, setResetArmed] = useState(false);
   const [summary, setSummary] = useState<GamificationSummary>(() => summarizeGamification(loadGamificationRecord(window.localStorage)));
   const [rewardPulse, setRewardPulse] = useState(false);
   const [reward, setReward] = useState<{ title: string; detail: string } | null>(null);
@@ -54,13 +55,21 @@ export function GamificationPanel() {
   const triggerRef = useRef<HTMLButtonElement>(null);
 
   const resetProgress = () => {
-    if (!window.confirm("Reset only your local progress? Goals, terminals, and workspace layout will stay unchanged.")) return;
-    window.localStorage.removeItem("termfleet.gamification.v1");
+    const facts = collectGamificationFacts(tabs);
+    saveGamificationRecord(window.localStorage, {
+      version: 1,
+      completedTaskIds: [],
+      maxConcurrentTerminals: 0,
+      ignoredTaskIds: facts.completedTaskIds,
+      baselineConcurrentTerminals: facts.activeWorkstreams,
+      updatedAt: Date.now(),
+    });
     const empty = summarizeGamification(loadGamificationRecord(window.localStorage));
     previousSummaryRef.current = empty;
     setReward(null);
     setRewardPulse(false);
     setSummary(empty);
+    setResetArmed(false);
   };
 
   useEffect(() => {
@@ -136,10 +145,26 @@ export function GamificationPanel() {
             <span style={styles.levelMark}><Trophy size={18} /></span>
             <div style={{ flex: 1 }}><div style={{ display: "flex", justifyContent: "space-between", color: "var(--text-primary)", fontSize: 12 }}><strong>Level {summary.level}</strong><span style={styles.muted}>{summary.points} pts</span></div><div style={styles.progressTrack}><div role="progressbar" aria-label="Progress to next level" aria-valuenow={summary.levelProgressPercent} aria-valuemin={0} aria-valuemax={100} style={{ ...styles.progressFill, transform: `scaleX(${summary.levelProgressPercent / 100})` }} /></div><div style={{ ...styles.muted, marginTop: 5 }}>{summary.nextLevelPoints === null ? "Lifetime track complete" : `${summary.nextLevelPoints - summary.points} points to level ${summary.level + 1}`}</div></div>
           </div>
-          <div style={styles.metrics}><div style={styles.metric}><span style={styles.muted}>Goals finished</span><strong style={styles.metricValue}>{summary.completedGoals}</strong></div><div style={styles.metric}><span style={styles.muted}>Peak terminals</span><strong style={styles.metricValue}>{summary.maxConcurrentTerminals}</strong></div></div>
+          <div style={styles.metrics}><div style={styles.metric}><span style={styles.muted}>Goals finished</span><strong style={styles.metricValue}>{summary.completedGoals}</strong></div><div style={styles.metric}><span style={styles.muted}>Peak active workstreams</span><strong style={styles.metricValue}>{summary.maxConcurrentTerminals}</strong></div></div>
           <div style={styles.section}><div style={styles.sectionTitle}><Award size={14} /> Achievements</div>{summary.achievements.map((achievement) => <div key={achievement.id} style={styles.achievement}><span style={{ ...styles.achievementIcon, ...(achievement.unlocked ? { color: "var(--accent-live)", background: "var(--command-chip-active-bg)" } : null) }}>{achievement.unlocked ? <Check size={13} /> : <Award size={13} />}</span><div><div style={{ color: "var(--text-primary)", fontSize: 11 }}>{achievement.title}</div><div style={styles.muted}>{achievement.unlocked ? `Unlocked · ${achievement.description}` : achievement.description}</div></div></div>)}</div>
-          <div style={styles.section}><div style={styles.sectionTitle}><Trophy size={14} /> How points work</div><div style={styles.rule}><strong style={{ color: "var(--accent-live)", fontFamily: "var(--font-mono)", fontSize: 12 }}>+25</strong><span style={styles.muted}>Complete a unique tracked goal</span><span style={{ color: "var(--text-primary)", fontSize: 10 }}>per goal</span></div><div style={styles.rule}><strong style={{ color: "var(--accent-live)", fontFamily: "var(--font-mono)", fontSize: 12 }}>+10</strong><span style={styles.muted}>Reach a new peak of live terminals</span><span style={{ color: "var(--text-primary)", fontSize: 10 }}>per peak</span></div><div style={{ ...styles.muted, marginTop: 8 }}>Example: 2 finished goals and a peak of 3 terminals = 80 points.</div></div>
-          <div style={styles.reset}><button type="button" data-testid="gamification-reset" style={{ border: 0, padding: 0, background: "transparent", color: "var(--text-tertiary)", cursor: "pointer", font: "inherit" }} onClick={resetProgress}>Reset my progress</button><div style={{ marginTop: 4 }}>Clears points, levels, and achievements only.</div></div>
+          <div style={styles.section}><div style={styles.sectionTitle}><Trophy size={14} /> How points work</div><div style={styles.rule}><strong style={{ color: "var(--accent-live)", fontFamily: "var(--font-mono)", fontSize: 12 }}>+25</strong><span style={styles.muted}>Complete a unique tracked goal</span><span style={{ color: "var(--text-primary)", fontSize: 10 }}>per goal</span></div><div style={styles.rule}><strong style={{ color: "var(--accent-live)", fontFamily: "var(--font-mono)", fontSize: 12 }}>+10</strong><span style={styles.muted}>Reach a new peak of active workstreams</span><span style={{ color: "var(--text-primary)", fontSize: 10 }}>per peak</span></div><div style={{ ...styles.muted, marginTop: 8 }}>Example: 2 finished goals and 3 terminals actively carrying work = 80 points.</div></div>
+          <div style={styles.reset}>
+            {!resetArmed ? (
+              <>
+                <button type="button" data-testid="gamification-reset" style={{ border: 0, padding: 0, background: "transparent", color: "var(--text-tertiary)", cursor: "pointer", font: "inherit" }} onClick={() => setResetArmed(true)}>Reset my progress</button>
+                <div style={{ marginTop: 4 }}>Clears points, levels, and achievements only.</div>
+              </>
+            ) : (
+              <div role="group" aria-label="Confirm progress reset" style={{ display: "grid", gap: 7 }}>
+                <strong style={{ color: "var(--text-primary)", fontSize: 11 }}>Reset local progress?</strong>
+                <span style={styles.muted}>This resets your points, level, and achievements. Your workspace stays unchanged.</span>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button type="button" data-testid="gamification-reset-confirm" onClick={resetProgress} style={{ border: "1px solid var(--border-focus)", borderRadius: "var(--radius-xs)", padding: "5px 8px", background: "var(--surface-selected)", color: "var(--text-primary)", cursor: "pointer", font: "inherit", fontSize: 11 }}>Confirm reset</button>
+                  <button type="button" onClick={() => setResetArmed(false)} style={{ border: "1px solid var(--border-subtle)", borderRadius: "var(--radius-xs)", padding: "5px 8px", background: "transparent", color: "var(--text-secondary)", cursor: "pointer", font: "inherit", fontSize: 11 }}>Cancel</button>
+                </div>
+              </div>
+            )}
+          </div>
         </section>
       )}
     </div>
