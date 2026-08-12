@@ -56,6 +56,8 @@ test("reset progress clears only the gamification record", async ({ page }) => {
   await page.getByTestId("gamification-reset-confirm").click();
   await expect(trigger).toContainText("0 pts");
   await expect(trigger).toContainText("Lv 1");
+  await page.waitForTimeout(900);
+  await expect(trigger).toHaveAttribute("aria-label", "Progress level 1, 0 points");
   await expect(await page.evaluate(() => localStorage.getItem("terminal-workspace.v1"))).not.toBeNull();
   expect(await page.evaluate(() => {
     const record = JSON.parse(localStorage.getItem("termfleet.gamification.v1") ?? "null");

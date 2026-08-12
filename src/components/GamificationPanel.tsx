@@ -52,9 +52,11 @@ export function GamificationPanel() {
   const [rewardPulse, setRewardPulse] = useState(false);
   const [reward, setReward] = useState<{ title: string; detail: string } | null>(null);
   const previousSummaryRef = useRef(summary);
+  const skipNextGamificationSyncRef = useRef(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
 
   const resetProgress = () => {
+    skipNextGamificationSyncRef.current = true;
     const facts = collectGamificationFacts(tabs);
     saveGamificationRecord(window.localStorage, {
       version: 1,
@@ -73,6 +75,10 @@ export function GamificationPanel() {
   };
 
   useEffect(() => {
+    if (skipNextGamificationSyncRef.current) {
+      skipNextGamificationSyncRef.current = false;
+      return;
+    }
     const current = loadGamificationRecord(window.localStorage);
     const next = mergeGamificationRecord(current, collectGamificationFacts(tabs), Date.now());
     const nextSummary = summarizeGamification(next);
