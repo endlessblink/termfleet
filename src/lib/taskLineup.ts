@@ -160,6 +160,25 @@ export function taskLineupStats(items: TaskLineupItem[]) {
   };
 }
 
+export interface TaskLineupProgress {
+  total: number;
+  completed: number;
+  cancelled: number;
+  percent: number;
+}
+
+export function taskLineupProgress(items: TaskLineupItem[]): TaskLineupProgress {
+  const completed = items.filter((item) => item.status === "completed").length;
+  const cancelled = items.filter((item) => item.status === "cancelled").length;
+  const total = items.length;
+  return {
+    total,
+    completed,
+    cancelled,
+    percent: total === 0 ? 0 : Math.round((completed / total) * 100),
+  };
+}
+
 export function completeOpenTaskLineup(items: TaskLineupItem[] | undefined, updatedAt = Date.now()) {
   return (items ?? []).map((item) =>
     item.status === "pending" || item.status === "in_progress"

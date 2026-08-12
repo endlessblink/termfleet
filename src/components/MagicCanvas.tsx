@@ -172,6 +172,7 @@ import { stableHeader } from "../lib/stableHeader";
 import { agentProviderIdentity } from "../lib/agentProviderIdentity";
 import { AgentProviderIdentity } from "./AgentProviderIdentity";
 import { agentReconnectCommand } from "../lib/agentReconnect";
+import { TaskProgressBar } from "./TaskProgressBar";
 
 type CanvasRect = {
   minX: number;
@@ -2212,6 +2213,7 @@ function TerminalBodyTaskSidebar({
           </button>
         </span>
       </div>
+      <TaskProgressBar items={rows.map((row) => ({ id: row.id, content: row.task, status: row.state === "Done" ? "completed" : row.state === "Working" ? "in_progress" : "pending", source: "summary", updatedAt: 0 }))} compact testId={`${testIdPrefix}-task-progress`} />
       {rows.length === 0 ? (
         recent && recent.length > 0 ? (
           <div

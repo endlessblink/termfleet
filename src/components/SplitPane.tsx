@@ -61,6 +61,7 @@ import { stableHeader } from "../lib/stableHeader";
 import { agentBudgetSignal } from "../lib/agentBudget";
 import { openCodexModelPicker } from "../lib/codexModelPicker";
 import { agentReconnectCommand } from "../lib/agentReconnect";
+import { TaskProgressBar } from "./TaskProgressBar";
 import {
   calculatePaneBounds,
   calculateHandles,
@@ -331,6 +332,7 @@ function AgentTaskSidebar({
           </button>
         </span>
       </div>
+      <TaskProgressBar items={taskLineup ?? []} testId="split-agent-task-progress" />
       <div
         style={{
           display: "flex",

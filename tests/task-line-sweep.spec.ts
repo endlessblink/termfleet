@@ -12,6 +12,7 @@ import { join } from "node:path";
 import os from "node:os";
 import { parseTranscript } from "../src/lib/sessionTranscript";
 import { resolvePaneNowLine, resolvePaneTaskLine } from "../src/lib/taskLine";
+import { taskLineupProgress } from "../src/lib/taskLineup";
 
 // TC-060 release gate. Sweeps every live pane on THIS machine and fails on any
 // violation of the four invariants: never blank, never invented, never stale,
@@ -168,4 +169,25 @@ test("the ladder invents nothing and hardcodes no project", () => {
   );
   expect(ladder).not.toMatch(/hermes|bina|flow-state|arthouse/i);
   expect(ladder).not.toMatch(/Task not captured/);
+});
+
+test("structured task progress counts completed work and keeps cancelled work incomplete", () => {
+  const base = {
+    source: "todo-write" as const,
+    updatedAt: 0,
+  };
+  expect(taskLineupProgress([])).toEqual({
+    total: 0,
+    completed: 0,
+    cancelled: 0,
+    percent: 0,
+  });
+  expect(
+    taskLineupProgress([
+      { ...base, id: "done", content: "Done", status: "completed" },
+      { ...base, id: "working", content: "Working", status: "in_progress" },
+      { ...base, id: "cancelled", content: "Cancelled", status: "cancelled" },
+      { ...base, id: "pending", content: "Pending", status: "pending" },
+    ]),
+  ).toEqual({ total: 4, completed: 1, cancelled: 1, percent: 25 });
 });
