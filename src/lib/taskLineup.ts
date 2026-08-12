@@ -14,6 +14,23 @@ const STATUS_ORDER: Record<TaskLineupStatus, number> = {
   cancelled: 3,
 };
 
+/**
+ * A gated shell pane may ignore heuristic summaries, but it must still accept an
+ * authoritative TodoWrite list even when that list arrived through the optional
+ * status worker rather than the direct sidecar reader.
+ */
+export function shouldApplyGatedShellStatus(input: {
+  source: "fallback" | "process" | "sidecar";
+  hasNarration: boolean;
+  hasAuthoritativeTaskList: boolean;
+}) {
+  return (
+    input.source === "sidecar" ||
+    input.hasNarration ||
+    input.hasAuthoritativeTaskList
+  );
+}
+
 function hashText(value: string) {
   let hash = 2166136261;
   for (let index = 0; index < value.length; index += 1) {

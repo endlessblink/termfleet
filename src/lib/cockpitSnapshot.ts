@@ -1,12 +1,13 @@
-// Dev-only cockpit-state capture (TC-035 observability). Each terminal header renders a
+// Local cockpit-state capture (TC-035 observability). Each terminal header renders a
 // `<CockpitSnapshotProbe>` that reports the RENDERED title + the raw inputs that produced it.
 // We debounce-POST the whole map to the status server's `/cockpit-snapshot` route, which
 // writes it to a file an operator/agent can read, so we can compare "what's shown" against
 // "what each terminal is really working on", for all terminals at once, without screenshots.
 //
-// Gated off unless VITE_COCKPIT_SNAPSHOT is set. Keep this opt-in even in dev:
-// a busy map can render many terminal headers, and continuous snapshot POSTs make
-// WebKit do work that is only useful during cockpit/header verification.
+// Production keeps this observer enabled so installed verification can inspect the exact
+// rendered identity. It posts to loopback and has a local Tauri fallback.
+
+import { invoke } from "@tauri-apps/api/core";
 
 export interface CockpitSnapshotEntry {
   paneId: string;
@@ -54,8 +55,10 @@ export interface CockpitSnapshotEntry {
 }
 
 export function cockpitSnapshotEnabled(): boolean {
-  const env = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env;
-  return env?.VITE_COCKPIT_SNAPSHOT === "1";
+  // This observer is local-only and intentionally deterministic across dev, installed,
+  // and dock-relaunched builds; a missing status server is handled by the existing
+  // fire-and-forget error path and never affects terminal rendering.
+  return true;
 }
 
 function snapshotEndpoint(): string {
@@ -84,11 +87,22 @@ function scheduleFlush() {
       terminals: Array.from(entries.values()),
     });
     // Fire-and-forget; never let a debug write affect the UI.
-    void fetch(snapshotEndpoint(), {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: payload,
-    }).catch(() => {});
+    // The Tauri path is authoritative for installed builds; the HTTP path remains
+    // useful for dev diagnostics and remote test harnesses.
+    const installedRuntime =
+      typeof window !== "undefined" &&
+      ("__TAURI_INTERNALS__" in window || "__TAURI__" in window);
+    if (installedRuntime) {
+      // Never let a stale browser preview or helper server overwrite the installed
+      // cockpit's rendered snapshot. The Tauri command is the single writer there.
+      void invoke("cockpit_snapshot_write", { contents: payload }).catch(() => {});
+    } else {
+      void fetch(snapshotEndpoint(), {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: payload,
+      }).catch(() => {});
+    }
   }, COCKPIT_SNAPSHOT_FLUSH_DELAY_MS);
 }
 

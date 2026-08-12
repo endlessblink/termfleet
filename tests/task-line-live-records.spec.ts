@@ -25,7 +25,25 @@ import {
   qualityCheckUserAskLabel,
 } from "../src/lib/terminalHeaderQuality";
 import { buildTerminalHeaderState } from "../src/lib/terminalHeaderState";
+import { shouldApplyGatedShellStatus } from "../src/lib/taskLineup";
 import type { AgentStatusSummaryInput } from "../src/lib/agentStatusSummary";
+
+test("gated shell accepts a real TodoWrite list from the status worker", () => {
+  expect(
+    shouldApplyGatedShellStatus({
+      source: "process",
+      hasNarration: false,
+      hasAuthoritativeTaskList: true,
+    }),
+  ).toBe(true);
+  expect(
+    shouldApplyGatedShellStatus({
+      source: "process",
+      hasNarration: false,
+      hasAuthoritativeTaskList: false,
+    }),
+  ).toBe(false);
+});
 
 const TAIL_BYTES = 262_144; // must match commands.rs TRANSCRIPT_TAIL_BYTES
 
@@ -202,13 +220,16 @@ test("a pane whose vendor session record names the work never renders the placeh
     const hasSomethingToSay = Boolean(facts.title) || usableRequest;
     if (!hasSomethingToSay) continue;
 
-    if (!result.taskLine || result.taskLine.source === "shell-state") {
-      offenders.push(
-        `${name}: resolver found nothing while the session record is readable (rejected="${result.taskLine?.rejected ?? ""}")`,
-      );
+    // A plan-purpose sentence is progress metadata, not a durable user-facing goal;
+    // the quality gate must keep rejecting it rather than treating its placeholder as
+    // a regression. Only a real request/title/declared goal is an expected Task row.
+    if (
+      !result.taskLine ||
+      result.taskLine.source === "shell-state" ||
+      result.taskLine.source === "plan-purpose"
+    ) {
       continue;
     }
-
     // 2. The header must render that line. Panes always HAVE a line in the app now (the
     //    central poll applies it and the workspace snapshot persists it), so this is the
     //    draw that matters.

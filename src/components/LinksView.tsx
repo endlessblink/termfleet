@@ -315,7 +315,7 @@ const cardBase: CSSProperties = {
   gap: 10,
   padding: "10px 12px",
   borderRadius: "var(--radius-md, 10px)",
-  border: "1px solid var(--border-subtle)",
+    border: "1px solid transparent",
   background: "var(--surface-raised)",
   boxShadow: "var(--shadow-card)",
   minWidth: 0,
@@ -358,7 +358,7 @@ const styles: Record<string, CSSProperties> = {
   columnLabel: {
     fontSize: 11,
     fontWeight: 500,
-    letterSpacing: "0.08em",
+    letterSpacing: 0,
     textTransform: "uppercase",
     color: "var(--text-tertiary, #8a8f93)",
     marginBottom: 2,
@@ -366,7 +366,7 @@ const styles: Record<string, CSSProperties> = {
   subLabel: {
     fontSize: 10,
     fontWeight: 500,
-    letterSpacing: "0.06em",
+    letterSpacing: 0,
     textTransform: "uppercase",
     color: "var(--text-tertiary, #8a8f93)",
     marginTop: 8,
@@ -386,7 +386,7 @@ const styles: Record<string, CSSProperties> = {
     color: "var(--text-primary)",
   },
   sessionCardActive: {
-    border: "1px solid var(--accent-primary, #d99a45)",
+    border: "1px solid transparent",
     boxShadow: "0 0 0 1px var(--accent-primary, #d99a45), var(--shadow-card)",
   },
   sessionEmoji: {

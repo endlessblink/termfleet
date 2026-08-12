@@ -20,7 +20,7 @@ import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { stdin } from "node:process";
 import { paneSidecarPath, sidecarPath, statusDir, normalizeCwd } from "./lib/agent-status-paths.mjs";
 import { shouldWriteStatusCandidate } from "./lib/agent-status-lifecycle.mjs";
-import { durableGoalForPrompt } from "./lib/agent-status-goal.mjs";
+import { durableGoalForPrompt, isDurableGoalText, openingGoalFromPrompt } from "./lib/agent-status-goal.mjs";
 import { lifecycleFromNotification, narrationToNow, readTranscriptTail } from "./termfleet-claude-status-hook.mjs";
 
 function cleanField(value, max = 200) {
@@ -181,10 +181,17 @@ export function buildCodexSidecar(payload, prev, now = Date.now()) {
   const event = payload?.hook_event_name ?? payload?.hookEventName ?? payload?.event;
   const storedUserTask = cleanField(prev?.userTask, 220) || undefined;
   const prevUserTask = storedUserTask;
-  const prevMainTask = cleanField(prev?.mainTask, 220) || undefined;
-  const prevMainTaskSource = prev?.mainTaskSource === "plan-explanation" || prev?.mainTaskSource === "goal-task" || prev?.mainTaskSource === "opening-request"
+  const prevMainTaskSource = prev?.mainTaskSource === "goal-task" || prev?.mainTaskSource === "opening-request"
     ? prev.mainTaskSource
     : undefined;
+  const rawPrevMainTask = cleanField(prev?.mainTask, 220) || undefined;
+  const prevMainTask =
+    rawPrevMainTask &&
+    prevMainTaskSource &&
+    isDurableGoalText(rawPrevMainTask)
+      ? rawPrevMainTask
+      : undefined;
+  const effectivePrevMainTaskSource = prevMainTask ? prevMainTaskSource : undefined;
   const prevTodos = Array.isArray(prev?.todos) ? prev.todos : [];
   const base = {
     cwd,
@@ -197,11 +204,15 @@ export function buildCodexSidecar(payload, prev, now = Date.now()) {
     const submittedUserTask = promptFromPayload(payload);
     if (!submittedUserTask) return null;
     const submittedSessionId = String(payload?.session_id ?? payload?.sessionId ?? "");
+    // Older panes may predate `mainTask` but still have a substantive opening
+    // request in `userTask`; recover that durable identity before a command-like
+    // continuation such as "resume goal" overwrites the visible prompt.
+    const legacyPromptGoal = openingGoalFromPrompt(prevUserTask);
     const { startsNewSession, mainTask, mainTaskSource } =
       durableGoalForPrompt({
         prompt: submittedUserTask,
-        previousGoal: prevMainTask,
-        previousSource: prevMainTaskSource,
+        previousGoal: prevMainTask || legacyPromptGoal,
+        previousSource: effectivePrevMainTaskSource,
         previousSessionId: prev?.sessionId,
         sessionId: submittedSessionId,
       });
@@ -230,7 +241,7 @@ export function buildCodexSidecar(payload, prev, now = Date.now()) {
       now: cleanField(prev?.now) || undefined,
       narration: cleanField(prev?.narration, 90) || undefined,
       mainTask: prevMainTask,
-      mainTaskSource: prevMainTaskSource,
+      mainTaskSource: effectivePrevMainTaskSource,
       userTask: prevUserTask,
       turn,
       turnReason: cleanField(payload?.notification_type ?? payload?.notificationType, 80) || "notification",
@@ -245,26 +256,44 @@ export function buildCodexSidecar(payload, prev, now = Date.now()) {
       todos: prevTodos,
       now: waiting ? "Waiting for your input" : nowFromTodos(prevTodos) || continuationAfterAnswer(prevTodos),
       mainTask: prevMainTask,
-      mainTaskSource: prevMainTaskSource,
+      mainTaskSource: effectivePrevMainTaskSource,
       userTask: prevUserTask,
       turn: waiting ? "waiting" : "working",
       turnReason: waiting ? "operator_question" : "operator_answered",
     };
   }
 
+  // The goal tool is the authoritative user-facing mission for Codex sessions. It is
+  // distinct from update_plan: a plan step describes the route, while this objective is
+  // what the cockpit must keep showing after the agent becomes idle or waits for input.
+  if (payload?.tool_name === "create_goal") {
+    const objective = cleanField(
+      payload?.tool_input?.objective ?? payload?.tool_input?.goal ?? payload?.objective,
+      220,
+    );
+    if (!objective) return null;
+    return {
+      ...base,
+      source: "codex-goal",
+      todos: prevTodos,
+      mainTask: objective,
+      mainTaskSource: "goal-task",
+      userTask: prevUserTask,
+      now: nowFromTodos(prevTodos) || "Working toward the goal",
+      turn: "working",
+    };
+  }
+
   if (payload?.tool_name === "update_plan") {
     const todos = todosFromUpdatePlan(payload?.tool_input);
     if (todos.length === 0) return null;
-    const explanation = cleanField(payload?.tool_input?.explanation, 220);
-    const hasOpenWork = todos.some((todo) => todo.status !== "completed");
-    const durableExplanation = hasOpenWork && explanation ? explanation : undefined;
     const declaredGoal = todos
       .map((todo) => cleanField(todo?.content, 220))
       .find((content) => /^Goal:\s*\S/i.test(content))
       ?.replace(/^Goal:\s*/i, "");
     const durablePreviousGoal =
-      prevMainTaskSource === "goal-task" ||
-      prevMainTaskSource === "opening-request"
+      effectivePrevMainTaskSource === "goal-task" ||
+      effectivePrevMainTaskSource === "opening-request"
         ? prevMainTask
         : undefined;
     return {
@@ -273,15 +302,13 @@ export function buildCodexSidecar(payload, prev, now = Date.now()) {
       todos,
       now: nowFromTodos(todos),
       mainTask:
-        declaredGoal || durablePreviousGoal || durableExplanation,
+        declaredGoal || durablePreviousGoal,
       mainTaskSource:
         declaredGoal
           ? "goal-task"
           : durablePreviousGoal
-            ? prevMainTaskSource
-            : durableExplanation
-              ? "plan-explanation"
-              : undefined,
+      ? effectivePrevMainTaskSource
+            : undefined,
       userTask: prevUserTask,
       turn: "working",
     };
@@ -296,10 +323,13 @@ export function buildCodexSidecar(payload, prev, now = Date.now()) {
       ...base,
       source: "codex-narration",
       todos: prevTodos,
-      now: taskNow || narration || cleanField(prev?.now) || undefined,
+      // The response is the freshest answer to the operator's latest prompt. An older
+      // in-progress todo must not overwrite it and make the card look stuck on yesterday's
+      // work after the agent has already answered.
+      now: narration || taskNow || cleanField(prev?.now) || undefined,
       narration: narration || cleanField(prev?.narration, 90) || undefined,
       mainTask: prevMainTask,
-      mainTaskSource: prevMainTaskSource,
+      mainTaskSource: effectivePrevMainTaskSource,
       userTask: prevUserTask,
       turn: "idle",
     };
@@ -314,7 +344,7 @@ export function buildCodexSidecar(payload, prev, now = Date.now()) {
       todos: prevTodos,
       now: nowFromTodos(prevTodos) || activity,
       mainTask: prevMainTask,
-      mainTaskSource: prevMainTaskSource,
+      mainTaskSource: effectivePrevMainTaskSource,
       userTask: prevUserTask,
       turn: "working",
     };

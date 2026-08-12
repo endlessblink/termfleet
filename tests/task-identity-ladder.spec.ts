@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { resolveTaskIdentity } from "../src/lib/taskIdentity";
 import { resolvePaneNowLine, resolvePaneTaskLine } from "../src/lib/taskLine";
 import { buildTerminalHeaderState } from "../src/lib/terminalHeaderState";
+import { buildShellTerminalHeaderViewModel } from "../src/lib/terminalHeaderViewModel";
 
 const NOW = Date.parse("2026-07-22T12:00:00.000Z");
 
@@ -59,13 +60,10 @@ test("a current step cannot replace a raw complaint with a fake durable goal", (
     taskLine,
   });
 
-  expect(taskLine).toMatchObject({
-    source: "opening-request",
-    text: "low quality, and the way the sentence is gettting elongated is ugly",
-  });
-  expect(header.goalLabel).toBe(
-    "low quality, and the way the sentence is gettting elongated is ugly",
-  );
+  expect(taskLine.source).toBe("shell-state");
+  expect(taskLine.text).toBe("No task declared");
+  expect(header.goalLabel).toBe("Goal not captured");
+  expect(header.hasCapturedGoal).toBe(false);
 });
 
 test("a shell pane is no longer starved of a description", () => {
@@ -96,6 +94,73 @@ test("the rendered header shows the ladder's line, not 'Task not captured'", () 
     "Investigate e2e redirect to free content section",
   );
   expect(header.goalLabel).not.toMatch(/task not captured/i);
+});
+
+test("a recovered opening request remains visible as the Task row", () => {
+  const taskLine = resolvePaneTaskLine({
+    now: NOW,
+    facts: { openingRequest: "Keep the course landing page reliable" },
+  });
+  const header = buildTerminalHeaderState({
+    paneId: "pane-recovered-request",
+    terminalId: "pane-recovered-request",
+    liveCwd: "/repo/bina-meatzevet-courses",
+    terminalStatus: "running",
+    statusSummary: {
+      task: "Running Playwright tests",
+      now: "Running Playwright tests",
+      status: "working",
+      provider: "shell",
+      tasksFromTodoWrite: false,
+    } as never,
+    taskLine,
+  });
+
+  expect(taskLine.source).toBe("opening-request");
+  expect(header.goalLabel).toBe("Keep the course landing page reliable");
+  expect(header.hasCapturedGoal).toBe(true);
+  expect(header.currentActivity).toBe("Running Playwright tests");
+});
+
+test("a command-only recovery line stays in Now rather than becoming Task", () => {
+  const taskLine = resolvePaneTaskLine({
+    now: NOW,
+    runningCommand: "Playwright tests",
+  });
+  const header = buildTerminalHeaderState({
+    paneId: "pane-command-only",
+    terminalId: "pane-command-only",
+    liveCwd: "/repo/bina-meatzevet-courses",
+    terminalStatus: "running",
+    taskLine,
+  });
+
+  expect(taskLine.source).toBe("running-command");
+  expect(header.hasCapturedGoal).toBe(false);
+  expect(header.goalLabel).toBe("No task declared");
+});
+
+test("a real sidecar task summary restores the Task when the copied line is missing", () => {
+  const header = buildTerminalHeaderState({
+    paneId: "pane-sidecar-summary",
+    terminalId: "pane-sidecar-summary",
+    liveCwd: "/repo/bina-meatzevet-courses",
+    terminalStatus: "running",
+    statusSummary: {
+      task: "Reviewing the WhatsApp preview fix for production risks",
+      now: "Running Playwright tests",
+      status: "working",
+      provider: "shell",
+      confidence: "high",
+      tasksFromTodoWrite: true,
+      updatedAt: NOW,
+    } as never,
+  });
+
+  expect(header.goalLabel).toBe(
+    "Reviewing the WhatsApp preview fix for production risks",
+  );
+  expect(header.hasCapturedGoal).toBe(true);
 });
 
 // TC-060 R3: a pane whose saved steps are ALL completed must not keep showing the
@@ -200,4 +265,23 @@ test("a pane with no supplied line still never says 'Task not captured'", () => 
   });
   expect(busy.goalLabel).toBe("No task declared");
   expect(busy.goalLabel).not.toMatch(/task not captured/i);
+});
+
+test("a reconnected shell exposes an honest empty state instead of workspace fiction", () => {
+  const header = buildShellTerminalHeaderViewModel({
+    paneName: "bina-meatzevet-courses",
+    liveCwd: "/repo/bina-meatzevet-courses",
+    terminalStatus: "reconnected",
+    statusSummary: {
+      task: "No user task captured yet",
+      now: "Working on the current request",
+      status: "working",
+      provider: "shell",
+    } as never,
+  });
+
+  expect(header.taskDescription.text).not.toBe("No task assigned to this terminal");
+  expect(header.context.text).not.toBe("Project context: bina-meatzevet-courses · no goal set");
+  expect(header.now.text).not.toBe("Working on the current task");
+  expect(header.taskDescription.text).not.toMatch(/ready to work|supporting work/i);
 });

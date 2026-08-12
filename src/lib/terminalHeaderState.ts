@@ -17,6 +17,7 @@ import {
   resolvePaneTaskLine,
   type PaneTaskLine,
 } from "./taskLine";
+import { qualityCheckNowLabel } from "./terminalHeaderQuality";
 
 export type TerminalHeaderStatus =
   | "idle"
@@ -56,8 +57,10 @@ export interface TerminalHeaderState {
   runId?: string;
   workspace: string;
   contextLabel: string;
+  hasCapturedContext: boolean;
   userGoal: string | null;
   goalLabel: string;
+  hasCapturedGoal: boolean;
   currentActivity: string;
   fullPath: string;
   status: TerminalHeaderStatus;
@@ -73,6 +76,27 @@ export interface TerminalHeaderState {
   version: number;
   updatedAt: number;
   debug: Record<string, string | boolean | number | undefined>;
+}
+
+/** Return a current step only when it adds information beyond Task/Goal. */
+export function resolveDistinctHeaderNow(
+  task: string | null | undefined,
+  now: string | null | undefined,
+): string | undefined {
+  const candidate = now?.trim();
+  if (!candidate || !qualityCheckNowLabel(candidate).ok) return undefined;
+  const normalize = (value: string) =>
+    value
+      .toLocaleLowerCase()
+      .replace(/[^\p{L}\p{N}]+/gu, " ")
+      .trim();
+  const normalizedCandidate = normalize(candidate);
+  if (!normalizedCandidate) return undefined;
+  if (normalizedCandidate === normalize(task ?? "")) return undefined;
+  if (/^(?:Working|Ready|Idle|Awaiting next action|Working on the current task|Working on the current request|Status unavailable|Activity not captured)$/i.test(candidate)) {
+    return undefined;
+  }
+  return candidate;
 }
 
 function goalSourceFrom(
@@ -229,6 +253,19 @@ export function buildTerminalHeaderState(input: {
     input.taskLine?.source === "shell-state" && !input.taskLine.rejected
       ? null
       : input.taskLine;
+  const summaryTaskLine =
+    input.statusSummary?.tasksFromTodoWrite &&
+    input.statusSummary.task.trim() &&
+    !/^(?:Task not captured|Activity not captured|Idle|Working|Ready|Unknown)$/i.test(
+      input.statusSummary.task.trim(),
+    )
+      ? {
+          text: input.statusSummary.task.trim(),
+          source: "declared" as const,
+          capturedAt: input.statusSummary.updatedAt ?? Date.now(),
+          expiresAt: null,
+        }
+      : null;
   // A pane's line arrives from several routes (the central poll, the pane's own poll,
   // the persisted snapshot) and any single render can arrive before or between them —
   // a reattach, a pane-id switch on the map, a store rebuild. The row then flipped
@@ -256,6 +293,7 @@ export function buildTerminalHeaderState(input: {
   );
   const effectiveTaskLine =
     storedTaskLine ??
+    summaryTaskLine ??
     rememberedTaskLine ??
     resolvePaneTaskLine({
       now: Date.now(),
@@ -297,7 +335,7 @@ export function buildTerminalHeaderState(input: {
   );
   const goalLabel = view.taskDescription.text;
   const normalizedContext = view.context.text.trim().toLowerCase();
-  const normalizedActivity = view.title.text.trim().toLowerCase();
+  const normalizedActivity = view.now.text.trim().toLowerCase();
   const contextIsCaptured =
     view.context.text.trim() !== "" &&
     view.context.text.trim() !== "Context not captured" &&
@@ -318,17 +356,39 @@ export function buildTerminalHeaderState(input: {
       ? goalLabel
       : "Goal not captured";
   const resolvedContextSource: HeaderFieldSource = contextIsCaptured
-    ? view.context.source
+    ? input.statusSummary?.userTask &&
+      view.context.text.trim() === input.statusSummary.userTask.trim()
+      ? "sidecar-todo"
+      : input.statusSummary?.mainTask &&
+          view.context.text.trim() === input.statusSummary.mainTask.trim()
+        ? "sidecar-todo"
+      : input.mainUserAsk?.text &&
+          view.context.text.trim() === input.mainUserAsk.text.trim()
+        ? input.mainUserAsk.source === "terminal-prompt"
+          ? "user-prompt"
+          : input.mainUserAsk.source === "status-sidecar"
+            ? "sidecar-todo"
+            : view.context.source
+        : view.context.source
     : !goalCanBeProjectIntent
       ? "missing"
       : goalSource;
   // TC-060: the fallback line always fills the Task row, but it is NOT a declared
   // goal — the activity line must keep treating those panes as goal-less, or a
   // visibly busy terminal stops saying so.
+  // `task-line` is a transport wrapper, not a provenance category. A recovered
+  // opening request/session title is a real Task even though it crossed the
+  // task-line ladder; a running command or recent activity is still only Now.
+  const taskLineCarriesDurableIdentity = Boolean(
+    effectiveTaskLine &&
+      /^(?:declared|context-summary|opening-request|plan-purpose|session-title|operator-request)$/.test(
+        effectiveTaskLine.source,
+      ),
+  );
   const hasCapturedGoal =
     goalSource !== "none" &&
     goalSource !== "missing" &&
-    goalSource !== "task-line";
+    (goalSource !== "task-line" || taskLineCarriesDurableIdentity);
   const headerStatus = statusFromSummary(
     input.summary ?? input.statusSummary,
     input.terminalStatus,
@@ -344,15 +404,15 @@ export function buildTerminalHeaderState(input: {
     hasCapturedGoal &&
     headerStatus === "working" &&
     /^(?:Working|Thinking|Running terminal command|Command is running)$/i.test(
-      view.title.text,
+      view.now.text,
     )
-      ? "Activity not captured"
-      : view.title.text;
+      ? "Working"
+      : view.now.text;
   const activitySource =
-    currentActivity === "Activity not captured"
+    currentActivity === "Working" && view.now.text !== "Working"
       ? "missing"
-      : currentActivity === view.title.text
-        ? activitySourceFrom(view.title.source, input.trustedActivitySummary)
+      : currentActivity === view.now.text
+        ? activitySourceFrom(view.now.source, input.trustedActivitySummary)
         : "missing";
 
   return {
@@ -361,8 +421,10 @@ export function buildTerminalHeaderState(input: {
     runId: input.runId ?? input.activeRunId,
     workspace: view.workspace.text,
     contextLabel: resolvedContextLabel,
+    hasCapturedContext: contextIsCaptured,
     userGoal: hasCapturedGoal ? goalLabel : null,
     goalLabel,
+    hasCapturedGoal,
     currentActivity,
     fullPath: view.path.text,
     status: headerStatus,

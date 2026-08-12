@@ -31,7 +31,7 @@ function isThinFollowUp(value?: string) {
     .replace(/\[Image\s+#?\d+\]\s*/gi, "")
     .replace(/\s+/g, " ")
     .trim();
-  if (/^(?:Prompt submitted|go|continue|implement|ok implement|do it|this|that|these|those|both|and this|and that|the rest is good|should we add (?:it|that)|[$/][a-z][\w:-]*)\??$/i.test(text)) {
+  if (/^(?:Prompt submitted|resume goal|go|continue|implement|ok implement|do it|this|that|these|those|both|and this|and that|the rest is good|should we add (?:it|that)|[$/][a-z][\w:-]*)\??$/i.test(text)) {
     return true;
   }
   if (/^(?:it|this|that)\s+(?:doesn['’]?t|isn['’]?t|won['’]?t|can['’]?t)(?:\s*\.{2,})?$/i.test(text)) return true;
@@ -79,7 +79,18 @@ export function mainUserAskFromSummary(
   if (!text && source === "status-sidecar") return undefined;
   if (!text) return options.previous;
   if (isPromptStorm(text)) return options.previous;
-  if (isThinFollowUp(text)) return options.previous;
+  // The status hook's `userTask` is the pane's durable opening intent, not a
+  // transcript scrape. Questions such as "what does this mean?" and "why is this
+  // missing?" are valid work subjects there; only discard thin follow-ups for the
+  // other summary sources that may be momentary conversation text.
+  // Sidecar records may legitimately contain a complete question, but bare
+  // acknowledgements and command-like follow-ups are never a pane identity.
+  if (
+    isThinFollowUp(text) &&
+    (source !== "status-sidecar" || !text.endsWith("?"))
+  ) {
+    return options.previous;
+  }
   if (options.previous?.text === text && options.previous.source === source) {
     return options.previous;
   }

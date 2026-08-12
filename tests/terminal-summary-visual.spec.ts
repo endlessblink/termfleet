@@ -193,6 +193,7 @@ test("running agent identity is visible in the terminal header and sidebar", asy
 
   await expect(page.getByTestId("canvas-terminal-agent-provider")).toHaveText("GPT");
   await expect(page.getByTestId("sidebar-session-agent-provider")).toContainText("GPT");
+  await expect(page.getByTestId("sidebar-session-title")).toHaveText("Improving terminal-summary visual headers");
   await expect(page.getByTestId("canvas-terminal-agent-provider").getByTestId("agent-provider-logo-codex")).toBeVisible();
   await page.screenshot({ path: "/tmp/termfleet-agent-identity-gpt.png" });
 

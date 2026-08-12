@@ -127,7 +127,7 @@ const styles: Record<string, CSSProperties> = {
     width: "100%",
     minWidth: 0,
     height: 24,
-    border: "1px solid var(--border-focus)",
+    border: "1px solid transparent",
     borderRadius: "var(--radius-sm)",
     background: "var(--surface-raised)",
     color: "var(--text-primary)",
@@ -157,7 +157,7 @@ const styles: Record<string, CSSProperties> = {
     padding: 2,
     borderRadius: "var(--radius-sm)",
     background: "var(--surface-base)",
-    border: "1px solid var(--border-subtle)",
+    border: "1px solid transparent",
   },
   sortToggleButton: {
     height: 22,

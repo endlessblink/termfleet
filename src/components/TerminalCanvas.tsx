@@ -167,6 +167,7 @@ interface TerminalCanvasProps {
   // production default), so the status bar shows "0 ptys" and store ops that map
   // over tab.terminals (close, cwd-sync) silently no-op.
   onReady?: (ptyId: string, details: { reused: boolean }) => void;
+  onInputReady?: (input: HTMLTextAreaElement, sessionId: string) => void;
   onStatus?: (status: "starting" | "failed", details?: { error?: string }) => void;
   onOutput?: (data: string) => void;
   onInputData?: (data: string) => void;
@@ -191,6 +192,7 @@ export function TerminalCanvas({
   runtimeActive = true,
   recoveryGeneration = 0,
   onReady,
+  onInputReady,
   onStatus,
   onOutput,
   onInputData,
@@ -202,6 +204,18 @@ export function TerminalCanvas({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    const input = inputRef.current;
+    if (!input) return;
+    traceTerminalLatency("frontend.canvas.input_ready", {
+      id: sessionId,
+      tabId,
+      paneId,
+      runtimeActive,
+      mapProjection,
+    });
+    onInputReady?.(input, sessionId);
+  }, [mapProjection, onInputReady, paneId, runtimeActive, sessionId, tabId]);
   const daemonInputQueueRef = useRef<DaemonInputQueue | null>(null);
   const scrollToBottomPendingRef = useRef(false);
   const lastInputAtRef = useRef(0);
@@ -1032,6 +1046,14 @@ export function TerminalCanvas({
     input.focus({ preventScroll: true });
     claimTerminalKeyboard();
   };
+
+  useEffect(() => {
+    if (!runtimeActive) return;
+    const frame = window.requestAnimationFrame(() => {
+      focusInput();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [runtimeActive, sessionId]);
 
   const openSearch = () => {
     setSearchOpen(true);
@@ -1888,7 +1910,7 @@ export function TerminalCanvas({
             alignItems: "center",
             gap: 4,
             padding: "5px 6px",
-            border: "1px solid rgba(255,255,255,0.14)",
+  border: "1px solid transparent",
             borderRadius: 7,
             background: "rgba(23, 27, 30, 0.96)",
             boxShadow: "0 10px 28px rgba(0,0,0,0.36)",
@@ -1965,7 +1987,7 @@ export function TerminalCanvas({
             display: "flex",
             alignItems: "flex-start",
             padding: "8px 10px",
-            border: "1px solid rgba(240, 179, 106, 0.36)",
+  border: "1px solid transparent",
             borderRadius: 6,
             color: "#f0b36a",
             background: "rgba(29, 32, 34, 0.88)",

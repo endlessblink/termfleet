@@ -590,7 +590,11 @@ async function resolveTaskLineFor(
   let facts = null;
   let transcriptProvider: "claude" | "codex" | undefined;
   const sessionId =
-    typeof sidecar?.sessionId === "string" ? sidecar.sessionId : "";
+    typeof sidecar?.sessionId === "string"
+      ? sidecar.sessionId
+      : typeof input.sessionId === "string"
+        ? input.sessionId
+        : "";
   if (readTranscript && /^[0-9a-f][0-9a-f-]{7,63}$/i.test(sessionId)) {
     // `provider` is absent on most sidecars, so try both records and let the id decide.
     for (const provider of ["claude", "codex"] as const) {
@@ -676,12 +680,17 @@ async function resolveTaskLineFor(
     // The agent's own newest note. `narration` is the sentence it wrote about the work;
     // `recent` is the activity trail. Both were only ever used for the activity row, so
     // a pane with plenty to say still fell to the placeholder.
-    recentActivity: expired
-      ? null
-      : (sidecar?.narration ??
-        [...(sidecar?.recent ?? [])].reverse().find((entry) => entry?.text)
-          ?.text ??
-        null),
+    // An idle hook record is history, not current activity. Reusing its last note
+    // made finished panes claim stale work in the Now row (for example, "Consolidation
+    // complete" after the turn had already ended). Keep the note available to the
+    // summary, but only feed live turns into the Now ladder.
+    recentActivity:
+      expired || sidecar?.turn === "idle"
+        ? null
+        : (sidecar?.narration ??
+          [...(sidecar?.recent ?? [])].reverse().find((entry) => entry?.text)
+            ?.text ??
+          null),
     folder: cwd ? (cwd.split("/").filter(Boolean).pop() ?? null) : null,
   };
   // Both rows come from ONE resolution, so the second can never repeat the first.
@@ -839,10 +848,18 @@ export async function summarizeAgentStatus(
   const effectiveFallback = budget
     ? { ...providerFallback, budget }
     : providerFallback;
+  const sidecarGoal = rawSidecar?.mainTask?.trim();
+  const effectiveFallbackWithGoal = sidecarGoal
+    ? {
+        ...effectiveFallback,
+        mainTask: sidecarGoal,
+        mainTaskSource: rawSidecar?.mainTaskSource,
+      }
+    : effectiveFallback;
   const endpoint = options.endpoint ?? configuredEndpoint();
   if (!endpoint) {
     return {
-      summary: effectiveFallback,
+      summary: effectiveFallbackWithGoal,
       source: sidecarShapedFallback ? "sidecar" : "fallback",
       sidecarState,
       taskLine,
@@ -871,18 +888,34 @@ export async function summarizeAgentStatus(
           ...parsedSummary,
           task: sidecarShapedFallback.task,
           userTask: sidecarShapedFallback.userTask,
+          mainTask: sidecarShapedFallback.mainTask,
+          mainTaskSource: sidecarShapedFallback.mainTaskSource,
           now: sidecarShapedFallback.now,
           status: sidecarShapedFallback.status,
           tasks: sidecarShapedFallback.tasks,
           tasksFromTodoWrite: true,
         }
-      : parsedSummary;
+      : sidecarShapedFallback?.userTask
+        ? {
+            ...parsedSummary,
+            userTask: sidecarShapedFallback.userTask,
+            mainTask: sidecarShapedFallback.mainTask,
+            mainTaskSource: sidecarShapedFallback.mainTaskSource,
+          }
+        : parsedSummary;
+    const summaryWithSidecarGoal = sidecarGoal
+      ? {
+          ...summary,
+          mainTask: sidecarGoal,
+          mainTaskSource: rawSidecar?.mainTaskSource,
+        }
+      : summary;
     // The line rides on EVERY return path. It used to be attached only to the
     // no-endpoint branch, so any launch that configured the optional status worker
     // dropped the ladder line for every pane and the header fell back to its own
     // factless re-resolve — i.e. "No task declared".
     return {
-      summary,
+      summary: summaryWithSidecarGoal,
       source: "process",
       sidecarState,
       taskLine,

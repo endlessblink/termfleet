@@ -978,6 +978,12 @@ function loadPersistedWorkspace(): PersistedWorkspace {
         color: "#e0af68",
         groupId: "terminal-header-verifier-group",
         initialCwd: root,
+        workstream: {
+          kind: "terminal",
+          mission: "Keeping every terminal header grounded in the user’s work",
+          status: "running",
+          createdAt: now,
+        },
         terminals: [
           verifierTerminal(
             "terminal-header-verifier-prompt",
@@ -1188,12 +1194,6 @@ export async function hydrateWorkspace() {
     } catch (error) {
       console.warn("Could not list live daemon sessions:", error);
     }
-    for (const session of [...liveSessions].sort((a, b) => a.id.localeCompare(b.id))) {
-      const tab = tabFromRecoverableSession(session);
-      if (!tab || seen.has(tab.id)) continue;
-      seen.add(tab.id);
-      recovered.push(tab);
-    }
     const liveCwds = Object.fromEntries(
       liveSessions
         .filter((session): session is LiveSessionSummary & { cwd: string } => Boolean(session.cwd))
@@ -1214,6 +1214,12 @@ export async function hydrateWorkspace() {
           }),
       )).filter((entry): entry is readonly [string, string] => Boolean(entry)),
     );
+    for (const session of [...liveSessions].sort((a, b) => a.id.localeCompare(b.id))) {
+      const tab = tabFromRecoverableSession(session);
+      if (!tab || seen.has(tab.id)) continue;
+      seen.add(tab.id);
+      recovered.push(tab);
+    }
 
     // 3. Dead persisted sessions remain recoverable only when there is no saved
     //    layout at all. This preserves TC-040: intentionally closed historical
@@ -1793,14 +1799,14 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         terminalGroups: projects.groups,
         activeTabId: nextActive,
         canvasState,
+        liveCwds: nextLiveCwds,
+        liveGitRoots: nextLiveGitRoots,
         hydrating: false,
       };
     });
   },
 
   addTab: (overrides?: Partial<Tab>) => {
-        liveCwds: nextLiveCwds,
-        liveGitRoots: nextLiveGitRoots,
     const newTab = createDefaultTab(overrides);
     set((state) => {
       const tabs = [...state.tabs, newTab];

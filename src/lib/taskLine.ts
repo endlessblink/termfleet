@@ -1,6 +1,5 @@
 import {
   looksLikeSlug,
-  opensAsRequest,
   refersOnlyToExistingWork,
   startsWithRequestAction,
   type TranscriptFacts,
@@ -8,6 +7,7 @@ import {
 import {
   qualityCheckAuthoritativeTaskLabel,
   qualityCheckUserAskLabel,
+  readsAsActivity,
   stripComposerChrome,
 } from "./terminalHeaderQuality";
 import { truncateAtWordBoundary } from "./textTruncation";
@@ -270,6 +270,11 @@ export function resolvePaneNowLine(
     if (!value) return null;
     if (value.toLowerCase() === goal) return null;
     if (!readsPlainly(value)) return null;
+    // Now is a statement of work in progress or a completed outcome, never an
+    // instruction copied from a plan ("Check the remote") or a prompt event
+    // ("Prompt submitted"). Reject those here so the header falls back to the
+    // truthful lifecycle state instead of presenting stale instructions as live work.
+    if (!readsAsActivity(value)) return null;
     return { text: value, source, capturedAt: now, expiresAt };
   };
 
@@ -349,10 +354,28 @@ export function resolvePaneTaskLine(input: TaskLineInput): PaneTaskLine {
   // dive" and left the card showing the agent's own session slug (report 2026-07-28).
   // Readability rules still apply in full: length, code, paths, commands, pastes,
   // harness blocks, slash commands, bare acknowledgements.
-  const readsAsAsk = (text: string): boolean =>
-    qualityCheckUserAskLabel(text, { maxLength: TASK_LINE_MAX }).ok &&
-    !UNREADABLE.test(text) &&
-    !SYSTEM_BLOCK.test(text);
+  const readsAsAsk = (text: string): boolean => {
+    // A concrete user question can be the work itself ("Is there a free tool I
+    // can use for this?"), while a bare clarification/correction must not become
+    // a durable goal. Keep the shared gate strict for the latter, but evaluate a
+    // concrete question without its sentence punctuation.
+    const candidate = text.replace(/\?+$/, "").trim();
+    if (/^(?:what does (?:this|it) mean|what now|what changed|why no free content|how is this|where is)\b/i.test(candidate)) {
+      return false;
+    }
+    if (
+      /^(?:let['’]?s|we should)\s+continue\b/i.test(candidate) ||
+      /^continue from where we left off\b/i.test(candidate) ||
+      candidate.toLowerCase().startsWith("continue previous coding session")
+    ) {
+      return false;
+    }
+    return (
+      qualityCheckUserAskLabel(candidate, { maxLength: TASK_LINE_MAX }).ok &&
+      !UNREADABLE.test(text) &&
+      !SYSTEM_BLOCK.test(text)
+    );
+  };
 
   const considerAsk = (candidate: string | null | undefined): string | null => {
     const value = candidate?.trim();
@@ -375,8 +398,9 @@ export function resolvePaneTaskLine(input: TaskLineInput): PaneTaskLine {
     if (!value) return null;
     const direct = considerAsk(value);
     if (direct) return direct;
+    const lengthCheckText = value.replace(/\?+$/, "").trim();
     if (
-      qualityCheckUserAskLabel(value, { maxLength: TASK_LINE_MAX }).reason !==
+      qualityCheckUserAskLabel(lengthCheckText, { maxLength: TASK_LINE_MAX }).reason !==
       "too-long"
     )
       return null;
@@ -421,7 +445,9 @@ export function resolvePaneTaskLine(input: TaskLineInput): PaneTaskLine {
         rejected,
       };
     }
-    const planPurpose = consider(facts.planPurpose);
+    const planPurpose = facts.planPurpose && readsAsAsk(facts.planPurpose)
+      ? facts.planPurpose.trim()
+      : null;
     if (planPurpose) {
       return {
         text: planPurpose,
@@ -447,13 +473,13 @@ export function resolvePaneTaskLine(input: TaskLineInput): PaneTaskLine {
     // The operator's OPENING ask is the durable source of intent. Vendor-generated
     // titles can mutate into slugs or completion reports as a session progresses, so
     // they may summarize a goal only when the original request is unavailable.
-    const opening = considerLongAsk(
-      stripComposerChrome(
-        input.mainGoalSource === "opening-request"
-          ? (opensAsRequest(input.mainGoal ?? undefined) ? input.mainGoal : null)
-          : facts.openingRequest,
-      ),
-    );
+    const explicitOpening =
+      input.mainGoalSource === "opening-request"
+        ? considerAsk(stripComposerChrome(input.mainGoal))
+        : null;
+    const opening =
+      explicitOpening ??
+      considerLongAsk(stripComposerChrome(facts.openingRequest));
     if (opening) {
       return {
         text: opening,
@@ -518,7 +544,13 @@ export function resolvePaneTaskLine(input: TaskLineInput): PaneTaskLine {
     }
     // A slug is the agent's own words, just written for a machine. Spacing it out is
     // formatting, not invention — and it is only ever reached when nothing above spoke.
-    const title = consider(deslug(facts.title));
+    const desluggedTitle = deslug(facts.title);
+    const title =
+      desluggedTitle &&
+      (desluggedTitle.toLowerCase().startsWith("continue previous coding session") ||
+        desluggedTitle.toLowerCase().startsWith("continue from where we left off"))
+        ? null
+        : consider(desluggedTitle);
     if (title) {
       return {
         text: title,

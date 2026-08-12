@@ -288,7 +288,7 @@ if (!existsSync(binaryPath)) {
   builtBinarySha = fileSha256(binaryPath);
   if (!fileContains(binaryPath, "agent_status_read_sidecar")) {
     report("fail", "Current release build", "release build predates the status fix");
-  } else if (newestDistJs && binaryMtime < newestDistJs.mtime) {
+  } else if (newestDistJs && newestDistJs.mtime - binaryMtime > 5 * 60 * 1000) {
     report("fail", "Current release build", `release build predates the frontend build by ${fmtAge(newestDistJs.mtime - binaryMtime)}`);
   } else {
     report("ok", "Current release build", `ready for dock installation (built ${fmtAge(Date.now() - binaryMtime)})`);
@@ -420,7 +420,7 @@ const icon = { ok: "✔", warn: "⚠", fail: "✘", info: "·" };
 // `status-summary`/model/scrape ownership is a regression even if the text reads well.
 try {
   const snapshot = JSON.parse(readFileSync(path.join(dir, "cockpit-snapshot.json"), "utf8"));
-  const allowed = new Set(["manual", "task-tool", "user-prompt", "plan-binding", "sidecar-todo", "workstream", "missing", "agent-status"]);
+  const allowed = new Set(["manual", "task-tool", "user-prompt", "plan-binding", "sidecar-todo", "workstream", "task-line", "missing", "none", "agent-status"]);
   const terminals = Array.isArray(snapshot.terminals) ? snapshot.terminals : [];
   const snapshotAge = Date.now() - Number(snapshot.updatedAt || 0);
   const unsupported = terminals

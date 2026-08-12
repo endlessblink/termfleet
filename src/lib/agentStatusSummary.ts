@@ -18,6 +18,9 @@ export interface AgentStatusSummaryInput {
   // Stable per-terminal id. When present the status request prefers the pane-keyed
   // sidecar, so two terminals in the same cwd keep independent status. (TC-035)
   paneId?: string;
+  // A workstream can retain the provider conversation even when its pane sidecar
+  // was lost during a reconnect; use it to recover the opening request directly.
+  sessionId?: string;
   mission?: string;
   prompt?: string;
   userTask?: string;
@@ -388,6 +391,12 @@ function fallbackNow(input: AgentStatusSummaryInput, task: string, status: Agent
   return `Working on ${task}`;
 }
 
+function isInternalPlanLabel(value?: string | null) {
+  const text = cleanText(value) ?? "";
+  return /^(?:Writing|Testing|Verifying|Checking|Reviewing|Tracing|Running|Investigating|Auditing)\b/i.test(text) ||
+    /\b(?:selected file|map surface|approval state|test suite|regression)\b/i.test(text);
+}
+
 export function fallbackAgentStatusSummary(input: AgentStatusSummaryInput): AgentStatusSummary {
   const lines = transcriptLines(input);
   const commandSummary = shellCommandSummary(input);
@@ -404,13 +413,18 @@ export function fallbackAgentStatusSummary(input: AgentStatusSummaryInput): Agen
     (mission && mission !== "Terminal" ? mission : undefined) ??
     cleanText(input.prompt);
   const readyTask = promptVisible && !transcriptTask && !commandSummary ? "Ready" : undefined;
-  const task =
+  const candidateTask =
     promptSummary?.task ??
     readyTask ??
     explicitUserTask ??
     commandSummary?.task ??
     transcriptTask ??
     "Supervised agent run";
+  const task = isInternalPlanLabel(candidateTask)
+    ? (explicitUserTask && !isInternalPlanLabel(explicitUserTask)
+        ? explicitUserTask
+        : "Task not captured")
+    : candidateTask;
   const narrationStep = currentNarrationStep(input.terminalVisibleText);
   const rawStatus = promptSummary ? "waiting" : promptVisible && task === "Ready" ? "idle" : normalizeLifecycle(input);
   // A live narration bullet proves the agent is working right now — never report

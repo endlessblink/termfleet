@@ -168,21 +168,22 @@ const checks = [
     message: "MagicCanvas must import the real terminal renderer.",
   },
   {
-    ok: /const linkedPaneTerminalId = linkedTab\?\.terminals\.find\(\s*\(terminal\) => terminal\.paneId === terminalPaneId,?\s*\)\?\.id;/.test(magicCanvas) &&
-      /const linkedTerminalId = linkedPaneTerminalId \?\? linkedTab\?\.terminals\[0\]\?\.id;/.test(magicCanvas) &&
-      !/const linkedTerminalId = linkedPaneTerminalId \?\? node\.terminalPtyId/.test(magicCanvas),
-    message: "Map terminals must attach to the active pane runtime PTY when one exists.",
+    ok: /const linkedTerminal = linkedTab\?\.terminals\.find\(\s*\(terminal\) => terminal\.id === node\.terminalPtyId,?/.test(magicCanvas) &&
+      /terminal\.paneId === node\.id/.test(magicCanvas) &&
+      /terminal\.paneId === linkedTab\.activePaneId/.test(magicCanvas),
+    message: "Map terminals must attach to the live PTY represented by each map card, with safe fallbacks.",
   },
   {
     ok: /const terminalTabId = linkedTab\?\.id \?\? `canvas-\$\{node\.id\}`;/.test(magicCanvas),
     message: "Standalone map terminals must use a stable browser/runtime session id.",
   },
   {
-    ok: /const terminalPaneId =\s*linkedTab\?\.activePaneId \?\? linkedTab\?\.terminals\[0\]\?\.paneId \?\? node\.id;/.test(magicCanvas),
-    message: "Linked map terminals must share the active terminal pane identity (node.id only as last resort, never over an existing pane).",
+    ok: /const terminalPaneId =\s*linkedTerminal\?\.paneId \?\? linkedTab\?\.activePaneId \?\? node\.id;/.test(magicCanvas) &&
+      /const targetPaneId = currentTerminal\?\.paneId \?\? terminalPaneId;/.test(magicCanvas),
+    message: "Connect must preserve the map card's pane identity instead of silently switching to the active pane.",
   },
   {
-    ok: /<TerminalComponent[\s\S]*tabId=\{terminalTabId\}[\s\S]*paneId=\{terminalPaneId\}[\s\S]*attachToPtyId=\{linkedTerminalId \?\? null\}[\s\S]*standalone/.test(magicCanvas),
+    ok: /<TerminalComponent[\s\S]*tabId=\{terminalTabId\}[\s\S]*paneId=\{terminalPaneId\}[\s\S]*attachToPtyId=\{connectedTerminalId \?\? linkedTerminalId \?\? null\}[\s\S]*standalone/.test(magicCanvas),
     message: "Terminal map nodes must render a live TerminalComponent.",
   },
   {
@@ -282,12 +283,13 @@ const checks = [
     ok: /function TerminalMapPreview/.test(magicCanvas) &&
       /data-terminal-map-preview="state-shape"/.test(magicCanvas) &&
       /const READABLE_TERMINAL_ZOOM = 1;/.test(magicCanvas) &&
-      /const showTerminalPreview = node\.type === "terminal" && zoom < READABLE_TERMINAL_ZOOM;/.test(magicCanvas) &&
+      /const connectionActive = connectedTerminalId !== null;/.test(magicCanvas) &&
+      /node\.type === "terminal" &&[\s\S]*zoom < READABLE_TERMINAL_ZOOM[\s\S]*!connectionActive/.test(magicCanvas) &&
       // Viewport culling: a terminal node mounts a live renderer only when it is
       // readable-zoom AND in the live set (in viewport / selected, capped). The
       // rest fall back to the truthful preview even at readable zoom. The live
       // set must be computed and threaded to each node.
-      /const shouldMountTerminal = node\.type === "terminal" && live && !showTerminalPreview;/.test(magicCanvas) &&
+      /const shouldMountTerminal = node\.type === "terminal" &&[\s\S]*\(live \|\| connectionActive\)[\s\S]*!showTerminalPreview;/.test(magicCanvas) &&
       /const MAX_LIVE_TERMINALS = \d+;/.test(magicCanvas) &&
       /const liveNodeIds = useMemo\(/.test(magicCanvas) &&
       /const selectedTerminalNodeId = selectedIds\.find/.test(magicCanvas) &&

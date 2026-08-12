@@ -14,6 +14,53 @@ test("accepts concise operator-readable task and activity labels", () => {
   expect(qualityCheckActivityLabel("Inspecting header quality rules").ok).toBe(true);
 });
 
+test("rejects release choreography as a durable goal", () => {
+  expect(
+    qualityCheckAuthoritativeTaskLabel("Committing, tagging, and pushing the candidate")
+      .ok,
+  ).toBe(false);
+});
+
+test("rejects installed-pane audit choreography as a durable goal", () => {
+  for (const label of [
+    "Re-auditing the current implementation and live state before the final installed/rendered gate.",
+    "Re-audit live pane records and capture sources",
+  ]) {
+    expect(qualityCheckAuthoritativeTaskLabel(label), label).toMatchObject({ ok: false, reason: "vague" });
+  }
+});
+
+test("rejects clarification questions as durable goals", () => {
+  for (const label of [
+    "what does it mean in practice?",
+    "why no free content appears when entering the site signed in?",
+  ]) {
+    expect(qualityCheckUserAskLabel(label)).toMatchObject({
+      ok: false,
+      reason: "prompt-fragment",
+    });
+  }
+});
+
+test("rejects operator frustration and repeated-letter complaints as durable goals", () => {
+  for (const complaint of [
+    "you are working for hours with nothing to show for it",
+    "whyyyyyyyyyyyyyyyyyy are you failingggggggggggggggggggggggggggggggg",
+    "you are working for hourssssssssssssssssss",
+  ]) {
+    expect(qualityCheckUserAskLabel(complaint), complaint).toMatchObject({
+      ok: false,
+      reason: "prompt-fragment",
+    });
+  }
+});
+
+test("rejects agent control commands from the visible activity line", () => {
+  expect(qualityCheckActivityLabel("Using update_goal").ok).toBe(false);
+  expect(qualityCheckActivityLabel("Calling update_plan").ok).toBe(false);
+  expect(qualityCheckAuthoritativeTaskLabel("make this a goal").ok).toBe(false);
+});
+
 test("rejects vendor template placeholders as goals", () => {
   expect(qualityCheckUserAskLabel("Implement {feature}")).toMatchObject({
     ok: false,
@@ -79,12 +126,40 @@ test("rejects restored raw tool names from the visible Now line", () => {
     ok: false,
     reason: "implementation-detail",
   });
+  expect(
+    qualityCheckNowLabel("Using mcp__plugin_context-mode_context-mode__ctx_execute"),
+  ).toMatchObject({ ok: false });
+  expect(qualityCheckNowLabel("Running a command")).toMatchObject({ ok: false });
 });
 
 test("rejects stretched prompt text from the permanent Task title", () => {
   expect(
     qualityCheckAuthoritativeTaskLabel("what are you doinggggggggggggggggggggg"),
   ).toMatchObject({ ok: false, reason: "prompt-fragment" });
+});
+
+test("rejects short feedback, completion chrome, and prompt echoes as durable identity", () => {
+  for (const label of [
+    "another fail",
+    "update that to the goal",
+    "Goal achieved (1h 26m)",
+    "Goal stalled (/goal resume)",
+    "> Act as an independent reviewer",
+  ]) {
+    expect(qualityCheckUserAskLabel(label), label).toMatchObject({ ok: false });
+    expect(qualityCheckAuthoritativeTaskLabel(label), label).toMatchObject({ ok: false });
+  }
+});
+
+test("rejects hook lifecycle and first-person narration from Now", () => {
+  for (const label of [
+    "UserPromptSubmit hook (completed)",
+    "SessionStart hook (completed)",
+    "My repair is correct but currently sitting on the branch",
+  ]) {
+    expect(qualityCheckNowLabel(label), label).toMatchObject({ ok: false });
+    expect(qualityCheckActivityLabel(label), label).toMatchObject({ ok: false });
+  }
 });
 
 test("rejects agent footer metrics from every visible header field", () => {

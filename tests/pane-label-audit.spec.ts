@@ -10,8 +10,11 @@ import { expect, test } from "@playwright/test";
 import { summaryFromSidecar } from "../src/lib/agentStatusSidecar";
 import { buildTerminalHeaderState } from "../src/lib/terminalHeaderState";
 import { resolvePaneTaskLine } from "../src/lib/taskLine";
-import { qualityCheckAuthoritativeTaskLabel } from "../src/lib/terminalHeaderQuality";
-import { qualityCheckUserAskLabel } from "../src/lib/terminalHeaderQuality";
+import {
+  qualityCheckAuthoritativeTaskLabel,
+  qualityCheckNowLabel,
+  qualityCheckUserAskLabel,
+} from "../src/lib/terminalHeaderQuality";
 import { opensAsRequest } from "../src/lib/sessionTranscript";
 
 /**
@@ -148,6 +151,12 @@ function headerFor(
           now: Date.now(),
           mainGoal:
             typeof sidecar.mainTask === "string" ? sidecar.mainTask : null,
+          mainGoalSource:
+            sidecar.mainTaskSource === "opening-request" ||
+            sidecar.mainTaskSource === "goal-task" ||
+            sidecar.mainTaskSource === "plan-explanation"
+              ? sidecar.mainTaskSource
+              : null,
           currentStep:
             todos.find((todo) => todo.status === "in_progress")?.content ??
             null,
@@ -251,10 +260,12 @@ test("every pane on this machine renders a readable Task row and Now Active line
       // "/dropoff", "$done", "continue" or "make all high" genuinely has no task to
       // state, and the placeholder is the honest answer there — demanding otherwise
       // would push the header back into inventing text.
-      const sayable = (value: unknown) =>
+      const sayable = (value: unknown, source?: unknown) =>
         typeof value === "string" &&
         value.trim().length > 0 &&
-        qualityCheckAuthoritativeTaskLabel(value.trim()).ok;
+        (source === "opening-request"
+          ? qualityCheckUserAskLabel(value.trim(), { maxLength: 150 }).ok
+          : qualityCheckAuthoritativeTaskLabel(value.trim()).ok);
       // The Task row is the GOAL row (operator's layout, 2026-07-28: goal on top, what
       // the pane is doing under it). So only goal-shaped content obliges it to speak: a
       // request that names work, or an explicitly declared main task. A task list is a
@@ -262,7 +273,7 @@ test("every pane on this machine renders a readable Task row and Now Active line
       // what produced changing, vague headlines like "Updating the plan".
       const sidecarKnowsSomething =
         usableAsk(String(sidecar.userTask ?? "")) ||
-        sayable(sidecar.mainTask);
+        sayable(sidecar.mainTask, sidecar.mainTaskSource);
       // The goal row may honestly say nothing when the record holds only steps and
       // reactions — the pane's moment is stated on the second row instead. It is only an
       // offence when the record holds a real REQUEST or a declared goal.
@@ -280,7 +291,11 @@ test("every pane on this machine renders a readable Task row and Now Active line
       if (/^[a-z0-9]+(?:[-_][a-z0-9]+){1,}$/.test(task.trim())) {
         offenders.push(`${id} [${mode}]: slug as the Task row -> ${task}`);
       }
-      if (!HONEST_FALLBACKS.has(now) && NON_ACTIVITY_SHAPE.test(now)) {
+      if (
+        !HONEST_FALLBACKS.has(now) &&
+        NON_ACTIVITY_SHAPE.test(now) &&
+        !qualityCheckNowLabel(now).ok
+      ) {
         offenders.push(
           `${id} [${mode}]: non-activity-shape as Now Active -> ${now}`,
         );

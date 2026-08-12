@@ -1,15 +1,124 @@
 # MASTER_PLAN.md - termfleet
 
-> **2026-08-11 map reconnect correction:** Map-card **Connect terminal** now stays on
-> the map, selects the linked node/pane/PTTY, and mounts the live renderer even when
-> the card was not already selected. The action no longer routes through split mode;
-> **Open full terminal** remains the explicit split-view action. The focused map
-> regression, `npm run build`, `npm run verify:map-terminals`, `npm run release:install`,
-> `npm run verify:installed-release`, `npm run verify:installed-restart`, and
-> `git diff --check` passed. Release `5054401780be-e0659ac4664f` was promoted and
-> restarted successfully; direct dock click proof remains a manual visual follow-up.
+> **2026-08-12 publication-readiness verification:** Fixed the live trusted-command
+> title path so durable activity such as `Testing checkout flow` remains visible on
+> map cards, updated stale browser expectations to the current Task/Goal/Now contract,
+> and made color assertions browser-portable. Fresh focused map proof passed 5/5;
+> `npm run build`, `npm run verify:canvas-all` (74/74), `npm run verify:map-terminals`,
+> `CARGO_BUILD_JOBS=1 cargo check`, OSS readiness, public audit, and `git diff --check`
+> passed. The real dock release was promoted and verified with installed checksum
+> `26005120284f797920a83ff4c7a579debb1313721604283f6dd9f62298586cee`; installed
+> restart passed with a live window and zero external terminals, and `npm run doctor`
+> returned `DOCTOR_OK`. `npm run verify:release` reached the full canvas suite but the
+> wrapper exceeded its five-minute orchestration timeout; its one isolated flaky map
+> case passed alone, while clean-environment installation remains UNVERIFIED.
+
+> **2026-08-12 gamification completion:** The header progress control now explains
+> exactly how points are earned (+25 per unique tracked goal and +10 per new peak of
+> live terminals), shows levels and achievement criteria, supports Escape and reset
+> of only local reward progress, and animates reward pulses/toasts with reduced-motion
+> support. Reward definitions are derived from real task and terminal state; there is
+> no seeded demo score or mock user content. The focused gamification suite passed 6/6,
+> `npm run build`, `npm run verify:map-terminals`, and `git diff --check` passed, and
+> the promoted installed release plus restart smoke passed with a real window and daemon
+> socket. A live visual click-through is UNVERIFIED because no TermFleet window was open
+> in the shell display session; the new header control is ready for the next dock launch.
+
+> **2026-08-12 gamification header redesign:** Progress moved from the bottom
+> infrastructure status bar into a discoverable top-header `Lv N / points` trigger.
+> The panel explains lifetime levels, completed goals, peak terminals, achievements,
+> point rules, keyboard dismissal, and reduced-motion-compatible reward feedback.
+> Focused scoring tests (3/3), header browser interaction (1/1), `npm run build`,
+> `npm run verify:map-terminals`, `git diff --check`, release promotion, and
+> installed restart smoke passed. A live screenshot capture was UNVERIFIED because
+> no visible TermFleet window was available in the shell display session.
+
+> **2026-08-12 gamification visibility correction:** The local scoring slice was
+> promoted into the installed release after the first subtle trophy-only treatment
+> was not visible enough. The status bar now reads `Progress · <points> pts ·
+> <goals> goals · peak <terminals>`, and focused gamification tests, frontend build,
+> installed-release verification, and installed restart smoke passed.
+
+> **2026-08-12 project identity and emoji correction:** Saved panes now resolve live
+> CWD and Git roots before startup reconciliation. Broad generated `DATA` groups are
+> treated as containers, duplicate leaf names are disambiguated with their parent
+> folder, and generated emojis avoid duplicates. The final cold-start regression passed
+> 4/4, the frontend build passed, and the latest installed release is
+> `a4ab5d4e7fd6-584ac8a72919` with SHA-256
+> `584ac8a7291966f9961ceef022f2213a4136dfceb09b68c0e2295dc44248c741`.
+> Isolated restart verification passed with zero external terminals; the real dock
+> launcher then persisted separate project groups for `resolve-align`, `jobrunner`,
+> `cc-linux-enhancments`, and `recreational`, each with its own emoji, and no broad
+> `data` group remained. `npm run verify:map-terminals` and `git diff --check` passed.
+
+> **2026-08-12 local gamification slice:** Added explainable, local-only progress
+> scoring: 25 points per uniquely completed task and a 10-point high-water mark
+> per simultaneous live terminal, surfaced in the status bar. Focused Playwright
+> coverage (2 tests), `npm run build`, `npm run verify:map-terminals`, and
+> `git diff --check` passed. Release promotion was initially blocked by an unrelated
+> detector process, then succeeded after it cleared. Final `npm run build`, map
+> verification, installed-release verification, and installed restart smoke passed.
+> The broader project-reconciliation suite is 17/18 because one existing emoji
+> expectation still asserts the pre-uniqueness value.
+
+> **2026-08-12 agent task progress indicator:** Agent task sidebars now show live
+> completed-task progress in map cards and split panes. Empty task lists remain
+> explicitly unavailable. `npm run build`, the structured progress regression,
+> and the focused map task-list regression passed; two broader agent-workstream
+> checks remain affected by existing fixture/sidebar timing drift.
+
+> **2026-08-11 Task/Goal/Now provenance correction:** `update_plan.explanation` no longer
+> becomes a durable pane Task/Goal. Legacy `plan-explanation` records are no longer trusted,
+> and rejected complaints cannot become a `Working toward:` Goal fallback. The exact failure
+> sentence and the internal installed-pane audit wording have focused regressions. Fresh proof:
+> 104 status/header tests passed, the 85-test `verify:task-line` suite passed,
+> `npm run verify:terminal-headers-live-all` passed all 4 live terminals with no failures,
+> `npm run audit:panes` passed, the installed release/restart passed, and the fresh live card
+> screenshot set hashes are recorded in the verifier output (`02-all-terminals.png`:
+> `dfd13b19a47c84ea3fd80c32718fbb8dc5c2b9c958fcacfcac73e8bf6658b051`). The broader
+> typography audit now passes. The promoted installed release is
+> `70e07244f923-8f5e757e92d9` with SHA-256
+> `8f5e757e92d9f1bcab5e65553980ebfa71d67eecb78fdaae8f614ef3610ba190`; installed
+> restart passed with a real TermFleet window and zero external terminals.
+
+> **2026-08-11 installed-window proof:** The stale desktop process was replaced by the
+> promoted release through the production desktop wrapper. The doctor now reports
+> DOCTOR_OK, the pane audit passed, and a fresh screenshot of the current installed
+> window was captured at 1200x800 with SHA-256
+> 9cd2c71dd3a79557760f6a34ad584404befe263409cf8defb16a249184438f4d.
+> The rendered shell card visibly contains Task, Goal, Now, workspace, and full path;
+> missing user context is stated explicitly rather than invented.
+
+> **2026-08-11 map reconnect correction:** Map-card **Connect terminal** now resolves
+> the card's own live pane/PTy at click time, explicitly attaches that PTY, and restores
+> its input focus; inactive cards no longer connect the tab's active pane. The focused
+> inactive-pane interaction regression, `npm run verify:map-terminals`, `npm run build`,
+> `npm run release:install`, `npm run verify:installed-release`, and
+> `npm run verify:installed-restart` passed. `APP_BUDGET=300 CANVAS_LIVE_OUT=/media/endlessblink/data/.dev-tmp/endlessblink/termfleet-canvas-live npm run verify:canvas-live`
+> passed the real typed shell command through the daemon and captured live Canvas2D repaint evidence.
 
 > **2026-08-11 map-card context correction:** Goal now prefers the captured user goal, then project context, then a real task fallback, so cards no longer say “Project intent not captured” when the goal is visible elsewhere. Running panes show `Working` when no richer current step exists; build, focused browser regressions, map source checks, installed-release verification, and installed restart passed. A full legacy visual-file run still has unrelated expectation drift against the newer Task/Now contract.
+
+> **2026-08-11 live map Task recovery correction:** The status poll now mirrors recovered
+> task lines into agent workstreams, restores real Todo-backed summaries when the copied
+> line is absent, and falls back to the workstream's provider conversation ID when a pane
+> sidecar was lost during reconnect. Focused coverage passed for the split-brain map case,
+> sidecar-summary recovery, and missing-sidecar transcript recovery; the installed release
+> was rebuilt and relaunched for the live map gate.
+
+> **2026-08-11 live identity gates:** A new fresh-trace gate now rejects stale evidence and
+> fails every pane missing a readable Task, Goal, or useful Now. The all-visible-terminal live
+> verifier runs that gate against its own trace; the first red run exposed missing fixture Goal
+> provenance and an unhelpful idle Now, both corrected. Fresh proof: 4 terminals passed the
+> existing source/path checks and `LIVE_TASK_GOAL_NOW_OK terminals=4 ageMs=2789`; the focused
+> 56-test recovery suite and frontend build also passed. Installed release verification remains
+> open after this correction.
+
+> **2026-08-11 installed Task/Goal/Now gate closed:** Workspace-scoped identity now remains
+> visible for live, stale, reconnected, and sidecar-missing panes, while real conversation
+> text remains preferred. Fresh dock-launched evidence passed `LIVE_TASK_GOAL_NOW_OK terminals=25
+> ageMs=866` after installed restart; the focused recovery suite passed 57 tests, the
+> four-terminal live verifier passed, and installed release plus restart smoke passed.
 
 > **⏯️ AFTER RESTART — DO THIS FIRST (TC-035, updated 2026-06-23).**
 >
@@ -7757,6 +7866,23 @@ dock was relaunched; OCR of the real dock capture contains current Now lines and
 no `make this a goal`, `Goal not captured`, or `Project intent not captured` text.
 Live capture SHA-256: `e7fa4b0ec3f1c4411c288880f2bb71799b63941edd470cf73440925eb176c35d`.
 
+## 2026-08-11 — Remove the last missing-goal leak from dock sidebars
+
+The first installed correction still left one Workbench sidebar path using the
+raw goal label when no goal was captured, which could reintroduce `Goal not
+captured` in the real dock. Session summaries and tooltips now use the durable
+goal only when its provenance says it is captured; otherwise they show current
+state, while the main and map headers keep missing Task/Goal rows absent.
+
+**Evidence:** cockpit row stability passed 11/11; the focused goal-management,
+release-choreography, and missing-goal guards passed; `npm run build` and
+`git diff --check` passed. Release `a51dcd086931-5059f1b9c1d0` was promoted
+with binary SHA-256
+`5059f1b9c1d0b6100accb881e99d60a7d939ed1157ac824a5103608c6c3164b7`; the
+canonical dock was relaunched; `npm run doctor` ended `DOCTOR_OK`. Real dock OCR
+found no `Goal not captured` or `Project intent not captured`; capture SHA-256:
+`46132a15fb8b40eda1173a93950293089c53cec17a6a2bd25eb40d31ff281f29`.
+
 ## 2026-08-11 — Make agent chat reconnect visible in the terminal menu
 
 Codex and Claude panes now expose a dedicated `Reconnect this chat` section in
@@ -7772,3 +7898,48 @@ it into a terminal to reopen this chat`; clicking it copied
 `9df12d2d0d4efbe0a4c026e150e900199e21ba0afbe6439a2f209f96eb0203b2`.
 `npm run build` passed; installed release restart passed with binary SHA-256
 `0e4fe34f473a2568d47d91b8d0475cb7db1c098aa9f4df9cc60d20c3ed69fcc8`.
+
+## 2026-08-11 — Transfer terminal panel colors to the session list
+
+The terminal label color picker now updates the linked tab accent together with
+the map label, so the chosen color remains visible when the operator returns to
+the sessions list. The sidebar uses that shared accent on the session row while
+preserving the existing status and task text.
+
+**Evidence:** the focused browser regression passed; `npm run build` passed;
+`npm run verify:map-terminals` passed; `npm run release:install` promoted
+release `a51dcd086931-4c257dac5843` with binary SHA-256
+`4c257dac5843e454b09614dcc4ee2db88066ee36527ced0ce06cd0a754d51c82`;
+`npm run verify:installed-release` and `npm run verify:installed-restart` passed;
+`git diff --check` passed.
+
+## 2026-08-11 — Make map session rows easier to scan
+
+Session rows now lead with the captured work goal when one exists instead of
+repeating the workspace name. Panel colors remain visible as restrained identity
+rails rather than full-row fills, and the sidebar no longer animates layout
+padding when actions appear.
+
+**Evidence:** the focused sidebar identity regression passed; `tests/project-rail.spec.ts`
+passed 3/3; `npm run build`, `npm run verify:map-terminals`, `git diff --check`,
+and the design detector passed. The full terminal-summary visual file remains
+partially blocked by 11 existing header-fixture failures unrelated to this
+sidebar change; 5/16 tests passed in that run.
+
+Follow-up visual correction: adjacent session rows now have a measured 6px gap,
+so colored identity rails cannot visually merge into one continuous panel edge.
+The focused regression failed before the spacing change and passed afterward;
+the full project-rail suite passed 3/3, the focused sidebar visual passed, and
+the production build, detector, and diff checks passed.
+
+## 2026-08-12 — Separate sidebar session surfaces
+
+Session rows now use a distinct low-contrast raised surface in addition to the
+6px gap, so each panel color remains contained to one session instead of reading
+as a continuous edge through the sidebar.
+
+**Evidence:** the new rendered surface regression failed before the change and
+passed afterward; `tests/project-rail.spec.ts` passed 3/3; the focused sidebar
+visual and `npm run verify:map-terminals` passed; the design detector and
+`git diff --check` passed. `npm run build` is blocked by an unrelated existing
+TypeScript error in workspace state handling.

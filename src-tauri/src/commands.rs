@@ -1697,6 +1697,52 @@ pub fn fs_write_file(path: String, contents: String) -> Result<(), String> {
     fs::write(path, contents).map_err(|error| error.to_string())
 }
 
+/// Persist the rendered cockpit identity from the installed WebView without relying on
+/// a helper HTTP server being present. The frontend payload is already bounded to the
+/// visible panes; keep the write inside TermFleet's own agent-status directory.
+#[tauri::command]
+pub fn cockpit_snapshot_write(contents: String) -> Result<(), String> {
+    use std::io::Write;
+    const MAX_TRACE_BYTES: u64 = 25 * 1024 * 1024;
+
+    // Older dock windows can outlive a release restart and still call this command.
+    // They must not reintroduce the retired synthetic identity contract into the
+    // shared snapshot that the verifier and the current dock read.
+    if contents.contains("Working toward:")
+        || contents.contains("Ready to work in the ")
+        || contents.contains("Supporting work in the ")
+        || contents.contains("Ready to receive work in ")
+    {
+        return Ok(());
+    }
+
+    let root = crate::pty::data_root_dir()
+        .ok_or_else(|| "Could not resolve data directory".to_string())?
+        .join("agent-status");
+    fs::create_dir_all(&root).map_err(|error| error.to_string())?;
+    let snapshot = root.join("cockpit-snapshot.json");
+    let temporary = root.join("cockpit-snapshot.json.tmp");
+    fs::write(&temporary, contents.as_bytes()).map_err(|error| error.to_string())?;
+    fs::rename(&temporary, &snapshot).map_err(|error| error.to_string())?;
+
+    let trace = root.join("cockpit-header-trace.jsonl");
+    let incoming_bytes = contents.len() as u64 + 1;
+    if fs::metadata(&trace)
+        .map(|metadata| metadata.len().saturating_add(incoming_bytes) > MAX_TRACE_BYTES)
+        .unwrap_or(false)
+    {
+        let previous = root.join("cockpit-header-trace.jsonl.1");
+        let _ = fs::remove_file(&previous);
+        fs::rename(&trace, &previous).map_err(|error| error.to_string())?;
+    }
+    let mut file = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(trace)
+        .map_err(|error| error.to_string())?;
+    writeln!(file, "{contents}").map_err(|error| error.to_string())
+}
+
 /// Path of the durable workspace-layout mirror. Lives next to the per-session
 /// scrollback so the tab→session mapping survives a localStorage wipe (verifier
 /// `RESET_STATE`, dev↔release origin change, browser data clear).

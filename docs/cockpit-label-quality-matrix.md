@@ -24,9 +24,10 @@ The Task row's wording is the operator's own (2026-07-25): _"it needs to underst
 main goal — the task is what is being done in relation to what the user asked for."_ That
 is why the operator's ask outranks the momentary step, and why the folder name — which
 answers neither half of that sentence — is not an acceptable answer at all. With nothing
-known the row says **"No task declared"** or **"Goal not captured"** when a rejected
-process step is still active: still never blank, but visibly a gap rather than filler
-that reads like content or a false idle state.
+known, the UI must preserve that absence as state: it must not turn **"No task declared"**
+or **"Goal not captured"** into the visible Task value. The Task/Goal rows are omitted
+when their sources are missing; the current status and Now line remain visible so a gap
+in capture cannot masquerade as user work.
 
 **The activity line is defined POSITIVELY.** It must read as an action in progress
 ("Locating the master frame reference") or a stated outcome ("Fixed the compressor
@@ -60,6 +61,7 @@ missed the longest, because every junk-shape check passes it.
 | B4 stale scraped guess       | `Building Rust backend` still shown after the build ended               | A command-derived guess expires with the command. Once status is unavailable it must not be the title      |
 | B5 echo                      | Task and Now Active identical                                           | One of them must say something new, or the second is hidden                                                |
 | B6 regression step with a product object | `Adding a regression for folder detection`                    | Keep the named object as `Keeping folder detection reliable`; keep the regression work on Now              |
+| B7 plan explanation promoted as goal | `Re-auditing the current implementation before the installed/rendered gate` | Plan explanations are internal route notes; only an explicit user goal or `Goal:` item may persist as Task/Goal |
 
 ## Class C — unreadable to a non-developer
 

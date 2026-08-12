@@ -19,7 +19,7 @@ import {
   statusDir,
 } from "./lib/agent-status-paths.mjs";
 import { shouldWriteStatusCandidate } from "./lib/agent-status-lifecycle.mjs";
-import { durableGoalForPrompt } from "./lib/agent-status-goal.mjs";
+import { durableGoalForPrompt, isDurableGoalText } from "./lib/agent-status-goal.mjs";
 
 const TASK_EVENT_TOOLS = new Set(["TaskCreate", "TaskUpdate"]);
 
@@ -341,10 +341,10 @@ export function narrationToNow(text) {
     .trim();
   if (!clean) return "";
   // A completed response's hand-off checklist describes what the operator may do
-  // next; it is not what the pane is doing now.
-  if (/(?:^|[.!?]\s+)(?:Next\s+steps|Steps)\s*[-:]/i.test(clean)) return "";
+  // next; keep the answer before it, rather than falling back to an old active step.
+  const answerOnly = clean.split(/(?:^|[.!?]\s+)(?:Next\s+steps|Steps)\s*[-:]/i, 1)[0].trim();
   // Split into sentences and keep substantive ones (drop terse fragments / pure status).
-  const sentences = clean
+  const sentences = answerOnly
     .split(/(?<=[.!?])\s+/)
     .map((sentence) => sentence.trim())
     .filter(
@@ -445,9 +445,18 @@ async function main() {
   const filePath = statusFilePath(cwd);
   const prevAtStart = readExistingSidecar(filePath);
   const submittedUserTask = userTaskFromPayload(payload);
-  const previousMainTask = cleanField(prevAtStart?.mainTask, 220) || undefined;
-  const previousMainTaskSource = prevAtStart?.mainTaskSource === "plan-explanation" || prevAtStart?.mainTaskSource === "goal-task" || prevAtStart?.mainTaskSource === "opening-request"
+  const previousMainTaskSource = prevAtStart?.mainTaskSource === "goal-task" || prevAtStart?.mainTaskSource === "opening-request"
     ? prevAtStart.mainTaskSource
+    : undefined;
+  const rawPreviousMainTask = cleanField(prevAtStart?.mainTask, 220) || undefined;
+  const previousMainTask =
+    rawPreviousMainTask &&
+    previousMainTaskSource &&
+    isDurableGoalText(rawPreviousMainTask)
+      ? rawPreviousMainTask
+      : undefined;
+  const effectivePreviousMainTaskSource = previousMainTask
+    ? previousMainTaskSource
     : undefined;
   let sidecar;
   if (payload.hook_event_name === "UserPromptSubmit") {
@@ -458,7 +467,7 @@ async function main() {
       durableGoalForPrompt({
         prompt: userTask,
         previousGoal: previousMainTask,
-        previousSource: previousMainTaskSource,
+        previousSource: effectivePreviousMainTaskSource,
         previousSessionId: prevAtStart?.sessionId,
         sessionId: submittedSessionId,
       });
@@ -548,7 +557,7 @@ async function main() {
     const declaredGoal = declaredGoalText(goalTodo?.content);
     sidecar.todos = sidecar.todos.filter((todo) => !declaredGoalText(todo?.content));
     sidecar.mainTask = declaredGoal || previousMainTask;
-    sidecar.mainTaskSource = declaredGoal ? "goal-task" : previousMainTaskSource;
+  sidecar.mainTaskSource = declaredGoal ? "goal-task" : effectivePreviousMainTaskSource;
     if (sidecar.todos.length === 0) process.exit(0);
   } else if (TASK_EVENT_TOOLS.has(payload.tool_name)) {
     // Modern task tools: fold this TaskCreate/TaskUpdate into the stateful list.

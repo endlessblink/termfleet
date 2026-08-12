@@ -54,6 +54,7 @@ import {
   completeOpenTaskLineupForRun,
   mergeShellSummaryTaskLineup,
   normalizeTaskLineupItems,
+  shouldApplyGatedShellStatus,
   taskLineupFromExtractedItems,
   terminalOutputClosesTaskLineup,
 } from "../lib/taskLineup";
@@ -553,6 +554,7 @@ interface TerminalProps {
   attachToPtyId?: string | null;
   standalone?: boolean;
   runtimeActive?: boolean;
+  onCanvasInputReady?: (input: HTMLTextAreaElement, sessionId: string) => void;
   onActivate?: () => void;
   onSnapshot?: (snapshot: GridSnapshot) => void;
   /**
@@ -582,6 +584,7 @@ export function TerminalComponent({
   attachToPtyId,
   standalone = false,
   runtimeActive = true,
+  onCanvasInputReady,
   onActivate,
   onSnapshot,
   renderScale = 1,
@@ -858,8 +861,11 @@ export function TerminalComponent({
         if (!latestTab) return;
         if (
           gatedShellPane &&
-          result.source !== "sidecar" &&
-          !contextualResult
+          !shouldApplyGatedShellStatus({
+            source: result.source,
+            hasNarration: contextualResult,
+            hasAuthoritativeTaskList: Boolean(result.summary.tasksFromTodoWrite),
+          })
         ) {
           // TC-060: the heuristic SUMMARY stays gated (it produced junk headers),
           // but the task line is provenance-checked and can never invent text, so
@@ -1012,7 +1018,8 @@ export function TerminalComponent({
                     shouldCloseRunFromTranscript &&
                     !result.summary.tasksFromTodoWrite
                       ? {
-                          task: "Idle",
+                          task: result.summary.userTask ?? "Idle",
+                          userTask: result.summary.userTask,
                           path: liveCwd ?? cwd ?? result.summary.path,
                           now: "Idle",
                           status: "idle",
@@ -1035,8 +1042,19 @@ export function TerminalComponent({
                       result.source !== "sidecar")
                       ? candidate.statusSummary
                       : result.summary);
+                  const recoveredStatusSummary =
+                    candidate.mainUserAsk?.text?.trim() &&
+                    /^(?:Status unavailable|Task not captured|Activity not captured)$/i.test(
+                      nextStatusSummary.task.trim(),
+                    )
+                      ? {
+                          ...nextStatusSummary,
+                          task: candidate.mainUserAsk.text.trim(),
+                          userTask: candidate.mainUserAsk.text.trim(),
+                        }
+                      : nextStatusSummary;
                   const mainUserAsk = mainUserAskFromSummary(
-                    nextStatusSummary,
+                    recoveredStatusSummary,
                     "status-sidecar",
                     {
                       previous: candidate.mainUserAsk,
@@ -1056,7 +1074,7 @@ export function TerminalComponent({
                   }
                   return {
                     ...candidate,
-                    statusSummary: nextStatusSummary,
+                    statusSummary: recoveredStatusSummary,
                     // TC-060: the always-true line for this pane. A fresh line that is
                     // only the folder template must NOT replace a real one we already
                     // have — that overwrite is what made the template stick (2026-07-25).
@@ -2466,6 +2484,7 @@ export function TerminalComponent({
             runtimeActive={runtimeActive}
             recoveryGeneration={recoveryGeneration}
             onReady={handleReady}
+            onInputReady={onCanvasInputReady}
             onStatus={handleStatus}
             onOutput={handleOutput}
             onInputData={captureSubmittedInput}

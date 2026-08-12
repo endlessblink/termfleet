@@ -81,7 +81,8 @@ test("fleet list tasks reserve two readable lines without changing height", () =
   expect(style).toMatch(/WebkitLineClamp:\s*2/);
   expect(style).toMatch(/height:\s*"2\.8em"/);
   expect(style).not.toMatch(/whiteSpace:\s*"nowrap"/);
-  expect(sidebar).toContain("truncateAtWordBoundary(header.goalLabel, 52)");
+  expect(sidebar).toContain("header.hasCapturedGoal");
+  expect(sidebar).toContain("truncateAtWordBoundary");
 });
 
 test("the card shows the goal on top and the moment under it, always", () => {
@@ -98,24 +99,45 @@ test("the card shows the goal on top and the moment under it, always", () => {
   ).not.toContain("Now Active:");
 
   const nowRow = magicCanvas.slice(
-    magicCanvas.indexOf('data-testid="canvas-terminal-node-task-row"') - 400,
+    magicCanvas.indexOf('data-testid="canvas-terminal-node-now-row"'),
   );
   expect(nowRow.slice(0, 1600)).toContain(">\n                Now:\n              <");
-  // Reserved, never unmounted: an empty second row must not change the card's height.
-  expect(nowRow.slice(0, 1600)).toMatch(/visibility: terminalHeaderNowRowVisible/);
+  expect(nowRow.slice(0, 1600)).toContain("terminalHeaderNowRowVisible");
 });
 
-test("a missing goal still renders an explicit Task row instead of hiding it", () => {
-  expect(magicCanvas).toContain('terminalHeader.sources.goal === "missing"');
-  expect(magicCanvas).toContain("Waiting for a clear goal");
-  expect(magicCanvas).toContain("const terminalHeaderHasTask = true;");
+test("cards do not rename missing values or manufacture a task-shaped Now row", () => {
+  expect(magicCanvas).toContain("const terminalHeaderTaskDescription = terminalHeader.goalLabel");
+  expect(magicCanvas).toContain("const terminalHeaderContextDescription = terminalHeader.contextLabel");
+  expect(magicCanvas).not.toContain('"No task assigned to this terminal"');
+  expect(magicCanvas).not.toContain("`Working on: ${terminalHeaderTaskDescription}`");
+});
+
+test("a missing goal does not render a fabricated Task or Goal row", () => {
+  expect(magicCanvas).toContain("terminalHeader.contextLabel");
+  expect(magicCanvas).not.toContain("No task assigned to this terminal");
+  expect(magicCanvas).not.toContain("Project context: ${terminalHeader.workspace} · no goal set");
 });
 
 test("map cards keep the broad Goal separate from the specific Task and Now rows", () => {
   expect(magicCanvas).toContain("terminalHeaderContextDescription");
   expect(magicCanvas).toContain('data-testid="canvas-terminal-node-goal"');
   expect(magicCanvas).toContain("Goal:");
-  expect(magicCanvas).toContain("terminalHeaderHasContext");
+  expect(magicCanvas).toContain("terminalHeader.contextLabel");
+});
+
+test("map cards explain missing context without inventing a task or goal", () => {
+  expect(magicCanvas).toContain("terminalHeader.contextLabel");
+  expect(magicCanvas).not.toContain("No task assigned to this terminal");
+  expect(magicCanvas).not.toContain("Project context: ${terminalHeader.workspace} · no goal set");
+  expect(magicCanvas).not.toContain("`Working on: ${terminalHeaderTaskDescription}`");
+});
+
+test("map cards reject tool and prompt chrome from the Now row", () => {
+  expect(magicCanvas).toContain("restoredNowIsSettled");
+  expect(magicCanvas).toContain("const settledNow = restoredNowIsSettled ? restoredNow : \"\";");
+  expect(magicCanvas).toContain("resolveDistinctHeaderNow");
+  expect(magicCanvas).toContain("const distinctLiveStep = resolveDistinctHeaderNow");
+  expect(magicCanvas).toContain("const distinctCandidate = resolveDistinctHeaderNow");
 });
 
 test("split terminal headers show a compact stable Goal line when context exists", () => {
@@ -125,6 +147,11 @@ test("split terminal headers show a compact stable Goal line when context exists
   expect(splitPane).toContain(">\n                            Goal\n");
   expect(splitPane).toContain('headerContext !== "Context not captured"');
   expect(splitPane).toContain("contextSource");
+});
+
+test("split headers never promote a missing-goal placeholder into the Task row", () => {
+  expect(splitPane).toContain("shellHeader?.contextLabel");
+  expect(splitPane).not.toContain("Project context:");
 });
 
 test("agent split headers keep the live work, broad goal, and current moment legible together", () => {

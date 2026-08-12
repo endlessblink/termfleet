@@ -275,6 +275,9 @@ export interface WorkstreamStatusSummary {
   // Main operator/user ask for this terminal or agent run. This is distinct from
   // `task`, which is the current activity/title summary.
   userTask?: string;
+  /** Explicit sidecar goal, kept separate from the current task/activity line. */
+  mainTask?: string;
+  mainTaskSource?: "plan-explanation" | "goal-task" | "opening-request";
   // True only when the status hook observed a completed `$done` or `/done` turn.
   // Kept separate from lifecycle because a completed turn is also correctly Idle.
   completedByCommand?: boolean;

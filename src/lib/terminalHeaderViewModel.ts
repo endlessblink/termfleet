@@ -790,7 +790,7 @@ export function buildShellTerminalHeaderViewModel(input: {
   // header while the agent has visibly moved on.
   const ladderIsLiveWork =
     input.taskLine != null &&
-    /^(?:declared|context-summary|opening-request|plan-purpose|session-title|operator-request|pending-question|agent-said|current-tool|completed-task|recent-activity)$/.test(
+    /^(?:declared|context-summary|opening-request|session-title|operator-request|pending-question|agent-said|current-tool|completed-task|recent-activity)$/.test(
       input.taskLine.source,
     );
   // TC-060 "always show the main plan": the Task row is meant to answer "what is
@@ -799,7 +799,7 @@ export function buildShellTerminalHeaderViewModel(input: {
   // in-progress step — the step still surfaces on the Now Active line below.
   const ladderIsMainPlan =
     input.taskLine != null &&
-    /^(?:declared|context-summary|opening-request|plan-purpose|session-title|operator-request|pending-question)$/.test(
+    /^(?:declared|context-summary|opening-request|session-title|operator-request|pending-question)$/.test(
       input.taskLine.source,
     );
   // A GOAL always outranks a step, whatever produced the step. The old condition only
@@ -816,7 +816,16 @@ export function buildShellTerminalHeaderViewModel(input: {
       !activePlanItem &&
       ladderIsLiveWork) ||
       (ladderIsMainPlan && declaredIdentity.source !== "manual"));
-  const taskIdentity = preferLadder
+  const sidecarGoalWithActiveStep = Boolean(
+    input.statusSummary?.mainTask && activePlanItem,
+  );
+  const taskIdentity = sidecarGoalWithActiveStep
+    ? {
+        text: activePlanItem!.content,
+        rawText: activePlanItem!.content,
+        source: "task-tool" as const,
+      }
+    : preferLadder
     ? {
         text: input.taskLine!.text,
         rawText: input.taskLine!.text,
@@ -841,7 +850,10 @@ export function buildShellTerminalHeaderViewModel(input: {
     /^(?:operator-request|opening-request|pending-question)$/.test(
       input.taskLine?.source ?? "",
     );
-  const identityTaskQuality = identityTaskDescriptionText
+  const identityTaskIsPlaceholder = /^(?:No user task captured yet|No task declared|Task not captured|Goal not captured|No active work|Activity not captured)$/i.test(
+    identityTaskDescriptionText ?? "",
+  );
+  const identityTaskQuality = identityTaskDescriptionText && !identityTaskIsPlaceholder
     ? identityIsUserAsk
       ? qualityCheckUserAskLabel(identityTaskDescriptionText)
       : qualityCheckAuthoritativeTaskLabel(identityTaskDescriptionText)
@@ -964,15 +976,32 @@ export function buildShellTerminalHeaderViewModel(input: {
     livePath,
     fallbackNow,
   );
+  const recoveredShellWithoutIdentity =
+    !taskDescriptionText &&
+    !input.taskLine &&
+    (input.terminalStatus === "running" ||
+      input.terminalStatus === "reconnected" ||
+      input.terminalStatus === "stale");
+  const recoveredShellActivity =
+    recoveredShellWithoutIdentity
+      ? input.statusSummary?.now &&
+        qualityCheckNowLabel(input.statusSummary.now).ok &&
+        !/^Working on the current request$/i.test(input.statusSummary.now)
+        ? input.statusSummary.now
+        : undefined
+      : undefined;
   const hasTrustedContext =
     hasRealTask ||
     hasUserTask ||
     hasStatusTask ||
     Boolean(input.trustedActivitySummary) ||
-    Boolean(liveNarration);
-  const rawNow = hasTrustedContext
-    ? sanitizeTerminalHeaderNow(summary.now, livePath, fallbackNow)
-    : fallbackNow;
+    Boolean(liveNarration) ||
+    Boolean(recoveredShellActivity);
+  const rawNow = recoveredShellActivity
+    ? recoveredShellActivity
+    : hasTrustedContext
+      ? sanitizeTerminalHeaderNow(summary.now, livePath, fallbackNow)
+      : fallbackNow;
   const now =
     contextualActivityForTask(rawNow, taskText ?? userTaskText) ?? rawNow;
   const activeTaskTitle = taskText ?? userTaskText;
@@ -1026,6 +1055,7 @@ export function buildShellTerminalHeaderViewModel(input: {
     !hasStatusTask &&
     !input.trustedActivitySummary &&
     !liveNarration &&
+    !recoveredShellActivity &&
     base.status === "working" &&
     input.neutralTitle !== "Idle";
   const title = hasRealTask
@@ -1097,12 +1127,14 @@ export function buildShellTerminalHeaderViewModel(input: {
     !isSupervisedMetaProcessActivity(now),
   );
   const preGuardTitle = missingActivity
-    ? "Activity not captured"
+    ? base.status === "working" || input.activelyWorking
+      ? "Working"
+      : "Awaiting next action"
     : // A rejected title candidate falls back to an honest status word — never
       // to the noisy "Activity not captured" label (that reads as breakage).
       lowQualityTitle
       ? (concreteTaskActivity ??
-        (noCapturedWorkingActivity ? "Activity not captured" : fallbackNow))
+        (noCapturedWorkingActivity ? "Working" : fallbackNow))
       : candidateReadableTitle;
   // No pane may say the same thing on the Task row and the title.
   // A pane that has a task but no distinct current step says so honestly, rather
@@ -1112,7 +1144,7 @@ export function buildShellTerminalHeaderViewModel(input: {
     : hasRealTask || hasUserTask || hasStatusTask
       ? "Awaiting next action"
       : base.status === "working" && input.neutralTitle !== "Idle"
-        ? "Activity not captured"
+        ? "Working"
         : fallbackNow;
   const readableTitle = headerTextsEquivalent(
     preGuardTitle,
@@ -1121,12 +1153,14 @@ export function buildShellTerminalHeaderViewModel(input: {
     ? equivalentTitleFallback
     : preGuardTitle;
   const readableNow = missingActivity
-    ? "Activity not captured"
+    ? base.status === "working" || input.activelyWorking
+      ? "Working"
+      : "Awaiting next action"
     : lowQualityNow
       ? metaProcessNow || isSupervisedMetaProcessActivity(now)
         ? "Working"
         : noCapturedWorkingActivity
-          ? "Activity not captured"
+          ? "Working"
           : fallbackNow
       : candidateReadableNow;
   const titleBeforeLengthGuard =
@@ -1254,12 +1288,28 @@ export function buildShellTerminalHeaderViewModel(input: {
   const displayTaskDescription = taskDescriptionText
     ? qualifyAmbiguousLabel(taskDescriptionText, workspace)
     : undefined;
-  const contextCandidate = [input.workstreamTitle, input.contextPurposeTitle]
+  // A pane can have a durable user request without a separately declared project
+  // goal. Give that request an explicit, clearly secondary Goal presentation so the
+  // operator can understand the pane's purpose instead of seeing an empty row.
+  // Context must come from a captured durable goal, never from the workspace name or
+  // the current task. A project with no goal remains explicitly uncaptured.
+  const contextCandidate = [
+    input.statusSummary?.mainTask,
+    input.statusSummary?.userTask,
+    mainUserAskApplies ? input.mainUserAsk?.text : undefined,
+    input.workstreamTitle,
+    input.contextPurposeSource === "inferred" ? null : input.contextPurposeTitle,
+  ]
     .map((value) => compactHeaderGoal(value))
     .find((value) => {
       if (!value) return false;
       return (
-        qualityCheckAuthoritativeTaskLabel(value).ok &&
+        (value === input.statusSummary?.mainTask ||
+        value === input.statusSummary?.userTask || value === input.mainUserAsk?.text
+          ? qualityCheckUserAskLabel(value).ok
+          : qualityCheckAuthoritativeTaskLabel(value).ok) &&
+        !/^(?:Writing|Testing|Verifying|Checking|Reviewing|Tracing|Running|Investigating|Auditing|Documenting|Recording)\b/i.test(value) &&
+        !/\b(?:selected file|map surface|approval state|pilot gates?|test suite|regression)\b/i.test(value) &&
         !isSupervisedMetaProcessTask(value) &&
         !isSupervisedMetaProcessActivity(value)
       );
@@ -1268,12 +1318,10 @@ export function buildShellTerminalHeaderViewModel(input: {
     ? qualifyAmbiguousLabel(contextCandidate, workspace)
     : undefined;
   const displayTitle = qualifyAmbiguousLabel(guardedTitle, workspace);
-  const effectiveTaskDescription = displayTaskDescription ?? displayContext;
+  const effectiveTaskDescription =
+    displayTaskDescription;
   const taskDescriptionIsUsable = Boolean(effectiveTaskDescription);
   const rejectedTaskDescription = Boolean(rejectedIdentityTaskText);
-  const rejectedMetaProcessTask = isSupervisedMetaProcessTask(
-    rejectedIdentityTaskText,
-  );
 
   return {
     workspace: { text: workspace, source: "workspace" },
@@ -1287,9 +1335,7 @@ export function buildShellTerminalHeaderViewModel(input: {
         text:
           effectiveTaskDescription ??
           (rejectedTaskDescription
-            ? rejectedMetaProcessTask
-              ? "Goal not captured"
-              : "What should change?"
+            ? "Goal not captured"
             : noActiveWork
               ? "No active work"
               : "No task declared"),
@@ -1300,7 +1346,12 @@ export function buildShellTerminalHeaderViewModel(input: {
         : "neutral",
     },
     title: {
-      text: noActiveWork ? "Ready for next task" : displayTitle,
+      text:
+        noActiveWork && recoveredShellWithoutIdentity
+          ? "Waiting for a task or command"
+          : noActiveWork
+            ? "Ready for next task"
+            : displayTitle,
       source: missingActivity
         ? "missing"
         : lowQualityTitle && replacementActivity
@@ -1322,7 +1373,12 @@ export function buildShellTerminalHeaderViewModel(input: {
       source: "status-summary",
     },
     now: {
-      text: noActiveWork ? "Ready for next task" : readableNow,
+      text:
+        noActiveWork && recoveredShellWithoutIdentity
+          ? "Waiting for a task or command"
+          : noActiveWork
+            ? "Ready for next task"
+            : readableNow,
       source: missingActivity
         ? "missing"
         : lowQualityNow && replacementActivity

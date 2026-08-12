@@ -1,6 +1,20 @@
 import type { AgentStatusSummarizerResult } from "./agentStatusSummarizer";
 import type { TerminalState } from "./types";
+import type { Tab } from "./types";
 import { stableAgentProvider } from "./agentProviderIdentity";
+
+export function mirroredWorkstream(
+  tab: Tab,
+  taskLine: TerminalState["taskLine"] | null | undefined,
+  taskLineup?: TerminalState["taskLineup"],
+) {
+  if (!tab.workstream || (!taskLine && !taskLineup)) return tab.workstream;
+  return {
+    ...tab.workstream,
+    ...(taskLine ? { taskLine } : {}),
+    ...(taskLineup && taskLineup.length > 0 ? { taskLineup } : {}),
+  };
+}
 
 function statusPollProjectionFingerprint(terminal: TerminalState) {
   return JSON.stringify({
@@ -66,11 +80,11 @@ export function projectStatusPollResult(
   const knownTask = terminal.statusSummary?.task?.trim();
   const lastRealTask =
     knownTask &&
-    !/^(?:Task not captured|Activity not captured|Idle|Working|Ready|Unknown)$/i.test(
+    !/^(?:Task not captured|Activity not captured|Status unavailable|Idle|Working|Ready|Unknown)$/i.test(
       knownTask,
     )
       ? knownTask
-      : undefined;
+      : terminal.mainUserAsk?.text?.trim() || undefined;
 
   return {
     agentProvider: stableAgentProvider(

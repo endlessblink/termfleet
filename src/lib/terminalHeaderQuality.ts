@@ -46,7 +46,7 @@ function looksLikeCommand(text: string) {
     /^Running:\s*(?:sleep|sed|tr|awk|grep|rg|npm|pnpm|yarn|node|npx|git|gh|curl|python(?:3)?|cargo)\b/i.test(
       text,
     ) ||
-    /\bmcp__[a-z0-9_]+__[a-z0-9_]+\b/i.test(text) ||
+    /\bmcp__[a-z0-9_-]+__[a-z0-9_-]+\b/i.test(text) ||
     /(?:&&|\|\||\s;\s|\|\s*\w|>\s*\S|<\s*\S|`[^`]+`|\$\(|\${)/.test(text)
   );
 }
@@ -191,6 +191,16 @@ function looksLikePromptFragment(text: string) {
   );
 }
 
+function looksLikeLifecycleOrReviewText(text: string) {
+  return (
+    /^>\s*/.test(text) ||
+    /^(?:another\s+fail|again|update\s+that\s+to\s+the\s+goal)$/i.test(text) ||
+    /^Goal\s+(?:achieved|stalled|resumed|paused)\b/i.test(text) ||
+    /^(?:SessionStart|UserPromptSubmit|PreToolUse|PostToolUse)\s+hook\b/i.test(text) ||
+    /^(?:I|We|My|Our)\s+/i.test(text)
+  );
+}
+
 // Pasted source code (a JS snippet once became a pane's Task row). Requires BOTH a
 // code keyword AND code punctuation so prose like "Update the const declaration"
 // stays accepted.
@@ -280,11 +290,12 @@ export function isSupervisedMetaProcessTask(value?: string | null) {
 }
 
 function looksLikeMetaProcessTask(text: string) {
-  const processLead = /^(?:adding|applying|building|checking|centering|choosing|confirming|covering|creating|entering|fixing|handling|improving|locking|preserving|promoting|rebuilding|reducing|reject(?:ing)?|refreshing|running|testing|updating|verifying|writing)\b/i.test(
+  if (/^make\s+this\s+a\s+goal$/i.test(text)) return true;
+  const processLead = /^(?:adding|applying|auditing|building|checking|centering|centralizing|choosing|confirming|covering|creating|entering|fixing|handling|improving|locking|preserving|promoting|re-?audit(?:ing)?|rebuilding|re-?checking|reducing|reject(?:ing)?|refreshing|re-?running|running|testing|updating|verifying|writing)\b/i.test(
     text,
   );
   const internalObject =
-    /\b(?:proof(?:[- ]checks?)?|regression\s+tests?|visual\s+gate|fail-closed|local\s+server\s+workflow|task(?:\s+line)?\s+verification|verification\s+wording|fallback|user-facing|with\s+tests?|tests?\s+and\s+task\s+records?|approved\s+deployment|approved\s+three-card\s+layout|one-card\s+sections?|responsive\s+text\s+layout|editor\s+and\s+responsive|quality\s+(?:guard|matrix)|task\s+(?:wording|label))\b/i.test(
+    /\b(?:capture\s+sources?|live\s+panes?|proof(?:[- ]checks?)?|regression\s+tests?|visual\s+gate|fail-closed|installed(?:\s*\/\s*rendered)?\s+gate|local\s+server\s+workflow|task(?:\s+line)?\s+verification|task\s+goal(?:\s+and\s+now)?|terminal\s+state\s+ownership|verification\s+wording|fallback|user-facing|with\s+tests?|tests?\s+and\s+task\s+records?|approved\s+deployment|approved\s+three-card\s+layout|one-card\s+sections?|responsive\s+text\s+layout|editor\s+and\s+responsive|quality\s+(?:guard|matrix)|task\s+(?:wording|label))\b/i.test(
       text,
     );
   const knownConcreteEmailGoal =
@@ -303,6 +314,9 @@ function looksLikeMetaProcessTask(text: string) {
       text,
     ) ||
     /^confirming\b.*\b(?:task\s+records?|deployment\s+evidence)\b/i.test(text) ||
+    /^(?:committing|tagging|pushing|publishing)\b.*\b(?:candidate|release|branch|changes?)\b/i.test(
+      text,
+    ) ||
     /^choos(?:e|ing)\s+(?:a\s+)?useful\s+fallback\s+for\s+rejected\s+task\s+wording$/i.test(
       text,
     ) ||
@@ -351,6 +365,9 @@ function looksLikeMetaProcessTask(text: string) {
 }
 
 function looksLikeMetaProcessActivity(text: string) {
+  if (/^(?:using|calling|running)\s+(?:update_goal|create_goal|update_plan)$/i.test(text)) {
+    return true;
+  }
   const processLead = /^(?:adding|building|checking|centering|confirming|creating|entering|preserving|publishing|reducing|rejecting|reviewing|running|testing|verifying|writing)\b/i.test(
     text,
   );
@@ -404,6 +421,25 @@ function baseQuality(
 ): HeaderQualityResult {
   const text = clean(value);
   if (!text) return { ok: false, reason: "empty" };
+  if (looksLikeLifecycleOrReviewText(text))
+    return { ok: false, reason: "prompt-fragment" };
+  // A failure report or correction of the cockpit itself is conversation context,
+  // not the durable work the pane is about. Keep it out of Task so the header cannot
+  // turn "hard fail" / "not enough context" into the user's stated goal.
+  if (
+    /(?:hard fail|low quality|not enough context|not understanding|fully failing|didn['’]?t fix|didn['’]?t work|what you said .* false)/i.test(
+      text,
+    ) ||
+    /^task\s+descrip\w*\s+is\s+(?:still\s+)?(?:super\s+)?broken\b/i.test(text) ||
+    /for the (?:millionth|hundredth) time/i.test(text) ||
+    /\bworking\s+for\s+hour/i.test(text) ||
+    /nothing\s+to\s+show\s+for\s+it/i.test(text) ||
+    /(\p{L})\1{5,}/u.test(text) ||
+    /^(?:you['’]?re|you are)\s+right\b|^(?:i['’]?m|i am|i['’]?m sorry|i apologize)\b|^honest\s+status\b/i.test(text) ||
+    /\b(?:display boundary|defense[- ]in[- ]depth|meta[- ]feedback|capture path)\b/i.test(text)
+  ) {
+    return { ok: false, reason: "prompt-fragment" };
+  }
   if (looksLikeTerminalStatusBar(text))
     return { ok: false, reason: "terminal-chrome" };
   if (looksLikePromptFragment(text))
@@ -435,6 +471,25 @@ export function qualityCheckUserAskLabel(
 ): HeaderQualityResult {
   const text = clean(value);
   if (!text) return { ok: false, reason: "empty" };
+  if (looksLikeLifecycleOrReviewText(text))
+    return { ok: false, reason: "prompt-fragment" };
+  // A question is a request for clarification, not the durable work concept.
+  // Keep it in the conversation/status stream so Task remains an outcome.
+  if (text.endsWith("?")) return { ok: false, reason: "prompt-fragment" };
+  if (
+    /(?:hard fail|low quality|not enough context|not understanding|fully failing|didn['’]?t fix|didn['’]?t work|what you said .* false)/i.test(
+      text,
+    ) ||
+    /^task\s+descrip\w*\s+is\s+(?:still\s+)?(?:super\s+)?broken\b/i.test(text) ||
+    /for the (?:millionth|hundredth) time/i.test(text) ||
+    /\bworking\s+for\s+hour/i.test(text) ||
+    /nothing\s+to\s+show\s+for\s+it/i.test(text) ||
+    /(\p{L})\1{5,}/u.test(text) ||
+    /^(?:you['’]?re|you are)\s+right\b|^(?:i['’]?m|i am|i['’]?m sorry|i apologize)\b|^honest\s+status\b/i.test(text) ||
+    /\b(?:display boundary|defense[- ]in[- ]depth|meta[- ]feedback|capture path)\b/i.test(text)
+  ) {
+    return { ok: false, reason: "prompt-fragment" };
+  }
   if (looksLikeTerminalStatusBar(text))
     return { ok: false, reason: "terminal-chrome" };
   if (text.length > (options.maxLength ?? 96))
@@ -519,6 +574,8 @@ export function qualityCheckAuthoritativeTaskLabel(
 ): HeaderQualityResult {
   const text = clean(value);
   if (!text) return { ok: false, reason: "empty" };
+  if (looksLikeLifecycleOrReviewText(text))
+    return { ok: false, reason: "prompt-fragment" };
   if (looksLikeTerminalStatusBar(text))
     return { ok: false, reason: "terminal-chrome" };
   if (text.length > (options.maxLength ?? 96))
@@ -819,6 +876,9 @@ export function qualityCheckNowLabel(
   value?: string | null,
 ): HeaderQualityResult {
   const text = clean(value);
+  if (looksLikeLifecycleOrReviewText(text)) {
+    return { ok: false, reason: "prompt-fragment" };
+  }
   if (looksLikeMetaProcessActivity(text)) {
     return { ok: false, reason: "vague" };
   }
@@ -833,7 +893,7 @@ export function qualityCheckNowLabel(
   }
   if (isPlaceholderActivity(text)) return { ok: false, reason: "vague" };
   if (
-    /^(?:Working|Thinking|Ready|Activity not captured|Awaiting terminal output|Running terminal command|Command is running)$/i.test(
+    /^(?:Working|Thinking|Ready|Activity not captured|Awaiting terminal output|Running terminal command|Running a command|Command is running)$/i.test(
       text,
     )
   ) {

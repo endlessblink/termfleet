@@ -69,6 +69,7 @@ import { BoardNode } from "./BoardNode";
 import { BOARD_DEFAULT_SIZE } from "../lib/boardStore";
 import type { GridSnapshot } from "../lib/gridSnapshot";
 import { qualityCheckNowLabel } from "../lib/terminalHeaderQuality";
+import { traceTerminalLatency } from "../lib/terminalLatencyTrace";
 import type {
   Tab,
   TaskLineupItem,
@@ -138,7 +139,11 @@ import {
   paneSidecarFileName,
   type AgentStatusSidecar,
 } from "../lib/agentStatusSidecar";
-import type { AgentRecoveryTarget } from "../lib/agentReconnect";
+import {
+  reconnectStoppedAgents,
+  type AgentRecoveryTarget,
+} from "../lib/agentReconnect";
+import { readPaneAgentProvider } from "../lib/paneAgentProcess";
 import {
   formatWorkstreamBranch,
   formatWorkstreamIsolation,
@@ -158,7 +163,10 @@ import {
   terminalPurposeFromContext,
   terminalTextLooksReadyPrompt,
 } from "../lib/terminalHeaderDisplay";
-import { buildTerminalHeaderState } from "../lib/terminalHeaderState";
+import {
+  buildTerminalHeaderState,
+  resolveDistinctHeaderNow,
+} from "../lib/terminalHeaderState";
 import { agentBudgetSignal } from "../lib/agentBudget";
 import { openCodexModelPicker } from "../lib/codexModelPicker";
 import { durableActivityIsLive } from "../lib/terminalActivity";
@@ -302,7 +310,7 @@ const styles: Record<string, CSSProperties> = {
     // legible instead of being hidden behind an opaque slab. `.magic-canvas-glass`
     // supplies the blur (with a more-opaque @supports fallback).
     background: "color-mix(in srgb, var(--surface-raised) 70%, transparent)",
-    border: "1px solid var(--border-subtle)",
+    border: "1px solid transparent",
     borderRadius: 13,
     boxShadow:
       "inset 0 1px 0 rgba(255, 255, 255, 0.055), 0 12px 34px rgba(0, 0, 0, 0.42)",
@@ -322,7 +330,7 @@ const styles: Record<string, CSSProperties> = {
     padding: 4,
     transform: "translate(-50%, -100%)",
     background: "color-mix(in srgb, var(--surface-raised) 70%, transparent)",
-    border: "1px solid var(--border-subtle)",
+    border: "1px solid transparent",
     borderRadius: 13,
     boxShadow:
       "inset 0 1px 0 rgba(255, 255, 255, 0.055), 0 12px 34px rgba(0, 0, 0, 0.42)",
@@ -402,7 +410,7 @@ const styles: Record<string, CSSProperties> = {
     gap: 2,
     padding: 4,
     background: "color-mix(in srgb, var(--surface-raised) 82%, transparent)",
-    border: "1px solid var(--border-subtle)",
+    border: "1px solid transparent",
     borderRadius: "var(--radius-md)",
     boxShadow: "var(--shadow-menu)",
     animation: "workbench-popover-in var(--motion-fast)",
@@ -436,7 +444,7 @@ const styles: Record<string, CSSProperties> = {
     gap: 8,
     padding: "9px 10px",
     background: "color-mix(in srgb, var(--surface-raised) 94%, transparent)",
-    border: "1px solid var(--border-subtle)",
+    border: "1px solid transparent",
     borderRadius: "var(--radius-md)",
     boxShadow: "var(--shadow-menu)",
     animation: "workbench-popover-in var(--motion-med)",
@@ -482,7 +490,7 @@ const styles: Record<string, CSSProperties> = {
   selectionRect: {
     position: "fixed",
     zIndex: 30,
-    border: "1px solid color-mix(in srgb, var(--accent-info) 72%, transparent)",
+    border: "1px solid transparent",
     background: "color-mix(in srgb, var(--accent-info) 13%, transparent)",
     borderRadius: "var(--radius-xs)",
     pointerEvents: "none",
@@ -647,7 +655,7 @@ const styles: Record<string, CSSProperties> = {
     gap: 6,
     alignContent: "start",
     padding: "10px 11px 11px",
-    border: "1px solid var(--border-subtle)",
+    border: "1px solid transparent",
     borderRadius: "var(--radius-sm)",
     background: "color-mix(in srgb, var(--surface-base) 72%, transparent)",
     // Reserve the tallest header layout (kicker + task row + big title row) so
@@ -686,14 +694,14 @@ const styles: Record<string, CSSProperties> = {
     gap: 5,
     height: 24,
     padding: "0 8px",
-    border: "1px solid color-mix(in srgb, var(--accent-live) 38%, var(--border-subtle))",
+    border: "1px solid transparent",
     borderRadius: "var(--radius-sm)",
     background: "color-mix(in srgb, var(--accent-live) 12%, var(--surface-raised))",
     color: "var(--text-primary)",
     cursor: "pointer",
     fontFamily: "var(--font-ui)",
     fontSize: 12,
-    fontWeight: 600,
+    fontWeight: 500,
     whiteSpace: "nowrap",
   },
   attentionBadge: {
@@ -705,7 +713,7 @@ const styles: Record<string, CSSProperties> = {
     borderRadius: 999,
     border: "1px solid transparent",
     fontSize: 11,
-    fontWeight: 600,
+    fontWeight: 500,
     letterSpacing: 0.2,
     whiteSpace: "nowrap",
   },
@@ -732,7 +740,7 @@ const styles: Record<string, CSSProperties> = {
   terminalTaskLabel: {
     color: "var(--accent-live)",
     fontSize: 12,
-    fontWeight: 600,
+    fontWeight: 500,
     letterSpacing: 0,
     // Same rule as the big row: matched to the small row's first line box (12 x 1.35).
     lineHeight: "16px",
@@ -784,7 +792,7 @@ const styles: Record<string, CSSProperties> = {
     display: "inline-flex",
     alignItems: "center",
     padding: "0 6px",
-    border: "1px solid var(--border-subtle)",
+    border: "1px solid transparent",
     borderRadius: "var(--radius-xs)",
     background: "color-mix(in srgb, var(--surface-base) 82%, transparent)",
     color: "var(--text-primary)",
@@ -806,7 +814,7 @@ const styles: Record<string, CSSProperties> = {
     overflow: "hidden",
     color: "var(--text-primary)",
     fontSize: 19,
-    fontWeight: 600,
+    fontWeight: 500,
     lineHeight: 1.18,
     // FIXED height, not a minimum. Measured live: this row was 32px with a label
     // and value on a shared baseline, 23px in the placeholder state, and every
@@ -821,7 +829,7 @@ const styles: Record<string, CSSProperties> = {
   terminalNowActiveLabel: {
     color: "var(--text-tertiary)",
     fontSize: 11,
-    fontWeight: 600,
+    fontWeight: 500,
     letterSpacing: 0,
     // Matched to the FIRST line box of the value (19px x 1.18) so the label sits on that
     // line rather than floating above it or sinking to the second line.
@@ -842,7 +850,7 @@ const styles: Record<string, CSSProperties> = {
     width: "100%",
     minWidth: 0,
     height: 30,
-    border: "1px solid var(--border-focus)",
+    border: "1px solid transparent",
     borderRadius: "var(--radius-sm)",
     background: "var(--surface-base)",
     color: "var(--text-primary)",
@@ -964,7 +972,7 @@ const styles: Record<string, CSSProperties> = {
     display: "inline-flex",
     alignItems: "center",
     padding: "0 6px",
-    border: "1px solid var(--border-subtle)",
+    border: "1px solid transparent",
     borderRadius: "var(--radius-xs)",
     background: "color-mix(in srgb, var(--surface-base) 82%, transparent)",
     color: "var(--text-secondary)",
@@ -1046,7 +1054,7 @@ const styles: Record<string, CSSProperties> = {
     flex: "0 0 auto",
     display: "grid",
     placeItems: "center",
-    border: "1px solid var(--border-subtle)",
+    border: "1px solid transparent",
     borderRadius: "var(--radius-xs)",
     background: "color-mix(in srgb, var(--surface-base) 86%, transparent)",
     fontSize: 14,
@@ -1062,7 +1070,7 @@ const styles: Record<string, CSSProperties> = {
     height: 34,
     display: "grid",
     placeItems: "center",
-    border: "1px solid var(--border-subtle)",
+    border: "1px solid transparent",
     borderRadius: "var(--radius-sm)",
     background: "color-mix(in srgb, var(--surface-raised) 94%, transparent)",
     fontSize: 21,
@@ -1079,7 +1087,7 @@ const styles: Record<string, CSSProperties> = {
     alignItems: "center",
     gap: 6,
     padding: "0 7px",
-    border: "1px solid var(--border-subtle)",
+    border: "1px solid transparent",
     borderRadius: "var(--radius-sm)",
     background: "var(--surface-base)",
     color: "var(--text-secondary)",
@@ -1111,7 +1119,7 @@ const styles: Record<string, CSSProperties> = {
     gridTemplateRows: "auto auto minmax(0, 1fr) auto",
     gap: 10,
     padding: 12,
-    border: "1px solid var(--border-subtle)",
+    border: "1px solid transparent",
     borderRadius: "var(--radius-md)",
     background: "color-mix(in srgb, var(--surface-raised) 97%, transparent)",
     boxShadow: "var(--shadow-menu), inset 0 1px 0 rgba(255,255,255,0.05)",
@@ -1149,7 +1157,7 @@ const styles: Record<string, CSSProperties> = {
     alignItems: "center",
     gap: 5,
     padding: "0 7px",
-    border: "1px solid var(--border-subtle)",
+    border: "1px solid transparent",
     borderRadius: "var(--radius-xs)",
     background: "color-mix(in srgb, var(--surface-base) 86%, transparent)",
     overflow: "hidden",
@@ -1169,7 +1177,7 @@ const styles: Record<string, CSSProperties> = {
     alignItems: "center",
     gap: 8,
     padding: "0 10px",
-    border: "1px solid var(--border-subtle)",
+    border: "1px solid transparent",
     borderRadius: "var(--radius-sm)",
     background: "var(--surface-base)",
     color: "var(--text-secondary)",
@@ -1200,7 +1208,7 @@ const styles: Record<string, CSSProperties> = {
     gap: 10,
     alignItems: "center",
     padding: "9px 10px",
-    border: "1px solid var(--border-subtle)",
+    border: "1px solid transparent",
     borderRadius: "var(--radius-sm)",
     background: "color-mix(in srgb, var(--surface-base) 76%, transparent)",
     color: "var(--text-secondary)",
@@ -1243,7 +1251,7 @@ const styles: Record<string, CSSProperties> = {
     alignItems: "center",
     gap: 6,
     padding: "0 7px",
-    border: "1px solid var(--border-subtle)",
+    border: "1px solid transparent",
     borderRadius: "var(--radius-xs)",
     color: "var(--text-primary)",
     fontSize: 10,
@@ -1271,7 +1279,7 @@ const styles: Record<string, CSSProperties> = {
   taskPickerManual: {
     height: 30,
     minWidth: 0,
-    border: "1px solid var(--border-subtle)",
+    border: "1px solid transparent",
     borderRadius: "var(--radius-sm)",
     outline: "none",
     padding: "0 9px",
@@ -1292,7 +1300,7 @@ const styles: Record<string, CSSProperties> = {
     justifyContent: "center",
     gap: 6,
     padding: "0 10px",
-    border: "1px solid var(--border-subtle)",
+    border: "1px solid transparent",
     borderRadius: "var(--radius-sm)",
     background: "var(--surface-base)",
     color: "var(--text-secondary)",
@@ -1351,7 +1359,7 @@ const styles: Record<string, CSSProperties> = {
     minHeight: 0,
     resize: "none",
     padding: "7px 8px",
-    border: "1px solid var(--border-subtle)",
+    border: "1px solid transparent",
     borderRadius: "var(--radius-sm)",
     outline: "none",
     background: "var(--surface-base)",
@@ -1442,7 +1450,7 @@ const styles: Record<string, CSSProperties> = {
     textTransform: "uppercase",
     color: "var(--text-primary)",
     fontSize: 10,
-    fontWeight: 600,
+    fontWeight: 500,
     letterSpacing: 0,
   },
   terminalBodyTaskRailCount: {
@@ -1456,7 +1464,7 @@ const styles: Record<string, CSSProperties> = {
       "color-mix(in srgb, var(--accent-live) 16%, var(--surface-raised))",
     color: "var(--text-primary)",
     fontSize: 11,
-    fontWeight: 600,
+    fontWeight: 500,
   },
   terminalBodyTaskRailMeta: {
     writingMode: "vertical-rl",
@@ -1472,7 +1480,7 @@ const styles: Record<string, CSSProperties> = {
     alignItems: "center",
     justifyContent: "center",
     padding: 0,
-    border: "1px solid var(--border-subtle)",
+    border: "1px solid transparent",
     borderRadius: 6,
     background: "color-mix(in srgb, var(--surface-raised) 82%, transparent)",
     color: "var(--text-secondary)",
@@ -1590,7 +1598,7 @@ const styles: Record<string, CSSProperties> = {
     resize: "vertical",
     padding: "7px 8px",
     borderRadius: "var(--radius-sm)",
-    border: "1px solid var(--border-subtle)",
+    border: "1px solid transparent",
     outline: "none",
     background: "var(--surface-base)",
     color: "var(--text-primary)",
@@ -1600,7 +1608,7 @@ const styles: Record<string, CSSProperties> = {
   agentComposerButton: {
     width: 34,
     borderRadius: "var(--radius-sm)",
-    border: "1px solid var(--border-subtle)",
+    border: "1px solid transparent",
     background: "var(--accent-live)",
     color: "#08100c",
     display: "inline-flex",
@@ -1643,7 +1651,7 @@ const styles: Record<string, CSSProperties> = {
     gap: 2,
     padding: "6px 7px",
     borderRadius: "var(--radius-sm)",
-    border: "1px solid var(--border-subtle)",
+    border: "1px solid transparent",
     background: "color-mix(in srgb, var(--surface-base) 86%, transparent)",
   },
   agentProviderCell: {
@@ -1652,7 +1660,7 @@ const styles: Record<string, CSSProperties> = {
     gap: 2,
     padding: "6px 7px",
     borderRadius: "var(--radius-sm)",
-    border: "1px solid var(--border-subtle)",
+    border: "1px solid transparent",
     background: "color-mix(in srgb, var(--surface-base) 88%, transparent)",
   },
   agentProviderCellLabel: {
@@ -1678,7 +1686,7 @@ const styles: Record<string, CSSProperties> = {
     justifyContent: "center",
     padding: "0 8px",
     borderRadius: "var(--radius-sm)",
-    border: "1px solid var(--border-subtle)",
+    border: "1px solid transparent",
     background: "var(--surface-base)",
     color: "var(--accent-live)",
     fontSize: 11,
@@ -1697,7 +1705,7 @@ const styles: Record<string, CSSProperties> = {
     gap: 2,
     padding: "6px 7px",
     borderRadius: "var(--radius-sm)",
-    border: "1px solid var(--border-subtle)",
+    border: "1px solid transparent",
     background: "color-mix(in srgb, var(--surface-base) 92%, transparent)",
   },
   agentEventTop: {
@@ -1852,7 +1860,7 @@ const styles: Record<string, CSSProperties> = {
     padding: 13,
     borderRadius: "var(--radius-sm)",
     background: "rgba(255,255,255,0.025)",
-    border: "1px solid var(--border-subtle)",
+    border: "1px solid transparent",
   },
   terminalSummaryTitle: {
     minWidth: 0,
@@ -1945,7 +1953,7 @@ const styles: Record<string, CSSProperties> = {
     padding: "6px 7px",
     borderRadius: "var(--radius-sm)",
     background: "#101416",
-    border: "1px solid rgba(255,255,255,0.045)",
+  border: "1px solid transparent",
     overflow: "hidden",
   },
   terminalMapPreviewRow: {
@@ -2132,19 +2140,20 @@ function TerminalBodyTaskSidebar({
   collapsed: boolean;
   onToggleCollapsed: () => void;
 }) {
+  const progressItems: TaskLineupItem[] = rows.map((row) => ({
+    id: row.id,
+    content: row.task,
+    status:
+      row.state === "Done"
+        ? "completed"
+        : row.state === "Working"
+          ? "in_progress"
+          : "pending",
+    source: "summary",
+    updatedAt: 0,
+  }));
   const stats = taskLineupStats(
-    rows.map((row) => ({
-      id: row.id,
-      content: row.task,
-      status:
-        row.state === "Done"
-          ? "completed"
-          : row.state === "Working"
-            ? "in_progress"
-            : "pending",
-      source: "summary",
-      updatedAt: 0,
-    })),
+    progressItems,
   );
   if (collapsed) {
     return (
@@ -2213,7 +2222,7 @@ function TerminalBodyTaskSidebar({
           </button>
         </span>
       </div>
-      <TaskProgressBar items={rows.map((row) => ({ id: row.id, content: row.task, status: row.state === "Done" ? "completed" : row.state === "Working" ? "in_progress" : "pending", source: "summary", updatedAt: 0 }))} compact testId={`${testIdPrefix}-task-progress`} />
+      <TaskProgressBar items={progressItems} compact testId={`${testIdPrefix}-task-progress`} />
       {rows.length === 0 ? (
         recent && recent.length > 0 ? (
           <div
@@ -2685,6 +2694,9 @@ function CanvasNodeViewImpl({
   const [terminalOverlayBounds, setTerminalOverlayBounds] =
     useState<TerminalOverlayBounds | null>(null);
   const [connectionGeneration, setConnectionGeneration] = useState(0);
+  const [connectedTerminalId, setConnectedTerminalId] = useState<string | null>(
+    null,
+  );
   const selectedNodeIds =
     storedSelectedNodeIds ?? (selectedNodeId ? [selectedNodeId] : []);
   const selected =
@@ -2702,10 +2714,15 @@ function CanvasNodeViewImpl({
     : undefined;
   // Below readable zoom, show the cheap character preview. At readable zoom,
   // the parent live set decides whether the full renderer should mount.
+  const connectionActive = connectedTerminalId !== null;
   const showTerminalPreview =
-    node.type === "terminal" && zoom < READABLE_TERMINAL_ZOOM;
+    node.type === "terminal" &&
+    zoom < READABLE_TERMINAL_ZOOM &&
+    !connectionActive;
   const shouldMountTerminal =
-    node.type === "terminal" && live && !showTerminalPreview;
+    node.type === "terminal" &&
+    (live || connectionActive) &&
+    !showTerminalPreview;
   const shouldOverlayTerminal =
     shouldMountTerminal && selected && terminalOverlayRoot !== null;
 
@@ -3050,18 +3067,21 @@ function CanvasNodeViewImpl({
   // against `node.id` (`terminal-map-<tabId>`) mints a SEPARATE daemon PTY from
   // the split's `terminal-<tabId>-<activePaneId>` — that orphan shell is the
   // "extra line on the map" that accrues across map↔split switches.
+  // Resolve the pane represented by this map card, not whichever pane happened
+  // to be active in the tab. A card can represent an inactive split pane; using
+  // activePaneId here makes Connect attach to a different terminal.
+  const linkedTerminal =
+    linkedTab?.terminals.find((terminal) => terminal.id === node.terminalPtyId) ??
+    linkedTab?.terminals.find((terminal) => terminal.paneId === node.id) ??
+    linkedTab?.terminals.find(
+      (terminal) => terminal.paneId === linkedTab.activePaneId,
+    ) ??
+    linkedTab?.terminals[0];
   const terminalPaneId =
-    linkedTab?.activePaneId ?? linkedTab?.terminals[0]?.paneId ?? node.id;
-  // Resolve the live PTY id for this shared pane (for attach only), falling back to
-  // the persisted node pty or the tab's first terminal.
-  const linkedPaneTerminalId = linkedTab?.terminals.find(
-    (terminal) => terminal.paneId === terminalPaneId,
-  )?.id;
-  const linkedTerminalId =
-    linkedPaneTerminalId ?? linkedTab?.terminals[0]?.id;
-  const linkedTerminal = linkedTerminalId
-    ? linkedTab?.terminals.find((terminal) => terminal.id === linkedTerminalId)
-    : undefined;
+    linkedTerminal?.paneId ?? linkedTab?.activePaneId ?? node.id;
+  // Resolve the live PTY id for this shared pane (for attach only), falling back
+  // to the tab's first terminal when the card has no live identity yet.
+  const linkedTerminalId = linkedTerminal?.id;
   const liveTerminalRoot = useWorkspaceStore((state) =>
     linkedTerminalId ? state.liveCwds[linkedTerminalId] : undefined,
   );
@@ -3265,7 +3285,8 @@ function CanvasNodeViewImpl({
     linkedTerminal?.mainUserAsk &&
     (!linkedTerminal.mainUserAsk.runId ||
       !linkedTerminal.activeRunId ||
-      linkedTerminal.mainUserAsk.runId === linkedTerminal.activeRunId),
+      linkedTerminal.mainUserAsk.runId === linkedTerminal.activeRunId ||
+      linkedTerminal.mainUserAsk.source === "status-sidecar"),
   );
   const terminalHeaderTaskLineup: TaskLineupItem[] | undefined =
     directlyBoundTask
@@ -3317,21 +3338,27 @@ function CanvasNodeViewImpl({
       terminalDisplaySummaryBase.now === "Waiting for operator selection",
   });
   const workspaceLabel = terminalHeader.workspace;
-  const terminalHeaderTaskDescription = terminalHeader.hasCapturedGoal
-    ? terminalHeader.goalLabel
-    : "";
-  const terminalHeaderContextDescription = terminalHeader.hasCapturedContext
-    ? terminalHeader.contextLabel
-    : "";
-  // Missing provenance is represented by an omitted row; never turn it into a
-  // made-up Task or Goal sentence that looks like user intent.
-  const terminalHeaderHasContext = terminalHeader.hasCapturedContext;
-  const terminalHeaderHasTask = terminalHeader.hasCapturedGoal;
-  const terminalHeaderTitleRaw = terminalHeader.currentActivity;
+  const terminalHeaderTaskDescription = terminalHeader.goalLabel;
+  const terminalHeaderContextDescription = terminalHeader.contextLabel;
+  const terminalHeaderTitleRaw = terminalDurableActivityUsable &&
+    terminalDisplaySummaryBase.task &&
+    !/^(?:Terminal|Activity not captured|Status unavailable)$/i.test(
+      terminalDisplaySummaryBase.task.trim(),
+    )
+    ? terminalDisplaySummaryBase.task
+    : terminalHeader.currentActivity;
   const restoredNow = terminalDisplaySummaryBase.now;
+  const restoredNowIsSettled = Boolean(
+    terminalDisplaySummaryBase.narration &&
+      restoredNow &&
+      !/^(?:Idle|Working|Ready|Awaiting next action|Activity not captured)$/i.test(
+        restoredNow.trim(),
+      ),
+  );
   const terminalHeaderNowRaw =
-    terminalDurableActivityUsable && qualityCheckNowLabel(restoredNow).ok
-    ? restoredNow
+    terminalDurableActivityUsable &&
+    (qualityCheckNowLabel(restoredNow).ok || restoredNowIsSettled)
+      ? restoredNow
     : terminalHeader.sources.goal === "task-tool" &&
         terminalHeader.currentActivity === terminalHeader.goalLabel
       ? terminalNeutralTitle
@@ -3393,8 +3420,19 @@ function CanvasNodeViewImpl({
   const terminalHeaderHasTrustedSummary =
     terminalHeaderHasUsefulSummary &&
     terminalDisplaySummaryBase.confidence !== "low";
-  const terminalHeaderNow =
-    terminalHeaderSummarySignal || terminalHeaderTitle || terminalNeutralTitle;
+  const terminalHeaderNowBase =
+    /^(?:Idle|Ready|Awaiting next action|Ready for a user task)$/i.test(
+      terminalHeaderSummarySignal.trim(),
+    )
+      ? /^(?:Idle|Ready|Awaiting next action|Ready for a user task)$/i.test(
+          terminalHeader.currentActivity.trim(),
+        )
+        ? terminalStatusSummary?.status === "working"
+          ? "Working on the current task"
+          : "Waiting for a task or command"
+        : terminalHeader.currentActivity
+      : terminalHeaderSummarySignal || terminalHeaderTitle || terminalNeutralTitle;
+  const terminalHeaderNow = terminalHeaderNowBase;
   const terminalBudgetSignal = terminalStatusSummary?.budget
     ? agentBudgetSignal(
         terminalStatusSummary.budget,
@@ -3407,15 +3445,23 @@ function CanvasNodeViewImpl({
   // row blank on panes that were plainly working — "relaunched nothing changed". When it
   // declines, the pane's own live status line is used instead, minus the filler words.
   const terminalHeaderNowRowText = (() => {
+    // A settled agent report is stronger than a stale in-progress TodoWrite item. The
+    // latter is intentionally not cleared by every provider after Stop, so it must never
+    // overwrite the result the sidecar captured from the agent's final words.
+    const settledNow = restoredNowIsSettled ? restoredNow : "";
+    if (settledNow) return settledNow;
     // The resolver's own second line first: the agent's in-progress step, its pending
     // question, its own sentence — plain language, gated exactly like the goal above.
     const resolved = linkedTerminal?.nowLine?.text?.trim();
+    const distinctResolved = resolveDistinctHeaderNow(
+      terminalHeaderTaskDescription,
+      resolved,
+    );
     if (
-      resolved &&
-      resolved !== terminalHeaderTaskDescription.trim() &&
-      !headerTextsEquivalent(resolved, terminalHeaderContextDescription)
+      distinctResolved &&
+      !headerTextsEquivalent(distinctResolved, terminalHeaderContextDescription)
     )
-      return resolved;
+      return distinctResolved;
     // The agent's own in-progress item, straight from the store. It is already there for
     // every pane with a live task list, so the row has content even before (or without)
     // a resolver pass.
@@ -3426,33 +3472,28 @@ function CanvasNodeViewImpl({
     )
       .find((item) => item.status === "in_progress")
       ?.content?.trim();
+    const distinctLiveStep = resolveDistinctHeaderNow(
+      terminalHeaderTaskDescription,
+      liveStep,
+    );
     if (
-      liveStep &&
-      liveStep !== terminalHeaderTaskDescription.trim() &&
-      !headerTextsEquivalent(liveStep, terminalHeaderContextDescription)
+      distinctLiveStep &&
+      !headerTextsEquivalent(distinctLiveStep, terminalHeaderContextDescription)
     )
-      return liveStep;
+      return distinctLiveStep;
     if (terminalHeaderNowActiveVisible) return terminalHeaderTitle;
     const candidate = (terminalHeaderNow ?? "").trim();
     if (!candidate) return "";
-    if (
-      candidate === terminalHeaderTaskDescription.trim() ||
-      headerTextsEquivalent(candidate, terminalHeaderContextDescription)
-    )
+    const distinctCandidate = resolveDistinctHeaderNow(
+      terminalHeaderTaskDescription,
+      candidate,
+    );
+    if (!distinctCandidate) return "";
+    if (headerTextsEquivalent(distinctCandidate, terminalHeaderContextDescription))
       return "";
-    if (
-      /^(?:Working|Ready|Terminal|Awaiting command|Awaiting next action|Ready for next task|Activity not captured|Status unavailable|No task declared|Task not captured)$/i.test(
-        candidate,
-      )
-    ) {
-      return "";
-    }
-    return candidate;
-  })() ||
-    (terminalHeaderAttentionState === "running"
-      ? "Working"
-      : "No current activity recorded");
-  const terminalHeaderNowRowVisible = true;
+    return distinctCandidate;
+  })();
+  const terminalHeaderNowRowVisible = Boolean(terminalHeaderNowRowText);
   const detectedLaneTaskId =
     node.taskBinding?.taskId ??
     firstTaskIdFromText(
@@ -3563,39 +3604,121 @@ function CanvasNodeViewImpl({
   void terminalRendererMode;
   const connectLinkedTerminal = useCallback(() => {
     if (!linkedTab) return;
+    const currentState = useWorkspaceStore.getState();
+    const currentTab =
+      currentState.tabs.find((tab) => tab.id === linkedTab.id) ?? linkedTab;
+    const currentNode =
+      currentState.canvasState.nodes.find((candidate) => candidate.id === node.id) ??
+      node;
+    const currentTerminal =
+      currentTab.terminals.find(
+        (terminal) => terminal.id === currentNode.terminalPtyId,
+      ) ??
+      currentTab.terminals.find((terminal) => terminal.paneId === currentNode.id) ??
+      currentTab.terminals.find(
+        (terminal) => terminal.paneId === currentTab.activePaneId,
+      ) ??
+      currentTab.terminals[0];
+    const targetPaneId = currentTerminal?.paneId ?? terminalPaneId;
     const targetTerminalId =
-      linkedTerminalId ?? `terminal-${linkedTab.id}-${terminalPaneId}`;
+      currentTerminal?.id ?? `terminal-${currentTab.id}-${targetPaneId}`;
+    traceTerminalLatency("frontend.map.connect.click", {
+      nodeId: node.id,
+      tabId: currentTab.id,
+      paneId: targetPaneId,
+      targetTerminalId,
+      zoom,
+      cardCount: currentState.canvasState.nodes.length,
+      workstreamKind: workstream?.kind ?? "none",
+    });
+    setConnectedTerminalId(targetTerminalId);
     selectCanvasNode(node.id);
-    setActiveTab(linkedTab.id);
-    setActivePane(linkedTab.id, terminalPaneId);
+    if (zoom < READABLE_TERMINAL_ZOOM) {
+      focusNode(node, FOCUS_TERMINAL_ZOOM);
+    }
+    setActiveTab(currentTab.id);
+    setActivePane(currentTab.id, targetPaneId);
     setActiveTerminal(targetTerminalId);
     setConnectionGeneration((generation) => generation + 1);
+    if (
+      typeof window !== "undefined" &&
+      "__TAURI_INTERNALS__" in window &&
+      workstream?.kind === "agent" &&
+      currentTerminal?.id
+    ) {
+      void reconnectStoppedAgents([currentTerminal.id], {
+        readRunningProvider: readPaneAgentProvider,
+        readRecovery: async (paneId): Promise<AgentRecoveryTarget | null> => {
+          const text = await invoke<string | null>("agent_status_read_sidecar", {
+            fileName: paneSidecarFileName(paneId),
+          });
+          if (!text) return null;
+          const sidecar = JSON.parse(text) as AgentStatusSidecar;
+          const provider =
+            sidecar.provider === "codex" ||
+            sidecar.provider === "claude" ||
+            sidecar.provider === "opencode"
+              ? sidecar.provider
+              : null;
+          const sessionId = sidecar.sessionId?.trim();
+          return provider && sessionId ? { provider, sessionId } : null;
+        },
+        sessionExists: async (provider, sessionId) => {
+          if (provider === "opencode") return true;
+          return (
+            (await invoke<string | null>("session_transcript_head_read", {
+              provider,
+              sessionId,
+            })) !== null
+          );
+        },
+        writeResumeCommand: async (paneId, command) => {
+          await invoke("daemon_write_session", { id: paneId, data: command });
+        },
+      }).catch((error) => {
+        console.warn("Could not reconnect the saved agent session", error);
+      });
+    }
     let attempts = 0;
     const focusConnectedInput = () => {
-      const input = Array.from(
+      const inputs = Array.from(
         document.querySelectorAll<HTMLTextAreaElement>(
           ".terminal-canvas-input[data-terminal-session-id]",
         ),
-      ).find((candidate) => candidate.dataset.terminalSessionId === targetTerminalId);
+      );
+      const input =
+        inputs.find(
+          (candidate) => candidate.dataset.terminalSessionId === targetTerminalId,
+        ) ?? null;
       if (input) {
+        useWorkspaceStore
+          .getState()
+          .setActiveTerminal(input.dataset.terminalSessionId ?? targetTerminalId);
         input.focus({ preventScroll: true });
         return;
       }
-      if (attempts < 4) {
+      // A cold daemon/session attach can take several seconds on the map while
+      // the renderer is mounting; keep the Connect focus handoff alive until
+      // the actual input exists instead of losing it during that gap.
+      if (attempts < 600) {
         attempts += 1;
         window.requestAnimationFrame(focusConnectedInput);
       }
     };
     window.requestAnimationFrame(focusConnectedInput);
   }, [
+    focusNode,
     linkedTab,
     linkedTerminalId,
     node.id,
+    node,
+    workstream?.kind,
     selectCanvasNode,
     setActivePane,
     setActiveTab,
     setActiveTerminal,
     terminalPaneId,
+    zoom,
   ]);
   const openLinkedTerminal = useCallback(() => {
     connectLinkedTerminal();
@@ -3805,6 +3928,30 @@ function CanvasNodeViewImpl({
     [linkedTab],
   );
 
+  const focusConnectedCanvasInput = useCallback(
+    (input: HTMLTextAreaElement, sessionId: string) => {
+      if (!connectionActive) return;
+      traceTerminalLatency("frontend.map.connect.input_ready", {
+        nodeId: node.id,
+        sessionId,
+        connectedTerminalId,
+        activeElement: document.activeElement?.getAttribute(
+          "data-terminal-session-id",
+        ),
+      });
+      setActiveTerminal(sessionId);
+      input.focus({ preventScroll: true });
+      traceTerminalLatency("frontend.map.connect.input_focused", {
+        nodeId: node.id,
+        sessionId,
+        activeElement: document.activeElement?.getAttribute(
+          "data-terminal-session-id",
+        ),
+      });
+    },
+    [connectionActive, connectedTerminalId, node.id, setActiveTerminal],
+  );
+
   const liveTerminalComponent = shouldMountTerminal ? (
     <TerminalComponent
       key={`${terminalTabId}-${terminalPaneId}-${workstream?.generation ?? 0}-${connectionGeneration}`}
@@ -3819,8 +3966,11 @@ function CanvasNodeViewImpl({
             .getState()
             .markWorkstreamInputSent(linkedTab.id, inputId);
       }}
-      attachToPtyId={linkedTerminalId ?? null}
-      runtimeActive={selected}
+      attachToPtyId={connectedTerminalId ?? linkedTerminalId ?? null}
+      runtimeActive={selected || connectionActive}
+      onCanvasInputReady={
+        connectionActive ? focusConnectedCanvasInput : undefined
+      }
       onActivate={activateTerminalNode}
       standalone
       renderScale={
@@ -4168,11 +4318,12 @@ function CanvasNodeViewImpl({
                   data-testid="canvas-agent-connect-terminal"
                   title="Connect terminal"
                   aria-label="Connect terminal"
+                  onPointerDown={(event) => event.stopPropagation()}
                   onMouseDown={(event) => event.stopPropagation()}
-      onClick={(event) => {
-        event.stopPropagation();
-        openLinkedTerminal();
-      }}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    connectLinkedTerminal();
+                  }}
                 >
                   <TerminalSquare size={13} strokeWidth={1.8} />
                   <span>Connect terminal</span>
@@ -4305,6 +4456,7 @@ function CanvasNodeViewImpl({
                     data-testid="canvas-terminal-connect-terminal"
                     title="Connect terminal"
                     aria-label="Connect terminal"
+                    onPointerDown={(event) => event.stopPropagation()}
                     onMouseDown={(event) => event.stopPropagation()}
                     onClick={(event) => {
                       event.stopPropagation();
@@ -4336,9 +4488,10 @@ function CanvasNodeViewImpl({
                 rewriting itself. Both rows are always present at a fixed height; the
                 lower one goes invisible rather than unmounting, so the terminal below
                 never moves. */}
-            {terminalHeaderHasTask && (
+            {terminalHeaderNowRowVisible && (
               <div
                 style={styles.terminalStatusTitle}
+                data-testid="canvas-terminal-node-task-row"
                 title={`Task: ${terminalHeaderTaskDescription}`}
               >
                 {renaming ? (
@@ -4359,7 +4512,7 @@ function CanvasNodeViewImpl({
                 )}
               </div>
             )}
-            {terminalHeaderHasContext && (
+            {(
               <div
                 style={{ ...styles.terminalTaskRow, ...styles.terminalContextRow }}
                 data-testid="canvas-terminal-node-goal"
@@ -4373,7 +4526,7 @@ function CanvasNodeViewImpl({
                 </span>
               </div>
             )}
-              {(workstream || linkedTerminal) && (
+              {(
                 <CockpitSnapshotProbe
                   key="cockpit-snapshot-probe"
                   entry={{
@@ -4386,16 +4539,16 @@ function CanvasNodeViewImpl({
                     previewTitle: terminalTitle,
                     projectEmoji,
                     kind: "shell",
-                    task: terminalHeaderHasTask
-                      ? terminalHeaderTaskDescription
-                      : undefined,
+                    task: terminalHeaderTaskDescription,
                     taskSource: terminalHeader.sources.goal,
-                    context: terminalHeader.contextLabel,
+                    context: terminalHeaderContextDescription,
                     contextSource: terminalHeader.sources.context,
                     title: terminalHeaderTitle,
                     titleSource: terminalHeader.sources.activity,
-                    now: terminalHeaderNow ?? "",
-                    nowSource: terminalHeader.sources.activity,
+                    now: terminalHeaderNowRowText ?? "",
+                    nowSource: terminalHeaderNowRowVisible
+                      ? terminalHeader.sources.activity
+                      : "missing",
                     status: linkedTerminal?.status,
                     tasksFromTodoWrite:
                       terminalStatusSummary?.tasksFromTodoWrite,
@@ -4436,7 +4589,7 @@ function CanvasNodeViewImpl({
               )}
             <div
               style={{ ...styles.terminalTaskRow, ...styles.terminalNowRow }}
-              data-testid="canvas-terminal-node-task-row"
+              data-testid="canvas-terminal-node-now-row"
               title={
                 terminalHeaderNowRowVisible
                   ? `Now: ${terminalHeaderNowRowText}`
@@ -9336,7 +9489,7 @@ export function MagicCanvas() {
                     color: "var(--text-tertiary)",
                     fontFamily: "var(--font-ui)",
                     fontSize: 10,
-                    fontWeight: 600,
+    fontWeight: 500,
                     letterSpacing: "0.04em",
                     textTransform: "uppercase",
                   }}

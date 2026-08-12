@@ -36,6 +36,7 @@ import { terminalHasKeyboardFocus } from "../lib/terminalFocus";
 import { checkAgentProvider } from "../lib/agentProviders";
 import { promptWorkstreamIsolation, promptWorkstreamLaunchProfile, resolveWorkstreamOpsContext } from "../lib/workstreamOpsContext";
 import type { AgentProvider } from "../lib/types";
+import { GamificationPanel } from "./GamificationPanel";
 
 const styles: Record<string, CSSProperties> = {
   header: {
@@ -1011,6 +1012,7 @@ export function WorkbenchHeader() {
         />
         <span className="workbench-command-shortcut" style={styles.commandShortcut}>Ctrl K</span>
       </div>
+      <GamificationPanel />
       {commandOpen && (
         <div className="workbench-command-menu" style={styles.menu}>
           <div style={styles.scopeRow}>

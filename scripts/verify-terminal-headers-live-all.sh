@@ -376,6 +376,9 @@ drive() {
   wait_for_snapshot_count 160 || return 1
   cp "$SNAPSHOT_FILE" "$SNAPSHOT_COPY" 2>/dev/null || true
   validate_snapshot || return 1
+  TERMFLEET_HEADER_TRACE="$DATA_DIR/terminal-workspace/agent-status/cockpit-header-trace.jsonl" \
+    TERMFLEET_HEADER_MAX_AGE_MS=30000 \
+    node "$APP_ROOT/scripts/verify-live-task-goal-now.mjs" || return 1
 
   # Fixed crops for the verifier fixture's 2x2 split panes. The JSON report is
   # the source of truth; crops are for fast visual inspection.

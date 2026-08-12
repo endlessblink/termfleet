@@ -48,6 +48,66 @@ test("builds explicit per-pane header state with stable goal, activity, and full
   expect(header.debug.titleUsesDistinctActivity).toBe(true);
 });
 
+test("keeps missing goal as state instead of rendering it as task content", () => {
+  const header = buildTerminalHeaderState({
+    paneId: "pane-missing-goal",
+    terminalId: "pty-missing-goal",
+    project: { id: "g-termfleet", name: "termfleet", projectRoot: termfleetPath },
+    liveCwd: termfleetPath,
+    terminalStatus: "running",
+    taskLineup: [],
+    statusSummary: {
+      task: "Ready",
+      path: termfleetPath,
+      now: "Awaiting command",
+      status: "idle",
+      provider: "shell",
+      confidence: "low",
+      tasksFromTodoWrite: false,
+    },
+  });
+
+  expect(header.hasCapturedGoal).toBe(false);
+  expect(header.hasCapturedContext).toBe(false);
+  expect(header.sources.goal).toBe("none");
+  expect(header.currentActivity).toBe("Idle");
+});
+
+test("uses the view model Now value instead of the generic title", () => {
+  const header = buildTerminalHeaderState({
+    paneId: "pane-now-source",
+    terminalId: "pty-now-source",
+    project: { id: "g-termfleet", name: "termfleet", projectRoot: termfleetPath },
+    liveCwd: termfleetPath,
+    terminalStatus: "running",
+    mainUserAsk: {
+      text: "Keep every terminal status truthful and connected to its work",
+      source: "status-sidecar",
+      updatedAt: 1000,
+    },
+    taskLineup: [{
+      id: "current-step",
+      content: "Running the live map source checks",
+      status: "in_progress",
+      source: "todo-write",
+      updatedAt: 1000,
+    }],
+    statusSummary: {
+      task: "Running the live map source checks",
+      userTask: "Keep every terminal status truthful and connected to its work",
+      path: termfleetPath,
+      now: "Running the live map source checks",
+      status: "working",
+      provider: "codex",
+      confidence: "high",
+      tasksFromTodoWrite: true,
+    },
+  });
+
+  expect(header.currentActivity).toBe("Running the live map source checks");
+  expect(header.currentActivity).not.toBe("Activity not captured");
+});
+
 test("uses the captured goal as project intent when no separate context exists", () => {
   const header = buildTerminalHeaderState({
     paneId: "pane-goal-fallback",
@@ -76,6 +136,40 @@ test("uses the captured goal as project intent when no separate context exists",
   expect(header.contextLabel).toBe("Harden agent persistence and startup boundaries");
   expect(header.sources.context).toBe("user-prompt");
   expect(header.contextLabel).not.toMatch(/not captured/i);
+});
+
+test("uses a goal-task sidecar value for Goal even when the active task is separate", () => {
+  const header = buildTerminalHeaderState({
+    paneId: "pane-jobrunner-goal",
+    terminalId: "pty-jobrunner-goal",
+    runId: "run-jobrunner-goal",
+    project: { id: "g-jobrunner", name: "jobrunner", projectRoot: "/repo/jobrunner" },
+    liveCwd: "/repo/jobrunner",
+    terminalStatus: "running",
+    taskLineup: [
+      {
+        id: "step",
+        content: "Audit the current browser boundary and application contracts",
+        status: "in_progress",
+        source: "todo-write",
+        updatedAt: 1000,
+      },
+    ],
+    statusSummary: {
+      task: "Audit the current browser boundary and application contracts",
+      userTask: "Build and verify a reliable job-application system for Noam",
+      path: "/repo/jobrunner",
+      now: "Working",
+      status: "working",
+      provider: "shell",
+      confidence: "high",
+      tasksFromTodoWrite: true,
+    },
+  });
+
+  expect(header.goalLabel).toBe("Audit the current browser boundary and application contracts");
+  expect(header.contextLabel).toBe("Build and verify a reliable job-application system for Noam");
+  expect(header.sources.context).not.toBe("missing");
 });
 
 test("shows the user goal as Task and the active plan item as Now Active", () => {
@@ -318,7 +412,7 @@ test("keeps real task-list activity ahead of fallback status wording", () => {
   expect(header.sources.activity).toBe("status-summary");
 });
 
-test("captured task with generic working activity becomes explicit capture failure", () => {
+test("captured task with generic working activity keeps an honest status title", () => {
   const header = buildTerminalHeaderState({
     paneId: "pane-working",
     terminalId: "pty-working",
@@ -346,7 +440,6 @@ test("captured task with generic working activity becomes explicit capture failu
   });
 
   expect(header.goalLabel).toBe("Gate Now Active echo failures");
-  // New contract: honest status word instead of "Activity not captured".
-  expect(header.currentActivity).toBe("Awaiting next action");
+  expect(header.currentActivity).toBe("Working");
   expect(header.sources.activity).toBe("task-tool");
 });

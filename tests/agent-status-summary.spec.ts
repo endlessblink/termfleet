@@ -1014,8 +1014,8 @@ test("durable shell header drops stale verifier activity after a newer agent pro
   );
 
   expect(header.userTask).toBe("Writing tests for selected file");
-  expect(header.task).toBe("Writing tests for selected file");
-  expect(header.now).toBe("Writing tests for selected file");
+  expect(header.task).toBe("Task not captured");
+  expect(header.now).not.toBe("Writing tests for selected file");
   expect(header.now).not.toContain("keymap");
 });
 

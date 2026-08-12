@@ -50,7 +50,10 @@ import {
   terminalPurposeFromContext,
   terminalTextLooksReadyPrompt,
 } from "../lib/terminalHeaderDisplay";
-import { buildTerminalHeaderState } from "../lib/terminalHeaderState";
+import {
+  buildTerminalHeaderState,
+  resolveDistinctHeaderNow,
+} from "../lib/terminalHeaderState";
 import { durableActivityIsLive } from "../lib/terminalActivity";
 import {
   badgeForAttention,
@@ -191,7 +194,7 @@ function AgentTaskSidebar({
             textTransform: "uppercase",
             color: "var(--text-primary)",
             fontSize: 10,
-            fontWeight: 600,
+    fontWeight: 500,
             letterSpacing: 0,
           }}
         >
@@ -211,7 +214,7 @@ function AgentTaskSidebar({
                   "color-mix(in srgb, var(--accent-live) 16%, var(--surface-raised))",
                 color: "var(--text-primary)",
                 fontSize: 11,
-                fontWeight: 600,
+    fontWeight: 500,
               }}
             >
               {stats.total}
@@ -320,7 +323,7 @@ function AgentTaskSidebar({
               alignItems: "center",
               justifyContent: "center",
               padding: 0,
-              border: "1px solid var(--border-subtle)",
+    border: "1px solid transparent",
               borderRadius: 6,
               background:
                 "color-mix(in srgb, var(--surface-raised) 82%, transparent)",
@@ -711,7 +714,7 @@ function PaneContextMenu({
               padding: "5px 9px 3px",
               color: "var(--text-tertiary)",
               fontSize: 10,
-              fontWeight: 600,
+    fontWeight: 500,
               letterSpacing: "0.04em",
               textTransform: "uppercase",
             }}
@@ -939,6 +942,12 @@ function MeasuringFallback() {
 
 export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
   const groups = useWorkspaceStore((state) => state.groups);
+  const panelColor = useWorkspaceStore(
+    (state) =>
+      state.canvasState.nodes.find(
+        (node) => node.type === "terminal" && node.terminalTabId === tab.id,
+      )?.labelColor ?? tab.color,
+  );
   const liveGitRoots = useWorkspaceStore((state) => state.liveGitRoots);
   const immersiveTerminal = useWorkspaceStore(
     (state) => state.workspaceUiState.immersiveTerminal,
@@ -1198,7 +1207,8 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
           paneTerminal?.mainUserAsk &&
           (!paneTerminal.mainUserAsk.runId ||
             !paneTerminal.activeRunId ||
-            paneTerminal.mainUserAsk.runId === paneTerminal.activeRunId),
+            paneTerminal.mainUserAsk.runId === paneTerminal.activeRunId ||
+            paneTerminal.mainUserAsk.source === "status-sidecar"),
         );
         const linkedProject = projectForTab(
           tab,
@@ -1290,9 +1300,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
             title: (
               (isAgentPane
                 ? (paneTaskLine?.text ?? agentStatusSummary?.task)
-                : (shellHeader?.hasCapturedGoal
-                    ? shellHeader.goalLabel
-                    : shellHeader?.currentActivity)) ?? ""
+                : shellHeader?.goalLabel) ?? ""
             ).toString(),
             now: (
               (isAgentPane
@@ -1313,13 +1321,12 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
           },
         );
         const headerTitle = stabilizedHeader.title;
-        const headerNow = stabilizedHeader.now;
+        const headerNow =
+          resolveDistinctHeaderNow(headerTitle, stabilizedHeader.now) ?? "";
         const headerContext =
           (isAgentPane
             ? tab.workstream?.mission ?? tab.workstream?.prompt
-            : shellHeader?.hasCapturedContext
-              ? shellHeader.contextLabel
-              : "") ?? "";
+            : shellHeader?.contextLabel) ?? "";
         // ONE pure render-time translation of the pane's stored status — identical in
         // every view, nothing stored separately that can be dropped and flicker.
         const splitAttentionState: AttentionState = paneBadgeAttention(
@@ -1370,7 +1377,11 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
               flexDirection: "column",
               overflow: "hidden",
               background: "var(--surface-sunken)",
-              border: isImmersivePane ? "none" : "1px solid transparent",
+              border: isImmersivePane
+                ? "none"
+                : panelColor
+                  ? `1px solid color-mix(in srgb, ${panelColor} 42%, transparent)`
+                  : "1px solid transparent",
               borderRadius: isImmersivePane ? 0 : "var(--radius-md)",
               boxShadow: isImmersivePane
                 ? "none"
@@ -1399,7 +1410,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
               )
             }
           >
-            {(isAgentPane || isShellSummaryPane) && (
+            {(
               <CockpitSnapshotProbe
                 entry={{
                   paneId,
@@ -1528,7 +1539,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                   padding: "7px 8px",
                   borderRadius: 8,
                   background: "rgba(29, 34, 36, 0.94)",
-                  border: "1px solid var(--border-subtle)",
+    border: "1px solid transparent",
                   boxShadow: "0 12px 32px rgba(0,0,0,0.35)",
                   color: "var(--text-primary)",
                   fontFamily: "var(--font-ui)",
@@ -1594,7 +1605,13 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                       ? "7px 8px 6px"
                       : "0 7px",
                   borderBottom: "1px solid var(--border-subtle)",
-                  background: isActive ? "#202527" : "#1d2224",
+                  background: panelColor
+                    ? `color-mix(in srgb, ${panelColor} ${isActive ? 14 : 7}%, ${
+                        isActive ? "#202527" : "#1d2224"
+                      })`
+                    : isActive
+                      ? "#202527"
+                      : "#1d2224",
                   color: "var(--text-secondary)",
                   cursor: "default",
                 }}
@@ -1654,7 +1671,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                             flexShrink: 0,
                             color: "var(--text-tertiary)",
                             fontSize: 10,
-                            fontWeight: 600,
+    fontWeight: 500,
                             textTransform: "uppercase",
                           }}
                         >
@@ -1720,7 +1737,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                           padding: "0 8px",
                           borderRadius: 999,
                           fontSize: 11,
-                          fontWeight: 600,
+    fontWeight: 500,
                           whiteSpace: "nowrap",
                           color: splitAttention.color,
                           border: `1px solid color-mix(in srgb, ${splitAttention.color} 45%, transparent)`,
@@ -1759,7 +1776,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                             alignItems: "center",
                             justifyContent: "center",
                             padding: "0 7px",
-                            border: "1px solid var(--border-subtle)",
+    border: "1px solid transparent",
                             borderRadius: "var(--radius-xs)",
                             background: "var(--surface-base)",
                             color: "var(--text-secondary)",
@@ -1990,7 +2007,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                             flexShrink: 0,
                             color: "var(--text-tertiary)",
                             fontSize: 10,
-                            fontWeight: 600,
+    fontWeight: 500,
                             textTransform: "uppercase",
                           }}
                         >
@@ -2056,7 +2073,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                           padding: "0 8px",
                           borderRadius: 999,
                           fontSize: 11,
-                          fontWeight: 600,
+    fontWeight: 500,
                           whiteSpace: "nowrap",
                           color: splitAttention.color,
                           border: `1px solid color-mix(in srgb, ${splitAttention.color} 45%, transparent)`,
@@ -2248,12 +2265,12 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                       }
                     >
                       {agentStatusSummary
-                        ? `Working on: ${headerTitle}`
+                        ? `Task: ${headerTitle}`
                         : isPreviewPane
                           ? (paneNode.previewUrl ?? "Localhost preview")
                           : paneContext}
                     </span>
-                    {paneActivity && (
+                    {paneActivity && paneActivity !== headerTitle && (
                       <span
                         data-testid="split-agent-pane-now"
                         style={{

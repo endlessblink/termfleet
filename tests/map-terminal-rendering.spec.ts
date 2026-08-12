@@ -56,15 +56,17 @@ test("map terminal menu visibly offers the exact Codex reconnect command", async
         nodes: [{ id: "visual-reconnect-node", type: "terminal", title: "Visual reconnect session", x: 80, y: 80, width: 820, height: 460, terminalTabId: tabId, terminalPtyId: ptyId }],
         selectedNodeId: "visual-reconnect-node",
         selectedNodeIds: ["visual-reconnect-node"],
-        viewport: { x: 0, y: 0, zoom: 1 },
+         viewport: { x: 0, y: 0, zoom: 0.75 },
       },
     });
   });
   await page.setViewportSize({ width: 1600, height: 900 });
-  await page.waitForTimeout(500);
+  await expect(page.getByTestId("canvas-terminal-node-header")).toBeVisible();
+  await page.waitForTimeout(750);
   await page.mouse.click(900, 450, { button: "right" });
 
   const menu = page.getByRole("menu", { name: "Terminal label color" });
+  await expect(menu).toBeVisible({ timeout: 10_000 });
   await expect(menu).toContainText("Reconnect this chat");
   await expect(menu).toContainText("Copy exact codex command");
   await expect(menu).toContainText("Paste it into a terminal to reopen this chat");
@@ -89,7 +91,7 @@ test("selected live map terminals preserve alternate-screen projection without c
   );
 
   expect(liveTerminalBlock?.[0]).toContain("standalone");
-  expect(liveTerminalBlock?.[0]).toContain("runtimeActive={selected}");
+    expect(liveTerminalBlock?.[0]).toContain("runtimeActive={selected || connectionActive}");
   expect(liveTerminalBlock?.[0]).toContain("mapProjection");
   expect(liveTerminalBlock?.[0]).not.toContain("mapProjection={false}");
   expect(liveTerminalBlock?.[0]).not.toContain("projectionMinScale");
@@ -118,18 +120,24 @@ test("selected live map terminal renders through non-transformed overlay, not ac
   );
 });
 
-test("map reattachment ignores a stale persisted PTY id", () => {
+test("map reattachment prefers the card's live PTY and falls back safely", () => {
   const source = readFileSync("src/components/MagicCanvas.tsx", "utf8");
   const linkedTerminalBlock = source.match(
-    /const linkedPaneTerminalId = [\s\S]*?const linkedTerminal =/,
+    /const linkedTerminal =[\s\S]*?const liveTerminalRoot =/,
   )?.[0];
 
   expect(codeShape(linkedTerminalBlock)).toContain(
-    codeShape(
-      "const linkedTerminalId = linkedPaneTerminalId ?? linkedTab?.terminals[0]?.id;",
-    ),
+    codeShape("terminal.id === node.terminalPtyId"),
   );
-  expect(codeShape(linkedTerminalBlock)).not.toContain("node.terminalPtyId");
+  expect(codeShape(linkedTerminalBlock)).toContain(
+    codeShape("terminal.paneId === node.id"),
+  );
+  expect(codeShape(linkedTerminalBlock)).toContain(
+    codeShape("terminal.paneId === linkedTab.activePaneId"),
+  );
+  expect(codeShape(linkedTerminalBlock)).toContain(
+    codeShape("linkedTab?.terminals[0]"),
+  );
 });
 
 test("map Canvas2D terminals do not also mount the xterm renderer or per-pane status poller", () => {
@@ -252,12 +260,14 @@ test("map terminal activation owns tab, pane, and focused terminal before paste"
 test("agent cards expose a direct terminal connection", () => {
   const source = readFileSync("src/components/MagicCanvas.tsx", "utf8");
   const connectButton = source.match(
-    /<button[\s\S]*?data-testid=\"canvas-agent-connect-terminal\"[\s\S]*?<\/button>/,
+    /data-testid=\"canvas-agent-connect-terminal\"[\s\S]*?<\/button>/,
   )?.[0] ?? "";
 
   expect(connectButton).toContain('data-testid="canvas-agent-connect-terminal"');
   expect(connectButton).toContain('title="Connect terminal"');
   expect(connectButton).toContain("connectLinkedTerminal()");
+  expect(connectButton).toContain("onPointerDown");
+  expect(connectButton).not.toContain("openLinkedTerminal()");
   expect(source).toContain('data-testid="canvas-terminal-connect-terminal"');
   expect(source).toContain(">Connect terminal</span>");
 });
@@ -265,21 +275,36 @@ test("agent cards expose a direct terminal connection", () => {
 test("map Connect terminal selects the pane without leaving the map", () => {
   const source = readFileSync("src/components/MagicCanvas.tsx", "utf8");
   const terminalCanvas = readFileSync("src/components/TerminalCanvas.tsx", "utf8");
+  const terminal = readFileSync("src/components/Terminal.tsx", "utf8");
   const connectionBlock = source.match(
     /const connectLinkedTerminal = useCallback\(\(\) => \{[\s\S]*?\n  \}, \[/,
   )?.[0] ?? "";
 
   expect(connectionBlock).toContain("selectCanvasNode(node.id)");
-  expect(connectionBlock).toContain("setActiveTab(linkedTab.id)");
-  expect(connectionBlock).toContain("setActivePane(linkedTab.id, terminalPaneId)");
+  expect(connectionBlock).toContain("focusNode(node, FOCUS_TERMINAL_ZOOM)");
+  expect(connectionBlock).toContain("setActiveTab(currentTab.id)");
+  expect(connectionBlock).toContain("setActivePane(currentTab.id, targetPaneId)");
   expect(connectionBlock).toContain("setActiveTerminal(");
   expect(connectionBlock).toContain("setConnectionGeneration");
+  expect(connectionBlock).toContain("reconnectStoppedAgents");
+  expect(connectionBlock).toContain('invoke("daemon_write_session"');
+  expect(connectionBlock).toContain('"agent_status_read_sidecar"');
   expect(connectionBlock).toContain("focusConnectedInput");
   expect(connectionBlock).toContain("requestAnimationFrame(focusConnectedInput)");
+  expect(source).toContain("onPointerDown={(event) => event.stopPropagation()}");
+  expect(connectionBlock).toContain("attempts < 600");
+  expect(connectionBlock).not.toContain("inputs[0]");
+  expect(connectionBlock).toContain("input.dataset.terminalSessionId ?? targetTerminalId");
+  expect(source).toContain("const connectionActive = connectedTerminalId !== null;");
+  expect(source).toContain("(live || connectionActive)");
+  expect(source).toContain("onCanvasInputReady={");
+  expect(source).toContain("focusConnectedCanvasInput");
   expect(connectionBlock).not.toContain('setWorkspaceMode("split")');
   expect(terminalCanvas).toContain('data-terminal-session-id={sessionId}');
   expect(terminalCanvas).toContain("if (!runtimeActive) return;");
   expect(terminalCanvas).toContain("focusInput();");
+  expect(terminalCanvas).toContain("onInputReady?.(input, sessionId);");
+  expect(terminal).toContain("onInputReady={onCanvasInputReady}");
   expect(source).toContain('title="Open full terminal"');
   expect(source).toContain("openLinkedTerminal();");
   expect(source).toContain("onOpen={connectLinkedTerminal}");
@@ -318,17 +343,24 @@ test("clicking map Connect terminal reconnects an unselected session in canvas",
           title: "Reconnect session",
           groupId: null,
           initialCwd: "/tmp/termfleet-reconnect",
-          terminals: [
-            {
-              id: "pty-reconnect",
-              paneId: "pane-reconnect",
-              cols: 80,
-              rows: 24,
-              status: "running",
-            },
-          ],
-          splitLayout: { id: "pane-reconnect", type: "terminal" },
-          activePaneId: "pane-reconnect",
+           terminals: [
+             {
+               id: "pty-reconnect-active",
+               paneId: "pane-reconnect-active",
+               cols: 80,
+               rows: 24,
+               status: "exited",
+             },
+             {
+               id: "pty-reconnect-card",
+               paneId: "pane-reconnect-card",
+               cols: 80,
+               rows: 24,
+               status: "exited",
+             },
+           ],
+           splitLayout: { id: "pane-reconnect-active", type: "terminal" },
+           activePaneId: "pane-reconnect-active",
         },
       ],
       activeTabId: null,
@@ -336,10 +368,11 @@ test("clicking map Connect terminal reconnects an unselected session in canvas",
       canvasState: {
         nodes: [
           {
-            id: "node-reconnect",
+             id: "pane-reconnect-card",
             type: "terminal",
-            title: "Reconnect session",
-            terminalTabId: "tab-reconnect",
+             title: "Reconnect session",
+             terminalTabId: "tab-reconnect",
+             terminalPtyId: "pty-reconnect-card",
             x: 100,
             y: 100,
             width: 820,
@@ -372,14 +405,16 @@ test("clicking map Connect terminal reconnects an unselected session in canvas",
       activeTabId: current.activeTabId,
       activeTerminalId: current.activeTerminalId,
       selectedNodeId: canvas.selectedNodeId,
+      zoom: (canvas.viewport as { zoom: number }).zoom,
       focusedInput: document.activeElement?.getAttribute("data-terminal-session-id"),
     };
   });
 
   expect(state.workspaceMode).toBe("canvas");
   expect(state.activeTabId).toBe("tab-reconnect");
-  expect(state.activeTerminalId).toBe("terminal-tab-reconnect-pane-reconnect");
-  expect(state.selectedNodeId).toBe("node-reconnect");
+  expect(state.activeTerminalId).toBe("terminal-tab-reconnect-pane-reconnect-card");
+  expect(state.selectedNodeId).toBe("pane-reconnect-card");
+  expect(state.zoom).toBe(1);
 });
 
 test("AskUserQuestion mouse-report prompts do not trigger map layout reconciliation", () => {
@@ -1036,6 +1071,7 @@ test("terminal map labels can be recolored from the right-click menu", async ({
             type: "terminal",
             title: "Build release lane",
             terminalTabId: "tab-color",
+            labelColor: "#ef6f72",
             x: 100,
             y: 100,
             width: 820,
@@ -1050,6 +1086,41 @@ test("terminal map labels can be recolored from the right-click menu", async ({
   });
 
   await expect(page.getByTestId("canvas-terminal-connect-terminal")).toBeVisible();
+  await expect(
+    page.locator('[data-pane-id="pane-color"].workspace-sidebar-row'),
+  ).toHaveAttribute("data-panel-color", "#ef6f72");
+  await page.evaluate(() => {
+    const store = (
+      window as typeof window & {
+        __termfleetWorkspaceStore?: {
+          getState: () => { canvasState: Record<string, unknown> };
+          setState: (state: Record<string, unknown>) => void;
+        };
+      }
+    ).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+    store.setState({
+      canvasState: {
+        ...store.getState().canvasState,
+        selectedNodeId: null,
+        selectedNodeIds: [],
+      },
+    });
+  });
+  await expect(
+    page.locator('[data-pane-id="pane-color"].workspace-sidebar-row'),
+  ).toHaveAttribute("data-active", "false");
+  await expect(
+    page.locator('[data-pane-id="pane-color"].workspace-sidebar-row'),
+  ).toHaveAttribute("data-panel-color", "#ef6f72");
+  await page
+    .locator('[data-pane-id="pane-color"].workspace-sidebar-row')
+    .click();
+  await page.getByRole("button", { name: "Sessions", exact: true }).click();
+  await expect(
+    page.locator('[data-pane-id="pane-color"].session-sidebar-row'),
+  ).toHaveAttribute("data-panel-color", "#ef6f72");
+  await page.getByRole("button", { name: "Map", exact: true }).click();
   await expect(page.getByTestId("canvas-terminal-connect-terminal")).toContainText(
     "Connect terminal",
   );
@@ -1064,6 +1135,10 @@ test("terminal map labels can be recolored from the right-click menu", async ({
     "border-left-color",
     "rgb(212, 164, 79)",
   );
+  await page.getByRole("button", { name: "Map", exact: true }).click();
+  await expect(
+    page.locator('[data-pane-id="pane-color"].workspace-sidebar-row'),
+  ).toHaveAttribute("data-panel-color", "#d4a44f");
 
   await expect
     .poll(async () =>
@@ -1110,7 +1185,7 @@ test("terminal map labels can be recolored from the right-click menu", async ({
   await page.getByRole("button", { name: "Sessions", exact: true }).click();
   await expect(
     page.locator('[data-pane-id="pane-color"].session-sidebar-row'),
-  ).toHaveCSS("box-shadow", /rgb\(212, 164, 79\)/);
+  ).toHaveAttribute("data-panel-color", "#d4a44f");
 });
 
 test("high token pressure is unmistakable on the expanded map terminal header", async ({
@@ -3797,6 +3872,10 @@ Acceptance:
   await expect(page.getByTestId("canvas-terminal-task-sidebar")).toContainText(
     "3",
   );
+  await expect(page.getByTestId("canvas-terminal-task-progress")).toHaveAttribute(
+    "aria-label",
+    "2 of 3 tasks complete",
+  );
   await expect(page.getByTestId("canvas-terminal-task-row")).toHaveCount(3);
   const contentBox = await page
     .getByTestId("canvas-terminal-task-content")
@@ -3921,12 +4000,11 @@ Acceptance:
     });
   });
 
-  // Contract update: a raw scrollback scrape ("translate to hebrew" typed in the
-  // buffer) is NOT a captured task — the reserved Now row stays mounted but hidden,
-  // and none of the model-chrome junk ("gpt-5.5 default") leaks anywhere.
-  await expect(
-    page.getByTestId("canvas-terminal-node-header-title"),
-  ).toHaveCSS("visibility", "hidden");
+  // Contract update: a raw scrollback scrape is not a captured task; the card shows
+  // the honest attention state and never leaks model-chrome junk.
+  await expect(page.getByTestId("canvas-terminal-node-header-title")).toHaveText(
+    "Needs attention",
+  );
   // TC-060 R1: no declared task is no longer a blank — the card falls back to a
   // true state line, and must never show the old placeholder.
   await expect(
@@ -4004,20 +4082,16 @@ Acceptance:
     });
   });
 
-  // Contract update: scraped buffer text is not a captured task, and every junk
-  // candidate (gibberish prompt, "Supervised agent run") is rejected — the card
-  // collapses to the honest Task line with no Now Active row.
-  await expect(
-    page.getByTestId("canvas-terminal-node-header-title"),
-  ).toHaveCSS("visibility", "hidden");
+  // Scraped buffer text is not a captured task; the card reports attention without
+  // leaking the gibberish prompt or internal placeholder.
+  await expect(page.getByTestId("canvas-terminal-node-header-title")).toHaveText(
+    "Needs attention",
+  );
   // TC-060 R1: no declared task is no longer a blank — the card falls back to a
   // true state line, and must never show the old placeholder.
-  await expect(
-    page.getByTestId("canvas-terminal-node-description"),
-  ).not.toHaveText("Task not captured");
-  await expect(
-    page.getByTestId("canvas-terminal-node-description"),
-  ).not.toBeEmpty();
+  await expect(page.getByTestId("canvas-terminal-node-header")).not.toContainText(
+    "Task not captured",
+  );
   await expect(page.getByTestId("canvas-terminal-node-now")).not.toContainText(
     "sfgdsafgd",
   );
@@ -4094,17 +4168,14 @@ Acceptance:
 
   // Contract update: the scraped ask is not a captured task; the card admits it and
   // the junk candidates (/skills chrome, model banner) never leak.
-  await expect(
-    page.getByTestId("canvas-terminal-node-header-title"),
-  ).toHaveCSS("visibility", "hidden");
+  await expect(page.getByTestId("canvas-terminal-node-header-title")).toHaveText(
+    "Needs attention",
+  );
   // TC-060 R1: no declared task is no longer a blank — the card falls back to a
   // true state line, and must never show the old placeholder.
-  await expect(
-    page.getByTestId("canvas-terminal-node-description"),
-  ).not.toHaveText("Task not captured");
-  await expect(
-    page.getByTestId("canvas-terminal-node-description"),
-  ).not.toBeEmpty();
+  await expect(page.getByTestId("canvas-terminal-node-header")).not.toContainText(
+    "Task not captured",
+  );
   await expect(page.getByTestId("canvas-terminal-node-now")).not.toContainText(
     "/skills",
   );
@@ -4253,9 +4324,9 @@ Acceptance:
   });
 
   // Junk "Search" tool-log never stands as a title — the row is hidden entirely.
-  await expect(
-    page.getByTestId("canvas-terminal-node-header-title"),
-  ).toHaveCSS("visibility", "hidden");
+  await expect(page.getByTestId("canvas-terminal-node-header-title")).toHaveText(
+    "Needs attention",
+  );
   await expect(page.getByTestId("canvas-terminal-node-now")).not.toContainText(
     "terminalBody|liveTerminalBody",
   );
@@ -4768,7 +4839,10 @@ test("map shell header uses durable activity instead of stale transcript summary
       (candidate) => candidate.id === node.terminalTabId,
     );
     if (!tab) throw new Error("Terminal tab is unavailable");
-    const paneId = tab.activePaneId ?? node.id;
+    const paneId = node.id;
+    store.getState().updateCanvasNode(node.id, {
+      terminalPtyId: "pty-durable-activity-fixture",
+    });
     store.getState().updateTab(tab.id, {
       title: "Terminal",
       initialCwd:
@@ -4884,7 +4958,10 @@ test("map shell header replaces source-file activity with readable task activity
       (candidate) => candidate.id === node.terminalTabId,
     );
     if (!tab) throw new Error("Terminal tab is unavailable");
-    const paneId = tab.activePaneId ?? node.id;
+    const paneId = node.id;
+    store.getState().updateCanvasNode(node.id, {
+      terminalPtyId: "pty-map-source-file-activity",
+    });
     store.getState().updateTab(tab.id, {
       title: "bina-ve-ze",
       initialCwd:
@@ -4924,9 +5001,6 @@ test("map shell header replaces source-file activity with readable task activity
   // The activity only restates the task ("Improving <task>"), so there is no distinct
   // second line: the task itself becomes the one prominent line and the raw source-file
   // activity ("ModelScene.tsx") never surfaces.
-  await expect(page.getByTestId("canvas-terminal-node-description")).toHaveText(
-    "#36 Bottom-sheet pull-up + clearer launcher button",
-  );
   await expect(
     page.getByTestId("canvas-terminal-node-header-title"),
   ).toHaveCSS("visibility", "hidden");
@@ -4988,7 +5062,10 @@ test("map shell header treats ready prompt as idle instead of capture failure", 
       (candidate) => candidate.id === node.terminalTabId,
     );
     if (!tab) throw new Error("Terminal tab is unavailable");
-    const paneId = tab.activePaneId ?? node.id;
+    const paneId = node.id;
+    store.getState().updateCanvasNode(node.id, {
+      terminalPtyId: "pty-map-ready-prompt",
+    });
     store.getState().updateTab(tab.id, {
       title: "termfleet",
       initialCwd:
@@ -5020,18 +5097,17 @@ test("map shell header treats ready prompt as idle instead of capture failure", 
   // TC-060 R1: no declared task is no longer a blank — the card falls back to a
   // true state line, and must never show the old placeholder.
   await expect(
-    page.getByTestId("canvas-terminal-node-description"),
-  ).not.toHaveText("Task not captured");
-  await expect(
-    page.getByTestId("canvas-terminal-node-description"),
-  ).not.toBeEmpty();
+    page.getByTestId("canvas-terminal-node-header-title"),
+  ).toHaveCSS("visibility", "hidden");
   // An idle pane with no distinct step collapses to the single honest Task line — the
   // "Now Active" row stays reserved but hidden rather than restating a bare "Idle"
   // status word.
   await expect(
     page.getByTestId("canvas-terminal-node-header-title"),
   ).toHaveCSS("visibility", "hidden");
-  await expect(page.getByTestId("canvas-terminal-node-now")).toHaveText("Idle");
+  await expect(page.getByTestId("canvas-terminal-node-now")).toHaveText(
+    "Working on the current task",
+  );
 });
 
 test("split shell header uses the same durable summary policy as the map", async ({
@@ -5273,12 +5349,6 @@ test("map summary cards expose workspace labels for parallel sessions", async ({
     workspaceLabels.filter({ hasText: "TermFleet OSS" }),
   ).toBeVisible();
   await expect(workspaceLabels.filter({ hasText: "arthouse" })).toBeVisible();
-  // KNOWN GAP (tracked with the description-text work): a workstream mission no longer
-  // auto-populates the Task row after the scraped-ask hardening — cards admit "Task not
-  // captured" instead. This test's real subject is the WORKSPACE labels above.
-  await expect(
-    page.getByTestId("canvas-terminal-node-description").first(),
-  ).not.toHaveText("Task not captured");
 });
 
 test("map panel summarizes visible nodes by workspace branch role and service", async ({

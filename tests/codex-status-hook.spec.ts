@@ -27,7 +27,7 @@ test("a new session persists its first substantive request as the main goal", ()
   expect(sidecar?.now).toBe("Prompt submitted");
 });
 
-test("a doubled attachment marker is never persisted as the opening goal", () => {
+test("a complaint with an attachment marker is never persisted as the opening goal", () => {
   const sidecar = buildCodexSidecar(
     {
       hook_event_name: "UserPromptSubmit",
@@ -39,19 +39,90 @@ test("a doubled attachment marker is never persisted as the opening goal", () =>
     null,
     1_000,
   );
-  expect(sidecar?.mainTask).toBe(
-    "for the millionth time it glitches. fix it, test it.",
-  );
+  expect(sidecar?.mainTask).toBeUndefined();
+  expect(sidecar?.mainTaskSource).toBeUndefined();
   expect(sidecar?.userTask).toBe(
     "[[Image #1] for the millionth time it glitches. fix it, test it.",
   );
+});
+
+test("operator frustration is never persisted as a durable opening goal", () => {
+  const sidecar = buildCodexSidecar(
+    {
+      hook_event_name: "UserPromptSubmit",
+      prompt: "you are working for hours with nothing to show for it",
+      cwd: "/repo/termfleet",
+      session_id: "s1",
+    },
+    null,
+    1_025,
+  );
+  expect(sidecar?.mainTask).toBeUndefined();
+  expect(sidecar?.mainTaskSource).toBeUndefined();
+});
+
+test("goal-management wording is never persisted as the opening goal", () => {
+  const sidecar = buildCodexSidecar(
+    {
+      hook_event_name: "UserPromptSubmit",
+      prompt: "make this a goal",
+      cwd: "/repo",
+      session_id: "s1",
+    },
+    null,
+    1_050,
+  );
+  expect(sidecar?.mainTask).toBeUndefined();
+  expect(sidecar?.mainTaskSource).toBeUndefined();
+});
+
+test("an invalid persisted goal is cleared instead of surviving a follow-up", () => {
+  const sidecar = buildCodexSidecar(
+    {
+      hook_event_name: "UserPromptSubmit",
+      prompt: "the task description is still super broken",
+      cwd: "/repo",
+      session_id: "s1",
+    },
+    {
+      sessionId: "s1",
+      mainTask: "broken hard fail. check every pane's Task, Goal, and Now",
+      mainTaskSource: "opening-request",
+      userTask: "low quality",
+      todos: [],
+    },
+    1_075,
+  );
+  expect(sidecar?.mainTask).toBeUndefined();
+  expect(sidecar?.mainTaskSource).toBeUndefined();
+});
+
+test("tool events cannot resurrect a feedback message as the durable goal", () => {
+  const sidecar = buildCodexSidecar(
+    {
+      hook_event_name: "PreToolUse",
+      tool_name: "exec",
+      cwd: "/repo/termfleet",
+      session_id: "s1",
+    },
+    {
+      sessionId: "s1",
+      mainTask: "You're right to challenge that line. It is only a guard at the display boundary",
+      mainTaskSource: "opening-request",
+      userTask: "[Image #1] this is a fail on all three",
+      todos: [],
+    },
+    1_085,
+  );
+  expect(sidecar?.mainTask).toBeUndefined();
+  expect(sidecar?.mainTaskSource).toBeUndefined();
 });
 
 test("follow-ups keep the declared main task and real checklist", () => {
   const previous = {
     sessionId: "s1",
     mainTask: "Improving the live-events landing page and routes",
-    mainTaskSource: "plan-explanation",
+    mainTaskSource: "opening-request",
     userTask: "Make it clear where I am working",
     todos: [{ content: "Reviewing the landing page on mobile", status: "in_progress", activeForm: "" }],
   };
@@ -70,6 +141,27 @@ test("follow-ups keep the declared main task and real checklist", () => {
   expect(sidecar?.userTask).toBe("you will inform me when you are done and give me a count");
   expect(sidecar?.todos).toEqual(previous.todos);
   expect(sidecar?.now).toBe("Reviewing the landing page on mobile");
+});
+
+test("resume-goal follow-ups recover a legacy opening request", () => {
+  const sidecar = buildCodexSidecar(
+    {
+      hook_event_name: "UserPromptSubmit",
+      prompt: "resume goal",
+      cwd: "/repo",
+      session_id: "s1",
+    },
+    {
+      sessionId: "s1",
+      mainTask: undefined,
+      userTask: "Improve the live-events landing page and routes",
+      todos: [{ content: "Verifying the rendered page", status: "in_progress" }],
+    },
+    1_150,
+  );
+
+  expect(sidecar?.mainTask).toBe("Improve the live-events landing page and routes");
+  expect(sidecar?.userTask).toBe("resume goal");
 });
 
 test("a plan explanation cannot replace the durable user goal", () => {
@@ -100,17 +192,36 @@ test("a plan explanation cannot replace the durable user goal", () => {
   expect(sidecar?.todos).toHaveLength(2);
 });
 
+test("a plan explanation cannot become the first durable user goal", () => {
+  const sidecar = buildCodexSidecar(
+    {
+      tool_name: "update_plan",
+      tool_input: {
+        explanation: "Re-auditing the current implementation and live state before the final installed/rendered gate.",
+        plan: [{ step: "Re-audit live pane records and capture sources", status: "in_progress" }],
+      },
+      cwd: "/repo",
+    },
+    { userTask: "[Image #1] this is a fail on all three", todos: [] },
+    1_201,
+  );
+
+  expect(sidecar?.mainTask).toBeUndefined();
+  expect(sidecar?.mainTaskSource).toBeUndefined();
+  expect(sidecar?.now).toBe("Re-audit live pane records and capture sources");
+});
+
 test("turn completion cannot replace the declared main task", () => {
   const previous = {
     mainTask: "Improving the live-events landing page and routes",
-    mainTaskSource: "plan-explanation",
+    mainTaskSource: "opening-request",
     userTask: "you will inform me when you are done and give me a count",
     todos: [{ content: "Reviewing the landing page on mobile", status: "in_progress", activeForm: "" }],
   };
   const sidecar = buildCodexSidecar(
     {
       hook_event_name: "Stop",
-      last_assistant_message: "Done. Next steps: check desktop and mobile.",
+      last_assistant_message: "The release candidate is ready. Next steps: check desktop and mobile.",
       cwd: "/repo",
     },
     previous,
@@ -119,6 +230,7 @@ test("turn completion cannot replace the declared main task", () => {
   expect(sidecar?.mainTask).toBe(previous.mainTask);
   expect(sidecar?.userTask).toBe(previous.userTask);
   expect(sidecar?.turn).toBe("idle");
+  expect(sidecar?.now).toBe("The release candidate is ready");
 });
 
 test("a new session replaces the prior goal with its own opening request", () => {
@@ -155,7 +267,26 @@ test("an ordinary prompt never manufactures checklist work", () => {
     1_500,
   );
   expect(sidecar?.todos).toEqual([{ content: "Verify production", status: "completed", activeForm: "" }]);
-  expect(sidecar?.mainTask).toBe("Improving deployment reliability");
+  expect(sidecar?.mainTask).toBeUndefined();
+});
+
+test("create_goal becomes the durable cockpit mission instead of a plan step", () => {
+  const sidecar = buildCodexSidecar(
+    {
+      hook_event_name: "PostToolUse",
+      tool_name: "create_goal",
+      tool_input: { objective: "Keep every live terminal clear about its work" },
+      cwd: "/repo/termfleet",
+    },
+    {
+      todos: [{ content: "Waiting for user-facing approval", status: "in_progress", activeForm: "" }],
+      userTask: "not appearing",
+    },
+    1_600,
+  );
+  expect(sidecar?.mainTask).toBe("Keep every live terminal clear about its work");
+  expect(sidecar?.mainTaskSource).toBe("goal-task");
+  expect(sidecar?.now).toBe("Waiting for user-facing approval");
 });
 
 test("exec_command maps to readable activity and ignores navigation", () => {
@@ -175,7 +306,7 @@ test("inline command bodies never leak into activity", () => {
 test("tool activity preserves the mission and task list", () => {
   const previous = {
     mainTask: "Preparing the release",
-    mainTaskSource: "plan-explanation",
+    mainTaskSource: "opening-request",
     userTask: "ship it",
     todos: [{ content: "Build the app", status: "in_progress", activeForm: "" }],
   };
@@ -300,12 +431,12 @@ test("empty events do not churn the sidecar", () => {
 test("a typed permission notification marks waiting without changing the mission", () => {
   const sidecar = buildCodexSidecar(
     { hook_event_name: "Notification", notification_type: "permission_prompt" },
-    { mainTask: "Fix restart", mainTaskSource: "plan-explanation", todos: [], userTask: "x" },
+    { mainTask: "Fix restart", mainTaskSource: "opening-request", todos: [], userTask: "x" },
     1,
   );
   expect(sidecar?.turn).toBe("waiting");
   expect(sidecar?.mainTask).toBe("Fix restart");
-  expect(sidecar?.mainTaskSource).toBe("plan-explanation");
+  expect(sidecar?.mainTaskSource).toBe("opening-request");
 });
 
 test("request_user_input waits before the answer and resumes after it", () => {

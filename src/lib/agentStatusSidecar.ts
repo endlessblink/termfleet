@@ -14,6 +14,7 @@ import type {
   AgentStatusSummaryInput,
 } from "./agentStatusSummary";
 import type { AgentProvider } from "./types";
+import { qualityCheckNowLabel, readsAsActivity } from "./terminalHeaderQuality";
 
 export function fnv(value: unknown): string {
   let hash = 2166136261;
@@ -121,6 +122,10 @@ function cleanText(value: unknown): string {
 }
 
 function explicitMainTask(sidecar: AgentStatusSidecar): string {
+  // Plan explanations describe progress or handoff state, not the durable user
+  // request. Keep them available to diagnostics/Now resolution but never promote
+  // them into the Task/Goal identity rows.
+  if (sidecar.mainTaskSource === "plan-explanation") return "";
   if (sidecar?.mainTaskSource) {
     const text = cleanText(sidecar.mainTask);
     // The row fits long text at a word boundary (see `considerLongAsk`), so a declared
@@ -128,7 +133,7 @@ function explicitMainTask(sidecar: AgentStatusSidecar): string {
     // whose agent HAD stated its goal was falling back to its current checklist step —
     // "doesn't answer what workflow and for what" (operator, 2026-07-29). Only a paste
     // (the 220-char hook cap) is refused outright.
-    return text.length < 220 ? text : "";
+    return text.length < 220 && !isNonDescriptiveTaskText(text) ? text : "";
   }
   const legacyGoals = (Array.isArray(sidecar?.todos) ? sidecar.todos : [])
     .map((todo) => cleanText(todo?.content).match(/^Goal:\s*(.+)$/i)?.[1] ?? "")
@@ -184,9 +189,23 @@ function todoToTaskText(
 
 function isNonDescriptiveTaskText(value: unknown): boolean {
   const text = cleanText(value);
-  return /^(?:Answering latest prompt|Answering user question|Prompt submitted|go|continue|this|that|these|those|both|and this|and that|should we add (?:it|that))\??$/i.test(
-    text,
+  return (
+    /^(?:Answering latest prompt|Answering user question|Prompt submitted|resume goal|go|continue|this|that|these|those|both|and this|and that|should we add (?:it|that))\??$/i.test(
+      text,
+    ) ||
+    /\bworking\s+for\s+hour/i.test(text) ||
+    /nothing\s+to\s+show\s+for\s+it/i.test(text) ||
+    /(\p{L})\1{5,}/u.test(text) ||
+    /\b(?:this|that)\s+is\s+a\s+(?:hard\s+)?fail(?:ure)?\b/i.test(text) ||
+    /^(?:you['’]?re|you are)\s+right\b|^(?:i['’]?m|i am|i['’]?m sorry|i apologize)\b|^honest\s+status\b/i.test(text) ||
+    /\b(?:display boundary|defense[- ]in[- ]depth|meta[- ]feedback|capture path)\b/i.test(text) ||
+    /^(?:how will that help|the timeline is just one issue)\b/i.test(text)
   );
+}
+
+function isMachineSlug(value: unknown): boolean {
+  const text = cleanText(value) ?? "";
+  return /^[a-z0-9]+(?:-[a-z0-9]+){1,}$/i.test(text);
 }
 
 function workingTaskFromCompleted(value: unknown, cwd?: unknown): string {
@@ -309,6 +328,7 @@ export function summaryFromSidecar(
   const todos = Array.isArray(sidecar?.todos) ? sidecar.todos : [];
   const visibleTodos = visibleSidecarTodos(sidecar);
   const rawNow = cleanText(sidecar?.now);
+  const settledNarration = cleanText(sidecar?.narration);
   // A harness placeholder ("Answering latest prompt") often sits in_progress ahead
   // of the agent's real task and would otherwise own the header. It names no work,
   // so it never outranks a declared task; it is only a last resort.
@@ -321,10 +341,26 @@ export function summaryFromSidecar(
     .reverse()
     .find((todo) => todo?.status === "completed");
   const contextPath = sidecar.cwd || fallback.path;
-  const now =
+  const idleNow =
+    sidecar.turn === "idle" &&
+    !/^(?:Running|Using|Calling|Reading|Writing|Executing):\s/i.test(
+      settledNarration || rawNow,
+    ) &&
+    (qualityCheckNowLabel(settledNarration || rawNow).ok || Boolean(settledNarration))
+      ? settledNarration || rawNow
+      : "";
+  const liveNow =
     sidecar.turn === "working"
       ? contextualWorkingActivity(rawNow, lastDone?.content, contextPath)
-      : rawNow;
+      : sidecar.turn === "idle"
+        ? idleNow
+        : rawNow;
+  const now =
+    sidecar.turn === "waiting"
+      ? fallback.now
+      : liveNow && (readsAsActivity(liveNow) || Boolean(idleNow))
+        ? liveNow
+        : fallback.now;
   const working = Boolean(todos.find((todo) => todo?.status === "in_progress"));
   // Title = the agent's CURRENT task, preferring its human-readable `activeForm` over
   // the terse subject. When nothing is live (all complete), fall back to the LAST
@@ -336,8 +372,19 @@ export function summaryFromSidecar(
     (sidecar.turn === "working"
       ? workingTaskFromCompleted(lastDone?.content, contextPath)
       : cleanText(lastDone?.content));
+  // A Codex/Claude prompt can be the only durable user intent captured for a pane
+  // (especially older idle records created before goal-tool events were recorded). Keep
+  // that prompt available for the header instead of letting the completed todo become the
+  // apparent Goal.
   const userTask =
-    inferredPlanOutcome(sidecar, fallback.path) || explicitMainTask(sidecar);
+    inferredPlanOutcome(sidecar, fallback.path) ||
+    explicitMainTask(sidecar) ||
+    // Legacy panes have no mainTask at all; only then may the stored prompt supply the
+    // durable identity. If a mainTask exists but is unproven/agent-authored, its prompt
+    // must not sneak around that provenance gate.
+    (!cleanText(sidecar?.mainTask) && !isMachineSlug(sidecar?.userTask)
+      ? cleanText(sidecar?.userTask)
+      : "");
   const declaredUserTask = isNonDescriptiveTaskText(userTask) ? "" : userTask;
   const currentActivityTask =
     declaredUserTask && !isNonDescriptiveTaskText(now) ? now : "";
@@ -353,7 +400,9 @@ export function summaryFromSidecar(
         ? sidecar.updatedAt
         : fallback.updatedAt,
     task: activityTitle,
-    userTask: userTask || undefined,
+    userTask: declaredUserTask || undefined,
+    mainTask: explicitMainTask(sidecar) || undefined,
+    mainTaskSource: sidecar?.mainTaskSource,
     completedByCommand: sidecarCompletedByCommand(sidecar),
     now: now || fallback.now,
     // The hook's explicit turn state is authoritative: a Stop event means the turn

@@ -656,7 +656,7 @@ const styles: Record<string, CSSProperties> = {
     alignItems: "center",
     gap: 5,
     padding: "3px 7px",
-    border: "1px solid var(--border-subtle)",
+    border: "1px solid transparent",
     borderRadius: "var(--radius-xs)",
     background: "var(--surface-base)",
     color: "var(--text-secondary)",
@@ -824,7 +824,6 @@ const styles: Record<string, CSSProperties> = {
     display: "grid",
     gap: 3,
     pointerEvents: "none",
-    transition: "padding-right var(--motion-fast)",
   },
   sessionSummary: {
     minWidth: 0,
@@ -891,7 +890,7 @@ const styles: Record<string, CSSProperties> = {
   projectEmojiCell: {
     width: 30,
     height: 30,
-    border: "1px solid var(--border-subtle)",
+    border: "1px solid transparent",
     borderRadius: 8,
     display: "grid",
     placeItems: "center",
@@ -979,7 +978,7 @@ const styles: Record<string, CSSProperties> = {
     gap: 8,
     margin: "0 0 8px",
     padding: "9px 10px",
-    border: "1px solid var(--border-subtle)",
+    border: "1px solid transparent",
     borderRadius: "var(--radius-sm)",
     background: "color-mix(in srgb, var(--surface-raised) 78%, transparent)",
   },
@@ -1017,7 +1016,7 @@ const styles: Record<string, CSSProperties> = {
     gap: 6,
     margin: "0 0 6px",
     padding: "7px 8px",
-    border: "1px solid var(--border-subtle)",
+    border: "1px solid transparent",
     borderRadius: "var(--radius-sm)",
     background: "color-mix(in srgb, var(--surface-base) 82%, transparent)",
   },
@@ -1060,7 +1059,7 @@ const styles: Record<string, CSSProperties> = {
     gap: 6,
     margin: "0 0 6px",
     padding: "7px 8px",
-    border: "1px solid var(--border-subtle)",
+    border: "1px solid transparent",
     borderRadius: "var(--radius-sm)",
     background: "color-mix(in srgb, var(--surface-base) 82%, transparent)",
   },
@@ -1209,7 +1208,7 @@ const styles: Record<string, CSSProperties> = {
     gap: 5,
     marginTop: 5,
     padding: "0 6px",
-    border: "1px solid var(--border-subtle)",
+    border: "1px solid transparent",
     borderRadius: "var(--radius-xs)",
     background: "var(--surface-raised)",
     color: "var(--text-secondary)",
@@ -4858,14 +4857,13 @@ function SessionsPanel({
               liveGitRoot,
               spawnCwd: tab.initialCwd,
             });
-            const taskMissing =
-              header.sources.goal === "missing" ||
-              header.sources.goal === "none";
-            const activityMissing = header.sources.activity === "missing";
+            const panelColor =
+              canvasState.nodes.find(
+                (node) =>
+                  node.type === "terminal" && node.terminalTabId === tab.id,
+              )?.labelColor ?? tab.color;
             const sessionSummary =
-              taskMissing && !activityMissing
-                ? header.currentActivity
-                : header.goalLabel;
+              header.hasCapturedGoal ? header.goalLabel : header.currentActivity;
             const agentProvider =
               tab.workstream?.provider ??
               terminal?.agentProvider ??
@@ -4885,11 +4883,17 @@ function SessionsPanel({
                 data-goal-source={header.sources.goal}
                 data-activity-source={header.sources.activity}
                 data-header-version={header.version}
+                data-panel-color={panelColor ?? ""}
                 style={{
                   ...styles.row,
                   ...(active ? styles.activeRow : null),
+                  ...(panelColor
+                    ? {
+                        ["--session-panel-color" as string]: panelColor,
+                      }
+                    : null),
                 }}
-                title={`${header.workspace} · Task: ${header.goalLabel} · Now Active: ${header.currentActivity} · ${header.fullPath}`}
+                title={`${header.workspace} · ${header.hasCapturedGoal ? `Task: ${header.goalLabel}` : `Now: ${header.currentActivity}`} · ${header.fullPath}`}
                 onClick={() => {
                   setActiveTab(tab.id);
                   setWorkspaceMode("split");
@@ -4910,6 +4914,7 @@ function SessionsPanel({
                   style={styles.sessionContent}
                 >
                   <div
+                    data-testid="sidebar-session-title"
                     style={{
                       ...styles.rowTitle,
                       color: active
@@ -4917,7 +4922,7 @@ function SessionsPanel({
                         : "var(--text-secondary)",
                     }}
                   >
-                    {header.workspace}
+                    {header.hasCapturedGoal ? header.goalLabel : header.workspace}
                   </div>
                   <div
                     style={styles.sessionSummary}
@@ -7614,7 +7619,12 @@ function MapPanel({
                   header.sources.goal === "none"
                 : false;
               const sidebarTaskLabel = header
-                ? truncateAtWordBoundary(header.goalLabel, 52)
+                ? truncateAtWordBoundary(
+                    header.hasCapturedGoal
+                      ? header.goalLabel
+                      : header.currentActivity,
+                    52,
+                  )
                 : "";
               const agentProvider =
                 linkedTab?.workstream?.provider ??
@@ -7639,12 +7649,19 @@ function MapPanel({
                     data-goal-source={header?.sources.goal}
                     data-activity-source={header?.sources.activity}
                     data-header-version={header?.version}
+                    data-panel-color={node.labelColor ?? linkedTab?.color ?? ""}
                     draggable={draggable}
                     style={{
                       ...styles.row,
                       ...styles.mapNodeRow,
                       ...(node.id === canvasState.selectedNodeId
                         ? styles.activeRow
+                        : null),
+                      ...((node.labelColor ?? linkedTab?.color)
+                        ? {
+                            ["--session-panel-color" as string]:
+                              node.labelColor ?? linkedTab?.color,
+                          }
                         : null),
                       ...(draggingId === node.id ? { opacity: 0.45 } : null),
                       ...(draggable ? { cursor: "grab" } : null),
@@ -7673,7 +7690,7 @@ function MapPanel({
                     }}
                     title={
                       header
-                        ? `${header.workspace} · Task: ${header.goalLabel} · Now Active: ${header.currentActivity} · ${header.fullPath}`
+                        ? `${header.workspace} · ${header.hasCapturedGoal ? `Task: ${header.goalLabel}` : `Now: ${header.currentActivity}`} · ${header.fullPath}`
                         : undefined
                     }
                   >
@@ -7731,7 +7748,7 @@ function MapPanel({
                                 color: badgeForAttention(
                                   paneBadgeAttention(liveTerminal),
                                 ).color,
-                                fontWeight: 600,
+    fontWeight: 500,
                               }}
                             >
                               <span
@@ -7783,7 +7800,11 @@ function MapPanel({
                                 : null),
                             }}
                             data-testid="sidebar-map-node-task-row"
-                            title={`Task: ${header.goalLabel}`}
+                            title={
+                              header.hasCapturedGoal
+                                ? `Task: ${header.goalLabel}`
+                                : `Now: ${header.currentActivity}`
+                            }
                           >
                             {sidebarTaskLabel}
                           </div>

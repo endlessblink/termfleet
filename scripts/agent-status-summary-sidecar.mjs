@@ -11,6 +11,7 @@ import {
   sidecarFresh,
   sidecarPath,
 } from "./lib/agent-status-paths.mjs";
+import { isDurableGoalText, openingGoalFromPrompt } from "./lib/agent-status-goal.mjs";
 
 function cleanText(value) {
   return typeof value === "string"
@@ -22,9 +23,10 @@ function cleanText(value) {
 }
 
 function explicitMainTask(sidecar) {
+  if (sidecar?.mainTaskSource === "plan-explanation") return "";
   if (sidecar?.mainTaskSource) {
     const text = cleanText(sidecar.mainTask);
-    return text.length <= 90 ? text : "";
+    return text.length <= 90 && isDurableGoalText(text) ? text : "";
   }
   const legacyGoals = (Array.isArray(sidecar?.todos) ? sidecar.todos : [])
     .map((todo) => cleanText(todo?.content).match(/^Goal:\s*(.+)$/i)?.[1] ?? "")
@@ -209,7 +211,14 @@ export function summaryFromSidecar(sidecar, payload) {
     (sidecar?.turn === "working"
       ? workingTaskFromCompleted(lastDone?.content, contextPath)
       : cleanText(lastDone?.content));
-  const userTask = inferredPlanOutcome(sidecar, fallback.path) || explicitMainTask(sidecar);
+  const hasDeclaredTodos = Array.isArray(sidecar?.todos) && sidecar.todos.length > 0;
+  const userTask =
+    inferredPlanOutcome(sidecar, fallback.path) ||
+    explicitMainTask(sidecar) ||
+    (!hasDeclaredTodos && openingGoalFromPrompt(sidecar?.userTask)) ||
+    (!hasDeclaredTodos && sidecar?.mainTaskSource !== "plan-explanation"
+      ? cleanText(sidecar?.userTask)
+      : "");
   const declaredUserTask = isNonDescriptiveTaskText(userTask) ? "" : userTask;
   const currentActivityTask = declaredUserTask && !isNonDescriptiveTaskText(now) ? now : "";
   const activityTitle = declaredUserTask || currentTask || currentActivityTask || fallback.task;

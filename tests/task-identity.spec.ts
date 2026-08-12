@@ -673,3 +673,19 @@ test("plan binding beats sidecar todo when no manual, task-tool, or prompt exist
     source: "plan-binding",
   });
 });
+
+test("verification mechanics never become the user-facing goal", () => {
+  const resolved = resolveTaskIdentity({
+    taskLineup: [
+      {
+        id: "verify",
+        content: "Writing tests for selected file",
+        status: "in_progress",
+        source: "todo-write",
+        updatedAt: 1,
+      },
+    ],
+  });
+
+  expect(resolved.source).toBe("missing");
+});

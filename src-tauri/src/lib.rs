@@ -111,6 +111,7 @@ pub fn run() {
             commands::fs_read_file,
             commands::fs_open_external,
             commands::fs_write_file,
+            commands::cockpit_snapshot_write,
             commands::workspace_layout_save,
             commands::workspace_layout_load,
             commands::workspace_persisted_sessions,

@@ -95,7 +95,65 @@ test("summaryFromSidecar keeps the pane provider instead of calling every hand-s
   expect(summary.provider).toBe("codex");
 });
 
-test("summaryFromSidecar exposes the durable main task instead of the latest message", () => {
+test("idle sidecars keep the captured user request as the durable task", () => {
+  const summary = summaryFromSidecar(
+    {
+      cwd: "/repo/hermes",
+      userTask: "The life boat bot on Telegram is not working",
+      todos: [{ content: "Checking why the bot stopped responding", status: "completed" }],
+      now: "Running: stale command",
+      turn: "idle",
+      provider: "codex",
+    },
+    { task: "Task not captured", now: "Idle", path: "/repo/hermes", status: "idle" },
+  );
+
+  expect(summary.userTask).toBe("The life boat bot on Telegram is not working");
+  expect(summary.task).toBe("The life boat bot on Telegram is not working");
+  expect(summary.now).toBe("Idle");
+});
+
+test("idle sidecars show the agent's settled result instead of a stale open checklist step", () => {
+  const summary = summaryFromSidecar(
+    {
+      cwd: "/repo/bina-meatzevet-courses",
+      mainTask: "Deploy the clean sender branch.",
+      mainTaskSource: "opening-request",
+      userTask: "Deploy the clean sender branch.",
+      turn: "idle",
+      now: "Production health and smoke checks pass; the final UI reconciliation proof is still pending",
+      narration: "Production health and smoke checks pass; the final UI reconciliation proof is still pending",
+      todos: [
+        { content: "Merge the approved reconciliation repair", status: "completed" },
+        { content: "Deploy the repair with production gates", status: "completed" },
+        { content: "Verify reconciliation and close the goal", status: "in_progress" },
+      ],
+    },
+    { task: "Task not captured", now: "Idle", path: "/repo/bina-meatzevet-courses", status: "idle" },
+  );
+
+  expect(summary.now).toContain("Production health and smoke checks pass");
+  expect(summary.now).not.toContain("Verify reconciliation and close the goal");
+});
+
+test("resume-goal commands never become a pane's durable Task", () => {
+  const summary = summaryFromSidecar(
+    {
+      cwd: "/repo/termfleet",
+      userTask: "resume goal",
+      todos: [{ content: "Verifying the dock header with the user", status: "in_progress" }],
+      now: "Prompt submitted",
+      turn: "idle",
+      provider: "codex",
+    },
+    { task: "Task not captured", now: "Idle", path: "/repo/termfleet", status: "idle" },
+  );
+
+  expect(summary.userTask).toBeUndefined();
+  expect(summary.task).toBe("Verifying the dock header with the user");
+});
+
+test("summaryFromSidecar does not promote plan explanations into the durable goal", () => {
   const sidecar = {
     provider: "codex" as const,
     updatedAt: Date.now(),
@@ -116,10 +174,10 @@ test("summaryFromSidecar exposes the durable main task instead of the latest mes
     workstream: { path: "/repo/x", provider: "shell" },
   });
 
-  expect(browserSummary.userTask).toBe(sidecar.mainTask);
-  expect(nodeSummary.userTask).toBe(sidecar.mainTask);
-  expect(browserSummary.task).toBe(sidecar.mainTask);
-  expect(nodeSummary.task).toBe(sidecar.mainTask);
+  expect(browserSummary.userTask).toBeUndefined();
+  expect(nodeSummary.userTask).toBeUndefined();
+  expect(browserSummary.task).toBe("Reviewing the landing page on mobile");
+  expect(nodeSummary.task).toBe("Reviewing the landing page on mobile");
   expect(browserSummary.now).toBe("Reviewing the landing page on mobile");
 });
 
@@ -134,6 +192,54 @@ test("summaryFromSidecar rejects an unproven raw main task", () => {
     fallbackFor("/repo/x"),
   );
   expect(summary.userTask).toBeUndefined();
+});
+
+test("persisted complaint text cannot survive as the durable Task", () => {
+  const summary = summaryFromSidecar(
+    {
+      mainTask: "You're right to challenge that line. It is only a guard at the display boundary",
+      mainTaskSource: "opening-request",
+      userTask: "[Image #1] this is a fail on all three",
+      now: "Audit every live pane's durable context and rendered rows",
+      turn: "working",
+      provider: "codex",
+    },
+    { task: "Task not captured", now: "Working", path: "/repo/termfleet", status: "working" },
+  );
+
+  expect(summary.task).not.toContain("You're right");
+  expect(summary.userTask).toBeUndefined();
+});
+
+test("curly-apostrophe feedback text cannot become the durable Task", () => {
+  const summary = summaryFromSidecar(
+    {
+      mainTask: "You’re right to challenge that line. It is only a guard at the display boundary",
+      mainTaskSource: "opening-request",
+      userTask: "You’re right to challenge that line. It is only a guard at the display boundary",
+      now: "Editing files",
+      turn: "working",
+      provider: "codex",
+    },
+    { task: "Task not captured", now: "Working", path: "/repo/termfleet", status: "working" },
+  );
+
+  expect(summary.task).not.toContain("You’re right");
+});
+
+test("feedback-only user prompts cannot become the durable Goal fallback", () => {
+  const summary = summaryFromSidecar(
+    {
+      userTask: "[Image #1] this is a fail on all three",
+      turn: "working",
+      provider: "codex",
+      now: "Building the release",
+    },
+    { task: "Task not captured", now: "Working", path: "/repo/termfleet", status: "working" },
+  );
+
+  expect(summary.userTask).toBeUndefined();
+  expect(summary.task).not.toContain("fail on all three");
 });
 
 test("summaryFromSidecar recovers a specific legacy Goal task as the durable work area", () => {

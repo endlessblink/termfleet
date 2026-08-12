@@ -1,9 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { readFileSync } from "node:fs";
-import {
-  MAX_STATUS_POLL_TARGETS_PER_TICK,
-  selectStatusPollTargets,
-} from "../src/lib/statusPollTargets";
+import { selectStatusPollTargets } from "../src/lib/statusPollTargets";
 import {
   projectStatusPollResult,
   statusPollProjectionChanged,
@@ -94,12 +91,12 @@ test("status poll targets every pane so background badges update without a click
   expect(targets).toHaveLength(14);
 });
 
-test("background status polling does not probe provider transcripts", () => {
-  expect(STATUS_POLL_SOURCE).toContain("transcriptReader: null");
+test("background status polling uses the local provider record without the model", () => {
+  expect(STATUS_POLL_SOURCE).not.toContain("transcriptReader: null");
   expect(STATUS_POLL_SOURCE).toContain("contextTaskSummarizer: null");
 });
 
-test("status poll targets are capped per tick", () => {
+test("status poll targets include every live pane in one tick", () => {
   const now = 1_700_000_000_000;
   const busyTabs = Array.from({ length: 30 }, (_, index) =>
     tab(`recent-${index}`, [
@@ -107,12 +104,10 @@ test("status poll targets are capped per tick", () => {
     ]),
   );
 
-  expect(selectStatusPollTargets(busyTabs, null, now)).toHaveLength(
-    MAX_STATUS_POLL_TARGETS_PER_TICK,
-  );
+  expect(selectStatusPollTargets(busyTabs, null, now)).toHaveLength(30);
 });
 
-test("the cap rotates toward panes that have waited longest", () => {
+test("status poll ordering still prioritizes panes that have waited longest", () => {
   const now = 1_700_000_000_000;
   const busyTabs = Array.from({ length: 30 }, (_, index) =>
     tab(`recent-${index}`, [terminal(`recent-${index}`)]),
@@ -131,7 +126,7 @@ test("the cap rotates toward panes that have waited longest", () => {
   );
 });
 
-test("the cap cannot starve a quiet pane behind recently polled busy panes", () => {
+test("a quiet pane is never starved behind recently polled busy panes", () => {
   const now = 1_700_000_000_000;
   const recentlyPolledBusyTabs = Array.from({ length: 24 }, (_, index) =>
     tab(`busy-${index}`, [
@@ -148,7 +143,7 @@ test("the cap cannot starve a quiet pane behind recently polled busy panes", () 
   );
 
   expect(targets.map(({ terminal: candidate }) => candidate.id)).toContain("quiet");
-  expect(targets).toHaveLength(MAX_STATUS_POLL_TARGETS_PER_TICK);
+  expect(targets).toHaveLength(25);
 });
 
 test("an unchanged status poll does not rewrite a live map terminal", () => {
@@ -381,4 +376,40 @@ test("an expired sidecar with no real task still says so honestly", () => {
   );
 
   expect(projection?.statusSummary?.task).toBe("Task not captured");
+});
+
+test("an expired sidecar keeps a separately captured user task visible", () => {
+  const projection = projectStatusPollResult(
+    terminal("stale-user-task", {
+      statusSummarySource: "sidecar",
+      statusSummary: {
+        task: "Status unavailable",
+        path: "bina-meatzevet-courses",
+        now: "Status unavailable",
+        status: "unavailable",
+      },
+      mainUserAsk: {
+        text: "Verify every club event in the member hub",
+        source: "user-prompt",
+        updatedAt: 1_699_999_000_000,
+      },
+    }),
+    {
+      source: "fallback",
+      sidecarState: "stale",
+      summary: {
+        task: "Shell ready",
+        path: "bina-meatzevet-courses",
+        now: "Awaiting command",
+        status: "idle",
+        provider: "shell",
+        confidence: "low",
+      },
+    },
+    1_700_000_000_000,
+  );
+
+  expect(projection?.statusSummary?.task).toBe(
+    "Verify every club event in the member hub",
+  );
 });

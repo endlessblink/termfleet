@@ -178,6 +178,29 @@ test("the line survives an endpoint failure", async () => {
   expect(result.taskLine?.text).toBe("Fix course page sections not displaying");
 });
 
+test("a workstream session id recovers the Task when its pane sidecar is missing", async () => {
+  const result = await summarizeAgentStatus(
+    {
+      ...summaryInput(),
+      sessionId: "a0ee2b7f-eb7e-4849-9b32-1cfd04adac1e",
+    },
+    {
+      sidecarReader: async () => null,
+      transcriptReader: async () =>
+        JSON.stringify({
+          type: "ai-title",
+          aiTitle: "Keep the course landing page reliable",
+        }),
+      endpoint: "",
+    },
+  );
+
+  expect(result.taskLine).toMatchObject({
+    source: "session-title",
+    text: "Keep the course landing page reliable",
+  });
+});
+
 test("an idle pane keeps the model-authored purpose instead of promoting the latest rationale", async () => {
   const rationale =
     "because we dont have all the content in local dev we need to push this for proper verification by me";

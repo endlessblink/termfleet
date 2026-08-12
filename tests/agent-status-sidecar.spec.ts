@@ -529,7 +529,7 @@ test("narration: completed response next steps never become current work", () =>
     narrationToNow(
       "The task label is fixed. Next steps - Select the live-events pane and confirm the two labels read correctly.",
     ),
-  ).toBe("");
+  ).toBe("The task label is fixed");
   expect(
     narrationToNow("Steps - Hard-refresh the landing page and confirm the new route."),
   ).toBe("");
@@ -1035,7 +1035,7 @@ test("worker falls back to the heuristic when no sidecar exists for the cwd", as
   expect(summary.tasksFromTodoWrite).toBeFalsy();
 });
 
-test("UserPromptSubmit stays conversational until a main task is declared", async () => {
+test("UserPromptSubmit preserves the durable user request before a main task is declared", async () => {
   const dataHome = mkdtempSync(path.join(os.tmpdir(), "tf-status-"));
   const cwd = "/tmp/tf-codex-user-task";
   const env = { XDG_DATA_HOME: dataHome, TERMFLEET_PANE_ID: "pane-user-task" };
@@ -1083,8 +1083,12 @@ test("UserPromptSubmit stays conversational until a main task is declared", asyn
   );
   expect(workerResult.status).toBe(0);
   const summary = JSON.parse(workerResult.stdout.trim());
-  expect(summary.userTask).toBeUndefined();
-  expect(summary.task).toBe("Tracing header data flow");
+  expect(summary.userTask).toBe(
+    "Fix terminal headers so Task shows the user ask and activity shows current work",
+  );
+  expect(summary.task).toBe(
+    "Fix terminal headers so Task shows the user ask and activity shows current work",
+  );
   expect(summary.now).toBe("Reading terminalHeaderViewModel.ts");
   expect(summary.tasksFromTodoWrite).toBe(false);
 });

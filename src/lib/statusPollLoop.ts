@@ -16,7 +16,11 @@ import { selectStatusPollTargets, type StatusPollTarget } from "./statusPollTarg
 import { useWorkspaceStore } from "../stores/workspace";
 import type { Tab, TerminalState, WorkstreamStatus } from "./types";
 import { stableAgentProvider } from "./agentProviderIdentity";
-import { projectStatusPollResult, statusPollProjectionChanged } from "./statusPollProjection";
+import {
+  mirroredWorkstream,
+  projectStatusPollResult,
+  statusPollProjectionChanged,
+} from "./statusPollProjection";
 
 const POLL_INTERVAL_MS = 4_000;
 // Stagger requests so N panes don't burst the summarizer at once.
@@ -37,6 +41,7 @@ function statusForTerminal(status?: string): WorkstreamStatus {
 let started = false;
 let ticking = false;
 const lastPolledByPane = new Map<string, number>();
+
 
 function panePollKey(tab: Tab, terminal: TerminalState) {
   return `terminal-${tab.id}-${terminal.paneId}`;
@@ -74,6 +79,7 @@ async function pollOnce() {
       try {
         const result = await summarizeAgentStatus({
           paneId: panePollKey(tab, terminal),
+          sessionId: tab.workstream?.providerSessionId,
           userTask: tab.workstream?.kind === "agent" ? tab.workstream.mission ?? tab.workstream.prompt : undefined,
           mission: "Terminal",
           provider: "shell",
@@ -83,16 +89,15 @@ async function pollOnce() {
           terminalOutput: terminal.terminalOutput,
           terminalVisibleText: terminal.terminalVisibleText,
         }, {
-          // Global background polling is for authoritative local sidecar data.
-          // The HTTP worker can fall back to heuristic(context-disabled), which
-          // creates map-wide churn while producing results this loop discards.
+          // Background polling uses the same local evidence as the visible pane:
+          // the pane sidecar plus the provider's own session record. Disabling the
+          // transcript reader here made every unmounted/map pane lose its opening
+          // request and session title, so it could only render a placeholder.
           endpoint: "",
-          // The visible terminal can afford transcript/context enrichment because it
-          // is the pane the operator is looking at. The workspace-wide sweep must stay
-          // sidecar-only: transcript probing tries both provider layouts and can invoke
-          // context enrichment for every background pane, turning a 4s refresh into a
-          // long serial filesystem/IPC workload.
-          transcriptReader: null,
+          // Leave transcriptReader undefined so the desktop uses the local Tauri
+          // reader; browser previews still resolve this to null automatically.
+          // Context synthesis remains disabled: deterministic evidence is enough and
+          // cannot invent a new goal for a pane.
           contextTaskSummarizer: null,
         });
         const contextual = result.source === "process" && Boolean(result.summary.narration);
@@ -109,6 +114,7 @@ async function pollOnce() {
           // An expired record has no LIVE step to report, so the second row clears.
           const expiredNow = null;
           latest.updateTab(latestTab.id, {
+            workstream: mirroredWorkstream(latestTab, expiredLine),
             terminals: latestTab.terminals.map((candidate) =>
               candidate.id === terminal.id
                 ? {
@@ -149,6 +155,7 @@ async function pollOnce() {
             inferredProvider !== latestTerminal.agentProvider
           ) {
             latest.updateTab(latestTab.id, {
+              workstream: mirroredWorkstream(latestTab, untrustedLine),
               terminals: latestTab.terminals.map((candidate) =>
                 candidate.id === terminal.id
                   ? {
@@ -204,6 +211,7 @@ async function pollOnce() {
         };
         if (!statusPollProjectionChanged(latestTerminal, projection)) continue;
         latest.updateTab(latestTab.id, {
+          workstream: mirroredWorkstream(latestTab, taskLine, taskLineup),
           terminals: latestTab.terminals.map((candidate) =>
             candidate.id === terminal.id ? { ...candidate, ...projection } : candidate,
           ),

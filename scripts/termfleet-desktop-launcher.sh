@@ -31,6 +31,10 @@ fi
 export LIBGL_ALWAYS_SOFTWARE="${LIBGL_ALWAYS_SOFTWARE:-1}"
 export WEBKIT_DISABLE_COMPOSITING_MODE="${WEBKIT_DISABLE_COMPOSITING_MODE:-1}"
 export WEBKIT_DISABLE_DMABUF_RENDERER="${WEBKIT_DISABLE_DMABUF_RENDERER:-1}"
+# Keep the runtime handoff trace enabled on the dock acceptance surface while
+# the map Connect failure is being investigated; it writes only to temp files.
+export TERMINAL_WORKSPACE_TRACE_LATENCY="${TERMINAL_WORKSPACE_TRACE_LATENCY:-1}"
+export TERMINAL_WORKSPACE_TRACE_PTY="${TERMINAL_WORKSPACE_TRACE_PTY:-1}"
 export TERMFLEET_DAEMON_MEMORY_HIGH="${TERMFLEET_DAEMON_MEMORY_HIGH:-12G}"
 export TERMFLEET_DAEMON_TASKS_MAX="${TERMFLEET_DAEMON_TASKS_MAX:-10000}"
 # Bound the WebKit-backed desktop group separately from the daemon. A renderer
@@ -73,10 +77,13 @@ cockpit_pid() {
 
 set_display_credentials() {
   export DISPLAY="${DISPLAY:-:0}"
-  # The dock is the production owner. Never let inherited test/recovery
-  # environments redirect the desktop or its daemon to a temporary socket.
-  # Private verifiers launch the binary directly with their own explicit runtime.
-  export XDG_RUNTIME_DIR="/run/user/${UID}"
+  # The dock owns the production runtime, but an explicitly isolated smoke run
+  # must keep its private runtime so the daemon, UI, and assertions share one
+  # namespace. A plain inherited XDG_RUNTIME_DIR still follows the production
+  # path, preventing accidental redirection by ordinary launches.
+  if [[ "${TERMFLEET_PRESERVE_RUNTIME_DIR:-0}" != "1" ]]; then
+    export XDG_RUNTIME_DIR="/run/user/${UID}"
+  fi
   export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=${XDG_RUNTIME_DIR}/bus}"
   if [[ -z "${XAUTHORITY:-}" ]]; then
     local candidate

@@ -28,6 +28,87 @@ test("a regression step keeps its named product object as a restrained outcome",
   expect(productGoalFromRegressionStep("Adding a regression for release verification")).toBeUndefined();
 });
 
+test("goal-management commands never become the durable Task", () => {
+  const header = buildShellTerminalHeaderViewModel({
+    project: {
+      id: "termfleet",
+      name: "termfleet",
+      projectRoot: "/repo/termfleet",
+    },
+    liveCwd: "/repo/termfleet",
+    terminalStatus: "running",
+    mainUserAsk: {
+      text: "make this a goal",
+      source: "status-sidecar",
+      updatedAt: 1000,
+    },
+    taskLineup: [
+      {
+        id: "current-step",
+        content: "Committing, tagging, and pushing the candidate",
+        status: "in_progress",
+        source: "todo-write",
+        updatedAt: 1000,
+      },
+    ],
+    statusSummary: {
+      task: "Committing, tagging, and pushing the candidate",
+      path: "/repo/termfleet",
+      now: "Committing, tagging, and pushing the candidate",
+      status: "working",
+      provider: "codex",
+      confidence: "high",
+      tasksFromTodoWrite: true,
+    },
+  });
+
+  expect(header.taskDescription.text).not.toBe("make this a goal");
+  expect(header.taskDescription.text).toMatch(/No task declared|Goal not captured/);
+});
+
+test("complaint fragments never become the durable Task", () => {
+  const header = buildShellTerminalHeaderViewModel({
+    project: { id: "termfleet", name: "termfleet", projectRoot: "/repo/termfleet" },
+    liveCwd: "/repo/termfleet",
+    terminalStatus: "running",
+    mainUserAsk: {
+      text: "broken hard fail. check every pane's Task, Goal, and Now. not understanding what this is",
+      source: "status-sidecar",
+      updatedAt: 1000,
+    },
+  });
+
+  expect(header.taskDescription.text).not.toContain("broken hard fail");
+  expect(header.taskDescription.text).not.toContain("not understanding");
+});
+
+test("a durable pane request fills the missing Goal with explicit context", () => {
+  const header = buildShellTerminalHeaderViewModel({
+    project: { id: "bina", name: "bina-meatzevet-courses", projectRoot: "/repo/bina" },
+    liveCwd: "/repo/bina",
+    terminalStatus: "running",
+    mainUserAsk: {
+      text: "Deploy the clean sender branch.",
+      source: "status-sidecar",
+      updatedAt: 1000,
+    },
+    statusSummary: {
+      task: "Deploy the approved clean sender branch",
+      userTask: "Deploy the clean sender branch.",
+      path: "/repo/bina",
+      now: "Deploy the approved clean sender branch",
+      status: "working",
+      provider: "codex",
+      confidence: "high",
+      tasksFromTodoWrite: true,
+    },
+  });
+
+  expect(header.taskDescription.text).toBe("Deploy the clean sender branch");
+  expect(header.context.text).toBe("Deploy the clean sender branch.");
+  expect(header.context.text).not.toBe("Context not captured");
+});
+
 test("vague follow-up keeps the previous meaningful user goal", () => {
   const previous = {
     text: "Fix Save and Preview for existing events",
@@ -274,6 +355,7 @@ test("a concrete regression object becomes the task outcome while the process st
 
 test("meta-process labels fall back instead of pretending to be the product goal", () => {
   for (const task of [
+    "Centralizing persistent Task Goal and Now snapshots",
     "Making the task say what it changes",
     "Pushing through the approved deployment path",
     "Pushing through approved deployment path",
@@ -324,6 +406,60 @@ test("meta-process labels fall back instead of pretending to be the product goal
     expect(header.taskDescription.text).toBe("Goal not captured");
     expect(header.taskDescription.text).not.toBe(task);
   }
+});
+
+test("TermFleet verification steps inherit the explicit project mission when no goal was captured", () => {
+  const header = buildShellTerminalHeaderViewModel({
+    project: { id: "termfleet", name: "termfleet", projectRoot: "/repo/termfleet" },
+    liveCwd: "/repo/termfleet",
+    terminalStatus: "running",
+    taskLineup: [{
+      id: "verify",
+      content: "Auditing every live pane's durable context and rendered rows",
+      status: "in_progress",
+      source: "todo-write",
+      updatedAt: 1000,
+    }],
+    statusSummary: {
+      task: "Auditing every live pane's durable context and rendered rows",
+      path: "/repo/termfleet",
+      now: "Working",
+      status: "working",
+      provider: "codex",
+      confidence: "high",
+      tasksFromTodoWrite: true,
+    },
+  });
+
+  expect(header.context.text).toBe("Goal not captured");
+  expect(header.taskDescription.text).not.toBe("Goal not captured");
+});
+
+test("plan-purpose lines stay private instead of becoming the pane Task", () => {
+  const header = buildShellTerminalHeaderViewModel({
+    project: { id: "termfleet", name: "termfleet", projectRoot: "/repo/termfleet" },
+    liveCwd: "/repo/termfleet",
+    terminalStatus: "running",
+    taskLine: {
+      text: "Promoting and verifying every pane stays synchronized",
+      source: "plan-purpose",
+      capturedAt: 1000,
+      expiresAt: null,
+    },
+    statusSummary: {
+      task: "Promoting and verifying every pane stays synchronized",
+      path: "/repo/termfleet",
+      now: "Working",
+      status: "working",
+      provider: "codex",
+      confidence: "high",
+      tasksFromTodoWrite: false,
+    },
+  });
+
+  expect(header.taskDescription.text).toMatch(/Goal not captured|No task declared/);
+  expect(header.taskDescription.text).not.toContain("Promoting and verifying");
+  expect(header.title.text).not.toContain("Promoting and verifying");
 });
 
 test("cross-system recheck summaries never become the durable Task title", () => {

@@ -127,6 +127,14 @@ function isMeaningfulUserGoal(value?: string | null) {
   if (!text || looksLikeBareQuestion(text)) return false;
   if (looksLikeSlug(text)) return false;
   if (/([a-z])\1{3,}/i.test(text)) return false;
+  // Goal-management commands describe how TermFleet should label the run, not
+  // the product outcome the run is about. Keep them out of the durable Task row.
+  if (
+    /^(?:make|set|turn|mark|treat)\s+(?:this|that|it)\s+(?:as|a)\s+(?:the\s+)?goal\b/i.test(text) ||
+    /^(?:activate|create|capture|rename)\s+(?:this\s+)?goal\b/i.test(text)
+  ) {
+    return false;
+  }
   if (
     text.endsWith("?") &&
     /\b(?:what|why|how|when|where|who|which|should|can|could|would|will|do|does|did|is|are|was|were)\b/i.test(
@@ -145,11 +153,20 @@ function looksLikeConversationalCorrection(value?: string | null) {
   if (!text) return false;
   return (
     /^(?:no|still|again)\b[\s,.:;!-]*/i.test(text) ||
-    /(?:for the (?:millionth|hundredth) time|low quality|super unclear|what the (?:hack|hell)|horrible|unreadable|can(?:not|'t) do anything|does(?: not|n't) tell me)/i.test(
+    /(?:for the (?:millionth|hundredth) time|low quality|super unclear|what the (?:hack|hell)|horrible|unreadable|can(?:not|'t) do anything|does(?: not|n't) tell me|hard fail|not enough context|not understanding|fully failing|didn['’]?t fix|didn['’]?t work|what you said .* false)/i.test(
       text,
     ) ||
+    /^task\s+descrip\w*\s+is\s+(?:still\s+)?(?:super\s+)?broken\b/i.test(text) ||
     /[!?]{3,}/.test(text)
   );
+}
+
+// Checklist mechanics belong in Now. They are useful progress signals, but they do not
+// explain the pane's user-facing purpose when no durable goal was captured.
+function isInternalPlanStep(value?: string | null) {
+  const text = clean(value) ?? "";
+  return /^(?:Writing|Testing|Verifying|Checking|Reviewing|Tracing|Running|Investigating|Auditing)\b/i.test(text) ||
+    /\b(?:selected file|map surface|approval state|test suite|regression)\b/i.test(text);
 }
 
 function outcomeFromTaskPlan(
@@ -351,7 +368,7 @@ export function resolveTaskIdentity(input: {
       )
       .map((item) => item.content),
   );
-  if (structuredPurpose) {
+  if (structuredPurpose && !isInternalPlanStep(structuredPurpose)) {
     return {
       text: structuredPurpose,
       rawText: structuredPurpose,
@@ -399,7 +416,11 @@ export function resolveTaskIdentity(input: {
     };
   }
 
-  if (taskToolTask?.content && !isGenericDeclaredTask(taskToolTask.content)) {
+  if (
+    taskToolTask?.content &&
+    !isGenericDeclaredTask(taskToolTask.content) &&
+    !isInternalPlanStep(taskToolTask.content)
+  ) {
     return {
       text: normalizedOperatorAsk(taskToolTask.content),
       rawText: taskToolTask.content,

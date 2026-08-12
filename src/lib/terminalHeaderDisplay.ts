@@ -1130,6 +1130,13 @@ function displayTitle(
   return boundedTitle(activity.title);
 }
 
+function isInternalPlanLabel(value?: string | null) {
+  const text = cleanText(value) ?? "";
+  // Natural command titles such as "Testing checkout flow" are valid operator
+  // activity; reject only labels that identify internal audit/process artifacts.
+  return /\b(?:selected file|map surface|approval state|test suite|regression)\b/i.test(text);
+}
+
 function normalizedPersistedTitle(summary: WorkstreamStatusSummary) {
   const task = cleanText(summary.task);
   const path = cleanPath(summary.path);
@@ -1231,7 +1238,7 @@ export function normalizePersistedShellSummary(
   purpose?: TerminalPurpose,
 ): WorkstreamStatusSummary {
   const fallbackPath = cleanPath(path) ?? "workspace path unknown";
-  return applyTerminalPurpose(
+  const normalized = applyTerminalPurpose(
     {
       ...summary,
       task: normalizedPersistedTitle(summary),
@@ -1241,6 +1248,7 @@ export function normalizePersistedShellSummary(
     },
     purpose,
   );
+  return normalized;
 }
 
 /**
@@ -1364,7 +1372,7 @@ export function summaryFromDurableActivity(
     cleanPath(extractedSummary?.path) ??
     "workspace path unknown";
 
-  const durableNow =
+  const rawDurableNow =
     extractedSummary?.status === "waiting" &&
     cleanText(extractedSummary.now) === "Waiting for operator selection"
       ? "Waiting for operator selection"
@@ -1372,6 +1380,7 @@ export function summaryFromDurableActivity(
     purpose?.source === "inferred"
       ? purpose.title
       : sanitizeTerminalHeaderNow(terminalActivityDetail(activity), displayPath);
+  const durableNow = isInternalPlanLabel(rawDurableNow) ? "Working" : rawDurableNow;
 
   const durableStatus =
     extractedSummary?.status === "waiting" &&
@@ -1385,10 +1394,17 @@ export function summaryFromDurableActivity(
             ? "idle"
             : "working";
 
-  return applyTerminalPurpose(
+  const summary = applyTerminalPurpose(
     {
       ...extractedSummary,
-      task: displayTitle(activity, displayPath, extractedSummary),
+      task: (() => {
+        const candidate = displayTitle(activity, displayPath, extractedSummary);
+        if (!isInternalPlanLabel(candidate)) return candidate;
+        const durableUserTask = cleanText(extractedSummary?.userTask);
+        return durableUserTask && !isInternalPlanLabel(durableUserTask)
+          ? durableUserTask
+          : "Task not captured";
+      })(),
       path: displayPath,
       now: durableNow,
       status: durableStatus,
@@ -1397,4 +1413,12 @@ export function summaryFromDurableActivity(
     },
     purpose,
   );
+  if (!isInternalPlanLabel(summary.task)) return summary;
+  const durableUserTask = cleanText(extractedSummary?.userTask);
+  return {
+    ...summary,
+    task: durableUserTask && !isInternalPlanLabel(durableUserTask)
+      ? durableUserTask
+      : "Task not captured",
+  };
 }
