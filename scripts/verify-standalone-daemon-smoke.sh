@@ -149,7 +149,7 @@ launch_app() {
 wait_for_daemon() {
   log "waiting for daemon socket $SOCKET"
   for _ in {1..50}; do
-    status_json="$(printf '{"type":"status"}' | nc -U "$SOCKET" 2>/dev/null || true)"
+    status_json="$(printf '%s\n' '{"type":"status"}' | nc -U "$SOCKET" 2>/dev/null || true)"
     if grep -q '"externalDaemon"' <<<"$status_json"; then
       DAEMON_PID="$(grep -o '"pid":[0-9]*' <<<"$status_json" | cut -d: -f2)"
       log "daemon is running as pid ${DAEMON_PID:-unknown}"
@@ -166,7 +166,7 @@ wait_for_daemon() {
 wait_for_daemon_down() {
   log "waiting for daemon socket to go down"
   for _ in {1..50}; do
-    status_json="$(printf '{"type":"status"}' | nc -U "$SOCKET" 2>/dev/null || true)"
+    status_json="$(printf '%s\n' '{"type":"status"}' | nc -U "$SOCKET" 2>/dev/null || true)"
     if ! grep -q '"externalDaemon"' <<<"$status_json"; then
       return 0
     fi
@@ -181,9 +181,10 @@ focus_terminal_section() {
   log "focusing terminal section in window $WINDOW_ID"
   DISPLAY="$DISPLAY_VALUE" XAUTHORITY="$XAUTHORITY_VALUE" xdotool windowactivate "$WINDOW_ID" 2>/dev/null || true
   sleep 0.5
-  DISPLAY="$DISPLAY_VALUE" XAUTHORITY="$XAUTHORITY_VALUE" xdotool mousemove --window "$WINDOW_ID" 24 116 click 1 || return 1
-  sleep 0.8
-  DISPLAY="$DISPLAY_VALUE" XAUTHORITY="$XAUTHORITY_VALUE" xdotool mousemove --window "$WINDOW_ID" 238 209 click 1 || return 1
+  # The current sessions panel creates the first terminal from its header
+  # button. Keep this as real pointer input so a clean profile exercises the
+  # same lazy daemon/session path as an operator click.
+  DISPLAY="$DISPLAY_VALUE" XAUTHORITY="$XAUTHORITY_VALUE" xdotool mousemove --window "$WINDOW_ID" 280 28 click 1 || return 1
   sleep 1.0
 }
 
@@ -208,12 +209,13 @@ find_session_with_output() {
 
   log "searching daemon scrollback for $needle"
   for _ in {1..40}; do
-    sessions_json="$(printf '{"type":"listSessions"}' | nc -U "$SOCKET" 2>/dev/null || true)"
+    sessions_json="$(printf '%s\n' '{"type":"listSessions"}' | nc -U "$SOCKET" 2>/dev/null || true)"
     while IFS= read -r id; do
       if [[ -n "$required_id" && "$id" != "$required_id" ]]; then
         continue
       fi
-      snapshot="$(printf '{"type":"snapshotSession","id":"%s"}' "$id" | nc -U "$SOCKET" 2>/dev/null || true)"
+      snapshot_request="$(printf '{"type":"snapshotSession","id":"%s"}' "$id")"
+      snapshot="$(printf '%s\n' "$snapshot_request" | nc -U "$SOCKET" 2>/dev/null || true)"
       if grep -q "$needle" <<<"$snapshot"; then
         log "found marker in session $id"
         printf '%s' "$id"
@@ -293,12 +295,12 @@ PYEOF
 }
 
 launch_app
-wait_for_daemon
 if ! focus_terminal_section; then
   capture_failure
   echo "Standalone daemon smoke could not focus the terminal section." >&2
   exit 1
 fi
+wait_for_daemon
 if ! paste_command "$NEEDLE"; then
   capture_failure
   echo "Standalone daemon smoke could not type into the terminal." >&2
@@ -327,18 +329,18 @@ kill "$APP_PID" >/dev/null 2>&1 || true
 APP_PID=""
 sleep 0.6
 
-if ! printf '{"type":"status"}' | nc -U "$SOCKET" | grep -q '"externalDaemon"'; then
+if ! printf '%s\n' '{"type":"status"}' | nc -U "$SOCKET" | grep -q '"externalDaemon"'; then
   echo "Daemon did not survive app restart." >&2
   exit 1
 fi
 
 launch_app
-wait_for_daemon
 if ! focus_terminal_section; then
   capture_failure
   echo "Standalone daemon smoke could not focus after app restart." >&2
   exit 1
 fi
+wait_for_daemon
 if ! paste_command "$RESTART_NEEDLE"; then
   capture_failure
   echo "Standalone daemon smoke could not type after app restart." >&2
@@ -379,12 +381,12 @@ DAEMON_PID=""
 sleep 1.2
 
 launch_app
-wait_for_daemon
 if ! focus_terminal_section; then
   capture_failure
   echo "Standalone daemon smoke could not focus after daemon cold restore." >&2
   exit 1
 fi
+wait_for_daemon
 sleep 1.0
 if ! capture_window "03-after-daemon-restart-before-input.png"; then
   capture_failure
