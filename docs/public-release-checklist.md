@@ -36,10 +36,11 @@ out in the release notes.
   The focused task-label suite and canonical task-line gate are green.
 - [x] Resolve and commit the separate guardrail/launcher workstream; its focused
   Playwright, launcher/watchdog, and Rust platform checks are green.
-- [ ] Re-run the full release gate from the final commit, including the live
-  desktop checks; the live reliability wrapper has previously hit the five-minute
-  orchestration timeout and must not be reported as a pass without its constituent
-  results.
+- [x] Re-run the full release gate from the final commit, including the live
+  desktop checks. `npm run verify:release` passed with `TERMFLEET_RELEASE_CHECK_OK
+  gui=1`; the standalone release smoke created a real session, accepted typed
+  markers, survived app restart, restored after daemon restart, and passed visual
+  content/repaint checks. The daemon latency probe passed at p95 1.8 ms.
 - [x] Build the final tagged artifacts in clean CI and publish `SHA256SUMS.txt`
   beside them. The v0.1.1 GitHub release contains both artifacts and the
   checksum file.
