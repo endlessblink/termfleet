@@ -64,3 +64,19 @@ test("reset progress clears only the gamification record", async ({ page }) => {
     return record?.version === 1 && record.completedTaskIds.length === 0 && record.maxConcurrentTerminals === 0;
   })).toBe(true);
 });
+
+test("hydration does not show a reward and a real reward dismisses", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.evaluate(() => {
+    localStorage.removeItem("terminal-workspace.v1");
+    localStorage.setItem("termfleet.gamification.v1", JSON.stringify({
+      version: 1,
+      completedTaskIds: ["goal-1"],
+      maxConcurrentTerminals: 0,
+      updatedAt: Date.now(),
+    }));
+  });
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForTimeout(900);
+  await expect(page.getByTestId("gamification-reward")).toHaveCount(0);
+});

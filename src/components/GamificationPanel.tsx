@@ -53,6 +53,8 @@ export function GamificationPanel() {
   const [reward, setReward] = useState<{ title: string; detail: string } | null>(null);
   const previousSummaryRef = useRef(summary);
   const skipNextGamificationSyncRef = useRef(false);
+  const hasSyncedGamificationRef = useRef(false);
+  const rewardTimeoutRef = useRef<number | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
 
   const resetProgress = () => {
@@ -75,6 +77,12 @@ export function GamificationPanel() {
   };
 
   useEffect(() => {
+    return () => {
+      if (rewardTimeoutRef.current !== null) window.clearTimeout(rewardTimeoutRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
     if (skipNextGamificationSyncRef.current) {
       skipNextGamificationSyncRef.current = false;
       return;
@@ -84,15 +92,21 @@ export function GamificationPanel() {
     const nextSummary = summarizeGamification(next);
     const previousSummary = previousSummaryRef.current;
     const reward = rewardForTransition(previousSummary, nextSummary);
-    if (reward) {
+    const isInitialSync = !hasSyncedGamificationRef.current;
+    hasSyncedGamificationRef.current = true;
+    if (reward && !isInitialSync) {
       setRewardPulse(true);
       setReward(reward);
       const pulseTimeout = window.setTimeout(() => setRewardPulse(false), 900);
-      const rewardTimeout = window.setTimeout(() => setReward(null), 2600);
+      if (rewardTimeoutRef.current !== null) window.clearTimeout(rewardTimeoutRef.current);
+      rewardTimeoutRef.current = window.setTimeout(() => {
+        setReward(null);
+        rewardTimeoutRef.current = null;
+      }, 2600);
       previousSummaryRef.current = nextSummary;
       saveGamificationRecord(window.localStorage, next);
       setSummary(nextSummary);
-      return () => { window.clearTimeout(pulseTimeout); window.clearTimeout(rewardTimeout); };
+      return () => { window.clearTimeout(pulseTimeout); };
     }
     previousSummaryRef.current = nextSummary;
     saveGamificationRecord(window.localStorage, next);
