@@ -66,7 +66,7 @@ async function openInputStream(id) {
 async function openSubscription(id) {
   const socket = await connectSocket();
   socket.setEncoding("utf8");
-  socket.write(JSON.stringify({ type: "subscribeSession", id, subscriber_id: `latency-sub-${process.pid}` }));
+  socket.write(`${JSON.stringify({ type: "subscribeSession", id, subscriber_id: `latency-sub-${process.pid}` })}\n`);
   return socket;
 }
 
