@@ -1,5 +1,12 @@
 # MASTER_PLAN.md - termfleet
 
+> **2026-08-12 reward lifecycle correction:** Startup hydration no longer emits a
+> progress reward, and toast dismissal is no longer cancelled by frequent tab updates.
+> Focused gamification coverage passed 8/8; build, map verifier, installed promotion,
+> installed checksum verification, and installed restart smoke passed. A fresh current
+> installed-app capture showed no startup reward toast. The remaining publication gate
+> is still clean AppImage/deb installation on a separate Linux environment.
+
 > **2026-08-12 gamification reset usability correction:** The reward toast now says
 > `First tracked goal completed` and `+25 points` instead of the ambiguous `First
 > finish` achievement wording. Reset now uses an in-panel confirmation that works
