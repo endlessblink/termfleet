@@ -150,5 +150,8 @@ test("session rows stay compact and never cover the next session", async ({ page
     return { top: rect.top, bottom: rect.bottom, height: rect.height };
   }));
   expect(boxes.every((box) => box.height <= 60)).toBe(true);
-  expect(boxes.every((box, index) => index === boxes.length - 1 || box.bottom <= boxes[index + 1].top)).toBe(true);
+  expect(boxes.every((box, index) => index === boxes.length - 1 || box.bottom + 6 <= boxes[index + 1].top)).toBe(true);
+
+  const surfaces = await rows.evaluateAll((elements) => elements.map((element) => getComputedStyle(element).backgroundColor));
+  expect(surfaces.every((surface) => surface !== "rgba(0, 0, 0, 0)" && surface !== "transparent")).toBe(true);
 });

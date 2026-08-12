@@ -795,6 +795,7 @@ const styles: Record<string, CSSProperties> = {
     position: "relative",
     height: 54,
     minHeight: 54,
+    margin: "3px 0",
     display: "grid",
     gridTemplateColumns: "30px minmax(0, 1fr)",
     gap: 9,

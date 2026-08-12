@@ -84,6 +84,28 @@ select:focus-visible,
   background: transparent !important;
 }
 
+.workspace-sidebar-row[data-panel-color] {
+  background: color-mix(
+    in srgb,
+    var(--surface-raised) 92%,
+    var(--surface-base)
+  ) !important;
+  box-shadow: inset 2px 0 color-mix(
+    in srgb,
+    var(--session-panel-color) 58%,
+    var(--surface-base)
+  ) !important;
+}
+
+.workspace-sidebar-row[data-panel-color][data-active="true"] {
+  background: var(--surface-selected) !important;
+  box-shadow: inset 2px 0 color-mix(
+    in srgb,
+    var(--session-panel-color) 72%,
+    var(--surface-selected)
+  ) !important;
+}
+
 .workspace-sidebar-row[data-active="false"]:hover,
 .workspace-sidebar-row[data-active="false"]:focus-within {
   background: var(--surface-hover) !important;
