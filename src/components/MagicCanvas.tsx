@@ -3645,10 +3645,16 @@ function CanvasNodeViewImpl({
     setActivePane(currentTab.id, targetPaneId);
     setActiveTerminal(targetTerminalId);
     setConnectionGeneration((generation) => generation + 1);
+    // Deliberately NOT gated on `workstream?.kind === "agent"`. That gate is why
+    // the button "did exactly nothing" for most panes: only terminals launched
+    // through the agent-workstream flow carry that tag, while a hand-started
+    // `codex`/`claude` in a plain pane does not (TC-054). Those panes still have
+    // a recovery sidecar, so they are perfectly resumable — the click just never
+    // tried. `readRecovery` returning null is the real "nothing to reconnect"
+    // signal, and it is reported rather than silently assumed.
     if (
       typeof window !== "undefined" &&
       "__TAURI_INTERNALS__" in window &&
-      workstream?.kind === "agent" &&
       currentTerminal?.id
     ) {
       void reconnectStoppedAgents([currentTerminal.id], {

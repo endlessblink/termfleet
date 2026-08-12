@@ -1268,6 +1268,34 @@ fn agent_status_sidecar_file(file_name: &str) -> Result<std::path::PathBuf, Stri
 /// read the agent's real task list directly from disk in EVERY launch mode, instead of
 /// depending on the launcher-lifetime HTTP status server (which desktop launches never
 /// had — the root cause the panel kept going dark). Missing file → `Ok(None)`.
+/// Does any live process hold this exact path open?
+fn path_is_open_by_any_process(path: &std::path::Path) -> bool {
+    let Ok(entries) = fs::read_dir("/proc") else {
+        return true; // cannot tell -> assume owned (fail closed)
+    };
+    let self_pid = std::process::id();
+    for entry in entries.flatten() {
+        let Some(_pid) = entry
+            .file_name()
+            .to_str()
+            .filter(|value| value.bytes().all(|byte| byte.is_ascii_digit()))
+            .and_then(|value| value.parse::<u32>().ok())
+            .filter(|pid| *pid > 1 && *pid != self_pid)
+        else {
+            continue;
+        };
+        let Ok(fds) = fs::read_dir(entry.path().join("fd")) else {
+            continue;
+        };
+        for fd in fds.flatten() {
+            if fs::read_link(fd.path()).is_ok_and(|target| target == path) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 /// Is this provider conversation already open in a live agent OTHER than the
 /// one in `pane_id`?
 ///
@@ -1294,6 +1322,20 @@ pub fn agent_conversation_has_other_owner(
         return Ok(true);
     }
     let _ = (&provider, &pane_id);
+
+    // Codex publishes ownership explicitly: while a conversation is open its
+    // writer holds `~/.codex/thread-writer-locks/<id>.lock` open. Verified live
+    // on 2026-08-12 — the process blocking a resume held both that lock and the
+    // rollout. When no process holds the lock, nobody owns the conversation, so
+    // this settles the common case without walking every process.
+    if let Some(home) = dirs::home_dir() {
+        let lock = home
+            .join(".codex/thread-writer-locks")
+            .join(format!("{}.lock", session_id.trim()));
+        if lock.exists() && !path_is_open_by_any_process(&lock) {
+            return Ok(false);
+        }
+    }
 
     let Ok(entries) = fs::read_dir("/proc") else {
         return Ok(true);
