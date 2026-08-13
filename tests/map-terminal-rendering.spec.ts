@@ -179,6 +179,20 @@ test("map nodes subscribe to their own tab and live PTY metadata", () => {
   );
 });
 
+test("map terminal task row keeps its reserved height when live text changes", () => {
+  const source = readFileSync("src/components/MagicCanvas.tsx", "utf8");
+  const nodeView =
+    source.match(
+      /function CanvasNodeViewImpl[\s\S]*?(?=const CanvasNodeView = memo)/,
+    )?.[0] ?? "";
+
+  expect(nodeView).toContain('data-testid="canvas-terminal-node-task-row"');
+  expect(nodeView).not.toContain("{terminalHeaderNowRowVisible && (");
+  expect(nodeView).toContain(
+    'visibility: terminalHeaderNowRowVisible ? "visible" : "hidden"',
+  );
+});
+
 test("workspace surface subscribes to the active tab instead of every pane", () => {
   const source = readFileSync("src/components/WorkspaceSurface.tsx", "utf8");
 

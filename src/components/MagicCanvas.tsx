@@ -4597,9 +4597,12 @@ function CanvasNodeViewImpl({
                 rewriting itself. Both rows are always present at a fixed height; the
                 lower one goes invisible rather than unmounting, so the terminal below
                 never moves. */}
-            {terminalHeaderNowRowVisible && (
+            {
               <div
-                style={styles.terminalStatusTitle}
+                style={{
+                  ...styles.terminalStatusTitle,
+                  visibility: terminalHeaderNowRowVisible ? "visible" : "hidden",
+                }}
                 data-testid="canvas-terminal-node-task-row"
                 title={`Task: ${terminalHeaderTaskDescription}`}
               >
@@ -4615,12 +4618,14 @@ function CanvasNodeViewImpl({
                         color: labelColor ?? "var(--text-primary)",
                       }}
                     >
-                      {terminalHeaderTaskDescription}
+                      {terminalHeaderNowRowVisible
+                        ? terminalHeaderTaskDescription
+                        : " "}
                     </span>
                   </>
                 )}
               </div>
-            )}
+            }
             {(
               <div
                 style={{ ...styles.terminalTaskRow, ...styles.terminalContextRow }}

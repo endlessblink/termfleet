@@ -92,6 +92,7 @@ Playwright suite; the per-row specs are the precise guards.
 | 4.5 | Map drag writes viewport / pan-perf regression | Dragging must not write `canvasState.viewport`. | `verify:map-terminals` (perf assertion) | ✅ |
 | 4.6 | Node reorder / group-by-project breaks | Reorder + grouping logic. | `tests/canvas-node-reorder.spec.ts` | ✅ |
 | 4.7 | Idle and explicitly completed terminals cannot be isolated from the map sidebar | The six-state filter grid exposed preview linkage and heuristic test text; completed `$done`/`/done` turns are recorded as `userTask` plus an idle lifecycle rather than `status: done`, and the 30-minute expiry projection must preserve that completion marker even after the pane has entered fallback state. | `tests/status-expiry.spec.ts` + `tests/map-terminal-rendering.spec.ts -g "idle map filter uses\|map sidebar filters"` + `verify:map-terminals` | ✅ |
+| 4.9 | Map terminal cards jump or wiggle when live status text changes | The Task row was conditionally mounted, so adding or removing live text changed the header height and reflowed the terminal body. The row now stays mounted at its fixed height and hides its contents when empty. | `tests/map-terminal-rendering.spec.ts -g "map terminal task row keeps its reserved height"` | ✅ focused layout contract |
 
 ## 5. Project identity / header / status
 
