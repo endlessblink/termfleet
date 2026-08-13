@@ -13,6 +13,7 @@ DESKTOP_LAUNCHER_SOURCE="$APP_ROOT/scripts/termfleet-desktop-launcher.sh"
 ICON_SOURCE="$APP_ROOT/public/brand/termfleet-vessel-master.svg"
 
 cd "$APP_ROOT"
+source_revision="$(git rev-parse --verify HEAD)"
 
 BUILD_LOCK_FILE="${XDG_RUNTIME_DIR:-/tmp}/termfleet-build.lock"
 exec 9>"$BUILD_LOCK_FILE"
@@ -30,7 +31,7 @@ run_background_build() {
 }
 
 printf 'Building TermFleet frontend...\n'
-run_background_build npm run build
+VITE_TERMFLEET_RELEASE_ID="${source_revision:0:12}" run_background_build npm run build
 
 printf 'Building safe TermFleet desktop release...\n'
 # The installed desktop entry runs the immutable binary directly. Building an AppImage

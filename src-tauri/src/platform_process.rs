@@ -203,17 +203,6 @@ pub fn cgroup_is_app_unit(cgroup: &str) -> bool {
     cgroup.contains("/termfleet-desktop-")
 }
 
-pub fn terminate_process(pid: u32) {
-    let _ = Command::new("kill").arg(pid.to_string()).status();
-}
-
-pub fn force_terminate_process(pid: u32) {
-    let _ = Command::new("kill")
-        .arg("-KILL")
-        .arg(pid.to_string())
-        .status();
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

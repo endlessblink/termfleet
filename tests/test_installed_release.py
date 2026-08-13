@@ -138,6 +138,15 @@ class InstalledReleaseTests(unittest.TestCase):
         self.assertIn('TERMFLEET_CONTEXT_TITLE_TIMEOUT_MS:-25000', launcher)
         self.assertNotIn('TERMFLEET_OLLAMA_URL:-http://127.0.0.1:9', launcher)
 
+    def test_dock_restore_waits_for_the_daemon_after_starting_the_app(self):
+        launcher = DESKTOP_LAUNCHER.read_text()
+        app_start = launcher.index('"$TERMFLEET_CMD" &')
+        daemon_wait = launcher.index('daemon_socket=', app_start)
+        restore_start = launcher.index('"$TERMFLEET_RESTORE"', daemon_wait)
+        self.assertLess(app_start, daemon_wait)
+        self.assertLess(daemon_wait, restore_start)
+        self.assertIn('[[ -S "$daemon_socket" ]]', launcher)
+
     def test_rejects_stale_plasma_pinned_launcher_copy(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = pathlib.Path(tmp)

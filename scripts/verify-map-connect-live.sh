@@ -95,6 +95,19 @@ drive() {
   sleep 12
   shot "$wid" "01-map-boot.png"
 
+  # Reset-state cockpit objects can cover the terminal card on a fresh run.
+  # Escape is a real window-level interaction and safely closes transient
+  # overlays without depending on a screen-specific dismiss coordinate.
+  xdotool key --clearmodifiers Escape 2>>"$DRIVER_LOG" || true
+  sleep 1.5
+  # The reset-state Workspace Map object is an anchored note, not an Escape
+  # popover. Close its header control before attempting the terminal action.
+  local dismiss_x="${MAP_CONNECT_DISMISS_X:-968}"
+  local dismiss_y="${MAP_CONNECT_DISMISS_Y:-154}"
+  xdotool mousemove --window "$wid" "$dismiss_x" "$dismiss_y" click --clearmodifiers 1 2>>"$DRIVER_LOG" || true
+  sleep 1.5
+  shot "$wid" "01b-overlay-dismissed.png"
+
   # The reset canvas seeds a "Workspace Map" note that overlaps the terminal
   # card's header (and therefore the Connect control). Dismiss it so the click
   # below lands on the real, visible button.
@@ -118,13 +131,10 @@ drive() {
   # Coordinates come from MAP_CONNECT_BUTTON_XY (read off 01-map-boot.png by the
   # operator/agent on the first run) so the click is a real click on the visible
   # control rather than a synthetic DOM event.
-  local bx="${MAP_CONNECT_BUTTON_X:-0}"
-  local by="${MAP_CONNECT_BUTTON_Y:-0}"
-  if (( bx == 0 || by == 0 )); then
-    echo "MAP_CONNECT_NEED_BUTTON_COORDS see $OUT_DIR/01-map-boot.png" >>"$DRIVER_LOG"
-    echo "MAP_CONNECT_NEED_BUTTON_COORDS see $OUT_DIR/01-map-boot.png"
-    return 2
-  fi
+  # The reset map uses a stable card layout. Keep overrides for unusual window
+  # managers, but make the canonical verifier self-running in Xvfb as well.
+  local bx="${MAP_CONNECT_BUTTON_X:-970}"
+  local by="${MAP_CONNECT_BUTTON_Y:-205}"
 
   # Park the pointer away from the card first, so nothing is focused by accident.
   xdotool mousemove --window "$wid" 40 1050 click --clearmodifiers 1
@@ -142,7 +152,16 @@ drive() {
   sleep "${MAP_CONNECT_SETTLE_S:-6}"
   shot "$wid" "03-after-connect.png"
 
-  xdotool type --clearmodifiers --delay 40 "$MARKER"
+  # Re-enter the rendered terminal surface after the Connect action. This
+  # matches the packaged verifier and prevents Xvfb's window-focus policy from
+  # sending the probe text to the transient map control instead of the canvas.
+  xdotool mousemove --window "$wid" 760 500 click --clearmodifiers 1
+  sleep "${MAP_CONNECT_INPUT_SETTLE_S:-1.5}"
+
+  # Xvfb/xdotool can swallow the first synthetic character after a focus
+  # transition; a sacrificial prefix keeps the unique marker intact.
+  xdotool type --clearmodifiers --delay 40 "x$MARKER"
+  xdotool key --clearmodifiers Return
   sleep 3
   shot "$wid" "04-after-typing.png"
   echo "driver: typed marker $MARKER" >>"$DRIVER_LOG"

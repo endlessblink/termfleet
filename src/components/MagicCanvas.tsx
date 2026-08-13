@@ -3636,7 +3636,7 @@ function CanvasNodeViewImpl({
       );
       return;
     }
-    const targetPaneId = currentTerminal.paneId ?? terminalPaneId;
+    const targetPaneId = currentTerminal?.paneId ?? terminalPaneId;
     const targetTerminalId = currentTerminal.id;
     traceTerminalLatency("frontend.map.connect.click", {
       nodeId: node.id,

@@ -41,6 +41,7 @@ interface PtyEnsureResult {
 interface DaemonStatus {
   reachable: boolean;
   mode: "embeddedFallback" | "externalDaemon";
+  message?: string;
 }
 
 interface PtyStreamEvent {
@@ -548,6 +549,12 @@ export function usePty({ terminal, cwd, command, attachToPtyId, runtimeSessionId
         const pendingWrites: string[] = [];
         const daemonStatus = await invoke<DaemonStatus>("daemon_ensure_running").catch(() => null);
         const useDaemon = daemonStatus?.reachable && daemonStatus.mode === "externalDaemon";
+        if (!useDaemon) {
+          throw new Error(
+            daemonStatus?.message ??
+              "Terminal daemon is unavailable; refusing to start an embedded second PTY owner."
+          );
+        }
 
         if (useDaemon) {
           try {
@@ -669,7 +676,7 @@ export function usePty({ terminal, cwd, command, attachToPtyId, runtimeSessionId
             daemonReconnectAttemptsRef.current = 0;
             return;
           } catch (daemonError) {
-            console.warn("Daemon PTY transport failed; falling back to embedded Tauri PTY:", daemonError);
+            console.warn("Daemon PTY transport failed; refusing an embedded second PTY owner:", daemonError);
             disposeInputListener();
             daemonInputQueueRef.current?.dispose();
             daemonInputQueueRef.current = null;
@@ -681,6 +688,7 @@ export function usePty({ terminal, cwd, command, attachToPtyId, runtimeSessionId
             ptyIdRef.current = null;
             ownsPtyRef.current = false;
             transportRef.current = null;
+            throw daemonError;
           }
         }
 

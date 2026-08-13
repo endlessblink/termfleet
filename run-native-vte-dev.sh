@@ -51,31 +51,14 @@ export CARGO_PROFILE_DEV_DEBUG="${CARGO_PROFILE_DEV_DEBUG:-0}"
 # the webview always loads current code from vite. (TC-033)
 export WEBKIT_DISABLE_DISK_CACHE_NOT_RECOMMENDED="${WEBKIT_DISABLE_DISK_CACHE_NOT_RECOMMENDED:-1}"
 
-# By default LEAVE THE DAEMON ALIVE across relaunches so the reopened app
-# reattaches to live PTYs with full content. The app auto-replaces the daemon
-# when its build_id changes (backend rebuilt). Pass --fresh-daemon (or set
-# TERMINAL_WORKSPACE_FRESH_DAEMON=1) to force a clean backend instead.
-FRESH_DAEMON=0
-for arg in "$@"; do
-  case "$arg" in
-    --fresh-daemon) FRESH_DAEMON=1 ;;
-  esac
-done
-case "${TERMINAL_WORKSPACE_FRESH_DAEMON:-}" in
-  "" | 0) ;;
-  *) FRESH_DAEMON=1 ;;
-esac
-
+# Leave the canonical daemon alive across relaunches so the reopened app
+# reattaches to live PTYs with full content. No launch flag may replace it.
 kill_terminal_workspace() {
   # The daemon is the same binary run with --terminal-workspace-daemon, so match
-  # the app binary path but skip the daemon (and its stdio bridges) unless a
-  # fresh backend was requested. The [t] guard stops this grep matching itself.
+  # the app binary path but skip the daemon and its stdio bridges. The [t] guard
+  # stops this grep matching itself.
   local pids
-  if [[ "$FRESH_DAEMON" == "1" ]]; then
-    pids="$(ps -eo pid=,args= | grep "tar[g]et/debug/terminal-workspace" | awk '{print $1}')" || true
-  else
-    pids="$(ps -eo pid=,args= | grep "tar[g]et/debug/terminal-workspace" | grep -v -- "--terminal-workspace-daemon" | awk '{print $1}')" || true
-  fi
+  pids="$(ps -eo pid=,args= | grep "tar[g]et/debug/terminal-workspace" | grep -v -- "--terminal-workspace-daemon" | awk '{print $1}')" || true
   if [[ -n "$pids" ]]; then
     echo "$pids" | xargs -r kill
   fi

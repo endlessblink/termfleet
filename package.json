@@ -30,6 +30,7 @@
     "verify:installed-release": "scripts/verify-installed-release.sh",
     "verify:map-connect-release": "scripts/verify-map-connect-release.sh",
     "verify:installed-restart": "scripts/verify-installed-restart-smoke.sh",
+    "verify:gamification-live": "node scripts/verify-impeccable-gamification.mjs && scripts/verify-gamification-live.sh",
     "opencode:install-plugin": "node scripts/termfleet-install-opencode-plugin.mjs",
     "verify:opencode-status": "playwright test opencode-status-plugin",
     "verify:opencode-tui-resize": "python3 scripts/verify-opencode-tui-resize.py",

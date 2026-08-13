@@ -127,14 +127,35 @@ if [[ "${1:-}" == "--child" ]]; then
   export TERMFLEET_TASK_CONTEXT_MODEL="${TERMFLEET_TASK_CONTEXT_MODEL:-qwen2.5:7b}"
   export TERMFLEET_AGENT_STATUS_TIMEOUT_MS="${TERMFLEET_AGENT_STATUS_TIMEOUT_MS:-1000}"
   export TERMFLEET_AGENT_STATUS_DISABLE="${TERMFLEET_AGENT_STATUS_DISABLE:-1}"
-  if [[ -f "$TERMFLEET_RESTORE" ]]; then
+  # The restore helper must not race the app's first daemon startup. Starting
+  # restore first made normal dock launches time out after 20s, leaving the
+  # saved terminals absent even though the UI could later start successfully.
+  set +e
+  "$TERMFLEET_CMD" &
+  app_pid=$!
+  daemon_socket="${XDG_RUNTIME_DIR:-/run/user/${UID}}/terminal-workspace/daemon.sock"
+  daemon_deadline=$((SECONDS + 20))
+  daemon_ready=0
+  while (( SECONDS < daemon_deadline )); do
+    if [[ -S "$daemon_socket" ]]; then
+      daemon_ready=1
+      break
+    fi
+    if ! kill -0 "$app_pid" 2>/dev/null; then
+      break
+    fi
+    sleep 0.1
+  done
+  if (( daemon_ready == 1 )) && [[ -f "$TERMFLEET_RESTORE" ]]; then
     /usr/bin/python3 "$TERMFLEET_RESTORE" \
       --termfleet-startup \
       --once termfleet \
       --ready-timeout 20 >>"$LOG_FILE" 2>&1 &
+  elif (( daemon_ready == 0 )); then
+    printf '[%s] daemon was not ready before restore; preserving the app failure for diagnosis\n' \
+      "$(date --iso-8601=seconds)" >>"$LOG_FILE"
   fi
-  set +e
-  "$TERMFLEET_CMD"
+  wait "$app_pid"
   status=$?
   set -e
   printf '[%s] termfleet exited with status=%s\n' \

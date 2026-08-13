@@ -23,10 +23,6 @@ const MAX_REQUEST_BYTES: usize = 16 * 1024 * 1024;
 const PROTOCOL_VERSION: u16 = 1;
 pub const DAEMON_ARG: &str = "--terminal-workspace-daemon";
 pub const DAEMON_STDIO_ARG: &str = "--terminal-workspace-daemon-stdio";
-/// When set, the launcher / caller wants a clean backend: an already-running
-/// daemon is replaced even if its build identity still matches.
-const FRESH_DAEMON_ENV: &str = "TERMINAL_WORKSPACE_FRESH_DAEMON";
-
 /// The daemon pins its build identity once, at startup, so a rebuilt binary at
 /// the same path (dev) cannot make this still-running, stale-code daemon report
 /// the *new* binary's mtime and falsely look current.
@@ -45,10 +41,6 @@ fn current_build_id() -> String {
         .map(|delta| delta.as_millis().to_string())
         .unwrap_or_else(|| "unknown".to_string());
     format!("{PROTOCOL_VERSION}:{mtime}")
-}
-
-fn fresh_daemon_requested() -> bool {
-    std::env::var_os(FRESH_DAEMON_ENV).is_some_and(|value| value != "0" && value != "")
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
@@ -180,7 +172,14 @@ pub enum DaemonMode {
 pub fn daemon_status() -> DaemonStatus {
     let socket_path = daemon_socket_path();
     match query_daemon_status(&socket_path) {
-        Ok(status) => status,
+        Ok(status) if status.protocol_version == PROTOCOL_VERSION => status,
+        Ok(status) => blocked_daemon_status(
+            socket_path,
+            format!(
+                "terminal daemon protocol {} is incompatible with this app",
+                status.protocol_version
+            ),
+        ),
         Err(error) => embedded_fallback_status(socket_path, error),
     }
 }
@@ -196,7 +195,13 @@ pub fn daemon_ensure_running() -> DaemonStatus {
         if should_reuse_running_daemon(&status) {
             return status;
         }
-        replace_running_daemon(&socket_path, status.pid);
+        return blocked_daemon_status(
+            socket_path,
+            format!(
+                "terminal daemon protocol {} is incompatible with this app; refusing to replace the canonical daemon",
+                status.protocol_version
+            ),
+        );
     } else if socket_path.exists() {
         // A saturated daemon may accept a connection but miss the short status
         // deadline.  Never spawn a replacement while the socket is still owned:
@@ -237,14 +242,14 @@ pub fn daemon_ensure_running() -> DaemonStatus {
 }
 
 fn should_reuse_running_daemon(status: &DaemonStatus) -> bool {
-    should_reuse_running_daemon_with_fresh_request(status, fresh_daemon_requested())
+    should_reuse_running_daemon_with_fresh_request(status, false)
 }
 
 fn should_reuse_running_daemon_with_fresh_request(
     status: &DaemonStatus,
-    fresh_requested: bool,
+    _fresh_requested: bool,
 ) -> bool {
-    !fresh_requested && status.protocol_version == PROTOCOL_VERSION
+    status.protocol_version == PROTOCOL_VERSION
 }
 
 pub fn trace_pty(label: &str, details: impl AsRef<str>) {
@@ -299,6 +304,10 @@ fn truncate_trace_detail(details: &str) -> String {
 
 pub fn send_daemon_request(request: DaemonRequest) -> Result<DaemonResponse, String> {
     let socket_path = daemon_socket_path();
+    let status = daemon_ensure_running();
+    if !status.reachable {
+        return Err(status.message);
+    }
     let mut stream = match daemon_ipc::connect(&socket_path) {
         Ok(stream) => stream,
         Err(initial_error) => {
@@ -505,33 +514,6 @@ fn resize_daemon_session_from_tty(id: &str, stop: &AtomicBool) {
     }
 }
 
-/// Tear down an explicitly requested or protocol-incompatible daemon so a fresh
-/// one can take its socket. `remove_stale_socket` refuses to bind while the old
-/// daemon still answers, so we kill it and wait for the socket to go unreachable
-/// before the caller spawns the replacement.
-fn replace_running_daemon(socket_path: &PathBuf, pid: Option<u32>) {
-    if let Some(pid) = pid {
-        // SIGTERM first. This kills daemon-owned PTYs, so this path must remain
-        // limited to explicit fresh-daemon requests or incompatible protocols.
-        platform_process::terminate_process(pid);
-        for _ in 0..40 {
-            if query_daemon_status(socket_path).is_err() {
-                return;
-            }
-            std::thread::sleep(Duration::from_millis(50));
-        }
-        // Still answering after ~2s — force it.
-        platform_process::force_terminate_process(pid);
-    }
-
-    for _ in 0..40 {
-        if query_daemon_status(socket_path).is_err() {
-            return;
-        }
-        std::thread::sleep(Duration::from_millis(50));
-    }
-}
-
 fn spawn_current_binary_as_daemon() -> Result<(), String> {
     platform_process::spawn_detached_current_binary(DAEMON_ARG)
 }
@@ -666,6 +648,21 @@ fn embedded_fallback_status(socket_path: PathBuf, error: String) -> DaemonStatus
         cgroup: None,
         message: format!(
             "External terminal daemon is not available ({error}); using embedded Tauri PTY owner."
+        ),
+    }
+}
+
+fn blocked_daemon_status(socket_path: PathBuf, error: String) -> DaemonStatus {
+    DaemonStatus {
+        socket_path: socket_path.to_string_lossy().to_string(),
+        reachable: false,
+        mode: DaemonMode::EmbeddedFallback,
+        protocol_version: PROTOCOL_VERSION,
+        pid: None,
+        build_id: current_build_id(),
+        cgroup: None,
+        message: format!(
+            "Terminal daemon ownership is blocked ({error}); no second PTY owner will be started."
         ),
     }
 }
@@ -1016,9 +1013,9 @@ fn write_daemon_response(
 mod tests {
     use super::{
         current_build_id, daemon_socket_path, daemon_status, daemon_stdio_bridge_argv,
-        embedded_fallback_status, prepare_socket_dir, remove_stale_socket,
-        read_request_frame, should_reuse_running_daemon_with_fresh_request, DaemonMode,
-        DaemonRequest, DaemonResponse, DaemonStatus, DAEMON_STDIO_ARG, PROTOCOL_VERSION,
+        embedded_fallback_status, prepare_socket_dir, read_request_frame, remove_stale_socket,
+        should_reuse_running_daemon_with_fresh_request, DaemonMode, DaemonRequest, DaemonResponse,
+        DaemonStatus, DAEMON_STDIO_ARG, PROTOCOL_VERSION,
     };
 
     /// Delivers its payload in small pieces, the way a socket actually does.
@@ -1288,7 +1285,7 @@ mod tests {
     }
 
     #[test]
-    fn fresh_daemon_request_forces_replacement_even_when_protocol_matches() {
+    fn fresh_daemon_request_reuses_compatible_daemon_instead_of_replacing_pty_owner() {
         let status = DaemonStatus {
             socket_path: "/tmp/terminal-workspace/daemon.sock".to_string(),
             reachable: true,
@@ -1301,8 +1298,8 @@ mod tests {
         };
 
         assert!(
-            !should_reuse_running_daemon_with_fresh_request(&status, true),
-            "explicit fresh-daemon remains the user-controlled way to replace the PTY owner"
+            should_reuse_running_daemon_with_fresh_request(&status, true),
+            "fresh-daemon requests must not create a second PTY owner"
         );
     }
 

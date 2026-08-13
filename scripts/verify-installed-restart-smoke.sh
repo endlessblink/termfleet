@@ -13,7 +13,7 @@ export DISPLAY="${DISPLAY:-:0}"
 
 "$APP_ROOT/scripts/verify-installed-release.sh"
 
-for command in xdotool xprop import identify pgrep fuser dbus-run-session; do
+for command in xdotool xprop import identify tesseract pgrep fuser dbus-run-session; do
   command -v "$command" >/dev/null ||
     { printf 'Missing restart-smoke prerequisite: %s\n' "$command" >&2; exit 1; }
 done
@@ -34,7 +34,7 @@ observed_terminals="$tmp_root/observed-terminals"
 resume_marker="$tmp_root/resume-marker"
 manifest="$tmp_root/fleet.toml"
 session_dir="$tmp_root/session"
-mkdir -m 0700 "$runtime_dir" "$data_dir" "$state_dir" "$fake_bin" "$session_dir"
+mkdir -m 0700 "$runtime_dir" "$data_dir" "$state_dir" "$fake_bin" "$session_dir" "$tmp_root/tmp"
 
 cat >"$fake_bin/codex" <<'EOF'
 #!/usr/bin/env bash
@@ -64,6 +64,10 @@ terminal_pids() {
 
 before_terminals="$(terminal_pids)"
 before_windows="$(xdotool search --onlyvisible --name '^TermFleet$' 2>/dev/null | sort -u || true)"
+if [[ "${TERMFLEET_REQUIRE_CLEAN_VISIBLE_DESKTOP:-0}" == "1" && -n "$before_windows" ]]; then
+  printf 'Visual gate refused to run with an existing visible TermFleet window: %s\n' "$before_windows" >&2
+  exit 1
+fi
 app_pid=""
 window_pid=""
 watcher_pid=""
@@ -164,9 +168,49 @@ import -silent -window "$window_id" "$screenshot"
 colors="$(identify -format '%k' "$screenshot")"
 [[ "$colors" =~ ^[0-9]+$ ]] && (( colors > 1 )) ||
   { printf 'TermFleet window capture is blank.\n' >&2; exit 1; }
+window_exe="$(readlink -f "/proc/$window_pid/exe" 2>/dev/null || true)"
+command_exe="$(readlink -f "$COMMAND_PATH")"
+[[ -n "$window_pid" && "$window_exe" == "$command_exe" ]] || {
+  printf 'Visible TermFleet window is stale or from the wrong release: pid=%s exe=%s expected=%s\n' \
+    "$window_pid" "$window_exe" "$command_exe" >&2
+  exit 1
+}
+if [[ "${TERMFLEET_RESTART_SMOKE_GAMIFICATION:-0}" == "1" ]]; then
+  eval "$(xdotool getwindowgeometry --shell "$window_id")"
+  # The trigger is in the WorkbenchHeader, not the bottom status bar. Keep the
+  # default relative to the actual captured window geometry so this gate cannot
+  # silently click an unrelated control when the desktop size changes.
+  # The header content is centered inside the window; the trigger is not flush
+  # with the right edge. Keep the default in the measured header zone while
+  # allowing a future layout to override it explicitly.
+  gamification_capture="${screenshot%.png}-gamification.png"
+  gamification_opened=0
+  for candidate_offset in 220 180 140 100 260 300; do
+    click_x="${TERMFLEET_GAMIFICATION_CLICK_X:-$((X + WIDTH - candidate_offset))}"
+    click_y="${TERMFLEET_GAMIFICATION_CLICK_Y:-$((Y + 25))}"
+    xdotool windowactivate "$window_id"
+    sleep 0.2
+    xdotool mousemove "$click_x" "$click_y" click --clearmodifiers 1
+    sleep 0.6
+    import -silent -window root "$gamification_capture"
+    if tesseract "$gamification_capture" stdout --psm 11 2>/dev/null | grep -Fq "Workstream quest"; then
+      gamification_opened=1
+      break
+    fi
+    xdotool key Escape
+  done
+  [[ "$gamification_opened" == "1" ]] || { printf 'Gamification trigger did not open the real panel.\n' >&2; exit 1; }
+  xdotool key Escape
+  sleep 1
+  import -silent -window root "${screenshot%.png}-gamification-closed.png"
+fi
 if [[ -n "$ARTIFACT_DIR" ]]; then
   mkdir -p "$ARTIFACT_DIR"
   install -m 0644 "$screenshot" "$ARTIFACT_DIR/termfleet-installed-window.png"
+  if [[ "${TERMFLEET_RESTART_SMOKE_GAMIFICATION:-0}" == "1" ]]; then
+    install -m 0644 "${screenshot%.png}-gamification.png" "$ARTIFACT_DIR/termfleet-installed-window-gamification.png"
+    install -m 0644 "${screenshot%.png}-gamification-closed.png" "$ARTIFACT_DIR/termfleet-installed-window-gamification-closed.png"
+  fi
   import -silent -window root "$ARTIFACT_DIR/termfleet-installed-desktop.png"
 fi
 
@@ -182,5 +226,5 @@ new_terminals="$(
 [[ -z "$new_terminals" ]] ||
   { printf 'TermFleet opened external terminal processes: %s\n' "$new_terminals" >&2; exit 1; }
 
-printf 'TERMFLEET_INSTALLED_RESTART_OK pid=%s socket=%s window=%s colors=%s wm_class=termfleet/Termfleet external_terminals=0\n' \
-  "$app_pid" "$socket" "$window_id" "$colors"
+printf 'TERMFLEET_INSTALLED_RESTART_OK pid=%s window_pid=%s exe=%s socket=%s window=%s colors=%s wm_class=termfleet/Termfleet external_terminals=0\n' \
+  "$app_pid" "$window_pid" "$window_exe" "$socket" "$window_id" "$colors"
