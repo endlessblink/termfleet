@@ -9,6 +9,24 @@ DESKTOP_LAUNCHER="${TERMFLEET_DESKTOP_LAUNCHER:-${HOME}/.local/bin/termfleet-des
 RESTORE_SCRIPT="${TERMFLEET_RESTORE_SCRIPT:-/media/endlessblink/data/my-projects/ai-development/cc-linux-enhancments/scripts/agent-fleet/restore.py}"
 WAIT_SECONDS="${TERMFLEET_RESTART_SMOKE_WAIT_SECONDS:-30}"
 ARTIFACT_DIR="${TERMFLEET_RESTART_SMOKE_ARTIFACT_DIR:-}"
+
+# Keep the installed visual smoke on a disposable display by default. Its
+# private XDG runtime/data roots already isolate the daemon and workspace; a
+# private Xvfb completes that boundary so the test window cannot appear on the
+# operator's real desktop. Set the escape hatch only for deliberate headed
+# acceptance on the current display.
+if [[ -z "${TERMFLEET_RESTART_SMOKE_INNER:-}" &&
+  "${TERMFLEET_RESTART_SMOKE_USE_CURRENT_DISPLAY:-0}" != "1" ]]; then
+  command -v xvfb-run >/dev/null || {
+    printf 'Missing restart-smoke prerequisite: xvfb-run\n' >&2
+    exit 1
+  }
+  exec xvfb-run -a -s "-screen 0 1600x1000x24" \
+    env \
+      TERMFLEET_RESTART_SMOKE_INNER=1 \
+      bash "${BASH_SOURCE[0]}" "$@"
+fi
+
 export DISPLAY="${DISPLAY:-:0}"
 
 "$APP_ROOT/scripts/verify-installed-release.sh"

@@ -283,6 +283,9 @@ class InstalledReleaseTests(unittest.TestCase):
 
     def test_restart_smoke_uses_isolated_desktop_restore_path(self):
         source = RESTART_SMOKE.read_text()
+        self.assertIn('TERMFLEET_RESTART_SMOKE_INNER', source)
+        self.assertIn('xvfb-run -a', source)
+        self.assertIn('TERMFLEET_RESTART_SMOKE_USE_CURRENT_DISPLAY', source)
         self.assertIn('export DISPLAY="${DISPLAY:-:0}"', source)
         self.assertNotIn("sort -n -u", source)
         self.assertIn('"$DESKTOP_LAUNCHER" --child', source)
