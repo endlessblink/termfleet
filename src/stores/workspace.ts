@@ -195,7 +195,7 @@ const DEFAULT_CANVAS_STATE: CanvasState = {
   selectedNodeId: "welcome-canvas-node",
   viewport: { x: 0, y: 0, zoom: 1 },
 };
-const TERMINAL_MAP_NODE_SIZE = { width: 820, height: 460 };
+const TERMINAL_MAP_NODE_SIZE = { width: 1180, height: 720 };
 const CANVAS_PROJECT_LANE_GAP = 48;
 const CANVAS_PROJECT_TERMINAL_GAP = 40;
 const AUTO_READABLE_TERMINAL_SIZES = new Set(["1180x720", "1180x560"]);
@@ -532,8 +532,8 @@ function normalizeWorkspaceUiState(uiState: Partial<WorkspaceUiState> | undefine
 
 function terminalNodePosition(index: number) {
   return {
-    x: 120 + (index % 3) * 700,
-    y: 100 + Math.floor(index / 3) * 430,
+    x: 120 + (index % 3) * 1260,
+    y: 100 + Math.floor(index / 3) * 800,
   };
 }
 

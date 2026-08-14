@@ -249,3 +249,22 @@ test("new terminal affordance supports plus button menu and keyboard creation", 
   await expect(page.locator(".workspace-sidebar-row")).toHaveCount(2);
   await expect(page.locator(".terminal-container:visible").first()).toBeVisible();
 });
+
+test("new map terminals open with a readable working area", async ({ page }) => {
+  await resetWorkspace(page);
+  const sidebar = page.getByRole("complementary", { name: "Workspace sidebar" });
+
+  await sidebar.getByRole("button", { name: "Map", exact: true }).click();
+  await expect(page.getByTestId("canvas-terminal-node")).toHaveCount(1);
+
+  await page.keyboard.press("Control+Shift+T");
+  await sidebar.getByRole("button", { name: "Map", exact: true }).click();
+  await expect(page.getByTestId("canvas-terminal-node")).toHaveCount(2);
+  await expect.poll(async () => page.getByTestId("canvas-terminal-node").last().evaluate((node) => {
+    const style = getComputedStyle(node);
+    return {
+      width: Number.parseFloat(style.width),
+      height: Number.parseFloat(style.height),
+    };
+  })).toEqual({ width: 1180, height: 720 });
+});

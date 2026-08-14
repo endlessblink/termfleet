@@ -60,6 +60,10 @@ test("TermFleet app shell owns first paint and package metadata", async () => {
     "icons/128x128@2x.png",
     "icons/32x32.png",
   ]);
+  expect(JSON.parse(tauriConfig).app.windows[0]).toMatchObject({
+    width: 1200,
+    height: 1000,
+  });
 
   const pkg = JSON.parse(packageJson) as { name?: string; main?: string };
   expect(pkg.name).toBe("terminal-workspace-tauri");

@@ -2040,7 +2040,7 @@ const styles: Record<string, CSSProperties> = {
 };
 
 const NODE_MIN_SIZE = {
-  terminal: { width: 820, height: 460 },
+  terminal: { width: 1180, height: 720 },
   preview: { width: 620, height: 420 },
   file: { width: 260, height: 120 },
   note: { width: 220, height: 120 },

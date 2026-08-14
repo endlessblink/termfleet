@@ -514,11 +514,11 @@ const checks = [
     message: "Powerline separator glyphs used by zellij/tmux themes must render geometrically instead of falling back to missing-character boxes.",
   },
   {
-    ok: /const NODE_MIN_SIZE = \{[\s\S]*terminal: \{ width: 820, height: 460 \}/.test(magicCanvas),
+    ok: /const NODE_MIN_SIZE = \{[\s\S]*terminal: \{ width: 1180, height: 720 \}/.test(magicCanvas),
     message: "Map terminal nodes must have enough room for a usable terminal.",
   },
   {
-    ok: /const TERMINAL_MAP_NODE_SIZE = \{ width: 820, height: 460 \};/.test(workspaceStore),
+    ok: /const TERMINAL_MAP_NODE_SIZE = \{ width: 1180, height: 720 \};/.test(workspaceStore),
     message: "Store terminal map node size must support live terminals.",
   },
   {
@@ -714,7 +714,7 @@ const checks = [
     message: "Sessions panel must focus the canonical live terminal map node.",
   },
   {
-    ok: /width: 820,[\s\S]*height: 460/.test(workbenchSidebar),
+    ok: /width: 1180,[\s\S]*height: 720/.test(workbenchSidebar),
     message: "Show-on-map must create live-terminal-sized nodes.",
   },
   {
