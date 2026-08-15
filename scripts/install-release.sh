@@ -105,6 +105,10 @@ ln -s "$INSTALL_ROOT/current/termfleet" "$BIN_DIR/.termfleet-$release_id-$$"
 mv -Tf -- "$BIN_DIR/.termfleet-$release_id-$$" "$BIN_DIR/termfleet"
 
 install -m 0755 "$DESKTOP_LAUNCHER_SOURCE" "$LIBEXEC_DIR/termfleet-desktop-launcher"
+install -m 0755 "$APP_ROOT/scripts/filter-termfleet-restore.py" "$LIBEXEC_DIR/filter-termfleet-restore.py"
+install -m 0755 "$APP_ROOT/scripts/termfleet-pressure-watchdog.sh" "$LIBEXEC_DIR/termfleet-pressure-watchdog"
+install -m 0755 "$APP_ROOT/scripts/termfleet-load-shed.sh" "$HOME/.local/bin/termfleet-load-shed"
+install -m 0755 "$APP_ROOT/scripts/termfleet-incident-log.sh" "$LIBEXEC_DIR/termfleet-incident-log.sh"
 ln -s "$LIBEXEC_DIR/termfleet-desktop-launcher" "$BIN_DIR/.termfleet-desktop-$release_id-$$"
 mv -Tf -- "$BIN_DIR/.termfleet-desktop-$release_id-$$" "$BIN_DIR/termfleet-desktop"
 install -m 0644 "$ICON_SOURCE" "$ICON_DIR/termfleet.svg"
@@ -166,5 +170,14 @@ if ! "$APP_ROOT/scripts/verify-installed-release.sh"; then
   fi
   printf 'TermFleet release verification failed; restored the last-known-good release.\n' >&2
   exit 1
+fi
+
+# A shell watchdog keeps executing the inode it started from. Refresh it after
+# promotion so a release cannot leave the old watchdog logic running from a
+# deleted support file while a new instance waits on the same lock.
+if command -v systemctl >/dev/null 2>&1 && [[ -S "${XDG_RUNTIME_DIR:-/run/user/$UID}/bus" ]]; then
+  XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$UID}" \
+    DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=${XDG_RUNTIME_DIR:-/run/user/$UID}/bus}" \
+    systemctl --user try-restart termfleet-pressure-watchdog.service >/dev/null 2>&1 || true
 fi
 printf 'TERMFLEET_RELEASE_PROMOTED id=%s binary=%s\n' "$release_id" "$BIN_DIR/termfleet"

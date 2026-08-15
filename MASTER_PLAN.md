@@ -1,5 +1,289 @@
 # MASTER_PLAN.md - termfleet
 
+> **2026-08-15 — Sidebar-closed terminals no longer return after restart:**
+> The sidebar `×` path now persists the final tab removal after killing its PTY,
+> and startup filters tombstoned panes/tabs even if a restart races that final
+> write. The new hydration race regression and existing auto-recovery tests
+> passed, the frontend build passed, release `ef6665907387-31de0adf1c6e` was
+> promoted and checksum-verified. The installed close gate clicked the visible
+> sidebar action, verified the tombstone and removal on disk, relaunched against
+> the same daemon/data, verified the closed session was absent, and retained a
+> fresh screenshot (SHA-256 `44ebee4827cb7dedf71dd825a018d0f3ac315e6a2e9b2c55c47c1db755961467`).
+> Three additional isolated installed close/restart repetitions also passed; the
+> final retained screenshot was visually reviewed as healthy with the closed card
+> absent (SHA-256 `089269ff2e38363d84f932ceddf371f82af82611f1bdf6ad2d49dc2cf3093a02`).
+> The independent installed daemon pane-close gate also passed with the unrelated
+> session alive, covering PTY ownership separately from the UI-card close path.
+
+> **2026-08-15 — Host PSI is telemetry-only:** The watchdog no longer lets
+> host-wide memory or I/O PSI create a TermFleet notification, load-shed action,
+> desktop recycle, or relaunch because host pressure does not prove TermFleet or
+> WebKit caused it. Structured incident samples remain available for diagnosis;
+> confirmed blocked TermFleet processes retain the guarded user-action path.
+> The regression guard failed before this change and passed afterward (14/14).
+> Rebuild, installed watchdog synchronization, installed-release verification,
+> and a fresh live no-alert observation remain required before user acceptance.
+
+> **2026-08-15 — Installed Task/Goal/Now label gate closed:** The shell header
+> now prefers the authoritative sidecar Now value after reconnect, and the
+> installed restart smoke injects a real opening request into the exact pane
+> status channel before capturing evidence. Focused rendered coverage passed,
+> the frontend build passed, the installed release checksum matched, and the
+> retained dock screenshot visibly showed Task `Verify the installed terminal
+> labels`, Goal with the same request, and Now `Waiting for command` (SHA-256
+> `306b3fce36fca66eee50ecff18d9afea0276b1adadde0b3913937062e56d5c26`).
+> Internal investigation text was absent. User approval remains required.
+
+> **2026-08-15 — Native app close now terminates the desktop process:** The
+> close persistence barrier is bounded, and one frontend-requested Rust
+> `AppHandle::exit(0)` owns UI shutdown; the backend no longer requests exit from
+> the window's `Destroyed` event. Lifecycle markers now record close requested,
+> persistence completion, exit requested, destroyed, and exit. Focused
+> close-lifecycle tests, frontend build, Rust check, release promotion, and
+> installed-release checksum verification passed. The final installed restart
+> smoke passed after the label gate was changed to wait for the exact committed
+> Task/Goal/Now snapshot; its close gate also confirmed the UI process exited
+> while the PTY daemon socket remained.
+
+> **2026-08-15 — Operator stops no longer race recovery:** Close/stop actions
+> mark the terminal before killing its PTY, recovery decisions log their reason,
+> and restart hydration clears the transient marker. The recovery decision gate,
+> 15 static lifecycle checks, frontend build, and cold restart/restore verifier
+> passed. Installed pane-close remains blocked by an existing daemon test-harness
+> protocol error and is not used as completion evidence for the label fix.
+
+> **2026-08-15 — Host-I/O alerts require sustained pressure:** A real 37.28
+> PSI burst still produced a notification because the earlier three-sample
+> guard was too short; it cleared within 17 seconds without affecting the
+> desktop. Host pressure now requires 12 consecutive samples (about one minute)
+> before notifying. Evidence: 13/13 watchdog tests, rebuilt release, installed
+> checksum match, fresh watchdog process, and normal post-deploy samples.
+> User confirmation remains required.
+
+> **2026-08-15 — Transient host pressure no longer alerts:** The watchdog now
+> requires three consecutive host-memory or host-I/O pressure samples before
+> opening an incident, matching blocked-renderer confirmation behavior. A live
+> 14.61 I/O-PSI spike was observed without a desktop recycle; the new guard is
+> covered by 13/13 watchdog tests, rebuilt, promoted, and checksum-verified in
+> the installed watchdog. Sustained normal-use observation and user confirmation
+> remain required.
+
+> **2026-08-15 — Watchdog renderer ownership boundary:** The pressure watchdog
+> now evaluates blocked WebKit renderers only inside the selected production
+> TermFleet process group; unrelated WebKit applications can no longer trigger
+> a TermFleet alert or desktop recycle. Evidence: 12/12 pressure watchdog
+> checks, frontend build, installed script checksum match, installed release
+> verification, and installed restart smoke passed. Sustained live no-alert
+> operation and user confirmation remain required.
+
+> **2026-08-15 — Split-pane closes are durable too:** Closing an individual
+> pane now removes it from the saved layout and flushes its close tombstone
+> before the PTY is killed, closing the remaining manual-close resurrection
+> race. Evidence: 15/15 recovery checks, 9/9 hydration tests, frontend build,
+> promoted release `ef6665907387-f3e5e51ca784`, installed release verification,
+> and installed restart smoke passed. A real operator close/restart cycle is
+> still required before user acceptance.
+
+> **2026-08-15 — Explicitly closed terminals stay closed:** The close path now
+> flushes each operator-close tombstone to durable workspace storage before
+> killing its PTY, eliminating the restart race where a killed live session could
+> be observed without its exclusion record. Focused evidence: 14/14 recovery
+> unit checks, 9/9 hydration tests, frontend build, promoted release
+> `ef6665907387-00101fcd1654`, and installed restart smoke passed. The visible
+> desktop was also replaced from an older release with the promoted build.
+> A real user close/reopen confirmation remains required.
+
+> **2026-08-15 — Closed workspaces no longer return from external restore:** The
+> actual resurrection source was the independent Agent Fleet startup manifest,
+> which relaunched curated workspaces even after TermFleet removed their cards.
+> Closed workspace identities now suppress saved, live, and recovered tabs, and
+> the installed launcher filters those identities before invoking Agent Fleet.
+> The close verifier proves the closed PTY disappears from daemon sessions while
+> an unrelated PTY remains alive, then proves the closed workspace stays absent
+> after restart. Evidence: focused multi-workspace hydration regression, restore
+> filter unit test, frontend build, promoted release
+> `ef6665907387-bbe71d9e84d6`, installed release verification, installed pane
+> close, and installed close/restart smoke all passed. Goal completion remains
+> reserved for the user's visual acceptance.
+
+> **2026-08-15 — Legacy restore path closed:** The first generic tombstone fix
+> still allowed legacy workspaces with no close ledger to be relaunched by the
+> external manifest service. The launcher now suppresses every manifest cwd
+> already represented in the durable workspace, while still allowing genuinely
+> unrepresented workspaces. After a controlled real dock relaunch, the live
+> restore log showed no `paper-bot` or `arthouse` launch and the desktop capture
+> showed neither restored card. The two filter regressions, hydration regression,
+> build, promoted installed release, and installed close/restart gate passed.
+
+> **2026-08-15 — Legacy-ID cleanup rollback and lifecycle gate:** A migration
+> that inferred closure from `recovered-tab-*` IDs was found to be unsafe: it
+> removed untouched cards and could kill their matching PTYs. It was removed;
+> only explicit close tombstones now suppress a workspace identity. The repair
+> backed up the durable layout, restored surviving daemon sessions, re-applied
+> close tombstones only for the two workspaces the operator had explicitly
+> closed, and repaired a serialization defect found by the real-state gate.
+> Evidence: frontend build, 19 focused Python tests, four hydration/close
+> Playwright tests, 167 Rust unit tests, installed pane-close, live/cold/agent/
+> orphan restart proof, installed release/restart, and a clean real-state
+> restart with closed projects absent and untouched projects present. Approval
+> remains user-owned.
+
+> **2026-08-15 — Durable live-terminal recovery:** The recovery repair now waits
+> for the desktop disk checkpoint before mirroring the local cache, so a stale
+> local layout cannot erase newer recovered state on startup. Live panes whose
+> old layout leaf disappeared are rebound into their saved groups; older
+> noncanonical live session ids are restored by attaching to their existing
+> daemon ids instead of spawning duplicates. Evidence: 13/13 automatic recovery
+> tests, 9/9 hydration tests, frontend build, promoted installed release,
+> `verify:installed-restart`, and a real installed close/relaunch with 38 saved
+> terminals, 38 live sessions, 38 exact matches, zero missing, and zero extras.
+> User confirmation over repeated normal-use cycles is still required.
+
+> **2026-08-15 — Dock acceptance persistence fix:** The real dock-launched
+> release now changes immediately from `A 10-minute live run` to `Next milestone:
+> 10 minutes`, removes the Accept button, and keeps that state after closing and
+> reopening the panel. The sync path now preserves accepted state during live
+> terminal updates, and the immediate render uses the acceptance confirmation as
+> the same source of truth. Evidence: 4/4 focused panel tests plus the beam
+> regression proving 2 qualifying shells and 1 idle shell, `git diff --check`,
+> promoted release `ef6665907387-fba86cf64b2c`, installed restart/gamification
+> gate passed, and fresh real-display screenshots verified both acceptance and
+> close/reopen persistence. The kept visual artifact at
+> `/media/endlessblink/data/.dev-tmp/endlessblink/termfleet-gamification-live.TrBlvV`
+> also shows the accepted quest and the time-separated qualifying-terminal beam
+> check. User approval is still required; do not mark complete.
+
+> **2026-08-15 — Missing opened-terminal binding:** A live terminal could
+> disappear from the visible workspace when hydration saw its tab but did not
+> verify the pane-to-daemon-session binding. Hydration now repairs stale pane
+> ids and restores live panes omitted from the latest checkpoint while keeping
+> the saved project group and explicit-close tombstones. Regression evidence:
+> `npx playwright test tests/workspace-hydration.spec.ts --reporter=line`
+> passed 8/8 after a red pre-fix reproduction; installed release/restart and
+> live operator confirmation remain required.
+
+> **2026-08-15 — Desktop X close boundary:** The user reported that clicking the
+> desktop close button did not kill TermFleet. The intended behavior is now explicit:
+> the UI process exits while the separate PTY daemon and sessions remain alive. The
+> installed restart smoke sends a real window-close request and verifies both sides;
+> it passed with the desktop exiting and the daemon socket preserved. A real dock
+> close/reopen confirmation remains required.
+
+> **2026-08-14 — Quest acceptance and active-terminal beam:** Workstream Quest
+> now requires explicit acceptance before it becomes active. Accepted quests
+> broadcast durable state to open terminals; only live terminals carrying tracked
+> work receive the animated teal/amber edge beam, while reduced motion parks a
+> static edge. Acceptance now remains visibly open with a transient `Quest
+> accepted` confirmation instead of closing with no feedback; the profile key is
+> stable across releases and migrates the previous release-key record. Evidence:
+> 5/5 focused gamification tests, frontend build, installed release `cfa69c21a695`,
+> and the dock-launched acceptance/reopen plus time-separated beam visual gate.
+> Awaiting user visual approval;
+> do not mark complete yet.
+
+> **2026-08-14 — Crash restart restores saved panes:** The dock launcher now
+> forces the TermFleet-specific restore pass after every desktop restart instead
+> of honoring the restore helper's once-per-boot guard. This covers the case
+> where the desktop dies while the daemon and recovery processes survive.
+> Fresh focused evidence: the new launcher regression passes; the broader
+> installed-release unit file still has unrelated pre-existing failures.
+
+> **2026-08-14 — Workstream Quest surface:** The primary gamification control is
+> now a single playable quest: `Hold the line`, with an explicit 10-minute
+> milestone, live `0:00 / 10:00` progress, a plain real-work rule, and the next
+> 30-minute/3-hour stages. Rank, points, receipt history, and badge bookkeeping
+> are removed from the primary surface; reset remains explicit and local.
+> Fresh evidence: 19/19 gamification browser tests, frontend build,
+> `git diff --check`, installed release `ef6665907387-79def33ec20c`, and the
+> dock-launched visual gate passed for open/close plus fresh 0:00 state.
+
+> **2026-08-14 — Automatic incident handoff:** Intermittent desktop pressure and
+> launcher events now append versioned JSONL records plus an agent-readable
+> Markdown summary in the user state directory. Records include PSI, swap,
+> process state, daemon/socket ownership, and desktop recovery context; `doctor`
+> exposes the latest event and handoff location. Fresh evidence: 9/9 focused
+> pressure tests, temporary-state JSONL/Markdown smoke, `npm run build`,
+> `git diff --check`, `npm run verify:installed-release`, and installed restart
+> smoke passed with release `ef6665907387-b624b4ea4d0c`, one promoted window,
+> one private verifier socket, 2488 rendered colors, and zero external terminals.
+
+> **2026-08-14 — Stale internal-goal cleanup:** Codex sidecars now preserve only
+> `opening-request` as durable user identity; legacy `goal-task` records from
+> internal orchestration are cleared both on the next event and at app hydration.
+> Fresh evidence: 31/31 Codex hook tests, 38/38 sidecar/card tests, pane-label
+> audit, frontend build, installed release `ef6665907387-08dae1977773`, and
+> restart smoke with `external_terminals=0` passed. Rendered artifact SHA-256:
+> `e745fceaa3c1c170cdec6e1b2e8bd63af983075676e4b948e13d866c02a2025d`.
+> The broader task-line suite still has two unrelated pre-existing long-request
+> failures.
+
+> **2026-08-14 — Installed label text capture:** A fresh dock-release restart
+> smoke captured the packaged window under `/tmp/termfleet-label-audit`; OCR
+> contained no `Deeply investigate the reported TermFleet failure` text.
+> Window SHA-256: `97354697141d84705a6314c9298c5df3cafdb6617f82556cea22cb952ef0b51a`.
+> Desktop SHA-256: `e4917976c818504b7202e86fa89f2f5fbe5ee31dc2fe829ef20aa4b3d99dd7b4`.
+
+> **2026-08-14 — Primary header placeholder correction:** The split shell header
+> now shows `State: Awaiting command` when no trustworthy task exists and omits
+> the fake `Goal: Goal not captured` row; captured goals still render as Task and
+> Goal. Focused cockpit regression passed 14/14; `npm run build` passed; fresh
+> installed release `1451fe6863a9-e03e520ad000` passed both installed-release
+> checks with binary SHA-256
+> `e03e520ad000950ba36b06f4cc884242500e0b41de813d08d59d282732eeece2`.
+> Real dock-window visual confirmation is intentionally still open.
+
+> **2026-08-14 — Internal goal provenance fix:** The Codex hook no longer promotes
+> its own `create_goal` orchestration objective into the operator-facing Task/Goal;
+> an existing user mission is preserved, otherwise the card remains honest about
+> missing goal context. Fresh evidence: the focused rendered card passed, the full
+> Codex hook suite passed 30/30, the pane-label audit passed, the frontend build
+> passed, release `1451fe6863a9-70d40eade5b6` was promoted, and installed restart
+> smoke passed with `external_terminals=0`.
+
+> **2026-08-14 fresh completion audit:** Rebuilt frontend passed; the active
+> concurrent release build completed without intervention, and the installed
+> release remained provenance-verified at SHA-256
+> `c9f27dd1d0b1a854bf65b3b630fecc8462ea244d47afecc7d8db201682f99bdf`.
+> Fresh `verify:installed-restart` passed with one promoted-binary window,
+> daemon socket, 2326 nonblank colors, and zero external terminals;
+> `verify:daemon-survival`, `verify:map-terminals`, and `git diff --check` also
+> passed. The goal remains user-controlled and intentionally active.
+
+> **2026-08-14 installed release survival gate:** The frontend and Tauri release
+> build completed, release `1e6911882001-c9f27dd1d0b1` was promoted with SHA-256
+> `c9f27dd1d0b1a854bf65b3b630fecc8462ea244d47afecc7d8db201682f99bdf`, and
+> `verify:installed-release`, `verify:installed-restart`,
+> `verify:daemon-survival`, the focused daemon regression, `verify:map-terminals`,
+> and `git diff --check` passed. The restart smoke used the promoted binary,
+> found one live window and daemon socket, rendered 2722 nonblank colors, and
+> found zero external terminals.
+
+> **2026-08-14 — Goal provenance regression guard:** The resolver-level identity
+> suite now asserts that a meta-process/current-step-only pane keeps the
+> diagnostic fallback internal: no captured user goal or Task/Goal provenance is
+> exposed to cockpit surfaces. Focused command: `npx playwright test
+> tests/task-identity-ladder.spec.ts -g "current step cannot replace" --reporter=line`.
+
+> **2026-08-14 — Remove the visible missing-goal leak:** Goal-less map cards
+> no longer render `Goal not captured` as Task or Goal content, and their
+> cockpit snapshots preserve missing provenance instead of recording a fake
+> label. Focused regression: `npx playwright test
+> tests/cockpit-row-stability.spec.ts --reporter=line` passed 14/14 after the
+> guard was added; installed-release verification remains required.
+
+> **2026-08-14 readable new terminal windows:** New map terminals now open at
+> 1180x720 instead of 820x460, with the same minimum enforced during normalization
+> and enough automatic spacing to prevent wide cards from overlapping.
+> The focused browser regression passed: `npx playwright test
+> tests/terminal-user-flows.spec.ts -g "new map terminals open with a readable
+> working area" --reporter=line` (1/1).
+
+> **2026-08-14 desktop window height correction:** The earlier card-size change
+> did not change the Tauri window itself. The installed desktop default is now
+> 1200x1000 instead of 1200x800. `tests/desktop-window-size.spec.ts` passed,
+> `npm run build` passed, and the promoted release plus installed restart smoke
+> passed with no external terminals.
+
 > **2026-08-13 publication candidate verification:** The current candidate passed
 > the focused gamification suite (16/16), frontend build, OSS readiness, public
 > audit, map-terminal checks, Rust check/tests (167 unit tests), diff hygiene,
@@ -8121,3 +8405,164 @@ launcher; `scripts/verify-installed-release.sh` passed; and
 window, 2,510 nonblank colors, the installed binary, and zero external
 terminals. The saved workspace reports 23/23 map nodes with resumable agent
 conversations.
+
+## 2026-08-14 — Stop memory alerts from restarting the cockpit
+
+The pressure watchdog was treating a high WebKit RSS reading as a recovery
+condition, killing the desktop group and relaunching it while the daemon restored
+the terminals. Memory-only pressure now writes the durable alert and leaves the
+desktop running; only a confirmed blocked renderer may trigger a desktop-group
+recovery, preserving the daemon and its PTYs.
+
+**Evidence:** `python3 -m unittest tests/test_pressure_watchdog.py
+tests/test_desktop_launcher_guard.py -v` passed 16/16; `npm run build` passed;
+the watchdog service was reinstalled; `npm run release:install` promoted release
+`ef6665907387-08dae1977773` with binary SHA-256
+`08dae19777739657c5e3a5be5fc9d88b613e3e1ee54b5a8a6234505b9a17c9c0`;
+`npm run verify:installed-release`, `npm run verify:installed-restart`,
+`npm run doctor`, and `git diff --check` passed. Restart smoke found one
+installed TermFleet window, the canonical daemon socket, 780 nonblank colors,
+and zero external terminals; the live installed watchdog contains the blocked-only
+recovery guard.
+
+## 2026-08-14 — Prevent the desktop crash loop
+
+The installed desktop was running inside a 1 GiB hard memory cap while its
+WebKit renderer and UI together reached that boundary. The daemon survived,
+but the cockpit exited and the next launch rebuilt the visible workspace from
+live PTYs, producing repeated “Recovered” terminals. The launcher now keeps
+the desktop bounded with 1.5 GiB soft and 2 GiB hard limits, leaving normal
+renderer growth headroom without changing the daemon’s separate budget.
+
+**Evidence:** `python3 -m unittest tests.test_pressure_watchdog
+tests.test_desktop_launcher_guard` passed 16/16; `npm run build` passed;
+release `ef6665907387-25f772336b8a` was promoted and both installed-release
+and installed-restart checks passed with one window, the canonical daemon
+socket, and zero external terminals. The dock launcher and installed watchdog
+match their source hashes; the live desktop cgroup is now 1.5 GiB soft / 2 GiB
+hard, and a 15-second soak kept both the app and WebKit process alive with no
+new pressure log entry. User confirmation over normal use remains the final
+stability gate.
+
+## 2026-08-14 — Remove false renderer and verifier pressure alerts
+
+Normal WebKit RSS is diagnostic only; it no longer creates a notification or
+recovery path. The watchdog now treats the canonical daemon socket as the
+authoritative split-brain signal, so private verifier runtimes do not trigger
+production alerts merely because they share the daemon command name.
+
+**Evidence:** the focused watchdog and launcher suite passed 16/16; the
+installed watchdog matches the source; the live watchdog was restarted; and a
+75-second combined soak kept the dock app, WebKit renderer, and watchdog alive
+without a new renderer-memory or verifier-daemon alert. Host I/O alerts during
+the window were genuine system pressure and did not recycle the desktop.
+
+## 2026-08-14 — Restore recovered agents automatically
+
+Recovered agent panes now run the existing guarded recovery pass once after the
+sidebar starts, instead of waiting for a user to click `Restart recovery` on each
+session surface. Workspace hydration already reconciles recovered tabs against
+their live working directories and Git roots, so recovered sessions return to
+their respective project groups without mounting every terminal renderer.
+
+**Evidence:** the new automatic-recovery regression plus the existing watchdog
+and launcher guards passed 18/18; `npm run build`, `npm run release:install`,
+`npm run verify:installed-release`, `npm run verify:installed-restart`, and
+`git diff --check` passed. Live monitoring observed repeated host I/O stalls with
+the desktop and WebKit processes still alive, cgroup `memory.events` showing
+`max=0`, `oom=0`, and `oom_kill=0`; exact process-exit provenance and the final
+user confirmation of uninterrupted operation remain open acceptance gates.
+
+## 2026-08-14 — Stop moderate-I/O desktop false recovery
+
+Live installed monitoring captured the remaining recycle path: the watchdog
+classified three desktop D-state samples as `desktop-blocked` while memory PSI
+was `0.00` and host I/O PSI was only `14.06`, then killed the desktop group and
+created the next recovered-terminal cycle. Desktop D-state recovery now requires
+strong host-I/O corroboration (default `20` PSI); moderate I/O remains alert-only
+and does not recycle the cockpit.
+
+**Evidence:** the regression suite passed 19/19; the watchdog was reinstalled
+with matching source/installed SHA-256; the dock release and doctor checks passed;
+the verified app and watchdog remained alive through the post-install soak, and
+the alert log remained unchanged from `15:21:05` through `15:28:53`. The final
+normal-use confirmation remains open.
+
+## 2026-08-14 — Restore executable agent status hooks
+
+The provider status hooks were present but had lost their executable bit (`664`).
+Direct `UserPromptSubmit` hook runners therefore returned exit code `126` before
+the status projection could run. Both hooks are executable again, and a focused
+permission regression prevents the packaging mode from regressing.
+
+**Evidence:** `python3 -m unittest tests/test_agent_hook_permissions.py` passed;
+direct Codex hook invocation passed; the focused Codex and local-sidecar suite
+passed 69/69; `npm run build`, `npm run verify:installed-release`, and
+`git diff --check` passed. The cockpit-card shot remained unavailable because
+the test store was unavailable, and the pane audit still reports two existing
+placeholder records; those are separate open gates.
+
+## 2026-08-14 — Make workspace restart state authoritative
+
+Restart recovery now treats the saved workspace as authoritative instead of
+synthesizing every omitted live daemon session. Explicitly closed sessions stay
+closed, legacy anonymous `Recovered` placeholders are removed, and the disk
+mirror is serialized, refreshed at startup, and flushed through the Tauri close
+barrier so stale writes cannot roll the layout backwards. A one-time bounded
+repair restored six recent FlowState panes still present in the agent-status
+ledger; migration version 1 prevents those historical sidecars from returning
+again.
+
+**Evidence:** the focused recovery suite passed 11/11; the browser hydration
+matrix passed 5/5; the pressure and launcher suite passed 23/23; Rust cargo
+check passed; the installed release `ecaa2cbfbb9d` passed installed-release,
+installed-restart, and installed-pane-close verification. Three real dock
+close/relaunch cycles preserved 27 tabs and six FlowState panes with zero
+anonymous Recovered tabs; the source and installed watchdog hashes match.
+User approval remains the final acceptance gate.
+
+**2026-08-14 — Desktop cgroup throttle and forced exit:** Live evidence showed
+the host under swap/I/O pressure while the desktop cgroup sat at 1.43 GiB with
+387 `memory.high` events and the cockpit exited status 137 while the daemon
+survived. The installed launcher now defaults to a 3 GiB soft limit and 4 GiB
+hard limit, preserving the separate daemon boundary; stale Playwright helpers
+were lowered to idle priority during diagnosis. Fresh evidence: launcher and
+pressure tests 23/23, frontend build, installed release verification, a real
+relaunch with 3 GiB/4 GiB cgroup values, zero cgroup high/OOM events, daemon
+socket preserved, and ten-second host I/O PSI at 5.56% after load shedding.
+
+## 2026-08-14 — Recover the opening request after run rollover
+
+The installed cockpit could show only `Now: Waiting for a task or command` after
+restart or continuation even though the pane sidecar still held a valid
+`mainTaskSource: opening-request`. The rebuilt header now recovers that explicitly
+proven opening request when the transient terminal `mainUserAsk` is missing, while
+continuing to reject Codex `goal-task` orchestration text.
+
+**Evidence:** the new regression failed with `No task declared` before the fix and
+passed afterward; the live four-terminal header verifier passed with zero failures;
+frontend build passed; task-line verification remained 93/96 with three existing
+long-request failures; release install, installed-release, and installed-restart
+passed for release `729fae8b841c`; `git diff --check` remains required before closeout.
+The user-facing installed screenshot is still the final supervised acceptance gate.
+
+## 2026-08-14 — Isolate verifier desktops from production recovery
+
+Live recurrence evidence showed a private installed verifier briefly running a
+second TermFleet desktop and daemon socket while the production cockpit was
+also alive. Process-name-only discovery could select that private cockpit, so
+the launcher and pressure watchdog now require the canonical runtime or the
+managed desktop cgroup before reusing, diagnosing, or recycling a desktop.
+The installed restart smoke also refuses to start on a display that already
+contains a real TermFleet window.
+
+**Evidence:** focused launcher and watchdog tests passed 25/25; frontend build,
+release promotion, installed-release verification, and installed-restart smoke
+passed; source and installed launcher/watchdog hashes match; the live desktop
+has one process, one canonical daemon socket, a 3 GiB/4 GiB cgroup with zero
+memory events, and a 60-second observation ended with normal pressure samples.
+
+The release installer now also refreshes the user watchdog after promotion,
+preventing a running shell watchdog from continuing to execute a deleted older
+support file. The current service was manually refreshed during live diagnosis;
+it now has one process and the current installed script.

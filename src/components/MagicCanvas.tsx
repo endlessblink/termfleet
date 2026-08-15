@@ -4594,14 +4594,16 @@ function CanvasNodeViewImpl({
                 what the pane is doing right now underneath it. Previously the two
                 swapped places depending on whether an activity existed, so the big line
                 was sometimes the goal and sometimes the moment — which read as the card
-                rewriting itself. Both rows are always present at a fixed height; the
-                lower one goes invisible rather than unmounting, so the terminal below
-                never moves. */}
+                rewriting itself. Both rows stay mounted at fixed heights; missing context
+                is hidden rather than becoming visible chrome or reflowing the terminal. */}
             {
               <div
                 style={{
                   ...styles.terminalStatusTitle,
-                  visibility: terminalHeaderNowRowVisible ? "visible" : "hidden",
+                  visibility:
+                    terminalHeader.hasCapturedGoal && terminalHeaderNowRowVisible
+                      ? "visible"
+                      : "hidden",
                 }}
                 data-testid="canvas-terminal-node-task-row"
                 title={`Task: ${terminalHeaderTaskDescription}`}
@@ -4626,9 +4628,13 @@ function CanvasNodeViewImpl({
                 )}
               </div>
             }
-            {(
+            {
               <div
-                style={{ ...styles.terminalTaskRow, ...styles.terminalContextRow }}
+                style={{
+                  ...styles.terminalTaskRow,
+                  ...styles.terminalContextRow,
+                  visibility: terminalHeader.hasCapturedGoal ? "visible" : "hidden",
+                }}
                 data-testid="canvas-terminal-node-goal"
                 title={`Goal: ${terminalHeaderContextDescription}`}
               >
@@ -4639,7 +4645,7 @@ function CanvasNodeViewImpl({
                   {terminalHeaderContextDescription}
                 </span>
               </div>
-            )}
+            }
               {(
                 <CockpitSnapshotProbe
                   key="cockpit-snapshot-probe"

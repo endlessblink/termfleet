@@ -189,8 +189,13 @@ test("map terminal task row keeps its reserved height when live text changes", (
   expect(nodeView).toContain('data-testid="canvas-terminal-node-task-row"');
   expect(nodeView).not.toContain("{terminalHeaderNowRowVisible && (");
   expect(nodeView).toContain(
-    'visibility: terminalHeaderNowRowVisible ? "visible" : "hidden"',
+    "terminalHeader.hasCapturedGoal && terminalHeaderNowRowVisible",
   );
+  expect(nodeView).toContain(
+    'visibility: terminalHeader.hasCapturedGoal ? "visible" : "hidden"',
+  );
+  expect(nodeView).not.toContain("{terminalHeader.hasCapturedGoal ? (");
+  expect(nodeView).not.toContain(") : null}");
 });
 
 test("workspace surface subscribes to the active tab instead of every pane", () => {

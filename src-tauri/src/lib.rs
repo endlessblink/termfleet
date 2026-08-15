@@ -16,7 +16,7 @@ pub mod vt_grid;
 
 use commands::FocusedTerminalState;
 use pty::PtyManager;
-use tauri::Listener;
+use tauri::{Listener, Manager, RunEvent, WindowEvent};
 use vt_grid::GridManager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -41,7 +41,6 @@ pub fn run() {
             // sees it, so route Tab to the focused terminal at the GTK layer.
             #[cfg(target_os = "linux")]
             {
-                use tauri::Manager;
                 if let Some(window) = app.get_webview_window("main") {
                     if let Ok(gtk_window) = window.gtk_window() {
                         gtk_keys::install_terminal_key_interceptor(
@@ -52,9 +51,11 @@ pub fn run() {
                     }
                 }
             }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::exit_application,
             commands::daemon_status,
             commands::agent_status_read_sidecar,
             commands::agent_conversation_has_other_owner,
@@ -116,12 +117,31 @@ pub fn run() {
             commands::workspace_layout_save,
             commands::workspace_layout_load,
             commands::workspace_persisted_sessions,
+            commands::agent_status_list_sidecars,
             native_terminal::native_terminal_capabilities,
             native_terminal::native_terminal_create,
             native_terminal::native_terminal_update,
             native_terminal::native_terminal_destroy,
             commands::set_focused_terminal,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|_, event| match event {
+            RunEvent::WindowEvent { label, event, .. } => match event {
+                WindowEvent::CloseRequested { .. } => {
+                    eprintln!("termfleet.lifecycle close_requested window={label}");
+                }
+                WindowEvent::Destroyed => {
+                    eprintln!("termfleet.lifecycle destroyed window={label}");
+                }
+                _ => {}
+            },
+            RunEvent::ExitRequested { code, .. } => {
+                eprintln!("termfleet.lifecycle exit_requested code={code:?}");
+            }
+            RunEvent::Exit => {
+                eprintln!("termfleet.lifecycle exit");
+            }
+            _ => {}
+        });
 }

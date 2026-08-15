@@ -22,6 +22,15 @@ use std::sync::{Arc, Mutex, OnceLock};
 use tauri::ipc::Channel;
 use tauri::State;
 
+/// Close the entire desktop process after the frontend has completed its
+/// bounded persistence barrier. Destroying the last window alone leaves the
+/// Tauri event loop alive, which makes the dock report a phantom app.
+#[tauri::command]
+pub fn exit_application(app: tauri::AppHandle) {
+    eprintln!("termfleet.lifecycle exit_application requested code=0");
+    app.exit(0);
+}
+
 /// Session id of the terminal that currently owns the keyboard (or `None`). Held
 /// in an Arc so the Linux GTK key interceptor and the `set_focused_terminal`
 /// command share one cell. See `gtk_keys` for why Tab must be handled in GTK.
@@ -1379,6 +1388,30 @@ pub fn agent_status_read_sidecar(file_name: String) -> Result<Option<String>, St
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
         Err(error) => Err(format!("read {}: {error}", path.display())),
     }
+}
+
+/// Return the contents of pane status sidecars for the one-time recovery
+/// migration. The frontend applies the age/project/close-tombstone policy.
+#[tauri::command]
+pub fn agent_status_list_sidecars() -> Result<Vec<String>, String> {
+    let dir = dirs::data_dir()
+        .unwrap_or_else(std::env::temp_dir)
+        .join("terminal-workspace")
+        .join("agent-status");
+    let entries = match fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => return Err(error.to_string()),
+    };
+    Ok(entries
+        .flatten()
+        .filter_map(|entry| {
+            let name = entry.file_name().to_string_lossy().to_string();
+            (name.starts_with("pane-") && name.ends_with(".json"))
+                .then(|| fs::read_to_string(entry.path()).ok())
+                .flatten()
+        })
+        .collect())
 }
 
 /// Read the OS clipboard's text from the backend, NOT the webview.

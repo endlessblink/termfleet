@@ -37,6 +37,7 @@ import {
   planCanvasRow,
   resolveCanvasNodeProjects,
 } from "../lib/canvasArrange";
+import { waitForClosePersistence } from "../lib/closePersistence";
 
 const GROUP_COLORS = [
   "#7aa2f7",
@@ -257,6 +258,23 @@ function recentlyClosedTerminalFor(state: WorkspaceState, tab: Tab): RecentlyClo
   };
 }
 
+interface ClosedRestoreTarget {
+  cwd: string;
+  title?: string;
+}
+
+function restoreTargetForTab(tab: Tab): ClosedRestoreTarget | null {
+  const cwd = tab.initialCwd?.trim();
+  if (!cwd) return null;
+  return { cwd, title: tab.title?.trim() || undefined };
+}
+
+function normalizedRestoreCwd(cwd: string | null | undefined) {
+  const value = cwd?.trim();
+  if (!value) return null;
+  return value.length > 1 ? value.replace(/\/+$/, "") : value;
+}
+
 function pushRecentlyClosed(
   items: RecentlyClosedTerminal[],
   item: RecentlyClosedTerminal,
@@ -313,6 +331,9 @@ interface WorkspaceState {
   workspaceUiState: WorkspaceUiState;
   canvasState: CanvasState;
   recentlyClosed: RecentlyClosedTerminal[];
+  closedSessionIds: string[];
+  closedRestoreTargets: ClosedRestoreTarget[];
+  agentRecoveryMigrationVersion: number;
   // True while the durable on-disk layout is being loaded (only when
   // localStorage was empty/reset). Terminals must not mount until this clears,
   // or they would spawn against the default tab's id and then be swapped out.
@@ -326,6 +347,9 @@ interface WorkspaceState {
     activeTabId: string | null;
     liveCwds?: Record<string, string>;
     liveGitRoots?: Record<string, string>;
+    closedSessionIds?: string[];
+    closedRestoreTargets?: ClosedRestoreTarget[];
+    agentRecoveryMigrationVersion?: number;
   }) => void;
   removeTab: (id: string) => void;
   closeTerminalSession: (id: string) => Promise<void>;
@@ -450,6 +474,9 @@ interface PersistedWorkspace {
   pinnedProjects?: string[];
   workspaceUiState?: Partial<WorkspaceUiState>;
   canvasState?: CanvasState;
+  closedSessionIds?: string[];
+  closedRestoreTargets?: ClosedRestoreTarget[];
+  agentRecoveryMigrationVersion?: number;
 }
 
 function persistedTerminalSnapshot(terminal: TerminalState): TerminalState {
@@ -458,7 +485,7 @@ function persistedTerminalSnapshot(terminal: TerminalState): TerminalState {
     paneId: terminal.paneId,
     cols: terminal.cols,
     rows: terminal.rows,
-    status: "stale",
+    status: "starting",
     reused: false,
     previewUrl: terminal.previewUrl,
     durableActivity: terminal.durableActivity,
@@ -473,7 +500,6 @@ function persistedTerminalSnapshot(terminal: TerminalState): TerminalState {
     mainUserAsk: persistedMainUserAsk(terminal.mainUserAsk),
     taskSidebarCollapsed: terminal.taskSidebarCollapsed,
     lastStatusAt: Date.now(),
-    lastError: "Session will reconnect if the backend is still running; otherwise it will restart.",
   };
 }
 
@@ -486,12 +512,66 @@ function withRestartableTerminals(tab: Tab): Tab {
       .map((terminal) => ({
         ...terminal,
         mainUserAsk: persistedMainUserAsk(terminal.mainUserAsk),
-        status: "stale",
+        status: "starting",
+        manualStopRequested: false,
         reused: false,
         previewUrl: terminal.previewUrl,
-        lastError: "Session was restored from workspace metadata.",
+        lastError: undefined,
       })),
   };
+}
+
+function isLegacyAnonymousRecoveredTab(tab: Tab) {
+  return tab.title === "Recovered" && !tab.initialCwd && !tab.workstream;
+}
+
+function withoutLegacyRecoveredTabs(tabs: Tab[]) {
+  return tabs.filter((tab) => !isLegacyAnonymousRecoveredTab(tab));
+}
+
+function withoutClosedSessionTabs(tabs: Tab[], closedSessionIds: Set<string>) {
+  return tabs.flatMap((tab) => {
+    if (tab.terminals.length === 0) return [tab];
+    const closedPanes = tab.terminals
+      .filter((terminal) => closedSessionIds.has(terminal.id))
+      .map((terminal) => terminal.paneId);
+    if (closedPanes.length === 0) return [tab];
+
+    let splitLayout = tab.splitLayout;
+    for (const paneId of closedPanes) {
+      if (getAllLeafIds(splitLayout).length <= 1) break;
+      splitLayout = removeNodeFromTree(splitLayout, paneId) ?? splitLayout;
+    }
+    const leaves = new Set(getAllLeafIds(splitLayout));
+    const terminals = tab.terminals.filter(
+      (terminal) => !closedSessionIds.has(terminal.id) && leaves.has(terminal.paneId),
+    );
+    if (terminals.length === 0) return [];
+    return [{
+      ...tab,
+      splitLayout,
+      terminals,
+      activePaneId: tab.activePaneId !== null && leaves.has(tab.activePaneId)
+        ? tab.activePaneId
+        : getAllLeafIds(splitLayout)[0],
+    }];
+  });
+}
+
+function withoutClosedRestoreTargets(tabs: Tab[], targets: ClosedRestoreTarget[]) {
+  if (targets.length === 0) return tabs;
+  const closedCwds = new Set(
+    targets.map((target) => normalizedRestoreCwd(target.cwd)).filter((cwd): cwd is string => Boolean(cwd)),
+  );
+  return tabs.filter((tab) => {
+    const cwd = normalizedRestoreCwd(tab.initialCwd);
+    return !cwd || !closedCwds.has(cwd);
+  });
+}
+
+function isClosedRestoreCwd(cwd: string | null | undefined, targets: ClosedRestoreTarget[]) {
+  const normalized = normalizedRestoreCwd(cwd);
+  return Boolean(normalized && targets.some((target) => normalizedRestoreCwd(target.cwd) === normalized));
 }
 
 function normalizeWorkspaceUiState(uiState: Partial<WorkspaceUiState> | undefined): WorkspaceUiState {
@@ -1085,7 +1165,7 @@ export function resetPersistedWorkspace() {
 const persisted = loadPersistedWorkspace();
 const restoredTabs =
   persisted.tabs && persisted.tabs.length > 0
-    ? persisted.tabs.map(withRestartableTerminals)
+    ? withoutLegacyRecoveredTabs(persisted.tabs).map(withRestartableTerminals)
     : [initialTab];
 const restoredActiveTabId =
   restoredTabs.find((tab) => tab.id === persisted.activeTabId)?.id ?? restoredTabs[0].id;
@@ -1096,13 +1176,12 @@ function isTauriRuntime() {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
 
-// Only gate the first render (to load the durable disk layout) when localStorage
-// gave us nothing AND we're in the desktop app. The happy path (localStorage had
-// tabs) is untouched, so there is no flash or double-spawn there.
+// Desktop disk is the durable source of truth. Always gate the first render long
+// enough to load it; otherwise the initial localStorage cache can be mirrored back
+// to disk before hydration and erase a newer recovery checkpoint.
 const needsDiskHydration =
   isTauriRuntime() &&
-  !FORCE_WORKSPACE_RESET_STATE &&
-  (!persisted.tabs || persisted.tabs.length === 0);
+  !FORCE_WORKSPACE_RESET_STATE;
 
 interface PersistedSessionSummary {
   id: string;
@@ -1115,12 +1194,23 @@ interface LiveSessionSummary {
   cwd: string | null;
 }
 
+interface AgentStatusSidecarRecord {
+  paneId?: string;
+  cwd?: string;
+  updatedAt?: number;
+}
+
 // Sessions below this are just a fresh prompt / empty shell — not worth recovering.
 const ORPHAN_MIN_BYTES = 256;
+const AGENT_RECOVERY_MIGRATION_VERSION = 1;
+const AGENT_RECOVERY_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 
 /** Build a single-pane tab whose derived session id (`terminal-<tabId>-<paneId>`)
  *  matches a daemon or on-disk session, so mounting it reattaches that pane. */
-function tabFromRecoverableSession(session: LiveSessionSummary): Tab | null {
+function tabFromRecoverableSession(
+  session: LiveSessionSummary,
+  options: { recovery?: boolean } = {},
+): Tab | null {
   const prefix = "terminal-";
   if (!session.id.startsWith(prefix)) return null;
   const body = session.id.slice(prefix.length);
@@ -1129,14 +1219,101 @@ function tabFromRecoverableSession(session: LiveSessionSummary): Tab | null {
   // Skip map-node sessions — the same tab's real pane carries the content.
   if (!paneId || paneId.startsWith("terminal-map-")) return null;
   const cwd = session.cwd ?? undefined;
-  const title = cwd ? cwd.split("/").filter(Boolean).pop() ?? DEFAULT_TAB_TITLE : "Recovered";
-  return createDefaultTab({
+  if (!cwd) return null;
+  const title = cwd.split("/").filter(Boolean).pop() ?? DEFAULT_TAB_TITLE;
+  const tab = createDefaultTab({
     id: tabId,
     title,
     initialCwd: cwd,
     splitLayout: { id: paneId, type: "terminal" as const },
     activePaneId: paneId,
   });
+  return {
+    ...tab,
+    terminals: [{
+      id: session.id,
+      paneId,
+      cols: 80,
+      rows: 24,
+      status: options.recovery ? "stale" : "starting",
+      reused: options.recovery,
+      lastError: options.recovery
+        ? "Session restored after an interrupted workspace restart."
+        : undefined,
+    }],
+  };
+}
+
+/**
+ * Repair a live pane already represented by the saved tab. A tab id alone is
+ * not enough: hydration must prove that its pane still points at the daemon's
+ * current session before treating the tab as reconciled.
+ */
+function bindLiveSessionToSavedTab(tabs: Tab[], session: LiveSessionSummary): Tab[] | null {
+  const prefix = "terminal-";
+  if (!session.id.startsWith(prefix)) return null;
+  const body = session.id.slice(prefix.length);
+  if (body.length < 73 || body[36] !== "-") return null;
+  const tabId = body.slice(0, 36);
+  const paneId = body.slice(37);
+  const tabIndex = tabs.findIndex((tab) => tab.id === tabId);
+  if (tabIndex < 0) return null;
+  const tab = tabs[tabIndex];
+  const terminalIndex = tab.terminals.findIndex((terminal) => terminal.paneId === paneId);
+  if (terminalIndex < 0) {
+    const leafIds = getAllLeafIds(tab.splitLayout);
+    if (!leafIds.includes(paneId)) {
+      // The saved tab survived but its old pane leaf did not. Preserve the
+      // tab's group and reinsert the live pane beside the current active leaf
+      // instead of silently dropping a still-running PTY.
+      const activePaneId = tab.activePaneId;
+      const targetPaneId = activePaneId !== null && activePaneId !== undefined && leafIds.includes(activePaneId)
+        ? activePaneId
+        : leafIds[0];
+      if (!targetPaneId) return null;
+      const splitLayout = splitNodeInTree(
+        tab.splitLayout,
+        targetPaneId,
+        "horizontal",
+        paneId,
+        session.cwd ?? undefined,
+      );
+      const terminals = tab.terminals.filter((terminal) => leafIds.includes(terminal.paneId));
+      const nextTabs = tabs.slice();
+      nextTabs[tabIndex] = {
+        ...tab,
+        splitLayout,
+        activePaneId: tab.activePaneId && leafIds.includes(tab.activePaneId) ? tab.activePaneId : paneId,
+        terminals: [
+          ...terminals,
+          { id: session.id, paneId, cols: 80, rows: 24, status: "starting", reused: false },
+        ],
+      };
+      return nextTabs;
+    }
+    const nextTabs = tabs.slice();
+    nextTabs[tabIndex] = {
+      ...tab,
+      terminals: [
+        ...tab.terminals,
+        { id: session.id, paneId, cols: 80, rows: 24, status: "starting", reused: false },
+      ],
+    };
+    return nextTabs;
+  }
+  if (tab.terminals[terminalIndex].id === session.id) return tabs;
+
+  const terminals = tab.terminals.slice();
+  terminals[terminalIndex] = {
+    ...terminals[terminalIndex],
+    id: session.id,
+    status: "starting",
+    reused: false,
+    lastError: undefined,
+  };
+  const nextTabs = tabs.slice();
+  nextTabs[tabIndex] = { ...tab, terminals };
+  return nextTabs;
 }
 
 /**
@@ -1159,20 +1336,40 @@ export async function hydrateWorkspace() {
   try {
     const { invoke } = await import("@tauri-apps/api/core");
 
-    // 1. localStorage gave us nothing → load the durable disk layout.
+    // 1. The durable disk layout is authoritative in the desktop runtime.
+    // localStorage is only a fast cache and may lag after a recovery checkpoint.
     let baseTabs = store.tabs;
     let baseActive = store.activeTabId;
+    let closedSessionIds = new Set(store.closedSessionIds);
+    let closedRestoreTargets = [...store.closedRestoreTargets];
+    let agentRecoveryMigrationVersion = store.agentRecoveryMigrationVersion;
     // A saved layout (from localStorage OR the disk checkpoint) is authoritative.
     // `!hydrating` means localStorage already restored a layout.
     let hadSavedLayout = !store.hydrating;
-    if (store.hydrating) {
+    if (isTauriRuntime()) {
       const raw = await invoke<string | null>("workspace_layout_load");
       if (raw) {
         try {
           const disk = JSON.parse(raw) as PersistedWorkspace;
-          if (disk.tabs && disk.tabs.length > 0) {
-            baseTabs = disk.tabs.map(withRestartableTerminals);
-            baseActive = disk.activeTabId ?? baseTabs[0].id;
+          if (Array.isArray(disk.tabs)) {
+            if (disk.tabs.length > 0) {
+              baseTabs = withoutLegacyRecoveredTabs(disk.tabs).map(withRestartableTerminals);
+              baseActive = disk.activeTabId ?? baseTabs[0].id;
+            }
+            if (Array.isArray(disk.closedSessionIds)) {
+              closedSessionIds = new Set(
+                disk.closedSessionIds.filter((id): id is string => typeof id === "string" && id.length > 0),
+              );
+            }
+            if (Array.isArray(disk.closedRestoreTargets)) {
+              closedRestoreTargets = disk.closedRestoreTargets.filter(
+                (target): target is ClosedRestoreTarget =>
+                  Boolean(target && typeof target.cwd === "string" && target.cwd.trim().length > 0),
+              );
+            }
+            if (typeof disk.agentRecoveryMigrationVersion === "number") {
+              agentRecoveryMigrationVersion = disk.agentRecoveryMigrationVersion;
+            }
             hadSavedLayout = true;
           }
         } catch (error) {
@@ -1180,11 +1377,12 @@ export async function hydrateWorkspace() {
         }
       }
     }
+    baseTabs = withoutClosedSessionTabs(baseTabs, closedSessionIds);
+    baseTabs = withoutClosedRestoreTargets(baseTabs, closedRestoreTargets);
 
-    // 2. Reconcile sessions that are still live in the daemon. A closed pane is
-    //    explicitly killed, so a live session omitted by the saved layout is not
-    //    historical clutter — another UI window dropped its tab while overwriting
-    //    the shared workspace snapshot. Always restore these live panes.
+    // 2. Reconcile every live session against the saved layout. The layout keeps
+    // its tabs and grouping, while live daemon sessions fill in panes missed by
+    // the last checkpoint; explicit kills remain excluded below.
     const seen = new Set(baseTabs.map((tab) => tab.id));
     const recovered: Tab[] = [];
     let liveSessions: LiveSessionSummary[] = [];
@@ -1215,10 +1413,60 @@ export async function hydrateWorkspace() {
       )).filter((entry): entry is readonly [string, string] => Boolean(entry)),
     );
     for (const session of [...liveSessions].sort((a, b) => a.id.localeCompare(b.id))) {
+      if (closedSessionIds.has(session.id)) continue;
+      if (isClosedRestoreCwd(session.cwd, closedRestoreTargets)) continue;
+      const reboundTabs = bindLiveSessionToSavedTab(baseTabs, session);
+      if (reboundTabs) {
+        baseTabs = reboundTabs;
+        seen.add(session.id.slice("terminal-".length, "terminal-".length + 36));
+        continue;
+      }
       const tab = tabFromRecoverableSession(session);
       if (!tab || seen.has(tab.id)) continue;
       seen.add(tab.id);
       recovered.push(tab);
+    }
+
+    // One-time repair for the recent FlowState panes lost by the old recovery
+    // bug. Sidecars are bounded to the incident window and project so historical
+    // provider records cannot become tabs forever; the migration version makes
+    // this a repair, not a new automatic recovery source.
+    if (
+      hadSavedLayout &&
+      agentRecoveryMigrationVersion < AGENT_RECOVERY_MIGRATION_VERSION
+    ) {
+      try {
+        const sidecars = await invoke<string[]>("agent_status_list_sidecars");
+        const cutoff = Date.now() - AGENT_RECOVERY_MAX_AGE_MS;
+        for (const raw of Array.isArray(sidecars) ? sidecars : []) {
+          let sidecar: AgentStatusSidecarRecord;
+          try {
+            sidecar = JSON.parse(raw) as AgentStatusSidecarRecord;
+          } catch {
+            continue;
+          }
+          if (
+            !sidecar.paneId ||
+            !sidecar.cwd?.endsWith("/productivity/flow-state") ||
+            typeof sidecar.updatedAt !== "number" ||
+            sidecar.updatedAt < cutoff
+          ) {
+            continue;
+          }
+            if (closedSessionIds.has(sidecar.paneId)) continue;
+            if (isClosedRestoreCwd(sidecar.cwd, closedRestoreTargets)) continue;
+          const tab = tabFromRecoverableSession(
+            { id: sidecar.paneId, cwd: sidecar.cwd },
+            { recovery: true },
+          );
+          if (!tab || seen.has(tab.id)) continue;
+          seen.add(tab.id);
+          recovered.push(tab);
+        }
+        agentRecoveryMigrationVersion = AGENT_RECOVERY_MIGRATION_VERSION;
+      } catch (error) {
+        console.warn("Could not run the one-time FlowState recovery migration:", error);
+      }
     }
 
     // 3. Dead persisted sessions remain recoverable only when there is no saved
@@ -1236,6 +1484,7 @@ export async function hydrateWorkspace() {
         // can't be replayed without garbling), so its value is reopening the right
         // directory. A cwd-less orphan would just be a home-shell — clutter, skip it.
         if (session.scrollbackBytes < ORPHAN_MIN_BYTES || !session.cwd) continue;
+        if (isClosedRestoreCwd(session.cwd, closedRestoreTargets)) continue;
         const tab = tabFromRecoverableSession(session);
         if (!tab || seen.has(tab.id)) continue;
         seen.add(tab.id);
@@ -1256,7 +1505,15 @@ export async function hydrateWorkspace() {
       activeTabId: baseActive,
       liveCwds,
       liveGitRoots,
+      closedSessionIds: [...closedSessionIds],
+      closedRestoreTargets,
+      agentRecoveryMigrationVersion,
     });
+    // Hydration can add live panes without any user action. Explicitly arm the
+    // persistence queue so a close immediately after recovery cannot checkpoint
+    // the pre-hydration layout and lose those panes again.
+    scheduleWorkspacePersistence();
+    await flushWorkspacePersistence();
   } catch (error) {
     console.warn("Workspace hydration failed:", error);
     clearGate();
@@ -1596,11 +1853,18 @@ export async function closeActivePane() {
   // Kill the PTY for this pane
   const paneTerminal = tab.terminals.find((t) => t.paneId === tab.activePaneId);
   if (paneTerminal) {
+    // Record and durably flush the operator's close before killing the PTY.
+    // Otherwise a restart racing this split-pane close can see the still-live
+    // daemon session and recover it before closePane writes its tombstone.
+    store.closePane(tab.id, tab.activePaneId);
+    scheduleWorkspacePersistence();
+    await flushWorkspacePersistence();
     try {
       await killPty(paneTerminal.id, invoke);
     } catch (e) {
       console.warn("Could not kill PTY:", e);
     }
+    return;
   }
 
   store.closePane(tab.id, tab.activePaneId);
@@ -1780,13 +2044,30 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   workspaceUiState: normalizeWorkspaceUiState(persisted.workspaceUiState),
   canvasState: restoredCanvasState,
   recentlyClosed: [],
+  closedSessionIds: Array.isArray(persisted.closedSessionIds)
+    ? persisted.closedSessionIds.filter((id): id is string => typeof id === "string" && id.length > 0)
+    : [],
+  closedRestoreTargets: Array.isArray(persisted.closedRestoreTargets)
+    ? persisted.closedRestoreTargets.filter(
+        (target): target is ClosedRestoreTarget =>
+          Boolean(target && typeof target.cwd === "string" && target.cwd.trim().length > 0),
+      )
+    : [],
+  agentRecoveryMigrationVersion: persisted.agentRecoveryMigrationVersion ?? 0,
   hydrating: needsDiskHydration,
 
   // --- Tab actions ---
 
-  hydrateRestoredWorkspace: ({ tabs, activeTabId, liveCwds = {}, liveGitRoots = {} }) => {
+  hydrateRestoredWorkspace: ({ tabs, activeTabId, liveCwds = {}, liveGitRoots = {}, closedSessionIds, closedRestoreTargets, agentRecoveryMigrationVersion }) => {
     set((state) => {
-      if (tabs.length === 0) return { hydrating: false };
+      if (tabs.length === 0) {
+        return {
+          hydrating: false,
+          closedSessionIds: closedSessionIds ?? state.closedSessionIds,
+          closedRestoreTargets: closedRestoreTargets ?? state.closedRestoreTargets,
+          agentRecoveryMigrationVersion: agentRecoveryMigrationVersion ?? state.agentRecoveryMigrationVersion,
+        };
+      }
       const canvasState = normalizeCanvasState(state.canvasState, tabs);
       const nextLiveCwds = { ...state.liveCwds, ...liveCwds };
       const nextLiveGitRoots = { ...state.liveGitRoots, ...liveGitRoots };
@@ -1799,6 +2080,9 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         terminalGroups: projects.groups,
         activeTabId: nextActive,
         canvasState,
+        closedSessionIds: closedSessionIds ?? state.closedSessionIds,
+        closedRestoreTargets: closedRestoreTargets ?? state.closedRestoreTargets,
+        agentRecoveryMigrationVersion: agentRecoveryMigrationVersion ?? state.agentRecoveryMigrationVersion,
         liveCwds: nextLiveCwds,
         liveGitRoots: nextLiveGitRoots,
         hydrating: false,
@@ -1934,9 +2218,44 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         state.recentlyClosed,
         recentlyClosedTerminalFor(state, tab),
       ),
+      closedRestoreTargets: (() => {
+        const target = restoreTargetForTab(tab);
+        if (!target) return state.closedRestoreTargets;
+        return [
+          target,
+          ...state.closedRestoreTargets.filter((candidate) => candidate.cwd !== target.cwd),
+        ];
+      })(),
+      closedSessionIds: [
+        ...new Set([
+          ...state.closedSessionIds,
+          ...tab.terminals.map((terminal) => terminal.id),
+        ]),
+      ],
+      tabs: state.tabs.map((candidate) =>
+        candidate.id === id
+          ? {
+              ...candidate,
+              terminals: candidate.terminals.map((terminal) => ({
+                ...terminal,
+                manualStopRequested: true,
+              })),
+            }
+          : candidate,
+      ),
     }));
+    // Persist the close tombstone before killing the PTY. A restart or daemon
+    // race must never observe a live session without the operator's explicit
+    // close decision already recorded on disk.
+    scheduleWorkspacePersistence();
+    await flushWorkspacePersistence();
     await killPtys(tab.terminals.map((terminal) => terminal.id));
     get().removeTab(id);
+    // Persist the final tab removal as well as the tombstone. If the app restarts
+    // after the first flush but before this one, hydration still filters the
+    // tombstoned tab; on the normal path the durable layout is clean immediately.
+    scheduleWorkspacePersistence();
+    await flushWorkspacePersistence();
   },
 
   restoreLastClosed: () => {
@@ -1973,10 +2292,22 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
             ...state.tabs.filter((tab) => tab.id !== restoredTab.id),
             restoredTab,
           ];
+      const restoredSessionIds = new Set(
+        restoredTab.terminals.map((terminal) => terminal.id),
+      );
+      const remainingClosedSessionIds = state.closedSessionIds.filter(
+        (sessionId) => !restoredSessionIds.has(sessionId),
+      );
+      const restoredCwd = restoredTab.initialCwd?.trim();
+      const remainingClosedRestoreTargets = restoredCwd
+        ? state.closedRestoreTargets.filter((target) => target.cwd !== restoredCwd)
+        : state.closedRestoreTargets;
 
       restored = true;
       return {
         recentlyClosed: remainingClosed,
+        closedSessionIds: remainingClosedSessionIds,
+        closedRestoreTargets: remainingClosedRestoreTargets,
         tabs,
         activeTabId: restoredTab.id,
         activeTerminalId: null,
@@ -2326,6 +2657,19 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   stopWorkstream: async (tabId: string) => {
     const tab = get().tabs.find((candidate) => candidate.id === tabId);
     if (!tab?.workstream) return;
+    set((state) => ({
+      tabs: state.tabs.map((candidate) =>
+        candidate.id === tabId
+          ? {
+              ...candidate,
+              terminals: candidate.terminals.map((terminal) => ({
+                ...terminal,
+                manualStopRequested: true,
+              })),
+            }
+          : candidate,
+      ),
+    }));
     await killPtys(tab.terminals.map((terminal) => terminal.id));
     set((state) => ({
       activeTerminalId: tab.terminals.some((terminal) => terminal.id === state.activeTerminalId)
@@ -3249,7 +3593,13 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   },
 
   closePane: (tabId: string, paneId: string) => {
-    set((state) => ({
+    set((state) => {
+      const closedSessionIds = state.tabs
+        .find((tab) => tab.id === tabId)
+        ?.terminals
+        .filter((terminal) => terminal.paneId === paneId)
+        .map((terminal) => terminal.id) ?? [];
+      return {
       tabs: state.tabs.map((t) => {
         if (t.id !== tabId) return t;
 
@@ -3273,6 +3623,9 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
           activePaneId: newActivePaneId,
         };
       }),
+      closedSessionIds: [
+        ...new Set([...state.closedSessionIds, ...closedSessionIds]),
+      ],
       canvasState: {
         ...state.canvasState,
         nodes: state.canvasState.nodes.filter((node) =>
@@ -3286,7 +3639,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
             ? state.canvasState.selectedNodeId
             : null,
       },
-    }));
+      };
+    });
   },
 
   setActivePane: (tabId: string, paneId: string) => {
@@ -3333,6 +3687,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
 let pendingPersist: ReturnType<typeof window.setTimeout> | null = null;
 let persistDirty = false;
 let lastPersistedSnapshot = "";
+let diskMirrorQueue: Promise<void> = Promise.resolve();
 
 function buildPersistedSnapshot(state: WorkspaceState): PersistedWorkspace {
   return {
@@ -3350,6 +3705,9 @@ function buildPersistedSnapshot(state: WorkspaceState): PersistedWorkspace {
     pinnedProjects: state.pinnedProjects,
     workspaceUiState: state.workspaceUiState,
     canvasState: state.canvasState,
+    closedSessionIds: state.closedSessionIds,
+    closedRestoreTargets: state.closedRestoreTargets,
+    agentRecoveryMigrationVersion: state.agentRecoveryMigrationVersion,
   };
 }
 
@@ -3370,9 +3728,16 @@ function persistWorkspaceSnapshot(snapshot: PersistedWorkspace) {
 
 function mirrorWorkspaceLayoutToDisk(serialized: string) {
   if (!isTauriRuntime()) return;
-  void import("@tauri-apps/api/core")
-    .then(({ invoke }) => invoke("workspace_layout_save", { contents: serialized }))
-    .catch((error) => console.warn("Could not mirror workspace layout to disk:", error));
+  // Tauri invokes are asynchronous; without a single-file queue, a slower older
+  // save can complete after a newer save and roll the durable layout backwards.
+  diskMirrorQueue = diskMirrorQueue
+    .then(async () => {
+      const { invoke } = await import("@tauri-apps/api/core");
+      await invoke("workspace_layout_save", { contents: serialized });
+    })
+    .catch((error) => {
+      console.warn("Could not mirror workspace layout to disk:", error);
+    });
 }
 
 function scheduleWorkspacePersistence() {
@@ -3390,7 +3755,7 @@ function scheduleWorkspacePersistence() {
   }, 250);
 }
 
-window.addEventListener("beforeunload", () => {
+async function flushWorkspacePersistence() {
   if (pendingPersist) {
     clearTimeout(pendingPersist);
     pendingPersist = null;
@@ -3399,6 +3764,44 @@ window.addEventListener("beforeunload", () => {
     persistDirty = false;
     persistWorkspaceSnapshot(buildPersistedSnapshot(useWorkspaceStore.getState()));
   }
+  await diskMirrorQueue;
+}
+
+let closeFlushInProgress = false;
+
+async function installTauriClosePersistenceBarrier() {
+  if (!isTauriRuntime()) return;
+  try {
+    const { getCurrentWindow } = await import("@tauri-apps/api/window");
+    const appWindow = getCurrentWindow();
+    await appWindow.onCloseRequested(async (event) => {
+      if (closeFlushInProgress) return;
+      event.preventDefault();
+      closeFlushInProgress = true;
+      console.info("[termfleet.lifecycle] close requested; persistence barrier started");
+      try {
+        const persistenceResult = await waitForClosePersistence(flushWorkspacePersistence);
+        console.info(`[termfleet.lifecycle] persistence barrier ${persistenceResult}`);
+        if (persistenceResult !== "flushed") {
+          console.warn(`Workspace mirror ${persistenceResult}; closing window anyway.`);
+        }
+        const { invoke } = await import("@tauri-apps/api/core");
+        console.info("[termfleet.lifecycle] requesting application exit");
+        await invoke("exit_application");
+      } catch (error) {
+        closeFlushInProgress = false;
+        console.warn("Could not flush workspace before close:", error);
+      }
+    });
+  } catch (error) {
+    console.warn("Could not install workspace close barrier:", error);
+  }
+}
+
+void installTauriClosePersistenceBarrier();
+
+window.addEventListener("beforeunload", () => {
+  void flushWorkspacePersistence();
 });
 
 if (import.meta.env.DEV && typeof window !== "undefined") {
@@ -3412,3 +3815,10 @@ useWorkspaceStore.subscribe(() => {
 
   scheduleWorkspacePersistence();
 });
+
+// Keep the durable copy current even when the operator only relaunches the app
+// without making a store mutation. Do not do this when localStorage is empty:
+// disk is the fallback source in that case and must be read before any write.
+if (isTauriRuntime() && !needsDiskHydration && Array.isArray(persisted.tabs)) {
+  persistWorkspaceSnapshot(buildPersistedSnapshot(useWorkspaceStore.getState()));
+}

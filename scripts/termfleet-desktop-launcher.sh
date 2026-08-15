@@ -2,6 +2,12 @@
 set -euo pipefail
 
 LOG_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/termfleet"
+incident_log_helper="$(dirname "${BASH_SOURCE[0]}")/termfleet-incident-log.sh"
+if [[ -f "$incident_log_helper" ]]; then
+  source "$incident_log_helper"
+else
+  termfleet_incident_record() { :; }
+fi
 LOG_FILE="$LOG_DIR/desktop-launch.log"
 TERMFLEET_CMD="${TERMFLEET_CMD:-$HOME/.local/bin/termfleet}"
 TERMFLEET_INSTALL_ROOT="${TERMFLEET_INSTALL_ROOT:-${XDG_DATA_HOME:-$HOME/.local/share}/termfleet}"
@@ -12,6 +18,21 @@ mkdir -p "$LOG_DIR" "$TERMFLEET_TMPDIR"
 chmod 0700 "$TERMFLEET_TMPDIR"
 export TMPDIR="$TERMFLEET_TMPDIR"
 export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-2}"
+
+prepare_termfleet_restore_config() {
+  local source_config="${AGENT_FLEET_CONFIG:-$HOME/.config/agent-fleet/fleet.toml}"
+  local workspace_file="${XDG_DATA_HOME:-$HOME/.local/share}/terminal-workspace/workspace.json"
+  local filtered_config="$TERMFLEET_TMPDIR/agent-fleet-restore-filtered-$$.toml"
+  local filter_helper="$(dirname "${BASH_SOURCE[0]}")/filter-termfleet-restore.py"
+  [[ -f "$source_config" && -f "$workspace_file" ]] || return 0
+  [[ -f "$filter_helper" ]] || return 0
+  /usr/bin/python3 "$filter_helper" "$source_config" "$workspace_file" "$filtered_config"
+  if [[ -s "$filtered_config" ]]; then
+    export AGENT_FLEET_CONFIG="$filtered_config"
+    printf '[%s] restore suppression filtered manifest using %s\n' \
+      "$(date --iso-8601=seconds)" "$workspace_file" >>"$LOG_FILE"
+  fi
+}
 
 # Serialize dock launches. Without a lock, two clicks in the small window before
 # the first cockpit appears can create two WebKit renderer trees and double the
@@ -39,8 +60,11 @@ export TERMFLEET_DAEMON_MEMORY_HIGH="${TERMFLEET_DAEMON_MEMORY_HIGH:-12G}"
 export TERMFLEET_DAEMON_TASKS_MAX="${TERMFLEET_DAEMON_TASKS_MAX:-10000}"
 # Bound the WebKit-backed desktop group separately from the daemon. A renderer
 # leak may kill the cockpit, but it must never consume the host or the PTYs.
-export TERMFLEET_DESKTOP_MEMORY_HIGH="${TERMFLEET_DESKTOP_MEMORY_HIGH:-768M}"
-export TERMFLEET_DESKTOP_MEMORY_MAX="${TERMFLEET_DESKTOP_MEMORY_MAX:-1G}"
+# WebKit is a separate renderer process and can legitimately approach 1 GiB
+# alongside the cockpit. Keep the desktop bounded, but leave enough headroom
+# that normal renderer growth cannot terminate the UI while the daemon survives.
+export TERMFLEET_DESKTOP_MEMORY_HIGH="${TERMFLEET_DESKTOP_MEMORY_HIGH:-3G}"
+export TERMFLEET_DESKTOP_MEMORY_MAX="${TERMFLEET_DESKTOP_MEMORY_MAX:-4G}"
 
 resolved_cmd="$(readlink -f "$TERMFLEET_CMD" 2>/dev/null || true)"
 release_prefix="$(readlink -m "$TERMFLEET_INSTALL_ROOT/releases")/"
@@ -59,6 +83,10 @@ cockpit_running() {
   for pid in $(pgrep -u "$UID" -x termfleet 2>/dev/null); do
     [[ "$(awk '{print $3}' "/proc/$pid/stat" 2>/dev/null)" == "Z" ]] && continue
     grep -qz -- '--terminal-workspace-daemon' "/proc/$pid/cmdline" 2>/dev/null && continue
+    if [[ -r "/proc/$pid/environ" || -r "/proc/$pid/cgroup" ]]; then
+      grep -qz -- "XDG_RUNTIME_DIR=/run/user/$UID" "/proc/$pid/environ" 2>/dev/null ||
+        grep -q -- '/termfleet-desktop-' "/proc/$pid/cgroup" 2>/dev/null || continue
+    fi
     return 0
   done
   return 1
@@ -69,6 +97,10 @@ cockpit_pid() {
   for pid in $(pgrep -u "$UID" -x termfleet 2>/dev/null); do
     [[ "$(awk '{print $3}' "/proc/$pid/stat" 2>/dev/null)" == "Z" ]] && continue
     grep -qz -- '--terminal-workspace-daemon' "/proc/$pid/cmdline" 2>/dev/null && continue
+    if [[ -r "/proc/$pid/environ" || -r "/proc/$pid/cgroup" ]]; then
+      grep -qz -- "XDG_RUNTIME_DIR=/run/user/$UID" "/proc/$pid/environ" 2>/dev/null ||
+        grep -q -- '/termfleet-desktop-' "/proc/$pid/cgroup" 2>/dev/null || continue
+    fi
     printf '%s\n' "$pid"
     return 0
   done
@@ -122,11 +154,15 @@ if [[ "${1:-}" != "--child" ]]; then
 fi
 
 if [[ "${1:-}" == "--child" ]]; then
+  termfleet_incident_record "desktop_launch" "launcher_child" "pid=$$ command=$TERMFLEET_CMD"
   export TERMFLEET_OLLAMA_URL="${TERMFLEET_OLLAMA_URL:-http://127.0.0.1:11434}"
   export TERMFLEET_CONTEXT_TITLE_TIMEOUT_MS="${TERMFLEET_CONTEXT_TITLE_TIMEOUT_MS:-25000}"
   export TERMFLEET_TASK_CONTEXT_MODEL="${TERMFLEET_TASK_CONTEXT_MODEL:-qwen2.5:7b}"
   export TERMFLEET_AGENT_STATUS_TIMEOUT_MS="${TERMFLEET_AGENT_STATUS_TIMEOUT_MS:-1000}"
   export TERMFLEET_AGENT_STATUS_DISABLE="${TERMFLEET_AGENT_STATUS_DISABLE:-1}"
+  # Prepare only the external restore manifest before the UI reads the workspace;
+  # this helper must never mutate the durable layout or infer a close decision.
+  prepare_termfleet_restore_config
   # The restore helper must not race the app's first daemon startup. Starting
   # restore first made normal dock launches time out after 20s, leaving the
   # saved terminals absent even though the UI could later start successfully.
@@ -149,7 +185,7 @@ if [[ "${1:-}" == "--child" ]]; then
   if (( daemon_ready == 1 )) && [[ -f "$TERMFLEET_RESTORE" ]]; then
     /usr/bin/python3 "$TERMFLEET_RESTORE" \
       --termfleet-startup \
-      --once termfleet \
+      --force \
       --ready-timeout 20 >>"$LOG_FILE" 2>&1 &
   elif (( daemon_ready == 0 )); then
     printf '[%s] daemon was not ready before restore; preserving the app failure for diagnosis\n' \
@@ -160,6 +196,7 @@ if [[ "${1:-}" == "--child" ]]; then
   set -e
   printf '[%s] termfleet exited with status=%s\n' \
     "$(date --iso-8601=seconds)" "$status" >>"$LOG_FILE"
+  termfleet_incident_record "desktop_exit" "process_exit" "pid=$app_pid status=$status daemon=preserved"
   exit "$status"
 fi
 

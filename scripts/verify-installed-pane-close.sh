@@ -45,7 +45,7 @@ def request(payload):
             with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as stream:
                 stream.settimeout(2)
                 stream.connect(socket_path)
-                stream.sendall(json.dumps(payload).encode())
+                stream.sendall((json.dumps(payload) + "\n").encode())
                 stream.shutdown(socket.SHUT_WR)
                 payload = stream.makefile("rb").read().decode()
                 if payload.strip():

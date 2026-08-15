@@ -54,6 +54,7 @@
     "audit:panes": "playwright test tests/pane-label-audit.spec.ts --reporter=line",
     "agent-status:ollama": "node scripts/agent-status-summary-ollama.mjs",
     "termfleetctl": "node scripts/termfleetctl.mjs",
+    "restore:live-terminals": "node scripts/restore-live-terminals.mjs",
     "verify:termfleetctl": "node scripts/verify-termfleetctl.mjs",
     "verify:agent-adapter": "scripts/verify-agent-provider-adapter-headless.sh",
     "verify:canvas-terminal": "scripts/verify-canvas-terminal.sh",
