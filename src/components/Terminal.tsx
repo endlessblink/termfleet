@@ -8,7 +8,7 @@ import "@xterm/xterm/css/xterm.css";
 import { useNativeTerminalPane } from "../hooks/useNativeTerminalPane";
 import { usePty } from "../hooks/usePty";
 import { TerminalCanvas } from "./TerminalCanvas";
-import { shouldAutoRecoverAgent } from "../lib/terminalAutoRecovery";
+import { autoRecoveryDecision } from "../lib/terminalAutoRecovery";
 import { stableAgentProvider } from "../lib/agentProviderIdentity";
 import { isReflowSafeAgentTui } from "../lib/agentTui";
 import {
@@ -44,6 +44,12 @@ import {
 } from "../lib/terminalActivity";
 import { terminalPurposeFromSubmittedInput } from "../lib/terminalHeaderDisplay";
 import {
+  GAMIFICATION_CHANGED_EVENT,
+  isLiveWorkstreamTerminal,
+  isWorkstreamQuestAccepted,
+  loadGamificationRecord,
+} from "../lib/gamification";
+import {
   mainUserAskForRunChange,
   mainUserAskFromSummary,
   mainUserAskFromTerminalPurpose,
@@ -77,6 +83,7 @@ import type {
 } from "../lib/types";
 import type { GridSnapshot } from "../lib/gridSnapshot";
 import { providerReadinessCue } from "../lib/providerReadinessCue";
+import { isExplicitTerminalExitCommand } from "../lib/terminalCloseIntent";
 
 const LOCALHOST_URL_PATTERN =
   /https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0):(\d{2,5})(?:[/?#][^\s"'<>]*)?/gi;
@@ -591,6 +598,7 @@ export function TerminalComponent({
   mapProjection = false,
 }: TerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const questShellRef = useRef<HTMLDivElement>(null);
   const [containerElement, setContainerElement] =
     useState<HTMLDivElement | null>(null);
   const [terminal, setTerminal] = useState<XTerminal | null>(null);
@@ -624,7 +632,14 @@ export function TerminalComponent({
   );
   const submittedInputBufferRef = useRef("");
   const submittedInputEscapeRef = useRef(false);
+  const explicitExitCloseRequestedRef = useRef(false);
   const activeTabId = useWorkspaceStore((s) => s.activeTabId);
+  const questTerminalState = useWorkspaceStore((s) =>
+    s.tabs.find((tab) => tab.id === tabId)?.terminals.find((terminal) => terminal.paneId === paneId),
+  );
+  const [questAccepted, setQuestAccepted] = useState(() =>
+    typeof window !== "undefined" && isWorkstreamQuestAccepted(loadGamificationRecord(window.localStorage)),
+  );
   const workspaceMode = useWorkspaceStore(
     (s) => s.workspaceUiState.workspaceMode,
   );
@@ -632,6 +647,37 @@ export function TerminalComponent({
     (s) => s.workspaceUiState.terminalRendererMode,
   );
   const runtimeSessionId = `terminal-${tabId}-${paneId}`;
+  useEffect(() => {
+    const syncQuestState = () => {
+      setQuestAccepted(isWorkstreamQuestAccepted(loadGamificationRecord(window.localStorage)));
+    };
+    window.addEventListener(GAMIFICATION_CHANGED_EVENT, syncQuestState);
+    window.addEventListener("storage", syncQuestState);
+    return () => {
+      window.removeEventListener(GAMIFICATION_CHANGED_EVENT, syncQuestState);
+      window.removeEventListener("storage", syncQuestState);
+    };
+  }, []);
+  const questTerminalQualifies = Boolean(
+    questAccepted &&
+      questTerminalState &&
+      isLiveWorkstreamTerminal(questTerminalState),
+  );
+  useEffect(() => {
+    const shell = questShellRef.current;
+    if (!shell || !questTerminalQualifies) return;
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reducedMotion) return;
+    let frame = 0;
+    const startedAt = performance.now();
+    const tick = (now: number) => {
+      const angle = ((now - startedAt) / 5800) * 360;
+      shell.style.setProperty("--termfleet-quest-angle", `${angle % 360}deg`);
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [questTerminalQualifies]);
   // TC-017g: the headless-VT + Canvas2D renderer is now the production desktop
   // terminal — it replaces xterm.js in the Tauri app. xterm.js remains ONLY the
   // browser-preview fallback (no Tauri runtime). `auto` and `canvas2d` both use
@@ -714,6 +760,7 @@ export function TerminalComponent({
             cols: terminal?.cols ?? previous?.cols ?? 80,
             rows: terminal?.rows ?? previous?.rows ?? 24,
             status: updates.status ?? previous?.status,
+            manualStopRequested: previous?.manualStopRequested,
             reused: updates.reused ?? previous?.reused,
             agentProvider: previous?.agentProvider,
             previewUrl: updates.previewUrl ?? previous?.previewUrl,
@@ -1201,7 +1248,17 @@ export function TerminalComponent({
       const flush = () => {
         const line = buffer.replace(/\s+/g, " ").trim();
         buffer = "";
-        if (line) storeSubmittedAsk(line);
+        if (!line) return;
+        if (isExplicitTerminalExitCommand(line) && !explicitExitCloseRequestedRef.current) {
+          explicitExitCloseRequestedRef.current = true;
+          console.info("[termfleet:user-close] slash-exit", { tabId, paneId });
+          void useWorkspaceStore.getState().closeTerminalSession(tabId, "slash-exit").catch((error) => {
+            explicitExitCloseRequestedRef.current = false;
+            console.error("Failed to close terminal after /exit:", error);
+          });
+          return;
+        }
+        storeSubmittedAsk(line);
       };
       for (const char of data) {
         if (skippingEscape) {
@@ -1232,7 +1289,7 @@ export function TerminalComponent({
       submittedInputBufferRef.current = buffer;
       submittedInputEscapeRef.current = skippingEscape;
     },
-    [storeSubmittedAsk],
+    [paneId, storeSubmittedAsk, tabId],
   );
 
   const persistAgentRecoveryManifest = useCallback(
@@ -1591,17 +1648,28 @@ export function TerminalComponent({
         previousTerminal?.statusSummary?.provider;
       const taskLineup =
         tab?.workstream?.taskLineup ?? previousTerminal?.taskLineup;
+      const recoveryDecision = autoRecoveryDecision({
+        provider,
+        taskStatuses: taskLineup?.map((task) => task.status),
+        terminalStatus: previousTerminal?.statusSummary?.status,
+        workstreamStatus: tab?.workstream?.status,
+        workstreamPhase: tab?.workstream?.phase,
+        durableActivityStatus: previousTerminal?.durableActivity?.status,
+        manuallyStopped: previousTerminal?.manualStopRequested,
+      });
+      console.info("[termfleet:recovery-decision]", {
+        paneId,
+        terminalId: details.id,
+        provider: provider ?? "missing",
+        exitCode: details.code,
+        success: details.success,
+        reason: recoveryDecision.reason,
+        recover: recoveryDecision.recover,
+      });
       if (
         canvasMode &&
         !recoveryAttemptedRef.current &&
-        shouldAutoRecoverAgent({
-          provider,
-          taskStatuses: taskLineup?.map((task) => task.status),
-          terminalStatus: previousTerminal?.statusSummary?.status,
-          workstreamStatus: tab?.workstream?.status,
-          workstreamPhase: tab?.workstream?.phase,
-          durableActivityStatus: previousTerminal?.durableActivity?.status,
-        })
+        recoveryDecision.recover
       ) {
         recoveryAttemptedRef.current = true;
         updateTerminalRuntime({
@@ -2090,6 +2158,7 @@ export function TerminalComponent({
     onReady: handleReady,
     onStatus: handleStatus,
     onOutput: handleOutput,
+    onInputData: captureSubmittedInput,
     onExit: handleExit,
   });
 
@@ -2420,7 +2489,9 @@ export function TerminalComponent({
 
   return (
     <div
-      className={`terminal-block-shell${standalone ? " terminal-block-shell--standalone" : ""}`}
+      ref={questShellRef}
+      className={`terminal-block-shell${standalone ? " terminal-block-shell--standalone" : ""}${questTerminalQualifies ? " terminal-block-shell--quest-active" : ""}`}
+      data-quest-active={questTerminalQualifies ? "true" : "false"}
       // No tabIndex: the wrapper must NOT be a Tab stop. With tabIndex={0} a
       // Shift+Tab inside the terminal moved focus from the hidden input to this
       // wrapper (off the textarea), so the keystroke never reached the PTY and

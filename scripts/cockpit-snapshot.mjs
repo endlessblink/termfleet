@@ -211,6 +211,8 @@ function analyzeEntry(entry, snapshotAgeS) {
     "plan-binding",
     "sidecar-todo",
     "workstream",
+    // The poller's resolved ladder line is authoritative pane identity, not a scrape.
+    "task-line",
     "missing",
     "none",
     // Agent lanes are not shell terminal task identity; keep this accepted for now.
@@ -225,7 +227,7 @@ function analyzeEntry(entry, snapshotAgeS) {
   if (!supportedTaskSources.has(clean(entry.taskSource))) {
     flags.push(`unsupported-task-source:${clean(entry.taskSource) || "empty"}`);
   }
-  if (!visible && !neutralTitle && !/^(?:user-prompt|task-tool|sidecar-todo|manual|workstream|plan-binding)$/i.test(clean(entry.taskSource))) {
+  if (!visible && !neutralTitle && !/^(?:user-prompt|task-tool|sidecar-todo|manual|workstream|task-line|plan-binding)$/i.test(clean(entry.taskSource))) {
     flags.push("no-visible-terminal-text-for-non-neutral-header");
   }
   if (/^working$/i.test(title)) flags.push("generic-title-working");

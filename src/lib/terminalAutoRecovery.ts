@@ -7,15 +7,28 @@ interface AutoRecoveryState {
   workstreamStatus?: WorkstreamStatus | string | null;
   workstreamPhase?: string | null;
   durableActivityStatus?: string | null;
+  manuallyStopped?: boolean;
 }
 
-export function shouldAutoRecoverAgent(state: AutoRecoveryState): boolean {
-  if (!state.provider || state.provider === "shell") return false;
-  return Boolean(
+export function autoRecoveryDecision(state: AutoRecoveryState): {
+  recover: boolean;
+  reason: string;
+} {
+  if (state.manuallyStopped) return { recover: false, reason: "manual-stop" };
+  if (!state.provider) return { recover: false, reason: "provider-missing" };
+  if (state.provider === "shell") return { recover: false, reason: "ordinary-shell" };
+  const activeSignal = Boolean(
     state.taskStatuses?.some((status) => status === "in_progress") ||
     state.terminalStatus === "working" ||
     state.workstreamStatus === "running" ||
     state.workstreamPhase === "active" ||
-    state.durableActivityStatus === "running"
+    state.durableActivityStatus === "running",
   );
+  return activeSignal
+    ? { recover: true, reason: "agent-state-still-active" }
+    : { recover: false, reason: "agent-state-settled" };
+}
+
+export function shouldAutoRecoverAgent(state: AutoRecoveryState): boolean {
+  return autoRecoveryDecision(state).recover;
 }

@@ -147,6 +147,14 @@ class InstalledReleaseTests(unittest.TestCase):
         self.assertLess(daemon_wait, restore_start)
         self.assertIn('[[ -S "$daemon_socket" ]]', launcher)
 
+    def test_crash_restart_forces_termfleet_restore_again_after_boot(self):
+        launcher = DESKTOP_LAUNCHER.read_text()
+        restore_start = launcher.index('"$TERMFLEET_RESTORE"')
+        restore_invocation = launcher[restore_start : launcher.index('>>"$LOG_FILE"', restore_start)]
+        self.assertIn('--termfleet-startup', restore_invocation)
+        self.assertIn('--force', restore_invocation)
+        self.assertNotIn('--once termfleet', restore_invocation)
+
     def test_rejects_stale_plasma_pinned_launcher_copy(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = pathlib.Path(tmp)

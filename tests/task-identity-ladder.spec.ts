@@ -40,6 +40,23 @@ test("a meta-process task is not accepted as the pane goal", () => {
   expect(header.goalLabel).toBe("Goal not captured");
 });
 
+test("a correction saying the goal was not met is not promoted to Task", () => {
+  const header = buildTerminalHeaderState({
+    paneId: "pane-correction",
+    terminalId: "pane-correction",
+    liveCwd: "/tmp/termfleet",
+    mainUserAsk: {
+      text: "it has not been met",
+      source: "status-sidecar",
+      updatedAt: NOW,
+    },
+  });
+
+  expect(header.hasCapturedGoal).toBe(false);
+  expect(header.goalLabel).not.toBe("it has not been met");
+  expect(header.userGoal).toBeNull();
+});
+
 test("a current step cannot replace a raw complaint with a fake durable goal", () => {
   const taskLine = resolvePaneTaskLine({
     now: NOW,
@@ -64,6 +81,10 @@ test("a current step cannot replace a raw complaint with a fake durable goal", (
   expect(taskLine.text).toBe("No task declared");
   expect(header.goalLabel).toBe("Goal not captured");
   expect(header.hasCapturedGoal).toBe(false);
+  expect(header.contextLabel).toBe("Goal not captured");
+  expect(header.userGoal).toBeNull();
+  expect(header.sources.goal).toBe("none");
+  expect(header.sources.context).toBe("missing");
 });
 
 test("a shell pane is no longer starved of a description", () => {

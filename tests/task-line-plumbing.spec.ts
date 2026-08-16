@@ -82,6 +82,18 @@ test("the central poll loop applies the line for every pane, trusted or not", ()
   expect(untrusted).toContain("agentProvider: inferredProvider");
 });
 
+test("the cockpit snapshot accepts a resolved task-line source", () => {
+  const source = readFileSync(
+    path.join(REPO, "scripts", "cockpit-snapshot.mjs"),
+    "utf8",
+  );
+  const supportedSources = source.slice(
+    source.indexOf("const supportedTaskSources"),
+    source.indexOf("]);", source.indexOf("const supportedTaskSources")) + 3,
+  );
+  expect(supportedSources).toContain('"task-line"');
+});
+
 test("the persisted workspace snapshot keeps the last known line", () => {
   const source = readFileSync(
     path.join(REPO,"src", "stores", "workspace.ts"),

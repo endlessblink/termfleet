@@ -174,9 +174,8 @@ test("a map card rejects a meta-process task and shows an honest fallback", asyn
 
   const card = page.getByTestId("canvas-terminal-status-block").first();
   await expect(card).toBeVisible();
-  await expect(
-    page.getByTestId("canvas-terminal-node-description"),
-  ).toHaveText("Goal not captured");
+  await expect(page.getByTestId("canvas-terminal-node-description")).toHaveCount(0);
+  await expect(page.getByTestId("canvas-terminal-node-goal")).toHaveCount(0);
   await expect(page.getByTestId("canvas-terminal-node-branch")).toHaveText(
     "release/bina-courses-august",
   );

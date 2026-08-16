@@ -235,3 +235,34 @@ test("declared, title and request text are copied verbatim", () => {
   const title = "Investigate e2e redirect";
   expect(resolvePaneTaskLine({ now: NOW, facts: { title } }).text).toBe(title);
 });
+
+test("explicit opening-request goals keep the operator's words", () => {
+  const line = resolvePaneTaskLine({
+    now: 1,
+    mainGoal: "can we enhanc lean-ctx? I am using many codex and claude sessions at any given moment",
+    mainGoalSource: "opening-request",
+  });
+
+  expect(line).toMatchObject({
+    source: "opening-request",
+    text: "can we enhanc lean-ctx? I am using many codex and claude sessions at any given moment",
+  });
+});
+
+test("a Hermes-style opening goal outranks a thin follow-up and current activity", () => {
+  const line = resolvePaneTaskLine({
+    now: 1,
+    mainGoal: "I dont understand why the assistant suddenly started answering in one word when I felt down",
+    mainGoalSource: "opening-request",
+    currentStep: "Putting the conversation logs back where they belong",
+    facts: {
+      operatorRequest: "it happened just now",
+      agentSaid: "Removing the be-brief instruction from the bot's briefing",
+    },
+  });
+
+  expect(line).toMatchObject({
+    source: "opening-request",
+    text: "I dont understand why the assistant suddenly started answering in one word when I felt down",
+  });
+});

@@ -51,7 +51,7 @@ async function mockTauri(page: import("@playwright/test").Page) {
 
 async function seedSplitTerminal(
   page: import("@playwright/test").Page,
-  activity: Record<string, unknown> = {
+  activity: Record<string, unknown> | null = {
     title: "Building frontend",
     subtitle: "TypeScript and Vite production build",
     status: "success",
@@ -59,22 +59,32 @@ async function seedSplitTerminal(
     source: "command",
     updatedAt: 1000,
   },
-  options: { includePurpose?: boolean; outputLines?: string[] } = {},
+  options: {
+    includePurpose?: boolean;
+    outputLines?: string[];
+    includeStatusSummary?: boolean;
+    mainUserAsk?: string;
+    statusSummarySource?: string;
+    keySuffix?: string;
+  } = {},
 ) {
-  await page.evaluate(({ taskText, activity, includePurpose, outputLines }) => {
+  await page.evaluate(({ taskText, activity, includePurpose, outputLines, includeStatusSummary, mainUserAsk, statusSummarySource, keySuffix }) => {
     type Store = {
       getState: () => { workspaceUiState: Record<string, unknown> };
       setState: (state: Record<string, unknown>) => void;
     };
     const store = (window as typeof window & { __termfleetWorkspaceStore?: Store }).__termfleetWorkspaceStore;
     if (!store) throw new Error("TermFleet test store is unavailable");
+    const tabKey = keySuffix ? `tab-shell-${keySuffix}` : "tab-shell";
+    const paneKey = keySuffix ? `pane-shell-${keySuffix}` : "pane-shell";
+    const ptyKey = keySuffix ? `pty-shell-${keySuffix}` : "pty-shell";
 
     const group = {
       id: "group-termfleet",
       name: "termfleet",
       color: "#d69a2d",
       projectRoot: "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
-      lastActiveTabId: "tab-shell",
+       lastActiveTabId: tabKey,
     };
 
     store.setState({
@@ -88,8 +98,8 @@ async function seedSplitTerminal(
       terminalGroups: [group],
       activeGroupFilter: null,
       projectRoot: group.projectRoot,
-      activeTabId: "tab-shell",
-      activeTerminalId: "pty-shell",
+       activeTabId: tabKey,
+       activeTerminalId: ptyKey,
       hydrating: false,
       canvasState: {
         selectedNodeId: "node-shell",
@@ -99,7 +109,7 @@ async function seedSplitTerminal(
           id: "node-shell",
           type: "terminal",
           title: "Terminal",
-          terminalTabId: "tab-shell",
+           terminalTabId: tabKey,
           x: 80,
           y: 70,
           width: 940,
@@ -107,19 +117,26 @@ async function seedSplitTerminal(
         }],
       },
       tabs: [{
-        id: "tab-shell",
+         id: tabKey,
         title: "Terminal",
         emoji: "[]",
         color: "#d69a2d",
         groupId: group.id,
         initialCwd: group.projectRoot,
         terminals: [{
-          id: "pty-shell",
-          paneId: "pane-shell",
+           id: ptyKey,
+           paneId: paneKey,
           cols: 100,
           rows: 28,
           status: "running",
-          durableActivity: activity,
+          mainUserAsk: mainUserAsk
+            ? {
+                text: mainUserAsk,
+                source: "status-sidecar",
+                updatedAt: 1000,
+              }
+            : undefined,
+           durableActivity: activity ?? undefined,
           purpose: includePurpose ? {
             title: "Improving terminal-summary visual headers",
             source: "task-binding",
@@ -139,21 +156,33 @@ async function seedSplitTerminal(
             source: "todo-write",
             updatedAt: 1000,
           }] : undefined,
-          statusSummary: {
-            task: taskText,
-            path: "devops/termfleet",
-            now: "frontend build passed",
-            status: "done",
-            provider: "shell",
-            confidence: "high",
-            tasks: [{ id: "1", text: taskText, status: "done" }],
-          },
+          statusSummary: includeStatusSummary === false
+            ? undefined
+            : {
+                task: taskText,
+                path: "devops/termfleet",
+                now: "frontend build passed",
+                status: "done",
+                provider: "shell",
+                confidence: "high",
+                tasks: [{ id: "1", text: taskText, status: "done" }],
+              },
+          statusSummarySource,
         }],
-        splitLayout: { id: "pane-shell", type: "terminal" },
-        activePaneId: "pane-shell",
+         splitLayout: { id: paneKey, type: "terminal" },
+         activePaneId: paneKey,
       }],
     });
-  }, { taskText: noisyTask, activity, includePurpose: options.includePurpose ?? true, outputLines: options.outputLines });
+  }, {
+    taskText: noisyTask,
+    activity,
+    includePurpose: options.includePurpose ?? true,
+    outputLines: options.outputLines,
+    includeStatusSummary: options.includeStatusSummary,
+    mainUserAsk: options.mainUserAsk,
+    statusSummarySource: options.statusSummarySource,
+    keySuffix: options.keySuffix,
+  });
 }
 
 test("running agent identity is visible in the terminal header and sidebar", async ({ page }) => {
@@ -281,6 +310,47 @@ test("regular split header rejects noisy scrollback titles and fits the current 
   await expect(now).not.toContainText("The visual app surface");
   const afterCommandChange = await title.evaluate((element) => element.textContent?.trim() ?? "");
   expect(afterCommandChange).toBe(metrics.text);
+});
+
+test("regular split header stays visible before the first status summary arrives", async ({ page }) => {
+  await mockTauri(page);
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  const opening = "Keep the saved request visible after reconnect";
+  await seedSplitTerminal(page, undefined, {
+    includePurpose: false,
+    includeStatusSummary: false,
+    mainUserAsk: opening,
+    outputLines: ["bash-5.2$"],
+  });
+
+  await expect(page.getByTestId("split-terminal-summary-task")).toHaveText(opening);
+  await expect(page.getByTestId("split-terminal-summary-goal")).toContainText(opening);
+  await expect(page.getByTestId("split-terminal-summary-now")).toBeVisible();
+});
+
+test("regular split header keeps the sidecar Now after reconnect", async ({ page }) => {
+  await mockTauri(page);
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  const opening = "Verify the installed terminal labels";
+  await seedSplitTerminal(page, null, {
+    includePurpose: false,
+    statusSummarySource: "sidecar",
+    keySuffix: "sidecar-now",
+    mainUserAsk: opening,
+    outputLines: ["bash-5.2$"],
+  });
+
+  await expect(page.getByTestId("split-terminal-summary-task")).toHaveText(opening);
+  await expect(page.getByTestId("split-terminal-summary-goal")).toContainText(opening);
+  await expect(page.getByTestId("split-terminal-summary-now")).toContainText("frontend build passed");
 });
 
 test("regular split header neutralizes stale verifier text when there is no real task", async ({ page }) => {

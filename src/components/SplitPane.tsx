@@ -1187,7 +1187,22 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                     )
                   : null
             : null;
-        const shellStatusSummaryBase = shellStatusSummaryBaseRaw;
+        // A reconnected shell can render before its first status poll. Keep the
+        // header mounted in that gap so a persisted user request is still visible;
+        // the fallback is deliberately low-confidence and cannot invent Task/Goal.
+        const shellStatusSummaryBase =
+          shellStatusSummaryBaseRaw ??
+          (!agentStatusSummary && !isPreviewPane
+            ? {
+                task: "Ready",
+                path: paneCwd ?? pathTail(paneCwd) ?? "workspace path unknown",
+                now: "Awaiting command",
+                status: "idle" as const,
+                provider: "shell" as const,
+                confidence: "low" as const,
+                tasksFromTodoWrite: false,
+              }
+            : null);
         // The agent's real task list (sidecar) wins the title/now over heuristic
         // inference — see preferRealTaskSummary. (TC-033)
         // No real task → show the activity description ONLY while a command is actually
@@ -1264,6 +1279,12 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
           shellHeader && shellStatusSummaryBase
             ? {
                 ...shellStatusSummaryBase,
+                // A sidecar-backed shell can have no trustworthy live transcript
+                // activity after reconnect. Preserve its authoritative Now row
+                // instead of collapsing the rendered header to an empty string.
+                ...(paneTerminal?.statusSummary?.now?.trim()
+                  ? { now: paneTerminal.statusSummary.now.trim() }
+                  : {}),
                 task: shellHeader.currentActivity,
                 path:
                   shellDurableActivityUsable &&
@@ -1277,7 +1298,9 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                   : shellHeader.sources.goal === "task-tool" &&
                       shellHeader.currentActivity === shellHeader.goalLabel
                     ? (shellNeutralTitle ?? shellStatusSummaryBase.now)
-                    : shellHeader.currentActivity,
+                    : paneTerminal?.statusSummary?.now?.trim() ||
+                      shellHeader.currentActivity ||
+                      shellStatusSummaryBase.now,
               }
             : null;
         const isAgentPane = Boolean(agentStatusSummary);
@@ -1321,8 +1344,11 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
           },
         );
         const headerTitle = stabilizedHeader.title;
+        const sidecarNow = paneTerminal?.statusSummarySource === "sidecar"
+          ? paneTerminal.statusSummary?.now?.trim()
+          : undefined;
         const headerNow =
-          resolveDistinctHeaderNow(headerTitle, stabilizedHeader.now) ?? "";
+          sidecarNow || resolveDistinctHeaderNow(headerTitle, stabilizedHeader.now) || "";
         const headerContext =
           (isAgentPane
             ? tab.workstream?.mission ?? tab.workstream?.prompt
@@ -1485,8 +1511,14 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                   debug: isAgentPane
                     ? undefined
                     : {
-                        ...shellHeader?.debug,
+                      ...shellHeader?.debug,
                         waitingForOperator: shellWaitingForOperator,
+                        renderStatusNow: paneTerminal?.statusSummary?.now,
+                        renderStatusSource: paneTerminal?.statusSummarySource,
+                        renderCurrentActivity: shellHeader?.currentActivity,
+                        renderDurableActivityUsable: shellDurableActivityUsable,
+                        renderShellSummaryNow: shellStatusSummary?.now,
+                        renderHeaderNow: headerNow,
                       },
                 }}
               />
@@ -1675,7 +1707,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                             textTransform: "uppercase",
                           }}
                         >
-                          {shellHeader?.hasCapturedGoal ? "Task:" : "State:"}
+                          Task:
                         </span>
                         <span
                           data-testid="split-agent-working-on"
@@ -2011,7 +2043,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                             textTransform: "uppercase",
                           }}
                         >
-                          Task:
+                          {shellHeader?.hasCapturedGoal ? "Task:" : "State:"}
                         </span>
                         <span
                           data-testid="split-terminal-summary-task"
@@ -2022,10 +2054,14 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                             whiteSpace: "nowrap",
                           }}
                         >
-                          {headerTitle}
+                          {shellHeader?.hasCapturedGoal
+                            ? headerTitle
+                            : shellHeader?.currentActivity ?? headerNow}
                         </span>
                       </div>
-                      {headerContext && headerContext !== "Context not captured" && (
+                      {headerContext &&
+                        headerContext !== "Context not captured" &&
+                        shellHeader?.hasCapturedGoal && (
                         <div
                           data-testid="split-terminal-summary-goal"
                           style={{
@@ -2058,6 +2094,43 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                             }}
                           >
                             {headerContext}
+                          </span>
+                        </div>
+                      )}
+                      {headerNow && (
+                        <div
+                          data-testid="split-terminal-summary-now-inline"
+                          style={{
+                            minWidth: 0,
+                            display: "flex",
+                            alignItems: "baseline",
+                            gap: 5,
+                            overflow: "hidden",
+                            color: isActive ? "var(--text-primary)" : "var(--text-secondary)",
+                            fontSize: 11,
+                            fontWeight: 500,
+                          }}
+                          title={headerNow}
+                        >
+                          <span
+                            style={{
+                              flexShrink: 0,
+                              color: "var(--text-tertiary)",
+                              fontSize: 10,
+                              textTransform: "uppercase",
+                            }}
+                          >
+                            Now
+                          </span>
+                          <span
+                            style={{
+                              minWidth: 0,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {headerNow}
                           </span>
                         </div>
                       )}
@@ -2432,6 +2505,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                     paneId={paneId}
                     cwd={paneCwd}
                     command={tab.workstream?.startupCommand}
+                    attachToPtyId={paneTerminal?.id ?? null}
                     queuedInput={queuedWorkstreamInput}
                     onQueuedInputSent={(inputId) =>
                       useWorkspaceStore

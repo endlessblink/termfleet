@@ -2,7 +2,8 @@
 set -euo pipefail
 
 LOG_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/termfleet"
-incident_log_helper="$(dirname "${BASH_SOURCE[0]}")/termfleet-incident-log.sh"
+launcher_dir="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
+incident_log_helper="$launcher_dir/termfleet-incident-log.sh"
 if [[ -f "$incident_log_helper" ]]; then
   source "$incident_log_helper"
 else
@@ -23,7 +24,7 @@ prepare_termfleet_restore_config() {
   local source_config="${AGENT_FLEET_CONFIG:-$HOME/.config/agent-fleet/fleet.toml}"
   local workspace_file="${XDG_DATA_HOME:-$HOME/.local/share}/terminal-workspace/workspace.json"
   local filtered_config="$TERMFLEET_TMPDIR/agent-fleet-restore-filtered-$$.toml"
-  local filter_helper="$(dirname "${BASH_SOURCE[0]}")/filter-termfleet-restore.py"
+  local filter_helper="$launcher_dir/filter-termfleet-restore.py"
   [[ -f "$source_config" && -f "$workspace_file" ]] || return 0
   [[ -f "$filter_helper" ]] || return 0
   /usr/bin/python3 "$filter_helper" "$source_config" "$workspace_file" "$filtered_config"

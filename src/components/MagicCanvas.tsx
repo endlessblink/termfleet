@@ -171,6 +171,7 @@ import { agentBudgetSignal } from "../lib/agentBudget";
 import { openCodexModelPicker } from "../lib/codexModelPicker";
 import { durableActivityIsLive } from "../lib/terminalActivity";
 import {
+  aboutWhatFallback,
   activityAddsInfo,
   headerTextsEquivalent,
 } from "../lib/terminalHeaderViewModel";
@@ -3433,7 +3434,10 @@ function CanvasNodeViewImpl({
         )
         ? terminalStatusSummary?.status === "working"
           ? "Working on the current task"
-          : "Waiting for a task or command"
+          : aboutWhatFallback(
+              terminalHeaderContextDescription,
+              terminalHeaderTaskDescription,
+            )
         : terminalHeader.currentActivity
       : terminalHeaderSummarySignal || terminalHeaderTitle || terminalNeutralTitle;
   const terminalHeaderNow = terminalHeaderNowBase;
@@ -4659,10 +4663,18 @@ function CanvasNodeViewImpl({
                     previewTitle: terminalTitle,
                     projectEmoji,
                     kind: "shell",
-                    task: terminalHeaderTaskDescription,
-                    taskSource: terminalHeader.sources.goal,
-                    context: terminalHeaderContextDescription,
-                    contextSource: terminalHeader.sources.context,
+                    task: terminalHeader.hasCapturedGoal
+                      ? terminalHeaderTaskDescription
+                      : "",
+                    taskSource: terminalHeader.hasCapturedGoal
+                      ? terminalHeader.sources.goal
+                      : "missing",
+                    context: terminalHeader.hasCapturedGoal
+                      ? terminalHeaderContextDescription
+                      : "",
+                    contextSource: terminalHeader.hasCapturedGoal
+                      ? terminalHeader.sources.context
+                      : "missing",
                     title: terminalHeaderTitle,
                     titleSource: terminalHeader.sources.activity,
                     now: terminalHeaderNowRowText ?? "",

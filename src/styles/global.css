@@ -596,6 +596,52 @@ button:active {
   background: #1d2123;
 }
 
+.terminal-block-shell--quest-active::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  padding: 2px;
+  border-radius: 8px;
+  background: conic-gradient(
+    from var(--termfleet-quest-angle, 0deg),
+    transparent 0deg 285deg,
+    color-mix(in srgb, var(--accent-live) 42%, transparent) 300deg,
+    var(--accent-live) 322deg,
+    color-mix(in srgb, var(--accent-warning) 70%, white) 332deg,
+  transparent 346deg 360deg
+  );
+  opacity: 0.95;
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+}
+
+.terminal-block-shell--quest-active > * {
+  position: relative;
+  z-index: 1;
+}
+
+.terminal-block-shell--quest-active {
+  border: 1px solid color-mix(in srgb, var(--accent-live) 32%, var(--border-subtle));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .terminal-block-shell--quest-active::before {
+    animation: none;
+    background: conic-gradient(
+      from 40deg,
+      transparent 0deg 285deg,
+      color-mix(in srgb, var(--accent-live) 42%, transparent) 300deg,
+      var(--accent-live) 322deg,
+      color-mix(in srgb, var(--accent-warning) 70%, white) 332deg,
+      transparent 346deg 360deg
+    );
+  }
+}
+
 /* Map terminals need a readable minimum viewport even while their surrounding
    card is still settling its fixed-height task/status columns. Split panes keep
    their normal flex sizing. */

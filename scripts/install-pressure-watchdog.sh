@@ -9,6 +9,10 @@ SYSTEMD_USER_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
 mkdir -p "$LIBEXEC_DIR" "$SYSTEMD_USER_DIR"
 install -m 0755 "$APP_ROOT/scripts/termfleet-pressure-watchdog.sh" \
   "$LIBEXEC_DIR/termfleet-pressure-watchdog"
+install -m 0755 "$APP_ROOT/scripts/termfleet-load-shed.sh" \
+  "$HOME/.local/bin/termfleet-load-shed"
+install -m 0755 "$APP_ROOT/scripts/termfleet-incident-log.sh" \
+  "$LIBEXEC_DIR/termfleet-incident-log.sh"
 install -m 0644 "$APP_ROOT/systemd/termfleet-pressure-watchdog.service" \
   "$SYSTEMD_USER_DIR/termfleet-pressure-watchdog.service"
 

@@ -181,7 +181,10 @@ export function buildCodexSidecar(payload, prev, now = Date.now()) {
   const event = payload?.hook_event_name ?? payload?.hookEventName ?? payload?.event;
   const storedUserTask = cleanField(prev?.userTask, 220) || undefined;
   const prevUserTask = storedUserTask;
-  const prevMainTaskSource = prev?.mainTaskSource === "goal-task" || prev?.mainTaskSource === "opening-request"
+  // Only an explicit opening request is a durable operator goal. `goal-task` was
+  // historically also used for internal create_goal/update_plan events, so accepting
+  // it here would resurrect stale orchestration text from an older sidecar.
+  const prevMainTaskSource = prev?.mainTaskSource === "opening-request"
     ? prev.mainTaskSource
     : undefined;
   const rawPrevMainTask = cleanField(prev?.mainTask, 220) || undefined;
@@ -263,23 +266,19 @@ export function buildCodexSidecar(payload, prev, now = Date.now()) {
     };
   }
 
-  // The goal tool is the authoritative user-facing mission for Codex sessions. It is
-  // distinct from update_plan: a plan step describes the route, while this objective is
-  // what the cockpit must keep showing after the agent becomes idle or waits for input.
+  // `create_goal` is Codex/TermFleet orchestration state, not an operator request. It
+  // must never become the cockpit's durable Task/Goal: doing so makes the agent's internal
+  // investigation objective look like the user's product work. Preserve only a goal
+  // already captured from an explicit user-facing source.
   if (payload?.tool_name === "create_goal") {
-    const objective = cleanField(
-      payload?.tool_input?.objective ?? payload?.tool_input?.goal ?? payload?.objective,
-      220,
-    );
-    if (!objective) return null;
     return {
       ...base,
       source: "codex-goal",
       todos: prevTodos,
-      mainTask: objective,
-      mainTaskSource: "goal-task",
+      mainTask: prevMainTask,
+      mainTaskSource: effectivePrevMainTaskSource,
       userTask: prevUserTask,
-      now: nowFromTodos(prevTodos) || "Working toward the goal",
+      now: nowFromTodos(prevTodos) || cleanField(prev?.now) || "Working",
       turn: "working",
     };
   }
@@ -287,28 +286,13 @@ export function buildCodexSidecar(payload, prev, now = Date.now()) {
   if (payload?.tool_name === "update_plan") {
     const todos = todosFromUpdatePlan(payload?.tool_input);
     if (todos.length === 0) return null;
-    const declaredGoal = todos
-      .map((todo) => cleanField(todo?.content, 220))
-      .find((content) => /^Goal:\s*\S/i.test(content))
-      ?.replace(/^Goal:\s*/i, "");
-    const durablePreviousGoal =
-      effectivePrevMainTaskSource === "goal-task" ||
-      effectivePrevMainTaskSource === "opening-request"
-        ? prevMainTask
-        : undefined;
     return {
       ...base,
       source: "codex-plan",
       todos,
       now: nowFromTodos(todos),
-      mainTask:
-        declaredGoal || durablePreviousGoal,
-      mainTaskSource:
-        declaredGoal
-          ? "goal-task"
-          : durablePreviousGoal
-      ? effectivePrevMainTaskSource
-            : undefined,
+      mainTask: prevMainTask,
+      mainTaskSource: effectivePrevMainTaskSource,
       userTask: prevUserTask,
       turn: "working",
     };

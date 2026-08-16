@@ -50,6 +50,7 @@ missed the longest, because every junk-shape check passes it.
 | A2 invented activity                 | `Sitting at a command prompt` on a pane whose task list is on screen                                                  | If the pane has a task list, the task list wins                                                               |
 | A3 nudge as task                     | `make high`, `add it`, `do it`, `next`                                                                                | Verbatim operator words are welcome, but a nudge is not a task                                                |
 | A4 placeholder                       | `Task not captured`, `Activity not captured`                                                                          | Honest last resort only. Never while a real task is known — including a known-but-expired one                 |
+| A6 generic idle Now                  | `Now: Ready for next task`                                                                                              | When the pane has captured `$about-what` context, show that context first, then its goal; only use `Ready for next task` when both are absent |
 
 ## Class B — right shape, wrong content
 

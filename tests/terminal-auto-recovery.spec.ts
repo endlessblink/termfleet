@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { shouldAutoRecoverAgent } from "../src/lib/terminalAutoRecovery";
+import { autoRecoveryDecision, shouldAutoRecoverAgent } from "../src/lib/terminalAutoRecovery";
 
 test("recovers an agent that exited while a task was still active", () => {
   expect(shouldAutoRecoverAgent({
@@ -26,4 +26,13 @@ test("does not restart completed agents or ordinary shells", () => {
     taskStatuses: ["in_progress"],
     terminalStatus: "working",
   })).toBe(false);
+});
+
+test("does not restart an agent after an explicit manual stop", () => {
+  expect(autoRecoveryDecision({
+    provider: "codex",
+    taskStatuses: ["in_progress"],
+    terminalStatus: "working",
+    manuallyStopped: true,
+  })).toEqual({ recover: false, reason: "manual-stop" });
 });

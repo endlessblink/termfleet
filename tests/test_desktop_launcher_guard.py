@@ -21,7 +21,12 @@ LAUNCHER = ROOT / "scripts" / "termfleet-desktop-launcher.sh"
 
 
 class DesktopLauncherGuardTests(unittest.TestCase):
-    def run_launcher(self, pids: dict[int, str], states: dict[int, str] | None = None):
+    def run_launcher(
+        self,
+        pids: dict[int, str],
+        states: dict[int, str] | None = None,
+        proc_metadata: dict[int, dict[str, str]] | None = None,
+    ):
         """Run the launcher with `pgrep` stubbed to report `pids` (pid -> cmdline).
 
         Returns (returncode, launch log text). The launcher is pointed at a fake
@@ -49,6 +54,8 @@ class DesktopLauncherGuardTests(unittest.TestCase):
                 (entry / "cmdline").write_bytes(cmdline.replace(" ", "\0").encode() + b"\0")
                 state = (states or {}).get(pid, "S")
                 (entry / "stat").write_text(f"{pid} (termfleet) {state} 1 1 1 0\n")
+                for name, value in (proc_metadata or {}).get(pid, {}).items():
+                    (entry / name).write_text(value)
 
             # Stub pgrep, and redirect /proc lookups into our fake tree.
             stub_dir = home / "stub"
@@ -62,6 +69,8 @@ class DesktopLauncherGuardTests(unittest.TestCase):
             script = LAUNCHER.read_text()
             script = script.replace('"/proc/$pid/cmdline"', f'"{proc}/$pid/cmdline"')
             script = script.replace('"/proc/$pid/stat"', f'"{proc}/$pid/stat"')
+            script = script.replace('"/proc/$pid/environ"', f'"{proc}/$pid/environ"')
+            script = script.replace('"/proc/$pid/cgroup"', f'"{proc}/$pid/cgroup"')
             patched = home / "launcher.sh"
             patched.write_text(script)
             patched.chmod(0o755)
@@ -135,8 +144,8 @@ class DesktopLauncherGuardTests(unittest.TestCase):
     def test_desktop_unit_bounds_renderer_memory_without_bounding_daemon(self):
         script = LAUNCHER.read_text()
         self.assertIn('export TERMFLEET_DAEMON_MEMORY_HIGH="${TERMFLEET_DAEMON_MEMORY_HIGH:-12G}"', script)
-        self.assertIn('export TERMFLEET_DESKTOP_MEMORY_HIGH="${TERMFLEET_DESKTOP_MEMORY_HIGH:-768M}"', script)
-        self.assertIn('export TERMFLEET_DESKTOP_MEMORY_MAX="${TERMFLEET_DESKTOP_MEMORY_MAX:-1G}"', script)
+        self.assertIn('export TERMFLEET_DESKTOP_MEMORY_HIGH="${TERMFLEET_DESKTOP_MEMORY_HIGH:-3G}"', script)
+        self.assertIn('export TERMFLEET_DESKTOP_MEMORY_MAX="${TERMFLEET_DESKTOP_MEMORY_MAX:-4G}"', script)
         self.assertIn('-p MemoryHigh="$TERMFLEET_DESKTOP_MEMORY_HIGH"', script)
         self.assertIn('-p MemoryMax="$TERMFLEET_DESKTOP_MEMORY_MAX"', script)
         self.assertIn("-p CPUWeight=1000", script)
@@ -176,6 +185,19 @@ class DesktopLauncherGuardTests(unittest.TestCase):
         script = LAUNCHER.read_text()
         self.assertIn('if [[ "${1:-}" != "--child" ]]; then\n  exec 9>"$LOCK_FILE"', script)
         self.assertIn('if [[ "${1:-}" != "--child" ]]; then\n  existing_pid=', script)
+
+    def test_private_verifier_runtime_cannot_replace_the_production_cockpit(self):
+        _rc, log = self.run_launcher(
+            {4242: "/opt/termfleet"},
+            proc_metadata={
+                4242: {
+                    "environ": "XDG_RUNTIME_DIR=/tmp/private-termfleet-runtime\\0",
+                    "cgroup": "0::/user.slice/user-1000.slice/user@1000.service/app.slice/test-verifier.scope\\n",
+                }
+            },
+        )
+        self.assertNotIn("reusing existing TermFleet window", log)
+        self.assertIn("launching TermFleet desktop wrapper", log)
 
 
 if __name__ == "__main__":

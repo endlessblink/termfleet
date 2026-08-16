@@ -263,8 +263,17 @@ interface ClosedRestoreTarget {
   title?: string;
 }
 
-function restoreTargetForTab(tab: Tab): ClosedRestoreTarget | null {
-  const cwd = tab.initialCwd?.trim();
+export type TerminalCloseReason = "slash-exit" | "terminal-x" | "sidebar-x" | "operator";
+
+function restoreTargetForTab(
+  tab: Tab,
+  liveCwds: Record<string, string> = {},
+): ClosedRestoreTarget | null {
+  const cwd =
+    tab.initialCwd?.trim() ||
+    tab.terminals
+      .map((terminal) => liveCwds[terminal.id]?.trim())
+      .find((candidate): candidate is string => Boolean(candidate));
   if (!cwd) return null;
   return { cwd, title: tab.title?.trim() || undefined };
 }
@@ -352,7 +361,7 @@ interface WorkspaceState {
     agentRecoveryMigrationVersion?: number;
   }) => void;
   removeTab: (id: string) => void;
-  closeTerminalSession: (id: string) => Promise<void>;
+  closeTerminalSession: (id: string, reason?: TerminalCloseReason) => Promise<void>;
   restoreLastClosed: () => boolean;
   setActiveTab: (id: string) => void;
   updateTab: (id: string, updates: Partial<Tab>) => void;
@@ -1840,7 +1849,7 @@ export async function closeActivePane() {
   // If only one pane, close the entire tab instead
   const leaves = getAllLeafIds(tab.splitLayout);
   if (leaves.length <= 1) {
-    await store.closeTerminalSession(tab.id);
+    await store.closeTerminalSession(tab.id, "terminal-x");
     return;
   }
 
@@ -1853,6 +1862,12 @@ export async function closeActivePane() {
   // Kill the PTY for this pane
   const paneTerminal = tab.terminals.find((t) => t.paneId === tab.activePaneId);
   if (paneTerminal) {
+    console.info("[termfleet:user-close] requested", {
+      reason: "terminal-x",
+      tabId: tab.id,
+      terminalIds: [paneTerminal.id],
+      cwd: tab.initialCwd ?? null,
+    });
     // Record and durably flush the operator's close before killing the PTY.
     // Otherwise a restart racing this split-pane close can see the still-live
     // daemon session and recover it before closePane writes its tombstone.
@@ -2209,9 +2224,29 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     });
   },
 
-  closeTerminalSession: async (id: string) => {
+  closeTerminalSession: async (id: string, reason: TerminalCloseReason = "operator") => {
     const tab = get().tabs.find((candidate) => candidate.id === id);
     if (!tab) return;
+
+    let closeRestoreTarget = restoreTargetForTab(tab, get().liveCwds);
+    if (!closeRestoreTarget && tab.terminals[0]) {
+      try {
+        const { invoke } = await import("@tauri-apps/api/core");
+        const cwd = await getPtyCwd(tab.terminals[0].id, invoke);
+        closeRestoreTarget = cwd.trim()
+          ? { cwd: cwd.trim(), title: tab.title?.trim() || undefined }
+          : null;
+      } catch (error) {
+        console.warn("Could not resolve the terminal CWD before close:", error);
+      }
+    }
+
+    console.info("[termfleet:user-close] requested", {
+      reason,
+      tabId: id,
+      terminalIds: tab.terminals.map((terminal) => terminal.id),
+      cwd: tab.initialCwd ?? null,
+    });
 
     set((state) => ({
       recentlyClosed: pushRecentlyClosed(
@@ -2219,7 +2254,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         recentlyClosedTerminalFor(state, tab),
       ),
       closedRestoreTargets: (() => {
-        const target = restoreTargetForTab(tab);
+        const target = closeRestoreTarget;
         if (!target) return state.closedRestoreTargets;
         return [
           target,

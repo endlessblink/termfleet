@@ -226,6 +226,20 @@ export function buildTerminalHeaderState(input: {
   const effectiveSummary = input.statusSummary?.tasksFromTodoWrite
     ? undefined
     : input.summary;
+  // The sidecar keeps the opening request independently of the transient run id.
+  // Recover it after restart/continuation before the poll loop restores mainUserAsk;
+  // internal Codex goal-task values never pass this provenance check.
+  const persistedOpeningAsk: TerminalMainUserAsk | undefined =
+    !input.mainUserAsk &&
+    input.statusSummary?.mainTaskSource === "opening-request" &&
+    input.statusSummary.mainTask?.trim()
+      ? {
+          text: input.statusSummary.mainTask.trim(),
+          source: "status-sidecar",
+          updatedAt: input.statusSummary.updatedAt ?? Date.now(),
+        }
+      : undefined;
+  const effectiveMainUserAsk = input.mainUserAsk ?? persistedOpeningAsk;
   // TC-060 R1: a pane that has not polled yet — or one only ever drawn in the
   // sidebar, never mounted — still gets a true line. The last rung needs no I/O,
   // so nothing can fall through to "Task not captured".
@@ -242,9 +256,9 @@ export function buildTerminalHeaderState(input: {
     .find((item) => item.status === "completed");
   const currentRunId = input.activeRunId ?? input.runId;
   const askIsForThisRun =
-    !input.mainUserAsk?.runId ||
+    !effectiveMainUserAsk?.runId ||
     !currentRunId ||
-    input.mainUserAsk.runId === currentRunId;
+    effectiveMainUserAsk.runId === currentRunId;
   // A STORED line that is itself the folder template must not outrank what this caller
   // knows. `Terminal.tsx` re-stores the resolver's line on every poll, so a template
   // computed from a thin status file was permanently winning here — the enrichment
@@ -300,8 +314,8 @@ export function buildTerminalHeaderState(input: {
       currentStep: activeLineupItem?.content ?? null,
       lastCompletedTask: lastCompletedLineupItem?.content ?? null,
       facts:
-        input.mainUserAsk?.text && askIsForThisRun
-          ? { operatorRequest: input.mainUserAsk.text }
+        effectiveMainUserAsk?.text && askIsForThisRun
+          ? { operatorRequest: effectiveMainUserAsk.text }
           : null,
       folder: effectiveLiveCwd?.split("/").filter(Boolean).pop() ?? null,
       busy:
@@ -318,7 +332,7 @@ export function buildTerminalHeaderState(input: {
     terminalStatus: input.terminalStatus,
     taskLineup: input.taskLineup,
     activeRunId: input.activeRunId ?? input.runId,
-    mainUserAsk: input.mainUserAsk,
+    mainUserAsk: effectiveMainUserAsk,
     statusSummary: input.statusSummary,
     summary: effectiveSummary,
     neutralTitle: input.neutralTitle,
@@ -331,7 +345,7 @@ export function buildTerminalHeaderState(input: {
   });
   const goalSource = goalSourceFrom(
     view.taskDescription.source,
-    input.mainUserAsk,
+    effectiveMainUserAsk,
   );
   const goalLabel = view.taskDescription.text;
   const normalizedContext = view.context.text.trim().toLowerCase();
@@ -340,13 +354,19 @@ export function buildTerminalHeaderState(input: {
     view.context.text.trim() !== "" &&
     view.context.text.trim() !== "Context not captured" &&
     normalizedContext !== normalizedActivity;
+  const taskLineCarriesDurableIdentity = Boolean(
+    effectiveTaskLine &&
+      /^(?:declared|context-summary|opening-request|plan-purpose|session-title|operator-request)$/.test(
+        effectiveTaskLine.source,
+      ),
+  );
   // The display contract needs one stable project-intent value. A missing context
   // must not erase a real goal that the same resolver already captured, otherwise
   // each surface invents a different fallback (or shows "Project intent not captured").
   const goalCanBeProjectIntent =
     goalSource !== "none" &&
     goalSource !== "missing" &&
-    goalSource !== "task-line" &&
+    (goalSource !== "task-line" || taskLineCarriesDurableIdentity) &&
     !/^(?:No task declared|No active work|What should change\?|Waiting for a clear goal)$/i.test(
       goalLabel.trim(),
     );
@@ -362,11 +382,11 @@ export function buildTerminalHeaderState(input: {
       : input.statusSummary?.mainTask &&
           view.context.text.trim() === input.statusSummary.mainTask.trim()
         ? "sidecar-todo"
-      : input.mainUserAsk?.text &&
-          view.context.text.trim() === input.mainUserAsk.text.trim()
-        ? input.mainUserAsk.source === "terminal-prompt"
+      : effectiveMainUserAsk?.text &&
+          view.context.text.trim() === effectiveMainUserAsk.text.trim()
+        ? effectiveMainUserAsk.source === "terminal-prompt"
           ? "user-prompt"
-          : input.mainUserAsk.source === "status-sidecar"
+          : effectiveMainUserAsk.source === "status-sidecar"
             ? "sidecar-todo"
             : view.context.source
         : view.context.source
@@ -379,12 +399,6 @@ export function buildTerminalHeaderState(input: {
   // `task-line` is a transport wrapper, not a provenance category. A recovered
   // opening request/session title is a real Task even though it crossed the
   // task-line ladder; a running command or recent activity is still only Now.
-  const taskLineCarriesDurableIdentity = Boolean(
-    effectiveTaskLine &&
-      /^(?:declared|context-summary|opening-request|plan-purpose|session-title|operator-request)$/.test(
-        effectiveTaskLine.source,
-      ),
-  );
   const hasCapturedGoal =
     goalSource !== "none" &&
     goalSource !== "missing" &&

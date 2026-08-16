@@ -270,7 +270,7 @@ test("an ordinary prompt never manufactures checklist work", () => {
   expect(sidecar?.mainTask).toBeUndefined();
 });
 
-test("create_goal becomes the durable cockpit mission instead of a plan step", () => {
+test("an internal create_goal objective never becomes the cockpit mission", () => {
   const sidecar = buildCodexSidecar(
     {
       hook_event_name: "PostToolUse",
@@ -284,9 +284,51 @@ test("create_goal becomes the durable cockpit mission instead of a plan step", (
     },
     1_600,
   );
-  expect(sidecar?.mainTask).toBe("Keep every live terminal clear about its work");
-  expect(sidecar?.mainTaskSource).toBe("goal-task");
+  expect(sidecar?.mainTask).toBeUndefined();
+  expect(sidecar?.mainTaskSource).toBeUndefined();
   expect(sidecar?.now).toBe("Waiting for user-facing approval");
+});
+
+test("an internal create_goal preserves an already captured user mission", () => {
+  const sidecar = buildCodexSidecar(
+    {
+      hook_event_name: "PostToolUse",
+      tool_name: "create_goal",
+      tool_input: { objective: "Investigate the internal runtime" },
+      cwd: "/repo/product",
+    },
+    {
+      mainTask: "Keep the checkout page reliable",
+      mainTaskSource: "opening-request",
+      userTask: "Keep the checkout page reliable",
+      todos: [],
+    },
+    1_650,
+  );
+  expect(sidecar?.mainTask).toBe("Keep the checkout page reliable");
+  expect(sidecar?.mainTaskSource).toBe("opening-request");
+});
+
+test("a legacy internal goal-task is cleared on the next prompt", () => {
+  const sidecar = buildCodexSidecar(
+    {
+      hook_event_name: "UserPromptSubmit",
+      prompt: "continue working",
+      cwd: "/repo/termfleet",
+      session_id: "s1",
+    },
+    {
+      mainTask: "Deeply investigate the reported TermFleet failure",
+      mainTaskSource: "goal-task",
+      userTask: "continue working",
+      todos: [{ content: "Check the current labels", status: "in_progress", activeForm: "" }],
+      sessionId: "s1",
+    },
+    1_675,
+  );
+  expect(sidecar?.mainTask).toBeUndefined();
+  expect(sidecar?.mainTaskSource).toBeUndefined();
+  expect(sidecar?.now).toBe("Check the current labels");
 });
 
 test("exec_command maps to readable activity and ignores navigation", () => {
@@ -408,6 +450,23 @@ test("a deployment checklist stays activity when no durable goal was captured", 
 
   expect(sidecar?.mainTask).toBeUndefined();
   expect(sidecar?.now).toBe("Deploying the fix and checking production");
+});
+
+test("an update_plan Goal item never becomes the cockpit mission", () => {
+  const sidecar = buildCodexSidecar({
+    cwd: "/repo/termfleet",
+    tool_name: "update_plan",
+    tool_input: {
+      plan: [
+        { step: "Goal: Deeply investigate the reported TermFleet failure", status: "in_progress" },
+        { step: "Verify the installed release", status: "pending" },
+      ],
+    },
+  }, { userTask: "[Image #1] this is a fail for example" }, 23);
+
+  expect(sidecar?.mainTask).toBeUndefined();
+  expect(sidecar?.mainTaskSource).toBeUndefined();
+  expect(sidecar?.now).toBe("Goal: Deeply investigate the reported TermFleet failure");
 });
 
 test("codexLastAgentMessage prefers the direct payload", () => {

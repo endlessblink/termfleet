@@ -1,7 +1,10 @@
 import type { Tab } from "./types";
 
 const GAMIFICATION_RELEASE_ID = import.meta.env?.VITE_TERMFLEET_RELEASE_ID ?? "dev";
-export const GAMIFICATION_STORAGE_KEY = `termfleet.gamification.v6.${GAMIFICATION_RELEASE_ID}`;
+export const GAMIFICATION_STORAGE_KEY = "termfleet.gamification.v6";
+const LEGACY_GAMIFICATION_STORAGE_KEY = `termfleet.gamification.v6.${GAMIFICATION_RELEASE_ID}`;
+export const GAMIFICATION_CHANGED_EVENT = "termfleet-gamification-changed";
+export const WORKSTREAM_QUEST_ID = "parallel-work";
 
 export type GamificationEventType = "goal-completed" | "command-succeeded" | "terminal-recovered";
 
@@ -23,6 +26,8 @@ export interface GamificationRecord {
   parallelWorkstreamStartedAt: number | null;
   parallelWorkstreamSeconds: number;
   parallelBestSeconds: number;
+  activeQuestId: string | null;
+  questAcceptedAt: number | null;
   initializedAt: number;
   updatedAt: number;
 }
@@ -30,6 +35,17 @@ export interface GamificationRecord {
 export interface GamificationFacts {
   events: GamificationEvent[];
   activeWorkstreams: number;
+}
+
+export function isLiveWorkstreamTerminal(terminal: Tab["terminals"][number]): boolean {
+  // Restored panes can briefly have no runtime status while the status sidecar
+  // already has authoritative proof that the workstream is working. Use the
+  // same fallback for the timer and the terminal beam so the two surfaces never
+  // disagree after a restart or reattach.
+  return terminal.status === "running" ||
+    terminal.status === "reconnected" ||
+    terminal.statusSummary?.status === "working" ||
+    terminal.durableActivity?.status === "running";
 }
 
 export interface GamificationMission {
@@ -105,6 +121,8 @@ export const EMPTY_GAMIFICATION_RECORD: GamificationRecord = {
   parallelWorkstreamStartedAt: null,
   parallelWorkstreamSeconds: 0,
   parallelBestSeconds: 0,
+  activeQuestId: null,
+  questAcceptedAt: null,
   initializedAt: 0,
   updatedAt: 0,
 };
@@ -122,9 +140,7 @@ export function collectGamificationFacts(tabs: Tab[]): GamificationFacts {
 
   for (const tab of tabs) {
     for (const terminal of tab.terminals) {
-      const isLive = terminal.status === "running" || terminal.status === "reconnected";
-      const isWorking = terminal.taskLineup?.some((task) => task.status === "in_progress") || terminal.durableActivity?.status === "running";
-      if (isLive && isWorking) activeWorkstreams += 1;
+      if (isLiveWorkstreamTerminal(terminal)) activeWorkstreams += 1;
 
       for (const task of terminal.taskLineup ?? []) {
         if (task.status !== "completed") continue;
@@ -177,9 +193,17 @@ export function mergeGamificationRecord(record: GamificationRecord, facts: Gamif
     parallelWorkstreamStartedAt: parallelStartedAt,
     parallelWorkstreamSeconds: parallelSeconds,
     parallelBestSeconds,
+    activeQuestId: record.activeQuestId,
+    questAcceptedAt: record.questAcceptedAt,
     initializedAt: record.initializedAt || updatedAt,
     updatedAt,
   };
+}
+
+export function syncGamificationRecord(record: GamificationRecord, tabs: Tab[], updatedAt: number): GamificationRecord {
+  const facts = collectGamificationFacts(tabs);
+  const initialized = initializeGamificationRecord(record, facts, updatedAt);
+  return mergeGamificationRecord(initialized, facts, updatedAt);
 }
 
 export function initializeGamificationRecord(record: GamificationRecord, facts: GamificationFacts, initializedAt: number): GamificationRecord {
@@ -245,7 +269,7 @@ export function rewardForTransition(previous: GamificationSummary, next: Gamific
 export function loadGamificationRecord(storage: Pick<Storage, "getItem"> | undefined): GamificationRecord {
   if (!storage) return EMPTY_GAMIFICATION_RECORD;
   try {
-    const parsed = JSON.parse(storage.getItem(GAMIFICATION_STORAGE_KEY) ?? "null") as Partial<GamificationRecord> | null;
+    const parsed = JSON.parse(storage.getItem(GAMIFICATION_STORAGE_KEY) ?? storage.getItem(LEGACY_GAMIFICATION_STORAGE_KEY) ?? "null") as Partial<GamificationRecord> | null;
     if (parsed?.version !== 6 || !Array.isArray(parsed.events)) return EMPTY_GAMIFICATION_RECORD;
     return {
       version: 6,
@@ -256,6 +280,8 @@ export function loadGamificationRecord(storage: Pick<Storage, "getItem"> | undef
       parallelWorkstreamStartedAt: typeof parsed.parallelWorkstreamStartedAt === "number" ? parsed.parallelWorkstreamStartedAt : null,
       parallelWorkstreamSeconds: typeof parsed.parallelWorkstreamSeconds === "number" ? parsed.parallelWorkstreamSeconds : 0,
       parallelBestSeconds: typeof parsed.parallelBestSeconds === "number" ? parsed.parallelBestSeconds : 0,
+      activeQuestId: typeof parsed.activeQuestId === "string" ? parsed.activeQuestId : null,
+      questAcceptedAt: typeof parsed.questAcceptedAt === "number" ? parsed.questAcceptedAt : null,
       initializedAt: typeof parsed.initializedAt === "number" ? parsed.initializedAt : 0,
       updatedAt: typeof parsed.updatedAt === "number" ? parsed.updatedAt : 0,
     };
@@ -265,5 +291,12 @@ export function loadGamificationRecord(storage: Pick<Storage, "getItem"> | undef
 }
 
 export function saveGamificationRecord(storage: Pick<Storage, "setItem"> | undefined, record: GamificationRecord) {
-  try { storage?.setItem(GAMIFICATION_STORAGE_KEY, JSON.stringify(record)); } catch { /* local progress must never break the cockpit */ }
+  try {
+    storage?.setItem(GAMIFICATION_STORAGE_KEY, JSON.stringify(record));
+    if (typeof window !== "undefined" && storage === window.localStorage) window.dispatchEvent(new CustomEvent(GAMIFICATION_CHANGED_EVENT));
+  } catch { /* local progress must never break the cockpit */ }
+}
+
+export function isWorkstreamQuestAccepted(record: GamificationRecord) {
+  return record.activeQuestId === WORKSTREAM_QUEST_ID && record.questAcceptedAt !== null;
 }

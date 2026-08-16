@@ -88,6 +88,8 @@ export interface TerminalState {
   cols: number;
   rows: number;
   status?: TerminalRuntimeStatus;
+  /** Set before an operator-issued kill so exit handling cannot auto-recover it. */
+  manualStopRequested?: boolean;
   reused?: boolean;
   agentProvider?: AgentProvider;
   previewUrl?: string;

@@ -53,7 +53,11 @@ observed_terminals="$tmp_root/observed-terminals"
 resume_marker="$tmp_root/resume-marker"
 manifest="$tmp_root/fleet.toml"
 session_dir="$tmp_root/session"
-mkdir -m 0700 "$runtime_dir" "$data_dir" "$state_dir" "$fake_bin" "$session_dir" "$tmp_root/tmp"
+closed_sentinel_cwd="$session_dir/closed-sentinel"
+open_sentinel_cwd="$session_dir/open-sentinel"
+closed_sentinel_fixture_dir="$session_dir/closed-sentinel"
+closed_sentinel_cwd="$HOME"
+mkdir -m 0700 "$runtime_dir" "$data_dir" "$state_dir" "$fake_bin" "$session_dir" "$closed_sentinel_fixture_dir" "$open_sentinel_cwd" "$tmp_root/tmp"
 
 cat >"$fake_bin/codex" <<'EOF'
 #!/usr/bin/env bash
@@ -89,7 +93,7 @@ node -e '
   fs.writeFileSync(path.join(dir, `pane-${paneHash}.json`), JSON.stringify(sidecar));
   fs.writeFileSync(path.join(dir, `${cwdHash}.json`), JSON.stringify(sidecar));
 '
-printf '%s\n' "$*" >"$SMOKE_RESUME_MARKER"
+printf '%s\n' "$*" >>"$SMOKE_RESUME_MARKER"
 EOF
 chmod 0755 "$fake_bin/codex"
 cat >"$fake_bin/smoke-shell" <<'EOF'
@@ -99,13 +103,12 @@ EOF
 chmod 0755 "$fake_bin/smoke-shell"
 cat >"$manifest" <<EOF
 [[session]]
-name = "restart-smoke"
-cwd = "$session_dir"
+name = "closed-sentinel"
+cwd = "$closed_sentinel_cwd"
 agent = "codex"
 host = "terminal"
 pin = "00000000-0000-0000-0000-000000000000"
 EOF
-
 terminal_pids() {
   {
     pgrep -x konsole || true
@@ -131,11 +134,19 @@ cleanup() {
     -n "$ARTIFACT_DIR" && -s "$screenshot" ]]; then
     mkdir -p "$ARTIFACT_DIR"
     install -m 0644 "$screenshot" "$ARTIFACT_DIR/termfleet-installed-window.png"
+    [[ -s "${screenshot%.png}-split-before-close.png" ]] && install -m 0644 "${screenshot%.png}-split-before-close.png" "$ARTIFACT_DIR/termfleet-installed-split-before-close.png"
+    [[ -s "${screenshot%.png}-hover.png" ]] && install -m 0644 "${screenshot%.png}-hover.png" "$ARTIFACT_DIR/termfleet-installed-hover.png"
     for evidence in cockpit-snapshot.json cockpit-header-trace.jsonl; do
       if [[ -s "$data_dir/terminal-workspace/agent-status/$evidence" ]]; then
         install -m 0644 "$data_dir/terminal-workspace/agent-status/$evidence" "$ARTIFACT_DIR/$evidence"
       fi
     done
+    [[ -s "$data_dir/terminal-workspace/workspace.json" ]] && install -m 0644 "$data_dir/terminal-workspace/workspace.json" "$ARTIFACT_DIR/workspace.json"
+    [[ -s "$manifest" ]] && install -m 0644 "$manifest" "$ARTIFACT_DIR/fleet.toml"
+    for filtered in "$tmp_root"/tmp/agent-fleet-restore-filtered-*.toml; do
+      [[ -s "$filtered" ]] && install -m 0644 "$filtered" "$ARTIFACT_DIR/$(basename "$filtered")"
+    done
+    [[ -s "$state_dir/termfleet/desktop-launch.log" ]] && install -m 0644 "$state_dir/termfleet/desktop-launch.log" "$ARTIFACT_DIR/desktop-launch.log"
   fi
   if (( status != 0 )); then
     printf 'Restart smoke failed with status=%s socket=%s window=%s marker=%s\n' \
@@ -223,7 +234,7 @@ done
 [[ -n "$window_id" ]] || { printf 'Visible TermFleet window did not appear.\n' >&2; exit 1; }
 [[ -f "$resume_marker" ]] ||
   { printf 'Strict desktop restore did not route the isolated terminal-host session into TermFleet.\n' >&2; exit 1; }
-grep -qx 'resume 00000000-0000-0000-0000-000000000000' "$resume_marker" ||
+grep -Fxq 'resume 00000000-0000-0000-0000-000000000000' "$resume_marker" ||
   { printf 'Strict desktop restore invoked an unexpected resume command.\n' >&2; exit 1; }
 window_pid="$(xdotool getwindowpid "$window_id" 2>/dev/null || true)"
 wm_class="$(xprop -id "$window_id" WM_CLASS)"
@@ -304,7 +315,7 @@ if [[ "${TERMFLEET_RESTART_SMOKE_LABEL_FIXTURE:-1}" == "1" ]]; then
   node -e '
     const fs = require("node:fs");
     const file = process.argv[1];
-    const snapshot = JSON.parse(fs.readFileSync(file, "utf8"));
+    const snapshot = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, "utf8")) : {};
     const terminals = Array.isArray(snapshot.terminals) ? snapshot.terminals : [];
     const valid = terminals.some((entry) =>
       entry.task === "Verify the installed terminal labels" &&
@@ -552,6 +563,51 @@ fi
 # action as the sidebar card's visible x button. Verify the durable tombstone and
 # then relaunch against the same isolated data before checking the fresh window.
 if [[ "${TERMFLEET_RESTART_SMOKE_CLOSE_TERMINAL:-0}" == "1" ]]; then
+  close_route="${TERMFLEET_RESTART_SMOKE_CLOSE_ROUTE:-sidebar-x}"
+  open_terminal_id=""
+  if [[ "${TERMFLEET_RESTART_SMOKE_CLOSE_RESTORE_LOOP:-0}" == "1" ]]; then
+    # Create the untouched control tab inside the installed app. This avoids
+    # relying on the external fleet adapter to preserve two sessions with the
+    # same visible project identity.
+    eval "$(xdotool getwindowgeometry --shell "$window_id")"
+    node -e '
+      const fs = require("node:fs");
+      const workspace = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+      for (const tab of workspace.tabs || []) console.log(tab.id);
+    ' "$data_dir/terminal-workspace/workspace.json" >"$tmp_root/tabs-before-control"
+    xdotool mousemove --sync "$((X + WIDTH / 2))" "$((Y + 24))"
+    xdotool click --clearmodifiers 1
+    xdotool key --clearmodifiers ctrl+t
+    for _ in {1..30}; do
+      if [[ -f "$data_dir/terminal-workspace/workspace.json" ]] && node -e '
+        const fs = require("node:fs");
+        const workspace = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+        process.exit(Array.isArray(workspace.tabs) && workspace.tabs.length >= 2 ? 0 : 1);
+      ' "$data_dir/terminal-workspace/workspace.json"; then
+        break
+      fi
+      sleep 0.25
+    done
+    open_terminal_id="$(node -e '
+      const fs = require("node:fs");
+      const workspace = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+      const existing = new Set(fs.readFileSync(process.argv[2], "utf8").split(/\s+/).filter(Boolean));
+      const tab = (workspace.tabs || []).find((candidate) => !existing.has(candidate.id));
+      const terminal = tab?.terminals?.[0];
+      process.stdout.write(String(terminal?.id || ""));
+    ' "$data_dir/terminal-workspace/workspace.json" "$tmp_root/tabs-before-control")"
+    [[ -n "$open_terminal_id" ]] || { printf 'Untouched installed control tab did not acquire a terminal id.\n' >&2; exit 1; }
+    # Return to the original tab before exercising the requested close route.
+    if [[ "$close_route" == "terminal-x" ]]; then
+      xdotool mousemove --sync "$((X + WIDTH / 2))" "$((Y + 24))"
+      xdotool click --clearmodifiers 1
+      xdotool key --clearmodifiers ctrl+shift+Tab
+    else
+      xdotool mousemove --sync "$((X + 150))" "$((Y + 238))"
+      xdotool click --clearmodifiers 1
+    fi
+    sleep 0.5
+  fi
   closed_terminal_id="$(node -e '
     const fs = require("node:fs");
     const file = process.argv[1];
@@ -562,13 +618,100 @@ if [[ "${TERMFLEET_RESTART_SMOKE_CLOSE_TERMINAL:-0}" == "1" ]]; then
   [[ -n "$closed_terminal_id" ]] || { printf 'Close gate could not identify the active terminal.\n' >&2; exit 1; }
   wmctrl -ia "$window_id" >/dev/null 2>&1 || true
   eval "$(xdotool getwindowgeometry --shell "$window_id")"
+  if [[ "$close_route" == "terminal-x" ]]; then
+    # The pane toolbar X exists only when a tab has multiple panes; create the
+    # second pane inside the installed app, then close that newly created pane.
+    xdotool mousemove --sync "$((X + WIDTH / 2))" "$((Y + 24))"
+    xdotool click --clearmodifiers 1
+    xdotool key --clearmodifiers ctrl+shift+e
+    for _ in {1..20}; do
+      if [[ -f "$data_dir/terminal-workspace/workspace.json" ]] && node -e '
+        const fs = require("node:fs");
+        const workspace = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+        process.exit((workspace.tabs || []).some((tab) => (tab.terminals || []).length >= 2) ? 0 : 1);
+      ' "$data_dir/terminal-workspace/workspace.json"; then
+        break
+      fi
+      sleep 0.25
+    done
+    node -e '
+      const fs = require("node:fs");
+      const workspace = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+      const tabs = Array.isArray(workspace.tabs) ? workspace.tabs : [];
+      const tab = tabs.find((candidate) => (candidate.terminals || []).length >= 2);
+      for (const terminal of tab?.terminals || []) console.log(terminal.id);
+    ' "$data_dir/terminal-workspace/workspace.json" >"$tmp_root/split-terminal-ids"
+    closed_terminal_id="$(head -1 "$tmp_root/split-terminal-ids")"
+    [[ -n "$closed_terminal_id" ]] || { printf 'Terminal-X gate could not identify the split pane.\n' >&2; exit 1; }
+    import -silent -window "$window_id" "${screenshot%.png}-split-before-close.png" || true
+  fi
   sidebar_right="$((X + WIDTH / 4))"
   close_click_x="${TERMFLEET_RESTART_SMOKE_CLOSE_X:-$((sidebar_right - 19))}"
   close_click_y="${TERMFLEET_RESTART_SMOKE_CLOSE_Y:-$((Y + 238))}"
   close_persisted=0
-  for candidate_x in "$close_click_x" "$((sidebar_right - 25))" "$((sidebar_right - 12))"; do
-    xdotool mousemove --sync "$candidate_x" "$close_click_y"
+  if [[ "$close_route" == "slash-exit" ]]; then
+    xdotool mousemove --sync "$((X + WIDTH * 3 / 4))" "$((Y + 380))"
     xdotool click --clearmodifiers 1
+    xdotool type --delay 20 '/exit'
+    xdotool key --clearmodifiers Return
+  elif [[ "$close_route" == "terminal-x" ]]; then
+    # Split-pane toolbar X: sweep the two pane edges and measured header band;
+    # actions are hover-revealed, so each candidate gets a real hover first.
+    for candidate_x in "${TERMFLEET_RESTART_SMOKE_TERMINAL_X:-$((X + WIDTH * 167 / 240 + 1))}" "$((X + WIDTH - 22))" "$((X + WIDTH / 2 - 22))" "$((X + WIDTH - 48))" "$((X + WIDTH * 2 / 3))" "$((X + WIDTH * 7 / 10))" "$((X + WIDTH * 167 / 240))" "$((X + WIDTH * 3 / 4))"; do
+      for candidate_y in "${TERMFLEET_RESTART_SMOKE_TERMINAL_Y:-$((Y + 91))}" "$((Y + 112))" "$((Y + 88))" "$((Y + 96))" "$((Y + 104))" "$((Y + 136))" "$((Y + 160))" "$((Y + 184))" "$((Y + 208))"; do
+        xdotool mousemove --sync "$candidate_x" "$candidate_y"
+        sleep 0.35
+        xdotool click --clearmodifiers 1
+        for _ in {1..8}; do
+          if [[ -f "$data_dir/terminal-workspace/workspace.json" ]] && node -e '
+            const fs = require("node:fs");
+            const workspace = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+            const ids = new Set(fs.readFileSync(process.argv[2], "utf8").split(/\s+/).filter(Boolean));
+            const terminals = (workspace.tabs || []).flatMap((tab) => tab.terminals || []);
+            const closed = (workspace.closedSessionIds || []).find((id) => ids.has(id));
+            process.stdout.write(closed || "");
+            process.exit(closed && !terminals.some((terminal) => terminal.id === closed) ? 0 : 1);
+          ' "$data_dir/terminal-workspace/workspace.json" "$tmp_root/split-terminal-ids" >"$tmp_root/closed-terminal-id"; then
+            closed_terminal_id="$(cat "$tmp_root/closed-terminal-id")"
+            if [[ "$close_route" == "terminal-x" ]]; then
+              open_terminal_id="$(grep -v -F -x "$closed_terminal_id" "$tmp_root/split-terminal-ids" | head -1)"
+            fi
+            close_persisted=1
+            break 2
+          fi
+          sleep 0.25
+        done
+      done
+    done
+  elif [[ "$close_route" == "sidebar-x" ]]; then
+    for candidate_y in "$close_click_y" "$((Y + 210))" "$((Y + 180))" "$((Y + 150))" "$((Y + 270))" "$((Y + 320))" "$((Y + 380))" "$((Y + 440))"; do
+      for candidate_x in "$close_click_x" "$((sidebar_right - 25))" "$((sidebar_right - 40))" "$((sidebar_right - 60))" "$((sidebar_right - 80))" "$((sidebar_right - 100))"; do
+        xdotool mousemove --sync "$candidate_x" "$candidate_y"
+        sleep 0.4
+        import -silent -window "$window_id" "${screenshot%.png}-hover.png" 2>/dev/null || true
+        xdotool click --clearmodifiers 1
+        for _ in {1..8}; do
+          if [[ -f "$data_dir/terminal-workspace/workspace.json" ]] && node -e '
+          const fs = require("node:fs");
+          const workspace = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+          const id = process.argv[2];
+          const terminals = (Array.isArray(workspace.tabs) ? workspace.tabs : [])
+            .flatMap((tab) => Array.isArray(tab.terminals) ? tab.terminals : []);
+          const closed = Array.isArray(workspace.closedSessionIds) && workspace.closedSessionIds.includes(id);
+          process.exit(closed && !terminals.some((terminal) => terminal.id === id) ? 0 : 1);
+          ' "$data_dir/terminal-workspace/workspace.json" "$closed_terminal_id"; then
+            close_persisted=1
+            break 3
+          fi
+          sleep 0.25
+        done
+      done
+    done
+  else
+    printf 'Unknown installed close route: %s\n' "$close_route" >&2
+    exit 1
+  fi
+  if [[ "$close_route" != "sidebar-x" ]]; then
     for _ in {1..8}; do
       if [[ -f "$data_dir/terminal-workspace/workspace.json" ]] && node -e '
         const fs = require("node:fs");
@@ -584,7 +727,7 @@ if [[ "${TERMFLEET_RESTART_SMOKE_CLOSE_TERMINAL:-0}" == "1" ]]; then
       fi
       sleep 0.25
     done
-  done
+  fi
   [[ "$close_persisted" == "1" ]] || printf 'Visible sidebar close action did not persist yet; final gate will report the durable state.\n' >&2
   close_state_deadline=$((SECONDS + 12))
   while (( SECONDS < close_state_deadline )); do
@@ -605,14 +748,17 @@ if [[ "${TERMFLEET_RESTART_SMOKE_CLOSE_TERMINAL:-0}" == "1" ]]; then
     const fs = require("node:fs");
     const workspace = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
     const id = process.argv[2];
+    const closedCwd = process.argv[3];
     const terminals = (Array.isArray(workspace.tabs) ? workspace.tabs : [])
       .flatMap((tab) => Array.isArray(tab.terminals) ? tab.terminals : []);
     const closed = Array.isArray(workspace.closedSessionIds) && workspace.closedSessionIds.includes(id);
-    if (!closed || terminals.some((terminal) => terminal.id === id)) {
-      console.error(`Close gate did not persist removal for ${id}`);
+    const tombstone = (workspace.closedRestoreTargets || []).some((target) => target.cwd === closedCwd);
+    const closedTabStillPresent = (workspace.tabs || []).some((tab) => (tab.terminals || []).some((terminal) => terminal.id === id));
+    if (!closed || (!tombstone && closedTabStillPresent) || terminals.some((terminal) => terminal.id === id)) {
+      console.error(`Close gate did not persist removal for ${id}: closed=${closed} tombstone=${tombstone} liveTerminal=${terminals.some((terminal) => terminal.id === id)} closedTabStillPresent=${closedTabStillPresent}`);
       process.exit(1);
     }
-  ' "$data_dir/terminal-workspace/workspace.json" "$closed_terminal_id"
+  ' "$data_dir/terminal-workspace/workspace.json" "$closed_terminal_id" "$closed_sentinel_cwd"
   python3 - "$socket" "$closed_terminal_id" <<'PY'
 import json
 import socket
@@ -635,6 +781,10 @@ PY
   [[ -S "$socket" ]] || { printf 'Close gate removed the PTY daemon.\n' >&2; exit 1; }
 
   before_windows="$(xdotool search --onlyvisible --name '^TermFleet$' 2>/dev/null | sort -u || true)"
+  # The first app can leave a valid snapshot behind; a restart assertion must
+  # inspect only evidence written by the fresh app.
+  rm -f "$data_dir/terminal-workspace/agent-status/cockpit-snapshot.json" \
+    "$data_dir/terminal-workspace/agent-status/cockpit-header-trace.jsonl"
   XAUTHORITY="${XAUTHORITY:-}" XDG_RUNTIME_DIR="$runtime_dir" XDG_DATA_HOME="$data_dir" \
     XDG_STATE_HOME="$state_dir" AGENT_FLEET_CONFIG="$manifest" \
     AGENT_FLEET_STATE_DIR="$state_dir/agent-fleet" SMOKE_RESUME_MARKER="$resume_marker" \
@@ -675,6 +825,25 @@ PY
       process.exit(1);
     }
   ' "$data_dir/terminal-workspace/agent-status/cockpit-snapshot.json" "$closed_terminal_id"
+  if [[ "${TERMFLEET_RESTART_SMOKE_CLOSE_RESTORE_LOOP:-0}" == "1" || "$close_route" == "terminal-x" ]]; then
+    for _ in {1..20}; do
+      [[ -f "$data_dir/terminal-workspace/agent-status/cockpit-snapshot.json" ]] && break
+      sleep 0.5
+    done
+    node -e '
+      const fs = require("node:fs");
+      const workspace = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+      const snapshot = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+      const openId = process.argv[3];
+      const tabs = Array.isArray(workspace.tabs) ? workspace.tabs : [];
+      const visible = tabs.flatMap((tab) => Array.isArray(tab.terminals) ? tab.terminals : []).filter((terminal) => terminal.id === openId);
+      const cockpit = (Array.isArray(snapshot.terminals) ? snapshot.terminals : []).filter((entry) => entry.terminalId === openId || entry.paneId === openId);
+      if (visible.length !== 1 || cockpit.length !== 1) {
+        console.error(`Untouched sentinel was lost, hidden, or duplicated after restart: tabs=${visible.length} cockpit=${cockpit.length}`);
+        process.exit(1);
+      }
+    ' "$data_dir/terminal-workspace/workspace.json" "$data_dir/terminal-workspace/agent-status/cockpit-snapshot.json" "$open_terminal_id"
+  fi
   if [[ -n "$ARTIFACT_DIR" ]]; then
     mkdir -p "$ARTIFACT_DIR"
     install -m 0644 "${screenshot%.png}-after-close-restart.png" "$ARTIFACT_DIR/termfleet-installed-after-close-restart.png"

@@ -2406,6 +2406,7 @@ function SessionsPanel({
   const [projectQuery, setProjectQuery] = useState("");
   const [reconnectingAgents, setReconnectingAgents] = useState(false);
   const [reconnectAgentsStatus, setReconnectAgentsStatus] = useState("");
+  const autoRecoveryAttemptedRef = useRef(false);
   const visibleTabs =
     activeGroupFilter === null
       ? tabs
@@ -2475,6 +2476,18 @@ function SessionsPanel({
       setReconnectingAgents(false);
     }
   }
+
+  useEffect(() => {
+    if (
+      !hasTauriRuntime ||
+      reconnectPaneIds.length === 0 ||
+      autoRecoveryAttemptedRef.current
+    ) {
+      return;
+    }
+    autoRecoveryAttemptedRef.current = true;
+    void reconnectAgentPanes();
+  }, [hasTauriRuntime, reconnectPaneIds.length]);
 
   const hasProjects = groups.length > 0;
   const projectModel = useMemo(
@@ -4905,7 +4918,19 @@ function SessionsPanel({
                     setWorkspaceMode("split");
                   }
                 }}
-                onMouseDown={(event) => event.preventDefault()}
+                onMouseDown={(event) => {
+                  // Do not cancel the native click sequence for the row's
+                  // action buttons. WebKitGTK can suppress the button click
+                  // when an ancestor prevents its mousedown (the sidebar X
+                  // then appears to work but never closes the session).
+                  if (
+                    event.target instanceof HTMLElement &&
+                    event.target.closest("button, a, input, [role=button]")
+                  ) {
+                    return;
+                  }
+                  event.preventDefault();
+                }}
                 onContextMenu={(event) => onOpenTerminalMenu(event, tab)}
               >
                 <TerminalAvatar tab={tab} active={active} />
@@ -5016,7 +5041,7 @@ function SessionsPanel({
                     aria-label={`Close ${tab.title} terminal session`}
                     onClick={(event) => {
                       event.stopPropagation();
-                      closeTerminalSession(tab.id);
+                      closeTerminalSession(tab.id, "sidebar-x");
                     }}
                   >
                     <X size={13} />

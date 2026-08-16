@@ -126,6 +126,12 @@ function explicitMainTask(sidecar: AgentStatusSidecar): string {
   // request. Keep them available to diagnostics/Now resolution but never promote
   // them into the Task/Goal identity rows.
   if (sidecar.mainTaskSource === "plan-explanation") return "";
+  // Codex `goal-task` values are agent orchestration objectives, not operator goals.
+  // This read-side guard also cleans up legacy sidecars before a new hook event arrives.
+  // Other providers retain their existing goal-task/session-title contract.
+  if (sidecar.provider === "codex" && sidecar.mainTaskSource === "goal-task") {
+    return "";
+  }
   if (sidecar?.mainTaskSource) {
     const text = cleanText(sidecar.mainTask);
     // The row fits long text at a word boundary (see `considerLongAsk`), so a declared

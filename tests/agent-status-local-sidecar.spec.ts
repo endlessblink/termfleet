@@ -181,6 +181,39 @@ test("summaryFromSidecar does not promote plan explanations into the durable goa
   expect(browserSummary.now).toBe("Reviewing the landing page on mobile");
 });
 
+test("summaryFromSidecar hides a legacy Codex internal goal-task on cold start", () => {
+  const summary = summaryFromSidecar(
+    {
+      provider: "codex",
+      updatedAt: Date.now(),
+      mainTask: "Deeply investigate the reported TermFleet failure",
+      mainTaskSource: "goal-task",
+      userTask: "Continue working toward the active thread goal",
+      now: "Ready for next task",
+    },
+    fallbackFor("/repo/termfleet"),
+  );
+
+  expect(summary.mainTask).toBeUndefined();
+  expect(summary.userTask).toBeUndefined();
+  expect(summary.task).not.toContain("Deeply investigate the reported TermFleet failure");
+});
+
+test("summaryFromSidecar keeps non-Codex goal-task identity unchanged", () => {
+  const summary = summaryFromSidecar(
+    {
+      provider: "opencode",
+      updatedAt: Date.now(),
+      mainTask: "Improve the checkout page",
+      mainTaskSource: "goal-task",
+      now: "Reviewing the checkout flow",
+    },
+    fallbackFor("/repo/product"),
+  );
+
+  expect(summary.mainTask).toBe("Improve the checkout page");
+});
+
 test("summaryFromSidecar rejects an unproven raw main task", () => {
   const summary = summaryFromSidecar(
     {

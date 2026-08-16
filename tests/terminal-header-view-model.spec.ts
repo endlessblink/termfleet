@@ -8,6 +8,7 @@ import {
   terminalPurposeFromVisiblePrompt,
 } from "../src/lib/terminalHeaderDisplay";
 import {
+  aboutWhatFallback,
   buildShellTerminalHeaderViewModel,
   productGoalFromRegressionStep,
 } from "../src/lib/terminalHeaderViewModel";
@@ -20,6 +21,22 @@ import {
 
 const flowStatePath =
   "/media/endlessblink/data/my-projects/ai-development/productivity/flow-state";
+
+test("idle Now uses the durable main goal instead of generic waiting text", () => {
+  expect(
+    aboutWhatFallback(
+      "Keep the cockpit focused on the real context",
+      "Keep the cockpit focused on the real goal",
+    ),
+  ).toBe("Keep the cockpit focused on the real context");
+  expect(aboutWhatFallback(undefined, "Keep the cockpit focused on the real goal")).toBe(
+    "Keep the cockpit focused on the real goal",
+  );
+  expect(aboutWhatFallback("No task declared", "No task declared")).toBe(
+    "Ready for next task",
+  );
+  expect(aboutWhatFallback()).toBe("Ready for next task");
+});
 
 test("a regression step keeps its named product object as a restrained outcome", () => {
   expect(productGoalFromRegressionStep("Adding a regression for folder detection")).toBe(

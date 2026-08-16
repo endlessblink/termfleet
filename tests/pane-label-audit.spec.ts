@@ -209,7 +209,9 @@ const usableAsk = (value: string) => {
   const asked = opensAsRequest(value.trim());
   // Same two gates the resolver applies: it must read as a request, and it must survive
   // the operator-ask check (a request that is mostly a file reference is not a goal).
-  return Boolean(asked) && qualityCheckUserAskLabel(asked, { maxLength: 150 }).ok;
+  return Boolean(asked) &&
+    !/(?:https?:\/\/|(?:^|\s)\/(?:tmp|home|media|usr|etc|var)\/)/i.test(asked) &&
+    qualityCheckUserAskLabel(asked, { maxLength: 150 }).ok;
 };
 
 test("every pane on this machine renders a readable Task row and Now Active line", () => {

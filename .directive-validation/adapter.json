@@ -1,0 +1,70 @@
+{
+  "allowedPaths": [
+    "MASTER_PLAN.md",
+    "docs/",
+    "scripts/",
+    "src/",
+    "tests/",
+    ".directive-validation/"
+  ],
+  "checks": [
+    {
+      "name": "build",
+      "command": "npm",
+      "args": ["run", "build"]
+    },
+    {
+      "name": "close_route_regressions",
+      "command": "npx",
+      "args": ["playwright", "test", "tests/terminal-close-route-contract.spec.ts", "tests/terminal-auto-recovery.spec.ts", "--reporter=line"]
+    },
+    {
+      "name": "rust_unit_tests",
+      "command": "cargo",
+      "args": ["test", "--manifest-path", "src-tauri/Cargo.toml", "--lib"]
+    },
+    {
+      "name": "restart_restore",
+      "command": "python3",
+      "args": ["scripts/verify-restart-restore.py"]
+    },
+    {
+      "name": "installed_release",
+      "command": "scripts/verify-installed-release.sh",
+      "args": []
+    },
+    {
+      "name": "installed_restart_close_routes",
+      "command": "scripts/verify-installed-restart-smoke.sh",
+      "args": []
+    }
+  ],
+  "requiredChecks": [
+    "build",
+    "close_route_regressions",
+    "rust_unit_tests",
+    "restart_restore",
+    "installed_release",
+    "installed_restart_close_routes"
+  ],
+  "visualPaths": ["src/components/", "src/styles/", "scripts/verify-installed-"],
+  "visualRequiredChecks": ["installed_release", "installed_restart_close_routes"],
+  "failurePolicy": {
+    "escalateAfter": 2,
+    "practiceChecks": ["restart_restore", "installed_restart_close_routes"]
+  },
+  "package": {
+    "command": "npm run release:install",
+    "identity": "dock-launched installed TermFleet release"
+  },
+  "runtime": {
+    "command": "npm run verify:installed-release",
+    "identity": "TermFleet desktop release and user-local daemon"
+  },
+  "requiresUserApproval": true,
+  "contractPath": ".directive-validation/contract.json",
+  "integration": {
+    "required": true,
+    "protocol": "directive-agent-v1"
+  }
+}

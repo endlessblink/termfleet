@@ -64,6 +64,25 @@ const canonicalListenerPids = new Set(
 );
 const daemonProcesses = processRows.filter((row) => canonicalListenerPids.has(row.pid));
 
+// Incident handoff: future agents should not need the operator to remember a
+// transient glitch. The watchdog and launcher share this append-only stream;
+// expose its location and latest event in the normal read-only doctor output.
+const incidentStateDir = path.join(os.homedir(), ".local", "state", "termfleet");
+const incidentJsonl = path.join(incidentStateDir, "incidents.jsonl");
+const incidentSummary = path.join(incidentStateDir, "incident-summary.md");
+if (existsSync(incidentJsonl)) {
+  const incidentLines = readFileSync(incidentJsonl, "utf8").trim().split("\n").filter(Boolean);
+  let latest = null;
+  try { latest = JSON.parse(incidentLines.at(-1)); } catch { /* retain count and paths */ }
+  report(
+    "ok",
+    "Incident history",
+    `${incidentLines.length} automatic event(s); latest ${latest?.event ?? "unreadable"} ${latest?.reason ?? ""}; readable handoff: ${incidentSummary}`,
+  );
+} else {
+  report("info", "Incident history", `automatic watchdog/desktop records will appear at ${incidentSummary}`);
+}
+
 if (daemonProcesses.length === 1 && socketListeners.length === 1) {
   report("ok", "Daemon ownership", "one daemon process and one canonical socket listener");
 } else if (daemonProcesses.length === 0 && socketListeners.length === 0) {

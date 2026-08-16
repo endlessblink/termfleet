@@ -8566,3 +8566,32 @@ The release installer now also refreshes the user watchdog after promotion,
 preventing a running shell watchdog from continuing to execute a deleted older
 support file. The current service was manually refreshed during live diagnosis;
 it now has one process and the current installed script.
+
+## 2026-08-15 — Make restored Workstream Quest terminals count visibly
+
+An accepted quest could remain at `0:00` when a restored pane had no low-level
+runtime status even though its status summary or durable activity proved that the
+workstream was working. The timer and the terminal edge animation now use the
+same fallback-aware live predicate, and the panel shows the direct cause as
+`N/3 terminals counting` plus `The timer runs only at 3/3`.
+
+**Evidence:** `npx playwright test tests/gamification.spec.ts tests/gamification-panel.spec.ts tests/gamification-quest-beam.spec.ts --reporter=line` passed 25/25; `npm run build` and `git diff --check` passed; `npm run release:install` promoted release `4f92d9e5e5f1`; `npm run verify:installed-release` passed; and `TERMFLEET_KEEP_VISUAL_ARTIFACTS=1 npm run verify:gamification-live` passed the real three-terminal timer gate and animated-beam comparison. Fresh installed artifacts visibly show `3/3 terminals counting` and progress advancing to `0:06 / 10:00`.
+
+User approval remains required before marking this goal complete.
+
+## 2026-08-15 — Make explicit terminal close ownership survive installed restart
+
+The installed launcher was resolving restore-filter helpers from the dock symlink
+directory, so the helper was silently skipped and explicitly closed workspaces
+were restored. The launcher now resolves its real installed directory; explicit
+`/exit`, sidebar-X, and split-pane toolbar-X routes all use the same durable close
+authority, while untouched control terminals are checked by the installed restart
+loop for the sidebar-X and `/exit` routes.
+
+**Evidence:** focused close/recovery tests passed 6/6; frontend build passed;
+167 Rust unit tests, cargo check, installed-release, installed-pane-close, and the
+four-layer restart/reattach verifier passed. Fresh installed gates passed sidebar-X
+with an untouched control terminal, `/exit` with an untouched control terminal, and
+split-pane toolbar-X with a restart; the gate also captured the actual split-pane
+toolbar and rejected stale first-run cockpit snapshots. User approval remains the
+final acceptance gate.

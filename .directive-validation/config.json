@@ -1,0 +1,18 @@
+{
+  "schema": 1,
+  "status": "READY",
+  "harnessRoot": "/media/endlessblink/data/my-projects/ai-development/devops/directive-validation-harness",
+  "projectRoot": "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
+  "contractPath": "/media/endlessblink/data/my-projects/ai-development/devops/termfleet/.directive-validation/contract.json",
+  "adapterPath": "/media/endlessblink/data/my-projects/ai-development/devops/termfleet/.directive-validation/adapter.json",
+  "enforcement": "This project requires the directive-agent-v1 integration; direct runner calls are rejected for installed adapters.",
+  "integration": {
+    "required": true,
+    "protocol": "directive-agent-v1",
+    "launcher": "/media/endlessblink/data/my-projects/ai-development/devops/directive-validation-harness/scripts/directive-agent.mjs",
+    "continuationGate": "continue",
+    "enforcement": "The orchestrator must call continue before granting a normal next turn or accepting completion; BLOCKED permits correction only."
+  },
+  "readyAt": "2026-08-16T07:25:15.505Z",
+  "activeRunDir": "/tmp/termfleet-directive-validation-auto"
+}

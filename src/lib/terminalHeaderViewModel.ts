@@ -728,6 +728,28 @@ function qualifyAmbiguousLabel(value: string, workspace: string) {
   return `${workspaceLabel} — ${value}`;
 }
 
+/** The about-what answer used when a pane has no distinct momentary activity. */
+export function aboutWhatFallback(
+  context?: string | null,
+  goal?: string | null,
+): string {
+  const value = [context, goal]
+    .map((candidate) => candidate?.trim())
+    .find(
+      (candidate) =>
+        candidate &&
+        !/^(?:No task declared|No active work|Goal not captured|Task not captured|Context not captured)$/i.test(
+          candidate,
+        ),
+    );
+  if (
+    value
+  ) {
+    return value;
+  }
+  return "Ready for next task";
+}
+
 export function buildShellTerminalHeaderViewModel(input: {
   project?: Pick<Group, "id" | "name" | "projectRoot"> | null;
   // The pane's own name (tab or map-node title). Used ONLY when no folder,
@@ -782,6 +804,14 @@ export function buildShellTerminalHeaderViewModel(input: {
       input.mainUserAsk.runId === input.activeRunId ||
       input.mainUserAsk.source === "status-sidecar"),
   );
+  const mainUserAskIsUsable = Boolean(
+    mainUserAskApplies &&
+      input.mainUserAsk?.text &&
+      qualityCheckUserAskLabel(
+        compactHeaderGoal(input.mainUserAsk.text),
+        { maxLength: 150 },
+      ).ok,
+  );
   // TC-060 R3 (never stale): a sidecar "task" assembled from todos that are ALL
   // completed describes FINISHED work, not the current turn. When no declared step
   // is still in progress and the live ladder carries a fresher current-work line
@@ -811,7 +841,7 @@ export function buildShellTerminalHeaderViewModel(input: {
   // the resolver.
   const preferLadder =
     input.taskLine != null &&
-    !mainUserAskApplies &&
+    !mainUserAskIsUsable &&
     ((declaredIdentity.source === "sidecar-todo" &&
       !activePlanItem &&
       ladderIsLiveWork) ||
@@ -853,7 +883,21 @@ export function buildShellTerminalHeaderViewModel(input: {
   const identityTaskIsPlaceholder = /^(?:No user task captured yet|No task declared|Task not captured|Goal not captured|No active work|Activity not captured)$/i.test(
     identityTaskDescriptionText ?? "",
   );
-  const identityTaskQuality = identityTaskDescriptionText && !identityTaskIsPlaceholder
+  const identityTaskContainsTerminalChrome = /(?:https?:\/\/|(?:^|\s)\/(?:tmp|home|media|usr|etc|var)\/)/i.test(
+    taskIdentity.text ?? "",
+  );
+  const durableOpeningTaskLine = Boolean(
+    input.taskLine &&
+      /^(?:opening-request|task-line)$/.test(input.taskLine.source) &&
+      (identityTaskDescriptionText?.length ?? 0) >= 20 &&
+      !/^(?:go|done|sure|yes|ok|continue|proceed)\b/i.test(
+        identityTaskDescriptionText ?? "",
+      ),
+  );
+  const identityTaskQuality = durableOpeningTaskLine
+    ? { ok: true as const }
+    : identityTaskDescriptionText && !identityTaskIsPlaceholder
+    && !identityTaskContainsTerminalChrome
     ? identityIsUserAsk
       ? qualityCheckUserAskLabel(identityTaskDescriptionText)
       : qualityCheckAuthoritativeTaskLabel(identityTaskDescriptionText)
@@ -1348,7 +1392,7 @@ export function buildShellTerminalHeaderViewModel(input: {
     title: {
       text:
         noActiveWork && recoveredShellWithoutIdentity
-          ? "Waiting for a task or command"
+          ? aboutWhatFallback(displayContext, effectiveTaskDescription)
           : noActiveWork
             ? "Ready for next task"
             : displayTitle,
@@ -1375,7 +1419,7 @@ export function buildShellTerminalHeaderViewModel(input: {
     now: {
       text:
         noActiveWork && recoveredShellWithoutIdentity
-          ? "Waiting for a task or command"
+          ? aboutWhatFallback(displayContext, effectiveTaskDescription)
           : noActiveWork
             ? "Ready for next task"
             : readableNow,

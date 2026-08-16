@@ -156,9 +156,19 @@ function looksLikeConversationalCorrection(value?: string | null) {
     /(?:for the (?:millionth|hundredth) time|low quality|super unclear|what the (?:hack|hell)|horrible|unreadable|can(?:not|'t) do anything|does(?: not|n't) tell me|hard fail|not enough context|not understanding|fully failing|didn['’]?t fix|didn['’]?t work|what you said .* false)/i.test(
       text,
     ) ||
+    /^(?:it|this|that)\s+(?:has(?: not|n't)|is(?: not|n't)|does(?: not|n't))\s+(?:been\s+)?(?:met|fixed|addressed|resolved|working|correct|right)\b/i.test(
+      text,
+    ) ||
+    /^(?:still\s+)?not\s+(?:working|fixed|met|correct|right|resolved)\b/i.test(
+      text,
+    ) ||
     /^task\s+descrip\w*\s+is\s+(?:still\s+)?(?:super\s+)?broken\b/i.test(text) ||
     /[!?]{3,}/.test(text)
   );
+}
+
+function isUsableUserGoal(value?: string | null) {
+  return isMeaningfulUserGoal(value) && !looksLikeConversationalCorrection(value);
 }
 
 // Checklist mechanics belong in Now. They are useful progress signals, but they do not
@@ -287,8 +297,7 @@ export function resolveTaskIdentity(input: {
   if (
     ask &&
     input.mainUserAsk?.source === "manual" &&
-    isMeaningfulUserGoal(ask) &&
-    !looksLikeConversationalCorrection(ask)
+    isUsableUserGoal(ask)
   )
     return { text: ask, rawText: ask, source: "manual" };
   const taskToolTask = activeTodoTask(input.taskLineup, input.activeRunId);
@@ -324,8 +333,7 @@ export function resolveTaskIdentity(input: {
   if (
     ask &&
     input.mainUserAsk?.source === "terminal-prompt" &&
-    isMeaningfulUserGoal(ask) &&
-    !looksLikeConversationalCorrection(ask)
+    isUsableUserGoal(ask)
   ) {
     return {
       text: normalizedOperatorAsk(ask),
@@ -352,7 +360,7 @@ export function resolveTaskIdentity(input: {
   if (
     ask &&
     input.mainUserAsk?.source === "status-sidecar" &&
-    isMeaningfulUserGoal(ask)
+    isUsableUserGoal(ask)
   ) {
     return {
       text: normalizedOperatorAsk(ask),
@@ -381,7 +389,7 @@ export function resolveTaskIdentity(input: {
   if (
     ask &&
     input.mainUserAsk?.source === "status-sidecar" &&
-    isMeaningfulUserGoal(ask)
+    isUsableUserGoal(ask)
   ) {
     return {
       text: normalizedOperatorAsk(ask),
@@ -406,7 +414,7 @@ export function resolveTaskIdentity(input: {
   }
   if (
     sidecarUserTask &&
-    isMeaningfulUserGoal(sidecarUserTask) &&
+    isUsableUserGoal(sidecarUserTask) &&
     !isGenericDeclaredTask(sidecarUserTask)
   ) {
     return {
@@ -428,7 +436,7 @@ export function resolveTaskIdentity(input: {
     };
   }
 
-  if (ask && input.mainUserAsk?.source === "task-tool" && isMeaningfulUserGoal(ask))
+  if (ask && input.mainUserAsk?.source === "task-tool" && isUsableUserGoal(ask))
     return {
       text: normalizedOperatorAsk(ask),
       rawText: ask,
@@ -472,7 +480,7 @@ export function resolveTaskIdentity(input: {
   if (
     ask &&
     input.mainUserAsk?.source === "status-sidecar" &&
-    isMeaningfulUserGoal(ask)
+    isUsableUserGoal(ask)
   ) {
     return {
       text: normalizedOperatorAsk(ask),
@@ -481,7 +489,7 @@ export function resolveTaskIdentity(input: {
     };
   }
 
-  if (ask && input.mainUserAsk?.source === "workstream" && isMeaningfulUserGoal(ask))
+  if (ask && input.mainUserAsk?.source === "workstream" && isUsableUserGoal(ask))
     return { text: ask, rawText: ask, source: "workstream" };
   const workstreamTitle = clean(input.workstreamTitle);
   if (workstreamTitle)

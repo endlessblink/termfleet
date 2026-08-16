@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { collectGamificationFacts, EMPTY_GAMIFICATION_RECORD, findMissionTarget, initializeGamificationRecord, loadGamificationRecord, mergeGamificationRecord, rewardForTransition, summarizeGamification } from "../src/lib/gamification";
+import { collectGamificationFacts, EMPTY_GAMIFICATION_RECORD, findMissionTarget, initializeGamificationRecord, loadGamificationRecord, mergeGamificationRecord, rewardForTransition, summarizeGamification, syncGamificationRecord } from "../src/lib/gamification";
 import type { Tab } from "../src/lib/types";
 
 function tab(terminals: Tab["terminals"]): Tab {
@@ -11,10 +11,28 @@ test.describe("meaningful TermFleet gamification", () => {
   test("extracts real events and ignores idle terminals", () => {
     const facts = collectGamificationFacts([tab([
       terminal({ taskLineup: [{ id: "goal-1", content: "Ship it", status: "completed", source: "operator", updatedAt: 1 }, { id: "work-1", content: "Build release", status: "in_progress", source: "operator", updatedAt: 1 }] }),
-      terminal({ id: "pty-2", paneId: "pane-2" }),
+      terminal({ id: "pty-2", paneId: "pane-2", status: "idle" }),
     ])]);
     expect(facts.events.map(({ type, points }) => ({ type, points }))).toEqual([{ type: "goal-completed", points: 25 }]);
     expect(facts.activeWorkstreams).toBe(1);
+  });
+
+  test("counts three live terminals even without task metadata", () => {
+    const facts = collectGamificationFacts([tab([
+      terminal({ id: "pty-1", paneId: "pane-1" }),
+      terminal({ id: "pty-2", paneId: "pane-2" }),
+      terminal({ id: "pty-3", paneId: "pane-3", status: "reconnected" }),
+    ])]);
+    expect(facts.activeWorkstreams).toBe(3);
+  });
+
+  test("counts restored workstreams whose live proof is in the status summary", () => {
+    const facts = collectGamificationFacts([tab([
+      terminal({ status: undefined, statusSummary: { task: "Build", path: "/tmp", now: "Working", status: "working" } }),
+      terminal({ id: "pty-2", paneId: "pane-2", status: undefined, durableActivity: { title: "Watch tests", status: "running", source: "command", updatedAt: 1 } }),
+      terminal({ id: "pty-3", paneId: "pane-3", status: "reconnected" }),
+    ])]);
+    expect(facts.activeWorkstreams).toBe(3);
   });
 
   test("records successful activities and stable recovery receipts once", () => {
@@ -120,6 +138,19 @@ test.describe("meaningful TermFleet gamification", () => {
     expect(interrupted.parallelWorkstreamSeconds).toBe(0);
     expect(interrupted.parallelBestSeconds).toBe(600);
     expect(summarizeGamification(interrupted).achievements.find((achievement) => achievement.id === "parallel-warmup")?.unlocked).toBe(true);
+  });
+
+  test("refreshes a live quest clock even when terminal state is unchanged", () => {
+    const tabs = [tab([
+      terminal({ id: "pty-1", paneId: "pane-1" }),
+      terminal({ id: "pty-2", paneId: "pane-2" }),
+      terminal({ id: "pty-3", paneId: "pane-3" }),
+    ])];
+    const accepted = { ...EMPTY_GAMIFICATION_RECORD, activeQuestId: "parallel-work", questAcceptedAt: 1_000, initializedAt: 1_000 };
+    const started = syncGamificationRecord(accepted, tabs, 1_000);
+    const afterTenSeconds = syncGamificationRecord(started, tabs, 11_000);
+    expect(afterTenSeconds.parallelWorkstreamSeconds).toBe(10);
+    expect(summarizeGamification(afterTenSeconds).missions.find((mission) => mission.id === "parallel-work")).toMatchObject({ progress: 10 });
   });
 
   test("promotes the sustained-work challenge from 10 minutes to 30 minutes to 3 hours", () => {

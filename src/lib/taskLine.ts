@@ -422,6 +422,42 @@ export function resolvePaneTaskLine(input: TaskLineInput): PaneTaskLine {
     return readsAsAsk(fitted) ? fitted : null;
   };
 
+  // A hook-marked opening request is already provenance-bound to the operator's
+  // conversation. Keep that request's wording even when the generic ask gate rejects
+  // informal first-person phrasing; structural junk, paths, and pasted harness text
+  // still fail closed.
+  const considerAuthoritativeOpening = (
+    candidate: string | null | undefined,
+  ): string | null => {
+    const value = candidate?.trim();
+    if (!value || SYSTEM_BLOCK.test(value) || UNREADABLE.test(value)) return null;
+    const fitted = truncateAtWordBoundary(value, TASK_LINE_MAX);
+    const quality = qualityCheckAuthoritativeTaskLabel(fitted, {
+      maxLength: TASK_LINE_MAX,
+      allowMetaProcess: true,
+    });
+    if (quality.ok) return fitted;
+    // Opening requests are the operator's provenance-bearing words. The generic
+    // quality gate intentionally rejects prompt-shaped complaints, but that semantic
+    // rejection must not erase an otherwise readable opening request from the card.
+    if (
+      !["prompt-fragment", "vague"].includes(quality.reason ?? "") ||
+      fitted.length < 20 ||
+      !/\s/.test(fitted) ||
+      /^(?:go|done|sure|yes|ok|continue|proceed)\b/i.test(fitted)
+    ) {
+      return null;
+    }
+    if (
+      /(?:hard fail|low quality|not enough context|didn['’]?t fix|didn['’]?t work|nothing to show for it)/i.test(
+        fitted,
+      )
+    ) {
+      return null;
+    }
+    return fitted;
+  };
+
   // MAIN-PLAN sources lead the line: the whole point is "what is this part of".
   // An explicit overarching goal, then the session's own plan title, then the
   // operator's main request — all rank ABOVE the momentary in-progress step.
@@ -475,7 +511,7 @@ export function resolvePaneTaskLine(input: TaskLineInput): PaneTaskLine {
     // they may summarize a goal only when the original request is unavailable.
     const explicitOpening =
       input.mainGoalSource === "opening-request"
-        ? considerAsk(stripComposerChrome(input.mainGoal))
+        ? considerAuthoritativeOpening(stripComposerChrome(input.mainGoal))
         : null;
     const opening =
       explicitOpening ??

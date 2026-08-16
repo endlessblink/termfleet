@@ -412,6 +412,121 @@ test("keeps real task-list activity ahead of fallback status wording", () => {
   expect(header.sources.activity).toBe("status-summary");
 });
 
+test("keeps a stored opening request visible through the full header pipeline", () => {
+  const opening = "can we enhanc lean-ctx? I am using many codex and claude sessions at any given moment";
+  const header = buildTerminalHeaderState({
+    paneId: "pane-opening-request",
+    terminalId: "pty-opening-request",
+    project: {
+      id: "g-cc-linux-enhancments",
+      name: "cc-linux-enhancments",
+      projectRoot: "/media/endlessblink/data/my-projects/ai-development/cc-linux-enhancments",
+    },
+    liveCwd: "/media/endlessblink/data/my-projects/ai-development/cc-linux-enhancments",
+    terminalStatus: "running",
+    mainUserAsk: {
+      text: "/done",
+      source: "status-sidecar",
+      updatedAt: 1,
+    },
+    statusSummary: {
+      task: "Ready",
+      path: "/media/endlessblink/data/my-projects/ai-development/cc-linux-enhancments",
+      now: "Awaiting command",
+      status: "idle",
+      provider: "codex",
+      confidence: "high",
+      tasksFromTodoWrite: false,
+    },
+    taskLine: {
+      text: opening,
+      source: "opening-request",
+      capturedAt: 1,
+      expiresAt: null,
+    },
+  });
+
+  expect(header.goalLabel).toBe(opening);
+  expect(header.hasCapturedGoal).toBe(true);
+});
+
+test("recovers an opening request from persisted status after a run rollover", () => {
+  const opening = "Fix the cockpit labels and keep the real request visible";
+  const header = buildTerminalHeaderState({
+    paneId: "pane-status-opening",
+    terminalId: "pty-status-opening",
+    runId: "run-after-restart",
+    project: { id: "g-termfleet", name: "termfleet", projectRoot: termfleetPath },
+    liveCwd: termfleetPath,
+    terminalStatus: "running",
+    statusSummary: {
+      task: "Ready",
+      userTask: opening,
+      mainTask: opening,
+      mainTaskSource: "opening-request",
+      path: termfleetPath,
+      now: "Awaiting command",
+      status: "idle",
+      provider: "codex",
+      confidence: "high",
+      tasksFromTodoWrite: false,
+    },
+  });
+
+  expect(header.goalLabel).toBe(opening);
+  expect(header.hasCapturedGoal).toBe(true);
+  expect(header.sources.goal).toBe("user-prompt");
+});
+
+test("does not promote a screenshot path instruction into the Task row", () => {
+  const header = buildTerminalHeaderState({
+    paneId: "pane-screenshot-instruction",
+    terminalId: "pty-screenshot-instruction",
+    project: { id: "g", name: "rough-cut-mvp", projectRoot: "/repo/rough-cut-mvp" },
+    liveCwd: "/repo/rough-cut-mvp",
+    terminalStatus: "running",
+    mainUserAsk: {
+      text: "Inspect the local screenshot /tmp/rough-cut-proof-current-goal.png only. Return text only.",
+      source: "status-sidecar",
+      updatedAt: 1,
+    },
+    statusSummary: {
+      task: "Ready",
+      path: "/repo/rough-cut-mvp",
+      now: "Awaiting command",
+      status: "idle",
+      provider: "codex",
+      confidence: "high",
+      tasksFromTodoWrite: false,
+    },
+  });
+
+  expect(header.hasCapturedGoal).toBe(false);
+  expect(header.goalLabel).not.toContain("/tmp/");
+});
+
+test("a durable opening request carried by task-line also supplies Goal", () => {
+  const opening = "I dont understand why the assistant suddenly started answering in one word";
+  const header = buildTerminalHeaderState({
+    paneId: "pane-task-line-goal",
+    terminalId: "pty-task-line-goal",
+    project: { id: "g", name: "hermes", projectRoot: "/repo/hermes" },
+    liveCwd: "/repo/hermes",
+    terminalStatus: "running",
+    taskLine: {
+      text: opening,
+      source: "opening-request",
+      capturedAt: 1,
+      expiresAt: null,
+    },
+  });
+
+  expect(header.goalLabel).toBe(opening);
+  expect(header.contextLabel).toBe(opening);
+  expect(header.sources.goal).toBe("task-line");
+  expect(header.hasCapturedGoal).toBe(true);
+});
+
 test("captured task with generic working activity keeps an honest status title", () => {
   const header = buildTerminalHeaderState({
     paneId: "pane-working",

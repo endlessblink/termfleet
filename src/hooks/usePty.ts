@@ -19,6 +19,7 @@ interface UsePtyOptions {
   onReady?: (id: string, details: { reused: boolean }) => void;
   onStatus?: (status: TerminalRuntimeStatus, details?: { id?: string; error?: string }) => void;
   onOutput?: (data: string) => void;
+  onInputData?: (data: string) => void;
   onExit?: (details: { id: string; code: number; success: boolean }) => void;
 }
 
@@ -363,7 +364,7 @@ export function writeBrowserPtys(ids: string[], data: string) {
   syncBrowserPtyDebugState();
 }
 
-export function usePty({ terminal, cwd, command, attachToPtyId, runtimeSessionId, onReady, onStatus, onOutput, onExit }: UsePtyOptions) {
+export function usePty({ terminal, cwd, command, attachToPtyId, runtimeSessionId, onReady, onStatus, onOutput, onInputData, onExit }: UsePtyOptions) {
   const ptyIdRef = useRef<string | null>(null);
   const ownsPtyRef = useRef(false);
   const transportRef = useRef<PtyTransport | null>(null);
@@ -505,6 +506,7 @@ export function usePty({ terminal, cwd, command, attachToPtyId, runtimeSessionId
           syncBrowserPtyDebugState();
 
           dataDisposableRef.current = terminal!.onData((data: string) => {
+            onInputData?.(data);
             const seqId = nextTerminalInputSequence();
             traceTerminalLatency("frontend.xterm.onData", {
               id: ptyIdRef.current,
@@ -588,6 +590,7 @@ export function usePty({ terminal, cwd, command, attachToPtyId, runtimeSessionId
             };
 
             dataDisposableRef.current = terminal!.onData((data: string) => {
+              onInputData?.(data);
               const seqId = nextTerminalInputSequence();
               if (ptyIdRef.current) {
                 queueDaemonInput(data, seqId);
@@ -713,6 +716,7 @@ export function usePty({ terminal, cwd, command, attachToPtyId, runtimeSessionId
         unlistenRef.current = unlisten;
 
         dataDisposableRef.current = terminal!.onData((data: string) => {
+          onInputData?.(data);
           const seqId = nextTerminalInputSequence();
           traceTerminalLatency("frontend.xterm.onData", {
             id: ptyIdRef.current,
