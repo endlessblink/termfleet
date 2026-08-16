@@ -35,10 +35,36 @@
     },
     {
       "name": "installed_restart_close_routes",
-      "command": "scripts/verify-installed-restart-smoke.sh",
+      "command": "scripts/verify-installed-close-route-matrix.sh",
       "args": []
     }
   ],
+  "acceptance": {
+    "runtimeIdentity": "dock-launched installed TermFleet release and its user-local daemon",
+    "runtimeEvidence": {"check": "installed_release", "independent": true, "proves": "the verifier identifies and exercises the exact dock-launched installed release and daemon"},
+    "userVisibleOutcomes": [
+      "Every terminal explicitly closed through sidebar X, pane X, or /exit stays absent after restart",
+      "Every terminal left open remains present and usable after restart",
+      "The proof comes from the installed dock-launched runtime rather than source-only tests"
+    ],
+    "evidenceChecks": [
+      {"check": "build", "proves": "the release can be built from the current project state"},
+      {"check": "close_route_regressions", "proves": "all three user close routes preserve the selected-terminal-only contract"},
+      {"check": "rust_unit_tests", "proves": "daemon and persistence code passes its focused unit coverage"},
+      {"check": "restart_restore", "proves": "durable restore preserves untouched terminals and excludes explicit closes"},
+      {"check": "installed_release", "proves": "the installed dock-launched release and its daemon are the runtime under test"},
+      {"check": "installed_restart_close_routes", "proves": "repeated installed close and restart cycles cover every reported route and untouched-terminal survival"}
+    ],
+    "requirementEvidence": [
+      {"requirement": "A sidebar X close removes only the selected terminal and records its durable close identity", "check": "close_route_regressions", "assertion": "sidebar-close-removes-selected-terminal", "independent": true, "proves": "the sidebar close route regression exercises selected-terminal identity and persistence"},
+      {"requirement": "A pane X close removes only the selected terminal and records its durable close identity", "check": "close_route_regressions", "assertion": "pane-close-removes-selected-terminal", "independent": true, "proves": "the pane close route regression exercises selected-terminal identity and persistence"},
+      {"requirement": "Typing /exit removes only the selected terminal and records its durable close identity", "check": "close_route_regressions", "assertion": "slash-exit-removes-selected-terminal", "independent": true, "proves": "the slash-exit route regression exercises selected-terminal identity and persistence"},
+      {"requirement": "Restart never restores an explicitly closed terminal", "check": "restart_restore", "assertion": "closed-terminal-stays-absent", "independent": true, "proves": "durable restore verification rejects explicitly closed terminal identities"},
+      {"requirement": "Restart restores every terminal the user did not close, without killing or hiding it", "check": "restart_restore", "assertion": "untouched-terminal-survives", "independent": true, "proves": "durable restore verification preserves untouched terminal identities"},
+      {"requirement": "Installed dock-launched runtime evidence proves the behavior across repeated restart cycles", "check": "installed_restart_close_routes", "assertion": "installed-runtime-repeated-restart-proof", "independent": true, "proves": "the installed route matrix runs repeated restart cycles against the user-facing release"},
+      {"requirement": "The user remains the only authority that can approve the final visible result", "evidence": "user-approval", "assertion": "explicit-user-approval-required", "independent": true, "proves": "the adapter requires explicit user approval before final completion", "approvalRequired": true}
+    ]
+  },
   "requiredChecks": [
     "build",
     "close_route_regressions",
@@ -61,6 +87,7 @@
     "command": "npm run verify:installed-release",
     "identity": "TermFleet desktop release and user-local daemon"
   },
+  "taskBinding": {"required": true, "targets": ["terminal", "close", "restart"]},
   "requiresUserApproval": true,
   "contractPath": ".directive-validation/contract.json",
   "integration": {
