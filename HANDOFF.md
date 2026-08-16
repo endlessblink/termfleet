@@ -1,22 +1,67 @@
-# Dropoff — 2026-08-16 12:51 Sunday
+# TermFleet continuity handoff — 2026-08-16
+
+Paste everything inside the block into a fresh agent after restarting the chat.
 
 ```text
-You are continuing work in TermFleet on branch main.
+You are continuing a long-running reliability investigation in the TermFleet repository on branch main. Do not start over, do not reset the worktree, and do not touch or recycle the user's canonical TermFleet app or daemon: the user has approximately 47 live terminals in that workspace.
 
-## Current task & next step
-Prove restart persistence and explicit-close suppression without touching the user's live terminals — next: create a genuinely isolated installed-runtime validation workspace, run the close/restart matrix there, and obtain the trusted verification artifact.
+USER-APPROVED GOAL
+Make terminal persistence reliable from every direction:
+- Terminals the user leaves open must survive app restart, daemon restart, and cold restore.
+- They must return to their original groups/panes and remain usable.
+- A live terminal must never silently disappear.
+- A terminal explicitly killed by the user must stay dead across every later restart.
+- Old terminals must never be revived merely because they existed in an old snapshot.
+- Sidebar X, pane X, and /exit are all explicit user-close routes.
+- Only an explicit user restore action may clear a close tombstone.
+- The installed dock-launched runtime, not a source build or dev launcher, is the acceptance surface.
+- The user alone approves the goal as complete.
 
-## Files touched / in flight
-Uncommitted changes cover terminal close/restart ownership, complete terminal counting, installed restart verification, pressure safeguards, doctor/CLI ownership reporting, the directive-validation adapter/contract/config, and the local stop guard. Also in flight: scripts/verify-installed-close-route-matrix.sh, scripts/directive-codex-stop-guard.mjs, tests/test_directive_validation_guard.py. Preserve unrelated dirty work; do not reset or broadly discard files. Remove generated tests/__pycache__ and do not commit validation run artifacts unless the harness requires them.
+CURRENT RESULT
+The latest independent validation is no longer missing its artifact: it finished and wrote trusted-verification.json, but the verdict is BLOCKED. Six isolated installed close/restart cycles passed across sidebar-x, terminal-x, and slash-exit, repeated twice each. Build, close-route Playwright coverage, restart/restore, installed-release identity, and the close-route matrix passed. One Rust unit test failed: pty::tests::kill_terminates_detached_descendant_that_drops_pane_marker, with “detached child pid was not printed.” This is the current blocker; do not call the whole goal complete.
 
-## Key decisions & gotchas
-Explicit user closes (sidebar X, pane X, and /exit) must remain dead after restart; only an explicit user restore may clear that tombstone. Untouched live terminals must survive restart and return to their original groups; no old terminal may be revived and no live terminal may disappear. The daemon owns PTYs independently of the UI. The user's visible count is not the daemon-only count: daemon status reported 35 while the persisted workspace had 46 panes, so never report a total from one state source alone. Acceptance is the installed dock-launched release, not a dev launcher or source-only test.
+WHY THE HOOK MESSAGE APPEARED
+The earlier wrapper killed the validation process at 120 seconds while the installed matrix was still running, so no artifact existed at that moment. The run was then allowed to finish with a longer timeout. The local Stop guard correctly changes a missing artifact from an ENOENT crash into a clear incomplete/block message. If the old hook text says “artifact missing,” it is stale output from before completion; inspect the active run's artifact and verdict before acting.
 
-The close-route matrix is destructive and must run only with isolated XDG runtime/data/config/state plus an isolated installed-app identity; never run it against the canonical daemon or the user's 47 live terminals. The previous directive-validation run timed out and has no trusted-verification.json. The local stop guard now converts that missing artifact into a clear INCOMPLETE block instead of ENOENT; do not bypass the guard or claim validation success without the artifact. Use the validation bridge's start/turn/verify flow, with a fresh run directory. Technical PASS does not close the goal; the user alone approves the visible result.
+IMPORTANT STATE/EVIDENCE
+- Active validation run: .directive-validation/runs/20260816-fresh-close-count
+- Its trusted artifact exists and has ok=false because only the detached-descendant Rust test failed.
+- Installed matrix evidence in that artifact shows all six isolated cycles passed and used the installed release.
+- The matrix is isolated: private temporary XDG runtime/data/state directories, private Xvfb display, private dbus session, private daemon socket, fake Codex fixture, and cleanup of its own process group.
+- Existing successful trusted runs from the same implementation state include fresh-close-restart, goal-close-restart, route-matrix, and harness-contract-refresh-20260816, but do not substitute an older artifact for a fresh result without checking its baseline and freshness.
+- The user's visible terminal count is not the daemon-only count. A prior daemon status reported 35 while persisted workspace state showed 46 panes; never report a total from one state source.
+- Explicit-close tombstones already have focused regression coverage and the focused auto-recovery suite passed 16/16.
+- Directive stop-guard plus auto-recovery tests passed 18/18.
+- Pressure watchdog tests passed 28/28; host-wide PSI is telemetry-only and must not recycle TermFleet.
 
-## Env / run state
-Branch: main | Last commit: 12f2e99 wip: dropoff handoff — terminal validation continuity
-Running: the installed TermFleet app and user-local canonical PTY daemon are active with the user's live workspace; do not stop, recycle, or attach destructive tests to them. The latest focused checks passed: pressure watchdog 28 tests, auto-recovery 16 tests, directive guard + auto-recovery 18 tests, frontend build, installed-release verification, and installed restart verification. The latest trusted validation run is incomplete because trusted-verification.json is missing.
+FILES AND CHANGES IN FLIGHT
+- .directive-validation/adapter.json: required checks and installed close-route matrix.
+- .directive-validation/contract.json: persistence objective, success criteria, and failure signals.
+- .directive-validation/config.json: directive-agent integration and run mappings.
+- scripts/directive-codex-stop-guard.mjs: clear fail-closed handling when trusted verification is absent.
+- scripts/verify-installed-close-route-matrix.sh: six isolated installed close/restart cycles.
+- scripts/termfleet-desktop-launcher.sh, scripts/termfleetctl.mjs, scripts/verify-termfleetctl.mjs, scripts/termfleet-doctor.mjs: installed/runtime ownership and counting diagnostics.
+- tests/test_directive_validation_guard.py and tests/test_doctor_ownership.py: regression coverage.
+- MASTER_PLAN.md: task evidence and current status.
+- Existing production persistence changes are already in the worktree/history; preserve them and inspect before editing.
+- Generated validation run directories and tests/__pycache__ are noise; do not broadly delete or reset them.
 
-Start by: inspect the existing installed close-route matrix and validation adapter, then define and prove the isolated XDG/runtime boundary before launching any destructive validation.
+EXACT NEXT ACTION
+1. Read the failed Rust test around pty.rs and reproduce only that test in isolation, then run it repeatedly to determine whether it is an environment race or a real regression.
+2. Do not weaken or skip the test. If it is flaky, make the test deterministic or fix the underlying process-observation race, then add/retain a regression proving detached descendants are cleaned up.
+3. Run the focused Rust test first, then the full Rust library suite, then rerun the directive-agent validation with a fresh run directory and a timeout long enough for the six isolated desktop cycles.
+4. Confirm the new trusted artifact has ok=true and all required checks passed. Also run git diff --check and inspect the scoped diff.
+5. Only after fresh evidence, rebuild/promote the installed release if production code changed, verify the dock-launched runtime, and report remaining user-visible acceptance. Never mark the goal complete without the user's approval.
+
+KNOWN COMMAND SHAPES
+- Focused Rust test: cargo test --manifest-path src-tauri/Cargo.toml --lib pty::tests::kill_terminates_detached_descendant_that_drops_pane_marker -- --nocapture
+- Full Rust library suite: cargo test --manifest-path src-tauri/Cargo.toml --lib
+- Frontend build: npm run build
+- Installed release verification: npm run verify:installed-release
+- Installed restart verification: npm run verify:installed-restart
+- Harness protocol: invoke the installed directive-agent bridge with JSON actions start, continue/verify, then inspect trusted-verification.json; never call the underlying runner directly for the project.
+- The destructive close matrix may run only through scripts/verify-installed-close-route-matrix.sh, with its private runtime/display isolation intact.
+
+FIRST MESSAGE TO USER AFTER RESUMING
+“The isolated persistence matrix completed: all six installed close/restart cycles passed. The remaining blocker is one detached-child Rust test that failed to observe its child PID; I am investigating that test before claiming the app is fully protected.”
 ```
