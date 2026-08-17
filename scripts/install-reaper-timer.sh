@@ -27,6 +27,11 @@ fi
 
 mkdir -p "$UNIT_DIR"
 
+# The older memory-guard timer only repeats a desktop notification when its
+# byte value drifts by a few pages; this maintenance timer supersedes it with
+# the quiet, idempotent guardrail ensure step above.
+systemctl --user disable --now termfleet-memory-guard.timer 2>/dev/null || true
+
 cat >"$SERVICE" <<EOF
 [Unit]
 Description=termfleet: ensure daemon load guardrail + reap idle exited-agent leftovers (TC-055)

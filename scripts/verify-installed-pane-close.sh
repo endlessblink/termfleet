@@ -45,7 +45,10 @@ def request(payload):
             with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as stream:
                 stream.settimeout(2)
                 stream.connect(socket_path)
-                stream.sendall((json.dumps(payload) + "\n").encode())
+                # Daemon status uses the legacy health-check frame; all session
+                # control requests use the JSON tagged protocol.
+                wire = b"status\n" if payload.get("type") == "status" else (json.dumps(payload) + "\n").encode()
+                stream.sendall(wire)
                 stream.shutdown(socket.SHUT_WR)
                 payload = stream.makefile("rb").read().decode()
                 if payload.strip():

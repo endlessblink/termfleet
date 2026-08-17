@@ -7,6 +7,7 @@ import {
   collectAgents,
   collectSessions,
   collectTermfleetStatus,
+  defaultDaemonSocket,
   listPersistedSessions,
 } from "./termfleetctl.mjs";
 
@@ -86,6 +87,11 @@ try {
     TERMFLEET_DATA_DIR: root,
     TERMFLEET_DAEMON_SOCKET: path.join(root, "missing.sock"),
   };
+
+  assert.equal(
+    defaultDaemonSocket({ XDG_RUNTIME_DIR: "/run/user/1000" }),
+    "/run/user/1000/terminal-workspace/daemon.sock",
+  );
 
   const persisted = listPersistedSessions(root);
   assert.equal(persisted.length, 1);

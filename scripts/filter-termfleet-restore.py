@@ -19,21 +19,71 @@ def filter_manifest(source: Path, workspace: Path, output: Path) -> list[str]:
     except (OSError, ValueError, tomllib.TOMLDecodeError):
         return []
 
-    suppressed = {
-        os.path.realpath(str(target["cwd"]))
+    # A directory is not a terminal identity: multiple independent panes can
+    # legitimately share it. Match the provider manifest by stable human label
+    # plus CWD, and ignore legacy cwd-only tombstones rather than deleting a
+    # sibling terminal by accident.
+    closed = {
+        (
+            os.path.realpath(str(target["cwd"])),
+            str(target.get("title", "")).strip(),
+            str(target.get("providerName", "")).strip(),
+        )
         for target in saved.get("closedRestoreTargets", [])
-        if isinstance(target, dict) and str(target.get("cwd", "")).strip()
+        if isinstance(target, dict)
+        and str(target.get("cwd", "")).strip()
+        and str(target.get("title", "")).strip()
     }
     represented = {
-        os.path.realpath(str(tab["initialCwd"]))
+        (
+            os.path.realpath(str(tab["initialCwd"])),
+            str(tab.get("title", "")).strip(),
+            str(tab.get("restoreName", "")).strip(),
+        )
         for tab in saved.get("tabs", [])
-        if isinstance(tab, dict) and str(tab.get("initialCwd", "")).strip()
+        if isinstance(tab, dict)
+        and str(tab.get("initialCwd", "")).strip()
+        and str(tab.get("title", "")).strip()
     }
-    suppressed |= represented
+    suppressed = closed | represented
+    # The external restore manifest often names a session independently from
+    # the tab title (for example, `closed-sentinel` versus `Terminal`). Once a
+    # saved layout has an explicit close tombstone for a directory, an
+    # unrepresented manifest entry in that same directory is not a new terminal
+    # identity: it is the provider's attempt to recreate the closed workspace.
+    # Keep represented siblings, but suppress those provider-only recreations.
+    closed_cwds = {cwd for cwd, _title, _provider_name in closed}
+    represented_cwds = {cwd for cwd, _title, _restore_name in represented}
+    closed_provider_names = {
+        (cwd, provider_name)
+        for cwd, _title, provider_name in closed
+        if provider_name
+    }
+    represented_provider_names = {
+        (cwd, restore_name)
+        for cwd, _title, restore_name in represented
+        if restore_name
+    }
+    manifest_cwd_counts = {}
+    for entry in manifest.get("session", []):
+        entry_cwd = os.path.realpath(os.path.expanduser(str(entry.get("cwd", ""))))
+        manifest_cwd_counts[entry_cwd] = manifest_cwd_counts.get(entry_cwd, 0) + 1
     entries = []
     for entry in manifest.get("session", []):
         cwd = os.path.realpath(os.path.expanduser(str(entry.get("cwd", ""))))
-        if cwd not in suppressed:
+        name = str(entry.get("name", "")).strip()
+        identity = (cwd, name, "")
+        provider_identity = (cwd, name)
+        if (
+            provider_identity not in closed_provider_names
+            and identity not in suppressed
+            and provider_identity not in represented_provider_names
+            and not (
+            cwd in closed_cwds
+            and cwd not in represented_cwds
+            and manifest_cwd_counts.get(cwd, 0) == 1
+            )
+        ):
             entries.append(entry)
 
     try:

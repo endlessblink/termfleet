@@ -88,6 +88,7 @@ import {
   type AgentStatusSidecar,
 } from "../lib/agentStatusSidecar";
 import { readPaneAgentProvider } from "../lib/paneAgentProcess";
+import { formatTerminalInstanceReference } from "../lib/terminalInstanceReference";
 import {
   agentLaneAuthRetryText,
   agentLaneAuthRetryTitle,
@@ -1739,6 +1740,20 @@ function TerminalContextMenu({
     if (trimmed && trimmed !== tab.title) updateTab(tab.id, { title: trimmed });
   };
 
+  const copyInstanceReference = () => {
+    const reference = formatTerminalInstanceReference({
+      title: tab.title,
+      initialCwd: tab.initialCwd,
+      tabId: tab.id,
+      paneId: tab.activePaneId,
+    });
+    const writePromise = navigator.clipboard?.writeText(reference);
+    void writePromise?.catch((error) => {
+      console.error("Failed to copy terminal instance reference", error);
+    });
+    onClose();
+  };
+
   return (
     <div
       ref={ref}
@@ -1801,6 +1816,25 @@ function TerminalContextMenu({
           }}
         />
       </label>
+
+      <button
+        type="button"
+        className="workspace-terminal-instance-reference"
+        style={{
+          ...styles.contextRow,
+          width: "100%",
+          border: 0,
+          background: "transparent",
+          color: "var(--text-primary)",
+          cursor: "pointer",
+          textAlign: "start",
+        }}
+        aria-label="Copy instance reference"
+        onClick={copyInstanceReference}
+      >
+        <ClipboardText size={13} />
+        <span>Copy instance reference</span>
+      </button>
 
       <div style={styles.contextRow}>
         <Palette size={13} />
@@ -7920,13 +7954,24 @@ function MapPanel({
 
 export function WorkbenchSidebar() {
   const ui = useWorkspaceStore((state) => state.workspaceUiState);
+  const updateUi = useWorkspaceStore((state) => state.updateWorkspaceUiState);
   const operationsCollapsed = ui.primarySidebarCollapsed;
   const filesCollapsed = ui.fileExplorerCollapsed;
+  const [openFolderRequest, setOpenFolderRequest] = useState(0);
   const [terminalMenu, setTerminalMenu] = useState<{
     tab: Tab;
     x: number;
     y: number;
   } | null>(null);
+
+  useEffect(() => {
+    const openProjectFolder = () => {
+      updateUi({ fileExplorerCollapsed: false });
+      setOpenFolderRequest((request) => request + 1);
+    };
+    window.addEventListener("workspace:open-project-folder", openProjectFolder);
+    return () => window.removeEventListener("workspace:open-project-folder", openProjectFolder);
+  }, [updateUi]);
   const [projectMenu, setProjectMenu] = useState<{
     id: string;
     name: string;
@@ -7991,7 +8036,7 @@ export function WorkbenchSidebar() {
       )}
       {!filesCollapsed && (
         <div style={styles.filePanel} aria-label="Files panel">
-          <FileExplorer />
+          <FileExplorer openFolderRequest={openFolderRequest} />
         </div>
       )}
       {terminalMenu && (

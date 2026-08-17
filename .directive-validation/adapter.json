@@ -1,97 +1,63 @@
 {
-  "allowedPaths": [
-    "MASTER_PLAN.md",
-    "docs/",
-    "scripts/",
-    "src/",
-    "tests/",
-    ".directive-validation/"
-  ],
+  "allowedPaths": ["MASTER_PLAN.md", "docs/", "scripts/", "src/", "tests/", ".directive-validation/"],
   "checks": [
-    {
-      "name": "build",
-      "command": "npm",
-      "args": ["run", "build"]
-    },
-    {
-      "name": "close_route_regressions",
-      "command": "npx",
-      "args": ["playwright", "test", "tests/terminal-close-route-contract.spec.ts", "tests/terminal-auto-recovery.spec.ts", "--reporter=line"]
-    },
-    {
-      "name": "rust_unit_tests",
-      "command": "cargo",
-      "args": ["test", "--manifest-path", "src-tauri/Cargo.toml", "--lib"]
-    },
-    {
-      "name": "restart_restore",
-      "command": "python3",
-      "args": ["scripts/verify-restart-restore.py"]
-    },
-    {
-      "name": "installed_release",
-      "command": "scripts/verify-installed-release.sh",
-      "args": []
-    },
-    {
-      "name": "installed_restart_close_routes",
-      "command": "scripts/verify-installed-close-route-matrix.sh",
-      "args": []
-    }
+    {"name":"build","command":"npm","args":["run","build"]},
+    {"name":"map_terminal_scroll_regression","command":"npx","args":["playwright","test","tests/map-terminal-rendering.spec.ts","-g","map terminal wheel navigation does not force the viewport back to live output","--reporter=line"]},
+    {"name":"installed_release","command":"npm","args":["run","verify:installed-release"]}
   ],
   "acceptance": {
-    "runtimeIdentity": "dock-launched installed TermFleet release and its user-local daemon",
-    "runtimeEvidence": {"check": "installed_release", "independent": true, "proves": "the verifier identifies and exercises the exact dock-launched installed release and daemon"},
-    "userVisibleOutcomes": [
-      "Every terminal explicitly closed through sidebar X, pane X, or /exit stays absent after restart",
-      "Every terminal left open remains present and usable after restart",
-      "The proof comes from the installed dock-launched runtime rather than source-only tests"
-    ],
+    "runtimeIdentity": "dock-launched installed TermFleet release",
+    "runtime": "dock-launched installed TermFleet release",
+    "runtimeEvidence": {"check":"installed_release","independent":true,"proves":"the installed release identity is verified"},
+    "userVisibleOutcomes": ["Map terminal wheel scrolling stays at the selected scrollback position", "Ordinary live output continues to follow the bottom"],
     "evidenceChecks": [
-      {"check": "build", "proves": "the release can be built from the current project state"},
-      {"check": "close_route_regressions", "proves": "all three user close routes preserve the selected-terminal-only contract"},
-      {"check": "rust_unit_tests", "proves": "daemon and persistence code passes its focused unit coverage"},
-      {"check": "restart_restore", "proves": "durable restore preserves untouched terminals and excludes explicit closes"},
-      {"check": "installed_release", "proves": "the installed dock-launched release and its daemon are the runtime under test"},
-      {"check": "installed_restart_close_routes", "proves": "repeated installed close and restart cycles cover every reported route and untouched-terminal survival"}
+      {"check":"build","proves":"the current frontend builds"},
+      {"check":"map_terminal_scroll_regression","proves":"wheel navigation preserves the user viewport and live output still follows normally"},
+      {"check":"installed_release","proves":"the dock-launched installed release is the runtime identity under test"}
+    ],
+    "checkToOutcome": [
+      {"check":"build","outcome":"the frontend builds successfully"},
+      {"check":"map_terminal_scroll_regression","outcome":"wheel scroll preserves the selected viewport and ordinary live output follows the bottom"},
+      {"check":"installed_release","outcome":"the installed dock runtime identity is verified"}
+    ],
+    "evidenceMappings": [
+      {"check":"build","outcome":"the frontend builds successfully"},
+      {"check":"map_terminal_scroll_regression","outcome":"wheel scroll preserves the selected viewport and ordinary live output follows the bottom"},
+      {"check":"installed_release","outcome":"the installed dock runtime identity is verified"}
     ],
     "requirementEvidence": [
-      {"requirement": "A sidebar X close removes only the selected terminal and records its durable close identity", "check": "close_route_regressions", "assertion": "sidebar-close-removes-selected-terminal", "independent": true, "proves": "the sidebar close route regression exercises selected-terminal identity and persistence"},
-      {"requirement": "A pane X close removes only the selected terminal and records its durable close identity", "check": "close_route_regressions", "assertion": "pane-close-removes-selected-terminal", "independent": true, "proves": "the pane close route regression exercises selected-terminal identity and persistence"},
-      {"requirement": "Typing /exit removes only the selected terminal and records its durable close identity", "check": "close_route_regressions", "assertion": "slash-exit-removes-selected-terminal", "independent": true, "proves": "the slash-exit route regression exercises selected-terminal identity and persistence"},
-      {"requirement": "Restart never restores an explicitly closed terminal", "check": "restart_restore", "assertion": "closed-terminal-stays-absent", "independent": true, "proves": "durable restore verification rejects explicitly closed terminal identities"},
-      {"requirement": "Restart restores every terminal the user did not close, without killing or hiding it", "check": "restart_restore", "assertion": "untouched-terminal-survives", "independent": true, "proves": "durable restore verification preserves untouched terminal identities"},
-      {"requirement": "Installed dock-launched runtime evidence proves the behavior across repeated restart cycles", "check": "installed_restart_close_routes", "assertion": "installed-runtime-repeated-restart-proof", "independent": true, "proves": "the installed route matrix runs repeated restart cycles against the user-facing release"},
-      {"requirement": "The user remains the only authority that can approve the final visible result", "evidence": "user-approval", "assertion": "explicit-user-approval-required", "independent": true, "proves": "the adapter requires explicit user approval before final completion", "approvalRequired": true}
+      {"requirement":"Wheel scrolling on a map terminal reveals older output without being pulled back to the newest output","check":"map_terminal_scroll_regression","assertion":"map-scrollback-preserves-user-viewport","proof":"The focused wheel regression detects forced bottom-follow during wheel navigation.","independent":true,"proves":"the focused regression detects forced bottom-follow during wheel navigation"},
+      {"requirement":"New output still follows the bottom when the user has not manually scrolled away","check":"map_terminal_scroll_regression","assertion":"map-live-output-follows-bottom","proof":"The focused regression preserves ordinary live-output following.","independent":true,"proves":"the focused regression preserves ordinary live-output following"},
+      {"requirement":"The behavior is covered by a focused regression and the installed release remains buildable","check":"installed_release","assertion":"installed-runtime-identity","proof":"The installed release identity check passes for the build under test.","independent":true,"proves":"the installed release identity check passes for the build under test"}
     ]
   },
-  "requiredChecks": [
-    "build",
-    "close_route_regressions",
-    "rust_unit_tests",
-    "restart_restore",
-    "installed_release",
-    "installed_restart_close_routes"
-  ],
-  "visualPaths": ["src/components/", "src/styles/", "scripts/verify-installed-"],
-  "visualRequiredChecks": ["installed_release", "installed_restart_close_routes"],
-  "failurePolicy": {
-    "escalateAfter": 2,
-    "practiceChecks": ["restart_restore", "installed_restart_close_routes"]
-  },
-  "package": {
-    "command": "npm run release:install",
-    "identity": "dock-launched installed TermFleet release"
-  },
-  "runtime": {
-    "command": "npm run verify:installed-release",
-    "identity": "TermFleet desktop release and user-local daemon"
-  },
-  "taskBinding": {"required": true, "targets": ["terminal", "close", "restart"]},
+  "requiredChecks": ["build", "map_terminal_scroll_regression", "installed_release"],
+  "checkTimeoutMs": 600000,
+  "visualPaths": [],
+  "visualRequiredChecks": [],
+  "designGate": {"required": false},
+  "taskBinding": {"required": true, "targets": ["map", "terminal", "scroll"]},
   "requiresUserApproval": true,
+  "adapterApproval": {"required": true},
   "contractPath": ".directive-validation/contract.json",
-  "integration": {
+  "integration": {"required": true, "protocol": "directive-agent-v1"},
+  "coverage": {
     "required": true,
-    "protocol": "directive-agent-v1"
+    "seeds": [
+      {"id":"wheel-scrollback","description":"Scroll a map terminal into older output with the wheel"},
+      {"id":"live-follow","description":"Leave a map terminal at the bottom while new output arrives"}
+    ],
+    "invariants": [
+      {"id":"user-viewport-preserved","statement":"Wheel navigation does not force the viewport back to newest output","check":"map_terminal_scroll_regression"},
+      {"id":"bottom-follow-preserved","statement":"Uninterrupted live output continues to follow the newest output","check":"map_terminal_scroll_regression"}
+    ],
+    "mutations": [
+      {"id":"force-bottom-after-wheel","target":"Schedule bottom-follow after wheel navigation","expected":"fail","check":"map_terminal_scroll_regression","command":"node","args":["scripts/verify-map-scroll-mutation.mjs","force-bottom-after-wheel","map_terminal_scroll_regression","Schedule bottom-follow after wheel navigation"],"isolated":true,"failureSignal":"invariant failed"},
+      {"id":"disable-live-follow","target":"Suppress bottom-follow for ordinary live output","expected":"fail","check":"map_terminal_scroll_regression","command":"node","args":["scripts/verify-map-scroll-mutation.mjs","disable-live-follow","map_terminal_scroll_regression","Suppress bottom-follow for ordinary live output"],"isolated":true,"failureSignal":"invariant failed"}
+    ],
+    "mappings": [
+      {"seed":"wheel-scrollback","invariant":"user-viewport-preserved","mutation":"force-bottom-after-wheel"},
+      {"seed":"live-follow","invariant":"bottom-follow-preserved","mutation":"disable-live-follow"}
+    ]
   }
 }

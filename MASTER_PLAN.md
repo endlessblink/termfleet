@@ -1,5 +1,175 @@
 # MASTER_PLAN.md - termfleet
 
+> **2026-08-17 — Removed the remaining status-sweep I/O storm:** The live dock
+> process was repeatedly reading a 256 KiB transcript tail per pane and treating
+> regenerated task-line timestamps as content changes. That drove multi-gigabyte
+> reads, high WebKit CPU, and store repaint pressure. The tail is now 32 KiB and
+> projection equality ignores volatile capture timestamps. The regression failed
+> before the fix and passed after it; the promoted dock build settled at about 16%
+> WebKit CPU with roughly 86 KiB additional physical reads in one minute, and the
+> 101-session soak passed at 11 ms p95/max PTY-to-snapshot latency with 8,269
+> changed pixels in the real window surface.
+
+> **2026-08-17 — Coalesced high-density canvas paints:** A fresh 101-session
+> soak showed fast PTY snapshots but the installed WebKit process still carried
+> substantial renderer pressure. The shared Canvas2D scheduler now keeps one
+> pending paint per pane, replacing stale callbacks before they reach the frame
+> queue. The regression failed before this change and passed after it; the
+> frontend build, promoted installed checksum, and installed restart gate pass.
+
+> **2026-08-17 — 100-terminal cockpit scheduling hardening:** Status reads now
+> use bounded concurrency, and Canvas2D paints share one time-sliced frame
+> scheduler so high-density terminal views cannot each monopolize WebKitGTK's
+> shared frame loop. The focused suite, frontend build, installed checksum, and
+> isolated installed restart gate passed. The private dock soak reached 101 live
+> PTY sessions; its key-to-pixel probe is blocked by Xvfb/WebKit focus behavior,
+> not a measured app timeout. The canonical daemon remains intentionally on its
+> older release to preserve live sessions.
+
+> **2026-08-17 — Fresh runtime evidence:** The canonical Canvas2D live verifier
+> reached the daemon, observed output in the snapshot, and recorded a visual
+> repaint of 239,425 changed pixels. The private load fixture reached 101 live
+> sessions, but its synthetic PTY-to-pixel timing remains diagnostically noisy
+> under Xvfb because the WebKit surface moves between capture regions; this is
+> not accepted as the 100-pane visual budget gate.
+
+> **2026-08-17 — 100-terminal status polling no longer serially stalls the
+> cockpit:** Background status reads previously awaited every pane in order and
+> slept 120ms between panes, creating multi-second polling windows at the target
+> scale. Reads now use an eight-worker bounded scheduler; the focused 100-item
+> regression passed and the frontend build passed. Installed 100-terminal dock
+> soak and visual freeze evidence remain required.
+
+> **2026-08-17 — Removed duplicate memory-guard notification spam:** The legacy
+> two-minute memory timer was warning about a harmless few-page rounding drift
+> while the newer reaper timer already applied the same protection quietly. The
+> reaper installer now disables the legacy timer, and the focused regression plus
+> live user-timer inspection passed.
+> `python3 -m unittest tests.test_pressure_watchdog.PressureWatchdogTests.test_reaper_install_disables_the_legacy_memory_guard_timer`
+
+> **2026-08-17 — Map rename no longer hangs on an invisible editor:** A terminal
+> card previously mounted the same rename input in multiple regions, including a
+> hidden region. The map now keeps one visible editor for shell cards, so rename
+> focus and automation cannot wait on an invisible duplicate. The focused E2E
+> regression passed; frontend build and installed-release checksum verification
+> passed. Full Canvas coverage remains partial: 72/76 passed, with four unrelated
+> map state tests still failing around project emoji/selection/size behavior.
+> Daemon latency remains healthy at p95 1.6ms, while the standalone daemon smoke
+> verifier was stopped after hanging for 3m30s during its private build/runtime
+> setup and needs a separate investigation.
+> `npx playwright test tests/map-terminal-rendering.spec.ts -g "terminal map renaming uses in-app inputs and keeps linked tab titles in sync" --reporter=line`
+> `npm run build`, `npm run release:install`, `npm run verify:installed-release`,
+> `XDG_RUNTIME_DIR=/run/user/1000 npm run verify:daemon-latency`
+
+> **2026-08-17 — Map terminal scrolling preserves history:** Wheel reports and
+> alternate-screen scroll arrows no longer trigger the typed-input auto-follow
+> behavior, so map terminals stay at the operator's selected scroll position while
+> normal typing still returns to live output. The focused regression passed; build,
+> map verification, and installed dock relaunch remain required.
+> `npx playwright test tests/map-terminal-rendering.spec.ts -g "map terminal wheel navigation does not force the viewport back to live output" --reporter=line`
+
+> **2026-08-17 — Terminal instance references are copyable from the sidebar:**
+> The terminal settings menu now copies a readable title/path reference plus the
+> stable active-pane code, so another agent can identify the exact session even
+> when several terminals share a project folder. The focused reference regression
+> passed 4/4 and the frontend build passed; installed-release and live clipboard
+> interaction remain required for full packaged-runtime coverage.
+> `npx playwright test tests/terminal-instance-reference.spec.ts --reporter=line`
+> and `npm run build`
+
+> **2026-08-16 — Recovery regressions are now enforced as repeatable gates:**
+> Browser hydration tests cover cache failure, exact close tombstones, missing
+> live panes, stable groups, and external sessions. Source-contract tests lock
+> serialized late-startup reconciliation and forced durable flushes. A new
+> installed-runtime check fails when any live daemon terminal is missing from
+> the durable workspace or appears in the explicit-close ledger. Focused Python
+> checks passed 21/21, hydration passed 13/13, and the installed invariant passed
+> with the current live/durable state; build, release, and backend gates remain
+> part of the final verification sequence.
+
+> **2026-08-16 — Durable startup reconciliation now survives cache and retry races:**
+> Live PTYs absent from the saved layout are reconciled into their existing groups
+> or recovered with stable identities, and the disk checkpoint is forced even when
+> the local cache debounce already ran. Startup retries are serialized through the
+> dock launcher's late-restore window, so an older pass cannot overwrite a newer
+> live-terminal set. The installed dock release was relaunched twice and persisted
+> and stably reloaded 56 terminals from the prior 48; the harness contract is
+> READY/HIGH, while explicit user approval remains the final gate.
+> `npm run verify:installed-release`, `npm run verify:installed-restart`, the
+> six-run installed close-route matrix, the four-layer restart/restore verifier,
+> 167 Rust tests, and the clean dock relaunch all passed. `npm run doctor` still
+> reports the preserved canonical daemon is an older release than the dock UI;
+> it was intentionally not restarted because doing so could destroy live PTYs.
+
+> **2026-08-16 — External restore identities are now stable:** The provider
+> adapter carries its manifest name into each TermFleet PTY using an encoded
+> marker. TermFleet persists that name with the tab and explicit-close target,
+> so same-directory siblings can be filtered by exact provider identity rather
+> than a directory heuristic. Focused hydration/filter tests, build, syntax
+> check, fresh release promotion, and all six installed close/restart runs pass;
+> user dock acceptance remains required.
+
+> **2026-08-16 — Provider restore-name mismatch is now covered:** An external
+> restore manifest can name a session differently from the saved tab title. The
+> launcher now suppresses a sole unrepresented provider entry in an explicitly
+> closed workspace while preserving saved siblings; the installed dock release
+> passed the sidebar-X, pane-X, and `/exit` close/restart matrix twice each.
+> The five focused restore-filter tests and 13 hydration tests passed. User
+> visual approval remains the final gate.
+
+> **2026-08-16 — Startup reconciliation now follows the installed daemon wire
+> shape:** The dock launcher can restore agent sessions after the UI starts, and
+> the daemon reports its folder as `initialCwd`; the desktop now normalizes that
+> response, retries busy session listing, binds marked external restores to
+> existing recovered cards, includes every live PTY in reconciliation, and rechecks the daemon
+> during the bounded startup window. The new hydration regressions and full
+> 13-test workspace suite passed; build, diff check, installed release promotion,
+> and dock relaunch also passed. A pre-repair 48-tab checkpoint was preserved and
+> restored after a reduced cache was detected; operator close/restart acceptance
+> remains required. The latest close-route matrix reached the installed window
+> but failed before the close action because its newly opened control tab had no
+> terminal id; this is an open verification failure, not a passing close gate.
+
+> **2026-08-16 — Explicit-close checkpoints now reconcile across daemon versions:**
+> Live evidence showed the dock UI could be newer than the surviving canonical
+> daemon. The UI already persisted close tombstones, but an older daemon could
+> retain the killed PTY checkpoint. The current desktop now removes only the
+> explicitly closed session's checkpoint during close and hydration, preserving
+> crash-lost sessions and all unrelated live PTYs. Focused auto-recovery passed
+> 21/21, Rust close tests passed 4/4, `cargo check`, installed release checksum,
+> cold/live/agent/orphan restart restore, and six installed close/restart route
+> runs passed. The installed pane-close harness was corrected to use the daemon's
+> status handshake and then passed with the unrelated session alive. Follow-up
+> hardening now treats session ID plus terminal label as identity: shared CWDs no
+> longer suppress sibling terminals, and cold orphan restore checks exact close
+> tombstones. Explicit close now verifies daemon absence with bounded retries, and
+> hydration kills an exact closed ID if a fast restart catches teardown in flight.
+> Focused tests cover this same-project sibling case; the promoted installed
+> route matrix passed all six runs again, and operator acceptance remains the
+> final gate.
+
+> **2026-08-16 — Close completion no longer waits on PTY teardown:** The installed
+> matrix exposed a real race where the close tombstone was written but a slow PTY
+> kill kept the tab and live session visible. The close path now removes and
+> persists the tab immediately after recording the explicit tombstone, then
+> performs scoped PTY cleanup. Focused auto-recovery and directive-guard checks
+> passed (18/18), frontend build and installed release verification passed, and a
+> fresh directive-agent run passed all required checks: build, close-route
+> regressions, 167 Rust tests, restart/restore, installed release, and six
+> isolated installed close/restart cycles across sidebar X, pane X, and `/exit`
+> (two repetitions each). The contract is READY; user visual approval remains
+> required.
+
+> **2026-08-16 — Installed close-route matrix:** The validation adapter now runs
+> the installed dock-launched close/restart gate twice for each explicit route:
+> sidebar X, pane X, and `/exit`. Every run verified the closed terminal's
+> durable tombstone, absence from the daemon session list, absence after fresh
+> relaunch, and exactly one untouched control terminal after restart. The fresh
+> directive-agent bridge cycle passed all six installed runs, frontend build,
+> close-route regressions, 167 Rust unit tests, and live/cold/agent/orphan
+> restart restore checks. The installed release identity and window executable
+> matched on every run. User visual approval remains required.
+
 > **2026-08-15 — Sidebar-closed terminals no longer return after restart:**
 > The sidebar `×` path now persists the final tab removal after killing its PTY,
 > and startup filters tombstoned panes/tabs even if a restart races that final
@@ -8520,6 +8690,16 @@ installed-restart, and installed-pane-close verification. Three real dock
 close/relaunch cycles preserved 27 tabs and six FlowState panes with zero
 anonymous Recovered tabs; the source and installed watchdog hashes match.
 User approval remains the final acceptance gate.
+
+## 2026-08-17 — Make directive validation stop fail closed
+
+The stop guard now treats both an incomplete registered run and an unregistered
+session as blocked. It also honors the explicit project root supplied by the
+hook payload, preventing a session mismatch from silently bypassing trusted
+verification.
+
+**Evidence:** `python3 -m unittest tests/test_directive_validation_guard.py`
+passed 3/3; `npm run doctor` returned `DOCTOR_OK`; `git diff --check` passed.
 
 **2026-08-14 — Desktop cgroup throttle and forced exit:** Live evidence showed
 the host under swap/I/O pressure while the desktop cgroup sat at 1.43 GiB with

@@ -22,7 +22,7 @@ import { qualityCheckUserAskLabel } from "../src/lib/terminalHeaderQuality";
 import { opensAsRequest } from "../src/lib/sessionTranscript";
 import type { AgentStatusSummaryInput } from "../src/lib/agentStatusSummary";
 
-const TAIL_BYTES = 262_144;
+const TAIL_BYTES = 32 * 1024;
 const FRESH_MS = 30 * 60 * 1000;
 
 function statusDir() {

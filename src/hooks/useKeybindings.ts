@@ -79,6 +79,14 @@ export function useKeybindings() {
       // them, or use the on-screen affordances.
       if (terminalHasKeyboardFocus()) return;
 
+      // Meta+E — open a project folder without letting the desktop launcher consume it.
+      if (e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "e") {
+        e.preventDefault();
+        e.stopPropagation();
+        window.dispatchEvent(new CustomEvent("workspace:open-project-folder"));
+        return;
+      }
+
       if (e.key === "Delete" && !e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey) {
         if (isEditableTarget(e.target)) return;
         const selectedIds = new Set(

@@ -456,6 +456,20 @@ test("AskUserQuestion mouse-report prompts do not trigger map layout reconciliat
   );
 });
 
+test("map terminal wheel navigation does not force the viewport back to live output", () => {
+  const terminalCanvas = readFileSync(
+    "src/components/TerminalCanvas.tsx",
+    "utf8",
+  );
+  const wheelBlock = terminalCanvas.match(
+    /const handleWheel = \(event: React\.WheelEvent\) => \{[\s\S]*?\n  \};/,
+  )?.[0] ?? "";
+
+  expect(wheelBlock).toContain('"canvas-wheel"');
+  expect(wheelBlock).toContain("preserveViewportForInputRef.current = true");
+  expect(terminalCanvas).toContain("if (preserveViewportForInputRef.current)");
+});
+
 async function imageRegionStats(
   page: import("@playwright/test").Page,
   screenshot: Buffer,

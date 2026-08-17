@@ -194,7 +194,104 @@ test("saved workspace layout restores live daemon sessions without resurrecting 
   });
 });
 
-test("disk workspace layout is authoritative over orphan persisted sessions", async ({ page }) => {
+test("external restored agent sessions bind to their existing recovered tab", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+
+  const result = await page.evaluate(async () => {
+    const restoredId = "restored-agent-session";
+    (window as typeof window & { __TAURI_INTERNALS__?: { invoke: (cmd: string) => Promise<unknown>; transformCallback: () => number; unregisterCallback: () => void } }).__TAURI_INTERNALS__ = {
+      invoke: async (cmd: string) => cmd === "daemon_list_sessions"
+        ? [{
+          id: restoredId,
+          initialCwd: "/repo/agent",
+           command: "export TERMFLEET=1 TERMFLEET_SESSION_NAME_B64=YWdlbnQtb25l; exec codex resume 019f-restored",
+        }]
+        : null,
+      transformCallback: () => 1,
+      unregisterCallback: () => {},
+    };
+    const { hydrateWorkspace, useWorkspaceStore } = await import("/src/stores/workspace.ts");
+    window.localStorage.setItem = () => { throw new Error("cache unavailable"); };
+    useWorkspaceStore.setState({
+      hydrating: false,
+      tabs: [{
+        id: "recovered-tab-old-session",
+        title: "agent",
+        emoji: "⬛",
+        color: "#7aa2f7",
+        groupId: null,
+         initialCwd: "/repo/agent",
+         restoreName: "agent-one",
+        terminals: [{ id: "old-restored-id", paneId: "recovered-pane-old-session", cols: 80, rows: 24, status: "starting" }],
+        splitLayout: { id: "recovered-pane-old-session", type: "terminal" },
+        activePaneId: "recovered-pane-old-session",
+      }],
+      activeTabId: "recovered-tab-old-session",
+      groups: [],
+      terminalGroups: [],
+      canvasState: { selectedNodeId: null, selectedNodeIds: [], viewport: { x: 0, y: 0, zoom: 1 }, nodes: [] },
+    });
+    await hydrateWorkspace();
+    const state = useWorkspaceStore.getState();
+    return {
+      tabIds: state.tabs.map((tab) => tab.id),
+      terminalIds: state.tabs.flatMap((tab) => tab.terminals.map((terminal) => terminal.id)),
+      restoreNames: state.tabs.map((tab) => tab.restoreName),
+    };
+  });
+
+  expect(result.tabIds).toEqual(["recovered-tab-old-session"]);
+  expect(result.terminalIds).toEqual(["restored-agent-session"]);
+  expect(result.restoreNames).toEqual(["agent-one"]);
+});
+
+test("every live external session creates a recovered tab", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+
+  const result = await page.evaluate(async () => {
+    const savedLayouts: string[] = [];
+    const originalSetItem = window.localStorage.setItem.bind(window.localStorage);
+    window.localStorage.setItem = () => {
+      throw new Error("cache unavailable");
+    };
+    (window as typeof window & { __TAURI_INTERNALS__?: { invoke: (cmd: string) => Promise<unknown>; transformCallback: () => number; unregisterCallback: () => void } }).__TAURI_INTERNALS__ = {
+      invoke: async (cmd: string, args?: { contents?: string }) => {
+        if (cmd === "workspace_layout_save" && args?.contents) savedLayouts.push(args.contents);
+        if (cmd === "daemon_list_sessions") return [
+          { id: "external-agent", cwd: "/repo/agent", command: "export TERMFLEET=1; exec claude --resume 019f-agent" },
+          { id: "ordinary-shell", cwd: "/repo/shell", command: "/bin/bash" },
+        ];
+        return null;
+      },
+      transformCallback: () => 1,
+      unregisterCallback: () => {},
+    };
+    const { hydrateWorkspace, useWorkspaceStore } = await import("/src/stores/workspace.ts");
+    useWorkspaceStore.setState({
+      hydrating: false,
+      tabs: [],
+      activeTabId: null,
+      groups: [],
+      terminalGroups: [],
+      canvasState: { selectedNodeId: null, selectedNodeIds: [], viewport: { x: 0, y: 0, zoom: 1 }, nodes: [] },
+    });
+    await hydrateWorkspace();
+    const state = useWorkspaceStore.getState();
+    window.localStorage.setItem = originalSetItem;
+    return {
+      tabIds: state.tabs.map((tab) => tab.id),
+      terminalIds: state.tabs.flatMap((tab) => tab.terminals.map((terminal) => terminal.id)),
+      savedLayouts,
+    };
+  });
+
+  expect(result.tabIds).toEqual(["recovered-tab-external-agent", "recovered-tab-ordinary-shell"]);
+  expect(result.terminalIds).toEqual(["external-agent", "ordinary-shell"]);
+  expect(result.savedLayouts.length).toBeGreaterThan(0);
+  expect(result.savedLayouts.some((layout) => layout.includes("ordinary-shell"))).toBe(true);
+});
+
+test("disk workspace layout keeps saved tabs and restores unclosed persisted sessions", async ({ page }) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
 
   const result = await page.evaluate(async () => {
@@ -248,7 +345,7 @@ test("disk workspace layout is authoritative over orphan persisted sessions", as
         if (cmd === "workspace_layout_load") return JSON.stringify(diskWorkspace);
         if (cmd === "workspace_persisted_sessions") {
           return [{
-            id: "terminal-orphan-tab-orphan-pane",
+            id: "orphan-session",
             cwd: "/tmp/orphan",
             scrollbackBytes: 4096,
           }];
@@ -287,10 +384,10 @@ test("disk workspace layout is authoritative over orphan persisted sessions", as
   });
 
   expect(result.calls).toContain("workspace_layout_load");
-  expect(result.calls).not.toContain("workspace_persisted_sessions");
+  expect(result.calls).toContain("workspace_persisted_sessions");
   expect(result.hydrating).toBe(false);
-  expect(result.tabIds).toEqual(["disk-tab"]);
-  expect(result.nodeTabIds).toEqual(["disk-tab"]);
+  expect(result.tabIds).toEqual(["disk-tab", "recovered-tab-orphan-session"]);
+  expect(result.nodeTabIds).toEqual(["disk-tab", "recovered-tab-orphan-session"]);
 });
 
 test("saved panes use live daemon folders before the first click", async ({ page }) => {
@@ -617,7 +714,7 @@ test("closed workspace identities suppress saved, live, and recovered terminals 
       pinnedProjects: [],
       workspaceUiState: {},
       canvasState: { selectedNodeId: null, selectedNodeIds: [], viewport: { x: 0, y: 0, zoom: 1 }, nodes: [] },
-      closedRestoreTargets: [{ cwd: "/work/paper-bot" }, { cwd: "/work/arthouse/" }],
+      closedSessionIds: [paperId, arthouseId],
     };
     (window as typeof window & { __TAURI_INTERNALS__?: { invoke: (cmd: string) => Promise<unknown>; transformCallback: () => number; unregisterCallback: () => void } }).__TAURI_INTERNALS__ = {
       invoke: async (cmd: string) => {
@@ -625,7 +722,7 @@ test("closed workspace identities suppress saved, live, and recovered terminals 
         if (cmd === "daemon_list_sessions") return [
           { id: paperId, cwd: "/work/paper-bot" },
           { id: arthouseId, cwd: "/work/arthouse" },
-          { id: openId, cwd: "/work/open" },
+          { id: openId, cwd: "/work/paper-bot" },
         ];
         return null;
       },
@@ -640,7 +737,7 @@ test("closed workspace identities suppress saved, live, and recovered terminals 
 
   expect(result).not.toContainEqual({ title: "paper-bot", cwd: "/work/paper-bot/" });
   expect(result).not.toContainEqual({ title: "arthouse", cwd: "/work/arthouse" });
-  expect(result).toContainEqual({ title: "open", cwd: "/work/open" });
+  expect(result).toContainEqual({ title: "paper-bot", cwd: "/work/paper-bot" });
 });
 
 test("one-time FlowState repair restores only recent, open sidecars with restartable panes", async ({ page }) => {

@@ -1771,6 +1771,15 @@ fn default_persist_dir() -> Option<PathBuf> {
     data_root_dir().map(|dir| dir.join("sessions"))
 }
 
+/// Remove the durable checkpoint for an explicitly closed session. The current
+/// desktop may need this when an older canonical daemon handled the live kill
+/// but did not remove its checkpoint.
+pub fn forget_persisted_session(id: &str) {
+    if let Some(dir) = default_persist_dir() {
+        remove_persisted(&dir, id);
+    }
+}
+
 fn try_acquire_resume_lock(
     dir: &Path,
     provider: &str,
@@ -3109,18 +3118,27 @@ mod tests {
     #[cfg(target_os = "linux")]
     #[test]
     fn kill_terminates_detached_descendant_that_drops_pane_marker() {
+        use std::fs;
         use std::thread;
         use std::time::{Duration, Instant};
 
         let app = tauri::test::mock_app();
         let manager = PtyManager::new();
         let id = "kill-detached-unmarked-test".to_string();
+        let pid_file = std::env::temp_dir().join(format!(
+            "termfleet-detached-child-{}-{}.pid",
+            std::process::id(),
+            super::now_ms()
+        ));
+        let pid_file_arg = super::shell_quote_arg(&pid_file.to_string_lossy());
         manager
             .spawn(
                 app.handle(),
                 Some(id.clone()),
                 None,
-                Some("setsid sh -c 'env -u TERMFLEET_PANE_ID sleep 30 & printf \"%s\\n\" \"$!\"; wait'".to_string()),
+                Some(format!(
+                    "setsid sh -c 'env -u TERMFLEET_PANE_ID sleep 30 & child=$!; printf \"%s\\n\" \"$child\" > {pid_file_arg}; wait'"
+                )),
             )
             .expect("spawn detached unmarked process PTY");
         let pane_pid = manager
@@ -3136,8 +3154,18 @@ mod tests {
         let child_pid = {
             let deadline = Instant::now() + Duration::from_secs(2);
             loop {
-                let output = manager.snapshot(&id).expect("snapshot detached PTY");
-                if let Some(pid) = output
+                if let Ok(pid_file_contents) = fs::read_to_string(&pid_file) {
+                    if let Some(pid) = pid_file_contents
+                        .lines()
+                        .filter_map(|line| line.trim().parse::<libc::pid_t>().ok())
+                        .find(|pid| *pid > 1)
+                    {
+                        break pid;
+                    }
+                }
+                if let Some(pid) = manager
+                    .snapshot(&id)
+                    .expect("snapshot detached PTY")
                     .lines()
                     .filter_map(|line| line.trim().parse::<libc::pid_t>().ok())
                     .find(|pid| *pid > 1)
@@ -3170,6 +3198,7 @@ mod tests {
             );
             thread::sleep(Duration::from_millis(20));
         }
+        let _ = fs::remove_file(&pid_file);
     }
 
     #[test]

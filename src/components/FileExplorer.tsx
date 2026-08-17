@@ -697,7 +697,7 @@ function TreeRow({
   );
 }
 
-export function FileExplorer() {
+export function FileExplorer({ openFolderRequest = 0 }: { openFolderRequest?: number }) {
   const tauriAvailable = "__TAURI_INTERNALS__" in window;
   const projectRoot = useWorkspaceStore((state) => state.projectRoot);
   const setProjectRoot = useWorkspaceStore((state) => state.setProjectRoot);
@@ -852,6 +852,12 @@ export function FileExplorer() {
     }
     setPickerOpen(true);
   }, [rootInput, setProjectRoot, tauriAvailable]);
+
+  useEffect(() => {
+    if (openFolderRequest > 0) chooseProjectFolder();
+    // The request counter is the trigger; root changes must not reopen the picker.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openFolderRequest]);
 
   const refreshParent = useCallback((path: string) => {
     if (path === resolvedRoot || parentPath(path) === resolvedRoot) {
@@ -1175,8 +1181,23 @@ export function FileExplorer() {
         <FolderPicker
           initialPath={resolvedRoot || null}
           onSelect={(selected) => {
+            const normalizeProjectPath = (value: string) => {
+              const normalized = value.replace(/\/+$/, "");
+              return normalized || "/";
+            };
+            const selectedRoot = normalizeProjectPath(selected);
+            const currentState = useWorkspaceStore.getState();
+            const existingGroup = currentState.terminalGroups.find(
+              (group) =>
+                Boolean(group.projectRoot) && normalizeProjectPath(group.projectRoot!) === selectedRoot,
+            );
+
             setRootInput(selected);
-            setProjectRoot(selected);
+            if (existingGroup) {
+              currentState.switchProject(existingGroup.id);
+            } else {
+              setProjectRoot(selected);
+            }
             setPickerOpen(false);
           }}
           onClose={() => setPickerOpen(false)}

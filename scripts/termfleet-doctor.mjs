@@ -64,6 +64,13 @@ const canonicalListenerPids = new Set(
 );
 const daemonProcesses = processRows.filter((row) => canonicalListenerPids.has(row.pid));
 
+const installedBinary = path.join(os.homedir(), ".local", "share", "termfleet", "current", "termfleet");
+const daemonExecutable = daemonProcesses.length === 1
+  ? (() => {
+      try { return realpathSync(`/proc/${daemonProcesses[0].pid}/exe`); } catch { return null; }
+    })()
+  : null;
+
 // Incident handoff: future agents should not need the operator to remember a
 // transient glitch. The watchdog and launcher share this append-only stream;
 // expose its location and latest event in the normal read-only doctor output.
@@ -93,6 +100,18 @@ if (daemonProcesses.length === 1 && socketListeners.length === 1) {
     "Daemon ownership",
     `${daemonProcesses.length} canonical daemon process(es), ${socketListeners.length} canonical socket listener(s) — refusing an unsafe restart`,
   );
+}
+
+if (daemonExecutable && existsSync(installedBinary)) {
+  if (daemonExecutable === realpathSync(installedBinary)) {
+    report("ok", "Runtime release alignment", `canonical daemon matches installed release ${daemonExecutable}`);
+  } else {
+    report(
+      "warn",
+      "Runtime release alignment",
+      `canonical daemon is ${daemonExecutable}, but the dock points to ${realpathSync(installedBinary)}; do not restart or replace it while live sessions need preservation`,
+    );
+  }
 }
 
 const privateDaemonCount = processRows.length - daemonProcesses.length;

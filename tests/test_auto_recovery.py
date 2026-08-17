@@ -31,6 +31,14 @@ class AutomaticRecoveryTests(unittest.TestCase):
         self.assertIn("Reconcile every live session against the saved layout", source)
         self.assertNotIn("if (hadSavedLayout) continue", source)
 
+    def test_unclosed_persisted_sessions_reconcile_alongside_saved_layout(self):
+        source = WORKSPACE.read_text()
+        hydrate = source.split("export async function hydrateWorkspace()", 1)[1].split("/** Create a new tab", 1)[0]
+        self.assertIn('invoke<PersistedSessionSummary[]>("workspace_persisted_sessions")', hydrate)
+        self.assertIn("Dead persisted sessions remain recoverable alongside a saved layout", hydrate)
+        self.assertIn("if (closedSessionIds.has(session.id)) continue;", hydrate)
+        self.assertNotIn("if (!hadSavedLayout) {", hydrate)
+
     def test_normal_restart_does_not_label_every_saved_terminal_as_recovery(self):
         source = WORKSPACE.read_text()
         snapshot = source.split('function persistedTerminalSnapshot(terminal: TerminalState): TerminalState', 1)[1].split('function withRestartableTerminals', 1)[0]
@@ -56,6 +64,28 @@ class AutomaticRecoveryTests(unittest.TestCase):
         self.assertIn("diskMirrorQueue = diskMirrorQueue", source)
         self.assertIn("await invoke(\"workspace_layout_save\"", source)
 
+    def test_cache_failure_still_mirrors_the_authoritative_layout_to_disk(self):
+        source = WORKSPACE.read_text()
+        persistence = source.split("function persistWorkspaceSnapshot", 1)[1].split("function flushWorkspacePersistence", 1)[0]
+        self.assertIn("localStorage.setItem", persistence)
+        self.assertIn("mirrorWorkspaceLayoutToDisk(serialized)", persistence)
+        self.assertIn("Could not update workspace cache", persistence)
+
+    def test_startup_reconciles_again_after_the_daemon_restore_window(self):
+        source = (ROOT / "src/App.tsx").read_text()
+        self.assertIn("let reconciliationQueue = Promise.resolve()", source)
+        self.assertIn("reconciliationQueue = reconciliationQueue", source)
+        self.assertIn(".then(() => hydrateWorkspace())", source)
+        self.assertIn("for (const delay of [500, 2000, 5000, 10000, 20000, 30000])", source)
+        self.assertIn("window.setTimeout(reconcile, delay)", source)
+
+    def test_forced_hydration_flushes_even_when_the_snapshot_is_not_marked_dirty(self):
+        source = WORKSPACE.read_text()
+        flush = source.split("function flushWorkspacePersistence", 1)[1].split("function scheduleWorkspacePersistence", 1)[0]
+        self.assertIn("options.force", flush)
+        self.assertIn("persistDirty || options.force", flush)
+        self.assertIn("flushWorkspacePersistence({ force: true })", source)
+
     def test_empty_saved_layout_is_not_treated_as_missing_state(self):
         source = WORKSPACE.read_text()
         self.assertIn("if (Array.isArray(disk.tabs))", source)
@@ -78,6 +108,10 @@ class AutomaticRecoveryTests(unittest.TestCase):
         self.assertIn("await killPtys(", close)
         self.assertLess(
             close.index("await flushWorkspacePersistence();"),
+            close.index("await killPtys("),
+        )
+        self.assertLess(
+            close.index("get().removeTab(id);"),
             close.index("await killPtys("),
         )
 
@@ -108,9 +142,26 @@ class AutomaticRecoveryTests(unittest.TestCase):
 
     def test_live_restore_honors_explicit_closed_workspace_identity(self):
         restore = (ROOT / "scripts/restore-live-terminals.mjs").read_text()
-        self.assertIn("closedRestoreTargets", restore)
-        self.assertIn("closedCwds", restore)
-        self.assertIn("if (session.cwd && closedCwds.has(path.resolve(session.cwd))) continue;", restore)
+        self.assertIn("closedSessionIds", restore)
+        self.assertIn("if (closed.has(session.id)) continue;", restore)
+        self.assertNotIn("closedCwds", restore)
+
+    def test_cold_orphans_use_exact_session_tombstones_not_shared_cwds(self):
+        source = WORKSPACE.read_text()
+        hydrate = source.split("export async function hydrateWorkspace()", 1)[1].split("/** Create a new tab", 1)[0]
+        self.assertIn("if (closedSessionIds.has(session.id)) continue;", hydrate)
+        self.assertNotIn("isClosedRestoreCwd(session.cwd", hydrate)
+
+    def test_explicit_close_reconciles_old_daemon_checkpoints_without_restart(self):
+        source = WORKSPACE.read_text()
+        close = source.split("async function killPty", 1)[1].split("function shellQuote", 1)[0]
+        self.assertIn('invoke("pty_forget_persisted_session", { id })', close)
+        self.assertIn('invoke<Array<{ id?: string }>>(\"daemon_list_sessions\")', close)
+        self.assertIn("Daemon retained explicitly closed session", close)
+        hydrate = source.split("export async function hydrateWorkspace()", 1)[1].split("/** Create a new tab", 1)[0]
+        self.assertIn('invoke("pty_forget_persisted_session", { id })', hydrate)
+        self.assertIn('invoke("daemon_kill_session", { id: session.id })', hydrate)
+
 
     def test_anonymous_legacy_recovered_tabs_are_not_reintroduced(self):
         source = WORKSPACE.read_text()

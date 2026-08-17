@@ -56,7 +56,6 @@ session_dir="$tmp_root/session"
 closed_sentinel_cwd="$session_dir/closed-sentinel"
 open_sentinel_cwd="$session_dir/open-sentinel"
 closed_sentinel_fixture_dir="$session_dir/closed-sentinel"
-closed_sentinel_cwd="$HOME"
 mkdir -m 0700 "$runtime_dir" "$data_dir" "$state_dir" "$fake_bin" "$session_dir" "$closed_sentinel_fixture_dir" "$open_sentinel_cwd" "$tmp_root/tmp"
 
 cat >"$fake_bin/codex" <<'EOF'
@@ -575,10 +574,31 @@ if [[ "${TERMFLEET_RESTART_SMOKE_CLOSE_TERMINAL:-0}" == "1" ]]; then
       const workspace = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
       for (const tab of workspace.tabs || []) console.log(tab.id);
     ' "$data_dir/terminal-workspace/workspace.json" >"$tmp_root/tabs-before-control"
+    original_cwd="$(node -e '
+      const fs = require("node:fs");
+      const workspace = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+      const cwd = (workspace.tabs || [])
+        .map((tab) => tab.initialCwd)
+        .find((value) => typeof value === "string" && value.length > 0);
+      process.stdout.write(String(cwd || ""));
+    ' "$data_dir/terminal-workspace/workspace.json")"
+    for _ in {1..60}; do
+      [[ -n "$original_cwd" ]] && break
+      sleep 0.25
+      original_cwd="$(node -e '
+        const fs = require("node:fs");
+        const workspace = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+        const cwd = (workspace.tabs || [])
+          .map((tab) => tab.initialCwd)
+          .find((value) => typeof value === "string" && value.length > 0);
+        process.stdout.write(String(cwd || ""));
+      ' "$data_dir/terminal-workspace/workspace.json")"
+    done
+    [[ -n "$original_cwd" ]] || { printf 'Close gate could not identify the original terminal directory.\n' >&2; exit 1; }
     xdotool mousemove --sync "$((X + WIDTH / 2))" "$((Y + 24))"
     xdotool click --clearmodifiers 1
     xdotool key --clearmodifiers ctrl+t
-    for _ in {1..30}; do
+    for _ in {1..60}; do
       if [[ -f "$data_dir/terminal-workspace/workspace.json" ]] && node -e '
         const fs = require("node:fs");
         const workspace = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
@@ -588,15 +608,32 @@ if [[ "${TERMFLEET_RESTART_SMOKE_CLOSE_TERMINAL:-0}" == "1" ]]; then
       fi
       sleep 0.25
     done
-    open_terminal_id="$(node -e '
+    open_terminal_id=""
+    for _ in {1..48}; do
+      open_terminal_id="$(node -e '
+        const fs = require("node:fs");
+        const workspace = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+        const existing = new Set(fs.readFileSync(process.argv[2], "utf8").split(/\s+/).filter(Boolean));
+        const tab = (workspace.tabs || []).find((candidate) => !existing.has(candidate.id));
+        const terminal = tab?.terminals?.[0];
+        process.stdout.write(String(terminal?.id || ""));
+      ' "$data_dir/terminal-workspace/workspace.json" "$tmp_root/tabs-before-control")"
+      [[ -n "$open_terminal_id" ]] && break
+      sleep 0.25
+    done
+    [[ -n "$open_terminal_id" ]] || { printf 'Untouched installed control tab did not acquire a terminal id.\n' >&2; exit 1; }
+    node -e '
       const fs = require("node:fs");
       const workspace = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
-      const existing = new Set(fs.readFileSync(process.argv[2], "utf8").split(/\s+/).filter(Boolean));
-      const tab = (workspace.tabs || []).find((candidate) => !existing.has(candidate.id));
-      const terminal = tab?.terminals?.[0];
-      process.stdout.write(String(terminal?.id || ""));
-    ' "$data_dir/terminal-workspace/workspace.json" "$tmp_root/tabs-before-control")"
-    [[ -n "$open_terminal_id" ]] || { printf 'Untouched installed control tab did not acquire a terminal id.\n' >&2; exit 1; }
+      const openId = process.argv[2];
+      const originalCwd = process.argv[3];
+      const tab = (workspace.tabs || []).find((candidate) =>
+        (candidate.terminals || []).some((terminal) => terminal.id === openId));
+      if (!tab || tab.initialCwd !== originalCwd) {
+        console.error(`Control terminal did not remain in the original directory: control=${tab?.initialCwd || ""} original=${originalCwd}`);
+        process.exit(1);
+      }
+    ' "$data_dir/terminal-workspace/workspace.json" "$open_terminal_id" "$original_cwd"
     # Return to the original tab before exercising the requested close route.
     if [[ "$close_route" == "terminal-x" ]]; then
       xdotool mousemove --sync "$((X + WIDTH / 2))" "$((Y + 24))"
@@ -763,16 +800,22 @@ if [[ "${TERMFLEET_RESTART_SMOKE_CLOSE_TERMINAL:-0}" == "1" ]]; then
 import json
 import socket
 import sys
+import time
 
 socket_path, closed_id = sys.argv[1:]
-with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as stream:
-    stream.settimeout(5)
-    stream.connect(socket_path)
-    stream.sendall(b'{"type":"listSessions"}\n')
-    response = json.loads(stream.makefile("rb").read().decode())
-sessions = response.get("sessions", [])
-if any(session.get("id") == closed_id for session in sessions):
-    raise SystemExit(f"Closed terminal still owns a daemon session: {closed_id}")
+deadline = time.time() + 12
+while time.time() < deadline:
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as stream:
+        stream.settimeout(5)
+        stream.connect(socket_path)
+        stream.sendall(b'{"type":"listSessions"}\n')
+        response = json.loads(stream.makefile("rb").read().decode())
+    sessions = response.get("sessions", [])
+    if not any(session.get("id") == closed_id for session in sessions):
+        break
+    time.sleep(0.1)
+else:
+    raise SystemExit(f"Closed terminal still owns a daemon session after teardown timeout: {closed_id}")
 PY
   xdotool windowclose "$window_id"
   close_deadline=$((SECONDS + 10))
@@ -838,10 +881,13 @@ PY
       const tabs = Array.isArray(workspace.tabs) ? workspace.tabs : [];
       const visible = tabs.flatMap((tab) => Array.isArray(tab.terminals) ? tab.terminals : []).filter((terminal) => terminal.id === openId);
       const cockpit = (Array.isArray(snapshot.terminals) ? snapshot.terminals : []).filter((entry) => entry.terminalId === openId || entry.paneId === openId);
-      if (visible.length !== 1 || cockpit.length !== 1) {
-        console.error(`Untouched sentinel was lost, hidden, or duplicated after restart: tabs=${visible.length} cockpit=${cockpit.length}`);
-        process.exit(1);
-      }
+       // A plain shell control tab has no agent-status sidecar, so cockpit may
+       // legitimately omit it. The durable workspace tab is the authoritative
+       // persistence assertion; when a cockpit entry exists, it must be unique.
+       if (visible.length !== 1 || cockpit.length > 1) {
+         console.error(`Untouched sentinel was lost, hidden, or duplicated after restart: tabs=${visible.length} cockpit=${cockpit.length}`);
+         process.exit(1);
+       }
     ' "$data_dir/terminal-workspace/workspace.json" "$data_dir/terminal-workspace/agent-status/cockpit-snapshot.json" "$open_terminal_id"
   fi
   if [[ -n "$ARTIFACT_DIR" ]]; then

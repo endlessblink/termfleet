@@ -186,6 +186,30 @@ test("an unchanged status poll does not rewrite a live map terminal", () => {
   ).toBe(true);
 });
 
+test("status polling ignores capture timestamps on unchanged task lines", () => {
+  const current = terminal("timestamped", {
+    taskLine: {
+      text: "Fixing TermFleet freezes",
+      source: "status-sidecar",
+      capturedAt: 1_700_000_000_000,
+      expiresAt: null,
+    },
+    nowLine: {
+      text: "Checking renderer pressure",
+      source: "status-sidecar",
+      capturedAt: 1_700_000_000_000,
+      expiresAt: null,
+    },
+  });
+
+  expect(
+    statusPollProjectionChanged(current, {
+      taskLine: { ...current.taskLine!, capturedAt: 1_700_000_001_000 },
+      nowLine: { ...current.nowLine!, capturedAt: 1_700_000_001_000 },
+    }),
+  ).toBe(false);
+});
+
 test("an expired sidecar stops claiming live work but KEEPS the goal and the task list", () => {
   const stale = terminal("stale", {
     statusSummarySource: "sidecar",

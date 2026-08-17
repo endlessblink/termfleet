@@ -17,6 +17,15 @@ export function mirroredWorkstream(
 }
 
 function statusPollProjectionFingerprint(terminal: TerminalState) {
+  const stableLine = (line: TerminalState["taskLine"] | null | undefined) =>
+    line
+      ? {
+          text: line.text,
+          source: line.source,
+          expiresAt: line.expiresAt,
+        }
+      : null;
+
   return JSON.stringify({
     agentProvider: terminal.agentProvider ?? null,
     statusSummary: terminal.statusSummary ?? null,
@@ -26,8 +35,11 @@ function statusPollProjectionFingerprint(terminal: TerminalState) {
     taskLineup: terminal.taskLineup ?? null,
     // Without this the loop computed a better Task line and then decided nothing had
     // changed, so the line never reached the store.
-    taskLine: terminal.taskLine ?? null,
-    nowLine: terminal.nowLine ?? null,
+    // `capturedAt` is regenerated while resolving the same unchanged line; it is
+    // telemetry, not a projection change. Including it rewrites the whole store on
+    // every status sweep and makes WebKit repaint all terminal headers repeatedly.
+    taskLine: stableLine(terminal.taskLine),
+    nowLine: stableLine(terminal.nowLine),
   });
 }
 

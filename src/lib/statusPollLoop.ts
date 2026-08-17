@@ -16,6 +16,7 @@ import { selectStatusPollTargets, type StatusPollTarget } from "./statusPollTarg
 import { useWorkspaceStore } from "../stores/workspace";
 import type { Tab, TerminalState, WorkstreamStatus } from "./types";
 import { stableAgentProvider } from "./agentProviderIdentity";
+import { runBoundedTasks } from "./statusPollScheduler";
 import {
   mirroredWorkstream,
   projectStatusPollResult,
@@ -23,13 +24,12 @@ import {
 } from "./statusPollProjection";
 
 const POLL_INTERVAL_MS = 4_000;
-// Stagger requests so N panes don't burst the summarizer at once.
-const PER_PANE_DELAY_MS = 120;
 // Every pane's badge must stay correct at a glance, so re-read all of them on a short
 // cycle. A finished background pane that isn't polled keeps a stale status (the "I have
 // to click it" bug). Reads are cheap local sidecar files.
 const ACTIVE_PANE_MIN_POLL_MS = 3_000;
 const BACKGROUND_PANE_MIN_POLL_MS = 8_000;
+const STATUS_POLL_CONCURRENCY = 8;
 
 function statusForTerminal(status?: string): WorkstreamStatus {
   if (status === "failed") return "failed";
@@ -71,13 +71,17 @@ async function pollOnce() {
     for (const key of lastPolledByPane.keys()) {
       if (!liveKeys.has(key)) lastPolledByPane.delete(key);
     }
-    for (const target of targets) {
-      if (!shouldPollTarget(target, store.activeTabId, Date.now())) continue;
-      const { tab, terminal } = target;
-      // Agent lanes get contextual lines too — their mission/prompt is the ask.
-      const liveCwd = store.liveCwds[terminal.id];
-      try {
-        const result = await summarizeAgentStatus({
+    const eligibleTargets = targets.filter((target) =>
+      shouldPollTarget(target, store.activeTabId, Date.now()),
+    );
+    const pollResults = await runBoundedTasks(
+      eligibleTargets,
+      STATUS_POLL_CONCURRENCY,
+      async (target) => {
+        const { tab, terminal } = target;
+        const liveCwd = store.liveCwds[terminal.id];
+        try {
+          const result = await summarizeAgentStatus({
           paneId: panePollKey(tab, terminal),
           sessionId: tab.workstream?.providerSessionId,
           userTask: tab.workstream?.kind === "agent" ? tab.workstream.mission ?? tab.workstream.prompt : undefined,
@@ -99,7 +103,18 @@ async function pollOnce() {
           // Context synthesis remains disabled: deterministic evidence is enough and
           // cannot invent a new goal for a pane.
           contextTaskSummarizer: null,
-        });
+          });
+          return { target, result };
+        } catch {
+          return { target, result: null };
+        }
+      },
+    );
+
+    for (const { target, result } of pollResults) {
+      if (!result) continue;
+      const { tab, terminal } = target;
+      try {
         const contextual = result.source === "process" && Boolean(result.summary.narration);
         const trusted = result.source === "sidecar" || contextual;
         const latest = useWorkspaceStore.getState();
@@ -219,7 +234,6 @@ async function pollOnce() {
       } catch {
         // One pane failing must never stop the loop.
       }
-      await new Promise((resolve) => setTimeout(resolve, PER_PANE_DELAY_MS));
     }
   } finally {
     ticking = false;

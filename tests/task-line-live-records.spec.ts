@@ -45,7 +45,7 @@ test("gated shell accepts a real TodoWrite list from the status worker", () => {
   ).toBe(false);
 });
 
-const TAIL_BYTES = 262_144; // must match commands.rs TRANSCRIPT_TAIL_BYTES
+const TAIL_BYTES = 32 * 1024; // must match commands.rs TRANSCRIPT_TAIL_BYTES
 
 function statusDir() {
   const dataHome =

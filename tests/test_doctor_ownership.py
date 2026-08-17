@@ -16,6 +16,11 @@ class DoctorOwnershipTests(unittest.TestCase):
         self.assertIn('"Private verifier daemons"', DOCTOR)
         self.assertIn("outside the canonical socket", DOCTOR)
 
+    def test_stale_canonical_daemon_is_reported_before_restart(self):
+        self.assertIn('"Runtime release alignment"', DOCTOR)
+        self.assertIn("do not restart or replace it while live sessions need preservation", DOCTOR)
+        self.assertIn('report(\n      "warn",\n      "Runtime release alignment"', DOCTOR)
+
     def test_only_live_duplicate_provider_ids_are_warnings(self):
         self.assertIn("liveDuplicateIds", DOCTOR)
         self.assertIn("historical provider chat ID(s) have duplicate records", DOCTOR)

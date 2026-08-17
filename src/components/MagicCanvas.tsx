@@ -4378,7 +4378,6 @@ function CanvasNodeViewImpl({
             onMouseDown={onMouseDown}
             onDoubleClick={onRename}
           >
-            {renaming && renameEditor}
             <div style={styles.terminalStatusKicker}>
               <span
                 style={{
@@ -4504,6 +4503,7 @@ function CanvasNodeViewImpl({
             onMouseDown={onMouseDown}
             onDoubleClick={onRename}
           >
+            {renaming && renameEditor}
             <div
               style={{
                 ...styles.terminalStatusKicker,
@@ -4612,24 +4612,20 @@ function CanvasNodeViewImpl({
                 data-testid="canvas-terminal-node-task-row"
                 title={`Task: ${terminalHeaderTaskDescription}`}
               >
-                {renaming ? (
-                  renameEditor
-                ) : (
-                  <>
-                    <span style={styles.terminalNowActiveLabel}>Task:</span>
-                    <span
-                      data-testid="canvas-terminal-node-description"
-                      style={{
-                        ...styles.terminalNowActiveValue,
-                        color: labelColor ?? "var(--text-primary)",
-                      }}
-                    >
-                      {terminalHeaderNowRowVisible
-                        ? terminalHeaderTaskDescription
-                        : " "}
-                    </span>
-                  </>
-                )}
+                <>
+                  <span style={styles.terminalNowActiveLabel}>Task:</span>
+                  <span
+                    data-testid="canvas-terminal-node-description"
+                    style={{
+                      ...styles.terminalNowActiveValue,
+                      color: labelColor ?? "var(--text-primary)",
+                    }}
+                  >
+                    {terminalHeaderNowRowVisible
+                      ? terminalHeaderTaskDescription
+                      : " "}
+                  </span>
+                </>
               </div>
             }
             {

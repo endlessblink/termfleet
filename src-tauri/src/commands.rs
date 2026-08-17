@@ -6,8 +6,8 @@ use crate::daemon::{
 use crate::daemon_ipc::{self, LocalStream};
 use crate::platform_paths;
 use crate::pty::{
-    update_agent_recovery_manifest, AgentRecoveryManifestUpdate, PtyManager, PtyOutputChunk,
-    PtySessionEvent, PtySessionSummary,
+    forget_persisted_session, update_agent_recovery_manifest, AgentRecoveryManifestUpdate,
+    PtyManager, PtyOutputChunk, PtySessionEvent, PtySessionSummary,
 };
 use crate::vt_grid::{GridManager, DEFAULT_COLS, DEFAULT_ROWS};
 use serde::{Deserialize, Serialize};
@@ -1086,6 +1086,12 @@ pub fn pty_kill(state: State<'_, PtyManager>, id: String) -> Result<(), String> 
 }
 
 #[tauri::command]
+pub fn pty_forget_persisted_session(id: String) -> Result<(), String> {
+    forget_persisted_session(&id);
+    Ok(())
+}
+
+#[tauri::command]
 pub fn pty_get_cwd(state: State<'_, PtyManager>, id: String) -> Result<String, String> {
     state.get_cwd(&id)
 }
@@ -1908,6 +1914,7 @@ pub fn workspace_layout_load() -> Result<Option<String>, String> {
     }
 }
 
+
 #[tauri::command]
 pub fn workspace_persisted_sessions() -> Vec<crate::pty::PersistedSessionSummary> {
     crate::pty::list_persisted_sessions()
@@ -2121,7 +2128,10 @@ mod tests {
 // ---------------------------------------------------------------------------
 
 /// Rollouts reach 11.7 MB; only the tail carries current state.
-pub const TRANSCRIPT_TAIL_BYTES: usize = 262_144;
+// Status polling reads this tail for every agent pane on each refresh. Keep it large
+// enough for the recent records parser, but small enough that dozens of panes cannot
+// turn a 4-second badge sweep into sustained disk pressure.
+pub const TRANSCRIPT_TAIL_BYTES: usize = 32 * 1024;
 pub const TRANSCRIPT_CONTEXT_BYTES: usize = 262_144;
 
 fn valid_session_id(session_id: &str) -> bool {

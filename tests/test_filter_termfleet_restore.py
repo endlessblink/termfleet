@@ -20,13 +20,13 @@ class RestoreSuppressionTests(unittest.TestCase):
             workspace = root / "workspace.json"
             output = root / "filtered.toml"
             manifest.write_text(
-                """[[session]]\nname = \"paper-bot\"\ncwd = \"/work/paper\"\nagent = \"codex\"\nhost = \"termfleet\"\npin = \"last\"\n\n[[session]]\nname = \"arthouse\"\ncwd = \"/work/arthouse\"\nagent = \"codex\"\nhost = \"termfleet\"\npin = \"last\"\n\n[[session]]\nname = \"open\"\ncwd = \"/work/open\"\nagent = \"codex\"\nhost = \"termfleet\"\npin = \"last\"\n""",
+                """[[session]]\nname = \"paper-bot\"\ncwd = \"/work/paper\"\nagent = \"codex\"\nhost = \"termfleet\"\npin = \"last\"\n\n[[session]]\nname = \"arthouse\"\ncwd = \"/work/arthouse\"\nagent = \"codex\"\nhost = \"termfleet\"\npin = \"last\"\n\n[[session]]\nname = \"arthouse-other\"\ncwd = \"/work/arthouse\"\nagent = \"codex\"\nhost = \"termfleet\"\npin = \"last\"\n\n[[session]]\nname = \"open\"\ncwd = \"/work/open\"\nagent = \"codex\"\nhost = \"termfleet\"\npin = \"last\"\n""",
                 encoding="utf-8",
             )
             workspace.write_text(
                 json.dumps({
-                    "tabs": [{"initialCwd": "/work/paper"}],
-                    "closedRestoreTargets": [{"cwd": "/work/arthouse"}],
+                    "tabs": [{"initialCwd": "/work/paper", "title": "paper-bot"}],
+                    "closedRestoreTargets": [{"cwd": "/work/arthouse", "title": "arthouse"}],
                 }),
                 encoding="utf-8",
             )
@@ -36,7 +36,8 @@ class RestoreSuppressionTests(unittest.TestCase):
             self.assertEqual(suppressed, ["paper-bot", "arthouse"])
             filtered = output.read_text(encoding="utf-8")
             self.assertNotIn("paper-bot", filtered)
-            self.assertNotIn("arthouse", filtered)
+            self.assertNotIn('name = "arthouse"', filtered)
+            self.assertIn('name = "arthouse-other"', filtered)
             self.assertIn('name = "open"', filtered)
 
     def test_does_not_launch_a_manifest_workspace_already_present_in_saved_layout(self):
@@ -50,7 +51,7 @@ class RestoreSuppressionTests(unittest.TestCase):
                 encoding="utf-8",
             )
             workspace.write_text(
-                json.dumps({"tabs": [{"initialCwd": "/work/represented/"}]}),
+                    json.dumps({"tabs": [{"initialCwd": "/work/represented/", "title": "represented"}]}),
                 encoding="utf-8",
             )
 
@@ -86,6 +87,82 @@ class RestoreSuppressionTests(unittest.TestCase):
             self.assertEqual(suppressed, ["legacy"])
             self.assertEqual(json.loads(workspace.read_text(encoding="utf-8")), original)
             self.assertNotIn("closedRestoreTargets", json.loads(workspace.read_text(encoding="utf-8")))
+
+    def test_suppresses_provider_name_mismatch_for_closed_cwd(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = root / "fleet.toml"
+            workspace = root / "workspace.json"
+            output = root / "filtered.toml"
+            manifest.write_text(
+                """[[session]]\nname = \"provider-name\"\ncwd = \"/work/closed\"\n\n[[session]]\nname = \"open-sibling\"\ncwd = \"/work/other\"\n""",
+                encoding="utf-8",
+            )
+            workspace.write_text(
+                json.dumps({
+                    "tabs": [],
+                    "closedRestoreTargets": [{"cwd": "/work/closed", "title": "Terminal"}],
+                }),
+                encoding="utf-8",
+            )
+
+            suppressed = MODULE.filter_manifest(manifest, workspace, output)
+
+            self.assertEqual(suppressed, ["provider-name"])
+            self.assertNotIn("provider-name", output.read_text(encoding="utf-8"))
+            self.assertIn("open-sibling", output.read_text(encoding="utf-8"))
+
+    def test_preserves_saved_sibling_when_closed_provider_name_differs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = root / "fleet.toml"
+            workspace = root / "workspace.json"
+            output = root / "filtered.toml"
+            manifest.write_text(
+                """[[session]]\nname = \"provider-name\"\ncwd = \"/work/closed\"\n""",
+                encoding="utf-8",
+            )
+            workspace.write_text(
+                json.dumps({
+                    "tabs": [{"initialCwd": "/work/closed", "title": "Open sibling"}],
+                    "closedRestoreTargets": [{"cwd": "/work/closed", "title": "Terminal"}],
+                }),
+                encoding="utf-8",
+            )
+
+            suppressed = MODULE.filter_manifest(manifest, workspace, output)
+
+            self.assertEqual(suppressed, [])
+            self.assertIn("provider-name", output.read_text(encoding="utf-8"))
+
+    def test_exact_provider_identity_closes_one_same_cwd_sibling_only(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = root / "fleet.toml"
+            workspace = root / "workspace.json"
+            output = root / "filtered.toml"
+            manifest.write_text(
+                """[[session]]\nname = \"closed-provider\"\ncwd = \"/work/shared\"\n\n[[session]]\nname = \"open-provider\"\ncwd = \"/work/shared\"\n""",
+                encoding="utf-8",
+            )
+            workspace.write_text(
+                json.dumps({
+                    "tabs": [],
+                    "closedRestoreTargets": [{
+                        "cwd": "/work/shared",
+                        "title": "Closed",
+                        "providerName": "closed-provider",
+                    }],
+                }),
+                encoding="utf-8",
+            )
+
+            suppressed = MODULE.filter_manifest(manifest, workspace, output)
+
+            self.assertEqual(suppressed, ["closed-provider"])
+            filtered = output.read_text(encoding="utf-8")
+            self.assertNotIn("closed-provider", filtered)
+            self.assertIn("open-provider", filtered)
 
 
 if __name__ == "__main__":

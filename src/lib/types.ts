@@ -146,6 +146,8 @@ export interface Tab {
   workstream?: WorkstreamMetadata;
   terminals: TerminalState[];
   initialCwd?: string;
+  /** Stable name from an external restore manifest, when one exists. */
+  restoreName?: string;
   splitLayout: SplitNode;
   activePaneId: string;
 }

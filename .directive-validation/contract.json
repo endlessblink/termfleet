@@ -1,35 +1,41 @@
 {
-  "objective": "Keep every terminal the user explicitly closes gone after restart while preserving every terminal the user leaves open",
+  "objective": "Keep map terminals at the user-selected scrollback position while they inspect older output",
   "requirements": [
-    "A sidebar X close removes only the selected terminal and records its durable close identity",
-    "A pane X close removes only the selected terminal and records its durable close identity",
-    "Typing /exit removes only the selected terminal and records its durable close identity",
-    "Restart never restores an explicitly closed terminal",
-    "Restart restores every terminal the user did not close, without killing or hiding it",
-    "Installed dock-launched runtime evidence proves the behavior across repeated restart cycles",
-    "The user remains the only authority that can approve the final visible result"
+    "Wheel scrolling on a map terminal reveals older output without being pulled back to the newest output",
+    "New output still follows the bottom when the user has not manually scrolled away",
+    "The behavior is covered by a focused regression and the installed release remains buildable"
   ],
   "knownFailures": [
-    "Previously closed terminals returned after restart",
-    "Earlier recovery cleanup could close terminals the user had not closed",
-    "Source-only checks did not prove the installed dock-launched runtime"
+    "Map terminal output forced the viewport back to the newest section during scrollback",
+    "A scrollback fix must not disable normal live-output bottom following"
   ],
   "outOfScope": [
-    "Changing daemon ownership or killing background PTYs during UI restart",
-    "Treating a process kill performed outside the app as a user close action",
-    "Closing or approving the goal without explicit user approval"
+    "Changing terminal daemon ownership or persistence",
+    "Changing the unrelated close and restart recovery behavior"
   ],
+  "verification": {
+    "successCriteria": [
+      "The focused map-terminal regression passes",
+      "The frontend build passes",
+      "The installed release identity check passes"
+    ],
+    "failureSignals": [
+      "Wheel navigation schedules a forced scroll to the newest output",
+      "The focused regression fails",
+      "The installed release cannot be verified"
+    ]
+  },
   "sureScore": "HIGH",
   "sure": {
-    "rootCause": "Recovery previously lacked a single durable, user-authored close decision shared by every close route.",
+    "rootCause": "The output update path always scheduled a bottom scroll after map-terminal input, including wheel navigation.",
     "confidence": "HIGH",
-    "research": "Focused route contracts, workspace persistence checks, daemon restore checks, installed release checks, and live visual evidence cover sidebar close, pane close, slash exit, restart, and untouched-terminal survival.",
-    "fix": "Record explicit close intent by terminal identity and filter only those identities during durable restore; keep daemon-owned sessions alive unless the user explicitly closes them.",
-    "sideEffects": "The change is scoped to close/recovery state and its regression gates; unrelated dirty work and untouched sessions are preserved."
+    "research": "The focused regression exercises wheel navigation and the existing build and installed-release checks cover the delivery surface.",
+    "fix": "Mark wheel navigation as user-controlled viewport input and suppress only the next forced bottom-follow.",
+    "sideEffects": "Normal typing and live output continue to follow the bottom when the user has not scrolled away."
   },
   "ambiguityResolved": true,
   "checkpoint": {
     "state": "ready-for-validation",
-    "updatedAt": "2026-08-16T06:51:00Z"
+    "updatedAt": "2026-08-17T09:50:00Z"
   }
 }

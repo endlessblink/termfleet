@@ -98,10 +98,15 @@ function configuredTerminalHeaderVerifierFixture(): boolean {
   return import.meta.env.VITE_TERMINAL_HEADER_VERIFIER_FIXTURE === "1";
 }
 
+function configuredTerminal100Soak(): boolean {
+  return import.meta.env.VITE_TERMINAL_100_SOAK === "1";
+}
+
 const FORCED_TERMINAL_RENDERER_MODE = configuredTerminalRendererMode();
 const FORCED_WORKSPACE_MODE = configuredWorkspaceMode();
 const FORCE_WORKSPACE_RESET_STATE = configuredWorkspaceResetState();
 const TERMINAL_HEADER_VERIFIER_FIXTURE = configuredTerminalHeaderVerifierFixture();
+const TERMINAL_100_SOAK = configuredTerminal100Soak();
 
 // Reset/verify runs (VITE_WORKSPACE_RESET_STATE=1) clear and re-persist the
 // workspace on load. They run on the SAME origin as the real app, so if they
@@ -261,6 +266,7 @@ function recentlyClosedTerminalFor(state: WorkspaceState, tab: Tab): RecentlyClo
 interface ClosedRestoreTarget {
   cwd: string;
   title?: string;
+  providerName?: string;
 }
 
 export type TerminalCloseReason = "slash-exit" | "terminal-x" | "sidebar-x" | "operator";
@@ -275,13 +281,11 @@ function restoreTargetForTab(
       .map((terminal) => liveCwds[terminal.id]?.trim())
       .find((candidate): candidate is string => Boolean(candidate));
   if (!cwd) return null;
-  return { cwd, title: tab.title?.trim() || undefined };
-}
-
-function normalizedRestoreCwd(cwd: string | null | undefined) {
-  const value = cwd?.trim();
-  if (!value) return null;
-  return value.length > 1 ? value.replace(/\/+$/, "") : value;
+  return {
+    cwd,
+    title: tab.title?.trim() || undefined,
+    providerName: tab.restoreName?.trim() || undefined,
+  };
 }
 
 function pushRecentlyClosed(
@@ -565,22 +569,6 @@ function withoutClosedSessionTabs(tabs: Tab[], closedSessionIds: Set<string>) {
         : getAllLeafIds(splitLayout)[0],
     }];
   });
-}
-
-function withoutClosedRestoreTargets(tabs: Tab[], targets: ClosedRestoreTarget[]) {
-  if (targets.length === 0) return tabs;
-  const closedCwds = new Set(
-    targets.map((target) => normalizedRestoreCwd(target.cwd)).filter((cwd): cwd is string => Boolean(cwd)),
-  );
-  return tabs.filter((tab) => {
-    const cwd = normalizedRestoreCwd(tab.initialCwd);
-    return !cwd || !closedCwds.has(cwd);
-  });
-}
-
-function isClosedRestoreCwd(cwd: string | null | undefined, targets: ClosedRestoreTarget[]) {
-  const normalized = normalizedRestoreCwd(cwd);
-  return Boolean(normalized && targets.some((target) => normalizedRestoreCwd(target.cwd) === normalized));
 }
 
 function normalizeWorkspaceUiState(uiState: Partial<WorkspaceUiState> | undefined): WorkspaceUiState {
@@ -1010,9 +998,83 @@ function normalizeCanvasState(canvasState: CanvasState | undefined, tabs: Tab[])
   };
 }
 
+function terminal100SoakWorkspace(): PersistedWorkspace {
+  const now = Date.now();
+  const terminals = Array.from({ length: 100 }, (_, index) => {
+    const suffix = String(index + 1).padStart(3, "0");
+    const paneId = `terminal-100-soak-pane-${suffix}`;
+    const terminalId = `terminal-100-soak-pty-${suffix}`;
+    return {
+      id: terminalId,
+        paneId,
+        cols: 100,
+        rows: 30,
+        status: "running" as const,
+        currentActivity: "Generating controlled terminal load",
+        activityUpdatedAt: now,
+        statusSummaryUpdatedAt: now,
+        statusSummarySource: "process" as const,
+        lastStatusAt: now,
+    } satisfies TerminalState;
+  });
+  const splitLayout = (start: number, count: number): Tab["splitLayout"] => {
+    if (count === 1) return { id: terminals[start].paneId, type: "terminal", cwd: "/tmp" };
+    const leftCount = Math.floor(count / 2);
+    return {
+      id: `terminal-100-soak-split-${start}-${count}`,
+      type: "split",
+      direction: count % 2 === 0 ? "horizontal" : "vertical",
+      sizes: [leftCount / count * 100, (count - leftCount) / count * 100],
+      children: [splitLayout(start, leftCount), splitLayout(start + leftCount, count - leftCount)],
+    };
+  };
+  const tabId = "terminal-100-soak-tab";
+  const tabs = [{
+    id: tabId,
+    title: "100-terminal soak",
+    emoji: "▣",
+    color: GROUP_COLORS[0],
+    groupId: "terminal-100-soak-group",
+    initialCwd: "/tmp",
+    workstream: {
+      kind: "terminal" as const,
+      mission: "Measuring 100 live terminal responsiveness",
+      status: "running" as const,
+      createdAt: now,
+    },
+    terminals,
+    splitLayout: splitLayout(0, terminals.length),
+    activePaneId: terminals[0].paneId,
+  } satisfies Tab];
+
+  return {
+    tabs,
+    groups: [{
+      id: "terminal-100-soak-group",
+      name: "100-terminal soak",
+      color: GROUP_COLORS[0],
+      emoji: "▣",
+      projectRoot: "/tmp",
+      lastActiveTabId: tabs[0].id,
+    }],
+    activeTabId: tabs[0].id,
+    activeGroupId: "terminal-100-soak-group",
+    activeGroupFilter: "terminal-100-soak-group",
+    projectRoot: "/tmp",
+    workspaceUiState: {
+      workspaceMode: "canvas",
+      terminalRendererMode: "canvas2d",
+      primarySidebarCollapsed: true,
+      terminalSidebarCollapsed: true,
+      canvasSidebarCollapsed: true,
+    },
+  };
+}
+
 function loadPersistedWorkspace(): PersistedWorkspace {
   if (FORCE_WORKSPACE_RESET_STATE) {
     localStorage.removeItem(WORKSPACE_STORAGE_KEY);
+    if (TERMINAL_100_SOAK) return terminal100SoakWorkspace();
     if (TERMINAL_HEADER_VERIFIER_FIXTURE) {
       const root = import.meta.env.VITE_TERMINAL_HEADER_VERIFIER_ROOT || "/tmp/tw-terminal-header-live-all";
       const longPath = import.meta.env.VITE_TERMINAL_HEADER_VERIFIER_LONG_PATH || `${root}/deep/workspace/path/for/header/verification`;
@@ -1182,7 +1244,12 @@ const restoredCanvasState = normalizeCanvasState(persisted.canvasState, restored
 const restoredProjects = reconcileProjectGroups(restoredTabs, persisted.groups ?? [], restoredCanvasState);
 
 function isTauriRuntime() {
-  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+  if (typeof window === "undefined") return false;
+  return import.meta.env.PROD ||
+    "__TAURI_INTERNALS__" in window ||
+    window.location.protocol === "tauri:" ||
+    window.location.hostname === "tauri.localhost" ||
+    window.location.hostname === "localhost";
 }
 
 // Desktop disk is the durable source of truth. Always gate the first render long
@@ -1201,6 +1268,21 @@ interface PersistedSessionSummary {
 interface LiveSessionSummary {
   id: string;
   cwd: string | null;
+  initialCwd?: string | null;
+  command?: string;
+}
+
+function externalRestoreName(command?: string): string | undefined {
+  const encoded = command?.match(/(?:^|[;\s])TERMFLEET_SESSION_NAME_B64=([A-Za-z0-9_-]+)/)?.[1];
+  if (!encoded || typeof atob !== "function") return undefined;
+  try {
+    const padded = encoded + "=".repeat((4 - (encoded.length % 4)) % 4);
+    const binary = atob(padded.replace(/-/g, "+").replace(/_/g, "/"));
+    const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+    return new TextDecoder().decode(bytes).trim() || undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 interface AgentStatusSidecarRecord {
@@ -1214,6 +1296,28 @@ const ORPHAN_MIN_BYTES = 256;
 const AGENT_RECOVERY_MIGRATION_VERSION = 1;
 const AGENT_RECOVERY_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 
+async function listLiveSessionsWithRetry(
+  invoke: <T>(command: string) => Promise<T>,
+): Promise<LiveSessionSummary[]> {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const result = await invoke<LiveSessionSummary[]>("daemon_list_sessions");
+      if (Array.isArray(result)) {
+        return result.map((session) => ({
+          ...session,
+          cwd: session.cwd ?? session.initialCwd ?? null,
+        }));
+      }
+    } catch (error) {
+      if (attempt === 2) {
+        console.warn("Could not list live daemon sessions after retries:", error);
+      }
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, 150));
+  }
+  return [];
+}
+
 /** Build a single-pane tab whose derived session id (`terminal-<tabId>-<paneId>`)
  *  matches a daemon or on-disk session, so mounting it reattaches that pane. */
 function tabFromRecoverableSession(
@@ -1221,12 +1325,21 @@ function tabFromRecoverableSession(
   options: { recovery?: boolean } = {},
 ): Tab | null {
   const prefix = "terminal-";
-  if (!session.id.startsWith(prefix)) return null;
-  const body = session.id.slice(prefix.length);
-  const tabId = body.slice(0, 36);
-  const paneId = body.slice(37);
-  // Skip map-node sessions — the same tab's real pane carries the content.
-  if (!paneId || paneId.startsWith("terminal-map-")) return null;
+  let tabId: string;
+  let paneId: string;
+  if (session.id.startsWith(prefix)) {
+    const body = session.id.slice(prefix.length);
+    tabId = body.slice(0, 36);
+    paneId = body.slice(37);
+    // Skip map-node sessions — the same tab's real pane carries the content.
+    if (!paneId || paneId.startsWith("terminal-map-")) return null;
+  } else {
+    // Opaque ids belong to sessions created outside the normal tab-id scheme
+    // (external restore or another surviving UI). Every live PTY is still a
+    // real user terminal: recover it unless its exact id is tombstoned.
+    tabId = `recovered-tab-${session.id}`;
+    paneId = `recovered-pane-${session.id}`;
+  }
   const cwd = session.cwd ?? undefined;
   if (!cwd) return null;
   const title = cwd.split("/").filter(Boolean).pop() ?? DEFAULT_TAB_TITLE;
@@ -1234,6 +1347,7 @@ function tabFromRecoverableSession(
     id: tabId,
     title,
     initialCwd: cwd,
+    restoreName: externalRestoreName(session.command),
     splitLayout: { id: paneId, type: "terminal" as const },
     activePaneId: paneId,
   });
@@ -1251,6 +1365,41 @@ function tabFromRecoverableSession(
         : undefined,
     }],
   };
+}
+
+/** Rebind an externally restored agent to an existing recovered card. */
+function bindExternalSessionToSavedTab(
+  tabs: Tab[],
+  session: LiveSessionSummary,
+  liveSessionIds: Set<string>,
+): Tab[] | null {
+  if (session.id.startsWith("terminal-") || !session.command?.includes("TERMFLEET=1") || !session.cwd) return null;
+  const directIndex = tabs.findIndex((tab) => tab.terminals.some((terminal) => terminal.id === session.id));
+  if (directIndex >= 0) return tabs;
+  const title = session.cwd.split("/").filter(Boolean).pop() ?? DEFAULT_TAB_TITLE;
+  const restoreName = externalRestoreName(session.command);
+  const candidateIndex = tabs.findIndex((tab) =>
+    tab.id.startsWith("recovered-tab-") &&
+    tab.initialCwd === session.cwd &&
+    tab.terminals.length === 1 &&
+    !liveSessionIds.has(tab.terminals[0].id) &&
+    (restoreName ? tab.restoreName === restoreName : tab.title === title),
+  );
+  if (candidateIndex < 0) return null;
+  const tab = tabs[candidateIndex];
+  const nextTabs = tabs.slice();
+  nextTabs[candidateIndex] = {
+    ...tab,
+    restoreName: restoreName ?? tab.restoreName,
+    terminals: [{
+      ...tab.terminals[0],
+      id: session.id,
+      status: "starting",
+      reused: false,
+      lastError: undefined,
+    }],
+  };
+  return nextTabs;
 }
 
 /**
@@ -1373,7 +1522,15 @@ export async function hydrateWorkspace() {
             if (Array.isArray(disk.closedRestoreTargets)) {
               closedRestoreTargets = disk.closedRestoreTargets.filter(
                 (target): target is ClosedRestoreTarget =>
-                  Boolean(target && typeof target.cwd === "string" && target.cwd.trim().length > 0),
+                  Boolean(
+                    target &&
+                    typeof target.cwd === "string" &&
+                    target.cwd.trim().length > 0 &&
+                    (!target.title ||
+                      (typeof target.title === "string" && target.title.trim().length > 0)) &&
+                    (!target.providerName ||
+                      (typeof target.providerName === "string" && target.providerName.trim().length > 0)),
+                  ),
               );
             }
             if (typeof disk.agentRecoveryMigrationVersion === "number") {
@@ -1387,7 +1544,19 @@ export async function hydrateWorkspace() {
       }
     }
     baseTabs = withoutClosedSessionTabs(baseTabs, closedSessionIds);
-    baseTabs = withoutClosedRestoreTargets(baseTabs, closedRestoreTargets);
+    // Closed restore targets are retained for filtering the external provider
+    // manifest, but internal terminal identity is always the exact session id.
+
+    // Reconcile stale checkpoints left by an older canonical daemon. Only ids
+    // already recorded as explicitly closed are eligible; crash-lost sessions
+    // remain untouched and recoverable.
+    await Promise.all([...closedSessionIds].map(async (id) => {
+      try {
+        await invoke("pty_forget_persisted_session", { id });
+      } catch (error) {
+        console.warn("Could not reconcile explicitly closed PTY checkpoint:", id, error);
+      }
+    }));
 
     // 2. Reconcile every live session against the saved layout. The layout keeps
     // its tabs and grouping, while live daemon sessions fill in panes missed by
@@ -1396,8 +1565,7 @@ export async function hydrateWorkspace() {
     const recovered: Tab[] = [];
     let liveSessions: LiveSessionSummary[] = [];
     try {
-      const result = await invoke<LiveSessionSummary[]>("daemon_list_sessions");
-      if (Array.isArray(result)) liveSessions = result;
+      liveSessions = await listLiveSessionsWithRetry(invoke);
     } catch (error) {
       console.warn("Could not list live daemon sessions:", error);
     }
@@ -1406,6 +1574,7 @@ export async function hydrateWorkspace() {
         .filter((session): session is LiveSessionSummary & { cwd: string } => Boolean(session.cwd))
         .map((session) => [session.id, session.cwd]),
     );
+    const liveSessionIds = new Set(liveSessions.map((session) => session.id));
     const liveGitRoots = Object.fromEntries(
       (await Promise.all(
         liveSessions
@@ -1422,8 +1591,23 @@ export async function hydrateWorkspace() {
       )).filter((entry): entry is readonly [string, string] => Boolean(entry)),
     );
     for (const session of [...liveSessions].sort((a, b) => a.id.localeCompare(b.id))) {
-      if (closedSessionIds.has(session.id)) continue;
-      if (isClosedRestoreCwd(session.cwd, closedRestoreTargets)) continue;
+      if (closedSessionIds.has(session.id)) {
+        // A fast restart can race the asynchronous PTY teardown (especially
+        // after an explicit shell exit). The close tombstone is authoritative:
+        // remove this exact live session during hydration, but never use CWD or
+        // project matching that could affect an unrelated sibling.
+        try {
+          await invoke("daemon_kill_session", { id: session.id });
+        } catch (error) {
+          console.warn("Could not finish explicit PTY close during hydration:", session.id, error);
+        }
+        continue;
+      }
+      const externalRebound = bindExternalSessionToSavedTab(baseTabs, session, liveSessionIds);
+      if (externalRebound) {
+        baseTabs = externalRebound;
+        continue;
+      }
       const reboundTabs = bindLiveSessionToSavedTab(baseTabs, session);
       if (reboundTabs) {
         baseTabs = reboundTabs;
@@ -1435,6 +1619,12 @@ export async function hydrateWorkspace() {
       seen.add(tab.id);
       recovered.push(tab);
     }
+    console.info("[termfleet.hydrate] live reconciliation", {
+      liveSessions: liveSessions.length,
+      baseTabs: baseTabs.length,
+      recoveredTabs: recovered.length,
+      closedSessions: closedSessionIds.size,
+    });
 
     // One-time repair for the recent FlowState panes lost by the old recovery
     // bug. Sidecars are bounded to the incident window and project so historical
@@ -1463,7 +1653,6 @@ export async function hydrateWorkspace() {
             continue;
           }
             if (closedSessionIds.has(sidecar.paneId)) continue;
-            if (isClosedRestoreCwd(sidecar.cwd, closedRestoreTargets)) continue;
           const tab = tabFromRecoverableSession(
             { id: sidecar.paneId, cwd: sidecar.cwd },
             { recovery: true },
@@ -1478,27 +1667,25 @@ export async function hydrateWorkspace() {
       }
     }
 
-    // 3. Dead persisted sessions remain recoverable only when there is no saved
-    //    layout at all. This preserves TC-040: intentionally closed historical
-    //    tabs must not return merely because their scrollback checkpoint remains.
-    if (!hadSavedLayout) {
-      let sessions: PersistedSessionSummary[] = [];
-      try {
-        sessions = await invoke<PersistedSessionSummary[]>("workspace_persisted_sessions");
-      } catch (error) {
-        console.warn("Could not list persisted sessions:", error);
-      }
-      for (const session of [...sessions].sort((a, b) => b.scrollbackBytes - a.scrollbackBytes)) {
-        // Require a saved cwd: a restored session is a *clean* shell (dead content
-        // can't be replayed without garbling), so its value is reopening the right
-        // directory. A cwd-less orphan would just be a home-shell — clutter, skip it.
-        if (session.scrollbackBytes < ORPHAN_MIN_BYTES || !session.cwd) continue;
-        if (isClosedRestoreCwd(session.cwd, closedRestoreTargets)) continue;
-        const tab = tabFromRecoverableSession(session);
-        if (!tab || seen.has(tab.id)) continue;
-        seen.add(tab.id);
-        recovered.push(tab);
-      }
+    // 3. Dead persisted sessions remain recoverable alongside a saved layout.
+    //    The exact close tombstone is the only exclusion: a saved layout can be
+    //    stale after an unplanned PTY loss, so it must not hide eligible sessions.
+    let sessions: PersistedSessionSummary[] = [];
+    try {
+      sessions = await invoke<PersistedSessionSummary[]>("workspace_persisted_sessions");
+    } catch (error) {
+      console.warn("Could not list persisted sessions:", error);
+    }
+    for (const session of [...sessions].sort((a, b) => b.scrollbackBytes - a.scrollbackBytes)) {
+      // Require a saved cwd: a restored session is a *clean* shell (dead content
+      // can't be replayed without garbling), so its value is reopening the right
+      // directory. A cwd-less orphan would just be a home-shell — clutter, skip it.
+      if (session.scrollbackBytes < ORPHAN_MIN_BYTES || !session.cwd) continue;
+      if (closedSessionIds.has(session.id)) continue;
+      const tab = tabFromRecoverableSession(session);
+      if (!tab || seen.has(tab.id)) continue;
+      seen.add(tab.id);
+      recovered.push(tab);
     }
 
     if (
@@ -1521,8 +1708,12 @@ export async function hydrateWorkspace() {
     // Hydration can add live panes without any user action. Explicitly arm the
     // persistence queue so a close immediately after recovery cannot checkpoint
     // the pre-hydration layout and lose those panes again.
+    // Recovery changes are authoritative even when the frontend cache happened
+    // to contain the same serialized layout before daemon reconciliation. Force
+    // this checkpoint and wait for the disk mirror before startup is considered
+    // reconciled, so a later relaunch cannot lose newly discovered live panes.
     scheduleWorkspacePersistence();
-    await flushWorkspacePersistence();
+    await flushWorkspacePersistence({ force: true });
   } catch (error) {
     console.warn("Workspace hydration failed:", error);
     clearGate();
@@ -1908,10 +2099,34 @@ async function killPty(
   id: string,
   invoke: <T>(command: string, args?: Record<string, unknown>) => Promise<T>
 ) {
-  if (await isDaemonReachable(invoke)) {
-    return invoke("daemon_kill_session", { id });
+  try {
+    if (await isDaemonReachable(invoke)) {
+      let lastError: unknown = null;
+      for (let attempt = 0; attempt < 4; attempt += 1) {
+        try {
+          await invoke("daemon_kill_session", { id });
+          const sessions = await invoke<Array<{ id?: string }>>("daemon_list_sessions");
+          if (!Array.isArray(sessions) || !sessions.some((session) => session?.id === id)) {
+            return;
+          }
+        } catch (error) {
+          lastError = error;
+          const sessions = await invoke<Array<{ id?: string }>>("daemon_list_sessions").catch(() => null);
+          if (!sessions?.some((session) => session?.id === id)) return;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 40));
+      }
+      throw lastError ?? new Error(`Daemon retained explicitly closed session ${id}`);
+    }
+    return await invoke("pty_kill", { id });
+  } finally {
+    // An older canonical daemon may kill the live PTY but leave its checkpoint.
+    // The current desktop owns the explicit-close decision, so clean only this
+    // id without restarting the daemon or touching other sessions.
+    await invoke("pty_forget_persisted_session", { id }).catch((error) => {
+      console.warn("Could not forget explicitly closed PTY checkpoint:", id, error);
+    });
   }
-  return invoke("pty_kill", { id });
 }
 
 function shellQuote(value: string) {
@@ -2065,7 +2280,13 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   closedRestoreTargets: Array.isArray(persisted.closedRestoreTargets)
     ? persisted.closedRestoreTargets.filter(
         (target): target is ClosedRestoreTarget =>
-          Boolean(target && typeof target.cwd === "string" && target.cwd.trim().length > 0),
+          Boolean(
+            target &&
+              typeof target.cwd === "string" &&
+              target.cwd.trim().length > 0 &&
+              (!target.title || typeof target.title === "string") &&
+              (!target.providerName || typeof target.providerName === "string"),
+          ),
       )
     : [],
   agentRecoveryMigrationVersion: persisted.agentRecoveryMigrationVersion ?? 0,
@@ -2284,13 +2505,15 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     // close decision already recorded on disk.
     scheduleWorkspacePersistence();
     await flushWorkspacePersistence();
-    await killPtys(tab.terminals.map((terminal) => terminal.id));
+    // Remove the tab before awaiting PTY teardown. A child process can be slow
+    // or unresponsive; the user's close decision must become visible and durable
+    // even when cleanup takes longer than the UI interaction.
     get().removeTab(id);
-    // Persist the final tab removal as well as the tombstone. If the app restarts
-    // after the first flush but before this one, hydration still filters the
-    // tombstoned tab; on the normal path the durable layout is clean immediately.
     scheduleWorkspacePersistence();
     await flushWorkspacePersistence();
+    // The durable tombstone and tab removal are already safe before cleanup;
+    // teardown remains scoped to the explicitly closed PTYs.
+    await killPtys(tab.terminals.map((terminal) => terminal.id));
   },
 
   restoreLastClosed: () => {
@@ -3746,19 +3969,25 @@ function buildPersistedSnapshot(state: WorkspaceState): PersistedWorkspace {
   };
 }
 
-function persistWorkspaceSnapshot(snapshot: PersistedWorkspace) {
+function persistWorkspaceSnapshot(snapshot: PersistedWorkspace, options: { force?: boolean } = {}) {
+  let serialized: string;
   try {
-    const serialized = JSON.stringify(snapshot);
-    if (serialized === lastPersistedSnapshot) return;
-    localStorage.setItem(WORKSPACE_STORAGE_KEY, serialized);
-    lastPersistedSnapshot = serialized;
-    // Mirror to the daemon's data dir so the tab→session mapping survives a
-    // localStorage wipe (verifier RESET_STATE, dev↔release origin change). This
-    // is the durable copy; localStorage is just the fast synchronous cache.
-    mirrorWorkspaceLayoutToDisk(serialized);
+    serialized = JSON.stringify(snapshot);
+    if (!options.force && serialized === lastPersistedSnapshot) return;
   } catch (error) {
-    console.warn("Could not persist workspace state:", error);
+    console.warn("Could not serialize workspace state:", error);
+    return;
   }
+
+  // The disk mirror is authoritative. A browser-cache quota/security failure
+  // must not prevent the durable checkpoint from being written.
+  try {
+    localStorage.setItem(WORKSPACE_STORAGE_KEY, serialized);
+  } catch (error) {
+    console.warn("Could not update workspace cache:", error);
+  }
+  lastPersistedSnapshot = serialized;
+  mirrorWorkspaceLayoutToDisk(serialized);
 }
 
 function mirrorWorkspaceLayoutToDisk(serialized: string) {
@@ -3790,14 +4019,14 @@ function scheduleWorkspacePersistence() {
   }, 250);
 }
 
-async function flushWorkspacePersistence() {
+async function flushWorkspacePersistence(options: { force?: boolean } = {}) {
   if (pendingPersist) {
     clearTimeout(pendingPersist);
     pendingPersist = null;
   }
-  if (persistDirty) {
+  if (persistDirty || options.force) {
     persistDirty = false;
-    persistWorkspaceSnapshot(buildPersistedSnapshot(useWorkspaceStore.getState()));
+    persistWorkspaceSnapshot(buildPersistedSnapshot(useWorkspaceStore.getState()), options);
   }
   await diskMirrorQueue;
 }

@@ -14,12 +14,6 @@ if (!response.ok || response.value?.type !== "listSessions") {
 }
 
 const closed = new Set(Array.isArray(workspace.closedSessionIds) ? workspace.closedSessionIds : []);
-const closedCwds = new Set(
-  (Array.isArray(workspace.closedRestoreTargets) ? workspace.closedRestoreTargets : [])
-    .map((target) => target?.cwd)
-    .filter((cwd) => typeof cwd === "string" && cwd.length > 0)
-    .map((cwd) => path.resolve(cwd)),
-);
 const tabs = Array.isArray(workspace.tabs) ? workspace.tabs : [];
 const groups = Array.isArray(workspace.groups) ? workspace.groups : [];
 const liveSessions = (response.value.sessions ?? []).map((session) => ({
@@ -72,7 +66,6 @@ let restored = 0;
 const skipped = [];
 for (const session of liveSessions) {
   if (closed.has(session.id)) continue;
-  if (session.cwd && closedCwds.has(path.resolve(session.cwd))) continue;
   if (tabs.some((tab) => (tab.terminals ?? []).some((terminal) => terminal.id === session.id))) continue;
   const parts = canonicalParts(session.id);
   if (!session.cwd) {

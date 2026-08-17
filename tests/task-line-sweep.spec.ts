@@ -28,7 +28,7 @@ const PLACEHOLDER = /task not captured|activity not captured|^\s*$/i;
 // ("Verification only; no code changes."), so only a shell-shaped chain disqualifies.
 const UNREADABLE =
   /(?:&&|\|\||[|;]\s*[a-z][\w-]*\s+-{1,2}[a-z]|\s--?[a-z][\w-]*|(?:^|\s)\/(?:home|media|usr|etc|var|tmp)\/|```|^#{1,6}\s)/i;
-const TAIL_BYTES = 262_144;
+const TAIL_BYTES = 32 * 1024;
 
 function tail(path: string) {
   const size = statSync(path).size;

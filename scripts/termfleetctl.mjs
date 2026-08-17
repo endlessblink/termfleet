@@ -16,8 +16,18 @@ export function defaultDataRoot(env = process.env) {
 
 export function defaultDaemonSocket(env = process.env) {
   if (env.TERMFLEET_DAEMON_SOCKET) return env.TERMFLEET_DAEMON_SOCKET;
-  const runtimeDir = env.XDG_RUNTIME_DIR || os.tmpdir();
+  const runtimeDir = env.XDG_RUNTIME_DIR || linuxUserRuntimeDir() || os.tmpdir();
   return path.join(runtimeDir, "terminal-workspace", "daemon.sock");
+}
+
+function linuxUserRuntimeDir() {
+  if (process.platform !== "linux" || typeof process.getuid !== "function") return null;
+  const candidate = path.join("/run", "user", String(process.getuid()));
+  try {
+    return fs.statSync(candidate).isDirectory() ? candidate : null;
+  } catch {
+    return null;
+  }
 }
 
 function responseBase() {

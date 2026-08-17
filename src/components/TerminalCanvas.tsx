@@ -51,6 +51,7 @@ import { useWorkspaceStore } from "../stores/workspace";
 import type { GridSnapshot } from "../lib/gridSnapshot";
 import type { WorkstreamInput } from "../lib/types";
 import { syncTerminalLatencyTraceEnv, traceTerminalLatency } from "../lib/terminalLatencyTrace";
+import { scheduleCanvasRender } from "../lib/canvasRenderScheduler";
 import {
   cycleMatchIndex,
   scrollDeltaToReveal,
@@ -218,6 +219,7 @@ export function TerminalCanvas({
   }, [mapProjection, onInputReady, paneId, runtimeActive, sessionId, tabId]);
   const daemonInputQueueRef = useRef<DaemonInputQueue | null>(null);
   const scrollToBottomPendingRef = useRef(false);
+  const preserveViewportForInputRef = useRef(false);
   const lastInputAtRef = useRef(0);
   const pasteShortcutArmedUntilRef = useRef(0);
   // Guards against two overlapping Ctrl+Shift+V reads (capture + bubble handlers)
@@ -498,7 +500,7 @@ export function TerminalCanvas({
       }
       if (renderScheduled) return;
       renderScheduled = true;
-      requestAnimationFrame(() => {
+      scheduleCanvasRender(sessionId, () => {
         if (disposed) return;
         renderScheduled = false;
         lastRenderAt = performance.now();
@@ -975,6 +977,10 @@ export function TerminalCanvas({
   }, [sessionId, cwd, command, cols, rows, theme, fontsReady, renderScale, mapProjection, runtimeActive, dprTick, recoveryGeneration]);
 
   const scheduleScrollToBottom = () => {
+    if (preserveViewportForInputRef.current) {
+      preserveViewportForInputRef.current = false;
+      return;
+    }
     if (scrollToBottomPendingRef.current) return;
     scrollToBottomPendingRef.current = true;
     requestAnimationFrame(() => {
@@ -1829,12 +1835,14 @@ export function TerminalCanvas({
         sgr: modes.sgrMouse,
         modifiers: event,
       });
-      send(report.repeat(notches));
+      preserveViewportForInputRef.current = true;
+      send(report.repeat(notches), nextTerminalInputSequence(), "canvas-wheel");
       return;
     }
 
     if (wheelAction.kind === "app-arrows") {
-      send(wheelAction.sequence.repeat(notches * 3));
+      preserveViewportForInputRef.current = true;
+      send(wheelAction.sequence.repeat(notches * 3), nextTerminalInputSequence(), "canvas-wheel");
       return;
     }
 

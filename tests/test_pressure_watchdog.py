@@ -164,6 +164,11 @@ class PressureWatchdogTests(unittest.TestCase):
         installer = (ROOT / "scripts" / "install-reaper-timer.sh").read_text()
         self.assertIn("Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=$RUNTIME_DIR/bus", installer)
 
+    def test_reaper_install_disables_the_legacy_memory_guard_timer(self):
+        installer = (ROOT / "scripts" / "install-reaper-timer.sh").read_text()
+        self.assertIn("termfleet-memory-guard.timer", installer)
+        self.assertIn("disable --now", installer)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -13,7 +13,7 @@ LOG_FILE="$LOG_DIR/desktop-launch.log"
 TERMFLEET_CMD="${TERMFLEET_CMD:-$HOME/.local/bin/termfleet}"
 TERMFLEET_INSTALL_ROOT="${TERMFLEET_INSTALL_ROOT:-${XDG_DATA_HOME:-$HOME/.local/share}/termfleet}"
 TERMFLEET_TMPDIR="${TERMFLEET_TMPDIR:-/media/endlessblink/data/.dev-tmp/$USER}"
-TERMFLEET_RESTORE="${TERMFLEET_RESTORE:-/media/endlessblink/data/my-projects/ai-development/cc-linux-enhancments/scripts/agent-fleet/restore.py}"
+TERMFLEET_RESTORE="${TERMFLEET_RESTORE:-${AGENT_FLEET_RESTORE:-/media/endlessblink/data/my-projects/ai-development/cc-linux-enhancments/scripts/agent-fleet/restore.py}}"
 
 mkdir -p "$LOG_DIR" "$TERMFLEET_TMPDIR"
 chmod 0700 "$TERMFLEET_TMPDIR"
