@@ -935,10 +935,11 @@ const checks = [
     message: "Tauri commands must bridge frontend terminal transport to the external daemon control plane.",
   },
   {
-    ok: /invoke<PtyEnsureResult>\("pty_ensure"/.test(usePty) &&
-      /ensured\.reused/.test(usePty) &&
-      /invoke<string>\("pty_snapshot"/.test(usePty),
-    message: "Frontend Tauri terminals must replay backend scrollback when a stable session is reused.",
+    ok: /invoke<DaemonStatus>\("daemon_ensure_running"/.test(usePty) &&
+      /invoke<PtyEnsureResult>\("daemon_ensure_session"/.test(usePty) &&
+      /invoke\("daemon_subscribe_session"/.test(usePty) &&
+      /snapshot: event\.snapshot/.test(usePty),
+    message: "Frontend Tauri terminals must replay the canonical daemon snapshot when a stable session is reused.",
   },
   {
     ok: /const daemonStatus = await invoke<DaemonStatus>\("daemon_ensure_running"\)/.test(usePty) &&
@@ -1114,10 +1115,11 @@ const checks = [
   },
   {
     ok: /function persistedTerminalSnapshot\(terminal: TerminalState\): TerminalState/.test(workspaceStore) &&
-      /status: "stale"/.test(workspaceStore) &&
+      /status: "starting"/.test(workspaceStore) &&
       /function withRestartableTerminals\(tab: Tab\): Tab/.test(workspaceStore) &&
-      /persisted\.tabs\.map\(withRestartableTerminals\)/.test(workspaceStore),
-    message: "Workspace persistence must restore terminal metadata as restartable stale sessions, not erase it.",
+      /persisted\.tabs && persisted\.tabs\.length > 0/.test(workspaceStore) &&
+      /withoutLegacyRecoveredTabs\(persisted\.tabs\)\.map\(withRestartableTerminals\)/.test(workspaceStore),
+    message: "Workspace persistence must restore terminal metadata as restartable sessions, not erase it.",
   },
   {
     ok: /tabs: state\.tabs\.map\(\(tab\) => \(\{[\s\S]*terminals: tab\.terminals\.map\(persistedTerminalSnapshot\)/.test(workspaceStore),
