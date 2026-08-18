@@ -219,7 +219,7 @@ export function TerminalCanvas({
   }, [mapProjection, onInputReady, paneId, runtimeActive, sessionId, tabId]);
   const daemonInputQueueRef = useRef<DaemonInputQueue | null>(null);
   const scrollToBottomPendingRef = useRef(false);
-  const preserveViewportForInputRef = useRef(false);
+  const userViewportLockedRef = useRef(false);
   const lastInputAtRef = useRef(0);
   const pasteShortcutArmedUntilRef = useRef(0);
   // Guards against two overlapping Ctrl+Shift+V reads (capture + bubble handlers)
@@ -435,6 +435,7 @@ export function TerminalCanvas({
     firstFrameRef.current = false;
     firstFrameWaitersRef.current = [];
     modesRef.current = { ...DEFAULT_TERMINAL_MODES };
+    userViewportLockedRef.current = false;
     selectionRef.current = null;
     anchorRef.current = null;
     selectionPointerIdRef.current = null;
@@ -570,6 +571,9 @@ export function TerminalCanvas({
       try {
         frame = decodeFrame(payload);
         changed = buffer.apply(frame);
+        if (userViewportLockedRef.current && buffer.displayOffset === 0) {
+          userViewportLockedRef.current = false;
+        }
         traceTerminalLatency("frontend.canvas.diff.receive", {
           id: sessionId,
           full: frame.full,
@@ -977,10 +981,7 @@ export function TerminalCanvas({
   }, [sessionId, cwd, command, cols, rows, theme, fontsReady, renderScale, mapProjection, runtimeActive, dprTick, recoveryGeneration]);
 
   const scheduleScrollToBottom = () => {
-    if (preserveViewportForInputRef.current) {
-      preserveViewportForInputRef.current = false;
-      return;
-    }
+    if (userViewportLockedRef.current) return;
     if (scrollToBottomPendingRef.current) return;
     scrollToBottomPendingRef.current = true;
     requestAnimationFrame(() => {
@@ -1814,6 +1815,7 @@ export function TerminalCanvas({
     const notches = Math.max(1, Math.round(Math.abs(event.deltaY) / 24));
     const up = event.deltaY < 0;
     const modes = modesRef.current;
+    if (up) userViewportLockedRef.current = true;
 
     const wheelAction = terminalWheelAction(event, modes, up ? "up" : "down");
     if (DEBUG_TERM_HUD) {
@@ -1835,13 +1837,11 @@ export function TerminalCanvas({
         sgr: modes.sgrMouse,
         modifiers: event,
       });
-      preserveViewportForInputRef.current = true;
       send(report.repeat(notches), nextTerminalInputSequence(), "canvas-wheel");
       return;
     }
 
     if (wheelAction.kind === "app-arrows") {
-      preserveViewportForInputRef.current = true;
       send(wheelAction.sequence.repeat(notches * 3), nextTerminalInputSequence(), "canvas-wheel");
       return;
     }

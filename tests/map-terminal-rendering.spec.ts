@@ -466,8 +466,29 @@ test("map terminal wheel navigation does not force the viewport back to live out
   )?.[0] ?? "";
 
   expect(wheelBlock).toContain('"canvas-wheel"');
-  expect(wheelBlock).toContain("preserveViewportForInputRef.current = true");
-  expect(terminalCanvas).toContain("if (preserveViewportForInputRef.current)");
+  expect(wheelBlock).toContain("if (up) userViewportLockedRef.current = true;");
+  expect(terminalCanvas).toContain("if (userViewportLockedRef.current) return;");
+});
+
+test("map terminal keeps the user viewport while agent work continues", () => {
+  const terminalCanvas = readFileSync(
+    "src/components/TerminalCanvas.tsx",
+    "utf8",
+  );
+  const scheduleBlock = terminalCanvas.match(
+    /const scheduleScrollToBottom = \(\) => \{[\s\S]*?\n  \};/,
+  )?.[0] ?? "";
+  const wheelBlock = terminalCanvas.match(
+    /const handleWheel = \(event: React\.WheelEvent\) => \{[\s\S]*?\n  \};/,
+  )?.[0] ?? "";
+
+  expect(terminalCanvas).toContain("const userViewportLockedRef = useRef(false)");
+  expect(scheduleBlock).toContain("if (userViewportLockedRef.current) return;");
+  expect(scheduleBlock).not.toContain("preserveViewportForInputRef");
+  expect(wheelBlock).toContain("if (up) userViewportLockedRef.current = true;");
+  expect(terminalCanvas).toContain(
+    "if (userViewportLockedRef.current && buffer.displayOffset === 0)",
+  );
 });
 
 async function imageRegionStats(
