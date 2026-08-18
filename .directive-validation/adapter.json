@@ -28,6 +28,11 @@
       "args": ["-m", "unittest", "tests/test_auto_recovery.py"]
     },
     {
+      "name": "map_scroll_regression",
+      "command": "npx",
+      "args": ["playwright", "test", "tests/map-terminal-rendering.spec.ts", "-g", "map terminal (wheel navigation|keeps the user viewport)", "--reporter=line"]
+    },
+    {
       "name": "restart_restore",
       "command": "npm",
       "args": ["run", "verify:restart-restore"]
@@ -60,12 +65,14 @@
       "Explicitly killed terminals stay gone after restart",
       "Untouched terminals return after daemon failure or restart",
       "Backups are visible as inactive and require explicit restore",
-      "Only one canonical daemon controls terminal sessions"
+      "Only one canonical daemon controls terminal sessions",
+      "Map terminals stay at the user-selected scroll position during agent work"
     ],
     "evidenceChecks": [
       {"check":"lifecycle_regression","proves":"lifecycle dispositions and backup exclusion are guarded"},
       {"check":"daemon_ownership_regression","proves":"competing and incompatible daemon owners are rejected"},
       {"check":"workspace_recovery_regression","proves":"workspace tombstones cannot be bypassed during hydration"},
+      {"check":"map_scroll_regression","proves":"map viewport ownership survives continued agent work"},
       {"check":"restart_restore","proves":"daemon restart preserves only eligible sessions"},
       {"check":"installed_close_route","proves":"the installed close path terminates the targeted PTY without touching siblings"},
       {"check":"installed_release","proves":"the dock runtime identity is verified"},
@@ -76,6 +83,7 @@
       {"requirement":"An untouched terminal returns after daemon failure or machine restart","check":"restart_restore","assertion":"unexpected-loss-recovers","proof":"The restart verifier checks an untouched session reattaches or cold-restores with its saved identity.","independent":true,"proves":"unexpected daemon loss preserves recovery eligibility"},
       {"requirement":"A saved backup is inactive until the operator explicitly restores it","check":"lifecycle_regression","assertion":"backup-is-inactive","proof":"The lifecycle tests distinguish backup records from automatic restore candidates.","independent":true,"proves":"backups do not become visible sessions without explicit restore"},
       {"requirement":"Only the canonical per-user daemon owns PTYs and recovery decisions","check":"daemon_ownership_regression","assertion":"one-daemon-owner","proof":"The daemon tests reject incompatible or competing owners and embedded control paths.","independent":true,"proves":"one canonical daemon remains the only PTY controller"},
+      {"requirement":"A map terminal stays where the user scrolled while agent work continues","check":"map_scroll_regression","assertion":"user-viewport-lock-survives-agent-work","proof":"The focused map regression guards persistent user viewport ownership and live-bottom release.","independent":true,"proves":"continued agent activity cannot force the map terminal back to newest output"},
       {"requirement":"The installed dock-launched runtime proves the behavior","check":"installed_restart","assertion":"installed-runtime-recovery","proof":"The installed restart verifier exercises the dock runtime across repeated relaunches.","independent":true,"proves":"the packaged user-facing runtime carries the lifecycle contract"}
     ]
   },
@@ -83,6 +91,7 @@
     "lifecycle_regression",
     "daemon_ownership_regression",
     "workspace_recovery_regression",
+    "map_scroll_regression",
     "restart_restore",
     "installed_close_route",
     "installed_release",
@@ -92,7 +101,7 @@
   "visualPaths": [],
   "visualRequiredChecks": [],
   "designGate": {"required": false},
-  "taskBinding": {"required": true, "targets": ["terminal", "recovery", "daemon", "restart"]},
+  "taskBinding": {"required": true, "targets": ["terminal", "recovery", "daemon", "restart", "map", "scroll"]},
   "requiresUserApproval": false,
   "adapterApproval": {"required": false},
   "contractPath": ".directive-validation/contract.json",
@@ -103,23 +112,27 @@
       {"id":"intentional-kill","description":"Kill a terminal through the canonical TermFleet close path"},
       {"id":"unexpected-loss","description":"Lose the daemon while an untouched terminal is live"},
       {"id":"backup-only","description":"Retain killed scrollback as an inactive backup"},
-      {"id":"daemon-collision","description":"Attempt to start a competing or incompatible daemon"}
+      {"id":"daemon-collision","description":"Attempt to start a competing or incompatible daemon"},
+      {"id":"map-scroll-during-agent-work","description":"Scroll a map terminal upward while agent output continues"}
     ],
     "invariants": [
       {"id":"intentional-kill-stays-gone","statement":"An explicitly killed session is never automatically restored","check":"restart_restore"},
       {"id":"unexpected-loss-recovers","statement":"An untouched session remains eligible after unexpected daemon loss","check":"restart_restore"},
       {"id":"backup-is-inactive","statement":"A backup is not restored without an explicit restore action","check":"lifecycle_regression"},
-      {"id":"one-daemon-owner","statement":"Only the canonical compatible daemon can own the PTY socket","check":"daemon_ownership_regression"}
+      {"id":"one-daemon-owner","statement":"Only the canonical compatible daemon can own the PTY socket","check":"daemon_ownership_regression"},
+      {"id":"map-user-viewport","statement":"Map scrollback remains at the user-selected position during agent work","check":"map_scroll_regression"}
     ],
     "mutations": [
       {"id":"remove-kill-tombstone","target":"Do not persist intentional kill disposition","expected":"fail","check":"restart_restore","command":"node","args":["scripts/verify-recovery-mutation.mjs","remove-kill-tombstone"],"isolated":true,"failureSignal":"invariant failed"},
       {"id":"allow-embedded-fallback","target":"Allow an embedded fallback to control PTYs beside the canonical daemon","expected":"fail","check":"daemon_ownership_regression","command":"node","args":["scripts/verify-recovery-mutation.mjs","allow-embedded-fallback"],"isolated":true,"failureSignal":"invariant failed"}
+      ,{"id":"force-map-bottom-during-agent-work","target":"Force map terminals to the bottom after continued agent input","expected":"fail","check":"map_scroll_regression","command":"node","args":["scripts/verify-map-scroll-mutation.mjs","force-map-bottom-during-agent-work","map_scroll_regression","Force map terminals to the bottom after continued agent input"],"isolated":true,"failureSignal":"invariant failed"}
     ],
     "mappings": [
       {"seed":"intentional-kill","invariant":"intentional-kill-stays-gone","mutation":"remove-kill-tombstone"},
       {"seed":"unexpected-loss","invariant":"unexpected-loss-recovers","mutation":"remove-kill-tombstone"},
       {"seed":"backup-only","invariant":"backup-is-inactive","mutation":"remove-kill-tombstone"},
-      {"seed":"daemon-collision","invariant":"one-daemon-owner","mutation":"allow-embedded-fallback"}
+      {"seed":"daemon-collision","invariant":"one-daemon-owner","mutation":"allow-embedded-fallback"},
+      {"seed":"map-scroll-during-agent-work","invariant":"map-user-viewport","mutation":"force-map-bottom-during-agent-work"}
     ]
   }
 }

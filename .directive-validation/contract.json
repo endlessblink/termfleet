@@ -5,13 +5,15 @@
     "An untouched terminal returns after daemon failure or machine restart",
     "A saved backup is inactive until the operator explicitly restores it",
     "Only the canonical per-user daemon owns PTYs and recovery decisions",
-    "The installed dock-launched runtime proves the behavior"
+    "The installed dock-launched runtime proves the behavior",
+    "A map terminal stays at the user-selected scroll position while agent work continues"
   ],
   "knownFailures": [
     "Explicitly killed terminals return as recovered terminals",
     "A launcher, embedded fallback, or replacement daemon races the canonical daemon",
     "A backup is mistaken for an automatically restorable session",
-    "A restart silently restores a terminal without explaining why"
+    "A restart silently restores a terminal without explaining why",
+    "Agent input pulls a map terminal back to the newest output after the user scrolls up"
   ],
   "outOfScope": [
     "Changing terminal rendering or scrollback interaction",
@@ -22,13 +24,15 @@
       "Focused lifecycle and daemon ownership tests pass",
       "Restart and close verification pass against the installed runtime",
       "The installed release identity remains verified",
+      "The map scroll regression passes while preserving normal live-follow",
       "The trusted verification artifact is fresh and independently sealed"
     ],
     "failureSignals": [
       "An intentional kill is eligible for automatic restore",
       "More than one process can own the canonical PTY socket",
       "A backup is restored without an explicit restore action",
-      "The installed runtime cannot be identified or verified"
+      "The installed runtime cannot be identified or verified",
+      "A map viewport lock is cleared before the user returns to the live bottom"
     ]
   },
   "sureScore": "HIGH",
@@ -37,7 +41,7 @@
     "confidence": "HIGH",
     "research": "The existing PTY kill, persisted-session, hydration, daemon ownership, launcher, and close/restart paths were inspected and the independent regression surface is identified.",
     "fix": "Make the canonical daemon record lifecycle disposition before killing, keep backups separate from restore candidates, and fail closed whenever daemon ownership is ambiguous.",
-    "sideEffects": "Untouched terminals retain crash/restart recovery; explicit kills stop returning; launcher and UI reconciliation become consumers of daemon state rather than competing controllers."
+    "sideEffects": "Untouched terminals retain crash/restart recovery; explicit kills stop returning; launcher and UI reconciliation become consumers of daemon state rather than competing controllers. Map terminals still follow live output when the user remains at the bottom."
   },
   "ambiguityResolved": true,
   "checkpoint": {
