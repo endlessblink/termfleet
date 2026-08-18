@@ -1263,6 +1263,8 @@ interface PersistedSessionSummary {
   id: string;
   cwd: string | null;
   scrollbackBytes: number;
+  lifecycle?: "recoverable" | "intentional-kill" | "backup-only";
+  backupOnly?: boolean;
 }
 
 interface LiveSessionSummary {
@@ -1550,14 +1552,6 @@ export async function hydrateWorkspace() {
     // Reconcile stale checkpoints left by an older canonical daemon. Only ids
     // already recorded as explicitly closed are eligible; crash-lost sessions
     // remain untouched and recoverable.
-    await Promise.all([...closedSessionIds].map(async (id) => {
-      try {
-        await invoke("pty_forget_persisted_session", { id });
-      } catch (error) {
-        console.warn("Could not reconcile explicitly closed PTY checkpoint:", id, error);
-      }
-    }));
-
     // 2. Reconcile every live session against the saved layout. The layout keeps
     // its tabs and grouping, while live daemon sessions fill in panes missed by
     // the last checkpoint; explicit kills remain excluded below.
@@ -1681,6 +1675,7 @@ export async function hydrateWorkspace() {
       // can't be replayed without garbling), so its value is reopening the right
       // directory. A cwd-less orphan would just be a home-shell — clutter, skip it.
       if (session.scrollbackBytes < ORPHAN_MIN_BYTES || !session.cwd) continue;
+      if (session.lifecycle && session.lifecycle !== "recoverable") continue;
       if (closedSessionIds.has(session.id)) continue;
       const tab = tabFromRecoverableSession(session);
       if (!tab || seen.has(tab.id)) continue;
@@ -2078,9 +2073,15 @@ export async function closeActivePane() {
 
 async function isDaemonReachable(invoke: <T>(command: string, args?: Record<string, unknown>) => Promise<T>) {
   try {
-    const status = await invoke<{ reachable: boolean; mode: string }>("daemon_status");
+    const status = await invoke<{ reachable: boolean; mode: string; message?: string }>("daemon_status");
+    if (isTauriRuntime() && (!status.reachable || status.mode !== "externalDaemon")) {
+      throw new Error(status.message ?? "Canonical terminal daemon is unavailable; refusing a second PTY owner.");
+    }
     return status.reachable && status.mode === "externalDaemon";
   } catch {
+    if (isTauriRuntime()) {
+      throw new Error("Canonical terminal daemon could not be verified; refusing a second PTY owner.");
+    }
     return false;
   }
 }
@@ -2099,8 +2100,7 @@ async function killPty(
   id: string,
   invoke: <T>(command: string, args?: Record<string, unknown>) => Promise<T>
 ) {
-  try {
-    if (await isDaemonReachable(invoke)) {
+  if (await isDaemonReachable(invoke)) {
       let lastError: unknown = null;
       for (let attempt = 0; attempt < 4; attempt += 1) {
         try {
@@ -2117,15 +2117,6 @@ async function killPty(
         await new Promise((resolve) => setTimeout(resolve, 40));
       }
       throw lastError ?? new Error(`Daemon retained explicitly closed session ${id}`);
-    }
-    return await invoke("pty_kill", { id });
-  } finally {
-    // An older canonical daemon may kill the live PTY but leave its checkpoint.
-    // The current desktop owns the explicit-close decision, so clean only this
-    // id without restarting the daemon or touching other sessions.
-    await invoke("pty_forget_persisted_session", { id }).catch((error) => {
-      console.warn("Could not forget explicitly closed PTY checkpoint:", id, error);
-    });
   }
 }
 

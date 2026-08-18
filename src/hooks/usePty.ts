@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef } from "react";
 import { Channel, invoke } from "@tauri-apps/api/core";
-import { listen, UnlistenFn } from "@tauri-apps/api/event";
+import type { UnlistenFn } from "@tauri-apps/api/event";
 import type { IDisposable, Terminal } from "@xterm/xterm";
 import {
   createDaemonInputQueue,
@@ -695,83 +695,6 @@ export function usePty({ terminal, cwd, command, attachToPtyId, runtimeSessionId
           }
         }
 
-        transportRef.current = "tauri";
-        let shouldAttach = Boolean(attachToPtyId);
-        if (attachToPtyId) {
-          try {
-            await invoke("pty_get_cwd", { id: attachToPtyId });
-          } catch {
-            onStatus?.("stale", { id: attachToPtyId });
-            shouldAttach = false;
-            id = runtimeSessionId ?? crypto.randomUUID();
-          }
-        }
-        ownsPtyRef.current = !shouldAttach;
-
-        const unlisten = await listen<string>(`pty-data-${id}`, (event) => {
-          if (ownsPtyRef.current) appendPtyOutput(id, event.payload);
-          onOutput?.(event.payload);
-          terminal!.write(event.payload);
-        });
-        unlistenRef.current = unlisten;
-
-        dataDisposableRef.current = terminal!.onData((data: string) => {
-          onInputData?.(data);
-          const seqId = nextTerminalInputSequence();
-          traceTerminalLatency("frontend.xterm.onData", {
-            id: ptyIdRef.current,
-            bytes: data.length,
-            seqId,
-            transport: "tauri",
-            activeInputListeners: activeInputListeners.size,
-            data,
-          });
-          if (ptyIdRef.current) {
-            invoke("pty_write", { id: ptyIdRef.current, data }).catch(
-              (writeError) => {
-                stopBrokenTransport(writeError, "write");
-              }
-            );
-          } else if (!transportFailedRef.current) {
-            pendingWrites.push(data);
-          }
-        });
-        activateInputListener("tauri", id);
-
-        if (shouldAttach) {
-          ptyIdRef.current = id;
-          const replay = await invoke<string>("pty_snapshot", { id }).catch(() => ptyOutputBuffers.get(id) ?? "");
-          if (replay) terminal!.write(replay);
-          onStatus?.("reconnected", { id });
-          onReady?.(id, { reused: true });
-          return;
-        }
-
-        const ensured = await invoke<PtyEnsureResult>("pty_ensure", {
-          id,
-          cwd: cwd ?? null,
-          command: command ?? null,
-        });
-
-        if (cancelled) {
-          return;
-        }
-
-        const spawnedId = ensured.id;
-        ptyIdRef.current = spawnedId;
-        if (ensured.reused) {
-          const replay = await invoke<string>("pty_snapshot", { id: spawnedId }).catch(() => "");
-          if (replay) terminal!.write(replay);
-        }
-        onStatus?.(ensured.reused ? "reconnected" : "running", { id: spawnedId });
-        onReady?.(spawnedId, { reused: ensured.reused });
-        for (const data of pendingWrites.splice(0)) {
-          await invoke("pty_write", { id: spawnedId, data }).catch(
-            (writeError) => {
-              stopBrokenTransport(writeError, "write");
-            }
-          );
-        }
       } catch (err) {
         console.error("Failed to spawn PTY:", err);
         const error = String(err);
@@ -832,9 +755,11 @@ export function usePty({ terminal, cwd, command, attachToPtyId, runtimeSessionId
   const resize = useCallback((cols: number, rows: number) => {
     if (!isTauriRuntime()) return;
     if (ptyIdRef.current) {
-      invoke(transportRef.current === "daemon" ? "daemon_resize_session" : "pty_resize", { id: ptyIdRef.current, cols, rows }).catch(
-        console.error
-      );
+      if (transportRef.current !== "daemon") {
+        console.error("Canonical terminal daemon is not attached; refusing a second PTY owner.");
+        return;
+      }
+      invoke("daemon_resize_session", { id: ptyIdRef.current, cols, rows }).catch(console.error);
     }
   }, []);
 
@@ -858,7 +783,7 @@ export function usePty({ terminal, cwd, command, attachToPtyId, runtimeSessionId
       queue.queue(data, seqId);
       return;
     }
-    invoke("pty_write", { id: ptyIdRef.current, data }).catch(console.error);
+    console.error("Canonical terminal daemon is not attached; refusing a second PTY owner.");
   }, []);
 
   return { ptyId: ptyIdRef.current, resize, write };
