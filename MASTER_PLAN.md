@@ -1,5 +1,29 @@
 # MASTER_PLAN.md - termfleet
 
+> **2026-08-19 — Map terminals now respect the user’s scroll position during
+> agent work:** The map Canvas2D terminal previously suppressed only one
+> follow-bottom request after wheel navigation, so continued agent input could
+> pull the viewport back to the newest output. A persistent user-owned viewport
+> lock now survives agent activity and releases only when the grid reports the
+> live bottom. The focused regression fails before the fix and passes after it;
+> File Explorer, selection, and existing map-wheel guards also pass. Installed
+> live scrolling confirmation remains part of final rollout evidence.
+
+> **2026-08-17 — Terminal recovery now has one owner and explicit lifecycle
+> states:** The canonical user-local daemon records each session as recoverable,
+> intentionally killed, or backup-only. Closing a terminal preserves its
+> scrollback as an inactive backup without making it eligible for automatic
+> restore; only an explicit daemon restore re-enables it. The Tauri frontend now
+> refuses embedded PTY fallbacks and direct restore control paths, so daemon
+> collisions cannot create competing owners. Rust (168 tests), workspace
+> recovery (24 tests), frontend build, restart/close checks, installed release
+> identity, installed pane-close isolation, installed restart, and the trusted
+> directive gate all passed.
+> `cargo test --manifest-path src-tauri/Cargo.toml --lib`
+> `python3 -m unittest tests/test_auto_recovery.py`
+> `npm run verify:restart-restore`, `npm run verify:installed-pane-close`,
+> `npm run verify:installed-release`, `npm run verify:installed-restart`
+
 > **2026-08-17 — Removed the remaining status-sweep I/O storm:** The live dock
 > process was repeatedly reading a 256 KiB transcript tail per pane and treating
 > regenerated task-line timestamps as content changes. That drove multi-gigabyte
