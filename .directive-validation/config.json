@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "status": "BLOCKED",
+  "status": "READY",
   "harnessRoot": "/media/endlessblink/data/my-projects/ai-development/devops/directive-validation-harness",
   "projectRoot": "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
   "contractPath": "/media/endlessblink/data/my-projects/ai-development/devops/termfleet/.directive-validation/contract.json",
@@ -13,8 +13,8 @@
     "continuationGate": "continue",
     "enforcement": "The orchestrator must call continue before granting a normal next turn or accepting completion; BLOCKED permits correction only."
   },
-  "readyAt": "2026-08-17T18:18:03.470Z",
-  "activeRunDir": "/media/endlessblink/data/my-projects/ai-development/devops/termfleet/.directive-validation/runs/01a010d5-40ae-7df0-8e9e-9bf0e8c3f021-d385aa160f8a",
+  "readyAt": "2026-08-17T19:25:31.919Z",
+  "activeRunDir": "/media/endlessblink/data/my-projects/ai-development/devops/termfleet/.directive-validation/runs/01a01104-d9ad-7c52-b950-19cf9a272796-9d4eca07d13e",
   "activeRuns": {
     "01a00985-9ea9-7c23-bd20-a1be5526f6de": "/media/endlessblink/data/my-projects/ai-development/devops/termfleet/.directive-validation/runs/01a00985-9ea9-7c23-bd20-a1be5526f6de",
     "20260816-fresh-close-restart": "/media/endlessblink/data/my-projects/ai-development/devops/termfleet/.directive-validation/runs/20260816-fresh-close-restart",
@@ -33,11 +33,12 @@
     "01a00c87-6ac9-73c3-a599-197d48ac3622": "/media/endlessblink/data/my-projects/ai-development/devops/termfleet/.directive-validation/runs/01a00c87-6ac9-73c3-a599-197d48ac3622-d385aa160f8a",
     "01a00c91-a392-79a1-8c1c-858b42f4b00a": "/media/endlessblink/data/my-projects/ai-development/devops/termfleet/.directive-validation/runs/01a00c91-a392-79a1-8c1c-858b42f4b00a",
     "01a00fc8-a1e4-7190-abc7-c432174de8fe": "/media/endlessblink/data/my-projects/ai-development/devops/termfleet/.directive-validation/runs/01a00fc8-a1e4-7190-abc7-c432174de8fe",
-    "01a0103d-cb46-7591-89de-8a128dd94201": "/media/endlessblink/data/my-projects/ai-development/devops/termfleet/.directive-validation/runs/01a0103d-cb46-7591-89de-8a128dd94201-64b057466faa",
+    "01a0103d-cb46-7591-89de-8a128dd94201": "/media/endlessblink/data/my-projects/ai-development/devops/termfleet/.directive-validation/runs/01a0103d-cb46-7591-89de-8a128dd94201-1f052a9e83f5",
     "01a0103d-cb46-7591-89de-8a128dd94202": "/media/endlessblink/data/my-projects/ai-development/devops/termfleet/.directive-validation/runs/01a0103d-cb46-7591-89de-8a128dd94202",
     "01a00efb-c488-7b51-8476-35f170cc724c": "/media/endlessblink/data/my-projects/ai-development/devops/termfleet/.directive-validation/runs/01a00efb-c488-7b51-8476-35f170cc724c-b14b355282f0",
     "01a010d0-0352-75d2-bdd0-35d6441442ca": "/media/endlessblink/data/my-projects/ai-development/devops/termfleet/.directive-validation/runs/01a010d0-0352-75d2-bdd0-35d6441442ca-b14b355282f0",
-    "01a010d5-40ae-7df0-8e9e-9bf0e8c3f021": "/media/endlessblink/data/my-projects/ai-development/devops/termfleet/.directive-validation/runs/01a010d5-40ae-7df0-8e9e-9bf0e8c3f021-d385aa160f8a"
+    "01a010d5-40ae-7df0-8e9e-9bf0e8c3f021": "/media/endlessblink/data/my-projects/ai-development/devops/termfleet/.directive-validation/runs/01a010d5-40ae-7df0-8e9e-9bf0e8c3f021-1f052a9e83f5",
+    "01a01104-d9ad-7c52-b950-19cf9a272796": "/media/endlessblink/data/my-projects/ai-development/devops/termfleet/.directive-validation/runs/01a01104-d9ad-7c52-b950-19cf9a272796-9d4eca07d13e"
   },
-  "statusAt": "2026-08-17T18:18:40.382Z"
+  "statusAt": "2026-08-17T19:26:33.803Z"
 }

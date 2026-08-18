@@ -50,9 +50,9 @@ def request(payload):
                 wire = b"status\n" if payload.get("type") == "status" else (json.dumps(payload) + "\n").encode()
                 stream.sendall(wire)
                 stream.shutdown(socket.SHUT_WR)
-                payload = stream.makefile("rb").read().decode()
-                if payload.strip():
-                    return json.loads(payload)
+                raw_response = stream.makefile("rb").read().decode()
+                if raw_response.strip():
+                    return json.loads(raw_response)
         except (FileNotFoundError, ConnectionRefusedError, TimeoutError, json.JSONDecodeError):
             time.sleep(0.05)
     raise RuntimeError("daemon socket was not reachable")

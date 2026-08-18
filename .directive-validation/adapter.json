@@ -1,63 +1,125 @@
 {
-  "allowedPaths": ["MASTER_PLAN.md", "docs/", "scripts/", "src/", "tests/", ".directive-validation/"],
+  "allowedPaths": [
+    "MASTER_PLAN.md",
+    "HANDOFF.md",
+    "docs/",
+    "scripts/",
+    "src/",
+    "src-tauri/",
+    "tests/",
+    ".codex/",
+    ".claude/",
+    ".directive-validation/"
+  ],
   "checks": [
-    {"name":"build","command":"npm","args":["run","build"]},
-    {"name":"map_terminal_scroll_regression","command":"npx","args":["playwright","test","tests/map-terminal-rendering.spec.ts","-g","map terminal wheel navigation does not force the viewport back to live output","--reporter=line"]},
-    {"name":"installed_release","command":"npm","args":["run","verify:installed-release"]}
+    {
+      "name": "lifecycle_regression",
+      "command": "cargo",
+      "args": ["test", "--manifest-path", "src-tauri/Cargo.toml", "intentional_kill_is_a_backup_and_not_an_automatic_restore_candidate"]
+    },
+    {
+      "name": "daemon_ownership_regression",
+      "command": "cargo",
+      "args": ["test", "--manifest-path", "src-tauri/Cargo.toml", "daemon"]
+    },
+    {
+      "name": "workspace_recovery_regression",
+      "command": "python3",
+      "args": ["-m", "unittest", "tests/test_auto_recovery.py"]
+    },
+    {
+      "name": "restart_restore",
+      "command": "npm",
+      "args": ["run", "verify:restart-restore"]
+    },
+    {
+      "name": "installed_close_route",
+      "command": "npm",
+      "args": ["run", "verify:installed-pane-close"]
+    },
+    {
+      "name": "installed_release",
+      "command": "npm",
+      "args": ["run", "verify:installed-release"]
+    },
+    {
+      "name": "installed_restart",
+      "command": "npm",
+      "args": ["run", "verify:installed-restart"]
+    }
   ],
   "acceptance": {
     "runtimeIdentity": "dock-launched installed TermFleet release",
     "runtime": "dock-launched installed TermFleet release",
-    "runtimeEvidence": {"check":"installed_release","independent":true,"proves":"the installed release identity is verified"},
-    "userVisibleOutcomes": ["Map terminal wheel scrolling stays at the selected scrollback position", "Ordinary live output continues to follow the bottom"],
+    "runtimeEvidence": {
+      "check": "installed_release",
+      "independent": true,
+      "proves": "the installed dock runtime identity is verified"
+    },
+    "userVisibleOutcomes": [
+      "Explicitly killed terminals stay gone after restart",
+      "Untouched terminals return after daemon failure or restart",
+      "Backups are visible as inactive and require explicit restore",
+      "Only one canonical daemon controls terminal sessions"
+    ],
     "evidenceChecks": [
-      {"check":"build","proves":"the current frontend builds"},
-      {"check":"map_terminal_scroll_regression","proves":"wheel navigation preserves the user viewport and live output still follows normally"},
-      {"check":"installed_release","proves":"the dock-launched installed release is the runtime identity under test"}
-    ],
-    "checkToOutcome": [
-      {"check":"build","outcome":"the frontend builds successfully"},
-      {"check":"map_terminal_scroll_regression","outcome":"wheel scroll preserves the selected viewport and ordinary live output follows the bottom"},
-      {"check":"installed_release","outcome":"the installed dock runtime identity is verified"}
-    ],
-    "evidenceMappings": [
-      {"check":"build","outcome":"the frontend builds successfully"},
-      {"check":"map_terminal_scroll_regression","outcome":"wheel scroll preserves the selected viewport and ordinary live output follows the bottom"},
-      {"check":"installed_release","outcome":"the installed dock runtime identity is verified"}
+      {"check":"lifecycle_regression","proves":"lifecycle dispositions and backup exclusion are guarded"},
+      {"check":"daemon_ownership_regression","proves":"competing and incompatible daemon owners are rejected"},
+      {"check":"workspace_recovery_regression","proves":"workspace tombstones cannot be bypassed during hydration"},
+      {"check":"restart_restore","proves":"daemon restart preserves only eligible sessions"},
+      {"check":"installed_close_route","proves":"the installed close path terminates the targeted PTY without touching siblings"},
+      {"check":"installed_release","proves":"the dock runtime identity is verified"},
+      {"check":"installed_restart","proves":"the packaged app preserves lifecycle decisions across relaunch"}
     ],
     "requirementEvidence": [
-      {"requirement":"Wheel scrolling on a map terminal reveals older output without being pulled back to the newest output","check":"map_terminal_scroll_regression","assertion":"map-scrollback-preserves-user-viewport","proof":"The focused wheel regression detects forced bottom-follow during wheel navigation.","independent":true,"proves":"the focused regression detects forced bottom-follow during wheel navigation"},
-      {"requirement":"New output still follows the bottom when the user has not manually scrolled away","check":"map_terminal_scroll_regression","assertion":"map-live-output-follows-bottom","proof":"The focused regression preserves ordinary live-output following.","independent":true,"proves":"the focused regression preserves ordinary live-output following"},
-      {"requirement":"The behavior is covered by a focused regression and the installed release remains buildable","check":"installed_release","assertion":"installed-runtime-identity","proof":"The installed release identity check passes for the build under test.","independent":true,"proves":"the installed release identity check passes for the build under test"}
+      {"requirement":"A terminal explicitly killed through TermFleet does not return automatically after restart","check":"restart_restore","assertion":"intentional-kill-stays-gone","proof":"The restart verifier checks the exact killed session id is absent after relaunch.","independent":true,"proves":"explicit kill tombstones exclude the session from automatic recovery"},
+      {"requirement":"An untouched terminal returns after daemon failure or machine restart","check":"restart_restore","assertion":"unexpected-loss-recovers","proof":"The restart verifier checks an untouched session reattaches or cold-restores with its saved identity.","independent":true,"proves":"unexpected daemon loss preserves recovery eligibility"},
+      {"requirement":"A saved backup is inactive until the operator explicitly restores it","check":"lifecycle_regression","assertion":"backup-is-inactive","proof":"The lifecycle tests distinguish backup records from automatic restore candidates.","independent":true,"proves":"backups do not become visible sessions without explicit restore"},
+      {"requirement":"Only the canonical per-user daemon owns PTYs and recovery decisions","check":"daemon_ownership_regression","assertion":"one-daemon-owner","proof":"The daemon tests reject incompatible or competing owners and embedded control paths.","independent":true,"proves":"one canonical daemon remains the only PTY controller"},
+      {"requirement":"The installed dock-launched runtime proves the behavior","check":"installed_restart","assertion":"installed-runtime-recovery","proof":"The installed restart verifier exercises the dock runtime across repeated relaunches.","independent":true,"proves":"the packaged user-facing runtime carries the lifecycle contract"}
     ]
   },
-  "requiredChecks": ["build", "map_terminal_scroll_regression", "installed_release"],
-  "checkTimeoutMs": 600000,
+  "requiredChecks": [
+    "lifecycle_regression",
+    "daemon_ownership_regression",
+    "workspace_recovery_regression",
+    "restart_restore",
+    "installed_close_route",
+    "installed_release",
+    "installed_restart"
+  ],
+  "checkTimeoutMs": 1200000,
   "visualPaths": [],
   "visualRequiredChecks": [],
   "designGate": {"required": false},
-  "taskBinding": {"required": true, "targets": ["map", "terminal", "scroll"]},
-  "requiresUserApproval": true,
-  "adapterApproval": {"required": true},
+  "taskBinding": {"required": true, "targets": ["terminal", "recovery", "daemon", "restart"]},
+  "requiresUserApproval": false,
+  "adapterApproval": {"required": false},
   "contractPath": ".directive-validation/contract.json",
   "integration": {"required": true, "protocol": "directive-agent-v1"},
   "coverage": {
     "required": true,
     "seeds": [
-      {"id":"wheel-scrollback","description":"Scroll a map terminal into older output with the wheel"},
-      {"id":"live-follow","description":"Leave a map terminal at the bottom while new output arrives"}
+      {"id":"intentional-kill","description":"Kill a terminal through the canonical TermFleet close path"},
+      {"id":"unexpected-loss","description":"Lose the daemon while an untouched terminal is live"},
+      {"id":"backup-only","description":"Retain killed scrollback as an inactive backup"},
+      {"id":"daemon-collision","description":"Attempt to start a competing or incompatible daemon"}
     ],
     "invariants": [
-      {"id":"user-viewport-preserved","statement":"Wheel navigation does not force the viewport back to newest output","check":"map_terminal_scroll_regression"},
-      {"id":"bottom-follow-preserved","statement":"Uninterrupted live output continues to follow the newest output","check":"map_terminal_scroll_regression"}
+      {"id":"intentional-kill-stays-gone","statement":"An explicitly killed session is never automatically restored","check":"restart_restore"},
+      {"id":"unexpected-loss-recovers","statement":"An untouched session remains eligible after unexpected daemon loss","check":"restart_restore"},
+      {"id":"backup-is-inactive","statement":"A backup is not restored without an explicit restore action","check":"lifecycle_regression"},
+      {"id":"one-daemon-owner","statement":"Only the canonical compatible daemon can own the PTY socket","check":"daemon_ownership_regression"}
     ],
     "mutations": [
-      {"id":"force-bottom-after-wheel","target":"Schedule bottom-follow after wheel navigation","expected":"fail","check":"map_terminal_scroll_regression","command":"node","args":["scripts/verify-map-scroll-mutation.mjs","force-bottom-after-wheel","map_terminal_scroll_regression","Schedule bottom-follow after wheel navigation"],"isolated":true,"failureSignal":"invariant failed"},
-      {"id":"disable-live-follow","target":"Suppress bottom-follow for ordinary live output","expected":"fail","check":"map_terminal_scroll_regression","command":"node","args":["scripts/verify-map-scroll-mutation.mjs","disable-live-follow","map_terminal_scroll_regression","Suppress bottom-follow for ordinary live output"],"isolated":true,"failureSignal":"invariant failed"}
+      {"id":"remove-kill-tombstone","target":"Do not persist intentional kill disposition","expected":"fail","check":"restart_restore","command":"node","args":["scripts/verify-recovery-mutation.mjs","remove-kill-tombstone"],"isolated":true,"failureSignal":"invariant failed"},
+      {"id":"allow-embedded-fallback","target":"Allow an embedded fallback to control PTYs beside the canonical daemon","expected":"fail","check":"daemon_ownership_regression","command":"node","args":["scripts/verify-recovery-mutation.mjs","allow-embedded-fallback"],"isolated":true,"failureSignal":"invariant failed"}
     ],
     "mappings": [
-      {"seed":"wheel-scrollback","invariant":"user-viewport-preserved","mutation":"force-bottom-after-wheel"},
-      {"seed":"live-follow","invariant":"bottom-follow-preserved","mutation":"disable-live-follow"}
+      {"seed":"intentional-kill","invariant":"intentional-kill-stays-gone","mutation":"remove-kill-tombstone"},
+      {"seed":"unexpected-loss","invariant":"unexpected-loss-recovers","mutation":"remove-kill-tombstone"},
+      {"seed":"backup-only","invariant":"backup-is-inactive","mutation":"remove-kill-tombstone"},
+      {"seed":"daemon-collision","invariant":"one-daemon-owner","mutation":"allow-embedded-fallback"}
     ]
   }
 }

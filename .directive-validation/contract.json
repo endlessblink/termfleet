@@ -1,41 +1,47 @@
 {
-  "objective": "Keep map terminals at the user-selected scrollback position while they inspect older output",
+  "objective": "Make terminal recovery predictable and keep one canonical daemon in control",
   "requirements": [
-    "Wheel scrolling on a map terminal reveals older output without being pulled back to the newest output",
-    "New output still follows the bottom when the user has not manually scrolled away",
-    "The behavior is covered by a focused regression and the installed release remains buildable"
+    "A terminal explicitly killed through TermFleet does not return automatically after restart",
+    "An untouched terminal returns after daemon failure or machine restart",
+    "A saved backup is inactive until the operator explicitly restores it",
+    "Only the canonical per-user daemon owns PTYs and recovery decisions",
+    "The installed dock-launched runtime proves the behavior"
   ],
   "knownFailures": [
-    "Map terminal output forced the viewport back to the newest section during scrollback",
-    "A scrollback fix must not disable normal live-output bottom following"
+    "Explicitly killed terminals return as recovered terminals",
+    "A launcher, embedded fallback, or replacement daemon races the canonical daemon",
+    "A backup is mistaken for an automatically restorable session",
+    "A restart silently restores a terminal without explaining why"
   ],
   "outOfScope": [
-    "Changing terminal daemon ownership or persistence",
-    "Changing the unrelated close and restart recovery behavior"
+    "Changing terminal rendering or scrollback interaction",
+    "Changing provider conversation semantics beyond lifecycle ownership"
   ],
   "verification": {
     "successCriteria": [
-      "The focused map-terminal regression passes",
-      "The frontend build passes",
-      "The installed release identity check passes"
+      "Focused lifecycle and daemon ownership tests pass",
+      "Restart and close verification pass against the installed runtime",
+      "The installed release identity remains verified",
+      "The trusted verification artifact is fresh and independently sealed"
     ],
     "failureSignals": [
-      "Wheel navigation schedules a forced scroll to the newest output",
-      "The focused regression fails",
-      "The installed release cannot be verified"
+      "An intentional kill is eligible for automatic restore",
+      "More than one process can own the canonical PTY socket",
+      "A backup is restored without an explicit restore action",
+      "The installed runtime cannot be identified or verified"
     ]
   },
   "sureScore": "HIGH",
   "sure": {
-    "rootCause": "The output update path always scheduled a bottom scroll after map-terminal input, including wheel navigation.",
+    "rootCause": "Recovery eligibility is split between workspace tombstones, persisted PTY files, launcher helpers, and daemon fallback paths instead of one durable lifecycle decision owned by the canonical daemon.",
     "confidence": "HIGH",
-    "research": "The focused regression exercises wheel navigation and the existing build and installed-release checks cover the delivery surface.",
-    "fix": "Mark wheel navigation as user-controlled viewport input and suppress only the next forced bottom-follow.",
-    "sideEffects": "Normal typing and live output continue to follow the bottom when the user has not scrolled away."
+    "research": "The existing PTY kill, persisted-session, hydration, daemon ownership, launcher, and close/restart paths were inspected and the independent regression surface is identified.",
+    "fix": "Make the canonical daemon record lifecycle disposition before killing, keep backups separate from restore candidates, and fail closed whenever daemon ownership is ambiguous.",
+    "sideEffects": "Untouched terminals retain crash/restart recovery; explicit kills stop returning; launcher and UI reconciliation become consumers of daemon state rather than competing controllers."
   },
   "ambiguityResolved": true,
   "checkpoint": {
     "state": "ready-for-validation",
-    "updatedAt": "2026-08-17T09:50:00Z"
+    "updatedAt": "2026-08-17T18:55:00Z"
   }
 }
