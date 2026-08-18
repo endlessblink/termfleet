@@ -933,6 +933,15 @@ pub fn daemon_kill_session(id: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+pub fn daemon_restore_session(id: String) -> Result<(), String> {
+    match send_daemon_request(DaemonRequest::RestoreSession { id })? {
+        DaemonResponse::RestoreSession { ok: true } => Ok(()),
+        DaemonResponse::Error { message } => Err(message),
+        response => Err(format!("Unexpected daemon response: {response:?}")),
+    }
+}
+
+#[tauri::command]
 pub fn daemon_list_sessions() -> Result<Vec<PtySessionSummary>, String> {
     match send_daemon_request(DaemonRequest::ListSessions)? {
         DaemonResponse::ListSessions { sessions } => Ok(sessions),
@@ -1913,7 +1922,6 @@ pub fn workspace_layout_load() -> Result<Option<String>, String> {
         Err(error) => Err(error.to_string()),
     }
 }
-
 
 #[tauri::command]
 pub fn workspace_persisted_sessions() -> Vec<crate::pty::PersistedSessionSummary> {

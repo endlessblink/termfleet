@@ -92,6 +92,9 @@ pub enum DaemonRequest {
     KillSession {
         id: String,
     },
+    RestoreSession {
+        id: String,
+    },
     ListSessions,
     ListSessionEvents,
 }
@@ -128,6 +131,9 @@ pub enum DaemonResponse {
         cwd: String,
     },
     KillSession {
+        ok: bool,
+    },
+    RestoreSession {
         ok: bool,
     },
     ListSessions {
@@ -899,6 +905,10 @@ fn handle_daemon_request(
         DaemonRequest::KillSession { id } => {
             pty_manager.kill(&id)?;
             DaemonResponse::KillSession { ok: true }
+        }
+        DaemonRequest::RestoreSession { id } => {
+            pty_manager.restore_persisted_session(&id)?;
+            DaemonResponse::RestoreSession { ok: true }
         }
         DaemonRequest::ListSessions => DaemonResponse::ListSessions {
             sessions: pty_manager.list_sessions(),

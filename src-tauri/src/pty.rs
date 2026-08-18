@@ -883,8 +883,9 @@ impl PtyManager {
 
         // Get reader and writer from master
         let mut reader = pair.master.try_clone_reader().map_err(|e| e.to_string())?;
-        let writer: Arc<Mutex<Box<dyn Write + Send>>> =
-            Arc::new(Mutex::new(pair.master.take_writer().map_err(|e| e.to_string())?));
+        let writer: Arc<Mutex<Box<dyn Write + Send>>> = Arc::new(Mutex::new(
+            pair.master.take_writer().map_err(|e| e.to_string())?,
+        ));
 
         // Spawn reader thread that emits events to frontend
         let event_id = id.clone();
@@ -1161,7 +1162,9 @@ impl PtyManager {
                 .ok_or_else(|| format!("PTY {} not found", id))?
         };
         let mut writer = writer.lock().unwrap();
-        writer.write_all(data.as_bytes()).map_err(|e| e.to_string())?;
+        writer
+            .write_all(data.as_bytes())
+            .map_err(|e| e.to_string())?;
         writer.flush().map_err(|e| e.to_string())?;
         trace_pty("pty.write.end", format!("id={id} bytes={}", data.len()));
         Ok(())
@@ -1210,15 +1213,28 @@ impl PtyManager {
             ptys.remove(id)
                 .ok_or_else(|| format!("PTY {} not found", id))?
         };
+        // Record the operator's intent before terminating the PTY. The checkpoint
+        // remains available as an inactive backup, but it is no longer eligible
+        // for automatic cold restore.
+        if let Some(dir) = &self.persist_dir {
+            write_session_disposition(dir, id, SessionLifecycle::IntentionalKill);
+        }
         // Stop + join the reader thread (and kill the child) outside the manager
         // lock, so a reader blocked in read() can't deadlock other PTY operations
         // while we wait for it to drain to EOF.
         entry.shutdown("explicit session close", &self.session_events, id);
-        // An explicit close destroys the session, so drop its disk checkpoint —
-        // otherwise a killed terminal would resurrect on the next daemon start.
-        if let Some(dir) = &self.persist_dir {
-            remove_persisted(dir, id);
+        Ok(())
+    }
+
+    pub fn restore_persisted_session(&self, id: &str) -> Result<(), String> {
+        let dir = self
+            .persist_dir
+            .as_ref()
+            .ok_or_else(|| "session persistence is unavailable".to_string())?;
+        if !scrollback_path(dir, id).exists() {
+            return Err(format!("No backup exists for PTY {id}"));
         }
+        write_session_disposition(dir, id, SessionLifecycle::Recoverable);
         Ok(())
     }
 
@@ -1348,10 +1364,7 @@ impl PtyManager {
                             .try_lock()
                             .map(|list| list.len())
                             .unwrap_or(0),
-                        last_exit: last_exit
-                            .try_lock()
-                            .ok()
-                            .and_then(|status| status.clone()),
+                        last_exit: last_exit.try_lock().ok().and_then(|status| status.clone()),
                     }
                 },
             )
@@ -1513,6 +1526,15 @@ struct SessionMeta {
     restore_status: Option<AgentRestoreStatus>,
     #[serde(default)]
     restore_failure_reason: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum SessionLifecycle {
+    #[default]
+    Recoverable,
+    IntentionalKill,
+    BackupOnly,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
@@ -1831,7 +1853,9 @@ fn provider_writer_is_alive(pane_id: &str, provider: &str) -> bool {
             let name = entry.file_name();
             let Some(_pid) = name
                 .to_str()
-                .filter(|value| !value.is_empty() && value.bytes().all(|byte| byte.is_ascii_digit()))
+                .filter(|value| {
+                    !value.is_empty() && value.bytes().all(|byte| byte.is_ascii_digit())
+                })
                 .and_then(|value| value.parse::<u32>().ok())
                 .filter(|pid| *pid > 1 && *pid != std::process::id())
             else {
@@ -1878,6 +1902,8 @@ pub struct PersistedSessionSummary {
     pub id: String,
     pub cwd: Option<String>,
     pub scrollback_bytes: usize,
+    pub lifecycle: SessionLifecycle,
+    pub backup_only: bool,
 }
 
 /// Enumerate sessions with on-disk scrollback in the default persistence dir.
@@ -1915,10 +1941,16 @@ pub fn list_persisted_sessions() -> Vec<PersistedSessionSummary> {
             .ok()
             .and_then(|raw| serde_json::from_slice::<SessionMeta>(&raw).ok())
             .and_then(|meta| meta.cwd);
+        let lifecycle = read_session_disposition(&dir, &id);
         sessions.push(PersistedSessionSummary {
             id,
             cwd,
             scrollback_bytes: bytes,
+            backup_only: matches!(
+                lifecycle,
+                SessionLifecycle::IntentionalKill | SessionLifecycle::BackupOnly
+            ),
+            lifecycle,
         });
     }
     sessions
@@ -2048,6 +2080,24 @@ fn history_path(dir: &Path, id: &str) -> PathBuf {
     dir.join(format!("{}.history", encode_id(id)))
 }
 
+fn lifecycle_path(dir: &Path, id: &str) -> PathBuf {
+    dir.join(format!("{}.lifecycle.json", encode_id(id)))
+}
+
+fn read_session_disposition(dir: &Path, id: &str) -> SessionLifecycle {
+    fs::read(lifecycle_path(dir, id))
+        .ok()
+        .and_then(|raw| serde_json::from_slice::<SessionLifecycle>(&raw).ok())
+        .unwrap_or_default()
+}
+
+fn write_session_disposition(dir: &Path, id: &str, lifecycle: SessionLifecycle) {
+    let _ = fs::create_dir_all(dir);
+    if let Ok(json) = serde_json::to_vec(&lifecycle) {
+        let _ = atomic_write(&lifecycle_path(dir, id), &json);
+    }
+}
+
 fn atomic_write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     let tmp = path.with_extension("tmp");
     {
@@ -2098,6 +2148,10 @@ fn write_session_meta(
 /// scrollback *content* is loaded separately by `load_persisted_scrollback`.
 fn load_persisted(dir: &Path, id: &str) -> Option<PersistedSession> {
     if !scrollback_path(dir, id).exists() {
+        return None;
+    }
+    let lifecycle = read_session_disposition(dir, id);
+    if !matches!(lifecycle, SessionLifecycle::Recoverable) {
         return None;
     }
     let meta = fs::read(meta_path(dir, id))
@@ -2179,6 +2233,7 @@ fn remove_persisted(dir: &Path, id: &str) {
     let _ = fs::remove_file(scrollback_path(dir, id));
     let _ = fs::remove_file(meta_path(dir, id));
     let _ = fs::remove_file(history_path(dir, id));
+    let _ = fs::remove_file(lifecycle_path(dir, id));
 }
 
 fn boundary_at_or_after(data: &str, index: usize) -> usize {
@@ -2224,8 +2279,8 @@ fn discard_partial_replay_prefix(base_offset: u64, data: String) -> (u64, String
 mod tests {
     use super::{
         agent_recovery_from_sidecar, classify_agent_resume_failure, discard_partial_replay_prefix,
-        extract_provider_session_id, fnv1a_hex, plan_agent_restore, replay_boundary_at_or_after,
-        provider_writer_is_alive, AgentRecoveryManifestUpdate, AgentRestoreStatus,
+        extract_provider_session_id, fnv1a_hex, plan_agent_restore, provider_writer_is_alive,
+        replay_boundary_at_or_after, AgentRecoveryManifestUpdate, AgentRestoreStatus,
         PersistedSession, PtyManager, SessionMeta, SessionRecoveryKind,
     };
 
@@ -2959,7 +3014,10 @@ mod tests {
             .recv_timeout(Duration::from_secs(5))
             .expect("registry froze behind one session's scrollback flush");
         assert_eq!(listed, 2);
-        assert!(snapped, "a healthy pane's scrollback must still be readable");
+        assert!(
+            snapped,
+            "a healthy pane's scrollback must still be readable"
+        );
         assert!(
             elapsed < Duration::from_secs(2),
             "registry was stalled for {elapsed:?}"
@@ -3008,7 +3066,10 @@ mod tests {
         let held_child = child.lock().unwrap();
         let held_subs = subscribers.lock().unwrap();
 
-        for (m, id) in [(manager.clone(), busy.clone()), (manager.clone(), busy.clone())] {
+        for (m, id) in [
+            (manager.clone(), busy.clone()),
+            (manager.clone(), busy.clone()),
+        ] {
             thread::spawn(move || {
                 let _ = m.get_cwd(&id);
             });
@@ -4112,6 +4173,82 @@ mod tests {
         );
 
         manager.kill(&id).expect("kill resized detached PTY");
+    }
+
+    #[test]
+    fn intentional_kill_is_a_backup_and_not_an_automatic_restore_candidate() {
+        let dir = std::env::temp_dir().join(format!(
+            "tw-lifecycle-test-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        let id = "intentional-kill-lifecycle-test".to_string();
+
+        {
+            let manager = super::PtyManager::with_persistence_dir(dir.clone());
+            manager
+                .ensure_detached(
+                    Some(id.clone()),
+                    Some("/tmp".to_string()),
+                    Some("cat".to_string()),
+                    None,
+                    None,
+                )
+                .expect("spawn persistent PTY");
+            manager
+                .write(&id, "intentional-kill-marker\n")
+                .expect("write marker");
+            let snapshot = wait_for_snapshot_containing(&manager, &id, "intentional-kill-marker");
+            assert!(snapshot.contains("intentional-kill-marker"));
+            manager.kill(&id).expect("record intentional kill");
+        }
+
+        let summary = std::fs::read(super::lifecycle_path(&dir, &id))
+            .ok()
+            .and_then(|raw| serde_json::from_slice::<super::SessionLifecycle>(&raw).ok())
+            .expect("read lifecycle disposition");
+        assert_eq!(summary, super::SessionLifecycle::IntentionalKill);
+
+        {
+            let manager = super::PtyManager::with_persistence_dir(dir.clone());
+            let (_, reused) = manager
+                .ensure_detached(
+                    Some(id.clone()),
+                    Some("/tmp".to_string()),
+                    Some("cat".to_string()),
+                    None,
+                    None,
+                )
+                .expect("start a replacement shell");
+            assert!(
+                !reused,
+                "an intentional kill must not cold-restore automatically"
+            );
+            manager.kill(&id).expect("kill replacement shell");
+        }
+
+        {
+            let manager = super::PtyManager::with_persistence_dir(dir.clone());
+            manager
+                .restore_persisted_session(&id)
+                .expect("explicitly enable backup restore");
+            let (_, reused) = manager
+                .ensure_detached(
+                    Some(id.clone()),
+                    Some("/tmp".to_string()),
+                    Some("cat".to_string()),
+                    None,
+                    None,
+                )
+                .expect("restore explicitly selected backup");
+            assert!(!reused, "explicit restore still creates a replacement PTY");
+            let restored = manager.snapshot(&id).expect("read restored backup");
+            assert!(restored.contains("intentional-kill-marker"));
+            manager.kill(&id).expect("clean up restored PTY");
+        }
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

@@ -155,12 +155,25 @@ class AutomaticRecoveryTests(unittest.TestCase):
     def test_explicit_close_reconciles_old_daemon_checkpoints_without_restart(self):
         source = WORKSPACE.read_text()
         close = source.split("async function killPty", 1)[1].split("function shellQuote", 1)[0]
-        self.assertIn('invoke("pty_forget_persisted_session", { id })', close)
         self.assertIn('invoke<Array<{ id?: string }>>(\"daemon_list_sessions\")', close)
         self.assertIn("Daemon retained explicitly closed session", close)
         hydrate = source.split("export async function hydrateWorkspace()", 1)[1].split("/** Create a new tab", 1)[0]
-        self.assertIn('invoke("pty_forget_persisted_session", { id })', hydrate)
         self.assertIn('invoke("daemon_kill_session", { id: session.id })', hydrate)
+
+    def test_recovery_uses_daemon_lifecycle_disposition_instead_of_deleting_backups(self):
+        workspace = WORKSPACE.read_text()
+        pty = (ROOT / "src-tauri" / "src" / "pty.rs").read_text()
+        self.assertIn('if (session.lifecycle && session.lifecycle !== "recoverable") continue;', workspace)
+        self.assertNotIn('invoke("pty_forget_persisted_session", { id })', workspace)
+        self.assertIn("SessionLifecycle::IntentionalKill", pty)
+        self.assertIn("write_session_disposition", pty)
+        self.assertIn("backup_only", pty)
+
+    def test_tauri_never_falls_back_to_a_second_embedded_owner(self):
+        source = (ROOT / "src" / "hooks" / "usePty.ts").read_text()
+        workspace = WORKSPACE.read_text()
+        self.assertIn("refusing to start an embedded second PTY owner", source)
+        self.assertIn("refusing a second PTY owner", workspace)
 
 
     def test_anonymous_legacy_recovered_tabs_are_not_reintroduced(self):
