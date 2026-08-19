@@ -1069,9 +1069,39 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
           latestWorkstreamInput?.source === "mission-control"
             ? latestWorkstreamInput
             : undefined;
+        const agentWorkstream = tab.workstream;
+        const isAgentWorkstream =
+          agentWorkstream?.kind === "agent" &&
+          (paneTerminal?.statusSummary?.provider ??
+            agentWorkstream.statusSummary?.provider) !== "shell";
         const agentStatusSummary =
-          tab.workstream?.kind === "agent"
+          isAgentWorkstream && agentWorkstream
             ? agentStatusSummaryFromWorkstream(tab.workstream)
+            : null;
+        const agentHeader =
+          isAgentWorkstream
+            ? buildTerminalHeaderState({
+                paneId,
+                terminalId: paneTerminal?.id ?? paneId,
+                runId: paneTerminal?.activeRunId ?? agentWorkstream.runId,
+                project,
+                liveCwd: paneCwd,
+                terminalStatus,
+                taskLineup:
+                  paneTerminal?.taskLineup ?? agentWorkstream.taskLineup,
+                activeRunId:
+                  paneTerminal?.activeRunId ?? agentWorkstream.activeRunId,
+                mainUserAsk: paneTerminal?.mainUserAsk,
+                statusSummary:
+                  paneTerminal?.statusSummary ?? agentWorkstream.statusSummary,
+                taskLine: paneTerminal?.taskLine ?? agentWorkstream.taskLine,
+                summary:
+                  paneTerminal?.statusSummary ?? agentWorkstream.statusSummary,
+                workstreamTitle: agentWorkstream.mission ?? agentWorkstream.prompt,
+                activelyWorking:
+                  terminalStatus === "running" ||
+                  agentWorkstream.status === "running",
+              })
             : null;
         const agentStatusChip =
           tab.workstream?.kind === "agent" && agentStatusSummary
@@ -1322,12 +1352,12 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
           {
             title: (
               (isAgentPane
-                ? (paneTaskLine?.text ?? agentStatusSummary?.task)
+                ? agentHeader?.goalLabel
                 : shellHeader?.goalLabel) ?? ""
             ).toString(),
             now: (
               (isAgentPane
-                ? agentStatusSummary?.now
+                ? agentHeader?.currentActivity
                 : (shellStatusSummary?.now ??
                   shellHeader?.currentActivity ??
                   paneActivity)) ?? ""
@@ -1339,19 +1369,27 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
               terminalStatus === "failed" ||
               terminalStatus === "exited" ||
               shellHeader?.sources.goal === "task-tool" ||
+              Boolean(agentHeader?.sources.goal === "task-tool") ||
               !paneTerminal?.statusSummary?.tasksFromTodoWrite ||
               Boolean(shellHeader?.debug.titleUsesDistinctActivity),
           },
         );
         const headerTitle = stabilizedHeader.title;
         const sidecarNow = paneTerminal?.statusSummarySource === "sidecar"
-          ? paneTerminal.statusSummary?.now?.trim()
+          ? resolveDistinctHeaderNow(
+              headerTitle,
+              paneTerminal.statusSummary?.now?.trim(),
+            )
           : undefined;
         const headerNow =
-          sidecarNow || resolveDistinctHeaderNow(headerTitle, stabilizedHeader.now) || "";
+          sidecarNow ||
+          resolveDistinctHeaderNow(headerTitle, stabilizedHeader.now) ||
+          (isAgentPane && agentHeader?.currentActivity === "Working"
+            ? "Working"
+            : "");
         const headerContext =
           (isAgentPane
-            ? tab.workstream?.mission ?? tab.workstream?.prompt
+            ? agentHeader?.contextLabel
             : shellHeader?.contextLabel) ?? "";
         // ONE pure render-time translation of the pane's stored status — identical in
         // every view, nothing stored separately that can be dropped and flicker.

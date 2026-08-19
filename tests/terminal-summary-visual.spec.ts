@@ -353,6 +353,48 @@ test("regular split header keeps the sidecar Now after reconnect", async ({ page
   await expect(page.getByTestId("split-terminal-summary-now")).toContainText("frontend build passed");
 });
 
+test("regular split header rejects a generic sidecar Now and keeps Task and Goal on about-what", async ({ page }) => {
+  await mockTauri(page);
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+
+  const aboutWhat = "Keep terminal labels reliable and clear";
+  await seedSplitTerminal(page, null, {
+    includePurpose: false,
+    statusSummarySource: "sidecar",
+    keySuffix: "generic-sidecar-now",
+    mainUserAsk: aboutWhat,
+    outputLines: ["bash-5.2$"],
+  });
+
+  await page.evaluate(() => {
+    const store = (window as typeof window & {
+      __termfleetWorkspaceStore?: {
+        getState: () => { tabs: Array<Record<string, any>> };
+        setState: (state: Record<string, unknown>) => void;
+      };
+    }).__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+    const state = store.getState();
+    store.setState({
+      tabs: state.tabs.map((tab) => ({
+        ...tab,
+        terminals: tab.terminals.map((terminal) => ({
+          ...terminal,
+          statusSummary: { ...terminal.statusSummary, now: "Running..." },
+        })),
+      })),
+    });
+  });
+
+  await expect(page.getByTestId("split-terminal-summary-task")).toHaveText(aboutWhat);
+  await expect(page.getByTestId("split-terminal-summary-goal")).toContainText(aboutWhat);
+  await expect(page.getByTestId("split-terminal-summary-now")).not.toContainText("Running...");
+});
+
 test("regular split header neutralizes stale verifier text when there is no real task", async ({ page }) => {
   await mockTauri(page);
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });

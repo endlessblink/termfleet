@@ -93,7 +93,7 @@ export function resolveDistinctHeaderNow(
   const normalizedCandidate = normalize(candidate);
   if (!normalizedCandidate) return undefined;
   if (normalizedCandidate === normalize(task ?? "")) return undefined;
-  if (/^(?:Working|Ready|Idle|Awaiting next action|Working on the current task|Working on the current request|Status unavailable|Activity not captured)$/i.test(candidate)) {
+  if (/^(?:Working|Running|Running\s*\.{3}|Processing|Processing\s*\.{3}|Ready|Idle|Awaiting next action|Working on the current task|Working on the current request|Status unavailable|Activity not captured)$/i.test(candidate)) {
     return undefined;
   }
   return candidate;
