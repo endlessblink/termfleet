@@ -13,7 +13,7 @@
     "continuationGate": "continue",
     "enforcement": "The orchestrator must call continue before granting a normal next turn or accepting completion; BLOCKED permits correction only."
   },
-  "readyAt": "2026-08-19T09:23:54.289Z",
+  "readyAt": "2026-08-19T09:25:20.019Z",
   "activeRunDir": "/media/endlessblink/data/my-projects/ai-development/devops/termfleet/.directive-validation/runs/01a01104-d9ad-7c52-b950-19cf9a272796-34492f2629a5",
   "activeRuns": {
     "01a00985-9ea9-7c23-bd20-a1be5526f6de": "/media/endlessblink/data/my-projects/ai-development/devops/termfleet/.directive-validation/runs/01a00985-9ea9-7c23-bd20-a1be5526f6de",
@@ -40,5 +40,5 @@
     "01a010d5-40ae-7df0-8e9e-9bf0e8c3f021": "/media/endlessblink/data/my-projects/ai-development/devops/termfleet/.directive-validation/runs/01a010d5-40ae-7df0-8e9e-9bf0e8c3f021-1f052a9e83f5",
     "01a01104-d9ad-7c52-b950-19cf9a272796": "/media/endlessblink/data/my-projects/ai-development/devops/termfleet/.directive-validation/runs/01a01104-d9ad-7c52-b950-19cf9a272796-34492f2629a5"
   },
-  "statusAt": "2026-08-19T09:24:58.725Z"
+  "statusAt": "2026-08-19T09:26:25.109Z"
 }
