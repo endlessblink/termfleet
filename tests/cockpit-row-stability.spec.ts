@@ -177,6 +177,9 @@ test("agent split headers keep the live work, broad goal, and current moment leg
   expect(agentHeader, "the agent branch must not hide the moment in an inline strip").toContain(
     "Now",
   );
+  expect(splitPane).toContain("const agentTaskLabel = isAgentPane");
+  expect(splitPane).toContain("? agentTaskLabel");
+  expect(splitPane).toContain("? agentHeader?.contextLabel");
 });
 
 test("regular split headers keep the current moment visible beside the path", () => {

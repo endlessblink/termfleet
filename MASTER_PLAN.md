@@ -1,5 +1,14 @@
 # MASTER_PLAN.md - termfleet
 
+> **2026-08-19 — Agent Task and Goal no longer repeat the same sentence:** The
+> previous pane-local resolver correctly recovered the durable purpose, but the
+> split header rendered that purpose as both Task and Goal. Agent Task now prefers
+> the pane's explicit next action/current step, Goal remains the durable about-what
+> purpose, and Now remains live activity. The focused agent-row contract passed,
+> along with TypeScript, map source checks, and `git diff --check`. A full live
+> agent-pane browser run remains a separate gate because the long workstream test
+> did not complete in this environment.
+
 > **2026-08-19 — Agent terminal labels now use one pane-local identity path:** The
 > split view previously let tab-level agent summaries and raw sidecar status bypass
 > the canonical Task/Goal/Now resolver. A pane could therefore show another pane's
