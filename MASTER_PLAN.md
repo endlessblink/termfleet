@@ -1,5 +1,17 @@
 # MASTER_PLAN.md - termfleet
 
+> **2026-08-19 — Agent terminal labels now use one pane-local identity path:** The
+> split view previously let tab-level agent summaries and raw sidecar status bypass
+> the canonical Task/Goal/Now resolver. A pane could therefore show another pane's
+> purpose or a generic `Running...` Now line. Agent panes now resolve through their
+> own terminal state, generic sidecar placeholders are filtered, and the focused
+> headed regression keeps Task and Goal equal to the durable about-what sentence
+> while rejecting `Running...` as Now. `npx playwright test tests/terminal-summary-visual.spec.ts
+> -g "generic sidecar Now" --reporter=line` passed; `npx tsc --noEmit --pretty
+> false` and `npm run verify:map-terminals` passed. The broader visual run still
+> has unrelated baseline failures in the MagicCanvas source-contract check and an
+> existing title expectation; installed dock verification remains outstanding.
+
 > **2026-08-19 — Map terminals now respect the user’s scroll position during
 > agent work:** The map Canvas2D terminal previously suppressed only one
 > follow-bottom request after wheel navigation, so continued agent input could
