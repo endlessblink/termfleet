@@ -1335,6 +1335,11 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
             : null;
         const isAgentPane = Boolean(agentStatusSummary);
         const isShellSummaryPane = Boolean(shellStatusSummary);
+        const agentTaskLabel = isAgentPane
+          ? agentWorkstream?.nextAction?.trim() ||
+            agentHeader?.currentActivity ||
+            agentHeader?.goalLabel
+          : undefined;
         const taskSidebarCollapsed =
           paneTerminal?.taskSidebarCollapsed ?? false;
         const paneActivity = !isPreviewPane
@@ -1352,7 +1357,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
           {
             title: (
               (isAgentPane
-                ? agentHeader?.goalLabel
+                ? agentTaskLabel
                 : shellHeader?.goalLabel) ?? ""
             ).toString(),
             now: (
