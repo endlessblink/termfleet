@@ -13,8 +13,8 @@
     "continuationGate": "continue",
     "enforcement": "The orchestrator must call continue before granting a normal next turn or accepting completion; BLOCKED permits correction only."
   },
-  "readyAt": "2026-08-19T09:17:08.244Z",
-  "activeRunDir": "/media/endlessblink/data/my-projects/ai-development/devops/termfleet/.directive-validation/runs/01a01104-d9ad-7c52-b950-19cf9a272796-abb60d376f46",
+  "readyAt": "2026-08-19T09:23:54.289Z",
+  "activeRunDir": "/media/endlessblink/data/my-projects/ai-development/devops/termfleet/.directive-validation/runs/01a01104-d9ad-7c52-b950-19cf9a272796-34492f2629a5",
   "activeRuns": {
     "01a00985-9ea9-7c23-bd20-a1be5526f6de": "/media/endlessblink/data/my-projects/ai-development/devops/termfleet/.directive-validation/runs/01a00985-9ea9-7c23-bd20-a1be5526f6de",
     "20260816-fresh-close-restart": "/media/endlessblink/data/my-projects/ai-development/devops/termfleet/.directive-validation/runs/20260816-fresh-close-restart",
@@ -38,7 +38,7 @@
     "01a00efb-c488-7b51-8476-35f170cc724c": "/media/endlessblink/data/my-projects/ai-development/devops/termfleet/.directive-validation/runs/01a00efb-c488-7b51-8476-35f170cc724c-b14b355282f0",
     "01a010d0-0352-75d2-bdd0-35d6441442ca": "/media/endlessblink/data/my-projects/ai-development/devops/termfleet/.directive-validation/runs/01a010d0-0352-75d2-bdd0-35d6441442ca-b14b355282f0",
     "01a010d5-40ae-7df0-8e9e-9bf0e8c3f021": "/media/endlessblink/data/my-projects/ai-development/devops/termfleet/.directive-validation/runs/01a010d5-40ae-7df0-8e9e-9bf0e8c3f021-1f052a9e83f5",
-    "01a01104-d9ad-7c52-b950-19cf9a272796": "/media/endlessblink/data/my-projects/ai-development/devops/termfleet/.directive-validation/runs/01a01104-d9ad-7c52-b950-19cf9a272796-abb60d376f46"
+    "01a01104-d9ad-7c52-b950-19cf9a272796": "/media/endlessblink/data/my-projects/ai-development/devops/termfleet/.directive-validation/runs/01a01104-d9ad-7c52-b950-19cf9a272796-34492f2629a5"
   },
-  "statusAt": "2026-08-19T09:18:33.938Z"
+  "statusAt": "2026-08-19T09:24:58.725Z"
 }
