@@ -12,3 +12,10 @@ src-tauri/gen/
 
 # live pane-label audit output (machine-specific, contains real prompts)
 .audit/
+
+# Session-bound validation receipts and disabled-hook recovery copies.
+.directive-validation/runs/
+.directive-validation.disabled-backup-*/
+
+# Python test bytecode.
+tests/__pycache__/
