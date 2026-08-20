@@ -2963,6 +2963,33 @@ test("idle panes without task context render explicit no-active-work labels", ()
   expect(header.now.text).toBe("Ready for next task");
 });
 
+test("idle panes with durable about-what context keep it in Now", () => {
+  const goal = "Keep the cockpit focused on the real goal";
+  const header = buildShellTerminalHeaderViewModel({
+    project: { id: "g-idle-goal", name: "flow-state", projectRoot: "/repo/flow-state" },
+    liveCwd: "/repo/flow-state",
+    terminalStatus: "idle",
+    mainUserAsk: {
+      text: goal,
+      source: "status-sidecar",
+      updatedAt: 1000,
+    },
+    taskLineup: [],
+    statusSummary: {
+      task: "Ready",
+      path: "/repo/flow-state",
+      now: "Ready for next task",
+      status: "idle",
+      provider: "codex",
+      confidence: "high",
+      tasksFromTodoWrite: false,
+    },
+  });
+
+  expect(header.context.text).toBe(goal);
+  expect(header.now.text).toBe(goal);
+});
+
 test("actively-working pane shows Working, not 'Awaiting next action'", () => {
   const header = buildShellTerminalHeaderViewModel({
     project: { id: "g-hermes", name: "hermes", projectRoot: "/repo/hermes" },

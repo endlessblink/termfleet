@@ -1361,6 +1361,14 @@ export function buildShellTerminalHeaderViewModel(input: {
   const displayContext = contextCandidate
     ? qualifyAmbiguousLabel(contextCandidate, workspace)
     : undefined;
+  const idleNowUsesContext = Boolean(
+    displayContext &&
+      input.statusSummary?.status === "idle" &&
+      !input.activelyWorking &&
+      /^(?:Idle|Ready|Awaiting next action|Ready for next task)$/i.test(
+        readableNow.trim(),
+      ),
+  );
   const displayTitle = qualifyAmbiguousLabel(guardedTitle, workspace);
   const effectiveTaskDescription =
     displayTaskDescription;
@@ -1418,7 +1426,9 @@ export function buildShellTerminalHeaderViewModel(input: {
     },
     now: {
       text:
-        noActiveWork && recoveredShellWithoutIdentity
+        idleNowUsesContext
+          ? aboutWhatFallback(displayContext, effectiveTaskDescription)
+          : noActiveWork && recoveredShellWithoutIdentity
           ? aboutWhatFallback(displayContext, effectiveTaskDescription)
           : noActiveWork
             ? "Ready for next task"

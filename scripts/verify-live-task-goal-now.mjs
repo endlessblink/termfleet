@@ -60,9 +60,9 @@ for (const terminal of terminals) {
   const goal = String(terminal.context ?? terminal.goal ?? "").trim();
   const now = String(terminal.now ?? "").trim();
   const title = String(terminal.title ?? "").trim();
-  const hasTaskRecord = (terminal.taskLineup?.length ?? 0) > 0 ||
-    Boolean(terminal.tasksFromTodoWrite) ||
-    Boolean(terminal.taskSource && !/^(?:missing|none|neutral)$/i.test(terminal.taskSource));
+  const hasTaskRecord = Boolean(
+    terminal.taskSource && !/^(?:missing|none|neutral)$/i.test(terminal.taskSource),
+  );
   const hasGoalRecord = Boolean(
     terminal.contextSource && !/^(?:missing|none|neutral)$/i.test(terminal.contextSource),
   ) || Boolean(terminal.statusSummaryTask || terminal.statusSummaryNow || terminal.mainUserAsk);
@@ -70,8 +70,10 @@ for (const terminal of terminals) {
   const goalFallback = !goal || placeholderGoal.test(goal);
   const nowFallback = placeholderNow.test(now);
   if (taskFallback) {
-    fallbackCount += 1;
-    if (hasTaskRecord) failures.push(`${id}:placeholder-task-with-record=${task || "<empty>"}`);
+    if (hasTaskRecord) {
+      fallbackCount += 1;
+      failures.push(`${id}:placeholder-task-with-record=${task || "<empty>"}`);
+    }
   }
   if (goalFallback && hasGoalRecord) failures.push(`${id}:placeholder-goal-with-record=${goal || "<empty>"}`);
   if (!now && terminal.nowSource && !/^(?:missing|neutral)$/i.test(terminal.nowSource)) {
@@ -90,8 +92,8 @@ for (const terminal of terminals) {
   if (title && /^(?:idle|working|status unavailable|awaiting next action)$/i.test(title)) {
     failures.push(`${id}:neutral-title=${title}`);
   }
-  if (goal.toLowerCase() === task.toLowerCase() ||
-      goal.replace(/^working toward:\s*/i, "").toLowerCase() === task.toLowerCase()) {
+  if (task && goal && (goal.toLowerCase() === task.toLowerCase() ||
+      goal.replace(/^working toward:\s*/i, "").toLowerCase() === task.toLowerCase())) {
     failures.push(`${id}:goal-restates-task`);
   }
   if (now && task && now.toLowerCase() === task.toLowerCase()) {

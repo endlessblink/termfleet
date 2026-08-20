@@ -1,5 +1,36 @@
 # MASTER_PLAN.md - termfleet
 
+> **2026-08-20 — Installed Task/Goal/Now rows now pass the live acceptance gate:**
+> Shell panes now derive Task from their active task step instead of the broad
+> Goal; map snapshots use the same distinct-task rule and report `Task not
+> captured` explicitly when no distinct task exists. The live verifier was also
+> corrected to distinguish a missing task from a captured-but-invalid task.
+> Focused cockpit regressions, TypeScript, `git diff --check`, installed release
+> verification, dock relaunch, and the fresh live gate passed: 16 terminals,
+> fresh trace, no duplicate Goal/Task or unavailable Now records. Installed
+> release checksum: `7527175501d25d60d2d829a50c5c251137d6300456603503e4aaccd1659b423d`.
+
+> **2026-08-20 — Agent split headers no longer copy Goal into Task:**
+> When an agent had no distinct next action, the split header fell back to the
+> durable Goal, producing the exact duplicate rows seen in the installed app.
+> Task now uses only a distinct next action/current activity and otherwise says
+> `Task not captured`; Goal remains the durable request and Now remains the live
+> status. The focused duplicate regression passed before/after the change,
+> together with the agent split header checks, TypeScript, and `git diff --check`.
+
+> **2026-08-20 — Idle map cards now keep their durable about-what context:**
+> An idle card could replace the pane's captured purpose with `Awaiting next
+> action` / `Ready for next task`, so the visible Now line lost the session
+> context. The resolver now uses the durable context whenever idle status is
+> only a generic readiness value, with a focused regression covering the exact
+> failure. `npx playwright test tests/terminal-header-view-model.spec.ts -g
+> "idle Now uses|idle panes without task context|idle panes with durable
+> about-what context" --reporter=line` passed (3 tests), the map row guard
+> passed, and `npm run build` passed. The promoted installed checksum is
+> `652fadb6195590047c3f6e2c4dc037908ab73c64d1e69d412f09572a4a507871`, the
+> installed restart smoke passed, and the live dock app was relaunched on the
+> new release while the older canonical daemon was preserved for live sessions.
+
 > **2026-08-19 — Agent Task and Goal no longer repeat the same sentence:** The
 > previous pane-local resolver correctly recovered the durable purpose, but the
 > split header rendered that purpose as both Task and Goal. Agent Task now prefers

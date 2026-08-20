@@ -3343,7 +3343,16 @@ function CanvasNodeViewImpl({
       terminalDisplaySummaryBase.now === "Waiting for operator selection",
   });
   const workspaceLabel = terminalHeader.workspace;
-  const terminalHeaderTaskDescription = terminalHeader.goalLabel;
+  const terminalHeaderTaskCandidate = terminalHeaderTaskLineup
+    ?.find((item) => item.status === "in_progress")
+    ?.content?.trim();
+  const terminalHeaderTaskDescription =
+    resolveDistinctHeaderNow(
+      terminalHeader.goalLabel,
+      terminalHeaderTaskCandidate,
+    ) ?? "Task not captured";
+  const terminalHeaderTaskCaptured =
+    terminalHeaderTaskDescription !== "Task not captured";
   const terminalHeaderContextDescription = terminalHeader.contextLabel;
   const terminalHeaderTitleRaw = terminalDurableActivityUsable &&
     terminalDisplaySummaryBase.task &&
@@ -4659,10 +4668,8 @@ function CanvasNodeViewImpl({
                     previewTitle: terminalTitle,
                     projectEmoji,
                     kind: "shell",
-                    task: terminalHeader.hasCapturedGoal
-                      ? terminalHeaderTaskDescription
-                      : "",
-                    taskSource: terminalHeader.hasCapturedGoal
+                    task: terminalHeaderTaskDescription,
+                    taskSource: terminalHeaderTaskCaptured
                       ? terminalHeader.sources.goal
                       : "missing",
                     context: terminalHeader.hasCapturedGoal
@@ -4671,8 +4678,13 @@ function CanvasNodeViewImpl({
                     contextSource: terminalHeader.hasCapturedGoal
                       ? terminalHeader.sources.context
                       : "missing",
-                    title: terminalHeaderTitle,
-                    titleSource: terminalHeader.sources.activity,
+                    title:
+                      terminalHeaderNowRowText ||
+                      terminalHeaderContextDescription ||
+                      terminalHeaderTitle,
+                    titleSource: terminalHeaderNowRowText
+                      ? terminalHeader.sources.activity
+                      : terminalHeader.sources.context,
                     now: terminalHeaderNowRowText ?? "",
                     nowSource: terminalHeaderNowRowVisible
                       ? terminalHeader.sources.activity

@@ -107,7 +107,10 @@ test("the card shows the goal on top and the moment under it, always", () => {
 });
 
 test("cards do not rename missing values or manufacture a task-shaped Now row", () => {
-  expect(magicCanvas).toContain("const terminalHeaderTaskDescription = terminalHeader.goalLabel");
+  expect(magicCanvas).toContain("const terminalHeaderTaskCandidate =");
+  expect(magicCanvas).toContain(
+    "resolveDistinctHeaderNow(\n      terminalHeader.goalLabel,\n      terminalHeaderTaskCandidate,\n    )",
+  );
   expect(magicCanvas).toContain("const terminalHeaderContextDescription = terminalHeader.contextLabel");
   expect(magicCanvas).not.toContain('"No task assigned to this terminal"');
   expect(magicCanvas).not.toContain("`Working on: ${terminalHeaderTaskDescription}`");
@@ -179,7 +182,25 @@ test("agent split headers keep the live work, broad goal, and current moment leg
   );
   expect(splitPane).toContain("const agentTaskLabel = isAgentPane");
   expect(splitPane).toContain("? agentTaskLabel");
+  expect(splitPane).toContain("task: isAgentPane\n                    ? agentTaskLabel");
   expect(splitPane).toContain("? agentHeader?.contextLabel");
+});
+
+test("agent split Task never falls back to the broad Goal when live work is missing", () => {
+  expect(splitPane).toContain("const agentTaskCandidate =");
+  expect(splitPane).toContain(
+    "resolveDistinctHeaderNow(agentHeader?.goalLabel, agentTaskCandidate)",
+  );
+  expect(splitPane).not.toContain("agentHeader?.currentActivity ||\n            agentHeader?.goalLabel");
+});
+
+test("shell split Task uses the active task step instead of the broad Goal", () => {
+  expect(splitPane).toContain("const shellTaskCandidate = !isAgentPane");
+  expect(splitPane).toContain(
+    "resolveDistinctHeaderNow(shellHeader?.goalLabel, shellTaskCandidate)",
+  );
+  expect(splitPane).toContain(": shellTaskLabel,");
+  expect(splitPane).not.toContain(": shellHeader?.goalLabel,");
 });
 
 test("regular split headers keep the current moment visible beside the path", () => {

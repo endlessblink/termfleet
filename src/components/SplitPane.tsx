@@ -1335,10 +1335,22 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
             : null;
         const isAgentPane = Boolean(agentStatusSummary);
         const isShellSummaryPane = Boolean(shellStatusSummary);
-        const agentTaskLabel = isAgentPane
+        const agentTaskCandidate = isAgentPane
           ? agentWorkstream?.nextAction?.trim() ||
-            agentHeader?.currentActivity ||
-            agentHeader?.goalLabel
+            agentHeader?.currentActivity?.trim()
+          : undefined;
+        const agentTaskLabel = isAgentPane
+          ? resolveDistinctHeaderNow(agentHeader?.goalLabel, agentTaskCandidate) ||
+            "Task not captured"
+          : undefined;
+        const shellTaskCandidate = !isAgentPane
+          ? (tab.workstream?.taskLineup ?? paneTerminal?.taskLineup)
+              ?.find((item) => item.status === "in_progress")
+              ?.content?.trim()
+          : undefined;
+        const shellTaskLabel = !isAgentPane
+          ? resolveDistinctHeaderNow(shellHeader?.goalLabel, shellTaskCandidate) ||
+            "Task not captured"
           : undefined;
         const taskSidebarCollapsed =
           paneTerminal?.taskSidebarCollapsed ?? false;
@@ -1356,9 +1368,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
           `split:${tab.id}:${paneId}`,
           {
             title: (
-              (isAgentPane
-                ? agentTaskLabel
-                : shellHeader?.goalLabel) ?? ""
+              (isAgentPane ? agentTaskLabel : shellTaskLabel) ?? ""
             ).toString(),
             now: (
               (isAgentPane
@@ -1495,11 +1505,15 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                   projectEmoji: linkedProject?.emoji,
                   kind: isAgentPane ? "agent" : "shell",
                   task: isAgentPane
-                    ? agentStatusSummary?.task
-                    : shellHeader?.goalLabel,
+                    ? agentTaskLabel
+                    : shellTaskLabel,
                   taskSource: isAgentPane
-                    ? "agent-status"
-                    : shellHeader?.sources.goal,
+                    ? agentTaskLabel === "Task not captured"
+                      ? "missing"
+                      : "agent-status"
+                    : shellTaskLabel === "Task not captured"
+                      ? "missing"
+                      : "task-tool",
                   context: headerContext,
                   contextSource: isAgentPane
                     ? "workstream"
