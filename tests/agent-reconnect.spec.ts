@@ -25,6 +25,7 @@ function dependencies(
       sessionId: `019f-session-${paneId}`,
     }),
     sessionExists: async () => true,
+    conversationOwnedElsewhere: async () => false,
     writeResumeCommand: async () => undefined,
     ...overrides,
   };

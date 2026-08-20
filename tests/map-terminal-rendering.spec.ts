@@ -330,6 +330,20 @@ test("map Connect terminal selects the pane without leaving the map", () => {
   expect(source).not.toContain("onOpen={openLinkedTerminal}");
 });
 
+test("automatic sidebar reconnect checks for another live conversation owner", () => {
+  const source = readFileSync("src/components/WorkbenchSidebar.tsx", "utf8");
+  const reconnectBlock = source.match(
+    /async function reconnectAgentPanes\(\)[\s\S]*?\n  \}\n\n  useEffect\(/,
+  )?.[0] ?? "";
+
+  expect(reconnectBlock).toContain("reconnectStoppedAgents");
+  expect(reconnectBlock).toContain("conversationOwnedElsewhere");
+  expect(reconnectBlock).toContain(
+    'invoke<boolean>("agent_conversation_has_other_owner"',
+  );
+  expect(reconnectBlock).toContain("return true;");
+});
+
 test("clicking map Connect terminal reconnects an unselected session in canvas", async ({
   page,
 }) => {

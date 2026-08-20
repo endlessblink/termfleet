@@ -700,15 +700,21 @@ impl PtyManager {
         // per-pane sidecar knows the conversation id — enrich from it so the existing
         // resume path (`plan_agent_restore`) fires. Seeded/agent-button sessions
         // already carry the manifest and are left untouched.
-        let needs_sidecar_recovery = persisted.as_ref().map_or(true, |entry| {
-            entry.recovery_kind != Some(SessionRecoveryKind::AgentTerminal)
-                && entry
-                    .sanitized_resume_command
-                    .as_deref()
-                    .map(str::trim)
-                    .unwrap_or("")
-                    .is_empty()
-        });
+        let sidecar_recovery_allowed = self
+            .persist_dir
+            .as_ref()
+            .map(|dir| is_sidecar_recovery_allowed(read_session_disposition(dir, &id)))
+            .unwrap_or(true);
+        let needs_sidecar_recovery = sidecar_recovery_allowed
+            && persisted.as_ref().map_or(true, |entry| {
+                entry.recovery_kind != Some(SessionRecoveryKind::AgentTerminal)
+                    && entry
+                        .sanitized_resume_command
+                        .as_deref()
+                        .map(str::trim)
+                        .unwrap_or("")
+                        .is_empty()
+            });
         if needs_sidecar_recovery {
             if let Some((provider, session_id, sidecar_cwd)) = read_pane_sidecar_recovery(&id) {
                 let entry = persisted.get_or_insert_with(PersistedSession::default);
@@ -1155,7 +1161,24 @@ impl PtyManager {
         // Resolve the session's writer under the registry lock, then release the
         // registry before the (potentially blocking) PTY write. Typing into a
         // wedged pane must never stall the other panes.
-        let writer = {
+        let writer = if let Some((provider, session_id)) = resume_request_from_input(data) {
+            let mut ptys = self.ptys.lock().unwrap();
+            let entry = ptys
+                .get_mut(id)
+                .ok_or_else(|| format!("PTY {} not found", id))?;
+            if entry._resume_lock.is_some() {
+                return Err("agent conversation is already owned by this pane".to_string());
+            }
+            let lock_dir = self
+                .persist_dir
+                .clone()
+                .or_else(default_persist_dir)
+                .ok_or_else(|| "resume lock directory unavailable".to_string())?;
+            let lock = try_acquire_resume_lock(&lock_dir, provider, session_id)?
+                .ok_or_else(|| "agent conversation is already owned by another live writer".to_string())?;
+            entry._resume_lock = Some(lock);
+            entry.writer.clone()
+        } else {
             let ptys = self.ptys.lock().unwrap();
             ptys.get(id)
                 .map(|entry| entry.writer.clone())
@@ -1782,11 +1805,29 @@ fn shell_quote_arg(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\\''"))
 }
 
+fn resume_request_from_input(data: &str) -> Option<(&str, &str)> {
+    let parts = data.split_whitespace().collect::<Vec<_>>();
+    match parts.as_slice() {
+        ["exec", "codex", "resume", session_id]
+        | ["exec", "claude", "--resume", session_id]
+        | ["exec", "opencode", "--session", session_id]
+            if !session_id.is_empty() =>
+        {
+            Some((parts[1], session_id))
+        }
+        _ => None,
+    }
+}
+
 /// Root of termfleet's per-user durable state (`~/.local/share/terminal-workspace`).
 /// Holds the per-session scrollback (`sessions/`) and the workspace layout
 /// (`workspace.json`) so the tab→session mapping survives a localStorage wipe.
 pub fn data_root_dir() -> Option<PathBuf> {
-    dirs::data_local_dir().map(|dir| dir.join("terminal-workspace"))
+    std::env::var_os("XDG_DATA_HOME")
+        .filter(|dir| !dir.is_empty())
+        .map(PathBuf::from)
+        .or_else(dirs::data_local_dir)
+        .map(|dir| dir.join("terminal-workspace"))
 }
 
 fn default_persist_dir() -> Option<PathBuf> {
@@ -2089,6 +2130,10 @@ fn read_session_disposition(dir: &Path, id: &str) -> SessionLifecycle {
         .ok()
         .and_then(|raw| serde_json::from_slice::<SessionLifecycle>(&raw).ok())
         .unwrap_or_default()
+}
+
+fn is_sidecar_recovery_allowed(lifecycle: SessionLifecycle) -> bool {
+    matches!(lifecycle, SessionLifecycle::Recoverable)
 }
 
 fn write_session_disposition(dir: &Path, id: &str, lifecycle: SessionLifecycle) {
@@ -3879,6 +3924,11 @@ mod tests {
         manager
             .ensure_detached(Some(id.clone()), None, None, None, None)
             .expect("fallback shell after lock contention");
+        assert_eq!(
+            manager.write(&id, "exec codex resume 019f-locked-session\n"),
+            Err("agent conversation is already owned by another live writer".to_string()),
+            "the daemon write boundary must reject a duplicate resume atomically"
+        );
         let updated = std::fs::read(super::meta_path(&dir, &id))
             .ok()
             .and_then(|bytes| serde_json::from_slice::<SessionMeta>(&bytes).ok())
@@ -4249,6 +4299,19 @@ mod tests {
         }
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn intentional_kill_blocks_stale_sidecar_agent_recovery_after_restart() {
+        assert!(!super::is_sidecar_recovery_allowed(
+            super::SessionLifecycle::IntentionalKill
+        ));
+        assert!(!super::is_sidecar_recovery_allowed(
+            super::SessionLifecycle::BackupOnly
+        ));
+        assert!(super::is_sidecar_recovery_allowed(
+            super::SessionLifecycle::Recoverable
+        ));
     }
 
     #[test]

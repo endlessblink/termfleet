@@ -2493,6 +2493,23 @@ function SessionsPanel({
               })) !== null
             );
           },
+          // Startup recovery can run after a window replacement while the original
+          // provider process is still alive in the daemon-owned pane. Never type a
+          // second resume: Codex rejects it with "already has an active writer" and
+          // overlapping writers can corrupt the conversation transcript.
+          conversationOwnedElsewhere: async (provider, sessionId, paneId) => {
+            try {
+              return await invoke<boolean>("agent_conversation_has_other_owner", {
+                provider,
+                sessionId,
+                paneId,
+              });
+            } catch {
+              // Ownership is safety-critical: a missed reconnect is recoverable by
+              // hand, while a duplicate writer can permanently damage the chat.
+              return true;
+            }
+          },
           writeResumeCommand: async (paneId, command) => {
             await invoke("daemon_write_session", {
               id: paneId,

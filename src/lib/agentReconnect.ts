@@ -15,21 +15,8 @@ export interface AgentReconnectDependencies {
     sessionId: string,
     paneId: string,
   ) => Promise<boolean>;
-  /**
-   * Is this conversation already owned by a live agent in a DIFFERENT pane?
-   *
-   * `readRunningProvider` only answers "is an agent running in *this* pane",
-   * which is not enough: the pane can be an empty shell while the original
-   * agent is still alive elsewhere (a rebuilt window leaves the old agent
-   * running, because the PTY daemon deliberately survives a window replace).
-   * Writing a resume in that state makes the provider reject it with
-   * "already has an active writer", and when both writers briefly overlap the
-   * transcript gets a duplicated record — permanent history corruption that
-   * breaks forking the conversation. Verified on 2026-08-12.
-   *
-   * Optional so existing callers keep working; when absent the check is skipped.
-   */
-  conversationOwnedElsewhere?: (
+  /** Final safety gate before any resume command is injected. */
+  conversationOwnedElsewhere: (
     provider: ResumableAgentProvider,
     sessionId: string,
     paneId: string,
@@ -141,7 +128,7 @@ export async function reconnectStoppedAgents(
       // conversation that still has a live owner: the provider rejects it, and
       // an overlap corrupts the transcript.
       if (
-        await dependencies.conversationOwnedElsewhere?.(
+        await dependencies.conversationOwnedElsewhere(
           recovery.provider,
           recovery.sessionId,
           paneId,

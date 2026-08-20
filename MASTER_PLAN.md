@@ -1,5 +1,14 @@
 # MASTER_PLAN.md - termfleet
 
+> **2026-08-20 — Restarted maps now tidy and sort terminals by project:**
+> Workspace hydration now rebuilds project lanes after terminal reconciliation,
+> reopens the map in project sort mode, and keeps the sidebar's vertical order
+> aligned with the tidied lanes even when a terminal is later closed. The focused
+> restart/order regression passed (3 tests), `npm run build`,
+> `npm run verify:map-terminals`, `git diff --check`, release promotion,
+> installed-release verification, and installed restart smoke all passed.
+> Installed release checksum: `2c74b47c37de6d72a8feeabce4385e403eef875932d71e88924091a9a9244b51`.
+
 > **2026-08-20 — Stopping an agent no longer triggers recovery:** The stop
 > path marked only the terminal as manually stopped while the workstream still
 > reported `running`; an exit callback during PTY teardown could therefore
@@ -23,7 +32,13 @@
 > active-writer and
 > resume-lock tests passed 1/1 each; `CARGO_BUILD_JOBS=1 cargo check --manifest-path
 > src-tauri/Cargo.toml`, `npm run build`, and `git diff --check` passed. Live installed
-> window-replacement recovery remains unverified and is intentionally partial.
+> release promotion completed; `npm run verify:installed-release` passed with
+> installed binary checksum `d2271a21d481e36ae39f82ab64995e557f41fc78068f401ba729e641580e39db`,
+> `npm run verify:installed-restart` passed, and
+> `npm run verify:installed-live-persistence` passed (`durable=18 live=18 closed=241`).
+> `npm run verify:agent-restore-visible` timed out after launching its isolated fake
+> provider and was terminated with its temporary process tree; visible agent restore
+> remains unverified and intentionally partial.
 
 > **2026-08-20 — Installed Task/Goal/Now rows now pass the live acceptance gate:**
 > Shell panes now derive Task from their active task step instead of the broad
@@ -8859,6 +8874,18 @@ same fallback-aware live predicate, and the panel shows the direct cause as
 **Evidence:** `npx playwright test tests/gamification.spec.ts tests/gamification-panel.spec.ts tests/gamification-quest-beam.spec.ts --reporter=line` passed 25/25; `npm run build` and `git diff --check` passed; `npm run release:install` promoted release `4f92d9e5e5f1`; `npm run verify:installed-release` passed; and `TERMFLEET_KEEP_VISUAL_ARTIFACTS=1 npm run verify:gamification-live` passed the real three-terminal timer gate and animated-beam comparison. Fresh installed artifacts visibly show `3/3 terminals counting` and progress advancing to `0:06 / 10:00`.
 
 User approval remains required before marking this goal complete.
+
+## 2026-08-20 — Keep manually killed agent conversations stopped
+
+The restart path could revive an explicitly killed agent because the stale pane
+sidecar still carried its provider conversation ID. Cold recovery now honors the
+durable intentional-kill disposition before consulting sidecar recovery, while
+explicit backup restore remains available.
+
+**Evidence:** focused Rust regression, full Rust library tests, `cargo check`,
+frontend build, installed release promotion, and installed restart verification
+remain the required closeout gates; the real dock restart must confirm the killed
+conversation stays absent while untouched panes remain present.
 
 ## 2026-08-15 — Make explicit terminal close ownership survive installed restart
 
