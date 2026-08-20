@@ -1,5 +1,30 @@
 # MASTER_PLAN.md - termfleet
 
+> **2026-08-20 — Stopping an agent no longer triggers recovery:** The stop
+> path marked only the terminal as manually stopped while the workstream still
+> reported `running`; an exit callback during PTY teardown could therefore
+> reconnect the killed provider. Stop now settles the workstream before killing
+> its PTY, and auto-recovery fails closed for stopped/interrupted workstreams.
+> `npx playwright test tests/terminal-auto-recovery.spec.ts --reporter=line`
+> passed (4 tests), `python3 -m unittest tests/test_auto_recovery.py` passed
+> (25 tests), `npm run build` passed, the focused Rust lifecycle test passed,
+> `npm run verify:restart-restore` passed, and `git diff --check` passed.
+
+> **2026-08-20 — Sidebar agent recovery now fails closed on active writers:**
+> Automatic startup reconnect previously skipped the backend conversation-owner
+> check that the map reconnect path already used, so a surviving provider could
+> receive a second resume and report `thread/resume ... already has an active
+> writer`. Sidebar recovery now checks ownership before writing any resume command,
+> treats lookup failure as owned, and has a focused source-contract regression.
+> `npx playwright test tests/agent-reconnect.spec.ts --reporter=line` passed 9/9;
+> `npx playwright test tests/agent-reconnect.spec.ts tests/map-terminal-rendering.spec.ts
+> -g "automatic sidebar reconnect checks|never types a resume|ownership gate is
+> consulted|map Connect terminal selects" --reporter=line` passed 4/4; the Rust
+> active-writer and
+> resume-lock tests passed 1/1 each; `CARGO_BUILD_JOBS=1 cargo check --manifest-path
+> src-tauri/Cargo.toml`, `npm run build`, and `git diff --check` passed. Live installed
+> window-replacement recovery remains unverified and is intentionally partial.
+
 > **2026-08-20 — Installed Task/Goal/Now rows now pass the live acceptance gate:**
 > Shell panes now derive Task from their active task step instead of the broad
 > Goal; map snapshots use the same distinct-task rule and report `Task not

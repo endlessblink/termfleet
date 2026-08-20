@@ -115,6 +115,13 @@ class AutomaticRecoveryTests(unittest.TestCase):
             close.index("await killPtys("),
         )
 
+    def test_operator_stop_settles_workstream_before_killing_the_pty(self):
+        source = WORKSPACE.read_text()
+        stop = source.split("stopWorkstream: async", 1)[1].split("restartWorkstream:", 1)[0]
+        self.assertIn('status: "stopped"', stop)
+        self.assertIn('phase: "interrupted"', stop)
+        self.assertLess(stop.index('status: "stopped"'), stop.index("await killPtys("))
+
     def test_split_pane_close_flushes_tombstone_before_killing_the_pty(self):
         source = WORKSPACE.read_text()
         close = source.split("export async function closeActivePane()", 1)[1].split("async function isDaemonReachable", 1)[0]

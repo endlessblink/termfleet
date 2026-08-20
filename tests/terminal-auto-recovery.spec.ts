@@ -36,3 +36,13 @@ test("does not restart an agent after an explicit manual stop", () => {
     manuallyStopped: true,
   })).toEqual({ recover: false, reason: "manual-stop" });
 });
+
+test("does not restart while an operator stop is finishing", () => {
+  expect(autoRecoveryDecision({
+    provider: "claude",
+    taskStatuses: ["in_progress"],
+    terminalStatus: "working",
+    workstreamStatus: "stopped",
+    workstreamPhase: "interrupted",
+  })).toEqual({ recover: false, reason: "workstream-stopped" });
+});

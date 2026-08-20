@@ -2908,13 +2908,25 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     if (!tab?.workstream) return;
     set((state) => ({
       tabs: state.tabs.map((candidate) =>
-        candidate.id === tabId
+        candidate.id === tabId && candidate.workstream
           ? {
               ...candidate,
               terminals: candidate.terminals.map((terminal) => ({
                 ...terminal,
                 manualStopRequested: true,
               })),
+              workstream: {
+                ...candidate.workstream,
+                status: "stopped",
+                phase: "interrupted",
+                lastSummary: "Workstream stopped",
+                nextAction: "Restart or close the workstream",
+                currentActivity: "Workstream stopped",
+                activityKind: "idle",
+                activitySource: "operator",
+                activityUpdatedAt: Date.now(),
+                outcome: "Stopped by operator",
+              },
             }
           : candidate,
       ),

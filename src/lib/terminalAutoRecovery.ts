@@ -17,6 +17,9 @@ export function autoRecoveryDecision(state: AutoRecoveryState): {
   if (state.manuallyStopped) return { recover: false, reason: "manual-stop" };
   if (!state.provider) return { recover: false, reason: "provider-missing" };
   if (state.provider === "shell") return { recover: false, reason: "ordinary-shell" };
+  if (state.workstreamStatus === "stopped" || state.workstreamPhase === "interrupted") {
+    return { recover: false, reason: "workstream-stopped" };
+  }
   const activeSignal = Boolean(
     state.taskStatuses?.some((status) => status === "in_progress") ||
     state.terminalStatus === "working" ||
