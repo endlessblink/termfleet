@@ -449,7 +449,7 @@ export interface WorkspaceUiState {
   canvasSidebarSortMode: "manual" | "project";
   terminalSidebarCollapsed: boolean;
   primarySidebarCollapsed: boolean;
-  primarySidebarPanel: "sessions" | "map";
+  primarySidebarPanel: "sessions" | "map" | "tasks";
   projectSidebarExpandedSections: string[];
   previewUrl: string;
 }

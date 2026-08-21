@@ -21,6 +21,7 @@ import {
   Robot,
   FileText,
   FolderOpen,
+  Kanban,
   ListBullets,
   MapTrifold,
   MagnifyingGlass,
@@ -160,6 +161,7 @@ import {
   buildProjectSidebarModel,
   type ProjectSidebarItem,
 } from "../lib/projectSidebarModel";
+import { CanonicalAgentBoard } from "./CanonicalAgentBoard";
 
 const TERMINAL_COLORS = [
   "#d99a45",
@@ -395,16 +397,18 @@ function summarizeMapNodes(
   return { workspaces, branches, roles, services, headline };
 }
 
-type OperationsPanel = "sessions" | "map";
+type OperationsPanel = "sessions" | "map" | "tasks";
 
 const panelIcons: Record<OperationsPanel, typeof TerminalWindow> = {
   sessions: ListBullets,
   map: MapTrifold,
+  tasks: Kanban,
 };
 
 const panelTitles: Record<OperationsPanel, string> = {
   sessions: "Sessions list",
   map: "Operations map",
+  tasks: "Canonical task board",
 };
 
 const styles: Record<string, CSSProperties> = {
@@ -1468,7 +1472,7 @@ function PanelButton({ panel }: { panel: OperationsPanel }) {
     ui.primarySidebarPanel === panel && !ui.primarySidebarCollapsed;
   const Icon = panelIcons[panel];
   const title = panelTitles[panel];
-  const label = panel === "sessions" ? "Sessions" : "Map";
+  const label = panel === "sessions" ? "Sessions" : panel === "map" ? "Map" : "Tasks";
 
   return (
     <button
@@ -1674,6 +1678,7 @@ function SidebarRail({ collapsed }: { collapsed: boolean }) {
       <div style={styles.railSeparator} aria-hidden="true" />
       <PanelButton panel="sessions" />
       <PanelButton panel="map" />
+      <PanelButton panel="tasks" />
       <DrawingBoardButton />
       <PreviewButton />
       <div style={styles.railSpacer} aria-hidden="true" />
@@ -8049,6 +8054,7 @@ export function WorkbenchSidebar() {
               onOpenProjectMenu={openProjectMenu}
             />
           )}
+          {ui.primarySidebarPanel === "tasks" && <CanonicalAgentBoard />}
         </div>
       )}
       {!filesCollapsed && (
