@@ -8,7 +8,10 @@ INSTALL_ROOT="${TERMFLEET_INSTALL_ROOT:-${XDG_DATA_HOME:-$HOME/.local/share}/ter
 DESKTOP_LAUNCHER="${TERMFLEET_DESKTOP_LAUNCHER:-${HOME}/.local/bin/termfleet-desktop}"
 RESTORE_SCRIPT="${TERMFLEET_RESTORE_SCRIPT:-/media/endlessblink/data/my-projects/ai-development/cc-linux-enhancments/scripts/agent-fleet/restore.py}"
 WAIT_SECONDS="${TERMFLEET_RESTART_SMOKE_WAIT_SECONDS:-30}"
-SETTLE_SECONDS="${TERMFLEET_RESTART_SMOKE_SETTLE_SECONDS:-3}"
+# The installed cockpit snapshot is written asynchronously after the WebView
+# mounts and the pane status poll starts; three seconds is shorter than the
+# observed cold-start path on the dock release.
+SETTLE_SECONDS="${TERMFLEET_RESTART_SMOKE_SETTLE_SECONDS:-10}"
 ARTIFACT_DIR="${TERMFLEET_RESTART_SMOKE_ARTIFACT_DIR:-}"
 
 # Keep the installed visual smoke on a disposable display by default. Its
