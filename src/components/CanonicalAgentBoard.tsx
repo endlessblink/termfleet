@@ -15,12 +15,12 @@ import { useCanonicalTasks } from "../hooks/useCanonicalTasks";
 const styles = {
   shell: { height: "100%", display: "flex", flexDirection: "column" as const, minWidth: 0, background: "var(--surface-base)" },
   toolbar: { display: "flex", gap: 8, alignItems: "center", padding: "12px 14px", borderBottom: "1px solid var(--border-subtle)", flexWrap: "wrap" as const },
-  input: { flex: 1, minWidth: 140, height: 32, border: "1px solid var(--border-subtle)", borderRadius: 6, background: "var(--surface-sunken)", color: "var(--text-primary)", padding: "0 10px" },
-  select: { height: 32, border: "1px solid var(--border-subtle)", borderRadius: 6, background: "var(--surface-sunken)", color: "var(--text-primary)", padding: "0 8px" },
-  button: { height: 32, display: "inline-flex", alignItems: "center", gap: 6, border: "1px solid var(--border-subtle)", borderRadius: 6, background: "var(--surface-raised)", color: "var(--text-primary)", padding: "0 10px", cursor: "pointer" },
+  input: { flex: 1, minWidth: 140, height: 32, border: "none", borderRadius: 6, background: "var(--surface-sunken)", color: "var(--text-primary)", padding: "0 10px", boxShadow: "inset 0 0 0 1px var(--border-focus)" },
+  select: { height: 32, border: "none", borderRadius: 6, background: "var(--surface-sunken)", color: "var(--text-primary)", padding: "0 8px" },
+  button: { height: 32, display: "inline-flex", alignItems: "center", gap: 6, border: "none", borderRadius: 6, background: "var(--surface-raised)", color: "var(--text-primary)", padding: "0 10px", cursor: "pointer" },
   board: { flex: 1, minHeight: 0, display: "grid", gridTemplateColumns: "repeat(6, minmax(180px, 1fr))", gap: 8, padding: 10, overflow: "auto" },
-  column: { minWidth: 180, display: "flex", flexDirection: "column" as const, gap: 7, padding: 8, border: "1px solid var(--border-subtle)", borderRadius: 8, background: "var(--surface-sunken)" },
-  card: { display: "grid", gap: 7, padding: 10, border: "1px solid var(--border-subtle)", borderRadius: 7, background: "var(--surface-raised)", color: "var(--text-primary)", cursor: "pointer", textAlign: "start" as const },
+  column: { minWidth: 180, display: "flex", flexDirection: "column" as const, gap: 7, padding: 8, border: "none", borderRadius: 8, background: "var(--surface-sunken)" },
+  card: { display: "grid", gap: 7, padding: 10, border: "none", borderRadius: 7, background: "var(--surface-raised)", color: "var(--text-primary)", cursor: "pointer", textAlign: "start" as const },
 };
 
 function TaskCard({ task, onSelect }: { task: CanonicalTask; onSelect: () => void }) {
