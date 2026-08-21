@@ -2,6 +2,7 @@ import { CSSProperties, Suspense, lazy } from "react";
 import type { Tab } from "../lib/types";
 import { useWorkspaceStore } from "../stores/workspace";
 import { CanvasSidebar } from "./CanvasSidebar";
+import { CanonicalAgentBoard } from "./CanonicalAgentBoard";
 
 const MagicCanvas = lazy(() => import("./MagicCanvas").then((module) => ({ default: module.MagicCanvas })));
 const SplitPaneLayout = lazy(() => import("./SplitPane").then((module) => ({ default: module.SplitPaneLayout })));
@@ -237,6 +238,11 @@ export function WorkspaceSurface() {
                 <LinksView />
               </Suspense>
             </div>
+          </div>
+        )}
+        {effectiveWorkspaceMode === "tasks" && (
+          <div style={{ ...styles.surfacePane, zIndex: 1 }}>
+            <CanonicalAgentBoard />
           </div>
         )}
       </div>

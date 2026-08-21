@@ -1,4 +1,6 @@
 import { test, expect } from "@playwright/test";
+import fs from "node:fs";
+import path from "node:path";
 import {
   CANONICAL_AGENT_OPS_MUTATION_BOUNDARY,
   CANONICAL_AGENT_OPS_SOURCE,
@@ -74,5 +76,13 @@ test.describe("canonical agent board", () => {
       tasks[0],
     ]);
     expect(filterCanonicalTasks(tasks, { query: "board", owner: "hermes" })).toEqual([]);
+  });
+
+  test("renders as the main workspace surface instead of the operations sidebar", () => {
+    const surface = fs.readFileSync(path.resolve(process.cwd(), "src/components/WorkspaceSurface.tsx"), "utf8");
+    const sidebar = fs.readFileSync(path.resolve(process.cwd(), "src/components/WorkbenchSidebar.tsx"), "utf8");
+    expect(surface).toContain('effectiveWorkspaceMode === "tasks"');
+    expect(surface).toContain("<CanonicalAgentBoard />");
+    expect(sidebar).not.toContain('ui.primarySidebarPanel === "tasks" && <CanonicalAgentBoard />');
   });
 });

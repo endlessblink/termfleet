@@ -592,12 +592,18 @@ function normalizeWorkspaceUiState(uiState: Partial<WorkspaceUiState> | undefine
       FORCED_WORKSPACE_MODE ??
       (uiState?.workspaceMode === "split" ||
       uiState?.workspaceMode === "canvas" ||
-      uiState?.workspaceMode === "graph"
+      uiState?.workspaceMode === "graph" ||
+      uiState?.workspaceMode === "tasks"
         ? uiState.workspaceMode
         : DEFAULT_UI_STATE.workspaceMode),
     terminalRendererMode,
     immersiveTerminal,
-    primarySidebarPanel: uiState?.primarySidebarPanel === "map" ? "map" : "sessions",
+    primarySidebarPanel:
+      uiState?.primarySidebarPanel === "map"
+        ? "map"
+        : uiState?.primarySidebarPanel === "tasks"
+          ? "tasks"
+          : "sessions",
     // A restart always presents the map in its stable project/lane projection;
     // manual drag order remains available as an in-session choice.
     canvasSidebarSortMode: "project",

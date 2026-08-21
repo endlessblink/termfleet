@@ -128,6 +128,7 @@ export function parseCanonicalTasks(payload: unknown): CanonicalTask[] {
 }
 
 export async function readCanonicalTasks(includeDone = true) {
+  await readCanonicalAuthority();
   const payload = await invoke<unknown>("agent_ops", { operation: "list", includeDone });
   return parseCanonicalTasks(payload);
 }

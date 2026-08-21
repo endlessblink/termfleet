@@ -161,7 +161,6 @@ import {
   buildProjectSidebarModel,
   type ProjectSidebarItem,
 } from "../lib/projectSidebarModel";
-import { CanonicalAgentBoard } from "./CanonicalAgentBoard";
 
 const TERMINAL_COLORS = [
   "#d99a45",
@@ -1490,6 +1489,7 @@ function PanelButton({ panel }: { panel: OperationsPanel }) {
       onClick={() => {
         if (panel === "map") setWorkspaceMode("canvas");
         if (panel === "sessions") setWorkspaceMode("split");
+        if (panel === "tasks") setWorkspaceMode("tasks");
         updateUi({
           primarySidebarCollapsed: false,
           primarySidebarPanel: panel,
@@ -8054,7 +8054,6 @@ export function WorkbenchSidebar() {
               onOpenProjectMenu={openProjectMenu}
             />
           )}
-          {ui.primarySidebarPanel === "tasks" && <CanonicalAgentBoard />}
         </div>
       )}
       {!filesCollapsed && (
