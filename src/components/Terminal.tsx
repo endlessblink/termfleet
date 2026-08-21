@@ -84,6 +84,7 @@ import type {
 import type { GridSnapshot } from "../lib/gridSnapshot";
 import { providerReadinessCue } from "../lib/providerReadinessCue";
 import { isExplicitTerminalExitCommand } from "../lib/terminalCloseIntent";
+import { inferProviderProcessExit } from "../lib/providerProcessExit";
 
 const LOCALHOST_URL_PATTERN =
   /https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0):(\d{2,5})(?:[/?#][^\s"'<>]*)?/gi;
@@ -149,16 +150,8 @@ function inferWorkstreamStatus(
 function inferProcessExit(
   output: string,
 ): { code: number; success: boolean } | null {
-  const matches = [
-    ...output.matchAll(
-      /\b(?:process|provider|command)\s+exited\s+with\s+(?:code|status)\s+(-?\d+)\b/gi,
-    ),
-  ];
-  const match = matches[matches.length - 1];
-  if (!match) return null;
-  const code = Number(match[1]);
-  if (!Number.isInteger(code)) return null;
-  return { code, success: code === 0 };
+  const exit = inferProviderProcessExit(output);
+  return exit ? { code: exit.code, success: exit.code === 0 } : null;
 }
 
 function taskRunIdForActivity(
@@ -611,6 +604,9 @@ export function TerminalComponent({
   const recoveryHealthyTimeoutRef = useRef<ReturnType<
     typeof setTimeout
   > | null>(null);
+  const observedAgentProviderRef = useRef<AgentProvider | null>(null);
+  const missingAgentPollsRef = useRef(0);
+  const agentExitReportedRef = useRef(false);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const resizeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const outputStatusWindowRef = useRef("");
@@ -2399,6 +2395,50 @@ export function TerminalComponent({
       const found = await readPaneAgentProvider(runtimeSessionId);
       if (cancelled) return;
       setRunningAgent(found);
+      const store = useWorkspaceStore.getState();
+      const tab = store.tabs.find((candidate) => candidate.id === tabId);
+      const pane = tab?.terminals.find((candidate) => candidate.paneId === paneId);
+      const expectedProvider =
+        tab?.workstream?.provider && tab.workstream.provider !== "shell"
+          ? tab.workstream.provider
+          : pane?.agentProvider && pane.agentProvider !== "shell"
+            ? pane.agentProvider
+            : pane?.statusSummary?.provider && pane.statusSummary.provider !== "shell"
+              ? pane.statusSummary.provider
+              : null;
+      if (found) {
+        observedAgentProviderRef.current = found;
+        missingAgentPollsRef.current = 0;
+        agentExitReportedRef.current = false;
+      } else if (expectedProvider) {
+        missingAgentPollsRef.current += 1;
+        if (missingAgentPollsRef.current >= 3 && !agentExitReportedRef.current) {
+          agentExitReportedRef.current = true;
+          const detail = `Expected ${expectedProvider} is not running; the pane is a shell`;
+          updateTerminalRuntime({
+            status: "exited",
+            error: detail,
+          });
+          updateWorkstreamRuntime({
+            status: "failed",
+            phase: "blocked",
+            lastSummary: "Agent conversation did not resume",
+            nextAction: "Restart the agent conversation or inspect its provider error",
+            currentActivity: detail,
+            activityKind: "blocked",
+            activitySource: "system",
+            activity: true,
+          });
+          store.recordWorkstreamEvent(tabId, {
+            kind: "provider",
+            label: "Agent conversation missing",
+            detail,
+            status: "failed",
+          });
+        }
+      } else {
+        missingAgentPollsRef.current = 0;
+      }
       timer = setTimeout(poll, PANE_AGENT_POLL_MS);
     };
     void poll();
@@ -2406,7 +2446,7 @@ export function TerminalComponent({
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [runtimeSessionId]);
+  }, [paneId, runtimeSessionId, tabId, updateTerminalRuntime, updateWorkstreamRuntime]);
 
   const reflowSafeTui = isReflowSafeAgentTui({
     command,
