@@ -209,6 +209,99 @@ test("by-project sidebar order follows canvas stacks left-to-right and terminals
   ]);
 });
 
+test("restart hydration tidies project lanes and reopens the map sorted by project", async ({
+  page,
+}) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+
+  const result = await page.evaluate(async () => {
+    (
+      window as typeof window & {
+        __TAURI_INTERNALS__?: {
+          invoke: (cmd: string) => Promise<unknown>;
+          transformCallback: () => number;
+          unregisterCallback: () => void;
+        };
+      }
+    ).__TAURI_INTERNALS__ = {
+      invoke: async () => null,
+      transformCallback: () => 1,
+      unregisterCallback: () => {},
+    };
+
+    const { useWorkspaceStore } = await import("/src/stores/workspace.ts");
+    const { projectBucketsByCanvasPosition } = await import("/src/lib/mapNodeOrdering.ts");
+    const tab = (id: string, groupId: string, initialCwd: string) => ({
+      id,
+      title: id,
+      emoji: "x",
+      color: "#fff",
+      groupId,
+      initialCwd,
+      terminals: [],
+      splitLayout: { id: `${id}-pane`, type: "terminal" as const },
+      activePaneId: `${id}-pane`,
+    });
+    const node = (id: string, tabId: string, x: number, y: number) => ({
+      id,
+      type: "terminal" as const,
+      title: id,
+      terminalTabId: tabId,
+      x,
+      y,
+      width: 1180,
+      height: 720,
+    });
+
+    useWorkspaceStore.setState({
+      tabs: [tab("a", "project-a", "/a"), tab("b", "project-b", "/b"), tab("c", "project-a", "/a")],
+      groups: [
+        { id: "project-a", name: "Project A", color: "#fff", projectRoot: "/a" },
+        { id: "project-b", name: "Project B", color: "#fff", projectRoot: "/b" },
+      ],
+      canvasState: {
+        selectedNodeId: "a-node",
+        selectedNodeIds: ["a-node"],
+        viewport: { x: 0, y: 0, zoom: 1 },
+        nodes: [
+          node("a-node", "a", 20, 500),
+          node("b-node", "b", 800, 200),
+          node("c-node", "c", 30, 1400),
+        ],
+      },
+      workspaceUiState: {
+        ...useWorkspaceStore.getState().workspaceUiState,
+        canvasSidebarSortMode: "manual",
+      },
+    });
+
+    useWorkspaceStore.getState().hydrateRestoredWorkspace({
+      tabs: useWorkspaceStore.getState().tabs,
+      activeTabId: "a",
+    });
+    const state = useWorkspaceStore.getState();
+    state.removeCanvasNode("a-node");
+    const remainingProjectOrder = projectBucketsByCanvasPosition(
+      useWorkspaceStore.getState().canvasState.nodes,
+      useWorkspaceStore.getState().tabs,
+      useWorkspaceStore.getState().groups,
+    ).map((bucket) => bucket.label);
+    return {
+      sortMode: state.workspaceUiState.canvasSidebarSortMode,
+      positions: state.canvasState.nodes.map(({ id, x, y }) => ({ id, x, y })),
+      remainingProjectOrder,
+    };
+  });
+
+  expect(result.sortMode).toBe("project");
+  expect(result.remainingProjectOrder).toEqual(["Project A", "Project B"]);
+  expect(result.positions).toEqual([
+    { id: "a-node", x: 20, y: 200 },
+    { id: "b-node", x: 1248, y: 200 },
+    { id: "c-node", x: 20, y: 960 },
+  ]);
+});
+
 test("canvas layout actions align, distribute, and arrange project terminals without changing order or viewport", async ({
   page,
 }) => {

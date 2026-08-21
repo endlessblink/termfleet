@@ -178,7 +178,7 @@ const DEFAULT_UI_STATE: WorkspaceUiState = {
   // the work surface by default; open files from the dock rail when needed.
   fileExplorerCollapsed: true,
   canvasSidebarCollapsed: false,
-  canvasSidebarSortMode: "manual",
+  canvasSidebarSortMode: "project",
   terminalSidebarCollapsed: false,
   primarySidebarCollapsed: false,
   primarySidebarPanel: "sessions",
@@ -598,6 +598,9 @@ function normalizeWorkspaceUiState(uiState: Partial<WorkspaceUiState> | undefine
     terminalRendererMode,
     immersiveTerminal,
     primarySidebarPanel: uiState?.primarySidebarPanel === "map" ? "map" : "sessions",
+    // A restart always presents the map in its stable project/lane projection;
+    // manual drag order remains available as an in-session choice.
+    canvasSidebarSortMode: "project",
     projectSidebarExpandedSections: Array.isArray(uiState?.projectSidebarExpandedSections)
       ? uiState.projectSidebarExpandedSections.filter((section): section is string => typeof section === "string")
       : [],
@@ -1700,6 +1703,11 @@ export async function hydrateWorkspace() {
       closedRestoreTargets,
       agentRecoveryMigrationVersion,
     });
+    // Rebuild the visible map projection after terminal reconciliation so the
+    // dock-launched app opens with project lanes and a sidebar matching them.
+    const hydratedStore = useWorkspaceStore.getState();
+    hydratedStore.arrangeCanvasProjectLanes();
+    hydratedStore.updateWorkspaceUiState({ canvasSidebarSortMode: "project" });
     // Hydration can add live panes without any user action. Explicitly arm the
     // persistence queue so a close immediately after recovery cannot checkpoint
     // the pre-hydration layout and lose those panes again.
@@ -2299,6 +2307,20 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       const nextLiveCwds = { ...state.liveCwds, ...liveCwds };
       const nextLiveGitRoots = { ...state.liveGitRoots, ...liveGitRoots };
       const projects = reconcileProjectGroups(tabs, state.groups, canvasState, nextLiveCwds, nextLiveGitRoots);
+      const canvasProjects = resolveCanvasNodeProjects(canvasState.nodes, projects.tabs);
+      const tidyPositions = planCanvasLanes(canvasState.nodes, canvasProjects, {
+        laneGap: CANVAS_PROJECT_LANE_GAP,
+        itemGap: CANVAS_PROJECT_TERMINAL_GAP,
+      });
+      const tidiedCanvasState = tidyPositions.size === 0
+        ? canvasState
+        : {
+            ...canvasState,
+            nodes: canvasState.nodes.map((node) => {
+              const next = tidyPositions.get(node.id);
+              return next ? { ...node, x: snapCanvasCoordinate(next.x), y: snapCanvasCoordinate(next.y) } : node;
+            }),
+          };
       const nextActive =
         projects.tabs.find((tab) => tab.id === activeTabId)?.id ?? projects.tabs[0].id;
       return {
@@ -2306,7 +2328,11 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         groups: projects.groups,
         terminalGroups: projects.groups,
         activeTabId: nextActive,
-        canvasState,
+        canvasState: tidiedCanvasState,
+        workspaceUiState: {
+          ...state.workspaceUiState,
+          canvasSidebarSortMode: "project",
+        },
         closedSessionIds: closedSessionIds ?? state.closedSessionIds,
         closedRestoreTargets: closedRestoreTargets ?? state.closedRestoreTargets,
         agentRecoveryMigrationVersion: agentRecoveryMigrationVersion ?? state.agentRecoveryMigrationVersion,
