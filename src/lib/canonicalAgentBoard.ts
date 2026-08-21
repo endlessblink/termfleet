@@ -57,6 +57,25 @@ export interface CanonicalTask {
   completionEvidence?: string;
 }
 
+export function taskProjectLabel(task: Pick<CanonicalTask, "workspace">): string {
+  const segments = task.workspace.split(/[\\/]/).filter(Boolean);
+  return segments[segments.length - 1] || "No project linked";
+}
+
+export function taskDescriptionSummary(description: string): string {
+  const hiddenMetadata = /^(?:\*\*)?(?:Priority|Status|Owner|Updated|Source|Workspace|Dependencies)(?:\*\*)?:/i;
+  const summary = description
+    .split(/\r?\n/)
+    .map((line) => line.trim().replace(/^(?:[-*+]|\d+[.)])\s+/, "").replace(/^\[[ xX]\]\s+/, "").replace(/^#{1,6}\s+/, ""))
+    .filter((line) => line && !hiddenMetadata.test(line))
+    .join(" ")
+    .replace(/\[([^\]]+)\]\([^\)]+\)/g, "$1")
+    .replace(/\*\*/g, "")
+    .replace(/`/g, "")
+    .trim();
+  return summary || "No description yet";
+}
+
 export interface CanonicalTaskFilters {
   query?: string;
   status?: CanonicalTaskStatus;

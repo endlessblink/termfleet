@@ -7,6 +7,8 @@ import {
   filterCanonicalTasks,
   groupCanonicalTasks,
   parseCanonicalAuthorityIdentity,
+  taskDescriptionSummary,
+  taskProjectLabel,
   type CanonicalTask,
 } from "../src/lib/canonicalAgentBoard";
 
@@ -76,6 +78,12 @@ test.describe("canonical agent board", () => {
       tasks[0],
     ]);
     expect(filterCanonicalTasks(tasks, { query: "board", owner: "hermes" })).toEqual([]);
+  });
+
+  test("reduces a task to a glanceable project label", () => {
+    expect(taskProjectLabel(tasks[0])).toBe("termfleet");
+    expect(taskProjectLabel({ ...tasks[0], workspace: "" })).toBe("No project linked");
+    expect(taskDescriptionSummary("- **Status**: PLANNED\n- **Workspace**: /tmp/project\n# Goal\n- [ ] Make the [task](https://example.com) understandable.")).toBe("Goal Make the task understandable.");
   });
 
   test("renders as the main workspace surface instead of the operations sidebar", () => {
