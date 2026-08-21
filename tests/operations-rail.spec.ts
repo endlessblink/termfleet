@@ -1,4 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
+import { readFileSync } from "node:fs";
+
+const workspaceSurfaceSource = readFileSync(new URL("../src/components/WorkspaceSurface.tsx", import.meta.url), "utf8");
 
 test.use({
   viewport: { width: 1440, height: 920 },
@@ -80,4 +83,10 @@ test("operations rail exposes one clear job per icon and gates preview until a U
   await mapPreview.click({ position: { x: 24, y: 24 } });
   await expect(mapPreview.locator('iframe[title="Localhost preview"]')).toHaveCount(1);
   await sidebar.screenshot({ path: "/tmp/termfleet-operations-rail-preview.png" });
+});
+
+test("restores visible Map content when the saved panel and mode disagree", () => {
+  expect(workspaceSurfaceSource).toContain('primarySidebarPanel === "map"');
+  expect(workspaceSurfaceSource).toContain('primarySidebarPanel === "tasks"');
+  expect(workspaceSurfaceSource).toContain('workspaceMode === "split"');
 });

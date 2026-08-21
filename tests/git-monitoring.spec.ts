@@ -29,6 +29,8 @@ test.describe("Git work monitor contract", () => {
     const sidebar = readFileSync(new URL("../src/components/WorkbenchSidebar.tsx", import.meta.url), "utf8");
     expect(sidebar).toContain('aria-label="Git work monitor"');
     expect(sidebar).toContain('setWorkspaceMode("graph")');
+    expect(sidebar).toContain('updateUi({ primarySidebarCollapsed: false });');
+    expect(sidebar).toContain('workspaceMode !== "graph"');
     expect(source).toContain('aria-label="Back to cockpit"');
     expect(source).not.toContain('position: "fixed"');
   });

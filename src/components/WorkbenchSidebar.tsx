@@ -21,6 +21,7 @@ import {
   Robot,
   FileText,
   FolderOpen,
+  GitBranch,
   Kanban,
   ListBullets,
   MapTrifold,
@@ -1465,10 +1466,11 @@ function localServiceHostText(service: LocalServiceSummary) {
 
 function PanelButton({ panel }: { panel: OperationsPanel }) {
   const ui = useWorkspaceStore((state) => state.workspaceUiState);
+  const workspaceMode = useWorkspaceStore((state) => state.workspaceUiState.workspaceMode);
   const updateUi = useWorkspaceStore((state) => state.updateWorkspaceUiState);
   const setWorkspaceMode = useWorkspaceStore((state) => state.setWorkspaceMode);
   const active =
-    ui.primarySidebarPanel === panel && !ui.primarySidebarCollapsed;
+    ui.primarySidebarPanel === panel && !ui.primarySidebarCollapsed && workspaceMode !== "graph";
   const Icon = panelIcons[panel];
   const title = panelTitles[panel];
   const label = panel === "sessions" ? "Sessions" : panel === "map" ? "Map" : "Tasks";
@@ -1678,6 +1680,7 @@ function SidebarRail({ collapsed }: { collapsed: boolean }) {
       <div style={styles.railSeparator} aria-hidden="true" />
       <PanelButton panel="sessions" />
       <PanelButton panel="map" />
+      <GitMonitorButton />
       <PanelButton panel="tasks" />
       <DrawingBoardButton />
       <PreviewButton />
@@ -1696,6 +1699,34 @@ function SidebarRail({ collapsed }: { collapsed: boolean }) {
         )}
       </button>
     </nav>
+  );
+}
+
+function GitMonitorButton() {
+  const workspaceMode = useWorkspaceStore((state) => state.workspaceUiState.workspaceMode);
+  const updateUi = useWorkspaceStore((state) => state.updateWorkspaceUiState);
+  const setWorkspaceMode = useWorkspaceStore((state) => state.setWorkspaceMode);
+  const active = workspaceMode === "graph";
+  return (
+    <button
+      className="workspace-rail-button"
+      data-active={active ? "true" : "false"}
+      style={{
+        ...styles.railButton,
+        background: active ? "var(--surface-selected)" : "transparent",
+        borderColor: active ? "var(--border-focus)" : "var(--border-subtle)",
+        color: active ? "var(--accent-live)" : "var(--text-secondary)",
+      }}
+      title="Git work monitor"
+      aria-label="Git work monitor"
+      aria-pressed={active}
+      onClick={() => {
+        setWorkspaceMode("graph");
+        updateUi({ primarySidebarCollapsed: false });
+      }}
+    >
+      <GitBranch size={15} weight="duotone" />
+    </button>
   );
 }
 

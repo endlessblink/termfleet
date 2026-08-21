@@ -3,10 +3,10 @@ import type { Tab } from "../lib/types";
 import { useWorkspaceStore } from "../stores/workspace";
 import { CanvasSidebar } from "./CanvasSidebar";
 import { CanonicalAgentBoard } from "./CanonicalAgentBoard";
+import { GitMonitoringView } from "./GitMonitoringView";
 
 const MagicCanvas = lazy(() => import("./MagicCanvas").then((module) => ({ default: module.MagicCanvas })));
 const SplitPaneLayout = lazy(() => import("./SplitPane").then((module) => ({ default: module.SplitPaneLayout })));
-const LinksView = lazy(() => import("./LinksView").then((module) => ({ default: module.LinksView })));
 
 const styles: Record<string, CSSProperties> = {
   shell: {
@@ -189,9 +189,19 @@ export function WorkspaceSurface() {
     state.tabs.findIndex((tab) => tab.id === state.activeTabId),
   );
   const workspaceMode = useWorkspaceStore((state) => state.workspaceUiState.workspaceMode);
+  const primarySidebarPanel = useWorkspaceStore((state) => state.workspaceUiState.primarySidebarPanel);
+  const primarySidebarCollapsed = useWorkspaceStore((state) => state.workspaceUiState.primarySidebarCollapsed);
   const immersiveTerminal = useWorkspaceStore((state) => state.workspaceUiState.immersiveTerminal);
   const hydrating = useWorkspaceStore((state) => state.hydrating);
-  const effectiveWorkspaceMode = immersiveTerminal.enabled ? "split" : workspaceMode;
+  // A saved sidebar selection can outlive the mode it opened. Reconcile that
+  // stale pair so relaunching on Map never leaves an empty stage.
+  const restoredPanelMode =
+    !primarySidebarCollapsed && workspaceMode === "split" && primarySidebarPanel === "map"
+      ? "canvas"
+      : !primarySidebarCollapsed && workspaceMode === "split" && primarySidebarPanel === "tasks"
+        ? "tasks"
+        : workspaceMode;
+  const effectiveWorkspaceMode = immersiveTerminal.enabled ? "split" : restoredPanelMode;
 
   // Hold terminals from mounting until the durable layout is loaded, so they
   // spawn against the restored tab/pane ids (not the default tab's) — otherwise
@@ -235,7 +245,7 @@ export function WorkspaceSurface() {
           <div style={{ ...styles.surfacePane, zIndex: 1 }}>
             <div style={styles.graph}>
               <Suspense fallback={<MapSurfaceFallback />}>
-                <LinksView />
+                <GitMonitoringView />
               </Suspense>
             </div>
           </div>
