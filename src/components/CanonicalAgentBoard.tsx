@@ -13,6 +13,7 @@ import {
   type CanonicalTaskStatus,
 } from "../lib/canonicalAgentBoard";
 import { useCanonicalTasks } from "../hooks/useCanonicalTasks";
+import { acceptanceProgress, classifyTaskRun, lifecycleProgress, readTaskRunRegistry, requestTaskRunStop, taskRunLabel, type TaskRunRecord } from "../lib/canonicalTaskRuntime";
 
 const styles = {
   shell: { height: "100%", display: "flex", flexDirection: "column" as const, minWidth: 0, background: "var(--surface-base)" },
@@ -46,27 +47,48 @@ function attentionLabel(task: CanonicalTask): string {
 }
 
 function TaskCard({ task, onSelect }: { task: CanonicalTask; onSelect: () => void }) {
+  const taskRuns = readTaskRunRegistry().filter((item) => item.taskId === task.id);
+  const run = taskRuns[taskRuns.length - 1];
+  const health = classifyTaskRun(run);
   return <button type="button" style={styles.card} aria-label={`Open ${task.id}: ${task.title}`} onClick={onSelect}>
     <strong style={{ fontSize: 14, lineHeight: 1.25, fontWeight: 500 }}>{task.title}</strong>
     <span style={{ color: "var(--text-primary)", fontSize: 12 }}>Project: {taskProjectLabel(task)}</span>
     <span style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" as const, overflow: "hidden", color: "var(--text-secondary)", fontSize: 11, lineHeight: 1.35 }}>{taskDescriptionSummary(task.description)}</span>
-    <span style={{ color: task.status === "BLOCKED" ? "var(--accent-danger)" : "var(--text-secondary)", fontSize: 11 }}>{attentionLabel(task)}</span>
-    <span style={{ color: "var(--text-secondary)", fontSize: 11 }}>Assigned to: {task.owner || "No one yet"}</span>
+    <span style={{ color: task.status === "BLOCKED" ? "var(--accent-danger)" : "var(--text-secondary)", fontSize: 11 }}>Workflow: {displayStatus(task.status)} · {attentionLabel(task)}</span>
+    <span style={{ color: health === "running-and-progressing" ? "var(--accent-success)" : "var(--text-secondary)", fontSize: 11 }}>Execution: {taskRunLabel(health)}</span>
+    <span style={{ color: "var(--text-secondary)", fontSize: 11 }}>Claim: {task.owner || "No one yet"}</span>
   </button>;
 }
 
-function TaskDetail({ task, onClose, onStatus }: { task: CanonicalTask; onClose: () => void; onStatus: (status: CanonicalTaskStatus) => void }) {
+function TaskDetail({ task, onClose, onStatus, onRefresh }: { task: CanonicalTask; onClose: () => void; onStatus: (status: CanonicalTaskStatus) => void; onRefresh: () => void }) {
+  const [runs, setRuns] = useState<TaskRunRecord[]>(() => readTaskRunRegistry());
+  const taskRuns = runs.filter((item) => item.taskId === task.id);
+  const run = taskRuns[taskRuns.length - 1];
+  const health = classifyTaskRun(run);
+  const lifecycle = lifecycleProgress(task.status);
+  const acceptance = acceptanceProgress(task.acceptance);
+  const stop = () => {
+    if (!window.confirm("Request a safe stop for this linked run?")) return;
+    requestTaskRunStop(task.id);
+    setRuns(readTaskRunRegistry());
+  };
   return <aside aria-label={`Details for ${task.id}`} style={{ position: "absolute", zIndex: 2, right: 0, top: 0, bottom: 0, width: "min(300px, 100%)", minWidth: 0, padding: "18px 16px", borderLeft: "1px solid var(--border-subtle)", overflow: "auto", background: "var(--surface-raised)", boxShadow: "-12px 0 30px rgba(0, 0, 0, 0.18)" }}>
     <button type="button" style={{ ...styles.button, float: "right" }} aria-label="Close task details" onClick={onClose}><X size={14} /></button>
     <div style={{ color: "var(--text-secondary)", fontSize: 12 }}>Task details</div>
     <h2 style={{ fontSize: 20, lineHeight: 1.2, margin: "8px 28px 18px 0" }}>{task.title}</h2>
     <div style={{ display: "grid", gap: 12, marginBottom: 18 }}>
       <div><div style={{ color: "var(--text-secondary)", fontSize: 11 }}>Project</div><strong>{taskProjectLabel(task)}</strong></div>
-      <div><div style={{ color: "var(--text-secondary)", fontSize: 11 }}>Assigned to</div><strong>{task.owner || "No one yet"}</strong></div>
+      <div><div style={{ color: "var(--text-secondary)", fontSize: 11 }}>Workflow status</div><strong>{displayStatus(task.status)}</strong></div>
+      <div><div style={{ color: "var(--text-secondary)", fontSize: 11 }}>Claim / owner</div><strong>{task.owner || "No one yet"}</strong></div>
+      <div><div style={{ color: "var(--text-secondary)", fontSize: 11 }}>Live execution</div><strong aria-label="Live execution state">{taskRunLabel(health)}</strong></div>
+      <div aria-label="Canonical lifecycle progress"><div style={{ display: "flex", justifyContent: "space-between", color: "var(--text-secondary)", fontSize: 11 }}><span>Lifecycle</span><span>{lifecycle.current}</span></div><div role="progressbar" aria-label="Canonical lifecycle progress" aria-valuetext={`${lifecycle.current}; completed ${lifecycle.completed.join(", ") || "none"}; next ${lifecycle.next ?? "none"}`} style={{ display: "flex", gap: 3, marginTop: 5 }}>{["TRIAGE", "PLANNED", "IN PROGRESS", "REVIEW", "DONE"].map((stage) => <span key={stage} title={stage} style={{ height: 6, flex: 1, background: lifecycle.completed.includes(stage) || lifecycle.current === stage ? "var(--accent-live)" : "var(--surface-sunken)" }} />)}</div><small style={{ color: "var(--text-secondary)" }}>{lifecycle.blocked ? "Blocked: resolve the interrupting dependency or blocker." : `Next: ${lifecycle.next ?? "No next stage"}`}</small></div>
+      <div><div style={{ color: "var(--text-secondary)", fontSize: 11 }}>Acceptance evidence</div><strong>{acceptance.label}</strong></div>
       <label style={{ display: "grid", gap: 5, fontSize: 11, color: "var(--text-secondary)" }}>Status
         <select aria-label="Task status" style={styles.select} value={task.status} onChange={(event) => onStatus(event.target.value as CanonicalTaskStatus)}>{BOARD_STATUSES.map((status) => <option key={status} value={status}>{displayStatus(status)}</option>)}</select>
       </label>
     </div>
+    {run && <section aria-label="Live session progress" style={{ display: "grid", gap: 7, padding: 10, marginBottom: 14, background: "var(--surface-sunken)" }}><strong>Session progress</strong><span>Run {run.runId} · {run.agent}{run.profile ? ` · ${run.profile}` : ""}</span><span>{taskRunLabel(health)} · heartbeat {new Date(run.heartbeatAt).toLocaleTimeString()}</span><span>Phase: {run.phase ?? "Not reported"} · Action: {run.action ?? "Not reported"}</span>{run.logTail.length > 0 && <pre style={{ maxHeight: 110, overflow: "auto", whiteSpace: "pre-wrap", margin: 0, fontSize: 11 }}>{run.logTail.slice(-8).join("\n")}</pre>}<div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}><button type="button" style={styles.button} onClick={() => { void navigator.clipboard?.writeText(run.runId); }}>Copy run ID</button><button type="button" style={styles.button} onClick={() => { setRuns(readTaskRunRegistry()); onRefresh(); }}>Refresh session</button>{["running-and-progressing", "running-but-idle", "waiting-for-input"].includes(health) && <button type="button" style={{ ...styles.button, color: "var(--accent-danger)" }} onClick={stop}>Request safe stop</button>}</div></section>}
+    {!run && <p style={{ color: "var(--text-secondary)", fontSize: 12 }}>No linked run evidence. This task is not presented as currently running.</p>}
     <p style={{ margin: "0 0 18px", lineHeight: 1.45, color: "var(--text-primary)" }}>{taskDescriptionSummary(task.description)}</p>
     <details>
       <summary style={{ cursor: "pointer", fontSize: 13 }}>What success looks like</summary>
@@ -109,6 +131,7 @@ function WorkflowBoard({ grouped, onSelect }: { grouped: Record<CanonicalTaskSta
 
 export function CanonicalAgentBoard() {
   const { tasks, setTasks, error, loading, refresh } = useCanonicalTasks();
+  const [runRegistry, setRunRegistry] = useState<TaskRunRecord[]>(() => readTaskRunRegistry());
   const [filters, setFilters] = useState<CanonicalTaskFilters>({ showDone: false });
   const [viewMode, setViewMode] = useState<"attention" | "workflow">("attention");
   const [selected, setSelected] = useState<CanonicalTask | null>(null);
@@ -119,6 +142,11 @@ export function CanonicalAgentBoard() {
   const grouped = useMemo(() => groupCanonicalTasks(visible), [visible]);
   const doneCount = tasks.filter((task) => task.status === "DONE").length;
   const activeCount = tasks.filter((task) => task.status === "IN PROGRESS").length;
+  const liveRunCount = runRegistry.filter((run) => ["running", "starting", "waiting"].includes(run.state) && ["running-and-progressing", "running-but-idle", "waiting-for-input"].includes(classifyTaskRun(run))).length;
+  useEffect(() => {
+    const timer = window.setInterval(() => setRunRegistry(readTaskRunRegistry()), 2_000);
+    return () => window.clearInterval(timer);
+  }, []);
   const updateStatus = async (status: CanonicalTaskStatus) => {
     if (!selected || status === selected.status) return;
     const previous = selected;
@@ -138,7 +166,7 @@ export function CanonicalAgentBoard() {
   return <section style={styles.shell} aria-label="Canonical task board" data-testid="canonical-agent-board">
     <div className="canonical-board-toolbar" style={styles.toolbar}>
       <strong style={{ display: "inline-flex", alignItems: "center", gap: 7, fontSize: 16 }}><Kanban size={18} /> Shared tasks</strong>
-      <span style={{ color: "var(--text-secondary)", fontSize: 12 }}>See what needs attention and which project it belongs to · {tasks.length} total · {activeCount} active · {doneCount} done</span>
+      <span style={{ color: "var(--text-secondary)", fontSize: 12 }}>Workflow-active: {activeCount} · live workers: {liveRunCount} · {tasks.length} total · {doneCount} done</span>
       <span aria-label="Canonical source" title={authority?.source ?? authorityError ?? "Verifying canonical source"} style={{ color: authority ? "var(--text-secondary)" : "var(--accent-danger)", fontSize: 11 }}>{authority ? "Shared queue verified" : authorityError ?? "Verifying shared queue…"}</span>
     </div>
     <div style={styles.controls}>
@@ -152,7 +180,7 @@ export function CanonicalAgentBoard() {
     {error && <div role="alert" style={{ padding: "8px 18px", color: "var(--accent-danger)" }}>{error}</div>}
     {authorityError && <div role="alert" style={{ padding: "8px 18px", color: "var(--accent-danger)" }}>{authorityError}</div>}
     {mutationError && <div role="alert" style={{ padding: "8px 18px", color: "var(--accent-danger)" }}>{mutationError}</div>}
-    {loading ? <div style={{ padding: 20 }}>Reading shared tasks…</div> : <div className="canonical-board-main" style={{ position: "relative", display: "flex", flex: 1, minHeight: 0 }}><div className="canonical-board-content">{viewMode === "attention" ? <AttentionBoard grouped={grouped} onSelect={setSelected} showDone={filters.showDone === true} /> : <WorkflowBoard grouped={grouped} onSelect={setSelected} />}</div>{selected && <TaskDetail task={selected} onClose={() => setSelected(null)} onStatus={(status) => void updateStatus(status)} />}</div>}
+    {loading ? <div style={{ padding: 20 }}>Reading shared tasks…</div> : <div className="canonical-board-main" style={{ position: "relative", display: "flex", flex: 1, minHeight: 0 }}><div className="canonical-board-content">{viewMode === "attention" ? <AttentionBoard grouped={grouped} onSelect={setSelected} showDone={filters.showDone === true} /> : <WorkflowBoard grouped={grouped} onSelect={setSelected} />}</div>{selected && <TaskDetail task={selected} onClose={() => setSelected(null)} onStatus={(status) => void updateStatus(status)} onRefresh={() => setRunRegistry(readTaskRunRegistry())} />}</div>}
     <style>{`.canonical-board-content { flex: 1; min-width: 0; min-height: 0; overflow: auto; padding: 4px 18px 18px; } .canonical-attention-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; } .canonical-attention-group { min-width: 0; padding: 12px 9px; background: var(--surface-sunken); } .canonical-attention-heading, .canonical-workflow-heading { display: flex; justify-content: space-between; gap: 8px; padding: 0 3px 10px; color: var(--text-primary); font-size: 13px; } .canonical-attention-heading small { display: block; margin-top: 3px; color: var(--text-secondary); font-size: 11px; font-weight: 400; } .canonical-empty-group { margin: 4px 3px; color: var(--text-secondary); font-size: 11px; } .canonical-workflow-grid { display: grid; grid-template-columns: repeat(6, minmax(150px, 1fr)); gap: 8px; min-width: 960px; } .canonical-workflow-column { min-width: 0; padding: 9px 7px; background: var(--surface-sunken); } .canonical-view-switch { display: inline-flex; gap: 2px; padding: 2px; background: var(--surface-sunken); border-radius: 6px; } .canonical-view-switch button { border: none; border-radius: 4px; padding: 7px 9px; background: transparent; color: var(--text-secondary); cursor: pointer; font: inherit; font-size: 11px; } .canonical-view-switch button[aria-pressed="true"] { background: var(--surface-selected); color: var(--text-primary); } @media (max-width: 1100px) { .canonical-board-toolbar { grid-template-columns: 1fr !important; gap: 6px !important; } .canonical-attention-grid { grid-template-columns: 1fr; } } @media (max-width: 720px) { .canonical-controls { align-items: stretch; } .canonical-view-switch { width: 100%; } .canonical-view-switch button { flex: 1; } }`}</style>
   </section>;
 }
