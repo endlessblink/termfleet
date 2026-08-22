@@ -670,6 +670,7 @@ impl PtyManager {
                 Some(entry) if entry.ended.load(Ordering::Acquire) => ptys.remove(&id),
                 Some(_) => {
                     if let Some(dir) = &self.persist_dir {
+                        persist_sidecar_recovery(dir, &id);
                         write_agent_restore_status(
                             dir,
                             &id,
@@ -2188,6 +2189,35 @@ fn write_session_meta(
     }
 }
 
+/// Promote the live per-pane provider identity into the durable checkpoint.
+///
+/// Hand-started agents begin life as a shell from the PTY daemon's point of
+/// view. While that PTY remains attached, the status sidecar is the only
+/// authoritative provider/session mapping. Persist it before any daemon
+/// restart can turn the shell checkpoint into a plain-shell restore.
+fn persist_sidecar_recovery(dir: &Path, id: &str) {
+    let Some((provider, session_id, sidecar_cwd)) = read_pane_sidecar_recovery(id) else {
+        return;
+    };
+    let path = meta_path(dir, id);
+    let mut meta = fs::read(&path)
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<SessionMeta>(&bytes).ok())
+        .unwrap_or_default();
+    meta.recovery_kind = Some(SessionRecoveryKind::AgentTerminal);
+    meta.provider = Some(provider);
+    meta.provider_session_id = Some(session_id);
+    if meta.launch_profile.is_none() {
+        meta.launch_profile = Some("terminal".to_string());
+    }
+    if meta.cwd.is_none() {
+        meta.cwd = sidecar_cwd;
+    }
+    if let Ok(json) = serde_json::to_vec(&meta) {
+        let _ = atomic_write(&path, &json);
+    }
+}
+
 /// Detect a session checkpoint for this id. Returns `None` for a fresh session
 /// (no saved scrollback). Reads the cwd metadata used to reopen the shell; the
 /// scrollback *content* is loaded separately by `load_persisted_scrollback`.
@@ -2664,6 +2694,60 @@ mod tests {
                 Some("/work/x".to_string())
             ))
         );
+    }
+
+    #[test]
+    fn live_sidecar_recovery_promotes_a_shell_checkpoint_to_agent_resume_metadata() {
+        let id = format!(
+            "terminal-tc054-persist-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        );
+        let sidecar_dir = super::data_root_dir()
+            .expect("data dir")
+            .join("agent-status");
+        std::fs::create_dir_all(&sidecar_dir).expect("create agent-status dir");
+        let sidecar = sidecar_dir.join(format!("pane-{}.json", fnv1a_hex(&id)));
+        std::fs::write(
+            &sidecar,
+            r#"{"sessionId":"019f56e6-a57e-7021-b159-8aaa714ebbae","provider":"codex","cwd":"/work/x"}"#,
+        )
+        .expect("write sidecar");
+
+        let checkpoint_dir = std::env::temp_dir().join(format!(
+            "tw-sidecar-persist-test-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&checkpoint_dir);
+        std::fs::create_dir_all(&checkpoint_dir).expect("create checkpoint dir");
+        std::fs::write(
+            super::meta_path(&checkpoint_dir, &id),
+            serde_json::to_vec(&super::SessionMeta {
+                command: Some("/bin/bash".to_string()),
+                ..Default::default()
+            })
+            .expect("encode shell checkpoint"),
+        )
+        .expect("write shell checkpoint");
+
+        super::persist_sidecar_recovery(&checkpoint_dir, &id);
+        let meta = std::fs::read(super::meta_path(&checkpoint_dir, &id))
+            .ok()
+            .and_then(|raw| serde_json::from_slice::<super::SessionMeta>(&raw).ok())
+            .expect("read promoted checkpoint");
+        assert_eq!(meta.command.as_deref(), Some("/bin/bash"));
+        assert_eq!(meta.recovery_kind, Some(super::SessionRecoveryKind::AgentTerminal));
+        assert_eq!(meta.provider.as_deref(), Some("codex"));
+        assert_eq!(
+            meta.provider_session_id.as_deref(),
+            Some("019f56e6-a57e-7021-b159-8aaa714ebbae")
+        );
+        assert_eq!(meta.launch_profile.as_deref(), Some("terminal"));
+        assert_eq!(meta.cwd.as_deref(), Some("/work/x"));
+
+        let _ = std::fs::remove_file(sidecar);
+        let _ = std::fs::remove_dir_all(checkpoint_dir);
     }
 
     #[test]
