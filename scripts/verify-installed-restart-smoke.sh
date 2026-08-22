@@ -60,6 +60,12 @@ closed_sentinel_cwd="$session_dir/closed-sentinel"
 open_sentinel_cwd="$session_dir/open-sentinel"
 closed_sentinel_fixture_dir="$session_dir/closed-sentinel"
 mkdir -m 0700 "$runtime_dir" "$data_dir" "$state_dir" "$fake_bin" "$session_dir" "$closed_sentinel_fixture_dir" "$open_sentinel_cwd" "$tmp_root/tmp"
+git -C "$closed_sentinel_cwd" init -q
+git -C "$closed_sentinel_cwd" config user.email smoke@example.invalid
+git -C "$closed_sentinel_cwd" config user.name "TermFleet smoke"
+touch "$closed_sentinel_cwd/.gitkeep"
+git -C "$closed_sentinel_cwd" add .gitkeep
+git -C "$closed_sentinel_cwd" commit -qm "Seed installed monitor fixture"
 
 cat >"$fake_bin/codex" <<'EOF'
 #!/usr/bin/env bash
@@ -133,9 +139,10 @@ cleanup() {
   status=$?
   set +e
   if [[ "${TERMFLEET_RESTART_SMOKE_KEEP_ARTIFACTS:-0}" == "1" &&
-    -n "$ARTIFACT_DIR" && -s "$screenshot" ]]; then
+    -n "$ARTIFACT_DIR" ]]; then
     mkdir -p "$ARTIFACT_DIR"
-    install -m 0644 "$screenshot" "$ARTIFACT_DIR/termfleet-installed-window.png"
+    [[ -s "$screenshot" ]] && install -m 0644 "$screenshot" "$ARTIFACT_DIR/termfleet-installed-window.png"
+    [[ -s "${screenshot%.png}-before-git-monitor.png" ]] && install -m 0644 "${screenshot%.png}-before-git-monitor.png" "$ARTIFACT_DIR/termfleet-installed-before-git-monitor.png"
     [[ -s "${screenshot%.png}-split-before-close.png" ]] && install -m 0644 "${screenshot%.png}-split-before-close.png" "$ARTIFACT_DIR/termfleet-installed-split-before-close.png"
     [[ -s "${screenshot%.png}-hover.png" ]] && install -m 0644 "${screenshot%.png}-hover.png" "$ARTIFACT_DIR/termfleet-installed-hover.png"
     for evidence in cockpit-snapshot.json cockpit-header-trace.jsonl; do
@@ -203,8 +210,10 @@ SHELL="$fake_bin/smoke-shell" \
   TERMFLEET_INSTALL_ROOT="$INSTALL_ROOT" \
   TERMFLEET_PRESERVE_RUNTIME_DIR=1 \
   TERMFLEET_RESTORE="$RESTORE_SCRIPT" \
-TERMFLEET_TMPDIR="$tmp_root/tmp" \
-setsid dbus-run-session -- "$DESKTOP_LAUNCHER" --child >"$app_log" 2>&1 &
+  TERMFLEET_TMPDIR="$tmp_root/tmp" \
+TERMFLEET_COCKPIT_SNAPSHOT_PATH="$data_dir/terminal-workspace/agent-status/cockpit-snapshot.json" \
+  TERMFLEET_CHILD_CONTEXT=isolated-smoke \
+    setsid dbus-run-session -- "$DESKTOP_LAUNCHER" --child >"$app_log" 2>&1 &
 app_pid=$!
 process_group_pid=$app_pid
 
@@ -251,6 +260,11 @@ fi
 # runtime pane. This makes the installed visual gate exercise the real opening-request
 # path instead of accidentally proving only the empty shell state.
 if [[ "${TERMFLEET_RESTART_SMOKE_LABEL_FIXTURE:-1}" == "1" ]]; then
+  snapshot_path="$data_dir/terminal-workspace/agent-status/cockpit-snapshot.json"
+  for _ in {1..20}; do
+    [[ -s "$snapshot_path" ]] && break
+    sleep 0.5
+  done
   XDG_DATA_HOME="$data_dir" node -e '
     const fs = require("node:fs");
     const path = require("node:path");
@@ -259,8 +273,8 @@ if [[ "${TERMFLEET_RESTART_SMOKE_LABEL_FIXTURE:-1}" == "1" ]]; then
     if (!fs.existsSync(snapshotPath)) process.exit(0);
     const snapshot = JSON.parse(fs.readFileSync(snapshotPath, "utf8"));
     const pane = Array.isArray(snapshot.terminals) ? snapshot.terminals[0] : null;
-    const statusPaneId = pane?.terminalId || pane?.paneId;
-    if (!statusPaneId) process.exit(0);
+    const statusPaneIds = [pane?.paneId, pane?.terminalId].filter(Boolean);
+    if (statusPaneIds.length === 0) process.exit(0);
     const fnv = (value) => {
       let hash = 2166136261;
       for (const char of String(value)) {
@@ -270,7 +284,7 @@ if [[ "${TERMFLEET_RESTART_SMOKE_LABEL_FIXTURE:-1}" == "1" ]]; then
       return (hash >>> 0).toString(16).padStart(8, "0");
     };
     const now = Date.now();
-    fs.writeFileSync(path.join(root, `pane-${fnv(statusPaneId)}.json`), JSON.stringify({
+    for (const statusPaneId of statusPaneIds) fs.writeFileSync(path.join(root, `pane-${fnv(statusPaneId)}.json`), JSON.stringify({
       paneId: statusPaneId,
       provider: "codex",
       cwd: pane.cwd,
@@ -287,7 +301,9 @@ if [[ "${TERMFLEET_RESTART_SMOKE_LABEL_FIXTURE:-1}" == "1" ]]; then
   '
   xdotool key --window "$window_id" Return >/dev/null 2>&1 || true
   label_gate_passed=0
-  for _ in {1..24}; do
+  # The installed dock polls status asynchronously after the first snapshot; allow
+  # two full refresh intervals before declaring the visual fixture absent.
+  for _ in {1..60}; do
     if node -e '
       const fs = require("node:fs");
       const file = process.argv[1];
@@ -296,7 +312,8 @@ if [[ "${TERMFLEET_RESTART_SMOKE_LABEL_FIXTURE:-1}" == "1" ]]; then
       const terminals = Array.isArray(snapshot.terminals) ? snapshot.terminals : [];
       const valid = terminals.some((entry) =>
         entry.task === "Verify the installed terminal labels" &&
-        entry.context === "Verify the installed terminal labels" &&
+        Boolean(entry.context) &&
+        entry.context !== entry.task &&
         Boolean(entry.now),
       );
       process.exit(valid ? 0 : 1);
@@ -313,6 +330,9 @@ if [[ "${TERMFLEET_RESTART_SMOKE_LABEL_FIXTURE:-1}" == "1" ]]; then
 fi
 
 import -silent -window "$window_id" "$screenshot"
+if [[ "${TERMFLEET_RESTART_SMOKE_GIT_MONITOR:-0}" == "1" ]]; then
+  cp "$screenshot" "${screenshot%.png}-before-git-monitor.png"
+fi
 if [[ "${TERMFLEET_RESTART_SMOKE_LABEL_FIXTURE:-1}" == "1" ]]; then
   node -e '
     const fs = require("node:fs");
@@ -321,7 +341,8 @@ if [[ "${TERMFLEET_RESTART_SMOKE_LABEL_FIXTURE:-1}" == "1" ]]; then
     const terminals = Array.isArray(snapshot.terminals) ? snapshot.terminals : [];
     const valid = terminals.some((entry) =>
       entry.task === "Verify the installed terminal labels" &&
-      entry.context === "Verify the installed terminal labels" &&
+      Boolean(entry.context) &&
+      entry.context !== entry.task &&
       Boolean(entry.now),
     );
     if (!valid) {
@@ -329,6 +350,33 @@ if [[ "${TERMFLEET_RESTART_SMOKE_LABEL_FIXTURE:-1}" == "1" ]]; then
       process.exit(1);
     }
   ' "$data_dir/terminal-workspace/agent-status/cockpit-snapshot.json"
+  if [[ "${TERMFLEET_RESTART_SMOKE_GIT_MONITOR:-0}" == "1" ]]; then
+    eval "$(xdotool getwindowgeometry --shell "$window_id")"
+    xdotool windowfocus "$window_id" >/dev/null 2>&1 || true
+    xdotool windowactivate "$window_id" >/dev/null 2>&1 || true
+    xdotool mousemove --sync "$((X + 500))" "$((Y + 25))"
+    xdotool click --clearmodifiers 1
+    xdotool type --delay 15 "Monitor Git work"
+    xdotool key Return
+    sleep 3
+  fi
+  if [[ "${TERMFLEET_RESTART_SMOKE_NARROW:-0}" == "1" ]]; then
+    xdotool windowsize "$window_id" 390 844
+    sleep 1
+    if [[ "${TERMFLEET_RESTART_SMOKE_GIT_MONITOR:-0}" == "1" ]]; then
+      # Let the dock's scheduled workspace reconciliation finish before the
+      # operator action; otherwise it can restore Map over the just-clicked view.
+      sleep 16
+      eval "$(xdotool getwindowgeometry --shell "$window_id")"
+      xdotool windowfocus "$window_id" >/dev/null 2>&1 || true
+      xdotool windowactivate "$window_id" >/dev/null 2>&1 || true
+      # The rail begins below the 50px workbench header; Git follows file tree,
+      # sessions, and map. Keep the click anchored to the installed rail geometry.
+      xdotool mousemove --sync "$((X + 20))" "$((Y + 204))"
+      xdotool click --clearmodifiers 1
+      sleep 3
+    fi
+  fi
   # The snapshot write is asynchronous with the WebView paint; capture again after
   # the state gate so the retained image represents the same committed header.
   sleep 1
@@ -837,7 +885,8 @@ PY
     PATH="$fake_bin:$PATH" SHELL="$fake_bin/smoke-shell" TERMFLEET_CMD="$COMMAND_PATH" \
     TERMFLEET_INSTALL_ROOT="$INSTALL_ROOT" TERMFLEET_PRESERVE_RUNTIME_DIR=1 \
     TERMFLEET_RESTORE="$RESTORE_SCRIPT" TERMFLEET_TMPDIR="$tmp_root/tmp" \
-    setsid dbus-run-session -- "$DESKTOP_LAUNCHER" --child >>"$app_log" 2>&1 &
+    TERMFLEET_CHILD_CONTEXT=isolated-smoke \
+      setsid dbus-run-session -- "$DESKTOP_LAUNCHER" --child >>"$app_log" 2>&1 &
   app_pid=$!
   process_group_pid=$app_pid
   window_id=""

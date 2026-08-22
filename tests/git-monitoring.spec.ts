@@ -32,7 +32,10 @@ test.describe("Git work monitor contract", () => {
     expect(sidebar).toContain('updateUi({ primarySidebarCollapsed: false });');
     expect(sidebar).toContain('workspaceMode !== "graph"');
     expect(source).toContain('aria-label="Back to cockpit"');
-    expect(source).not.toContain('position: "fixed"');
+    expect(source).toContain('position: "absolute"');
+    expect(source).toContain('Why this status:');
+    expect(source).toContain('How statuses are decided');
+    expect(source).toContain('Git facts are not verified yet');
   });
 
   test("opens from the sidebar Git work monitor button", async ({ page }) => {

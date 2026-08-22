@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
-import { createPortal } from "react-dom";
 import { ArrowLeft } from "@phosphor-icons/react";
 import { invoke } from "@tauri-apps/api/core";
 import { useWorkspaceStore } from "../stores/workspace";
@@ -37,6 +36,7 @@ function AgentRow({ agent, onCombine, onOpen, combineRequested }: { agent: GitMo
         </div>
       </button>
       <div style={styles.agentAction}>
+        <span style={styles.why}>{agent.why}</span>
         <span style={styles.nextAction}>{agent.dirty === true ? "Review this work before saving" : agent.needsAgentHelp ? "Open this work to decide what happens next" : agent.nextAction === "Agent is handling the next step" ? "Nothing needed from you right now" : agent.nextAction}</span>
         {agent.readyToCombine && !combineRequested && <button type="button" style={styles.primaryAction} onClick={() => onCombine(agent)}>Combine this work</button>}
         {agent.readyToCombine && combineRequested && <span style={styles.pendingAction} data-testid="git-monitor-combine-pending">{combineOutcome(agent)}</span>}
@@ -63,6 +63,7 @@ function ProjectRow({ project, expanded, onToggle, onCombine, onOpen, combineReq
         <StatusPill health={project.health} />
         <span className="git-monitor-project-counts" style={styles.projectCounts}><Count value={project.agents.length} label="agents" /><Count value={project.branches} label="work areas" /><Count value={project.worktrees} label="separate areas" />{project.unpublishedChanges > 0 && <Count value={project.unpublishedChanges} label="unfinished" />}</span>
       </button>
+       <div style={styles.projectWhy}><strong>Why this status:</strong> {project.why}</div>
        {expanded && <div style={styles.agentList}>{project.agents.map((agent) => <AgentRow key={agent.tab.id} agent={agent} onCombine={onCombine} onOpen={onOpen} combineRequested={combineRequestedIds.includes(agent.tab.id)} />)}</div>}
     </section>
   );
@@ -152,16 +153,23 @@ export function GitMonitoringView() {
       </header>
       {summary.gitFactsPending > 0 && <div style={styles.callout} data-testid="git-monitor-facts-pending"><strong>Git status is still loading for {summary.gitFactsPending} agent{summary.gitFactsPending === 1 ? "" : "s"}.</strong><span>The monitor will show combine decisions only after the project facts are confirmed.</span></div>}
       {summary.needsAttention > 0 && <div style={styles.callout} data-testid="git-monitor-decision-callout"><strong>{summary.needsAttention} decision{summary.needsAttention === 1 ? "" : "s"} need your attention.</strong><span>Open the project below to understand the next safe action.</span></div>}
+      <aside style={styles.guide} aria-label="How statuses are decided" data-testid="git-monitor-status-guide">
+        <strong>How to read this</strong>
+        <span><b>No action needed</b> means the agent is working normally or no finished clean work is waiting.</span>
+        <span><b>Ready to save</b> means the work is finished, clean, checked, and conflict-free.</span>
+        <span><b>Needs your decision</b> means a blocker or conflict needs a human choice.</span>
+        <span><b>Checking</b> means Git facts are not verified yet, so the monitor will not recommend combining.</span>
+      </aside>
       <div style={styles.projectList}>{summary.projects.length ? summary.projects.map((project) => <ProjectRow key={project.id} project={project} expanded={expanded.includes(project.id)} onToggle={() => toggle(project.id)} onCombine={contactAgent} onOpen={openAgent} combineRequestedIds={combineRequestedIds} />) : <div style={styles.empty}><strong>Nothing needs your attention.</strong><span>When agents start work, each project will appear here with a simple status.</span></div>}</div>
       {recentCompletions.length > 0 && <div style={styles.history} data-testid="git-monitor-history"><strong>Recently completed</strong><span>{recentCompletions.map((agent) => agent.tab.title).join(" · ")}</span></div>}
       <footer style={styles.footer}>This view keeps the technical work in the background and brings decisions forward.</footer>
     </main>
   );
-  return typeof document !== "undefined" ? createPortal(content, document.body) : content;
+  return content;
 }
 
 const styles: Record<string, CSSProperties> = {
-  shell: { width: "100%", height: "100%", overflow: "auto", padding: "24px clamp(20px, 4vw, 56px) 36px", background: "var(--surface-sunken)", color: "var(--text-primary)" },
+  shell: { position: "absolute", inset: 0, width: "100%", height: "100%", overflow: "auto", padding: "42px clamp(24px, 5vw, 72px)", background: "var(--surface-sunken)", color: "var(--text-primary)" },
   navigation: { display: "flex", alignItems: "center", gap: 12, maxWidth: 1080, margin: "0 auto 34px" },
   backButton: { display: "inline-flex", alignItems: "center", gap: 8, border: 0, borderRadius: 8, padding: "8px 10px", background: "var(--surface-raised)", color: "var(--text-primary)", font: "inherit", fontSize: 12, cursor: "pointer" },
   navigationContext: { color: "var(--text-tertiary)", fontSize: 11 },
@@ -174,6 +182,7 @@ const styles: Record<string, CSSProperties> = {
   statusPill: { display: "inline-flex", alignItems: "center", gap: 6, border: "1px solid", borderRadius: 999, padding: "5px 9px", fontSize: 11, whiteSpace: "nowrap" },
   statusDot: { width: 7, height: 7, borderRadius: "50%" },
   callout: { display: "flex", flexWrap: "wrap", gap: 10, maxWidth: 1080, margin: "0 auto 18px", padding: "14px 16px", borderRadius: 8, background: "var(--surface-raised)", color: "var(--text-secondary)", fontSize: 13 },
+  guide: { display: "grid", gap: 6, maxWidth: 1080, margin: "0 auto 22px", padding: "14px 16px", borderLeft: "2px solid var(--border-focus)", background: "var(--surface-wash)", color: "var(--text-secondary)", fontSize: 12, lineHeight: 1.45 },
   projectList: { maxWidth: 1080, margin: "0 auto", display: "grid", gap: 10 },
   project: { borderTop: "1px solid var(--border-subtle, rgba(255,255,255,0.1))", background: "var(--surface-raised)", borderRadius: 12, overflow: "hidden" },
   projectHeader: { width: "100%", display: "flex", flexWrap: "wrap", alignItems: "flex-start", gap: 10, padding: "16px 18px", border: 0, background: "transparent", color: "inherit", textAlign: "left", cursor: "pointer", font: "inherit" },
@@ -189,6 +198,8 @@ const styles: Record<string, CSSProperties> = {
   progress: { marginTop: 5, color: "var(--text-secondary)", fontSize: 12 },
   agentMeta: { display: "flex", gap: 12, flexWrap: "wrap", marginTop: 12, color: "var(--text-tertiary)", fontSize: 11 },
   agentAction: { display: "flex", flexDirection: "column", alignItems: "flex-start", justifyContent: "center", gap: 10 },
+  why: { color: "var(--text-secondary)", fontSize: 12, lineHeight: 1.4 },
+  projectWhy: { padding: "0 18px 14px 50px", color: "var(--text-secondary)", fontSize: 12, lineHeight: 1.45 },
   nextAction: { color: "var(--text-secondary)", fontSize: 12 },
   pendingAction: { color: "var(--text-secondary)", fontSize: 12 },
   primaryAction: { border: 0, borderRadius: 7, padding: "9px 12px", background: "var(--accent-primary, #d99a45)", color: "#171717", font: "inherit", fontSize: 12, fontWeight: 500, cursor: "pointer" },
