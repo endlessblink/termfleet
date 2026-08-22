@@ -66,6 +66,16 @@ Reset persisted layout/theme from the command bar with `Reset layout`.
 
 ## Automatic regression protection
 
+- Every agent must review the unified issue control system before starting work
+  on a bug, repeated failure, behavior correction, or risky fix:
+  `npm run issues -- check`, then `npm run issues -- list` and `show` the
+  matching record. Create a record with `npm run issues -- create` when no
+  matching issue exists; link it to the regression matrix when applicable.
+- Every agent must update the issue record while working: move its lifecycle
+  state with `transition`, record fresh proof with `evidence`, and leave the
+  next action current. Do not resolve an issue until the required evidence for
+  its failure surface is recorded; partial or source-only proof remains
+  `verifying`.
 - For every bug report, behavior correction, repeated failure, or risky fix,
   automatically apply `.agents/skills/termfleet-regression-planner/SKILL.md`
   before changing production code. The user never needs to name the skill.

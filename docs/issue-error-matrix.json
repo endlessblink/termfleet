@@ -1,0 +1,25 @@
+{
+  "schema": "termfleet.issue-error-matrix.v1",
+  "surfaces": {
+    "logic": {
+      "requiredEvidence": ["source", "focused-test"],
+      "guardPattern": "focused test"
+    },
+    "canvas": {
+      "requiredEvidence": ["source", "focused-test", "browser-render"],
+      "guardPattern": "Playwright or pixel verifier"
+    },
+    "desktop-runtime": {
+      "requiredEvidence": ["source", "focused-test", "installed-release", "live-desktop"],
+      "guardPattern": "installed release and live desktop verifier"
+    },
+    "daemon-recovery": {
+      "requiredEvidence": ["source", "rust-test", "daemon-smoke", "installed-restart"],
+      "guardPattern": "Rust test plus daemon/restart verifier"
+    },
+    "packaging": {
+      "requiredEvidence": ["source", "build", "installed-release", "installed-restart"],
+      "guardPattern": "promoted release and restart verifier"
+    }
+  }
+}

@@ -93,6 +93,12 @@ diagnostics; run them yourself and report the result in plain words. The only ac
 to hand the operator are ones only they can do (e.g. relaunching the app).
 Failure-mode catalog: `docs/regression-matrix.md`.
 
+Before any bug, repeated failure, behavior correction, or risky fix, review the
+unified issue control system with `npm run issues -- check` and
+`npm run issues -- list`; show or create the matching issue before changing
+production code. Update its lifecycle state and evidence as work progresses, and
+do not mark it resolved until the required surface-specific proof is recorded.
+
 ## Verification scripts
 
 Verifiers force the canvas renderer + split mode via `VITE_*` env overrides

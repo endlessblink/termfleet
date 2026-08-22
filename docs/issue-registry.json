@@ -1,0 +1,51 @@
+{
+  "schema": "termfleet.issue-registry.v1",
+  "updatedAt": "2026-08-22T00:00:00Z",
+  "issues": [
+    {
+      "id": "TF-001",
+      "title": "Close the live clipboard proof gap",
+      "state": "triaged",
+      "severity": "high",
+      "surface": "desktop-runtime",
+      "matrixRefs": ["1.1", "1.3", "1.8", "1.9"],
+      "symptom": "Clipboard paste can regress in GTK/WebKit or land in the wrong map terminal.",
+      "rootCause": "The existing guards cover wiring and logic but not the real desktop focus and clipboard path.",
+      "guard": "npm run verify:clipboard-paste",
+      "evidence": [],
+      "owner": "termfleet",
+      "nextAction": "Add the live verifier and run it on the installed dock release.",
+      "history": []
+    },
+    {
+      "id": "TF-002",
+      "title": "Guard map freeze and reflow decisions",
+      "state": "triaged",
+      "severity": "medium",
+      "surface": "canvas",
+      "matrixRefs": ["4.2"],
+      "symptom": "Map nodes can choose the wrong layout mode when the surface grows or shrinks.",
+      "rootCause": "The decision heuristic is not independently covered by a focused state test.",
+      "guard": "Add a focused mapNodeLayoutMode test",
+      "evidence": [],
+      "owner": "termfleet",
+      "nextAction": "Lock the layout decision with a pure regression before changing it.",
+      "history": []
+    },
+    {
+      "id": "TF-003",
+      "title": "Make status polling rules independently testable",
+      "state": "triaged",
+      "severity": "medium",
+      "surface": "logic",
+      "matrixRefs": ["5.8", "5.9"],
+      "symptom": "A refactor can reintroduce cold-start status gaps or unwanted desktop polling.",
+      "rootCause": "The polling decision is duplicated inline in terminal and map components.",
+      "guard": "Extract a pure polling decision helper and test it",
+      "evidence": [],
+      "owner": "termfleet",
+      "nextAction": "Create the helper and focused regression before editing the polling paths.",
+      "history": []
+    }
+  ]
+}

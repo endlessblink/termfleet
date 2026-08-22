@@ -140,3 +140,4 @@
     }
   }
 }
+    "issues": "node scripts/termfleet-issues.mjs",
