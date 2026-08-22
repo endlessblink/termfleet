@@ -55,6 +55,10 @@ export interface CanonicalTask {
   progress: CanonicalProgressEntry[];
   updatedAt?: string;
   completionEvidence?: string;
+  taskState?: string;
+  claimOwner?: string;
+  liveExecutionHandle?: string | null;
+  liveHeartbeat?: number | null;
 }
 
 export function taskProjectLabel(task: Pick<CanonicalTask, "workspace">): string {
@@ -142,6 +146,10 @@ export function parseCanonicalTasks(payload: unknown): CanonicalTask[] {
       progress: task.progress ?? [],
       updatedAt: task.updatedAt,
       completionEvidence: task.completionEvidence,
+      taskState: task.taskState,
+      claimOwner: task.claimOwner,
+      liveExecutionHandle: task.liveExecutionHandle,
+      liveHeartbeat: task.liveHeartbeat,
     };
   });
 }

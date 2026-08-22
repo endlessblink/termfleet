@@ -1,5 +1,5 @@
 export type TaskRunState = "registered" | "starting" | "running" | "waiting" | "failed" | "stopped" | "finished";
-export type TaskRunHealth = "missing" | "running-and-progressing" | "running-but-idle" | "waiting-for-input" | "stale-heartbeat" | "failed" | "cancelled" | "completed" | "orphaned";
+export type TaskRunHealth = "no-worker" | "claimed-not-running" | "running-and-progressing" | "running-but-idle" | "waiting-for-input" | "stale-heartbeat" | "disconnected" | "failed" | "failed-launch" | "cancelled" | "completed" | "orphaned";
 
 export interface TaskRunRecord {
   runId: string;
@@ -21,11 +21,39 @@ export interface TaskRunRecord {
   stopRequestedAt?: number;
   finishedAt?: number;
   failureReason?: string;
+  terminalLink?: string;
+  disconnectedAt?: number;
 }
 
 export const TASK_RUN_REGISTRY_KEY = "termfleet.canonical-task-runs.v1";
 export const RUN_HEARTBEAT_TIMEOUT_MS = 30_000;
 export const RUN_ACTIVITY_TIMEOUT_MS = 90_000;
+export const MAX_RUN_LOG_LINES = 32;
+export const MAX_RUN_LOG_LINE_LENGTH = 400;
+
+const SECRET_PATTERNS = [
+  /(Bearer\s+)[^\s]+/gi,
+  /(api[_-]?key\s*[=:]\s*)[^\s]+/gi,
+  /(token\s*[=:]\s*)[^\s]+/gi,
+  /(password\s*[=:]\s*)[^\s]+/gi,
+  /(secret\s*[=:]\s*)[^\s]+/gi,
+];
+
+export function redactRunLogLine(line: string): string {
+  let safe = String(line).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "");
+  for (const pattern of SECRET_PATTERNS) safe = safe.replace(pattern, "$1[REDACTED]");
+  return safe.length > MAX_RUN_LOG_LINE_LENGTH ? `${safe.slice(0, MAX_RUN_LOG_LINE_LENGTH)}…` : safe;
+}
+
+export function boundedRunLog(lines: unknown): string[] {
+  if (!Array.isArray(lines)) return [];
+  return lines.slice(-MAX_RUN_LOG_LINES).map((line) => redactRunLogLine(String(line)));
+}
+
+export function linkedTaskRun(runs: TaskRunRecord[], liveExecutionHandle?: string | null): TaskRunRecord | undefined {
+  if (!liveExecutionHandle) return undefined;
+  return runs.find((run) => run.runId === liveExecutionHandle);
+}
 
 function storage(): Storage | null {
   return typeof window === "undefined" ? null : window.localStorage;
@@ -36,19 +64,22 @@ export function readTaskRunRegistry(): TaskRunRecord[] {
     const raw = storage()?.getItem(TASK_RUN_REGISTRY_KEY);
     if (!raw) return [];
     const value: unknown = JSON.parse(raw);
-    return Array.isArray(value) ? value.filter((item): item is TaskRunRecord => Boolean(item && typeof item === "object" && "runId" in item && "taskId" in item)) : [];
+    return Array.isArray(value) ? value.filter((item): item is TaskRunRecord => Boolean(item && typeof item === "object" && "runId" in item && "taskId" in item)).map((run) => ({ ...run, logTail: boundedRunLog(run.logTail) })) : [];
   } catch {
     return [];
   }
 }
 
 export function writeTaskRunRegistry(runs: TaskRunRecord[]): void {
-  storage()?.setItem(TASK_RUN_REGISTRY_KEY, JSON.stringify(runs.slice(-100)));
+  storage()?.setItem(TASK_RUN_REGISTRY_KEY, JSON.stringify(runs.slice(-100).map((run) => ({ ...run, logTail: boundedRunLog(run.logTail) }))));
 }
 
-export function classifyTaskRun(run: TaskRunRecord | undefined, now = Date.now()): TaskRunHealth {
-  if (!run) return "missing";
+export function classifyTaskRun(run: TaskRunRecord | undefined, now = Date.now(), linkedRunId?: string | null): TaskRunHealth {
+  if (linkedRunId === undefined) return "no-worker";
+  if (!linkedRunId) return "claimed-not-running";
+  if (!run || run.runId !== linkedRunId) return "disconnected";
   if (run.state === "failed") return "failed";
+  if (run.state === "starting" && run.heartbeatAt <= run.startedAt) return "failed-launch";
   if (run.state === "stopped") return "cancelled";
   if (run.state === "finished") return "completed";
   if (now - run.heartbeatAt > RUN_HEARTBEAT_TIMEOUT_MS) return run.terminalPaneId ? "stale-heartbeat" : "orphaned";
@@ -58,12 +89,15 @@ export function classifyTaskRun(run: TaskRunRecord | undefined, now = Date.now()
 
 export function taskRunLabel(health: TaskRunHealth): string {
   return {
-    missing: "No linked run",
+    "no-worker": "No worker linked",
+    "claimed-not-running": "Claimed · not running",
     "running-and-progressing": "Running · progressing",
     "running-but-idle": "Running · idle",
     "waiting-for-input": "Running · waiting for input",
     "stale-heartbeat": "Stale heartbeat",
+    disconnected: "Disconnected",
     failed: "Failed",
+    "failed-launch": "Failed to start",
     cancelled: "Cancelled",
     completed: "Completed",
     orphaned: "Orphaned run",

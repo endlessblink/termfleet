@@ -13,7 +13,7 @@ import {
   type CanonicalTaskStatus,
 } from "../lib/canonicalAgentBoard";
 import { useCanonicalTasks } from "../hooks/useCanonicalTasks";
-import { acceptanceProgress, classifyTaskRun, lifecycleProgress, readTaskRunRegistry, requestTaskRunStop, taskRunLabel, type TaskRunRecord } from "../lib/canonicalTaskRuntime";
+import { acceptanceProgress, classifyTaskRun, lifecycleProgress, linkedTaskRun, readTaskRunRegistry, requestTaskRunStop, taskRunLabel, type TaskRunRecord } from "../lib/canonicalTaskRuntime";
 
 const styles = {
   shell: { height: "100%", display: "flex", flexDirection: "column" as const, minWidth: 0, background: "var(--surface-base)" },
@@ -48,8 +48,10 @@ function attentionLabel(task: CanonicalTask): string {
 
 function TaskCard({ task, onSelect }: { task: CanonicalTask; onSelect: () => void }) {
   const taskRuns = readTaskRunRegistry().filter((item) => item.taskId === task.id);
-  const run = taskRuns[taskRuns.length - 1];
-  const health = classifyTaskRun(run);
+  const run = linkedTaskRun(taskRuns, task.liveExecutionHandle);
+  const health = classifyTaskRun(run, Date.now(), task.liveExecutionHandle);
+  const lifecycle = lifecycleProgress(task.status);
+  const acceptance = acceptanceProgress(task.acceptance);
   return <button type="button" style={styles.card} aria-label={`Open ${task.id}: ${task.title}`} onClick={onSelect}>
     <strong style={{ fontSize: 14, lineHeight: 1.25, fontWeight: 500 }}>{task.title}</strong>
     <span style={{ color: "var(--text-primary)", fontSize: 12 }}>Project: {taskProjectLabel(task)}</span>
@@ -57,14 +59,15 @@ function TaskCard({ task, onSelect }: { task: CanonicalTask; onSelect: () => voi
     <span style={{ color: task.status === "BLOCKED" ? "var(--accent-danger)" : "var(--text-secondary)", fontSize: 11 }}>Workflow: {displayStatus(task.status)} · {attentionLabel(task)}</span>
     <span style={{ color: health === "running-and-progressing" ? "var(--accent-success)" : "var(--text-secondary)", fontSize: 11 }}>Execution: {taskRunLabel(health)}</span>
     <span style={{ color: "var(--text-secondary)", fontSize: 11 }}>Claim: {task.owner || "No one yet"}</span>
+    <span role="progressbar" aria-label={`${task.id} lifecycle progress`} aria-valuetext={`${lifecycle.current}; next ${lifecycle.next ?? "none"}; ${acceptance.label}`} style={{ color: "var(--text-secondary)", fontSize: 11 }}>Stage: {lifecycle.current} · {acceptance.label}</span>
   </button>;
 }
 
 function TaskDetail({ task, onClose, onStatus, onRefresh }: { task: CanonicalTask; onClose: () => void; onStatus: (status: CanonicalTaskStatus) => void; onRefresh: () => void }) {
   const [runs, setRuns] = useState<TaskRunRecord[]>(() => readTaskRunRegistry());
   const taskRuns = runs.filter((item) => item.taskId === task.id);
-  const run = taskRuns[taskRuns.length - 1];
-  const health = classifyTaskRun(run);
+  const run = linkedTaskRun(taskRuns, task.liveExecutionHandle);
+  const health = classifyTaskRun(run, Date.now(), task.liveExecutionHandle);
   const lifecycle = lifecycleProgress(task.status);
   const acceptance = acceptanceProgress(task.acceptance);
   const stop = () => {
@@ -142,7 +145,8 @@ export function CanonicalAgentBoard() {
   const grouped = useMemo(() => groupCanonicalTasks(visible), [visible]);
   const doneCount = tasks.filter((task) => task.status === "DONE").length;
   const activeCount = tasks.filter((task) => task.status === "IN PROGRESS").length;
-  const liveRunCount = runRegistry.filter((run) => ["running", "starting", "waiting"].includes(run.state) && ["running-and-progressing", "running-but-idle", "waiting-for-input"].includes(classifyTaskRun(run))).length;
+  const linkedRunIds = new Set(tasks.map((task) => task.liveExecutionHandle).filter((runId): runId is string => Boolean(runId)));
+  const liveRunCount = runRegistry.filter((run) => linkedRunIds.has(run.runId) && ["running", "starting", "waiting"].includes(run.state) && ["running-and-progressing", "running-but-idle", "waiting-for-input"].includes(classifyTaskRun(run, Date.now(), run.runId))).length;
   useEffect(() => {
     const timer = window.setInterval(() => setRunRegistry(readTaskRunRegistry()), 2_000);
     return () => window.clearInterval(timer);
