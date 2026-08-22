@@ -1372,10 +1372,13 @@ export function summaryFromDurableActivity(
     cleanPath(extractedSummary?.path) ??
     "workspace path unknown";
 
+  const trustedCommandNow = commandResultNow(activity);
   const rawDurableNow =
     extractedSummary?.status === "waiting" &&
     cleanText(extractedSummary.now) === "Waiting for operator selection"
       ? "Waiting for operator selection"
+      : trustedCommandNow && !purpose
+        ? trustedCommandNow
       :
     purpose?.source === "inferred"
       ? purpose.title

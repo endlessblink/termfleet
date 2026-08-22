@@ -420,7 +420,13 @@ export function fallbackAgentStatusSummary(input: AgentStatusSummaryInput): Agen
     commandSummary?.task ??
     transcriptTask ??
     "Supervised agent run";
-  const task = isInternalPlanLabel(candidateTask)
+  // Prompt and command recognizers produce operator-facing labels deliberately;
+  // do not discard those just because they begin with a process verb such as
+  // "Running" or "Reviewing".
+  const task = isInternalPlanLabel(candidateTask) &&
+    !promptSummary &&
+    !commandSummary &&
+    !/^Reviewing (?:approval request|next step)$/i.test(candidateTask)
     ? (explicitUserTask && !isInternalPlanLabel(explicitUserTask)
         ? explicitUserTask
         : "Task not captured")
