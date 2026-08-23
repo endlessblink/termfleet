@@ -43,7 +43,7 @@ class InstalledReleaseTests(unittest.TestCase):
         applications.mkdir()
         (applications / "termfleet.desktop").write_text(
             "[Desktop Entry]\n"
-            f"Exec={command.parent / 'termfleet-desktop'}\n"
+            f"Exec={command.parent / 'termfleet-desktop'} --dock\n"
             "Icon=termfleet\n"
             "StartupWMClass=Termfleet\n"
         )
@@ -122,12 +122,49 @@ class InstalledReleaseTests(unittest.TestCase):
         self.assertIn("builtBinarySha", source)
         self.assertNotIn("the dock launcher does not", source)
 
+    def test_doctor_resolves_the_desktop_entry_executable_before_dock_arguments(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = pathlib.Path(tmp)
+            release_dir = home / ".local" / "share" / "termfleet" / "releases" / "release-1"
+            release_dir.mkdir(parents=True)
+            binary = release_dir / "termfleet"
+            binary.write_bytes(b"stable-termfleet-release")
+            binary.chmod(0o755)
+            (release_dir / "manifest.env").write_text("TERMFLEET_BINARY_SHA256=placeholder\n")
+            current = release_dir.parent.parent / "current"
+            current.symlink_to("releases/release-1")
+
+            bin_dir = home / ".local" / "bin"
+            bin_dir.mkdir(parents=True)
+            command = bin_dir / "termfleet"
+            command.symlink_to(current / "termfleet")
+            launcher = bin_dir / "termfleet-desktop"
+            launcher.write_text("#!/usr/bin/env bash\nexit 0\n")
+            launcher.chmod(0o755)
+
+            applications = home / ".local" / "share" / "applications"
+            applications.mkdir(parents=True)
+            (applications / "termfleet.desktop").write_text(
+                f"[Desktop Entry]\nExec={launcher} --dock\n"
+            )
+
+            result = subprocess.run(
+                ["node", str(DOCTOR)],
+                env={**os.environ, "HOME": str(home)},
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertNotIn("dock launcher is missing", result.stdout + result.stderr)
+
     def test_release_installer_owns_the_branded_single_window_dock_launcher(self):
         installer = INSTALLER.read_text()
         launcher = DESKTOP_LAUNCHER.read_text()
         self.assertIn("termfleet-desktop-launcher.sh", installer)
         self.assertIn("termfleet-vessel-master.svg", installer)
         self.assertIn("Icon=termfleet", installer)
+        self.assertIn("Exec=%s --dock", installer)
         self.assertIn("StartupWMClass=Termfleet", installer)
         self.assertIn("kbuildsycoca6 --noincremental", installer)
         self.assertIn("TERMFLEET_PLASMA_ICON_DIR", installer)
@@ -141,19 +178,28 @@ class InstalledReleaseTests(unittest.TestCase):
     def test_dock_restore_waits_for_the_daemon_after_starting_the_app(self):
         launcher = DESKTOP_LAUNCHER.read_text()
         app_start = launcher.index('"$TERMFLEET_CMD" &')
-        daemon_wait = launcher.index('daemon_socket=', app_start)
+        daemon_wait = launcher.index('daemon_socket=')
         restore_start = launcher.index('"$TERMFLEET_RESTORE"', daemon_wait)
-        self.assertLess(app_start, daemon_wait)
-        self.assertLess(daemon_wait, restore_start)
+        self.assertLess(daemon_wait, app_start)
+        self.assertLess(restore_start, app_start)
         self.assertIn('[[ -S "$daemon_socket" ]]', launcher)
 
-    def test_crash_restart_forces_termfleet_restore_again_after_boot(self):
+    def test_dock_startup_has_a_hard_daemon_gate_before_the_window(self):
         launcher = DESKTOP_LAUNCHER.read_text()
+        app_start = launcher.index('"$TERMFLEET_CMD" &')
+        gate = launcher.index('refusing to launch cockpit: daemon socket did not appear')
+        self.assertLess(gate, app_start)
+        self.assertIn('nohup "$TERMFLEET_CMD" --terminal-workspace-daemon', launcher)
+
+    def test_crash_restart_restores_provider_sessions_before_app_hydration(self):
+        launcher = DESKTOP_LAUNCHER.read_text()
+        app_start = launcher.index('"$TERMFLEET_CMD" &')
         restore_start = launcher.index('"$TERMFLEET_RESTORE"')
-        restore_invocation = launcher[restore_start : launcher.index('>>"$LOG_FILE"', restore_start)]
-        self.assertIn('--termfleet-startup', restore_invocation)
-        self.assertIn('--force', restore_invocation)
-        self.assertNotIn('--once termfleet', restore_invocation)
+        self.assertLess(restore_start, app_start)
+        pre_start = launcher[:app_start]
+        self.assertIn('--terminal-workspace-daemon', pre_start)
+        self.assertIn('--termfleet-startup', pre_start)
+        self.assertIn('[[ ! -S "$daemon_socket" ]]', pre_start)
 
     def test_rejects_stale_plasma_pinned_launcher_copy(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -205,7 +251,7 @@ class InstalledReleaseTests(unittest.TestCase):
             (fake_bin / "wmctrl").chmod(0o755)
 
             result = subprocess.run(
-                ["bash", str(DESKTOP_LAUNCHER)],
+                ["bash", str(DESKTOP_LAUNCHER), "--dock"],
                 env={
                     **os.environ,
                     "PATH": f"{fake_bin}:{os.environ['PATH']}",

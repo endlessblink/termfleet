@@ -14,6 +14,50 @@ TERMFLEET_CMD="${TERMFLEET_CMD:-$HOME/.local/bin/termfleet}"
 TERMFLEET_INSTALL_ROOT="${TERMFLEET_INSTALL_ROOT:-${XDG_DATA_HOME:-$HOME/.local/share}/termfleet}"
 TERMFLEET_TMPDIR="${TERMFLEET_TMPDIR:-/media/endlessblink/data/.dev-tmp/$USER}"
 TERMFLEET_RESTORE="${TERMFLEET_RESTORE:-${AGENT_FLEET_RESTORE:-/media/endlessblink/data/my-projects/ai-development/cc-linux-enhancments/scripts/agent-fleet/restore.py}}"
+TERMFLEET_COCKPIT_SNAPSHOT_PATH="${TERMFLEET_COCKPIT_SNAPSHOT_PATH:-${XDG_DATA_HOME:-$HOME/.local/share}/terminal-workspace/agent-status/cockpit-snapshot.json}"
+
+# The desktop wrapper has two legitimate callers: the dock and agents that
+# need to relaunch the UI while preserving the canonical daemon.  A bare
+# --child is retained for existing agent launchers and defaults to the shared
+# production context; only an explicit isolated-smoke context may use a private
+# runtime.
+if [[ "${1:-}" == "--child" &&
+  "${TERMFLEET_CHILD_CONTEXT:-shared-daemon-agent}" != "isolated-smoke" &&
+  "${TERMFLEET_LAUNCH_PARENT:-0}" != "1" ]]; then
+  # Legacy agents used to invoke the child directly, bypassing the single-window
+  # check. Route those calls through the shared parent so they cannot create a
+  # second UI that races the existing UI's workspace persistence.
+  exec "$0" --agent
+fi
+case "${1:-}" in
+  --dock) launch_context="dock" ;;
+  --agent|--shared-daemon) launch_context="shared-daemon-agent" ;;
+  --child) launch_context="${TERMFLEET_CHILD_CONTEXT:-shared-daemon-agent}" ;;
+  *)
+    printf '[%s] refusing unknown TermFleet desktop launch mode=%s\n' \
+      "$(date --iso-8601=seconds)" "${1:-<none>}" >>"${XDG_STATE_HOME:-$HOME/.local/state}/termfleet/desktop-launch.log"
+    exit 64
+    ;;
+esac
+case "$launch_context" in
+  dock|shared-daemon-agent|isolated-smoke) ;;
+  *)
+    printf '[%s] refusing unknown TermFleet child context=%s\n' \
+      "$(date --iso-8601=seconds)" "$launch_context" >>"${XDG_STATE_HOME:-$HOME/.local/state}/termfleet/desktop-launch.log"
+    exit 64
+    ;;
+esac
+if [[ "$launch_context" == "shared-daemon-agent" ]]; then
+  # Agent relaunches must attach to the same user daemon even when the caller
+  # inherited a temporary test runtime or data directory.
+  export XDG_RUNTIME_DIR="/run/user/${UID}"
+  export XDG_DATA_HOME="${TERMFLEET_SHARED_DATA_HOME:-$HOME/.local/share}"
+  export XDG_STATE_HOME="${TERMFLEET_SHARED_STATE_HOME:-$HOME/.local/state}"
+  TERMFLEET_CMD="${TERMFLEET_SHARED_CMD:-$HOME/.local/bin/termfleet}"
+  TERMFLEET_INSTALL_ROOT="$XDG_DATA_HOME/termfleet"
+  LOG_DIR="$XDG_STATE_HOME/termfleet"
+  LOG_FILE="$LOG_DIR/desktop-launch.log"
+fi
 
 mkdir -p "$LOG_DIR" "$TERMFLEET_TMPDIR"
 chmod 0700 "$TERMFLEET_TMPDIR"
@@ -43,6 +87,19 @@ if [[ "${1:-}" != "--child" ]]; then
   exec 9>"$LOCK_FILE"
   if ! flock -n 9; then
     printf '[%s] launch lock busy; another dock launch is starting\n' "$(date --iso-8601=seconds)" >>"$LOG_FILE"
+    exit 0
+  fi
+fi
+if [[ "${1:-}" == "--child" ]]; then
+  # Parent wrappers serialize normal launches, but two agents can still race
+  # through separate wrappers before either cockpit is discoverable. Hold an
+  # instance lock for the entire child lifetime so only one UI can ever attach
+  # to the shared workspace at a time.
+  INSTANCE_LOCK_FILE="$LOG_DIR/desktop-instance.lock"
+  exec 8>"$INSTANCE_LOCK_FILE"
+  if ! flock -n 8; then
+    printf '[%s] desktop child already running; preserving the existing shared UI\n' \
+      "$(date --iso-8601=seconds)" >>"$LOG_FILE"
     exit 0
   fi
 fi
@@ -114,7 +171,7 @@ set_display_credentials() {
   # must keep its private runtime so the daemon, UI, and assertions share one
   # namespace. A plain inherited XDG_RUNTIME_DIR still follows the production
   # path, preventing accidental redirection by ordinary launches.
-  if [[ "${TERMFLEET_PRESERVE_RUNTIME_DIR:-0}" != "1" ]]; then
+  if [[ "$launch_context" != "isolated-smoke" || "${TERMFLEET_PRESERVE_RUNTIME_DIR:-0}" != "1" ]]; then
     export XDG_RUNTIME_DIR="/run/user/${UID}"
   fi
   export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=${XDG_RUNTIME_DIR}/bus}"
@@ -164,33 +221,62 @@ if [[ "${1:-}" == "--child" ]]; then
   # Prepare only the external restore manifest before the UI reads the workspace;
   # this helper must never mutate the durable layout or infer a close decision.
   prepare_termfleet_restore_config
-  # The restore helper must not race the app's first daemon startup. Starting
-  # restore first made normal dock launches time out after 20s, leaving the
-  # saved terminals absent even though the UI could later start successfully.
-  set +e
-  "$TERMFLEET_CMD" &
-  app_pid=$!
+  # Bring the independent PTY owner up before provider restore. If the app starts
+  # first, hydration can finish before restore creates the provider sessions;
+  # those sessions then appear only on the next app restart.
   daemon_socket="${XDG_RUNTIME_DIR:-/run/user/${UID}}/terminal-workspace/daemon.sock"
+  restore_before_app=0
+  [[ -S "$daemon_socket" ]] && restore_before_app=1
+  if [[ ! -S "$daemon_socket" && -n "${TERMFLEET_CMD:-}" ]] && command -v systemd-run >/dev/null 2>&1; then
+    daemon_unit="termfleet-daemon-prestart-$$"
+    if ! systemd-run --user --collect --same-dir --unit="$daemon_unit" \
+      -p KillMode=mixed \
+      --setenv="XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-}" \
+      --setenv="XDG_DATA_HOME=${XDG_DATA_HOME:-}" \
+      --setenv="XDG_STATE_HOME=${XDG_STATE_HOME:-}" \
+      --setenv="TMPDIR=${TMPDIR:-}" \
+      --setenv="PATH=${PATH:-/usr/local/bin:/usr/bin:/bin}" \
+      "$TERMFLEET_CMD" --terminal-workspace-daemon >/dev/null 2>&1; then
+      printf '[%s] systemd daemon prestart failed; falling back to direct daemon\n' \
+        "$(date --iso-8601=seconds)" >>"$LOG_FILE"
+      nohup "$TERMFLEET_CMD" --terminal-workspace-daemon >>"$LOG_FILE" 2>&1 &
+    fi
+  fi
   daemon_deadline=$((SECONDS + 20))
-  daemon_ready=0
-  while (( SECONDS < daemon_deadline )); do
-    if [[ -S "$daemon_socket" ]]; then
-      daemon_ready=1
-      break
-    fi
-    if ! kill -0 "$app_pid" 2>/dev/null; then
-      break
-    fi
+  while (( SECONDS < daemon_deadline )) && [[ ! -S "$daemon_socket" ]]; do
     sleep 0.1
   done
-  if (( daemon_ready == 1 )) && [[ -f "$TERMFLEET_RESTORE" ]]; then
+  if [[ -S "$daemon_socket" ]]; then
+    restore_before_app=1
+  else
+    printf '[%s] refusing to launch cockpit: daemon socket did not appear (%s)\n' \
+      "$(date --iso-8601=seconds)" "$daemon_socket" >>"$LOG_FILE"
+    termfleet_incident_record "desktop_launch" "daemon_startup_failed" "socket=$daemon_socket"
+    exit 1
+  fi
+  if (( restore_before_app == 1 )) && [[ -f "$TERMFLEET_RESTORE" ]]; then
     /usr/bin/python3 "$TERMFLEET_RESTORE" \
       --termfleet-startup \
       --force \
       --ready-timeout 20 >>"$LOG_FILE" 2>&1 &
-  elif (( daemon_ready == 0 )); then
-    printf '[%s] daemon was not ready before restore; preserving the app failure for diagnosis\n' \
-      "$(date --iso-8601=seconds)" >>"$LOG_FILE"
+  fi
+  set +e
+  "$TERMFLEET_CMD" &
+  app_pid=$!
+  if (( restore_before_app == 0 )); then
+    daemon_deadline=$((SECONDS + 20))
+    while (( SECONDS < daemon_deadline )) && [[ ! -S "$daemon_socket" ]]; do
+      if ! kill -0 "$app_pid" 2>/dev/null; then
+        break
+      fi
+      sleep 0.1
+    done
+    if [[ -S "$daemon_socket" && -f "$TERMFLEET_RESTORE" ]]; then
+      /usr/bin/python3 "$TERMFLEET_RESTORE" \
+        --termfleet-startup \
+        --force \
+        --ready-timeout 20 >>"$LOG_FILE" 2>&1 &
+    fi
   fi
   wait "$app_pid"
   status=$?
@@ -220,13 +306,17 @@ if command -v systemd-run >/dev/null 2>&1; then
     --collect \
     --same-dir \
     --unit="$unit_name" \
-    -p KillMode=control-group \
+     -p KillMode=control-group \
     -p MemoryHigh="$TERMFLEET_DESKTOP_MEMORY_HIGH" \
     -p MemoryMax="$TERMFLEET_DESKTOP_MEMORY_MAX" \
      -p CPUWeight=1000 \
      -p IOWeight=1000 \
     --setenv="DISPLAY=${DISPLAY:-:0}" \
     --setenv="XAUTHORITY=${XAUTHORITY:-}" \
+    --setenv="XDG_DATA_HOME=${XDG_DATA_HOME:-}" \
+    --setenv="XDG_STATE_HOME=${XDG_STATE_HOME:-}" \
+    --setenv="XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-}" \
+    --setenv="DBUS_SESSION_BUS_ADDRESS=${DBUS_SESSION_BUS_ADDRESS:-}" \
     --setenv="PATH=${PATH:-/usr/local/bin:/usr/bin:/bin}" \
     --setenv="TMPDIR=$TMPDIR" \
     --setenv="CARGO_BUILD_JOBS=$CARGO_BUILD_JOBS" \
@@ -238,11 +328,18 @@ if command -v systemd-run >/dev/null 2>&1; then
     --setenv="TERMFLEET_CMD=$TERMFLEET_CMD" \
     --setenv="TERMFLEET_INSTALL_ROOT=$TERMFLEET_INSTALL_ROOT" \
     --setenv="TERMFLEET_RESTORE=$TERMFLEET_RESTORE" \
+    --setenv="AGENT_FLEET_CONFIG=${AGENT_FLEET_CONFIG:-}" \
+    --setenv="AGENT_FLEET_STATE_DIR=${AGENT_FLEET_STATE_DIR:-}" \
+    --setenv="SMOKE_RESUME_MARKER=${SMOKE_RESUME_MARKER:-}" \
+     --setenv="TERMFLEET_COCKPIT_SNAPSHOT_PATH=$TERMFLEET_COCKPIT_SNAPSHOT_PATH" \
     --setenv="TERMFLEET_OLLAMA_URL=${TERMFLEET_OLLAMA_URL:-http://127.0.0.1:11434}" \
     --setenv="TERMFLEET_CONTEXT_TITLE_TIMEOUT_MS=${TERMFLEET_CONTEXT_TITLE_TIMEOUT_MS:-25000}" \
     --setenv="TERMFLEET_TASK_CONTEXT_MODEL=${TERMFLEET_TASK_CONTEXT_MODEL:-qwen2.5:7b}" \
     --setenv="TERMFLEET_AGENT_STATUS_TIMEOUT_MS=${TERMFLEET_AGENT_STATUS_TIMEOUT_MS:-1000}" \
     --setenv="TERMFLEET_AGENT_STATUS_DISABLE=${TERMFLEET_AGENT_STATUS_DISABLE:-1}" \
+     --setenv="TERMFLEET_CHILD_CONTEXT=$launch_context" \
+     --setenv="TERMFLEET_LAUNCH_PARENT=1" \
+     --setenv="TERMFLEET_UI_LAUNCH_CONTEXT=$launch_context" \
     --setenv="TERMINAL_WORKSPACE_TRACE_LATENCY=${TERMINAL_WORKSPACE_TRACE_LATENCY:-}" \
     "$0" --child >>"$LOG_FILE" 2>&1; then
     desktop_cgroup="/sys/fs/cgroup/user.slice/user-${UID}.slice/user@${UID}.service/app.slice/${unit_name}"
@@ -258,11 +355,11 @@ if command -v systemd-run >/dev/null 2>&1; then
     printf '[%s] systemd user bus unavailable; falling back to direct desktop child\n' \
       "$(date --iso-8601=seconds)" >>"$LOG_FILE"
     set_display_credentials
-    nohup "$0" --child >>"$LOG_FILE" 2>&1 </dev/null &
+     TERMFLEET_CHILD_CONTEXT="$launch_context" TERMFLEET_LAUNCH_PARENT=1 TERMFLEET_UI_LAUNCH_CONTEXT="$launch_context" nohup "$0" --child >>"$LOG_FILE" 2>&1 </dev/null &
   fi
 else
   set_display_credentials
-  nohup "$0" --child >>"$LOG_FILE" 2>&1 </dev/null &
+  TERMFLEET_CHILD_CONTEXT="$launch_context" TERMFLEET_LAUNCH_PARENT=1 TERMFLEET_UI_LAUNCH_CONTEXT="$launch_context" nohup "$0" --child >>"$LOG_FILE" 2>&1 </dev/null &
 fi
 
 # Do not release the launch lock until the cockpit is observable by the guard.

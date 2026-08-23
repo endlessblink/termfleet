@@ -76,7 +76,7 @@ class DesktopLauncherGuardTests(unittest.TestCase):
             patched.chmod(0o755)
 
             result = subprocess.run(
-                ["bash", str(patched)],
+                ["bash", str(patched), "--dock"],
                 env={
                     **os.environ,
                     "PATH": f"{stub_dir}:{os.environ.get('PATH', '/usr/bin:/bin')}",
@@ -141,6 +141,12 @@ class DesktopLauncherGuardTests(unittest.TestCase):
         self.assertIn("-p KillMode=control-group", script)
         self.assertNotIn("-p KillMode=process", script)
 
+    def test_desktop_exit_is_recorded_without_systemd_resurrection(self):
+        script = LAUNCHER.read_text()
+        self.assertNotIn("-p Restart=on-failure", script)
+        self.assertNotIn("-p RestartSec=2s", script)
+        self.assertIn('termfleet_incident_record "desktop_exit"', script)
+
     def test_desktop_unit_bounds_renderer_memory_without_bounding_daemon(self):
         script = LAUNCHER.read_text()
         self.assertIn('export TERMFLEET_DAEMON_MEMORY_HIGH="${TERMFLEET_DAEMON_MEMORY_HIGH:-12G}"', script)
@@ -176,6 +182,16 @@ class DesktopLauncherGuardTests(unittest.TestCase):
         self.assertIn('export XDG_RUNTIME_DIR="/run/user/${UID}"', script)
         self.assertIn('export DBUS_SESSION_BUS_ADDRESS=', script)
 
+    def test_child_never_shows_an_empty_cockpit_when_daemon_startup_fails(self):
+        script = LAUNCHER.read_text()
+        self.assertIn('if ! systemd-run --user --collect --same-dir --unit="$daemon_unit"', script)
+        self.assertIn('nohup "$TERMFLEET_CMD" --terminal-workspace-daemon', script)
+        self.assertIn('refusing to launch cockpit: daemon socket did not appear', script)
+        self.assertLess(
+            script.index('refusing to launch cockpit: daemon socket did not appear'),
+            script.index('"$TERMFLEET_CMD" &'),
+        )
+
     def test_systemd_child_receives_x11_credentials_before_launch(self):
         script = LAUNCHER.read_text()
         self.assertLess(script.index("set_display_credentials\n\nunit_name="), script.index("if systemd-run"))
@@ -185,6 +201,33 @@ class DesktopLauncherGuardTests(unittest.TestCase):
         script = LAUNCHER.read_text()
         self.assertIn('if [[ "${1:-}" != "--child" ]]; then\n  exec 9>"$LOCK_FILE"', script)
         self.assertIn('if [[ "${1:-}" != "--child" ]]; then\n  existing_pid=', script)
+
+    def test_agent_launch_defaults_to_the_canonical_daemon(self):
+        script = LAUNCHER.read_text()
+        self.assertIn('--agent|--shared-daemon', script)
+        self.assertIn('"${TERMFLEET_CHILD_CONTEXT:-shared-daemon-agent}"', script)
+        self.assertIn('export XDG_RUNTIME_DIR="/run/user/${UID}"', script)
+        self.assertIn('TERMFLEET_CMD="${TERMFLEET_SHARED_CMD:-$HOME/.local/bin/termfleet}"', script)
+        self.assertIn('TERMFLEET_CHILD_CONTEXT=$launch_context', script)
+
+    def test_only_explicit_isolated_smoke_keeps_a_private_runtime(self):
+        script = LAUNCHER.read_text()
+        self.assertIn('launch_context" != "isolated-smoke"', script)
+        self.assertIn('isolated-smoke) ;;', script)
+        self.assertNotIn('refusing untrusted TermFleet child launch', script)
+
+    def test_legacy_direct_child_is_routed_through_the_single_window_parent(self):
+        script = LAUNCHER.read_text()
+        self.assertIn('TERMFLEET_LAUNCH_PARENT:-0', script)
+        self.assertIn('exec "$0" --agent', script)
+        self.assertIn('--setenv="TERMFLEET_LAUNCH_PARENT=1"', script)
+        self.assertIn('TERMFLEET_LAUNCH_PARENT=1 TERMFLEET_UI_LAUNCH_CONTEXT="$launch_context" nohup "$0" --child', script)
+
+    def test_child_has_an_instance_lock_for_wrapper_races(self):
+        script = LAUNCHER.read_text()
+        self.assertIn('INSTANCE_LOCK_FILE="$LOG_DIR/desktop-instance.lock"', script)
+        self.assertIn('exec 8>"$INSTANCE_LOCK_FILE"', script)
+        self.assertIn('desktop child already running; preserving the existing shared UI', script)
 
     def test_private_verifier_runtime_cannot_replace_the_production_cockpit(self):
         _rc, log = self.run_launcher(
