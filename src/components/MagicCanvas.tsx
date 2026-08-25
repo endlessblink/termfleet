@@ -294,9 +294,12 @@ const styles: Record<string, CSSProperties> = {
     height: "100%",
     overflow: "hidden",
     cursor: "grab",
-    background:
-      "linear-gradient(var(--canvas-grid-soft) 1px, transparent 1px), linear-gradient(90deg, var(--canvas-grid-soft) 1px, transparent 1px), #1b2022",
-    backgroundSize: "128px 128px, 128px 128px, auto",
+    background: [
+      "radial-gradient(ellipse at 50% 50%, rgba(96, 165, 250, 0.06) 0%, transparent 68%)",
+      "radial-gradient(circle, var(--canvas-grid) 1.5px, transparent 1.5px)",
+      "#0f1318",
+    ].join(", "),
+    backgroundSize: "auto, 24px 24px, auto",
   },
   toolbar: {
     position: "absolute",
