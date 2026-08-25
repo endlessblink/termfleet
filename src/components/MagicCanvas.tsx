@@ -296,7 +296,7 @@ const styles: Record<string, CSSProperties> = {
     cursor: "grab",
     background: [
       "radial-gradient(ellipse at 50% 50%, rgba(96, 165, 250, 0.06) 0%, transparent 68%)",
-      "radial-gradient(circle, var(--canvas-grid) 1.5px, transparent 1.5px)",
+      "radial-gradient(circle, var(--canvas-grid) 2px, transparent 2px)",
       "#0f1318",
     ].join(", "),
     backgroundSize: "auto, 24px 24px, auto",
