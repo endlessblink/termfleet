@@ -8903,3 +8903,210 @@ with an untouched control terminal, `/exit` with an untouched control terminal, 
 split-pane toolbar-X with a restart; the gate also captured the actual split-pane
 toolbar and rejected stale first-run cockpit snapshots. User approval remains the
 final acceptance gate.
+
+---
+
+## Fleet Mobile — VPS-Hosted Remote Access + Native App
+
+This lane makes TermFleet accessible from any device, including when the primary
+PC is off. Sessions live on a VPS, persist forever, and are reachable from a
+mobile browser or a native app. The five tasks below are ordered by dependency:
+each stage is a shippable milestone on its own.
+
+---
+
+## TC-078 — Daemon WebSocket transport
+
+**Priority:** P1
+**Status:** TODO
+
+The daemon currently speaks only a local Unix socket. This task adds a
+WebSocket listener alongside it — same JSON protocol, same session model,
+same request/response shapes — so remote clients (browser, native app, or
+a desktop in remote mode) can connect without any IPC bridge.
+
+**Scope:**
+- Add a `tokio-tungstenite` (or `axum` ws) WebSocket server to `daemon.rs`;
+  bind on a configurable port (default `9876`), fire up alongside the Unix
+  socket listener at daemon start.
+- TLS: accept an optional cert+key path in daemon config; if provided, serve
+  WSS; if not, serve plain WS (for Tailscale-only setups where the tunnel
+  handles encryption).
+- Auth: shared secret token in an HTTP `Authorization: Bearer <token>` header
+  on the WebSocket upgrade request. Token lives in
+  `~/.local/share/terminal-workspace/daemon.token`; auto-generated on first
+  start if absent. Reject any upgrade without a valid token with HTTP 401.
+- Framing: each WS message is one JSON line (same as the Unix socket stream).
+  Binary frames are rejected.
+- The Unix socket path stays unchanged; existing desktop behaviour is untouched.
+- Config file: `~/.config/terminal-workspace/daemon.toml` (new); `ws_port`,
+  `ws_tls_cert`, `ws_tls_key` keys. Falls back to defaults when file is absent.
+
+**Done when:** `websocat -H "Authorization: Bearer <token>" ws://localhost:9876`
+connects, sends `{"type":"status"}`, receives a valid JSON status reply, and a
+concurrent local Unix-socket client also works unaffected. Rust unit test covers
+the auth-rejection path. `cargo test` passes.
+
+---
+
+## TC-079 — VPS deployment: always-on headless daemon
+
+**Priority:** P1
+**Status:** TODO
+**Depends on:** TC-078
+
+Run the daemon as a permanent service on a user-owned VPS so sessions survive
+the primary PC being off. The daemon binary already runs headlessly via
+`--terminal-workspace-daemon`; this task is the operational packaging around it.
+
+**Scope:**
+- Add a `scripts/install-vps-daemon.sh` installer that:
+  1. Copies the daemon binary to `~/.local/bin/termfleet-daemon`.
+  2. Writes a `systemd` user unit (`~/.config/systemd/user/termfleet-daemon.service`)
+     that `ExecStart`s the binary with `--terminal-workspace-daemon`,
+     `Restart=always`, and `RestartSec=5`.
+  3. Runs `systemctl --user enable --now termfleet-daemon`.
+  4. Prints the generated token from `daemon.token`.
+- Document a Tailscale-first connection model in `docs/vps-setup.md`:
+  install Tailscale on VPS + every client device; connect to the daemon's
+  Tailscale IP without opening any public port. Include the fallback:
+  direct WSS with the cert path if the user prefers no Tailscale.
+- The desktop Tauri app gains a "Remote daemon" settings field: a WS/WSS URL
+  + token. When set, `usePty.ts` uses the WebSocket transport instead of
+  Tauri IPC. Local daemon remains the default when the field is empty.
+
+**Done when:** on a fresh VPS, the installer runs cleanly, the daemon service
+starts, survives a reboot, and a browser on a different machine (connected via
+Tailscale) can issue `status` and get a valid reply. `verify:daemon-latency`
+adapted to remote WS target passes at p95 < 50 ms on LAN/Tailscale.
+
+---
+
+## TC-080 — Mobile web UI / PWA
+
+**Priority:** P1
+**Status:** TODO
+**Depends on:** TC-078, TC-079
+
+A mobile-optimized React build that connects to the remote daemon via
+WebSocket, renders terminals with xterm.js, and installs as a PWA on iOS
+and Android home screens.
+
+**Scope:**
+- New Vite build target `mobile` (`vite.config.mobile.ts`):
+  same React codebase, `VITE_TERMINAL_RENDERER_MODE=web-xterm` forced,
+  forces the WebSocket transport path in `usePty.ts`,
+  outputs to `dist-mobile/`.
+- Connection screen (first launch): WS URL + token entry, stored in
+  `localStorage`; a QR-code scan shortcut (encode `termfleet://connect?url=…&token=…`)
+  for easy setup from the desktop.
+- Mobile terminal layout:
+  - Full-screen xterm.js pane by default.
+  - Sidebar collapses to a bottom sheet; swipe-up opens it.
+  - Floating soft-keyboard trigger button (bottom-right). Tapping it focuses
+    the hidden textarea that xterm.js already uses for input — no new input
+    path needed.
+  - Swipe-left/right to switch between open terminal panes.
+  - Font size pinch-zoom (CSS `font-size` on the xterm container).
+- PWA manifest (`dist-mobile/manifest.json`): name "TermFleet", icons,
+  `display: standalone`, `start_url`.
+- Serve `dist-mobile/` from a static file server on the VPS (nginx or
+  `serve`); add to the VPS installer script.
+
+**Done when:** on an iPhone and an Android device, the PWA installs from the
+VPS URL, connects to the daemon, opens a shell terminal, accepts keyboard
+input, and shows live output. Switching panes via swipe works. Disconnecting
+and reopening the PWA reconnects to the running session without loss.
+
+---
+
+## TC-081 — Desktop remote mode (connect Tauri app to VPS daemon)
+
+**Priority:** P2
+**Status:** TODO
+**Depends on:** TC-078, TC-079
+
+The desktop Tauri app can point at the VPS daemon instead of (or alongside)
+the local one, making the PC just another thin client with full Canvas2D
+rendering and keyboard ergonomics.
+
+**Scope:**
+- Settings panel: "Daemon" section with Local / Remote toggle.
+  Remote: WS URL + token fields. Saved to Tauri's `store` plugin.
+- `usePty.ts` transport selection: when remote mode is active, open a
+  `WebSocket` directly (browser API, available in WebKitGTK) using the
+  stored URL+token. The daemon IPC path in Rust (`invoke("daemon_*")`) is
+  bypassed; all session management happens over the WS frame stream.
+- Session list in the sidebar shows sessions from the remote daemon (same
+  `status` command response, already contains `sessions` array).
+- Canvas2D renderer continues to work: it draws from the grid diff stream
+  which now arrives over WS instead of Tauri IPC. No renderer changes needed.
+- "Switch daemon" command in the command bar: lets the user toggle between
+  local and remote without reopening the app.
+
+**Done when:** with a VPS daemon running, the desktop app connects to it,
+shows existing remote sessions, opens a new shell, renders output in the
+Canvas2D terminal at full fidelity, and switching back to local daemon
+restores local sessions. Existing local-only default path is unchanged.
+
+---
+
+## TC-082 — Native mobile app (iOS + Android)
+
+**Priority:** P2
+**Status:** TODO
+**Depends on:** TC-080 (PWA as design reference), TC-078
+
+A native app distributed via App Store and Google Play — the "Moshi /
+Claude Code" endpoint. Provides native keyboard handling, background
+notifications, and a polished installed experience beyond what a PWA offers.
+
+**Approach — Tauri Mobile (preferred):**
+Tauri 2 ships `tauri-cli mobile` for iOS and Android. The existing
+`src/` React frontend compiles into a native WebView shell with access to
+Tauri plugins. This reuses 100% of the frontend code and all Rust logic
+that doesn't depend on a local PTY (the mobile app has no local daemon —
+it connects to the VPS daemon via WebSocket, same as the PWA).
+
+**Scope:**
+- Add `tauri.mobile.conf.json` (`identifier: com.termfleet.app`, icons,
+  permissions: `internet`, `notifications`).
+- On mobile, the terminal transport is always WebSocket (no local Tauri IPC
+  for PTY — the VPS daemon owns all PTYs). `usePty.ts` detects mobile Tauri
+  context and uses the WS path.
+- Native keyboard plugin: `tauri-plugin-keyboard` (or a custom Swift/Kotlin
+  plugin) to manage `keyboardWillShow` / `keyboardWillHide` events so the
+  terminal canvas resizes correctly without overlap.
+- Push notifications: `tauri-plugin-notification`. The VPS daemon sends a
+  webhook (or polling endpoint) when a terminal session produces output
+  matching a user-defined pattern (e.g. "Done", agent task completed). The
+  mobile app registers a device token and the daemon queues a push via FCM/APNS.
+- App Store / Play Store submission: standard Tauri mobile signing flow;
+  documented in `docs/mobile-release.md`.
+- Fallback if Tauri Mobile proves too early (it is still maturing): ship a
+  React Native shell with a `WebView` that loads the PWA build internally
+  (offline-capable via bundled assets). Same native keyboard and notification
+  plugins via `react-native-webview` bridge.
+
+**Done when:** an `.ipa` and `.apk` install and launch on a real device,
+connect to the VPS daemon, open a terminal, accept hardware and soft-keyboard
+input, render live output, and deliver a push notification when a configured
+pattern fires. App Store / Play Store review submitted.
+
+---
+
+### Fleet Mobile dependency map
+
+```
+TC-078  Daemon WebSocket transport
+   └── TC-079  VPS deployment (always-on headless daemon)
+         ├── TC-080  Mobile PWA  ──────────────────────────┐
+         └── TC-081  Desktop remote mode                    │
+                                                            ▼
+                                                      TC-082  Native app
+```
+
+Each stage is independently shippable. TC-078 + TC-079 alone give you a
+working remote daemon reachable via any WebSocket client. TC-080 adds the
+mobile browser surface. TC-081 makes the desktop a thin client. TC-082 is
+the final native distribution step.
