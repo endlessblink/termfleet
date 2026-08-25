@@ -24,7 +24,7 @@ const styles: Record<string, CSSProperties> = {
     overflow: "hidden",
     borderLeft: "1px solid var(--border-strong)",
     background:
-      "radial-gradient(circle at 62% -18%, rgba(255, 255, 255, 0.04), transparent 28%), linear-gradient(180deg, #1f2325, #171b1d 72%)",
+      "radial-gradient(circle at 62% -18%, rgba(96, 165, 250, 0.05), transparent 28%), linear-gradient(180deg, #141920, #0b0e14 72%)",
   },
   surfacePane: {
     position: "absolute",

@@ -1,87 +1,87 @@
 :root {
   color-scheme: dark;
 
-  --bg: #222628;
-  --bg-dark: #1c2022;
-  --bg-elevated: #292e31;
-  --bg-highlight: #343a3e;
-  --fg: #e0e4e7;
-  --fg-dark: #9ba3a8;
-  --fg-gutter: #717a80;
-  --border: #343a3e;
-  --border-soft: #292f33;
-  --canvas-grid: rgba(132, 145, 153, 0.055);
-  --canvas-grid-soft: rgba(132, 145, 153, 0.032);
-  --selection-bg: #203149;
-  --comment: #7c8796;
+  --bg: #141920;
+  --bg-dark: #0f1318;
+  --bg-elevated: #1a2030;
+  --bg-highlight: #222a38;
+  --fg: #edf2f7;
+  --fg-dark: #8896a8;
+  --fg-gutter: #60707e;
+  --border: #222a38;
+  --border-soft: #161b28;
+  --canvas-grid: rgba(96, 165, 250, 0.045);
+  --canvas-grid-soft: rgba(96, 165, 250, 0.025);
+  --selection-bg: #1e3a5f;
+  --comment: #4e606e;
 
   /* Accent colors */
-  --blue: #6ea8fe;
-  --cyan: #7dbac3;
-  --green: #7fc681;
-  --magenta: #ad8fcb;
-  --red: #ef6f72;
-  --yellow: #d4a44f;
-  --orange: #d99046;
-  --live: #d99a45;
-  --live-muted: rgba(217, 154, 69, 0.16);
-  --success-muted: rgba(127, 198, 129, 0.14);
-  --danger-muted: rgba(239, 111, 114, 0.15);
+  --blue: #60a5fa;
+  --cyan: #38bdf8;
+  --green: #4ade80;
+  --magenta: #c084fc;
+  --red: #f87171;
+  --yellow: #fbbf24;
+  --orange: #fb923c;
+  --live: #f59e0b;
+  --live-muted: rgba(245, 158, 11, 0.15);
+  --success-muted: rgba(74, 222, 128, 0.12);
+  --danger-muted: rgba(248, 113, 113, 0.14);
 
   /* UI mapping */
   --tab-bg: var(--bg-dark);
-  --tab-active-bg: #181c22;
-  --tab-hover-bg: #1f242b;
-  --sidebar-bg: #22272a;
+  --tab-active-bg: #0a0d12;
+  --tab-hover-bg: #141920;
+  --sidebar-bg: #101420;
   --sidebar-width: 276px;
   --canvas-sidebar-width: 232px;
   --canvas-sidebar-bg: var(--surface-base);
   --canvas-sidebar-header-bg: var(--surface-raised);
   --canvas-sidebar-border: var(--border-subtle);
-  --canvas-sidebar-row-selected: rgba(217, 154, 69, 0.16);
-  --canvas-terminal-icon: #d99a45;
-  --canvas-file-icon: #7fc681;
-  --canvas-note-icon: #8aa0b8;
-  --canvas-node-icon-fg: #101319;
+  --canvas-sidebar-row-selected: rgba(245, 158, 11, 0.14);
+  --canvas-terminal-icon: #f59e0b;
+  --canvas-file-icon: #4ade80;
+  --canvas-note-icon: #60a5fa;
+  --canvas-node-icon-fg: #080b10;
   --statusbar-bg: var(--bg-dark);
   --statusbar-fg: var(--fg-dark);
   --statusbar-height: 24px;
 
   /* Explorer design tokens */
-  --explorer-bg: #202528;
-  --explorer-titlebar-bg: #242a2d;
-  --explorer-rootbar-bg: #202528;
-  --explorer-footer-bg: #22272a;
-  --explorer-border: #343b40;
+  --explorer-bg: #101420;
+  --explorer-titlebar-bg: #161b28;
+  --explorer-rootbar-bg: #101420;
+  --explorer-footer-bg: #101420;
+  --explorer-border: rgba(100, 130, 200, 0.09);
   --explorer-fg: var(--text-primary);
   --explorer-title-fg: var(--text-primary);
   --explorer-root-fg: var(--text-primary);
   --explorer-muted: var(--text-secondary);
-  --explorer-hidden: #7b8491;
+  --explorer-hidden: #506070;
   --explorer-chevron: var(--text-secondary);
-  --explorer-row-hover: #30373b;
-  --explorer-row-selected: rgba(255, 255, 255, 0.06);
-  --explorer-root-row-bg: #30373b;
-  --explorer-input-bg: #171b1d;
+  --explorer-row-hover: #1c2434;
+  --explorer-row-selected: rgba(96, 165, 250, 0.08);
+  --explorer-root-row-bg: #1c2434;
+  --explorer-input-bg: #080b10;
   --explorer-input-border: var(--border-subtle);
   --explorer-input-fg: var(--text-primary);
   --explorer-menu-bg: var(--surface-raised);
   --explorer-menu-shadow: var(--shadow-menu);
-  --explorer-workspace: #d39a4a;
-  --explorer-workspace-tab: #edbc71;
-  --explorer-workspace-shade: #8b632e;
-  --explorer-folder: #8aa0b8;
-  --explorer-folder-tab: #aab8c7;
-  --explorer-folder-shade: #5c6e82;
-  --explorer-folder-open-bg: rgba(217, 154, 69, 0.12);
-  --explorer-file: #b8c4d6;
-  --explorer-file-js: #f2d351;
-  --explorer-file-md: #72a7ff;
-  --explorer-file-data: #d99a52;
-  --explorer-file-code: #65c98d;
-  --explorer-file-style: #c586ff;
-  --explorer-file-markup: #ef766f;
-  --explorer-icon-label: #111419;
+  --explorer-workspace: #f59e0b;
+  --explorer-workspace-tab: #fcd34d;
+  --explorer-workspace-shade: #92400e;
+  --explorer-folder: #7ea8c8;
+  --explorer-folder-tab: #a8c4d8;
+  --explorer-folder-shade: #3d5a72;
+  --explorer-folder-open-bg: rgba(245, 158, 11, 0.10);
+  --explorer-file: #b8c8e0;
+  --explorer-file-js: #fde047;
+  --explorer-file-md: #60a5fa;
+  --explorer-file-data: #fb923c;
+  --explorer-file-code: #4ade80;
+  --explorer-file-style: #c084fc;
+  --explorer-file-markup: #f87171;
+  --explorer-icon-label: #080b10;
   --explorer-titlebar-height: 32px;
   --explorer-footer-height: 30px;
   --explorer-input-height: 24px;
@@ -109,80 +109,75 @@
   --font-weight-ui-label: var(--font-weight-ui);
   --font-weight-ui-status: var(--font-weight-ui);
 
-  /* Terminal Cockpit contract tokens — Warp-style: depth from fills, not borders.
-     Borders are near-invisible hairlines; grouping/selection use background
-     steps + a small accent edge instead of outlines. */
-  --surface-floor: #15181a;    /* app background */
-  --surface-base: #1b1f22;     /* rails / sidebars (recede) */
-  --surface-raised: #20252a;   /* raised panels / menus */
-  --surface-sunken: #181b1d;
-  --surface-wash: #20252a;
-  --surface-hover: #2a3036;
-  --surface-selected: #313841; /* selected row fill (no border) */
-  --border-subtle: rgba(255, 255, 255, 0.05);
-  --border-strong: rgba(255, 255, 255, 0.10);
-  --border-focus: rgba(255, 255, 255, 0.16);
-  --text-primary: #e6e9ec;
-  --text-secondary: #9aa3ab;
-  /* Dimmer meta (counts, separators, timestamps). Was used in ~19 places but never
-     defined, so it resolved to inherited color — unpredictable + failing contrast.
-     Kept legible (~4.6:1 on the dark surfaces) for small meta labels. */
-  --text-tertiary: #79818a;
-  /* Accent kept neutral/near-white (Warp barely uses a colored accent). Retint
-     this single token to color the active edge / live dot / cursor. */
-  --accent-live: #c4ccd2;
-  --accent-info: #7dbac3;
-  --accent-success: #7fc681;
-  --accent-warning: #d4a44f;
-  --accent-danger: #ef6f72;
+  /* Surface depth system — depth from fills, not borders. */
+  --surface-floor: #0b0e14;
+  --surface-base: #101420;
+  --surface-raised: #161b28;
+  --surface-sunken: #080b10;
+  --surface-wash: #161b28;
+  --surface-hover: #1c2434;
+  --surface-selected: #1e2d48;
+  --border-subtle: rgba(100, 130, 200, 0.09);
+  --border-strong: rgba(100, 130, 200, 0.15);
+  --border-focus: rgba(120, 160, 240, 0.28);
+  --text-primary: #edf2f7;
+  --text-secondary: #8896a8;
+  --text-tertiary: #60707e;
+  /* Blue accent — replaces the former near-white neutral. Drives cursor, active
+     edge, live dot, focus rings, and chip highlights. */
+  --accent-live: #60a5fa;
+  --accent-info: #38bdf8;
+  --accent-success: #4ade80;
+  --accent-warning: #fbbf24;
+  --accent-danger: #f87171;
   --dock-width: 276px;
   --operations-sidebar-width: 276px;
   --sidebar-expanded-width: 562px;
   --dock-collapsed-width: 40px;
-  --commandbar-height: 44px;
+  --commandbar-height: 36px;
   --commandbar-search-width: min(680px, calc(100vw - 620px));
   --commandbar-search-min-width: 300px;
-  --pane-chrome-height: 42px;
+  --pane-chrome-height: 28px;
   --radius-xs: 6px;
   --radius-sm: 9px;
   --radius-md: 12px;
   --motion-fast: 120ms cubic-bezier(0.22, 1, 0.36, 1);
   --motion-med: 180ms cubic-bezier(0.22, 1, 0.36, 1);
-  --shadow-card: 0 18px 42px rgba(0, 0, 0, 0.22);
-  --shadow-command: 0 0 0 1px rgba(255, 255, 255, 0.07), 0 10px 28px rgba(0, 0, 0, 0.28);
-  --shadow-menu: 0 20px 54px rgba(0, 0, 0, 0.45);
-  --shadow-active-pane: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+  --shadow-card: 0 18px 42px rgba(0, 0, 0, 0.42);
+  --shadow-command: 0 0 0 1px rgba(100, 130, 200, 0.12), 0 10px 28px rgba(0, 0, 0, 0.50);
+  --shadow-menu: 0 20px 54px rgba(0, 0, 0, 0.65);
+  --shadow-active-pane: inset 0 0 0 1px rgba(100, 130, 200, 0.08);
   --shadow-selected-row: none;
   --command-chip-active-bg: color-mix(in srgb, var(--accent-live) 13%, transparent);
   --command-chip-active-border: color-mix(in srgb, var(--accent-live) 52%, var(--border-subtle));
-  --terminal-scroll-track: #1b2022;
-  --terminal-scroll-thumb: #3c454a;
-  --terminal-scroll-thumb-hover: #4c575d;
-  --terminal-block-rail-bg: #1a1f21;
-  --terminal-block-rail-border: #333c41;
-  --terminal-block-spine: #465158;
-  --terminal-block-marker: #657284;
+  --terminal-scroll-track: #0b0e14;
+  --terminal-scroll-thumb: #1e2d48;
+  --terminal-scroll-thumb-hover: #263850;
+  --terminal-block-rail-bg: #0d1018;
+  --terminal-block-rail-border: #1e2a38;
+  --terminal-block-spine: #2e4058;
+  --terminal-block-marker: #4a6070;
   --terminal-block-marker-active: var(--accent-live);
   --terminal-block-context: var(--accent-info);
-  --terminal-bg: #1d2022;
+  --terminal-bg: #0c1018;
   --terminal-fg: var(--text-primary);
   --terminal-cursor: var(--accent-live);
-  --terminal-selection-bg: #2a3a50;
-  --terminal-selection-fg: #f1f5f9;
-  --terminal-ansi-black: #0b0e12;
-  --terminal-ansi-red: var(--accent-danger);
-  --terminal-ansi-green: var(--accent-success);
-  --terminal-ansi-yellow: var(--accent-warning);
-  --terminal-ansi-blue: #6ea8fe;
-  --terminal-ansi-magenta: #ad8fcb;
-  --terminal-ansi-cyan: var(--accent-info);
-  --terminal-ansi-white: var(--text-primary);
-  --terminal-ansi-bright-black: #667383;
-  --terminal-ansi-bright-red: #f48b8d;
-  --terminal-ansi-bright-green: #95d996;
-  --terminal-ansi-bright-yellow: #e0b969;
-  --terminal-ansi-bright-blue: #8bb9ff;
-  --terminal-ansi-bright-magenta: #bea4d8;
-  --terminal-ansi-bright-cyan: #91cbd2;
-  --terminal-ansi-bright-white: #f1f5f9;
+  --terminal-selection-bg: #1e3a5f;
+  --terminal-selection-fg: #f7fafc;
+  --terminal-ansi-black: #0d1117;
+  --terminal-ansi-red: #f87171;
+  --terminal-ansi-green: #4ade80;
+  --terminal-ansi-yellow: #fbbf24;
+  --terminal-ansi-blue: #60a5fa;
+  --terminal-ansi-magenta: #c084fc;
+  --terminal-ansi-cyan: #38bdf8;
+  --terminal-ansi-white: #edf2f7;
+  --terminal-ansi-bright-black: #4a5568;
+  --terminal-ansi-bright-red: #fc8181;
+  --terminal-ansi-bright-green: #68d391;
+  --terminal-ansi-bright-yellow: #f6e05e;
+  --terminal-ansi-bright-blue: #90cdf4;
+  --terminal-ansi-bright-magenta: #d6bcfa;
+  --terminal-ansi-bright-cyan: #76e4f7;
+  --terminal-ansi-bright-white: #f7fafc;
 }
