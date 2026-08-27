@@ -91,7 +91,7 @@ set_clipboard() {
 
 long_agent_payload() {
   python3 - <<'PYEOF'
-for i in range(1, 80):
+for i in range(1, 140):
     print(f"AGENT_TUI_LONG_PASTE_{i:03d} " + ("x" * 70))
 PYEOF
 }
@@ -161,6 +161,21 @@ BRACKETED_BETA"
   sleep 4.8
   shot "$wid" "03-disabled-paste.png"
 
+  # Exercise the fallback for an agent prompt that shows Goal/Now/Context
+  # chrome before its paste placeholder is painted and has not enabled mode.
+  xdotool key --clearmodifiers ctrl+c
+  sleep 0.4
+  xdotool type --clearmodifiers --delay 10 "printf 'Goal: so commit and push safely\\nNow: Idle -- no work is running\\nContext 69%% used'; sleep 4"
+  xdotool key --clearmodifiers Return
+  sleep 0.6
+  echo "=== SCREENSHOT-STYLE-AGENT-PASTE ===" >> "$TRACE_FILE"
+  set_clipboard "$(long_agent_payload)"
+  xdotool key --clearmodifiers ctrl+shift+v
+  sleep 1.2
+  echo "=== POST-SCREENSHOT-AGENT-PASTE ===" >> "$TRACE_FILE"
+  xdotool key --clearmodifiers x
+  sleep 0.6
+
   echo "driver: done" >>"$DRIVER_LOG"
 }
 
@@ -218,6 +233,8 @@ vim = writes(segment("BRACKETED-PASTE-VIM"))
 disabled = writes(segment("BRACKETED-PASTE-DISABLED"))
 post_vim = writes(segment("POST-VIM-PASTE-PLAIN-KEY"))
 post_disabled = writes(segment("POST-DISABLED-PASTE-PLAIN-KEY"))
+agent = writes(segment("SCREENSHOT-STYLE-AGENT-PASTE"))
+post_agent = writes(segment("POST-SCREENSHOT-AGENT-PASTE"))
 
 ok = True
 if r"\u{1b}[200~" not in vim or r"\u{1b}[201~" not in vim:
@@ -256,6 +273,24 @@ if "PLAIN_ALPHA" in post_disabled or "PLAIN_BETA" in post_disabled:
 else:
     print("BRACKETED_PASTE_NOT_REPLAYED_AFTER_DISABLED_KEY")
 
+if r"\u{1b}[200~" not in agent or r"\u{1b}[201~" not in agent:
+    print("BRACKETED_PASTE_MISSING_MARKERS_IN_SCREENSHOT_AGENT")
+    ok = False
+else:
+    print("BRACKETED_PASTE_MARKERS_IN_SCREENSHOT_AGENT")
+
+if "AGENT_TUI_LONG_PASTE_001" not in agent or "AGENT_TUI_LONG_PASTE_139" not in agent:
+    print("BRACKETED_PASTE_SCREENSHOT_AGENT_PAYLOAD_MISSING")
+    ok = False
+else:
+    print("BRACKETED_PASTE_SCREENSHOT_AGENT_PAYLOAD")
+
+if "AGENT_TUI_LONG_PASTE_001" in post_agent or "AGENT_TUI_LONG_PASTE_139" in post_agent:
+    print("BRACKETED_PASTE_REPLAYED_AFTER_SCREENSHOT_AGENT_KEY")
+    ok = False
+else:
+    print("BRACKETED_PASTE_NOT_REPLAYED_AFTER_SCREENSHOT_AGENT_KEY")
+
 print("BRACKETED_PASTE_OK" if ok else "BRACKETED_PASTE_FAILED")
 if not ok:
     print("=== vim writes ===")
@@ -266,6 +301,10 @@ if not ok:
     print(post_vim)
     print("=== post disabled key writes ===")
     print(post_disabled)
+    print("=== screenshot-style agent writes ===")
+    print(agent)
+    print("=== post screenshot-style agent key writes ===")
+    print(post_agent)
 sys.exit(0 if ok else 1)
 PYEOF
 VERIFY_STATUS=$?

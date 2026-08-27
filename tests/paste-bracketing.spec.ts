@@ -17,6 +17,15 @@ test("multi-line paste into a visible agent prompt is bracketed", () => {
   expect(shouldBracketAgentPromptPaste("line one\nline two", AGENT_SCREEN)).toBe(true);
 });
 
+test("large paste into the screenshot-style Codex prompt is bracketed", () => {
+  const screenshotStyleAgentScreen = [
+    "Goal: so commit and push safely",
+    "Now: Idle — no work is running",
+    "weekly 86% left · Context 69% used",
+  ].join("\n");
+  expect(shouldBracketAgentPromptPaste("x".repeat(12_656), screenshotStyleAgentScreen)).toBe(true);
+});
+
 test("a long single-line paste into an agent prompt is bracketed", () => {
   expect(shouldBracketAgentPromptPaste("x".repeat(200), AGENT_SCREEN)).toBe(true);
 });

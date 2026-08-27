@@ -212,7 +212,14 @@ export function encodePaste(text: string, bracketed: boolean): string {
  */
 export function shouldBracketAgentPromptPaste(text: string, visibleText: string): boolean {
   if (!/[\r\n]/.test(text) && text.length < 120) return false;
-  return /\b(?:gpt-\d|Claude|Opus|context left|tab to queue message|esc to interrupt|Pasted (?:text|Content))\b/i.test(
-    visibleText,
-  );
+  // Agent composers do not all expose the same model/status line. Codex's
+  // screen can show only the stable Goal/Now/Context chrome before the paste
+  // placeholder is painted, so waiting for "Pasted Content" misses the exact
+  // large-paste freeze this guard protects against.
+  const hasAgentIdentity = /\b(?:gpt-\d|codex|claude|opus)\b/i.test(visibleText);
+  const hasAgentComposerChrome =
+    /\b(?:tab to queue message|esc to interrupt|context\s+(?:left|used)|pasted (?:text|content))\b/i.test(
+      visibleText,
+    ) || /(?:^|\n)\s*goal\s*:[^\n]*\n\s*now\s*:/i.test(visibleText);
+  return hasAgentIdentity || hasAgentComposerChrome;
 }
