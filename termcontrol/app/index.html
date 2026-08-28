@@ -415,7 +415,13 @@ function mountComposer(id) {
     if (r.error) return note(r.error, true);
     box.value = '';
     sync();
-    note('Sent');
+
+    if (r.delivered === false) {
+      // The write succeeded but the text never showed up in the terminal.
+      note('Sent, but it did not appear in the terminal. Check it on your computer.', true);
+      return;
+    }
+    note('Delivered');
     setTimeout(() => { const n = document.querySelector('.sendstate'); if (n) n.remove(); }, 1400);
   };
 

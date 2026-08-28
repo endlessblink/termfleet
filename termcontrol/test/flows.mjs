@@ -158,7 +158,7 @@ async function main() {
   });
 
   await check('sending gives immediate feedback', async () => {
-    await p.route('**/api/send', async (r) => { await wait(400); await r.fulfill({ status: 200, body: '{"ok":true}' }); });
+    await p.route('**/api/send', async (r) => { await wait(400); await r.fulfill({ status: 200, body: '{"ok":true,"delivered":true}' }); });
     await p.fill('.composer textarea', 'thanks, carry on');
     await p.click('.composer button');
     await p.waitForSelector('.sendstate', { timeout: 4000 });
@@ -167,7 +167,7 @@ async function main() {
   });
 
   await check('a sent message clears the box and confirms', async () => {
-    await p.waitForFunction(() => /sent/i.test(document.querySelector('.sendstate')?.textContent || ''), { timeout: 6000 });
+    await p.waitForFunction(() => /delivered/i.test(document.querySelector('.sendstate')?.textContent || ''), { timeout: 8000 });
     const left = await p.inputValue('.composer textarea');
     ok(left === '', `text stayed behind: "${left}"`);
     await p.unroute('**/api/send');
@@ -176,6 +176,20 @@ async function main() {
   await check('the confirmation does not linger forever', async () => {
     await wait(2200);
     ok(!(await p.$('.sendstate')), 'the "Sent" note never went away');
+  });
+
+  await check('a message that never reached the terminal says so', async () => {
+    await p.route('**/api/send', async (r) => r.fulfill({ status: 200, body: '{"ok":true,"delivered":false}' }));
+    await p.fill('.composer textarea', 'did this actually arrive');
+    await p.click('.composer button');
+    await p.waitForFunction(
+      () => /did not appear/i.test(document.querySelector('.sendstate')?.textContent || ''),
+      { timeout: 8000 },
+    );
+    const msg = await p.textContent('.sendstate');
+    ok(/computer/i.test(msg), `unclear warning: ${msg}`);
+    await p.unroute('**/api/send');
+    return 'warned clearly';
   });
 
   await check('interrupting a busy agent needs a deliberate second tap', async () => {

@@ -1,4 +1,24 @@
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { requestDaemon, defaultDaemonSocket } from '../../scripts/termfleetctl.mjs';
+
+/**
+ * Every keystroke this bridge puts into a live terminal is recorded. Without
+ * it there is no way to answer "did my message actually arrive?" — which is
+ * exactly the question a remote control has to be able to answer.
+ */
+const AUDIT = path.join(
+  process.env.TC_CONFIG_DIR || path.join(os.homedir(), '.config', 'termcontrol'),
+  'sent.log',
+);
+
+function audit(entry) {
+  try {
+    fs.mkdirSync(path.dirname(AUDIT), { recursive: true, mode: 0o700 });
+    fs.appendFileSync(AUDIT, JSON.stringify({ at: new Date().toISOString(), ...entry }) + '\n', { mode: 0o600 });
+  } catch { /* never let logging break a send */ }
+}
 
 /** The daemon wraps every reply as { ok, value } — unwrap or throw. */
 async function ask(request) {
@@ -37,16 +57,49 @@ export async function sendToPane(pane, text, { force = false } = {}) {
 
   inFlight.add(pane.id);
   try {
-    // Text first, then Enter as its own write: some TUIs drop a trailing
-    // newline that arrives in the same chunk as a long paste.
+    // Text first, then Enter as its own write: agent TUIs redraw between
+    // keystrokes, and a newline arriving inside the same chunk as the text is
+    // routinely swallowed. The pause gives the prompt time to settle.
     await ask({ type: 'writeSession', id: pane.id, data: body });
+    await new Promise((r) => setTimeout(r, 120));
     await ask({ type: 'writeSession', id: pane.id, data: '\r' });
-    return { ok: true, sentAt: Date.now() };
+
+    // Don't claim success just because the write returned. Look at what the
+    // terminal actually shows and report honestly if the text never appeared.
+    const delivered = await appearedInTerminal(pane.id, body);
+    audit({
+      pane: pane.id, project: pane.project, provider: pane.provider,
+      turn: pane.turn, bytes: body.length, ok: true, delivered,
+    });
+    return { ok: true, delivered, sentAt: Date.now() };
   } catch (error) {
+    audit({ pane: pane.id, project: pane.project, bytes: body.length, ok: false, error: String(error.message || error) });
     return { error: String(error.message || error) };
   } finally {
     inFlight.delete(pane.id);
   }
+}
+
+/**
+ * Read the tail of a session's output and say whether the text we just typed
+ * shows up in it. Terminals echo what you type, so absence is a real signal
+ * that the keystrokes went nowhere — a wrong pane, a frozen TUI, a dead shell.
+ */
+async function appearedInTerminal(id, body) {
+  const needle = body.trim().slice(0, 40);
+  if (!needle) return false;
+  for (const delay of [250, 500, 900]) {
+    await new Promise((r) => setTimeout(r, delay));
+    try {
+      const snap = await ask({ type: 'snapshotSession', id });
+      const seen = String(snap.data || '');
+      if (seen.includes(needle)) return true;
+      // A wrapped prompt splits the line; fall back to a distinctive fragment.
+      const words = needle.split(/\s+/).filter((w) => w.length > 3);
+      if (words.length && words.every((w) => seen.includes(w))) return true;
+    } catch { /* try again */ }
+  }
+  return false;
 }
 
 /** Answer a permission prompt using the provider's own keystroke. */
@@ -57,8 +110,10 @@ export async function answerPrompt(pane, choice, approval) {
   if (!live.has(pane.id)) return { error: 'That terminal is not running any more.' };
   try {
     await ask({ type: 'writeSession', id: pane.id, data: key });
+    audit({ pane: pane.id, project: pane.project, choice, ok: true });
     return { ok: true, sentAt: Date.now() };
   } catch (error) {
+    audit({ pane: pane.id, project: pane.project, choice, ok: false, error: String(error.message || error) });
     return { error: String(error.message || error) };
   }
 }

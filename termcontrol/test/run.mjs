@@ -310,6 +310,40 @@ async function main() {
     return 'echoed back';
   });
 
+  await check('a send reports whether the text really landed', async () => {
+    const m = await import(path.join(here, '..', '..', 'scripts', 'termfleetctl.mjs'));
+    const sock = m.defaultDaemonSocket();
+    const ask = async (r) => { const x = await m.requestDaemon(r, sock); if (!x.ok) throw new Error('daemon refused'); return x.value; };
+    const { sendToPane } = await import(path.join(here, '..', 'bridge', 'send.mjs'));
+
+    const live = 'termcontrol-live-' + Date.now();
+    await ask({ type: 'ensureSession', id: live, cwd: '/tmp', command: '/bin/bash', cols: 80, rows: 24 });
+    await wait(800);
+    const good = await sendToPane({ id: live, turn: 'idle' }, 'echo delivery-check');
+    await ask({ type: 'killSession', id: live, reviewed: true }).catch(() => {});
+    ok(good.delivered === true, 'a working terminal should confirm delivery');
+
+    const dead = 'termcontrol-dead-' + Date.now();
+    await ask({ type: 'ensureSession', id: dead, cwd: '/tmp', command: '/bin/bash -lc "exit 0"', cols: 80, rows: 24 });
+    await wait(1200);
+    const bad = await sendToPane({ id: dead, turn: 'idle' }, 'this cannot land anywhere');
+    await ask({ type: 'killSession', id: dead, reviewed: true }).catch(() => {});
+    ok(bad.delivered === false, 'a dead terminal must not be reported as delivered');
+    return 'confirms both ways';
+  });
+
+  await check('every send is written to the audit trail', async () => {
+    // send.mjs is imported into this process, so it writes to the real
+    // location rather than the sandbox the bridge child was given.
+    const log = path.join(process.env.TC_CONFIG_DIR || path.join(os.homedir(), '.config', 'termcontrol'), 'sent.log');
+    ok(fs.existsSync(log), `no audit trail at ${log}`);
+    const lines = fs.readFileSync(log, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l));
+    ok(lines.length > 0, 'audit trail is empty');
+    const last = lines[lines.length - 1];
+    ok(last.at && 'delivered' in last, `entry is missing fields: ${JSON.stringify(last)}`);
+    return `${lines.length} entries`;
+  });
+
   // ------------------------------------------------------------- hygiene ---
   group('Hygiene');
 
