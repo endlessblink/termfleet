@@ -9,6 +9,8 @@ import { fileURLToPath } from 'node:url';
 import { listPanes } from './inventory.mjs';
 import { readFeed } from './feed.mjs';
 import { handleAuthRoutes, currentUser, requireAuth } from './auth.mjs';
+import { sendToPane, answerPrompt, liveSessionIds } from './send.mjs';
+import { adapterFor } from './feed.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const appDir = path.join(here, '..', 'app');
@@ -58,6 +60,33 @@ const server = http.createServer(async (req, res) => {
     const pane = listPanes({ maxAgeMs: MAX_AGE }).find((p) => p.id === id);
     if (!pane) return json(res, 404, { error: 'unknown pane' });
     return json(res, 200, { pane, ...readFeed(pane, { limit }) });
+  }
+
+  if (url.pathname === '/api/send' && req.method === 'POST') {
+    let raw = '';
+    req.on('data', (c) => { raw += c; if (raw.length > 32768) req.destroy(); });
+    req.on('end', async () => {
+      let payload = {};
+      try { payload = JSON.parse(raw || '{}'); } catch { return json(res, 400, { error: 'bad request' }); }
+      const pane = listPanes({ maxAgeMs: MAX_AGE }).find((p) => p.id === payload.pane);
+      if (!pane) return json(res, 404, { error: 'unknown pane' });
+
+      if (payload.choice) {
+        const adapter = adapterFor(pane);
+        const result = await answerPrompt(pane, payload.choice, adapter?.approval);
+        return json(res, result.error ? 400 : 200, result);
+      }
+
+      const result = await sendToPane(pane, payload.text, { force: Boolean(payload.force) });
+      return json(res, result.error && !result.busy ? 400 : 200, result);
+    });
+    return;
+  }
+
+  if (url.pathname === '/api/live') {
+    return liveSessionIds()
+      .then((ids) => json(res, 200, { live: [...ids] }))
+      .catch((e) => json(res, 200, { live: [], error: String(e.message || e) }));
   }
 
   if (url.pathname === '/' || url.pathname === '/index.html') return serveStatic(res, 'index.html');

@@ -78,6 +78,46 @@
     border-left-color:var(--working);color:var(--text);
   }
   .empty{color:var(--dim);text-align:center;padding:48px 24px;font-size:14px}
+
+  .composer{
+    position:fixed;left:0;right:0;bottom:0;z-index:6;
+    background:rgba(20,20,19,.96);backdrop-filter:blur(12px);
+    border-top:1px solid var(--line);
+    padding:10px 12px calc(10px + env(safe-area-inset-bottom));
+    display:flex;gap:8px;align-items:flex-end;
+  }
+  .composer textarea{
+    flex:1;resize:none;min-height:44px;max-height:140px;
+    padding:11px 13px;border-radius:12px;border:1px solid var(--line);
+    background:var(--surface);color:var(--text);font:16px/1.4 var(--ui);
+  }
+  .composer textarea:focus{outline:none;border-color:var(--accent)}
+  .composer button{
+    flex:none;height:44px;min-width:64px;border:0;border-radius:12px;
+    background:var(--accent);color:#191512;font:600 15px var(--ui);cursor:pointer;
+  }
+  .composer button:disabled{opacity:.45}
+  .composer.dead{justify-content:center;color:var(--dim);font-size:13.5px;padding-top:14px}
+  .sendstate{
+    position:fixed;left:12px;right:12px;bottom:calc(66px + env(safe-area-inset-bottom));z-index:7;
+    background:var(--surface-2);border:1px solid var(--line);border-radius:12px;
+    padding:11px 13px;font-size:13.5px;color:var(--text);
+    box-shadow:0 8px 24px rgba(0,0,0,.4);
+  }
+  .sendstate.err{border-color:#5a3a26;background:#241d16;color:#e8b58c}
+  .sendstate .acts{display:flex;gap:8px;margin-top:10px}
+  .sendstate .acts button{
+    flex:1;padding:9px;border-radius:9px;border:1px solid var(--line);
+    background:var(--surface);color:var(--text);font:600 14px var(--ui);
+  }
+  .sendstate .acts button.go{background:var(--accent);color:#191512;border-color:transparent}
+  .prompt{
+    display:flex;gap:8px;padding:10px 12px calc(10px + env(safe-area-inset-bottom));
+  }
+  .prompt button{flex:1;padding:13px 8px;border-radius:12px;border:1px solid var(--line);
+    background:var(--surface);color:var(--text);font:600 14px var(--ui)}
+  .prompt button.yes{background:var(--accent);color:#191512;border-color:transparent}
+  body.chat{padding-bottom:96px}
   .spin{color:var(--dim);text-align:center;padding:40px;font-size:14px}
 </style>
 </head>
@@ -109,6 +149,9 @@ const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt
 
 async function fleet() {
   clearInterval(timer);
+  document.body.classList.remove('chat');
+  document.querySelector('.composer')?.remove();
+  document.querySelector('.sendstate')?.remove();
   nav.innerHTML = '';
   title.textContent = 'TermControl';
   const r = await fetch('/api/panes').then((x) => x.json());
@@ -177,6 +220,74 @@ async function chat(id) {
 
   await render();
   timer = setInterval(render, 8000);
+  mountComposer(id);
+}
+
+function mountComposer(id) {
+  document.body.classList.add('chat');
+  const old = document.querySelector('.composer');
+  if (old) old.remove();
+
+  const bar = document.createElement('div');
+  bar.className = 'composer';
+  bar.innerHTML = `
+    <textarea rows="1" placeholder="Reply to this agent…" enterkeyhint="send"></textarea>
+    <button type="button">Send</button>`;
+  document.body.appendChild(bar);
+
+  const box = bar.querySelector('textarea');
+  const btn = bar.querySelector('button');
+
+  box.addEventListener('input', () => {
+    box.style.height = 'auto';
+    box.style.height = Math.min(box.scrollHeight, 140) + 'px';
+  });
+
+  const send = async (force = false) => {
+    const text = box.value.trim();
+    if (!text) return;
+    btn.disabled = true;
+    note('Sending…');
+    const r = await fetch('/api/send', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ pane: id, text, force }),
+    }).then((x) => x.json()).catch(() => ({ error: 'Could not reach your machine.' }));
+    btn.disabled = false;
+
+    if (r.busy) return confirmBusy(r.message, () => send(true));
+    if (r.error) return note(r.error, true);
+    box.value = '';
+    box.style.height = 'auto';
+    note('Sent');
+    setTimeout(() => { const n = document.querySelector('.sendstate'); if (n) n.remove(); }, 1400);
+  };
+
+  btn.onclick = () => send(false);
+  box.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); send(false); }
+  });
+}
+
+function note(text, isError = false) {
+  const old = document.querySelector('.sendstate');
+  if (old) old.remove();
+  const el = document.createElement('div');
+  el.className = 'sendstate' + (isError ? ' err' : '');
+  el.textContent = text;
+  document.body.appendChild(el);
+  if (!isError) return el;
+  setTimeout(() => el.remove(), 5000);
+  return el;
+}
+
+function confirmBusy(message, go) {
+  const el = note(message);
+  el.innerHTML = `${message}<div class="acts">
+    <button type="button" data-no>Wait</button>
+    <button type="button" class="go" data-yes>Send now</button></div>`;
+  el.querySelector('[data-no]').onclick = () => el.remove();
+  el.querySelector('[data-yes]').onclick = () => { el.remove(); go(); };
 }
 
 fleet();
