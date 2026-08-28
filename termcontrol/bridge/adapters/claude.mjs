@@ -1,5 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { isNoise, clean } from '../noise.mjs';
+import { tailLines } from '../tail.mjs';
 import { PATHS, claudeSlug } from '../paths.mjs';
 
 export const provider = 'claude';
@@ -32,7 +34,7 @@ export function readFeed(pane, { limit = 60 } = {}) {
   const file = transcriptPath(pane);
   if (!file) return { events: [], pending: [] };
 
-  const lines = fs.readFileSync(file, 'utf8').split('\n').filter(Boolean);
+  const lines = tailLines(file);
   const collected = [];
   const resultsSeen = new Set();
   const unresolved = new Map();
@@ -47,8 +49,9 @@ export function readFeed(pane, { limit = 60 } = {}) {
 
     if (msg.role === 'user') {
       for (const b of blocks) if (b.type === 'tool_result' && b.tool_use_id) resultsSeen.add(b.tool_use_id);
-      const text = typeof msg.content === 'string' ? msg.content.trim() : textOf(blocks);
-      if (text && !text.startsWith('<')) collected.push({ kind: 'user', at, text });
+      const raw = typeof msg.content === 'string' ? msg.content.trim() : textOf(blocks);
+      const text = clean(raw);
+      if (text && !isNoise(raw)) collected.push({ kind: 'user', at, text });
       continue;
     }
 

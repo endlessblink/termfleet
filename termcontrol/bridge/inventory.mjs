@@ -53,7 +53,38 @@ function turnOf(rec) {
   return 'idle';
 }
 
+/**
+ * The desktop cockpit gives every tab an emoji, colour and title. Terminal ids
+ * in the workspace file are exactly the pane ids we key on, so the phone can
+ * show the same identity the operator already recognises.
+ */
+function tabDecorations() {
+  const map = new Map();
+  const ws = readJson(PATHS.workspace);
+
+  // The emoji and human project name live on the group (the project lane);
+  // tabs themselves all carry the same placeholder square.
+  const groups = new Map();
+  for (const g of ws?.groups || []) {
+    if (g?.id) groups.set(g.id, { emoji: g.emoji || null, name: g.name || g.title || null, color: g.color || null });
+  }
+
+  for (const tab of ws?.tabs || []) {
+    const g = groups.get(tab.groupId) || {};
+    for (const term of tab.terminals || []) {
+      if (!term?.id) continue;
+      map.set(term.id, {
+        emoji: g.emoji || null,
+        color: g.color || tab.color || null,
+        groupName: g.name || null,
+      });
+    }
+  }
+  return map;
+}
+
 export function listPanes({ maxAgeMs = null } = {}) {
+  const decor = tabDecorations();
   const now = Date.now();
   const panes = [];
   for (const rec of readPaneRecords()) {
@@ -63,12 +94,18 @@ export function listPanes({ maxAgeMs = null } = {}) {
     const updatedAt = rec.updatedAt || rec._mtime || 0;
     if (maxAgeMs != null && now - updatedAt > maxAgeMs) continue;
 
+    const id = rec.paneId || rec._file.replace(/^pane-|\.json$/g, '');
+    const look = decor.get(id) || {};
+
     panes.push({
-      id: rec.paneId || rec._file.replace(/^pane-|\.json$/g, ''),
+      id,
+      emoji: look.emoji || null,
+      color: look.color || null,
+      groupName: look.groupName || null,
       provider,
       sessionId: rec.sessionId,
       cwd: rec.cwd || null,
-      project: rec.cwd ? path.basename(rec.cwd) : 'unknown',
+      project: look.groupName || (rec.cwd ? path.basename(rec.cwd) : 'unknown'),
       turn: turnOf(rec),
       turnReason: rec.turnReason || null,
       task: taskLine(rec),

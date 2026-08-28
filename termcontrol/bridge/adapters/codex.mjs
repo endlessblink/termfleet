@@ -1,5 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { isNoise, clean } from '../noise.mjs';
+import { tailLines } from '../tail.mjs';
 import { PATHS } from '../paths.mjs';
 
 export const provider = 'codex';
@@ -51,7 +53,7 @@ export function readFeed(pane, { limit = 60 } = {}) {
   const file = transcriptPath(pane);
   if (!file) return { events: [], pending: [] };
 
-  const lines = fs.readFileSync(file, 'utf8').split('\n').filter(Boolean);
+  const lines = tailLines(file);
   const collected = [];
 
   for (let i = lines.length - 1; i >= 0 && collected.length < limit; i--) {
@@ -62,7 +64,9 @@ export function readFeed(pane, { limit = 60 } = {}) {
     const at = o.timestamp || null;
 
     if (kind === 'message' && payload.role) {
-      const text = textOf(payload.content);
+      const raw = textOf(payload.content);
+      if (!raw || isNoise(raw)) continue;
+      const text = clean(raw);
       if (!text) continue;
       collected.push({ kind: payload.role === 'user' ? 'user' : 'assistant', at, text });
       continue;

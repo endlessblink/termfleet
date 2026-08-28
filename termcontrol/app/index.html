@@ -15,7 +15,8 @@
     --ui:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-  html,body{margin:0;height:100%}
+  html{height:100%}
+  body{margin:0;min-height:100%}
   body{
     background:var(--bg);color:var(--text);font-family:var(--ui);
     font-size:15px;line-height:1.5;overscroll-behavior-y:none;
@@ -43,6 +44,8 @@
   .pane:active{background:var(--surface-2)}
   .pane.waiting{border-color:#5a4526;background:linear-gradient(180deg,#241d13,#1c1c1a)}
   .row1{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+  .emoji{font-size:17px;line-height:1;flex:none}
+  .titleEmoji{font-size:15px;margin-right:6px}
   .dot{width:7px;height:7px;border-radius:50%;flex:none}
   .dot.waiting{background:var(--waiting);box-shadow:0 0 0 3px rgba(224,164,88,.16)}
   .dot.working{background:var(--working)}
@@ -81,6 +84,7 @@
 
   .composer{
     position:fixed;left:0;right:0;bottom:0;z-index:6;
+    padding-bottom:calc(10px + env(safe-area-inset-bottom));
     background:rgba(20,20,19,.96);backdrop-filter:blur(12px);
     border-top:1px solid var(--line);
     padding:10px 12px calc(10px + env(safe-area-inset-bottom));
@@ -117,7 +121,7 @@
   .prompt button{flex:1;padding:13px 8px;border-radius:12px;border:1px solid var(--line);
     background:var(--surface);color:var(--text);font:600 14px var(--ui)}
   .prompt button.yes{background:var(--accent);color:#191512;border-color:transparent}
-  body.chat{padding-bottom:96px}
+  body.chat main{padding-bottom:var(--composer-space,110px)}
   .spin{color:var(--dim);text-align:center;padding:40px;font-size:14px}
 </style>
 </head>
@@ -154,7 +158,16 @@ async function fleet() {
   document.querySelector('.sendstate')?.remove();
   nav.innerHTML = '';
   title.textContent = 'TermControl';
-  const r = await fetch('/api/panes').then((x) => x.json());
+  let r;
+  try {
+    const resp = await fetch('/api/panes', { signal: AbortSignal.timeout(12000) });
+    if (!resp.ok) throw new Error(resp.status === 401 ? 'Signed out — reload to sign in.' : 'Your machine did not answer.');
+    r = await resp.json();
+  } catch (e) {
+    main.innerHTML = `<div class="empty">${esc(e.name === 'TimeoutError' ? 'Your machine is taking too long to answer.' : e.message)}<br><br>Pull down to try again.</div>`;
+    sub.textContent = 'not connected';
+    return;
+  }
   const panes = r.panes;
   const waiting = panes.filter((p) => p.turn === 'waiting');
   sub.textContent = waiting.length
@@ -173,15 +186,26 @@ async function fleet() {
     group('Idle', panes.filter((p) => p.turn === 'idle'));
 
   main.querySelectorAll('.pane').forEach((el) => {
-    el.onclick = () => chat(el.dataset.id);
+    el.onclick = () => {
+      history.pushState({ pane: el.dataset.id }, '', '#' + el.dataset.id);
+      chat(el.dataset.id);
+    };
   });
-  timer = setInterval(() => { if (!location.hash) fleet(); }, 15000);
+  timer = setInterval(() => { if (!location.hash) window.addEventListener('popstate', (e) => {
+  const id = e.state?.pane;
+  if (id) chat(id); else fleet();
+});
+
+const opening = location.hash.slice(1);
+if (opening) { history.replaceState({ pane: opening }, '', location.hash); chat(opening); }
+else fleet(); }, 15000);
 }
 
 function card(p) {
   return `<button class="pane ${p.turn}" data-id="${esc(p.id)}">
     <div class="row1">
       <span class="dot ${p.turn}"></span>
+      ${p.emoji ? `<span class="emoji">${esc(p.emoji)}</span>` : ''}
       <span class="project">${esc(p.project)}</span>
       <span class="badge">${esc(p.provider)} · ${ago(p.updatedAt)}</span>
     </div>
@@ -193,18 +217,31 @@ function card(p) {
 async function chat(id) {
   clearInterval(timer);
   nav.innerHTML = '<button class="back">‹ Fleet</button>';
-  nav.querySelector('.back').onclick = fleet;
+  nav.querySelector('.back').onclick = () => history.back();
   main.innerHTML = '<div class="spin">loading…</div>';
 
+  let lastSignature = '';
+
   const render = async () => {
-    const d = await fetch(`/api/feed?pane=${encodeURIComponent(id)}&limit=60`).then((x) => x.json());
+    let d;
+    try {
+      const r = await fetch(`/api/feed?pane=${encodeURIComponent(id)}&limit=60`, {
+        signal: AbortSignal.timeout(12000),
+      });
+      if (!r.ok) throw new Error(r.status === 401 ? 'Signed out — reload to sign in.' : 'Your machine did not answer.');
+      d = await r.json();
+    } catch (e) {
+      if (lastSignature) return;                       // keep what is on screen
+      main.innerHTML = `<div class="empty">${esc(e.name === 'TimeoutError' ? 'Your machine is taking too long to answer.' : e.message)}<br><br>Pull down to try again.</div>`;
+      return;
+    }
     if (d.error) { main.innerHTML = `<div class="empty">${esc(d.error)}</div>`; return; }
-    title.textContent = d.pane.project;
+    title.innerHTML = (d.pane.emoji ? `<span class="titleEmoji">${esc(d.pane.emoji)}</span>` : '') + esc(d.pane.project);
     sub.textContent = `${d.pane.provider} · ${d.pane.turn}${d.pane.task ? ' · ' + d.pane.task : ''}`;
 
     if (!d.events.length) { main.innerHTML = '<div class="empty">Nothing recorded for this terminal yet.</div>'; return; }
 
-    main.innerHTML = d.events.map((e) => {
+    const html = d.events.map((e) => {
       if (e.kind === 'tool') {
         return `<div class="tool"><b>${esc(e.name)}</b>${e.summary ? ' · ' + esc(e.summary) : ''}</div>`;
       }
@@ -215,7 +252,15 @@ async function chat(id) {
     }).join('') + (d.pending.length
       ? `<div class="tool pending"><b>running</b> · ${esc(d.pending.join(', '))}</div>`
       : '');
-    window.scrollTo(0, document.body.scrollHeight);
+
+    // Re-rendering identical content would throw away the reader's position.
+    if (html === lastSignature) return;
+    const first = lastSignature === '';
+    const nearBottom =
+      window.innerHeight + window.scrollY >= document.body.scrollHeight - 140;
+    lastSignature = html;
+    main.innerHTML = html;
+    if (first || nearBottom) window.scrollTo(0, document.body.scrollHeight);
   };
 
   await render();
@@ -263,6 +308,13 @@ function mountComposer(id) {
     setTimeout(() => { const n = document.querySelector('.sendstate'); if (n) n.remove(); }, 1400);
   };
 
+  const fit = () => {
+    document.documentElement.style.setProperty('--composer-space', (bar.offsetHeight + 24) + 'px');
+  };
+  fit();
+  new ResizeObserver(fit).observe(bar);
+  window.visualViewport?.addEventListener('resize', fit);
+
   btn.onclick = () => send(false);
   box.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); send(false); }
@@ -290,7 +342,14 @@ function confirmBusy(message, go) {
   el.querySelector('[data-yes]').onclick = () => { el.remove(); go(); };
 }
 
-fleet();
+window.addEventListener('popstate', (e) => {
+  const id = e.state?.pane;
+  if (id) chat(id); else fleet();
+});
+
+const opening = location.hash.slice(1);
+if (opening) { history.replaceState({ pane: opening }, '', location.hash); chat(opening); }
+else fleet();
 </script>
 </body>
 </html>
