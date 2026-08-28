@@ -8,6 +8,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listPanes } from './inventory.mjs';
 import { readFeed } from './feed.mjs';
+import { authRequired, isAuthed, handleLogin, requireAuth } from './auth.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const appDir = path.join(here, '..', 'app');
@@ -39,6 +40,12 @@ function serveStatic(res, name) {
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
 
+  if (handleLogin(req, res, url)) return;
+  if (!isAuthed(req)) {
+    if (url.pathname.startsWith('/api/')) return json(res, 401, { error: 'unauthorised' });
+    return requireAuth(res);
+  }
+
   if (url.pathname === '/api/panes') {
     const panes = listPanes({ maxAgeMs: MAX_AGE });
     return json(res, 200, { generatedAt: new Date().toISOString(), panes });
@@ -57,6 +64,11 @@ const server = http.createServer((req, res) => {
 
   return json(res, 404, { error: 'not found' });
 });
+
+if (HOST !== '127.0.0.1' && !authRequired) {
+  console.error('Refusing to listen on ' + HOST + ' without TC_TOKEN set — that would expose your terminals.');
+  process.exit(1);
+}
 
 server.listen(PORT, HOST, () => {
   console.log(`TermControl bridge on http://${HOST}:${PORT}`);
