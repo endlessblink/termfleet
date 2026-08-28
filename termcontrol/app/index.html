@@ -137,6 +137,9 @@
 
 <script type="module">
 const main = document.getElementById('main');
+// Every navigation takes a ticket; a response that arrives after you have
+// moved on is discarded instead of painting over the screen you are on.
+let view = 0;
 const title = document.getElementById('title');
 const sub = document.getElementById('sub');
 const nav = document.getElementById('nav');
@@ -152,6 +155,7 @@ const ago = (ms) => {
 const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
 
 async function fleet() {
+  const mine = ++view;
   clearInterval(timer);
   document.body.classList.remove('chat');
   document.querySelector('.composer')?.remove();
@@ -168,6 +172,7 @@ async function fleet() {
     sub.textContent = 'not connected';
     return;
   }
+  if (mine !== view) return;
   const panes = r.panes;
   const waiting = panes.filter((p) => p.turn === 'waiting');
   sub.textContent = r.daemon === false
@@ -224,6 +229,7 @@ function card(p) {
 }
 
 async function chat(id) {
+  const mine = ++view;
   clearInterval(timer);
   nav.innerHTML = '<button class="back">‹ Fleet</button>';
   nav.querySelector('.back').onclick = () => history.back();
@@ -244,6 +250,7 @@ async function chat(id) {
       main.innerHTML = `<div class="empty">${esc(e.name === 'TimeoutError' ? 'Your machine is taking too long to answer.' : e.message)}<br><br>Pull down to try again.</div>`;
       return;
     }
+    if (mine !== view) return;
     if (d.error) { main.innerHTML = `<div class="empty">${esc(d.error)}</div>`; return; }
     title.innerHTML = (d.pane.emoji ? `<span class="titleEmoji">${esc(d.pane.emoji)}</span>` : '') + esc(d.pane.project);
     sub.textContent = `${d.pane.provider} · ${d.pane.turn}${d.pane.task ? ' · ' + d.pane.task : ''}`;
@@ -273,8 +280,13 @@ async function chat(id) {
   };
 
   await render();
-  timer = setInterval(render, 8000);
   mountComposer(id);
+  // The composer reserves space after the first paint, so land on the newest
+  // message once the layout has actually settled.
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    if (mine === view) window.scrollTo(0, document.body.scrollHeight);
+  }));
+  timer = setInterval(render, 8000);
 }
 
 function mountComposer(id) {

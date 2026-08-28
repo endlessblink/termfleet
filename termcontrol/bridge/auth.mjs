@@ -112,6 +112,7 @@ function page(res, code, { mode, error, email }) {
  .err{background:#2a1d16;border:1px solid #5a3a26;color:#e8b58c;font-size:13.5px;
       padding:10px 12px;border-radius:10px;margin-bottom:16px}
  .hint{color:var(--muted);font-size:12.5px;text-align:center;margin-top:16px;line-height:1.45}
+ .rule{color:var(--muted);font-size:12.5px;margin:-8px 2px 16px}
 </style>
 <form method="post" action="${isSetup ? '/setup' : '/login'}">
   <div class="brand">
@@ -125,7 +126,8 @@ function page(res, code, { mode, error, email }) {
   <label for="password">Password</label>
   <input id="password" type="password" name="password"
          autocomplete="${isSetup ? 'new-password' : 'current-password'}" required
-         ${isSetup ? 'minlength="8" placeholder="at least 8 characters"' : ''}>
+         ${isSetup ? 'minlength="8"' : ''}>
+  ${isSetup ? '<div class="rule">Use at least 8 characters.</div>' : ''}
   <button type="submit">${isSetup ? 'Create and open' : 'Sign in'}</button>
   ${isSetup ? '<div class="hint">This is the only account. Nobody else can sign up afterwards.</div>'
             : '<div class="hint">You stay signed in on this phone.</div>'}
