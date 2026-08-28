@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#141413">
+<title>TermControl</title>
+<style>
+  :root{
+    --bg:#141413; --surface:#1c1c1a; --surface-2:#232320; --line:#2f2f2b;
+    --text:#f0eee6; --muted:#8b8a85; --dim:#63625d;
+    --accent:#d97757; --waiting:#e0a458; --working:#7aa2a0; --idle:#63625d;
+    --radius:14px;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --ui:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%}
+  body{
+    background:var(--bg);color:var(--text);font-family:var(--ui);
+    font-size:15px;line-height:1.5;overscroll-behavior-y:none;
+    padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+  }
+  header{
+    position:sticky;top:0;z-index:5;background:rgba(20,20,19,.92);
+    backdrop-filter:blur(12px);border-bottom:1px solid var(--line);
+    padding:14px 16px;display:flex;align-items:center;gap:12px;min-height:56px;
+  }
+  header h1{font-size:16px;font-weight:600;margin:0;letter-spacing:-.01em}
+  header .sub{font-size:12px;color:var(--muted);margin-top:1px}
+  .back{
+    appearance:none;background:none;border:0;color:var(--accent);
+    font-size:15px;padding:8px 4px;margin:-8px -4px;cursor:pointer;font-family:var(--ui);
+  }
+  main{padding:12px 12px 28px;max-width:720px;margin:0 auto}
+
+  .pane{
+    display:block;width:100%;text-align:left;appearance:none;cursor:pointer;
+    background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+    padding:14px 15px;margin-bottom:10px;color:inherit;font:inherit;
+    transition:background .15s ease;
+  }
+  .pane:active{background:var(--surface-2)}
+  .pane.waiting{border-color:#5a4526;background:linear-gradient(180deg,#241d13,#1c1c1a)}
+  .row1{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+  .dot{width:7px;height:7px;border-radius:50%;flex:none}
+  .dot.waiting{background:var(--waiting);box-shadow:0 0 0 3px rgba(224,164,88,.16)}
+  .dot.working{background:var(--working)}
+  .dot.idle{background:var(--idle)}
+  .project{font-weight:600;font-size:15px;letter-spacing:-.01em}
+  .badge{
+    margin-left:auto;font-size:11px;color:var(--dim);font-family:var(--mono);
+    text-transform:uppercase;letter-spacing:.04em;
+  }
+  .task{color:var(--muted);font-size:14px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .task.none{color:var(--dim);font-style:italic}
+  .state{font-size:12px;color:var(--waiting);margin-top:8px;font-weight:500}
+
+  .section{font-size:12px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;margin:18px 4px 8px;font-weight:600}
+  .section:first-child{margin-top:4px}
+
+  .msg{margin-bottom:16px}
+  .who{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px;font-weight:600}
+  .msg.user .bubble{
+    background:var(--surface-2);border:1px solid var(--line);border-radius:var(--radius);
+    padding:11px 13px;
+  }
+  .msg.assistant .bubble{padding:0 2px}
+  .bubble{white-space:pre-wrap;word-wrap:break-word;overflow-wrap:anywhere}
+  .tool{
+    font-family:var(--mono);font-size:12.5px;color:var(--muted);
+    background:var(--surface);border:1px solid var(--line);border-left:2px solid var(--dim);
+    border-radius:8px;padding:8px 10px;margin-bottom:10px;
+    overflow-x:auto;white-space:nowrap;
+  }
+  .tool b{color:var(--text);font-weight:500}
+  .pending{
+    border-left-color:var(--working);color:var(--text);
+  }
+  .empty{color:var(--dim);text-align:center;padding:48px 24px;font-size:14px}
+  .spin{color:var(--dim);text-align:center;padding:40px;font-size:14px}
+</style>
+</head>
+<body>
+<header>
+  <div id="nav"></div>
+  <div style="min-width:0">
+    <h1 id="title">TermControl</h1>
+    <div class="sub" id="sub">loading…</div>
+  </div>
+</header>
+<main id="main"><div class="spin">loading…</div></main>
+
+<script type="module">
+const main = document.getElementById('main');
+const title = document.getElementById('title');
+const sub = document.getElementById('sub');
+const nav = document.getElementById('nav');
+let timer = null;
+
+const ago = (ms) => {
+  const s = Math.max(0, Math.round((Date.now() - ms) / 1000));
+  if (s < 60) return `${s}s ago`;
+  if (s < 3600) return `${Math.round(s / 60)}m ago`;
+  if (s < 86400) return `${Math.round(s / 3600)}h ago`;
+  return `${Math.round(s / 86400)}d ago`;
+};
+const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+
+async function fleet() {
+  clearInterval(timer);
+  nav.innerHTML = '';
+  title.textContent = 'TermControl';
+  const r = await fetch('/api/panes').then((x) => x.json());
+  const panes = r.panes;
+  const waiting = panes.filter((p) => p.turn === 'waiting');
+  sub.textContent = waiting.length
+    ? `${waiting.length} waiting for you`
+    : `${panes.length} terminal${panes.length === 1 ? '' : 's'}`;
+
+  if (!panes.length) { main.innerHTML = '<div class="empty">No agent terminals in the last day.</div>'; return; }
+
+  const group = (label, list) => list.length
+    ? `<div class="section">${label}</div>` + list.map(card).join('')
+    : '';
+
+  main.innerHTML =
+    group('Waiting for you', panes.filter((p) => p.turn === 'waiting')) +
+    group('Running', panes.filter((p) => p.turn === 'working')) +
+    group('Idle', panes.filter((p) => p.turn === 'idle'));
+
+  main.querySelectorAll('.pane').forEach((el) => {
+    el.onclick = () => chat(el.dataset.id);
+  });
+  timer = setInterval(() => { if (!location.hash) fleet(); }, 15000);
+}
+
+function card(p) {
+  return `<button class="pane ${p.turn}" data-id="${esc(p.id)}">
+    <div class="row1">
+      <span class="dot ${p.turn}"></span>
+      <span class="project">${esc(p.project)}</span>
+      <span class="badge">${esc(p.provider)} · ${ago(p.updatedAt)}</span>
+    </div>
+    <div class="task${p.task ? '' : ' none'}">${esc(p.task || 'no task declared')}</div>
+    ${p.turn === 'waiting' ? '<div class="state">needs your answer</div>' : ''}
+  </button>`;
+}
+
+async function chat(id) {
+  clearInterval(timer);
+  nav.innerHTML = '<button class="back">‹ Fleet</button>';
+  nav.querySelector('.back').onclick = fleet;
+  main.innerHTML = '<div class="spin">loading…</div>';
+
+  const render = async () => {
+    const d = await fetch(`/api/feed?pane=${encodeURIComponent(id)}&limit=60`).then((x) => x.json());
+    if (d.error) { main.innerHTML = `<div class="empty">${esc(d.error)}</div>`; return; }
+    title.textContent = d.pane.project;
+    sub.textContent = `${d.pane.provider} · ${d.pane.turn}${d.pane.task ? ' · ' + d.pane.task : ''}`;
+
+    if (!d.events.length) { main.innerHTML = '<div class="empty">Nothing recorded for this terminal yet.</div>'; return; }
+
+    main.innerHTML = d.events.map((e) => {
+      if (e.kind === 'tool') {
+        return `<div class="tool"><b>${esc(e.name)}</b>${e.summary ? ' · ' + esc(e.summary) : ''}</div>`;
+      }
+      return `<div class="msg ${e.kind}">
+        <div class="who">${e.kind === 'user' ? 'you' : d.pane.provider}</div>
+        <div class="bubble">${esc(e.text)}</div>
+      </div>`;
+    }).join('') + (d.pending.length
+      ? `<div class="tool pending"><b>running</b> · ${esc(d.pending.join(', '))}</div>`
+      : '');
+    window.scrollTo(0, document.body.scrollHeight);
+  };
+
+  await render();
+  timer = setInterval(render, 8000);
+}
+
+fleet();
+</script>
+</body>
+</html>
