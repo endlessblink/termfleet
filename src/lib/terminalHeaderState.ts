@@ -17,7 +17,11 @@ import {
   resolvePaneTaskLine,
   type PaneTaskLine,
 } from "./taskLine";
-import { qualityCheckNowLabel } from "./terminalHeaderQuality";
+import {
+  isSupervisedMetaProcessTask,
+  qualityCheckGoalLabel,
+  qualityCheckNowLabel,
+} from "./terminalHeaderQuality";
 
 export type TerminalHeaderStatus =
   | "idle"
@@ -85,6 +89,7 @@ export function resolveDistinctHeaderNow(
 ): string | undefined {
   const candidate = now?.trim();
   if (!candidate || !qualityCheckNowLabel(candidate).ok) return undefined;
+  if (isSupervisedMetaProcessTask(candidate)) return undefined;
   const normalize = (value: string) =>
     value
       .toLocaleLowerCase()
@@ -128,6 +133,24 @@ function goalSourceFrom(
     default:
       return "missing";
   }
+}
+
+function isPaneGoalCandidate(
+  value: string,
+  task?: string | null,
+  allowTrustedAboutWhat = false,
+) {
+  const text = value.trim();
+  if (!qualityCheckGoalLabel(text, {
+    allowAboutWhatVoice: true,
+    allowTrustedAboutWhat,
+    maxLength: 150,
+  }).ok) return false;
+  if (task && text.localeCompare(task.trim(), undefined, { sensitivity: "accent" }) === 0) return false;
+  if (/^(?:works?\.?|run|running|testing|checking|verifying|fixing)\b/i.test(text)) return false;
+  if (/\bcommit and push\b.*\b(?:regression tests?|test suite)\b/i.test(text)) return false;
+  if (/^Make (?:[A-Z][\w-]*|this project|the project) work clear and dependable so people can resume it confidently[.!]?$/i.test(text)) return false;
+  return true;
 }
 
 function activitySourceFrom(
@@ -174,6 +197,11 @@ function pathSource(input: {
  */
 const lastKnownTaskLine = new Map<string, PaneTaskLine>();
 const LAST_KNOWN_LIMIT = 400;
+const HEADER_ROW_STABILITY_MS = 5_000;
+const lastRenderedHeaderRows = new Map<
+  string,
+  { goal: string; context: string; activity: string; changedAt: number }
+>();
 
 function rememberTaskLine(key: string, line: PaneTaskLine) {
   const known = lastKnownTaskLine.get(key);
@@ -192,6 +220,34 @@ function rememberTaskLine(key: string, line: PaneTaskLine) {
 /** Tests only: the memory is process-wide by design. */
 export function resetKnownTaskLines() {
   lastKnownTaskLine.clear();
+  lastRenderedHeaderRows.clear();
+}
+
+function stabilizeHeaderRows(
+  key: string,
+  candidate: { goal: string; context: string; activity: string },
+  now: number,
+  allowGoalChange = false,
+) {
+  const previous = lastRenderedHeaderRows.get(key);
+  if (!previous) {
+    const first = { ...candidate, changedAt: now };
+    lastRenderedHeaderRows.set(key, first);
+    return first;
+  }
+  const stableCandidate = allowGoalChange
+    ? candidate
+    : { ...candidate, goal: previous.goal, context: previous.context };
+  const changed =
+    previous.goal !== stableCandidate.goal ||
+    previous.context !== stableCandidate.context ||
+    previous.activity !== candidate.activity;
+  if (changed && now - previous.changedAt < HEADER_ROW_STABILITY_MS) {
+    return previous;
+  }
+  const next = { ...stableCandidate, activity: candidate.activity, changedAt: changed ? now : previous.changedAt };
+  lastRenderedHeaderRows.set(key, next);
+  return next;
 }
 
 export function buildTerminalHeaderState(input: {
@@ -226,17 +282,25 @@ export function buildTerminalHeaderState(input: {
   const effectiveSummary = input.statusSummary?.tasksFromTodoWrite
     ? undefined
     : input.summary;
-  // The sidecar keeps the opening request independently of the transient run id.
-  // Recover it after restart/continuation before the poll loop restores mainUserAsk;
-  // internal Codex goal-task values never pass this provenance check.
+  // The sidecar keeps the validated about-what answer independently of the transient
+  // run id. Recover it after restart/continuation before the poll loop restores
+  // mainUserAsk; internal Codex goal-task values are filtered before this point.
+  const persistedMainTask = input.statusSummary?.mainTask?.trim();
+  const statusSummaryHasAboutWhat =
+    input.statusSummary?.mainTaskSource === "about-what" ||
+    /^\$about-what$/i.test(input.statusSummary?.userTask?.trim() ?? "");
   const persistedOpeningAsk: TerminalMainUserAsk | undefined =
     !input.mainUserAsk &&
-    input.statusSummary?.mainTaskSource === "opening-request" &&
-    input.statusSummary.mainTask?.trim()
+    persistedMainTask &&
+    qualityCheckGoalLabel(persistedMainTask, {
+      allowAboutWhatVoice: true,
+      allowTrustedAboutWhat: statusSummaryHasAboutWhat,
+      maxLength: 150,
+    }).ok
       ? {
-          text: input.statusSummary.mainTask.trim(),
+          text: persistedMainTask,
           source: "status-sidecar",
-          updatedAt: input.statusSummary.updatedAt ?? Date.now(),
+          updatedAt: input.statusSummary?.updatedAt ?? Date.now(),
         }
       : undefined;
   const effectiveMainUserAsk = input.mainUserAsk ?? persistedOpeningAsk;
@@ -343,39 +407,47 @@ export function buildTerminalHeaderState(input: {
     activelyWorking: input.activelyWorking,
     taskLine: effectiveTaskLine,
   });
-  const goalSource = goalSourceFrom(
-    view.taskDescription.source,
-    effectiveMainUserAsk,
-  );
-  const goalLabel = view.taskDescription.text;
+  const explicitGoalText =
+    (input.statusSummary?.mainTaskSource === "plan-explanation" ||
+      input.statusSummary?.mainTaskSource === "opening-request" ||
+      input.statusSummary?.mainTaskSource === "about-what") &&
+    input.statusSummary.mainTask &&
+    qualityCheckGoalLabel(input.statusSummary.mainTask, {
+      allowAboutWhatVoice: true,
+      allowTrustedAboutWhat: statusSummaryHasAboutWhat,
+      maxLength: 150,
+    }).ok &&
+    isPaneGoalCandidate(
+      input.statusSummary.mainTask,
+      view.taskDescription.text,
+      statusSummaryHasAboutWhat,
+    )
+      ? input.statusSummary.mainTask.trim()
+      : undefined;
+  const goalSource = explicitGoalText
+    ? goalSourceFrom("user-task", effectiveMainUserAsk)
+    : goalSourceFrom(view.taskDescription.source, effectiveMainUserAsk);
+  const goalLabel = explicitGoalText ?? view.taskDescription.text;
   const normalizedContext = view.context.text.trim().toLowerCase();
   const normalizedActivity = view.now.text.trim().toLowerCase();
   const contextIsCaptured =
     view.context.text.trim() !== "" &&
     view.context.text.trim() !== "Context not captured" &&
     normalizedContext !== normalizedActivity;
+  const sidecarGoalText = undefined;
   const taskLineCarriesDurableIdentity = Boolean(
     effectiveTaskLine &&
       /^(?:declared|context-summary|opening-request|plan-purpose|session-title|operator-request)$/.test(
         effectiveTaskLine.source,
       ),
   );
-  // The display contract needs one stable project-intent value. A missing context
-  // must not erase a real goal that the same resolver already captured, otherwise
-  // each surface invents a different fallback (or shows "Project intent not captured").
-  const goalCanBeProjectIntent =
-    goalSource !== "none" &&
-    goalSource !== "missing" &&
-    (goalSource !== "task-line" || taskLineCarriesDurableIdentity) &&
-    !/^(?:No task declared|No active work|What should change\?|Waiting for a clear goal)$/i.test(
-      goalLabel.trim(),
-    );
-  const resolvedContextLabel = contextIsCaptured
-    ? view.context.text
-    : goalCanBeProjectIntent
-      ? goalLabel
-      : "Goal not captured";
-  const resolvedContextSource: HeaderFieldSource = contextIsCaptured
+  const resolvedContextLabel =
+    explicitGoalText ??
+    sidecarGoalText ??
+    (contextIsCaptured ? view.context.text : "Goal not captured");
+  const resolvedContextSource: HeaderFieldSource = explicitGoalText || sidecarGoalText
+    ? "sidecar-todo"
+    : contextIsCaptured
     ? input.statusSummary?.userTask &&
       view.context.text.trim() === input.statusSummary.userTask.trim()
       ? "sidecar-todo"
@@ -390,9 +462,7 @@ export function buildTerminalHeaderState(input: {
             ? "sidecar-todo"
             : view.context.source
         : view.context.source
-    : !goalCanBeProjectIntent
-      ? "missing"
-      : goalSource;
+    : "missing";
   // TC-060: the fallback line always fills the Task row, but it is NOT a declared
   // goal — the activity line must keep treating those panes as goal-less, or a
   // visibly busy terminal stops saying so.
@@ -402,7 +472,8 @@ export function buildTerminalHeaderState(input: {
   const hasCapturedGoal =
     goalSource !== "none" &&
     goalSource !== "missing" &&
-    (goalSource !== "task-line" || taskLineCarriesDurableIdentity);
+    (goalSource !== "task-line" || taskLineCarriesDurableIdentity) ||
+    Boolean(sidecarGoalText);
   const headerStatus = statusFromSummary(
     input.summary ?? input.statusSummary,
     input.terminalStatus,
@@ -429,17 +500,36 @@ export function buildTerminalHeaderState(input: {
         ? activitySourceFrom(view.now.source, input.trustedActivitySummary)
         : "missing";
 
+  const stableRows = input.terminalId.startsWith("terminal-")
+    ? stabilizeHeaderRows(
+        input.paneId ?? input.terminalId,
+      {
+        goal: goalLabel,
+        context: resolvedContextLabel,
+        activity: currentActivity,
+      },
+      Date.now(),
+      Boolean(explicitGoalText || sidecarGoalText || input.mainUserAsk?.source === "status-sidecar"),
+    )
+    : {
+        goal: goalLabel,
+        context: resolvedContextLabel,
+        activity: currentActivity,
+      };
+
   return {
     paneId: input.paneId,
     terminalId: input.terminalId,
     runId: input.runId ?? input.activeRunId,
     workspace: view.workspace.text,
-    contextLabel: resolvedContextLabel,
-    hasCapturedContext: contextIsCaptured,
-    userGoal: hasCapturedGoal ? goalLabel : null,
-    goalLabel,
+    contextLabel: stableRows.context,
+    hasCapturedContext:
+      (contextIsCaptured || Boolean(explicitGoalText) || Boolean(sidecarGoalText)) &&
+      stableRows.context === resolvedContextLabel,
+    userGoal: hasCapturedGoal ? stableRows.goal : null,
+    goalLabel: stableRows.goal,
     hasCapturedGoal,
-    currentActivity,
+    currentActivity: stableRows.activity,
     fullPath: view.path.text,
     status: headerStatus,
     attention,

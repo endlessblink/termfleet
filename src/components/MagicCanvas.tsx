@@ -63,12 +63,17 @@ import {
   resolveCanvasNodeProjects,
 } from "../lib/canvasArrange";
 import { TerminalComponent } from "./Terminal";
+import { startStatusPollLoop } from "../lib/statusPollLoop";
 import { TokenBudgetIndicator } from "./TokenBudgetIndicator";
 import { LocalhostPreview } from "./LocalhostPreview";
 import { BoardNode } from "./BoardNode";
 import { BOARD_DEFAULT_SIZE } from "../lib/boardStore";
 import type { GridSnapshot } from "../lib/gridSnapshot";
-import { qualityCheckNowLabel } from "../lib/terminalHeaderQuality";
+import {
+  qualityCheckAuthoritativeTaskLabel,
+  qualityCheckGoalLabel,
+  qualityCheckNowLabel,
+} from "../lib/terminalHeaderQuality";
 import { traceTerminalLatency } from "../lib/terminalLatencyTrace";
 import type {
   Tab,
@@ -233,6 +238,10 @@ const TASK_STATUS_RANK: Record<MasterPlanTask["status"], number> = {
   unknown: 3,
   done: 4,
 };
+
+// A temporary status poll must not erase a pane's last accepted purpose. The key is
+// pane-owned, so one terminal can never borrow another terminal's Goal.
+const lastKnownPaneGoal = new Map<string, string>();
 
 function normalizedTaskSearchText(task: MasterPlanTask) {
   return `${task.id} ${task.title} ${task.status} ${task.rawStatus}`.toLowerCase();
@@ -732,19 +741,19 @@ const styles: Record<string, CSSProperties> = {
     alignItems: "start",
     gap: 6,
     // Reserved line box - see terminalStatusTitle.
-    minHeight: 15,
-    color: "color-mix(in srgb, var(--text-secondary) 82%, transparent)",
+    minHeight: 18,
+    color: "var(--text-primary)",
     fontSize: 12,
     fontWeight: 500,
     letterSpacing: 0,
   },
   terminalTaskLabel: {
     color: "var(--accent-live)",
-    fontSize: 12,
+    fontSize: 15,
     fontWeight: 500,
     letterSpacing: 0,
     // Same rule as the big row: matched to the small row's first line box (12 x 1.35).
-    lineHeight: "16px",
+    lineHeight: "19px",
   },
   terminalTaskValue: {
     minWidth: 0,
@@ -756,27 +765,32 @@ const styles: Record<string, CSSProperties> = {
     WebkitBoxOrient: "vertical" as const,
     WebkitLineClamp: 2,
     overflow: "hidden",
-    textOverflow: "ellipsis",
+    textOverflow: "clip",
+    overflowWrap: "anywhere",
     whiteSpace: "normal" as const,
     lineHeight: "1.3em",
     height: "2.6em",
     color: "var(--text-primary)",
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: 500,
   },
   terminalContextRow: {
-    padding: "5px 7px",
-    borderLeft: "2px solid var(--accent-live)",
+    padding: "7px 8px",
+    borderLeft: "3px solid var(--accent-live)",
     borderRadius: "0 var(--radius-xs) var(--radius-xs) 0",
-    background: "color-mix(in srgb, var(--accent-live) 7%, transparent)",
+    background: "color-mix(in srgb, var(--accent-live) 11%, var(--surface-raised))",
   },
   terminalContextValue: {
     minWidth: 0,
     overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-    color: "var(--text-secondary)",
-    fontSize: 15,
+    textOverflow: "clip",
+    overflowWrap: "anywhere",
+    whiteSpace: "normal" as const,
+    display: "-webkit-box",
+    WebkitBoxOrient: "vertical" as const,
+    WebkitLineClamp: 2,
+    color: "var(--text-primary)",
+    fontSize: 16,
     fontWeight: 500,
     lineHeight: "19px",
   },
@@ -817,6 +831,9 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 19,
     fontWeight: 500,
     lineHeight: 1.18,
+    // The project icon is intentionally larger than the compact header row. Keep the
+    // Task label clear of it so the first character cannot be visually swallowed.
+    paddingLeft: 52,
     // FIXED height, not a minimum. Measured live: this row was 32px with a label
     // and value on a shared baseline, 23px in the placeholder state, and every
     // switch between them resized the terminal below the header (the up/down
@@ -828,9 +845,9 @@ const styles: Record<string, CSSProperties> = {
     height: 52,
   },
   terminalNowActiveLabel: {
-    color: "var(--text-tertiary)",
-    fontSize: 11,
-    fontWeight: 500,
+    color: "var(--text-secondary)",
+    fontSize: 14,
+    fontWeight: 600,
     letterSpacing: 0,
     // Matched to the FIRST line box of the value (19px x 1.18) so the label sits on that
     // line rather than floating above it or sinking to the second line.
@@ -838,12 +855,12 @@ const styles: Record<string, CSSProperties> = {
   },
   terminalNowActiveValue: {
     minWidth: 0,
-    // Clamped to the same two lines the row reserves, so text can never push it taller.
+    // Reserve three readable lines so a useful current status does not end in an ellipsis.
     display: "-webkit-box",
     WebkitBoxOrient: "vertical" as const,
-    WebkitLineClamp: 2,
+    WebkitLineClamp: 3,
     overflow: "hidden",
-    textOverflow: "ellipsis",
+    textOverflow: "clip",
     whiteSpace: "normal" as const,
     lineHeight: 1.18,
   },
@@ -2638,6 +2655,8 @@ function CanvasNodeViewImpl({
     (state) => state.canvasState.selectedNodeIds,
   );
   const zoom = useWorkspaceStore((state) => state.canvasState.viewport.zoom);
+  const viewportX = useWorkspaceStore((state) => state.canvasState.viewport.x);
+  const viewportY = useWorkspaceStore((state) => state.canvasState.viewport.y);
   const updateCanvasNode = useWorkspaceStore((state) => state.updateCanvasNode);
   const renameCanvasNode = useWorkspaceStore((state) => state.renameCanvasNode);
   const moveCanvasNodes = useWorkspaceStore((state) => state.moveCanvasNodes);
@@ -2803,6 +2822,8 @@ function CanvasNodeViewImpl({
     syncTerminalOverlayBounds,
     terminalOverlayRoot,
     zoom,
+    viewportX,
+    viewportY,
   ]);
 
   useEffect(() => {
@@ -3032,15 +3053,29 @@ function CanvasNodeViewImpl({
 
   // Subscribe only to this node's tab. Subscribing to the whole tabs array made
   // every map node re-render whenever any pane emitted output or status.
+  const restoredNodeCwd =
+    node.terminalCwd ?? (node as CanvasNode & { cwd?: string }).cwd;
+  const restoredNodePaneId = node.id.startsWith("recovered-pane-")
+    ? node.id.slice("recovered-pane-".length)
+    : node.id;
+  const restoredNodePaneIds = new Set([
+    node.id,
+    restoredNodePaneId,
+    node.linkedTerminalPaneId,
+  ].filter((value): value is string => Boolean(value)));
   const linkedTab = useWorkspaceStore((state) =>
-    node.terminalTabId
+    state.tabs.find(
+      (tab) =>
+        tab.terminals.some((terminal) => restoredNodePaneIds.has(terminal.paneId)),
+    ) ??
+    (node.terminalTabId
       ? state.tabs.find((tab) => tab.id === node.terminalTabId)
-      : undefined,
+      : undefined)
   );
   const linkedProject = projectForTab(linkedTab, groups);
   const projectEmoji = linkedProject?.emoji;
   const workstream = linkedTab?.workstream;
-  const terminalRoot = node.terminalCwd ?? linkedTab?.initialCwd;
+  const terminalRoot = restoredNodeCwd ?? linkedTab?.initialCwd;
   const taskRoot =
     linkedProject?.projectRoot ??
     terminalRoot ??
@@ -3077,15 +3112,13 @@ function CanvasNodeViewImpl({
   // activePaneId here makes Connect attach to a different terminal.
   const linkedTerminal =
     linkedTab?.terminals.find((terminal) => terminal.id === node.terminalPtyId) ??
+    linkedTab?.terminals.find((terminal) => terminal.paneId === node.linkedTerminalPaneId) ??
     linkedTab?.terminals.find((terminal) => terminal.paneId === node.id) ??
-    linkedTab?.terminals.find(
-      (terminal) => terminal.paneId === linkedTab.activePaneId,
-    ) ??
-    linkedTab?.terminals[0];
+    linkedTab?.terminals.find((terminal) => restoredNodePaneIds.has(terminal.paneId));
   const terminalPaneId =
-    linkedTerminal?.paneId ?? linkedTab?.activePaneId ?? node.id;
-  // Resolve the live PTY id for this shared pane (for attach only), falling back
-  // to the tab's first terminal when the card has no live identity yet.
+    linkedTerminal?.paneId ?? node.id;
+  // Resolve the live PTY id only for this exact pane; never borrow another
+  // terminal from the same project when this card's identity is missing.
   const linkedTerminalId = linkedTerminal?.id;
   const liveTerminalRoot = useWorkspaceStore((state) =>
     linkedTerminalId ? state.liveCwds[linkedTerminalId] : undefined,
@@ -3136,7 +3169,56 @@ function CanvasNodeViewImpl({
     tabTitle: linkedTab?.title,
     nodeTitle: node.title,
   });
-  const terminalStatusSummary = linkedTerminal?.statusSummary;
+  // Agent panes receive their authoritative sidecar summary on the tab workstream;
+  // shell panes keep it on the terminal. The map must read the same pane-owned
+  // source as SplitPane or it renders "Goal not captured" after a successful poll.
+  const terminalStatusSummaryCandidates = [
+    linkedTerminal?.statusSummary,
+    linkedTab?.terminals.length === 1 ? workstream?.statusSummary : undefined,
+  ].filter((summary): summary is WorkstreamStatusSummary => Boolean(summary));
+  const terminalStatusSummary =
+    terminalStatusSummaryCandidates.find(
+       (summary) =>
+         (summary.mainTaskSource === "plan-explanation" &&
+           qualityCheckGoalLabel(summary.mainTask, {
+             allowAboutWhatVoice: true,
+             allowTrustedAboutWhat: /^\$about-what$/i.test(summary.userTask?.trim() ?? ""),
+             maxLength: 150,
+           }).ok) ||
+        (/^(?:Make|Keep|Ensure|Help|Get|Finish|Ship|this\s+session\s+is\s+about|I['’]m\s+|We['’]re\s+)/i.test(
+          summary.task ?? "",
+        ) &&
+          qualityCheckGoalLabel(summary.task, {
+            allowAboutWhatVoice: true,
+            allowTrustedAboutWhat: /^\$about-what$/i.test(summary.userTask?.trim() ?? ""),
+            maxLength: 150,
+          }).ok),
+    ) ?? terminalStatusSummaryCandidates[0];
+  const terminalSummaryHasAboutWhat = /^\$about-what$/i.test(
+    terminalStatusSummary?.userTask?.trim() ?? "",
+  );
+  const terminalAboutWhatText =
+    terminalSummaryHasAboutWhat &&
+           terminalStatusSummary?.mainTaskSource === "plan-explanation" &&
+           qualityCheckGoalLabel(terminalStatusSummary.mainTask, {
+            allowAboutWhatVoice: true,
+            allowTrustedAboutWhat: true,
+            maxLength: 150,
+          }).ok
+          ? terminalStatusSummary.mainTask
+      : terminalStatusSummary?.task &&
+          /^(?:Make|Keep|Ensure|Help|Get|Finish|Ship|this\s+session\s+is\s+about|I['’]m\s+|We['’]re\s+)/i.test(
+            terminalStatusSummary.task,
+          ) &&
+           qualityCheckGoalLabel(terminalStatusSummary.task, {
+       allowAboutWhatVoice: true,
+       allowTrustedAboutWhat: terminalSummaryHasAboutWhat,
+             maxLength: 150,
+           }).ok
+        ? terminalStatusSummary.task
+        : undefined;
+  const terminalStatusSummaryIsWorkstream =
+    terminalStatusSummary === workstream?.statusSummary;
   const terminalAgentProvider =
     workstream?.provider ??
     linkedTerminal?.agentProvider ??
@@ -3172,7 +3254,7 @@ function CanvasNodeViewImpl({
     terminalStatusSummary,
   );
   const purposeTaskLineup = visibleTaskLineup(
-    workstream?.taskLineup ?? linkedTerminal?.taskLineup,
+    linkedTerminal?.taskLineup ?? workstream?.taskLineup,
     linkedTerminal?.activeRunId,
   );
   const previewVisibleText = readableSnapshotText(terminalPreview?.snapshot);
@@ -3187,7 +3269,9 @@ function CanvasNodeViewImpl({
     terminalVisibleText || linkedTerminal?.terminalOutput || "";
   const terminalPurpose = terminalPurposeFromContext({
     stored: linkedTerminal?.purpose,
-    workstreamTitle: workstream?.mission ?? workstream?.prompt,
+    workstreamTitle: linkedTerminal
+      ? undefined
+      : workstream?.mission ?? workstream?.prompt,
     activeTaskTitle:
       purposeTaskLineup.find((item) => item.status === "in_progress")
         ?.content ?? purposeTaskLineup[0]?.content,
@@ -3305,9 +3389,10 @@ function CanvasNodeViewImpl({
             updatedAt: 0,
           },
         ]
-      : (workstream?.taskLineup ?? linkedTerminal?.taskLineup);
-  const terminalHeaderTaskLine =
-    linkedTerminal?.taskLine ?? workstream?.taskLine;
+      : (linkedTerminal?.taskLineup ?? workstream?.taskLineup);
+  const terminalHeaderTaskLine = linkedTerminal
+    ? linkedTerminal.taskLine
+    : workstream?.taskLine;
   const terminalHeader = buildTerminalHeaderState({
     paneId: terminalPaneId,
     terminalId: linkedTerminalId ?? terminalPaneId,
@@ -3329,7 +3414,9 @@ function CanvasNodeViewImpl({
     neutralTitle: terminalActivityLive ? null : terminalNeutralTitle,
     contextPurposeTitle: terminalPurpose?.title,
     contextPurposeSource: terminalPurpose?.source,
-    workstreamTitle: workstream?.mission ?? workstream?.prompt,
+    workstreamTitle: linkedTerminal
+      ? undefined
+      : workstream?.mission ?? workstream?.prompt,
     activelyWorking:
       terminalActivityLive ||
       /\bWorking\s+\(|esc to interrupt\b/i.test(
@@ -3344,37 +3431,175 @@ function CanvasNodeViewImpl({
   });
   const workspaceLabel = terminalHeader.workspace;
   const terminalHeaderTaskCandidate = terminalHeaderTaskLineup
-    ?.find((item) => item.status === "in_progress")
+    ?.find(
+      (item) =>
+        item.status === "in_progress" &&
+        !/^(?:Working|Thinking|Ready|Ready for next task|Idle|Status unavailable|Activity not captured)$/i.test(
+          item.content.trim(),
+        ),
+    )
     ?.content?.trim();
+  const terminalHeaderTaskLineCandidate =
+    terminalHeaderTaskLine?.text?.trim() &&
+    !/^(?:Working|Thinking|Ready|Ready for next task|Idle|Status unavailable|Activity not captured)$/i.test(
+      terminalHeaderTaskLine.text.trim(),
+    )
+      ? terminalHeaderTaskLine.text.trim()
+      : undefined;
+  const terminalHeaderDurableActivityTask =
+    linkedTerminal?.durableActivity?.title?.trim() &&
+    !/^(?:Working|Thinking|Ready|Ready for next task|Idle|Status unavailable|Activity not captured)$/i.test(
+      linkedTerminal.durableActivity.title.trim(),
+    )
+      ? linkedTerminal.durableActivity.title.trim()
+      : undefined;
+  const terminalHeaderStatusTask =
+    terminalStatusSummary?.task?.trim() &&
+    !/^(?:Working|Thinking|Ready|Ready for next task|Idle|Status unavailable|Activity not captured)$/i.test(
+      terminalStatusSummary.task.trim(),
+    )
+      ? terminalStatusSummary.task.trim()
+      : undefined;
+  const canvasTaskFallback = "Waiting for a clear task";
   const terminalHeaderTaskDescription =
     resolveDistinctHeaderNow(
       terminalHeader.goalLabel,
       terminalHeaderTaskCandidate,
-    ) ?? "Task not captured";
+    ) ??
+    resolveDistinctHeaderNow(
+      terminalHeader.goalLabel,
+      terminalHeaderTaskLineCandidate,
+    ) ??
+    resolveDistinctHeaderNow(
+      terminalHeader.goalLabel,
+      terminalHeaderDurableActivityTask,
+    ) ??
+    resolveDistinctHeaderNow(
+      terminalHeader.goalLabel,
+    terminalHeaderStatusTask,
+    ) ??
+    canvasTaskFallback;
+  const stabilizedTerminalHeaderTask = stableHeader(
+    `map-task-row:${terminalTabId}:${terminalPaneId}:${node.taskBinding?.taskId ?? "unbound"}`,
+    { title: terminalHeaderTaskDescription, now: terminalHeaderTaskDescription },
+    { nowMs: Date.now(), holdPlaceholders: true },
+  ).title;
+  const isCompleteGoalText = (value?: string | null) =>
+    Boolean(
+      value?.trim() &&
+        !/[…]$/.test(value.trim()) &&
+        !/\b(?:instead of|while|and|or|to|for|the|a|an)\s*[.!?]?$/i.test(value.trim()),
+    );
+  const terminalPaneGoalCandidate =
+    terminalStatusSummary?.mainTask?.trim() &&
+    isCompleteGoalText(terminalStatusSummary.mainTask) &&
+    qualityCheckGoalLabel(terminalStatusSummary.mainTask, {
+      allowAboutWhatVoice: true,
+      allowTrustedAboutWhat: terminalSummaryHasAboutWhat,
+      maxLength: 150,
+    }).ok &&
+    !headerTextsEquivalent(
+      terminalStatusSummary.mainTask,
+      terminalHeaderTaskDescription,
+    )
+      ? terminalStatusSummary.mainTask.trim()
+      : undefined;
+  const canvasGoalFallback = "Goal not captured";
+  const terminalStatusGoalFallback =
+    terminalPaneGoalCandidate &&
+    isCompleteGoalText(terminalPaneGoalCandidate) &&
+    qualityCheckGoalLabel(terminalPaneGoalCandidate, {
+      allowAboutWhatVoice: true,
+       allowTrustedAboutWhat: terminalSummaryHasAboutWhat,
+      maxLength: 150,
+    }).ok
+      ? terminalPaneGoalCandidate
+      : undefined;
   const terminalHeaderTaskCaptured =
-    terminalHeaderTaskDescription !== "Task not captured";
-  const terminalHeaderContextDescription = terminalHeader.contextLabel;
+    terminalHeaderTaskDescription !== canvasTaskFallback;
+  const terminalHeaderContextCandidate =
+    terminalAboutWhatText ??
+    terminalPaneGoalCandidate ??
+    terminalStatusGoalFallback ??
+    (terminalHeader.hasCapturedContext &&
+    qualityCheckGoalLabel(terminalHeader.contextLabel, {
+       allowAboutWhatVoice:
+         terminalSummaryHasAboutWhat &&
+         terminalHeader.sources.context === "sidecar-todo" &&
+        /^(?:this\s+session\s+is\s+about|I['’]m\s+|We['’]re\s+)/i.test(
+          terminalHeader.contextLabel,
+        ),
+      allowTrustedAboutWhat:
+        terminalSummaryHasAboutWhat &&
+        terminalHeader.sources.context === "sidecar-todo",
+      maxLength: 150,
+    }).ok
+      ? terminalHeader.contextLabel
+      : undefined);
+  const paneGoalMemoryKey = terminalPaneId || linkedTerminalId || node.id;
+  const rememberedPaneGoal = lastKnownPaneGoal.get(paneGoalMemoryKey);
+  const terminalHeaderContextDescription =
+    terminalHeaderContextCandidate &&
+    isCompleteGoalText(terminalHeaderContextCandidate) &&
+    !/^Make TermFleet (?:a reliable terminal cockpit so people can understand work and resume it safely|show clear tasks, goals, and current activity so work is easy to resume)[.!]?$/i.test(
+      terminalHeaderContextCandidate,
+    ) &&
+    !headerTextsEquivalent(
+      terminalHeaderContextCandidate,
+      terminalHeaderTaskDescription,
+    )
+      ? terminalHeaderContextCandidate
+      : rememberedPaneGoal || "Goal not captured";
+  if (
+    paneGoalMemoryKey &&
+    terminalHeaderContextDescription !== "Goal not captured" &&
+    qualityCheckGoalLabel(terminalHeaderContextDescription ?? "", {
+      allowAboutWhatVoice: true,
+      allowTrustedAboutWhat: terminalSummaryHasAboutWhat,
+      maxLength: 150,
+    }).ok
+  ) {
+    lastKnownPaneGoal.set(
+      paneGoalMemoryKey,
+      terminalHeaderContextDescription ?? "",
+    );
+  }
+  const terminalHeaderHasDisplayableContext = Boolean(
+    terminalHeaderContextDescription,
+  );
   const terminalHeaderTitleRaw = terminalDurableActivityUsable &&
     terminalDisplaySummaryBase.task &&
     !/^(?:Terminal|Activity not captured|Status unavailable)$/i.test(
       terminalDisplaySummaryBase.task.trim(),
     )
     ? terminalDisplaySummaryBase.task
-    : terminalHeader.currentActivity;
+    : /^(?:Terminal|Activity not captured|Status unavailable|Idle|Working|Thinking|Ready|Ready for next task|Awaiting next action)$/i.test(
+          terminalHeader.currentActivity.trim(),
+        )
+      ? terminalHeaderContextDescription || canvasGoalFallback
+      : terminalHeader.currentActivity;
   const restoredNow = terminalDisplaySummaryBase.now;
+  const restoredNowIsDistinct = Boolean(
+    restoredNow &&
+      !headerTextsEquivalent(restoredNow, terminalHeaderTaskDescription) &&
+      !headerTextsEquivalent(restoredNow, canvasGoalFallback),
+  );
   const restoredNowIsSettled = Boolean(
-    terminalDisplaySummaryBase.narration &&
+      terminalDisplaySummaryBase.narration &&
       restoredNow &&
-      !/^(?:Idle|Working|Ready|Awaiting next action|Activity not captured)$/i.test(
+      restoredNowIsDistinct &&
+      qualityCheckNowLabel(restoredNow).ok &&
+      !/^(?:Idle|Working|Ready|Awaiting next action|Activity not captured|Status unavailable)$/i.test(
         restoredNow.trim(),
       ),
   );
   const terminalHeaderNowRaw =
     terminalDurableActivityUsable &&
-    (qualityCheckNowLabel(restoredNow).ok || restoredNowIsSettled)
+    restoredNowIsDistinct &&
+    qualityCheckNowLabel(restoredNow).ok
       ? restoredNow
-    : terminalHeader.sources.goal === "task-tool" &&
-        terminalHeader.currentActivity === terminalHeader.goalLabel
+    : headerTextsEquivalent(terminalHeader.currentActivity, terminalHeaderTaskDescription) ||
+      headerTextsEquivalent(terminalHeader.currentActivity, canvasGoalFallback)
       ? terminalNeutralTitle
       : terminalHeader.currentActivity;
   const terminalHeaderPath =
@@ -3412,7 +3637,7 @@ function CanvasNodeViewImpl({
   // the card collapses to the single honest Task line (no duplicate/placeholder row).
   const terminalHeaderNowActiveVisible = activityAddsInfo(
     terminalHeaderTaskDescription,
-    terminalHeaderTitle,
+    canvasGoalFallback,
     terminalHeaderAttentionState,
   ) && !headerTextsEquivalent(terminalHeaderTitle, terminalHeaderContextDescription);
   const terminalHeaderHasRealTask =
@@ -3462,6 +3687,10 @@ function CanvasNodeViewImpl({
   // row blank on panes that were plainly working — "relaunched nothing changed". When it
   // declines, the pane's own live status line is used instead, minus the filler words.
   const terminalHeaderNowRowText = (() => {
+    const acceptableNow = (value?: string | null) => {
+      const text = value?.trim() ?? "";
+      return text && qualityCheckNowLabel(text).ok ? text : "";
+    };
     // A settled agent report is stronger than a stale in-progress TodoWrite item. The
     // latter is intentionally not cleared by every provider after Stop, so it must never
     // overwrite the result the sidecar captured from the agent's final words.
@@ -3469,7 +3698,7 @@ function CanvasNodeViewImpl({
     if (settledNow) return settledNow;
     // The resolver's own second line first: the agent's in-progress step, its pending
     // question, its own sentence — plain language, gated exactly like the goal above.
-    const resolved = linkedTerminal?.nowLine?.text?.trim();
+    const resolved = acceptableNow(linkedTerminal?.nowLine?.text);
     const distinctResolved = resolveDistinctHeaderNow(
       terminalHeaderTaskDescription,
       resolved,
@@ -3482,13 +3711,13 @@ function CanvasNodeViewImpl({
     // The agent's own in-progress item, straight from the store. It is already there for
     // every pane with a live task list, so the row has content even before (or without)
     // a resolver pass.
-    const liveStep = (
-      workstream?.taskLineup ??
+    const liveStep = acceptableNow((
       linkedTerminal?.taskLineup ??
+      workstream?.taskLineup ??
       []
     )
       .find((item) => item.status === "in_progress")
-      ?.content?.trim();
+      ?.content);
     const distinctLiveStep = resolveDistinctHeaderNow(
       terminalHeaderTaskDescription,
       liveStep,
@@ -3498,19 +3727,47 @@ function CanvasNodeViewImpl({
       !headerTextsEquivalent(distinctLiveStep, terminalHeaderContextDescription)
     )
       return distinctLiveStep;
-    if (terminalHeaderNowActiveVisible) return terminalHeaderTitle;
-    const candidate = (terminalHeaderNow ?? "").trim();
+    if (
+      terminalHeaderNowActiveVisible &&
+      !headerTextsEquivalent(terminalHeaderTitle, terminalHeaderTaskDescription) &&
+      !headerTextsEquivalent(terminalHeaderTitle, terminalHeaderContextDescription) &&
+        !headerTextsEquivalent(terminalHeaderTitle, canvasGoalFallback)
+    )
+      return acceptableNow(terminalHeaderTitle);
+    const candidate = acceptableNow(terminalHeaderNow);
     if (!candidate) return "";
     const distinctCandidate = resolveDistinctHeaderNow(
       terminalHeaderTaskDescription,
       candidate,
     );
     if (!distinctCandidate) return "";
-    if (headerTextsEquivalent(distinctCandidate, terminalHeaderContextDescription))
+    if (
+      headerTextsEquivalent(distinctCandidate, terminalHeaderContextDescription) ||
+      headerTextsEquivalent(distinctCandidate, canvasGoalFallback)
+    )
       return "";
     return distinctCandidate;
   })();
-  const terminalHeaderNowRowVisible = Boolean(terminalHeaderNowRowText);
+  const stabilizedTerminalHeaderNowRow = stableHeader(
+    `map-now-row:${terminalTabId}:${terminalPaneId}:${node.taskBinding?.taskId ?? "unbound"}`,
+    {
+      title: terminalHeaderTaskDescription,
+      now: terminalHeaderNowRowText,
+    },
+    {
+      nowMs: Date.now(),
+      holdPlaceholders: true,
+    },
+  );
+  const terminalHeaderNowRowStableText = stabilizedTerminalHeaderNowRow.now;
+  const terminalHeaderNowRowVisible = Boolean(terminalHeaderNowRowStableText);
+  const terminalHeaderNowDisplay =
+    terminalHeaderNowRowStableText &&
+    !/^(?:Status unavailable|Idle|Ready|Awaiting next action|Activity not captured)$/i.test(
+      terminalHeaderNowRowStableText.trim(),
+    )
+      ? terminalHeaderNowRowStableText
+      : "Idle — no work is running";
   const detectedLaneTaskId =
     node.taskBinding?.taskId ??
     firstTaskIdFromText(
@@ -3568,6 +3825,39 @@ function CanvasNodeViewImpl({
       ? `${workstreamLabel(workstream.provider)} agent · ${workstream.phase ?? workstream.status} · ${workstreamActivityText(workstream)}`
       : undefined;
   const agentStatusSummary = agentStatusSummaryFromWorkstream(workstream);
+  const agentMissionTask = linkedTerminal
+    ? undefined
+    : agentHeaderTitle?.trim() || undefined;
+  const agentCardStatusSummary = linkedTerminal
+    ? terminalStatusSummary
+    : agentStatusSummary;
+  const agentCardTask =
+    [stabilizedTerminalHeaderTask, agentMissionTask, agentCardStatusSummary?.task?.trim()]
+      .find(
+        (candidate) =>
+          Boolean(candidate) &&
+          !/^Clarify the cockpit header$/i.test(candidate ?? "") &&
+          qualityCheckAuthoritativeTaskLabel(candidate).ok &&
+          !headerTextsEquivalent(candidate, terminalHeaderContextDescription),
+      ) ??
+    stabilizedTerminalHeaderTask;
+  const agentCardNow = (() => {
+    if (terminalHeaderNowRowStableText) return terminalHeaderNowRowStableText;
+    const renderedHeaderNow =
+      qualityCheckNowLabel(terminalHeader.currentActivity).ok
+        ? terminalHeader.currentActivity
+        : undefined;
+    const restoredAgentNow =
+      resolveDistinctHeaderNow(agentCardTask, renderedHeaderNow) ??
+      resolveDistinctHeaderNow(agentCardTask, agentCardStatusSummary?.now);
+    if (!restoredAgentNow) return "Now not captured";
+    if (
+      headerTextsEquivalent(restoredAgentNow, terminalHeaderContextDescription) ||
+      headerTextsEquivalent(restoredAgentNow, canvasGoalFallback)
+    )
+      return "Now not captured";
+    return restoredAgentNow;
+  })();
   const agentStatusChip =
     workstream?.kind === "agent" && agentStatusSummary
       ? agentStatusChipText(workstream, agentStatusSummary)
@@ -4330,9 +4620,7 @@ function CanvasNodeViewImpl({
               title={[
                 workstream.startupCommand
                   ? `Starts ${workstream.startupCommand}`
-                  : (workstream.mission ??
-                    workstream.prompt ??
-                    "Supervised agent run"),
+                  : (agentCardTask ?? "Waiting for a clear task"),
                 workstream.providerAvailabilityMessage,
               ]
                 .filter(Boolean)
@@ -4383,7 +4671,7 @@ function CanvasNodeViewImpl({
             style={{ ...styles.agentStatusBlock, ...labelStatusBlockStyle }}
             data-testid="canvas-agent-status-block"
             dir="auto"
-            title={`${workspaceLabel} · ${agentStatusSummary.task} · ${agentStatusSummary.path} · ${agentStatusSummary.now}`}
+            title={`${workspaceLabel} · ${agentCardTask} · ${agentStatusSummary.path} · ${agentCardNow}`}
             onMouseDown={onMouseDown}
             onDoubleClick={onRename}
           >
@@ -4454,12 +4742,24 @@ function CanvasNodeViewImpl({
             <div
               style={styles.agentWorkingLine}
               data-testid="canvas-agent-working-on"
+              data-row-kind="task"
             >
-              <span style={styles.agentStatusLabel}>Working on</span>
+              <span style={styles.agentStatusLabel}>Task</span>
               <span style={styles.agentWorkingText}>
-                {agentStatusSummary.task}
+                {agentCardTask}
               </span>
             </div>
+            {terminalHeaderContextDescription && (
+              <div
+                style={styles.agentWorkingLine}
+                data-testid="canvas-agent-node-goal"
+              >
+                <span style={styles.agentStatusLabel}>Goal</span>
+                <span style={styles.agentWorkingText}>
+                  {terminalHeaderContextDescription}
+                </span>
+              </div>
+            )}
             <div style={styles.agentStatusDetailGrid}>
               <div
                 style={styles.agentStatusDetail}
@@ -4473,10 +4773,11 @@ function CanvasNodeViewImpl({
               <div
                 style={styles.agentStatusDetail}
                 data-testid="canvas-agent-status-now"
+                data-row-kind="now"
               >
                 <span style={styles.agentStatusLabel}>Now</span>
                 <span style={styles.agentStatusDetailText}>
-                  {agentStatusSummary.now}
+                  {agentCardNow}
                 </span>
               </div>
             </div>
@@ -4613,13 +4914,10 @@ function CanvasNodeViewImpl({
               <div
                 style={{
                   ...styles.terminalStatusTitle,
-                  visibility:
-                    terminalHeader.hasCapturedGoal && terminalHeaderNowRowVisible
-                      ? "visible"
-                      : "hidden",
+                  visibility: "visible",
                 }}
                 data-testid="canvas-terminal-node-task-row"
-                title={`Task: ${terminalHeaderTaskDescription}`}
+                title={`Task: ${stabilizedTerminalHeaderTask}`}
               >
                 <>
                   <span style={styles.terminalNowActiveLabel}>Task:</span>
@@ -4630,31 +4928,38 @@ function CanvasNodeViewImpl({
                       color: labelColor ?? "var(--text-primary)",
                     }}
                   >
-                    {terminalHeaderNowRowVisible
-                      ? terminalHeaderTaskDescription
-                      : " "}
+                    {stabilizedTerminalHeaderTask}
                   </span>
                 </>
               </div>
             }
-            {
+            {terminalHeaderHasDisplayableContext && (
               <div
                 style={{
                   ...styles.terminalTaskRow,
                   ...styles.terminalContextRow,
-                  visibility: terminalHeader.hasCapturedGoal ? "visible" : "hidden",
+                  visibility: "visible",
                 }}
                 data-testid="canvas-terminal-node-goal"
                 title={`Goal: ${terminalHeaderContextDescription}`}
               >
-                <span style={styles.terminalTaskLabel}>Goal:</span>
+                <span
+                  style={{
+                    ...styles.terminalTaskLabel,
+                    color: "var(--text-primary)",
+                    fontSize: 14,
+                    fontWeight: 600,
+                  }}
+                >
+                  Goal:
+                </span>
                 <span
                   style={styles.terminalContextValue}
                 >
                   {terminalHeaderContextDescription}
                 </span>
               </div>
-            }
+            )}
               {(
                 <CockpitSnapshotProbe
                   key="cockpit-snapshot-probe"
@@ -4662,6 +4967,7 @@ function CanvasNodeViewImpl({
                     paneId: terminalPaneId,
                     terminalId: linkedTerminalId ?? undefined,
                     tabId: terminalTabId,
+                    groupId: linkedTab?.groupId ?? null,
                     cwd: liveTerminalRoot ?? undefined,
                     path: terminalHeaderPath,
                     workspace: workspaceLabel,
@@ -4672,12 +4978,12 @@ function CanvasNodeViewImpl({
                     taskSource: terminalHeaderTaskCaptured
                       ? terminalHeader.sources.goal
                       : "missing",
-                    context: terminalHeader.hasCapturedGoal
-                      ? terminalHeaderContextDescription
-                      : "",
-                    contextSource: terminalHeader.hasCapturedGoal
-                      ? terminalHeader.sources.context
-                      : "missing",
+                     context: terminalHeaderHasDisplayableContext
+                       ? terminalHeaderContextDescription
+                       : "",
+    contextSource: terminalHeaderHasDisplayableContext
+      ? terminalHeader.sources.context
+      : "missing",
                     title:
                       terminalHeaderNowRowText ||
                       terminalHeaderContextDescription ||
@@ -4685,7 +4991,7 @@ function CanvasNodeViewImpl({
                     titleSource: terminalHeaderNowRowText
                       ? terminalHeader.sources.activity
                       : terminalHeader.sources.context,
-                    now: terminalHeaderNowRowText ?? "",
+                    now: terminalHeaderNowDisplay,
                     nowSource: terminalHeaderNowRowVisible
                       ? terminalHeader.sources.activity
                       : "missing",
@@ -4702,25 +5008,30 @@ function CanvasNodeViewImpl({
                     terminalVisibleTextUpdatedAt:
                       terminalPreview?.updatedAt ??
                       linkedTerminal?.terminalVisibleTextUpdatedAt,
-                    statusSummarySource: linkedTerminal?.statusSummarySource,
-                    statusSummaryError: linkedTerminal?.statusSummaryError,
-                    statusSummaryUpdatedAt:
-                      linkedTerminal?.statusSummaryUpdatedAt,
+                    statusSummarySource: terminalStatusSummaryIsWorkstream
+                      ? workstream?.statusSummarySource
+                      : linkedTerminal?.statusSummarySource,
+                    statusSummaryError: terminalStatusSummaryIsWorkstream
+                      ? workstream?.statusSummaryError
+                      : linkedTerminal?.statusSummaryError,
+                    statusSummaryUpdatedAt: terminalStatusSummaryIsWorkstream
+                      ? workstream?.statusSummaryUpdatedAt
+                      : linkedTerminal?.statusSummaryUpdatedAt,
                     statusSummaryNarration: (
                       workstream?.statusSummary ?? linkedTerminal?.statusSummary
                     )?.narration,
                     statusSummaryTask: terminalStatusSummary?.task,
                     statusSummaryNow: terminalStatusSummary?.now,
-                    statusSummaryPath: terminalStatusSummary?.path,
+                      statusSummaryPath: terminalStatusSummary?.path,
                     taskLineSource: terminalHeaderTaskLine?.source,
                     taskLineRejected: terminalHeaderTaskLine?.rejected,
                     taskLineup: canonicalTerminalTaskLineup.map((item) => ({
                       content: item.content,
                       status: item.status,
                     })),
-                    debug: {
-                      ...terminalHeader.debug,
-                      waitingForOperator: terminalWaitingForOperator,
+                      debug: {
+                        ...terminalHeader.debug,
+                        waitingForOperator: terminalWaitingForOperator,
                       previewVisibleTextUsed:
                         terminalVisibleText === previewVisibleText,
                     },
@@ -4731,18 +5042,14 @@ function CanvasNodeViewImpl({
               style={{ ...styles.terminalTaskRow, ...styles.terminalNowRow }}
               data-testid="canvas-terminal-node-now-row"
               title={
-                terminalHeaderNowRowVisible
-                  ? `Now: ${terminalHeaderNowRowText}`
-                  : undefined
+                `Now: ${terminalHeaderNowDisplay}`
               }
-              data-reserved={terminalHeaderNowRowVisible ? "false" : "true"}
+              data-reserved="false"
             >
               <span
                 style={{
                   ...styles.terminalTaskLabel,
-                  visibility: terminalHeaderNowRowVisible
-                    ? "visible"
-                    : "hidden",
+                  visibility: "visible",
                 }}
               >
                 Now:
@@ -4751,12 +5058,10 @@ function CanvasNodeViewImpl({
                 data-testid="canvas-terminal-node-header-title"
                 style={{
                   ...styles.terminalTaskValue,
-                  visibility: terminalHeaderNowRowVisible
-                    ? "visible"
-                    : "hidden",
+                  visibility: "visible",
                 }}
               >
-                {terminalHeaderNowRowVisible ? terminalHeaderNowRowText : " "}
+                {terminalHeaderNowDisplay}
               </span>
             </div>
             <div
@@ -5355,15 +5660,9 @@ function CanvasNodeViewImpl({
                       <div style={styles.agentMissionLabel}>Task</div>
                       <div
                         style={styles.agentMissionText}
-                        title={
-                          workstream.mission ??
-                          workstream.prompt ??
-                          "Supervised agent run"
-                        }
+                        title={agentCardTask ?? "Waiting for a clear task"}
                       >
-                        {workstream.mission ??
-                          workstream.prompt ??
-                          "Supervised agent run"}
+                        {agentCardTask ?? "Waiting for a clear task"}
                       </div>
                     </span>
                     <span style={styles.agentStatusPill}>
@@ -5376,11 +5675,11 @@ function CanvasNodeViewImpl({
                   >
                     <div
                       style={styles.agentDecisionCell}
-                      title={workstreamActivityText(workstream)}
+                      title={agentCardNow}
                     >
                       <span style={styles.agentProviderCellLabel}>Now</span>
                       <span style={styles.agentProviderCellValue}>
-                        {workstreamActivityText(workstream)}
+                        {agentCardNow}
                       </span>
                     </div>
                     <div
@@ -6084,6 +6383,7 @@ function CanvasNodeViewImpl({
 const CanvasNodeView = memo(CanvasNodeViewImpl);
 
 export function MagicCanvas() {
+  startStatusPollLoop();
   const canvasState = useWorkspaceStore((state) => state.canvasState);
   const tabs = useWorkspaceStore((state) => state.tabs);
   const activeTabId = useWorkspaceStore((state) => state.activeTabId);
@@ -6121,6 +6421,7 @@ export function MagicCanvas() {
     nextY: number;
   } | null>(null);
   const panRafRef = useRef<number | null>(null);
+  const autoFittedCanvasTargetRef = useRef<string | null>(null);
   const [fileIndex, setFileIndex] = useState(0);
   // Map toolbar collapses to a single "Map" chip so it stops covering the canvas.
   // The choice is sticky across relaunches.
@@ -6206,6 +6507,53 @@ export function MagicCanvas() {
         .filter((node): node is CanvasNode => Boolean(node)),
     [nodes, selectedCanvasNodeIds],
   );
+  useEffect(() => {
+    if (containerSize.width <= 0 || containerSize.height <= 0 || !nodes.length)
+      return;
+    const target =
+      nodes.find(
+        (node) => node.type === "terminal" && node.terminalTabId === activeTabId,
+      ) ??
+      nodes.find((node) => node.type === "terminal") ??
+      selectedCanvasNodes.find((node) => node.type === "terminal") ??
+      nodes[0];
+    if (!target) return;
+    // Fit the initial map target once. Creating or activating another terminal
+    // must not steal the operator's current map position; explicit Fit active
+    // remains available through the map controls and card actions.
+    if (autoFittedCanvasTargetRef.current !== null) return;
+    // A persisted viewport belongs to the operator while it still contains the
+    // restored target. A stale checkpoint can leave the camera beyond every
+    // restored card, though; in that case the restart looked empty even though
+    // hydration had rebuilt the terminals correctly. Repair only that case so a
+    // deliberate, visible map position remains untouched.
+    const viewLeft = -viewport.x / viewport.zoom;
+    const viewTop = -viewport.y / viewport.zoom;
+    const viewRight = (containerSize.width - viewport.x) / viewport.zoom;
+    const viewBottom = (containerSize.height - viewport.y) / viewport.zoom;
+    const targetIsVisible =
+      target.x < viewRight &&
+      target.x + target.width > viewLeft &&
+      target.y < viewBottom &&
+      target.y + target.height > viewTop;
+    if (
+      (viewport.x !== 0 || viewport.y !== 0 || viewport.zoom !== 1) &&
+      targetIsVisible
+    ) {
+      autoFittedCanvasTargetRef.current = "preserved-operator-viewport";
+      return;
+    }
+    const zoom = Math.min(
+      1,
+      Math.max(0.72, (containerSize.width - 32) / Math.max(target.width, 1)),
+    );
+    updateCanvasViewport({
+      x: (containerSize.width - target.width * zoom) / 2 - target.x * zoom,
+      y: Math.max(40, (containerSize.height - target.height * zoom) / 2) - target.y * zoom,
+      zoom,
+    });
+    autoFittedCanvasTargetRef.current = target.id;
+  }, [activeTabId, containerSize, nodes, selectedCanvasNodes, updateCanvasViewport, viewport]);
   const activeTab = useMemo(
     () => tabs.find((tab) => tab.id === activeTabId),
     [activeTabId, tabs],
@@ -7057,7 +7405,7 @@ export function MagicCanvas() {
     >
       <div
         ref={toolbarRef}
-        className={`magic-canvas-glass${toolbarOpen ? "" : " magic-canvas-toolbar-collapsed"}`}
+        className={`magic-canvas-glass magic-canvas-toolbar${toolbarOpen ? "" : " magic-canvas-toolbar-collapsed"}`}
         style={{
           ...styles.toolbar,
           ...(toolbarOpen ? null : styles.toolbarCollapsed),

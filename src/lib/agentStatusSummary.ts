@@ -577,8 +577,12 @@ export function getDisplaySummary(
   return summary;
 }
 
-function persistedAgentStatusSummary(workstream: WorkstreamMetadata, fallback: AgentStatusSummary): AgentStatusSummary | null {
-  const persisted = workstream.statusSummary;
+function persistedAgentStatusSummary(
+  workstream: WorkstreamMetadata,
+  fallback: AgentStatusSummary,
+  paneStatusSummary?: WorkstreamStatusSummary,
+): AgentStatusSummary | null {
+  const persisted = paneStatusSummary ?? workstream.statusSummary;
   if (!persisted) return null;
   const rawTask = cleanText(persisted?.task);
   const path = cleanText(persisted?.path);
@@ -602,10 +606,17 @@ function persistedAgentStatusSummary(workstream: WorkstreamMetadata, fallback: A
   };
 }
 
-export function agentStatusSummaryFromWorkstream(workstream?: WorkstreamMetadata): AgentStatusSummary | null {
+export function agentStatusSummaryFromWorkstream(
+  workstream?: WorkstreamMetadata,
+  paneStatusSummary?: WorkstreamStatusSummary,
+  allowSharedStatusFallback = true,
+): AgentStatusSummary | null {
   if (!workstream || workstream.kind !== "agent") return null;
-  const fallback = fallbackAgentStatusSummary(agentStatusSummaryInputFromWorkstream(workstream));
-  return persistedAgentStatusSummary(workstream, fallback) ?? fallback;
+  const fallbackWorkstream = allowSharedStatusFallback
+    ? workstream
+    : { ...workstream, statusSummary: undefined };
+  const fallback = fallbackAgentStatusSummary(agentStatusSummaryInputFromWorkstream(fallbackWorkstream));
+  return persistedAgentStatusSummary(fallbackWorkstream, fallback, paneStatusSummary) ?? fallback;
 }
 
 export function agentStatusChipText(workstream: WorkstreamMetadata, summary: AgentStatusSummary) {

@@ -55,6 +55,12 @@ import {
   resolveDistinctHeaderNow,
 } from "../lib/terminalHeaderState";
 import { durableActivityIsLive } from "../lib/terminalActivity";
+import { headerTextsEquivalent } from "../lib/terminalHeaderViewModel";
+import {
+  qualityCheckAuthoritativeTaskLabel,
+  qualityCheckGoalLabel,
+  qualityCheckNowLabel,
+} from "../lib/terminalHeaderQuality";
 import {
   badgeForAttention,
   type AttentionState,
@@ -714,7 +720,7 @@ function PaneContextMenu({
               padding: "5px 9px 3px",
               color: "var(--text-tertiary)",
               fontSize: 10,
-    fontWeight: 500,
+              fontWeight: 500,
               letterSpacing: "0.04em",
               textTransform: "uppercase",
             }}
@@ -1076,7 +1082,11 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
             agentWorkstream.statusSummary?.provider) !== "shell";
         const agentStatusSummary =
           isAgentWorkstream && agentWorkstream
-            ? agentStatusSummaryFromWorkstream(tab.workstream)
+            ? agentStatusSummaryFromWorkstream(
+                tab.workstream,
+                paneTerminal?.statusSummary,
+                !paneTerminal,
+              )
             : null;
         const agentHeader =
           isAgentWorkstream
@@ -1091,13 +1101,22 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                   paneTerminal?.taskLineup ?? agentWorkstream.taskLineup,
                 activeRunId:
                   paneTerminal?.activeRunId ?? agentWorkstream.activeRunId,
-                mainUserAsk: paneTerminal?.mainUserAsk,
+                mainUserAsk:
+                  agentStatusSummary?.mainTaskSource === "plan-explanation"
+                    ? undefined
+                    : paneTerminal?.mainUserAsk,
                 statusSummary:
-                  paneTerminal?.statusSummary ?? agentWorkstream.statusSummary,
+                  agentStatusSummary ??
+                  paneTerminal?.statusSummary ??
+                  agentWorkstream.statusSummary,
                 taskLine: paneTerminal?.taskLine ?? agentWorkstream.taskLine,
                 summary:
-                  paneTerminal?.statusSummary ?? agentWorkstream.statusSummary,
-                workstreamTitle: agentWorkstream.mission ?? agentWorkstream.prompt,
+                  agentStatusSummary ??
+                  paneTerminal?.statusSummary ??
+                  agentWorkstream.statusSummary,
+                workstreamTitle: paneTerminal || multiplePanes
+                  ? undefined
+                  : agentWorkstream.mission ?? agentWorkstream.prompt,
                 activelyWorking:
                   terminalStatus === "running" ||
                   agentWorkstream.status === "running",
@@ -1107,6 +1126,22 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
           tab.workstream?.kind === "agent" && agentStatusSummary
             ? agentStatusChipText(tab.workstream, agentStatusSummary)
             : null;
+        const preferredPaneStatusSummary =
+          [
+            paneTerminal?.statusSummary,
+            !paneTerminal ? tab.workstream?.statusSummary : undefined,
+          ].find(
+            (summary) =>
+              summary?.mainTaskSource === "plan-explanation" &&
+              Boolean(summary.mainTask?.trim()) &&
+              qualityCheckGoalLabel(summary.mainTask, {
+                allowAboutWhatVoice: true,
+                allowTrustedAboutWhat: true,
+                maxLength: 150,
+              }).ok,
+          ) ??
+          paneTerminal?.statusSummary ??
+          tab.workstream?.statusSummary;
         const shellExtractedSummary =
           !agentStatusSummary && !isPreviewPane && paneTerminal
             ? getDisplaySummary(
@@ -1127,16 +1162,18 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                   terminalOutput: paneTerminal.terminalOutput,
                   terminalVisibleText: paneTerminal.terminalVisibleText,
                 },
-                paneTerminal.statusSummary,
+                preferredPaneStatusSummary,
               )
             : null;
         const visibleTaskLineup = pickVisibleTaskLineup(
-          tab.workstream?.taskLineup ?? paneTerminal?.taskLineup,
+          paneTerminal?.taskLineup ?? tab.workstream?.taskLineup,
           paneTerminal?.activeRunId,
         );
         const terminalPurpose = terminalPurposeFromContext({
           stored: paneTerminal?.purpose,
-          workstreamTitle: tab.workstream?.mission ?? tab.workstream?.prompt,
+          workstreamTitle: paneTerminal
+            ? undefined
+            : tab.workstream?.mission ?? tab.workstream?.prompt,
           activeTaskTitle:
             visibleTaskLineup.find((item) => item.status === "in_progress")
               ?.content ?? visibleTaskLineup[0]?.content,
@@ -1272,12 +1309,15 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                 undefined,
               terminalStatus,
               taskLineup:
-                tab.workstream?.taskLineup ?? paneTerminal?.taskLineup,
+          paneTerminal?.taskLineup ?? tab.workstream?.taskLineup,
               activeRunId: paneTerminal?.activeRunId,
-              mainUserAsk: storedMainUserAskApplies
-                ? paneTerminal?.mainUserAsk
-                : undefined,
-              statusSummary: paneTerminal?.statusSummary,
+              mainUserAsk:
+                preferredPaneStatusSummary?.mainTaskSource === "plan-explanation"
+                  ? undefined
+                  : storedMainUserAskApplies
+                    ? paneTerminal?.mainUserAsk
+                    : undefined,
+               statusSummary: preferredPaneStatusSummary,
               taskLine: paneTaskLine,
               summary: shellStatusSummaryBase,
               neutralTitle: shellNeutralTitle ?? null,
@@ -1335,28 +1375,60 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
             : null;
         const isAgentPane = Boolean(agentStatusSummary);
         const isShellSummaryPane = Boolean(shellStatusSummary);
+        const rendererTaskFallback = "Waiting for a clear task";
         const agentTaskCandidate = isAgentPane
-          ? agentWorkstream?.nextAction?.trim() ||
-            agentHeader?.currentActivity?.trim()
+          ? [
+              paneTerminal?.taskLineup?.find(
+                (item) =>
+                  item.status === "in_progress" &&
+                  !/^(?:Working|Thinking|Ready|Idle|Status unavailable|Activity not captured)$/i.test(
+                    item.content.trim(),
+                ),
+              )?.content?.trim(),
+              paneTerminal?.statusSummary?.task?.trim(),
+              agentStatusSummary?.task?.trim(),
+              agentWorkstream?.mission?.trim(),
+              agentWorkstream?.nextAction?.trim(),
+              agentHeader?.currentActivity?.trim(),
+            ].find(
+              (candidate) =>
+                candidate &&
+                qualityCheckAuthoritativeTaskLabel(candidate).ok &&
+                !/^Clarify the cockpit header$/i.test(candidate) &&
+                !/^(?:Working|Thinking|Ready|Idle|Status unavailable|Activity not captured)$/i.test(
+                  candidate,
+                ),
+            )
           : undefined;
         const agentTaskLabel = isAgentPane
-          ? resolveDistinctHeaderNow(agentHeader?.goalLabel, agentTaskCandidate) ||
-            "Task not captured"
+          ? agentTaskCandidate &&
+            !headerTextsEquivalent(agentHeader?.goalLabel, agentTaskCandidate)
+            ? agentTaskCandidate
+            : rendererTaskFallback
           : undefined;
         const shellTaskCandidate = !isAgentPane
-          ? (tab.workstream?.taskLineup ?? paneTerminal?.taskLineup)
+          ? (paneTerminal?.taskLineup ?? tab.workstream?.taskLineup)
               ?.find((item) => item.status === "in_progress")
-              ?.content?.trim()
+              ?.content?.trim() ??
+            paneTerminal?.statusSummary?.task?.trim() ??
+            shellStatusSummary?.task?.trim()
           : undefined;
+        const shellStatusTaskCandidate = paneTerminal?.statusSummary?.task?.trim();
         const shellTaskLabel = !isAgentPane
-          ? resolveDistinctHeaderNow(shellHeader?.goalLabel, shellTaskCandidate) ||
-            "Task not captured"
+          ? (shellStatusTaskCandidate &&
+            !headerTextsEquivalent(shellHeader?.goalLabel, shellStatusTaskCandidate)
+              ? shellStatusTaskCandidate
+              : resolveDistinctHeaderNow(shellHeader?.goalLabel, shellTaskCandidate)) ||
+            rendererTaskFallback
           : undefined;
         const taskSidebarCollapsed =
           paneTerminal?.taskSidebarCollapsed ?? false;
         const paneActivity = !isPreviewPane
           ? tab.workstream?.kind === "agent"
-            ? (agentStatusSummary?.now ??
+            ? (agentWorkstream?.taskLineup?.find(
+                (item) => item.status === "in_progress",
+              )?.content?.trim() ??
+              agentStatusSummary?.now ??
               workstreamActivityText(tab.workstream))
             : shellStatusSummary?.now
           : null;
@@ -1380,32 +1452,84 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
           },
           {
             nowMs: Date.now(),
-            bypass:
-              terminalStatus === "failed" ||
-              terminalStatus === "exited" ||
-              shellHeader?.sources.goal === "task-tool" ||
-              Boolean(agentHeader?.sources.goal === "task-tool") ||
-              !paneTerminal?.statusSummary?.tasksFromTodoWrite ||
-              Boolean(shellHeader?.debug.titleUsesDistinctActivity),
+            holdPlaceholders: true,
           },
         );
         const headerTitle = stabilizedHeader.title;
-        const sidecarNow = paneTerminal?.statusSummarySource === "sidecar"
-          ? resolveDistinctHeaderNow(
-              headerTitle,
-              paneTerminal.statusSummary?.now?.trim(),
-            )
-          : undefined;
-        const headerNow =
-          sidecarNow ||
-          resolveDistinctHeaderNow(headerTitle, stabilizedHeader.now) ||
+        const safeStabilizedNow =
+          qualityCheckNowLabel(stabilizedHeader.now).ok
+            ? stabilizedHeader.now
+            : undefined;
+        const headerNowCandidate =
+          resolveDistinctHeaderNow(headerTitle, safeStabilizedNow) ||
           (isAgentPane && agentHeader?.currentActivity === "Working"
             ? "Working"
-            : "");
+            : "Idle — no work is running");
+        const distinctHeaderNow = resolveDistinctHeaderNow(
+          isAgentPane ? agentTaskLabel : shellTaskLabel,
+          headerNowCandidate,
+        );
+        const headerNowRepeatsTitle =
+          headerNowCandidate.trim().toLocaleLowerCase() ===
+          headerTitle.trim().toLocaleLowerCase();
+        const headerNow =
+          !distinctHeaderNow ||
+          headerNowRepeatsTitle ||
+          /^(?:Status unavailable|Idle|Ready|Awaiting next action|Activity not captured)$/i.test(
+            distinctHeaderNow.trim(),
+          )
+            ? "Idle — no work is running"
+            : distinctHeaderNow;
+        const statusSummaryGoalFallback =
+          paneTerminal?.statusSummarySource === "sidecar" &&
+          paneTerminal.statusSummary &&
+          /^(?:Make|Keep|Ensure|Help|Get|Finish|Ship|This session is about|I['’]m |We['’]re )/i.test(
+            paneTerminal.statusSummary.task.trim(),
+          ) &&
+          qualityCheckGoalLabel(paneTerminal.statusSummary.task, {
+            allowAboutWhatVoice: true,
+            allowTrustedAboutWhat: true,
+            maxLength: 150,
+          }).ok
+            ? paneTerminal.statusSummary.task.trim()
+            : undefined;
+        const trustedPaneGoal =
+          preferredPaneStatusSummary?.mainTaskSource === "plan-explanation" &&
+          preferredPaneStatusSummary.mainTask &&
+          qualityCheckGoalLabel(preferredPaneStatusSummary.mainTask, {
+            allowAboutWhatVoice: true,
+            allowTrustedAboutWhat: /^\$about-what$/i.test(
+              preferredPaneStatusSummary.userTask?.trim() ?? "",
+            ),
+            maxLength: 150,
+          }).ok
+            ? preferredPaneStatusSummary.mainTask.trim()
+            : statusSummaryGoalFallback;
+        const capturedHeaderContext = isAgentPane
+          ? agentHeader?.contextLabel
+          : shellHeader?.contextLabel;
+        const rawHeaderContext =
+          trustedPaneGoal ||
+          (capturedHeaderContext &&
+          (isAgentPane ? agentHeader?.hasCapturedContext : shellHeader?.hasCapturedContext) &&
+          !/^Make TermFleet (?:a reliable terminal cockpit so people can understand work and resume it safely|show clear tasks, goals, and current activity so work is easy to resume)[.!]?$/i.test(
+            capturedHeaderContext,
+          ) &&
+            qualityCheckGoalLabel(capturedHeaderContext).ok
+            ? capturedHeaderContext
+            : undefined) ||
+          undefined;
         const headerContext =
-          (isAgentPane
-            ? agentHeader?.contextLabel
-            : shellHeader?.contextLabel) ?? "";
+          rawHeaderContext &&
+          !headerTextsEquivalent(
+            rawHeaderContext,
+            isAgentPane ? agentTaskLabel : shellTaskLabel,
+          )
+            ? rawHeaderContext
+            : "";
+        const displayedHeaderContext =
+          headerContext ||
+          "Goal not captured";
         // ONE pure render-time translation of the pane's stored status — identical in
         // every view, nothing stored separately that can be dropped and flicker.
         const splitAttentionState: AttentionState = paneBadgeAttention(
@@ -1495,6 +1619,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                   paneId,
                   terminalId: paneTerminal?.id,
                   tabId: tab.id,
+                  groupId: tab.groupId ?? null,
                   cwd: paneCwd ?? undefined,
                   path: isAgentPane
                     ? agentStatusSummary?.path
@@ -1504,9 +1629,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                     : shellHeader?.workspace,
                   projectEmoji: linkedProject?.emoji,
                   kind: isAgentPane ? "agent" : "shell",
-                  task: isAgentPane
-                    ? agentTaskLabel
-                    : shellTaskLabel,
+                  task: headerTitle,
                   taskSource: isAgentPane
                     ? agentTaskLabel === "Task not captured"
                       ? "missing"
@@ -1514,11 +1637,19 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                     : shellTaskLabel === "Task not captured"
                       ? "missing"
                       : "task-tool",
-                  context: headerContext,
-                  contextSource: isAgentPane
-                    ? "workstream"
-                    : shellHeader?.sources.context,
-                  title: headerTitle,
+                  context: displayedHeaderContext || "",
+                  contextSource:
+                    isAgentPane
+                      ? agentHeader?.hasCapturedContext
+                        ? "workstream"
+                        : "missing"
+                      : headerContext
+                        ? shellHeader?.sources.context
+                        : "missing",
+                  title:
+                    headerNow !== "Waiting for current activity"
+                      ? headerNow
+                      : displayedHeaderContext || headerNow,
                   titleSource: isAgentPane
                     ? "agent-status"
                     : shellHeader?.sources.activity,
@@ -1549,11 +1680,15 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                     ? tab.workstream?.statusSummary
                     : paneTerminal?.statusSummary
                   )?.narration,
-                  statusSummaryTask: (isAgentPane
-                    ? tab.workstream?.statusSummary
-                    : paneTerminal?.statusSummary
-                  )?.task,
-                  statusSummaryNow: (isAgentPane
+                   statusSummaryTask: (isAgentPane
+                     ? tab.workstream?.statusSummary
+                     : paneTerminal?.statusSummary
+                   )?.task,
+                   statusSummaryGoal: (isAgentPane
+                     ? tab.workstream?.statusSummary
+                     : paneTerminal?.statusSummary
+                   )?.mainTask ?? trustedPaneGoal,
+                   statusSummaryNow: (isAgentPane
                     ? tab.workstream?.statusSummary
                     : paneTerminal?.statusSummary
                   )?.now,
@@ -1771,14 +1906,16 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                           style={{
                             minWidth: 0,
                             overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
+                            textOverflow: "clip",
+                            whiteSpace: "normal",
+                            overflowWrap: "anywhere",
+                            lineHeight: 1.25,
                           }}
                         >
                           {headerTitle}
                         </span>
                       </div>
-                      {headerContext && headerContext !== "Context not captured" && (
+                      {displayedHeaderContext && displayedHeaderContext !== "Context not captured" && (
                         <div
                           data-testid="split-agent-pane-goal"
                           style={{
@@ -1790,13 +1927,14 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                             color: "var(--text-secondary)",
                             fontSize: 11,
                           }}
-                          title={headerContext}
+                          title={displayedHeaderContext}
                         >
                           <span
                             style={{
                               flexShrink: 0,
-                              color: "var(--text-tertiary)",
-                              fontSize: 10,
+                              color: "var(--text-primary)",
+                              fontSize: 12,
+                              fontWeight: 600,
                               textTransform: "uppercase",
                             }}
                           >
@@ -1806,11 +1944,13 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                             style={{
                               minWidth: 0,
                               overflow: "hidden",
-                              textOverflow: "ellipsis",
-                              whiteSpace: "nowrap",
+                              textOverflow: "clip",
+                              whiteSpace: "normal",
+                              overflowWrap: "anywhere",
+                              lineHeight: 1.25,
                             }}
                           >
-                            {headerContext}
+                            {displayedHeaderContext}
                           </span>
                         </div>
                       )}
@@ -1923,8 +2063,10 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                           style={{
                             minWidth: 0,
                             overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
+                            textOverflow: "clip",
+                            whiteSpace: "normal",
+                            overflowWrap: "anywhere",
+                            lineHeight: 1.25,
                           }}
                         >
                           {agentStatusSummary.path}
@@ -1960,14 +2102,16 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                           style={{
                             minWidth: 0,
                             overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
+                            textOverflow: "clip",
+                            whiteSpace: "normal",
+                            overflowWrap: "anywhere",
+                            lineHeight: 1.25,
                           }}
                         >
                           {headerNow}
                         </span>
                       </div>
-                      {headerContext && headerContext !== "Context not captured" && (
+                      {displayedHeaderContext && displayedHeaderContext !== "Context not captured" && (
                         <div
                           data-testid="split-terminal-summary-goal"
                           style={{
@@ -1979,7 +2123,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                             color: "var(--text-secondary)",
                             fontSize: 11,
                           }}
-                          title={headerContext}
+                          title={displayedHeaderContext}
                         >
                           <span
                             style={{
@@ -1995,11 +2139,13 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                             style={{
                               minWidth: 0,
                               overflow: "hidden",
-                              textOverflow: "ellipsis",
-                              whiteSpace: "nowrap",
+                              textOverflow: "clip",
+                              whiteSpace: "normal",
+                              overflowWrap: "anywhere",
+                              lineHeight: 1.25,
                             }}
                           >
-                            {headerContext}
+                            {displayedHeaderContext}
                           </span>
                         </div>
                       )}
@@ -2100,7 +2246,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                             textTransform: "uppercase",
                           }}
                         >
-                          {shellHeader?.hasCapturedGoal ? "Task:" : "State:"}
+                          Task:
                         </span>
                         <span
                           data-testid="split-terminal-summary-task"
@@ -2113,12 +2259,10 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                         >
                           {shellHeader?.hasCapturedGoal
                             ? headerTitle
-                            : shellHeader?.currentActivity ?? headerNow}
+                            : "Task not captured"}
                         </span>
                       </div>
-                      {headerContext &&
-                        headerContext !== "Context not captured" &&
-                        shellHeader?.hasCapturedGoal && (
+                      {displayedHeaderContext && (
                         <div
                           data-testid="split-terminal-summary-goal"
                           style={{
@@ -2130,13 +2274,14 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                             color: "var(--text-secondary)",
                             fontSize: 11,
                           }}
-                          title={headerContext}
+                          title={displayedHeaderContext}
                         >
                           <span
                             style={{
                               flexShrink: 0,
-                              color: "var(--text-tertiary)",
-                              fontSize: 10,
+                              color: "var(--text-primary)",
+                              fontSize: 12,
+                              fontWeight: 600,
                               textTransform: "uppercase",
                             }}
                           >
@@ -2146,15 +2291,17 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                             style={{
                               minWidth: 0,
                               overflow: "hidden",
-                              textOverflow: "ellipsis",
-                              whiteSpace: "nowrap",
+                              textOverflow: "clip",
+                              whiteSpace: "normal",
+                              overflowWrap: "anywhere",
+                              lineHeight: 1.25,
                             }}
                           >
-                            {headerContext}
+                            {displayedHeaderContext}
                           </span>
                         </div>
                       )}
-                      {headerNow && (
+                      {(
                         <div
                           data-testid="split-terminal-summary-now-inline"
                           style={{
@@ -2183,8 +2330,10 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                             style={{
                               minWidth: 0,
                               overflow: "hidden",
-                              textOverflow: "ellipsis",
-                              whiteSpace: "nowrap",
+                              textOverflow: "clip",
+                              whiteSpace: "normal",
+                              overflowWrap: "anywhere",
+                              lineHeight: 1.25,
                             }}
                           >
                             {headerNow}
@@ -2486,10 +2635,20 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                         isPreviewPane
                           ? "Preview pane"
                           : (paneTerminal?.lastError ??
-                            `Terminal ${terminalStatusLabel}`)
+                            `Terminal ${terminalStatusLabel}${paneTerminal?.recoveryLifecycle ? ` · ${paneTerminal.recoveryLifecycle}` : ""}`)
                       }
                     >
-                      {isPreviewPane ? "preview" : terminalStatusLabel}
+                      {isPreviewPane
+                        ? "preview"
+                        : paneTerminal?.recoveryLifecycle === "dead-recoverable"
+                          ? "dead · recoverable"
+                          : paneTerminal?.recoveryLifecycle === "closed-by-user"
+                            ? "closed by you"
+                            : paneTerminal?.recoveryLifecycle === "unknown"
+                              ? "unknown · not restored"
+                              : paneTerminal?.recoveryLifecycle === "alive"
+                                ? "alive"
+                                : terminalStatusLabel}
                     </span>
                     <PaneToolbar
                       paneId={paneId}

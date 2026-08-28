@@ -19,9 +19,12 @@ import { stableAgentProvider } from "./agentProviderIdentity";
 import { runBoundedTasks } from "./statusPollScheduler";
 import {
   mirroredWorkstream,
+  preserveDurablePaneGoal,
   projectStatusPollResult,
   statusPollProjectionChanged,
+  terminalMatchesPollTarget,
 } from "./statusPollProjection";
+
 
 const POLL_INTERVAL_MS = 4_000;
 // Every pane's badge must stay correct at a glance, so re-read all of them on a short
@@ -45,6 +48,13 @@ const lastPolledByPane = new Map<string, number>();
 
 function panePollKey(tab: Tab, terminal: TerminalState) {
   return `terminal-${tab.id}-${terminal.paneId}`;
+}
+
+function latestTabForPollTarget(tabs: Tab[], target: StatusPollTarget) {
+  return tabs.find((candidate) => candidate.id === target.tab.id) ??
+    tabs.find((candidate) =>
+      candidate.terminals.some((terminal) => terminal.paneId === target.terminal.paneId),
+    );
 }
 
 function shouldPollTarget(target: StatusPollTarget, activeTabId: string | null | undefined, now: number) {
@@ -98,6 +108,7 @@ async function pollOnce() {
           // transcript reader here made every unmounted/map pane lose its opening
           // request and session title, so it could only render a placeholder.
           endpoint: "",
+          forceTauriSidecar: true,
           // Leave transcriptReader undefined so the desktop uses the local Tauri
           // reader; browser previews still resolve this to null automatically.
           // Context synthesis remains disabled: deterministic evidence is enough and
@@ -105,21 +116,48 @@ async function pollOnce() {
           contextTaskSummarizer: null,
           });
           return { target, result };
-        } catch {
-          return { target, result: null };
+        } catch (error) {
+          return {
+            target,
+            result: null,
+            error: error instanceof Error ? error.message : String(error),
+          };
         }
       },
     );
 
-    for (const { target, result } of pollResults) {
-      if (!result) continue;
-      const { tab, terminal } = target;
+    for (const { target, result, error } of pollResults) {
+      if (!result) {
+        const { terminal } = target;
+        const latest = useWorkspaceStore.getState();
+        const latestTab = latestTabForPollTarget(latest.tabs, target);
+        const latestTerminal = latestTab?.terminals.find(
+          (candidate) => terminalMatchesPollTarget(candidate, terminal),
+        );
+        const pollError = `poll-error:${error || "unknown"}`;
+        if (!latestTab || !latestTerminal || latestTerminal.statusSummaryError === pollError) continue;
+        latest.updateTab(latestTab.id, {
+          workstream: mirroredWorkstream(latestTab, undefined, undefined, {
+            statusSummarySource: "fallback",
+            statusSummaryError: pollError,
+          }),
+          terminals: latestTab.terminals.map((candidate) =>
+            terminalMatchesPollTarget(candidate, terminal)
+              ? { ...candidate, statusSummarySource: "fallback", statusSummaryError: pollError }
+              : candidate,
+          ),
+        });
+        continue;
+      }
+      const { terminal } = target;
       try {
         const contextual = result.source === "process" && Boolean(result.summary.narration);
         const trusted = result.source === "sidecar" || contextual;
         const latest = useWorkspaceStore.getState();
-        const latestTab = latest.tabs.find((candidate) => candidate.id === tab.id);
-        const latestTerminal = latestTab?.terminals.find((candidate) => candidate.id === terminal.id);
+        const latestTab = latestTabForPollTarget(latest.tabs, target);
+        const latestTerminal = latestTab?.terminals.find(
+          (candidate) => terminalMatchesPollTarget(candidate, terminal),
+        );
         if (!latestTab || !latestTerminal) continue;
 
         const expiredProjection = projectStatusPollResult(latestTerminal, result, Date.now());
@@ -129,9 +167,14 @@ async function pollOnce() {
           // An expired record has no LIVE step to report, so the second row clears.
           const expiredNow = null;
           latest.updateTab(latestTab.id, {
-            workstream: mirroredWorkstream(latestTab, expiredLine),
+            workstream: mirroredWorkstream(latestTab, expiredLine, undefined, {
+              statusSummary: expiredProjection.statusSummary,
+              statusSummaryUpdatedAt: expiredProjection.statusSummaryUpdatedAt,
+              statusSummarySource: expiredProjection.statusSummarySource,
+              statusSummaryError: expiredProjection.statusSummaryError,
+            }),
             terminals: latestTab.terminals.map((candidate) =>
-              candidate.id === terminal.id
+              terminalMatchesPollTarget(candidate, terminal)
                 ? {
                     ...candidate,
                     ...expiredProjection,
@@ -164,15 +207,23 @@ async function pollOnce() {
             latestTerminal.agentProvider,
             result.summary.provider,
           );
+          const pollDiagnostic = result.sidecarState
+            ? `sidecar:${result.sidecarState}`
+            : `source:${result.source}`;
           if (
             (untrustedLine && untrustedLine !== latestTerminal.taskLine) ||
             untrustedNow?.text !== latestTerminal.nowLine?.text ||
-            inferredProvider !== latestTerminal.agentProvider
+            inferredProvider !== latestTerminal.agentProvider ||
+            latestTerminal.statusSummarySource !== result.source ||
+            latestTerminal.statusSummaryError !== pollDiagnostic
           ) {
             latest.updateTab(latestTab.id, {
-              workstream: mirroredWorkstream(latestTab, untrustedLine),
+              workstream: mirroredWorkstream(latestTab, untrustedLine, undefined, {
+                statusSummarySource: result.source,
+                statusSummaryError: pollDiagnostic,
+              }),
               terminals: latestTab.terminals.map((candidate) =>
-                candidate.id === terminal.id
+                terminalMatchesPollTarget(candidate, terminal)
                   ? {
                       ...candidate,
                       ...(untrustedLine ? { taskLine: untrustedLine } : {}),
@@ -181,6 +232,8 @@ async function pollOnce() {
                       // pane (most of the map) had a blank "Now" line forever.
                       nowLine: untrustedNow,
                       agentProvider: inferredProvider,
+                      statusSummarySource: result.source,
+                      statusSummaryError: pollDiagnostic,
                     }
                   : candidate,
               ),
@@ -191,6 +244,10 @@ async function pollOnce() {
         // Never clobber a live declared task list with a modeled line.
         if (latestTerminal.statusSummary?.tasksFromTodoWrite && !result.summary.tasksFromTodoWrite && !contextual) continue;
         const updatedAt = Date.now();
+        const projectedSummary = preserveDurablePaneGoal(
+          latestTerminal.statusSummary,
+          result.summary,
+        );
         // Never DOWNGRADE the Task row: a thin ask ("done", "do it") from the
         // heuristic must not replace an existing richer goal.
         const candidateAsk = String(result.summary.userTask ?? "").trim();
@@ -200,14 +257,14 @@ async function pollOnce() {
           (!previousAsk && Boolean(candidateAsk)) ||
           candidateAsk.split(/\s+/).length > previousAsk.split(/\s+/).length;
         const mainUserAsk = result.source === "sidecar" || askImproves
-          ? mainUserAskFromSummary(result.summary, "status-sidecar", {
+          ? mainUserAskFromSummary(projectedSummary, "status-sidecar", {
               previous: latestTerminal.mainUserAsk,
               runId: latestTerminal.activeRunId,
               now: updatedAt,
             })
           : latestTerminal.mainUserAsk;
-        const taskLineup = result.summary.tasksFromTodoWrite
-          ? taskLineupFromExtractedItems(result.summary.tasks, "todo-write", "pending", updatedAt, latestTerminal.activeRunId)
+        const taskLineup = projectedSummary.tasksFromTodoWrite
+          ? taskLineupFromExtractedItems(projectedSummary.tasks, "todo-write", "pending", updatedAt, latestTerminal.activeRunId)
           : undefined;
         const taskLine = preferPaneTaskLine(
           latestTerminal.taskLine,
@@ -217,8 +274,8 @@ async function pollOnce() {
           ...(taskLineup && taskLineup.length > 0 ? { taskLineup } : {}),
           ...(taskLine ? { taskLine } : {}),
           nowLine: result.nowLine ?? null,
-          statusSummary: result.summary,
-          agentProvider: stableAgentProvider(latestTerminal.agentProvider, result.summary.provider),
+          statusSummary: projectedSummary,
+          agentProvider: stableAgentProvider(latestTerminal.agentProvider, projectedSummary.provider),
           statusSummaryUpdatedAt: updatedAt,
           statusSummarySource: result.source,
           statusSummaryError: result.error,
@@ -226,9 +283,16 @@ async function pollOnce() {
         };
         if (!statusPollProjectionChanged(latestTerminal, projection)) continue;
         latest.updateTab(latestTab.id, {
-          workstream: mirroredWorkstream(latestTab, taskLine, taskLineup),
+          workstream: mirroredWorkstream(latestTab, taskLine, taskLineup, {
+            statusSummary: projection.statusSummary,
+            statusSummaryUpdatedAt: projection.statusSummaryUpdatedAt,
+            statusSummarySource: projection.statusSummarySource,
+            statusSummaryError: projection.statusSummaryError,
+          }),
           terminals: latestTab.terminals.map((candidate) =>
-            candidate.id === terminal.id ? { ...candidate, ...projection } : candidate,
+            terminalMatchesPollTarget(candidate, terminal)
+              ? { ...candidate, ...projection }
+              : candidate,
           ),
         });
       } catch {

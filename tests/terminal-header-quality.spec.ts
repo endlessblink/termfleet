@@ -3,6 +3,7 @@ import {
   headerLabelsAreDuplicated,
   qualityCheckActivityLabel,
   qualityCheckAuthoritativeTaskLabel,
+  qualityCheckGoalLabel,
   qualityCheckNowLabel,
   qualityCheckTrustedActivityLabel,
   qualityCheckTaskLabel,
@@ -14,11 +15,169 @@ test("accepts concise operator-readable task and activity labels", () => {
   expect(qualityCheckActivityLabel("Inspecting header quality rules").ok).toBe(true);
 });
 
+test("rejects workflow narration from the glanceable Task and Now rows", () => {
+  for (const label of [
+    "Staging the restart and map fix",
+    "Rebuilding and verifying the installed dock",
+    "V - Preserve the current worktree. - Review changes before any recovery or merge.",
+    "Git safety checks pass; all 20 tests succeeded, and the current worktree was preserved",
+  ]) {
+    expect(qualityCheckTaskLabel(label), label).toMatchObject({ ok: false, reason: "vague" });
+    expect(qualityCheckNowLabel(label), label).toMatchObject({ ok: false, reason: "vague" });
+  }
+});
+
 test("rejects release choreography as a durable goal", () => {
   expect(
     qualityCheckAuthoritativeTaskLabel("Committing, tagging, and pushing the candidate")
       .ok,
   ).toBe(false);
+});
+
+test("rejects skill and process instructions as durable Goal text", () => {
+  for (const placeholder of ["Goal not captured", "Task not captured", "Status unavailable", "Activity not captured", "[Image #1]"]) {
+    expect(qualityCheckGoalLabel(placeholder), placeholder).toMatchObject({
+      ok: false,
+      reason: "vague",
+    });
+  }
+  expect(qualityCheckGoalLabel("use impeccable design skills to redesign this properly"))
+    .toMatchObject({ ok: false, reason: "vague" });
+  expect(
+    qualityCheckAuthoritativeTaskLabel("Locking the shell-versus-agent regression"),
+  ).toMatchObject({ ok: false, reason: "vague" });
+  expect(qualityCheckAuthoritativeTaskLabel("Checking agent restore"))
+    .toMatchObject({ ok: false, reason: "vague" });
+  expect(qualityCheckNowLabel("Implemented and committed the provider-exit guard"))
+    .toMatchObject({ ok: false, reason: "implementation-detail" });
+  expect(
+    qualityCheckGoalLabel(
+      "Make the terminal cockpit easy to understand so people can resume work later",
+    ).ok,
+  )
+    .toBe(true);
+  expect(
+    qualityCheckGoalLabel("Keeping each terminal's purpose clear and stable"),
+  ).toMatchObject({ ok: false, reason: "vague" });
+  expect(qualityCheckGoalLabel("do it all already!")).toMatchObject({ ok: false, reason: "vague" });
+  for (const processGoal of [
+    "Implemented the fail-closed evidence gate and reviewer audit: unsupported results, missing",
+    "create regression tests so it wont break, and make sure that it never signs me out without me signing out myself",
+    "so lets create this unified system because the regressions and bugs are numerous",
+    "Make the active terminal/workstream dominant; collapse secondary context until selection only",
+    "This session is about delivering the updated TermFleet build and resolving the remaining restart risk",
+  ]) {
+    expect(qualityCheckGoalLabel(processGoal), processGoal).toMatchObject({ ok: false, reason: "vague" });
+  }
+  for (const genericGoal of [
+    "Keep TermFleet work clear so people can return to the right terminal and continue confidently",
+    "Make each TermFleet terminal clear enough to understand at a glance",
+    "Make TermFleet show clear tasks, goals, and current activity so work is easy to resume",
+    "Help people understand each TermFleet terminal's current work and next step so they can resume confidently",
+    "Help people resume TermFleet work by understanding each terminal's purpose and current activity",
+    "Make every TermFleet terminal show its purpose and current activity clearly",
+  ]) {
+    expect(qualityCheckGoalLabel(genericGoal), genericGoal).toMatchObject({
+      ok: false,
+      reason: "vague",
+    });
+  }
+  expect(
+    qualityCheckGoalLabel(
+      "Make TermFleet show each terminal's purpose so people can resume the right work confidently",
+    ).ok,
+  ).toBe(true);
+  expect(qualityCheckGoalLabel("Make Jobrunner work clear and dependable so people can resume it confidently"))
+    .toMatchObject({ ok: false, reason: "vague" });
+  expect(qualityCheckGoalLabel("This session is about delivering the updated TermFleet build")).toMatchObject({
+    ok: false,
+    reason: "vague",
+  });
+  expect(qualityCheckNowLabel("Commit passes recovery tests, build, installed release, and restart verification")).toMatchObject({
+    ok: false,
+    reason: "implementation-detail",
+  });
+});
+
+test("rejects clipped Goal sentences before any renderer can display them", () => {
+  for (const value of [
+    "We’re fixing restored agent terminals so they reconnect as agent conversations instead of",
+    "We’re making sure terminals return after restarts, while termina…",
+  ]) {
+    expect(qualityCheckGoalLabel(value), value).toMatchObject({
+      ok: false,
+      reason: "incomplete",
+    });
+  }
+});
+
+test("trusted about-what output can be accepted as a durable Goal", () => {
+  expect(
+    qualityCheckGoalLabel(
+      "This session is about delivering the updated TermFleet build and resolving the remaining restart risk",
+      { allowAboutWhatVoice: true, allowTrustedAboutWhat: true, maxLength: 150 },
+    ).ok,
+  ).toBe(true);
+  expect(
+    qualityCheckGoalLabel(
+      "Keep every agent terminal connected after relaunch so work can be resumed safely",
+      { allowAboutWhatVoice: true, allowTrustedAboutWhat: true, maxLength: 150 },
+    ).ok,
+  ).toBe(true);
+});
+
+test("a clipped kill-relaunch pane still gets its own outcome Goal", async () => {
+  const { summaryFromSidecar } = await import("../src/lib/agentStatusSidecar");
+  const summary = summaryFromSidecar(
+    {
+      cwd: "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
+      userTask: "$about-what",
+      mainTask: "This session is about delivering the updated TermFleet build and resolving the remaining r",
+      mainTaskSource: "plan-explanation",
+      narration: "I’m diagnosing why TermFleet appears to kill agent panes after restart, with the next step",
+      todos: [{ content: "Identifying the process and kill event", status: "in_progress" }],
+      turn: "idle",
+    },
+    {
+      task: "Waiting for a clear task",
+      now: "Idle — no work is running",
+      path: "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
+    },
+  );
+  expect(summary.mainTask).toBe(
+    "This session is about delivering the updated TermFleet build and resolving the remaining r",
+  );
+  expect(summary.mainTaskSource).toBe("about-what");
+});
+
+test("rejects serialized status fragments from the Now row", () => {
+  expect(qualityCheckNowLabel('installed restart","cwd" "/media/project/ checks failed'))
+    .toMatchObject({ ok: false, reason: "prompt-fragment" });
+});
+
+test("rejects URLs and absolute paths even when mixed into otherwise readable Task text", () => {
+  for (const label of [
+    "Yes, push d29159fe to https://github.com/endlessblink/flow-state.git",
+    "you didnt do anything https://rc.in-theflow.com/exercise-review/index.html",
+    "Review the draft at /media/endlessblink/data/my-projects/draft",
+  ]) {
+    expect(qualityCheckUserAskLabel(label), label).toMatchObject({
+      ok: false,
+      reason: "implementation-detail",
+    });
+    expect(qualityCheckAuthoritativeTaskLabel(label), label).toMatchObject({
+      ok: false,
+      reason: "implementation-detail",
+    });
+  }
+});
+
+test("rejects a project slug before it can bypass the explicit Goal boundary", () => {
+  expect(qualityCheckUserAskLabel("a-meatzevet-courses").ok).toBe(true);
+  expect(qualityCheckGoalLabel("a-meatzevet-courses")).toMatchObject({
+    ok: false,
+    reason: "vague",
+  });
 });
 
 test("rejects installed-pane audit choreography as a durable goal", () => {
@@ -27,6 +186,18 @@ test("rejects installed-pane audit choreography as a durable goal", () => {
     "Re-audit live pane records and capture sources",
   ]) {
     expect(qualityCheckAuthoritativeTaskLabel(label), label).toMatchObject({ ok: false, reason: "vague" });
+  }
+});
+
+test("rejects installed-release and agent-recovery process labels as durable Tasks", () => {
+  for (const label of [
+    "Checking installed",
+    "Persisting live agent identity and verifying restart recovery",
+  ]) {
+    expect(qualityCheckAuthoritativeTaskLabel(label), label).toMatchObject({
+      ok: false,
+      reason: "vague",
+    });
   }
 });
 
@@ -53,6 +224,25 @@ test("rejects operator frustration and repeated-letter complaints as durable goa
       reason: "prompt-fragment",
     });
   }
+});
+
+test("rejects a statement that the goal was not met as durable identity", () => {
+  expect(qualityCheckUserAskLabel("it has not been met")).toMatchObject({
+    ok: false,
+    reason: "prompt-fragment",
+  });
+});
+
+test("rejects fiasco postmortems as durable goals", () => {
+  expect(
+    qualityCheckUserAskLabel(
+      "The thing is that I had a fiasco around this exact thing. Go over it again.",
+    ),
+  ).toMatchObject({ ok: false, reason: "prompt-fragment" });
+});
+
+test("rejects goal-management commands as durable goals", () => {
+  expect(qualityCheckUserAskLabel("create a goal").ok).toBe(false);
 });
 
 test("rejects agent control commands from the visible activity line", () => {
@@ -148,6 +338,23 @@ test("rejects short feedback, completion chrome, and prompt echoes as durable id
   ]) {
     expect(qualityCheckUserAskLabel(label), label).toMatchObject({ ok: false });
     expect(qualityCheckAuthoritativeTaskLabel(label), label).toMatchObject({ ok: false });
+  }
+});
+
+test("rejects screenshot feedback and failed-test reports as durable identity", () => {
+  for (const label of ["this is a fail", "test:e2e failed"]) {
+    expect(qualityCheckUserAskLabel(label), label).toMatchObject({ ok: false });
+    expect(qualityCheckAuthoritativeTaskLabel(label), label).toMatchObject({ ok: false });
+  }
+});
+
+test("rejects verification choreography as a durable goal", () => {
+  for (const label of [
+    "push to production and verify",
+    "Verify the installed terminal labels",
+  ]) {
+    expect(qualityCheckUserAskLabel(label), label).toMatchObject({ ok: false });
+    expect(qualityCheckAuthoritativeTaskLabel(label), label).toMatchObject({ ok: false, reason: "vague" });
   }
 });
 

@@ -19,6 +19,108 @@ test.use({
   },
 });
 
+async function seedMapViewportScenario(
+  page: import("@playwright/test").Page,
+  viewport: { x: number; y: number; zoom: number },
+) {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.getByRole("button", { name: "Map", exact: true }).click();
+  await page.evaluate((scenarioViewport) => {
+    const store = window.__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+    const state = store.getState();
+    const tabId = "viewport-preservation-tab";
+    const nodeId = "viewport-preservation-node";
+    store.setState({
+      ...state,
+      tabs: [{
+        id: tabId,
+        title: "Viewport preservation test",
+        emoji: "[]",
+        color: "#7aa2f7",
+        groupId: null,
+        initialCwd: "/tmp/viewport-preservation",
+        terminals: [{ id: "viewport-preservation-pty", paneId: "viewport-preservation-pane", cols: 80, rows: 24, status: "running" }],
+        splitLayout: { id: "viewport-preservation-pane", type: "terminal" },
+        activePaneId: "viewport-preservation-pane",
+      }],
+      activeTabId: tabId,
+      activeTerminalId: "viewport-preservation-pty",
+      workspaceUiState: { ...state.workspaceUiState, workspaceMode: "canvas", primarySidebarPanel: "map" },
+      canvasState: {
+        nodes: [{ id: nodeId, type: "terminal", title: "Viewport preservation test", x: 120, y: 120, width: 820, height: 460, terminalTabId: tabId }],
+        selectedNodeId: nodeId,
+        selectedNodeIds: [nodeId],
+        viewport: scenarioViewport,
+      },
+    });
+  }, viewport);
+  await page.waitForTimeout(500);
+  // Let the one-time initial fit settle, then model the operator's later pan/zoom.
+  await page.evaluate((scenarioViewport) => {
+    const store = window.__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+    const state = store.getState();
+    store.setState({
+      ...state,
+      canvasState: { ...state.canvasState, viewport: scenarioViewport },
+    });
+  }, viewport);
+  await page.waitForTimeout(150);
+}
+
+async function addTerminalAndReadViewport(page: import("@playwright/test").Page) {
+  return page.evaluate(() => {
+    const store = window.__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+    store.getState().addTab({
+      title: "Created on map",
+      initialCwd: "/tmp/viewport-preservation",
+      groupId: null,
+    });
+    return store.getState().canvasState.viewport;
+  });
+}
+
+test("creating a map terminal preserves a panned viewport", async ({ page }) => {
+  const before = { x: -420, y: -260, zoom: 1 };
+  await seedMapViewportScenario(page, before);
+  await addTerminalAndReadViewport(page);
+  await expect.poll(() => page.evaluate(() => window.__termfleetWorkspaceStore?.getState().canvasState.viewport)).toEqual(before);
+});
+
+test("creating a map terminal preserves a zoomed-out viewport", async ({ page }) => {
+  const before = { x: 310, y: 180, zoom: 0.55 };
+  await seedMapViewportScenario(page, before);
+  await addTerminalAndReadViewport(page);
+  await expect.poll(() => page.evaluate(() => window.__termfleetWorkspaceStore?.getState().canvasState.viewport)).toEqual(before);
+});
+
+test("creating several map terminals does not repeatedly recenter the map", async ({ page }) => {
+  const before = { x: -780, y: 240, zoom: 0.82 };
+  await seedMapViewportScenario(page, before);
+  await page.evaluate(() => {
+    const store = window.__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+    const add = store.getState().addTab;
+    add({ title: "Created one", initialCwd: "/tmp/viewport-preservation", groupId: null });
+    add({ title: "Created two", initialCwd: "/tmp/viewport-preservation", groupId: null });
+    add({ title: "Created three", initialCwd: "/tmp/viewport-preservation", groupId: null });
+  });
+  await expect.poll(() => page.evaluate(() => window.__termfleetWorkspaceStore?.getState().canvasState.viewport)).toEqual(before);
+});
+
+test("creating a map terminal keeps the selected map spot instead of fitting the new card", async ({ page }) => {
+  const before = { x: 96, y: -144, zoom: 1.15 };
+  await seedMapViewportScenario(page, before);
+  await addTerminalAndReadViewport(page);
+  await expect.poll(() => page.evaluate(() => {
+    const viewport = window.__termfleetWorkspaceStore?.getState().canvasState.viewport;
+    return viewport ? { x: viewport.x, y: viewport.y, zoom: viewport.zoom } : null;
+  })).toEqual(before);
+});
+
 test("map terminal menu visibly offers the exact Codex reconnect command", async ({ page }) => {
   await page.addInitScript(() => {
     window.__TAURI_INTERNALS__ = {
@@ -84,6 +186,78 @@ test("map terminal menu visibly offers the exact Codex reconnect command", async
   ]);
 });
 
+test("live map terminal overlay follows viewport translation when a new terminal is fitted", () => {
+  const source = readFileSync("src/components/MagicCanvas.tsx", "utf8");
+  const overlayEffect = source.match(
+    /useEffect\(\(\) => \{[\s\S]*?termfleet-map-terminal-overlay-sync[\s\S]*?\n  \}, \[[\s\S]*?viewportX,[\s\S]*?viewportY,[\s\S]*?\]\);/,
+  )?.[0] ?? "";
+
+  expect(overlayEffect).toContain("viewportX");
+  expect(overlayEffect).toContain("viewportY");
+});
+
+test("live map terminal overlay stays aligned with its card after recentering", async ({
+  page,
+}) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.getByRole("button", { name: "Map", exact: true }).click();
+  await page.evaluate(() => {
+    const store = window.__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+    const state = store.getState();
+    const tabId = "overlay-viewport-tab";
+    const nodeId = "overlay-viewport-node";
+    store.setState({
+      ...state,
+      tabs: [{
+        id: tabId,
+        title: "Overlay viewport test",
+        emoji: "[]",
+        color: "#7aa2f7",
+        groupId: null,
+        initialCwd: "/tmp/overlay-viewport-test",
+        terminals: [{ id: "overlay-viewport-pty", paneId: "overlay-viewport-pane", cols: 80, rows: 24, status: "running" }],
+        splitLayout: { id: "overlay-viewport-pane", type: "terminal" },
+        activePaneId: "overlay-viewport-pane",
+      }],
+      activeTabId: tabId,
+      workspaceUiState: { ...state.workspaceUiState, workspaceMode: "canvas", primarySidebarPanel: "map" },
+      canvasState: {
+        nodes: [{ id: nodeId, type: "terminal", title: "Overlay viewport test", x: 120, y: 120, width: 820, height: 460, terminalTabId: tabId }],
+        selectedNodeId: nodeId,
+        selectedNodeIds: [nodeId],
+        viewport: { x: 0, y: 0, zoom: 1 },
+      },
+    });
+  });
+
+  const overlay = page.getByTestId("canvas-terminal-live-overlay");
+  await expect(overlay).toBeVisible({ timeout: 10_000 });
+  await page.evaluate(() => {
+    const store = window.__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+    const state = store.getState();
+    store.setState({
+      ...state,
+      canvasState: { ...state.canvasState, viewport: { x: 180, y: 70, zoom: 1 } },
+    });
+  });
+  await expect.poll(async () => {
+    return page.evaluate(() => {
+      const overlay = document.querySelector<HTMLElement>("[data-testid=canvas-terminal-live-overlay]");
+      const body = document.querySelector<HTMLElement>("[data-testid=canvas-terminal-task-content]");
+      if (!overlay || !body) return null;
+      const overlayRect = overlay.getBoundingClientRect();
+      const bodyRect = body.getBoundingClientRect();
+      return {
+        left: Math.round(overlayRect.left - bodyRect.left),
+        top: Math.round(overlayRect.top - bodyRect.top),
+      };
+    });
+  }).toEqual({ left: 0, top: 0 });
+});
+
 test("selected live map terminals preserve alternate-screen projection without clipping overscale", () => {
   const source = readFileSync("src/components/MagicCanvas.tsx", "utf8");
   const liveTerminalBlock = source.match(
@@ -120,7 +294,7 @@ test("selected live map terminal renders through non-transformed overlay, not ac
   );
 });
 
-test("map reattachment prefers the card's live PTY and falls back safely", () => {
+test("map reattachment never borrows another pane's live PTY", () => {
   const source = readFileSync("src/components/MagicCanvas.tsx", "utf8");
   const linkedTerminalBlock = source.match(
     /const linkedTerminal =[\s\S]*?const liveTerminalRoot =/,
@@ -132,10 +306,10 @@ test("map reattachment prefers the card's live PTY and falls back safely", () =>
   expect(codeShape(linkedTerminalBlock)).toContain(
     codeShape("terminal.paneId === node.id"),
   );
-  expect(codeShape(linkedTerminalBlock)).toContain(
+  expect(codeShape(linkedTerminalBlock)).not.toContain(
     codeShape("terminal.paneId === linkedTab.activePaneId"),
   );
-  expect(codeShape(linkedTerminalBlock)).toContain(
+  expect(codeShape(linkedTerminalBlock)).not.toContain(
     codeShape("linkedTab?.terminals[0]"),
   );
 });
@@ -153,6 +327,17 @@ test("map Canvas2D terminals do not also mount the xterm renderer or per-pane st
   expect(magicCanvas).not.toContain("const statusEndpointConfigured");
 });
 
+test("agent status polling persists the pane-owned summary for split headers", () => {
+  const terminal = readFileSync("src/components/Terminal.tsx", "utf8");
+  const agentUpdate = terminal.match(
+    /if \(latestTab\.workstream\?\.kind === \"agent\"\) \{[\s\S]*?latestStore\.updateTab\(tabId, \{[\s\S]*?workstream:/,
+  )?.[0] ?? "";
+
+  expect(agentUpdate).toContain("terminals: latestTab.terminals.map");
+  expect(agentUpdate).toContain("statusSummary: projectedSummary");
+  expect(agentUpdate).toContain("statusSummarySource: result.source");
+});
+
 test("map nodes subscribe to their own tab and live PTY metadata", () => {
   const source = readFileSync("src/components/MagicCanvas.tsx", "utf8");
   const nodeView = source.match(
@@ -163,7 +348,15 @@ test("map nodes subscribe to their own tab and live PTY metadata", () => {
     "const linkedTab = useWorkspaceStore((state) =>",
   );
   expect(nodeView).toContain(
-    "state.tabs.find((tab) => tab.id === node.terminalTabId)",
+    "(node.terminalTabId\n      ? state.tabs.find((tab) => tab.id === node.terminalTabId)",
+  );
+  expect(nodeView).toContain(
+    "state.tabs.find(\n      (tab) =>\n        tab.terminals.some(",
+  );
+  expect(nodeView).toContain("node.linkedTerminalPaneId");
+  expect(nodeView).toContain("restoredNodePaneIds.has(terminal.paneId)");
+  expect(nodeView).toContain(
+    "linkedTab?.terminals.length === 1 ? workstream?.statusSummary : undefined",
   );
   expect(nodeView).toContain(
     "linkedTerminalId ? state.liveCwds[linkedTerminalId] : undefined",
@@ -177,6 +370,26 @@ test("map nodes subscribe to their own tab and live PTY metadata", () => {
   expect(nodeView).not.toContain(
     "const liveCwds = useWorkspaceStore((state) => state.liveCwds);",
   );
+});
+
+test("new terminal map nodes retain the stable pane identity", () => {
+  const workspace = readFileSync("src/stores/workspace.ts", "utf8");
+  const nodeFactory = workspace.match(
+    /function terminalNodeForTab[\s\S]*?(?=function normalizeProjectPath)/,
+  )?.[0] ?? "";
+
+  expect(nodeFactory).toContain("linkedTerminalPaneId: tab.activePaneId");
+});
+
+test("hydrated terminal map cards follow the tab's current pane", () => {
+  const workspace = readFileSync("src/stores/workspace.ts", "utf8");
+  const normalization = workspace.match(
+    /function normalizeCanvasState[\s\S]*?(?=function hydrateWorkspace)/,
+  )?.[0] ?? "";
+
+  expect(normalization).toContain("linkedTerminalPaneId: node.terminalTabId");
+  expect(normalization).toContain("?.activePaneId");
+  expect(normalization).toContain("still-valid split pane");
 });
 
 test("map terminal task row keeps its reserved height when live text changes", () => {

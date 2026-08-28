@@ -6,6 +6,7 @@ import {
   getDisplaySummary,
   parseAgentStatusSummaryResponse,
 } from "../src/lib/agentStatusSummary";
+import { summaryFromSidecar } from "../src/lib/agentStatusSidecar";
 
 test("a resumed live pane does not show a completed confirmation as its Task", () => {
   const summary = agentStatusSummaryFromWorkstream({
@@ -27,6 +28,128 @@ test("a resumed live pane does not show a completed confirmation as its Task", (
   });
 
   expect(summary?.task).toBe("Repairing the Hermes personal assistant safely");
+});
+
+test("a persisted pane does not receive a project-wide recovery Goal", () => {
+  const summary = agentStatusSummaryFromWorkstream({
+    kind: "agent",
+    provider: "codex",
+    mission: "Fixing the kill path and verifying the installed app",
+    prompt: "$about-what",
+    status: "running",
+    phase: "active",
+    statusSummary: {
+      task: "Fixing the kill path and verifying the installed app",
+      path: "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
+      now: "Idle — no work is running",
+      narration: "I’m diagnosing why TermFleet appears to kill agent panes after restart, with the next step",
+      status: "idle",
+      provider: "codex",
+      confidence: "high",
+    },
+  });
+
+  expect(summary?.mainTask).toBeUndefined();
+  expect(summary?.mainTaskSource).toBeUndefined();
+  expect(summary?.task).toBe("Fixing the kill path and verifying the installed app");
+});
+
+test("pane-owned status wins over the shared workstream status", () => {
+  const workstream = {
+    kind: "agent" as const,
+    provider: "codex" as const,
+    mission: "Make Flow State work clear and dependable so people can resume it confidently",
+    prompt: "$about-what",
+    status: "running" as const,
+    phase: "active" as const,
+    statusSummary: {
+      task: "Shared project activity",
+      mainTask: "Shared project goal that must not leak",
+      mainTaskSource: "opening-request" as const,
+      path: "/workspace/flow-state",
+      now: "Shared activity",
+      status: "working" as const,
+      provider: "codex" as const,
+      confidence: "high" as const,
+    },
+  };
+  const pane = agentStatusSummaryFromWorkstream(workstream, {
+    task: "Writing the calendar filter",
+    mainTask: "Keep calendar filters understandable on small screens",
+    mainTaskSource: "about-what",
+    path: "/workspace/flow-state",
+    now: "Checking the mobile filter drawer",
+    status: "working",
+    provider: "codex",
+    confidence: "high",
+  });
+
+  expect(pane?.mainTask).toBe("Keep calendar filters understandable on small screens");
+  expect(pane?.mainTask).not.toBe("Shared project goal that must not leak");
+});
+
+test("a multi-pane agent does not borrow the shared Goal before its pane status arrives", () => {
+  const summary = agentStatusSummaryFromWorkstream(
+    {
+      kind: "agent",
+      provider: "codex",
+      mission: "Make Flow State work clear and dependable so people can resume it confidently",
+      prompt: "$about-what",
+      status: "running",
+      phase: "active",
+      statusSummary: {
+        task: "Shared project activity",
+        mainTask: "Shared project goal that must not leak",
+        mainTaskSource: "opening-request",
+        path: "/workspace/flow-state",
+        now: "Shared activity",
+        status: "working",
+        provider: "codex",
+        confidence: "high",
+      },
+    },
+    undefined,
+    false,
+  );
+
+  expect(summary?.mainTask).toBeUndefined();
+  expect(summary?.mainTask).not.toBe("Shared project goal that must not leak");
+});
+
+test("a pane's stored about-what Goal outranks project-wide recovery guesses", () => {
+  const summary = summaryFromSidecar(
+    {
+      provider: "codex",
+      cwd: "/workspace/termfleet",
+      userTask: "Continue the pane work",
+      mainTask: "Keep the kill investigation focused on reconnecting this terminal",
+      mainTaskSource: "plan-explanation",
+      todos: [
+        {
+          content: "Capture the visual gate for clear rows",
+          status: "in_progress",
+          activeForm: "Capturing the visual gate for clear rows",
+        },
+      ],
+      now: "Capturing the visual gate for clear rows",
+      turn: "working",
+    },
+    fallbackAgentStatusSummary({
+      mission: "Terminal",
+      provider: "codex",
+      status: "running",
+      phase: "active",
+      cwd: "/workspace/termfleet",
+      currentActivity: "Working",
+    }),
+  );
+
+  expect(summary.mainTask).toBe(
+    "Keep the kill investigation focused on reconnecting this terminal",
+  );
+  expect(summary.userTask).toBe(
+    "Keep the kill investigation focused on reconnecting this terminal",
+  );
 });
 import { deriveTerminalActivity } from "../src/lib/terminalActivity";
 import {

@@ -85,6 +85,11 @@ import type { GridSnapshot } from "../lib/gridSnapshot";
 import { providerReadinessCue } from "../lib/providerReadinessCue";
 import { isExplicitTerminalExitCommand } from "../lib/terminalCloseIntent";
 import { inferProviderProcessExit } from "../lib/providerProcessExit";
+import {
+  effectiveTerminalPaneId,
+  statusSidecarPaneId,
+} from "../lib/terminalPaneIdentity";
+import { preserveDurablePaneGoal } from "../lib/statusPollProjection";
 
 const LOCALHOST_URL_PATTERN =
   /https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0):(\d{2,5})(?:[/?#][^\s"'<>]*)?/gi;
@@ -810,7 +815,13 @@ export function TerminalComponent({
       (import.meta as ImportMeta & { env?: Record<string, string | undefined> })
         .env?.VITE_AGENT_STATUS_SUMMARY_ENDPOINT,
     );
+    const runningInTauri =
+      typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+    // Installed Tauri windows have no development port, but they still have the
+    // local sidecar reader and must hydrate pane-owned goals. Only browser
+    // previews without the development endpoint are intentionally idle.
     if (
+      !runningInTauri &&
       typeof window !== "undefined" &&
       window.location.port !== "1420" &&
       !statusEndpointConfigured
@@ -885,14 +896,21 @@ export function TerminalComponent({
       // Key by this terminal's live session id (TC-035) — the PTY exposes the same
       // value as TERMFLEET_PANE_ID, so two terminals in one cwd stay independent.
       // (`runtimeSessionId` = the id the PTY was spawned with; livePtyId on reattach.)
-      const statusPaneKey = runtimeSessionId ?? livePtyId;
+      const statusPaneKey = statusSidecarPaneId({
+        livePtyId,
+        attachToPtyId,
+        runtimeSessionId,
+      });
       const input: AgentStatusSummaryInput = {
         ...baseInput,
-        paneId: statusPaneKey,
+        paneId: statusPaneKey ?? undefined,
       };
 
-      void summarizeAgentStatus(input).then((result) => {
+      void summarizeAgentStatus(input, {
+        forceTauriSidecar: runningInTauri,
+      }).then((result) => {
         if (statusSummarySequenceRef.current !== sequence) return;
+        const projectedSummary = result.summary;
         // Junk protection for gated shell panes: only the agent's real sidecar
         // status may populate a pane that shows no other sign of agent work.
         const contextualResult =
@@ -908,6 +926,9 @@ export function TerminalComponent({
             source: result.source,
             hasNarration: contextualResult,
             hasAuthoritativeTaskList: Boolean(result.summary.tasksFromTodoWrite),
+            hasDurableGoal:
+              projectedSummary.mainTaskSource === "plan-explanation" &&
+              Boolean(projectedSummary.mainTask?.trim()),
           })
         ) {
           // TC-060: the heuristic SUMMARY stays gated (it produced junk headers),
@@ -958,9 +979,20 @@ export function TerminalComponent({
             extractedAt,
           );
           latestStore.updateTab(tabId, {
+            terminals: latestTab.terminals.map((candidate) =>
+              candidate.paneId === paneId
+                ? {
+                    ...candidate,
+                    statusSummary: projectedSummary,
+                    statusSummaryUpdatedAt: extractedAt,
+                    statusSummarySource: result.source,
+                    statusSummaryError: result.error,
+                  }
+                : candidate,
+            ),
             workstream: {
               ...latestTab.workstream,
-              statusSummary: result.summary,
+              statusSummary: projectedSummary,
               taskLine: result.taskLine,
               statusSummaryUpdatedAt: extractedAt,
               statusSummarySource: result.source,
@@ -1084,7 +1116,7 @@ export function TerminalComponent({
                       !result.summary.narration &&
                       result.source !== "sidecar")
                       ? candidate.statusSummary
-                      : result.summary);
+                      : projectedSummary);
                   const recoveredStatusSummary =
                     candidate.mainUserAsk?.text?.trim() &&
                     /^(?:Status unavailable|Task not captured|Activity not captured)$/i.test(
@@ -1096,8 +1128,12 @@ export function TerminalComponent({
                           userTask: candidate.mainUserAsk.text.trim(),
                         }
                       : nextStatusSummary;
-                  const mainUserAsk = mainUserAskFromSummary(
+                  const durableStatusSummary = preserveDurablePaneGoal(
+                    candidate.statusSummary,
                     recoveredStatusSummary,
+                  );
+                  const mainUserAsk = mainUserAskFromSummary(
+                    durableStatusSummary,
                     "status-sidecar",
                     {
                       previous: candidate.mainUserAsk,
@@ -1117,7 +1153,7 @@ export function TerminalComponent({
                   }
                   return {
                     ...candidate,
-                    statusSummary: recoveredStatusSummary,
+                    statusSummary: durableStatusSummary,
                     // TC-060: the always-true line for this pane. A fresh line that is
                     // only the folder template must NOT replace a real one we already
                     // have — that overwrite is what made the template stick (2026-07-25).
@@ -2191,14 +2227,14 @@ export function TerminalComponent({
 
   // Sidecar status can change without terminal output (for example a provider hook
   // records the main user task or current tool activity while the pane is idle). Refresh
-  // visible panes on mount/reattach and then at a modest cadence so the header does not
-  // stay stuck on stale "Ready" or "No task list" text until the next byte arrives.
+  // every installed split pane on mount/reattach and then at a modest cadence so an
+  // inactive restored pane does not stay stuck on stale "Ready" or "No task list" text.
   useEffect(() => {
-    if (!isRuntimeVisible) return;
+    if (!isRuntimeVisible && !isTauri) return;
     scheduleStatusSummaryUpdate();
     const interval = setInterval(scheduleStatusSummaryUpdate, 10_000);
     return () => clearInterval(interval);
-  }, [isRuntimeVisible, scheduleStatusSummaryUpdate]);
+  }, [isRuntimeVisible, isTauri, scheduleStatusSummaryUpdate]);
 
   // Create terminal instance — only once per mount
   useEffect(() => {
@@ -2392,7 +2428,11 @@ export function TerminalComponent({
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
     const poll = async () => {
-      const found = await readPaneAgentProvider(runtimeSessionId);
+      const found = await readPaneAgentProvider(effectiveTerminalPaneId({
+        livePtyId,
+        attachToPtyId,
+        runtimeSessionId,
+      }) ?? "");
       if (cancelled) return;
       setRunningAgent(found);
       const store = useWorkspaceStore.getState();
@@ -2446,7 +2486,15 @@ export function TerminalComponent({
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [paneId, runtimeSessionId, tabId, updateTerminalRuntime, updateWorkstreamRuntime]);
+  }, [
+    attachToPtyId,
+    livePtyId,
+    paneId,
+    runtimeSessionId,
+    tabId,
+    updateTerminalRuntime,
+    updateWorkstreamRuntime,
+  ]);
 
   const reflowSafeTui = isReflowSafeAgentTui({
     command,

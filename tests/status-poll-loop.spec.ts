@@ -2,8 +2,10 @@ import { expect, test } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { selectStatusPollTargets } from "../src/lib/statusPollTargets";
 import {
+  mirroredWorkstream,
   projectStatusPollResult,
   statusPollProjectionChanged,
+  terminalMatchesPollTarget,
 } from "../src/lib/statusPollProjection";
 import type { Tab, TerminalState } from "../src/lib/types";
 
@@ -47,6 +49,19 @@ function tab(
     ...overrides,
   };
 }
+
+test("status updates follow the stable pane when hydration replaces its terminal id", () => {
+  const polled = terminal("old-terminal", { paneId: "pane-stable" });
+  const hydrated = terminal("new-terminal", { paneId: "pane-stable" });
+
+  expect(terminalMatchesPollTarget(hydrated, polled)).toBe(true);
+  expect(
+    terminalMatchesPollTarget(
+      terminal("other-terminal", { paneId: "other-pane" }),
+      polled,
+    ),
+  ).toBe(false);
+});
 
 test("status poll targets every pane so background badges update without a click", () => {
   const now = 1_700_000_000_000;
@@ -94,6 +109,48 @@ test("status poll targets every pane so background badges update without a click
 test("background status polling uses the local provider record without the model", () => {
   expect(STATUS_POLL_SOURCE).not.toContain("transcriptReader: null");
   expect(STATUS_POLL_SOURCE).toContain("contextTaskSummarizer: null");
+  expect(STATUS_POLL_SOURCE).toContain("forceTauriSidecar: true");
+  expect(STATUS_POLL_SOURCE).toContain("sidecar:${result.sidecarState}");
+});
+
+test("status polling never replaces a pane's about-what goal with a shared incident goal", () => {
+  expect(STATUS_POLL_SOURCE).not.toContain(
+    "Find why TermFleet kills agent panes after restart so the exact failure can be fixed",
+  );
+  expect(STATUS_POLL_SOURCE).toContain("result.summary");
+});
+
+test("status polling mirrors each pane's summary into the rendered agent workstream", () => {
+  const pane = terminal("agent", {
+    statusSummary: {
+      task: "Old activity",
+      mainTask: "Old purpose",
+      mainTaskSource: "plan-explanation",
+      path: "termfleet",
+      now: "Old activity",
+      status: "working",
+    },
+  });
+  const source = tab("agent-tab", [pane], {
+    workstream: {
+      kind: "agent",
+      statusSummary: pane.statusSummary,
+    },
+  });
+  const nextSummary = {
+    ...pane.statusSummary!,
+    mainTask: "Keep each terminal's work understandable when you return",
+    now: "Idle — no work is running",
+    status: "idle" as const,
+  };
+
+  const mirrored = mirroredWorkstream(source, undefined, undefined, {
+    statusSummary: nextSummary,
+    statusSummarySource: "sidecar",
+  });
+
+  expect(mirrored?.statusSummary?.mainTask).toContain("understandable");
+  expect(mirrored?.statusSummarySource).toBe("sidecar");
 });
 
 test("status poll targets include every live pane in one tick", () => {
@@ -266,6 +323,36 @@ test("an expired sidecar stops claiming live work but KEEPS the goal and the tas
   );
 });
 
+test("an expired sidecar preserves a durable about-what Goal before clearing activity", () => {
+  const projection = projectStatusPollResult(
+    terminal("about-what", {
+      statusSummarySource: undefined,
+    }),
+    {
+      source: "fallback",
+      sidecarState: "stale",
+      summary: {
+        task: "Terminal",
+        path: "termfleet",
+        now: "Old activity",
+        status: "idle",
+        provider: "shell",
+        confidence: "low",
+        mainTask:
+          "This session is about delivering the updated TermFleet build and resolving the remaining restart risk",
+        mainTaskSource: "about-what",
+      },
+    },
+    1_700_000_000_000,
+  );
+
+  expect(projection?.statusSummary?.mainTaskSource).toBe("about-what");
+  expect(projection?.statusSummary?.mainTask).toContain("updated TermFleet build");
+  expect(projection?.statusSummary?.status).toBe("idle");
+  expect(projection?.statusSummary?.now).toBe("Idle — no work is running");
+  expect(projection?.statusSummarySource).toBe("sidecar");
+});
+
 test("a temporary sidecar read miss preserves the last trustworthy state", () => {
   const live = terminal("live", {
     statusSummarySource: "sidecar",
@@ -436,4 +523,69 @@ test("an expired sidecar keeps a separately captured user task visible", () => {
   expect(projection?.statusSummary?.task).toBe(
     "Verify every club event in the member hub",
   );
+});
+
+test("an inferred about-what goal keeps stale activity honest instead of showing unavailable", () => {
+  const projection = projectStatusPollResult(
+    terminal("stale-inferred-goal", {
+      statusSummarySource: "sidecar",
+      statusSummary: {
+        task: "Identifying the process and kill event",
+        path: "termfleet",
+        now: "Status unavailable",
+        status: "unavailable",
+      },
+    }),
+    {
+      source: "fallback",
+      sidecarState: "stale",
+      summary: {
+        task: "Identifying the process and kill event",
+        userTask: "Keep every agent terminal connected after relaunch so work can be resumed safely",
+        path: "termfleet",
+        now: "Awaiting command",
+        status: "idle",
+        provider: "shell",
+        confidence: "high",
+      },
+    },
+    1_700_000_000_000,
+  );
+
+  expect(projection?.statusSummary?.now).toBe("Idle — no work is running");
+  expect(projection?.statusSummary?.status).toBe("idle");
+});
+
+test("a later activity projection cannot drop the pane's accepted Goal", () => {
+  const projection = projectStatusPollResult(
+    terminal("goal-preserved", {
+      statusSummarySource: "sidecar",
+      statusSummary: {
+        task: "Checking the latest result",
+        mainTask: "Help people understand each TermFleet terminal and resume the right work",
+        mainTaskSource: "about-what",
+        path: "termfleet",
+        now: "Checking the latest result",
+        status: "working",
+      },
+    }),
+    {
+      source: "fallback",
+      sidecarState: "stale",
+      summary: {
+        task: "Shell ready",
+        path: "termfleet",
+        now: "Awaiting command",
+        status: "idle",
+        provider: "shell",
+        confidence: "low",
+      },
+    },
+    1_700_000_000_000,
+  );
+
+  expect(projection?.statusSummary?.mainTask).toBe(
+    "Help people understand each TermFleet terminal and resume the right work",
+  );
+  expect(projection?.statusSummary?.mainTaskSource).toBe("about-what");
 });

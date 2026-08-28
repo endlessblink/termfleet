@@ -7,6 +7,33 @@ import {
   type CockpitSnapshotEntry,
 } from "../lib/cockpitSnapshot";
 import { recordTerminalHeaderLog } from "../lib/terminalMainUserAsk";
+import { qualityCheckGoalLabel } from "../lib/terminalHeaderQuality";
+
+function snapshotGoal(entry: Omit<CockpitSnapshotEntry, "updatedAt">) {
+  const supplied = entry.context?.trim() ?? "";
+  if (/^Make (?:[A-Z][\w-]*|this project|the project) work clear and dependable so people can resume it confidently[.!]?$/i.test(supplied)) {
+    return "";
+  }
+  // A project-wide fallback is useful for internal orientation, but it is not
+  // pane-owned `$about-what` evidence and must never make the live gate pass.
+  if (
+    !["status-summary", "sidecar-todo", "task-tool", "user-prompt"].includes(
+      entry.contextSource ?? "",
+    )
+  ) {
+    return "";
+  }
+  const trustedAboutWhat =
+    /^(?:this\s+session\s+is\s+about|I['’]m\s+|We['’]re\s+)/i.test(supplied) &&
+    (entry.contextSource === "status-summary" || entry.contextSource === "sidecar-todo");
+  return qualityCheckGoalLabel(supplied, {
+    allowAboutWhatVoice: true,
+    allowTrustedAboutWhat: trustedAboutWhat,
+    maxLength: 150,
+  }).ok
+    ? supplied
+    : "";
+}
 
 // Null-returning probe (TC-035 observability). Rendered once per terminal header so it can
 // report the EXACT title/now/source the header is displaying, without violating the
@@ -22,11 +49,23 @@ export function CockpitSnapshotProbe({
   useEffect(() => {
     const recordSnapshot = () => {
       if (cockpitSnapshotEnabled()) {
-        recordCockpitPane(entry.paneId, { ...entry, updatedAt: Date.now() });
+        const derivedContext = snapshotGoal(entry);
+        recordCockpitPane(entry.paneId, {
+          ...entry,
+          context: derivedContext || "",
+          // A renderer may carry a stale source label alongside a rejected
+          // placeholder. Evidence must describe the text that actually survived
+          // the Goal gate, never the discarded input's provenance.
+          contextSource: derivedContext
+            ? entry.contextSource || "derived-purpose"
+            : "missing",
+          updatedAt: Date.now(),
+        });
       }
     };
     recordSnapshot();
     const heartbeat = window.setInterval(recordSnapshot, COCKPIT_SNAPSHOT_HEARTBEAT_MS);
+    const derivedContext = snapshotGoal(entry);
     recordTerminalHeaderLog({
       paneId: entry.paneId,
       field: "header",
@@ -38,7 +77,7 @@ export function CockpitSnapshotProbe({
       ].filter(Boolean).join(" "),
       text: [
         entry.task ? `Task=${entry.task}` : undefined,
-        entry.context ? `Goal=${entry.context}` : undefined,
+        derivedContext ? `Goal=${derivedContext}` : undefined,
         `Title=${entry.title}`,
         `Now=${entry.now}`,
       ].filter(Boolean).join(" | "),
@@ -53,6 +92,7 @@ export function CockpitSnapshotProbe({
     entry.paneId,
     entry.terminalId,
     entry.tabId,
+    entry.groupId,
     entry.cwd,
     entry.path,
     entry.workspace,
@@ -68,6 +108,13 @@ export function CockpitSnapshotProbe({
     entry.now,
     entry.nowSource,
     entry.status,
+    entry.statusSummarySource,
+    entry.statusSummaryError,
+    entry.statusSummaryUpdatedAt,
+    entry.statusSummaryNarration,
+    entry.statusSummaryTask,
+    entry.statusSummaryGoal,
+    entry.statusSummaryNow,
     entry.tasksFromTodoWrite,
     entry.narration,
     entry.durableActivityTitle,
@@ -75,8 +122,6 @@ export function CockpitSnapshotProbe({
     entry.terminalOutput,
     entry.terminalVisibleText,
     entry.terminalVisibleTextUpdatedAt,
-    entry.statusSummaryTask,
-    entry.statusSummaryNow,
     entry.statusSummaryPath,
     lineupKey,
     debugKey,

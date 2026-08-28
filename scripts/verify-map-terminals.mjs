@@ -170,15 +170,15 @@ const checks = [
   {
     ok: /const linkedTerminal = linkedTab\?\.terminals\.find\(\s*\(terminal\) => terminal\.id === node\.terminalPtyId,?/.test(magicCanvas) &&
       /terminal\.paneId === node\.id/.test(magicCanvas) &&
-      /terminal\.paneId === linkedTab\.activePaneId/.test(magicCanvas),
-    message: "Map terminals must attach to the live PTY represented by each map card, with safe fallbacks.",
+      !/terminal\.paneId === linkedTab\.activePaneId/.test(magicCanvas),
+    message: "Map terminals must attach only to the live PTY represented by each map card, never a sibling active pane.",
   },
   {
     ok: /const terminalTabId = linkedTab\?\.id \?\? `canvas-\$\{node\.id\}`;/.test(magicCanvas),
     message: "Standalone map terminals must use a stable browser/runtime session id.",
   },
   {
-    ok: /const terminalPaneId =\s*linkedTerminal\?\.paneId \?\? linkedTab\?\.activePaneId \?\? node\.id;/.test(magicCanvas) &&
+    ok: /const terminalPaneId =\s*linkedTerminal\?\.paneId \?\? node\.id;/.test(magicCanvas) &&
       /const targetPaneId = currentTerminal\?\.paneId \?\? terminalPaneId;/.test(magicCanvas),
     message: "Connect must preserve the map card's pane identity instead of silently switching to the active pane.",
   },
