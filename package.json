@@ -10,7 +10,9 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "cockpit:capture": "node scripts/capture-cockpit.mjs --crop-header",
+    "verify:cockpit-visual": "node scripts/verify-cockpit-visual.mjs",
     "doctor": "node scripts/termfleet-doctor.mjs",
+    "issues": "node scripts/termfleet-issues.mjs",
     "migrate:session-ids": "node scripts/migrate-session-ids.mjs --apply",
     "verify:prerequisites": "node scripts/verify-prerequisites.mjs",
     "verify:canvas-renderer": "playwright test canvas-renderer",
@@ -38,6 +40,7 @@
     "verify:map-terminals": "node scripts/verify-map-terminals.mjs",
     "verify:canvas-arrange": "playwright test canvas-arrange canvas-node-reorder map-toolbar --reporter=line",
     "verify:terminal-summary-visual": "playwright test tests/terminal-summary-visual.spec.ts --reporter=line",
+    "verify:git-monitoring": "playwright test tests/git-monitoring.spec.ts --reporter=line",
     "verify:terminal-header-contract": "playwright test tests/terminal-summary-visual.spec.ts -g \"map header rejects slash-command prompt echoes\" --reporter=line",
     "evidence:bundle": "node scripts/export-evidence-bundle.mjs",
     "verify:evidence-bundle": "node scripts/verify-evidence-bundle.mjs",
@@ -48,14 +51,24 @@
     "verify:agent-status-summary": "node scripts/verify-agent-status-summary-server.mjs",
     "verify:task-identity": "node scripts/verify-task-identity.mjs",
     "verify:cockpit-target": "node scripts/verify-cockpit-target.mjs",
+    "verify:cockpit-goal-matrix": "node scripts/verify-cockpit-goal-matrix.mjs",
+    "verify:cockpit-goal-stability": "node scripts/verify-cockpit-goal-stability.mjs",
+    "verify:cockpit-live": "node scripts/verify-cockpit-live.mjs",
     "cockpit:tasks": "node scripts/monitor-cockpit-tasks.mjs",
     "monitor:cockpit-tasks": "node scripts/monitor-cockpit-tasks.mjs --watch --jsonl",
     "watchdog:cockpit-labels": "node scripts/monitor-cockpit-tasks.mjs --watch --jsonl --alert-on-fail --notify-on-fail --interval-ms=2000 --max-age-s=30",
+    "watchdog:cockpit-screens": "node scripts/monitor-cockpit-pane-screens.mjs",
     "verify:cockpit-all": "node scripts/monitor-cockpit-tasks.mjs --verify",
     "audit:panes": "playwright test tests/pane-label-audit.spec.ts --reporter=line",
     "agent-status:ollama": "node scripts/agent-status-summary-ollama.mjs",
     "termfleetctl": "node scripts/termfleetctl.mjs",
     "restore:live-terminals": "node scripts/restore-live-terminals.mjs",
+    "verify:recovery-coordinator": "python3 -m unittest tests/test_recovery_coordinator.py && node scripts/termfleet-recovery-coordinator.mjs",
+    "verify:runtime-controller": "node --test tests/test-runtime-controller.mjs",
+    "recovery:apply": "node scripts/termfleet-recovery-apply.mjs",
+    "verify:recovery-readback": "node scripts/termfleet-recovery-readback.mjs",
+    "challenge:review": "node scripts/termfleet-challenge-review.mjs",
+    "verify:challenge-review": "node tests/test_challenge_review_adapter.mjs",
     "verify:termfleetctl": "node scripts/verify-termfleetctl.mjs",
     "verify:agent-adapter": "scripts/verify-agent-provider-adapter-headless.sh",
     "verify:canvas-terminal": "scripts/verify-canvas-terminal.sh",
@@ -102,7 +115,9 @@
     "gate": "node scripts/termfleet-gate.mjs",
     "verify:task-line": "npx playwright test tests/task-line-sweep.spec.ts tests/task-line.spec.ts tests/task-line-plumbing.spec.ts tests/task-line-live-records.spec.ts tests/task-line-coverage.spec.ts tests/session-transcript.spec.ts tests/task-identity-ladder.spec.ts --reporter=line",
     "cockpit:why": "npx playwright test tests/task-line-coverage.spec.ts tests/task-line-live-records.spec.ts --reporter=line",
-    "verify:map-connect-live": "scripts/verify-map-connect-live.sh"
+    "verify:map-connect-live": "scripts/verify-map-connect-live.sh",
+    "termcontrol": "node termcontrol/bridge/server.mjs",
+    "termcontrol:test": "node termcontrol/test/run.mjs && node termcontrol/test/phone.mjs"
   },
   "dependencies": {
     "@excalidraw/excalidraw": "^0.18.1",
@@ -140,4 +155,3 @@
     }
   }
 }
-    "issues": "node scripts/termfleet-issues.mjs",

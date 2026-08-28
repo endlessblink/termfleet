@@ -194,7 +194,14 @@ async function fleet() {
     };
   });
   timer = setInterval(() => { if (!location.hash) window.addEventListener('popstate', (e) => {
-  const id = e.state?.pane;
+  const id = e.state?.pane ?? location.hash.slice(1);
+  if (id) chat(id); else fleet();
+});
+
+// Following a link to #<terminal> while the app is already open changes only
+// the hash — no navigation, no popstate — so listen for that too.
+window.addEventListener('hashchange', () => {
+  const id = location.hash.slice(1);
   if (id) chat(id); else fleet();
 });
 
@@ -295,11 +302,21 @@ function mountComposer(id) {
     if (!text) return;
     btn.disabled = true;
     note('Sending…');
-    const r = await fetch('/api/send', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ pane: id, text, force }),
-    }).then((x) => x.json()).catch(() => ({ error: 'Could not reach your machine.' }));
+    const slow = setTimeout(() => note('Still trying to reach your machine…'), 3000);
+    let r;
+    try {
+      const resp = await fetch('/api/send', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ pane: id, text, force }),
+        signal: AbortSignal.timeout(8000),
+      });
+      r = await resp.json();
+      if (resp.status === 401) r = { error: 'Signed out — reload to sign in.' };
+    } catch {
+      r = { error: 'Could not reach your machine. Your message is still here.' };
+    }
+    clearTimeout(slow);
     btn.disabled = false;
 
     if (r.busy) return confirmBusy(r.message, () => send(true));
@@ -345,7 +362,14 @@ function confirmBusy(message, go) {
 }
 
 window.addEventListener('popstate', (e) => {
-  const id = e.state?.pane;
+  const id = e.state?.pane ?? location.hash.slice(1);
+  if (id) chat(id); else fleet();
+});
+
+// Following a link to #<terminal> while the app is already open changes only
+// the hash — no navigation, no popstate — so listen for that too.
+window.addEventListener('hashchange', () => {
+  const id = location.hash.slice(1);
   if (id) chat(id); else fleet();
 });
 
