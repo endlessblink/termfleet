@@ -117,7 +117,7 @@
     "cockpit:why": "npx playwright test tests/task-line-coverage.spec.ts tests/task-line-live-records.spec.ts --reporter=line",
     "verify:map-connect-live": "scripts/verify-map-connect-live.sh",
     "termcontrol": "node termcontrol/bridge/server.mjs",
-    "termcontrol:test": "node termcontrol/test/run.mjs && node termcontrol/test/phone.mjs && node termcontrol/test/flows.mjs"
+    "termcontrol:test": "node termcontrol/test/run.mjs && node termcontrol/test/phone.mjs && node termcontrol/test/flows.mjs && node termcontrol/test/access.mjs"
   },
   "dependencies": {
     "@excalidraw/excalidraw": "^0.18.1",

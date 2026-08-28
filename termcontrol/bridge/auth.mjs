@@ -93,7 +93,7 @@ function page(res, code, { mode, error, email }) {
 <meta name="theme-color" content="#141413">
 <title>TermControl</title>
 <style>
- :root{--bg:#141413;--surface:#1c1c1a;--line:#2f2f2b;--text:#f0eee6;--muted:#8b8a85;--accent:#d97757}
+ :root{color-scheme:dark;--bg:#141413;--surface:#1c1c1a;--line:#2f2f2b;--text:#f0eee6;--muted:#9a9993;--accent:#d97757}
  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
  body{margin:0;min-height:100dvh;display:grid;place-items:center;background:var(--bg);color:var(--text);
       font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
@@ -105,21 +105,22 @@ function page(res, code, { mode, error, email }) {
  label{display:block;font-size:12px;color:var(--muted);margin:0 0 6px 2px;text-transform:uppercase;letter-spacing:.05em;font-weight:600}
  input{width:100%;padding:14px 15px;border-radius:12px;border:1px solid var(--line);background:var(--surface);
        color:var(--text);font-size:16px;margin-bottom:16px;font-family:inherit}
- input:focus{outline:none;border-color:var(--accent)}
+ input:focus-visible{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px var(--bg),0 0 0 4px var(--accent)}
+ button:focus-visible{outline:none;box-shadow:0 0 0 2px var(--bg),0 0 0 4px var(--accent)}
  button{width:100%;padding:15px;border-radius:12px;border:0;background:var(--accent);color:#191512;
         font-size:16px;font-weight:600;font-family:inherit;cursor:pointer}
  button:active{opacity:.85}
- .err{background:#2a1d16;border:1px solid #5a3a26;color:#e8b58c;font-size:13.5px;
+ .err{background:#2a1d16;border:1px solid #5a3a26;color:#f0c9a6;font-size:14px;
       padding:10px 12px;border-radius:10px;margin-bottom:16px}
- .hint{color:var(--muted);font-size:12.5px;text-align:center;margin-top:16px;line-height:1.45}
- .rule{color:var(--muted);font-size:12.5px;margin:-8px 2px 16px}
+ .hint{color:var(--muted);font-size:13px;text-align:center;margin-top:16px;line-height:1.45}
+ .rule{color:var(--muted);font-size:13px;margin:-8px 2px 16px}
 </style>
-<form method="post" action="${isSetup ? '/setup' : '/login'}">
+<form method="post" role="main" action="${isSetup ? '/setup' : '/login'}">
   <div class="brand">
     <h1>TermControl</h1>
     <p>${isSetup ? 'Create your sign-in.' : 'Sign in to see your terminals.'}</p>
   </div>
-  ${error ? `<div class="err">${esc(error)}</div>` : ''}
+  ${error ? `<div class="err" role="alert">${esc(error)}</div>` : ''}
   <label for="email">Email</label>
   <input id="email" type="email" name="email" autocomplete="username" inputmode="email"
          autocapitalize="none" autocorrect="off" required value="${esc(email)}" ${isSetup ? 'autofocus' : ''}>
