@@ -335,11 +335,17 @@ async function chat(id) {
     // message you are actually looking at: remember which one is at the top of
     // the screen and how far into it you are, then put it back there.
     let anchor = null;
+    const wasAt = window.scrollY;
     if (!first && !nearBottom) {
       const rows = [...main.children];
       for (let i = 0; i < rows.length; i++) {
         const box = rows[i].getBoundingClientRect();
-        if (box.bottom > 0) { anchor = { index: i, offset: box.top }; break; }
+        if (box.bottom > 0) {
+          // Remember the row itself, not just its position: the list can grow
+          // at the top as older messages load, which shifts every index.
+          anchor = { index: i, offset: box.top, text: (rows[i].textContent || '').slice(0, 60) };
+          break;
+        }
       }
     }
 
@@ -349,11 +355,19 @@ async function chat(id) {
     if (first || nearBottom) {
       window.scrollTo(0, document.body.scrollHeight);
     } else if (anchor) {
-      const row = main.children[anchor.index];
-      if (row) {
-        const now = row.getBoundingClientRect().top;
-        window.scrollBy(0, now - anchor.offset);
-      }
+      // Wait for layout: text rewraps and heights settle a frame after the
+      // content is swapped in, so measuring immediately corrects by the wrong
+      // amount and the page still drifts.
+      const settle = () => {
+        const rows = [...main.children];
+        const same = rows.findIndex((r) => (r.textContent || '').slice(0, 60) === anchor.text);
+        const row = rows[same >= 0 ? same : anchor.index];
+        if (row) window.scrollBy(0, row.getBoundingClientRect().top - anchor.offset);
+        else window.scrollTo(0, wasAt);
+      };
+      requestAnimationFrame(() => requestAnimationFrame(settle));
+    } else {
+      window.scrollTo(0, wasAt);
     }
   };
 
