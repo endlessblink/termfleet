@@ -170,9 +170,11 @@ async function fleet() {
   }
   const panes = r.panes;
   const waiting = panes.filter((p) => p.turn === 'waiting');
-  sub.textContent = waiting.length
-    ? `${waiting.length} waiting for you`
-    : `${panes.length} terminal${panes.length === 1 ? '' : 's'}`;
+  sub.textContent = r.daemon === false
+    ? 'TermFleet is not running — showing the last known list'
+    : waiting.length
+      ? `${waiting.length} waiting for you`
+      : `${panes.length} terminal${panes.length === 1 ? '' : 's'}`;
 
   if (!panes.length) { main.innerHTML = '<div class="empty">No agent terminals in the last day.</div>'; return; }
 

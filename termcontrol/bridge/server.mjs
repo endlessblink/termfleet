@@ -39,6 +39,25 @@ function serveStatic(res, name) {
   res.end(body);
 }
 
+
+/**
+ * A pane record outlives its terminal: closed panes keep their status file, so
+ * the phone would list terminals that no longer exist (and, since they are also
+ * gone from the workspace, without their project emoji). The daemon is the
+ * authority on what is actually running, so the list is filtered against it.
+ * If the daemon cannot be reached we show everything rather than an empty
+ * screen, and say so.
+ */
+async function currentPanes() {
+  const panes = listPanes({ maxAgeMs: MAX_AGE });
+  try {
+    const live = await liveSessionIds();
+    return { panes: panes.filter((p) => live.has(p.id)), daemon: true };
+  } catch {
+    return { panes, daemon: false };
+  }
+}
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
 
@@ -50,15 +69,16 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (url.pathname === '/api/panes') {
-    const panes = listPanes({ maxAgeMs: MAX_AGE });
-    return json(res, 200, { generatedAt: new Date().toISOString(), panes });
+    const { panes, daemon } = await currentPanes();
+    return json(res, 200, { generatedAt: new Date().toISOString(), panes, daemon });
   }
 
   if (url.pathname === '/api/feed') {
     const id = url.searchParams.get('pane');
     const limit = Math.min(Number(url.searchParams.get('limit') || 60), 200);
-    const pane = listPanes({ maxAgeMs: MAX_AGE }).find((p) => p.id === id);
-    if (!pane) return json(res, 404, { error: 'unknown pane' });
+    const { panes } = await currentPanes();
+    const pane = panes.find((p) => p.id === id);
+    if (!pane) return json(res, 404, { error: 'That terminal has been closed.' });
     return json(res, 200, { pane, ...readFeed(pane, { limit }) });
   }
 
@@ -68,8 +88,9 @@ const server = http.createServer(async (req, res) => {
     req.on('end', async () => {
       let payload = {};
       try { payload = JSON.parse(raw || '{}'); } catch { return json(res, 400, { error: 'bad request' }); }
-      const pane = listPanes({ maxAgeMs: MAX_AGE }).find((p) => p.id === payload.pane);
-      if (!pane) return json(res, 404, { error: 'unknown pane' });
+      const { panes } = await currentPanes();
+      const pane = panes.find((p) => p.id === payload.pane);
+      if (!pane) return json(res, 404, { error: 'That terminal has been closed.' });
 
       if (payload.choice) {
         const adapter = adapterFor(pane);
