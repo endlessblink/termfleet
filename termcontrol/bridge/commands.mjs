@@ -85,14 +85,67 @@ const CACHE_MS = 60_000;
 
 function firstLine(file) {
   try {
-    const text = fs.readFileSync(file, 'utf8').slice(0, 1200);
-    const described = /^description:\s*(.+)$/im.exec(text);
-    if (described) return described[1].replace(/^["']|["']$/g, '').slice(0, 110);
+    const text = fs.readFileSync(file, 'utf8').slice(0, 2000);
+    const described = /^description:\s*(.*)$/im.exec(text);
+    if (described) {
+      let value = described[1].replace(/^["']|["']$/g, '').trim();
+      // A folded or literal block ("description: >") keeps the words on the
+      // lines beneath it, so an empty value is not an empty description.
+      if (!value || value === '>' || value === '|' || value === '>-' || value === '|-') {
+        const after = text.slice(described.index + described[0].length);
+        value = after
+          .split('\n')
+          .slice(1)
+          .filter((l) => /^\s+\S/.test(l))
+          .slice(0, 4)
+          .join(' ')
+          .trim();
+      }
+      const line = summarise(value);
+      if (line.length >= 4) return line;
+    }
     const heading = text.split('\n').find((l) => l.trim() && !l.startsWith('---') && !/^name:/i.test(l));
-    return (heading || '').replace(/^#+\s*/, '').slice(0, 110);
+    return summarise((heading || '').replace(/^#+\s*/, ''));
   } catch {
     return '';
   }
+}
+
+/**
+ * A line that earns its place on a phone: the boilerplate these files open
+ * with is stripped, and what is left is cut at a word, not mid-syllable.
+ */
+function summarise(raw) {
+  let s = String(raw || '').replace(/\s+/g, ' ').trim();
+
+  const openers = [
+    /^\[[^\]]{1,12}\]\s*/,                                   // [OMX] and friends
+    /^(?:this skill |the skill |use this skill |use when |used when )/i,
+    /^(?:should be )?used? (?:this )?(?:skill )?(?:to |for |when |whenever )/i,
+    /^(?:this|the) (?:command|tool|workflow) (?:is )?(?:used )?(?:to |for )?/i,
+  ];
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const opener of openers) {
+      const next = s.replace(opener, '');
+      if (next !== s) { s = next.trim(); changed = true; }
+    }
+  }
+
+  // One idea, not a paragraph: stop at the first sentence or clause break.
+  const stop = s.search(/(?<=[a-z0-9)"'])\.(?:\s|$)|\s[-–—]\s|;\s|\.\s+use\b/i);
+  if (stop > 20) s = s.slice(0, stop);
+
+  if (s.length > 72) {
+    const cut = s.slice(0, 72);
+    const lastSpace = cut.lastIndexOf(' ');
+    s = (lastSpace > 40 ? cut.slice(0, lastSpace) : cut).replace(/[,;:]$/, '') + '…';
+  }
+
+  // Punctuation on its own says nothing; better to show only the name.
+  if (!/[a-z]{3}/i.test(s)) return '';
+  return s[0].toUpperCase() + s.slice(1);
 }
 
 function fromDir(dir) {

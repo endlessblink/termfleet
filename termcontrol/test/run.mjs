@@ -535,6 +535,26 @@ async function main() {
     return `${present.size} built-ins, ${list.length} in total`;
   });
 
+  await check('every command says what it does, in plain words', async () => {
+    const { commandsFor } = await import(path.join(here, '..', 'bridge', 'commands.mjs'));
+    const list = commandsFor('codex');
+
+    const silent = list.filter((c) => !c.detail);
+    const junk = list.filter((c) => c.detail && !/[a-z]{3}/i.test(c.detail));
+    const boilerplate = list.filter((c) => /^(this skill|use this skill|used when|\[)/i.test(c.detail || ''));
+    // A whole word followed by an ellipsis is fine; what is not fine is a
+    // line that runs on, or one that trails a comma or dangling word.
+    const tooLong = list.filter((c) => (c.detail || '').length > 78);
+    const ragged = list.filter((c) => /[,;:\-–—]\s*…$/.test(c.detail || ''));
+
+    eq(silent.length, 0, `${silent.length} commands with nothing to say`);
+    eq(junk.length, 0, `${junk.length} commands whose description is punctuation`);
+    eq(boilerplate.length, 0, `${boilerplate.length} still lead with boilerplate: ${boilerplate.slice(0, 2).map((c) => c.detail).join(' | ')}`);
+    eq(tooLong.length, 0, `${tooLong.length} run past what a phone can show`);
+    eq(ragged.length, 0, `${ragged.length} trail off after a comma or dash`);
+    return `${list.length} readable`;
+  });
+
   await check('a command nobody has is never offered', async () => {
     const { commandsFor } = await import(path.join(here, '..', 'bridge', 'commands.mjs'));
     const invented = ['selfdestruct', 'teleport', 'summonhelp'];
