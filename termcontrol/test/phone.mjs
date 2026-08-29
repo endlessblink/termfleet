@@ -64,7 +64,7 @@ async function main() {
     const { ctx, p } = await signedIn(vp);
 
     await check(`${vp.name}: nothing spills off the side`, async () => {
-      const over = await p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+      const over = await p.evaluate(() => Math.max(document.documentElement.scrollWidth - window.innerWidth, document.querySelector('main') ? document.querySelector('main').scrollWidth - document.querySelector('main').clientWidth : 0));
       ok(over <= 1, `page is ${over}px wider than the screen`);
     });
 
@@ -79,7 +79,7 @@ async function main() {
     await wait(1200);
 
     await check(`${vp.name}: last message clears the reply box`, async () => {
-      await p.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+      await p.evaluate(() => document.querySelector('main').scrollTop = document.querySelector('main').scrollHeight);
       await wait(300);
       const gap = await p.evaluate(() => {
         const items = [...document.querySelectorAll('#main > *')];
@@ -111,18 +111,18 @@ async function main() {
     await wait(1200);
 
     await check('scrolling up is not undone by a refresh', async () => {
-      await p.evaluate(() => window.scrollTo(0, 200));
-      const before = await p.evaluate(() => Math.round(window.scrollY));
+      await p.evaluate(() => document.querySelector('main').scrollTop = 200);
+      const before = await p.evaluate(() => Math.round(document.querySelector('main').scrollTop));
       await wait(9500);
-      const after = await p.evaluate(() => Math.round(window.scrollY));
+      const after = await p.evaluate(() => Math.round(document.querySelector('main').scrollTop));
       ok(Math.abs(before - after) <= 2, `moved from ${before} to ${after}`);
       return 'held position';
     });
 
     await check('at the bottom, it follows new messages', async () => {
-      await p.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+      await p.evaluate(() => document.querySelector('main').scrollTop = document.querySelector('main').scrollHeight);
       await wait(9000);
-      const atBottom = await p.evaluate(() => window.innerHeight + window.scrollY >= document.body.scrollHeight - 20);
+      const atBottom = await p.evaluate(() => (() => { const m = document.querySelector('main'); return m.scrollHeight - m.scrollTop - m.clientHeight <= 20; })());
       ok(atBottom, 'lost the bottom');
     });
     await ctx.close();

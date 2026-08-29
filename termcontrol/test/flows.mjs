@@ -211,7 +211,7 @@ async function main() {
   });
 
   await check('long command lines scroll instead of breaking the layout', async () => {
-    const over = await p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    const over = await p.evaluate(() => Math.max(document.documentElement.scrollWidth - window.innerWidth, document.querySelector('main') ? document.querySelector('main').scrollWidth - document.querySelector('main').clientWidth : 0));
     ok(over <= 1, `page overflows by ${over}px`);
   });
 
