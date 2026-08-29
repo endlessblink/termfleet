@@ -13,8 +13,9 @@ import { sendToPane, answerPrompt, sendKey, liveSessionIds } from './send.mjs';
 import { adapterFor } from './feed.mjs';
 import { readPrefs, writePrefs, byProject, inManualOrder, moveInOrder } from './prefs.mjs';
 import { liveness, lastLine, screenOf } from './liveness.mjs';
+import { requestDaemon, defaultDaemonSocket } from '../../scripts/termfleetctl.mjs';
 import { pendingAsk } from './asks.mjs';
-import { commandsFor } from './commands.mjs';
+import { commandsFor, probeCommands } from './commands.mjs';
 import { filesIn, matchFiles } from './files.mjs';
 import { readBody, firstFile, saveImage } from './uploads.mjs';
 
@@ -200,6 +201,15 @@ const server = http.createServer(async (req, res) => {
     const { panes } = await currentPanes();
     const pane = panes.find((p) => p.id === id);
     if (!pane) return json(res, 404, { error: 'That terminal has been closed.' });
+    // Ask the agent what it offers, then merge with what is on disk.
+    await probeCommands(pane, {
+      ask: async (request) => {
+        const r = await requestDaemon(request, defaultDaemonSocket());
+        if (!r || r.ok !== true) throw new Error('refused');
+        return r.value;
+      },
+      screenOf,
+    }).catch(() => {});
     return json(res, 200, { provider: pane.provider, commands: commandsFor(pane.provider) });
   }
 

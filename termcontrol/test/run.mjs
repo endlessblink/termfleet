@@ -520,6 +520,30 @@ async function main() {
     ok(/not supported/i.test(j.error || ''), `expected a refusal, got ${JSON.stringify(j)}`);
   });
 
+  await check('built-in commands are real ones, not guesses', async () => {
+    const { commandsFor, verifiedBuiltIns } = await import(path.join(here, '..', 'bridge', 'commands.mjs'));
+
+    // A command is only offered if its name exists in the agent that will run
+    // it, so the list cannot drift as the agents change.
+    const present = verifiedBuiltIns('codex');
+    ok(present.size >= 5, `only ${present.size} built-ins confirmed — the check is not finding the agent`);
+    ok(present.has('fast'), '/fast exists in this build and should be offered');
+
+    const list = commandsFor('codex');
+    ok(list.some((c) => c.name === 'fast'), '/fast is missing from what the phone offers');
+    ok(list.every((c) => c.name && /^[a-z0-9][a-z0-9:_-]*$/i.test(c.name)), 'a malformed command name got through');
+    return `${present.size} built-ins, ${list.length} in total`;
+  });
+
+  await check('a command nobody has is never offered', async () => {
+    const { commandsFor } = await import(path.join(here, '..', 'bridge', 'commands.mjs'));
+    const invented = ['selfdestruct', 'teleport', 'summonhelp'];
+    for (const provider of ['claude', 'codex']) {
+      const names = new Set(commandsFor(provider).map((c) => c.name));
+      for (const fake of invented) ok(!names.has(fake), `${provider} offered /${fake}`);
+    }
+  });
+
   await check('a pending question is offered with its options', async () => {
     const { pendingAsk } = await import(path.join(here, '..', 'bridge', 'asks.mjs'));
     // A pane recorded as waiting always gets the standard answers, even when
