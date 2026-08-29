@@ -19,6 +19,16 @@ import { readBody, firstFile, saveImage } from './uploads.mjs';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const appDir = path.join(here, '..', 'app');
 
+/** Changes whenever the app file does, so a phone can tell it is out of date. */
+function appVersion() {
+  try {
+    const { mtimeMs, size } = fs.statSync(path.join(appDir, 'index.html'));
+    return `${Math.round(mtimeMs)}-${size}`;
+  } catch {
+    return 'unknown';
+  }
+}
+
 const PORT = Number(process.env.TC_PORT || 7810);
 const HOST = process.env.TC_HOST || '127.0.0.1';
 const MAX_AGE = Number(process.env.TC_MAX_AGE_HOURS || 24) * 3600 * 1000;
@@ -97,6 +107,7 @@ const server = http.createServer(async (req, res) => {
     const prefs = readPrefs();
     return json(res, 200, {
       generatedAt: new Date().toISOString(),
+      version: appVersion(),
       daemon,
       view: prefs.view,
       panes: prefs.view === 'manual' ? inManualOrder(panes, prefs.order) : panes,
@@ -132,6 +143,7 @@ const server = http.createServer(async (req, res) => {
     if (!pane) return json(res, 404, { error: 'That terminal has been closed.' });
     return json(res, 200, {
       pane,
+      version: appVersion(),
       live: pane.live,
       producing: pane.producing,
       ask: pendingAsk(pane),

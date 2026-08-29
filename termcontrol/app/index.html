@@ -226,14 +226,20 @@
     -webkit-overflow-scrolling:touch;
   }
   .modeswitch{
-    display:flex;gap:2px;padding:3px;margin-left:auto;border-radius:10px;
-    background:var(--surface);border:1px solid var(--line);flex:none;
+    display:flex;gap:2px;padding:3px;border-radius:10px;flex:none;
+    background:var(--surface-2);border:1px solid var(--line);
   }
   .modeswitch button{
-    min-width:52px;min-height:44px;padding:0 10px;border:0;border-radius:7px;
+    min-width:56px;min-height:38px;padding:0 10px;border:0;border-radius:7px;
     background:transparent;color:var(--muted);font:600 12px var(--ui);cursor:pointer;
   }
-  .modeswitch button[aria-pressed="true"]{background:var(--surface-2);color:var(--text)}
+  .modeswitch button[aria-pressed="true"]{background:var(--accent);color:#191512}
+
+  /* The row that carries the view switch: always on screen, above the
+     keyboard, because a sticky header is not reachable once a phone keyboard
+     is open. */
+  .toolrow{display:flex;align-items:center;gap:8px;margin:0 0 8px}
+  .toolrow .keys{margin:0;flex:1;min-width:0}
 
   .composer{
     position:fixed;left:0;right:0;bottom:0;z-index:6;
@@ -359,6 +365,16 @@ const main = document.getElementById('main');
 // Every navigation takes a ticket; a response that arrives after you have
 // moved on is discarded instead of painting over the screen you are on.
 let view = 0;
+
+// The page a phone is running can be days old — it only changes when the
+// browser is made to fetch it again. The bridge reports which version it
+// holds; if that moves while you are looking, pick it up straight away.
+let seenVersion = null;
+function checkVersion(reported) {
+  if (!reported) return;
+  if (seenVersion === null) { seenVersion = reported; return; }
+  if (reported !== seenVersion) location.reload();
+}
 let releaseChatScroll = null;
 const title = document.getElementById('title');
 const sub = document.getElementById('sub');
@@ -396,7 +412,6 @@ async function fleet() {
   const mine = ++view;
   clearInterval(timer);
   releaseChatScroll?.();
-  document.querySelector('header .modeswitch')?.remove();
   document.body.classList.remove('chat');
   document.querySelector('.composer')?.remove();
   document.querySelector('.sendstate')?.remove();
@@ -413,6 +428,7 @@ async function fleet() {
     return;
   }
   if (mine !== view) return;
+  checkVersion(r.version);
   const panes = r.panes;
   const waiting = panes.filter((p) => p.turn === 'waiting');
   sub.textContent = r.daemon === false
@@ -539,6 +555,7 @@ async function chat(id) {
       return;
     }
     if (mine !== view) return;
+    checkVersion(d.version);
     if (d.error) { main.innerHTML = `<div class="empty">${esc(d.error)}</div>`; return; }
     title.innerHTML = (d.pane.emoji ? `<span class="titleEmoji">${esc(d.pane.emoji)}</span>` : '') + esc(d.pane.project)
       + (d.producing
@@ -549,10 +566,6 @@ async function chat(id) {
 
     if (!d.events.length) { main.innerHTML = '<div class="empty">Nothing recorded for this terminal yet.</div>'; return; }
 
-    // In the header, so it is always reachable however long the conversation.
-    const modes = '';
-    showModeSwitch();
-
     if (mode === 'screen') {
       const shown = await fetch(`/api/screen?pane=${encodeURIComponent(id)}`)
         .then((x) => x.json()).catch(() => ({}));
@@ -560,7 +573,6 @@ async function chat(id) {
       if (screenHtml !== lastSignature) {
         lastSignature = screenHtml;
         main.innerHTML = screenHtml;
-        wireModes();
         window.scrollTo(0, document.body.scrollHeight);
       }
       return;
@@ -617,7 +629,6 @@ async function chat(id) {
 
     lastSignature = html;
     main.innerHTML = html;
-    wireModes();
 
     if (first || nearBottom) {
       window.scrollTo(0, document.body.scrollHeight);
@@ -647,52 +658,24 @@ async function chat(id) {
     }
   };
 
-  function showModeSwitch() {
-    let holder = document.querySelector('header .modeswitch');
-    if (!holder) {
-      holder = document.createElement('div');
-      holder.className = 'modeswitch';
-      holder.setAttribute('role', 'group');
-      holder.setAttribute('aria-label', 'What to show');
-      document.querySelector('header').appendChild(holder);
-    }
-    const wanted = `
-      <button type="button" data-mode="chat" aria-pressed="${mode === 'chat'}">Chat</button>
-      <button type="button" data-mode="screen" aria-pressed="${mode === 'screen'}">Screen</button>`;
-    if (holder.innerHTML.trim() !== wanted.trim()) {
-      holder.innerHTML = wanted;
-      wireModes();
-    }
-  }
-
-  function wireModes() {
-    document.querySelectorAll('header .modeswitch button').forEach((el) => {
-      el.onclick = () => {
-        mode = el.dataset.mode;
-        sessionStorage.setItem('tc-mode', mode);
-        const composer = document.querySelector('.composer');
-        if (composer) {
-          composer.classList.toggle('always', mode === 'screen');
-          const sendBtn = composer.querySelector('button.send');
-          if (sendBtn) sendBtn.textContent = mode === 'screen' ? 'Type' : 'Send';
-          const boxEl = composer.querySelector('textarea');
-          if (boxEl) boxEl.placeholder = mode === 'screen'
-            ? 'Type into the terminal…'
-            : 'Reply to this agent…';
-        }
-        lastSignature = '';
-        following = true;
-        showModeSwitch();
-        render();
-      };
-    });
-  }
-
   await render();
-  mountComposer(id, (entry) => {
-    if (entry?.refresh) { lastSignature = ''; return render(); }
-    justSent = entry; following = true; render();
-  });
+  mountComposer(
+    id,
+    (entry) => {
+      if (entry?.refresh) { lastSignature = ''; return render(); }
+      justSent = entry; following = true; render();
+    },
+    (next) => {
+      mode = next;
+      sessionStorage.setItem('tc-mode', mode);
+      lastSignature = '';
+      following = true;
+      clearInterval(timer);
+      timer = setInterval(render, mode === 'screen' ? 2000 : 8000);
+      render();
+    },
+    () => mode,
+  );
   // The composer reserves space after the first paint, so land on the newest
   // message once the layout has actually settled.
   requestAnimationFrame(() => requestAnimationFrame(() => {
@@ -703,7 +686,7 @@ async function chat(id) {
   timer = setInterval(render, mode === 'screen' ? 2000 : 8000);
 }
 
-function mountComposer(id, onSent) {
+function mountComposer(id, onSent, onMode, view = () => 'chat') {
   document.body.classList.add('chat');
   const old = document.querySelector('.composer');
   if (old) old.remove();
@@ -714,7 +697,12 @@ function mountComposer(id, onSent) {
     <button type="button" class="attach" aria-label="Attach an image">＋</button>
     <input type="file" accept="image/*" aria-hidden="true">
     <div class="stack">
-      <div class="keys" role="group" aria-label="Terminal keys">
+      <div class="toolrow">
+        <div class="modeswitch" role="group" aria-label="What to show">
+          <button type="button" data-mode="chat">Chat</button>
+          <button type="button" data-mode="screen">Screen</button>
+        </div>
+        <div class="keys" role="group" aria-label="Terminal keys">
         <button type="button" data-ins="/" aria-label="Slash">/</button>
         <button type="button" data-ins="$" aria-label="Dollar">$</button>
         <button type="button" data-ins="-" aria-label="Dash">-</button>
@@ -727,7 +715,8 @@ function mountComposer(id, onSent) {
         <button type="button" class="wide" data-key="down" aria-label="Arrow down">↓</button>
         <button type="button" class="wide" data-key="tab" aria-label="Tab key">Tab</button>
         <button type="button" class="wide" data-key="esc" aria-label="Escape key">Esc</button>
-        <button type="button" class="wide" data-key="interrupt" aria-label="Interrupt the agent">Stop</button>
+          <button type="button" class="wide" data-key="interrupt" aria-label="Interrupt the agent">Stop</button>
+        </div>
       </div>
       <div class="attached" hidden>
         <img alt="">
@@ -923,6 +912,22 @@ function mountComposer(id, onSent) {
     note('Delivered');
     setTimeout(() => { const n = document.querySelector('.sendstate'); if (n) n.remove(); }, 1400);
   };
+
+  // The view switch lives in this bar, so it is wired when the bar is built.
+  const paintSwitch = () => {
+    bar.querySelectorAll('.modeswitch button').forEach((el) => {
+      el.setAttribute('aria-pressed', String(el.dataset.mode === view()));
+    });
+    const screening = view() === 'screen';
+    bar.classList.toggle('always', screening);
+    btn.textContent = screening ? 'Type' : 'Send';
+    box.placeholder = screening ? 'Type into the terminal…' : 'Reply to this agent…';
+  };
+
+  bar.querySelectorAll('.modeswitch button').forEach((el) => {
+    el.onclick = () => { onMode?.(el.dataset.mode); paintSwitch(); };
+  });
+  paintSwitch();
 
   const fit = () => {
     document.documentElement.style.setProperty('--composer-space', (bar.offsetHeight + 24) + 'px');

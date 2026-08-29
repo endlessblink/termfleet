@@ -208,9 +208,14 @@ async function main() {
     await p.waitForSelector('.composer');
     await wait(1000);
 
-    await check('at rest the bottom is one row, not a stack', async () => {
+    await check('the bottom stays compact: the view switch and the reply box', async () => {
+      // Two purposeful rows. The switch has to be down here because a sticky
+      // header is unreachable once a phone keyboard is open.
       const h = await p.$eval('.composer', (e) => Math.round(e.getBoundingClientRect().height));
-      ok(h <= 80, `the reply area is ${h}px tall with nothing attached`);
+      ok(h <= 130, `the reply area is ${h}px tall with nothing attached`);
+      const rows = await p.$$eval('.composer > *, .composer .toolrow, .composer .attached:not([hidden])',
+        (els) => els.filter((e) => getComputedStyle(e).display !== 'none').length);
+      ok(rows <= 6, `${rows} things stacked at the bottom`);
       return `${h}px`;
     });
 
