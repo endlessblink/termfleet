@@ -90,6 +90,27 @@
   }
   @media (prefers-reduced-motion: reduce){ .dot.producing{animation:none} }
 
+  /* The terminal's own last line, changing as it prints. */
+  .tail{
+    display:flex;align-items:center;gap:8px;margin-top:9px;
+    font-family:var(--mono);font-size:12px;color:var(--working);
+    overflow:hidden;white-space:nowrap;
+  }
+  .tail .text{overflow:hidden;text-overflow:ellipsis;min-width:0}
+
+  /* A trace of how much output arrived over the last minute. */
+  .trace{display:flex;align-items:flex-end;gap:2px;height:14px;flex:none}
+  .trace i{
+    display:block;width:3px;border-radius:1px;background:var(--working);
+    opacity:.5;transition:height .3s ease, opacity .3s ease;
+  }
+  .trace i.on{opacity:1}
+
+  .headtail{
+    display:block;margin-top:3px;font-family:var(--mono);font-size:11.5px;
+    color:var(--working);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+
   .livemark{
     display:inline-flex;align-items:center;gap:6px;
     font-size:12px;font-weight:600;color:var(--working);
@@ -306,6 +327,17 @@ const ago = (ms) => {
   if (s < 86400) return `${Math.round(s / 3600)}h ago`;
   return `${Math.round(s / 86400)}d ago`;
 };
+const trace = (pulse = []) => {
+  const recent = pulse.slice(-10);
+  if (!recent.length) return '';
+  const peak = Math.max(...recent, 1);
+  const bars = recent.map((v) => {
+    const height = Math.max(2, Math.round((v / peak) * 14));
+    return `<i class="${v > 0 ? 'on' : ''}" style="height:${height}px"></i>`;
+  }).join('');
+  return `<span class="trace" aria-hidden="true">${bars}</span>`;
+};
+
 const quietFor = (ms) => {
   if (ms == null) return 'a moment';
   const s = Math.round(ms / 1000);
@@ -411,7 +443,8 @@ function card(p) {
     <div class="task${p.task ? '' : ' none'}">${esc(p.task || 'no task declared')}</div>
     ${p.turn === 'waiting' ? '<div class="state">Needs your answer</div>' : ''}
     ${p.producing
-        ? '<div class="livemark"><span class="dot producing" aria-hidden="true"></span>Live now</div>'
+        ? `<div class="livemark"><span class="dot producing" aria-hidden="true"></span>Live now</div>
+           ${p.lastLine ? `<div class="tail">${trace(p.pulse)}<span class="text">${esc(p.lastLine)}</span></div>` : ''}`
         : p.turn === 'working'
           ? '<div class="livemark quiet"><span class="dot working" aria-hidden="true"></span>Running, quiet for ' + quietFor(p.quietForMs) + '</div>'
           : ''}
@@ -464,7 +497,8 @@ async function chat(id) {
       + (d.producing
           ? '<span class="headlive"><span class="dot producing" aria-hidden="true"></span>live</span>'
           : '<span class="headlive quiet"><span class="dot idle" aria-hidden="true"></span>quiet</span>');
-    sub.textContent = `${d.pane.provider}${d.pane.task ? ' · ' + d.pane.task : ''}`;
+    sub.innerHTML = esc(`${d.pane.provider}${d.pane.task ? ' · ' + d.pane.task : ''}`)
+      + (d.producing && d.lastLine ? `<span class="headtail">${esc(d.lastLine)}</span>` : '');
 
     if (!d.events.length) { main.innerHTML = '<div class="empty">Nothing recorded for this terminal yet.</div>'; return; }
 

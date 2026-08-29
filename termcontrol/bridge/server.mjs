@@ -181,6 +181,12 @@ const server = http.createServer(async (req, res) => {
   return json(res, 404, { error: 'not found' });
 });
 
+// Liveness needs two looks to know whether output moved, so the bridge takes
+// them continuously rather than only when the phone asks. Without this the
+// fleet shows nothing as live for the first few seconds after you open it.
+setInterval(() => { liveness().catch(() => {}); }, 3000).unref?.();
+liveness().catch(() => {});
+
 server.listen(PORT, HOST, () => {
   console.log(`TermControl bridge on http://${HOST}:${PORT}`);
   if (HOST === '127.0.0.1') console.log('(set TC_HOST=0.0.0.0 to open it from your phone on the same network)');

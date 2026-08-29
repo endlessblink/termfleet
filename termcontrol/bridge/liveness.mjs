@@ -11,8 +11,9 @@ import { requestDaemon, defaultDaemonSocket } from '../../scripts/termfleetctl.m
  *   alive     — the daemon still owns a session with this id
  *   producing — its output grew since the last look, i.e. something is running
  */
-const seen = new Map();      // id -> { bytes, at, lastGrewAt }
+const seen = new Map();      // id -> { bytes, at, lastGrewAt, pulse: number[] }
 const QUIET_AFTER_MS = 20_000;
+const PULSE_SAMPLES = 14;
 
 export async function liveness() {
   let sessions = [];
@@ -33,7 +34,12 @@ export async function liveness() {
     const grew = before ? bytes > before.bytes : false;
     const lastGrewAt = grew ? now : before?.lastGrewAt ?? null;
 
-    seen.set(s.id, { bytes, at: now, lastGrewAt });
+    // A short history of how much output arrived between looks. It is what
+    // makes the indicator feel alive: a shape that moves, not a lamp.
+    const delta = before ? Math.max(0, bytes - before.bytes) : 0;
+    const pulse = [...(before?.pulse || []), delta].slice(-PULSE_SAMPLES);
+
+    seen.set(s.id, { bytes, at: now, lastGrewAt, pulse });
 
     byId.set(s.id, {
       alive: true,
@@ -45,6 +51,7 @@ export async function liveness() {
       producing: lastGrewAt != null && now - lastGrewAt < QUIET_AFTER_MS,
       quietForMs: lastGrewAt == null ? null : now - lastGrewAt,
       firstLook: !before,
+      pulse,
     });
   }
 
@@ -54,4 +61,30 @@ export async function liveness() {
   }
 
   return { reachable: true, byId };
+}
+
+/**
+ * The last line a terminal actually printed. Nothing else convinces you a
+ * terminal is alive like seeing its own words change, so this is fetched only
+ * for the few terminals that are moving, and kept to one short line.
+ */
+export async function lastLine(id) {
+  try {
+    const res = await requestDaemon({ type: 'snapshotSession', id }, defaultDaemonSocket());
+    if (!res || res.ok !== true) return null;
+    const text = String(res.value?.data || '')
+      .replace(/\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)/g, '')   // window titles
+      .replace(/\u001b\[[0-9;?]*[a-zA-Z]/g, '')                        // colours, cursor moves
+      .replace(/\r/g, '\n');
+
+    const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
+    for (let i = lines.length - 1; i >= 0; i--) {
+      const line = lines[i].replace(/\s+/g, ' ');
+      // Skip box-drawing chrome and bare prompts: they say nothing.
+      if (/^[\u2500-\u257f\s]+$/.test(line)) continue;
+      if (line.length < 2) continue;
+      return line.slice(0, 120);
+    }
+  } catch { /* the terminal may have gone */ }
+  return null;
 }

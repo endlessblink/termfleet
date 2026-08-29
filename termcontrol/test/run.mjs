@@ -290,6 +290,46 @@ async function main() {
     return 'told apart correctly';
   });
 
+  await check('a live terminal shows its own latest line', async () => {
+    const m = await import(path.join(here, '..', '..', 'scripts', 'termfleetctl.mjs'));
+    const sock = m.defaultDaemonSocket();
+    const ask = async (r) => { const x = await m.requestDaemon(r, sock); if (!x.ok) throw new Error('daemon refused'); return x.value; };
+    const { liveness, lastLine } = await import(path.join(here, '..', 'bridge', 'liveness.mjs'));
+
+    const id = 'tc-heartbeat-' + Date.now();
+    await ask({ type: 'ensureSession', id, cwd: '/tmp', command: "/bin/bash -lc 'while true; do echo HEARTBEAT-$RANDOM; sleep 1; done'", cols: 80, rows: 24 });
+    await wait(1400);
+
+    let life = null;
+    for (let i = 0; i < 6; i++) {
+      await wait(1100);
+      life = (await liveness()).byId.get(id);
+      if (life?.producing) break;
+    }
+    const line = await lastLine(id);
+    await ask({ type: 'killSession', id, reviewed: true }).catch(() => {});
+
+    ok(life?.producing, 'a printing terminal should read as live');
+    ok(/HEARTBEAT-/.test(line || ''), `expected its own output, got ${JSON.stringify(line)}`);
+    ok(life.pulse.some((v) => v > 0), 'the activity trace should show output arriving');
+    return 'shows what it is printing';
+  });
+
+  await check('a quiet terminal offers no false movement', async () => {
+    const m = await import(path.join(here, '..', '..', 'scripts', 'termfleetctl.mjs'));
+    const sock = m.defaultDaemonSocket();
+    const ask = async (r) => { const x = await m.requestDaemon(r, sock); if (!x.ok) throw new Error('daemon refused'); return x.value; };
+    const { liveness } = await import(path.join(here, '..', 'bridge', 'liveness.mjs'));
+
+    const id = 'tc-still-' + Date.now();
+    await ask({ type: 'ensureSession', id, cwd: '/tmp', command: '/bin/bash', cols: 80, rows: 24 });
+    await wait(1200);
+    await liveness(); await wait(2500);
+    const life = (await liveness()).byId.get(id);
+    await ask({ type: 'killSession', id, reviewed: true }).catch(() => {});
+    ok(life && life.producing === false, 'an idle shell must not look alive');
+  });
+
   await check('a terminal that has gone stops being listed at all', async () => {
     const m = await import(path.join(here, '..', '..', 'scripts', 'termfleetctl.mjs'));
     const sock = m.defaultDaemonSocket();
