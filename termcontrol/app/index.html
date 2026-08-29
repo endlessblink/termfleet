@@ -204,7 +204,9 @@
     display:flex;gap:8px;align-items:flex-end;
   }
   .composer textarea{
-    flex:1;resize:none;min-height:44px;max-height:140px;
+    /* The stack around it is the flexible one; the box sets its own height as
+       you type, so it must not be stretched to fit. */
+    flex:none;width:100%;resize:none;min-height:44px;max-height:140px;
     padding:11px 13px;border-radius:12px;border:1px solid var(--line);
     background:var(--surface);color:var(--text);font:16px/1.4 var(--ui);
   }

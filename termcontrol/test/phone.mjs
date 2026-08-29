@@ -175,7 +175,7 @@ async function main() {
     await check('a failed send tells you, and keeps your text', async () => {
       await ctx.setOffline(true);
       await p.fill('.composer textarea', 'a message that cannot be delivered');
-      await p.click('.composer button');
+      await p.click('.composer button.send');
       await p.waitForSelector('.sendstate', { timeout: 8000 });
       // the first frame says "Sending…"; wait for the outcome
       await p.waitForFunction(
@@ -218,7 +218,7 @@ async function main() {
 
     await check('the reply box stays reachable with a full message', async () => {
       const visible = await p.evaluate(() => {
-        const b = document.querySelector('.composer button').getBoundingClientRect();
+        const b = document.querySelector('.composer button.send').getBoundingClientRect();
         return b.bottom <= window.innerHeight + 1 && b.top >= 0;
       });
       ok(visible, 'the send button is off screen');
@@ -228,8 +228,8 @@ async function main() {
       await p.fill('.composer textarea', 'hello there');
       const calls = [];
       await p.route('**/api/send', async (route) => { calls.push(1); await route.fulfill({ status: 200, body: '{"ok":true}' }); });
-      await p.click('.composer button');
-      await p.click('.composer button').catch(() => {});
+      await p.click('.composer button.send');
+      await p.click('.composer button.send').catch(() => {});
       await wait(900);
       ok(calls.length <= 1, `sent ${calls.length} times`);
       return `${calls.length} request`;

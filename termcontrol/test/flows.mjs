@@ -234,7 +234,7 @@ async function main() {
   await check('sending gives immediate feedback', async () => {
     await p.route('**/api/send', async (r) => { await wait(400); await r.fulfill({ status: 200, body: '{"ok":true,"delivered":true}' }); });
     await p.fill('.composer textarea', 'thanks, carry on');
-    await p.click('.composer button');
+    await p.click('.composer button.send');
     await p.waitForSelector('.sendstate', { timeout: 4000 });
     const first = await p.textContent('.sendstate');
     ok(/sending/i.test(first), `no immediate acknowledgement: ${first}`);
@@ -256,7 +256,7 @@ async function main() {
     await p.route('**/api/send', async (r) => r.fulfill({ status: 200, body: '{"ok":true,"delivered":true}' }));
     const mine = 'please summarise the last change ' + Date.now();
     await p.fill('.composer textarea', mine);
-    await p.click('.composer button');
+    await p.click('.composer button.send');
     // An earlier step may already have left one of these on screen, so wait
     // for this exact message rather than the first that appears.
     await p.waitForFunction(
@@ -277,7 +277,7 @@ async function main() {
   await check('a message that never reached the terminal says so', async () => {
     await p.route('**/api/send', async (r) => r.fulfill({ status: 200, body: '{"ok":true,"delivered":false}' }));
     await p.fill('.composer textarea', 'did this actually arrive');
-    await p.click('.composer button');
+    await p.click('.composer button.send');
     await p.waitForFunction(
       () => /did not appear/i.test(document.querySelector('.sendstate')?.textContent || ''),
       { timeout: 8000 },
@@ -291,7 +291,7 @@ async function main() {
   await check('interrupting a busy agent needs a deliberate second tap', async () => {
     await p.route('**/api/send', async (r) => r.fulfill({ status: 200, body: JSON.stringify({ error: 'busy', busy: true, message: 'The agent is still working. Send anyway?' }) }));
     await p.fill('.composer textarea', 'stop what you are doing');
-    await p.click('.composer button');
+    await p.click('.composer button.send');
     await p.waitForSelector('.sendstate .acts', { timeout: 6000 });
     const buttons = await p.$$eval('.sendstate .acts button', (els) => els.map((e) => e.textContent.trim()));
     ok(buttons.length === 2, `expected two choices, got ${buttons.join('/')}`);
