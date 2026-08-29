@@ -34,6 +34,19 @@ function readPaneRecords() {
   return out;
 }
 
+/**
+ * A project the desktop has no lane for still needs an icon, or the fleet
+ * shows a blank where every other row has one. The choice is derived from the
+ * name so it never changes between looks.
+ */
+const FALLBACK_ICONS = ['🗂️', '📘', '🧩', '🔧', '🧪', '📐', '🗺️', '🎯', '🛠️', '📎', '🧱', '🔭'];
+
+function iconFor(name) {
+  let hash = 0;
+  for (const ch of String(name)) hash = (hash * 31 + ch.codePointAt(0)) >>> 0;
+  return FALLBACK_ICONS[hash % FALLBACK_ICONS.length];
+}
+
 /** Plain-language line describing what this pane is doing, or null. */
 function taskLine(rec) {
   const inProgress = (rec.todos || []).find((t) => t.status === 'in_progress');
@@ -59,32 +72,37 @@ function turnOf(rec) {
  * show the same identity the operator already recognises.
  */
 function tabDecorations() {
-  const map = new Map();
+  const byTerminal = new Map();
+  const byProjectName = new Map();
   const ws = readJson(PATHS.workspace);
 
   // The emoji and human project name live on the group (the project lane);
   // tabs themselves all carry the same placeholder square.
   const groups = new Map();
   for (const g of ws?.groups || []) {
-    if (g?.id) groups.set(g.id, { emoji: g.emoji || null, name: g.name || g.title || null, color: g.color || null });
+    if (!g?.id) continue;
+    const name = g.name || g.title || null;
+    const look = { emoji: g.emoji || null, name, color: g.color || null };
+    groups.set(g.id, look);
+    if (name) byProjectName.set(name, look);
   }
 
   for (const tab of ws?.tabs || []) {
     const g = groups.get(tab.groupId) || {};
     for (const term of tab.terminals || []) {
       if (!term?.id) continue;
-      map.set(term.id, {
+      byTerminal.set(term.id, {
         emoji: g.emoji || null,
         color: g.color || tab.color || null,
         groupName: g.name || null,
       });
     }
   }
-  return map;
+  return { byTerminal, byProjectName };
 }
 
 export function listPanes({ maxAgeMs = null } = {}) {
-  const decor = tabDecorations();
+  const { byTerminal, byProjectName } = tabDecorations();
   const now = Date.now();
   const panes = [];
   for (const rec of readPaneRecords()) {
@@ -95,7 +113,20 @@ export function listPanes({ maxAgeMs = null } = {}) {
     if (maxAgeMs != null && now - updatedAt > maxAgeMs) continue;
 
     const id = rec.paneId || rec._file.replace(/^pane-|\.json$/g, '');
-    const look = decor.get(id) || {};
+    const tab = byTerminal.get(id) || {};
+
+    // A terminal can be reused in a different folder than the lane it was
+    // opened in, and then the lane's name is simply wrong. What the terminal
+    // is actually working on wins; the lane only supplies the emoji, and only
+    // when the two agree on the project.
+    const folder = rec.cwd ? path.basename(rec.cwd) : null;
+    const project = folder || tab.groupName || 'unknown';
+    const matching = byProjectName.get(project);
+    const look = {
+      groupName: project,
+      emoji: matching?.emoji || (tab.groupName === project ? tab.emoji : null) || iconFor(project),
+      color: matching?.color || (tab.groupName === project ? tab.color : null) || null,
+    };
 
     panes.push({
       id,
@@ -105,7 +136,7 @@ export function listPanes({ maxAgeMs = null } = {}) {
       provider,
       sessionId: rec.sessionId,
       cwd: rec.cwd || null,
-      project: look.groupName || (rec.cwd ? path.basename(rec.cwd) : 'unknown'),
+      project,
       turn: turnOf(rec),
       turnReason: rec.turnReason || null,
       task: taskLine(rec),

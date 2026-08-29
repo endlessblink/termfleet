@@ -67,10 +67,19 @@ export async function sendToPane(pane, text, { force = false } = {}) {
 
   inFlight.add(pane.id);
   try {
+    // A newline typed into an agent submits the line. Sending a two-line
+    // message raw therefore delivers it as two prompts: the first starts a
+    // turn and the second arrives mid-turn and queues, which is what "my
+    // message got stuck" looks like. Wrapping it in bracketed paste tells the
+    // terminal this is one pasted block, so the newlines stay inside it.
+    const wire = body.includes('\n')
+      ? `\u001b[200~${body.replace(/\r/g, '')}\u001b[201~`
+      : body;
+
     // Text first, then Enter as its own write: agent TUIs redraw between
     // keystrokes, and a newline arriving inside the same chunk as the text is
     // routinely swallowed. The pause gives the prompt time to settle.
-    await ask({ type: 'writeSession', id: pane.id, data: body });
+    await ask({ type: 'writeSession', id: pane.id, data: wire });
     await new Promise((r) => setTimeout(r, 120));
     await ask({ type: 'writeSession', id: pane.id, data: '\r' });
 

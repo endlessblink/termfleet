@@ -186,6 +186,17 @@ async function main() {
     ok(seq.every((v, i) => i === 0 || seq[i - 1] <= v), 'list is not sorted by attention');
   });
 
+  await check('every terminal is labelled with the project it is really in', () => {
+    // A terminal can be reused in a different folder than the lane it was
+    // opened under, and the lane's name is then simply wrong.
+    const wrong = panes.panes
+      .filter((p) => p.cwd)
+      .map((p) => ({ shown: p.project, actual: p.cwd.split('/').filter(Boolean).pop() }))
+      .filter((r) => r.shown !== r.actual);
+    eq(wrong.length, 0, wrong.map((w) => `shown as ${w.shown}, actually in ${w.actual}`).join('; '));
+    return `${panes.panes.length} correct`;
+  });
+
   await check('no terminal shows a raw path as its name', () => {
     const bad = panes.panes.filter((p) => String(p.project).includes('/'));
     eq(bad.length, 0, 'project names must be human names');
@@ -401,6 +412,43 @@ async function main() {
     await ask({ type: 'killSession', id: dead, reviewed: true }).catch(() => {});
     ok(bad.delivered === false, 'a terminal that never showed the text must not be reported as delivered');
     return 'confirms both ways';
+  });
+
+  await check('a multi-line message arrives as one message, not several', async () => {
+    const m = await import(path.join(here, '..', '..', 'scripts', 'termfleetctl.mjs'));
+    const sock = m.defaultDaemonSocket();
+    const ask = async (r) => { const x = await m.requestDaemon(r, sock); if (!x.ok) throw new Error('daemon refused'); return x.value; };
+    const { sendToPane } = await import(path.join(here, '..', 'bridge', 'send.mjs'));
+
+    // `cat -v` shows control codes, so we can see exactly what the terminal got.
+    const id = 'tc-paste-' + Date.now();
+    await ask({ type: 'ensureSession', id, cwd: '/tmp', command: "/bin/bash -lc 'cat -v'", cols: 100, rows: 24 });
+    await wait(1100);
+    await sendToPane({ id, turn: 'idle' }, 'first line\nsecond line');
+    await wait(1400);
+    const got = String((await ask({ type: 'readSession', id, offset: 0 })).data || '');
+    await ask({ type: 'killSession', id, reviewed: true }).catch(() => {});
+
+    // Bracketed paste: the terminal is told "this is one pasted block", so a
+    // newline inside it does not submit the first line on its own.
+    ok(got.includes('^[[200~') && got.includes('^[[201~'), 'the message was not sent as a single paste');
+    return 'sent as one paste';
+  });
+
+  await check('a single-line message is sent plainly', async () => {
+    const m = await import(path.join(here, '..', '..', 'scripts', 'termfleetctl.mjs'));
+    const sock = m.defaultDaemonSocket();
+    const ask = async (r) => { const x = await m.requestDaemon(r, sock); if (!x.ok) throw new Error('daemon refused'); return x.value; };
+    const { sendToPane } = await import(path.join(here, '..', 'bridge', 'send.mjs'));
+
+    const id = 'tc-plain-' + Date.now();
+    await ask({ type: 'ensureSession', id, cwd: '/tmp', command: "/bin/bash -lc 'cat -v'", cols: 100, rows: 24 });
+    await wait(1000);
+    await sendToPane({ id, turn: 'idle' }, 'just one line');
+    await wait(1200);
+    const got = String((await ask({ type: 'readSession', id, offset: 0 })).data || '');
+    await ask({ type: 'killSession', id, reviewed: true }).catch(() => {});
+    ok(!got.includes('^[[200~'), 'a one-line message should not be wrapped');
   });
 
   await check('every send is written to the audit trail', async () => {

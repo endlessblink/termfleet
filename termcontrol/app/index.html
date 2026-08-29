@@ -391,14 +391,20 @@ async function chat(id) {
   // reads it — sometimes a minute later. Until then, show it as yours, marked
   // as on its way, so it never looks like the message vanished.
   let justSent = null;
+
   // Follow the newest message until the reader scrolls away from the end.
-  // Measuring "are we at the bottom?" on every refresh gets it wrong when a
-  // refresh lands while the layout is still settling.
+  // Deciding "are we at the bottom?" afresh on every refresh gets it wrong
+  // when a refresh lands while the layout is still settling.
   let following = true;
   const onScroll = () => {
-    following = window.innerHeight + window.scrollY >= document.body.scrollHeight - 60;
+    following = window.innerHeight + window.scrollY >= document.body.scrollHeight - 80;
   };
   window.addEventListener('scroll', onScroll, { passive: true });
+  releaseChatScroll?.();
+  releaseChatScroll = () => {
+    window.removeEventListener('scroll', onScroll);
+    releaseChatScroll = null;
+  };
 
   const render = async () => {
     let d;
@@ -501,12 +507,6 @@ async function chat(id) {
     } else {
       window.scrollTo(0, wasAt);
     }
-  };
-
-  releaseChatScroll?.();
-  releaseChatScroll = () => {
-    window.removeEventListener('scroll', onScroll);
-    releaseChatScroll = null;
   };
 
   await render();
