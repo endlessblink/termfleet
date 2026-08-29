@@ -13,6 +13,8 @@ import { sendToPane, answerPrompt, liveSessionIds } from './send.mjs';
 import { adapterFor } from './feed.mjs';
 import { readPrefs, writePrefs, byProject, inManualOrder, moveInOrder } from './prefs.mjs';
 import { liveness } from './liveness.mjs';
+import { pendingAsk } from './asks.mjs';
+import { readBody, firstFile, saveImage } from './uploads.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const appDir = path.join(here, '..', 'app');
@@ -121,7 +123,13 @@ const server = http.createServer(async (req, res) => {
     const { panes } = await currentPanes();
     const pane = panes.find((p) => p.id === id);
     if (!pane) return json(res, 404, { error: 'That terminal has been closed.' });
-    return json(res, 200, { pane, live: pane.live, producing: pane.producing, ...readFeed(pane, { limit }) });
+    return json(res, 200, {
+      pane,
+      live: pane.live,
+      producing: pane.producing,
+      ask: pendingAsk(pane),
+      ...readFeed(pane, { limit }),
+    });
   }
 
   if (url.pathname === '/api/send' && req.method === 'POST') {
@@ -144,6 +152,21 @@ const server = http.createServer(async (req, res) => {
       return json(res, result.error && !result.busy ? 400 : 200, result);
     });
     return;
+  }
+
+  if (url.pathname === '/api/upload' && req.method === 'POST') {
+    let body;
+    try {
+      body = await readBody(req);
+    } catch {
+      return json(res, 413, { error: 'That image is too large.' });
+    }
+    const file = firstFile(body, req.headers['content-type']);
+    if (!file) return json(res, 400, { error: 'No image was received.' });
+
+    const saved = saveImage(file);
+    if (saved.error) return json(res, 400, saved);
+    return json(res, 200, { path: saved.path, bytes: saved.bytes, name: file.name });
   }
 
   if (url.pathname === '/api/live') {

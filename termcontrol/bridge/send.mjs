@@ -126,9 +126,13 @@ async function appearedInTerminal(id, body) {
   return false;
 }
 
-/** Answer a permission prompt using the provider's own keystroke. */
+/**
+ * Answer whatever the agent is asking. A numbered choice picks that option in
+ * the on-screen list; the named choices answer a permission prompt with the
+ * provider's own keystroke.
+ */
 export async function answerPrompt(pane, choice, approval) {
-  const key = approval?.[choice];
+  const key = /^[1-9]$/.test(String(choice)) ? `${choice}\r` : approval?.[choice];
   if (!key) return { error: 'Unknown choice.' };
   const live = await liveSessionIds();
   if (!live.has(pane.id)) return { error: 'That terminal is not running any more.' };

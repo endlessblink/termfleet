@@ -451,6 +451,47 @@ async function main() {
     ok(!got.includes('^[[200~'), 'a one-line message should not be wrapped');
   });
 
+  await check('an image sent from the phone lands on the machine', async () => {
+    const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+    const form = new FormData();
+    form.append('file', new Blob([png], { type: 'image/png' }), 'screenshot.png');
+    const r = await fetch(base + '/api/upload', { method: 'POST', headers: cookie ? { cookie } : {}, body: form });
+    const j = await r.json();
+    eq(r.status, 200, 'status');
+    ok(j.path && fs.existsSync(j.path), 'the image was not written to disk');
+    ok(fs.readFileSync(j.path).equals(png), 'the image on disk does not match what was sent');
+    fs.unlinkSync(j.path);
+    return 'saved and identical';
+  });
+
+  await check('an image cannot be sent without signing in', async () => {
+    const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+    const form = new FormData();
+    form.append('file', new Blob([png], { type: 'image/png' }), 'x.png');
+    const r = await fetch(base + '/api/upload', { method: 'POST', body: form });
+    eq(r.status, 401, 'status');
+  });
+
+  await check('a file that is not an image is refused', async () => {
+    const form = new FormData();
+    form.append('file', new Blob([Buffer.from('hello')], { type: 'text/plain' }), 'note.txt');
+    const r = await fetch(base + '/api/upload', { method: 'POST', headers: cookie ? { cookie } : {}, body: form });
+    const j = await r.json();
+    ok(/not supported/i.test(j.error || ''), `expected a refusal, got ${JSON.stringify(j)}`);
+  });
+
+  await check('a pending question is offered with its options', async () => {
+    const { pendingAsk } = await import(path.join(here, '..', 'bridge', 'asks.mjs'));
+    // A pane recorded as waiting always gets the standard answers, even when
+    // the question itself is only drawn on screen.
+    const ask = pendingAsk({ provider: 'codex', turn: 'waiting', cwd: '/tmp', sessionId: 'none' });
+    ok(ask && ask.options.length === 3, 'a waiting agent should offer answers');
+    ok(ask.options.some((o) => /yes/i.test(o.label)) && ask.options.some((o) => /no/i.test(o.label)), 'expected yes and no');
+    const quiet = pendingAsk({ provider: 'codex', turn: 'idle', cwd: '/tmp', sessionId: 'none' });
+    ok(quiet === null, 'an idle agent must not appear to be asking anything');
+    return 'offered when waiting, silent when not';
+  });
+
   await check('every send is written to the audit trail', async () => {
     // send.mjs is imported into this process, so it writes to the real
     // location rather than the sandbox the bridge child was given.
