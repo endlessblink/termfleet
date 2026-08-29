@@ -137,6 +137,12 @@
   h2.section:first-child{margin-top:4px}
 
   .msg{margin-bottom:18px}
+  .msg.mine .bubble{
+    background:var(--surface-2);border:1px solid var(--line);border-radius:var(--radius);
+    padding:11px 13px;
+  }
+  .msg.mine.pendingmsg .bubble{opacity:.72;border-style:dashed}
+  .msg.mine .who .when{color:var(--dim)}
   .who{
     display:flex;align-items:baseline;gap:8px;
     font-size:12px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;
@@ -344,6 +350,10 @@ async function chat(id) {
   main.innerHTML = '<div class="spin">loading…</div>';
 
   let lastSignature = '';
+  // A message typed into an agent only turns up in its record once the agent
+  // reads it — sometimes a minute later. Until then, show it as yours, marked
+  // as on its way, so it never looks like the message vanished.
+  let justSent = null;
 
   const render = async () => {
     let d;
@@ -374,9 +384,21 @@ async function chat(id) {
         <div class="who">${e.kind === 'user' ? 'you' : esc(d.pane.provider)}${when ? `<span class="when">${when}</span>` : ''}</div>
         <div class="bubble">${esc(e.text)}</div>
       </div>`;
-    }).join('') + (d.pending.length
-      ? `<div class="tool pending"><b>running</b> · ${esc(d.pending.join(', '))}</div>`
-      : '');
+    }).join('')
+      + (d.pending.length
+        ? `<div class="tool pending"><b>running</b> · ${esc(d.pending.join(', '))}</div>`
+        : '')
+      + (justSent && !d.events.some((e) => e.kind === 'user' && (e.text || '').includes(justSent.text))
+        ? `<div class="msg user mine pendingmsg">
+             <div class="who">you<span class="when">${justSent.delivered ? 'sent — waiting for the agent to read it' : 'sending…'}</span></div>
+             <div class="bubble">${esc(justSent.text)}</div>
+           </div>`
+        : '');
+
+    // Once the agent's own record shows it, stop holding our copy.
+    if (justSent && d.events.some((e) => e.kind === 'user' && (e.text || '').includes(justSent.text))) {
+      justSent = null;
+    }
 
     // Re-rendering identical content would throw away the reader's position.
     if (html === lastSignature) return;
@@ -414,8 +436,17 @@ async function chat(id) {
       // amount and the page still drifts.
       const settle = () => {
         const rows = [...main.children];
-        const same = rows.findIndex((r) => (r.textContent || '').slice(0, 60) === anchor.text);
-        const row = rows[same >= 0 ? same : anchor.index];
+        // Tool lines repeat verbatim ("exec · npm run build"), so matching on
+        // text alone can land on a different copy further up or down the list.
+        // Among equal matches, take the one closest to where it used to be.
+        let best = -1;
+        let bestDistance = Infinity;
+        rows.forEach((r, i) => {
+          if ((r.textContent || '').slice(0, 60) !== anchor.text) return;
+          const distance = Math.abs(i - anchor.index);
+          if (distance < bestDistance) { best = i; bestDistance = distance; }
+        });
+        const row = rows[best >= 0 ? best : anchor.index];
         if (row) window.scrollBy(0, row.getBoundingClientRect().top - anchor.offset);
         else window.scrollTo(0, wasAt);
       };
@@ -426,7 +457,7 @@ async function chat(id) {
   };
 
   await render();
-  mountComposer(id);
+  mountComposer(id, (entry) => { justSent = entry; render(); });
   // The composer reserves space after the first paint, so land on the newest
   // message once the layout has actually settled.
   requestAnimationFrame(() => requestAnimationFrame(() => {
@@ -435,7 +466,7 @@ async function chat(id) {
   timer = setInterval(render, 8000);
 }
 
-function mountComposer(id) {
+function mountComposer(id, onSent) {
   document.body.classList.add('chat');
   const old = document.querySelector('.composer');
   if (old) old.remove();
@@ -481,6 +512,7 @@ function mountComposer(id) {
 
     if (r.busy) return confirmBusy(r.message, () => send(true));
     if (r.error) return note(r.error, true);
+    onSent?.({ text, delivered: r.delivered !== false, at: Date.now() });
     box.value = '';
     sync();
 

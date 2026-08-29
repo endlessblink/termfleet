@@ -240,6 +240,28 @@ async function main() {
     ok(!(await p.$('.sendstate')), 'the "Sent" note never went away');
   });
 
+  await check('your message appears in the chat straight away', async () => {
+    await p.route('**/api/send', async (r) => r.fulfill({ status: 200, body: '{"ok":true,"delivered":true}' }));
+    const mine = 'please summarise the last change ' + Date.now();
+    await p.fill('.composer textarea', mine);
+    await p.click('.composer button');
+    // An earlier step may already have left one of these on screen, so wait
+    // for this exact message rather than the first that appears.
+    await p.waitForFunction(
+      (needle) => [...document.querySelectorAll('.msg.mine .bubble')].some((e) => (e.textContent || '').includes(needle)),
+      mine,
+      { timeout: 10000 },
+    );
+    await p.unroute('**/api/send');
+    return 'shown as yours';
+  });
+
+  await check('it is marked as waiting for the agent, not as read', async () => {
+    const label = await p.textContent('.msg.mine .when');
+    ok(/waiting for the agent/i.test(label), `unclear state: ${label}`);
+    return label.trim();
+  });
+
   await check('a message that never reached the terminal says so', async () => {
     await p.route('**/api/send', async (r) => r.fulfill({ status: 200, body: '{"ok":true,"delivered":false}' }));
     await p.fill('.composer textarea', 'did this actually arrive');
@@ -360,7 +382,7 @@ async function main() {
 
   await ctx.close();
   await browser.close();
-  child.kill();
+  child.kill('SIGKILL');
   for (const f of fs.readdirSync(configDir)) fs.unlinkSync(path.join(configDir, f));
   fs.rmdirSync(configDir);
 

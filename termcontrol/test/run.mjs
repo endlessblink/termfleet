@@ -386,7 +386,7 @@ async function main() {
     eq(crashed.length, 0, `bridge logged errors: ${logs.join('').slice(0, 200)}`);
   });
 
-  child.kill();
+  child.kill('SIGKILL');
   for (const f of fs.readdirSync(configDir)) fs.unlinkSync(path.join(configDir, f));
   fs.rmdirSync(configDir);
 

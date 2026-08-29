@@ -195,7 +195,7 @@ async function main() {
   });
 
   await browser.close();
-  child.kill();
+  child.kill('SIGKILL');
   for (const f of fs.readdirSync(configDir)) fs.unlinkSync(path.join(configDir, f));
   fs.rmdirSync(configDir);
 
