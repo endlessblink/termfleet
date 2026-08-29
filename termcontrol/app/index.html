@@ -216,6 +216,23 @@
   .pending b{color:var(--working)}
   .empty{color:var(--dim);text-align:center;padding:48px 24px;font-size:14px}
 
+  /* The terminal's own screen. Menus an agent draws live only here. */
+  .screen{
+    font-family:var(--mono);font-size:12px;line-height:1.45;color:var(--text);
+    background:#0f0f0e;border:1px solid var(--line);border-radius:12px;
+    padding:12px;margin:0 0 12px;white-space:pre;overflow-x:auto;
+    -webkit-overflow-scrolling:touch;
+  }
+  .modeswitch{
+    display:flex;gap:2px;padding:3px;margin:0 0 12px;border-radius:11px;
+    background:var(--surface);border:1px solid var(--line);
+  }
+  .modeswitch button{
+    flex:1;min-height:44px;border:0;border-radius:8px;background:transparent;
+    color:var(--muted);font:600 13px var(--ui);cursor:pointer;
+  }
+  .modeswitch button[aria-pressed="true"]{background:var(--surface-2);color:var(--text)}
+
   .composer{
     position:fixed;left:0;right:0;bottom:0;z-index:6;
     padding-bottom:calc(10px + env(safe-area-inset-bottom));
@@ -240,16 +257,38 @@
   .composer input[type=file]{display:none}
 
   .attached{
-    display:flex;align-items:center;gap:10px;margin:0 0 8px;
-    padding:8px 10px;border:1px solid var(--line);border-radius:12px;background:var(--surface);
+    display:flex;align-items:center;gap:8px;margin:0 0 8px;
+    padding:5px 5px 5px 8px;border:1px solid var(--line);border-radius:10px;
+    background:var(--surface);
   }
-  .attached img{width:44px;height:44px;object-fit:cover;border-radius:8px;flex:none}
+  .attached img{width:30px;height:30px;object-fit:cover;border-radius:6px;flex:none;background:var(--surface-2)}
+  .attached img:not([src]){display:none}
+  /* `display:flex` above beats the hidden attribute, which left an empty box
+     sitting above the reply row with nothing in it. */
+  .attached[hidden]{display:none}
   .attached .name{flex:1;min-width:0;font-size:13px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .attached button{
-    flex:none;width:32px;height:32px;border:0;border-radius:8px;background:transparent;
-    color:var(--muted);font-size:18px;cursor:pointer;
+    flex:none;width:44px;height:36px;border:0;border-radius:8px;background:transparent;
+    color:var(--muted);font-size:17px;cursor:pointer;
   }
   .composer .stack{flex:1;min-width:0;display:flex;flex-direction:column}
+
+  /* The characters a phone keyboard hides behind two taps, and the keys a
+     terminal needs. One tap each. */
+  .keys{
+    display:none;gap:6px;overflow-x:auto;margin:0 0 8px;padding-bottom:2px;
+    -webkit-overflow-scrolling:touch;scrollbar-width:none;
+  }
+  .composer.typing .keys,
+  .composer.always .keys{display:flex}
+  .keys::-webkit-scrollbar{display:none}
+  .keys button{
+    flex:none;min-width:44px;height:40px;padding:0 12px;
+    border:1px solid var(--line);border-radius:10px;background:var(--surface);
+    color:var(--text);font:600 15px var(--mono);cursor:pointer;
+  }
+  .keys button.wide{font-family:var(--ui);font-size:13px}
+  .keys button:active{background:var(--surface-2)}
 
   .askbox{
     position:fixed;left:0;right:0;bottom:0;z-index:6;
@@ -270,10 +309,14 @@
     display:block;width:100%;margin-top:10px;padding:10px;border:0;background:none;
     color:var(--muted);font:500 13px var(--ui);cursor:pointer;
   }
-    flex:none;height:44px;min-width:64px;border:0;border-radius:12px;
-    background:var(--accent);color:#191512;font:600 15px var(--ui);cursor:pointer;
+  .composer button.send{
+    /* Stays a full-size target even when the attachment row makes the
+       composer taller. */
+    flex:none;align-self:flex-end;height:44px;min-height:44px;min-width:66px;
+    border:0;border-radius:12px;background:var(--accent);color:#191512;
+    font:600 15px var(--ui);cursor:pointer;
   }
-  .composer button:disabled{opacity:.45}
+  .composer button.send:disabled{opacity:.45}
   .composer.dead{justify-content:center;color:var(--dim);font-size:14px;padding-top:14px}
   .sendstate{
     position:fixed;left:12px;right:12px;bottom:calc(66px + env(safe-area-inset-bottom));z-index:7;
@@ -463,6 +506,7 @@ async function chat(id) {
   // reads it — sometimes a minute later. Until then, show it as yours, marked
   // as on its way, so it never looks like the message vanished.
   let justSent = null;
+  let mode = sessionStorage.getItem('tc-mode') === 'screen' ? 'screen' : 'chat';
 
   // Follow the newest message until the reader scrolls away from the end.
   // Deciding "are we at the bottom?" afresh on every refresh gets it wrong
@@ -502,7 +546,25 @@ async function chat(id) {
 
     if (!d.events.length) { main.innerHTML = '<div class="empty">Nothing recorded for this terminal yet.</div>'; return; }
 
-    const html = d.events.map((e) => {
+    const modes = `<div class="modeswitch" role="group" aria-label="What to show">
+        <button type="button" data-mode="chat" aria-pressed="${mode === 'chat'}">Conversation</button>
+        <button type="button" data-mode="screen" aria-pressed="${mode === 'screen'}">Terminal</button>
+      </div>`;
+
+    if (mode === 'screen') {
+      const shown = await fetch(`/api/screen?pane=${encodeURIComponent(id)}`)
+        .then((x) => x.json()).catch(() => ({}));
+      const screenHtml = modes + `<div class="screen">${esc(shown.screen || 'Nothing on the screen yet.')}</div>`;
+      if (screenHtml !== lastSignature) {
+        lastSignature = screenHtml;
+        main.innerHTML = screenHtml;
+        wireModes();
+        window.scrollTo(0, document.body.scrollHeight);
+      }
+      return;
+    }
+
+    const html = modes + d.events.map((e) => {
       if (e.kind === 'tool') {
         return `<div class="tool"><b>${esc(e.name)}</b>${e.summary ? ' · ' + esc(e.summary) : ''}</div>`;
       }
@@ -553,6 +615,7 @@ async function chat(id) {
 
     lastSignature = html;
     main.innerHTML = html;
+    wireModes();
 
     if (first || nearBottom) {
       window.scrollTo(0, document.body.scrollHeight);
@@ -582,6 +645,20 @@ async function chat(id) {
     }
   };
 
+  function wireModes() {
+    main.querySelectorAll('.modeswitch button').forEach((el) => {
+      el.onclick = () => {
+        mode = el.dataset.mode;
+        sessionStorage.setItem('tc-mode', mode);
+        lastSignature = '';
+        following = true;
+        render();
+        // In terminal mode the extra keys are the point, so keep them out.
+        document.querySelector('.composer')?.classList.toggle('always', mode === 'screen');
+      };
+    });
+  }
+
   await render();
   mountComposer(id, (entry) => { justSent = entry; following = true; render(); });
   // The composer reserves space after the first paint, so land on the newest
@@ -591,7 +668,7 @@ async function chat(id) {
     window.scrollTo(0, document.body.scrollHeight);
     following = true;                       // opening always lands at the end
   }));
-  timer = setInterval(render, 8000);
+  timer = setInterval(render, mode === 'screen' ? 2000 : 8000);
 }
 
 function mountComposer(id, onSent) {
@@ -605,6 +682,18 @@ function mountComposer(id, onSent) {
     <button type="button" class="attach" aria-label="Attach an image">＋</button>
     <input type="file" accept="image/*" aria-hidden="true">
     <div class="stack">
+      <div class="keys" role="group" aria-label="Terminal keys">
+        <button type="button" data-ins="/" aria-label="Slash">/</button>
+        <button type="button" data-ins="$" aria-label="Dollar">$</button>
+        <button type="button" data-ins="-" aria-label="Dash">-</button>
+        <button type="button" data-ins="_" aria-label="Underscore">_</button>
+        <button type="button" data-ins="|" aria-label="Pipe">|</button>
+        <button type="button" data-ins="~" aria-label="Tilde">~</button>
+        <button type="button" data-ins="&amp;" aria-label="Ampersand">&amp;</button>
+        <button type="button" class="wide" data-key="tab" aria-label="Tab key">Tab</button>
+        <button type="button" class="wide" data-key="esc" aria-label="Escape key">Esc</button>
+        <button type="button" class="wide" data-key="interrupt" aria-label="Interrupt the agent">Stop</button>
+      </div>
       <div class="attached" hidden>
         <img alt="">
         <span class="name"></span>
@@ -626,13 +715,40 @@ function mountComposer(id, onSent) {
   // machine, because a terminal cannot be handed a file any other way.
   let image = null;
 
-  const showImage = (blob, label) => {
-    image = { blob, label };
-    preview.src = URL.createObjectURL(blob);
-    nameEl.textContent = label;
+  const showImage = async (blob, label) => {
     attached.hidden = false;
+    preview.removeAttribute('src');
+    nameEl.textContent = 'preparing…';
+    sync();
+
+    // Phone photos are huge; sending one raw over mobile data is what makes an
+    // upload look stuck. Shrink it first, and fall back to the original if the
+    // browser cannot decode it.
+    const prepared = await shrink(blob).catch(() => blob);
+    image = { blob: prepared, label };
+
+    if (preview.src) URL.revokeObjectURL(preview.src);
+    preview.src = URL.createObjectURL(prepared);
+    preview.onerror = () => { preview.removeAttribute('src'); };
+    nameEl.textContent = `${label} · ${Math.max(1, Math.round(prepared.size / 1024))} KB`;
     sync();
   };
+
+  async function shrink(blob, max = 1600) {
+    if (!/^image\//.test(blob.type) || blob.size < 400 * 1024) return blob;
+    const bitmap = await createImageBitmap(blob);
+    const scale = Math.min(1, max / Math.max(bitmap.width, bitmap.height));
+    if (scale === 1 && blob.size < 2 * 1024 * 1024) { bitmap.close?.(); return blob; }
+
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(bitmap.width * scale);
+    canvas.height = Math.round(bitmap.height * scale);
+    canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    bitmap.close?.();
+
+    const smaller = await new Promise((r) => canvas.toBlob(r, 'image/jpeg', 0.85));
+    return smaller && smaller.size < blob.size ? smaller : blob;
+  }
   const clearImage = () => {
     if (preview.src) URL.revokeObjectURL(preview.src);
     image = null;
@@ -641,11 +757,38 @@ function mountComposer(id, onSent) {
     sync();
   };
 
+  // Characters go into the box you are composing; control keys go straight to
+  // the terminal, because that is what they mean.
+  bar.querySelectorAll('[data-ins]').forEach((key) => {
+    key.onclick = () => {
+      const at = box.selectionStart ?? box.value.length;
+      const end = box.selectionEnd ?? at;
+      box.value = box.value.slice(0, at) + key.dataset.ins + box.value.slice(end);
+      box.selectionStart = box.selectionEnd = at + key.dataset.ins.length;
+      box.focus();
+      sync();
+    };
+  });
+
+  bar.querySelectorAll('[data-key]').forEach((key) => {
+    key.onclick = async () => {
+      const which = key.dataset.key;
+      note(which === 'interrupt' ? 'Stopping…' : `Sent ${key.textContent}`);
+      const r = await fetch('/api/send', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ pane: id, key: which }),
+      }).then((x) => x.json()).catch(() => ({ error: 'Could not reach your machine.' }));
+      if (r.error) return note(r.error, true);
+      setTimeout(() => document.querySelector('.sendstate')?.remove(), 1200);
+    };
+  });
+
   bar.querySelector('.attach').onclick = () => file.click();
   bar.querySelector('.drop').onclick = clearImage;
   file.onchange = () => {
     const chosen = file.files?.[0];
-    if (chosen) showImage(chosen, chosen.name || 'image');
+    if (chosen) showImage(chosen, chosen.name || 'image').catch(() => { clearImage(); note('That image could not be read.', true); });
     file.value = '';
   };
 
@@ -654,7 +797,7 @@ function mountComposer(id, onSent) {
     const item = [...(e.clipboardData?.items || [])].find((i) => i.type.startsWith('image/'));
     if (!item) return;
     const blob = item.getAsFile();
-    if (blob) { e.preventDefault(); showImage(blob, 'pasted image'); }
+    if (blob) { e.preventDefault(); showImage(blob, 'pasted image').catch(() => { clearImage(); note('That image could not be read.', true); }); }
   });
 
   const sync = () => {
@@ -663,6 +806,16 @@ function mountComposer(id, onSent) {
     btn.disabled = box.value.trim().length === 0 && !image;
   };
   box.addEventListener('input', sync);
+
+  // The extra keys are only useful while you are actually typing, so they do
+  // not sit there taking up the screen the rest of the time.
+  box.addEventListener('focus', () => bar.classList.add('typing'));
+  box.addEventListener('blur', () => {
+    // Give a tap on one of the keys time to land before hiding them.
+    setTimeout(() => {
+      if (!bar.contains(document.activeElement)) bar.classList.remove('typing');
+    }, 150);
+  });
 
   const send = async (force = false) => {
     let text = box.value.trim();
@@ -675,12 +828,12 @@ function mountComposer(id, onSent) {
       form.append('file', image.blob, image.label);
       let saved;
       try {
-        const up = await fetch('/api/upload', { method: 'POST', body: form, signal: AbortSignal.timeout(60000) });
-        saved = await up.json();
-      } catch {
+        saved = await upload(form, (percent) => note(`Sending the image… ${percent}%`));
+      } catch (e) {
         btn.disabled = false;
-        return note('Could not send the image. It is still here.', true);
+        return note(e.message || 'Could not send the image. It is still here.', true);
       }
+
       if (saved.error) { btn.disabled = false; return note(saved.error, true); }
       // Hand the agent the path it can actually open.
       text = text ? `${text}\n${saved.path}` : saved.path;
@@ -730,6 +883,27 @@ function mountComposer(id, onSent) {
   btn.onclick = () => send(false);
   box.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); send(false); }
+  });
+}
+
+/** Upload with real progress, so a slow connection looks slow rather than stuck. */
+function upload(form, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/api/upload');
+    xhr.timeout = 120000;
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) onProgress?.(Math.round((e.loaded / e.total) * 100));
+    };
+    xhr.onload = () => {
+      let body = {};
+      try { body = JSON.parse(xhr.responseText || '{}'); } catch { /* ignore */ }
+      if (xhr.status === 200) resolve(body);
+      else reject(new Error(body.error || 'The image was refused.'));
+    };
+    xhr.onerror = () => reject(new Error('Could not reach your machine. The image is still here.'));
+    xhr.ontimeout = () => reject(new Error('That took too long. The image is still here.'));
+    xhr.send(form);
   });
 }
 

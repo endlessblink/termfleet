@@ -532,6 +532,51 @@ async function main() {
     return 'offered when waiting, silent when not';
   });
 
+  await check("the terminal's own screen can be read", async () => {
+    const m = await import(path.join(here, '..', '..', 'scripts', 'termfleetctl.mjs'));
+    const sock = m.defaultDaemonSocket();
+    const ask = async (r) => { const x = await m.requestDaemon(r, sock); if (!x.ok) throw new Error('daemon refused'); return x.value; };
+    const { screenOf } = await import(path.join(here, '..', 'bridge', 'liveness.mjs'));
+
+    const id = 'tc-screen-' + Date.now();
+    await ask({ type: 'ensureSession', id, cwd: '/tmp', command: "/bin/bash -lc 'printf \"\\033[1;32mMENU ITEM ONE\\033[0m\\n\"; printf \"\\033[0 qMENU ITEM TWO\\n\"; sleep 30'", cols: 80, rows: 24 });
+    await wait(1400);
+    const screen = await screenOf(id, 20);
+    await ask({ type: 'killSession', id, reviewed: true }).catch(() => {});
+
+    ok(/MENU ITEM ONE/.test(screen || ''), `the screen was not readable: ${JSON.stringify(screen)}`);
+    ok(/MENU ITEM TWO/.test(screen || ''), 'a line painted with a cursor code went missing');
+    ok(!/\u001b|\[0 q|\[1;32m/.test(screen || ''), `control codes leaked into the text: ${JSON.stringify(screen)}`);
+    return 'menus are readable';
+  });
+
+  await check('terminal keys reach the terminal', async () => {
+    const m = await import(path.join(here, '..', '..', 'scripts', 'termfleetctl.mjs'));
+    const sock = m.defaultDaemonSocket();
+    const ask = async (r) => { const x = await m.requestDaemon(r, sock); if (!x.ok) throw new Error('daemon refused'); return x.value; };
+    const { sendKey } = await import(path.join(here, '..', 'bridge', 'send.mjs'));
+
+    // A program that prints what it is interrupted by.
+    const id = 'tc-keys-' + Date.now();
+    await ask({ type: 'ensureSession', id, cwd: '/tmp', command: "/bin/bash -lc 'trap \"echo INTERRUPTED\" INT; sleep 60'", cols: 80, rows: 24 });
+    await wait(1300);
+
+    const res = await sendKey({ id, project: 'test' }, 'interrupt');
+    await wait(900);
+    const out = String((await ask({ type: 'readSession', id, offset: 0 })).data || '');
+    await ask({ type: 'killSession', id, reviewed: true }).catch(() => {});
+
+    ok(res.ok, `sending the key failed: ${JSON.stringify(res)}`);
+    ok(/INTERRUPTED/.test(out), 'Stop did not actually interrupt the program');
+    return 'Stop interrupts';
+  });
+
+  await check('an unknown key is refused', async () => {
+    const { sendKey } = await import(path.join(here, '..', 'bridge', 'send.mjs'));
+    const r = await sendKey({ id: 'whatever' }, 'selfdestruct');
+    ok(/unknown key/i.test(r.error || ''), `expected a refusal, got ${JSON.stringify(r)}`);
+  });
+
   await check('every send is written to the audit trail', async () => {
     // send.mjs is imported into this process, so it writes to the real
     // location rather than the sandbox the bridge child was given.
@@ -539,8 +584,11 @@ async function main() {
     ok(fs.existsSync(log), `no audit trail at ${log}`);
     const lines = fs.readFileSync(log, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l));
     ok(lines.length > 0, 'audit trail is empty');
+    // Messages record delivery; key presses record which key.
     const last = lines[lines.length - 1];
-    ok(last.at && 'delivered' in last, `entry is missing fields: ${JSON.stringify(last)}`);
+    ok(last.at && last.pane, `entry is missing basics: ${JSON.stringify(last)}`);
+    ok('delivered' in last || 'key' in last || 'choice' in last,
+       `entry says nothing about what happened: ${JSON.stringify(last)}`);
     return `${lines.length} entries`;
   });
 
@@ -557,6 +605,29 @@ async function main() {
     const html = fs.readFileSync(path.join(here, '..', 'app', 'index.html'), 'utf8');
     ok(html.includes('esc(e.text)'), 'message bodies must be escaped');
     ok(html.includes('esc(p.project)'), 'project names must be escaped');
+  });
+
+  await check('the app is never served from a stale cache', async () => {
+    // A phone will happily keep last week's page otherwise, and every fix
+    // looks like it never shipped.
+    for (const route of ['/', '/login']) {
+      const r = await req(route);
+      const header = String(r.headers.get('cache-control') || '');
+      ok(/no-store/.test(header), `${route} may be cached: "${header}"`);
+    }
+    return 'always fresh';
+  });
+
+  await check('the stylesheet is not broken part-way through', () => {
+    const html = fs.readFileSync(path.join(here, '..', 'app', 'index.html'), 'utf8');
+    const css = html.slice(html.indexOf('<style>'), html.indexOf('</style>'));
+    // A stray fragment silently kills every rule after it, which is how the
+    // send button lost its size.
+    const opens = (css.match(/\{/g) || []).length;
+    const closes = (css.match(/\}/g) || []).length;
+    eq(opens, closes, 'unbalanced braces in the stylesheet');
+    ok(!/^\s{2,}[a-z-]+:[^;{}]+;\s*\n\s*\}/m.test(css.replace(/\{[^{}]*\}/g, '')), 'a rule body appears without a selector');
+    return `${opens} rules, balanced`;
   });
 
   await check('an unknown address is a clean 404', async () => {

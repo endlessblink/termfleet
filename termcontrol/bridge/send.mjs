@@ -145,3 +145,32 @@ export async function answerPrompt(pane, choice, approval) {
     return { error: String(error.message || error) };
   }
 }
+
+/**
+ * The keys a terminal needs that a phone keyboard does not offer. Sent as
+ * themselves, immediately, without the idle checks that guard a message —
+ * stopping a runaway agent must always be possible.
+ */
+const KEYS = {
+  tab: '\t',
+  esc: '\u001b',
+  interrupt: '\u0003',
+  enter: '\r',
+  up: '\u001b[A',
+  down: '\u001b[B',
+};
+
+export async function sendKey(pane, which) {
+  const data = KEYS[which];
+  if (!data) return { error: 'Unknown key.' };
+  const live = await liveSessionIds();
+  if (!live.has(pane.id)) return { error: 'That terminal is not running any more.' };
+  try {
+    await ask({ type: 'writeSession', id: pane.id, data });
+    audit({ pane: pane.id, project: pane.project, key: which, ok: true });
+    return { ok: true };
+  } catch (error) {
+    audit({ pane: pane.id, project: pane.project, key: which, ok: false, error: String(error.message || error) });
+    return { error: String(error.message || error) };
+  }
+}

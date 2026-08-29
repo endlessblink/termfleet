@@ -88,3 +88,43 @@ export async function lastLine(id) {
   } catch { /* the terminal may have gone */ }
   return null;
 }
+
+/**
+ * The terminal's visible screen as plain text. Menus an agent draws — slash
+ * commands, permission dialogs, pickers — exist only here, so a phone that
+ * cannot see this cannot use them.
+ */
+export async function screenOf(id, rows = 24) {
+  try {
+    const res = await requestDaemon({ type: 'snapshotSession', id }, defaultDaemonSocket());
+    if (!res || res.ok !== true) return null;
+
+    const text = stripControlCodes(String(res.value?.data || ''));
+
+    const lines = text.split('\n');
+    // Trailing blank lines are just the cursor sitting below the content.
+    while (lines.length && !lines[lines.length - 1].trim()) lines.pop();
+    return lines.slice(-rows).join('\n');
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Strip the codes a terminal paints with, leaving the words. Escape sequences
+ * can carry intermediate bytes before their final letter (cursor shapes are
+ * the common one), and missing those leaves litter like "[0 q" scattered
+ * through the text.
+ */
+function stripControlCodes(raw) {
+  return raw
+    // Operating-system commands: window titles and the like.
+    .replace(/\u001b\][\s\S]*?(?:\u0007|\u001b\\)/g, '')
+    // Control sequences, including any intermediate bytes.
+    .replace(/\u001b\[[0-9;?<>=]*[\u0020-\u002f]*[\u0040-\u007e]/g, '')
+    // Single-character and character-set escapes.
+    .replace(/\u001b[@-Z\\-_]/g, '')
+    .replace(/\u001b[()*+][A-Za-z0-9]/g, '')
+    .replace(/\r\n?/g, '\n')
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '');
+}

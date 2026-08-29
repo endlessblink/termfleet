@@ -9,10 +9,10 @@ import { fileURLToPath } from 'node:url';
 import { listPanes } from './inventory.mjs';
 import { readFeed } from './feed.mjs';
 import { handleAuthRoutes, currentUser, requireAuth } from './auth.mjs';
-import { sendToPane, answerPrompt, liveSessionIds } from './send.mjs';
+import { sendToPane, answerPrompt, sendKey, liveSessionIds } from './send.mjs';
 import { adapterFor } from './feed.mjs';
 import { readPrefs, writePrefs, byProject, inManualOrder, moveInOrder } from './prefs.mjs';
-import { liveness } from './liveness.mjs';
+import { liveness, lastLine, screenOf } from './liveness.mjs';
 import { pendingAsk } from './asks.mjs';
 import { readBody, firstFile, saveImage } from './uploads.mjs';
 
@@ -39,7 +39,14 @@ function serveStatic(res, name) {
   const file = path.join(appDir, name);
   if (!file.startsWith(appDir) || !fs.existsSync(file)) return json(res, 404, { error: 'not found' });
   const body = fs.readFileSync(file);
-  res.writeHead(200, { 'content-type': TYPES[path.extname(file)] || 'application/octet-stream' });
+  res.writeHead(200, {
+    'content-type': TYPES[path.extname(file)] || 'application/octet-stream',
+    // Phones hold on to a page for a long time. Without this you keep using
+    // last week's app and every fix looks like it never shipped.
+    'cache-control': 'no-store, must-revalidate',
+    pragma: 'no-cache',
+    expires: '0',
+  });
   res.end(body);
 }
 
@@ -142,6 +149,11 @@ const server = http.createServer(async (req, res) => {
       const pane = panes.find((p) => p.id === payload.pane);
       if (!pane) return json(res, 404, { error: 'That terminal has been closed.' });
 
+      if (payload.key) {
+        const result = await sendKey(pane, payload.key);
+        return json(res, result.error ? 400 : 200, result);
+      }
+
       if (payload.choice) {
         const adapter = adapterFor(pane);
         const result = await answerPrompt(pane, payload.choice, adapter?.approval);
@@ -167,6 +179,14 @@ const server = http.createServer(async (req, res) => {
     const saved = saveImage(file);
     if (saved.error) return json(res, 400, saved);
     return json(res, 200, { path: saved.path, bytes: saved.bytes, name: file.name });
+  }
+
+  if (url.pathname === '/api/screen') {
+    const id = url.searchParams.get('pane');
+    const { panes } = await currentPanes();
+    const pane = panes.find((p) => p.id === id);
+    if (!pane) return json(res, 404, { error: 'That terminal has been closed.' });
+    return json(res, 200, { screen: await screenOf(pane.id), project: pane.project });
   }
 
   if (url.pathname === '/api/live') {

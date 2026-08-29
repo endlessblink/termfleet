@@ -24,6 +24,7 @@ async function check(name, fn) {
   } catch (e) { fail++; failures.push([name, e.message]); console.log(`  FAIL ${name} — ${e.message}`); }
 }
 const ok = (c, m) => { if (!c) throw new Error(m); };
+const eqText = (a, b) => { if (a !== b) throw new Error(`expected ${JSON.stringify(b)}, got ${JSON.stringify(a)}`); };
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const group = (t) => console.log(`\n${t}`);
 
@@ -197,6 +198,52 @@ async function main() {
       const url = p.url();
       ok(/login|setup/.test(url), `expected the sign-in screen, got ${url}`);
     });
+    await ctx.close();
+  }
+
+  group('The bottom of the screen');
+  {
+    const { ctx, p } = await signedIn(PHONES[1]);
+    await p.click('.pane');
+    await p.waitForSelector('.composer');
+    await wait(1000);
+
+    await check('at rest the bottom is one row, not a stack', async () => {
+      const h = await p.$eval('.composer', (e) => Math.round(e.getBoundingClientRect().height));
+      ok(h <= 80, `the reply area is ${h}px tall with nothing attached`);
+      return `${h}px`;
+    });
+
+    await check('nothing empty is left sitting above the reply box', async () => {
+      const visible = await p.$eval('.attached', (e) => getComputedStyle(e).display !== 'none');
+      ok(!visible, 'an empty attachment row is taking up space');
+    });
+
+    await check('the extra keys appear only while you are typing', async () => {
+      const before = await p.$eval('.keys', (e) => getComputedStyle(e).display !== 'none');
+      await p.click('.composer textarea');
+      await wait(300);
+      const during = await p.$eval('.keys', (e) => getComputedStyle(e).display !== 'none');
+      ok(!before && during, `keys visible at rest: ${before}, while typing: ${during}`);
+      return 'hidden until needed';
+    });
+
+    await check('the keys include the ones a phone keyboard hides', async () => {
+      const labels = await p.$$eval('.keys button', (els) => els.map((e) => e.textContent.trim()));
+      for (const need of ['/', '$', '|', '~']) ok(labels.includes(need), `missing ${need}`);
+      ok(labels.includes('Stop'), 'no way to interrupt a runaway agent');
+      return labels.join(' ');
+    });
+
+    await check('tapping a key types it into your message', async () => {
+      await p.fill('.composer textarea', '');
+      await p.click('[data-ins="/"]');
+      await p.click('[data-ins="$"]');
+      const value = await p.inputValue('.composer textarea');
+      eqText(value, '/$');
+      return JSON.stringify(value);
+    });
+
     await ctx.close();
   }
 
