@@ -304,6 +304,27 @@
   .keys button.wide{font-family:var(--ui);font-size:13px}
   .keys button:active{background:var(--surface-2)}
 
+  /* The command list, the way an agent shows it: above what you are typing,
+     narrowing as you go. */
+  .cmdlist{
+    max-height:44vh;overflow-y:auto;margin:0 0 8px;padding:4px;
+    background:var(--surface);border:1px solid var(--line);border-radius:12px;
+    -webkit-overflow-scrolling:touch;
+  }
+  .cmdlist[hidden]{display:none}
+  .cmdlist button{
+    display:block;width:100%;text-align:left;min-height:52px;padding:9px 12px;
+    border:0;border-radius:9px;background:transparent;color:var(--text);
+    font:inherit;cursor:pointer;
+  }
+  .cmdlist button:active{background:var(--surface-2)}
+  .cmdlist .cmd{font-family:var(--mono);font-size:14.5px;color:var(--accent)}
+  .cmdlist .what{
+    display:block;font-size:12.5px;color:var(--muted);margin-top:2px;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  }
+  .cmdlist .none{padding:14px 12px;color:var(--dim);font-size:13.5px}
+
   .askbox{
     position:fixed;left:0;right:0;bottom:0;z-index:6;
     background:rgba(20,20,19,.97);backdrop-filter:blur(12px);border-top:1px solid var(--line);
@@ -724,6 +745,7 @@ function mountComposer(id, onSent, onMode, view = () => 'chat') {
           <button type="button" class="wide" data-key="interrupt" aria-label="Interrupt the agent">Stop</button>
         </div>
       </div>
+      <div class="cmdlist" hidden></div>
       <div class="attached" hidden>
         <img alt="">
         <span class="name"></span>
@@ -733,6 +755,54 @@ function mountComposer(id, onSent, onMode, view = () => 'chat') {
     </div>
     <button type="button" class="send" disabled>Send</button>`;
   document.body.appendChild(bar);
+
+  const cmdlist = bar.querySelector('.cmdlist');
+  let commands = null;
+
+  // An agent's own commands, offered as you type a slash — the same list its
+  // terminal menu shows, without needing to drive the terminal.
+  async function loadCommands() {
+    if (commands) return commands;
+    const r = await fetch(`/api/commands?pane=${encodeURIComponent(id)}`)
+      .then((x) => x.json()).catch(() => ({}));
+    commands = r.commands || [];
+    return commands;
+  }
+
+  async function showCommands(typed) {
+    const list = await loadCommands();
+    const query = typed.slice(1).toLowerCase();
+    const matches = list
+      .filter((c) => c.name.toLowerCase().includes(query))
+      .sort((a, b) => {
+        const aStarts = a.name.toLowerCase().startsWith(query) ? 0 : 1;
+        const bStarts = b.name.toLowerCase().startsWith(query) ? 0 : 1;
+        return aStarts - bStarts || a.name.localeCompare(b.name);
+      })
+      .slice(0, 40);
+
+    cmdlist.hidden = false;
+    cmdlist.innerHTML = matches.length
+      ? matches.map((c) => `<button type="button" data-cmd="${esc(c.name)}">
+            <span class="cmd">/${esc(c.name)}</span>
+            ${c.detail ? `<span class="what">${esc(c.detail)}</span>` : ''}
+          </button>`).join('')
+      : '<div class="none">No command matches that.</div>';
+
+    cmdlist.querySelectorAll('[data-cmd]').forEach((el) => {
+      el.onclick = () => {
+        box.value = `/${el.dataset.cmd} `;
+        hideCommands();
+        box.focus();
+        sync();
+      };
+    });
+  }
+
+  function hideCommands() {
+    cmdlist.hidden = true;
+    cmdlist.innerHTML = '';
+  }
 
   const box = bar.querySelector('textarea');
   const btn = bar.querySelector('button.send');
@@ -851,7 +921,11 @@ function mountComposer(id, onSent, onMode, view = () => 'chat') {
     box.style.height = Math.min(box.scrollHeight, 140) + 'px';
     btn.disabled = box.value.trim().length === 0 && !image;
   };
-  box.addEventListener('input', sync);
+  box.addEventListener('input', () => {
+    sync();
+    if (/^\/[^\s]*$/.test(box.value)) showCommands(box.value);
+    else hideCommands();
+  });
 
   // The extra keys are only useful while you are actually typing, so they do
   // not sit there taking up the screen the rest of the time.
@@ -908,6 +982,7 @@ function mountComposer(id, onSent, onMode, view = () => 'chat') {
     if (r.error) return note(r.error, true);
     onSent?.({ text, delivered: r.delivered !== false, at: Date.now() });
     box.value = '';
+    hideCommands();
     sync();
 
     if (r.delivered === false) {

@@ -14,6 +14,7 @@ import { adapterFor } from './feed.mjs';
 import { readPrefs, writePrefs, byProject, inManualOrder, moveInOrder } from './prefs.mjs';
 import { liveness, lastLine, screenOf } from './liveness.mjs';
 import { pendingAsk } from './asks.mjs';
+import { commandsFor } from './commands.mjs';
 import { readBody, firstFile, saveImage } from './uploads.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -191,6 +192,14 @@ const server = http.createServer(async (req, res) => {
     const saved = saveImage(file);
     if (saved.error) return json(res, 400, saved);
     return json(res, 200, { path: saved.path, bytes: saved.bytes, name: file.name });
+  }
+
+  if (url.pathname === '/api/commands') {
+    const id = url.searchParams.get('pane');
+    const { panes } = await currentPanes();
+    const pane = panes.find((p) => p.id === id);
+    if (!pane) return json(res, 404, { error: 'That terminal has been closed.' });
+    return json(res, 200, { provider: pane.provider, commands: commandsFor(pane.provider) });
   }
 
   if (url.pathname === '/api/screen') {

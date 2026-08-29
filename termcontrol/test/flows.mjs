@@ -221,6 +221,56 @@ async function main() {
   });
 
   // ----------------------------------------------------------------- reply --
+  group('Slash commands');
+
+  await check('typing a slash offers the agent\'s commands', async () => {
+    await p.fill('.composer textarea', '/');
+    await p.dispatchEvent('.composer textarea', 'input');
+    await p.waitForSelector('.cmdlist button', { timeout: 10000 });
+    const shown = await p.$$eval('.cmdlist .cmd', (els) => els.slice(0, 4).map((e) => e.textContent));
+    ok(shown.length >= 2 && shown.every((s) => s.startsWith('/')), `unexpected list: ${shown.join(' ')}`);
+    return shown.slice(0, 3).join(' ');
+  });
+
+  await check('the list narrows as you type', async () => {
+    const before = await p.$$eval('.cmdlist button', (els) => els.length);
+    await p.fill('.composer textarea', '/anal');
+    await p.dispatchEvent('.composer textarea', 'input');
+    await wait(500);
+    const after = await p.$$eval('.cmdlist .cmd', (els) => els.map((e) => e.textContent));
+    ok(after.length > 0 && after.length < before, `${before} then ${after.length}`);
+    ok(after.every((c) => c.toLowerCase().includes('anal')), `unrelated matches: ${after.join(' ')}`);
+    return after.join(' ');
+  });
+
+  await check('picking one fills it in and closes the list', async () => {
+    await p.click('.cmdlist button');
+    await wait(400);
+    const value = await p.inputValue('.composer textarea');
+    ok(value.startsWith('/') && value.endsWith(' '), `filled in as ${JSON.stringify(value)}`);
+    ok(await p.$eval('.cmdlist', (e) => e.hidden), 'the list stayed open');
+    return JSON.stringify(value);
+  });
+
+  await check('a command that does not exist says so plainly', async () => {
+    await p.fill('.composer textarea', '/zzzznotacommand');
+    await p.dispatchEvent('.composer textarea', 'input');
+    await wait(500);
+    const text = (await p.textContent('.cmdlist')).trim();
+    ok(/no command matches/i.test(text), `unclear: ${text}`);
+    await p.fill('.composer textarea', '');
+    await p.dispatchEvent('.composer textarea', 'input');
+  });
+
+  await check('ordinary typing does not open the list', async () => {
+    await p.fill('.composer textarea', 'just a normal message');
+    await p.dispatchEvent('.composer textarea', 'input');
+    await wait(400);
+    ok(await p.$eval('.cmdlist', (e) => e.hidden), 'the command list opened for ordinary text');
+    await p.fill('.composer textarea', '');
+    await p.dispatchEvent('.composer textarea', 'input');
+  });
+
   group('Replying');
 
   await check('the reply box is visible without hunting for it', async () => {
