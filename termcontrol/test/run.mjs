@@ -571,6 +571,31 @@ async function main() {
     return 'Stop interrupts';
   });
 
+  await check("typing a slash opens the agent's own menu", async () => {
+    const m = await import(path.join(here, '..', '..', 'scripts', 'termfleetctl.mjs'));
+    const sock = m.defaultDaemonSocket();
+    const ask = async (r) => { const x = await m.requestDaemon(r, sock); if (!x.ok) throw new Error('daemon refused'); return x.value; };
+    const { sendKey } = await import(path.join(here, '..', 'bridge', 'send.mjs'));
+    const { screenOf } = await import(path.join(here, '..', 'bridge', 'liveness.mjs'));
+
+    // Stands in for an agent: shows a command list the moment a slash arrives.
+    const id = 'tc-slash-' + Date.now();
+    await ask({
+      type: 'ensureSession', id, cwd: '/tmp', cols: 80, rows: 24,
+      command: `/bin/bash -lc 'while IFS= read -r -n1 ch; do if [ "$ch" = "/" ]; then echo; echo "COMMAND MENU"; fi; done'`,
+    });
+    await wait(1300);
+
+    const typed = await sendKey({ id, project: 'test' }, 'type:/');
+    await wait(900);
+    const screen = await screenOf(id, 12) || '';
+    await ask({ type: 'killSession', id, reviewed: true }).catch(() => {});
+
+    ok(typed.ok, `typing failed: ${JSON.stringify(typed)}`);
+    ok(/COMMAND MENU/.test(screen), 'the slash never reached the terminal, so no menu appeared');
+    return 'menu opens';
+  });
+
   await check('an unknown key is refused', async () => {
     const { sendKey } = await import(path.join(here, '..', 'bridge', 'send.mjs'));
     const r = await sendKey({ id: 'whatever' }, 'selfdestruct');

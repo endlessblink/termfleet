@@ -161,8 +161,11 @@ const KEYS = {
 };
 
 export async function sendKey(pane, which) {
-  const data = KEYS[which];
-  if (!data) return { error: 'Unknown key.' };
+  // A literal character types itself; a named key sends its sequence. Typing
+  // is how an agent's own menus are reached — a slash only opens the command
+  // list if the terminal receives it as a keystroke.
+  const data = which.startsWith('type:') ? which.slice(5) : KEYS[which];
+  if (!data || data.length > 200) return { error: 'Unknown key.' };
   const live = await liveSessionIds();
   if (!live.has(pane.id)) return { error: 'That terminal is not running any more.' };
   try {

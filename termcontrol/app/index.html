@@ -28,8 +28,10 @@
     backdrop-filter:blur(12px);border-bottom:1px solid var(--line);
     padding:14px 16px;display:flex;align-items:center;gap:12px;min-height:56px;
   }
-  header h1{font-size:16px;font-weight:600;margin:0;letter-spacing:-.01em}
-  header .sub{font-size:12px;color:var(--muted);margin-top:1px}
+  header h1{font-size:16px;font-weight:600;margin:0;letter-spacing:-.01em;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  header .sub{font-size:12px;color:var(--muted);margin-top:1px;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .back{
     appearance:none;background:none;border:0;color:var(--accent);
     font-size:15px;min-width:56px;min-height:44px;padding:8px 10px;margin:-8px -10px;
@@ -224,12 +226,12 @@
     -webkit-overflow-scrolling:touch;
   }
   .modeswitch{
-    display:flex;gap:2px;padding:3px;margin:0 0 12px;border-radius:11px;
-    background:var(--surface);border:1px solid var(--line);
+    display:flex;gap:2px;padding:3px;margin-left:auto;border-radius:10px;
+    background:var(--surface);border:1px solid var(--line);flex:none;
   }
   .modeswitch button{
-    flex:1;min-height:44px;border:0;border-radius:8px;background:transparent;
-    color:var(--muted);font:600 13px var(--ui);cursor:pointer;
+    min-width:52px;min-height:44px;padding:0 10px;border:0;border-radius:7px;
+    background:transparent;color:var(--muted);font:600 12px var(--ui);cursor:pointer;
   }
   .modeswitch button[aria-pressed="true"]{background:var(--surface-2);color:var(--text)}
 
@@ -394,6 +396,7 @@ async function fleet() {
   const mine = ++view;
   clearInterval(timer);
   releaseChatScroll?.();
+  document.querySelector('header .modeswitch')?.remove();
   document.body.classList.remove('chat');
   document.querySelector('.composer')?.remove();
   document.querySelector('.sendstate')?.remove();
@@ -546,15 +549,14 @@ async function chat(id) {
 
     if (!d.events.length) { main.innerHTML = '<div class="empty">Nothing recorded for this terminal yet.</div>'; return; }
 
-    const modes = `<div class="modeswitch" role="group" aria-label="What to show">
-        <button type="button" data-mode="chat" aria-pressed="${mode === 'chat'}">Conversation</button>
-        <button type="button" data-mode="screen" aria-pressed="${mode === 'screen'}">Terminal</button>
-      </div>`;
+    // In the header, so it is always reachable however long the conversation.
+    const modes = '';
+    showModeSwitch();
 
     if (mode === 'screen') {
       const shown = await fetch(`/api/screen?pane=${encodeURIComponent(id)}`)
         .then((x) => x.json()).catch(() => ({}));
-      const screenHtml = modes + `<div class="screen">${esc(shown.screen || 'Nothing on the screen yet.')}</div>`;
+      const screenHtml = `<div class="screen">${esc(shown.screen || 'Nothing on the screen yet.')}</div>`;
       if (screenHtml !== lastSignature) {
         lastSignature = screenHtml;
         main.innerHTML = screenHtml;
@@ -564,7 +566,7 @@ async function chat(id) {
       return;
     }
 
-    const html = modes + d.events.map((e) => {
+    const html = d.events.map((e) => {
       if (e.kind === 'tool') {
         return `<div class="tool"><b>${esc(e.name)}</b>${e.summary ? ' · ' + esc(e.summary) : ''}</div>`;
       }
@@ -645,22 +647,52 @@ async function chat(id) {
     }
   };
 
+  function showModeSwitch() {
+    let holder = document.querySelector('header .modeswitch');
+    if (!holder) {
+      holder = document.createElement('div');
+      holder.className = 'modeswitch';
+      holder.setAttribute('role', 'group');
+      holder.setAttribute('aria-label', 'What to show');
+      document.querySelector('header').appendChild(holder);
+    }
+    const wanted = `
+      <button type="button" data-mode="chat" aria-pressed="${mode === 'chat'}">Chat</button>
+      <button type="button" data-mode="screen" aria-pressed="${mode === 'screen'}">Screen</button>`;
+    if (holder.innerHTML.trim() !== wanted.trim()) {
+      holder.innerHTML = wanted;
+      wireModes();
+    }
+  }
+
   function wireModes() {
-    main.querySelectorAll('.modeswitch button').forEach((el) => {
+    document.querySelectorAll('header .modeswitch button').forEach((el) => {
       el.onclick = () => {
         mode = el.dataset.mode;
         sessionStorage.setItem('tc-mode', mode);
+        const composer = document.querySelector('.composer');
+        if (composer) {
+          composer.classList.toggle('always', mode === 'screen');
+          const sendBtn = composer.querySelector('button.send');
+          if (sendBtn) sendBtn.textContent = mode === 'screen' ? 'Type' : 'Send';
+          const boxEl = composer.querySelector('textarea');
+          if (boxEl) boxEl.placeholder = mode === 'screen'
+            ? 'Type into the terminal…'
+            : 'Reply to this agent…';
+        }
         lastSignature = '';
         following = true;
+        showModeSwitch();
         render();
-        // In terminal mode the extra keys are the point, so keep them out.
-        document.querySelector('.composer')?.classList.toggle('always', mode === 'screen');
       };
     });
   }
 
   await render();
-  mountComposer(id, (entry) => { justSent = entry; following = true; render(); });
+  mountComposer(id, (entry) => {
+    if (entry?.refresh) { lastSignature = ''; return render(); }
+    justSent = entry; following = true; render();
+  });
   // The composer reserves space after the first paint, so land on the newest
   // message once the layout has actually settled.
   requestAnimationFrame(() => requestAnimationFrame(() => {
@@ -690,6 +722,9 @@ function mountComposer(id, onSent) {
         <button type="button" data-ins="|" aria-label="Pipe">|</button>
         <button type="button" data-ins="~" aria-label="Tilde">~</button>
         <button type="button" data-ins="&amp;" aria-label="Ampersand">&amp;</button>
+        <button type="button" class="wide" data-key="enter" aria-label="Enter key">Enter</button>
+        <button type="button" class="wide" data-key="up" aria-label="Arrow up">↑</button>
+        <button type="button" class="wide" data-key="down" aria-label="Arrow down">↓</button>
         <button type="button" class="wide" data-key="tab" aria-label="Tab key">Tab</button>
         <button type="button" class="wide" data-key="esc" aria-label="Escape key">Esc</button>
         <button type="button" class="wide" data-key="interrupt" aria-label="Interrupt the agent">Stop</button>
@@ -761,6 +796,10 @@ function mountComposer(id, onSent) {
   // the terminal, because that is what they mean.
   bar.querySelectorAll('[data-ins]').forEach((key) => {
     key.onclick = () => {
+      // In Terminal view the character is meant for the terminal itself: a
+      // slash there opens the agent's command list, which is the whole point.
+      if (bar.classList.contains('always')) return sendRaw(`type:${key.dataset.ins}`, key.dataset.ins);
+
       const at = box.selectionStart ?? box.value.length;
       const end = box.selectionEnd ?? at;
       box.value = box.value.slice(0, at) + key.dataset.ins + box.value.slice(end);
@@ -770,10 +809,22 @@ function mountComposer(id, onSent) {
     };
   });
 
+  async function sendRaw(which, label) {
+    note(`Sent ${label}`);
+    const r = await fetch('/api/send', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ pane: id, key: which }),
+    }).then((x) => x.json()).catch(() => ({ error: 'Could not reach your machine.' }));
+    if (r.error) return note(r.error, true);
+    setTimeout(() => document.querySelector('.sendstate')?.remove(), 900);
+    onSent?.({ refresh: true });
+  }
+
   bar.querySelectorAll('[data-key]').forEach((key) => {
     key.onclick = async () => {
       const which = key.dataset.key;
-      note(which === 'interrupt' ? 'Stopping…' : `Sent ${key.textContent}`);
+      note(which === 'interrupt' ? 'Stopping…' : `Sent ${key.textContent.trim()}`);
       const r = await fetch('/api/send', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -880,7 +931,15 @@ function mountComposer(id, onSent) {
   new ResizeObserver(fit).observe(bar);
   window.visualViewport?.addEventListener('resize', fit);
 
-  btn.onclick = () => send(false);
+  btn.onclick = () => {
+    if (bar.classList.contains('always')) {
+      const text = box.value;
+      if (!text) return;
+      box.value = ''; sync();
+      return sendRaw(`type:${text}`, 'text');
+    }
+    send(false);
+  };
   box.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); send(false); }
   });
