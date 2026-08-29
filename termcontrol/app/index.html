@@ -76,6 +76,32 @@
   .dot{width:7px;height:7px;border-radius:50%;flex:none}
   .dot.waiting{background:var(--waiting);box-shadow:0 0 0 3px rgba(224,164,88,.16)}
   .dot.working{background:var(--working)}
+
+  /* A terminal that is genuinely producing output right now. The pulse is the
+     only motion in the app, and it stops the moment the output does. */
+  .dot.producing{
+    background:var(--working);
+    box-shadow:0 0 0 0 rgba(122,162,160,.55);
+    animation:pulse 1.8s ease-out infinite;
+  }
+  @keyframes pulse{
+    70%{box-shadow:0 0 0 7px rgba(122,162,160,0)}
+    100%{box-shadow:0 0 0 0 rgba(122,162,160,0)}
+  }
+  @media (prefers-reduced-motion: reduce){ .dot.producing{animation:none} }
+
+  .livemark{
+    display:inline-flex;align-items:center;gap:6px;
+    font-size:12px;font-weight:600;color:var(--working);
+  }
+  .livemark.quiet{color:var(--dim);font-weight:500}
+  .livemark.gone{color:var(--waiting)}
+
+  .headlive{
+    display:inline-flex;align-items:center;gap:5px;margin-left:8px;
+    font-size:12px;font-weight:600;color:var(--working);vertical-align:middle;
+  }
+  .headlive.quiet{color:var(--dim);font-weight:500}
   .dot.idle{background:var(--idle)}
   .project{font-weight:600;font-size:15px;letter-spacing:-.01em}
   .badge{
@@ -228,6 +254,7 @@ const main = document.getElementById('main');
 // Every navigation takes a ticket; a response that arrives after you have
 // moved on is discarded instead of painting over the screen you are on.
 let view = 0;
+let releaseChatScroll = null;
 const title = document.getElementById('title');
 const sub = document.getElementById('sub');
 const nav = document.getElementById('nav');
@@ -240,11 +267,19 @@ const ago = (ms) => {
   if (s < 86400) return `${Math.round(s / 3600)}h ago`;
   return `${Math.round(s / 86400)}d ago`;
 };
+const quietFor = (ms) => {
+  if (ms == null) return 'a moment';
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `${s}s`;
+  if (s < 3600) return `${Math.round(s / 60)}m`;
+  return `${Math.round(s / 3600)}h`;
+};
 const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
 
 async function fleet() {
   const mine = ++view;
   clearInterval(timer);
+  releaseChatScroll?.();
   document.body.classList.remove('chat');
   document.querySelector('.composer')?.remove();
   document.querySelector('.sendstate')?.remove();
@@ -323,7 +358,9 @@ async function fleet() {
 }
 
 function card(p) {
-  const state = p.turn === 'waiting' ? 'needs your answer' : p.turn === 'working' ? 'running' : 'idle';
+  const state = p.turn === 'waiting'
+    ? 'needs your answer'
+    : p.producing ? 'live now' : p.turn === 'working' ? 'running but quiet' : 'idle';
   return `<button class="pane ${p.turn}" data-id="${esc(p.id)}"
     aria-label="${esc(p.project)}, ${esc(p.provider)}, ${state}${p.task ? '. ' + esc(p.task) : ''}">
     <div class="row1">
@@ -334,7 +371,11 @@ function card(p) {
     </div>
     <div class="task${p.task ? '' : ' none'}">${esc(p.task || 'no task declared')}</div>
     ${p.turn === 'waiting' ? '<div class="state">Needs your answer</div>' : ''}
-    ${p.turn === 'working' ? '<div class="runmark"><span class="dot working" aria-hidden="true"></span>Working</div>' : ''}
+    ${p.producing
+        ? '<div class="livemark"><span class="dot producing" aria-hidden="true"></span>Live now</div>'
+        : p.turn === 'working'
+          ? '<div class="livemark quiet"><span class="dot working" aria-hidden="true"></span>Running, quiet for ' + quietFor(p.quietForMs) + '</div>'
+          : ''}
   </button>`;
 }
 
@@ -350,6 +391,14 @@ async function chat(id) {
   // reads it — sometimes a minute later. Until then, show it as yours, marked
   // as on its way, so it never looks like the message vanished.
   let justSent = null;
+  // Follow the newest message until the reader scrolls away from the end.
+  // Measuring "are we at the bottom?" on every refresh gets it wrong when a
+  // refresh lands while the layout is still settling.
+  let following = true;
+  const onScroll = () => {
+    following = window.innerHeight + window.scrollY >= document.body.scrollHeight - 60;
+  };
+  window.addEventListener('scroll', onScroll, { passive: true });
 
   const render = async () => {
     let d;
@@ -366,8 +415,11 @@ async function chat(id) {
     }
     if (mine !== view) return;
     if (d.error) { main.innerHTML = `<div class="empty">${esc(d.error)}</div>`; return; }
-    title.innerHTML = (d.pane.emoji ? `<span class="titleEmoji">${esc(d.pane.emoji)}</span>` : '') + esc(d.pane.project);
-    sub.textContent = `${d.pane.provider} · ${d.pane.turn}${d.pane.task ? ' · ' + d.pane.task : ''}`;
+    title.innerHTML = (d.pane.emoji ? `<span class="titleEmoji">${esc(d.pane.emoji)}</span>` : '') + esc(d.pane.project)
+      + (d.producing
+          ? '<span class="headlive"><span class="dot producing" aria-hidden="true"></span>live</span>'
+          : '<span class="headlive quiet"><span class="dot idle" aria-hidden="true"></span>quiet</span>');
+    sub.textContent = `${d.pane.provider}${d.pane.task ? ' · ' + d.pane.task : ''}`;
 
     if (!d.events.length) { main.innerHTML = '<div class="empty">Nothing recorded for this terminal yet.</div>'; return; }
 
@@ -399,8 +451,7 @@ async function chat(id) {
     // Re-rendering identical content would throw away the reader's position.
     if (html === lastSignature) return;
     const first = lastSignature === '';
-    const nearBottom =
-      window.innerHeight + window.scrollY >= document.body.scrollHeight - 140;
+    const nearBottom = following;
 
     // Relative timestamps tick, so the page re-renders even when nothing was
     // said, and row heights can change anywhere in the list. Anchor on the
@@ -452,12 +503,20 @@ async function chat(id) {
     }
   };
 
+  releaseChatScroll?.();
+  releaseChatScroll = () => {
+    window.removeEventListener('scroll', onScroll);
+    releaseChatScroll = null;
+  };
+
   await render();
-  mountComposer(id, (entry) => { justSent = entry; render(); });
+  mountComposer(id, (entry) => { justSent = entry; following = true; render(); });
   // The composer reserves space after the first paint, so land on the newest
   // message once the layout has actually settled.
   requestAnimationFrame(() => requestAnimationFrame(() => {
-    if (mine === view) window.scrollTo(0, document.body.scrollHeight);
+    if (mine !== view) return;
+    window.scrollTo(0, document.body.scrollHeight);
+    following = true;                       // opening always lands at the end
   }));
   timer = setInterval(render, 8000);
 }

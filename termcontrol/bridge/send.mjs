@@ -86,17 +86,22 @@ export async function sendToPane(pane, text, { force = false } = {}) {
  * that the keystrokes went nowhere — a wrong pane, a frozen TUI, a dead shell.
  */
 async function appearedInTerminal(id, body) {
-  const needle = body.trim().slice(0, 40);
-  if (!needle) return false;
-  for (const delay of [250, 500, 900]) {
+  // Terminals wrap long lines and paint them with control codes, so compare
+  // with all spacing and escapes removed. Matching loose words instead would
+  // report success for any busy screen that happens to contain them.
+  const squash = (s) => String(s)
+    .replace(/\u001b\[[0-9;?]*[a-zA-Z]/g, '')
+    .replace(/\s+/g, '')
+    .toLowerCase();
+
+  const needle = squash(body).slice(0, 60);
+  if (needle.length < 4) return false;
+
+  for (const delay of [250, 500, 900, 1200]) {
     await new Promise((r) => setTimeout(r, delay));
     try {
       const snap = await ask({ type: 'snapshotSession', id });
-      const seen = String(snap.data || '');
-      if (seen.includes(needle)) return true;
-      // A wrapped prompt splits the line; fall back to a distinctive fragment.
-      const words = needle.split(/\s+/).filter((w) => w.length > 3);
-      if (words.length && words.every((w) => seen.includes(w))) return true;
+      if (squash(snap.data || '').includes(needle)) return true;
     } catch { /* try again */ }
   }
   return false;

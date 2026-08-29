@@ -248,6 +248,63 @@ async function main() {
     ok(f.events.length <= 200, 'must cap the number of messages');
   });
 
+  await check('a busy terminal reads as live, a quiet one does not', async () => {
+    const m = await import(path.join(here, '..', '..', 'scripts', 'termfleetctl.mjs'));
+    const sock = m.defaultDaemonSocket();
+    const ask = async (r) => { const x = await m.requestDaemon(r, sock); if (!x.ok) throw new Error('daemon refused'); return x.value; };
+    const { liveness } = await import(path.join(here, '..', 'bridge', 'liveness.mjs'));
+
+    const busy = 'tc-live-busy-' + Date.now();
+    const quiet = 'tc-live-quiet-' + Date.now();
+    await ask({ type: 'ensureSession', id: busy, cwd: '/tmp', command: "/bin/bash -lc 'while true; do date; sleep 1; done'", cols: 80, rows: 24 });
+    await ask({ type: 'ensureSession', id: quiet, cwd: '/tmp', command: '/bin/bash', cols: 80, rows: 24 });
+    await wait(1200);
+
+    // Liveness is sampled: the first look sets a baseline and the next one
+    // sees whether output grew. Give it a few samples rather than one.
+    let b = null;
+    let q = null;
+    for (let i = 0; i < 6; i++) {
+      await wait(1200);
+      const now = await liveness();
+      b = now.byId.get(busy);
+      q = now.byId.get(quiet);
+      if (b && b.producing) break;
+    }
+    await ask({ type: 'killSession', id: busy, reviewed: true }).catch(() => {});
+    await ask({ type: 'killSession', id: quiet, reviewed: true }).catch(() => {});
+
+    ok(b && b.producing === true, 'a terminal printing every second must read as live');
+    ok(q && q.producing === false, 'an idle shell must not read as live');
+    return 'told apart correctly';
+  });
+
+  await check('a terminal that has gone stops being listed at all', async () => {
+    const m = await import(path.join(here, '..', '..', 'scripts', 'termfleetctl.mjs'));
+    const sock = m.defaultDaemonSocket();
+    const ask = async (r) => { const x = await m.requestDaemon(r, sock); if (!x.ok) throw new Error('daemon refused'); return x.value; };
+    const { liveness } = await import(path.join(here, '..', 'bridge', 'liveness.mjs'));
+
+    const doomed = 'tc-live-gone-' + Date.now();
+    await ask({ type: 'ensureSession', id: doomed, cwd: '/tmp', command: '/bin/bash', cols: 80, rows: 24 });
+    await wait(900);
+    ok((await liveness()).byId.has(doomed), 'it should be listed while it exists');
+
+    await ask({ type: 'killSession', id: doomed, reviewed: true }).catch(() => {});
+    await wait(1200);
+    ok(!(await liveness()).byId.has(doomed), 'a closed terminal must not still read as alive');
+    return 'disappears when closed';
+  });
+
+  await check('the fleet reports liveness for every terminal', async () => {
+    const r = await req('/api/panes');
+    const j = await r.json();
+    const missing = j.panes.filter((p) => typeof p.producing !== 'boolean');
+    eq(missing.length, 0, `${missing.length} terminals without a live reading`);
+    const live = j.panes.filter((p) => p.producing).length;
+    return `${live} of ${j.panes.length} producing output`;
+  });
+
   // -------------------------------------------------------------- safety ---
   group('Sending, and its guards');
 
@@ -323,12 +380,15 @@ async function main() {
     await ask({ type: 'killSession', id: live, reviewed: true }).catch(() => {});
     ok(good.delivered === true, 'a working terminal should confirm delivery');
 
-    const dead = 'termcontrol-dead-' + Date.now();
-    await ask({ type: 'ensureSession', id: dead, cwd: '/tmp', command: '/bin/bash -lc "exit 0"', cols: 80, rows: 24 });
-    await wait(1200);
+    // A terminal that swallows input without echoing it: exactly the shape of
+    // a session where your keystrokes go nowhere visible. An exited shell is
+    // racy here — the daemon may still echo before it reaps the session.
+    const dead = 'termcontrol-silent-' + Date.now();
+    await ask({ type: 'ensureSession', id: dead, cwd: '/tmp', command: "/bin/bash -lc 'stty -echo; sleep 30'", cols: 80, rows: 24 });
+    await wait(1500);
     const bad = await sendToPane({ id: dead, turn: 'idle' }, 'this cannot land anywhere');
     await ask({ type: 'killSession', id: dead, reviewed: true }).catch(() => {});
-    ok(bad.delivered === false, 'a dead terminal must not be reported as delivered');
+    ok(bad.delivered === false, 'a terminal that never showed the text must not be reported as delivered');
     return 'confirms both ways';
   });
 

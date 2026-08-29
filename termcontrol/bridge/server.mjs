@@ -12,6 +12,7 @@ import { handleAuthRoutes, currentUser, requireAuth } from './auth.mjs';
 import { sendToPane, answerPrompt, liveSessionIds } from './send.mjs';
 import { adapterFor } from './feed.mjs';
 import { readPrefs, writePrefs, byProject, inManualOrder, moveInOrder } from './prefs.mjs';
+import { liveness } from './liveness.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const appDir = path.join(here, '..', 'app');
@@ -51,12 +52,25 @@ function serveStatic(res, name) {
  */
 async function currentPanes() {
   const panes = listPanes({ maxAgeMs: MAX_AGE });
-  try {
-    const live = await liveSessionIds();
-    return { panes: panes.filter((p) => live.has(p.id)), daemon: true };
-  } catch {
-    return { panes, daemon: false };
-  }
+  const { reachable, byId } = await liveness();
+  if (!reachable) return { panes, daemon: false };
+
+  const withLife = panes
+    .filter((p) => byId.has(p.id))
+    .map((p) => {
+      const life = byId.get(p.id);
+      return {
+        ...p,
+        alive: true,
+        producing: life.producing,
+        quietForMs: life.quietForMs,
+        // What the agent last said about itself, kept honest by what the
+        // terminal is actually doing.
+        live: life.producing ? 'producing' : p.turn === 'waiting' ? 'waiting' : 'quiet',
+      };
+    });
+
+  return { panes: withLife, daemon: true };
 }
 
 const server = http.createServer(async (req, res) => {
@@ -107,7 +121,7 @@ const server = http.createServer(async (req, res) => {
     const { panes } = await currentPanes();
     const pane = panes.find((p) => p.id === id);
     if (!pane) return json(res, 404, { error: 'That terminal has been closed.' });
-    return json(res, 200, { pane, ...readFeed(pane, { limit }) });
+    return json(res, 200, { pane, live: pane.live, producing: pane.producing, ...readFeed(pane, { limit }) });
   }
 
   if (url.pathname === '/api/send' && req.method === 'POST') {
