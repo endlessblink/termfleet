@@ -11,6 +11,7 @@ import { readFeed } from './feed.mjs';
 import { handleAuthRoutes, currentUser, requireAuth } from './auth.mjs';
 import { sendToPane, answerPrompt, liveSessionIds } from './send.mjs';
 import { adapterFor } from './feed.mjs';
+import { readPrefs, writePrefs, byProject, inManualOrder } from './prefs.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const appDir = path.join(here, '..', 'app');
@@ -70,7 +71,28 @@ const server = http.createServer(async (req, res) => {
 
   if (url.pathname === '/api/panes') {
     const { panes, daemon } = await currentPanes();
-    return json(res, 200, { generatedAt: new Date().toISOString(), panes, daemon });
+    const prefs = readPrefs();
+    return json(res, 200, {
+      generatedAt: new Date().toISOString(),
+      daemon,
+      view: prefs.view,
+      panes: prefs.view === 'manual' ? inManualOrder(panes, prefs.order) : panes,
+      groups: byProject(panes),
+    });
+  }
+
+  if (url.pathname === '/api/prefs') {
+    if (req.method === 'PUT' || req.method === 'POST') {
+      let raw = '';
+      req.on('data', (c) => { raw += c; if (raw.length > 32768) req.destroy(); });
+      req.on('end', () => {
+        let body = {};
+        try { body = JSON.parse(raw || '{}'); } catch { return json(res, 400, { error: 'bad request' }); }
+        return json(res, 200, writePrefs(body));
+      });
+      return;
+    }
+    return json(res, 200, readPrefs());
   }
 
   if (url.pathname === '/api/feed') {

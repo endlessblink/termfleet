@@ -111,6 +111,68 @@ async function main() {
     return `${min}px smallest`;
   });
 
+  group('Arranging the fleet');
+
+  await check('terminals are grouped by project out of the box', async () => {
+    const state = await p.$$eval('.switch button', (els) => els.map((e) => `${e.textContent.trim()}=${e.getAttribute('aria-pressed')}`));
+    ok(state.includes('Projects=true'), `wrong default: ${state.join(' ')}`);
+    const groups = await p.$$('.projgroup');
+    ok(groups.length > 0, 'no project groups rendered');
+    return `${groups.length} projects`;
+  });
+
+  await check('each project shows its own emoji and name', async () => {
+    const heads = await p.$$eval('.projhead', (els) => els.map((e) => e.textContent.replace(/\s+/g, ' ').trim()));
+    ok(heads.length > 0 && heads.every((h) => h.length > 1), 'project headings are empty');
+    return heads.slice(0, 3).join(' | ');
+  });
+
+  await check('a project that needs you is called out', async () => {
+    const marked = await p.$$eval('.projhead.needs .count', (els) => els.map((e) => e.textContent.trim()));
+    for (const m of marked) ok(/needs you/i.test(m), `unclear marker: ${m}`);
+    return marked.length ? `${marked.length} flagged` : 'nothing waiting right now';
+  });
+
+  await check('switching to your own order shows move controls', async () => {
+    await p.click('.switch button[data-view="manual"]');
+    await p.waitForSelector('.moves', { timeout: 8000 });
+    const state = await p.$$eval('.switch button', (els) => els.map((e) => `${e.textContent.trim()}=${e.getAttribute('aria-pressed')}`));
+    ok(state.includes('My order=true'), `switch did not take: ${state.join(' ')}`);
+    ok((await p.$$('.projgroup')).length === 0, 'project groups should be gone in your own order');
+  });
+
+  await check('moving a terminal down actually moves it', async () => {
+    const before = await p.$$eval('.pane .project', (els) => els.map((e) => e.textContent.trim()));
+    await p.click('[data-move="down"][data-at="0"]');
+    await wait(1200);
+    const after = await p.$$eval('.pane .project', (els) => els.map((e) => e.textContent.trim()));
+    ok(after.indexOf(before[0]) === 1, `expected it second, list is now ${after.slice(0, 3).join(' | ')}`);
+    return `${before[0]} moved down`;
+  });
+
+  await check('the top item cannot be moved further up', async () => {
+    const disabled = await p.$eval('[data-move="up"][data-at="0"]', (e) => e.disabled);
+    ok(disabled, 'the first row offers an up arrow that does nothing');
+  });
+
+  await check('your arrangement survives a reload', async () => {
+    const before = await p.$$eval('.pane .project', (els) => els.map((e) => e.textContent.trim()));
+    await p.reload();
+    await p.waitForSelector('.pane', { timeout: 12000 });
+    await wait(700);
+    const pressed = await p.$$eval('.switch button', (els) => els.filter((e) => e.getAttribute('aria-pressed') === 'true').map((e) => e.textContent.trim()));
+    const after = await p.$$eval('.pane .project', (els) => els.map((e) => e.textContent.trim()));
+    ok(pressed.join() === 'My order', `view was not remembered: ${pressed.join()}`);
+    ok(before.join() === after.join(), 'the order was not remembered');
+    return 'view and order both kept';
+  });
+
+  await check('switching back to projects restores the grouping', async () => {
+    await p.click('.switch button[data-view="projects"]');
+    await p.waitForSelector('.projgroup', { timeout: 8000 });
+    ok((await p.$$('.moves')).length === 0, 'move controls should be gone');
+  });
+
   // ------------------------------------------------------------------ read --
   group('Opening one and reading it');
 

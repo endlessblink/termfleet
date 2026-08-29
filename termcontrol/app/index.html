@@ -94,6 +94,37 @@
     font-size:12px;font-weight:500;color:var(--working);
   }
 
+  .switch{
+    display:flex;gap:2px;padding:3px;margin:2px 2px 14px;border-radius:12px;
+    background:var(--surface);border:1px solid var(--line);
+  }
+  .switch button{
+    flex:1;min-height:38px;border:0;border-radius:9px;background:transparent;
+    color:var(--muted);font:600 13px var(--ui);cursor:pointer;
+  }
+  .switch button[aria-pressed="true"]{background:var(--surface-2);color:var(--text)}
+
+  .projgroup{margin-bottom:22px}
+  .projhead{
+    display:flex;align-items:center;gap:8px;margin:0 4px 9px;
+    font-size:13px;font-weight:600;color:var(--text);letter-spacing:-.01em;
+  }
+  .projhead .pemoji{font-size:16px}
+  .projhead .count{
+    margin-left:auto;font-size:12px;color:var(--dim);background:var(--surface-2);
+    padding:2px 8px;border-radius:99px;font-weight:600;
+  }
+  .projhead.needs .count{background:rgba(224,164,88,.16);color:var(--waiting)}
+
+  .rowwrap{display:flex;align-items:stretch;gap:8px}
+  .rowwrap .pane{flex:1;min-width:0}
+  .moves{display:flex;flex-direction:column;gap:6px;padding-bottom:8px}
+  .moves button{
+    width:44px;flex:1;min-height:44px;border:1px solid var(--line);border-radius:10px;
+    background:var(--surface);color:var(--muted);font:600 16px var(--ui);cursor:pointer;
+  }
+  .moves button:disabled{opacity:.35}
+
   h2.section{
     display:flex;align-items:center;gap:8px;
     font-size:12px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;
@@ -234,14 +265,51 @@ async function fleet() {
 
   if (!panes.length) { main.innerHTML = '<div class="empty">No agent terminals in the last day.</div>'; return; }
 
-  const group = (label, list) => list.length
-    ? `<h2 class="section">${label}<span class="count">${list.length}</span></h2>` + list.map(card).join('')
-    : '';
+  const mode = r.view === 'manual' ? 'manual' : 'projects';
+  const switcher = `<div class="switch" role="group" aria-label="How to arrange terminals">
+      <button type="button" data-view="projects" aria-pressed="${mode === 'projects'}">Projects</button>
+      <button type="button" data-view="manual" aria-pressed="${mode === 'manual'}">My order</button>
+    </div>`;
 
-  main.innerHTML =
-    group('Waiting for you', panes.filter((p) => p.turn === 'waiting')) +
-    group('Running', panes.filter((p) => p.turn === 'working')) +
-    group('Idle', panes.filter((p) => p.turn === 'idle'));
+  if (mode === 'manual') {
+    main.innerHTML = switcher + panes.map((p, i) => `<div class="rowwrap">
+        ${card(p)}
+        <div class="moves">
+          <button type="button" data-move="up" data-at="${i}" aria-label="Move ${esc(p.project)} up" ${i === 0 ? 'disabled' : ''}>↑</button>
+          <button type="button" data-move="down" data-at="${i}" aria-label="Move ${esc(p.project)} down" ${i === panes.length - 1 ? 'disabled' : ''}>↓</button>
+        </div>
+      </div>`).join('');
+  } else {
+    main.innerHTML = switcher + (r.groups || []).map((g) => `<section class="projgroup">
+        <h2 class="projhead${g.attention === 0 ? ' needs' : ''}">
+          ${g.emoji ? `<span class="pemoji" aria-hidden="true">${esc(g.emoji)}</span>` : ''}
+          <span>${esc(g.project)}</span>
+          <span class="count">${g.attention === 0 ? 'needs you' : g.panes.length}</span>
+        </h2>
+        ${g.panes.map(card).join('')}
+      </section>`).join('');
+  }
+
+  const savePrefs = (body) => fetch('/api/prefs', {
+    method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+  }).catch(() => {});
+
+  main.querySelectorAll('.switch button').forEach((el) => {
+    el.onclick = async () => { await savePrefs({ view: el.dataset.view }); fleet(); };
+  });
+
+  main.querySelectorAll('[data-move]').forEach((el) => {
+    el.onclick = async () => {
+      const from = Number(el.dataset.at);
+      const to = el.dataset.move === 'up' ? from - 1 : from + 1;
+      if (to < 0 || to >= panes.length) return;
+      const ids = panes.map((x) => x.id);
+      const [moved] = ids.splice(from, 1);
+      ids.splice(to, 0, moved);
+      await savePrefs({ view: 'manual', order: ids });
+      fleet();
+    };
+  });
 
   main.querySelectorAll('.pane').forEach((el) => {
     el.onclick = () => {
@@ -249,21 +317,7 @@ async function fleet() {
       chat(el.dataset.id);
     };
   });
-  timer = setInterval(() => { if (!location.hash) window.addEventListener('popstate', (e) => {
-  const id = e.state?.pane ?? location.hash.slice(1);
-  if (id) chat(id); else fleet();
-});
-
-// Following a link to #<terminal> while the app is already open changes only
-// the hash — no navigation, no popstate — so listen for that too.
-window.addEventListener('hashchange', () => {
-  const id = location.hash.slice(1);
-  if (id) chat(id); else fleet();
-});
-
-const opening = location.hash.slice(1);
-if (opening) { history.replaceState({ pane: opening }, '', location.hash); chat(opening); }
-else fleet(); }, 15000);
+  timer = setInterval(fleet, 15000);
 }
 
 function card(p) {
