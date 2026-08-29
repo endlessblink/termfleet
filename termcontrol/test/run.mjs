@@ -602,6 +602,25 @@ async function main() {
     ok(/unknown key/i.test(r.error || ''), `expected a refusal, got ${JSON.stringify(r)}`);
   });
 
+  await check('a short message an agent swallows still counts as delivered', async () => {
+    const m = await import(path.join(here, '..', '..', 'scripts', 'termfleetctl.mjs'));
+    const sock = m.defaultDaemonSocket();
+    const ask = async (r) => { const x = await m.requestDaemon(r, sock); if (!x.ok) throw new Error('daemon refused'); return x.value; };
+    const { sendToPane } = await import(path.join(here, '..', 'bridge', 'send.mjs'));
+
+    // Behaves like an agent: shows nothing of what you typed, but reacts to it.
+    const id = 'tc-short-' + Date.now();
+    await ask({
+      type: 'ensureSession', id, cwd: '/tmp', cols: 80, rows: 24,
+      command: `/bin/bash -lc 'stty -echo 2>/dev/null; while IFS= read -r line; do echo "working on it"; done'`,
+    });
+    await wait(1500);
+    const r = await sendToPane({ id, turn: 'idle' }, 'Go');
+    await ask({ type: 'killSession', id, reviewed: true }).catch(() => {});
+    ok(r.delivered === true, 'a two-letter message that the agent acted on was reported as lost');
+    return 'no false alarm';
+  });
+
   await check('every send is written to the audit trail', async () => {
     // send.mjs is imported into this process, so it writes to the real
     // location rather than the sandbox the bridge child was given.

@@ -67,6 +67,7 @@ export async function sendToPane(pane, text, { force = false } = {}) {
 
   inFlight.add(pane.id);
   try {
+    const sizeBefore = await scrollbackBytes(pane.id);
     // A newline typed into an agent submits the line. Sending a two-line
     // message raw therefore delivers it as two prompts: the first starts a
     // turn and the second arrives mid-turn and queues, which is what "my
@@ -85,7 +86,7 @@ export async function sendToPane(pane, text, { force = false } = {}) {
 
     // Don't claim success just because the write returned. Look at what the
     // terminal actually shows and report honestly if the text never appeared.
-    const delivered = await appearedInTerminal(pane.id, body);
+    const delivered = await landedInTerminal(pane.id, body, sizeBefore);
     audit({
       pane: pane.id, project: pane.project, provider: pane.provider,
       turn: pane.turn, bytes: body.length, ok: true, delivered,
@@ -100,30 +101,46 @@ export async function sendToPane(pane, text, { force = false } = {}) {
 }
 
 /**
- * Read the tail of a session's output and say whether the text we just typed
- * shows up in it. Terminals echo what you type, so absence is a real signal
- * that the keystrokes went nowhere — a wrong pane, a frozen TUI, a dead shell.
+ * Did the message actually get into the terminal?
+ *
+ * Two independent signs, because neither alone is sound. The text may show up
+ * on screen — but an agent swallows a short message instantly and clears its
+ * box, so absence proves nothing. Output growing right after the write does
+ * prove that something arrived and was acted upon.
  */
-async function appearedInTerminal(id, body) {
-  // Terminals wrap long lines and paint them with control codes, so compare
-  // with all spacing and escapes removed. Matching loose words instead would
-  // report success for any busy screen that happens to contain them.
+async function landedInTerminal(id, body, sizeBefore) {
   const squash = (s) => String(s)
-    .replace(/\u001b\[[0-9;?]*[a-zA-Z]/g, '')
+    .replace(/\u001b\[[0-9;?]*[\u0020-\u002f]*[\u0040-\u007e]/g, '')
     .replace(/\s+/g, '')
     .toLowerCase();
 
   const needle = squash(body).slice(0, 60);
-  if (needle.length < 4) return false;
 
-  for (const delay of [250, 500, 900, 1200]) {
+  for (const delay of [250, 500, 900, 1400]) {
     await new Promise((r) => setTimeout(r, delay));
-    try {
-      const snap = await ask({ type: 'snapshotSession', id });
-      if (squash(snap.data || '').includes(needle)) return true;
-    } catch { /* try again */ }
+
+    if (needle.length >= 4) {
+      try {
+        const snap = await ask({ type: 'snapshotSession', id });
+        if (squash(snap.data || '').includes(needle)) return true;
+      } catch { /* fall through to the other sign */ }
+    }
+
+    const now = await scrollbackBytes(id);
+    if (now != null && sizeBefore != null && now > sizeBefore) return true;
   }
   return false;
+}
+
+/** How much this terminal has printed so far, or null if it cannot be read. */
+async function scrollbackBytes(id) {
+  try {
+    const value = await ask({ type: 'listSessions' });
+    const found = (value.sessions || []).find((s) => s.id === id);
+    return found ? Number(found.scrollbackBytes || 0) : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
