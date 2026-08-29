@@ -142,12 +142,24 @@ async function main() {
   });
 
   await check('moving a terminal down actually moves it', async () => {
-    const before = await p.$$eval('.pane .project', (els) => els.map((e) => e.textContent.trim()));
+    // Compare terminals, not project names: several terminals can belong to
+    // the same project, so names alone cannot tell you what moved.
+    const before = await p.$$eval('.pane', (els) => els.map((e) => e.dataset.id));
     await p.click('[data-move="down"][data-at="0"]');
-    await wait(1200);
-    const after = await p.$$eval('.pane .project', (els) => els.map((e) => e.textContent.trim()));
-    ok(after.indexOf(before[0]) === 1, `expected it second, list is now ${after.slice(0, 3).join(' | ')}`);
-    return `${before[0]} moved down`;
+    await wait(1300);
+    const after = await p.$$eval('.pane', (els) => els.map((e) => e.dataset.id));
+    ok(after.indexOf(before[0]) === 1, `the moved terminal should be second, it is at ${after.indexOf(before[0])}`);
+    ok(after[0] === before[1], 'the terminal below should have taken first place');
+    return 'swapped with the one below';
+  });
+
+  await check('moving it back up restores the order', async () => {
+    const before = await p.$$eval('.pane', (els) => els.map((e) => e.dataset.id));
+    await p.click(`[data-move="up"][data-at="1"]`);
+    await wait(1300);
+    const after = await p.$$eval('.pane', (els) => els.map((e) => e.dataset.id));
+    ok(after[0] === before[1], 'moving up did not restore it');
+    return 'restored';
   });
 
   await check('the top item cannot be moved further up', async () => {
@@ -156,12 +168,12 @@ async function main() {
   });
 
   await check('your arrangement survives a reload', async () => {
-    const before = await p.$$eval('.pane .project', (els) => els.map((e) => e.textContent.trim()));
+    const before = await p.$$eval('.pane', (els) => els.map((e) => e.dataset.id));
     await p.reload();
     await p.waitForSelector('.pane', { timeout: 12000 });
     await wait(700);
     const pressed = await p.$$eval('.switch button', (els) => els.filter((e) => e.getAttribute('aria-pressed') === 'true').map((e) => e.textContent.trim()));
-    const after = await p.$$eval('.pane .project', (els) => els.map((e) => e.textContent.trim()));
+    const after = await p.$$eval('.pane', (els) => els.map((e) => e.dataset.id));
     ok(pressed.join() === 'My order', `view was not remembered: ${pressed.join()}`);
     ok(before.join() === after.join(), 'the order was not remembered');
     return 'view and order both kept';

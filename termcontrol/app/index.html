@@ -281,8 +281,8 @@ async function fleet() {
     main.innerHTML = switcher + panes.map((p, i) => `<div class="rowwrap">
         ${card(p)}
         <div class="moves">
-          <button type="button" data-move="up" data-at="${i}" aria-label="Move ${esc(p.project)} up" ${i === 0 ? 'disabled' : ''}>↑</button>
-          <button type="button" data-move="down" data-at="${i}" aria-label="Move ${esc(p.project)} down" ${i === panes.length - 1 ? 'disabled' : ''}>↓</button>
+          <button type="button" data-move="up" data-at="${i}" data-id="${esc(p.id)}" aria-label="Move ${esc(p.project)} up" ${i === 0 ? 'disabled' : ''}>↑</button>
+          <button type="button" data-move="down" data-at="${i}" data-id="${esc(p.id)}" aria-label="Move ${esc(p.project)} down" ${i === panes.length - 1 ? 'disabled' : ''}>↓</button>
         </div>
       </div>`).join('');
   } else {
@@ -306,13 +306,9 @@ async function fleet() {
 
   main.querySelectorAll('[data-move]').forEach((el) => {
     el.onclick = async () => {
-      const from = Number(el.dataset.at);
-      const to = el.dataset.move === 'up' ? from - 1 : from + 1;
-      if (to < 0 || to >= panes.length) return;
-      const ids = panes.map((x) => x.id);
-      const [moved] = ids.splice(from, 1);
-      ids.splice(to, 0, moved);
-      await savePrefs({ view: 'manual', order: ids });
+      // Name the terminal rather than its row: the list may have refreshed
+      // between drawing this arrow and your thumb reaching it.
+      await savePrefs({ move: el.dataset.id, direction: el.dataset.move });
       fleet();
     };
   });

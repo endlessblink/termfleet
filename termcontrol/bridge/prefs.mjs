@@ -69,3 +69,20 @@ export function inManualOrder(panes, order) {
     return b.updatedAt - a.updatedAt;
   });
 }
+
+/**
+ * Move one terminal up or down in the owner's order. Positions shift whenever
+ * a terminal opens or closes, so the phone names the terminal it means and the
+ * move is computed here against the list as it is right now.
+ */
+export function moveInOrder(panes, order, id, direction) {
+  const current = inManualOrder(panes, order).map((p) => p.id);
+  const from = current.indexOf(id);
+  if (from < 0) return current;
+  const to = direction === 'up' ? from - 1 : from + 1;
+  if (to < 0 || to >= current.length) return current;
+  const next = [...current];
+  const [moved] = next.splice(from, 1);
+  next.splice(to, 0, moved);
+  return next;
+}
