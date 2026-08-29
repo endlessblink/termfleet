@@ -205,6 +205,11 @@ async function main() {
   });
 
   await check('you can tell who said what', async () => {
+    // The view is remembered between terminals; make sure we are on the
+    // conversation before judging it.
+    await p.evaluate(() => sessionStorage.setItem('tc-mode', 'chat'));
+    const chat = await p.$('.composer [data-mode="chat"]');
+    if (chat) { await chat.click(); await wait(1200); }
     const roles = await p.$$eval('.who', (els) => [...new Set(els.map((e) => e.textContent.trim()))]);
     ok(roles.length >= 1, 'no speaker labels at all');
     return roles.join(', ');
@@ -269,6 +274,78 @@ async function main() {
     ok(await p.$eval('.cmdlist', (e) => e.hidden), 'the command list opened for ordinary text');
     await p.fill('.composer textarea', '');
     await p.dispatchEvent('.composer textarea', 'input');
+  });
+
+  group('Files and shell commands');
+
+  await check('typing @ offers files from that terminal\'s project', async () => {
+    await p.fill('.composer textarea', 'look at @');
+    await p.dispatchEvent('.composer textarea', 'input');
+    await p.waitForSelector('.cmdlist button', { timeout: 10000 });
+    const shown = await p.$$eval('.cmdlist .path', (els) => els.length);
+    ok(shown > 0, 'no files were offered');
+    return `${shown} shown`;
+  });
+
+  await check('the file list narrows as you type', async () => {
+    await p.fill('.composer textarea', 'look at @server');
+    await p.dispatchEvent('.composer textarea', 'input');
+    await wait(700);
+    const files = await p.$$eval('.cmdlist .path', (els) => els.map((e) => e.textContent));
+    ok(files.length > 0, 'nothing matched "server"');
+    ok(files.every((f) => f.toLowerCase().includes('server')), `unrelated: ${files.slice(0, 3).join(' ')}`);
+    return files[0];
+  });
+
+  await check('picking a file inserts its path, keeping what you wrote', async () => {
+    await p.click('.cmdlist button');
+    await wait(400);
+    const value = await p.inputValue('.composer textarea');
+    ok(value.startsWith('look at @'), `lost the message: ${JSON.stringify(value)}`);
+    ok(value.includes('/') || value.length > 'look at @'.length + 3, `no path inserted: ${value}`);
+    ok(await p.$eval('.cmdlist', (e) => e.hidden), 'the list stayed open');
+    return JSON.stringify(value.slice(0, 40));
+  });
+
+  await check('a message starting with ! explains that it runs a command', async () => {
+    await p.fill('.composer textarea', '!ls -la');
+    await p.dispatchEvent('.composer textarea', 'input');
+    await wait(400);
+    const text = (await p.textContent('.cmdlist')).trim();
+    ok(/shell command/i.test(text), `unclear: ${text}`);
+    await p.fill('.composer textarea', '');
+    await p.dispatchEvent('.composer textarea', 'input');
+  });
+
+  group('Reading back through a conversation');
+
+  await check('a conversation opens with a page of messages, not a handful', async () => {
+    const rows = await p.$$eval('#main > *', (els) => els.length);
+    ok(rows >= 20, `only ${rows} things to read — history is being cut short`);
+    return `${rows} shown`;
+  });
+
+  await check('there is a way back to older messages', async () => {
+    const canGoBack = !!(await p.$('.earlier'));
+    const atStart = !!(await p.$('.start'));
+    ok(canGoBack || atStart, 'no way back and no note that this is the start');
+    return canGoBack ? 'offers earlier messages' : 'already at the start';
+  });
+
+  await check('loading earlier messages actually adds them', async () => {
+    const btn = await p.$('.earlier');
+    if (!btn) return 'already at the start of this conversation';
+    const before = await p.$$eval('#main > *', (els) => els.length);
+    await btn.click();
+    await wait(2500);
+    const after = await p.$$eval('#main > *', (els) => els.length);
+    ok(after > before, `${before} then ${after}`);
+    return `${before} to ${after}`;
+  });
+
+  await check('the conversation can be scrolled', async () => {
+    const scrollable = await p.$eval('main', (e) => e.scrollHeight > e.clientHeight + 20);
+    ok(scrollable, 'there is nothing to scroll through');
   });
 
   group('Replying');

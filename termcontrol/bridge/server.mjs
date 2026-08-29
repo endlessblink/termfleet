@@ -15,6 +15,7 @@ import { readPrefs, writePrefs, byProject, inManualOrder, moveInOrder } from './
 import { liveness, lastLine, screenOf } from './liveness.mjs';
 import { pendingAsk } from './asks.mjs';
 import { commandsFor } from './commands.mjs';
+import { filesIn, matchFiles } from './files.mjs';
 import { readBody, firstFile, saveImage } from './uploads.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -200,6 +201,16 @@ const server = http.createServer(async (req, res) => {
     const pane = panes.find((p) => p.id === id);
     if (!pane) return json(res, 404, { error: 'That terminal has been closed.' });
     return json(res, 200, { provider: pane.provider, commands: commandsFor(pane.provider) });
+  }
+
+  if (url.pathname === '/api/files') {
+    const id = url.searchParams.get('pane');
+    const query = url.searchParams.get('q') || '';
+    const { panes } = await currentPanes();
+    const pane = panes.find((p) => p.id === id);
+    if (!pane) return json(res, 404, { error: 'That terminal has been closed.' });
+    const files = await filesIn(pane.cwd);
+    return json(res, 200, { cwd: pane.cwd, files: matchFiles(files, query), total: files.length });
   }
 
   if (url.pathname === '/api/screen') {

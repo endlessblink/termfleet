@@ -42,6 +42,7 @@
   }
   main{
     flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;
+    overflow-anchor:auto;
     -webkit-overflow-scrolling:touch;
     padding:12px 12px 20px;max-width:720px;width:100%;margin:0 auto;
   }
@@ -225,6 +226,15 @@
   .pending b{color:var(--working)}
   .empty{color:var(--dim);text-align:center;padding:48px 24px;font-size:14px}
 
+  .earlier, .start{overflow-anchor:none}
+  .earlier{
+    display:block;width:100%;min-height:44px;margin:0 0 14px;
+    border:1px solid var(--line);border-radius:12px;background:var(--surface);
+    color:var(--muted);font:600 13px var(--ui);cursor:pointer;
+  }
+  .earlier:disabled{opacity:.6}
+  .start{text-align:center;color:var(--dim);font-size:12.5px;margin:0 0 14px}
+
   /* The terminal's own screen. Menus an agent draws live only here. */
   .screen{
     font-family:var(--mono);font-size:12px;line-height:1.45;color:var(--text);
@@ -323,6 +333,9 @@
     display:block;font-size:12.5px;color:var(--muted);margin-top:2px;
     overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
   }
+  .cmdlist .path{font-family:var(--mono);font-size:14px;color:var(--text)}
+  .cmdlist .dir{color:var(--muted)}
+  .cmdlist .hint{padding:12px;color:var(--muted);font-size:13px;line-height:1.45}
   .cmdlist .none{padding:14px 12px;color:var(--dim);font-size:13.5px}
 
   .askbox{
@@ -552,6 +565,7 @@ async function chat(id) {
   // reads it — sometimes a minute later. Until then, show it as yours, marked
   // as on its way, so it never looks like the message vanished.
   let justSent = null;
+  let shown = 60;                     // how far back this chat is showing
   let mode = sessionStorage.getItem('tc-mode') === 'screen' ? 'screen' : 'chat';
 
   // Follow the newest message until the reader scrolls away from the end.
@@ -571,7 +585,7 @@ async function chat(id) {
   const render = async () => {
     let d;
     try {
-      const r = await fetch(`/api/feed?pane=${encodeURIComponent(id)}&limit=60`, {
+      const r = await fetch(`/api/feed?pane=${encodeURIComponent(id)}&limit=${shown}`, {
         signal: AbortSignal.timeout(12000),
       });
       if (!r.ok) throw new Error(r.status === 401 ? 'Signed out — reload to sign in.' : 'Your machine did not answer.');
@@ -605,7 +619,11 @@ async function chat(id) {
       return;
     }
 
-    const html = d.events.map((e) => {
+    const older = d.reachedStart
+      ? '<div class="start">That is the start of this conversation.</div>'
+      : '<button type="button" class="earlier">Show earlier messages</button>';
+
+    const html = older + d.events.map((e) => {
       if (e.kind === 'tool') {
         return `<div class="tool"><b>${esc(e.name)}</b>${e.summary ? ' · ' + esc(e.summary) : ''}</div>`;
       }
@@ -635,31 +653,27 @@ async function chat(id) {
     const first = lastSignature === '';
     const nearBottom = following;
 
-    // Relative timestamps tick, so the page re-renders even when nothing was
-    // said, and row heights can change anywhere in the list. Anchor on the
-    // message you are actually looking at: remember which one is at the top of
-    // the screen and how far into it you are, then put it back there.
-    let anchor = null;
-    const wasAt = main.scrollTop;
-    if (!first && !nearBottom) {
-      const rows = [...main.children];
-      for (let i = 0; i < rows.length; i++) {
-        const box = rows[i].getBoundingClientRect();
-        if (box.bottom > 0) {
-          // Remember the row itself, not just its position: the list can grow
-          // at the top as older messages load, which shifts every index.
-          anchor = { index: i, offset: box.top, text: (rows[i].textContent || '').slice(0, 60) };
-          break;
-        }
-      }
-    }
-
     lastSignature = html;
     main.innerHTML = html;
 
+    const earlier = main.querySelector('.earlier');
+    if (earlier) {
+      earlier.onclick = async () => {
+        earlier.disabled = true;
+        earlier.textContent = 'Loading…';
+        shown += 60;
+        lastSignature = '';
+        following = false;
+        // Keep the message you were reading in place as older ones arrive.
+        const height = main.scrollHeight;
+        await render();
+        main.scrollTop += main.scrollHeight - height;
+      };
+    }
+
     if (first || nearBottom) {
       main.scrollTop = main.scrollHeight;
-    } else if (anchor) {
+    } else if (false) {
       // Wait for layout: text rewraps and heights settle a frame after the
       // content is swapped in, so measuring immediately corrects by the wrong
       // amount and the page still drifts.
@@ -799,6 +813,44 @@ function mountComposer(id, onSent, onMode, view = () => 'chat') {
     });
   }
 
+  // Files in this terminal's project, for "@". Typing a path on a phone is
+  // miserable; picking one is not.
+  async function showFiles(typed) {
+    const query = typed.slice(typed.lastIndexOf('@') + 1);
+    const r = await fetch(`/api/files?pane=${encodeURIComponent(id)}&q=${encodeURIComponent(query)}`)
+      .then((x) => x.json()).catch(() => ({}));
+    const files = r.files || [];
+
+    cmdlist.hidden = false;
+    cmdlist.innerHTML = files.length
+      ? files.map((f) => {
+          const cut = f.lastIndexOf('/');
+          const dir = cut > 0 ? f.slice(0, cut + 1) : '';
+          const name = cut > 0 ? f.slice(cut + 1) : f;
+          return `<button type="button" data-file="${esc(f)}">
+              <span class="path"><span class="dir">${esc(dir)}</span>${esc(name)}</span>
+            </button>`;
+        }).join('')
+      : '<div class="none">No file matches that.</div>';
+
+    cmdlist.querySelectorAll('[data-file]').forEach((el) => {
+      el.onclick = () => {
+        const at = box.value.lastIndexOf('@');
+        box.value = `${box.value.slice(0, at)}@${el.dataset.file} `;
+        hideCommands();
+        box.focus();
+        sync();
+      };
+    });
+  }
+
+  // A leading "!" runs the rest in the shell, so say so rather than leaving it
+  // to be discovered.
+  function showShellHint() {
+    cmdlist.hidden = false;
+    cmdlist.innerHTML = '<div class="hint">Starting with <b>!</b> runs the rest as a shell command in this terminal.</div>';
+  }
+
   function hideCommands() {
     cmdlist.hidden = true;
     cmdlist.innerHTML = '';
@@ -923,7 +975,10 @@ function mountComposer(id, onSent, onMode, view = () => 'chat') {
   };
   box.addEventListener('input', () => {
     sync();
-    if (/^\/[^\s]*$/.test(box.value)) showCommands(box.value);
+    const typed = box.value;
+    if (/^\/[^\s]*$/.test(typed)) showCommands(typed);
+    else if (/@[^\s]*$/.test(typed)) showFiles(typed);
+    else if (/^![^\n]*$/.test(typed)) showShellHint();
     else hideCommands();
   });
 

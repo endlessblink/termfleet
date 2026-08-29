@@ -49,11 +49,11 @@ const textOf = (content) => {
  * Walk backwards and stop as soon as we have enough real conversation, so a
  * 1000-line file costs the same as a short one.
  */
-export function readFeed(pane, { limit = 60 } = {}) {
+export function readFeed(pane, { limit = 60, bytes = 512 * 1024 } = {}) {
   const file = transcriptPath(pane);
   if (!file) return { events: [], pending: [] };
 
-  const lines = tailLines(file);
+  const lines = tailLines(file, bytes);
   const collected = [];
 
   for (let i = lines.length - 1; i >= 0 && collected.length < limit; i--) {

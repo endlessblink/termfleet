@@ -30,11 +30,11 @@ function summariseTool(block) {
  * `pending` = tools the assistant asked for that have no result yet, which is
  * how "still running / waiting on you" shows up in the transcript.
  */
-export function readFeed(pane, { limit = 60 } = {}) {
+export function readFeed(pane, { limit = 60, bytes = 512 * 1024 } = {}) {
   const file = transcriptPath(pane);
   if (!file) return { events: [], pending: [] };
 
-  const lines = tailLines(file);
+  const lines = tailLines(file, bytes);
   const collected = [];
   const resultsSeen = new Set();
   const unresolved = new Map();
