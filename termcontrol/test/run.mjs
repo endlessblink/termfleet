@@ -335,8 +335,10 @@ async function main() {
   });
 
   await check('asks before interrupting a busy agent', async () => {
-    const busy = panes.panes.find((p) => p.turn === 'working');
-    if (!busy) return 'no busy terminal right now — skipped';
+    // Re-read: a terminal can finish between listing and sending.
+    const fresh = await (await req('/api/panes')).json();
+    const busy = fresh.panes.find((p) => p.producing || p.turn === 'working');
+    if (!busy) return 'nothing busy right now — skipped';
     const r = await req('/api/send', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ pane: busy.id, text: 'hello' }) });
     const j = await r.json();
     ok(j.busy === true, 'a busy agent must prompt first');
@@ -384,9 +386,18 @@ async function main() {
     // a session where your keystrokes go nowhere visible. An exited shell is
     // racy here — the daemon may still echo before it reaps the session.
     const dead = 'termcontrol-silent-' + Date.now();
-    await ask({ type: 'ensureSession', id: dead, cwd: '/tmp', command: "/bin/bash -lc 'stty -echo; sleep 30'", cols: 80, rows: 24 });
-    await wait(1500);
-    const bad = await sendToPane({ id: dead, turn: 'idle' }, 'this cannot land anywhere');
+    await ask({ type: 'ensureSession', id: dead, cwd: '/tmp', command: "/bin/bash -lc 'stty -echo -icanon 2>/dev/null; exec sleep 600'", cols: 80, rows: 24 });
+    // Wait until the shell has actually turned echo off — sending before that
+    // races the setup and the terminal echoes after all.
+    for (let i = 0; i < 20; i++) {
+      await wait(300);
+      const probe = 'echo-probe-' + i;
+      await ask({ type: 'writeSession', id: dead, data: probe });
+      await wait(250);
+      const snap = String((await ask({ type: 'snapshotSession', id: dead })).data || '');
+      if (!snap.includes(probe)) break;          // echo is off; safe to test
+    }
+    const bad = await sendToPane({ id: dead, turn: 'idle' }, 'zzqx-unechoed-marker-' + Date.now());
     await ask({ type: 'killSession', id: dead, reviewed: true }).catch(() => {});
     ok(bad.delivered === false, 'a terminal that never showed the text must not be reported as delivered');
     return 'confirms both ways';

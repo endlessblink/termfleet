@@ -51,8 +51,18 @@ export async function sendToPane(pane, text, { force = false } = {}) {
     return { error: 'That terminal is not running any more.' };
   }
 
-  if (pane.turn === 'working' && !force) {
-    return { error: 'busy', busy: true, message: 'The agent is still working. Send anyway?' };
+  // Busy means either the agent says it is working, or the terminal is
+  // visibly producing output right now. The second is the more reliable of
+  // the two, and catches an agent that never updates its own status.
+  const busy = pane.turn === 'working' || pane.producing === true;
+  if (busy && !force) {
+    return {
+      error: 'busy',
+      busy: true,
+      message: pane.producing
+        ? 'This terminal is working right now. Send anyway?'
+        : 'The agent is still working. Send anyway?',
+    };
   }
 
   inFlight.add(pane.id);
