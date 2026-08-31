@@ -1126,7 +1126,7 @@ impl PtyManager {
                                     // stamp, not by this check.
                                     let _ = exit_succeeded;
                                     (reader_resume_started_at.elapsed()
-                                        >= AGENT_OPERATOR_EXIT_MIN_UPTIME)
+                                        >= agent_operator_exit_min_uptime())
                                         .then(agent_operator_exit_reason)
                                 });
                             if let (Some(dir), Some(reason)) =
@@ -2117,15 +2117,49 @@ const AGENT_EXITED_IN_SESSION: &str = "agent was exited in this session";
 
 /// How long a resumed agent must stay alive before a clean exit counts as the
 /// operator quitting it rather than the resume command finishing on its own.
-const AGENT_OPERATOR_EXIT_MIN_UPTIME: std::time::Duration =
+const AGENT_OPERATOR_EXIT_MIN_UPTIME_DEFAULT: std::time::Duration =
     std::time::Duration::from_secs(10);
+
+/// Overridable so an end-to-end test can prove the real spawn -> quit -> restore
+/// chain without sleeping for the production threshold.
+fn agent_operator_exit_min_uptime() -> std::time::Duration {
+    std::env::var("TERMFLEET_AGENT_QUIT_MIN_UPTIME_MS")
+        .ok()
+        .and_then(|value| value.trim().parse::<u64>().ok())
+        .map(std::time::Duration::from_millis)
+        .unwrap_or(AGENT_OPERATOR_EXIT_MIN_UPTIME_DEFAULT)
+}
 
 /// Stamps the quit marker with the daemon that observed it. A quit only silences
 /// auto-resume for the daemon that was running at the time: if the daemon itself
 /// is later stopped, its own teardown kills every agent cleanly, and without this
 /// stamp that teardown would look exactly like the operator quitting all of them.
 fn agent_operator_exit_reason() -> String {
-    format!("{AGENT_EXITED_IN_SESSION} (owner={})", std::process::id())
+    format!("{AGENT_EXITED_IN_SESSION} (owner={})", daemon_run_id())
+}
+
+/// Identity of THIS daemon run. Deliberately not the pid: pids are reused after a
+/// reboot, and a recycled pid would let a stale quit marker silence a legitimate
+/// recovery — the exact class of bug this stamp exists to prevent.
+fn daemon_run_id() -> &'static str {
+    static RUN_ID: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    RUN_ID.get_or_init(|| {
+        let pid = std::process::id();
+        // /proc/self/stat field 22 is the process start time in clock ticks
+        // since boot: unique per run alongside the pid, and stable while it runs.
+        let start_ticks = fs::read_to_string("/proc/self/stat")
+            .ok()
+            .and_then(|stat| {
+                let tail = stat.rsplit_once(would_be_comm_end())?.1.to_string();
+                tail.split_whitespace().nth(19).map(str::to_string)
+            })
+            .unwrap_or_else(|| "0".to_string());
+        format!("{pid}-{start_ticks}")
+    })
+}
+
+fn would_be_comm_end() -> &'static str {
+    ") "
 }
 
 /// True when the quit was recorded by the daemon that is running right now.
@@ -2134,8 +2168,7 @@ fn agent_operator_exit_is_current(reason: &str) -> bool {
     reason
         .rsplit_once("(owner=")
         .and_then(|(_, rest)| rest.strip_suffix(')'))
-        .and_then(|pid| pid.trim().parse::<u32>().ok())
-        .is_some_and(|pid| pid == std::process::id())
+        .is_some_and(|owner| owner.trim() == daemon_run_id())
 }
 
 fn classify_agent_resume_failure(output: &str) -> Option<&'static str> {
@@ -2974,6 +3007,107 @@ mod tests {
     }
 
     #[test]
+    fn quitting_a_resumed_agent_restores_a_shell_but_a_dead_daemon_still_resumes() {
+        // End-to-end over the real spawn -> exit -> restore chain, not the
+        // planner alone: the planner passed while `/exit` still relaunched the
+        // agent in the live app, because the marker was never written.
+        use std::path::PathBuf;
+
+        std::env::set_var("TERMFLEET_AGENT_QUIT_MIN_UPTIME_MS", "150");
+        let dir: PathBuf = std::env::temp_dir().join(format!(
+            "tw-agent-quit-e2e-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create persistence dir");
+        let id = "agent-quit-e2e".to_string();
+
+        let meta = SessionMeta {
+            cwd: Some("/tmp".to_string()),
+            command: Some("/bin/bash".to_string()),
+            recovery_kind: Some(SessionRecoveryKind::AgentTerminal),
+            provider: Some("codex".to_string()),
+            provider_session_id: Some("019f-quit-e2e".to_string()),
+            // Stands in for the agent: alive past the threshold, then leaves
+            // with a non-zero code the way a real provider can.
+            sanitized_resume_command: Some("sleep 0.6; exit 3".to_string()),
+            ..SessionMeta::default()
+        };
+        let mut scrollback = Vec::new();
+        scrollback.extend_from_slice(&0_u64.to_le_bytes());
+        scrollback.extend_from_slice(b"previous agent transcript\n");
+        super::atomic_write(&super::scrollback_path(&dir, &id), &scrollback)
+            .expect("seed scrollback checkpoint");
+        super::atomic_write(
+            &super::meta_path(&dir, &id),
+            &serde_json::to_vec(&meta).expect("encode meta"),
+        )
+        .expect("seed metadata");
+        super::write_session_disposition(&dir, &id, super::SessionLifecycle::Recoverable);
+
+        let manager = super::PtyManager::with_persistence_dir(dir.clone());
+        manager
+            .ensure_detached(Some(id.clone()), None, None, None, None)
+            .expect("spawn the resumed agent");
+        std::thread::sleep(std::time::Duration::from_millis(1400));
+
+        let after_quit = super::load_persisted(&dir, &id).expect("read checkpoint");
+        let reason = after_quit
+            .restore_failure_reason
+            .clone()
+            .expect("a quit must be recorded");
+        assert!(
+            reason.contains(super::AGENT_EXITED_IN_SESSION),
+            "expected an operator-quit marker, got {reason:?}"
+        );
+        assert_eq!(after_quit.restore_status, Some(AgentRestoreStatus::ResumeFailed));
+
+        // Same daemon: no resume is planned, so the restore falls through to a
+        // plain shell. Prove that against the real restore, not just the plan.
+        let plan_after_quit = plan_agent_restore(&after_quit, false);
+        assert_eq!(plan_after_quit.status, AgentRestoreStatus::ResumeFailed);
+        assert_eq!(plan_after_quit.command, None);
+
+        manager
+            .ensure_detached(Some(id.clone()), None, None, None, None)
+            .expect("restore the quit pane");
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        let restored = super::load_persisted(&dir, &id).expect("read restored checkpoint");
+        assert_ne!(
+            restored.command.as_deref(),
+            Some("sleep 0.6; exit 3"),
+            "quitting an agent must leave a shell, not relaunch the agent"
+        );
+
+        // A different daemon run (reboot, crash, app restart): resume again.
+        let mut from_dead_daemon =
+            super::load_persisted(&dir, &id).expect("re-read checkpoint");
+        from_dead_daemon.restore_failure_reason =
+            Some(reason.replace(super::daemon_run_id(), "9999-dead-run"));
+        let plan = plan_agent_restore(&from_dead_daemon, false);
+        assert_eq!(
+            plan.status,
+            AgentRestoreStatus::Resuming,
+            "an agent that died with its daemon must still resume"
+        );
+        assert_eq!(plan.command.as_deref(), Some("sleep 0.6; exit 3"));
+
+        std::env::remove_var("TERMFLEET_AGENT_QUIT_MIN_UPTIME_MS");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn daemon_run_id_is_not_just_a_reusable_pid() {
+        // A pid alone is reused after a reboot, which would let a stale quit
+        // marker silence a legitimate recovery.
+        let run_id = super::daemon_run_id();
+        assert!(run_id.starts_with(&format!("{}-", std::process::id())));
+        assert_ne!(run_id, std::process::id().to_string());
+        assert_eq!(run_id, super::daemon_run_id(), "run id must be stable");
+    }
+
+    #[test]
     fn agent_restore_planner_resumes_agents_that_died_with_a_previous_daemon() {
         // Stopping the daemon kills every agent cleanly, which looks identical to
         // the operator quitting them. The quit marker is stamped with the daemon
@@ -2981,9 +3115,9 @@ mod tests {
         let mut checkpoint = codex_agent_checkpoint(Some("019f-daemon-death"));
         checkpoint.restore_status = Some(AgentRestoreStatus::ResumeFailed);
         checkpoint.restore_failure_reason = Some(format!(
-            "{} (owner={})",
+            "{} (owner={}-dead-run)",
             super::AGENT_EXITED_IN_SESSION,
-            std::process::id() + 1
+            std::process::id()
         ));
 
         let plan = plan_agent_restore(&checkpoint, false);

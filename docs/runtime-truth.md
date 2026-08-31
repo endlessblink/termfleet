@@ -37,6 +37,13 @@ agents. So:
 
 This cost a full round of "the fix is installed" / "it behaves exactly the same".
 
+**Stop it with `npm run stop:all`, never by hand.** That script SIGTERMs (then
+SIGKILLs) every owning process, verifies they are gone, and refuses to report
+success while the socket still answers. It never unlinks the socket: deleting a
+socket whose daemon was still alive is what produced a daemon split-brain — two
+daemons, two socket listeners, and every running agent unreachable from the app.
+A stale socket file is fine; the launcher connects, is refused, and proceeds.
+
 ## 3. Logs that already exist
 
 | What | Where |
