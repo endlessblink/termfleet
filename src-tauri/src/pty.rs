@@ -1117,9 +1117,16 @@ impl PtyManager {
                             let recorded_reason: Option<String> = resume_failure
                                 .map(str::to_string)
                                 .or_else(|| {
-                                    (exit_succeeded
-                                        && reader_resume_started_at.elapsed()
-                                            >= AGENT_OPERATOR_EXIT_MIN_UPTIME)
+                                    // Any end after real uptime is the operator
+                                    // leaving the agent — providers exit with
+                                    // assorted codes on `/exit`, so the code is
+                                    // not a usable signal. A resume that simply
+                                    // fails dies inside the uptime window, and
+                                    // daemon teardown is handled by the owner
+                                    // stamp, not by this check.
+                                    let _ = exit_succeeded;
+                                    (reader_resume_started_at.elapsed()
+                                        >= AGENT_OPERATOR_EXIT_MIN_UPTIME)
                                         .then(agent_operator_exit_reason)
                                 });
                             if let (Some(dir), Some(reason)) =
