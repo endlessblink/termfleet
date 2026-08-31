@@ -120,15 +120,15 @@ const checks = [
       /\{!immersiveTerminal\.enabled && <WorkbenchHeader \/>}/.test(app) &&
       /\{!immersiveTerminal\.enabled && <WorkbenchSidebar \/>}/.test(app) &&
       /\{!immersiveTerminal\.enabled && <StatusBar \/>}/.test(app) &&
-      /const effectiveWorkspaceMode = immersiveTerminal\.enabled \? "split" : workspaceMode;/.test(workspaceSurface) &&
+      /const effectiveWorkspaceMode = restoredPanelMode === "tasks"\s*\? "tasks"\s*:\s*immersiveTerminal\.enabled\s*\? "split"\s*:\s*restoredPanelMode;/.test(workspaceSurface) &&
       /\{!immersiveTerminal\.enabled && <CanvasSidebar \/>}/.test(workspaceSurface) &&
       /const immersivePaneId =[\s\S]*immersiveTerminal\.enabled && immersiveTerminal\.tabId === tab\.id/.test(splitPane) &&
       /window\.addEventListener\("keydown", onKeyDown, true\);/.test(splitPane) &&
       /event\.key !== "Escape"/.test(splitPane) &&
       /exitImmersiveTerminal\(\);/.test(splitPane) &&
       /const bounds = immersivePaneId\s*\?\s*containerRect\s*:\s*paneBounds\.get\(paneId\);/.test(splitPane) &&
-      /\{!isImmersivePane && \(/.test(splitPane) &&
-      /\{!immersivePaneId && handles\.map/.test(splitPane),
+      /\{\s*!isImmersivePane\s*&&\s*\(/.test(splitPane) &&
+      /\{\s*!immersivePaneId\s*&&\s*handles\.map/.test(splitPane),
     message: "Immersive terminal mode must hide app/sidebar/status/pane chrome, render only the targeted pane, and reserve Escape as the exit path.",
   },
   {
@@ -178,7 +178,14 @@ const checks = [
     message: "Standalone map terminals must use a stable browser/runtime session id.",
   },
   {
-    ok: /const terminalPaneId =\s*linkedTerminal\?\.paneId \?\? node\.id;/.test(magicCanvas) &&
+    // The card's own pane may be spelled three ways (the raw node id, the
+    // `recovered-pane-` form, or an explicit saved link), so the fallback is
+    // allowed to be `node.id` or a value derived only from those. What must
+    // never appear is the tab's active pane: that is the switch-to-a-sibling
+    // bug this gate exists for, and it is asserted separately below.
+    ok: /const terminalPaneId =\s*linkedTerminal\?\.paneId \?\? (node\.id|exactNodePaneId);/.test(magicCanvas) &&
+      /const exactNodePaneId =\s*node\.linkedTerminalPaneId \?\? restoredNodePaneId \?\? node\.id;/.test(magicCanvas) &&
+      !/const terminalPaneId =[^;]*activePaneId/.test(magicCanvas) &&
       /const targetPaneId = currentTerminal\?\.paneId \?\? terminalPaneId;/.test(magicCanvas),
     message: "Connect must preserve the map card's pane identity instead of silently switching to the active pane.",
   },
@@ -1117,7 +1124,7 @@ const checks = [
     ok: /function persistedTerminalSnapshot\(terminal: TerminalState\): TerminalState/.test(workspaceStore) &&
       /status: "starting"/.test(workspaceStore) &&
       /function withRestartableTerminals\(tab: Tab\): Tab/.test(workspaceStore) &&
-      /persisted\.tabs && persisted\.tabs\.length > 0/.test(workspaceStore) &&
+      /(?:Array\.isArray\(persisted\.tabs\)|persisted\.tabs) && persisted\.tabs\.length > 0/.test(workspaceStore) &&
       /withoutLegacyRecoveredTabs\(persisted\.tabs\)\.map\(withRestartableTerminals\)/.test(workspaceStore),
     message: "Workspace persistence must restore terminal metadata as restartable sessions, not erase it.",
   },

@@ -13,20 +13,23 @@ test("builds a standalone reconnect command for each supported chat provider", (
   expect(
     agentReconnectCommand({ provider: "claude", sessionId: "2492d5a8-safe-id" }),
   ).toBe("claude --resume 2492d5a8-safe-id");
+  expect(
+    agentReconnectCommand({ provider: "opencode", sessionId: "ses_4b6273738ffer1UqWIk6zevIQA" }),
+  ).toBe("opencode --session ses_4b6273738ffer1UqWIk6zevIQA");
 });
 
 function dependencies(
   overrides: Partial<AgentReconnectDependencies> = {},
 ): AgentReconnectDependencies {
   return {
-    readRunningProvider: async () => null,
+    readRunningIdentity: async () => null,
     readRecovery: async (paneId) => ({
       provider: "codex",
       sessionId: `019f-session-${paneId}`,
     }),
     sessionExists: async () => true,
-    conversationOwnedElsewhere: async () => false,
-    writeResumeCommand: async () => undefined,
+    conversationOwner: async () => null,
+    confirmExactConversation: async () => true,
     ...overrides,
   };
 }
@@ -45,17 +48,25 @@ test("never types a resume for a conversation a live agent still owns", async ()
   const result = await reconnectStoppedAgents(
     ["terminal-orphaned", "terminal-free"],
     dependencies({
-      conversationOwnedElsewhere: async (_provider, _sessionId, paneId) =>
-        paneId === "terminal-orphaned",
-      writeResumeCommand: async (paneId) => {
-        writes.push(paneId);
-      },
+      conversationOwner: async (provider, sessionId, paneId) =>
+        paneId === "terminal-orphaned"
+          ? {
+              provider,
+              sessionId,
+              providerPid: 4242,
+              daemonPaneId: paneId,
+              daemonRootPid: 99,
+            }
+          : null,
     }),
   );
 
-  expect(writes).toEqual(["terminal-free"]);
+  // Nothing is ever typed into either pane: the held one is reported as such,
+  // and the free one is left for the daemon to respawn into its own resume.
+  expect(writes).toEqual([]);
   expect(result.ownedElsewhere).toEqual(["terminal-orphaned"]);
-  expect(result.resumed).toEqual(["terminal-free"]);
+  expect(result.pendingColdRestore).toEqual(["terminal-free"]);
+  expect(result.resumed).toEqual([]);
   expect(result.failed).toEqual([]);
 });
 
@@ -67,6 +78,7 @@ test("reports conversations held elsewhere so the click is not silent", () => {
       missingRecovery: [],
       missingSession: [],
       ownedElsewhere: ["terminal-orphaned"],
+      pendingColdRestore: [],
       failed: [],
     }),
   ).toBe("1 still open elsewhere");
@@ -77,12 +89,14 @@ test("the ownership gate is consulted only after cheaper checks pass", async () 
   await reconnectStoppedAgents(
     ["terminal-running", "terminal-missing", "terminal-ok"],
     dependencies({
-      readRunningProvider: async (paneId) =>
-        paneId === "terminal-running" ? "codex" : null,
+      readRunningIdentity: async (paneId) =>
+        paneId === "terminal-running"
+          ? { provider: "codex", sessionId: "019f-session-terminal-running" }
+          : null,
       sessionExists: async (_p, _s, paneId) => paneId !== "terminal-missing",
-      conversationOwnedElsewhere: async (_p, _s, paneId) => {
+      conversationOwner: async (_p, _s, paneId) => {
         consulted.push(paneId);
-        return false;
+        return null;
       },
     }),
   );
@@ -92,8 +106,21 @@ test("the ownership gate is consulted only after cheaper checks pass", async () 
   expect(consulted).toEqual(["terminal-ok"]);
 });
 
-test("reconnects each stopped pane once with its own saved conversation", async () => {
-  const writes: Array<{ paneId: string; command: string }> = [];
+test("treats a degraded shell as resumable instead of already running", async () => {
+  const writes: string[] = [];
+  const result = await reconnectStoppedAgents(
+    ["terminal-degraded"],
+    dependencies({
+      readRunningIdentity: async () => null,
+    }),
+  );
+
+  expect(writes).toEqual([]);
+  expect(result.alreadyRunning).toEqual([]);
+  expect(result.pendingColdRestore).toEqual(["terminal-degraded"]);
+});
+
+test("queues each stopped pane once with its own saved conversation", async () => {
   const result = await reconnectStoppedAgents(
     ["terminal-a", "terminal-a", "terminal-b"],
     dependencies({
@@ -101,23 +128,13 @@ test("reconnects each stopped pane once with its own saved conversation", async 
         paneId === "terminal-a"
           ? { provider: "codex", sessionId: "019fae67-safe-id" }
           : { provider: "claude", sessionId: "2492d5a8-safe-id" },
-      writeResumeCommand: async (paneId, command) => {
-        writes.push({ paneId, command });
-      },
     }),
   );
 
-  expect(writes).toEqual([
-    {
-      paneId: "terminal-a",
-      command: "exec codex resume 019fae67-safe-id\n",
-    },
-    {
-      paneId: "terminal-b",
-      command: "exec claude --resume 2492d5a8-safe-id\n",
-    },
-  ]);
-  expect(result.resumed).toEqual(["terminal-a", "terminal-b"]);
+  // A repeated pane id is settled once, so a pane can never be queued for two
+  // resumes of the same conversation.
+  expect(result.pendingColdRestore).toEqual(["terminal-a", "terminal-b"]);
+  expect(result.resumed).toEqual([]);
   expect(result.alreadyRunning).toEqual([]);
   expect(result.failed).toEqual([]);
 });
@@ -127,17 +144,16 @@ test("skips running agents and missing local conversations", async () => {
   const result = await reconnectStoppedAgents(
     ["terminal-running", "terminal-missing", "terminal-no-sidecar"],
     dependencies({
-      readRunningProvider: async (paneId) =>
-        paneId === "terminal-running" ? "codex" : null,
+      readRunningIdentity: async (paneId) =>
+        paneId === "terminal-running"
+          ? { provider: "codex", sessionId: "019f-missing-session" }
+          : null,
       readRecovery: async (paneId) =>
         paneId === "terminal-no-sidecar"
           ? null
           : { provider: "codex", sessionId: "019f-missing-session" },
       sessionExists: async (_provider, _sessionId, paneId) =>
         paneId !== "terminal-missing",
-      writeResumeCommand: async (paneId) => {
-        writes.push(paneId);
-      },
     }),
   );
 
@@ -145,6 +161,62 @@ test("skips running agents and missing local conversations", async () => {
   expect(result.alreadyRunning).toEqual(["terminal-running"]);
   expect(result.missingRecovery).toEqual(["terminal-no-sidecar"]);
   expect(result.missingSession).toEqual(["terminal-missing"]);
+});
+
+test("does not count an existing exact process until it remains stably live", async () => {
+  const result = await reconnectStoppedAgents(
+    ["terminal-unstable"],
+    dependencies({
+      readRunningIdentity: async () => ({
+        provider: "codex",
+        sessionId: "019f-session-terminal-unstable",
+      }),
+      confirmExactConversation: async () => false,
+    }),
+  );
+
+  expect(result.alreadyRunning).toEqual([]);
+  expect(result.failed).toEqual([{
+    paneId: "terminal-unstable",
+    reason: "Existing exact conversation did not remain live",
+  }]);
+});
+
+test("does not mistake another conversation in the pane for the saved one", async () => {
+  const writes: string[] = [];
+  const result = await reconnectStoppedAgents(
+    ["terminal-mismatch"],
+    dependencies({
+      readRunningIdentity: async () => ({
+        provider: "codex",
+        sessionId: "019f-different-session",
+      }),
+      readRecovery: async () => ({
+        provider: "codex",
+        sessionId: "019f-saved-session",
+      }),
+    }),
+  );
+
+  expect(writes).toEqual([]);
+  expect(result.alreadyRunning).toEqual([]);
+  expect(result.failed).toEqual([
+    {
+      paneId: "terminal-mismatch",
+      reason: "Pane is running a different agent conversation",
+    },
+  ]);
+});
+
+test("never reports a dormant conversation as reconnected", async () => {
+  const result = await reconnectStoppedAgents(
+    ["terminal-drops-back-to-shell"],
+    dependencies({ confirmExactConversation: async () => false }),
+  );
+
+  expect(result.resumed).toEqual([]);
+  expect(result.failed).toEqual([]);
+  expect(result.pendingColdRestore).toEqual(["terminal-drops-back-to-shell"]);
 });
 
 test("rejects unsafe provider session ids instead of writing shell input", async () => {
@@ -156,9 +228,6 @@ test("rejects unsafe provider session ids instead of writing shell input", async
         provider: "codex",
         sessionId: "valid-looking; touch /tmp/unsafe",
       }),
-      writeResumeCommand: async (paneId) => {
-        writes.push(paneId);
-      },
     }),
   );
 
@@ -171,19 +240,20 @@ test("rejects unsafe provider session ids instead of writing shell input", async
   ]);
 });
 
-test("isolates a pane write failure and continues reconnecting the rest", async () => {
+test("isolates a pane lookup failure and continues settling the rest", async () => {
   const result = await reconnectStoppedAgents(
     ["terminal-fails", "terminal-works"],
     dependencies({
-      writeResumeCommand: async (paneId) => {
-        if (paneId === "terminal-fails") throw new Error("write unavailable");
+      readRecovery: async (paneId) => {
+        if (paneId === "terminal-fails") throw new Error("sidecar unavailable");
+        return { provider: "codex", sessionId: `019f-session-${paneId}` };
       },
     }),
   );
 
-  expect(result.resumed).toEqual(["terminal-works"]);
+  expect(result.pendingColdRestore).toEqual(["terminal-works"]);
   expect(result.failed).toEqual([
-    { paneId: "terminal-fails", reason: "write unavailable" },
+    { paneId: "terminal-fails", reason: "sidecar unavailable" },
   ]);
 });
 
@@ -195,6 +265,7 @@ test("summarizes complete and partial reconnect outcomes plainly", () => {
       missingRecovery: [],
       missingSession: [],
       ownedElsewhere: [],
+      pendingColdRestore: [],
       failed: [],
     }),
   ).toBe("2 resumed · 1 already running");
@@ -206,7 +277,10 @@ test("summarizes complete and partial reconnect outcomes plainly", () => {
       missingRecovery: ["b"],
       missingSession: ["c"],
       ownedElsewhere: [],
+      pendingColdRestore: ["e"],
       failed: [{ paneId: "d", reason: "write failed" }],
     }),
-  ).toBe("1 resumed · 1 missing path · 1 missing locally · 1 failed");
+  ).toBe(
+    "1 resumed · 1 missing path · 1 missing locally · 1 reconnect on relaunch · 1 failed",
+  );
 });

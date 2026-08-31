@@ -13,8 +13,7 @@ LOG_FILE="$LOG_DIR/desktop-launch.log"
 TERMFLEET_CMD="${TERMFLEET_CMD:-$HOME/.local/bin/termfleet}"
 TERMFLEET_INSTALL_ROOT="${TERMFLEET_INSTALL_ROOT:-${XDG_DATA_HOME:-$HOME/.local/share}/termfleet}"
 TERMFLEET_TMPDIR="${TERMFLEET_TMPDIR:-/media/endlessblink/data/.dev-tmp/$USER}"
-TERMFLEET_RESTORE="${TERMFLEET_RESTORE:-${AGENT_FLEET_RESTORE:-/media/endlessblink/data/my-projects/ai-development/cc-linux-enhancments/scripts/agent-fleet/restore.py}}"
-TERMFLEET_COCKPIT_SNAPSHOT_PATH="${TERMFLEET_COCKPIT_SNAPSHOT_PATH:-${XDG_DATA_HOME:-$HOME/.local/share}/terminal-workspace/agent-status/cockpit-snapshot.json}"
+TERMFLEET_COCKPIT_SNAPSHOT_PATH="${TERMFLEET_COCKPIT_SNAPSHOT_PATH:-${XDG_DATA_HOME:-$HOME/.local/share}/terminal-workspace/agent-status/termfleet-cockpit-snapshot.json}"
 
 # The desktop wrapper has two legitimate callers: the dock and agents that
 # need to relaunch the UI while preserving the canonical daemon.  A bare
@@ -47,6 +46,15 @@ case "$launch_context" in
     exit 64
     ;;
 esac
+if [[ "$launch_context" == "isolated-smoke" && -n "${TERMFLEET_CHILD_ENV_FILE:-}" && -f "$TERMFLEET_CHILD_ENV_FILE" ]]; then
+  set -a
+  # The isolated verifier owns this file; the normal dock never supplies it.
+  source "$TERMFLEET_CHILD_ENV_FILE"
+  set +a
+  if [[ -n "${TF_RESTORE_PATH:-}" && -f "$TF_RESTORE_PATH" ]]; then
+    "$TF_RESTORE_PATH" --termfleet-startup --once termfleet --ready-timeout 20 >>"$LOG_FILE" 2>&1 &
+  fi
+fi
 if [[ "$launch_context" == "shared-daemon-agent" ]]; then
   # Agent relaunches must attach to the same user daemon even when the caller
   # inherited a temporary test runtime or data directory.
@@ -63,21 +71,6 @@ mkdir -p "$LOG_DIR" "$TERMFLEET_TMPDIR"
 chmod 0700 "$TERMFLEET_TMPDIR"
 export TMPDIR="$TERMFLEET_TMPDIR"
 export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-2}"
-
-prepare_termfleet_restore_config() {
-  local source_config="${AGENT_FLEET_CONFIG:-$HOME/.config/agent-fleet/fleet.toml}"
-  local workspace_file="${XDG_DATA_HOME:-$HOME/.local/share}/terminal-workspace/workspace.json"
-  local filtered_config="$TERMFLEET_TMPDIR/agent-fleet-restore-filtered-$$.toml"
-  local filter_helper="$launcher_dir/filter-termfleet-restore.py"
-  [[ -f "$source_config" && -f "$workspace_file" ]] || return 0
-  [[ -f "$filter_helper" ]] || return 0
-  /usr/bin/python3 "$filter_helper" "$source_config" "$workspace_file" "$filtered_config"
-  if [[ -s "$filtered_config" ]]; then
-    export AGENT_FLEET_CONFIG="$filtered_config"
-    printf '[%s] restore suppression filtered manifest using %s\n' \
-      "$(date --iso-8601=seconds)" "$workspace_file" >>"$LOG_FILE"
-  fi
-}
 
 # Serialize dock launches. Without a lock, two clicks in the small window before
 # the first cockpit appears can create two WebKit renderer trees and double the
@@ -165,6 +158,15 @@ cockpit_pid() {
   return 1
 }
 
+cockpit_window_visible() {
+  if command -v xdotool >/dev/null 2>&1 &&
+    [[ -n "$(xdotool search --onlyvisible --name '^TermFleet$' 2>/dev/null | head -1)" ]]; then
+    return 0
+  fi
+  command -v wmctrl >/dev/null 2>&1 &&
+    wmctrl -l 2>/dev/null | grep -qE '[[:space:]]TermFleet$'
+}
+
 set_display_credentials() {
   export DISPLAY="${DISPLAY:-:0}"
   # The dock owns the production runtime, but an explicitly isolated smoke run
@@ -201,6 +203,16 @@ if [[ "${1:-}" != "--child" ]]; then
         fi
         sleep 0.05
       done
+    elif ! cockpit_window_visible; then
+      printf '[%s] replacing stale invisible TermFleet desktop pid=%s\n' \
+        "$(date --iso-8601=seconds)" "$existing_pid" >>"$LOG_FILE"
+      kill -TERM "$existing_pid" 2>/dev/null || true
+      for _ in {1..100}; do
+        if ! kill -0 "$existing_pid" 2>/dev/null; then
+          break
+        fi
+        sleep 0.05
+      done
     else
       printf '[%s] reusing existing TermFleet window\n' "$(date --iso-8601=seconds)" >>"$LOG_FILE"
       if command -v wmctrl >/dev/null 2>&1; then
@@ -218,12 +230,9 @@ if [[ "${1:-}" == "--child" ]]; then
   export TERMFLEET_TASK_CONTEXT_MODEL="${TERMFLEET_TASK_CONTEXT_MODEL:-qwen2.5:7b}"
   export TERMFLEET_AGENT_STATUS_TIMEOUT_MS="${TERMFLEET_AGENT_STATUS_TIMEOUT_MS:-1000}"
   export TERMFLEET_AGENT_STATUS_DISABLE="${TERMFLEET_AGENT_STATUS_DISABLE:-1}"
-  # Prepare only the external restore manifest before the UI reads the workspace;
-  # this helper must never mutate the durable layout or infer a close decision.
-  prepare_termfleet_restore_config
-  # Bring the independent PTY owner up before provider restore. If the app starts
-  # first, hydration can finish before restore creates the provider sessions;
-  # those sessions then appear only on the next app restart.
+  # Bring the independent PTY owner up before the cockpit. Exact agent recovery
+  # is coordinated by the app from the durable saved pane graph; a global
+  # folder-keyed manifest is never allowed to manufacture or resume panes.
   daemon_socket="${XDG_RUNTIME_DIR:-/run/user/${UID}}/terminal-workspace/daemon.sock"
   restore_before_app=0
   [[ -S "$daemon_socket" ]] && restore_before_app=1
@@ -254,14 +263,18 @@ if [[ "${1:-}" == "--child" ]]; then
     termfleet_incident_record "desktop_launch" "daemon_startup_failed" "socket=$daemon_socket"
     exit 1
   fi
-  if (( restore_before_app == 1 )) && [[ -f "$TERMFLEET_RESTORE" ]]; then
-    /usr/bin/python3 "$TERMFLEET_RESTORE" \
-      --termfleet-startup \
-      --force \
-      --ready-timeout 20 >>"$LOG_FILE" 2>&1 &
-  fi
   set +e
-  "$TERMFLEET_CMD" &
+  # Capture the cockpit's own stdout/stderr. Without this a crash or a WebKit
+  # error left nothing behind but "exited with status=N", so every freeze report
+  # had to be reconstructed after the fact from process ages.
+  APP_LOG_FILE="$LOG_DIR/app-output.log"
+  if [[ -f "$APP_LOG_FILE" ]] &&
+    (( $(stat -c '%s' "$APP_LOG_FILE" 2>/dev/null || echo 0) > 8388608 )); then
+    mv -f "$APP_LOG_FILE" "$APP_LOG_FILE.1" 2>/dev/null || true
+  fi
+  printf '[%s] ---- cockpit start (release=%s) ----\n' \
+    "$(date --iso-8601=seconds)" "${resolved_cmd:-$TERMFLEET_CMD}" >>"$APP_LOG_FILE"
+  "$TERMFLEET_CMD" >>"$APP_LOG_FILE" 2>&1 &
   app_pid=$!
   if (( restore_before_app == 0 )); then
     daemon_deadline=$((SECONDS + 20))
@@ -271,12 +284,6 @@ if [[ "${1:-}" == "--child" ]]; then
       fi
       sleep 0.1
     done
-    if [[ -S "$daemon_socket" && -f "$TERMFLEET_RESTORE" ]]; then
-      /usr/bin/python3 "$TERMFLEET_RESTORE" \
-        --termfleet-startup \
-        --force \
-        --ready-timeout 20 >>"$LOG_FILE" 2>&1 &
-    fi
   fi
   wait "$app_pid"
   status=$?
@@ -327,9 +334,8 @@ if command -v systemd-run >/dev/null 2>&1; then
     --setenv="TERMFLEET_DAEMON_TASKS_MAX=$TERMFLEET_DAEMON_TASKS_MAX" \
     --setenv="TERMFLEET_CMD=$TERMFLEET_CMD" \
     --setenv="TERMFLEET_INSTALL_ROOT=$TERMFLEET_INSTALL_ROOT" \
-    --setenv="TERMFLEET_RESTORE=$TERMFLEET_RESTORE" \
-    --setenv="AGENT_FLEET_CONFIG=${AGENT_FLEET_CONFIG:-}" \
     --setenv="AGENT_FLEET_STATE_DIR=${AGENT_FLEET_STATE_DIR:-}" \
+    --setenv="TERMFLEET_CHILD_ENV_FILE=${TERMFLEET_CHILD_ENV_FILE:-}" \
     --setenv="SMOKE_RESUME_MARKER=${SMOKE_RESUME_MARKER:-}" \
      --setenv="TERMFLEET_COCKPIT_SNAPSHOT_PATH=$TERMFLEET_COCKPIT_SNAPSHOT_PATH" \
     --setenv="TERMFLEET_OLLAMA_URL=${TERMFLEET_OLLAMA_URL:-http://127.0.0.1:11434}" \
@@ -366,8 +372,12 @@ fi
 # This closes the race between systemd-run/nohup returning and the child being
 # registered in the process table.
 for _ in {1..200}; do
-  if cockpit_running; then
+  if cockpit_running && cockpit_window_visible; then
     break
   fi
   sleep 0.05
 done
+if ! cockpit_running || ! cockpit_window_visible; then
+  printf '[%s] TermFleet desktop did not become visibly ready\n' "$(date --iso-8601=seconds)" >>"$LOG_FILE"
+  exit 1
+fi

@@ -7,21 +7,40 @@ export interface AgentRecoveryTarget {
   sessionId: string;
 }
 
+export interface AgentRuntimeIdentity {
+  provider: ResumableAgentProvider;
+  sessionId: string | null;
+}
+
+export interface AgentConversationOwner extends AgentRecoveryTarget {
+  providerPid: number;
+  daemonPaneId: string;
+  daemonRootPid: number;
+}
+
 export interface AgentReconnectDependencies {
-  readRunningProvider: (paneId: string) => Promise<AgentProvider | null>;
+  readRunningIdentity: (paneId: string) => Promise<AgentRuntimeIdentity | null>;
   readRecovery: (paneId: string) => Promise<AgentRecoveryTarget | null>;
   sessionExists: (
     provider: ResumableAgentProvider,
     sessionId: string,
     paneId: string,
   ) => Promise<boolean>;
-  /** Final safety gate before any resume command is injected. */
-  conversationOwnedElsewhere: (
+  /** Resolve the exact live daemon owner before a saved surface is attached. */
+  conversationOwner?: (
     provider: ResumableAgentProvider,
     sessionId: string,
     paneId: string,
+  ) => Promise<AgentConversationOwner | null>;
+  rebindOwnedConversation?: (
+    paneId: string,
+    target: AgentRecoveryTarget,
+    owner: AgentConversationOwner,
   ) => Promise<boolean>;
-  writeResumeCommand: (paneId: string, command: string) => Promise<void>;
+  confirmExactConversation: (
+    paneId: string,
+    target: AgentRecoveryTarget,
+  ) => Promise<boolean>;
 }
 
 export interface AgentReconnectFailure {
@@ -36,6 +55,12 @@ export interface AgentReconnectResult {
   missingSession: string[];
   /** Live agent owns this conversation in another pane; resuming would collide. */
   ownedElsewhere: string[];
+  /**
+   * The saved conversation is dormant — nothing owns it any more. It is never
+   * typed into a live terminal; the daemon respawns the pane straight into its
+   * own resume process on the next cold restore.
+   */
+  pendingColdRestore: string[];
   failed: AgentReconnectFailure[];
 }
 
@@ -53,6 +78,9 @@ export function formatAgentReconnectResult(result: AgentReconnectResult): string
       : "",
     result.ownedElsewhere.length
       ? `${result.ownedElsewhere.length} still open elsewhere`
+      : "",
+    result.pendingColdRestore.length
+      ? `${result.pendingColdRestore.length} reconnect on relaunch`
       : "",
     result.failed.length ? `${result.failed.length} failed` : "",
   ].filter(Boolean);
@@ -72,10 +100,6 @@ export function agentReconnectCommand(target: AgentRecoveryTarget): string {
   }
 }
 
-function resumeCommand(target: AgentRecoveryTarget): string {
-  return `exec ${agentReconnectCommand(target)}\n`;
-}
-
 function errorMessage(error: unknown): string {
   return error instanceof Error && error.message.trim()
     ? error.message.trim()
@@ -92,19 +116,34 @@ export async function reconnectStoppedAgents(
     missingRecovery: [],
     missingSession: [],
     ownedElsewhere: [],
+    pendingColdRestore: [],
     failed: [],
   };
+  const claimedConversations = new Set<string>();
+  const pendingConfirmations: Array<{
+    paneId: string;
+    recovery: AgentRecoveryTarget;
+    alreadyRunning: boolean;
+  }> = [];
 
   for (const paneId of [...new Set(paneIds.filter(Boolean))]) {
     try {
-      if (await dependencies.readRunningProvider(paneId)) {
-        result.alreadyRunning.push(paneId);
-        continue;
-      }
-
       const recovery = await dependencies.readRecovery(paneId);
       if (!recovery) {
         result.missingRecovery.push(paneId);
+        continue;
+      }
+
+      const runningIdentity = await dependencies.readRunningIdentity(paneId);
+      if (
+        runningIdentity?.provider === recovery.provider &&
+        runningIdentity.sessionId === recovery.sessionId
+      ) {
+        pendingConfirmations.push({
+          paneId,
+          recovery,
+          alreadyRunning: true,
+        });
         continue;
       }
       if (!SAFE_SESSION_ID.test(recovery.sessionId)) {
@@ -124,26 +163,68 @@ export async function reconnectStoppedAgents(
         result.missingSession.push(paneId);
         continue;
       }
-      // Last gate before we type into the terminal. Never inject a resume for a
-      // conversation that still has a live owner: the provider rejects it, and
-      // an overlap corrupts the transcript.
-      if (
-        await dependencies.conversationOwnedElsewhere(
-          recovery.provider,
-          recovery.sessionId,
+      const conversationKey = `${recovery.provider}:${recovery.sessionId}`;
+      if (claimedConversations.has(conversationKey)) {
+        result.failed.push({
           paneId,
-        )
-      ) {
-        result.ownedElsewhere.push(paneId);
+          reason: "Saved conversation is assigned to more than one pane",
+        });
         continue;
       }
 
-      await dependencies.writeResumeCommand(paneId, resumeCommand(recovery));
-      result.resumed.push(paneId);
+      // Recovery attaches to a daemon-owned live conversation. It never writes a
+      // provider resume command: Codex and Claude reject or corrupt duplicate
+      // writers, and an idle placeholder is not the conversation we are saving.
+      const owner = await dependencies.conversationOwner?.(
+        recovery.provider,
+        recovery.sessionId,
+        paneId,
+      );
+      if (owner) {
+        if (await dependencies.rebindOwnedConversation?.(paneId, recovery, owner)) {
+          claimedConversations.add(conversationKey);
+          result.alreadyRunning.push(paneId);
+        } else {
+          result.ownedElsewhere.push(paneId);
+        }
+        continue;
+      }
+      if (runningIdentity) {
+        result.failed.push({
+          paneId,
+          reason: "Pane is running a different agent conversation",
+        });
+        continue;
+      }
+
+      // A dormant conversation is never typed back into a live terminal: the
+      // daemon respawns the pane straight into its own `codex resume` /
+      // `claude --resume` process on cold restore, so the pane reconnects once
+      // and the scrollback stays free of injected resume commands.
+      result.pendingColdRestore.push(paneId);
     } catch (error) {
       result.failed.push({ paneId, reason: errorMessage(error) });
     }
   }
+
+  await Promise.all(
+    pendingConfirmations.map(async ({ paneId, recovery, alreadyRunning }) => {
+      try {
+        if (await dependencies.confirmExactConversation(paneId, recovery)) {
+          (alreadyRunning ? result.alreadyRunning : result.resumed).push(paneId);
+        } else {
+          result.failed.push({
+            paneId,
+            reason: alreadyRunning
+              ? "Existing exact conversation did not remain live"
+              : "Exact saved conversation did not remain live",
+          });
+        }
+      } catch (error) {
+        result.failed.push({ paneId, reason: errorMessage(error) });
+      }
+    }),
+  );
 
   return result;
 }

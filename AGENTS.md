@@ -38,6 +38,18 @@ been removed from the build — there is no `--features native-vte` anymore;
 its source is preserved at git tag `native-vte-snapshot`. TC-018 (BiDi/Hebrew
 nikud) and TC-015/TC-016 are TODO backlog.
 
+## Cross-agent board authority
+
+TermFleet's repository-local `MASTER_PLAN.md` remains the implementation backlog for the TermFleet codebase. It is **not** the canonical list rendered by the cross-agent Kanban feature.
+
+For `FEATURE-12` and every TermFleet surface described as the canonical agent board, canonical list, shared queue, agent task list, or cross-agent Kanban, the sole authority is:
+
+`/media/endlessblink/data/my-projects/ai-development/devops/agent-ops/MASTER_PLAN.md`
+
+Mutations must use `/media/endlessblink/data/my-projects/ai-development/devops/agent-ops/agent_ops.py`. FlowState is a separate personal task/planning system; the Life-Boat release matrix and repository-local plans are project backlogs. Never substitute any of them for the `agent-ops` queue, and expose the active source identity in runtime verification so an incorrect backend cannot look successful.
+
+Keep `agent-ops` as an independent project and service boundary. TermFleet may contain a thin typed client, UI, dispatch logic, and execution metadata, but must not vendor, fork, copy, or reimplement the canonical queue. The initial transport may be the versioned JSON CLI behind typed Tauri commands; keep it replaceable by a local daemon and prove the installed app is using the external authority.
+
 ## Build & run
 
 First Rust build compiles from scratch and can OOM-`Killed` under memory pressure.
@@ -89,6 +101,11 @@ Reset persisted layout/theme from the command bar with `Reset layout`.
 - If repo-local skill discovery is unavailable on an agent surface, read and
   follow those two files directly. Missing discovery must not make regression
   protection manual or optional.
+
+The issue control system is documented in `docs/issue-system.md`; it is the
+required operational layer for bugs, while `MASTER_PLAN.md` remains the project
+backlog and the external `agent-ops` queue remains the shared cross-agent task
+authority.
 
 ## Verification scripts
 
@@ -192,3 +209,11 @@ controls.
   task board, integrated with Watchpost).
 - The repo has its own fresh git history; full prior history and the retired
   predecessors live in the `cc-linux-enhancments` monorepo / claude-mem.
+
+## Runtime truth — READ FIRST
+
+`docs/runtime-truth.md` is the canonical page on how TermFleet actually runs:
+the authoritative state source (the daemon, not the saved session files), why a
+promoted release does not reach the terminals until the daemon is stopped, where
+every log lives, and the agent resume rules. Read it before diagnosing a
+restore, freeze, or "the fix didn't take" report.

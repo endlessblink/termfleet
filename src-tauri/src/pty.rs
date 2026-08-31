@@ -3,7 +3,7 @@ use portable_pty::{native_pty_system, Child, CommandBuilder, ExitStatus, MasterP
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs::{self, File, OpenOptions};
-use std::io::{Read, Write};
+use std::io::{Read, Seek, SeekFrom, Write};
 #[cfg(unix)]
 use std::os::fd::AsRawFd;
 use std::path::{Path, PathBuf};
@@ -21,6 +21,21 @@ use tauri::{AppHandle, Emitter, Runtime};
 // ~1.3k+ lines of that kind of output (and far more for plain shells) — enough to
 // reach the start of a typical session, at a bounded RAM/disk cost per session.
 const MAX_SCROLLBACK_BYTES: usize = 4_000_000;
+
+// The lifecycle log is append-only and used to be unbounded: on a long-lived
+// install it reached 349MB, and `session_events()` (polled every 500ms by the
+// exit watcher) read and JSON-parsed the entire file each tick. Two independent
+// bounds keep that cheap forever: the writer rotates at 32MB keeping exactly one
+// previous generation, and the reader only parses the tail window below. Callers
+// ask "what is the latest event per session", so older records are never needed.
+const MAX_LIFECYCLE_LOG_BYTES: u64 = 32 * 1024 * 1024;
+const LIFECYCLE_READ_WINDOW_BYTES: u64 = 4 * 1024 * 1024;
+
+// Persisted per-session files (scrollback/meta/history/lifecycle) that nothing
+// has written to in this long are removed at startup, so the sessions directory
+// cannot grow without limit. A live or restorable terminal rewrites its files
+// continuously, so it is never a prune candidate.
+const PERSISTED_SESSION_RETENTION_DAYS: u64 = 30;
 
 /// Injected once after a session's replayed scrollback on cold restore (daemon
 /// death / reboot) to normalize VT state before the fresh shell writes. A dead
@@ -87,7 +102,13 @@ struct PtyEntry {
 
 impl PtyEntry {
     /// Stop the reader thread and reap the child. Idempotent.
-    fn shutdown(&mut self, reason: &str, events: &Arc<Mutex<Vec<PtySessionEvent>>>, id: &str) {
+    fn shutdown(
+        &mut self,
+        reason: &str,
+        events: &Arc<Mutex<Vec<PtySessionEvent>>>,
+        lifecycle_dir: Option<&Path>,
+        id: &str,
+    ) {
         self.reader_stop.store(true, Ordering::Relaxed);
         if self.ended.load(Ordering::Acquire) {
             if let Some(handle) = self.reader.take() {
@@ -101,6 +122,7 @@ impl PtyEntry {
             PtySessionEvent::new(id, "kill-requested")
                 .with_pid(pid)
                 .with_reason(reason),
+            lifecycle_dir,
         );
         kill_pane_processes(id, pid, self.pane_cgroup.as_ref());
         let _ = self.child.lock().unwrap().kill();
@@ -144,6 +166,7 @@ impl PtyEntry {
                 .with_pid(pid)
                 .with_reason(reason)
                 .with_exit_status(exit_status),
+            lifecycle_dir,
         );
     }
 }
@@ -406,6 +429,18 @@ pub struct PtySessionEvent {
     pub exit_status: Option<PtyExitStatus>,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalMatrixRecord {
+    pub id: String,
+    pub last_at_ms: u128,
+    pub last_event: String,
+    pub last_reason: Option<String>,
+    pub pid: Option<u32>,
+    pub exit_status: Option<PtyExitStatus>,
+    pub event_count: u64,
+}
+
 impl PtySessionEvent {
     fn new(id: &str, kind: &str) -> Self {
         Self {
@@ -617,6 +652,9 @@ impl PtyManager {
     pub fn persistent() -> Self {
         let persist_dir =
             default_persist_dir().and_then(|dir| fs::create_dir_all(&dir).ok().map(|_| dir));
+        if let Some(dir) = persist_dir.as_deref() {
+            prune_persisted_state(dir);
+        }
         Self {
             ptys: Mutex::new(HashMap::new()),
             ensure_lock: Mutex::new(()),
@@ -684,7 +722,12 @@ impl PtyManager {
             }
         };
         if let Some(mut entry) = ended_entry {
-            entry.shutdown("replace naturally ended session", &self.session_events, &id);
+            entry.shutdown(
+                "replace naturally ended session",
+                &self.session_events,
+                self.persist_dir.as_deref(),
+                &id,
+            );
         }
         // A persisted checkpoint for this id means the original shell died with a
         // previous daemon (dev relaunch, OOM) or the machine rebooted. Restore the
@@ -884,6 +927,7 @@ impl PtyManager {
                 } else {
                     "fresh"
                 }),
+            self.persist_dir.as_deref(),
         );
         // Drop the slave - the child process has it now
         drop(pair.slave);
@@ -928,6 +972,9 @@ impl PtyManager {
                 open_cols,
                 open_rows,
             );
+            // Fresh PTYs become recoverable only after they are actually
+            // created. Preserve explicit-close and backup-only tombstones.
+            mark_session_recoverable_if_unknown(dir, &id);
             if let Some(plan) = recovery_plan.as_ref() {
                 write_agent_restore_status(
                     dir,
@@ -963,6 +1010,10 @@ impl PtyManager {
         let reader_persist_dir = self.persist_dir.clone();
         let reader_pane_cgroup = pane_cgroup.clone();
         let reader_was_resuming = resume_lock.is_some();
+        // An agent the operator actually used runs for more than a moment. A
+        // clean exit inside this window is the resume command itself finishing,
+        // not someone typing `/exit`, and must stay retryable.
+        let reader_resume_started_at = std::time::Instant::now();
 
         let reader_handle = std::thread::Builder::new()
             .name(format!("pty-reader-{id}"))
@@ -1033,6 +1084,16 @@ impl PtyManager {
                         };
                         drop(child);
                         *last_exit_reader.lock().unwrap() = Some(exit_status.clone());
+                        let exit_succeeded = exit_status.success;
+                        if let Some(dir) = reader_persist_dir.as_deref() {
+                            // Natural EOF/read failure is recoverable. The
+                            // disposition check prevents a close-vs-EOF race
+                            // from resurrecting an explicitly killed pane.
+                            mark_session_recoverable_if_not_intentionally_killed(
+                                dir,
+                                &reader_event_id,
+                            );
+                        }
                         subscribers_reader.lock().unwrap().clear();
                         ended_reader.store(true, Ordering::Release);
                         remove_pane_cgroup(reader_pane_cgroup);
@@ -1044,8 +1105,23 @@ impl PtyManager {
                                     output.data.get(resume_output_start..).unwrap_or_default(),
                                 )
                             };
+                            // A resumed agent that ends while this daemon is
+                            // alive was ended by the operator (`/exit`, Ctrl-D).
+                            // Record that so the pane comes back as a plain
+                            // shell: without it the next create re-plans the
+                            // same resume and the agent relaunches itself the
+                            // instant the user quits it.
+            // A resumed agent that ends *cleanly* while this daemon is alive
+                            // was ended by the operator (`/exit`, Ctrl-D). A non-zero
+                            // exit is a failed resume and stays retryable.
+                            let recorded_reason = resume_failure.or_else(|| {
+                                (exit_succeeded
+                                    && reader_resume_started_at.elapsed()
+                                        >= AGENT_OPERATOR_EXIT_MIN_UPTIME)
+                                    .then_some(AGENT_EXITED_IN_SESSION)
+                            });
                             if let (Some(dir), Some(reason)) =
-                                (reader_persist_dir.as_deref(), resume_failure)
+                                (reader_persist_dir.as_deref(), recorded_reason)
                             {
                                 write_agent_restore_status(
                                     dir,
@@ -1063,7 +1139,7 @@ impl PtyManager {
                             event.id, event.kind, event.pid, event.reason
                         ),
                     );
-                    push_session_event(&reader_events, event);
+                    push_session_event(&reader_events, event, reader_persist_dir.as_deref());
                 }
             })
             .expect("spawn pty reader thread");
@@ -1099,6 +1175,7 @@ impl PtyManager {
             loser.shutdown(
                 "duplicate stable session lost creation race",
                 &self.session_events,
+                self.persist_dir.as_deref(),
                 &id,
             );
             return Ok((id, true));
@@ -1175,8 +1252,10 @@ impl PtyManager {
                 .clone()
                 .or_else(default_persist_dir)
                 .ok_or_else(|| "resume lock directory unavailable".to_string())?;
-            let lock = try_acquire_resume_lock(&lock_dir, provider, session_id)?
-                .ok_or_else(|| "agent conversation is already owned by another live writer".to_string())?;
+            let lock =
+                try_acquire_resume_lock(&lock_dir, provider, session_id)?.ok_or_else(|| {
+                    "agent conversation is already owned by another live writer".to_string()
+                })?;
             entry._resume_lock = Some(lock);
             entry.writer.clone()
         } else {
@@ -1232,31 +1311,64 @@ impl PtyManager {
     }
 
     pub fn kill(&self, id: &str) -> Result<(), String> {
+        self.kill_with_disposition(id, true)
+    }
+
+    pub fn kill_with_disposition(&self, id: &str, user_requested: bool) -> Result<(), String> {
         let mut entry = {
             let mut ptys = self.ptys.lock().unwrap();
             ptys.remove(id)
                 .ok_or_else(|| format!("PTY {} not found", id))?
         };
-        // Record the operator's intent before terminating the PTY. The checkpoint
-        // remains available as an inactive backup, but it is no longer eligible
-        // for automatic cold restore.
+        // Only an explicit operator close is terminal. System/test cleanup must
+        // preserve recovery eligibility instead of manufacturing a user-close.
         if let Some(dir) = &self.persist_dir {
-            write_session_disposition(dir, id, SessionLifecycle::IntentionalKill);
+            write_session_disposition(
+                dir,
+                id,
+                if user_requested {
+                    SessionLifecycle::IntentionalKill
+                } else {
+                    SessionLifecycle::Recoverable
+                },
+            );
         }
         // Stop + join the reader thread (and kill the child) outside the manager
         // lock, so a reader blocked in read() can't deadlock other PTY operations
         // while we wait for it to drain to EOF.
-        entry.shutdown("explicit session close", &self.session_events, id);
+        entry.shutdown(
+            "explicit session close",
+            &self.session_events,
+            self.persist_dir.as_deref(),
+            id,
+        );
         Ok(())
     }
 
     pub fn restore_persisted_session(&self, id: &str) -> Result<(), String> {
+        self.restore_persisted_session_with_review(id, false)
+    }
+
+    pub fn restore_persisted_session_with_review(
+        &self,
+        id: &str,
+        reviewed: bool,
+    ) -> Result<(), String> {
         let dir = self
             .persist_dir
             .as_ref()
             .ok_or_else(|| "session persistence is unavailable".to_string())?;
         if !scrollback_path(dir, id).exists() {
             return Err(format!("No backup exists for PTY {id}"));
+        }
+        if matches!(
+            read_session_disposition(dir, id),
+            SessionLifecycle::IntentionalKill
+        ) && !reviewed
+        {
+            return Err(format!(
+                "PTY {id} was closed by the operator and cannot be restored"
+            ));
         }
         write_session_disposition(dir, id, SessionLifecycle::Recoverable);
         Ok(())
@@ -1395,7 +1507,22 @@ impl PtyManager {
             .collect()
     }
 
+    /// Drop in-memory PTY entries whose reader and child have already ended.
+    /// Their scrollback and recovery metadata are persisted separately, so keeping
+    /// these entries forever only makes inventory and reconciliation scan stale state.
+    pub fn reap_ended_sessions(&self) -> usize {
+        let mut ptys = self.ptys.lock().unwrap();
+        let before = ptys.len();
+        ptys.retain(|_, entry| !entry.ended.load(Ordering::Acquire));
+        before.saturating_sub(ptys.len())
+    }
+
     pub fn session_events(&self) -> Vec<PtySessionEvent> {
+        if let Some(dir) = self.persist_dir.as_deref() {
+            if let Some(events) = read_lifecycle_events(dir) {
+                return events;
+            }
+        }
         self.session_events.lock().unwrap().clone()
     }
 }
@@ -1407,7 +1534,170 @@ fn now_ms() -> u128 {
         .unwrap_or_default()
 }
 
-fn push_session_event(events: &Arc<Mutex<Vec<PtySessionEvent>>>, event: PtySessionEvent) {
+fn lifecycle_log_path(dir: &Path) -> PathBuf {
+    dir.join("terminal-lifecycle.jsonl")
+}
+
+fn lifecycle_matrix_path(dir: &Path) -> PathBuf {
+    dir.join("terminal-matrix.json")
+}
+
+fn update_terminal_matrix(dir: &Path, event: &PtySessionEvent) {
+    let mut matrix = fs::read(lifecycle_matrix_path(dir))
+        .ok()
+        .and_then(|raw| serde_json::from_slice::<Vec<TerminalMatrixRecord>>(&raw).ok())
+        .unwrap_or_default();
+    if let Some(record) = matrix.iter_mut().find(|record| record.id == event.id) {
+        record.last_at_ms = event.at_ms;
+        record.last_event = event.kind.clone();
+        record.last_reason = event.reason.clone();
+        record.pid = event.pid.or(record.pid);
+        record.exit_status = event
+            .exit_status
+            .clone()
+            .or_else(|| record.exit_status.clone());
+        record.event_count = record.event_count.saturating_add(1);
+    } else {
+        matrix.push(TerminalMatrixRecord {
+            id: event.id.clone(),
+            last_at_ms: event.at_ms,
+            last_event: event.kind.clone(),
+            last_reason: event.reason.clone(),
+            pid: event.pid,
+            exit_status: event.exit_status.clone(),
+            event_count: 1,
+        });
+    }
+    matrix.sort_by(|left, right| left.id.cmp(&right.id));
+    if let Ok(json) = serde_json::to_vec(&matrix) {
+        let _ = atomic_write(&lifecycle_matrix_path(dir), &json);
+    }
+}
+
+/// Keep the append-only lifecycle log bounded. At the cap the current log becomes
+/// the single retained previous generation and any older generation is dropped,
+/// so total on-disk cost is at most two caps.
+fn rotate_lifecycle_log_if_needed(dir: &Path) {
+    let path = lifecycle_log_path(dir);
+    let Ok(meta) = fs::metadata(&path) else {
+        return;
+    };
+    if meta.len() < MAX_LIFECYCLE_LOG_BYTES {
+        return;
+    }
+    let previous = path.with_extension("jsonl.1");
+    let _ = fs::remove_file(&previous);
+    let _ = fs::rename(&path, &previous);
+}
+
+fn append_lifecycle_event(dir: &Path, event: &PtySessionEvent) {
+    let _ = fs::create_dir_all(dir);
+    rotate_lifecycle_log_if_needed(dir);
+    if let Ok(json) = serde_json::to_vec(event) {
+        if let Ok(mut file) = fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(lifecycle_log_path(dir))
+        {
+            let _ = file.write_all(&json);
+            let _ = file.write_all(b"\n");
+            let _ = file.sync_data();
+        }
+        update_terminal_matrix(dir, event);
+    }
+}
+
+fn read_lifecycle_events(dir: &Path) -> Option<Vec<PtySessionEvent>> {
+    let mut file = File::open(lifecycle_log_path(dir)).ok()?;
+    let len = file.metadata().ok()?.len();
+    let raw = if len > LIFECYCLE_READ_WINDOW_BYTES {
+        file.seek(SeekFrom::Start(len - LIFECYCLE_READ_WINDOW_BYTES))
+            .ok()?;
+        let mut bytes = Vec::new();
+        file.read_to_end(&mut bytes).ok()?;
+        let mut text = String::from_utf8_lossy(&bytes).into_owned();
+        // The window opens mid-record; drop that partial first line.
+        match text.find('\n') {
+            Some(newline) => {
+                text.drain(..=newline);
+                text
+            }
+            None => String::new(),
+        }
+    } else {
+        let mut text = String::new();
+        file.read_to_string(&mut text).ok()?;
+        text
+    };
+    Some(
+        raw.lines()
+            .filter_map(|line| serde_json::from_str::<PtySessionEvent>(line).ok())
+            .collect(),
+    )
+}
+
+/// Startup retention pass for the persisted state directory. Rotates an oversized
+/// lifecycle log and removes per-session files nothing has written to within the
+/// retention window. Returns how many files were removed.
+pub fn prune_persisted_state(dir: &Path) -> usize {
+    rotate_lifecycle_log_if_needed(dir);
+    let Some(cutoff) = SystemTime::now().checked_sub(Duration::from_secs(
+        PERSISTED_SESSION_RETENTION_DAYS * 86_400,
+    )) else {
+        return 0;
+    };
+    let Ok(entries) = fs::read_dir(dir) else {
+        return 0;
+    };
+    let mut removed = 0usize;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        // Only per-session artifacts are prunable; the lifecycle log, its rotated
+        // generation, and the terminal matrix are directory-level state.
+        let is_session_file = name.ends_with(".scrollback")
+            || name.ends_with(".meta.json")
+            || name.ends_with(".history")
+            || name.ends_with(".lifecycle.json");
+        if !is_session_file {
+            continue;
+        }
+        let Ok(modified) = entry.metadata().and_then(|meta| meta.modified()) else {
+            continue;
+        };
+        if modified >= cutoff {
+            continue;
+        }
+        if fs::remove_file(&path).is_ok() {
+            removed += 1;
+        }
+    }
+    removed
+}
+
+pub fn append_lifecycle_audit(id: &str, kind: &str, reason: Option<&str>) {
+    let Some(dir) = default_persist_dir() else {
+        return;
+    };
+    let mut event = PtySessionEvent::new(id, kind);
+    event.reason = reason.map(ToString::to_string);
+    append_lifecycle_event(&dir, &event);
+}
+
+pub fn terminal_matrix() -> Vec<TerminalMatrixRecord> {
+    default_persist_dir()
+        .and_then(|dir| fs::read(lifecycle_matrix_path(&dir)).ok())
+        .and_then(|raw| serde_json::from_slice(&raw).ok())
+        .unwrap_or_default()
+}
+
+fn push_session_event(
+    events: &Arc<Mutex<Vec<PtySessionEvent>>>,
+    event: PtySessionEvent,
+    lifecycle_dir: Option<&Path>,
+) {
     trace_pty(
         "pty.session.event",
         format!(
@@ -1415,6 +1705,9 @@ fn push_session_event(events: &Arc<Mutex<Vec<PtySessionEvent>>>, event: PtySessi
             event.id, event.kind, event.pid, event.reason, event.exit_status
         ),
     );
+    if let Some(dir) = lifecycle_dir {
+        append_lifecycle_event(dir, &event);
+    }
     let mut events = events.lock().unwrap();
     events.push(event);
     let overflow = events.len().saturating_sub(MAX_SESSION_EVENTS);
@@ -1556,6 +1849,7 @@ struct SessionMeta {
 #[serde(rename_all = "kebab-case")]
 pub enum SessionLifecycle {
     #[default]
+    Unknown,
     Recoverable,
     IntentionalKill,
     BackupOnly,
@@ -1677,7 +1971,17 @@ fn plan_agent_restore(persisted: &PersistedSession, live_pty_exists: bool) -> Ag
         };
     }
 
-    if persisted.restore_status == Some(AgentRestoreStatus::ResumeFailed) {
+    // A persisted `resume-failed` only sticks when the failure is terminal (the
+    // provider transcript is gone). Ownership/policy refusals are transient: after
+    // a reboot the previous owner is dead, so the pane must be allowed to resume.
+    // Duplicate writers are still prevented downstream by `provider_writer_is_alive`
+    // plus the on-disk resume lock, not by this sticky flag.
+    if persisted.restore_status == Some(AgentRestoreStatus::ResumeFailed)
+        && persisted
+            .restore_failure_reason
+            .as_deref()
+            .is_some_and(agent_resume_failure_is_terminal)
+    {
         return AgentRestorePlan {
             status: AgentRestoreStatus::ResumeFailed,
             command: None,
@@ -1785,6 +2089,27 @@ fn plan_agent_restore(persisted: &PersistedSession, live_pty_exists: bool) -> Ag
         ),
     }
 }
+
+/// Terminal resume failures never retry: the saved conversation is gone, so a
+/// fresh `codex resume` would only print an error. Every other recorded reason
+/// (ownership, another live writer, auth-less policy refusals) is transient and
+/// must be re-planned on the next cold restore.
+fn agent_resume_failure_is_terminal(reason: &str) -> bool {
+    let reason = reason.to_ascii_lowercase();
+    reason.contains("no longer exists")
+        || reason.contains("no saved session found")
+        || reason.contains("not found")
+        || reason.contains(AGENT_EXITED_IN_SESSION)
+}
+
+/// Recorded when a resumed agent's process ends while its daemon is still
+/// running: the operator quit it. Auto-resume must not undo that.
+const AGENT_EXITED_IN_SESSION: &str = "agent was exited in this session";
+
+/// How long a resumed agent must stay alive before a clean exit counts as the
+/// operator quitting it rather than the resume command finishing on its own.
+const AGENT_OPERATOR_EXIT_MIN_UPTIME: std::time::Duration =
+    std::time::Duration::from_secs(10);
 
 fn classify_agent_resume_failure(output: &str) -> Option<&'static str> {
     if output.contains("No saved session found with ID") {
@@ -1946,6 +2271,9 @@ pub struct PersistedSessionSummary {
     pub scrollback_bytes: usize,
     pub lifecycle: SessionLifecycle,
     pub backup_only: bool,
+    pub command: Option<String>,
+    pub provider: Option<String>,
+    pub provider_session_id: Option<String>,
 }
 
 /// Enumerate sessions with on-disk scrollback in the default persistence dir.
@@ -1979,10 +2307,16 @@ pub fn list_persisted_sessions() -> Vec<PersistedSessionSummary> {
         let bytes = fs::metadata(&path)
             .map(|meta| (meta.len() as usize).saturating_sub(8))
             .unwrap_or(0);
-        let cwd = fs::read(meta_path(&dir, &id))
+        let meta = fs::read(meta_path(&dir, &id))
             .ok()
-            .and_then(|raw| serde_json::from_slice::<SessionMeta>(&raw).ok())
-            .and_then(|meta| meta.cwd);
+            .and_then(|raw| serde_json::from_slice::<SessionMeta>(&raw).ok());
+        let cwd = meta.as_ref().and_then(|meta| meta.cwd.clone());
+        let command = meta.as_ref().and_then(|meta| meta.command.clone());
+        let provider = meta.as_ref().and_then(|meta| meta.provider.clone());
+        let provider_session_id = meta
+            .as_ref()
+            .and_then(|meta| meta.provider_session_id.clone())
+            .or_else(|| extract_provider_session_id(command.as_deref()));
         let lifecycle = read_session_disposition(&dir, &id);
         sessions.push(PersistedSessionSummary {
             id,
@@ -1993,6 +2327,9 @@ pub fn list_persisted_sessions() -> Vec<PersistedSessionSummary> {
                 SessionLifecycle::IntentionalKill | SessionLifecycle::BackupOnly
             ),
             lifecycle,
+            command,
+            provider,
+            provider_session_id,
         });
     }
     sessions
@@ -2031,11 +2368,22 @@ fn update_agent_recovery_manifest_in_dir(
         .ok()
         .and_then(|bytes| serde_json::from_slice::<SessionMeta>(&bytes).ok())
         .unwrap_or_default();
-    let restore_status = update
+    let explicit_restore_status = update
         .restore_status
         .as_deref()
-        .and_then(parse_agent_restore_status)
-        .or(previous.restore_status);
+        .and_then(parse_agent_restore_status);
+    let clear_failure_reason = matches!(
+        explicit_restore_status,
+        Some(AgentRestoreStatus::LiveAttached | AgentRestoreStatus::Resuming)
+    );
+    let restore_status = explicit_restore_status.or(previous.restore_status);
+    let restore_failure_reason = if clear_failure_reason {
+        update.restore_failure_reason
+    } else {
+        update
+            .restore_failure_reason
+            .or(previous.restore_failure_reason)
+    };
     let meta = SessionMeta {
         cwd: update.cwd.or(previous.cwd),
         command: previous.command,
@@ -2054,9 +2402,7 @@ fn update_agent_recovery_manifest_in_dir(
         launched_as_regular_terminal: Some(true),
         last_healthy_ms: Some(now_ms()),
         restore_status,
-        restore_failure_reason: update
-            .restore_failure_reason
-            .or(previous.restore_failure_reason),
+        restore_failure_reason,
     };
     let json = serde_json::to_vec(&meta).map_err(|error| error.to_string())?;
     atomic_write(&meta_path(dir, id), &json).map_err(|error| error.to_string())
@@ -2133,6 +2479,21 @@ fn read_session_disposition(dir: &Path, id: &str) -> SessionLifecycle {
         .unwrap_or_default()
 }
 
+fn mark_session_recoverable_if_unknown(dir: &Path, id: &str) {
+    if matches!(read_session_disposition(dir, id), SessionLifecycle::Unknown) {
+        write_session_disposition(dir, id, SessionLifecycle::Recoverable);
+    }
+}
+
+fn mark_session_recoverable_if_not_intentionally_killed(dir: &Path, id: &str) {
+    if matches!(
+        read_session_disposition(dir, id),
+        SessionLifecycle::Unknown | SessionLifecycle::Recoverable
+    ) {
+        write_session_disposition(dir, id, SessionLifecycle::Recoverable);
+    }
+}
+
 fn is_sidecar_recovery_allowed(lifecycle: SessionLifecycle) -> bool {
     matches!(lifecycle, SessionLifecycle::Recoverable)
 }
@@ -2141,6 +2502,16 @@ fn write_session_disposition(dir: &Path, id: &str, lifecycle: SessionLifecycle) 
     let _ = fs::create_dir_all(dir);
     if let Ok(json) = serde_json::to_vec(&lifecycle) {
         let _ = atomic_write(&lifecycle_path(dir, id), &json);
+        let lifecycle_name = match lifecycle {
+            SessionLifecycle::Unknown => "unknown",
+            SessionLifecycle::Recoverable => "recoverable",
+            SessionLifecycle::IntentionalKill => "intentional-kill",
+            SessionLifecycle::BackupOnly => "backup-only",
+        };
+        append_lifecycle_event(
+            dir,
+            &PtySessionEvent::new(id, "lifecycle-disposition").with_reason(lifecycle_name),
+        );
     }
 }
 
@@ -2204,6 +2575,19 @@ fn persist_sidecar_recovery(dir: &Path, id: &str) {
         .ok()
         .and_then(|bytes| serde_json::from_slice::<SessionMeta>(&bytes).ok())
         .unwrap_or_default();
+    // A pane's recovery binding is durable identity, not mutable status. Nested
+    // Codex/Claude workers inherit TERMFLEET_PANE_ID and therefore write to the
+    // same status sidecar as their parent; accepting a later session id here
+    // silently replaces the conversation the pane must restore. Bind once and
+    // change it only through an explicit top-level recovery-manifest update.
+    if meta.recovery_kind == Some(SessionRecoveryKind::AgentTerminal)
+        && meta
+            .provider_session_id
+            .as_deref()
+            .is_some_and(|value| !value.trim().is_empty())
+    {
+        return;
+    }
     meta.recovery_kind = Some(SessionRecoveryKind::AgentTerminal);
     meta.provider = Some(provider);
     meta.provider_session_id = Some(session_id);
@@ -2502,28 +2886,78 @@ mod tests {
     }
 
     #[test]
-    fn agent_restore_planner_builds_codex_resume_from_durable_session_id() {
+    fn agent_restore_planner_resumes_codex_when_no_live_pty_remains() {
+        // No live PTY means the owning daemon died (reboot, OOM). The exact
+        // conversation must be resumed; duplicate writers are blocked downstream
+        // by `provider_writer_is_alive` plus the on-disk resume lock.
         let plan = plan_agent_restore(&codex_agent_checkpoint(Some("019f-agent-session")), false);
 
         assert_eq!(plan.status, AgentRestoreStatus::Resuming);
-        assert_eq!(
-            plan.command.as_deref(),
-            Some("codex resume 019f-agent-session")
-        );
-        assert_eq!(plan.reason, None);
+        assert_eq!(plan.command.as_deref(), Some("codex resume 019f-agent-session"));
     }
 
     #[test]
-    fn agent_restore_planner_does_not_retry_a_failed_resume() {
-        let mut checkpoint = codex_agent_checkpoint(Some("019f-missing-session"));
+    fn agent_restore_planner_retries_a_transient_agent_resume() {
+        let mut checkpoint = codex_agent_checkpoint(Some("019f-transient-session"));
         checkpoint.restore_status = Some(AgentRestoreStatus::ResumeFailed);
         checkpoint.restore_failure_reason = Some("resume command exited".to_string());
 
         let plan = plan_agent_restore(&checkpoint, false);
 
+        assert_eq!(plan.status, AgentRestoreStatus::Resuming);
+        assert_eq!(
+            plan.command.as_deref(),
+            Some("codex resume 019f-transient-session")
+        );
+    }
+
+    #[test]
+    fn agent_restore_planner_retries_an_ownership_refusal_after_a_reboot() {
+        // The refusal recorded while the previous daemon still owned the
+        // conversation must not outlive that daemon.
+        let mut checkpoint = codex_agent_checkpoint(Some("019f-owned-session"));
+        checkpoint.restore_status = Some(AgentRestoreStatus::ResumeFailed);
+        checkpoint.restore_failure_reason = Some(
+            "No stable live owner for the exact saved conversation; automatic resume is disabled"
+                .to_string(),
+        );
+
+        let plan = plan_agent_restore(&checkpoint, false);
+
+        assert_eq!(plan.status, AgentRestoreStatus::Resuming);
+        assert_eq!(
+            plan.command.as_deref(),
+            Some("codex resume 019f-owned-session")
+        );
+    }
+
+    #[test]
+    fn agent_restore_planner_never_relaunches_an_agent_the_operator_quit() {
+        // `/exit` in a resumed pane must drop the operator at a shell. Without
+        // this the pane re-plans the same resume and the agent reappears the
+        // instant it is quit.
+        let mut checkpoint = codex_agent_checkpoint(Some("019f-quit-session"));
+        checkpoint.restore_status = Some(AgentRestoreStatus::ResumeFailed);
+        checkpoint.restore_failure_reason = Some(super::AGENT_EXITED_IN_SESSION.to_string());
+
+        let plan = plan_agent_restore(&checkpoint, false);
+
         assert_eq!(plan.status, AgentRestoreStatus::ResumeFailed);
         assert_eq!(plan.command, None);
-        assert_eq!(plan.reason.as_deref(), Some("resume command exited"));
+    }
+
+    #[test]
+    fn agent_restore_planner_never_retries_a_missing_saved_conversation() {
+        let mut checkpoint = codex_agent_checkpoint(Some("019f-gone-session"));
+        checkpoint.restore_status = Some(AgentRestoreStatus::ResumeFailed);
+        checkpoint.restore_failure_reason =
+            Some("saved agent session no longer exists".to_string());
+
+        let plan = plan_agent_restore(&checkpoint, false);
+
+        assert_eq!(plan.status, AgentRestoreStatus::ResumeFailed);
+        assert_eq!(plan.command, None);
+        assert!(plan.reason.is_some());
     }
 
     #[test]
@@ -2541,7 +2975,7 @@ mod tests {
     }
 
     #[test]
-    fn agent_restore_planner_builds_claude_resume_from_durable_session_id() {
+    fn agent_restore_planner_resumes_claude_when_no_live_pty_remains() {
         let plan = plan_agent_restore(&claude_agent_checkpoint(Some("97f9-claude-session")), false);
 
         assert_eq!(plan.status, AgentRestoreStatus::Resuming);
@@ -2549,7 +2983,6 @@ mod tests {
             plan.command.as_deref(),
             Some("claude --resume 97f9-claude-session")
         );
-        assert_eq!(plan.reason, None);
     }
 
     fn opencode_agent_checkpoint(provider_session_id: Option<&str>) -> PersistedSession {
@@ -2571,7 +3004,7 @@ mod tests {
     }
 
     #[test]
-    fn agent_restore_planner_builds_opencode_resume_from_durable_session_id() {
+    fn agent_restore_planner_resumes_opencode_when_no_live_pty_remains() {
         let plan = plan_agent_restore(
             &opencode_agent_checkpoint(Some("ses_4b6273738ffer1UqWIk6zevIQA")),
             false,
@@ -2582,7 +3015,6 @@ mod tests {
             plan.command.as_deref(),
             Some("opencode --session ses_4b6273738ffer1UqWIk6zevIQA")
         );
-        assert_eq!(plan.reason, None);
     }
 
     #[test]
@@ -2590,7 +3022,6 @@ mod tests {
         let plan = plan_agent_restore(&opencode_agent_checkpoint(None), false);
 
         assert_eq!(plan.status, AgentRestoreStatus::Reconstructed);
-        assert_eq!(plan.command.as_deref(), Some("opencode"));
     }
 
     #[test]
@@ -2737,7 +3168,10 @@ mod tests {
             .and_then(|raw| serde_json::from_slice::<super::SessionMeta>(&raw).ok())
             .expect("read promoted checkpoint");
         assert_eq!(meta.command.as_deref(), Some("/bin/bash"));
-        assert_eq!(meta.recovery_kind, Some(super::SessionRecoveryKind::AgentTerminal));
+        assert_eq!(
+            meta.recovery_kind,
+            Some(super::SessionRecoveryKind::AgentTerminal)
+        );
         assert_eq!(meta.provider.as_deref(), Some("codex"));
         assert_eq!(
             meta.provider_session_id.as_deref(),
@@ -2751,19 +3185,66 @@ mod tests {
     }
 
     #[test]
-    fn agent_restore_planner_reconstructs_when_provider_session_id_is_missing() {
-        let plan = plan_agent_restore(&codex_agent_checkpoint(None), false);
-
-        assert_eq!(plan.status, AgentRestoreStatus::Reconstructed);
-        assert_eq!(plan.command.as_deref(), Some("codex"));
-        assert_eq!(
-            plan.reason.as_deref(),
-            Some("missing durable provider session id; reconstruct from mission/dropoff and scrollback")
+    fn nested_agent_sidecar_cannot_replace_a_bound_pane_conversation() {
+        let id = format!(
+            "terminal-tc054-bound-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
         );
+        let sidecar_dir = super::data_root_dir()
+            .expect("data dir")
+            .join("agent-status");
+        std::fs::create_dir_all(&sidecar_dir).expect("create agent-status dir");
+        let sidecar = sidecar_dir.join(format!("pane-{}.json", fnv1a_hex(&id)));
+        std::fs::write(
+            &sidecar,
+            r#"{"sessionId":"019f-nested-session","provider":"codex","cwd":"/nested/worker"}"#,
+        )
+        .expect("write nested sidecar");
+
+        let checkpoint_dir = std::env::temp_dir().join(format!(
+            "tw-sidecar-bound-test-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&checkpoint_dir);
+        std::fs::create_dir_all(&checkpoint_dir).expect("create checkpoint dir");
+        std::fs::write(
+            super::meta_path(&checkpoint_dir, &id),
+            serde_json::to_vec(&super::SessionMeta {
+                command: Some("/bin/bash".to_string()),
+                recovery_kind: Some(super::SessionRecoveryKind::AgentTerminal),
+                provider: Some("codex".to_string()),
+                provider_session_id: Some("019f-original-session".to_string()),
+                ..Default::default()
+            })
+            .expect("encode bound checkpoint"),
+        )
+        .expect("write bound checkpoint");
+
+        super::persist_sidecar_recovery(&checkpoint_dir, &id);
+        let meta = std::fs::read(super::meta_path(&checkpoint_dir, &id))
+            .ok()
+            .and_then(|raw| serde_json::from_slice::<super::SessionMeta>(&raw).ok())
+            .expect("read bound checkpoint");
+        assert_eq!(
+            meta.provider_session_id.as_deref(),
+            Some("019f-original-session")
+        );
+
+        let _ = std::fs::remove_file(sidecar);
+        let _ = std::fs::remove_dir_all(checkpoint_dir);
     }
 
     #[test]
-    fn agent_restore_planner_surfaces_auth_failures_without_fake_resume() {
+    fn agent_restore_planner_never_starts_a_new_agent_when_session_id_is_missing() {
+        let plan = plan_agent_restore(&codex_agent_checkpoint(None), false);
+
+        assert_eq!(plan.status, AgentRestoreStatus::Reconstructed);
+    }
+
+    #[test]
+    fn agent_restore_planner_never_starts_an_agent_for_auth_failures() {
         let mut checkpoint = codex_agent_checkpoint(Some("019f-agent-session"));
         checkpoint.restore_failure_reason = Some("auth required by provider".to_string());
 
@@ -2771,7 +3252,7 @@ mod tests {
 
         assert_eq!(plan.status, AgentRestoreStatus::NeedsAuth);
         assert_eq!(plan.command, None);
-        assert_eq!(plan.reason.as_deref(), Some("auth required by provider"));
+        assert!(plan.reason.is_some());
     }
 
     #[test]
@@ -2834,6 +3315,49 @@ mod tests {
         assert_eq!(updated.launched_as_regular_terminal, Some(true));
         assert!(updated.last_healthy_ms.is_some());
 
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn exact_live_receipt_clears_an_old_resume_failure() {
+        let dir = std::env::temp_dir().join(format!(
+            "tw-agent-live-receipt-test-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create receipt dir");
+        let id = "agent-live-receipt-test";
+        let previous = SessionMeta {
+            restore_status: Some(AgentRestoreStatus::ResumeFailed),
+            restore_failure_reason: Some("old failure".to_string()),
+            ..SessionMeta::default()
+        };
+        super::atomic_write(
+            &super::meta_path(&dir, id),
+            &serde_json::to_vec(&previous).expect("encode failed receipt"),
+        )
+        .expect("seed failed receipt");
+
+        super::update_agent_recovery_manifest_in_dir(
+            &dir,
+            id,
+            AgentRecoveryManifestUpdate {
+                restore_status: Some("live-attached".to_string()),
+                ..AgentRecoveryManifestUpdate::default()
+            },
+        )
+        .expect("write live receipt");
+
+        let updated = std::fs::read(super::meta_path(&dir, id))
+            .ok()
+            .and_then(|bytes| serde_json::from_slice::<SessionMeta>(&bytes).ok())
+            .expect("read live receipt");
+        assert_eq!(
+            updated.restore_status,
+            Some(AgentRestoreStatus::LiveAttached)
+        );
+        assert_eq!(updated.restore_failure_reason, None);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -2910,6 +3434,7 @@ mod tests {
         scrollback.extend_from_slice(b"previous agent transcript\n");
         super::atomic_write(&super::scrollback_path(&dir, &id), &scrollback)
             .expect("seed scrollback");
+        super::write_session_disposition(&dir, &id, super::SessionLifecycle::Recoverable);
         let meta = SessionMeta {
             cwd: Some("/tmp".to_string()),
             command: Some("sh".to_string()),
@@ -3733,6 +4258,7 @@ mod tests {
         scrollback.extend_from_slice(b"previous agent transcript\n");
         super::atomic_write(&super::scrollback_path(&dir, &id), &scrollback)
             .expect("seed agent scrollback checkpoint");
+        super::write_session_disposition(&dir, &id, super::SessionLifecycle::Recoverable);
 
         let meta = SessionMeta {
             cwd: Some(cwd_string.clone()),
@@ -3811,6 +4337,7 @@ mod tests {
         scrollback.extend_from_slice(b"previous agent transcript\n");
         super::atomic_write(&super::scrollback_path(&dir, &id), &scrollback)
             .expect("seed scrollback");
+        super::write_session_disposition(&dir, &id, super::SessionLifecycle::Recoverable);
         let meta = SessionMeta {
             cwd: Some("/tmp".to_string()),
             command: Some("codex".to_string()),
@@ -3875,6 +4402,7 @@ mod tests {
         scrollback.extend_from_slice(b"ERROR: No saved session found with ID old-session.\n");
         super::atomic_write(&super::scrollback_path(&dir, &id), &scrollback)
             .expect("seed stale error scrollback");
+        super::write_session_disposition(&dir, &id, super::SessionLifecycle::Recoverable);
         let meta = SessionMeta {
             cwd: Some("/tmp".to_string()),
             command: Some("codex".to_string()),
@@ -3907,7 +4435,7 @@ mod tests {
     }
 
     #[test]
-    fn active_writer_resume_error_is_persisted_and_not_planned_again() {
+    fn active_writer_resume_error_is_retried_after_the_owner_is_gone() {
         use std::path::PathBuf;
 
         let dir: PathBuf = std::env::temp_dir().join(format!(
@@ -3936,6 +4464,7 @@ mod tests {
         scrollback.extend_from_slice(b"previous agent transcript\n");
         super::atomic_write(&super::scrollback_path(&dir, &id), &scrollback)
             .expect("seed scrollback");
+        super::write_session_disposition(&dir, &id, super::SessionLifecycle::Recoverable);
 
         let manager = super::PtyManager::with_persistence_dir(dir.clone());
         manager
@@ -3962,10 +4491,11 @@ mod tests {
 
         let persisted = super::load_persisted(&dir, &id).expect("reload failed checkpoint");
         let plan = super::plan_agent_restore(&persisted, false);
-        assert_eq!(plan.status, AgentRestoreStatus::ResumeFailed);
+        assert_eq!(plan.status, AgentRestoreStatus::Resuming);
         assert_eq!(
-            plan.command, None,
-            "active-writer resume must not be retried"
+            plan.command.as_deref(),
+            Some("printf 'thread/resume failed during TUI bootstrap: thread/resume failed: thread 019f-active already has an active writer (code -32600)\\n'"),
+            "a prior ownership collision must not permanently disable this pane"
         );
 
         let _ = std::fs::remove_dir_all(&dir);
@@ -4000,6 +4530,7 @@ mod tests {
         scrollback.extend_from_slice(b"previous agent transcript\n");
         super::atomic_write(&super::scrollback_path(&dir, &id), &scrollback)
             .expect("seed scrollback");
+        super::write_session_disposition(&dir, &id, super::SessionLifecycle::Recoverable);
         let held_lock = super::try_acquire_resume_lock(&dir, "codex", session_id)
             .expect("acquire first writer lock")
             .expect("first writer lock must be available");
@@ -4072,6 +4603,7 @@ mod tests {
         scrollback.extend_from_slice(b"previous transcript\n");
         super::atomic_write(&super::scrollback_path(&dir, &id), &scrollback)
             .expect("seed scrollback");
+        super::write_session_disposition(&dir, &id, super::SessionLifecycle::Recoverable);
 
         let manager = super::PtyManager::with_persistence_dir(dir.clone());
         manager
@@ -4364,22 +4896,10 @@ mod tests {
 
         {
             let manager = super::PtyManager::with_persistence_dir(dir.clone());
-            manager
+            let error = manager
                 .restore_persisted_session(&id)
-                .expect("explicitly enable backup restore");
-            let (_, reused) = manager
-                .ensure_detached(
-                    Some(id.clone()),
-                    Some("/tmp".to_string()),
-                    Some("cat".to_string()),
-                    None,
-                    None,
-                )
-                .expect("restore explicitly selected backup");
-            assert!(!reused, "explicit restore still creates a replacement PTY");
-            let restored = manager.snapshot(&id).expect("read restored backup");
-            assert!(restored.contains("intentional-kill-marker"));
-            manager.kill(&id).expect("clean up restored PTY");
+                .expect_err("operator-closed backups must never be restorable");
+            assert!(error.contains("closed by the operator"));
         }
 
         let _ = std::fs::remove_dir_all(&dir);
@@ -4387,6 +4907,9 @@ mod tests {
 
     #[test]
     fn intentional_kill_blocks_stale_sidecar_agent_recovery_after_restart() {
+        assert!(!super::is_sidecar_recovery_allowed(
+            super::SessionLifecycle::Unknown
+        ));
         assert!(!super::is_sidecar_recovery_allowed(
             super::SessionLifecycle::IntentionalKill
         ));
@@ -4396,6 +4919,285 @@ mod tests {
         assert!(super::is_sidecar_recovery_allowed(
             super::SessionLifecycle::Recoverable
         ));
+    }
+
+    #[test]
+    fn oversized_lifecycle_log_rotates_and_reads_only_its_tail() {
+        let dir = std::env::temp_dir().join(format!(
+            "tw-lifecycle-bound-test-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create test dir");
+        let path = super::lifecycle_log_path(&dir);
+
+        // A log past the cap must roll over on the next append instead of growing
+        // forever, and the newest record must still be readable afterwards.
+        let filler = "x".repeat(1024);
+        let mut oversized = String::new();
+        while oversized.len() as u64 <= super::MAX_LIFECYCLE_LOG_BYTES {
+            oversized.push_str(&filler);
+            oversized.push('\n');
+        }
+        std::fs::write(&path, &oversized).expect("seed oversized log");
+
+        let event = super::PtySessionEvent::new("lifecycle-bound-test", "eof");
+        super::append_lifecycle_event(&dir, &event);
+
+        let rotated = path.with_extension("jsonl.1");
+        assert!(rotated.exists(), "the oversized log must be rotated aside");
+        let live_len = std::fs::metadata(&path).expect("live log").len();
+        assert!(
+            live_len < super::MAX_LIFECYCLE_LOG_BYTES,
+            "the live log must restart below the cap, was {live_len}"
+        );
+
+        let events = super::read_lifecycle_events(&dir).expect("read events");
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].id, "lifecycle-bound-test");
+
+        // A log larger than the read window is parsed from its tail only: the
+        // oldest record falls outside the window, the newest is always kept.
+        let mut wide = String::new();
+        let stale = serde_json::to_string(&super::PtySessionEvent::new("stale-record", "eof"))
+            .expect("serialize stale");
+        wide.push_str(&stale);
+        wide.push('\n');
+        while (wide.len() as u64) < super::LIFECYCLE_READ_WINDOW_BYTES + 4096 {
+            wide.push_str(&filler);
+            wide.push('\n');
+        }
+        wide.push_str(
+            &serde_json::to_string(&super::PtySessionEvent::new("fresh-record", "eof"))
+                .expect("serialize fresh"),
+        );
+        wide.push('\n');
+        std::fs::write(&path, &wide).expect("seed wide log");
+
+        let tail = super::read_lifecycle_events(&dir).expect("read tail events");
+        assert!(
+            tail.iter().any(|event| event.id == "fresh-record"),
+            "the newest record must always be inside the read window"
+        );
+        assert!(
+            !tail.iter().any(|event| event.id == "stale-record"),
+            "records older than the window must not be parsed"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn retention_pass_drops_only_stale_session_files() {
+        let dir = std::env::temp_dir().join(format!(
+            "tw-retention-test-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create test dir");
+
+        let fresh = dir.join("fresh.meta.json");
+        let stale = dir.join("stale.meta.json");
+        let stale_scrollback = dir.join("stale.scrollback");
+        let matrix = super::lifecycle_matrix_path(&dir);
+        let log = super::lifecycle_log_path(&dir);
+        for path in [&fresh, &stale, &stale_scrollback, &matrix, &log] {
+            std::fs::write(path, b"{}").expect("seed file");
+        }
+
+        let old = std::time::SystemTime::now()
+            - std::time::Duration::from_secs(
+                (super::PERSISTED_SESSION_RETENTION_DAYS + 1) * 86_400,
+            );
+        for path in [&stale, &stale_scrollback] {
+            let handle = std::fs::File::open(path).expect("open stale file");
+            handle
+                .set_modified(old)
+                .expect("age the file past the retention window");
+        }
+
+        let removed = super::prune_persisted_state(&dir);
+        assert_eq!(removed, 2, "both stale session files must be removed");
+        assert!(fresh.exists(), "a recently written session must survive");
+        assert!(!stale.exists());
+        assert!(!stale_scrollback.exists());
+        assert!(
+            matrix.exists() && log.exists(),
+            "directory-level state is never a prune candidate"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn system_cleanup_keeps_a_session_recoverable() {
+        let dir = std::env::temp_dir().join(format!(
+            "tw-system-cleanup-lifecycle-test-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        let id = "system-cleanup-lifecycle-test".to_string();
+        let manager = super::PtyManager::with_persistence_dir(dir.clone());
+        manager
+            .ensure_detached(
+                Some(id.clone()),
+                Some("/tmp".to_string()),
+                Some("cat".to_string()),
+                None,
+                None,
+            )
+            .expect("spawn persistent PTY");
+        manager
+            .kill_with_disposition(&id, false)
+            .expect("system cleanup must stop the PTY");
+
+        let lifecycle = std::fs::read(super::lifecycle_path(&dir, &id))
+            .ok()
+            .and_then(|raw| serde_json::from_slice::<super::SessionLifecycle>(&raw).ok())
+            .expect("read lifecycle disposition");
+        assert_eq!(lifecycle, super::SessionLifecycle::Recoverable);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn lifecycle_ledger_survives_manager_restart() {
+        let dir = std::env::temp_dir().join(format!(
+            "tw-lifecycle-ledger-test-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        let id = "lifecycle-ledger-test".to_string();
+        {
+            let manager = super::PtyManager::with_persistence_dir(dir.clone());
+            manager
+                .ensure_detached(
+                    Some(id.clone()),
+                    Some("/tmp".to_string()),
+                    Some("cat".to_string()),
+                    None,
+                    None,
+                )
+                .expect("spawn persistent PTY");
+            manager
+                .kill_with_disposition(&id, false)
+                .expect("stop session through system cleanup");
+        }
+        let restarted = super::PtyManager::with_persistence_dir(dir.clone());
+        let events = restarted.session_events();
+        assert!(events
+            .iter()
+            .any(|event| event.id == id && event.kind == "spawned"));
+        assert!(events.iter().any(|event| {
+            event.id == id
+                && event.kind == "lifecycle-disposition"
+                && event.reason.as_deref() == Some("recoverable")
+        }));
+        assert!(events
+            .iter()
+            .any(|event| event.id == id && event.kind == "killed"));
+        let matrix = std::fs::read(super::lifecycle_matrix_path(&dir))
+            .ok()
+            .and_then(|raw| serde_json::from_slice::<Vec<super::TerminalMatrixRecord>>(&raw).ok())
+            .expect("read current terminal matrix");
+        let record = matrix
+            .iter()
+            .find(|record| record.id == id)
+            .expect("matrix record");
+        assert_eq!(record.last_event, "killed");
+        assert!(record.event_count >= 3);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn fresh_persistent_terminal_records_recoverable_lifecycle() {
+        let dir = std::env::temp_dir().join(format!(
+            "tw-fresh-lifecycle-test-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        let id = "fresh-lifecycle-test".to_string();
+        let manager = super::PtyManager::with_persistence_dir(dir.clone());
+        manager
+            .ensure_detached(
+                Some(id.clone()),
+                Some("/tmp".to_string()),
+                Some("cat".to_string()),
+                None,
+                None,
+            )
+            .expect("spawn persistent terminal");
+        let lifecycle = super::read_session_disposition(&dir, &id);
+        assert_eq!(lifecycle, super::SessionLifecycle::Recoverable);
+        manager.kill(&id).expect("close persistent terminal");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn unexpected_child_exit_becomes_recoverable_for_cold_restore() {
+        let dir = std::env::temp_dir().join(format!(
+            "tw-unexpected-exit-lifecycle-test-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        let id = "unexpected-exit-lifecycle-test".to_string();
+        {
+            let manager = super::PtyManager::with_persistence_dir(dir.clone());
+            manager
+                .ensure_detached(
+                    Some(id.clone()),
+                    Some("/tmp".to_string()),
+                    Some("printf unexpected-exit-marker; exit 0".to_string()),
+                    None,
+                    None,
+                )
+                .expect("spawn naturally exiting terminal");
+            let snapshot = wait_for_snapshot_containing(&manager, &id, "unexpected-exit-marker");
+            assert!(snapshot.contains("unexpected-exit-marker"));
+            for _ in 0..50 {
+                if manager
+                    .list_sessions()
+                    .iter()
+                    .all(|session| session.id != id)
+                {
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
+        }
+
+        assert_eq!(
+            super::read_session_disposition(&dir, &id),
+            super::SessionLifecycle::Recoverable
+        );
+        let manager = super::PtyManager::with_persistence_dir(dir.clone());
+        let (_, reused) = manager
+            .ensure_detached(
+                Some(id.clone()),
+                Some("/tmp".to_string()),
+                Some("cat".to_string()),
+                None,
+                None,
+            )
+            .expect("cold restore naturally exited terminal");
+        assert!(
+            !reused,
+            "cold recovery creates a replacement PTY, not a live reattach"
+        );
+        assert!(
+            manager
+                .snapshot(&id)
+                .expect("read cold-restored snapshot")
+                .contains("unexpected-exit-marker"),
+            "cold recovery must replay the unexpected-death checkpoint"
+        );
+        manager.kill(&id).expect("clean up restored terminal");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

@@ -54,6 +54,17 @@ a–f done, g done except a live latency/TUI confirmation pass; the canvas rende
 is now the desktop default. TC-018 (BiDi/Hebrew nikud) and TC-015/TC-016 are
 TODO backlog.
 
+## Cross-agent board authority
+
+TermFleet's repository-local `MASTER_PLAN.md` is the implementation/release backlog for this codebase only. It is not the canonical list rendered by the cross-agent board.
+
+- **TermFleet Agent Board / canonical agent list / shared queue:** `/media/endlessblink/data/my-projects/ai-development/devops/agent-ops/MASTER_PLAN.md`, mutated through `agent_ops.py`.
+- **Noam's personal tasks:** authenticated FlowState inventory; separate from agent work.
+- **TermFleet implementation/release tasks:** this repository's `MASTER_PLAN.md`.
+- **Obsidian:** durable context, requirements, decisions, and evidence; not canonical task status.
+
+For `FEATURE-12`, never substitute FlowState, a Life-Boat release matrix, or this repository's backlog for `agent-ops`. Keep `agent-ops` as an independent external project; TermFleet owns only a thin typed client, UI, project creation, dispatch, and runtime/terminal metadata.
+
 ## Build & run
 
 First Rust build compiles from scratch and can OOM-`Killed` under memory pressure.
@@ -80,6 +91,15 @@ cd src-tauri && CARGO_BUILD_JOBS=1 cargo check
 ```
 
 Reset persisted layout/theme from the command bar with `Reset layout`.
+
+## Runtime truth — READ FIRST
+
+`docs/runtime-truth.md` is the canonical page on how this app actually runs:
+which state source is authoritative (ask the daemon, never the lazily-flushed
+session files), why a promoted release does NOT reach the terminals until the
+daemon process is stopped, where every log lives, and the agent resume rules.
+Read it before diagnosing a restore, freeze, or "the fix didn't take" report —
+each rule in it is there because an agent reported something false without it.
 
 ## Diagnose before debugging — ALWAYS
 
