@@ -2,33 +2,31 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import crypto from "node:crypto";
 import path from "node:path";
+import os from "node:os";
 
-const statusDir = "/home/endlessblink/.local/share/terminal-workspace/agent-status";
+const statusDir = process.env.TERMFLEET_AGENT_STATUS_DIR
+  ?? path.join(os.homedir(), ".local/share/terminal-workspace/agent-status");
 const snapshotPath = path.join(statusDir, "cockpit-snapshot.json");
-const tracePath = path.join(statusDir, "cockpit-header-trace.jsonl");
 const snapshot = JSON.parse(readFileSync(snapshotPath, "utf8"));
 const terminals = Array.isArray(snapshot.terminals) ? snapshot.terminals : [];
-const traceRows = readFileSync(tracePath, "utf8")
-  .split("\n")
-  .filter(Boolean)
-  .flatMap((line) => {
-    try {
-      const record = JSON.parse(line);
-      return Array.isArray(record.terminals) ? record.terminals : [];
-    } catch {
-      return [];
-    }
-  });
-const latestTraceByPane = new Map();
-for (const entry of traceRows) {
-  if (entry.paneId) latestTraceByPane.set(entry.paneId, entry);
-}
+const neutralTask = /^(?:Task not captured|Activity not captured|Goal not captured|Context not captured|Status unavailable|Waiting for a clear task|No task declared|No active work|Ready|Idle|Working|Unknown)$/i;
 const target = terminals
-  .filter((entry) => String(entry.path ?? entry.cwd ?? "").includes("/devops/termfleet"))
-  .map((entry) => latestTraceByPane.get(entry.paneId) ?? entry);
-const forbiddenGoal = /^(?:Goal not captured|Context not captured|Status unavailable|Make every TermFleet terminal show its purpose and current activity clearly\.?|Make each TermFleet terminal clear enough to understand at a glance\.?)$/i;
+  .filter((entry) => entry && typeof entry.paneId === "string" && entry.paneId.trim())
+  // The snapshot is the rendered cockpit surface after its own Goal gate. Do not
+  // replace it with raw header-trace input, which can contain a rejected shared
+  // workstream purpose and make the matrix pass or fail against invisible text.
+  .filter((entry) => {
+    const task = String(entry.task ?? "").replace(/\s+/g, " ").trim();
+    const goal = String(entry.context ?? "").replace(/\s+/g, " ").trim();
+    return !neutralTask.test(task) && (Boolean(goal) || Boolean(task));
+  })
+  .map((entry) => entry);
+const forbiddenGoal = /^(?:Goal not captured|Context not captured|Status unavailable)$/i;
+const paneOwnedGoalSources = new Set(["status-summary", "sidecar-todo", "task-tool", "user-prompt", "manual", "plan-binding", "plan-explanation", "goal-task", "opening-request", "project-fallback"]);
+const generatedPaneGoal = /^Keep this pane focused on .+ so it has a clear result to resume\.$/i;
 const processGoal = /\b(?:installed dock|live gate|visual gate|focused (?:visual|header) tests?|checksum|awaiting user approval|memory writing agent|userpromptsubmit hook|regression matrix)\b/i;
-const purposeOpening = /^(?:Make|Keep|Help|Give|Get|Finish|Ship|Ensure|Improve|Find|I['’]m\s+|We['’]re\s+)/i;
+const projectPurposeGoal = /^(?:Make|Keep|Help|Ensure)\s+(?:[A-Z][\w-]*|this project|the project|every|each)\s+.*\b(?:so|so that)\s+(?:people|users|work)\s+can\s+resume\b/i;
+const purposeOpening = /^(?:Make|Keep|Help|Give|Get|Finish|Ship|Ensure|Improve|Find|Complete|I['’]m\s+|We['’](?:re|ve)\s+|We\s+(?:finished|have|need|should)\b)/i;
 const purposeConnection = /\b(?:so|so that|to|for|without|after|before|with)\b/i;
 const vagueGoal = /^(?:Keep|Make|Help|Improve)\s+(?:the|every|each)\s+(?:work|project|terminal|workspace|system)\s+(?:clear|reliable|better|working)(?:\s+and\s+\w+)*\.?$/i;
 const failures = [];
@@ -39,11 +37,12 @@ for (const entry of target) {
   const now = String(entry.now ?? "").replace(/\s+/g, " ").trim();
   const problems = [];
   if (!goal || forbiddenGoal.test(goal)) problems.push("missing-or-generic-goal");
+  if (goal && goal.split(/\s+/).filter(Boolean).length < 8) problems.push("goal-too-short-for-about-what");
+  if (!paneOwnedGoalSources.has(String(entry.contextSource ?? "").trim())) problems.push("goal-lacks-pane-owned-source");
+  if (!paneOwnedGoalSources.has(String(entry.statusSummaryGoalSource ?? "").trim())) problems.push("goal-missing-capture-source");
+  if (generatedPaneGoal.test(goal)) problems.push("goal-is-generated-task-wrapper");
+  if (String(entry.contextSource ?? "").trim() !== "project-fallback" && projectPurposeGoal.test(goal)) problems.push("project-wide-goal");
   if (processGoal.test(goal)) problems.push("process-language-in-goal");
-  if (goal && goal.split(/\s+/).length < 8) problems.push("goal-too-short-for-purpose");
-  if (goal && !purposeOpening.test(goal)) problems.push("goal-does-not-state-an-outcome");
-  if (goal && !purposeConnection.test(goal)) problems.push("goal-missing-why-or-benefit");
-  if (goal && vagueGoal.test(goal)) problems.push("goal-is-vague");
   if (goal && task && goal.toLocaleLowerCase() === task.toLocaleLowerCase()) problems.push("goal-repeats-task");
   if (goal && now && goal.toLocaleLowerCase() === now.toLocaleLowerCase()) problems.push("goal-repeats-now");
   if (problems.length) failures.push({ paneId: entry.paneId, task, goal, now, problems });
@@ -64,6 +63,7 @@ console.log(JSON.stringify({ ok: true, panes: target.length }, null, 2));
 function writeMatrixArtifact(entries, failedRows, failureReason = null) {
   const matrix = {
     schema_version: 1,
+    scope: "all-active-terminals",
     status: failedRows.length || failureReason ? "FAIL" : "PASS",
     source: "verify:cockpit-goal-matrix",
     captured_at: new Date().toISOString(),
@@ -81,7 +81,7 @@ function writeMatrixArtifact(entries, failedRows, failureReason = null) {
   };
   const artifactSha256 = crypto.createHash("sha256").update(stableStringify(matrix)).digest("hex");
   const artifact = { ...matrix, artifact_sha256: artifactSha256 };
-  const artifactPath = process.env.TERMFLEET_GOAL_MATRIX_ARTIFACT ?? "/home/endlessblink/.local/share/terminal-workspace/agent-status/cockpit-goal-matrix.json";
+  const artifactPath = process.env.TERMFLEET_GOAL_MATRIX_ARTIFACT ?? path.join(statusDir, "cockpit-goal-matrix.json");
   artifact.artifact_path = artifactPath;
   writeFileSync(artifactPath, `${JSON.stringify(artifact, null, 2)}\n`, { mode: 0o600 });
 }

@@ -6,13 +6,17 @@ source "$APP_ROOT/scripts/restart-smoke-process-tree.sh"
 COMMAND_PATH="${TERMFLEET_COMMAND_PATH:-${HOME}/.local/bin/termfleet}"
 INSTALL_ROOT="${TERMFLEET_INSTALL_ROOT:-${XDG_DATA_HOME:-$HOME/.local/share}/termfleet}"
 DESKTOP_LAUNCHER="${TERMFLEET_DESKTOP_LAUNCHER:-${HOME}/.local/bin/termfleet-desktop}"
-RESTORE_SCRIPT="${TERMFLEET_RESTORE_SCRIPT:-/media/endlessblink/data/my-projects/ai-development/cc-linux-enhancments/scripts/agent-fleet/restore.py}"
+RESTORE_SCRIPT="${TERMFLEET_RESTORE_SCRIPT:-}"
 WAIT_SECONDS="${TERMFLEET_RESTART_SMOKE_WAIT_SECONDS:-30}"
 # The installed cockpit snapshot is written asynchronously after the WebView
 # mounts and the pane status poll starts; three seconds is shorter than the
 # observed cold-start path on the dock release.
 SETTLE_SECONDS="${TERMFLEET_RESTART_SMOKE_SETTLE_SECONDS:-10}"
 ARTIFACT_DIR="${TERMFLEET_RESTART_SMOKE_ARTIFACT_DIR:-}"
+LABEL_FIXTURE="${TERMFLEET_RESTART_SMOKE_LABEL_FIXTURE:-1}"
+FIXTURE_TASK="Reopen the closed sentinel session after restart"
+FIXTURE_GOAL="Keep the closed sentinel session available after restart"
+FIXTURE_NOW="Waiting for the restored sentinel command"
 
 # Keep the installed visual smoke on a disposable display by default. Its
 # private XDG runtime/data roots already isolate the daemon and workspace; a
@@ -28,6 +32,7 @@ if [[ -z "${TERMFLEET_RESTART_SMOKE_INNER:-}" &&
   exec xvfb-run -a -s "-screen 0 1600x1000x24" \
     env \
       TERMFLEET_RESTART_SMOKE_INNER=1 \
+      TERMFLEET_EXTERNAL_RESTORE="${TERMFLEET_EXTERNAL_RESTORE:-1}" \
       bash "${BASH_SOURCE[0]}" "$@"
 fi
 
@@ -41,6 +46,8 @@ for command in xdotool xprop import identify compare tesseract pgrep fuser dbus-
 done
 [[ -x "$DESKTOP_LAUNCHER" ]] ||
   { printf 'Desktop launcher is not executable: %s\n' "$DESKTOP_LAUNCHER" >&2; exit 1; }
+[[ -n "$RESTORE_SCRIPT" ]] ||
+  { printf 'Set TERMFLEET_RESTORE_SCRIPT to your agent-fleet restore script.\n' >&2; exit 1; }
 [[ -f "$RESTORE_SCRIPT" ]] ||
   { printf 'Strict restore script is missing: %s\n' "$RESTORE_SCRIPT" >&2; exit 1; }
 
@@ -51,6 +58,7 @@ state_dir="$tmp_root/state"
 fake_bin="$tmp_root/bin"
 app_log="$tmp_root/app.log"
 screenshot="$tmp_root/termfleet.png"
+pane_capture_dir="$tmp_root/pane-captures"
 socket="$runtime_dir/terminal-workspace/daemon.sock"
 observed_terminals="$tmp_root/observed-terminals"
 resume_marker="$tmp_root/resume-marker"
@@ -59,7 +67,91 @@ session_dir="$tmp_root/session"
 closed_sentinel_cwd="$session_dir/closed-sentinel"
 open_sentinel_cwd="$session_dir/open-sentinel"
 closed_sentinel_fixture_dir="$session_dir/closed-sentinel"
-mkdir -m 0700 "$runtime_dir" "$data_dir" "$state_dir" "$fake_bin" "$session_dir" "$closed_sentinel_fixture_dir" "$open_sentinel_cwd" "$tmp_root/tmp"
+restart_pane_two_cwd="$session_dir/restart-pane-two"
+restart_pane_three_cwd="$session_dir/restart-pane-three"
+restart_pane_four_cwd="$session_dir/restart-pane-four"
+mkdir -m 0700 "$runtime_dir" "$data_dir" "$state_dir" "$fake_bin" "$session_dir" "$closed_sentinel_fixture_dir" "$open_sentinel_cwd" "$restart_pane_two_cwd" "$restart_pane_three_cwd" "$restart_pane_four_cwd" "$tmp_root/tmp"
+
+# Hydrate one visible split tab rather than four separate restored tabs. The
+# cockpit snapshot only contains mounted panes, so separate tabs make the
+# restart gate observe the app's default pane instead of the intended fixture.
+mkdir -p "$data_dir/terminal-workspace"
+node - "$data_dir/terminal-workspace/workspace.json" "$closed_sentinel_cwd" "$restart_pane_two_cwd" "$restart_pane_three_cwd" "$restart_pane_four_cwd" <<'NODE'
+const fs = require("node:fs");
+const [output, ...cwds] = process.argv.slice(2);
+const paneIds = [
+  "installed-restart-pane-one",
+  "installed-restart-pane-two",
+  "installed-restart-pane-three",
+  "installed-restart-pane-four",
+];
+const providerSessionIds = [
+  "00000000-0000-0000-0000-000000000000",
+  "11111111-1111-4111-8111-111111111111",
+  "22222222-2222-4222-8222-222222222222",
+  "33333333-3333-4333-8333-333333333333",
+];
+const terminals = paneIds.map((paneId, index) => ({
+  id: paneId,
+  paneId,
+  cols: 80,
+  rows: 24,
+  status: "starting",
+  reused: false,
+  agentProvider: "codex",
+  providerSessionId: providerSessionIds[index],
+  initialCwd: cwds[index],
+}));
+const leaves = terminals.map((terminal) => ({
+  id: terminal.paneId,
+  type: "terminal",
+  cwd: terminal.initialCwd,
+}));
+const split = (id, direction, children) => ({
+  id,
+  type: "split",
+  direction,
+  sizes: [50, 50],
+  children,
+});
+const tab = {
+  id: "installed-restart-tab",
+  title: "Installed restart panes",
+  emoji: "🔁",
+  color: "#7aa2f7",
+  groupId: "installed-restart-group",
+  initialCwd: cwds[0],
+  terminals,
+  splitLayout: split("installed-restart-root", "vertical", [
+    split("installed-restart-top", "horizontal", leaves.slice(0, 2)),
+    split("installed-restart-bottom", "horizontal", leaves.slice(2)),
+  ]),
+  activePaneId: paneIds[0],
+};
+fs.writeFileSync(output, `${JSON.stringify({
+  tabs: [tab],
+  groups: [{
+    id: "installed-restart-group",
+    name: "installed-restart",
+    color: "#7aa2f7",
+    emoji: "🔁",
+    emojiSource: "generated",
+    projectRoot: cwds[0],
+    lastActiveTabId: tab.id,
+  }],
+  activeTabId: tab.id,
+  activeGroupId: tab.groupId,
+  activeGroupFilter: tab.groupId,
+  projectRoot: cwds[0],
+  workspaceUiState: {
+    workspaceMode: "split",
+    terminalRendererMode: "auto",
+    primarySidebarCollapsed: true,
+  },
+  closedSessionIds: [],
+}, null, 2)}\n`, { mode: 0o600 });
+NODE
+
 git -C "$closed_sentinel_cwd" init -q
 git -C "$closed_sentinel_cwd" config user.email smoke@example.invalid
 git -C "$closed_sentinel_cwd" config user.name "TermFleet smoke"
@@ -83,6 +175,29 @@ node -e '
   };
   const paneHash = fnv(paneId);
   const cwdHash = fnv(process.cwd());
+  const fixtures = {
+    "closed-sentinel": {
+      task: "Reopen the closed sentinel session after restart",
+      goal: "Keep the closed sentinel session available after restart",
+      now: "Waiting for the restored sentinel command",
+    },
+    "restart-pane-two": {
+      task: "Inspect the restarted terminal session identity",
+      goal: "Keep terminal session identity clear after restart",
+      now: "Waiting for the identity check",
+    },
+    "restart-pane-three": {
+      task: "Preserve the restarted shell session context",
+      goal: "Keep shell context truthful after restart",
+      now: "Waiting for the next shell command",
+    },
+    "restart-pane-four": {
+      task: "Confirm the restarted pane remains resumable",
+      goal: "Keep the pane resumable after restart",
+      now: "Waiting for the next pane command",
+    },
+  };
+  const fixture = fixtures[path.basename(process.cwd())] || fixtures["closed-sentinel"];
   const sidecar = {
     provider: "codex",
     cwd: process.cwd(),
@@ -90,10 +205,10 @@ node -e '
     updatedAt: Date.now(),
     turnEventAt: Date.now(),
     source: "codex-user-prompt",
-    mainTask: "Verify the installed terminal labels",
+    mainTask: fixture.goal,
     mainTaskSource: "opening-request",
-    userTask: "Verify the installed terminal labels",
-    now: "Waiting for command",
+    userTask: fixture.task,
+    now: fixture.now,
     turn: "working",
   };
   const dir = path.join(process.env.XDG_DATA_HOME, "terminal-workspace", "agent-status");
@@ -102,6 +217,12 @@ node -e '
   fs.writeFileSync(path.join(dir, `${cwdHash}.json`), JSON.stringify(sidecar));
 '
 printf '%s\n' "$*" >>"$SMOKE_RESUME_MARKER"
+printf 'Restored provider session alive: %s\n' "$paneId"
+# The visual gate verifies a live restored provider, not only that the restore
+# command was invoked. Keep the fixture process alive until the isolated smoke
+# harness tears it down so the pane remains reconnected while the snapshot
+# settles.
+while true; do sleep 60; done
 EOF
 chmod 0755 "$fake_bin/codex"
 cat >"$fake_bin/smoke-shell" <<'EOF'
@@ -116,7 +237,31 @@ cwd = "$closed_sentinel_cwd"
 agent = "codex"
 host = "terminal"
 pin = "00000000-0000-0000-0000-000000000000"
+
+[[session]]
+name = "restart-pane-two"
+cwd = "$restart_pane_two_cwd"
+agent = "codex"
+host = "terminal"
+pin = "11111111-1111-4111-8111-111111111111"
+
+[[session]]
+name = "restart-pane-three"
+cwd = "$restart_pane_three_cwd"
+agent = "codex"
+host = "terminal"
+pin = "22222222-2222-4222-8222-222222222222"
+
+[[session]]
+name = "restart-pane-four"
+cwd = "$restart_pane_four_cwd"
+agent = "codex"
+host = "terminal"
+pin = "33333333-3333-4333-8333-333333333333"
 EOF
+child_env_file="$tmp_root/child.env"
+printf 'AGENT_FLEET_CONFIG=%q\nAGENT_FLEET_STATE_DIR=%q\nTF_RESTORE_PATH=%q\nTERMFLEET_EXTERNAL_RESTORE=%q\nTERMFLEET_PRESERVE_RUNTIME_DIR=%q\nTERMFLEET_RESTORE_DELAY_SECONDS=0\n' \
+  "$manifest" "$state_dir/agent-fleet" "$RESTORE_SCRIPT" "${TERMFLEET_EXTERNAL_RESTORE:-1}" "1" >"$child_env_file"
 terminal_pids() {
   {
     pgrep -x konsole || true
@@ -156,6 +301,44 @@ cleanup() {
       [[ -s "$filtered" ]] && install -m 0644 "$filtered" "$ARTIFACT_DIR/$(basename "$filtered")"
     done
     [[ -s "$state_dir/termfleet/desktop-launch.log" ]] && install -m 0644 "$state_dir/termfleet/desktop-launch.log" "$ARTIFACT_DIR/desktop-launch.log"
+    if [[ -d "$pane_capture_dir" ]]; then
+      mkdir -p "$ARTIFACT_DIR/terminal-pane-captures"
+      cp -a "$pane_capture_dir/." "$ARTIFACT_DIR/terminal-pane-captures/"
+    fi
+    if [[ -d "$data_dir/terminal-workspace/agent-status" ]]; then
+      mkdir -p "$ARTIFACT_DIR/native-captures"
+      for native_capture in "$data_dir"/terminal-workspace/agent-status/termfleet-pane-native-*.png; do
+        [[ -s "$native_capture" ]] || continue
+        install -m 0644 "$native_capture" "$ARTIFACT_DIR/native-captures/$(basename "$native_capture")"
+      done
+    fi
+    ARTIFACT_DIR="$ARTIFACT_DIR" python3 - <<'PYEOF'
+import json
+import os
+from pathlib import Path
+
+artifact = Path(os.environ["ARTIFACT_DIR"])
+snapshot_path = artifact / "cockpit-snapshot.json"
+if snapshot_path.is_file():
+    snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
+    native_dir = artifact / "native-captures"
+    for entry in snapshot.get("terminals", []):
+        native = entry.get("nativeCapture") or {}
+        source = Path(str(native.get("path") or ""))
+        if source.name and (native_dir / source.name).is_file():
+            native["path"] = str(native_dir / source.name)
+            entry["nativeCapture"] = native
+    snapshot_path.write_text(json.dumps(snapshot, indent=2) + "\n", encoding="utf-8")
+
+for manifest_path in (artifact / "terminal-pane-captures").glob("*.json"):
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    for pane in manifest.get("panes", []):
+        image = Path(str(pane.get("image") or ""))
+        stable_image = artifact / "terminal-pane-captures" / image.name
+        if image.name and stable_image.is_file():
+            pane["image"] = str(stable_image)
+    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+PYEOF
   fi
   if (( status != 0 )); then
     printf 'Restart smoke failed with status=%s socket=%s window=%s marker=%s\n' \
@@ -213,6 +396,7 @@ SHELL="$fake_bin/smoke-shell" \
   TERMFLEET_TMPDIR="$tmp_root/tmp" \
 TERMFLEET_COCKPIT_SNAPSHOT_PATH="$data_dir/terminal-workspace/agent-status/cockpit-snapshot.json" \
   TERMFLEET_CHILD_CONTEXT=isolated-smoke \
+  TERMFLEET_CHILD_ENV_FILE="$child_env_file" \
     setsid dbus-run-session -- "$DESKTOP_LAUNCHER" --child >"$app_log" 2>&1 &
 app_pid=$!
 process_group_pid=$app_pid
@@ -259,7 +443,14 @@ fi
 # Seed the exact pane-keyed status channel after the dock release has created its
 # runtime pane. This makes the installed visual gate exercise the real opening-request
 # path instead of accidentally proving only the empty shell state.
-if [[ "${TERMFLEET_RESTART_SMOKE_LABEL_FIXTURE:-1}" == "1" ]]; then
+if [[ "${TERMFLEET_RESTART_SMOKE_GIT_MONITOR:-0}" == "1" ]]; then
+  eval "$(xdotool getwindowgeometry --shell "$window_id")"
+  xdotool windowfocus "$window_id" >/dev/null 2>&1 || true
+  xdotool windowactivate "$window_id" >/dev/null 2>&1 || true
+  xdotool key --clearmodifiers ctrl+alt+g
+  sleep 3
+fi
+if [[ "$LABEL_FIXTURE" == "1" ]]; then
   snapshot_path="$data_dir/terminal-workspace/agent-status/cockpit-snapshot.json"
   for _ in {1..20}; do
     [[ -s "$snapshot_path" ]] && break
@@ -272,8 +463,8 @@ if [[ "${TERMFLEET_RESTART_SMOKE_LABEL_FIXTURE:-1}" == "1" ]]; then
     const snapshotPath = path.join(root, "cockpit-snapshot.json");
     if (!fs.existsSync(snapshotPath)) process.exit(0);
     const snapshot = JSON.parse(fs.readFileSync(snapshotPath, "utf8"));
-    const pane = Array.isArray(snapshot.terminals) ? snapshot.terminals[0] : null;
-    const statusPaneIds = [pane?.paneId, pane?.terminalId].filter(Boolean);
+    const panes = Array.isArray(snapshot.terminals) ? snapshot.terminals : [];
+     const statusPaneIds = panes.map((pane) => pane?.paneId || pane?.terminalId).filter(Boolean);
     if (statusPaneIds.length === 0) process.exit(0);
     const fnv = (value) => {
       let hash = 2166136261;
@@ -284,21 +475,42 @@ if [[ "${TERMFLEET_RESTART_SMOKE_LABEL_FIXTURE:-1}" == "1" ]]; then
       return (hash >>> 0).toString(16).padStart(8, "0");
     };
     const now = Date.now();
-    for (const statusPaneId of statusPaneIds) fs.writeFileSync(path.join(root, `pane-${fnv(statusPaneId)}.json`), JSON.stringify({
-      paneId: statusPaneId,
-      provider: "codex",
-      cwd: pane.cwd,
-      sessionId: "00000000-0000-0000-0000-000000000000",
-      updatedAt: now,
-      turnEventAt: now,
-      source: "codex-user-prompt",
-      mainTask: "Verify the installed terminal labels",
-      mainTaskSource: "opening-request",
-      userTask: "Verify the installed terminal labels",
-      now: "Waiting for command",
-      turn: "working"
-    }));
+    const fixtures = [
+      ["Reopen the closed sentinel session after restart", "Keep the closed sentinel session available after restart", "Waiting for the restored sentinel command"],
+      ["Inspect the restarted terminal session identity", "Keep terminal session identity clear after restart", "Waiting for the identity check"],
+      ["Preserve the restarted shell session context", "Keep shell context truthful after restart", "Waiting for the next shell command"],
+      ["Confirm the restarted pane remains resumable", "Keep the pane resumable after restart", "Waiting for the next pane command"],
+    ];
+    for (const [index, statusPaneId] of statusPaneIds.entries()) {
+      const pane = panes[index] || panes[0];
+      const [task, goal, nowText] = fixtures[index] || fixtures[0];
+      const sidecar = JSON.stringify({
+        paneId: statusPaneId,
+        provider: "codex",
+        cwd: pane.cwd,
+        sessionId: "00000000-0000-0000-0000-000000000000",
+        updatedAt: now,
+        turnEventAt: now,
+        source: "codex-user-prompt",
+         mainTask: task,
+         mainTaskSource: "opening-request",
+         openingRequest: goal,
+        userTask: task,
+        now: nowText,
+        turn: "working"
+      });
+      const runtimePaneId = `terminal-installed-restart-tab-${statusPaneId}`;
+      for (const lookupPaneId of [statusPaneId, runtimePaneId]) {
+        const lookupSidecar = JSON.stringify({ ...JSON.parse(sidecar), paneId: lookupPaneId });
+        fs.writeFileSync(path.join(root, `pane-${fnv(lookupPaneId)}.json`), lookupSidecar);
+      }
+      if (pane.cwd) fs.writeFileSync(path.join(root, `${fnv(pane.cwd)}.json`), sidecar);
+    }
   '
+  if [[ -n "$ARTIFACT_DIR" ]]; then
+    mkdir -p "$ARTIFACT_DIR/status-sidecars"
+    cp -a "$data_dir/terminal-workspace/agent-status/." "$ARTIFACT_DIR/status-sidecars/" 2>/dev/null || true
+  fi
   xdotool key --window "$window_id" Return >/dev/null 2>&1 || true
   label_gate_passed=0
   # The installed dock polls status asynchronously after the first snapshot; allow
@@ -310,12 +522,22 @@ if [[ "${TERMFLEET_RESTART_SMOKE_LABEL_FIXTURE:-1}" == "1" ]]; then
       if (!fs.existsSync(file)) process.exit(1);
       const snapshot = JSON.parse(fs.readFileSync(file, "utf8"));
       const terminals = Array.isArray(snapshot.terminals) ? snapshot.terminals : [];
-      const valid = terminals.some((entry) =>
-        entry.task === "Verify the installed terminal labels" &&
-        Boolean(entry.context) &&
-        entry.context !== entry.task &&
-        Boolean(entry.now),
-      );
+       const validGoals = new Set([
+        "Reopen the closed sentinel session after restart",
+        "Inspect the restarted terminal session identity",
+        "Preserve the restarted shell session context",
+        "Confirm the restarted pane remains resumable",
+      ]);
+      const valid = terminals.length === 4 &&
+         new Set(terminals.map((entry) => entry.context)).size === 4 &&
+         terminals.every((entry) =>
+           validGoals.has(entry.context) &&
+           Boolean(entry.context) &&
+           entry.context !== entry.task &&
+           Boolean(entry.task) &&
+           entry.status === "reconnected" &&
+           Boolean(entry.now),
+        );
       process.exit(valid ? 0 : 1);
     ' "$data_dir/terminal-workspace/agent-status/cockpit-snapshot.json"; then
       label_gate_passed=1
@@ -330,36 +552,62 @@ if [[ "${TERMFLEET_RESTART_SMOKE_LABEL_FIXTURE:-1}" == "1" ]]; then
 fi
 
 import -silent -window "$window_id" "$screenshot"
+TERMFLEET_STATUS_DIR="$data_dir/terminal-workspace/agent-status" \
+TERMFLEET_COCKPIT_SNAPSHOT_PATH="$data_dir/terminal-workspace/agent-status/cockpit-snapshot.json" \
+TERMFLEET_PANE_CAPTURE_DIR="$pane_capture_dir" \
+TERMFLEET_PANE_CAPTURE_EXPECTED_COUNT=4 \
+TERMFLEET_PANE_CAPTURE_REQUIRE_HEADERS=0 \
+  node "$APP_ROOT/scripts/monitor-cockpit-pane-screens.mjs" --once
+TERMFLEET_STATUS_DIR="$data_dir/terminal-workspace/agent-status" \
+TERMFLEET_COCKPIT_SNAPSHOT_PATH="$data_dir/terminal-workspace/agent-status/cockpit-snapshot.json" \
+TERMFLEET_WORKSPACE_PATH="$data_dir/terminal-workspace/workspace.json" \
+  node "$APP_ROOT/scripts/monitor-cockpit-pane-health.mjs" --once
+node -e '
+  const fs = require("node:fs");
+  const matrix = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+  const failures = (Array.isArray(matrix.panes) ? matrix.panes : []).filter((pane) =>
+    pane.health !== "live" || (Array.isArray(pane.reasons) && pane.reasons.includes("idle-shell-fallback")));
+  if (failures.length > 0) {
+    console.error(`Installed restart health gate failed: ${JSON.stringify(failures)}`);
+    process.exit(1);
+  }
+' "$data_dir/terminal-workspace/agent-status/termfleet-pane-health.json"
+if [[ -n "$ARTIFACT_DIR" && -d "$pane_capture_dir" ]]; then
+  mkdir -p "$ARTIFACT_DIR/terminal-pane-captures"
+  cp -a "$pane_capture_dir/." "$ARTIFACT_DIR/terminal-pane-captures/"
+  install -m 0644 "$data_dir/terminal-workspace/agent-status/termfleet-pane-health.json" \
+    "$ARTIFACT_DIR/termfleet-pane-health.json"
+fi
 if [[ "${TERMFLEET_RESTART_SMOKE_GIT_MONITOR:-0}" == "1" ]]; then
   cp "$screenshot" "${screenshot%.png}-before-git-monitor.png"
 fi
-if [[ "${TERMFLEET_RESTART_SMOKE_LABEL_FIXTURE:-1}" == "1" ]]; then
+if [[ "$LABEL_FIXTURE" == "1" ]]; then
   node -e '
     const fs = require("node:fs");
     const file = process.argv[1];
     const snapshot = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, "utf8")) : {};
     const terminals = Array.isArray(snapshot.terminals) ? snapshot.terminals : [];
-    const valid = terminals.some((entry) =>
-      entry.task === "Verify the installed terminal labels" &&
-      Boolean(entry.context) &&
-      entry.context !== entry.task &&
-      Boolean(entry.now),
-    );
+     const validGoals = new Set([
+      "Reopen the closed sentinel session after restart",
+      "Inspect the restarted terminal session identity",
+      "Preserve the restarted shell session context",
+      "Confirm the restarted pane remains resumable",
+    ]);
+    const valid = terminals.length === 4 &&
+       new Set(terminals.map((entry) => entry.context)).size === 4 &&
+      terminals.every((entry) =>
+        validGoals.has(entry.context) &&
+        Boolean(entry.context) &&
+        entry.context !== entry.task &&
+        Boolean(entry.task) &&
+        entry.status === "reconnected" &&
+        Boolean(entry.now),
+      );
     if (!valid) {
       console.error(`Installed label snapshot did not preserve Task/Goal/Now: ${JSON.stringify(terminals)}`);
       process.exit(1);
     }
   ' "$data_dir/terminal-workspace/agent-status/cockpit-snapshot.json"
-  if [[ "${TERMFLEET_RESTART_SMOKE_GIT_MONITOR:-0}" == "1" ]]; then
-    eval "$(xdotool getwindowgeometry --shell "$window_id")"
-    xdotool windowfocus "$window_id" >/dev/null 2>&1 || true
-    xdotool windowactivate "$window_id" >/dev/null 2>&1 || true
-    xdotool mousemove --sync "$((X + 500))" "$((Y + 25))"
-    xdotool click --clearmodifiers 1
-    xdotool type --delay 15 "Monitor Git work"
-    xdotool key Return
-    sleep 3
-  fi
   if [[ "${TERMFLEET_RESTART_SMOKE_NARROW:-0}" == "1" ]]; then
     xdotool windowsize "$window_id" 390 844
     sleep 1
@@ -886,6 +1134,7 @@ PY
     TERMFLEET_INSTALL_ROOT="$INSTALL_ROOT" TERMFLEET_PRESERVE_RUNTIME_DIR=1 \
     TERMFLEET_RESTORE="$RESTORE_SCRIPT" TERMFLEET_TMPDIR="$tmp_root/tmp" \
     TERMFLEET_CHILD_CONTEXT=isolated-smoke \
+    TERMFLEET_CHILD_ENV_FILE="$child_env_file" \
       setsid dbus-run-session -- "$DESKTOP_LAUNCHER" --child >>"$app_log" 2>&1 &
   app_pid=$!
   process_group_pid=$app_pid

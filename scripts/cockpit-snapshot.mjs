@@ -4,8 +4,21 @@
 // it, next to the agent's REAL task from its sidecar. Flags panes whose title is a command
 // scrape / not the real task — i.e. "what you see vs what it's working on", all at once.
 import { readFileSync } from "node:fs";
+
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+
+// Workspace roots whose absolute paths should never leak into a cockpit label.
+// Operator-supplied (colon-separated); with none set nothing is filtered out.
+const NOISY_PATH_PATTERN = (() => {
+  const roots = (process.env.TERMFLEET_PROJECT_ROOTS ?? "")
+    .split(":")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  if (roots.length === 0) return { test: () => false };
+  const escaped = roots.map((root) => root.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  return new RegExp(`(?:${escaped.join("|")})`, "i");
+})();
 import {
   paneSidecarPath,
   sidecarFresh,
@@ -149,7 +162,7 @@ function hasMeaningfulVisibleData(value) {
     !/^[›❯]\s+Use\s+\/skills\b/i.test(line) &&
     !/^[◐◒◑●]\s*(?:low|medium|high|\/effort)\b/i.test(line) &&
     !/^gpt[-\w. ]+\s+default\b/i.test(line) &&
-    !/\b\/media\/endlessblink\/data\/my-projects\b/.test(line)
+    !NOISY_PATH_PATTERN.test(line)
   );
 }
 
@@ -265,7 +278,7 @@ function analyzeEntry(entry, snapshotAgeS) {
   if (looksLikeArtifactTitle(title)) flags.push("title-artifact-or-narration");
   if (looksLikeArtifactTitle(now)) flags.push("now-artifact-or-narration");
   if (task.length > 96) flags.push(`task-too-long:${task.length}`);
-  if (/(\/tmp\/claude|FIRST read|follow EXACTLY|npm run|npx playwright|--reporter|\/media\/endlessblink)/i.test(task)) {
+  if (/(\/tmp\/claude|FIRST read|follow EXACTLY|npm run|npx playwright|--reporter)/i.test(task) || NOISY_PATH_PATTERN.test(task)) {
     flags.push("task-row-contains-implementation-detail");
   }
   if (/^(?:printf|echo|pwd;|cd |git |npm |npx |pnpm |yarn |cargo |python(?:3)? |node |curl |docker )\b/i.test(task)) {

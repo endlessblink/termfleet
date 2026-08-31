@@ -1,9 +1,11 @@
 import { existsSync, readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
+import { homedir } from "node:os";
 
 const root = process.cwd();
-const skillRoot = "/home/endlessblink/.agents/skills/impeccable";
+const skillRoot = process.env.IMPECCABLE_SKILL_ROOT
+  ?? resolve(homedir(), ".agents/skills/impeccable");
 const context = spawnSync("node", [resolve(skillRoot, "scripts/context.mjs"), "--target", "src/components/GamificationPanel.tsx"], { cwd: root, encoding: "utf8" });
 if (context.status !== 0 || !context.stdout.includes("EXISTING_VISUAL_SYSTEM")) {
   console.error("IMPECCABLE_GATE_FAIL: Impeccable context did not load the incumbent visual system.");

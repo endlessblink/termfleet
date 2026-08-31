@@ -55,8 +55,11 @@ const checks = [
     message: "terminal container must not add padding that steals TUI cells.",
   },
   {
-    ok: /className="terminal-block-shell"/.test(terminal) &&
-      /className="terminal-block-rail"/.test(terminal) &&
+    // The class may be applied literally or built in a template string; the
+    // contract is that the rail exists outside the cell grid, not how the
+    // attribute happens to be written.
+    ok: /className=[{"`][^\n]*terminal-block-shell/.test(terminal) &&
+      /className=[{"`][^\n]*terminal-block-rail/.test(terminal) &&
       /\.terminal-block-shell\s*\{[\s\S]*grid-template-columns:\s*24px minmax\(0, 1fr\);/.test(globalCss) &&
       /--terminal-block-marker-active:/.test(themeCss),
     message: "terminal blocks must be represented by a rail outside the xterm cell grid.",

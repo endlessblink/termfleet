@@ -12,7 +12,10 @@ mod platform_process;
 mod platform_tty;
 mod pty;
 mod search;
+mod user_config;
 pub mod vt_grid;
+#[cfg(target_os = "linux")]
+mod webview_snapshot;
 
 use commands::FocusedTerminalState;
 use pty::PtyManager;
@@ -58,14 +61,17 @@ pub fn run() {
             commands::exit_application,
             commands::daemon_status,
             commands::agent_status_read_sidecar,
+            commands::agent_conversation_owner,
             commands::agent_conversation_has_other_owner,
             commands::agent_context_task_title,
             commands::session_transcript_read,
             commands::session_transcript_head_read,
             commands::session_transcript_context_read,
             commands::pane_foreground_command,
+            commands::pane_root_is_idle_shell,
             commands::agent_provider_statuses,
             commands::pane_agent_provider,
+            commands::pane_agent_runtime_info,
             commands::system_pressure_snapshot,
             commands::workstream_git_context,
             commands::workstream_prepare_dedicated_worktree,
@@ -85,6 +91,8 @@ pub fn run() {
             commands::daemon_restore_session,
             commands::daemon_list_sessions,
             commands::daemon_list_session_events,
+            commands::lifecycle_audit,
+            commands::terminal_matrix,
             commands::grid_attach,
             commands::grid_snapshot,
             commands::grid_revision,
@@ -109,11 +117,14 @@ pub fn run() {
             commands::paste_debug_log,
             commands::fs_pick_project_folder,
             commands::fs_list_dir,
+            commands::fs_find_master_plan_roots,
             commands::fs_create,
             commands::fs_rename,
             commands::fs_delete,
             commands::fs_read_file,
             commands::agent_ops,
+            commands::task_run_registry_read,
+            commands::task_run_registry_write,
             commands::fs_open_external,
             commands::fs_write_file,
             commands::cockpit_snapshot_write,
@@ -126,6 +137,8 @@ pub fn run() {
             native_terminal::native_terminal_update,
             native_terminal::native_terminal_destroy,
             commands::set_focused_terminal,
+            #[cfg(target_os = "linux")]
+            webview_snapshot::capture_webview_snapshot,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

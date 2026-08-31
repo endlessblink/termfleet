@@ -29,11 +29,9 @@ const daemonSessions = process.env.TERMFLEET_RECOVERY_DAEMON_SESSIONS_JSON
         return null;
       }
     })();
-const projects = new Map(JSON.parse(process.env.TERMFLEET_RECOVERY_PROJECTS_JSON ?? JSON.stringify([
-  ["flow-state", "/media/endlessblink/data/my-projects/ai-development/productivity/flow-state"],
-  ["bina-meatzevet-courses", "/media/endlessblink/data/my-projects/ai-development/freelance/bina-meatzevet-courses"],
-  ["lifeboat-live", "/media/endlessblink/data/my-projects/ai-development/devops/hermes/lifeboat-live"],
-])));
+// Workspace aliases are operator-supplied, e.g.
+//   TERMFLEET_RECOVERY_PROJECTS_JSON='[["notes","/srv/notes"]]'
+const projects = new Map(JSON.parse(process.env.TERMFLEET_RECOVERY_PROJECTS_JSON ?? "[]"));
 const codexLockRoot = process.env.TERMFLEET_CODEX_LOCK_ROOT ?? path.join(process.env.HOME ?? "", ".codex", "thread-writer-locks");
 
 function readJson(file) {

@@ -5,9 +5,11 @@ use crate::daemon::{
 };
 use crate::daemon_ipc::{self, LocalStream};
 use crate::platform_paths;
+use crate::user_config;
 use crate::pty::{
-    forget_persisted_session, update_agent_recovery_manifest, AgentRecoveryManifestUpdate,
-    PtyManager, PtyOutputChunk, PtySessionEvent, PtySessionSummary,
+    forget_persisted_session, list_persisted_sessions, update_agent_recovery_manifest,
+    AgentRecoveryManifestUpdate, PersistedSessionSummary, PtyManager, PtyOutputChunk,
+    PtySessionEvent, PtySessionSummary,
 };
 use crate::vt_grid::{GridManager, DEFAULT_COLS, DEFAULT_ROWS};
 use serde::{Deserialize, Serialize};
@@ -78,6 +80,9 @@ pub struct WorkstreamGitContext {
     git_root: Option<String>,
     git_branch: Option<String>,
     git_dirty: Option<bool>,
+    git_branch_exists: Option<bool>,
+    git_has_commits: Option<bool>,
+    git_has_conflicts: Option<bool>,
     worktree_path: Option<String>,
     isolation_status: Option<String>,
     isolation_note: Option<String>,
@@ -214,6 +219,33 @@ fn git_output(cwd: &PathBuf, args: &[&str]) -> Option<String> {
     }
 }
 
+fn git_status_facts(cwd: &PathBuf) -> (Option<bool>, Option<bool>) {
+    let output = match Command::new("git")
+        .arg("-C")
+        .arg(cwd)
+        .args(["status", "--porcelain=v1"])
+        .output()
+    {
+        Ok(output) if output.status.success() => output,
+        _ => return (None, None),
+    };
+    let status = String::from_utf8_lossy(&output.stdout);
+    let (dirty, conflicts) = parse_git_status_facts(&status);
+    (Some(dirty), Some(conflicts))
+}
+
+fn parse_git_status_facts(status: &str) -> (bool, bool) {
+    let dirty = !status.trim().is_empty();
+    let conflicts = status.lines().any(|line| {
+        let bytes = line.as_bytes();
+        bytes.first().is_some_and(|byte| *byte == b'U')
+            || bytes.get(1).is_some_and(|byte| *byte == b'U')
+            || line.starts_with("AA ")
+            || line.starts_with("DD ")
+    });
+    (dirty, conflicts)
+}
+
 fn sanitize_worktree_segment(value: &str) -> String {
     let mut sanitized = value
         .chars()
@@ -271,10 +303,21 @@ fn context_for_cwd(cwd: PathBuf) -> WorkstreamGitContext {
     let git_root = git_output(&cwd, &["rev-parse", "--show-toplevel"]);
     let git_branch = git_output(&cwd, &["branch", "--show-current"])
         .or_else(|| git_output(&cwd, &["rev-parse", "--short", "HEAD"]));
-    let git_dirty = git_output(&cwd, &["status", "--porcelain"])
-        .map(|status| !status.trim().is_empty())
-        .or(Some(false))
-        .filter(|_| git_root.is_some());
+    let (git_dirty, git_has_conflicts) = if git_root.is_some() {
+        git_status_facts(&cwd)
+    } else {
+        (None, None)
+    };
+    let git_branch_exists = git_branch.as_ref().map(|branch| {
+        git_output(
+            &cwd,
+            &["show-ref", "--verify", &format!("refs/heads/{branch}")],
+        )
+        .is_some()
+    });
+    let git_has_commits = git_root
+        .as_ref()
+        .map(|_| git_output(&cwd, &["rev-parse", "--verify", "HEAD"]).is_some());
     let worktree_path = git_root
         .as_ref()
         .and_then(|_| git_output(&cwd, &["rev-parse", "--show-toplevel"]));
@@ -284,6 +327,9 @@ fn context_for_cwd(cwd: PathBuf) -> WorkstreamGitContext {
         git_root,
         git_branch,
         git_dirty,
+        git_branch_exists,
+        git_has_commits,
+        git_has_conflicts,
         worktree_path,
         isolation_status: None,
         isolation_note: None,
@@ -447,7 +493,88 @@ pub fn workstream_remove_dedicated_worktree(path: String) -> Result<WorktreeClea
 /// no special launch command. Returns None for a plain shell.
 #[tauri::command]
 pub fn pane_agent_provider(pane_id: String) -> Option<String> {
-    crate::pane_process::pane_agent_provider(&pane_id)
+    match daemon_pane_root(&pane_id) {
+        DaemonPaneRoot::Verified(pid) => crate::pane_process::agent_provider_for_process_tree(pid),
+        DaemonPaneRoot::Unverified => None,
+        DaemonPaneRoot::Missing => crate::pane_process::pane_agent_provider(&pane_id),
+    }
+}
+
+/// The exact top-level agent runtime identity currently running in a pane.
+/// Two authoritative daemon observations must agree on the same live child.
+/// The daemon reaps a child before recording its exit, so this second read
+/// closes the brief reap-to-status window in which Linux could reuse its PID.
+fn live_session_root_pid_with(
+    first: &[PtySessionSummary],
+    second: &[PtySessionSummary],
+    pane_id: &str,
+    process_is_owned: impl Fn(&PtySessionSummary, u32) -> bool,
+) -> Option<u32> {
+    let first_session = first
+        .iter()
+        .find(|session| session.id == pane_id && session.last_exit.is_none())?;
+    let pid = first_session.pid?;
+    let second_session = second.iter().find(|session| {
+        session.id == pane_id && session.last_exit.is_none() && session.pid == Some(pid)
+    })?;
+    process_is_owned(second_session, pid).then_some(pid)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DaemonPaneRoot {
+    Missing,
+    Unverified,
+    Verified(u32),
+}
+
+fn classify_daemon_pane_with(
+    first: &[PtySessionSummary],
+    second: &[PtySessionSummary],
+    pane_id: &str,
+    process_is_owned: impl Fn(&PtySessionSummary, u32) -> bool,
+) -> DaemonPaneRoot {
+    if !first.iter().any(|session| session.id == pane_id)
+        && !second.iter().any(|session| session.id == pane_id)
+    {
+        return DaemonPaneRoot::Missing;
+    }
+    live_session_root_pid_with(first, second, pane_id, process_is_owned)
+        .map(DaemonPaneRoot::Verified)
+        .unwrap_or(DaemonPaneRoot::Unverified)
+}
+
+fn daemon_pane_root(pane_id: &str) -> DaemonPaneRoot {
+    let Ok(DaemonResponse::ListSessions { sessions: first }) =
+        send_daemon_request(DaemonRequest::ListSessions)
+    else {
+        // A transient IPC failure is not proof that no daemon owns this pane.
+        // Fail closed instead of borrowing a potentially stale env identity.
+        return DaemonPaneRoot::Unverified;
+    };
+    let Some(daemon_pid) = current_daemon_status().pid else {
+        return DaemonPaneRoot::Unverified;
+    };
+    let Ok(DaemonResponse::ListSessions { sessions: second }) =
+        send_daemon_request(DaemonRequest::ListSessions)
+    else {
+        return DaemonPaneRoot::Unverified;
+    };
+    classify_daemon_pane_with(&first, &second, pane_id, |_, pid| {
+        crate::pane_process::process_has_parent(pid, daemon_pid)
+    })
+}
+
+#[tauri::command]
+pub fn pane_agent_runtime_info(
+    pane_id: String,
+) -> Option<crate::pane_process::PaneAgentRuntimeInfo> {
+    match daemon_pane_root(&pane_id) {
+        DaemonPaneRoot::Verified(pid) => {
+            crate::pane_process::agent_runtime_info_for_process_tree(pid)
+        }
+        DaemonPaneRoot::Unverified => None,
+        DaemonPaneRoot::Missing => crate::pane_process::pane_agent_runtime_info(&pane_id),
+    }
 }
 
 #[tauri::command]
@@ -855,14 +982,21 @@ pub fn daemon_subscribe_session(
 ) -> Result<(), String> {
     let socket_path = daemon_socket_path();
     let mut stream = daemon_ipc::connect(&socket_path).map_err(|error| error.to_string())?;
+    let cleanup_id = id.clone();
+    let cleanup_subscriber_id = subscriber_id.clone();
     let request = serde_json::to_vec(&DaemonRequest::SubscribeSession { id, subscriber_id })
         .map_err(|error| error.to_string())?;
     stream
         .write_all(&request)
         .map_err(|error| error.to_string())?;
     let _ = stream.shutdown(Shutdown::Write);
-
     std::thread::spawn(move || {
+        let cleanup = || {
+            let _ = send_daemon_request(DaemonRequest::UnsubscribeSession {
+                id: cleanup_id.clone(),
+                subscriber_id: cleanup_subscriber_id.clone(),
+            });
+        };
         let reader = BufReader::new(stream);
         for line in reader.lines() {
             let line = match line {
@@ -897,9 +1031,15 @@ pub fn daemon_subscribe_session(
             };
 
             if on_data.send(event).is_err() {
+                // The WebView channel can close before the daemon notices that this
+                // stream's socket is stale. Unsubscribe over a fresh control request
+                // immediately, otherwise every subsequent PTY chunk repeats a
+                // Broken pipe against the dead subscriber (observed ~300/5 min).
+                cleanup();
                 break;
             }
         }
+        cleanup();
     });
 
     Ok(())
@@ -924,8 +1064,11 @@ pub fn daemon_get_session_cwd(id: String) -> Result<String, String> {
 }
 
 #[tauri::command]
-pub fn daemon_kill_session(id: String) -> Result<(), String> {
-    match send_daemon_request(DaemonRequest::KillSession { id })? {
+pub fn daemon_kill_session(id: String, user_requested: Option<bool>) -> Result<(), String> {
+    match send_daemon_request(DaemonRequest::KillSession {
+        id,
+        user_requested: user_requested.unwrap_or(false),
+    })? {
         DaemonResponse::KillSession { ok: true } => Ok(()),
         DaemonResponse::Error { message } => Err(message),
         response => Err(format!("Unexpected daemon response: {response:?}")),
@@ -933,8 +1076,11 @@ pub fn daemon_kill_session(id: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn daemon_restore_session(id: String) -> Result<(), String> {
-    match send_daemon_request(DaemonRequest::RestoreSession { id })? {
+pub fn daemon_restore_session(id: String, reviewed: Option<bool>) -> Result<(), String> {
+    match send_daemon_request(DaemonRequest::RestoreSession {
+        id,
+        reviewed: reviewed.unwrap_or(false),
+    })? {
         DaemonResponse::RestoreSession { ok: true } => Ok(()),
         DaemonResponse::Error { message } => Err(message),
         response => Err(format!("Unexpected daemon response: {response:?}")),
@@ -957,6 +1103,16 @@ pub fn daemon_list_session_events() -> Result<Vec<PtySessionEvent>, String> {
         DaemonResponse::Error { message } => Err(message),
         response => Err(format!("Unexpected daemon response: {response:?}")),
     }
+}
+
+#[tauri::command]
+pub fn lifecycle_audit(id: String, kind: String, reason: Option<String>) {
+    crate::pty::append_lifecycle_audit(&id, &kind, reason.as_deref());
+}
+
+#[tauri::command]
+pub fn terminal_matrix() -> Vec<crate::pty::TerminalMatrixRecord> {
+    crate::pty::terminal_matrix()
 }
 
 #[tauri::command]
@@ -1292,14 +1448,14 @@ fn agent_status_sidecar_file(file_name: &str) -> Result<std::path::PathBuf, Stri
 /// read the agent's real task list directly from disk in EVERY launch mode, instead of
 /// depending on the launcher-lifetime HTTP status server (which desktop launches never
 /// had — the root cause the panel kept going dark). Missing file → `Ok(None)`.
-/// Does any live process hold this exact path open?
-fn path_is_open_by_any_process(path: &std::path::Path) -> bool {
+/// Does a live process for this provider hold this exact path open?
+fn path_is_open_by_agent_provider(path: &std::path::Path, provider: &str) -> bool {
     let Ok(entries) = fs::read_dir("/proc") else {
         return true; // cannot tell -> assume owned (fail closed)
     };
     let self_pid = std::process::id();
     for entry in entries.flatten() {
-        let Some(_pid) = entry
+        let Some(pid) = entry
             .file_name()
             .to_str()
             .filter(|value| value.bytes().all(|byte| byte.is_ascii_digit()))
@@ -1308,6 +1464,9 @@ fn path_is_open_by_any_process(path: &std::path::Path) -> bool {
         else {
             continue;
         };
+        if !crate::pane_process::process_matches_agent_provider(pid, provider) {
+            continue;
+        }
         let Ok(fds) = fs::read_dir(entry.path().join("fd")) else {
             continue;
         };
@@ -1318,6 +1477,115 @@ fn path_is_open_by_any_process(path: &std::path::Path) -> bool {
         }
     }
     false
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentConversationOwner {
+    pub provider: String,
+    pub provider_session_id: String,
+    pub provider_pid: u32,
+    pub daemon_pane_id: String,
+    pub daemon_root_pid: u32,
+}
+
+fn conversation_owner_from_sessions_with(
+    first: &[PtySessionSummary],
+    second: &[PtySessionSummary],
+    persisted: &[PersistedSessionSummary],
+    daemon_pid: u32,
+    provider: &str,
+    session_id: &str,
+    process_is_owned: impl Fn(u32, u32) -> bool,
+    runtime_owner: impl Fn(u32) -> Option<crate::pane_process::PaneAgentRuntimeOwner>,
+    provider_owner: impl Fn(u32) -> Option<crate::pane_process::PaneAgentProviderOwner>,
+) -> Result<Option<AgentConversationOwner>, String> {
+    let mut matches = Vec::new();
+    for session in first.iter().filter(|session| session.last_exit.is_none()) {
+        let Some(root_pid) = live_session_root_pid_with(first, second, &session.id, |_, pid| {
+            process_is_owned(pid, daemon_pid)
+        }) else {
+            continue;
+        };
+        // A provider's startup argv can retain the exact conversation id, but
+        // long-running Codex/Claude processes are not required to do so.  The
+        // daemon-persisted identity is the durable authority for this exact
+        // daemon pane; argv is only the stronger live observation when present.
+        if let Some(owner) = runtime_owner(root_pid) {
+            if owner.provider == provider && owner.provider_session_id == session_id {
+                matches.push(AgentConversationOwner {
+                    provider: owner.provider,
+                    provider_session_id: owner.provider_session_id,
+                    provider_pid: owner.provider_pid,
+                    daemon_pane_id: session.id.clone(),
+                    daemon_root_pid: root_pid,
+                });
+            }
+            continue;
+        }
+        let Some(owner) = provider_owner(root_pid) else {
+            continue;
+        };
+        let durable_identity_matches = persisted.iter().any(|persisted| {
+            persisted.id == session.id
+                && !persisted.backup_only
+                && persisted.provider.as_deref() == Some(provider)
+                && persisted.provider_session_id.as_deref() == Some(session_id)
+        });
+        if owner.provider == provider && durable_identity_matches {
+            matches.push(AgentConversationOwner {
+                provider: provider.to_string(),
+                provider_session_id: session_id.to_string(),
+                provider_pid: owner.provider_pid,
+                daemon_pane_id: session.id.clone(),
+                daemon_root_pid: root_pid,
+            });
+        }
+    }
+    match matches.len() {
+        0 => Ok(None),
+        1 => Ok(matches.pop()),
+        _ => Err("conversation has more than one verified daemon owner".to_string()),
+    }
+}
+
+/// Return the exact live provider process and canonical daemon pane that owns a
+/// conversation. This is read-only and fails closed unless two daemon snapshots
+/// agree on the same directly owned live pane root.
+#[tauri::command]
+pub fn agent_conversation_owner(
+    provider: String,
+    session_id: String,
+) -> Result<Option<AgentConversationOwner>, String> {
+    let session_id = session_id.trim();
+    if session_id.is_empty() || !matches!(provider.as_str(), "codex" | "claude" | "opencode") {
+        return Err("invalid provider conversation identity".to_string());
+    }
+    let DaemonResponse::ListSessions { sessions: first } =
+        send_daemon_request(DaemonRequest::ListSessions)?
+    else {
+        return Err("daemon did not return its session list".to_string());
+    };
+    let daemon_pid = current_daemon_status()
+        .pid
+        .ok_or_else(|| "daemon identity is unavailable".to_string())?;
+    let DaemonResponse::ListSessions { sessions: second } =
+        send_daemon_request(DaemonRequest::ListSessions)?
+    else {
+        return Err("daemon did not confirm its session list".to_string());
+    };
+    let persisted = list_persisted_sessions();
+    conversation_owner_from_sessions_with(
+        &first,
+        &second,
+        &persisted,
+        daemon_pid,
+        &provider,
+        session_id,
+        crate::pane_process::process_has_parent,
+        crate::pane_process::agent_runtime_owner_for_process_tree,
+        crate::pane_process::agent_provider_owner_for_process_tree,
+    )
 }
 
 /// Is this provider conversation already open in a live agent OTHER than the
@@ -1345,7 +1613,10 @@ pub fn agent_conversation_has_other_owner(
     if session_id.trim().is_empty() {
         return Ok(true);
     }
-    let _ = (&provider, &pane_id);
+    if !matches!(provider.as_str(), "codex" | "claude" | "opencode") {
+        return Ok(true);
+    }
+    let _ = &pane_id;
 
     // Codex publishes ownership explicitly: while a conversation is open its
     // writer holds `~/.codex/thread-writer-locks/<id>.lock` open. Verified live
@@ -1356,7 +1627,7 @@ pub fn agent_conversation_has_other_owner(
         let lock = home
             .join(".codex/thread-writer-locks")
             .join(format!("{}.lock", session_id.trim()));
-        if lock.exists() && !path_is_open_by_any_process(&lock) {
+        if lock.exists() && !path_is_open_by_agent_provider(&lock, &provider) {
             return Ok(false);
         }
     }
@@ -1375,6 +1646,9 @@ pub fn agent_conversation_has_other_owner(
         else {
             continue;
         };
+        if !crate::pane_process::process_matches_agent_provider(pid, &provider) {
+            continue;
+        }
         let fd_dir = entry.path().join("fd");
         let Ok(fds) = fs::read_dir(&fd_dir) else {
             continue; // not ours to inspect
@@ -1771,6 +2045,56 @@ pub fn fs_list_dir(path: String) -> Result<Vec<FileEntry>, String> {
 }
 
 #[tauri::command]
+pub fn fs_find_master_plan_roots() -> Result<Vec<String>, String> {
+    fn walk(dir: &std::path::Path, depth: usize, roots: &mut Vec<String>) {
+        if depth > 8 {
+            return;
+        }
+        let Ok(entries) = fs::read_dir(dir) else {
+            return;
+        };
+        let mut has_plan = false;
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let name = entry.file_name().to_string_lossy().to_string();
+            if path.is_file() && name == "MASTER_PLAN.md" {
+                has_plan = true;
+            }
+        }
+        if has_plan {
+            roots.push(dir.to_string_lossy().to_string());
+        }
+        let Ok(entries) = fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let name = entry.file_name().to_string_lossy().to_string();
+            if path.is_dir()
+                && !name.starts_with('.')
+                && !matches!(
+                    name.as_str(),
+                    "node_modules" | "target" | "dist" | "build" | "waha-sessions"
+                )
+            {
+                walk(&path, depth + 1, roots);
+            }
+        }
+    }
+    let config = user_config::load();
+    let mut roots = Vec::new();
+    for configured in user_config::project_roots(&config) {
+        let root = PathBuf::from(configured);
+        if root.is_dir() {
+            walk(&root, 0, &mut roots);
+        }
+    }
+    roots.sort();
+    roots.dedup();
+    Ok(roots)
+}
+
+#[tauri::command]
 pub fn fs_create(path: String, is_dir: bool) -> Result<(), String> {
     let path = PathBuf::from(path);
     if is_dir {
@@ -1820,6 +2144,205 @@ pub fn fs_read_file(path: String) -> Result<String, String> {
     fs::read_to_string(path).map_err(|error| error.to_string())
 }
 
+const AGENT_OPS_PLAN_FILE: &str = "MASTER_PLAN.md";
+const AGENT_OPS_TOOL_FILE: &str = "agent_ops.py";
+const AGENT_OPS_UNCONFIGURED: &str =
+    "No shared agent queue is configured. Set agentOpsRoot in the TermFleet config file, or TERMFLEET_AGENT_OPS_ROOT.";
+const TASK_RUN_REGISTRY_RELATIVE_PATH: &str = ".local/share/terminal-workspace/task-runs.json";
+
+fn task_run_registry_path() -> Result<PathBuf, String> {
+    let home =
+        std::env::var_os("HOME").ok_or_else(|| "Home directory is unavailable".to_string())?;
+    Ok(PathBuf::from(home).join(TASK_RUN_REGISTRY_RELATIVE_PATH))
+}
+
+#[tauri::command]
+pub fn task_run_registry_read() -> Result<String, String> {
+    let path = task_run_registry_path()?;
+    match fs::read_to_string(path) {
+        Ok(contents) => {
+            let value: serde_json::Value = serde_json::from_str(&contents)
+                .map_err(|error| format!("Task run registry is invalid: {error}"))?;
+            if !value.is_array() {
+                return Err("Task run registry must contain an array".to_string());
+            }
+            Ok(contents)
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok("[]".to_string()),
+        Err(error) => Err(format!("Could not read task run registry: {error}")),
+    }
+}
+
+#[tauri::command]
+pub fn task_run_registry_write(contents: String) -> Result<(), String> {
+    if contents.len() > 256 * 1024 {
+        return Err("Task run registry is too large".to_string());
+    }
+    let value: serde_json::Value = serde_json::from_str(&contents)
+        .map_err(|error| format!("Task run registry is invalid: {error}"))?;
+    if !value.is_array() {
+        return Err("Task run registry must contain an array".to_string());
+    }
+    let path = task_run_registry_path()?;
+    let parent = path
+        .parent()
+        .ok_or_else(|| "Task run registry has no parent".to_string())?;
+    fs::create_dir_all(parent)
+        .map_err(|error| format!("Could not create task run registry directory: {error}"))?;
+    let lock = path.with_extension("json.lock");
+    let _lock = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&lock)
+        .map_err(|_| "Task run registry is busy".to_string())?;
+    let temp = path.with_extension(format!("json.{}.tmp", std::process::id()));
+    let result = (|| {
+        fs::write(&temp, contents)
+            .map_err(|error| format!("Could not write task run registry: {error}"))?;
+        fs::rename(&temp, &path)
+            .map_err(|error| format!("Could not promote task run registry: {error}"))
+    })();
+    let _ = fs::remove_file(&temp);
+    let _ = fs::remove_file(&lock);
+    result
+}
+
+#[tauri::command]
+pub fn agent_ops(
+    operation: String,
+    task_id: Option<String>,
+    status: Option<String>,
+    agent: Option<String>,
+    include_done: Option<bool>,
+    note: Option<String>,
+    evidence: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let config = user_config::load();
+    let root = user_config::agent_ops_root(&config)
+        .ok_or_else(|| AGENT_OPS_UNCONFIGURED.to_string())?;
+    let script = PathBuf::from(&root).join(AGENT_OPS_TOOL_FILE);
+    let plan = PathBuf::from(&root).join(AGENT_OPS_PLAN_FILE);
+    if !script.is_file() || !plan.is_file() {
+        return Err(format!(
+            "Canonical agent-ops queue is unavailable at {root}"
+        ));
+    }
+    if operation == "authority" {
+        return Ok(serde_json::json!({
+            "schemaVersion": 1,
+            "source": plan.to_string_lossy(),
+            "mutationBoundary": script.to_string_lossy(),
+        }));
+    }
+    let readback_task_id = task_id.clone();
+    let mut command = Command::new("python3");
+    command.arg(&script).arg("--plan").arg(&plan);
+    match operation.as_str() {
+        "list" => {
+            command.arg("list").arg("--json");
+            if include_done.unwrap_or(true) {
+                command.arg("--all");
+            }
+        }
+        "read" => {
+            command
+                .arg("read")
+                .arg(task_id.ok_or_else(|| "A task ID is required".to_string())?)
+                .arg("--json");
+        }
+        "validate" => {
+            command.arg("validate").arg("--json");
+        }
+        "claim" => {
+            command
+                .arg("claim")
+                .arg(task_id.ok_or_else(|| "A task ID is required".to_string())?)
+                .arg("--agent")
+                .arg(agent.ok_or_else(|| "An agent identity is required".to_string())?);
+        }
+        "progress" => {
+            command
+                .arg("progress")
+                .arg(task_id.ok_or_else(|| "A task ID is required".to_string())?)
+                .arg("--agent")
+                .arg(agent.ok_or_else(|| "An agent identity is required".to_string())?)
+                .arg("--note")
+                .arg(note.ok_or_else(|| "A progress note is required".to_string())?);
+        }
+        "done" => {
+            command
+                .arg("done")
+                .arg(task_id.ok_or_else(|| "A task ID is required".to_string())?)
+                .arg("--agent")
+                .arg(agent.ok_or_else(|| "An agent identity is required".to_string())?)
+                .arg("--evidence")
+                .arg(evidence.ok_or_else(|| "Completion evidence is required".to_string())?);
+        }
+        "transition" => {
+            let task_id = task_id.ok_or_else(|| "A task ID is required".to_string())?;
+            let status = status.ok_or_else(|| "A status is required".to_string())?;
+            let agent = agent.ok_or_else(|| "An agent identity is required".to_string())?;
+            command
+                .arg("transition")
+                .arg(task_id)
+                .arg("--status")
+                .arg(status)
+                .arg("--agent")
+                .arg(agent)
+                .arg("--json");
+        }
+        _ => return Err("Unsupported canonical agent-ops operation".to_string()),
+    }
+    let output = command
+        .output()
+        .map_err(|error| format!("Could not start canonical agent-ops: {error}"))?;
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
+    }
+    let value: serde_json::Value = if matches!(operation.as_str(), "claim" | "progress" | "done") {
+        let mut readback = Command::new("python3");
+        readback
+            .arg(&script)
+            .arg("--plan")
+            .arg(&plan)
+            .arg("read")
+            .arg(readback_task_id.ok_or_else(|| "A task ID is required".to_string())?)
+            .arg("--json");
+        let read_output = readback
+            .output()
+            .map_err(|error| format!("Could not read the canonical task back: {error}"))?;
+        if !read_output.status.success() {
+            return Err(String::from_utf8_lossy(&read_output.stderr)
+                .trim()
+                .to_string());
+        }
+        serde_json::from_slice(&read_output.stdout).map_err(|error| {
+            format!("Canonical agent-ops read-back returned invalid JSON: {error}")
+        })?
+    } else {
+        serde_json::from_slice(&output.stdout)
+            .map_err(|error| format!("Canonical agent-ops returned invalid JSON: {error}"))?
+    };
+    if value
+        .get("schemaVersion")
+        .and_then(serde_json::Value::as_u64)
+        != Some(1)
+    {
+        return Err("Canonical agent-ops returned an unsupported schema".to_string());
+    }
+    Ok(value
+        .get("tasks")
+        .cloned()
+        .map(|tasks| serde_json::json!({"schemaVersion": 1, "tasks": tasks}))
+        .or_else(|| {
+            value
+                .get("task")
+                .cloned()
+                .map(|task| serde_json::json!({"schemaVersion": 1, "task": task}))
+        })
+        .unwrap_or(value))
+}
+
 #[tauri::command]
 pub fn fs_open_external(path: String) -> Result<(), String> {
     let launchers: [(&str, &[&str]); 3] = [("kate", &[]), ("xdg-open", &[]), ("gio", &["open"])];
@@ -1848,31 +2371,113 @@ pub fn fs_write_file(path: String, contents: String) -> Result<(), String> {
     fs::write(path, contents).map_err(|error| error.to_string())
 }
 
-/// Persist the rendered cockpit identity from the installed WebView without relying on
-/// a helper HTTP server being present. The frontend payload is already bounded to the
-/// visible panes; keep the write inside TermFleet's own agent-status directory.
 #[tauri::command]
 pub fn cockpit_snapshot_write(contents: String) -> Result<(), String> {
     use std::io::Write;
     const MAX_TRACE_BYTES: u64 = 25 * 1024 * 1024;
 
     // Older dock windows can outlive a release restart and still call this command.
-    // They must not reintroduce the retired synthetic identity contract into the
-    // shared snapshot that the verifier and the current dock read.
-    if contents.contains("Working toward:")
-        || contents.contains("Ready to work in the ")
-        || contents.contains("Supporting work in the ")
-        || contents.contains("Ready to receive work in ")
-    {
-        return Ok(());
-    }
+    // Drop only their retired synthetic panes; one stale pane must not suppress the
+    // current dock's rendered evidence for every other pane.
+    let contents = match serde_json::from_str::<serde_json::Value>(&contents) {
+        Ok(mut payload) => {
+            if let Some(terminals) = payload
+                .get_mut("terminals")
+                .and_then(serde_json::Value::as_array_mut)
+            {
+                terminals.retain(|entry| {
+                    let text = entry.to_string();
+                    !text.contains("Working toward:")
+                        && !text.contains("Ready to work in the ")
+                        && !text.contains("Supporting work in the ")
+                        && !text.contains("Ready to receive work in ")
+                });
+                for entry in terminals.iter_mut() {
+                    let Some(record) = entry.as_object_mut() else {
+                        continue;
+                    };
+                    let task = record
+                        .get("task")
+                        .and_then(serde_json::Value::as_str)
+                        .map(str::trim)
+                        .unwrap_or_default()
+                        .to_string();
+                    let context = record
+                        .get("context")
+                        .and_then(serde_json::Value::as_str)
+                        .map(str::trim)
+                        .unwrap_or_default()
+                        .to_string();
+                    if !task.is_empty() && task.eq_ignore_ascii_case(&context) {
+                        record.insert(
+                            "context".to_string(),
+                            serde_json::Value::String(String::new()),
+                        );
+                        record.insert(
+                            "contextSource".to_string(),
+                            serde_json::Value::String("missing".to_string()),
+                        );
+                        record.remove("mainUserAsk");
+                    }
+                    let context = record
+                        .get("context")
+                        .and_then(serde_json::Value::as_str)
+                        .map(str::trim)
+                        .unwrap_or_default()
+                        .to_string();
+                    let normalized_task = task.split_whitespace().collect::<Vec<_>>().join(" ");
+                    let task_is_neutral = normalized_task.is_empty()
+                        || normalized_task.len() < 8
+                        || matches!(
+                            normalized_task.to_ascii_lowercase().as_str(),
+                            "task not captured"
+                                | "activity not captured"
+                                | "goal not captured"
+                                | "context not captured"
+                                | "status unavailable"
+                                | "waiting for a clear task"
+                                | "no task declared"
+                                | "no active work"
+                                | "ready"
+                                | "idle"
+                                | "working"
+                                | "unknown"
+                        );
+                    if task_is_neutral && context.starts_with("Keep this pane focused on ") {
+                        record.insert(
+                            "context".to_string(),
+                            serde_json::Value::String(String::new()),
+                        );
+                        record.insert(
+                            "contextSource".to_string(),
+                            serde_json::Value::String("missing".to_string()),
+                        );
+                        record.remove("mainUserAsk");
+                        continue;
+                    }
+                    if context.is_empty() {
+                        record.insert(
+                            "contextSource".to_string(),
+                            serde_json::Value::String("missing".to_string()),
+                        );
+                    }
+                }
+            }
+            serde_json::to_string(&payload).map_err(|error| error.to_string())?
+        }
+        Err(_) => contents,
+    };
 
-    let root = crate::pty::data_root_dir()
-        .ok_or_else(|| "Could not resolve data directory".to_string())?
-        .join("agent-status");
+    let root = std::env::var_os("TERMFLEET_COCKPIT_SNAPSHOT_PATH")
+        .map(std::path::PathBuf::from)
+        .and_then(|path| path.parent().map(std::path::Path::to_path_buf))
+        .or_else(|| crate::pty::data_root_dir().map(|dir| dir.join("agent-status")))
+        .ok_or_else(|| "Could not resolve data directory".to_string())?;
     fs::create_dir_all(&root).map_err(|error| error.to_string())?;
-    let snapshot = root.join("cockpit-snapshot.json");
-    let temporary = root.join("cockpit-snapshot.json.tmp");
+    let snapshot = std::env::var_os("TERMFLEET_COCKPIT_SNAPSHOT_PATH")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| root.join("cockpit-snapshot.json"));
+    let temporary = snapshot.with_extension("json.tmp");
     fs::write(&temporary, contents.as_bytes()).map_err(|error| error.to_string())?;
     fs::rename(&temporary, &snapshot).map_err(|error| error.to_string())?;
 
@@ -1891,7 +2496,9 @@ pub fn cockpit_snapshot_write(contents: String) -> Result<(), String> {
         .append(true)
         .open(trace)
         .map_err(|error| error.to_string())?;
-    writeln!(file, "{contents}").map_err(|error| error.to_string())
+    writeln!(file, "{contents}").map_err(|error| error.to_string())?;
+
+    Ok(())
 }
 
 /// Path of the durable workspace-layout mirror. Lives next to the per-session
@@ -1931,15 +2538,170 @@ pub fn workspace_persisted_sessions() -> Vec<crate::pty::PersistedSessionSummary
 #[cfg(test)]
 mod tests {
     use super::{
-        agent_status_sidecar_file, is_managed_termfleet_worktree_path, normalize_selected_folder,
-        parse_meminfo_bytes, parse_pressure_avg10, sanitize_paste_log_line, shell_quote,
+        agent_status_sidecar_file, classify_daemon_pane_with,
+        conversation_owner_from_sessions_with, is_managed_termfleet_worktree_path,
+        live_session_root_pid_with, normalize_selected_folder, parse_meminfo_bytes,
+        parse_pressure_avg10, sanitize_paste_log_line, shell_quote,
         workstream_prepare_dedicated_worktree, workstream_remove_dedicated_worktree,
-        worktree_branch_for, worktree_target_for,
+        worktree_branch_for, worktree_target_for, DaemonPaneRoot,
     };
+    use crate::pane_process::{PaneAgentProviderOwner, PaneAgentRuntimeOwner};
+    use crate::pty::{PersistedSessionSummary, PtyExitStatus, PtySessionSummary, SessionLifecycle};
     use std::fs;
     use std::path::{Path, PathBuf};
     use std::process::Command;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn session_summary(
+        id: &str,
+        pid: Option<u32>,
+        last_exit: Option<PtyExitStatus>,
+    ) -> PtySessionSummary {
+        PtySessionSummary {
+            id: id.to_string(),
+            pid,
+            initial_cwd: None,
+            command: "/bin/bash".to_string(),
+            scrollback_bytes: 0,
+            subscriber_count: 0,
+            last_exit,
+        }
+    }
+
+    #[test]
+    fn exact_runtime_uses_live_daemon_ownership_without_historical_spawn_events() {
+        let ended = session_summary(
+            "terminal-ended",
+            Some(4242),
+            Some(PtyExitStatus {
+                code: 0,
+                success: true,
+                description: "exited".to_string(),
+            }),
+        );
+        let live = session_summary("terminal-live", Some(4343), None);
+        assert_eq!(
+            live_session_root_pid_with(
+                &[ended, live.clone()],
+                &[live.clone()],
+                "terminal-ended",
+                |_, _| true,
+            ),
+            None
+        );
+        assert_eq!(
+            live_session_root_pid_with(
+                &[live.clone()],
+                &[live.clone()],
+                "terminal-live",
+                |session, pid| session.id == "terminal-live" && pid == 4343,
+            ),
+            Some(4343)
+        );
+        assert_eq!(
+            live_session_root_pid_with(&[live.clone()], &[live], "terminal-live", |_, _| false,),
+            None,
+            "a PID that is not currently owned by the daemon session must fail closed"
+        );
+        assert_eq!(
+            classify_daemon_pane_with(
+                &[session_summary("terminal-live", Some(4343), None)],
+                &[session_summary("terminal-live", Some(4343), None)],
+                "terminal-live",
+                |_, _| false,
+            ),
+            DaemonPaneRoot::Unverified,
+            "an owned daemon pane with failed live ownership must not fall back to env identity"
+        );
+        assert_eq!(
+            classify_daemon_pane_with(
+                &[session_summary("terminal-other", Some(4343), None)],
+                &[session_summary("terminal-other", Some(4343), None)],
+                "terminal-missing",
+                |_, _| false,
+            ),
+            DaemonPaneRoot::Missing,
+            "only an authoritative daemon response with no exact session may use env fallback"
+        );
+        assert_eq!(
+            classify_daemon_pane_with(
+                &[session_summary("terminal-live", Some(4343), None)],
+                &[session_summary("terminal-live", Some(4444), None)],
+                "terminal-live",
+                |_, _| true,
+            ),
+            DaemonPaneRoot::Unverified,
+            "a pane whose daemon child changes between live observations must fail closed"
+        );
+    }
+
+    #[test]
+    fn exact_conversation_owner_returns_the_canonical_daemon_pane_and_provider_pid() {
+        let first = vec![
+            session_summary("terminal-saved-shell", Some(4100), None),
+            session_summary("terminal-live-owner", Some(4200), None),
+        ];
+        let second = first.clone();
+        let owner = conversation_owner_from_sessions_with(
+            &first,
+            &second,
+            &[],
+            4000,
+            "codex",
+            "019fae67-cccc-4ccc-8ccc-cccccccccccc",
+            |pid, daemon_pid| daemon_pid == 4000 && matches!(pid, 4100 | 4200),
+            |root_pid| {
+                (root_pid == 4200).then(|| PaneAgentRuntimeOwner {
+                    provider: "codex".to_string(),
+                    provider_session_id: "019fae67-cccc-4ccc-8ccc-cccccccccccc".to_string(),
+                    provider_pid: 4201,
+                })
+            },
+            |_| None,
+        )
+        .unwrap()
+        .unwrap();
+
+        assert_eq!(owner.daemon_pane_id, "terminal-live-owner");
+        assert_eq!(owner.daemon_root_pid, 4200);
+        assert_eq!(owner.provider_pid, 4201);
+    }
+
+    #[test]
+    fn exact_conversation_owner_uses_durable_pane_identity_when_live_argv_loses_it() {
+        let first = vec![session_summary("terminal-live-owner", Some(4200), None)];
+        let persisted = vec![PersistedSessionSummary {
+            id: "terminal-live-owner".to_string(),
+            cwd: Some("/work".to_string()),
+            scrollback_bytes: 1,
+            lifecycle: SessionLifecycle::Recoverable,
+            backup_only: false,
+            command: Some("codex".to_string()),
+            provider: Some("codex".to_string()),
+            provider_session_id: Some("019fae67-cccc-4ccc-8ccc-cccccccccccc".to_string()),
+        }];
+        let owner = conversation_owner_from_sessions_with(
+            &first,
+            &first,
+            &persisted,
+            4000,
+            "codex",
+            "019fae67-cccc-4ccc-8ccc-cccccccccccc",
+            |pid, daemon_pid| daemon_pid == 4000 && pid == 4200,
+            |_| None,
+            |root_pid| {
+                (root_pid == 4200).then(|| PaneAgentProviderOwner {
+                    provider: "codex".to_string(),
+                    provider_pid: 4201,
+                })
+            },
+        )
+        .unwrap()
+        .unwrap();
+
+        assert_eq!(owner.daemon_pane_id, "terminal-live-owner");
+        assert_eq!(owner.provider_pid, 4201);
+    }
 
     #[test]
     fn system_pressure_meminfo_parser_converts_kib_to_bytes() {
@@ -2029,16 +2791,16 @@ mod tests {
     #[test]
     fn selected_folder_output_is_trimmed() {
         assert_eq!(
-            normalize_selected_folder("/home/endlessblink/project\n"),
-            Some("/home/endlessblink/project".to_string())
+            normalize_selected_folder("/home/operator/project\n"),
+            Some("/home/operator/project".to_string())
         );
     }
 
     #[test]
     fn selected_folder_output_accepts_file_url_prefix() {
         assert_eq!(
-            normalize_selected_folder("file:///home/endlessblink/project\n"),
-            Some("/home/endlessblink/project".to_string())
+            normalize_selected_folder("file:///home/operator/project\n"),
+            Some("/home/operator/project".to_string())
         );
     }
 
@@ -2446,6 +3208,35 @@ pub fn pane_foreground_command(pid: u32) -> Result<Option<String>, String> {
     ))
 }
 
+fn root_is_idle_shell_from_proc(root: &std::path::Path, pid: u32) -> bool {
+    let raw = match std::fs::read(root.join(pid.to_string()).join("cmdline")) {
+        Ok(raw) => raw,
+        Err(_) => return false,
+    };
+    let cmdline = String::from_utf8_lossy(&raw);
+    let executable = cmdline
+        .split('\0')
+        .find(|part| !part.is_empty())
+        .unwrap_or_default()
+        .rsplit('/')
+        .next()
+        .unwrap_or_default()
+        .trim_start_matches('-');
+    matches!(executable, "bash" | "dash" | "fish" | "sh" | "zsh")
+        && foreground_command_from_proc(root, pid).is_none()
+}
+
+/// Fail-closed proof used before replacing a stalled recovery pane. `None` from
+/// `pane_foreground_command` is not sufficient because a root-level vim/ssh/TUI
+/// also has no distinct foreground process group.
+#[tauri::command]
+pub fn pane_root_is_idle_shell(pid: u32) -> Result<bool, String> {
+    Ok(root_is_idle_shell_from_proc(
+        std::path::Path::new("/proc"),
+        pid,
+    ))
+}
+
 #[cfg(test)]
 mod tc060_tests {
     use super::*;
@@ -2607,8 +3398,33 @@ mod tc060_tests {
     }
 
     #[test]
+    fn idle_shell_proof_rejects_root_level_non_shell_commands() {
+        let root = std::env::temp_dir().join("tf-idle-shell-proof");
+        std::fs::remove_dir_all(&root).ok();
+        write_fake_proc(&root, 100, 100, "bash");
+        write_fake_proc(&root, 200, 200, "ssh example.test");
+        assert!(root_is_idle_shell_from_proc(&root, 100));
+        assert!(!root_is_idle_shell_from_proc(&root, 200));
+        assert!(!root_is_idle_shell_from_proc(&root, 300));
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
     fn a_missing_process_is_not_an_error() {
         let root = std::env::temp_dir().join("tf-tc060-missing");
         assert_eq!(foreground_command_from_proc(&root, 999_999), None);
+    }
+
+    #[test]
+    fn git_status_facts_fail_closed_for_unavailable_repositories() {
+        let missing = PathBuf::from("/definitely-not-a-termfleet-git-repository");
+        assert_eq!(git_status_facts(&missing), (None, None));
+    }
+
+    #[test]
+    fn git_status_facts_distinguish_clean_dirty_and_conflicted_work() {
+        assert_eq!(parse_git_status_facts(""), (false, false));
+        assert_eq!(parse_git_status_facts(" M src/main.ts\n"), (true, false));
+        assert_eq!(parse_git_status_facts("UU src/main.ts\n"), (true, true));
     }
 }

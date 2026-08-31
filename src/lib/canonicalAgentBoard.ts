@@ -1,20 +1,20 @@
 import { invoke } from "@tauri-apps/api/core";
 
-export const CANONICAL_AGENT_OPS_SOURCE = "/media/endlessblink/data/my-projects/ai-development/devops/agent-ops/MASTER_PLAN.md";
-export const CANONICAL_AGENT_OPS_MUTATION_BOUNDARY = "/media/endlessblink/data/my-projects/ai-development/devops/agent-ops/agent_ops.py";
-
 export interface CanonicalAuthorityIdentity {
   source: string;
   mutationBoundary: string;
 }
 
+/** The board the operator configured is the authority; we only check it is real. */
 export function parseCanonicalAuthorityIdentity(payload: unknown): CanonicalAuthorityIdentity {
   if (!payload || typeof payload !== "object") throw new Error("Canonical authority returned an invalid response");
   const value = payload as { schemaVersion?: unknown; source?: unknown; mutationBoundary?: unknown };
-  if (value.schemaVersion !== 1 || value.source !== CANONICAL_AGENT_OPS_SOURCE || value.mutationBoundary !== CANONICAL_AGENT_OPS_MUTATION_BOUNDARY) {
-    throw new Error("Canonical authority identity does not match agent-ops");
+  const source = typeof value.source === "string" ? value.source.trim() : "";
+  const mutationBoundary = typeof value.mutationBoundary === "string" ? value.mutationBoundary.trim() : "";
+  if (value.schemaVersion !== 1 || !source || !mutationBoundary) {
+    throw new Error("Canonical authority identity is not configured");
   }
-  return { source: value.source, mutationBoundary: value.mutationBoundary };
+  return { source, mutationBoundary };
 }
 
 export const BOARD_STATUSES = [
@@ -119,6 +119,18 @@ export function filterCanonicalTasks(tasks: CanonicalTask[], filters: CanonicalT
   });
 }
 
+export type TaskAttentionLane = "decide" | "working" | "needs-attention" | "finished";
+
+/** Keep workflow stage separate from execution truth: a stale claim is not work in motion. */
+export function taskAttentionLane(task: Pick<CanonicalTask, "status">, executionHealth?: string): TaskAttentionLane {
+  if (task.status === "DONE") return "finished";
+  if (task.status === "TRIAGE" || task.status === "PLANNED") return "decide";
+  if (task.status === "BLOCKED") return "needs-attention";
+  if (task.status === "REVIEW") return "working";
+  if (["running-and-progressing", "running-but-idle", "waiting-for-input"].includes(executionHealth ?? "")) return "working";
+  return "needs-attention";
+}
+
 export function parseCanonicalTasks(payload: unknown): CanonicalTask[] {
   if (!payload || typeof payload !== "object") throw new Error("Canonical queue returned an invalid response");
   const value = payload as { schemaVersion?: unknown; tasks?: unknown };
@@ -170,4 +182,23 @@ export async function transitionCanonicalTask(taskId: string, status: CanonicalT
   const task = (payload as { task?: unknown }).task;
   const tasks = parseCanonicalTasks({ schemaVersion: 1, tasks: [task] });
   return tasks[0];
+}
+
+export async function validateCanonicalQueue() {
+  return invoke<unknown>("agent_ops", { operation: "validate" });
+}
+
+export async function claimCanonicalTask(taskId: string, agent: string) {
+  const payload = await invoke<unknown>("agent_ops", { operation: "claim", taskId, agent });
+  return parseCanonicalTasks({ schemaVersion: 1, tasks: [(payload as { task?: unknown }).task] })[0];
+}
+
+export async function recordCanonicalProgress(taskId: string, agent: string, note: string) {
+  const payload = await invoke<unknown>("agent_ops", { operation: "progress", taskId, agent, note });
+  return parseCanonicalTasks({ schemaVersion: 1, tasks: [(payload as { task?: unknown }).task] })[0];
+}
+
+export async function completeCanonicalTask(taskId: string, agent: string, evidence: string) {
+  const payload = await invoke<unknown>("agent_ops", { operation: "done", taskId, agent, evidence });
+  return parseCanonicalTasks({ schemaVersion: 1, tasks: [(payload as { task?: unknown }).task] })[0];
 }

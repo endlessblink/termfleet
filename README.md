@@ -89,6 +89,40 @@ deep in a native build.
 
 The production desktop terminal path is Canvas2D over the headless VT grid.
 
+## Configuration
+
+TermFleet ships with no paths baked in. Everything machine-specific is optional
+and lives in one file:
+
+```
+~/.config/termfleet/config.json
+```
+
+```json
+{
+  "projectRoots": ["/srv/code", "/srv/work"],
+  "agentOpsRoot": "/srv/agent-ops"
+}
+```
+
+| Key | What it does | When unset |
+| --- | --- | --- |
+| `projectRoots` | Directories scanned for project boards (`MASTER_PLAN.md`) | The project board lists nothing; terminals and the map work normally |
+| `agentOpsRoot` | A checkout of a shared cross-agent queue (a `MASTER_PLAN.md` plus an `agent_ops.py` beside it) | The shared-queue board reports that no queue is configured |
+
+Every key has an environment override, which wins over the file:
+
+| Variable | Overrides |
+| --- | --- |
+| `TERMFLEET_CONFIG_FILE` | Location of the config file itself |
+| `TERMFLEET_PROJECT_ROOTS` | `projectRoots` (colon-separated) |
+| `TERMFLEET_AGENT_OPS_ROOT` | `agentOpsRoot` |
+
+A copy of the example lives at `docs/config.example.json`. Helper and
+verification scripts follow the same rule: they read their paths from the
+environment and fail with a clear message rather than assuming a layout.
+`npm run verify:no-machine-paths` enforces this and runs in CI.
+
 ## Architecture
 
 TermFleet splits terminal ownership from the UI:

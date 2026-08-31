@@ -1,0 +1,7 @@
+{
+  "projectRoots": [
+    "/srv/code",
+    "/srv/work"
+  ],
+  "agentOpsRoot": "/srv/agent-ops"
+}

@@ -13,9 +13,23 @@ src-tauri/gen/
 # live pane-label audit output (machine-specific, contains real prompts)
 .audit/
 
-# Session-bound validation receipts and disabled-hook recovery copies.
-.directive-validation/runs/
-.directive-validation.disabled-backup-*/
 
 # Python test bytecode.
 tests/__pycache__/
+
+# Python bytecode from helper scripts.
+scripts/__pycache__/
+
+# One-off local migration helpers pinned to a specific machine's panes.
+scripts/termfleet-rebind-exact-provider.mjs
+scripts/termfleet-transfer-exact-pane.mjs
+scripts/complete-exact-transfer-runtime.py
+
+# Accidental drops and local tool state (never publish).
+applications/
+claude/
+BlenderMCP/
+agent-fleet.log
+
+# Local screenshots dropped at the repo root.
+/termfleet-critique-main.png

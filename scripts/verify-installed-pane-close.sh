@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-APP_BIN="${TERMFLEET_INSTALLED_BIN:-/home/endlessblink/.local/bin/termfleet}"
+APP_BIN="${TERMFLEET_INSTALLED_BIN:-$HOME/.local/bin/termfleet}"
 RUN_DIR="${TERMFLEET_PANE_CLOSE_RUN:-/tmp/termfleet-pane-close-$USER-$$}"
 DATA_DIR="${TERMFLEET_PANE_CLOSE_DATA:-/tmp/termfleet-pane-close-data-$USER-$$}"
 SOCKET="$RUN_DIR/terminal-workspace/daemon.sock"

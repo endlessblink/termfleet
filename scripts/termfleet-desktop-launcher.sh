@@ -12,7 +12,7 @@ fi
 LOG_FILE="$LOG_DIR/desktop-launch.log"
 TERMFLEET_CMD="${TERMFLEET_CMD:-$HOME/.local/bin/termfleet}"
 TERMFLEET_INSTALL_ROOT="${TERMFLEET_INSTALL_ROOT:-${XDG_DATA_HOME:-$HOME/.local/share}/termfleet}"
-TERMFLEET_TMPDIR="${TERMFLEET_TMPDIR:-/media/endlessblink/data/.dev-tmp/$USER}"
+TERMFLEET_TMPDIR="${TERMFLEET_TMPDIR:-${XDG_CACHE_HOME:-$HOME/.cache}/termfleet/tmp}"
 TERMFLEET_COCKPIT_SNAPSHOT_PATH="${TERMFLEET_COCKPIT_SNAPSHOT_PATH:-${XDG_DATA_HOME:-$HOME/.local/share}/terminal-workspace/agent-status/termfleet-cockpit-snapshot.json}"
 
 # The desktop wrapper has two legitimate callers: the dock and agents that

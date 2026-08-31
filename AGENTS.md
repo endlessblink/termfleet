@@ -44,9 +44,11 @@ TermFleet's repository-local `MASTER_PLAN.md` remains the implementation backlog
 
 For `FEATURE-12` and every TermFleet surface described as the canonical agent board, canonical list, shared queue, agent task list, or cross-agent Kanban, the sole authority is:
 
-`/media/endlessblink/data/my-projects/ai-development/devops/agent-ops/MASTER_PLAN.md`
+the `MASTER_PLAN.md` inside the `agent-ops` checkout the operator configured as
+`agentOpsRoot` (see the Configuration section of `README.md`). The absolute
+location is machine-specific and must never be hardcoded.
 
-Mutations must use `/media/endlessblink/data/my-projects/ai-development/devops/agent-ops/agent_ops.py`. FlowState is a separate personal task/planning system; the Life-Boat release matrix and repository-local plans are project backlogs. Never substitute any of them for the `agent-ops` queue, and expose the active source identity in runtime verification so an incorrect backend cannot look successful.
+Mutations must use the `agent_ops.py` beside that plan file. FlowState is a separate personal task/planning system; the Life-Boat release matrix and repository-local plans are project backlogs. Never substitute any of them for the `agent-ops` queue, and expose the active source identity in runtime verification so an incorrect backend cannot look successful.
 
 Keep `agent-ops` as an independent project and service boundary. TermFleet may contain a thin typed client, UI, dispatch logic, and execution metadata, but must not vendor, fork, copy, or reimplement the canonical queue. The initial transport may be the versioned JSON CLI behind typed Tauri commands; keep it replaceable by a local daemon and prove the installed app is using the external authority.
 

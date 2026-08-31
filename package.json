@@ -15,6 +15,7 @@
     "issues": "node scripts/termfleet-issues.mjs",
     "migrate:session-ids": "node scripts/migrate-session-ids.mjs --apply",
     "verify:prerequisites": "node scripts/verify-prerequisites.mjs",
+    "verify:no-machine-paths": "node scripts/verify-no-machine-paths.mjs",
     "verify:canvas-renderer": "playwright test canvas-renderer",
     "verify:grid-diff": "playwright test grid-diff",
     "verify:legacy-prompt-repair": "playwright test legacy-prompt-repair",

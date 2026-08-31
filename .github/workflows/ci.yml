@@ -51,6 +51,9 @@ jobs:
       - name: Prerequisite toolchain check
         run: npm run verify:prerequisites
 
+      - name: No machine-specific paths in shipped code
+        run: npm run verify:no-machine-paths
+
       - name: Frontend build (tsc + vite)
         run: npm run build
 

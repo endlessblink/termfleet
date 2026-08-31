@@ -1354,6 +1354,9 @@ impl PtyManager {
         Ok(())
     }
 
+    /// Restore without the operator-close review. Production always goes through
+    /// `restore_persisted_session_with_review`; this shorthand is for tests.
+    #[cfg(test)]
     pub fn restore_persisted_session(&self, id: &str) -> Result<(), String> {
         self.restore_persisted_session_with_review(id, false)
     }
