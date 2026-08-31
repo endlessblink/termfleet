@@ -4037,8 +4037,13 @@ mod tests {
                 app.handle(),
                 Some(id.clone()),
                 None,
+                // The pid goes to stdout AS WELL AS the file: on a CI runner the
+                // temp file is not always readable back from this process, and the
+                // snapshot fallback below then has nothing to find. `setsid` is
+                // used when present and skipped when it is not, so a runner
+                // without util-linux still exercises the detached-child path.
                 Some(format!(
-                    "setsid sh -c 'env -u TERMFLEET_PANE_ID sleep 30 & child=$!; printf \"%s\\n\" \"$child\" > {pid_file_arg}; wait'"
+                    "{{ command -v setsid >/dev/null && exec setsid sh -c 'env -u TERMFLEET_PANE_ID sleep 30 & child=$!; printf \"%s\\n\" \"$child\"; printf \"%s\\n\" \"$child\" > {pid_file_arg}; wait'; }} || sh -c 'env -u TERMFLEET_PANE_ID sleep 30 & child=$!; printf \"%s\\n\" \"$child\"; printf \"%s\\n\" \"$child\" > {pid_file_arg}; wait'"
                 )),
             )
             .expect("spawn detached unmarked process PTY");
@@ -4078,7 +4083,8 @@ mod tests {
                 }
                 assert!(
                     Instant::now() < deadline,
-                    "detached child pid was not printed"
+                    "detached child pid was not printed; pane snapshot was {:?}",
+                    manager.snapshot(&id).ok()
                 );
                 thread::sleep(Duration::from_millis(20));
             }
