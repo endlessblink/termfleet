@@ -10,8 +10,16 @@ test("dock startup restores only the durable saved pane graph", () => {
 
   expect(app).toContain("await hydrateWorkspace()");
   expect(app).toContain("await reconnectSavedAgentPanes(");
-  expect(app.indexOf("await hydrateWorkspace()")).toBeLessThan(
-    app.indexOf("await reconnectSavedAgentPanes("),
+
+  // Order inside the startup queue, not order of definition in the file: the
+  // durable layout must be hydrated before anything tries to reconnect a pane,
+  // or recovery runs against tabs that do not exist yet.
+  const startupQueue =
+    app.match(/reconciliationQueue = reconciliationQueue\.then\(async \(\) => \{[\s\S]*?\n    \}\);/)?.[0] ?? "";
+  expect(startupQueue).toContain("await hydrateWorkspace()");
+  expect(startupQueue).toContain("await reconnectPendingOwners()");
+  expect(startupQueue.indexOf("await hydrateWorkspace()")).toBeLessThan(
+    startupQueue.indexOf("await reconnectPendingOwners()"),
   );
   expect(app).not.toContain("recoverSavedAgentPanes");
   expect(launcher).not.toContain("agent-fleet/restore.py");

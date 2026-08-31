@@ -419,28 +419,39 @@ test("map terminal task row keeps its reserved height when live text changes", (
       /function CanvasNodeViewImpl[\s\S]*?(?=const CanvasNodeView = memo)/,
     )?.[0] ?? "";
 
+  // The row must exist for every card and must not be mounted behind a
+  // condition: a row that appears and disappears resizes the terminal under it
+  // (the up/down shove the operator reported).
   expect(nodeView).toContain('data-testid="canvas-terminal-node-task-row"');
-  expect(nodeView).not.toContain("{terminalHeaderNowRowVisible && (");
-  expect(nodeView).toContain(
-    "terminalHeader.hasCapturedGoal && terminalHeaderNowRowVisible",
+  expect(nodeView).not.toMatch(
+    /\{[^\n]*&&\s*\(\s*\n\s*<div[\s\S]{0,400}?data-testid="canvas-terminal-node-task-row"/,
   );
-  expect(nodeView).toContain(
-    'visibility: terminalHeader.hasCapturedGoal ? "visible" : "hidden"',
-  );
-  expect(nodeView).not.toContain("{terminalHeader.hasCapturedGoal ? (");
-  expect(nodeView).not.toContain(") : null}");
+
+  // And its box height is fixed rather than derived from the text, so a short
+  // task and a two-line task occupy exactly the same space.
+  const source2 = readFileSync("src/components/MagicCanvas.tsx", "utf8");
+  const titleStyle =
+    source2.match(/terminalStatusTitle: \{[\s\S]*?\n  \},/)?.[0] ?? "";
+  expect(titleStyle).toMatch(/\n\s*height: \d+,/);
+  expect(titleStyle).not.toMatch(/\n\s*minHeight:/);
 });
 
 test("workspace surface reconciles every durable pane while rendering the active tab", () => {
   const source = readFileSync("src/components/WorkspaceSurface.tsx", "utf8");
 
+  // The surface renders the active tab and subscribes narrowly, so an unrelated
+  // tab's churn cannot re-render every pane.
   expect(source).toContain(
     "state.tabs.find((tab) => tab.id === state.activeTabId)",
   );
   expect(source).toContain("activeTabIndex");
-  expect(source).toContain("const tabs = useWorkspaceStore((state) => state.tabs);");
-  expect(source).toContain('invoke("daemon_ensure_session"');
-  expect(source).toContain("reconciledPaneIdsRef");
+
+  // Session reconciliation is NOT the surface's job: the daemon owns PTYs, and
+  // ensuring a session belongs to the pane that mounts it. Keeping that loop
+  // here is what made startup re-ensure every pane on each render.
+  expect(source).not.toContain('invoke("daemon_ensure_session"');
+  const terminalCanvas = readFileSync("src/components/TerminalCanvas.tsx", "utf8");
+  expect(terminalCanvas).toContain('"daemon_ensure_session"');
 });
 
 test("selected map agent panes suppress synchronized-output control residue", () => {
@@ -538,15 +549,21 @@ test("map Connect terminal selects the pane without leaving the map", () => {
   expect(connectionBlock).toContain("setActivePane(currentTab.id, targetPaneId)");
   expect(connectionBlock).toContain("setActiveTerminal(");
   expect(connectionBlock).toContain("setConnectionGeneration");
-  expect(connectionBlock).toContain("reconnectStoppedAgents");
-  expect(connectionBlock).toContain('invoke("daemon_write_session"');
-  expect(connectionBlock).toContain('"agent_status_read_sidecar"');
+  // Reconnect goes through the shared runtime wrapper rather than the low-level
+  // helper, so the map button and dock startup take the identical path.
+  expect(connectionBlock).toContain("reconnectSavedAgentPanes(");
+  // The redraw nudge and the sidecar read moved to the pane that owns them, so
+  // Connect no longer pokes the session behind the renderer's back.
+  expect(connectionBlock).not.toContain('invoke("daemon_write_session"');
+  expect(terminalCanvas).toContain('invoke("daemon_write_session"');
+  expect(source).toContain('"agent_status_read_sidecar"');
   expect(connectionBlock).toContain("focusConnectedInput");
   expect(connectionBlock).toContain("requestAnimationFrame(focusConnectedInput)");
   expect(source).toContain("onPointerDown={(event) => event.stopPropagation()}");
   expect(connectionBlock).toContain("attempts < 600");
   expect(connectionBlock).not.toContain("inputs[0]");
-  expect(connectionBlock).toContain("input.dataset.terminalSessionId ?? targetTerminalId");
+  // Focus the input belonging to THIS pane, never whichever one is first.
+  expect(connectionBlock).toContain("input.dataset.terminalSessionId ??");
   expect(source).toContain("const connectionActive = connectedTerminalId !== null;");
   expect(source).toContain("(live || connectionActive)");
   expect(source).toContain("onCanvasInputReady={");
@@ -2881,247 +2898,6 @@ test("readable map mounts only the primary live terminal renderer", async ({
   ).toHaveCount(1);
 });
 
-test("task sidebar docks as an inner column flush inside the card", async ({
-  page,
-}) => {
-  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
-  await page.waitForLoadState("networkidle");
-  await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
-  await page.reload({ waitUntil: "domcontentloaded" });
-  await page.waitForLoadState("networkidle");
-  await page.getByRole("button", { name: "Map", exact: true }).click();
-
-  await page.evaluate(() => {
-    const store = (
-      window as typeof window & {
-        __termfleetWorkspaceStore?: {
-          getState: () => { workspaceUiState: Record<string, unknown> };
-          setState: (state: Record<string, unknown>) => void;
-        };
-      }
-    ).__termfleetWorkspaceStore;
-    if (!store) throw new Error("TermFleet test store is unavailable");
-
-    store.setState({
-      workspaceUiState: {
-        ...store.getState().workspaceUiState,
-        workspaceMode: "canvas",
-        primarySidebarPanel: "map",
-      },
-      tabs: [
-        {
-          id: "tab-empty-tasks",
-          title: "Empty tasks terminal",
-          emoji: "[]",
-          color: "#7aa2f7",
-          groupId: null,
-          initialCwd: "/tmp/termfleet-empty-tasks",
-          terminals: [
-            {
-              id: "pty-empty-tasks",
-              paneId: "pane-empty-tasks",
-              cols: 80,
-              rows: 24,
-              status: "running",
-              taskSidebarCollapsed: false,
-              statusSummary: {
-                task: "Running",
-                path: "termfleet",
-                now: "watching output",
-                status: "working",
-                provider: "shell",
-                confidence: "medium",
-                tasks: [],
-                tasksFromTodoWrite: false,
-              },
-            },
-          ],
-          splitLayout: { id: "pane-empty-tasks", type: "terminal" },
-          activePaneId: "pane-empty-tasks",
-        },
-      ],
-      activeTabId: "tab-empty-tasks",
-      canvasState: {
-        nodes: [
-          {
-            id: "node-empty-tasks",
-            type: "terminal",
-            title: "Empty tasks terminal",
-            terminalTabId: "tab-empty-tasks",
-            x: 80,
-            y: 80,
-            width: 820,
-            height: 460,
-          },
-        ],
-        selectedNodeId: "node-empty-tasks",
-        selectedNodeIds: ["node-empty-tasks"],
-        viewport: { x: 0, y: 0, zoom: 1 },
-      },
-    });
-  });
-
-  // TC-042 — the expanded list docks as an in-flow inner column of the card: the
-  // terminal makes room for it, the list sits flush against the terminal content
-  // (no gap) and stays INSIDE the node (no detached overhanging slab).
-  await expect(page.getByTestId("canvas-terminal-task-sidebar")).toBeVisible();
-  const openContentBox = await page
-    .getByTestId("canvas-terminal-task-content")
-    .boundingBox();
-  const openNodeBox = await page
-    .getByTestId("canvas-terminal-node")
-    .boundingBox();
-  const openSidebarBox = await page
-    .getByTestId("canvas-terminal-task-sidebar")
-    .boundingBox();
-  if (!openContentBox || !openNodeBox || !openSidebarBox)
-    throw new Error("Open terminal content, sidebar, or node is not visible");
-  // List is flush against the terminal content — no gap.
-  expect(
-    Math.abs(openSidebarBox.x - (openContentBox.x + openContentBox.width)),
-  ).toBeLessThanOrEqual(2);
-  // List stays inside the card — its right edge does not overhang the node.
-  expect(openSidebarBox.x + openSidebarBox.width).toBeLessThanOrEqual(
-    openNodeBox.x + openNodeBox.width + 2,
-  );
-  await page.getByLabel("Minimize tasks").click();
-  await expect(page.getByTestId("canvas-terminal-task-sidebar")).toHaveCount(0);
-  const collapsedContentBox = await page
-    .getByTestId("canvas-terminal-task-content")
-    .boundingBox();
-  if (!collapsedContentBox)
-    throw new Error("Collapsed terminal content is not visible");
-  // Collapsing the list to the slim rail gives the terminal its room back.
-  expect(collapsedContentBox.width).toBeGreaterThan(openContentBox.width + 100);
-  await page.getByTestId("canvas-terminal-task-rail").click();
-  await expect(page.getByTestId("canvas-terminal-task-sidebar")).toBeVisible();
-  const reopenedContentBox = await page
-    .getByTestId("canvas-terminal-task-content")
-    .boundingBox();
-  const reopenedSidebarBox = await page
-    .getByTestId("canvas-terminal-task-sidebar")
-    .boundingBox();
-  if (!reopenedContentBox || !reopenedSidebarBox)
-    throw new Error("Reopened terminal content or sidebar is not visible");
-  expect(Math.round(reopenedContentBox.width)).toBe(
-    Math.round(openContentBox.width),
-  );
-  expect(
-    Math.abs(
-      reopenedSidebarBox.x - (reopenedContentBox.x + reopenedContentBox.width),
-    ),
-  ).toBeLessThanOrEqual(2);
-});
-
-// TC-039/TC-042 — the expanded task list must read as ONE card with the terminal,
-// not a detached floating panel. It's an in-flow inner column of the card: flush
-// against the terminal content, contained within the node bounds, full height.
-test("expanded task list reads as one card with the terminal", async ({
-  page,
-}) => {
-  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
-  await page.waitForLoadState("networkidle");
-  await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
-  await page.reload({ waitUntil: "domcontentloaded" });
-  await page.waitForLoadState("networkidle");
-  await page.getByRole("button", { name: "Map", exact: true }).click();
-
-  await page.evaluate(() => {
-    const store = (
-      window as typeof window & {
-        __termfleetWorkspaceStore?: {
-          getState: () => { workspaceUiState: Record<string, unknown> };
-          setState: (state: Record<string, unknown>) => void;
-        };
-      }
-    ).__termfleetWorkspaceStore;
-    if (!store) throw new Error("TermFleet test store is unavailable");
-    store.setState({
-      workspaceUiState: {
-        ...store.getState().workspaceUiState,
-        workspaceMode: "canvas",
-        primarySidebarPanel: "map",
-      },
-      tabs: [
-        {
-          id: "tab-onecard",
-          title: "One card terminal",
-          emoji: "[]",
-          color: "#7aa2f7",
-          groupId: null,
-          initialCwd: "/tmp/termfleet-onecard",
-          terminals: [
-            {
-              id: "pty-onecard",
-              paneId: "pane-onecard",
-              cols: 80,
-              rows: 24,
-              status: "running",
-              taskSidebarCollapsed: false,
-              statusSummary: {
-                task: "Running",
-                path: "termfleet",
-                now: "watching output",
-                status: "working",
-                provider: "shell",
-                confidence: "medium",
-                tasks: [],
-                tasksFromTodoWrite: false,
-              },
-            },
-          ],
-          splitLayout: { id: "pane-onecard", type: "terminal" },
-          activePaneId: "pane-onecard",
-        },
-      ],
-      activeTabId: "tab-onecard",
-      canvasState: {
-        nodes: [
-          {
-            id: "node-onecard",
-            type: "terminal",
-            title: "One card terminal",
-            terminalTabId: "tab-onecard",
-            x: 80,
-            y: 80,
-            width: 820,
-            height: 460,
-          },
-        ],
-        selectedNodeId: "node-onecard",
-        selectedNodeIds: ["node-onecard"],
-        viewport: { x: 0, y: 0, zoom: 1 },
-      },
-    });
-  });
-
-  const sidebar = page.getByTestId("canvas-terminal-task-sidebar");
-  await expect(sidebar).toBeVisible();
-  const nodeEl = page.getByTestId("canvas-terminal-node");
-  const content = page.getByTestId("canvas-terminal-task-content");
-
-  // The list is a real inner column of ONE card: it sits flush against the
-  // terminal content (no gap) and entirely inside the node's bounds (no detached,
-  // overhanging slab past the card's right edge).
-  const nodeBox = await nodeEl.boundingBox();
-  const sidebarBox = await sidebar.boundingBox();
-  const contentBox = await content.boundingBox();
-  if (!nodeBox || !sidebarBox || !contentBox)
-    throw new Error("node, content, or sidebar not visible");
-  // Flush against the terminal content — no gap.
-  expect(
-    Math.abs(sidebarBox.x - (contentBox.x + contentBox.width)),
-  ).toBeLessThanOrEqual(2);
-  // Contained within the card — the right edge does not overhang the node.
-  expect(sidebarBox.x + sidebarBox.width).toBeLessThanOrEqual(
-    nodeBox.x + nodeBox.width + 2,
-  );
-  // Spans the card's height (one unit with the terminal, not a floating panel).
-  expect(Math.abs(sidebarBox.height - contentBox.height)).toBeLessThanOrEqual(
-    2,
-  );
-});
-
 test("status bar summarizes durable terminal recovery states", async ({
   page,
 }) => {
@@ -3288,6 +3064,10 @@ test("split terminal body fills the available pane height", async ({
   expect(dimensions.containerTopGap).toBeGreaterThanOrEqual(20);
 });
 
+// The map card's expandable task COLUMN was retired when the card became the
+// agent mission panel (see "agent-cockpit-panel" below). The docked task list
+// with its rail now lives in the split pane and is covered by
+// agent-workstream.spec.ts ("split-agent-task-sidebar" / "split-agent-task-rail").
 test("map notes can be edited without dragging the canvas", async ({
   page,
 }) => {
@@ -4977,170 +4757,6 @@ Acceptance:
   await expect(
     page.getByTestId("canvas-terminal-task-row").nth(2),
   ).toContainText("Render completed tasks crossed and muted");
-});
-
-test("map terminal task rail opens a visible canonical checklist", async ({
-  page,
-}) => {
-  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
-  await page.waitForLoadState("networkidle");
-  await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
-  await page.reload({ waitUntil: "domcontentloaded" });
-  await page.waitForLoadState("networkidle");
-  await page.getByRole("button", { name: "Map", exact: true }).click();
-
-  await page.evaluate(() => {
-    const store = (
-      window as typeof window & {
-        __termfleetWorkspaceStore?: {
-          getState: () => {
-            tabs: Array<{
-              id: string;
-              title: string;
-              activePaneId?: string;
-              terminals: Array<Record<string, unknown>>;
-            }>;
-            canvasState: {
-              nodes: Array<{
-                id: string;
-                type: string;
-                terminalTabId?: string;
-              }>;
-            };
-            updateTab: (id: string, updates: Record<string, unknown>) => void;
-            updateCanvasNode: (
-              id: string,
-              updates: Record<string, unknown>,
-            ) => void;
-            selectCanvasNode: (id: string) => void;
-          };
-        };
-      }
-    ).__termfleetWorkspaceStore;
-    if (!store) throw new Error("TermFleet test store is unavailable");
-    const state = store.getState();
-    const node = state.canvasState.nodes.find(
-      (candidate) => candidate.type === "terminal",
-    );
-    if (!node?.terminalTabId)
-      throw new Error("Terminal map node is unavailable");
-    const tab = state.tabs.find(
-      (candidate) => candidate.id === node.terminalTabId,
-    );
-    if (!tab) throw new Error("Terminal tab is unavailable");
-    const paneId = tab.activePaneId ?? node.id;
-    store.getState().updateCanvasNode(node.id, {
-      x: 80,
-      y: 130,
-      width: 760,
-      height: 520,
-    });
-    store.getState().selectCanvasNode(node.id);
-    store.getState().updateTab(tab.id, {
-      terminals: [
-        {
-          id: "pty-task-rail-click-visual",
-          paneId,
-          cols: 100,
-          rows: 30,
-          status: "running",
-          activeRunId: "run-2",
-          currentActivity: "Working",
-          taskSidebarCollapsed: true,
-          terminalOutput: [
-            "Implement this plan?",
-            "1. Yes, implement this plan",
-            "TERM",
-          ].join("\n"),
-          taskLineup: [
-            {
-              id: "legacy-random",
-              content: "This stale operator row must not render",
-              status: "in_progress",
-              source: "operator",
-              updatedAt: 1,
-            },
-            {
-              id: "summary-random",
-              content: "This stale summary row must not render",
-              status: "pending",
-              source: "summary",
-              updatedAt: 1,
-            },
-            {
-              id: "todo-old-run",
-              runId: "run-1",
-              content: "Summarize recent commits",
-              status: "completed",
-              source: "todo-write",
-              updatedAt: 1,
-            },
-            {
-              id: "todo-one",
-              runId: "run-2",
-              content: "Keep task state canonical",
-              status: "in_progress",
-              source: "todo-write",
-              updatedAt: 2,
-            },
-            {
-              id: "todo-two",
-              runId: "run-2",
-              content: "Open the rail into a stable list",
-              status: "pending",
-              source: "todo-write",
-              updatedAt: 2,
-            },
-            {
-              id: "todo-three",
-              runId: "run-2",
-              content: "Show completed tasks crossed out",
-              status: "completed",
-              source: "todo-write",
-              updatedAt: 2,
-            },
-          ],
-        },
-      ],
-    });
-  });
-
-  await expect(page.getByTestId("canvas-terminal-task-rail")).toContainText(
-    "Tasks",
-  );
-  await expect(page.getByTestId("canvas-terminal-task-rail")).toContainText(
-    "3",
-  );
-  await page.getByTestId("canvas-terminal-task-rail").click();
-
-  await expect(page.getByTestId("canvas-terminal-task-sidebar")).toBeVisible();
-  await expect(page.getByTestId("canvas-terminal-task-row")).toHaveCount(3);
-  await expect(page.getByTestId("canvas-terminal-task-row")).toContainText([
-    "Keep task state canonical",
-    "Open the rail into a stable list",
-    "Show completed tasks crossed out",
-  ]);
-  await expect(
-    page.getByTestId("canvas-terminal-task-sidebar"),
-  ).not.toContainText("stale operator");
-  await expect(
-    page.getByTestId("canvas-terminal-task-sidebar"),
-  ).not.toContainText("stale summary");
-  await expect(
-    page.getByTestId("canvas-terminal-task-sidebar"),
-  ).not.toContainText("Summarize recent commits");
-  await expect(
-    page.getByTestId("canvas-terminal-task-sidebar"),
-  ).not.toContainText(/Task 1\/|operator task list|summary/i);
-
-  const sidebarBox = await page
-    .getByTestId("canvas-terminal-task-sidebar")
-    .boundingBox();
-  expect(sidebarBox).toBeTruthy();
-  const screenshot = await page.screenshot({ fullPage: true });
-  const stats = await imageRegionStats(page, screenshot, sidebarBox!);
-  expect(stats.brightPixels).toBeGreaterThan(180);
-  expect(stats.edgePixels).toBeGreaterThan(260);
 });
 
 test("map shell header uses durable activity instead of stale transcript summary", async ({
@@ -6917,8 +6533,12 @@ test("map sidebar lists every visible map terminal even when a project filter is
 
   const mapPanel = page.locator('[aria-label="Operations panel"]');
   await expect(mapPanel.getByTestId("map-filter-all")).toContainText("3");
-  const nodeList = mapPanel.getByTestId("map-node-list");
-  await expect(nodeList.getByText("termfleet", { exact: true })).toBeVisible();
-  await expect(nodeList.getByText("paper-bot", { exact: true })).toBeVisible();
-  await expect(nodeList.getByText("bina-veze", { exact: true })).toBeVisible();
+  // Match the ROWS, not any element with the text: the list also renders a
+  // project group header carrying the same project name.
+  const nodeRows = mapPanel
+    .getByTestId("map-node-list")
+    .locator(".workspace-sidebar-row");
+  for (const name of ["termfleet", "paper-bot", "bina-veze"]) {
+    await expect(nodeRows.filter({ hasText: name }).first()).toBeVisible();
+  }
 });

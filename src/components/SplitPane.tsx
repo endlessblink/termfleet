@@ -1411,14 +1411,23 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
             : rendererTaskFallback
           : undefined;
         const visibleAgentTaskLabel = agentTaskLabel ?? rendererTaskFallback;
+        const shellStatusTaskCandidate = paneTerminal?.statusSummary?.task?.trim();
+        // The pane's persisted summary is only a candidate while it says something.
+        // A junk label there ("Search") used to outrank the composed summary, which
+        // carries the live durable activity — so the header showed the junk and the
+        // real work disappeared.
+        const usableShellStatusTask =
+          shellStatusTaskCandidate &&
+          qualityCheckAuthoritativeTaskLabel(shellStatusTaskCandidate).ok
+            ? shellStatusTaskCandidate
+            : undefined;
         const shellTaskCandidate = !isAgentPane
           ? (paneTerminal?.taskLineup ?? tab.workstream?.taskLineup)
               ?.find((item) => item.status === "in_progress")
               ?.content?.trim() ??
-            paneTerminal?.statusSummary?.task?.trim() ??
+            usableShellStatusTask ??
             shellStatusSummary?.task?.trim()
           : undefined;
-        const shellStatusTaskCandidate = paneTerminal?.statusSummary?.task?.trim();
         const shellTaskLabel = !isAgentPane
           ? (shellStatusTaskCandidate &&
             qualityCheckAuthoritativeTaskLabel(shellStatusTaskCandidate).ok &&

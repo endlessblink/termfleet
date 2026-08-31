@@ -750,6 +750,17 @@ export function qualityCheckAuthoritativeTaskLabel(
   if (/^Answering (?:latest prompt|user question)$/i.test(text)) {
     return { ok: false, reason: "vague" };
   }
+  // A single bare action word is a UI affordance or a scraped menu item, not a
+  // task: "Search" standing alone tells the reader nothing about what is being
+  // done, and it beat a real durable activity title on a live pane. A task names
+  // its object, so one word on its own never qualifies.
+  if (
+    /^(?:search|build|test|run|fix|edit|read|write|open|close|save|compile|install|debug|refactor|deploy|review|check|update|start|stop|restart|reload|refresh|commit|push|pull|merge|plan|explore|list|help|settings|tasks|files|terminal)$/i.test(
+      text,
+    )
+  ) {
+    return { ok: false, reason: "vague" };
+  }
   if (!options.allowMetaProcess && looksLikeMetaProcessTask(text)) {
     return { ok: false, reason: "vague" };
   }
