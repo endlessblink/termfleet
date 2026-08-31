@@ -1,5 +1,456 @@
 # MASTER_PLAN.md - termfleet
 
+## Reliability work in progress — 2026-08-30
+
+- [x] Stop stale terminal-pane subscriptions from generating repeated Broken pipe errors after a client closes.
+- [x] Bound and reconcile stale persisted PTY sessions so an idle daemon cannot consume CPU with no clients or child processes.
+- [ ] Measure and reduce long desktop startup caused by serial workspace/session reconciliation.
+- [ ] Stage automatic restoration with bounded concurrency and backoff so daemon recovery cannot stampede CPU or provider writers.
+- [ ] Ensure explicitly killed terminals stay excluded from automatic restoration and never return after restart.
+- [x] Prevent promotion or launch of a release whose embedded frontend is older than the current frontend build.
+- [x] Keep explicitly killed terminal/provider identities excluded from live, sidecar, and cold restoration paths.
+- [x] Reconnect every daemon-confirmed terminal exactly once after a dock restart, including legacy session identities.
+- [ ] Run the full installed end-to-end checks plus `$sure` at HIGH / PASS and `$challenge-loop` independent review before closing these tasks.
+
+> **2026-08-30 — Stale IPC and killed-session hardening:** Closed socket clients now
+> unsubscribe quietly at the daemon boundary, ended PTYs are reaped, dead historical
+> records no longer create surprise tabs, and durable provider-close tombstones are
+> loaded and enforced by both hydration and the live restore helper. The installed
+> release checksum, four-pane dock restart, pane-close isolation, standalone cold
+> restore, 33 focused recovery tests, 17 daemon tests, and a live disconnect/latency
+> probe passed; the probe measured p95 1.4 ms and zero Broken pipe log output.
+> Final challenge-loop closure remains open until every active pane has a complete
+> visible Goal and the independent snapshot-bound reviewer returns PASS.
+
+> **2026-08-31 — Agent panes resume again after a reboot, and `/exit` leaves a shell:**
+> After a host reboot no saved agent pane came back: the ownership gate returned
+> `resume-failed` for every agent terminal while it waited for an exact live daemon
+> owner, which a reboot guarantees does not exist, and the refusal was persisted so it
+> survived into later launches. Cold restore now resumes when no live PTY remains —
+> duplicate writers stay blocked by `provider_writer_is_alive` plus the flock resume
+> lock — and a persisted `resume-failed` is sticky only for terminal failures. The
+> resume is the pane's own process, never typed into a live terminal. Quitting an agent
+> is recorded with the daemon run that observed it (pid + start time, because pids are
+> reused), so `/exit` lands at a shell while a reboot, crash, or app restart still
+> resumes. `npm run stop:all` replaces stopping the daemon by hand: it verifies every
+> owner is gone and never unlinks the socket, after a hand-rolled stop deleted a live
+> socket and produced a daemon split-brain. `docs/runtime-truth.md` is the new canonical
+> page on authoritative state (ask the daemon, not the lazily-flushed session files),
+> why a promoted release does not reach the terminals until the daemon stops, and where
+> every log lives; the launcher now captures the cockpit's own output. Verified: 196
+> Rust library tests including an end-to-end spawn→quit→restore test that reproduced
+> the live `/exit` loop before the fix, 91 reconnect/startup/map/hydration browser
+> tests, `verify:map-terminals`, and the frontend build. Live dock check: jobrunner,
+> claude-and-conquer, flow-state and the termfleet Claude pane resumed their real
+> conversations; the lifeboat-live pane was repointed at its live conversation after
+> its saved one was found missing from disk.
+
+> **2026-08-30 — Exact conversation recovery is fail-closed before the dock gate:**
+> A nested agent helper could inherit a pane identity and overwrite the pane's saved
+> conversation, while reconnect treated a written resume command as success. Passive
+> status can no longer replace a durable binding; recovery now requires a stable
+> top-level provider process with the exact saved provider and conversation ID. The
+> 44 focused browser tests, 181 Rust library tests, frontend build, Rust check,
+> standalone daemon smoke, and four-layer restart/restore verifier pass. The immutable
+> dock release `5514cde0ebd3-4368c83ccba8-5fc9431c55ee` verifies at SHA-256
+> `4368c83ccba8ea35e41849afc942c50e7d9cc796fc946114909b9d3fd8bcb1a5`.
+> Coverage remains partial until a fresh dock launch visibly proves every preserved
+> pane loaded its exact conversation and every explicitly killed pane stayed absent.
+
+> **2026-08-30 — Corrupted dock release recovered:** The installed executable no
+> longer matched its immutable manifest, so the checksum verifier and doctor failed
+> closed. The damaged release was quarantined intact, the same source revision was
+> rebuilt and promoted atomically, `npm run verify:installed-release` matched SHA-256
+> `dfad8b31d4bfde8b8927d298710e6e2f3c82fd1e97b3f5c7cafa4939b4518d2c`, and
+> `npm run doctor` returned `DOCTOR_OK`. The preserved PTY daemon survived the UI
+> replacement. The relaunched dock cockpit was visibly healthy with no localhost
+> refusal (`/tmp/termfleet-connection-refused-fixed.png`, SHA-256
+> `188844bc848f8810a31b42fcfad8299845f046aed4f6062b054adae3b552c329`). TF-012
+> was reopened, verified on the installed desktop surface, and resolved.
+
+> **2026-08-30 — All preserved terminals reconnect exactly once:** Restart hydration
+> previously left legacy UUID shell sessions on `starting` and could retain both an
+> old card and a recovered duplicate for one daemon session. Exact live identities
+> now reconnect regardless of id generation, stale duplicates are removed, and the
+> status merge cannot overwrite `reconnected` with an older `starting` value. Two
+> focused hydration regressions passed; the promoted dock release verified at
+> SHA-256 `76a3c8f1ce429ba4e3e5ae9a255e1f0214d8d9b3ae6ab66f28334e4751251f8d`.
+> Installed read-back found 17 live daemon sessions, 17 unique cockpit identities,
+> zero starting, zero closed-live, and zero unattached-live sessions. The real
+> TermFleet window showed terminal cards and live shell content with no connection
+> refusal or stuck-starting text (`/tmp/termfleet-terminals-reconnected-final.png`,
+> SHA-256 `8cd805d202315a8297eb6a2bd7e3d617ce1196ce7e02a91e2ab0c8d12748409f`).
+
+> **2026-08-30 — Hand-started agent restoration now keeps the provider session:**
+> The UI previously dropped recovery metadata unless the pane came from the agent
+> launcher, so a manually started Codex or Claude conversation could cold-restore
+> as a plain shell. Detected provider sessions now persist under the stable pane
+> identity with the provider and exact conversation id. The new focused regression
+> passed 4/4, `npm run build` passed, the Rust `agent_restore` suite passed 9/9,
+> and `npm run verify:restart-restore` passed all four daemon layers. Installed
+> hand-started-agent restart proof remains required.
+
+> **2026-08-28 — Sidebar terminal selection no longer loses keyboard ownership to
+> inactive panes:** Background Canvas2D terminals were mounted with the default
+> runtime-active state, so their hidden inputs could claim focus while attaching.
+> Split terminals now pass visible-runtime state into Canvas2D; the focused
+> sidebar-selection E2E, map connection guard, `npm run verify:map-terminals`,
+> `npm run build`, release promotion, and installed checksum verification passed.
+> Installed dock restart/visual proof remains the final runtime gate.
+
+> **2026-08-26 — Goal evidence is now fail-closed and provenance-bound:** The
+> renderer no longer turns a pane Task or project purpose into a Goal. The
+> snapshot carries the captured Goal source, accepts genuine pane-owned user
+> wording including questions, and rejects generated wrappers, missing sources,
+> duplicate Goals, and process/status text. Focused sidecar/header regressions
+> and `npm run build` passed; the promoted dock release correctly exposes four
+> active panes with no fresh captured Goal, so the installed matrix remains
+> red until those panes record their own Goal.
+
+> **2026-08-25 — All map project categories now settle before interaction:** Both
+> map sidebar surfaces refresh every terminal's live cwd and Git root as they mount,
+> so saved terminals no longer remain under a stale parent category until clicked.
+> The exact Workbench map pre-click regression passed; promoted installed-release
+> and dock-restart proof remains the final runtime gate.
+
+> **2026-08-24 — Authoritative runtime controller and live-dock proof:** Recovery now
+> records per-pane provider identity and lifecycle, serializes cross-process updates,
+> rejects stale events and duplicate writers, preserves explicit kills, and refuses
+> external workspace apply while the dock UI is live. The restored FlowState/Codex,
+> Bina/Codex, and Life-Boat/Claude IDs each occur once after UI-only restart and
+> daemon-preserving recovery. Runtime-controller tests (19/19), coordinator tests
+> (19/19), exact provider read-back, three installed restart smokes, release checks,
+> and independent visual challenge review passed; the canonical daemon remained PID
+> 68827 throughout.
+
+> **2026-08-23 — Provider close tombstones now survive restart:** The durable
+> workspace loader now reloads `closedProviderSessionIds` before daemon, sidecar,
+> or provider reconciliation, so an explicitly killed Claude/Codex conversation
+> cannot return merely because its PTY id changed. Focused tombstone/coordinator
+> coverage passed (14/14), the recovery coordinator verifier passed, the build
+> passed, the installed release passed checksum verification, standalone daemon
+> cold-restore smoke passed, and the four-layer restart/restore proof passed.
+> The broad auto-recovery suite is now green at 28/28 after its stale sidebar
+> assertion was aligned with the current ownership-safe reconnect path.
+
+> **2026-08-23 — Three exact conversations were restored through the controller:**
+> FlowState/Codex `01a02df8-c740-76b1-8a4b-ef7bf58d03c1`, Bina/Codex
+> `01a01e32-5fec-7d02-a969-77bc25cc9961`, and Life-Boat/Claude
+> `6169a4a7-a5d2-4611-ba35-0bddeaf6a238` are each bound to one visible workspace
+> terminal and one live daemon owner. Apply was lock-protected and kill-free;
+> exact command and daemon snapshot read-back passed for all three.
+
+> **2026-08-23 — Provider process identity is now part of recovery selection:**
+> A provider session id is not enough; the live daemon command must also match
+> the recorded Claude/Codex provider. The coordinator now holds mismatched
+> owners and duplicate provider owners instead of relabeling or resuming them.
+> Live read-back found and resolved the stale duplicate records; only the unique
+> live Claude owner was attached, while FlowState and Bina resumed through their
+> exact Codex owners.
+
+> **2026-08-23 — Independent challenge review is now available locally:**
+> The challenge-review adapter runs the reviewer inside hard-coded `/usr/bin/bwrap`
+> with a read-only filesystem and disabled networking, requires a reviewer context
+> distinct from the author context, binds evidence to the snapshot and review count,
+> and fails closed on malformed or unbound output. `npm run verify:challenge-review`
+> passed, including a reviewer write-block regression and a wrong-snapshot regression;
+> a separate read-only reviewer returned PASS. This proves the challenge boundary,
+> not the TermFleet recovery behavior itself.
+
+> **2026-08-23 — Visible agent-restore evidence now passes on the terminal surface:**
+> The verifier now isolates the snapshot path, uses an explicit context-enabled status
+> server, seeds the pane-owned provider sidecar, and keeps the canonical terminal-map
+> identity. `node --test tests/test_agent_restore_visible_verifier.mjs` passed and
+> `npm run verify:agent-restore-visible` passed in split mode with a rendered snapshot,
+> non-flat screenshots before/after input, and the PTY input marker observed. Canvas
+> mode remains a separate open verifier gap because its map card does not emit a snapshot.
+
+> **2026-08-23 — Task-derived and project-wide Goals are now blocked at the render boundary:**
+> The shared resolver, split header, and map header no longer turn a folder slogan, Task, review
+> step, or recovery wording into Goal. The installed release `0d206050aea7` passed checksum
+> verification and was relaunched with the PTY daemons preserved. Focused source tests passed
+> 183/183; the final installed all-pane matrix remains deliberately failing with 1,940 failures
+> because most rendered panes have no valid pane-owned `$about-what` context yet. No acceptance
+> claim is made.
+
+> **2026-08-23 — Shared-task board minimalism pass:** Task rows now use compact
+> icon-led status and project cues, one-line summaries, and a shorter detail panel
+> that keeps raw execution diagnostics out of the primary view. Focused board tests
+> passed (7/7), `npm run build`, and `git diff --check` passed. Release promotion is
+> currently blocked by unrelated dirty Rust compile errors in PTY lifecycle code;
+> installed visual verification remains pending.
+
+> **2026-08-23 — Terminal viewport history repair remains in progress:** The
+> Canvas terminal now keeps a user-scrolled viewport owned by the operator,
+> routes Home/End/PageUp/PageDown to grid history, and preserves normal PTY keys.
+> The focused browser regression passed 2/2, `npm run build` passed, and the
+> broad Canvas2D run passed 73/86 with 13 unrelated pre-existing map assertion
+> failures. The promoted installed release passed with SHA-256
+> `37fe223f959bcd4b73b2d0c76fdc629086ca7bfd2489fe16ba96e14db0cd5d67`, and
+> `npm run verify:canvas-live` passed daemon input, snapshot output, and visible
+> wheel repaint checks. Fresh installed keyboard/output-while-scrolled visual
+> confirmation remains required.
+
+> **2026-08-23 — Complete all-pane `$about-what` matrix is mandatory and currently fails:**
+> The live gate now prints every rendered Task, Goal, and Now with group and pane identity before
+> failing. The installed matrix inspected 15 panes across 7 groups and reported 15 failures,
+> including `No task declared`, a gate instruction rendered as Now, process-only Task labels,
+> duplicated sibling Goals, and incomplete or process-led Goals. Review instructions in Now are
+> now explicitly rejected as well. Nothing is accepted while any matrix failure remains.
+
+> **2026-08-23 — Fresh installed restart remains failed closed:** The rebuilt release
+> passed its checksum verification and the dock was restarted without touching the two preserved
+> PTY daemon owners. The live matrix then inspected all 15 rendered panes and reported 11 failures:
+> missing/process-only Tasks, clipped Goals, review instructions in Now, and duplicate Goals in
+> three groups. This is still in progress; no visual acceptance claim is made.
+
+> **2026-08-23 — Pane-owned Goal provenance is now fail-closed:** Clipped sidecar Goals are
+> rejected in the shared quality boundary and the map candidate ladder, and the live matrix now
+> prints `paneGoalSource` and rejects project-level `derived-purpose` fallbacks. The rebuilt
+> installed release passed checksum verification; the fresh matrix inspected 15 panes and
+> reported 16 failures, including 9 panes without pane-owned Goal provenance, missing/process-only
+> Tasks, and duplicate Goals. This remains in progress.
+
+> **2026-08-23 — Recovery provenance correction remains in progress:** The
+> daemon kill protocol now carries explicit user intent; confirmed UI closes are
+> the only path that write `intentional-kill`, while system cleanup stays
+> recoverable. Legacy markers without an exact close tombstone are reviewable
+> rather than silently trusted. Rust tests passed 175/175, the focused hydration
+> suite passed 6/6, `npm run build` passed, and the promoted installed release
+> `f8d38855dc2d` passed installed-release and isolated restart smoke. The shared
+> dock relaunched on that binary while the existing daemon owners remained
+> untouched. The required isolated challenge reviewer was unavailable, so this
+> work is not complete yet; historical ambiguous sessions still need live
+> recovery-list read-back.
+> Follow-up: the stale close assertion now requires the explicit `userRequested`
+> flag (27/27 passed); standalone daemon cold restore, installed-release
+> verification, and installed restart smoke all passed.
+
+> **2026-08-23 — Shared-task board now separates workflow truth from execution truth:**
+> Stale or disconnected `IN PROGRESS` claims move to Needs attention instead of
+> being presented as active work, the running counter counts only live execution,
+> and Finished remains visible even when its cards are hidden. The focused board
+> regression passed (7/7), `npm run build`, `git diff --check`, and installed-release
+> verification passed with checksum `8d9a49ed753e1d87715bf6b5c08140b5a91fe79b10206e1bb2c6d680867c931c`.
+> Installed restart reached the healthy binary, window, and daemon gates but remains
+> unverified because its terminal-label snapshot did not settle.
+
+> **2026-08-23 — Live all-pane/group gate is active and currently failing honestly:**
+> Added a real-time observer over the rendered snapshot that requires every pane to have a
+> group identity, checks every Task/Goal/Now row, rejects duplicate sibling Goals and forbidden
+> placeholders, and fails on any row change inside the five-second floor. The installed run
+> reaches the new gate, which correctly fails on pane `recovered-pane-c65922f9-56b6-4236-bf63-108a55b81725`
+> because it still renders `No task declared` and has no task lineup, user task, or terminal
+> activity to ground a replacement. This work remains in progress; no invented fallback is accepted.
+
+> **2026-08-23 — Same-group pane leakage and sub-5-second Now churn fixed; user approval remains open:**
+> The map agent card was rendering the shared workstream mission directly, so sibling terminals
+> in one group showed the same Task/Goal/Now context. Pane-bound task/status sources now win, group
+> mission data is fallback-only when no pane record exists, and both map and split Now rows hold
+> their displayed value for at least 5 seconds, including placeholder-to-live transitions.
+> Focused sibling-isolation/stability regressions passed (4/4), `npm run build` passed, the installed
+> release was promoted and verified with checksum `c1bfea41d28836a8d8132a4b031a811687fa094837455077cc0eb1c5e2d96c4e`,
+> the live verifier passed with 26 terminals, the sampled 10-second cockpit stability gate passed
+> for 10 TermFleet panes, and a fresh process-bound visual pair passed with an 18.188-second gap.
+> The visible result still requires the user's approval before this work is accepted.
+
+> **2026-08-23 — Unexpected desktop exits now relaunch the cockpit:** Live
+> incident records showed repeated desktop status-143 exits with the independent
+> daemon preserved, but no supervisor restarted the UI for Lifeboat terminals to
+> reattach. The transient desktop unit now uses `Restart=on-failure` with a 2-second
+> delay; normal operator exits still return status 0 and are not restarted.
+> Focused launcher and pressure safety tests passed 34/34, `npm run build` passed,
+> installed-release verification passed with binary SHA-256
+> `7f410f180e89c3f4b675ad45fc7c4a827cb408c4239c2ffcff7721e323f1ed48`, and the
+> installed restart smoke passed with the label fixture disabled, one visible
+> installed window, the daemon socket, and zero external terminals. The default
+> installed restart smoke still has an unrelated label-snapshot settle failure.
+
+> **2026-08-23 — Installed pane binding and placeholder fallback repaired; approval remains open:**
+> The flagged TermFleet pane reproduced the visible `Goal not captured` failure even while
+> the live snapshot held a valid fallback. The map renderer no longer emits that placeholder,
+> and restored cards now prefer their saved pane identity over the tab's active pane; focused
+> map/header regressions pass (36/36 plus the focused quality/view-model/sidecar suite 226/227,
+> 1 skipped). The promoted installed checksum is
+> `87965068eacdfca569d3b3a01fa97ccc8ace08a2adb85ea9357458dc9fb96ec5`.
+> The correct TermFleet pane rendered readable Task, Goal, and Now rows after promotion;
+> a stable 20.555-second capture passed for another TermFleet pane. A prior stability run
+> correctly failed because pane selection changed; the flagged pane still needs one fresh
+> pane-bound stable capture before visual approval.
+
+> **2026-08-22 — Shared-task board redesigned for scanability:** The crowded card
+> layout is replaced with a calmer operations ledger: a clear queue header,
+> separated search/filter controls, three readable attention lanes, and flat task
+> rows with explicit status, project, owner, execution, and progress. The focused
+> board suite passed (6/6), `npm run build`, `git diff --check`, installed-release
+> verification, and installed restart verification passed. Promoted release
+> checksum: `7ae3a6d889565f92d174e4750c3524595ccf24c6733112b5a924cf02046f0770`.
+
+> **2026-08-22 — Unified issue control system added:** `npm run issues` now
+> validates a machine-readable issue registry, enforces explicit lifecycle
+> transitions, links records to regression-matrix rows, and requires
+> surface-specific evidence before resolution. Focused issue tests passed (3/3),
+> registry validation passed, premature resolution was rejected, and
+> `git diff --check` passed. `npm run build` remains blocked by the pre-existing
+> dirty `CanonicalAgentBoard.tsx` error (`doneCount` is undefined).
+
+> **2026-08-22 — Restart hydration no longer leaves the stale cache visible when
+> the daemon list is briefly empty:** Hydration now applies the durable workspace
+> layout even when no live or persisted PTY sessions are returned during startup.
+> The focused regression passed (2/2), `npm run build` passed, the release was
+> promoted with installed checksum `b50c73e7f085ec26d866bdb608004991032f15a2334c0dcb1402bcadd919bc52`,
+> `npm run verify:installed-release`, `npm run verify:installed-restart`, and
+> `npm run verify:installed-live-persistence` passed (`durable=22`, `live=12`).
+
+> **2026-08-22 — Status summaries keep recognized work visible:** Shell command
+> summaries and operator-selection prompts no longer fall through to `Task not captured`,
+> while a newer agent purpose still suppresses stale verifier activity. Focused status
+> regressions passed (97/97 executed, 1 skipped), `npm run build`, `git diff --check`,
+> `npm run release:install`, `npm run verify:installed-release` (sha256
+> `80db018d9be497c55601dd10908ad72fa7c23294a4364e312fd3a3460b2b54cb`), and
+> `npm run verify:installed-restart` passed.
+
+> **2026-08-22 — Shared-task board styling regression fixed:** The board's grid,
+> heading spacing, and selected-view controls are now in the static packaged
+> stylesheet, so the dock cannot render the semantic cards as colliding plain
+> text when the component style block is unavailable. Regression passed (6/6),
+> `npm run build` passed, the release was promoted, `npm run verify:installed-release`
+> passed with checksum `cda4a4fd98231b977604a347506ba6087f4343da82cf2803e129ff9224375111`,
+> `npm run verify:installed-restart` passed with no external terminals, and
+> `git diff --check` passed. Fresh board screenshot review remains the final visual
+> acceptance step.
+
+> **2026-08-22 — Installed header quality proof is now green; user approval remains open:**
+> Source quality, identity, task-line, machine-wide pane, installed-release, and live
+> telemetry checks pass; the full task-line gate is 96/96 after isolating transcript cache
+> state by reader. The dock was rebuilt and relaunched without touching the PTY daemons,
+> with 17 live terminals preserved. A fresh process-bound header-crop screenshot pair
+> passes the visual gate with a 12.3-second stability window and reads:
+> `Task: Adding a plain warning when terminals are in danger`, `Goal: Make TermFleet a reliable terminal cockpit so people can understand work and resume it safely`,
+> and `Now: Proving terminals survive a real relaunch`. The installed checksum is
+> `7ae38d2dec419ecc14f6f33ddc4f867cef460e4853095f3153bb51940c2d111f`.
+> An independent fresh capture pair also passes with a 12.3-second gap; the 96-test
+> task-line gate and live 17-terminal check remain green.
+> Do not mark this work accepted until the user approves the visible result.
+
+> **2026-08-22 — Git work monitoring is available from the sidebar and passed feature acceptance:**
+> The former relationship graph now opens a plain-language global monitor with
+> project rows, agent work items, health states (`Under control`, `Decision ready`,
+> `Agent needs help`), work-area counts, unfinished-change counts, inline project
+> expansion, recent completions, and a one-click `Combine this work` request. The
+> monitor refreshes Git context from the backend and reconstructs agent rows from
+> restored provider metadata when no workstream object is persisted; those inferred
+> panes are also included in the live Git refresh loop. Focused
+> contract tests passed (9/9), the sidebar rendered-action test passed, Rust Git-fact tests passed, `npm run build`, `npm run verify:git-monitoring`, `npm run verify:typography`,
+> `npm run verify:visual`, `npm run verify:map-terminals`, and `git diff --check`
+> passed. The final release was promoted and installed-release verification passed
+> with checksum `10e198db02cb0e787611f27345921585739d09548e5f3a938d9ee2c31948bca0`.
+> Dock-launched global screenshot SHA-256:
+> `e807cd15c9bfe66974cb32e0da93e606afff03a3386af1187699fe819930410e`;
+> expanded project screenshot SHA-256:
+> `11542ef3a404d19ced459266db1b4e30d7c407efa0cb80100b4a23eb4d6c6715`.
+> The installed restart smoke passed with the promoted binary, daemon socket, and
+> window identity verified. Installed narrow-layout proof passed with SHA-256
+> the narrow source contract remains covered by `npm run verify:git-monitoring`; the full-size
+> installed sidebar proof passed visual adversarial review with the hashes above.
+> The installed before-click sidebar proof SHA-256 is
+> `dcedb4caf6600b4fe3f464d08cc6ae981f548baf0d17c47b0d2c4d418b82aee1`;
+> the after-click monitor proof is included in the fresh installed window capture above;
+> the fresh installed normal capture is populated and honestly shows one project checking Git facts,
+> so it is not treated as a fully confirmed combine-decision receipt. The
+> repository-wide `npm run gate` remains red for active-pane label records outside
+> this feature; those sessions were preserved. Final feature adversarial review is
+> GO; combine/help receipt states and restored-agent dispatch are covered by the
+> focused monitor contract and source paths. The separate workspace-hydration suite
+> remains 9 failed / 5 passed and is tracked independently from this feature.
+
+> **2026-08-21 — Agent restart no longer clears the cockpit:** The restart action
+> was killing agent PTYs and setting the tab terminal list to empty, so a healthy
+> daemon could still appear disconnected. Restart now preserves pane descriptors,
+> remounts them through the workstream generation, and reattaches them by durable
+> pane identity. The focused recovery/launcher suite passed (42/42), the release
+> was promoted, and four installed restart gates passed.
+
+> **2026-08-21 — Empty startup is now fail-closed:** The dock launcher no longer
+> creates a cockpit window until the canonical PTY daemon socket exists. If the
+> user systemd bus cannot start the daemon, it falls back to a detached daemon;
+> if that also fails, no empty window is shown. Focused launcher regressions,
+> frontend build, promoted installed-release verification, and four consecutive
+> isolated installed restart gates passed.
+
+> **2026-08-21 — Goal now follows the pane’s about-what context:** The dock no
+> longer invents a generic project goal when the pane has a specific accepted
+> task. It renders a short sentence such as `This session is focused on reviewing
+> the challenge protocol and git organizer boundaries.`; dated raw instructions,
+> prompt fragments, and verification reports remain excluded from Task and Now.
+> Focused regressions passed (65/65), the frontend build and diff check passed,
+> installed-release verification passed, live telemetry passed, no-fixture restart
+> smoke passed, and the independent 1200px dock review found the card fully visible,
+> high contrast, specific, and untruncated. Screenshot SHA-256:
+> `e1943b423b05039e23edc83714fa09bc7b65364525208b2ea62752336a7c8337`.
+
+> **2026-08-21 — Live daemon sessions now reattach to durable saved panes:**
+> External agent sessions that survive a desktop restart are reconciled into the
+> matching saved tab instead of creating a duplicate recovered tab and leaving the
+> visible pane killed. The regression is covered by the external-session hydration
+> tests passed, `npm run build` passed, the installed release verifier passed with
+> SHA-256 `6d282db3497046bed19150f702ca33e54c7d9514abb8c93d081ea40b544bff7b`,
+> and the no-fixture dock restart smoke passed with the canonical external daemon
+> reachable and 24 live sessions.
+
+> **2026-08-21 — Daemon transport recovery no longer gives up:** A pane that
+> loses its daemon socket now retries with capped backoff for as long as the pane
+> remains mounted, including daemon-unavailable startup, instead of becoming
+> permanently failed after five attempts. The source/lifecycle regression suite
+> passed (26/26); installed release and restart verification are required again
+> after this frontend change.
+
+> **2026-08-20 — Task/Goal/Now labels now meet the glance test:** Workflow
+> narration is rejected from the visible rows; missing context uses explicit
+> human wording; and the idle state says `Idle — no work is running`. Focused
+> cockpit and quality regressions passed (59/59), `npm run build`,
+> `git diff --check`, installed-release verification, the no-fixture installed
+> restart smoke, and the live gate (`terminals=21`). The final 1200px dock capture
+> was independently reviewed as immediately understandable: Task `Clarify the
+> cockpit header`, Goal `Keep terminal sessions reliable and easy to resume`, and
+> Now `Idle — no work is running`, with no clipping or ellipsis. Screenshot
+> SHA-256: `e38a877ef6028d7a908ed09cc65c52961a18907972ad63e52ab20713937deda2`.
+
+> **2026-08-20 — Installed Task/Goal/Now header visual acceptance passed:** The
+> dock-launched release now auto-fits the active terminal card instead of a
+> selected note card at 1200px. Focused cockpit and quality regressions passed
+> (58/58), `npm run build`, `git diff --check`, installed-release verification,
+> `npm run verify:installed-restart` without fixture injection, the live gate
+> (`terminals=19`), and the cockpit target gate all passed. An independent visual
+> review of `/tmp/termfleet-window-final-verified.png` found distinct, fully
+> readable rows: Task `Preparing the exact external form handoff`, Goal `Keep the
+> terminal cockpit reliable`, and Now `Waiting for current activity`, with no
+> clipping or ellipsis. Screenshot SHA-256:
+> `6f20577c068afb2aa336fbf42f65d95f834ce4bd1bdef47a75db0503c592131e`.
+
+> **2026-08-20 — The desktop pressure watchdog no longer kills the cockpit by
+> default:** The repeated status-143 exits were desktop-group recycles initiated
+> by the watchdog while the daemon remained alive. Recovery is now opt-in, while
+> pressure remains recorded and actionable. Regression coverage passed (31 focused
+> tests), the promoted installed release passed release verification and isolated
+> restart verification, and the real dock-launched desktop kept the same PID for a
+> 90-second soak with no new desktop-exit incident. The active service reports
+> `TERMFLEET_PRESSURE_WATCHDOG_RECOVER=0`.
+
+> **2026-08-20 — Restart hydration no longer races the running app:** The dock
+> launcher no longer runs a late external workspace restore after starting the
+> desktop. The app's own hydration remains the single owner of reconciling live
+> daemon sessions with the saved layout; installed restart verification is still
+> required before closeout.
+
+> **2026-08-20 — Pressure recovery no longer kills the cockpit by default:** The
+> watchdog still records pressure and alerts, but desktop process-group recycling
+> is now explicit opt-in. This prevents a blocked-I/O sample from killing the UI
+> while the separate daemon remains alive and terminals lose their attachment.
+> Evidence: `python3 -m unittest tests/test_pressure_watchdog.py` passed 15/15;
+> the active watchdog unit now reports `TERMFLEET_PRESSURE_WATCHDOG_RECOVER=0`;
+> installed restart smoke passed with `TERMFLEET_RESTART_SMOKE_LABEL_FIXTURE=0`.
+
 > **2026-08-20 — Restarted maps now tidy and sort terminals by project:**
 > Workspace hydration now rebuilds project lanes after terminal reconciliation,
 > reopens the map in project sort mode, and keeps the sidebar's vertical order
@@ -921,14 +1372,18 @@ instead of blank space. `npm run build` and the focused long-path map browser
  and restart smoke with zero external terminals; a fresh screenshot artifact
  remains pending.
 
-Startup animation continuation (2026-08-10): the terminal-to-vessel startup
-sequence was visually reviewed from dense 30fps captures. The focused startup
-suite passed 3/3, `npm run build` passed, and `git diff --check` passed. The
-visual review found the restrained motion clean and legible; representative
-capture hashes were `7641cc75ffe315e9ff69946cbc8a95a6d089d4ab55ac9e08b2420cdbd2d2f291`
-and `5290b080921ec327f59eb8a0eb8c6775dd0918a71a8b202da07ab56ad989c054`.
-`npm run verify:typography` remains red on pre-existing UI violations outside
-the startup surface.
+Startup animation redesign (2026-08-24): the previous loader had competing
+inline motion layers, so it looked like a lightly edited logo reveal even when
+its opacity checks passed. The startup surface is now one centered lockup with
+a complete vessel mark, explicit restoration status, a restrained ring/scan,
+and a quiet progress signal; part assembly and staggered wordmark reveals were
+removed. The focused startup suite passed 3/3, `npm run build` passed, and the
+new dense contact sheet was visually reviewed across 84 frames with no visible
+jumps, flicker, empty states, or artifacts; the reviewed GIF is stored in
+`design/logo-concepts/termfleet-startup-animation-redesign.gif`. The animation
+review rules now live
+in `.agents/skills/termfleet-animation-review/SKILL.md` and require dense
+frame capture plus visual contact-sheet inspection.
 
 Pressure recovery (2026-08-06): recurring pressure was traced to host I/O and
 swap contention plus stale verifier processes, not a current TermFleet OOM. The
@@ -8874,6 +9329,184 @@ same fallback-aware live predicate, and the panel shows the direct cause as
 **Evidence:** `npx playwright test tests/gamification.spec.ts tests/gamification-panel.spec.ts tests/gamification-quest-beam.spec.ts --reporter=line` passed 25/25; `npm run build` and `git diff --check` passed; `npm run release:install` promoted release `4f92d9e5e5f1`; `npm run verify:installed-release` passed; and `TERMFLEET_KEEP_VISUAL_ARTIFACTS=1 npm run verify:gamification-live` passed the real three-terminal timer gate and animated-beam comparison. Fresh installed artifacts visibly show `3/3 terminals counting` and progress advancing to `0:06 / 10:00`.
 
 User approval remains required before marking this goal complete.
+
+## 2026-08-28 — Combine Watchpost planning with reliable runtime supervision
+
+This local execution plan mirrors the TermFleet work represented by FEATURE-12
+and TASK-18–20 in the external `agent-ops` queue. It does not replace that
+queue: `agent-ops/MASTER_PLAN.md` remains the canonical task-state store, while
+this plan records TermFleet implementation and verification work only.
+
+### TF-WP-01 — Connect TermFleet to the canonical agent-ops queue (IN PROGRESS)
+
+Build a typed, versioned adapter for canonical task listing, exact task reads,
+validation, claims, progress, transitions, completion evidence, and source
+identity. All mutations must use the external `agent_ops.py` boundary, validate
+before writing, and read the exact task back before reporting success.
+
+**Depends on:** none.
+
+**Acceptance:** invalid or unavailable queues fail closed; concurrent claims do
+not overwrite one another; the board never presents mock data as canonical; and
+external task edits appear after refresh without a second task database.
+
+**Progress:** 2026-08-28 — Added typed validation, claim, progress, completion,
+and transition operations with post-mutation read-back through the Tauri
+adapter. Focused board/runtime tests (13/13), frontend build, Rust check,
+Impeccable detector (0 findings), issue-system validation, and diff checks pass.
+Fresh installed promotion and restart proof pass; live authority read-back remains
+open.
+
+### TF-WP-02 — Separate task truth from live execution truth (IN PROGRESS)
+
+Implement the semantics from TASK-18: canonical workflow status, claim owner,
+execution handle, agent/profile, workspace, terminal pane, heartbeat, and
+activity must be separate fields. A task is only actively running when its
+linked run has fresh evidence from a real producer.
+
+**Depends on:** TF-WP-01.
+
+**Progress:** 2026-08-28 — Added explicit claimed-without-run, progressing,
+idle, waiting, stale, failed, completed, disconnected, and orphaned classifiers;
+the board reads desktop runtime state asynchronously instead of treating UI
+storage as truth. Focused runtime regressions pass.
+
+**Acceptance:** claimed-without-run, progressing, idle, waiting, stale,
+failed, completed, disconnected, and orphaned states are distinct and covered
+by deterministic regressions and a multi-process read-back check.
+
+### TF-WP-03 — Add durable run registration and heartbeats (IN PROGRESS)
+
+Move run metadata out of UI-only storage into a lock-protected runtime boundary
+owned by the daemon or the canonical execution service. Keep bounded,
+redacted logs and structured phase, activity, test, exit, and blocker receipts.
+
+**Depends on:** TF-WP-02.
+
+**Acceptance:** a real launcher registers a run, heartbeats survive UI restart,
+stale workers become non-running, process exit is recorded, duplicate writers
+are rejected, and no secret or raw transcript is exposed.
+
+**Progress:** 2026-08-28 — Added a bounded, atomically promoted, lock-protected
+desktop registry, real canonical launch registration, serialized updates,
+status-poll heartbeats, and async board/stop paths. Fresh release promotion and
+installed restart smoke pass; live heartbeat evidence remains open.
+
+### TF-WP-04 — Finish the Watchpost-style board and lifecycle view (IN PROGRESS)
+
+Complete FEATURE-12 and TASK-19’s interactive board, filters, detail view,
+accessible lifecycle bar, acceptance evidence, dependency state, and explicit
+source/owner/execution labels. Keep the Watchpost scanability while avoiding
+status guesses and fabricated percentages.
+
+**Depends on:** TF-WP-01 and TF-WP-02.
+
+**Acceptance:** keyboard, narrow-window, theme, screen-reader, refresh, and
+external-edit regressions pass; every displayed status and progress value agrees
+with canonical read-back and live-run evidence.
+
+**Progress:** 2026-08-28 — Impeccable Operate review applied while preserving the
+established Workflow-first canonical-status contract: idle state is neutral and
+freshness is visible, source identity is named, status changes confirm before
+mutation, focus treatment is explicit, and progress no longer implies
+advancement without evidence. Detector reports zero findings; focused board
+regressions pass.
+
+### TF-WP-05 — Link launch, external agents, projects, and terminal panes (IN PROGRESS)
+
+Complete TASK-20’s session view and FEATURE-12’s launch flow for Codex, Claude,
+OpenCode, safe generic commands, and externally registered agents. Preserve
+per-pane and per-run identity, workspace safety, restart behavior, terminal
+links, safe stop requests, and reconnect state.
+
+**Depends on:** TF-WP-02, TF-WP-03, and TF-WP-04.
+
+**Acceptance:** claim → launch → visible progress → completion or failure →
+canonical read-back works in the installed app; external/manual runs remain
+visible without pretending TermFleet owns their process.
+
+### TF-WP-06 — Prove the combined system on the real acceptance surface (IN PROGRESS)
+
+Run the focused unit/Playwright coverage, agent-ops validation and tests,
+frontend/Rust checks, installed release verification, restart/reconnect smoke,
+concurrency checks, and live dock visual review. Record exact receipts here
+before marking any mirrored task complete.
+
+**Depends on:** TF-WP-01 through TF-WP-05.
+
+**Acceptance:** no unresolved reliability manifest failures, no environment-
+dependent test assumptions, no source-only completion claims, and a fresh
+installed run proves canonical task state and real execution state agree.
+
+**Progress:** 2026-08-28 — Frontend/Rust/source gates pass; focused canonical
+board/runtime tests pass 15/15; Impeccable detector reports 0 findings; issue
+validation passes; fresh installed release `sha256=93eaabeda108aaa1601e65dded62570c0dc83d758afafed5c650bbef2253315e`, installed
+live-persistence, and installed restart smoke pass against that binary. The
+runtime-controller concurrency/recovery suite passes 10/10, and TF-010 has
+fresh focused-test evidence recorded.
+The board is now reachable from the command menu through the explicit
+`Show shared tasks` action; its discoverability regression passes and the
+rebuilt release was promoted. Explicit task-board selection now also wins over
+persisted immersive-terminal mode, preventing the sidebar action from appearing
+to do nothing; the focused regression suite remains 15/15.
+The task-board destination now opens a Watchpost-style project-plan view by
+default: it discovers project roots from the workspace, reads each root's
+`MASTER_PLAN.md`, groups tasks into status columns, and keeps the shared
+`agent-ops` queue as a separate tab. Live dock visual read-back showed 18
+projects and 725 plan tasks with the project navigator, status strip, search,
+filters, and expandable task cards rendered in the installed app.
+The visual model is intentionally a single project-management surface: the
+sidebar is navigation only, the header project picker owns the full catalog,
+and the canonical shared queue is not exposed as a duplicate board. Project
+discovery now scans the development workspace for directories containing
+`MASTER_PLAN.md`, including projects not currently open in TermFleet.
+The Impeccable visual correction then removed the redundant expanded TermFleet
+sidebar from this surface, added the Watchpost-style Task System project rail
+with project initials and per-project plan details, and added type, priority,
+sort, Show Done, and completion-bar controls. Fresh dock visual read-back shows
+the board using the full available canvas; build, focused board tests, release
+promotion, and installed-release verification pass for the current binary.
+isolated live map-connect verifier passes real click → input → private-daemon
+PTY read-back; the packaged probe now delegates to the installed-binary driver
+and passes the same real PTY assertion, while screenshots remain unavailable in
+this X11 harness.
+The broad gate now evaluates only panes present in the fresh visible-pane
+manifest, and fully off-screen map panes are excluded while partial clipping
+still fails. Source/build, task-identity, map-terminal, focused board/runtime,
+installed release, installed restart, installed persistence, and packaged
+map-connect checks pass. The global dock gate remains red on one currently
+visible TermFleet map pane whose capture is partially off-screen; the current
+dock release has been relaunched and the remaining gate is a real
+viewport/clipping failure, not a stale binary. The viewport repair is included in
+installed release `sha256=93eaabeda108aaa1601e65dded62570c0dc83d758afafed5c650bbef2253315e`;
+the current acceptance snapshot is still from the unavailable graphical session.
+The broader `verify:cockpit-live` check still reports two existing
+invalid/stale pane identity records outside this run. Live canonical launch
+read-back, browser visual proof, and external
+agent-ops reliability evidence remain open; agent-ops is intentionally not
+mutated by this TermFleet plan.
+
+## 2026-08-31 — Fresh acceptance read-back for the Watchpost board
+
+The live verifier and task monitor now default to the application-specific
+`termfleet-cockpit-snapshot.json`; the previous generic snapshot could be stale
+for days and could make the live gate inspect the wrong cockpit. Its final error
+path was also corrected to report the last sampled pane set instead of crashing.
+The focused gate contract passed 11/11, `npm run build` passed, `npm run doctor`
+returned `DOCTOR_OK`, and the fresh live gate passed 11 panes across 7 groups.
+The canonical board regression passed 11/11. Installed release verification and
+installed restart passed with four live panes and zero dead or unknown panes.
+Runtime-controller and recovery-coordinator checks passed (10/10 and 19/19),
+issue validation passed for 20 records, and `git diff --check` passed.
+The external agent-ops queue validated 46 tasks; FEATURE-12 and TASK-18–20
+remain `IN PROGRESS` under their existing Claude claim and were not mutated.
+
+The final installed board pass removed the duplicate filter-row project selector;
+the only chooser is now the Watchpost picker, which includes project search,
+initial thumbnails, task counts, and `MASTER_PLAN.md` source details. The live
+capture also showed expanded task details with the `Copy task details` action.
+Focused board coverage remains 11/11 and the promoted release checksum is
+`8df5ad58e7ae011b7a6bf3c8adaf01a522aeba6e33d85c179828c6855537f677`.
 
 ## 2026-08-20 — Keep manually killed agent conversations stopped
 
