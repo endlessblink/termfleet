@@ -4053,7 +4053,10 @@ mod tests {
             .expect("read detached PTY cgroup");
 
         let child_pid = {
-            let deadline = Instant::now() + Duration::from_secs(2);
+            // A shared CI runner can take several seconds to get the detached
+            // child scheduled and its pid flushed; the assertion is about the
+            // pid appearing at all, not about how quickly.
+            let deadline = Instant::now() + Duration::from_secs(20);
             loop {
                 if let Ok(pid_file_contents) = fs::read_to_string(&pid_file) {
                     if let Some(pid) = pid_file_contents
