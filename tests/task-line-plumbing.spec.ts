@@ -106,6 +106,12 @@ test("the persisted workspace snapshot keeps the last known line", () => {
   expect(snapshot.slice(0, 1200)).toContain(
     "agentProvider: terminal.agentProvider",
   );
+  expect(snapshot.slice(0, 1400)).toContain(
+    "statusSummary: terminal.statusSummary",
+  );
+  expect(snapshot.slice(0, 1400)).toContain(
+    "statusSummarySource: terminal.statusSummarySource",
+  );
 });
 
 test("every header route reads both places the line is stored", () => {
@@ -131,7 +137,7 @@ test("the split header shows the durable task instead of bare Working state", ()
     source.indexOf("const headerNow = stabilizedHeader.now"),
   );
 
-  expect(header).toContain("paneTaskLine?.text");
+  expect(header).toContain("shellTaskLabel");
   expect(header).toContain("shellHeader?.goalLabel");
   expect(header).not.toContain("shellHeader?.currentActivity) ??");
 });
@@ -802,7 +808,7 @@ test("the row never flips back to the placeholder once a pane has spoken", () =>
     paneId: "pane-other",
     terminalId: "pty-other",
   });
-  expect(otherPane.goalLabel).toBe("No task declared");
+  expect(otherPane.goalLabel).toBe("Waiting for a clear task");
 });
 
 test("the operator's opening ask leads, and a slug never reaches the row", () => {

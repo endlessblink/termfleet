@@ -58,11 +58,15 @@ const MAX_REPLAY_BUFFER = 200_000;
 const TRACE_PTY =
   typeof window !== "undefined" && window.localStorage?.getItem("terminal-workspace.tracePty") === "1";
 const TRANSIENT_ATTACH_RETRY_DELAYS_MS = [150, 400, 900];
-// Bounded reconnect backoff for a mid-session daemon transport drop. The daemon
-// owns the PTY and survives socket blips / its own restart, so a dropped stream
-// is recoverable: re-subscribe (which replays a fresh snapshot) instead of going
-// permanently failed. Exhausting these falls through to the failed state.
-const DAEMON_RECONNECT_DELAYS_MS = [200, 500, 1000, 2000, 2000];
+// Reconnect backoff for a mid-session daemon transport drop. The daemon owns the
+// PTY and survives socket blips / its own restart, so keep re-subscribing until
+// the pane unmounts; a transient outage must never strand a terminal in failed.
+const DAEMON_RECONNECT_DELAYS_MS = [200, 500, 1000, 2000, 5000];
+
+function daemonReconnectDelay(attempt: number): number {
+  const index = Math.min(attempt, DAEMON_RECONNECT_DELAYS_MS.length - 1);
+  return DAEMON_RECONNECT_DELAYS_MS[index];
+}
 type ActiveInputListener = {
   transport: PtyTransport;
   sessionHint: string;
@@ -437,15 +441,12 @@ export function usePty({ terminal, cwd, command, attachToPtyId, runtimeSessionId
       transportRef.current = null;
 
       // The daemon owns the PTY and survives a transient socket drop / its own
-      // restart, so attempt a bounded reconnect rather than failing outright.
-      if (
-        wasDaemon &&
-        !cancelled &&
-        daemonReconnectAttemptsRef.current < DAEMON_RECONNECT_DELAYS_MS.length
-      ) {
+      // restart, so keep attempting until this pane unmounts rather than failing
+      // permanently after a fixed retry budget.
+      if (wasDaemon && !cancelled) {
         const attempt = daemonReconnectAttemptsRef.current;
         daemonReconnectAttemptsRef.current += 1;
-        const retryDelay = DAEMON_RECONNECT_DELAYS_MS[attempt];
+        const retryDelay = daemonReconnectDelay(attempt);
         onStatus?.("starting", {
           id,
           error: `Terminal connection dropped; reconnecting in ${retryDelay}ms.`,
@@ -706,6 +707,20 @@ export function usePty({ terminal, cwd, command, attachToPtyId, runtimeSessionId
         unlistenRef.current = null;
         ptyIdRef.current = null;
         transportRef.current = null;
+        if (!cancelled && isTauriRuntime()) {
+          const retryDelay = daemonReconnectDelay(daemonReconnectAttemptsRef.current);
+          daemonReconnectAttemptsRef.current += 1;
+          onStatus?.("starting", {
+            id: attachToPtyId ?? runtimeSessionId ?? undefined,
+            error: `Terminal daemon unavailable; reconnecting in ${retryDelay}ms.`,
+          });
+          daemonPollTimeoutRef.current = setTimeout(() => {
+            if (cancelled) return;
+            transportFailedRef.current = false;
+            void setup();
+          }, retryDelay);
+          return;
+        }
         if (!cancelled && isTransientPtyAttachError(err) && attempt < TRANSIENT_ATTACH_RETRY_DELAYS_MS.length) {
           const retryDelay = TRANSIENT_ATTACH_RETRY_DELAYS_MS[attempt];
           onStatus?.("starting", { id: attachToPtyId ?? runtimeSessionId ?? undefined, error: `Retrying terminal attach after ${retryDelay}ms: ${error}` });

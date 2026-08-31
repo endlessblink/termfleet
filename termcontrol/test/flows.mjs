@@ -348,6 +348,29 @@ async function main() {
     ok(scrollable, 'there is nothing to scroll through');
   });
 
+  await check('a terminal with no conversation shows its screen instead', async () => {
+    // Side sessions and plain shells keep no conversation of their own. A dead
+    // end is worse than showing what is actually on the terminal.
+    await p.click('.back');
+    await p.waitForSelector('.pane', { timeout: 10000 });
+    const cards = await p.$$('.pane');
+
+    let found = null;
+    for (const card of cards.slice(0, 12)) {
+      await card.click();
+      await p.waitForSelector('.composer', { timeout: 8000 });
+      await wait(1800);
+      if (await p.$('.screen')) { found = await p.textContent('.note').catch(() => ''); break; }
+      if (await p.$('.empty')) { found = 'DEAD END'; break; }
+      await p.click('.back');
+      await p.waitForSelector('.pane', { timeout: 8000 });
+    }
+
+    if (found === null) return 'every terminal had a conversation to show';
+    ok(found !== 'DEAD END', 'a terminal offered nothing at all');
+    return 'falls back to the screen';
+  });
+
   group('Replying');
 
   await check('the reply box is visible without hunting for it', async () => {

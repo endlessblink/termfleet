@@ -139,5 +139,8 @@ fn live_pty_output_reconstructs_into_the_grid() {
     assert_eq!(snapshot["cols"], 80);
     assert_eq!(snapshot["rows"], 24);
 
-    let _ = send_daemon_request(DaemonRequest::KillSession { id });
+    let _ = send_daemon_request(DaemonRequest::KillSession {
+        id,
+        user_requested: false,
+    });
 }

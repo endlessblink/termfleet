@@ -1,4 +1,6 @@
 import { test, expect } from "@playwright/test";
+import fs from "node:fs";
+import path from "node:path";
 import { acceptanceProgress, boundedRunLog, classifyTaskRun, lifecycleProgress, linkedTaskRun, taskRunLabel, type TaskRunRecord } from "../src/lib/canonicalTaskRuntime";
 
 const base: TaskRunRecord = {
@@ -34,5 +36,25 @@ test.describe("canonical task runtime truth", () => {
     expect(acceptanceProgress([]).label).toBe("Acceptance progress not recorded");
     expect(boundedRunLog(["token=shh", "x".repeat(500)]).length).toBe(2);
     expect(boundedRunLog(["token=shh"])[0]).toBe("token=[REDACTED]");
+  });
+
+  test("uses the desktop runtime registry instead of UI-only storage", () => {
+    const source = fs.readFileSync(path.resolve(process.cwd(), "src/lib/canonicalTaskRuntime.ts"), "utf8");
+    expect(source).toContain('invoke<string>("task_run_registry_read")');
+    expect(source).toContain('invoke("task_run_registry_write"');
+    expect(source).toContain("export async function registerTaskRun");
+    expect(source).toContain("export async function heartbeatTaskRun");
+    const pollSource = fs.readFileSync(path.resolve(process.cwd(), "src/lib/statusPollLoop.ts"), "utf8");
+    expect(pollSource).toContain("syncCanonicalRunHeartbeat");
+    const boardSource = fs.readFileSync(path.resolve(process.cwd(), "src/components/CanonicalAgentBoard.tsx"), "utf8");
+    expect(boardSource).toContain("claimCanonicalTask");
+    expect(boardSource).toContain("Launch agent");
+  });
+
+  test("rate-limits persistent heartbeats so status polling does not write every tick", () => {
+    const source = fs.readFileSync(path.resolve(process.cwd(), "src/lib/canonicalTaskRuntime.ts"), "utf8");
+    expect(source).toContain("lastHeartbeatWriteByRun");
+    expect(source).toContain("HEARTBEAT_WRITE_MIN_INTERVAL_MS = 15_000");
+    expect(source).toMatch(/if \(now - lastWrite < HEARTBEAT_WRITE_MIN_INTERVAL_MS\) return undefined;/);
   });
 });

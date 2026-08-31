@@ -33,7 +33,9 @@ fn redirect_to_shared_desktop_launcher() -> ! {
                 .map(|home| home.join(".local/bin/termfleet-desktop"))
         });
     let Some(launcher) = launcher else {
-        eprintln!("termfleet: refusing untrusted production UI launch; desktop launcher is unavailable");
+        eprintln!(
+            "termfleet: refusing untrusted production UI launch; desktop launcher is unavailable"
+        );
         std::process::exit(64);
     };
     match Command::new(&launcher).arg("--agent").status() {

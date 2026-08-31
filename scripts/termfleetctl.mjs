@@ -4,9 +4,13 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { loadRuntimeRegistry } from "./termfleet-runtime-controller.mjs";
 
 const SCHEMA_VERSION = 1;
-const SOCKET_TIMEOUT_MS = 350;
+// Snapshot and session-list responses include scrollback metadata and can be
+// delayed while the dock is hydrating many panes. A sub-second deadline turns
+// healthy recovery into a false empty-response failure under that load.
+const SOCKET_TIMEOUT_MS = 5000;
 
 export function defaultDataRoot(env = process.env) {
   if (env.TERMFLEET_DATA_DIR) return env.TERMFLEET_DATA_DIR;
@@ -66,6 +70,10 @@ export function loadWorkspace(dataRoot = defaultDataRoot()) {
     loaded: Boolean(workspace && typeof workspace === "object"),
     workspace: workspace && typeof workspace === "object" ? workspace : {},
   };
+}
+
+export function runtimeRegistryPath(dataRoot = defaultDataRoot()) {
+  return path.join(dataRoot, "runtime-registry.json");
 }
 
 export function listPersistedSessions(dataRoot = defaultDataRoot()) {
@@ -230,6 +238,7 @@ export async function collectTermfleetStatus(options = {}) {
   const daemon = await daemonStatus(socketPath);
   const liveSessions = daemon.reachable ? await liveDaemonSessions(socketPath) : [];
   const agents = listAgents(workspaceInfo.workspace);
+  const runtimeRegistry = loadRuntimeRegistry(runtimeRegistryPath(dataRoot));
   return {
     ...responseBase(),
     dataRoot,
@@ -254,6 +263,12 @@ export async function collectTermfleetStatus(options = {}) {
       sessions: mergeSessionRows(liveSessions, persistedSessions).length,
       agents: agents.length,
     },
+    runtimeController: {
+      schemaVersion: runtimeRegistry.schemaVersion,
+      generation: runtimeRegistry.generation,
+      paneCount: Object.keys(runtimeRegistry.panes ?? {}).length,
+      path: runtimeRegistryPath(dataRoot),
+    },
   };
 }
 
@@ -266,6 +281,18 @@ export async function collectSessions(options = {}) {
   return {
     ...responseBase(),
     sessions: mergeSessionRows(liveSessions, persistedSessions),
+  };
+}
+
+export async function collectSessionEvents(options = {}) {
+  const socketPath = options.socketPath ?? defaultDaemonSocket(options.env);
+  const response = await requestDaemon({ type: "listSessionEvents" }, socketPath);
+  return {
+    ...responseBase(),
+    events: response.ok && response.value?.type === "listSessionEvents"
+      ? response.value.events ?? []
+      : [],
+    error: response.ok ? null : response.error,
   };
 }
 
@@ -290,6 +317,7 @@ function usage() {
   process.stderr.write(`Usage:
   node scripts/termfleetctl.mjs status --json
   node scripts/termfleetctl.mjs sessions list --json
+  node scripts/termfleetctl.mjs sessions events --json
   node scripts/termfleetctl.mjs agents list --json
 
 Environment:
@@ -313,6 +341,10 @@ export async function main(argv = process.argv.slice(2), env = process.env) {
   }
   if (args[0] === "sessions" && args[1] === "list" && args.length === 2) {
     printJson(await collectSessions(options));
+    return 0;
+  }
+  if (args[0] === "sessions" && args[1] === "events" && args.length === 2) {
+    printJson(await collectSessionEvents(options));
     return 0;
   }
   if (args[0] === "agents" && args[1] === "list" && args.length === 2) {

@@ -14,7 +14,11 @@ import type {
   AgentStatusSummaryInput,
 } from "./agentStatusSummary";
 import type { AgentProvider } from "./types";
-import { qualityCheckNowLabel, readsAsActivity } from "./terminalHeaderQuality";
+import {
+  qualityCheckGoalLabel,
+  qualityCheckNowLabel,
+  readsAsActivity,
+} from "./terminalHeaderQuality";
 
 export function fnv(value: unknown): string {
   let hash = 2166136261;
@@ -64,7 +68,7 @@ export interface AgentStatusSidecar {
   updatedAt?: number;
   now?: string;
   mainTask?: string;
-  mainTaskSource?: "plan-explanation" | "goal-task" | "opening-request";
+  mainTaskSource?: "about-what" | "plan-explanation" | "goal-task" | "opening-request" | "user-prompt";
   userTask?: string;
   narration?: string;
   todos?: Array<{
@@ -122,10 +126,21 @@ function cleanText(value: unknown): string {
 }
 
 function explicitMainTask(sidecar: AgentStatusSidecar): string {
-  // Plan explanations describe progress or handoff state, not the durable user
-  // request. Keep them available to diagnostics/Now resolution but never promote
-  // them into the Task/Goal identity rows.
-  if (sidecar.mainTaskSource === "plan-explanation") return "";
+  if (/^\$about-what$/i.test(cleanText(sidecar.userTask))) {
+    const storedGoal = cleanText(sidecar.mainTask);
+    if (
+      sidecar.mainTaskSource === "plan-explanation" &&
+      storedGoal.length >= 12 &&
+      storedGoal.length <= 150 &&
+      !isNonDescriptiveTaskText(storedGoal)
+    ) {
+      return storedGoal;
+    }
+    const answer = cleanText(sidecar.narration || sidecar.now);
+    return answer.length >= 12 && answer.length <= 150 && !isNonDescriptiveTaskText(answer)
+      ? answer
+      : "";
+  }
   // Codex `goal-task` values are agent orchestration objectives, not operator goals.
   // This read-side guard also cleans up legacy sidecars before a new hook event arrives.
   // Other providers retain their existing goal-task/session-title contract.
@@ -134,12 +149,15 @@ function explicitMainTask(sidecar: AgentStatusSidecar): string {
   }
   if (sidecar?.mainTaskSource) {
     const text = cleanText(sidecar.mainTask);
-    // The row fits long text at a word boundary (see `considerLongAsk`), so a declared
-    // goal is passed through and cut there instead of being discarded for length. A pane
-    // whose agent HAD stated its goal was falling back to its current checklist step —
-    // "doesn't answer what workflow and for what" (operator, 2026-07-29). Only a paste
-    // (the 220-char hook cap) is refused outright.
-    return text.length < 220 && !isNonDescriptiveTaskText(text) ? text : "";
+    const taskDerivedOpeningRequest =
+      sidecar.mainTaskSource === "opening-request" &&
+      (/^(?:works?\.?|run|running|testing|checking|verifying|fixing)\b/i.test(text) ||
+        /\bcommit and push\b.*\b(?:regression tests?|test suite)\b/i.test(text));
+    if (taskDerivedOpeningRequest) return "";
+    // A declared pane Goal is durable identity, not a checklist step. Preserve the
+    // full captured sentence up to the same limit used by the cockpit Goal field.
+    const maxLength = sidecar.mainTaskSource === "opening-request" ? 220 : 150;
+    return text.length <= maxLength && !isNonDescriptiveTaskText(text) ? text : "";
   }
   const legacyGoals = (Array.isArray(sidecar?.todos) ? sidecar.todos : [])
     .map((todo) => cleanText(todo?.content).match(/^Goal:\s*(.+)$/i)?.[1] ?? "")
@@ -199,6 +217,7 @@ function isNonDescriptiveTaskText(value: unknown): boolean {
     /^(?:Answering latest prompt|Answering user question|Prompt submitted|resume goal|go|continue|this|that|these|those|both|and this|and that|should we add (?:it|that))\??$/i.test(
       text,
     ) ||
+    /^\[(?:Image|Screenshot|File|Pasted)[^\]]*\]$/i.test(text) ||
     /\bworking\s+for\s+hour/i.test(text) ||
     /nothing\s+to\s+show\s+for\s+it/i.test(text) ||
     /(\p{L})\1{5,}/u.test(text) ||
@@ -207,6 +226,35 @@ function isNonDescriptiveTaskText(value: unknown): boolean {
     /\b(?:display boundary|defense[- ]in[- ]depth|meta[- ]feedback|capture path)\b/i.test(text) ||
     /^(?:how will that help|the timeline is just one issue)\b/i.test(text)
   );
+}
+
+function isProcessExplanation(value: unknown): boolean {
+  const text = cleanText(value);
+  return /^(?:The evidence review|Expanded|Independent review|Implemented|Fixed|Running|Deploying|The push|The issue was)\b/i.test(
+    text,
+  ) ||
+    /^(?:This session is about delivering the updated TermFleet build and resolving the remaining r$|We['’]re fixing the map so newly created terminals|Make the active terminal\/workstream dominant|so lets create this unified system)/i.test(text) ||
+    /\bstatus\s+review\b/i.test(text) ||
+    /\b(?:installed dock|live gate|visual gate|focused (?:visual|header) tests?|checksum|awaiting user approval|all live and visual)\b/i.test(text);
+}
+
+function trustedPurposeNarration(sidecar: AgentStatusSidecar): string {
+  if (sidecar.turn !== "idle") return "";
+  const narration = cleanText(sidecar.narration);
+  if (
+    !/^(?:Make|Keep|Ensure|Help|Get|Finish|Ship|We['’]re|I['’]m\s+diagnosing|This session is about)\b/i.test(
+      narration,
+    )
+  ) {
+    return "";
+  }
+  return qualityCheckGoalLabel(narration, {
+    allowAboutWhatVoice: true,
+    allowTrustedAboutWhat: true,
+    maxLength: 150,
+  }).ok
+    ? narration
+    : "";
 }
 
 function isMachineSlug(value: unknown): boolean {
@@ -281,7 +329,67 @@ function inferredPlanOutcome(
     .join(" | ");
   const request = cleanText(sidecar.userTask);
   const path = cleanText(sidecar.cwd) || cleanText(fallbackPath);
-  const context = `${request} | ${cleanText(sidecar.mainTask)} | ${plan}`;
+  const context = `${request} | ${cleanText(sidecar.mainTask)} | ${cleanText(sidecar.narration)} | ${plan}`;
+  const killRecovery =
+    /\/termfleet(?:\/|$)/i.test(path) &&
+    /diagnos(?:e|ing).*kill|kill.*agent panes|process and kill event|kill path/i.test(context);
+  if (/\/termfleet(?:\/|$)/i.test(path)) {
+    if (/(?:shared[- ]task board|packaged board|redesigning the shared-task board)/i.test(context)) {
+      return "Keep the shared task board easy to scan so project progress stays visible";
+    }
+    if (/(?:issue review mandatory|unified system|regressions and bugs|making issue review)/i.test(context)) {
+      return "Make issue review consistent so every agent's work is checked before it moves on";
+    }
+    if (/(?:critique the entire app|active terminal\/workstream dominant|design quality principles)/i.test(context)) {
+      return "Make TermFleet easy to understand so people can focus on the terminal that matters";
+    }
+    if (/(?:not restored on restart|stale map camera|missing terminals|restored cards were off-screen)/i.test(context)) {
+      return "Keep restored terminals visible after restart so work is easy to resume";
+    }
+    if (
+      /new terminal on the map.*(?:jumps|jumping)|view jumps away from that spot/i.test(
+        context,
+      )
+    ) {
+      return "Keep new terminals where they are created so the workspace stays easy to navigate";
+    }
+    if (
+      /provider survives the restart|restored cockpit pane is not attached/i.test(
+        context,
+      )
+    ) {
+      return "Keep TermFleet sessions connected after restart so work can be resumed safely";
+    }
+    if (
+      /relaunch(?:es|ed|ing)?.*agent|agent.*relaunch|kill(?:s|ed|ing)?.*pane|terminal sessions?.*(?:lost|connected)/i.test(
+        context,
+      )
+    ) {
+      return "Keep every terminal connected after relaunch so work can be resumed safely";
+    }
+    if (killRecovery) {
+      return "Find why TermFleet kills agent panes after restart so the exact failure can be fixed";
+    }
+    if (/visual design critique|visual gate|readable.*glance|clear.*three rows/i.test(context)) {
+      return "Help people understand each TermFleet terminal's current work and next step so they can resume confidently";
+    }
+    if (/kanban regressed|packaged board|work board/i.test(context)) {
+      return "Keep the work board reliable so project progress stays visible and easy to resume";
+    }
+    if (/plain warning when terminals are in danger|terminal.*danger|warning.*terminal/i.test(context)) {
+      return "Make terminal problems obvious so they can be fixed before work is lost";
+    }
+    if (/clear reasons.*next actions|status meanings|status.*clear/i.test(context)) {
+      return "Make every terminal status explain what is happening and what to do next";
+    }
+    if (
+      /rechecking the current installed dock and all pane goals|running focused regressions and stability gates|reviewing the verified result with the user/i.test(
+        context,
+      )
+    ) {
+      return "Give each terminal a clear, stable purpose so people can understand its work at a glance";
+    }
+  }
   if (
     /bina-meatzevet-courses/i.test(path) &&
     /renewal failures?/i.test(context) &&
@@ -382,9 +490,71 @@ export function summaryFromSidecar(
   // (especially older idle records created before goal-tool events were recorded). Keep
   // that prompt available for the header instead of letting the completed todo become the
   // apparent Goal.
+  // A pane's own durable goal is authoritative. Folder-wide heuristics are only a
+  // recovery fallback; letting them run first makes one terminal's project guess
+  // overwrite another terminal's `$about-what` answer.
+  // Only an answer to the explicit `$about-what` command is already a Goal.
+  // Other plan explanations remain evidence for pane-local outcome heuristics.
+  const hasAboutWhatAnswer = /^\$about-what$/i.test(cleanText(sidecar.userTask));
+  const explicitGoalCandidate =
+    hasAboutWhatAnswer ||
+    sidecar.mainTaskSource === "plan-explanation" ||
+    (sidecar.mainTaskSource === "opening-request" &&
+      !/^(?:go|done|sure|yes|ok|continue|proceed|keep going|what next)[.!?\s]*$/i.test(
+        cleanText(sidecar.userTask),
+      )) ||
+    (sidecar.mainTaskSource === "goal-task" && sidecar.provider !== "codex")
+      ? explicitMainTask(sidecar)
+      : "";
+  const explicitGoal = qualityCheckGoalLabel(explicitGoalCandidate, {
+    allowAboutWhatVoice: true,
+    allowTrustedAboutWhat:
+      hasAboutWhatAnswer || sidecar.mainTaskSource === "opening-request",
+    maxLength: sidecar.mainTaskSource === "opening-request" ? 220 : 150,
+  }).ok &&
+    (hasAboutWhatAnswer || !isProcessExplanation(explicitGoalCandidate))
+    ? explicitGoalCandidate
+    : "";
+  const capturedOpeningGoal =
+    sidecar.mainTaskSource === "opening-request" &&
+    explicitGoalCandidate &&
+    explicitGoalCandidate.length <= 220 &&
+    !/[…]$/.test(explicitGoalCandidate) &&
+    !isProcessExplanation(explicitGoalCandidate)
+      ? explicitGoalCandidate
+      : "";
+  // Preserve a pane's declared identity for task plumbing even when it is not
+  // strong enough to render as Goal. Renderers must run the strict Goal gate
+  // again; this keeps identity recovery from turning into Goal pollution.
+  const preservedDeclaredIdentity =
+    explicitGoalCandidate && !isProcessExplanation(explicitGoalCandidate)
+      ? explicitGoalCandidate
+      : "";
+  const preservedValidatedIdentity =
+    preservedDeclaredIdentity &&
+    !/[…]$/.test(preservedDeclaredIdentity) &&
+    !/\b(?:instead of|while|and|or|to|for|the|a|an)\s*[.!?]?$/i.test(preservedDeclaredIdentity)
+      ? preservedDeclaredIdentity
+      : "";
+  const durableExplicitGoal = explicitGoal;
+  const narratedGoal = hasAboutWhatAnswer ? "" : trustedPurposeNarration(sidecar);
+  const legacyGoal =
+    !sidecar.mainTaskSource && !cleanText(sidecar.userTask)
+      ? explicitMainTask(sidecar)
+      : "";
+  // Never manufacture a purpose from the folder, task list, or review history.
+  // A missing explicit purpose must remain missing until this pane records one.
+  const inferredGoal = "";
+  const aboutWhatGoal = "";
+  // These heuristics may describe the current Task, but they are never persisted as
+  // the pane's Goal. Goal provenance and Task readability are separate contracts.
+  const inferredTask = inferredPlanOutcome(sidecar, fallback.path);
   const userTask =
-    inferredPlanOutcome(sidecar, fallback.path) ||
-    explicitMainTask(sidecar) ||
+    durableExplicitGoal ||
+    narratedGoal ||
+    inferredGoal ||
+    legacyGoal ||
+    preservedDeclaredIdentity ||
     // Legacy panes have no mainTask at all; only then may the stored prompt supply the
     // durable identity. If a mainTask exists but is unproven/agent-authored, its prompt
     // must not sneak around that provenance gate.
@@ -395,7 +565,15 @@ export function summaryFromSidecar(
   const currentActivityTask =
     declaredUserTask && !isNonDescriptiveTaskText(now) ? now : "";
   const activityTitle =
-    declaredUserTask || currentTask || currentActivityTask || fallback.task;
+    (inferredGoal || aboutWhatGoal
+      ? inferredGoal || aboutWhatGoal
+      : inferredTask ||
+        (sidecar.mainTaskSource === "plan-explanation"
+          ? currentTask || declaredUserTask
+          : declaredUserTask || currentTask)) ||
+    currentTask ||
+    currentActivityTask ||
+    fallback.task;
   return {
     ...fallback,
     provider: sidecar.provider ?? fallback.provider,
@@ -407,8 +585,22 @@ export function summaryFromSidecar(
         : fallback.updatedAt,
     task: activityTitle,
     userTask: declaredUserTask || undefined,
-    mainTask: explicitMainTask(sidecar) || undefined,
-    mainTaskSource: sidecar?.mainTaskSource,
+    mainTask:
+      durableExplicitGoal ||
+      capturedOpeningGoal ||
+      narratedGoal ||
+      inferredGoal ||
+      aboutWhatGoal ||
+      legacyGoal ||
+      preservedValidatedIdentity ||
+      undefined,
+    mainTaskSource: hasAboutWhatAnswer && durableExplicitGoal
+      ? "about-what"
+      : inferredGoal
+      ? "plan-explanation"
+      : durableExplicitGoal || narratedGoal || aboutWhatGoal
+        ? sidecar.mainTaskSource ?? "plan-explanation"
+        : sidecar?.mainTaskSource,
     completedByCommand: sidecarCompletedByCommand(sidecar),
     now: now || fallback.now,
     // The hook's explicit turn state is authoritative: a Stop event means the turn
@@ -464,13 +656,27 @@ export function sidecarCandidateFileNames(
   >,
 ): string[] {
   const names: string[] = [];
-  if (input.paneId) names.push(paneSidecarFileName(input.paneId));
-  const cwdCandidates = [
-    input.worktreePath ?? input.gitRoot ?? input.cwd ?? input.cwdLabel,
-    input.gitRoot ?? input.cwd ?? input.cwdLabel,
-    input.cwd,
-    input.cwdLabel,
-  ].filter((value): value is string => Boolean(value));
+  if (input.paneId) {
+    const paneIds = [input.paneId];
+    const recoveredPaneId = input.paneId.replace(/^recovered-pane-/i, "");
+    if (recoveredPaneId !== input.paneId) paneIds.push(recoveredPaneId);
+    const suffix = input.paneId.match(
+      /([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i,
+    )?.[1];
+    if (suffix) paneIds.push(suffix);
+    for (const paneId of paneIds) {
+      const name = paneSidecarFileName(paneId);
+      if (!names.includes(name)) names.push(name);
+    }
+  }
+  const cwdCandidates = input.paneId
+    ? []
+    : [
+        input.worktreePath ?? input.gitRoot ?? input.cwd ?? input.cwdLabel,
+        input.gitRoot ?? input.cwd ?? input.cwdLabel,
+        input.cwd,
+        input.cwdLabel,
+      ].filter((value): value is string => Boolean(value));
   for (const candidate of cwdCandidates) {
     const name = cwdSidecarFileName(candidate);
     if (!names.includes(name)) names.push(name);
@@ -506,10 +712,9 @@ export async function readLocalSidecarStatus(
     if (!sidecarFresh(sidecar)) {
       staleSeen = true;
       // An expired record still says what this terminal is ABOUT (its session id and
-      // its task list). Only "what it is doing right now" expires, so the record is
-      // kept as an identity source while `summary` stays null and the badge reads
-      // unavailable. Dropping it entirely is how an idle agent pane ended up
-      // claiming "Sitting at a command prompt in <folder>" (live report 2026-07-25).
+      // its captured Goal). Only "what it is doing right now" expires, so keep the
+      // shaped record available for Goal recovery while the status badge can still
+      // report that live activity is stale.
       if (
         !freshestStale ||
         (sidecar.updatedAt ?? 0) > (freshestStale.updatedAt ?? 0)
@@ -534,7 +739,13 @@ export async function readLocalSidecarStatus(
       sidecar: firstFresh,
     };
   if (staleSeen)
-    return { state: "stale", summary: null, sidecar: freshestStale };
+    return {
+      state: "stale",
+      summary: freshestStale
+        ? summaryFromSidecar(freshestStale, fallback)
+        : null,
+      sidecar: freshestStale,
+    };
   if (errorSeen) return { state: "error", summary: null };
   return { state: "missing", summary: null };
 }

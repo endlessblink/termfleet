@@ -1,6 +1,6 @@
 import type { Group, Tab, TerminalState, WorkstreamMetadata } from "./types";
 
-export type GitMonitorHealth = "under-control" | "decision-ready" | "agent-help" | "checking";
+export type GitMonitorHealth = "under-control" | "decision-ready" | "agent-help" | "checking" | "empty";
 
 export interface GitMonitorGitFacts {
   gitRoot?: string;
@@ -120,7 +120,9 @@ export function readyToCombine(workstream: WorkstreamMetadata, facts: GitMonitor
 }
 
 function healthFor(workstream: WorkstreamMetadata, facts?: GitMonitorGitFacts | null): GitMonitorHealth {
-  if (hasBlocker(workstream) || facts?.gitHasConflicts === true) return "agent-help";
+  if (hasBlocker(workstream)) return "agent-help";
+  if (!gitFactsAreAvailable(facts)) return "checking";
+  if (facts?.gitHasConflicts === true) return "agent-help";
   if (readyToCombine(workstream, facts)) return "decision-ready";
   return "under-control";
 }
@@ -211,7 +213,7 @@ export function summarizeGitMonitoring(
       unpublishedChanges: 0,
       gitFactsPending: 0,
       why: "",
-      health: "under-control" as GitMonitorHealth,
+    health: "under-control" as GitMonitorHealth,
     };
     current.agents.push(agent);
     projects.set(project.id, current);
@@ -220,7 +222,7 @@ export function summarizeGitMonitoring(
   const projectValues = [...projects.values()].map((project) => {
     project.branches = new Set(project.agents.map((agent) => agent.branch).filter(Boolean)).size;
     project.worktrees = new Set(project.agents.map((agent) => agent.worktree).filter(Boolean)).size;
-    project.needsAttention = project.agents.filter((agent) => agent.health !== "under-control").length;
+    project.needsAttention = project.agents.filter((agent) => agent.health === "agent-help" || agent.health === "decision-ready").length;
     project.unpublishedChanges = new Set(
       project.agents
         .filter((agent) => agent.dirty === true)
@@ -250,14 +252,16 @@ export function summarizeGitMonitoring(
     agents,
     branches: new Set(agents.map((agent) => agent.branch).filter(Boolean)).size,
     worktrees: new Set(agents.map((agent) => agent.worktree).filter(Boolean)).size,
-    needsAttention: agents.filter((agent) => agent.health !== "under-control").length,
+    needsAttention: agents.filter((agent) => agent.health === "agent-help" || agent.health === "decision-ready").length,
     unpublishedChanges: new Set(
       agents
         .filter((agent) => agent.dirty === true)
         .map((agent) => agent.worktree || agent.projectRoot || agent.tab.id),
     ).size,
     gitFactsPending: agents.filter((agent) => !agent.gitFactsAvailable).length,
-    health: agents.some((agent) => agent.needsAgentHelp)
+    health: agents.length === 0
+      ? "empty"
+      : agents.some((agent) => agent.needsAgentHelp)
       ? "agent-help"
       : agents.some((agent) => agent.readyToCombine)
         ? "decision-ready"

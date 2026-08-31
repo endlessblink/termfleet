@@ -67,6 +67,17 @@ test("creation buttons are labelled, not bare glyphs", async ({ page }) => {
   }
 });
 
+test("map toolbar stays inside the visible map viewport", async ({ page }) => {
+  await openMap(page);
+  await page.setViewportSize({ width: 780, height: 493 });
+  await page.waitForTimeout(100);
+  const toolbar = page.locator(".magic-canvas-toolbar");
+  const bounds = await toolbar.boundingBox();
+  expect(bounds).not.toBeNull();
+  expect(bounds!.x).toBeGreaterThanOrEqual(0);
+  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(780);
+});
+
 test("the toolbar collapses to a Map chip and remembers it", async ({
   page,
 }) => {

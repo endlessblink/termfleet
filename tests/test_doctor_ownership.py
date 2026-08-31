@@ -21,6 +21,16 @@ class DoctorOwnershipTests(unittest.TestCase):
         self.assertIn("do not restart or replace it while live sessions need preservation", DOCTOR)
         self.assertIn('report(\n      "warn",\n      "Runtime release alignment"', DOCTOR)
 
+    def test_protocol_compatible_mixed_release_is_classified_as_safe_preservation(self):
+        self.assertIn("termfleet-daemon-status.mjs", DOCTOR)
+        self.assertIn("liveDaemonStatus?.protocolVersion === supportedDaemonProtocol", DOCTOR)
+        self.assertIn("preserving live PTYs without replacement is safe", DOCTOR)
+
+    def test_daemon_status_probe_uses_read_only_status_handshake(self):
+        helper = (ROOT / "scripts" / "termfleet-daemon-status.mjs").read_text()
+        self.assertIn('socket.end("status\\n")', helper)
+        self.assertIn('"protocolVersion" in response', helper)
+
     def test_only_live_duplicate_provider_ids_are_warnings(self):
         self.assertIn("liveDuplicateIds", DOCTOR)
         self.assertIn("historical provider chat ID(s) have duplicate records", DOCTOR)

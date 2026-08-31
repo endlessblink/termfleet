@@ -207,7 +207,7 @@ export function opensAsRequest(text: string | undefined): string | undefined {
 const ASKS_FOR_SOMETHING =
   /\b(?:add|allow|build|change|check|clean|clear|close|commit|connect|convert|create|debug|delete|deploy|design|disable|enable|find|fix|generate|handle|implement|improve|install|integrate|investigate|make|merge|migrate|move|open|plan|prevent|publish|pull|push|refactor|release|remove|rename|research|restart|restore|revert|run|show|split|start|stop|support|test|update|upgrade|use|verify|write|why|how|what|can we|can you|i want|i need|we should|should we|let's|lets|please)\b/i;
 const DIRECT_REQUEST_START =
-  /^(?:(?:please|can you|could you|would you|let'?s)\s+)?(?:add|allow|build|change|check|clean|clear|close|commit|connect|convert|create|debug|delete|deploy|design|disable|enable|find|fix|generate|handle|implement|improve|install|integrate|investigate|make|merge|migrate|move|open|plan|prevent|publish|pull|push|refactor|release|remove|rename|research|restart|restore|revert|run|show|split|start|stop|support|test|update|upgrade|use|verify|write)\b/i;
+  /^(?:(?:please|can you|could you|would you|let'?s)\s+)?(?:i want|i need|we should|add|allow|build|change|check|clean|clear|close|commit|connect|convert|create|debug|delete|deploy|design|disable|enable|find|fix|generate|handle|implement|improve|install|integrate|investigate|make|merge|migrate|move|open|plan|prevent|publish|pull|push|refactor|release|remove|rename|research|restart|restore|revert|run|show|split|start|stop|support|test|update|upgrade|use|verify|write)\b/i;
 
 export function startsWithRequestAction(text: string): boolean {
   return DIRECT_REQUEST_START.test(text.trim());

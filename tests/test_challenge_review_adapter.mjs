@@ -16,6 +16,7 @@ const sureInput = path.join(inputDir, "sure.json");
 const proof = path.join(root, "package.json");
 const visibleGoalMatrix = {
   status: "PASS",
+  scope: "all-active-terminals",
   source: "verify:cockpit-goal-matrix",
   captured_at: "2026-08-25T00:00:00Z",
   pane_count: 1,

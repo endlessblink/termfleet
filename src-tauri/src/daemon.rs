@@ -91,9 +91,15 @@ pub enum DaemonRequest {
     },
     KillSession {
         id: String,
+        /// Only a confirmed UI close may make this an intentional kill. Older
+        /// clients omit the field and therefore remain recoverable by default.
+        #[serde(default)]
+        user_requested: bool,
     },
     RestoreSession {
         id: String,
+        #[serde(default)]
+        reviewed: bool,
     },
     ListSessions,
     ListSessionEvents,
@@ -592,6 +598,17 @@ pub fn run_daemon_forever() -> Result<(), String> {
     // scrollback to disk. If it is restarted (reboot, OOM, dev relaunch) it
     // rebuilds each session's content from those checkpoints on reattach.
     let pty_manager = Arc::new(PtyManager::persistent());
+    let reaper_manager = pty_manager.clone();
+    std::thread::Builder::new()
+        .name("pty-session-reaper".to_string())
+        .spawn(move || loop {
+            std::thread::sleep(Duration::from_secs(5));
+            let removed = reaper_manager.reap_ended_sessions();
+            if removed > 0 {
+                eprintln!("terminal-workspace-daemon: reaped {removed} ended PTY session(s)");
+            }
+        })
+        .map_err(|error| format!("could not start PTY session reaper: {error}"))?;
 
     for stream in listener.incoming() {
         match stream {
@@ -611,7 +628,9 @@ pub fn run_daemon_forever() -> Result<(), String> {
                     if let Err(error) =
                         handle_daemon_client(&mut stream, &socket_path, &pty_manager)
                     {
-                        eprintln!("terminal-workspace-daemon client error: {error}");
+                        if !is_expected_client_disconnect(&error) {
+                            eprintln!("terminal-workspace-daemon client error: {error}");
+                        }
                     }
                 });
             }
@@ -620,6 +639,17 @@ pub fn run_daemon_forever() -> Result<(), String> {
     }
 
     Ok(())
+}
+
+fn is_expected_client_disconnect(error: &str) -> bool {
+    [
+        "Broken pipe",
+        "Connection reset",
+        "connection aborted",
+        "UnexpectedEof",
+    ]
+    .iter()
+    .any(|fragment| error.contains(fragment))
 }
 
 fn query_daemon_status(socket_path: &PathBuf) -> Result<DaemonStatus, String> {
@@ -902,12 +932,12 @@ fn handle_daemon_request(
         DaemonRequest::GetSessionCwd { id } => DaemonResponse::GetSessionCwd {
             cwd: pty_manager.get_cwd(&id)?,
         },
-        DaemonRequest::KillSession { id } => {
-            pty_manager.kill(&id)?;
+        DaemonRequest::KillSession { id, user_requested } => {
+            pty_manager.kill_with_disposition(&id, user_requested)?;
             DaemonResponse::KillSession { ok: true }
         }
-        DaemonRequest::RestoreSession { id } => {
-            pty_manager.restore_persisted_session(&id)?;
+        DaemonRequest::RestoreSession { id, reviewed } => {
+            pty_manager.restore_persisted_session_with_review(&id, reviewed)?;
             DaemonResponse::RestoreSession { ok: true }
         }
         DaemonRequest::ListSessions => DaemonResponse::ListSessions {
@@ -1393,6 +1423,7 @@ mod tests {
             },
             DaemonRequest::KillSession {
                 id: "session-a".to_string(),
+                user_requested: true,
             },
         ];
 
@@ -1422,6 +1453,17 @@ mod tests {
             serde_json::from_str::<DaemonResponse>(&serialized_read_response)
                 .expect("parse read response");
         assert_eq!(parsed_read_response, read_response);
+
+        let legacy = r#"{"type":"killSession","id":"legacy-session"}"#;
+        let parsed_legacy = serde_json::from_str::<DaemonRequest>(legacy)
+            .expect("legacy kill request remains decodable");
+        assert_eq!(
+            parsed_legacy,
+            DaemonRequest::KillSession {
+                id: "legacy-session".to_string(),
+                user_requested: false,
+            }
+        );
     }
 
     #[test]

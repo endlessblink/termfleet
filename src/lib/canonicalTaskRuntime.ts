@@ -25,6 +25,10 @@ export interface TaskRunRecord {
   disconnectedAt?: number;
 }
 
+let registryMutation: Promise<void> = Promise.resolve();
+const lastHeartbeatWriteByRun = new Map<string, number>();
+const HEARTBEAT_WRITE_MIN_INTERVAL_MS = 15_000;
+
 export const TASK_RUN_REGISTRY_KEY = "termfleet.canonical-task-runs.v1";
 export const RUN_HEARTBEAT_TIMEOUT_MS = 30_000;
 export const RUN_ACTIVITY_TIMEOUT_MS = 90_000;
@@ -59,6 +63,17 @@ function storage(): Storage | null {
   return typeof window === "undefined" ? null : window.localStorage;
 }
 
+function isTauriRuntime(): boolean {
+  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+}
+
+function parseRunRegistry(raw: unknown): TaskRunRecord[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((item): item is TaskRunRecord => Boolean(item && typeof item === "object" && "runId" in item && "taskId" in item))
+    .map((run) => ({ ...run, logTail: boundedRunLog(run.logTail) }));
+}
+
 export function readTaskRunRegistry(): TaskRunRecord[] {
   try {
     const raw = storage()?.getItem(TASK_RUN_REGISTRY_KEY);
@@ -70,8 +85,58 @@ export function readTaskRunRegistry(): TaskRunRecord[] {
   }
 }
 
+export async function readTaskRunRegistryAsync(): Promise<TaskRunRecord[]> {
+  if (!isTauriRuntime()) return readTaskRunRegistry();
+  try {
+    const raw = await invoke<string>("task_run_registry_read");
+    return parseRunRegistry(JSON.parse(raw));
+  } catch (error) {
+    throw new Error(`Task run registry unavailable: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
 export function writeTaskRunRegistry(runs: TaskRunRecord[]): void {
   storage()?.setItem(TASK_RUN_REGISTRY_KEY, JSON.stringify(runs.slice(-100).map((run) => ({ ...run, logTail: boundedRunLog(run.logTail) }))));
+}
+
+export async function writeTaskRunRegistryAsync(runs: TaskRunRecord[]): Promise<void> {
+  const safe = runs.slice(-100).map((run) => ({ ...run, logTail: boundedRunLog(run.logTail) }));
+  if (!isTauriRuntime()) {
+    writeTaskRunRegistry(safe);
+    return;
+  }
+  await invoke("task_run_registry_write", { contents: JSON.stringify(safe) });
+}
+
+async function updateTaskRunRegistryAsync(mutator: (runs: TaskRunRecord[]) => TaskRunRecord[]): Promise<TaskRunRecord[]> {
+  let result: TaskRunRecord[] = [];
+  registryMutation = registryMutation.then(async () => {
+    const current = await readTaskRunRegistryAsync();
+    result = mutator(current).slice(-100);
+    await writeTaskRunRegistryAsync(result);
+  });
+  await registryMutation;
+  return result;
+}
+
+export async function registerTaskRun(input: Omit<TaskRunRecord, "logTail"> & { logTail?: string[] }): Promise<TaskRunRecord> {
+  const record: TaskRunRecord = { ...input, logTail: boundedRunLog(input.logTail ?? []) };
+  const result = await updateTaskRunRegistryAsync((runs) => [...runs.filter((run) => run.runId !== record.runId), record]);
+  return result.find((run) => run.runId === record.runId) ?? record;
+}
+
+export async function heartbeatTaskRun(runId: string, patch: Partial<Pick<TaskRunRecord, "state" | "heartbeatAt" | "activityAt" | "phase" | "action" | "logTail" | "terminalPaneId" | "runtimeSessionId" | "terminalLink" | "failureReason" | "finishedAt" | "disconnectedAt">> = {}): Promise<TaskRunRecord | undefined> {
+  const now = Date.now();
+  const lastWrite = lastHeartbeatWriteByRun.get(runId) ?? 0;
+  if (now - lastWrite < HEARTBEAT_WRITE_MIN_INTERVAL_MS) return undefined;
+  lastHeartbeatWriteByRun.set(runId, now);
+  const result = await updateTaskRunRegistryAsync((runs) => runs.map((run) => run.runId === runId ? {
+    ...run,
+    ...patch,
+    heartbeatAt: patch.heartbeatAt ?? now,
+    logTail: boundedRunLog(patch.logTail ?? run.logTail),
+  } : run));
+  return result.find((run) => run.runId === runId);
 }
 
 export function classifyTaskRun(run: TaskRunRecord | undefined, now = Date.now(), linkedRunId?: string | null): TaskRunHealth {
@@ -127,3 +192,14 @@ export function requestTaskRunStop(taskId: string, now = Date.now()): TaskRunRec
   writeTaskRunRegistry(runs.map((run) => run.runId === current.runId ? next : run));
   return next;
 }
+
+export async function requestTaskRunStopAsync(taskId: string, now = Date.now()): Promise<TaskRunRecord | undefined> {
+  const runs = await readTaskRunRegistryAsync();
+  const candidates = runs.filter((run) => run.taskId === taskId && !["finished", "failed", "stopped"].includes(run.state));
+  const current = candidates[candidates.length - 1];
+  if (!current) return undefined;
+  const next = { ...current, stopRequestedAt: now };
+  await writeTaskRunRegistryAsync(runs.map((run) => run.runId === current.runId ? next : run));
+  return next;
+}
+import { invoke } from "@tauri-apps/api/core";

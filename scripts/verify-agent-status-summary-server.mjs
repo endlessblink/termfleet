@@ -79,10 +79,12 @@ assert.match(splitPaneSource, /<CockpitSnapshotProbe/);
 assert.match(splitPaneSource, /title: headerTitle/);
 assert.match(splitPaneSource, /now: headerNow/);
 assert.match(splitPaneSource, /taskLineup: visibleTaskLineup\.map/);
-assert.match(cockpitSnapshotSource, /VITE_COCKPIT_SNAPSHOT/);
+assert.match(cockpitSnapshotSource, /cockpitSnapshotEnabled/);
 assert.match(cockpitSnapshotSource, /\/cockpit-snapshot/);
 assert.match(cockpitSnapshotSource, /COCKPIT_SNAPSHOT_HEARTBEAT_MS/);
 assert.match(cockpitSnapshotSource, /removeCockpitPane/);
+assert.match(cockpitSnapshotSource, /normalizeCockpitSnapshot/);
+assert.match(cockpitSnapshotSource, /context\.startsWith\("Keep this pane focused on "/);
 
 function waitForEndpoint(child) {
   return new Promise((resolve, reject) => {

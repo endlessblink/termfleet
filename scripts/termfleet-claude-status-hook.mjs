@@ -91,6 +91,15 @@ function statusFilePath(cwd) {
   return paneId ? paneSidecarPath(paneId) : sidecarPath(cwd);
 }
 
+function statusFilePaths(cwd) {
+  const paneId = statusPaneId();
+  if (!paneId) return [sidecarPath(cwd)];
+  const paths = [paneSidecarPath(paneId)];
+  const runtimeMatch = /^terminal-[0-9a-f-]{36}-([0-9a-f-]{36})$/i.exec(paneId);
+  if (runtimeMatch) paths.push(paneSidecarPath(runtimeMatch[1]));
+  return [...new Set(paths)];
+}
+
 function normTaskStatus(status) {
   return ["pending", "in_progress", "completed"].includes(status)
     ? status
@@ -661,9 +670,11 @@ async function main() {
     // — a torn read parses as invalid JSON, which resets the task list to empty and is how
     // the agent's tasks vanished under parallel tool calls. The temp name is pid-unique so
     // two sibling hooks don't collide on it. (TC-035)
-    const tmp = `${filePath}.${process.pid}.tmp`;
-    writeFileSync(tmp, JSON.stringify(sidecar));
-    renameSync(tmp, filePath);
+    for (const targetPath of statusFilePaths(cwd)) {
+      const tmp = `${targetPath}.${process.pid}.tmp`;
+      writeFileSync(tmp, JSON.stringify(sidecar));
+      renameSync(tmp, targetPath);
+    }
   } catch {
     // Never break the agent over a status-file write.
   }

@@ -3,10 +3,12 @@ import {
   AtSign,
   Bot,
   Command,
+  Copy,
   FileText,
   FolderTree,
   GitBranch,
   Globe,
+  ListTodo,
   ListTree,
   Map,
   Maximize2,
@@ -37,6 +39,7 @@ import { checkAgentProvider } from "../lib/agentProviders";
 import { promptWorkstreamIsolation, promptWorkstreamLaunchProfile, resolveWorkstreamOpsContext } from "../lib/workstreamOpsContext";
 import type { AgentProvider } from "../lib/types";
 import { GamificationPanel } from "./GamificationPanel";
+import { copyCockpitPaneDetails } from "../lib/cockpitSnapshot";
 
 const styles: Record<string, CSSProperties> = {
   header: {
@@ -347,19 +350,22 @@ const styles: Record<string, CSSProperties> = {
   },
   menu: {
     position: "absolute",
-    left: "50%",
-    top: 42,
-    transform: "translateX(-50%)",
-    width: "var(--commandbar-search-width)",
-    minWidth: "var(--commandbar-search-min-width)",
-    maxHeight: 360,
-    overflow: "auto",
+    left: 16,
+    right: 16,
+    top: "calc(100% + 8px)",
+    width: "auto",
+    maxWidth: "none",
+    minWidth: 0,
+    maxHeight: "min(520px, calc(100vh - 60px))",
+    overflowY: "auto",
+    overflowX: "hidden",
     padding: 5,
     border: "1px solid transparent",
     borderRadius: "var(--radius-md)",
     background: "var(--surface-raised)",
     boxShadow: "var(--shadow-menu)",
     zIndex: 40,
+    boxSizing: "border-box",
     animation: "workbench-popover-in var(--motion-med)",
   },
   menuRow: {
@@ -516,6 +522,7 @@ export function WorkbenchHeader() {
   const [commandStatus, setCommandStatus] = useState("");
   const [commandOpen, setCommandOpen] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [copyStatus, setCopyStatus] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
   const activeTab = tabs.find((tab) => tab.id === activeTabId);
@@ -655,6 +662,18 @@ export function WorkbenchHeader() {
         },
       },
       {
+        id: "show-tasks",
+        label: "Open project board",
+        detail: "Open the canonical agent-ops work board",
+        keywords: ["tasks", "task board", "kanban", "agent-ops", "queue", "shared"],
+        scope: "actions",
+        Icon: ListTodo,
+        run: () => {
+          setWorkspaceMode("tasks");
+          setCommandStatus("shared tasks");
+        },
+      },
+      {
         id: "show-files",
         label: "Show files",
         detail: "Open the file explorer panel",
@@ -682,14 +701,14 @@ export function WorkbenchHeader() {
       },
       {
         id: "show-links",
-        label: "Show links",
-        detail: "Open the workspace relationship view",
-        keywords: ["links", "graph", "relationships"],
+        label: "Monitor Git work",
+        detail: "See whether agent work is under control and ready to combine",
+        keywords: ["git", "work", "branches", "worktrees", "merge", "combine", "monitor"],
         scope: "actions",
         Icon: GitBranch,
         run: () => {
           setWorkspaceMode("graph");
-          setCommandStatus("links");
+          setCommandStatus("git monitor");
         },
       },
       {
@@ -908,10 +927,18 @@ export function WorkbenchHeader() {
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
+      const key = event.key.toLowerCase();
+      const opensGitMonitor = event.ctrlKey && event.altKey && key === "g";
+      if (opensGitMonitor) {
+        event.preventDefault();
+        event.stopPropagation();
+        setWorkspaceMode("graph");
+        setCommandStatus("git monitor");
+        return;
+      }
       // A focused terminal owns the keyboard — let zellij/vim/the shell have every
       // key (Ctrl+K, Ctrl+Shift+P/T included) instead of opening the command bar.
       if (terminalHasKeyboardFocus()) return;
-      const key = event.key.toLowerCase();
       const opensPrimaryPalette = (event.ctrlKey || event.metaKey) && key === "k";
       const opensTerminalPalette = event.ctrlKey && event.shiftKey && key === "p";
       const createsNewTerminal = event.ctrlKey && event.shiftKey && key === "t";
@@ -955,6 +982,16 @@ export function WorkbenchHeader() {
     setCommandValue("");
     setCommandOpen(false);
     inputRef.current?.blur();
+  };
+
+  const copyPaneDetails = async () => {
+    try {
+      const count = await copyCockpitPaneDetails();
+      setCopyStatus(`${count} pane${count === 1 ? "" : "s"} copied`);
+      window.setTimeout(() => setCopyStatus(""), 2400);
+    } catch {
+      setCopyStatus("copy unavailable");
+    }
   };
 
 
@@ -1012,6 +1049,17 @@ export function WorkbenchHeader() {
         />
         <span className="workbench-command-shortcut" style={styles.commandShortcut}>Ctrl K</span>
       </div>
+      <button
+        type="button"
+        className="workbench-copy-pane-details"
+        title="Copy details from every visible pane"
+        aria-label="Copy details from every visible pane"
+        onClick={() => void copyPaneDetails()}
+        style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "var(--text-secondary)" }}
+      >
+        <Copy size={13} strokeWidth={1.8} />
+        {copyStatus || "Copy panes"}
+      </button>
       <GamificationPanel />
       {commandOpen && (
         <div className="workbench-command-menu" style={styles.menu}>

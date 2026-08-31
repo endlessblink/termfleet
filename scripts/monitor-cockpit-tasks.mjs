@@ -77,6 +77,17 @@ function looksLikeGenericSidecarTask(value) {
   return /^(?:Answering latest prompt|Answering user question|Implement the plan\.?)$/i.test(clean(value));
 }
 
+function looksLikeGoalPlaceholder(value) {
+  return /^(?:Goal not captured|Project intent not captured|Context not captured|No project goal recorded yet|No project goal captured yet)$/i.test(clean(value));
+}
+
+function looksLikeGoalChrome(value) {
+  const text = clean(value);
+  return /(?:mcp__|\b(?:npm|pnpm|yarn|cargo|git|playwright|pytest)\b|\.(?:tsx?|jsx?|mjs|cjs|rs|md|json|sh)\b|\/home\/|\/media\/)/i.test(text) ||
+    /\b(?:memory writing agent|reviewer|hook|telemetry|screenshot|test suite|regression|verification|proof|harness|gate)\b/i.test(text) ||
+    /\b(?:agent|reviewer)\s+(?:prompt|instruction|output|commentary|text)\b/i.test(text);
+}
+
 function sidecarLooksLikeAgentPlan(sidecar) {
   return /(?:codex|claude)-(?:tool|plan)/i.test(clean(sidecar?.source));
 }
@@ -215,6 +226,7 @@ function activeSidecarTask(entry) {
 
 export function analyzeEntry(entry, options) {
   const task = clean(entry.task);
+  const goal = clean(entry.context ?? entry.goal);
   const title = clean(entry.title);
   const now = clean(entry.now);
   const sidecar = Object.prototype.hasOwnProperty.call(options, "sidecar")
@@ -231,6 +243,12 @@ export function analyzeEntry(entry, options) {
 
   if (looksLikeGenericTask(task)) {
     problems.push("task-not-captured");
+  }
+  if (!goal) problems.push("goal-missing");
+  if (looksLikeGoalPlaceholder(goal)) problems.push("goal-placeholder");
+  if (looksLikeGoalChrome(goal)) problems.push("goal-technical-or-process");
+  if (task.length > 18 && goal.length > 18 && textsEquivalent(task, goal)) {
+    problems.push("goal-echo");
   }
   if (looksLikeGenericTitle(title)) problems.push("generic-now-active");
   if (looksLikeGenericTitle(now)) warnings.push("generic-now");
@@ -280,6 +298,7 @@ export function analyzeEntry(entry, options) {
     paneId: entry.paneId,
     terminalId: entry.terminalId,
     task,
+    goal,
     taskSource: entry.taskSource,
     title,
     titleSource: entry.titleSource,
@@ -295,7 +314,7 @@ export function analyzeEntry(entry, options) {
 }
 
 function loadReport(options) {
-  const snapshotFile = path.join(statusDir(), "cockpit-snapshot.json");
+  const snapshotFile = path.join(statusDir(), "termfleet-cockpit-snapshot.json");
   const snapshot = readJson(snapshotFile);
   const ageS = Math.round((Date.now() - Number(snapshot.updatedAt || 0)) / 1000);
   const terminals = Array.isArray(snapshot.terminals) ? snapshot.terminals : [];
@@ -474,7 +493,7 @@ async function main() {
       console.error(JSON.stringify({
         ok: false,
         message: "No cockpit snapshot found",
-        snapshotFile: path.join(statusDir(), "cockpit-snapshot.json"),
+        snapshotFile: path.join(statusDir(), "termfleet-cockpit-snapshot.json"),
         error: error instanceof Error ? error.message : String(error),
       }, null, 2));
       process.exit(1);

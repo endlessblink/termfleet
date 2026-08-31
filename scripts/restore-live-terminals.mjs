@@ -14,12 +14,19 @@ if (!response.ok || response.value?.type !== "listSessions") {
 }
 
 const closed = new Set(Array.isArray(workspace.closedSessionIds) ? workspace.closedSessionIds : []);
+const closedProviders = new Set(Array.isArray(workspace.closedProviderSessionIds) ? workspace.closedProviderSessionIds : []);
 const tabs = Array.isArray(workspace.tabs) ? workspace.tabs : [];
 const groups = Array.isArray(workspace.groups) ? workspace.groups : [];
 const liveSessions = (response.value.sessions ?? []).map((session) => ({
   id: session.id,
   cwd: session.initialCwd ?? null,
+  providerSessionId: session.providerSessionId ?? providerSessionIdFromCommand(session.command),
+  command: session.command ?? "",
 }));
+
+function providerSessionIdFromCommand(command) {
+  return command?.match(/(?:codex\s+(?:resume)|claude\s+(?:--resume|resume))\s+([0-9a-f-]{36})/i)?.[1] ?? null;
+}
 
 function leaves(node) {
   return node?.type === "split" ? (node.children ?? []).flatMap(leaves) : node?.id ? [node.id] : [];
@@ -66,6 +73,7 @@ let restored = 0;
 const skipped = [];
 for (const session of liveSessions) {
   if (closed.has(session.id)) continue;
+  if (session.providerSessionId && closedProviders.has(session.providerSessionId)) continue;
   if (tabs.some((tab) => (tab.terminals ?? []).some((terminal) => terminal.id === session.id))) continue;
   const parts = canonicalParts(session.id);
   if (!session.cwd) {

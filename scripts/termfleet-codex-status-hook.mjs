@@ -45,6 +45,15 @@ function statusFilePath(cwd) {
   return paneId ? paneSidecarPath(paneId) : sidecarPath(cwd);
 }
 
+function statusFilePaths(cwd) {
+  const paneId = statusPaneId();
+  if (!paneId) return [sidecarPath(cwd)];
+  const paths = [paneSidecarPath(paneId)];
+  const runtimeMatch = /^terminal-[0-9a-f-]{36}-([0-9a-f-]{36})$/i.exec(paneId);
+  if (runtimeMatch) paths.push(paneSidecarPath(runtimeMatch[1]));
+  return [...new Set(paths)];
+}
+
 function normTaskStatus(status) {
   // Codex plan statuses use "in_progress"/"completed"/"pending"; map close variants.
   if (status === "in_progress" || status === "completed" || status === "pending") return status;
@@ -184,11 +193,16 @@ export function buildCodexSidecar(payload, prev, now = Date.now()) {
   // Only an explicit opening request is a durable operator goal. `goal-task` was
   // historically also used for internal create_goal/update_plan events, so accepting
   // it here would resurrect stale orchestration text from an older sidecar.
-  const prevMainTaskSource = prev?.mainTaskSource === "opening-request"
+  const prevMainTaskSource = prev?.mainTaskSource === "opening-request" ||
+    prev?.mainTaskSource === "plan-explanation"
     ? prev.mainTaskSource
     : undefined;
   const rawPrevMainTask = cleanField(prev?.mainTask, 220) || undefined;
+  const prevMainTaskIsTaskDerived = prevMainTaskSource === "opening-request" &&
+    (/^(?:works?\.?|run|running|testing|checking|verifying|fixing)\b/i.test(rawPrevMainTask || "") ||
+      /\bcommit and push\b.*\b(?:regression tests?|test suite)\b/i.test(rawPrevMainTask || ""));
   const prevMainTask =
+    !prevMainTaskIsTaskDerived &&
     rawPrevMainTask &&
     prevMainTaskSource &&
     isDurableGoalText(rawPrevMainTask)
@@ -303,6 +317,14 @@ export function buildCodexSidecar(payload, prev, now = Date.now()) {
     // plan step was never completed stops reading as Running the moment the turn finishes.
     const narration = narrationToNow(codexLastAgentMessage(payload));
     const taskNow = nowFromTodos(prevTodos);
+    const aboutWhatAnswer = /^\$about-what$/i.test(prevUserTask) &&
+      narration &&
+      narration.length <= 150 &&
+      isDurableGoalText(narration)
+      ? narration
+      : undefined;
+    const renderedGoal = aboutWhatAnswer || prevMainTask;
+    const renderedGoalSource = aboutWhatAnswer ? "plan-explanation" : effectivePrevMainTaskSource;
     return {
       ...base,
       source: "codex-narration",
@@ -312,8 +334,8 @@ export function buildCodexSidecar(payload, prev, now = Date.now()) {
       // work after the agent has already answered.
       now: narration || taskNow || cleanField(prev?.now) || undefined,
       narration: narration || cleanField(prev?.narration, 90) || undefined,
-      mainTask: prevMainTask,
-      mainTaskSource: effectivePrevMainTaskSource,
+      mainTask: renderedGoal,
+      mainTaskSource: renderedGoalSource,
       userTask: prevUserTask,
       turn: "idle",
     };
@@ -378,9 +400,11 @@ async function main() {
 
   try {
     mkdirSync(statusDir(), { recursive: true });
-    const tmp = `${filePath}.${process.pid}.tmp`;
-    writeFileSync(tmp, JSON.stringify(sidecar));
-    renameSync(tmp, filePath);
+    for (const targetPath of statusFilePaths(cwd)) {
+      const tmp = `${targetPath}.${process.pid}.tmp`;
+      writeFileSync(tmp, JSON.stringify(sidecar));
+      renameSync(tmp, targetPath);
+    }
   } catch {
     // Never break the agent over a status-file write.
   }

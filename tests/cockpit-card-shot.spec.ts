@@ -51,7 +51,7 @@ const GOAL = "Run the live installed terminal verification";
 const DISPLAYED_GOAL = "Goal not captured";
 const STEP = "Adding a regression for empty and settled terminal cards";
 
-test("a map card rejects a meta-process task and shows an honest fallback", async ({
+test("a map card shows a durable goal beside task and current activity", async ({
   page,
 }) => {
   await mockTauri(page);
@@ -174,11 +174,13 @@ test("a map card rejects a meta-process task and shows an honest fallback", asyn
 
   const card = page.getByTestId("canvas-terminal-status-block").first();
   await expect(card).toBeVisible();
-  await expect(page.getByTestId("canvas-terminal-node-description")).toHaveCount(0);
-  await expect(page.getByTestId("canvas-terminal-node-goal")).toHaveCount(0);
-  await expect(page.getByTestId("canvas-terminal-node-branch")).toHaveText(
-    "release/bina-courses-august",
+  await expect(page.getByTestId("canvas-terminal-node-description")).toHaveCount(1);
+  await expect(page.getByTestId("canvas-terminal-node-goal")).toHaveCount(1);
+  await expect(page.getByTestId("canvas-terminal-node-description")).toHaveText(
+    "Make Workspace work clear and dependable so people can resume it confidently.",
   );
-
+  await expect(page.getByTestId("canvas-terminal-node-now")).not.toHaveText(
+    /not captured|unavailable/i,
+  );
   await card.screenshot({ path: ".captures/cockpit-card-goal-and-now.png" });
 });

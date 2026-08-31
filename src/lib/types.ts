@@ -7,6 +7,11 @@ export type TerminalRuntimeStatus =
   | "stale"
   | "failed"
   | "exited";
+export type TerminalRecoveryLifecycle =
+  | "alive"
+  | "dead-recoverable"
+  | "closed-by-user"
+  | "unknown";
 export type TerminalActivityStatus =
   | "idle"
   | "running"
@@ -88,6 +93,10 @@ export interface TerminalState {
   cols: number;
   rows: number;
   status?: TerminalRuntimeStatus;
+  /** Provenance used for recovery decisions; never infer it from scrollback. */
+  recoveryLifecycle?: TerminalRecoveryLifecycle;
+  /** Provider conversation identity; never substitute cwd/title for this. */
+  providerSessionId?: string;
   /** Set before an operator-issued kill so exit handling cannot auto-recover it. */
   manualStopRequested?: boolean;
   reused?: boolean;
@@ -281,7 +290,7 @@ export interface WorkstreamStatusSummary {
   userTask?: string;
   /** Explicit sidecar goal, kept separate from the current task/activity line. */
   mainTask?: string;
-  mainTaskSource?: "plan-explanation" | "goal-task" | "opening-request";
+  mainTaskSource?: "about-what" | "plan-explanation" | "goal-task" | "opening-request" | "user-prompt";
   // True only when the status hook observed a completed `$done` or `/done` turn.
   // Kept separate from lifecycle because a completed turn is also correctly Idle.
   completedByCommand?: boolean;
@@ -312,6 +321,7 @@ export interface WorkstreamStatusSummary {
 
 export interface WorkstreamMetadata {
   kind: WorkstreamKind;
+  canonicalTaskId?: string;
   provider?: AgentProvider;
   providerAvailable?: boolean;
   providerAvailabilityMessage?: string;

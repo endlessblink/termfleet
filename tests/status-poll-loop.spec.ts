@@ -63,7 +63,7 @@ test("status updates follow the stable pane when hydration replaces its terminal
   ).toBe(false);
 });
 
-test("status poll targets every pane so background badges update without a click", () => {
+test("status poll prioritizes active work then rotates background panes", () => {
   const now = 1_700_000_000_000;
   const active = tab("active", [
     terminal("active-1"),
@@ -101,9 +101,9 @@ test("status poll targets every pane so background badges update without a click
     "active-2",
     "todo",
     "recent",
-    ...Array.from({ length: 10 }, (_, index) => `stale-${index}`),
+    ...Array.from({ length: 4 }, (_, index) => `stale-${index}`),
   ]);
-  expect(targets).toHaveLength(14);
+  expect(targets).toHaveLength(8);
 });
 
 test("background status polling uses the local provider record without the model", () => {
@@ -111,6 +111,15 @@ test("background status polling uses the local provider record without the model
   expect(STATUS_POLL_SOURCE).toContain("contextTaskSummarizer: null");
   expect(STATUS_POLL_SOURCE).toContain("forceTauriSidecar: true");
   expect(STATUS_POLL_SOURCE).toContain("sidecar:${result.sidecarState}");
+});
+
+test("status polling keeps transcript caching stable across repeated summarizer calls", () => {
+  const summarizerSource = readFileSync(
+    new URL("../src/lib/agentStatusSummarizer.ts", import.meta.url),
+    "utf8",
+  );
+  expect(summarizerSource).toContain("return `${provider}:${sessionId}`;");
+  expect(summarizerSource).not.toContain("transcriptReaderIdentity");
 });
 
 test("status polling never replaces a pane's about-what goal with a shared incident goal", () => {
@@ -153,7 +162,7 @@ test("status polling mirrors each pane's summary into the rendered agent workstr
   expect(mirrored?.statusSummarySource).toBe("sidecar");
 });
 
-test("status poll targets include every live pane in one tick", () => {
+test("status polling bounds each tick while keeping every pane eligible", () => {
   const now = 1_700_000_000_000;
   const busyTabs = Array.from({ length: 30 }, (_, index) =>
     tab(`recent-${index}`, [
@@ -161,7 +170,7 @@ test("status poll targets include every live pane in one tick", () => {
     ]),
   );
 
-  expect(selectStatusPollTargets(busyTabs, null, now)).toHaveLength(30);
+  expect(selectStatusPollTargets(busyTabs, null, now)).toHaveLength(8);
 });
 
 test("status poll ordering still prioritizes panes that have waited longest", () => {
@@ -200,7 +209,7 @@ test("a quiet pane is never starved behind recently polled busy panes", () => {
   );
 
   expect(targets.map(({ terminal: candidate }) => candidate.id)).toContain("quiet");
-  expect(targets).toHaveLength(25);
+  expect(targets).toHaveLength(8);
 });
 
 test("an unchanged status poll does not rewrite a live map terminal", () => {

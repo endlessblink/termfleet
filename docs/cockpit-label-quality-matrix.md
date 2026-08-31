@@ -9,12 +9,19 @@ Read this before proposing any change to header text. Add a row when a new class
 found in the wild — and add its check to `tests/pane-label-audit.spec.ts` in the same
 change, or the class comes back.
 
-## The two lines and what each promises
+## The three lines and what each promises
 
 | Line           | Promise                                                                                        | Wrong even if true                                            |
 | -------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
 | **Task**       | What is being done **in relation to what the user asked for**. Survives the agent going quiet. | The current keystroke, a tool name, a result, the folder name |
 | **Now Active** | What it is doing RIGHT NOW. Expires.                                                           | A finished result, a next-step instruction, the task restated |
+
+The **Goal** is the durable project purpose: what the work is for and why it matters to
+the person returning to it. It must name the real product or outcome, not summarize the
+agent's workflow. A generated orientation sentence such as `Help people understand each
+TermFleet project and pick up where they left off` is too broad; `Authorize the gate
+exception` is approval choreography, not a project purpose. Both must be rejected in favor
+of a grounded project purpose or an honest missing-purpose state.
 
 When the pane is a regular shell rather than a supervised agent, the same promise still
 holds: the compact header must keep the current moment visible next to the path. Hiding
@@ -63,6 +70,7 @@ missed the longest, because every junk-shape check passes it.
 | B5 echo                      | Task and Now Active identical                                           | One of them must say something new, or the second is hidden                                                |
 | B6 regression step with a product object | `Adding a regression for folder detection`                    | Keep the named object as `Keeping folder detection reliable`; keep the regression work on Now              |
 | B7 plan explanation promoted as goal | `Re-auditing the current implementation before the installed/rendered gate` | Plan explanations are internal route notes; only an explicit user goal or `Goal:` item may persist as Task/Goal |
+| B8 process or orientation promoted as Goal | `Help people understand each TermFleet project and pick up where they left off`; `Authorize the gate exception` | Goal must express the product purpose and user benefit; reject generated orientation and approval choreography |
 
 ## Class C — unreadable to a non-developer
 
@@ -86,7 +94,7 @@ missed the longest, because every junk-shape check passes it.
 
 ## Where each class is enforced
 
-- **Shared text gates** — `src/lib/terminalHeaderQuality.ts`. Classes B1, B2, C1–C5, D1–D5.
+- **Shared text gates** — `src/lib/terminalHeaderQuality.ts`. Classes B1, B2, B8, C1–C5, D1–D5.
   There are TWO title gates and a rule must be in the right one — or both:
   `qualityCheckTrustedActivityLabel` (model/summary text) and `qualityCheckActivityLabel`
   (the live `now` line as it becomes the title). The activity-shape whitelist

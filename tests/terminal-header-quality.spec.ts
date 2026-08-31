@@ -27,6 +27,19 @@ test("rejects workflow narration from the glanceable Task and Now rows", () => {
   }
 });
 
+test("rejects generic report and continue placeholders", () => {
+  for (const placeholder of [
+    "Continue the assigned work in this terminal pane",
+    "give a report of what you did",
+    "Provide a debrief of what was done",
+  ]) {
+    expect(qualityCheckAuthoritativeTaskLabel(placeholder), placeholder).toMatchObject({
+      ok: false,
+      reason: "prompt-fragment",
+    });
+  }
+});
+
 test("rejects release choreography as a durable goal", () => {
   expect(
     qualityCheckAuthoritativeTaskLabel("Committing, tagging, and pushing the candidate")

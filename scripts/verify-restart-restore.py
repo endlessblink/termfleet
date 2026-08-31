@@ -55,6 +55,8 @@ def seed_checkpoint(env, session_id, scrollback, meta):
         f.write(scrollback.encode("utf-8"))
     with open(meta_path(env, session_id), "w", encoding="utf-8") as f:
         json.dump(meta, f)
+    with open(os.path.join(sessions_dir(env), f"{encode_id(session_id)}.lifecycle.json"), "w", encoding="utf-8") as f:
+        json.dump("recoverable", f)
 
 
 def read_meta(env, session_id):
@@ -494,7 +496,8 @@ def verify_orphaned_provider_writer():
         if f"FAKE_CODEX_ARGS=resume {provider_sid}" in fallback:
             print("FAIL: replacement daemon launched a duplicate provider resume", file=sys.stderr)
             return False
-        if "already owned" not in meta.get("restoreFailureReason", ""):
+        restore_failure_reason = meta.get("restoreFailureReason") or ""
+        if "already owned" not in restore_failure_reason:
             print(f"FAIL: orphan ownership was not persisted: {meta!r}", file=sys.stderr)
             return False
         if not provider_pid or provider_pid == second[0].get("pid"):

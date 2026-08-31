@@ -764,6 +764,8 @@ export function TerminalComponent({
             manualStopRequested: previous?.manualStopRequested,
             reused: updates.reused ?? previous?.reused,
             agentProvider: previous?.agentProvider,
+            providerSessionId: previous?.providerSessionId,
+            recoveryLifecycle: previous?.recoveryLifecycle,
             previewUrl: updates.previewUrl ?? previous?.previewUrl,
             currentActivity:
               updates.currentActivity ?? previous?.currentActivity,
@@ -927,8 +929,9 @@ export function TerminalComponent({
             hasNarration: contextualResult,
             hasAuthoritativeTaskList: Boolean(result.summary.tasksFromTodoWrite),
             hasDurableGoal:
-              projectedSummary.mainTaskSource === "plan-explanation" &&
-              Boolean(projectedSummary.mainTask?.trim()),
+    ["about-what", "plan-explanation", "goal-task", "opening-request", "user-prompt"].includes(
+                projectedSummary.mainTaskSource ?? "",
+              ) && Boolean(projectedSummary.mainTask?.trim()),
           })
         ) {
           // TC-060: the heuristic SUMMARY stays gated (it produced junk headers),
@@ -1329,37 +1332,50 @@ export function TerminalComponent({
       ptyId: string | null,
       workstream: WorkstreamMetadata | undefined,
       overrides: {
+        provider?: AgentProvider;
         providerSessionId?: string;
         restoreStatus?: WorkstreamMetadata["restoreStatus"];
         restoreFailureReason?: string;
       } = {},
     ) => {
-      if (!ptyId || workstream?.kind !== "agent") return;
+      if (!ptyId) return;
+      const currentTab = useWorkspaceStore.getState().tabs.find(
+        (candidate) => candidate.id === tabId,
+      );
+      const terminal = currentTab?.terminals.find(
+        (candidate) => candidate.paneId === paneId || candidate.id === ptyId,
+      );
+      const provider =
+        overrides.provider ??
+        workstream?.provider ??
+        terminal?.agentProvider ??
+        terminal?.statusSummary?.provider;
       const providerSessionId =
-        overrides.providerSessionId ?? workstream.providerSessionId;
+        overrides.providerSessionId ?? workstream?.providerSessionId;
+      if (!providerSessionId || !provider || provider === "shell") return;
       const restoreStatus =
         overrides.restoreStatus ??
-        workstream.restoreStatus ??
-        (workstream.readiness === "auth-required"
+        workstream?.restoreStatus ??
+        (workstream?.readiness === "auth-required"
           ? "needs-auth"
           : providerSessionId
             ? "resuming"
             : undefined);
       const restoreFailureReason =
         overrides.restoreFailureReason ??
-        workstream.restoreFailureReason ??
-        (workstream.readiness === "auth-required"
-          ? (workstream.providerAvailabilityMessage ?? workstream.lastSummary)
+        workstream?.restoreFailureReason ??
+        (workstream?.readiness === "auth-required"
+          ? (workstream?.providerAvailabilityMessage ?? workstream?.lastSummary)
           : undefined);
       invoke("daemon_update_agent_recovery_manifest", {
         payload: {
-          id: ptyId,
-          cwd: workstream.cwd ?? cwd,
-          provider: workstream.provider,
-          launchProfile: workstream.launchProfile,
+          id: runtimeSessionId,
+          cwd: workstream?.cwd ?? cwd,
+          provider,
+          launchProfile: workstream?.launchProfile ?? "terminal",
           providerSessionId,
-          originalCommand: workstream.startupCommand,
-          mission: workstream.mission ?? workstream.prompt,
+          originalCommand: workstream?.startupCommand ?? command,
+          mission: workstream?.mission ?? workstream?.prompt,
           restoreStatus,
           restoreFailureReason,
         },
@@ -1367,7 +1383,7 @@ export function TerminalComponent({
         console.warn("Could not persist agent recovery manifest", error);
       });
     },
-    [cwd],
+    [command, cwd, paneId, runtimeSessionId, tabId],
   );
 
   // Cancel any pending trailing excerpt run when this terminal unmounts.
@@ -1626,7 +1642,7 @@ export function TerminalComponent({
       }
       store.setActiveTerminal(ptyId);
       const currentTab = store.tabs.find((candidate) => candidate.id === tabId);
-      persistAgentRecoveryManifest(ptyId, currentTab?.workstream);
+      persistAgentRecoveryManifest(runtimeSessionId, currentTab?.workstream);
       updateWorkstreamRuntime(
         shouldPreserveWorkstreamOnReady(currentTab?.workstream)
           ? { activity: true }
@@ -1674,6 +1690,17 @@ export function TerminalComponent({
       const previousTerminal = tab?.terminals.find(
         (candidate) => candidate.paneId === paneId,
       );
+      // A live provider rebind replaces the saved shell's PTY id while the
+      // old hook is still unwinding. Its late exit event must not mark the new
+      // provider session as exited.
+      if (previousTerminal?.id && previousTerminal.id !== details.id) {
+        console.info("[termfleet:recovery] ignoring stale PTY exit", {
+          paneId,
+          exitedId: details.id,
+          currentId: previousTerminal.id,
+        });
+        return;
+      }
       const provider =
         tab?.workstream?.provider ??
         previousTerminal?.agentProvider ??
@@ -1905,9 +1932,16 @@ export function TerminalComponent({
         });
         if (signal.providerSessionId) {
           persistAgentRecoveryManifest(
-            livePtyId ?? attachToPtyId ?? runtimeSessionId,
+            runtimeSessionId,
             initialTab?.workstream,
             {
+              provider:
+                initialTab?.terminals.find((candidate) =>
+                  candidate.paneId === paneId,
+                )?.agentProvider ??
+                initialTab?.terminals.find((candidate) =>
+                  candidate.paneId === paneId,
+                )?.statusSummary?.provider,
               providerSessionId: signal.providerSessionId,
               restoreStatus: "resuming",
             },
@@ -2640,7 +2674,7 @@ export function TerminalComponent({
             renderScale={renderScale}
             mapProjection={mapProjection}
             reflowSafeTui={reflowSafeTui}
-            runtimeActive={runtimeActive}
+            runtimeActive={runtimeActive && isRuntimeVisible}
             recoveryGeneration={recoveryGeneration}
             onReady={handleReady}
             onInputReady={onCanvasInputReady}

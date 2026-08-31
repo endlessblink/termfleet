@@ -155,3 +155,14 @@ test("session rows stay compact and never cover the next session", async ({ page
   const surfaces = await rows.evaluateAll((elements) => elements.map((element) => getComputedStyle(element).backgroundColor));
   expect(surfaces.every((surface) => surface !== "rgba(0, 0, 0, 0)" && surface !== "transparent")).toBe(true);
 });
+
+test("live terminal updates do not switch the selected sidebar project", async ({ page }) => {
+  await seedProjectRail(page);
+  const sidebar = page.getByRole("complementary", { name: "Workspace sidebar" });
+
+  await sidebar.getByRole("button", { name: "Open session term-2" }).click();
+  await expect(sidebar.getByRole("button", { name: "Open session term-2" })).toHaveAttribute("aria-current", "true");
+
+  await page.waitForTimeout(2_000);
+  await expect(sidebar.getByRole("button", { name: "Open session term-2" })).toHaveAttribute("aria-current", "true");
+});

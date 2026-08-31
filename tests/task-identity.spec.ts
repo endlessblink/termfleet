@@ -4,6 +4,7 @@ import {
   TASK_NOT_CAPTURED,
 } from "../src/lib/taskIdentity";
 import { buildShellTerminalHeaderViewModel } from "../src/lib/terminalHeaderViewModel";
+import { fallbackProjectGoal } from "../src/lib/terminalHeaderViewModel";
 import { visibleTaskLineup } from "../src/lib/taskLineup";
 
 test("task identity follows bounded source precedence", () => {
@@ -261,8 +262,8 @@ test("model and terminal summaries do not own the header task", () => {
     },
   });
 
-  expect(header.taskDescription.text).toBe(TASK_NOT_CAPTURED);
-  expect(header.taskDescription.source).toBe("missing");
+  expect(header.taskDescription.text).toBe(fallbackProjectGoal("/repo", "Summarize terminal scrollback with Ollama"));
+  expect(header.taskDescription.source).toBe("neutral");
   expect(header.debug.taskIdentitySource).toBe("missing");
 });
 
@@ -604,8 +605,8 @@ test("inferred terminal purpose is activity context, not plan-binding task ident
     },
   });
 
-  expect(header.taskDescription.text).toBe(TASK_NOT_CAPTURED);
-  expect(header.taskDescription.source).toBe("missing");
+  expect(header.taskDescription.text).toBe(fallbackProjectGoal("/repo", "Ready"));
+  expect(header.taskDescription.source).toBe("neutral");
 });
 
 test("status summary cannot rescue missing task identity", () => {
@@ -625,8 +626,8 @@ test("status summary cannot rescue missing task identity", () => {
     },
   });
 
-  expect(header.taskDescription.text).toBe(TASK_NOT_CAPTURED);
-  expect(header.taskDescription.source).toBe("missing");
+  expect(header.taskDescription.text).toBe(fallbackProjectGoal("/repo", "Fix the sandbox test blocker by running Vitest with a temporary config"));
+  expect(header.taskDescription.source).toBe("neutral");
 });
 
 test("task sidebar ignores operator and summary fallback items", () => {

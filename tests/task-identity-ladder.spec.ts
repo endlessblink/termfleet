@@ -37,7 +37,7 @@ test("a meta-process task is not accepted as the pane goal", () => {
     taskLine,
   });
 
-  expect(header.goalLabel).toBe("Goal not captured");
+  expect(header.goalLabel).toBe("Preparing the next useful change");
 });
 
 test("a correction saying the goal was not met is not promoted to Task", () => {
@@ -79,7 +79,7 @@ test("a current step cannot replace a raw complaint with a fake durable goal", (
 
   expect(taskLine.source).toBe("shell-state");
   expect(taskLine.text).toBe("No task declared");
-  expect(header.goalLabel).toBe("Goal not captured");
+  expect(header.goalLabel).toBe("Preparing the next useful change");
   expect(header.hasCapturedGoal).toBe(false);
   expect(header.contextLabel).toBe("Goal not captured");
   expect(header.userGoal).toBeNull();
@@ -98,7 +98,7 @@ test("a shell pane is no longer starved of a description", () => {
       branch: "main",
     }),
   });
-  expect(header.goalLabel).toBe("No task declared");
+  expect(header.goalLabel).toBe("Waiting for a clear task");
 });
 
 test("the rendered header shows the ladder's line, not 'Task not captured'", () => {
@@ -158,7 +158,7 @@ test("a command-only recovery line stays in Now rather than becoming Task", () =
 
   expect(taskLine.source).toBe("running-command");
   expect(header.hasCapturedGoal).toBe(false);
-  expect(header.goalLabel).toBe("No task declared");
+  expect(header.goalLabel).toBe("Waiting for a clear task");
 });
 
 test("a real sidecar task summary restores the Task when the copied line is missing", () => {
@@ -274,7 +274,7 @@ test("a pane with no supplied line still never says 'Task not captured'", () => 
     terminalId: "pane-2",
     liveCwd: "/tmp/termfleet",
   });
-  expect(idle.goalLabel).toBe("No task declared");
+  expect(idle.goalLabel).toBe("Waiting for a clear task");
 
   // Busy or idle, with nothing known the row says the same true thing. It used to
   // template over the folder name, which read like content and hid the gap.
@@ -284,7 +284,7 @@ test("a pane with no supplied line still never says 'Task not captured'", () => 
     liveCwd: "/tmp/termfleet",
     terminalStatus: "running",
   });
-  expect(busy.goalLabel).toBe("No task declared");
+  expect(busy.goalLabel).toBe("Waiting for a clear task");
   expect(busy.goalLabel).not.toMatch(/task not captured/i);
 });
 

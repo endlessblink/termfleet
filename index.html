@@ -3,416 +3,51 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#10191d" />
+    <meta name="theme-color" content="#0b1519" />
     <link rel="icon" type="image/svg+xml" href="/brand/termfleet-vessel-master.svg" />
     <link rel="mask-icon" href="/brand/termfleet-vessel-master.svg" color="#17313f" />
     <title>TermFleet</title>
     <style>
-      #termfleet-startup {
-        position: fixed;
-        inset: 0;
-        z-index: 100;
-        display: grid;
-        place-items: center;
-        min-width: 0;
-        min-height: 100dvh;
-        overflow: hidden;
-        background:
-          radial-gradient(circle at 50% 46%, rgba(39, 89, 104, 0.24), transparent 32%),
-          linear-gradient(90deg, rgba(159, 207, 216, 0.025) 1px, transparent 1px),
-          linear-gradient(rgba(159, 207, 216, 0.018) 1px, transparent 1px),
-          #0d171b;
-        background-size: auto, 72px 72px, 72px 72px, auto;
-        color: #e6e9ec;
-        font-family: "Rubik", "Segoe UI", "Cantarell", sans-serif;
-        opacity: 1;
-        transition: opacity 180ms cubic-bezier(0.7, 0, 0.84, 0);
-      }
-
-      #termfleet-startup[data-startup-state="ready"] {
-        opacity: 0;
-        pointer-events: none;
-      }
-
-      #termfleet-startup::before {
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        width: min(780px, 92vw);
-        height: 1px;
-        background: linear-gradient(90deg, transparent, rgba(99, 183, 159, 0.24), transparent);
-        content: "";
-        transform: translate(-50%, -50%) scaleX(0.12);
-        transform-origin: center;
-        animation: termfleet-runway-sweep 2600ms cubic-bezier(0.16, 1, 0.3, 1) infinite;
-      }
-
-      #termfleet-startup::after {
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        width: 1px;
-        height: min(420px, 58vh);
-        background: linear-gradient(180deg, transparent, rgba(99, 183, 159, 0.12), transparent);
-        content: "";
-        transform: translate(-50%, -50%);
-        animation: termfleet-vertical-sweep 3200ms cubic-bezier(0.37, 0, 0.63, 1) infinite;
-      }
-
-      .termfleet-startup__lockup {
-        position: relative;
-        display: grid;
-        grid-template-columns: 164px minmax(0, 1fr);
-        align-items: center;
-        gap: 46px;
-        width: min(760px, calc(100vw - 48px));
-        opacity: 1;
-        transform: translateY(-4vh);
-      }
-
-      .termfleet-startup__mark {
-        display: block;
-        width: 164px;
-        height: 164px;
-        overflow: visible;
-        filter: drop-shadow(0 18px 32px rgba(0, 0, 0, 0.28));
-      }
-
-      .termfleet-loader__plate,
-      .termfleet-loader__chevron,
-      .termfleet-loader__fleet,
-      .termfleet-loader__fleet-block {
-        transform-box: fill-box;
-        transform-origin: center;
-      }
-
-      .termfleet-loader__plate {
-        opacity: 0;
-        animation: termfleet-plate-reveal 650ms cubic-bezier(0.16, 1, 0.3, 1) 80ms both;
-      }
-
-      .termfleet-loader__chevron {
-        opacity: 0;
-        stroke-dasharray: 100;
-        stroke-dashoffset: 100;
-        animation: termfleet-command-draw 850ms cubic-bezier(0.16, 1, 0.3, 1) 260ms both;
-      }
-
-      .termfleet-loader__fleet {
-        opacity: 0;
-        animation: termfleet-fleet-reveal 900ms cubic-bezier(0.16, 1, 0.3, 1) 660ms both;
-      }
-
-      .termfleet-loader__fleet-block {
-        opacity: 0;
-        transform: translateX(-8px) scale(0.94);
-        animation: termfleet-fleet-block-reveal 520ms cubic-bezier(0.16, 1, 0.3, 1)
-          calc(660ms + (var(--block-index) * 90ms)) both;
-      }
-
-      .termfleet-startup__copy {
-        display: grid;
-        gap: 9px;
-        min-width: 0;
-        opacity: 1;
-        transform: translateY(0);
-        animation: termfleet-wordmark-frame 900ms cubic-bezier(0.16, 1, 0.3, 1) 1480ms both;
-      }
-
-      .termfleet-startup__name {
-        display: flex;
-        margin: 0;
-        color: #f0f3f0;
-        font-size: 3rem;
-        font-weight: 500;
-        letter-spacing: -0.035em;
-        line-height: 1;
-      }
-
-      .termfleet-startup__letter {
-        display: inline-block;
-        opacity: 0;
-        transform: translateX(12px);
-        animation: termfleet-wordmark-letter 700ms cubic-bezier(0.16, 1, 0.3, 1)
-          calc(1520ms + (var(--letter-index) * 45ms)) both;
-      }
-
-      .termfleet-startup__status {
-        position: absolute;
-        top: calc(100% + 13px);
-        left: 210px;
-        margin: 0;
-        color: #c2cec8;
-        font-size: 0.9375rem;
-        font-weight: 300;
-        line-height: 1.45;
-        opacity: 0;
-        transition: opacity 180ms cubic-bezier(0.22, 1, 0.36, 1);
-      }
-
-      #termfleet-startup[data-startup-slow="true"] .termfleet-startup__status {
-        opacity: 1;
-      }
-
-      @keyframes termfleet-plate-reveal {
-        from { opacity: 0; transform: scale(0.84) rotate(-3deg); }
-        72% { opacity: 1; transform: scale(1.02) rotate(0.5deg); }
-        to { opacity: 1; transform: scale(1) rotate(0); }
-      }
-
-      @keyframes termfleet-command-draw {
-        from { opacity: 0; stroke-dashoffset: 100; transform: translateX(-6px); }
-        to { opacity: 1; stroke-dashoffset: 0; transform: translateX(0); }
-      }
-
-      @keyframes termfleet-fleet-reveal {
-        from { opacity: 0; transform: translateX(7px) scale(0.9); }
-        72% { opacity: 1; transform: translateX(-1px) scale(1.02); }
-        to { opacity: 1; transform: translateX(0) scale(1); }
-      }
-
-      @keyframes termfleet-fleet-block-reveal {
-        from { opacity: 0; transform: translateX(-8px) scale(0.94); }
-        to { opacity: 1; transform: translateX(0) scale(1); }
-      }
-
-      @keyframes termfleet-wordmark-frame {
-        from { opacity: 1; transform: translateX(12px); }
-        to { opacity: 1; transform: translateX(0); }
-      }
-
-      @keyframes termfleet-wordmark-letter {
-        from { opacity: 0; transform: translateX(12px); }
-        to { opacity: 1; transform: translateX(0); }
-      }
-
-      @keyframes termfleet-runway-sweep {
-        0%, 100% { opacity: 0; transform: translate(-50%, -50%) scaleX(0.12); }
-        24%, 70% { opacity: 1; transform: translate(-50%, -50%) scaleX(1); }
-      }
-
-      @keyframes termfleet-vertical-sweep {
-        0%, 100% { opacity: 0; transform: translate(-50%, -50%) scaleY(0.16); }
-        30%, 68% { opacity: 1; transform: translate(-50%, -50%) scaleY(1); }
-      }
-
-      @media (max-width: 520px) {
-        .termfleet-startup__lockup {
-          grid-template-columns: 100px minmax(0, 1fr);
-          gap: 24px;
-          width: min(440px, calc(100vw - 40px));
-        }
-
-        .termfleet-startup__mark {
-          width: 100px;
-          height: 100px;
-        }
-
-        .termfleet-startup__status {
-          left: 124px;
-        }
-      }
-
-      @media (prefers-reduced-motion: reduce) {
-        #termfleet-startup {
-          transition-duration: 1ms;
-        }
-
-        .termfleet-startup__lockup {
-          opacity: 1;
-          transform: translateY(-3vh);
-        }
-
-        .termfleet-loader__plate,
-        .termfleet-loader__chevron,
-        .termfleet-loader__fleet,
-        .termfleet-loader__fleet-block,
-        .termfleet-startup__copy,
-        .termfleet-startup__letter,
-        .termfleet-loader__waves,
-        .termfleet-loader__speed rect,
-        .termfleet-loader__hull,
-        .termfleet-loader__hull-chevron,
-        .termfleet-loader__hull-block { animation: none; opacity: 1; transform: none; stroke-dashoffset: 0; }
-
-        #termfleet-startup::before,
-        #termfleet-startup::after { animation: none; }
-      }
-
-      /* The approved Remotion reveal, expressed on the startup surface. */
-      .termfleet-startup__lockup {
-        display: flex;
-        flex-direction: column;
-        gap: 26px;
-        width: auto;
-        transform: translateY(-32px);
-      }
-
-      .termfleet-startup__mark {
-        width: 220px;
-        height: 220px;
-        filter: none;
-      }
-
-      .termfleet-startup__copy {
-        display: block;
-        text-align: center;
-        transform: none;
-        animation: none;
-      }
-
-      .termfleet-startup__status {
-        position: static;
-        margin: 16px 0 0;
-        color: #b9c5c0;
-        font-size: 1.375rem;
-        letter-spacing: 0.03em;
-      }
-
-      .termfleet-startup__name {
-        justify-content: center;
-        font-size: 3.875rem;
-      }
-
-      .termfleet-startup__letter {
-        animation-delay: calc(2040ms + (var(--letter-index) * 42ms));
-        transform: translateY(22px);
-      }
-
-      .termfleet-loader__plate,
-      .termfleet-loader__chevron,
-      .termfleet-loader__fleet,
-      .termfleet-loader__fleet-block { animation: none; }
-
-      .termfleet-loader__plate { display: none; }
-
-      .termfleet-loader__waves {
-        fill: none;
-        stroke: #78cbb0;
-        stroke-linecap: round;
-        opacity: 0;
-        animation: termfleet-wave-in 600ms ease-out 540ms forwards;
-      }
-
-      .termfleet-loader__wave {
-        stroke-dasharray: 15 8;
-        animation: termfleet-wave-drift 1800ms linear 540ms infinite;
-      }
-
-      .termfleet-loader__wave--low {
-        stroke-dasharray: 11 10;
-        opacity: 0.7;
-        animation-duration: 2200ms;
-        animation-direction: reverse;
-      }
-
-      .termfleet-loader__speed {
-        fill: #b7c9c1;
-      }
-
-      .termfleet-loader__speed rect {
-        opacity: 0;
-        animation: termfleet-speed-trail 720ms linear infinite;
-      }
-
-      .termfleet-loader__speed rect:nth-child(2) { animation-delay: 180ms; }
-      .termfleet-loader__speed rect:nth-child(3) { animation-delay: 360ms; }
-
-      .termfleet-loader__hull-group {
-        transform-box: fill-box;
-        transform-origin: center;
-        animation: termfleet-vessel-sway 1800ms ease-in-out 0ms infinite alternate;
-      }
-
-      .termfleet-loader__hull,
-      .termfleet-loader__hull-chevron {
-        opacity: 0;
-        animation: termfleet-hull-arrive 900ms cubic-bezier(0.16, 1, 0.3, 1) 240ms forwards;
-      }
-
-      .termfleet-loader__hull-block {
-        transform-box: fill-box;
-        transform-origin: bottom center;
-        transform: scaleY(0);
-        animation: termfleet-block-grow 480ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
-      }
-
-      .termfleet-loader__hull-block--one { animation-delay: 960ms; }
-      .termfleet-loader__hull-block--two { animation-delay: 1080ms; }
-
-      @keyframes termfleet-wave-in { to { opacity: 0.42; } }
-      @keyframes termfleet-wave-drift { from { stroke-dashoffset: 0; } to { stroke-dashoffset: -46; } }
-      @keyframes termfleet-speed-trail {
-        0% { opacity: 0; transform: translateX(16px); }
-        18% { opacity: 0.72; }
-        100% { opacity: 0; transform: translateX(-16px); }
-      }
-      @keyframes termfleet-vessel-sway {
-        from { transform: translateY(-0.7px) rotate(-1.25deg); }
-        to { transform: translateY(0.7px) rotate(1.25deg); }
-      }
-      @keyframes termfleet-hull-arrive {
-        from { opacity: 0; transform: translateX(-20px); }
-        to { opacity: 1; transform: translateX(0); }
-      }
-      @keyframes termfleet-block-grow { to { transform: scaleY(1); } }
-
-      @media (prefers-reduced-motion: reduce) {
-        .termfleet-loader__waves,
-        .termfleet-loader__wave,
-        .termfleet-loader__speed rect,
-        .termfleet-loader__hull-group,
-        .termfleet-loader__hull,
-        .termfleet-loader__hull-chevron,
-        .termfleet-loader__hull-block,
-        .termfleet-startup__letter { animation: none; opacity: 1; transform: none; stroke-dashoffset: 0; }
-      }
+      #termfleet-startup{position:fixed;inset:0;z-index:100;display:grid;place-items:center;min-height:100dvh;overflow:hidden;background:radial-gradient(circle at 50% 42%,#18333b 0,#0b1519 42%,#071014 100%);color:#edf2ef;font-family:"Rubik","Segoe UI",sans-serif;opacity:1;transition:opacity 180ms cubic-bezier(.7,0,.84,0)}
+      #termfleet-startup[data-startup-state="ready"]{opacity:0;pointer-events:none}
+      #termfleet-startup::before{position:absolute;top:50%;left:50%;width:min(520px,76vw);aspect-ratio:1;border:1px solid rgba(151,207,213,.1);border-radius:50%;content:"";transform:translate(-50%,-50%);animation:startup-ring 3600ms cubic-bezier(.37,0,.63,1) infinite}
+      #termfleet-startup::after{position:absolute;top:50%;left:50%;width:min(420px,70vw);height:1px;background:linear-gradient(90deg,transparent,rgba(151,207,213,.22),transparent);content:"";transform:translate(-50%,-50%) scaleX(.3);animation:startup-scan 2800ms cubic-bezier(.22,1,.36,1) infinite}
+      .termfleet-startup__lockup{position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;width:min(360px,calc(100vw - 48px));transform:translateY(-4vh)}
+      .termfleet-startup__mark{display:block;width:180px;height:180px;overflow:visible;filter:drop-shadow(0 20px 34px rgba(0,0,0,.28));animation:mark-settle 900ms cubic-bezier(.16,1,.3,1) both,mark-float 3600ms cubic-bezier(.37,0,.63,1) 900ms infinite}
+      .termfleet-loader__halo{fill:none;stroke:#9bd0d1;stroke-opacity:.26;stroke-width:.8;transform-box:fill-box;transform-origin:center;animation:halo-pulse 2400ms cubic-bezier(.37,0,.63,1) infinite}
+      .termfleet-loader__hull{fill:#f1eee6}.termfleet-loader__stern{fill:#d9e7e4}.termfleet-loader__stack{fill:#f1eee6}.termfleet-loader__terminal{fill:none;stroke:#17313f;stroke-width:6;stroke-linecap:round;stroke-linejoin:round}
+      .termfleet-loader__prompt{fill:none;stroke:#9bd0d1;stroke-width:2;stroke-linecap:round;opacity:.9;stroke-dasharray:3 8;animation:prompt-drift 1600ms linear infinite}.termfleet-loader__cursor{display:none}
+      .termfleet-startup__copy{display:grid;justify-items:center;gap:13px;margin-top:15px;text-align:center;animation:copy-arrive 700ms cubic-bezier(.16,1,.3,1) 240ms both}
+      .termfleet-startup__name{display:block;margin:0;color:#f1f4f0;font-size:2.25rem;font-weight:400;letter-spacing:.11em;line-height:1;text-transform:uppercase}.termfleet-startup__letter{display:inline}
+      .termfleet-startup__status{margin:0;color:#9db9ba;font-size:.7rem;font-weight:400;letter-spacing:.22em;line-height:1.4;text-transform:uppercase}
+      .termfleet-startup__progress{position:relative;width:152px;height:2px;margin-top:14px;overflow:hidden;background:rgba(155,208,209,.16)}
+      .termfleet-startup__progress::after{position:absolute;inset:0 auto 0 -60%;width:60%;background:linear-gradient(90deg,transparent,#b3d9d7,transparent);content:"";animation:progress-sweep 1800ms cubic-bezier(.22,1,.36,1) infinite}
+      @keyframes mark-settle{from{transform:translateY(12px) scale(.94)}72%{transform:translateY(-2px) scale(1.015)}to{transform:translateY(0) scale(1)}}
+      @keyframes mark-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-2px)}}
+      @keyframes copy-arrive{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+      @keyframes halo-pulse{0%,100%{opacity:.45;transform:scale(.97)}50%{opacity:.95;transform:scale(1.03)}}
+      @keyframes startup-ring{0%,100%{opacity:.34;transform:translate(-50%,-50%) scale(.96)}50%{opacity:.8;transform:translate(-50%,-50%) scale(1.02)}}
+      @keyframes startup-scan{0%,100%{opacity:0;transform:translate(-50%,-50%) scaleX(.3)}32%,68%{opacity:1;transform:translate(-50%,-50%) scaleX(1)}}
+      @keyframes prompt-drift{to{stroke-dashoffset:-22}}@keyframes progress-sweep{to{transform:translateX(270%)}}
+      @media (max-width:520px){.termfleet-startup__mark{width:140px;height:140px}.termfleet-startup__name{font-size:1.75rem}}
+      @media (prefers-reduced-motion:reduce){#termfleet-startup,#termfleet-startup *{animation:none!important;transition:none!important}}
     </style>
   </head>
   <body>
-    <div
-      id="termfleet-startup"
-      data-startup-state="starting"
-      role="status"
-      aria-live="polite"
-      aria-label="Starting TermFleet"
-    >
+    <div id="termfleet-startup" data-startup-state="starting" role="status" aria-live="polite" aria-label="Starting TermFleet">
       <div class="termfleet-startup__lockup">
-        <svg
-          class="termfleet-startup__mark"
-          viewBox="0 0 100 100"
-          role="presentation"
-          aria-hidden="true"
-        >
-          <g class="termfleet-loader__waves">
-            <path class="termfleet-loader__wave" d="M18 84 C28 80 38 88 48 84 S68 80 82 84" stroke-width="0.9" />
-            <path class="termfleet-loader__wave termfleet-loader__wave--low" d="M25 89 C34 86 42 92 52 89 S69 86 77 89" stroke-width="0.6" />
-          </g>
-          <g class="termfleet-loader__speed">
-            <rect x="2" y="44" width="16" height="3.5" rx="1.75" />
-            <rect x="7" y="56" width="13" height="3.5" rx="1.75" />
-            <rect x="12" y="68" width="10" height="3.5" rx="1.75" />
-          </g>
-          <g class="termfleet-loader__hull-group" fill="#ece9e2">
-            <path class="termfleet-loader__hull" d="M26 37h61c2.4 0 4 2.4 3 4.6L75 75.5c-.8 1.8-2.6 2.9-4.6 2.9H27c-2.8 0-5-2.2-5-5V42c0-2.8 1.2-5 4-5Z" />
-            <rect class="termfleet-loader__hull-block termfleet-loader__hull-block--one" x="38" y="24" width="23" height="8" rx="2" />
-            <rect class="termfleet-loader__hull-block termfleet-loader__hull-block--two" x="45" y="13" width="9" height="8" rx="2" />
-            <path class="termfleet-loader__hull-chevron" d="m57 48 13 10-13 10" fill="none" stroke="#17313f" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" />
-          </g>
+        <svg class="termfleet-startup__mark" viewBox="0 0 100 100" role="presentation" aria-hidden="true">
+          <circle class="termfleet-loader__halo" cx="50" cy="50" r="42" />
+          <path class="termfleet-loader__prompt" d="M21 83h58" />
+          <path class="termfleet-loader__hull" d="M26 37h61c2.4 0 4 2.4 3 4.6L75 75.5c-.8 1.8-2.6 2.9-4.6 2.9H27c-2.8 0-5-2.2-5-5V42c0-2.8 1.2-5 4-5Z" />
+          <g class="termfleet-loader__stern"><rect x="13" y="44" width="13" height="8" rx="2"/><rect x="16" y="56" width="10" height="8" rx="2"/><rect x="19" y="68" width="7" height="8" rx="2"/></g>
+          <g class="termfleet-loader__stack"><rect x="38" y="24" width="23" height="8" rx="2"/><rect x="45" y="13" width="9" height="8" rx="2"/></g>
+          <path class="termfleet-loader__terminal" d="m57 48 13 10-13 10" />
         </svg>
         <div class="termfleet-startup__copy">
-          <p class="termfleet-startup__name" aria-label="TermFleet">
-            <span class="termfleet-startup__letter" aria-hidden="true" style="--letter-index: 0">T</span>
-            <span class="termfleet-startup__letter" aria-hidden="true" style="--letter-index: 1">e</span>
-            <span class="termfleet-startup__letter" aria-hidden="true" style="--letter-index: 2">r</span>
-            <span class="termfleet-startup__letter" aria-hidden="true" style="--letter-index: 3">m</span>
-            <span class="termfleet-startup__letter" aria-hidden="true" style="--letter-index: 4">F</span>
-            <span class="termfleet-startup__letter" aria-hidden="true" style="--letter-index: 5">l</span>
-            <span class="termfleet-startup__letter" aria-hidden="true" style="--letter-index: 6">e</span>
-            <span class="termfleet-startup__letter" aria-hidden="true" style="--letter-index: 7">e</span>
-            <span class="termfleet-startup__letter" aria-hidden="true" style="--letter-index: 8">t</span>
-          </p>
+          <p class="termfleet-startup__name" aria-label="TermFleet"><span class="termfleet-startup__letter" aria-hidden="true">T</span><span class="termfleet-startup__letter" aria-hidden="true">e</span><span class="termfleet-startup__letter" aria-hidden="true">r</span><span class="termfleet-startup__letter" aria-hidden="true">m</span><span class="termfleet-startup__letter" aria-hidden="true">F</span><span class="termfleet-startup__letter" aria-hidden="true">l</span><span class="termfleet-startup__letter" aria-hidden="true">e</span><span class="termfleet-startup__letter" aria-hidden="true">e</span><span class="termfleet-startup__letter" aria-hidden="true">t</span></p>
           <p class="termfleet-startup__status">Starting TermFleet</p>
+          <div class="termfleet-startup__progress" aria-hidden="true"></div>
         </div>
       </div>
     </div>

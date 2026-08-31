@@ -48,6 +48,19 @@ test("real data replaces a placeholder immediately (no hold on initial populatio
   expect(out.now).toBe("running grep");
 });
 
+test("map rows can hold placeholder upgrades when stability is the acceptance rule", () => {
+  const prev: StableHeaderEntry = { title: "Task", now: "Idle — no work is running", committedAt: 1_000 };
+  const out = nextStableHeader(
+    prev,
+    { title: "Task", now: "Verifying repeated relaunches preserve terminals" },
+    1_001,
+    MIN_HEADER_HOLD_MS,
+    false,
+    true,
+  );
+  expect(out).toBe(prev);
+});
+
 test("a change between two real values is held", () => {
   const prev: StableHeaderEntry = { title: "Fixing the panel", now: "running rtk grep", committedAt: 1_000 };
   const out = nextStableHeader(prev, { title: "Fixing the panel", now: "running cat" }, 2_000);

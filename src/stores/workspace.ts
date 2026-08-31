@@ -16,6 +16,7 @@ import type {
   WorkspaceUiState,
   WorkstreamLaunchProfile,
 } from "../lib/types";
+import { preserveDurablePaneGoal } from "../lib/statusPollProjection";
 import { cockpitObjectReviewPatch, mergeCockpitObjectsFromExtractedItems } from "../lib/workstreamExtraction";
 import {
   splitNodeInTree,
@@ -38,6 +39,7 @@ import {
   resolveCanvasNodeProjects,
 } from "../lib/canvasArrange";
 import { waitForClosePersistence } from "../lib/closePersistence";
+import { registerTaskRun } from "../lib/canonicalTaskRuntime";
 
 const GROUP_COLORS = [
   "#7aa2f7",
@@ -344,8 +346,13 @@ interface WorkspaceState {
   workspaceUiState: WorkspaceUiState;
   canvasState: CanvasState;
   recentlyClosed: RecentlyClosedTerminal[];
+  /** All checkpointed sessions, including unknown and operator-closed records. */
+  recoverySessions: RecoverySessionRecord[];
   closedSessionIds: string[];
+  /** Provider conversation ids explicitly closed by the operator. */
+  closedProviderSessionIds: string[];
   closedRestoreTargets: ClosedRestoreTarget[];
+  recoveryTransfers: RecoveryTransfer[];
   agentRecoveryMigrationVersion: number;
   // True while the durable on-disk layout is being loaded (only when
   // localStorage was empty/reset). Terminals must not mount until this clears,
@@ -361,11 +368,15 @@ interface WorkspaceState {
     liveCwds?: Record<string, string>;
     liveGitRoots?: Record<string, string>;
     closedSessionIds?: string[];
+    closedProviderSessionIds?: string[];
     closedRestoreTargets?: ClosedRestoreTarget[];
     agentRecoveryMigrationVersion?: number;
+    recoverySessions?: RecoverySessionRecord[];
+    recoveryTransfers?: RecoveryTransfer[];
   }) => void;
   removeTab: (id: string) => void;
   closeTerminalSession: (id: string, reason?: TerminalCloseReason) => Promise<void>;
+  restoreRecoverySession: (id: string) => Promise<void>;
   restoreLastClosed: () => boolean;
   setActiveTab: (id: string) => void;
   updateTab: (id: string, updates: Partial<Tab>) => void;
@@ -444,6 +455,7 @@ const initialTab = createDefaultTab();
 
 let pendingProjectSwitchFrame: number | null = null;
 let pendingProjectSwitchToken = 0;
+let workspaceMutationVersion = 0;
 
 function cancelPendingProjectSwitchActivation() {
   pendingProjectSwitchToken += 1;
@@ -488,8 +500,63 @@ interface PersistedWorkspace {
   workspaceUiState?: Partial<WorkspaceUiState>;
   canvasState?: CanvasState;
   closedSessionIds?: string[];
+  closedProviderSessionIds?: string[];
   closedRestoreTargets?: ClosedRestoreTarget[];
   agentRecoveryMigrationVersion?: number;
+  recoveryTransfers?: RecoveryTransfer[];
+}
+
+interface RecoveryTransfer {
+  sourceTabId: string;
+  targetTabId: string;
+  sourceTerminalId: string;
+  replacementTerminalId: string;
+  sourcePaneId: string;
+  targetPaneId: string;
+  provider: "codex" | "claude";
+  providerSessionId: string;
+}
+
+function applyRecoveryTransfers(tabs: Tab[], transfers: RecoveryTransfer[]): Tab[] {
+  let nextTabs = tabs;
+  for (const transfer of transfers) {
+    const sourceIndex = nextTabs.findIndex((tab) => tab.id === transfer.sourceTabId);
+    const targetIndex = nextTabs.findIndex((tab) => tab.id === transfer.targetTabId);
+    if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) continue;
+    const source = nextTabs[sourceIndex];
+    const target = nextTabs[targetIndex];
+    const sourceTemplate = source.terminals.find((terminal) => terminal.id !== transfer.sourceTerminalId) ?? source.terminals[0];
+    const targetTemplate = target.terminals.find((terminal) => terminal.id !== transfer.sourceTerminalId) ?? target.terminals[0];
+    if (!sourceTemplate || !targetTemplate) continue;
+    const moved = {
+      ...targetTemplate,
+      id: transfer.sourceTerminalId,
+      paneId: transfer.sourcePaneId,
+      status: "starting" as const,
+      reused: true,
+      recoveryLifecycle: "alive" as const,
+      agentProvider: transfer.provider,
+      providerSessionId: transfer.providerSessionId,
+      lastError: undefined,
+    };
+    const replacement = {
+      ...sourceTemplate,
+      id: transfer.replacementTerminalId,
+      paneId: transfer.targetPaneId,
+      status: "starting" as const,
+      reused: false,
+      recoveryLifecycle: "alive" as const,
+      agentProvider: "shell" as const,
+      providerSessionId: undefined,
+      lastError: undefined,
+    };
+    nextTabs = nextTabs.map((tab, index) => {
+      if (index === sourceIndex) return { ...tab, terminals: [replacement], activePaneId: transfer.targetPaneId, splitLayout: { ...tab.splitLayout, id: transfer.targetPaneId } };
+      if (index === targetIndex) return { ...tab, terminals: [moved], activePaneId: transfer.sourcePaneId, splitLayout: { ...tab.splitLayout, id: transfer.sourcePaneId } };
+      return tab;
+    });
+  }
+  return nextTabs;
 }
 
 function persistedTerminalSnapshot(terminal: TerminalState): TerminalState {
@@ -509,6 +576,13 @@ function persistedTerminalSnapshot(terminal: TerminalState): TerminalState {
     taskLine: terminal.taskLine,
     nowLine: terminal.nowLine,
     agentProvider: terminal.agentProvider,
+    providerSessionId: terminal.providerSessionId,
+    // Keep the pane's validated Goal across a desktop restart. Live status is
+    // refreshed after reattach, but dropping this identity made the first render
+    // depend on a timely sidecar read and allowed a shared project purpose to leak in.
+    statusSummary: terminal.statusSummary,
+    statusSummaryUpdatedAt: terminal.statusSummaryUpdatedAt,
+    statusSummarySource: terminal.statusSummarySource,
     purpose: terminal.purpose,
     mainUserAsk: persistedMainUserAsk(terminal.mainUserAsk),
     taskSidebarCollapsed: terminal.taskSidebarCollapsed,
@@ -526,6 +600,7 @@ function withRestartableTerminals(tab: Tab): Tab {
         ...terminal,
         mainUserAsk: persistedMainUserAsk(terminal.mainUserAsk),
         status: "starting",
+        recoveryLifecycle: "unknown",
         manualStopRequested: false,
         reused: false,
         previewUrl: terminal.previewUrl,
@@ -535,18 +610,28 @@ function withRestartableTerminals(tab: Tab): Tab {
 }
 
 function isLegacyAnonymousRecoveredTab(tab: Tab) {
-  return tab.title === "Recovered" && !tab.initialCwd && !tab.workstream;
+  return (
+    tab.id.startsWith("recovered-tab-") ||
+    (tab.title === "Recovered" && !tab.initialCwd && !tab.workstream)
+  );
 }
 
 function withoutLegacyRecoveredTabs(tabs: Tab[]) {
   return tabs.filter((tab) => !isLegacyAnonymousRecoveredTab(tab));
 }
 
-function withoutClosedSessionTabs(tabs: Tab[], closedSessionIds: Set<string>) {
+function withoutClosedSessionTabs(
+  tabs: Tab[],
+  closedSessionIds: Set<string>,
+  closedProviderSessionIds: Set<string> = new Set(),
+) {
   return tabs.flatMap((tab) => {
     if (tab.terminals.length === 0) return [tab];
+    const isClosed = (terminal: TerminalState) =>
+      closedSessionIds.has(terminal.id) ||
+      Boolean(terminal.providerSessionId && closedProviderSessionIds.has(terminal.providerSessionId));
     const closedPanes = tab.terminals
-      .filter((terminal) => closedSessionIds.has(terminal.id))
+      .filter(isClosed)
       .map((terminal) => terminal.paneId);
     if (closedPanes.length === 0) return [tab];
 
@@ -557,7 +642,7 @@ function withoutClosedSessionTabs(tabs: Tab[], closedSessionIds: Set<string>) {
     }
     const leaves = new Set(getAllLeafIds(splitLayout));
     const terminals = tab.terminals.filter(
-      (terminal) => !closedSessionIds.has(terminal.id) && leaves.has(terminal.paneId),
+      (terminal) => !isClosed(terminal) && leaves.has(terminal.paneId),
     );
     if (terminals.length === 0) return [];
     return [{
@@ -634,6 +719,7 @@ function terminalNodeForTab(tab: Tab, index: number): CanvasNode {
     width: TERMINAL_MAP_NODE_SIZE.width,
     height: TERMINAL_MAP_NODE_SIZE.height,
     terminalTabId: tab.id,
+    linkedTerminalPaneId: tab.activePaneId,
     terminalCwd: tab.initialCwd,
   };
 }
@@ -958,11 +1044,27 @@ function normalizeCanvasState(canvasState: CanvasState | undefined, tabs: Tab[])
     const min = CANVAS_NODE_MIN_SIZE[node.type];
     if (node.type === "terminal") {
       const size = normalizedTerminalNodeSize(node);
+      const linkedTab = node.terminalTabId
+        ? tabs.find((tab) => tab.id === node.terminalTabId)
+        : undefined;
+      const linkedTerminal =
+        linkedTab?.terminals.find((terminal) => terminal.id === node.terminalPtyId) ??
+        linkedTab?.terminals.find(
+          (terminal) => terminal.paneId === node.linkedTerminalPaneId,
+        ) ??
+        linkedTab?.terminals.find((terminal) => terminal.paneId === linkedTab.activePaneId);
       normalizedNodes.push({
         ...node,
-        terminalPtyId: node.terminalPtyId && liveTerminalIds.has(node.terminalPtyId)
-          ? node.terminalPtyId
-          : undefined,
+        // An explicit map-to-pane link is recovery identity, not a view
+        // preference. Preserve it even when another split pane was active at
+        // shutdown; only fall back to the active pane when the saved link no
+        // longer names a terminal owned by this tab.
+        linkedTerminalPaneId: linkedTerminal?.paneId ?? node.linkedTerminalPaneId,
+        terminalPtyId:
+          linkedTerminal?.id ??
+          (node.terminalPtyId && liveTerminalIds.has(node.terminalPtyId)
+            ? node.terminalPtyId
+            : undefined),
         ...size,
       });
     } else if (node.type === "preview") {
@@ -1092,6 +1194,8 @@ function loadPersistedWorkspace(): PersistedWorkspace {
         paneId: string,
         cwd: string,
         task: string,
+        goal: string,
+        goalSource: "about-what" | "opening-request",
         activity: string,
         status: "working" | "idle" = "working",
       ): TerminalState => ({
@@ -1120,6 +1224,8 @@ function loadPersistedWorkspace(): PersistedWorkspace {
         }],
         statusSummary: {
           task,
+          mainTask: goal,
+          mainTaskSource: goalSource,
           path: cwd,
           now: activity,
           status,
@@ -1149,18 +1255,24 @@ function loadPersistedWorkspace(): PersistedWorkspace {
             "terminal-header-verifier-prompt",
             root,
             "Choosing the next GI-lightmap step",
+            "Help operators choose the next GI-lightmap step without losing the proven pipeline",
+            "opening-request",
             "Waiting for the operator decision",
           ),
           verifierTerminal(
             "terminal-header-verifier-stale",
             root,
             "Checking stale transcript protection",
+            "Keep completed test evidence separate from the active work",
+            "opening-request",
             "Ignoring completed test output",
           ),
           verifierTerminal(
             "terminal-header-verifier-idle",
             root,
             "Keeping the idle verifier pane stable",
+            "Keep paused verifier sessions easy to recognize and resume",
+            "opening-request",
             "Paused after verifying the terminal identity",
             "idle",
           ),
@@ -1168,6 +1280,8 @@ function loadPersistedWorkspace(): PersistedWorkspace {
             "terminal-header-verifier-long-path",
             longPath,
             "Verifying long path rendering",
+            "Keep deep workspace paths identifiable in the terminal cockpit",
+            "opening-request",
             "Showing the full structured path",
           ),
         ],
@@ -1244,7 +1358,7 @@ export function resetPersistedWorkspace() {
 
 const persisted = loadPersistedWorkspace();
 const restoredTabs =
-  persisted.tabs && persisted.tabs.length > 0
+  Array.isArray(persisted.tabs) && persisted.tabs.length > 0
     ? withoutLegacyRecoveredTabs(persisted.tabs).map(withRestartableTerminals)
     : [initialTab];
 const restoredActiveTabId =
@@ -1261,6 +1375,20 @@ function isTauriRuntime() {
     window.location.hostname === "localhost";
 }
 
+async function auditLifecycle(
+  invoke: <T>(command: string, args?: Record<string, unknown>) => Promise<T>,
+  id: string,
+  kind: string,
+  reason?: string,
+) {
+  if (!id) return;
+  try {
+    await invoke("lifecycle_audit", { id, kind, reason: reason ?? null });
+  } catch (error) {
+    console.warn("Could not write terminal lifecycle audit:", id, kind, error);
+  }
+}
+
 // Desktop disk is the durable source of truth. Always gate the first render long
 // enough to load it; otherwise the initial localStorage cache can be mirrored back
 // to disk before hydration and erase a newer recovery checkpoint.
@@ -1268,12 +1396,16 @@ const needsDiskHydration =
   isTauriRuntime() &&
   !FORCE_WORKSPACE_RESET_STATE;
 
-interface PersistedSessionSummary {
+export interface RecoverySessionRecord {
   id: string;
   cwd: string | null;
   scrollbackBytes: number;
-  lifecycle?: "recoverable" | "intentional-kill" | "backup-only";
+  lifecycle?: "unknown" | "recoverable" | "intentional-kill" | "backup-only";
+  provenance?: "explicit-user-close" | "legacy-unverified" | "sidecar-only";
   backupOnly?: boolean;
+  command?: string;
+  provider?: string;
+  providerSessionId?: string;
 }
 
 interface LiveSessionSummary {
@@ -1281,6 +1413,13 @@ interface LiveSessionSummary {
   cwd: string | null;
   initialCwd?: string | null;
   command?: string;
+  providerSessionId?: string;
+  provider?: string;
+}
+
+function providerSessionIdFromCommand(command?: string): string | undefined {
+  const match = command?.match(/(?:^|[;\s])(?:--?resume|resume)\s+([^\s;]+)/);
+  return match?.[1]?.trim() || undefined;
 }
 
 function externalRestoreName(command?: string): string | undefined {
@@ -1300,12 +1439,12 @@ interface AgentStatusSidecarRecord {
   paneId?: string;
   cwd?: string;
   updatedAt?: number;
+  provider?: string;
+  sessionId?: string;
+  providerSessionId?: string;
 }
 
-// Sessions below this are just a fresh prompt / empty shell — not worth recovering.
-const ORPHAN_MIN_BYTES = 256;
-const AGENT_RECOVERY_MIGRATION_VERSION = 1;
-const AGENT_RECOVERY_MAX_AGE_MS = 6 * 60 * 60 * 1000;
+const AGENT_RECOVERY_MIGRATION_VERSION = 5;
 
 async function listLiveSessionsWithRetry(
   invoke: <T>(command: string) => Promise<T>,
@@ -1317,6 +1456,7 @@ async function listLiveSessionsWithRetry(
         return result.map((session) => ({
           ...session,
           cwd: session.cwd ?? session.initialCwd ?? null,
+          providerSessionId: session.providerSessionId ?? providerSessionIdFromCommand(session.command),
         }));
       }
     } catch (error) {
@@ -1340,6 +1480,10 @@ function tabFromRecoverableSession(
   let paneId: string;
   if (session.id.startsWith(prefix)) {
     const body = session.id.slice(prefix.length);
+    // Only the canonical terminal-<uuid-tab>-<uuid-pane> form can be
+    // losslessly decoded here. Recovered/opaque ids are reconciled by their
+    // exact saved identity or sidecar; truncating them manufactures a new tab.
+    if (body.length < 73 || body[36] !== "-") return null;
     tabId = body.slice(0, 36);
     paneId = body.slice(37);
     // Skip map-node sessions — the same tab's real pane carries the content.
@@ -1358,7 +1502,7 @@ function tabFromRecoverableSession(
     id: tabId,
     title,
     initialCwd: cwd,
-    restoreName: externalRestoreName(session.command),
+      restoreName: externalRestoreName(session.command),
     splitLayout: { id: paneId, type: "terminal" as const },
     activePaneId: paneId,
   });
@@ -1369,7 +1513,10 @@ function tabFromRecoverableSession(
       paneId,
       cols: 80,
       rows: 24,
-      status: options.recovery ? "stale" : "starting",
+      status: options.recovery ? "stale" : "reconnected",
+      recoveryLifecycle: options.recovery ? "dead-recoverable" : "alive",
+      agentProvider: session.provider === "codex" || session.provider === "claude" ? session.provider : undefined,
+      providerSessionId: session.providerSessionId ?? providerSessionIdFromCommand(session.command),
       reused: options.recovery,
       lastError: options.recovery
         ? "Session restored after an interrupted workspace restart."
@@ -1378,37 +1525,200 @@ function tabFromRecoverableSession(
   };
 }
 
-/** Rebind an externally restored agent to an existing recovered card. */
+function mergeRecoveredTabIntoSavedStub(savedTab: Tab, recoveredTab: Tab): Tab {
+  return {
+    ...savedTab,
+    initialCwd: recoveredTab.initialCwd,
+    restoreName: recoveredTab.restoreName ?? savedTab.restoreName,
+    terminals: recoveredTab.terminals.map((terminal, index) => ({
+      ...terminal,
+      agentProvider: terminal.agentProvider ?? savedTab.terminals[index]?.agentProvider,
+      providerSessionId:
+        terminal.providerSessionId ?? savedTab.terminals[index]?.providerSessionId,
+    })),
+    splitLayout: recoveredTab.splitLayout,
+    activePaneId: recoveredTab.activePaneId,
+  };
+}
+
+/** Rebind an externally restored agent to its existing saved or recovered card. */
 function bindExternalSessionToSavedTab(
   tabs: Tab[],
   session: LiveSessionSummary,
   liveSessionIds: Set<string>,
 ): Tab[] | null {
-  if (session.id.startsWith("terminal-") || !session.command?.includes("TERMFLEET=1") || !session.cwd) return null;
-  const directIndex = tabs.findIndex((tab) => tab.terminals.some((terminal) => terminal.id === session.id));
-  if (directIndex >= 0) return tabs;
-  const title = session.cwd.split("/").filter(Boolean).pop() ?? DEFAULT_TAB_TITLE;
+  const sessionCwd = session.cwd ?? session.initialCwd;
+  const directMatches = tabs.flatMap((tab, tabIndex) =>
+    tab.terminals.flatMap((terminal, terminalIndex) =>
+      terminal.id === session.id ? [{ tab, tabIndex, terminalIndex }] : [],
+    ),
+  );
+  if (directMatches.length > 0) {
+    const preferred = directMatches.find(
+      ({ tab }) => tab.id !== `recovered-tab-${session.id}`,
+    ) ?? directMatches[0];
+    return tabs.flatMap((tab, tabIndex) => {
+      const removedPaneIds = tab.terminals.flatMap((terminal, terminalIndex) =>
+        terminal.id === session.id &&
+        (tabIndex !== preferred.tabIndex || terminalIndex !== preferred.terminalIndex)
+          ? [terminal.paneId]
+          : [],
+      );
+      const hasPreferred = tabIndex === preferred.tabIndex;
+      if (!hasPreferred && removedPaneIds.length === 0) return [tab];
+
+      let splitLayout = tab.splitLayout;
+      for (const paneId of removedPaneIds) {
+        if (getAllLeafIds(splitLayout).length <= 1) break;
+        splitLayout = removeNodeFromTree(splitLayout, paneId) ?? splitLayout;
+      }
+      const leaves = new Set(getAllLeafIds(splitLayout));
+      const terminals = tab.terminals
+        .filter((terminal, terminalIndex) =>
+          terminal.id !== session.id ||
+          (tabIndex === preferred.tabIndex && terminalIndex === preferred.terminalIndex),
+        )
+        .filter((terminal) => leaves.has(terminal.paneId))
+        .map((terminal) =>
+          terminal.id === session.id
+            ? {
+                ...terminal,
+                recoveryLifecycle: "alive" as const,
+                status: "reconnected" as const,
+                agentProvider:
+                  session.provider === "codex" ||
+                  session.provider === "claude" ||
+                  session.provider === "opencode"
+                    ? session.provider
+                    : terminal.agentProvider,
+                providerSessionId:
+                  session.providerSessionId ??
+                  providerSessionIdFromCommand(session.command) ??
+                  terminal.providerSessionId,
+              }
+            : terminal,
+        );
+      if (terminals.length === 0) return [];
+      return [{
+        ...tab,
+        splitLayout,
+        terminals,
+        activePaneId: tab.activePaneId !== null && leaves.has(tab.activePaneId)
+          ? tab.activePaneId
+          : getAllLeafIds(splitLayout)[0],
+      }];
+    });
+  }
+  if (session.id.startsWith("terminal-") || !session.command?.includes("TERMFLEET=1") || !sessionCwd) return null;
+  const providerSessionId = session.providerSessionId ?? providerSessionIdFromCommand(session.command);
+  if (!providerSessionId) return null;
   const restoreName = externalRestoreName(session.command);
   const candidateIndex = tabs.findIndex((tab) =>
-    tab.id.startsWith("recovered-tab-") &&
-    tab.initialCwd === session.cwd &&
-    tab.terminals.length === 1 &&
-    !liveSessionIds.has(tab.terminals[0].id) &&
-    (restoreName ? tab.restoreName === restoreName : tab.title === title),
+    tab.terminals.some(
+      (terminal) =>
+        !liveSessionIds.has(terminal.id) &&
+        terminal.providerSessionId === providerSessionId,
+    ),
   );
   if (candidateIndex < 0) return null;
   const tab = tabs[candidateIndex];
+  const candidateTerminalIndex = tab.terminals.findIndex(
+    (terminal) =>
+      !liveSessionIds.has(terminal.id) &&
+      terminal.providerSessionId === providerSessionId,
+  );
+  if (candidateTerminalIndex < 0) return null;
   const nextTabs = tabs.slice();
   nextTabs[candidateIndex] = {
     ...tab,
     restoreName: restoreName ?? tab.restoreName,
-    terminals: [{
-      ...tab.terminals[0],
-      id: session.id,
-      status: "starting",
-      reused: false,
-      lastError: undefined,
-    }],
+    terminals: tab.terminals.map((terminal, index) =>
+      index === candidateTerminalIndex
+        ? {
+            ...terminal,
+            id: session.id,
+            status: "reconnected",
+            recoveryLifecycle: "alive",
+            agentProvider:
+              session.provider === "codex" ||
+              session.provider === "claude" ||
+              session.provider === "opencode"
+                ? session.provider
+                : terminal.agentProvider,
+            providerSessionId,
+            reused: false,
+            lastError: undefined,
+          }
+        : terminal,
+    ),
+  };
+  return nextTabs;
+}
+
+/**
+ * Older map builds spawned a second PTY under
+ * `terminal-<tab>-terminal-map-<tab>`. When the saved canvas node still points
+ * at one exact pane, keep that surviving provider conversation attached to the
+ * pane instead of preferring the newer empty shell with the canonical id.
+ */
+export function bindLegacyMapSessionToSavedPane(
+  tabs: Tab[],
+  session: LiveSessionSummary,
+  canvasState: CanvasState | null | undefined,
+): Tab[] | null {
+  const match = session.id.match(
+    /^terminal-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})-terminal-map-\1$/i,
+  );
+  if (!match || !canvasState) return null;
+
+  const tabId = match[1];
+  const node = canvasState.nodes.find(
+    (candidate) =>
+      candidate.id === `terminal-map-${tabId}` &&
+      candidate.type === "terminal" &&
+      candidate.terminalTabId === tabId &&
+      Boolean(candidate.linkedTerminalPaneId) &&
+      Boolean(candidate.terminalPtyId),
+  );
+  if (!node?.linkedTerminalPaneId || !node.terminalPtyId) return null;
+
+  const tabIndex = tabs.findIndex((tab) => tab.id === tabId);
+  if (tabIndex < 0) return null;
+  const tab = tabs[tabIndex];
+  const terminalIndex = tab.terminals.findIndex(
+    (terminal) =>
+      terminal.paneId === node.linkedTerminalPaneId &&
+      (terminal.id === node.terminalPtyId || terminal.id === session.id),
+  );
+  if (terminalIndex < 0) return null;
+
+  const provider =
+    session.provider === "codex" ||
+    session.provider === "claude" ||
+    session.provider === "opencode"
+      ? session.provider
+      : null;
+  const providerSessionId =
+    session.providerSessionId ?? providerSessionIdFromCommand(session.command);
+  if (!provider || !providerSessionId) return null;
+
+  const nextTabs = tabs.slice();
+  nextTabs[tabIndex] = {
+    ...tab,
+    terminals: tab.terminals.map((terminal, index) =>
+      index === terminalIndex
+        ? {
+            ...terminal,
+            id: session.id,
+            status: "reconnected" as const,
+            recoveryLifecycle: "alive" as const,
+            agentProvider: provider,
+            providerSessionId,
+            reused: false,
+            lastError: undefined,
+          }
+        : terminal,
+    ),
   };
   return nextTabs;
 }
@@ -1425,6 +1735,31 @@ function bindLiveSessionToSavedTab(tabs: Tab[], session: LiveSessionSummary): Ta
   if (body.length < 73 || body[36] !== "-") return null;
   const tabId = body.slice(0, 36);
   const paneId = body.slice(37);
+
+  // A reviewed provider transfer can leave the daemon PTY id encoded with the
+  // old tab identity while the exact provider-owned pane now lives in a new
+  // project tab. Prefer that explicit provider pane instead of reconstructing
+  // the PTY into its old tab and creating two UI references to one writer.
+  const directMatches = tabs.flatMap((tab, index) =>
+    tab.terminals
+      .map((terminal, terminalIndex) => ({ tab, index, terminal, terminalIndex }))
+      .filter((entry) => entry.terminal.id === session.id),
+  );
+  if (directMatches.length > 0) {
+    const preferred = directMatches.find(
+      (entry) => entry.terminal.agentProvider && entry.terminal.agentProvider !== "shell",
+    ) ?? directMatches[0];
+    const nextTabs = tabs.slice();
+    nextTabs[preferred.index] = {
+      ...nextTabs[preferred.index],
+      terminals: nextTabs[preferred.index].terminals.map((terminal, index) =>
+        index === preferred.terminalIndex
+          ? { ...terminal, recoveryLifecycle: "alive", status: "reconnected" }
+          : terminal,
+      ),
+    };
+    return nextTabs;
+  }
   const tabIndex = tabs.findIndex((tab) => tab.id === tabId);
   if (tabIndex < 0) return null;
   const tab = tabs[tabIndex];
@@ -1455,7 +1790,7 @@ function bindLiveSessionToSavedTab(tabs: Tab[], session: LiveSessionSummary): Ta
         activePaneId: tab.activePaneId && leafIds.includes(tab.activePaneId) ? tab.activePaneId : paneId,
         terminals: [
           ...terminals,
-          { id: session.id, paneId, cols: 80, rows: 24, status: "starting", reused: false },
+          { id: session.id, paneId, cols: 80, rows: 24, status: "reconnected", recoveryLifecycle: "alive", reused: false },
         ],
       };
       return nextTabs;
@@ -1465,18 +1800,31 @@ function bindLiveSessionToSavedTab(tabs: Tab[], session: LiveSessionSummary): Ta
       ...tab,
       terminals: [
         ...tab.terminals,
-        { id: session.id, paneId, cols: 80, rows: 24, status: "starting", reused: false },
+        { id: session.id, paneId, cols: 80, rows: 24, status: "reconnected", recoveryLifecycle: "alive", reused: false },
       ],
     };
     return nextTabs;
   }
-  if (tab.terminals[terminalIndex].id === session.id) return tabs;
+  if (tab.terminals[terminalIndex].id === session.id) {
+    const nextTabs = tabs.slice();
+    nextTabs[tabIndex] = {
+      ...tab,
+      terminals: tab.terminals.map((terminal, index) =>
+        index === terminalIndex
+          ? { ...terminal, recoveryLifecycle: "alive", status: "reconnected" }
+          : terminal,
+      ),
+    };
+    return nextTabs;
+  }
 
   const terminals = tab.terminals.slice();
   terminals[terminalIndex] = {
     ...terminals[terminalIndex],
     id: session.id,
-    status: "starting",
+    status: "reconnected",
+      recoveryLifecycle: "alive",
+      providerSessionId: session.providerSessionId ?? providerSessionIdFromCommand(session.command),
     reused: false,
     lastError: undefined,
   };
@@ -1485,13 +1833,95 @@ function bindLiveSessionToSavedTab(tabs: Tab[], session: LiveSessionSummary): Ta
   return nextTabs;
 }
 
+export function preserveLiveHeaderState(nextTabs: Tab[], currentTabs: Tab[]): Tab[] {
+  const currentByTabIdentity = new Map<string, Tab>();
+  for (const currentTab of currentTabs) {
+    currentByTabIdentity.set(currentTab.id, currentTab);
+    for (const currentTerminal of currentTab.terminals) {
+      currentByTabIdentity.set(currentTerminal.id, currentTab);
+      currentByTabIdentity.set(currentTerminal.paneId, currentTab);
+    }
+  }
+  return nextTabs.map((tab) => {
+    const currentTab =
+      currentByTabIdentity.get(tab.id) ??
+      tab.terminals
+        .map((terminal) =>
+          currentByTabIdentity.get(terminal.id) ??
+          currentByTabIdentity.get(terminal.paneId),
+        )
+        .find((candidate): candidate is Tab => Boolean(candidate));
+    if (!currentTab) return tab;
+    const currentByTerminalKey = new Map(
+      currentTab.terminals.flatMap((terminal) => [
+        [terminal.id, terminal] as const,
+        [terminal.paneId, terminal] as const,
+      ]),
+    );
+    return {
+      ...tab,
+      workstream: tab.workstream && currentTab.workstream
+        ? {
+            ...tab.workstream,
+            statusSummary: currentTab.workstream.statusSummary
+              ? preserveDurablePaneGoal(
+                  tab.workstream.statusSummary,
+                  currentTab.workstream.statusSummary,
+                )
+              : tab.workstream.statusSummary,
+            statusSummaryUpdatedAt: currentTab.workstream.statusSummaryUpdatedAt ?? tab.workstream.statusSummaryUpdatedAt,
+            statusSummarySource: currentTab.workstream.statusSummarySource ?? tab.workstream.statusSummarySource,
+            statusSummaryError: currentTab.workstream.statusSummaryError ?? tab.workstream.statusSummaryError,
+            taskLine: currentTab.workstream.taskLine ?? tab.workstream.taskLine,
+            taskLineup: currentTab.workstream.taskLineup ?? tab.workstream.taskLineup,
+          }
+        : tab.workstream,
+      terminals: tab.terminals.map((terminal) => {
+        const current = currentByTerminalKey.get(terminal.id) ?? currentByTerminalKey.get(terminal.paneId);
+        if (!current) return terminal;
+        return {
+          ...terminal,
+          status:
+            terminal.status === "reconnected" &&
+            (current.status === "starting" ||
+              current.status === "stale" ||
+              current.status === "exited")
+              ? terminal.status
+              : current.status ?? terminal.status,
+          statusSummary: current.statusSummary
+            ? preserveDurablePaneGoal(terminal.statusSummary, current.statusSummary)
+            : terminal.statusSummary,
+          statusSummaryUpdatedAt: current.statusSummaryUpdatedAt ?? terminal.statusSummaryUpdatedAt,
+          statusSummarySource: current.statusSummarySource ?? terminal.statusSummarySource,
+          statusSummaryError: current.statusSummaryError ?? terminal.statusSummaryError,
+          mainUserAsk: current.mainUserAsk ?? terminal.mainUserAsk,
+          taskLine: current.taskLine ?? terminal.taskLine,
+          taskLineup: current.taskLineup ?? terminal.taskLineup,
+          nowLine: current.nowLine ?? terminal.nowLine,
+          agentProvider: current.agentProvider ?? terminal.agentProvider,
+          providerSessionId: current.providerSessionId ?? terminal.providerSessionId,
+          currentActivity: current.currentActivity ?? terminal.currentActivity,
+          activityUpdatedAt: current.activityUpdatedAt ?? terminal.activityUpdatedAt,
+          terminalVisibleText: current.terminalVisibleText ?? terminal.terminalVisibleText,
+          terminalVisibleTextUpdatedAt:
+            current.terminalVisibleTextUpdatedAt ?? terminal.terminalVisibleTextUpdatedAt,
+        };
+      }),
+    };
+  });
+}
+
 /**
  * Restore the durable workspace after mount: load the on-disk layout when
  * localStorage was empty/reset, then reconcile any orphaned on-disk session
  * content back into tabs. Runs once from App. Clears the `hydrating` gate.
  */
-export async function hydrateWorkspace() {
+export async function hydrateWorkspace(options: { background?: boolean } = {}) {
   const store = useWorkspaceStore.getState();
+  // The caller decides whether this is the dock readiness pass. A populated
+  // localStorage cache clears `hydrating` before App mounts, so deriving this
+  // boundary from store state would put history scans back on the normal launch.
+  const initialCriticalHydration = !options.background;
   const clearGate = () => {
     const s = useWorkspaceStore.getState();
     if (s.hydrating) s.hydrateRestoredWorkspace({ tabs: s.tabs, activeTabId: s.activeTabId });
@@ -1507,27 +1937,75 @@ export async function hydrateWorkspace() {
 
     // 1. The durable disk layout is authoritative in the desktop runtime.
     // localStorage is only a fast cache and may lag after a recovery checkpoint.
-    let baseTabs = store.tabs;
+    const mutationVersionAtStart = workspaceMutationVersion;
+    // Once the first durable load has completed, later retries are
+    // reconciliation passes. They must never replace the live graph with an
+    // older disk checkpoint while a daemon attach or operator action is active.
+    const hydrationWasAlreadyComplete = !store.hydrating;
+    const tabIdsAtStart = new Set(store.tabs.map((tab) => tab.id));
+    let baseTabs = withoutLegacyRecoveredTabs(store.tabs);
+    const removedLegacyRecoveredTabs = baseTabs.length !== store.tabs.length;
     let baseActive = store.activeTabId;
     let closedSessionIds = new Set(store.closedSessionIds);
+    // Provider tombstones are durable close decisions and must survive a PTY id
+    // change; they are loaded from the saved workspace during disk hydration.
+    let closedProviderSessionIds = hydrationWasAlreadyComplete
+      ? new Set(store.closedProviderSessionIds)
+      : new Set<string>();
     let closedRestoreTargets = [...store.closedRestoreTargets];
     let agentRecoveryMigrationVersion = store.agentRecoveryMigrationVersion;
+    let recoveryTransfers: RecoveryTransfer[] = [];
+    let savedCanvasState: CanvasState | null = null;
+    let durableLayoutLoaded = false;
     // A saved layout (from localStorage OR the disk checkpoint) is authoritative.
     // `!hydrating` means localStorage already restored a layout.
     let hadSavedLayout = !store.hydrating;
     if (isTauriRuntime()) {
       const raw = await invoke<string | null>("workspace_layout_load");
       if (raw) {
-        try {
-          const disk = JSON.parse(raw) as PersistedWorkspace;
-          if (Array.isArray(disk.tabs)) {
-            if (disk.tabs.length > 0) {
-              baseTabs = withoutLegacyRecoveredTabs(disk.tabs).map(withRestartableTerminals);
-              baseActive = disk.activeTabId ?? baseTabs[0].id;
-            }
+          try {
+            const disk = JSON.parse(raw) as PersistedWorkspace;
+            if (Array.isArray(disk.tabs)) {
+              if (disk.tabs.length > 0) {
+                const diskTabs = withoutLegacyRecoveredTabs(disk.tabs).map(withRestartableTerminals);
+                durableLayoutLoaded = true;
+                const diskTabIds = new Set(diskTabs.map((tab) => tab.id));
+                // Late reconciliation runs after the UI is already usable. Keep
+                // tabs created by the operator after the last checkpoint instead
+                // of replacing them with the older disk snapshot.
+                const currentState = useWorkspaceStore.getState();
+                const mutationOccurredDuringHydration = workspaceMutationVersion > mutationVersionAtStart;
+                if (hydrationWasAlreadyComplete) {
+                  // Once the UI is live, preserve the complete in-memory tab
+                  // graph on every retry, not only when a mutation counter
+                  // happened to increment during the retry window.
+                  baseTabs = withoutLegacyRecoveredTabs(currentState.tabs);
+                  baseActive = currentState.activeTabId ?? baseTabs[0]?.id ?? null;
+                } else {
+                  const tabsCreatedDuringInitialHydration = mutationOccurredDuringHydration
+                    ? currentState.tabs.filter(
+                        (tab) => !diskTabIds.has(tab.id) && !tabIdsAtStart.has(tab.id),
+                      )
+                    : [];
+                  baseTabs = [...diskTabs, ...tabsCreatedDuringInitialHydration];
+                  const activeTabWasCreatedDuringInitialHydration =
+                    currentState.activeTabId &&
+                    tabsCreatedDuringInitialHydration.some((tab) => tab.id === currentState.activeTabId);
+                  baseActive = activeTabWasCreatedDuringInitialHydration
+                    ? currentState.activeTabId
+                    : disk.activeTabId ?? baseTabs[0].id;
+                }
+              }
             if (Array.isArray(disk.closedSessionIds)) {
               closedSessionIds = new Set(
                 disk.closedSessionIds.filter((id): id is string => typeof id === "string" && id.length > 0),
+              );
+            }
+            if (Array.isArray(disk.closedProviderSessionIds)) {
+              closedProviderSessionIds = new Set(
+                disk.closedProviderSessionIds.filter(
+                  (id): id is string => typeof id === "string" && id.length > 0,
+                ),
               );
             }
             if (Array.isArray(disk.closedRestoreTargets)) {
@@ -1547,6 +2025,22 @@ export async function hydrateWorkspace() {
             if (typeof disk.agentRecoveryMigrationVersion === "number") {
               agentRecoveryMigrationVersion = disk.agentRecoveryMigrationVersion;
             }
+            if (Array.isArray(disk.recoveryTransfers)) {
+              recoveryTransfers = disk.recoveryTransfers.filter((transfer): transfer is RecoveryTransfer =>
+                Boolean(
+                  transfer &&
+                  typeof transfer.sourceTabId === "string" &&
+                  typeof transfer.targetTabId === "string" &&
+                  typeof transfer.sourceTerminalId === "string" &&
+                  typeof transfer.replacementTerminalId === "string" &&
+                  typeof transfer.sourcePaneId === "string" &&
+                  typeof transfer.targetPaneId === "string" &&
+                  (transfer.provider === "codex" || transfer.provider === "claude") &&
+                  typeof transfer.providerSessionId === "string",
+                ),
+              );
+            }
+            if (disk.canvasState) savedCanvasState = disk.canvasState;
             hadSavedLayout = true;
           }
         } catch (error) {
@@ -1554,7 +2048,43 @@ export async function hydrateWorkspace() {
         }
       }
     }
-    baseTabs = withoutClosedSessionTabs(baseTabs, closedSessionIds);
+    if (recoveryTransfers.length > 0) {
+      baseTabs = applyRecoveryTransfers(baseTabs, recoveryTransfers);
+    }
+    baseTabs = withoutClosedSessionTabs(baseTabs, closedSessionIds, closedProviderSessionIds);
+    let sessions: RecoverySessionRecord[] = [];
+    if (!initialCriticalHydration) {
+      try {
+        const loadedSessions = await invoke<RecoverySessionRecord[] | null>("workspace_persisted_sessions");
+        sessions = (Array.isArray(loadedSessions) ? loadedSessions : []).map((session) => {
+          if (session.lifecycle === "intentional-kill" && !closedSessionIds.has(session.id)) {
+            return {
+              ...session,
+              lifecycle: "unknown" as const,
+              provenance: "legacy-unverified" as const,
+              backupOnly: false,
+            };
+          }
+          return session;
+        });
+        for (const session of sessions) {
+          if (closedSessionIds.has(session.id) && session.providerSessionId) {
+            closedProviderSessionIds.add(session.providerSessionId);
+          }
+        }
+      } catch (error) {
+        console.warn("Could not list persisted sessions:", error);
+      }
+      // Provider tombstones are only valid when they are backed by an exact
+      // closed pane record. Older broad-cleanup runs wrote provider ids without
+      // that authority and must not hide an otherwise recoverable conversation.
+      closedProviderSessionIds = new Set([
+        ...closedProviderSessionIds,
+        ...sessions
+          .filter((session) => closedSessionIds.has(session.id) && session.providerSessionId)
+          .map((session) => session.providerSessionId as string),
+      ]);
+    }
     // Closed restore targets are retained for filtering the external provider
     // manifest, but internal terminal identity is always the exact session id.
 
@@ -1564,8 +2094,6 @@ export async function hydrateWorkspace() {
     // 2. Reconcile every live session against the saved layout. The layout keeps
     // its tabs and grouping, while live daemon sessions fill in panes missed by
     // the last checkpoint; explicit kills remain excluded below.
-    const seen = new Set(baseTabs.map((tab) => tab.id));
-    const recovered: Tab[] = [];
     let liveSessions: LiveSessionSummary[] = [];
     try {
       liveSessions = await listLiveSessionsWithRetry(invoke);
@@ -1578,32 +2106,53 @@ export async function hydrateWorkspace() {
         .map((session) => [session.id, session.cwd]),
     );
     const liveSessionIds = new Set(liveSessions.map((session) => session.id));
-    const liveGitRoots = Object.fromEntries(
-      (await Promise.all(
-        liveSessions
-          .filter((session): session is LiveSessionSummary & { cwd: string } => Boolean(session.cwd))
-          .map(async (session) => {
-            try {
-              const context = await invoke<{ gitRoot?: string | null }>("workstream_git_context", { cwd: session.cwd });
-              const gitRoot = context?.gitRoot?.trim();
-              return gitRoot ? [session.id, gitRoot] as const : null;
-            } catch {
-              return null;
-            }
-          }),
-      )).filter((entry): entry is readonly [string, string] => Boolean(entry)),
-    );
+    // Listing live sessions is a read-only reconciliation step. Do not append a
+    // lifecycle record for every PTY on every retry: a large historical daemon
+    // inventory made startup spend most of its time writing no-op audit events.
+    const liveGitRoots = initialCriticalHydration
+      ? {}
+      : Object.fromEntries(
+          (await Promise.all(
+            liveSessions
+              .filter((session): session is LiveSessionSummary & { cwd: string } => Boolean(session.cwd))
+              .map(async (session) => {
+                try {
+                  const context = await invoke<{ gitRoot?: string | null }>("workstream_git_context", { cwd: session.cwd });
+                  const gitRoot = context?.gitRoot?.trim();
+                  return gitRoot ? [session.id, gitRoot] as const : null;
+                } catch {
+                  return null;
+                }
+              }),
+          )).filter((entry): entry is readonly [string, string] => Boolean(entry)),
+        );
     for (const session of [...liveSessions].sort((a, b) => a.id.localeCompare(b.id))) {
-      if (closedSessionIds.has(session.id)) {
+      const providerSessionId = session.providerSessionId ?? providerSessionIdFromCommand(session.command);
+      if (closedSessionIds.has(session.id) || (providerSessionId && closedProviderSessionIds.has(providerSessionId))) {
         // A fast restart can race the asynchronous PTY teardown (especially
         // after an explicit shell exit). The close tombstone is authoritative:
         // remove this exact live session during hydration, but never use CWD or
         // project matching that could affect an unrelated sibling.
         try {
-          await invoke("daemon_kill_session", { id: session.id });
+          await invoke("daemon_kill_session", { id: session.id, userRequested: true });
         } catch (error) {
           console.warn("Could not finish explicit PTY close during hydration:", session.id, error);
         }
+        continue;
+      }
+      const legacyMapRebound = bindLegacyMapSessionToSavedPane(
+        baseTabs,
+        session,
+        savedCanvasState,
+      );
+      if (legacyMapRebound) {
+        baseTabs = legacyMapRebound;
+        await auditLifecycle(
+          invoke,
+          session.id,
+          "agent-reconnect-legacy-map-rebound",
+          "exact legacy map conversation rebound to its saved pane",
+        );
         continue;
       }
       const externalRebound = bindExternalSessionToSavedTab(baseTabs, session, liveSessionIds);
@@ -1614,101 +2163,253 @@ export async function hydrateWorkspace() {
       const reboundTabs = bindLiveSessionToSavedTab(baseTabs, session);
       if (reboundTabs) {
         baseTabs = reboundTabs;
-        seen.add(session.id.slice("terminal-".length, "terminal-".length + 36));
-        continue;
       }
-      const tab = tabFromRecoverableSession(session);
-      if (!tab || seen.has(tab.id)) continue;
-      seen.add(tab.id);
-      recovered.push(tab);
     }
     console.info("[termfleet.hydrate] live reconciliation", {
       liveSessions: liveSessions.length,
       baseTabs: baseTabs.length,
-      recoveredTabs: recovered.length,
+      recoveredTabs: 0,
       closedSessions: closedSessionIds.size,
     });
 
-    // One-time repair for the recent FlowState panes lost by the old recovery
-    // bug. Sidecars are bounded to the incident window and project so historical
-    // provider records cannot become tabs forever; the migration version makes
-    // this a repair, not a new automatic recovery source.
-    if (
-      hadSavedLayout &&
-      agentRecoveryMigrationVersion < AGENT_RECOVERY_MIGRATION_VERSION
-    ) {
+    // A sidecar proves that a pane existed, not that the operator did not close
+    // it. Load the backend lifecycle ledger before considering this legacy path.
+    // Sidecars are an identity index, not proof that a session may be restored.
+    // Keep every valid sidecar visible for review, but only a backend lifecycle
+    // record marked recoverable can authorize automatic restoration.
+    let sidecars: Array<AgentStatusSidecarRecord & { paneId: string; cwd: string }> = [];
+    if (!initialCriticalHydration) try {
+      const rawSidecars = await invoke<string[]>("agent_status_list_sidecars");
+      sidecars = (Array.isArray(rawSidecars) ? rawSidecars : []).flatMap((raw) => {
+        try {
+          const sidecar = JSON.parse(raw) as AgentStatusSidecarRecord;
+          const paneId = sidecar.paneId;
+          const cwd = sidecar.cwd;
+          if (!paneId || !cwd || typeof sidecar.updatedAt !== "number") return [];
+          return [{ ...sidecar, paneId, cwd }];
+        } catch {
+           return [];
+        }
+      });
+      // One provider conversation can leave several historical sidecars after
+      // a crash or transfer. Only the newest exact identity may participate in
+      // automatic recovery; older copies are review data, not new terminals.
+      const newestSidecars = new Map<string, (typeof sidecars)[number]>();
+      for (const sidecar of sidecars) {
+        const providerSessionId = sidecar.providerSessionId ?? sidecar.sessionId;
+        const key = `${sidecar.cwd}\u0000${sidecar.provider ?? "unknown"}\u0000${providerSessionId ?? sidecar.paneId}`;
+        const previous = newestSidecars.get(key);
+        if (!previous || (sidecar.updatedAt ?? 0) > (previous.updatedAt ?? 0)) newestSidecars.set(key, sidecar);
+      }
+      sidecars = [...newestSidecars.values()];
+      // Rebind provider identity onto the exact durable pane before later live
+      // status reconciliation can replace its metadata with a shell-shaped
+      // session summary. Sidecars may be keyed by either the pane id or the
+      // daemon terminal id, so accept both exact identities only.
+      for (const sidecar of sidecars) {
+        const providerSessionId = sidecar.providerSessionId ?? sidecar.sessionId;
+        if (!providerSessionId || closedSessionIds.has(sidecar.paneId)) continue;
+        baseTabs = baseTabs.map((tab) => ({
+          ...tab,
+          terminals: tab.terminals.map((terminal) =>
+            terminal.id === sidecar.paneId || terminal.paneId === sidecar.paneId
+              ? {
+                  ...terminal,
+                  agentProvider:
+                    sidecar.provider === "codex" ||
+                    sidecar.provider === "claude" ||
+                    sidecar.provider === "opencode" ||
+                    sidecar.provider === "shell"
+                      ? sidecar.provider
+                      : terminal.agentProvider,
+                  providerSessionId,
+                }
+              : terminal,
+          ),
+        }));
+      }
+      for (const sidecar of sidecars) {
+        const providerSessionId = sidecar.providerSessionId ?? sidecar.sessionId;
+        const existing = sessions.find((session) => session.id === sidecar.paneId);
+        if (existing) {
+          if (existing.lifecycle === "unknown" && existing.provenance !== "legacy-unverified") {
+            existing.provenance = "sidecar-only";
+          }
+          existing.provider ??= sidecar.provider;
+          existing.providerSessionId ??= providerSessionId;
+          existing.cwd ??= sidecar.cwd;
+        } else {
+          sessions.push({
+            id: sidecar.paneId,
+            cwd: sidecar.cwd,
+            scrollbackBytes: 0,
+            lifecycle: "unknown",
+            provenance: "sidecar-only",
+            backupOnly: false,
+            provider: sidecar.provider,
+            providerSessionId,
+          });
+        }
+      }
+    } catch (error) {
+      console.warn("Could not list agent status sidecars:", error);
+    }
+
+    // Every hydration pass repairs agent panes using either an explicit
+    // recoverable backend record or an exact sidecar with provider identity
+    // and no close tombstone. This is intentionally ongoing: a pane can
+    // disappear after the first startup pass. Historical unverified close
+    // markers stay reviewable until an exact user-close tombstone exists.
+    if (!initialCriticalHydration && hadSavedLayout) {
       try {
-        const sidecars = await invoke<string[]>("agent_status_list_sidecars");
-        const cutoff = Date.now() - AGENT_RECOVERY_MAX_AGE_MS;
-        for (const raw of Array.isArray(sidecars) ? sidecars : []) {
-          let sidecar: AgentStatusSidecarRecord;
-          try {
-            sidecar = JSON.parse(raw) as AgentStatusSidecarRecord;
-          } catch {
-            continue;
-          }
-          if (
+          for (const sidecar of sidecars) {
+            if (
             !sidecar.paneId ||
-            !sidecar.cwd?.endsWith("/productivity/flow-state") ||
             typeof sidecar.updatedAt !== "number" ||
-            sidecar.updatedAt < cutoff
-          ) {
+            !(() => {
+              const session = sessions.find((candidate) => candidate.id === sidecar.paneId);
+              return Boolean(
+                session &&
+                (session.lifecycle === "recoverable" ||
+                  (session.lifecycle === "unknown" &&
+                    (session.provenance === "sidecar-only" ||
+                      session.provenance === "legacy-unverified") &&
+                    Boolean(session.provider && session.providerSessionId))) &&
+                !closedSessionIds.has(session.id) &&
+                !(session.providerSessionId && closedProviderSessionIds.has(session.providerSessionId)),
+              );
+            })()
+            ) {
+              continue;
+            }
+            if (closedSessionIds.has(sidecar.paneId)) continue;
+            const session = sessions.find((candidate) => candidate.id === sidecar.paneId);
+            if (!session) continue;
+            if (session.providerSessionId && closedProviderSessionIds.has(session.providerSessionId)) continue;
+            if (
+              session.providerSessionId &&
+              baseTabs.some((candidate) => candidate.terminals.some((terminal) => terminal.providerSessionId === session.providerSessionId))
+            ) {
+              continue;
+            }
+          const tab = tabFromRecoverableSession(session, { recovery: true });
+          if (!tab) continue;
+          const savedTabIndex = baseTabs.findIndex((candidate) => candidate.id === tab.id);
+          if (savedTabIndex >= 0) {
+            baseTabs = baseTabs.map((candidate, index) =>
+              index === savedTabIndex ? mergeRecoveredTabIntoSavedStub(candidate, tab) : candidate,
+            );
+            await auditLifecycle(invoke, session.id, "recovery-restored", "sidecar exact identity rebound to saved pane");
             continue;
           }
-            if (closedSessionIds.has(sidecar.paneId)) continue;
-          const tab = tabFromRecoverableSession(
-            { id: sidecar.paneId, cwd: sidecar.cwd },
-            { recovery: true },
-          );
-          if (!tab || seen.has(tab.id)) continue;
-          seen.add(tab.id);
-          recovered.push(tab);
+          // A sidecar is identity evidence for a saved pane, never permission to
+          // manufacture a new pane. Unsaved records remain manual recovery data.
+          continue;
         }
         agentRecoveryMigrationVersion = AGENT_RECOVERY_MIGRATION_VERSION;
       } catch (error) {
-        console.warn("Could not run the one-time FlowState recovery migration:", error);
+          console.warn("Could not reconcile agent recovery sidecars:", error);
       }
     }
-
-    // 3. Dead persisted sessions remain recoverable alongside a saved layout.
-    //    The exact close tombstone is the only exclusion: a saved layout can be
-    //    stale after an unplanned PTY loss, so it must not hide eligible sessions.
-    let sessions: PersistedSessionSummary[] = [];
-    try {
-      sessions = await invoke<PersistedSessionSummary[]>("workspace_persisted_sessions");
-    } catch (error) {
-      console.warn("Could not list persisted sessions:", error);
+    if (recoveryTransfers.length > 0) {
+      baseTabs = applyRecoveryTransfers(baseTabs, recoveryTransfers);
     }
+    baseTabs = withoutClosedSessionTabs(baseTabs, closedSessionIds, closedProviderSessionIds);
+
+    // 4. Dead persisted records are recovery metadata, not new visible tabs.
+    //    Automatic cold restore is identity-safe only when the saved workspace
+    //    still contains the exact tab/pane. Live daemon sessions are reconciled
+    //    above; historical records without a saved pane stay available for an
+    //    explicit recovery action instead of exploding startup into hundreds of
+    //    tabs and serial lifecycle writes.
     for (const session of [...sessions].sort((a, b) => b.scrollbackBytes - a.scrollbackBytes)) {
       // Require a saved cwd: a restored session is a *clean* shell (dead content
-      // can't be replayed without garbling), so its value is reopening the right
-      // directory. A cwd-less orphan would just be a home-shell — clutter, skip it.
-      if (session.scrollbackBytes < ORPHAN_MIN_BYTES || !session.cwd) continue;
-      if (session.lifecycle && session.lifecycle !== "recoverable") continue;
-      if (closedSessionIds.has(session.id)) continue;
+      // is not replayed live), so its value is reopening the right directory.
+      // Short scrollback is still a valid untouched terminal; lifecycle and the
+      // exact close tombstone are the authoritative restore gates.
+      if (!session.cwd) {
+        continue;
+      }
+      // Only an explicit backend lifecycle record authorizes automatic
+      // recovery; missing historical provenance is not consent to restore.
+      if (session.lifecycle !== "recoverable") {
+        continue;
+      }
+      if (
+        closedSessionIds.has(session.id) ||
+        (session.providerSessionId && closedProviderSessionIds.has(session.providerSessionId))
+      ) {
+        continue;
+      }
+      if (
+        session.providerSessionId &&
+        baseTabs.some((candidate) => candidate.terminals.some((terminal) => terminal.providerSessionId === session.providerSessionId))
+      ) {
+        continue;
+      }
+      const legacyMapRebound = bindLegacyMapSessionToSavedPane(
+        baseTabs,
+        session,
+        savedCanvasState,
+      );
+      if (legacyMapRebound) {
+        baseTabs = legacyMapRebound;
+        await auditLifecycle(
+          invoke,
+          session.id,
+          "agent-reconnect-legacy-map-rebound",
+          "exact legacy map recovery rebound to its saved pane",
+        );
+        continue;
+      }
       const tab = tabFromRecoverableSession(session);
-      if (!tab || seen.has(tab.id)) continue;
-      seen.add(tab.id);
-      recovered.push(tab);
+      if (!tab) continue;
+      const savedTabIndex = baseTabs.findIndex((candidate) => candidate.id === tab.id);
+      if (savedTabIndex >= 0) {
+        baseTabs = baseTabs.map((candidate, index) =>
+          index === savedTabIndex ? mergeRecoveredTabIntoSavedStub(candidate, tab) : candidate,
+        );
+        await auditLifecycle(invoke, session.id, "recovery-restored", "persisted exact identity rebound to saved pane");
+        continue;
+      }
+      // Do not reconstruct a dead historical session as a new tab. This keeps
+      // restart deterministic and makes restoration staged around saved pane
+      // identity rather than the size of the historical session inventory.
+      continue;
     }
 
     if (
       !store.hydrating &&
-      recovered.length === 0 &&
+      !durableLayoutLoaded &&
+      !removedLegacyRecoveredTabs &&
       Object.keys(liveCwds).length === 0 &&
       Object.keys(liveGitRoots).length === 0
     ) {
       return; // happy path, nothing to do
     }
+    let hydratedTabs = preserveLiveHeaderState(
+      baseTabs,
+      useWorkspaceStore.getState().tabs,
+    );
+    // Header/status reconciliation may match a moved PTY by its old identity;
+    // the explicit transfer marker remains authoritative for pane ownership,
+    // provider, and conversation id.
+    if (recoveryTransfers.length > 0) {
+      hydratedTabs = applyRecoveryTransfers(hydratedTabs, recoveryTransfers);
+    }
     store.hydrateRestoredWorkspace({
-      tabs: [...baseTabs, ...recovered],
+      tabs: hydratedTabs,
       activeTabId: baseActive,
       liveCwds,
       liveGitRoots,
       closedSessionIds: [...closedSessionIds],
+      closedProviderSessionIds: [...closedProviderSessionIds],
       closedRestoreTargets,
       agentRecoveryMigrationVersion,
+      recoverySessions: sessions,
+      recoveryTransfers,
     });
+    if (initialCriticalHydration) return;
     // Rebuild the visible map projection after terminal reconciliation so the
     // dock-launched app opens with project lanes and a sidebar matching them.
     const hydratedStore = useWorkspaceStore.getState();
@@ -1726,6 +2427,80 @@ export async function hydrateWorkspace() {
   } catch (error) {
     console.warn("Workspace hydration failed:", error);
     clearGate();
+  }
+}
+
+/**
+ * Reconcile the already-loaded workspace with the daemon's exact live set.
+ * This is safe to retry while the launcher finishes provider restore: it never
+ * scans history, sidecars, transcripts, Git, or the lifecycle ledger.
+ */
+export async function reconcileLiveWorkspace() {
+  if (!isTauriRuntime() || FORCE_WORKSPACE_RESET_STATE) return;
+
+  try {
+    const { invoke } = await import("@tauri-apps/api/core");
+    const store = useWorkspaceStore.getState();
+    const closedSessionIds = new Set(store.closedSessionIds);
+    const closedProviderSessionIds = new Set(store.closedProviderSessionIds);
+    const liveSessions = await listLiveSessionsWithRetry(invoke);
+    const liveSessionIds = new Set(liveSessions.map((session) => session.id));
+  let tabs = withoutClosedSessionTabs(
+    withoutLegacyRecoveredTabs(store.tabs),
+    closedSessionIds,
+    closedProviderSessionIds,
+  );
+
+    for (const session of [...liveSessions].sort((a, b) => a.id.localeCompare(b.id))) {
+      const providerSessionId = session.providerSessionId ?? providerSessionIdFromCommand(session.command);
+      if (closedSessionIds.has(session.id) || (providerSessionId && closedProviderSessionIds.has(providerSessionId))) {
+        try {
+          await invoke("daemon_kill_session", { id: session.id, userRequested: true });
+        } catch (error) {
+          console.warn("Could not finish explicit PTY close during live reconciliation:", session.id, error);
+        }
+        continue;
+      }
+
+      const legacyMapRebound = bindLegacyMapSessionToSavedPane(
+        tabs,
+        session,
+        store.canvasState,
+      );
+      if (legacyMapRebound) {
+        tabs = legacyMapRebound;
+        continue;
+      }
+      const externalRebound = bindExternalSessionToSavedTab(tabs, session, liveSessionIds);
+      if (externalRebound) {
+        tabs = externalRebound;
+        continue;
+      }
+      const exactRebound = bindLiveSessionToSavedTab(tabs, session);
+      if (exactRebound) {
+        tabs = exactRebound;
+      }
+    }
+
+    tabs = withoutClosedSessionTabs(tabs, closedSessionIds, closedProviderSessionIds);
+    const liveCwds = Object.fromEntries(
+      liveSessions
+        .filter((session): session is LiveSessionSummary & { cwd: string } => Boolean(session.cwd))
+        .map((session) => [session.id, session.cwd]),
+    );
+    store.hydrateRestoredWorkspace({
+      tabs: preserveLiveHeaderState(tabs, useWorkspaceStore.getState().tabs),
+      activeTabId: useWorkspaceStore.getState().activeTabId,
+      liveCwds,
+      closedSessionIds: [...closedSessionIds],
+      closedProviderSessionIds: [...closedProviderSessionIds],
+      closedRestoreTargets: store.closedRestoreTargets,
+      agentRecoveryMigrationVersion: store.agentRecoveryMigrationVersion,
+      recoverySessions: store.recoverySessions,
+      recoveryTransfers: store.recoveryTransfers,
+    });
+  } catch (error) {
+    console.warn("Live workspace reconciliation failed:", error);
   }
 }
 
@@ -1828,6 +2603,7 @@ export function createAgentWorkstream(
     groupId,
     workstream: {
       kind: "agent",
+      canonicalTaskId: opsContext?.canonicalTaskId,
       provider,
       providerAvailable: providerInfo.available,
       providerAvailabilityMessage: providerInfo.message,
@@ -1922,6 +2698,22 @@ export function createAgentWorkstream(
       createdAt,
     },
   });
+  if (opsContext?.canonicalTaskId) {
+    void registerTaskRun({
+      runId,
+      taskId: opsContext.canonicalTaskId,
+      mode: "termfleet",
+      agent: provider,
+      profile: launchProfile,
+      workspace: resolvedCwd,
+      startedAt: createdAt,
+      heartbeatAt: createdAt,
+      phase: initialPhase,
+      action: "Launching agent",
+      state: providerInfo.available ? "starting" : "failed",
+      failureReason: providerInfo.available ? undefined : providerInfo.message,
+    }).catch(() => undefined);
+  }
 }
 
 function titleForPreviewUrl(url: string) {
@@ -2118,7 +2910,7 @@ async function killPty(
       let lastError: unknown = null;
       for (let attempt = 0; attempt < 4; attempt += 1) {
         try {
-          await invoke("daemon_kill_session", { id });
+          await invoke("daemon_kill_session", { id, userRequested: true });
           const sessions = await invoke<Array<{ id?: string }>>("daemon_list_sessions");
           if (!Array.isArray(sessions) || !sessions.some((session) => session?.id === id)) {
             return;
@@ -2279,8 +3071,12 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   workspaceUiState: normalizeWorkspaceUiState(persisted.workspaceUiState),
   canvasState: restoredCanvasState,
   recentlyClosed: [],
+  recoverySessions: [],
   closedSessionIds: Array.isArray(persisted.closedSessionIds)
     ? persisted.closedSessionIds.filter((id): id is string => typeof id === "string" && id.length > 0)
+    : [],
+  closedProviderSessionIds: Array.isArray(persisted.closedProviderSessionIds)
+    ? persisted.closedProviderSessionIds.filter((id): id is string => typeof id === "string" && id.length > 0)
     : [],
   closedRestoreTargets: Array.isArray(persisted.closedRestoreTargets)
     ? persisted.closedRestoreTargets.filter(
@@ -2295,18 +3091,22 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       )
     : [],
   agentRecoveryMigrationVersion: persisted.agentRecoveryMigrationVersion ?? 0,
+  recoveryTransfers: Array.isArray(persisted.recoveryTransfers) ? persisted.recoveryTransfers : [],
   hydrating: needsDiskHydration,
 
   // --- Tab actions ---
 
-  hydrateRestoredWorkspace: ({ tabs, activeTabId, liveCwds = {}, liveGitRoots = {}, closedSessionIds, closedRestoreTargets, agentRecoveryMigrationVersion }) => {
+  hydrateRestoredWorkspace: ({ tabs, activeTabId, liveCwds = {}, liveGitRoots = {}, closedSessionIds, closedProviderSessionIds, closedRestoreTargets, agentRecoveryMigrationVersion, recoverySessions, recoveryTransfers }) => {
     set((state) => {
       if (tabs.length === 0) {
         return {
           hydrating: false,
           closedSessionIds: closedSessionIds ?? state.closedSessionIds,
+          closedProviderSessionIds: closedProviderSessionIds ?? state.closedProviderSessionIds,
           closedRestoreTargets: closedRestoreTargets ?? state.closedRestoreTargets,
           agentRecoveryMigrationVersion: agentRecoveryMigrationVersion ?? state.agentRecoveryMigrationVersion,
+          recoverySessions: recoverySessions ?? state.recoverySessions,
+          recoveryTransfers: recoveryTransfers ?? state.recoveryTransfers,
         };
       }
       const canvasState = normalizeCanvasState(state.canvasState, tabs);
@@ -2340,8 +3140,11 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
           canvasSidebarSortMode: "project",
         },
         closedSessionIds: closedSessionIds ?? state.closedSessionIds,
+        closedProviderSessionIds: closedProviderSessionIds ?? state.closedProviderSessionIds,
         closedRestoreTargets: closedRestoreTargets ?? state.closedRestoreTargets,
         agentRecoveryMigrationVersion: agentRecoveryMigrationVersion ?? state.agentRecoveryMigrationVersion,
+        recoverySessions: recoverySessions ?? state.recoverySessions,
+        recoveryTransfers: recoveryTransfers ?? state.recoveryTransfers,
         liveCwds: nextLiveCwds,
         liveGitRoots: nextLiveGitRoots,
         hydrating: false,
@@ -2351,6 +3154,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
 
   addTab: (overrides?: Partial<Tab>) => {
     const newTab = createDefaultTab(overrides);
+    workspaceMutationVersion += 1;
     set((state) => {
       const tabs = [...state.tabs, newTab];
       const canvasState = normalizeCanvasState(
@@ -2382,6 +3186,10 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       return {
         tabs: projects.tabs,
         activeTabId: newTab.id,
+        // A fresh terminal has no live PTY yet. Do not leave the previous pane
+        // globally active while the new daemon session is attaching; the canvas
+        // and keyboard routing would briefly keep rendering/focusing that pane.
+        activeTerminalId: null,
         activeGroupFilter: shouldFollowNewTabProject ? newTabGroupId : state.activeGroupFilter,
         activeGroupId: shouldFollowNewTabProject ? newTabGroupId : state.activeGroupId,
         projectRoot: shouldFollowNewTabProject
@@ -2395,6 +3203,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   },
 
   removeTab: (id: string) => {
+    workspaceMutationVersion += 1;
     set((state) => {
       const index = state.tabs.findIndex((t) => t.id === id);
       if (index === -1) return state;
@@ -2468,6 +3277,17 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     });
   },
 
+  restoreRecoverySession: async (id: string) => {
+    const session = get().recoverySessions.find((candidate) => candidate.id === id);
+    if (!session || session.lifecycle === "intentional-kill") return;
+    const { invoke } = await import("@tauri-apps/api/core");
+    await invoke("daemon_restore_session", {
+      id,
+      reviewed: session.lifecycle === "unknown",
+    });
+    await hydrateWorkspace();
+  },
+
   closeTerminalSession: async (id: string, reason: TerminalCloseReason = "operator") => {
     const tab = get().tabs.find((candidate) => candidate.id === id);
     if (!tab) return;
@@ -2511,6 +3331,14 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
           ...tab.terminals.map((terminal) => terminal.id),
         ]),
       ],
+      closedProviderSessionIds: [
+        ...new Set([
+          ...state.closedProviderSessionIds,
+          ...tab.terminals
+            .map((terminal) => terminal.providerSessionId)
+            .filter((id): id is string => Boolean(id)),
+        ]),
+      ],
       tabs: state.tabs.map((candidate) =>
         candidate.id === id
           ? {
@@ -2518,6 +3346,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
               terminals: candidate.terminals.map((terminal) => ({
                 ...terminal,
                 manualStopRequested: true,
+                recoveryLifecycle: "closed-by-user",
               })),
             }
           : candidate,
@@ -2579,6 +3408,11 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       const remainingClosedSessionIds = state.closedSessionIds.filter(
         (sessionId) => !restoredSessionIds.has(sessionId),
       );
+      const restoredProviderSessionIds = new Set(
+        restoredTab.terminals
+          .map((terminal) => terminal.providerSessionId)
+          .filter((id): id is string => Boolean(id)),
+      );
       const restoredCwd = restoredTab.initialCwd?.trim();
       const remainingClosedRestoreTargets = restoredCwd
         ? state.closedRestoreTargets.filter((target) => target.cwd !== restoredCwd)
@@ -2588,6 +3422,9 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       return {
         recentlyClosed: remainingClosed,
         closedSessionIds: remainingClosedSessionIds,
+        closedProviderSessionIds: state.closedProviderSessionIds.filter(
+          (sessionId) => !restoredProviderSessionIds.has(sessionId),
+        ),
         closedRestoreTargets: remainingClosedRestoreTargets,
         tabs,
         activeTabId: restoredTab.id,
@@ -2815,34 +3652,46 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       ...(label ? { label } : {}),
     };
     set((state) => ({
-      tabs: state.tabs.map((tab) =>
-        tab.id === tabId && tab.workstream
-          ? {
-              ...tab,
-              workstream: {
-                ...tab.workstream,
-                prompt: trimmed,
-                phase: "queued",
-                lastSummary: `${sourcePrefix} queued a follow-up prompt`,
-                nextAction: "Wait for prompt dispatch",
-                currentActivity: `${sourcePrefix} queued follow-up`,
-                activityKind: "thinking",
-                activitySource: "operator",
-                activityUpdatedAt: Date.now(),
-                promptCount: (tab.workstream.promptCount ?? 0) + 1,
-                outcome: source === "mission-control" ? "Mission-control prompt queued" : "Follow-up queued",
-                inputQueue: [...(tab.workstream.inputQueue ?? []), input],
-                events: appendWorkstreamEvent(tab.workstream.events, {
-                  kind: "prompt",
-                  label: source === "mission-control" ? `Mission control queued${label ? ` ${label}` : ""}` : "Follow-up queued",
-                  detail: trimmed,
-                  status: tab.workstream.status,
-                }),
-                lastActivityAt: Date.now(),
-              },
-            }
-          : tab
-      ),
+      tabs: state.tabs.map((tab) => {
+        if (tab.id !== tabId) return tab;
+        const terminal = tab.terminals.find((candidate) => candidate.agentProvider || candidate.statusSummary?.provider);
+        const restoredWorkstream = tab.workstream ?? (terminal ? {
+          kind: "agent" as const,
+          provider: terminal.agentProvider ?? terminal.statusSummary?.provider,
+          mission: terminal.statusSummary?.mainTask || terminal.purpose?.title || `${terminal.agentProvider ?? "Agent"} work in ${tab.initialCwd ?? "the project"}`,
+          cwd: tab.initialCwd,
+          worktreePath: tab.initialCwd,
+          currentActivity: terminal.currentActivity || terminal.statusSummary?.now,
+          statusSummary: terminal.statusSummary,
+          status: terminal.status === "failed" ? "failed" as const : terminal.status === "running" || terminal.status === "reconnected" ? "running" as const : "ready" as const,
+          createdAt: Date.now(),
+        } : undefined);
+        if (!restoredWorkstream) return tab;
+        return {
+          ...tab,
+          workstream: {
+            ...restoredWorkstream,
+            prompt: trimmed,
+            phase: "queued",
+            lastSummary: `${sourcePrefix} queued a follow-up prompt`,
+            nextAction: "Wait for prompt dispatch",
+            currentActivity: `${sourcePrefix} queued follow-up`,
+            activityKind: "thinking",
+            activitySource: "operator",
+            activityUpdatedAt: Date.now(),
+            promptCount: (restoredWorkstream.promptCount ?? 0) + 1,
+            outcome: source === "mission-control" ? "Mission-control prompt queued" : "Follow-up queued",
+            inputQueue: [...(restoredWorkstream.inputQueue ?? []), input],
+            events: appendWorkstreamEvent(restoredWorkstream.events, {
+              kind: "prompt",
+              label: source === "mission-control" ? `Mission control queued${label ? ` ${label}` : ""}` : "Follow-up queued",
+              detail: trimmed,
+              status: restoredWorkstream.status,
+            }),
+            lastActivityAt: Date.now(),
+          },
+        };
+      }),
     }));
     return input.id;
   },
@@ -3015,7 +3864,10 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         candidate.id === tabId && candidate.workstream
           ? {
               ...candidate,
-              terminals: [],
+              // Keep the pane descriptors mounted while the old PTYs are killed.
+              // The generation below forces each Terminal component to remount and
+              // reattach the same durable pane identity to the surviving daemon.
+              terminals: withRestartableTerminals(candidate).terminals,
               workstream: {
                 ...candidate.workstream,
                 status: "ready",
@@ -3836,6 +4688,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     linkedTerminalPaneId?: string,
   ) => {
     const newPaneId = crypto.randomUUID();
+    workspaceMutationVersion += 1;
     set((state) => ({
       tabs: state.tabs.map((t) => {
         if (t.id !== tabId) return t;
@@ -3886,6 +4739,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   },
 
   closePane: (tabId: string, paneId: string) => {
+    workspaceMutationVersion += 1;
     set((state) => {
       const closedSessionIds = state.tabs
         .find((tab) => tab.id === tabId)
@@ -3918,6 +4772,19 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       }),
       closedSessionIds: [
         ...new Set([...state.closedSessionIds, ...closedSessionIds]),
+      ],
+      closedProviderSessionIds: [
+        ...new Set([
+          ...state.closedProviderSessionIds,
+          ...(
+            state.tabs
+              .find((tab) => tab.id === tabId)
+              ?.terminals
+              .filter((terminal) => terminal.paneId === paneId)
+              .map((terminal) => terminal.providerSessionId)
+              .filter((id): id is string => Boolean(id)) ?? []
+          ),
+        ]),
       ],
       canvasState: {
         ...state.canvasState,
@@ -3977,6 +4844,124 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   },
 }));
 
+export function rebindSavedPaneToLiveOwner(options: {
+  savedSessionId: string;
+  ownerSessionId: string;
+  provider: Exclude<AgentProvider, "shell">;
+  providerSessionId: string;
+}): boolean {
+  let rebound = false;
+  useWorkspaceStore.setState((state) => {
+    const savedMatches = state.tabs.flatMap((tab, tabIndex) =>
+      tab.terminals.flatMap((terminal, terminalIndex) =>
+        terminal.id === options.savedSessionId
+          ? [{ tabIndex, terminalIndex }]
+          : [],
+      ),
+    );
+    if (savedMatches.length !== 1) return state;
+    const [{ tabIndex: savedTabIndex }] = savedMatches;
+    const savedTabId = state.tabs[savedTabIndex].id;
+    const ownerMatches = state.tabs.flatMap((tab, tabIndex) =>
+      tab.terminals.flatMap((terminal) =>
+        terminal.id === options.ownerSessionId
+          ? [{ tabIndex, paneId: terminal.paneId }]
+          : [],
+      ),
+    );
+    if (ownerMatches.length > 1) return state;
+
+    let tabs = state.tabs.slice();
+    if (
+      options.ownerSessionId !== options.savedSessionId &&
+      ownerMatches.length === 1
+    ) {
+      const [{ tabIndex: ownerTabIndex, paneId: ownerPaneId }] = ownerMatches;
+      const ownerTab = tabs[ownerTabIndex];
+      const terminals = ownerTab.terminals.filter(
+        (terminal) => terminal.id !== options.ownerSessionId,
+      );
+      const splitLayout = terminals.some(
+        (terminal) => terminal.paneId === ownerPaneId,
+      )
+        ? ownerTab.splitLayout
+        : removeNodeFromTree(ownerTab.splitLayout, ownerPaneId);
+      if (!splitLayout && ownerTab.id === savedTabId) return state;
+      tabs = splitLayout
+        ? tabs.map((tab, index) =>
+            index === ownerTabIndex
+              ? {
+                  ...tab,
+                  terminals,
+                  splitLayout,
+                  activePaneId:
+                    tab.activePaneId === ownerPaneId
+                      ? getAllLeafIds(splitLayout)[0] ?? tab.activePaneId
+                      : tab.activePaneId,
+                }
+              : tab,
+          )
+        : tabs.filter((_, index) => index !== ownerTabIndex);
+    }
+
+    const tabIndex = tabs.findIndex((tab) => tab.id === savedTabId);
+    const terminalIndex = tabs[tabIndex]?.terminals.findIndex(
+      (terminal) => terminal.id === options.savedSessionId,
+    );
+    if (tabIndex < 0 || terminalIndex == null || terminalIndex < 0) return state;
+    const tab = tabs[tabIndex];
+    tabs[tabIndex] = {
+      ...tab,
+      terminals: tab.terminals.map((terminal, index) =>
+        index === terminalIndex
+          ? {
+              ...terminal,
+              id: options.ownerSessionId,
+              status: "reconnected",
+              recoveryLifecycle: "alive",
+              agentProvider: options.provider,
+              providerSessionId: options.providerSessionId,
+              reused: true,
+              lastError: undefined,
+            }
+          : terminal,
+      ),
+    };
+    const canvasNodes = state.canvasState.nodes
+      .filter(
+        (node) =>
+          options.ownerSessionId === options.savedSessionId ||
+          node.terminalPtyId !== options.ownerSessionId,
+      )
+      .map((node) =>
+        node.terminalPtyId === options.savedSessionId
+          ? { ...node, terminalPtyId: options.ownerSessionId }
+          : node,
+      );
+    rebound = true;
+    return {
+      tabs,
+      activeTabId: tabs.some((tab) => tab.id === state.activeTabId)
+        ? state.activeTabId
+        : savedTabId,
+      activeTerminalId:
+        state.activeTerminalId === options.savedSessionId
+          ? options.ownerSessionId
+          : state.activeTerminalId,
+      canvasState: {
+        ...state.canvasState,
+        nodes: canvasNodes,
+        selectedNodeId: canvasNodes.some(
+          (node) => node.id === state.canvasState.selectedNodeId,
+        )
+          ? state.canvasState.selectedNodeId
+          : null,
+      },
+    };
+  });
+  return rebound;
+}
+
 let pendingPersist: ReturnType<typeof window.setTimeout> | null = null;
 let persistDirty = false;
 let lastPersistedSnapshot = "";
@@ -3999,8 +4984,10 @@ function buildPersistedSnapshot(state: WorkspaceState): PersistedWorkspace {
     workspaceUiState: state.workspaceUiState,
     canvasState: state.canvasState,
     closedSessionIds: state.closedSessionIds,
+    closedProviderSessionIds: state.closedProviderSessionIds,
     closedRestoreTargets: state.closedRestoreTargets,
     agentRecoveryMigrationVersion: state.agentRecoveryMigrationVersion,
+    recoveryTransfers: state.recoveryTransfers,
   };
 }
 
@@ -4111,13 +5098,12 @@ useWorkspaceStore.subscribe(() => {
   if (FORCE_WORKSPACE_RESET_STATE) {
     return;
   }
+  // Disk hydration is authoritative on desktop. Do not mirror the fast
+  // localStorage cache while the durable layout is still being loaded, or a
+  // restart can overwrite the repaired disk state before hydration reads it.
+  if (useWorkspaceStore.getState().hydrating) {
+    return;
+  }
 
   scheduleWorkspacePersistence();
 });
-
-// Keep the durable copy current even when the operator only relaunches the app
-// without making a store mutation. Do not do this when localStorage is empty:
-// disk is the fallback source in that case and must be read before any write.
-if (isTauriRuntime() && !needsDiskHydration && Array.isArray(persisted.tabs)) {
-  persistWorkspaceSnapshot(buildPersistedSnapshot(useWorkspaceStore.getState()));
-}

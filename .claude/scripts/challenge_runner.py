@@ -461,6 +461,7 @@ def normal_verify(run_dir: Path) -> None:
     matrix_valid = (
         isinstance(matrix, dict)
         and matrix.get("status") == "PASS"
+        and matrix.get("scope") == "all-active-terminals"
         and matrix.get("source") == "verify:cockpit-goal-matrix"
         and isinstance(matrix.get("artifact_sha256"), str) and len(matrix["artifact_sha256"]) == 64
         and isinstance(matrix.get("captured_at"), str) and bool(matrix["captured_at"])

@@ -432,6 +432,7 @@ export function buildTerminalHeaderState(input: {
   const normalizedActivity = view.now.text.trim().toLowerCase();
   const contextIsCaptured =
     view.context.text.trim() !== "" &&
+    view.context.text.trim() !== "Goal not captured" &&
     view.context.text.trim() !== "Context not captured" &&
     normalizedContext !== normalizedActivity;
   const sidecarGoalText = undefined;
@@ -485,14 +486,10 @@ export function buildTerminalHeaderState(input: {
   const attention = reconcileSessionStatus({
     summaryStatus: reconcileSummary?.status,
   }).attention;
-  const currentActivity =
-    hasCapturedGoal &&
-    headerStatus === "working" &&
-    /^(?:Working|Thinking|Running terminal command|Command is running)$/i.test(
-      view.now.text,
-    )
-      ? "Working"
-      : view.now.text;
+  // The view model has already quality-gated the Now line. Preserve its concrete
+  // current step even when it happens to match the Task text; replacing it with
+  // "Working" loses the pane's only useful description of what is happening.
+  const currentActivity = view.now.text;
   const activitySource =
     currentActivity === "Working" && view.now.text !== "Working"
       ? "missing"

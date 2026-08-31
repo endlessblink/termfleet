@@ -9,7 +9,10 @@ LOCK_FILE="$STATE_DIR/pressure-watchdog.lock"
 INTERVAL_SECONDS="${TERMFLEET_PRESSURE_WATCHDOG_INTERVAL:-5}"
 NOTIFY_DISPLAY="${DISPLAY:-:0}"
 NOTIFY_BUS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=${XDG_RUNTIME_DIR:-/run/user/$UID}/bus}"
-RECOVER="${TERMFLEET_PRESSURE_WATCHDOG_RECOVER:-1}"
+# Pressure evidence should alert and collect diagnostics, not silently kill the
+# cockpit and every renderer in its process group. Deliberate recycling remains
+# available as an explicit operator opt-in.
+RECOVER="${TERMFLEET_PRESSURE_WATCHDOG_RECOVER:-0}"
 DESKTOP_LAUNCHER="${TERMFLEET_DESKTOP_LAUNCHER:-$HOME/.local/bin/termfleet-desktop}"
 ALERT_COOLDOWN_SECONDS="${TERMFLEET_PRESSURE_WATCHDOG_ALERT_COOLDOWN:-300}"
 HOST_ALERT_COOLDOWN_SECONDS="${TERMFLEET_PRESSURE_WATCHDOG_HOST_ALERT_COOLDOWN:-1800}"

@@ -3,6 +3,7 @@ import type { WorkstreamIsolationMode, WorkstreamIsolationStatus, WorkstreamLaun
 
 export interface WorkstreamOpsContext {
   runId?: string;
+  canonicalTaskId?: string;
   createdAt?: number;
   cwd?: string;
   cwdLabel?: string;

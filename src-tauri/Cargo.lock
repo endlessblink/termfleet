@@ -3832,6 +3832,7 @@ name = "terminal-workspace"
 version = "0.1.1"
 dependencies = [
  "alacritty_terminal",
+ "cairo-rs",
  "dirs 5.0.1",
  "gtk",
  "libc",
@@ -3844,6 +3845,7 @@ dependencies = [
  "tokio",
  "unicode-bidi",
  "uuid",
+ "webkit2gtk",
 ]
 
 [[package]]

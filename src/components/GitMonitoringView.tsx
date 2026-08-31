@@ -9,6 +9,7 @@ const healthCopy: Record<GitMonitorHealth, { label: string; detail: string; colo
   "decision-ready": { label: "Ready to save", detail: "An agent finished clean work. Review it, then save it into the project.", color: "var(--accent-primary, #d99a45)" },
   "agent-help": { label: "Needs your decision", detail: "An agent is blocked. Open the work below to see the question and choose what happens next.", color: "var(--accent-danger, #d96b6b)" },
   checking: { label: "Checking project status", detail: "The monitor is confirming the projects before offering decisions.", color: "var(--accent-primary, #d99a45)" },
+  empty: { label: "No agent work tracked", detail: "There is no agent work for the monitor to assess yet.", color: "var(--text-tertiary, #8d949d)" },
 };
 
 function StatusPill({ health }: { health: GitMonitorHealth }) {
@@ -31,6 +32,8 @@ function AgentRow({ agent, onCombine, onOpen, combineRequested }: { agent: GitMo
         <div style={styles.progress}>{agent.progress}</div>
         <div style={styles.agentMeta}>
           <span>{agent.worktree ? "Separate work area" : "Shared project area"}</span>
+          <span>Git: {!agent.gitFactsAvailable ? "still checking" : agent.dirty === true ? "changes found" : "clean"}</span>
+          {agent.branch && <span>Branch: {agent.branch}</span>}
           {agent.dirty === true && <span style={{ color: "var(--accent-warning)" }}>Changes waiting to be saved</span>}
           {agent.gitHasConflicts === true && <span style={{ color: "var(--accent-danger)" }}>Needs your decision</span>}
         </div>
@@ -55,11 +58,16 @@ export function combineOutcome(agent: GitMonitorAgent) {
 }
 
 function ProjectRow({ project, expanded, onToggle, onCombine, onOpen, combineRequestedIds }: { project: GitMonitorProject; expanded: boolean; onToggle: () => void; onCombine: (agent: GitMonitorAgent) => void; onOpen: (agent: GitMonitorAgent) => void; combineRequestedIds: string[] }) {
+  const checkedAgents = project.agents.filter((agent) => agent.gitFactsAvailable);
+  const changedAgents = checkedAgents.filter((agent) => agent.dirty === true).length;
+  const evidence = project.gitFactsPending > 0
+    ? `Git details still checking for ${project.gitFactsPending} agent${project.gitFactsPending === 1 ? "" : "s"}`
+    : `${checkedAgents.length} agent${checkedAgents.length === 1 ? "" : "s"} checked · ${changedAgents} with unsaved changes · ${project.branches} branch${project.branches === 1 ? "" : "es"}`;
   return (
     <section style={styles.project} data-testid="git-monitor-project">
       <button type="button" className="git-monitor-project-header" style={styles.projectHeader} onClick={onToggle} aria-expanded={expanded}>
         <span style={styles.chevron}>{expanded ? "▾" : "▸"}</span>
-        <span style={styles.projectIdentity}><strong>{project.name}</strong><small>Project workspace</small></span>
+        <span style={styles.projectIdentity}><strong>{project.name}</strong><small>Project workspace</small><small style={styles.projectEvidence}>Live Git evidence: {evidence}</small></span>
         <StatusPill health={project.health} />
         <span className="git-monitor-project-counts" style={styles.projectCounts}><Count value={project.agents.length} label="agents" /><Count value={project.branches} label="work areas" /><Count value={project.worktrees} label="separate areas" />{project.unpublishedChanges > 0 && <Count value={project.unpublishedChanges} label="unfinished" />}</span>
       </button>
@@ -123,6 +131,11 @@ export function GitMonitoringView() {
     return inferred ? { ...tab, workstream: { ...inferred, ...fact } } : tab;
   }), [tabs, gitFacts, liveGitRoots]);
   const summary = useMemo(() => summarizeGitMonitoring(monitoredTabs, groups, liveGitRoots, gitFacts), [monitoredTabs, groups, liveGitRoots, gitFacts]);
+  const summaryDetail = summary.health === "under-control"
+    ? `${summary.agents.length} agent${summary.agents.length === 1 ? "" : "s"} checked; none has finished clean work waiting for your decision.`
+    : summary.health === "empty"
+      ? "No agent work is being tracked, so there is nothing to assess yet."
+      : healthCopy[summary.health].detail;
   const recentCompletions = summary.agents.filter((agent) => agent.workstream.status === "done" || agent.workstream.phase === "complete" || agent.workstream.phase === "reviewed").slice(0, 3);
 
   const toggle = (id: string) => setExpanded((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
@@ -148,7 +161,7 @@ export function GitMonitoringView() {
         <span style={styles.navigationContext}>Git work monitor</span>
       </div>
       <header className="git-monitor-hero" style={styles.hero}>
-        <div><div style={styles.eyebrow}>Work monitor</div><h1 style={styles.title}>{healthCopy[summary.health].label}</h1><p style={styles.detail}>{summary.agents.length ? healthCopy[summary.health].detail : "No agent work is being tracked yet."}</p></div>
+        <div><div style={styles.eyebrow}>Work monitor</div><h1 style={styles.title}>{healthCopy[summary.health].label}</h1><p style={styles.detail}>{summaryDetail}</p><small style={styles.evidence}>Live Git check · {summary.projects.length} project{summary.projects.length === 1 ? "" : "s"} · {summary.agents.length} agent{summary.agents.length === 1 ? "" : "s"} assessed</small></div>
         <div className="git-monitor-hero-counts" style={styles.heroCounts}><Count value={summary.projects.length} label="projects" /><Count value={summary.agents.length} label="agents" /><Count value={summary.branches} label="work areas" /><Count value={summary.worktrees} label="separate areas" />{summary.unpublishedChanges > 0 && <Count value={summary.unpublishedChanges} label="unfinished" />}</div>
       </header>
       {summary.gitFactsPending > 0 && <div style={styles.callout} data-testid="git-monitor-facts-pending"><strong>Git status is still loading for {summary.gitFactsPending} agent{summary.gitFactsPending === 1 ? "" : "s"}.</strong><span>The monitor will show combine decisions only after the project facts are confirmed.</span></div>}
@@ -156,6 +169,7 @@ export function GitMonitoringView() {
       <aside style={styles.guide} aria-label="How statuses are decided" data-testid="git-monitor-status-guide">
         <strong>How to read this</strong>
         <span><b>No action needed</b> means the agent is working normally or no finished clean work is waiting.</span>
+        <span><b>No agent work tracked</b> means this monitor has nothing to assess yet; it is not a clean bill of health.</span>
         <span><b>Ready to save</b> means the work is finished, clean, checked, and conflict-free.</span>
         <span><b>Needs your decision</b> means a blocker or conflict needs a human choice.</span>
         <span><b>Checking</b> means Git facts are not verified yet, so the monitor will not recommend combining.</span>
@@ -177,6 +191,7 @@ const styles: Record<string, CSSProperties> = {
   eyebrow: { fontSize: 11, textTransform: "uppercase", color: "var(--text-tertiary)" },
   title: { margin: "7px 0 6px", fontSize: "clamp(28px, 4vw, 44px)", fontWeight: 400 },
   detail: { margin: 0, color: "var(--text-secondary)", fontSize: 14 },
+  evidence: { display: "block", marginTop: 12, color: "var(--text-tertiary)", fontSize: 11, letterSpacing: "0.02em" },
   heroCounts: { display: "flex", flexWrap: "wrap", justifyContent: "flex-end", gap: 8, maxWidth: 420 },
   count: { color: "var(--text-secondary)", fontSize: 12, whiteSpace: "nowrap" },
   statusPill: { display: "inline-flex", alignItems: "center", gap: 6, border: "1px solid", borderRadius: 999, padding: "5px 9px", fontSize: 11, whiteSpace: "nowrap" },
@@ -188,6 +203,7 @@ const styles: Record<string, CSSProperties> = {
   projectHeader: { width: "100%", display: "flex", flexWrap: "wrap", alignItems: "flex-start", gap: 10, padding: "16px 18px", border: 0, background: "transparent", color: "inherit", textAlign: "left", cursor: "pointer", font: "inherit" },
   chevron: { width: 14, color: "var(--text-tertiary)" },
   projectIdentity: { display: "grid", gap: 4, flex: "1 1 180px", minWidth: 0 },
+  projectEvidence: { color: "var(--text-tertiary)", fontSize: 11 },
   projectCounts: { display: "flex", flex: "1 1 100%", gap: 14, flexWrap: "wrap", justifyContent: "flex-start", paddingLeft: 28 },
   agentList: { borderTop: "1px solid var(--border-subtle, rgba(255,255,255,0.1))", padding: "4px 18px 14px" },
   agentRow: { display: "grid", gridTemplateColumns: "minmax(0, 1.4fr) minmax(220px, 0.8fr)", gap: 22, padding: "18px 0", borderBottom: "1px solid var(--border-subtle, rgba(255,255,255,0.08))" },

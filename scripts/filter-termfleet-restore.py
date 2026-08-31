@@ -34,24 +34,24 @@ def filter_manifest(source: Path, workspace: Path, output: Path) -> list[str]:
         and str(target.get("cwd", "")).strip()
         and str(target.get("title", "")).strip()
     }
-    represented = {
-        (
-            os.path.realpath(str(tab["initialCwd"])),
-            str(tab.get("title", "")).strip(),
-            str(tab.get("restoreName", "")).strip(),
-        )
-        for tab in saved.get("tabs", [])
-        if isinstance(tab, dict)
-        and str(tab.get("initialCwd", "")).strip()
-        and str(tab.get("title", "")).strip()
-    }
+    restore_represented_tabs = os.environ.get("TERMFLEET_EXTERNAL_RESTORE") == "1"
+    represented = set()
+    if not restore_represented_tabs:
+        represented = {
+            (
+                os.path.realpath(str(tab["initialCwd"])),
+                str(tab.get("title", "")).strip(),
+                str(tab.get("restoreName", "")).strip(),
+            )
+            for tab in saved.get("tabs", [])
+            if isinstance(tab, dict)
+            and str(tab.get("initialCwd", "")).strip()
+            and str(tab.get("title", "")).strip()
+        }
     suppressed = closed | represented
-    # The external restore manifest often names a session independently from
-    # the tab title (for example, `closed-sentinel` versus `Terminal`). Once a
-    # saved layout has an explicit close tombstone for a directory, an
-    # unrepresented manifest entry in that same directory is not a new terminal
-    # identity: it is the provider's attempt to recreate the closed workspace.
-    # Keep represented siblings, but suppress those provider-only recreations.
+    # When dock startup restore is active, represented tabs still need their
+    # provider sessions relaunched in place. Explicit close tombstones remain
+    # authoritative; represented-tab suppression is only for non-restore reuse.
     closed_cwds = {cwd for cwd, _title, _provider_name in closed}
     represented_cwds = {cwd for cwd, _title, _restore_name in represented}
     closed_provider_names = {

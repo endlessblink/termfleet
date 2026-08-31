@@ -8,6 +8,7 @@ import {
 } from "./agentStatusSummary";
 import {
   readLocalSidecarStatus,
+  summaryFromSidecar,
   sidecarCompletedByCommand,
   type AgentStatusSidecar,
   type SidecarFileReader,
@@ -25,6 +26,7 @@ import {
 import { opensAsRequest } from "./sessionTranscript";
 import { selectPlanPurpose } from "./taskPurpose";
 import { stripComposerChrome } from "./terminalHeaderQuality";
+import { qualityCheckGoalLabel } from "./terminalHeaderQuality";
 
 export interface AgentStatusSummarizerResult {
   summary: AgentStatusSummary;
@@ -39,6 +41,8 @@ export interface AgentStatusSummarizerResult {
   // The second row: what the pane is doing RIGHT NOW, under the goal. Null when it has
   // nothing live to say — the row is then reserved but blank.
   nowLine?: PaneTaskLine | null;
+  capturedGoal?: string;
+  capturedGoalSource?: AgentStatusSidecar["mainTaskSource"];
 }
 
 export interface AgentStatusSummarizerOptions {
@@ -47,6 +51,8 @@ export interface AgentStatusSummarizerOptions {
   // Injectable sidecar file reader (tests). `null` disables the local sidecar path;
   // undefined uses the Tauri command when running in the desktop app.
   sidecarReader?: SidecarFileReader | null;
+  // The central desktop poll can start before the WebView runtime marker exists.
+  forceTauriSidecar?: boolean;
   // Injectable vendor session-record reader. Same seam as `sidecarReader`, and for the
   // same reason: without it the transcript rungs of the ladder can only run inside the
   // desktop app, so a regression there is invisible to every test — which is how panes
@@ -89,13 +95,48 @@ function isTauriRuntime() {
 // double-click included). The HTTP status server is only an optional override now
 // (browser preview, opt-in Ollama worker); it previously was the ONLY reader, so the
 // title/TASKS feature died whenever the app outlived the launcher that started it.
-function tauriSidecarReader(): SidecarFileReader | null {
+let sidecarScanCache: {
+  expiresAt: number;
+  byPaneId: Map<string, string>;
+} | null = null;
+
+async function scanSidecarsForPane(paneId: string): Promise<string | null> {
+  const now = Date.now();
+  if (!sidecarScanCache || sidecarScanCache.expiresAt <= now) {
+    const candidates = await invoke<string[]>("agent_status_list_sidecars");
+    const byPaneId = new Map<string, string>();
+    for (const candidate of candidates) {
+      try {
+        const candidatePaneId = (JSON.parse(candidate) as AgentStatusSidecar).paneId;
+        if (candidatePaneId && !byPaneId.has(candidatePaneId)) {
+          byPaneId.set(candidatePaneId, candidate);
+        }
+      } catch {
+        // Ignore malformed historical records while retaining valid sidecars.
+      }
+    }
+    sidecarScanCache = { expiresAt: now + 2_000, byPaneId };
+  }
+  return sidecarScanCache.byPaneId.get(paneId) ?? null;
+}
+
+function tauriSidecarReader(paneId?: string): SidecarFileReader | null {
   if (!isTauriRuntime()) return null;
   return async (fileName) => {
     const text = await invoke<string | null>("agent_status_read_sidecar", {
       fileName,
     });
-    return typeof text === "string" ? text : null;
+    if (typeof text === "string") {
+      if (!paneId) return text;
+      try {
+        if ((JSON.parse(text) as AgentStatusSidecar).paneId === paneId) return text;
+      } catch {
+        // Continue to the pane-id scan below; a malformed direct record must not
+        // prevent recovery from the correctly keyed record.
+      }
+    }
+    if (!paneId) return null;
+    return scanSidecarsForPane(paneId);
   };
 }
 
@@ -137,6 +178,13 @@ const contextTaskByFingerprint = new Map<
   { promise: Promise<string | null>; retryAfter: number }
 >();
 const OPENING_CACHE_LIMIT = 500;
+
+function transcriptCacheKey(
+  provider: "claude" | "codex",
+  sessionId: string,
+) {
+  return `${provider}:${sessionId}`;
+}
 
 function contextFingerprint(
   sessionId: string,
@@ -406,7 +454,7 @@ async function openingRequestFor(
   sessionId: string,
   readTranscript: SessionTranscriptReader,
 ): Promise<string | undefined> {
-  const key = `${provider}:${sessionId}`;
+  const key = transcriptCacheKey(provider, sessionId);
   const cached = openingRequestBySession.get(key);
   if (cached !== undefined) return cached ?? undefined;
   let opening: string | undefined;
@@ -430,7 +478,7 @@ async function contextRequestFor(
   sessionId: string,
   readTranscript: SessionTranscriptReader,
 ): Promise<string | undefined> {
-  const key = `${provider}:${sessionId}`;
+  const key = transcriptCacheKey(provider, sessionId);
   const cached = contextRequestBySession.get(key);
   if (cached !== undefined) return cached ?? undefined;
   let request: string | undefined;
@@ -586,6 +634,8 @@ async function resolveTaskLineFor(
   nowLine: PaneTaskLine | null;
   budget?: TranscriptFacts["budget"];
   provider?: "claude" | "codex";
+  capturedGoal?: string;
+  capturedGoalSource?: AgentStatusSidecar["mainTaskSource"];
 }> {
   let facts = null;
   let transcriptProvider: "claude" | "codex" | undefined;
@@ -734,6 +784,32 @@ async function resolveTaskLineFor(
   return {
     taskLine,
     nowLine: resolvePaneNowLine(ladderInput, taskLine.text),
+    ...(() => {
+      const candidate =
+        effectiveFacts.openingRequest?.trim() ??
+        effectiveFacts.operatorRequest?.trim() ??
+        "";
+      const candidateSource = effectiveFacts.openingRequest
+        ? "opening-request"
+        : effectiveFacts.operatorRequest
+          ? "user-prompt"
+          : undefined;
+      const qualityInput = candidate.endsWith("?")
+        ? `${candidate.slice(0, -1)}.`
+        : candidate;
+      const accepted = qualityCheckGoalLabel(qualityInput, {
+        allowAboutWhatVoice: true,
+        allowTrustedAboutWhat: true,
+        maxLength: 220,
+      }).ok
+        ? candidate.length <= 220 && !/[…]$/.test(candidate)
+          ? candidate
+          : ""
+        : "";
+      return accepted
+        ? { capturedGoal: accepted, capturedGoalSource: candidateSource }
+        : {};
+    })(),
     budget: facts?.budget,
     provider: transcriptProvider,
   };
@@ -753,13 +829,14 @@ export async function resolvePaneTaskLineFromDisk(
   input: AgentStatusSummaryInput,
   options: Pick<
     AgentStatusSummarizerOptions,
-    "sidecarReader" | "transcriptReader" | "contextTaskSummarizer"
+    "sidecarReader" | "transcriptReader" | "contextTaskSummarizer" | "forceTauriSidecar"
   > = {},
 ): Promise<{ taskLine: PaneTaskLine; sidecarUpdatedAt: number } | null> {
   const sidecarReader =
     options.sidecarReader === null
       ? null
-      : (options.sidecarReader ?? tauriSidecarReader());
+      : (options.sidecarReader ??
+        tauriSidecarReader(input.paneId));
   if (!sidecarReader) return null;
   const transcriptReader =
     options.transcriptReader === null
@@ -798,7 +875,8 @@ export async function summarizeAgentStatus(
   const sidecarReader =
     options.sidecarReader === null
       ? null
-      : (options.sidecarReader ?? tauriSidecarReader());
+      : (options.sidecarReader ??
+        tauriSidecarReader(input.paneId));
   let sidecarShapedFallback: AgentStatusSummary | null = null;
   let sidecarState: AgentStatusSummarizerResult["sidecarState"];
   let rawSidecar: AgentStatusSidecar | null = null;
@@ -827,7 +905,7 @@ export async function summarizeAgentStatus(
     options.transcriptReader === null
       ? null
       : (options.transcriptReader ?? tauriTranscriptReader());
-  const { taskLine, nowLine, budget, provider } = await resolveTaskLineFor(
+  const { taskLine, nowLine, capturedGoal, capturedGoalSource, budget, provider } = await resolveTaskLineFor(
     input,
     rawSidecar,
     sidecarState === "stale",
@@ -848,12 +926,21 @@ export async function summarizeAgentStatus(
   const effectiveFallback = budget
     ? { ...providerFallback, budget }
     : providerFallback;
-  const sidecarGoal = rawSidecar?.mainTask?.trim();
-  const effectiveFallbackWithGoal = sidecarGoal
+  // Keep only the shaped, quality-checked Goal. Reattaching rawSidecar.mainTask here
+  // resurrects process narration after summaryFromSidecar has correctly rejected it.
+  const rawSidecarGoal = rawSidecar
+    ? summaryFromSidecar(rawSidecar, effectiveFallback).mainTask?.trim()
+    : undefined;
+  const sidecarGoal = sidecarShapedFallback?.mainTask?.trim() ?? rawSidecarGoal;
+  const capturedGoalValue = sidecarGoal || capturedGoal;
+  const capturedGoalSourceValue = sidecarGoal
+    ? rawSidecar?.mainTaskSource
+    : capturedGoalSource;
+  const effectiveFallbackWithGoal = capturedGoalValue
     ? {
         ...effectiveFallback,
-        mainTask: sidecarGoal,
-        mainTaskSource: rawSidecar?.mainTaskSource,
+        mainTask: capturedGoalValue,
+        mainTaskSource: capturedGoalSourceValue,
       }
     : effectiveFallback;
   const endpoint = options.endpoint ?? configuredEndpoint();
@@ -903,11 +990,11 @@ export async function summarizeAgentStatus(
             mainTaskSource: sidecarShapedFallback.mainTaskSource,
           }
         : parsedSummary;
-    const summaryWithSidecarGoal = sidecarGoal
+    const summaryWithSidecarGoal = capturedGoalValue
       ? {
           ...summary,
-          mainTask: sidecarGoal,
-          mainTaskSource: rawSidecar?.mainTaskSource,
+          mainTask: capturedGoalValue,
+          mainTaskSource: capturedGoalSourceValue,
         }
       : summary;
     // The line rides on EVERY return path. It used to be attached only to the

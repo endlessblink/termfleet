@@ -47,9 +47,10 @@ if (!terminals.length) fail("no-terminals");
 
 const placeholderTask = /^(?:task not captured|no user task captured yet|no task declared|activity not captured|no task assigned to this terminal)$/i;
 const placeholderGoal = /^(?:goal not captured|no project goal recorded yet|no project goal captured yet|project intent not captured|project intent not recorded yet|project context:\s*.+\s+·\s*no goal set)$/i;
-const placeholderNow = /^(?:idle|ready|ready for a user task|awaiting next action|activity not captured|no current activity recorded|waiting for a task or command)$/i;
+const placeholderNow = /^(?:idle|ready|ready for a user task|awaiting next action|activity not captured|status unavailable|no current activity recorded|waiting for a task or command)$/i;
 const workspaceFallback = /^(?:ready to work in the .+ project|supporting work in the .+ project|ready to receive work in .+|working toward: .+)$/i;
 const workflowChrome = /(?:^|\b)(?:goal|task)\s+(?:achieved|stalled|resumed|paused)\b|(?:^|\b)(?:sessionstart|userpromptsubmit|pretooluse|posttooluse)\s+hook\b|hook context:|^\s*>\s*|\bweekly\s+\d+%\s+left\b|\bcontext\s+\d+%\s+used\b/i;
+  const goalChrome = /(?:mcp__|\b(?:npm|pnpm|yarn|cargo|git|playwright|pytest)\b|\.(?:tsx?|jsx?|mjs|cjs|rs|md|json|sh)\b|\/home\/|\/media\/|\b(?:memory writing agent|reviewer|hook|telemetry|screenshot|test suite|regression|verification|proof|harness|gate)\b|\b(?:agent|reviewer)\s+(?:prompt|instruction|output|commentary|text)\b)/i;
 const firstPersonNarration = /^(?:i|we|my|our)\s+/i;
 const failures = [];
 let fallbackCount = 0;
@@ -65,7 +66,7 @@ for (const terminal of terminals) {
   );
   const hasGoalRecord = Boolean(
     terminal.contextSource && !/^(?:missing|none|neutral)$/i.test(terminal.contextSource),
-  ) || Boolean(terminal.statusSummaryTask || terminal.statusSummaryNow || terminal.mainUserAsk);
+  ) || Boolean(terminal.mainUserAsk);
   const taskFallback = !task || placeholderTask.test(task);
   const goalFallback = !goal || placeholderGoal.test(goal);
   const nowFallback = placeholderNow.test(now);
@@ -76,6 +77,8 @@ for (const terminal of terminals) {
     }
   }
   if (goalFallback && hasGoalRecord) failures.push(`${id}:placeholder-goal-with-record=${goal || "<empty>"}`);
+  if (goalFallback) failures.push(`${id}:goal-missing-or-placeholder=${goal || "<empty>"}`);
+  if (goalChrome.test(goal)) failures.push(`${id}:goal-technical-or-process=${goal}`);
   if (!now && terminal.nowSource && !/^(?:missing|neutral)$/i.test(terminal.nowSource)) {
     failures.push(`${id}:empty-now-with-source`);
   }

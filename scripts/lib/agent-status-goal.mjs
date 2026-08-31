@@ -1,9 +1,13 @@
 const GOAL_VERB =
   /\b(?:add|allow|build|change|check|clean|create|debug|deploy|design|enable|find|fix|generate|handle|implement|improve|install|investigate|make|migrate|move|plan|prevent|publish|refactor|release|remove|repair|replace|research|restart|restore|review|show|support|test|update|upgrade|use|verify|write|can we|can you|how|i need|i want|please|should we|what|why)\b/i;
 
- export function isDurableGoalText(value) {
+export function isDurableGoalText(value) {
   const text = String(value ?? "").replace(/\s+/g, " ").trim();
   if (!text) return false;
+  // Assistant progress reports are not pane purpose, even when a hook labels them
+  // as a plan explanation.  Accepting them makes the Goal row mirror our own report
+  // and leaves no durable pane context after the report is rejected downstream.
+  if (/\b(?:installed dock|live gate|visual gate|focused (?:visual|header) tests?|checksum|awaiting user approval|all live and visual)\b/i.test(text)) return false;
   if (/\b(?:goal|task)\s+management\b/i.test(text)) return false;
   if (/^(?:make|set|turn|mark|treat)\s+(?:this|that|it)\s+(?:as|a)\s+(?:the\s+)?goal\b/i.test(text)) return false;
   if (/^(?:activate|create|capture|rename)\s+(?:this\s+)?goal\b/i.test(text)) return false;
@@ -16,6 +20,9 @@ const GOAL_VERB =
   if (/\b(?:this|that)\s+is\s+a\s+(?:hard\s+)?fail(?:ure)?\b/i.test(text)) return false;
   if (/^(?:you['’]?re|you are)\s+right\b|^(?:i['’]?m|i am|i['’]?m sorry|i apologize)\b|^honest\s+status\b/i.test(text)) return false;
   if (/\b(?:display boundary|defense[- ]in[- ]depth|meta[- ]feedback|capture path)\b/i.test(text)) return false;
+  // A command checklist is progress, not the durable purpose of the pane.
+  if (/^(?:works?\.?|run|running|testing|checking|verifying|fixing)\b/i.test(text)) return false;
+  if (/\bcommit and push\b.*\b(?:regression tests?|test suite)\b/i.test(text)) return false;
   if (/^(?:how will that help|the timeline is just one issue)\b/i.test(text)) return false;
   return true;
 }

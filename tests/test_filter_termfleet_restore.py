@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -60,6 +61,36 @@ class RestoreSuppressionTests(unittest.TestCase):
             self.assertEqual(suppressed, ["represented"])
             filtered = output.read_text(encoding="utf-8")
             self.assertNotIn('name = "represented"', filtered)
+            self.assertIn('name = "unrepresented"', filtered)
+
+    def test_dock_restore_keeps_represented_entries_when_external_restore_is_enabled(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = root / "fleet.toml"
+            workspace = root / "workspace.json"
+            output = root / "filtered.toml"
+            manifest.write_text(
+                """[[session]]\nname = \"represented\"\ncwd = \"/work/represented\"\n\n[[session]]\nname = \"unrepresented\"\ncwd = \"/work/unrepresented\"\n""",
+                encoding="utf-8",
+            )
+            workspace.write_text(
+                json.dumps({"tabs": [{"initialCwd": "/work/represented/", "title": "represented"}]}),
+                encoding="utf-8",
+            )
+
+            original = os.environ.get("TERMFLEET_EXTERNAL_RESTORE")
+            try:
+                os.environ["TERMFLEET_EXTERNAL_RESTORE"] = "1"
+                suppressed = MODULE.filter_manifest(manifest, workspace, output)
+            finally:
+                if original is None:
+                    os.environ.pop("TERMFLEET_EXTERNAL_RESTORE", None)
+                else:
+                    os.environ["TERMFLEET_EXTERNAL_RESTORE"] = original
+
+            self.assertEqual(suppressed, [])
+            filtered = output.read_text(encoding="utf-8")
+            self.assertIn('name = "represented"', filtered)
             self.assertIn('name = "unrepresented"', filtered)
 
     def test_legacy_recovered_tab_is_not_reclassified_or_removed(self):

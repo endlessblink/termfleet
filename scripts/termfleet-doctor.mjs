@@ -39,6 +39,7 @@ function fileSha256(filePath) {
   return out.status === 0 ? out.stdout.trim().split(/\s+/)[0] : null;
 }
 
+
 function commandOutput(command, args) {
   const out = spawnSync(command, args, { encoding: "utf8" });
   return out.status === 0 ? out.stdout : "";
@@ -70,6 +71,30 @@ const daemonExecutable = daemonProcesses.length === 1
       try { return realpathSync(`/proc/${daemonProcesses[0].pid}/exe`); } catch { return null; }
     })()
   : null;
+const supportedDaemonProtocol = (() => {
+  try {
+    const source = readFileSync(path.join(ROOT, "src-tauri", "src", "daemon.rs"), "utf8");
+    const match = source.match(/const PROTOCOL_VERSION:\s*u16\s*=\s*(\d+)/);
+    return match ? Number(match[1]) : null;
+  } catch {
+    return null;
+  }
+})();
+const daemonStatusProbe = daemonProcesses.length === 1 && socketListeners.length === 1
+  ? spawnSync(process.execPath, [path.join(ROOT, "scripts", "termfleet-daemon-status.mjs")], {
+      encoding: "utf8",
+      timeout: 1_500,
+      env: { ...process.env, TERMFLEET_DAEMON_SOCKET: daemonSocket },
+    })
+  : null;
+let liveDaemonStatus = null;
+try {
+  liveDaemonStatus = daemonStatusProbe?.status === 0
+    ? JSON.parse(daemonStatusProbe.stdout.trim())
+    : null;
+} catch {
+  liveDaemonStatus = null;
+}
 
 // Incident handoff: future agents should not need the operator to remember a
 // transient glitch. The watchdog and launcher share this append-only stream;
@@ -105,6 +130,15 @@ if (daemonProcesses.length === 1 && socketListeners.length === 1) {
 if (daemonExecutable && existsSync(installedBinary)) {
   if (daemonExecutable === realpathSync(installedBinary)) {
     report("ok", "Runtime release alignment", `canonical daemon matches installed release ${daemonExecutable}`);
+  } else if (
+    liveDaemonStatus?.protocolVersion === supportedDaemonProtocol &&
+    liveDaemonStatus?.reachable === true
+  ) {
+    report(
+      "info",
+      "Runtime release alignment",
+      `canonical daemon ${daemonExecutable} is protocol-compatible with dock release ${realpathSync(installedBinary)}; preserving live PTYs without replacement is safe`,
+    );
   } else {
     report(
       "warn",
@@ -347,17 +381,24 @@ try {
     report("fail", "Installed dock release", "TermFleet desktop entry is missing");
   } else {
     const exec = readFileSync(desktopEntry, "utf8").match(/^Exec=(.*)$/m)?.[1]?.trim();
+    // Desktop entries append launch arguments (normally `--dock`) to Exec. Keep
+    // the arguments for diagnostics, but resolve only the executable token.
+    const execPath = exec?.match(/^(\S+)/)?.[1];
     const commandPath = path.join(home, ".local", "bin", "termfleet");
     const target = existsSync(commandPath) ? realpathSync(commandPath) : commandPath;
     const releasePrefix = path.join(home, ".local", "share", "termfleet", "releases") + path.sep;
-    if (!exec || !existsSync(exec)) {
+    if (!execPath || !existsSync(execPath)) {
       report("fail", "Installed dock release", `dock launcher is missing: ${exec ?? "unknown"}`);
     } else if (!target.startsWith(releasePrefix)) {
       report("fail", "Installed dock release", `dock resolves outside immutable releases: ${target}`);
     } else {
       installedBinaryMtime = statSync(target).mtimeMs;
       installedBinarySha = fileSha256(target);
-      if (builtBinarySha && installedBinarySha !== builtBinarySha) {
+      const manifestPath = path.join(path.dirname(target), "manifest.env");
+      const manifest = existsSync(manifestPath) ? readFileSync(manifestPath, "utf8") : "";
+      if (!manifest.match(/^TERMFLEET_FRONTEND_SHA256=[0-9a-f]{64}$/m)) {
+        report("fail", "Installed frontend provenance", "dock release has no frontend checksum manifest; refusing to trust a mixed release");
+      } else if (builtBinarySha && installedBinarySha !== builtBinarySha) {
         report("fail", "Installed dock release", "dock is stale — install the current release before acceptance");
       } else {
         report("ok", "Installed dock release", `dock uses the current verified build: ${target}`);
@@ -457,7 +498,7 @@ const icon = { ok: "✔", warn: "⚠", fail: "✘", info: "·" };
 // 9. Snapshot task-source vocabulary. Task identity must be bounded; old
 // `status-summary`/model/scrape ownership is a regression even if the text reads well.
 try {
-  const snapshot = JSON.parse(readFileSync(path.join(dir, "cockpit-snapshot.json"), "utf8"));
+  const snapshot = JSON.parse(readFileSync(path.join(dir, "termfleet-cockpit-snapshot.json"), "utf8"));
   const allowed = new Set(["manual", "task-tool", "user-prompt", "plan-binding", "sidecar-todo", "workstream", "task-line", "missing", "none", "agent-status"]);
   const terminals = Array.isArray(snapshot.terminals) ? snapshot.terminals : [];
   const snapshotAge = Date.now() - Number(snapshot.updatedAt || 0);

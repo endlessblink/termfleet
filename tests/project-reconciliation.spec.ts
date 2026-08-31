@@ -1406,3 +1406,64 @@ test("terminal git root rehomes sidebar project to match terminal header identit
   expect(result.counts).toContainEqual({ name: "watchpost", count: 1 });
   expect(result.counts).not.toContainEqual({ name: "flow-state", count: 1 });
 });
+
+test("map sidebar refreshes a saved terminal project before it is clicked", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => {
+    const runtime = window as typeof window & {
+      __TAURI_INTERNALS__?: { invoke: (command: string, args?: { id?: string; cwd?: string }) => Promise<unknown>; transformCallback: () => number; unregisterCallback: () => void };
+      __termfleetWorkspaceStore?: { setState: (state: Record<string, unknown>) => void; getState: () => Record<string, any> };
+    };
+    runtime.__TAURI_INTERNALS__ = {
+      invoke: async (command, args) => command === "daemon_status"
+        ? { reachable: true, mode: "externalDaemon" }
+        : command === "daemon_get_session_cwd"
+          ? "/repo/productivity/flow-state/watchpost"
+          : command === "pty_get_cwd"
+            ? "/repo/productivity/flow-state/watchpost"
+        : command === "workstream_git_context"
+          ? { gitRoot: "/repo/productivity/flow-state/watchpost" }
+          : null,
+      transformCallback: () => 1,
+      unregisterCallback: () => {},
+    };
+    const store = runtime.__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+    const state = store.getState();
+    const tabId = "saved-sidebar-tab";
+    const paneId = "saved-sidebar-pane";
+    const terminalId = "saved-sidebar-terminal";
+    store.setState({
+      ...state,
+      groups: [{ id: "flow-state-group", name: "flow-state", color: "#7aa2f7", emoji: "📡", emojiSource: "generated", projectRoot: "/repo/productivity/flow-state" }],
+      terminalGroups: [{ id: "flow-state-group", name: "flow-state", color: "#7aa2f7", emoji: "📡", emojiSource: "generated", projectRoot: "/repo/productivity/flow-state" }],
+      tabs: [{
+        id: tabId,
+        title: "Watchpost terminal",
+        emoji: "⬛",
+        color: "#7aa2f7",
+        groupId: "flow-state-group",
+        initialCwd: "/repo/productivity/flow-state",
+        terminals: [{ id: terminalId, paneId, cols: 80, rows: 24, status: "running" }],
+        splitLayout: { id: paneId, type: "terminal" },
+        activePaneId: paneId,
+      }],
+      activeTabId: tabId,
+      activeTerminalId: terminalId,
+      liveCwds: {},
+      liveGitRoots: {},
+      workspaceUiState: { ...state.workspaceUiState, workspaceMode: "split", primarySidebarPanel: "map", primarySidebarCollapsed: false, canvasSidebarCollapsed: false, canvasSidebarSortMode: "project" },
+      canvasState: {
+        ...state.canvasState,
+        selectedNodeId: null,
+        selectedNodeIds: [],
+        nodes: [{ id: "saved-sidebar-node", type: "terminal", title: "Watchpost terminal", terminalTabId: tabId, terminalCwd: "/repo/productivity/flow-state", x: 0, y: 0, width: 820, height: 460 }],
+      },
+    });
+  });
+
+  const sidebar = page.getByTestId("map-node-list");
+  await expect(sidebar).toBeVisible();
+  await expect(sidebar.getByTestId("map-project-group-header")).toContainText("watchpost");
+});

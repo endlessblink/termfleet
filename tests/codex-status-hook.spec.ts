@@ -27,6 +27,42 @@ test("a new session persists its first substantive request as the main goal", ()
   expect(sidecar?.now).toBe("Prompt submitted");
 });
 
+test("a task-shaped opening request cannot become the durable Goal", () => {
+  const sidecar = buildCodexSidecar(
+    {
+      hook_event_name: "UserPromptSubmit",
+      prompt: "works. commit and push and create regression tests",
+      cwd: "/repo/flow-state",
+      session_id: "task-shaped-goal",
+    },
+    null,
+    1_000,
+  );
+
+  expect(sidecar?.mainTask).toBeUndefined();
+  expect(sidecar?.mainTaskSource).toBeUndefined();
+  expect(sidecar?.userTask).toBe("works. commit and push and create regression tests");
+});
+
+test("the answer to about-what becomes the durable Goal at turn end", () => {
+  const sidecar = buildCodexSidecar(
+    {
+      hook_event_name: "Stop",
+      last_assistant_message: "We are making the installed dock header clear and stable.",
+      cwd: "/repo/termfleet",
+    },
+    {
+      userTask: "$about-what",
+      todos: [{ content: "Capture the installed screenshot", status: "in_progress", activeForm: "Capturing the installed screenshot" }],
+      turn: "working",
+    },
+    1_010,
+  );
+  expect(sidecar?.mainTask).toBe("We are making the installed dock header clear and stable.");
+  expect(sidecar?.mainTaskSource).toBe("plan-explanation");
+  expect(sidecar?.userTask).toBe("$about-what");
+});
+
 test("a complaint with an attachment marker is never persisted as the opening goal", () => {
   const sidecar = buildCodexSidecar(
     {

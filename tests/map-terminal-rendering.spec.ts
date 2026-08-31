@@ -111,6 +111,14 @@ test("creating several map terminals does not repeatedly recenter the map", asyn
   await expect.poll(() => page.evaluate(() => window.__termfleetWorkspaceStore?.getState().canvasState.viewport)).toEqual(before);
 });
 
+test("restored map cards keep the exact saved pane id when the live terminal is temporarily unresolved", () => {
+  const source = readFileSync(new URL("../src/components/MagicCanvas.tsx", import.meta.url), "utf8");
+  const normalized = codeShape(source);
+
+  expect(normalized).toContain("const exactNodePaneId=node.linkedTerminalPaneId??restoredNodePaneId??node.id;");
+  expect(normalized).toContain("const terminalPaneId=linkedTerminal?.paneId??exactNodePaneId;");
+});
+
 test("creating a map terminal keeps the selected map spot instead of fitting the new card", async ({ page }) => {
   const before = { x: 96, y: -144, zoom: 1.15 };
   await seedMapViewportScenario(page, before);
@@ -338,6 +346,18 @@ test("agent status polling persists the pane-owned summary for split headers", (
   expect(agentUpdate).toContain("statusSummarySource: result.source");
 });
 
+test("the cockpit goal matrix audits every active pane and rejects project goals", () => {
+  const matrix = readFileSync("scripts/verify-cockpit-goal-matrix.mjs", "utf8");
+
+  expect(matrix).toContain('scope: "all-active-terminals"');
+  expect(matrix).toContain('"project-wide-goal"');
+  expect(matrix).toContain('entry && typeof entry.paneId === "string"');
+  expect(matrix).toContain("goal-too-short-for-about-what");
+  expect(matrix).toContain("The snapshot is the rendered cockpit surface");
+  expect(matrix).not.toContain("latestTraceByPane.get(entry.paneId)");
+  expect(matrix).not.toContain('.includes("/devops/termfleet")');
+});
+
 test("map nodes subscribe to their own tab and live PTY metadata", () => {
   const source = readFileSync("src/components/MagicCanvas.tsx", "utf8");
   const nodeView = source.match(
@@ -381,15 +401,15 @@ test("new terminal map nodes retain the stable pane identity", () => {
   expect(nodeFactory).toContain("linkedTerminalPaneId: tab.activePaneId");
 });
 
-test("hydrated terminal map cards follow the tab's current pane", () => {
+test("hydrated terminal map cards preserve their exact saved pane", () => {
   const workspace = readFileSync("src/stores/workspace.ts", "utf8");
   const normalization = workspace.match(
     /function normalizeCanvasState[\s\S]*?(?=function hydrateWorkspace)/,
   )?.[0] ?? "";
 
-  expect(normalization).toContain("linkedTerminalPaneId: node.terminalTabId");
-  expect(normalization).toContain("?.activePaneId");
-  expect(normalization).toContain("still-valid split pane");
+  expect(normalization).toContain("terminal.id === node.terminalPtyId");
+  expect(normalization).toContain("terminal.paneId === node.linkedTerminalPaneId");
+  expect(normalization).toContain("recovery identity, not a view");
 });
 
 test("map terminal task row keeps its reserved height when live text changes", () => {
@@ -411,16 +431,16 @@ test("map terminal task row keeps its reserved height when live text changes", (
   expect(nodeView).not.toContain(") : null}");
 });
 
-test("workspace surface subscribes to the active tab instead of every pane", () => {
+test("workspace surface reconciles every durable pane while rendering the active tab", () => {
   const source = readFileSync("src/components/WorkspaceSurface.tsx", "utf8");
 
   expect(source).toContain(
     "state.tabs.find((tab) => tab.id === state.activeTabId)",
   );
   expect(source).toContain("activeTabIndex");
-  expect(source).not.toContain(
-    "const tabs = useWorkspaceStore((state) => state.tabs);",
-  );
+  expect(source).toContain("const tabs = useWorkspaceStore((state) => state.tabs);");
+  expect(source).toContain('invoke("daemon_ensure_session"');
+  expect(source).toContain("reconciledPaneIdsRef");
 });
 
 test("selected map agent panes suppress synchronized-output control residue", () => {
@@ -537,6 +557,7 @@ test("map Connect terminal selects the pane without leaving the map", () => {
   expect(terminalCanvas).toContain("focusInput();");
   expect(terminalCanvas).toContain("onInputReady?.(input, sessionId);");
   expect(terminal).toContain("onInputReady={onCanvasInputReady}");
+  expect(terminal).toContain("runtimeActive={runtimeActive && isRuntimeVisible}");
   expect(source).toContain('title="Open full terminal"');
   expect(source).toContain("openLinkedTerminal();");
   expect(source).toContain("onOpen={connectLinkedTerminal}");
@@ -545,16 +566,14 @@ test("map Connect terminal selects the pane without leaving the map", () => {
 
 test("automatic sidebar reconnect checks for another live conversation owner", () => {
   const source = readFileSync("src/components/WorkbenchSidebar.tsx", "utf8");
-  const reconnectBlock = source.match(
-    /async function reconnectAgentPanes\(\)[\s\S]*?\n  \}\n\n  useEffect\(/,
-  )?.[0] ?? "";
+  const runtime = readFileSync("src/lib/agentReconnectRuntime.ts", "utf8");
 
-  expect(reconnectBlock).toContain("reconnectStoppedAgents");
-  expect(reconnectBlock).toContain("conversationOwnedElsewhere");
-  expect(reconnectBlock).toContain(
-    'invoke<boolean>("agent_conversation_has_other_owner"',
-  );
-  expect(reconnectBlock).toContain("return true;");
+  expect(source).toContain("reconnectSavedAgentPanes");
+  expect(runtime).toContain("conversationOwner:");
+  expect(runtime).toContain('"agent_conversation_owner"');
+  expect(runtime).toContain("rebindOwnedConversation:");
+  expect(runtime).toContain("rebindSavedPaneToLiveOwner");
+  expect(runtime).not.toContain('"agent_conversation_has_other_owner"');
 });
 
 test("clicking map Connect terminal reconnects an unselected session in canvas", async ({
@@ -695,6 +714,16 @@ test("map terminal wheel navigation does not force the viewport back to live out
   expect(wheelBlock).toContain('"canvas-wheel"');
   expect(wheelBlock).toContain("if (up) userViewportLockedRef.current = true;");
   expect(terminalCanvas).toContain("if (userViewportLockedRef.current) return;");
+});
+
+test("inactive map previews do not refresh full snapshots every second", () => {
+  const terminalCanvas = readFileSync(
+    "src/components/TerminalCanvas.tsx",
+    "utf8",
+  );
+  expect(terminalCanvas).toContain("BACKGROUND_SNAPSHOT_INTERVAL_MS = 10_000");
+  expect(terminalCanvas).toContain("}, BACKGROUND_SNAPSHOT_INTERVAL_MS);");
+  expect(terminalCanvas).not.toContain("}, 1000);");
 });
 
 test("map terminal keeps the user viewport while agent work continues", () => {
@@ -1367,8 +1396,31 @@ test("terminal map labels can be recolored from the right-click menu", async ({
   });
 
   await expect(page.getByTestId("canvas-terminal-connect-terminal")).toBeVisible();
+  await expect
+    .poll(() =>
+      page.getByTestId("canvas-terminal-node-header-title").evaluate((title) => {
+        const node = title.closest('[data-testid="canvas-terminal-node"]');
+        return node
+          ? {
+              width: getComputedStyle(node).borderTopWidth,
+              color: getComputedStyle(node).borderTopColor,
+            }
+          : { width: "", color: "" };
+      }),
+    )
+    .toMatchObject({ width: "1px" });
+  await expect
+    .poll(() =>
+      page.getByTestId("canvas-terminal-node-header-title").evaluate((title) => {
+        const node = title.closest('[data-testid="canvas-terminal-node"]');
+        return node ? getComputedStyle(node).borderTopColor : "";
+      }),
+    )
+    .not.toBe("rgba(0, 0, 0, 0)");
   await expect(
-    page.locator('[data-pane-id="pane-color"].workspace-sidebar-row'),
+    page.locator(
+      '[data-pane-id="pane-color"].workspace-sidebar-row:not(.session-sidebar-row)',
+    ),
   ).toHaveAttribute("data-panel-color", "#ef6f72");
   await page.evaluate(() => {
     const store = (
@@ -1389,13 +1441,32 @@ test("terminal map labels can be recolored from the right-click menu", async ({
     });
   });
   await expect(
-    page.locator('[data-pane-id="pane-color"].workspace-sidebar-row'),
+    page.locator(
+      '[data-pane-id="pane-color"].workspace-sidebar-row:not(.session-sidebar-row)',
+    ),
   ).toHaveAttribute("data-active", "false");
+  await expect
+    .poll(() =>
+      page.getByTestId("canvas-terminal-node-header-title").evaluate((title) => {
+        const node = title.closest('[data-testid="canvas-terminal-node"]');
+        return node
+          ? {
+              width: getComputedStyle(node).borderTopWidth,
+              color: getComputedStyle(node).borderTopColor,
+            }
+          : { width: "", color: "" };
+      }),
+    )
+    .toMatchObject({ width: "1px" });
   await expect(
-    page.locator('[data-pane-id="pane-color"].workspace-sidebar-row'),
+    page.locator(
+      '[data-pane-id="pane-color"].workspace-sidebar-row:not(.session-sidebar-row)',
+    ),
   ).toHaveAttribute("data-panel-color", "#ef6f72");
   await page
-    .locator('[data-pane-id="pane-color"].workspace-sidebar-row')
+    .locator(
+      '[data-pane-id="pane-color"].workspace-sidebar-row:not(.session-sidebar-row)',
+    )
     .click();
   await page.getByRole("button", { name: "Sessions", exact: true }).click();
   await expect(
@@ -1418,7 +1489,7 @@ test("terminal map labels can be recolored from the right-click menu", async ({
   );
   await page.getByRole("button", { name: "Map", exact: true }).click();
   await expect(
-    page.locator('[data-pane-id="pane-color"].workspace-sidebar-row'),
+    page.locator('[data-pane-id="pane-color"].session-sidebar-row'),
   ).toHaveAttribute("data-panel-color", "#d4a44f");
 
   await expect

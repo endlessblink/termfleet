@@ -70,7 +70,30 @@ test("keeps missing goal as state instead of rendering it as task content", () =
   expect(header.hasCapturedGoal).toBe(false);
   expect(header.hasCapturedContext).toBe(false);
   expect(header.sources.goal).toBe("none");
-  expect(header.currentActivity).toBe("Idle");
+  expect(header.currentActivity).toBe("Idle — no work is running");
+});
+
+test("does not promote a status-sidecar request into the pane Goal", () => {
+  const header = buildTerminalHeaderState({
+    paneId: "pane-task-derived-goal",
+    terminalId: "pty-task-derived-goal",
+    project: { id: "g-flow", name: "flow-state", projectRoot: "/repo/flow-state" },
+    liveCwd: "/repo/flow-state",
+    terminalStatus: "running",
+    statusSummary: {
+      task: "Running test suite",
+      userTask: "works. commit and push and create regression tests",
+      path: "/repo/flow-state",
+      now: "Idle",
+      status: "idle",
+      provider: "codex",
+      confidence: "high",
+      tasksFromTodoWrite: false,
+    },
+  });
+
+  expect(header.goalLabel).not.toBe("works. commit and push and create regression tests");
+  expect(header.hasCapturedContext).toBe(false);
 });
 
 test("uses the view model Now value instead of the generic title", () => {
@@ -170,6 +193,76 @@ test("uses a goal-task sidecar value for Goal even when the active task is separ
   expect(header.goalLabel).toBe("Audit the current browser boundary and application contracts");
   expect(header.contextLabel).toBe("Build and verify a reliable job-application system for Noam");
   expect(header.sources.context).not.toBe("missing");
+});
+
+test("keeps a pane Goal stable while transient task status changes", () => {
+  const base = {
+    paneId: "pane-stable-goal",
+    terminalId: "terminal-stable-goal",
+    project: { id: "g-termfleet", name: "termfleet", projectRoot: termfleetPath },
+    liveCwd: termfleetPath,
+    terminalStatus: "running" as const,
+  };
+  const first = buildTerminalHeaderState({
+    ...base,
+    mainUserAsk: {
+      text: "Keep agent terminals connected after relaunch so work can resume safely",
+      source: "status-sidecar",
+      updatedAt: 1000,
+    },
+    statusSummary: {
+      task: "Checking the relaunch behavior",
+      path: termfleetPath,
+      now: "Reading the current session",
+      status: "working",
+      provider: "codex",
+      confidence: "high",
+      tasksFromTodoWrite: false,
+    },
+  });
+  const second = buildTerminalHeaderState({
+    ...base,
+    statusSummary: {
+      task: "Running a different verification step",
+      path: termfleetPath,
+      now: "Waiting for the next command",
+      status: "idle",
+      provider: "codex",
+      confidence: "high",
+      tasksFromTodoWrite: false,
+    },
+  });
+
+  expect(first.contextLabel).toBe(
+    "Keep agent terminals connected after relaunch so work can resume safely",
+  );
+  expect(second.contextLabel).toBe(first.contextLabel);
+});
+
+test("accepts a quality-checked opening purpose as that pane's Goal", () => {
+  const header = buildTerminalHeaderState({
+    paneId: "pane-opening-purpose",
+    terminalId: "terminal-opening-purpose",
+    project: { id: "g-termfleet", name: "termfleet", projectRoot: termfleetPath },
+    liveCwd: termfleetPath,
+    terminalStatus: "running",
+    statusSummary: {
+      mainTask: "Keep every agent terminal connected after relaunch so work can be resumed safely",
+      mainTaskSource: "opening-request",
+      task: "Tracing the relaunch behavior",
+      path: termfleetPath,
+      now: "Reading the current session",
+      status: "working",
+      provider: "codex",
+      confidence: "high",
+      tasksFromTodoWrite: false,
+    },
+  });
+
+  expect(header.contextLabel).toBe(
+    "Keep every agent terminal connected after relaunch so work can be resumed safely",
+  );
+  expect(header.hasCapturedContext).toBe(true);
 });
 
 test("shows the user goal as Task and the active plan item as Now Active", () => {
@@ -506,7 +599,7 @@ test("does not promote a screenshot path instruction into the Task row", () => {
 });
 
 test("a durable opening request carried by task-line also supplies Goal", () => {
-  const opening = "I dont understand why the assistant suddenly started answering in one word";
+  const opening = "Keep the assistant's answers clear and complete for people returning later";
   const header = buildTerminalHeaderState({
     paneId: "pane-task-line-goal",
     terminalId: "pty-task-line-goal",

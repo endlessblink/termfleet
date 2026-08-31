@@ -34,6 +34,7 @@ test("gated shell accepts a real TodoWrite list from the status worker", () => {
       source: "process",
       hasNarration: false,
       hasAuthoritativeTaskList: true,
+      hasDurableGoal: false,
     }),
   ).toBe(true);
   expect(
@@ -41,8 +42,20 @@ test("gated shell accepts a real TodoWrite list from the status worker", () => {
       source: "process",
       hasNarration: false,
       hasAuthoritativeTaskList: false,
+      hasDurableGoal: false,
     }),
   ).toBe(false);
+});
+
+test("gated shell accepts a durable about-what Goal without live narration", () => {
+  expect(
+    shouldApplyGatedShellStatus({
+      source: "fallback",
+      hasNarration: false,
+      hasAuthoritativeTaskList: false,
+      hasDurableGoal: true,
+    }),
+  ).toBe(true);
 });
 
 const TAIL_BYTES = 32 * 1024; // must match commands.rs TRANSCRIPT_TAIL_BYTES

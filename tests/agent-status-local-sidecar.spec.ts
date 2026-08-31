@@ -153,7 +153,7 @@ test("resume-goal commands never become a pane's durable Task", () => {
   expect(summary.task).toBe("Verifying the dock header with the user");
 });
 
-test("summaryFromSidecar does not promote plan explanations into the durable goal", () => {
+test("summaryFromSidecar preserves the validated about-what answer as the durable goal", () => {
   const sidecar = {
     provider: "codex" as const,
     updatedAt: Date.now(),
@@ -174,11 +174,275 @@ test("summaryFromSidecar does not promote plan explanations into the durable goa
     workstream: { path: "/repo/x", provider: "shell" },
   });
 
-  expect(browserSummary.userTask).toBeUndefined();
-  expect(nodeSummary.userTask).toBeUndefined();
+  expect(browserSummary.userTask).toBe("Improving the live-events landing page and routes");
+  expect(nodeSummary.userTask).toBe("Improving the live-events landing page and routes");
+  expect(browserSummary.mainTask).toBe("Improving the live-events landing page and routes");
+  expect(nodeSummary.mainTask).toBe("Improving the live-events landing page and routes");
   expect(browserSummary.task).toBe("Reviewing the landing page on mobile");
   expect(nodeSummary.task).toBe("Reviewing the landing page on mobile");
   expect(browserSummary.now).toBe("Reviewing the landing page on mobile");
+});
+
+test("about-what output becomes a stable Goal instead of repeating the command", () => {
+  const sidecar = {
+    provider: "codex" as const,
+    updatedAt: Date.now(),
+    userTask: "$about-what",
+    now: "We are making TermFleet headers clear and stable for every session.",
+    narration: "We are making TermFleet headers clear and stable for every session.",
+    turn: "idle" as const,
+    todos: [{ content: "Checking the installed dock", status: "completed" }],
+  };
+  const browserSummary = summaryFromSidecar(sidecar, fallbackFor("/repo/termfleet"));
+  const nodeSummary = summaryFromNodeSidecar(sidecar, {
+    projectId: "/repo/termfleet",
+    workstream: { path: "/repo/termfleet", provider: "shell" },
+  });
+
+  expect(browserSummary.mainTask).toBe(sidecar.now);
+  expect(nodeSummary.mainTask).toBe(sidecar.now);
+  expect(browserSummary.task).not.toBe("$about-what");
+  expect(nodeSummary.task).not.toBe("$about-what");
+});
+
+test("about-what keeps the stored pane answer when the sidecar is stale", () => {
+  const sidecar = {
+    provider: "codex" as const,
+    updatedAt: Date.now() - 31 * 60 * 1000,
+    mainTask: "This session is about delivering the updated TermFleet build and resolving the remaining restart risk",
+    mainTaskSource: "plan-explanation" as const,
+    userTask: "$about-what",
+    narration: "Checking the process that owns the relaunch loop",
+    now: "Checking the process that owns the relaunch loop",
+    turn: "idle" as const,
+    todos: [{ content: "Identifying the process and kill event", status: "in_progress" }],
+  };
+
+  expect(summaryFromSidecar(sidecar, fallbackFor("/repo/termfleet")).mainTask).toBe(
+    sidecar.mainTask,
+  );
+});
+
+test("about-what never invents a project-wide Goal when the pane answer is contaminated", () => {
+  const summary = summaryFromSidecar(
+    {
+      provider: "codex",
+      cwd: "/repo/termfleet",
+      updatedAt: Date.now(),
+      mainTask: "so commit and push safely",
+      mainTaskSource: "codex-user-prompt",
+      userTask: "$about-what",
+      turn: "working",
+      now: "Inspecting the screenshot gate",
+      todos: [{ content: "Capture each visible pane", status: "in_progress" }],
+    },
+    fallbackFor("/repo/termfleet"),
+  );
+
+  expect(summary.mainTask).not.toBe("Make every TermFleet terminal show its purpose and current activity clearly.");
+  expect(summary.task).not.toContain("Make every TermFleet terminal");
+});
+
+test("a stale pane sidecar still restores its captured opening Goal", async () => {
+  const goal = "Bring the browser to the exact page with the upload filled so the operator can clear the CAPTCHA and send it";
+  const paneId = "terminal-stale-goal-pane";
+  const sidecar = {
+    provider: "codex" as const,
+    cwd: "/repo/project",
+    updatedAt: Date.now() - 31 * 60 * 1000,
+    mainTask: goal,
+    mainTaskSource: "opening-request" as const,
+    userTask: "let me know what you think",
+    turn: "idle" as const,
+    now: "Idle — no work is running",
+    todos: [],
+  };
+  expect(summaryFromSidecar(sidecar, fallbackFor("/repo/project")).mainTask).toBe(goal);
+  const result = await summarizeAgentStatus(
+    { provider: "codex", cwd: "/repo/project", paneId },
+    {
+      endpoint: "",
+      sidecarReader: async () => JSON.stringify(sidecar),
+    },
+  );
+
+  expect(result.summary.mainTask).toBe(goal);
+});
+
+test("a real opening Goal survives an ordinary continuation reply", () => {
+  const goal = "I want a larger goal so you will not stop each time; settle the node issue and leave the pane ready to continue";
+  const summary = summaryFromSidecar(
+    {
+      provider: "codex",
+      updatedAt: Date.now(),
+      mainTask: goal,
+      mainTaskSource: "opening-request",
+      userTask: "ok so get it done and let me run the script",
+      turn: "working",
+      todos: [],
+    },
+    fallbackFor("/repo/termfleet"),
+  );
+
+  expect(summary.mainTask).toBe(goal);
+  expect(summary.mainTaskSource).toBe("opening-request");
+});
+
+test("a status-summary Goal remains visible when the rendered context is initially empty", () => {
+  const goal = "Keep the pane focused on the uploaded browser workflow so the operator can finish the handoff";
+  const summary = summaryFromSidecar(
+    {
+      provider: "codex",
+      updatedAt: Date.now(),
+      mainTask: goal,
+      mainTaskSource: "opening-request",
+      userTask: "continue with the browser handoff",
+      turn: "idle",
+      todos: [],
+    },
+    fallbackFor("/repo/jobrunner"),
+  );
+
+  expect(summary.mainTask).toBe(goal);
+  expect(summary.mainTaskSource).toBe("opening-request");
+});
+
+test("a pane-local outcome narration can supply a clear Goal when no command answer was stored", () => {
+  const summary = summaryFromSidecar(
+    {
+      provider: "codex",
+      updatedAt: Date.now(),
+      turn: "idle",
+      userTask: "$critique the entire app",
+      narration: "Make the active terminal work dominant so people can focus and resume it quickly",
+      todos: [],
+    },
+    fallbackFor("/repo/termfleet"),
+  );
+
+  expect(summary.mainTask).toBe(
+    "Make the active terminal work dominant so people can focus and resume it quickly",
+  );
+  expect(summary.mainTaskSource).toBe("plan-explanation");
+});
+
+test("a pane working on status explanations keeps Goal missing without pane-owned purpose", () => {
+  const summary = summaryFromSidecar(
+    {
+      provider: "codex",
+      cwd: "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
+      updatedAt: Date.now(),
+      turn: "idle",
+      userTask: "continue",
+      mainTask: "remember to keep the status review readable",
+      mainTaskSource: "opening-request",
+      todos: [{ content: "Adding clear reasons and next actions to every status", status: "completed" }],
+      narration: "The status meanings are being clarified for each terminal",
+    },
+    fallbackFor("/media/endlessblink/data/my-projects/ai-development/devops/termfleet"),
+  );
+
+  expect(summary.mainTask).toBeUndefined();
+});
+
+test("process narration cannot become a pane Goal", () => {
+  const summary = summaryFromSidecar(
+    {
+      provider: "codex",
+      updatedAt: Date.now(),
+      turn: "idle",
+      userTask: "continue",
+      narration: "The push is ready, but the safety gate requires approval",
+      todos: [],
+    },
+    fallbackFor("/repo/termfleet"),
+  );
+
+  expect(summary.mainTask).toBeUndefined();
+});
+
+test("a progress report cannot replace a pane Goal or cause a blank Goal", () => {
+  const summary = summaryFromSidecar(
+    {
+      provider: "codex",
+      cwd: "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
+      updatedAt: Date.now(),
+      userTask: "$about-what",
+      mainTask: "The installed dock remains stable with the correct pane-specific Goal, and all live and visual checks pass.",
+      mainTaskSource: "plan-explanation",
+      now: "Idle — no work is running",
+      turn: "idle",
+      todos: [{ content: "Waiting for a clear task", status: "in_progress" }],
+    },
+    fallbackFor("/media/endlessblink/data/my-projects/ai-development/devops/termfleet"),
+  );
+
+  expect(summary.mainTask).toBeUndefined();
+});
+
+test("an untrusted plan explanation cannot become a pane Goal without about-what", () => {
+  const summary = summaryFromSidecar(
+    {
+      provider: "codex",
+      cwd: "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
+      updatedAt: Date.now(),
+      userTask: "use superpowers debugging skill",
+      mainTask: "This session is about delivering the updated TermFleet build and resolving the remaining r",
+      mainTaskSource: "plan-explanation",
+      now: "Idle — no work is running",
+      turn: "idle",
+      todos: [{ content: "Adding and verifying the visible attachment fix", status: "completed" }],
+      narration: "Targeted tests, build, installed-release, and restart smoke pass",
+    },
+    fallbackFor("/media/endlessblink/data/my-projects/ai-development/devops/termfleet"),
+  );
+
+  expect(summary.mainTask).toBeUndefined();
+  expect(summary.task).not.toContain("updated TermFleet build");
+});
+
+test("restart-attachment evidence stays Task context without a pane-owned Goal", () => {
+  const summary = summaryFromSidecar(
+    {
+      provider: "codex",
+      cwd: "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
+      updatedAt: Date.now(),
+      userTask: "use superpowers debugging skill",
+      mainTask: "This session is about delivering the updated TermFleet build and resolving the remaining r",
+      mainTaskSource: "plan-explanation",
+      now: "Idle — no work is running",
+      turn: "idle",
+      todos: [
+        { content: "Confirming the provider survives the restart", status: "completed" },
+        { content: "Tracing why the restored cockpit pane is not attached", status: "completed" },
+        { content: "Adding and verifying the visible attachment fix", status: "in_progress" },
+      ],
+      narration: "Targeted tests, build, installed-release, and restart smoke pass",
+    },
+    fallbackFor("/media/endlessblink/data/my-projects/ai-development/devops/termfleet"),
+  );
+
+  expect(summary.mainTask).toBeUndefined();
+});
+
+test("the active cockpit verification session keeps Goal missing without an answer", () => {
+  const summary = summaryFromSidecar(
+    {
+      provider: "codex",
+      cwd: "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
+      updatedAt: Date.now(),
+      userTask: "resume update the goal and go",
+      turn: "working",
+      todos: [
+        { content: "Rechecking the current installed dock and all pane Goals", status: "in_progress" },
+        { content: "Running focused regressions and stability gates", status: "pending" },
+      ],
+      narration: "Reviewing the verified result with the user",
+    },
+    fallbackFor("/media/endlessblink/data/my-projects/ai-development/devops/termfleet"),
+  );
+
+  expect(summary.mainTask).toBeUndefined();
 });
 
 test("summaryFromSidecar hides a legacy Codex internal goal-task on cold start", () => {
@@ -408,15 +672,35 @@ test("the Bina billing repair purpose survives deployment", () => {
 
 test("candidate file names try the pane sidecar first, then cwd keys", () => {
   const names = sidecarCandidateFileNames({
-    paneId: "terminal-abc-def",
     gitRoot: "/repo/project",
     cwd: "/repo/project/sub",
   });
-  expect(names[0]).toBe(paneSidecarFileName("terminal-abc-def"));
   expect(names).toContain(cwdSidecarFileName("/repo/project"));
   expect(names).toContain(cwdSidecarFileName("/repo/project/sub"));
   // No duplicates.
   expect(new Set(names).size).toBe(names.length);
+});
+
+test("candidate file names also try the original id after restored-pane renaming", () => {
+  const names = sidecarCandidateFileNames({
+    paneId: "recovered-pane-original-pane",
+    cwd: "/repo/project",
+  });
+
+  expect(names.slice(0, 2)).toEqual([
+    paneSidecarFileName("recovered-pane-original-pane"),
+    paneSidecarFileName("original-pane"),
+]);
+});
+
+test("candidate file names try the final pane UUID from a synthetic runtime id", () => {
+  const names = sidecarCandidateFileNames({
+    paneId: "terminal-recovered-tab-123-recovered-pane-12345678-1234-1234-1234-123456789abc",
+  });
+
+  expect(names).toContain(
+    paneSidecarFileName("12345678-1234-1234-1234-123456789abc"),
+  );
 });
 
 test("readLocalSidecarSummary reads the pane file and shapes the summary", async () => {
@@ -440,7 +724,7 @@ test("readLocalSidecarSummary reads the pane file and shapes the summary", async
   expect(summary?.task).toBe("Fixing it");
 });
 
-test("readLocalSidecarSummary falls back to a cwd sidecar and rejects stale files", async () => {
+test("readLocalSidecarSummary never borrows a cwd sidecar for a known pane", async () => {
   const cwd = "/repo/project";
   const files = new Map<string, string>([
     [
@@ -457,7 +741,7 @@ test("readLocalSidecarSummary falls back to a cwd sidecar and rejects stale file
     fallbackFor(cwd),
     async (name) => files.get(name) ?? null,
   );
-  expect(fromCwd?.task).toBe("Doing cwd task");
+  expect(fromCwd).toBeNull();
 
   const stale = new Map<string, string>([
     [
@@ -470,7 +754,7 @@ test("readLocalSidecarSummary falls back to a cwd sidecar and rejects stale file
     fallbackFor(cwd),
     async (name) => stale.get(name) ?? null,
   );
-  expect(rejected).toBeNull();
+  expect(rejected?.task).toBe("Supervised agent run");
 });
 
 test("the sidecar lookup distinguishes expiry from a missing or unreadable file", async () => {
@@ -499,7 +783,7 @@ test("the sidecar lookup distinguishes expiry from a missing or unreadable file"
   expect(unreadable.state).toBe("error");
 });
 
-test("readLocalSidecarSummary prefers concrete cwd task over generic pane task", async () => {
+test("readLocalSidecarSummary never borrows a cwd task for a known pane", async () => {
   const cwd = "/repo/project";
   const paneId = "terminal-generic-pane";
   const files = new Map<string, string>([
@@ -527,7 +811,7 @@ test("readLocalSidecarSummary prefers concrete cwd task over generic pane task",
     async (name) => files.get(name) ?? null,
   );
 
-  expect(summary?.task).toBe("Fixing the sidebar map order rule");
+  expect(summary?.task).toBe("Supervised agent run");
 });
 
 test("readLocalSidecarSummary does not invent a task from a vague prompt and narration", async () => {
@@ -720,7 +1004,7 @@ test("summarizeAgentStatus reports an expired sidecar without trusting its old t
     },
   );
 
-  expect(result.source).toBe("fallback");
+  expect(result.source).toBe("sidecar");
   expect(result.sidecarState).toBe("stale");
   expect(result.summary.task).not.toBe("Old task");
   expect(result.summary.completedByCommand).toBe(true);
@@ -775,7 +1059,7 @@ test("an expired sidecar is still returned as an identity source", async () => {
   );
 
   expect(result.state).toBe("stale");
-  expect(result.summary).toBeNull();
+  expect(result.summary?.task).toBe("Make the timer job fast and calm");
   expect(result.sidecar?.sessionId).toBe("cefa1bf3-8530-436f-9494-b2db1e998fe3");
   expect(result.sidecar?.todos?.[0]?.content).toBe("Make the timer job fast and calm");
 });

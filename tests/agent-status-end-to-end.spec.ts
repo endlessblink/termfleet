@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { spawn, spawnSync } from "node:child_process";
 import { mkdtempSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { summarizeAgentStatus } from "../src/lib/agentStatusSummarizer";
@@ -18,6 +19,14 @@ const HOOK = path.join(ROOT, "scripts", "termfleet-claude-status-hook.mjs");
 const WORKER = path.join(ROOT, "scripts", "agent-status-summary-sidecar.mjs");
 const SERVER = path.join(ROOT, "scripts", "agent-status-summary-server.mjs");
 const PORT = 38217; // fixed, away from the app's default 37819
+
+test("the generated plain-language purpose is returned as durable Goal data", () => {
+  const server = readFileSync(SERVER, "utf8");
+  expect(server).toContain("mainTask: context.goal");
+  expect(server).toContain('mainTaskSource: "plan-explanation"');
+  expect(server).toContain('context.reason !== "task-sidecar"');
+  expect(server).toContain("userTask: context.goal");
+});
 
 function startServer(env: Record<string, string>) {
   const child = spawn("node", [SERVER, "node", WORKER], {

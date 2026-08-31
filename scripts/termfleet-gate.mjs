@@ -5,12 +5,33 @@
 //   Title     = a specific step/outcome (no bare status words, >=4 words, != Task row)
 //   Path      = a real directory, not a file that leaked from a command
 // Prints each failing pane with the reason. Exit 1 on any failure.
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
 
-const file = path.join(os.homedir(), ".local/share/terminal-workspace/agent-status/cockpit-snapshot.json");
+const file = process.env.TERMFLEET_COCKPIT_SNAPSHOT_PATH || path.join(os.homedir(), ".local/share/terminal-workspace/agent-status/termfleet-cockpit-snapshot.json");
+const captureDir = process.env.TERMFLEET_PANE_CAPTURE_DIR || path.join(process.cwd(), ".captures", "terminal-panes");
+const screenshotGate = spawnSync(process.execPath, [path.join(process.cwd(), "scripts/monitor-cockpit-pane-screens.mjs"), "--once"], {
+  cwd: process.cwd(),
+  encoding: "utf8",
+});
+if (screenshotGate.status !== 0) {
+  console.error("GATE FAILED — fresh rendered screenshots could not prove every visible pane.");
+  console.error(`${screenshotGate.stdout ?? ""}${screenshotGate.stderr ?? ""}`.trim());
+  process.exit(1);
+}
 const dump = JSON.parse(readFileSync(file, "utf8"));
+const manifests = readdirSync(captureDir)
+  .filter((name) => name.startsWith("manifest-") && name.endsWith(".json"))
+  .sort()
+  .reverse();
+if (!manifests.length) {
+  console.error("GATE FAILED — the screenshot monitor produced no visible-pane manifest.");
+  process.exit(1);
+}
+const visibleManifest = JSON.parse(readFileSync(path.join(captureDir, manifests[0]), "utf8"));
+const visiblePaneIds = new Set((visibleManifest.panes || []).map((pane) => pane.paneId));
 const GENERIC = /^(?:working|idle|ready|awaiting next action|activity not captured|prompt submitted|terminal)$/i;
 const IMPLEMENTATION_DETAIL = [
   /(?:^|[\s"'([])\/(?:home|media|tmp|var|usr|opt|data)\//i,
@@ -42,10 +63,11 @@ const narrativeTitle = (value) => (
   /\b(?:guidelines|documentation|docs|article|source|report|study|research)\s+(?:say|says|show|shows|recommend|recommends)\b/i.test(value)
 );
 const failures = [];
-for (const t of dump.terminals ?? []) {
+for (const t of (dump.terminals ?? []).filter((terminal) => visiblePaneIds.has(terminal.paneId))) {
   const where = `${t.workspace ?? "?"} (${String(t.terminalId ?? "").slice(9, 17)})`;
   const title = String(t.title ?? "").trim();
   const task = String(t.task ?? "").trim();
+  const goal = String(t.context ?? "").trim();
   const p = String(t.path ?? "");
   const hasAnyData = Boolean(
     t.terminalVisibleText || t.terminalOutput ||
@@ -55,12 +77,14 @@ for (const t of dump.terminals ?? []) {
   const problems = [];
   if (GENERIC.test(title)) problems.push(`generic title "${title}"`);
   else if (title.split(/\s+/).length < 4 && !/·|—/.test(title)) problems.push(`title too thin "${title}"`);
-  if (task === "Task not captured") problems.push("no goal on the Task row");
-  else if (task.split(/\s+/).length < 3) problems.push(`goal too thin "${task}"`);
-  else if (genericResultLabel(task)) problems.push(`generic result goal "${task.slice(0, 40)}"`);
-  else if (rawPromptLabel(task)) problems.push(`raw prompt goal "${task.slice(0, 40)}"`);
-  else if (lacksDecisionObject(task)) problems.push(`decision goal lacks object "${task.slice(0, 40)}"`);
-  else if (/^(?:stop(?:ped)?|no |not |failed|error|waiting|blocked|done)\b/i.test(task)) problems.push(`task reads as status, not a goal "${task.slice(0, 40)}"`);
+  if (task === "Task not captured") problems.push("no task on the Task row");
+  else if (task.split(/\s+/).length < 3) problems.push(`task too thin "${task}"`);
+  if (!goal || goal === "Goal not captured") problems.push("no goal on the Goal row");
+  else if (goal.split(/\s+/).length < 3) problems.push(`goal too thin "${goal}"`);
+  else if (genericResultLabel(goal)) problems.push(`generic result goal "${goal.slice(0, 40)}"`);
+  else if (rawPromptLabel(goal)) problems.push(`raw prompt goal "${goal.slice(0, 40)}"`);
+  else if (lacksDecisionObject(goal)) problems.push(`decision goal lacks object "${goal.slice(0, 40)}"`);
+  else if (/^(?:stop(?:ped)?|no |not |failed|error|waiting|blocked|done)\b/i.test(goal)) problems.push(`goal reads as status, not a goal "${goal.slice(0, 40)}"`);
   if (/^the\s+\w+(?:\s+\w+)?\s+(?:was|were|has been|had been)\b/i.test(title)) problems.push(`passive title "${title.slice(0, 40)}"`);
   if (narrativeTitle(title)) problems.push(`narrative title "${title.slice(0, 54)}"`);
   if (/^(?:the bad part was|the mistake was|it wasn'?t followed because)\b/i.test(title)) problems.push(`critique-prose title "${title.slice(0, 54)}"`);

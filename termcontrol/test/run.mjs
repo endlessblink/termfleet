@@ -210,14 +210,24 @@ async function main() {
   // ---------------------------------------------------------------- feed ---
   group('Reading a conversation');
 
-  await check('every terminal opens with readable messages', async () => {
-    let empty = [];
+  await check('every terminal has something to show', async () => {
+    // Most keep a conversation. A side session or plain shell does not, and
+    // for those the terminal's own screen stands in — what must never happen
+    // is a terminal that offers nothing at all.
+    const blank = [];
+    let conversations = 0;
+    let screens = 0;
+
     for (const p of panes.panes) {
       const f = await (await req(`/api/feed?pane=${encodeURIComponent(p.id)}&limit=40`)).json();
-      if (!f.events || f.events.length === 0) empty.push(p.project);
+      if (f.events && f.events.length) { conversations++; continue; }
+      const s = await (await req(`/api/screen?pane=${encodeURIComponent(p.id)}`)).json();
+      if (s.screen && s.screen.trim()) screens++;
+      else blank.push(p.project);
     }
-    eq(empty.length, 0, `terminals with nothing to show (${empty.join(', ')})`);
-    return `${panes.panes.length} conversations`;
+
+    eq(blank.length, 0, `terminals offering nothing at all (${blank.join(', ')})`);
+    return `${conversations} conversations, ${screens} shown by screen`;
   });
 
   await check('no conversation takes longer than two seconds', async () => {

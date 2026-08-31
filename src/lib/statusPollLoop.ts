@@ -17,6 +17,7 @@ import { useWorkspaceStore } from "../stores/workspace";
 import type { Tab, TerminalState, WorkstreamStatus } from "./types";
 import { stableAgentProvider } from "./agentProviderIdentity";
 import { runBoundedTasks } from "./statusPollScheduler";
+import { heartbeatTaskRun } from "./canonicalTaskRuntime";
 import {
   mirroredWorkstream,
   preserveDurablePaneGoal,
@@ -64,6 +65,31 @@ function shouldPollTarget(target: StatusPollTarget, activeTabId: string | null |
   if (now - lastPolledAt < minInterval) return false;
   lastPolledByPane.set(key, now);
   return true;
+}
+
+function syncCanonicalRunHeartbeat(tab: Tab, terminal: TerminalState, source: string, status?: string) {
+  const workstream = tab.workstream;
+  if (!workstream?.canonicalTaskId || !workstream.runId) return;
+  const now = Date.now();
+  const terminalState = terminal.status === "failed" || status === "failed"
+    ? "failed"
+    : terminal.status === "exited" || status === "done"
+      ? "finished"
+      : status === "waiting"
+        ? "waiting"
+        : "running";
+  void heartbeatTaskRun(workstream.runId, {
+    state: terminalState,
+    heartbeatAt: now,
+    activityAt: terminalState === "running" && source !== "fallback" ? now : undefined,
+    phase: workstream.phase,
+    action: terminal.currentActivity ?? workstream.currentActivity,
+    terminalPaneId: terminal.paneId,
+    runtimeSessionId: panePollKey(tab, terminal),
+    terminalLink: `pane:${terminal.paneId}`,
+    ...(terminalState === "failed" ? { failureReason: workstream.statusSummaryError ?? "Agent pane reported failure" } : {}),
+    ...(terminalState === "finished" ? { finishedAt: now } : {}),
+  }).catch(() => undefined);
 }
 
 async function pollOnce() {
@@ -159,6 +185,7 @@ async function pollOnce() {
           (candidate) => terminalMatchesPollTarget(candidate, terminal),
         );
         if (!latestTab || !latestTerminal) continue;
+        syncCanonicalRunHeartbeat(latestTab, latestTerminal, result.source, result.summary.status);
 
         const expiredProjection = projectStatusPollResult(latestTerminal, result, Date.now());
         if (expiredProjection) {

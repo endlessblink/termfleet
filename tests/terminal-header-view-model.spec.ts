@@ -10,6 +10,7 @@ import {
 import {
   aboutWhatFallback,
   buildShellTerminalHeaderViewModel,
+  fallbackProjectGoal,
   productGoalFromRegressionStep,
 } from "../src/lib/terminalHeaderViewModel";
 import {
@@ -18,9 +19,114 @@ import {
   mainUserAskFromTerminalPurpose,
   persistedMainUserAsk,
 } from "../src/lib/terminalMainUserAsk";
+import { buildTerminalHeaderState } from "../src/lib/terminalHeaderState";
+import { qualityCheckAuthoritativeTaskLabel } from "../src/lib/terminalHeaderQuality";
 
 const flowStatePath =
   "/media/endlessblink/data/my-projects/ai-development/productivity/flow-state";
+
+test("missing explicit Goals remain uncaptured instead of copying the pane task", () => {
+  const header = buildShellTerminalHeaderViewModel({
+    project: { id: "termfleet", name: "termfleet", projectRoot: "/repo/termfleet" },
+    liveCwd: "/repo/termfleet",
+    terminalStatus: "idle",
+    statusSummary: {
+      task: "Reconnecting the restored agent conversation",
+      now: "Idle — no work is running",
+      status: "idle",
+    },
+  });
+
+  expect(header.context.text).toBe("Goal not captured");
+  expect(header.context.source).toBe("missing");
+  expect(header.context.text).not.toContain("Reconnecting the restored agent conversation");
+});
+
+test("recovered panes always get a stable project-named Goal", () => {
+  const goal = fallbackProjectGoal(
+    "/media/endlessblink/data/my-projects/ai-development/freelance/bina-meatzevet-courses",
+  );
+
+  expect(goal).toBe(
+    "Make Bina Meatzevet Courses work clear and dependable so people can resume it confidently.",
+  );
+  expect(goal).not.toMatch(/Goal not captured|Status unavailable|agent|reviewer/i);
+});
+
+test("recovered technical folder names do not leak into the Goal", () => {
+  expect(fallbackProjectGoal("/repo/directive-validation-harness")).toBe(
+    "Make this project work clear and dependable so people can resume it confidently.",
+  );
+});
+
+test("a thin pane keeps a concrete project purpose for both Goal and Task", () => {
+  const header = buildTerminalHeaderState({
+    paneId: "pane-thin-agent",
+    terminalId: "terminal-thin-agent",
+    project: { id: "termfleet", name: "termfleet", projectRoot: "/repo/termfleet" },
+    liveCwd: "/repo/termfleet",
+    terminalStatus: "running",
+    statusSummary: { status: "working", now: "Working" },
+  });
+
+  expect(header.contextLabel).toBe("Goal not captured");
+  expect(header.goalLabel).toBe(
+    "Make TermFleet show each terminal's purpose so people can resume the right work confidently.",
+  );
+  expect(header.currentActivity).toBe("Working");
+  expect(header.goalLabel).not.toMatch(/assigned work|report|debrief|not captured/i);
+});
+
+test("shared project fallback cannot become every pane's Task", () => {
+  const generic = fallbackProjectGoal(
+    "/tmp/tw-terminal-headers-live-all/workspace",
+    "Waiting for the operator decision",
+  );
+
+  expect(generic).toBe(
+    "Make Workspace work clear and dependable so people can resume it confidently.",
+  );
+  expect(qualityCheckAuthoritativeTaskLabel(generic).ok).toBe(false);
+  expect(
+    fallbackProjectGoal(
+      "header-verifier",
+      "Choosing the next GI-lightmap step",
+    ),
+  ).toBe("Keep the GI-lightmap pipeline moving so the scene renders correctly.");
+});
+
+test("pane-owned opening Goals render instead of the project fallback", () => {
+  const header = buildTerminalHeaderState({
+    paneId: "pane-header-verifier",
+    terminalId: "terminal-header-verifier",
+    project: { id: "termfleet", name: "Header Verifier", projectRoot: "/tmp/header-verifier" },
+    liveCwd: "/tmp/header-verifier",
+    terminalStatus: "running",
+    statusSummary: {
+      task: "Choosing the next GI-lightmap step",
+      mainTask: "Help operators choose the next GI-lightmap step without losing the proven pipeline",
+      mainTaskSource: "opening-request",
+      path: "/tmp/header-verifier",
+      now: "Waiting for the operator decision",
+      status: "working",
+    },
+  });
+
+  expect(header.contextLabel).toBe(
+    "Help operators choose the next GI-lightmap step without losing the proven pipeline",
+  );
+  expect(header.sources.goal).toBe("user-prompt");
+  expect(header.contextLabel).not.toMatch(/Make .* work clear and dependable/);
+});
+
+test("recovered reconnect work gets a purpose instead of a folder slogan", () => {
+  expect(
+    fallbackProjectGoal(
+      "/repo/jobrunner",
+      "Shipping and verifying the reconnect fix in the desktop app",
+    ),
+  ).toBe("Keep Jobrunner connected so people can return to their work without losing progress.");
+});
 
 test("idle Now uses the durable main goal instead of generic waiting text", () => {
   expect(
@@ -36,6 +142,267 @@ test("idle Now uses the durable main goal instead of generic waiting text", () =
     "Ready for next task",
   );
   expect(aboutWhatFallback()).toBe("Ready for next task");
+});
+
+test("TermFleet keeps a clear project purpose when process text is rejected", () => {
+  const header = buildShellTerminalHeaderViewModel({
+    project: { id: "termfleet", name: "termfleet", projectRoot: "/repo/termfleet" },
+    liveCwd: "/repo/termfleet",
+    terminalStatus: "running",
+    mainUserAsk: {
+      text: "use impeccable design skills to redesign this properly",
+      source: "status-sidecar",
+      updatedAt: 1000,
+    },
+    statusSummary: {
+      task: "Repairing the missing protocol surfaces",
+      path: "/repo/termfleet",
+      now: "Idle — no work is running",
+      status: "idle",
+      provider: "codex",
+      confidence: "high",
+    },
+  });
+  expect(header.context.text).toBe("Goal not captured");
+});
+
+test("TermFleet never turns a waiting task placeholder into Goal not captured", () => {
+  const header = buildShellTerminalHeaderViewModel({
+    project: { id: "termfleet", name: "termfleet", projectRoot: "/repo/termfleet" },
+    liveCwd: "/repo/termfleet",
+    terminalStatus: "idle",
+    statusSummary: {
+      task: "Waiting for a clear task",
+      path: "/repo/termfleet",
+      now: "Idle — no work is running",
+      status: "idle",
+      provider: "codex",
+      confidence: "high",
+    },
+  });
+
+  expect(header.context.text).toBe("Goal not captured");
+});
+
+test("a sidecar-owned about-what answer becomes this pane's Goal", () => {
+  const goal =
+    "This session is about delivering the updated TermFleet build and resolving the remaining restart risk";
+  const header = buildShellTerminalHeaderViewModel({
+    project: { id: "termfleet", name: "termfleet", projectRoot: "/repo/termfleet" },
+    liveCwd: "/repo/termfleet",
+    terminalStatus: "running",
+    mainUserAsk: {
+      text: goal,
+      source: "status-sidecar",
+      updatedAt: 1000,
+    },
+    statusSummary: {
+      task: "Identifying the process and kill event",
+      path: "/repo/termfleet",
+      now: "Identifying the process and kill event",
+      status: "working",
+      provider: "codex",
+      confidence: "high",
+    },
+  });
+
+  expect(header.context.text).toBe(goal);
+  expect(header.context.source).toBe("status-summary");
+  expect(header.context.text).not.toBe(header.taskDescription.text);
+});
+
+test("a status-summary about-what answer is not reclassified as a Task", () => {
+  const goal =
+    "This session is about delivering the updated TermFleet build and resolving the remaining restart risk";
+  const header = buildShellTerminalHeaderViewModel({
+    project: { id: "termfleet", name: "termfleet", projectRoot: "/repo/termfleet" },
+    liveCwd: "/repo/termfleet",
+    terminalStatus: "idle",
+    statusSummary: {
+      task: goal,
+      path: "/repo/termfleet",
+      now: "Idle — no work is running",
+      status: "idle",
+      provider: "codex",
+      confidence: "high",
+    },
+  });
+
+  expect(header.context.text).toBe(goal);
+  expect(header.context.text).not.toBe(header.taskDescription.text);
+});
+
+test("missing independent context gets an outcome-shaped about-what quality goal", () => {
+  const header = buildShellTerminalHeaderViewModel({
+    project: { id: "bina", name: "bina-meatzevet-courses", projectRoot: "/repo/bina" },
+    liveCwd: "/repo/bina",
+    terminalStatus: "idle",
+    statusSummary: {
+      task: "Fixing and regression-testing the tab behavior",
+      path: "/repo/bina",
+      now: "Idle — no work is running",
+      status: "idle",
+      provider: "codex",
+      confidence: "high",
+    },
+  });
+
+  expect(header.context.text).toBe("Goal not captured");
+  expect(header.context.source).toBe("missing");
+  expect(header.context.text).not.toBe(header.taskDescription.text);
+});
+
+test("missing project context stays uncaptured instead of using a product fallback", () => {
+  const header = buildShellTerminalHeaderViewModel({
+    project: { id: "termfleet", name: "termfleet", projectRoot: "/work/termfleet" },
+    statusSummary: { status: "idle", task: undefined, now: "Idle" },
+    neutralTitle: "Idle",
+  });
+
+  expect(header.context.text).toBe("Goal not captured");
+});
+
+test("TermFleet fallback uses meaningful pane outcome context when available", () => {
+  const header = buildShellTerminalHeaderViewModel({
+    project: { id: "termfleet", name: "termfleet", projectRoot: "/work/termfleet" },
+    terminalStatus: "running",
+    statusSummary: {
+      mainTask: "Make TermFleet a reliable terminal cockpit so people can understand work and resume it safely",
+      task: "Adding a plain warning when terminals are in danger",
+      now: "Proving terminals survive a real relaunch",
+      status: "working",
+    },
+  });
+
+  expect(header.context.text).toBe("Goal not captured");
+});
+
+test("TermFleet status work gets a specific purpose instead of the broad orientation slogan", () => {
+  const header = buildShellTerminalHeaderViewModel({
+    project: { id: "termfleet", name: "termfleet", projectRoot: "/work/termfleet" },
+    terminalStatus: "idle",
+    statusSummary: {
+      task: "Adding clear reasons and next actions to every status",
+      now: "Idle — no work is running",
+      status: "idle",
+    },
+  });
+
+  expect(header.context.text).toBe("Goal not captured");
+});
+
+test("a TermFleet verification pane gets a clear outcome Goal without an explicit answer", () => {
+  const header = buildShellTerminalHeaderViewModel({
+    project: { id: "termfleet", name: "termfleet", projectRoot: "/work/termfleet" },
+    terminalStatus: "running",
+    statusSummary: {
+      task: "Running Playwright tests",
+      now: "Awaiting command",
+      status: "working",
+    },
+  });
+
+  expect(header.context.text).toBe("Goal not captured");
+});
+
+test("a pane keeps its first-person about-what answer as its own Goal", () => {
+  const answer =
+    "I’m diagnosing why TermFleet appears to kill agent panes after restart, with the next step being to identify the exact UI event that reports the kill.";
+  const header = buildShellTerminalHeaderViewModel({
+    project: { id: "termfleet", name: "termfleet", projectRoot: "/work/termfleet" },
+    terminalStatus: "idle",
+    statusSummary: {
+      mainTask: answer,
+      mainTaskSource: "plan-explanation",
+      task: "Fixing the kill path and verifying the installed app",
+      now: "Identifying the process and kill event",
+      status: "idle",
+    },
+  });
+
+  expect(header.context.text).toBe(answer);
+});
+
+test("a clipped about-what fragment cannot become a visible Goal", () => {
+  const header = buildShellTerminalHeaderViewModel({
+    project: { id: "termfleet", name: "termfleet", projectRoot: "/work/termfleet" },
+    terminalStatus: "idle",
+    statusSummary: {
+      mainTask: "We’re fixing restored agent terminals so they reconnect as agent conversations instead of",
+      mainTaskSource: "plan-explanation",
+      task: "Reproducing the restored agent failure",
+      now: "Idle — no work is running",
+      status: "idle",
+    },
+  });
+
+  expect(header.context.text).not.toMatch(/instead of|…$/i);
+});
+
+test("generic project orientation text cannot replace the TermFleet purpose", () => {
+  const header = buildShellTerminalHeaderViewModel({
+    project: { id: "termfleet", name: "termfleet", projectRoot: "/work/termfleet" },
+    liveCwd: "/work/termfleet",
+    terminalStatus: "idle",
+    statusSummary: {
+      mainTask: "Help people understand each TermFleet project and pick up where they left off",
+      status: "idle",
+      task: "Inspecting the current workspace",
+      now: "Idle — no work is running",
+    },
+  });
+
+  expect(header.context.text).toBe("Goal not captured");
+});
+
+test("approval choreography cannot become a durable project Goal", () => {
+  const header = buildShellTerminalHeaderViewModel({
+    project: { id: "flow-state", name: "flow-state", projectRoot: "/work/flow-state" },
+    liveCwd: "/work/flow-state",
+    terminalStatus: "running",
+    statusSummary: {
+      mainTask: "Authorize the gate exception.",
+      task: "Shipping and verifying the reconnect fix in the desktop app",
+      now: "Waiting for a command to finish",
+      status: "waiting",
+    },
+  });
+
+  expect(header.context.text).toBe("Goal not captured");
+});
+
+test("rejected task text uses a plain user-facing fallback", () => {
+  const header = buildShellTerminalHeaderViewModel({
+    project: { id: "bina", name: "bina-meatzevet-courses", projectRoot: "/repo/bina" },
+    liveCwd: "/repo/bina",
+    terminalStatus: "running",
+    mainUserAsk: {
+      text: "Use the reviewer harness and implementation skills",
+      source: "status-sidecar",
+      updatedAt: 1000,
+    },
+  });
+
+  expect(header.taskDescription.text).toBe("Preparing the next useful change");
+  expect(header.taskDescription.text).not.toMatch(
+    /Goal not captured|Task not captured|No task declared|What should change\?/i,
+  );
+});
+
+test("attachment markers cannot become a pane Goal", () => {
+  const header = buildShellTerminalHeaderViewModel({
+    project: { id: "termfleet", name: "termfleet", projectRoot: "/repo/termfleet" },
+    liveCwd: "/repo/termfleet",
+    terminalStatus: "running",
+    mainUserAsk: {
+      text: "[Image #1]",
+      source: "status-sidecar",
+      updatedAt: 1000,
+    },
+  });
+
+  expect(header.context.text).toBe("Goal not captured");
+  expect(header.context.text).not.toContain("Image");
 });
 
 test("a regression step keeps its named product object as a restrained outcome", () => {
@@ -80,7 +447,7 @@ test("goal-management commands never become the durable Task", () => {
   });
 
   expect(header.taskDescription.text).not.toBe("make this a goal");
-  expect(header.taskDescription.text).toMatch(/No task declared|Goal not captured/);
+  expect(header.taskDescription.text).not.toMatch(/No task declared|Goal not captured|What should change\?/);
 });
 
 test("complaint fragments never become the durable Task", () => {
@@ -124,6 +491,85 @@ test("a durable pane request fills the missing Goal with explicit context", () =
   expect(header.taskDescription.text).toBe("Deploy the clean sender branch");
   expect(header.context.text).toBe("Deploy the clean sender branch.");
   expect(header.context.text).not.toBe("Context not captured");
+});
+
+test("the latest about-what answer stays the Goal while the checklist changes", () => {
+  const header = buildTerminalHeaderState({
+    paneId: "pane-about-what",
+    terminalId: "terminal-about-what",
+    liveCwd: "/repo/termfleet",
+    terminalStatus: "running",
+    statusSummary: {
+      task: "Checking the installed dock screenshot",
+      userTask: "$about-what",
+      mainTask: "Keep the dock Goal stable until about-what changes.",
+      mainTaskSource: "plan-explanation",
+      path: "/repo/termfleet",
+      now: "Checking the installed dock screenshot",
+      status: "working",
+      provider: "codex",
+      confidence: "high",
+      tasksFromTodoWrite: true,
+    },
+    taskLineup: [{
+      id: "step",
+      content: "Checking the installed dock screenshot",
+      status: "in_progress",
+      source: "todo-write",
+      updatedAt: 1000,
+    }],
+  });
+
+  expect(header.goalLabel).toBe("Keep the dock Goal stable until about-what changes.");
+  expect(header.contextLabel).toBe("Keep the dock Goal stable until about-what changes.");
+  expect(header.goalLabel).not.toContain("Checking the installed dock screenshot");
+
+  const immediateUpdate = buildTerminalHeaderState({
+    paneId: "pane-about-what",
+    terminalId: "terminal-about-what",
+    liveCwd: "/repo/termfleet",
+    terminalStatus: "running",
+    statusSummary: {
+      task: "Preparing the next screenshot",
+      userTask: "$about-what",
+      mainTask: "A different outcome arrived.",
+      mainTaskSource: "plan-explanation",
+      path: "/repo/termfleet",
+      now: "Preparing the next screenshot",
+      status: "working",
+      provider: "codex",
+      confidence: "high",
+      tasksFromTodoWrite: true,
+    },
+  });
+
+  expect(immediateUpdate.goalLabel).toBe("Keep the dock Goal stable until about-what changes.");
+  expect(immediateUpdate.currentActivity).not.toBe("Preparing the next screenshot");
+});
+
+test("declared installed-label verification does not become the durable Task", () => {
+  const header = buildShellTerminalHeaderViewModel({
+    project: { id: "termfleet", name: "termfleet", projectRoot: "/repo/termfleet" },
+    liveCwd: "/repo/termfleet",
+    terminalStatus: "running",
+    mainUserAsk: {
+      text: "Verify the installed terminal labels",
+      source: "status-sidecar",
+      updatedAt: 1000,
+    },
+    statusSummary: {
+      task: "Verify the installed terminal labels",
+      userTask: "Verify the installed terminal labels",
+      path: "/repo/termfleet",
+      now: "Waiting for current activity",
+      status: "idle",
+      provider: "codex",
+      confidence: "high",
+      tasksFromTodoWrite: false,
+    },
+  });
+
+  expect(header.taskDescription.text).not.toBe("Verify the installed terminal labels");
 });
 
 test("vague follow-up keeps the previous meaningful user goal", () => {
@@ -420,12 +866,12 @@ test("meta-process labels fall back instead of pretending to be the product goal
       },
     });
 
-    expect(header.taskDescription.text).toBe("Goal not captured");
+    expect(header.taskDescription.text).not.toMatch(/Goal not captured|No task declared|What should change\?/);
     expect(header.taskDescription.text).not.toBe(task);
   }
 });
 
-test("TermFleet verification steps inherit the explicit project mission when no goal was captured", () => {
+test("TermFleet verification steps do not inherit a project mission when no Goal was captured", () => {
   const header = buildShellTerminalHeaderViewModel({
     project: { id: "termfleet", name: "termfleet", projectRoot: "/repo/termfleet" },
     liveCwd: "/repo/termfleet",
@@ -449,7 +895,7 @@ test("TermFleet verification steps inherit the explicit project mission when no 
   });
 
   expect(header.context.text).toBe("Goal not captured");
-  expect(header.taskDescription.text).not.toBe("Goal not captured");
+  expect(header.taskDescription.text).not.toMatch(/Goal not captured|No task declared|What should change\?/);
 });
 
 test("plan-purpose lines stay private instead of becoming the pane Task", () => {
@@ -474,7 +920,7 @@ test("plan-purpose lines stay private instead of becoming the pane Task", () => 
     },
   });
 
-  expect(header.taskDescription.text).toMatch(/Goal not captured|No task declared/);
+  expect(header.taskDescription.text).not.toMatch(/Goal not captured|No task declared|What should change\?/);
   expect(header.taskDescription.text).not.toContain("Promoting and verifying");
   expect(header.title.text).not.toContain("Promoting and verifying");
 });
@@ -508,7 +954,7 @@ test("cross-system recheck summaries never become the durable Task title", () =>
     },
   });
 
-  expect(header.taskDescription.text).toBe("Goal not captured");
+  expect(header.taskDescription.text).not.toMatch(/Goal not captured|No task declared|What should change\?/);
   expect(header.taskDescription.text).not.toContain("Rechecking PR");
 });
 
@@ -546,7 +992,7 @@ test("a current local-page test step cannot stand in for a missing durable goal"
     },
   });
 
-  expect(header.taskDescription.text).toBe("Goal not captured");
+  expect(header.taskDescription.text).not.toMatch(/Goal not captured|No task declared|What should change\?/);
   expect(header.taskDescription.text).not.toContain("Refreshing");
 });
 
@@ -583,7 +1029,7 @@ test("verification and regression-writing procedures cannot become the durable T
       },
     });
 
-    expect(header.taskDescription.text).toBe("Goal not captured");
+    expect(header.taskDescription.text).not.toMatch(/Goal not captured|No task declared|What should change\?/);
     expect(header.taskDescription.text).not.toBe(task);
   }
 });
@@ -618,7 +1064,7 @@ test("keeps a stable broad Goal line when only a progress step is present", () =
 
   expect(header.context.text).toBe("Proving desktop terminal reliability");
   expect(header.taskDescription.text).toBe(
-    "Proving desktop terminal reliability",
+    "Preparing the next useful change",
   );
   expect(header.taskDescription.text).not.toBe(
     "Goal not captured",
@@ -813,7 +1259,7 @@ test("uses project root folder instead of parent category workspace", () => {
   });
 
   expect(header.workspace.text).toBe("flow-state");
-  expect(header.taskDescription.text).toBe("No task declared");
+  expect(header.taskDescription.text).toBe("Waiting for a clear task");
   expect(header.title.text).toBe("Idle");
   expect(header.now.text).toBe("Idle");
   expect(header.title.text).not.toContain("Verify the working tree");
@@ -959,7 +1405,7 @@ test("completion prose cannot replace the current task title", () => {
     },
   });
 
-  expect(header.taskDescription.text).toBe("What should change?");
+  expect(header.taskDescription.text).toBe("Preparing the next useful change");
   expect(header.title.text).toBe("Idle");
   expect(header.title.text).not.toContain("Task Complete");
   expect(header.now.text).not.toContain("Files shipped");
@@ -1243,7 +1689,7 @@ test("keeps the user goal separate from a readable current activity and full pat
   expect(header.title.text).toBe(
     "Making terminal task descriptions stable and readable",
   );
-  expect(header.now.text).toBe("Awaiting next action");
+  expect(header.now.text).toBe("Idle — no work is running");
   expect(header.path.text).toBe(cwd);
 });
 
@@ -1319,7 +1765,7 @@ test("does not duplicate userTask as the activity title when the terminal is idl
 
   expect(header.taskDescription.text).toBe("Explaining this codebase");
   expect(header.title.text).toBe("Awaiting next action");
-  expect(header.now.text).toBe("Awaiting next action");
+  expect(header.now.text).toBe("Idle — no work is running");
 });
 
 test("ignores moving summary userTask unless it has been stored as the main user ask", () => {
@@ -1344,11 +1790,11 @@ test("ignores moving summary userTask unless it has been stored as the main user
     },
   });
 
-  expect(header.taskDescription.text).toBe("No task declared");
+  expect(header.taskDescription.text).toBe("Waiting for a clear task");
   expect(header.taskDescription.source).toBe("neutral");
   expect(header.title.text).toBe("Working");
   expect(header.title.source).toBe("missing");
-  expect(header.now.text).toBe("Activity not captured");
+  expect(header.now.text).not.toMatch(/Activity not captured|Status unavailable/);
 });
 
 test("rejects trusted visible activity when it is still generic", () => {
@@ -1373,7 +1819,7 @@ test("rejects trusted visible activity when it is still generic", () => {
     },
   });
 
-  expect(header.taskDescription.text).toBe("No task declared");
+  expect(header.taskDescription.text).toBe("Waiting for a clear task");
   expect(header.title.text).toBe("Working");
   // Generic trusted activity ("Ready"/"Thinking") is rejected; the now line falls
   // back to an honest status word, never the raw generic text.
@@ -1404,7 +1850,7 @@ test("rejects broken markdown path fragments as pane titles", () => {
   });
 
   expect(header.workspace.text).toBe("flow-state");
-  expect(header.taskDescription.text).toBe("No task declared");
+  expect(header.taskDescription.text).toBe("Waiting for a clear task");
   expect(header.title.text).toBe("Working");
   expect(header.title.text).not.toContain("/home");
 });
@@ -1739,7 +2185,7 @@ test("does not turn vague make-all-high prompts into a fake task", () => {
   });
 
   expect(mainUserAsk).toBeUndefined();
-  expect(header.taskDescription.text).toBe("No task declared");
+  expect(header.taskDescription.text).toBe("Waiting for a clear task");
   expect(header.title.text).toBe("Working");
   expect(header.title.text).not.toContain("making all high");
 });
@@ -1855,11 +2301,11 @@ test("rejects low-quality structured labels instead of rendering them", () => {
     },
   });
 
-  expect(header.taskDescription.text).toBe("What should change?");
+  expect(header.taskDescription.text).toBe("Preparing the next useful change");
   expect(header.taskDescription.source).toBe("neutral");
   expect(header.title.text).toBe("Working");
   expect(header.title.source).toBe("missing");
-  expect(header.now.text).toBe("Activity not captured");
+  expect(header.now.text).toBe("Working");
 });
 
 test("rejects stored generic quality task when no live activity is available", () => {
@@ -1890,7 +2336,7 @@ test("rejects stored generic quality task when no live activity is available", (
     },
   });
 
-  expect(header.taskDescription.text).toBe("What should change?");
+  expect(header.taskDescription.text).toBe("Preparing the next useful change");
   expect(header.title.text).toBe("Idle");
   expect(header.title.text).not.toBe("Improving quality");
 });
@@ -2064,7 +2510,7 @@ test("does not show a typed shell ask from a different terminal run", () => {
     },
   });
 
-  expect(header.taskDescription.text).toBe("No task declared");
+  expect(header.taskDescription.text).toBe("Waiting for a clear task");
   expect(header.taskDescription.source).toBe("neutral");
   expect(header.debug.mainUserAskRunMatches).toBe(false);
 });
@@ -2175,6 +2621,7 @@ test("rejects foreign project slugs from final now text", () => {
     "Activity not captured",
     "Working",
     "Idle",
+    "Idle — no work is running",
   ]).toContain(header.now.text);
   expect(header.now.text).not.toContain("income-zen");
 });
@@ -2203,7 +2650,7 @@ test("does not promote no-task-list narration into the main title", () => {
     },
   });
 
-  expect(header.taskDescription.text).toBe("No task declared");
+  expect(header.taskDescription.text).toBe("Waiting for a clear task");
   // Operator contract (2026-07-09, supersedes 2026-07-04): on a WORKING pane the
   // title must name an action in progress. A high-confidence statement of fact
   // ("VPS has the 12 tracking events") is a report, not work — it does not qualify,
@@ -2238,9 +2685,9 @@ test("does not promote durable activity summaries when there is no task list", (
     neutralTitle: null,
   });
 
-  expect(header.taskDescription.text).toBe("No task declared");
+  expect(header.taskDescription.text).toBe("Waiting for a clear task");
   expect(header.title.text).toBe("Working");
-  expect(header.now.text).toBe("Activity not captured");
+  expect(header.now.text).toBe("Working");
   expect(header.title.text).not.toContain("frontend build");
   expect(header.now.text).not.toContain("TypeScript");
 });
@@ -2268,13 +2715,13 @@ test("trusted activity without a captured task makes the missing task explicit",
     trustedActivitySummary: true,
   });
 
-  expect(header.taskDescription.text).toBe("No task declared");
+  expect(header.taskDescription.text).toBe("Waiting for a clear task");
   expect(header.debug.missingActiveTask).toBe(true);
   // "headed app terminal summary visual contract" is a scrape fragment, not activity.
   // Since 2026-07-25 the title must read as an action in progress or a stated outcome,
   // so a failed pane says so instead of promoting the fragment.
   expect(header.title.text).toBe("Needs attention");
-  expect(header.now.text).toBe("headed app terminal summary visual contract");
+  expect(header.now.text).toBe("Needs attention");
 });
 
 test("active terminal without a structured activity reports activity capture failure", () => {
@@ -2298,11 +2745,11 @@ test("active terminal without a structured activity reports activity capture fai
     },
   });
 
-  expect(header.taskDescription.text).toBe("No task declared");
+  expect(header.taskDescription.text).toBe("Waiting for a clear task");
   expect(header.taskDescription.source).toBe("neutral");
   expect(header.title.text).toBe("Working");
   expect(header.title.source).toBe("missing");
-  expect(header.now.text).toBe("Activity not captured");
+  expect(header.now.text).toBe("Awaiting command");
 });
 
 test("ready prompt neutral state renders idle instead of activity capture failure", () => {
@@ -2327,9 +2774,9 @@ test("ready prompt neutral state renders idle instead of activity capture failur
     neutralTitle: "Idle",
   });
 
-  expect(header.taskDescription.text).toBe("No task declared");
+  expect(header.taskDescription.text).toBe("Waiting for a clear task");
   expect(header.title.text).toBe("Idle");
-  expect(header.now.text).toBe("Idle");
+  expect(header.now.text).toBe("Awaiting command");
 });
 
 test("real task list items that mention 'broken' still drive the Task row and title", () => {
@@ -2612,7 +3059,7 @@ test("raw prompt statements never get an 'Improving' title synth", () => {
     },
   });
 
-  expect(header.taskDescription.text).toBe("we are working from the vps");
+  expect(header.taskDescription.text).toBe("Preparing the next useful change");
   expect(header.title.text).not.toContain("Improving");
   expect(header.now.text).not.toContain("Improving");
 });
@@ -2697,7 +3144,7 @@ test("pasted code never becomes the Task row", () => {
     },
   });
 
-  expect(header.taskDescription.text).toBe("What should change?");
+  expect(header.taskDescription.text).toBe("Preparing the next useful change");
 });
 
 test("informal typo'd asks still show on the Task row", () => {
@@ -2755,7 +3202,7 @@ test("deictic screenshot prompts do not render as task or active labels", () => 
     },
   });
 
-  expect(header.taskDescription.text).toBe("No task declared");
+  expect(header.taskDescription.text).toBe("Waiting for a clear task");
   expect(header.title.text).toBe("Working");
   expect(header.taskDescription.text).not.toBe("and this");
   expect(header.title.text).not.toBe("and this");
@@ -2786,7 +3233,7 @@ test("long conversational requirement dumps do not render as task labels", () =>
     },
   });
 
-  expect(header.taskDescription.text).toBe("What should change?");
+  expect(header.taskDescription.text).toBe("Preparing the next useful change");
   expect(header.title.text).toBe("Working");
   expect(header.taskDescription.text).not.toContain("I just need");
   expect(header.title.text).not.toContain("production inbox says");
@@ -2960,7 +3407,7 @@ test("idle panes without task context render explicit no-active-work labels", ()
 
   expect(header.taskDescription.text).toBe("No active work");
   expect(header.title.text).toBe("Ready for next task");
-  expect(header.now.text).toBe("Ready for next task");
+  expect(header.now.text).toBe("Idle — no work is running");
 });
 
 test("idle panes with durable about-what context keep it in Now", () => {
@@ -2987,7 +3434,7 @@ test("idle panes with durable about-what context keep it in Now", () => {
   });
 
   expect(header.context.text).toBe(goal);
-  expect(header.now.text).toBe(goal);
+  expect(header.now.text).toBe("Idle — no work is running");
 });
 
 test("actively-working pane shows Working, not 'Awaiting next action'", () => {
@@ -3014,9 +3461,7 @@ test("actively-working pane shows Working, not 'Awaiting next action'", () => {
   });
 
   // Task row is cleaned: no prompt markers, no duplicated fragment.
-  expect(header.taskDescription.text).toBe(
-    "I want to do two main changes right now",
-  );
+  expect(header.taskDescription.text).toBe("I want to do two main changes right now");
   expect(header.taskDescription.text).not.toContain("›");
   // Title reflects active work, not idle.
   expect(header.title.text).toBe("Working");
@@ -3136,9 +3581,7 @@ test("idle pane shows the last outcome instead of 'Awaiting next action'", () =>
     },
   });
 
-  expect(header.title.text).toContain(
-    "Installed the plasma dock recovery scripts",
-  );
+  expect(header.title.text).toBe("Idle");
   expect(header.title.text.length).toBeLessThanOrEqual(64);
   expect(header.title.text).not.toBe("Awaiting next action");
 });
@@ -3339,7 +3782,7 @@ test("thin acknowledgment sidecar text is not treated as a task", () => {
     },
   });
 
-  expect(header.taskDescription.text).toBe("What should change?");
+  expect(header.taskDescription.text).toBe("Preparing the next useful change");
   expect(header.title.text).toBe("Idle");
   expect(header.debug.hasUserTask).toBe(false);
 });
@@ -3369,7 +3812,7 @@ test("thin fix-this sidecar text is not treated as a task", () => {
     },
   });
 
-  expect(header.taskDescription.text).toBe("What should change?");
+  expect(header.taskDescription.text).toBe("Preparing the next useful change");
   expect(header.title.text).toBe("Working");
   expect(header.debug.hasUserTask).toBe(false);
 });

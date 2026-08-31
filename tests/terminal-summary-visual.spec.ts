@@ -64,11 +64,13 @@ async function seedSplitTerminal(
     outputLines?: string[];
     includeStatusSummary?: boolean;
     mainUserAsk?: string;
+    mainTask?: string;
+    mainTaskSource?: string;
     statusSummarySource?: string;
     keySuffix?: string;
   } = {},
 ) {
-  await page.evaluate(({ taskText, activity, includePurpose, outputLines, includeStatusSummary, mainUserAsk, statusSummarySource, keySuffix }) => {
+  await page.evaluate(({ taskText, activity, includePurpose, outputLines, includeStatusSummary, mainUserAsk, mainTask, mainTaskSource, statusSummarySource, keySuffix }) => {
     type Store = {
       getState: () => { workspaceUiState: Record<string, unknown> };
       setState: (state: Record<string, unknown>) => void;
@@ -160,6 +162,8 @@ async function seedSplitTerminal(
             ? undefined
             : {
                 task: taskText,
+                mainTask,
+                mainTaskSource,
                 path: "devops/termfleet",
                 now: "frontend build passed",
                 status: "done",
@@ -180,6 +184,8 @@ async function seedSplitTerminal(
     outputLines: options.outputLines,
     includeStatusSummary: options.includeStatusSummary,
     mainUserAsk: options.mainUserAsk,
+    mainTask: options.mainTask,
+    mainTaskSource: options.mainTaskSource,
     statusSummarySource: options.statusSummarySource,
     keySuffix: options.keySuffix,
   });
@@ -262,6 +268,30 @@ test("running agent identity is visible in the terminal header and sidebar", asy
   await expect(page.getByTestId("sidebar-session-agent-provider")).toContainText("CLAUDE");
   await expect(page.getByTestId("canvas-terminal-agent-provider").getByTestId("agent-provider-logo-claude")).toBeVisible();
   await page.screenshot({ path: "/tmp/termfleet-agent-identity-claude.png" });
+});
+
+test("regular split header renders an explicit pane-owned outcome Goal", async ({ page }) => {
+  await mockTauri(page);
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+
+  await seedSplitTerminal(page, null, {
+    includePurpose: false,
+    mainUserAsk: "Choose the next terminal-summary verification step",
+    mainTask: "Keep terminal-summary evidence separated from transient command output",
+    mainTaskSource: "opening-request",
+    outputLines: ["bash-5.2$"],
+  });
+
+  await expect(page.getByTestId("split-terminal-summary-goal")).toContainText(
+    "Keep terminal-summary evidence separated from transient command output",
+  );
+  await expect(page.getByTestId("split-terminal-summary-goal")).not.toContainText(
+    "Make Termfleet work clear and dependable",
+  );
 });
 
 test("regular split header rejects noisy scrollback titles and fits the current activity title", async ({ page }) => {

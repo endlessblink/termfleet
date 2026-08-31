@@ -8,6 +8,7 @@ LIBEXEC_DIR="${TERMFLEET_LIBEXEC_DIR:-$INSTALL_ROOT/libexec}"
 APPLICATIONS_DIR="${TERMFLEET_APPLICATIONS_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/applications}"
 ICON_DIR="${TERMFLEET_ICON_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor/scalable/apps}"
 PLASMA_ICON_DIR="${TERMFLEET_PLASMA_ICON_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/plasma_icons}"
+SYSTEMD_USER_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
 SOURCE_BINARY="$APP_ROOT/src-tauri/target/release/terminal-workspace"
 DESKTOP_LAUNCHER_SOURCE="$APP_ROOT/scripts/termfleet-desktop-launcher.sh"
 ICON_SOURCE="$APP_ROOT/public/brand/termfleet-vessel-master.svg"
@@ -15,7 +16,7 @@ ICON_SOURCE="$APP_ROOT/public/brand/termfleet-vessel-master.svg"
 cd "$APP_ROOT"
 source_revision="$(git rev-parse --verify HEAD)"
 
-BUILD_LOCK_FILE="${XDG_RUNTIME_DIR:-/tmp}/termfleet-build.lock"
+BUILD_LOCK_FILE="${TERMFLEET_BUILD_LOCK_FILE:-${XDG_RUNTIME_DIR:-/tmp}/termfleet-build.lock}"
 exec 9>"$BUILD_LOCK_FILE"
 if ! flock -n 9; then
   printf 'Another TermFleet build is already running; refusing concurrent release work.\n' >&2
@@ -31,21 +32,30 @@ run_background_build() {
 }
 
 printf 'Building TermFleet frontend...\n'
-VITE_TERMFLEET_RELEASE_ID="${source_revision:0:12}" run_background_build npm run build
+run_background_build env VITE_TERMFLEET_RELEASE_ID="${source_revision:0:12}" npm run build
 
 printf 'Building safe TermFleet desktop release...\n'
 # The installed desktop entry runs the immutable binary directly. Building an AppImage
 # here adds an unrelated linuxdeploy failure surface without producing an install input.
-run_background_build env CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-1}" npm run tauri build -- --no-bundle
+run_background_build env \
+  VITE_TERMFLEET_RELEASE_ID="${source_revision:0:12}" \
+  CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-1}" \
+  cargo build --manifest-path "$APP_ROOT/src-tauri/Cargo.toml" \
+    --bin terminal-workspace --features tauri/custom-protocol --release
 
 [[ -x "$SOURCE_BINARY" ]] || {
   printf 'Release build did not produce %s\n' "$SOURCE_BINARY" >&2
   exit 1
 }
 
+# Hash the completed frontend tree so the release manifest describes the assets
+# embedded by the direct Cargo build above.
+frontend_sha="$(find "$APP_ROOT/dist" -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')"
+
 binary_sha="$(sha256sum "$SOURCE_BINARY" | awk '{print $1}')"
 git_revision="$(git rev-parse --verify HEAD)"
 release_id="${git_revision:0:12}-${binary_sha:0:12}"
+release_id="${release_id}-${frontend_sha:0:12}"
 releases_dir="$INSTALL_ROOT/releases"
 release_dir="$releases_dir/$release_id"
 staging_dir="$releases_dir/.staging-$release_id-$$"
@@ -53,7 +63,7 @@ old_current_target=""
 old_command_target=""
 plasma_pin_updated=0
 
-mkdir -p "$releases_dir" "$BIN_DIR" "$LIBEXEC_DIR" "$APPLICATIONS_DIR" "$ICON_DIR"
+mkdir -p "$releases_dir" "$BIN_DIR" "$LIBEXEC_DIR" "$APPLICATIONS_DIR" "$ICON_DIR" "$SYSTEMD_USER_DIR"
 
 cleanup() {
   if [[ -d "$staging_dir" ]]; then
@@ -69,6 +79,7 @@ if [[ ! -d "$release_dir" ]]; then
     printf 'TERMFLEET_RELEASE_ID=%s\n' "$release_id"
     printf 'TERMFLEET_GIT_REVISION=%s\n' "$git_revision"
     printf 'TERMFLEET_BINARY_SHA256=%s\n' "$binary_sha"
+    printf 'TERMFLEET_FRONTEND_SHA256=%s\n' "$frontend_sha"
     printf 'TERMFLEET_BUILT_AT=%s\n' "$(date --iso-8601=seconds)"
   } >"$staging_dir/manifest.env"
   mv -- "$staging_dir" "$release_dir"
@@ -107,6 +118,9 @@ mv -Tf -- "$BIN_DIR/.termfleet-$release_id-$$" "$BIN_DIR/termfleet"
 install -m 0755 "$DESKTOP_LAUNCHER_SOURCE" "$LIBEXEC_DIR/termfleet-desktop-launcher"
 install -m 0755 "$APP_ROOT/scripts/filter-termfleet-restore.py" "$LIBEXEC_DIR/filter-termfleet-restore.py"
 install -m 0755 "$APP_ROOT/scripts/termfleet-pressure-watchdog.sh" "$LIBEXEC_DIR/termfleet-pressure-watchdog"
+install -m 0755 "$APP_ROOT/scripts/monitor-cockpit-pane-screens.mjs" "$LIBEXEC_DIR/termfleet-pane-screen-monitor"
+install -m 0755 "$APP_ROOT/scripts/monitor-cockpit-pane-health.mjs" "$LIBEXEC_DIR/termfleet-pane-health-monitor"
+install -m 0644 "$APP_ROOT/systemd/termfleet-pane-screen-monitor.service" "$SYSTEMD_USER_DIR/termfleet-pane-screen-monitor.service"
 install -m 0755 "$APP_ROOT/scripts/termfleet-load-shed.sh" "$HOME/.local/bin/termfleet-load-shed"
 install -m 0755 "$APP_ROOT/scripts/termfleet-incident-log.sh" "$LIBEXEC_DIR/termfleet-incident-log.sh"
 ln -s "$LIBEXEC_DIR/termfleet-desktop-launcher" "$BIN_DIR/.termfleet-desktop-$release_id-$$"
@@ -179,5 +193,8 @@ if command -v systemctl >/dev/null 2>&1 && [[ -S "${XDG_RUNTIME_DIR:-/run/user/$
   XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$UID}" \
     DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=${XDG_RUNTIME_DIR:-/run/user/$UID}/bus}" \
     systemctl --user try-restart termfleet-pressure-watchdog.service >/dev/null 2>&1 || true
-fi
+    systemctl --user daemon-reload >/dev/null 2>&1 || true
+systemctl --user enable --now termfleet-pane-screen-monitor.service >/dev/null 2>&1 || true
+systemctl --user try-restart termfleet-pane-screen-monitor.service >/dev/null 2>&1 || true
+  fi
 printf 'TERMFLEET_RELEASE_PROMOTED id=%s binary=%s\n' "$release_id" "$BIN_DIR/termfleet"

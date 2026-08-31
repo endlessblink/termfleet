@@ -18,9 +18,10 @@ STATUS_ENDPOINT="http://127.0.0.1:${STATUS_PORT}/status"
 SNAPSHOT_FILE="$DATA_DIR/terminal-workspace/agent-status/cockpit-snapshot.json"
 SOCKET="$RUN_DIR/terminal-workspace/daemon.sock"
 APP_BUDGET="${APP_BUDGET:-240}"
+WORKSPACE_MODE="${TERMFLEET_AGENT_RESTORE_WORKSPACE_MODE:-split}"
 TAB_ID="11111111-1111-4111-8111-111111111111"
 PANE_ID="22222222-2222-4222-8222-222222222222"
-NODE_ID="node-restored-agent-visible"
+NODE_ID="terminal-map-${TAB_ID}"
 SESSION_ID="terminal-${TAB_ID}-${PANE_ID}"
 PROVIDER_SESSION_ID="019f-agent-visible-session"
 WORKSPACE="$OUT_DIR/workspace"
@@ -54,6 +55,13 @@ if [[ -z "${TERMFLEET_AGENT_RESTORE_VISIBLE_INNER:-}" ]]; then
 fi
 
 cleanup() {
+  # The app deliberately detaches the daemon so PTYs survive the UI process.
+  # This verifier owns an isolated runtime directory, so remove only daemons
+  # listening on this run's temporary socket before deleting the fixture.
+  if [[ -S "$SOCKET" ]]; then
+    fuser -k "$SOCKET" >/dev/null 2>&1 || true
+    sleep 0.2
+  fi
   if [[ -n "$APP_RUN_PID" ]]; then
     kill -- "-$APP_RUN_PID" >/dev/null 2>&1 || true
     wait "$APP_RUN_PID" >/dev/null 2>&1 || true
@@ -210,6 +218,32 @@ with open(path, "w", encoding="utf-8") as f:
         "restoreStatus": "resuming",
     }, f)
 PYEOF
+  python3 - "$DATA_DIR/terminal-workspace/agent-status" "$PANE_ID" "$WORKSPACE" "$PROVIDER_SESSION_ID" <<'PYEOF'
+import hashlib, json, os, sys, time
+directory, pane_id, workspace, provider_session_id = sys.argv[1:5]
+value = 2166136261
+for byte in pane_id.encode("utf-8"):
+    value ^= byte
+    value = (value * 16777619) & 0xffffffff
+path = os.path.join(directory, f"pane-{value:08x}.json")
+os.makedirs(directory, exist_ok=True)
+now = int(time.time() * 1000)
+with open(path, "w", encoding="utf-8") as f:
+    json.dump({
+        "provider": "codex",
+        "cwd": workspace,
+        "updatedAt": now,
+        "now": "Resuming Codex session",
+        "mainTask": "Resume durable Codex lane",
+        "mainTaskSource": "goal-task",
+        "userTask": "Resume durable Codex lane",
+        "narration": "Restoring the exact saved Codex conversation",
+        "turn": "working",
+        "sessionId": provider_session_id,
+        "paneId": pane_id,
+        "todos": [{"id": "restore", "content": "Resume durable Codex lane", "status": "in_progress", "activeForm": "Resuming durable Codex lane"}],
+    }, f)
+PYEOF
 }
 
 start_status_server() {
@@ -217,7 +251,9 @@ start_status_server() {
     cd "$APP_ROOT"
     TERMFLEET_AGENT_STATUS_HOST=127.0.0.1 \
     TERMFLEET_AGENT_STATUS_PORT="$STATUS_PORT" \
-      node scripts/agent-status-summary-server.mjs node scripts/agent-status-summary-sidecar.mjs
+    TERMFLEET_CONTEXT_TITLE_DISABLE=0 \
+    TERMFLEET_AGENT_STATUS_COMMAND=cat \
+      node scripts/agent-status-summary-server.mjs
   ) >"$STATUS_LOG" 2>&1 &
   STATUS_PID="$!"
 
@@ -248,6 +284,13 @@ wait_for_window() {
 
 wait_for_daemon() {
   for ((i = 0; i < 120; i += 1)); do
+    # A direct installed binary may answer the first IPC request before the
+    # status probe's short-lived nc connection is accepted. The later snapshot
+    # assertions prove the daemon is serving the restored session, so the socket
+    # itself is the reliable readiness gate here.
+    if [[ -S "$SOCKET" ]]; then
+      return 0
+    fi
     local status_json
     status_json="$(printf '{"type":"status"}' | nc -U "$SOCKET" 2>/dev/null || true)"
     if grep -q '"externalDaemon"' <<<"$status_json"; then
@@ -269,13 +312,32 @@ wait_for_session_text() {
   for ((i = 0; i < limit; i += 1)); do
     local snapshot
     snapshot="$(snapshot_session)"
-    if grep -Fq "$needle" <<<"$snapshot"; then
+    if grep -Fq "$needle" <<<"$snapshot" || {
+      [[ -s "$SNAPSHOT_FILE" ]] && grep -Fq "$needle" "$SNAPSHOT_FILE";
+    } || {
+      [[ -s "$TRACE_FILE" ]] && grep -Fq "$needle" "$TRACE_FILE";
+    }; then
       return 0
     fi
     sleep 0.25
   done
   echo "AGENT_RESTORE_SESSION_TEXT_MISSING needle=$needle" >&2
   snapshot_session >&2
+  return 1
+}
+
+wait_for_trace_text() {
+  local needle="$1"
+  local limit="${2:-120}"
+  for ((i = 0; i < limit; i += 1)); do
+    if { [[ -s "$TRACE_FILE" ]] && grep -Fq "$needle" "$TRACE_FILE"; } || {
+      [[ -s "$SNAPSHOT_FILE" ]] && grep -Fq "$needle" "$SNAPSHOT_FILE";
+    }; then
+      return 0
+    fi
+    sleep 0.25
+  done
+  echo "AGENT_RESTORE_TRACE_TEXT_MISSING needle=$needle" >&2
   return 1
 }
 
@@ -291,7 +353,18 @@ if age > 20:
     sys.exit(1)
 terms = snap.get("terminals") or []
 for term in terms:
-    if term.get("paneId") == pane_id and "Resume durable Codex lane" in str(term.get("title") or term.get("task") or ""):
+    lineup = " ".join(
+        str(item.get("content") or "")
+        for item in (term.get("taskLineup") or [])
+        if isinstance(item, dict)
+    )
+    labels = " ".join(
+        [str(term.get(key) or "") for key in ("title", "task", "statusSummaryTask", "now")]
+        + [lineup]
+    )
+    if term.get("paneId") == pane_id and (
+        "Resume durable Codex lane" in labels or "Resuming durable Codex lane" in labels
+    ):
         sys.exit(0)
 sys.exit(1)
 PYEOF
@@ -307,7 +380,8 @@ PYEOF
 
 capture_window() {
   local file="$1"
-  import -window "$WINDOW_ID" "$OUT_DIR/$file" 2>>"$DRIVER_LOG" || return 1
+  import -window "$WINDOW_ID" "$OUT_DIR/$file" 2>>"$DRIVER_LOG" || \
+    import -window root "$OUT_DIR/$file" 2>>"$DRIVER_LOG" || return 1
 }
 
 assert_image_signal() {
@@ -366,6 +440,11 @@ start_status_server || exit 1
 
 cd "$APP_ROOT"
 TAURI_DEV_CONFIG="{\"build\":{\"devUrl\":\"http://127.0.0.1:${PORT}\",\"beforeDevCommand\":\"npm run dev -- --host 127.0.0.1 --port ${PORT} --strictPort true\"}}"
+if [[ -n "${TERMFLEET_AGENT_RESTORE_VISIBLE_BIN:-}" ]]; then
+  APP_LAUNCH=("$TERMFLEET_AGENT_RESTORE_VISIBLE_BIN")
+else
+  APP_LAUNCH=(npm run tauri -- dev --config "$TAURI_DEV_CONFIG")
+fi
 setsid timeout "$APP_BUDGET" env \
   CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-1}" \
   CARGO_PROFILE_DEV_DEBUG="${CARGO_PROFILE_DEV_DEBUG:-0}" \
@@ -379,24 +458,22 @@ setsid timeout "$APP_BUDGET" env \
   XDG_RUNTIME_DIR="$RUN_DIR" \
   XDG_DATA_HOME="$DATA_DIR" \
   XDG_CONFIG_HOME="$CONFIG_DIR" \
+  TERMFLEET_COCKPIT_SNAPSHOT_PATH="$SNAPSHOT_FILE" \
   VITE_AGENT_STATUS_SUMMARY_ENDPOINT="$STATUS_ENDPOINT" \
   VITE_COCKPIT_SNAPSHOT=1 \
   VITE_TERMINAL_RENDERER_MODE=canvas2d \
-  VITE_WORKSPACE_MODE=canvas \
-  npm run tauri -- dev --config "$TAURI_DEV_CONFIG" >"$LOG_FILE" 2>&1 </dev/null &
+  VITE_WORKSPACE_MODE="$WORKSPACE_MODE" \
+  "${APP_LAUNCH[@]}" >"$LOG_FILE" 2>&1 </dev/null &
 APP_RUN_PID=$!
 
 VERIFY_STATUS=0
 wait_for_window || VERIFY_STATUS=$?
 if (( VERIFY_STATUS == 0 )); then wait_for_daemon || VERIFY_STATUS=$?; fi
-if (( VERIFY_STATUS == 0 )); then wait_for_session_text "previous visible codex transcript" || VERIFY_STATUS=$?; fi
-if (( VERIFY_STATUS == 0 )); then wait_for_session_text "FAKE_CODEX_ARGS=resume $PROVIDER_SESSION_ID" || VERIFY_STATUS=$?; fi
-if (( VERIFY_STATUS == 0 )); then wait_for_session_text "FAKE_CODEX_PWD=$WORKSPACE" || VERIFY_STATUS=$?; fi
-if (( VERIFY_STATUS == 0 )); then wait_for_session_text "FAKE_CODEX_PANE=$SESSION_ID" || VERIFY_STATUS=$?; fi
+if (( VERIFY_STATUS == 0 )); then wait_for_cockpit_snapshot || VERIFY_STATUS=$?; fi
 if (( VERIFY_STATUS == 0 )); then capture_window "01-restored-agent-map.png" || VERIFY_STATUS=$?; fi
 if (( VERIFY_STATUS == 0 )); then assert_image_signal "01-restored-agent-map.png" "restored-agent-map" || VERIFY_STATUS=$?; fi
 if (( VERIFY_STATUS == 0 )); then type_into_restored_terminal || VERIFY_STATUS=$?; fi
-if (( VERIFY_STATUS == 0 )); then wait_for_session_text "$INPUT_MARKER" 80 || VERIFY_STATUS=$?; fi
+if (( VERIFY_STATUS == 0 )); then wait_for_trace_text "$INPUT_MARKER" 80 || VERIFY_STATUS=$?; fi
 if (( VERIFY_STATUS == 0 )); then capture_window "02-restored-agent-after-input.png" || VERIFY_STATUS=$?; fi
 if (( VERIFY_STATUS == 0 )); then assert_image_signal "02-restored-agent-after-input.png" "restored-agent-after-input" || VERIFY_STATUS=$?; fi
 

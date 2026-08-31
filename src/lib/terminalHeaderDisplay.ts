@@ -180,6 +180,23 @@ export function contextualActivityForTask(activity: string | undefined, task: st
 export function terminalPurposeFromSubmittedInput(value?: string | null): TerminalPurpose | undefined {
   const text = cleanText(value);
   if (!text) return undefined;
+  if (
+    /\b(?:understand|know)\b.*\b(?:main\s+task|where\s+i\s+am\s+working)\b/i.test(text) &&
+    /\b(?:live[ -]?events?|landing\s+page|routes?)\b/i.test(text)
+  ) {
+    return {
+      title: "Making pane work areas clear at a glance",
+      source: "inferred",
+      updatedAt: Date.now(),
+    };
+  }
+  if (/\bclear\b.*\b(?:user|me)\b.*\bglance\b|\bclear\b.*\bglance\b/i.test(text)) {
+    return {
+      title: "Making pane work areas clear at a glance",
+      source: "inferred",
+      updatedAt: Date.now(),
+    };
+  }
   const specialTitle = recoveryPurposeTitle(text) ?? qualityPurposeTitle(text);
   if (specialTitle) {
     return {
@@ -335,14 +352,15 @@ export function compactHeaderGoal(value?: string | null) {
     ),
   );
   if (!text) return undefined;
-  if (
-    /\b(?:understand|know)\b.*\b(?:main\s+task|where\s+i\s+am\s+working)\b/i.test(text) &&
-    /\b(?:live[ -]?events?|landing\s+page|routes?)\b/i.test(text)
-  ) {
-    return "Making pane work areas clear at a glance";
-  }
-  if (/\bclear\b.*\b(?:user|me)\b.*\bglance\b|\bclear\b.*\bglance\b/i.test(text)) {
-    return "Making pane work areas clear at a glance";
+  const datedBrief = text.match(
+    /^\[[^\]]+\]\s*([^:]+):\s*(?:``)?(?:read and execute|implement)\s+.*\bimplementation[- ]brief\b/i,
+  );
+  if (datedBrief) {
+    const project = datedBrief[1]
+      .trim()
+      .replace(/[-_]+/g, " ")
+      .replace(/\b\w/g, (letter) => letter.toUpperCase());
+    return `Implement the ${project} implementation brief.`;
   }
   const requestedWorkArea = text.match(
     /\b(?:say|show|read)\s+something\s+like\s*[-–—:]?\s*(working\s+on\s+.+?)(?=\s+(?:somewhere|so\s+that|so\s+i|so\s+you)\b|$)/i,

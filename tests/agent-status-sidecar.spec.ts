@@ -16,6 +16,7 @@ import path from "node:path";
 
 const ROOT = process.cwd();
 const HOOK = path.join(ROOT, "scripts", "termfleet-claude-status-hook.mjs");
+const CODEX_HOOK = path.join(ROOT, "scripts", "termfleet-codex-status-hook.mjs");
 const WORKER = path.join(ROOT, "scripts", "agent-status-summary-sidecar.mjs");
 const OLLAMA_WORKER = path.join(
   ROOT,
@@ -906,10 +907,124 @@ test("per-terminal status (TC-035): two panes in the SAME cwd keep independent t
   );
 });
 
-test("per-terminal status (TC-035): request falls back to cwd when the pane sidecar is absent", async () => {
-  // Backward compatibility: until the PTY injects a pane id, the hook writes a cwd-keyed
-  // sidecar. A request that carries a paneId with no matching pane file must still find the
-  // cwd sidecar (legacy/not-yet-injected sessions keep working).
+test("worker preserves a pane's about-what Goal when later plan text matches a folder heuristic", () => {
+  const dataHome = mkdtempSync(path.join(os.tmpdir(), "tf-status-"));
+  const cwd = "/tmp/tf-termfleet-goal";
+  const env = { XDG_DATA_HOME: dataHome, TERMFLEET_PANE_ID: "pane-goal" };
+
+  runNode(
+    CODEX_HOOK,
+    { hook_event_name: "UserPromptSubmit", prompt: "$about-what", cwd, session_id: "goal-session" },
+    env,
+  );
+  runNode(
+    CODEX_HOOK,
+    {
+      hook_event_name: "Stop",
+      cwd,
+      session_id: "goal-session",
+      last_assistant_message: "Keep this terminal connected so the current work can be resumed safely",
+    },
+    env,
+  );
+  runNode(
+    CODEX_HOOK,
+    {
+      hook_event_name: "UserPromptSubmit",
+      prompt: "Continue the current work",
+      cwd,
+      session_id: "goal-session",
+    },
+    env,
+  );
+  runNode(
+    CODEX_HOOK,
+    {
+      hook_event_name: "PreToolUse",
+      tool_name: "update_plan",
+      cwd,
+      session_id: "goal-session",
+      tool_input: {
+        plan: [{ step: "Capture the visual gate for clear rows", status: "in_progress" }],
+      },
+    },
+    env,
+  );
+
+  const result = JSON.parse(
+    runNode(
+      WORKER,
+      {
+        paneId: "pane-goal",
+        projectId: cwd,
+        workstream: { path: cwd, provider: "codex" },
+        heuristicCandidate: {
+          task: "Shell ready",
+          path: cwd,
+          now: "Awaiting command",
+          status: "idle",
+          provider: "codex",
+          confidence: "low",
+        },
+      },
+      { XDG_DATA_HOME: dataHome },
+    ).stdout.trim(),
+  );
+
+  expect(result.mainTask).toBe(
+    "Keep this terminal connected so the current work can be resumed safely",
+  );
+});
+
+test("worker finds the original sidecar after a pane is restored with a recovered id", () => {
+  const dataHome = mkdtempSync(path.join(os.tmpdir(), "tf-status-"));
+  const cwd = "/tmp/tf-restored-pane";
+  const env = { XDG_DATA_HOME: dataHome, TERMFLEET_PANE_ID: "pane-restored-source" };
+
+  runNode(
+    CODEX_HOOK,
+    { hook_event_name: "UserPromptSubmit", prompt: "$about-what", cwd, session_id: "restore-session" },
+    env,
+  );
+  runNode(
+    CODEX_HOOK,
+    {
+      hook_event_name: "Stop",
+      cwd,
+      session_id: "restore-session",
+      last_assistant_message: "Keep this terminal available so its work can be resumed safely",
+    },
+    env,
+  );
+
+  const result = JSON.parse(
+    runNode(
+      WORKER,
+      {
+        paneId: "recovered-pane-pane-restored-source",
+        projectId: cwd,
+        workstream: { path: cwd, provider: "codex" },
+        heuristicCandidate: {
+          task: "Shell ready",
+          path: cwd,
+          now: "Awaiting command",
+          status: "idle",
+          provider: "codex",
+          confidence: "low",
+        },
+      },
+      { XDG_DATA_HOME: dataHome },
+    ).stdout.trim(),
+  );
+
+  expect(result.mainTask).toBe(
+    "Keep this terminal available so its work can be resumed safely",
+  );
+});
+
+test("per-terminal status (TC-035): a known pane never borrows a cwd sidecar", async () => {
+  // A cwd-keyed record may belong to another terminal in the same project. Once a pane id
+  // exists, absence of its own file is a missing pane record, not permission to cross-link.
   const dataHome = mkdtempSync(path.join(os.tmpdir(), "tf-status-"));
   const cwd = "/tmp/tf-fallback-cwd";
   // Hook runs WITHOUT a pane id → cwd-keyed file.
@@ -924,7 +1039,7 @@ test("per-terminal status (TC-035): request falls back to cwd when the pane side
     },
     { XDG_DATA_HOME: dataHome },
   );
-  // Request carries a paneId that has no pane file → must fall back to the cwd sidecar.
+  // Request carries a paneId that has no pane file → the cwd record must be ignored.
   const summary = JSON.parse(
     runNode(
       WORKER,
@@ -944,8 +1059,8 @@ test("per-terminal status (TC-035): request falls back to cwd when the pane side
       { XDG_DATA_HOME: dataHome },
     ).stdout.trim(),
   );
-  expect(summary.tasksFromTodoWrite).toBe(true);
-  expect(summary.now).toBe("Legacy task"); // pending task → now is its content
+  expect(summary.tasksFromTodoWrite).not.toBe(true);
+  expect(summary.now).not.toBe("Legacy task");
 });
 
 test("concurrent hook writes never corrupt the file or wipe the task list (TC-035)", async () => {

@@ -23,11 +23,13 @@ export function shouldApplyGatedShellStatus(input: {
   source: "fallback" | "process" | "sidecar";
   hasNarration: boolean;
   hasAuthoritativeTaskList: boolean;
+  hasDurableGoal: boolean;
 }) {
   return (
     input.source === "sidecar" ||
     input.hasNarration ||
-    input.hasAuthoritativeTaskList
+    input.hasAuthoritativeTaskList ||
+    input.hasDurableGoal
   );
 }
 

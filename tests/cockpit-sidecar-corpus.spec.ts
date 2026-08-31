@@ -105,6 +105,7 @@ test("monitor equality checks report one deterministic task activity echo", () =
     paneId: "terminal-a",
     cwd: "/repo/project",
     task: "Verifying terminal session recovery",
+    context: "Keep terminal sessions reliable so people can resume their work",
     title: "Verifying terminal session recovery",
     now: "Reading test output",
     updatedAt: 99_000,
@@ -112,6 +113,31 @@ test("monitor equality checks report one deterministic task activity echo", () =
   }, { maxAgeS: 15, problemsOnly: false, requireSidecar: false, now: 100_000, sidecar: null });
 
   expect(row.problems.filter((problem: string) => problem === "now-active-echo")).toHaveLength(1);
+});
+
+test("monitor rejects missing, technical, and task-echo Goals", () => {
+  const base = {
+    paneId: "terminal-goal",
+    cwd: "/repo/project",
+    task: "Improving session recovery",
+    title: "Reading the recovery result",
+    now: "Reading the recovery result",
+    updatedAt: 99_000,
+  };
+  const options = { maxAgeS: 15, problemsOnly: false, requireSidecar: false, now: 100_000, sidecar: null };
+
+  expect(analyzeEntry(base, options).problems).toContain("goal-missing");
+  expect(analyzeEntry({ ...base, context: "Running npm test for the recovery regression" }, options).problems)
+    .toContain("goal-technical-or-process");
+  expect(analyzeEntry({ ...base, context: base.task }, options).problems).toContain("goal-echo");
+  expect(analyzeEntry({ ...base, context: "Keep terminal sessions reliable so people can resume their work" }, options).problems)
+    .not.toContain("goal-missing");
+  expect(
+    analyzeEntry(
+      { ...base, context: "Make issue review consistent so every agent's work is checked before it moves on" },
+      options,
+    ).problems,
+  ).not.toContain("goal-technical-or-process");
 });
 
 function corpusDir() {

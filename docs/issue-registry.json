@@ -1,21 +1,107 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-08-22T00:00:00Z",
+  "updatedAt": "2026-08-31T10:27:54.873Z",
   "issues": [
     {
       "id": "TF-001",
       "title": "Close the live clipboard proof gap",
-      "state": "triaged",
+      "state": "resolved",
       "severity": "high",
       "surface": "desktop-runtime",
-      "matrixRefs": ["1.1", "1.3", "1.8", "1.9"],
+      "matrixRefs": [
+        "1.1",
+        "1.3",
+        "1.8",
+        "1.9"
+      ],
       "symptom": "Clipboard paste can regress in GTK/WebKit or land in the wrong map terminal.",
       "rootCause": "The existing guards cover wiring and logic but not the real desktop focus and clipboard path.",
       "guard": "npm run verify:clipboard-paste",
-      "evidence": [],
+      "evidence": [
+        {
+          "kind": "focused-test",
+          "at": "2026-08-27T15:21:05.816Z",
+          "note": "13 focused paste/input tests pass, including 12,656-character screenshot-style Codex prompt bracketing"
+        },
+        {
+          "kind": "live-desktop",
+          "at": "2026-08-27T15:21:08.919Z",
+          "note": "verify:bracketed-paste passed: live Tauri/WebKit PTY delivered ~12k payload with bracketed markers and follow-up key"
+        },
+        {
+          "kind": "installed-release",
+          "at": "2026-08-27T15:21:11.274Z",
+          "note": "verify:installed-release passed for promoted release binary"
+        },
+        {
+          "kind": "source",
+          "at": "2026-08-27T15:21:28.462Z",
+          "note": "Updated agent-screen detection to recognize Codex Goal/Now/Context chrome before paste placeholder rendering"
+        }
+      ],
       "owner": "termfleet",
       "nextAction": "Add the live verifier and run it on the installed dock release.",
-      "history": []
+      "history": [
+        {
+          "at": "2026-08-27T15:21:05.816Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "13 focused paste/input tests pass, including 12,656-character screenshot-style Codex prompt bracketing"
+        },
+        {
+          "at": "2026-08-27T15:21:08.919Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "verify:bracketed-paste passed: live Tauri/WebKit PTY delivered ~12k payload with bracketed markers and follow-up key"
+        },
+        {
+          "at": "2026-08-27T15:21:11.274Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "verify:installed-release passed for promoted release binary"
+        },
+        {
+          "at": "2026-08-27T15:21:28.462Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Updated agent-screen detection to recognize Codex Goal/Now/Context chrome before paste placeholder rendering"
+        },
+        {
+          "at": "2026-08-27T15:21:53.581Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Large-paste regression work progressed with fresh evidence"
+        },
+        {
+          "at": "2026-08-27T15:21:56.923Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Large-paste regression work progressed with fresh evidence"
+        },
+        {
+          "at": "2026-08-27T15:22:00.423Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Large-paste regression work progressed with fresh evidence"
+        },
+        {
+          "at": "2026-08-27T15:22:03.279Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Large-paste regression work progressed with fresh evidence"
+        },
+        {
+          "at": "2026-08-27T15:22:06.354Z",
+          "type": "transition",
+          "from": "verifying",
+          "to": "resolved",
+          "note": "Large-paste regression work progressed with fresh evidence"
+        }
+      ]
     },
     {
       "id": "TF-002",
@@ -23,7 +109,9 @@
       "state": "triaged",
       "severity": "medium",
       "surface": "canvas",
-      "matrixRefs": ["4.2"],
+      "matrixRefs": [
+        "4.2"
+      ],
       "symptom": "Map nodes can choose the wrong layout mode when the surface grows or shrinks.",
       "rootCause": "The decision heuristic is not independently covered by a focused state test.",
       "guard": "Add a focused mapNodeLayoutMode test",
@@ -38,7 +126,10 @@
       "state": "triaged",
       "severity": "medium",
       "surface": "logic",
-      "matrixRefs": ["5.8", "5.9"],
+      "matrixRefs": [
+        "5.8",
+        "5.9"
+      ],
       "symptom": "A refactor can reintroduce cold-start status gaps or unwanted desktop polling.",
       "rootCause": "The polling decision is duplicated inline in terminal and map components.",
       "guard": "Extract a pure polling decision helper and test it",
@@ -46,6 +137,2490 @@
       "owner": "termfleet",
       "nextAction": "Create the helper and focused regression before editing the polling paths.",
       "history": []
+    },
+    {
+      "id": "TF-004",
+      "title": "Unexpected desktop exit leaves recoverable terminals hidden",
+      "state": "reopened",
+      "severity": "medium",
+      "surface": "desktop-runtime",
+      "matrixRefs": [],
+      "symptom": "The desktop exits with status 143 while the independent PTY daemon remains alive, so Lifeboat terminals are not visible again.",
+      "rootCause": "",
+      "guard": "Desktop launcher restart policy plus installed restart verification",
+      "evidence": [
+        {
+          "kind": "installed-release",
+          "at": "2026-08-23T15:24:36.524Z",
+          "note": "Dock release promoted and verified; post-relaunch workspace persisted 4 tabs and 4 terminals, with no external provider restore launched."
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-08-27T15:36:12.063Z",
+          "note": "Fresh focused contract suite: 7 tests pass for separate Goal validation, application-specific snapshots, isolated smoke paths, off-screen rejection, invisible-process readiness, and durable failure receipts."
+        },
+        {
+          "kind": "source",
+          "at": "2026-08-27T15:39:02.028Z",
+          "note": "Official WebKitGTK research confirms WebKitWebView.get_snapshot supports visible-region and full-document snapshots asynchronously; this is the candidate app-owned capture path that can avoid X11 window discovery, pending implementation and visual proof."
+        },
+        {
+          "kind": "live-desktop",
+          "at": "2026-08-27T16:45:42.649Z",
+          "note": "Latest promoted release includes automatic per-pane provider recovery; installed restart smoke passed after promotion. Native WebKit pane captures remain strict and per-pane; content gate still rejects panes lacking a trustworthy captured Goal."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Run the focused launcher guard, then rebuild and verify installed restart recovery",
+      "history": [
+        {
+          "at": "2026-08-23T08:31:14.881Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-08-23T08:31:31.003Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "User-visible recovery failure recorded from live incident evidence"
+        },
+        {
+          "at": "2026-08-23T08:31:31.318Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Incident log shows repeated desktop status 143 exits with daemon=preserved and no desktop recovery event"
+        },
+        {
+          "at": "2026-08-23T08:31:31.645Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Added focused launcher regression for unexpected exit supervision"
+        },
+        {
+          "at": "2026-08-23T08:32:36.738Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Focused guard passed 19/19; implementation is ready for build and installed verification"
+        },
+        {
+          "at": "2026-08-23T08:42:15.605Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "python3 -m unittest tests/test_pressure_watchdog.py tests/test_desktop_launcher_guard.py -v passed 34/34"
+        },
+        {
+          "at": "2026-08-23T08:42:35.058Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Transient desktop systemd unit now declares Restart=on-failure and RestartSec=2s"
+        },
+        {
+          "at": "2026-08-23T08:42:35.368Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "verify:installed-release passed with binary sha256 7f410f180e89c3f4b675ad45fc7c4a827cb408c4239c2ffcff7721e323f1ed48"
+        },
+        {
+          "at": "2026-08-23T08:42:35.683Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "Installed restart smoke launched the promoted binary, verified visible window and daemon socket, and found zero external terminals; label fixture was disabled because its status snapshot did not settle"
+        },
+        {
+          "at": "2026-08-23T08:43:07.402Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Source, focused-test, installed-release, and live installed restart evidence recorded; default label-fixture smoke remains separately unverified"
+        },
+        {
+          "at": "2026-08-23T10:42:03.477Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Added and passed hydration regression for recoverable persisted terminal with 32 bytes of scrollback; explicit lifecycle and cwd remain required."
+        },
+        {
+          "at": "2026-08-23T10:53:43.674Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "Promoted repaired release ec7e5bf4aaf3 and verify:installed-release passed."
+        },
+        {
+          "at": "2026-08-23T10:53:48.768Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "Dock relaunch replaced stale UI with repaired binary and durable workspace grew from 26 to 37 terminals while live PTYs stayed intact; visible window-label gate remains unverified."
+        },
+        {
+          "at": "2026-08-23T11:36:20.773Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Lifecycle gate now distinguishes unknown, recoverable, and intentional-close records; exact provider conversation ids are required for reattachment."
+        },
+        {
+          "at": "2026-08-23T11:36:21.157Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Rust PTY library: 174 passed; focused hydration browser checks: 8 passed; build and diff checks passed."
+        },
+        {
+          "at": "2026-08-23T11:45:34.282Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "Private promotion of the current source passed installed-release verification; isolated Xvfb dock smoke passed with a real packaged binary, private daemon socket, exact sentinel recovery, close exclusion, restart persistence, and zero external terminals."
+        },
+        {
+          "at": "2026-08-23T11:45:34.661Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "Isolated installed window passed; production dock visual read-back remains unverified because the shared dock and live PTYs were deliberately not restarted."
+        },
+        {
+          "at": "2026-08-23T12:06:09.145Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Migration version 2 now rechecks legacy sidecars, exposes sidecar-only identities as unknown review records, and keeps auto-restore gated by exact recoverable lifecycle."
+        },
+        {
+          "at": "2026-08-23T12:06:09.550Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Latest focused hydration suite passes; installed current binary smoke passes with sentinel recovery, close exclusion, daemon restart persistence, and zero external terminals."
+        },
+        {
+          "at": "2026-08-23T15:06:59.936Z",
+          "type": "transition",
+          "from": "verifying",
+          "to": "reopened",
+          "note": "Live incident: 383 persisted tabs, 302 close tombstones, provider identity mismatch reproduced from current workspace and lifecycle ledger"
+        },
+        {
+          "at": "2026-08-23T15:10:35.547Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Provider conversation tombstone fix: focused Python regression passed, npm build passed, git diff check passed; hydration suite 18/19 with one unrelated pane-goal failure"
+        },
+        {
+          "at": "2026-08-23T15:24:36.524Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "Dock release promoted and verified; post-relaunch workspace persisted 4 tabs and 4 terminals, with no external provider restore launched."
+        },
+        {
+          "at": "2026-08-23T15:24:53.999Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "Dock-launched runtime was rechecked after relaunch: persisted workspace.json reports 4 tabs and 4 terminals; launcher log has no provider session launch after the new release."
+        },
+        {
+          "at": "2026-08-23T15:25:01.212Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Provider tombstone Python regression passed; intentional-kill Rust restart regression passed; installed launcher guard tests and build passed. Hydration suite remains 18/19 because one unrelated pane-goal assertion still fails."
+        },
+        {
+          "at": "2026-08-23T15:26:06.738Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "Final controlled relaunch after persisted-state tombstoning remained stable at 18 tabs and 18 terminals, matching the 18 live daemon sessions; no external provider restore ran."
+        },
+        {
+          "at": "2026-08-23T16:12:40.439Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Recovery coordinator fixtures pass: latest non-killed selection, explicit provider tombstone exclusion, fail-closed apply, and concurrent read-only consistency; build and diff checks pass."
+        },
+        {
+          "at": "2026-08-23T16:12:40.743Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "Latest-activity recovery attached FlowState, Bina, and Life-Boat selected panes; dock workspace is 19 tabs and 19 terminals with no 384-terminal expansion."
+        },
+        {
+          "at": "2026-08-23T16:28:03.746Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Coordinator now preserves pane provider type, rejects daemon/project identity collisions, excludes explicit kills and provider tombstones, and passes six fixture/concurrency tests."
+        },
+        {
+          "at": "2026-08-23T16:28:04.016Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "Latest recovery now has visible Bina Codex, fresh FlowState Codex, and Life-Boat Claude tabs; workspace stabilized at 20 terminals after delayed hydration."
+        },
+        {
+          "at": "2026-08-23T16:43:48.084Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Recovery contract coordinator: 9 tests pass, including manual exact-restore listing, unknown-provider hold, duplicate live-owner hold, tombstone exclusion, and read-only concurrency."
+        },
+        {
+          "at": "2026-08-23T16:46:39.057Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Coordinator now passes 11 tests, including concurrent 16-way dry runs, no older fallback after newer ambiguity, duplicate live-owner hold, and provider writer-lock hold."
+        },
+        {
+          "at": "2026-08-23T17:09:51.663Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Life-Boat duplicate-pane regression: 12 coordinator tests pass; hydration now replays recovery transfer markers before live reconcile; current runtime still requires exact provider reattachment proof."
+        },
+        {
+          "at": "2026-08-27T15:35:39.808Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "Fresh runtime check: the launcher replaced the invisible cockpit process while the PTY daemon remained alive; the replacement still has no mapped visible window, so the raw screenshot gate failed closed with no visible TermFleet window."
+        },
+        {
+          "at": "2026-08-27T15:36:12.063Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Fresh focused contract suite: 7 tests pass for separate Goal validation, application-specific snapshots, isolated smoke paths, off-screen rejection, invisible-process readiness, and durable failure receipts."
+        },
+        {
+          "at": "2026-08-27T15:38:07.038Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "Fresh gate now reaches X11 capture and records a real window PNG; it fails closed on pane 3a5a5a97-8d6d-42eb-bf4c-8e8809b9cbe2 because the rendered pane rectangle is off-screen."
+        },
+        {
+          "at": "2026-08-27T15:39:02.028Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Official WebKitGTK research confirms WebKitWebView.get_snapshot supports visible-region and full-document snapshots asynchronously; this is the candidate app-owned capture path that can avoid X11 window discovery, pending implementation and visual proof."
+        },
+        {
+          "at": "2026-08-27T16:02:53.455Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "Installed release now writes a fresh app-owned WebKit PNG; npm run gate still fails closed because active map panes are outside the visible WebView crop. The full-document experiment returned the same 1600x1000 viewport and was reverted."
+        },
+        {
+          "at": "2026-08-27T16:23:42.810Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "Fresh installed dock run produced app-owned WebKit PNGs for all 12 active panes; per-pane screen monitor passed 12/12. The higher-level gate then correctly failed 3 panes for missing or status-like Goal text, so completion remains open."
+        },
+        {
+          "at": "2026-08-27T16:45:42.650Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "Latest promoted release includes automatic per-pane provider recovery; installed restart smoke passed after promotion. Native WebKit pane captures remain strict and per-pane; content gate still rejects panes lacking a trustworthy captured Goal."
+        }
+      ]
+    },
+    {
+      "id": "TF-005",
+      "title": "Terminal viewport jumps to newest output",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "canvas",
+      "matrixRefs": [
+        "6.13"
+      ],
+      "symptom": "Scrolling up resets when new terminal text arrives, and Home End PageUp PageDown do not control terminal history",
+      "rootCause": "Viewport navigation used the normal PTY input path, whose live-output behavior could schedule a return to the bottom; the Canvas terminal had no keyboard-owned history action for Home, End, PageUp, or PageDown.",
+      "guard": "Focused viewport keyboard and output-stability regression",
+      "evidence": [
+        {
+          "kind": "focused-test",
+          "at": "2026-08-23T13:12:52.943Z",
+          "note": "npx playwright test tests/terminal-viewport.spec.ts --reporter=line: 2 passed"
+        },
+        {
+          "kind": "source",
+          "at": "2026-08-23T13:13:15.769Z",
+          "note": "TerminalCanvas now routes viewport keys to grid history and preserves the user viewport lock"
+        },
+        {
+          "kind": "browser-render",
+          "at": "2026-08-23T13:13:16.210Z",
+          "note": "Playwright terminal-viewport browser guard passed 2/2; broad Canvas2D run passed 73/86 with unrelated pre-existing map assertion failures"
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Capture Home, End, PageUp, PageDown, and output-while-scrolled behavior in the installed dock app",
+      "history": [
+        {
+          "at": "2026-08-23T13:06:23.812Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-08-23T13:07:42.862Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Canvas viewport failure confirmed"
+        },
+        {
+          "at": "2026-08-23T13:07:43.149Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Focused regression reproduced before repair"
+        },
+        {
+          "at": "2026-08-23T13:07:43.450Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Focused viewport guard is now green"
+        },
+        {
+          "at": "2026-08-23T13:12:52.583Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Viewport implementation passes focused regression and frontend build"
+        },
+        {
+          "at": "2026-08-23T13:12:52.943Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "npx playwright test tests/terminal-viewport.spec.ts --reporter=line: 2 passed"
+        },
+        {
+          "at": "2026-08-23T13:13:15.769Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "TerminalCanvas now routes viewport keys to grid history and preserves the user viewport lock"
+        },
+        {
+          "at": "2026-08-23T13:13:16.210Z",
+          "type": "evidence",
+          "kind": "browser-render",
+          "note": "Playwright terminal-viewport browser guard passed 2/2; broad Canvas2D run passed 73/86 with unrelated pre-existing map assertion failures"
+        },
+        {
+          "at": "2026-08-23T13:13:16.620Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Focused and build evidence pass; installed visual scroll proof remains"
+        }
+      ]
+    },
+    {
+      "id": "TF-006",
+      "title": "Command menu overflows and clips actions",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "desktop-runtime",
+      "matrixRefs": [],
+      "symptom": "Opening the command menu produces a tall clipped dropdown that does not remain cleanly inside the visible app surface.",
+      "rootCause": "",
+      "guard": "Add a focused browser regression that opens the command menu at narrow and desktop sizes and verifies the menu bounds plus visible first and last action.",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-08-23T14:06:06.328Z",
+          "note": "Rollback restored the prior map/sidebar and menu styling; only viewport geometry and focused regression coverage changed for this repair."
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-08-23T14:06:09.325Z",
+          "note": "Passed: focused Playwright run completed with 2 passed tests covering the command menu viewport and map toolbar bounds."
+        },
+        {
+          "kind": "installed-release",
+          "at": "2026-08-23T14:11:11.382Z",
+          "note": "Passed: npm run verify:installed-release reported the promoted binary and sha256 2e87e66b02e05ec6164452ccd8e6276e54944d62589e9e8d094104eefcecafc6."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Add the browser guard before changing the menu layout.",
+      "history": [
+        {
+          "at": "2026-08-23T13:55:49.698Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-08-23T14:05:24.267Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Visual reproduction confirmed from the supplied narrow-window screenshot."
+        },
+        {
+          "at": "2026-08-23T14:05:27.980Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Focused browser repro is recorded in the new command-menu visual test."
+        },
+        {
+          "at": "2026-08-23T14:05:30.916Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Viewport bounds assertions now cover the command menu and map toolbar."
+        },
+        {
+          "at": "2026-08-23T14:05:34.204Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Applying the narrow-viewport layout repair while preserving the rollback."
+        },
+        {
+          "at": "2026-08-23T14:05:44.133Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Focused browser regression and frontend build are passing; packaged dock verification remains outstanding."
+        },
+        {
+          "at": "2026-08-23T14:06:06.328Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Rollback restored the prior map/sidebar and menu styling; only viewport geometry and focused regression coverage changed for this repair."
+        },
+        {
+          "at": "2026-08-23T14:06:09.325Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Passed: focused Playwright run completed with 2 passed tests covering the command menu viewport and map toolbar bounds."
+        },
+        {
+          "at": "2026-08-23T14:11:11.383Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "Passed: npm run verify:installed-release reported the promoted binary and sha256 2e87e66b02e05ec6164452ccd8e6276e54944d62589e9e8d094104eefcecafc6."
+        }
+      ]
+    },
+    {
+      "id": "TF-007",
+      "title": "Reconnect agents restores historical terminals",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "desktop-runtime",
+      "matrixRefs": [],
+      "symptom": "Reconnect agents restored hundreds of historical terminals instead of only current stopped agent panes",
+      "rootCause": "",
+      "guard": "Focused scope regression plus installed desktop proof",
+      "evidence": [
+        {
+          "kind": "live-desktop",
+          "at": "2026-08-23T22:55:41.433Z",
+          "note": "Final installed dock capture independently reviewed PASS: FlowState selected, GPT/Codex identity, goal/now/path, and non-empty shell prompt visible; Bina and Life-Boat identities remain present in workspace."
+        },
+        {
+          "kind": "source",
+          "at": "2026-08-30T05:27:41.335Z",
+          "note": "Hand-started provider sessions now persist recovery metadata under stable runtime pane identity; plain shells remain excluded."
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-08-30T05:46:28.586Z",
+          "note": "Challenge-review adapter passed; Sure inputs are HIGH / PASS; Rust agent_restore 9/9, restart-restore four layers PASS, focused reconnect tests 4/4, build, and diff check pass."
+        },
+        {
+          "kind": "installed-release",
+          "at": "2026-08-30T06:17:31.941Z",
+          "note": "Strengthened installed restart gate now requires every persisted pane to report status=reconnected; enabled run passed all 4 saved panes with no manual reconnect action."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Audit the current improvements and reproduce the over-broad selection",
+      "history": [
+        {
+          "at": "2026-08-23T15:50:44.494Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-08-23T15:50:57.066Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Scope must be current workspace panes only, never the persisted session archive"
+        },
+        {
+          "at": "2026-08-23T16:06:41.475Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Confirmed automatic startup reconnect and launcher-wide restore could reopen historical sessions"
+        },
+        {
+          "at": "2026-08-23T16:07:12.197Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Regression covers explicit-only reconnect and intentional-kill exclusion"
+        },
+        {
+          "at": "2026-08-23T16:07:13.076Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Removed startup reconnect and fleet-wide development restore"
+        },
+        {
+          "at": "2026-08-23T16:07:13.948Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Focused checks and build pass"
+        },
+        {
+          "at": "2026-08-23T16:07:14.854Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Reconnect enumerates current workspace panes and excludes intentional-kill recovery records"
+        },
+        {
+          "at": "2026-08-23T16:07:15.769Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "agent-reconnect-button: 3 passed; includes explicit-only startup guard and closed-pane exclusion"
+        },
+        {
+          "at": "2026-08-23T16:12:35.681Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "Installed release fingerprint 81e0f14eaccbbc2f3e7d0b5903e69bcbd347b9e105c8550951443d48d10135fd verified after promotion"
+        },
+        {
+          "at": "2026-08-23T17:51:04.377Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Added OS-sandboxed independent challenge reviewer adapter with snapshot/count binding and distinct reviewer identity"
+        },
+        {
+          "at": "2026-08-23T17:51:04.646Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "npm run verify:challenge-review passed, including reviewer write-block regression and fail-closed wrong-snapshot case"
+        },
+        {
+          "at": "2026-08-23T17:57:21.437Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Reload provider-session close tombstones from the durable workspace before live reconciliation"
+        },
+        {
+          "at": "2026-08-23T17:57:21.720Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "14 focused recovery/tombstone tests passed; npm run build passed"
+        },
+        {
+          "at": "2026-08-23T18:02:44.146Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "Promoted release d4fe0d1da679 and verify:installed-release passed; standalone daemon cold-restore smoke passed"
+        },
+        {
+          "at": "2026-08-23T18:06:54.136Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "npm run verify:restart-restore passed all four layers: live reattach, cold restore, agent resume/reconstruct, and orphan writer protection"
+        },
+        {
+          "at": "2026-08-23T18:12:57.876Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Coordinator ignores legacy provider tombstone cache and requires userRequested true lifecycle evidence"
+        },
+        {
+          "at": "2026-08-23T18:12:58.178Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Coordinator race/tombstone suite passed 14/14; challenge reviewer adapter passed"
+        },
+        {
+          "at": "2026-08-23T18:14:30.322Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Coordinator now validates live command provider against recorded provider and holds mismatches/duplicate owners"
+        },
+        {
+          "at": "2026-08-23T18:14:30.622Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "15 recovery coordinator tests passed; live read-back held duplicate Life-Boat Claude/Codex owners without mutation"
+        },
+        {
+          "at": "2026-08-23T18:31:07.832Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Target recovery read-back passed for FlowState, Bina, and Life-Boat with exact provider commands and non-empty daemon snapshots"
+        },
+        {
+          "at": "2026-08-23T18:31:08.104Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "Dock release remains checksum-verified after kill-free recovery apply and relaunch"
+        },
+        {
+          "at": "2026-08-23T18:33:04.918Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Broad auto-recovery suite corrected and green 28/28; combined auto-recovery and coordinator coverage 46/46 plus challenge review pass"
+        },
+        {
+          "at": "2026-08-23T19:34:29.019Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Fixed paneId versus terminalId sidecar lookup; coordinator deduplicates repeated sidecars and recognizes exact daemon pane owners only when cwd/provider evidence agrees."
+        },
+        {
+          "at": "2026-08-23T19:34:29.305Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "tests/test_recovery_coordinator.py passed 18/18; reconnect focused tests passed 2/2."
+        },
+        {
+          "at": "2026-08-23T19:34:29.594Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "Latest release promoted and dock relaunched after coordinator fix; no terminal process was killed."
+        },
+        {
+          "at": "2026-08-23T19:34:29.863Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "Partial real-dock proof: Bina loaded with provider binding and pty reconnected; FlowState is still blocked by an active Codex writer on pts/16 and is not yet visibly restored."
+        },
+        {
+          "at": "2026-08-23T20:34:37.671Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "Freshly promoted dock release: Sessions > Reconnect agents returned 18 already running, 3 missing path, 6 failed; exact FlowState Codex, Bina Codex, and Life-Boat Claude provider IDs remained present once each; workspace stayed at 25 tabs."
+        },
+        {
+          "at": "2026-08-23T22:04:44.597Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Runtime controller, coordinator, and installed restart smoke passed; explicit stale-event race and multi-process lock tests pass."
+        },
+        {
+          "at": "2026-08-23T22:04:47.937Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "Default isolated installed restart gate passed with socket, window identity, daemon recovery, and no external terminal duplication."
+        },
+        {
+          "at": "2026-08-23T22:13:36.232Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Three concurrent isolated installed restart smokes passed; independent challenge reviewer PASS for exact provider read-back and one registry entry per chat."
+        },
+        {
+          "at": "2026-08-23T22:14:20.146Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "Canonical daemon reachable; exact FlowState, Bina, and Life-Boat provider read-back passed after apply; current display had no visible TermFleet window for final visual interaction check."
+        },
+        {
+          "at": "2026-08-23T22:27:00.738Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Recovery apply now fails closed with a running dock (pid 1952929), preventing stale in-memory workspace overwrite; coordinator and controller tests remain green."
+        },
+        {
+          "at": "2026-08-23T22:27:03.961Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "Installed dock window pid 1952929 is present; workspace read-back shows FlowState Codex, Bina Codex, and Life-Boat Claude IDs exactly once after UI-only restart/apply/relaunch. Visual capture tool found the dock but could not produce a readable current FlowState pane image."
+        },
+        {
+          "at": "2026-08-23T22:55:37.892Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Stale registry owner is ignored unless daemon independently reports the owner live; exact FlowState restore/read-back then passed. Live apply guard blocked while dock pid 2148442 was running."
+        },
+        {
+          "at": "2026-08-23T22:55:41.433Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "Final installed dock capture independently reviewed PASS: FlowState selected, GPT/Codex identity, goal/now/path, and non-empty shell prompt visible; Bina and Life-Boat identities remain present in workspace."
+        },
+        {
+          "at": "2026-08-30T05:27:41.335Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Hand-started provider sessions now persist recovery metadata under stable runtime pane identity; plain shells remain excluded."
+        },
+        {
+          "at": "2026-08-30T05:27:41.597Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "agent-reconnect-button 4/4, npm run build, Rust agent_restore 9/9, and verify:restart-restore four-layer pass."
+        },
+        {
+          "at": "2026-08-30T05:31:16.768Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "release:install promoted the changed binary; verify:installed-release checksum passed. Installed restart smoke reached daemon/window/marker but failed its pre-visual label-settle fixture."
+        },
+        {
+          "at": "2026-08-30T05:37:35.082Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "Installed release checksum and restart/daemon/pane isolation smoke pass; label fixture remains failing because the cockpit snapshot stays sidecar:missing after fixture injection."
+        },
+        {
+          "at": "2026-08-30T05:46:28.310Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "Full enabled installed restart gate passed: release checksum, four-pane live capture, daemon/socket restart, window identity, external_terminals=0, and all-pane Task/Goal/Now state checks."
+        },
+        {
+          "at": "2026-08-30T05:46:28.586Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Challenge-review adapter passed; Sure inputs are HIGH / PASS; Rust agent_restore 9/9, restart-restore four layers PASS, focused reconnect tests 4/4, build, and diff check pass."
+        },
+        {
+          "at": "2026-08-30T06:17:31.941Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "Strengthened installed restart gate now requires every persisted pane to report status=reconnected; enabled run passed all 4 saved panes with no manual reconnect action."
+        }
+      ]
+    },
+    {
+      "id": "TF-008",
+      "title": "Mixed daemon and dock releases are unclear",
+      "state": "resolved",
+      "severity": "medium",
+      "surface": "desktop-runtime",
+      "matrixRefs": [],
+      "symptom": "TermFleet doctor warns that the canonical live-session daemon release differs from the dock release, without identifying whether the mixed state is protocol-safe or unsafe.",
+      "rootCause": "",
+      "guard": "Doctor reports canonical ownership, protocol compatibility, and an explicit preservation-safe classification before any restart.",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-08-23T21:25:14.930Z",
+          "note": "Doctor now performs a read-only canonical daemon status handshake and classifies protocol-compatible mixed releases as preservation-safe."
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-08-23T21:25:15.213Z",
+          "note": "Doctor ownership tests cover the status handshake and safe mixed-release classification; 56 focused recovery/doctor tests passed."
+        },
+        {
+          "kind": "live-desktop",
+          "at": "2026-08-23T21:25:15.493Z",
+          "note": "Live status handshake returned reachable=true, protocolVersion=1, pid=68827, externalDaemon, and the dock remained running; no restart performed."
+        },
+        {
+          "kind": "installed-release",
+          "at": "2026-08-23T21:25:24.611Z",
+          "note": "Promoted dock release remained installed and running while the older canonical daemon was preserved."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Add one runtime ownership record and a read-only compatibility check shared by doctor, launcher, and recovery.",
+      "history": [
+        {
+          "at": "2026-08-23T21:22:44.504Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-08-23T21:25:14.930Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Doctor now performs a read-only canonical daemon status handshake and classifies protocol-compatible mixed releases as preservation-safe."
+        },
+        {
+          "at": "2026-08-23T21:25:15.213Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Doctor ownership tests cover the status handshake and safe mixed-release classification; 56 focused recovery/doctor tests passed."
+        },
+        {
+          "at": "2026-08-23T21:25:15.494Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "Live status handshake returned reachable=true, protocolVersion=1, pid=68827, externalDaemon, and the dock remained running; no restart performed."
+        },
+        {
+          "at": "2026-08-23T21:25:24.025Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Live mismatch reproduced and ownership boundary identified."
+        },
+        {
+          "at": "2026-08-23T21:25:24.308Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Confirmed one canonical daemon listener and a protocol-compatible mixed dock release."
+        },
+        {
+          "at": "2026-08-23T21:25:24.611Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "Promoted dock release remained installed and running while the older canonical daemon was preserved."
+        },
+        {
+          "at": "2026-08-23T21:25:41.458Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Read-only daemon status handshake is now the guard before mixed-release classification."
+        },
+        {
+          "at": "2026-08-23T21:25:41.769Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Doctor classification changed to preservation-safe only when the live protocol handshake matches."
+        },
+        {
+          "at": "2026-08-23T21:25:42.076Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Focused tests and live dock status verification passed without restarting daemon or dock."
+        },
+        {
+          "at": "2026-08-23T21:25:56.743Z",
+          "type": "transition",
+          "from": "verifying",
+          "to": "resolved",
+          "note": "Doctor now reports DOCTOR_OK and explicitly identifies protocol-compatible mixed-release preservation; live daemon pid 68827 and dock remained running unchanged."
+        }
+      ]
+    },
+    {
+      "id": "TF-009",
+      "title": "Redesign the startup loading animation",
+      "state": "resolved",
+      "severity": "medium",
+      "surface": "desktop-runtime",
+      "matrixRefs": [],
+      "symptom": "The startup loader still looks like a lightly tweaked horizontal logo and does not feel premium when viewed frame by frame.",
+      "rootCause": "",
+      "guard": "Startup browser render with frame-by-frame visual review",
+      "evidence": [
+        {
+          "kind": "focused-test",
+          "at": "2026-08-24T13:59:36.362Z",
+          "note": "npx playwright test tests/startup-splash.spec.ts passed 3/3"
+        },
+        {
+          "kind": "installed-release",
+          "at": "2026-08-24T13:59:47.528Z",
+          "note": "Promoted release 224d3b2446ab-6bd120341369; checksum 6bd120341369c4a95fe9e3f9cc96ecaf25c5563e8ff248393cec18127b3a3f14"
+        },
+        {
+          "kind": "source",
+          "at": "2026-08-24T14:00:04.785Z",
+          "note": "index.html now has one startup composition with centered lockup, full mark, status, ring/scan, progress signal, and reduced-motion override"
+        },
+        {
+          "kind": "live-desktop",
+          "at": "2026-08-24T14:00:05.085Z",
+          "note": "Installed restart passed with 3151 colors, wm_class termfleet/Termfleet, external_terminals=0; dense render sha256 a74ce94796f08cec053c0fb661fbf8efd2003414b0cf3999cf57f86cf8357191"
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Rebuild the loader composition and inspect every frame",
+      "history": [
+        {
+          "at": "2026-08-24T13:43:54.717Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-08-24T13:52:02.255Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Reproduced the visual complaint; existing loader had competing override layers"
+        },
+        {
+          "at": "2026-08-24T13:52:02.672Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Dense contact sheet captured and reviewed across 84 frames"
+        },
+        {
+          "at": "2026-08-24T13:53:17.767Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Focused startup suite and dense frame review cover the redesigned surface"
+        },
+        {
+          "at": "2026-08-24T13:53:19.198Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Replaced competing loader overrides with one centered composition"
+        },
+        {
+          "at": "2026-08-24T13:59:35.956Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Focused browser, production build, dense contact-sheet review, and dock release are complete"
+        },
+        {
+          "at": "2026-08-24T13:59:36.362Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "npx playwright test tests/startup-splash.spec.ts passed 3/3"
+        },
+        {
+          "at": "2026-08-24T13:59:47.528Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "Promoted release 224d3b2446ab-6bd120341369; checksum 6bd120341369c4a95fe9e3f9cc96ecaf25c5563e8ff248393cec18127b3a3f14"
+        },
+        {
+          "at": "2026-08-24T13:59:48.404Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "84-frame contact sheet reviewed; render copied to /jungle/termfleet-startup-animation.gif sha256 a74ce94796f08cec053c0fb661fbf8efd2003414b0cf3999cf57f86cf8357191"
+        },
+        {
+          "at": "2026-08-24T14:00:04.785Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "index.html now has one startup composition with centered lockup, full mark, status, ring/scan, progress signal, and reduced-motion override"
+        },
+        {
+          "at": "2026-08-24T14:00:05.085Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "Installed restart passed with 3151 colors, wm_class termfleet/Termfleet, external_terminals=0; dense render sha256 a74ce94796f08cec053c0fb661fbf8efd2003414b0cf3999cf57f86cf8357191"
+        },
+        {
+          "at": "2026-08-24T14:00:05.374Z",
+          "type": "transition",
+          "from": "verifying",
+          "to": "resolved",
+          "note": "All required evidence is recorded"
+        }
+      ]
+    },
+    {
+      "id": "TF-010",
+      "title": "Kanban opens with every task in Needs attention",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "logic",
+      "matrixRefs": [],
+      "symptom": "The canonical Kanban opens in Attention view and stale execution metadata places every IN PROGRESS task under Needs attention, making workflow progress appear stuck.",
+      "rootCause": "Attention view is an execution-health triage surface, but it is selected by default for a canonical workflow board with stale external run metadata.",
+      "guard": "Focused board regression proves the default view is Workflow and REVIEW remains Working in Attention view.",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-08-25T15:39:09.740Z",
+          "note": "Canonical board source now defaults to Workflow and maps REVIEW to Working; npm run build passed."
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-08-29T06:39:56.160Z",
+          "note": null
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Add focused regression and change the initial view to Workflow; keep stale execution warnings in Attention view.",
+      "history": [
+        {
+          "at": "2026-08-25T15:33:19.261Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-08-25T15:34:08.357Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "npx playwright test tests/canonical-agent-board.spec.ts --reporter=line: 8 passed after fix; pre-fix run reproduced both failures."
+        },
+        {
+          "at": "2026-08-25T15:34:15.226Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Issue record reviewed and focused regression identified."
+        },
+        {
+          "at": "2026-08-25T15:34:15.720Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Pre-fix focused regression reproduced both user-visible failures."
+        },
+        {
+          "at": "2026-08-25T15:34:16.315Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Focused regression now fails before the fix on default Attention view and REVIEW lane classification."
+        },
+        {
+          "at": "2026-08-25T15:39:09.741Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Canonical board source now defaults to Workflow and maps REVIEW to Working; npm run build passed."
+        },
+        {
+          "at": "2026-08-25T15:39:21.714Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Implemented the narrow default-view and REVIEW-lane correction; stale execution warnings remain in Attention."
+        },
+        {
+          "at": "2026-08-25T15:39:22.088Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Focused regression, frontend build, promoted release, installed release check, and installed restart smoke passed; installed board screenshot remains the final visual gate."
+        },
+        {
+          "at": "2026-08-28T14:28:36.270Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "2026-08-28: 15 focused canonical board/runtime tests pass, including Workflow default and stale execution lane semantics."
+        },
+        {
+          "at": "2026-08-29T04:28:24.709Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": null
+        },
+        {
+          "at": "2026-08-29T06:39:56.160Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": null
+        }
+      ]
+    },
+    {
+      "id": "TF-011",
+      "title": "Map groups start with the wrong project until a terminal is clicked",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "logic",
+      "matrixRefs": [
+        "6.12"
+      ],
+      "symptom": "A saved terminal appears under a broad or stale project category when the map opens, then moves to the correct category after the operator clicks it.",
+      "rootCause": "The map sidebar waits for the terminal pane to mount before refreshing its live cwd and Git root, so startup grouping can render stale saved metadata.",
+      "guard": "The map sidebar refreshes every mounted terminal's live project identity before interaction, and the focused browser regression checks the category without a click.",
+      "evidence": [
+        {
+          "kind": "focused-test",
+          "at": "2026-08-26T14:22:05.594Z",
+          "note": "Fresh focused run passed both live cwd rehoming and map-sidebar pre-click project reconciliation: 2 passed."
+        },
+        {
+          "kind": "source",
+          "at": "2026-08-26T14:22:05.911Z",
+          "note": "Fresh npm run build passed; release promotion, installed checksum verification, and dock restart smoke passed with binary sha256=862cceb6331586f4e5abe98dff78749a7b082e267666bf0929a49392e84ce435."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Refresh live project identity from the map sidebar and verify the installed dock surface.",
+      "history": [
+        {
+          "at": "2026-08-25T19:50:31.084Z",
+          "type": "created",
+          "note": "User reported a terminal category becomes correct only after clicking the terminal."
+        },
+        {
+          "at": "2026-08-25T19:52:09.996Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Issue reviewed; focused map-sidebar regression identified."
+        },
+        {
+          "at": "2026-08-25T19:52:14.984Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Focused regression reproduced the stale category before the fix."
+        },
+        {
+          "at": "2026-08-25T19:52:20.016Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Focused regression now fails when the sidebar does not refresh live identity before click."
+        },
+        {
+          "at": "2026-08-25T19:52:25.429Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Sidebar now refreshes each visible terminal live project identity on map mount."
+        },
+        {
+          "at": "2026-08-25T19:53:35.918Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "npx playwright test tests/project-reconciliation.spec.ts -g \"map sidebar refreshes a saved terminal project before it is clicked\" --reporter=line: 1 passed; related project reconciliation checks: 2 passed."
+        },
+        {
+          "at": "2026-08-25T19:53:42.664Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Focused regressions and npm run build passed; promoted installed release and restart proof remains."
+        },
+        {
+          "at": "2026-08-25T19:56:38.034Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "npm run build, npm run release:install, npm run verify:installed-release, npm run verify:installed-restart, and npm run verify:map-terminals passed; installed checksum 119e196c9876d7c034f5ee1577e8cf9ce51866fb6b60074872ce7c95155dac53."
+        },
+        {
+          "at": "2026-08-25T19:56:53.267Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "npm run build, npm run release:install, npm run verify:installed-release, and npm run verify:installed-restart passed with installed checksum 119e196c9876d7c034f5ee1577e8cf9ce51866fb6b60074872ce7c95155dac53. npm run verify:map-terminals still fails two unrelated pre-existing contracts: immersive mode and workspace persistence."
+        },
+        {
+          "at": "2026-08-25T20:13:13.112Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Both map surfaces now refresh every saved terminal live identity before grouping; Workbench map pre-click regression passed."
+        },
+        {
+          "at": "2026-08-25T20:13:13.385Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Current source builds, release promotion succeeds, installed release checksum verifies, dock restart smoke passes, and git diff check is clean."
+        },
+        {
+          "at": "2026-08-26T14:22:05.594Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Fresh focused run passed both live cwd rehoming and map-sidebar pre-click project reconciliation: 2 passed."
+        },
+        {
+          "at": "2026-08-26T14:22:05.912Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Fresh npm run build passed; release promotion, installed checksum verification, and dock restart smoke passed with binary sha256=862cceb6331586f4e5abe98dff78749a7b082e267666bf0929a49392e84ce435."
+        }
+      ]
+    },
+    {
+      "id": "TF-012",
+      "title": "Current release falls behind the frontend build",
+      "state": "resolved",
+      "severity": "medium",
+      "surface": "desktop-runtime",
+      "matrixRefs": [
+        "5.10"
+      ],
+      "symptom": "Doctor reported that the current release build predates the frontend build by five hours.",
+      "rootCause": "The frontend was rebuilt after the Rust desktop binary, leaving the embedded release stale.",
+      "guard": "Doctor must reject an older embedded release and pass after rebuild, promotion, installed checksum verification, and relaunch.",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-08-30T11:06:25.439Z",
+          "note": "Existing release manifest and checksum guards identified the post-install executable mutation; no production source change was required."
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-08-30T11:06:29.571Z",
+          "note": "npm run build completed during release promotion and the installed checksum guard now accepts the immutable artifact."
+        },
+        {
+          "kind": "installed-release",
+          "at": "2026-08-30T11:06:32.601Z",
+          "note": "npm run verify:installed-release passed with the manifest-matching dfad8b31 release; npm run doctor returned DOCTOR_OK."
+        },
+        {
+          "kind": "live-desktop",
+          "at": "2026-08-30T11:06:35.704Z",
+          "note": "Dock relaunch produced the real TermFleet Tauri cockpit; screenshot /tmp/termfleet-connection-refused-fixed.png sha256 188844bc848f8810a31b42fcfad8299845f046aed4f6062b054adae3b552c329 showed no localhost refusal."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Relaunch the dock app and confirm the visible desktop surface.",
+      "history": [
+        {
+          "at": "2026-08-28T13:35:25.721Z",
+          "type": "created",
+          "note": "Reported and repaired on 2026-08-28."
+        },
+        {
+          "at": "2026-08-28T13:35:26.098Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "Fresh frontend and Rust release built; atomic promotion completed; installed-release checksum verifier passed; doctor returned DOCTOR_OK."
+        },
+        {
+          "at": "2026-08-28T13:35:33.372Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Failure reproduced from doctor output; stale embedded release identified."
+        },
+        {
+          "at": "2026-08-28T13:35:33.680Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Confirmed frontend dist was newer than the Rust binary; no app or daemon was running."
+        },
+        {
+          "at": "2026-08-28T13:35:34.001Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Existing release provenance guard correctly failed closed."
+        },
+        {
+          "at": "2026-08-28T13:35:34.369Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Built fresh frontend and Rust release, then promoted atomically."
+        },
+        {
+          "at": "2026-08-28T13:35:34.708Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Installed checksum and doctor pass; visual relaunch remains required."
+        },
+        {
+          "at": "2026-08-28T13:36:40.385Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Release provenance guard and installer contract were inspected; no production source change was needed."
+        },
+        {
+          "at": "2026-08-28T13:36:40.721Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Installed-release regression suite started and the release guard accepted the checksummed immutable artifact."
+        },
+        {
+          "at": "2026-08-28T13:36:41.180Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "Installed restart verifier passed: current promoted executable launched, one pane screen capture completed, window PID observed, external_terminals=0, and TermFleet WM class matched."
+        },
+        {
+          "at": "2026-08-28T13:36:41.545Z",
+          "type": "transition",
+          "from": "verifying",
+          "to": "resolved",
+          "note": "Fresh release promoted and installed restart verification passed; stale-release warning cleared."
+        },
+        {
+          "at": "2026-08-30T11:02:31.640Z",
+          "type": "transition",
+          "from": "resolved",
+          "to": "reopened",
+          "note": "Recurrence: installed executable checksum no longer matches the immutable release manifest; doctor and installed-release guard both fail."
+        },
+        {
+          "at": "2026-08-30T11:06:12.650Z",
+          "type": "transition",
+          "from": "reopened",
+          "to": "reproducing",
+          "note": "Installed-release checksum guard reproduced the failure; manifest expected dfad8b31 while the installed executable was e6801c2c."
+        },
+        {
+          "at": "2026-08-30T11:06:15.875Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Existing checksum and doctor guards failed on the corrupted immutable release before repair."
+        },
+        {
+          "at": "2026-08-30T11:06:18.857Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Quarantined the corrupted release intact, rebuilt, and atomically promoted the clean release without restarting the PTY daemon."
+        },
+        {
+          "at": "2026-08-30T11:06:22.413Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Clean release is promoted; checksum, doctor, and visible dock app are being read back."
+        },
+        {
+          "at": "2026-08-30T11:06:25.439Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Existing release manifest and checksum guards identified the post-install executable mutation; no production source change was required."
+        },
+        {
+          "at": "2026-08-30T11:06:29.571Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "npm run build completed during release promotion and the installed checksum guard now accepts the immutable artifact."
+        },
+        {
+          "at": "2026-08-30T11:06:32.602Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "npm run verify:installed-release passed with the manifest-matching dfad8b31 release; npm run doctor returned DOCTOR_OK."
+        },
+        {
+          "at": "2026-08-30T11:06:35.704Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "Dock relaunch produced the real TermFleet Tauri cockpit; screenshot /tmp/termfleet-connection-refused-fixed.png sha256 188844bc848f8810a31b42fcfad8299845f046aed4f6062b054adae3b552c329 showed no localhost refusal."
+        },
+        {
+          "at": "2026-08-30T11:06:39.476Z",
+          "type": "transition",
+          "from": "verifying",
+          "to": "resolved",
+          "note": "Clean immutable release passes checksum and doctor gates and the relaunched dock cockpit is visibly healthy with no 127.0.0.1 refusal."
+        }
+      ]
+    },
+    {
+      "id": "TF-013",
+      "title": "Sidebar terminals switch without a click",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "desktop-runtime",
+      "matrixRefs": [
+        "4.15"
+      ],
+      "symptom": "The sidebar selection changes to another terminal while background terminal panes mount or update.",
+      "rootCause": "Inactive Canvas2D terminals received runtimeActive=true, focused their hidden inputs, and claimed global terminal ownership during mount or attach.",
+      "guard": "The sidebar selection remains stable after selecting a terminal and waiting through runtime updates; inactive panes cannot claim runtime focus.",
+      "evidence": [
+        {
+          "kind": "focused-test",
+          "at": "2026-08-28T19:13:13.781Z",
+          "note": "focused"
+        },
+        {
+          "kind": "source",
+          "at": "2026-08-28T19:17:33.688Z",
+          "note": "Installed"
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Promote and relaunch the installed dock release, then observe the selected sidebar terminal while other panes attach and update.",
+      "history": [
+        {
+          "at": "2026-08-28T19:12:50.672Z",
+          "type": "created",
+          "note": "User reported sidebar terminals switching by themselves; systematic trace identified inactive Canvas2D focus claims."
+        },
+        {
+          "at": "2026-08-28T19:12:54.055Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Root cause isolated to inactive Canvas2D panes claiming runtime focus."
+        },
+        {
+          "at": "2026-08-28T19:12:56.691Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Focused sidebar selection E2E added to preserve the reported failure surface."
+        },
+        {
+          "at": "2026-08-28T19:12:59.774Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Focused E2E and source wiring guard are green."
+        },
+        {
+          "at": "2026-08-28T19:13:03.680Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Active runtime visibility is now passed to Canvas2D terminals."
+        },
+        {
+          "at": "2026-08-28T19:13:13.782Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "focused"
+        },
+        {
+          "at": "2026-08-28T19:16:44.517Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "frontend"
+        },
+        {
+          "at": "2026-08-28T19:16:53.014Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Release"
+        },
+        {
+          "at": "2026-08-28T19:17:33.688Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Installed"
+        }
+      ]
+    },
+    {
+      "id": "TF-014",
+      "title": "Map terminal outlines do not match session colors",
+      "state": "fixing",
+      "severity": "medium",
+      "surface": "canvas",
+      "matrixRefs": [],
+      "symptom": "A selected terminal can show its project color in Sessions but a neutral outline in Map.",
+      "rootCause": "",
+      "guard": "npx playwright test tests/map-terminal-rendering.spec.ts -g terminal map labels can be recolored from the right-click menu",
+      "evidence": [
+        {
+          "kind": "focused-test",
+          "at": "2026-08-29T07:41:01.192Z",
+          "note": "Focused Playwright color test passed; selected map outline computed as rgb(239, 111, 114)."
+        },
+        {
+          "kind": "source",
+          "at": "2026-08-29T08:03:00.774Z",
+          "note": "Thick full colored Map frame plus separate selection ring implemented; focused browser test, build, map verifier, diff check, and release promotion passed."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Promote the release and visually inspect the installed Map and Sessions surfaces.",
+      "history": [
+        {
+          "at": "2026-08-29T07:40:44.270Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-08-29T07:41:01.192Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Focused Playwright color test passed; selected map outline computed as rgb(239, 111, 114)."
+        },
+        {
+          "at": "2026-08-29T07:41:04.580Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "npm run build and npm run verify:map-terminals passed; git diff --check passed."
+        },
+        {
+          "at": "2026-08-29T07:41:31.440Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Matched to the existing map color regression row and started the focused UI correction."
+        },
+        {
+          "at": "2026-08-29T07:41:34.670Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Observed the mismatch in the Map and Sessions surfaces."
+        },
+        {
+          "at": "2026-08-29T07:41:37.970Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Focused browser regression added for the rendered Map outline color."
+        },
+        {
+          "at": "2026-08-29T07:41:55.385Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Applied the shared panel color to the Map terminal outline and selection halo."
+        },
+        {
+          "at": "2026-08-29T07:41:58.704Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Implementation and local verification passed; installed visual proof remains."
+        },
+        {
+          "at": "2026-08-29T07:59:02.124Z",
+          "type": "transition",
+          "from": "verifying",
+          "to": "fixing",
+          "note": "Normal Map terminal cards should retain their project-colored outline when not selected."
+        },
+        {
+          "at": "2026-08-29T08:03:00.774Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Thick full colored Map frame plus separate selection ring implemented; focused browser test, build, map verifier, diff check, and release promotion passed."
+        }
+      ]
+    },
+    {
+      "id": "TF-015",
+      "title": "TermFleet desktop becomes sluggish during status refresh",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "desktop-runtime",
+      "matrixRefs": [],
+      "symptom": "The installed cockpit consumes sustained CPU and feels slow while terminal work continues",
+      "rootCause": "",
+      "guard": "Live desktop process load stays bounded while status refresh remains correct",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-08-30T13:42:22.988Z",
+          "note": "Dock startup now performs one bounded live-session reconciliation first; persisted-session archaeology, sidecar scans, Git reads, audit writes, and workspace persistence are deferred until after the window is usable."
+        },
+        {
+          "kind": "installed-release",
+          "at": "2026-08-30T13:42:38.815Z",
+          "note": "Installed dock release verified at SHA-256 576d9d38a11b93e4b0dbfd96f1c25e86b47bbe8e78680e64d930457b5e395535."
+        },
+        {
+          "kind": "live-desktop",
+          "at": "2026-08-30T13:42:46.426Z",
+          "note": "Valid installed dock click measured process creation at 341 ms and visible TermFleet window at 430 ms; ready screenshot captured at 1448 ms with the pre-existing daemon unchanged."
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-08-30T13:47:04.170Z",
+          "note": "Fresh background rerun: all 60 startup, hydration, status-poll, and project-reconciliation regressions passed in 1.4 minutes; production build and installed-release verification also passed."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Reduce repeated status-file scanning and verify the installed app",
+      "history": [
+        {
+          "at": "2026-08-29T08:16:45.341Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-08-29T08:23:22.502Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Live installed app sampled at about 18-24% CPU with 13 active panes; status sidecar directory contains 793 pane records"
+        },
+        {
+          "at": "2026-08-29T08:23:25.759Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Reproduction isolated to repeated status refresh filesystem work; current matrix row 3.14 covers the failure class"
+        },
+        {
+          "at": "2026-08-29T08:23:28.310Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Rate-limited canonical heartbeat writes and shared indexed sidecar fallback cache implemented"
+        },
+        {
+          "at": "2026-08-29T08:23:30.638Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Focused status-sidecar and status-poll suites pass; promoted release is installed"
+        },
+        {
+          "at": "2026-08-29T08:43:03.039Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "72 status-sidecar/status-poll/scheduler tests passed"
+        },
+        {
+          "at": "2026-08-29T08:43:09.614Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "Promoted release passed installed-release verification and was relaunched from the dock launcher"
+        },
+        {
+          "at": "2026-08-29T08:43:12.970Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "Real window probe log: typing-to-capture 113ms; after stable relaunch app CPU 12.6% and WebKit CPU 13.4% after 10s; prior samples were about 19-21% app and 14-20% WebKit"
+        },
+        {
+          "at": "2026-08-29T08:43:15.843Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Performance improved materially, but the challenge reviewer remains fail-closed because the required all-pane snapshot artifact is stale"
+        },
+        {
+          "at": "2026-08-29T10:56:59.255Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Added and passed 3 focused regressions for heartbeat write throttling, stable transcript cache keys, and inactive map snapshot cadence"
+        },
+        {
+          "at": "2026-08-29T10:57:02.268Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Broad 92-test map-rendering selection timed out at 180s in an existing visual case; focused new tests pass independently"
+        },
+        {
+          "at": "2026-08-30T11:46:07.328Z",
+          "type": "transition",
+          "from": "verifying",
+          "to": "reopened",
+          "note": "User reports dock startup remains very slow; prior steady-state CPU and one typing sample did not prove dock startup latency."
+        },
+        {
+          "at": "2026-08-30T11:46:07.592Z",
+          "type": "transition",
+          "from": "reopened",
+          "to": "reproducing",
+          "note": "Tracing dock startup latency from launcher through hydration and every pane attachment."
+        },
+        {
+          "at": "2026-08-30T13:42:22.988Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Dock startup now performs one bounded live-session reconciliation first; persisted-session archaeology, sidecar scans, Git reads, audit writes, and workspace persistence are deferred until after the window is usable."
+        },
+        {
+          "at": "2026-08-30T13:42:31.075Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Startup critical-path regression suite and focused reconnect/status tests pass; the suite proves normal cached launch does not scan history, sidecars, Git, write audits, or persist workspace before live reconciliation."
+        },
+        {
+          "at": "2026-08-30T13:42:38.815Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "Installed dock release verified at SHA-256 576d9d38a11b93e4b0dbfd96f1c25e86b47bbe8e78680e64d930457b5e395535."
+        },
+        {
+          "at": "2026-08-30T13:42:46.426Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "Valid installed dock click measured process creation at 341 ms and visible TermFleet window at 430 ms; ready screenshot captured at 1448 ms with the pre-existing daemon unchanged."
+        },
+        {
+          "at": "2026-08-30T13:42:55.243Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Regression locks the dock critical path against startup history, sidecar, Git, audit, and persistence work."
+        },
+        {
+          "at": "2026-08-30T13:43:03.661Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Fast live-only reconciliation is installed and background enrichment is delayed until after first paint."
+        },
+        {
+          "at": "2026-08-30T13:43:10.421Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Installed dock startup is fast; the final every-pane visual reconnection gate remains pending until desktop interaction is reauthorized."
+        },
+        {
+          "at": "2026-08-30T13:47:04.170Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Fresh background rerun: all 60 startup, hydration, status-poll, and project-reconciliation regressions passed in 1.4 minutes; production build and installed-release verification also passed."
+        }
+      ]
+    },
+    {
+      "id": "TF-016",
+      "title": "Stale terminal streams create repeated Broken pipe errors",
+      "state": "fixing",
+      "severity": "medium",
+      "surface": "desktop-runtime",
+      "matrixRefs": [],
+      "symptom": "Closed terminal-pane clients remain subscribed and the daemon repeatedly writes to stale streams, causing Broken pipe churn and CPU use.",
+      "rootCause": "",
+      "guard": "Closed frontend stream must unregister its daemon subscriber immediately; daemon health must show no recurring Broken pipe errors after pane restart.",
+      "evidence": [
+        {
+          "kind": "focused-test",
+          "at": "2026-08-30T07:01:26.147Z",
+          "note": "33 focused recovery regressions pass, including disconnect cleanup, killed-provider exclusion, stale-session reaping, and historical-tab suppression"
+        },
+        {
+          "kind": "installed-release",
+          "at": "2026-08-30T07:01:30.773Z",
+          "note": "installed immutable release checksum verification passes"
+        },
+        {
+          "kind": "live-desktop",
+          "at": "2026-08-30T07:01:49.198Z",
+          "note": "Installed dock restart smoke restored four panes and visual pane captures passed"
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Run daemon disconnect smoke and inspect recent service logs",
+      "history": [
+        {
+          "at": "2026-08-30T06:29:07.690Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-08-30T07:01:26.147Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "33 focused recovery regressions pass, including disconnect cleanup, killed-provider exclusion, stale-session reaping, and historical-tab suppression"
+        },
+        {
+          "at": "2026-08-30T07:01:30.773Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "installed immutable release checksum verification passes"
+        },
+        {
+          "at": "2026-08-30T07:01:49.198Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "Installed dock restart smoke restored four panes and visual pane captures passed"
+        },
+        {
+          "at": "2026-08-30T07:05:33.179Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Automated reliability work and evidence in progress"
+        },
+        {
+          "at": "2026-08-30T07:05:35.852Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Automated reliability work and evidence in progress"
+        },
+        {
+          "at": "2026-08-30T07:05:38.211Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Automated reliability work and evidence in progress"
+        },
+        {
+          "at": "2026-08-30T07:05:40.539Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Automated reliability work and evidence in progress"
+        }
+      ]
+    },
+    {
+      "id": "TF-017",
+      "title": "Killed terminals return after restart",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "desktop-runtime",
+      "matrixRefs": [],
+      "symptom": "Explicitly killed terminal projects are restored into TermFleet after restart instead of remaining closed.",
+      "rootCause": "",
+      "guard": "Exact closed terminal and provider identities must be excluded from live, sidecar, and cold restoration paths.",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-08-30T15:48:35.676Z",
+          "note": "Restored saved-pane authority: daemon inventory no longer creates tabs and the dock no longer runs folder-keyed Agent Fleet restore."
+        },
+        {
+          "kind": "live-desktop",
+          "at": "2026-08-30T18:37:40.308Z",
+          "note": "Killed-pane filtering remains separate from preserved-pane recovery. Current failed acceptance is incomplete exact recovery of preserved panes; issue stays verifying until both absence of killed panes and exact live identity of every preserved agent pane are visually proved."
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-08-30T19:04:40.201Z",
+          "note": "44 focused browser tests and 181 Rust tests pass exact terminal/runtime/provider tombstone exclusions; explicitly closed daemon ids, runtime ids, and provider conversation ids are filtered before reconnect."
+        },
+        {
+          "kind": "installed-release",
+          "at": "2026-08-30T19:04:48.877Z",
+          "note": "Corrected immutable dock release 5514cde0ebd3-4368c83ccba8-5fc9431c55ee passed checksum verification; absence of every explicitly killed pane still requires the next dock visual audit."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Run installed restart smoke after killing a terminal and verify it stays absent",
+      "history": [
+        {
+          "at": "2026-08-30T06:42:04.785Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-08-30T07:01:35.550Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "33 focused recovery regressions pass, including durable provider tombstone filtering"
+        },
+        {
+          "at": "2026-08-30T07:01:51.831Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "Installed dock restart smoke restored the saved pane set without resurrecting explicit closed fixture sessions"
+        },
+        {
+          "at": "2026-08-30T07:05:43.128Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Automated reliability work and evidence in progress"
+        },
+        {
+          "at": "2026-08-30T07:05:45.284Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Automated reliability work and evidence in progress"
+        },
+        {
+          "at": "2026-08-30T07:05:47.711Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Automated reliability work and evidence in progress"
+        },
+        {
+          "at": "2026-08-30T07:05:50.056Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Automated reliability work and evidence in progress"
+        },
+        {
+          "at": "2026-08-30T15:48:35.676Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Restored saved-pane authority: daemon inventory no longer creates tabs and the dock no longer runs folder-keyed Agent Fleet restore."
+        },
+        {
+          "at": "2026-08-30T15:48:36.022Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "9 workspace recovery tests and 13 exact reconnect/authority tests passed."
+        },
+        {
+          "at": "2026-08-30T15:52:17.350Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "Installed release e80db6190172 passed immutable release verification; dock behavior remains visually unverified."
+        },
+        {
+          "at": "2026-08-30T16:00:20.430Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Proven path restored, focused tests and installed release pass; exact dock visual recovery is still required."
+        },
+        {
+          "at": "2026-08-30T18:14:11.200Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "41 focused recovery tests pass: App startup writes exact Codex and Claude resume commands, skips provider tombstones and recovered tabs, and provider inference fails closed when ambiguous."
+        },
+        {
+          "at": "2026-08-30T18:14:18.297Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "Real dock launch at 21:09 used the corrected installed release and spawned exact resume processes for preserved pane conversation ids; final hardened provider-inference release and pane-by-pane visual challenge remain."
+        },
+        {
+          "at": "2026-08-30T18:37:40.309Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "Killed-pane filtering remains separate from preserved-pane recovery. Current failed acceptance is incomplete exact recovery of preserved panes; issue stays verifying until both absence of killed panes and exact live identity of every preserved agent pane are visually proved."
+        },
+        {
+          "at": "2026-08-30T19:04:40.201Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "44 focused browser tests and 181 Rust tests pass exact terminal/runtime/provider tombstone exclusions; explicitly closed daemon ids, runtime ids, and provider conversation ids are filtered before reconnect."
+        },
+        {
+          "at": "2026-08-30T19:04:48.877Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "Corrected immutable dock release 5514cde0ebd3-4368c83ccba8-5fc9431c55ee passed checksum verification; absence of every explicitly killed pane still requires the next dock visual audit."
+        }
+      ]
+    },
+    {
+      "id": "TF-018",
+      "title": "Saved terminal projects are missing after restart",
+      "state": "fixing",
+      "severity": "medium",
+      "surface": "desktop-runtime",
+      "matrixRefs": [],
+      "symptom": "TermFleet can open without all saved terminal projects visible after restart while historical records are present in the daemon inventory.",
+      "rootCause": "",
+      "guard": "Every saved project tab must remain in the hydrated workspace while stale historical sessions do not create extra tabs.",
+      "evidence": [
+        {
+          "kind": "live-desktop",
+          "at": "2026-08-30T20:03:16.363Z",
+          "note": "New continuous all-pane health matrix read the current dock failure directly: 12 expected preserved panes, 6 live, 2 exited/dead, and 4 with empty rendered-screen evidence. This run is failed and remains fixing."
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-08-31T10:23:38.535Z",
+          "note": "Focused Rust regressions pass: direct-provider-root process-tree identity resolves one canonical owner, and the exact owner contract returns canonical daemon pane plus provider PID. No provider command was written."
+        },
+        {
+          "kind": "installed-release",
+          "at": "2026-08-31T10:27:54.872Z",
+          "note": "Promoted immutable release 9b0222adef3a-4908d9f4f6a9-9e5e6b43fc36 after exact-owner resolver regression passed. The currently open dock process is still the prior immutable executable, so visual dock evidence remains pending; no daemon restart or provider resume was performed."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Run the installed restart smoke and compare saved project tab identities before and after hydration",
+      "history": [
+        {
+          "at": "2026-08-30T07:03:15.699Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-08-30T07:03:26.193Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "33 automatic recovery regressions pass; saved layout remains authoritative and dead historical sessions are not reconstructed"
+        },
+        {
+          "at": "2026-08-30T07:03:28.813Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "Installed restart smoke restores four saved fixture panes with distinct pane identities"
+        },
+        {
+          "at": "2026-08-30T07:05:52.606Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Automated reliability work and evidence in progress"
+        },
+        {
+          "at": "2026-08-30T07:05:55.058Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Automated reliability work and evidence in progress"
+        },
+        {
+          "at": "2026-08-30T07:05:58.027Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Automated reliability work and evidence in progress"
+        },
+        {
+          "at": "2026-08-30T07:06:00.398Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Automated reliability work and evidence in progress"
+        },
+        {
+          "at": "2026-08-30T18:37:44.233Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "Dock launch returned 12 saved panes, but exact recovery was incomplete: one pane binding points to a nested Codex session with no local transcript, and another preserved pane has no exact live provider confirmation. Shell attachment and scrollback replay were falsely surfaced as reconnected."
+        },
+        {
+          "at": "2026-08-30T19:04:08.560Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Exact per-pane recovery guards pass: 44 focused browser tests, 181 Rust library tests, standalone daemon smoke, and four-layer restart/restore. Nested helpers cannot replace durable identity and resume writes require stable exact provider-session confirmation."
+        },
+        {
+          "at": "2026-08-30T19:04:17.285Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "Immutable dock release 5514cde0ebd3-4368c83ccba8-5fc9431c55ee passed installed checksum verification at 4368c83ccba8ea35e41849afc942c50e7d9cc796fc946114909b9d3fd8bcb1a5; fresh dock visual all-pane recovery remains pending."
+        },
+        {
+          "at": "2026-08-30T19:04:24.536Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Source and installed provenance gates pass; waiting for fresh dock launch and exhaustive pane-by-pane visual acceptance."
+        },
+        {
+          "at": "2026-08-30T19:39:51.317Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Live root cause now guarded: daemon session ID maps to its owned PID process tree, Node-based Codex resume wrappers are recognized without legacy pane environment tags, exact existing conversations require stable confirmation, and explicit wrong-folder sidecars fail closed. Rust pane-process tests and focused browser recovery tests pass."
+        },
+        {
+          "at": "2026-08-30T19:39:56.991Z",
+          "type": "transition",
+          "from": "verifying",
+          "to": "fixing",
+          "note": "The latest dock test falsified the prior verification; returned to fixing until a newly installed dock build passes exhaustive visual recovery."
+        },
+        {
+          "at": "2026-08-30T19:47:35.908Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "Corrected immutable dock release promoted after daemon-PID exact identity, ended-session rejection, stable exact-live confirmation, pane status alignment, and wrong-folder sidecar guards passed focused tests. Fresh dock launch and visual all-pane acceptance remain pending."
+        },
+        {
+          "at": "2026-08-30T20:03:16.363Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "New continuous all-pane health matrix read the current dock failure directly: 12 expected preserved panes, 6 live, 2 exited/dead, and 4 with empty rendered-screen evidence. This run is failed and remains fixing."
+        },
+        {
+          "at": "2026-08-30T20:10:30.107Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "Installed release f8480978ccdc3aeb4eb39a8a22039afc3d4705e0baa652320802f3c4f4a5bf24 includes exact daemon-root recovery and the active two-second all-pane health monitor. Current open window is older release 4368c83c and remains failed at 12 expected / 6 live / 2 dead / 4 unknown; dock relaunch required for live acceptance."
+        },
+        {
+          "at": "2026-08-30T21:19:29.651Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "53 recovery tests pass; 185 Rust library tests pass; focused legacy-map pane binding, exact saved-pane normalization, idle-shell safety, and durable failure-receipt regressions pass. Dock visual acceptance remains pending."
+        },
+        {
+          "at": "2026-08-30T21:25:37.676Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "Promoted immutable dock release 5514cde0ebd3-9f09f6911a8e-6217964410dd; installed checksum verification passed. Fresh dock launch and exhaustive pane-by-pane visual acceptance remain pending."
+        },
+        {
+          "at": "2026-08-30T21:25:37.966Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Architecture, regressions, and installed provenance pass; waiting only for fresh dock launch and exact visual recovery of every preserved pane."
+        },
+        {
+          "at": "2026-08-30T21:40:21.544Z",
+          "type": "transition",
+          "from": "verifying",
+          "to": "fixing",
+          "note": "Fresh dock launch failed: exact conversations were skipped as owned elsewhere while visible panes remained idle shells. Owner-pane resolution and exact rebind are now the next architecture fix."
+        },
+        {
+          "at": "2026-08-30T22:10:08.592Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Exact owner resolution and safe visible-pane rebind are guarded: 186 Rust library tests and 39 recovery, startup, and hydration browser tests pass; the targeted map ownership contract passes; production frontend build and isolated restart/restore verification pass. Dock visual acceptance remains pending."
+        },
+        {
+          "at": "2026-08-30T22:18:07.693Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Owner rebind transaction now swaps the visible saved pane before retiring its repeatedly proven idle shell. Fresh proof: 39 recovery browser tests, 186 Rust library tests, exact ownership map guard, frontend build, standalone-daemon cold restore, restart/restore, formatting, and scoped diff check pass. Installed dock pane matrix remains pending."
+        },
+        {
+          "at": "2026-08-30T22:30:36.588Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Exact owner rebind now consumes one already-surfaced live owner pane, keeps the visible saved pane, preserves one canonical owner reference, retires only the repeatedly proven idle saved shell, and starts no second writer; 39 focused recovery browser tests passed."
+        },
+        {
+          "at": "2026-08-31T08:35:33.525Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "Installed immutable release 9b0222adef3a-152d24ab9c93-bf26e36a6836 verified; exact daemon owner is rebound to the saved visible pane without spawning a second provider writer. Dock visual matrix remains pending on a fresh dock launch."
+        },
+        {
+          "at": "2026-08-31T10:08:33.564Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "Immutable release 9b0222adef3a-f87d7fdb9a9a-9e5e6b43fc36 passed installed-release verification; the canonical daemon remained reachable as PID 1433959; FlowState and Lifeboat exact owner readback passed. Independent source review passed the bounded retry safety change. Fresh dock visual proof remains required."
+        },
+        {
+          "at": "2026-08-31T10:23:38.535Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Focused Rust regressions pass: direct-provider-root process-tree identity resolves one canonical owner, and the exact owner contract returns canonical daemon pane plus provider PID. No provider command was written."
+        },
+        {
+          "at": "2026-08-31T10:27:54.873Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "Promoted immutable release 9b0222adef3a-4908d9f4f6a9-9e5e6b43fc36 after exact-owner resolver regression passed. The currently open dock process is still the prior immutable executable, so visual dock evidence remains pending; no daemon restart or provider resume was performed."
+        }
+      ]
+    },
+    {
+      "id": "TF-019",
+      "title": "Live terminals stay marked as starting after restart",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "desktop-runtime",
+      "matrixRefs": [
+        "3.23"
+      ],
+      "symptom": "The dock cockpit relaunches with saved terminal cards visible, but only the selected pane says reconnected while daemon-confirmed live panes remain stuck on starting.",
+      "rootCause": "Hydration reset daemon-confirmed sessions to starting, excluded legacy UUID shells before exact-id matching, and could persist a recovered duplicate beside the original card.",
+      "guard": "Workspace hydration must represent every daemon-confirmed live id exactly once as reconnected, including legacy UUID sessions, and installed read-back must match unique cockpit ids to the daemon inventory.",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-08-30T15:48:36.361Z",
+          "note": "Git history identified the proven stable-pane sidecar path; removed the later dual restore authority and live-session tab manufacture."
+        },
+        {
+          "kind": "live-desktop",
+          "at": "2026-08-30T18:37:36.794Z",
+          "note": "Installed dock runtime proved the false-positive boundary: pane state says reconnected while runtime identity is shell and no durable exact provider-session receipt exists. Resume-command injection alone is not recovery."
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-08-30T19:05:04.853Z",
+          "note": "44 focused browser and 181 Rust tests now distinguish shell attach, scrollback replay, resume sent, and exact provider-session live; only the last records recovered."
+        },
+        {
+          "kind": "installed-release",
+          "at": "2026-08-30T19:05:13.454Z",
+          "note": "Corrected immutable dock release 5514cde0ebd3-4368c83ccba8-5fc9431c55ee passed installed verification; no desktop process is currently running, so a fresh dock launch and exhaustive visible pane audit remain required."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Promote the regression-backed fix and verify all live panes in the installed cockpit snapshot.",
+      "history": [
+        {
+          "at": "2026-08-30T11:13:28.215Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-08-30T11:13:38.020Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Live read-back found 17 live daemon sessions and 17 workspace bindings, while the cockpit snapshot showed 19 starting, one reconnected, and one exited."
+        },
+        {
+          "at": "2026-08-30T11:13:42.012Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Focused hydration regression failed because a daemon-confirmed live terminal remained starting."
+        },
+        {
+          "at": "2026-08-30T11:13:45.319Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Focused regression now requires a daemon-confirmed live terminal to be reconnected before selection."
+        },
+        {
+          "at": "2026-08-30T11:13:48.478Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Hydration now projects daemon-confirmed live sessions as reconnected across recovered and rebound pane paths."
+        },
+        {
+          "at": "2026-08-30T11:36:28.524Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Hydration now preserves daemon-confirmed reconnected state, accepts exact legacy UUID matches, and removes duplicate UI references to one live session."
+        },
+        {
+          "at": "2026-08-30T11:36:28.771Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Two focused workspace hydration regressions pass, including legacy UUID sessions and already-persisted duplicate cards."
+        },
+        {
+          "at": "2026-08-30T11:36:29.027Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "Installed release verified at SHA-256 76a3c8f1ce429ba4e3e5ae9a255e1f0214d8d9b3ae6ab66f28334e4751251f8d."
+        },
+        {
+          "at": "2026-08-30T11:36:29.288Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "Fresh dock snapshot: 17 terminal entries, 17 unique IDs, 16 reconnected and one exited after settling; zero starting. Daemon: 17 live, zero closed-live, zero unattached-live."
+        },
+        {
+          "at": "2026-08-30T11:36:29.541Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Installed dock read-back matches all 17 unique daemon sessions with no duplicates or stuck starting state."
+        },
+        {
+          "at": "2026-08-30T11:37:20.928Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "Visual dock proof: TermFleet window shows terminal cards and shell content with no connection-refused or starting text; artifact SHA-256 8cd805d202315a8297eb6a2bd7e3d617ce1196ce7e02a91e2ab0c8d12748409f."
+        },
+        {
+          "at": "2026-08-30T11:37:21.185Z",
+          "type": "transition",
+          "from": "verifying",
+          "to": "resolved",
+          "note": "Focused regressions, installed release, daemon reconciliation, unique cockpit identity counts, settled statuses, and visual dock proof all pass."
+        },
+        {
+          "at": "2026-08-30T11:46:06.827Z",
+          "type": "transition",
+          "from": "resolved",
+          "to": "reopened",
+          "note": "User performed the real close-and-dock-launch acceptance and reported terminal reconnection still failed; prior one-pane visual proof was invalid for all-pane acceptance."
+        },
+        {
+          "at": "2026-08-30T11:46:07.081Z",
+          "type": "transition",
+          "from": "reopened",
+          "to": "reproducing",
+          "note": "Reproducing through the exact dock launch and requiring per-pane visual attachment proof."
+        },
+        {
+          "at": "2026-08-30T13:43:19.669Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Cold dock launch now restores only exact daemon-live terminal IDs, respects closed-session tombstones, and defers historical recovery so killed panes cannot be recreated by the fast path."
+        },
+        {
+          "at": "2026-08-30T13:43:29.157Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Startup recovery regressions pass for exact live-session inclusion, killed-pane exclusion, bounded reconciliation, and absence of historical scans on the critical path."
+        },
+        {
+          "at": "2026-08-30T13:43:38.246Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "Installed release SHA-256 576d9d38a11b93e4b0dbfd96f1c25e86b47bbe8e78680e64d930457b5e395535 contains the fast exact-live reconciliation path."
+        },
+        {
+          "at": "2026-08-30T13:43:48.097Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "Read-only installed-state audit found 17 daemon-live sessions, 17 workspace terminals, 17 tabs, exact set equality, no missing live sessions, and no workspace-only restored sessions; individual visual pane proof is still pending."
+        },
+        {
+          "at": "2026-08-30T13:43:56.898Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Regression now rejects historical scanning on dock startup and requires killed panes to remain excluded."
+        },
+        {
+          "at": "2026-08-30T13:44:03.336Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Installed fast path reconciles the exact live daemon inventory while honoring closed-session tombstones."
+        },
+        {
+          "at": "2026-08-30T13:44:10.619Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Exact live/workspace identity sets match; resolution is held for the required per-pane installed dock visual proof."
+        },
+        {
+          "at": "2026-08-30T13:47:19.030Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Fresh background rerun: all 60 startup, hydration, status-poll, and project-reconciliation regressions passed, including closed-pane tombstones and exact live-session restoration."
+        },
+        {
+          "at": "2026-08-30T13:52:13.829Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "Fresh read-only audit still shows 17 exact live/workspace matches. The built-in pane-screen verifier correctly failed closed because an offscreen pane was not fully visible, so every-pane visual acceptance remains unproven."
+        },
+        {
+          "at": "2026-08-30T15:20:17.146Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "Hard visual dock gate failed: 17 distinct tab/session IDs exactly matched the live daemon set, but independent screenshot review found at least 10 panes showing stale repeated cc-linux content marked EXITED; only the already-active pane visibly showed a connected shell. Challenge and Sure gates were not run."
+        },
+        {
+          "at": "2026-08-30T15:20:37.633Z",
+          "type": "transition",
+          "from": "verifying",
+          "to": "reopened",
+          "note": "Fresh dock relaunch reproduced the failure: inactive restored tabs retain stale EXITED pane rendering despite exact live daemon identity matching."
+        },
+        {
+          "at": "2026-08-30T15:20:45.948Z",
+          "type": "transition",
+          "from": "reopened",
+          "to": "reproducing",
+          "note": "Tracing the active-tab mount and daemon attachment path; identity reconciliation alone is insufficient because the rendered terminal instance remains stale."
+        },
+        {
+          "at": "2026-08-30T15:48:36.361Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Git history identified the proven stable-pane sidecar path; removed the later dual restore authority and live-session tab manufacture."
+        },
+        {
+          "at": "2026-08-30T15:48:36.681Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Exact recovery, tombstone, and unsaved-session exclusion regressions passed."
+        },
+        {
+          "at": "2026-08-30T15:48:47.120Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Exact saved-pane and tombstone regressions now fail if daemon inventory or folder-keyed restore regains authority."
+        },
+        {
+          "at": "2026-08-30T15:48:47.451Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Restored the proven stable-pane sidecar and daemon resume path; installed dock verification remains."
+        },
+        {
+          "at": "2026-08-30T15:52:17.960Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "Installed release e80db6190172 passed immutable release verification; exact per-pane dock recovery remains the hard gate."
+        },
+        {
+          "at": "2026-08-30T16:00:20.769Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Exact saved-pane recovery is installed; pane-by-pane dock visual proof and challenge-loop remain."
+        },
+        {
+          "at": "2026-08-30T18:14:14.979Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "41 focused recovery tests pass, including exact per-pane resume, killed-provider exclusion, legacy recovered-tab exclusion, and transcript-backed provider inference."
+        },
+        {
+          "at": "2026-08-30T18:14:21.626Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "The 18:51 stale frontend false-positive was traced to an incomplete build and double-build hash ordering. Verifier now rejects stale frontend SHA; installer hashes after Tauri embed. Real dock launch then spawned exact resume commands."
+        },
+        {
+          "at": "2026-08-30T18:37:36.794Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "Installed dock runtime proved the false-positive boundary: pane state says reconnected while runtime identity is shell and no durable exact provider-session receipt exists. Resume-command injection alone is not recovery."
+        },
+        {
+          "at": "2026-08-30T19:05:04.854Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "44 focused browser and 181 Rust tests now distinguish shell attach, scrollback replay, resume sent, and exact provider-session live; only the last records recovered."
+        },
+        {
+          "at": "2026-08-30T19:05:13.454Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "Corrected immutable dock release 5514cde0ebd3-4368c83ccba8-5fc9431c55ee passed installed verification; no desktop process is currently running, so a fresh dock launch and exhaustive visible pane audit remain required."
+        }
+      ]
+    },
+    {
+      "id": "TF-020",
+      "title": "Live cockpit verifier crashes while reporting failures",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "logic",
+      "matrixRefs": [],
+      "symptom": "A failing live cockpit check throws a ReferenceError instead of reporting the affected panes",
+      "rootCause": "",
+      "guard": "Focused contract test plus a failing live snapshot",
+      "evidence": [
+        {
+          "kind": "focused-test",
+          "at": "2026-08-31T09:22:04.199Z",
+          "note": "npx playwright test tests/termfleet-gate-contract.spec.ts --reporter=line: 11 passed"
+        },
+        {
+          "kind": "source",
+          "at": "2026-08-31T09:22:23.029Z",
+          "note": "Live verifier now defaults to the TermFleet snapshot and reports failures using the final observed row set"
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Keep the fail-closed report path covered and resolve the reported pane label and goal violations",
+      "history": [
+        {
+          "at": "2026-08-31T09:21:29.249Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-08-31T09:21:42.837Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Reproduced against the stale generic snapshot path"
+        },
+        {
+          "at": "2026-08-31T09:21:46.249Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Observed ReferenceError on the final failure-report path"
+        },
+        {
+          "at": "2026-08-31T09:21:50.288Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Added a focused contract for the fail-closed report path"
+        },
+        {
+          "at": "2026-08-31T09:21:55.453Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Corrected the loop-scope regression"
+        },
+        {
+          "at": "2026-08-31T09:22:00.029Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Focused contract passes; live checker now reports real pane failures"
+        },
+        {
+          "at": "2026-08-31T09:22:04.200Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "npx playwright test tests/termfleet-gate-contract.spec.ts --reporter=line: 11 passed"
+        },
+        {
+          "at": "2026-08-31T09:22:23.029Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Live verifier now defaults to the TermFleet snapshot and reports failures using the final observed row set"
+        }
+      ]
     }
   ]
 }

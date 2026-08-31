@@ -38,7 +38,6 @@ import {
   TreeStructure,
   X,
 } from "@phosphor-icons/react";
-import { invoke } from "@tauri-apps/api/core";
 import { BOARD_DEFAULT_SIZE } from "../lib/boardStore";
 import {
   createAgentWorkstream,
@@ -46,6 +45,7 @@ import {
   createNewTab,
   createTerminalTab,
   currentAgentWorkstreamCwd,
+  type RecoverySessionRecord,
   splitActivePane,
   splitActivePreviewPane,
   useWorkspaceStore,
@@ -79,17 +79,8 @@ import { badgeForAttention } from "../lib/terminalAttention";
 import { paneBadgeAttention } from "../lib/sessionStatus";
 import { FileExplorer } from "./FileExplorer";
 import { checkAgentProvider } from "../lib/agentProviders";
-import {
-  formatAgentReconnectResult,
-  reconnectStoppedAgents,
-  type AgentRecoveryTarget,
-  type AgentReconnectResult,
-} from "../lib/agentReconnect";
-import {
-  paneSidecarFileName,
-  type AgentStatusSidecar,
-} from "../lib/agentStatusSidecar";
-import { readPaneAgentProvider } from "../lib/paneAgentProcess";
+import { formatAgentReconnectResult } from "../lib/agentReconnect";
+import { reconnectSavedAgentPanes } from "../lib/agentReconnectRuntime";
 import { formatTerminalInstanceReference } from "../lib/terminalInstanceReference";
 import {
   agentLaneAuthRetryText,
@@ -178,6 +169,13 @@ function workstreamLabel(provider?: string) {
   if (provider === "claude") return "Claude";
   if (provider === "shell") return "Shell";
   return "Codex";
+}
+
+function recoverySessionLabel(session: RecoverySessionRecord) {
+  if (session.lifecycle === "intentional-kill") return "closed by you · never restored";
+  if (session.lifecycle === "recoverable") return "dead · recoverable";
+  if (session.lifecycle === "backup-only") return "backup · review";
+  return "needs review · close source unproven";
 }
 
 function workstreamScanStatus(workstream: WorkstreamMetadata) {
@@ -1470,7 +1468,8 @@ function PanelButton({ panel }: { panel: OperationsPanel }) {
   const updateUi = useWorkspaceStore((state) => state.updateWorkspaceUiState);
   const setWorkspaceMode = useWorkspaceStore((state) => state.setWorkspaceMode);
   const active =
-    ui.primarySidebarPanel === panel && !ui.primarySidebarCollapsed && workspaceMode !== "graph";
+    (panel === "tasks" && workspaceMode === "tasks") ||
+    (ui.primarySidebarPanel === panel && !ui.primarySidebarCollapsed && workspaceMode !== "graph");
   const Icon = panelIcons[panel];
   const title = panelTitles[panel];
   const label = panel === "sessions" ? "Sessions" : panel === "map" ? "Map" : "Tasks";
@@ -1493,7 +1492,7 @@ function PanelButton({ panel }: { panel: OperationsPanel }) {
         if (panel === "sessions") setWorkspaceMode("split");
         if (panel === "tasks") setWorkspaceMode("tasks");
         updateUi({
-          primarySidebarCollapsed: false,
+          primarySidebarCollapsed: panel === "tasks",
           primarySidebarPanel: panel,
         });
       }}
@@ -2440,6 +2439,7 @@ function SessionsPanel({
   const projectRoot = useWorkspaceStore((state) => state.projectRoot);
   const liveCwds = useWorkspaceStore((state) => state.liveCwds);
   const liveGitRoots = useWorkspaceStore((state) => state.liveGitRoots);
+  const recoverySessions = useWorkspaceStore((state) => state.recoverySessions);
   const activeTabId = useWorkspaceStore((state) => state.activeTabId);
   const canvasState = useWorkspaceStore((state) => state.canvasState);
   const addTab = useWorkspaceStore((state) => state.addTab);
@@ -2454,6 +2454,9 @@ function SessionsPanel({
   const addCanvasNode = useWorkspaceStore((state) => state.addCanvasNode);
   const closeTerminalSession = useWorkspaceStore(
     (state) => state.closeTerminalSession,
+  );
+  const restoreRecoverySession = useWorkspaceStore(
+    (state) => state.restoreRecoverySession,
   );
   const pinProject = useWorkspaceStore((state) => state.pinProject);
   const unpinProject = useWorkspaceStore((state) => state.unpinProject);
@@ -2476,7 +2479,13 @@ function SessionsPanel({
   const [projectQuery, setProjectQuery] = useState("");
   const [reconnectingAgents, setReconnectingAgents] = useState(false);
   const [reconnectAgentsStatus, setReconnectAgentsStatus] = useState("");
-  const autoRecoveryAttemptedRef = useRef(false);
+  const reconnectDisposedRef = useRef(false);
+  useEffect(() => {
+    reconnectDisposedRef.current = false;
+    return () => {
+      reconnectDisposedRef.current = true;
+    };
+  }, []);
   const visibleTabs =
     activeGroupFilter === null
       ? tabs
@@ -2488,93 +2497,54 @@ function SessionsPanel({
         null)
       : null;
   const reconnectPaneIds = useMemo(
-    () => tabs.flatMap((tab) => tab.terminals.map((terminal) => terminal.id)),
-    [tabs],
+    () => {
+      const intentionallyClosed = new Set(
+        recoverySessions
+          .filter((session) => session.lifecycle === "intentional-kill")
+          .map((session) => session.id),
+      );
+      return tabs.flatMap((tab) =>
+        tab.terminals
+          .map((terminal) => terminal.id)
+          .filter((paneId) => !intentionallyClosed.has(paneId)),
+      );
+    },
+    [recoverySessions, tabs],
   );
   const hasTauriRuntime =
     typeof window !== "undefined" &&
     "__TAURI_INTERNALS__" in (window as unknown as Record<string, unknown>);
 
   async function reconnectAgentPanes() {
-    if (reconnectingAgents || !hasTauriRuntime) return;
+    if (
+      reconnectDisposedRef.current ||
+      reconnectingAgents ||
+      !hasTauriRuntime
+    )
+      return;
     setReconnectingAgents(true);
     setReconnectAgentsStatus("Checking saved conversations…");
     try {
-      const result: AgentReconnectResult = await reconnectStoppedAgents(
-        reconnectPaneIds,
-        {
-          readRunningProvider: readPaneAgentProvider,
-          readRecovery: async (paneId): Promise<AgentRecoveryTarget | null> => {
-            const text = await invoke<string | null>(
-              "agent_status_read_sidecar",
-              { fileName: paneSidecarFileName(paneId) },
-            );
-            if (!text) return null;
-            const sidecar = JSON.parse(text) as AgentStatusSidecar;
-            const provider =
-              sidecar.provider === "codex" ||
-              sidecar.provider === "claude" ||
-              sidecar.provider === "opencode"
-                ? sidecar.provider
-                : null;
-            const sessionId = sidecar.sessionId?.trim();
-            return provider && sessionId ? { provider, sessionId } : null;
-          },
-          sessionExists: async (provider, sessionId) => {
-            if (provider === "opencode") return true;
-            return (
-              (await invoke<string | null>("session_transcript_head_read", {
-                provider,
-                sessionId,
-              })) !== null
-            );
-          },
-          // Startup recovery can run after a window replacement while the original
-          // provider process is still alive in the daemon-owned pane. Never type a
-          // second resume: Codex rejects it with "already has an active writer" and
-          // overlapping writers can corrupt the conversation transcript.
-          conversationOwnedElsewhere: async (provider, sessionId, paneId) => {
-            try {
-              return await invoke<boolean>("agent_conversation_has_other_owner", {
-                provider,
-                sessionId,
-                paneId,
-              });
-            } catch {
-              // Ownership is safety-critical: a missed reconnect is recoverable by
-              // hand, while a duplicate writer can permanently damage the chat.
-              return true;
-            }
-          },
-          writeResumeCommand: async (paneId, command) => {
-            await invoke("daemon_write_session", {
-              id: paneId,
-              data: command,
-            });
-          },
-        },
+      const intentionallyClosed = recoverySessions
+        .filter((session) => session.lifecycle === "intentional-kill")
+        .map((session) => session.id);
+      const result = await reconnectSavedAgentPanes(
+        tabs,
+        intentionallyClosed,
+        useWorkspaceStore.getState().closedProviderSessionIds,
       );
+      if (reconnectDisposedRef.current) return;
       setReconnectAgentsStatus(formatAgentReconnectResult(result));
     } catch (error) {
+      if (reconnectDisposedRef.current) return;
       setReconnectAgentsStatus(
         error instanceof Error ? error.message : "Reconnect failed",
       );
     } finally {
+      if (reconnectDisposedRef.current) return;
       setReconnectingAgents(false);
     }
   }
-
-  useEffect(() => {
-    if (
-      !hasTauriRuntime ||
-      reconnectPaneIds.length === 0 ||
-      autoRecoveryAttemptedRef.current
-    ) {
-      return;
-    }
-    autoRecoveryAttemptedRef.current = true;
-    void reconnectAgentPanes();
-  }, [hasTauriRuntime, reconnectPaneIds.length]);
 
   const hasProjects = groups.length > 0;
   const projectModel = useMemo(
@@ -3262,6 +3232,62 @@ function SessionsPanel({
             title={activeProjectName}
           >
             {reconnectAgentsStatus}
+          </div>
+        )}
+        {recoverySessions.length > 0 && (
+          <div
+            data-testid="sidebar-recovery-list"
+            style={{
+              margin: "4px 10px 10px",
+              padding: "8px 9px",
+              border: "1px solid color-mix(in srgb, var(--text-tertiary) 20%, transparent)",
+              borderRadius: 8,
+              background: "color-mix(in srgb, var(--surface-2) 72%, transparent)",
+              maxHeight: 260,
+              overflowY: "auto",
+            }}
+          >
+            <div style={{ ...styles.sectionLabel, margin: 0, fontSize: 10 }}>
+              Recovery review
+            </div>
+            <div style={{ ...styles.rowMeta, margin: "4px 0 7px" }}>
+              Closed-by-you sessions stay listed for clarity and cannot be restored.
+            </div>
+            {recoverySessions.map((session) => {
+              const title = session.cwd?.split("/").filter(Boolean).pop() ?? "Unknown folder";
+              const canRestore = session.lifecycle !== "intentional-kill";
+              return (
+                <div
+                  key={session.id}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 7,
+                    padding: "5px 0",
+                    borderTop: "1px solid color-mix(in srgb, var(--text-tertiary) 12%, transparent)",
+                  }}
+                  title={`${session.id}${session.providerSessionId ? ` · conversation ${session.providerSessionId}` : ""}`}
+                >
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 11 }}>
+                      {title}
+                    </div>
+                    <div style={{ ...styles.rowMeta, marginTop: 2 }}>
+                      {recoverySessionLabel(session)}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={!canRestore || !hasTauriRuntime}
+                    onClick={() => void restoreRecoverySession(session.id)}
+                    style={{ ...styles.reconnectAgentsButton, opacity: canRestore && hasTauriRuntime ? 1 : 0.45 }}
+                    title={canRestore ? "Restore this exact session by its durable id" : "Closed by you; restoration is disabled"}
+                  >
+                    {canRestore ? "Review" : "Closed"}
+                  </button>
+                </div>
+              );
+            })}
           </div>
         )}
         {agentLane.total > 0 && (
@@ -5168,6 +5194,7 @@ function MapPanel({
   const groups = useWorkspaceStore((state) => state.groups);
   const liveCwds = useWorkspaceStore((state) => state.liveCwds);
   const liveGitRoots = useWorkspaceStore((state) => state.liveGitRoots);
+  const refreshLiveCwd = useWorkspaceStore((state) => state.refreshLiveCwd);
   const canvasState = useWorkspaceStore((state) => state.canvasState);
   const setActiveTab = useWorkspaceStore((state) => state.setActiveTab);
   const setWorkspaceMode = useWorkspaceStore((state) => state.setWorkspaceMode);
@@ -5229,6 +5256,14 @@ function MapPanel({
   const visibleNodes = groupVisibleNodes.filter((node) =>
     nodeMatchesMapFilter(node, nodeTab(node), mapFilter),
   );
+  const terminalIds = useMemo(
+    () => tabs.flatMap((tab) => tab.terminals.map((terminal) => terminal.id)).filter(Boolean).join("|"),
+    [tabs],
+  );
+  useEffect(() => {
+    if (!terminalIds) return;
+    for (const id of terminalIds.split("|")) void refreshLiveCwd(id);
+  }, [refreshLiveCwd, terminalIds]);
   const visibleTabs = tabs;
   const localServices = useMemo(
     () => summarizeLocalServices(visibleTabs, groupVisibleNodes),
@@ -8073,12 +8108,16 @@ export function WorkbenchSidebar() {
           style={{ ...styles.panel, ...styles.operationsPanel }}
           aria-label="Operations panel"
         >
-          {ui.primarySidebarPanel === "sessions" && (
+          <div
+            style={{
+              display: ui.primarySidebarPanel === "sessions" ? undefined : "none",
+            }}
+          >
             <SessionsPanel
               onOpenTerminalMenu={openTerminalMenu}
               onOpenProjectMenu={openProjectMenu}
             />
-          )}
+          </div>
           {ui.primarySidebarPanel === "map" && (
             <MapPanel
               onOpenTerminalMenu={openTerminalMenu}

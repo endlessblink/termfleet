@@ -1,0 +1,13 @@
+[Unit]
+Description=TermFleet real-time all-pane health monitor
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/node %h/.local/share/termfleet/libexec/termfleet-pane-health-monitor
+Restart=always
+RestartSec=30
+Environment=TERMFLEET_PANE_HEALTH_INTERVAL_MS=2000
+
+[Install]
+WantedBy=default.target

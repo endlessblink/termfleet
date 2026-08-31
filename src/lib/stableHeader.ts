@@ -55,6 +55,7 @@ export function nextStableHeader(
   nowMs: number,
   minHoldMs: number = MIN_HEADER_HOLD_MS,
   bypass: boolean = false,
+  holdPlaceholders: boolean = false,
 ): StableHeaderEntry {
   if (!prev) return { ...incoming, committedAt: nowMs };
   if (prev.title === incoming.title && prev.now === incoming.now) return prev;
@@ -63,7 +64,11 @@ export function nextStableHeader(
   // the real value in immediately — the hold is for thrash between two real descriptions,
   // not for blocking initial population. Failed/exited panes always bypass.
   const prevIsPlaceholder = isNeutralText(prev.title) || isNeutralText(prev.now);
-  if (bypass || prevIsPlaceholder || nowMs - prev.committedAt >= minHoldMs) {
+  if (
+    bypass ||
+    (!holdPlaceholders && prevIsPlaceholder) ||
+    nowMs - prev.committedAt >= minHoldMs
+  ) {
     return { ...incoming, committedAt: nowMs };
   }
   return prev;
@@ -79,10 +84,22 @@ const store = new Map<string, StableHeaderEntry>();
 export function stableHeader(
   key: string,
   incoming: StableHeaderValue,
-  options: { nowMs: number; minHoldMs?: number; bypass?: boolean },
+  options: {
+    nowMs: number;
+    minHoldMs?: number;
+    bypass?: boolean;
+    holdPlaceholders?: boolean;
+  },
 ): StableHeaderValue {
   const prev = store.get(key) ?? null;
-  const entry = nextStableHeader(prev, incoming, options.nowMs, options.minHoldMs, options.bypass);
+  const entry = nextStableHeader(
+    prev,
+    incoming,
+    options.nowMs,
+    options.minHoldMs,
+    options.bypass,
+    options.holdPlaceholders,
+  );
   if (entry !== prev) store.set(key, entry);
   return { title: entry.title, now: entry.now };
 }

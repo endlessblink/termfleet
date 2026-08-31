@@ -55,7 +55,10 @@ import {
   resolveDistinctHeaderNow,
 } from "../lib/terminalHeaderState";
 import { durableActivityIsLive } from "../lib/terminalActivity";
-import { headerTextsEquivalent } from "../lib/terminalHeaderViewModel";
+import {
+  headerTextsEquivalent,
+  fallbackProjectGoal,
+} from "../lib/terminalHeaderViewModel";
 import {
   qualityCheckAuthoritativeTaskLabel,
   qualityCheckGoalLabel,
@@ -1137,11 +1140,10 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
               qualityCheckGoalLabel(summary.mainTask, {
                 allowAboutWhatVoice: true,
                 allowTrustedAboutWhat: true,
-                maxLength: 150,
+                maxLength: 220,
               }).ok,
           ) ??
-          paneTerminal?.statusSummary ??
-          tab.workstream?.statusSummary;
+          (paneTerminal ? paneTerminal.statusSummary : tab.workstream?.statusSummary);
         const shellExtractedSummary =
           !agentStatusSummary && !isPreviewPane && paneTerminal
             ? getDisplaySummary(
@@ -1323,12 +1325,9 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
               neutralTitle: shellNeutralTitle ?? null,
               contextPurposeTitle: terminalPurpose?.title,
               contextPurposeSource: terminalPurpose?.source,
-              workstreamTitle:
-                tab.workstream?.mission ??
-                tab.workstream?.prompt ??
-                (shellDurableActivityUsable
-                  ? paneTerminal?.durableActivity?.title
-                  : undefined),
+              workstreamTitle: paneTerminal
+                ? undefined
+                : tab.workstream?.mission ?? tab.workstream?.prompt,
               // A visible "Working (…)" / "esc to interrupt" marker means the agent is
               // active right now even without a task list → don't render "Awaiting next
               // action" as the title.
@@ -1375,7 +1374,12 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
             : null;
         const isAgentPane = Boolean(agentStatusSummary);
         const isShellSummaryPane = Boolean(shellStatusSummary);
-        const rendererTaskFallback = "Waiting for a clear task";
+        const rendererTaskFallback = fallbackProjectGoal(
+          linkedProject?.name ?? paneCwd ?? "workspace",
+          paneTerminal?.statusSummary?.task ??
+            agentHeader?.currentActivity ??
+            agentStatusSummary?.now,
+        );
         const agentTaskCandidate = isAgentPane
           ? [
               paneTerminal?.taskLineup?.find(
@@ -1406,6 +1410,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
             ? agentTaskCandidate
             : rendererTaskFallback
           : undefined;
+        const visibleAgentTaskLabel = agentTaskLabel ?? rendererTaskFallback;
         const shellTaskCandidate = !isAgentPane
           ? (paneTerminal?.taskLineup ?? tab.workstream?.taskLineup)
               ?.find((item) => item.status === "in_progress")
@@ -1416,6 +1421,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
         const shellStatusTaskCandidate = paneTerminal?.statusSummary?.task?.trim();
         const shellTaskLabel = !isAgentPane
           ? (shellStatusTaskCandidate &&
+            qualityCheckAuthoritativeTaskLabel(shellStatusTaskCandidate).ok &&
             !headerTextsEquivalent(shellHeader?.goalLabel, shellStatusTaskCandidate)
               ? shellStatusTaskCandidate
               : resolveDistinctHeaderNow(shellHeader?.goalLabel, shellTaskCandidate)) ||
@@ -1460,51 +1466,32 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
           qualityCheckNowLabel(stabilizedHeader.now).ok
             ? stabilizedHeader.now
             : undefined;
-        const headerNowCandidate =
-          resolveDistinctHeaderNow(headerTitle, safeStabilizedNow) ||
+        // Keep a concrete current step even when it repeats Task; otherwise an
+        // active pane is incorrectly collapsed to an idle placeholder.
+        const headerNow =
+          safeStabilizedNow ||
           (isAgentPane && agentHeader?.currentActivity === "Working"
             ? "Working"
             : "Idle — no work is running");
-        const distinctHeaderNow = resolveDistinctHeaderNow(
-          isAgentPane ? agentTaskLabel : shellTaskLabel,
-          headerNowCandidate,
-        );
-        const headerNowRepeatsTitle =
-          headerNowCandidate.trim().toLocaleLowerCase() ===
-          headerTitle.trim().toLocaleLowerCase();
-        const headerNow =
-          !distinctHeaderNow ||
-          headerNowRepeatsTitle ||
-          /^(?:Status unavailable|Idle|Ready|Awaiting next action|Activity not captured)$/i.test(
-            distinctHeaderNow.trim(),
-          )
-            ? "Idle — no work is running"
-            : distinctHeaderNow;
-        const statusSummaryGoalFallback =
-          paneTerminal?.statusSummarySource === "sidecar" &&
-          paneTerminal.statusSummary &&
-          /^(?:Make|Keep|Ensure|Help|Get|Finish|Ship|This session is about|I['’]m |We['’]re )/i.test(
-            paneTerminal.statusSummary.task.trim(),
+        const trustedPaneGoal =
+          preferredPaneStatusSummary &&
+    ["about-what", "plan-explanation", "goal-task", "opening-request", "user-prompt"].includes(
+            preferredPaneStatusSummary?.mainTaskSource ?? "",
           ) &&
-          qualityCheckGoalLabel(paneTerminal.statusSummary.task, {
+          preferredPaneStatusSummary.mainTask &&
+          qualityCheckGoalLabel(
+            preferredPaneStatusSummary.mainTaskSource === "opening-request" &&
+              preferredPaneStatusSummary.mainTask.trim().endsWith("?")
+              ? `${preferredPaneStatusSummary.mainTask.trim().slice(0, -1)}.`
+              : preferredPaneStatusSummary.mainTask,
+            {
             allowAboutWhatVoice: true,
             allowTrustedAboutWhat: true,
-            maxLength: 150,
-          }).ok
-            ? paneTerminal.statusSummary.task.trim()
-            : undefined;
-        const trustedPaneGoal =
-          preferredPaneStatusSummary?.mainTaskSource === "plan-explanation" &&
-          preferredPaneStatusSummary.mainTask &&
-          qualityCheckGoalLabel(preferredPaneStatusSummary.mainTask, {
-            allowAboutWhatVoice: true,
-            allowTrustedAboutWhat: /^\$about-what$/i.test(
-              preferredPaneStatusSummary.userTask?.trim() ?? "",
-            ),
-            maxLength: 150,
-          }).ok
+            maxLength: 220,
+            },
+          ).ok
             ? preferredPaneStatusSummary.mainTask.trim()
-            : statusSummaryGoalFallback;
+            : undefined;
         const capturedHeaderContext = isAgentPane
           ? agentHeader?.contextLabel
           : shellHeader?.contextLabel;
@@ -1529,7 +1516,12 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
             : "";
         const displayedHeaderContext =
           headerContext ||
-          "Goal not captured";
+          fallbackProjectGoal(
+            isAgentPane
+              ? agentHeader?.workspace ?? linkedProject?.name ?? "workspace"
+              : shellHeader?.workspace ?? "workspace",
+            headerTitle,
+          );
         // ONE pure render-time translation of the pane's stored status — identical in
         // every view, nothing stored separately that can be dropped and flicker.
         const splitAttentionState: AttentionState = paneBadgeAttention(
@@ -1553,7 +1545,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
         const chromeHeight = isAgentPane
           ? 68 + (latestMissionControlInput ? 16 : 0) + (paneOutput ? 16 : 0)
           : isShellSummaryPane
-            ? 58
+            ? 72
             : 24;
         const showActions = hoveredPaneId === paneId || isActive;
 
@@ -1638,14 +1630,15 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                       ? "missing"
                       : "task-tool",
                   context: displayedHeaderContext || "",
-                  contextSource:
-                    isAgentPane
+                  contextSource: displayedHeaderContext
+                    ? isAgentPane
                       ? agentHeader?.hasCapturedContext
                         ? "workstream"
-                        : "missing"
+                        : "project-fallback"
                       : headerContext
                         ? shellHeader?.sources.context
-                        : "missing",
+                        : "project-fallback"
+                    : "missing",
                   title:
                     headerNow !== "Waiting for current activity"
                       ? headerNow
@@ -1684,10 +1677,21 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                      ? tab.workstream?.statusSummary
                      : paneTerminal?.statusSummary
                    )?.task,
-                   statusSummaryGoal: (isAgentPane
+                    statusSummaryGoal: (isAgentPane
+                      ? tab.workstream?.statusSummary
+                      : paneTerminal?.statusSummary
+                    )?.mainTask ?? trustedPaneGoal,
+                   statusSummaryGoalSource: (isAgentPane
                      ? tab.workstream?.statusSummary
                      : paneTerminal?.statusSummary
-                   )?.mainTask ?? trustedPaneGoal,
+                   )?.mainTaskSource ??
+                     (trustedPaneGoal
+                       ? "plan-explanation"
+                       : rawHeaderContext
+                         ? (isAgentPane ? agentHeader?.sources.context : shellHeader?.sources.context)
+                         : displayedHeaderContext
+                           ? "project-fallback"
+                           : undefined),
                    statusSummaryNow: (isAgentPane
                     ? tab.workstream?.statusSummary
                     : paneTerminal?.statusSummary
@@ -1877,7 +1881,8 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                       />
                       <div
                         style={{
-                          minWidth: 0,
+                          minWidth: 150,
+                          gridColumn: "3 / 4",
                           display: "flex",
                           alignItems: "baseline",
                           gap: 5,
@@ -1888,7 +1893,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                           fontSize: 13,
                           fontWeight: 500,
                         }}
-                        title={`Task: ${headerTitle}`}
+                        title={`Task: ${visibleAgentTaskLabel}`}
                       >
                         <span
                           style={{
@@ -1912,7 +1917,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                             lineHeight: 1.25,
                           }}
                         >
-                          {headerTitle}
+                          {visibleAgentTaskLabel}
                         </span>
                       </div>
                       {displayedHeaderContext && displayedHeaderContext !== "Context not captured" && (
@@ -1920,6 +1925,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                           data-testid="split-agent-pane-goal"
                           style={{
                             minWidth: 0,
+                            gridColumn: "4 / -1",
                             display: "flex",
                             alignItems: "baseline",
                             gap: 5,
@@ -1929,6 +1935,43 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                           }}
                           title={displayedHeaderContext}
                         >
+                          <div
+                            data-testid="split-agent-pane-goal-task"
+                            style={{
+                              gridColumn: "1 / -1",
+                              display: "flex",
+                              minWidth: 0,
+                              alignItems: "baseline",
+                              gap: 5,
+                              overflow: "hidden",
+                              color: "var(--text-secondary)",
+                              fontSize: 11,
+                              fontWeight: 500,
+                            }}
+                            title={`Task: ${visibleAgentTaskLabel}`}
+                          >
+                            <span
+                              style={{
+                                flexShrink: 0,
+                                color: "var(--text-primary)",
+                                fontSize: 10,
+                                fontWeight: 600,
+                                textTransform: "uppercase",
+                              }}
+                            >
+                              Task
+                            </span>
+                            <span
+                              style={{
+                                minWidth: 0,
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {visibleAgentTaskLabel}
+                            </span>
+                          </div>
                           <span
                             style={{
                               flexShrink: 0,
@@ -2194,7 +2237,8 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                       style={{
                         minWidth: 0,
                         display: "grid",
-                        gridTemplateColumns: "auto auto minmax(0, 1fr) auto",
+                        gridTemplateColumns:
+                          "auto auto minmax(150px, 1fr) minmax(0, 1fr) auto",
                         alignItems: "center",
                         gap: 7,
                       }}
@@ -2223,8 +2267,10 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                         }
                       />
                       <div
+                        data-testid="split-terminal-summary-task-row"
                         style={{
-                          minWidth: 0,
+                          minWidth: 150,
+                          gridColumn: "3 / 4",
                           display: "flex",
                           alignItems: "baseline",
                           gap: 5,
@@ -2235,7 +2281,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                           fontSize: 13,
                           fontWeight: 500,
                         }}
-                        title={`Task: ${headerTitle}`}
+                        title={`Task: ${shellTaskLabel}`}
                       >
                         <span
                           style={{
@@ -2257,9 +2303,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                             whiteSpace: "nowrap",
                           }}
                         >
-                          {shellHeader?.hasCapturedGoal
-                            ? headerTitle
-                            : "Task not captured"}
+                          {shellTaskLabel}
                         </span>
                       </div>
                       {displayedHeaderContext && (
@@ -2267,6 +2311,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                           data-testid="split-terminal-summary-goal"
                           style={{
                             minWidth: 0,
+                            gridColumn: "4 / -1",
                             display: "flex",
                             alignItems: "baseline",
                             gap: 5,

@@ -403,6 +403,17 @@ select:focus-visible,
   opacity: 1 !important;
 }
 
+.magic-canvas-toolbar {
+  max-width: calc(100% - 28px);
+  flex-wrap: wrap;
+  overflow: visible;
+  scrollbar-width: none;
+}
+
+.magic-canvas-toolbar::-webkit-scrollbar {
+  display: none;
+}
+
 .magic-canvas-chip:hover,
 .magic-canvas-chip:focus-visible {
   background: var(--surface-hover);
@@ -443,6 +454,544 @@ button {
 
 button:active {
   transform: translateY(1px);
+}
+
+/* Shared-task board layout must be available from the packaged stylesheet.
+   Keeping this contract static prevents a WebView/CSP path from showing the
+   semantic markup without its spacing and grouping rules. */
+.canonical-board-content {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  padding: 4px 18px 18px;
+}
+
+.canonical-attention-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.canonical-attention-group,
+.canonical-workflow-column {
+  min-width: 0;
+  padding: 12px 9px;
+  background: var(--surface-sunken);
+}
+
+.canonical-attention-heading,
+.canonical-workflow-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 3px 10px;
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
+.canonical-attention-heading > span:first-child {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.canonical-attention-heading small {
+  display: block;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.canonical-workflow-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(150px, 1fr));
+  gap: 8px;
+  min-width: 960px;
+}
+
+.canonical-view-switch {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--surface-sunken);
+  border-radius: 6px;
+}
+
+.canonical-view-switch button {
+  border: none;
+  border-radius: 4px;
+  padding: 7px 9px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+}
+
+.canonical-view-switch button[aria-pressed="true"] {
+  background: var(--surface-selected);
+  color: var(--text-primary);
+}
+
+@media (max-width: 1100px) {
+  .canonical-board-toolbar {
+    grid-template-columns: 1fr !important;
+    gap: 6px !important;
+  }
+
+  .canonical-attention-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .canonical-view-switch {
+    width: 100%;
+  }
+
+  .canonical-view-switch button {
+    flex: 1;
+  }
+}
+
+/* Shared tasks: operations ledger redesign. The board should read as one
+   navigable work surface, not a pile of equal-weight cards. */
+.canonical-agent-board {
+  background: var(--surface-floor) !important;
+  color: var(--text-primary);
+}
+
+.canonical-agent-board .canonical-board-toolbar {
+  grid-template-columns: minmax(260px, 1fr) auto auto !important;
+  gap: 22px !important;
+  padding: 18px 24px 16px !important;
+  background: var(--surface-floor);
+}
+
+.canonical-agent-board .canonical-board-title {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 0;
+}
+
+.canonical-agent-board .canonical-board-title > span:last-child {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.canonical-agent-board .canonical-board-title strong {
+  font-size: 17px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+}
+
+.canonical-agent-board .canonical-board-title small {
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.canonical-agent-board .canonical-board-mark {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 8px;
+  color: var(--text-primary);
+  background: var(--surface-selected);
+}
+
+.canonical-agent-board .canonical-board-health,
+.canonical-agent-board .canonical-source-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  white-space: nowrap;
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.canonical-agent-board .canonical-live-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-success);
+  box-shadow: 0 0 0 3px rgba(127, 198, 129, 0.12);
+}
+
+.canonical-agent-board .canonical-health-separator {
+  width: 1px;
+  height: 12px;
+  background: var(--border-subtle);
+}
+
+.canonical-agent-board .canonical-source-badge {
+  padding: 6px 9px;
+  border-radius: 6px;
+  background: var(--surface-raised);
+  color: var(--text-secondary);
+}
+
+.canonical-agent-board .canonical-board-controls {
+  display: grid !important;
+  grid-template-columns: minmax(220px, 1fr) auto auto auto auto;
+  gap: 8px !important;
+  align-items: center;
+  padding: 12px 24px 14px !important;
+  background: var(--surface-base);
+  border-top: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.canonical-agent-board .canonical-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--text-secondary);
+}
+
+.canonical-agent-board .canonical-search input {
+  width: 100%;
+  min-width: 0;
+  background: var(--surface-sunken);
+}
+
+.canonical-agent-board .canonical-filter-group {
+  display: inline-flex;
+  gap: 6px;
+}
+
+.canonical-agent-board .canonical-filter-group select,
+.canonical-agent-board .canonical-view-switch,
+.canonical-agent-board .canonical-finished-toggle,
+.canonical-agent-board .canonical-refresh {
+  height: 34px;
+}
+
+.canonical-agent-board .canonical-filter-group select,
+.canonical-agent-board .canonical-refresh {
+  background: var(--surface-raised);
+}
+
+.canonical-agent-board .canonical-finished-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 6px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.canonical-agent-board .canonical-board-content {
+  padding: 22px 24px 28px !important;
+  background: var(--surface-floor);
+}
+
+.canonical-agent-board .canonical-attention-grid {
+  grid-template-columns: repeat(4, minmax(220px, 1fr));
+  gap: 14px;
+  align-items: start;
+}
+
+.canonical-agent-board .canonical-attention-group {
+  padding: 0;
+  overflow: hidden;
+  border-radius: 10px;
+  background: var(--surface-base);
+}
+
+.canonical-agent-board .canonical-attention-heading {
+  min-height: 58px;
+  box-sizing: border-box;
+  align-items: start;
+  padding: 16px 15px 13px;
+  background: var(--surface-raised);
+}
+
+.canonical-agent-board .canonical-attention-heading > span:first-child {
+  gap: 4px;
+}
+
+.canonical-agent-board .canonical-attention-heading strong {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.canonical-agent-board .canonical-attention-heading small {
+  margin: 0;
+  font-size: 10px;
+}
+
+.canonical-agent-board .canonical-attention-heading > span:last-child {
+  min-width: 22px;
+  padding: 3px 6px;
+  border-radius: 5px;
+  text-align: center;
+  background: var(--surface-selected);
+  color: var(--text-primary);
+  font-size: 11px;
+}
+
+.canonical-agent-board .canonical-task-row {
+  display: grid;
+  width: 100%;
+  gap: 7px;
+  padding: 15px;
+  border: 0;
+  border-top: 1px solid var(--border-subtle);
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+  text-align: start;
+  transition: background var(--motion-fast), transform var(--motion-fast);
+}
+
+.canonical-agent-board .canonical-task-row:hover,
+.canonical-agent-board .canonical-task-row:focus-visible {
+  outline: none;
+  background: var(--surface-hover);
+}
+
+.canonical-agent-board .canonical-task-row:active {
+  transform: none;
+}
+
+.canonical-agent-board .canonical-task-row-top,
+.canonical-agent-board .canonical-task-meta,
+.canonical-agent-board .canonical-task-progress {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.canonical-agent-board .canonical-task-id,
+.canonical-agent-board .canonical-task-status {
+  color: var(--text-secondary);
+  font-size: 10px;
+}
+
+.canonical-agent-board .canonical-task-id {
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+.canonical-agent-board .canonical-task-status {
+  padding: 3px 6px;
+  border-radius: 4px;
+  background: var(--surface-sunken);
+}
+
+.canonical-agent-board .canonical-task-title {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.3;
+}
+
+.canonical-agent-board .canonical-task-project {
+  color: var(--accent-info);
+  font-size: 11px;
+}
+
+.canonical-agent-board .canonical-task-summary {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.45;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.canonical-agent-board .canonical-task-meta {
+  justify-content: start;
+  flex-wrap: wrap;
+  color: var(--text-secondary);
+  font-size: 10px;
+}
+
+.canonical-agent-board .canonical-task-meta span + span::before {
+  content: "•";
+  margin-right: 7px;
+  color: var(--text-tertiary);
+}
+
+.canonical-agent-board .canonical-task-meta .is-live {
+  color: var(--accent-success);
+}
+
+.canonical-agent-board .canonical-task-progress {
+  justify-content: start;
+  height: 5px;
+  margin-top: 3px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--surface-sunken);
+}
+
+.canonical-agent-board .canonical-task-progress > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent-live);
+}
+
+.canonical-agent-board .canonical-task-progress em {
+  display: none;
+}
+
+.canonical-agent-board .canonical-empty-group {
+  margin: 0;
+  padding: 22px 15px;
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+@media (max-width: 1100px) {
+  .canonical-agent-board .canonical-board-toolbar {
+    grid-template-columns: 1fr auto !important;
+  }
+
+  .canonical-agent-board .canonical-board-health {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .canonical-agent-board .canonical-board-controls {
+    grid-template-columns: 1fr auto;
+  }
+
+  .canonical-agent-board .canonical-search {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 720px) {
+  .canonical-agent-board .canonical-board-toolbar,
+  .canonical-agent-board .canonical-board-controls,
+  .canonical-agent-board .canonical-board-content {
+    padding-left: 14px !important;
+    padding-right: 14px !important;
+  }
+
+  .canonical-agent-board .canonical-attention-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .canonical-agent-board .canonical-filter-group,
+  .canonical-agent-board .canonical-filter-group select,
+  .canonical-agent-board .canonical-view-switch {
+    min-width: 0;
+  }
+}
+
+/* Minimal reading pass: icons carry affordance, text carries decisions. */
+.canonical-agent-board .canonical-board-title small {
+  display: none;
+}
+
+.canonical-agent-board .canonical-board-toolbar {
+  padding-top: 13px !important;
+  padding-bottom: 13px !important;
+}
+
+.canonical-agent-board .canonical-board-mark {
+  width: 28px;
+  height: 28px;
+}
+
+.canonical-agent-board .canonical-board-controls {
+  padding-top: 9px !important;
+  padding-bottom: 9px !important;
+}
+
+.canonical-agent-board .canonical-filter-group select {
+  min-width: 86px;
+}
+
+.canonical-agent-board .canonical-task-row {
+  gap: 5px;
+  padding: 12px 14px;
+}
+
+.canonical-agent-board .canonical-task-id,
+.canonical-agent-board .canonical-task-project {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.canonical-agent-board .canonical-task-title {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.canonical-agent-board .canonical-task-summary {
+  -webkit-line-clamp: 1;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.canonical-agent-board .canonical-task-meta {
+  font-size: 10px;
+}
+
+.canonical-agent-board .canonical-task-progress {
+  height: 3px;
+  margin-top: 1px;
+}
+
+.canonical-agent-board .canonical-task-detail {
+  width: min(280px, 100%) !important;
+  padding: 14px !important;
+}
+
+.canonical-agent-board .canonical-detail-kicker,
+.canonical-agent-board .canonical-session-summary strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.canonical-agent-board .canonical-detail-title {
+  margin-top: 7px !important;
+  margin-bottom: 13px !important;
+  font-size: 17px !important;
+}
+
+.canonical-agent-board .canonical-task-detail > div[style*="marginBottom"] {
+  gap: 8px !important;
+  margin-bottom: 12px !important;
+}
+
+.canonical-agent-board .canonical-task-detail > p {
+  display: -webkit-box;
+  overflow: hidden;
+  margin-bottom: 12px !important;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.canonical-agent-board .canonical-session-summary {
+  padding: 9px !important;
+  margin-bottom: 11px !important;
+}
+
+.canonical-agent-board .canonical-session-summary button {
+  height: 29px;
+  padding: 0 8px;
+  font-size: 10px;
 }
 
 @keyframes workbench-popover-in {

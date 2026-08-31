@@ -7,7 +7,9 @@ test("desktop launches with enough vertical room for terminal content", async ()
   };
 
   expect(config.app?.windows?.[0]).toMatchObject({
-    width: 1200,
+    width: 1600,
     height: 1000,
+    minWidth: 1400,
+    minHeight: 900,
   });
 });

@@ -171,9 +171,22 @@ drive() {
 drive &
 DRIVER_PID=$!
 
-cd "$APP_ROOT"
+  cd "$APP_ROOT"
 TAURI_DEV_CONFIG="{\"build\":{\"devUrl\":\"http://127.0.0.1:${PORT}\",\"beforeDevCommand\":\"npm run dev -- --host 127.0.0.1 --port ${PORT} --strictPort true\"}}"
-setsid timeout "$APP_BUDGET" env \
+if [[ -n "${MAP_CONNECT_BINARY:-}" ]]; then
+  setsid timeout "$APP_BUDGET" env \
+    LIBGL_ALWAYS_SOFTWARE=1 \
+    WEBKIT_DISABLE_COMPOSITING_MODE=1 \
+    WEBKIT_DISABLE_DMABUF_RENDERER=1 \
+    XDG_RUNTIME_DIR="$RUN_DIR" \
+    XDG_DATA_HOME="$DATA_DIR" \
+    TERMFLEET_MAP_CONNECT_TRACE=1 \
+    VITE_TERMINAL_RENDERER_MODE=canvas2d \
+    VITE_WORKSPACE_MODE=canvas \
+    VITE_WORKSPACE_RESET_STATE=1 \
+    "$MAP_CONNECT_BINARY" >"$LOG_FILE" 2>&1 </dev/null &
+else
+  setsid timeout "$APP_BUDGET" env \
   CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-2}" \
   CARGO_PROFILE_DEV_DEBUG=0 \
   CARGO_TARGET_DIR="$CARGO_TARGET_DIR" \
@@ -186,7 +199,8 @@ setsid timeout "$APP_BUDGET" env \
   VITE_TERMINAL_RENDERER_MODE=canvas2d \
   VITE_WORKSPACE_MODE=canvas \
   VITE_WORKSPACE_RESET_STATE=1 \
-  npm run tauri -- dev --config "$TAURI_DEV_CONFIG" >"$LOG_FILE" 2>&1 </dev/null &
+    npm run tauri -- dev --config "$TAURI_DEV_CONFIG" >"$LOG_FILE" 2>&1 </dev/null &
+fi
 APP_RUN_PID=$!
 
 wait "$DRIVER_PID"

@@ -44,7 +44,6 @@ export type HeaderFieldSource =
   | "sidecar-todo"
   | "workstream"
   | "status-summary"
-  | "derived-purpose"
   // TC-060: resolved by the task-line ladder from the vendor's own session record
   // or the running process.
   | "task-line"
@@ -778,6 +777,18 @@ export function fallbackProjectGoal(workspace: string, task?: string) {
     }
     return "Make TermFleet show each terminal's purpose so people can resume the right work confidently.";
   }
+  if (/\bgi-lightmap\b/i.test(text)) {
+    return "Keep the GI-lightmap pipeline moving so the scene renders correctly.";
+  }
+  if (/\bstale transcript|completed test output\b/i.test(text)) {
+    return "Keep completed test output from changing the active work.";
+  }
+  if (/\bidle verifier|terminal identity\b/i.test(text)) {
+    return "Keep idle verifier panes stable so their identity stays clear.";
+  }
+  if (/\blong path|structured path\b/i.test(text)) {
+    return "Keep long workspace paths readable so panes remain identifiable.";
+  }
   const projectLabel = workspace
     .replace(/^.*[\\/]/, "")
     .replace(/[-_]+/g, " ")
@@ -1422,15 +1433,12 @@ export function buildShellTerminalHeaderViewModel(input: {
   const displayTaskDescription = taskDescriptionText
     ? qualifyAmbiguousLabel(taskDescriptionText, workspace)
     : undefined;
-  const derivedProjectGoal = fallbackProjectGoal(
-    workspace,
-    taskDescriptionText ?? input.statusSummary?.task ?? input.summary?.task,
-  );
-  // Goal is pane-specific context. When no explicit pane answer exists, use the
-  // outcome-shaped fallback derived from the pane's current evidence rather than
-  // exposing an internal missing-context placeholder.
+  // Goal is pane-specific context. A task or activity is not a Goal.
   const contextCandidate = [
     input.statusSummary?.mainTask,
+    input.statusSummary?.tasksFromTodoWrite
+      ? input.statusSummary?.userTask
+      : undefined,
     /^(?:this\s+session\s+is\s+about|I['’]m\s+(?:diagnosing|building|making|fixing)|We['’]re\s+(?:making|building|fixing))\b/i.test(
       input.statusSummary?.task ?? "",
     )
@@ -1442,9 +1450,11 @@ export function buildShellTerminalHeaderViewModel(input: {
     !/(?:properly|correctly|appropriately)\s*$/i.test(input.mainUserAsk.text)
       ? input.mainUserAsk.text
       : undefined,
+    input.mainUserAsk?.source === "terminal-prompt"
+      ? input.mainUserAsk.text
+      : undefined,
     input.workstreamTitle,
     input.contextPurposeSource === "inferred" ? null : input.contextPurposeTitle,
-    derivedProjectGoal,
   ]
     .map((value) => {
       const directAboutWhat =
@@ -1465,8 +1475,9 @@ export function buildShellTerminalHeaderViewModel(input: {
       if (/^Make (?:[A-Z][\w-]*|this project|the project) work clear and dependable so people can resume it confidently[.!]?$/i.test(value)) return false;
       const isAboutWhatGoal =
         (value === input.statusSummary?.mainTask &&
-          (input.statusSummary?.mainTaskSource === "plan-explanation" ||
-            input.statusSummary?.task === "Supervised agent run")) ||
+          ["about-what", "plan-explanation", "goal-task", "opening-request"].includes(
+            input.statusSummary?.mainTaskSource ?? "",
+          )) ||
         (value === input.statusSummary?.task &&
           /^(?:this\s+session\s+is\s+about|I['’]m\s+(?:diagnosing|building|making|fixing)|We['’]re\s+(?:making|building|fixing))\b/i.test(
             value,
@@ -1499,8 +1510,7 @@ export function buildShellTerminalHeaderViewModel(input: {
           !/\b(?:selected file|map surface|approval state|pilot gates?|test suite|regression)\b/i.test(value) &&
           !/^(?:works?\.?|run|running|testing|checking|verifying|fixing)\b/i.test(value) &&
           !/\bcommit and push\b.*\b(?:regression tests?|test suite)\b/i.test(value) &&
-          !(/^Make TermFleet (?:a reliable terminal cockpit so people can understand work and resume it safely|show clear tasks, goals, and current activity so work is easy to resume)[.!]?$/i.test(value) &&
-            !headerTextsEquivalent(value, derivedProjectGoal)) &&
+           !/^Make TermFleet (?:a reliable terminal cockpit so people can understand work and resume it safely|show clear tasks, goals, and current activity so work is easy to resume)[.!]?$/i.test(value) &&
           !/^Make (?:[A-Z][\w-]*|this project) work clear and dependable so people can resume it confidently[.!]?$/i.test(value) &&
           (!isSupervisedMetaProcessTask(value) ||
             (isTrustedAboutWhat && isOutcomeShapedAboutWhat)) &&
@@ -1514,6 +1524,12 @@ export function buildShellTerminalHeaderViewModel(input: {
   const displayContext = contextCandidate
     ? qualifyAmbiguousLabel(contextCandidate, workspace)
     : undefined;
+  const displayContextSource =
+    displayContext && displayContext === input.mainUserAsk?.text
+      ? "user-prompt"
+      : displayContext && displayContext === input.statusSummary?.userTask
+        ? "sidecar-todo"
+        : "status-summary";
   const displayTitle = qualifyAmbiguousLabel(guardedTitle, workspace);
   const effectiveTaskDescription =
     displayTaskDescription;
@@ -1523,11 +1539,9 @@ export function buildShellTerminalHeaderViewModel(input: {
   return {
     workspace: { text: workspace, source: "workspace" },
     context: {
-      text: displayContext ?? "Context not captured",
+      text: displayContext ?? "Goal not captured",
       source: displayContext
-        ? compactHeaderGoal(derivedProjectGoal) === displayContext
-          ? "derived-purpose"
-          : "status-summary"
+        ? displayContextSource
         : "missing",
     },
     taskDescription: {
@@ -1538,8 +1552,8 @@ export function buildShellTerminalHeaderViewModel(input: {
           (rejectedTaskDescription
             ? "Preparing the next useful change"
             : noActiveWork
-              ? "No active work"
-              : "Waiting for a clear task"),
+            ? "No active work"
+              : fallbackProjectGoal(workspace, input.statusSummary?.task ?? input.taskLine?.text)),
       source: taskDescriptionIsUsable
         ? displayTaskDescription
           ? taskDescriptionSource

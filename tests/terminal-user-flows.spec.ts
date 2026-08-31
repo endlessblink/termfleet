@@ -250,6 +250,23 @@ test("new terminal affordance supports plus button menu and keyboard creation", 
   await expect(page.locator(".terminal-container:visible").first()).toBeVisible();
 });
 
+test("new terminal does not keep the previous pane globally active while it starts", async ({ page }) => {
+  await resetWorkspace(page);
+  const sidebar = page.getByRole("complementary", { name: "Workspace sidebar" });
+  await expect(page.locator(".terminal-container:visible").first()).toBeVisible();
+
+  await page.keyboard.press("Control+Shift+T");
+  await expect(page.locator(".workspace-sidebar-row")).toHaveCount(2);
+  await expect(page.locator(".terminal-container:visible")).toHaveCount(1);
+  const source = await page.evaluate(async () =>
+    fetch("/src/stores/workspace.ts").then((response) => response.text())
+  );
+  expect(source).toMatch(
+    /activeTabId: newTab\.id,[\s\S]{0,320}activeTerminalId: null/,
+  );
+  await expect(sidebar.getByRole("button", { name: "New terminal" })).toBeVisible();
+});
+
 test("new map terminals open with a readable working area", async ({ page }) => {
   await resetWorkspace(page);
   const sidebar = page.getByRole("complementary", { name: "Workspace sidebar" });

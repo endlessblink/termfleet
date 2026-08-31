@@ -619,10 +619,31 @@ export function agentStatusSummaryFromWorkstream(
   return persistedAgentStatusSummary(fallbackWorkstream, fallback, paneStatusSummary) ?? fallback;
 }
 
+// A failed restore used to render as the two-word chip "restore · resume failed",
+// which tells the operator that something went wrong but never what, and leaves
+// them to guess whether the conversation is gone, held elsewhere, or simply never
+// recorded. The reason is already captured per pane, so show it.
+const RESTORE_REASON_TEXT: Record<string, string> = {
+  "saved agent session no longer exists": "chat no longer saved on disk",
+  "agent conversation is owned elsewhere": "chat is open in another terminal",
+  "agent session is already active in another writer":
+    "chat is open in another terminal",
+  "no exact saved conversation identity": "no chat was recorded for this terminal",
+  "saved conversation is missing locally": "chat no longer saved on disk",
+};
+
+function restoreChipText(workstream: WorkstreamMetadata): string | null {
+  if (!workstream.restoreStatus) return null;
+  if (workstream.restoreStatus !== "resume-failed") {
+    return `restore · ${workstream.restoreStatus.replace("-", " ")}`;
+  }
+  const reason = workstream.restoreFailureReason?.trim();
+  if (!reason) return "could not restore this chat";
+  return RESTORE_REASON_TEXT[reason.toLowerCase()] ?? reason;
+}
+
 export function agentStatusChipText(workstream: WorkstreamMetadata, summary: AgentStatusSummary) {
-  const restoreStatus = workstream.restoreStatus
-    ? `restore · ${workstream.restoreStatus.replace("-", " ")}`
-    : null;
+  const restoreStatus = restoreChipText(workstream);
   return [
     summary.provider,
     summary.status,

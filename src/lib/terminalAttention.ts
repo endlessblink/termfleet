@@ -26,7 +26,7 @@ const BADGES: Record<AttentionState, AttentionBadge> = {
   waiting: { state: "waiting", label: "Waiting for you", color: "var(--accent-warning)" },
   // Green — a command or agent turn is actively working right now (positive evidence).
   running: { state: "running", label: "Running", color: "var(--accent-success)" },
-  unavailable: { state: "unavailable", label: "Status unavailable", color: "var(--text-tertiary)" },
+  unavailable: { state: "unavailable", label: "Waiting for current activity", color: "var(--text-tertiary)" },
   // Grey — empty prompt, nothing running, nobody waiting. The DEFAULT: an attached
   // shell sitting at a prompt is idle, not "running".
   idle: { state: "idle", label: "Idle", color: "var(--text-tertiary)" },

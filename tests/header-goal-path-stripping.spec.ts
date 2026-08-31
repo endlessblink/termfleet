@@ -32,6 +32,14 @@ test("a goal with no path is left alone", () => {
   );
 });
 
+test("turns dated project instructions into one plain about-what sentence", () => {
+  expect(
+    compactHeaderGoal(
+      "[21/08/2026 12:41] life-boat: ``Read and execute docs/agent-ops-kanban-codex-implementation-brief.md` end to end.",
+    ),
+  ).toBe("Implement the Life Boat implementation brief.");
+});
+
 test("long goals are shortened only at a word boundary", () => {
   const goal = compactHeaderGoal(
     "[[Image #1] for the millionth time it glitches. fix it, test it. I want to run from the dock only and keep every card readable",

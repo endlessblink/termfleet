@@ -236,6 +236,11 @@
   .start{text-align:center;color:var(--dim);font-size:12.5px;margin:0 0 14px}
 
   /* The terminal's own screen. Menus an agent draws live only here. */
+  .note{
+    color:var(--muted);font-size:12.5px;line-height:1.4;
+    margin:0 0 10px;padding:9px 11px;
+    background:var(--surface);border:1px solid var(--line);border-radius:10px;
+  }
   .screen{
     font-family:var(--mono);font-size:12px;line-height:1.45;color:var(--text);
     background:#0f0f0e;border:1px solid var(--line);border-radius:12px;
@@ -606,7 +611,20 @@ async function chat(id) {
     sub.innerHTML = esc(`${d.pane.provider}${d.pane.task ? ' · ' + d.pane.task : ''}`)
       + (d.producing && d.lastLine ? `<span class="headtail">${esc(d.lastLine)}</span>` : '');
 
-    if (!d.events.length) { main.innerHTML = '<div class="empty">Nothing recorded for this terminal yet.</div>'; return; }
+    if (!d.events.length) {
+      // Some terminals keep no conversation of their own — a side session, a
+      // plain shell. Showing what is on their screen is far more use than
+      // telling someone there is nothing here.
+      const shown = await fetch(`/api/screen?pane=${encodeURIComponent(id)}`)
+        .then((x) => x.json()).catch(() => ({}));
+      const screen = shown.screen || '';
+      main.innerHTML = screen
+        ? `<div class="note">This terminal keeps no conversation of its own, so here is its screen.</div>
+           <div class="screen">${esc(screen)}</div>`
+        : '<div class="empty">Nothing recorded for this terminal yet.</div>';
+      main.scrollTop = main.scrollHeight;
+      return;
+    }
 
     if (mode === 'screen') {
       const shown = await fetch(`/api/screen?pane=${encodeURIComponent(id)}`)

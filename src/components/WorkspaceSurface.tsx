@@ -2,7 +2,7 @@ import { CSSProperties, Suspense, lazy } from "react";
 import type { Tab } from "../lib/types";
 import { useWorkspaceStore } from "../stores/workspace";
 import { CanvasSidebar } from "./CanvasSidebar";
-import { CanonicalAgentBoard } from "./CanonicalAgentBoard";
+import { AgentOperationsBoard } from "./AgentOperationsBoard";
 import { GitMonitoringView } from "./GitMonitoringView";
 
 const MagicCanvas = lazy(() => import("./MagicCanvas").then((module) => ({ default: module.MagicCanvas })));
@@ -201,7 +201,13 @@ export function WorkspaceSurface() {
       : !primarySidebarCollapsed && workspaceMode === "split" && primarySidebarPanel === "tasks"
         ? "tasks"
         : workspaceMode;
-  const effectiveWorkspaceMode = immersiveTerminal.enabled ? "split" : restoredPanelMode;
+  // An explicit task-board selection must remain visible even when immersive
+  // terminal mode was persisted from the previous session.
+  const effectiveWorkspaceMode = restoredPanelMode === "tasks"
+    ? "tasks"
+    : immersiveTerminal.enabled
+      ? "split"
+      : restoredPanelMode;
 
   // Hold terminals from mounting until the durable layout is loaded, so they
   // spawn against the restored tab/pane ids (not the default tab's) — otherwise
@@ -252,7 +258,7 @@ export function WorkspaceSurface() {
         )}
         {effectiveWorkspaceMode === "tasks" && (
           <div style={{ ...styles.surfacePane, zIndex: 1 }}>
-            <CanonicalAgentBoard />
+            <AgentOperationsBoard />
           </div>
         )}
       </div>

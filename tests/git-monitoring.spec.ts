@@ -12,6 +12,9 @@ test.describe("Git work monitor contract", () => {
     expect(source).toContain("Ready to save");
     expect(source).toContain("Needs your decision");
     expect(source).toContain("Changes waiting to be saved");
+    expect(source).toContain("Live Git check");
+    expect(source).toContain("Live Git evidence:");
+    expect(source).toContain('Git: {!agent.gitFactsAvailable');
     expect(source).toContain("Review this work");
     expect(source).toContain("Combine this work");
     expect(source).not.toContain('label: "Under control"');
@@ -59,6 +62,13 @@ test.describe("Git work monitor contract", () => {
     expect(source).toContain("data-testid=\"git-monitor-project\"");
     expect(source).toContain("data-testid=\"git-monitor-agent\"");
     expect(source).toContain("max-width: 760px");
+  });
+
+  test("does not call an empty monitor healthy", () => {
+    const summary = summarizeGitMonitoring([], [], {});
+    expect(summary.health).toBe("empty");
+    expect(source).toContain('label: "No agent work tracked"');
+    expect(model).toContain('if (!gitFactsAreAvailable(facts)) return "checking"');
   });
 
   test("requires clean work and passed checks before offering combination", () => {
@@ -154,9 +164,7 @@ test.describe("Git work monitor contract", () => {
 
   test("renders the monitor without horizontal overflow at narrow width", async ({ page }) => {
     await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
-    const command = page.locator('input[placeholder*="Command"]');
-    await command.fill("Monitor Git work");
-    await page.keyboard.press("Enter");
+    await page.getByRole("button", { name: "Git work monitor" }).click();
     await expect(page.getByTestId("git-monitor-view")).toBeVisible();
     await page.setViewportSize({ width: 390, height: 844 });
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);

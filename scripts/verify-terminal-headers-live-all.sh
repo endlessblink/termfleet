@@ -195,6 +195,8 @@ def looks_low_quality_label(value, *, activity=False):
     return ""
 
 failures = []
+project_fallback = re.compile(r"^Make (?:Workspace|Header Verifier|this project|the project) work clear and dependable so people can resume it confidently\.?$", re.I)
+rendered_goals = []
 report = {
     "updatedAt": snap.get("updatedAt"),
     "ageSeconds": int((time.time() * 1000 - int(snap.get("updatedAt") or 0)) / 1000),
@@ -211,6 +213,7 @@ for index, entry in enumerate(terminals):
     now = clean(entry.get("now"))
     task = clean(entry.get("task"))
     context = clean(entry.get("context"))
+    context_source = clean(entry.get("contextSource"))
     path = clean(entry.get("path") or entry.get("cwd"))
     visible = clean(entry.get("terminalVisibleText"))
     output = clean(entry.get("terminalOutput"))
@@ -223,7 +226,7 @@ for index, entry in enumerate(terminals):
         "task": task,
         "taskSource": entry.get("taskSource"),
         "context": context,
-        "contextSource": entry.get("contextSource"),
+        "contextSource": context_source,
         "title": title,
         "titleSource": entry.get("titleSource"),
         "now": now,
@@ -235,6 +238,14 @@ for index, entry in enumerate(terminals):
         "currentActivity": entry.get("currentActivity"),
     }
     report["terminals"].append(row)
+    rendered_goals.append(context)
+
+    if not context:
+        failures.append(f"{pane}: Goal was not rendered")
+    if context_source not in {"opening-request", "about-what"}:
+        failures.append(f"{pane}: Goal is not pane-owned ({context_source or 'missing'})")
+    if project_fallback.fullmatch(context):
+        failures.append(f"{pane}: project-wide fallback leaked into Goal: {context!r}")
 
     if not visible:
         failures.append(f"{pane}: missing same-terminal visible grid text")
@@ -290,6 +301,8 @@ if not any(has_completed_run(entry) and "npm test" in text_blob(entry).lower() f
     failures.append("fixture did not render a completed stale npm-test terminal")
 if not any(has_long_path(entry) for entry in terminals):
     failures.append("fixture did not render the long-path terminal")
+if len(rendered_goals) != 4 or len(set(rendered_goals)) != 4:
+    failures.append(f"fixture rendered non-distinct Goals: {rendered_goals!r}")
 
 report["ok"] = not failures
 report["failures"] = failures
@@ -380,12 +393,28 @@ drive() {
     TERMFLEET_HEADER_MAX_AGE_MS=30000 \
     node "$APP_ROOT/scripts/verify-live-task-goal-now.mjs" || return 1
 
-  # Fixed crops for the verifier fixture's 2x2 split panes. The JSON report is
-  # the source of truth; crops are for fast visual inspection.
-  magick "$OUT_DIR/02-all-terminals.png" -crop 720x385+330+155 "$OUT_DIR/card-01-prompt.png" 2>>"$DRIVER_LOG" || true
-  magick "$OUT_DIR/02-all-terminals.png" -crop 720x385+885+155 "$OUT_DIR/card-02-stale.png" 2>>"$DRIVER_LOG" || true
-  magick "$OUT_DIR/02-all-terminals.png" -crop 720x385+330+530 "$OUT_DIR/card-03-idle.png" 2>>"$DRIVER_LOG" || true
-  magick "$OUT_DIR/02-all-terminals.png" -crop 720x385+885+530 "$OUT_DIR/card-04-long-path.png" 2>>"$DRIVER_LOG" || true
+  # The window is fixed to 1600x1000 above. Its app content begins at (41,45),
+  # and the 2x2 split is divided at x=820 and y=510. Crop the actual pane
+  # rectangles so each per-pane artifact contains its own header, not a stale
+  # terminal-body offset from the earlier layout.
+  magick "$OUT_DIR/02-all-terminals.png" -crop 779x465+41+45 "$OUT_DIR/card-01-prompt.png" 2>>"$DRIVER_LOG" || true
+  magick "$OUT_DIR/02-all-terminals.png" -crop 779x465+821+45 "$OUT_DIR/card-02-stale.png" 2>>"$DRIVER_LOG" || true
+  magick "$OUT_DIR/02-all-terminals.png" -crop 779x465+41+511 "$OUT_DIR/card-03-idle.png" 2>>"$DRIVER_LOG" || true
+  magick "$OUT_DIR/02-all-terminals.png" -crop 779x465+821+511 "$OUT_DIR/card-04-long-path.png" 2>>"$DRIVER_LOG" || true
+  python3 - "$OUT_DIR" <<'PYEOF'
+import hashlib
+import pathlib
+import sys
+
+out_dir = pathlib.Path(sys.argv[1])
+cards = sorted(out_dir.glob("card-*.png"))
+if len(cards) != 4:
+    raise SystemExit(f"per-pane capture count mismatch: {len(cards)}")
+digests = [hashlib.sha256(path.read_bytes()).hexdigest() for path in cards]
+if len(set(digests)) != len(digests):
+    raise SystemExit(f"duplicate per-pane captures: {dict(zip((p.name for p in cards), digests))}")
+print("PER_PANE_CAPTURES_OK " + " ".join(f"{path.name}={digest}" for path, digest in zip(cards, digests)))
+PYEOF
   echo "driver: done" >>"$DRIVER_LOG"
 }
 

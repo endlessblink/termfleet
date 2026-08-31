@@ -51,40 +51,41 @@ test("startup screen holds the app until workspace restoration is painted", asyn
 
   await expect(startup).toBeVisible();
   await expect(startup).toHaveAttribute("data-startup-state", "restoring");
-  await expect(startup.getByText("Restoring workspace")).toHaveCSS("opacity", "0");
+  await expect(startup.getByText("Restoring workspace")).toHaveCSS("opacity", "1");
   await expect(root).toHaveAttribute("inert", "");
   await expect(root).toHaveAttribute("aria-hidden", "true");
   await expect(startup.locator(".termfleet-startup__rule")).toHaveCount(0);
 
   const motionContract = await startup.evaluate((element) => {
     const lockup = element.querySelector(".termfleet-startup__lockup");
-    const waves = element.querySelector(".termfleet-loader__wave");
-    const speed = element.querySelector(".termfleet-loader__speed");
+    const halo = element.querySelector(".termfleet-loader__halo");
+    const prompt = element.querySelector(".termfleet-loader__prompt");
+    const mark = element.querySelector(".termfleet-startup__mark");
     const hull = element.querySelector(".termfleet-loader__hull");
     const wordmark = element.querySelector(".termfleet-startup__letter");
     return {
       lockupIterations: lockup ? getComputedStyle(lockup).animationIterationCount : "",
       lockupAnimation: lockup ? getComputedStyle(lockup).animationName : "",
-      wavesIterations: waves ? getComputedStyle(waves).animationIterationCount : "",
-      wavesAnimation: waves ? getComputedStyle(waves).animationName : "",
-      speedIterations: speed ? getComputedStyle(speed.querySelector("rect")!).animationIterationCount : "",
-      speedAnimation: speed ? getComputedStyle(speed.querySelector("rect")!).animationName : "",
-      hullIterations: hull ? getComputedStyle(hull).animationIterationCount : "",
+      haloIterations: halo ? getComputedStyle(halo).animationIterationCount : "",
+      haloAnimation: halo ? getComputedStyle(halo).animationName : "",
+      promptIterations: prompt ? getComputedStyle(prompt).animationIterationCount : "",
+      promptAnimation: prompt ? getComputedStyle(prompt).animationName : "",
+      markIterations: mark ? getComputedStyle(mark).animationIterationCount : "",
+      markAnimation: mark ? getComputedStyle(mark).animationName : "",
       hullAnimation: hull ? getComputedStyle(hull).animationName : "",
-      wordmarkIterations: wordmark ? getComputedStyle(wordmark).animationIterationCount : "",
       wordmarkAnimation: wordmark ? getComputedStyle(wordmark).animationName : "",
     };
   });
   expect(motionContract.lockupIterations).toBe("1");
   expect(motionContract.lockupAnimation).toBe("none");
-  expect(motionContract.wavesIterations).toBe("infinite");
-  expect(motionContract.wavesAnimation).toContain("termfleet-wave-drift");
-  expect(motionContract.speedIterations).toBe("infinite");
-  expect(motionContract.speedAnimation).toContain("termfleet-speed-trail");
-  expect(motionContract.hullIterations).toBe("1");
-  expect(motionContract.hullAnimation).toContain("termfleet-hull-arrive");
-  expect(motionContract.wordmarkIterations).toBe("1");
-  expect(motionContract.wordmarkAnimation).toContain("termfleet-wordmark-letter");
+  expect(motionContract.haloIterations).toBe("infinite");
+  expect(motionContract.haloAnimation).toContain("halo-pulse");
+  expect(motionContract.promptIterations).toBe("infinite");
+  expect(motionContract.promptAnimation).toContain("prompt-drift");
+  expect(motionContract.markIterations).toContain("infinite");
+  expect(motionContract.markAnimation).toContain("mark-settle");
+  expect(motionContract.hullAnimation).toBe("none");
+  expect(motionContract.wordmarkAnimation).toBe("none");
 
   const startupScreenshot = "/tmp/termfleet-startup-final.png";
   await page.waitForTimeout(900);
@@ -130,7 +131,7 @@ test("startup animation reveals the command-fleet mark", async ({ page }, testIn
   const startup = page.locator("#termfleet-startup");
   await expect(startup).toHaveAttribute("data-startup-state", "restoring");
   await expect(startup.locator(".termfleet-loader__hull")).toHaveCount(1);
-  await expect(startup.locator(".termfleet-loader__speed rect")).toHaveCount(3);
+  await expect(startup.locator(".termfleet-loader__halo")).toHaveCount(1);
 
   const letters = startup.locator(".termfleet-startup__letter");
   await expect(letters).toHaveCount(9);
@@ -146,8 +147,8 @@ test("startup animation reveals the command-fleet mark", async ({ page }, testIn
       };
     }),
   );
-  expect(letterMotion.every(({ animationName }) => animationName === "termfleet-wordmark-letter")).toBe(true);
-  expect(new Set(letterMotion.map(({ delay }) => delay)).size).toBeGreaterThan(1);
+  expect(letterMotion.every(({ animationName }) => animationName === "none")).toBe(true);
+  expect(new Set(letterMotion.map(({ delay }) => delay)).size).toBe(1);
   expect(new Set(letterMotion.map(({ weight }) => weight)).size).toBe(1);
 
   const capturePhase = async (name: string, time: number) => {
@@ -166,9 +167,9 @@ test("startup animation reveals the command-fleet mark", async ({ page }, testIn
   await expect(startup.locator(".termfleet-loader__hull")).not.toHaveCSS("opacity", "0");
 
   await capturePhase("fleet", 960);
-  await expect(startup.locator(".termfleet-loader__hull-block--one")).not.toHaveCSS("transform", "none");
+  await expect(startup.locator(".termfleet-loader__terminal")).toHaveCSS("opacity", "1");
 
-  await capturePhase("wordmark", 2400);
+  await capturePhase("wordmark", 1800);
   expect(
     await letters.evaluateAll((elements) =>
       elements.filter(
@@ -177,7 +178,7 @@ test("startup animation reveals the command-fleet mark", async ({ page }, testIn
     ),
   ).toBeGreaterThan(4);
 
-  await capturePhase("complete", 2900);
+  await capturePhase("complete", 3000);
   await expect(startup.locator(".termfleet-loader__hull")).toHaveCSS("opacity", "1");
   expect(
     await letters.evaluateAll((elements) =>
@@ -185,7 +186,7 @@ test("startup animation reveals the command-fleet mark", async ({ page }, testIn
     ),
   ).toBe(true);
 
-  for (const time of [0, 300, 600, 900, 1200, 1500, 1800, 2100, 2400, 2700, 2900]) {
+  for (const time of [0, 300, 600, 900, 1200, 1500, 1800, 2100, 2400, 2700, 3000]) {
     await startup.evaluate((element, currentTime) => {
       element.getAnimations({ subtree: true }).forEach((animation) => {
         animation.pause();
@@ -198,10 +199,10 @@ test("startup animation reveals the command-fleet mark", async ({ page }, testIn
 
     const frameVisibility = await startup.evaluate((element) => {
       const selectors = [
-        ".termfleet-loader__waves",
-        ".termfleet-loader__speed",
-        ".termfleet-loader__hull",
+        ".termfleet-startup__mark",
         ".termfleet-startup__name",
+        ".termfleet-startup__status",
+        ".termfleet-startup__progress",
       ];
       return selectors.map((selector) => {
         const node = element.querySelector<HTMLElement>(selector);

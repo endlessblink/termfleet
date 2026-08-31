@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import {
+  agentStatusChipText,
   displayAgentStatusSummary,
   agentStatusSummaryFromWorkstream,
   fallbackAgentStatusSummary,
@@ -1627,4 +1628,57 @@ test("no-task sidecar falls through to the contextual endpoint", async () => {
   );
   expect(result.source).toBe("process");
   expect(result.summary.now).toContain("plasma dock recovery scripts");
+});
+
+test("a failed restore says why, in words the operator can act on", () => {
+  const summary = fallbackAgentStatusSummary({
+    provider: "codex",
+    status: "idle",
+    cwd: "/repo/lifeboat-live",
+    paneId: "pane-restore",
+  });
+
+  // The reason is already recorded per pane; the chip used to swallow it and
+  // render only "restore · resume failed".
+  expect(
+    agentStatusChipText(
+      {
+        kind: "agent",
+        restoreStatus: "resume-failed",
+        restoreFailureReason: "saved agent session no longer exists",
+      } as never,
+      summary,
+    ),
+  ).toContain("chat no longer saved on disk");
+
+  expect(
+    agentStatusChipText(
+      {
+        kind: "agent",
+        restoreStatus: "resume-failed",
+        restoreFailureReason: "agent conversation is owned elsewhere",
+      } as never,
+      summary,
+    ),
+  ).toContain("chat is open in another terminal");
+
+  // An unmapped reason is still better than two generic words.
+  expect(
+    agentStatusChipText(
+      {
+        kind: "agent",
+        restoreStatus: "resume-failed",
+        restoreFailureReason: "daemon refused the resume",
+      } as never,
+      summary,
+    ),
+  ).toContain("daemon refused the resume");
+
+  // A restore that did not fail keeps its short status.
+  expect(
+    agentStatusChipText(
+      { kind: "agent", restoreStatus: "live-attached" } as never,
+      summary,
+    ),
+  ).toContain("restore · live attached");
 });

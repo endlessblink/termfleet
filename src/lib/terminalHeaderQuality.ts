@@ -8,7 +8,8 @@ export type HeaderQualityReason =
   | "package-script"
   | "terminal-chrome"
   | "vague"
-  | "gibberish";
+  | "gibberish"
+  | "incomplete";
 
 export interface HeaderQualityResult {
   ok: boolean;
@@ -130,6 +131,7 @@ function looksLikePromptFragment(text: string) {
     /\banything else is just\b/i.test(text) ||
     /^what\s+does\s+belong\b/i.test(text) ||
     /^(?:the answer is|symptom)\s*:/i.test(text) ||
+    /^this\s+is\s+(?:a\s+)?(?:fail|failure|broken|unacceptable)\b/i.test(text) ||
     /^A safe version is\b/i.test(text) ||
     /^the production inbox says\b/i.test(text) ||
     /^the real answer is\b/i.test(text) ||
@@ -272,6 +274,9 @@ function looksLikeGenericResult(text: string) {
   if (/^Test suite failed$/i.test(text)) {
     return true;
   }
+  if (/^test(?::[\w-]+)?\s+(?:failed|failure)\b/i.test(text)) {
+    return true;
+  }
   if (/^Test suite passed$/i.test(text)) {
     return true;
   }
@@ -290,12 +295,36 @@ export function isSupervisedMetaProcessTask(value?: string | null) {
 }
 
 function looksLikeMetaProcessTask(text: string) {
+  if (/^(?:checking|verifying|inspecting)\s+installed(?:\s+(?:release|dock|app|version|restart))?$/i.test(text)) {
+    return true;
+  }
+  if (/\b(?:agent\s+identity|restart\s+recovery)\b/i.test(text) &&
+      /^(?:persisting|checking|verifying|inspecting|confirming|testing|reviewing)\b/i.test(text)) {
+    return true;
+  }
+  if (
+    /\b(?:shell[- ]versus[- ]agent|agent[- ]versus[- ]shell)\b/i.test(text) ||
+    /\b(?:shell|agent)\b.*\bregression\b/i.test(text)
+  ) {
+    return true;
+  }
   if (/^make\s+this\s+a\s+goal$/i.test(text)) return true;
-  const processLead = /^(?:adding|applying|auditing|building|checking|centering|centralizing|choosing|confirming|covering|creating|entering|fixing|handling|improving|locking|preserving|promoting|re-?audit(?:ing)?|rebuilding|re-?checking|reducing|reject(?:ing)?|refreshing|re-?running|running|testing|updating|verifying|writing)\b/i.test(
+  if (/^staging\s+the\s+restart\s+and\s+map\s+fix$/i.test(text)) return true;
+  if (/^(?:v\s*[-:—]\s*)?preserve\s+the\s+current\s+worktree\b/i.test(text)) return true;
+  if (/^git\s+safety\s+checks?\s+pass\b/i.test(text)) return true;
+  if (/\b(?:checks?|tests?)\s+(?:pass|succeed(?:ed)?)\b.*\bworktree\b/i.test(text)) return true;
+  if (
+    /^(?:push|deploy)(?:ing)?\s+to\s+production\s+and\s+verif(?:y|ying)\b/i.test(text) ||
+    /^verif(?:y|ying)\s+the\s+installed\s+(?:terminal\s+)?labels\b/i.test(text)
+  ) return true;
+  if (/^(?:push|deploy)(?:ing)?\s+to\s+production\s+and\s+verif(?:y|ying)\b/i.test(text)) {
+    return true;
+  }
+  const processLead = /^(?:adding|applying|auditing|building|checking|centering|centralizing|choosing|confirming|covering|creating|entering|fixing|handling|improving|locking|persisting|preserving|promoting|re-?audit(?:ing)?|rebuilding|re-?checking|reducing|reject(?:ing)?|refreshing|re-?running|running|testing|updating|verifying|writing)\b/i.test(
     text,
   );
   const internalObject =
-    /\b(?:capture\s+sources?|live\s+panes?|proof(?:[- ]checks?)?|regression\s+tests?|visual\s+gate|fail-closed|installed(?:\s*\/\s*rendered)?\s+gate|local\s+server\s+workflow|task(?:\s+line)?\s+verification|task\s+goal(?:\s+and\s+now)?|terminal\s+state\s+ownership|verification\s+wording|fallback|user-facing|with\s+tests?|tests?\s+and\s+task\s+records?|approved\s+deployment|approved\s+three-card\s+layout|one-card\s+sections?|responsive\s+text\s+layout|editor\s+and\s+responsive|quality\s+(?:guard|matrix)|task\s+(?:wording|label))\b/i.test(
+    /\b(?:capture\s+sources?|live\s+panes?|proof(?:[- ]checks?)?|regression\s+tests?|visual\s+gate|fail-closed|installed(?:\s*\/\s*rendered)?\s+gate|local\s+server\s+workflow|task(?:\s+line)?\s+verification|task\s+goal(?:\s+and\s+now)?|terminal\s+state\s+ownership|verification\s+wording|fallback|user-facing|with\s+tests?|tests?\s+and\s+task\s+records?|approved\s+deployment|approved\s+three-card\s+layout|one-card\s+sections?|responsive\s+text\s+layout|editor\s+and\s+responsive|quality\s+(?:guard|matrix)|task\s+(?:wording|label)|agent\s+restore|provider-exit\s+guard|installed-release\s+identity)\b/i.test(
       text,
     );
   const knownConcreteEmailGoal =
@@ -372,7 +401,7 @@ function looksLikeMetaProcessActivity(text: string) {
     text,
   );
   const internalObject =
-    /\b(?:regression\s+tests?|visual\s+gate|fail-closed|task\s+line\s+verification|approved\s+three-card\s+layout|one-card\s+sections?|local\s+server\s+workflow|proof\s+checks?|harness|quality\s+gate|restart\s+fix\s+changes?)\b/i.test(
+    /\b(?:regression\s+tests?|visual\s+gate|fail-closed|task\s+line\s+verification|approved\s+three-card\s+layout|one-card\s+sections?|local\s+server\s+workflow|proof\s+checks?|harness|quality\s+gate|restart\s+fix\s+changes?|agent\s+restore|provider-exit\s+guard|installed-release\s+identity)\b/i.test(
       text,
     );
   if (processLead && internalObject) return true;
@@ -405,6 +434,9 @@ function lacksDecisionObject(text: string) {
   ) {
     return false;
   }
+  if (/\bwhy\s+[a-z0-9][a-z0-9'-]*(?:\s+[a-z0-9][a-z0-9'-]*){1,}/i.test(text)) {
+    return false;
+  }
   if (
     /\b(?:pane header|header wording|title wording|deployment plan|build result|test result|floor-check|quality gate|operator gate)\b/i.test(
       text,
@@ -421,7 +453,10 @@ function baseQuality(
 ): HeaderQualityResult {
   const text = clean(value);
   if (!text) return { ok: false, reason: "empty" };
-  if (looksLikeLifecycleOrReviewText(text))
+  if (
+    looksLikeLifecycleOrReviewText(text) &&
+    !/^(?:I want|I need|We should)\b/i.test(text)
+  )
     return { ok: false, reason: "prompt-fragment" };
   // A failure report or correction of the cockpit itself is conversation context,
   // not the durable work the pane is about. Keep it out of Task so the header cannot
@@ -430,10 +465,21 @@ function baseQuality(
     /(?:hard fail|low quality|not enough context|not understanding|fully failing|didn['’]?t fix|didn['’]?t work|what you said .* false)/i.test(
       text,
     ) ||
+    /^(?:give|provide|write|send)\s+(?:me\s+)?(?:a\s+)?(?:report|debrief)\b.*\b(?:what you did|what was done|the work)\b/i.test(
+      text,
+    ) ||
+    /^continue the assigned work(?: in this terminal pane)?$/i.test(text) ||
     /^task\s+descrip\w*\s+is\s+(?:still\s+)?(?:super\s+)?broken\b/i.test(text) ||
     /for the (?:millionth|hundredth) time/i.test(text) ||
     /\bworking\s+for\s+hour/i.test(text) ||
     /nothing\s+to\s+show\s+for\s+it/i.test(text) ||
+    /\b(?:has|have|was|were|is|are)?\s*not\s+(?:been\s+)?(?:met|achieved|completed|fixed)\b/i.test(text) ||
+    /\bfiasc(?:o|on)\b/i.test(text) ||
+    /^this\s+is\s+(?:a\s+)?(?:fail|failure|broken|unacceptable)\b/i.test(text) ||
+    /^test(?::[\w-]+)?\s+(?:failed|failure)\b/i.test(text) ||
+    /^(?:push|deploy)(?:ing)?\s+to\s+production\s+and\s+verif(?:y|ying)\b/i.test(text) ||
+    /^verif(?:y|ying)\s+the\s+installed\s+(?:terminal\s+)?labels\b/i.test(text) ||
+    /^(?:create|set|make|define)\s+(?:a\s+)?goal\b/i.test(text) ||
     /(\p{L})\1{5,}/u.test(text) ||
     /^(?:you['’]?re|you are)\s+right\b|^(?:i['’]?m|i am|i['’]?m sorry|i apologize)\b|^honest\s+status\b/i.test(text) ||
     /\b(?:display boundary|defense[- ]in[- ]depth|meta[- ]feedback|capture path)\b/i.test(text)
@@ -471,7 +517,12 @@ export function qualityCheckUserAskLabel(
 ): HeaderQualityResult {
   const text = clean(value);
   if (!text) return { ok: false, reason: "empty" };
-  if (looksLikeLifecycleOrReviewText(text))
+  if (/\b(?:has|have|was|were|is|are)?\s*not\s+(?:been\s+)?(?:met|achieved|completed|fixed)\b/i.test(text))
+    return { ok: false, reason: "prompt-fragment" };
+  if (
+    looksLikeLifecycleOrReviewText(text) &&
+    !/^(?:I want|I need|We should)\b/i.test(text)
+  )
     return { ok: false, reason: "prompt-fragment" };
   // A question is a request for clarification, not the durable work concept.
   // Keep it in the conversation/status stream so Task remains an outcome.
@@ -484,6 +535,8 @@ export function qualityCheckUserAskLabel(
     /for the (?:millionth|hundredth) time/i.test(text) ||
     /\bworking\s+for\s+hour/i.test(text) ||
     /nothing\s+to\s+show\s+for\s+it/i.test(text) ||
+    /\bfiasc(?:o|on)\b/i.test(text) ||
+    /^(?:create|set|make|define)\s+(?:a\s+)?goal\b/i.test(text) ||
     /(\p{L})\1{5,}/u.test(text) ||
     /^(?:you['’]?re|you are)\s+right\b|^(?:i['’]?m|i am|i['’]?m sorry|i apologize)\b|^honest\s+status\b/i.test(text) ||
     /\b(?:display boundary|defense[- ]in[- ]depth|meta[- ]feedback|capture path)\b/i.test(text)
@@ -492,12 +545,22 @@ export function qualityCheckUserAskLabel(
   }
   if (looksLikeTerminalStatusBar(text))
     return { ok: false, reason: "terminal-chrome" };
+  if (/(?:https?:\/\/|(?:^|\s)\/(?:home|media|usr|etc|var|tmp|opt|root)\/)/i.test(text))
+    return { ok: false, reason: "implementation-detail" };
   if (text.length > (options.maxLength ?? 96))
     return { ok: false, reason: "too-long" };
   // Curly-brace tokens are vendor template placeholders (for example
   // "Implement {feature}"), never a real user goal or work item.
   if (/\{[^{}]+\}/.test(text))
     return { ok: false, reason: "prompt-fragment" };
+  if (
+    /^this\s+is\s+(?:a\s+)?(?:fail|failure|broken|unacceptable)\b/i.test(text) ||
+    /^test(?::[\w-]+)?\s+(?:failed|failure)\b/i.test(text) ||
+    /^(?:push|deploy)(?:ing)?\s+to\s+production\s+and\s+verif(?:y|ying)\b/i.test(text) ||
+    /^verif(?:y|ying)\s+the\s+installed\s+(?:terminal\s+)?labels\b/i.test(text)
+  ) {
+    return { ok: false, reason: "prompt-fragment" };
+  }
   if (
     /^(?:go|done|fix it|fix this too|so fix it|ok|okay|sure|yes|continue|do it|proceed)$/i.test(
       text,
@@ -557,6 +620,87 @@ export function qualityCheckUserAskLabel(
   return { ok: true };
 }
 
+/** A durable Goal must describe the outcome, not the process used to reach it. */
+export function qualityCheckGoalLabel(
+  value?: string | null,
+  options: {
+    maxLength?: number;
+    allowAboutWhatVoice?: boolean;
+    allowTrustedAboutWhat?: boolean;
+  } = {},
+): HeaderQualityResult {
+  const text = clean(value);
+  if (/^\[(?:Image|Screenshot|File|Pasted)[^\]]*\]$/i.test(text)) {
+    return { ok: false, reason: "vague" };
+  }
+  if (/^(?:Goal not captured|Task not captured|Status unavailable|Activity not captured)$/i.test(text)) {
+    return { ok: false, reason: "vague" };
+  }
+  if (
+    /[…]$/.test(text) ||
+    /\b(?:instead of|while|and|or|to|for|the|a|an)\s*[.!?]?$/i.test(text)
+  ) {
+    return { ok: false, reason: "incomplete" };
+  }
+  if (
+    !options.allowTrustedAboutWhat &&
+    (/^(?:this|the)\s+session\s+is\s+about\b/i.test(text) ||
+      /\b(?:updated TermFleet build|remaining restart risk|regressions and bugs|design quality principles|collapse secondary context|selection only)\b/i.test(text))
+  ) {
+    return { ok: false, reason: "vague" };
+  }
+  if (
+    /\b(?:fail-closed evidence gate|session audit|regression tests?|sign me out)\b/i.test(text) ||
+    /\b(?:installed dock|live gate|visual gate|focused (?:visual|header) tests?|checksum|awaiting user approval|all live and visual)\b/i.test(text) ||
+    /^(?:so\s+let['’]?s\s+create|we\s+need\s+to|let['’]?s\s+create)\b/i.test(text) ||
+    /^Make the active terminal\/workstream dominant\b/i.test(text) ||
+    /^(?:implemented|created|added|running|testing|verifying|reviewing)\b.*\b(?:evidence|audit|regression|review|verification|tests?)\b/i.test(text) ||
+    /^Help people understand each TermFleet terminal's current work and next step so they can resume confidently[.!]?$/i.test(text) ||
+    /^Help people resume TermFleet work by understanding each terminal's purpose and current activity[.!]?$/i.test(text)
+  ) {
+    return { ok: false, reason: "vague" };
+  }
+  const baseText = options.allowAboutWhatVoice
+    ? text.replace(/^(?:I(?:['’]m)?|we(?:['’]re)?|my|our)\s+/i, "")
+    : text;
+  const base = qualityCheckUserAskLabel(baseText, {
+    maxLength: options.allowAboutWhatVoice
+      ? Math.max(options.maxLength ?? 96, 150)
+      : options.maxLength,
+  });
+  if (!base.ok) return base;
+  // An automatic Goal must carry the same minimum context as $about-what:
+  // a real purpose plus the outcome or benefit it serves. Short slogans and
+  // process-shaped labels otherwise become sticky pane Goals after restart.
+  if (
+    !options.allowTrustedAboutWhat &&
+    (text.split(/\s+/).length < 8 ||
+      !/\b(?:so|so that|to|for|without|after|before|with)\b/i.test(text))
+  ) {
+    return { ok: false, reason: "vague" };
+  }
+  if (!options.allowTrustedAboutWhat && (
+    /^[a-z0-9]+(?:[-_][a-z0-9]+){1,}$/.test(text) ||
+    /^(?:use|apply|follow|invoke)\b.*\b(?:skill|skills|impeccable|agent|reviewer|harness|workflow|tool)\b/i.test(text) ||
+    /\b(?:design|coding|implementation)\s+skills?\b/i.test(text) ||
+    /\b(?:properly|correctly|appropriately)\s*$/i.test(text) ||
+    /^(?:this|the)\s+session\s+is\s+about\b/i.test(text) ||
+    /\b(?:delivering|updating|building)\s+(?:the\s+)?(?:build|release|verification|tests?)\b/i.test(text) ||
+    /\b(?:test suite|installed release|restart verification|commit passes|proof of|verification gate)\b/i.test(text) ||
+    /^(?:authorize|approve|review|pass)\b.*\b(?:gate|exception|release|build|test|verification)\b/i.test(text) ||
+    /^(?:do\s+it\s+all|handle\s+everything|finish\s+everything)(?:\s+already)?[!.\s]*$/i.test(text) ||
+    /^Help people understand each .+ project and pick up where they left off[.!]?$/i.test(text) ||
+    /^Help people understand each TermFleet terminal's current work and next step so they can resume confidently[.!]?$/i.test(text) ||
+    /^Make every TermFleet terminal show its purpose and current activity clearly[.!]?$/i.test(text) ||
+    /^Make each TermFleet terminal clear enough to understand at a glance[.!]?$/i.test(text) ||
+    /^Make TermFleet show clear tasks, goals, and current activity so work is easy to resume[.!]?$/i.test(text) ||
+    /^Keep TermFleet work clear so people can return to the right terminal and continue confidently[.!]?$/i.test(text) ||
+    /^Make (?:[A-Z][\w-]*|this project) work clear and dependable so people can resume it confidently[.!]?$/i.test(text) ||
+    /^Keep (?:TermFleet terminal work|terminal sessions|the terminal cockpit)\s+clear and reliable\b/i.test(text)
+  )) return { ok: false, reason: "vague" };
+  return { ok: true };
+}
+
 /**
  * Gate for the agent's DECLARED task list text (TaskCreate/TaskUpdate via the
  * status sidecar, or a checklist printed by the agent). Unlike scraped prompt
@@ -574,10 +718,24 @@ export function qualityCheckAuthoritativeTaskLabel(
 ): HeaderQualityResult {
   const text = clean(value);
   if (!text) return { ok: false, reason: "empty" };
+  if (
+    /^(?:give|provide|write|send)\s+(?:me\s+)?(?:a\s+)?(?:report|debrief)\b.*\b(?:what you did|what was done|the work)\b/i.test(
+      text,
+    ) ||
+    /^continue the assigned work(?: in this terminal pane)?$/i.test(text)
+    ||
+    /^Make (?:[A-Z][\w-]*|this project|Workspace) work clear and dependable so people can resume it confidently[.!]?$/i.test(
+      text,
+    )
+  ) {
+    return { ok: false, reason: "prompt-fragment" };
+  }
   if (looksLikeLifecycleOrReviewText(text))
     return { ok: false, reason: "prompt-fragment" };
   if (looksLikeTerminalStatusBar(text))
     return { ok: false, reason: "terminal-chrome" };
+  if (/(?:https?:\/\/|(?:^|\s)\/(?:home|media|usr|etc|var|tmp|opt|root)\/)/i.test(text))
+    return { ok: false, reason: "implementation-detail" };
   if (text.length > (options.maxLength ?? 96))
     return { ok: false, reason: "too-long" };
   if (/\{[^{}]+\}/.test(text))
@@ -857,6 +1015,9 @@ export function qualityCheckTaskLabel(
   value?: string | null,
 ): HeaderQualityResult {
   const text = clean(value);
+  if (isSupervisedMetaProcessTask(text)) {
+    return { ok: false, reason: "vague" };
+  }
   if (
     /^(?:Ready|Terminal|Working|Thinking|Running terminal command|Supervised agent run|Context compacted|done|go|fix it)$/i.test(
       text,
@@ -882,6 +1043,27 @@ export function qualityCheckNowLabel(
   if (looksLikeMetaProcessActivity(text)) {
     return { ok: false, reason: "vague" };
   }
+  if (/^[a-z0-9]+(?:-[a-z0-9]+)+$/i.test(text)) {
+    return { ok: false, reason: "implementation-detail" };
+  }
+  if (/\b(?:provider-exit\s+guard|installed-release\s+identity|agent\s+restore)\b/i.test(text)) {
+    return { ok: false, reason: "implementation-detail" };
+  }
+  if (
+    /\b(?:tests?|test suite|build|commit|installed release|restart verification|verification gate)\b/i.test(text) &&
+    /\b(?:passes?|passed|failed|green|complete|completed|verif(?:y|ied|ying)|releas(?:e|ed|ing))\b/i.test(text)
+  ) {
+    return { ok: false, reason: "implementation-detail" };
+  }
+  if (isSupervisedMetaProcessTask(text)) {
+    return { ok: false, reason: "vague" };
+  }
+  if (/\b(?:publish-once|doppler token|headed app|visual contract|frontend build|typescript|vite production)\b/i.test(text)) {
+    return { ok: false, reason: "implementation-detail" };
+  }
+  if (/^(?:Verify|Verifying|Check|Checking)\s+the working tree is clean\b/i.test(text)) {
+    return { ok: false, reason: "implementation-detail" };
+  }
   if (/^(?:Next\s+steps|Steps)\s*[-:]/i.test(text)) {
     return { ok: false, reason: "prompt-fragment" };
   }
@@ -889,6 +1071,12 @@ export function qualityCheckNowLabel(
   // "Md: N/A, quick production fix." reached a live pane title through THIS gate —
   // the last one with no such check.
   if (LABEL_OR_FRAGMENT.test(text)) {
+    return { ok: false, reason: "prompt-fragment" };
+  }
+  if (
+    /["']?\b(?:cwd|path|paneId|terminalId|statusSummary|mainTask)\b["']?\s*["':]/i.test(text) ||
+    /\b(?:cwd|path|paneId|terminalId)\b[\s\S]*\/(?:home|media|tmp|var|usr)\//i.test(text)
+  ) {
     return { ok: false, reason: "prompt-fragment" };
   }
   if (isPlaceholderActivity(text)) return { ok: false, reason: "vague" };

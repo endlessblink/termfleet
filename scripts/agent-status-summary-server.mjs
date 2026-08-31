@@ -10,13 +10,14 @@ import { statusDir } from "./lib/agent-status-paths.mjs";
 // of every rendered terminal's title/source here, and we write it to a file the operator (or
 // an agent) can read to compare "what's shown" vs "what each terminal is really working on".
 // The frontend can't resolve an absolute path itself, so the node server owns the write.
-function writeCockpitSnapshot(rawBody) {
+function writeCockpitSnapshot(rawBody, app = "shared") {
   const dir = statusDir();
   mkdirSync(dir, { recursive: true });
-  const file = path.join(dir, "cockpit-snapshot.json");
-  const traceFile = path.join(dir, "cockpit-header-trace.jsonl");
+  const safeApp = app === "termfleet" ? "termfleet" : "shared";
+  const file = path.join(dir, safeApp === "termfleet" ? "termfleet-cockpit-snapshot.json" : "cockpit-snapshot.json");
+  const traceFile = path.join(dir, safeApp === "termfleet" ? "termfleet-cockpit-header-trace.jsonl" : "cockpit-header-trace.jsonl");
   const tmp = `${file}.${process.pid}.tmp`;
-  const body = rawBody || "{}";
+  const body = normalizeCockpitSnapshot(rawBody || "{}");
   writeFileSync(tmp, body);
   renameSync(tmp, file);
   let entry;
@@ -35,6 +36,34 @@ function writeCockpitSnapshot(rawBody) {
     // Missing trace file → nothing to rotate.
   }
   appendFileSync(traceFile, `${JSON.stringify({ receivedAt: Date.now(), ...entry })}\n`);
+}
+
+function normalizeCockpitSnapshot(rawBody) {
+  try {
+    const payload = JSON.parse(rawBody);
+    if (Array.isArray(payload.terminals)) {
+      for (const entry of payload.terminals) {
+        if (!entry || typeof entry !== "object") continue;
+        const task = cleanText(entry.task);
+        const context = cleanText(entry.context);
+        const neutralTask = /^(?:Task not captured|Activity not captured|Goal not captured|Context not captured|Status unavailable|Waiting for a clear task|No task declared|No active work|Ready|Idle|Working|Unknown)$/i.test(task);
+        if (neutralTask && context.startsWith("Keep this pane focused on ")) {
+          entry.context = "";
+          entry.contextSource = "missing";
+          delete entry.mainUserAsk;
+          continue;
+        }
+        if (context.startsWith("Keep this pane focused on ")) {
+          entry.context = "";
+          entry.contextSource = "missing";
+          delete entry.mainUserAsk;
+        }
+      }
+    }
+    return JSON.stringify(payload);
+  } catch {
+    return rawBody;
+  }
 }
 
 const host = process.env.TERMFLEET_AGENT_STATUS_HOST || "127.0.0.1";
@@ -382,6 +411,8 @@ const ANALYZER_SYSTEM = [
   "You read noisy terminal and agent-status context and extract the underlying work intent.",
   "Use ONLY facts from the provided context. Do not invent names, numbers, events, files, paths, commands, or flags.",
   "Write plain everyday words. Convert raw technical wording into what the person is trying to do.",
+  "The user_goal must be the real-world outcome and why it matters, never a skill, tool, reviewer, agent, workflow, or implementation instruction.",
+  "Never use phrases such as use skills, apply a skill, redesign this properly, follow the workflow, or review the implementation as the user_goal.",
   "Examples:",
   'Log: "The consolidation now: - removes stale rollout names from the active July..."',
   '{"core_action": "cleaning up", "main_object": "old rollout names from July", "status": "incomplete", "user_goal": "Get the project data cleaned up", "confidence": 0.65, "brief_reason": "The log says old rollout names are being removed."}',
@@ -949,6 +980,9 @@ async function sendStatusSummary(response, payload, heuristic) {
   if (String(heuristic?.status) === "waiting") {
     sendJson(response, 200, {
       ...heuristic,
+      ...(context?.goal && context.reason !== "task-sidecar"
+        ? { mainTask: context.goal, mainTaskSource: "plan-explanation" }
+        : {}),
       ...(context?.goal && replaceAsk ? { userTask: context.goal } : {}),
       confidence: "high",
     });
@@ -959,6 +993,9 @@ async function sendStatusSummary(response, payload, heuristic) {
       ...heuristic,
       now: context.now,
       narration: context.now,
+      ...(context.goal && context.reason !== "task-sidecar"
+        ? { mainTask: context.goal, mainTaskSource: "plan-explanation" }
+        : {}),
       ...(context.taskText ? { task: context.taskText, tasks: rewriteActiveTaskText(heuristic.tasks, context.taskText) } : {}),
       ...(context.goal && replaceAsk ? { userTask: context.goal } : {}),
       status:
@@ -983,7 +1020,7 @@ const server = http.createServer(async (request, response) => {
   if (request.method === "POST" && request.url === "/cockpit-snapshot") {
     try {
       const raw = await readRequestBody(request);
-      writeCockpitSnapshot(raw);
+      writeCockpitSnapshot(raw, new URL(request.url, "http://127.0.0.1").searchParams.get("app") || "shared");
       sendJson(response, 200, { ok: true });
     } catch (error) {
       sendJson(response, 500, {

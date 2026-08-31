@@ -57,6 +57,7 @@ import {
   scrollDeltaToReveal,
   type SearchMatch,
 } from "../lib/searchOverlay";
+import { terminalViewportAction } from "../lib/terminalViewport";
 
 // Hack is the terminal buffer font (Warp's default terminal font), bundled via
 // @font-face. Fallbacks keep things sane before the face loads / on other systems.
@@ -68,6 +69,9 @@ const DEBUG_TERM_HUD = false;
 const FONT_FAMILY =
   '"Hack", "JetBrains Mono", "Geist Mono", "Cascadia Code", "Consolas", monospace';
 const FONT_SIZE_PX = 14;
+// Inactive map previews are informational; polling them every second keeps every
+// mounted canvas and the WebKit compositor busy even when the operator is idle.
+const BACKGROUND_SNAPSHOT_INTERVAL_MS = 10_000;
 const LINE_HEIGHT = 1.2;
 // Synthetic weight boost is DISABLED. Hack ships only 400/700; a `strokeText`
 // halo in the glyph's own colour was tried to fake a medium weight, but measured
@@ -912,7 +916,7 @@ export function TerminalCanvas({
         await refreshBackgroundIfChanged();
         backgroundSnapshotInterval = setInterval(() => {
           void refreshBackgroundIfChanged();
-        }, 1000);
+        }, BACKGROUND_SNAPSHOT_INTERVAL_MS);
       } else {
         await invoke("grid_subscribe_diffs", { id: sessionId, onDiff: channel });
         refreshTimer = setTimeout(() => {
@@ -1337,6 +1341,30 @@ export function TerminalCanvas({
           event.stopPropagation();
           return;
         }
+      }
+      const viewportAction = terminalViewportAction(
+        event.key,
+        bufferRef.current?.rows ?? rows,
+      );
+      if (viewportAction) {
+        event.preventDefault();
+        event.stopPropagation();
+        if (viewportAction.kind === "top") {
+          userViewportLockedRef.current = true;
+          invoke("grid_scroll", { id: sessionIdRef.current, delta: 2_147_483_647 }).catch(
+            console.error,
+          );
+        } else if (viewportAction.kind === "bottom") {
+          userViewportLockedRef.current = false;
+          invoke("grid_scroll_to_bottom", { id: sessionIdRef.current }).catch(console.error);
+        } else {
+          if (viewportAction.delta > 0) userViewportLockedRef.current = true;
+          invoke("grid_scroll", {
+            id: sessionIdRef.current,
+            delta: viewportAction.delta,
+          }).catch(console.error);
+        }
+        return;
       }
       const bytes = keyEventToBytes(event, { appCursor: modesRef.current.appCursor });
       if (bytes === null) return;

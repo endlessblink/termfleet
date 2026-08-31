@@ -1,4 +1,4 @@
-import { CSSProperties, useCallback, useMemo, useState } from "react";
+import { CSSProperties, useCallback, useEffect, useMemo, useState } from "react";
 import { FileText, Globe, Map, NotebookText, TerminalSquare, X } from "lucide-react";
 import type { CanvasNode, Group, Tab } from "../lib/types";
 import { pathTail, projectForTab } from "../lib/projectDisplay";
@@ -360,6 +360,7 @@ export function CanvasSidebar() {
   const reorderCanvasNodes = useWorkspaceStore((state) => state.reorderCanvasNodes);
   const updateCanvasViewport = useWorkspaceStore((state) => state.updateCanvasViewport);
   const updateUiState = useWorkspaceStore((state) => state.updateWorkspaceUiState);
+  const refreshLiveCwd = useWorkspaceStore((state) => state.refreshLiveCwd);
 
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<{ id: string; place: "before" | "after" } | null>(null);
@@ -393,6 +394,21 @@ export function CanvasSidebar() {
   const visibleNodes = groupVisibleNodes.filter((node) => nodeMatchesMapFilter(node, nodeTab(node), mapFilter));
   const terminals = visibleNodes.filter((node) => node.type === "terminal");
   const others = visibleNodes.filter((node) => node.type !== "terminal");
+
+  // The map sidebar is the first surface rendered for saved terminals. Refresh
+  // their live project identity here so project lanes do not depend on opening
+  // a terminal pane (which used to be the first place this refresh ran).
+  const terminalIds = useMemo(
+    () => terminals.flatMap((node) => {
+      const tab = nodeTab(node);
+      return tab?.terminals.map((terminal) => terminal.id) ?? [];
+    }).filter(Boolean).join("|"),
+    [nodeTab, terminals],
+  );
+  useEffect(() => {
+    if (!terminalIds) return;
+    for (const id of terminalIds.split("|")) void refreshLiveCwd(id);
+  }, [refreshLiveCwd, terminalIds]);
 
   const draggable = sortMode === "manual";
 
