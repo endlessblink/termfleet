@@ -1114,12 +1114,14 @@ impl PtyManager {
             // A resumed agent that ends *cleanly* while this daemon is alive
                             // was ended by the operator (`/exit`, Ctrl-D). A non-zero
                             // exit is a failed resume and stays retryable.
-                            let recorded_reason = resume_failure.or_else(|| {
-                                (exit_succeeded
-                                    && reader_resume_started_at.elapsed()
-                                        >= AGENT_OPERATOR_EXIT_MIN_UPTIME)
-                                    .then_some(AGENT_EXITED_IN_SESSION)
-                            });
+                            let recorded_reason: Option<String> = resume_failure
+                                .map(str::to_string)
+                                .or_else(|| {
+                                    (exit_succeeded
+                                        && reader_resume_started_at.elapsed()
+                                            >= AGENT_OPERATOR_EXIT_MIN_UPTIME)
+                                        .then(agent_operator_exit_reason)
+                                });
                             if let (Some(dir), Some(reason)) =
                                 (reader_persist_dir.as_deref(), recorded_reason)
                             {
@@ -1127,7 +1129,7 @@ impl PtyManager {
                                     dir,
                                     &reader_event_id,
                                     AgentRestoreStatus::ResumeFailed,
-                                    Some(reason),
+                                    Some(&reason),
                                 );
                             }
                         }
@@ -2099,7 +2101,7 @@ fn agent_resume_failure_is_terminal(reason: &str) -> bool {
     reason.contains("no longer exists")
         || reason.contains("no saved session found")
         || reason.contains("not found")
-        || reason.contains(AGENT_EXITED_IN_SESSION)
+        || (reason.contains(AGENT_EXITED_IN_SESSION) && agent_operator_exit_is_current(&reason))
 }
 
 /// Recorded when a resumed agent's process ends while its daemon is still
@@ -2110,6 +2112,24 @@ const AGENT_EXITED_IN_SESSION: &str = "agent was exited in this session";
 /// operator quitting it rather than the resume command finishing on its own.
 const AGENT_OPERATOR_EXIT_MIN_UPTIME: std::time::Duration =
     std::time::Duration::from_secs(10);
+
+/// Stamps the quit marker with the daemon that observed it. A quit only silences
+/// auto-resume for the daemon that was running at the time: if the daemon itself
+/// is later stopped, its own teardown kills every agent cleanly, and without this
+/// stamp that teardown would look exactly like the operator quitting all of them.
+fn agent_operator_exit_reason() -> String {
+    format!("{AGENT_EXITED_IN_SESSION} (owner={})", std::process::id())
+}
+
+/// True when the quit was recorded by the daemon that is running right now.
+/// A marker from a dead daemon means the agents died with it, not by choice.
+fn agent_operator_exit_is_current(reason: &str) -> bool {
+    reason
+        .rsplit_once("(owner=")
+        .and_then(|(_, rest)| rest.strip_suffix(')'))
+        .and_then(|pid| pid.trim().parse::<u32>().ok())
+        .is_some_and(|pid| pid == std::process::id())
+}
 
 fn classify_agent_resume_failure(output: &str) -> Option<&'static str> {
     if output.contains("No saved session found with ID") {
@@ -2938,12 +2958,34 @@ mod tests {
         // instant it is quit.
         let mut checkpoint = codex_agent_checkpoint(Some("019f-quit-session"));
         checkpoint.restore_status = Some(AgentRestoreStatus::ResumeFailed);
-        checkpoint.restore_failure_reason = Some(super::AGENT_EXITED_IN_SESSION.to_string());
+        checkpoint.restore_failure_reason = Some(super::agent_operator_exit_reason());
 
         let plan = plan_agent_restore(&checkpoint, false);
 
         assert_eq!(plan.status, AgentRestoreStatus::ResumeFailed);
         assert_eq!(plan.command, None);
+    }
+
+    #[test]
+    fn agent_restore_planner_resumes_agents_that_died_with_a_previous_daemon() {
+        // Stopping the daemon kills every agent cleanly, which looks identical to
+        // the operator quitting them. The quit marker is stamped with the daemon
+        // that saw it, so a marker from a dead daemon must not silence recovery.
+        let mut checkpoint = codex_agent_checkpoint(Some("019f-daemon-death"));
+        checkpoint.restore_status = Some(AgentRestoreStatus::ResumeFailed);
+        checkpoint.restore_failure_reason = Some(format!(
+            "{} (owner={})",
+            super::AGENT_EXITED_IN_SESSION,
+            std::process::id() + 1
+        ));
+
+        let plan = plan_agent_restore(&checkpoint, false);
+
+        assert_eq!(plan.status, AgentRestoreStatus::Resuming);
+        assert_eq!(
+            plan.command.as_deref(),
+            Some("codex resume 019f-daemon-death")
+        );
     }
 
     #[test]
