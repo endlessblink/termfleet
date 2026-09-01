@@ -4037,13 +4037,13 @@ mod tests {
                 app.handle(),
                 Some(id.clone()),
                 None,
-                // The pid goes to stdout AS WELL AS the file: on a CI runner the
-                // temp file is not always readable back from this process, and the
-                // snapshot fallback below then has nothing to find. `setsid` is
-                // used when present and skipped when it is not, so a runner
-                // without util-linux still exercises the detached-child path.
+                // The pane's OWN shell prints the pid, then detaches the child.
+                // Printing from inside `setsid` lost the output on a CI runner
+                // (the pane snapshot came back empty), because the detached
+                // session no longer wrote to this terminal. `setsid` is used
+                // only when the runner has it.
                 Some(format!(
-                    "{{ command -v setsid >/dev/null && exec setsid sh -c 'env -u TERMFLEET_PANE_ID sleep 30 & child=$!; printf \"%s\\n\" \"$child\"; printf \"%s\\n\" \"$child\" > {pid_file_arg}; wait'; }} || sh -c 'env -u TERMFLEET_PANE_ID sleep 30 & child=$!; printf \"%s\\n\" \"$child\"; printf \"%s\\n\" \"$child\" > {pid_file_arg}; wait'"
+                    "sh -c 'if command -v setsid >/dev/null; then setsid env -u TERMFLEET_PANE_ID sleep 30 & else env -u TERMFLEET_PANE_ID sleep 30 & fi; child=$!; printf \"%s\\n\" \"$child\"; printf \"%s\\n\" \"$child\" > {pid_file_arg}; wait'"
                 )),
             )
             .expect("spawn detached unmarked process PTY");
