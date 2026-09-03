@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-08-31T10:27:54.873Z",
+  "updatedAt": "2026-09-03T16:26:09.229Z",
   "issues": [
     {
       "id": "TF-001",
@@ -1334,23 +1334,23 @@
       "evidence": [
         {
           "kind": "source",
-          "at": "2026-08-30T11:06:25.439Z",
-          "note": "Existing release manifest and checksum guards identified the post-install executable mutation; no production source change was required."
+          "at": "2026-09-01T07:42:44.582Z",
+          "note": "Installer and provenance guards inspected; the release path rebuilds frontend before the direct Cargo bundle embeds it."
         },
         {
           "kind": "focused-test",
-          "at": "2026-08-30T11:06:29.571Z",
-          "note": "npm run build completed during release promotion and the installed checksum guard now accepts the immutable artifact."
+          "at": "2026-09-01T07:42:44.899Z",
+          "note": "npm run build passed as the first stage of fresh release promotion."
         },
         {
           "kind": "installed-release",
-          "at": "2026-08-30T11:06:32.601Z",
-          "note": "npm run verify:installed-release passed with the manifest-matching dfad8b31 release; npm run doctor returned DOCTOR_OK."
+          "at": "2026-09-01T07:46:24.942Z",
+          "note": "Fresh immutable release remains verified at c1bc5a6e8b40 after the attempted dock launch; visual evidence did not complete because no X11 window could be captured."
         },
         {
           "kind": "live-desktop",
-          "at": "2026-08-30T11:06:35.704Z",
-          "note": "Dock relaunch produced the real TermFleet Tauri cockpit; screenshot /tmp/termfleet-connection-refused-fixed.png sha256 188844bc848f8810a31b42fcfad8299845f046aed4f6062b054adae3b552c329 showed no localhost refusal."
+          "at": "2026-09-03T16:26:08.965Z",
+          "note": "Operator confirmed a fresh dock relaunch on 2026-09-03; doctor confirmed the running app is newer than the promoted binary and the stale-release warning is cleared. No fresh screenshot was available from the headless verifier."
         }
       ],
       "owner": "termfleet",
@@ -1492,6 +1492,78 @@
           "from": "verifying",
           "to": "resolved",
           "note": "Clean immutable release passes checksum and doctor gates and the relaunched dock cockpit is visibly healthy with no 127.0.0.1 refusal."
+        },
+        {
+          "at": "2026-09-01T07:40:36.661Z",
+          "type": "transition",
+          "from": "resolved",
+          "to": "reopened",
+          "note": "Recurrence reproduced: doctor reports the installed release predates the frontend bundle by six hours; installed immutable binary is older than dist/index.html."
+        },
+        {
+          "at": "2026-09-01T07:40:36.952Z",
+          "type": "transition",
+          "from": "reopened",
+          "to": "reproducing",
+          "note": "Timestamp evidence preserved: current release binary 2026-08-31 17:02 and frontend bundle 2026-08-31 22:44."
+        },
+        {
+          "at": "2026-09-01T07:40:37.273Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Existing doctor and installed-release provenance guards fail closed while frontend dist is newer than the embedded release."
+        },
+        {
+          "at": "2026-09-01T07:40:37.576Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Promoting a fresh immutable release that embeds the current frontend bundle."
+        },
+        {
+          "at": "2026-09-01T07:42:44.583Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Installer and provenance guards inspected; the release path rebuilds frontend before the direct Cargo bundle embeds it."
+        },
+        {
+          "at": "2026-09-01T07:42:44.899Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "npm run build passed as the first stage of fresh release promotion."
+        },
+        {
+          "at": "2026-09-01T07:42:45.209Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "Fresh immutable release promotion and installed-release verifier passed; doctor no longer reports the stale frontend warning."
+        },
+        {
+          "at": "2026-09-01T07:42:45.495Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Release provenance and doctor gates pass; completing dock-relaunch evidence next."
+        },
+        {
+          "at": "2026-09-01T07:46:24.943Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "Fresh immutable release remains verified at c1bc5a6e8b40 after the attempted dock launch; visual evidence did not complete because no X11 window could be captured."
+        },
+        {
+          "at": "2026-09-03T16:26:08.965Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "Operator confirmed a fresh dock relaunch on 2026-09-03; doctor confirmed the running app is newer than the promoted binary and the stale-release warning is cleared. No fresh screenshot was available from the headless verifier."
+        },
+        {
+          "at": "2026-09-03T16:26:09.229Z",
+          "type": "transition",
+          "from": "verifying",
+          "to": "resolved",
+          "note": "Fresh immutable release passes installed provenance, doctor returns DOCTOR_OK, and the operator confirmed the dock relaunch."
         }
       ]
     },

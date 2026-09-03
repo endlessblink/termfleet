@@ -68,6 +68,16 @@
 > `188844bc848f8810a31b42fcfad8299845f046aed4f6062b054adae3b552c329`). TF-012
 > was reopened, verified on the installed desktop surface, and resolved.
 
+> **2026-09-03 — Fresh dock release aligned:** Doctor reproduced TF-012 when the
+> frontend bundle was six hours newer than the immutable dock binary. A fresh release
+> rebuilt and atomically promoted the matching frontend and desktop application;
+> `npm run verify:installed-release` accepted SHA-256
+> `c1bc5a6e8b409e4eb5df6e3f0ef4efc205a34cd30572e0737f92f41036b24df5` and
+> `npm run doctor` returned `DOCTOR_OK` after the operator relaunched from the dock.
+> The running app is newer than the promoted binary, and the stale-release warning is
+> cleared. TF-012 is resolved; a fresh screenshot was not captured from the headless
+> verification session.
+
 > **2026-08-30 — All preserved terminals reconnect exactly once:** Restart hydration
 > previously left legacy UUID shell sessions on `starting` and could retain both an
 > old card and a recovered duplicate for one daemon session. Exact live identities
