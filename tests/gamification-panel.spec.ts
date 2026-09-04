@@ -17,6 +17,7 @@ test("progress panel requires acceptance before the live quest begins", async ({
   await expect(panel.getByTestId("gamification-milestone-rail")).toContainText("3h");
   await page.getByTestId("gamification-accept").click();
   await expect(panel).toBeVisible();
+  await expect(panel.getByTestId("gamification-active-count")).toContainText("Quest started");
   await expect(panel.getByTestId("gamification-active-count")).toContainText("Paused");
   await expect(panel.getByTestId("gamification-active-count")).toContainText("add 2 live terminals");
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem("termfleet.gamification.v6") ?? "null").activeQuestId)).toBe("parallel-work");

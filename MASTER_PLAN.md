@@ -9369,6 +9369,18 @@ hover, Escape, achievement feedback, and the two-frame contained-pulse check;
 the frontend build and map-terminal verifier passed. Immutable release promotion,
 installed verification, and fresh dock-visible hover confirmation remain required.
 
+**Follow-up, 2026-09-04 — clear quest start feedback:** Starting a quest now
+immediately changes the callout to `Quest started`, then says whether the timer
+is running or exactly how many live terminals are needed. The focused quest
+tests (9/9), strict design gate, frontend build, and diff check pass. A fresh
+immutable promotion and dock-visible confirmation remain required.
+
+**Promotion, 2026-09-04:** Immutable release
+`3b6414dad297-a025dd74daad-3110bd8dbe5a` passed installed binary and frontend
+provenance verification. The currently open dock window intentionally remains
+unchanged until a safe dock relaunch; its visible Start quest confirmation is
+the remaining acceptance check.
+
 ## 2026-08-28 — Combine Watchpost planning with reliable runtime supervision
 
 This local execution plan mirrors the TermFleet work represented by FEATURE-12

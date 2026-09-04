@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-09-04T11:10:43.506Z",
+  "updatedAt": "2026-09-04T11:47:01.785Z",
   "issues": [
     {
       "id": "TF-001",
@@ -2744,7 +2744,7 @@
     {
       "id": "TF-021",
       "title": "Workstream Quest is not visible from the cockpit",
-      "state": "fixing",
+      "state": "verifying",
       "severity": "medium",
       "surface": "desktop-runtime",
       "matrixRefs": [],
@@ -2753,19 +2753,19 @@
       "guard": "tests/gamification-panel.spec.ts plus installed dock visibility verification",
       "evidence": [
         {
-          "kind": "source",
-          "at": "2026-09-03T16:43:06.303Z",
-          "note": "Verifier root cause: scripts/verify-impeccable-gamification.mjs hardcodes the removed ~/.agents/skills/impeccable context adapter, so it aborts before the installed dock gate."
+          "kind": "focused-test",
+          "at": "2026-09-04T11:44:49.529Z",
+          "note": "Regression now requires Start quest to show Quest started, retain the paused reason, and persist activeQuestId; nine focused quest checks pass."
         },
         {
-          "kind": "focused-test",
-          "at": "2026-09-04T04:44:22.354Z",
-          "note": "Focused Playwright quest and Map coverage passed: three checks cover the paused timer state, icon-led 10m/30m/3h milestone rail, achievement reward, and current-quest hover."
+          "kind": "source",
+          "at": "2026-09-04T11:44:49.956Z",
+          "note": "Acceptance was persisted, but the only post-click wording began with Paused; the explicit Quest started acknowledgement removes the false no-op signal."
         },
         {
           "kind": "installed-release",
-          "at": "2026-09-04T04:44:29.638Z",
-          "note": "The refreshed immutable dock release passed npm run verify:installed-release after the quest timer and milestone presentation changes."
+          "at": "2026-09-04T11:47:01.215Z",
+          "note": "The immutable release containing explicit Quest started feedback passes installed binary and frontend provenance verification."
         }
       ],
       "owner": "termfleet",
@@ -2889,6 +2889,37 @@
           "type": "evidence",
           "kind": "installed-release",
           "note": "The refreshed immutable dock release passed npm run verify:installed-release after the quest timer and milestone presentation changes."
+        },
+        {
+          "at": "2026-09-04T11:22:51.002Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "The gamification design gate and nine focused Playwright checks pass after restoring distinct info and reward accents plus non-toast live announcements."
+        },
+        {
+          "at": "2026-09-04T11:44:49.529Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Regression now requires Start quest to show Quest started, retain the paused reason, and persist activeQuestId; nine focused quest checks pass."
+        },
+        {
+          "at": "2026-09-04T11:44:49.956Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Acceptance was persisted, but the only post-click wording began with Paused; the explicit Quest started acknowledgement removes the false no-op signal."
+        },
+        {
+          "at": "2026-09-04T11:47:01.215Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "The immutable release containing explicit Quest started feedback passes installed binary and frontend provenance verification."
+        },
+        {
+          "at": "2026-09-04T11:47:01.785Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Focused acceptance regression and immutable installed provenance pass; a live dock click remains required because the open window was intentionally not restarted."
         }
       ]
     },
