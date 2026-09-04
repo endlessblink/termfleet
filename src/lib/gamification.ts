@@ -5,6 +5,8 @@ export const GAMIFICATION_STORAGE_KEY = "termfleet.gamification.v6";
 const LEGACY_GAMIFICATION_STORAGE_KEY = `termfleet.gamification.v6.${GAMIFICATION_RELEASE_ID}`;
 export const GAMIFICATION_CHANGED_EVENT = "termfleet-gamification-changed";
 export const WORKSTREAM_QUEST_ID = "parallel-work";
+export const WORKSTREAM_QUEST_LABEL = "Workstream Quest";
+export const QUEST_MISSION_ORDER = [WORKSTREAM_QUEST_ID, "finish-goal", "clean-run"] as const;
 
 export type GamificationEventType = "goal-completed" | "command-succeeded" | "terminal-recovered";
 
@@ -257,6 +259,26 @@ export function summarizeGamification(record: GamificationRecord): GamificationS
   };
 }
 
+export function activeQuestMission(record: GamificationRecord, summary = summarizeGamification(record)) {
+  if (!record.activeQuestId || record.questAcceptedAt === null) return null;
+  const mission = summary.missions.find((candidate) => candidate.id === record.activeQuestId);
+  return mission && !mission.complete ? mission : null;
+}
+
+export function nextAvailableQuest(summary: GamificationSummary) {
+  return QUEST_MISSION_ORDER
+    .map((id) => summary.missions.find((mission) => mission.id === id))
+    .find((mission): mission is GamificationMission => Boolean(mission && !mission.complete)) ?? null;
+}
+
+export function retireCompletedQuest(record: GamificationRecord): GamificationRecord {
+  if (!record.activeQuestId || record.questAcceptedAt === null) return record;
+  const mission = summarizeGamification(record).missions.find((candidate) => candidate.id === record.activeQuestId);
+  return mission?.complete
+    ? { ...record, activeQuestId: null, questAcceptedAt: null }
+    : record;
+}
+
 export function rewardForTransition(previous: GamificationSummary, next: GamificationSummary): GamificationReward | null {
   const newEvent = next.recentEvents.find((event) => !previous.recentEvents.some((old) => old.id === event.id));
   const achievement = next.achievements.find((candidate) => candidate.unlocked && !previous.achievements.some((old) => old.id === candidate.id && old.unlocked));
@@ -298,5 +320,5 @@ export function saveGamificationRecord(storage: Pick<Storage, "setItem"> | undef
 }
 
 export function isWorkstreamQuestAccepted(record: GamificationRecord) {
-  return record.activeQuestId === WORKSTREAM_QUEST_ID && record.questAcceptedAt !== null;
+  return record.activeQuestId === WORKSTREAM_QUEST_ID && activeQuestMission(record)?.id === WORKSTREAM_QUEST_ID;
 }

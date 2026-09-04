@@ -19,6 +19,111 @@ test.use({
   },
 });
 
+test("an active Workstream Quest is revealed when hovering its live map card", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("termfleet.gamification.v6", JSON.stringify({
+      version: 6, events: [], ignoredEventIds: [], maxActiveWorkstreams: 0,
+      baselineActiveWorkstreams: 0, parallelWorkstreamStartedAt: Date.now(),
+      parallelWorkstreamSeconds: 0, parallelBestSeconds: 0,
+      activeQuestId: "parallel-work", questAcceptedAt: Date.now(),
+      initializedAt: Date.now(), updatedAt: Date.now(),
+    }));
+  });
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.getByRole("button", { name: "Map", exact: true }).click();
+  await page.evaluate(() => {
+    const store = window.__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+    const state = store.getState();
+    const tabId = "quest-map-tab";
+    const nodeId = "quest-map-node";
+    store.setState({
+      ...state,
+      tabs: [{
+        id: tabId,
+        title: "Quest map terminal",
+        emoji: "[]",
+        color: "#7aa2f7",
+        groupId: null,
+        initialCwd: "/tmp/quest-map-terminal",
+        terminals: [{ id: "quest-map-pty", paneId: "quest-map-pane", cols: 80, rows: 24, status: "running" }],
+        splitLayout: { id: "quest-map-pane", type: "terminal" },
+        activePaneId: "quest-map-pane",
+      }],
+      activeTabId: tabId,
+      activeTerminalId: "quest-map-pty",
+      workspaceUiState: { ...state.workspaceUiState, workspaceMode: "canvas", primarySidebarPanel: "map" },
+      canvasState: {
+        nodes: [{ id: nodeId, type: "terminal", title: "Quest map terminal", x: 120, y: 120, width: 820, height: 460, terminalTabId: tabId }],
+        selectedNodeId: nodeId,
+        selectedNodeIds: [nodeId],
+        viewport: { x: 0, y: 0, zoom: 1 },
+      },
+    });
+  });
+
+  const questCard = page.locator('.workspace-sidebar-row[data-quest-visible="true"]');
+  await expect(questCard).toHaveCount(1);
+  await expect(questCard).toHaveAttribute("data-quest-active", "false");
+  await expect(questCard).toHaveAttribute(
+    "title",
+    /Current quest: Keep 3 workstreams running for 10 minutes/,
+  );
+  await expect(questCard.getByTestId("map-node-project-emoji")).toHaveAttribute(
+    "title",
+    /Current quest: Keep 3 workstreams running for 10 minutes/,
+  );
+  await questCard.hover();
+  await expect(questCard.getByTestId("map-node-quest-preview")).toBeVisible();
+  await expect(questCard.getByTestId("map-node-quest-preview")).toHaveText(
+    "Current quest: Keep 3 workstreams running for 10 minutes",
+  );
+});
+
+test("the active quest orbit stays inside its map terminal card", async ({ page }, testInfo) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("termfleet.gamification.v6", JSON.stringify({
+      version: 6, events: [], ignoredEventIds: [], maxActiveWorkstreams: 3,
+      baselineActiveWorkstreams: 3, parallelWorkstreamStartedAt: Date.now(),
+      parallelWorkstreamSeconds: 0, parallelBestSeconds: 0,
+      activeQuestId: "parallel-work", questAcceptedAt: Date.now(),
+      initializedAt: Date.now(), updatedAt: Date.now(),
+    }));
+  });
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.getByRole("button", { name: "Map", exact: true }).click();
+  await page.evaluate(() => {
+    const store = window.__termfleetWorkspaceStore;
+    if (!store) throw new Error("TermFleet test store is unavailable");
+    const state = store.getState();
+    const tabId = "contained-quest-map-tab";
+    const paneId = "contained-quest-map-pane";
+    store.setState({
+      ...state,
+      tabs: [{
+        id: tabId, title: "Contained quest map terminal", emoji: "[]", color: "#7aa2f7", groupId: null,
+        initialCwd: "/tmp/contained-quest-map-terminal",
+        terminals: [0, 1, 2].map((index) => ({ id: `contained-quest-pty-${index}`, paneId: `${paneId}-${index}`, cols: 80, rows: 24, status: "running" })),
+        splitLayout: { id: `${paneId}-0`, type: "terminal" }, activePaneId: `${paneId}-0`,
+      }],
+      activeTabId: tabId, activeTerminalId: "contained-quest-pty-0",
+      workspaceUiState: { ...state.workspaceUiState, workspaceMode: "canvas", primarySidebarPanel: "map" },
+      canvasState: { nodes: [{ id: "contained-quest-map-node", type: "terminal", title: "Contained quest map terminal", x: 120, y: 120, width: 820, height: 460, terminalTabId: tabId }], selectedNodeId: "contained-quest-map-node", selectedNodeIds: ["contained-quest-map-node"], viewport: { x: 0, y: 0, zoom: 1 } },
+    });
+  });
+  const questCard = page.locator('.workspace-sidebar-row[data-quest-active="true"]');
+  await expect(questCard).toHaveCount(1);
+  await expect(questCard).toHaveCSS("overflow", "hidden");
+  await expect(questCard.evaluate((element) => getComputedStyle(element, "::after").animationName)).resolves.toBe("termfleet-map-quest-pulse");
+  const terminalShell = page.locator('.terminal-block-shell[data-quest-active="true"]');
+  await expect(terminalShell).toHaveCount(1);
+  await expect(terminalShell).toHaveCSS("overflow", "hidden");
+  await expect(terminalShell.evaluate((element) => getComputedStyle(element, "::before").animationName)).resolves.toBe("termfleet-terminal-quest-pulse");
+  await page.screenshot({ path: testInfo.outputPath("quest-halo-start.png"), fullPage: false });
+  await page.waitForTimeout(1200);
+  await page.screenshot({ path: testInfo.outputPath("quest-halo-midpoint.png"), fullPage: false });
+});
+
 async function seedMapViewportScenario(
   page: import("@playwright/test").Page,
   viewport: { x: number; y: number; zoom: number },

@@ -111,6 +111,194 @@ select:focus-visible,
   background: var(--surface-hover) !important;
 }
 
+.workspace-sidebar-row[data-quest-active="true"] {
+  isolation: isolate;
+  position: relative;
+  overflow: hidden;
+}
+
+.workspace-sidebar-row[data-quest-active="true"]::after {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  z-index: 1;
+  pointer-events: none;
+  border-radius: calc(var(--radius-sm) - 1px);
+  border: 1px solid color-mix(in srgb, var(--accent-info) 72%, var(--border-subtle));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-warning) 42%, transparent);
+  opacity: 0.5;
+  animation: termfleet-map-quest-pulse 2.4s ease-in-out infinite;
+}
+
+.workspace-sidebar-quest-preview {
+  display: none;
+  margin-top: 4px;
+  color: color-mix(in srgb, var(--accent-info) 74%, var(--text-primary));
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.25;
+}
+
+.workspace-sidebar-row[data-quest-visible="true"]:hover
+  .workspace-sidebar-quest-preview,
+.workspace-sidebar-row[data-quest-visible="true"]:focus-within
+  .workspace-sidebar-quest-preview {
+  display: block;
+}
+
+@keyframes termfleet-map-quest-pulse {
+  50% {
+    opacity: 1;
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-warning) 72%, transparent), 0 0 14px color-mix(in srgb, var(--accent-info) 28%, transparent);
+  }
+}
+
+.gamification-quest-celebration {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 9px;
+  margin-top: 14px;
+  padding: 11px 10px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--accent-warning) 48%, var(--border-subtle));
+  border-radius: var(--radius-sm);
+  background: linear-gradient(120deg, color-mix(in srgb, var(--accent-warning) 22%, var(--surface-raised)), color-mix(in srgb, var(--accent-info) 14%, var(--surface-raised)));
+  color: var(--text-primary);
+  animation: gamification-quest-celebration-in 360ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.gamification-quest-celebration::before {
+  content: "";
+  position: absolute;
+  inset: -120% -20%;
+  pointer-events: none;
+  background: linear-gradient(110deg, transparent 43%, color-mix(in srgb, white 46%, transparent) 50%, transparent 57%);
+  animation: gamification-quest-celebration-sweep 1.1s 160ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.gamification-quest-celebration-mark {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent-warning) 28%, var(--surface-hover));
+  color: var(--accent-warning);
+  animation: gamification-quest-celebration-mark 720ms 120ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.gamification-quest-panel {
+  position: fixed;
+  top: 42px;
+  right: 18px;
+  z-index: 70;
+  width: 320px;
+  max-width: calc(100vw - 24px);
+  padding: 16px;
+  border-top: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: linear-gradient(145deg, color-mix(in srgb, var(--accent-info) 12%, var(--surface-raised)), color-mix(in srgb, var(--accent-warning) 7%, var(--surface-raised)));
+  box-shadow: var(--shadow-menu);
+  animation: gamification-panel-in 280ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.gamification-quest-header,
+.gamification-quest-heading,
+.gamification-quest-status-row,
+.gamification-quest-callout,
+.gamification-quest-accept,
+.gamification-quest-focus,
+.gamification-quest-reset {
+  display: flex;
+  align-items: center;
+}
+
+.gamification-quest-header { justify-content: space-between; gap: 12px; }
+.gamification-quest-header > button,
+.gamification-quest-reset { border: 0; background: transparent; color: var(--text-secondary); cursor: pointer; }
+.gamification-quest-heading { gap: 9px; }
+.gamification-quest-heading > span { display: grid; width: 28px; height: 28px; place-items: center; border-radius: 50%; color: var(--accent-warning); background: color-mix(in srgb, var(--accent-warning) 18%, var(--surface-hover)); }
+.gamification-quest-heading > div > div { color: var(--accent-live); font-size: 10px; letter-spacing: .8px; text-transform: uppercase; }
+.gamification-quest-heading h2 { margin: 3px 0 0; color: var(--text-primary); font-size: 20px; font-weight: 500; line-height: 1.05; }
+.gamification-quest-progress { margin-top: 16px; }
+.gamification-quest-status-row { justify-content: space-between; color: var(--text-secondary); font-size: 12px; font-variant-numeric: tabular-nums; }
+.gamification-quest-status-row span { display: inline-flex; align-items: center; gap: 5px; }
+.gamification-quest-status-row .is-counting { color: var(--accent-live); font-weight: 500; }
+.gamification-quest-progress-bar { height: 7px; margin-top: 9px; overflow: hidden; border-radius: 99px; background: color-mix(in srgb, var(--text-primary) 15%, transparent); }
+.gamification-quest-progress-bar > div { height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--accent-info), var(--accent-warning)); transition: width 300ms ease; }
+.gamification-milestone-rail { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin-top: 12px; }
+.gamification-milestone-rail > div { display: grid; justify-items: center; gap: 4px; padding: 6px 2px; border-radius: var(--radius-xs); color: var(--text-tertiary); font-size: 10px; }
+.gamification-milestone-rail span { display: grid; width: 22px; height: 22px; place-items: center; border: 1px solid var(--border-subtle); border-radius: 50%; background: var(--surface-hover); }
+.gamification-milestone-rail > div[data-state="earned"] { color: var(--accent-live); }
+.gamification-milestone-rail > div[data-state="earned"] span { border-color: color-mix(in srgb, var(--accent-live) 62%, var(--border-subtle)); background: color-mix(in srgb, var(--accent-live) 18%, var(--surface-hover)); }
+.gamification-milestone-rail > div[data-state="next"] { color: var(--accent-info); }
+.gamification-milestone-rail > div[data-state="next"] span { border-color: color-mix(in srgb, var(--accent-info) 70%, var(--border-subtle)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-info) 12%, transparent); }
+.gamification-quest-callout { gap: 6px; margin-top: 13px; color: var(--text-secondary); font-size: 11px; }
+.gamification-quest-callout span { color: var(--accent-live); }
+.gamification-quest-accept,
+.gamification-quest-focus { gap: 6px; margin-top: 14px; border: 0; border-radius: var(--radius-xs); cursor: pointer; font-size: 11px; }
+.gamification-quest-accept { padding: 8px 11px; background: var(--accent-info); color: var(--surface-base); font-weight: 500; }
+.gamification-quest-focus { padding: 7px 10px; background: var(--surface-hover); color: var(--text-primary); }
+.gamification-quest-reset { gap: 5px; padding: 0; font: inherit; font-size: 10px; }
+.gamification-quest-confirm { margin-right: 8px; padding: 5px 8px; border: 0; border-radius: var(--radius-xs); background: var(--surface-selected); color: var(--text-primary); cursor: pointer; font-size: 11px; }
+
+.gamification-quest-celebration strong,
+.gamification-quest-celebration span {
+  display: block;
+}
+
+.gamification-quest-celebration strong {
+  font-size: 12px;
+}
+
+.gamification-quest-celebration div > span {
+  margin-top: 2px;
+  color: var(--text-secondary);
+  font-size: 10px;
+  line-height: 1.3;
+}
+
+.gamification-quest-celebration button {
+  position: relative;
+  z-index: 1;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 10px;
+}
+
+@keyframes gamification-quest-celebration-in {
+  from { opacity: 0; transform: translateY(-7px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes gamification-quest-celebration-sweep {
+  from { transform: translateX(-68%); }
+  to { transform: translateX(68%); }
+}
+
+@keyframes gamification-quest-celebration-mark {
+  0% { opacity: 0; transform: scale(0.55) rotate(-18deg); }
+  65% { opacity: 1; transform: scale(1.13) rotate(5deg); }
+  100% { opacity: 1; transform: scale(1) rotate(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workspace-sidebar-row[data-quest-active="true"]::after {
+    animation: none;
+  }
+
+  .gamification-quest-celebration,
+  .gamification-quest-celebration::before,
+  .gamification-quest-celebration-mark {
+    animation: none;
+  }
+}
+
 .workspace-sidebar-row:hover .workspace-sidebar-actions,
 .workspace-sidebar-row:focus-within .workspace-sidebar-actions,
 .workspace-sidebar-row[data-active="true"] .workspace-sidebar-actions {
@@ -1148,24 +1336,14 @@ button:active {
 .terminal-block-shell--quest-active::before {
   content: "";
   position: absolute;
-  inset: 0;
+  inset: 2px;
   z-index: 2;
   pointer-events: none;
-  padding: 2px;
-  border-radius: 8px;
-  background: conic-gradient(
-    from var(--termfleet-quest-angle, 0deg),
-    transparent 0deg 285deg,
-    color-mix(in srgb, var(--accent-live) 42%, transparent) 300deg,
-    var(--accent-live) 322deg,
-    color-mix(in srgb, var(--accent-warning) 70%, white) 332deg,
-  transparent 346deg 360deg
-  );
-  opacity: 0.95;
-  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-  -webkit-mask-composite: xor;
-  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-  mask-composite: exclude;
+  border: 1px solid color-mix(in srgb, var(--accent-live) 74%, var(--border-subtle));
+  border-radius: 6px;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-warning) 38%, transparent);
+  opacity: 0.45;
+  animation: termfleet-terminal-quest-pulse 2.4s ease-in-out infinite;
 }
 
 .terminal-block-shell--quest-active > * {
@@ -1177,17 +1355,16 @@ button:active {
   border: 1px solid color-mix(in srgb, var(--accent-live) 32%, var(--border-subtle));
 }
 
+@keyframes termfleet-terminal-quest-pulse {
+  50% {
+    opacity: 1;
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-warning) 72%, transparent);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .terminal-block-shell--quest-active::before {
     animation: none;
-    background: conic-gradient(
-      from 40deg,
-      transparent 0deg 285deg,
-      color-mix(in srgb, var(--accent-live) 42%, transparent) 300deg,
-      var(--accent-live) 322deg,
-      color-mix(in srgb, var(--accent-warning) 70%, white) 332deg,
-      transparent 346deg 360deg
-    );
   }
 }
 

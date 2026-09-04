@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-09-03T16:26:09.229Z",
+  "updatedAt": "2026-09-04T11:10:43.506Z",
   "issues": [
     {
       "id": "TF-001",
@@ -1322,7 +1322,7 @@
     {
       "id": "TF-012",
       "title": "Current release falls behind the frontend build",
-      "state": "resolved",
+      "state": "verifying",
       "severity": "medium",
       "surface": "desktop-runtime",
       "matrixRefs": [
@@ -1338,19 +1338,19 @@
           "note": "Installer and provenance guards inspected; the release path rebuilds frontend before the direct Cargo bundle embeds it."
         },
         {
-          "kind": "focused-test",
-          "at": "2026-09-01T07:42:44.899Z",
-          "note": "npm run build passed as the first stage of fresh release promotion."
-        },
-        {
-          "kind": "installed-release",
-          "at": "2026-09-01T07:46:24.942Z",
-          "note": "Fresh immutable release remains verified at c1bc5a6e8b40 after the attempted dock launch; visual evidence did not complete because no X11 window could be captured."
-        },
-        {
           "kind": "live-desktop",
           "at": "2026-09-03T16:26:08.965Z",
           "note": "Operator confirmed a fresh dock relaunch on 2026-09-03; doctor confirmed the running app is newer than the promoted binary and the stale-release warning is cleared. No fresh screenshot was available from the headless verifier."
+        },
+        {
+          "kind": "installed-release",
+          "at": "2026-09-03T16:55:06.803Z",
+          "note": "Rebuilt and atomically promoted the immutable desktop release; verify-installed-release accepted its binary and frontend checksums."
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-09-03T17:00:23.505Z",
+          "note": "Release-provenance regression tests and the focused gamification browser suite pass with the checksum-driven embed trigger."
         }
       ],
       "owner": "termfleet",
@@ -1564,6 +1564,53 @@
           "from": "verifying",
           "to": "resolved",
           "note": "Fresh immutable release passes installed provenance, doctor returns DOCTOR_OK, and the operator confirmed the dock relaunch."
+        },
+        {
+          "at": "2026-09-03T16:49:23.114Z",
+          "type": "transition",
+          "from": "resolved",
+          "to": "reopened",
+          "note": "Recurrence on 2026-09-03: dist is newer than the embedded desktop binary; the installed-release verifier rejects the stale frontend checksum before gamification can be checked."
+        },
+        {
+          "at": "2026-09-03T16:49:29.660Z",
+          "type": "transition",
+          "from": "reopened",
+          "to": "reproducing",
+          "note": "The installed provenance mismatch is reproduced; next run rebuilds the binary after the frontend and verifies atomic promotion."
+        },
+        {
+          "at": "2026-09-03T16:52:35.821Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": null
+        },
+        {
+          "at": "2026-09-03T16:55:06.803Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "Rebuilt and atomically promoted the immutable desktop release; verify-installed-release accepted its binary and frontend checksums."
+        },
+        {
+          "at": "2026-09-03T17:00:23.208Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "The embed trigger now follows the completed frontend checksum."
+        },
+        {
+          "at": "2026-09-03T17:00:23.505Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Release-provenance regression tests and the focused gamification browser suite pass with the checksum-driven embed trigger."
+        },
+        {
+          "at": "2026-09-03T17:00:23.796Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "The corrected immutable release passes installed provenance; live dock relaunch remains pending."
         }
       ]
     },
@@ -2691,6 +2738,501 @@
           "type": "evidence",
           "kind": "source",
           "note": "Live verifier now defaults to the TermFleet snapshot and reports failures using the final observed row set"
+        }
+      ]
+    },
+    {
+      "id": "TF-021",
+      "title": "Workstream Quest is not visible from the cockpit",
+      "state": "fixing",
+      "severity": "medium",
+      "surface": "desktop-runtime",
+      "matrixRefs": [],
+      "symptom": "The operator reports that gamification is dead because no Workstream Quest entry point is visible in the installed cockpit.",
+      "rootCause": "",
+      "guard": "tests/gamification-panel.spec.ts plus installed dock visibility verification",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-09-03T16:43:06.303Z",
+          "note": "Verifier root cause: scripts/verify-impeccable-gamification.mjs hardcodes the removed ~/.agents/skills/impeccable context adapter, so it aborts before the installed dock gate."
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-09-04T04:44:22.354Z",
+          "note": "Focused Playwright quest and Map coverage passed: three checks cover the paused timer state, icon-led 10m/30m/3h milestone rail, achievement reward, and current-quest hover."
+        },
+        {
+          "kind": "installed-release",
+          "at": "2026-09-04T04:44:29.638Z",
+          "note": "The refreshed immutable dock release passed npm run verify:installed-release after the quest timer and milestone presentation changes."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Capture the current installed dock, identify the missing entry point, and add a regression before changing production code.",
+      "history": [
+        {
+          "at": "2026-09-03T16:42:08.517Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-09-03T16:42:31.802Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Source review confirms Workstream Quest is mounted in the crowded header; next step is installed-surface reproduction of discoverability."
+        },
+        {
+          "at": "2026-09-03T16:42:32.089Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Testing the current dock entry point against the reported no-visible-gamification symptom."
+        },
+        {
+          "at": "2026-09-03T16:42:41.938Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Workstream Quest mounts at WorkbenchHeader.tsx and its trigger is not a persistent dock surface; existing panel preserves event receipts and local progress."
+        },
+        {
+          "at": "2026-09-03T16:42:51.213Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Baseline npm run verify:gamification-live fails before desktop inspection: verify-impeccable-gamification.mjs reports the incumbent visual-system context is missing."
+        },
+        {
+          "at": "2026-09-03T16:43:06.303Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Verifier root cause: scripts/verify-impeccable-gamification.mjs hardcodes the removed ~/.agents/skills/impeccable context adapter, so it aborts before the installed dock gate."
+        },
+        {
+          "at": "2026-09-03T16:44:51.728Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "Baseline installed dock rejects the current frontend checksum before gamification can open; the installed release is not the current build."
+        },
+        {
+          "at": "2026-09-03T16:46:46.649Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "release:install exited successfully but verify:installed-release still reports a frontend checksum mismatch; the installed dock remains stale and unverified."
+        },
+        {
+          "at": "2026-09-03T16:55:06.232Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Focused browser suite passed: six gamification checks, including the persistent dock Workstream Quest control opening the existing panel."
+        },
+        {
+          "at": "2026-09-03T16:55:06.510Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "The discoverability regression is locked before release promotion."
+        },
+        {
+          "at": "2026-09-03T16:56:33.105Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "The current immutable dock release contains the persistent Workstream Quest control and passes the installed frontend and binary checksum verifier."
+        },
+        {
+          "at": "2026-09-03T16:56:47.352Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "Promotion is not yet valid: the installed verifier rejected the release because the current frontend checksum changed after the binary was built."
+        },
+        {
+          "at": "2026-09-03T16:56:47.657Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Rebuilding the desktop binary after the completed frontend build before a fresh atomic promotion."
+        },
+        {
+          "at": "2026-09-03T17:00:22.601Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "The corrected release pipeline promoted the current immutable frontend; verify-installed-release passed after the persistent Workstream Quest control was added."
+        },
+        {
+          "at": "2026-09-03T17:00:22.899Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Focused browser and installed provenance checks pass; dock-visible confirmation remains pending because this session has no graphical display."
+        },
+        {
+          "at": "2026-09-03T18:09:52.194Z",
+          "type": "transition",
+          "from": "verifying",
+          "to": "fixing",
+          "note": null
+        },
+        {
+          "at": "2026-09-03T18:12:14.455Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": null
+        },
+        {
+          "at": "2026-09-04T04:44:22.355Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Focused Playwright quest and Map coverage passed: three checks cover the paused timer state, icon-led 10m/30m/3h milestone rail, achievement reward, and current-quest hover."
+        },
+        {
+          "at": "2026-09-04T04:44:29.638Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "The refreshed immutable dock release passed npm run verify:installed-release after the quest timer and milestone presentation changes."
+        }
+      ]
+    },
+    {
+      "id": "TF-022",
+      "title": "Starting a Workstream Quest has no visible effect",
+      "state": "resolved",
+      "severity": "medium",
+      "surface": "desktop-runtime",
+      "matrixRefs": [],
+      "symptom": "Operator starts the Workstream Quest but sees no change in the running cockpit.",
+      "rootCause": "",
+      "guard": "Focused browser regression plus dock acceptance",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-09-03T17:42:34.237Z",
+          "note": "Installed-release verification currently fails: the dock frontend checksum does not match the current build."
+        },
+        {
+          "kind": "live-desktop",
+          "at": "2026-09-03T18:03:49.531Z",
+          "note": null
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-09-03T18:28:10.330Z",
+          "note": "Quest completion browser regression passed: a qualifying 10-minute milestone opens the one-time Quest complete celebration; the active map-card hover regression remains covered."
+        },
+        {
+          "kind": "installed-release",
+          "at": "2026-09-03T18:39:21.602Z",
+          "note": "Immutable dock release promoted and npm run verify:installed-release passed for the Workstream Quest active-card hover and completion celebration."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Reproduce the acceptance action and make its active state observable.",
+      "history": [
+        {
+          "at": "2026-09-03T17:36:49.874Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-09-03T17:37:55.259Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "The acceptance handler changes only the persisted quest record; the visible terminal beam is conditional on qualifying live terminals."
+        },
+        {
+          "at": "2026-09-03T17:38:20.448Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "The reported symptom has a concrete source cause and an observable acceptance target."
+        },
+        {
+          "at": "2026-09-03T17:38:20.748Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "A focused click-path regression now captures the missing visible running state."
+        },
+        {
+          "at": "2026-09-03T17:40:35.346Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "The focused regression failed before the change and now requires an observable running state immediately after Start."
+        },
+        {
+          "at": "2026-09-03T17:40:35.680Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "The quest panel now reports its active state and the exact live-terminal requirement after Start."
+        },
+        {
+          "at": "2026-09-03T17:42:21.102Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Seven focused browser checks passed, including the Start click path that immediately exposes a running quest state and terminal requirement."
+        },
+        {
+          "at": "2026-09-03T17:42:21.844Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "The immutable dock release was promoted and the installed-release checksum verifier passed."
+        },
+        {
+          "at": "2026-09-03T17:42:22.181Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Source and installed release guards pass; the remaining failure surface is a real dock click."
+        },
+        {
+          "at": "2026-09-03T17:42:33.819Z",
+          "type": "transition",
+          "from": "verifying",
+          "to": "fixing",
+          "note": "The installed-release verifier rejected the promoted frontend checksum, so the dock build remains unverified."
+        },
+        {
+          "at": "2026-09-03T17:42:34.237Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Installed-release verification currently fails: the dock frontend checksum does not match the current build."
+        },
+        {
+          "at": "2026-09-03T17:51:06.972Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "Immutable dock release promoted and verified with npm run verify:installed-release; accepted-quest state is included in this build."
+        },
+        {
+          "at": "2026-09-03T17:51:07.295Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Installed release is verified; awaiting live dock click confirmation."
+        },
+        {
+          "at": "2026-09-03T18:03:49.532Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": null
+        },
+        {
+          "at": "2026-09-03T18:04:03.972Z",
+          "type": "transition",
+          "from": "verifying",
+          "to": "resolved",
+          "note": null
+        },
+        {
+          "at": "2026-09-03T18:15:44.115Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Focused quest and map coverage passed: npx playwright test tests/gamification-panel.spec.ts tests/gamification-quest-beam.spec.ts --reporter=line (7/7) and tests/map-terminal-rendering.spec.ts --grep active Workstream Quest --reporter=line (1/1)."
+        },
+        {
+          "at": "2026-09-03T18:28:10.330Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Quest completion browser regression passed: a qualifying 10-minute milestone opens the one-time Quest complete celebration; the active map-card hover regression remains covered."
+        },
+        {
+          "at": "2026-09-03T18:39:21.602Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "Immutable dock release promoted and npm run verify:installed-release passed for the Workstream Quest active-card hover and completion celebration."
+        }
+      ]
+    },
+    {
+      "id": "TF-023",
+      "title": "Terminal control lists stale duplicate terminals",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "desktop-runtime",
+      "matrixRefs": [],
+      "symptom": "Terminal control shows repeated terminals that have no live daemon session.",
+      "rootCause": "",
+      "guard": "Focused control-list regression compares visible rows with daemon-authoritative live sessions.",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-09-04T07:33:17.203Z",
+          "note": "npm run build passed on 2026-09-04 after routing the recovery review list through recoverySessionsForReview, which keeps durable history but suppresses duplicate and already-open conversation rows from terminal control."
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-09-04T07:42:23.196Z",
+          "note": "25 workspace hydration checks passed: normal Terminal Control hides saved-only tabs and Recovery review keeps one explicit action per historical conversation."
+        },
+        {
+          "kind": "installed-release",
+          "at": "2026-09-04T07:47:25.450Z",
+          "note": "Release promotion and installed immutable-release verification passed. Fresh dock-visible interaction proof is pending."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Trace the control-list session source and reproduce the stale duplicates.",
+      "history": [
+        {
+          "at": "2026-09-04T07:17:24.343Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-09-04T07:17:41.865Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Observed stale persisted records duplicating provider conversations; daemon live state is authoritative."
+        },
+        {
+          "at": "2026-09-04T07:17:50.252Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Reproduced from the authoritative session inventory: terminal control is receiving persisted-only duplicate records."
+        },
+        {
+          "at": "2026-09-04T07:24:48.714Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Focused recovery-review regression now proves duplicate persisted conversations collapse and an already-open conversation is hidden from recovery review."
+        },
+        {
+          "at": "2026-09-04T07:24:59.466Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Recovery review now derives a deduplicated display list without deleting persisted recovery records or changing live daemon sessions."
+        },
+        {
+          "at": "2026-09-04T07:33:17.181Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Focused Playwright regression passed on 2026-09-04: recovery review collapses duplicate persisted conversation history and hides conversations already represented by an open terminal."
+        },
+        {
+          "at": "2026-09-04T07:33:17.204Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "npm run build passed on 2026-09-04 after routing the recovery review list through recoverySessionsForReview, which keeps durable history but suppresses duplicate and already-open conversation rows from terminal control."
+        },
+        {
+          "at": "2026-09-04T07:33:17.271Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Focused browser regression and frontend build now pass; installed dock review is still required to confirm the visible terminal-control list."
+        },
+        {
+          "at": "2026-09-04T07:42:23.197Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "25 workspace hydration checks passed: normal Terminal Control hides saved-only tabs and Recovery review keeps one explicit action per historical conversation."
+        },
+        {
+          "at": "2026-09-04T07:47:25.451Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "Release promotion and installed immutable-release verification passed. Fresh dock-visible interaction proof is pending."
+        }
+      ]
+    },
+    {
+      "id": "TF-024",
+      "title": "Quest animation leaks and progression stops at 180 minutes",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "desktop-runtime",
+      "matrixRefs": [],
+      "symptom": "The Quest popup stays on the completed 180-minute Workstream Quest without offering the next quest, while the active-card orbit escapes into nearby terminal cards.",
+      "rootCause": "",
+      "guard": "Focused Playwright coverage for hover popup, next-quest offer, and contained active-card orbit plus installed dock verification",
+      "evidence": [
+        {
+          "kind": "focused-test",
+          "at": "2026-09-04T11:08:46.044Z",
+          "note": "Focused quest coverage passed 11/11: top-right hover reveals the next quest after a completed three-hour run, and both sidebar and terminal use contained pulse layers."
+        },
+        {
+          "kind": "source",
+          "at": "2026-09-04T11:08:46.342Z",
+          "note": "Removed the rotating conic-gradient quest layer and its requestAnimationFrame driver; completed quests now retire before the next available quest is presented."
+        },
+        {
+          "kind": "installed-release",
+          "at": "2026-09-04T11:10:43.197Z",
+          "note": "Immutable release cbcbe387ed7a-8dfaada68460-d4e5ce79275d passed installed checksum verification (sha256 8dfaada684604ccfbfc132d7cbed1f70f1f44d9868631884ace3bf73f1d17e18); live dock hover remains pending."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Confirm the top-right Quest hover and bounded terminal pulse in the dock-launched app without restarting live terminals.",
+      "history": [
+        {
+          "at": "2026-09-04T10:52:23.244Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-09-04T10:52:23.525Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "The screenshot isolates an unclipped rotating pseudo-element, and the quest picker hard-codes parallel-work after its final milestone."
+        },
+        {
+          "at": "2026-09-04T10:52:23.818Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Reproducing the header hover, completion transition, and map-card animation failure with focused browser tests."
+        },
+        {
+          "at": "2026-09-04T10:56:47.199Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Regression first: the header hover and completed 180-minute handoff failed before the change; focused Playwright now proves the popup offers Finish the next tracked goal and the map halo uses a contained pulse."
+        },
+        {
+          "at": "2026-09-04T10:56:47.521Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Focused regressions now cover the visible hover target, completion handoff, and non-rotating halo contract."
+        },
+        {
+          "at": "2026-09-04T10:56:47.805Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Implementing the guarded quest handoff and contained pulse."
+        },
+        {
+          "at": "2026-09-04T11:08:46.044Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Focused quest coverage passed 11/11: top-right hover reveals the next quest after a completed three-hour run, and both sidebar and terminal use contained pulse layers."
+        },
+        {
+          "at": "2026-09-04T11:08:46.342Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Removed the rotating conic-gradient quest layer and its requestAnimationFrame driver; completed quests now retire before the next available quest is presented."
+        },
+        {
+          "at": "2026-09-04T11:10:43.197Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "Immutable release cbcbe387ed7a-8dfaada68460-d4e5ce79275d passed installed checksum verification (sha256 8dfaada684604ccfbfc132d7cbed1f70f1f44d9868631884ace3bf73f1d17e18); live dock hover remains pending."
+        },
+        {
+          "at": "2026-09-04T11:10:43.506Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Source, focused browser, visual frame, build, map verifier, and installed release evidence are recorded; waiting for non-disruptive dock-visible confirmation."
         }
       ]
     }

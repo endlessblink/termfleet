@@ -45,6 +45,8 @@ import {
   createNewTab,
   createTerminalTab,
   currentAgentWorkstreamCwd,
+  liveTerminalTabs,
+  recoverySessionsForReview,
   type RecoverySessionRecord,
   splitActivePane,
   splitActivePreviewPane,
@@ -82,6 +84,16 @@ import { checkAgentProvider } from "../lib/agentProviders";
 import { formatAgentReconnectResult } from "../lib/agentReconnect";
 import { reconnectSavedAgentPanes } from "../lib/agentReconnectRuntime";
 import { formatTerminalInstanceReference } from "../lib/terminalInstanceReference";
+import {
+  collectGamificationFacts,
+  GAMIFICATION_CHANGED_EVENT,
+  isLiveWorkstreamTerminal,
+  isWorkstreamQuestAccepted,
+  loadGamificationRecord,
+  summarizeGamification,
+  WORKSTREAM_QUEST_ID,
+  WORKSTREAM_QUEST_LABEL,
+} from "../lib/gamification";
 import {
   agentLaneAuthRetryText,
   agentLaneAuthRetryTitle,
@@ -2438,6 +2450,7 @@ function SessionsPanel({
   );
   const projectRoot = useWorkspaceStore((state) => state.projectRoot);
   const liveCwds = useWorkspaceStore((state) => state.liveCwds);
+  const liveSessionIds = useWorkspaceStore((state) => state.liveSessionIds);
   const liveGitRoots = useWorkspaceStore((state) => state.liveGitRoots);
   const recoverySessions = useWorkspaceStore((state) => state.recoverySessions);
   const activeTabId = useWorkspaceStore((state) => state.activeTabId);
@@ -2486,10 +2499,18 @@ function SessionsPanel({
       reconnectDisposedRef.current = true;
     };
   }, []);
+  const liveTabs = useMemo(
+    () => liveTerminalTabs(tabs, liveSessionIds),
+    [liveSessionIds, tabs],
+  );
   const visibleTabs =
     activeGroupFilter === null
-      ? tabs
-      : tabs.filter((tab) => tab.groupId === activeGroupFilter);
+      ? liveTabs
+      : liveTabs.filter((tab) => tab.groupId === activeGroupFilter);
+  const recoverySessionsForDisplay = useMemo(
+    () => recoverySessionsForReview(recoverySessions, liveTabs),
+    [liveTabs, recoverySessions],
+  );
   const activeProjectName = projectNameFor(activeGroupFilter, groups);
   const activeProjectRoot =
     activeGroupFilter !== null
@@ -3234,7 +3255,7 @@ function SessionsPanel({
             {reconnectAgentsStatus}
           </div>
         )}
-        {recoverySessions.length > 0 && (
+        {recoverySessionsForDisplay.length > 0 && (
           <div
             data-testid="sidebar-recovery-list"
             style={{
@@ -3253,7 +3274,7 @@ function SessionsPanel({
             <div style={{ ...styles.rowMeta, margin: "4px 0 7px" }}>
               Closed-by-you sessions stay listed for clarity and cannot be restored.
             </div>
-            {recoverySessions.map((session) => {
+            {recoverySessionsForDisplay.map((session) => {
               const title = session.cwd?.split("/").filter(Boolean).pop() ?? "Unknown folder";
               const canRestore = session.lifecycle !== "intentional-kill";
               return (
@@ -5187,6 +5208,11 @@ function MapPanel({
   ) => void;
 }) {
   const [mapFilter, setMapFilter] = useState<MapFilter>("all");
+  const [questRecord, setQuestRecord] = useState(() =>
+    typeof window !== "undefined"
+      ? loadGamificationRecord(window.localStorage)
+      : loadGamificationRecord(undefined),
+  );
   const [serviceActionStatus, setServiceActionStatus] = useState("");
   const [servicesCollapsed, setServicesCollapsed] = useState(false);
   const [scopeCollapsed, setScopeCollapsed] = useState(true);
@@ -5222,6 +5248,32 @@ function MapPanel({
     id: string;
     place: "before" | "after";
   } | null>(null);
+
+  useEffect(() => {
+    const syncQuestState = () => {
+      setQuestRecord(loadGamificationRecord(window.localStorage));
+    };
+    window.addEventListener(GAMIFICATION_CHANGED_EVENT, syncQuestState);
+    window.addEventListener("storage", syncQuestState);
+    return () => {
+      window.removeEventListener(GAMIFICATION_CHANGED_EVENT, syncQuestState);
+      window.removeEventListener("storage", syncQuestState);
+    };
+  }, []);
+
+  const activeQuestSummary = useMemo(() => {
+    if (!isWorkstreamQuestAccepted(questRecord)) return null;
+    return (
+      summarizeGamification(questRecord).missions.find(
+        (mission) => mission.id === WORKSTREAM_QUEST_ID,
+      ) ?? null
+    );
+  }, [questRecord]);
+  const activeQuestTitle = activeQuestSummary?.title ?? WORKSTREAM_QUEST_LABEL;
+  const questTimerRunning = Boolean(
+    isWorkstreamQuestAccepted(questRecord) &&
+      collectGamificationFacts(tabs).activeWorkstreams >= 3,
+  );
 
   const focusCanvasNode = (node: CanvasNode) => {
     const zoom = node.type === "terminal" ? 1 : canvasState.viewport.zoom;
@@ -7777,6 +7829,15 @@ function MapPanel({
                 linkedTab?.workstream?.provider ??
                 liveTerminal?.agentProvider ??
                 liveTerminal?.statusSummary?.provider;
+              const questVisible = Boolean(
+                isWorkstreamQuestAccepted(questRecord) &&
+                  liveTerminal &&
+                  isLiveWorkstreamTerminal(liveTerminal),
+              );
+              const questActive = questVisible && questTimerRunning;
+              const questTooltip = questVisible
+                ? `Current quest: ${activeQuestTitle}`
+                : undefined;
               const agentLabel = agentProviderIdentity(agentProvider);
               const showGhost =
                 draggable &&
@@ -7797,6 +7858,8 @@ function MapPanel({
                     data-activity-source={header?.sources.activity}
                     data-header-version={header?.version}
                     data-panel-color={node.labelColor ?? linkedTab?.color ?? ""}
+                    data-quest-active={questActive ? "true" : "false"}
+                    data-quest-visible={questVisible ? "true" : "false"}
                     draggable={draggable}
                     style={{
                       ...styles.row,
@@ -7836,9 +7899,14 @@ function MapPanel({
                       onOpenTerminalMenu(event, linkedTab);
                     }}
                     title={
-                      header
-                        ? `${header.workspace} · ${header.hasCapturedGoal ? `Task: ${header.goalLabel}` : `Now: ${header.currentActivity}`} · ${header.fullPath}`
-                        : undefined
+                      [
+                        header
+                          ? `${header.workspace} · ${header.hasCapturedGoal ? `Task: ${header.goalLabel}` : `Now: ${header.currentActivity}`} · ${header.fullPath}`
+                          : undefined,
+                        questTooltip,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ") || undefined
                     }
                   >
                     {linkedProject && node.type !== "preview" ? (
@@ -7846,8 +7914,16 @@ function MapPanel({
                         type="button"
                         style={styles.projectEmojiCell}
                         data-testid="map-node-project-emoji"
-                        title={`Set ${linkedProject.name} project emoji`}
-                        aria-label={`Set ${linkedProject.name} project emoji`}
+                        title={
+                          questVisible
+                            ? `${questTooltip} · Set ${linkedProject.name} project emoji`
+                            : `Set ${linkedProject.name} project emoji`
+                        }
+                        aria-label={
+                          questVisible
+                            ? `${questTooltip} · Set ${linkedProject.name} project emoji`
+                            : `Set ${linkedProject.name} project emoji`
+                        }
                         onMouseDown={(event) => {
                           event.preventDefault();
                           event.stopPropagation();
@@ -7955,6 +8031,14 @@ function MapPanel({
                           >
                             {sidebarTaskLabel}
                           </div>
+                        </div>
+                      )}
+                      {questVisible && (
+                        <div
+                          className="workspace-sidebar-quest-preview"
+                          data-testid="map-node-quest-preview"
+                        >
+                          Current quest: {activeQuestTitle}
                         </div>
                       )}
                       {node.taskBinding && (

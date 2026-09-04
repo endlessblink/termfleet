@@ -9340,6 +9340,35 @@ same fallback-aware live predicate, and the panel shows the direct cause as
 
 User approval remains required before marking this goal complete.
 
+**Follow-up, 2026-09-03:** The active Workstream Quest now marks its live Map
+card with a restrained animated outline and reveals the current quest on card or
+emoji hover. Earning a milestone shows a brief, dismissible `Quest complete`
+celebration; reduced-motion users retain the message without the effects.
+Focused browser checks passed for the active-card hover and completion reward,
+and `npm run release:install` plus `npm run verify:installed-release` promoted
+the immutable dock release. Fresh dock observation remains required before this
+follow-up can be marked complete.
+
+**Follow-up, 2026-09-04 — clearer quest state and milestones:** The quest panel
+now uses an icon-led 10m / 30m / 3h milestone rail, a single determinate timer,
+and a concise `counting` or `paused` state. The Map-card outline now runs only
+while all three required workstreams are live; pausing the timer retains the
+hover preview of the accepted quest without implying progress. Focused Playwright
+coverage passed 3/3 for the paused state, milestone rail, achievement reward, and
+Map hover. `npm run build`, `git diff --check`, release promotion, and
+`npm run verify:installed-release` passed. Fresh dock observation and the
+independent cockpit-goal challenge remain required before completion.
+
+**Follow-up, 2026-09-04 — reliable quest handoff and contained map reward:** A
+completed three-hour Workstream Quest now clears its active state and the
+top-right Quest hover shows the next unfinished quest with a clear Start quest
+action. The map-card reward no longer rotates: it uses a clipped, reduced-motion
+safe pulse so it cannot draw diagonal lines beyond a terminal card. Focused
+Playwright coverage passed 11/11 for quest acceptance, the 180-minute handoff,
+hover, Escape, achievement feedback, and the two-frame contained-pulse check;
+the frontend build and map-terminal verifier passed. Immutable release promotion,
+installed verification, and fresh dock-visible hover confirmation remain required.
+
 ## 2026-08-28 — Combine Watchpost planning with reliable runtime supervision
 
 This local execution plan mirrors the TermFleet work represented by FEATURE-12
@@ -9529,6 +9558,17 @@ explicit backup restore remains available.
 frontend build, installed release promotion, and installed restart verification
 remain the required closeout gates; the real dock restart must confirm the killed
 conversation stays absent while untouched panes remain present.
+
+## 2026-09-04 — Keep terminal control faithful to the live daemon
+
+Terminal control now shows only tabs backed by the daemon's current PTY list;
+saved-only layout records no longer appear as live terminals. Recovery history
+remains available as a separate, deduplicated review list. Returning from Work
+Monitor now restores the active terminal's project and exact tab first.
+
+**Evidence:** 35 focused browser checks, frontend build, release promotion, and
+installed-release verification passed. A fresh dock-visible interaction review
+is still required before this is marked complete.
 
 ## 2026-08-15 — Make explicit terminal close ownership survive installed restart
 

@@ -1,6 +1,7 @@
 import { CSSProperties, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Activity, Folder, Gauge, Layers3, Server, TerminalSquare } from "lucide-react";
+import { Activity, CirclePlay, Folder, Gauge, Layers3, Server, TerminalSquare } from "lucide-react";
+import { OPEN_WORKSTREAM_QUEST_EVENT } from "./GamificationPanel";
 import { useWorkspaceStore } from "../stores/workspace";
 import type { TerminalRuntimeStatus } from "../lib/types";
 import { pathTail, projectNameFor, projectRootFor, projectSessionCount } from "../lib/projectDisplay";
@@ -206,6 +207,17 @@ export function StatusBar() {
             {terminalCount} {terminalCount === 1 ? "pty" : "ptys"}
           </span>
         </span>
+        <button
+          type="button"
+          data-testid="gamification-status-trigger"
+          aria-label="Open Workstream Quest"
+          title="Open Workstream Quest"
+          style={{ ...styles.chip, border: 0, cursor: "pointer", fontFamily: "var(--font-ui)" }}
+          onClick={() => window.dispatchEvent(new Event(OPEN_WORKSTREAM_QUEST_EVENT))}
+        >
+          <CirclePlay size={12} strokeWidth={1.8} color="var(--accent-live)" style={styles.icon} />
+          <span style={{ color: "var(--text-primary)", fontWeight: 500 }}>Workstream quest</span>
+        </button>
         {recoveryTotal > 0 && (
           <span
             style={styles.chip}

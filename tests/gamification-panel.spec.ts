@@ -11,27 +11,59 @@ test("progress panel requires acceptance before the live quest begins", async ({
   await trigger.click();
   const panel = page.getByTestId("gamification-panel");
   await expect(panel).toContainText("Workstream quest");
-  await expect(panel).toContainText("Hold the line");
-  await expect(panel).toContainText("A 10-minute live run");
-  await expect(panel).toContainText("Accept this quest to light up the terminals that count");
+  await expect(panel).toContainText("Keep 3 workstreams running for 10 minutes");
+  await expect(panel.getByTestId("gamification-milestone-rail")).toContainText("10m");
+  await expect(panel.getByTestId("gamification-milestone-rail")).toContainText("30m");
+  await expect(panel.getByTestId("gamification-milestone-rail")).toContainText("3h");
   await page.getByTestId("gamification-accept").click();
   await expect(panel).toBeVisible();
-  await expect(panel).toContainText("Quest accepted");
+  await expect(panel.getByTestId("gamification-active-count")).toContainText("Paused");
+  await expect(panel.getByTestId("gamification-active-count")).toContainText("add 2 live terminals");
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem("termfleet.gamification.v6") ?? "null").activeQuestId)).toBe("parallel-work");
-  await expect(panel).toContainText("Next milestone: 10 minutes");
   await expect(page.getByTestId("gamification-accept")).toHaveCount(0);
   await expect(panel).toContainText("0:00 / 10:00");
-  await expect(panel).toContainText("Next: 30 minutes, then 3 hours");
   await expect(panel).not.toContainText("Recent receipts");
   await expect(panel.getByTestId("gamification-focus-finish-goal")).toHaveCount(0);
   await trigger.press("Escape");
   await expect(panel).toBeHidden();
   await trigger.click();
-  await expect(page.getByTestId("gamification-panel")).toContainText("Next milestone: 10 minutes");
+  await expect(page.getByTestId("gamification-panel")).toContainText("0:00 / 10:00");
   await trigger.press("Escape");
   await page.reload({ waitUntil: "domcontentloaded" });
   await page.getByTestId("gamification-trigger").click();
-  await expect(page.getByTestId("gamification-panel")).toContainText("Next milestone: 10 minutes");
+  await expect(page.getByTestId("gamification-panel")).toContainText("0:00 / 10:00");
+});
+
+test("the dock status bar keeps Workstream Quest visible and opens its panel", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  const statusTrigger = page.getByTestId("gamification-status-trigger");
+  await expect(statusTrigger).toBeVisible({ timeout: 20000 });
+  await expect(statusTrigger).toContainText("Workstream quest");
+  await statusTrigger.click();
+  await expect(page.getByTestId("gamification-panel")).toBeVisible();
+  await expect(page.getByTestId("gamification-panel")).toContainText("Workstream quest");
+});
+
+test("hovering Quest shows the active quest and offers the next quest after 180 minutes", async ({ page }) => {
+  const now = Date.now();
+  await page.addInitScript((seed) => {
+    localStorage.setItem("termfleet.gamification.v6", JSON.stringify(seed));
+  }, {
+    version: 6, events: [], ignoredEventIds: [], maxActiveWorkstreams: 3,
+    baselineActiveWorkstreams: 3, parallelWorkstreamStartedAt: now - 10_800_000,
+    parallelWorkstreamSeconds: 10_800, parallelBestSeconds: 10_800,
+    activeQuestId: "parallel-work", questAcceptedAt: now - 10_800_000,
+    initializedAt: now - 10_800_000, updatedAt: now,
+  });
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  const trigger = page.getByTestId("gamification-trigger");
+  await expect(trigger).toContainText("Quest", { timeout: 20000 });
+  await trigger.hover();
+  const panel = page.getByTestId("gamification-panel");
+  await expect(panel).toBeVisible();
+  await expect(panel).toContainText("Finish the next tracked goal");
+  await expect(panel.getByTestId("gamification-accept")).toContainText("Start quest");
+  await expect(trigger).not.toContainText("180:00");
 });
 
 test("reset is explicit and preserves the workspace", async ({ page }) => {
@@ -45,7 +77,7 @@ test("reset is explicit and preserves the workspace", async ({ page }) => {
   await page.getByTestId("gamification-accept").click();
   await page.getByTestId("gamification-reset").click();
   await page.getByTestId("gamification-reset-confirm").click();
-  await expect(panel).toContainText("Accept quest");
+  await expect(panel).toContainText("Start quest");
   await expect(await page.evaluate(() => localStorage.getItem("terminal-workspace.v1"))).not.toBeNull();
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem("termfleet.gamification.v6") ?? "null").events.filter((event: { points: number }) => event.points > 0))).toEqual([]);
 });
@@ -91,6 +123,53 @@ test("migrates an accepted quest from the previous release profile key", async (
   });
   await page.reload({ waitUntil: "domcontentloaded" });
   await page.getByTestId("gamification-trigger").click();
-  await expect(page.getByTestId("gamification-panel")).toContainText("Next milestone: 10 minutes");
+  await expect(page.getByTestId("gamification-panel")).toContainText("0:00 / 10:00");
   expect(await page.evaluate(() => localStorage.getItem("termfleet.gamification.v6"))).not.toBeNull();
+});
+
+test("finishing a Workstream Quest celebrates the earned milestone", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.evaluate(() => {
+    localStorage.removeItem("terminal-workspace.v1");
+    localStorage.removeItem("terminal-workspace.test");
+    localStorage.removeItem("termfleet.gamification.v6");
+  });
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(page.locator(".terminal-block-shell").first()).toBeVisible({ timeout: 20000 });
+  await page.getByRole("button", { name: "Split right" }).first().click();
+  await page.getByRole("button", { name: "Split right" }).last().click();
+  await expect(page.locator(".terminal-block-shell")).toHaveCount(3, { timeout: 20000 });
+  await page.waitForTimeout(600);
+  await page.evaluate(() => {
+    const workspaceKey = Object.keys(localStorage).find((key) => key.startsWith("terminal-workspace."));
+    if (!workspaceKey) throw new Error("workspace key was not persisted");
+    const raw = localStorage.getItem(workspaceKey);
+    if (!raw) throw new Error("workspace was not persisted");
+    const workspace = JSON.parse(raw) as { tabs: Array<{ terminals: Array<Record<string, unknown>> }> };
+    workspace.tabs.flatMap((tab) => tab.terminals).forEach((terminal, index) => {
+      terminal.status = "running";
+      terminal.taskLineup = [{ id: `quest-${index}`, content: `Tracked work ${index + 1}`, status: "in_progress", source: "operator", updatedAt: Date.now() }];
+    });
+    localStorage.setItem(workspaceKey, JSON.stringify(workspace));
+    const now = Date.now();
+    localStorage.setItem("termfleet.gamification.v6", JSON.stringify({
+      version: 6, events: [], ignoredEventIds: [], maxActiveWorkstreams: 3,
+      baselineActiveWorkstreams: 3, parallelWorkstreamStartedAt: now - 599_000,
+      parallelWorkstreamSeconds: 599, parallelBestSeconds: 599,
+      activeQuestId: "parallel-work", questAcceptedAt: now - 599_000,
+      initializedAt: now - 599_000, updatedAt: now,
+    }));
+  });
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(page.locator('.terminal-block-shell[data-quest-active="true"]')).toHaveCount(3, { timeout: 20000 });
+  await page.getByTestId("gamification-trigger").click();
+  const celebration = page.getByTestId("gamification-quest-complete");
+  await page.evaluate(() => {
+    const record = JSON.parse(localStorage.getItem("termfleet.gamification.v6") ?? "null");
+    localStorage.setItem("termfleet.gamification.v6", JSON.stringify({ ...record, parallelWorkstreamSeconds: 600, parallelBestSeconds: 600, updatedAt: Date.now() }));
+    window.dispatchEvent(new Event("termfleet-gamification-changed"));
+  });
+  await expect(celebration).toBeVisible({ timeout: 5000 });
+  await expect(celebration).toContainText("Milestone earned");
+  await expect(celebration).toContainText("Parallel warm-up");
 });

@@ -664,21 +664,6 @@ export function TerminalComponent({
       questTerminalState &&
       isLiveWorkstreamTerminal(questTerminalState),
   );
-  useEffect(() => {
-    const shell = questShellRef.current;
-    if (!shell || !questTerminalQualifies) return;
-    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (reducedMotion) return;
-    let frame = 0;
-    const startedAt = performance.now();
-    const tick = (now: number) => {
-      const angle = ((now - startedAt) / 5800) * 360;
-      shell.style.setProperty("--termfleet-quest-angle", `${angle % 360}deg`);
-      frame = requestAnimationFrame(tick);
-    };
-    frame = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frame);
-  }, [questTerminalQualifies]);
   // TC-017g: the headless-VT + Canvas2D renderer is now the production desktop
   // terminal — it replaces xterm.js in the Tauri app. xterm.js remains ONLY the
   // browser-preview fallback (no Tauri runtime). `auto` and `canvas2d` both use
