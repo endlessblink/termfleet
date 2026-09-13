@@ -12,7 +12,7 @@ const codeShape = (text: string | undefined) =>
     .replace(/,([)\]}])/g, "$1");
 
 test.use({
-  viewport: { width: 1440, height: 920 },
+  viewport: { width: 1280, height: 720 },
   launchOptions: {
     executablePath: "/usr/bin/chromium",
     args: ["--disable-crash-reporter", "--disable-crashpad", "--disable-gpu"],
@@ -1828,7 +1828,6 @@ test("high token pressure is unmistakable on the expanded map terminal header", 
     });
   await page.screenshot({
     path: "test-results/map-token-budget-critical.png",
-    fullPage: true,
   });
 });
 

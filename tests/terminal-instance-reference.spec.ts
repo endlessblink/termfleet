@@ -21,7 +21,7 @@ test.describe("terminal instance references", () => {
     const artifactPath = process.env.TERMFLEET_DESIGN_ARTIFACT;
     test.skip(!artifactPath, "Design evidence capture is opt-in");
     await page.goto("http://127.0.0.1:5177/");
-    await page.screenshot({ path: artifactPath, fullPage: true });
+    await page.screenshot({ path: artifactPath });
   });
 
   test("builds a stable pane code", () => {

@@ -168,6 +168,6 @@ test.describe("Git work monitor contract", () => {
     await expect(page.getByTestId("git-monitor-view")).toBeVisible();
     await page.setViewportSize({ width: 390, height: 844 });
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-    await page.screenshot({ path: "/tmp/termfleet-git-monitor-narrow.png", fullPage: true });
+    await page.screenshot({ path: "/tmp/termfleet-git-monitor-narrow.png" });
   });
 });

@@ -17,7 +17,7 @@ test("agent workspace cards use the project root instead of a stale cwd label", 
 });
 
 test.use({
-  viewport: { width: 1440, height: 920 },
+  viewport: { width: 1280, height: 720 },
   launchOptions: {
     executablePath: "/usr/bin/chromium",
     args: ["--disable-crash-reporter", "--disable-crashpad", "--disable-gpu"],
@@ -232,7 +232,6 @@ test("a high-token chat gets a strong rail and a live model recommendation", asy
   await expect(page.getByTestId("terminal-token-budget-rail")).toBeVisible();
   await page.screenshot({
     path: "test-results/token-budget-critical.png",
-    fullPage: true,
   });
 });
 
@@ -2976,7 +2975,6 @@ test("command palette creates a supervised Codex agent on the map", async ({
 
   await page.screenshot({
     path: test.info().outputPath("agent-workstream-map.png"),
-    fullPage: true,
   });
 });
 

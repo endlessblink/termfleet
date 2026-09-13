@@ -10,6 +10,10 @@ export default defineConfig({
   workers: 1,
   reporter: "line",
   timeout: 60_000,
+  use: {
+    viewport: { width: 1280, height: 720 },
+    deviceScaleFactor: 1,
+  },
   webServer: {
     command: "npm run review",
     url: "http://127.0.0.1:5177/",

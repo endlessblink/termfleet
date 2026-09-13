@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 test.use({
-  viewport: { width: 1440, height: 920 },
+  viewport: { width: 1280, height: 720 },
   launchOptions: {
     executablePath: "/usr/bin/chromium",
     args: ["--disable-crash-reporter", "--disable-crashpad", "--disable-gpu"],
@@ -65,7 +65,7 @@ test("terminal split and map flows remain usable", async ({ page }) => {
   await expect.poll(() => hasBrowserOutputLine(page, "FLOW_OK_123")).toBe(true);
   const firstPtyId = await browserPtyIdContaining(page, "FLOW_OK_123");
   expect(firstPtyId).not.toBeNull();
-  await page.screenshot({ path: "docs/visual-baselines/tc-008-terminal-typed-command.png", fullPage: true });
+  await page.screenshot({ path: "docs/visual-baselines/tc-008-terminal-typed-command.png" });
 
   await page.keyboard.press("ControlOrMeta+K");
   await page.getByRole("textbox", { name: "Workspace command" }).fill("split right");
@@ -78,7 +78,7 @@ test("terminal split and map flows remain usable", async ({ page }) => {
   await expect.poll(() => hasBrowserOutputLine(page, "SPLIT_OK_234")).toBe(true);
   const activeSplitPtyId = await browserPtyIdContaining(page, "SPLIT_OK_234");
   expect(activeSplitPtyId).not.toBeNull();
-  await page.screenshot({ path: "docs/visual-baselines/tc-009-terminal-split-right.png", fullPage: true });
+  await page.screenshot({ path: "docs/visual-baselines/tc-009-terminal-split-right.png" });
 
   await showTerminalOnMap.first().click();
   await expect(page.locator(".terminal-container:visible")).toHaveCount(1);
@@ -94,7 +94,7 @@ test("terminal split and map flows remain usable", async ({ page }) => {
     const snapshot = await browserPtySnapshot(page);
     return activeSplitPtyId ? snapshot[activeSplitPtyId]?.subscribers ?? 0 : 0;
   }).toBe(1);
-  await page.screenshot({ path: "docs/visual-baselines/tc-010-map-linked-terminal.png", fullPage: true });
+  await page.screenshot({ path: "docs/visual-baselines/tc-010-map-linked-terminal.png" });
 
   await openTerminalSurface.first().click();
   await expect(openTerminalSurface.first()).toBeVisible();
@@ -116,7 +116,7 @@ test("terminal split and map flows remain usable", async ({ page }) => {
   await showTerminalOnMap.last().click();
   await expect(page.locator(".terminal-container:visible")).toHaveCount(2);
   await expect(page.getByText("Open full terminal for shell work")).toHaveCount(0);
-  await page.screenshot({ path: "docs/visual-baselines/tc-011-new-terminal-session.png", fullPage: true });
+  await page.screenshot({ path: "docs/visual-baselines/tc-011-new-terminal-session.png" });
 
   await page.getByRole("button", { name: "Close Terminal" }).last().click();
   await expect(page.locator(".workspace-sidebar-row")).toHaveCount(1);
@@ -126,7 +126,7 @@ test("terminal split and map flows remain usable", async ({ page }) => {
     const snapshot = await browserPtySnapshot(page);
     return newSessionPtyId ? snapshot[newSessionPtyId] ?? null : null;
   }).toBeNull();
-  await page.screenshot({ path: "docs/visual-baselines/tc-012-map-close-session.png", fullPage: true });
+  await page.screenshot({ path: "docs/visual-baselines/tc-012-map-close-session.png" });
 
   await openTerminalSurface.first().click();
   await expect(openTerminalSurface.first()).toBeVisible();
@@ -144,7 +144,7 @@ test("terminal split and map flows remain usable", async ({ page }) => {
   }).toBeNull();
   await typeTerminalCommand(page, "echo AFTER_TERMINAL_CLOSE_OK_901");
   await expect.poll(() => hasBrowserOutputLine(page, "AFTER_TERMINAL_CLOSE_OK_901")).toBe(true);
-  await page.screenshot({ path: "docs/visual-baselines/tc-013-terminal-section-close-session.png", fullPage: true });
+  await page.screenshot({ path: "docs/visual-baselines/tc-013-terminal-section-close-session.png" });
 });
 
 test("project session can be created without using files first", async ({ page }) => {
@@ -199,10 +199,10 @@ test("project context follows header, sidebar, command palette, and map switchin
   await expect(page.locator(".workspace-sidebar-row")).toHaveCount(1);
   await expect(sidebar.getByText("Beta Project · browser-workspace/beta")).toBeVisible();
   await expect.poll(() => hasBrowserOutputLine(page, "ALPHA_STAYS_ALIVE")).toBe(true);
-  await page.screenshot({ path: "docs/visual-baselines/tc-052-project-context-terminal.png", fullPage: true });
+  await page.screenshot({ path: "docs/visual-baselines/tc-052-project-context-terminal.png" });
 
   await page.waitForTimeout(200);
-  await page.screenshot({ path: "docs/visual-baselines/tc-053-project-context-switcher.png", fullPage: true });
+  await page.screenshot({ path: "docs/visual-baselines/tc-053-project-context-switcher.png" });
   await projectTabs.getByRole("tab", { name: "Switch to Alpha Project" }).click();
   await expect(projectTabs.getByRole("tab", { name: "Switch to Alpha Project" })).toHaveAttribute("aria-selected", "true");
   await expect(page.locator(".workspace-sidebar-row")).toHaveCount(1);
@@ -221,7 +221,7 @@ test("project context follows header, sidebar, command palette, and map switchin
   await expect(page.getByRole("button", { name: "Open full terminal" }).first()).toBeVisible();
   await expect(page.getByText("Alpha Project").first()).toBeVisible();
   await expect(page.getByText(/browser-workspace\/alpha/).first()).toBeVisible();
-  await page.screenshot({ path: "docs/visual-baselines/tc-054-project-context-map.png", fullPage: true });
+  await page.screenshot({ path: "docs/visual-baselines/tc-054-project-context-map.png" });
 });
 
 test("new terminal affordance supports plus button menu and keyboard creation", async ({ page }) => {
