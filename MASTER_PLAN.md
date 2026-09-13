@@ -5,12 +5,12 @@
 - [ ] Redesign the visible Task / Goal / Now context block so it has one stable hierarchy, consistent spacing, and a clear reading order instead of three unrelated panels.
 - [ ] Keep the active task pane-owned and stable while live Now activity changes; never let an opening request, project name, path, or canned waiting copy replace it.
 - [ ] Show an explicit, quiet missing state when the pane has no captured Goal; do not invent an answer to “about what.”
-- [ ] Preserve provenance in the rendered snapshot and add focused regressions for state transitions, missing context, and malformed opening-request text.
+- [x] Preserve provenance in the rendered snapshot and add focused regressions for state transitions, missing context, malformed opening-request text, and stale placeholder plan summaries.
 - [ ] Verify the rebuilt dock-launched application visually and run the Task / Goal / Now matrix before marking this complete.
 
 Acceptance: a non-technical observer can identify the current Task, captured Goal, and live Now state in one glance; each value remains stable or changes only when its owning evidence changes, and absent Goal evidence is visibly honest rather than synthesized.
 
-Implementation evidence so far: the map no longer uses a project-specific Task heuristic when pane evidence is absent; invalid Goal summaries are excluded from Goal selection; and agent Task / Goal / Now rows share a fixed label column, spacing, line height, and value scale. Focused context regressions passed 4/4, `npm run build`, `npm run release:install`, and installed release verification passed. The live matrix still reports 25 panes with stale malformed runtime snapshots, so visual/runtime acceptance remains open.
+Implementation evidence so far: the map no longer uses a project-specific Task heuristic when pane evidence is absent; invalid Goal summaries are excluded from Goal selection; captured workstream and opening requests now supply pane-owned Goal context; stale placeholder plan summaries fall back only to a captured pane prompt; and agent Task / Goal / Now rows share a fixed label column, spacing, line height, and value scale. Eight focused provenance regressions passed, `npm run build`, `npm run release:install`, and installed release verification passed. After a UI-only relaunch, the live matrix improved from four failures to two; the remaining failures are shell-classified panes with no current pane-owned Goal capture, so visual/runtime acceptance remains open.
 
 ## 2026-09-06 — Correcting pressure alerts and refreshing the release
 

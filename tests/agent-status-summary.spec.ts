@@ -152,6 +152,32 @@ test("a pane's stored about-what Goal outranks project-wide recovery guesses", (
     "Keep the kill investigation focused on reconnecting this terminal",
   );
 });
+
+test("a placeholder plan summary falls back to the captured pane prompt", () => {
+  const summary = summaryFromSidecar(
+    {
+      provider: "codex",
+      cwd: "/workspace/bina",
+      userTask: "Confirm Bit payment grants course enrollment",
+      mainTask: "Steps None required.",
+      mainTaskSource: "plan-explanation",
+      now: "Answering latest prompt",
+      turn: "idle",
+    },
+    fallbackAgentStatusSummary({
+      mission: "Terminal",
+      provider: "codex",
+      status: "idle",
+      phase: "idle",
+      cwd: "/workspace/bina",
+      currentActivity: "Ready",
+    }),
+  );
+
+  expect(summary.mainTask).toBe("Confirm Bit payment grants course enrollment");
+  expect(summary.userTask).toBe("Confirm Bit payment grants course enrollment");
+  expect(summary.mainTask).not.toBe("Steps None required.");
+});
 import { deriveTerminalActivity } from "../src/lib/terminalActivity";
 import {
   normalizePersistedShellSummary,
@@ -373,6 +399,31 @@ test("does not promote tool-log labels or code query fragments into shell summar
   expect(summary.task).not.toBe("Search");
   expect(summary.now).not.toContain("terminalBody|liveTerminalBody");
   expect(summary.now).not.toBe("Awaiting terminal output");
+});
+
+test("does not let a placeholder persisted summary hide an agent pane request", () => {
+  const summary = getDisplaySummary(
+    {
+      mission: "Repairing the Lifeboat completion check",
+      prompt: "Repair the Lifeboat completion check and verify the result",
+      userTask: "Repairing the Lifeboat completion check",
+      provider: "codex",
+      status: "running",
+      cwd: "/repo/lifeboat-live",
+      terminalVisibleText: "Pursuing goal (1m)\nWorking (1m • esc to interrupt)",
+    },
+    {
+      task: "Task not captured",
+      path: "/repo/lifeboat-live",
+      now: "Idle — no work is running",
+      status: "idle",
+      provider: "codex",
+      confidence: "high",
+    },
+  );
+
+  expect(summary.task).toBe("Repairing the Lifeboat completion check");
+  expect(summary.task).not.toBe("Task not captured");
 });
 
 test("keeps Playwright shell summaries stable on the test identity", () => {

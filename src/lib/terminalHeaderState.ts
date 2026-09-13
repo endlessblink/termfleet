@@ -299,7 +299,7 @@ export function buildTerminalHeaderState(input: {
     }).ok
       ? {
           text: persistedMainTask,
-          source: "status-sidecar",
+           source: "terminal-prompt",
           updatedAt: input.statusSummary?.updatedAt ?? Date.now(),
         }
       : undefined;
@@ -412,20 +412,24 @@ export function buildTerminalHeaderState(input: {
       input.statusSummary?.mainTaskSource === "opening-request" ||
       input.statusSummary?.mainTaskSource === "about-what") &&
     input.statusSummary.mainTask &&
-    qualityCheckGoalLabel(input.statusSummary.mainTask, {
-      allowAboutWhatVoice: true,
-      allowTrustedAboutWhat: statusSummaryHasAboutWhat,
-      maxLength: 150,
-    }).ok &&
-    isPaneGoalCandidate(
-      input.statusSummary.mainTask,
-      view.taskDescription.text,
-      statusSummaryHasAboutWhat,
-    )
+    (input.statusSummary.mainTaskSource === "opening-request" ||
+      qualityCheckGoalLabel(input.statusSummary.mainTask, {
+        allowAboutWhatVoice: true,
+        allowTrustedAboutWhat: statusSummaryHasAboutWhat,
+        maxLength: 150,
+      }).ok) &&
+     (input.statusSummary.mainTaskSource === "opening-request" ||
+       isPaneGoalCandidate(
+         input.statusSummary.mainTask,
+         view.taskDescription.text,
+         statusSummaryHasAboutWhat,
+       ))
       ? input.statusSummary.mainTask.trim()
       : undefined;
   const goalSource = explicitGoalText
-    ? goalSourceFrom("user-task", effectiveMainUserAsk)
+    ? input.statusSummary?.mainTaskSource === "opening-request"
+      ? "user-prompt"
+      : goalSourceFrom("user-task", effectiveMainUserAsk)
     : goalSourceFrom(view.taskDescription.source, effectiveMainUserAsk);
   const goalLabel = explicitGoalText ?? view.taskDescription.text;
   const normalizedContext = view.context.text.trim().toLowerCase();

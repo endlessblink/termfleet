@@ -73,6 +73,83 @@ test("keeps missing goal as state instead of rendering it as task content", () =
   expect(header.currentActivity).toBe("Idle — no work is running");
 });
 
+test("uses the pane workstream request when the sidecar has no goal", () => {
+  const header = buildTerminalHeaderState({
+    paneId: "pane-workstream-goal",
+    terminalId: "pty-workstream-goal",
+    project: { id: "g-hermes", name: "hermes", projectRoot: "/repo/hermes" },
+    liveCwd: "/repo/hermes/lifeboat-live",
+    terminalStatus: "running",
+    mainUserAsk: {
+      text: "Repair the Lifeboat completion check and verify the result",
+      source: "workstream",
+      updatedAt: 1000,
+    },
+    statusSummary: {
+      task: "Running completion check",
+      path: "/repo/hermes/lifeboat-live",
+      now: "Working",
+      status: "working",
+      provider: "codex",
+      confidence: "high",
+    },
+  });
+
+  expect(header.contextLabel).toBe("Repair the Lifeboat completion check and verify the result");
+  expect(header.sources.context).toBe("user-prompt");
+  expect(header.hasCapturedContext).toBe(true);
+});
+
+test("prefers the captured workstream request over its generic mission label", () => {
+  const header = buildTerminalHeaderState({
+    paneId: "pane-workstream-prompt",
+    terminalId: "pty-workstream-prompt",
+    project: { id: "g-hermes", name: "hermes", projectRoot: "/repo/hermes" },
+    liveCwd: "/repo/hermes",
+    terminalStatus: "running",
+    mainUserAsk: {
+      text: "Verify the completion check and report the result",
+      source: "workstream",
+      updatedAt: 1000,
+    },
+    statusSummary: {
+      task: "Working",
+      path: "/repo/hermes",
+      now: "Working",
+      status: "working",
+      provider: "codex",
+      confidence: "high",
+    },
+  });
+
+  expect(header.contextLabel).toBe("Verify the completion check and report the result");
+  expect(header.contextLabel).not.toMatch(/^(?:Task|Goal) not captured$/i);
+});
+
+test("uses an opening request carried by the sidecar as the pane Goal", () => {
+  const header = buildTerminalHeaderState({
+    paneId: "pane-opening-request-goal",
+    terminalId: "pty-opening-request-goal",
+    project: { id: "g-termfleet", name: "termfleet", projectRoot: "/repo/termfleet" },
+    liveCwd: "/repo/termfleet",
+    terminalStatus: "reconnected",
+    statusSummary: {
+      task: "Keep the cockpit honest about each agent's actual task and current work",
+      mainTaskSource: "opening-request",
+      path: "/repo/termfleet",
+      now: "Idle — no work is running",
+      status: "idle",
+      provider: "codex",
+      confidence: "high",
+    },
+  });
+
+  expect(header.contextLabel).toBe(
+    "Keep the cockpit honest about each agent's actual task and current work",
+  );
+  expect(header.hasCapturedContext).toBe(true);
+});
+
 test("does not promote a status-sidecar request into the pane Goal", () => {
   const header = buildTerminalHeaderState({
     paneId: "pane-task-derived-goal",

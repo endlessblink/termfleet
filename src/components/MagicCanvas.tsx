@@ -78,6 +78,7 @@ import { traceTerminalLatency } from "../lib/terminalLatencyTrace";
 import type {
   Tab,
   TaskLineupItem,
+  TerminalMainUserAsk,
   TerminalRuntimeStatus,
   WorkstreamStatusSummary,
 } from "../lib/types";
@@ -3155,6 +3156,36 @@ function CanvasNodeViewImpl({
   ]);
   const terminalActivity =
     linkedTerminal?.durableActivity?.title ?? linkedTerminal?.currentActivity;
+  const terminalWorkstreamAskText =
+    workstream?.kind === "agent"
+      ? [workstream.prompt, workstream.mission, workstream.taskLine?.text]
+          .map((value) => value?.replace(/\s+/g, " ").trim())
+          .find(
+            (value) =>
+              Boolean(value) &&
+              !/^(?:Task|Goal|Context|Activity) not captured(?: for this pane)?$/i.test(
+                value ?? "",
+              ),
+          )
+      : undefined;
+  const terminalWorkstreamAsk: TerminalMainUserAsk | undefined =
+    terminalWorkstreamAskText
+      ? {
+          text: terminalWorkstreamAskText,
+          source: "workstream",
+          updatedAt:
+            workstream?.activityUpdatedAt ??
+            workstream?.taskLine?.capturedAt ??
+            Date.now(),
+        }
+      : undefined;
+  const terminalStoredMainUserAskApplies = Boolean(
+    linkedTerminal?.mainUserAsk &&
+    (!linkedTerminal.mainUserAsk.runId ||
+      !linkedTerminal.activeRunId ||
+      linkedTerminal.mainUserAsk.runId === linkedTerminal.activeRunId ||
+      linkedTerminal.mainUserAsk.source === "status-sidecar"),
+  );
   // Prefer the live cwd (polled from the PTY) over the initial cwd so the
   // breadcrumb tracks `cd`/`z`; falls back to the spawn cwd before the first poll.
   const resolvedTerminalRoot = liveTerminalRoot ?? terminalRoot;
@@ -3233,8 +3264,14 @@ function CanvasNodeViewImpl({
 
   const terminalExtractedSummary = getDisplaySummary(
     {
-      mission: "Terminal",
-      provider: "shell",
+      mission: workstream?.mission ?? "Terminal",
+      prompt: workstream?.prompt,
+      userTask:
+        (terminalStoredMainUserAskApplies
+          ? linkedTerminal?.mainUserAsk?.text
+          : undefined) ?? terminalWorkstreamAskText,
+      provider:
+        workstream?.provider ?? linkedTerminal?.agentProvider ?? "shell",
       status:
         linkedTerminal?.status === "failed"
           ? "failed"
@@ -3270,7 +3307,7 @@ function CanvasNodeViewImpl({
     stored: linkedTerminal?.purpose,
     workstreamTitle: linkedTerminal
       ? undefined
-      : workstream?.mission ?? workstream?.prompt,
+      : workstream?.prompt ?? workstream?.mission ?? workstream?.taskLine?.text,
     activeTaskTitle:
       purposeTaskLineup.find((item) => item.status === "in_progress")
         ?.content ?? purposeTaskLineup[0]?.content,
@@ -3369,13 +3406,6 @@ function CanvasNodeViewImpl({
             terminalDisplaySummaryBase.status === "idle"
           ? "Idle"
           : neutralHeaderTitle(linkedTerminal?.status);
-  const terminalStoredMainUserAskApplies = Boolean(
-    linkedTerminal?.mainUserAsk &&
-    (!linkedTerminal.mainUserAsk.runId ||
-      !linkedTerminal.activeRunId ||
-      linkedTerminal.mainUserAsk.runId === linkedTerminal.activeRunId ||
-      linkedTerminal.mainUserAsk.source === "status-sidecar"),
-  );
   const terminalHeaderTaskLineup: TaskLineupItem[] | undefined =
     directlyBoundTask
       ? [
@@ -3404,7 +3434,7 @@ function CanvasNodeViewImpl({
     activeRunId: linkedTerminal?.activeRunId,
     mainUserAsk: terminalStoredMainUserAskApplies
       ? linkedTerminal?.mainUserAsk
-      : undefined,
+      : terminalWorkstreamAsk,
     statusSummary: terminalStatusSummary,
     // Agent-kind tabs store the resolved line on the WORKSTREAM, shell tabs on the
     // terminal. Reading only one of the two is how a whole class of panes lost it.

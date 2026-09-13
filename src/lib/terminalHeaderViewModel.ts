@@ -1436,6 +1436,12 @@ export function buildShellTerminalHeaderViewModel(input: {
   // Goal is pane-specific context. A task or activity is not a Goal.
   const contextCandidate = [
     input.statusSummary?.mainTask,
+    input.statusSummary?.mainTaskSource === "opening-request"
+      ? input.statusSummary?.task
+      : undefined,
+    input.statusSummary?.mainTaskSource === "opening-request"
+      ? input.statusSummary?.userTask
+      : undefined,
     input.statusSummary?.tasksFromTodoWrite
       ? input.statusSummary?.userTask
       : undefined,
@@ -1452,6 +1458,12 @@ export function buildShellTerminalHeaderViewModel(input: {
       : undefined,
     input.mainUserAsk?.source === "terminal-prompt"
       ? input.mainUserAsk.text
+      : undefined,
+    input.mainUserAsk?.source === "workstream"
+      ? input.mainUserAsk.text
+      : undefined,
+    input.taskLine?.source === "opening-request"
+      ? input.taskLine.text
       : undefined,
     input.workstreamTitle,
     input.contextPurposeSource === "inferred" ? null : input.contextPurposeTitle,
@@ -1479,11 +1491,17 @@ export function buildShellTerminalHeaderViewModel(input: {
             input.statusSummary?.mainTaskSource ?? "",
           )) ||
         (value === input.statusSummary?.task &&
+          input.statusSummary?.mainTaskSource === "opening-request") ||
+        (value === input.statusSummary?.userTask &&
+          input.statusSummary?.mainTaskSource === "opening-request") ||
+        (value === input.taskLine?.text &&
+          input.taskLine?.source === "opening-request") ||
+        (value === input.statusSummary?.task &&
           /^(?:this\s+session\s+is\s+about|I['’]m\s+(?:diagnosing|building|making|fixing)|We['’]re\s+(?:making|building|fixing))\b/i.test(
             value,
           )) ||
         (value === input.mainUserAsk?.text &&
-          input.mainUserAsk?.source === "status-sidecar");
+          ["status-sidecar", "workstream"].includes(input.mainUserAsk?.source ?? ""));
       const isExplicitGoal =
         value === input.statusSummary?.mainTask ||
         value === input.mainUserAsk?.text ||
@@ -1499,13 +1517,16 @@ export function buildShellTerminalHeaderViewModel(input: {
           value,
         );
       return (
-        (isExplicitGoal
+        ((isExplicitGoal
           ? qualityCheckGoalLabel(value, {
                 allowAboutWhatVoice: isTrustedAboutWhat,
                 allowTrustedAboutWhat: isTrustedAboutWhat,
                 maxLength: isTrustedAboutWhat ? 150 : undefined,
               }).ok
-          : qualityCheckAuthoritativeTaskLabel(value).ok) &&
+          : qualityCheckAuthoritativeTaskLabel(value).ok) ||
+          (isAboutWhatGoal &&
+            input.statusSummary?.mainTaskSource === "opening-request" &&
+            value.split(/\s+/).length >= 8)) &&
           !/^(?:Writing|Testing|Verifying|Checking|Reviewing|Tracing|Running|Investigating|Auditing|Documenting|Recording)\b/i.test(value) &&
           !/\b(?:selected file|map surface|approval state|pilot gates?|test suite|regression)\b/i.test(value) &&
           !/^(?:works?\.?|run|running|testing|checking|verifying|fixing)\b/i.test(value) &&
@@ -1521,12 +1542,26 @@ export function buildShellTerminalHeaderViewModel(input: {
           (isExplicitGoal || !headerTextsEquivalent(value, taskDescriptionText))
        );
     });
+  const openingRequestContext =
+    input.statusSummary?.mainTaskSource === "opening-request"
+      ? input.statusSummary.mainTask ?? input.statusSummary.userTask ?? input.statusSummary.task
+      : undefined;
   const displayContext = contextCandidate
     ? qualifyAmbiguousLabel(contextCandidate, workspace)
-    : undefined;
+    : openingRequestContext
+      ? qualifyAmbiguousLabel(openingRequestContext, workspace)
+      : undefined;
   const displayContextSource =
     displayContext && displayContext === input.mainUserAsk?.text
       ? "user-prompt"
+      : displayContext &&
+          (displayContext === input.statusSummary?.mainTask ||
+            displayContext === input.statusSummary?.task ||
+            displayContext === input.statusSummary?.userTask) &&
+          input.statusSummary?.mainTaskSource === "opening-request"
+        ? "user-prompt"
+      : displayContext && displayContext === input.taskLine?.text
+        ? "task-line"
       : displayContext && displayContext === input.statusSummary?.userTask
         ? "sidecar-todo"
         : "status-summary";

@@ -149,6 +149,24 @@ function explicitMainTask(sidecar: AgentStatusSidecar): string {
   }
   if (sidecar?.mainTaskSource) {
     const text = cleanText(sidecar.mainTask);
+    const capturedPrompt = cleanText(sidecar.userTask);
+    // Plan narration is frequently persisted as a truncated sentence or a
+    // placeholder after a prompt rollover. In that case the captured prompt is
+    // the only truthful pane-owned description available.
+    if (
+      sidecar.mainTaskSource === "plan-explanation" &&
+      (isNonDescriptiveTaskText(text) || /[,;:]$/.test(text)) &&
+      capturedPrompt &&
+      !isNonDescriptiveTaskText(capturedPrompt) &&
+      !isMetaOpeningRequest(capturedPrompt) &&
+      qualityCheckGoalLabel(capturedPrompt, {
+        allowAboutWhatVoice: true,
+        allowTrustedAboutWhat: true,
+        maxLength: 220,
+      }).ok
+    ) {
+      return capturedPrompt;
+    }
     const taskDerivedOpeningRequest =
       sidecar.mainTaskSource === "opening-request" &&
       (/^(?:works?\.?|run|running|testing|checking|verifying|fixing)\b/i.test(text) ||
@@ -214,7 +232,7 @@ function todoToTaskText(
 function isNonDescriptiveTaskText(value: unknown): boolean {
   const text = cleanText(value);
   return (
-    /^(?:Answering latest prompt|Answering user question|Prompt submitted|resume goal|go|continue|this|that|these|those|both|and this|and that|should we add (?:it|that))\??$/i.test(
+    /^(?:Answering latest prompt|Answering user question|Prompt submitted|Steps None required|resume goal|go|continue|this|that|these|those|both|and this|and that|should we add (?:it|that))[.!?]*$/i.test(
       text,
     ) ||
     /^\[(?:Image|Screenshot|File|Pasted)[^\]]*\]$/i.test(text) ||

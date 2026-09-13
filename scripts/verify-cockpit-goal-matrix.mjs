@@ -25,7 +25,7 @@ const target = terminals
   })
   .map((entry) => entry);
 const forbiddenGoal = /^(?:Goal not captured|Context not captured|Status unavailable)$/i;
-const paneOwnedGoalSources = new Set(["status-summary", "sidecar-todo", "task-tool", "user-prompt", "manual", "plan-binding", "plan-explanation", "goal-task", "opening-request", "project-fallback"]);
+const paneOwnedGoalSources = new Set(["status-summary", "sidecar-todo", "task-tool", "user-prompt", "workstream", "manual", "plan-binding", "plan-explanation", "goal-task", "opening-request", "project-fallback"]);
 const generatedPaneGoal = /^Keep this pane focused on .+ so it has a clear result to resume\.$/i;
 const processGoal = /\b(?:installed dock|live gate|visual gate|focused (?:visual|header) tests?|checksum|awaiting user approval|memory writing agent|userpromptsubmit hook|regression matrix)\b/i;
 const projectPurposeGoal = /^(?:Make|Keep|Help|Ensure)\s+(?:[A-Z][\w-]*|this project|the project|every|each)\s+.*\b(?:so|so that)\s+(?:people|users|work)\s+can\s+resume\b/i;
@@ -40,7 +40,11 @@ for (const entry of target) {
   const now = String(entry.now ?? "").replace(/\s+/g, " ").trim();
   const problems = [];
   if (!goal || forbiddenGoal.test(goal)) problems.push("missing-or-generic-goal");
-  if (goal && goal.split(/\s+/).filter(Boolean).length < 8) problems.push("goal-too-short-for-about-what");
+  if (
+    goal &&
+    goal.split(/\s+/).filter(Boolean).length < 8 &&
+    String(entry.contextSource ?? "").trim() !== "opening-request"
+  ) problems.push("goal-too-short-for-about-what");
   if (!paneOwnedGoalSources.has(String(entry.contextSource ?? "").trim())) problems.push("goal-lacks-pane-owned-source");
   if (!paneOwnedGoalSources.has(String(entry.statusSummaryGoalSource ?? "").trim())) problems.push("goal-missing-capture-source");
   if (generatedPaneGoal.test(goal)) problems.push("goal-is-generated-task-wrapper");

@@ -100,6 +100,12 @@ function isNoisyActivity(value?: string | null) {
   return NOISY_ACTIVITY_PATTERNS.some((pattern) => pattern.test(text));
 }
 
+function isPlaceholderSummaryText(value?: string | null) {
+  return /^(?:Task|Goal|Context|Activity) not captured(?: for this pane)?$/i.test(
+    cleanText(value) ?? "",
+  );
+}
+
 /**
  * Clean a raw terminal transcript before it is sent to the status summarizer:
  * drop prompt chrome / spinner noise and collapse consecutive duplicate lines so
@@ -533,7 +539,13 @@ export function displayAgentStatusSummary(
   const path = cleanText(persisted?.path);
   const now = cleanText(persisted?.now);
   const persistedUsable =
-    Boolean(task && path && now) && !isNoisyActivity(task) && !isNoisyActivity(path) && !isNoisyActivity(now);
+    Boolean(task && path && now) &&
+    !isPlaceholderSummaryText(task) &&
+    !isPlaceholderSummaryText(path) &&
+    !isPlaceholderSummaryText(now) &&
+    !isNoisyActivity(task) &&
+    !isNoisyActivity(path) &&
+    !isNoisyActivity(now);
   // A fresh, confident persisted summary (e.g. the sidecar worker reporting the
   // agent's REAL current activity/todos) wins over the local heuristic — even for
   // shells, where the heuristic is often "high" confidence but generic.
