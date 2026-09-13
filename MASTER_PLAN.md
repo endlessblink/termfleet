@@ -1,5 +1,37 @@
 # MASTER_PLAN.md - termfleet
 
+## 2026-09-13 — Make Task, Goal, and Now read as one coherent context
+
+- [ ] Redesign the visible Task / Goal / Now context block so it has one stable hierarchy, consistent spacing, and a clear reading order instead of three unrelated panels.
+- [ ] Keep the active task pane-owned and stable while live Now activity changes; never let an opening request, project name, path, or canned waiting copy replace it.
+- [ ] Show an explicit, quiet missing state when the pane has no captured Goal; do not invent an answer to “about what.”
+- [ ] Preserve provenance in the rendered snapshot and add focused regressions for state transitions, missing context, and malformed opening-request text.
+- [ ] Verify the rebuilt dock-launched application visually and run the Task / Goal / Now matrix before marking this complete.
+
+Acceptance: a non-technical observer can identify the current Task, captured Goal, and live Now state in one glance; each value remains stable or changes only when its owning evidence changes, and absent Goal evidence is visibly honest rather than synthesized.
+
+Implementation evidence so far: the map no longer uses a project-specific Task heuristic when pane evidence is absent; invalid Goal summaries are excluded from Goal selection; and agent Task / Goal / Now rows share a fixed label column, spacing, line height, and value scale. Focused context regressions passed 4/4, `npm run build`, `npm run release:install`, and installed release verification passed. The live matrix still reports 25 panes with stale malformed runtime snapshots, so visual/runtime acceptance remains open.
+
+## 2026-09-06 — Correcting pressure alerts and refreshing the release
+
+- [x] Reproduce the stale frontend checksum and the notification that promises disabled recovery.
+- [x] Share recovery eligibility between the watchdog message and action; 16 watchdog tests pass, including eight previously failing cases.
+- [x] Rebuild and promote the desktop release; installed checksum verification passes.
+- [x] Verify the corrected installed monitoring service and release wiring after dock relaunch.
+- [ ] Confirm the cockpit is visibly responsive and observe the corrected notification during a real incident.
+
+Read-only visual inspection: `/tmp/termfleet-dock-visual-20260906.png`, SHA256 `661440fa8062673e1807b1c07897a0e7bcf3563682f6530aed8126f9ee2e251c`, shows the dock map, sidebar and terminal buffers. Static capture does not prove keyboard response. The UI also shows sync attention and six reconnected / one exited; no all-pane recovery claim is made.
+
+Evidence: `npm run doctor` initially failed release freshness by 20 minutes; `npm run verify:installed-release` initially rejected the frontend checksum. `npm run release:install` and subsequent installed verification passed. PID 1189793 returned from reported D state to Sl without a recorded recycle; host I/O PSI avg10 was 0.05 at diagnosis. The existing combined installed-release/watchdog suite had four failures and four errors in release launcher assertions; isolated watchdog suite passed 16/16. `git diff --check` passed; ShellCheck is unavailable. The corrected installed watchdog matches source SHA256 `0eecdfe70b2b39ebd31c5669326487abefb3fd196f4763513750d46d364a5735`, and its service is active. Dock relaunch at 09:09:20 produced `DOCTOR_OK`; daemon PID 19103 and seven live sessions remained unchanged. No terminal daemon was stopped. The underlying host I/O stall and live notification remain unverified.
+
+## 2026-09-05 — Make quests and map terminals respond immediately
+
+- [x] Make a Workstream Quest begin its timer only after the player starts it.
+- [x] Make map terminal connection show the already-linked terminal while saved-chat recovery completes.
+- [ ] Inspect both actions in the rebuilt dock application.
+
+Focused proof: `npx playwright test tests/gamification.spec.ts tests/gamification-panel.spec.ts tests/gamification-quest-beam.spec.ts tests/map-terminal-rendering.spec.ts --grep 'starts the workstream timer|tracks three active|promotes the sustained|desktop map connect mounts' --reporter=line` passed 4/4; `npm run build`, `npm run verify:map-terminals`, `node scripts/verify-impeccable-gamification.mjs`, `npm run release:install`, and `npm run verify:installed-release` passed. The installed map-connect probe attached and wrote through a fresh PTY, but desktop screenshot capture was unavailable. The dock visual check remains pending a safe app relaunch; no daemon or terminal session was stopped.
+
 ## Reliability work in progress — 2026-08-30
 
 - [x] Stop stale terminal-pane subscriptions from generating repeated Broken pipe errors after a client closes.
@@ -9571,16 +9603,47 @@ frontend build, installed release promotion, and installed restart verification
 remain the required closeout gates; the real dock restart must confirm the killed
 conversation stays absent while untouched panes remain present.
 
-## 2026-09-04 — Keep terminal control faithful to the live daemon
+## 2026-09-08 — Keep phone and desktop terminal control faithful to the live daemon
 
-Terminal control now shows only tabs backed by the daemon's current PTY list;
-saved-only layout records no longer appear as live terminals. Recovery history
-remains available as a separate, deduplicated review list. Returning from Work
-Monitor now restores the active terminal's project and exact tab first.
+TermControl now reconciles the daemon's complete live PTY list with the desktop
+sidebar authority, synthesizes ordinary shell panes that have no agent sidecar,
+removes stale and duplicate rows, and preserves the exact user-controlled desktop
+order on phone refresh. The mobile chat binds current permission choices, keeps
+the reply box usable, hides internal tool-hook chatter, and shows a ticking work
+duration with the five-hour and weekly limits. The fleet screen now opens with a
+collapsible **Needs you** panel whenever approvals are pending; each row names the
+requesting terminal and opens that exact conversation for review. A completed
+Codex transcript now overrides lagging status notifications, so a terminal that
+continues no longer leaves an obsolete request in this panel. A permission choice
+delivered from the popup is now recorded as the owner's answer in that pane's
+phone chat and stays at its real time, so newer agent replies cannot be hidden
+beneath an old answer. Returning from a conversation restores the exact terminal card or
+Needs you review row that opened it at its prior phone viewport position once,
+without overriding later user scrolling.
 
-**Evidence:** 35 focused browser checks, frontend build, release promotion, and
-installed-release verification passed. A fresh dock-visible interaction review
-is still required before this is marked complete.
+TermControl also classifies current Codex hook output and injected control
+envelopes as internal transcript plumbing. Those records no longer appear as
+assistant replies, while ordinary operator messages and agent updates remain.
+
+**Evidence:** the complete TermControl suite passed 188 checks; focused desktop
+ordering passed 5/5; the mobile parity verifier passed 15/15; frontend build and
+`verify:map-terminals` passed. A focused phone regression also proves that a
+permission arriving while the browser is dormant appears within 1.5 seconds of
+returning to the page. The expanded phone suite passes 41/41 including visible
+attention-panel layout, 44-pixel review targets, exact-review-row Back navigation,
+the delivered permission answer in chat, and chronological replies after approval; the
+bridge/browser, flow, and accessibility suites pass 67/67, 48/48, and 17/17.
+The focused hook-noise guard and live-feed assertion pass against the exact
+payloads; the public runtime read-back found zero known hook/control messages.
+The stale-permission regression failed before the repair and now passes; the
+Back-position regression returns within 0px, and the owner confirmed the deployed
+panel on the public phone surface.
+The running bridge serves the changed phone app directly from this checkout,
+and local/public routes are healthy without restarting any terminal process. The
+immutable desktop release was promoted and installed checksum verification passed
+for SHA256 `8da791f4168e83d1e1deccbe00343a3ef233eb46d740d488237ead1d8f8400c3`.
+An authenticated phone reload and one-tap answer read-back against a real desktop
+permission remain required for final visual verification.
 
 ## 2026-08-15 — Make explicit terminal close ownership survive installed restart
 
@@ -9598,3 +9661,53 @@ with an untouched control terminal, `/exit` with an untouched control terminal, 
 split-pane toolbar-X with a restart; the gate also captured the actual split-pane
 toolbar and rejected stale first-run cockpit snapshots. User approval remains the
 final acceptance gate.
+
+## 2026-09-08 — Map terminal control lane
+
+### TF-MAP-01 — Keep sidebar order stable and move map slots on explicit drag (IN PROGRESS)
+
+Use one persisted, project-grouped terminal order. Automatic layout, hydration,
+filtering, and map movement never reorder the sidebar; a same-project sidebar
+drag rotates only those terminals through their existing map positions.
+
+**Acceptance:** both map sidebars persist the same order, cross-project drops are
+rejected, unrelated geometry stays unchanged, and the installed dock release
+passes focused drag and restart read-back.
+
+**Current evidence:** focused desktop ordering passed 5/5, the frontend build and
+map-terminal verifier passed, and the immutable installed release verifies. The
+running dock app still predates that release, so relaunch and visual read-back are
+still pending.
+
+### TF-MAP-02 — Dictate into the selected map terminal (TODO)
+
+Capture Hebrew, English, or mixed speech locally, show an editable transcript,
+and insert it into the exact selected terminal without pressing Enter.
+
+**Depends on:** TF-MAP-01.
+
+**Acceptance:** microphone denial and target changes fail closed, transcription
+works offline after the verified model download, and installed input preserves
+exact pane identity and bracketed-paste behavior.
+
+### TF-MAP-03 — Jump directly to chosen terminals (TODO)
+
+Let the operator assign and use keyboard shortcuts for selected terminals while
+preserving per-pane identity even when several terminals share one project.
+
+**Depends on:** TF-MAP-01.
+
+**Acceptance:** assignments persist, conflicts are explained, shortcuts focus the
+exact pane from map or split mode, and editable terminal input is never stolen.
+
+### TF-MAP-04 — Review terminals waiting for the operator (TODO)
+
+Add an optional collapsible panel at the top of the cockpit that lists terminals
+waiting for input, review, or approval, with exact-pane focus and an explicit
+release or continue action backed by existing runtime status.
+
+**Depends on:** TF-MAP-03 and the existing per-pane status authority.
+
+**Acceptance:** hidden and empty states stay quiet, waiting reasons remain
+distinct, actions never target a different conversation, and installed live
+read-back matches daemon and sidecar state.

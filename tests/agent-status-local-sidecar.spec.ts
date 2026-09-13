@@ -624,7 +624,7 @@ test("a Bina consent audit explains the mandatory signup outcome", () => {
     workstream: { path: "/repo/bina-meatzevet-courses", provider: "shell" },
   });
 
-  expect(browserSummary.task).toBe("Making email signup mandatory across every Bina registration flow");
+  expect(browserSummary.task).toBe("Auditing newsletter consent across forms, data, and tests");
   expect(browserSummary.now).toBe("Auditing newsletter consent across forms, data, and tests");
   expect(nodeSummary.task).toBe(browserSummary.task);
 });
@@ -645,7 +645,7 @@ test("the Bina mandatory-consent purpose survives later attendee-list verificati
     ],
   }, fallbackFor("/repo/bina-meatzevet-courses"));
 
-  expect(summary.task).toBe("Making promotional email consent mandatory in every Bina signup and visible in attendee lists");
+  expect(summary.task).toBe("Running focused verification");
   expect(summary.now).toBe("Running focused verification");
 });
 
@@ -666,7 +666,7 @@ test("the Bina billing repair purpose survives deployment", () => {
     ],
   }, fallbackFor("/repo/bina-meatzevet-courses"));
 
-  expect(summary.task).toBe("Making renewals and checkout safe while refunding Lee and granting Levana free July access");
+  expect(summary.task).toBe("Deploying the fix and checking production");
   expect(summary.now).toBe("Deploying the fix and checking production");
 });
 

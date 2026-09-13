@@ -127,6 +127,14 @@ function isNonDescriptiveTaskText(value) {
   return /^(?:Answering latest prompt|Answering user question|Prompt submitted|go|continue|this|that|these|those|both|and this|and that|should we add (?:it|that))\??$/i.test(text);
 }
 
+// Opening prompts are often requests for a status explanation, not the pane's
+// durable objective. Keep those requests in activity evidence, never in Goal.
+function isMetaOpeningRequest(value) {
+  return /^(?:explain|describe|tell me|show me|what(?:'s| is| about)|how does|why did|give me|summari[sz]e|review|assess|check now|did it improve|what are you doing|what is it|go|continue|i(?:'m| am) not seeing|i do not see|in design(?: or| and)? implementation|in implemenation)\b/i.test(
+    cleanText(value),
+  );
+}
+
 function workingTaskFromCompleted(value, cwd) {
   const text = cleanText(value);
   const confirmed = text.match(/^Confirming\s+(.+?)\s+is\s+safely\s+completed$/i)?.[1];
@@ -254,17 +262,17 @@ export function summaryFromSidecar(sidecar, payload) {
   // raw tool activity, e.g. "Running: cd /long/path") as the title; that belongs only on
   // the activity line. (TC-033)
   const current = active ?? firstOpen;
+  const liveTask = cleanText(current?.activeForm || current?.content);
   const currentTask =
-    cleanText(current?.activeForm || current?.content) ||
+    liveTask ||
     (sidecar?.turn === "working"
       ? workingTaskFromCompleted(lastDone?.content, contextPath)
       : cleanText(lastDone?.content));
   const hasDeclaredTodos = Array.isArray(sidecar?.todos) && sidecar.todos.length > 0;
-  // A pane's own durable goal is authoritative. Folder-wide heuristics are only a
-  // recovery fallback; letting them run first makes one terminal's project guess
-  // overwrite another terminal's `$about-what` answer.
+  // A pane's own durable goal is authoritative. Folder-wide heuristics are not
+  // evidence and must never become a Goal or Task.
   // Only an answer to the explicit `$about-what` command is already a Goal.
-  // Other plan explanations remain evidence for pane-local outcome heuristics.
+  // Other plan explanations remain evidence, not a synthesized purpose.
   const hasAboutWhatAnswer = /^\$about-what$/i.test(cleanText(sidecar?.userTask));
   const explicitGoalCandidate =
     hasAboutWhatAnswer ||
@@ -276,7 +284,9 @@ export function summaryFromSidecar(sidecar, payload) {
   // answer is unusable. The honest result is an empty Goal, which the rendered
   // gate rejects and the operator can repair with the pane's actual context.
   const contaminatedAboutWhatGoal = "";
-  const inferredOutcome = inferredPlanOutcome(sidecar, fallback.path);
+  // A summary worker may only repeat evidence captured for this pane. Project paths,
+  // keywords, and task context are not sufficient provenance for a Goal.
+  const inferredOutcome = "";
   const explicitGoal = /^(?:The evidence review|Expanded|Independent review|Implemented|Fixed|Running|Deploying|The push|The issue was)\b/i.test(explicitGoalCandidate)
     ? ""
     : explicitGoalCandidate;
@@ -299,13 +309,13 @@ export function summaryFromSidecar(sidecar, payload) {
     narratedGoal ||
     inferredGoal ||
     legacyGoal ||
-    (!hasDeclaredTodos && openingGoalFromPrompt(sidecar?.userTask)) ||
-    (!hasDeclaredTodos
+    (!hasDeclaredTodos && !isMetaOpeningRequest(sidecar?.userTask) && openingGoalFromPrompt(sidecar?.userTask)) ||
+    (!hasDeclaredTodos && !isMetaOpeningRequest(sidecar?.userTask)
       ? cleanText(sidecar?.userTask)
       : "");
   const declaredUserTask = isNonDescriptiveTaskText(userTask) ? "" : userTask;
   const currentActivityTask = declaredUserTask && !isNonDescriptiveTaskText(now) ? now : "";
-  const activityTitle = (inferredGoal || aboutWhatGoal ? inferredGoal || aboutWhatGoal : sidecar?.mainTaskSource === "plan-explanation" ? currentTask || declaredUserTask : declaredUserTask || currentTask) || currentTask || currentActivityTask || fallback.task;
+  const activityTitle = (inferredGoal || aboutWhatGoal ? inferredGoal || aboutWhatGoal : liveTask || declaredUserTask || currentTask) || currentTask || currentActivityTask || fallback.task;
   return {
     ...fallback,
     provider: sidecar?.provider ?? fallback.provider,

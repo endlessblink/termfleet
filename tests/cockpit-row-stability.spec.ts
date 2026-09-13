@@ -48,15 +48,14 @@ const liveHeaderVerifier = readFileSync(
   "utf8",
 );
 
-test("map card headline row keeps a fixed height", () => {
+test("map card context rows use one compact visual rhythm", () => {
   const style = magicCanvas.match(
     /terminalStatusTitle:\s*\{[\s\S]*?\n {2}\},/,
   )?.[0];
   expect(style, "terminalStatusTitle style block").toBeTruthy();
-  expect(style).toMatch(/height:\s*\d+,/);
-  expect(style, "a minimum lets the row still grow").not.toMatch(
-    /minHeight:\s*\d+,/,
-  );
+  expect(style).toMatch(/padding:\s*"7px 0"/);
+  expect(style).toMatch(/background:\s*"transparent"/);
+  expect(style).toMatch(/borderTop:\s*"1px solid var\(--border-subtle\)"/);
 });
 
 test("map card headline row always renders a label and a value", () => {
@@ -74,7 +73,7 @@ test("map card headline row always renders a label and a value", () => {
   const style = magicCanvas.match(
     /terminalStatusTitle:\s*\{[\s\S]*?\n {2}\},/,
   )?.[0];
-  expect(style).toMatch(/height:\s*\d+,/);
+  expect(style).toMatch(/padding:\s*"8px 0 6px"/);
 });
 
 test("map card task line is a FIXED two-line box", () => {
@@ -202,10 +201,9 @@ test("canvas terminal Task keeps a concrete render-time fallback when stabilizat
     ").title || terminalHeaderTaskDescription || canvasTaskFallback;",
   );
   expect(magicCanvas).toContain('data-testid="canvas-terminal-node-task-row"');
-  expect(magicCanvas).toContain('data-testid="canvas-terminal-node-goal-task"');
-  expect(magicCanvas).toContain('data-testid="canvas-terminal-node-task-kicker"');
+  expect(magicCanvas).not.toContain('data-testid="canvas-terminal-node-goal-task"');
+  expect(magicCanvas).not.toContain('data-testid="canvas-terminal-node-task-kicker"');
   expect(magicCanvas).toContain("Task:");
-  expect(magicCanvas).toContain('zIndex: 2');
 });
 
 test("snapshot writes discard stale panes without dropping current dock evidence", () => {
@@ -213,6 +211,20 @@ test("snapshot writes discard stale panes without dropping current dock evidence
   expect(writer).toContain("terminals.retain");
   expect(writer).toContain("Working toward:");
   expect(writer).not.toContain("return Ok(());");
+});
+
+test("snapshot probe coalesces all rendered-state churn behind its heartbeat", () => {
+  expect(snapshotProbe).toContain("const latestEntryRef = useRef(entry);");
+  expect(snapshotProbe).toContain("latestEntryRef.current = entry;");
+  expect(snapshotProbe).toContain("const currentEntry = latestEntryRef.current;");
+
+  const dependencyStart = snapshotProbe.indexOf("// Key only on rendered identity");
+  const dependencyBlock = snapshotProbe.slice(
+    dependencyStart,
+    snapshotProbe.indexOf("]);", dependencyStart) + 3,
+  );
+  expect(dependencyStart).toBeGreaterThan(-1);
+  expect(dependencyBlock.match(/entry\.\w+/g)).toEqual(["entry.paneId"]);
 });
 
 test("split terminal headers show a compact stable Goal line when context exists", () => {
@@ -457,9 +469,19 @@ test("the installed snapshot writer never invents a project Goal", () => {
 
 test("map Task fallback never consumes the broad Goal", () => {
   expect(magicCanvas).toContain("const terminalHeaderTaskDescription");
+  expect(magicCanvas).toContain('const canvasTaskFallback = "Task not captured"');
+  expect(magicCanvas).not.toContain("const canvasTaskFallback = fallbackProjectGoal(");
   expect(magicCanvas).not.toContain(
     "terminalHeader.contextLabel || terminalHeader.goalLabel || canvasTaskFallback",
   );
+});
+
+test("agent context rows share one label column and one value rhythm", () => {
+  expect(magicCanvas).toContain('gridTemplateColumns: "48px minmax(0, 1fr)"');
+  expect(magicCanvas).toContain('padding: "7px 0"');
+  expect(magicCanvas).toContain('lineHeight: "17px"');
+  expect(magicCanvas).toContain('data-testid="canvas-agent-status-now"');
+  expect(magicCanvas).toContain('style={styles.agentWorkingLine}');
 });
 
 test("same-group agent cards render pane-owned Task and Now values", () => {

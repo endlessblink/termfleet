@@ -1,6 +1,18 @@
 import { expect, test } from "@playwright/test";
 import { readFileSync } from "node:fs";
 
+test("desktop map connect mounts the existing terminal before recovery completes", () => {
+  const source = readFileSync(
+    new URL("../src/components/MagicCanvas.tsx", import.meta.url),
+    "utf8",
+  );
+  const mountIndex = source.indexOf("setConnectedTerminalId(targetTerminalId);");
+  const recoveryIndex = source.indexOf("if (canReconnectSavedAgent) {");
+  expect(mountIndex).toBeGreaterThan(-1);
+  expect(recoveryIndex).toBeGreaterThan(mountIndex);
+  expect(source).not.toContain("if (!canReconnectSavedAgent) {");
+});
+
 // Source-shape assertions below assert on code SHAPE, not line wrapping: a
 // prettier pass that rewraps untouched code must not turn them red. Collapsing
 // whitespace runs on both sides keeps the assertion meaningful (identifiers,
@@ -455,6 +467,7 @@ test("the cockpit goal matrix audits every active pane and rejects project goals
   const matrix = readFileSync("scripts/verify-cockpit-goal-matrix.mjs", "utf8");
 
   expect(matrix).toContain('scope: "all-active-terminals"');
+  expect(matrix).toContain('"termfleet-cockpit-snapshot.json"');
   expect(matrix).toContain('"project-wide-goal"');
   expect(matrix).toContain('entry && typeof entry.paneId === "string"');
   expect(matrix).toContain("goal-too-short-for-about-what");
@@ -2953,7 +2966,7 @@ test("readable map mounts only the primary live terminal renderer", async ({
           paneId: `pane-readable-${index}`,
           cols: 80,
           rows: 24,
-          status: "running",
+          status: "reconnected",
         },
       ],
       splitLayout: { id: `pane-readable-${index}`, type: "terminal" },
@@ -2974,6 +2987,8 @@ test("readable map mounts only the primary live terminal renderer", async ({
           type: "terminal",
           title: `Readable ${index}`,
           terminalTabId: tab.id,
+          terminalPtyId: `pty-readable-${index}`,
+          linkedTerminalPaneId: `pane-readable-${index}`,
           x: 80 + index * 140,
           y: 80,
           width: 820,
@@ -2999,6 +3014,9 @@ test("readable map mounts only the primary live terminal renderer", async ({
     page.locator(
       "[data-testid='canvas-terminal-node'] [data-testid='canvas-terminal-overlay-placeholder']",
     ),
+  ).toHaveCount(1);
+  await expect(
+    page.locator("[data-magic-canvas-shell] .terminal-container"),
   ).toHaveCount(1);
 });
 

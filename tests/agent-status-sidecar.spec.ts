@@ -5,6 +5,7 @@ import {
   narrationToNow,
 } from "../scripts/termfleet-claude-status-hook.mjs";
 import { fnv } from "../scripts/lib/agent-status-paths.mjs";
+import { summaryFromSidecar } from "../scripts/agent-status-summary-sidecar.mjs";
 import { spawn, spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
@@ -23,6 +24,62 @@ const OLLAMA_WORKER = path.join(
   "scripts",
   "agent-status-summary-ollama.mjs",
 );
+
+test("does not invent a Goal from project path or task context", async () => {
+  const summary = summaryFromSidecar(
+    {
+      provider: "codex",
+      cwd: "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
+      turn: "working",
+      now: "Reviewing the visual design critique",
+      todos: [],
+      userTask: "",
+    },
+    {
+      projectId: "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
+      workstream: { path: "/media/endlessblink/data/my-projects/ai-development/devops/termfleet" },
+      heuristicCandidate: {
+        task: "Reviewing the visual design critique",
+        path: "termfleet",
+        now: "Reviewing the visual design critique",
+        status: "working",
+        provider: "codex",
+        confidence: "low",
+      },
+    },
+  );
+
+  expect(summary.mainTask).toBeUndefined();
+  expect(summary.userTask).toBeUndefined();
+  expect(summary.task).toBe("Reviewing the visual design critique");
+});
+
+test("does not promote a status-explanation opening prompt into Goal", async () => {
+  const summary = summaryFromSidecar(
+    {
+      provider: "codex",
+      cwd: "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
+      turn: "idle",
+      mainTask: "explain in simple concise terms what you are doing right now and why",
+      mainTaskSource: "opening-request",
+      userTask: "explain in simple concise terms what you are doing right now and why",
+      now: "Idle — no work is running",
+      todos: [{ content: "Reviewing the visual design critique", status: "in_progress" }],
+    },
+    {
+      projectId: "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
+      task: "Fallback task",
+      now: "Fallback activity",
+      status: "idle",
+      provider: "codex",
+      confidence: "low",
+    },
+  );
+
+  expect(summary.mainTask).toBeUndefined();
+  expect(summary.userTask).toBeUndefined();
+  expect(summary.task).toBe("Reviewing the visual design critique");
+});
 
 function runNode(script: string, input: unknown, env: Record<string, string>) {
   return spawnSync("node", [script], {

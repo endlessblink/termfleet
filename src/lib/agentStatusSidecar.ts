@@ -238,6 +238,14 @@ function isProcessExplanation(value: unknown): boolean {
     /\b(?:installed dock|live gate|visual gate|focused (?:visual|header) tests?|checksum|awaiting user approval|all live and visual)\b/i.test(text);
 }
 
+// Opening prompts are often requests for a status explanation, not the pane's
+// durable objective. Keep those requests in the activity evidence, never in Goal.
+function isMetaOpeningRequest(value: unknown): boolean {
+  return /^(?:explain|describe|tell me|show me|what(?:'s| is| about)|how does|why did|give me|summari[sz]e|review|assess|check now|did it improve|what are you doing|what is it|go|continue|i(?:'m| am) not seeing|i do not see|in design(?: or| and)? implementation|in implemenation)\b/i.test(
+    cleanText(value),
+  );
+}
+
 function trustedPurposeNarration(sidecar: AgentStatusSidecar): string {
   if (sidecar.turn !== "idle") return "";
   const narration = cleanText(sidecar.narration);
@@ -435,6 +443,9 @@ function inferredPlanOutcome(
   return "";
 }
 
+// Kept for compatibility with older sidecar summary inputs; goal inference is disabled.
+void inferredPlanOutcome;
+
 export function summaryFromSidecar(
   sidecar: AgentStatusSidecar,
   fallback: AgentStatusSummary,
@@ -481,8 +492,9 @@ export function summaryFromSidecar(
   // completed task. NEVER fall back to `now` (momentary raw tool activity) as the
   // title; that belongs only on the activity line. (TC-033)
   const current = active ?? firstOpen;
+  const liveTask = cleanText(current?.activeForm || current?.content);
   const currentTask =
-    cleanText(current?.activeForm || current?.content) ||
+    liveTask ||
     (sidecar.turn === "working"
       ? workingTaskFromCompleted(lastDone?.content, contextPath)
       : cleanText(lastDone?.content));
@@ -509,16 +521,21 @@ export function summaryFromSidecar(
   const explicitGoal = qualityCheckGoalLabel(explicitGoalCandidate, {
     allowAboutWhatVoice: true,
     allowTrustedAboutWhat:
-      hasAboutWhatAnswer || sidecar.mainTaskSource === "opening-request",
+      hasAboutWhatAnswer || sidecar.mainTaskSource === "plan-explanation",
     maxLength: sidecar.mainTaskSource === "opening-request" ? 220 : 150,
   }).ok &&
-    (hasAboutWhatAnswer || !isProcessExplanation(explicitGoalCandidate))
+    (hasAboutWhatAnswer ||
+      sidecar.mainTaskSource !== "opening-request" ||
+      explicitGoalCandidate.split(/\s+/).filter(Boolean).length >= 8) &&
+    !isProcessExplanation(explicitGoalCandidate)
     ? explicitGoalCandidate
     : "";
   const capturedOpeningGoal =
     sidecar.mainTaskSource === "opening-request" &&
+    !isMetaOpeningRequest(sidecar.userTask) &&
     explicitGoalCandidate &&
     explicitGoalCandidate.length <= 220 &&
+    explicitGoalCandidate.split(/\s+/).filter(Boolean).length >= 8 &&
     !/[…]$/.test(explicitGoalCandidate) &&
     !isProcessExplanation(explicitGoalCandidate)
       ? explicitGoalCandidate
@@ -527,7 +544,9 @@ export function summaryFromSidecar(
   // strong enough to render as Goal. Renderers must run the strict Goal gate
   // again; this keeps identity recovery from turning into Goal pollution.
   const preservedDeclaredIdentity =
-    explicitGoalCandidate && !isProcessExplanation(explicitGoalCandidate)
+    explicitGoalCandidate &&
+    !isMetaOpeningRequest(sidecar.userTask) &&
+    !isProcessExplanation(explicitGoalCandidate)
       ? explicitGoalCandidate
       : "";
   const preservedValidatedIdentity =
@@ -546,9 +565,8 @@ export function summaryFromSidecar(
   // A missing explicit purpose must remain missing until this pane records one.
   const inferredGoal = "";
   const aboutWhatGoal = "";
-  // These heuristics may describe the current Task, but they are never persisted as
-  // the pane's Goal. Goal provenance and Task readability are separate contracts.
-  const inferredTask = inferredPlanOutcome(sidecar, fallback.path);
+  // A summary worker may only repeat evidence captured for this pane. Project paths,
+  // keywords, and task context are not sufficient provenance for a Goal.
   const userTask =
     durableExplicitGoal ||
     narratedGoal ||
@@ -558,7 +576,9 @@ export function summaryFromSidecar(
     // Legacy panes have no mainTask at all; only then may the stored prompt supply the
     // durable identity. If a mainTask exists but is unproven/agent-authored, its prompt
     // must not sneak around that provenance gate.
-    (!cleanText(sidecar?.mainTask) && !isMachineSlug(sidecar?.userTask)
+    (!cleanText(sidecar?.mainTask) &&
+    !isMachineSlug(sidecar?.userTask) &&
+    !isMetaOpeningRequest(sidecar?.userTask)
       ? cleanText(sidecar?.userTask)
       : "");
   const declaredUserTask = isNonDescriptiveTaskText(userTask) ? "" : userTask;
@@ -567,10 +587,7 @@ export function summaryFromSidecar(
   const activityTitle =
     (inferredGoal || aboutWhatGoal
       ? inferredGoal || aboutWhatGoal
-      : inferredTask ||
-        (sidecar.mainTaskSource === "plan-explanation"
-          ? currentTask || declaredUserTask
-          : declaredUserTask || currentTask)) ||
+      : liveTask || declaredUserTask || currentTask) ||
     currentTask ||
     currentActivityTask ||
     fallback.task;

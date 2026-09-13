@@ -6,7 +6,10 @@ import os from "node:os";
 
 const statusDir = process.env.TERMFLEET_AGENT_STATUS_DIR
   ?? path.join(os.homedir(), ".local/share/terminal-workspace/agent-status");
-const snapshotPath = path.join(statusDir, "cockpit-snapshot.json");
+// TermFleet writes the namespaced snapshot used by the dock UI; the generic file
+// may belong to another app sharing the same agent-status directory.
+const snapshotPath = process.env.TERMFLEET_COCKPIT_SNAPSHOT_PATH
+  ?? path.join(statusDir, "termfleet-cockpit-snapshot.json");
 const snapshot = JSON.parse(readFileSync(snapshotPath, "utf8"));
 const terminals = Array.isArray(snapshot.terminals) ? snapshot.terminals : [];
 const neutralTask = /^(?:Task not captured|Activity not captured|Goal not captured|Context not captured|Status unavailable|Waiting for a clear task|No task declared|No active work|Ready|Idle|Working|Unknown)$/i;
