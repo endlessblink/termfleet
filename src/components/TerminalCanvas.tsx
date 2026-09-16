@@ -742,31 +742,18 @@ export function TerminalCanvas({
       const transform = dy < 0 ? `translateY(${dy}px)` : "";
       canvas.style.transformOrigin = "top left";
       canvas.style.transform = transform;
-      // Crop at a WHOLE-CELL boundary. A node a few pixels narrower than its grid
-      // used to clip the last column mid-glyph, so OpenCode's right border showed as
-      // tick marks and its sidebar text was cut mid-word ("-3200"). clip-path crops
-      // without resampling — resizing the canvas instead would rescale the bitmap and
-      // blur every glyph.
-      const cellW = cellRef.current.width || 1;
-      const wholeCols = Math.max(1, Math.floor(shell.clientWidth / cellW));
-      const clipW = Math.min(logicalW, wholeCols * cellW);
-      const clip = clipW < logicalW ? `inset(0 ${logicalW - clipW}px 0 0)` : "";
-      canvas.style.clipPath = clip;
       const overlay = overlayRef.current;
       if (overlay) {
         overlay.style.transformOrigin = "top left";
         overlay.style.transform = transform;
-        overlay.style.clipPath = clip;
       }
       if (DEBUG_TERM_HUD) bumpHud({ ty: Math.round(dy) });
     };
 
     const clearProjectionScale = () => {
       if (canvas.style.transform) canvas.style.transform = "";
-      if (canvas.style.clipPath) canvas.style.clipPath = "";
       const overlay = overlayRef.current;
       if (overlay && overlay.style.transform) overlay.style.transform = "";
-      if (overlay && overlay.style.clipPath) overlay.style.clipPath = "";
     };
 
     // Decide between freeze (interactive TUI on the map) and reflow (everything

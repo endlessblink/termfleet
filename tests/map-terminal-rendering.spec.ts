@@ -1566,21 +1566,6 @@ test("split terminals stay smooth while map terminals enlarge with hard edges", 
   expect(result.segmentText.length).toBe(96);
 });
 
-test("map terminal projection crops at whole cells instead of clipping a column", () => {
-  const source = readFileSync("src/components/TerminalCanvas.tsx", "utf8");
-  const clipBlock = source.match(/const applyProjectionClip = \(\) => \{[\s\S]*?\n    \};/)?.[0] ?? "";
-  const clearBlock = source.match(/const clearProjectionScale = \(\) => \{[\s\S]*?\n    \};/)?.[0] ?? "";
-
-  // A node narrower than its grid used to clip the last column mid-glyph: OpenCode's
-  // right border showed as tick marks and its sidebar text was cut mid-word.
-  expect(clipBlock).toContain("Math.floor(shell.clientWidth / cellW)");
-  expect(clipBlock).toContain("clipPath");
-  expect(clipBlock).toContain("inset(0 ");
-  // Cropping must not rescale the bitmap (that blurs every glyph).
-  expect(clipBlock).not.toMatch(/canvas\.style\.width\s*=/);
-  expect(clearBlock).toContain("clipPath");
-});
-
 test("overview preview sampling is capped and groups noisy terminal rows", async ({
   page,
 }) => {
