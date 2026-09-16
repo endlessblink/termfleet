@@ -23,7 +23,7 @@ use std::io::{BufRead, BufReader, ErrorKind, Write};
 use std::net::Shutdown;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tauri::ipc::{Channel, InvokeResponseBody};
 
 pub const DEFAULT_COLS: usize = 80;
@@ -82,6 +82,37 @@ struct TermState {
     /// never clears this, so low-rate snapshot clients can cheaply skip idle
     /// grids without capturing and serializing the full screen.
     revision: u64,
+    /// When the app last opened a synchronized-output block (`?2026h`). While a
+    /// block is open the app is mid-repaint, and publishing now would paint a
+    /// half-drawn mix of the old and new screen — the "jumbled terminal" artifact
+    /// seen with OpenCode, which wraps every full repaint in `?2026h … ?2026l`.
+    /// `None` means no block is open.
+    sync_output_since: Option<Instant>,
+}
+
+/// How long a synchronized-output block may hold publication before the emitter
+/// publishes anyway. A dropped or missed `?2026l` must never freeze a pane, so the
+/// hold is a debounce with a fail-safe, not a latch.
+const SYNC_OUTPUT_MAX_HOLD: Duration = Duration::from_millis(120);
+
+/// Should the emitter capture and publish a frame right now?
+///
+/// `dirty` is the app's own mutation flag. A synchronized-output block defers
+/// publication so the app's repaint arrives as one atomic frame; after
+/// `SYNC_OUTPUT_MAX_HOLD` the deferral is abandoned so a missing `?2026l` cannot
+/// stall the pane.
+fn should_publish_frame(
+    dirty: bool,
+    sync_output_since: Option<Instant>,
+    now: Instant,
+) -> bool {
+    if !dirty {
+        return false;
+    }
+    match sync_output_since {
+        Some(opened) => now.duration_since(opened) >= SYNC_OUTPUT_MAX_HOLD,
+        None => true,
+    }
 }
 
 impl TermState {
@@ -96,6 +127,7 @@ impl TermState {
             unsupported_control_tail: Vec::new(),
             dirty: true,
             revision: 1,
+            sync_output_since: None,
         }
     }
 
@@ -141,6 +173,13 @@ impl TermState {
                     .iter()
                     .find(|target| scan[index..].starts_with(target))
                 {
+                    // Remember the block so the emitter can hold publication until
+                    // the app's repaint is complete (see should_publish_frame).
+                    if *target == SYNC_OUTPUT_ON {
+                        self.sync_output_since = Some(Instant::now());
+                    } else {
+                        self.sync_output_since = None;
+                    }
                     index += target.len();
                     continue;
                 }
@@ -613,7 +652,7 @@ fn emit_session_diff(session: &Arc<Session>) {
             Ok(state) => state,
             Err(_) => return,
         };
-        if !state.dirty {
+        if !should_publish_frame(state.dirty, state.sync_output_since, Instant::now()) {
             return;
         }
     }
@@ -622,7 +661,7 @@ fn emit_session_diff(session: &Arc<Session>) {
             Ok(state) => state,
             Err(_) => return,
         };
-        if !state.dirty {
+        if !should_publish_frame(state.dirty, state.sync_output_since, Instant::now()) {
             return;
         }
         state.dirty = false;
@@ -1015,6 +1054,13 @@ const MODE_SGR_MOUSE: u32 = 1 << 7;
 // The app explicitly sent DECSET/DECRST 1007 at least once. Without this, a
 // false alternate-scroll bit means "unset", not "explicitly disabled".
 const MODE_ALTERNATE_SCROLL_SET: u32 = 1 << 8;
+// The grid actually holds scrollback above the live screen. The UI must only claim
+// Home/End/PageUp/PageDown (and treat the wheel as history) when this is set:
+// an app that repaints in place on the PRIMARY screen never scrolls its output and
+// emits no line feeds, so the grid accumulates no history, and a claimed
+// navigation key would be swallowed into an empty history while the app that owns
+// the scrollable content never receives it. OpenCode does exactly this.
+const MODE_HAS_HISTORY: u32 = 1 << 9;
 
 const STYLE_BOLD: u16 = 1 << 0;
 const STYLE_ITALIC: u16 = 1 << 1;
@@ -1048,6 +1094,7 @@ struct WireFrame {
     alternate_scroll: bool,
     alternate_scroll_set: bool,
     sgr_mouse: bool,
+    has_history: bool,
     rows_cells: Vec<Vec<WireCell>>,
 }
 
@@ -1153,6 +1200,8 @@ impl WireFrame {
             alternate_scroll: mode.contains(TermMode::ALTERNATE_SCROLL),
             alternate_scroll_set: false,
             sgr_mouse: mode.contains(TermMode::SGR_MOUSE),
+            // `history_size()` needs the `Dimensions` trait, already in scope.
+            has_history: grid.history_size() > 0,
             rows_cells,
         }
     }
@@ -1185,6 +1234,9 @@ impl WireFrame {
         }
         if self.alternate_scroll_set {
             flags |= MODE_ALTERNATE_SCROLL_SET;
+        }
+        if self.has_history {
+            flags |= MODE_HAS_HISTORY;
         }
         flags
     }
@@ -2043,6 +2095,41 @@ mod tests {
         );
     }
 
+    // An app that repaints in place (OpenCode) never scrolls its output, so the
+    // grid stays history-free. Claiming PageUp/Home for TermFleet history there
+    // swallows the key into nothing. The flag is what tells the UI to let go.
+    #[test]
+    fn has_history_flag_tracks_real_scrollback() {
+        let mut state = TermState::new(10, 3);
+        state.feed(b"one\r\ntwo");
+        let frame = WireFrame::capture(&state.term);
+        assert_eq!(
+            frame.mode_flags() & MODE_HAS_HISTORY,
+            0,
+            "content that fits must not claim history"
+        );
+
+        state.feed(b"\r\nthree\r\nfour\r\nfive");
+        let frame = WireFrame::capture(&state.term);
+        assert_ne!(
+            frame.mode_flags() & MODE_HAS_HISTORY,
+            0,
+            "lines pushed off the top must set the history flag"
+        );
+
+        // A pure in-place repaint never creates history no matter how much arrives.
+        let mut painter = TermState::new(10, 3);
+        for _ in 0..50 {
+            painter.feed(b"\x1b[1;1H\x1b[2Krepaint");
+        }
+        let frame = WireFrame::capture(&painter.term);
+        assert_eq!(
+            frame.mode_flags() & MODE_HAS_HISTORY,
+            0,
+            "row-addressed repaints must never claim history"
+        );
+    }
+
     #[test]
     fn synchronized_output_markers_never_render_as_text() {
         let mut state = TermState::new(40, 8);
@@ -2078,6 +2165,61 @@ mod tests {
             !text.contains("?2026") && !text.contains("[?2026"),
             "split synchronized-output marker leaked into the grid: {text:?}"
         );
+    }
+
+    #[test]
+    fn synchronized_output_markers_open_and_release_the_publish_hold() {
+        let mut state = TermState::new(40, 8);
+        state.feed(b"\x1b[?2026h");
+        assert!(
+            state.sync_output_since.is_some(),
+            "?2026h must open the publish hold"
+        );
+        // A partial repaint arrives while the block is open — it must stay held.
+        state.feed(b"half a frame");
+        assert!(state.sync_output_since.is_some());
+        state.feed(b"\x1b[?2026l");
+        assert!(
+            state.sync_output_since.is_none(),
+            "?2026l must release the publish hold"
+        );
+
+        // ...and the hold survives a marker split across two feeds.
+        let mut split = TermState::new(40, 8);
+        split.feed(b"\x1b[?20");
+        split.feed(b"26h");
+        assert!(split.sync_output_since.is_some());
+        split.feed(b"\x1b[?2026");
+        split.feed(b"l");
+        assert!(split.sync_output_since.is_none());
+    }
+
+    #[test]
+    fn a_held_repaint_publishes_atomically_and_never_stalls() {
+        let now = Instant::now();
+
+        // Nothing changed: never publish.
+        assert!(!should_publish_frame(false, None, now));
+        // A clean mutation with no sync block publishes immediately.
+        assert!(should_publish_frame(true, None, now));
+        // Mid-repaint: held, so the canvas never paints a half-drawn frame.
+        assert!(!should_publish_frame(true, Some(now), now));
+        assert!(!should_publish_frame(
+            true,
+            Some(now - Duration::from_millis(1)),
+            now
+        ));
+        // Fail-safe: a dropped ?2026l must not freeze the pane forever.
+        assert!(should_publish_frame(
+            true,
+            Some(now - SYNC_OUTPUT_MAX_HOLD),
+            now
+        ));
+        assert!(should_publish_frame(
+            true,
+            Some(now - SYNC_OUTPUT_MAX_HOLD * 2),
+            now
+        ));
     }
 
     #[test]

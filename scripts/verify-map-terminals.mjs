@@ -28,6 +28,7 @@ const daemonInputQueue = readSource("src/lib/daemonInputQueue.ts");
 const useNativeTerminalPane = readSource("src/hooks/useNativeTerminalPane.ts");
 const terminalComponent = readSource("src/components/Terminal.tsx");
 const terminalCanvas = readSource("src/components/TerminalCanvas.tsx");
+const mapRenderCadence = readSource("src/lib/mapRenderCadence.ts");
 const workspaceSurface = readSource("src/components/WorkspaceSurface.tsx");
 const splitPane = readSource("src/components/SplitPane.tsx");
 const types = readSource("src/lib/types.ts");
@@ -270,7 +271,10 @@ const checks = [
     ok: /"verify:terminal-mouse": "playwright test terminal-mouse"/.test(packageJson) &&
       /encodeMouseReport/.test(terminalCanvas) &&
       /pointerButtonToTerminalButton/.test(terminalCanvas) &&
-      /terminalWheelAction\(event, modes/.test(terminalCanvas) &&
+      /terminalWheelAction\( event, \{ \.\.\.modes, appPageKeys: mapProjection \}/.test(terminalCanvas) &&
+      /kind: "app-pages"/.test(terminalMouse) &&
+      /appPageKeys\?: boolean/.test(terminalMouse) &&
+      /mapNoHistoryWheelUp/.test(terminalMouseSpec) &&
       /invoke\("grid_scroll"/.test(terminalCanvas) &&
       /sendPointerMouseReport\(event/.test(terminalCanvas) &&
       /modesRef\.current\.mouseReport/.test(terminalCanvas) &&
@@ -471,7 +475,13 @@ const checks = [
       /Math\.min\(MAP_TERMINAL_MAX_RENDER_SCALE, Math\.max\(1, zoom\)\)/.test(magicCanvas) &&
       /renderScale=\{\s*shouldOverlayTerminal \? 1 : mapTerminalRenderScaleForZoom\(zoom\)\s*\}/.test(magicCanvas) &&
       !/activeTerminalContent/.test(magicCanvas) &&
-      /imageRendering: "auto"/.test(terminalCanvas) &&
+      // The map caps the backing store at 1.25x while the viewport CSS-scales the
+      // canvas by the full zoom, so a zoomed node upscales its bitmap. That upscale
+      // must be nearest-neighbour or the glyphs smear into doubled, overlapping text.
+      // The split pane is never CSS-scaled, so it keeps smooth `auto`.
+      /imageRendering: terminalCanvasImageRendering\(mapProjection\)/.test(terminalCanvas) &&
+      /terminalCanvasImageRendering/.test(mapRenderCadence) &&
+      /mapProjection \? "pixelated" : "auto"/.test(mapRenderCadence) &&
       /const MAP_PROJECTION_MAX_DPR = 1\.25;/.test(terminalCanvas) &&
       /const requestedDpr = \(window\.devicePixelRatio \|\| 1\) \* Math\.max\(1, renderScale\);/.test(terminalCanvas) &&
       /const dpr = mapProjection \? Math\.min\(requestedDpr, MAP_PROJECTION_MAX_DPR\) : requestedDpr;/.test(terminalCanvas) &&

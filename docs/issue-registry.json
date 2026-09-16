@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-09-04T11:47:01.785Z",
+  "updatedAt": "2026-09-16T19:47:43.761Z",
   "issues": [
     {
       "id": "TF-001",
@@ -141,7 +141,7 @@
     {
       "id": "TF-004",
       "title": "Unexpected desktop exit leaves recoverable terminals hidden",
-      "state": "reopened",
+      "state": "verifying",
       "severity": "medium",
       "surface": "desktop-runtime",
       "matrixRefs": [],
@@ -150,24 +150,24 @@
       "guard": "Desktop launcher restart policy plus installed restart verification",
       "evidence": [
         {
-          "kind": "installed-release",
-          "at": "2026-08-23T15:24:36.524Z",
-          "note": "Dock release promoted and verified; post-relaunch workspace persisted 4 tabs and 4 terminals, with no external provider restore launched."
-        },
-        {
-          "kind": "focused-test",
-          "at": "2026-08-27T15:36:12.063Z",
-          "note": "Fresh focused contract suite: 7 tests pass for separate Goal validation, application-specific snapshots, isolated smoke paths, off-screen rejection, invisible-process readiness, and durable failure receipts."
-        },
-        {
           "kind": "source",
           "at": "2026-08-27T15:39:02.028Z",
           "note": "Official WebKitGTK research confirms WebKitWebView.get_snapshot supports visible-region and full-document snapshots asynchronously; this is the candidate app-owned capture path that can avoid X11 window discovery, pending implementation and visual proof."
         },
         {
+          "kind": "focused-test",
+          "at": "2026-09-12T09:38:26.588Z",
+          "note": "Heartbeat regression failed before implementation; bash syntax and the full pressure-watchdog unittest suite pass after adding stale cockpit heartbeat recovery."
+        },
+        {
+          "kind": "installed-release",
+          "at": "2026-09-12T09:38:26.880Z",
+          "note": "Installed watchdog source hash matched 5bb0bea6ae7d32d8cadeb7b289e431c9edc2b53328ad08d8642bc020d4281531; service active with recovery enabled and fresh MainPID 285527."
+        },
+        {
           "kind": "live-desktop",
-          "at": "2026-08-27T16:45:42.649Z",
-          "note": "Latest promoted release includes automatic per-pane provider recovery; installed restart smoke passed after promotion. Native WebKit pane captures remain strict and per-pane; content gate still rejects panes lacking a trustworthy captured Goal."
+          "at": "2026-09-12T09:38:27.145Z",
+          "note": "Controlled renderer SIGSTOP produced cockpit-heartbeat-stale after 48 seconds; watchdog replaced only desktop PGID 187429, preserved daemon PID 33820, one socket listener and all terminal IDs, then refreshed the heartbeat. Fresh screenshot SHA-256 7a73c867191574e99ec77d69f1fbb1473fcad6f1fca37998af90e412e355d19d shows the cockpit rendered rather than gray."
         }
       ],
       "owner": "termfleet",
@@ -411,6 +411,58 @@
           "type": "evidence",
           "kind": "live-desktop",
           "note": "Latest promoted release includes automatic per-pane provider recovery; installed restart smoke passed after promotion. Native WebKit pane captures remain strict and per-pane; content gate still rejects panes lacking a trustworthy captured Goal."
+        },
+        {
+          "at": "2026-09-11T20:35:21.160Z",
+          "type": "transition",
+          "from": "reopened",
+          "to": "reproducing",
+          "note": "2026-09-11 incident left desktop alive with no WebKit renderer while daemon and sessions remained healthy"
+        },
+        {
+          "at": "2026-09-11T20:35:21.408Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Regression now requires repeated missing-renderer detection, UI-only recovery, supported agent-mode relaunch, recovery enabled, and daemon preservation"
+        },
+        {
+          "at": "2026-09-11T20:35:21.654Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Focused watchdog guard and shell syntax pass; installing the guarded watchdog is next"
+        },
+        {
+          "at": "2026-09-11T20:35:21.910Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "bash -n scripts/termfleet-pressure-watchdog.sh and python3 -m unittest tests/test_pressure_watchdog.py -v passed"
+        },
+        {
+          "at": "2026-09-12T09:38:26.589Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Heartbeat regression failed before implementation; bash syntax and the full pressure-watchdog unittest suite pass after adding stale cockpit heartbeat recovery."
+        },
+        {
+          "at": "2026-09-12T09:38:26.880Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "Installed watchdog source hash matched 5bb0bea6ae7d32d8cadeb7b289e431c9edc2b53328ad08d8642bc020d4281531; service active with recovery enabled and fresh MainPID 285527."
+        },
+        {
+          "at": "2026-09-12T09:38:27.145Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "Controlled renderer SIGSTOP produced cockpit-heartbeat-stale after 48 seconds; watchdog replaced only desktop PGID 187429, preserved daemon PID 33820, one socket listener and all terminal IDs, then refreshed the heartbeat. Fresh screenshot SHA-256 7a73c867191574e99ec77d69f1fbb1473fcad6f1fca37998af90e412e355d19d shows the cockpit rendered rather than gray."
+        },
+        {
+          "at": "2026-09-12T09:38:27.405Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Installed gray-screen recovery path passed process, daemon, inventory, heartbeat, and visual-render gates; live typing and recurrence soak remain separate."
         }
       ]
     },
@@ -1338,19 +1390,19 @@
           "note": "Installer and provenance guards inspected; the release path rebuilds frontend before the direct Cargo bundle embeds it."
         },
         {
-          "kind": "live-desktop",
-          "at": "2026-09-03T16:26:08.965Z",
-          "note": "Operator confirmed a fresh dock relaunch on 2026-09-03; doctor confirmed the running app is newer than the promoted binary and the stale-release warning is cleared. No fresh screenshot was available from the headless verifier."
-        },
-        {
-          "kind": "installed-release",
-          "at": "2026-09-03T16:55:06.803Z",
-          "note": "Rebuilt and atomically promoted the immutable desktop release; verify-installed-release accepted its binary and frontend checksums."
-        },
-        {
           "kind": "focused-test",
           "at": "2026-09-03T17:00:23.505Z",
           "note": "Release-provenance regression tests and the focused gamification browser suite pass with the checksum-driven embed trigger."
+        },
+        {
+          "kind": "installed-release",
+          "at": "2026-09-06T06:10:17.648Z",
+          "note": "2026-09-06 release installer and installed checksum verifier pass. Dock launcher replaced stale window at 09:09:20; doctor returns DOCTOR_OK. Daemon PID 19103 and seven live sessions unchanged across relaunch. Visual read-back pending."
+        },
+        {
+          "kind": "live-desktop",
+          "at": "2026-09-06T06:11:13.548Z",
+          "note": "2026-09-06 read-only visual child captured dock window 0x03600003 PID 788850: map, sidebar and terminal buffers render. Screenshot /tmp/termfleet-dock-visual-20260906.png SHA256 661440fa8062673e1807b1c07897a0e7bcf3563682f6530aed8126f9ee2e251c. Static capture does not prove input responsiveness; UI separately shows sync attention and 6 reconnected / 1 exited."
         }
       ],
       "owner": "termfleet",
@@ -1611,6 +1663,24 @@
           "from": "fixing",
           "to": "verifying",
           "note": "The corrected immutable release passes installed provenance; live dock relaunch remains pending."
+        },
+        {
+          "at": "2026-09-06T06:03:24.585Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "2026-09-06 baseline: doctor reproduces release predating frontend by 20 minutes; installed verifier fails frontend checksum. Existing checksum-driven installer is being run; no production source edits in this session."
+        },
+        {
+          "at": "2026-09-06T06:10:17.648Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "2026-09-06 release installer and installed checksum verifier pass. Dock launcher replaced stale window at 09:09:20; doctor returns DOCTOR_OK. Daemon PID 19103 and seven live sessions unchanged across relaunch. Visual read-back pending."
+        },
+        {
+          "at": "2026-09-06T06:11:13.548Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "2026-09-06 read-only visual child captured dock window 0x03600003 PID 788850: map, sidebar and terminal buffers render. Screenshot /tmp/termfleet-dock-visual-20260906.png SHA256 661440fa8062673e1807b1c07897a0e7bcf3563682f6530aed8126f9ee2e251c. Static capture does not prove input responsiveness; UI separately shows sync attention and 6 reconnected / 1 exited."
         }
       ]
     },
@@ -1962,6 +2032,41 @@
           "type": "evidence",
           "kind": "focused-test",
           "note": "Fresh background rerun: all 60 startup, hydration, status-poll, and project-reconciliation regressions passed in 1.4 minutes; production build and installed-release verification also passed."
+        },
+        {
+          "at": "2026-09-08T09:54:49.285Z",
+          "type": "transition",
+          "from": "verifying",
+          "to": "reopened",
+          "note": "User reproduced installed cockpit sluggishness on 2026-09-08; live WebKit sustained about 35% CPU and the dock process generated about 140 MB of latency traces because the launcher defaulted diagnostic tracing on."
+        },
+        {
+          "at": "2026-09-08T09:54:54.105Z",
+          "type": "transition",
+          "from": "reopened",
+          "to": "reproducing",
+          "note": "Confirmed in the installed process environment: TERMINAL_WORKSPACE_TRACE_LATENCY=1 and TERMINAL_WORKSPACE_TRACE_PTY=1; current-process traces totaled about 140 MB."
+        },
+        {
+          "at": "2026-09-08T09:54:58.983Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Added a launcher regression that fails when dock tracing defaults on and requires explicit opt-in forwarding for both trace channels."
+        },
+        {
+          "at": "2026-09-08T09:55:03.807Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Dock launcher now leaves tracing disabled by default, normalizes non-1 values to unset, and forwards explicit opt-in trace flags through systemd."
+        },
+        {
+          "at": "2026-09-08T09:58:15.120Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Focused trace-default and X11 ordering guards pass; installed launcher hash matches source. Full installed-release verification is blocked by unrelated dirty frontend/build drift, and live CPU proof requires a confirmed cockpit relaunch."
         }
       ]
     },
@@ -2758,14 +2863,14 @@
           "note": "Regression now requires Start quest to show Quest started, retain the paused reason, and persist activeQuestId; nine focused quest checks pass."
         },
         {
-          "kind": "source",
-          "at": "2026-09-04T11:44:49.956Z",
-          "note": "Acceptance was persisted, but the only post-click wording began with Paused; the explicit Quest started acknowledgement removes the false no-op signal."
-        },
-        {
           "kind": "installed-release",
           "at": "2026-09-04T11:47:01.215Z",
           "note": "The immutable release containing explicit Quest started feedback passes installed binary and frontend provenance verification."
+        },
+        {
+          "kind": "source",
+          "at": "2026-09-05T13:19:19.919Z",
+          "note": "The reported Start action was narrowed to TF-027: the timer began before player acceptance. No separate cockpit visibility change was needed."
         }
       ],
       "owner": "termfleet",
@@ -2920,6 +3025,26 @@
           "from": "fixing",
           "to": "verifying",
           "note": "Focused acceptance regression and immutable installed provenance pass; a live dock click remains required because the open window was intentionally not restarted."
+        },
+        {
+          "at": "2026-09-05T12:58:35.305Z",
+          "type": "transition",
+          "from": "verifying",
+          "to": "fixing",
+          "note": "Operator reports that Start quest still does nothing in the currently open app; diagnosing the installed runtime before changing code."
+        },
+        {
+          "at": "2026-09-05T13:19:19.919Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "The reported Start action was narrowed to TF-027: the timer began before player acceptance. No separate cockpit visibility change was needed."
+        },
+        {
+          "at": "2026-09-05T13:19:28.260Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "The Start action root cause is now covered by TF-027; dock-visible confirmation remains pending."
         }
       ]
     },
@@ -2945,14 +3070,14 @@
           "note": null
         },
         {
-          "kind": "focused-test",
-          "at": "2026-09-03T18:28:10.330Z",
-          "note": "Quest completion browser regression passed: a qualifying 10-minute milestone opens the one-time Quest complete celebration; the active map-card hover regression remains covered."
-        },
-        {
           "kind": "installed-release",
           "at": "2026-09-03T18:39:21.602Z",
           "note": "Immutable dock release promoted and npm run verify:installed-release passed for the Workstream Quest active-card hover and completion celebration."
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-09-05T13:15:28.304Z",
+          "note": "The timer-start regression failed before the fix (10 seconds credited before Start quest) and passes after it; focused quest and map guards passed 4/4."
         }
       ],
       "owner": "termfleet",
@@ -3072,13 +3197,19 @@
           "type": "evidence",
           "kind": "installed-release",
           "note": "Immutable dock release promoted and npm run verify:installed-release passed for the Workstream Quest active-card hover and completion celebration."
+        },
+        {
+          "at": "2026-09-05T13:15:28.304Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "The timer-start regression failed before the fix (10 seconds credited before Start quest) and passes after it; focused quest and map guards passed 4/4."
         }
       ]
     },
     {
       "id": "TF-023",
       "title": "Terminal control lists stale duplicate terminals",
-      "state": "verifying",
+      "state": "resolved",
       "severity": "medium",
       "surface": "desktop-runtime",
       "matrixRefs": [],
@@ -3088,18 +3219,23 @@
       "evidence": [
         {
           "kind": "source",
-          "at": "2026-09-04T07:33:17.203Z",
-          "note": "npm run build passed on 2026-09-04 after routing the recovery review list through recoverySessionsForReview, which keeps durable history but suppresses duplicate and already-open conversation rows from terminal control."
-        },
-        {
-          "kind": "focused-test",
-          "at": "2026-09-04T07:42:23.196Z",
-          "note": "25 workspace hydration checks passed: normal Terminal Control hides saved-only tabs and Recovery review keeps one explicit action per historical conversation."
+          "at": "2026-09-08T10:36:29.347Z",
+          "note": "Frontend build, map-terminal verifier, and five focused desktop-order Playwright checks pass with persisted user-only ordering and daemon-authoritative mobile reconciliation."
         },
         {
           "kind": "installed-release",
-          "at": "2026-09-04T07:47:25.450Z",
-          "note": "Release promotion and installed immutable-release verification passed. Fresh dock-visible interaction proof is pending."
+          "at": "2026-09-08T10:45:22.030Z",
+          "note": "Immutable desktop release promoted and verified at SHA256 8da791f4168e83d1e1deccbe00343a3ef233eb46d740d488237ead1d8f8400c3; TermControl service restarted from this checkout and public/local sign-in routes are healthy."
+        },
+        {
+          "kind": "live-desktop",
+          "at": "2026-09-08T16:29:40.198Z",
+          "note": "After the deployed bridge restart, the authoritative daemon was reachable and the public fleet reconciled to 15 unique live panes; stale sidecar-only panes were excluded."
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-09-08T17:16:06.284Z",
+          "note": "Fresh 2026-09-08 production-daemon parity: 16 live terminals render exactly once in authoritative desktop sidebar and map order; all 181 focused, bridge, phone, flow, and accessibility checks passed."
         }
       ],
       "owner": "termfleet",
@@ -3168,6 +3304,90 @@
           "type": "evidence",
           "kind": "installed-release",
           "note": "Release promotion and installed immutable-release verification passed. Fresh dock-visible interaction proof is pending."
+        },
+        {
+          "at": "2026-09-08T09:08:44.880Z",
+          "type": "transition",
+          "from": "verifying",
+          "to": "reopened",
+          "note": "Fresh TermControl baseline found repeated live pane ids before daemon filtering; mobile and PC inventory parity is now an explicit acceptance gate."
+        },
+        {
+          "at": "2026-09-08T09:08:44.908Z",
+          "type": "transition",
+          "from": "reopened",
+          "to": "reproducing",
+          "note": "Comparing one canonical row per daemon-live pane against the phone fleet."
+        },
+        {
+          "at": "2026-09-08T09:15:27.552Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Focused regression now requires duplicate observations to collapse to one freshest daemon pane identity."
+        },
+        {
+          "at": "2026-09-08T09:15:27.862Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Implementing exact pane-id deduplication before daemon-authoritative filtering."
+        },
+        {
+          "at": "2026-09-08T10:36:29.043Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Fresh TermControl regression suite passed 160 checks: the phone renders exactly one row per daemon-live pane in the same authoritative desktop order, and refresh does not move it."
+        },
+        {
+          "at": "2026-09-08T10:36:29.347Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Frontend build, map-terminal verifier, and five focused desktop-order Playwright checks pass with persisted user-only ordering and daemon-authoritative mobile reconciliation."
+        },
+        {
+          "at": "2026-09-08T10:36:29.674Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Fresh source and focused regressions pass; deployed TermControl and relaunched installed desktop visual proof remain."
+        },
+        {
+          "at": "2026-09-08T10:45:22.030Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "Immutable desktop release promoted and verified at SHA256 8da791f4168e83d1e1deccbe00343a3ef233eb46d740d488237ead1d8f8400c3; TermControl service restarted from this checkout and public/local sign-in routes are healthy."
+        },
+        {
+          "at": "2026-09-08T16:24:22.876Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Fresh live probe after bridge restart reconciled 15 visible panes against the reachable daemon; stale records were excluded and IDs remain deduplicated in desktop sidebar order. All 165 browser checks and 14 focused regressions pass."
+        },
+        {
+          "at": "2026-09-08T16:29:40.198Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "After the deployed bridge restart, the authoritative daemon was reachable and the public fleet reconciled to 15 unique live panes; stale sidecar-only panes were excluded."
+        },
+        {
+          "at": "2026-09-08T16:29:40.640Z",
+          "type": "transition",
+          "from": "verifying",
+          "to": "resolved",
+          "note": "Fresh public bridge runtime reconciles the phone fleet to 15 unique daemon-owned panes in desktop sidebar order; focused regressions, installed release evidence, and live runtime proof are recorded."
+        },
+        {
+          "at": "2026-09-08T17:15:04.765Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": null
+        },
+        {
+          "at": "2026-09-08T17:16:06.284Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Fresh 2026-09-08 production-daemon parity: 16 live terminals render exactly once in authoritative desktop sidebar and map order; all 181 focused, bridge, phone, flow, and accessibility checks passed."
         }
       ]
     },
@@ -3264,6 +3484,2353 @@
           "from": "fixing",
           "to": "verifying",
           "note": "Source, focused browser, visual frame, build, map verifier, and installed release evidence are recorded; waiting for non-disruptive dock-visible confirmation."
+        }
+      ]
+    },
+    {
+      "id": "TF-025",
+      "title": "Manual sidebar order resets and moves map terminals",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "canvas",
+      "matrixRefs": [],
+      "symptom": "Dragging a terminal in the sidebar Manual view resets to position-derived order and changes its physical map location.",
+      "rootCause": "",
+      "guard": "Focused sidebar-order state regression plus map-coordinate invariance assertion.",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-09-04T19:16:48.545Z",
+          "note": "Both Map sidebar surfaces now dispatch the sidebar-only reorder action; map geometry remains in canvasState."
+        },
+        {
+          "kind": "browser-render",
+          "at": "2026-09-04T19:17:07.601Z",
+          "note": "Playwright opened the review app and exercised the Manual-order store contract in Chromium: 5 focused map-order tests passed."
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-09-08T17:16:06.713Z",
+          "note": "Fresh 2026-09-08 regression chain confirms activity cannot reorder projects or terminals and refresh preserves the exact 16-terminal desktop authority order; 181 checks and production build passed. Installed desktop visual confirmation remains open."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Add the failing guard, separate sidebar order from map positions, then verify the dock release.",
+      "history": [
+        {
+          "at": "2026-09-04T19:06:58.989Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-09-04T19:11:43.327Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Confirmed sidebar drag currently reorders canvas nodes, which violates map-position isolation."
+        },
+        {
+          "at": "2026-09-04T19:14:36.922Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Reproduced in both Map sidebar surfaces: Manual drag delegated to canvas-node reordering."
+        },
+        {
+          "at": "2026-09-04T19:14:44.073Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Focused browser regression now requires a changed Manual sidebar order with unchanged canvas order and x/y coordinates."
+        },
+        {
+          "at": "2026-09-04T19:14:51.484Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Implementing a persisted sidebar-only sequence and connecting both Manual drag handlers."
+        },
+        {
+          "at": "2026-09-04T19:15:30.160Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "npx playwright test tests/canvas-node-reorder.spec.ts --reporter=line: 5 passed; Manual order changed while canvas order and coordinates stayed unchanged."
+        },
+        {
+          "at": "2026-09-04T19:16:48.546Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Both Map sidebar surfaces now dispatch the sidebar-only reorder action; map geometry remains in canvasState."
+        },
+        {
+          "at": "2026-09-04T19:17:07.601Z",
+          "type": "evidence",
+          "kind": "browser-render",
+          "note": "Playwright opened the review app and exercised the Manual-order store contract in Chromium: 5 focused map-order tests passed."
+        },
+        {
+          "at": "2026-09-04T19:22:23.165Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Focused browser coverage passes; installed-release verification is blocked by the package script rebuilding dist during Cargo packaging and rolling back."
+        },
+        {
+          "at": "2026-09-04T19:29:40.086Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "npx playwright test tests/canvas-node-reorder.spec.ts --reporter=line: 5 passed, including persisted Manual sidebar order and unchanged saved canvas coordinates."
+        },
+        {
+          "at": "2026-09-08T10:01:01.100Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "2026-09-08 revised contract: same-project sidebar drag persists the chosen order and rotates only those terminals through existing map slots; cross-project drops are no-ops. Focused Playwright suite passed 5/5."
+        },
+        {
+          "at": "2026-09-08T17:15:05.051Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": null
+        },
+        {
+          "at": "2026-09-08T17:16:06.713Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Fresh 2026-09-08 regression chain confirms activity cannot reorder projects or terminals and refresh preserves the exact 16-terminal desktop authority order; 181 checks and production build passed. Installed desktop visual confirmation remains open."
+        }
+      ]
+    },
+    {
+      "id": "TF-026",
+      "title": "Map Connect terminal can leave the card unchanged",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "desktop-runtime",
+      "matrixRefs": [],
+      "symptom": "The map Connect terminal action waits for recovery and can appear to do nothing.",
+      "rootCause": "",
+      "guard": "Focused map connect guard plus installed map check",
+      "evidence": [
+        {
+          "kind": "focused-test",
+          "at": "2026-09-05T13:16:56.681Z",
+          "note": "Focused map guard passed: the linked terminal mount precedes saved-agent recovery."
+        },
+        {
+          "kind": "installed-release",
+          "at": "2026-09-05T13:17:14.021Z",
+          "note": "Installed release verification passed; the map release probe attached and wrote through a fresh PTY, while screenshot capture was unavailable."
+        },
+        {
+          "kind": "source",
+          "at": "2026-09-05T13:17:32.928Z",
+          "note": "The map handler now mounts only the existing linked terminal before invoking saved-agent recovery; it never fabricates a pane id."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Verify the rebuilt dock immediately shows the linked terminal after Connect terminal.",
+      "history": [
+        {
+          "at": "2026-09-05T13:14:57.947Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-09-05T13:15:14.376Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "The desktop map path delays mounting the known terminal while recovery runs; the reported symptom has a concrete click-path cause."
+        },
+        {
+          "at": "2026-09-05T13:15:33.257Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "A focused map guard proves the desktop path deferred mounting until saved-agent recovery."
+        },
+        {
+          "at": "2026-09-05T13:15:38.306Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "The focused guard now requires the existing terminal to mount before desktop recovery begins."
+        },
+        {
+          "at": "2026-09-05T13:16:46.452Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Map Connect now mounts the already-linked terminal immediately, then lets recovery rebind it if needed."
+        },
+        {
+          "at": "2026-09-05T13:16:56.681Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Focused map guard passed: the linked terminal mount precedes saved-agent recovery."
+        },
+        {
+          "at": "2026-09-05T13:17:14.021Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "Installed release verification passed; the map release probe attached and wrote through a fresh PTY, while screenshot capture was unavailable."
+        },
+        {
+          "at": "2026-09-05T13:17:32.928Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "The map handler now mounts only the existing linked terminal before invoking saved-agent recovery; it never fabricates a pane id."
+        },
+        {
+          "at": "2026-09-05T13:17:42.921Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Focused and installed checks pass; the live dock click remains the final proof."
+        }
+      ]
+    },
+    {
+      "id": "TF-027",
+      "title": "Workstream Quest timer starts before the player accepts it",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "logic",
+      "matrixRefs": [],
+      "symptom": "Pressing Start quest can look inactive because the timer already accrued time.",
+      "rootCause": "",
+      "guard": "Focused quest acceptance timer regression plus installed dock check",
+      "evidence": [
+        {
+          "kind": "focused-test",
+          "at": "2026-09-05T13:17:08.415Z",
+          "note": "Focused quest guards passed after the change, including zero time before acceptance and time accruing after it."
+        },
+        {
+          "kind": "source",
+          "at": "2026-09-05T13:17:37.665Z",
+          "note": "The workstream timer now requires the parallel quest id and an acceptance timestamp before it can start."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Verify timing starts from the click in the rebuilt dock.",
+      "history": [
+        {
+          "at": "2026-09-05T13:15:50.332Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-09-05T13:16:24.202Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "The focused test reproduced progress before Start quest; acceptance must gate timing."
+        },
+        {
+          "at": "2026-09-05T13:16:29.210Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "The guard failed before the change by receiving ten seconds before acceptance."
+        },
+        {
+          "at": "2026-09-05T13:16:34.939Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "The regression now requires the timer to remain at zero until Start quest is accepted."
+        },
+        {
+          "at": "2026-09-05T13:16:52.114Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Quest timing now requires a recorded player acceptance before three workstreams can accrue time."
+        },
+        {
+          "at": "2026-09-05T13:17:08.415Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Focused quest guards passed after the change, including zero time before acceptance and time accruing after it."
+        },
+        {
+          "at": "2026-09-05T13:17:37.665Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "The workstream timer now requires the parallel quest id and an acceptance timestamp before it can start."
+        },
+        {
+          "at": "2026-09-05T13:19:11.399Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Focused quest regression passes; the rebuilt dock click remains the final visual proof."
+        }
+      ]
+    },
+    {
+      "id": "TF-028",
+      "title": "Pressure alert promises a restart when recovery is disabled",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "logic",
+      "matrixRefs": [],
+      "symptom": "Blocked renderer notification says desktop will be recycled even though recovery is disabled or on cooldown.",
+      "rootCause": "",
+      "guard": "Execute notification decision with disabled, cooldown, invalid group and eligible recovery inputs; only eligible recovery may promise restart.",
+      "evidence": [
+        {
+          "kind": "focused-test",
+          "at": "2026-09-06T06:07:32.317Z",
+          "note": "python3 -m unittest tests.test_pressure_watchdog: 16 passed; new decision regression reproduced eight failures before fix and passes after."
+        },
+        {
+          "kind": "source",
+          "at": "2026-09-06T06:10:50.133Z",
+          "note": "Installed source checksum matches tested watchdog: 0eecdfe70b2b39ebd31c5669326487abefb3fd196f4763513750d46d364a5735; service active since 09:08:43 IDT. Notification delivery during a new pressure incident remains unobserved. shellcheck is unavailable; decision tests and diff check passed."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Add a failing decision regression, then share the eligibility decision between notification and recovery.",
+      "history": [
+        {
+          "at": "2026-09-06T06:04:50.030Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-09-06T06:07:16.664Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Notification ignores disabled recovery and cooldown; event at 08:38:55 had no desktop_recovery record and same PID survived."
+        },
+        {
+          "at": "2026-09-06T06:07:20.973Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "New executable Bash decision regression failed eight disabled/cooldown/invalid-group cases before production edit."
+        },
+        {
+          "at": "2026-09-06T06:07:24.457Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Regression covers both desktop and WebKit blocked reasons, eligibility and invalid process groups."
+        },
+        {
+          "at": "2026-09-06T06:07:28.310Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Notification and recovery now share one eligibility decision; recovery policy is preserved."
+        },
+        {
+          "at": "2026-09-06T06:07:32.317Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "python3 -m unittest tests.test_pressure_watchdog: 16 passed; new decision regression reproduced eight failures before fix and passes after."
+        },
+        {
+          "at": "2026-09-06T06:07:36.400Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Only recovery eligibility timing and notification selection changed; disabled recovery, cooldown, blocked reason and process-group guards are preserved."
+        },
+        {
+          "at": "2026-09-06T06:07:39.847Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Focused logic proof passes; installing corrected script and verifying active monitoring service next."
+        },
+        {
+          "at": "2026-09-06T06:10:50.133Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Installed source checksum matches tested watchdog: 0eecdfe70b2b39ebd31c5669326487abefb3fd196f4763513750d46d364a5735; service active since 09:08:43 IDT. Notification delivery during a new pressure incident remains unobserved. shellcheck is unavailable; decision tests and diff check passed."
+        }
+      ]
+    },
+    {
+      "id": "TF-029",
+      "title": "Mobile control omits approvals and live agent status",
+      "state": "fixing",
+      "severity": "medium",
+      "surface": "desktop-runtime",
+      "matrixRefs": [
+        "3.21e"
+      ],
+      "symptom": "Phone chat hides model permission choices, exposes internal tool chatter, and omits live work duration plus five-hour and weekly limits.",
+      "rootCause": "The phone renderer now consumes pending asks, but mobile browsers suspend its polling while backgrounded; on return it previously waited for the next eight-second interval, leaving the old conversation visible while a real terminal permission was already pending.",
+      "guard": "Focused phone Playwright regression plus installed public mobile and desktop browser verification.",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-09-08T19:55:21.329Z",
+          "note": "Fleet API exposes a minimal approval summary and the phone renders a collapsible Needs you panel before terminal groups."
+        },
+        {
+          "kind": "live-desktop",
+          "at": "2026-09-09T09:40:48.359Z",
+          "note": "After deployment, live daemon read-back retained all 15 current panes while the approval list dropped from 4 stale-or-current entries to 1 genuinely unmatched approval."
+        },
+        {
+          "kind": "installed-release",
+          "at": "2026-09-12T20:30:44.816Z",
+          "note": "TermControl-only service restarted at 2026-09-12 23:30:02 IDT without touching the TermFleet daemon. Live read-back of 178 conversation events for the reported pane contains zero hookSpecificOutput or injected control messages; local login is healthy and no-store."
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-09-13T13:04:08.962Z",
+          "note": "node --test termcontrol/test/mobile-control-regression.test.mjs: 16/16 pass; npm run verify:termcontrol-mobile: 17/17 pass."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Reload the authenticated phone page and prove one visible approval choice clears the matching live desktop prompt exactly once.",
+      "history": [
+        {
+          "at": "2026-09-08T09:08:44.935Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-09-08T09:08:44.959Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Existing bridge answer route and orphan prompt styles confirm the mobile UI gap."
+        },
+        {
+          "at": "2026-09-08T09:08:44.982Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Writing phone regressions before production changes."
+        },
+        {
+          "at": "2026-09-08T09:15:26.576Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Expected pre-fix failure: session-status module absent; mobile approval, dedupe, hidden-tool, quota, and timer contract is not implemented."
+        },
+        {
+          "at": "2026-09-08T09:15:26.888Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Focused mobile-control regression contract added and confirmed failing before production changes."
+        },
+        {
+          "at": "2026-09-08T09:15:27.215Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Implementing explicit permission controls, stale-prompt refusal, hidden tool chatter, quotas, and working timer."
+        },
+        {
+          "at": "2026-09-08T10:36:29.959Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Fresh TermControl regression suite passed 160 checks, including bound one-tap permission answers, usable composer, hidden tool chatter, ticking work duration, and five-hour plus weekly limits."
+        },
+        {
+          "at": "2026-09-08T10:36:30.265Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Frontend build and focused phone regressions pass with permission rendering, stale-prompt refusal, clean conversation filtering, live timer, and quota status wired end to end."
+        },
+        {
+          "at": "2026-09-08T10:36:30.569Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Fresh source and focused regressions pass; deployed authenticated phone and installed desktop visual proof remain."
+        },
+        {
+          "at": "2026-09-08T10:45:22.356Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "TermControl service restarted from this checkout and public/local sign-in routes are healthy; matching immutable desktop release promoted and checksum verification passed at SHA256 8da791f4168e83d1e1deccbe00343a3ef233eb46d740d488237ead1d8f8400c3."
+        },
+        {
+          "at": "2026-09-08T15:02:36.146Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Fresh verification passed the 10 focused mobile/live-parity tests and all 165 TermControl checks: one live daemon terminal per identity, exact authoritative order, activity changes cannot reorder projects or terminals, one-tap permission answers, hidden internal tool rows, ticking work time, and visible five-hour plus weekly limits."
+        },
+        {
+          "at": "2026-09-08T15:02:36.665Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Production frontend build completed successfully, git diff check passed, and the phone harness now uses an OS-assigned disposable port with guaranteed cleanup so stale verifier bridges cannot create false sign-in or duplicate-terminal failures."
+        },
+        {
+          "at": "2026-09-08T15:30:28.735Z",
+          "type": "transition",
+          "from": "verifying",
+          "to": "reopened",
+          "note": "Fresh desktop and phone evidence contradicts synthetic guards: desktop FlowState pane shows a live command approval menu while authenticated phone chat omits it."
+        },
+        {
+          "at": "2026-09-08T15:30:29.045Z",
+          "type": "transition",
+          "from": "reopened",
+          "to": "reproducing",
+          "note": "Tracing the exact live FlowState pane from Codex approval event through the bridge and mobile renderer."
+        },
+        {
+          "at": "2026-09-08T15:50:49.167Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Fresh post-fix verification passed all 165 TermControl checks and the production build. The regression now reads a real unmatched Codex escalated exec request from the rollout, exposes its command and reason on phone, clears it only after the matching output, ignores ordinary tools, and maps persistent approval to the actual p choice."
+        },
+        {
+          "at": "2026-09-08T15:50:49.462Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "A focused real-rollout regression now reproduces the missing live approval path and fails if ordinary tool calls leak as permissions."
+        },
+        {
+          "at": "2026-09-08T15:50:49.755Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "The real Codex rollout parser, mobile approval detail, and current menu keystrokes are implemented."
+        },
+        {
+          "at": "2026-09-08T15:50:50.060Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "All 165 TermControl checks and the production frontend build pass; deployed authenticated phone proof remains."
+        },
+        {
+          "at": "2026-09-08T16:08:02.855Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "TermControl web bridge restarted at 2026-09-08 18:50 IDT from the corrected checkout without restarting the PTY daemon. Local and public login routes return 200, and the deployed parser currently detects real pending permission requests in live Codex panes."
+        },
+        {
+          "at": "2026-09-08T16:08:03.152Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "The supplied desktop screenshot proves the real Codex approval surface includes command, reason, and three choices; the deployed bridge now resolves that exact unmatched escalated exec event. Authenticated phone visual confirmation remains required before resolution."
+        },
+        {
+          "at": "2026-09-08T16:14:14.728Z",
+          "type": "transition",
+          "from": "verifying",
+          "to": "reopened",
+          "note": "The live-shaped namespaced Codex exec regression fails: functions.exec is not exposed as a permission request."
+        },
+        {
+          "at": "2026-09-08T16:14:15.076Z",
+          "type": "transition",
+          "from": "reopened",
+          "to": "reproducing",
+          "note": "Reproduced by verify:termcontrol-mobile; plain exec passes while functions.exec is rejected by the adapter name guard."
+        },
+        {
+          "at": "2026-09-08T16:14:15.422Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "The focused regression requires namespaced live exec calls to expose the same permission request while non-exec tools remain ignored."
+        },
+        {
+          "at": "2026-09-08T16:14:15.834Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Applying the narrow adapter-name correction for exec and namespaced .exec calls only."
+        },
+        {
+          "at": "2026-09-08T16:22:16.157Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "179 approval, parity, ordering, deduplication, clean-feed, live-timer, and limit checks passed"
+        },
+        {
+          "at": "2026-09-08T16:22:16.465Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "TermControl service deployed at 19:19 IDT as PID 3065117; local and public login endpoints return HTTP 200"
+        },
+        {
+          "at": "2026-09-08T16:22:16.789Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "Live audit found 15 live terminals, 15 unique terminals, stable refresh order, one pending approval, no internal tool rows, five ticking timers, and both usage limits for all 12 Codex terminals"
+        },
+        {
+          "at": "2026-09-08T16:22:17.104Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Deployed runtime and live bridge proof pass; authenticated phone approval rendering and tap remain the final gate"
+        },
+        {
+          "at": "2026-09-08T16:24:23.259Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "A regression using the real namespaced Codex functions.exec approval call failed before the fix and passes after accepting both live and legacy tool names. All 165 browser checks, 14 focused regressions, and the production build pass."
+        },
+        {
+          "at": "2026-09-08T16:24:23.559Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "After the 19:20 bridge restart, the live daemon-reconciled inventory contains 15 panes and one real pending approval. Local and public routes respond at the same timestamp with Cloudflare cache status DYNAMIC."
+        },
+        {
+          "at": "2026-09-08T16:28:53.918Z",
+          "type": "transition",
+          "from": "verifying",
+          "to": "reopened",
+          "note": "Independent phone screenshot b196df6b shows the approval card clipped by the composer and hides its choices and live limits"
+        },
+        {
+          "at": "2026-09-08T16:28:54.432Z",
+          "type": "transition",
+          "from": "reopened",
+          "to": "reproducing",
+          "note": "Reproduced with the live daemon through an isolated local sign-in at 390x844; DOM claimed success while the screenshot visibly failed"
+        },
+        {
+          "at": "2026-09-08T16:28:54.832Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Candidate: keep approval choices fixed inside the card while only command detail scrolls, and mirror live timer and quotas into the chat header; focused checks will require every choice and status item visible without scrolling"
+        },
+        {
+          "at": "2026-09-08T16:28:55.312Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "Failing phone artifact b196df6bf3f9eed062931f923f1ec66825c24525318a9b9eef0792fdd49556e0: independent review found composer clipping and hidden approval choices and limits"
+        },
+        {
+          "at": "2026-09-08T16:38:12.683Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Real phone-daemon geometry confirms the full command is duplicated as a wrapping title above the terminal excerpt, pushing all three approval choices below the clipped card. Fixing will retain one scrollable complete prompt and keep all answer targets fixed above the composer."
+        },
+        {
+          "at": "2026-09-08T16:54:40.348Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "179 checks pass: 14 approval/parity regressions, 65 bridge integrations, 35 phone geometry checks, 48 phone flows, and 17 accessibility checks; production build and diff validation pass."
+        },
+        {
+          "at": "2026-09-08T16:54:40.653Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "Independent 390x844 live-daemon visual audit PASS at SHA256 2385279b35efc17e9f9a2935aa9ebc5562ac11c6ae211019671b9a9a27cfc0f4: permission heading and all three 48px approval buttons are fully visible above the usable reply box; ticking work time plus five-hour and weekly limits are visible; no overlap or horizontal overflow."
+        },
+        {
+          "at": "2026-09-08T16:54:41.010Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "TermControl service restarted from this checkout only, without restarting the PTY daemon. PID 3491202 active since 19:54:03 IDT; local and public login routes both return HTTP 200."
+        },
+        {
+          "at": "2026-09-08T16:54:41.373Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Deployed service, full regression suite, and isolated real-daemon phone visual proof pass. The owner's public phone sign-in and a deliberate live approval tap remain the final production acceptance gate."
+        },
+        {
+          "at": "2026-09-08T17:01:33.433Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": null
+        },
+        {
+          "at": "2026-09-08T17:15:05.331Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": null
+        },
+        {
+          "at": "2026-09-08T17:15:05.602Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": null
+        },
+        {
+          "at": "2026-09-08T17:16:07.080Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Fresh 2026-09-08 verification passed 181 checks: real permission parsing, three visible approval actions above a usable composer, one bound answer sent once, tool chatter hidden, ticking working time, both quota windows, 16 unique terminals, and exact desktop order."
+        },
+        {
+          "at": "2026-09-08T17:16:07.435Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "Deployed TermControl PID 3491202 runs this checkout bridge; local and public login responses have identical SHA256 1679683bdbc29d26a85b6fcd5e85e834046d92edc088a76bd27f35e5cceba8dd. Authenticated public phone approval tap remains required."
+        },
+        {
+          "at": "2026-09-08T17:29:49.013Z",
+          "type": "transition",
+          "from": "verifying",
+          "to": "reopened",
+          "note": "Authenticated phone evidence shows an active Codex permission menu on the installed desktop while the same open TermControl chat omits it; current backend detection returns the prompt, so browser refresh delivery remains broken."
+        },
+        {
+          "at": "2026-09-08T17:29:49.301Z",
+          "type": "transition",
+          "from": "reopened",
+          "to": "reproducing",
+          "note": "Reproducing the already-open phone chat refresh race with delayed and out-of-order feed responses before changing production code."
+        },
+        {
+          "at": "2026-09-08T17:38:51.918Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Pre-fix phone regression: after a permission becomes available while an already-open chat is dormant, returning focus does not request fresh state and the permission menu remains absent (37 passed, 1 expected failure)."
+        },
+        {
+          "at": "2026-09-08T17:38:52.206Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Added a deterministic phone guard requiring return to an open chat to fetch and reveal a newly available permission within 1.5 seconds."
+        },
+        {
+          "at": "2026-09-08T17:49:05.070Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Post-fix phone suite passed 38/38, including a late permission appearing within 1.5 seconds after returning to a dormant chat. The focused mobile verifier passed 14/14 and the complete TermControl suite passed 168 checks."
+        },
+        {
+          "at": "2026-09-08T17:49:05.347Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Production frontend build and git diff check passed. The running bridge serves index.html from this checkout on every request with no-store headers, so the changed phone UI is deployed without a terminal or bridge restart; the public HTTPS route is healthy and redirects unauthenticated requests to sign-in."
+        },
+        {
+          "at": "2026-09-08T17:49:54.568Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "The phone now refreshes immediately when a suspended page regains focus, is restored, or becomes visible; no terminal process was restarted."
+        },
+        {
+          "at": "2026-09-08T17:49:54.843Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "The wake-refresh fix is live and all automated approval/parity regressions pass; the remaining gate is an authenticated phone reload and one-tap answer read-back against a real desktop prompt."
+        },
+        {
+          "at": "2026-09-08T19:55:18.722Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Phone attention panel and exact terminal Review navigation pass 37 of 37; focused approval and inventory regressions pass 14 of 14."
+        },
+        {
+          "at": "2026-09-08T19:55:21.329Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Fleet API exposes a minimal approval summary and the phone renders a collapsible Needs you panel before terminal groups."
+        },
+        {
+          "at": "2026-09-08T19:55:22.578Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "termcontrol.service restarted at 22:52 IDT from the current checkout; local login route returns 200 with no-store caching."
+        },
+        {
+          "at": "2026-09-08T19:55:23.983Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "Post-restart daemon read-back found 16 panes, 16 unique identities, and 4 current approvals for the top panel."
+        },
+        {
+          "at": "2026-09-08T20:01:53.809Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "Independent 390x844 live-daemon visual audit passed with all three 48px permission actions, usable reply box, ticking work time, and both usage limits visible. A fresh project-filtered audit now detects a real pending Codex permission only in the termfleet project for the TermControl phone test; the authenticated public-phone tap and matching desktop clearance remain unverified."
+        },
+        {
+          "at": "2026-09-08T20:26:34.473Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Phone fleet panel and approval interaction pass 39 of 39 checks, including retained collapsed state across reloads."
+        },
+        {
+          "at": "2026-09-09T04:57:57.270Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "TermControl service is active from the current checkout and the live login response is HTTP 200 with cache-control no-store after the final phone panel update."
+        },
+        {
+          "at": "2026-09-09T06:25:31.640Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Dynamic stale-permission regression failed before the fix and now passes; focused mobile verifier passes 15 of 15 and bridge suite passes 65 of 65."
+        },
+        {
+          "at": "2026-09-09T09:40:48.359Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "After deployment, live daemon read-back retained all 15 current panes while the approval list dropped from 4 stale-or-current entries to 1 genuinely unmatched approval."
+        },
+        {
+          "at": "2026-09-09T09:40:48.378Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "Restarted only termcontrol.service after the dynamic approval-authority fix; TermFleet daemon and terminal sessions were not restarted."
+        },
+        {
+          "at": "2026-09-09T10:07:07.269Z",
+          "type": "transition",
+          "from": "verifying",
+          "to": "fixing",
+          "note": "Approval answers are delivered but not shown in the TermControl chat; focused phone regression reproduces it."
+        },
+        {
+          "at": "2026-09-09T10:16:45.441Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Regression failed before the fix; phone behavior now passes 40/40 and records the delivered permission answer in chat. Mobile parity passes 15/15, bridge 65/65, flows 48/48, accessibility 17/17, and frontend build passes."
+        },
+        {
+          "at": "2026-09-09T10:16:53.693Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Updated TermControl bridge is active on PID 4097041 with no-store HTTP read-back; an authenticated real-phone approval remains the final visual gate."
+        },
+        {
+          "at": "2026-09-12T14:54:20.724Z",
+          "type": "transition",
+          "from": "verifying",
+          "to": "fixing",
+          "note": "Live phone screenshot and daemon audit proved the terminal progressed while older approval answers were rendered below newer replies, making the chat look stuck."
+        },
+        {
+          "at": "2026-09-12T14:54:20.980Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "A focused phone regression failed before the repair when an older permission answer covered a newer agent reply; it now passes, with phone 41/41, mobile parity 15/15, bridge 65/65, flows 48/48, accessibility 17/17, frontend build, and diff validation all passing."
+        },
+        {
+          "at": "2026-09-12T14:54:21.233Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Chronological chat ordering is repaired and all local gates pass; deployed public-phone read-back remains."
+        },
+        {
+          "at": "2026-09-12T14:56:05.343Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "TermControl service restarted at 2026-09-12 17:55:39 IDT from the current repository server; service is active, /login returns 200 with cache-control no-store, git diff check passes, and no TermFleet daemon or terminal process was restarted. Authenticated phone chronological read-back remains."
+        },
+        {
+          "at": "2026-09-12T20:24:53.737Z",
+          "type": "transition",
+          "from": "verifying",
+          "to": "reopened",
+          "note": "Owner reports TermControl still shows hook plumbing. Live feed read-back confirms hookSpecificOutput records and injected agent-role instructions are rendered as assistant messages."
+        },
+        {
+          "at": "2026-09-12T20:25:00.556Z",
+          "type": "transition",
+          "from": "reopened",
+          "to": "reproducing",
+          "note": "Focused regression now fails on the exact live hookSpecificOutput and injected root-agent instruction while preserving ordinary operator and agent messages."
+        },
+        {
+          "at": "2026-09-12T20:25:05.811Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Candidate: classify only known hook outputs and injected control envelopes as transcript noise before rendering. This removes the reported plumbing without hiding normal messages beginning with similar everyday wording."
+        },
+        {
+          "at": "2026-09-12T20:25:10.474Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Applying the narrow transcript-noise classification covered by the failing regression."
+        },
+        {
+          "at": "2026-09-12T20:30:33.944Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Exact live hookSpecificOutput and injected control-envelope regression failed before the filter and passes after it while ordinary operator and agent sentences remain visible. Mobile parity 15/15, phone 41/41, flows 48/48, accessibility 17/17, and frontend build pass; full live bridge checks have 65 passes plus one unrelated already-empty terminal failure present before and after."
+        },
+        {
+          "at": "2026-09-12T20:30:44.816Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "TermControl-only service restarted at 2026-09-12 23:30:02 IDT without touching the TermFleet daemon. Live read-back of 178 conversation events for the reported pane contains zero hookSpecificOutput or injected control messages; local login is healthy and no-store."
+        },
+        {
+          "at": "2026-09-12T20:30:51.102Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Deployed live feed is clean for the reported pane; authenticated owner-phone visual confirmation remains before resolution."
+        },
+        {
+          "at": "2026-09-13T06:02:34.486Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Fresh mobile-control and inventory parity regressions pass 15/15, including hook chatter suppression, approval binding, live status/timer behavior, exact sidebar order, and duplicate-pane collapse."
+        },
+        {
+          "at": "2026-09-13T06:06:15.861Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Fresh full bridge run passes 67/67, including a live API assertion that every listed pane emits no known hook or control envelope; mobile-control and inventory parity remain 15/15."
+        },
+        {
+          "at": "2026-09-13T13:04:07.543Z",
+          "type": "transition",
+          "from": "verifying",
+          "to": "reopened",
+          "note": "Owner screenshot reproduces a terminal-rendered MCP permission prompt that TermControl does not expose while the pane status remains working."
+        },
+        {
+          "at": "2026-09-13T13:04:07.837Z",
+          "type": "transition",
+          "from": "reopened",
+          "to": "reproducing",
+          "note": "Confirmed live pane snapshot contains browser_run_code_unsafe approval choices; status hook is working, so transcript-only detection cannot see it."
+        },
+        {
+          "at": "2026-09-13T13:04:08.116Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Added screen-backed MCP approval regression: exact Allow/session/always/cancel choices pass, ordinary terminal text is rejected."
+        },
+        {
+          "at": "2026-09-13T13:04:08.401Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Screen detector is narrow to explicit MCP server/tool prompt plus visible Allow and Cancel choices."
+        },
+        {
+          "at": "2026-09-13T13:04:08.687Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "TermControl feed now falls back to screen approval detection and validates answers against the fresh screen prompt."
+        },
+        {
+          "at": "2026-09-13T13:04:08.963Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "node --test termcontrol/test/mobile-control-regression.test.mjs: 16/16 pass; npm run verify:termcontrol-mobile: 17/17 pass."
+        }
+      ]
+    },
+    {
+      "id": "TF-030",
+      "title": "TermControl has no password recovery",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "desktop-runtime",
+      "matrixRefs": [],
+      "symptom": "The owner reaches a sign-in form but has no password and cannot open TermControl on phone.",
+      "rootCause": "",
+      "guard": "Focused access regression proves password reset is available only from the local PC, requires an unguessable form token, invalidates the old password, and never stores plaintext.",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-09-08T14:02:17.392Z",
+          "note": "Full TermControl suite passed 165 checks, canonical mobile verification passed 9 checks, production build passed, diff check passed, and issue registry validation passed."
+        },
+        {
+          "kind": "live-desktop",
+          "at": "2026-09-08T14:43:49.789Z",
+          "note": "Fresh visible PC recovery page shows exactly one new-password field, no email or old-password field, local-only guidance, and the reset action; fresh mobile-emulated public login shows exactly one password field, no email field, the local recovery URL, and no-store delivery. Password submission and authenticated phone read-back remain."
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-09-08T17:16:07.766Z",
+          "note": "Fresh 2026-09-08 suite passes local-only password recovery, forged-token refusal, credential and session rotation, and successful-sign-in throttling within 181 total checks."
+        },
+        {
+          "kind": "installed-release",
+          "at": "2026-09-08T17:16:08.076Z",
+          "note": "Live deployed service returns local recovery HTTP 200 and public recovery HTTP 404; local and public login pages are byte-identical. Owner must choose a new password locally and sign in on the real phone for final read-back."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Lock the missing local recovery flow with a failing integration regression.",
+      "history": [
+        {
+          "at": "2026-09-08T11:03:05.925Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-09-08T11:03:06.291Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Confirmed an existing account forces login and the authentication module provides no reset route."
+        },
+        {
+          "at": "2026-09-08T11:03:06.815Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Adding a local-PC-only recovery regression before production changes."
+        },
+        {
+          "at": "2026-09-08T11:06:12.338Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Pre-fix integration regression fails exactly because local recovery returns 404, forged recovery cannot be rejected by a dedicated gate, and no recovery token or credential rotation exists."
+        },
+        {
+          "at": "2026-09-08T11:06:12.653Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Focused integration guard now locks local-only access, anti-CSRF token validation, password rotation, and old-session invalidation."
+        },
+        {
+          "at": "2026-09-08T11:06:12.954Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Implementing the narrow local-PC recovery route and account rotation."
+        },
+        {
+          "at": "2026-09-08T11:18:40.376Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Focused auth regression passes 64/64: local-only recovery, expiring token, forged-token refusal, credential and session rotation, plaintext-password guard, and repeated successful sign-ins without throttling."
+        },
+        {
+          "at": "2026-09-08T11:18:40.666Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Recovery implementation uses scrypt password hashing, a ten-minute HMAC form token, localhost socket and host checks, and session-secret plus account-ID rotation."
+        },
+        {
+          "at": "2026-09-08T13:40:24.695Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "Deployed TermControl service restarted at 2026-09-08 16:02:57 IDT; local recovery and login return 200, public recovery returns 404, and public login returns 200."
+        },
+        {
+          "at": "2026-09-08T13:40:24.978Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Deployment is live. Owner must choose a new password on the local PC, then authenticated phone sign-in and recovery-page visual read-back remain."
+        },
+        {
+          "at": "2026-09-08T14:01:50.296Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Fresh password-only recovery regression passes: local recovery needs neither old password nor email, rotates the sole owner credential and sessions, and phone sign-in asks only for the new password."
+        },
+        {
+          "at": "2026-09-08T14:02:17.392Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Full TermControl suite passed 165 checks, canonical mobile verification passed 9 checks, production build passed, diff check passed, and issue registry validation passed."
+        },
+        {
+          "at": "2026-09-08T14:03:30.839Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "TermControl service restarted with the password-only owner flow. Local recovery and login return 200 with no email field; public login returns 200 with password only; public recovery remains 404."
+        },
+        {
+          "at": "2026-09-08T14:43:49.789Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "Fresh visible PC recovery page shows exactly one new-password field, no email or old-password field, local-only guidance, and the reset action; fresh mobile-emulated public login shows exactly one password field, no email field, the local recovery URL, and no-store delivery. Password submission and authenticated phone read-back remain."
+        },
+        {
+          "at": "2026-09-08T17:15:05.869Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": null
+        },
+        {
+          "at": "2026-09-08T17:15:06.150Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": null
+        },
+        {
+          "at": "2026-09-08T17:16:07.766Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Fresh 2026-09-08 suite passes local-only password recovery, forged-token refusal, credential and session rotation, and successful-sign-in throttling within 181 total checks."
+        },
+        {
+          "at": "2026-09-08T17:16:08.076Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "Live deployed service returns local recovery HTTP 200 and public recovery HTTP 404; local and public login pages are byte-identical. Owner must choose a new password locally and sign in on the real phone for final read-back."
+        }
+      ]
+    },
+    {
+      "id": "TF-031",
+      "title": "Back loses the selected terminal's place",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "desktop-runtime",
+      "matrixRefs": [
+        "3.21g"
+      ],
+      "symptom": "Returning from a TermControl conversation jumps to the bottom of the fleet instead of the selected terminal's prior area.",
+      "rootCause": "Fleet and chat reuse one scroll container; opening a chat does not preserve the clicked fleet card anchor, and fleet rendering inherits the chat scroll position.",
+      "guard": "Phone regression opens a middle terminal, returns, and requires the same card at the same viewport offset while allowing later manual scrolling.",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-09-08T20:44:03.797Z",
+          "note": "Fleet history now preserves the selected pane identity and viewport offset, then restores that anchor exactly once after fleet rendering."
+        },
+        {
+          "kind": "installed-release",
+          "at": "2026-09-08T20:44:04.467Z",
+          "note": "The public TermControl surface is serving the repaired phone application from the deployed bridge; no terminal process restart was used."
+        },
+        {
+          "kind": "live-desktop",
+          "at": "2026-09-08T20:44:04.800Z",
+          "note": "Owner verified on the real public phone surface that Back now returns to the selected terminal area: seems to work."
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-09-09T10:17:01.867Z",
+          "note": "Review-origin Back regression failed before the fix and now passes within the 40/40 phone suite; ordinary terminal-card Back behavior also remains green."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Add the failing phone regression, then restore the saved terminal anchor once when returning to the fleet.",
+      "history": [
+        {
+          "at": "2026-09-08T20:24:04.398Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-09-08T20:24:04.690Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "The shared scrolling container and missing return anchor are confirmed in the mobile navigation path."
+        },
+        {
+          "at": "2026-09-08T20:24:05.026Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Writing the exact phone back-navigation regression before production code changes."
+        },
+        {
+          "at": "2026-09-08T20:26:43.346Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Pre-fix phone regression failed exactly as reported: after Back, the selected middle terminal was outside the returned viewport."
+        },
+        {
+          "at": "2026-09-08T20:26:43.684Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "The phone test now requires the selected terminal to return at the same viewport offset within 3px."
+        },
+        {
+          "at": "2026-09-08T20:26:44.030Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Saving the clicked fleet card anchor in the fleet history entry and restoring it once after rendering."
+        },
+        {
+          "at": "2026-09-08T20:44:03.797Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Fleet history now preserves the selected pane identity and viewport offset, then restores that anchor exactly once after fleet rendering."
+        },
+        {
+          "at": "2026-09-08T20:44:04.117Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Pre-fix phone regression failed with the selected terminal outside the returned viewport; post-fix returns within 0px. Full verification passed: flows 48/48, mobile 14/14, TermControl 65/65 plus phone 39/39, production build, and diff check."
+        },
+        {
+          "at": "2026-09-08T20:44:04.467Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "The public TermControl surface is serving the repaired phone application from the deployed bridge; no terminal process restart was used."
+        },
+        {
+          "at": "2026-09-08T20:44:04.800Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "Owner verified on the real public phone surface that Back now returns to the selected terminal area: seems to work."
+        },
+        {
+          "at": "2026-09-08T20:44:05.126Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Source, regression, full-suite, deployed-surface, and owner phone evidence are recorded."
+        },
+        {
+          "at": "2026-09-08T20:44:05.431Z",
+          "type": "transition",
+          "from": "verifying",
+          "to": "resolved",
+          "note": "The exact reported Back-position failure is fixed and confirmed on the real phone surface."
+        },
+        {
+          "at": "2026-09-09T10:07:08.324Z",
+          "type": "transition",
+          "from": "resolved",
+          "to": "reopened",
+          "note": "Back from a Needs you Review returns to the ordinary project card instead of the review row; focused phone regression reproduces it."
+        },
+        {
+          "at": "2026-09-09T10:17:01.867Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Review-origin Back regression failed before the fix and now passes within the 40/40 phone suite; ordinary terminal-card Back behavior also remains green."
+        },
+        {
+          "at": "2026-09-09T10:17:41.244Z",
+          "type": "transition",
+          "from": "reopened",
+          "to": "reproducing",
+          "note": "Focused phone test reproduced review Back returning to the project card."
+        },
+        {
+          "at": "2026-09-09T10:18:04.808Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Phone regression now distinguishes Review-row return from ordinary pane-card return."
+        },
+        {
+          "at": "2026-09-09T10:18:10.842Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Return state now records whether Review or the project card opened the chat."
+        },
+        {
+          "at": "2026-09-09T10:18:17.502Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "40/40 phone suite and updated live bridge pass; authenticated public-phone Back read-back remains before resolution."
+        }
+      ]
+    },
+    {
+      "id": "TF-032",
+      "title": "Task context invents goals and jumps between states",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "logic",
+      "matrixRefs": [],
+      "symptom": "The cockpit replaces the real task or about-what answer with canned project descriptions and generic waiting text, making Task Goal Now appear disjointed.",
+      "rootCause": "",
+      "guard": "A sidecar with no authoritative goal must preserve an empty goal and must never emit inferred project copy; a valid about-what answer must remain stable while Now changes.",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-09-15T21:29:20.409Z",
+          "note": "Validated opening-request and user-prompt status-sidecar goals now enter the pane task identity ladder before TodoWrite, while generic values remain rejected."
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-09-15T21:52:16.866Z",
+          "note": "Pane-owned opening-request and task-summary candidates now feed the rendered Task ladder; focused identity suite 15/15, build, release promotion, and installed-release verification rerun. Live matrix remains pending dock relaunch."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Add regression coverage, remove heuristic goal synthesis, and verify the task goal now rendering path.",
+      "history": [
+        {
+          "at": "2026-09-13T06:02:44.981Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-09-13T06:09:35.964Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Root cause confirmed in both sidecar summary implementations and map presentation."
+        },
+        {
+          "at": "2026-09-13T06:09:37.143Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Regression fixtures now cover no inferred Goal and no duplicate Task row."
+        },
+        {
+          "at": "2026-09-13T06:09:38.082Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Regression guard is in place before broader verification."
+        },
+        {
+          "at": "2026-09-13T06:09:39.755Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Applying provenance-first summary and compact Task Goal Now presentation."
+        },
+        {
+          "at": "2026-09-13T06:27:24.429Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "79 sidecar tests and 2 cockpit context tests pass; npm run build passes."
+        },
+        {
+          "at": "2026-09-13T06:27:24.692Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Provenance-first Goal gating and compact single-rhythm Task/Goal/Now presentation are implemented."
+        },
+        {
+          "at": "2026-09-13T06:27:24.961Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Focused source and test evidence recorded; live installed visual and cockpit matrix remain unverified."
+        },
+        {
+          "at": "2026-09-13T06:33:17.532Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Updated matrix now reads the dock TermFleet snapshot; focused matrix contract, context layout, and sidecar tests pass."
+        },
+        {
+          "at": "2026-09-13T06:42:07.622Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "79 sidecar tests, 4 focused context layout tests, build, installed release verification pass; live matrix reads 26 real TermFleet panes and reports 14 malformed or missing pane-owned Goals."
+        },
+        {
+          "at": "2026-09-13T10:02:46.263Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Removed displayed Task heuristic fallback; unified agent Task Goal Now rows with fixed label column and one type rhythm; focused regression added."
+        },
+        {
+          "at": "2026-09-13T10:13:08.301Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Rendered Task Goal Now rows now use one shared 48px label column, 13px value scale, 17px line height, 7px row padding, and identical separators; focused regression passed 4/4."
+        },
+        {
+          "at": "2026-09-13T11:06:27.132Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Eight focused provenance regressions pass; placeholder plan summaries recover captured pane prompts without inventing Goal text."
+        },
+        {
+          "at": "2026-09-13T11:28:03.801Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": null
+        },
+        {
+          "at": "2026-09-13T13:33:18.768Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": null
+        },
+        {
+          "at": "2026-09-13T13:34:17.699Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "PreToolUse update_goal completion hook denies incomplete or stale all-pane cockpit evidence; representative missing-goal and valid-fresh-pane regression passes."
+        },
+        {
+          "at": "2026-09-13T13:43:50.295Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Fail-closed update_goal completion hook denies incomplete, stale, malformed, and unidentified cockpit evidence; valid fresh pane remains allowed; focused regression passes 2/2."
+        },
+        {
+          "at": "2026-09-13T13:51:45.316Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Post-relaunch live completion simulation denied 27 failing panes; cockpit matrix and goal-approval regressions pass 5/5; installed release and hook registration verified."
+        },
+        {
+          "at": "2026-09-13T14:28:24.347Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "High-confidence $sure gate regression passes; npm run build passes; live all-pane matrix remains fail-closed with 30 panes and 27 failures, including missing Task/Goal/Now evidence and missing high-confidence summaries."
+        },
+        {
+          "at": "2026-09-13T14:31:29.108Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Removed SplitPane project/task fallback from the visible Task row; snapshot records now carry pane-owned status-summary confidence and the all-pane verifier requires high confidence."
+        },
+        {
+          "at": "2026-09-13T14:47:54.094Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Pane-content pass: 97/97 task-line tests, 18/18 cockpit content/matrix regressions, build, map verifier, installed release verification, and issue validation pass. Removed project/process/canned Task Goal Now synthesis; live matrix remains fail-closed because current panes still contain missing or stale fields and no high-confidence evidence."
+        },
+        {
+          "at": "2026-09-13T14:51:55.680Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Completion hook now emits host-enforced decision:block with additionalContext; contract test passes and live all-pane matrix still fails closed on missing or non-high-confidence pane evidence."
+        },
+        {
+          "at": "2026-09-13T15:02:15.248Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Added validated agent-goal provenance for active Codex goals, preserved user-owned goals, removed canned Working fallback, and added regressions; 123 focused tests, build, installed-release verification pass. Live all-pane matrix remains red until dock relaunch and fresh high-confidence evidence."
+        },
+        {
+          "at": "2026-09-13T20:11:01.464Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "68 focused status and task identity regressions pass; meta feedback is rejected and pane-owned task labels remain authoritative"
+        },
+        {
+          "at": "2026-09-13T20:16:27.753Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "90 focused sidecar and hook regressions pass; distinct pane prompts now supply Task without copying Goal, while meta prompts remain rejected"
+        },
+        {
+          "at": "2026-09-13T20:19:17.574Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "104 focused regressions plus Node syntax validation pass; Node and desktop sidecar rules now reject the same meta Goal inputs"
+        },
+        {
+          "at": "2026-09-15T20:41:39.221Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Current task-line source-capture regression suite passes 98/98; live matrix remains blocked by the already-running prior release and 30 pane records, while the combined layout suite has 11 unrelated dirty-work failures."
+        },
+        {
+          "at": "2026-09-15T20:45:59.777Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Split agent Task capture now considers the pane-owned explicit userTask after Todo and status-summary candidates, while retaining the distinct-from-Goal guard; this repairs missing Task records without synthesizing project copy."
+        },
+        {
+          "at": "2026-09-15T20:46:00.096Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Regression cockpit-row-stability agent Task source assertion passes; task-line suite passes 98/98. Live matrix remains stale until the promoted app is restarted."
+        },
+        {
+          "at": "2026-09-15T20:46:54.731Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Split agent Task capture now considers the pane-owned explicit userTask after Todo and status-summary candidates, while retaining the distinct-from-Goal guard; this repairs missing Task records without synthesizing project copy."
+        },
+        {
+          "at": "2026-09-15T20:46:55.061Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "The new cockpit row regression passes, task-line suite passes 98/98, and frontend build passes. Live matrix remains stale until the promoted app is restarted."
+        },
+        {
+          "at": "2026-09-15T21:29:20.409Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Validated opening-request and user-prompt status-sidecar goals now enter the pane task identity ladder before TodoWrite, while generic values remain rejected."
+        },
+        {
+          "at": "2026-09-15T21:29:20.690Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Task identity ladder regression passes 15/15 and frontend build passes; cockpit matrix remains red until the dock process is relaunched onto the promoted release."
+        },
+        {
+          "at": "2026-09-15T21:39:57.041Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Sidecar userTask is now validated as user wording while internal task candidates remain strict; focused identity tests 15/15, build, release promotion, and installed-release verification passed. Live matrix still requires dock restart and read-back."
+        },
+        {
+          "at": "2026-09-15T21:52:16.866Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Pane-owned opening-request and task-summary candidates now feed the rendered Task ladder; focused identity suite 15/15, build, release promotion, and installed-release verification rerun. Live matrix remains pending dock relaunch."
+        }
+      ]
+    },
+    {
+      "id": "TF-033",
+      "title": "OpenCode terminal text cannot be copied",
+      "state": "reproducing",
+      "severity": "medium",
+      "surface": "desktop-runtime",
+      "matrixRefs": [],
+      "symptom": "Selecting text from an OpenCode terminal and using terminal copy does not place the selection on the system clipboard.",
+      "rootCause": "",
+      "guard": "tests/selection.spec.ts; npm run verify:clipboard-paste",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-09-15T20:26:12.618Z",
+          "note": "Root cause confirmed in TerminalCanvas: when mouse reporting is active (as in OpenCode), unmodified pointer drags are forwarded to the TUI; only Shift-drag enters TermFleet selection. Focused selection guard passed 3/3; clipboard verifier passed source-contract checks and skipped live display read."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Reproduce OpenCode mouse-report selection and verify copy through the installed desktop clipboard path",
+      "history": [
+        {
+          "at": "2026-09-15T20:25:13.783Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-09-15T20:26:12.619Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Root cause confirmed in TerminalCanvas: when mouse reporting is active (as in OpenCode), unmodified pointer drags are forwarded to the TUI; only Shift-drag enters TermFleet selection. Focused selection guard passed 3/3; clipboard verifier passed source-contract checks and skipped live display read."
+        },
+        {
+          "at": "2026-09-15T20:26:45.423Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "OpenCode-specific copy report matches the desktop mouse-report selection surface."
+        },
+        {
+          "at": "2026-09-15T20:26:45.723Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Source trace identifies OpenCode mouse-report selection as the reproduction path; live desktop confirmation remains."
+        }
+      ]
+    },
+    {
+      "id": "TF-034",
+      "title": "OpenCode-terminal-cannot-scroll",
+      "state": "reproducing",
+      "severity": "medium",
+      "surface": "desktop-runtime",
+      "matrixRefs": [],
+      "symptom": "scrolling-over-an-OpenCode-terminal-pane-does-not-move-through-terminal-history",
+      "rootCause": "",
+      "guard": "tests/terminal-mouse.spec.ts,npm-run-verify-canvas-live",
+      "evidence": [
+        {
+          "kind": "focused-test",
+          "at": "2026-09-15T21:04:29.331Z",
+          "note": "terminal-mouse-spec.ts-passes-one-of-one-and-shift-wheel-with-mouse-report-and-alternate-screen-returns-history"
+        },
+        {
+          "kind": "source",
+          "at": "2026-09-15T21:07:24.486Z",
+          "note": "terminal-wheel-routing-now-prioritizes-Shift-history-for-mouse-reporting-alternate-screen-and-regression-matrix-row-5.42-added"
+        },
+        {
+          "kind": "installed-release",
+          "at": "2026-09-15T21:09:30.240Z",
+          "note": "fresh-release-promoted-and-installed-release-verifier-passes-binary-sha256-cc86a360f72dcdec1cfd032e7c519c5ea8b6c5afcfc1efc92de3df8fbdd512f4"
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Route-Shift-wheel-to-terminal-history-and-verify-installed-OpenCode-pane",
+      "history": [
+        {
+          "at": "2026-09-15T21:02:41.162Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-09-15T21:02:54.640Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "screenshot-shows-OpenCode-desktop-TUI-and-source-trace-identifies-mouse-report-wheel-precedence"
+        },
+        {
+          "at": "2026-09-15T21:03:00.023Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "focused-regression-will-cover-Shift-wheel-history-escape-path-live-desktop-reproduction-remains-pending"
+        },
+        {
+          "at": "2026-09-15T21:04:29.331Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "terminal-mouse-spec.ts-passes-one-of-one-and-shift-wheel-with-mouse-report-and-alternate-screen-returns-history"
+        },
+        {
+          "at": "2026-09-15T21:07:24.486Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "terminal-wheel-routing-now-prioritizes-Shift-history-for-mouse-reporting-alternate-screen-and-regression-matrix-row-5.42-added"
+        },
+        {
+          "at": "2026-09-15T21:09:30.240Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "fresh-release-promoted-and-installed-release-verifier-passes-binary-sha256-cc86a360f72dcdec1cfd032e7c519c5ea8b6c5afcfc1efc92de3df8fbdd512f4"
+        }
+      ]
+    },
+    {
+      "id": "TF-035",
+      "title": "OpenCode pane cannot scroll up or down",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "canvas",
+      "matrixRefs": [],
+      "symptom": "In an OpenCode pane the terminal is on the alternate screen, where TermFleet's grid has no scrollback. Home/End/PageUp/PageDown were intercepted unconditionally and applied to that empty history, so the keys were swallowed and the TUI never received them - nothing could scroll. Wheel input is unaffected.",
+      "rootCause": "",
+      "guard": "tests/terminal-viewport.spec.ts -g \"alternate-screen navigation keys\"",
+      "evidence": [
+        {
+          "kind": "focused-test",
+          "at": "2026-09-16T17:13:35.332Z",
+          "note": "Wheel extension: terminalWheelAction / shouldSendWheelToTerminalApp now forward the wheel to an app that claimed the mouse even on the PRIMARY screen, but only when the grid has no history to offer (hasHistory === false). TC-043 is preserved: with real history on the primary screen the wheel still scrolls TermFleet's scrollback. tests/terminal-mouse.spec.ts asserts both directions (mouseReport+no history -> mouse-report; mouseReport+history -> history). Also validated against opencode's own docs: keyboard scroll is PgUp/PgDn, Ctrl+Alt+U/D, Home/End, which the fall-through fix now delivers. Upstream opencode tui.mouse defaults to true, and an open opencode issue reports that mouse:true still does not scroll the message viewport in several terminals, so the TermFleet-side fix is the reliable one."
+        },
+        {
+          "kind": "source",
+          "at": "2026-09-16T17:13:35.664Z",
+          "note": "Second root cause found: terminalWheelAction only forwarded the wheel when mouseReport && altScreen, so an OpenCode pane (mouse claimed, primary screen) had the wheel routed to TermFleet's empty history. Now: mouseReport && (altScreen || hasHistory === false) -> mouse-report. Note the honest uncertainty: the earlier 'no mouse mode' scan read a TRUNCATED scrollback file, so it could not rule out a startup-time mouse enable; the authoritative mode lives in the grid."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Run the canvas/browser-render verifier and confirm live scrolling in the installed dock app",
+      "history": [
+        {
+          "at": "2026-09-16T15:55:07.555Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-09-16T15:55:20.816Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Reproduction path identified from the live OpenCode pane report."
+        },
+        {
+          "at": "2026-09-16T15:55:21.124Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Root cause traced in source."
+        },
+        {
+          "at": "2026-09-16T15:55:21.437Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Regression guard landed and mutation-verified."
+        },
+        {
+          "at": "2026-09-16T15:55:21.740Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Fix landed in source."
+        },
+        {
+          "at": "2026-09-16T15:55:22.043Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Focused guard passes; browser-render/live evidence pending."
+        },
+        {
+          "at": "2026-09-16T15:55:22.350Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "terminalViewportAction intercepted Home/End/PageUp/PageDown with no alt-screen awareness; TerminalCanvas applied them to grid history, which is empty on the alternate screen OpenCode uses. Added TerminalViewportModes.altScreen and returned null on the alternate screen so the keys fall through to the PTY; TerminalCanvas passes modesRef.current.altScreen."
+        },
+        {
+          "at": "2026-09-16T15:55:22.670Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "tests/terminal-viewport.spec.ts alt-screen case passes 4/4; removing the guard fails it at altPageUp with Received {delta:24,kind:delta}. npm run build (tsc && vite build) passes."
+        },
+        {
+          "at": "2026-09-16T16:44:03.770Z",
+          "type": "transition",
+          "from": "verifying",
+          "to": "reopened",
+          "note": "Alt-screen fix is correct for real alt-screen TUIs (vim/htop/less) but does NOT explain or fix the live OpenCode pane: stream analysis shows OpenCode never enters the alternate screen."
+        },
+        {
+          "at": "2026-09-16T16:44:04.082Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Stream analysis of the live pane (terminal-7259675f-3450-4ec0-a886-c96609705f1d..., cwd bots+automation, 3,367,981-byte scrollback). Last 400KB: 7,081 absolute cursor-positioning calls (ESC[row;colH, rows 1-35) and 1,200 synchronised-output (?2026) pairs, but ZERO screen-scroll primitives (ESC[S/ESC[T/ESC[L/ESC[M) and ZERO line feeds. Modes never set: 1049/47 (alt screen), 1000/1002/1003/1006 (mouse), 1007 (alternate scroll). So OpenCode repaints in place on the PRIMARY screen and TermFleet's grid accumulates no scrollback at all; plain wheel routes to 'history' and PageUp/PageDown/Home/End are claimed for grid history, so the navigation lands in an empty history while the app that owns the scrollable content never receives it. Root cause corrected: the grid must not claim history it does not have."
+        },
+        {
+          "at": "2026-09-16T16:44:04.414Z",
+          "type": "transition",
+          "from": "reopened",
+          "to": "reproducing",
+          "note": "Corrected root cause; fix must not claim history when the grid has none."
+        },
+        {
+          "at": "2026-09-16T17:07:50.806Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Rust flag + frontend guard landed, both mutation-verified."
+        },
+        {
+          "at": "2026-09-16T17:07:51.096Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Navigation keys now fall through when the grid has no history to show."
+        },
+        {
+          "at": "2026-09-16T17:07:51.394Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Focused guards + build pass; dock proof pending."
+        },
+        {
+          "at": "2026-09-16T17:07:51.697Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "The grid now reports whether it actually holds scrollback: MODE_HAS_HISTORY (1 << 9) set from alacritty's grid.history_size() in WireFrame::capture, carried per frame, decoded in gridDiff.ts, exposed as GridBuffer.hasHistory, and consumed by terminalViewportAction, which returns null when hasHistory === false or altScreen so Home/End/PageUp/PageDown fall through to the PTY. Rationale from the live pane: 7,081 absolute cursor moves, zero line feeds, zero screen-scroll primitives -> no history existed, so the claimed keys were swallowed into an empty history."
+        },
+        {
+          "at": "2026-09-16T17:07:51.996Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "tests/terminal-viewport.spec.ts 4/4 including 'navigation keys fall through when the grid has no history to show'; deleting the hasHistory gate fails it at pageUpNoHistory with Received {delta:24,kind:delta}. Rust vt_grid::tests::has_history_flag_tracks_real_scrollback passes, including a 50-iteration row-addressed repaint that must never claim history. npm run build, verify:map-terminals, verify:terminal-rendering, verify:task-identity all pass."
+        },
+        {
+          "at": "2026-09-16T17:13:35.332Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Wheel extension: terminalWheelAction / shouldSendWheelToTerminalApp now forward the wheel to an app that claimed the mouse even on the PRIMARY screen, but only when the grid has no history to offer (hasHistory === false). TC-043 is preserved: with real history on the primary screen the wheel still scrolls TermFleet's scrollback. tests/terminal-mouse.spec.ts asserts both directions (mouseReport+no history -> mouse-report; mouseReport+history -> history). Also validated against opencode's own docs: keyboard scroll is PgUp/PgDn, Ctrl+Alt+U/D, Home/End, which the fall-through fix now delivers. Upstream opencode tui.mouse defaults to true, and an open opencode issue reports that mouse:true still does not scroll the message viewport in several terminals, so the TermFleet-side fix is the reliable one."
+        },
+        {
+          "at": "2026-09-16T17:13:35.664Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Second root cause found: terminalWheelAction only forwarded the wheel when mouseReport && altScreen, so an OpenCode pane (mouse claimed, primary screen) had the wheel routed to TermFleet's empty history. Now: mouseReport && (altScreen || hasHistory === false) -> mouse-report. Note the honest uncertainty: the earlier 'no mouse mode' scan read a TRUNCATED scrollback file, so it could not rule out a startup-time mouse enable; the authoritative mode lives in the grid."
+        }
+      ]
+    },
+    {
+      "id": "TF-036",
+      "title": "Doctor rejects a valid pane task source",
+      "state": "resolved",
+      "severity": "medium",
+      "surface": "logic",
+      "matrixRefs": [],
+      "symptom": "npm run doctor reported DOCTOR_FAIL with 'unsupported task source(s) in fresh snapshot: plan-explanation' even though plan-explanation is a declared pane-owned TerminalHeaderGoalSource. The doctor and the snapshot verifier each carried a private allowlist that had drifted from the app's own source union.",
+      "rootCause": "",
+      "guard": "tests/cockpit-task-sources.spec.ts",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-09-16T15:55:30.131Z",
+          "note": "Doctor and cockpit-snapshot.mjs each kept a private task-source allowlist; both omitted plan-explanation, a declared TerminalHeaderGoalSource. Replaced both with the single scripts/lib/cockpit-task-sources.mjs vocabulary."
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-09-16T15:55:30.558Z",
+          "note": "tests/cockpit-task-sources.spec.ts 3/3 pass; dropping plan-explanation from the shared set fails the header-source coverage assertion. Live npm run doctor now reports Task identity sources OK (was DOCTOR_FAIL). verify:task-identity 23/23 pass."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Re-run npm run doctor against a fresh snapshot and keep the shared vocabulary the only copy",
+      "history": [
+        {
+          "at": "2026-09-16T15:55:07.857Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-09-16T15:55:28.280Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Found via npm run doctor DOCTOR_FAIL."
+        },
+        {
+          "at": "2026-09-16T15:55:28.625Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Root cause traced: duplicated allowlist drifted from the app union."
+        },
+        {
+          "at": "2026-09-16T15:55:28.940Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Drift guard landed and mutation-verified."
+        },
+        {
+          "at": "2026-09-16T15:55:29.323Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Both verifiers now import the single shared vocabulary."
+        },
+        {
+          "at": "2026-09-16T15:55:29.756Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Focused guard passes; confirming the live doctor clears."
+        },
+        {
+          "at": "2026-09-16T15:55:30.132Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Doctor and cockpit-snapshot.mjs each kept a private task-source allowlist; both omitted plan-explanation, a declared TerminalHeaderGoalSource. Replaced both with the single scripts/lib/cockpit-task-sources.mjs vocabulary."
+        },
+        {
+          "at": "2026-09-16T15:55:30.558Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "tests/cockpit-task-sources.spec.ts 3/3 pass; dropping plan-explanation from the shared set fails the header-source coverage assertion. Live npm run doctor now reports Task identity sources OK (was DOCTOR_FAIL). verify:task-identity 23/23 pass."
+        },
+        {
+          "at": "2026-09-16T15:55:30.919Z",
+          "type": "transition",
+          "from": "verifying",
+          "to": "resolved",
+          "note": "Single shared vocabulary in place, drift guard mutation-verified, and the live doctor failure cleared."
+        }
+      ]
+    },
+    {
+      "id": "TF-037",
+      "title": "OpenCode pane shows a session placeholder as its task",
+      "state": "resolved",
+      "severity": "medium",
+      "surface": "logic",
+      "matrixRefs": [],
+      "symptom": "OpenCode auto-titles a fresh chat 'New session - <ISO timestamp>'. The plugin only rejected the exact string 'New session', so the timestamped placeholder was published as the pane's mainTask and appeared in the cockpit Task row. The plugin's TERMFLEET_OPENCODE_STATUS_DEBUG tap also referenced an undefined variable and threw on every write when enabled.",
+      "rootCause": "",
+      "guard": "tests/opencode-status-plugin.spec.ts -g \"timestamped|debug tap\"",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-09-16T15:55:37.552Z",
+          "note": "mainTaskFromSessionTitle only matched the exact string 'New session', so OpenCode's real auto-title 'New session - <ISO timestamp>' was published as the pane mainTask (observed live in pane-f5269bc4). trace() also referenced an undefined variable, throwing on every write whenever TERMFLEET_OPENCODE_STATUS_DEBUG was set."
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-09-16T15:55:37.860Z",
+          "note": "tests/opencode-status-plugin.spec.ts 13/13 pass, including timestamped placeholders rejected while real titles beginning with those words are kept, and the debug tap recording without throwing."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Restart OpenCode so the plugin reloads and confirm the Task row shows a real title",
+      "history": [
+        {
+          "at": "2026-09-16T15:55:08.200Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-09-16T15:55:35.947Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Found while auditing the OpenCode status plugin for the crash report."
+        },
+        {
+          "at": "2026-09-16T15:55:36.264Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Observed live in pane-f5269bc4 sidecar: mainTask was 'New session - 2026-09-15T20:44:14.448Z'."
+        },
+        {
+          "at": "2026-09-16T15:55:36.600Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Regressions landed and mutation-verified."
+        },
+        {
+          "at": "2026-09-16T15:55:36.960Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Placeholder shapes rejected; debug tap fixed."
+        },
+        {
+          "at": "2026-09-16T15:55:37.263Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Focused guard passes."
+        },
+        {
+          "at": "2026-09-16T15:55:37.552Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "mainTaskFromSessionTitle only matched the exact string 'New session', so OpenCode's real auto-title 'New session - <ISO timestamp>' was published as the pane mainTask (observed live in pane-f5269bc4). trace() also referenced an undefined variable, throwing on every write whenever TERMFLEET_OPENCODE_STATUS_DEBUG was set."
+        },
+        {
+          "at": "2026-09-16T15:55:37.860Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "tests/opencode-status-plugin.spec.ts 13/13 pass, including timestamped placeholders rejected while real titles beginning with those words are kept, and the debug tap recording without throwing."
+        },
+        {
+          "at": "2026-09-16T15:55:38.163Z",
+          "type": "transition",
+          "from": "verifying",
+          "to": "resolved",
+          "note": "Placeholder titles rejected and the debug tap fixed; the plugin reloads on the next OpenCode start."
+        }
+      ]
+    },
+    {
+      "id": "TF-038",
+      "title": "Map terminal text ghosts and overlaps",
+      "state": "resolved",
+      "severity": "medium",
+      "surface": "canvas",
+      "matrixRefs": [],
+      "symptom": "On the operations map a zoomed terminal card drew ghosted, doubled-looking letters with adjacent rows bleeding together (visible on a live OpenCode pane). The map caps the canvas backing store at MAP_PROJECTION_MAX_DPR (1.25x) while the viewport CSS-scales the canvas by the full zoom, so the browser upscales the bitmap and WebKit's default bilinear filter smeared it.",
+      "rootCause": "",
+      "guard": "tests/canvas-render-scheduler.spec.ts -g \"without ghosting\"",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-09-16T16:34:20.631Z",
+          "note": "Added terminalCanvasImageRendering(mapProjection) in src/lib/mapRenderCadence.ts (pixelated for the map, auto for the split pane) and applied it to both TerminalCanvas canvases. Updated the pinned source contract in scripts/verify-map-terminals.mjs to require the map-aware decision instead of the bare auto literal."
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-09-16T16:34:20.991Z",
+          "note": "tests/canvas-render-scheduler.spec.ts 4/4 pass; reverting the helper to always return auto fails the guard."
+        },
+        {
+          "kind": "browser-render",
+          "at": "2026-09-16T16:34:21.323Z",
+          "note": "tests/map-terminal-rendering.spec.ts 'split terminals stay smooth while map terminals enlarge with hard edges' renders TerminalCanvas in a real page and asserts computed style: split = auto (not pixelated), mapProjection = pixelated. Mutation-verified: forcing auto fails it with Expected pixelated, Received auto at line 1561."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Confirm on the installed dock app at a zoomed map viewport",
+      "history": [
+        {
+          "at": "2026-09-16T16:08:04.885Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-09-16T16:08:05.215Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Reported from a live map screenshot."
+        },
+        {
+          "at": "2026-09-16T16:08:05.524Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Arithmetic confirmed: renderScale=clamp(zoom,1,2) is folded into requestedDpr then discarded by the 1.25 cap."
+        },
+        {
+          "at": "2026-09-16T16:08:05.854Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Guard landed and mutation-verified."
+        },
+        {
+          "at": "2026-09-16T16:08:06.190Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Map-projected canvases now upscale nearest-neighbour."
+        },
+        {
+          "at": "2026-09-16T16:08:06.489Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Focused guard + build pass; dock visual check pending."
+        },
+        {
+          "at": "2026-09-16T16:08:06.814Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "MagicCanvas passes renderScale=mapTerminalRenderScaleForZoom(zoom) (clamp(zoom,1,2)) and mapProjection; TerminalCanvas folded renderScale into requestedDpr then capped it with MAP_PROJECTION_MAX_DPR=1.25, discarding the zoom supersample. The map shows the canvas only at zoom>=1, so the CSS scale is always an upscale. Added terminalCanvasImageRendering() in src/lib/mapRenderCadence.ts returning pixelated for map projection and applied it to both canvases."
+        },
+        {
+          "at": "2026-09-16T16:08:07.147Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "tests/canvas-render-scheduler.spec.ts 4/4 pass; reverting to a hardcoded imageRendering auto fails the map-ghosting guard. npm run build (tsc && vite build) passes."
+        },
+        {
+          "at": "2026-09-16T16:09:37.859Z",
+          "type": "transition",
+          "from": "verifying",
+          "to": "blocked",
+          "note": "Fix attempted and reverted: scripts/verify-map-terminals.mjs pins MAP_PROJECTION_MAX_DPR=1.25, the requestedDpr/dpr expressions, AND imageRendering auto as a deliberate 'fixed backing-store supersampling / no permanent transform promotion' decision. The ghosting arithmetic is real, but changing it relitigates a locked contract; needs an operator decision."
+        },
+        {
+          "at": "2026-09-16T16:09:38.184Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Diagnosis: MagicCanvas passes renderScale=clamp(zoom,1,2) and mapProjection; TerminalCanvas.tsx:455 caps dpr with MAP_PROJECTION_MAX_DPR=1.25 after folding renderScale in, so at zoom>1.25 the map upscales a 1.25x bitmap under image-rendering:auto (bilinear). verify-map-terminals.mjs line 474/475-477 requires exactly this code plus imageRendering auto, so the pixelated fix was reverted and the verifier is green again."
+        },
+        {
+          "at": "2026-09-16T16:34:19.764Z",
+          "type": "transition",
+          "from": "blocked",
+          "to": "fixing",
+          "note": "Operator authorized changing the pinned image-rendering decision after the tradeoff was explained."
+        },
+        {
+          "at": "2026-09-16T16:34:20.251Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Map canvases now enlarge nearest-neighbour; split stays smooth."
+        },
+        {
+          "at": "2026-09-16T16:34:20.632Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Added terminalCanvasImageRendering(mapProjection) in src/lib/mapRenderCadence.ts (pixelated for the map, auto for the split pane) and applied it to both TerminalCanvas canvases. Updated the pinned source contract in scripts/verify-map-terminals.mjs to require the map-aware decision instead of the bare auto literal."
+        },
+        {
+          "at": "2026-09-16T16:34:20.991Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "tests/canvas-render-scheduler.spec.ts 4/4 pass; reverting the helper to always return auto fails the guard."
+        },
+        {
+          "at": "2026-09-16T16:34:21.323Z",
+          "type": "evidence",
+          "kind": "browser-render",
+          "note": "tests/map-terminal-rendering.spec.ts 'split terminals stay smooth while map terminals enlarge with hard edges' renders TerminalCanvas in a real page and asserts computed style: split = auto (not pixelated), mapProjection = pixelated. Mutation-verified: forcing auto fails it with Expected pixelated, Received auto at line 1561."
+        },
+        {
+          "at": "2026-09-16T16:34:21.644Z",
+          "type": "transition",
+          "from": "verifying",
+          "to": "resolved",
+          "note": "Source, focused guard, and browser-render proof recorded; dock visual confirmation still outstanding with the release promotion."
+        }
+      ]
+    },
+    {
+      "id": "TF-039",
+      "title": "OpenCode pane shows Task not captured although its sidecar names the work",
+      "state": "reproducing",
+      "severity": "medium",
+      "surface": "logic",
+      "matrixRefs": [],
+      "symptom": "An OpenCode pane whose only pane-owned identity is the session title renders TASK='Task not captured' and GOAL='Not captured for this pane', even though its status sidecar holds a fresh mainTask. Live example: pane-ff13dd7d (botson workspace, session ses_f5534c42bffe0vSS92Iylq9967) held mainTask='Bot not posting scheduled posts' with mainTaskSource='goal-task', 43s fresh, while the map agent card showed both rows empty.",
+      "rootCause": "",
+      "guard": "tests/task-identity.spec.ts (goal-task branch to be added with the fix)",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-09-16T16:18:47.016Z",
+          "note": "The OpenCode plugin publishes the session title as mainTask with mainTaskSource='goal-task' (scripts/termfleet-opencode-status-plugin.js:222). Only agentStatusSidecar.ts:540 understands 'goal-task', and only as a Goal candidate for non-codex providers. resolveTaskIdentity (src/lib/taskIdentity.ts:486-554) branches on plan-explanation and opening-request/user-prompt but never goal-task, so it falls through to TASK_NOT_CAPTURED at line 554. goalSourceFrom (src/lib/terminalHeaderState.ts:110-126) has no goal-task mapping and falls through to 'none' at line 126, so the header Goal is empty too. Net effect: an OpenCode pane whose only identity is the session title renders both Task and Goal empty."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Decide whether an OpenCode session title is the pane Task or the pane Goal, then teach terminalHeaderState/taskIdentity/agentStatusSidecar one consistent contract",
+      "history": [
+        {
+          "at": "2026-09-16T16:18:46.041Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-09-16T16:18:46.382Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Traced from the live screenshot plus the live sidecar."
+        },
+        {
+          "at": "2026-09-16T16:18:46.697Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Root cause identified in the source vocabulary."
+        },
+        {
+          "at": "2026-09-16T16:18:47.016Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "The OpenCode plugin publishes the session title as mainTask with mainTaskSource='goal-task' (scripts/termfleet-opencode-status-plugin.js:222). Only agentStatusSidecar.ts:540 understands 'goal-task', and only as a Goal candidate for non-codex providers. resolveTaskIdentity (src/lib/taskIdentity.ts:486-554) branches on plan-explanation and opening-request/user-prompt but never goal-task, so it falls through to TASK_NOT_CAPTURED at line 554. goalSourceFrom (src/lib/terminalHeaderState.ts:110-126) has no goal-task mapping and falls through to 'none' at line 126, so the header Goal is empty too. Net effect: an OpenCode pane whose only identity is the session title renders both Task and Goal empty."
+        }
+      ]
+    },
+    {
+      "id": "TF-040",
+      "title": "Terminal draws half-finished repaints and looks jumbled",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "canvas",
+      "matrixRefs": [],
+      "symptom": "OpenCode panes intermittently render jumbled text: stray characters at the edge, fragments of one line mixed into another, and half-drawn screens. OpenCode wraps every full repaint in a synchronized-output block (?2026h ... ?2026l) precisely so the terminal shows it atomically, but TermFleet only stripped the markers so they would not print as text and never honoured the block: every feed marked the grid dirty and the 60Hz emitter published whatever the screen looked like mid-repaint.",
+      "rootCause": "",
+      "guard": "cargo test --lib vt_grid:: (synchronized_output_markers_open_and_release_the_publish_hold, a_held_repaint_publishes_atomically_and_never_stalls)",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-09-16T17:01:47.485Z",
+          "note": "Live stream from pane terminal-7259675f-3450-4ec0-a886-c96609705f1d (cwd bots+automation): 1,200 ?2026h/?2026l pairs, 7,081 absolute cursor-positioning calls, zero line feeds. vt_grid.rs strip_unsupported_control_sequences consumed the markers so they never render as text, but feed() unconditionally set dirty and bumped revision, and the 60Hz emitter published on the next tick, so a repaint spanning more than one tick reached the canvas as a mix of the old and new screen. TermState now records sync_output_since and the emitter holds publication through the block, with a 120ms fail-safe so a missed ?2026l can never stall a pane."
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-09-16T17:03:39.093Z",
+          "note": "cargo test --lib: 204 passed, 0 failed. The two new vt_grid tests pass; dropping the ?2026h hold (sync_output_since never set) fails synchronized_output_markers_open_and_release_the_publish_hold with '?2026h must open the publish hold' at vt_grid.rs:2126, while the pure should_publish_frame test correctly still passes (the wiring was mutated, not the decision). Fail-safe covered: a block open past SYNC_OUTPUT_MAX_HOLD (120ms) publishes anyway."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Confirm the jumbling in the installed dock app on an OpenCode pane",
+      "history": [
+        {
+          "at": "2026-09-16T17:01:45.456Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-09-16T17:01:45.810Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Traced from a live stream: 1,200 ?2026 blocks in one pane's recorded output."
+        },
+        {
+          "at": "2026-09-16T17:01:46.180Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Root cause confirmed in vt_grid.rs."
+        },
+        {
+          "at": "2026-09-16T17:01:46.500Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Rust regressions added."
+        },
+        {
+          "at": "2026-09-16T17:01:46.843Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Emitter now holds publication while a synchronized-output block is open."
+        },
+        {
+          "at": "2026-09-16T17:01:47.187Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Rust tests running."
+        },
+        {
+          "at": "2026-09-16T17:01:47.485Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Live stream from pane terminal-7259675f-3450-4ec0-a886-c96609705f1d (cwd bots+automation): 1,200 ?2026h/?2026l pairs, 7,081 absolute cursor-positioning calls, zero line feeds. vt_grid.rs strip_unsupported_control_sequences consumed the markers so they never render as text, but feed() unconditionally set dirty and bumped revision, and the 60Hz emitter published on the next tick, so a repaint spanning more than one tick reached the canvas as a mix of the old and new screen. TermState now records sync_output_since and the emitter holds publication through the block, with a 120ms fail-safe so a missed ?2026l can never stall a pane."
+        },
+        {
+          "at": "2026-09-16T17:03:39.093Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "cargo test --lib: 204 passed, 0 failed. The two new vt_grid tests pass; dropping the ?2026h hold (sync_output_since never set) fails synchronized_output_markers_open_and_release_the_publish_hold with '?2026h must open the publish hold' at vt_grid.rs:2126, while the pure should_publish_frame test correctly still passes (the wiring was mutated, not the decision). Fail-safe covered: a block open past SYNC_OUTPUT_MAX_HOLD (120ms) publishes anyway."
+        }
+      ]
+    },
+    {
+      "id": "TF-041",
+      "title": "Map terminal card wheel does nothing",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "canvas",
+      "matrixRefs": [],
+      "symptom": "Scrolling the wheel over a terminal card on the operations map did nothing: the card stopped wheel propagation (MagicCanvas.tsx) and the terminal's own wheel path fell through to TermFleet history, which is empty for a repaint-in-place app like OpenCode, so the gesture was a guaranteed no-op.",
+      "rootCause": "",
+      "guard": "tests/terminal-mouse.spec.ts (app-pages cases)",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-09-16T17:50:35.455Z",
+          "note": "terminalWheelAction gains an opt-in app-pages action: when hasHistory === false, appPageKeys is set (map projection only) and Alt/Shift are not held, the wheel becomes the app's page keys (ESC[5~ / ESC[6~). TerminalCanvas passes appPageKeys: mapProjection and sends the sequence per notch. Real history, mouse-report, and alt-screen paths are unchanged, so TC-043 still holds."
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-09-16T17:50:35.737Z",
+          "note": "tests/terminal-mouse.spec.ts passes including mapNoHistoryWheelUp/Down -> app-pages, splitNoHistoryWheelUp -> history (opt-in only), mapWithHistoryWheelUp -> history, mapShiftNoHistoryWheelUp -> history. Mutation-verified: neutralising the appPageKeys condition fails the spec. npm run build passes. Promoted as release dd71e9155c6d-647ef3043186-bc8884f7c777, running pid 1193577, daemon 2296958 preserved, doctor DOCTOR_OK."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Confirm wheel scrolling over a live map terminal card on the installed app",
+      "history": [
+        {
+          "at": "2026-09-16T17:50:33.645Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-09-16T17:50:33.947Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "map wheel fallback"
+        },
+        {
+          "at": "2026-09-16T17:50:34.247Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "map wheel fallback"
+        },
+        {
+          "at": "2026-09-16T17:50:34.559Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "map wheel fallback"
+        },
+        {
+          "at": "2026-09-16T17:50:34.849Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "map wheel fallback"
+        },
+        {
+          "at": "2026-09-16T17:50:35.140Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "map wheel fallback"
+        },
+        {
+          "at": "2026-09-16T17:50:35.455Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "terminalWheelAction gains an opt-in app-pages action: when hasHistory === false, appPageKeys is set (map projection only) and Alt/Shift are not held, the wheel becomes the app's page keys (ESC[5~ / ESC[6~). TerminalCanvas passes appPageKeys: mapProjection and sends the sequence per notch. Real history, mouse-report, and alt-screen paths are unchanged, so TC-043 still holds."
+        },
+        {
+          "at": "2026-09-16T17:50:35.737Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "tests/terminal-mouse.spec.ts passes including mapNoHistoryWheelUp/Down -> app-pages, splitNoHistoryWheelUp -> history (opt-in only), mapWithHistoryWheelUp -> history, mapShiftNoHistoryWheelUp -> history. Mutation-verified: neutralising the appPageKeys condition fails the spec. npm run build passes. Promoted as release dd71e9155c6d-647ef3043186-bc8884f7c777, running pid 1193577, daemon 2296958 preserved, doctor DOCTOR_OK."
+        }
+      ]
+    },
+    {
+      "id": "TF-042",
+      "title": "Map card clips the terminal's last column mid-glyph",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "canvas",
+      "matrixRefs": [],
+      "symptom": "A map terminal card a few pixels narrower than its grid clipped the last column part-way through, so OpenCode's right border appeared as a column of tick marks and its sidebar text was cut mid-word (-3200 instead of -32000).",
+      "rootCause": "",
+      "guard": "tests/map-terminal-rendering.spec.ts -g whole cells",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-09-16T19:47:43.378Z",
+          "note": "applyProjectionClip now crops with clip-path inset(0 <excess>px 0 0) at a whole-cell boundary (Math.floor(shell.clientWidth / cellW) * cellW) instead of letting overflow:hidden cut a glyph in half. clip-path crops without resampling; resizing the canvas would rescale the bitmap and blur every glyph. clearProjectionScale clears it."
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-09-16T19:47:43.760Z",
+          "note": "tests/map-terminal-rendering.spec.ts whole-cells case passes and pins the boundary math, the inset, and that canvas.style.width is NOT rewritten. npm run build, verify:map-terminals, verify:terminal-rendering pass. Promoted as dd71e9155c6d-63aeba3c29e7-a1faef0feb07, running pid 2306473, daemon 2296958 preserved, DOCTOR_OK."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Confirm no right-edge tick marks on a live map card",
+      "history": [
+        {
+          "at": "2026-09-16T19:47:41.456Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-09-16T19:47:41.787Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "whole-cell crop"
+        },
+        {
+          "at": "2026-09-16T19:47:42.088Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "whole-cell crop"
+        },
+        {
+          "at": "2026-09-16T19:47:42.391Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "whole-cell crop"
+        },
+        {
+          "at": "2026-09-16T19:47:42.758Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "whole-cell crop"
+        },
+        {
+          "at": "2026-09-16T19:47:43.077Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "whole-cell crop"
+        },
+        {
+          "at": "2026-09-16T19:47:43.378Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "applyProjectionClip now crops with clip-path inset(0 <excess>px 0 0) at a whole-cell boundary (Math.floor(shell.clientWidth / cellW) * cellW) instead of letting overflow:hidden cut a glyph in half. clip-path crops without resampling; resizing the canvas would rescale the bitmap and blur every glyph. clearProjectionScale clears it."
+        },
+        {
+          "at": "2026-09-16T19:47:43.761Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "tests/map-terminal-rendering.spec.ts whole-cells case passes and pins the boundary math, the inset, and that canvas.style.width is NOT rewritten. npm run build, verify:map-terminals, verify:terminal-rendering pass. Promoted as dd71e9155c6d-63aeba3c29e7-a1faef0feb07, running pid 2306473, daemon 2296958 preserved, DOCTOR_OK."
         }
       ]
     }

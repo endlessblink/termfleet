@@ -1,5 +1,33 @@
 import { expect, test } from "@playwright/test";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import os from "node:os";
+import path from "node:path";
+import { snapshotGoal } from "../src/components/CockpitSnapshotProbe";
+
+test("snapshot keeps a specific pane-owned plan explanation as Goal", () => {
+  expect(snapshotGoal({
+    paneId: "plan-pane",
+    kind: "agent",
+    context: "",
+    contextSource: "missing",
+    statusSummaryGoal: "We’re ensuring every future Meta lead reaches the CRM and both email inboxes",
+    statusSummaryGoalSource: "plan-explanation",
+  } as never)).toBe(
+    "We’re ensuring every future Meta lead reaches the CRM and both email inboxes",
+  );
+});
+
+test("snapshot still rejects truncated plan explanations", () => {
+  expect(snapshotGoal({
+    paneId: "plan-pane",
+    kind: "agent",
+    context: "",
+    contextSource: "missing",
+    statusSummaryGoal: "We’re ensuring every future Meta lead reaches the CRM, then",
+    statusSummaryGoalSource: "plan-explanation",
+  } as never)).toBe("");
+});
 
 test("desktop map connect mounts the existing terminal before recovery completes", () => {
   const source = readFileSync(
@@ -469,11 +497,122 @@ test("the cockpit goal matrix audits every active pane and rejects project goals
   expect(matrix).toContain('scope: "all-active-terminals"');
   expect(matrix).toContain('"termfleet-cockpit-snapshot.json"');
   expect(matrix).toContain('"project-wide-goal"');
-  expect(matrix).toContain('entry && typeof entry.paneId === "string"');
+  expect(matrix).toContain('entry && typeof entry === "object"');
+  expect(matrix).toContain("malformed-terminal-record");
+  expect(matrix).toContain("const target = terminals");
+  expect(matrix).toContain("missing-pane-identity");
+  expect(matrix).toContain("Audit");
+  expect(matrix).toContain("missing-or-generic-task");
+  expect(matrix).toContain("missing-now");
+  expect(matrix).toContain("stale-pane-evidence");
+  expect(matrix).toContain("sure-gate-requires-high-confidence");
+  expect(matrix).toContain("statusSummaryConfidence");
+  expect(matrix).not.toContain("return !neutralTask.test(task)");
   expect(matrix).toContain("goal-too-short-for-about-what");
+  expect(matrix).toContain('"shell-role"');
+  expect(matrix).toContain("invalid-shell-role-goal");
   expect(matrix).toContain("The snapshot is the rendered cockpit surface");
   expect(matrix).not.toContain("latestTraceByPane.get(entry.paneId)");
   expect(matrix).not.toContain('.includes("/devops/termfleet")');
+});
+
+test("the completion hook blocks false cockpit completion claims", () => {
+  const hook = readFileSync("scripts/termfleet-cockpit-completion-hook.mjs", "utf8");
+  expect(hook).toContain('event !== "Stop"');
+  expect(hook).toContain("COCKPIT GATE FAILED");
+  expect(hook).toContain("Do not claim this fix is complete");
+  expect(hook).toContain("verify-cockpit-goal-matrix.mjs");
+});
+
+test("goal approval is denied until every cockpit pane passes fresh evidence checks", () => {
+  const hook = readFileSync("scripts/termfleet-goal-approval-hook.mjs", "utf8");
+
+  expect(hook).toContain('toolName !== "update_goal"');
+  expect(hook).toContain('status !== "complete"');
+  expect(hook).toContain('hookEventName: "PreToolUse"');
+  expect(hook).toContain('permissionDecision: "deny"');
+  expect(hook).toContain('permissionDecision: "deny"');
+  expect(hook).toContain("fresh, pane-owned Task, Goal, and Now evidence");
+  expect(hook).toContain("updatedAt");
+  expect(hook).toContain("approval hook input is unavailable");
+  expect(hook).toContain("approval hook input is not valid JSON");
+  expect(hook).toContain("updatedAt > now + 5_000");
+  expect(hook).toContain("verify-cockpit-goal-matrix.mjs");
+});
+
+test("goal approval hook denies a pane with no captured goal and allows a valid fresh pane", () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "termfleet-goal-hook-"));
+  const snapshotPath = path.join(root, "termfleet-cockpit-snapshot.json");
+  const artifactPath = path.join(root, "cockpit-goal-matrix.json");
+  const hookPath = path.resolve("scripts/termfleet-goal-approval-hook.mjs");
+  const run = (snapshot: object, input = JSON.stringify({ tool_name: "update_goal", tool_input: { status: "complete" } })) => {
+    writeFileSync(snapshotPath, JSON.stringify(snapshot));
+    try {
+      return execFileSync(process.execPath, [hookPath], {
+        input,
+        env: {
+          ...process.env,
+          TERMFLEET_COCKPIT_SNAPSHOT_PATH: snapshotPath,
+          TERMFLEET_GOAL_MATRIX_ARTIFACT: artifactPath,
+        },
+        encoding: "utf8",
+      });
+    } catch (error) {
+      return (error as { stdout?: string }).stdout ?? "";
+    }
+  };
+
+  try {
+    const denied = run({
+      updatedAt: Date.now(),
+      terminals: [{ paneId: "pane-missing-goal", task: "Checking the completion gate", context: "", now: "Running verification", contextSource: "missing", statusSummaryGoalSource: "missing" }],
+    });
+    expect(denied).toContain('"permissionDecision":"deny"');
+
+    const stale = run({
+      updatedAt: Date.now() - 121_000,
+      terminals: [{ updatedAt: Date.now(), paneId: "pane-stale", task: "Checking the completion gate", context: "Prevent false completion claims by requiring fresh cockpit evidence", now: "Running verification", contextSource: "opening-request", statusSummaryGoalSource: "opening-request" }],
+    });
+    expect(stale).toContain("snapshot is missing or stale");
+
+    const stalePane = run({
+      updatedAt: Date.now(),
+      terminals: [{ updatedAt: Date.now() - 121_000, paneId: "pane-stale-record", task: "Checking the completion gate", context: "Prevent false completion claims by requiring fresh cockpit evidence", now: "Running verification", contextSource: "opening-request", statusSummaryGoalSource: "opening-request" }],
+    });
+    expect(stalePane).toContain("stale-pane-evidence");
+
+    const malformedInput = run({}, "{");
+    expect(malformedInput).toContain("approval hook input is not valid JSON");
+
+    const missingInput = run({}, "");
+    expect(missingInput).toContain("approval hook input is unavailable");
+
+    const unidentified = run({
+      updatedAt: Date.now(),
+      terminals: [{ updatedAt: Date.now(), task: "Checking the completion gate", context: "Prevent false completion claims by requiring fresh cockpit evidence", now: "Running verification", contextSource: "opening-request", statusSummaryGoalSource: "opening-request" }],
+    });
+    expect(unidentified).toContain("missing-pane-identity");
+
+    const malformed = run({
+      updatedAt: Date.now(),
+      terminals: [null],
+    });
+    expect(malformed).toContain("malformed-terminal-record");
+
+    const allowed = run({
+      updatedAt: Date.now(),
+      terminals: [{ updatedAt: Date.now(), paneId: "pane-valid", task: "Implementing the requested completion gate", context: "Prevent false completion claims by requiring fresh cockpit evidence", now: "Running focused verification", contextSource: "opening-request", statusSummaryGoalSource: "opening-request", statusSummaryConfidence: "high" }],
+    });
+    expect(allowed).toBe("");
+
+    const lowConfidence = run({
+      updatedAt: Date.now(),
+      terminals: [{ updatedAt: Date.now(), paneId: "pane-low-confidence", task: "Implementing the requested completion gate", context: "Prevent false completion claims by requiring fresh cockpit evidence", now: "Running focused verification", contextSource: "opening-request", statusSummaryGoalSource: "opening-request", statusSummaryConfidence: "medium" }],
+    });
+    expect(lowConfidence).toContain("sure-gate-requires-high-confidence");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("map nodes subscribe to their own tab and live PTY metadata", () => {
@@ -1330,7 +1469,7 @@ test("terminal task binding uses an in-app searchable picker", async ({
     });
 });
 
-test("map terminal rendering avoids pixelated live canvases and grouped preview DOM churn", async ({
+test("split terminals stay smooth while map terminals enlarge with hard edges", async ({
   page,
 }) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
@@ -1344,36 +1483,42 @@ test("map terminal rendering avoids pixelated live canvases and grouped preview 
     const { snapshotPreviewRows } =
       await import("/src/lib/snapshotPreviewRows.ts");
     const React = ReactModule.default ?? ReactModule;
-
-    const host = document.createElement("div");
-    host.style.width = "640px";
-    host.style.height = "360px";
-    document.body.appendChild(host);
-
     const createRoot = ReactDom.createRoot ?? ReactDom.default.createRoot;
-    const root = createRoot(host);
-    root.render(
-      React.createElement(TerminalCanvas, {
-        sessionId: "visual-regression",
-        renderScale: 2,
-        cols: 80,
-        rows: 24,
-      }),
-    );
-    await new Promise((resolve) =>
-      requestAnimationFrame(() => requestAnimationFrame(resolve)),
-    );
 
-    const canvasStyles = Array.from(host.querySelectorAll("canvas")).map(
-      (canvas) => {
+    const renderStyles = async (extraProps: Record<string, unknown>) => {
+      const host = document.createElement("div");
+      host.style.width = "640px";
+      host.style.height = "360px";
+      document.body.appendChild(host);
+
+      const root = createRoot(host);
+      root.render(
+        React.createElement(TerminalCanvas, {
+          sessionId: "visual-regression",
+          renderScale: 2,
+          cols: 80,
+          rows: 24,
+          ...extraProps,
+        }),
+      );
+      await new Promise((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(resolve)),
+      );
+
+      const styles = Array.from(host.querySelectorAll("canvas")).map((canvas) => {
         const element = canvas as HTMLCanvasElement;
         return {
           inline: element.style.imageRendering,
           computed: getComputedStyle(element).imageRendering,
         };
-      },
-    );
-    root.unmount();
+      });
+      root.unmount();
+      host.remove();
+      return styles;
+    };
+
+    const splitStyles = await renderStyles({});
+    const mapStyles = await renderStyles({ mapProjection: true });
 
     const magenta = { c: "[", fg: "#ff00ff", bg: "#000000" };
     const green = { c: "=", fg: "#00ff00", bg: "#000000" };
@@ -1394,20 +1539,46 @@ test("map terminal rendering avoids pixelated live canvases and grouped preview 
 
     const rows = snapshotPreviewRows(snapshot, 1, 96);
     return {
-      canvasStyles,
+      splitStyles,
+      mapStyles,
       segmentCount: rows[0].segments.length,
       segmentText: rows[0].segments.map((segment) => segment.text).join(""),
     };
   });
 
-  expect(result.canvasStyles).toHaveLength(2);
-  for (const style of result.canvasStyles) {
+  // The split pane is never CSS-scaled, so it keeps smooth scaling and its own
+  // renderScale supersampling.
+  expect(result.splitStyles).toHaveLength(2);
+  for (const style of result.splitStyles) {
     expect(style.inline).toBe("auto");
     expect(style.computed).not.toBe("pixelated");
   }
 
+  // The map CSS-upscales a backing store capped at 1.25x, so the upscale must be
+  // nearest-neighbour or the glyphs smear into doubled, overlapping text.
+  expect(result.mapStyles).toHaveLength(2);
+  for (const style of result.mapStyles) {
+    expect(style.inline).toBe("pixelated");
+    expect(style.computed).toBe("pixelated");
+  }
+
   expect(result.segmentCount).toBeLessThan(8);
   expect(result.segmentText.length).toBe(96);
+});
+
+test("map terminal projection crops at whole cells instead of clipping a column", () => {
+  const source = readFileSync("src/components/TerminalCanvas.tsx", "utf8");
+  const clipBlock = source.match(/const applyProjectionClip = \(\) => \{[\s\S]*?\n    \};/)?.[0] ?? "";
+  const clearBlock = source.match(/const clearProjectionScale = \(\) => \{[\s\S]*?\n    \};/)?.[0] ?? "";
+
+  // A node narrower than its grid used to clip the last column mid-glyph: OpenCode's
+  // right border showed as tick marks and its sidebar text was cut mid-word.
+  expect(clipBlock).toContain("Math.floor(shell.clientWidth / cellW)");
+  expect(clipBlock).toContain("clipPath");
+  expect(clipBlock).toContain("inset(0 ");
+  // Cropping must not rescale the bitmap (that blurs every glyph).
+  expect(clipBlock).not.toMatch(/canvas\.style\.width\s*=/);
+  expect(clearBlock).toContain("clipPath");
 });
 
 test("overview preview sampling is capped and groups noisy terminal rows", async ({

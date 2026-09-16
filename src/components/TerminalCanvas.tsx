@@ -20,7 +20,7 @@ import { register as registerExitWatch, unregister as unregisterExitWatch } from
 import { GridBuffer } from "../lib/gridBuffer";
 import { decodeFrame } from "../lib/gridDiff";
 import { needsLegacyPromptRepair } from "../lib/legacyPromptRepair";
-import { mapTerminalFrameGapMs, mapTerminalTransportMode, shouldRefreshMapSnapshot } from "../lib/mapRenderCadence";
+import { mapTerminalFrameGapMs, mapTerminalTransportMode, shouldRefreshMapSnapshot, terminalCanvasImageRendering } from "../lib/mapRenderCadence";
 import {
   computeGridSize,
   mapNodeLayoutMode,
@@ -107,6 +107,7 @@ const DEFAULT_TERMINAL_MODES = {
   alternateScroll: false,
   alternateScrollSet: false,
   sgrMouse: false,
+  hasHistory: false,
 };
 
 function isTransientAttachError(error: unknown) {
@@ -489,7 +490,7 @@ export function TerminalCanvas({
 
     const scheduleRender = () => {
       const interactiveRender = performance.now() - lastInputAtRef.current < 120;
-      if (mapProjection && (!pendingFullRender || !runtimeActiveRef.current)) {
+      if (mapProjection) {
         const now = performance.now();
         const minFrameGapMs = mapTerminalFrameGapMs(mapProjection, runtimeActiveRef.current, interactiveRender);
         const waitMs = minFrameGapMs - (now - lastRenderAt);
@@ -602,6 +603,7 @@ export function TerminalCanvas({
         alternateScroll: buffer.alternateScroll,
         alternateScrollSet: buffer.alternateScrollSet,
         sgrMouse: buffer.sgrMouse,
+        hasHistory: buffer.hasHistory,
       };
       const firstFrame = !firstFrameRef.current;
       if (firstFrame) {
@@ -740,18 +742,31 @@ export function TerminalCanvas({
       const transform = dy < 0 ? `translateY(${dy}px)` : "";
       canvas.style.transformOrigin = "top left";
       canvas.style.transform = transform;
+      // Crop at a WHOLE-CELL boundary. A node a few pixels narrower than its grid
+      // used to clip the last column mid-glyph, so OpenCode's right border showed as
+      // tick marks and its sidebar text was cut mid-word ("-3200"). clip-path crops
+      // without resampling — resizing the canvas instead would rescale the bitmap and
+      // blur every glyph.
+      const cellW = cellRef.current.width || 1;
+      const wholeCols = Math.max(1, Math.floor(shell.clientWidth / cellW));
+      const clipW = Math.min(logicalW, wholeCols * cellW);
+      const clip = clipW < logicalW ? `inset(0 ${logicalW - clipW}px 0 0)` : "";
+      canvas.style.clipPath = clip;
       const overlay = overlayRef.current;
       if (overlay) {
         overlay.style.transformOrigin = "top left";
         overlay.style.transform = transform;
+        overlay.style.clipPath = clip;
       }
       if (DEBUG_TERM_HUD) bumpHud({ ty: Math.round(dy) });
     };
 
     const clearProjectionScale = () => {
       if (canvas.style.transform) canvas.style.transform = "";
+      if (canvas.style.clipPath) canvas.style.clipPath = "";
       const overlay = overlayRef.current;
       if (overlay && overlay.style.transform) overlay.style.transform = "";
+      if (overlay && overlay.style.clipPath) overlay.style.clipPath = "";
     };
 
     // Decide between freeze (interactive TUI on the map) and reflow (everything
@@ -1345,6 +1360,10 @@ export function TerminalCanvas({
       const viewportAction = terminalViewportAction(
         event.key,
         bufferRef.current?.rows ?? rows,
+        {
+          altScreen: modesRef.current.altScreen,
+          hasHistory: modesRef.current.hasHistory,
+        },
       );
       if (viewportAction) {
         event.preventDefault();
@@ -1845,7 +1864,11 @@ export function TerminalCanvas({
     const modes = modesRef.current;
     if (up) userViewportLockedRef.current = true;
 
-    const wheelAction = terminalWheelAction(event, modes, up ? "up" : "down");
+    const wheelAction = terminalWheelAction(
+      event,
+      { ...modes, appPageKeys: mapProjection },
+      up ? "up" : "down",
+    );
     if (DEBUG_TERM_HUD) {
       const k = wheelAction.kind === "mouse-report" ? "mouse" : wheelAction.kind === "app-arrows" ? "arrows" : "history";
       bumpHud({ whN: (hudRef.current.whN + 1) & 0xffff, whKind: `${up ? "up" : "dn"}/${k}` });
@@ -1871,6 +1894,13 @@ export function TerminalCanvas({
 
     if (wheelAction.kind === "app-arrows") {
       send(wheelAction.sequence.repeat(notches * 3), nextTerminalInputSequence(), "canvas-wheel");
+      return;
+    }
+
+    // Nothing in our history and the app never claimed the mouse: give the wheel to
+    // the app as its own page keys so the gesture still scrolls its content.
+    if (wheelAction.kind === "app-pages") {
+      send(wheelAction.sequence.repeat(notches), nextTerminalInputSequence(), "canvas-wheel");
       return;
     }
 
@@ -1995,7 +2025,7 @@ export function TerminalCanvas({
         data-terminal-renderer="canvas2d"
         style={{
           display: "block",
-          imageRendering: "auto",
+          imageRendering: terminalCanvasImageRendering(mapProjection),
         }}
       />
       <canvas
@@ -2008,7 +2038,7 @@ export function TerminalCanvas({
           left: 0,
           pointerEvents: "none",
           display: "block",
-          imageRendering: "auto",
+          imageRendering: terminalCanvasImageRendering(mapProjection),
         }}
       />
       {attachError ? (

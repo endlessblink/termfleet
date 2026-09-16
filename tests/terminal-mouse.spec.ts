@@ -56,6 +56,10 @@ test("terminal mouse reports encode SGR and legacy VT sequences", async ({ page 
         { altKey: false },
         { mouseReport: true, altScreen: true }
       ),
+      shiftMouseReportAltScreenUsesHistory: shouldSendWheelToTerminalApp(
+        { shiftKey: true },
+        { mouseReport: true, altScreen: true }
+      ),
       alternateScrollWheelUsesTerminalApp: shouldSendWheelToTerminalApp(
         { altKey: false },
         { altScreen: true, alternateScroll: true, alternateScrollSet: true }
@@ -128,6 +132,64 @@ test("terminal mouse reports encode SGR and legacy VT sequences", async ({ page 
         { mouseReport: true, altScreen: true },
         "up"
       ),
+      // OpenCode: a PRIMARY-screen app that claims the mouse and has no grid
+      // history. Forwarding is the only way it can scroll — our history is empty,
+      // so the old alt-screen-only rule lost the wheel twice.
+      mouseReportNoHistoryWheelAction: terminalWheelAction(
+        { altKey: false },
+        { mouseReport: true, hasHistory: false },
+        "up"
+      ),
+      mouseReportNoHistoryWheelUsesTerminalApp: shouldSendWheelToTerminalApp(
+        { altKey: false },
+        { mouseReport: true, hasHistory: false }
+      ),
+      // With real history on the primary screen, TC-043 still wins.
+      mouseReportWithHistoryWheelAction: terminalWheelAction(
+        { altKey: false },
+        { mouseReport: true, hasHistory: true },
+        "up"
+      ),
+      mouseReportWithHistoryWheelUsesHistory: shouldSendWheelToTerminalApp(
+        { altKey: false },
+        { mouseReport: true, hasHistory: true }
+      ),
+      // Map cards: the wheel used to die on an empty history (the app owns the
+      // content and never claimed the mouse). With the map opt-in it becomes the
+      // app's own page keys.
+      mapNoHistoryWheelUp: terminalWheelAction(
+        { altKey: false },
+        { hasHistory: false, appPageKeys: true },
+        "up"
+      ),
+      mapNoHistoryWheelDown: terminalWheelAction(
+        { altKey: false },
+        { hasHistory: false, appPageKeys: true },
+        "down"
+      ),
+      // Opt-in only: the split tree keeps the old dead-end behaviour.
+      splitNoHistoryWheelUp: terminalWheelAction(
+        { altKey: false },
+        { hasHistory: false },
+        "up"
+      ),
+      // Real history keeps scrolling TermFleet's scrollback, map or not.
+      mapWithHistoryWheelUp: terminalWheelAction(
+        { altKey: false },
+        { hasHistory: true, appPageKeys: true },
+        "up"
+      ),
+      // Shift is the user's way to reach TermFleet history; never a page key.
+      mapShiftNoHistoryWheelUp: terminalWheelAction(
+        { altKey: false, shiftKey: true },
+        { hasHistory: false, appPageKeys: true },
+        "up"
+      ),
+      shiftMouseReportAltScreenWheelAction: terminalWheelAction(
+        { shiftKey: true },
+        { mouseReport: true, altScreen: true },
+        "up"
+      ),
     };
   });
 
@@ -144,20 +206,31 @@ test("terminal mouse reports encode SGR and legacy VT sequences", async ({ page 
   expect(out.altWheelUsesTerminalApp).toBe(true);
   expect(out.mouseReportPrimaryWheelUsesHistory).toBe(false);
   expect(out.mouseReportAltScreenWheelUsesTerminalApp).toBe(true);
+  expect(out.shiftMouseReportAltScreenUsesHistory).toBe(false);
   expect(out.alternateScrollWheelUsesTerminalApp).toBe(true);
   expect(out.plainAltScreenWheelUsesTerminalHistory).toBe(false);
   expect(out.appCursorOnlyWheelUsesTerminalHistory).toBe(false);
   expect(out.bracketedPasteOnlyWheelUsesTerminalHistory).toBe(false);
   expect(out.disabledAlternateScrollUsesHistory).toBe(false);
   expect(out.shiftAltScreenWheelUsesTerminalHistory).toBe(false);
-  expect(out.shiftMouseReportingWheelUsesTerminalApp).toBe(true);
+  expect(out.shiftMouseReportingWheelUsesTerminalApp).toBe(false);
   expect(out.plainWheelAction).toEqual({ kind: "history" });
   expect(out.altScreenWheelDownAction).toEqual({ kind: "history" });
   expect(out.altScreenAppCursorWheelDownAction).toEqual({ kind: "history" });
   expect(out.explicitAlternateScrollWheelUpAction).toEqual({ kind: "app-arrows", sequence: "\x1b[A" });
   expect(out.appCursorWheelUpAction).toEqual({ kind: "app-arrows", sequence: "\x1bOA" });
   expect(out.shiftAltScreenWheelAction).toEqual({ kind: "history" });
-  expect(out.mouseReportWheelAction).toEqual({ kind: "mouse-report" });
+  expect(out.mouseReportWheelAction).toEqual({ kind: "history" });
   expect(out.mouseReportPrimaryWheelAction).toEqual({ kind: "history" });
   expect(out.mouseReportAltScreenWheelAction).toEqual({ kind: "mouse-report" });
+  expect(out.shiftMouseReportAltScreenWheelAction).toEqual({ kind: "history" });
+  expect(out.mouseReportNoHistoryWheelAction).toEqual({ kind: "mouse-report" });
+  expect(out.mouseReportNoHistoryWheelUsesTerminalApp).toBe(true);
+  expect(out.mouseReportWithHistoryWheelAction).toEqual({ kind: "history" });
+  expect(out.mouseReportWithHistoryWheelUsesHistory).toBe(false);
+  expect(out.mapNoHistoryWheelUp).toEqual({ kind: "app-pages", sequence: "\x1b[5~" });
+  expect(out.mapNoHistoryWheelDown).toEqual({ kind: "app-pages", sequence: "\x1b[6~" });
+  expect(out.splitNoHistoryWheelUp).toEqual({ kind: "history" });
+  expect(out.mapWithHistoryWheelUp).toEqual({ kind: "history" });
+  expect(out.mapShiftNoHistoryWheelUp).toEqual({ kind: "history" });
 });

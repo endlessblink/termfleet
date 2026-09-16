@@ -12,11 +12,23 @@ export interface TerminalWheelModes {
   alternateScrollSet?: boolean;
   alternateScroll?: boolean;
   appCursor?: boolean;
+  /**
+   * The grid holds scrollback above the live screen. `false` means we KNOW it does
+   * not, so TermFleet's history is a guaranteed dead end.
+   */
+  hasHistory?: boolean;
+  /**
+   * Allow the wheel to fall back to the app's own page keys when there is no
+   * history to scroll. Opt-in per surface (the map), because it sends keys the app
+   * did not explicitly request.
+   */
+  appPageKeys?: boolean;
 }
 
 export type TerminalWheelAction =
   | { kind: "mouse-report" }
   | { kind: "app-arrows"; sequence: string }
+  | { kind: "app-pages"; sequence: string }
   | { kind: "history" };
 
 export interface TerminalMouseReport {
@@ -73,8 +85,12 @@ export function pointerButtonToTerminalButton(button: number): TerminalMouseButt
 // black-holes scroll-up and the user can never reach the history sitting in the
 // grid (TC-043).
 export function shouldSendWheelToTerminalApp(modifiers: TerminalMouseModifiers, modes: TerminalWheelModes = {}): boolean {
-  if (modes.mouseReport && modes.altScreen) return true;
   if (modifiers.shiftKey) return false;
+  if (modes.mouseReport && modes.altScreen) return true;
+  // The app asked for the mouse and we have no history to offer: a primary-screen
+  // app that repaints in place (OpenCode) would otherwise lose the wheel twice —
+  // our history is empty and the app never sees the report.
+  if (modes.mouseReport && modes.hasHistory === false) return true;
   if (modifiers.altKey) return true;
   return Boolean(modes.altScreen && modes.alternateScrollSet && modes.alternateScroll);
 }
@@ -84,8 +100,23 @@ export function terminalWheelAction(
   modes: TerminalWheelModes = {},
   direction: "up" | "down" = "down"
 ): TerminalWheelAction {
-  if (modes.mouseReport && modes.altScreen) return { kind: "mouse-report" };
   if (modifiers.shiftKey) return { kind: "history" };
+  // Alt screen (vim/htop): the app owns the whole surface. Primary screen with no
+  // grid history (OpenCode): forwarding the wheel is the only way it can scroll —
+  // our history would swallow it into nothing. With real history on the primary
+  // screen, TC-043 still wins and the wheel scrolls our scrollback instead.
+  if (modes.mouseReport && (modes.altScreen || modes.hasHistory === false)) {
+    return { kind: "mouse-report" };
+  }
+  // Nothing to scroll AND the app never asked for the mouse: the wheel would be a
+  // guaranteed no-op. Give the app its own page keys so the gesture still scrolls
+  // its content instead of dying on an empty history (the map's terminal cards).
+  if (modes.appPageKeys && modes.hasHistory === false && !modifiers.altKey) {
+    return {
+      kind: "app-pages",
+      sequence: direction === "up" ? "\x1b[5~" : "\x1b[6~",
+    };
+  }
   const useAppArrows = modifiers.altKey ||
     (modes.altScreen && modes.alternateScrollSet && modes.alternateScroll);
   if (useAppArrows) {
