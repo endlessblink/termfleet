@@ -154,7 +154,11 @@ function nowFromTodos(todos) {
 export function mainTaskFromSessionTitle(title) {
   const text = clean(title, 120);
   if (!text) return "";
-  if (/^(?:new session|untitled|session \w+)$/i.test(text)) return "";
+  // OpenCode auto-titles a fresh chat "New session - 2026-09-15T20:44:14.448Z" (and
+  // "Untitled" / "Session <id>" in other builds). Leaking one puts a machine string
+  // in the cockpit Task row, so reject the placeholder shapes only — a real title
+  // that merely starts with "New session flow ..." is kept.
+  if (/^(?:new session|untitled|session(?:\s+[\w:-]+)?)(?:\s+[-–—]\s+.*)?$/i.test(text)) return "";
   return text.length <= 90 ? text : "";
 }
 
@@ -338,9 +342,9 @@ function claimPane(writer) {
  */
 function trace(entry) {
   const target = process.env.TERMFLEET_OPENCODE_STATUS_DEBUG;
-  if (!target || !type) return;
+  if (!target) return;
   try {
-    appendFileSync(target, `${type}\n`);
+    appendFileSync(target, `${String(entry ?? "unknown")}\n`);
   } catch {
     // Diagnostics must never break the agent.
   }

@@ -95,6 +95,48 @@ test("the session title becomes the plain-language main task, placeholders do no
   expect(mainTaskFromSessionTitle("x".repeat(120))).toBe("");
 });
 
+// OpenCode's real auto-title carries a timestamp, so the old exact "new session"
+// match let "New session - 2026-09-15T20:44:14.448Z" through into the cockpit Task
+// row (seen live in pane-f5269bc4). Placeholders are rejected; real titles are kept.
+test("timestamped and bare session placeholders never become the cockpit task", () => {
+  expect(mainTaskFromSessionTitle("New session - 2026-09-15T20:44:14.448Z")).toBe("");
+  expect(mainTaskFromSessionTitle("New session - 2026-09-16T18:26:33.152Z")).toBe("");
+  expect(mainTaskFromSessionTitle("Untitled")).toBe("");
+  expect(mainTaskFromSessionTitle("Session abc123")).toBe("");
+
+  // Real titles that merely begin with those words must survive.
+  expect(mainTaskFromSessionTitle("New session flow for onboarding")).toBe(
+    "New session flow for onboarding",
+  );
+  expect(mainTaskFromSessionTitle("Untitled draft about pricing")).toBe(
+    "Untitled draft about pricing",
+  );
+  expect(mainTaskFromSessionTitle("Session handling is broken")).toBe(
+    "Session handling is broken",
+  );
+});
+
+// The debug tap referenced an undefined `type`, so enabling it (the exact move to
+// diagnose "OpenCode misbehaves in termfleet") threw on every event and turned a
+// diagnostics run into a crash loop. It must record and never throw.
+test("the debug tap records events without throwing", () => {
+  const dir = mkdtempSync(join(tmpdir(), "opencode-trace-"));
+  const log = join(dir, "trace.log");
+  process.env.TERMFLEET_OPENCODE_STATUS_DEBUG = log;
+  try {
+    const writer = writerInTemp();
+    expect(() => {
+      applyEvent(writer, { type: "session.idle", properties: {} });
+      writer.write(5000);
+    }).not.toThrow();
+    const traced = readFileSync(log, "utf8");
+    // write() traces on every event in real use, so this proves the tap is live.
+    expect(traced).toMatch(/write pid=\d+ todos=\d+ turn=\w+/);
+  } finally {
+    delete process.env.TERMFLEET_OPENCODE_STATUS_DEBUG;
+  }
+});
+
 test("tool activity reads as plain language, and noise tools stay silent", () => {
   expect(
     opencodeActivityFromTool("bash", { command: "npm test -- --watch=false" }),

@@ -7,6 +7,7 @@ import { readFileSync } from "node:fs";
 
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { cockpitTaskSources } from "./lib/cockpit-task-sources.mjs";
 
 // Workspace roots whose absolute paths should never leak into a cockpit label.
 // Operator-supplied (colon-separated); with none set nothing is filtered out.
@@ -217,20 +218,7 @@ function analyzeEntry(entry, snapshotAgeS) {
   const prompt = visiblePrompt(entry);
   const flags = [];
   const entryAgeS = Math.round((Date.now() - Number(entry.updatedAt || 0)) / 1000);
-  const supportedTaskSources = new Set([
-    "manual",
-    "task-tool",
-    "user-prompt",
-    "plan-binding",
-    "sidecar-todo",
-    "workstream",
-    // The poller's resolved ladder line is authoritative pane identity, not a scrape.
-    "task-line",
-    "missing",
-    "none",
-    // Agent lanes are not shell terminal task identity; keep this accepted for now.
-    "agent-status",
-  ]);
+  const supportedTaskSources = cockpitTaskSources;
   const neutralTitle = /^(ready|idle|idle until the next prompt|ready for next task|awaiting next action|waiting for operator selection|needs attention)$/i.test(title);
   const lowerTitle = title.toLowerCase();
   const lowerTask = task.toLowerCase();

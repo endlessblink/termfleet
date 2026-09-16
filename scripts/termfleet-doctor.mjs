@@ -13,6 +13,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { paneSidecarPath, sidecarFresh, statusDir } from "./lib/agent-status-paths.mjs";
+import { isCockpitTaskSource } from "./lib/cockpit-task-sources.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const results = [];
@@ -252,10 +253,16 @@ try {
     const missing = ["Stop", "Notification", "UserPromptSubmit", "PreToolUse", "PostToolUse"].filter(
       (event) => !hookRegistered(event),
     );
+    const goalApprovalGateRegistered = JSON.stringify(hooks.PreToolUse ?? []).includes("termfleet-goal-approval-hook");
     if (missing.length) {
       report("fail", "Badge turn events (Codex)", `status hook missing on: ${missing.join(", ")} — Codex panes will stick on the wrong badge`);
     } else {
       report("ok", "Badge turn events (Codex)", "finish, notification, prompt, pre-tool, and post-tool lifecycle events all registered");
+    }
+    if (!goalApprovalGateRegistered) {
+      report("fail", "Goal approval gate (Codex)", "all-pane cockpit evidence gate is not registered for update_goal completion");
+    } else {
+      report("ok", "Goal approval gate (Codex)", "update_goal completion is guarded by the all-pane cockpit evidence gate");
     }
   }
 } catch (error) {
@@ -499,12 +506,11 @@ const icon = { ok: "✔", warn: "⚠", fail: "✘", info: "·" };
 // `status-summary`/model/scrape ownership is a regression even if the text reads well.
 try {
   const snapshot = JSON.parse(readFileSync(path.join(dir, "termfleet-cockpit-snapshot.json"), "utf8"));
-  const allowed = new Set(["manual", "task-tool", "user-prompt", "plan-binding", "sidecar-todo", "workstream", "task-line", "missing", "none", "agent-status"]);
   const terminals = Array.isArray(snapshot.terminals) ? snapshot.terminals : [];
   const snapshotAge = Date.now() - Number(snapshot.updatedAt || 0);
   const unsupported = terminals
     .map((entry) => String(entry.taskSource ?? "").trim())
-    .filter((source) => source && !allowed.has(source));
+    .filter((source) => source && !isCockpitTaskSource(source));
   if (unsupported.length) {
     report(
       snapshotAge <= 30_000 ? "fail" : "info",
