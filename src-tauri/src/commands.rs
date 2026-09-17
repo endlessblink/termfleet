@@ -876,9 +876,24 @@ pub fn terminal_latency_trace_enabled() -> bool {
     std::env::var_os("TERMINAL_WORKSPACE_TRACE_LATENCY").is_some()
 }
 
-/// Cap for the always-on geometry log. It is a diagnostic ring, not an archive:
-/// once it grows past this it is truncated so it can never fill a disk.
+/// Cap for the always-on geometry log. It is a diagnostic ring, not an archive.
 const GEOMETRY_LOG_MAX_BYTES: u64 = 8 * 1024 * 1024;
+/// How much of the newest evidence to keep when the log overflows. Deleting the whole
+/// file dropped the live key-routing records mid-session, and the newest lines are the
+/// ones being diagnosed.
+const GEOMETRY_LOG_KEEP_BYTES: usize = 1024 * 1024;
+
+/// The tail of `data` starting on a whole line, keeping at most `keep` bytes.
+fn keep_log_tail(data: &[u8], keep: usize) -> &[u8] {
+    if data.len() <= keep {
+        return data;
+    }
+    let start = data.len() - keep;
+    match data[start..].iter().position(|byte| *byte == b'\n') {
+        Some(offset) => &data[start + offset + 1..],
+        None => data,
+    }
+}
 
 /// Append one JSON line of live terminal geometry / key-routing to the geometry log.
 ///
@@ -893,7 +908,10 @@ pub fn terminal_geometry_log(line: String) {
     let path = crate::platform_paths::terminal_geometry_log_path();
     if let Ok(meta) = std::fs::metadata(&path) {
         if meta.len() > GEOMETRY_LOG_MAX_BYTES {
-            let _ = std::fs::remove_file(&path);
+            if let Ok(data) = std::fs::read(&path) {
+                let tail = keep_log_tail(&data, GEOMETRY_LOG_KEEP_BYTES);
+                let _ = std::fs::write(&path, tail);
+            }
         }
     }
     if let Ok(mut file) = std::fs::OpenOptions::new()
@@ -3556,5 +3574,17 @@ mod tc060_tests {
         assert_eq!(parse_git_status_facts(""), (false, false));
         assert_eq!(parse_git_status_facts(" M src/main.ts\n"), (true, false));
         assert_eq!(parse_git_status_facts("UU src/main.ts\n"), (true, true));
+    }
+
+    #[test]
+    fn geometry_log_tail_keeps_newest_records_on_whole_lines() {
+        // Under the keep size nothing is dropped.
+        assert_eq!(keep_log_tail(b"a\nb\n", 100), b"a\nb\n");
+        // Over it, the oldest bytes go and what remains starts on a whole line, so the
+        // log never begins with a torn record.
+        let data = b"first\nsecond\nthird\n";
+        assert_eq!(keep_log_tail(data, 12), b"third\n");
+        // No newline inside the window: keep what we have rather than nothing.
+        assert_eq!(keep_log_tail(b"no-newlines-here", 4), b"no-newlines-here");
     }
 }
