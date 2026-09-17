@@ -13,6 +13,16 @@ pub fn latency_trace_path(pid: u32, thread_id: &str) -> PathBuf {
     ))
 }
 
+/// Always-on, capped diagnostics file holding live terminal geometry and key-routing
+/// decisions. Exists so a human or agent can read what the renderer actually sees
+/// (grid size, canvas vs container box, scroll modes, why a key did not scroll)
+/// without asking the operator to reproduce anything.
+pub fn terminal_geometry_log_path() -> PathBuf {
+    std::env::var_os("TERMFLEET_GEOMETRY_LOG")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| std::env::temp_dir().join("terminal-workspace-geometry.jsonl"))
+}
+
 pub fn pty_trace_path() -> PathBuf {
     std::env::var_os("TERMINAL_WORKSPACE_TRACE_PTY_FILE")
         .map(PathBuf::from)

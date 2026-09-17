@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-09-16T19:47:43.761Z",
+  "updatedAt": "2026-09-16T20:31:10.521Z",
   "issues": [
     {
       "id": "TF-001",
@@ -5553,7 +5553,7 @@
     {
       "id": "TF-039",
       "title": "OpenCode pane shows Task not captured although its sidecar names the work",
-      "state": "reproducing",
+      "state": "verifying",
       "severity": "medium",
       "surface": "logic",
       "matrixRefs": [],
@@ -5565,6 +5565,11 @@
           "kind": "source",
           "at": "2026-09-16T16:18:47.016Z",
           "note": "The OpenCode plugin publishes the session title as mainTask with mainTaskSource='goal-task' (scripts/termfleet-opencode-status-plugin.js:222). Only agentStatusSidecar.ts:540 understands 'goal-task', and only as a Goal candidate for non-codex providers. resolveTaskIdentity (src/lib/taskIdentity.ts:486-554) branches on plan-explanation and opening-request/user-prompt but never goal-task, so it falls through to TASK_NOT_CAPTURED at line 554. goalSourceFrom (src/lib/terminalHeaderState.ts:110-126) has no goal-task mapping and falls through to 'none' at line 126, so the header Goal is empty too. Net effect: an OpenCode pane whose only identity is the session title renders both Task and Goal empty."
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-09-16T20:30:49.195Z",
+          "note": "tests/task-identity.spec.ts 'a provider goal-task goal is pane Task identity, even when short' passes; tests/terminal-header-quality.spec.ts slug/damaged/operator-I guards pass (73/73). resolveTaskIdentity now accepts goal-task/agent-goal/plan-explanation as pane-owned task identity."
         }
       ],
       "owner": "termfleet",
@@ -5594,6 +5599,33 @@
           "type": "evidence",
           "kind": "source",
           "note": "The OpenCode plugin publishes the session title as mainTask with mainTaskSource='goal-task' (scripts/termfleet-opencode-status-plugin.js:222). Only agentStatusSidecar.ts:540 understands 'goal-task', and only as a Goal candidate for non-codex providers. resolveTaskIdentity (src/lib/taskIdentity.ts:486-554) branches on plan-explanation and opening-request/user-prompt but never goal-task, so it falls through to TASK_NOT_CAPTURED at line 554. goalSourceFrom (src/lib/terminalHeaderState.ts:110-126) has no goal-task mapping and falls through to 'none' at line 126, so the header Goal is empty too. Net effect: an OpenCode pane whose only identity is the session title renders both Task and Goal empty."
+        },
+        {
+          "at": "2026-09-16T20:30:49.195Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "tests/task-identity.spec.ts 'a provider goal-task goal is pane Task identity, even when short' passes; tests/terminal-header-quality.spec.ts slug/damaged/operator-I guards pass (73/73). resolveTaskIdentity now accepts goal-task/agent-goal/plan-explanation as pane-owned task identity."
+        },
+        {
+          "at": "2026-09-16T20:31:09.910Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Focused guard added in tests/task-identity.spec.ts for the goal-task identity branch."
+        },
+        {
+          "at": "2026-09-16T20:31:10.222Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "resolveTaskIdentity now treats goal-task/agent-goal like plan-explanation; opening-request binding strengthened."
+        },
+        {
+          "at": "2026-09-16T20:31:10.520Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Source + focused-test evidence recorded; focused suites and the all-pane audit are green. Live rendered proof pending the dock relaunch of release 0844a8b5f3fc."
         }
       ]
     },
@@ -5831,6 +5863,117 @@
           "type": "evidence",
           "kind": "focused-test",
           "note": "tests/map-terminal-rendering.spec.ts whole-cells case passes and pins the boundary math, the inset, and that canvas.style.width is NOT rewritten. npm run build, verify:map-terminals, verify:terminal-rendering pass. Promoted as dd71e9155c6d-63aeba3c29e7-a1faef0feb07, running pid 2306473, daemon 2296958 preserved, DOCTOR_OK."
+        }
+      ]
+    },
+    {
+      "id": "TF-043",
+      "title": "Mobile control shows no OpenCode conversation and cannot answer OpenCode",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "desktop-runtime",
+      "matrixRefs": [],
+      "symptom": "TermControl lists OpenCode panes but their chat is empty (no transcript adapter), offers no OpenCode slash commands (no sources or verified built-ins), and exposes no approval controls for the OpenCode permission dialog.",
+      "rootCause": "",
+      "guard": "Focused node tests: termcontrol/test/opencode-adapter.test.mjs reads a real SQLite conversation and termcontrol/test/mobile-control-regression.test.mjs pins the OpenCode permission ask and its dialog keys; npm run verify:termcontrol-mobile.",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-09-16T20:29:46.881Z",
+          "note": "Recorded measurement: a live pane stream (terminal-614e67e3, 3.66MB) contained 2x OSC 66 (ESC ] 66 ;), 1x kitty-keyboard query, 1x XTVERSION, 3x DSR 6n, 6x DECRQM, 3x CSI 14t, 1x palette query, 25971x synchronized-output toggles. TermFleet's grid answers none of the queries, so OpenTUI's capability detection guessed this terminal supports explicit width (upstream opencode#4320, opentui#605; the documented kill switch is OPENTUI_FORCE_EXPLICIT_WIDTH=0). Fix: vt_grid now consumes OSC 66 (BEL or ST terminated, split-safe) alongside the existing ?2026 stripping, so it can never render as text."
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-09-16T20:29:47.243Z",
+          "note": "cargo test --lib vt_grid:: 44 passed (3 new: osc66_explicit_width_never_renders_as_text, osc66_with_bel_terminator_is_stripped, a_split_osc66_is_held_then_stripped). tests/terminal-geometry-verdict.spec.ts 7 passed. New fail-closed verifier npm run verify:terminal-geometry FAILS on the real streams: VERDICT=FAIL OSC66_UNSUPPORTED_OUTPUT 2x."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Verify the phone shows a live OpenCode conversation and answers one real permission prompt end to end.",
+      "history": [
+        {
+          "at": "2026-09-16T20:20:01.045Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-09-16T20:20:05.711Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "termcontrol/bridge/adapters/opencode.mjs reads OpenCode's SQLite conversation; registered in feed.mjs; commands.mjs adds verified OpenCode built-ins; asks.mjs offers the permission ask."
+        },
+        {
+          "at": "2026-09-16T20:20:06.116Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "node --test termcontrol/test/opencode-adapter.test.mjs: 2/2 pass. npm run verify:termcontrol-mobile: 21/21 pass."
+        },
+        {
+          "at": "2026-09-16T20:20:09.964Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "OpenCode panes already appear in the fleet; the missing pieces are the transcript adapter, verified commands, and approval keys."
+        },
+        {
+          "at": "2026-09-16T20:20:18.299Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "The gap is reproducible: an OpenCode pane's chat is empty while its conversation exists in OpenCode's database."
+        },
+        {
+          "at": "2026-09-16T20:20:18.635Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Focused guards added: termcontrol/test/opencode-adapter.test.mjs and the OpenCode permission cases in mobile-control-regression.test.mjs."
+        },
+        {
+          "at": "2026-09-16T20:20:18.974Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Wiring the OpenCode adapter into the feed, commands, and approval paths."
+        },
+        {
+          "at": "2026-09-16T20:23:32.161Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Focused tests pass; live OpenCode database reads real conversations. Phone end-to-end proof on a real device remains."
+        },
+        {
+          "at": "2026-09-16T20:23:32.544Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "node --test termcontrol/test/mobile-control-regression.test.mjs termcontrol/test/opencode-adapter.test.mjs: all pass; npm run verify:termcontrol-mobile: 21/21 pass. Live read of session ses_f5519d054ffecPiP4HjyS8C2qO returned real operator/assistant messages from the 2.7GB opencode.db."
+        },
+        {
+          "at": "2026-09-16T20:29:46.153Z",
+          "type": "transition",
+          "from": "verifying",
+          "to": "fixing",
+          "note": "osc66 strip + verifier"
+        },
+        {
+          "at": "2026-09-16T20:29:46.523Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "osc66 strip + verifier"
+        },
+        {
+          "at": "2026-09-16T20:29:46.882Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Recorded measurement: a live pane stream (terminal-614e67e3, 3.66MB) contained 2x OSC 66 (ESC ] 66 ;), 1x kitty-keyboard query, 1x XTVERSION, 3x DSR 6n, 6x DECRQM, 3x CSI 14t, 1x palette query, 25971x synchronized-output toggles. TermFleet's grid answers none of the queries, so OpenTUI's capability detection guessed this terminal supports explicit width (upstream opencode#4320, opentui#605; the documented kill switch is OPENTUI_FORCE_EXPLICIT_WIDTH=0). Fix: vt_grid now consumes OSC 66 (BEL or ST terminated, split-safe) alongside the existing ?2026 stripping, so it can never render as text."
+        },
+        {
+          "at": "2026-09-16T20:29:47.243Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "cargo test --lib vt_grid:: 44 passed (3 new: osc66_explicit_width_never_renders_as_text, osc66_with_bel_terminator_is_stripped, a_split_osc66_is_held_then_stripped). tests/terminal-geometry-verdict.spec.ts 7 passed. New fail-closed verifier npm run verify:terminal-geometry FAILS on the real streams: VERDICT=FAIL OSC66_UNSUPPORTED_OUTPUT 2x."
         }
       ]
     }

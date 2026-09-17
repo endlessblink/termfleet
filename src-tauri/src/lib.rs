@@ -77,6 +77,7 @@ pub fn run() {
             commands::workstream_prepare_dedicated_worktree,
             commands::workstream_remove_dedicated_worktree,
             commands::terminal_latency_trace_enabled,
+            commands::terminal_geometry_log,
             commands::daemon_ensure_running,
             commands::daemon_ensure_session,
             commands::daemon_update_agent_recovery_manifest,

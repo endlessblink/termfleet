@@ -53,6 +53,7 @@
     "verify:task-identity": "node scripts/verify-task-identity.mjs",
     "verify:cockpit-target": "node scripts/verify-cockpit-target.mjs",
     "verify:cockpit-goal-matrix": "node scripts/verify-cockpit-goal-matrix.mjs",
+    "verify:cockpit-completion": "node scripts/termfleet-cockpit-completion-hook.mjs",
     "verify:cockpit-goal-stability": "node scripts/verify-cockpit-goal-stability.mjs",
     "verify:cockpit-live": "node scripts/verify-cockpit-live.mjs",
     "cockpit:tasks": "node scripts/monitor-cockpit-tasks.mjs",
@@ -88,6 +89,7 @@
     "verify:map-shell-anchor": "scripts/verify-map-shell-anchor.sh",
     "verify:zellij-map": "scripts/verify-zellij-map.sh",
     "verify:terminal-rendering": "node scripts/verify-terminal-rendering.mjs",
+    "verify:terminal-geometry": "node scripts/verify-terminal-geometry.mjs",
     "verify:tui-color-env": "scripts/verify-tui-color-env.sh",
     "verify:tauri-dev-performance": "scripts/verify-tauri-dev-performance.sh",
     "verify:standalone-daemon": "scripts/verify-standalone-daemon-smoke.sh",
@@ -120,6 +122,7 @@
     "cockpit:why": "npx playwright test tests/task-line-coverage.spec.ts tests/task-line-live-records.spec.ts --reporter=line",
     "verify:map-connect-live": "scripts/verify-map-connect-live.sh",
     "termcontrol": "node termcontrol/bridge/server.mjs",
+    "verify:termcontrol-mobile": "node --test termcontrol/test/mobile-control-regression.test.mjs termcontrol/test/inventory-parity.test.mjs termcontrol/test/opencode-adapter.test.mjs",
     "termcontrol:test": "node termcontrol/test/run.mjs && node termcontrol/test/phone.mjs && node termcontrol/test/flows.mjs && node termcontrol/test/access.mjs",
     "stop:all": "node scripts/termfleet-stop-all.mjs"
   },

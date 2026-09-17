@@ -159,6 +159,12 @@ impl TermState {
         const SYNC_OUTPUT_ON: &[u8] = b"\x1b[?2026h";
         const SYNC_OUTPUT_OFF: &[u8] = b"\x1b[?2026l";
         const TARGETS: [&[u8]; 2] = [SYNC_OUTPUT_ON, SYNC_OUTPUT_OFF];
+        // OSC 66 = explicit-width / scaled text. alacritty_terminal does not implement
+        // it, so leaving it in makes the payload and any residue render as the stray
+        // glyph artifacts the operator kept reporting. OpenCode emits it because the
+        // capability probe went unanswered and it guessed this terminal supports it
+        // (upstream: opencode#4320, opentui#605). Drop the sequence, keep the text.
+        const OSC66_PREFIX: &[u8] = b"\x1b]66;";
 
         let mut scan = Vec::with_capacity(self.unsupported_control_tail.len() + bytes.len());
         scan.extend_from_slice(&self.unsupported_control_tail);
@@ -187,6 +193,27 @@ impl TermState {
                     .iter()
                     .any(|target| target.starts_with(&scan[index..]))
                 {
+                    self.unsupported_control_tail = scan[index..].to_vec();
+                    break;
+                }
+                if scan[index..].starts_with(OSC66_PREFIX) {
+                    match osc_end(&scan[index..]) {
+                        // Consume the whole OSC 66 sequence; its payload carried the
+                        // text inline and must not be drawn as characters.
+                        Some(end) => {
+                            index += end;
+                            continue;
+                        }
+                        // Terminator not here yet: hold the whole sequence until the
+                        // rest arrives, exactly like a split CSI target.
+                        None => {
+                            self.unsupported_control_tail = scan[index..].to_vec();
+                            break;
+                        }
+                    }
+                }
+                // A partial "ESC ] 6" could still become OSC 66.
+                if OSC66_PREFIX.starts_with(&scan[index..]) {
                     self.unsupported_control_tail = scan[index..].to_vec();
                     break;
                 }
@@ -1096,6 +1123,22 @@ struct WireFrame {
     sgr_mouse: bool,
     has_history: bool,
     rows_cells: Vec<Vec<WireCell>>,
+}
+
+/// Length of the OSC sequence starting at `bytes[0]`, including its terminator (BEL or
+/// ST). `None` when the terminator has not arrived yet, so the caller can hold a split
+/// sequence instead of drawing half of it.
+fn osc_end(bytes: &[u8]) -> Option<usize> {
+    let mut index = 0;
+    while index < bytes.len() {
+        match bytes[index] {
+            0x07 => return Some(index + 1),
+            0x1b if bytes.get(index + 1) == Some(&b'\\') => return Some(index + 2),
+            0x1b if index + 1 >= bytes.len() => return None,
+            _ => index += 1,
+        }
+    }
+    None
 }
 
 fn rgba_u32((r, g, b): (u8, u8, u8)) -> u32 {
@@ -2128,6 +2171,41 @@ mod tests {
             0,
             "row-addressed repaints must never claim history"
         );
+    }
+
+    // OSC 66 = explicit-width / scaled text, which alacritty_terminal cannot render.
+    // OpenCode emits it because the capability probe went unanswered and it guessed
+    // this terminal supports it; the payload then showed up as stray glyph artifacts.
+    // The sequence must be consumed, never drawn.
+    #[test]
+    fn osc66_explicit_width_never_renders_as_text() {
+        let mut state = TermState::new(40, 8);
+        state.feed(b"before \x1b]66;w=2;Hello\x1b\\ after");
+        let text = frame_text(&WireFrame::capture(&state.term));
+        assert!(text.contains("before") && text.contains("after"), "text lost: {text:?}");
+        assert!(!text.contains("66;"), "OSC 66 leaked into the grid: {text:?}");
+        assert!(!text.contains("Hello"), "OSC 66 payload was drawn: {text:?}");
+    }
+
+    #[test]
+    fn osc66_with_bel_terminator_is_stripped() {
+        let mut state = TermState::new(40, 8);
+        state.feed(b"x \x1b]66;s=2;Y\x07 z");
+        let text = frame_text(&WireFrame::capture(&state.term));
+        assert!(text.contains("x") && text.contains("z"), "text lost: {text:?}");
+        assert!(!text.contains("Y"), "BEL-terminated OSC 66 payload drawn: {text:?}");
+    }
+
+    #[test]
+    fn a_split_osc66_is_held_then_stripped() {
+        let mut state = TermState::new(40, 8);
+        state.feed(b"a \x1b]6");
+        state.feed(b"6;w=2;X\x1b");
+        state.feed(b"\\ b");
+        let text = frame_text(&WireFrame::capture(&state.term));
+        assert!(text.contains("a") && text.contains("b"), "text lost: {text:?}");
+        assert!(!text.contains("66;"), "split OSC 66 leaked: {text:?}");
+        assert!(!text.contains("X"), "split OSC 66 payload drawn: {text:?}");
     }
 
     #[test]

@@ -58,6 +58,10 @@ import {
   type SearchMatch,
 } from "../lib/searchOverlay";
 import { terminalViewportAction } from "../lib/terminalViewport";
+import {
+  recordTerminalGeometry,
+  recordTerminalKeyRoute,
+} from "../lib/terminalGeometryLog";
 
 // Hack is the terminal buffer font (Warp's default terminal font), bundled via
 // @font-face. Fallbacks keep things sane before the face loads / on other systems.
@@ -488,6 +492,44 @@ export function TerminalCanvas({
       overlay.style.height = canvas.style.height;
     };
 
+    // Live geometry: the only record of what this pane actually rendered. Sampled from
+    // the render path AND on a timer, because the failures it feeds off are geometry,
+    // not traffic — an idle pane still has a canvas box that can be wrong, and a
+    // render-only sample left the log empty for every quiet pane.
+    const emitGeometry = () => {
+      if (disposed) return;
+      const overlay = overlayRef.current;
+      const rect = canvas.getBoundingClientRect();
+      recordTerminalGeometry({
+        id: sessionId,
+        map: mapProjection,
+        cols: buffer.cols,
+        rows: buffer.rows,
+        displayOffset: buffer.displayOffset,
+        hasHistory: modesRef.current.hasHistory,
+        altScreen: modesRef.current.altScreen,
+        mouseReport: modesRef.current.mouseReport,
+        sgrMouse: modesRef.current.sgrMouse,
+        alternateScroll: modesRef.current.alternateScroll,
+        dpr,
+        cellWidth: cellRef.current.width,
+        cellHeight: cellRef.current.height,
+        canvasDeviceWidth: canvas.width,
+        canvasDeviceHeight: canvas.height,
+        canvasCssWidth: parseFloat(canvas.style.width) || 0,
+        canvasCssHeight: parseFloat(canvas.style.height) || 0,
+        shellWidth: shellRef.current?.clientWidth ?? 0,
+        shellHeight: shellRef.current?.clientHeight ?? 0,
+        overlayDeviceWidth: overlay?.width ?? 0,
+        overlayDeviceHeight: overlay?.height ?? 0,
+        rectX: Math.round(rect.left),
+        rectY: Math.round(rect.top),
+        rectWidth: Math.round(rect.width),
+        rectHeight: Math.round(rect.height),
+      });
+    };
+    const geometryTimer = setInterval(emitGeometry, 2000);
+
     const scheduleRender = () => {
       const interactiveRender = performance.now() - lastInputAtRef.current < 120;
       if (mapProjection) {
@@ -548,6 +590,7 @@ export function TerminalCanvas({
           applyProjectionClip();
         }
         drawSelectionOverlay();
+        emitGeometry();
         if (DEBUG_TERM_HUD) {
           bumpHud({
             cols: snapshot.cols, rows: snapshot.rows,
@@ -973,6 +1016,7 @@ export function TerminalCanvas({
 
     return () => {
       disposed = true;
+      clearInterval(geometryTimer);
       cancelSelectionAutoScroll();
       if (refreshTimer !== null) clearTimeout(refreshTimer);
       if (backgroundSnapshotInterval !== null) clearInterval(backgroundSnapshotInterval);
@@ -1352,6 +1396,24 @@ export function TerminalCanvas({
           hasHistory: modesRef.current.hasHistory,
         },
       );
+      // Record the navigation decision itself. "history" with hasHistory === false is
+      // the swallowed-key signature; action null means the key was handed to the app.
+      if (
+        event.key === "PageUp" ||
+        event.key === "PageDown" ||
+        event.key === "Home" ||
+        event.key === "End"
+      ) {
+        recordTerminalKeyRoute({
+          id: sessionIdRef.current,
+          key: event.key,
+          map: mapProjection,
+          action: viewportAction ? viewportAction.kind : null,
+          hasHistory: modesRef.current.hasHistory,
+          altScreen: modesRef.current.altScreen,
+          mouseReport: modesRef.current.mouseReport,
+        });
+      }
       if (viewportAction) {
         event.preventDefault();
         event.stopPropagation();

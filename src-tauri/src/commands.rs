@@ -876,6 +876,35 @@ pub fn terminal_latency_trace_enabled() -> bool {
     std::env::var_os("TERMINAL_WORKSPACE_TRACE_LATENCY").is_some()
 }
 
+/// Cap for the always-on geometry log. It is a diagnostic ring, not an archive:
+/// once it grows past this it is truncated so it can never fill a disk.
+const GEOMETRY_LOG_MAX_BYTES: u64 = 8 * 1024 * 1024;
+
+/// Append one JSON line of live terminal geometry / key-routing to the geometry log.
+///
+/// Always on (unlike the env-gated latency trace) because the recurring failures in
+/// this area were invisible from outside: a card wider than its grid, a canvas whose
+/// backing store disagreed with its CSS box, a scroll key claimed where the grid held
+/// no scrollback. Reading that state live beats asking the operator to reproduce it.
+/// Best-effort by design: diagnostics must never affect terminal I/O.
+#[tauri::command]
+pub fn terminal_geometry_log(line: String) {
+    use std::io::Write;
+    let path = crate::platform_paths::terminal_geometry_log_path();
+    if let Ok(meta) = std::fs::metadata(&path) {
+        if meta.len() > GEOMETRY_LOG_MAX_BYTES {
+            let _ = std::fs::remove_file(&path);
+        }
+    }
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+    {
+        let _ = writeln!(file, "{line}");
+    }
+}
+
 #[tauri::command]
 pub fn daemon_status() -> DaemonStatus {
     current_daemon_status()
@@ -3041,12 +3070,60 @@ fn session_transcript_path_in(
     }
 }
 
+#[derive(Clone)]
+struct TranscriptPathCacheEntry {
+    path: Option<std::path::PathBuf>,
+}
+
+type TranscriptPathCache = std::sync::Mutex<
+    std::collections::HashMap<(std::path::PathBuf, String, String), TranscriptPathCacheEntry>,
+>;
+
+fn cached_transcript_path(
+    cache: &TranscriptPathCache,
+    key: (std::path::PathBuf, String, String),
+    resolve: impl FnOnce() -> Result<Option<std::path::PathBuf>, String>,
+) -> Result<Option<std::path::PathBuf>, String> {
+    if let Some(entry) = cache
+        .lock()
+        .map_err(|_| "transcript path cache lock poisoned".to_string())?
+        .get(&key)
+        .cloned()
+    {
+        match entry.path {
+            Some(path) if path.is_file() => return Ok(Some(path)),
+            None => return Ok(None),
+            _ => {}
+        }
+    }
+
+    let path = resolve()?;
+    cache
+        .lock()
+        .map_err(|_| "transcript path cache lock poisoned".to_string())?
+        .insert(
+            key,
+            TranscriptPathCacheEntry { path: path.clone() },
+        );
+    Ok(path)
+}
+
+fn transcript_path_cache() -> &'static TranscriptPathCache {
+    static CACHE: std::sync::OnceLock<TranscriptPathCache> = std::sync::OnceLock::new();
+    CACHE.get_or_init(TranscriptPathCache::default)
+}
+
 pub fn session_transcript_path(
     provider: &str,
     session_id: &str,
 ) -> Result<Option<std::path::PathBuf>, String> {
     let home = dirs::home_dir().ok_or_else(|| "no home directory".to_string())?;
-    session_transcript_path_in(&home, provider, session_id)
+    let key = (home.clone(), provider.to_string(), session_id.to_string());
+    cached_transcript_path(
+        transcript_path_cache(),
+        key,
+        || session_transcript_path_in(&home, provider, session_id),
+    )
 }
 
 /// Tail of a vendor session record for the cockpit task line. Missing file → `Ok(None)`.
@@ -3240,6 +3317,59 @@ pub fn pane_root_is_idle_shell(pid: u32) -> Result<bool, String> {
 #[cfg(test)]
 mod tc060_tests {
     use super::*;
+
+    #[test]
+    fn transcript_path_cache_reuses_positive_hits_and_rechecks_removed_files() {
+        let root = std::env::temp_dir().join("tf-tc060-path-cache");
+        std::fs::create_dir_all(&root).unwrap();
+        let record = root.join("session.jsonl");
+        std::fs::write(&record, "{}\n").unwrap();
+        let cache = TranscriptPathCache::default();
+        let key = (root.clone(), "codex".to_string(), "session-id".to_string());
+
+        let first = cached_transcript_path(&cache, key.clone(), || Ok(Some(record.clone()))).unwrap();
+        assert_eq!(first.as_deref(), Some(record.as_path()));
+
+        let cached = cached_transcript_path(&cache, key.clone(), || {
+            panic!("positive cache hit must not rescan the session tree")
+        })
+        .unwrap();
+        assert_eq!(cached.as_deref(), Some(record.as_path()));
+
+        std::fs::remove_file(&record).unwrap();
+        let refreshed = cached_transcript_path(&cache, key, || Ok(None)).unwrap();
+        assert!(refreshed.is_none());
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn transcript_path_cache_reuses_negative_hits_for_the_session_id() {
+        let cache = TranscriptPathCache::default();
+        let key = (
+            std::path::PathBuf::from("/nonexistent-home"),
+            "codex".to_string(),
+            "session-id".to_string(),
+        );
+
+        assert!(
+            cached_transcript_path(&cache, key.clone(), || Ok(None))
+                .unwrap()
+                .is_none()
+        );
+        assert!(cached_transcript_path(&cache, key.clone(), || {
+            panic!("fresh negative cache hit must not rescan the session tree")
+        })
+        .unwrap()
+        .is_none());
+
+        assert!(cached_transcript_path(
+            &cache,
+            key,
+            || panic!("a miss for the same immutable session id must stay cached"),
+        )
+        .unwrap()
+        .is_none());
+    }
 
     #[test]
     fn rejects_hostile_session_ids() {
