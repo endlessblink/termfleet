@@ -136,11 +136,16 @@ export function judgePaneCapture(sample, brightnessOf) {
     return { violations, brightness: null };
   }
   if (rect.x < 0 || rect.y < 0) {
-    violations.push({
-      code: "PANE_RECT_OFFSCREEN",
-      id: sample.id,
-      detail: `canvas starts outside the window at ${rect.x},${rect.y}`,
-    });
+    // A map node pins the projection's bottom-left and translates a grid taller than its
+    // card upward, so a negative y there is the documented frozen-projection behaviour,
+    // clipped by the card. Only a split pane can be genuinely off-window.
+    if (!sample.map) {
+      violations.push({
+        code: "PANE_RECT_OFFSCREEN",
+        id: sample.id,
+        detail: `canvas starts outside the window at ${rect.x},${rect.y}`,
+      });
+    }
   }
 
   let brightness = null;

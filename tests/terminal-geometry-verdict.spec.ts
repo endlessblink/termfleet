@@ -52,12 +52,19 @@ test("a capture judge flags a blank pane and an off-window rect", () => {
   expect(
     judgePaneCapture(sample, () => 0.0001).violations.map((v: { code: string }) => v.code),
   ).toEqual(["PANE_BLANK_ON_SCREEN"]);
-  // A canvas that starts outside the window can never be seen.
+  // A canvas that starts outside the window can never be seen — in a split pane.
   expect(
     judgePaneCapture({ ...sample, rectX: -50 }, () => 0.4).violations.map(
       (v: { code: string }) => v.code,
     ),
   ).toContain("PANE_RECT_OFFSCREEN");
+  // ...but a map node pins bottom-left and translates a tall grid above its card on
+  // purpose, clipped by the card. That is not a defect.
+  expect(
+    judgePaneCapture({ ...sample, map: true, rectY: -194 }, () => 0.4).violations.map(
+      (v: { code: string }) => v.code,
+    ),
+  ).toEqual([]);
   // An unusable box is reported instead of being measured.
   expect(
     judgePaneCapture({ ...sample, rectWidth: 0 }, () => 0.4).violations.map(
