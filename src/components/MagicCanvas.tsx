@@ -6644,12 +6644,13 @@ export function MagicCanvas() {
       autoFittedCanvasTargetRef.current = "preserved-operator-viewport";
       return;
     }
-    const zoom = Math.min(
-      1,
-      Math.max(0.72, (containerSize.width - 32) / Math.max(target.width, 1)),
-    );
+    // Never open below readable zoom: under it the primary terminal drops to the
+    // static preview and the operator lands on a dead card. A card wider than the
+    // map keeps its left edge (header, prompt) in view instead.
+    const zoom = READABLE_TERMINAL_ZOOM;
+    const centeredX = (containerSize.width - target.width * zoom) / 2;
     updateCanvasViewport({
-      x: (containerSize.width - target.width * zoom) / 2 - target.x * zoom,
+      x: Math.max(16, centeredX) - target.x * zoom,
       y: Math.max(40, (containerSize.height - target.height * zoom) / 2) - target.y * zoom,
       zoom,
     });
