@@ -6653,16 +6653,16 @@ export function MagicCanvas() {
       target.x + target.width <= viewRight &&
       target.y >= viewTop &&
       target.y + target.height <= viewBottom;
-    // A card whose header corner is on screen is findable even when its far edge is
-    // trimmed by a small window.
-    const targetHeaderIsVisible =
-      target.x >= viewLeft &&
-      target.x < viewRight - 120 &&
-      target.y >= viewTop &&
-      target.y < viewBottom - 80;
+    // Any part of the card on screen means the operator can find it: a scrolled or
+    // zoomed camera that trims the card is a choice, not a lost view.
+    const targetIntersectsView =
+      target.x < viewRight &&
+      target.x + target.width > viewLeft &&
+      target.y < viewBottom &&
+      target.y + target.height > viewTop;
     // Only move the camera to rescue an off-screen card; a card the operator can
     // already see stays exactly where it is, even on the default camera.
-    if (targetIsVisible || targetHeaderIsVisible) {
+    if (targetIsVisible || targetIntersectsView) {
       autoFittedCanvasTargetRef.current = "preserved-operator-viewport";
       return;
     }
