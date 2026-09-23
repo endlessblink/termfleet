@@ -1500,6 +1500,36 @@ test("recovery review hides duplicate history and sessions already open in a ter
   expect(result).toEqual(["actionable-copy"]);
 });
 
+test("recovery review hides dismissed entries while leaving other sessions visible", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+
+  const result = await page.evaluate(async () => {
+    const { recoverySessionReviewKey, recoverySessionsForReview } = await import(
+      "/src/stores/workspace.ts"
+    );
+    const dismissed = {
+      id: "dismissed-entry",
+      cwd: "/repo/termfleet",
+      scrollbackBytes: 12,
+      lifecycle: "recoverable",
+      provider: "codex",
+      providerSessionId: "dismissed-conversation",
+    };
+    const visible = {
+      ...dismissed,
+      id: "visible-entry",
+      providerSessionId: "visible-conversation",
+    };
+    return recoverySessionsForReview(
+      [dismissed, visible],
+      [] as never,
+      [recoverySessionReviewKey(dismissed)],
+    ).map((session) => session.id);
+  });
+
+  expect(result).toEqual(["visible-entry"]);
+});
+
 test("terminal control keeps saved-only tabs out of the live terminal list", async ({ page }) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
 
