@@ -326,12 +326,16 @@ function NodeRow({
             onDoubleClick={(event) => event.stopPropagation()}
             onMouseDown={(event) => event.stopPropagation()}
             onBlur={(event) => {
-              // Selecting the row focuses its terminal a beat after the double-click
-              // opened this input; don't let that focus jump close the rename.
+              // Selecting the row focuses its terminal (or drops focus to the page) a
+              // beat after the double-click opened this input; on a slow machine that
+              // beat is long. Don't let that focus jump close the rename — a click on
+              // another control still commits.
               const next = event.relatedTarget as HTMLElement | null;
+              const focusWasStolen =
+                !next || next.matches(".terminal-canvas-input, .xterm-helper-textarea");
               if (
-                next?.matches(".terminal-canvas-input, .xterm-helper-textarea") &&
-                performance.now() - renameStartedAtRef.current < 1000
+                focusWasStolen &&
+                performance.now() - renameStartedAtRef.current < 2000
               ) {
                 event.currentTarget.focus();
                 return;
