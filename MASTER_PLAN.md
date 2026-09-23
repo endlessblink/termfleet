@@ -5,10 +5,10 @@
 Goal: announce as soon as it's shippable, with honest scope, not bug-free. Order matters — each phase unblocks the next.
 
 **Phase 1 — Green main (day 1)**
-- [ ] Root cause of red CI: the pushed `ebcf4c5` imports `liveTerminalTabs` / `recoverySessionsForReview` / `liveSessionIds` from `stores/workspace`, which exist only in the uncommitted working tree → `tsc` fails, Playwright job fails.
-- [ ] Sort the ~104 uncommitted files into coherent commits (stage only this lane's files; other agents may be working concurrently).
-- [ ] Locally pass: `npm run build`, `cargo test`, source-contract gates, Playwright canvas specs, OSS-readiness/public audit (same steps as CI).
-- [ ] One push; CI green. Bump the GitHub Actions off deprecated Node 20.
+- [x] Root cause of red CI: the pushed `ebcf4c5` imports `liveTerminalTabs` / `recoverySessionsForReview` / `liveSessionIds` from `stores/workspace`, which exist only in the uncommitted working tree → `tsc` fails, Playwright job fails.
+- [x] Sort the ~104 uncommitted files into coherent commits (stage only this lane's files; other agents may be working concurrently).
+- [x] Locally pass: `npm run build`, `cargo test`, source-contract gates, Playwright canvas specs, OSS-readiness/public audit (same steps as CI).
+- [x] CI green on main (run 35892677301, de93d10, 2026-09-23). - [ ] Still open: bump GitHub Actions off deprecated Node 20.
 
 Findings 2026-09-23 (claude, FEATURE-60): CI last green 2026-08-11 (716c5fc); 53 red runs since. In a clean worktree of HEAD + uncommitted `src/stores/workspace.ts`, `src/lib/types.ts`, `src/components/CockpitSnapshotProbe.tsx`: `npm run build`, no-machine-paths, map-terminals, terminal-rendering, oss-readiness, public-audit, `cargo test` (214 lib + daemon_survival + grid_live) all pass. Rust warnings gate failed on a test-only `codex_lifecycle` → now `#[cfg(test)]`, gate passes. Remaining blocker: `verify:canvas-all` fails ~19 tests in `tests/map-terminal-rendering.spec.ts` even on the full local tree (77 passed) — quest orbit, live overlay alignment, header summary policy, sidebar filters, rename/recolor/task picker, box-select. A concurrent Codex session is editing the same UI files (approve-all feature), so these must be fixed after it commits.
 
