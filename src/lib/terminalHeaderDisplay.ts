@@ -408,8 +408,10 @@ export function compactHeaderGoal(value?: string | null) {
   return restored;
 }
 
-function comparableText(value: string) {
-  return value
+function comparableText(value: string | undefined) {
+  // A restored pane can reach here with no title yet; a crash here took down the
+  // whole sidebar and left the app on "Restoring workspace".
+  return (value ?? "")
     .toLowerCase()
     .replace(/[^\p{L}\p{N}]+/gu, " ")
     .trim();

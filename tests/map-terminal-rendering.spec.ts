@@ -6255,7 +6255,9 @@ test("map sidebar filters operations nodes by visible work state", async ({
           "Waiting agent",
           "pane-waiting",
           {
-            status: "exited",
+            // Waiting is the pane's own badge (TF-044), not leftover workstream words.
+            status: "running",
+            statusSummary: { status: "waiting", updatedAt: now },
           },
           {
             kind: "agent",
