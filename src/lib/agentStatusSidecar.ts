@@ -17,6 +17,7 @@ import type { AgentProvider } from "./types";
 import {
   qualityCheckGoalLabel,
   qualityCheckNowLabel,
+  qualityCheckUserAskLabel,
   readsAsActivity,
 } from "./terminalHeaderQuality";
 
@@ -68,7 +69,7 @@ export interface AgentStatusSidecar {
   updatedAt?: number;
   now?: string;
   mainTask?: string;
-  mainTaskSource?: "about-what" | "plan-explanation" | "goal-task" | "opening-request" | "user-prompt";
+  mainTaskSource?: "about-what" | "plan-explanation" | "goal-task" | "agent-goal" | "opening-request" | "user-prompt";
   userTask?: string;
   narration?: string;
   todos?: Array<{
@@ -171,7 +172,9 @@ function explicitMainTask(sidecar: AgentStatusSidecar): string {
       sidecar.mainTaskSource === "opening-request" &&
       (/^(?:works?\.?|run|running|testing|checking|verifying|fixing)\b/i.test(text) ||
         /\bcommit and push\b.*\b(?:regression tests?|test suite)\b/i.test(text));
-    if (taskDerivedOpeningRequest) return "";
+    if (taskDerivedOpeningRequest ||
+      (sidecar.mainTaskSource === "opening-request" &&
+        isMetaOpeningRequest(text))) return "";
     // A declared pane Goal is durable identity, not a checklist step. Preserve the
     // full captured sentence up to the same limit used by the cockpit Goal field.
     const maxLength = sidecar.mainTaskSource === "opening-request" ? 220 : 150;
@@ -258,8 +261,10 @@ function isProcessExplanation(value: unknown): boolean {
 
 // Opening prompts are often requests for a status explanation, not the pane's
 // durable objective. Keep those requests in the activity evidence, never in Goal.
-function isMetaOpeningRequest(value: unknown): boolean {
-  return /^(?:explain|describe|tell me|show me|what(?:'s| is| about)|how does|why did|give me|summari[sz]e|review|assess|check now|did it improve|what are you doing|what is it|go|continue|i(?:'m| am) not seeing|i do not see|in design(?: or| and)? implementation|in implemenation)\b/i.test(
+// Exported so the all-pane audit can ask the same question the resolver asks:
+// "is this opening request a durable objective, or a status question?"
+export function isMetaOpeningRequest(value: unknown): boolean {
+  return /^(?:explain|describe|tell me|show me|what(?:'s| is| about)|how does|why did|give me|summari[sz]e|review|assess|check now|did it improve|what are you doing|what is it|go|continue|i(?:'m| am) not seeing|i do not see|in design(?: or| and)? implemen(?:tation|ation)|in implemenation)\b/i.test(
     cleanText(value),
   );
 }
@@ -529,17 +534,23 @@ export function summaryFromSidecar(
   const explicitGoalCandidate =
     hasAboutWhatAnswer ||
     sidecar.mainTaskSource === "plan-explanation" ||
+    sidecar.mainTaskSource === "agent-goal" ||
     (sidecar.mainTaskSource === "opening-request" &&
+      // Test the CANDIDATE (the captured opening request), not the LATEST userTask.
+      // A later "go"/"$done" nudge is not the opening request: checking userTask here
+      // discarded the pane's real opening ask and blanked the Task row while the
+      // request sat in the sidecar (2026-09-16 sweep: 1b05c1a4, 98f4904b, 261ceb1b…).
       !/^(?:go|done|sure|yes|ok|continue|proceed|keep going|what next)[.!?\s]*$/i.test(
-        cleanText(sidecar.userTask),
-      )) ||
+        cleanText(sidecar.mainTask),
+      ) &&
+      !isMetaOpeningRequest(sidecar.mainTask)) ||
     (sidecar.mainTaskSource === "goal-task" && sidecar.provider !== "codex")
       ? explicitMainTask(sidecar)
       : "";
   const explicitGoal = qualityCheckGoalLabel(explicitGoalCandidate, {
     allowAboutWhatVoice: true,
     allowTrustedAboutWhat:
-      hasAboutWhatAnswer || sidecar.mainTaskSource === "plan-explanation",
+      hasAboutWhatAnswer || sidecar.mainTaskSource === "plan-explanation" || sidecar.mainTaskSource === "agent-goal",
     maxLength: sidecar.mainTaskSource === "opening-request" ? 220 : 150,
   }).ok &&
     (hasAboutWhatAnswer ||
@@ -550,10 +561,15 @@ export function summaryFromSidecar(
     : "";
   const capturedOpeningGoal =
     sidecar.mainTaskSource === "opening-request" &&
-    !isMetaOpeningRequest(sidecar.userTask) &&
+    !isMetaOpeningRequest(explicitGoalCandidate) &&
     explicitGoalCandidate &&
     explicitGoalCandidate.length <= 220 &&
-    explicitGoalCandidate.split(/\s+/).filter(Boolean).length >= 8 &&
+    // A captured opening request is the operator's own words, so it is gated by the
+    // lenient operator-ask gate — NOT the 8-word durable-goal bar. "you must review
+    // visually" and "I want to see the connection" are real opening asks that the
+    // word bar discarded, blanking the Task row on first draw (2026-09-16 sweep).
+    // The shared gate still rejects commands, nudges, urls, paths, slugs and damage.
+    qualityCheckUserAskLabel(explicitGoalCandidate, { maxLength: 220 }).ok &&
     !/[…]$/.test(explicitGoalCandidate) &&
     !isProcessExplanation(explicitGoalCandidate)
       ? explicitGoalCandidate
@@ -563,7 +579,9 @@ export function summaryFromSidecar(
   // again; this keeps identity recovery from turning into Goal pollution.
   const preservedDeclaredIdentity =
     explicitGoalCandidate &&
-    !isMetaOpeningRequest(sidecar.userTask) &&
+    // Test the CANDIDATE, not the latest userTask: a later "go" nudge must not erase a
+    // real declared identity (goal-task / opening-request) already captured.
+    !isMetaOpeningRequest(explicitGoalCandidate) &&
     !isProcessExplanation(explicitGoalCandidate)
       ? explicitGoalCandidate
       : "";
@@ -600,12 +618,21 @@ export function summaryFromSidecar(
       ? cleanText(sidecar?.userTask)
       : "");
   const declaredUserTask = isNonDescriptiveTaskText(userTask) ? "" : userTask;
+  const capturedPromptTask =
+    cleanText(sidecar?.userTask) &&
+    !/^\$about-what$/i.test(cleanText(sidecar?.userTask)) &&
+    !isMetaOpeningRequest(sidecar?.userTask) &&
+    !isNonDescriptiveTaskText(sidecar?.userTask) &&
+    cleanText(durableExplicitGoal || preservedDeclaredIdentity).toLowerCase() !==
+      cleanText(sidecar?.userTask).toLowerCase()
+      ? cleanText(sidecar?.userTask)
+      : "";
   const currentActivityTask =
     declaredUserTask && !isNonDescriptiveTaskText(now) ? now : "";
   const activityTitle =
     (inferredGoal || aboutWhatGoal
       ? inferredGoal || aboutWhatGoal
-      : liveTask || declaredUserTask || currentTask) ||
+      : liveTask || capturedPromptTask || declaredUserTask || currentTask) ||
     currentTask ||
     currentActivityTask ||
     fallback.task;

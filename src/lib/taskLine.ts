@@ -53,7 +53,7 @@ export interface TaskLineInput {
    *  as often as a goal ("The rendered warning exposed a second bug: draft existence was
    *  treated as proof of unsaved changes"), which tells the operator nothing about what
    *  the pane is for — so it is held back behind the session title and their own ask. */
-  mainGoalSource?: "about-what" | "plan-explanation" | "goal-task" | "opening-request" | "user-prompt" | null;
+  mainGoalSource?: "about-what" | "plan-explanation" | "goal-task" | "agent-goal" | "opening-request" | "user-prompt" | null;
   /** The current in-progress step. It's a STEP toward the goal, not the goal, so
    *  it ranks BELOW the goal and the session's own plan title. */
   currentStep?: string | null;

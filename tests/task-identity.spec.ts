@@ -7,6 +7,52 @@ import { buildShellTerminalHeaderViewModel } from "../src/lib/terminalHeaderView
 import { fallbackProjectGoal } from "../src/lib/terminalHeaderViewModel";
 import { visibleTaskLineup } from "../src/lib/taskLineup";
 
+test("a specific plan explanation supplies Task identity when no step exists", () => {
+  expect(resolveTaskIdentity({
+    statusSummary: {
+      task: "",
+      path: "/repo",
+      now: "Idle",
+      status: "idle",
+      mainTask: "We’re ensuring every future Meta lead reaches the CRM and both email inboxes",
+      mainTaskSource: "plan-explanation",
+    },
+  })).toMatchObject({
+    text: "We’re ensuring every future Meta lead reaches the CRM and both email inboxes",
+    source: "plan-explanation",
+  });
+});
+
+test("a clipped plan explanation cannot become Task identity", () => {
+  expect(resolveTaskIdentity({
+    statusSummary: {
+      task: "",
+      path: "/repo",
+      now: "Idle",
+      status: "idle",
+      mainTask: "We’re ensuring every future Meta lead reaches the CRM, then",
+      mainTaskSource: "plan-explanation",
+    },
+  })).toMatchObject({ source: "missing", text: TASK_NOT_CAPTURED });
+});
+
+// TF-039: an OpenCode pane's only pane-owned identity is the session title, published
+// by the status plugin as mainTask/mainTaskSource="goal-task". resolveTaskIdentity
+// branched on plan-explanation and opening-request but never goal-task, so the pane
+// rendered "Task not captured" while its sidecar named the work (2026-09-16 live).
+test("a provider goal-task goal is pane Task identity, even when short", () => {
+  expect(resolveTaskIdentity({
+    statusSummary: {
+      task: "",
+      path: "/repo/botson",
+      now: "Idle",
+      status: "idle",
+      mainTask: "Bot not posting scheduled posts",
+      mainTaskSource: "goal-task",
+    },
+  })).toMatchObject({ text: "Bot not posting scheduled posts" });
+});
+
 test("task identity follows bounded source precedence", () => {
   const resolved = resolveTaskIdentity({
     activeRunId: "run-1",
@@ -262,7 +308,7 @@ test("model and terminal summaries do not own the header task", () => {
     },
   });
 
-  expect(header.taskDescription.text).toBe(fallbackProjectGoal("/repo", "Summarize terminal scrollback with Ollama"));
+  expect(header.taskDescription.text).toBe("Task not captured");
   expect(header.taskDescription.source).toBe("neutral");
   expect(header.debug.taskIdentitySource).toBe("missing");
 });
@@ -605,7 +651,7 @@ test("inferred terminal purpose is activity context, not plan-binding task ident
     },
   });
 
-  expect(header.taskDescription.text).toBe(fallbackProjectGoal("/repo", "Ready"));
+  expect(header.taskDescription.text).toBe("Task not captured");
   expect(header.taskDescription.source).toBe("neutral");
 });
 
@@ -626,7 +672,7 @@ test("status summary cannot rescue missing task identity", () => {
     },
   });
 
-  expect(header.taskDescription.text).toBe(fallbackProjectGoal("/repo", "Fix the sandbox test blocker by running Vitest with a temporary config"));
+  expect(header.taskDescription.text).toBe("Task not captured");
   expect(header.taskDescription.source).toBe("neutral");
 });
 

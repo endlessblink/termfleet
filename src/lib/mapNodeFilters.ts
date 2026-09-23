@@ -80,6 +80,8 @@ export function nodeMatchesMapFilter(node: CanvasNode, linkedTab: Tab | undefine
       workstream?.readiness === "auth-required";
   }
   if (filter === "waiting") {
+    // Waiting is the badge only: leftover words ("needs input", an old task line)
+    // kept finished panes Waiting (operator decision, TF-044).
     return badgeAttention === "waiting";
   }
   if (filter === "idle") {

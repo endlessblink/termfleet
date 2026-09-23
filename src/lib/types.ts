@@ -290,7 +290,7 @@ export interface WorkstreamStatusSummary {
   userTask?: string;
   /** Explicit sidecar goal, kept separate from the current task/activity line. */
   mainTask?: string;
-  mainTaskSource?: "about-what" | "plan-explanation" | "goal-task" | "opening-request" | "user-prompt";
+  mainTaskSource?: "about-what" | "plan-explanation" | "goal-task" | "agent-goal" | "opening-request" | "user-prompt";
   // True when `status` came from the agent's OWN live session log (TF-044). That is
   // stronger evidence than lifecycle words left on the screen from an earlier turn.
   statusFromAgentLog?: boolean;
@@ -460,6 +460,8 @@ export interface WorkspaceUiState {
   fileExplorerCollapsed: boolean;
   canvasSidebarCollapsed: boolean;
   canvasSidebarSortMode: "manual" | "project";
+  /** Sidebar-only order for Manual mode; never controls map geometry. */
+  canvasSidebarManualOrder: string[];
   terminalSidebarCollapsed: boolean;
   primarySidebarCollapsed: boolean;
   primarySidebarPanel: "sessions" | "map" | "tasks";

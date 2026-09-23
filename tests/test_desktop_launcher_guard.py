@@ -21,6 +21,20 @@ LAUNCHER = ROOT / "scripts" / "termfleet-desktop-launcher.sh"
 
 
 class DesktopLauncherGuardTests(unittest.TestCase):
+    def test_dock_launch_does_not_enable_expensive_tracing_by_default(self):
+        launcher = LAUNCHER.read_text()
+
+        self.assertNotIn(
+            'TERMINAL_WORKSPACE_TRACE_LATENCY="${TERMINAL_WORKSPACE_TRACE_LATENCY:-1}"',
+            launcher,
+        )
+        self.assertNotIn(
+            'TERMINAL_WORKSPACE_TRACE_PTY="${TERMINAL_WORKSPACE_TRACE_PTY:-1}"',
+            launcher,
+        )
+        self.assertIn('[[ "${TERMINAL_WORKSPACE_TRACE_LATENCY:-}" == "1" ]]', launcher)
+        self.assertIn('[[ "${TERMINAL_WORKSPACE_TRACE_PTY:-}" == "1" ]]', launcher)
+
     def run_launcher(
         self,
         pids: dict[int, str],
@@ -194,7 +208,7 @@ class DesktopLauncherGuardTests(unittest.TestCase):
 
     def test_systemd_child_receives_x11_credentials_before_launch(self):
         script = LAUNCHER.read_text()
-        self.assertLess(script.index("set_display_credentials\n\nunit_name="), script.index("if systemd-run"))
+        self.assertLess(script.index("set_display_credentials\n\ntrace_env_args="), script.index("if systemd-run"))
         self.assertIn('--setenv="XAUTHORITY=${XAUTHORITY:-}"', script)
 
     def test_child_does_not_reacquire_the_parent_launch_lock(self):

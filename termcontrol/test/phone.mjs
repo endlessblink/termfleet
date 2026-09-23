@@ -9,6 +9,7 @@
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
+import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -28,6 +29,17 @@ const eqText = (a, b) => { if (a !== b) throw new Error(`expected ${JSON.stringi
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const group = (t) => console.log(`\n${t}`);
 
+async function freePort() {
+  const socket = net.createServer();
+  await new Promise((resolve, reject) => {
+    socket.once('error', reject);
+    socket.listen(0, '127.0.0.1', resolve);
+  });
+  const { port } = socket.address();
+  await new Promise((resolve) => socket.close(resolve));
+  return port;
+}
+
 const PHONES = [
   { name: 'small phone', width: 360, height: 640 },
   { name: 'iPhone', width: 390, height: 844 },
@@ -36,12 +48,17 @@ const PHONES = [
 
 async function main() {
   const configDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tc-phone-'));
-  const port = 7960 + Math.floor(Math.random() * 30);
+  const port = await freePort();
   const base = `http://127.0.0.1:${port}`;
   const child = spawn(process.execPath, [bridge], {
     env: { ...process.env, TC_PORT: String(port), TC_CONFIG_DIR: configDir, TC_HOST: '127.0.0.1' },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
+  const cleanup = () => {
+    if (!child.killed) child.kill('SIGKILL');
+    fs.rmSync(configDir, { recursive: true, force: true });
+  };
+  process.once('exit', cleanup);
   for (let i = 0; i < 40; i++) { try { await fetch(base + '/login'); break; } catch { await wait(150); } }
 
   const browser = await chromium.launch();
@@ -51,12 +68,18 @@ async function main() {
     const p = await ctx.newPage();
     await p.goto(base + '/');
     if (await p.$('#password')) {
-      await p.fill('#email', 'owner@example.com');
+      if (await p.$('#email')) await p.fill('#email', 'owner@example.test');
       await p.fill('#password', 'a-good-password');
       await p.click('button[type=submit]');
     }
     await p.waitForSelector('.pane', { timeout: 15000 });
     return { ctx, p };
+  };
+
+  const openReplyChat = async (p) => {
+    const pane = await p.$('.pane:not(.waiting)') || await p.$('.pane');
+    await pane.click();
+    await p.waitForSelector('.composer', { timeout: 10000 });
   };
 
   group('Layout on real phone sizes');
@@ -74,8 +97,19 @@ async function main() {
       return `${Math.round(h)}px`;
     });
 
-    await p.click('.pane');
-    await p.waitForSelector('.composer', { timeout: 10000 });
+    await check(`${vp.name}: terminal identities and order exactly match the authoritative list`, async () => {
+      const expected = await p.evaluate(async () => {
+        const response = await fetch('/api/panes');
+        const payload = await response.json();
+        return payload.panes.map((pane) => pane.id);
+      });
+      const visible = await p.$$eval('.pane', (panes) => panes.map((pane) => pane.dataset.id));
+      ok(visible.length === new Set(visible).size, 'duplicate terminal cards are visible');
+      eqText(JSON.stringify(visible), JSON.stringify(expected));
+      return `${visible.length} terminals in exact order`;
+    });
+
+    await openReplyChat(p);
     await wait(1200);
 
     await check(`${vp.name}: last message clears the reply box`, async () => {
@@ -106,8 +140,7 @@ async function main() {
   group('Reading while it updates');
   {
     const { ctx, p } = await signedIn(PHONES[1]);
-    await p.click('.pane');
-    await p.waitForSelector('.composer');
+    await openReplyChat(p);
     await wait(1200);
 
     await check('scrolling up is not undone by a refresh', async () => {
@@ -131,14 +164,37 @@ async function main() {
   group('Getting around');
   {
     const { ctx, p } = await signedIn(PHONES[1]);
-    await p.click('.pane');
-    await p.waitForSelector('.composer');
+    const selected = await p.evaluate(() => {
+      const panes = [...document.querySelectorAll('.pane')];
+      const pane = panes[Math.floor(panes.length / 2)];
+      pane.scrollIntoView({ block: 'center' });
+      const main = document.querySelector('main');
+      const offset = Math.round(pane.getBoundingClientRect().top - main.getBoundingClientRect().top);
+      const id = pane.dataset.id;
+      pane.click();
+      return { id, offset };
+    });
+    await p.waitForSelector('.composer', { timeout: 10000 });
 
-    await check('the phone back button returns to the fleet', async () => {
+    await check('the phone back button returns to the selected terminal area', async () => {
       await p.goBack();
       await wait(700);
       ok(await p.$('.pane'), 'did not return to the list');
       ok(!(await p.$('.composer')), 'reply box left behind');
+      const returned = await p.evaluate((id) => {
+        const main = document.querySelector('main');
+        const pane = [...document.querySelectorAll('.pane')].find((candidate) => candidate.dataset.id === id);
+        return pane ? {
+          offset: Math.round(pane.getBoundingClientRect().top - main.getBoundingClientRect().top),
+          visible: pane.getBoundingClientRect().bottom > main.getBoundingClientRect().top
+            && pane.getBoundingClientRect().top < main.getBoundingClientRect().bottom,
+        } : null;
+      }, selected.id);
+      ok(returned, 'selected terminal disappeared from the fleet');
+      ok(returned.visible, 'selected terminal is outside the returned viewport');
+      ok(Math.abs(returned.offset - selected.offset) <= 3,
+        `selected terminal moved from ${selected.offset}px to ${returned.offset}px`);
+      return `restored within ${Math.abs(returned.offset - selected.offset)}px`;
     });
 
     await check('going back again leaves the app rather than looping', async () => {
@@ -148,7 +204,8 @@ async function main() {
     });
 
     await check('reopening a chat by link works', async () => {
-      const id = await p.$eval('.pane', (e) => e.dataset.id);
+      const candidate = await p.$('.pane:not(.waiting)') || await p.$('.pane');
+      const id = await candidate.getAttribute('data-id');
       await p.goto(base + '/#' + id);
       await p.waitForSelector('.composer', { timeout: 10000 });
       ok(await p.$('.composer'), 'link did not open the chat');
@@ -159,8 +216,7 @@ async function main() {
   group('When things go wrong');
   {
     const { ctx, p } = await signedIn(PHONES[1]);
-    await p.click('.pane');
-    await p.waitForSelector('.composer');
+    await openReplyChat(p);
     await wait(1000);
 
     await check('losing the connection does not blank what you are reading', async () => {
@@ -204,8 +260,7 @@ async function main() {
   group('The bottom of the screen');
   {
     const { ctx, p } = await signedIn(PHONES[1]);
-    await p.click('.pane');
-    await p.waitForSelector('.composer');
+    await openReplyChat(p);
     await wait(1000);
 
     await check('the bottom stays compact: the view switch and the reply box', async () => {
@@ -255,8 +310,7 @@ async function main() {
   group('Typing');
   {
     const { ctx, p } = await signedIn(PHONES[1]);
-    await p.click('.pane');
-    await p.waitForSelector('.composer');
+    await openReplyChat(p);
 
     await check('the box grows with a long message but stays bounded', async () => {
       const start = await p.$eval('.composer textarea', (e) => e.offsetHeight);
@@ -289,10 +343,230 @@ async function main() {
     await ctx.close();
   }
 
+  group('Permission and live status');
+  {
+    const { ctx, p } = await signedIn(PHONES[1]);
+    const paneId = await p.$eval('.pane', (element) => element.dataset.id);
+    let feedCall = 0;
+    let permissionAvailable = false;
+    const feedPayload = (ask = null) => ({
+      pane: {
+        id: paneId,
+        project: 'flow-state',
+        provider: 'codex',
+        emoji: '📡',
+        task: 'Waiting for a permission answer',
+      },
+      version: 'test',
+      live: 'waiting',
+      producing: false,
+      reachedStart: true,
+      pending: [],
+      events: [{ kind: 'assistant', text: 'The release is ready to publish.' }],
+      ask,
+    });
+    const permission = {
+      id: 'codex:late-arrival:permission:test',
+      kind: 'permission',
+      title: 'Publish the verified release',
+      detail: 'Allow the release upload and public verification.',
+      screen: 'Would you like to run the following command?',
+      options: [
+        { key: 'yes', label: 'Yes' },
+        { key: 'yesAlways', label: "Yes, don't ask again" },
+        { key: 'no', label: 'No' },
+      ],
+    };
+    await p.route('**/api/feed**', async (route) => {
+      const call = ++feedCall;
+      await route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify(feedPayload(permissionAvailable ? permission : null)),
+      });
+    });
+    await p.click('.pane');
+    await p.waitForSelector('.composer');
+
+    await check('returning to an open phone chat immediately reveals a late permission', async () => {
+      ok(!(await p.$('.askbox')), 'permission was present before it became available');
+      const callsBeforeReturn = feedCall;
+      permissionAvailable = true;
+      await p.evaluate(() => window.dispatchEvent(new Event('focus')));
+      await p.waitForSelector('.askbox', { timeout: 1500 });
+      ok(feedCall > callsBeforeReturn, 'returning to the chat did not request current permission state');
+    });
+    await ctx.close();
+  }
+
+  group('Permission layout and live status');
+  {
+    const { ctx, p } = await signedIn(PHONES[1]);
+    await p.route('**/api/panes', async (route) => {
+      const response = await route.fetch();
+      const payload = await response.json();
+      payload.panes[0].attention = {
+        kind: 'permission',
+        title: 'Install the verified TermFleet release',
+      };
+      await route.fulfill({ response, json: payload });
+    });
+    await p.reload();
+    await p.waitForSelector('.attention-panel');
+
+    await check('the fleet opens with a visible list of terminals that need you', async () => {
+      const panel = await p.$eval('.attention-panel', (element) => element.getBoundingClientRect().toJSON());
+      const review = await p.$eval('.attention-review', (element) => element.getBoundingClientRect().toJSON());
+      const text = await p.textContent('.attention-panel');
+      const viewportHeight = p.viewportSize()?.height ?? 0;
+      ok(panel.top >= 0 && panel.bottom <= viewportHeight, 'attention panel is not visible without scrolling');
+      ok(review.height >= 44 && review.width >= 44, 'review action is not a comfortable tap target');
+      ok(text.includes('Needs you'), 'attention heading is missing');
+      ok(text.includes('Install the verified TermFleet release'), 'approval summary is missing');
+    });
+
+    await check('the Needs you panel stays collapsed after the fleet refreshes', async () => {
+      await p.click('.attention-panel summary');
+      ok(!(await p.$eval('.attention-panel', (element) => element.open)), 'attention panel did not collapse');
+      await p.reload();
+      await p.waitForSelector('.attention-panel');
+      ok(!(await p.$eval('.attention-panel', (element) => element.open)), 'attention panel reopened after refresh');
+      await p.click('.attention-panel summary');
+    });
+
+    await check('tapping Review opens the terminal that requested approval', async () => {
+      const expected = await p.$eval('.attention-review', (element) => element.dataset.id);
+      await p.click('.attention-review');
+      await p.waitForSelector('.composer', { timeout: 10000 });
+      const hash = new URL(p.url()).hash;
+      ok(hash !== '', 'terminal deep link is missing');
+      const actual = decodeURIComponent(hash.slice(1));
+      ok(actual === expected, `opened ${actual} instead of ${expected}`);
+      await p.goBack();
+      await p.waitForSelector('.attention-panel');
+      await wait(100);
+      const review = await p.$eval('.attention-review', (element) => element.getBoundingClientRect().toJSON());
+      const viewportHeight = p.viewportSize()?.height ?? 0;
+      ok(review.top >= 0 && review.bottom <= viewportHeight, 'Back returned to the project card instead of the review row');
+    });
+
+    const paneId = await p.$eval('.pane', (element) => element.dataset.id);
+    const workingSince = Date.now() - 61_000;
+    const approvals = [];
+    await p.route('**/api/feed**', async (route) => {
+      await route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify({
+          pane: {
+            id: paneId,
+            project: 'termfleet',
+            provider: 'codex',
+            emoji: '🧭',
+            task: 'Checking mobile approvals',
+            workingSince,
+            limits: {
+              fiveHour: { remainingPercent: 73 },
+              weekly: { remainingPercent: 87 },
+            },
+          },
+          version: 'test',
+          live: 'waiting',
+          producing: false,
+          reachedStart: true,
+          pending: ['exec_command'],
+          events: [
+            { kind: 'assistant', text: 'I need permission to continue.', at: new Date(Date.now() - 60_000).toISOString() },
+            ...(approvals.length ? [{ kind: 'assistant', text: 'I continued after approval.', at: new Date(Date.now() + 1_000).toISOString() }] : []),
+            { kind: 'tool', name: 'exec', summary: 'exec_command' },
+          ],
+          ask: {
+            id: 'codex:session:1:permission_prompt:permission:test',
+            kind: 'permission',
+            title: '/home/endlessblink/.cargo/bin/lean-ctx -c '
+              + "'VPS_HOST=84.46.253.137 VPS_USER=root ./scripts/deploy-electron-update.sh "
+              + '--notes "BUG-2084: share focused timeline order and restore Pomodoro cycle" '
+              + "--skip-guard --skip-tests'",
+            detail: 'Allow building and uploading the FlowState Electron update to the configured VPS, '
+              + 'then verify every public updater artifact before continuing.',
+            screen: 'Would you like to run the following command?\n\n'
+              + Array.from({ length: 18 }, (_, index) => `command detail line ${index + 1}`).join('\n')
+              + '\n\n1. Yes, proceed\n2. Yes, and remember\n3. No',
+            options: [
+              { key: 'yes', label: 'Yes' },
+              { key: 'yesAlways', label: "Yes, don't ask again" },
+              { key: 'no', label: 'No' },
+            ],
+          },
+        }),
+      });
+    });
+    await p.route('**/api/send', async (route) => {
+      approvals.push(JSON.parse(route.request().postData() || '{}'));
+      await route.fulfill({ contentType: 'application/json', body: '{"ok":true}' });
+    });
+    await p.click('.pane');
+    await p.waitForSelector('.askbox');
+
+    await check('the real permission prompt stays above a usable reply box', async () => {
+      const ask = await p.$eval('.askbox', (element) => element.getBoundingClientRect().toJSON());
+      const composer = await p.$eval('.composer', (element) => element.getBoundingClientRect().toJSON());
+      const choices = await p.$$eval('.askbox [data-choice]', (elements) => elements.map((element) => {
+        const rect = element.getBoundingClientRect();
+        return { top: rect.top, bottom: rect.bottom, width: rect.width, height: rect.height };
+      }));
+      ok(Boolean(await p.$('.composer textarea:not([disabled])')), 'reply box is not usable during the permission request');
+      ok(ask.bottom <= composer.top, 'permission choices do not stay above the reply box');
+      ok(choices.length === 3, `only ${choices.length} permission choices are rendered`);
+      choices.forEach((choice, index) => {
+        ok(choice.width > 0 && choice.height >= 44, `permission choice ${index + 1} is not a visible tap target`);
+        ok(choice.top >= ask.top && choice.bottom <= ask.bottom, `permission choice ${index + 1} requires scrolling inside the card`);
+        ok(choice.bottom <= composer.top, `permission choice ${index + 1} is covered by the reply box`);
+      });
+      ok((await p.textContent('.askscreen')).includes('Would you like to run'), 'terminal prompt is missing');
+    });
+
+    await check('tool hooks and internal running rows stay hidden', async () => {
+      const text = await p.textContent('body');
+      ok(!text.includes('exec_command'), 'internal tool name is visible');
+      ok(!text.includes('running ·'), 'internal running row is visible');
+    });
+
+    await check('both limits and a ticking work timer are visible', async () => {
+      const first = await p.textContent('#chat-status .workingtime');
+      const status = await p.textContent('#chat-status');
+      ok(status.includes('5-hour 73% left'), '5-hour limit is missing');
+      ok(status.includes('weekly 87% left'), 'weekly limit is missing');
+      await wait(1100);
+      const second = await p.textContent('#chat-status .workingtime');
+      ok(first !== second, `timer did not move from ${first}`);
+      return `${first} to ${second}`;
+    });
+
+    await check('one tap sends the bound permission answer once', async () => {
+      await p.click('.askbox [data-choice="yes"]');
+      await wait(300);
+      ok(approvals.length === 1, `sent ${approvals.length} answers`);
+      ok(approvals[0].pane === paneId, 'answer was sent to another terminal');
+      ok(approvals[0].askId === 'codex:session:1:permission_prompt:permission:test', 'request identity was lost');
+      ok(approvals[0].choice === 'yes', 'wrong permission choice was sent');
+    });
+
+    await check('the delivered permission answer appears in the terminal chat', async () => {
+      await p.waitForSelector('.msg.user .bubble');
+      const replies = await p.$$eval('.msg.user .bubble', (elements) => elements.map((element) => element.textContent));
+      ok(replies.includes('Permission answer: Yes'), `chat did not record the answer: ${JSON.stringify(replies)}`);
+    });
+
+    await check('new agent replies stay below older permission answers', async () => {
+      await p.waitForFunction(() => document.body.textContent.includes('I continued after approval.'));
+      const bubbles = await p.$$eval('.msg .bubble', (elements) => elements.map((element) => element.textContent));
+      ok(bubbles.at(-1) === 'I continued after approval.', `old permission answer covered the newest reply: ${JSON.stringify(bubbles.slice(-3))}`);
+    });
+    await ctx.close();
+  }
+
   await browser.close();
-  child.kill('SIGKILL');
-  for (const f of fs.readdirSync(configDir)) fs.unlinkSync(path.join(configDir, f));
-  fs.rmdirSync(configDir);
+  cleanup();
+  process.removeListener('exit', cleanup);
 
   console.log(`\n${pass} passed, ${fail} failed`);
   if (fail) { console.log('\nFailures:'); for (const [n, e] of failures) console.log(`  - ${n}: ${e}`); process.exit(1); }

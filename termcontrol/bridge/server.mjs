@@ -6,15 +6,16 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { listPanes } from './inventory.mjs';
+import { canvasSidebarView, listPanes, reconcileLivePanes } from './inventory.mjs';
 import { readFeed } from './feed.mjs';
 import { handleAuthRoutes, currentUser, requireAuth } from './auth.mjs';
 import { sendToPane, answerPrompt, sendKey, liveSessionIds } from './send.mjs';
 import { adapterFor } from './feed.mjs';
-import { readPrefs, writePrefs, byProject, inManualOrder, moveInOrder } from './prefs.mjs';
+import { readPrefs, writePrefs, byProject, moveInOrder } from './prefs.mjs';
 import { liveness, lastLine, screenOf } from './liveness.mjs';
 import { requestDaemon, defaultDaemonSocket } from '../../scripts/termfleetctl.mjs';
-import { pendingAsk } from './asks.mjs';
+import { pendingAsk, screenPermissionAsk, matchesAsk } from './asks.mjs';
+import { readSessionStatus } from './session-status.mjs';
 import { commandsFor, probeCommands } from './commands.mjs';
 import { filesIn, matchFiles } from './files.mjs';
 import { readBody, firstFile, saveImage } from './uploads.mjs';
@@ -75,20 +76,33 @@ function serveStatic(res, name) {
 async function currentPanes() {
   const panes = listPanes({ maxAgeMs: MAX_AGE });
   const { reachable, byId } = await liveness();
-  if (!reachable) return { panes, daemon: false };
+  if (!reachable) {
+    return {
+      panes: panes.map((p) => {
+        const pane = { ...p, ...readSessionStatus(p) };
+        const ask = pendingAsk(pane);
+        return { ...pane, attention: ask ? { kind: ask.kind, title: ask.title } : null };
+      }),
+      daemon: false,
+    };
+  }
 
-  const withLife = panes
-    .filter((p) => byId.has(p.id))
+  const withLife = reconcileLivePanes(panes, byId)
     .map((p) => {
       const life = byId.get(p.id);
+      const pane = { ...p, ...readSessionStatus(p) };
+      const ask = pendingAsk(pane);
       return {
-        ...p,
+        ...pane,
         alive: true,
         producing: life.producing,
         quietForMs: life.quietForMs,
         // What the agent last said about itself, kept honest by what the
         // terminal is actually doing.
         live: life.producing ? 'producing' : p.turn === 'waiting' ? 'waiting' : 'quiet',
+        // The fleet only needs enough information to lead the operator to the
+        // right terminal. The full prompt and choices stay in /api/feed.
+        attention: ask ? { kind: ask.kind, title: ask.title } : null,
       };
     });
 
@@ -107,13 +121,12 @@ const server = http.createServer(async (req, res) => {
 
   if (url.pathname === '/api/panes') {
     const { panes, daemon } = await currentPanes();
-    const prefs = readPrefs();
     return json(res, 200, {
       generatedAt: new Date().toISOString(),
       version: appVersion(),
       daemon,
-      view: prefs.view,
-      panes: prefs.view === 'manual' ? inManualOrder(panes, prefs.order) : panes,
+      view: canvasSidebarView(),
+      panes,
       groups: byProject(panes),
     });
   }
@@ -144,12 +157,15 @@ const server = http.createServer(async (req, res) => {
     const { panes } = await currentPanes();
     const pane = panes.find((p) => p.id === id);
     if (!pane) return json(res, 404, { error: 'That terminal has been closed.' });
+    const transcriptAsk = pendingAsk(pane);
+    const screen = await screenOf(pane.id);
+    const ask = transcriptAsk || screenPermissionAsk(pane, screen);
     return json(res, 200, {
       pane,
       version: appVersion(),
       live: pane.live,
       producing: pane.producing,
-      ask: pendingAsk(pane),
+      ask: ask ? { ...ask, screen } : null,
       ...readFeed(pane, { limit }),
     });
   }
@@ -170,8 +186,16 @@ const server = http.createServer(async (req, res) => {
       }
 
       if (payload.choice) {
-        const adapter = adapterFor(pane);
-        const result = await answerPrompt(pane, payload.choice, adapter?.approval);
+        // Re-read immediately before injecting a key. A phone can keep an old
+        // prompt visible after the terminal has moved on or asked a new one.
+        const fresh = (await currentPanes()).panes.find((candidate) => candidate.id === payload.pane);
+        const freshScreen = fresh ? await screenOf(fresh.id) : '';
+        const freshAsk = fresh && (pendingAsk(fresh) || screenPermissionAsk(fresh, freshScreen));
+        if (!fresh || !matchesAsk(freshAsk, payload.askId, payload.choice)) {
+          return json(res, 409, { error: 'That permission request is no longer active. Refresh and check the terminal again.' });
+        }
+        const adapter = adapterFor(fresh);
+        const result = await answerPrompt(fresh, payload.choice, adapter?.approval);
         return json(res, result.error ? 400 : 200, result);
       }
 

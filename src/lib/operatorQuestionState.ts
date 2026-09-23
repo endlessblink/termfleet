@@ -72,6 +72,17 @@ export function terminalScreenAttention(value?: string | null): TerminalScreenAt
     /\bPress enter to confirm or esc to cancel\b/i,
   ));
 
+  add("waiting", pairedMarkerIndex(
+    tail,
+    /\bWhich .* (?:while you choose|choose)\b/gi,
+    /\b(?:enter to|select|confirm)\b/i,
+  ));
+
+  add("waiting", lastMatchIndex(
+    tail,
+    /\b\[\s*[!.]\s*\]\s*Action Required\b/gi,
+  ));
+
   add("running", lastMatchIndex(
     tail,
     /(?:Working|Crafting|Thundering|Thinking)\s*(?:…|\.\.\.)?\s*\(\s*\d+\s*[smh]/gi,
@@ -108,4 +119,86 @@ export function terminalNeedsOperatorAnswer(value?: string | null): boolean {
 
 export function terminalShowsActiveAgentWork(value?: string | null): boolean {
   return terminalScreenAttention(value) === "running";
+}
+
+export function isTerminalWaitingForOperator(
+  terminal?: {
+    terminalVisibleText?: string | null;
+    terminalOutput?: string | null;
+    taskLine?: { text?: string | null; rejected?: string | null } | null;
+    nowLine?: { text?: string | null } | null;
+    currentActivity?: string | null;
+    statusSummary?: {
+      status?: string | null;
+      now?: string | null;
+      task?: string | null;
+      recent?: Array<{ text?: string | null }> | null;
+    } | null;
+  } | null,
+  workstream?: {
+    status?: string | null;
+    phase?: string | null;
+    readiness?: string | null;
+    currentActivity?: string | null;
+    statusSummary?: {
+      status?: string | null;
+      now?: string | null;
+      task?: string | null;
+      recent?: Array<{ text?: string | null }> | null;
+    } | null;
+  } | null,
+): boolean {
+  if (!terminal && !workstream) return false;
+
+  const screenText = terminal?.terminalVisibleText ?? "";
+  const outputTail = terminal?.terminalOutput ? terminal.terminalOutput.slice(-3000) : "";
+  const combinedTail = (screenText || outputTail).replace(/\r/g, "\n");
+
+  if (terminalNeedsOperatorAnswer(combinedTail)) return true;
+
+  // Screen questions / CLI prompts
+  if (
+    /\b(?:Implement this plan\?|How do you want to proceed\?|What do you want to do\?|Questions?\s+\d+\/\d+\s+\([1-9]\d*\s+unanswered\))\b/i.test(combinedTail) ||
+    /\b(?:Do|Would) you (?:want|like) (?:to|me to) (?:run\b|execute\b|proceed\b)/i.test(combinedTail) ||
+    /\b(?:\(y\/n\)|\(yes\/no\)|\[y\/N\]|\[Y\/n\])\s*[:?]?\s*$/im.test(combinedTail) ||
+    /\b\[\s*[!.]\s*\]\s*Action Required\b/i.test(combinedTail)
+  ) {
+    const attention = terminalScreenAttention(combinedTail);
+    if (attention === "waiting" || attention === null) return true;
+  }
+
+  const statusSummary = terminal?.statusSummary ?? workstream?.statusSummary;
+  const status = statusSummary?.status ?? workstream?.status;
+
+  if (status === "waiting" || status === "blocked") return true;
+  if (workstream?.phase === "needs-input" || workstream?.readiness === "auth-required") return true;
+
+  const nowText = statusSummary?.now ?? terminal?.nowLine?.text ?? terminal?.currentActivity ?? workstream?.currentActivity ?? "";
+  if (/\b(?:waiting for (?:your )?(?:input|answer|operator|approval|decision|choice|selection|confirmation)|using AskUserQuestion|askuserquestion|action required|goal stalled)\b/i.test(nowText)) {
+    return true;
+  }
+
+  const taskLine = terminal?.taskLine?.text ?? "";
+  const taskText = statusSummary?.task ?? "";
+  if (
+    /\b(?:Which .* (?:while you choose|choose)|(?:Do|Would) you (?:want|like) (?:to|me to) (?:run\b|execute\b|proceed\b)|Implement this plan|Reviewing approval request|Waiting for your answer|Waiting for your input|Waiting for operator selection|approval required|action required|waiting for confirmation|needs? confirmation|Goal stalled)\b/i.test(taskLine) ||
+    /\b(?:Which .* (?:while you choose|choose)|(?:Do|Would) you (?:want|like) (?:to|me to) (?:run\b|execute\b|proceed\b)|Implement this plan|Reviewing approval request|Waiting for your answer|Waiting for your input|Waiting for operator selection|approval required|action required|waiting for confirmation|needs? confirmation|Goal stalled)\b/i.test(taskText)
+  ) {
+    return true;
+  }
+
+  if (Array.isArray(statusSummary?.recent) && status !== "working") {
+    const recent = statusSummary.recent;
+    const latest = recent[recent.length - 1]?.text ?? "";
+    const secondLatest = recent[recent.length - 2]?.text ?? "";
+    if (/\b(?:waiting for (?:your )?(?:input|answer|operator|approval|decision|choice|selection)|AskUserQuestion|action required|goal stalled)\b/i.test(latest || secondLatest)) {
+      return true;
+    }
+  }
+
+  if (/\b(?:manual_action_required|action required)\b/i.test(terminal?.taskLine?.rejected ?? "")) {
+    return true;
+  }
+
+  return false;
 }

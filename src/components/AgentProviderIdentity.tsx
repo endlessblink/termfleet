@@ -26,6 +26,27 @@ function CodexMark() {
   );
 }
 
+export function ShellPromptMark({ size = 13 }: { size?: number }) {
+  return (
+    <svg
+      data-testid="terminal-signifier-logo-shell"
+      viewBox="0 0 24 24"
+      width={size}
+      height={size}
+      aria-hidden="true"
+    >
+      <path
+        d="M4 17l6-5-6-5M12 19h8"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.15"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 export function AgentProviderIdentity({ provider }: { provider?: AgentProvider | null }) {
   const label = agentProviderIdentity(provider);
   if (!label) return null;
@@ -39,3 +60,29 @@ export function AgentProviderIdentity({ provider }: { provider?: AgentProvider |
     </span>
   );
 }
+
+export function TerminalSignifier({
+  provider,
+  showAgent = true,
+}: {
+  provider?: AgentProvider | string | null;
+  showAgent?: boolean;
+}) {
+  const label = agentProviderIdentity(provider);
+  if (label) {
+    if (!showAgent) return null;
+    return <AgentProviderIdentity provider={provider as AgentProvider} />;
+  }
+  return (
+    <span
+      data-testid="terminal-signifier-shell"
+      style={{ display: "inline-flex", alignItems: "center", gap: 4, whiteSpace: "nowrap" }}
+      aria-label="Regular shell terminal"
+      title="Regular shell terminal"
+    >
+      <ShellPromptMark />
+      <span>SHELL</span>
+    </span>
+  );
+}
+

@@ -34,11 +34,17 @@ run_background_build() {
 printf 'Building TermFleet frontend...\n'
 run_background_build env VITE_TERMFLEET_RELEASE_ID="${source_revision:0:12}" npm run build
 
+# The bundled web assets can receive new hashed filenames on each frontend
+# build. Tell Cargo their completed tree checksum so build.rs always reruns the
+# embed step, even when the previous asset list has been replaced.
+frontend_sha="$(find "$APP_ROOT/dist" -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')"
+
 printf 'Building safe TermFleet desktop release...\n'
 # The installed desktop entry runs the immutable binary directly. Building an AppImage
 # here adds an unrelated linuxdeploy failure surface without producing an install input.
 run_background_build env \
   VITE_TERMFLEET_RELEASE_ID="${source_revision:0:12}" \
+  TERMFLEET_FRONTEND_SHA256="$frontend_sha" \
   CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-1}" \
   cargo build --manifest-path "$APP_ROOT/src-tauri/Cargo.toml" \
     --bin terminal-workspace --features tauri/custom-protocol --release
@@ -47,10 +53,6 @@ run_background_build env \
   printf 'Release build did not produce %s\n' "$SOURCE_BINARY" >&2
   exit 1
 }
-
-# Hash the completed frontend tree so the release manifest describes the assets
-# embedded by the direct Cargo build above.
-frontend_sha="$(find "$APP_ROOT/dist" -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')"
 
 binary_sha="$(sha256sum "$SOURCE_BINARY" | awk '{print $1}')"
 git_revision="$(git rev-parse --verify HEAD)"

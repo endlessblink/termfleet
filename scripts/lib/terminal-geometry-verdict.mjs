@@ -167,6 +167,60 @@ export function judgePaneCapture(sample, brightnessOf) {
   return { violations, brightness };
 }
 
+// --- Stability check -------------------------------------------------------------
+//
+// The instrument that can see glyph-level corruption. Mean brightness cannot: a stray
+// fragment or an overlapping glyph moves it by nothing. But if a pane's recorded state
+// (grid, offset, modes) is unchanged, two captures a second apart MUST be identical —
+// so any pixel difference is a repaint artifact, and that holds without knowing the
+// grid's content at all.
+
+export const PANE_TEARING = "PANE_TEARING";
+
+/** Default RMSE above which two idle captures count as changed. */
+export const TEARING_RMSE_THRESHOLD = 0.02;
+
+/**
+ * `rmseBetween(rect)` returns the RMSE (0..1) between the two captures over `rect`.
+ * Injected so this is testable without an image library.
+ */
+export function judgePaneStability(sample, rmseBetween, threshold = TEARING_RMSE_THRESHOLD) {
+  const rect = {
+    x: sample.rectX,
+    y: sample.rectY,
+    width: sample.rectWidth,
+    height: sample.rectHeight,
+  };
+  if (!Number.isFinite(rect.width) || rect.width <= 0 || !Number.isFinite(rect.height) || rect.height <= 0) {
+    return { violations: [], rmse: null };
+  }
+  let rmse;
+  try {
+    rmse = rmseBetween(rect);
+  } catch (error) {
+    return { violations: [], rmse: null, error: String(error) };
+  }
+  if (typeof rmse !== "number" || !Number.isFinite(rmse)) {
+    return { violations: [], rmse: null, error: `unparseable rmse ${rmse}` };
+  }
+  if (rmse > threshold) {
+    return {
+      violations: [
+        {
+          code: PANE_TEARING,
+          id: sample.id,
+          detail:
+            `pixels changed between two idle captures (RMSE ${rmse.toFixed(4)}, threshold ` +
+            `${threshold}) while the recorded grid state was unchanged — the pane repainted ` +
+            "a screen it should have left alone",
+        },
+      ],
+      rmse,
+    };
+  }
+  return { violations: [], rmse };
+}
+
 //
 // --- Terminal capability stream checks -------------------------------------------
 

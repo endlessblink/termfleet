@@ -246,7 +246,9 @@ fn descendants(root: u32) -> Vec<u32> {
 }
 
 /// The live lifecycle of the Codex process `pid`, or None when it has no readable
-/// rollout open (then the caller keeps its other signals).
+/// rollout open (then the caller keeps its other signals). Only the live probe
+/// test reads it; production code uses `codex_lifecycle_report`.
+#[cfg(test)]
 pub fn codex_lifecycle(pid: u32) -> Option<Lifecycle> {
     codex_lifecycle_report(pid).map(|(state, _)| state)
 }

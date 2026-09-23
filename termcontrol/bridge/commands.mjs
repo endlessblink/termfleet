@@ -20,6 +20,11 @@ const SOURCES = {
     { dir: path.join(home, '.codex', 'skills'), kind: 'dir' },
     { dir: path.join(home, '.codex', 'prompts'), kind: 'md' },
   ],
+  opencode: [
+    { dir: path.join(home, '.config', 'opencode', 'skills'), kind: 'dir' },
+    { dir: path.join(home, '.config', 'opencode', 'commands'), kind: 'md' },
+    { dir: path.join(home, '.config', 'opencode', 'command'), kind: 'md' },
+  ],
 };
 
 /**
@@ -67,6 +72,29 @@ const CANDIDATES = {
     ['status', 'Show the current state'],
     ['undo', 'Undo the last change'],
   ],
+  opencode: [
+    ['agent', 'Change which agent is answering'],
+    ['compact', 'Summarise the conversation so far'],
+    ['details', 'Show more detail about the current step'],
+    ['editor', 'Write this message in your editor'],
+    ['exit', 'Leave'],
+    ['export', 'Save the conversation to share'],
+    ['help', 'List what is available'],
+    ['init', 'Write an AGENTS.md for this project'],
+    ['login', 'Sign in'],
+    ['logout', 'Sign out'],
+    ['mcp', 'Manage MCP servers'],
+    ['model', 'Change the model'],
+    ['new', 'Start a new conversation'],
+    ['quit', 'Leave'],
+    ['redo', 'Redo the last change'],
+    ['sessions', 'Switch between conversations'],
+    ['share', 'Share this conversation'],
+    ['status', 'Show the current state'],
+    ['themes', 'Change the theme'],
+    ['undo', 'Undo the last change'],
+    ['unshare', 'Stop sharing this conversation'],
+  ],
 };
 
 const BINARIES = {
@@ -75,6 +103,9 @@ const BINARIES = {
   ],
   codex: [
     path.join(home, '.npm-global', 'lib', 'node_modules', '@openai', 'codex'),
+  ],
+  opencode: [
+    path.join(home, '.opencode', 'bin'),
   ],
 };
 

@@ -82,12 +82,33 @@ export function GitMonitoringView() {
   const groups = useWorkspaceStore((state) => state.groups);
   const liveGitRoots = useWorkspaceStore((state) => state.liveGitRoots);
   const setActiveTab = useWorkspaceStore((state) => state.setActiveTab);
+  const switchProject = useWorkspaceStore((state) => state.switchProject);
   const setWorkspaceMode = useWorkspaceStore((state) => state.setWorkspaceMode);
   const queueWorkstreamInput = useWorkspaceStore((state) => state.queueWorkstreamInput);
   const [gitFacts, setGitFacts] = useState<Record<string, GitMonitorGitFacts>>({});
   const [expanded, setExpanded] = useState<string[]>([]);
   const [combineRequestedIds, setCombineRequestedIds] = useState<string[]>([]);
   const [narrowViewport, setNarrowViewport] = useState(false);
+  const [returnTarget] = useState(() => {
+    const state = useWorkspaceStore.getState();
+    const activeTab = state.tabs.find((tab) => tab.id === state.activeTabId) ?? null;
+    return {
+      tabId: state.activeTabId ?? activeTab?.id ?? null,
+      groupId: state.activeGroupId ?? activeTab?.groupId ?? null,
+      groupFilter: state.activeGroupFilter ?? activeTab?.groupId ?? null,
+    };
+  });
+  const returnToActiveTerminal = () => {
+    switchProject(returnTarget.groupId);
+    if (returnTarget.tabId) {
+      setActiveTab(returnTarget.tabId);
+    }
+    useWorkspaceStore.setState({
+      activeGroupId: returnTarget.groupId,
+      activeGroupFilter: returnTarget.groupFilter,
+    });
+    setWorkspaceMode("split");
+  };
   useEffect(() => {
     const media = window.matchMedia("(max-width: 760px)");
     const update = () => setNarrowViewport(media.matches || window.outerWidth <= 760);
@@ -154,7 +175,7 @@ export function GitMonitoringView() {
     <main className={`git-monitor-shell${narrowViewport ? " git-monitor-narrow" : ""}`} style={styles.shell} data-testid="git-monitor-view" aria-label="Git work monitor">
       <style>{responsiveStyles}</style>
       <div style={styles.navigation}>
-        <button type="button" style={styles.backButton} onClick={() => setWorkspaceMode("split")} aria-label="Back to cockpit">
+        <button type="button" style={styles.backButton} onClick={returnToActiveTerminal} aria-label="Back to cockpit">
           <ArrowLeft size={15} weight="bold" />
           <span>Back to cockpit</span>
         </button>
@@ -191,7 +212,7 @@ const styles: Record<string, CSSProperties> = {
   eyebrow: { fontSize: 11, textTransform: "uppercase", color: "var(--text-tertiary)" },
   title: { margin: "7px 0 6px", fontSize: "clamp(28px, 4vw, 44px)", fontWeight: 400 },
   detail: { margin: 0, color: "var(--text-secondary)", fontSize: 14 },
-  evidence: { display: "block", marginTop: 12, color: "var(--text-tertiary)", fontSize: 11, letterSpacing: "0.02em" },
+  evidence: { display: "block", marginTop: 12, color: "var(--text-tertiary)", fontSize: 11, letterSpacing: 0 },
   heroCounts: { display: "flex", flexWrap: "wrap", justifyContent: "flex-end", gap: 8, maxWidth: 420 },
   count: { color: "var(--text-secondary)", fontSize: 12, whiteSpace: "nowrap" },
   statusPill: { display: "inline-flex", alignItems: "center", gap: 6, border: "1px solid", borderRadius: 999, padding: "5px 9px", fontSize: 11, whiteSpace: "nowrap" },

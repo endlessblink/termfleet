@@ -54,11 +54,11 @@ verify_launcher_contracts() {
     local target
     target="$(readlink -f "$(command -v termfleet)")"
     case "$target" in
-      "$ROOT/run-dev.sh"|"$ROOT/run-native-vte-dev.sh")
+      "$ROOT/run-dev.sh"|"$ROOT/run-native-vte-dev.sh"|*/releases/*/termfleet|*/bin/termfleet)
         pass "termfleet command resolves to a supported launcher ($target)"
         ;;
       *)
-        fail "termfleet command resolves to '$target', expected $ROOT/run-dev.sh or $ROOT/run-native-vte-dev.sh"
+        fail "termfleet command resolves to '$target', expected $ROOT/run-dev.sh, $ROOT/run-native-vte-dev.sh, or promoted release"
         ;;
     esac
   else

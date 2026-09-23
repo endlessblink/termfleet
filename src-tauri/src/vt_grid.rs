@@ -384,6 +384,21 @@ impl GridManager {
         serde_json::to_string(&snapshot).map_err(|error| error.to_string())
     }
 
+    /// The visible screen of `id` as plain text, top row first. Used to re-check that
+    /// an approval prompt is still open right before answering it (Approve all).
+    pub fn screen_text(&self, id: &str) -> Result<String, String> {
+        let session = self
+            .get(id)
+            .ok_or_else(|| format!("no grid attached for session {id}"))?;
+        let state = session.state.read().map_err(|_| "grid state poisoned")?;
+        Ok(collect_search_lines(&state.term)
+            .into_iter()
+            .filter(|(line, _)| *line >= 0)
+            .map(|(_, text)| text)
+            .collect::<Vec<_>>()
+            .join("\n"))
+    }
+
     pub fn revision(&self, id: &str) -> Result<u64, String> {
         let session = self
             .get(id)
@@ -1387,6 +1402,17 @@ fn selection_text(
     let ((start_row, start_col), (end_row, end_col)) =
         ordered_selection(start_row, start_col, end_row, end_col);
     let grid = term.grid();
+    let screen = grid.screen_lines() as i32;
+    let total = grid.total_lines() as i32;
+    let top = screen - total;
+    if screen <= 0 || total <= 0 {
+        return String::new();
+    }
+    let start_row = start_row.max(top).min(screen - 1);
+    let end_row = end_row.max(top).min(screen - 1);
+    if start_row > end_row {
+        return String::new();
+    }
     let mut lines = Vec::new();
     for row in start_row..=end_row {
         let from = if row == start_row { start_col } else { 0 }.min(cols - 1);
@@ -2432,6 +2458,16 @@ mod tests {
         let top_row = visible_row - snapshot.display_offset as i32;
         let text = selection_text(&state.term, top_row, 0, top_row + 2, 5);
         assert_eq!(text, "line00\nline01\nline02");
+    }
+
+    #[test]
+    fn selection_text_out_of_bounds_rows_do_not_panic() {
+        let mut state = TermState::new(DEFAULT_COLS, DEFAULT_ROWS);
+        state.feed(b"first line\r\nsecond line\r\n");
+        // Request rows far below screen and far above history
+        let text = selection_text(&state.term, -9999, 0, 9999, 10);
+        assert!(text.contains("first line"));
+        assert!(text.contains("second line"));
     }
 
     #[test]

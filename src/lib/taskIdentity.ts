@@ -6,7 +6,11 @@ import type {
 } from "./types";
 import { visibleTaskLineup } from "./taskLineup";
 import type { PaneTaskLine } from "./taskLine";
-import { stripComposerChrome } from "./terminalHeaderQuality";
+import {
+  qualityCheckGoalLabel,
+  qualityCheckUserAskLabel,
+  stripComposerChrome,
+} from "./terminalHeaderQuality";
 import { selectPlanPurpose } from "./taskPurpose";
 import { looksLikeSlug } from "./sessionTranscript";
 
@@ -19,6 +23,9 @@ export type TaskIdentitySource =
   | "user-prompt"
   | "plan-binding"
   | "sidecar-todo"
+  | "plan-explanation"
+  | "goal-task"
+  | "agent-goal"
   | "workstream"
   | "missing";
 
@@ -168,7 +175,16 @@ function looksLikeConversationalCorrection(value?: string | null) {
 }
 
 function isUsableUserGoal(value?: string | null) {
-  return isMeaningfulUserGoal(value) && !looksLikeConversationalCorrection(value);
+  const text = clean(value);
+  if (!text) return false;
+  // The operator's durable goal must pass the SAME gate the header applies to it.
+  // `isMeaningfulUserGoal` alone let a status-sidecar "$done" through — `cleanPromptText`
+  // strips the leading "$", leaving "done", which is not in its small nudge list — so a
+  // pane showed a bare "done" as its Task while its real plan-explanation goal sat in the
+  // sidecar (2026-09-16 sweep). The shared gate rejects commands, nudges, urls, paths,
+  // damaged text and bare questions in one place.
+  if (!qualityCheckUserAskLabel(text, { maxLength: 220 }).ok) return false;
+  return isMeaningfulUserGoal(text) && !looksLikeConversationalCorrection(text);
 }
 
 // Checklist mechanics belong in Now. They are useful progress signals, but they do not
@@ -473,6 +489,64 @@ export function resolveTaskIdentity(input: {
     return {
       text: normalizedOperatorAsk(sidecarTask),
       rawText: sidecarTask,
+      source: "sidecar-todo",
+    };
+  }
+
+  // A plan explanation is an explicit pane-owned purpose, not a heuristic
+  // project fallback. When the agent has no separate task step, retain that
+  // exact purpose as the Task identity so the header does not claim it was
+  // never captured. Clipped or process-shaped explanations stay rejected.
+  // `agent-goal` (Codex goal tool) and `goal-task` (other providers) are the same
+  // kind of pane-owned purpose; without them a real short goal ("Bot not posting
+  // scheduled posts") never reached the row (2026-09-16 sweep).
+  const planExplanation = clean(input.statusSummary?.mainTask);
+  const planExplanationSource = input.statusSummary?.mainTaskSource ?? "";
+  if (
+    ["plan-explanation", "agent-goal", "goal-task"].includes(
+      planExplanationSource,
+    ) &&
+    planExplanation &&
+    !/[…]$/.test(planExplanation) &&
+    !/\b(?:instead of|while|and|or|to|for|the|a|an|then)\s*[.!?]?$/i.test(planExplanation) &&
+    qualityCheckGoalLabel(planExplanation, {
+      allowAboutWhatVoice: true,
+      allowTrustedAboutWhat: true,
+      maxLength: 220,
+    }).ok
+  ) {
+    return {
+      text: planExplanation,
+      rawText: planExplanation,
+      source:
+        planExplanationSource === "goal-task"
+          ? "goal-task"
+          : planExplanationSource === "agent-goal"
+            ? "agent-goal"
+            : "plan-explanation",
+    };
+  }
+
+  // The status sidecar can capture the opening request before the provider has
+  // written a TodoWrite item. It is still pane-owned task identity; dropping it
+  // here makes the cockpit report "Task not captured" even though the source is
+  // fresh and explicit.
+  const capturedOpeningTask = clean(input.statusSummary?.mainTask);
+  if (
+    /^(?:opening-request|user-prompt)$/.test(
+      input.statusSummary?.mainTaskSource ?? "",
+    ) &&
+    capturedOpeningTask &&
+    !isGenericDeclaredTask(capturedOpeningTask) &&
+    qualityCheckGoalLabel(capturedOpeningTask, {
+      allowAboutWhatVoice: true,
+      allowTrustedAboutWhat: true,
+      maxLength: 220,
+    }).ok
+  ) {
+    return {
+      text: normalizedOperatorAsk(capturedOpeningTask),
+      rawText: capturedOpeningTask,
       source: "sidecar-todo",
     };
   }

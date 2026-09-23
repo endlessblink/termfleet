@@ -610,6 +610,8 @@ export function TerminalComponent({
   const recoveryHealthyTimeoutRef = useRef<ReturnType<
     typeof setTimeout
   > | null>(null);
+  const transportRecoveryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const transportRecoveryPendingRef = useRef(false);
   const observedAgentProviderRef = useRef<AgentProvider | null>(null);
   const missingAgentPollsRef = useRef(0);
   const agentExitReportedRef = useRef(false);
@@ -1631,6 +1633,7 @@ export function TerminalComponent({
 
   const handleReady = useCallback(
     (ptyId: string, details: { reused: boolean }) => {
+      transportRecoveryPendingRef.current = false;
       updateTerminalRuntime({
         id: ptyId,
         status: details.reused ? "reconnected" : "running",
@@ -1682,6 +1685,25 @@ export function TerminalComponent({
         error: details?.error,
         reused: status === "reconnected" ? true : undefined,
       });
+      const daemonSessionMissing =
+        canvasMode &&
+        status === "failed" &&
+        /(?:PTY|session)\s+[^\s]+\s+not found|daemon (?:terminal )?session/i.test(
+          details?.error ?? "",
+        );
+      if (daemonSessionMissing && !transportRecoveryPendingRef.current) {
+        transportRecoveryPendingRef.current = true;
+        updateTerminalRuntime({
+          id: details?.id,
+          status: "starting",
+          error: "Terminal daemon session disappeared; reconnecting…",
+        });
+        transportRecoveryTimeoutRef.current = setTimeout(() => {
+          transportRecoveryTimeoutRef.current = null;
+          setRecoveryGeneration((generation) => generation + 1);
+        }, 250);
+        return;
+      }
       if (status === "failed")
         updateWorkstreamRuntime({ status: "failed", activity: true });
     },
@@ -2215,6 +2237,8 @@ export function TerminalComponent({
         clearTimeout(recoveryRestartTimeoutRef.current);
       if (recoveryHealthyTimeoutRef.current)
         clearTimeout(recoveryHealthyTimeoutRef.current);
+      if (transportRecoveryTimeoutRef.current)
+        clearTimeout(transportRecoveryTimeoutRef.current);
     },
     [],
   );
@@ -2619,6 +2643,7 @@ export function TerminalComponent({
       ref={questShellRef}
       className={`terminal-block-shell${standalone ? " terminal-block-shell--standalone" : ""}${questTerminalQualifies ? " terminal-block-shell--quest-active" : ""}`}
       data-quest-active={questTerminalQualifies ? "true" : "false"}
+      data-terminal-kind={paneAgentProvider && paneAgentProvider !== "shell" ? "agent" : "shell"}
       // No tabIndex: the wrapper must NOT be a Tab stop. With tabIndex={0} a
       // Shift+Tab inside the terminal moved focus from the hidden input to this
       // wrapper (off the textarea), so the keystroke never reached the PTY and

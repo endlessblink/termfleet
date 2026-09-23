@@ -11,6 +11,16 @@ test("completion gate validates the rendered Goal field separately from Task", (
   expect(gate).toContain("raw prompt goal");
 });
 
+test("goal completion hook uses the host-enforced block decision and requires high confidence", () => {
+  const hook = readFileSync(join(process.cwd(), "scripts/termfleet-goal-approval-hook.mjs"), "utf8");
+  const matrix = readFileSync(join(process.cwd(), "scripts/verify-cockpit-goal-matrix.mjs"), "utf8");
+  expect(hook).toContain('decision: "block"');
+  expect(hook).toContain("HIGH confidence");
+  expect(matrix).toContain("statusSummaryConfidence");
+  expect(matrix).toContain("sure-gate-requires-high-confidence");
+  expect(hook).not.toContain("permissionDecision");
+});
+
 test("screen monitor rejects snapshots written by another application", () => {
   const monitor = readFileSync(join(process.cwd(), "scripts/monitor-cockpit-pane-screens.mjs"), "utf8");
   expect(monitor).toContain('snapshot.sourceApp !== "termfleet"');
@@ -29,6 +39,8 @@ test("TermFleet uses an application-specific snapshot by default", () => {
   expect(live).toContain('fail([...new Set(allFailures)], previousRows)');
   expect(taskMonitor).toContain('termfleet-cockpit-snapshot.json');
   expect(doctor).toContain('termfleet-cockpit-snapshot.json');
+  expect(doctor).toContain("termfleet-goal-approval-hook");
+  expect(doctor).toContain("Goal approval gate (Codex)");
 });
 
 test("restart smoke passes its isolated snapshot path to the screen monitor", () => {

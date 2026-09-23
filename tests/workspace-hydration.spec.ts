@@ -1459,3 +1459,57 @@ test("dead persisted terminals remain manual recovery records even when unclosed
   expect(result.calls).toContain("workspace_persisted_sessions");
   expect(result.tabs).toEqual([{ id: "saved-tab", cwd: "/repo/saved" }]);
 });
+
+test("recovery review hides duplicate history and sessions already open in a terminal", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+
+  const result = await page.evaluate(async () => {
+    const { recoverySessionsForReview } = await import("/src/stores/workspace.ts");
+    return recoverySessionsForReview([
+      {
+        id: "older-copy",
+        cwd: "/repo/termfleet",
+        scrollbackBytes: 800,
+        lifecycle: "unknown",
+        provider: "codex",
+        providerSessionId: "duplicate-conversation",
+      },
+      {
+        id: "actionable-copy",
+        cwd: "/repo/termfleet",
+        scrollbackBytes: 40,
+        lifecycle: "recoverable",
+        provider: "codex",
+        providerSessionId: "duplicate-conversation",
+      },
+      {
+        id: "already-open-copy",
+        cwd: "/repo/termfleet",
+        scrollbackBytes: 120,
+        lifecycle: "recoverable",
+        provider: "codex",
+        providerSessionId: "open-conversation",
+      },
+    ], [
+      {
+        terminals: [{ providerSessionId: "open-conversation" }],
+      },
+    ] as never).map((session) => session.id);
+  });
+
+  expect(result).toEqual(["actionable-copy"]);
+});
+
+test("terminal control keeps saved-only tabs out of the live terminal list", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+
+  const result = await page.evaluate(async () => {
+    const { liveTerminalTabs } = await import("/src/stores/workspace.ts");
+    return liveTerminalTabs([
+      { id: "live-tab", terminals: [{ id: "live-session" }] },
+      { id: "saved-only-tab", terminals: [{ id: "saved-only-session" }] },
+    ] as never, ["live-session"]).map((tab) => tab.id);
+  });
+
+  expect(result).toEqual(["live-tab"]);
+});

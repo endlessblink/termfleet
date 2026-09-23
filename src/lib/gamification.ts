@@ -180,7 +180,9 @@ export function mergeGamificationRecord(record: GamificationRecord, facts: Gamif
   for (const event of facts.events) {
     if (!ignored.has(event.id)) existing.set(event.id, event);
   }
-  const parallelActive = facts.activeWorkstreams >= 3;
+  const parallelQuestAccepted =
+    record.activeQuestId === "parallel-work" && record.questAcceptedAt !== null;
+  const parallelActive = parallelQuestAccepted && facts.activeWorkstreams >= 3;
   const parallelStartedAt = parallelActive ? (record.parallelWorkstreamStartedAt ?? updatedAt) : null;
   const parallelSeconds = parallelActive && parallelStartedAt !== null
     ? Math.max(record.parallelWorkstreamSeconds, Math.floor((updatedAt - parallelStartedAt) / 1000))

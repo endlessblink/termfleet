@@ -35,6 +35,8 @@ test.describe("Git work monitor contract", () => {
     expect(sidebar).toContain('updateUi({ primarySidebarCollapsed: false });');
     expect(sidebar).toContain('workspaceMode !== "graph"');
     expect(source).toContain('aria-label="Back to cockpit"');
+    expect(source).toContain("switchProject(returnTarget.groupId)");
+    expect(source).toContain("setActiveTab(returnTarget.tabId)");
     expect(source).toContain('position: "absolute"');
     expect(source).toContain('Why this status:');
     expect(source).toContain('How statuses are decided');
@@ -49,6 +51,79 @@ test.describe("Git work monitor contract", () => {
     await expect(page.getByRole("button", { name: "Back to cockpit" })).toBeVisible();
     await page.getByRole("button", { name: "Back to cockpit" }).click();
     await expect(page.getByTestId("git-monitor-view")).toHaveCount(0);
+  });
+
+  test("back returns to the area that was active when the monitor opened", async ({ page }) => {
+    await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+
+    await page.evaluate(async () => {
+      const { useWorkspaceStore } = await import("/src/stores/workspace.ts");
+      useWorkspaceStore.setState((state) => ({
+        ...state,
+        groups: [
+          { id: "area-a", name: "Area A", projectRoot: "/repo/area-a" },
+          { id: "area-b", name: "Area B", projectRoot: "/repo/area-b" },
+        ],
+        tabs: [
+          {
+            id: "tab-a",
+            title: "Area A",
+            emoji: "",
+            color: "",
+            groupId: "area-a",
+            terminals: [{ id: "session-a" }],
+            splitLayout: { type: "pane", paneId: "session-a" },
+            activePaneId: "session-a",
+          },
+          {
+            id: "tab-b",
+            title: "Area B",
+            emoji: "",
+            color: "",
+            groupId: "area-b",
+            terminals: [{ id: "session-b" }],
+            splitLayout: { type: "pane", paneId: "session-b" },
+            activePaneId: "session-b",
+          },
+        ] as Tab[],
+        activeTabId: "tab-a",
+        activeGroupId: "area-a",
+        activeGroupFilter: "area-a",
+      }));
+    });
+
+    await page.getByRole("button", { name: "Git work monitor" }).click();
+    await expect(page.getByTestId("git-monitor-view")).toBeVisible();
+
+    await page.evaluate(async () => {
+      const { useWorkspaceStore } = await import("/src/stores/workspace.ts");
+      useWorkspaceStore.setState((state) => ({
+        ...state,
+        activeTabId: "tab-b",
+        activeGroupId: "area-b",
+        activeGroupFilter: "area-b",
+      }));
+    });
+
+    await page.getByRole("button", { name: "Back to cockpit" }).click();
+
+    await expect.poll(async () =>
+      page.evaluate(async () => {
+        const { useWorkspaceStore } = await import("/src/stores/workspace.ts");
+        const state = useWorkspaceStore.getState();
+        return {
+          activeTabId: state.activeTabId,
+          activeGroupId: state.activeGroupId,
+          activeGroupFilter: state.activeGroupFilter,
+          workspaceMode: state.workspaceUiState.workspaceMode,
+        };
+      }),
+    ).toEqual({
+      activeTabId: "tab-a",
+      activeGroupId: "area-a",
+      activeGroupFilter: "area-a",
+      workspaceMode: "split",
+    });
   });
 
   test("groups projects and reports work-area counts", () => {

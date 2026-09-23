@@ -29,6 +29,7 @@ import {
   qualityCheckNarrationLabel,
   titleIsCommentaryOrDangling,
   readsAsActivity,
+  stripComposerChrome,
 } from "./terminalHeaderQuality";
 import { activeTodoTask, resolveTaskIdentity } from "./taskIdentity";
 import type { PaneTaskLine } from "./taskLine";
@@ -44,6 +45,14 @@ export type HeaderFieldSource =
   | "sidecar-todo"
   | "workstream"
   | "status-summary"
+  | "shell-role"
+  | "plan-explanation"
+  // Pane-owned goals declared through the provider's goal tool: Codex `agent-goal`,
+  // OpenCode/other `goal-task` (the session title). They are their own provenance so a
+  // goal-mode pane reports where its Goal came from instead of borrowing
+  // "plan-explanation".
+  | "goal-task"
+  | "agent-goal"
   // TC-060: resolved by the task-line ladder from the vendor's own session record
   // or the running process.
   | "task-line"
@@ -748,88 +757,16 @@ export function aboutWhatFallback(
   ) {
     return value;
   }
-  return "Ready for next task";
+  return "Now not captured";
 }
 
-export function fallbackProjectGoal(workspace: string, task?: string) {
-  const text = task?.replace(/\s+/g, " ").trim() ?? "";
-  if (/\btermfleet\b/i.test(workspace)) {
-    if (/\b(?:warning|danger|risk|at risk|threat)\b/i.test(text)) {
-      return "Make terminal risks clear in TermFleet so people can act before losing progress.";
-    }
-    if (/\b(?:reconnect|relaunch|restore|reattach|restart)\b/i.test(text)) {
-      return "Keep TermFleet sessions connected through restarts so people can resume without losing work.";
-    }
-    if (/clear reasons.*next actions|status meanings|status.*clear/i.test(text)) {
-      return "Make every terminal status explain what is happening and what to do next";
-    }
-    if (/\b(?:attachment|restored agent|agent conversation|reconnect.*agent)\b/i.test(text)) {
-      return "Keep restored agent conversations attached to the right terminal so work can continue after a restart.";
-    }
-    if (/\b(?:scroll|keyboard|history|page up|page down)\b/i.test(text)) {
-      return "Keep terminal history and keyboard controls reliable so people can continue without losing their place.";
-    }
-    if (/\b(?:map|design|warmer|characterful)\b/i.test(text)) {
-      return "Keep the TermFleet map easy to navigate so people can find the terminal that matters.";
-    }
-    if (/\b(?:playwright|test(?:s|ing)?|header|goal|now|cockpit|visual|screenshot|label)\b/i.test(text)) {
-      return "Make TermFleet show each terminal's purpose so people can resume the right work confidently.";
-    }
-    return "Make TermFleet show each terminal's purpose so people can resume the right work confidently.";
-  }
-  if (/\bgi-lightmap\b/i.test(text)) {
-    return "Keep the GI-lightmap pipeline moving so the scene renders correctly.";
-  }
-  if (/\bstale transcript|completed test output\b/i.test(text)) {
-    return "Keep completed test output from changing the active work.";
-  }
-  if (/\bidle verifier|terminal identity\b/i.test(text)) {
-    return "Keep idle verifier panes stable so their identity stays clear.";
-  }
-  if (/\blong path|structured path\b/i.test(text)) {
-    return "Keep long workspace paths readable so panes remain identifiable.";
-  }
-  const projectLabel = workspace
-    .replace(/^.*[\\/]/, "")
-    .replace(/[-_]+/g, " ")
-    .replace(/\b\w/g, (letter) => letter.toUpperCase())
-    .trim();
-  const safeProjectLabel =
-    /\b(?:agent|reviewer|harness|workflow|terminal|task|goal|test|tests|verification|build|release|quality|regression|telemetry|screenshot|proof|gate|validation|directive)\b/i.test(
-      projectLabel,
-    )
-      ? "this project"
-      : projectLabel;
-  if (/\b(?:reconnect|reconnected|sign(?:ed|ing)?\s*in|session)\b/i.test(text) && safeProjectLabel) {
-    return `Keep ${safeProjectLabel} connected so people can return to their work without losing progress.`;
-  }
-  if (/\b(?:captcha|maas|human challenge)\b/i.test(text) && safeProjectLabel) {
-    return `Keep ${safeProjectLabel} sign-ins reliable so people can use it without unnecessary challenges.`;
-  }
-  if (/easy to understand/i.test(text)) {
-    return "Make the workspace easy to understand so people can resume work confidently.";
-  }
-  if (/repairing the missing protocol surfaces/i.test(text)) {
-    return "Restore the protocol surfaces so the system behaves reliably for users.";
-  }
-  if (/dashboard controls|disabling automatic/i.test(text)) {
-    return "Make dashboard behavior predictable so people can control what gets posted.";
-  }
-  if (/fail-closed reviewer|session audit/i.test(text)) {
-    return "Make reviews and session records trustworthy so unsafe changes are caught.";
-  }
-  if (/auth regressions|passive events|sign me out|sign out/i.test(text)) {
-    return "Keep the user signed in until they choose to sign out.";
-  }
-  if (/deploying the merged change/i.test(text)) {
-    return "Deliver the merged change safely so users can rely on the updated product.";
-  }
-  if (/tab behavior/i.test(text)) {
-    return "Make tab behavior dependable so people can switch work without surprises.";
-  }
-  return safeProjectLabel
-    ? `Make ${safeProjectLabel} work clear and dependable so people can resume it confidently.`
-    : "Keep this workspace clear and dependable so people can resume work confidently.";
+/**
+ * Context must come from the pane's own declared work. A project name and a
+ * process label are not evidence of a Goal, so this legacy helper is now an
+ * explicit no-op kept only for callers/tests during the migration.
+ */
+export function fallbackProjectGoal(_workspace: string, _task?: string): undefined {
+  return undefined;
 }
 
 export function buildShellTerminalHeaderViewModel(input: {
@@ -851,6 +788,7 @@ export function buildShellTerminalHeaderViewModel(input: {
   contextPurposeTitle?: string | null;
   contextPurposeSource?: TerminalPurposeSource | null;
   workstreamTitle?: string | null;
+  paneKind?: "agent" | "shell";
   // The pane is actively working RIGHT NOW (a visible "Working (…)" / spinner marker),
   // even though there's no real task list. Without this, an actively-working shell whose
   // heuristic status reads "idle" showed the misleading title "Awaiting next action".
@@ -867,6 +805,18 @@ export function buildShellTerminalHeaderViewModel(input: {
     cwd: input.liveCwd,
     gitRoot: input.liveGitRoot,
   });
+  const shellRoleFallback =
+    input.paneKind === "shell" &&
+    !input.mainUserAsk &&
+    !input.statusSummary?.mainTask?.trim() &&
+    !input.contextPurposeTitle?.trim() &&
+    !input.workstreamTitle?.trim();
+  const shellRoleTask = shellRoleFallback
+    ? `Terminal session in ${workspace}`
+    : undefined;
+  const shellRoleGoal = shellRoleFallback
+    ? `Run commands directly in ${workspace}.`
+    : undefined;
   const contextPurposeTitle = input.contextPurposeTitle;
   const declaredIdentity = resolveTaskIdentity({
     taskLineup: input.taskLineup,
@@ -921,13 +871,45 @@ export function buildShellTerminalHeaderViewModel(input: {
   // "doesn't answer what workflow and for what" (operator, 2026-07-29). The step keeps
   // its place on the Now row underneath. Only a goal the OPERATOR set by hand outranks
   // the resolver.
+  // The ladder line must ALSO be renderable by the same gate it will face: otherwise a
+  // momentary "$done"/image-echo line won the row and blanked a pane whose real
+  // plan-explanation goal was known (2026-09-16 sweep). If the ladder line cannot be
+  // read, the declared identity takes the row instead of a placeholder.
+  const ladderLineCandidate = input.taskLine
+    ? compactHeaderGoal(input.taskLine.text)
+    : undefined;
+  const ladderLineIsUserAsk =
+    /^(?:operator-request|opening-request|pending-question)$/.test(
+      input.taskLine?.source ?? "",
+    );
+  const ladderLineQuality =
+    ladderLineCandidate &&
+    !/^(?:No user task captured yet|No task declared|Task not captured|Goal not captured|No active work|Activity not captured)$/i.test(
+      ladderLineCandidate,
+    ) &&
+    !/(?:https?:\/\/|(?:^|\s)\/(?:tmp|home|media|usr|etc|var)\/)/i.test(
+      ladderLineCandidate,
+    ) &&
+    !/\b(?:use|apply|follow|invoke)\s+(?:the\s+)?(?:skill|skills|agent|reviewer|harness|workflow|tool)\b/i.test(
+      ladderLineCandidate,
+    )
+      ? ladderLineIsUserAsk
+        ? qualityCheckUserAskLabel(ladderLineCandidate)
+        : qualityCheckAuthoritativeTaskLabel(ladderLineCandidate)
+      : { ok: false as const, reason: "empty" as const };
   const preferLadder =
     input.taskLine != null &&
+    ladderLineQuality.ok &&
     !mainUserAskIsUsable &&
     ((declaredIdentity.source === "sidecar-todo" &&
       !activePlanItem &&
       ladderIsLiveWork) ||
-      (ladderIsMainPlan && declaredIdentity.source !== "manual"));
+      // A pane-owned plan explanation is already the authoritative answer to
+      // "what is this pane about?". Do not let a stale/rejected recovery line
+      // replace it with a worse headline (often "Task not captured").
+      (ladderIsMainPlan &&
+        declaredIdentity.source !== "manual" &&
+        declaredIdentity.source !== "plan-explanation"));
   const sidecarGoalWithActiveStep = Boolean(
     input.statusSummary?.mainTask && activePlanItem,
   );
@@ -956,9 +938,19 @@ export function buildShellTerminalHeaderViewModel(input: {
       : compactHeaderGoal(taskIdentity.text);
   // The user's own words are gated leniently: informal phrasing and typos are
   // still what they asked for. Declared task text gets the authoritative gate.
+  // The identity may be labelled `sidecar-todo` even when it IS the operator's ask
+  // (the status sidecar carries both), so compare against the ask itself — after the
+  // same composer-chrome stripping the identity ladder applied — instead of trusting
+  // the source label alone.
+  const strippedMainUserAsk = input.mainUserAsk?.text
+    ? stripComposerChrome(input.mainUserAsk.text)
+    : undefined;
   const identityIsUserAsk =
     taskIdentity.source === "manual" ||
     taskIdentity.source === "user-prompt" ||
+    (Boolean(strippedMainUserAsk) &&
+      (taskIdentity.text === strippedMainUserAsk ||
+        taskIdentity.text === input.mainUserAsk?.text)) ||
     /^(?:operator-request|opening-request|pending-question)$/.test(
       input.taskLine?.source ?? "",
     );
@@ -975,14 +967,6 @@ export function buildShellTerminalHeaderViewModel(input: {
     /\b(?:design|coding|implementation)\s+skills?\b/i.test(
       identityTaskDescriptionText ?? "",
     );
-  const durableOpeningTaskLine = Boolean(
-    input.taskLine &&
-      /^(?:opening-request|task-line)$/.test(input.taskLine.source) &&
-      (identityTaskDescriptionText?.length ?? 0) >= 20 &&
-      !/^(?:go|done|sure|yes|ok|continue|proceed)\b/i.test(
-        identityTaskDescriptionText ?? "",
-      ),
-  );
   // Validate the same compact text that the cockpit will render. Rejecting a long
   // but otherwise valid checklist before truncating it turned a useful Task into a
   // fake missing-task fallback.
@@ -994,9 +978,13 @@ export function buildShellTerminalHeaderViewModel(input: {
     !identityTaskIsPlaceholder &&
     !identityTaskContainsTerminalChrome &&
     !identityTaskIsProcessInstruction
-    ? durableOpeningTaskLine
-      ? qualityCheckAuthoritativeTaskLabel(identityTaskCandidate)
-      : identityIsUserAsk
+    ? // A user-authored identity (manual, the operator's ask, or a captured
+      // opening/operator request) is gated LENIENTLY — the operator's own wording,
+      // even "you must review visually", is exactly what they asked for, and the
+      // strict agent-checklist gate would blank it to "Task not captured" while the
+      // request sat right there (2026-09-16 sweep: 30 live panes). Only an
+      // agent-produced checklist line gets the strict authoritative gate.
+      identityIsUserAsk
       ? qualityCheckUserAskLabel(identityTaskCandidate)
       : qualityCheckAuthoritativeTaskLabel(identityTaskCandidate)
     : { ok: false as const, reason: "empty" as const };
@@ -1467,6 +1455,7 @@ export function buildShellTerminalHeaderViewModel(input: {
       : undefined,
     input.workstreamTitle,
     input.contextPurposeSource === "inferred" ? null : input.contextPurposeTitle,
+    shellRoleGoal,
   ]
     .map((value) => {
       const directAboutWhat =
@@ -1507,6 +1496,10 @@ export function buildShellTerminalHeaderViewModel(input: {
         value === input.mainUserAsk?.text ||
         isAboutWhatGoal ||
         headerTextsEquivalent(value, input.mainUserAsk?.text);
+      const isShellRoleGoal = value === shellRoleGoal;
+      // Shell-role copy is a deterministic structural contract, not an agent
+      // goal; keep it out of the agent-label quality filters below.
+      if (isShellRoleGoal) return true;
       const isTrustedAboutWhat =
         isAboutWhatGoal &&
         !/^(?:use|apply|follow|invoke)\b.*\b(?:skill|skills|impeccable|agent|reviewer|harness|workflow|tool)\b/i.test(value) &&
@@ -1517,12 +1510,12 @@ export function buildShellTerminalHeaderViewModel(input: {
           value,
         );
       return (
-        ((isExplicitGoal
-          ? qualityCheckGoalLabel(value, {
+        (((isExplicitGoal || isShellRoleGoal)
+          ? (isShellRoleGoal || qualityCheckGoalLabel(value, {
                 allowAboutWhatVoice: isTrustedAboutWhat,
                 allowTrustedAboutWhat: isTrustedAboutWhat,
                 maxLength: isTrustedAboutWhat ? 150 : undefined,
-              }).ok
+              }).ok)
           : qualityCheckAuthoritativeTaskLabel(value).ok) ||
           (isAboutWhatGoal &&
             input.statusSummary?.mainTaskSource === "opening-request" &&
@@ -1564,10 +1557,11 @@ export function buildShellTerminalHeaderViewModel(input: {
         ? "task-line"
       : displayContext && displayContext === input.statusSummary?.userTask
         ? "sidecar-todo"
-        : "status-summary";
+        : displayContext === shellRoleGoal
+          ? "shell-role"
+          : "status-summary";
   const displayTitle = qualifyAmbiguousLabel(guardedTitle, workspace);
-  const effectiveTaskDescription =
-    displayTaskDescription;
+  const effectiveTaskDescription = shellRoleTask ?? displayTaskDescription;
   const taskDescriptionIsUsable = Boolean(effectiveTaskDescription);
   const rejectedTaskDescription = Boolean(rejectedIdentityTaskText);
 
@@ -1585,22 +1579,22 @@ export function buildShellTerminalHeaderViewModel(input: {
         text:
           effectiveTaskDescription ??
           (rejectedTaskDescription
-            ? "Preparing the next useful change"
+            ? "Task not captured"
             : noActiveWork
-            ? "No active work"
-              : fallbackProjectGoal(workspace, input.statusSummary?.task ?? input.taskLine?.text)),
-      source: taskDescriptionIsUsable
-        ? displayTaskDescription
-          ? taskDescriptionSource
-          : "status-summary"
-        : "neutral",
+              ? "Task not captured"
+              : "Task not captured"),
+      source: shellRoleTask
+        ? "shell-role"
+        : taskDescriptionIsUsable
+          ? displayTaskDescription
+            ? taskDescriptionSource
+            : "status-summary"
+          : "neutral",
     },
     title: {
       text:
-        noActiveWork && recoveredShellWithoutIdentity
-          ? aboutWhatFallback(displayContext, effectiveTaskDescription)
-          : noActiveWork
-            ? "Ready for next task"
+        noActiveWork
+          ? "Now not captured"
             : displayTitle,
       source: missingActivity
         ? "missing"
@@ -1624,8 +1618,8 @@ export function buildShellTerminalHeaderViewModel(input: {
     },
     now: {
       text:
-        idleNoWork
-          ? "Idle — no work is running"
+         idleNoWork
+           ? "No active command or agent turn is running"
           : readableNow,
       source: missingActivity
         ? "missing"

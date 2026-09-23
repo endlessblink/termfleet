@@ -122,3 +122,27 @@ test("mouse-report terminals keep Shift-drag available for highlighting", () => 
   expect(up.indexOf("if (activeSelectionPointerId !== null)"))
     .toBeLessThan(up.indexOf("if (modesRef.current.mouseReport)"));
 });
+
+test("primary-screen mouse-report terminals allow drag-selection without Shift while preserving click reports", () => {
+  const source = readFileSync("src/components/TerminalCanvas.tsx", "utf8");
+  const down = source.match(
+    /const handlePointerDown = \(event: React\.PointerEvent\) => \{[\s\S]*?\n  \};/
+  )?.[0] ?? "";
+  const move = source.match(
+    /const handlePointerMove = \(event: React\.PointerEvent\) => \{[\s\S]*?\n  \};/
+  )?.[0] ?? "";
+  const up = source.match(
+    /const handlePointerUp = \(event: React\.PointerEvent\) => \{[\s\S]*?\n  \};/
+  )?.[0] ?? "";
+
+  // Alternate screen forwards unmodified pointer down immediately to the app.
+  expect(down).toContain("modesRef.current.altScreen");
+  // Primary screen tracks click candidate to disambiguate click vs drag.
+  expect(down).toContain("pendingMouseReportClickRef.current =");
+  // Pointer move past threshold drops the click candidate to enter text selection.
+  expect(move).toContain("pendingMouseReportClickRef.current = null");
+  // Pointer up forwards press and release when released without drag, or copies selection on extent.
+  expect(up).toContain("pendingClick.pointerId === event.pointerId");
+  expect(up).toContain("sendPointerMouseReport(event, true)");
+});
+

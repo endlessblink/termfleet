@@ -728,3 +728,28 @@ test("captured task with generic working activity keeps an honest status title",
   expect(header.currentActivity).toBe("Working");
   expect(header.sources.activity).toBe("task-tool");
 });
+
+test("gives an ordinary shell pane explicit structural context without inventing an agent goal", () => {
+  const header = buildTerminalHeaderState({
+    paneId: "pane-shell-role",
+    terminalId: "pty-shell-role",
+    project: { id: "g-termfleet", name: "termfleet", projectRoot: termfleetPath },
+    liveCwd: termfleetPath,
+    terminalStatus: "running",
+    paneKind: "shell",
+    statusSummary: {
+      path: termfleetPath,
+      status: "idle",
+      provider: "shell",
+      confidence: "high",
+    },
+  });
+
+  expect(header.goalLabel).toBe("Run commands directly in termfleet.");
+  expect(header.taskDescription).toBe("Terminal session in termfleet");
+  expect(header.currentActivity).toBe("No active command or agent turn is running");
+  expect(header.sources.goal).toBe("shell-role");
+  expect(header.sources.context).toBe("shell-role");
+  expect(header.hasCapturedGoal).toBe(true);
+  expect(header.hasCapturedContext).toBe(true);
+});

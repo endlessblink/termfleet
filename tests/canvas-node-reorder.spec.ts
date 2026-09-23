@@ -8,11 +8,9 @@ test.use({
   },
 });
 
-// Regression coverage for the Map sidebar's manual drag-reorder: reorderCanvasNodes
-// must move a node within canvasState.nodes, honor before/after placement, and
-// never disturb a node's x/y map position. Manual mode still uses this stored
-// order; by-project mode derives display order from map coordinates.
-test("reorderCanvasNodes moves a node by id, honors before/after, and preserves x/y", async ({
+// Regression coverage for the Map sidebar's drag-reorder: it must change the
+// persisted project order and rotate those terminals through their existing map slots.
+test("sidebar reordering rotates terminal map slots inside one project", async ({
   page,
 }) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
@@ -33,12 +31,13 @@ test("reorderCanvasNodes moves a node by id, honors before/after, and preserves 
     };
 
     const { useWorkspaceStore } = await import("/src/stores/workspace.ts");
+    const { orderCanvasNodesByManualOrder } = await import("/src/lib/mapNodeOrdering.ts");
 
-    const node = (id: string, x: number) => ({
+    const node = (id: string, tabId: string, x: number) => ({
       id,
       type: "terminal" as const,
       title: id,
-      terminalTabId: id,
+      terminalTabId: tabId,
       x,
       y: 7,
       width: 820,
@@ -51,54 +50,105 @@ test("reorderCanvasNodes moves a node by id, honors before/after, and preserves 
           selectedNodeId: "a",
           selectedNodeIds: ["a"],
           viewport: { x: 0, y: 0, zoom: 1 },
-          nodes: [node("a", 10), node("b", 20), node("c", 30)],
+          nodes: [
+            node("a", "tab-a", 10),
+            node("b", "tab-b", 20),
+            node("c", "tab-c", 30),
+            node("other", "tab-other", 90),
+          ],
+        },
+        tabs: [
+          { id: "tab-a", groupId: "project-one", terminals: [] },
+          { id: "tab-b", groupId: "project-one", terminals: [] },
+          { id: "tab-c", groupId: "project-one", terminals: [] },
+          { id: "tab-other", groupId: "project-two", terminals: [] },
+        ],
+        workspaceUiState: {
+          ...useWorkspaceStore.getState().workspaceUiState,
+          canvasSidebarManualOrder: [],
         },
       });
-    const order = () =>
+    const canvasOrder = () =>
       useWorkspaceStore.getState().canvasState.nodes.map((n) => n.id);
+    const sidebarOrder = () => {
+      const state = useWorkspaceStore.getState();
+      return orderCanvasNodesByManualOrder(
+        state.canvasState.nodes,
+        state.workspaceUiState.canvasSidebarManualOrder,
+      ).map((node) => node.id);
+    };
 
     seed();
-    // Move the first node to AFTER the last → a should land at the end.
-    useWorkspaceStore.getState().reorderCanvasNodes("a", "c", "after");
-    const movedToEnd = order();
+    // Move the first row after the last. B, C, A inherit A, B, C's prior slots.
+    useWorkspaceStore.getState().reorderCanvasSidebarNodes("a", "c", "after");
+    const movedToEnd = sidebarOrder();
+    const mapOrderAfterEndMove = canvasOrder();
+    await new Promise((resolve) => window.setTimeout(resolve, 300));
+    const persisted = JSON.parse(
+      localStorage.getItem("terminal-workspace.v1") ?? "{}",
+    );
+    const persistedManualOrder = persisted.workspaceUiState?.canvasSidebarManualOrder;
+    const persistedPositions = persisted.canvasState?.nodes.map(
+      ({ id, x, y }: { id: string; x: number; y: number }) => ({ id, x, y }),
+    );
+
+    const beforeCrossProjectDrop = JSON.stringify(useWorkspaceStore.getState().canvasState);
+    useWorkspaceStore.getState().reorderCanvasSidebarNodes("a", "other", "before");
+    const afterCrossProjectDrop = JSON.stringify(useWorkspaceStore.getState().canvasState);
+    const orderAfterCrossProjectDrop = sidebarOrder();
 
     seed();
-    // Move the last node BEFORE the first → c should land at the front.
-    useWorkspaceStore.getState().reorderCanvasNodes("c", "a", "before");
-    const movedToFront = order();
+    // Move the last sidebar row before the first.
+    useWorkspaceStore.getState().reorderCanvasSidebarNodes("c", "a", "before");
+    const movedToFront = sidebarOrder();
     const movedNodeXY = useWorkspaceStore
       .getState()
       .canvasState.nodes.find((n) => n.id === "c");
 
     seed();
     // Dropping onto itself is a no-op, not a corruption.
-    useWorkspaceStore.getState().reorderCanvasNodes("b", "b", "before");
-    const selfDrop = order();
+    useWorkspaceStore.getState().reorderCanvasSidebarNodes("b", "b", "before");
+    const selfDrop = sidebarOrder();
 
     return {
       movedToEnd,
+      mapOrderAfterEndMove,
       movedToFront,
       movedNodeX: movedNodeXY?.x,
       movedNodeY: movedNodeXY?.y,
       selfDrop,
+      persistedManualOrder,
+      persistedPositions,
+      crossProjectDropWasNoop: beforeCrossProjectDrop === afterCrossProjectDrop,
+      orderAfterCrossProjectDrop,
     };
   });
 
-  expect(result.movedToEnd).toEqual(["b", "c", "a"]);
-  expect(result.movedToFront).toEqual(["c", "a", "b"]);
-  // x/y are independent spatial coordinates and must survive a list reorder.
-  expect(result.movedNodeX).toBe(30);
+  expect(result.movedToEnd).toEqual(["b", "c", "a", "other"]);
+  expect(result.mapOrderAfterEndMove).toEqual(["a", "b", "c", "other"]);
+  expect(result.movedToFront).toEqual(["c", "a", "b", "other"]);
+  // C moves into A's previous slot; the other project remains untouched.
+  expect(result.movedNodeX).toBe(10);
   expect(result.movedNodeY).toBe(7);
-  expect(result.selfDrop).toEqual(["a", "b", "c"]);
+  expect(result.selfDrop).toEqual(["a", "b", "c", "other"]);
+  expect(result.persistedManualOrder).toEqual(["b", "c", "a", "other"]);
+  expect(result.persistedPositions).toEqual([
+    { id: "a", x: 30, y: 7 },
+    { id: "b", x: 10, y: 7 },
+    { id: "c", x: 20, y: 7 },
+    { id: "other", x: 90, y: 7 },
+  ]);
+  expect(result.crossProjectDropWasNoop).toBe(true);
+  expect(result.orderAfterCrossProjectDrop).toEqual(["b", "c", "a", "other"]);
 });
 
-test("by-project sidebar order follows canvas stacks left-to-right and terminals top-to-bottom", async ({
+test("by-project sidebar order stays put until the user moves a terminal", async ({
   page,
 }) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
 
   const result = await page.evaluate(async () => {
-    const { projectBucketsByCanvasPosition } =
+    const { projectBucketsByManualOrder } =
       await import("/src/lib/mapNodeOrdering.ts");
 
     const groups = [
@@ -175,37 +225,46 @@ test("by-project sidebar order follows canvas stacks left-to-right and terminals
       node("termfleet-top", "tab-termfleet-top", 40, 120),
     ];
 
-    const firstPass = projectBucketsByCanvasPosition(nodes, tabs, groups).map(
+    const manualOrder = ["termfleet-low", "termfleet-top", "bots", "hermes"];
+    const flatten = (orderedNodes: typeof nodes, order: string[]) =>
+      projectBucketsByManualOrder(orderedNodes, tabs, groups, order).flatMap(
+        (bucket) => bucket.nodes.map((node) => node.id),
+      );
+    const firstPass = flatten(nodes, manualOrder);
+
+    // Live status refreshes can update map node objects and map-only movement
+    // can update coordinates. Neither is permission to move sidebar rows.
+    const refreshedNodes = nodes.map((node) => ({
+      ...node,
+      x: node.id === "termfleet-low" ? 900 : node.x,
+      y: node.id === "termfleet-low" ? 20 : node.y,
+      title: `${node.title} refreshed`,
+    }));
+    const afterRefresh = flatten(refreshedNodes, manualOrder);
+
+    // Only an explicit user reorder changes the persisted order.
+    const afterUserMove = flatten(
+      refreshedNodes,
+      ["termfleet-top", "termfleet-low", "bots", "hermes"],
+    );
+
+    const buckets = projectBucketsByManualOrder(nodes, tabs, groups, manualOrder).map(
       (bucket) => ({
         label: bucket.label,
         nodeIds: bucket.nodes.map((n) => n.id),
       }),
     );
 
-    const movedNodes = nodes.map((n) =>
-      n.id === "termfleet-low" ? { ...n, x: 32, y: 320 } : n,
-    );
-    const afterMove = projectBucketsByCanvasPosition(
-      movedNodes,
-      tabs,
-      groups,
-    ).map((bucket) => ({
-      label: bucket.label,
-      nodeIds: bucket.nodes.map((n) => n.id),
-    }));
-
-    return { firstPass, afterMove };
+    return { firstPass, afterRefresh, afterUserMove, buckets };
   });
 
-  expect(result.firstPass).toEqual([
-    { label: "TermFleet", nodeIds: ["termfleet-top", "termfleet-low"] },
-    { label: "Hermes", nodeIds: ["hermes"] },
+  expect(result.firstPass).toEqual(["termfleet-low", "termfleet-top", "bots", "hermes"]);
+  expect(result.afterRefresh).toEqual(result.firstPass);
+  expect(result.afterUserMove).toEqual(["termfleet-top", "termfleet-low", "bots", "hermes"]);
+  expect(result.buckets).toEqual([
+    { label: "TermFleet", nodeIds: ["termfleet-low", "termfleet-top"] },
     { label: "Bots", nodeIds: ["bots"] },
-  ]);
-  expect(result.afterMove).toEqual([
-    { label: "TermFleet", nodeIds: ["termfleet-top", "termfleet-low"] },
     { label: "Hermes", nodeIds: ["hermes"] },
-    { label: "Bots", nodeIds: ["bots"] },
   ]);
 });
 

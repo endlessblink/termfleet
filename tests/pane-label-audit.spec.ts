@@ -7,11 +7,17 @@ import {
 } from "node:fs";
 import path from "node:path";
 import { expect, test } from "@playwright/test";
-import { summaryFromSidecar } from "../src/lib/agentStatusSidecar";
-import { buildTerminalHeaderState } from "../src/lib/terminalHeaderState";
+import {
+  isMetaOpeningRequest,
+  summaryFromSidecar,
+} from "../src/lib/agentStatusSidecar";
+import {
+  buildTerminalHeaderState,
+  resetKnownTaskLines,
+} from "../src/lib/terminalHeaderState";
 import { resolvePaneTaskLine } from "../src/lib/taskLine";
 import {
-  qualityCheckAuthoritativeTaskLabel,
+  qualityCheckGoalLabel,
   qualityCheckNowLabel,
   qualityCheckUserAskLabel,
 } from "../src/lib/terminalHeaderQuality";
@@ -116,6 +122,7 @@ function corpusDir() {
 function headerFor(
   sidecar: Record<string, unknown>,
   mode: "with-stored-line" | "no-stored-line",
+  id: string,
 ) {
   const cwd = typeof sidecar.cwd === "string" ? sidecar.cwd : "/repo";
   const fallback = {
@@ -185,8 +192,8 @@ function headerFor(
       : undefined;
 
   const header = buildTerminalHeaderState({
-    paneId: `pane-${path.basename(cwd)}`,
-    terminalId: `pty-${path.basename(cwd)}`,
+    paneId: `pane-${id}`,
+    terminalId: `terminal-${id}`,
     project: { id: "g", name: path.basename(cwd), projectRoot: cwd },
     liveCwd: cwd,
     terminalStatus: "running",
@@ -244,7 +251,12 @@ test("every pane on this machine renders a readable Task row and Now Active line
       let now: string;
       let goalSource = "?";
       try {
-        ({ task, now, goalSource } = headerFor(sidecar, mode));
+        // Each sidecar is an INDEPENDENT pane. The header resolver keeps process-wide
+        // memory (last-known task line, row stabilization) keyed by pane identity so a
+        // live pane cannot flap; an audit must not let one pane's memory bleed into the
+        // next, or it measures the leak instead of the product.
+        resetKnownTaskLines();
+        ({ task, now, goalSource } = headerFor(sidecar, mode, id));
       } catch (error) {
         offenders.push(`${id} [${mode}]: threw ${(error as Error).message}`);
         continue;
@@ -256,18 +268,29 @@ test("every pane on this machine renders a readable Task row and Now Active line
 
       // The invariant that would have caught the 2026-07-26 report: this pane had a
       // fresh request and 8 finished tasks, and still rendered "No task declared". A
-      // placeholder is only honest when the record genuinely holds nothing to say, so
-      // it is an OFFENCE whenever the sidecar carries a goal, a request or a list.
-      // "Knows something" means something SAYABLE. A record whose only content is
-      // "/dropoff", "$done", "continue" or "make all high" genuinely has no task to
-      // state, and the placeholder is the honest answer there — demanding otherwise
-      // would push the header back into inventing text.
-      const sayable = (value: unknown, source?: unknown) =>
-        typeof value === "string" &&
-        value.trim().length > 0 &&
-        (source === "opening-request"
-          ? qualityCheckUserAskLabel(value.trim(), { maxLength: 150 }).ok
-          : qualityCheckAuthoritativeTaskLabel(value.trim()).ok);
+      // placeholder is only honest when the record genuinely holds nothing SAYABLE AS A
+      // GOAL, so it is an offence whenever the sidecar carries a request or a declared
+      // task that the renderer's own gate would accept.
+      // "Sayable as a goal" uses the SAME gate the header uses, not a looser one: a
+      // completion report too long for the row, a truncated sentence ("…project n"), a
+      // status question ("what about…?") and a nudge are refused on purpose, and the
+      // placeholder is the honest answer there. What this audit owns is whether a
+      // RENDERABLE goal actually reaches the row — the plumbing class.
+      const sayable = (value: unknown, source?: unknown) => {
+        if (typeof value !== "string" || !value.trim()) return false;
+        const text = value.trim();
+        if (source === "opening-request") {
+          return (
+            !isMetaOpeningRequest(text) &&
+            qualityCheckUserAskLabel(text, { maxLength: 150 }).ok
+          );
+        }
+        return qualityCheckGoalLabel(text, {
+          allowAboutWhatVoice: true,
+          allowTrustedAboutWhat: false,
+          maxLength: 150,
+        }).ok;
+      };
       // The Task row is the GOAL row (operator's layout, 2026-07-28: goal on top, what
       // the pane is doing under it). So only goal-shaped content obliges it to speak: a
       // request that names work, or an explicitly declared main task. A task list is a

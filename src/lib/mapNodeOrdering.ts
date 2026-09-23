@@ -46,6 +46,51 @@ export function compareCanvasNodesByPosition(a: CanvasNode, b: CanvasNode) {
   return a.id.localeCompare(b.id);
 }
 
+export function orderCanvasNodesByManualOrder(
+  nodes: CanvasNode[],
+  manualOrder: string[],
+): CanvasNode[] {
+  const positions = new Map(manualOrder.map((id, index) => [id, index]));
+  return [...nodes].sort((a, b) => {
+    const aPosition = positions.get(a.id);
+    const bPosition = positions.get(b.id);
+    if (aPosition === undefined && bPosition === undefined) return 0;
+    if (aPosition === undefined) return 1;
+    if (bPosition === undefined) return -1;
+    return aPosition - bPosition;
+  });
+}
+
+export function projectBucketsByManualOrder(
+  nodes: CanvasNode[],
+  tabs: Tab[],
+  groups: Group[],
+  manualOrder: string[],
+  options: { unassignedLabel?: string } = {},
+): MapProjectBucket[] {
+  const tabsById = new Map(tabs.map((tab) => [tab.id, tab]));
+  const groupsById = new Map(groups.map((group) => [group.id, group]));
+  const buckets = new Map<string, BucketAccumulator>();
+  const unassignedKey = "__unassigned__";
+
+  for (const node of orderCanvasNodesByManualOrder(nodes, manualOrder)) {
+    const groupId = node.terminalTabId
+      ? tabsById.get(node.terminalTabId)?.groupId ?? null
+      : null;
+    const key = groupId ?? unassignedKey;
+    const group = groupId ? groupsById.get(groupId) : undefined;
+    const label = group?.name
+      ?? (groupId
+        ? projectNameFor(groupId, groups)
+        : options.unassignedLabel ?? projectNameFor(null, groups));
+    const bucket = buckets.get(key);
+    if (bucket) bucket.nodes.push(node);
+    else buckets.set(key, { key, label, nodes: [node] });
+  }
+
+  return [...buckets.values()];
+}
+
 export function projectBucketsByCanvasPosition(
   nodes: CanvasNode[],
   tabs: Tab[],

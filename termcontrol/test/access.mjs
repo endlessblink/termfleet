@@ -145,7 +145,8 @@ async function main() {
     ok(/dark/.test(cs), `color-scheme is "${cs}"`);
   });
 
-  await p.click('.pane');
+  const replyPane = await p.$('.pane:not(.waiting)') || await p.$('.pane');
+  await replyPane.click();
   await p.waitForSelector('.composer');
   await wait(1500);
 

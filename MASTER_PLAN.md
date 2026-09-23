@@ -1,5 +1,65 @@
 # MASTER_PLAN.md - termfleet
 
+## 2026-09-23 — TF-REL-02: Publish TermFleet as a public "early preview, Linux only"
+
+Goal: announce as soon as it's shippable, with honest scope, not bug-free. Order matters — each phase unblocks the next.
+
+**Phase 1 — Green main (day 1)**
+- [ ] Root cause of red CI: the pushed `ebcf4c5` imports `liveTerminalTabs` / `recoverySessionsForReview` / `liveSessionIds` from `stores/workspace`, which exist only in the uncommitted working tree → `tsc` fails, Playwright job fails.
+- [ ] Sort the ~104 uncommitted files into coherent commits (stage only this lane's files; other agents may be working concurrently).
+- [ ] Locally pass: `npm run build`, `cargo test`, source-contract gates, Playwright canvas specs, OSS-readiness/public audit (same steps as CI).
+- [ ] One push; CI green. Bump the GitHub Actions off deprecated Node 20.
+
+Findings 2026-09-23 (claude, FEATURE-60): CI last green 2026-08-11 (716c5fc); 53 red runs since. In a clean worktree of HEAD + uncommitted `src/stores/workspace.ts`, `src/lib/types.ts`, `src/components/CockpitSnapshotProbe.tsx`: `npm run build`, no-machine-paths, map-terminals, terminal-rendering, oss-readiness, public-audit, `cargo test` (214 lib + daemon_survival + grid_live) all pass. Rust warnings gate failed on a test-only `codex_lifecycle` → now `#[cfg(test)]`, gate passes. Remaining blocker: `verify:canvas-all` fails ~19 tests in `tests/map-terminal-rendering.spec.ts` even on the full local tree (77 passed) — quest orbit, live overlay alignment, header summary policy, sidebar filters, rename/recolor/task picker, box-select. A concurrent Codex session is editing the same UI files (approve-all feature), so these must be fixed after it commits.
+
+**Phase 2 — Release-blocker triage (day 1–2)**
+- [ ] Split the ~37 open issues into **blockers** (a first-time user hits it in 10 minutes: status badge wrong, cannot scroll/copy, terminals lost after restart, projects missing after restart — TF-005, TF-016, TF-018, TF-033/034/035, TF-044) vs **known issues** (quests, mobile control, kanban, sidebar order, colors).
+- [ ] Close the `verifying` items that already have proof; record the evidence.
+- [ ] Fix only the blockers. Everything else goes to a "Known issues" list.
+- [ ] Hide or flag as experimental anything half-done (gamification/quests, mobile TermControl) so it doesn't shape first impressions.
+
+**Phase 3 — Fresh-machine proof (day 2–3)**
+- [ ] Build v0.2.0 AppImage + .deb from a tagged commit via CI.
+- [ ] Install on a clean Linux VM/user account (no local config, no hooks): first launch, open terminals, run Claude + Codex, restart app, reboot — all survive.
+- [ ] Confirm setup of the status hooks for Claude/Codex/OpenCode is documented and works from zero.
+- [ ] Scan for leaked personal paths, usernames, tokens, private project names (the public audit + a manual pass over README/screenshots).
+
+**Phase 4 — Storefront (day 3)**
+- [ ] README: one-sentence pitch, 20-second demo GIF (map of live agents with Task/Running/Waiting), download link, "early preview · Linux only", known issues, roadmap.
+- [ ] Real screenshots via `scripts/capture-showcase-shots.sh` (never htop; no personal data).
+- [ ] CONTRIBUTING, issue templates, repo topics.
+
+**Phase 5 — Announce (day 4)**
+- [ ] Publish v0.2.0 release notes.
+- [ ] Post: Show HN, r/ClaudeAI, r/commandline, X/LinkedIn — with the GIF. (Posting needs Noam's approval.)
+- [ ] Watch issues for the first 48h and fix install/first-run breakage first.
+
+## 2026-09-16 — Make the Task / Goal / Now cockpit rows hold real context on every pane
+
+- [x] Eliminate the four junk classes the all-pane sweep found on live Task rows: raw URLs/absolute paths, text mangled by stripping (`…from .`), machine slugs, and clipped sentences.
+- [x] Stop publishing a raw tool identifier as the Now row (`Using lean-ctx_ctx_shell`, `Using mcp__…`, `Using Read`) — Class C1; the gate now refuses identifier-shaped "Using …" tokens and lets a plain activity line or the honest fallback speak.
+- [x] Stop blanking a pane-owned identity: an opening request survives a later one-word nudge; a short opening request still binds; `goal-task`/`agent-goal` (OpenCode session title, Codex goal tool) is first-class task identity (TF-039).
+- [x] Give the operator's own words the lenient gate on the identity path (an operator report that opens with "I" is an ask; a frantic `!!!` correction and a completion statement are not).
+- [x] Make the all-pane audit measure the product, not process-wide header-memory leakage (reset per pane; unique pane ids), and align its "sayable" premise with the renderer's own durable-goal gate.
+- [x] Promote the fix and confirm the installed release (release `0844a8b5f3fc-89b8091aa26c-6c594780169d`).
+- [ ] Rendered live proof per pane after the dock app is relaunched onto the promoted release.
+
+Acceptance: every active cockpit pane shows a readable, pane-owned Task and Goal and a truthful Now line, and no pane shows a junk, mangled, URL/path, slug, clipped, or raw-tool-identifier line.
+
+Implementation evidence: `tests/terminal-header-quality.spec.ts` (+5 guards: damaged-by-stripping, slug, operator-"I", clipped task, raw-tool Now; 258-test focused group green), `tests/task-identity.spec.ts` (+1 goal-task identity guard), `tests/agent-status-local-sidecar.spec.ts` (+1 short-opening-request-survives-a-nudge guard), `tests/pane-label-audit.spec.ts` (pane-isolated render + renderer-aligned sayable premise). `npm run audit:panes` green (was ~70 offenders: 11 url/path, 4 mangled, 1 slug, ~55 placeholder → 0). Focused suites green: `npm run verify:task-line` 99/99, `npm run verify:task-identity` 23/23, the 406-test focused group green, `npm run cockpit:why` 4/4 (27 panes resolved), `npm run build` passed. `npm run release:install` promoted release `0844a8b5f3fc-89b8091aa26c-6c594780169d` (a concurrent edit had left `src-tauri/src/platform_paths.rs` truncated; repaired from HEAD) and `npm run verify:installed-release` passed. `npm run issues -- check` PASS (43 records); TF-039 `verifying`. Doctor now reports only "running dock app predates the installed release — relaunch it from the dock"; live per-pane rendered proof remains open until that relaunch.
+
+## 2026-09-13 — Block false goal completion from incomplete cockpit evidence
+
+- [x] Audit every rendered cockpit pane instead of silently excluding missing or generic Task / Goal / Now values.
+- [x] Deny `update_goal(status=complete)` when the cockpit snapshot is stale, unavailable, empty, or any pane fails the all-pane quality matrix.
+- [x] Add regression coverage for the screenshot-shaped missing Goal state and for a valid fresh pane.
+- [ ] Verify the configured hook through a dock-launched session and record fresh visual evidence before closing this gate.
+- [ ] Pass the `$sure` high-confidence gate for every pane; missing or non-high confidence evidence must keep approval denied.
+
+Acceptance: an agent cannot approve a completed goal while any TermFleet cockpit pane lacks truthful, fresh, pane-owned Task, Goal, and Now evidence.
+
+Implementation evidence: the PreToolUse hook now emits the host-enforced `decision: block` shape (not the ignored legacy `permissionDecision` field) for the live 31-pane snapshot; malformed approval input, malformed terminal records, stale individual pane evidence, and missing/non-high `$sure` confidence also remain fail-closed. Codex `create_goal` now supplies a validated pane-owned `agent-goal` only when no user-owned Goal exists, preserves existing user Goals, and never falls back to canned `Working`; 123 focused tests, `npm run build`, `npm run verify:map-terminals`, `npm run release:install`, `npm run verify:installed-release`, and `git diff --check` passed. The installed release is promoted, but the running dock app has not been relaunched; the live matrix remains intentionally red until every pane supplies truthful, fresh, pane-owned Task, Goal, Now, and high-confidence evidence, with fresh dock visual proof still open.
+
 ## 2026-09-13 — Make Task, Goal, and Now read as one coherent context
 
 - [ ] Redesign the visible Task / Goal / Now context block so it has one stable hierarchy, consistent spacing, and a clear reading order instead of three unrelated panels.
@@ -10,7 +70,7 @@
 
 Acceptance: a non-technical observer can identify the current Task, captured Goal, and live Now state in one glance; each value remains stable or changes only when its owning evidence changes, and absent Goal evidence is visibly honest rather than synthesized.
 
-Implementation evidence so far: the map no longer uses a project-specific Task heuristic when pane evidence is absent; invalid Goal summaries are excluded from Goal selection; captured workstream and opening requests now supply pane-owned Goal context; stale placeholder plan summaries fall back only to a captured pane prompt; and agent Task / Goal / Now rows share a fixed label column, spacing, line height, and value scale. Eight focused provenance regressions passed, `npm run build`, `npm run release:install`, and installed release verification passed. After a UI-only relaunch, the live matrix improved from four failures to two; the remaining failures are shell-classified panes with no current pane-owned Goal capture, so visual/runtime acceptance remains open.
+Implementation evidence so far: the map no longer uses a project-specific Task heuristic when pane evidence is absent; invalid Goal summaries are excluded from Goal selection; captured workstream and opening requests now supply pane-owned Goal context; stale placeholder plan summaries fall back only to a captured pane prompt; and agent Task / Goal / Now rows share a fixed label column, spacing, line height, and value scale. This pass also removed project-folder, process-status, canned waiting, and “ready for next task” synthesis from the visible Task / Goal / Now paths: absent evidence now renders as `Task not captured`, `Goal not captured`, or `Now not captured`. The high-confidence `$sure` rule is explicit in the all-pane matrix and regression coverage; no pane can pass with missing, stale, or non-high confidence evidence. The focused identity/plumbing suite passed 57/57, the canonical `npm run verify:task-line` suite passed 97/97, and the focused cockpit matrix suite passed 18/18; `npm run build`, `npm run verify:map-terminals`, `npm run release:install`, `npm run verify:installed-release`, issue validation, and `git diff --check` passed. The direct approval simulation denied completion with 30 failing panes and explicit high-confidence/source reasons. The live matrix remains red until the dock-launched app refreshes the new code and the real panes supply their own current content; fresh visual proof and native host enforcement remain open.
 
 ## 2026-09-06 — Correcting pressure alerts and refreshing the release
 
@@ -9638,12 +9698,43 @@ payloads; the public runtime read-back found zero known hook/control messages.
 The stale-permission regression failed before the repair and now passes; the
 Back-position regression returns within 0px, and the owner confirmed the deployed
 panel on the public phone surface.
+
+The MCP approval prompt regression now passes: when a provider draws an explicit
+`Allow the … server to run tool "…"?` menu on the terminal, TermControl exposes
+the four visible choices and rechecks that same screen before sending an answer.
+The TermControl service was restarted without restarting the PTY daemon or any
+terminals; authenticated phone confirmation of this new prompt remains open.
 The running bridge serves the changed phone app directly from this checkout,
 and local/public routes are healthy without restarting any terminal process. The
 immutable desktop release was promoted and installed checksum verification passed
 for SHA256 `8da791f4168e83d1e1deccbe00343a3ef233eb46d740d488237ead1d8f8400c3`.
 An authenticated phone reload and one-tap answer read-back against a real desktop
 permission remain required for final visual verification.
+
+## 2026-09-16 — Read OpenCode conversations in the phone cockpit
+
+TermControl's phone cockpit can now show an OpenCode pane's conversation. OpenCode
+keeps every session in one SQLite database rather than a transcript file per
+session, so a new read-only adapter (`termcontrol/bridge/adapters/opencode.mjs`)
+queries `message` and `part` rows and presents the same operator/assistant events
+the Claude and Codex adapters do — reasoning, step markers, and patches stay out.
+OpenCode's slash commands are offered from the same on-disk skills and commands it
+reads, with built-ins verified against the installed binary, and its permission
+dialog is answerable from the phone: Enter accepts "Allow once", the right arrow
+moves to "Allow always", and Escape is its bound "Reject".
+
+**Evidence:** `node --test termcontrol/test/opencode-adapter.test.mjs` (2/2) reads
+a real SQLite conversation and proves reasoning never leaks; OpenCode permission
+cases in `termcontrol/test/mobile-control-regression.test.mjs` pin the ask and its
+dialog keys; `npm run verify:termcontrol-mobile` passed 21/21 and the bridge suite
+`termcontrol/test/run.mjs` passed 67/67. Live read of session
+`ses_f5519d054ffecPiP4HjyS8C2qO` returned real operator/assistant messages from the
+2.7 GB `opencode.db`, and `commandsFor('opencode')` returned 118 commands.
+Installed public phone read-back of one OpenCode conversation and one answered
+permission remains required; the broader `termcontrol:test` run has five pre-existing
+data-dependent failures on panes whose status sidecar has no conversation id
+(a Codex pane with `sessionId: null` and an empty-feed chat that blanks while
+offline), unrelated to this change.
 
 ## 2026-08-15 — Make explicit terminal close ownership survive installed restart
 
@@ -9711,3 +9802,122 @@ release or continue action backed by existing runtime status.
 **Acceptance:** hidden and empty states stay quiet, waiting reasons remain
 distinct, actions never target a different conversation, and installed live
 read-back matches daemon and sidecar state.
+
+## 2026-09-16 — OpenCode panes: make scrolling work and stop lying about task sources
+
+Reported: "opencode keeps crashing in termfleet" and "cant scroll up and down".
+
+**Diagnosis first — there is no crash to fix.** No process death exists anywhere:
+the daemon cgroup's `oom_kill`/`max` counters are 0 and `memory.max` is unlimited;
+the opencode processes sit in the root cgroup with no limit; opencode's own logs
+carry no panic, segfault, or `Aborted` beyond an old user-initiated one; and
+TermFleet's `app-output.log`/`incidents.jsonl` show only clean
+`desktop_exit status=0`. What the cockpit showed in red is OpenCode's own MCP
+panel: `pencil` is configured to spawn
+`/tmp/.mount_PencilwqKe67/resources/app.asar.unpacked/out/mcp-server-linux-x64`,
+a dead AppImage mount, so it fails ENOENT, and `anytype`/`codex`/`reddit` report
+`-32000 Connection closed`. That is an OpenCode config problem outside this repo.
+
+Three real TermFleet defects were found and fixed:
+
+- **TF-035 (canvas) — the view could not be scrolled.** `terminalViewportAction`
+  intercepted Home/End/PageUp/PageDown with no alternate-screen awareness and
+  applied them to grid history. An OpenCode pane is on the alternate screen, which
+  has no grid scrollback, so the keys were swallowed and the TUI never received
+  them. It now returns null on the alternate screen so the keys reach the PTY;
+  primary-screen panes keep TermFleet history.
+- **TF-036 (logic) — the doctor failed a correct snapshot.** `npm run doctor`
+  reported `DOCTOR_FAIL: unsupported task source(s): plan-explanation` against a
+  fresh snapshot, because the doctor and `cockpit-snapshot.mjs` each kept a private
+  task-source allowlist and had drifted from the app's own source union. Both now
+  import the single `scripts/lib/cockpit-task-sources.mjs`.
+- **TF-037 (logic) — placeholder task and broken debug tap.** OpenCode's real
+  auto-title `New session - <ISO timestamp>` was published as the pane main task
+  (observed live in pane-f5269bc4). The plugin's `trace()` also referenced an
+  undefined variable, so enabling the debug tap threw on every write.
+- **TF-035 (canvas) — "can't scroll up" root cause corrected and fixed.** The
+  earlier alt-screen bypass was correct for real alt-screen TUIs but never applied
+  to OpenCode. Measured on the live pane: **7,081 absolute cursor moves, zero line
+  feeds, zero screen-scroll primitives**, and no alt screen or mouse mode — OpenCode
+  repaints in place on the primary screen, so the grid accumulated **no scrollback**,
+  while TermFleet claimed Home/End/PageUp/PageDown for its own history and swallowed
+  them. The app that owned the content never received the key. The grid now reports
+  whether it really holds history (`MODE_HAS_HISTORY` from alacritty's
+  `history_size()`, carried per frame and decoded into `GridBuffer.hasHistory`), and
+  `terminalViewportAction` returns null when there is none, so the key falls through
+  to the PTY. Note: with the wheel, OpenCode never enabled mouse reporting, so
+  TermFleet has no protocol to hand it wheel input — the keys are the fix.
+- **TF-040 (canvas) — the terminal drew half-finished repaints.** OpenCode panes
+  intermittently rendered jumbled text (stray characters at the edge, fragments of
+  one line mixed into another). OpenCode wraps every full repaint in a
+  synchronized-output block (`?2026h … ?2026l`) so the terminal shows it
+  atomically, but `vt_grid.rs` only stripped the markers so they would not print as
+  text — `feed()` still marked the grid dirty on every chunk and the 60Hz emitter
+  published whatever the screen looked like mid-repaint, so a repaint spanning more
+  than one tick reached the canvas as a mix of the old and new screen. `TermState`
+  now records `sync_output_since` and the emitter holds publication through the
+  block via `should_publish_frame`, with a 120ms fail-safe so a missed `?2026l`
+  cannot stall a pane.
+- **TF-038 (canvas) — the map smeared terminal text; fixed by operator decision.**
+  Reported from a live map screenshot: a zoomed card drew doubled-looking letters
+  with rows bleeding together, which read as "the terminal is broken". The map
+  passes `renderScale = clamp(zoom, 1, 2)` for supersampling, but
+  `MAP_PROJECTION_MAX_DPR` (1.25x) is applied AFTER folding `renderScale` in, so past
+  that cap the browser upscales the bitmap and the default bilinear filter smears the
+  glyphs. The first attempt was reverted because
+  `scripts/verify-map-terminals.mjs` pinned the old decision and
+  `tests/map-terminal-rendering.spec.ts` forbade `pixelated`; the operator then
+  explicitly authorized changing it. Map-projected canvases now render
+  `image-rendering: pixelated` (`terminalCanvasImageRendering` in
+  `src/lib/mapRenderCadence.ts`); the split pane, never CSS-scaled, keeps `auto`.
+  The verifier pin and the test were updated to state the decision both ways.
+
+`cargo test --lib` **205 passed, 0 failed** — covering the `?2026h` publish hold
+(mutation-verified: dropping the hold fails
+`synchronized_output_markers_open_and_release_the_publish_hold`) and
+`has_history_flag_tracks_real_scrollback` (including a 50-iteration row-addressed
+repaint that must never claim history); `tests/terminal-viewport.spec.ts` 4/4
+(mutation-verified: deleting the `hasHistory` gate fails at `pageUpNoHistory` with
+`Received {delta:24,kind:delta}`); `tests/canvas-render-scheduler.spec.ts` 4/4 and
+the `hard edges` case in `tests/map-terminal-rendering.spec.ts`
+(mutation-verified at the browser-render level — forcing `auto` fails with
+`Expected pixelated, Received auto`); `tests/cockpit-task-sources.spec.ts` 3/3
+(mutation-verified); `tests/opencode-status-plugin.spec.ts` 13/13
+(mutation-verified); 22/22 across the five touched frontend specs; `npm run build`
+passes; `npm run verify:task-identity` 23/23; `verify:map-terminals` and
+`verify:terminal-rendering` pass; `cargo test --lib` **205 passed, 0 failed**;
+`npm run doctor` reports **Task identity sources
+OK** (was DOCTOR_FAIL); `npm run issues -- check` PASS with 42 records.
+
+- **TF-041 (canvas) — the map card's wheel did nothing.** The card stopped wheel
+  propagation and the terminal's fall-through went to TermFleet history, which is
+  empty for a repaint-in-place app, so the gesture was a guaranteed no-op. With an
+  opt-in `appPageKeys` mode (map projection only), the wheel becomes the app's own
+  page keys when there is no history; real history, mouse-report and alt-screen
+  routing are unchanged, so TC-043 still holds.
+- **TF-042 (canvas) — the map clipped the last column mid-glyph.** A card a few
+  pixels narrower than its grid cut its last column part-way, so OpenCode's right
+  border showed as a column of tick marks and its sidebar text was cut mid-word
+  ("-3200"). `applyProjectionClip` now crops with `clip-path` at a whole-cell
+  boundary, which crops without resampling (resizing the canvas would rescale the
+  bitmap and blur every glyph).
+
+**Shipped, committed, pushed (🟢).** Latest release
+`dd71e9155c6d-63aeba3c29e7-a1faef0feb07`, running pid 2306473, daemon 2296958
+preserved — **terminals were never lost** — and `npm run doctor` reports
+**DOCTOR_OK**. Committed as `8c21f88` (cockpit task sources + plugin) and `d75137f`
+(terminal scroll + rendering), pushed to `origin/main` (`dd71e91..d75137f`).
+`MASTER_PLAN.md` was deliberately excluded from those commits: it already carried
+another session's pending edits, which are preserved untouched in this file.
+
+Operator confirmed on the live app that page up/down scroll works and the map wheel
+works. Still open from this session: TASK/GOAL for OpenCode panes (TF-039, waiting on
+the Task-vs-Goal decision) and copy from an OpenCode pane (TF-033, Shift-drag).
+Coverage is app-level, not per-pane visual: the operator confirmed the behaviours
+above, but no screenshot/pixel diff was recorded for the map crop.
+
+Caveat: `HEAD` alone still does not compile (`WorkbenchSidebar.tsx` uses
+`liveTerminalTabs` / `recoverySessionsForReview`, which exist only in the uncommitted
+`stores/workspace.ts`), so any release necessarily includes that in-progress refactor.
+Pre-existing and unrelated: `verify:typography` fails on `ProjectPlansBoard.tsx`
+(box-borders) and `SplitPane.tsx` (600+ font weights).

@@ -37,7 +37,7 @@ test("a meta-process task is not accepted as the pane goal", () => {
     taskLine,
   });
 
-  expect(header.goalLabel).toBe("Preparing the next useful change");
+  expect(header.goalLabel).toBe("Task not captured");
 });
 
 test("a correction saying the goal was not met is not promoted to Task", () => {
@@ -79,7 +79,7 @@ test("a current step cannot replace a raw complaint with a fake durable goal", (
 
   expect(taskLine.source).toBe("shell-state");
   expect(taskLine.text).toBe("No task declared");
-  expect(header.goalLabel).toBe("Preparing the next useful change");
+  expect(header.goalLabel).toBe("Task not captured");
   expect(header.hasCapturedGoal).toBe(false);
   expect(header.contextLabel).toBe("Goal not captured");
   expect(header.userGoal).toBeNull();
@@ -98,7 +98,7 @@ test("a shell pane is no longer starved of a description", () => {
       branch: "main",
     }),
   });
-  expect(header.goalLabel).toBe("Waiting for a clear task");
+  expect(header.goalLabel).toBe("Task not captured");
 });
 
 test("the rendered header shows the ladder's line, not 'Task not captured'", () => {
@@ -158,7 +158,7 @@ test("a command-only recovery line stays in Now rather than becoming Task", () =
 
   expect(taskLine.source).toBe("running-command");
   expect(header.hasCapturedGoal).toBe(false);
-  expect(header.goalLabel).toBe("Waiting for a clear task");
+  expect(header.goalLabel).toBe("Task not captured");
 });
 
 test("a real sidecar task summary restores the Task when the copied line is missing", () => {
@@ -182,6 +182,63 @@ test("a real sidecar task summary restores the Task when the copied line is miss
     "Reviewing the WhatsApp preview fix for production risks",
   );
   expect(header.hasCapturedGoal).toBe(true);
+});
+
+test("a pane-owned plan explanation survives a rejected recovery line", () => {
+  const header = buildTerminalHeaderState({
+    paneId: "pane-plan-explanation",
+    terminalId: "pane-plan-explanation",
+    liveCwd: "/repo/termfleet",
+    terminalStatus: "running",
+    statusSummary: {
+      mainTask: "Make every cockpit pane show fresh, truthful context",
+      mainTaskSource: "plan-explanation",
+      task: "No task declared",
+      now: "Running completion verification",
+      status: "working",
+      provider: "codex",
+      confidence: "high",
+      tasksFromTodoWrite: false,
+    } as never,
+    taskLine: resolvePaneTaskLine({
+      now: NOW,
+      currentStep:
+        "in_progress — Saved HANDOFF.md and updated the project note. Continue from the next session handoff and verify every pane before approval.",
+    }),
+  });
+
+  expect(header.goalLabel).toBe(
+    "Make every cockpit pane show fresh, truthful context",
+  );
+  expect({ captured: header.hasCapturedGoal, source: header.sources.goal }).toEqual({
+    captured: true,
+    source: "plan-explanation",
+  });
+});
+
+test("a captured opening request survives before TodoWrite starts", () => {
+  const header = buildTerminalHeaderState({
+    paneId: "pane-opening-request",
+    terminalId: "pane-opening-request",
+    liveCwd: "/repo/termfleet",
+    terminalStatus: "running",
+    statusSummary: {
+      mainTask: "Make terminal selection and scrolling work reliably",
+      mainTaskSource: "opening-request",
+      task: "Task not captured",
+      now: "Working on the current request",
+      status: "working",
+      provider: "codex",
+      confidence: "high",
+      tasksFromTodoWrite: false,
+    } as never,
+  });
+
+  expect(header.goalLabel).toBe(
+    "Make terminal selection and scrolling work reliably",
+  );
+  expect(header.hasCapturedGoal).toBe(true);
+  expect(header.sources.goal).toBe("user-prompt");
 });
 
 // TC-060 R3: a pane whose saved steps are ALL completed must not keep showing the
@@ -266,15 +323,15 @@ test("an in-progress declared step still beats the live line", () => {
   expect(header.goalLabel).toBe("Fixing the compressor timeout");
 });
 
-// R1 everywhere: a pane that never polled — sidebar-only rows, panes that were
-// never mounted — still gets a true line rather than the placeholder.
-test("a pane with no supplied line still never says 'Task not captured'", () => {
+// A pane that never polled — sidebar-only rows, panes that were never mounted —
+// must expose the missing evidence rather than inventing a task.
+test("a pane with no supplied line stays visibly uncaptured", () => {
   const idle = buildTerminalHeaderState({
     paneId: "pane-2",
     terminalId: "pane-2",
     liveCwd: "/tmp/termfleet",
   });
-  expect(idle.goalLabel).toBe("Waiting for a clear task");
+  expect(idle.goalLabel).toBe("Task not captured");
 
   // Busy or idle, with nothing known the row says the same true thing. It used to
   // template over the folder name, which read like content and hid the gap.
@@ -284,8 +341,7 @@ test("a pane with no supplied line still never says 'Task not captured'", () => 
     liveCwd: "/tmp/termfleet",
     terminalStatus: "running",
   });
-  expect(busy.goalLabel).toBe("Waiting for a clear task");
-  expect(busy.goalLabel).not.toMatch(/task not captured/i);
+  expect(busy.goalLabel).toBe("Task not captured");
 });
 
 test("a reconnected shell exposes an honest empty state instead of workspace fiction", () => {

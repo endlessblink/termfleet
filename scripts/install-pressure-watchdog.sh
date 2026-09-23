@@ -21,6 +21,9 @@ if [[ -n "${DBUS_SESSION_BUS_ADDRESS:-}" || -S "${XDG_RUNTIME_DIR:-/run/user/$UI
   export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=$XDG_RUNTIME_DIR/bus}"
   systemctl --user daemon-reload
   systemctl --user enable --now termfleet-pressure-watchdog.service
+  # A running shell keeps reading the inode it started from. Restart after the
+  # install so watchdog logic changes take effect immediately.
+  systemctl --user try-restart termfleet-pressure-watchdog.service
   echo "TERMFLEET_PRESSURE_WATCHDOG_INSTALLED active"
 else
   echo "TERMFLEET_PRESSURE_WATCHDOG_INSTALLED files-only (user bus unavailable)"

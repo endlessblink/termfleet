@@ -13,46 +13,58 @@ const snapshotPath = process.env.TERMFLEET_COCKPIT_SNAPSHOT_PATH
 const snapshot = JSON.parse(readFileSync(snapshotPath, "utf8"));
 const terminals = Array.isArray(snapshot.terminals) ? snapshot.terminals : [];
 const neutralTask = /^(?:Task not captured|Activity not captured|Goal not captured|Context not captured|Status unavailable|Waiting for a clear task|No task declared|No active work|Ready|Idle|Working|Unknown)$/i;
-const target = terminals
-  .filter((entry) => entry && typeof entry.paneId === "string" && entry.paneId.trim())
-  // The snapshot is the rendered cockpit surface after its own Goal gate. Do not
-  // replace it with raw header-trace input, which can contain a rejected shared
-  // workstream purpose and make the matrix pass or fail against invisible text.
-  .filter((entry) => {
-    const task = String(entry.task ?? "").replace(/\s+/g, " ").trim();
-    const goal = String(entry.context ?? "").replace(/\s+/g, " ").trim();
-    return !neutralTask.test(task) && (Boolean(goal) || Boolean(task));
-  })
-  .map((entry) => entry);
+// The snapshot is the rendered cockpit surface after its own Goal gate. Audit
+// every rendered record: filtering malformed records out makes the verifier
+// capable of passing while the cockpit is visibly incomplete.
+const target = terminals;
 const forbiddenGoal = /^(?:Goal not captured|Context not captured|Status unavailable)$/i;
-const paneOwnedGoalSources = new Set(["status-summary", "sidecar-todo", "task-tool", "user-prompt", "workstream", "manual", "plan-binding", "plan-explanation", "goal-task", "opening-request", "project-fallback"]);
+const forbiddenTask = /^(?:Task not captured|Activity not captured|No task declared|Status unavailable|Waiting for a clear task|No active work|Ready|Idle|Working|Unknown)$/i;
+const paneOwnedGoalSources = new Set(["status-summary", "sidecar-todo", "task-tool", "user-prompt", "workstream", "manual", "plan-binding", "plan-explanation", "goal-task", "agent-goal", "opening-request", "project-fallback", "shell-role"]);
 const generatedPaneGoal = /^Keep this pane focused on .+ so it has a clear result to resume\.$/i;
 const processGoal = /\b(?:installed dock|live gate|visual gate|focused (?:visual|header) tests?|checksum|awaiting user approval|memory writing agent|userpromptsubmit hook|regression matrix)\b/i;
 const projectPurposeGoal = /^(?:Make|Keep|Help|Ensure)\s+(?:[A-Z][\w-]*|this project|the project|every|each)\s+.*\b(?:so|so that)\s+(?:people|users|work)\s+can\s+resume\b/i;
 const purposeOpening = /^(?:Make|Keep|Help|Give|Get|Finish|Ship|Ensure|Improve|Find|Complete|I['’]m\s+|We['’](?:re|ve)\s+|We\s+(?:finished|have|need|should)\b)/i;
 const purposeConnection = /\b(?:so|so that|to|for|without|after|before|with)\b/i;
 const vagueGoal = /^(?:Keep|Make|Help|Improve)\s+(?:the|every|each)\s+(?:work|project|terminal|workspace|system)\s+(?:clear|reliable|better|working)(?:\s+and\s+\w+)*\.?$/i;
+const maxEvidenceAgeMs = Number(process.env.TERMFLEET_COCKPIT_EVIDENCE_MAX_AGE_MS ?? 120_000);
+const evidenceNow = Date.now();
 const failures = [];
 
 for (const entry of target) {
-  const goal = String(entry.context ?? "").replace(/\s+/g, " ").trim();
-  const task = String(entry.task ?? "").replace(/\s+/g, " ").trim();
-  const now = String(entry.now ?? "").replace(/\s+/g, " ").trim();
-  const problems = [];
+  const record = entry && typeof entry === "object" ? entry : {};
+  const paneId = String(record.paneId ?? record.id ?? "").trim();
+  const goal = String(record.context ?? "").replace(/\s+/g, " ").trim();
+  const task = String(record.task ?? "").replace(/\s+/g, " ").trim();
+  const now = String(record.now ?? "").replace(/\s+/g, " ").trim();
+  const problems = entry && typeof entry === "object" ? [] : ["malformed-terminal-record"];
+  if (!paneId) problems.push("missing-pane-identity");
+  if (!task || neutralTask.test(task) || forbiddenTask.test(task)) problems.push("missing-or-generic-task");
   if (!goal || forbiddenGoal.test(goal)) problems.push("missing-or-generic-goal");
   if (
     goal &&
     goal.split(/\s+/).filter(Boolean).length < 8 &&
-    String(entry.contextSource ?? "").trim() !== "opening-request"
+    !["opening-request", "shell-role"].includes(String(record.contextSource ?? "").trim())
   ) problems.push("goal-too-short-for-about-what");
-  if (!paneOwnedGoalSources.has(String(entry.contextSource ?? "").trim())) problems.push("goal-lacks-pane-owned-source");
-  if (!paneOwnedGoalSources.has(String(entry.statusSummaryGoalSource ?? "").trim())) problems.push("goal-missing-capture-source");
+  if (
+    String(record.contextSource ?? "").trim() === "shell-role" &&
+    !/^Run commands directly in .+\.$/.test(goal)
+  ) problems.push("invalid-shell-role-goal");
+  if (!paneOwnedGoalSources.has(String(record.contextSource ?? "").trim())) problems.push("goal-lacks-pane-owned-source");
+  if (!paneOwnedGoalSources.has(String(record.statusSummaryGoalSource ?? "").trim())) problems.push("goal-missing-capture-source");
+  if (!now) problems.push("missing-now");
+  if (String(record.statusSummaryConfidence ?? record.confidence ?? "").trim().toLowerCase() !== "high") {
+    problems.push("sure-gate-requires-high-confidence");
+  }
+  const updatedAt = Number(record.updatedAt);
+  if (!Number.isFinite(updatedAt) || updatedAt < evidenceNow - maxEvidenceAgeMs || updatedAt > evidenceNow + 5_000) {
+    problems.push("stale-pane-evidence");
+  }
   if (generatedPaneGoal.test(goal)) problems.push("goal-is-generated-task-wrapper");
-  if (String(entry.contextSource ?? "").trim() !== "project-fallback" && projectPurposeGoal.test(goal)) problems.push("project-wide-goal");
+  if (String(record.contextSource ?? "").trim() !== "project-fallback" && projectPurposeGoal.test(goal)) problems.push("project-wide-goal");
   if (processGoal.test(goal)) problems.push("process-language-in-goal");
   if (goal && task && goal.toLocaleLowerCase() === task.toLocaleLowerCase()) problems.push("goal-repeats-task");
   if (goal && now && goal.toLocaleLowerCase() === now.toLocaleLowerCase()) problems.push("goal-repeats-now");
-  if (problems.length) failures.push({ paneId: entry.paneId, task, goal, now, problems });
+  if (problems.length) failures.push({ paneId: paneId || "unknown-pane", task, goal, now, problems });
 }
 
 if (!target.length) {
@@ -77,11 +89,14 @@ function writeMatrixArtifact(entries, failedRows, failureReason = null) {
     pane_count: entries.length,
     failures: failureReason ? [{ reason: failureReason }] : failedRows,
     panes: entries.map((entry) => {
-      const failure = failedRows.find((row) => row.paneId === entry.paneId);
+      const record = entry && typeof entry === "object" ? entry : {};
+      const paneId = String(record.paneId ?? record.id ?? "").trim() || "unknown-pane";
+      const failure = failedRows.find((row) => row.paneId === paneId);
       return {
-        pane_id: entry.paneId,
-        goal: String(entry.context ?? "").replace(/\s+/g, " ").trim(),
-        goal_source: entry.contextSource ?? "missing",
+        pane_id: paneId,
+        goal: String(record.context ?? "").replace(/\s+/g, " ").trim(),
+        goal_source: record.contextSource ?? "missing",
+        confidence: record.statusSummaryConfidence ?? record.confidence ?? "missing",
         quality: failure ? "FAIL" : "PASS",
       };
     }),

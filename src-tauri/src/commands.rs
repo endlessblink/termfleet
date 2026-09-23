@@ -1213,6 +1213,12 @@ pub fn grid_snapshot(grids: State<'_, GridManager>, id: String) -> Result<String
     grids.snapshot(&id)
 }
 
+/// Live visible text of a pane, for Approve all's last-moment check.
+#[tauri::command]
+pub fn grid_screen_text(grids: State<'_, GridManager>, id: String) -> Result<String, String> {
+    grids.screen_text(&id)
+}
+
 #[tauri::command]
 pub fn grid_revision(grids: State<'_, GridManager>, id: String) -> Result<u64, String> {
     grids.revision(&id)

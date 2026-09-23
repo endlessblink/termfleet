@@ -46,6 +46,7 @@ import {
   createTerminalTab,
   currentAgentWorkstreamCwd,
   liveTerminalTabs,
+  recoverySessionReviewKey,
   recoverySessionsForReview,
   type RecoverySessionRecord,
   splitActivePane,
@@ -159,10 +160,12 @@ import {
   summarizeLocalServices,
   type LocalServiceSummary,
 } from "../lib/localServices";
-import { projectBucketsByCanvasPosition } from "../lib/mapNodeOrdering";
+import { orderCanvasNodesByManualOrder, projectBucketsByManualOrder } from "../lib/mapNodeOrdering";
 import { useFlipList } from "../hooks/useFlipList";
 import { agentProviderIdentity } from "../lib/agentProviderIdentity";
-import { AgentProviderIdentity } from "./AgentProviderIdentity";
+import { AgentProviderIdentity, TerminalSignifier } from "./AgentProviderIdentity";
+import { getPendingApprovals } from "../lib/pendingApprovals";
+import { PendingApprovalsSection } from "./PendingApprovalsSection";
 import {
   buildProjectSidebarModel,
   type ProjectSidebarItem,
@@ -2450,6 +2453,7 @@ function SessionsPanel({
   const liveSessionIds = useWorkspaceStore((state) => state.liveSessionIds);
   const liveGitRoots = useWorkspaceStore((state) => state.liveGitRoots);
   const recoverySessions = useWorkspaceStore((state) => state.recoverySessions);
+  const dismissedRecoverySessionKeys = useWorkspaceStore((state) => state.dismissedRecoverySessionKeys);
   const activeTabId = useWorkspaceStore((state) => state.activeTabId);
   const canvasState = useWorkspaceStore((state) => state.canvasState);
   const addTab = useWorkspaceStore((state) => state.addTab);
@@ -2468,6 +2472,7 @@ function SessionsPanel({
   const restoreRecoverySession = useWorkspaceStore(
     (state) => state.restoreRecoverySession,
   );
+  const dismissRecoverySessions = useWorkspaceStore((state) => state.dismissRecoverySessions);
   const pinProject = useWorkspaceStore((state) => state.pinProject);
   const unpinProject = useWorkspaceStore((state) => state.unpinProject);
   const updateWorkspaceUiState = useWorkspaceStore(
@@ -2505,8 +2510,8 @@ function SessionsPanel({
       ? liveTabs
       : liveTabs.filter((tab) => tab.groupId === activeGroupFilter);
   const recoverySessionsForDisplay = useMemo(
-    () => recoverySessionsForReview(recoverySessions, liveTabs),
-    [liveTabs, recoverySessions],
+    () => recoverySessionsForReview(recoverySessions, liveTabs, dismissedRecoverySessionKeys),
+    [dismissedRecoverySessionKeys, liveTabs, recoverySessions],
   );
   const activeProjectName = projectNameFor(activeGroupFilter, groups);
   const activeProjectRoot =
@@ -3265,8 +3270,20 @@ function SessionsPanel({
               overflowY: "auto",
             }}
           >
-            <div style={{ ...styles.sectionLabel, margin: 0, fontSize: 10 }}>
-              Recovery review
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+              <div style={{ ...styles.sectionLabel, margin: 0, fontSize: 10 }}>
+                Recovery review
+              </div>
+              <button
+                type="button"
+                onClick={() => dismissRecoverySessions(recoverySessionsForDisplay.map(recoverySessionReviewKey))}
+                style={{ ...styles.agentLaneIconButton, width: 23, height: 23 }}
+                title="Clear all recovery review entries"
+                aria-label="Clear all recovery review entries"
+                data-testid="sidebar-recovery-clear-all"
+              >
+                <Trash size={13} />
+              </button>
             </div>
             <div style={{ ...styles.rowMeta, margin: "4px 0 7px" }}>
               Closed-by-you sessions stay listed for clarity and cannot be restored.
@@ -3302,6 +3319,16 @@ function SessionsPanel({
                     title={canRestore ? "Restore this exact session by its durable id" : "Closed by you; restoration is disabled"}
                   >
                     {canRestore ? "Review" : "Closed"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => dismissRecoverySessions([recoverySessionReviewKey(session)])}
+                    style={{ ...styles.agentLaneIconButton, width: 24, height: 24, flexShrink: 0 }}
+                    title={`Clear recovery entry for ${title}`}
+                    aria-label={`Clear recovery entry for ${title}`}
+                    data-testid="sidebar-recovery-clear-entry"
+                  >
+                    <X size={13} />
                   </button>
                 </div>
               );
@@ -5111,10 +5138,15 @@ function SessionsPanel({
                       />
                       {badgeForAttention(paneBadgeAttention(terminal)).label}
                     </span>
-                    {agentLabel && (
+                    {agentLabel ? (
                       <span data-testid="sidebar-session-agent-provider">
                         {" "}
                         · <AgentProviderIdentity provider={agentProvider} />
+                      </span>
+                    ) : (
+                      <span data-testid="sidebar-session-regular-signifier">
+                        {" "}
+                        · <TerminalSignifier provider={agentProvider} />
                       </span>
                     )}
                     <span
@@ -5231,14 +5263,17 @@ function MapPanel({
     (state) => state.closeTerminalSession,
   );
   const closePane = useWorkspaceStore((state) => state.closePane);
-  const reorderCanvasNodes = useWorkspaceStore(
-    (state) => state.reorderCanvasNodes,
+  const reorderCanvasSidebarNodes = useWorkspaceStore(
+    (state) => state.reorderCanvasSidebarNodes,
   );
   const updateWorkspaceUiState = useWorkspaceStore(
     (state) => state.updateWorkspaceUiState,
   );
   const sortMode = useWorkspaceStore(
     (state) => state.workspaceUiState.canvasSidebarSortMode,
+  );
+  const manualOrder = useWorkspaceStore(
+    (state) => state.workspaceUiState.canvasSidebarManualOrder,
   );
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<{
@@ -5318,6 +5353,10 @@ function MapPanel({
   const mapSummary = useMemo(
     () => summarizeMapNodes(visibleNodes, tabs, groups, liveCwds),
     [visibleNodes, tabs, groups, liveCwds],
+  );
+  const pendingApprovals = useMemo(
+    () => getPendingApprovals(groupVisibleNodes, tabs, liveCwds, groups),
+    [groupVisibleNodes, tabs, liveCwds, groups],
   );
   const agentLane = summarizeAgentLane(visibleTabs);
   const activeAgentWorkstreams = agentLane.workstreams.filter(
@@ -5581,7 +5620,7 @@ function MapPanel({
   });
   const tasksByRoot = useMasterPlanTasks(taskRoots);
 
-  const draggable = sortMode === "manual";
+  const draggable = true;
   const clearDrag = () => {
     setDraggingId(null);
     setDropTarget(null);
@@ -5608,18 +5647,21 @@ function MapPanel({
     event.preventDefault();
     const place = dropTarget?.id === node.id ? dropTarget.place : "before";
     if (draggingId && draggingId !== node.id)
-      reorderCanvasNodes(draggingId, node.id, place);
+      reorderCanvasSidebarNodes(draggingId, node.id, place);
     clearDrag();
   };
 
-  // By-project view follows the map's visual reading order: left-to-right first,
-  // then top-to-bottom. Moving a node changes display order without changing its
-  // project membership or the persisted node array.
+  // Project rows follow the persisted sidebar order. Map-only movement must not
+  // reshuffle this list; explicit sidebar dragging updates both order and slots.
   const projectBuckets = useMemo(() => {
-    return projectBucketsByCanvasPosition(visibleNodes, tabs, groups, {
+    return projectBucketsByManualOrder(visibleNodes, tabs, groups, manualOrder, {
       unassignedLabel: "Unassigned",
     });
-  }, [visibleNodes, tabs, groups]);
+  }, [visibleNodes, tabs, groups, manualOrder]);
+  const manualNodes = useMemo(
+    () => orderCanvasNodesByManualOrder(visibleNodes, manualOrder),
+    [visibleNodes, manualOrder],
+  );
 
   type MapListItem =
     | { kind: "header"; key: string; label: string }
@@ -5634,7 +5676,7 @@ function MapPanel({
           },
           ...bucket.nodes.map((node) => ({ kind: "node" as const, node })),
         ])
-      : visibleNodes.map((node) => ({ kind: "node" as const, node }));
+      : manualNodes.map((node) => ({ kind: "node" as const, node }));
   const mapListOrderKey = mapListItems
     .map((item) => (item.kind === "header" ? item.key : item.node.id))
     .join("|");
@@ -5665,6 +5707,10 @@ function MapPanel({
         </div>
         <span style={styles.count}>{visibleNodes.length}</span>
       </div>
+      <PendingApprovalsSection
+        approvals={pendingApprovals}
+        onSelect={focusCanvasNode}
+      />
       <div style={styles.mapFilterBar} aria-label="Arrange terminals">
         {(
           [
@@ -7987,11 +8033,19 @@ function MapPanel({
                                 ).label
                               }
                             </span>
-                            {agentLabel && (
+                            {agentLabel ? (
                               <span data-testid="sidebar-map-node-agent-provider">
                                 {" "}
                                 ·{" "}
                                 <AgentProviderIdentity
+                                  provider={agentProvider}
+                                />
+                              </span>
+                            ) : (
+                              <span data-testid="sidebar-map-node-regular-signifier">
+                                {" "}
+                                ·{" "}
+                                <TerminalSignifier
                                   provider={agentProvider}
                                 />
                               </span>

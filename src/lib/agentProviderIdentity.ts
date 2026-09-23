@@ -7,6 +7,14 @@ export function agentProviderIdentity(provider?: AgentProvider | string | null):
   return null;
 }
 
+export function isAgentProvider(provider?: AgentProvider | string | null): boolean {
+  return agentProviderIdentity(provider) !== null;
+}
+
+export function terminalSignifierIdentity(provider?: AgentProvider | string | null): string {
+  return agentProviderIdentity(provider) ?? "SHELL";
+}
+
 export function stableAgentProvider(
   current?: AgentProvider | null,
   incoming?: AgentProvider | null,
@@ -15,3 +23,4 @@ export function stableAgentProvider(
   if (current && current !== "shell") return current;
   return undefined;
 }
+

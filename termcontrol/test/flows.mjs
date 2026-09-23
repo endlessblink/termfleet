@@ -113,12 +113,13 @@ async function main() {
 
   group('Arranging the fleet');
 
-  await check('terminals are grouped by project out of the box', async () => {
-    const state = await p.$$eval('.switch button', (els) => els.map((e) => `${e.textContent.trim()}=${e.getAttribute('aria-pressed')}`));
-    ok(state.includes('Projects=true'), `wrong default: ${state.join(' ')}`);
+  await check('the phone uses the desktop sidebar view without its own competing switch', async () => {
+    const response = await p.evaluate(() => fetch('/api/panes').then((r) => r.json()));
     const groups = await p.$$('.projgroup');
+    ok(response.view === 'projects', `desktop sidebar view is ${response.view}`);
     ok(groups.length > 0, 'no project groups rendered');
-    return `${groups.length} projects`;
+    ok((await p.$$('.switch')).length === 0, 'phone still has an independent ordering switch');
+    return `${groups.length} desktop project groups`;
   });
 
   await check('each project shows its own emoji and name', async () => {
@@ -133,56 +134,23 @@ async function main() {
     return marked.length ? `${marked.length} flagged` : 'nothing waiting right now';
   });
 
-  await check('switching to your own order shows move controls', async () => {
-    await p.click('.switch button[data-view="manual"]');
-    await p.waitForSelector('.moves', { timeout: 8000 });
-    const state = await p.$$eval('.switch button', (els) => els.map((e) => `${e.textContent.trim()}=${e.getAttribute('aria-pressed')}`));
-    ok(state.includes('My order=true'), `switch did not take: ${state.join(' ')}`);
-    ok((await p.$$('.projgroup')).length === 0, 'project groups should be gone in your own order');
+  await check('the rendered terminal order exactly matches the desktop authority', async () => {
+    const response = await p.evaluate(() => fetch('/api/panes').then((r) => r.json()));
+    const rendered = await p.$$eval('.pane', (els) => els.map((e) => e.dataset.id));
+    const authoritative = response.panes.map((pane) => pane.id);
+    ok(rendered.join() === authoritative.join(), 'rendered order diverged from the desktop sidebar');
+    return `${rendered.length} terminals in exact order`;
   });
 
-  await check('moving a terminal down actually moves it', async () => {
-    // Compare terminals, not project names: several terminals can belong to
-    // the same project, so names alone cannot tell you what moved.
-    const before = await p.$$eval('.pane', (els) => els.map((e) => e.dataset.id));
-    await p.click('[data-move="down"][data-at="0"]');
-    await wait(1300);
-    const after = await p.$$eval('.pane', (els) => els.map((e) => e.dataset.id));
-    ok(after.indexOf(before[0]) === 1, `the moved terminal should be second, it is at ${after.indexOf(before[0])}`);
-    ok(after[0] === before[1], 'the terminal below should have taken first place');
-    return 'swapped with the one below';
-  });
-
-  await check('moving it back up restores the order', async () => {
-    const before = await p.$$eval('.pane', (els) => els.map((e) => e.dataset.id));
-    await p.click(`[data-move="up"][data-at="1"]`);
-    await wait(1300);
-    const after = await p.$$eval('.pane', (els) => els.map((e) => e.dataset.id));
-    ok(after[0] === before[1], 'moving up did not restore it');
-    return 'restored';
-  });
-
-  await check('the top item cannot be moved further up', async () => {
-    const disabled = await p.$eval('[data-move="up"][data-at="0"]', (e) => e.disabled);
-    ok(disabled, 'the first row offers an up arrow that does nothing');
-  });
-
-  await check('your arrangement survives a reload', async () => {
+  await check('the desktop arrangement survives a phone refresh without moving', async () => {
     const before = await p.$$eval('.pane', (els) => els.map((e) => e.dataset.id));
     await p.reload();
     await p.waitForSelector('.pane', { timeout: 12000 });
     await wait(700);
-    const pressed = await p.$$eval('.switch button', (els) => els.filter((e) => e.getAttribute('aria-pressed') === 'true').map((e) => e.textContent.trim()));
     const after = await p.$$eval('.pane', (els) => els.map((e) => e.dataset.id));
-    ok(pressed.join() === 'My order', `view was not remembered: ${pressed.join()}`);
     ok(before.join() === after.join(), 'the order was not remembered');
-    return 'view and order both kept';
-  });
-
-  await check('switching back to projects restores the grouping', async () => {
-    await p.click('.switch button[data-view="projects"]');
-    await p.waitForSelector('.projgroup', { timeout: 8000 });
-    ok((await p.$$('.moves')).length === 0, 'move controls should be gone');
+    ok((await p.$$('.moves')).length === 0, 'phone still offers separate move controls');
+    return 'desktop order kept';
   });
 
   // ------------------------------------------------------------------ read --
@@ -190,7 +158,7 @@ async function main() {
 
   await check('a chat opens within a couple of seconds', async () => {
     const t0 = Date.now();
-    await p.click('.pane');
+    await p.click('.pane:not(.waiting)');
     await p.waitForSelector('.composer', { timeout: 10000 });
     await p.waitForFunction(() => document.querySelectorAll('#main > *').length > 0, { timeout: 10000 });
     const ms = Date.now() - t0;
@@ -238,12 +206,14 @@ async function main() {
   });
 
   await check('the list narrows as you type', async () => {
-    const before = await p.$$eval('.cmdlist button', (els) => els.length);
+    const before = await p.$$eval('.cmdlist .cmd', (els) => els.map((e) => e.textContent));
     await p.fill('.composer textarea', '/anal');
     await p.dispatchEvent('.composer textarea', 'input');
     await wait(500);
     const after = await p.$$eval('.cmdlist .cmd', (els) => els.map((e) => e.textContent));
-    ok(after.length > 0 && after.length < before, `${before} then ${after.length}`);
+    const beforeSet = new Set(before);
+    ok(after.length > 0 && (after.length < before.length || after.some((command) => !beforeSet.has(command))),
+      `${before.length} initial and ${after.length} filtered commands were identical`);
     ok(after.every((c) => c.toLowerCase().includes('anal')), `unrelated matches: ${after.join(' ')}`);
     return after.join(' ');
   });
@@ -353,11 +323,11 @@ async function main() {
     // end is worse than showing what is actually on the terminal.
     await p.click('.back');
     await p.waitForSelector('.pane', { timeout: 10000 });
-    const cards = await p.$$('.pane');
+    const ids = await p.$$eval('.pane:not(.waiting)', (cards) => cards.map((card) => card.dataset.id));
 
     let found = null;
-    for (const card of cards.slice(0, 12)) {
-      await card.click();
+    for (const id of ids.slice(0, 12)) {
+      await p.goto(base + '/#' + encodeURIComponent(id));
       await p.waitForSelector('.composer', { timeout: 8000 });
       await wait(1800);
       if (await p.$('.screen')) { found = await p.textContent('.note').catch(() => ''); break; }
@@ -366,7 +336,13 @@ async function main() {
       await p.waitForSelector('.pane', { timeout: 8000 });
     }
 
-    if (found === null) return 'every terminal had a conversation to show';
+    if (found === null) {
+      if (!(await p.$('.composer'))) {
+        await p.click('.pane:not(.waiting)');
+        await p.waitForSelector('.composer', { timeout: 8000 });
+      }
+      return 'every terminal had a conversation to show';
+    }
     ok(found !== 'DEAD END', 'a terminal offered nothing at all');
     return 'falls back to the screen';
   });
@@ -484,7 +460,6 @@ async function main() {
     const other = await phone();
     const op = await other.newPage();
     await op.goto(base + '/login');
-    await op.fill('#email', 'owner@example.com');
     await op.fill('#password', 'a-good-password');
     await op.click('button[type=submit]');
     await op.waitForSelector('.pane', { timeout: 12000 });
@@ -497,13 +472,13 @@ async function main() {
   await check('tapping through several terminals quickly does not tangle', async () => {
     const c = await phone(); const q = await c.newPage();
     await q.goto(base + '/login');
-    await q.fill('#email', 'owner@example.com'); await q.fill('#password', 'a-good-password');
+    await q.fill('#password', 'a-good-password');
     await q.click('button[type=submit]');
     await q.waitForSelector('.pane');
     // In and out of four terminals, the way a thumb does it: some with the
     // on-screen back button, some with the phone's own back gesture.
     for (let i = 0; i < 4; i++) {
-      const cards = await q.$$('.pane');          // re-query: the list re-renders
+      const cards = await q.$$('.pane:not(.waiting)'); // re-query: the list re-renders
       if (!cards.length) throw new Error('the fleet list vanished');
       await cards[Math.min(i, cards.length - 1)].click();
       await q.waitForSelector('.composer', { timeout: 6000 });
@@ -526,10 +501,10 @@ async function main() {
     const errors = [];
     q.on('pageerror', (e) => errors.push(e.message));
     await q.goto(base + '/login');
-    await q.fill('#email', 'owner@example.com'); await q.fill('#password', 'a-good-password');
+    await q.fill('#password', 'a-good-password');
     await q.click('button[type=submit]');
     await q.waitForSelector('.pane');
-    await q.click('.pane');
+    await q.click('.pane:not(.waiting)');
     await q.waitForSelector('.composer');
     await wait(35000);
     ok(errors.length === 0, `page errors: ${errors.slice(0, 2).join('; ')}`);

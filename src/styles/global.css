@@ -193,7 +193,7 @@ select:focus-visible,
   position: fixed;
   top: 42px;
   right: 18px;
-  z-index: 70;
+  z-index: 1100;
   width: 320px;
   max-width: calc(100vw - 24px);
   padding: 16px;

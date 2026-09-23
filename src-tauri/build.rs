@@ -25,5 +25,9 @@ fn main() {
     // no-op for the UI. Re-run this script, and with it the asset embed, whenever the
     // built frontend changes.
     track_frontend(Path::new("../dist"));
+    // The installer supplies the completed frontend tree checksum. Tracking it
+    // makes a changed Vite asset set rebuild the embed even if its old hashed
+    // files were removed before Cargo compared the previous directory walk.
+    println!("cargo:rerun-if-env-changed=TERMFLEET_FRONTEND_SHA256");
     tauri_build::build();
 }

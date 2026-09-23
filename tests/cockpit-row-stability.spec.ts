@@ -148,7 +148,7 @@ test("a missing goal keeps honest Task, Goal, and Now rows mounted", () => {
   expect(magicCanvas).toContain("terminalHeader.contextLabel");
   expect(magicCanvas).toContain('visibility: "visible"');
   expect(magicCanvas).not.toContain("This session is focused on");
-  expect(magicCanvas).toContain('"Idle — no work is running"');
+  expect(magicCanvas).toContain('"Now not captured"');
   expect(magicCanvas).toContain("taskSource:");
   expect(magicCanvas).toContain("contextSource:");
   expect(magicCanvas).not.toContain("No task assigned to this terminal");
@@ -166,7 +166,7 @@ test("map cards keep the broad Goal separate from the specific Task and Now rows
 test("map cards explain missing context without collapsing the three rows", () => {
   expect(magicCanvas).toContain("terminalHeader.contextLabel");
   expect(magicCanvas).not.toContain("This session is focused on");
-  expect(magicCanvas).toContain('"Idle — no work is running"');
+  expect(magicCanvas).toContain('"Now not captured"');
   expect(magicCanvas).not.toContain("Project context: ${terminalHeader.workspace} · no goal set");
   expect(magicCanvas).not.toContain("`Working on: ${terminalHeaderTaskDescription}`");
 });
@@ -241,7 +241,8 @@ test("split terminal headers show a compact stable Goal line when context exists
 test("split headers never promote a missing-goal placeholder into the Task row", () => {
   expect(splitPane).toContain("shellHeader?.contextLabel");
   expect(splitPane).toContain("Task:");
-  expect(splitPane).toContain("rendererTaskFallback");
+  expect(splitPane).not.toContain("fallbackProjectGoal(");
+  expect(splitPane).toContain('const visibleAgentTaskLabel = agentTaskLabel ?? "Task not captured"');
   expect(splitPane).not.toContain("shellHeader?.currentActivity ?? headerNow");
   expect(splitPane).not.toContain("Project context:");
 });
@@ -278,7 +279,7 @@ test("agent split headers keep the live work, broad goal, and current moment leg
     "Now",
   );
   expect(splitPane).toContain("const agentTaskLabel = isAgentPane");
-  expect(splitPane).toContain("const visibleAgentTaskLabel = agentTaskLabel ?? rendererTaskFallback");
+  expect(splitPane).toContain('const visibleAgentTaskLabel = agentTaskLabel ?? "Task not captured"');
   expect(agentHeader).toContain("{visibleAgentTaskLabel}");
   expect(splitPane).toContain("? agentTaskLabel");
   expect(splitPane).toContain("(isAgentPane ? agentTaskLabel : shellTaskLabel)");
@@ -287,6 +288,7 @@ test("agent split headers keep the live work, broad goal, and current moment leg
 
 test("agent split Task never falls back to the broad Goal when live work is missing", () => {
   expect(splitPane).toContain("const agentTaskCandidate =");
+  expect(splitPane).toContain("agentStatusSummary?.userTask?.trim()");
   expect(splitPane).toContain(
     "agentWorkstream?.taskLineup?.find(",
   );
@@ -330,9 +332,9 @@ test("status-summary Now cannot repeat the Task before the final row guard", () 
 });
 
 test("split header Now is distinct before telemetry is written", () => {
-  expect(splitPane).toContain("const distinctHeaderNow = resolveDistinctHeaderNow(");
-  expect(splitPane).toContain("const headerNowRepeatsTitle =");
-  expect(splitPane).toContain('"Idle — no work is running"');
+  expect(splitPane).toContain("const safeStabilizedNow =");
+  expect(splitPane).toContain("const headerNow =");
+  expect(splitPane).toContain('"Now not captured"');
 });
 
 test("split header values wrap instead of hiding Task, Goal, and Now", () => {
@@ -349,8 +351,11 @@ test("map header Task, Goal, and Now values do not use single-line ellipsis", ()
 
 test("map Goal is as legible as the other glanceable rows", () => {
   expect(magicCanvas).toContain('color: "var(--text-primary)"');
-  expect(magicCanvas).toContain('fontSize: 16');
-  expect(magicCanvas).toContain('borderLeft: "3px solid var(--accent-live)"');
+  expect(magicCanvas).toContain("terminalContextValue");
+  expect(magicCanvas).toContain('fontSize: 13');
+  const thickAccentBorder = ["border", "Left", ": `3px solid"].join("");
+  expect(magicCanvas).not.toContain(thickAccentBorder);
+  expect(magicCanvas).toContain("labelStatusBlockStyle");
 });
 
 test("map opens with the active card fitted inside the visible canvas", () => {
@@ -405,8 +410,8 @@ test("shell split headers keep honest Task, Goal, and Now rows when values are s
 test("map headers never render a missing-goal placeholder", () => {
   expect(magicCanvas).not.toContain("terminalHeaderContextDescription || terminalHeaderFallbackGoal");
   expect(magicCanvas).toContain("const terminalStatusSummaryCandidates = [");
-  expect(magicCanvas).toContain('summary.mainTaskSource === "plan-explanation"');
-  expect(magicCanvas).toContain("qualityCheckGoalLabel(terminalStatusSummary.mainTask");
+  expect(magicCanvas).toContain("terminalStatusGoalSummary?.mainTask");
+  expect(magicCanvas).toContain("qualityCheckGoalLabel(");
   expect(magicCanvas).toContain("terminalStatusGoalFallback");
 });
 
@@ -436,7 +441,7 @@ test("map resolver and live-step Now sources share the quality gate", () => {
 
 test("map Goal rows recheck stored context before rendering it", () => {
   expect(magicCanvas).toContain("qualityCheckGoalLabel(terminalHeader.contextLabel, {");
-  expect(magicCanvas).toContain('const canvasGoalFallback = "Goal not captured"');
+  expect(magicCanvas).toContain('const canvasGoalFallback = ""');
   expect(magicCanvas).not.toContain("fallbackProjectGoal(");
 });
 

@@ -176,7 +176,6 @@ import { agentBudgetSignal } from "../lib/agentBudget";
 import { openCodexModelPicker } from "../lib/codexModelPicker";
 import { durableActivityIsLive } from "../lib/terminalActivity";
 import {
-  aboutWhatFallback,
   activityAddsInfo,
   headerTextsEquivalent,
 } from "../lib/terminalHeaderViewModel";
@@ -185,7 +184,7 @@ import { paneBadgeAttention } from "../lib/sessionStatus";
 import { stableHeader } from "../lib/stableHeader";
 import { truncateAtWordBoundary } from "../lib/textTruncation";
 import { agentProviderIdentity } from "../lib/agentProviderIdentity";
-import { AgentProviderIdentity } from "./AgentProviderIdentity";
+import { AgentProviderIdentity, TerminalSignifier } from "./AgentProviderIdentity";
 import { agentReconnectCommand } from "../lib/agentReconnect";
 import { TaskProgressBar } from "./TaskProgressBar";
 
@@ -753,8 +752,8 @@ const styles: Record<string, CSSProperties> = {
   terminalTaskLabel: {
     color: "var(--text-tertiary)",
     fontSize: 10,
-    fontWeight: 600,
-    letterSpacing: "0.08em",
+    fontWeight: 500,
+    letterSpacing: 0,
     lineHeight: "16px",
     textTransform: "uppercase",
   },
@@ -839,8 +838,8 @@ const styles: Record<string, CSSProperties> = {
     ...({
       color: "var(--text-tertiary)",
       fontSize: 10,
-      fontWeight: 600,
-      letterSpacing: "0.08em",
+      fontWeight: 500,
+      letterSpacing: 0,
       lineHeight: "16px",
       textTransform: "uppercase",
     } as CSSProperties),
@@ -937,9 +936,9 @@ const styles: Record<string, CSSProperties> = {
   agentStatusLabel: {
     color: "var(--text-tertiary)",
     fontSize: 10,
-    fontWeight: 600,
+    fontWeight: 500,
     textTransform: "uppercase",
-    letterSpacing: "0.08em",
+    letterSpacing: 0,
     lineHeight: "16px",
   },
   agentWorkingText: {
@@ -2728,7 +2727,6 @@ function CanvasNodeViewImpl({
     ? {
         padding: "8px 10px",
         border: `1px solid color-mix(in srgb, ${labelColor} 30%, var(--border-subtle))`,
-        borderLeft: `3px solid ${labelColor}`,
         borderRadius: "var(--radius-sm)",
         background: `linear-gradient(90deg, color-mix(in srgb, ${labelColor} 15%, transparent), color-mix(in srgb, ${labelColor} 4%, transparent))`,
         boxShadow: "inset 0 1px 0 color-mix(in srgb, #ffffff 5%, transparent)",
@@ -3113,7 +3111,8 @@ function CanvasNodeViewImpl({
     linkedTab?.terminals.find((terminal) => terminal.id === node.terminalPtyId) ??
     linkedTab?.terminals.find((terminal) => terminal.paneId === node.linkedTerminalPaneId) ??
     linkedTab?.terminals.find((terminal) => terminal.paneId === node.id) ??
-    linkedTab?.terminals.find((terminal) => restoredNodePaneIds.has(terminal.paneId));
+    linkedTab?.terminals.find((terminal) => restoredNodePaneIds.has(terminal.paneId)) ??
+    (linkedTab?.terminals.length === 1 ? linkedTab.terminals[0] : undefined);
   const exactNodePaneId =
     node.linkedTerminalPaneId ?? restoredNodePaneId ?? node.id;
   const terminalPaneId =
@@ -3430,6 +3429,7 @@ function CanvasNodeViewImpl({
     liveCwd: resolvedTerminalRoot,
     liveGitRoot: resolvedTerminalGitRoot,
     terminalStatus: linkedTerminal?.status,
+    paneKind: isAgentTerminal ? "agent" : "shell",
     taskLineup: terminalHeaderTaskLineup,
     activeRunId: linkedTerminal?.activeRunId,
     mainUserAsk: terminalStoredMainUserAskApplies
@@ -3491,23 +3491,25 @@ function CanvasNodeViewImpl({
       : undefined;
   const canvasTaskFallback = "Task not captured";
   const terminalHeaderTaskDescription =
-    resolveDistinctHeaderNow(
-      terminalHeader.goalLabel,
-      terminalHeaderTaskCandidate,
-    ) ??
-    resolveDistinctHeaderNow(
-      terminalHeader.goalLabel,
-      terminalHeaderTaskLineCandidate,
-    ) ??
-    resolveDistinctHeaderNow(
-      terminalHeader.goalLabel,
-      terminalHeaderDurableActivityTask,
-    ) ??
-    resolveDistinctHeaderNow(
-      terminalHeader.goalLabel,
-    terminalHeaderStatusTask,
-    ) ??
-    canvasTaskFallback;
+    terminalHeader.sources.goal === "shell-role"
+      ? terminalHeader.taskDescription
+      : resolveDistinctHeaderNow(
+          terminalHeader.goalLabel,
+          terminalHeaderTaskCandidate,
+        ) ??
+        resolveDistinctHeaderNow(
+          terminalHeader.goalLabel,
+          terminalHeaderTaskLineCandidate,
+        ) ??
+        resolveDistinctHeaderNow(
+          terminalHeader.goalLabel,
+          terminalHeaderDurableActivityTask,
+        ) ??
+        resolveDistinctHeaderNow(
+          terminalHeader.goalLabel,
+          terminalHeaderStatusTask,
+        ) ??
+        canvasTaskFallback;
   const stabilizedTerminalHeaderTask = stableHeader(
     `map-task-row:${terminalTabId}:${terminalPaneId}:${node.taskBinding?.taskId ?? "unbound"}`,
     { title: terminalHeaderTaskDescription, now: terminalHeaderTaskDescription },
@@ -3562,11 +3564,13 @@ function CanvasNodeViewImpl({
   const terminalHeaderTaskCaptured =
     terminalHeaderTaskDescription !== canvasTaskFallback;
   const terminalHeaderContextCandidate =
-    terminalAboutWhatText ??
-    terminalPaneGoalCandidate ??
-    terminalStatusGoalFallback ??
-    (terminalHeader.hasCapturedContext &&
-    qualityCheckGoalLabel(terminalHeader.contextLabel, {
+    terminalHeader.sources.context === "shell-role"
+      ? terminalHeader.contextLabel
+      : terminalAboutWhatText ??
+        terminalPaneGoalCandidate ??
+        terminalStatusGoalFallback ??
+        (terminalHeader.hasCapturedContext &&
+        qualityCheckGoalLabel(terminalHeader.contextLabel, {
        allowAboutWhatVoice:
          terminalSummaryHasAboutWhat &&
          terminalHeader.sources.context === "sidecar-todo" &&
@@ -3577,9 +3581,9 @@ function CanvasNodeViewImpl({
         terminalSummaryHasAboutWhat &&
         terminalHeader.sources.context === "sidecar-todo",
       maxLength: 150,
-    }).ok
-      ? terminalHeader.contextLabel
-      : undefined);
+        }).ok
+          ? terminalHeader.contextLabel
+          : undefined);
   const paneGoalMemoryKey = terminalPaneId || linkedTerminalId || node.id;
   const rememberedPaneGoal = lastKnownPaneGoal.get(paneGoalMemoryKey);
   const rememberedPaneGoalCandidate = rememberedPaneGoal &&
@@ -3622,10 +3626,18 @@ function CanvasNodeViewImpl({
       terminalHeaderContextDescription ?? "",
     );
   }
-  const terminalHeaderHasDisplayableContext = Boolean(terminalHeaderContextDescription);
+  const terminalHeaderSnapshotContext =
+    terminalHeader.sources.context === "shell-role"
+      ? `Run commands directly in ${workspaceLabel}.`
+      : terminalHeaderContextDescription;
+  const terminalHeaderSnapshotGoal =
+    terminalHeader.sources.goal === "shell-role"
+      ? `Run commands directly in ${workspaceLabel}.`
+      : terminalHeader.goalLabel;
+  const terminalHeaderHasDisplayableContext = Boolean(terminalHeaderSnapshotContext);
   const terminalHeaderGoalDisplay =
     terminalHeaderContextDescription || "Not captured for this pane";
-  const terminalHeaderContextForSnapshot = terminalHeaderContextDescription || "";
+  const terminalHeaderContextForSnapshot = terminalHeaderSnapshotContext || "";
   const terminalHeaderTitleRaw = terminalDurableActivityUsable &&
     terminalDisplaySummaryBase.task &&
     !/^(?:Terminal|Activity not captured|Status unavailable)$/i.test(
@@ -3717,7 +3729,7 @@ function CanvasNodeViewImpl({
     terminalHeader.currentActivity !== "Ready";
   const terminalHeaderHasTrustedSummary =
     terminalHeaderHasUsefulSummary &&
-    terminalDisplaySummaryBase.confidence !== "low";
+    terminalDisplaySummaryBase.confidence === "high";
   const terminalHeaderNowBase =
     /^(?:Idle|Ready|Awaiting next action|Ready for a user task)$/i.test(
       terminalHeaderSummarySignal.trim(),
@@ -3725,12 +3737,7 @@ function CanvasNodeViewImpl({
       ? /^(?:Idle|Ready|Awaiting next action|Ready for a user task)$/i.test(
           terminalHeader.currentActivity.trim(),
         )
-        ? terminalStatusSummary?.status === "working"
-          ? "Working on the current task"
-          : aboutWhatFallback(
-              terminalHeaderContextDescription,
-              terminalHeaderTaskDescription,
-            )
+          ? "Now not captured"
         : terminalHeader.currentActivity
       : terminalHeaderSummarySignal || terminalHeaderTitle || terminalNeutralTitle;
   const terminalHeaderNow = terminalHeaderNowBase;
@@ -3821,12 +3828,18 @@ function CanvasNodeViewImpl({
   const terminalHeaderNowRowStableText = stabilizedTerminalHeaderNowRow.now;
   const terminalHeaderNowRowVisible = Boolean(terminalHeaderNowRowStableText);
   const terminalHeaderNowDisplay =
-    terminalHeaderNowRowStableText &&
+    terminalHeader.sources.goal === "shell-role"
+      ? terminalHeader.currentActivity
+      : terminalHeaderNowRowStableText &&
     !/^(?:Status unavailable|Idle|Ready|Awaiting next action|Activity not captured)$/i.test(
       terminalHeaderNowRowStableText.trim(),
     )
       ? terminalHeaderNowRowStableText
-      : "Idle — no work is running";
+      : "Now not captured";
+  const terminalHeaderSnapshotNow =
+    terminalHeader.sources.goal === "shell-role"
+      ? "No active command or agent turn is running"
+      : terminalHeaderNowDisplay;
   const detectedLaneTaskId =
     node.taskBinding?.taskId ??
     firstTaskIdFromText(
@@ -3912,7 +3925,7 @@ function CanvasNodeViewImpl({
     if (!restoredAgentNow) {
       return [terminalHeader.currentActivity, agentCardStatusSummary?.now]
         .find((candidate) => qualityCheckNowLabel(candidate ?? "").ok)
-        ?.trim() || "Idle — no work is running";
+        ?.trim() || "Now not captured";
     }
     if (
       headerTextsEquivalent(restoredAgentNow, terminalHeaderContextDescription) ||
@@ -4637,10 +4650,6 @@ function CanvasNodeViewImpl({
         <span
           style={{
             ...styles.nodeKind,
-            borderLeft:
-              panelColor
-                ? `2px solid ${panelColor}`
-                : undefined,
             color: panelColor ?? styles.nodeKind.color,
           }}
         >
@@ -4737,12 +4746,20 @@ function CanvasNodeViewImpl({
                   {workspaceLabel}
                 </span>
               </span>
-                {terminalAgentLabel && (
+              {terminalAgentLabel ? (
                 <span
                   style={styles.agentStatusChip}
                   data-testid="canvas-terminal-agent-provider"
                 >
                   <AgentProviderIdentity provider={terminalAgentProvider} />
+                </span>
+              ) : (
+                <span
+                  style={styles.agentStatusChip}
+                  data-testid="canvas-terminal-regular-signifier"
+                  title="Regular shell terminal"
+                >
+                  <TerminalSignifier provider={terminalAgentProvider} />
                 </span>
               )}
               {linkedTab && (
@@ -4894,12 +4911,20 @@ function CanvasNodeViewImpl({
                     {terminalBranch}
                   </span>
                 )}
-              {terminalAgentLabel && (
+                {terminalAgentLabel ? (
                   <span
                     style={styles.agentStatusChip}
                     data-testid="canvas-terminal-agent-provider"
                   >
                     <AgentProviderIdentity provider={terminalAgentProvider} />
+                  </span>
+                ) : (
+                  <span
+                    style={styles.agentStatusChip}
+                    data-testid="canvas-terminal-regular-signifier"
+                    title="Regular shell terminal"
+                  >
+                    <TerminalSignifier provider={terminalAgentProvider} />
                   </span>
                 )}
                 <span
@@ -5026,17 +5051,17 @@ function CanvasNodeViewImpl({
                     workspace: workspaceLabel,
                     previewTitle: terminalTitle,
                     projectEmoji,
-                    kind: "shell",
+                    kind: isAgentTerminal ? "agent" : "shell",
                     task: terminalHeaderTaskDescription,
                     taskSource: terminalHeaderTaskCaptured
                       ? terminalHeader.sources.goal
                       : "missing",
-                     context: terminalHeaderHasDisplayableContext
+                    context: terminalHeaderHasDisplayableContext
                        ? terminalHeaderContextForSnapshot
                        : "",
                     contextSource: terminalHeaderHasDisplayableContext
                       ? terminalHeader.sources.context === "missing"
-                        ? "project-fallback"
+                      ? "missing"
                         : terminalHeader.sources.context
                       : "missing",
                     title:
@@ -5046,7 +5071,7 @@ function CanvasNodeViewImpl({
                     titleSource: terminalHeaderNowRowText
                       ? terminalHeader.sources.activity
                       : terminalHeader.sources.context,
-                    now: terminalHeaderNowDisplay,
+                    now: terminalHeaderSnapshotNow,
                     nowSource: terminalHeaderNowRowVisible
                       ? terminalHeader.sources.activity
                       : "missing",
@@ -5079,14 +5104,24 @@ function CanvasNodeViewImpl({
                       workstream?.statusSummary ?? linkedTerminal?.statusSummary
                     )?.narration,
                     statusSummaryTask: terminalStatusSummary?.task,
-                    statusSummaryGoal: terminalStatusSummary?.mainTask,
-                    statusSummaryGoalSource: terminalStatusSummary?.mainTaskSource ??
-                      (terminalHeaderHasDisplayableContext &&
-                      terminalHeaderContextDescription !== canvasGoalFallback
-                        ? "status-summary"
-                        : terminalHeaderHasDisplayableContext
-                          ? "project-fallback"
-                        : undefined),
+                     statusSummaryGoal:
+                       terminalHeader.sources.goal === "shell-role"
+                         ? terminalHeaderSnapshotGoal
+                         : terminalStatusSummary?.mainTask,
+                      statusSummaryGoalSource: terminalHeader.sources.goal === "shell-role"
+                        ? "shell-role"
+                        : terminalStatusSummary?.mainTaskSource ??
+                       (terminalHeaderHasDisplayableContext &&
+                       terminalHeaderContextDescription !== canvasGoalFallback
+                         ? "status-summary"
+                       : terminalHeaderHasDisplayableContext
+                           ? terminalHeader.sources.context === "shell-role"
+                             ? "shell-role"
+                             : "missing"
+                          : undefined),
+                    statusSummaryConfidence:
+                      terminalStatusSummary?.confidence ??
+                      (terminalHeader.sources.context === "shell-role" ? "high" : undefined),
                     statusSummaryNow: terminalStatusSummary?.now,
                       statusSummaryPath: terminalStatusSummary?.path,
                     taskLineSource: terminalHeaderTaskLine?.source,

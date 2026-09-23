@@ -20,6 +20,8 @@ export const COCKPIT_TASK_SOURCES = [
   "user-prompt",
   "plan-binding",
   "plan-explanation",
+  "goal-task",
+  "agent-goal",
   "sidecar-todo",
   "manual",
   "workstream",

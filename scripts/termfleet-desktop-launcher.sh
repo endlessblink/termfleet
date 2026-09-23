@@ -103,10 +103,6 @@ fi
 export LIBGL_ALWAYS_SOFTWARE="${LIBGL_ALWAYS_SOFTWARE:-1}"
 export WEBKIT_DISABLE_COMPOSITING_MODE="${WEBKIT_DISABLE_COMPOSITING_MODE:-1}"
 export WEBKIT_DISABLE_DMABUF_RENDERER="${WEBKIT_DISABLE_DMABUF_RENDERER:-1}"
-# Keep the runtime handoff trace enabled on the dock acceptance surface while
-# the map Connect failure is being investigated; it writes only to temp files.
-export TERMINAL_WORKSPACE_TRACE_LATENCY="${TERMINAL_WORKSPACE_TRACE_LATENCY:-1}"
-export TERMINAL_WORKSPACE_TRACE_PTY="${TERMINAL_WORKSPACE_TRACE_PTY:-1}"
 export TERMFLEET_DAEMON_MEMORY_HIGH="${TERMFLEET_DAEMON_MEMORY_HIGH:-12G}"
 export TERMFLEET_DAEMON_TASKS_MAX="${TERMFLEET_DAEMON_TASKS_MAX:-10000}"
 # Bound the WebKit-backed desktop group separately from the daemon. A renderer
@@ -302,6 +298,18 @@ printf '\n[%s] launching TermFleet desktop wrapper\n' \
 # the child to exit cleanly before creating a window.
 set_display_credentials
 
+trace_env_args=()
+if [[ "${TERMINAL_WORKSPACE_TRACE_LATENCY:-}" == "1" ]]; then
+  trace_env_args+=(--setenv="TERMINAL_WORKSPACE_TRACE_LATENCY=1")
+else
+  unset TERMINAL_WORKSPACE_TRACE_LATENCY
+fi
+if [[ "${TERMINAL_WORKSPACE_TRACE_PTY:-}" == "1" ]]; then
+  trace_env_args+=(--setenv="TERMINAL_WORKSPACE_TRACE_PTY=1")
+else
+  unset TERMINAL_WORKSPACE_TRACE_PTY
+fi
+
 unit_name="termfleet-desktop-$(date +%s%N)"
 if command -v systemd-run >/dev/null 2>&1; then
   # The desktop unit owns the UI and every WebKit child. Kill the whole unit
@@ -343,10 +351,10 @@ if command -v systemd-run >/dev/null 2>&1; then
     --setenv="TERMFLEET_TASK_CONTEXT_MODEL=${TERMFLEET_TASK_CONTEXT_MODEL:-qwen2.5:7b}" \
     --setenv="TERMFLEET_AGENT_STATUS_TIMEOUT_MS=${TERMFLEET_AGENT_STATUS_TIMEOUT_MS:-1000}" \
     --setenv="TERMFLEET_AGENT_STATUS_DISABLE=${TERMFLEET_AGENT_STATUS_DISABLE:-1}" \
-     --setenv="TERMFLEET_CHILD_CONTEXT=$launch_context" \
-     --setenv="TERMFLEET_LAUNCH_PARENT=1" \
-     --setenv="TERMFLEET_UI_LAUNCH_CONTEXT=$launch_context" \
-    --setenv="TERMINAL_WORKSPACE_TRACE_LATENCY=${TERMINAL_WORKSPACE_TRACE_LATENCY:-}" \
+    --setenv="TERMFLEET_CHILD_CONTEXT=$launch_context" \
+    --setenv="TERMFLEET_LAUNCH_PARENT=1" \
+    --setenv="TERMFLEET_UI_LAUNCH_CONTEXT=$launch_context" \
+    "${trace_env_args[@]}" \
     "$0" --child >>"$LOG_FILE" 2>&1; then
     desktop_cgroup="/sys/fs/cgroup/user.slice/user-${UID}.slice/user@${UID}.service/app.slice/${unit_name}"
     for _ in {1..50}; do

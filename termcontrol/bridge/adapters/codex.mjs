@@ -35,6 +35,91 @@ export function transcriptPath(pane) {
   return rolloutIndex().get(pane.sessionId) || null;
 }
 
+export function pendingApproval(pane, { bytes = 1024 * 1024 } = {}) {
+  const file = transcriptPath(pane);
+  if (!file) return null;
+  const records = [];
+  for (const line of tailLines(file, bytes)) {
+    try { records.push(JSON.parse(line)); } catch { /* partial tail record */ }
+  }
+  return pendingApprovalFromRecords(records);
+}
+
+export function pendingApprovalFromRecords(records) {
+  const completed = new Set();
+  for (let i = records.length - 1; i >= 0; i--) {
+    const payload = records[i]?.payload;
+    if (!payload || typeof payload !== 'object') continue;
+    if (payload.type === 'custom_tool_call_output' || payload.type === 'function_call_output') {
+      if (payload.call_id) completed.add(payload.call_id);
+      continue;
+    }
+    if (
+      payload.type !== 'custom_tool_call'
+      || (payload.name !== 'exec' && payload.name !== 'functions.exec')
+      || completed.has(payload.call_id)
+    ) continue;
+    const request = escalatedExecRequest(payload.input);
+    if (!request) continue;
+    return {
+      kind: 'permission',
+      title: request.command || 'Run the requested command?',
+      detail: request.justification || 'This command needs your approval.',
+      sourceId: payload.call_id || records[i]?.timestamp || '',
+    };
+  }
+  return null;
+}
+
+function escalatedExecRequest(input) {
+  const source = String(input || '');
+  let offset = 0;
+  let found = null;
+  while ((offset = source.indexOf('tools.exec_command(', offset)) >= 0) {
+    const start = source.indexOf('{', offset);
+    if (start < 0) break;
+    const end = matchingBrace(source, start);
+    if (end < 0) break;
+    const object = source.slice(start, end + 1);
+    if (stringField(object, 'sandbox_permissions') === 'require_escalated') {
+      found = {
+        command: stringField(object, 'cmd') || stringField(object, 'command'),
+        justification: stringField(object, 'justification'),
+      };
+    }
+    offset = end + 1;
+  }
+  return found;
+}
+
+function matchingBrace(source, start) {
+  let depth = 0;
+  let quote = '';
+  let escaped = false;
+  for (let i = start; i < source.length; i++) {
+    const char = source[i];
+    if (quote) {
+      if (escaped) escaped = false;
+      else if (char === '\\') escaped = true;
+      else if (char === quote) quote = '';
+      continue;
+    }
+    if (char === '"' || char === "'") { quote = char; continue; }
+    if (char === '{') depth++;
+    else if (char === '}' && --depth === 0) return i;
+  }
+  return -1;
+}
+
+function stringField(object, name) {
+  const match = object.match(new RegExp(`(?:^|[{,\\s])(?:["']?${name}["']?)\\s*:\\s*("(?:[^"\\\\]|\\\\.)*"|'(?:[^'\\\\]|\\\\.)*')`));
+  if (!match) return '';
+  if (match[1][0] === '"') {
+    try { return JSON.parse(match[1]); } catch { return ''; }
+  }
+  return match[1].slice(1, -1).replace(/\\'/g, "'").replace(/\\\\/g, '\\');
+}
+
 const textOf = (content) => {
   if (typeof content === 'string') return content.trim();
   if (!Array.isArray(content)) return '';
@@ -116,4 +201,4 @@ function firstLine(v) {
   return String(v).split('\n').find((l) => l.trim()) ?.trim().slice(0, 140) ?? '';
 }
 
-export const approval = { yes: 'y\r', yesAlways: 'a\r', no: 'n\r' };
+export const approval = { yes: 'y\r', yesAlways: 'p\r', no: 'n\r' };

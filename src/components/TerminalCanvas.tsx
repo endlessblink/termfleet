@@ -283,6 +283,11 @@ export function TerminalCanvas({
   const searchMatchesRef = useRef<SearchMatch[]>([]);
   const activeSearchIndexRef = useRef(-1);
   const lastSelectionClientRef = useRef<{ x: number; y: number } | null>(null);
+  const pendingMouseReportClickRef = useRef<{
+    pointerId: number;
+    clientX: number;
+    clientY: number;
+  } | null>(null);
   const autoScrollRafRef = useRef<number | null>(null);
   const autoScrollInFlightRef = useRef(false);
   // Gate atlas construction until the bundled Hack faces are loaded so cell
@@ -449,6 +454,7 @@ export function TerminalCanvas({
     anchorRef.current = null;
     selectionPointerIdRef.current = null;
     lastSelectionClientRef.current = null;
+    pendingMouseReportClickRef.current = null;
     cancelSelectionAutoScroll();
     setAttachError(null);
     // Fold the supersample factor into the device pixel ratio used for the backing
@@ -1727,6 +1733,7 @@ export function TerminalCanvas({
   };
 
   const stopSelectionDrag = (event?: React.PointerEvent) => {
+    pendingMouseReportClickRef.current = null;
     cancelSelectionAutoScroll();
     const pointerId = selectionPointerIdRef.current;
     selectionPointerIdRef.current = null;
@@ -1750,11 +1757,26 @@ export function TerminalCanvas({
   const handlePointerDown = (event: React.PointerEvent) => {
     focusInput();
     if (modesRef.current.mouseReport && !event.shiftKey) {
-      if (sendPointerMouseReport(event)) {
-        event.preventDefault();
-        event.stopPropagation();
+      if (modesRef.current.altScreen) {
+        if (sendPointerMouseReport(event)) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+        return;
       }
-      return;
+      if (event.button === 0) {
+        pendingMouseReportClickRef.current = {
+          pointerId: event.pointerId,
+          clientX: event.clientX,
+          clientY: event.clientY,
+        };
+      } else {
+        if (sendPointerMouseReport(event)) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+        return;
+      }
     }
     if (event.button !== 0) return;
     const cell = pointerToSelectionPoint(event);
@@ -1775,6 +1797,18 @@ export function TerminalCanvas({
     if ((event.buttons & 1) === 0) {
       stopSelectionDrag(event);
       return;
+    }
+    if (
+      pendingMouseReportClickRef.current &&
+      pendingMouseReportClickRef.current.pointerId === event.pointerId
+    ) {
+      const dx = Math.abs(event.clientX - pendingMouseReportClickRef.current.clientX);
+      const dy = Math.abs(event.clientY - pendingMouseReportClickRef.current.clientY);
+      if (dx >= 4 || dy >= 4) {
+        pendingMouseReportClickRef.current = null;
+      } else {
+        return;
+      }
     }
     event.preventDefault();
     event.stopPropagation();
@@ -1836,7 +1870,20 @@ export function TerminalCanvas({
     const activeSelectionPointerId = selectionPointerIdRef.current;
     if (activeSelectionPointerId !== null) {
       if (activeSelectionPointerId !== event.pointerId) return;
+      const pendingClick = pendingMouseReportClickRef.current;
+      pendingMouseReportClickRef.current = null;
       stopSelectionDrag(event);
+      if (pendingClick && pendingClick.pointerId === event.pointerId) {
+        selectionRef.current = null;
+        drawSelectionOverlay();
+        if (sendPointerMouseReport(event)) {
+          sendPointerMouseReport(event, true);
+          event.preventDefault();
+          event.stopPropagation();
+        }
+        focusInput();
+        return;
+      }
       if (hasSelectionExtent(selectionRef.current)) copySelection();
       focusInput();
       return;

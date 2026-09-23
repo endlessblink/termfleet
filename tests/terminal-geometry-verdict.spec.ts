@@ -4,6 +4,8 @@ import {
   judgeKeyRoutes,
   judgePaneStream,
   judgePaneCapture,
+  judgePaneStability,
+  PANE_TEARING,
   hasSwallowedKey,
 } from "../scripts/lib/terminal-geometry-verdict.mjs";
 
@@ -75,6 +77,25 @@ test("a capture judge flags a blank pane and an off-window rect", () => {
   expect(judgePaneCapture(sample, () => {
     throw new Error("no magick");
   }).error).toContain("no magick");
+});
+
+// The idle-stability check: an unchanged pane must be pixel-identical between two
+// captures. This is the only rule that can see glyph-level corruption, which mean
+// brightness cannot.
+test("a pane that repaints while idle is flagged as tearing", () => {
+  const sample = { ...healthySplit(), rectX: 10, rectY: 20, rectWidth: 400, rectHeight: 300 };
+
+  expect(judgePaneStability(sample, () => 0).violations).toEqual([]);
+  expect(judgePaneStability(sample, () => 0.0005).violations).toEqual([]);
+
+  const torn = judgePaneStability(sample, () => 0.35);
+  expect(torn.violations.map((v: { code: string }) => v.code)).toEqual([PANE_TEARING]);
+
+  // An unusable rect or an unreadable comparison is reported, never silently passed.
+  expect(judgePaneStability({ ...sample, rectWidth: 0 }, () => 0.9).violations).toEqual([]);
+  expect(judgePaneStability(sample, () => {
+    throw new Error("compare failed");
+  }).error).toContain("compare failed");
 });
 
 test("a correctly sized split pane reports no violations", () => {

@@ -64,6 +64,43 @@
   }
   .pane:active{background:var(--surface-2)}
 
+  .attention-panel{
+    margin:0 0 14px;border:1px solid #6b5029;border-radius:var(--radius);
+    background:#1e1c17;overflow:hidden;
+  }
+  .attention-panel summary{
+    min-height:48px;padding:11px 14px;display:flex;align-items:center;gap:9px;
+    cursor:pointer;list-style:none;color:var(--waiting);font-weight:600;
+  }
+  .attention-panel summary::-webkit-details-marker{display:none}
+  .attention-panel summary::after{
+    content:'›';margin-left:auto;color:var(--muted);font-size:20px;line-height:1;
+    transform:rotate(90deg);transition:transform .15s ease;
+  }
+  .attention-panel:not([open]) summary::after{transform:rotate(0)}
+  .attention-count{
+    min-width:22px;height:22px;padding:0 7px;border-radius:11px;
+    display:inline-grid;place-items:center;background:var(--waiting);color:#211a0d;
+    font-size:12px;font-weight:700;
+  }
+  .attention-list{border-top:1px solid #49391f;max-height:42dvh;overflow-y:auto}
+  .attention-item{
+    display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:10px;
+    padding:10px 12px;border-bottom:1px solid #393025;
+  }
+  .attention-item:last-child{border-bottom:0}
+  .attention-copy{min-width:0}
+  .attention-project{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .attention-reason{
+    margin-top:2px;color:var(--muted);font-size:12px;line-height:1.35;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .attention-review{
+    min-width:72px;min-height:44px;padding:9px 13px;border:1px solid #76592d;
+    border-radius:10px;background:#2a2216;color:#f2c57c;font:600 13px var(--ui);cursor:pointer;
+  }
+  .attention-review:active{transform:translateY(1px);background:#352a19}
+
   /* Waiting: the only card that should stop your thumb. */
   .pane.waiting{
     border-color:#6b5029;
@@ -127,6 +164,11 @@
   }
   .livemark.quiet{color:var(--dim);font-weight:500}
   .livemark.gone{color:var(--waiting)}
+  .agentstatus{display:flex;flex-wrap:wrap;gap:6px 10px;margin-top:8px;color:var(--dim);font-size:12px}
+  .agentstatus .workingtime{color:var(--working);font-weight:600}
+  .agentstatus .quota{white-space:nowrap}
+  .chatstatus:empty{display:none}
+  .chatstatus .agentstatus{margin-top:3px;gap:3px 8px;font-size:12px}
 
   .headlive{
     display:inline-flex;align-items:center;gap:5px;margin-left:8px;
@@ -212,6 +254,52 @@
   }
   .msg.assistant .bubble{padding:0 2px;font-size:15.5px;line-height:1.55;color:var(--text)}
   .bubble{white-space:pre-wrap;word-wrap:break-word;overflow-wrap:anywhere}
+  .richbubble{white-space:normal}
+  .rich > *{margin:0 0 10px}
+  .rich > *:last-child{margin-bottom:0}
+  .rich ul, .rich ol{padding-inline-start:22px}
+  .rich li{margin:0 0 4px}
+  .rich h4{font-size:15.5px;font-weight:600;margin-top:14px}
+  .rich hr{border:0;border-top:1px solid var(--line)}
+  .rich a{color:var(--accent)}
+  .rich code{
+    font-family:var(--mono);font-size:.88em;background:var(--surface-2);
+    border:1px solid var(--line);border-radius:5px;padding:0 4px;
+  }
+  .rich pre{
+    font-family:var(--mono);font-size:12.5px;line-height:1.45;background:#0f0f0e;
+    border:1px solid var(--line);border-radius:10px;padding:10px 12px;
+    overflow-x:auto;white-space:pre;-webkit-overflow-scrolling:touch;
+  }
+  .rich pre code{background:none;border:0;padding:0;font-size:inherit}
+  .tablewrap{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--line);border-radius:10px}
+  /* Words never split mid-word; a wide table scrolls sideways instead, the way
+     chat apps show tables on a phone. */
+  .rich table{border-collapse:collapse;width:max-content;min-width:100%;font-size:14px;line-height:1.4}
+  .rich th, .rich td{
+    padding:8px 10px;text-align:start;vertical-align:top;border-bottom:1px solid var(--line);
+    overflow-wrap:normal;word-break:normal;min-width:4.5em;max-width:15em;unicode-bidi:plaintext;
+  }
+  .rich td code{white-space:nowrap}
+  @media (max-width:640px){
+    .stacked{border:0;overflow:visible}
+    .stacked table{width:100%;min-width:0}
+    .stacked thead{display:none}
+    .stacked tr{
+      display:block;margin:0 0 10px;padding:10px 12px;
+      background:var(--surface);border:1px solid var(--line);border-radius:10px;
+    }
+    .stacked td{display:block;max-width:none;min-width:0;padding:3px 0;border:0;overflow-wrap:break-word}
+    .stacked td:has(> div:empty){display:none}
+    .stacked td::before{
+      content:attr(data-label);display:block;
+      font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);font-weight:600;
+    }
+    .stacked td:first-child{font-weight:600}
+  }
+  .rich code{unicode-bidi:plaintext}
+  .rich th{background:var(--surface-2);font-weight:600;white-space:nowrap}
+  .rich tr:last-child td{border-bottom:0}
   .tool{
     font-family:var(--mono);font-size:13px;color:var(--muted);
     background:transparent;border:0;border-left:2px solid #33332e;
@@ -345,12 +433,22 @@
   .cmdlist .none{padding:14px 12px;color:var(--dim);font-size:13.5px}
 
   .askbox{
-    position:fixed;left:0;right:0;bottom:0;z-index:6;
+    flex:none;z-index:6;max-width:720px;width:100%;margin:0 auto;
+    max-height:min(52dvh,420px);overflow-y:auto;overscroll-behavior:contain;
+    display:flex;flex-direction:column;min-height:0;
     background:rgba(20,20,19,.97);backdrop-filter:blur(12px);border-top:1px solid var(--line);
-    padding:14px 12px calc(12px + env(safe-area-inset-bottom));
+    padding:14px 12px 12px;
   }
+  .askbox.hasscreen{height:min(52dvh,420px);overflow:hidden}
+  .askbox > h3,.askbox > p,.askbox .opts{flex:none}
   .askbox h3{margin:0 0 3px;font-size:14px;font-weight:600;letter-spacing:-.01em}
   .askbox p{margin:0 0 12px;font-size:13px;color:var(--muted)}
+  .askbox.hasscreen > p.detail{max-height:44px;overflow:auto}
+  .askbox .askscreen{
+    flex:1 1 auto;min-height:44px;max-height:none;overflow:auto;margin:0 0 12px;padding:10px;border-radius:10px;
+    background:#10100f;border:1px solid var(--line);color:var(--muted);
+    font:12px/1.45 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere;
+  }
   .askbox .opts{display:flex;flex-direction:column;gap:8px}
   .askbox .opts button{
     width:100%;min-height:48px;padding:11px 14px;text-align:left;
@@ -401,6 +499,7 @@
   <div style="min-width:0">
     <h1 id="title">TermControl</h1>
     <div class="sub" id="sub">loading…</div>
+    <div class="chatstatus" id="chat-status"></div>
   </div>
 </header>
 <main id="main" role="main" aria-live="polite" aria-relevant="additions text"><div class="spin">loading…</div></main>
@@ -422,10 +521,13 @@ function checkVersion(reported) {
   if (reported !== seenVersion) location.reload();
 }
 let releaseChatScroll = null;
+let releaseChatWake = null;
 const title = document.getElementById('title');
 const sub = document.getElementById('sub');
+const chatStatus = document.getElementById('chat-status');
 const nav = document.getElementById('nav');
 let timer = null;
+let clockTimer = null;
 
 const ago = (ms) => {
   const s = Math.max(0, Math.round((Date.now() - ms) / 1000));
@@ -452,17 +554,200 @@ const quietFor = (ms) => {
   if (s < 3600) return `${Math.round(s / 60)}m`;
   return `${Math.round(s / 3600)}h`;
 };
+const duration = (ms) => {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const seconds = total % 60;
+  return `${hours ? hours + 'h ' : ''}${minutes}m ${seconds}s`;
+};
+const quotaHtml = (limits) => {
+  const five = limits?.fiveHour?.remainingPercent;
+  const weekly = limits?.weekly?.remainingPercent;
+  return [
+    five != null ? `<span class="quota">5-hour ${Math.round(five)}% left</span>` : '',
+    weekly != null ? `<span class="quota">weekly ${Math.round(weekly)}% left</span>` : '',
+  ].filter(Boolean).join('');
+};
+const statusHtml = (pane) => {
+  const working = pane.workingSince
+    ? `<span class="workingtime" data-working-since="${Number(pane.workingSince)}">Working (${duration(Date.now() - pane.workingSince)})</span>`
+    : '';
+  const quotas = quotaHtml(pane.limits);
+  return working || quotas ? `<div class="agentstatus">${working}${quotas}</div>` : '';
+};
+const updateClocks = () => {
+  document.querySelectorAll('[data-working-since]').forEach((el) => {
+    const since = Number(el.dataset.workingSince);
+    if (Number.isFinite(since)) el.textContent = `Working (${duration(Date.now() - since)})`;
+  });
+};
+clockTimer = setInterval(updateClocks, 1000);
 const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+
+// Agents answer in Markdown and terminals draw tables with box lines. Read as
+// raw text on a phone both look like a terminal, not a conversation, so the
+// chat turns them into real paragraphs, lists, code blocks and tables.
+const BOX_RULE = /^[\s─━═┌┐└┘├┤┬┴┼╭╮╰╯╞╡╪+\-|:]+$/;
+// A line reads right-to-left only when it is mostly Hebrew/Arabic. Going by the
+// first letter flips an English line that merely starts with a Hebrew name.
+const dirOf = (s) => {
+  const text = String(s || '');
+  const rtl = (text.match(/[֐-׿؀-ۿ]/g) || []).length;
+  const ltr = (text.match(/[A-Za-zÀ-ɏ]/g) || []).length;
+  return rtl > ltr ? 'rtl' : 'ltr';
+};
+const inlineRich = (s) => esc(s)
+  .replace(/`([^`]+)`/g, '<code>$1</code>')
+  .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+  .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s"]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+const tableHtml = (rows, header) => {
+  const width = Math.max(...rows.map((r) => r.length));
+  const cells = (row, tag) => Array.from({ length: width }, (_, i) =>
+    `<${tag} dir="${dirOf(row[i])}">${inlineRich((row[i] || '').trim())}</${tag}>`).join('');
+  const [head, ...body] = header ? rows : [null, ...rows];
+  // Three or more columns do not fit a phone side by side, so each row becomes
+  // a small card with every value under its column name.
+  const stack = Boolean(head) && width >= 3;
+  const labelled = (row) => Array.from({ length: width }, (_, i) =>
+    `<td data-label="${esc((head[i] || '').trim()).replace(/"/g, '&quot;')}"><div dir="${dirOf(row[i])}">${inlineRich((row[i] || '').trim())}</div></td>`).join('');
+  return `<div class="tablewrap${stack ? ' stacked' : ''}"><table>${head ? `<thead><tr>${cells(head, 'th')}</tr></thead>` : ''}`
+    + `<tbody>${body.map((r) => `<tr>${stack ? labelled(r) : cells(r, 'td')}</tr>`).join('')}</tbody></table></div>`;
+};
+const pipeCells = (line) => line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|');
+function richText(src) {
+  const lines = String(src || '').replace(/\r/g, '').split('\n');
+  const out = [];
+  let para = [];
+  const flush = () => {
+    if (para.length) out.push(`<p dir="${dirOf(para.join(' '))}">${para.map(inlineRich).join('<br>')}</p>`);
+    para = [];
+  };
+  for (let i = 0; i < lines.length;) {
+    const line = lines[i];
+    if (/^\s*```/.test(line)) {
+      flush();
+      const code = [];
+      i += 1;
+      while (i < lines.length && !/^\s*```/.test(lines[i])) code.push(lines[i++]);
+      i += 1;
+      out.push(`<pre><code>${esc(code.join('\n'))}</code></pre>`);
+      continue;
+    }
+    // Markdown table: a pipe row followed by a --- separator row.
+    if (/^\s*\|.*\|\s*$/.test(line) && /^\s*\|?\s*:?-{2,}/.test(lines[i + 1] || '')) {
+      flush();
+      const rows = [pipeCells(line)];
+      i += 2;
+      while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) rows.push(pipeCells(lines[i++]));
+      out.push(tableHtml(rows, true));
+      continue;
+    }
+    // Box-drawn table: rows split by │, rule lines between them.
+    if (/│.*│|│.+/.test(line) && (line.match(/│/g) || []).length >= 2) {
+      flush();
+      const rows = [];
+      let header = false;
+      while (i < lines.length && ((lines[i].match(/│/g) || []).length >= 2 || (BOX_RULE.test(lines[i]) && /[─━═]/.test(lines[i])))) {
+        if ((lines[i].match(/│/g) || []).length >= 2) {
+          rows.push(lines[i].trim().replace(/^│/, '').replace(/│$/, '').split('│'));
+        } else if (rows.length === 1) {
+          header = true;
+        }
+        i += 1;
+      }
+      out.push(tableHtml(rows, header && rows.length > 1));
+      continue;
+    }
+    if (BOX_RULE.test(line) && /[─━═]{3,}|-{3,}/.test(line)) { flush(); out.push('<hr>'); i += 1; continue; }
+    const heading = line.match(/^\s*#{1,6}\s+(.*)$/);
+    if (heading) { flush(); out.push(`<h4 dir="${dirOf(heading[1])}">${inlineRich(heading[1])}</h4>`); i += 1; continue; }
+    const bullet = /^\s*(?:[-*•]|\d+[.)])\s+/;
+    if (bullet.test(line)) {
+      flush();
+      const ordered = /^\s*\d+[.)]/.test(line);
+      const items = [];
+      while (i < lines.length && bullet.test(lines[i])) items.push(lines[i++].replace(bullet, ''));
+      const tag = ordered ? 'ol' : 'ul';
+      out.push(`<${tag}>${items.map((item) => `<li dir="${dirOf(item)}">${inlineRich(item)}</li>`).join('')}</${tag}>`);
+      continue;
+    }
+    if (!line.trim()) { flush(); i += 1; continue; }
+    para.push(line.trim());
+    i += 1;
+  }
+  flush();
+  return `<div class="rich">${out.join('')}</div>`;
+}
+const approvalHistoryKey = (id) => `termcontrol-approval-history:${id}`;
+const readApprovalHistory = (id) => {
+  try {
+    const entries = JSON.parse(localStorage.getItem(approvalHistoryKey(id)) || '[]');
+    return Array.isArray(entries) ? entries.slice(-20) : [];
+  } catch {
+    return [];
+  }
+};
+const rememberApproval = (id, entry) => {
+  const entries = readApprovalHistory(id).filter((item) => item.askId !== entry.askId);
+  entries.push(entry);
+  try {
+    localStorage.setItem(approvalHistoryKey(id), JSON.stringify(entries.slice(-20)));
+  } catch {
+    // The current chat still records the answer when private storage is unavailable.
+  }
+  return entries.slice(-20);
+};
+
+function openFleetPane(el) {
+  const id = el.dataset.id;
+  const mainRect = main.getBoundingClientRect();
+  const paneRect = el.getBoundingClientRect();
+  const fleetState = { ...(history.state || {}) };
+  delete fleetState.pane;
+  fleetState.fleetReturn = {
+    id,
+    origin: el.classList.contains('attention-review') ? 'review' : 'pane',
+    offset: paneRect.top - mainRect.top,
+    scrollTop: main.scrollTop,
+  };
+  history.replaceState(fleetState, '', location.href);
+  history.pushState({ pane: id }, '', '#' + id);
+  chat(id);
+}
+
+function restoreFleetReturn() {
+  const restore = history.state?.fleetReturn;
+  if (!restore) return;
+
+  main.scrollTop = Number(restore.scrollTop) || 0;
+  const state = { ...(history.state || {}) };
+  delete state.fleetReturn;
+  history.replaceState(state, '', location.href);
+
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    const preferred = restore.origin === 'review' ? '.attention-review' : '.pane';
+    const pane = [...main.querySelectorAll(preferred)]
+      .find((candidate) => candidate.dataset.id === restore.id);
+    if (!pane) return;
+    main.scrollTop += pane.getBoundingClientRect().top
+      - main.getBoundingClientRect().top
+      - Number(restore.offset || 0);
+  }));
+}
 
 async function fleet() {
   const mine = ++view;
   clearInterval(timer);
   releaseChatScroll?.();
+  releaseChatWake?.();
   document.body.classList.remove('chat');
   document.querySelector('.composer')?.remove();
+  document.querySelector('.askbox')?.remove();
   document.querySelector('.sendstate')?.remove();
   nav.innerHTML = '';
   title.textContent = 'TermControl';
+  chatStatus.innerHTML = '';
   let r;
   try {
     const resp = await fetch('/api/panes', { signal: AbortSignal.timeout(12000) });
@@ -485,22 +770,26 @@ async function fleet() {
 
   if (!panes.length) { main.innerHTML = '<div class="empty">No agent terminals in the last day.</div>'; return; }
 
-  const mode = r.view === 'manual' ? 'manual' : 'projects';
-  const switcher = `<div class="switch" role="group" aria-label="How to arrange terminals">
-      <button type="button" data-view="projects" aria-pressed="${mode === 'projects'}">Projects</button>
-      <button type="button" data-view="manual" aria-pressed="${mode === 'manual'}">My order</button>
-    </div>`;
+  const attention = panes.filter((p) => p.attention);
+  const attentionOpen = sessionStorage.getItem('termcontrol-attention-open') !== 'closed';
+  const attentionPanel = attention.length ? `<details class="attention-panel"${attentionOpen ? ' open' : ''}>
+      <summary><span>Needs you</span><span class="attention-count">${attention.length}</span></summary>
+      <div class="attention-list">
+        ${attention.map((p) => `<div class="attention-item">
+          <div class="attention-copy">
+            <div class="attention-project">${esc(p.project)} · ${esc(p.provider)}</div>
+            <div class="attention-reason">${esc(p.attention.title || 'Waiting for your answer')}</div>
+          </div>
+          <button class="attention-review" data-id="${esc(p.id)}" aria-label="Review ${esc(p.project)} approval">Review</button>
+        </div>`).join('')}
+      </div>
+    </details>` : '';
 
+  const mode = r.view === 'manual' ? 'manual' : 'projects';
   if (mode === 'manual') {
-    main.innerHTML = switcher + panes.map((p, i) => `<div class="rowwrap">
-        ${card(p)}
-        <div class="moves">
-          <button type="button" data-move="up" data-at="${i}" data-id="${esc(p.id)}" aria-label="Move ${esc(p.project)} up" ${i === 0 ? 'disabled' : ''}>↑</button>
-          <button type="button" data-move="down" data-at="${i}" data-id="${esc(p.id)}" aria-label="Move ${esc(p.project)} down" ${i === panes.length - 1 ? 'disabled' : ''}>↓</button>
-        </div>
-      </div>`).join('');
+    main.innerHTML = attentionPanel + panes.map(card).join('');
   } else {
-    main.innerHTML = switcher + (r.groups || []).map((g) => `<section class="projgroup">
+    main.innerHTML = attentionPanel + (r.groups || []).map((g) => `<section class="projgroup">
         <h2 class="projhead${g.attention === 0 ? ' needs' : ''}">
           ${g.emoji ? `<span class="pemoji" aria-hidden="true">${esc(g.emoji)}</span>` : ''}
           <span>${esc(g.project)}</span>
@@ -510,29 +799,19 @@ async function fleet() {
       </section>`).join('');
   }
 
-  const savePrefs = (body) => fetch('/api/prefs', {
-    method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
-  }).catch(() => {});
-
-  main.querySelectorAll('.switch button').forEach((el) => {
-    el.onclick = async () => { await savePrefs({ view: el.dataset.view }); fleet(); };
+  main.querySelectorAll('.attention-review').forEach((el) => {
+    el.onclick = () => openFleetPane(el);
   });
 
-  main.querySelectorAll('[data-move]').forEach((el) => {
-    el.onclick = async () => {
-      // Name the terminal rather than its row: the list may have refreshed
-      // between drawing this arrow and your thumb reaching it.
-      await savePrefs({ move: el.dataset.id, direction: el.dataset.move });
-      fleet();
-    };
+  const attentionDetails = main.querySelector('.attention-panel');
+  attentionDetails?.querySelector('summary')?.addEventListener('click', () => {
+    sessionStorage.setItem('termcontrol-attention-open', attentionDetails.open ? 'closed' : 'open');
   });
 
   main.querySelectorAll('.pane').forEach((el) => {
-    el.onclick = () => {
-      history.pushState({ pane: el.dataset.id }, '', '#' + el.dataset.id);
-      chat(el.dataset.id);
-    };
+    el.onclick = () => openFleetPane(el);
   });
+  restoreFleetReturn();
   timer = setInterval(fleet, 15000);
 }
 
@@ -550,6 +829,7 @@ function card(p) {
     </div>
     <div class="task${p.task ? '' : ' none'}">${esc(p.task || 'no task declared')}</div>
     ${p.turn === 'waiting' ? '<div class="state">Needs your answer</div>' : ''}
+    ${statusHtml(p)}
     ${p.producing
         ? `<div class="livemark"><span class="dot producing" aria-hidden="true"></span>Live now</div>
            ${p.lastLine ? `<div class="tail">${trace(p.pulse)}<span class="text">${esc(p.lastLine)}</span></div>` : ''}`
@@ -562,15 +842,18 @@ function card(p) {
 async function chat(id) {
   const mine = ++view;
   clearInterval(timer);
+  releaseChatWake?.();
   nav.innerHTML = '<button class="back">‹ Fleet</button>';
   nav.querySelector('.back').onclick = () => history.back();
   main.innerHTML = '<div class="spin">loading…</div>';
+  chatStatus.innerHTML = '';
 
   let lastSignature = '';
   // A message typed into an agent only turns up in its record once the agent
   // reads it — sometimes a minute later. Until then, show it as yours, marked
   // as on its way, so it never looks like the message vanished.
   let justSent = null;
+  let approvalHistory = readApprovalHistory(id);
   let shown = 60;                     // how far back this chat is showing
   let mode = sessionStorage.getItem('tc-mode') === 'screen' ? 'screen' : 'chat';
 
@@ -610,6 +893,37 @@ async function chat(id) {
           : '<span class="headlive quiet"><span class="dot idle" aria-hidden="true"></span>quiet</span>');
     sub.innerHTML = esc(`${d.pane.provider}${d.pane.task ? ' · ' + d.pane.task : ''}`)
       + (d.producing && d.lastLine ? `<span class="headtail">${esc(d.lastLine)}</span>` : '');
+    chatStatus.innerHTML = statusHtml(d.pane);
+
+    if (!document.querySelector('.composer')) {
+      mountComposer(
+        id,
+        (entry) => {
+          if (entry?.refresh) { lastSignature = ''; return render(); }
+          justSent = entry; following = true; render();
+        },
+        (next) => {
+          mode = next;
+          sessionStorage.setItem('tc-mode', mode);
+          lastSignature = '';
+          following = true;
+          clearInterval(timer);
+          timer = setInterval(render, mode === 'screen' ? 2000 : 8000);
+          render();
+        },
+        () => mode,
+      );
+    }
+    if (d.ask) {
+      mountAsk(id, d.ask, (answer) => {
+        approvalHistory = rememberApproval(id, answer);
+        lastSignature = '';
+        following = true;
+        return render();
+      });
+    } else {
+      document.querySelector('.askbox')?.remove();
+    }
 
     if (!d.events.length) {
       // Some terminals keep no conversation of their own — a side session, a
@@ -618,10 +932,27 @@ async function chat(id) {
       const shown = await fetch(`/api/screen?pane=${encodeURIComponent(id)}`)
         .then((x) => x.json()).catch(() => ({}));
       const screen = shown.screen || '';
-      main.innerHTML = screen
-        ? `<div class="note">This terminal keeps no conversation of its own, so here is its screen.</div>
-           <div class="screen">${esc(screen)}</div>`
-        : '<div class="empty">Nothing recorded for this terminal yet.</div>';
+      const pending = justSent
+        ? `<div class="msg user mine pendingmsg">
+             <div class="who">you<span class="when">${justSent.delivered ? 'sent — waiting for the agent to read it' : 'sending…'}</span></div>
+             <div class="bubble">${esc(justSent.text)}</div>
+           </div>`
+        : '';
+      const approvals = approvalHistory.map((entry) => `<div class="msg user mine approvalmsg">
+          <div class="who">you<span class="when">${entry.at ? ago(entry.at) : ''}</span></div>
+          <div class="bubble">${esc(entry.text)}</div>
+        </div>`).join('');
+      // Chat mode stays a chat even here: the screen is shown as the
+      // terminal's latest message, with its tables and lists made readable.
+      // The raw character grid is one tap away under Screen.
+      main.innerHTML = (screen
+        ? mode === 'screen'
+          ? `<div class="screen">${esc(screen)}</div>`
+          : `<div class="msg assistant">
+               <div class="who">${esc(d.pane.provider)}<span class="when">on screen now</span></div>
+               <div class="bubble richbubble">${richText(screen.replace(/[ \t]+$/gm, ''))}</div>
+             </div>`
+        : approvalHistory.length ? '' : '<div class="empty">Nothing recorded for this terminal yet.</div>') + approvals + pending;
       main.scrollTop = main.scrollHeight;
       return;
     }
@@ -642,20 +973,31 @@ async function chat(id) {
       ? '<div class="start">That is the start of this conversation.</div>'
       : '<button type="button" class="earlier">Show earlier messages</button>';
 
-    const html = older + d.events.map((e) => {
-      if (e.kind === 'tool') {
-        return `<div class="tool"><b>${esc(e.name)}</b>${e.summary ? ' · ' + esc(e.summary) : ''}</div>`;
-      }
+    const visibleEvents = d.events.filter((event) => event.kind !== 'tool');
+    // Approval answers are local chat events, but they still belong at their
+    // real time in the conversation. Appending them after every transcript
+    // event makes an old answer cover newer agent replies and looks frozen.
+    const displayEvents = [
+      ...visibleEvents.map((event, index) => ({ ...event, localApproval: false, order: index })),
+      ...approvalHistory.map((entry, index) => ({
+        kind: 'user', text: entry.text, at: entry.at,
+        localApproval: true, order: visibleEvents.length + index,
+      })),
+    ].sort((a, b) => {
+      const aTime = new Date(a.at || 0).getTime();
+      const bTime = new Date(b.at || 0).getTime();
+      return aTime - bTime || a.order - b.order;
+    });
+    const html = older + displayEvents.map((e) => {
       const when = e.at ? ago(new Date(e.at).getTime()) : '';
-      return `<div class="msg ${e.kind}">
+      return `<div class="msg ${e.kind}${e.localApproval ? ' mine approvalmsg' : ''}">
         <div class="who">${e.kind === 'user' ? 'you' : esc(d.pane.provider)}${when ? `<span class="when">${when}</span>` : ''}</div>
-        <div class="bubble">${esc(e.text)}</div>
+        ${e.kind === 'user'
+          ? `<div class="bubble" dir="auto">${esc(e.text)}</div>`
+          : `<div class="bubble richbubble">${richText(e.text)}</div>`}
       </div>`;
     }).join('')
-      + (d.pending.length
-        ? `<div class="tool pending"><b>running</b> · ${esc(d.pending.join(', '))}</div>`
-        : '')
-      + (justSent && !d.events.some((e) => e.kind === 'user' && (e.text || '').includes(justSent.text))
+      + (justSent && !visibleEvents.some((e) => e.kind === 'user' && (e.text || '').includes(justSent.text))
         ? `<div class="msg user mine pendingmsg">
              <div class="who">you<span class="when">${justSent.delivered ? 'sent — waiting for the agent to read it' : 'sending…'}</span></div>
              <div class="bubble">${esc(justSent.text)}</div>
@@ -663,7 +1005,7 @@ async function chat(id) {
         : '');
 
     // Once the agent's own record shows it, stop holding our copy.
-    if (justSent && d.events.some((e) => e.kind === 'user' && (e.text || '').includes(justSent.text))) {
+    if (justSent && visibleEvents.some((e) => e.kind === 'user' && (e.text || '').includes(justSent.text))) {
       justSent = null;
     }
 
@@ -718,24 +1060,23 @@ async function chat(id) {
     }
   };
 
+  // Mobile browsers pause polling while this page is in the background. Fetch
+  // immediately when the operator returns so a waiting permission is visible
+  // without waiting for the next interval.
+  const refreshWhenVisible = () => {
+    if (mine === view && document.visibilityState !== 'hidden') render();
+  };
+  window.addEventListener('focus', refreshWhenVisible);
+  window.addEventListener('pageshow', refreshWhenVisible);
+  document.addEventListener('visibilitychange', refreshWhenVisible);
+  releaseChatWake = () => {
+    window.removeEventListener('focus', refreshWhenVisible);
+    window.removeEventListener('pageshow', refreshWhenVisible);
+    document.removeEventListener('visibilitychange', refreshWhenVisible);
+    releaseChatWake = null;
+  };
+
   await render();
-  mountComposer(
-    id,
-    (entry) => {
-      if (entry?.refresh) { lastSignature = ''; return render(); }
-      justSent = entry; following = true; render();
-    },
-    (next) => {
-      mode = next;
-      sessionStorage.setItem('tc-mode', mode);
-      lastSignature = '';
-      following = true;
-      clearInterval(timer);
-      timer = setInterval(render, mode === 'screen' ? 2000 : 8000);
-      render();
-    },
-    () => mode,
-  );
   // The composer reserves space after the first paint, so land on the newest
   // message once the layout has actually settled.
   requestAnimationFrame(() => requestAnimationFrame(() => {
@@ -746,8 +1087,68 @@ async function chat(id) {
   timer = setInterval(render, mode === 'screen' ? 2000 : 8000);
 }
 
+function mountAsk(id, ask, onDone) {
+  document.body.classList.add('chat');
+  const current = document.querySelector('.askbox');
+  if (current?.dataset.askId === ask.id) return;
+  current?.remove();
+
+  const box = document.createElement('section');
+  box.className = ask.screen ? 'askbox hasscreen' : 'askbox';
+  box.dataset.askId = ask.id;
+  box.setAttribute('aria-label', ask.kind === 'permission' ? 'Permission request' : 'Question from the agent');
+  box.innerHTML = `
+    <h3>${esc(ask.header || (ask.kind === 'permission' ? 'Permission requested' : 'Your answer is needed'))}</h3>
+    ${ask.screen ? '' : `<p>${esc(ask.title)}</p>`}
+    ${ask.detail ? `<p class="detail">${esc(ask.detail)}</p>` : ''}
+    ${ask.screen ? `<div class="askscreen">${esc(ask.screen)}</div>` : ''}
+    <div class="opts">${ask.options.map((option) => `
+      <button type="button" data-choice="${esc(option.key)}">
+        ${esc(option.label)}
+        ${option.detail ? `<span class="detail">${esc(option.detail)}</span>` : ''}
+      </button>`).join('')}</div>
+    <p class="askresult" role="status"></p>`;
+  const composer = document.querySelector('.composer');
+  if (composer) composer.before(box);
+  else document.body.appendChild(box);
+
+  box.querySelectorAll('[data-choice]').forEach((button) => {
+    button.onclick = async () => {
+      box.querySelectorAll('button').forEach((item) => { item.disabled = true; });
+      const result = box.querySelector('.askresult');
+      result.textContent = 'Sending your answer…';
+      let response;
+      try {
+        const sent = await fetch('/api/send', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ pane: id, choice: button.dataset.choice, askId: ask.id }),
+          signal: AbortSignal.timeout(8000),
+        });
+        response = await sent.json();
+      } catch {
+        response = { error: 'Could not reach your machine. Nothing was approved.' };
+      }
+      if (response.error) {
+        result.textContent = response.error;
+        box.querySelectorAll('button').forEach((item) => { item.disabled = false; });
+        return;
+      }
+      result.textContent = 'Answer delivered.';
+      box.remove();
+      const option = ask.options.find((item) => item.key === button.dataset.choice);
+      onDone?.({
+        askId: ask.id,
+        text: `Permission answer: ${option?.label || button.dataset.choice}`,
+        at: Date.now(),
+      });
+    };
+  });
+}
+
 function mountComposer(id, onSent, onMode, view = () => 'chat') {
   document.body.classList.add('chat');
+  document.querySelector('.askbox')?.remove();
   const old = document.querySelector('.composer');
   if (old) old.remove();
 

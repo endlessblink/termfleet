@@ -199,7 +199,44 @@ function looksLikeLifecycleOrReviewText(text: string) {
     /^(?:another\s+fail|again|update\s+that\s+to\s+the\s+goal)$/i.test(text) ||
     /^Goal\s+(?:achieved|stalled|resumed|paused)\b/i.test(text) ||
     /^(?:SessionStart|UserPromptSubmit|PreToolUse|PostToolUse)\s+hook\b/i.test(text) ||
+    looksLikeHarnessPlumbing(text) ||
     /^(?:I|We|My|Our)\s+/i.test(text)
+  );
+}
+
+/**
+ * Harness-injected plumbing — the OpenCode/Codex goal-mode and continuation prompts the
+ * tool writes into the conversation ("Continue working toward the active session goal.
+ * The objective below is user-provided data."). It is the tool talking to the agent,
+ * never the operator's ask and never the pane's work, and it reached a live Task row
+ * (2026-09-16). Distinctive phrases only, so a real ask that happens to mention a goal
+ * is unaffected.
+ */
+export function looksLikeHarnessPlumbing(text: string) {
+  return (
+    /\bactive session goal\b/i.test(text) ||
+    /\buser-provided data\b/i.test(text) ||
+    /\bthe objective below is\b/i.test(text) ||
+    /^Continue working toward the\b/i.test(text) ||
+    /\bdo not rely on intent, partial progress\b/i.test(text) ||
+    /\b(?:auto-?continu(?:e|es|ed|ation)|continuation behavior)\b/i.test(text)
+  );
+}
+
+/**
+ * The hook/lifecycle shapes from `looksLikeLifecycleOrReviewText`, WITHOUT the
+ * first-person clause. The operator's own report may start with "I" ("I click on
+ * Mark down and it still happens") — that is their ask, and the lenient operator
+ * gate must keep it. Agent prose ("I committed …") is still refused on the
+ * strict/authoritative paths, where the first-person clause belongs.
+ */
+function looksLikeAgentLifecycleChrome(text: string) {
+  return (
+    /^>\s*/.test(text) ||
+    /^(?:another\s+fail|again|update\s+that\s+to\s+the\s+goal)$/i.test(text) ||
+    /^Goal\s+(?:achieved|stalled|resumed|paused)\b/i.test(text) ||
+    /^(?:SessionStart|UserPromptSubmit|PreToolUse|PostToolUse)\s+hook\b/i.test(text) ||
+    looksLikeHarnessPlumbing(text)
   );
 }
 
@@ -221,6 +258,22 @@ function looksGibberish(text: string) {
   return (
     /\b[a-z]{7,}\b/i.test(text) &&
     /\b(?:fgh|dfg|asdf|sdf|ghd|qwe|zx)\w*\b/i.test(text)
+  );
+}
+
+/**
+ * Class D3 in docs/cockpit-label-quality-matrix.md — text mangled by stripping
+ * inline code, names, or links: a space can never precede a comma or full stop
+ * ("delivery to both and from .", "like this - . no cropping"). The damage is
+ * invisible to every shape check, so it needs its own gate; a live pane stood
+ * with "Complete — The fix is deployed, and Resend confirmed delivery to both
+ * and from ." as its Task row (2026-09-16 sweep).
+ */
+function looksDamagedByStripping(text: string) {
+  return (
+    /\s[,.](?:\s|$)/.test(text) ||
+    /\s-+\s*\.(?:\s|$)/.test(text) ||
+    /\b(?:the|a|an|to|from|of|and|or|with|for)\s+[.!?]$/i.test(text)
   );
 }
 
@@ -479,7 +532,7 @@ function baseQuality(
     /^test(?::[\w-]+)?\s+(?:failed|failure)\b/i.test(text) ||
     /^(?:push|deploy)(?:ing)?\s+to\s+production\s+and\s+verif(?:y|ying)\b/i.test(text) ||
     /^verif(?:y|ying)\s+the\s+installed\s+(?:terminal\s+)?labels\b/i.test(text) ||
-    /^(?:create|set|make|define)\s+(?:a\s+)?goal\b/i.test(text) ||
+    /^(?:(?:create|set|define)\s+(?:a|the)\s+goal|make\s+(?:this|that|it|these|those)\s+(?:a|the)\s+goal)\b/i.test(text) ||
     /(\p{L})\1{5,}/u.test(text) ||
     /^(?:you['’]?re|you are)\s+right\b|^(?:i['’]?m|i am|i['’]?m sorry|i apologize)\b|^honest\s+status\b/i.test(text) ||
     /\b(?:display boundary|defense[- ]in[- ]depth|meta[- ]feedback|capture path)\b/i.test(text)
@@ -499,6 +552,7 @@ function baseQuality(
   if (looksLikeCode(text)) return { ok: false, reason: "command-like" };
   if (looksLikePath(text))
     return { ok: false, reason: "implementation-detail" };
+  if (looksDamagedByStripping(text)) return { ok: false, reason: "incomplete" };
   if (looksGibberish(text)) return { ok: false, reason: "gibberish" };
   return { ok: true };
 }
@@ -519,9 +573,21 @@ export function qualityCheckUserAskLabel(
   if (!text) return { ok: false, reason: "empty" };
   if (/\b(?:has|have|was|were|is|are)?\s*not\s+(?:been\s+)?(?:met|achieved|completed|fixed)\b/i.test(text))
     return { ok: false, reason: "prompt-fragment" };
+  // The operator's own report may open with "I" ("I click on Mark down and it still
+  // happens"). That is their ask, so only the hook/quote lifecycle chrome is refused
+  // here — the first-person clause stays on the strict agent paths.
+  if (looksLikeAgentLifecycleChrome(text))
+    return { ok: false, reason: "prompt-fragment" };
+  // A frantic correction ("...doesnt work!!! ... you must verify!!!!!!!!") is a
+  // reaction, not a durable goal; excessive sentence punctuation is the tell. The
+  // identity layer already refuses these, and the shared gate must agree so a status
+  // sidecar cannot carry one onto the Task row (2026-09-16 sweep: 2e67be10).
+  if (/[!?]{3,}/.test(text))
+    return { ok: false, reason: "prompt-fragment" };
+  // A completion statement ("so we are done here and can run $done") reports the end
+  // of work, not the work itself — never the Task row (2026-09-16 sweep: 51ba7f6c).
   if (
-    looksLikeLifecycleOrReviewText(text) &&
-    !/^(?:I want|I need|We should)\b/i.test(text)
+    /^(?:so\s+)?(?:we|i)(?:['’]re|\s+are)\s+(?:done|finished|complete)\b/i.test(text)
   )
     return { ok: false, reason: "prompt-fragment" };
   // A question is a request for clarification, not the durable work concept.
@@ -536,7 +602,7 @@ export function qualityCheckUserAskLabel(
     /\bworking\s+for\s+hour/i.test(text) ||
     /nothing\s+to\s+show\s+for\s+it/i.test(text) ||
     /\bfiasc(?:o|on)\b/i.test(text) ||
-    /^(?:create|set|make|define)\s+(?:a\s+)?goal\b/i.test(text) ||
+    /^(?:(?:create|set|define)\s+(?:a|the)\s+goal|make\s+(?:this|that|it|these|those)\s+(?:a|the)\s+goal)\b/i.test(text) ||
     /(\p{L})\1{5,}/u.test(text) ||
     /^(?:you['’]?re|you are)\s+right\b|^(?:i['’]?m|i am|i['’]?m sorry|i apologize)\b|^honest\s+status\b/i.test(text) ||
     /\b(?:display boundary|defense[- ]in[- ]depth|meta[- ]feedback|capture path)\b/i.test(text)
@@ -547,6 +613,9 @@ export function qualityCheckUserAskLabel(
     return { ok: false, reason: "terminal-chrome" };
   if (/(?:https?:\/\/|(?:^|\s)\/(?:home|media|usr|etc|var|tmp|opt|root)\/)/i.test(text))
     return { ok: false, reason: "implementation-detail" };
+  // A mangled-by-stripping line is unreadable whatever its provenance, so even the
+  // lenient operator-ask and authoritative-task gates refuse it (Class D3).
+  if (looksDamagedByStripping(text)) return { ok: false, reason: "incomplete" };
   if (text.length > (options.maxLength ?? 96))
     return { ok: false, reason: "too-long" };
   // Curly-brace tokens are vendor template placeholders (for example
@@ -577,6 +646,11 @@ export function qualityCheckUserAskLabel(
   if (looksLikeSlashCommand(text)) return { ok: false, reason: "command-like" };
   if (looksLikeEnumeratedFragment(text))
     return { ok: false, reason: "prompt-fragment" };
+  // A machine slug ("a-meatzevet-courses") names a folder for a computer, not work
+  // for a person. It may never stand as the pane's Task, whatever source carried it
+  // (a live pane rendered its own folder slug, 2026-09-16 sweep).
+  if (/^[a-z0-9]+(?:[-_][a-z0-9]+){1,}$/.test(text))
+    return { ok: false, reason: "vague" };
   // Wrap-cut fragments scraped mid-word/mid-quote (`ke "System Booted`) are not
   // an ask: unbalanced double quote, or a 1-2 letter lowercase stub opener.
   if ((text.match(/"/g) ?? []).length % 2 === 1)
@@ -736,6 +810,9 @@ export function qualityCheckAuthoritativeTaskLabel(
     return { ok: false, reason: "terminal-chrome" };
   if (/(?:https?:\/\/|(?:^|\s)\/(?:home|media|usr|etc|var|tmp|opt|root)\/)/i.test(text))
     return { ok: false, reason: "implementation-detail" };
+  // A mangled-by-stripping line is unreadable whatever its provenance, so even the
+  // lenient operator-ask and authoritative-task gates refuse it (Class D3).
+  if (looksDamagedByStripping(text)) return { ok: false, reason: "incomplete" };
   if (text.length > (options.maxLength ?? 96))
     return { ok: false, reason: "too-long" };
   if (/\{[^{}]+\}/.test(text))
@@ -795,6 +872,22 @@ export function qualityCheckAuthoritativeTaskLabel(
   if (looksLikeSlashCommand(text)) return { ok: false, reason: "command-like" };
   if (looksLikeEnumeratedFragment(text))
     return { ok: false, reason: "prompt-fragment" };
+  // A machine slug is a folder name, never a task (Class A/D; a live pane rendered
+  // its own folder slug as the Task row, 2026-09-16 sweep).
+  if (/^[a-z0-9]+(?:[-_][a-z0-9]+){1,}$/.test(text))
+    return { ok: false, reason: "vague" };
+  // A clipped line is not readable work whatever the source: "…starting with whichever
+  // needs a" promises a continuation it never delivers (Class D4). The Goal gate had
+  // this rule; the authoritative-task gate did not, so a truncated plan explanation
+  // could stand as the Task row (2026-09-16 sweep: 246c7118, 5d5e25d5).
+  if (
+    /[…]$/.test(text) ||
+    /\b(?:instead of|while|and|or|to|for|the|a|an|then|with|from|of)\s*[.!?]?$/i.test(
+      text,
+    )
+  ) {
+    return { ok: false, reason: "incomplete" };
+  }
   if (
     /\[[^\]]+\].*\[[^\]]+\]|\b(?:backend\.exit|Primary backend exited|boot)\b/i.test(
       text,
@@ -891,14 +984,32 @@ export function stripComposerChrome(value?: string | null) {
       // A pasted LINK is never the goal — "lets get termfleet ready for sharing. I want
       // to share it here - https://…" reached a live Task row whole (2026-07-26). The
       // sentence still says what they asked for once the url is gone, and Class C2 of
-      // docs/cockpit-label-quality-matrix.md bans urls outright.
+      // docs/cockpit-label-quality-matrix.md bans urls outright. `file://` and bare
+      // absolute paths are the same class (a live pane carried a `file:///home/…`
+      // SKILL.md reference whole, 2026-09-16 sweep). A `file://` URI may itself
+      // contain spaces, so it is consumed to the end of the line.
+      .replace(/\bfile:\/\/.*$/gi, " ")
       .replace(/\b(?:https?:\/\/|www\.)\S+/gi, " ")
+      .replace(
+        /(?:^|\s)\/(?:home|media|usr|etc|var|tmp|opt|root|data)\/\S*/gi,
+        " ",
+      )
       // A dangling connector left behind by the removal ("share it here - ") would then
-      // trip the cut-off-line check, so tidy the seam.
+      // trip the cut-off-line check, so tidy the seam at both ends.
+      .replace(/^[\s\-–—:]+/, "")
       .replace(/\s*[-–—:]\s*$/, "")
       .replace(/\s+/g, " ")
       .trim()
   );
+}
+
+/**
+ * Class D3 (see `looksDamagedByStripping`). Exposed so a caller that intentionally
+ * bypasses the Goal quality gate — an opening request keeps its conversational
+ * wording — can still refuse text that is visibly broken.
+ */
+export function labelIsMangled(value?: string | null) {
+  return looksDamagedByStripping(clean(value));
 }
 
 export function readsAsActivity(value?: string | null) {
@@ -916,6 +1027,19 @@ function looksLikeActivity(text: string) {
 // ids and test tallies. Every one of these came off a live pane on 2026-07-25.
 const UNREADABLE_DEVELOPER_DETAIL =
   /\b[a-z][a-z0-9]*__[a-z0-9_]+|\b[A-Z][A-Z0-9_]{2,}=|\.(?:ts|tsx|js|jsx|mjs|cjs|py|rs|go|rb|java|kt|c|cc|cpp|h|hpp|sh|toml|yaml|yml|lock|md|markdown|txt|csv|log|env|html|css)\b|:\/\/|\/(?:home|media|usr|etc|var|tmp|opt|root)\/|\b[A-Z]{1,3}-\d{2,4}\b|\b\d+\s+(?:tests?|files?|specs?|assertions?)\b/;
+
+// Class C1: a raw tool identifier is not activity. The status plugins publish the
+// running tool as `now` ("Using lean-ctx_ctx_shell", "Using mcp__x__y", "Using Read"),
+// and the existing check only caught the double-underscore MCP shape, so the single-
+// underscore and CamelCase tool names reached the Now row (2026-09-16 sweep). A real
+// gerund phrase ("Using the updated scripts") has a plain word after "Using"; only an
+// identifier-shaped token is refused.
+const TOOL_IDENTIFIER_USAGE =
+  /^Using\s+(?:[\w-]*__[\w-]+|[\w-]*_[\w-]+|[A-Z][a-zA-Z0-9]+)(?:\s*\[[^\]]*\])?\s*$/;
+
+function looksLikeToolIdentifierUsage(text: string) {
+  return TOOL_IDENTIFIER_USAGE.test(text);
+}
 
 // Stripping inline code out of narration leaves holes behind: "Staging is clean — no
 // , no , no ." and "the art redesign ." A space immediately before a comma or full
@@ -1015,6 +1139,8 @@ export function qualityCheckTrustedActivityLabel(
   if (UNREADABLE_DEVELOPER_DETAIL.test(text)) {
     return { ok: false, reason: "implementation-detail" };
   }
+  if (looksLikeToolIdentifierUsage(text))
+    return { ok: false, reason: "implementation-detail" };
   if (MANGLED_BY_STRIPPING.test(text))
     return { ok: false, reason: "prompt-fragment" };
   if (LABEL_OR_FRAGMENT.test(text))
@@ -1109,6 +1235,8 @@ export function qualityCheckNowLabel(
   if (UNREADABLE_DEVELOPER_DETAIL.test(text)) {
     return { ok: false, reason: "implementation-detail" };
   }
+  if (looksLikeToolIdentifierUsage(text))
+    return { ok: false, reason: "implementation-detail" };
   if (MANGLED_BY_STRIPPING.test(text))
     return { ok: false, reason: "prompt-fragment" };
   if (/^(?:I['’]m|I am|I fixed)\s+/i.test(text)) {

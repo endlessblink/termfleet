@@ -9,6 +9,9 @@ export const PATHS = {
   agentStatus: path.join(dataHome, 'terminal-workspace', 'agent-status'),
   claudeProjects: path.join(home, '.claude', 'projects'),
   codexSessions: path.join(home, '.codex', 'sessions'),
+  // OpenCode keeps every conversation in one SQLite database rather than one
+  // file per session, so the adapter queries it instead of tailing a log.
+  opencodeDb: path.join(dataHome, 'opencode', 'opencode.db'),
 };
 
 /** Claude stores transcripts under a slug of the cwd with every separator as a dash. */

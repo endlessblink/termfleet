@@ -76,15 +76,15 @@ for (const launcherSource of [runDev, runNativeDev]) {
   assert.doesNotMatch(launcherSource, /kill_if_running "\$APP_DIR\/node_modules\/\.bin\/vite --host 127\.0\.0\.1 --port 1420"/);
 }
 assert.match(splitPaneSource, /<CockpitSnapshotProbe/);
-assert.match(splitPaneSource, /title: headerTitle/);
+assert.match(splitPaneSource, /title:\s*(?:headerTitle|headerNow)/);
 assert.match(splitPaneSource, /now: headerNow/);
 assert.match(splitPaneSource, /taskLineup: visibleTaskLineup\.map/);
 assert.match(cockpitSnapshotSource, /cockpitSnapshotEnabled/);
 assert.match(cockpitSnapshotSource, /\/cockpit-snapshot/);
 assert.match(cockpitSnapshotSource, /COCKPIT_SNAPSHOT_HEARTBEAT_MS/);
 assert.match(cockpitSnapshotSource, /removeCockpitPane/);
-assert.match(cockpitSnapshotSource, /normalizeCockpitSnapshot/);
-assert.match(cockpitSnapshotSource, /context\.startsWith\("Keep this pane focused on "/);
+assert.match(serverSource, /normalizeCockpitSnapshot/);
+assert.match(serverSource, /context\.startsWith\("Keep this pane focused on "/);
 
 function waitForEndpoint(child) {
   return new Promise((resolve, reject) => {

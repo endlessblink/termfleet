@@ -45,6 +45,13 @@ test("the dock status bar keeps Workstream Quest visible and opens its panel", a
   await expect(page.getByTestId("gamification-panel")).toContainText("Workstream quest");
 });
 
+test("Quest opens a top-level popup above the cockpit", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.getByTestId("gamification-trigger").click();
+  await expect(page.locator("body > [data-gamification-panel]")).toBeVisible();
+  await expect(page.locator("body > [data-gamification-panel]")).toContainText("Workstream quest");
+});
+
 test("hovering Quest shows the active quest and offers the next quest after 180 minutes", async ({ page }) => {
   const now = Date.now();
   await page.addInitScript((seed) => {

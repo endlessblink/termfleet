@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import {
   COCKPIT_SNAPSHOT_HEARTBEAT_MS,
   cockpitSnapshotEnabled,
@@ -11,7 +11,7 @@ import {
 import { recordTerminalHeaderLog } from "../lib/terminalMainUserAsk";
 import { qualityCheckGoalLabel } from "../lib/terminalHeaderQuality";
 
-function snapshotGoal(entry: Omit<CockpitSnapshotEntry, "updatedAt">) {
+export function snapshotGoal(entry: Omit<CockpitSnapshotEntry, "updatedAt">) {
   const supplied = entry.context?.trim() || entry.statusSummaryGoal?.trim() || "";
   const source = entry.context?.trim()
     ? entry.contextSource ?? ""
@@ -29,11 +29,23 @@ function snapshotGoal(entry: Omit<CockpitSnapshotEntry, "updatedAt">) {
       "manual",
       "plan-binding",
       "plan-explanation",
+      "agent-goal",
       "opening-request",
       "project-fallback",
+      "shell-role",
     ].includes(source)
   ) {
     return "";
+  }
+  // Shell panes have a deterministic structural Goal, not agent-authored
+  // `$about-what` prose. Accept only that exact renderer-owned form here so
+  // the final evidence boundary cannot erase it or admit arbitrary text.
+  if (
+    source === "shell-role" &&
+    /^Run commands directly in .+\.$/.test(supplied) &&
+    supplied.length <= 220
+  ) {
+    return supplied;
   }
   // An opening request is the pane's own captured Goal. Preserve it through the
   // render boundary even when its conversational wording is not a polished label.
@@ -45,9 +57,18 @@ function snapshotGoal(entry: Omit<CockpitSnapshotEntry, "updatedAt">) {
   ) {
     return supplied;
   }
+  // Plan explanations are allowed to carry the agent's own purpose, but a
+  // clipped sentence is not evidence. Never let the trusted voice bypass the
+  // same completeness boundary used by ordinary Goals.
+  if (
+    source === "plan-explanation" &&
+    (/[…]$/.test(supplied) || /\b(?:instead of|while|and|or|to|for|the|a|an|then)\s*[.!?]?$/i.test(supplied))
+  ) {
+    return "";
+  }
   const trustedAboutWhat =
     /^(?:this\s+session\s+is\s+about|I['’]m\s+|We['’]re\s+)/i.test(supplied) &&
-    (source === "status-summary" || source === "opening-request");
+    (source === "status-summary" || source === "opening-request" || source === "plan-explanation");
   const qualityInput = source === "opening-request" && supplied.endsWith("?")
     ? `${supplied.slice(0, -1)}.`
     : supplied;
@@ -75,8 +96,10 @@ export function CockpitSnapshotProbe({
 }: {
   entry: Omit<CockpitSnapshotEntry, "updatedAt">;
 }) {
-  const capturePaneRect = () => {
-    const escapedPaneId = CSS.escape(entry.paneId);
+  const latestEntryRef = useRef(entry);
+  latestEntryRef.current = entry;
+  const capturePaneRect = (paneId: string) => {
+    const escapedPaneId = CSS.escape(paneId);
     const element = document.querySelector<HTMLElement>(
       `.terminal-pane-frame[data-pane-id="${escapedPaneId}"], [data-testid="canvas-terminal-status-block"][data-pane-id="${escapedPaneId}"]`,
     );
@@ -90,92 +113,53 @@ export function CockpitSnapshotProbe({
       devicePixelRatio: window.devicePixelRatio || 1,
     };
   };
-  const lineupKey = entry.taskLineup.map((item) => `${item.status}:${item.content}`).join("|");
-  const debugKey = JSON.stringify(entry.debug ?? {});
   useEffect(() => {
     const recordSnapshot = () => {
       if (cockpitSnapshotEnabled()) {
-        const derivedContext = snapshotGoal(entry);
-        recordCockpitPane(entry.paneId, {
-          ...entry,
-          screenRect: capturePaneRect(),
+        const currentEntry = latestEntryRef.current;
+        const derivedContext = snapshotGoal(currentEntry);
+        recordCockpitPane(currentEntry.paneId, {
+          ...currentEntry,
+          screenRect: capturePaneRect(currentEntry.paneId),
           context: derivedContext || "",
           // A renderer may carry a stale source label alongside a rejected
           // placeholder. Evidence must describe the text that actually survived
           // the Goal gate, never the discarded input's provenance.
           contextSource: derivedContext
-            ? snapshotGoalSource(entry) === "missing"
-              ? entry.statusSummaryGoalSource ?? "missing"
-              : snapshotGoalSource(entry)
+            ? snapshotGoalSource(currentEntry) === "missing"
+              ? currentEntry.statusSummaryGoalSource ?? "missing"
+              : snapshotGoalSource(currentEntry)
             : "missing",
           updatedAt: Date.now(),
+        });
+        recordTerminalHeaderLog({
+          paneId: currentEntry.paneId,
+          field: "header",
+          source: [
+            currentEntry.taskSource ? `task:${currentEntry.taskSource}` : undefined,
+            currentEntry.contextSource ? `context:${currentEntry.contextSource}` : undefined,
+            currentEntry.titleSource ? `title:${currentEntry.titleSource}` : undefined,
+            currentEntry.nowSource ? `now:${currentEntry.nowSource}` : undefined,
+          ].filter(Boolean).join(" "),
+          text: [
+            currentEntry.task ? `Task=${currentEntry.task}` : undefined,
+            derivedContext ? `Goal=${derivedContext}` : undefined,
+            `Title=${currentEntry.title}`,
+            `Now=${currentEntry.now}`,
+          ].filter(Boolean).join(" | "),
         });
       }
     };
     recordSnapshot();
     const heartbeat = window.setInterval(recordSnapshot, COCKPIT_SNAPSHOT_HEARTBEAT_MS);
-    const derivedContext = snapshotGoal(entry);
-    recordTerminalHeaderLog({
-      paneId: entry.paneId,
-      field: "header",
-      source: [
-        entry.taskSource ? `task:${entry.taskSource}` : undefined,
-        entry.contextSource ? `context:${entry.contextSource}` : undefined,
-        entry.titleSource ? `title:${entry.titleSource}` : undefined,
-        entry.nowSource ? `now:${entry.nowSource}` : undefined,
-      ].filter(Boolean).join(" "),
-      text: [
-        entry.task ? `Task=${entry.task}` : undefined,
-        derivedContext ? `Goal=${derivedContext}` : undefined,
-        `Title=${entry.title}`,
-        `Now=${entry.now}`,
-      ].filter(Boolean).join(" | "),
-    });
     return () => {
       window.clearInterval(heartbeat);
       removeCockpitPane(entry.paneId);
     };
-    // Key on the displayed values so we only re-record when something actually changed.
+    // Key only on rendered identity. All diagnostic state stays current through
+    // latestEntryRef and flushes on the existing heartbeat.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    entry.paneId,
-    entry.terminalId,
-    entry.tabId,
-    entry.groupId,
-    entry.cwd,
-    entry.path,
-    entry.workspace,
-    entry.previewTitle,
-    entry.projectEmoji,
-    entry.kind,
-    entry.task,
-    entry.taskSource,
-    entry.context,
-    entry.contextSource,
-    entry.title,
-    entry.titleSource,
-    entry.now,
-    entry.nowSource,
-    entry.status,
-    entry.statusSummarySource,
-    entry.statusSummaryError,
-    entry.statusSummaryUpdatedAt,
-    entry.statusSummaryNarration,
-    entry.statusSummaryTask,
-    entry.statusSummaryGoal,
-    entry.statusSummaryGoalSource,
-    entry.statusSummaryNow,
-    entry.tasksFromTodoWrite,
-    entry.narration,
-    entry.durableActivityTitle,
-    entry.currentActivity,
-    entry.terminalOutput,
-    entry.terminalVisibleText,
-    entry.terminalVisibleTextUpdatedAt,
-    entry.statusSummaryPath,
-    lineupKey,
-    debugKey,
-  ]);
+  }, [entry.paneId]);
 
   // Split panes are not mounted through the map coordinator, so each rendered
   // probe also owns its hourly app-surface capture. This keeps restart smoke and
@@ -187,7 +171,7 @@ export function CockpitSnapshotProbe({
         requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
       );
       if (cancelled) return;
-      const screenRect = capturePaneRect();
+      const screenRect = capturePaneRect(entry.paneId);
       if (!screenRect) return;
       try {
         const path = await captureNativePane(entry.paneId);

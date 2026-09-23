@@ -113,6 +113,24 @@ test("idle sidecars keep the captured user request as the durable task", () => {
   expect(summary.now).toBe("Idle");
 });
 
+test("a distinct pane prompt supplies Task when no todo item was captured", () => {
+  const summary = summaryFromSidecar(
+    {
+      cwd: "/repo/termfleet",
+      mainTask: "Keep every cockpit pane truthful and easy to resume",
+      mainTaskSource: "opening-request",
+      userTask: "The cockpit still shows missing context after the release",
+      now: "The installed release is ready for live verification",
+      turn: "idle",
+      provider: "codex",
+    },
+    { task: "Task not captured", now: "Idle", path: "/repo/termfleet", status: "idle" },
+  );
+
+  expect(summary.task).toBe("The cockpit still shows missing context after the release");
+  expect(summary.task).not.toBe(summary.mainTask);
+});
+
 test("idle sidecars show the agent's settled result instead of a stale open checklist step", () => {
   const summary = summaryFromSidecar(
     {
@@ -288,6 +306,33 @@ test("a real opening Goal survives an ordinary continuation reply", () => {
   expect(summary.mainTaskSource).toBe("opening-request");
 });
 
+// The opening request is the CANDIDATE (`mainTask`); a later one-word nudge is only the
+// latest userTask. Testing userTask here discarded the pane's real opening ask and
+// blanked the Task row while the request sat in the sidecar (2026-09-16 sweep:
+// 1b05c1a4, 98f4904b, 261ceb1b). A short but real opening request must still bind.
+test("a short opening request survives a later one-word nudge", () => {
+  for (const [mainTask, userTask] of [
+    ["you must review visually", "go"],
+    ["I want to see the connectiuon", "go"],
+    ["can you build this e2e? will my vps support this load? it is for one other user for now", "go"],
+  ] as const) {
+    const summary = summaryFromSidecar(
+      {
+        provider: "codex",
+        updatedAt: Date.now(),
+        mainTask,
+        mainTaskSource: "opening-request",
+        userTask,
+        turn: "idle",
+        todos: [],
+      },
+      fallbackFor("/repo/bina-meatzevet-courses"),
+    );
+    expect(summary.mainTask, mainTask).toBe(mainTask);
+    expect(summary.mainTaskSource, mainTask).toBe("opening-request");
+  }
+});
+
 test("a status-summary Goal remains visible when the rendered context is initially empty", () => {
   const goal = "Keep the pane focused on the uploaded browser workflow so the operator can finish the handoff";
   const summary = summaryFromSidecar(
@@ -305,6 +350,27 @@ test("a status-summary Goal remains visible when the rendered context is initial
 
   expect(summary.mainTask).toBe(goal);
   expect(summary.mainTaskSource).toBe("opening-request");
+});
+
+test("the active agent goal is rendered as pane-owned Goal evidence", () => {
+  const goal = "Keep every cockpit pane truthful about its task, goal, and current activity";
+  const summary = summaryFromSidecar(
+    {
+      provider: "codex",
+      updatedAt: Date.now(),
+      mainTask: goal,
+      mainTaskSource: "agent-goal",
+      userTask: "continue the verification",
+      turn: "working",
+      now: "Checking the live pane evidence",
+      todos: [],
+    },
+    fallbackFor("/repo/termfleet"),
+  );
+
+  expect(summary.mainTask).toBe(goal);
+  expect(summary.mainTaskSource).toBe("agent-goal");
+  expect(summary.confidence).toBe("high");
 });
 
 test("a pane-local outcome narration can supply a clear Goal when no command answer was stored", () => {
@@ -359,6 +425,26 @@ test("process narration cannot become a pane Goal", () => {
   );
 
   expect(summary.mainTask).toBeUndefined();
+});
+
+test("meta feedback cannot survive as a pane Goal after a continuation prompt", () => {
+  const summary = summaryFromSidecar(
+    {
+      provider: "codex",
+      updatedAt: Date.now(),
+      userTask: "$sure you know how to solve this?",
+      mainTask: "in design or implemenation",
+      mainTaskSource: "opening-request",
+      turn: "working",
+      now: "Checking the cockpit completion gate",
+      todos: [],
+    },
+    fallbackFor("/repo/termfleet"),
+  );
+
+  expect(summary.mainTask).toBeUndefined();
+  expect(summary.userTask).toBeUndefined();
+  expect(summary.task).not.toBe("in design or implemenation");
 });
 
 test("a progress report cannot replace a pane Goal or cause a blank Goal", () => {

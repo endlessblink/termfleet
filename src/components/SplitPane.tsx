@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { TerminalComponent } from "./Terminal";
 import { TokenBudgetIndicator } from "./TokenBudgetIndicator";
+import { TerminalSignifier } from "./AgentProviderIdentity";
 import { LocalhostPreview } from "./LocalhostPreview";
 import { useWorkspaceStore } from "../stores/workspace";
 import { splitActivePane, closeActivePane } from "../stores/workspace";
@@ -57,12 +58,12 @@ import {
 import { durableActivityIsLive } from "../lib/terminalActivity";
 import {
   headerTextsEquivalent,
-  fallbackProjectGoal,
 } from "../lib/terminalHeaderViewModel";
 import {
   qualityCheckAuthoritativeTaskLabel,
   qualityCheckGoalLabel,
   qualityCheckNowLabel,
+  qualityCheckUserAskLabel,
 } from "../lib/terminalHeaderQuality";
 import {
   badgeForAttention,
@@ -1100,6 +1101,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                 project,
                 liveCwd: paneCwd,
                 terminalStatus,
+                paneKind: "agent",
                 taskLineup:
                   paneTerminal?.taskLineup ?? agentWorkstream.taskLineup,
                 activeRunId:
@@ -1310,6 +1312,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                 tab.workstream?.gitRoot ||
                 undefined,
               terminalStatus,
+              paneKind: "shell",
               taskLineup:
           paneTerminal?.taskLineup ?? tab.workstream?.taskLineup,
               activeRunId: paneTerminal?.activeRunId,
@@ -1374,43 +1377,45 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
             : null;
         const isAgentPane = Boolean(agentStatusSummary);
         const isShellSummaryPane = Boolean(shellStatusSummary);
-        const rendererTaskFallback = fallbackProjectGoal(
-          linkedProject?.name ?? paneCwd ?? "workspace",
-          paneTerminal?.statusSummary?.task ??
-            agentHeader?.currentActivity ??
-            agentStatusSummary?.now,
-        );
         const agentTaskCandidate = isAgentPane
           ? [
-              paneTerminal?.taskLineup?.find(
+              {
+                text: paneTerminal?.taskLineup?.find(
                 (item) =>
                   item.status === "in_progress" &&
                   !/^(?:Working|Thinking|Ready|Idle|Status unavailable|Activity not captured)$/i.test(
                     item.content.trim(),
                 ),
-              )?.content?.trim(),
-              paneTerminal?.statusSummary?.task?.trim(),
-              agentStatusSummary?.task?.trim(),
-              agentWorkstream?.mission?.trim(),
-              agentWorkstream?.nextAction?.trim(),
-              agentHeader?.currentActivity?.trim(),
+                )?.content?.trim(),
+                userAsk: false,
+              },
+              { text: paneTerminal?.statusSummary?.task?.trim(), userAsk: false },
+              { text: agentStatusSummary?.task?.trim(), userAsk: false },
+              { text: agentStatusSummary?.userTask?.trim(), userAsk: true },
+              { text: paneTerminal?.statusSummary?.mainTask?.trim(), userAsk: true },
+              { text: paneTerminal?.mainUserAsk?.text?.trim(), userAsk: true },
+              { text: agentWorkstream?.mission?.trim(), userAsk: false },
+              { text: agentWorkstream?.nextAction?.trim(), userAsk: false },
+              { text: agentHeader?.currentActivity?.trim(), userAsk: false },
             ].find(
               (candidate) =>
-                candidate &&
-                qualityCheckAuthoritativeTaskLabel(candidate).ok &&
-                !/^Clarify the cockpit header$/i.test(candidate) &&
+                candidate.text &&
+                (candidate.userAsk
+                  ? qualityCheckUserAskLabel(candidate.text, { maxLength: 150 }).ok
+                  : qualityCheckAuthoritativeTaskLabel(candidate.text).ok) &&
+                !/^Clarify the cockpit header$/i.test(candidate.text) &&
                 !/^(?:Working|Thinking|Ready|Idle|Status unavailable|Activity not captured)$/i.test(
-                  candidate,
+                  candidate.text,
                 ),
-            )
+            )?.text
           : undefined;
         const agentTaskLabel = isAgentPane
           ? agentTaskCandidate &&
             !headerTextsEquivalent(agentHeader?.goalLabel, agentTaskCandidate)
             ? agentTaskCandidate
-            : rendererTaskFallback
+            : undefined
           : undefined;
-        const visibleAgentTaskLabel = agentTaskLabel ?? rendererTaskFallback;
+        const visibleAgentTaskLabel = agentTaskLabel ?? "Task not captured";
         const shellStatusTaskCandidate = paneTerminal?.statusSummary?.task?.trim();
         // The pane's persisted summary is only a candidate while it says something.
         // A junk label there ("Search") used to outrank the composed summary, which
@@ -1429,13 +1434,15 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
             shellStatusSummary?.task?.trim()
           : undefined;
         const shellTaskLabel = !isAgentPane
-          ? (shellStatusTaskCandidate &&
+          ? shellHeader?.sources.goal === "shell-role"
+            ? shellHeader.taskDescription
+            : (shellStatusTaskCandidate &&
             qualityCheckAuthoritativeTaskLabel(shellStatusTaskCandidate).ok &&
             !headerTextsEquivalent(shellHeader?.goalLabel, shellStatusTaskCandidate)
               ? shellStatusTaskCandidate
               : resolveDistinctHeaderNow(shellHeader?.goalLabel, shellTaskCandidate)) ||
-            rendererTaskFallback
-          : undefined;
+            "Task not captured"
+            : undefined;
         const taskSidebarCollapsed =
           paneTerminal?.taskSidebarCollapsed ?? false;
         const paneActivity = !isPreviewPane
@@ -1478,10 +1485,9 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
         // Keep a concrete current step even when it repeats Task; otherwise an
         // active pane is incorrectly collapsed to an idle placeholder.
         const headerNow =
-          safeStabilizedNow ||
-          (isAgentPane && agentHeader?.currentActivity === "Working"
-            ? "Working"
-            : "Idle — no work is running");
+          shellHeader?.sources.goal === "shell-role"
+            ? shellHeader.currentActivity
+            : safeStabilizedNow || "Now not captured";
         const trustedPaneGoal =
           preferredPaneStatusSummary &&
     ["about-what", "plan-explanation", "goal-task", "opening-request", "user-prompt"].includes(
@@ -1505,7 +1511,9 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
           ? agentHeader?.contextLabel
           : shellHeader?.contextLabel;
         const rawHeaderContext =
-          trustedPaneGoal ||
+          shellHeader?.sources.context === "shell-role"
+            ? shellHeader.contextLabel
+            : trustedPaneGoal ||
           (capturedHeaderContext &&
           (isAgentPane ? agentHeader?.hasCapturedContext : shellHeader?.hasCapturedContext) &&
           !/^Make TermFleet (?:a reliable terminal cockpit so people can understand work and resume it safely|show clear tasks, goals, and current activity so work is easy to resume)[.!]?$/i.test(
@@ -1523,14 +1531,9 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
           )
             ? rawHeaderContext
             : "";
-        const displayedHeaderContext =
-          headerContext ||
-          fallbackProjectGoal(
-            isAgentPane
-              ? agentHeader?.workspace ?? linkedProject?.name ?? "workspace"
-              : shellHeader?.workspace ?? "workspace",
-            headerTitle,
-          );
+        // A Goal is pane evidence, not a product slogan. Keep it absent until
+        // the pane supplies a captured, quality-checked purpose.
+        const displayedHeaderContext = headerContext;
         // ONE pure render-time translation of the pane's stored status — identical in
         // every view, nothing stored separately that can be dropped and flicker.
         const splitAttentionState: AttentionState = paneBadgeAttention(
@@ -1564,6 +1567,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
             className="terminal-pane-frame"
             data-active={isActive ? "true" : "false"}
             data-status={terminalStatus}
+            data-terminal-kind={isAgentPane ? "agent" : "shell"}
             data-pane-id={shellHeader?.paneId ?? paneId}
             data-run-id={shellHeader?.runId ?? ""}
             data-full-path={shellHeader?.fullPath ?? ""}
@@ -1630,23 +1634,30 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                     : shellHeader?.workspace,
                   projectEmoji: linkedProject?.emoji,
                   kind: isAgentPane ? "agent" : "shell",
-                  task: headerTitle,
+                  task: isAgentPane ? visibleAgentTaskLabel : shellTaskLabel,
                   taskSource: isAgentPane
-                    ? agentTaskLabel === "Task not captured"
-                      ? "missing"
-                      : "agent-status"
-                    : shellTaskLabel === "Task not captured"
-                      ? "missing"
-                      : "task-tool",
-                  context: displayedHeaderContext || "",
-                  contextSource: displayedHeaderContext
+                    ? agentTaskLabel
+                      ? "agent-status"
+                      : "missing"
+                     : shellHeader?.sources.goal === "shell-role"
+                       ? "shell-role"
+                       : shellTaskLabel === "Task not captured"
+                         ? "missing"
+                         : "task-tool",
+                  context:
+                    shellHeader?.sources.goal === "shell-role"
+                      ? `Run commands directly in ${shellHeader.workspace}.`
+                      : displayedHeaderContext || "",
+                  contextSource: shellHeader?.sources.goal === "shell-role"
+                    ? "shell-role"
+                    : displayedHeaderContext
                     ? isAgentPane
                       ? agentHeader?.hasCapturedContext
                         ? "workstream"
-                        : "project-fallback"
+                        : "missing"
                       : headerContext
                         ? shellHeader?.sources.context
-                        : "project-fallback"
+                        : "missing"
                     : "missing",
                   title:
                     headerNow !== "Waiting for current activity"
@@ -1682,25 +1693,33 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                     ? tab.workstream?.statusSummary
                     : paneTerminal?.statusSummary
                   )?.narration,
-                   statusSummaryTask: (isAgentPane
-                     ? tab.workstream?.statusSummary
-                     : paneTerminal?.statusSummary
-                   )?.task,
-                    statusSummaryGoal: (isAgentPane
+                  statusSummaryTask: (isAgentPane
+                    ? tab.workstream?.statusSummary
+                    : paneTerminal?.statusSummary
+                  )?.task,
+                  statusSummaryGoal: shellHeader?.sources.goal === "shell-role"
+                       ? shellHeader.goalLabel
+                       : (isAgentPane
+                       ? tab.workstream?.statusSummary
+                       : paneTerminal?.statusSummary
+                     )?.mainTask ??
+                        trustedPaneGoal,
+                     statusSummaryGoalSource: shellHeader?.sources.goal === "shell-role"
+                       ? "shell-role"
+                       : (isAgentPane
+                       ? tab.workstream?.statusSummary
+                       : paneTerminal?.statusSummary
+                     )?.mainTaskSource ??
+                        (trustedPaneGoal
+                         ? "plan-explanation"
+                         : rawHeaderContext
+                           ? (isAgentPane ? agentHeader?.sources.context : shellHeader?.sources.context)
+                          : undefined),
+                    statusSummaryConfidence: (isAgentPane
                       ? tab.workstream?.statusSummary
                       : paneTerminal?.statusSummary
-                    )?.mainTask ?? trustedPaneGoal,
-                   statusSummaryGoalSource: (isAgentPane
-                     ? tab.workstream?.statusSummary
-                     : paneTerminal?.statusSummary
-                   )?.mainTaskSource ??
-                     (trustedPaneGoal
-                       ? "plan-explanation"
-                       : rawHeaderContext
-                         ? (isAgentPane ? agentHeader?.sources.context : shellHeader?.sources.context)
-                         : displayedHeaderContext
-                           ? "project-fallback"
-                           : undefined),
+                    )?.confidence ??
+                      (shellHeader?.sources.context === "shell-role" ? "high" : undefined),
                    statusSummaryNow: (isAgentPane
                     ? tab.workstream?.statusSummary
                     : paneTerminal?.statusSummary
@@ -1964,7 +1983,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                                 flexShrink: 0,
                                 color: "var(--text-primary)",
                                 fontSize: 10,
-                                fontWeight: 600,
+                                fontWeight: 500,
                                 textTransform: "uppercase",
                               }}
                             >
@@ -1986,7 +2005,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                               flexShrink: 0,
                               color: "var(--text-primary)",
                               fontSize: 12,
-                              fontWeight: 600,
+                              fontWeight: 500,
                               textTransform: "uppercase",
                             }}
                           >
@@ -2335,7 +2354,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                               flexShrink: 0,
                               color: "var(--text-primary)",
                               fontSize: 12,
-                              fontWeight: 600,
+                              fontWeight: 500,
                               textTransform: "uppercase",
                             }}
                           >
@@ -2437,6 +2456,26 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                             }
                           />
                       )}
+                      <span
+                        data-testid="split-terminal-regular-signifier"
+                        style={{
+                          height: 18,
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          padding: "0 7px",
+                          border: "1px solid transparent",
+                          borderRadius: "var(--radius-xs)",
+                          background: "var(--surface-base)",
+                          color: "var(--text-secondary)",
+                          fontSize: 10,
+                          textTransform: "uppercase",
+                          flexShrink: 0,
+                        }}
+                        title="Regular terminal (shell)"
+                      >
+                        <TerminalSignifier provider="shell" />
+                      </span>
                       <PaneToolbar
                         paneId={paneId}
                         tabId={tab.id}
@@ -2704,6 +2743,28 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                                 ? "alive"
                                 : terminalStatusLabel}
                     </span>
+                    {!isPreviewPane && (
+                      <span
+                        data-testid="split-terminal-regular-signifier"
+                        style={{
+                          height: 18,
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          padding: "0 6px",
+                          border: "1px solid transparent",
+                          borderRadius: "var(--radius-xs)",
+                          background: "var(--surface-base)",
+                          color: "var(--text-secondary)",
+                          fontSize: 10,
+                          textTransform: "uppercase",
+                          flexShrink: 0,
+                        }}
+                        title="Regular terminal (shell)"
+                      >
+                        <TerminalSignifier provider="shell" />
+                      </span>
+                    )}
                     <PaneToolbar
                       paneId={paneId}
                       tabId={tab.id}

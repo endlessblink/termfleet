@@ -181,6 +181,7 @@ const DEFAULT_UI_STATE: WorkspaceUiState = {
   fileExplorerCollapsed: true,
   canvasSidebarCollapsed: false,
   canvasSidebarSortMode: "project",
+  canvasSidebarManualOrder: [],
   terminalSidebarCollapsed: false,
   primarySidebarCollapsed: false,
   primarySidebarPanel: "sessions",
@@ -338,6 +339,8 @@ interface WorkspaceState {
   // mounted. Display-only — NOT persisted and NOT the session's project
   // identity, so a `cd`/`z` shows where you are without renaming the project.
   liveCwds: Record<string, string>;
+  /** Exact daemon-owned PTY ids from the most recent successful reconciliation. */
+  liveSessionIds: string[];
   // Git toplevel per PTY id (`git rev-parse --show-toplevel` of the live cwd),
   // resolved when the cwd changes. Lets the header show the real repo's name as
   // the project even when the stored project root is a shallow category folder.
@@ -348,6 +351,8 @@ interface WorkspaceState {
   recentlyClosed: RecentlyClosedTerminal[];
   /** All checkpointed sessions, including unknown and operator-closed records. */
   recoverySessions: RecoverySessionRecord[];
+  /** Dismissed review rows remain on disk and can still be restored explicitly. */
+  dismissedRecoverySessionKeys: string[];
   closedSessionIds: string[];
   /** Provider conversation ids explicitly closed by the operator. */
   closedProviderSessionIds: string[];
@@ -366,17 +371,20 @@ interface WorkspaceState {
     tabs: Tab[];
     activeTabId: string | null;
     liveCwds?: Record<string, string>;
+    liveSessionIds?: string[];
     liveGitRoots?: Record<string, string>;
     closedSessionIds?: string[];
     closedProviderSessionIds?: string[];
     closedRestoreTargets?: ClosedRestoreTarget[];
     agentRecoveryMigrationVersion?: number;
     recoverySessions?: RecoverySessionRecord[];
+    dismissedRecoverySessionKeys?: string[];
     recoveryTransfers?: RecoveryTransfer[];
   }) => void;
   removeTab: (id: string) => void;
   closeTerminalSession: (id: string, reason?: TerminalCloseReason) => Promise<void>;
   restoreRecoverySession: (id: string) => Promise<void>;
+  dismissRecoverySessions: (keys: string[]) => void;
   restoreLastClosed: () => boolean;
   setActiveTab: (id: string) => void;
   updateTab: (id: string, updates: Partial<Tab>) => void;
@@ -425,6 +433,7 @@ interface WorkspaceState {
   distributeCanvasNodes: (ids: string[], mode: CanvasDistributeMode) => void;
   arrangeProjectRow: (groupId: string) => void;
   arrangeCanvasProjectLanes: () => void;
+  reorderCanvasSidebarNodes: (draggedId: string, targetId: string, place: "before" | "after") => void;
   reorderCanvasNodes: (draggedId: string, targetId: string, place: "before" | "after") => void;
   removeCanvasNode: (id: string) => void;
   selectCanvasNode: (id: string | null) => void;
@@ -503,6 +512,7 @@ interface PersistedWorkspace {
   closedProviderSessionIds?: string[];
   closedRestoreTargets?: ClosedRestoreTarget[];
   agentRecoveryMigrationVersion?: number;
+  dismissedRecoverySessionKeys?: string[];
   recoveryTransfers?: RecoveryTransfer[];
 }
 
@@ -692,6 +702,9 @@ function normalizeWorkspaceUiState(uiState: Partial<WorkspaceUiState> | undefine
     // A restart always presents the map in its stable project/lane projection;
     // manual drag order remains available as an in-session choice.
     canvasSidebarSortMode: "project",
+    canvasSidebarManualOrder: Array.isArray(uiState?.canvasSidebarManualOrder)
+      ? uiState.canvasSidebarManualOrder.filter((id): id is string => typeof id === "string")
+      : [],
     projectSidebarExpandedSections: Array.isArray(uiState?.projectSidebarExpandedSections)
       ? uiState.projectSidebarExpandedSections.filter((section): section is string => typeof section === "string")
       : [],
@@ -1408,6 +1421,70 @@ export interface RecoverySessionRecord {
   providerSessionId?: string;
 }
 
+export function recoverySessionReviewKey(session: RecoverySessionRecord) {
+  const providerSessionId = session.providerSessionId ?? providerSessionIdFromCommand(session.command);
+  return providerSessionId ? `provider:${providerSessionId}` : `session:${session.id}`;
+}
+
+function recoveryReviewPriority(session: RecoverySessionRecord) {
+  switch (session.lifecycle) {
+    case "recoverable":
+      return 3;
+    case "unknown":
+      return 2;
+    case "backup-only":
+      return 1;
+    case "intentional-kill":
+    default:
+      return 0;
+  }
+}
+
+/** Recovery history is not a terminal inventory. */
+export function recoverySessionsForReview(
+  sessions: RecoverySessionRecord[],
+  tabs: Pick<Tab, "terminals">[],
+  dismissedKeys: Iterable<string> = [],
+) {
+  const dismissed = new Set(dismissedKeys);
+  const openProviderSessionIds = new Set(
+    tabs.flatMap((tab) =>
+      tab.terminals
+        .map((terminal) => terminal.providerSessionId)
+        .filter((providerSessionId): providerSessionId is string => Boolean(providerSessionId)),
+    ),
+  );
+  const byConversation = new Map<string, RecoverySessionRecord>();
+
+  for (const session of sessions) {
+    if (dismissed.has(recoverySessionReviewKey(session))) continue;
+    const providerSessionId = session.providerSessionId ?? providerSessionIdFromCommand(session.command);
+    if (providerSessionId && openProviderSessionIds.has(providerSessionId)) continue;
+
+    const key = providerSessionId ? `provider:${providerSessionId}` : `session:${session.id}`;
+    const current = byConversation.get(key);
+    if (
+      !current ||
+      recoveryReviewPriority(session) > recoveryReviewPriority(current) ||
+      (recoveryReviewPriority(session) === recoveryReviewPriority(current) &&
+        session.scrollbackBytes > current.scrollbackBytes)
+    ) {
+      byConversation.set(key, session);
+    }
+  }
+
+  return [...byConversation.values()];
+}
+
+/** The terminal-control list is an operational view, not a saved-layout history. */
+export function liveTerminalTabs<T extends Pick<Tab, "terminals">>(
+  tabs: T[],
+  liveSessionIds: Iterable<string>,
+): T[] {
+  const liveIds = new Set(liveSessionIds);
+  return tabs.filter((tab) => tab.terminals.some((terminal) => liveIds.has(terminal.id)));
+}
+
 interface LiveSessionSummary {
   id: string;
   cwd: string | null;
@@ -1955,6 +2032,7 @@ export async function hydrateWorkspace(options: { background?: boolean } = {}) {
     let closedRestoreTargets = [...store.closedRestoreTargets];
     let agentRecoveryMigrationVersion = store.agentRecoveryMigrationVersion;
     let recoveryTransfers: RecoveryTransfer[] = [];
+    const dismissedRecoverySessionKeys = new Set(store.dismissedRecoverySessionKeys);
     let savedCanvasState: CanvasState | null = null;
     let durableLayoutLoaded = false;
     // A saved layout (from localStorage OR the disk checkpoint) is authoritative.
@@ -1965,6 +2043,11 @@ export async function hydrateWorkspace(options: { background?: boolean } = {}) {
       if (raw) {
           try {
             const disk = JSON.parse(raw) as PersistedWorkspace;
+            if (Array.isArray(disk.dismissedRecoverySessionKeys)) {
+              for (const key of disk.dismissedRecoverySessionKeys) {
+                if (typeof key === "string" && key.length > 0) dismissedRecoverySessionKeys.add(key);
+              }
+            }
             if (Array.isArray(disk.tabs)) {
               if (disk.tabs.length > 0) {
                 const diskTabs = withoutLegacyRecoveredTabs(disk.tabs).map(withRestartableTerminals);
@@ -2383,7 +2466,9 @@ export async function hydrateWorkspace(options: { background?: boolean } = {}) {
       !durableLayoutLoaded &&
       !removedLegacyRecoveredTabs &&
       Object.keys(liveCwds).length === 0 &&
-      Object.keys(liveGitRoots).length === 0
+      Object.keys(liveGitRoots).length === 0 &&
+      store.liveSessionIds.length === liveSessionIds.size &&
+      store.liveSessionIds.every((id) => liveSessionIds.has(id))
     ) {
       return; // happy path, nothing to do
     }
@@ -2401,12 +2486,14 @@ export async function hydrateWorkspace(options: { background?: boolean } = {}) {
       tabs: hydratedTabs,
       activeTabId: baseActive,
       liveCwds,
+      liveSessionIds: [...liveSessionIds],
       liveGitRoots,
       closedSessionIds: [...closedSessionIds],
       closedProviderSessionIds: [...closedProviderSessionIds],
       closedRestoreTargets,
       agentRecoveryMigrationVersion,
       recoverySessions: sessions,
+      dismissedRecoverySessionKeys: [...dismissedRecoverySessionKeys],
       recoveryTransfers,
     });
     if (initialCriticalHydration) return;
@@ -2492,6 +2579,7 @@ export async function reconcileLiveWorkspace() {
       tabs: preserveLiveHeaderState(tabs, useWorkspaceStore.getState().tabs),
       activeTabId: useWorkspaceStore.getState().activeTabId,
       liveCwds,
+      liveSessionIds: [...liveSessionIds],
       closedSessionIds: [...closedSessionIds],
       closedProviderSessionIds: [...closedProviderSessionIds],
       closedRestoreTargets: store.closedRestoreTargets,
@@ -3067,11 +3155,15 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     (path): path is string => typeof path === "string" && path.trim().length > 0
   ),
   liveCwds: {},
+  liveSessionIds: [],
   liveGitRoots: {},
   workspaceUiState: normalizeWorkspaceUiState(persisted.workspaceUiState),
   canvasState: restoredCanvasState,
   recentlyClosed: [],
   recoverySessions: [],
+  dismissedRecoverySessionKeys: Array.isArray(persisted.dismissedRecoverySessionKeys)
+    ? persisted.dismissedRecoverySessionKeys.filter((key): key is string => typeof key === "string" && key.length > 0)
+    : [],
   closedSessionIds: Array.isArray(persisted.closedSessionIds)
     ? persisted.closedSessionIds.filter((id): id is string => typeof id === "string" && id.length > 0)
     : [],
@@ -3096,7 +3188,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
 
   // --- Tab actions ---
 
-  hydrateRestoredWorkspace: ({ tabs, activeTabId, liveCwds = {}, liveGitRoots = {}, closedSessionIds, closedProviderSessionIds, closedRestoreTargets, agentRecoveryMigrationVersion, recoverySessions, recoveryTransfers }) => {
+  hydrateRestoredWorkspace: ({ tabs, activeTabId, liveCwds = {}, liveSessionIds, liveGitRoots = {}, closedSessionIds, closedProviderSessionIds, closedRestoreTargets, agentRecoveryMigrationVersion, recoverySessions, dismissedRecoverySessionKeys, recoveryTransfers }) => {
     set((state) => {
       if (tabs.length === 0) {
         return {
@@ -3106,7 +3198,9 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
           closedRestoreTargets: closedRestoreTargets ?? state.closedRestoreTargets,
           agentRecoveryMigrationVersion: agentRecoveryMigrationVersion ?? state.agentRecoveryMigrationVersion,
           recoverySessions: recoverySessions ?? state.recoverySessions,
+          dismissedRecoverySessionKeys: dismissedRecoverySessionKeys ?? state.dismissedRecoverySessionKeys,
           recoveryTransfers: recoveryTransfers ?? state.recoveryTransfers,
+          liveSessionIds: liveSessionIds ?? state.liveSessionIds,
         };
       }
       const canvasState = normalizeCanvasState(state.canvasState, tabs);
@@ -3146,8 +3240,10 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         closedRestoreTargets: closedRestoreTargets ?? state.closedRestoreTargets,
         agentRecoveryMigrationVersion: agentRecoveryMigrationVersion ?? state.agentRecoveryMigrationVersion,
         recoverySessions: recoverySessions ?? state.recoverySessions,
+        dismissedRecoverySessionKeys: dismissedRecoverySessionKeys ?? state.dismissedRecoverySessionKeys,
         recoveryTransfers: recoveryTransfers ?? state.recoveryTransfers,
         liveCwds: nextLiveCwds,
+        liveSessionIds: liveSessionIds ?? state.liveSessionIds,
         liveGitRoots: nextLiveGitRoots,
         hydrating: false,
       };
@@ -3288,6 +3384,16 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       reviewed: session.lifecycle === "unknown",
     });
     await hydrateWorkspace();
+  },
+
+  dismissRecoverySessions: (keys: string[]) => {
+    if (keys.length === 0) return;
+    set((state) => ({
+      dismissedRecoverySessionKeys: [...new Set([
+        ...state.dismissedRecoverySessionKeys,
+        ...keys.filter((key) => typeof key === "string" && key.length > 0),
+      ])],
+    }));
   },
 
   closeTerminalSession: async (id: string, reason: TerminalCloseReason = "operator") => {
@@ -4599,6 +4705,63 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     });
   },
 
+  reorderCanvasSidebarNodes: (draggedId: string, targetId: string, place: "before" | "after") => {
+    if (draggedId === targetId) return;
+    set((state) => {
+      const terminalNodes = state.canvasState.nodes.filter(
+        (node) => node.type === "terminal" && node.terminalTabId,
+      );
+      const nodeIds = terminalNodes.map((node) => node.id);
+      if (!nodeIds.includes(draggedId) || !nodeIds.includes(targetId)) return {};
+      const tabsById = new Map(state.tabs.map((tab) => [tab.id, tab]));
+      const projectKey = (node: CanvasNode) =>
+        tabsById.get(node.terminalTabId ?? "")?.groupId ?? null;
+      const draggedNode = terminalNodes.find((node) => node.id === draggedId);
+      const targetNode = terminalNodes.find((node) => node.id === targetId);
+      if (!draggedNode || !targetNode || projectKey(draggedNode) !== projectKey(targetNode)) {
+        return {};
+      }
+      const savedOrder = state.workspaceUiState.canvasSidebarManualOrder;
+      const order = [
+        ...savedOrder.filter((id) => nodeIds.includes(id)),
+        ...nodeIds.filter((id) => !savedOrder.includes(id)),
+      ];
+      const projectNodeIds = order.filter((id) => {
+        const node = terminalNodes.find((candidate) => candidate.id === id);
+        return node && projectKey(node) === projectKey(draggedNode);
+      });
+      const slots = projectNodeIds.map((id) => {
+        const node = terminalNodes.find((candidate) => candidate.id === id)!;
+        return { x: node.x, y: node.y };
+      });
+      const movedProjectOrder = [...projectNodeIds];
+      const [moved] = movedProjectOrder.splice(movedProjectOrder.indexOf(draggedId), 1);
+      let to = movedProjectOrder.indexOf(targetId);
+      if (place === "after") to += 1;
+      movedProjectOrder.splice(to, 0, moved);
+      let projectIndex = 0;
+      const nextOrder = order.map((id) =>
+        projectNodeIds.includes(id) ? movedProjectOrder[projectIndex++] : id,
+      );
+      const positionsById = new Map(
+        movedProjectOrder.map((id, index) => [id, slots[index]]),
+      );
+      return {
+        canvasState: {
+          ...state.canvasState,
+          nodes: state.canvasState.nodes.map((node) => {
+            const position = positionsById.get(node.id);
+            return position ? { ...node, ...position } : node;
+          }),
+        },
+        workspaceUiState: {
+          ...state.workspaceUiState,
+          canvasSidebarManualOrder: nextOrder,
+        },
+      };
+    });
+  },
+
   reorderCanvasNodes: (draggedId: string, targetId: string, place: "before" | "after") => {
     if (draggedId === targetId) return;
     set((state) => {
@@ -4989,6 +5152,7 @@ function buildPersistedSnapshot(state: WorkspaceState): PersistedWorkspace {
     closedProviderSessionIds: state.closedProviderSessionIds,
     closedRestoreTargets: state.closedRestoreTargets,
     agentRecoveryMigrationVersion: state.agentRecoveryMigrationVersion,
+    dismissedRecoverySessionKeys: state.dismissedRecoverySessionKeys,
     recoveryTransfers: state.recoveryTransfers,
   };
 }

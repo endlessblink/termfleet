@@ -42,8 +42,9 @@ function explicitMainTask(sidecar) {
       sidecar.mainTaskSource === "opening-request" &&
       (/^(?:works?\.?|run|running|testing|checking|verifying|fixing)\b/i.test(text) ||
         /\bcommit and push\b.*\b(?:regression tests?|test suite)\b/i.test(text));
-    if (taskDerivedOpeningRequest) return "";
-  const maxLength = /^\$about-what$/i.test(cleanText(sidecar?.userTask)) ? 150 : 96;
+    if (taskDerivedOpeningRequest ||
+      (sidecar.mainTaskSource === "opening-request" && isMetaOpeningRequest(text))) return "";
+  const maxLength = sidecar.mainTaskSource === "opening-request" ? 220 : 150;
   return text.length <= maxLength && isDurableGoalText(text) ? text : "";
   }
   const legacyGoals = (Array.isArray(sidecar?.todos) ? sidecar.todos : [])
@@ -168,6 +169,15 @@ function sidecarTaskText(sidecar) {
   const current = active ?? firstOpen ?? todos[0];
   const declaredTask = cleanText(current?.activeForm || current?.content);
   const userTask = explicitMainTask(sidecar);
+  const promptTask = cleanText(sidecar?.userTask);
+  if (
+    !declaredTask &&
+    promptTask &&
+    !/^\$about-what$/i.test(promptTask) &&
+    !isMetaOpeningRequest(promptTask) &&
+    !isNonDescriptiveTaskText(promptTask) &&
+    promptTask !== userTask
+  ) return promptTask;
   return declaredTask || (isNonDescriptiveTaskText(userTask) ? "" : userTask);
 }
 
@@ -268,6 +278,15 @@ export function summaryFromSidecar(sidecar, payload) {
     (sidecar?.turn === "working"
       ? workingTaskFromCompleted(lastDone?.content, contextPath)
       : cleanText(lastDone?.content));
+  const promptTask = cleanText(sidecar?.userTask);
+  const capturedPromptTask =
+    promptTask &&
+    !/^\$about-what$/i.test(promptTask) &&
+    !isMetaOpeningRequest(promptTask) &&
+    !isNonDescriptiveTaskText(promptTask) &&
+    promptTask !== explicitMainTask(sidecar)
+      ? promptTask
+      : "";
   const hasDeclaredTodos = Array.isArray(sidecar?.todos) && sidecar.todos.length > 0;
   // A pane's own durable goal is authoritative. Folder-wide heuristics are not
   // evidence and must never become a Goal or Task.
@@ -315,7 +334,7 @@ export function summaryFromSidecar(sidecar, payload) {
       : "");
   const declaredUserTask = isNonDescriptiveTaskText(userTask) ? "" : userTask;
   const currentActivityTask = declaredUserTask && !isNonDescriptiveTaskText(now) ? now : "";
-  const activityTitle = (inferredGoal || aboutWhatGoal ? inferredGoal || aboutWhatGoal : liveTask || declaredUserTask || currentTask) || currentTask || currentActivityTask || fallback.task;
+  const activityTitle = (inferredGoal || aboutWhatGoal ? inferredGoal || aboutWhatGoal : liveTask || capturedPromptTask || declaredUserTask || currentTask) || currentTask || currentActivityTask || fallback.task;
   return {
     ...fallback,
     provider: sidecar?.provider ?? fallback.provider,

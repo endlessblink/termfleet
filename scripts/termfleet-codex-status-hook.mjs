@@ -190,11 +190,10 @@ export function buildCodexSidecar(payload, prev, now = Date.now()) {
   const event = payload?.hook_event_name ?? payload?.hookEventName ?? payload?.event;
   const storedUserTask = cleanField(prev?.userTask, 220) || undefined;
   const prevUserTask = storedUserTask;
-  // Only an explicit opening request is a durable operator goal. `goal-task` was
-  // historically also used for internal create_goal/update_plan events, so accepting
-  // it here would resurrect stale orchestration text from an older sidecar.
+  // Only an explicit opening request or the current active goal is durable. Plan
+  // explanations are turn-local and must not resurrect stale orchestration text.
   const prevMainTaskSource = prev?.mainTaskSource === "opening-request" ||
-    prev?.mainTaskSource === "plan-explanation"
+    prev?.mainTaskSource === "agent-goal"
     ? prev.mainTaskSource
     : undefined;
   const rawPrevMainTask = cleanField(prev?.mainTask, 220) || undefined;
@@ -280,19 +279,19 @@ export function buildCodexSidecar(payload, prev, now = Date.now()) {
     };
   }
 
-  // `create_goal` is Codex/TermFleet orchestration state, not an operator request. It
-  // must never become the cockpit's durable Task/Goal: doing so makes the agent's internal
-  // investigation objective look like the user's product work. Preserve only a goal
-  // already captured from an explicit user-facing source.
+  // The active goal is pane-owned orchestration evidence. It may fill a missing Goal,
+  // but it must never overwrite a user-owned opening request already captured here.
   if (payload?.tool_name === "create_goal") {
+    const objective = cleanField(payload?.tool_input?.objective, 220);
+    const agentGoal = !prevMainTask && isDurableGoalText(objective) ? objective : undefined;
     return {
       ...base,
       source: "codex-goal",
       todos: prevTodos,
-      mainTask: prevMainTask,
-      mainTaskSource: effectivePrevMainTaskSource,
+      mainTask: agentGoal || prevMainTask,
+      mainTaskSource: agentGoal ? "agent-goal" : effectivePrevMainTaskSource,
       userTask: prevUserTask,
-      now: nowFromTodos(prevTodos) || cleanField(prev?.now) || "Working",
+      now: nowFromTodos(prevTodos) || cleanField(prev?.now) || "Now not captured",
       turn: "working",
     };
   }

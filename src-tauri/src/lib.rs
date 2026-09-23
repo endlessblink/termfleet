@@ -98,6 +98,7 @@ pub fn run() {
             commands::terminal_matrix,
             commands::grid_attach,
             commands::grid_snapshot,
+            commands::grid_screen_text,
             commands::grid_revision,
             commands::grid_selection_text,
             commands::grid_search,

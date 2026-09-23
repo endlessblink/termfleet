@@ -19,6 +19,7 @@ import {
   resolvePaneTaskLine,
 } from "../src/lib/taskLine";
 import { statusPollProjectionChanged } from "../src/lib/statusPollProjection";
+import { isCockpitTaskSource } from "../scripts/lib/cockpit-task-sources.mjs";
 import {
   buildTerminalHeaderState,
   resetKnownTaskLines,
@@ -83,15 +84,11 @@ test("the central poll loop applies the line for every pane, trusted or not", ()
 });
 
 test("the cockpit snapshot accepts a resolved task-line source", () => {
-  const source = readFileSync(
-    path.join(REPO, "scripts", "cockpit-snapshot.mjs"),
-    "utf8",
-  );
-  const supportedSources = source.slice(
-    source.indexOf("const supportedTaskSources"),
-    source.indexOf("]);", source.indexOf("const supportedTaskSources")) + 3,
-  );
-  expect(supportedSources).toContain('"task-line"');
+  // The vocabulary has ONE owner (`scripts/lib/cockpit-task-sources.mjs`); the
+  // snapshot producer and the doctor both read it instead of a local literal.
+  // Scanning `cockpit-snapshot.mjs` for the old inline array is what broke when
+  // the allowlists were unified, so assert against the canonical set itself.
+  expect(isCockpitTaskSource("task-line")).toBe(true);
 });
 
 test("the persisted workspace snapshot keeps the last known line", () => {
@@ -122,7 +119,7 @@ test("every header route reads both places the line is stored", () => {
     );
     // Agent-kind tabs store it on the workstream, shell tabs on the terminal.
     expect(source, `${file} must read the workstream line too`).toMatch(
-      /[\w?.]*\.taskLine \?\? [\w?.]*\.taskLine/,
+      /(?:workstream|agentWorkstream|tab\.workstream)\??\.taskLine/,
     );
   }
 });
@@ -138,7 +135,7 @@ test("the split header shows the durable task instead of bare Working state", ()
   );
 
   expect(header).toContain("shellTaskLabel");
-  expect(header).toContain("shellHeader?.goalLabel");
+  expect(header).toContain("shellHeader?.currentActivity");
   expect(header).not.toContain("shellHeader?.currentActivity) ??");
 });
 
@@ -639,7 +636,7 @@ test("a restored pane recovers its concrete goal from the transcript middle", as
     sidecarReader: async () =>
       JSON.stringify({
         cwd: "/repo",
-        sessionId: "5d08990f-f461-4a4b-84ce-7626b3614267",
+        sessionId: "5d08990f-f461-4a4b-84ce-7626b3614268",
         updatedAt: Date.now(),
         todos: [],
         mainTask: "lets continue from where we left off",
@@ -808,7 +805,7 @@ test("the row never flips back to the placeholder once a pane has spoken", () =>
     paneId: "pane-other",
     terminalId: "pty-other",
   });
-  expect(otherPane.goalLabel).toBe("Waiting for a clear task");
+  expect(otherPane.goalLabel).toBe("Task not captured");
 });
 
 test("the operator's opening ask leads, and a slug never reaches the row", () => {

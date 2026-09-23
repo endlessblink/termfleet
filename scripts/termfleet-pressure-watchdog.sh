@@ -17,6 +17,10 @@ DESKTOP_LAUNCHER="${TERMFLEET_DESKTOP_LAUNCHER:-$HOME/.local/bin/termfleet-deskt
 ALERT_COOLDOWN_SECONDS="${TERMFLEET_PRESSURE_WATCHDOG_ALERT_COOLDOWN:-300}"
 HOST_ALERT_COOLDOWN_SECONDS="${TERMFLEET_PRESSURE_WATCHDOG_HOST_ALERT_COOLDOWN:-1800}"
 BLOCKED_CONFIRMATIONS="${TERMFLEET_PRESSURE_WATCHDOG_BLOCKED_CONFIRMATIONS:-3}"
+WEBKIT_MISSING_CONFIRMATIONS="${TERMFLEET_PRESSURE_WATCHDOG_WEBKIT_MISSING_CONFIRMATIONS:-6}"
+COCKPIT_SNAPSHOT_PATH="${TERMFLEET_COCKPIT_SNAPSHOT_PATH:-${XDG_DATA_HOME:-$HOME/.local/share}/terminal-workspace/agent-status/termfleet-cockpit-snapshot.json}"
+COCKPIT_HEARTBEAT_STALE_SECONDS="${TERMFLEET_PRESSURE_WATCHDOG_COCKPIT_HEARTBEAT_STALE_SECONDS:-45}"
+COCKPIT_HEARTBEAT_STARTUP_GRACE_SECONDS="${TERMFLEET_PRESSURE_WATCHDOG_COCKPIT_HEARTBEAT_STARTUP_GRACE_SECONDS:-60}"
 HOST_PRESSURE_CONFIRMATIONS="${TERMFLEET_PRESSURE_WATCHDOG_HOST_PRESSURE_CONFIRMATIONS:-12}"
 DESKTOP_BLOCKED_IO_THRESHOLD="${TERMFLEET_PRESSURE_WATCHDOG_DESKTOP_BLOCKED_IO_THRESHOLD:-20}"
 AUDIT_SCRIPT="${TERMFLEET_PRESSURE_AUDIT_SCRIPT:-$HOME/.local/bin/termfleet-system-audit}"
@@ -32,6 +36,7 @@ last_recovery_epoch=0
 last_incident_reason=""
 sample_counter=0
 webkit_blocked_count=0
+webkit_missing_count=0
 desktop_blocked_count=0
 host_memory_pressure_count=0
 host_io_pressure_count=0
@@ -49,6 +54,16 @@ flock -n 9 || exit 0
 
 read_psi_avg10() {
   awk '/^some / { for (i = 1; i <= NF; i++) if ($i ~ /^avg10=/) { sub("avg10=", "", $i); print $i; exit } }' "$1" 2>/dev/null || printf '0\n'
+}
+
+cockpit_heartbeat_age_seconds() {
+  local now_epoch="$1" snapshot_epoch
+  snapshot_epoch="$(stat -c %Y "$COCKPIT_SNAPSHOT_PATH" 2>/dev/null || printf '0')"
+  if [[ "$snapshot_epoch" =~ ^[0-9]+$ ]] && (( snapshot_epoch > 0 && snapshot_epoch <= now_epoch )); then
+    printf '%s\n' "$((now_epoch - snapshot_epoch))"
+  else
+    printf '%s\n' 2147483647
+  fi
 }
 
 run_incident_audit() {
@@ -91,11 +106,11 @@ while :; do
       continue
     fi
     if is_production_desktop "$candidate_pid"; then
-      desktop_info="$(ps -p "$candidate_pid" -o pid=,ppid=,pgid=,state=,rss= | awk '{ print $1 "|" $3 "|" $4 "|" $5; exit }')"
+      desktop_info="$(ps -p "$candidate_pid" -o pid=,ppid=,pgid=,state=,rss=,etimes= | awk '{ print $1 "|" $3 "|" $4 "|" $5 "|" $6; exit }')"
       break
     fi
   done < <(pgrep -u "$UID" -x termfleet 2>/dev/null || true)
-  IFS='|' read -r desktop_pid desktop_pgid desktop_state desktop_rss <<<"$desktop_info"
+  IFS='|' read -r desktop_pid desktop_pgid desktop_state desktop_rss desktop_age_seconds <<<"$desktop_info"
   # Only inspect a WebKit renderer owned by the selected production desktop.
   # A host-wide first-match can mistake another WebKit app's blocked renderer
   # for TermFleet pressure and trigger an unrelated desktop recycle.
@@ -111,6 +126,8 @@ while :; do
   swap_free_kb="$(awk '/^SwapFree:/ { print $2; exit }' /proc/meminfo)"
   swap_used_kb=$((swap_total_kb - swap_free_kb))
   sample_counter=$((sample_counter + 1))
+  now_epoch="$(date +%s)"
+  cockpit_heartbeat_age="$(cockpit_heartbeat_age_seconds "$now_epoch")"
   desktop_blocked_io_confirmed=0
   if awk -v value="$io_psi" -v threshold="$DESKTOP_BLOCKED_IO_THRESHOLD" 'BEGIN { exit !(value >= threshold) }'; then
     desktop_blocked_io_confirmed=1
@@ -121,7 +138,7 @@ while :; do
   daemon_pids="$(pgrep -u "$UID" -f -- '[t]ermfleet.*--terminal-workspace-daemon$' || true)"
   daemon_count="$(printf '%s\n' "$daemon_pids" | awk 'NF { count++ } END { print count + 0 }')"
   socket_count="$(ss -xlpn 2>/dev/null | awk -v socket="$RUNTIME_DIR/terminal-workspace/daemon.sock" '$0 ~ socket && $0 ~ /LISTEN/ { count++ } END { print count + 0 }')"
-  incident_details="pid=$desktop_pid pgid=$desktop_pgid state=$desktop_state rss_kb=$desktop_rss memory_psi_avg10=$memory_psi io_psi_avg10=$io_psi memory_available_kb=$memory_available_kb swap_used_kb=$swap_used_kb swap_total_kb=$swap_total_kb daemon_count=$daemon_count socket_count=$socket_count"
+  incident_details="pid=$desktop_pid pgid=$desktop_pgid state=$desktop_state rss_kb=$desktop_rss desktop_age_seconds=$desktop_age_seconds cockpit_heartbeat_age_seconds=$cockpit_heartbeat_age memory_psi_avg10=$memory_psi io_psi_avg10=$io_psi memory_available_kb=$memory_available_kb swap_used_kb=$swap_used_kb swap_total_kb=$swap_total_kb daemon_count=$daemon_count socket_count=$socket_count"
 
   reason=""
   detail=""
@@ -129,6 +146,11 @@ while :; do
     ((webkit_blocked_count += 1))
   else
     webkit_blocked_count=0
+  fi
+  if [[ "$desktop_pid" =~ ^[0-9]+$ && -z "$webkit_pid" ]]; then
+    ((webkit_missing_count += 1))
+  else
+    webkit_missing_count=0
   fi
   if [[ "$desktop_state" == D* ]]; then
     ((desktop_blocked_count += 1))
@@ -154,6 +176,12 @@ while :; do
   elif (( webkit_blocked_count >= BLOCKED_CONFIRMATIONS )); then
     reason="webkit-blocked"
     detail="pid=$webkit_pid rss_kb=$webkit_rss pgid=$webkit_pgid state=$webkit_state memory_psi_avg10=$memory_psi io_psi_avg10=$io_psi"
+  elif (( webkit_missing_count >= WEBKIT_MISSING_CONFIRMATIONS )); then
+    reason="webkit-missing"
+    detail="desktop_pid=$desktop_pid desktop_pgid=$desktop_pgid consecutive_samples=$webkit_missing_count"
+  elif [[ "$desktop_age_seconds" =~ ^[0-9]+$ ]] && (( desktop_age_seconds >= COCKPIT_HEARTBEAT_STARTUP_GRACE_SECONDS )) && (( cockpit_heartbeat_age >= COCKPIT_HEARTBEAT_STALE_SECONDS )); then
+    reason="cockpit-heartbeat-stale"
+    detail="desktop_pid=$desktop_pid desktop_pgid=$desktop_pgid desktop_age_seconds=$desktop_age_seconds heartbeat_age_seconds=$cockpit_heartbeat_age snapshot=$COCKPIT_SNAPSHOT_PATH"
   elif (( desktop_blocked_count >= BLOCKED_CONFIRMATIONS )) && (( desktop_blocked_io_confirmed == 1 )); then
     reason="desktop-blocked"
     detail="pid=$desktop_pid rss_kb=$desktop_rss pgid=$desktop_pgid state=$desktop_state memory_psi_avg10=$memory_psi io_psi_avg10=$io_psi"
@@ -206,7 +234,16 @@ while :; do
         run_load_shed shed "$timestamp"
       fi
       recovery_text="host pressure detected; TermFleet desktop will not be recycled"
-      if [[ "$reason" == webkit-blocked || "$reason" == desktop-blocked ]]; then
+      recovery_pgid="$webkit_pgid"
+      if [[ "$reason" == desktop-* || "$reason" == webkit-missing || "$reason" == cockpit-heartbeat-stale ]]; then
+        recovery_pgid="$desktop_pgid"
+      fi
+      recovery_planned=0
+      if [[ "$reason" == webkit-blocked || "$reason" == webkit-missing || "$reason" == desktop-blocked || "$reason" == cockpit-heartbeat-stale ]]; then
+        recovery_text="renderer is blocked; automatic recovery is disabled or unavailable; desktop will remain running"
+      fi
+      if [[ "$RECOVER" == "1" && "$recovery_allowed" == "1" && ( "$reason" == webkit-blocked || "$reason" == webkit-missing || "$reason" == desktop-blocked || "$reason" == cockpit-heartbeat-stale ) && "$recovery_pgid" =~ ^[0-9]+$ && "$recovery_pgid" -gt 1 ]]; then
+        recovery_planned=1
         recovery_text="renderer is blocked; desktop group will be recycled and relaunched"
       fi
       if command -v notify-send >/dev/null 2>&1 && [[ -S "${NOTIFY_BUS#unix:path=}" ]]; then
@@ -214,16 +251,12 @@ while :; do
           notify-send --replace-id="$NOTIFY_REPLACE_ID" --urgency=critical "TermFleet pressure alert" "$reason: $detail; $recovery_text" \
           >>"$ALERT_LOG" 2>&1 || true
       fi
-      recovery_pgid="$webkit_pgid"
-      if [[ "$reason" == desktop-* ]]; then
-        recovery_pgid="$desktop_pgid"
-      fi
-      if [[ "$RECOVER" == "1" && "$recovery_allowed" == "1" && ( "$reason" == webkit-blocked || "$reason" == desktop-blocked ) && "$recovery_pgid" =~ ^[0-9]+$ && "$recovery_pgid" -gt 1 ]]; then
+      if (( recovery_planned == 1 )); then
         printf '%s recovery=desktop-group-%s daemon=preserved\n' "$timestamp" "$recovery_pgid" >>"$ALERT_LOG"
         termfleet_incident_record "desktop_recovery" "$reason" "recovery_pgid=$recovery_pgid daemon=preserved $incident_details"
         kill -- "-$recovery_pgid" 2>>"$ALERT_LOG" || true
         sleep 1
-        "$DESKTOP_LAUNCHER" >>"$ALERT_LOG" 2>&1 &
+        "$DESKTOP_LAUNCHER" --agent >>"$ALERT_LOG" 2>&1 &
         last_recovery_epoch="$now_epoch"
       fi
       last_signature="$signature"

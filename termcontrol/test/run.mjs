@@ -7,10 +7,12 @@
  *   node termcontrol/test/run.mjs
  */
 import { spawn } from 'node:child_process';
+import http from 'node:http';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isNoise } from '../bridge/noise.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const bridge = path.join(here, '..', 'bridge', 'server.mjs');
@@ -67,6 +69,13 @@ async function main() {
     redirect: 'manual',
     ...opts,
     headers: { ...(opts.headers || {}), ...(cookie ? { cookie } : {}) },
+  });
+  const reqWithHost = (p, host, headers = {}) => new Promise((resolve, reject) => {
+    const request = http.get({ hostname: '127.0.0.1', port, path: p, headers: { host, ...headers } }, (response) => {
+      response.resume();
+      response.on('end', () => resolve(response));
+    });
+    request.on('error', reject);
   });
 
   // ---------------------------------------------------------------- auth ---
@@ -134,6 +143,85 @@ async function main() {
     eq(r.status, 302, 'status');
   });
 
+  await check('password recovery is available only from the local PC', async () => {
+    const remote = await reqWithHost('/recover', 'control.in-theflow.com');
+    eq(remote.statusCode, 404, 'public recovery status');
+    const forwarded = await reqWithHost('/recover', 'localhost', { 'cf-connecting-ip': '203.0.113.1' });
+    eq(forwarded.statusCode, 404, 'forwarded recovery status');
+
+    const local = await req('/recover');
+    eq(local.status, 200, 'local recovery status');
+    const html = await local.text();
+    ok(html.includes('Reset your sign-in'), 'local recovery page must explain what it does');
+    ok(html.includes('No old password is needed'), 'local recovery page must explain that old credentials are unnecessary');
+    ok(!html.includes('name="email"'), 'local recovery must not require the owner to remember the account email');
+    ok(/name="recoveryToken" value="[a-f0-9.]+"/.test(html), 'local recovery form must carry an unguessable token');
+  });
+
+  await check('phone sign-in asks only for the owner password and explains recovery', async () => {
+    const page = await req('/login');
+    const html = await page.text();
+    ok(!html.includes('name="email"'), 'phone sign-in must not require the owner email');
+    ok(html.includes('http://127.0.0.1:7810/recover'), 'phone sign-in must show the exact local recovery address');
+  });
+
+  await check('password recovery rejects a forged form', async () => {
+    const r = await req('/recover', {
+      method: 'POST',
+      body: new URLSearchParams({
+        email: 'owner@example.com',
+        password: 'new-good-password',
+        recoveryToken: 'forged',
+      }),
+    });
+    eq(r.status, 403, 'status');
+  });
+
+  await check('local password recovery rotates credentials and existing sessions', async () => {
+    const page = await req('/recover');
+    const html = await page.text();
+    const token = html.match(/name="recoveryToken" value="([a-f0-9.]+)"/)?.[1];
+    ok(token, 'recovery token missing');
+
+    const oldCookie = cookie;
+    const reset = await req('/recover', {
+      method: 'POST',
+      body: new URLSearchParams({
+        password: 'new-good-password',
+        recoveryToken: token,
+      }),
+    });
+    eq(reset.status, 302, 'reset status');
+    cookie = reset.headers.get('set-cookie').split(';')[0];
+
+    const active = cookie;
+    cookie = oldCookie;
+    eq((await req('/api/panes')).status, 401, 'old session status');
+    cookie = '';
+    eq((await req('/login', {
+      method: 'POST',
+      body: new URLSearchParams({ password: 'a-good-password' }),
+    })).status, 401, 'old password status');
+    eq((await req('/login', {
+      method: 'POST',
+      body: new URLSearchParams({ password: 'new-good-password' }),
+    })).status, 302, 'new password status');
+    cookie = active;
+  });
+
+  await check('successful sign-ins never consume the guessing limit', async () => {
+    const saved = cookie;
+    cookie = '';
+    for (let attempt = 0; attempt < 10; attempt++) {
+      const response = await req('/login', {
+        method: 'POST',
+        body: new URLSearchParams({ password: 'new-good-password' }),
+      });
+      eq(response.status, 302, `successful sign-in ${attempt + 1}`);
+    }
+    cookie = saved;
+  });
+
   await check('a forged session cookie is refused', async () => {
     const saved = cookie;
     cookie = 'tc_session=someone.99999999999999.deadbeefdeadbeef';
@@ -180,10 +268,14 @@ async function main() {
     eq(missing.length, 0, `terminals without an emoji (${missing.map((m) => m.project).join(', ')})`);
   });
 
-  await check('waiting terminals sort above the rest', () => {
-    const order = { waiting: 0, working: 1, idle: 2 };
-    const seq = panes.panes.map((p) => order[p.turn]);
-    ok(seq.every((v, i) => i === 0 || seq[i - 1] <= v), 'list is not sorted by attention');
+  await check('live status never moves terminals out of desktop sidebar order', async () => {
+    const { listPanes, reconcileLivePanes } = await import(path.join(here, '..', 'bridge', 'inventory.mjs'));
+    const { liveness } = await import(path.join(here, '..', 'bridge', 'liveness.mjs'));
+    const life = await liveness();
+    ok(life.reachable, 'the daemon must be reachable for ordering proof');
+    const expected = reconcileLivePanes(listPanes(), life.byId).map((pane) => pane.id);
+    const actual = panes.panes.map((pane) => pane.id);
+    eq(JSON.stringify(actual), JSON.stringify(expected), 'phone order must match the desktop sidebar');
   });
 
   await check('every terminal is labelled with the project it is really in', () => {
@@ -209,6 +301,32 @@ async function main() {
 
   // ---------------------------------------------------------------- feed ---
   group('Reading a conversation');
+
+  await check('hook plumbing stays out of the conversation', async () => {
+    const hookMessages = [
+      'hookSpecificOutput: { additionalContext: str(466) hookEventName: str }',
+      '<model_switch>The user was previously using a different model.</model_switch>',
+      '<collaboration_mode># Collaboration Mode: Default</collaboration_mode>',
+      '<multi_agent_mode>Do not spawn sub-agents.</multi_agent_mode>',
+      'You are `/root`, the primary agent in a team of agents collaborating to fulfill the user\'s goals.',
+    ];
+    const visible = hookMessages.filter((message) => !isNoise(message));
+    eq(visible.length, 0, `hook plumbing remained visible (${visible.join(' | ')})`);
+    ok(!isNoise('I finished the update and the terminal is still running.'), 'a real agent reply was hidden');
+    ok(!isNoise('You are going in circles. Fix it.'), 'a real operator message was hidden');
+  });
+
+  await check('the live feed contains no hook or control envelopes', async () => {
+    const samples = [];
+    for (const pane of panes.panes) {
+      const response = await req(`/api/feed?pane=${encodeURIComponent(pane.id)}&limit=80`);
+      const feed = await response.json();
+      for (const event of feed.events || []) {
+        if (isNoise(event.text)) samples.push(`${pane.project}: ${String(event.text).slice(0, 120)}`);
+      }
+    }
+    eq(samples.length, 0, `live feed exposed internal plumbing (${samples.join(' | ')})`);
+  });
 
   await check('every terminal has something to show', async () => {
     // Most keep a conversation. A side session or plain shell does not, and
@@ -576,10 +694,10 @@ async function main() {
 
   await check('a pending question is offered with its options', async () => {
     const { pendingAsk } = await import(path.join(here, '..', 'bridge', 'asks.mjs'));
-    // A pane recorded as waiting always gets the standard answers, even when
-    // the question itself is only drawn on screen.
-    const ask = pendingAsk({ provider: 'codex', turn: 'waiting', cwd: '/tmp', sessionId: 'none' });
-    ok(ask && ask.options.length === 3, 'a waiting agent should offer answers');
+    const ordinaryQuestion = pendingAsk({ provider: 'codex', turn: 'waiting', turnReason: 'operator_question', cwd: '/tmp', sessionId: 'none' });
+    ok(ordinaryQuestion === null, 'a generic question must not expose permission shortcuts');
+    const ask = pendingAsk({ provider: 'codex', turn: 'waiting', turnReason: 'permission_prompt', updatedAt: 1, cwd: '/tmp', sessionId: 'none' });
+    ok(ask && ask.options.length === 3, 'an explicit permission request should offer answers');
     ok(ask.options.some((o) => /yes/i.test(o.label)) && ask.options.some((o) => /no/i.test(o.label)), 'expected yes and no');
     const quiet = pendingAsk({ provider: 'codex', turn: 'idle', cwd: '/tmp', sessionId: 'none' });
     ok(quiet === null, 'an idle agent must not appear to be asking anything');
@@ -597,6 +715,13 @@ async function main() {
     await wait(1400);
     const screen = await screenOf(id, 20);
     await ask({ type: 'killSession', id, reviewed: true }).catch(() => {});
+    // The live daemon allows one disposable test pane beside the 11 real panes.
+    // Wait for its asynchronous child reap instead of guessing how long it takes.
+    for (let attempt = 0; attempt < 30; attempt++) {
+      const listed = await ask({ type: 'listSessions' });
+      if (!listed.sessions?.some((session) => session.id === id)) break;
+      await wait(100);
+    }
 
     ok(/MENU ITEM ONE/.test(screen || ''), `the screen was not readable: ${JSON.stringify(screen)}`);
     ok(/MENU ITEM TWO/.test(screen || ''), 'a line painted with a cursor code went missing');
@@ -607,7 +732,11 @@ async function main() {
   await check('terminal keys reach the terminal', async () => {
     const m = await import(path.join(here, '..', '..', 'scripts', 'termfleetctl.mjs'));
     const sock = m.defaultDaemonSocket();
-    const ask = async (r) => { const x = await m.requestDaemon(r, sock); if (!x.ok) throw new Error('daemon refused'); return x.value; };
+    const ask = async (r) => {
+      const x = await m.requestDaemon(r, sock);
+      if (!x.ok) throw new Error(`daemon refused ${r.type}: ${x.error || 'unknown error'}`);
+      return x.value;
+    };
     const { sendKey } = await import(path.join(here, '..', 'bridge', 'send.mjs'));
 
     // A program that prints what it is interrupted by.

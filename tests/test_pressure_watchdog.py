@@ -1,6 +1,7 @@
 """Static safety checks for the host-pressure watchdog."""
 
 import pathlib
+import subprocess
 import unittest
 
 
@@ -13,6 +14,33 @@ INCIDENT_HELPER = ROOT / "scripts" / "termfleet-incident-log.sh"
 
 
 class PressureWatchdogTests(unittest.TestCase):
+    def test_restart_notification_matches_recovery_eligibility(self):
+        script = WATCHDOG.read_text()
+        start = script.index('      recovery_text=')
+        end = script.index('      if command -v notify-send', start)
+        decision = script[start:end]
+        for recover, allowed, pgid, expected in [
+            ('0', '1', '123', False),
+            ('1', '0', '123', False),
+            ('1', '1', '', False),
+            ('1', '1', '1', False),
+            ('1', '1', '123', True),
+        ]:
+            for reason in ('desktop-blocked', 'webkit-blocked', 'webkit-missing', 'cockpit-heartbeat-stale', 'host-io-pressure', 'daemon-split-brain'):
+                with self.subTest(recover=recover, allowed=allowed, pgid=pgid, reason=reason):
+                    result = subprocess.run(
+                        ['bash', '-c', decision + '\nprintf "%s\\n%s" "$recovery_planned" "$recovery_text"'],
+                        env={'RECOVER': recover, 'recovery_allowed': allowed,
+                             'desktop_pgid': pgid, 'webkit_pgid': pgid,
+                             'reason': reason},
+                        capture_output=True, text=True, check=True,
+                    )
+                    eligible = expected and reason in ('desktop-blocked', 'webkit-blocked', 'webkit-missing', 'cockpit-heartbeat-stale')
+                    planned, message = result.stdout.split('\n', 1)
+                    self.assertEqual(planned, '1' if eligible else '0')
+                    self.assertEqual('will be recycled and relaunched' in message, eligible)
+        self.assertIn('if (( recovery_planned == 1 )); then', script)
+
     def test_incident_log_is_structured_and_agent_readable(self):
         helper = INCIDENT_HELPER.read_text()
         self.assertIn('INCIDENT_JSONL="', helper)
@@ -77,6 +105,14 @@ class PressureWatchdogTests(unittest.TestCase):
         self.assertIn("desktop_blocked_io_confirmed", script)
         self.assertIn("desktop_blocked_io_confirmed == 1", script)
 
+    def test_stale_cockpit_heartbeat_recovers_a_live_but_gray_renderer(self):
+        script = WATCHDOG.read_text()
+        self.assertIn("TERMFLEET_COCKPIT_SNAPSHOT_PATH", script)
+        self.assertIn("COCKPIT_HEARTBEAT_STALE_SECONDS", script)
+        self.assertIn("COCKPIT_HEARTBEAT_STARTUP_GRACE_SECONDS", script)
+        self.assertIn("cockpit_heartbeat_age_seconds", script)
+        self.assertIn('reason="cockpit-heartbeat-stale"', script)
+
     def test_watchdog_ignores_normal_renderer_rss_without_recycling_or_alerting(self):
         script = WATCHDOG.read_text()
         self.assertIn("WebKitWebProcess", script)
@@ -99,6 +135,9 @@ class PressureWatchdogTests(unittest.TestCase):
         self.assertIn("RECOVERY_COOLDOWN_SECONDS", script)
         self.assertIn("webkit_blocked_count", script)
         self.assertIn("desktop_blocked_count", script)
+        self.assertIn("webkit_missing_count", script)
+        self.assertIn("WEBKIT_MISSING_CONFIRMATIONS", script)
+        self.assertIn('reason="webkit-missing"', script)
         self.assertIn("last_recovery_epoch", script)
         self.assertIn("NOTIFY_REPLACE_ID", script)
         self.assertIn("--replace-id=", script)
@@ -112,8 +151,9 @@ class PressureWatchdogTests(unittest.TestCase):
         self.assertIn("host pressure detected; TermFleet desktop will not be recycled", script)
         self.assertNotIn("renderer memory is high; TermFleet desktop will remain running", script)
         self.assertIn("renderer is blocked; desktop group will be recycled and relaunched", script)
-        self.assertIn('( "$reason" == webkit-blocked || "$reason" == desktop-blocked )', script)
+        self.assertIn('"$reason" == webkit-missing', script)
         self.assertNotIn('( "$reason" == webkit-* || "$reason" == desktop-* )', script)
+        self.assertIn('"$DESKTOP_LAUNCHER" --agent', script)
         self.assertIn("daemon=preserved", script)
         self.assertIn("DESKTOP_LAUNCHER", script)
         self.assertNotIn("pkill", script)
@@ -157,9 +197,10 @@ class PressureWatchdogTests(unittest.TestCase):
         installer = INSTALLER.read_text()
         self.assertIn("Restart=always", service)
         self.assertIn("termfleet-pressure-watchdog", service)
-        self.assertIn("Environment=TERMFLEET_PRESSURE_WATCHDOG_RECOVER=0", service)
+        self.assertIn("Environment=TERMFLEET_PRESSURE_WATCHDOG_RECOVER=1", service)
         self.assertIn("install -m 0755", installer)
         self.assertIn("systemctl --user enable --now termfleet-pressure-watchdog.service", installer)
+        self.assertIn("systemctl --user try-restart termfleet-pressure-watchdog.service", installer)
         self.assertNotIn("systemctl --user stop", installer)
 
     def test_reaper_timer_exports_the_user_session_bus(self):

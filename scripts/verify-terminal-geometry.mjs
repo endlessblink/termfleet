@@ -21,15 +21,19 @@ import {
   judgeKeyRoutes,
   judgePaneStream,
   judgePaneCapture,
+  judgePaneStability,
 } from "./lib/terminal-geometry-verdict.mjs";
 
 const args = process.argv.slice(2);
 const asJson = args.includes("--json");
 const scanStreams = !args.includes("--no-streams");
-const capturePng = (() => {
-  const index = args.indexOf("--png");
+const valueAfter = (flag) => {
+  const index = args.indexOf(flag);
   return index >= 0 && args[index + 1] ? args[index + 1] : null;
-})();
+};
+const capturePng = valueAfter("--png");
+/** A second capture of the same window; comparing the two exposes repaint artifacts. */
+const stablePng = valueAfter("--stable");
 
 /**
  * Mean brightness of a window-space rect, via ImageMagick. Returns 0..1. Only used when
@@ -57,6 +61,30 @@ function brightnessFromCapture(rect, png) {
   const value = Number.parseFloat(result.stdout);
   if (!Number.isFinite(value)) throw new Error(`unparseable brightness ${result.stdout}`);
   return value;
+}
+
+/**
+ * Normalised RMSE (0..1) between the same rect of two captures. Crops first (ImageMagick
+ * cannot crop both operands of `compare` in one call), then compares.
+ */
+function rmseBetweenCaptures(rect, firstPng, secondPng) {
+  const crop = `${Math.round(rect.width)}x${Math.round(rect.height)}+${Math.round(rect.x)}+${Math.round(rect.y)}`;
+  const a = path.join(os.tmpdir(), `tf-stable-a-${process.pid}.png`);
+  const b = path.join(os.tmpdir(), `tf-stable-b-${process.pid}.png`);
+  for (const [source, target] of [[firstPng, a], [secondPng, b]]) {
+    const cropRun = spawnSync("magick", [source, "-crop", crop, "+repage", target], {
+      encoding: "utf8",
+    });
+    if (cropRun.status !== 0) throw new Error(cropRun.stderr?.trim() || `crop of ${source} failed`);
+  }
+  const compared = spawnSync("magick", ["compare", "-metric", "RMSE", a, b, "null:"], {
+    encoding: "utf8",
+  });
+  // `magick compare` reports the metric on stderr and exits 1 when the images differ.
+  const text = `${compared.stderr ?? ""}`.trim();
+  const match = text.match(/\(([0-9.]+)\)/) ?? text.match(/^([0-9.]+)/);
+  if (!match) throw new Error(`unparseable RMSE ${JSON.stringify(text)}`);
+  return Number.parseFloat(match[1]);
 }
 
 // The app writes to the TMPDIR the launcher gave it (~/.cache/termfleet/tmp), which is
@@ -182,6 +210,26 @@ if (entries.length) {
         );
       } else if (error) {
         console.log(`capture: ${String(sample.id).slice(0, 22)} not judged (${error})`);
+      }
+    }
+  }
+
+  // Idle stability: two captures of an unchanged pane must be pixel-identical. This is
+  // the only check that can see glyph-level repaint corruption, which mean brightness
+  // cannot.
+  if (stablePng && existsSync(stablePng) && capturePng && existsSync(capturePng)) {
+    for (const sample of latest.values()) {
+      const { violations: found, rmse, error } = judgePaneStability(sample, (rect) =>
+        rmseBetweenCaptures(rect, capturePng, stablePng),
+      );
+      violations.push(...found);
+      if (typeof rmse === "number") {
+        console.log(
+          `stability: ${String(sample.id).slice(0, 22)} rmse ${rmse.toFixed(5)}` +
+            (found.length ? "  <-- CHANGED WHILE IDLE" : "  (identical)"),
+        );
+      } else if (error) {
+        console.log(`stability: ${String(sample.id).slice(0, 22)} not judged (${error})`);
       }
     }
   }

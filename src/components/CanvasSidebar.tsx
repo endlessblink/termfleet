@@ -4,8 +4,10 @@ import type { CanvasNode, Group, Tab } from "../lib/types";
 import { pathTail, projectForTab } from "../lib/projectDisplay";
 import { useWorkspaceStore } from "../stores/workspace";
 import { MAP_FILTERS, type MapFilter, nodeMatchesMapFilter, tabForMapNode } from "../lib/mapNodeFilters";
-import { projectBucketsByCanvasPosition } from "../lib/mapNodeOrdering";
+import { orderCanvasNodesByManualOrder, projectBucketsByManualOrder } from "../lib/mapNodeOrdering";
 import { useFlipList } from "../hooks/useFlipList";
+import { getPendingApprovals } from "../lib/pendingApprovals";
+import { PendingApprovalsSection } from "./PendingApprovalsSection";
 
 const styles: Record<string, CSSProperties> = {
   sidebar: {
@@ -352,15 +354,17 @@ export function CanvasSidebar() {
   const workspaceMode = useWorkspaceStore((state) => state.workspaceUiState.workspaceMode);
   const collapsed = useWorkspaceStore((state) => state.workspaceUiState.canvasSidebarCollapsed);
   const sortMode = useWorkspaceStore((state) => state.workspaceUiState.canvasSidebarSortMode);
+  const manualOrder = useWorkspaceStore((state) => state.workspaceUiState.canvasSidebarManualOrder);
   const canvasState = useWorkspaceStore((state) => state.canvasState);
   const tabs = useWorkspaceStore((state) => state.tabs);
   const groups = useWorkspaceStore((state) => state.groups);
   const selectCanvasNode = useWorkspaceStore((state) => state.selectCanvasNode);
   const renameCanvasNode = useWorkspaceStore((state) => state.renameCanvasNode);
-  const reorderCanvasNodes = useWorkspaceStore((state) => state.reorderCanvasNodes);
+  const reorderCanvasSidebarNodes = useWorkspaceStore((state) => state.reorderCanvasSidebarNodes);
   const updateCanvasViewport = useWorkspaceStore((state) => state.updateCanvasViewport);
   const updateUiState = useWorkspaceStore((state) => state.updateWorkspaceUiState);
   const refreshLiveCwd = useWorkspaceStore((state) => state.refreshLiveCwd);
+  const liveCwds = useWorkspaceStore((state) => state.liveCwds);
 
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<{ id: string; place: "before" | "after" } | null>(null);
@@ -393,6 +397,10 @@ export function CanvasSidebar() {
   const terminals = visibleNodes.filter((node) => node.type === "terminal");
   const others = visibleNodes.filter((node) => node.type !== "terminal");
 
+  const pendingApprovals = useMemo(() => {
+    return getPendingApprovals(groupVisibleNodes, tabs, liveCwds, groups);
+  }, [groupVisibleNodes, tabs, liveCwds, groups]);
+
   // The map sidebar is the first surface rendered for saved terminals. Refresh
   // their live project identity here so project lanes do not depend on opening
   // a terminal pane (which used to be the first place this refresh ran).
@@ -408,7 +416,7 @@ export function CanvasSidebar() {
     for (const id of terminalIds.split("|")) void refreshLiveCwd(id);
   }, [refreshLiveCwd, terminalIds]);
 
-  const draggable = sortMode === "manual";
+  const draggable = true;
 
   const clearDrag = useCallback(() => {
     setDraggingId(null);
@@ -430,9 +438,9 @@ export function CanvasSidebar() {
   const onDrop = useCallback((node: CanvasNode, event: React.DragEvent) => {
     event.preventDefault();
     const place = dropTarget?.id === node.id ? dropTarget.place : "before";
-    if (draggingId && draggingId !== node.id) reorderCanvasNodes(draggingId, node.id, place);
+    if (draggingId && draggingId !== node.id) reorderCanvasSidebarNodes(draggingId, node.id, place);
     clearDrag();
-  }, [draggingId, dropTarget, reorderCanvasNodes, clearDrag]);
+  }, [draggingId, dropTarget, reorderCanvasSidebarNodes, clearDrag]);
 
   const renderRow = useCallback((node: CanvasNode, rowDraggable: boolean) => (
     <NodeRow
@@ -454,12 +462,16 @@ export function CanvasSidebar() {
   ), [nodeTab, groups, canvasState.selectedNodeId, onSelect, onRename, draggingId, dropTarget, onDragStart, onDragOver, onDrop, clearDrag]);
 
   const projectBuckets = useMemo(() => {
-    return projectBucketsByCanvasPosition(terminals, tabs, groups);
-  }, [terminals, tabs, groups, nodeTab]);
+    return projectBucketsByManualOrder(terminals, tabs, groups, manualOrder);
+  }, [terminals, tabs, groups, manualOrder]);
+  const manualTerminals = useMemo(
+    () => orderCanvasNodesByManualOrder(terminals, manualOrder),
+    [terminals, manualOrder],
+  );
   const listOrderKey = [
     ...(sortMode === "project"
       ? projectBuckets.flatMap((bucket) => [`header-${bucket.key}`, ...bucket.nodes.map((node) => node.id)])
-      : terminals.map((node) => node.id)),
+      : manualTerminals.map((node) => node.id)),
     ...others.map((node) => node.id),
   ].join("|");
   const listRef = useFlipList<HTMLDivElement>(listOrderKey);
@@ -486,6 +498,10 @@ export function CanvasSidebar() {
           </button>
         </span>
       </div>
+      <PendingApprovalsSection
+        approvals={pendingApprovals}
+        onSelect={onSelect}
+      />
       <div style={styles.filterBar} aria-label="Map arrangement">
         <div style={styles.sortToggle} role="group" aria-label="Arrange terminals">
           {SORT_MODES.map((mode) => {
@@ -543,11 +559,11 @@ export function CanvasSidebar() {
           projectBuckets.map((bucket) => (
             <div key={bucket.key} data-testid="canvas-sidebar-project-group">
               <div data-flip-key={`header-${bucket.key}`} style={styles.sectionLabel}>{bucket.label}</div>
-              {bucket.nodes.map((node) => renderRow(node, false))}
+              {bucket.nodes.map((node) => renderRow(node, draggable))}
             </div>
           ))
         ) : (
-          terminals.map((node) => renderRow(node, draggable))
+          manualTerminals.map((node) => renderRow(node, draggable))
         )}
         {others.length > 0 && <div style={styles.sectionLabel}>Previews, notes, and files</div>}
         {others.map((node) => renderRow(node, false))}

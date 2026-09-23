@@ -996,7 +996,7 @@ fn stream_daemon_session(
     subscriber_id: String,
 ) -> Result<(), String> {
     let subscriber_id_for_cleanup = subscriber_id.clone();
-    let receiver = pty_manager.subscribe(id, subscriber_id)?;
+    let (receiver, registration_id) = pty_manager.subscribe_registered(id, subscriber_id)?;
     let result = (|| {
         write_daemon_response(
             stream,
@@ -1015,7 +1015,7 @@ fn stream_daemon_session(
 
         Ok(())
     })();
-    let _ = pty_manager.unsubscribe(id, &subscriber_id_for_cleanup);
+    let _ = pty_manager.unsubscribe_registration(id, &subscriber_id_for_cleanup, registration_id);
     result
 }
 

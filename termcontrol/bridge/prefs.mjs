@@ -43,20 +43,21 @@ const RANK = { waiting: 0, working: 1, idle: 2 };
 export function byProject(panes) {
   const groups = new Map();
   for (const pane of panes) {
-    const key = pane.project || 'Other';
-    if (!groups.has(key)) groups.set(key, { project: key, emoji: pane.emoji || null, panes: [] });
+    const key = pane.mapGroupId || pane.project || 'Other';
+    if (!groups.has(key)) groups.set(key, {
+      project: pane.mapGroupName || pane.project || 'Other',
+      emoji: pane.emoji || null,
+      panes: [],
+    });
     groups.get(key).panes.push(pane);
   }
 
   for (const group of groups.values()) {
-    group.panes.sort((a, b) => (RANK[a.turn] - RANK[b.turn]) || (b.updatedAt - a.updatedAt));
     group.attention = Math.min(...group.panes.map((p) => RANK[p.turn]));
     group.updatedAt = Math.max(...group.panes.map((p) => p.updatedAt));
   }
 
-  return [...groups.values()].sort(
-    (a, b) => (a.attention - b.attention) || (b.updatedAt - a.updatedAt),
-  );
+  return [...groups.values()];
 }
 
 /** The owner's own order; anything new goes to the end, newest first. */

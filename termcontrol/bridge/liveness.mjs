@@ -45,6 +45,7 @@ export async function liveness() {
       alive: true,
       exited: s.lastExit != null,
       pid: s.pid ?? null,
+      initialCwd: typeof s.initialCwd === 'string' ? s.initialCwd : null,
       bytes,
       // "Producing" means output moved within the last few seconds. Without a
       // previous sample we say nothing rather than guess.

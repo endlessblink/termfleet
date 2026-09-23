@@ -61,6 +61,9 @@ export interface CockpitSnapshotEntry {
   statusSummaryTask?: string;
   statusSummaryGoal?: string;
   statusSummaryGoalSource?: string;
+  // Confidence of the same pane-owned status evidence rendered above. The
+  // completion gate requires high confidence; missing is deliberately not OK.
+  statusSummaryConfidence?: string;
   statusSummaryNow?: string;
   statusSummaryPath?: string;
   taskLineup: Array<{ content: string; status: string }>;
@@ -143,9 +146,24 @@ export function recordNativeCapture(
 /** Record one pane's rendered state and schedule a debounced flush. No-op unless enabled. */
 export function recordCockpitPane(paneId: string, entry: CockpitSnapshotEntry): void {
   if (!cockpitSnapshotEnabled() || !paneId) return;
+  const goalSources = new Set([
+    "status-summary",
+    "sidecar-todo",
+    "task-tool",
+    "user-prompt",
+    "workstream",
+    "manual",
+    "plan-binding",
+    "plan-explanation",
+    "goal-task",
+    "agent-goal",
+    "opening-request",
+    "project-fallback",
+    "shell-role",
+  ]);
   const capturedGoal = entry.context?.trim()
     ? entry.context.trim()
-    : entry.statusSummaryGoalSource === "opening-request" &&
+    : goalSources.has(entry.statusSummaryGoalSource?.trim() ?? "") &&
         entry.statusSummaryGoal &&
         entry.statusSummaryGoal.length <= 220 &&
         !/[…]$/.test(entry.statusSummaryGoal.trim())

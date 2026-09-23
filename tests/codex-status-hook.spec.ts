@@ -48,7 +48,7 @@ test("the answer to about-what becomes the durable Goal at turn end", () => {
   const sidecar = buildCodexSidecar(
     {
       hook_event_name: "Stop",
-      last_assistant_message: "We are making the installed dock header clear and stable.",
+      last_assistant_message: "We are making the terminal header clear and stable.",
       cwd: "/repo/termfleet",
     },
     {
@@ -58,7 +58,7 @@ test("the answer to about-what becomes the durable Goal at turn end", () => {
     },
     1_010,
   );
-  expect(sidecar?.mainTask).toBe("We are making the installed dock header clear and stable.");
+  expect(sidecar?.mainTask).toBe("We are making the terminal header clear and stable.");
   expect(sidecar?.mainTaskSource).toBe("plan-explanation");
   expect(sidecar?.userTask).toBe("$about-what");
 });
@@ -306,7 +306,7 @@ test("an ordinary prompt never manufactures checklist work", () => {
   expect(sidecar?.mainTask).toBeUndefined();
 });
 
-test("an internal create_goal objective never becomes the cockpit mission", () => {
+test("an active create_goal objective fills a missing cockpit Goal with provenance", () => {
   const sidecar = buildCodexSidecar(
     {
       hook_event_name: "PostToolUse",
@@ -320,9 +320,25 @@ test("an internal create_goal objective never becomes the cockpit mission", () =
     },
     1_600,
   );
+  expect(sidecar?.mainTask).toBe("Keep every live terminal clear about its work");
+  expect(sidecar?.mainTaskSource).toBe("agent-goal");
+  expect(sidecar?.now).toBe("Waiting for user-facing approval");
+});
+
+test("an empty create_goal objective cannot manufacture a cockpit Goal", () => {
+  const sidecar = buildCodexSidecar(
+    {
+      hook_event_name: "PostToolUse",
+      tool_name: "create_goal",
+      tool_input: { objective: "" },
+      cwd: "/repo/termfleet",
+    },
+    { userTask: "not appearing", todos: [] },
+    1_625,
+  );
   expect(sidecar?.mainTask).toBeUndefined();
   expect(sidecar?.mainTaskSource).toBeUndefined();
-  expect(sidecar?.now).toBe("Waiting for user-facing approval");
+  expect(sidecar?.now).toBe("Now not captured");
 });
 
 test("an internal create_goal preserves an already captured user mission", () => {

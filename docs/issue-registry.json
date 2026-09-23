@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-09-16T20:31:10.521Z",
+  "updatedAt": "2026-09-23T11:39:28.526Z",
   "issues": [
     {
       "id": "TF-001",
@@ -3490,7 +3490,7 @@
     {
       "id": "TF-025",
       "title": "Manual sidebar order resets and moves map terminals",
-      "state": "verifying",
+      "state": "fixing",
       "severity": "medium",
       "surface": "canvas",
       "matrixRefs": [],
@@ -3598,6 +3598,13 @@
           "type": "evidence",
           "kind": "focused-test",
           "note": "Fresh 2026-09-08 regression chain confirms activity cannot reorder projects or terminals and refresh preserves the exact 16-terminal desktop authority order; 181 checks and production build passed. Installed desktop visual confirmation remains open."
+        },
+        {
+          "at": "2026-09-19T13:49:55.362Z",
+          "type": "transition",
+          "from": "verifying",
+          "to": "fixing",
+          "note": null
         }
       ]
     },
@@ -4985,10 +4992,12 @@
     {
       "id": "TF-033",
       "title": "OpenCode terminal text cannot be copied",
-      "state": "reproducing",
+      "state": "fixing",
       "severity": "medium",
       "surface": "desktop-runtime",
-      "matrixRefs": [],
+      "matrixRefs": [
+        "1.12"
+      ],
       "symptom": "Selecting text from an OpenCode terminal and using terminal copy does not place the selection on the system clipboard.",
       "rootCause": "",
       "guard": "tests/selection.spec.ts; npm run verify:clipboard-paste",
@@ -4997,6 +5006,16 @@
           "kind": "source",
           "at": "2026-09-15T20:26:12.618Z",
           "note": "Root cause confirmed in TerminalCanvas: when mouse reporting is active (as in OpenCode), unmodified pointer drags are forwarded to the TUI; only Shift-drag enters TermFleet selection. Focused selection guard passed 3/3; clipboard verifier passed source-contract checks and skipped live display read."
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-09-20T07:23:37.194Z",
+          "note": "tests/selection.spec.ts 4/4 passes including primary-screen mouse-report drag-selection and click reporting; cargo test vt_grid::tests::selection passes 2/2 including bounds safety"
+        },
+        {
+          "kind": "installed-release",
+          "at": "2026-09-20T07:23:37.242Z",
+          "note": "release 154fa768995d built and promoted, npm run verify:installed-release passes, verify-clipboard-all-launchers passes"
         }
       ],
       "owner": "termfleet",
@@ -5026,6 +5045,32 @@
           "from": "triaged",
           "to": "reproducing",
           "note": "Source trace identifies OpenCode mouse-report selection as the reproduction path; live desktop confirmation remains."
+        },
+        {
+          "at": "2026-09-19T15:37:40.255Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Regression guard added to tests/selection.spec.ts: primary-screen mouse-report terminals allow drag selection while preserving click reports"
+        },
+        {
+          "at": "2026-09-19T15:38:36.588Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Regression guard locked and failed for the right reason: implementing primary-screen click vs drag disambiguation"
+        },
+        {
+          "at": "2026-09-20T07:23:37.194Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "tests/selection.spec.ts 4/4 passes including primary-screen mouse-report drag-selection and click reporting; cargo test vt_grid::tests::selection passes 2/2 including bounds safety"
+        },
+        {
+          "at": "2026-09-20T07:23:37.242Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "release 154fa768995d built and promoted, npm run verify:installed-release passes, verify-clipboard-all-launchers passes"
         }
       ]
     },
@@ -5110,14 +5155,14 @@
       "guard": "tests/terminal-viewport.spec.ts -g \"alternate-screen navigation keys\"",
       "evidence": [
         {
-          "kind": "focused-test",
-          "at": "2026-09-16T17:13:35.332Z",
-          "note": "Wheel extension: terminalWheelAction / shouldSendWheelToTerminalApp now forward the wheel to an app that claimed the mouse even on the PRIMARY screen, but only when the grid has no history to offer (hasHistory === false). TC-043 is preserved: with real history on the primary screen the wheel still scrolls TermFleet's scrollback. tests/terminal-mouse.spec.ts asserts both directions (mouseReport+no history -> mouse-report; mouseReport+history -> history). Also validated against opencode's own docs: keyboard scroll is PgUp/PgDn, Ctrl+Alt+U/D, Home/End, which the fall-through fix now delivers. Upstream opencode tui.mouse defaults to true, and an open opencode issue reports that mouse:true still does not scroll the message viewport in several terminals, so the TermFleet-side fix is the reliable one."
-        },
-        {
           "kind": "source",
           "at": "2026-09-16T17:13:35.664Z",
           "note": "Second root cause found: terminalWheelAction only forwarded the wheel when mouseReport && altScreen, so an OpenCode pane (mouse claimed, primary screen) had the wheel routed to TermFleet's empty history. Now: mouseReport && (altScreen || hasHistory === false) -> mouse-report. Note the honest uncertainty: the earlier 'no mouse mode' scan read a TRUNCATED scrollback file, so it could not rule out a startup-time mouse enable; the authoritative mode lives in the grid."
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-09-17T06:18:38.342Z",
+          "note": "Live geometry shows the scroll path working where history exists: panes ce928f5a and d13d04fa recorded hasHistory=true with displayOffset 5 and e65833e8 with displayOffset 1, i.e. the grid viewport really scrolled. All observed terminals are MAP nodes (never split), and no navigation-key decisions were recorded in the sampling window, so the swallowed-key invariant is wired but not yet exercised in live use."
         }
       ],
       "owner": "termfleet",
@@ -5239,6 +5284,12 @@
           "type": "evidence",
           "kind": "source",
           "note": "Second root cause found: terminalWheelAction only forwarded the wheel when mouseReport && altScreen, so an OpenCode pane (mouse claimed, primary screen) had the wheel routed to TermFleet's empty history. Now: mouseReport && (altScreen || hasHistory === false) -> mouse-report. Note the honest uncertainty: the earlier 'no mouse mode' scan read a TRUNCATED scrollback file, so it could not rule out a startup-time mouse enable; the authoritative mode lives in the grid."
+        },
+        {
+          "at": "2026-09-17T06:18:38.343Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Live geometry shows the scroll path working where history exists: panes ce928f5a and d13d04fa recorded hasHistory=true with displayOffset 5 and e65833e8 with displayOffset 1, i.e. the grid viewport really scrolled. All observed terminals are MAP nodes (never split), and no navigation-key decisions were recorded in the sampling window, so the swallowed-key invariant is wired but not yet exercised in live use."
         }
       ]
     },
@@ -5884,8 +5935,8 @@
         },
         {
           "kind": "focused-test",
-          "at": "2026-09-16T20:29:47.243Z",
-          "note": "cargo test --lib vt_grid:: 44 passed (3 new: osc66_explicit_width_never_renders_as_text, osc66_with_bel_terminator_is_stripped, a_split_osc66_is_held_then_stripped). tests/terminal-geometry-verdict.spec.ts 7 passed. New fail-closed verifier npm run verify:terminal-geometry FAILS on the real streams: VERDICT=FAIL OSC66_UNSUPPORTED_OUTPUT 2x."
+          "at": "2026-09-17T06:18:37.930Z",
+          "note": "Live loop closed: after promoting 0844a8b5f3fc-f56b83bbfa9a and relaunching with the tracer on, the geometry log collected 8,921 records and the verifier judged 6 panes -> VERDICT=PASS. Every pane satisfies canvas = grid x cell exactly (e.g. 138x26 -> 1104x442) with 2-6px sub-cell padding, so the artifacts are NOT geometry; the only anomaly reported is OSC66_EMITTED (2 panes), which the grid now consumes. verify:terminal-geometry also skips panes with no grid yet, bounds its scan to the newest 40 trace files, and refuses oversized trace files (4 skipped: 127-494MB) instead of crashing."
         }
       ],
       "owner": "termfleet",
@@ -5974,6 +6025,267 @@
           "type": "evidence",
           "kind": "focused-test",
           "note": "cargo test --lib vt_grid:: 44 passed (3 new: osc66_explicit_width_never_renders_as_text, osc66_with_bel_terminator_is_stripped, a_split_osc66_is_held_then_stripped). tests/terminal-geometry-verdict.spec.ts 7 passed. New fail-closed verifier npm run verify:terminal-geometry FAILS on the real streams: VERDICT=FAIL OSC66_UNSUPPORTED_OUTPUT 2x."
+        },
+        {
+          "at": "2026-09-17T06:18:37.930Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Live loop closed: after promoting 0844a8b5f3fc-f56b83bbfa9a and relaunching with the tracer on, the geometry log collected 8,921 records and the verifier judged 6 panes -> VERDICT=PASS. Every pane satisfies canvas = grid x cell exactly (e.g. 138x26 -> 1104x442) with 2-6px sub-cell padding, so the artifacts are NOT geometry; the only anomaly reported is OSC66_EMITTED (2 panes), which the grid now consumes. verify:terminal-geometry also skips panes with no grid yet, bounds its scan to the newest 40 trace files, and refuses oversized trace files (4 skipped: 127-494MB) instead of crashing."
+        }
+      ]
+    },
+    {
+      "id": "TF-044",
+      "title": "Terminal badge drifts from the real Running/Waiting/Idle state",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "logic",
+      "matrixRefs": [],
+      "symptom": "Badge stays Running after interrupt/exit, Waiting after an approved permission, turns Idle during long tool calls; Codex panes blind after hooks were emptied",
+      "rootCause": "",
+      "guard": "Badge table test over interrupt, exit, permission, long tool, missing sidecar, plain shell, Codex without hooks",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-09-23T09:50:40.616Z",
+          "note": "live proof: npm run verify:badge-truth 19/19 at 12:49 on dock release cff63f34fadd-99d99767e0b1; screenshot .captures/cockpit-20260923-124939-proof-final-5.png"
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-09-23T09:50:40.932Z",
+          "note": "badge-liveness.spec, status-poll-loop rotation test, agent_lifecycle cargo tests; full suite no new failures vs baseline"
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Restore TermFleet Codex hooks; single status writer; process-table ground truth; PreToolUse",
+      "history": [
+        {
+          "at": "2026-09-23T08:22:01.081Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-09-23T08:22:04.729Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "root cause traced: missing hook events, double status writer, emptied Codex hooks"
+        },
+        {
+          "at": "2026-09-23T09:50:39.482Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "reproduced live: flow-state Codex approval prompt shown Idle, Pending approval 0"
+        },
+        {
+          "at": "2026-09-23T09:50:39.813Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "badge-liveness.spec + status-poll rotation test fail on old code"
+        },
+        {
+          "at": "2026-09-23T09:50:40.167Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "single ordered status writer, Codex session-log lifecycle, own-pane map lookup, starvation-free poll rotation, off-main-thread reads"
+        },
+        {
+          "at": "2026-09-23T09:50:40.616Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "live proof: npm run verify:badge-truth 19/19 at 12:49 on dock release cff63f34fadd-99d99767e0b1; screenshot .captures/cockpit-20260923-124939-proof-final-5.png"
+        },
+        {
+          "at": "2026-09-23T09:50:40.932Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "badge-liveness.spec, status-poll-loop rotation test, agent_lifecycle cargo tests; full suite no new failures vs baseline"
+        },
+        {
+          "at": "2026-09-23T09:50:41.258Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "awaiting operator's eye in the dock app"
+        }
+      ]
+    },
+    {
+      "id": "TF-045",
+      "title": "Busy terminal is filed under the wrong project in the sidebar",
+      "state": "resolved",
+      "severity": "medium",
+      "surface": "logic",
+      "matrixRefs": [],
+      "symptom": "2026-09-23 ~12:22 IDT: bots+automation Codex pane (tab d483d277) was grouped under in-control-kernel (groupId project-imif0w) for minutes, so the sidebar showed in-control-kernel as Running while that project's own pane was done; tab initialCwd, map node cwd, shell cwd and codex cwd were all bots+automation; self-corrected to project-5qnxyh by 12:26",
+      "rootCause": "",
+      "guard": "Reconcile test: a tab whose live, node and initial cwd all sit in project A never lands in project B, including during hydration and liveCwd refresh races",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-09-23T09:40:29.229Z",
+          "note": "hydrateRestoredWorkspace merge order: live poll overrides daemon start-folder cwd"
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-09-23T09:40:29.524Z",
+          "note": "tests/live-cwd-hydration-flip.spec.ts fails on old merge, passes on fix; project-reconciliation + workspace-hydration 43/43 pass"
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Find which reconcile input (liveCwds/liveGitRoots/group roots) held in-control-kernel for tab d483d277; add trace of groupId changes with their cause",
+      "history": [
+        {
+          "at": "2026-09-23T09:29:20.304Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-09-23T09:37:50.563Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Root cause: periodic live-session reconcile feeds the daemon list's START folder (initialCwd fallback) in as live cwd and it overrides the 2s /proc reading, so a terminal that cd'd to bots+automation flaps back into its start project in-control-kernel"
+        },
+        {
+          "at": "2026-09-23T09:40:29.229Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "hydrateRestoredWorkspace merge order: live poll overrides daemon start-folder cwd"
+        },
+        {
+          "at": "2026-09-23T09:40:29.524Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "tests/live-cwd-hydration-flip.spec.ts fails on old merge, passes on fix; project-reconciliation + workspace-hydration 43/43 pass"
+        },
+        {
+          "at": "2026-09-23T10:34:55.602Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "live repro via daemon list; regression spec; commit ebcf4c5; user confirmed via /done"
+        },
+        {
+          "at": "2026-09-23T10:34:55.964Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "live repro via daemon list; regression spec; commit ebcf4c5; user confirmed via /done"
+        },
+        {
+          "at": "2026-09-23T10:34:56.263Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "live repro via daemon list; regression spec; commit ebcf4c5; user confirmed via /done"
+        },
+        {
+          "at": "2026-09-23T10:34:56.560Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "live repro via daemon list; regression spec; commit ebcf4c5; user confirmed via /done"
+        },
+        {
+          "at": "2026-09-23T10:34:56.851Z",
+          "type": "transition",
+          "from": "verifying",
+          "to": "resolved",
+          "note": "live repro via daemon list; regression spec; commit ebcf4c5; user confirmed via /done"
+        }
+      ]
+    },
+    {
+      "id": "TF-046",
+      "title": "Phone chat shows raw terminal screen and unformatted tables",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "desktop-runtime",
+      "matrixRefs": [],
+      "symptom": "TermControl freelance-desk pane (agent running) labelled shell, Chat mode shows raw monospace screen with ASCII table; agent tables in chat bubbles also stay as raw pipes",
+      "rootCause": "",
+      "guard": "TermControl test: agent pane resolves to its conversation; markdown and box tables render as HTML tables in chat bubbles and screen fallback",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-09-23T11:39:27.966Z",
+          "note": "inventory agentsByPane + richText renderer in app"
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-09-23T11:39:28.249Z",
+          "note": "chat-rendering.test.mjs 8/8; verify:termcontrol-mobile 21/21; termcontrol run.mjs 67/67 on rerun (1 flaky daemon readSession unrelated)"
+        },
+        {
+          "kind": "installed-release",
+          "at": "2026-09-23T11:39:28.526Z",
+          "note": "termcontrol.service restarted 14:40 with new bridge; live feed check: freelance-desk 96ab3876 codex 60 events, termfleet claude pane real transcript"
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Find why inventory labels the agent pane shell; render tables in chat",
+      "history": [
+        {
+          "at": "2026-09-23T11:29:13.109Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-09-23T11:39:22.210Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "hand-started agents had no status record so bridge listed them as shell; now process table + open conversation file; chat renders markdown/box tables as cards"
+        },
+        {
+          "at": "2026-09-23T11:39:22.544Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "hand-started agents had no status record so bridge listed them as shell; now process table + open conversation file; chat renders markdown/box tables as cards"
+        },
+        {
+          "at": "2026-09-23T11:39:22.849Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "hand-started agents had no status record so bridge listed them as shell; now process table + open conversation file; chat renders markdown/box tables as cards"
+        },
+        {
+          "at": "2026-09-23T11:39:23.144Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "hand-started agents had no status record so bridge listed them as shell; now process table + open conversation file; chat renders markdown/box tables as cards"
+        },
+        {
+          "at": "2026-09-23T11:39:23.434Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "hand-started agents had no status record so bridge listed them as shell; now process table + open conversation file; chat renders markdown/box tables as cards"
+        },
+        {
+          "at": "2026-09-23T11:39:27.966Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "inventory agentsByPane + richText renderer in app"
+        },
+        {
+          "at": "2026-09-23T11:39:28.249Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "chat-rendering.test.mjs 8/8; verify:termcontrol-mobile 21/21; termcontrol run.mjs 67/67 on rerun (1 flaky daemon readSession unrelated)"
+        },
+        {
+          "at": "2026-09-23T11:39:28.526Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "termcontrol.service restarted 14:40 with new bridge; live feed check: freelance-desk 96ab3876 codex 60 events, termfleet claude pane real transcript"
         }
       ]
     }

@@ -35,6 +35,26 @@ test.describe("meaningful TermFleet gamification", () => {
     expect(facts.activeWorkstreams).toBe(3);
   });
 
+  test("starts the workstream timer only after the quest is accepted", () => {
+    const facts = { events: [], activeWorkstreams: 3 };
+    const beforeStart = mergeGamificationRecord(
+      EMPTY_GAMIFICATION_RECORD,
+      facts,
+      1_000,
+    );
+    const stillWaiting = mergeGamificationRecord(beforeStart, facts, 11_000);
+    expect(stillWaiting.parallelWorkstreamSeconds).toBe(0);
+
+    const accepted = {
+      ...stillWaiting,
+      activeQuestId: "parallel-work",
+      questAcceptedAt: 11_000,
+    };
+    const started = mergeGamificationRecord(accepted, facts, 11_000);
+    const afterTenSeconds = mergeGamificationRecord(started, facts, 21_000);
+    expect(afterTenSeconds.parallelWorkstreamSeconds).toBe(10);
+  });
+
   test("records successful activities and stable recovery receipts once", () => {
     const facts = collectGamificationFacts([tab([terminal({ status: "reconnected", lastStatusAt: 20, durableActivity: { title: "cargo test", command: "cargo test", status: "success", source: "command", completedAt: 10, updatedAt: 10 } })])]);
     const record = mergeGamificationRecord(EMPTY_GAMIFICATION_RECORD, facts, 30);
@@ -128,7 +148,7 @@ test.describe("meaningful TermFleet gamification", () => {
   });
 
   test("tracks three active workstreams as consecutive time", () => {
-    const started = mergeGamificationRecord(EMPTY_GAMIFICATION_RECORD, { events: [], activeWorkstreams: 3 }, 1_000);
+    const started = mergeGamificationRecord({ ...EMPTY_GAMIFICATION_RECORD, activeQuestId: "parallel-work", questAcceptedAt: 1_000 }, { events: [], activeWorkstreams: 3 }, 1_000);
     const afterTenMinutes = mergeGamificationRecord(started, { events: [], activeWorkstreams: 3 }, 601_000);
     expect(afterTenMinutes.parallelWorkstreamSeconds).toBe(600);
     expect(afterTenMinutes.parallelBestSeconds).toBe(600);
@@ -154,7 +174,7 @@ test.describe("meaningful TermFleet gamification", () => {
   });
 
   test("promotes the sustained-work challenge from 10 minutes to 30 minutes to 3 hours", () => {
-    const warmup = mergeGamificationRecord(EMPTY_GAMIFICATION_RECORD, { events: [], activeWorkstreams: 3 }, 1_000);
+    const warmup = mergeGamificationRecord({ ...EMPTY_GAMIFICATION_RECORD, activeQuestId: "parallel-work", questAcceptedAt: 1_000 }, { events: [], activeWorkstreams: 3 }, 1_000);
     const thirty = mergeGamificationRecord(warmup, { events: [], activeWorkstreams: 3 }, 1_801_000);
     const threeHours = mergeGamificationRecord(thirty, { events: [], activeWorkstreams: 3 }, 10_801_000);
     expect(summarizeGamification(warmup).missions.find((mission) => mission.id === "parallel-work")).toMatchObject({ title: "Keep 3 workstreams running for 10 minutes", target: 600 });

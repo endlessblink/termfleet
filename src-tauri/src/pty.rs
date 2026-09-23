@@ -471,8 +471,11 @@ impl PtySessionEvent {
 
 struct PtySubscriber {
     id: String,
+    registration_id: u64,
     sender: Sender<String>,
 }
+
+static NEXT_SUBSCRIBER_REGISTRATION: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Default)]
 struct PtyOutputBuffer {
@@ -1441,16 +1444,28 @@ impl PtyManager {
             .ok_or_else(|| format!("PTY {} not found", id))
     }
 
+    #[cfg(test)]
     pub fn subscribe(&self, id: &str, subscriber_id: String) -> Result<Receiver<String>, String> {
+        self.subscribe_registered(id, subscriber_id)
+            .map(|(receiver, _)| receiver)
+    }
+
+    pub(crate) fn subscribe_registered(
+        &self,
+        id: &str,
+        subscriber_id: String,
+    ) -> Result<(Receiver<String>, u64), String> {
         let handle = self.subscribers_handle(id)?;
         let (sender, receiver) = mpsc::channel();
+        let registration_id = NEXT_SUBSCRIBER_REGISTRATION.fetch_add(1, Ordering::Relaxed);
         let mut subscribers = handle.lock().unwrap();
         subscribers.retain(|subscriber| subscriber.id != subscriber_id);
         subscribers.push(PtySubscriber {
             id: subscriber_id,
+            registration_id,
             sender,
         });
-        Ok(receiver)
+        Ok((receiver, registration_id))
     }
 
     pub fn unsubscribe(&self, id: &str, subscriber_id: &str) -> Result<(), String> {
@@ -1459,6 +1474,19 @@ impl PtyManager {
             .lock()
             .unwrap()
             .retain(|subscriber| subscriber.id != subscriber_id);
+        Ok(())
+    }
+
+    pub(crate) fn unsubscribe_registration(
+        &self,
+        id: &str,
+        subscriber_id: &str,
+        registration_id: u64,
+    ) -> Result<(), String> {
+        let handle = self.subscribers_handle(id)?;
+        handle.lock().unwrap().retain(|subscriber| {
+            subscriber.id != subscriber_id || subscriber.registration_id != registration_id
+        });
         Ok(())
     }
 
@@ -4919,6 +4947,47 @@ mod tests {
         assert!(!reused, "an ended child must never be reported as reused");
         assert_eq!(manager.list_sessions()[0].last_exit, None);
         manager.kill(&id).expect("kill restarted PTY");
+    }
+
+    #[test]
+    fn stale_subscriber_cleanup_preserves_the_replacement_registration() {
+        let manager = PtyManager::new();
+        let id = "subscriber-replacement-cleanup-test".to_string();
+
+        manager
+            .ensure_detached(
+                Some(id.clone()),
+                Some("/tmp".to_string()),
+                Some("cat".to_string()),
+                None,
+                None,
+            )
+            .expect("spawn detached PTY");
+
+        let (_old_receiver, old_registration) = manager
+            .subscribe_registered(&id, "grid".to_string())
+            .expect("register original subscriber");
+        let (_replacement_receiver, replacement_registration) = manager
+            .subscribe_registered(&id, "grid".to_string())
+            .expect("replace subscriber with the same stable id");
+
+        manager
+            .unsubscribe_registration(&id, "grid", old_registration)
+            .expect("clean up stale stream");
+
+        assert_ne!(old_registration, replacement_registration);
+        assert_eq!(
+            manager
+                .list_sessions()
+                .into_iter()
+                .find(|session| session.id == id)
+                .expect("session remains live")
+                .subscriber_count,
+            1,
+            "cleanup from the replaced stream must not remove the current registration",
+        );
+
+        manager.kill(&id).expect("kill detached PTY");
     }
 
     #[test]

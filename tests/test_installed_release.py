@@ -18,6 +18,14 @@ DOCTOR = ROOT / "scripts" / "termfleet-doctor.mjs"
 
 
 class InstalledReleaseTests(unittest.TestCase):
+    def test_installer_forces_the_asset_embed_to_follow_the_completed_frontend(self):
+        installer = INSTALLER.read_text()
+        build_script = (ROOT / "src-tauri" / "build.rs").read_text()
+
+        self.assertLess(installer.index('frontend_sha="$(find "$APP_ROOT/dist"'), installer.index("cargo build"))
+        self.assertIn('TERMFLEET_FRONTEND_SHA256="$frontend_sha"', installer)
+        self.assertIn("cargo:rerun-if-env-changed=TERMFLEET_FRONTEND_SHA256", build_script)
+
     def frontend_tree_sha(self, dist_dir: pathlib.Path) -> str:
         digest_input = b""
         for path in sorted(path for path in dist_dir.rglob("*") if path.is_file()):

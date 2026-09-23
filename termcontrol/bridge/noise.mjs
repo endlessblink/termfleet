@@ -8,6 +8,8 @@ const WRAPPED = [
   'turn_aborted', 'system-reminder', 'user_instructions', 'environment_context',
   'command-name', 'command-message', 'local-command-stdout', 'task-notification',
   'user-prompt-submit-hook', 'function_results', 'untrusted',
+  'model_switch', 'collaboration_mode', 'multi_agent_mode', 'apps_instructions',
+  'plugins_instructions',
 ];
 
 const PREFIXES = [
@@ -16,6 +18,9 @@ const PREFIXES = [
   'this session is being continued from',
   'the following is the codex agent history',
   'the user sent a new message while you were working',
+  'hookspecificoutput:',
+  'you are `/root`, the primary agent in a team of agents collaborating to fulfill the user\'s goals.',
+  '# agents.md instructions for ',
 ];
 
 export function isNoise(text) {

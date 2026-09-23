@@ -15,7 +15,7 @@ const goalProcessWords = /\b(?:test suite|regression|review(?:er)? gate|installe
 const taskProcessWords = /\b(?:test(?:s|ing)?|verify(?:ing)?|build(?:ing)?|release|gate|review(?:ing)?|check(?:ing)?|debug(?:ging)?|inspect(?:ing)?|relaunch|restart|implement(?:ing)?)\b/i;
 const nowProcessWords = /\b(?:challenge loop|making every terminal show|inspect every failed pane|remove shared goal|run the complete matrix|wait for user approval|running the complete matrix|review(?:ing)? all panes)\b/i;
 const paneOwnedGoalSources = new Set(["status-summary", "sidecar-todo", "task-tool", "user-prompt", "manual", "plan-binding", "plan-explanation", "goal-task", "opening-request", "project-fallback"]);
-const nonTaskPlaceholder = /^(?:Supervised agent run|didnt help|ci failed)$/i;
+const taskPlaceholder = /^(?:Task not captured|Activity not captured|No task declared|Status unavailable|Waiting for a clear task|No active work|Ready|Idle|Working|Unknown)$/i;
 const generatedPaneGoal = /^Keep this pane focused on .+ so it has a clear result to resume\.$/i;
 
 function fail(reasons, rows = new Map()) {
@@ -36,12 +36,8 @@ function readRows() {
     return { rows: new Map(), failures: [`snapshot-unreadable=${error.message}`] };
   }
   const rows = (Array.isArray(payload.terminals) ? payload.terminals : [])
+    // Never hide incomplete panes from the acceptance gate.
     .filter((entry) => entry && entry.paneId)
-    .filter((entry) => {
-      const task = String(entry.task ?? "").replace(/\s+/g, " ").trim();
-      const goal = String(entry.context ?? "").replace(/\s+/g, " ").trim();
-      return !nonTaskPlaceholder.test(task) && !/^(?:Task not captured|Activity not captured|Goal not captured|Context not captured|Status unavailable|Waiting for a clear task|No task declared|No active work|Ready|Idle|Working|Unknown)$/i.test(task) && (Boolean(goal) || Boolean(task));
-    })
     .map((entry) => ({
       paneId: String(entry.paneId),
       groupId: entry.groupId == null ? "" : String(entry.groupId),
@@ -64,7 +60,7 @@ function readRows() {
     if (!row.goalCaptureSource || !paneOwnedGoalSources.has(row.goalCaptureSource)) {
       failures.push(`goal-missing-capture-source pane=${row.paneId} source=${row.goalCaptureSource || "missing"}`);
     }
-    if (!row.task) failures.push(`empty-task pane=${row.paneId}`);
+    if (!row.task || taskPlaceholder.test(row.task)) failures.push(`missing-or-generic-task pane=${row.paneId}`);
     for (const [field, value] of [["Goal", row.goal], ["Now", row.now]]) {
       if (!value) failures.push(`empty-${field.toLowerCase()} pane=${row.paneId}`);
       if (forbidden.test(value)) failures.push(`forbidden-${field.toLowerCase()} pane=${row.paneId} value=${JSON.stringify(value)}`);

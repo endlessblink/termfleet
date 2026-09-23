@@ -783,6 +783,35 @@ mod tests {
         assert_eq!(pane_agent_runtime_info("   "), None);
     }
 
+    #[cfg(target_os = "linux")]
+    fn current_process_agent_ancestor() -> Option<&'static str> {
+        let mut pid = std::process::id();
+        while pid > 1 {
+            if let Ok(cmdline) = std::fs::read(format!("/proc/{pid}/cmdline")) {
+                let argv = parse_proc_cmdline(&cmdline);
+                if let Some(provider) = provider_for_command_line(&argv) {
+                    return Some(provider);
+                }
+            }
+            if let Ok(stat) = std::fs::read_to_string(format!("/proc/{pid}/stat")) {
+                if let Some(ppid) = parse_proc_stat_ppid(&stat) {
+                    if ppid == pid {
+                        break;
+                    }
+                    pid = ppid;
+                    continue;
+                }
+            }
+            break;
+        }
+        None
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    fn current_process_agent_ancestor() -> Option<&'static str> {
+        None
+    }
+
     #[test]
     fn finds_the_agent_running_in_this_very_pane_when_there_is_one() {
         // Self-check: when the suite itself runs inside a termfleet agent pane, the
@@ -793,9 +822,13 @@ mod tests {
         if pane.trim().is_empty() {
             return;
         }
+        let Some(expected) = current_process_agent_ancestor() else {
+            return;
+        };
         let found = pane_agent_provider(&pane);
-        assert!(
-            found.is_some(),
+        assert_eq!(
+            found.as_deref(),
+            Some(expected),
             "expected to detect the agent running in pane {pane}"
         );
     }

@@ -19,8 +19,11 @@ import {
 } from "./taskLine";
 import {
   isSupervisedMetaProcessTask,
+  labelIsMangled,
+  qualityCheckAuthoritativeTaskLabel,
   qualityCheckGoalLabel,
   qualityCheckNowLabel,
+  stripComposerChrome,
 } from "./terminalHeaderQuality";
 
 export type TerminalHeaderStatus =
@@ -35,9 +38,13 @@ export type TerminalHeaderGoalSource =
   | "task-tool"
   | "user-prompt"
   | "plan-binding"
+  | "plan-explanation"
+  | "goal-task"
+  | "agent-goal"
   | "sidecar-todo"
   | "manual"
   | "workstream"
+  | "shell-role"
   // TC-060: derived from the vendor's own session record or the running process.
   | "task-line"
   | "missing"
@@ -64,6 +71,7 @@ export interface TerminalHeaderState {
   hasCapturedContext: boolean;
   userGoal: string | null;
   goalLabel: string;
+  taskDescription: string;
   hasCapturedGoal: boolean;
   currentActivity: string;
   fullPath: string;
@@ -114,7 +122,11 @@ function goalSourceFrom(
   if (fieldSource === "user-prompt") return "user-prompt";
   if (fieldSource === "plan-binding") return "plan-binding";
   if (fieldSource === "sidecar-todo") return "sidecar-todo";
+  if (fieldSource === "plan-explanation") return "plan-explanation";
+  if (fieldSource === "goal-task") return "goal-task";
+  if (fieldSource === "agent-goal") return "agent-goal";
   if (fieldSource === "workstream") return "workstream";
+  if (fieldSource === "shell-role") return "shell-role";
   if (fieldSource === "task-line") return "task-line";
   if (fieldSource === "missing") return "missing";
   if (fieldSource === "status-summary") return "missing";
@@ -271,6 +283,7 @@ export function buildTerminalHeaderState(input: {
   contextPurposeTitle?: string | null;
   contextPurposeSource?: TerminalPurposeSource | null;
   workstreamTitle?: string | null;
+  paneKind?: "agent" | "shell";
   activelyWorking?: boolean;
   updatedAt?: number;
   version?: number;
@@ -336,7 +349,12 @@ export function buildTerminalHeaderState(input: {
     input.statusSummary.task.trim() &&
     !/^(?:Task not captured|Activity not captured|Idle|Working|Ready|Unknown)$/i.test(
       input.statusSummary.task.trim(),
-    )
+    ) &&
+    // A "declared" task line must be readable work, not a command echo. A sidecar
+    // whose summary.task was the operator's "$done" otherwise won the ladder and
+    // blanked a pane whose real plan-explanation goal was sitting right there
+    // (2026-09-16 sweep: 13bec681, b88b36b6, e4e8a069, f29e5ba3).
+    qualityCheckAuthoritativeTaskLabel(input.statusSummary.task.trim()).ok
       ? {
           text: input.statusSummary.task.trim(),
           source: "declared" as const,
@@ -404,31 +422,62 @@ export function buildTerminalHeaderState(input: {
     contextPurposeTitle: input.contextPurposeTitle,
     contextPurposeSource: input.contextPurposeSource,
     workstreamTitle: input.workstreamTitle,
+    paneKind: input.paneKind,
     activelyWorking: input.activelyWorking,
     taskLine: effectiveTaskLine,
   });
-  const explicitGoalText =
-    (input.statusSummary?.mainTaskSource === "plan-explanation" ||
-      input.statusSummary?.mainTaskSource === "opening-request" ||
-      input.statusSummary?.mainTaskSource === "about-what") &&
-    input.statusSummary.mainTask &&
-    (input.statusSummary.mainTaskSource === "opening-request" ||
-      qualityCheckGoalLabel(input.statusSummary.mainTask, {
-        allowAboutWhatVoice: true,
-        allowTrustedAboutWhat: statusSummaryHasAboutWhat,
-        maxLength: 150,
-      }).ok) &&
-     (input.statusSummary.mainTaskSource === "opening-request" ||
-       isPaneGoalCandidate(
-         input.statusSummary.mainTask,
-         view.taskDescription.text,
-         statusSummaryHasAboutWhat,
-       ))
-      ? input.statusSummary.mainTask.trim()
+  const shellRoleContext =
+    input.paneKind === "shell" && view.taskDescription.source === "shell-role"
+      ? `Run commands directly in ${view.workspace.text}.`
       : undefined;
+  const goalTaskSource =
+    input.statusSummary?.mainTaskSource === "goal-task" ||
+    input.statusSummary?.mainTaskSource === "agent-goal";
+  const explicitGoalText =
+    shellRoleContext
+      ? shellRoleContext
+      : view.context.source === "shell-role"
+        ? view.context.text
+      : (input.statusSummary?.mainTaskSource === "plan-explanation" ||
+          input.statusSummary?.mainTaskSource === "opening-request" ||
+          input.statusSummary?.mainTaskSource === "about-what" ||
+          goalTaskSource) &&
+        input.statusSummary?.mainTask &&
+        (input.statusSummary.mainTaskSource === "opening-request" ||
+          qualityCheckGoalLabel(input.statusSummary.mainTask, {
+            allowAboutWhatVoice: true,
+            // A goal declared through the provider's goal tool is pane-owned by
+            // construction, so it does not need the 8-word durable-goal bar that an
+            // auto-derived summary does ("Make goal workflow reliable" is real).
+            allowTrustedAboutWhat: statusSummaryHasAboutWhat || goalTaskSource,
+            maxLength: 150,
+          }).ok) &&
+        (input.statusSummary.mainTaskSource === "opening-request" ||
+          isPaneGoalCandidate(
+            input.statusSummary.mainTask,
+            view.taskDescription.text,
+            statusSummaryHasAboutWhat || goalTaskSource,
+          ))
+        // An opening request keeps its conversational wording, but a pasted link or
+        // absolute path is still Class C2 chrome, never part of the goal — strip it
+        // rather than let `https://…` / `file:///home/…` stand as the pane's Task.
+        // Visibly damaged text (Class D3) is refused outright, never rendered.
+        ? (() => {
+            const cleaned = stripComposerChrome(input.statusSummary.mainTask);
+            return cleaned && !labelIsMangled(cleaned) ? cleaned : undefined;
+          })()
+        : undefined;
   const goalSource = explicitGoalText
-    ? input.statusSummary?.mainTaskSource === "opening-request"
+    ? shellRoleContext || view.context.source === "shell-role"
+      ? "shell-role"
+      : input.statusSummary?.mainTaskSource === "goal-task"
+      ? "goal-task"
+      : input.statusSummary?.mainTaskSource === "agent-goal"
+      ? "agent-goal"
+      : input.statusSummary?.mainTaskSource === "opening-request"
       ? "user-prompt"
+      : input.statusSummary?.mainTaskSource === "plan-explanation"
+      ? "plan-explanation"
       : goalSourceFrom("user-task", effectiveMainUserAsk)
     : goalSourceFrom(view.taskDescription.source, effectiveMainUserAsk);
   const goalLabel = explicitGoalText ?? view.taskDescription.text;
@@ -451,7 +500,9 @@ export function buildTerminalHeaderState(input: {
     sidecarGoalText ??
     (contextIsCaptured ? view.context.text : "Goal not captured");
   const resolvedContextSource: HeaderFieldSource = explicitGoalText || sidecarGoalText
-    ? "sidecar-todo"
+    ? shellRoleContext || view.context.source === "shell-role"
+      ? "shell-role"
+      : "sidecar-todo"
     : contextIsCaptured
     ? input.statusSummary?.userTask &&
       view.context.text.trim() === input.statusSummary.userTask.trim()
@@ -529,6 +580,7 @@ export function buildTerminalHeaderState(input: {
       stableRows.context === resolvedContextLabel,
     userGoal: hasCapturedGoal ? stableRows.goal : null,
     goalLabel: stableRows.goal,
+    taskDescription: view.taskDescription.text,
     hasCapturedGoal,
     currentActivity: stableRows.activity,
     fullPath: view.path.text,

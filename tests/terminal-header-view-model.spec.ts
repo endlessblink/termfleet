@@ -42,24 +42,19 @@ test("missing explicit Goals remain uncaptured instead of copying the pane task"
   expect(header.context.text).not.toContain("Reconnecting the restored agent conversation");
 });
 
-test("recovered panes always get a stable project-named Goal", () => {
+test("recovered panes do not invent a project-named Goal", () => {
   const goal = fallbackProjectGoal(
     "/media/endlessblink/data/my-projects/ai-development/freelance/bina-meatzevet-courses",
   );
 
-  expect(goal).toBe(
-    "Make Bina Meatzevet Courses work clear and dependable so people can resume it confidently.",
-  );
-  expect(goal).not.toMatch(/Goal not captured|Status unavailable|agent|reviewer/i);
+  expect(goal).toBeUndefined();
 });
 
 test("recovered technical folder names do not leak into the Goal", () => {
-  expect(fallbackProjectGoal("/repo/directive-validation-harness")).toBe(
-    "Make this project work clear and dependable so people can resume it confidently.",
-  );
+  expect(fallbackProjectGoal("/repo/directive-validation-harness")).toBeUndefined();
 });
 
-test("a thin pane keeps a concrete project purpose for both Goal and Task", () => {
+test("a thin pane keeps missing context honest instead of inventing purpose", () => {
   const header = buildTerminalHeaderState({
     paneId: "pane-thin-agent",
     terminalId: "terminal-thin-agent",
@@ -70,11 +65,9 @@ test("a thin pane keeps a concrete project purpose for both Goal and Task", () =
   });
 
   expect(header.contextLabel).toBe("Goal not captured");
-  expect(header.goalLabel).toBe(
-    "Make TermFleet show each terminal's purpose so people can resume the right work confidently.",
-  );
+  expect(header.goalLabel).toBe("Task not captured");
   expect(header.currentActivity).toBe("Working");
-  expect(header.goalLabel).not.toMatch(/assigned work|report|debrief|not captured/i);
+  expect(header.goalLabel).toMatch(/not captured/i);
 });
 
 test("shared project fallback cannot become every pane's Task", () => {
@@ -83,16 +76,8 @@ test("shared project fallback cannot become every pane's Task", () => {
     "Waiting for the operator decision",
   );
 
-  expect(generic).toBe(
-    "Make Workspace work clear and dependable so people can resume it confidently.",
-  );
-  expect(qualityCheckAuthoritativeTaskLabel(generic).ok).toBe(false);
-  expect(
-    fallbackProjectGoal(
-      "header-verifier",
-      "Choosing the next GI-lightmap step",
-    ),
-  ).toBe("Keep the GI-lightmap pipeline moving so the scene renders correctly.");
+  expect(generic).toBeUndefined();
+  expect(qualityCheckAuthoritativeTaskLabel(generic ?? "").ok).toBe(false);
 });
 
 test("pane-owned opening Goals render instead of the project fallback", () => {
@@ -119,16 +104,16 @@ test("pane-owned opening Goals render instead of the project fallback", () => {
   expect(header.contextLabel).not.toMatch(/Make .* work clear and dependable/);
 });
 
-test("recovered reconnect work gets a purpose instead of a folder slogan", () => {
+test("recovered reconnect work does not get a folder slogan", () => {
   expect(
     fallbackProjectGoal(
       "/repo/jobrunner",
       "Shipping and verifying the reconnect fix in the desktop app",
     ),
-  ).toBe("Keep Jobrunner connected so people can return to their work without losing progress.");
+  ).toBeUndefined();
 });
 
-test("idle Now uses the durable main goal instead of generic waiting text", () => {
+test("idle Now does not reuse Goal or invent generic waiting text", () => {
   expect(
     aboutWhatFallback(
       "Keep the cockpit focused on the real context",
@@ -138,10 +123,8 @@ test("idle Now uses the durable main goal instead of generic waiting text", () =
   expect(aboutWhatFallback(undefined, "Keep the cockpit focused on the real goal")).toBe(
     "Keep the cockpit focused on the real goal",
   );
-  expect(aboutWhatFallback("No task declared", "No task declared")).toBe(
-    "Ready for next task",
-  );
-  expect(aboutWhatFallback()).toBe("Ready for next task");
+  expect(aboutWhatFallback("No task declared", "No task declared")).toBe("Now not captured");
+  expect(aboutWhatFallback()).toBe("Now not captured");
 });
 
 test("TermFleet keeps a clear project purpose when process text is rejected", () => {

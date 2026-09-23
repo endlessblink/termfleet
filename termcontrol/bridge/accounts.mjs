@@ -24,6 +24,11 @@ function sessionSecret() {
   return fs.readFileSync(SECRET, 'utf8').trim();
 }
 
+function rotateSessionSecret() {
+  ensureDir();
+  fs.writeFileSync(SECRET, crypto.randomBytes(32).toString('hex'), { mode: 0o600 });
+}
+
 const load = () => readJson(USERS, { users: [] });
 
 function save(data) {
@@ -62,6 +67,68 @@ export function verify(email, password) {
   const b = Buffer.from(user.hash);
   if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
   return { id: user.id, email: user.email };
+}
+
+export function verifyOwner(password) {
+  const user = load().users[0];
+  const candidate = hash(password, user ? user.salt : 'absent-user-salt');
+  if (!user) return null;
+  const actual = Buffer.from(candidate);
+  const expected = Buffer.from(user.hash);
+  if (actual.length !== expected.length || !crypto.timingSafeEqual(actual, expected)) return null;
+  return { id: user.id, email: user.email };
+}
+
+export function resetPassword(email, password) {
+  const mail = normaliseEmail(email);
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(mail)) return { error: 'That does not look like an email address.' };
+  if (String(password).length < 8) return { error: 'Use at least 8 characters.' };
+
+  const data = load();
+  const index = data.users.findIndex((user) => user.email === mail);
+  if (index < 0) return { error: 'That account does not exist.' };
+
+  const salt = crypto.randomBytes(16).toString('hex');
+  const user = {
+    ...data.users[index],
+    id: crypto.randomUUID(),
+    salt,
+    hash: hash(password, salt),
+  };
+  data.users[index] = user;
+  save(data);
+  rotateSessionSecret();
+  return { ok: true, user: { id: user.id, email: user.email } };
+}
+
+export function resetOwnerPassword(password) {
+  const data = load();
+  const owner = data.users[0];
+  if (!owner) return { error: 'No owner account exists yet.' };
+  return resetPassword(owner.email, password);
+}
+
+const RECOVERY_TTL_MS = 10 * 60_000;
+
+export function mintRecoveryToken(now = Date.now()) {
+  const expires = now + RECOVERY_TTL_MS;
+  const nonce = crypto.randomBytes(16).toString('hex');
+  const body = `${expires}.${nonce}`;
+  const signature = crypto.createHmac('sha256', sessionSecret()).update(`recover.${body}`).digest('hex');
+  return `${body}.${signature}`;
+}
+
+export function verifyRecoveryToken(token, now = Date.now()) {
+  const [expires, nonce, signature, ...extra] = String(token || '').split('.');
+  if (!expires || !nonce || !signature || extra.length > 0) return false;
+  const expiresAt = Number(expires);
+  if (!Number.isFinite(expiresAt) || expiresAt < now || expiresAt > now + RECOVERY_TTL_MS) return false;
+  const expected = crypto.createHmac('sha256', sessionSecret())
+    .update(`recover.${expires}.${nonce}`)
+    .digest('hex');
+  const actualBytes = Buffer.from(signature);
+  const expectedBytes = Buffer.from(expected);
+  return actualBytes.length === expectedBytes.length && crypto.timingSafeEqual(actualBytes, expectedBytes);
 }
 
 const DAYS = 120;
