@@ -833,6 +833,10 @@ const styles: Record<string, CSSProperties> = {
     padding: "7px 0",
     borderTop: "1px solid var(--border-subtle)",
     background: "transparent",
+    // Fixed two-line box (1px border + 7px + 2 × 17px + 7px): a one-line and a
+    // two-line task occupy the same space, so the terminal below never jumps.
+    boxSizing: "border-box" as const,
+    height: 49,
   },
   terminalNowActiveLabel: {
     ...({

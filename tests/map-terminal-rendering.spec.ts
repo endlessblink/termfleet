@@ -1296,6 +1296,10 @@ test("terminal task binding uses an in-app searchable picker", async ({
   await page.evaluate(() => localStorage.removeItem("terminal-workspace.v1"));
   await page.reload({ waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle");
+  // With the desktop bridge mocked, startup restore runs to completion and would
+  // replace a fixture written before it finishes.
+  await expect(page.locator("#termfleet-startup")).toHaveCount(0);
+  await page.waitForTimeout(500);
 
   await page.evaluate(() => {
     const store = (
