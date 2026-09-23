@@ -2190,6 +2190,7 @@ test("project emojis identify map terminals by path without using task colors", 
       name: "termfleet",
       color: "#7aa2f7",
       emoji: "🧭",
+      emojiSource: "user",
       projectRoot:
         "/media/endlessblink/data/my-projects/ai-development/devops/termfleet",
     };
@@ -2198,6 +2199,7 @@ test("project emojis identify map terminals by path without using task colors", 
       name: "docs-site",
       color: "#9ece6a",
       emoji: "📝",
+      emojiSource: "user",
       projectRoot:
         "/media/endlessblink/data/my-projects/ai-development/docs-site",
     };
