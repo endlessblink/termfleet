@@ -26,6 +26,8 @@ Triage 2026-09-23 (claude, from `npm run issues -- list`, 38 open):
 
 Phase 2 evidence 2026-09-23 (claude): `npm run verify:restart-restore` PASS (app restart live reattach, reboot disk replay, daemon SIGKILL, duplicate provider resume blocked); `npm run verify:reboot-rehearsal` PASS on the live 30 panes (25 conversations resume, 5 plain terminals, 0 lost; isolated second daemon); `npm run verify:standalone-daemon` PASS (cold restore repaint). Doctor: only warning is the running dock app predating the installed release (operator relaunch). Workstream Quest made opt-in for new profiles (Noam's call), toggled from the command bar. Phone control (TermControl) is not advertised in the README — leave unadvertised.
 
+Phases 3–5 status 2026-09-24 (claude): v0.2.0 published — https://github.com/endlessblink/termfleet/releases/tag/v0.2.0 (tag on 2f1fa3d; CI green incl. Node 22 / checkout@v5). Published AppImage + .deb verified against SHA256SUMS.txt and passed `npm run verify:fresh-install` (private Xvfb, empty profile: window, own daemon, first terminal, typed command in a real shell). README carries the early-preview note; release notes list known issues (TF-047, TF-049, OpenCode copy/scroll). Showcase recapture unusable (capture script click targets predate the redesign) — July screenshots kept; refresh is a follow-up. Announcement drafts (Show HN, r/ClaudeAI, r/commandline, LinkedIn/X) are in the Obsidian termfleet folder — NOT posted; posting is Noam's step.
+
 **Phase 3 — Fresh-machine proof (day 2–3)**
 - [ ] Build v0.2.0 AppImage + .deb from a tagged commit via CI.
 - [ ] Install on a clean Linux VM/user account (no local config, no hooks): first launch, open terminals, run Claude + Codex, restart app, reboot — all survive.
