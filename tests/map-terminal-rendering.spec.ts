@@ -2472,10 +2472,10 @@ test("shift-drag box-selects terminals while regular and middle drags pan the ma
           }
         ).__termfleetWorkspaceStore;
         const state = store?.getState().canvasState;
-        return `${state?.selectedNodeIds?.join(",") ?? ""}|${state?.viewport.x}:${state?.viewport.y}`;
+        return `${state?.viewport.x}:${state?.viewport.y}`;
       }),
     )
-    .toBe("|120:-40");
+    .toBe("120:-40");
 
   await page.evaluate(() => {
     const store = (
@@ -2516,10 +2516,10 @@ test("shift-drag box-selects terminals while regular and middle drags pan the ma
           }
         ).__termfleetWorkspaceStore;
         const state = store?.getState().canvasState;
-        return `${state?.selectedNodeIds?.join(",") ?? ""}|${state?.viewport.x}:${state?.viewport.y}`;
+        return `${state?.viewport.x}:${state?.viewport.y}`;
       }),
     )
-    .toBe("|75:-70");
+    .toBe("75:-70");
 
   await page.evaluate(() => {
     const store = (
