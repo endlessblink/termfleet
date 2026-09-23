@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-09-23T11:39:28.526Z",
+  "updatedAt": "2026-09-23T16:03:04.923Z",
   "issues": [
     {
       "id": "TF-001",
@@ -6052,8 +6052,8 @@
         },
         {
           "kind": "focused-test",
-          "at": "2026-09-23T09:50:40.932Z",
-          "note": "badge-liveness.spec, status-poll-loop rotation test, agent_lifecycle cargo tests; full suite no new failures vs baseline"
+          "at": "2026-09-23T16:03:04.923Z",
+          "note": "Pending-approval false positives: Codex log reader called every pending in-process call (wait/sleep/wait_agent/MCP-only exec) 'waiting' because no child process started; trace showed 4 of 6 flagged panes drawing 'Working (7m…)'. Fix: only shell/patch calls can await approval. cargo test agent_lifecycle 7/7; live probe 22 Codex panes: 18 idle, 4 working, 0 waiting."
         }
       ],
       "owner": "termfleet",
@@ -6110,6 +6110,12 @@
           "from": "fixing",
           "to": "verifying",
           "note": "awaiting operator's eye in the dock app"
+        },
+        {
+          "at": "2026-09-23T16:03:04.923Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Pending-approval false positives: Codex log reader called every pending in-process call (wait/sleep/wait_agent/MCP-only exec) 'waiting' because no child process started; trace showed 4 of 6 flagged panes drawing 'Working (7m…)'. Fix: only shell/patch calls can await approval. cargo test agent_lifecycle 7/7; live probe 22 Codex panes: 18 idle, 4 working, 0 waiting."
         }
       ]
     },

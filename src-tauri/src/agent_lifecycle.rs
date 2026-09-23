@@ -38,8 +38,31 @@ impl Lifecycle {
 pub enum LogState {
     Idle,
     Thinking,
-    /// A tool call with no result yet: its name and start time (epoch ms).
-    PendingCall { name: String, started_ms: i64 },
+    /// A tool call with no result yet: its name, start time (epoch ms), and whether
+    /// Codex could be holding it for the operator's approval at all.
+    PendingCall { name: String, started_ms: i64, can_need_approval: bool },
+}
+
+/// Only a shell command or a patch can sit on Codex's approval prompt. Waits, sleeps,
+/// helper-agent calls and a script that only calls built-in/MCP tools run inside Codex
+/// and never start a program, so the "no new child process" test misread every one of
+/// them as an approval prompt (operator report 2026-09-23: panes showing "Working (7m…)"
+/// listed under Pending approval). In the rollouts of the prior three days `wait`,
+/// `sleep` and `wait_agent` alone accounted for ~1,000 calls pending longer than 10s.
+fn call_can_need_approval(name: &str, input: &str) -> bool {
+    match name {
+        "wait" | "sleep" | "wait_agent" | "send_message" | "followup_task" | "list_agents"
+        | "spawn_agent" | "interrupt_agent" | "request_user_input_async" | "update_plan"
+        | "view_image" | "web_search" | "write_stdin" => false,
+        // Code mode: a JavaScript cell that calls other tools. It can reach the
+        // approval prompt only through a command or patch it runs.
+        // Match the tool CALL, not a bare word: `tools.mcp__lean_ctx__ctx_shell` is an
+        // auto-approved MCP tool, and the word "shell" alone flagged it.
+        "exec" => ["tools.exec_command", "tools.shell", "tools.apply_patch", "sandbox_permissions"]
+            .iter()
+            .any(|tool| input.contains(tool)),
+        _ => true,
+    }
 }
 
 const TAIL_BYTES: u64 = 512 * 1024;
@@ -82,7 +105,7 @@ pub fn parse_utc_timestamp_ms(value: &str) -> Option<i64> {
 pub fn classify_rollout_tail(tail: &str) -> LogState {
     let mut state_idle = false;
     // call_id → (name, started_ms), kept in arrival order.
-    let mut pending: Vec<(String, String, i64)> = Vec::new();
+    let mut pending: Vec<(String, String, i64, bool)> = Vec::new();
     for line in tail.lines() {
         let Ok(record) = serde_json::from_str::<serde_json::Value>(line) else {
             continue; // first line of a tail window is usually cut
@@ -119,7 +142,13 @@ pub fn classify_rollout_tail(tail: &str) -> LogState {
                     .and_then(|value| value.as_str())
                     .and_then(parse_utc_timestamp_ms)
                     .unwrap_or(0);
-                pending.push((call_id, name, started_ms));
+                let input = payload
+                    .get("input")
+                    .or_else(|| payload.get("arguments"))
+                    .and_then(|value| value.as_str())
+                    .unwrap_or("");
+                let can_need_approval = call_can_need_approval(&name, input);
+                pending.push((call_id, name, started_ms, can_need_approval));
             }
             (
                 Some("response_item"),
@@ -129,7 +158,7 @@ pub fn classify_rollout_tail(tail: &str) -> LogState {
                     .and_then(|payload| payload.get("call_id"))
                     .and_then(|value| value.as_str())
                     .unwrap_or("");
-                pending.retain(|(id, _, _)| id != call_id);
+                pending.retain(|(id, ..)| id != call_id);
             }
             (Some("response_item"), "reasoning" | "message" | "agent_message") => {
                 state_idle = false;
@@ -141,7 +170,9 @@ pub fn classify_rollout_tail(tail: &str) -> LogState {
         return LogState::Idle;
     }
     match pending.pop() {
-        Some((_, name, started_ms)) => LogState::PendingCall { name, started_ms },
+        Some((_, name, started_ms, can_need_approval)) => {
+            LogState::PendingCall { name, started_ms, can_need_approval }
+        }
         None => LogState::Thinking,
     }
 }
@@ -153,6 +184,7 @@ pub fn lifecycle_from(log: &LogState, child_started_after: impl Fn(i64) -> bool)
         LogState::Idle => Lifecycle::Idle,
         LogState::Thinking => Lifecycle::Working,
         LogState::PendingCall { name, .. } if name == "request_user_input" => Lifecycle::Waiting,
+        LogState::PendingCall { can_need_approval: false, .. } => Lifecycle::Working,
         // Allow a second of clock slack between the log stamp and process start.
         LogState::PendingCall { started_ms, .. } => {
             if child_started_after(started_ms - 1000) {
@@ -322,7 +354,7 @@ mod tests {
         // Live flow-state case 2026-09-23: exec call, no output, no command process.
         let tail = [
             line("2026-09-23T08:55:47.201Z", "response_item", r#"{"type":"custom_tool_call_output","call_id":"x"}"#),
-            line("2026-09-23T08:56:01.387Z", "response_item", r#"{"type":"custom_tool_call","call_id":"y","name":"exec"}"#),
+            line("2026-09-23T08:56:01.387Z", "response_item", r#"{"type":"custom_tool_call","call_id":"y","name":"exec","input":"const r=await tools.exec_command({cmd:\"curl x\",sandbox_permissions:\"require_escalated\"});"}"#),
         ]
         .join("\n");
         let log = classify_rollout_tail(&tail);
@@ -347,8 +379,36 @@ mod tests {
 
     #[test]
     fn a_question_to_the_operator_is_always_waiting() {
-        let log = LogState::PendingCall { name: "request_user_input".into(), started_ms: 0 };
+        let log = LogState::PendingCall {
+            name: "request_user_input".into(),
+            started_ms: 0,
+            can_need_approval: false,
+        };
         assert_eq!(lifecycle_from(&log, |_| true), Lifecycle::Waiting);
+    }
+
+    #[test]
+    fn in_process_tools_without_a_child_are_working_not_awaiting_approval() {
+        // Live 2026-09-23: panes drawing "Working (7m…)" were listed as Pending approval
+        // because a wait / helper-agent / MCP-only script never starts a program.
+        for call in [
+            r#"{"type":"function_call","call_id":"w","name":"wait","arguments":"{}"}"#,
+            r#"{"type":"function_call","call_id":"w","name":"sleep","arguments":"{}"}"#,
+            r#"{"type":"function_call","call_id":"w","name":"wait_agent","arguments":"{}"}"#,
+            r#"{"type":"custom_tool_call","call_id":"w","name":"exec","input":"const r = await tools.mcp__lean_ctx__ctx_read({path:\"a\"});text(r);"}"#,
+            r#"{"type":"custom_tool_call","call_id":"w","name":"exec","input":"const r = await tools.mcp__lean_ctx__ctx_shell({command:\"sha256sum a\"});text(r);"}"#,
+        ] {
+            let tail = line("2026-09-23T08:00:01.000Z", "response_item", call);
+            let log = classify_rollout_tail(&tail);
+            assert_eq!(lifecycle_from(&log, |_| false), Lifecycle::Working, "{call}");
+        }
+        // A plain shell command still reads Waiting until its program starts.
+        let tail = line(
+            "2026-09-23T08:00:01.000Z",
+            "response_item",
+            r#"{"type":"function_call","call_id":"s","name":"exec_command","arguments":"{\"cmd\":\"ls\"}"}"#,
+        );
+        assert_eq!(lifecycle_from(&classify_rollout_tail(&tail), |_| false), Lifecycle::Waiting);
     }
 
     /// Live probe: `cargo test --lib live_codex_lifecycles -- --ignored --nocapture`
