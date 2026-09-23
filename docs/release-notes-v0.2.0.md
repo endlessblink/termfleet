@@ -47,6 +47,8 @@ known issues below are real.
   of the command's description (TF-047).
 - OpenCode panes: text copy and scroll are unreliable (TF-033, TF-034, TF-035).
 - Some Codex tool calls can briefly show Running while Codex waits on you.
+- Zoomed out below 100%, map cards show a cheap text preview that can look
+  scrambled; zoom to 100% for the live terminal.
 - Full BiDi / Hebrew nikud shaping in the terminal is not implemented yet.
 - A reboot cannot resurrect processes that were running before it; agents
   resume their conversation, shells replay their text.

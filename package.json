@@ -29,6 +29,7 @@
     "verify:terminal-reliability": "scripts/verify-terminal-reliability.sh",
     "verify:terminal-reliability:live": "TERMFLEET_TERMINAL_RELIABILITY_LIVE=1 scripts/verify-terminal-reliability.sh",
     "verify:release": "scripts/verify-release.sh",
+    "verify:fresh-install": "scripts/verify-fresh-install.sh",
     "release:install": "scripts/install-release.sh",
     "verify:installed-release": "scripts/verify-installed-release.sh",
     "verify:map-connect-release": "scripts/verify-map-connect-release.sh",

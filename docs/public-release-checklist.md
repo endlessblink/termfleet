@@ -44,8 +44,13 @@ out in the release notes.
 - [x] Build the final tagged artifacts in clean CI and publish `SHA256SUMS.txt`
   beside them. The v0.1.1 GitHub release contains both artifacts and the
   checksum file.
-- [ ] Test installation and first launch from a clean Linux environment for both
-  formats, including the documented WebKitGTK runtime dependency boundary.
+- [x] Test installation and first launch from a clean Linux environment for both
+  formats. `scripts/verify-fresh-install.sh` runs the AppImage and the extracted
+  `.deb` on a private Xvfb display with an empty HOME and private XDG dirs: the
+  window opens, the app starts its own background service, the first terminal
+  appears, and a typed command runs in a real shell (v0.2.0: both pass). The
+  `.deb` declares `libwebkit2gtk-4.1-0` and `libgtk-3-0`; a distro without
+  WebKitGTK 4.1 is outside the supported runtime boundary.
 
 ## Release policy decisions
 

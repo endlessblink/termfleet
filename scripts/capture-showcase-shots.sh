@@ -22,7 +22,7 @@ DRIVER_LOG="$WORK_DIR/driver.log"
 APP_BUDGET="${APP_BUDGET:-150}"
 WIDTH="${SHOWCASE_WIDTH:-1680}"
 HEIGHT="${SHOWCASE_HEIGHT:-1050}"
-BINARY="$APP_ROOT/src-tauri/target/debug/terminal-workspace"
+BINARY="${SHOWCASE_BINARY:-$APP_ROOT/src-tauri/target/debug/terminal-workspace}"
 APP_RUN_PID=""
 
 # Click targets, read off a capture at this window size: the pane header's two

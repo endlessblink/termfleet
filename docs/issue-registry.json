@@ -6321,6 +6321,27 @@
           "note": null
         }
       ]
+    },
+    {
+      "id": "TF-049",
+      "title": "Zoomed-out map card preview text looks scrambled",
+      "state": "reported",
+      "severity": "medium",
+      "surface": "canvas",
+      "matrixRefs": [],
+      "symptom": "Below readable zoom a map card shows the cheap text preview; with a busy dev-server/vim pane it renders as overlapping, unreadable glyph fragments (seen in the v0.2.0 showcase capture at 81%).",
+      "rootCause": "",
+      "guard": "none yet - add a preview readability check to the map spec",
+      "evidence": [],
+      "owner": "termfleet",
+      "nextAction": "Compare the preview snapshot text with the grid; check scaling and line clipping in the preview renderer.",
+      "history": [
+        {
+          "at": "2026-09-23T22:26:35.489Z",
+          "type": "created",
+          "note": null
+        }
+      ]
     }
   ]
 }
