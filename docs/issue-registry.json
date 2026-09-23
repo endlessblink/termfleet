@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-09-23T16:03:04.923Z",
+  "updatedAt": "2026-09-23T16:37:29.222Z",
   "issues": [
     {
       "id": "TF-001",
@@ -4766,8 +4766,8 @@
         },
         {
           "kind": "focused-test",
-          "at": "2026-09-15T21:52:16.866Z",
-          "note": "Pane-owned opening-request and task-summary candidates now feed the rendered Task ladder; focused identity suite 15/15, build, release promotion, and installed-release verification rerun. Live matrix remains pending dock relaunch."
+          "at": "2026-09-23T16:16:35.896Z",
+          "note": "Plain shell panes invented Task 'Terminal session in <folder>' and Goal 'Run commands directly in <folder>.' (project copy). Replaced with honest 'No task — just a command prompt' / 'Nothing asked in this pane yet' across view model, split, map, snapshot probe and goal matrix; terminal-header-state shell test passes (13 pass before and after; 11 pre-existing failures unchanged). Live dock confirmation pending."
         }
       ],
       "owner": "termfleet",
@@ -4986,6 +4986,12 @@
           "type": "evidence",
           "kind": "focused-test",
           "note": "Pane-owned opening-request and task-summary candidates now feed the rendered Task ladder; focused identity suite 15/15, build, release promotion, and installed-release verification rerun. Live matrix remains pending dock relaunch."
+        },
+        {
+          "at": "2026-09-23T16:16:35.896Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Plain shell panes invented Task 'Terminal session in <folder>' and Goal 'Run commands directly in <folder>.' (project copy). Replaced with honest 'No task — just a command prompt' / 'Nothing asked in this pane yet' across view model, split, map, snapshot probe and goal matrix; terminal-header-state shell test passes (13 pass before and after; 11 pre-existing failures unchanged). Live dock confirmation pending."
         }
       ]
     },
@@ -6292,6 +6298,27 @@
           "type": "evidence",
           "kind": "installed-release",
           "note": "termcontrol.service restarted 14:40 with new bridge; live feed check: freelance-desk 96ab3876 codex 60 events, termfleet claude pane real transcript"
+        }
+      ]
+    },
+    {
+      "id": "TF-047",
+      "title": "Shell card shows Awaiting command while a known command runs",
+      "state": "reported",
+      "severity": "medium",
+      "surface": "canvas",
+      "matrixRefs": [],
+      "symptom": "A plain shell running a recognised command (e.g. a Playwright run) shows Task not captured / Now Awaiting command instead of the command's plain description; the durable activity reaches the summary but the header rejects it.",
+      "rootCause": "",
+      "guard": "tests/map-terminal-rendering.spec.ts: map shell header uses durable activity instead of stale transcript summary (currently test.fixme)",
+      "evidence": [],
+      "owner": "termfleet",
+      "nextAction": "Trace summary.task through buildShellTerminalHeaderViewModel and the map Now row once the in-flight header redesign lands.",
+      "history": [
+        {
+          "at": "2026-09-23T16:37:29.221Z",
+          "type": "created",
+          "note": null
         }
       ]
     }
