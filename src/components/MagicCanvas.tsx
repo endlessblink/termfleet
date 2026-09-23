@@ -3113,8 +3113,17 @@ function CanvasNodeViewImpl({
     linkedTab?.terminals.find((terminal) => terminal.paneId === node.id) ??
     linkedTab?.terminals.find((terminal) => restoredNodePaneIds.has(terminal.paneId)) ??
     (linkedTab?.terminals.length === 1 ? linkedTab.terminals[0] : undefined);
+  // A single-pane tab records its one pane in the split layout. When the card has no
+  // pane link of its own (Ctrl+Z restores a tab with its terminal list emptied), that
+  // recorded pane IS this card's terminal; inventing one from the card id split the
+  // map and split views onto different terminals.
+  const singleLayoutPaneId =
+    linkedTab?.splitLayout?.type === "terminal" ? linkedTab.splitLayout.id : undefined;
   const exactNodePaneId =
-    node.linkedTerminalPaneId ?? restoredNodePaneId ?? node.id;
+    node.linkedTerminalPaneId ??
+    (restoredNodePaneId !== node.id ? restoredNodePaneId : undefined) ??
+    singleLayoutPaneId ??
+    node.id;
   const terminalPaneId =
     linkedTerminal?.paneId ?? exactNodePaneId;
   // Resolve the live PTY id only for this exact pane; never borrow another
@@ -6640,10 +6649,9 @@ export function MagicCanvas() {
       target.x + target.width <= viewRight &&
       target.y >= viewTop &&
       target.y + target.height <= viewBottom;
-    if (
-      (viewport.x !== 0 || viewport.y !== 0 || viewport.zoom !== 1) &&
-      targetIsVisible
-    ) {
+    // Only move the camera to rescue an off-screen card; a card the operator can
+    // already see stays exactly where it is, even on the default camera.
+    if (targetIsVisible) {
       autoFittedCanvasTargetRef.current = "preserved-operator-viewport";
       return;
     }
