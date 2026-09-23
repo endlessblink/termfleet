@@ -3110,7 +3110,9 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         };
       }
       const canvasState = normalizeCanvasState(state.canvasState, tabs);
-      const nextLiveCwds = { ...state.liveCwds, ...liveCwds };
+      // The daemon's session list only knows where a terminal STARTED; the 2s
+      // live-cwd poll knows where it is now, so the poll's reading wins.
+      const nextLiveCwds = { ...liveCwds, ...state.liveCwds };
       const nextLiveGitRoots = { ...state.liveGitRoots, ...liveGitRoots };
       const projects = reconcileProjectGroups(tabs, state.groups, canvasState, nextLiveCwds, nextLiveGitRoots);
       const canvasProjects = resolveCanvasNodeProjects(canvasState.nodes, projects.tabs);
