@@ -184,8 +184,17 @@ const checks = [
     // allowed to be `node.id` or a value derived only from those. What must
     // never appear is the tab's active pane: that is the switch-to-a-sibling
     // bug this gate exists for, and it is asserted separately below.
+    // A single-pane tab's one recorded layout pane is also the card's own pane (there
+    // is no sibling to switch to); Ctrl+Z restore relies on it (TF-044 follow-up).
     ok: /const terminalPaneId =\s*linkedTerminal\?\.paneId \?\? (node\.id|exactNodePaneId);/.test(magicCanvas) &&
-      /const exactNodePaneId =\s*node\.linkedTerminalPaneId \?\? restoredNodePaneId \?\? node\.id;/.test(magicCanvas) &&
+      (
+        /const exactNodePaneId =\s*node\.linkedTerminalPaneId \?\? restoredNodePaneId \?\? node\.id;/.test(magicCanvas) ||
+        (
+          /const singleLayoutPaneId =\s*linkedTab\?\.splitLayout\?\.type === "terminal" \? linkedTab\.splitLayout\.id : undefined;/.test(magicCanvas) &&
+          /const exactNodePaneId =\s*node\.linkedTerminalPaneId \?\?\s*\(restoredNodePaneId !== node\.id \? restoredNodePaneId : undefined\) \?\?\s*singleLayoutPaneId \?\?\s*node\.id;/.test(magicCanvas)
+        )
+      ) &&
+      !/const exactNodePaneId =[^;]*activePaneId/.test(magicCanvas) &&
       !/const terminalPaneId =[^;]*activePaneId/.test(magicCanvas) &&
       /const targetPaneId = currentTerminal\?\.paneId \?\? terminalPaneId;/.test(magicCanvas),
     message: "Connect must preserve the map card's pane identity instead of silently switching to the active pane.",

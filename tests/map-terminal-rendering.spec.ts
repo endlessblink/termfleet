@@ -260,7 +260,11 @@ test("restored map cards keep the exact saved pane id when the live terminal is 
   const source = readFileSync(new URL("../src/components/MagicCanvas.tsx", import.meta.url), "utf8");
   const normalized = codeShape(source);
 
-  expect(normalized).toContain("const exactNodePaneId=node.linkedTerminalPaneId??restoredNodePaneId??node.id;");
+  // The saved link and the `recovered-pane-` spelling still win; a single-pane tab's
+  // recorded layout pane comes before the raw card id (Ctrl+Z restore, TF-044 follow-up).
+  expect(normalized).toContain(
+    "const exactNodePaneId=node.linkedTerminalPaneId??(restoredNodePaneId!==node.id?restoredNodePaneId:undefined)??singleLayoutPaneId??node.id;",
+  );
   expect(normalized).toContain("const terminalPaneId=linkedTerminal?.paneId??exactNodePaneId;");
 });
 
