@@ -2,6 +2,34 @@ import type { Tab } from "./types";
 
 const GAMIFICATION_RELEASE_ID = import.meta.env?.VITE_TERMFLEET_RELEASE_ID ?? "dev";
 export const GAMIFICATION_STORAGE_KEY = "termfleet.gamification.v6";
+
+export const WORKSTREAM_QUEST_ENABLED_KEY = "termfleet.workstreamQuest.enabled";
+
+/**
+ * Workstream Quest is opt-in for the public preview. The first read decides once
+ * (on only for a profile that already has quest progress) and records the answer,
+ * so later quest writes or a saved layout can never flip it.
+ */
+export function workstreamQuestEnabledPreference() {
+  try {
+    const stored = window.localStorage.getItem(WORKSTREAM_QUEST_ENABLED_KEY);
+    if (stored === "1") return true;
+    if (stored === "0") return false;
+    const enabled = window.localStorage.getItem(GAMIFICATION_STORAGE_KEY) !== null;
+    window.localStorage.setItem(WORKSTREAM_QUEST_ENABLED_KEY, enabled ? "1" : "0");
+    return enabled;
+  } catch {
+    return false;
+  }
+}
+
+export function saveWorkstreamQuestEnabled(enabled: boolean) {
+  try {
+    window.localStorage.setItem(WORKSTREAM_QUEST_ENABLED_KEY, enabled ? "1" : "0");
+  } catch {
+    // Storage unavailable: the choice lasts for this session only.
+  }
+}
 const LEGACY_GAMIFICATION_STORAGE_KEY = `termfleet.gamification.v6.${GAMIFICATION_RELEASE_ID}`;
 export const GAMIFICATION_CHANGED_EVENT = "termfleet-gamification-changed";
 export const WORKSTREAM_QUEST_ID = "parallel-work";

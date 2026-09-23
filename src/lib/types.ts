@@ -467,6 +467,8 @@ export interface WorkspaceUiState {
   primarySidebarPanel: "sessions" | "map" | "tasks";
   projectSidebarExpandedSections: string[];
   previewUrl: string;
+  /** Workstream Quest is opt-in (public preview); on for anyone who already used it. */
+  workstreamQuestEnabled: boolean;
 }
 
 export type CanvasNodeType = "terminal" | "file" | "note" | "preview" | "board";

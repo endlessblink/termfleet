@@ -2,6 +2,7 @@ import { CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from
 import {
   AtSign,
   Bot,
+  CirclePlay,
   Command,
   Copy,
   FileText,
@@ -518,6 +519,9 @@ export function WorkbenchHeader() {
   const switchProject = useWorkspaceStore((state) => state.switchProject);
   const addOpenFile = useWorkspaceStore((state) => state.addOpenFile);
   const updateUiState = useWorkspaceStore((state) => state.updateWorkspaceUiState);
+  const workstreamQuestEnabled = useWorkspaceStore(
+    (state) => state.workspaceUiState.workstreamQuestEnabled,
+  );
   const [commandValue, setCommandValue] = useState("");
   const [commandStatus, setCommandStatus] = useState("");
   const [commandOpen, setCommandOpen] = useState(false);
@@ -789,6 +793,18 @@ export function WorkbenchHeader() {
         },
       },
       {
+        id: "toggle-workstream-quest",
+        label: workstreamQuestEnabled ? "Hide Workstream Quest" : "Show Workstream Quest",
+        detail: "Experimental focus timer and quests",
+        keywords: ["quest", "workstream", "game", "timer", "experimental"],
+        scope: "actions",
+        Icon: CirclePlay,
+        run: () => {
+          updateUiState({ workstreamQuestEnabled: !workstreamQuestEnabled });
+          setCommandStatus(workstreamQuestEnabled ? "quest hidden" : "quest shown");
+        },
+      },
+      {
         id: "reset-layout",
         label: "Reset layout",
         detail: "Clear persisted workspace state and reload",
@@ -915,7 +931,7 @@ export function WorkbenchHeader() {
     }));
 
     return [...baseActions, ...sessionActions, ...paneActions, ...launchActions, ...fileActions];
-  }, [activeTab, addOpenFile, focusActiveTerminalOnMap, immersiveTerminal.enabled, launchAgentWorkstream, openFiles, projectLabel, setActiveTab, setWorkspaceMode, switchProject, tabs, toggleImmersiveTerminal, updateUiState]);
+  }, [activeTab, addOpenFile, focusActiveTerminalOnMap, immersiveTerminal.enabled, launchAgentWorkstream, openFiles, projectLabel, setActiveTab, setWorkspaceMode, switchProject, tabs, toggleImmersiveTerminal, updateUiState, workstreamQuestEnabled]);
 
   const visibleActions = useMemo(() => {
     return actions.filter((action) => actionMatches(action, commandQuery)).slice(0, 9);
@@ -1060,7 +1076,7 @@ export function WorkbenchHeader() {
         <Copy size={13} strokeWidth={1.8} />
         {copyStatus || "Copy panes"}
       </button>
-      <GamificationPanel />
+      {workstreamQuestEnabled && <GamificationPanel />}
       {commandOpen && (
         <div className="workbench-command-menu" style={styles.menu}>
           <div style={styles.scopeRow}>

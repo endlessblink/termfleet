@@ -2,6 +2,11 @@ import { expect, test } from "@playwright/test";
 
 test.use({ viewport: { width: 1440, height: 920 }, launchOptions: { executablePath: "/usr/bin/chromium", args: ["--disable-crash-reporter", "--disable-crashpad", "--disable-gpu"] } });
 
+// Workstream Quest is opt-in in the public preview; these specs exercise it.
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("termfleet.workstreamQuest.enabled", "1"));
+});
+
 test("progress panel requires acceptance before the live quest begins", async ({ page }) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
   await page.evaluate(() => { localStorage.removeItem("terminal-workspace.v1"); localStorage.removeItem("terminal-workspace.test"); localStorage.removeItem("termfleet.gamification.v2"); localStorage.removeItem("termfleet.gamification.v3"); localStorage.removeItem("termfleet.gamification.v4"); localStorage.removeItem("termfleet.gamification.v5"); localStorage.removeItem("termfleet.gamification.v6"); localStorage.removeItem("termfleet.gamification.v6.dev"); });

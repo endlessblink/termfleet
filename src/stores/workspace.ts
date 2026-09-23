@@ -32,6 +32,7 @@ import type { AgentProviderAvailability } from "../lib/agentProviders";
 import { providerDefinition } from "../lib/agentProviders";
 import type { WorkstreamOpsContext } from "../lib/workstreamOpsContext";
 import { projectEmojiFor } from "../lib/projectEmoji";
+import { saveWorkstreamQuestEnabled, workstreamQuestEnabledPreference } from "../lib/gamification";
 import { persistedMainUserAsk } from "../lib/terminalMainUserAsk";
 import {
   planCanvasLanes,
@@ -187,6 +188,7 @@ const DEFAULT_UI_STATE: WorkspaceUiState = {
   primarySidebarPanel: "sessions",
   projectSidebarExpandedSections: [],
   previewUrl: "http://127.0.0.1:3000",
+  workstreamQuestEnabled: false,
 };
 const DEFAULT_CANVAS_STATE: CanvasState = {
   nodes: [
@@ -711,6 +713,9 @@ function normalizeWorkspaceUiState(uiState: Partial<WorkspaceUiState> | undefine
     previewUrl: typeof uiState?.previewUrl === "string" && uiState.previewUrl.trim()
       ? uiState.previewUrl
       : DEFAULT_UI_STATE.previewUrl,
+    // Experimental in the public preview: its own saved preference (see
+    // workstreamQuestEnabledPreference), never the layout snapshot.
+    workstreamQuestEnabled: workstreamQuestEnabledPreference(),
   };
 }
 
@@ -4454,6 +4459,9 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   },
 
   updateWorkspaceUiState: (updates: Partial<WorkspaceUiState>) => {
+    if (typeof updates.workstreamQuestEnabled === "boolean") {
+      saveWorkstreamQuestEnabled(updates.workstreamQuestEnabled);
+    }
     set((state) => ({
       workspaceUiState: {
         ...state.workspaceUiState,

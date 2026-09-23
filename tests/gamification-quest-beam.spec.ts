@@ -2,6 +2,11 @@ import { expect, test } from "@playwright/test";
 
 test.use({ viewport: { width: 1440, height: 920 }, launchOptions: { executablePath: "/usr/bin/chromium", args: ["--disable-crash-reporter", "--disable-crashpad", "--disable-gpu" ] } });
 
+// Workstream Quest is opt-in in the public preview; these specs exercise it.
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("termfleet.workstreamQuest.enabled", "1"));
+});
+
 test("accepted Workstream Quest marks only qualifying terminal shells", async ({ page }, testInfo) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
   await page.evaluate(() => {

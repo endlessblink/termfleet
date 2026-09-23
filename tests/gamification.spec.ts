@@ -2,6 +2,11 @@ import { expect, test } from "@playwright/test";
 import { collectGamificationFacts, EMPTY_GAMIFICATION_RECORD, findMissionTarget, initializeGamificationRecord, loadGamificationRecord, mergeGamificationRecord, rewardForTransition, summarizeGamification, syncGamificationRecord } from "../src/lib/gamification";
 import type { Tab } from "../src/lib/types";
 
+// Workstream Quest is opt-in in the public preview; these specs exercise it.
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("termfleet.workstreamQuest.enabled", "1"));
+});
+
 function tab(terminals: Tab["terminals"]): Tab {
   return { id: "tab-1", title: "Workspace", emoji: "⬛", color: "#7aa2f7", groupId: null, terminals, splitLayout: { id: "pane-1", type: "terminal" }, activePaneId: terminals[0]?.paneId ?? "pane-1" };
 }

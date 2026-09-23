@@ -99,6 +99,9 @@ const STATUS_COLORS: Record<StatusKey, string> = {
 export function StatusBar() {
   const [systemPressure, setSystemPressure] = useState<SystemPressureSummary | null>(null);
   const tabs = useWorkspaceStore((s) => s.tabs);
+  const workstreamQuestEnabled = useWorkspaceStore(
+    (s) => s.workspaceUiState.workstreamQuestEnabled,
+  );
   const groups = useWorkspaceStore((s) => s.groups);
   const activeTabId = useWorkspaceStore((s) => s.activeTabId);
   const activeTerminalId = useWorkspaceStore((s) => s.activeTerminalId);
@@ -207,7 +210,7 @@ export function StatusBar() {
             {terminalCount} {terminalCount === 1 ? "pty" : "ptys"}
           </span>
         </span>
-        <button
+        {workstreamQuestEnabled && <button
           type="button"
           data-testid="gamification-status-trigger"
           aria-label="Open Workstream Quest"
@@ -217,7 +220,7 @@ export function StatusBar() {
         >
           <CirclePlay size={12} strokeWidth={1.8} color="var(--accent-live)" style={styles.icon} />
           <span style={{ color: "var(--text-primary)", fontWeight: 500 }}>Workstream quest</span>
-        </button>
+        </button>}
         {recoveryTotal > 0 && (
           <span
             style={styles.chip}
