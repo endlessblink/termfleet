@@ -358,10 +358,12 @@ test("map Goal is as legible as the other glanceable rows", () => {
   expect(magicCanvas).toContain("labelStatusBlockStyle");
 });
 
-test("map opens with the active card fitted inside the visible canvas", () => {
+test("map opens on the active card at readable zoom so it stays live", () => {
   expect(magicCanvas).toContain("const autoFittedCanvasTargetRef = useRef<string | null>(null);");
   expect(magicCanvas).toContain("autoFittedCanvasTargetRef.current !== null");
-  expect(magicCanvas).toContain("containerSize.width - 32");
+  // Below readable zoom the primary terminal is only a static preview.
+  expect(magicCanvas).toContain("const zoom = READABLE_TERMINAL_ZOOM;");
+  expect(magicCanvas).toContain("Math.max(16, centeredX)");
   expect(magicCanvas).toContain("updateCanvasViewport({");
 });
 

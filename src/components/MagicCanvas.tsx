@@ -3509,6 +3509,9 @@ function CanvasNodeViewImpl({
           terminalHeader.goalLabel,
           terminalHeaderStatusTask,
         ) ??
+        // A real task that merely matches the Goal (a bound plan task is often both)
+        // still beats the placeholder.
+        terminalHeaderTaskCandidate ??
         canvasTaskFallback;
   const stabilizedTerminalHeaderTask = stableHeader(
     `map-task-row:${terminalTabId}:${terminalPaneId}:${node.taskBinding?.taskId ?? "unbound"}`,

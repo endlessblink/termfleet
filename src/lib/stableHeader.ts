@@ -41,6 +41,17 @@ function isNeutralText(value: string): boolean {
   return NEUTRAL_HEADER.has(value.trim().toLowerCase());
 }
 
+// The honest "nothing known yet" rows and the generic shell role. They may be held
+// against other placeholders (no row thrash), but real text always replaces them at once.
+function isPlaceholderText(value: string): boolean {
+  const text = value.trim();
+  return (
+    isNeutralText(text) ||
+    /^(?:Task|Goal|Now) not captured$/i.test(text) ||
+    /^Terminal session in \S/.test(text)
+  );
+}
+
 export interface StableHeaderEntry extends StableHeaderValue {
   committedAt: number;
 }
@@ -64,8 +75,12 @@ export function nextStableHeader(
   // the real value in immediately — the hold is for thrash between two real descriptions,
   // not for blocking initial population. Failed/exited panes always bypass.
   const prevIsPlaceholder = isNeutralText(prev.title) || isNeutralText(prev.now);
+  const upgradesPlaceholder =
+    (isPlaceholderText(prev.title) && !isPlaceholderText(incoming.title)) ||
+    (isPlaceholderText(prev.now) && !isPlaceholderText(incoming.now));
   if (
     bypass ||
+    upgradesPlaceholder ||
     (!holdPlaceholders && prevIsPlaceholder) ||
     nowMs - prev.committedAt >= minHoldMs
   ) {

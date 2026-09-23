@@ -810,7 +810,12 @@ export function buildShellTerminalHeaderViewModel(input: {
     !input.mainUserAsk &&
     !input.statusSummary?.mainTask?.trim() &&
     !input.contextPurposeTitle?.trim() &&
-    !input.workstreamTitle?.trim();
+    !input.workstreamTitle?.trim() &&
+    // A linked plan task or a live checklist step is the real Task; the generic
+    // shell role is only for a pane with nothing else to say.
+    !activeTodoTask(input.taskLineup, input.activeRunId) &&
+    // A trusted live activity (a known running command) says what the shell is doing.
+    !input.trustedActivitySummary;
   const shellRoleTask = shellRoleFallback
     ? `Terminal session in ${workspace}`
     : undefined;

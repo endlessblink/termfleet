@@ -5249,9 +5249,11 @@ test("map shell header replaces source-file activity with readable task activity
   // The activity only restates the task ("Improving <task>"), so there is no distinct
   // second line: the task itself becomes the one prominent line and the raw source-file
   // activity ("ModelScene.tsx") never surfaces.
+  // Task, Goal and Now rows always stay visible (fixed rhythm); a Now with nothing
+  // distinct to say reads as an honest placeholder instead of disappearing.
   await expect(
     page.getByTestId("canvas-terminal-node-header-title"),
-  ).toHaveCSS("visibility", "hidden");
+  ).toBeVisible();
   await expect(page.getByTestId("canvas-terminal-node-now")).not.toContainText(
     "ModelScene.tsx",
   );
@@ -5344,17 +5346,22 @@ test("map shell header treats ready prompt as idle instead of capture failure", 
 
   // TC-060 R1: no declared task is no longer a blank — the card falls back to a
   // true state line, and must never show the old placeholder.
+  // Task, Goal and Now rows always stay visible (fixed rhythm); a Now with nothing
+  // distinct to say reads as an honest placeholder instead of disappearing.
   await expect(
     page.getByTestId("canvas-terminal-node-header-title"),
-  ).toHaveCSS("visibility", "hidden");
+  ).toBeVisible();
   // An idle pane with no distinct step collapses to the single honest Task line — the
   // "Now Active" row stays reserved but hidden rather than restating a bare "Idle"
   // status word.
+  // Task, Goal and Now rows always stay visible (fixed rhythm); a Now with nothing
+  // distinct to say reads as an honest placeholder instead of disappearing.
   await expect(
     page.getByTestId("canvas-terminal-node-header-title"),
-  ).toHaveCSS("visibility", "hidden");
+  ).toBeVisible();
+  // No canned "Working on …" sentence: without pane evidence Now says so honestly.
   await expect(page.getByTestId("canvas-terminal-node-now")).toHaveText(
-    "Working on the current task",
+    "Now not captured",
   );
 });
 
