@@ -1482,6 +1482,9 @@ export function liveTerminalTabs<T extends Pick<Tab, "terminals">>(
   liveSessionIds: Iterable<string>,
 ): T[] {
   const liveIds = new Set(liveSessionIds);
+  // No live inventory yet (first paint before the daemon answers, or the browser
+  // preview with no daemon at all): hiding every row would show an empty list.
+  if (liveIds.size === 0) return tabs;
   return tabs.filter((tab) => tab.terminals.some((terminal) => liveIds.has(terminal.id)));
 }
 

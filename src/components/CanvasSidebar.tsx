@@ -1,4 +1,4 @@
-import { CSSProperties, useCallback, useEffect, useMemo, useState } from "react";
+import { CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FileText, Globe, Map, NotebookText, TerminalSquare, X } from "lucide-react";
 import type { CanvasNode, Group, Tab } from "../lib/types";
 import { pathTail, projectForTab } from "../lib/projectDisplay";
@@ -253,7 +253,9 @@ function NodeRow({
   const meta = node.type === "terminal" && linkedTab
     ? `${nodeMeta(node, linkedTab, liveCwd)} · ${linkedTab.title}`
     : nodeMeta(node, linkedTab, liveCwd);
+  const renameStartedAtRef = useRef(0);
   const beginRename = useCallback(() => {
+    renameStartedAtRef.current = performance.now();
     setDraftTitle(node.title);
     setEditing(true);
   }, [node.title]);
@@ -323,7 +325,19 @@ function NodeRow({
             onClick={(event) => event.stopPropagation()}
             onDoubleClick={(event) => event.stopPropagation()}
             onMouseDown={(event) => event.stopPropagation()}
-            onBlur={commitRename}
+            onBlur={(event) => {
+              // Selecting the row focuses its terminal a beat after the double-click
+              // opened this input; don't let that focus jump close the rename.
+              const next = event.relatedTarget as HTMLElement | null;
+              if (
+                next?.matches(".terminal-canvas-input, .xterm-helper-textarea") &&
+                performance.now() - renameStartedAtRef.current < 1000
+              ) {
+                event.currentTarget.focus();
+                return;
+              }
+              commitRename();
+            }}
             onKeyDown={(event) => {
               event.stopPropagation();
               if (event.key === "Enter") {

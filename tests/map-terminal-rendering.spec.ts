@@ -1774,9 +1774,11 @@ test("terminal map labels can be recolored from the right-click menu", async ({
     .getByRole("menu", { name: "Terminal label color" })
     .getByRole("menuitem", { name: "Set terminal label color Amber" })
     .click();
+  // The label color tints the whole status block (no side-stripe accent since the
+  // chrome cleanup); amber #d4a44f = srgb(0.831, 0.643, 0.310).
   await expect(page.getByTestId("canvas-terminal-status-block")).toHaveCSS(
-    "border-left-color",
-    "rgb(212, 164, 79)",
+    "background-image",
+    /0\.83\d* 0\.64\d* 0\.3[01]\d*/,
   );
   await page.getByRole("button", { name: "Map", exact: true }).click();
   await expect(
