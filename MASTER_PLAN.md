@@ -20,6 +20,10 @@ Update 2026-09-23 19:10 (claude): took over per Noam. Local work committed (e65b
 - [ ] Fix only the blockers. Everything else goes to a "Known issues" list.
 - [ ] Hide or flag as experimental anything half-done (gamification/quests, mobile TermControl) so it doesn't shape first impressions.
 
+Triage 2026-09-23 (claude, from `npm run issues -- list`, 38 open):
+- **Launch blockers (core promise: terminals survive, look right, status is true):** TF-018 saved projects missing after restart (fixing), TF-016 repeated Broken pipe from stale streams (fixing), TF-017 killed terminals return, TF-019 live terminals stuck "starting" after restart, TF-004 crash hides recoverable terminals, TF-005 viewport jumps to newest output, TF-040 half-finished repaints, TF-042 last column clipped, TF-044 badge truth, TF-015 sluggish during status refresh. Most are `verifying` — they need recorded live proof, not new code.
+- **Ship as known issues / hide as experimental:** Workstream Quest (TF-021/024/027), mobile TermControl (TF-029/030/043/046), OpenCode copy/scroll/task (TF-033/034/035/039), Kanban (TF-010), command menu overflow (TF-006), outline colors (TF-014), manual sidebar order (TF-025), running-command header (TF-047), reconnect/back/map-connect polish (TF-007/013/026/031/011), internal (TF-002/003/012/020/028/032/041).
+
 **Phase 3 — Fresh-machine proof (day 2–3)**
 - [ ] Build v0.2.0 AppImage + .deb from a tagged commit via CI.
 - [ ] Install on a clean Linux VM/user account (no local config, no hooks): first launch, open terminals, run Claude + Codex, restart app, reboot — all survive.
