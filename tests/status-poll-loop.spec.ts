@@ -212,6 +212,38 @@ test("a quiet pane is never starved behind recently polled busy panes", () => {
   expect(targets).toHaveLength(8);
 });
 
+test("over successive sweeps every pane is polled, including the quietest (TF-044)", () => {
+  // Live failure: history was pruned to the 8 panes picked each tick, so everything
+  // else looked "never polled", the busiest of those won again, and the quietest panes
+  // (a 'starting' pane with no activity) were starved and their badges froze.
+  const start = 1_700_000_000_000;
+  const tabs = [
+    ...Array.from({ length: 21 }, (_, index) =>
+      tab(`busy-${index}`, [terminal(`busy-${index}`, { activityUpdatedAt: start - index, status: "running" })]),
+    ),
+    tab("quiet-a", [terminal("quiet-a", { status: "starting" })]),
+    tab("quiet-b", [terminal("quiet-b", { status: "starting" })]),
+  ];
+  const keyOf = (target: { tab: { id: string }; terminal: { paneId: string } }) =>
+    `terminal-${target.tab.id}-${target.terminal.paneId}`;
+  const lastPolled = new Map<string, number>();
+  const seen = new Set<string>();
+  for (let tick = 0; tick < 4; tick += 1) {
+    const now = start + tick * 10_000;
+    const targets = selectStatusPollTargets(tabs, null, now, (target) => lastPolled.get(keyOf(target)) ?? 0);
+    // Same pruning rule as the loop: forget only panes that no longer exist.
+    const live = new Set(tabs.flatMap((candidate) => candidate.terminals.map((pane) => keyOf({ tab: candidate, terminal: pane }))));
+    for (const key of lastPolled.keys()) if (!live.has(key)) lastPolled.delete(key);
+    for (const target of targets) {
+      lastPolled.set(keyOf(target), now);
+      seen.add(target.terminal.id);
+    }
+  }
+  expect(seen.has("quiet-a")).toBe(true);
+  expect(seen.has("quiet-b")).toBe(true);
+  expect(seen.size).toBe(23);
+});
+
 test("an unchanged status poll does not rewrite a live map terminal", () => {
   const current = terminal("live", {
     agentProvider: "codex",

@@ -120,6 +120,7 @@
     "gate": "node scripts/termfleet-gate.mjs",
     "verify:task-line": "npx playwright test tests/task-line-sweep.spec.ts tests/task-line.spec.ts tests/task-line-plumbing.spec.ts tests/task-line-live-records.spec.ts tests/task-line-coverage.spec.ts tests/session-transcript.spec.ts tests/task-identity-ladder.spec.ts --reporter=line",
     "cockpit:why": "npx playwright test tests/task-line-coverage.spec.ts tests/task-line-live-records.spec.ts --reporter=line",
+    "verify:badge-truth": "node scripts/verify-badge-truth.mjs",
     "verify:map-connect-live": "scripts/verify-map-connect-live.sh",
     "termcontrol": "node termcontrol/bridge/server.mjs",
     "verify:termcontrol-mobile": "node --test termcontrol/test/mobile-control-regression.test.mjs termcontrol/test/inventory-parity.test.mjs termcontrol/test/opencode-adapter.test.mjs",

@@ -291,6 +291,9 @@ export interface WorkstreamStatusSummary {
   /** Explicit sidecar goal, kept separate from the current task/activity line. */
   mainTask?: string;
   mainTaskSource?: "about-what" | "plan-explanation" | "goal-task" | "opening-request" | "user-prompt";
+  // True when `status` came from the agent's OWN live session log (TF-044). That is
+  // stronger evidence than lifecycle words left on the screen from an earlier turn.
+  statusFromAgentLog?: boolean;
   // True only when the status hook observed a completed `$done` or `/done` turn.
   // Kept separate from lifecycle because a completed turn is also correctly Idle.
   completedByCommand?: boolean;

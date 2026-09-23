@@ -271,6 +271,43 @@ test("Claude hook distinguishes idle notifications from requests that need the o
   }
 });
 
+// TF-044 (2026-09-23): after an approved permission the next tool was an unlabelled one
+// (TaskList, a bare `ls`), the hook wrote nothing, and the pane stayed on Waiting.
+test("Claude hook: an unlabelled tool after a permission prompt flips Waiting back to Running", () => {
+  const dataDir = mkdtempSync(join(tmpdir(), "tf-badge-regress-"));
+  try {
+    const sidecarDir = join(dataDir, "terminal-workspace", "agent-status");
+    const readSidecar = () => {
+      const file = readdirSync(sidecarDir).find((f) => f.startsWith("pane-"));
+      return JSON.parse(readFileSync(join(sidecarDir, String(file)), "utf8"));
+    };
+    const base = { cwd: "/tmp/regress-unlabelled", session_id: "s-unlabelled" };
+    runClaudeHook(dataDir, { ...base, hook_event_name: "UserPromptSubmit", prompt: "clean up the release notes" });
+    runClaudeHook(dataDir, { ...base, hook_event_name: "PermissionRequest", tool_name: "Bash", tool_input: { command: "rm -rf dist" } });
+    expect(readSidecar().turn).toBe("waiting");
+    runClaudeHook(dataDir, { ...base, hook_event_name: "PostToolUse", tool_name: "TaskList", tool_input: {} });
+    expect(readSidecar().turn).toBe("working");
+  } finally {
+    rmSync(dataDir, { recursive: true, force: true });
+  }
+});
+
+// TF-044: a sync Tauri command runs on the UI thread, so one slow status/transcript read
+// queued every other pane's status request behind it and badges froze.
+test("status and transcript reads never run on the UI thread", () => {
+  const src = read("src-tauri/src/commands.rs");
+  for (const name of [
+    "pane_agent_provider",
+    "pane_agent_lifecycle",
+    "agent_status_read_sidecar",
+    "session_transcript_read",
+    "session_transcript_context_read",
+    "session_transcript_head_read",
+  ]) {
+    expect(src, name).toMatch(new RegExp(`#\\[tauri::command\\(async\\)\\]\\s*pub fn ${name}\\(`));
+  }
+});
+
 test("an interrupted Claude prompt overrides stale working with Idle", () => {
   expect(paneBadgeAttention({
     statusSummary: { status: "working" },

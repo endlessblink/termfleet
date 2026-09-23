@@ -18,6 +18,8 @@ import type { Tab, TerminalState, WorkstreamStatus } from "./types";
 import { stableAgentProvider } from "./agentProviderIdentity";
 import { runBoundedTasks } from "./statusPollScheduler";
 import { heartbeatTaskRun } from "./canonicalTaskRuntime";
+import { readPaneAgentAlive, readPaneAgentLifecycle, type PaneAgentLifecycle } from "./paneAgentProcess";
+import { badgeLivenessOverride, keepNewerReportedStatus } from "./badgeLiveness";
 import {
   mirroredWorkstream,
   preserveDurablePaneGoal,
@@ -45,6 +47,14 @@ function statusForTerminal(status?: string): WorkstreamStatus {
 let started = false;
 let ticking = false;
 const lastPolledByPane = new Map<string, number>();
+// Consecutive polls that found no agent process in the pane (TF-044).
+// The summary read can take minutes for a huge session log (a 338 MB Codex rollout
+// stalled every sweep). The badge must not wait for it: cap the wait, and never start
+// a second read for a pane while its first is still running.
+const SUMMARY_WAIT_MS = 4_000;
+const summaryInFlight = new Map<string, Promise<Awaited<ReturnType<typeof summarizeAgentStatus>>>>();
+const SUMMARY_TIMED_OUT = Symbol("summary-timed-out");
+const agentAbsentStreakByPane = new Map<string, number>();
 
 
 function panePollKey(tab: Tab, terminal: TerminalState) {
@@ -92,6 +102,48 @@ function syncCanonicalRunHeartbeat(tab: Tab, terminal: TerminalState, source: st
   }).catch(() => undefined);
 }
 
+/**
+ * Write the badge the agent's own session log gives (TF-044), independent of the rest
+ * of the summary processing, so a failure there can never freeze a pane's badge.
+ */
+function applyAgentLifecycle(
+  target: StatusPollTarget,
+  lifecycle: PaneAgentLifecycle,
+  pollError?: string,
+) {
+  const latest = useWorkspaceStore.getState();
+  const latestTab = latestTabForPollTarget(latest.tabs, target);
+  const latestTerminal = latestTab?.terminals.find(
+    (candidate) => terminalMatchesPollTarget(candidate, target.terminal),
+  );
+  if (!latestTab || !latestTerminal) return;
+  const stored = latestTerminal.statusSummary;
+  const sameBadge = stored?.status === lifecycle.state && stored.statusFromAgentLog;
+  if (sameBadge && (pollError === undefined || latestTerminal.statusSummaryError === pollError)) return;
+  const statusSummary = sameBadge
+    ? stored
+    : {
+        task: "",
+        path: "",
+        now: "",
+        ...stored,
+        status: lifecycle.state,
+        updatedAt: lifecycle.updatedAtMs,
+        statusFromAgentLog: true,
+      };
+  latest.updateTab(latestTab.id, {
+    terminals: latestTab.terminals.map((candidate) =>
+      terminalMatchesPollTarget(candidate, target.terminal)
+        ? {
+            ...candidate,
+            statusSummary,
+            ...(pollError !== undefined ? { statusSummaryError: pollError } : {}),
+          }
+        : candidate,
+    ),
+  });
+}
+
 async function pollOnce() {
   if (ticking) return;
   ticking = true;
@@ -103,9 +155,17 @@ async function pollOnce() {
       Date.now(),
       ({ tab, terminal }) => lastPolledByPane.get(panePollKey(tab, terminal)) ?? 0,
     );
-    const liveKeys = new Set(targets.map(({ tab, terminal }) => panePollKey(tab, terminal)));
+    // Forget only panes that no longer EXIST. Keying this off the 8 panes picked this
+    // tick reset every other pane's "last polled" to never, so the quietest panes were
+    // outranked forever and their badges froze (TF-044: two bina panes never updated).
+    const liveKeys = new Set(
+      store.tabs.flatMap((tab) => (tab.terminals ?? []).map((terminal) => panePollKey(tab, terminal))),
+    );
     for (const key of lastPolledByPane.keys()) {
       if (!liveKeys.has(key)) lastPolledByPane.delete(key);
+    }
+    for (const key of agentAbsentStreakByPane.keys()) {
+      if (!liveKeys.has(key)) agentAbsentStreakByPane.delete(key);
     }
     const eligibleTargets = targets.filter((target) =>
       shouldPollTarget(target, store.activeTabId, Date.now()),
@@ -117,8 +177,12 @@ async function pollOnce() {
         const { tab, terminal } = target;
         const liveCwd = store.liveCwds[terminal.id];
         try {
-          const result = await summarizeAgentStatus({
-          paneId: panePollKey(tab, terminal),
+          const key = panePollKey(tab, terminal);
+          // Fast, independent evidence first: the badge never waits on the summary.
+          const alivePromise = readPaneAgentAlive(key);
+          const lifecyclePromise = alivePromise.then((alive) => (alive ? readPaneAgentLifecycle(key) : null));
+          const summaryPromise = summaryInFlight.get(key) ?? summarizeAgentStatus({
+          paneId: key,
           sessionId: tab.workstream?.providerSessionId,
           userTask: tab.workstream?.kind === "agent" ? tab.workstream.mission ?? tab.workstream.prompt : undefined,
           mission: "Terminal",
@@ -141,7 +205,24 @@ async function pollOnce() {
           // cannot invent a new goal for a pane.
           contextTaskSummarizer: null,
           });
-          return { target, result };
+          if (!summaryInFlight.has(key)) {
+            summaryInFlight.set(key, summaryPromise);
+            void summaryPromise.finally(() => summaryInFlight.delete(key)).catch(() => undefined);
+          }
+          const [agentAlive, lifecycle, summaryOrTimeout] = await Promise.all([
+            alivePromise,
+            lifecyclePromise,
+            Promise.race([
+              summaryPromise,
+              new Promise<typeof SUMMARY_TIMED_OUT>((resolve) =>
+                window.setTimeout(() => resolve(SUMMARY_TIMED_OUT), SUMMARY_WAIT_MS),
+              ),
+            ]),
+          ]);
+          if (summaryOrTimeout === SUMMARY_TIMED_OUT) {
+            return { target, result: null, agentAlive, lifecycle, summaryTimedOut: true };
+          }
+          return { target, result: summaryOrTimeout, agentAlive, lifecycle };
         } catch (error) {
           return {
             target,
@@ -152,7 +233,15 @@ async function pollOnce() {
       },
     );
 
-    for (const { target, result, error } of pollResults) {
+    for (const polled of pollResults) {
+      const { target, error } = polled;
+      let result = polled.result;
+      if (!result && "summaryTimedOut" in polled && polled.summaryTimedOut) {
+        // The summary is still being read; the badge still follows the agent's log.
+        const lifecycle = polled.lifecycle ?? null;
+        if (lifecycle) applyAgentLifecycle(target, lifecycle);
+        continue;
+      }
       if (!result) {
         const { terminal } = target;
         const latest = useWorkspaceStore.getState();
@@ -176,6 +265,53 @@ async function pollOnce() {
         continue;
       }
       const { terminal } = target;
+      const polledLifecycle = "lifecycle" in polled ? polled.lifecycle ?? null : null;
+      try {
+      // Ground truth from the process table (TF-044): interrupts, crashes and exits
+      // fire no hook, and one long tool call outlives the record's TTL. Neither may
+      // leave the badge lying.
+      const pollKey = panePollKey(target.tab, terminal);
+      const agentAlive = "agentAlive" in polled ? polled.agentAlive ?? null : null;
+      const absentStreak = agentAlive === false
+        ? (agentAbsentStreakByPane.get(pollKey) ?? 0) + 1
+        : 0;
+      agentAbsentStreakByPane.set(pollKey, absentStreak);
+      const liveness = badgeLivenessOverride({
+        hookStatus: result.summary.status,
+        sidecarState: result.sidecarState,
+        sidecarPaneId: result.sidecarPaneId,
+        pollKey,
+        agentAlive,
+        absentStreak,
+      });
+      if (liveness === "idle") {
+        result = {
+          ...result,
+          summary: { ...result.summary, status: "idle", updatedAt: Date.now() },
+        };
+      }
+      // The agent's own session log outranks a hook record (TF-044). Keep the stored
+      // report time while the state is unchanged so a busy pane does not rewrite the
+      // store on every sweep.
+      const lifecycle = "lifecycle" in polled ? polled.lifecycle ?? null : null;
+      const storedBeforeWrite = latestTabForPollTarget(useWorkspaceStore.getState().tabs, target)
+        ?.terminals.find((candidate) => terminalMatchesPollTarget(candidate, terminal))
+        ?.statusSummary;
+      const lifecycleSummary = lifecycle
+        ? {
+            statusFromAgentLog: true,
+            status: lifecycle.state,
+            updatedAt:
+              storedBeforeWrite?.status === lifecycle.state && storedBeforeWrite.updatedAt
+                ? storedBeforeWrite.updatedAt
+                : lifecycle.updatedAtMs,
+          }
+        : null;
+      if (lifecycleSummary) {
+        result = { ...result, summary: { ...result.summary, ...lifecycleSummary } };
+      } else if (result.summary.statusFromAgentLog) {
+        result = { ...result, summary: { ...result.summary, statusFromAgentLog: undefined } };
+      }
       try {
         const contextual = result.source === "process" && Boolean(result.summary.narration);
         const trusted = result.source === "sidecar" || contextual;
@@ -188,6 +324,10 @@ async function pollOnce() {
         syncCanonicalRunHeartbeat(latestTab, latestTerminal, result.source, result.summary.status);
 
         const expiredProjection = projectStatusPollResult(latestTerminal, result, Date.now());
+        if (expiredProjection && lifecycleSummary && expiredProjection.statusSummary) {
+          // An aged-out hook record says nothing about now; the session log does.
+          expiredProjection.statusSummary = { ...expiredProjection.statusSummary, ...lifecycleSummary };
+        }
         if (expiredProjection) {
           // An expired record still says what the pane is ABOUT, so the line rides along.
           const expiredLine = preferPaneTaskLine(latestTerminal.taskLine, result.taskLine);
@@ -234,10 +374,20 @@ async function pollOnce() {
             latestTerminal.agentProvider,
             result.summary.provider,
           );
+          const untrustedSource = result.source;
           const pollDiagnostic = result.sidecarState
             ? `sidecar:${result.sidecarState}`
             : `source:${result.source}`;
+          // Untrusted text stays gated, but the badge still follows the agent's log.
+          const lifecycleStatus = lifecycleSummary &&
+            (latestTerminal.statusSummary?.status !== lifecycleSummary.status || !latestTerminal.statusSummary)
+            ? {
+                ...(latestTerminal.statusSummary ?? result.summary),
+                ...lifecycleSummary,
+              }
+            : null;
           if (
+            lifecycleStatus ||
             (untrustedLine && untrustedLine !== latestTerminal.taskLine) ||
             untrustedNow?.text !== latestTerminal.nowLine?.text ||
             inferredProvider !== latestTerminal.agentProvider ||
@@ -259,8 +409,9 @@ async function pollOnce() {
                       // pane (most of the map) had a blank "Now" line forever.
                       nowLine: untrustedNow,
                       agentProvider: inferredProvider,
-                      statusSummarySource: result.source,
+                      statusSummarySource: untrustedSource,
                       statusSummaryError: pollDiagnostic,
+                      ...(lifecycleStatus ? { statusSummary: lifecycleStatus } : {}),
                     }
                   : candidate,
               ),
@@ -269,12 +420,19 @@ async function pollOnce() {
           continue;
         }
         // Never clobber a live declared task list with a modeled line.
-        if (latestTerminal.statusSummary?.tasksFromTodoWrite && !result.summary.tasksFromTodoWrite && !contextual) continue;
+        if (latestTerminal.statusSummary?.tasksFromTodoWrite && !result.summary.tasksFromTodoWrite && !contextual && !lifecycleSummary) continue;
         const updatedAt = Date.now();
-        const projectedSummary = preserveDurablePaneGoal(
-          latestTerminal.statusSummary,
-          result.summary,
-        );
+        const withGoal = preserveDurablePaneGoal(latestTerminal.statusSummary, result.summary);
+        const projectedSummary = lifecycleSummary
+          ? withGoal
+          : keepNewerReportedStatus(
+              // A log-derived status from an earlier sweep is not a newer REPORT when
+              // the log could not be read this time; the hook record may take over.
+              latestTerminal.statusSummary?.statusFromAgentLog
+                ? { ...latestTerminal.statusSummary, statusFromAgentLog: false }
+                : latestTerminal.statusSummary,
+              withGoal,
+            );
         // Never DOWNGRADE the Task row: a thin ask ("done", "do it") from the
         // heuristic must not replace an existing richer goal.
         const candidateAsk = String(result.summary.userTask ?? "").trim();
@@ -322,8 +480,16 @@ async function pollOnce() {
               : candidate,
           ),
         });
-      } catch {
-        // One pane failing must never stop the loop.
+      } catch (error) {
+        // One pane failing must never stop the loop — and never freezes its badge.
+        const message = error instanceof Error ? error.message : String(error);
+        console.error("[termfleet-status-poll]", pollKey, message);
+        if (polledLifecycle) applyAgentLifecycle(target, polledLifecycle, `poll-apply-error:${message}`);
+      }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error("[termfleet-status-poll]", panePollKey(target.tab, terminal), message);
+        if (polledLifecycle) applyAgentLifecycle(target, polledLifecycle, `poll-apply-error:${message}`);
       }
     }
   } finally {

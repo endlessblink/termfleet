@@ -34,6 +34,8 @@ export interface AgentStatusSummarizerResult {
   // authoritative; "process" = the HTTP status worker; "fallback" = local heuristic.
   source: "fallback" | "process" | "sidecar";
   sidecarState?: "fresh" | "stale" | "missing" | "error";
+  // The pane id the status hook stamped into the record (TF-044 liveness check).
+  sidecarPaneId?: string;
   error?: string;
   // TC-060: an always-true, plain-language line for this pane, resolved from the
   // agent's declared task, the vendor's own session record, or the running process.
@@ -949,6 +951,7 @@ export async function summarizeAgentStatus(
       summary: effectiveFallbackWithGoal,
       source: sidecarShapedFallback ? "sidecar" : "fallback",
       sidecarState,
+      sidecarPaneId: rawSidecar?.paneId,
       taskLine,
       nowLine,
     };
@@ -1005,6 +1008,7 @@ export async function summarizeAgentStatus(
       summary: summaryWithSidecarGoal,
       source: "process",
       sidecarState,
+      sidecarPaneId: rawSidecar?.paneId,
       taskLine,
       nowLine,
     };
@@ -1013,6 +1017,7 @@ export async function summarizeAgentStatus(
       summary: effectiveFallback,
       source: sidecarShapedFallback ? "sidecar" : "fallback",
       sidecarState,
+      sidecarPaneId: rawSidecar?.paneId,
       error: shortError(error),
       taskLine,
       nowLine,

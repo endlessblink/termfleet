@@ -151,6 +151,8 @@ import {
   MAP_FILTERS,
   type MapFilter,
   nodeMatchesMapFilter,
+  linkedTerminalForMapNode,
+  tabForMapNode,
 } from "../lib/mapNodeFilters";
 import {
   formatLocalServiceBrief,
@@ -246,13 +248,8 @@ function countLabel(values: string[]) {
 }
 
 function terminalForNode(node: CanvasNode, tab?: Tab) {
-  if (!tab) return undefined;
-  return (
-    tab.terminals.find((terminal) => terminal.paneId === tab.activePaneId) ??
-    tab.terminals.find((terminal) => terminal.paneId === node.id) ??
-    tab.terminals.find((terminal) => terminal.id === node.terminalPtyId) ??
-    tab.terminals[0]
-  );
+  // The node's OWN pane, same rule as the map card (TF-044).
+  return linkedTerminalForMapNode(node, tab);
 }
 
 function terminalForTab(tab: Tab) {
@@ -5289,10 +5286,7 @@ function MapPanel({
   };
 
   const groupVisibleNodes = canvasState.nodes;
-  const nodeTab = (node: CanvasNode) =>
-    node.terminalTabId
-      ? tabs.find((tab) => tab.id === node.terminalTabId)
-      : undefined;
+  const nodeTab = (node: CanvasNode) => tabForMapNode(node, tabs);
   const filterCounts = useMemo(
     () =>
       Object.fromEntries(

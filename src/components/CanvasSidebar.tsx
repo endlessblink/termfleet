@@ -3,7 +3,7 @@ import { FileText, Globe, Map, NotebookText, TerminalSquare, X } from "lucide-re
 import type { CanvasNode, Group, Tab } from "../lib/types";
 import { pathTail, projectForTab } from "../lib/projectDisplay";
 import { useWorkspaceStore } from "../stores/workspace";
-import { MAP_FILTERS, type MapFilter, nodeMatchesMapFilter } from "../lib/mapNodeFilters";
+import { MAP_FILTERS, type MapFilter, nodeMatchesMapFilter, tabForMapNode } from "../lib/mapNodeFilters";
 import { projectBucketsByCanvasPosition } from "../lib/mapNodeOrdering";
 import { useFlipList } from "../hooks/useFlipList";
 
@@ -382,9 +382,7 @@ export function CanvasSidebar() {
   }, [renameCanvasNode]);
 
   const groupVisibleNodes = canvasState.nodes;
-  const nodeTab = useCallback((node: CanvasNode) =>
-    node.terminalTabId ? tabs.find((tab) => tab.id === node.terminalTabId) : undefined,
-  [tabs]);
+  const nodeTab = useCallback((node: CanvasNode) => tabForMapNode(node, tabs), [tabs]);
   const filterCounts = useMemo(() => Object.fromEntries(
     MAP_FILTERS.map((filter) => [
       filter.id,

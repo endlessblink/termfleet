@@ -1,3 +1,4 @@
+mod agent_lifecycle;
 mod bidi;
 mod commands;
 pub mod daemon;
@@ -71,6 +72,7 @@ pub fn run() {
             commands::pane_root_is_idle_shell,
             commands::agent_provider_statuses,
             commands::pane_agent_provider,
+            commands::pane_agent_lifecycle,
             commands::pane_agent_runtime_info,
             commands::system_pressure_snapshot,
             commands::workstream_git_context,

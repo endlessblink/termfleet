@@ -5051,6 +5051,9 @@ function CanvasNodeViewImpl({
                       ? terminalHeader.sources.activity
                       : "missing",
                     status: linkedTerminal?.status,
+                    attention: terminalHeaderAttentionState,
+                    summaryStatus: linkedTerminal?.statusSummary?.status,
+                    statusFromAgentLog: linkedTerminal?.statusSummary?.statusFromAgentLog,
                     tasksFromTodoWrite:
                       terminalStatusSummary?.tasksFromTodoWrite,
                     narration: terminalStatusSummary?.narration,

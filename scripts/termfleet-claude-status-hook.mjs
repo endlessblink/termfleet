@@ -599,15 +599,18 @@ async function main() {
     // Live-now: update the activity line on every other tool call, preserving the last
     // known task list so the panel stays populated between task events.
     const now = activityFromTool(payload?.tool_name, payload?.tool_input);
-    if (!now) process.exit(0);
     const prev = prevAtStart;
+    // An unlabelled tool (cd/ls, TaskList…) has no activity text, but it still proves
+    // the turn is running. Skipping it left a pane on Waiting after the operator
+    // approved a permission (TF-044); only skip when nothing would change.
+    if (!now && prev?.turn === "working") process.exit(0);
     sidecar = {
       cwd,
       sessionId: String(payload?.session_id ?? prev?.sessionId ?? ""),
       updatedAt: Date.now(),
       source: "claude-tool",
       todos: Array.isArray(prev?.todos) ? prev.todos : [],
-      now,
+      now: now || cleanField(prev?.now) || undefined,
       mainTask: cleanField(prev?.mainTask, 220) || undefined,
       mainTaskSource: prev?.mainTaskSource,
       userTask: submittedUserTask || cleanField(prev?.userTask, 220) || undefined,

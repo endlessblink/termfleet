@@ -11,6 +11,11 @@ import { invoke } from "@tauri-apps/api/core";
 
 export interface CockpitSnapshotEntry {
   paneId: string;
+  // The Running/Waiting/Idle badge this card renders, and what it came from (TF-044
+  // proof: compare with each agent's real state without screenshots).
+  attention?: string;
+  summaryStatus?: string;
+  statusFromAgentLog?: boolean;
   terminalId?: string;
   tabId?: string;
   groupId?: string | null;

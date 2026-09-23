@@ -59,7 +59,11 @@ export function sessionAttention(input: { summaryStatus?: string | null }): Atte
  */
 export function paneBadgeAttention(
   terminal?: {
-    statusSummary?: { status?: string | null; updatedAt?: number | null } | null;
+    statusSummary?: {
+      status?: string | null;
+      updatedAt?: number | null;
+      statusFromAgentLog?: boolean;
+    } | null;
     statusSummaryUpdatedAt?: number | null;
     terminalVisibleText?: string | null;
     terminalVisibleTextUpdatedAt?: number | null;
@@ -68,11 +72,32 @@ export function paneBadgeAttention(
 ): AttentionState {
   const screenAttention = terminalScreenAttention(terminal?.terminalVisibleText);
   const screenUpdatedAt = terminal?.terminalVisibleTextUpdatedAt ?? 0;
-  const summaryUpdatedAt = terminal?.statusSummaryUpdatedAt ?? terminal?.statusSummary?.updatedAt ?? 0;
+  // When the agent last REPORTED, not when the app last re-wrote the store: a view
+  // re-stamping the store every refresh made a stale Running beat an on-screen
+  // interrupt within seconds (TF-044).
+  const summaryUpdatedAt = terminal?.statusSummary?.updatedAt ?? terminal?.statusSummaryUpdatedAt ?? 0;
   // A paired unanswered-question prompt on the current screen is stronger than
   // hook ordering: the hook event may be the transition that opened the prompt.
   // Requiring its timestamp to be newer leaves a visible question labeled Running.
   if (screenAttention === "waiting") return "waiting";
+  // The agent's own session log is live evidence; "Worked for…" or a spinner line left
+  // on screen from an earlier turn is not. Only an open question on screen (above)
+  // may outrank it (TF-044: approvals read Idle from a stale screen line).
+  if (terminal?.statusSummary?.statusFromAgentLog && terminal.statusSummary.status) {
+    const logAttention = reconcileSessionStatus({ summaryStatus: terminal.statusSummary.status }).attention;
+    // The log says "waiting" when a tool call has no result and no command process
+    // started — true for an approval prompt, but also for a tool that works inside
+    // Codex itself. No question on screen plus a live spinner newer than the log's
+    // report settles it as Running (live bots+automation case, 2026-09-23).
+    if (
+      logAttention === "waiting" &&
+      screenAttention === "running" &&
+      screenUpdatedAt >= summaryUpdatedAt
+    ) {
+      return "running";
+    }
+    return logAttention;
+  }
   if (screenAttention && (!summaryUpdatedAt || !screenUpdatedAt || screenUpdatedAt >= summaryUpdatedAt)) {
     return screenAttention;
   }

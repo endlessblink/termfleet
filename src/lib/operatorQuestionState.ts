@@ -62,14 +62,36 @@ export function terminalScreenAttention(value?: string | null): TerminalScreenAt
     /\b(?:esc to cancel|tab to amend|enter to (?:select|confirm))\b/i,
   ));
 
+  // Codex's approval prompts ("Would you like to run the following command?",
+  // "…make the following edits?") word it differently from Claude and log nothing
+  // anywhere else — the screen is the only signal. Operator report 2026-09-23: a
+  // flow-state pane sat on this prompt while its badge said Idle (TF-044).
+  add("waiting", pairedMarkerIndex(
+    tail,
+    /\bWould you like to (?:run the following command|make the following edits|[^?\n]{3,80})\?/gi,
+    /\bPress enter to confirm or esc to cancel\b/i,
+  ));
+
   add("running", lastMatchIndex(
     tail,
     /(?:Working|Crafting|Thundering|Thinking)\s*(?:…|\.\.\.)?\s*\(\s*\d+\s*[smh]/gi,
   ));
 
+  // The live spinner footer both Claude ("✻ Pondering… (12s · esc to interrupt)")
+  // and Codex ("Working (12s • esc to interrupt)") draw ONLY while a turn runs. Claude
+  // rotates the verb, so key on the footer, not the word.
+  add("running", lastMatchIndex(
+    tail,
+    /\(\s*\d+\s*[smh][^)\n]{0,120}\besc to interrupt\b/gi,
+  ));
+
   add("idle", lastMatchIndex(
     tail,
     /(?:Worked|Cooked|Baked)\s+for\s+\d+\s*[smh]/gi,
+  ));
+  add("idle", lastMatchIndex(
+    tail,
+    /\bConversation interrupted\b/gi,
   ));
   add("idle", lastMatchIndex(
     tail,

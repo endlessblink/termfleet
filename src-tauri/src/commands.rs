@@ -491,13 +491,45 @@ pub fn workstream_remove_dedicated_worktree(path: String) -> Result<WorktreeClea
 /// This is what makes a HAND-STARTED agent work with no setup: the operator just
 /// types `opencode`, and the pane is recognised immediately — no plugin, no restart,
 /// no special launch command. Returns None for a plain shell.
-#[tauri::command]
+// Off the main thread (TF-044): a sync Tauri command runs on the UI thread, so one
+// slow read (a 338 MB Codex log) queued every other status request behind it.
+#[tauri::command(async)]
 pub fn pane_agent_provider(pane_id: String) -> Option<String> {
     match daemon_pane_root(&pane_id) {
         DaemonPaneRoot::Verified(pid) => crate::pane_process::agent_provider_for_process_tree(pid),
         DaemonPaneRoot::Unverified => None,
         DaemonPaneRoot::Missing => crate::pane_process::pane_agent_provider(&pane_id),
     }
+}
+
+/// Running / Waiting / Idle for a Codex pane, read from Codex's own live session
+/// log and the process table — true even when status hooks are off and the pane is
+/// not on screen (TF-044). None for other agents, plain shells, or no readable log.
+// Off the main thread (TF-044): a sync Tauri command runs on the UI thread, so one
+// slow read (a 338 MB Codex log) queued every other status request behind it.
+#[tauri::command(async)]
+pub fn pane_agent_lifecycle(pane_id: String) -> Option<PaneAgentLifecycle> {
+    let owner = match daemon_pane_root(&pane_id) {
+        DaemonPaneRoot::Verified(pid) => crate::pane_process::agent_provider_owner_for_process_tree(pid),
+        DaemonPaneRoot::Unverified => None,
+        DaemonPaneRoot::Missing => crate::pane_process::pane_agent_owner(&pane_id),
+    }?;
+    if owner.provider != "codex" {
+        return None;
+    }
+    crate::agent_lifecycle::codex_lifecycle_report(owner.provider_pid).map(|(state, written_ms)| {
+        PaneAgentLifecycle {
+            state: state.as_str().to_string(),
+            updated_at_ms: written_ms,
+        }
+    })
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PaneAgentLifecycle {
+    pub state: String,
+    pub updated_at_ms: i64,
 }
 
 /// The exact top-level agent runtime identity currently running in a pane.
@@ -1716,7 +1748,9 @@ pub fn agent_conversation_has_other_owner(
     Ok(false)
 }
 
-#[tauri::command]
+// Off the main thread (TF-044): a sync Tauri command runs on the UI thread, so one
+// slow read (a 338 MB Codex log) queued every other status request behind it.
+#[tauri::command(async)]
 pub fn agent_status_read_sidecar(file_name: String) -> Result<Option<String>, String> {
     let path = agent_status_sidecar_file(&file_name)?;
     match std::fs::read_to_string(&path) {
@@ -3145,7 +3179,9 @@ pub fn session_transcript_path(
 }
 
 /// Tail of a vendor session record for the cockpit task line. Missing file → `Ok(None)`.
-#[tauri::command]
+// Off the main thread (TF-044): a sync Tauri command runs on the UI thread, so one
+// slow read (a 338 MB Codex log) queued every other status request behind it.
+#[tauri::command(async)]
 pub fn session_transcript_read(
     provider: String,
     session_id: String,
@@ -3158,7 +3194,9 @@ pub fn session_transcript_read(
 
 /// Bounded request history from across the record. This recovers concrete goals that
 /// verbose tool output pushed out of both the opening and tail windows.
-#[tauri::command]
+// Off the main thread (TF-044): a sync Tauri command runs on the UI thread, so one
+// slow read (a 338 MB Codex log) queued every other status request behind it.
+#[tauri::command(async)]
 pub fn session_transcript_context_read(
     provider: String,
     session_id: String,
@@ -3253,7 +3291,9 @@ fn read_opening_record(
 
 /// Head of a vendor session record — the opening request. Missing file → `Ok(None)`.
 /// Same allowlisted directories and the same session-id validation as the tail reader.
-#[tauri::command]
+// Off the main thread (TF-044): a sync Tauri command runs on the UI thread, so one
+// slow read (a 338 MB Codex log) queued every other status request behind it.
+#[tauri::command(async)]
 pub fn session_transcript_head_read(
     provider: String,
     session_id: String,
@@ -3335,6 +3375,41 @@ pub fn pane_root_is_idle_shell(pid: u32) -> Result<bool, String> {
 #[cfg(test)]
 mod tc060_tests {
     use super::*;
+
+    /// Times the transcript readers on a real session:
+    /// `TF_SESSION=<uuid> cargo test --lib live_transcript_read_time -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn live_transcript_read_time() {
+        let session = std::env::var("TF_SESSION").expect("TF_SESSION");
+        for (name, read) in [
+            ("tail", session_transcript_read as fn(String, String) -> Result<Option<String>, String>),
+            ("context", session_transcript_context_read),
+            ("head", session_transcript_head_read),
+        ] {
+            let started = std::time::Instant::now();
+            let out = read("codex".into(), session.clone());
+            println!(
+                "{name}: {:?} bytes in {:?}",
+                out.map(|text| text.map(|text| text.len())),
+                started.elapsed()
+            );
+        }
+    }
+
+    /// Live probe of the exact commands the status poll calls (TF-044):
+    /// `TF_PANE=terminal-<tab>-<pane> cargo test --lib live_pane_badge_path -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn live_pane_badge_path() {
+        let pane = std::env::var("TF_PANE").expect("TF_PANE");
+        println!("root={:?}", daemon_pane_root(&pane));
+        println!("provider={:?}", pane_agent_provider(pane.clone()));
+        println!(
+            "lifecycle={:?}",
+            pane_agent_lifecycle(pane).map(|report| (report.state, report.updated_at_ms))
+        );
+    }
 
     #[test]
     fn transcript_path_cache_reuses_positive_hits_and_rechecks_removed_files() {

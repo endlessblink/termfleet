@@ -15,6 +15,7 @@ import {
   PANE_AGENT_POLL_MS,
   readPaneAgentProvider,
 } from "../lib/paneAgentProcess";
+import { keepNewerReportedStatus } from "../lib/badgeLiveness";
 import {
   syncTerminalLatencyTraceEnv,
   traceTerminalLatency,
@@ -897,7 +898,24 @@ export function TerminalComponent({
         forceTauriSidecar: runningInTauri,
       }).then((result) => {
         if (statusSummarySequenceRef.current !== sequence) return;
-        const projectedSummary = result.summary;
+        // Only a NEWER agent report may change the stored status (TF-044): this
+        // refresh must not write an old hook record over the poll loop's
+        // liveness-corrected badge.
+        const storedSummary = useWorkspaceStore
+          .getState()
+          .tabs.find((candidate) => candidate.id === tabId)
+          ?.terminals.find((candidate) => candidate.paneId === paneId)
+          ?.statusSummary;
+        // An aged-out record is not a live report; the poll loop owns what it means.
+        const projectedSummary =
+          result.sidecarState === "stale" && storedSummary?.status
+            ? {
+                ...result.summary,
+                status: storedSummary.status,
+                updatedAt: storedSummary.updatedAt,
+                statusFromAgentLog: storedSummary.statusFromAgentLog,
+              }
+            : keepNewerReportedStatus(storedSummary, result.summary);
         // Junk protection for gated shell panes: only the agent's real sidecar
         // status may populate a pane that shows no other sign of agent work.
         const contextualResult =
@@ -1116,9 +1134,11 @@ export function TerminalComponent({
                           userTask: candidate.mainUserAsk.text.trim(),
                         }
                       : nextStatusSummary;
-                  const durableStatusSummary = preserveDurablePaneGoal(
+                  // Same ordering guard as the agent branch (TF-044): this refresh
+                  // must not replace a newer or agent-log status with an older one.
+                  const durableStatusSummary = keepNewerReportedStatus(
                     candidate.statusSummary,
-                    recoveredStatusSummary,
+                    preserveDurablePaneGoal(candidate.statusSummary, recoveredStatusSummary),
                   );
                   const mainUserAsk = mainUserAskFromSummary(
                     durableStatusSummary,

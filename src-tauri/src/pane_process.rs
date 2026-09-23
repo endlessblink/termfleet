@@ -494,6 +494,17 @@ pub fn pane_agent_provider(pane_id: &str) -> Option<String> {
     top_level_pane_agent(pane_id, &scan_cached()).map(|entry| entry.provider.clone())
 }
 
+/// The top-level agent process in `pane_id` (provider + pid), or None.
+pub fn pane_agent_owner(pane_id: &str) -> Option<PaneAgentProviderOwner> {
+    if pane_id.trim().is_empty() {
+        return None;
+    }
+    top_level_pane_agent(pane_id, &scan_cached()).map(|entry| PaneAgentProviderOwner {
+        provider: entry.provider.clone(),
+        provider_pid: entry.pid,
+    })
+}
+
 /// The exact top-level agent runtime identity currently running in `pane_id`, or
 /// None when the pane runs a plain shell, the root agent is ambiguous, or its
 /// command line does not carry an exact resumable conversation id.

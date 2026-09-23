@@ -40,6 +40,43 @@ export async function readPaneAgentProvider(
 }
 
 /**
+ * Whether ANY agent is running in the pane: true/false from the process table, null
+ * when it cannot be read (browser preview, backend error). Unlike
+ * `readPaneAgentProvider`, "unknown" never masquerades as "not running", so the badge
+ * liveness check (TF-044) can never idle a live agent over a failed read.
+ */
+export async function readPaneAgentAlive(paneId: string): Promise<boolean | null> {
+  if (!paneId || !isTauriRuntime()) return null;
+  try {
+    return Boolean(
+      asAgentProvider(await invoke<string | null>("pane_agent_provider", { paneId })),
+    );
+  } catch {
+    return null;
+  }
+}
+
+export interface PaneAgentLifecycle {
+  state: "working" | "waiting" | "idle";
+  updatedAtMs: number;
+}
+
+/**
+ * Running / Waiting / Idle straight from a Codex agent's own live session log and the
+ * process table (TF-044). Works with status hooks off and with the pane off screen;
+ * null for other agents, plain shells, the browser preview, or any read failure.
+ */
+export async function readPaneAgentLifecycle(paneId: string): Promise<PaneAgentLifecycle | null> {
+  if (!paneId || !isTauriRuntime()) return null;
+  try {
+    const report = await invoke<PaneAgentLifecycle | null>("pane_agent_lifecycle", { paneId });
+    return report && ["working", "waiting", "idle"].includes(report.state) ? report : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * How often to re-ask while a pane is still unidentified. The operator can start an
  * agent at any moment (that is the whole point), so this keeps polling — cheaply,
  * since the backend serves all panes from one short-lived process-table scan.
