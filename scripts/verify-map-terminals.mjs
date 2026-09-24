@@ -429,7 +429,7 @@ const checks = [
     ok: /export function needsLegacyPromptRepair/.test(legacyPromptRepair) &&
       /"verify:legacy-prompt-repair": "playwright test legacy-prompt-repair"/.test(packageJson) &&
       /"verify:legacy-prompt-live": "scripts\/verify-legacy-prompt-repair\.sh"/.test(packageJson) &&
-      /"verify:canvas-all": "playwright test canvas-renderer grid-diff legacy-prompt-repair keymap terminal-mouse grid-resize selection box-glyph map-terminal-rendering"/.test(packageJson) &&
+      /"verify:canvas-all": "playwright test canvas-renderer grid-diff legacy-prompt-repair keymap terminal-mouse grid-resize selection box-glyph map-terminal-rendering(?: [a-z0-9-]+)*"/.test(packageJson) &&
       /snapshot\.altScreen/.test(legacyPromptRepair) &&
       legacyPromptRepair.includes("/@[^:]+:.+[$#]$/") &&
       /currentPrompt\.row !== snapshot\.cursor\.line/.test(legacyPromptRepair) &&
