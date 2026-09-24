@@ -54,6 +54,25 @@ export function goalFromLongText(value) {
   return cleaned;
 }
 
+const REQUEST_ACTION =
+  /\b(?:add|allow|build|change|check|clean|clear|close|commit|connect|convert|create|debug|delete|deploy|design|disable|enable|find|fix|generate|give|handle|implement|improve|install|integrate|investigate|make|merge|migrate|move|open|plan|prevent|publish|pull|push|refactor|release|remove|rename|research|restart|restore|revert|run|scan|show|split|start|stop|support|test|update|upgrade|use|verify|write|why|how|what|can we|can you|i want|i need|we should|should we|let's|lets|please)\b/i;
+
+/**
+ * Is this prompt a request that names work, rather than a short reply ("eta", "Next
+ * steps", "the gate should be both")? Mirrors `opensAsRequest` in sessionTranscript.ts.
+ * A reply must not replace the Task row's request (live report 2026-09-24).
+ */
+export function isRequestText(value) {
+  const text = String(value ?? "").replace(/\s+/g, " ").trim();
+  if (text.length < 12) return false;
+  if (/^[<$/]/.test(text) || /^#\s*(?:AGENTS|CLAUDE)\.md instructions\b/i.test(text)) return false;
+  const words = text.split(/\s+/);
+  if (words.length < 4) return false;
+  if (words.length < 8 && /^(?:this|that|it|these|those)\b/i.test(text)) return false;
+  if (words.length < 8 && !REQUEST_ACTION.test(text)) return false;
+  return true;
+}
+
 export function openingGoalFromPrompt(value) {
   const full = String(value ?? "")
     .replace(/\[{1,3}\s*(?:Image|Screenshot|File|Pasted)\s*#?\d*[^\]]*\]+/gi, " ")

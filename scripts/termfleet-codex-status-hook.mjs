@@ -20,7 +20,7 @@ import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { stdin } from "node:process";
 import { paneSidecarPath, sidecarPath, statusDir, normalizeCwd } from "./lib/agent-status-paths.mjs";
 import { shouldWriteStatusCandidate } from "./lib/agent-status-lifecycle.mjs";
-import { durableGoalForPrompt, isDurableGoalText, openingGoalFromPrompt } from "./lib/agent-status-goal.mjs";
+import { durableGoalForPrompt, isDurableGoalText, isRequestText, openingGoalFromPrompt } from "./lib/agent-status-goal.mjs";
 import { lifecycleFromNotification, narrationToNow, readTranscriptTail } from "./termfleet-claude-status-hook.mjs";
 
 function cleanField(value, max = 200) {
@@ -239,7 +239,8 @@ export function buildCodexSidecar(payload, prev, now = Date.now()) {
       todos,
       mainTask,
       mainTaskSource,
-      userTask: submittedUserTask,
+      // A short reply keeps the last real request as the Task.
+      userTask: isRequestText(submittedUserTask) || !prevUserTask ? submittedUserTask : prevUserTask,
       now: nowFromTodos(todos) || "Prompt submitted",
       turn: "working",
     };

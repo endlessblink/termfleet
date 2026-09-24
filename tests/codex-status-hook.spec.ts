@@ -197,7 +197,8 @@ test("resume-goal follow-ups recover a legacy opening request", () => {
   );
 
   expect(sidecar?.mainTask).toBe("Improve the live-events landing page and routes");
-  expect(sidecar?.userTask).toBe("resume goal");
+  // "resume goal" is a nudge, not a request: the Task keeps the real request.
+  expect(sidecar?.userTask).toBe("Improve the live-events landing page and routes");
 });
 
 test("a plan explanation cannot replace the durable user goal", () => {

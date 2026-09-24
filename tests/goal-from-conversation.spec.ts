@@ -58,3 +58,22 @@ test("current Codex records: opening, latest request and agent words come from r
   expect(facts.operatorRequest).toBe("why repo? we were talking about the wider pc");
   expect(facts.agentSaid).toContain("I scanned the drives");
 });
+
+test("a short reply never replaces the Task's last real request (Codex hook)", async () => {
+  // @ts-expect-error — plain ESM hook module
+  const { buildCodexSidecar } = await import("../scripts/termfleet-codex-status-hook.mjs");
+  const prompt = (text: string, prev: unknown) =>
+    buildCodexSidecar(
+      { hook_event_name: "UserPromptSubmit", session_id: "s1", cwd: "/tmp/demo", prompt: text },
+      prev,
+      1000,
+    );
+  const first = prompt("fix the payment link so a client can pay the remaining balance", null);
+  expect(first.userTask).toBe("fix the payment link so a client can pay the remaining balance");
+  for (const reply of ["eta", "Next steps", "the gate should be both"]) {
+    expect(prompt(reply, first).userTask).toBe(first.userTask);
+  }
+  expect(prompt("add a test for the refund flow as well", first).userTask).toBe(
+    "add a test for the refund flow as well",
+  );
+});

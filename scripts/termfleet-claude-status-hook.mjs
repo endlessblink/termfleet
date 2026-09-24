@@ -19,7 +19,7 @@ import {
   statusDir,
 } from "./lib/agent-status-paths.mjs";
 import { shouldWriteStatusCandidate } from "./lib/agent-status-lifecycle.mjs";
-import { durableGoalForPrompt, isDurableGoalText } from "./lib/agent-status-goal.mjs";
+import { durableGoalForPrompt, isDurableGoalText, isRequestText } from "./lib/agent-status-goal.mjs";
 
 const TASK_EVENT_TOOLS = new Set(["TaskCreate", "TaskUpdate"]);
 
@@ -492,7 +492,11 @@ async function main() {
           : [],
       mainTask,
       mainTaskSource,
-      userTask,
+      // A short reply keeps the last real request as the Task.
+      userTask:
+        isRequestText(userTask) || !cleanField(prevAtStart?.userTask, 220)
+          ? userTask
+          : cleanField(prevAtStart?.userTask, 220),
       now: cleanField(prevAtStart?.now) || "Prompt submitted",
       narration: cleanField(prevAtStart?.narration, 90) || undefined,
     };
