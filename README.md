@@ -10,10 +10,10 @@ It is **not** trying to be another terminal emulator skin. The preview goal is a
 local-first operations cockpit: many terminals, local services, task-bound map
 nodes, recovery state, and agent runs stay visible as one workspace.
 
-> **Early preview, Linux only.** v0.2.0 is usable daily but unsigned and still
+> **Early preview, Linux only.** v0.2.1 is usable daily but unsigned and still
 > rough in places. Terminals and agent conversations survive app restarts,
 > crashes, and reboots; the known issues are listed in the
-> [v0.2.0 release notes](docs/release-notes-v0.2.0.md). Experimental parts
+> [v0.2.1 release notes](docs/release-notes-v0.2.1.md). Experimental parts
 > (Workstream Quest, the TermControl phone companion) are off or unadvertised.
 
 ## What It Is
@@ -46,6 +46,15 @@ ships `SHA256SUMS.txt` — verify a download with
 ```bash
 chmod +x TermFleet_*.AppImage && ./TermFleet_*.AppImage   # or: sudo dpkg -i TermFleet_*.deb
 ```
+
+### Connect your agents
+
+On first launch, if Claude Code, Codex, or OpenCode is set up for your user, the
+status bar shows **Connect agents** (also in the command bar). It installs
+TermFleet's small status hooks so each agent pane shows what it is working on
+and a true Running / Waiting / Idle badge. It needs Node.js 20+ on your `PATH`,
+backs up each settings file it edits, and only affects agent sessions started
+after connecting. Codex asks you to trust the new hook the next time it starts.
 
 ## Quick Start
 

@@ -20,7 +20,7 @@ log() { printf '[fresh-install] %s\n' "$*" >&2; }
 
 if [[ -z "${FRESH_INSTALL_INNER:-}" ]]; then
   rm -rf "$OUT_DIR"
-  mkdir -p "$OUT_DIR/home" "$OUT_DIR/run" "$OUT_DIR/data"
+  mkdir -p "$OUT_DIR/home/.claude" "$OUT_DIR/run" "$OUT_DIR/data"
   chmod 700 "$OUT_DIR/run"
   # DISPLAY/XAUTHORITY must come from xvfb-run itself. Passing the caller's
   # values here once put the test window, clicks, and typing on the operator's
@@ -30,7 +30,7 @@ if [[ -z "${FRESH_INSTALL_INNER:-}" ]]; then
       FRESH_INSTALL_INNER=1 \
       FRESH_INSTALL_CALLER_DISPLAY="${DISPLAY:-none}" \
       FRESH_INSTALL_OUT="${FRESH_INSTALL_OUT:-/tmp/tf-fresh-install}" \
-      PATH="/usr/local/bin:/usr/bin:/bin" \
+      PATH="$(dirname "$(command -v node)"):/usr/local/bin:/usr/bin:/bin" \
       HOME="$OUT_DIR/home" \
       SHELL=/bin/bash \
       LANG="${LANG:-C.UTF-8}" \
@@ -120,4 +120,38 @@ done
 [[ -n "$found" ]] || { log "typed command never reached a shell"; exit 1; }
 
 log "first command ran in a real shell (session $found)"
+
+# Agent status: this profile has a Claude Code config dir, so the status bar
+# offers "Connect agents". Click it, prove the bundled hook got registered from a
+# stable copy, then emit one real Claude hook event from inside the pane.
+xdotool mousemove --window "$WINDOW_ID" 1057 988 click 1
+settings="$HOME/.claude/settings.json"
+hook="$XDG_DATA_HOME/termfleet/agent-hooks/termfleet-claude-status-hook.mjs"
+for _ in {1..40}; do
+  grep -q "$hook" "$settings" 2>/dev/null && [[ -f "$hook" ]] && break
+  sleep 0.25
+done
+grep -q "$hook" "$settings" 2>/dev/null && [[ -f "$hook" ]] \
+  || { log "Connect agents did not register the Claude hook"; exit 1; }
+log "Connect agents registered the bundled Claude hook"
+sleep 1
+import -window root "$OUT_DIR/03-agents-connected.png" 2>>"$OUT_DIR/shot.log" || true
+
+TASK_TEXT="Add a login page to the demo app"
+event="{\"hook_event_name\":\"UserPromptSubmit\",\"session_id\":\"00000000-0000-4000-8000-00000000f1ee\",\"cwd\":\"$HOME\",\"prompt\":\"$TASK_TEXT\"}"
+xdotool mousemove --window "$WINDOW_ID" 820 185 click 1
+sleep 0.4
+xdotool type --clearmodifiers --delay 8 "printf '%s' '$event' | node \"$hook\""
+xdotool key --clearmodifiers Return
+sidecar=""
+for _ in {1..40}; do
+  sidecar="$(grep -l "$TASK_TEXT" "$XDG_DATA_HOME"/terminal-workspace/agent-status/pane-*.json 2>/dev/null | head -1 || true)"
+  [[ -n "$sidecar" ]] && break
+  sleep 0.25
+done
+[[ -n "$sidecar" ]] || { log "the hook ran but wrote no pane status"; exit 1; }
+log "hook wrote pane status $(basename "$sidecar")"
+sleep 6
+import -window root "$OUT_DIR/04-agent-task.png" 2>>"$OUT_DIR/shot.log" || true
+
 echo "FRESH_INSTALL_OK $NAME screenshots=$OUT_DIR"
