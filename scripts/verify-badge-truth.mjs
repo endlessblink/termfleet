@@ -120,7 +120,11 @@ function codexTruth(rootPid) {
     else if (record.type === "event_msg" && kind === "task_started") idle = false, pending.clear();
     else if (record.type === "response_item" && /^(function_call|custom_tool_call|local_shell_call)$/.test(kind)) {
       idle = false;
-      pending.set(record.payload.call_id, { name: record.payload.name, at: Date.parse(record.timestamp) });
+      pending.set(record.payload.call_id, {
+        name: record.payload.name ?? kind,
+        at: Date.parse(record.timestamp),
+        input: String(record.payload.input ?? record.payload.arguments ?? ""),
+      });
     } else if (record.type === "response_item" && /_output$/.test(kind)) pending.delete(record.payload.call_id);
     else if (record.type === "response_item" && /^(reasoning|message|agent_message)$/.test(kind)) idle = false;
   }
@@ -128,8 +132,19 @@ function codexTruth(rootPid) {
   const call = [...pending.values()].pop();
   if (!call) return "running";
   if (call.name === "request_user_input") return "waiting";
+  // Same rule as the app (agent_lifecycle.rs): only a shell command or a patch can
+  // sit on Codex's approval prompt; waits, helper agents and in-process tools cannot.
+  if (!callCanNeedApproval(call.name, call.input)) return "running";
   const started = descendants(rootPid).some((pid) => (procStat(pid)?.startMs ?? 0) >= call.at - 1000);
   return started ? "running" : "pending";
+}
+
+function callCanNeedApproval(name, input) {
+  const inProcess = new Set(["wait", "sleep", "wait_agent", "send_message", "followup_task", "list_agents",
+    "spawn_agent", "interrupt_agent", "request_user_input_async", "update_plan", "view_image", "web_search", "write_stdin"]);
+  if (inProcess.has(name)) return false;
+  if (name === "exec") return ["exec_command", "shell", "apply_patch", "sandbox_permissions"].some((tool) => input.includes(tool));
+  return true;
 }
 
 // The terminal keeper's own saved screen for the pane (independent of the app): the

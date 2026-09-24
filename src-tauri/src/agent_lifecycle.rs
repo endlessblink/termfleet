@@ -311,17 +311,84 @@ pub fn codex_lifecycle_report(pid: u32) -> Option<(Lifecycle, i64)> {
     // SAFETY: sysconf is a pure libc query.
     let ticks = unsafe { libc::sysconf(libc::_SC_CLK_TCK) } as i64;
     let ticks = if ticks > 0 { ticks } else { 100 };
-    let state = lifecycle_from(&log, |after_ms| {
+    let child_started_after = |after_ms: i64| {
         kids.iter().any(|child| {
             process_start_ms(*child, boot_s, ticks).is_some_and(|start| start >= after_ms)
         })
-    });
+    };
+    let state = match &log {
+        LogState::PendingCall {
+            name,
+            started_ms,
+            can_need_approval: true,
+        } if name != "request_user_input" => {
+            // Once a program has started under this call, the call was approved. Remember
+            // that for the rest of the call: a finished command (or a code cell between
+            // commands) leaves no live child, and without this the pane flipped back to
+            // Waiting and into Pending approval while it was plainly working.
+            let key = format!("{}#{started_ms}#{name}", rollout.display());
+            let mut approved = approved_calls().lock().unwrap_or_else(|poison| poison.into_inner());
+            remember_approved_call(&mut approved, key, || lifecycle_from(&log, child_started_after))
+        }
+        _ => lifecycle_from(&log, child_started_after),
+    };
     Some((state, written_ms))
+}
+
+/// A call seen Working once (a program started under it) stays Working until the log
+/// moves on to another call.
+fn remember_approved_call(
+    approved: &mut std::collections::HashSet<String>,
+    key: String,
+    settle: impl FnOnce() -> Lifecycle,
+) -> Lifecycle {
+    if approved.contains(&key) {
+        return Lifecycle::Working;
+    }
+    let state = settle();
+    if state == Lifecycle::Working {
+        if approved.len() > 4096 {
+            approved.clear();
+        }
+        approved.insert(key);
+    }
+    state
+}
+
+/// Tool calls already seen with a program running under them (see above).
+fn approved_calls() -> &'static std::sync::Mutex<std::collections::HashSet<String>> {
+    static APPROVED: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<String>>> =
+        std::sync::OnceLock::new();
+    APPROVED.get_or_init(Default::default)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_call_seen_running_stays_running_after_its_command_exits() {
+        let mut approved = std::collections::HashSet::new();
+        let key = "rollout#1000#exec".to_string();
+        // First poll: the approved command is running under the call.
+        assert_eq!(
+            remember_approved_call(&mut approved, key.clone(), || Lifecycle::Working),
+            Lifecycle::Working
+        );
+        // Later poll: the command finished, the code cell is still going — no live
+        // child. Without the memory this read as Waiting (a false approval).
+        assert_eq!(
+            remember_approved_call(&mut approved, key, || Lifecycle::Waiting),
+            Lifecycle::Working
+        );
+        // A different, never-started call can still be a real approval prompt.
+        assert_eq!(
+            remember_approved_call(&mut approved, "rollout#2000#exec".to_string(), || {
+                Lifecycle::Waiting
+            }),
+            Lifecycle::Waiting
+        );
+    }
 
     fn line(ts: &str, kind: &str, payload: &str) -> String {
         format!(r#"{{"timestamp":"{ts}","type":"{kind}","payload":{payload}}}"#)
