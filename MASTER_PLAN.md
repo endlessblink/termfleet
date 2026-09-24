@@ -30,6 +30,8 @@ Phases 3–5 status 2026-09-24 (claude): v0.2.0 published — https://github.com
 
 v0.2.1 2026-09-24 (claude): https://github.com/endlessblink/termfleet/releases/tag/v0.2.1 (tag on 1cfb286, CI green). Fixes the v0.2.0 gap Noam flagged: agent status hooks now ship in the app and "Connect agents" registers them (Claude Code, Codex, OpenCode; needs Node.js 20+). Published AppImage + .deb pass checksums and `npm run verify:fresh-install`, which now also clicks Connect agents in an empty profile and emits a real Claude hook event from the pane. Also fixed: sidebar rename lost when the startup project reconcile rebuilt the row (new regression spec in verify:canvas-all). Remaining known issues in docs/release-notes-v0.2.1.md.
 
+Progress 2026-09-24 evening (claude): one chat runs in one terminal (TF-056, hooks close older copies); first-impression map fixes shipped to the dock as release 949902b43c8b — single card list (TF-052), card icons off the Goal line (TF-053), no false "reconnected" on a fresh terminal (TF-057); GitHub issue forms + agent topics added; showcase capture script works again (real window, command-bar splits, per-terminal demo status). Open before new screenshots: TF-058 (map card Goal "not captured" while the list has it; a pane with an in-progress task reads "Task not captured"), map card terminal body blank in the private-display capture.
+
 **Phase 3 — Fresh-machine proof (day 2–3)**
 - [ ] Build v0.2.0 AppImage + .deb from a tagged commit via CI.
 - [ ] Install on a clean Linux VM/user account (no local config, no hooks): first launch, open terminals, run Claude + Codex, restart app, reboot — all survive.
