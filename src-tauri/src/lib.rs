@@ -1,3 +1,4 @@
+mod agent_connect;
 mod agent_lifecycle;
 mod bidi;
 mod commands;
@@ -59,6 +60,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            agent_connect::agents_connect,
             commands::exit_application,
             commands::daemon_status,
             commands::agent_status_read_sidecar,

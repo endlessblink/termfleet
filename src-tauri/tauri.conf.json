@@ -27,7 +27,10 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["appimage", "deb"],
+    "targets": [
+      "appimage",
+      "deb"
+    ],
     "icon": [
       "icons/128x128.png",
       "icons/128x128@2x.png",
@@ -42,6 +45,15 @@
       "deb": {
         "section": "utils"
       }
+    },
+    "resources": {
+      "../scripts/termfleet-connect-agents.mjs": "agent-hooks/termfleet-connect-agents.mjs",
+      "../scripts/termfleet-claude-status-hook.mjs": "agent-hooks/termfleet-claude-status-hook.mjs",
+      "../scripts/termfleet-codex-status-hook.mjs": "agent-hooks/termfleet-codex-status-hook.mjs",
+      "../scripts/termfleet-opencode-status-plugin.js": "agent-hooks/termfleet-opencode-status-plugin.js",
+      "../scripts/lib/agent-status-paths.mjs": "agent-hooks/lib/agent-status-paths.mjs",
+      "../scripts/lib/agent-status-lifecycle.mjs": "agent-hooks/lib/agent-status-lifecycle.mjs",
+      "../scripts/lib/agent-status-goal.mjs": "agent-hooks/lib/agent-status-goal.mjs"
     }
   }
 }

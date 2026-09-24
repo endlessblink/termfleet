@@ -21,6 +21,7 @@ import {
   Terminal,
   X,
 } from "lucide-react";
+import { CONNECT_AGENTS_EVENT } from "../lib/agentConnect";
 import {
   closeActivePane,
   createAgentWorkstream,
@@ -790,6 +791,18 @@ export function WorkbenchHeader() {
         run: () => {
           closeActivePane();
           setCommandStatus("close pane");
+        },
+      },
+      {
+        id: "connect-agents",
+        label: "Connect agents",
+        detail: "Let Claude Code, Codex, and OpenCode report their task and status",
+        keywords: ["connect", "agents", "claude", "codex", "opencode", "hooks", "status"],
+        scope: "actions",
+        Icon: Bot,
+        run: () => {
+          window.dispatchEvent(new Event(CONNECT_AGENTS_EVENT));
+          setCommandStatus("connecting agents");
         },
       },
       {

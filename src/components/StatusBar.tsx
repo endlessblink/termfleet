@@ -1,7 +1,14 @@
 import { CSSProperties, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Activity, CirclePlay, Folder, Gauge, Layers3, Server, TerminalSquare } from "lucide-react";
+import { Activity, Bot, CirclePlay, Folder, Gauge, Layers3, Server, TerminalSquare } from "lucide-react";
 import { OPEN_WORKSTREAM_QUEST_EVENT } from "./GamificationPanel";
+import {
+  agentConnectResultText,
+  agentsNeedingConnection,
+  CONNECT_AGENTS_EVENT,
+  runAgentConnect,
+  type AgentConnectSummary,
+} from "../lib/agentConnect";
 import { useWorkspaceStore } from "../stores/workspace";
 import type { TerminalRuntimeStatus } from "../lib/types";
 import { pathTail, projectNameFor, projectRootFor, projectSessionCount } from "../lib/projectDisplay";
@@ -147,6 +154,41 @@ export function StatusBar() {
   const selectedProjectRoot = projectRootFor(activeGroupFilter, groups, activeTab) ?? projectRoot;
   const selectedProjectCount = projectSessionCount(activeGroupFilter, tabs);
 
+  // Agents installed for this user but not yet reporting to TermFleet.
+  const [agentConnect, setAgentConnect] = useState<AgentConnectSummary | null>(null);
+  const [agentConnectMessage, setAgentConnectMessage] = useState("");
+  const [agentConnectBusy, setAgentConnectBusy] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined" || !("__TAURI_INTERNALS__" in window)) return;
+    let cancelled = false;
+    void runAgentConnect(true)
+      .then((summary) => {
+        if (!cancelled) setAgentConnect(summary);
+      })
+      .catch(() => undefined);
+    const connect = () => {
+      setAgentConnectBusy(true);
+      void runAgentConnect(false)
+        .then((summary) => {
+          if (cancelled) return;
+          setAgentConnect(summary);
+          setAgentConnectMessage(agentConnectResultText(summary));
+        })
+        .catch((error) => {
+          if (!cancelled) setAgentConnectMessage(String(error));
+        })
+        .finally(() => {
+          if (!cancelled) setAgentConnectBusy(false);
+        });
+    };
+    window.addEventListener(CONNECT_AGENTS_EVENT, connect);
+    return () => {
+      cancelled = true;
+      window.removeEventListener(CONNECT_AGENTS_EVENT, connect);
+    };
+  }, []);
+  const agentsToConnect = agentsNeedingConnection(agentConnect);
+
   useEffect(() => {
     if (typeof window === "undefined" || !("__TAURI_INTERNALS__" in window)) return;
     let cancelled = false;
@@ -221,6 +263,31 @@ export function StatusBar() {
           <CirclePlay size={12} strokeWidth={1.8} color="var(--accent-live)" style={styles.icon} />
           <span style={{ color: "var(--text-primary)", fontWeight: 500 }}>Workstream quest</span>
         </button>}
+        {(agentsToConnect.length > 0 || agentConnectMessage) && (
+          <button
+            type="button"
+            data-testid="connect-agents-trigger"
+            title={
+              agentConnectMessage ||
+              "Let Claude Code, Codex, and OpenCode report their task and Running/Waiting/Idle state"
+            }
+            style={{ ...styles.chip, border: 0, cursor: "pointer", fontFamily: "var(--font-ui)" }}
+            disabled={agentConnectBusy}
+            onClick={() => {
+              if (agentsToConnect.length > 0) window.dispatchEvent(new Event(CONNECT_AGENTS_EVENT));
+              else setAgentConnectMessage("");
+            }}
+          >
+            <Bot size={12} strokeWidth={1.8} color="var(--accent-live)" style={styles.icon} />
+            <span style={{ color: "var(--text-primary)", fontWeight: 500 }}>
+              {agentConnectBusy
+                ? "Connecting agents…"
+                : agentsToConnect.length > 0
+                  ? "Connect agents"
+                  : "Agents connected"}
+            </span>
+          </button>
+        )}
         {recoveryTotal > 0 && (
           <span
             style={styles.chip}
