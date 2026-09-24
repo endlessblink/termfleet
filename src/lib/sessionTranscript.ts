@@ -156,6 +156,28 @@ function firstQuestion(
 }
 
 /** `fix-cockpit-task-display` — a name for a machine, not a sentence for a person. */
+const GOAL_MAX = 180;
+const DANGLING_END = /\s+(?:a|an|and|as|at|by|for|from|in|into|of|on|or|the|to|with|while|instead)$/i;
+
+/** Mirror of scripts/lib/agent-status-goal.mjs `goalFromLongText`: a long opening
+ *  request keeps its first sentence instead of being dropped from the Goal row. */
+export function goalFromLongText(value: string): string {
+  const text = value.replace(/\s+/g, " ").trim();
+  if (text.length <= GOAL_MAX) return text;
+  const sentences = text.match(/[^.!?\n]+[.!?]?/g) ?? [text];
+  let summary = "";
+  for (const sentence of sentences) {
+    const next = `${summary} ${sentence.trim()}`.trim();
+    if (next.length > GOAL_MAX) break;
+    summary = next;
+    if (summary.split(/\s+/).length >= 6) break;
+  }
+  if (!summary) summary = text.slice(0, GOAL_MAX).replace(/\s+\S*$/, "");
+  let cleaned = summary.replace(/[,;:\s]+$/, "");
+  while (DANGLING_END.test(cleaned)) cleaned = cleaned.replace(DANGLING_END, "");
+  return cleaned;
+}
+
 export function looksLikeSlug(text: string): boolean {
   return /^[a-z0-9]+(?:[-_][a-z0-9]+){1,}$/.test(text.trim());
 }
@@ -421,6 +443,21 @@ export function parseCodexRollout(text: string): TranscriptFacts {
       case "agent_message":
         facts.agentSaid = firstSentence(payload.message) ?? facts.agentSaid;
         break;
+      case "message": {
+        if (record.type !== "response_item" || !Array.isArray(payload.content)) break;
+        const blockText = (kind: string) =>
+          (payload.content as unknown[])
+            .filter((block) => block && typeof block === "object" && (block as { type?: string }).type === kind)
+            .map((block) => (block as { text?: string }).text ?? "")
+            .join(" ");
+        if (payload.role === "user") {
+          const asked = opensAsRequest(cleanText(blockText("input_text")));
+          if (asked) facts.operatorRequest = asked;
+        } else if (payload.role === "assistant") {
+          facts.agentSaid = firstSentence(blockText("output_text")) ?? facts.agentSaid;
+        }
+        break;
+      }
       case "task_complete":
         facts.lastTurnEndAt = at;
         break;

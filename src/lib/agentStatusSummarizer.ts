@@ -15,6 +15,7 @@ import {
 } from "./agentStatusSidecar";
 import {
   parseOpeningRequest,
+  goalFromLongText,
   parseTranscript,
   type TranscriptFacts,
 } from "./sessionTranscript";
@@ -787,10 +788,11 @@ async function resolveTaskLineFor(
     taskLine,
     nowLine: resolvePaneNowLine(ladderInput, taskLine.text),
     ...(() => {
-      const candidate =
+      const candidate = goalFromLongText(
         effectiveFacts.openingRequest?.trim() ??
-        effectiveFacts.operatorRequest?.trim() ??
-        "";
+          effectiveFacts.operatorRequest?.trim() ??
+          "",
+      );
       const candidateSource = effectiveFacts.openingRequest
         ? "opening-request"
         : effectiveFacts.operatorRequest
@@ -934,10 +936,18 @@ export async function summarizeAgentStatus(
     ? summaryFromSidecar(rawSidecar, effectiveFallback).mainTask?.trim()
     : undefined;
   const sidecarGoal = sidecarShapedFallback?.mainTask?.trim() ?? rawSidecarGoal;
-  const capturedGoalValue = sidecarGoal || capturedGoal;
-  const capturedGoalSourceValue = sidecarGoal
-    ? rawSidecar?.mainTaskSource
-    : capturedGoalSource;
+  // The hook's "opening-request" is its own guess (the first prompt that looked like a
+  // goal) and drifts to follow-ups when the real opening was long or short; the vendor
+  // record's opening request is the actual first ask. Declared goals still win.
+  const sidecarGoalIsGuess = rawSidecar?.mainTaskSource === "opening-request";
+  const preferRecordGoal =
+    Boolean(capturedGoal) && capturedGoalSource === "opening-request" && sidecarGoalIsGuess;
+  const capturedGoalValue = preferRecordGoal ? capturedGoal : sidecarGoal || capturedGoal;
+  const capturedGoalSourceValue = preferRecordGoal
+    ? capturedGoalSource
+    : sidecarGoal
+      ? rawSidecar?.mainTaskSource
+      : capturedGoalSource;
   const effectiveFallbackWithGoal = capturedGoalValue
     ? {
         ...effectiveFallback,

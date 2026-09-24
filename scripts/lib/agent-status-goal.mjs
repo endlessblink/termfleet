@@ -27,17 +27,47 @@ export function isDurableGoalText(value) {
   return true;
 }
 
+const GOAL_MAX = 180;
+const DANGLING_END = /\s+(?:a|an|and|as|at|by|for|from|in|into|of|on|or|the|to|with|while|instead)$/i;
+
+/**
+ * A long, detailed request is usually the pane's real goal. Keep its first sentence
+ * (or, failing that, a clean word-boundary cut) so it fits the Goal row, rather than
+ * discarding it and letting a later follow-up become the goal.
+ */
+export function goalFromLongText(value) {
+  const text = String(value ?? "").replace(/\s+/g, " ").trim();
+  if (text.length <= GOAL_MAX) return text;
+  const sentences = text.match(/[^.!?\n]+[.!?]?/g) ?? [text];
+  let summary = "";
+  for (const sentence of sentences) {
+    const next = `${summary} ${sentence.trim()}`.trim();
+    if (next.length > GOAL_MAX) break;
+    summary = next;
+    if (summary.split(/\s+/).length >= 6) break;
+  }
+  if (!summary) {
+    summary = text.slice(0, GOAL_MAX).replace(/\s+\S*$/, "");
+  }
+  let cleaned = summary.replace(/[,;:\s]+$/, "");
+  while (DANGLING_END.test(cleaned)) cleaned = cleaned.replace(DANGLING_END, "");
+  return cleaned;
+}
+
 export function openingGoalFromPrompt(value) {
-  const text = String(value ?? "")
+  const full = String(value ?? "")
     .replace(/\[{1,3}\s*(?:Image|Screenshot|File|Pasted)\s*#?\d*[^\]]*\]+/gi, " ")
     .replace(/\s+/g, " ")
     .trim();
-  if (text.length < 12 || text.length >= 220 || !isDurableGoalText(text)) return "";
+  // Judge the whole request (its action verb is often in a later sentence), then keep
+  // the short form for the Goal row.
+  const text = goalFromLongText(full);
+  if (text.length < 12 || !isDurableGoalText(text)) return "";
   if (/^[<$/]/.test(text) || /^(go|continue|done|this|that|it)\b/i.test(text)) {
     return "";
   }
-  const words = text.split(/\s+/);
-  if (words.length < 4 || !GOAL_VERB.test(text)) return "";
+  const words = full.split(/\s+/);
+  if (words.length < 4 || !GOAL_VERB.test(full)) return "";
   return text;
 }
 
