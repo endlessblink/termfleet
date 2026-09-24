@@ -5295,7 +5295,15 @@ function CanvasNodeViewImpl({
           </button>
         )}
         {node.type === "terminal" && (
-          <div style={styles.agentHeaderActions}>
+          <div
+            data-testid="canvas-terminal-card-actions"
+            style={{
+              ...styles.agentHeaderActions,
+              // The status block spans the whole header row, so auto-placement pushed
+              // these icons onto the next row, on top of the Goal line (TF-053).
+              ...(!agentStatusSummary ? { gridRow: 1, gridColumn: 3 } : null),
+            }}
+          >
             {workstream?.kind === "agent" && (
               <>
                 <button

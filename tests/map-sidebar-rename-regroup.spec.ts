@@ -36,6 +36,8 @@ test("a sidebar rename survives the row being rebuilt mid-edit", async ({
         ...store.getState().workspaceUiState,
         workspaceMode: "canvas",
         primarySidebarPanel: "map",
+        // The map's own card list shows while the left Map panel is folded (TF-052).
+        primarySidebarCollapsed: true,
       },
       tabs: [
         {

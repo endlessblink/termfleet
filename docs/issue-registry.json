@@ -6346,14 +6346,30 @@
     {
       "id": "TF-052",
       "title": "Map screen shows the map list twice side by side",
-      "state": "reported",
+      "state": "verifying",
       "severity": "medium",
       "surface": "canvas",
       "matrixRefs": [],
       "symptom": "With the Map panel open in the left sidebar, the map index also opens beside it: two near-identical 'Map' lists (pending approval, filters, cards) side by side, eating a third of the screen (seen in a private first-run capture 2026-09-24).",
       "rootCause": "",
       "guard": "none yet",
-      "evidence": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-09-24T16:03:33.546Z",
+          "note": "The map's own card list is hidden while the left sidebar Map panel is open; that panel already lists every card plus agent runs"
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-09-24T16:03:33.832Z",
+          "note": "tests/map-first-impression-layout.spec.ts: one list with the panel open, the map's list returns when it is folded"
+        },
+        {
+          "kind": "browser-render",
+          "at": "2026-09-24T16:03:34.116Z",
+          "note": "Playwright browser render on the review preview: map-sort-project count 1 in both states"
+        }
+      ],
       "owner": "termfleet",
       "nextAction": "Decide one owner for the map list; hide the canvas map index while the sidebar Map panel is open.",
       "history": [
@@ -6361,20 +6377,89 @@
           "at": "2026-09-24T12:14:11.690Z",
           "type": "created",
           "note": null
+        },
+        {
+          "at": "2026-09-24T16:03:30.552Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "first-impression map fix"
+        },
+        {
+          "at": "2026-09-24T16:03:31.427Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "first-impression map fix"
+        },
+        {
+          "at": "2026-09-24T16:03:31.713Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "first-impression map fix"
+        },
+        {
+          "at": "2026-09-24T16:03:32.014Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "first-impression map fix"
+        },
+        {
+          "at": "2026-09-24T16:03:33.546Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "The map's own card list is hidden while the left sidebar Map panel is open; that panel already lists every card plus agent runs"
+        },
+        {
+          "at": "2026-09-24T16:03:33.832Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "tests/map-first-impression-layout.spec.ts: one list with the panel open, the map's list returns when it is folded"
+        },
+        {
+          "at": "2026-09-24T16:03:34.116Z",
+          "type": "evidence",
+          "kind": "browser-render",
+          "note": "Playwright browser render on the review preview: map-sort-project count 1 in both states"
+        },
+        {
+          "at": "2026-09-24T16:03:34.398Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "desktop look pending the next dock release"
         }
       ]
     },
     {
       "id": "TF-053",
       "title": "Card action icons overlap the Goal line until the card is selected",
-      "state": "reported",
+      "state": "verifying",
       "severity": "medium",
       "surface": "canvas",
       "matrixRefs": [],
       "symptom": "On an unselected map card the small card actions (task list, open, close) draw on top of the Goal row text ('GOAL Run commands...' partly hidden).",
       "rootCause": "",
       "guard": "none yet",
-      "evidence": [],
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-09-24T16:03:34.704Z",
+          "note": "Plain terminal card actions are pinned to the header's top row; the full-width status block pushed them onto the Goal line"
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-09-24T16:03:34.992Z",
+          "note": "tests/map-first-impression-layout.spec.ts: action icons end above the Task/Goal block"
+        },
+        {
+          "kind": "browser-render",
+          "at": "2026-09-24T16:03:35.283Z",
+          "note": "Playwright bounding boxes on an unselected plain terminal card"
+        }
+      ],
       "owner": "termfleet",
       "nextAction": "Reserve the action row in the card layout instead of overlaying it.",
       "history": [
@@ -6382,6 +6467,59 @@
           "at": "2026-09-24T12:14:12.093Z",
           "type": "created",
           "note": null
+        },
+        {
+          "at": "2026-09-24T16:03:32.339Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "first-impression map fix"
+        },
+        {
+          "at": "2026-09-24T16:03:32.663Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "first-impression map fix"
+        },
+        {
+          "at": "2026-09-24T16:03:32.953Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "first-impression map fix"
+        },
+        {
+          "at": "2026-09-24T16:03:33.254Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "first-impression map fix"
+        },
+        {
+          "at": "2026-09-24T16:03:34.704Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Plain terminal card actions are pinned to the header's top row; the full-width status block pushed them onto the Goal line"
+        },
+        {
+          "at": "2026-09-24T16:03:34.993Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "tests/map-first-impression-layout.spec.ts: action icons end above the Task/Goal block"
+        },
+        {
+          "at": "2026-09-24T16:03:35.283Z",
+          "type": "evidence",
+          "kind": "browser-render",
+          "note": "Playwright bounding boxes on an unselected plain terminal card"
+        },
+        {
+          "at": "2026-09-24T16:03:35.572Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "desktop look pending the next dock release"
         }
       ]
     },
@@ -6472,6 +6610,85 @@
           "from": "fixing",
           "to": "verifying",
           "note": "one chat, one terminal guard"
+        }
+      ]
+    },
+    {
+      "id": "TF-057",
+      "title": "Fresh install says terminals were reconnected",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "desktop-runtime",
+      "matrixRefs": [],
+      "symptom": "First launch status bar read 'pty reconnected' and '1 reconnected' for a terminal that had never been away",
+      "rootCause": "",
+      "guard": "tests/pty-attach-status.spec.ts",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-09-24T16:03:37.400Z",
+          "note": "A terminal this run created stays 'running' when a second view attaches to it"
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-09-24T16:03:37.681Z",
+          "note": "tests/pty-attach-status.spec.ts 2/2"
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Only terminals that outlived the previous app run read as reconnected",
+      "history": [
+        {
+          "at": "2026-09-24T16:03:35.854Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-09-24T16:03:36.147Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "attach status"
+        },
+        {
+          "at": "2026-09-24T16:03:36.470Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "attach status"
+        },
+        {
+          "at": "2026-09-24T16:03:36.810Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "attach status"
+        },
+        {
+          "at": "2026-09-24T16:03:37.119Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "attach status"
+        },
+        {
+          "at": "2026-09-24T16:03:37.400Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "A terminal this run created stays 'running' when a second view attaches to it"
+        },
+        {
+          "at": "2026-09-24T16:03:37.681Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "tests/pty-attach-status.spec.ts 2/2"
+        },
+        {
+          "at": "2026-09-24T16:03:37.999Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "installed-release and live-desktop proof come with the next dock release"
         }
       ]
     }

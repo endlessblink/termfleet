@@ -9,6 +9,7 @@ import {
 } from "../lib/daemonInputQueue";
 import { traceTerminalLatency } from "../lib/terminalLatencyTrace";
 import type { TerminalRuntimeStatus } from "../lib/types";
+import { statusForAttach } from "../lib/ptyAttachStatus";
 
 interface UsePtyOptions {
   terminal: Terminal | null;
@@ -521,7 +522,7 @@ export function usePty({ terminal, cwd, command, attachToPtyId, runtimeSessionId
           });
           activateInputListener("browser", id);
 
-          onStatus?.(session.exited ? "exited" : shouldAttachBrowser ? "reconnected" : "running", { id });
+          onStatus?.(session.exited ? "exited" : statusForAttach(id, shouldAttachBrowser), { id });
           onReady?.(id, { reused: shouldAttachBrowser });
           if (session.exited && typeof session.exitCode === "number") {
             onExit?.({ id, code: session.exitCode, success: session.exitCode === 0 });
@@ -658,7 +659,7 @@ export function usePty({ terminal, cwd, command, attachToPtyId, runtimeSessionId
             });
             daemonOutputChannelRef.current = outputChannel;
 
-            onStatus?.(ensured.reused ? "reconnected" : "running", { id: spawnedId });
+            onStatus?.(statusForAttach(spawnedId, ensured.reused), { id: spawnedId });
             onReady?.(spawnedId, { reused: ensured.reused });
             await invoke("daemon_subscribe_session", {
               id: spawnedId,

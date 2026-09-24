@@ -91,6 +91,7 @@ import {
   statusSidecarPaneId,
 } from "../lib/terminalPaneIdentity";
 import { preserveDurablePaneGoal } from "../lib/statusPollProjection";
+import { statusForAttach } from "../lib/ptyAttachStatus";
 
 const LOCALHOST_URL_PATTERN =
   /https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0):(\d{2,5})(?:[/?#][^\s"'<>]*)?/gi;
@@ -1636,7 +1637,7 @@ export function TerminalComponent({
       transportRecoveryPendingRef.current = false;
       updateTerminalRuntime({
         id: ptyId,
-        status: details.reused ? "reconnected" : "running",
+        status: statusForAttach(ptyId, details.reused),
         reused: details.reused,
       });
       setLivePtyId(ptyId);

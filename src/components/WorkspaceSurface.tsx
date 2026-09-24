@@ -193,6 +193,7 @@ export function WorkspaceSurface() {
   const primarySidebarCollapsed = useWorkspaceStore((state) => state.workspaceUiState.primarySidebarCollapsed);
   const immersiveTerminal = useWorkspaceStore((state) => state.workspaceUiState.immersiveTerminal);
   const hydrating = useWorkspaceStore((state) => state.hydrating);
+  const sidebarMapPanelOpen = !primarySidebarCollapsed && primarySidebarPanel === "map";
   // A saved sidebar selection can outlive the mode it opened. Reconcile that
   // stale pair so relaunching on Map never leaves an empty stage.
   const restoredPanelMode =
@@ -230,7 +231,9 @@ export function WorkspaceSurface() {
         {effectiveWorkspaceMode === "canvas" && (
           <div style={{ ...styles.surfacePane, zIndex: 1 }}>
             <div style={styles.canvasShell}>
-              {!immersiveTerminal.enabled && <CanvasSidebar />}
+              {/* The left sidebar's Map panel already lists every card (and more);
+                  drawing this list too showed the map list twice side by side (TF-052). */}
+              {!immersiveTerminal.enabled && !sidebarMapPanelOpen && <CanvasSidebar />}
               <div style={styles.canvasStage}>
                 <Suspense fallback={<MapSurfaceFallback />}>
                   <MagicCanvas />

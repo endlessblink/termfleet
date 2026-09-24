@@ -2041,6 +2041,8 @@ test("terminal map renaming uses in-app inputs and keeps linked tab titles in sy
         ...store.getState().workspaceUiState,
         workspaceMode: "canvas",
         primarySidebarPanel: "map",
+        // The map's own card list shows while the left Map panel is folded (TF-052).
+        primarySidebarCollapsed: true,
       },
       tabs: [
         {
