@@ -4980,6 +4980,27 @@ function CanvasNodeViewImpl({
                     <span>Connect terminal</span>
                   </button>
                 )}
+                {/* The outcome of Connect terminal. It was only rendered on agent cards, so
+                    on a plain terminal card the click looked dead (live repro 2026-09-24). */}
+                {canvasNotice && (
+                  <span
+                    role="status"
+                    aria-live="polite"
+                    data-testid="canvas-terminal-connect-notice"
+                    title={canvasNotice}
+                    style={{
+                      marginLeft: 8,
+                      fontSize: 11,
+                      color: "var(--text-warning, #d9a441)",
+                      maxWidth: 320,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {canvasNotice}
+                  </span>
+                )}
               </span>
               {terminalBudgetSignal && (
                 <TokenBudgetIndicator
