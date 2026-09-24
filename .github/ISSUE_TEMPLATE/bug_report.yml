@@ -1,0 +1,68 @@
+name: Bug report
+description: Something in TermFleet is broken or behaves unexpectedly.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for trying the early preview. Please check the **Known issues** in the latest release notes first.
+        Remove anything private (usernames, paths, tokens, project names) from logs and screenshots.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what you saw instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open the map
+        2. Start a Claude Code session in a terminal
+        3. ...
+  - type: input
+    id: version
+    attributes:
+      label: TermFleet version
+      description: Shown in the release name you downloaded, e.g. v0.2.1.
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How did you install it?
+      options:
+        - AppImage
+        - .deb package
+        - Built from source
+    validations:
+      required: true
+  - type: input
+    id: distro
+    attributes:
+      label: Linux distribution and desktop
+      placeholder: Ubuntu 24.04, GNOME on Wayland
+  - type: checkboxes
+    id: agents
+    attributes:
+      label: Which agents were running? (if any)
+      options:
+        - label: Claude Code
+        - label: Codex
+        - label: OpenCode
+  - type: dropdown
+    id: terminals
+    attributes:
+      label: Did your terminals survive?
+      description: TermFleet keeps terminals alive across app restarts; tell us if that failed.
+      options:
+        - Yes, terminals and their text were fine
+        - No, terminals or their text were lost
+        - Not related to terminals
+  - type: textarea
+    id: extra
+    attributes:
+      label: Screenshots or logs
+      description: Optional. Logs live in ~/.local/state/termfleet/ — please redact personal details.
