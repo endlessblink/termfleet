@@ -210,6 +210,11 @@ function nodeMeta(node: CanvasNode, linkedTab?: Tab, liveCwd?: string) {
   return `${Math.round(node.width)} x ${Math.round(node.height)}`;
 }
 
+// A rename in progress, by node id. Kept outside the row so it survives the row
+// being rebuilt mid-edit — the startup project reconcile can move a terminal into
+// another project group, which remounts its row and used to drop the typed name.
+const renamesInProgress = new globalThis.Map<string, { draft: string; startedAt: number }>();
+
 function NodeRow({
   node,
   linkedTab,
@@ -240,8 +245,9 @@ function NodeRow({
   onDragEnd?: () => void;
 }) {
   const icon = nodeIcon(node);
-  const [editing, setEditing] = useState(false);
-  const [draftTitle, setDraftTitle] = useState(node.title);
+  const pendingRename = renamesInProgress.get(node.id);
+  const [editing, setEditing] = useState(Boolean(pendingRename));
+  const [draftTitle, setDraftTitle] = useState(pendingRename?.draft ?? node.title);
   const linkedProject = projectForTab(linkedTab, groups);
   const liveCwds = useWorkspaceStore((s) => s.liveCwds);
   const liveTermId =
@@ -253,21 +259,28 @@ function NodeRow({
   const meta = node.type === "terminal" && linkedTab
     ? `${nodeMeta(node, linkedTab, liveCwd)} · ${linkedTab.title}`
     : nodeMeta(node, linkedTab, liveCwd);
-  const renameStartedAtRef = useRef(0);
+  const renameStartedAtRef = useRef(pendingRename?.startedAt ?? 0);
   const beginRename = useCallback(() => {
     renameStartedAtRef.current = performance.now();
+    renamesInProgress.set(node.id, { draft: node.title, startedAt: renameStartedAtRef.current });
     setDraftTitle(node.title);
     setEditing(true);
-  }, [node.title]);
+  }, [node.id, node.title]);
+  const updateDraft = useCallback((draft: string) => {
+    renamesInProgress.set(node.id, { draft, startedAt: renameStartedAtRef.current });
+    setDraftTitle(draft);
+  }, [node.id]);
   const commitRename = useCallback(() => {
+    renamesInProgress.delete(node.id);
     const trimmed = draftTitle.trim();
     if (trimmed) onRename(node, trimmed);
     setEditing(false);
   }, [draftTitle, node, onRename]);
   const cancelRename = useCallback(() => {
+    renamesInProgress.delete(node.id);
     setDraftTitle(node.title);
     setEditing(false);
-  }, [node.title]);
+  }, [node.id, node.title]);
   return (
     <div
       className="canvas-sidebar-row"
@@ -321,7 +334,7 @@ function NodeRow({
             dir="auto"
             style={styles.titleInput}
             value={draftTitle}
-            onChange={(event) => setDraftTitle(event.target.value)}
+            onChange={(event) => updateDraft(event.target.value)}
             onClick={(event) => event.stopPropagation()}
             onDoubleClick={(event) => event.stopPropagation()}
             onMouseDown={(event) => event.stopPropagation()}
@@ -330,6 +343,8 @@ function NodeRow({
               // beat after the double-click opened this input; on a slow machine that
               // beat is long. Don't let that focus jump close the rename — a click on
               // another control still commits.
+              // A row being rebuilt drops its input; the rename carries over.
+              if (!event.currentTarget.isConnected) return;
               const next = event.relatedTarget as HTMLElement | null;
               const focusWasStolen =
                 !next || next.matches(".terminal-canvas-input, .xterm-helper-textarea");
