@@ -6342,6 +6342,48 @@
           "note": null
         }
       ]
+    },
+    {
+      "id": "TF-052",
+      "title": "Map screen shows the map list twice side by side",
+      "state": "reported",
+      "severity": "medium",
+      "surface": "canvas",
+      "matrixRefs": [],
+      "symptom": "With the Map panel open in the left sidebar, the map index also opens beside it: two near-identical 'Map' lists (pending approval, filters, cards) side by side, eating a third of the screen (seen in a private first-run capture 2026-09-24).",
+      "rootCause": "",
+      "guard": "none yet",
+      "evidence": [],
+      "owner": "termfleet",
+      "nextAction": "Decide one owner for the map list; hide the canvas map index while the sidebar Map panel is open.",
+      "history": [
+        {
+          "at": "2026-09-24T12:14:11.690Z",
+          "type": "created",
+          "note": null
+        }
+      ]
+    },
+    {
+      "id": "TF-053",
+      "title": "Card action icons overlap the Goal line until the card is selected",
+      "state": "reported",
+      "severity": "medium",
+      "surface": "canvas",
+      "matrixRefs": [],
+      "symptom": "On an unselected map card the small card actions (task list, open, close) draw on top of the Goal row text ('GOAL Run commands...' partly hidden).",
+      "rootCause": "",
+      "guard": "none yet",
+      "evidence": [],
+      "owner": "termfleet",
+      "nextAction": "Reserve the action row in the card layout instead of overlaying it.",
+      "history": [
+        {
+          "at": "2026-09-24T12:14:12.093Z",
+          "type": "created",
+          "note": null
+        }
+      ]
     }
   ]
 }
