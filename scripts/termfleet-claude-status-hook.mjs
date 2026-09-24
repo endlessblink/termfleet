@@ -21,6 +21,7 @@ import {
 import { shouldWriteStatusCandidate } from "./lib/agent-status-lifecycle.mjs";
 import { plainCommandActivity } from "./lib/agent-status-activity.mjs";
 import { durableGoalForPrompt, isDurableGoalText, isRequestText } from "./lib/agent-status-goal.mjs";
+import { closeOtherCopies } from "./lib/single-chat-owner.mjs";
 
 const TASK_EVENT_TOOLS = new Set(["TaskCreate", "TaskUpdate"]);
 
@@ -450,6 +451,11 @@ async function main() {
   }
   const cwd = sidecarKeyCwd(payload);
   const paneId = statusPaneId();
+  if (payload.hook_event_name === "SessionStart" || payload.hook_event_name === "UserPromptSubmit") {
+    // One chat, one terminal: an older copy of this chat in another terminal is closed.
+    closeOtherCopies({ provider: "claude", conversationId: String(payload?.session_id ?? ""), paneId });
+    if (payload.hook_event_name === "SessionStart") process.exit(0);
+  }
   // Pane-keyed when termfleet injected TERMFLEET_PANE_ID into the PTY, else cwd-keyed.
   const filePath = statusFilePath(cwd);
   const prevAtStart = readExistingSidecar(filePath);

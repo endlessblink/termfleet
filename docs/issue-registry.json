@@ -6384,6 +6384,96 @@
           "note": null
         }
       ]
+    },
+    {
+      "id": "TF-056",
+      "title": "One chat runs in several terminals at once",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "desktop-runtime",
+      "matrixRefs": [],
+      "symptom": "Reopening a chat by hand in a new terminal left the older copy running; one conversation ran in three terminals and looked killed",
+      "rootCause": "",
+      "guard": "tests/single-chat-owner.spec.ts",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-09-24T14:56:20.433Z",
+          "note": "guard in scripts/lib/single-chat-owner.mjs, wired into Claude and Codex status hooks; SessionStart registered by Connect agents"
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-09-24T14:56:20.713Z",
+          "note": "tests/single-chat-owner.spec.ts 4/4 (fake process list; other chats, headless runs, same terminal and non-TermFleet copies untouched)"
+        },
+        {
+          "kind": "live-desktop",
+          "at": "2026-09-24T14:56:21.022Z",
+          "note": "2026-09-24 17:54 closed the leftover copy of a real chat in another terminal; that terminal stayed open at its prompt and showed the note"
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Status hooks close older copies of a chat in other TermFleet terminals",
+      "history": [
+        {
+          "at": "2026-09-24T14:55:44.305Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-09-24T14:56:20.433Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "guard in scripts/lib/single-chat-owner.mjs, wired into Claude and Codex status hooks; SessionStart registered by Connect agents"
+        },
+        {
+          "at": "2026-09-24T14:56:20.713Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "tests/single-chat-owner.spec.ts 4/4 (fake process list; other chats, headless runs, same terminal and non-TermFleet copies untouched)"
+        },
+        {
+          "at": "2026-09-24T14:56:21.022Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "2026-09-24 17:54 closed the leftover copy of a real chat in another terminal; that terminal stayed open at its prompt and showed the note"
+        },
+        {
+          "at": "2026-09-24T14:56:30.862Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "one chat, one terminal guard"
+        },
+        {
+          "at": "2026-09-24T14:56:34.697Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "one chat, one terminal guard"
+        },
+        {
+          "at": "2026-09-24T14:56:34.996Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "one chat, one terminal guard"
+        },
+        {
+          "at": "2026-09-24T14:56:35.299Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "one chat, one terminal guard"
+        },
+        {
+          "at": "2026-09-24T14:56:35.642Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "one chat, one terminal guard"
+        }
+      ]
     }
   ]
 }

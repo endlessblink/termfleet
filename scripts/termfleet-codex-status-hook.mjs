@@ -21,6 +21,7 @@ import { stdin } from "node:process";
 import { paneSidecarPath, sidecarPath, statusDir, normalizeCwd } from "./lib/agent-status-paths.mjs";
 import { shouldWriteStatusCandidate } from "./lib/agent-status-lifecycle.mjs";
 import { plainCommandActivity } from "./lib/agent-status-activity.mjs";
+import { closeOtherCopies } from "./lib/single-chat-owner.mjs";
 import { durableGoalForPrompt, isDurableGoalText, isRequestText, openingGoalFromPrompt } from "./lib/agent-status-goal.mjs";
 import { lifecycleFromNotification, narrationToNow, readTranscriptTail } from "./termfleet-claude-status-hook.mjs";
 
@@ -372,6 +373,11 @@ async function main() {
     payload = raw ? JSON.parse(raw) : {};
   } catch {
     process.exit(0);
+  }
+  if ((payload?.hook_event_name ?? payload?.hookEventName) === "UserPromptSubmit") {
+    // One chat, one terminal: an older copy of this chat in another terminal is closed.
+    const conversationId = String(payload?.session_id ?? payload?.sessionId ?? "");
+    closeOtherCopies({ provider: "codex", conversationId, paneId });
   }
   const cwd = sidecarKeyCwd(payload);
   const filePath = statusFilePath(cwd);

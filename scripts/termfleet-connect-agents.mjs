@@ -34,9 +34,12 @@ const HOOK_FILES = [
   "lib/agent-status-paths.mjs",
   "lib/agent-status-lifecycle.mjs",
   "lib/agent-status-goal.mjs",
+  "lib/agent-status-activity.mjs",
+  "lib/single-chat-owner.mjs",
 ];
 
-const CLAUDE_EVENTS = ["Stop", "Notification", "PermissionRequest", "UserPromptSubmit", "PostToolUse"];
+// SessionStart closes an older copy of a resumed chat in another terminal.
+const CLAUDE_EVENTS = ["SessionStart", "Stop", "Notification", "PermissionRequest", "UserPromptSubmit", "PostToolUse"];
 const CODEX_EVENTS = ["Stop", "Notification", "UserPromptSubmit", "PreToolUse", "PostToolUse"];
 
 const results = [];
