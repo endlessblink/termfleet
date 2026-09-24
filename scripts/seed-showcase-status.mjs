@@ -4,9 +4,9 @@
 // renders its real Task row and TASKS panel — with invented, plain-language work
 // instead of anything from the operator's machine. Only ever run against a private
 // XDG_DATA_HOME (the capture script sets one); it refuses to touch a real one.
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, readlinkSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { sidecarPath, statusDir } from "./lib/agent-status-paths.mjs";
+import { paneSidecarPath, sidecarPath, statusDir } from "./lib/agent-status-paths.mjs";
 
 const home = process.env.SHOWCASE_DEMO_HOME;
 if (!home) {
@@ -54,6 +54,38 @@ const panes = [
   },
 ];
 
+// Terminals opened inside TermFleet read their OWN status file (keyed by the
+// terminal), never one keyed by folder. So after the capture driver has moved
+// each demo terminal into its folder, look up which live terminal sits in which
+// demo folder and seed that terminal's file as well.
+function liveDemoTerminals() {
+  const found = [];
+  for (const name of readdirSync("/proc")) {
+    if (!/^\d+$/.test(name)) continue;
+    let env = "";
+    try {
+      env = readFileSync(`/proc/${name}/environ`, "utf8");
+    } catch {
+      continue;
+    }
+    const vars = Object.fromEntries(
+      env.split("\0").filter(Boolean).map((entry) => [entry.slice(0, entry.indexOf("=")), entry.slice(entry.indexOf("=") + 1)]),
+    );
+    if (!vars.TERMFLEET_PANE_ID || vars.XDG_DATA_HOME !== process.env.XDG_DATA_HOME) continue;
+    try {
+      const args = readFileSync(`/proc/${name}/cmdline`, "utf8").split("\0");
+      if (!/(^|\/)bash$/.test(args[0] ?? "")) continue;
+      found.push({ paneId: vars.TERMFLEET_PANE_ID, cwd: readlinkSync(`/proc/${name}/cwd`) });
+    } catch {
+      continue;
+    }
+  }
+  return found;
+}
+
+const byTerminal = process.argv.includes("--live-terminals");
+const terminals = byTerminal ? liveDemoTerminals() : [];
+
 mkdirSync(statusDir(), { recursive: true });
 for (const pane of panes) {
   const payload = {
@@ -71,8 +103,14 @@ for (const pane of panes) {
       activeForm: todo.content,
     })),
   };
-  const target = sidecarPath(pane.cwd);
-  mkdirSync(dirname(target), { recursive: true });
-  writeFileSync(target, `${JSON.stringify(payload, null, 2)}\n`);
-  console.log(`seeded ${target} -> ${pane.mainTask}`);
+  const targets = byTerminal
+    ? terminals
+        .filter((terminal) => terminal.cwd === pane.cwd)
+        .map((terminal) => ({ path: paneSidecarPath(terminal.paneId), paneId: terminal.paneId }))
+    : [{ path: sidecarPath(pane.cwd), paneId: undefined }];
+  for (const target of targets) {
+    mkdirSync(dirname(target.path), { recursive: true });
+    writeFileSync(target.path, `${JSON.stringify({ ...payload, paneId: target.paneId }, null, 2)}\n`);
+    console.log(`seeded ${target.path} -> ${pane.mainTask}`);
+  }
 }

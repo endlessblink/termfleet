@@ -179,6 +179,13 @@ SHOWCASE_DEMO_HOME="$DEMO_HOME" node "$APP_ROOT/scripts/seed-showcase-status.mjs
 
 shot() { import -window "$1" "$OUT_DIR/$2" 2>>"$DRIVER_LOG" || true; }
 
+# Terminals read their own status file, so seed again once each one is in its folder.
+reseed() {
+  SHOWCASE_DEMO_HOME="$DEMO_HOME" node "$APP_ROOT/scripts/seed-showcase-status.mjs" --live-terminals \
+    >>"$DRIVER_LOG" 2>&1 || echo "warning: per-terminal seeding failed" >>"$DRIVER_LOG"
+  sleep 4
+}
+
 # Type into the focused pane, then run it.
 run_in_pane() {
   xdotool type --clearmodifiers --delay 12 "$1"
@@ -189,7 +196,13 @@ run_in_pane() {
 drive() {
   local wid=""
   for ((i = 1; i <= APP_BUDGET * 2; i += 1)); do
-    wid="$(xdotool search --name "TermFleet" 2>/dev/null | head -1)"
+    # GTK also maps a hidden 10x10 leader window named TermFleet; importing that
+    # one fails, so take the first window big enough to be the app itself.
+    wid=""
+    for candidate in $(xdotool search --name "TermFleet" 2>/dev/null); do
+      width="$(xdotool getwindowgeometry --shell "$candidate" 2>/dev/null | sed -n 's/^WIDTH=//p')"
+      if [[ "${width:-0}" -ge 400 ]]; then wid="$candidate"; break; fi
+    done
     [[ -n "$wid" ]] && break
     sleep 0.5
   done
@@ -207,9 +220,18 @@ drive() {
   # stealing), so the app's own actions are driven with the MOUSE here.
   click() { xdotool mousemove --window "$wid" "$1" "$2" click --clearmodifiers 1; sleep "${3:-1}"; }
 
-  # Split into three panes first, while the shells are still idle.
-  click "$SPLIT_RIGHT_X" "$PANE_HEADER_Y" 2.5
-  click "$SPLIT_DOWN_X" "$PANE_HEADER_Y" 2.5
+  # Split into three panes first, while the shells are still idle. The command
+  # bar is used because the pane's own split buttons move with every redesign.
+  command() {
+    click "$COMMAND_BAR_X" "$COMMAND_BAR_Y" 1
+    xdotool type --clearmodifiers --delay 25 "$1"
+    sleep 0.8
+    xdotool key Return
+    sleep "${2:-2.5}"
+  }
+  command "Split right"
+  click $((WIDTH / 4)) $((HEIGHT / 2)) 0.6
+  command "Split down"
   shot "$wid" "01-after-splits.png"
 
   # Left column, top: a dev server, so the cockpit shows live work.
@@ -224,6 +246,7 @@ drive() {
   # Right column: a real editor — a full-screen TUI with no host data in it.
   click $((WIDTH * 3 / 4)) $((HEIGHT / 2)) 0.6
   run_in_pane "cd ~/code/api-gateway && vim -u NONE -c 'syntax on' -c 'set number' src/rate-limit.ts" 4
+  reseed
   shot "$wid" "02-three-panes.png"
 
   # Two more sessions, so the map reads as a fleet rather than a single card.
@@ -233,6 +256,7 @@ drive() {
   click "$NEW_SESSION_X" "$NEW_SESSION_Y" 3
   click $((WIDTH / 2)) $((HEIGHT / 2)) 0.6
   run_in_pane "cd ~/code/web-app && clear && ~/bin/suite" 4
+  reseed
   shot "$wid" "03-sessions.png"
 
   # The command bar: the keyboard-first way into every action.

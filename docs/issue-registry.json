@@ -6633,6 +6633,11 @@
           "kind": "focused-test",
           "at": "2026-09-24T16:03:37.681Z",
           "note": "tests/pty-attach-status.spec.ts 2/2"
+        },
+        {
+          "kind": "installed-release",
+          "at": "2026-09-24T16:17:32.269Z",
+          "note": "release 949902b43c8b promoted; fresh private-display launch of that binary shows 'pty running' on a new terminal"
         }
       ],
       "owner": "termfleet",
@@ -6689,6 +6694,33 @@
           "from": "fixing",
           "to": "verifying",
           "note": "installed-release and live-desktop proof come with the next dock release"
+        },
+        {
+          "at": "2026-09-24T16:17:32.269Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "release 949902b43c8b promoted; fresh private-display launch of that binary shows 'pty running' on a new terminal"
+        }
+      ]
+    },
+    {
+      "id": "TF-058",
+      "title": "Map card says Goal not captured while the list shows the goal",
+      "state": "reported",
+      "severity": "medium",
+      "surface": "canvas",
+      "matrixRefs": [],
+      "symptom": "Showcase capture on release 949902b: the sidebar row shows 'Adding rate limiting to the orders API' but the same terminal's map card reads GOAL 'Not captured for this pane'; a split pane with an in-progress task shows 'Task not captured'",
+      "rootCause": "",
+      "guard": "none yet",
+      "evidence": [],
+      "owner": "termfleet",
+      "nextAction": "Make the map card and split header read the same pane-keyed goal and in-progress task as the sidebar",
+      "history": [
+        {
+          "at": "2026-09-24T16:17:32.547Z",
+          "type": "created",
+          "note": null
         }
       ]
     }
