@@ -385,16 +385,16 @@ test("a legacy internal goal-task is cleared on the next prompt", () => {
 });
 
 test("exec_command maps to readable activity and ignores navigation", () => {
-  expect(codexActivityFromTool("exec_command", { command: "cargo test --workspace" })).toBe("Running: cargo test --workspace");
+  expect(codexActivityFromTool("exec_command", { command: "cargo test --workspace" })).toBe("Running tests");
   expect(codexActivityFromTool("exec_command", { command: "cd /some/very/long/path" })).toBe("");
-  expect(codexActivityFromTool("exec_command", { command: "cd repo && npm run build" })).toBe("Running: npm run build");
+  expect(codexActivityFromTool("exec_command", { command: "cd repo && npm run build" })).toBe("Building and checking the code");
 });
 
 test("inline command bodies never leak into activity", () => {
   const activity = codexActivityFromTool("exec_command", {
     command: `node -e "const cases = ['a','b']; console.log(cases)"`,
   });
-  expect(activity).toBe("Running: node -e");
+  expect(activity).toBe("Running a script");
   expect(activity).not.toContain("const cases");
 });
 

@@ -20,6 +20,7 @@ import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { stdin } from "node:process";
 import { paneSidecarPath, sidecarPath, statusDir, normalizeCwd } from "./lib/agent-status-paths.mjs";
 import { shouldWriteStatusCandidate } from "./lib/agent-status-lifecycle.mjs";
+import { plainCommandActivity } from "./lib/agent-status-activity.mjs";
 import { durableGoalForPrompt, isDurableGoalText, isRequestText, openingGoalFromPrompt } from "./lib/agent-status-goal.mjs";
 import { lifecycleFromNotification, narrationToNow, readTranscriptTail } from "./termfleet-claude-status-hook.mjs";
 
@@ -111,8 +112,7 @@ export function codexActivityFromTool(toolName, toolInput) {
     if (!command || /^(?:cd|z|pushd|popd|ls|ll|la|pwd|clear|cls|exit|echo)\b/i.test(command)) {
       return "";
     }
-    const head = command.split(/\s*(?:<<|["'|<>])/)[0].trim();
-    return `Running: ${head.slice(0, 50)}`;
+    return plainCommandActivity(command);
   }
   if (name === "write_stdin") return "";
   if (name === "request_user_input") return "Waiting for your input";

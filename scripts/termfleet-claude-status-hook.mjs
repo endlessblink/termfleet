@@ -19,6 +19,7 @@ import {
   statusDir,
 } from "./lib/agent-status-paths.mjs";
 import { shouldWriteStatusCandidate } from "./lib/agent-status-lifecycle.mjs";
+import { plainCommandActivity } from "./lib/agent-status-activity.mjs";
 import { durableGoalForPrompt, isDurableGoalText, isRequestText } from "./lib/agent-status-goal.mjs";
 
 const TASK_EVENT_TOOLS = new Set(["TaskCreate", "TaskUpdate"]);
@@ -227,10 +228,9 @@ export function activityFromTool(toolName, toolInput) {
         return description || "";
       }
       if (description) return description;
-      // No description: show only the head of the command (program + first arg), never the
-      // inline code / heredoc body, so we don't leak `node -e "<code>"` into the feed.
-      const head = command.split(/\s*(?:<<|["'|<>])/)[0].trim();
-      return `Running: ${head.slice(0, 50)}`;
+      // No description: name the kind of work, never the raw command (paths, inline
+      // code) — the header gate rejected raw heads and the row read "Now not captured".
+      return plainCommandActivity(command);
     }
     case "Grep":
       return `Searching ${trim(toolInput?.pattern, 40)}`;

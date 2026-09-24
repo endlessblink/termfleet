@@ -358,7 +358,7 @@ test("recent-activity log: the worker returns the agent's actual recent actions"
   );
   expect(texts).toContain("Reading types.ts");
   expect(texts).toContain("Editing worker.mjs");
-  expect(texts).toContain("Running: npm test");
+  expect(texts).toContain("Running tests");
   // Newest last, each with a timestamp.
   expect(summary.recent.every((entry: { at: number }) => entry.at > 0)).toBe(
     true,
@@ -601,11 +601,11 @@ test("activity line: trivial nav/inspection commands are filtered out", () => {
   expect(activityFromTool("Bash", { command: "clear" })).toBe("");
   // Leading nav is stripped; the meaningful command remains.
   expect(activityFromTool("Bash", { command: "cd /x/y && npm test" })).toBe(
-    "Running: npm test",
+    "Running tests",
   );
   // Real commands still show.
   expect(activityFromTool("Bash", { command: "npm run build" })).toBe(
-    "Running: npm run build",
+    "Building and checking the code",
   );
 });
 
@@ -620,10 +620,10 @@ test("activity line: prefers Claude's plain-language description over raw comman
   // No description: never leak inline code / heredoc bodies — only the command head shows.
   expect(
     activityFromTool("Bash", { command: 'node -e "const x = 1; doStuff(x)"' }),
-  ).toBe("Running: node -e");
+  ).toBe("Running a script");
   expect(
     activityFromTool("Bash", { command: "cat <<EOF\nsecret body\nEOF" }),
-  ).toBe("Running: cat");
+  ).toBe("Reading files");
 });
 
 test("all tasks complete: title is the last task, never the raw shell command", async () => {
@@ -822,7 +822,7 @@ test("a non-task tool keeps the Task-tool list and only updates the now line", a
     env,
   );
   const summary = JSON.parse(workerResult.stdout.trim());
-  expect(summary.now).toBe("Running: npm test");
+  expect(summary.now).toBe("Running tests");
   expect(summary.tasks.map((t: { text: string }) => t.text)).toContain(
     "Ship it",
   );
@@ -1369,7 +1369,7 @@ test("live-now: a tool call updates the activity and preserves the todo list", a
     env,
   );
   const summary = JSON.parse(workerResult.stdout.trim());
-  expect(summary.now).toBe("Running: npm run build && echo done");
+  expect(summary.now).toBe("Building and checking the code");
   // Todo list preserved across the non-TodoWrite call.
   expect(summary.tasks.map((t: { text: string }) => t.text)).toContain(
     "in-progress: Ship the feature",
