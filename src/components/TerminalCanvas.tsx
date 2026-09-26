@@ -1038,6 +1038,15 @@ export function TerminalCanvas({
     };
   }, [sessionId, cwd, command, cols, rows, theme, fontsReady, renderScale, mapProjection, runtimeActive, dprTick, recoveryGeneration]);
 
+  // The app is about to scroll its own view (wheel report / page key). If our
+  // viewport sits in grid history, those scrolls would happen under a frozen view
+  // of stale frames — Claude Code's fullscreen TUI leaves only old screens there.
+  const leaveGridHistoryForApp = () => {
+    if ((bufferRef.current?.displayOffset ?? 0) === 0) return;
+    userViewportLockedRef.current = false;
+    invoke("grid_scroll_to_bottom", { id: sessionIdRef.current }).catch(console.error);
+  };
+
   const scheduleScrollToBottom = () => {
     if (userViewportLockedRef.current) return;
     if (scrollToBottomPendingRef.current) return;
@@ -1442,6 +1451,12 @@ export function TerminalCanvas({
           }).catch(console.error);
         }
         return;
+      }
+      if (
+        modesRef.current.mouseMotion &&
+        (event.key === "PageUp" || event.key === "PageDown" || event.key === "Home" || event.key === "End")
+      ) {
+        leaveGridHistoryForApp();
       }
       const bytes = keyEventToBytes(event, { appCursor: modesRef.current.appCursor });
       if (bytes === null) return;
@@ -1958,10 +1973,14 @@ export function TerminalCanvas({
 
   const handleWheel = (event: React.WheelEvent) => {
     event.preventDefault();
-    const notches = Math.max(1, Math.round(Math.abs(event.deltaY) / 24));
-    const up = event.deltaY < 0;
+    // GTK/WebKit turn Shift+wheel into a horizontal scroll (deltaY 0, deltaX
+    // carries the notch), so read the vertical intent from deltaX then —
+    // otherwise Shift+wheel-up scrolled DOWN and history was unreachable.
+    const wheelDelta = event.deltaY !== 0 ? event.deltaY : event.deltaX;
+    if (wheelDelta === 0) return;
+    const notches = Math.max(1, Math.round(Math.abs(wheelDelta) / 24));
+    const up = wheelDelta < 0;
     const modes = modesRef.current;
-    if (up) userViewportLockedRef.current = true;
 
     const wheelAction = terminalWheelAction(
       event,
@@ -1978,6 +1997,7 @@ export function TerminalCanvas({
     // enough: Claude-style prompts may use alt-screen without making arrows a
     // reliable scroll primitive, so those fall back to TermFleet history.
     if (wheelAction.kind === "mouse-report") {
+      leaveGridHistoryForApp();
       const { col, row } = wheelCell(event);
       const button = up ? 64 : 65;
       const report = encodeMouseReport({
@@ -2003,6 +2023,7 @@ export function TerminalCanvas({
       return;
     }
 
+    if (up) userViewportLockedRef.current = true;
     invoke("grid_scroll", { id: sessionId, delta: (up ? 1 : -1) * notches * 3 }).catch(
       console.error,
     );

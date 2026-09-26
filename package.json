@@ -22,6 +22,7 @@
     "verify:legacy-prompt-live": "scripts/verify-legacy-prompt-repair.sh",
     "verify:keymap": "playwright test keymap",
     "verify:terminal-mouse": "playwright test terminal-mouse",
+    "verify:fullscreen-app-wheel": "scripts/verify-fullscreen-app-wheel.sh",
     "verify:grid-resize": "playwright test grid-resize",
     "verify:selection": "playwright test selection",
     "verify:box-glyph": "playwright test box-glyph",

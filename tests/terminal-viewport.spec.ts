@@ -82,6 +82,24 @@ test("navigation keys fall through when the grid has no history to show", async 
   expect(actions.homeFullscreenApp).toBeNull();
 });
 
+// TF-059: once the wheel/page keys belong to a fullscreen app, a view already
+// parked in grid history must return to the live screen, or the app scrolls
+// underneath a frozen view of stale frames.
+test("app-owned scrolling leaves grid history first", () => {
+  const source = readFileSync("src/components/TerminalCanvas.tsx", "utf8");
+  const helper = source.match(/const leaveGridHistoryForApp = \(\) => \{[\s\S]*?\n  \};/)?.[0] ?? "";
+  expect(helper).toContain("grid_scroll_to_bottom");
+  const wheel = source.match(/const handleWheel = [\s\S]*?\n  \};/)?.[0] ?? "";
+  const mouseBranch = wheel.match(/if \(wheelAction\.kind === "mouse-report"\) \{[\s\S]*?return;/)?.[0] ?? "";
+  expect(mouseBranch).toContain("leaveGridHistoryForApp()");
+  // Locking the viewport is only for scrolls that stay in our history.
+  expect(wheel.indexOf("userViewportLockedRef.current = true")).toBeGreaterThan(wheel.indexOf("app-pages"));
+  expect(source).toMatch(/modesRef\.current\.mouseMotion &&[\s\S]{0,200}leaveGridHistoryForApp\(\)/);
+  // Shift+wheel arrives as a horizontal scroll on GTK; its direction must count.
+  expect(wheel).toContain("event.deltaY !== 0 ? event.deltaY : event.deltaX");
+  expect(wheel).toContain("const up = wheelDelta < 0");
+});
+
 test("canvas terminal keeps keyboard-owned history separate from PTY input", () => {
   const source = readFileSync("src/components/TerminalCanvas.tsx", "utf8");
   const captureBlock = source.match(
