@@ -18,6 +18,11 @@ export interface TerminalWheelModes {
    */
   hasHistory?: boolean;
   /**
+   * Any-event mouse tracking (DECSET 1003) is on: the app owns the whole
+   * surface, even on the primary screen (Claude Code's fullscreen TUI).
+   */
+  mouseMotion?: boolean;
+  /**
    * Allow the wheel to fall back to the app's own page keys when there is no
    * history to scroll. Opt-in per surface (the map), because it sends keys the app
    * did not explicitly request.
@@ -91,6 +96,8 @@ export function shouldSendWheelToTerminalApp(modifiers: TerminalMouseModifiers, 
   // app that repaints in place (OpenCode) would otherwise lose the wheel twice —
   // our history is empty and the app never sees the report.
   if (modes.mouseReport && modes.hasHistory === false) return true;
+  // Fullscreen app on the primary screen (Claude Code): it scrolls itself.
+  if (modes.mouseReport && modes.mouseMotion) return true;
   if (modifiers.altKey) return true;
   return Boolean(modes.altScreen && modes.alternateScrollSet && modes.alternateScroll);
 }
@@ -105,7 +112,14 @@ export function terminalWheelAction(
   // grid history (OpenCode): forwarding the wheel is the only way it can scroll —
   // our history would swallow it into nothing. With real history on the primary
   // screen, TC-043 still wins and the wheel scrolls our scrollback instead.
-  if (modes.mouseReport && (modes.altScreen || modes.hasHistory === false)) {
+  // Claude Code's fullscreen TUI draws on the PRIMARY screen, claims every
+  // pointer motion, and scrolls its own transcript on the wheel. Its grid
+  // history is only stale frames its screen clears pushed up — scrolling that
+  // shows broken-up garbage. Inline agents never ask for any-event tracking.
+  if (
+    modes.mouseReport &&
+    (modes.altScreen || modes.hasHistory === false || modes.mouseMotion)
+  ) {
     return { kind: "mouse-report" };
   }
   // Nothing to scroll AND the app never asked for the mouse: the wheel would be a

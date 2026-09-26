@@ -29,6 +29,9 @@ const MODE_ALTERNATE_SCROLL_SET = 1 << 8;
 // The grid actually holds scrollback. Claiming history navigation without it
 // swallows the key into an empty history (see MODE_HAS_HISTORY in vt_grid.rs).
 const MODE_HAS_HISTORY = 1 << 9;
+// Any-event mouse tracking (DECSET 1003): the app owns the whole surface
+// (see MODE_MOUSE_MOTION in vt_grid.rs).
+const MODE_MOUSE_MOTION = 1 << 10;
 
 const STYLE_BOLD = 1 << 0;
 const STYLE_ITALIC = 1 << 1;
@@ -58,6 +61,8 @@ export interface DecodedFrame {
   sgrMouse: boolean;
   /** The grid holds scrollback above the live screen (see MODE_HAS_HISTORY). */
   hasHistory: boolean;
+  /** Any-event mouse tracking is on (see MODE_MOUSE_MOTION). */
+  mouseMotion: boolean;
   dirtyRows: DecodedRow[];
 }
 
@@ -189,6 +194,7 @@ export function decodeFrame(buffer: ArrayBuffer): DecodedFrame {
     alternateScrollSet: Boolean(mode & MODE_ALTERNATE_SCROLL_SET),
     sgrMouse: Boolean(mode & MODE_SGR_MOUSE),
     hasHistory: Boolean(mode & MODE_HAS_HISTORY),
+    mouseMotion: Boolean(mode & MODE_MOUSE_MOTION),
     dirtyRows,
   };
 }

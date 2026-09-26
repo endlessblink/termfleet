@@ -34,6 +34,7 @@ export class GridBuffer {
   alternateScrollSet = false;
   sgrMouse = false;
   hasHistory = false;
+  mouseMotion = false;
   cells: GridCell[][] = [];
   // Rows with actual cell payload changes, excluding cursor-only repaint rows.
   // The renderer needs cursor rows dirty, but status/output consumers must not
@@ -87,6 +88,7 @@ export class GridBuffer {
     this.alternateScrollSet = frame.alternateScrollSet;
     this.sgrMouse = frame.sgrMouse;
     this.hasHistory = frame.hasHistory;
+    this.mouseMotion = frame.mouseMotion;
 
     // The cursor bar is painted by the renderer on top of its row, so any change
     // to the cursor — vertical move, horizontal move, or show/hide — must repaint

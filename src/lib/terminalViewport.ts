@@ -11,6 +11,11 @@ export interface TerminalViewportModes {
    * not; `undefined` means an older frame didn't say, and history is still claimed.
    */
   hasHistory?: boolean;
+  /**
+   * Any-event mouse tracking is on: a fullscreen app (Claude Code) owns the
+   * primary screen and its own scrolling, so the grid history is stale frames.
+   */
+  mouseMotion?: boolean;
 }
 
 export function terminalViewportAction(
@@ -28,6 +33,7 @@ export function terminalViewportAction(
   // Primary-screen panes with real history keep TermFleet history navigation.
   if (modes.altScreen) return null;
   if (modes.hasHistory === false) return null;
+  if (modes.mouseMotion) return null;
   const page = Math.max(1, Math.floor(rows));
   switch (key) {
     case "Home":

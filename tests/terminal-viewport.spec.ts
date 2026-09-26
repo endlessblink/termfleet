@@ -67,6 +67,9 @@ test("navigation keys fall through when the grid has no history to show", async 
       pageUpWithHistory: terminalViewportAction("PageUp", 24, { hasHistory: true }),
       // An older frame that doesn't carry the flag keeps the previous behaviour.
       pageUpUnknown: terminalViewportAction("PageUp", 24, {}),
+      // Claude Code fullscreen: its own transcript scroll owns PageUp/Home.
+      pageUpFullscreenApp: terminalViewportAction("PageUp", 24, { hasHistory: true, mouseMotion: true }),
+      homeFullscreenApp: terminalViewportAction("Home", 24, { hasHistory: true, mouseMotion: true }),
     };
   });
 
@@ -75,6 +78,8 @@ test("navigation keys fall through when the grid has no history to show", async 
   expect(actions.endNoHistory).toBeNull();
   expect(actions.pageUpWithHistory).toEqual({ kind: "delta", delta: 24 });
   expect(actions.pageUpUnknown).toEqual({ kind: "delta", delta: 24 });
+  expect(actions.pageUpFullscreenApp).toBeNull();
+  expect(actions.homeFullscreenApp).toBeNull();
 });
 
 test("canvas terminal keeps keyboard-owned history separate from PTY input", () => {

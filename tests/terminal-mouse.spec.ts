@@ -185,6 +185,22 @@ test("terminal mouse reports encode SGR and legacy VT sequences", async ({ page 
         { hasHistory: false, appPageKeys: true },
         "up"
       ),
+      // Claude Code fullscreen TUI: primary screen, any-event tracking, and a
+      // grid history of stale frames. The wheel must reach Claude.
+      claudeFullscreenWheelAction: terminalWheelAction(
+        { altKey: false },
+        { mouseReport: true, mouseMotion: true, hasHistory: true },
+        "up"
+      ),
+      claudeFullscreenWheelUsesTerminalApp: shouldSendWheelToTerminalApp(
+        { altKey: false },
+        { mouseReport: true, mouseMotion: true, hasHistory: true }
+      ),
+      claudeFullscreenShiftWheelAction: terminalWheelAction(
+        { shiftKey: true },
+        { mouseReport: true, mouseMotion: true, hasHistory: true },
+        "up"
+      ),
       shiftMouseReportAltScreenWheelAction: terminalWheelAction(
         { shiftKey: true },
         { mouseReport: true, altScreen: true },
@@ -228,6 +244,9 @@ test("terminal mouse reports encode SGR and legacy VT sequences", async ({ page 
   expect(out.mouseReportNoHistoryWheelUsesTerminalApp).toBe(true);
   expect(out.mouseReportWithHistoryWheelAction).toEqual({ kind: "history" });
   expect(out.mouseReportWithHistoryWheelUsesHistory).toBe(false);
+  expect(out.claudeFullscreenWheelAction).toEqual({ kind: "mouse-report" });
+  expect(out.claudeFullscreenWheelUsesTerminalApp).toBe(true);
+  expect(out.claudeFullscreenShiftWheelAction).toEqual({ kind: "history" });
   expect(out.mapNoHistoryWheelUp).toEqual({ kind: "app-pages", sequence: "\x1b[5~" });
   expect(out.mapNoHistoryWheelDown).toEqual({ kind: "app-pages", sequence: "\x1b[6~" });
   expect(out.splitNoHistoryWheelUp).toEqual({ kind: "history" });

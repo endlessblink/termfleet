@@ -1103,6 +1103,12 @@ const MODE_ALTERNATE_SCROLL_SET: u32 = 1 << 8;
 // navigation key would be swallowed into an empty history while the app that owns
 // the scrollable content never receives it. OpenCode does exactly this.
 const MODE_HAS_HISTORY: u32 = 1 << 9;
+// Any-event mouse tracking (DECSET 1003) is on. Only an app that owns the whole
+// surface asks for every pointer motion. Claude Code's fullscreen TUI does this on
+// the PRIMARY screen, redraws in place, and scrolls its own transcript on the wheel;
+// the grid history under it holds only stale frames pushed up by its ESC[2J clears.
+// Inline agents never set it, so TC-043 (wheel → our history) still holds for them.
+const MODE_MOUSE_MOTION: u32 = 1 << 10;
 
 const STYLE_BOLD: u16 = 1 << 0;
 const STYLE_ITALIC: u16 = 1 << 1;
@@ -1137,6 +1143,7 @@ struct WireFrame {
     alternate_scroll_set: bool,
     sgr_mouse: bool,
     has_history: bool,
+    mouse_motion: bool,
     rows_cells: Vec<Vec<WireCell>>,
 }
 
@@ -1260,6 +1267,7 @@ impl WireFrame {
             sgr_mouse: mode.contains(TermMode::SGR_MOUSE),
             // `history_size()` needs the `Dimensions` trait, already in scope.
             has_history: grid.history_size() > 0,
+            mouse_motion: mode.contains(TermMode::MOUSE_MOTION),
             rows_cells,
         }
     }
@@ -1295,6 +1303,9 @@ impl WireFrame {
         }
         if self.has_history {
             flags |= MODE_HAS_HISTORY;
+        }
+        if self.mouse_motion {
+            flags |= MODE_MOUSE_MOTION;
         }
         flags
     }
@@ -2481,5 +2492,24 @@ mod tests {
         let buffer = encode_frame(&big, Some(&small));
         assert_eq!(buffer[0], MSG_FULL);
         assert_eq!(read_u16(&buffer, 15), DEFAULT_ROWS as u16);
+    }
+
+    // Claude Code's fullscreen TUI on the primary screen: any-event mouse tracking,
+    // then an ESC[2J clear that pushes the old frame into grid history. The frame
+    // must say "app owns the pointer" so the wheel goes to Claude, not stale history.
+    #[test]
+    fn primary_screen_any_event_tracking_is_reported() {
+        let mut state = TermState::new(40, 5);
+        state.feed(b"\x1b[?1000h\x1b[?1002h\x1b[?1003h\x1b[?1006hold frame\x1b[2J\x1b[Hnew");
+        let frame = WireFrame::capture_state(&state);
+        assert!(!frame.alt_screen);
+        assert!(frame.has_history, "ESC[2J pushes the old frame into history");
+        assert!(frame.mode_flags() & MODE_MOUSE_MOTION != 0);
+
+        // Plain click tracking (what inline apps use) must not claim the surface.
+        state.feed(b"\x1b[?1003l\x1b[?1000h");
+        let frame = WireFrame::capture_state(&state);
+        assert!(frame.mouse_report);
+        assert_eq!(frame.mode_flags() & MODE_MOUSE_MOTION, 0);
     }
 }

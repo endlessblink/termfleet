@@ -112,6 +112,7 @@ const DEFAULT_TERMINAL_MODES = {
   alternateScrollSet: false,
   sgrMouse: false,
   hasHistory: false,
+  mouseMotion: false,
 };
 
 function isTransientAttachError(error: unknown) {
@@ -653,6 +654,7 @@ export function TerminalCanvas({
         alternateScrollSet: buffer.alternateScrollSet,
         sgrMouse: buffer.sgrMouse,
         hasHistory: buffer.hasHistory,
+        mouseMotion: buffer.mouseMotion,
       };
       const firstFrame = !firstFrameRef.current;
       if (firstFrame) {
@@ -1400,6 +1402,7 @@ export function TerminalCanvas({
         {
           altScreen: modesRef.current.altScreen,
           hasHistory: modesRef.current.hasHistory,
+          mouseMotion: modesRef.current.mouseMotion,
         },
       );
       // Record the navigation decision itself. "history" with hasHistory === false is
