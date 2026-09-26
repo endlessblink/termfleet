@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-09-26T17:14:33.168Z",
+  "updatedAt": "2026-09-26T19:39:48.092Z",
   "issues": [
     {
       "id": "TF-001",
@@ -6736,14 +6736,14 @@
       "guard": "cargo test --lib primary_screen_any_event_tracking_is_reported; playwright test terminal-mouse terminal-viewport (claudeFullscreen*, *FullscreenApp)",
       "evidence": [
         {
-          "kind": "source",
-          "at": "2026-09-26T10:25:55.888Z",
-          "note": "Claude Code is configured with tui=fullscreen: it draws on the PRIMARY screen (no ?1049h in any saved pane stream), enables any-event mouse tracking (?1003h), redraws from ESC[H, and its ESC[2J clears push old frames into grid history. Replaying the content-creation pane's saved stream (154x29) gave 54 history rows of stale frames. terminalWheelAction sent primary-screen wheel to our history whenever hasHistory (TC-043), so Claude never got the wheel. Survey of 145 saved panes: only this Claude mode sets ?1003 on the primary screen; inline Claude/Codex never do. Fix: new MODE_MOUSE_MOTION wire flag; wheel and PageUp/Home/End go to the app when it is set; Shift+wheel still reaches history."
-        },
-        {
           "kind": "focused-test",
           "at": "2026-09-26T10:25:56.181Z",
           "note": "cargo test --lib: 219/219 vt_grid+others pass (one timing-flaky pty restore test passes alone); new primary_screen_any_event_tracking_is_reported passes. playwright terminal-mouse + terminal-viewport: 5/5 pass incl. claudeFullscreenWheelAction=mouse-report, Shift=history, PageUp/Home fall through. tsc clean."
+        },
+        {
+          "kind": "source",
+          "at": "2026-09-26T17:39:30.481Z",
+          "note": "2026-09-26 20:40 follow-up (shuffleboard pane, 138x27): that Claude runs its DEFAULT inline display mode (no ?1003h, cursor-up redraws) although settings.tui=fullscreen. Replaying its saved stream through vt_grid and through a private tmux reference at 138x27 gives identical 4,040-line output, including the stuck spinner line and broken divider, so the leftovers are in Claude's own output (live area taller than a 27-row pane), not a TermFleet drawing bug. Only the content-creation Claude actually runs fullscreen. Operator remedy: /tui fullscreen in that pane."
         }
       ],
       "owner": "termfleet",
@@ -6800,6 +6800,91 @@
           "type": "evidence",
           "kind": "focused-test",
           "note": "cargo test --lib: 219/219 vt_grid+others pass (one timing-flaky pty restore test passes alone); new primary_screen_any_event_tracking_is_reported passes. playwright terminal-mouse + terminal-viewport: 5/5 pass incl. claudeFullscreenWheelAction=mouse-report, Shift=history, PageUp/Home fall through. tsc clean."
+        },
+        {
+          "at": "2026-09-26T17:39:30.481Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "2026-09-26 20:40 follow-up (shuffleboard pane, 138x27): that Claude runs its DEFAULT inline display mode (no ?1003h, cursor-up redraws) although settings.tui=fullscreen. Replaying its saved stream through vt_grid and through a private tmux reference at 138x27 gives identical 4,040-line output, including the stuck spinner line and broken divider, so the leftovers are in Claude's own output (live area taller than a 27-row pane), not a TermFleet drawing bug. Only the content-creation Claude actually runs fullscreen. Operator remedy: /tui fullscreen in that pane."
+        }
+      ]
+    },
+    {
+      "id": "TF-060",
+      "title": "Codex chats report to the wrong card through the shared Codex service",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "logic",
+      "matrixRefs": [],
+      "symptom": "A Codex pane (in-control-kernel) showed Shell / No task declared while Codex worked; its status landed on a termfleet card instead.",
+      "rootCause": "",
+      "guard": "playwright test codex-pane-owner single-chat-owner codex-status-hook",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-09-26T19:39:47.724Z",
+          "note": "Codex 0.157 runs one shared app-server daemon (--managed-daemon) for all chats; hooks run inside it and inherit TERMFLEET_PANE_ID of the terminal that first spawned it (termfleet pane ae95c714 at 13:23). The daemon holds 18 rollout files; TUIs hold none. New scripts/lib/codex-pane-owner.mjs: when the hook's Codex ancestor has no terminal, match the chat to the interactive Codex window (resumed with the chat id, remembered binding, or the only unbound window in the folder), else write nothing. Misfiled record removed from the termfleet card."
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-09-26T19:39:48.092Z",
+          "note": "codex-pane-owner.spec (6 new) + single-chat-owner + codex-status-hook: 45/45 pass. Live: 22:39:12 the in-control-kernel chat's hook ran through the shared service, bound 01a0c847 to terminal-5acabdd8 and wrote its card (now: Reading files)."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Operator checks Codex cards after their next message",
+      "history": [
+        {
+          "at": "2026-09-26T19:39:45.799Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-09-26T19:39:46.137Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "see evidence"
+        },
+        {
+          "at": "2026-09-26T19:39:46.437Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "see evidence"
+        },
+        {
+          "at": "2026-09-26T19:39:46.745Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "see evidence"
+        },
+        {
+          "at": "2026-09-26T19:39:47.100Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "see evidence"
+        },
+        {
+          "at": "2026-09-26T19:39:47.400Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "see evidence"
+        },
+        {
+          "at": "2026-09-26T19:39:47.724Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Codex 0.157 runs one shared app-server daemon (--managed-daemon) for all chats; hooks run inside it and inherit TERMFLEET_PANE_ID of the terminal that first spawned it (termfleet pane ae95c714 at 13:23). The daemon holds 18 rollout files; TUIs hold none. New scripts/lib/codex-pane-owner.mjs: when the hook's Codex ancestor has no terminal, match the chat to the interactive Codex window (resumed with the chat id, remembered binding, or the only unbound window in the folder), else write nothing. Misfiled record removed from the termfleet card."
+        },
+        {
+          "at": "2026-09-26T19:39:48.092Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "codex-pane-owner.spec (6 new) + single-chat-owner + codex-status-hook: 45/45 pass. Live: 22:39:12 the in-control-kernel chat's hook ran through the shared service, bound 01a0c847 to terminal-5acabdd8 and wrote its card (now: Reading files)."
         }
       ]
     }

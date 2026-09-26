@@ -22,6 +22,7 @@ import { paneSidecarPath, sidecarPath, statusDir, normalizeCwd } from "./lib/age
 import { shouldWriteStatusCandidate } from "./lib/agent-status-lifecycle.mjs";
 import { plainCommandActivity } from "./lib/agent-status-activity.mjs";
 import { closeOtherCopies } from "./lib/single-chat-owner.mjs";
+import { resolveCodexPaneId } from "./lib/codex-pane-owner.mjs";
 import { durableGoalForPrompt, isDurableGoalText, isRequestText, openingGoalFromPrompt } from "./lib/agent-status-goal.mjs";
 import { lifecycleFromNotification, narrationToNow, readTranscriptTail } from "./termfleet-claude-status-hook.mjs";
 
@@ -34,8 +35,15 @@ function cleanField(value, max = 200) {
 
 // A stable per-terminal id injected into the PTY env by termfleet. Absent → this is not
 // a termfleet pane, so the hook does nothing (keeps it safe as a global Codex hook).
-function statusPaneId() {
+function envPaneId() {
   return cleanField(process.env.TERMFLEET_PANE_ID, 128);
+}
+
+// Resolved once per event in main(): the shared Codex service passes every chat's
+// hooks the pane id of whichever terminal started it (see codex-pane-owner.mjs).
+let resolvedPaneId = null;
+function statusPaneId() {
+  return resolvedPaneId ?? envPaneId();
 }
 
 function sidecarKeyCwd(payload) {
@@ -366,14 +374,25 @@ async function main() {
   const eventAt = Date.now();
   const raw = await readStdin();
   // Hard guard: only act inside a termfleet pane. Everywhere else this hook is inert.
-  const paneId = statusPaneId();
-  if (!paneId) process.exit(0);
+  if (!envPaneId()) process.exit(0);
   let payload = {};
   try {
     payload = raw ? JSON.parse(raw) : {};
   } catch {
     process.exit(0);
   }
+  resolvedPaneId = cleanField(
+    resolveCodexPaneId({
+      envPaneId: envPaneId(),
+      conversationId: String(payload?.session_id ?? payload?.sessionId ?? ""),
+      cwd: payload?.cwd,
+    }),
+    128,
+  );
+  // Not certain which terminal this chat is in: write nothing rather than
+  // paint another terminal's card.
+  const paneId = statusPaneId();
+  if (!paneId) process.exit(0);
   if ((payload?.hook_event_name ?? payload?.hookEventName) === "UserPromptSubmit") {
     // One chat, one terminal: an older copy of this chat in another terminal is closed.
     const conversationId = String(payload?.session_id ?? payload?.sessionId ?? "");

@@ -23,11 +23,11 @@ function readText(path) {
   }
 }
 
-function argv(procRoot, pid) {
+export function argv(procRoot, pid) {
   return readText(join(procRoot, String(pid), "cmdline")).split("\0").filter(Boolean);
 }
 
-function paneOf(procRoot, pid) {
+export function paneOf(procRoot, pid) {
   const env = readText(join(procRoot, String(pid), "environ"));
   const hit = env.split("\0").find((entry) => entry.startsWith("TERMFLEET_PANE_ID="));
   return hit ? hit.slice("TERMFLEET_PANE_ID=".length) : "";
@@ -41,7 +41,7 @@ function parentOf(procRoot, pid) {
   return Number.isInteger(ppid) ? ppid : 0;
 }
 
-function terminalOf(procRoot, pid) {
+export function terminalOf(procRoot, pid) {
   try {
     const target = readlinkSync(join(procRoot, String(pid), "fd", "0"));
     return target.startsWith("/dev/pts/") ? target : "";
@@ -83,7 +83,7 @@ function holdsConversation(provider, procRoot, pid, conversationId, claudeSessio
   }
 }
 
-function ancestors(procRoot, pid) {
+export function ancestors(procRoot, pid) {
   const seen = new Set();
   let current = pid;
   while (current > 1 && !seen.has(current) && seen.size < 64) {
