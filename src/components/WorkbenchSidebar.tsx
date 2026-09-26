@@ -161,6 +161,7 @@ import {
   type LocalServiceSummary,
 } from "../lib/localServices";
 import { orderCanvasNodesByManualOrder, projectBucketsByManualOrder } from "../lib/mapNodeOrdering";
+import { MAP_REVEAL_PROJECT_EVENT } from "../lib/canvasArrange";
 import { useFlipList } from "../hooks/useFlipList";
 import { agentProviderIdentity } from "../lib/agentProviderIdentity";
 import { AgentProviderIdentity, TerminalSignifier } from "./AgentProviderIdentity";
@@ -5276,6 +5277,43 @@ function MapPanel({
     (state) => state.workspaceUiState.canvasSidebarManualOrder,
   );
   const [draggingId, setDraggingId] = useState<string | null>(null);
+  // A project label on the map was clicked: show this list by project and
+  // scroll to that project's section, briefly highlighting its heading.
+  const [revealProjectKey, setRevealProjectKey] = useState<string | null>(null);
+  const [highlightProjectKey, setHighlightProjectKey] = useState<
+    string | null
+  >(null);
+  useEffect(() => {
+    const onReveal = (event: Event) => {
+      const projectId = (event as CustomEvent<{ projectId?: string }>).detail
+        ?.projectId;
+      if (!projectId) return;
+      updateWorkspaceUiState({ canvasSidebarSortMode: "project" });
+      setRevealProjectKey(projectId);
+    };
+    window.addEventListener(MAP_REVEAL_PROJECT_EVENT, onReveal);
+    return () => window.removeEventListener(MAP_REVEAL_PROJECT_EVENT, onReveal);
+  }, [updateWorkspaceUiState]);
+  useEffect(() => {
+    if (!revealProjectKey || sortMode !== "project") return;
+    const header = document.querySelector<HTMLElement>(
+      `[data-map-project-key="${CSS.escape(revealProjectKey)}"]`,
+    );
+    if (!header) {
+      // A status filter can hide every card of that project; widen to All.
+      if (mapFilter !== "all") setMapFilter("all");
+      else setRevealProjectKey(null);
+      return;
+    }
+    header.scrollIntoView({ block: "start", behavior: "smooth" });
+    setHighlightProjectKey(revealProjectKey);
+    setRevealProjectKey(null);
+  });
+  useEffect(() => {
+    if (!highlightProjectKey) return;
+    const timer = window.setTimeout(() => setHighlightProjectKey(null), 1600);
+    return () => window.clearTimeout(timer);
+  }, [highlightProjectKey]);
   const [dropTarget, setDropTarget] = useState<{
     id: string;
     place: "before" | "after";
@@ -5664,7 +5702,7 @@ function MapPanel({
   );
 
   type MapListItem =
-    | { kind: "header"; key: string; label: string }
+    | { kind: "header"; key: string; projectKey: string; label: string }
     | { kind: "node"; node: CanvasNode };
   const mapListItems: MapListItem[] =
     sortMode === "project"
@@ -5672,6 +5710,7 @@ function MapPanel({
           {
             kind: "header" as const,
             key: `header-${bucket.key}`,
+            projectKey: bucket.key,
             label: bucket.label,
           },
           ...bucket.nodes.map((node) => ({ kind: "node" as const, node })),
@@ -7779,7 +7818,15 @@ function MapPanel({
                   <div
                     key={item.key}
                     data-flip-key={item.key}
-                    style={styles.sectionLabel}
+                    data-map-project-key={item.projectKey}
+                    style={{
+                      ...styles.sectionLabel,
+                      scrollMarginTop: 8,
+                      transition: "color var(--motion-med)",
+                      ...(highlightProjectKey === item.projectKey
+                        ? { color: "var(--accent-live)" }
+                        : null),
+                    }}
                     data-testid="map-project-group-header"
                   >
                     {item.label}

@@ -13,6 +13,9 @@ export const CANVAS_ROW_ITEM_GAP = 32;
 
 /** Lane used by cards that belong to no project (a loose note, a scratch board). */
 export const CANVAS_UNFILED_PROJECT_ID = "__unfiled__";
+// Fired when a project label on the map is clicked so the side list can
+// scroll to that project's section. detail: { projectId }
+export const MAP_REVEAL_PROJECT_EVENT = "termfleet:map-reveal-project";
 
 /**
  * How far (in map units) a card may sit from a project's cluster and still be

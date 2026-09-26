@@ -58,7 +58,10 @@ import {
   workspaceLabelFor,
 } from "../lib/projectDisplay";
 import { createNewTab, useWorkspaceStore } from "../stores/workspace";
+import { projectEmojiFor } from "../lib/projectEmoji";
 import {
+  CANVAS_UNFILED_PROJECT_ID,
+  MAP_REVEAL_PROJECT_EVENT,
   countCanvasLanes,
   resolveCanvasNodeProjects,
 } from "../lib/canvasArrange";
@@ -315,7 +318,7 @@ const styles: Record<string, CSSProperties> = {
   toolbar: {
     position: "absolute",
     top: 14,
-    left: 14,
+    right: 14,
     zIndex: 22,
     display: "flex",
     alignItems: "center",
@@ -331,6 +334,53 @@ const styles: Record<string, CSSProperties> = {
       "inset 0 1px 0 rgba(255, 255, 255, 0.055), 0 12px 34px rgba(0, 0, 0, 0.42)",
     animation: "workbench-popover-in var(--motion-med)",
     transition: "opacity var(--motion-med)",
+  },
+  projectStrip: {
+    position: "absolute",
+    top: 14,
+    left: 14,
+    zIndex: 22,
+    display: "flex",
+    alignItems: "center",
+    gap: 2,
+    padding: 4,
+    // Show a handful of projects; the rest are a side-scroll away.
+    maxWidth: "min(640px, calc(100% - 560px))",
+    minWidth: 0,
+    overflowX: "auto",
+    overscrollBehaviorX: "contain",
+    scrollSnapType: "x proximity",
+    scrollbarWidth: "none",
+    maskImage:
+      "linear-gradient(90deg, transparent 0, #000 14px, #000 calc(100% - 22px), transparent 100%)",
+    background: "color-mix(in srgb, var(--surface-raised) 70%, transparent)",
+    border: "1px solid transparent",
+    borderRadius: 13,
+    boxShadow:
+      "inset 0 1px 0 rgba(255, 255, 255, 0.055), 0 12px 34px rgba(0, 0, 0, 0.42)",
+    animation: "workbench-popover-in var(--motion-med)",
+  },
+  projectChip: {
+    height: 28,
+    flex: "0 0 auto",
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    padding: "0 10px",
+    scrollSnapAlign: "start",
+    border: "1px solid transparent",
+    borderRadius: "var(--radius-sm)",
+    background: "transparent",
+    color: "var(--text-secondary)",
+    fontFamily: "var(--font-ui)",
+    fontSize: 12,
+    whiteSpace: "nowrap",
+    cursor: "pointer",
+    transition: "background var(--motion-fast), color var(--motion-fast)",
+  },
+  projectChipCount: {
+    color: "var(--text-muted)",
+    fontSize: 11,
   },
   toolbarCollapsed: {
     padding: 4,
@@ -418,7 +468,7 @@ const styles: Record<string, CSSProperties> = {
   tidyMenu: {
     position: "absolute",
     top: "calc(100% + 7px)",
-    left: 0,
+    right: 0,
     zIndex: 30,
     minWidth: 214,
     display: "grid",
@@ -6532,6 +6582,7 @@ export function MagicCanvas() {
   startStatusPollLoop();
   const canvasState = useWorkspaceStore((state) => state.canvasState);
   const tabs = useWorkspaceStore((state) => state.tabs);
+  const groups = useWorkspaceStore((state) => state.groups);
   const activeTabId = useWorkspaceStore((state) => state.activeTabId);
   const setActiveTab = useWorkspaceStore((state) => state.setActiveTab);
   const addCanvasNode = useWorkspaceStore((state) => state.addCanvasNode);
@@ -6717,6 +6768,88 @@ export function MagicCanvas() {
   const canvasNodeProjects = useMemo(
     () => resolveCanvasNodeProjects(nodes, tabs),
     [nodes, tabs],
+  );
+  // One label per project that has cards on the map, in map order (left to
+  // right), so the strip reads like the side list's "By project" sections.
+  const mapProjects = useMemo(() => {
+    const byProject = new Map<
+      string,
+      { minX: number; minY: number; maxX: number; maxY: number; count: number }
+    >();
+    for (const node of nodes) {
+      const projectId = canvasNodeProjects.get(node.id);
+      if (!projectId || projectId === CANVAS_UNFILED_PROJECT_ID) continue;
+      const box = byProject.get(projectId);
+      if (box) {
+        box.minX = Math.min(box.minX, node.x);
+        box.minY = Math.min(box.minY, node.y);
+        box.maxX = Math.max(box.maxX, node.x + node.width);
+        box.maxY = Math.max(box.maxY, node.y + node.height);
+        box.count += 1;
+      } else {
+        byProject.set(projectId, {
+          minX: node.x,
+          minY: node.y,
+          maxX: node.x + node.width,
+          maxY: node.y + node.height,
+          count: 1,
+        });
+      }
+    }
+    const projects = [...byProject.entries()]
+      .map(([id, box]) => {
+        const group = groups.find((candidate) => candidate.id === id);
+        return { id, group, label: group?.name ?? id, emoji: "", ...box };
+      })
+      .sort((a, b) => a.minX - b.minX || a.minY - b.minY);
+    const used = new Set<string>();
+    for (const project of projects) {
+      const own = project.group?.emoji;
+      if (own && !used.has(own)) project.emoji = own;
+    }
+    for (const project of projects) if (project.emoji) used.add(project.emoji);
+    for (const project of projects) {
+      if (project.emoji) continue;
+      project.emoji = projectEmojiFor(
+        project.group?.projectRoot ?? project.label,
+        used,
+      );
+      used.add(project.emoji);
+    }
+    return projects;
+  }, [canvasNodeProjects, groups, nodes]);
+  const revealMapProject = useCallback(
+    (project: (typeof mapProjects)[number]) => {
+      const width = containerSize.width || window.innerWidth;
+      const height = containerSize.height || window.innerHeight;
+      const padding = 48;
+      const top = 64; // clear the project strip and the map tools
+      const boxWidth = Math.max(1, project.maxX - project.minX);
+      const boxHeight = Math.max(1, project.maxY - project.minY);
+      const zoom = clamp(
+        Math.min(
+          1,
+          (width - padding * 2) / boxWidth,
+          (height - top - padding) / boxHeight,
+        ),
+        MIN_ZOOM,
+        MAX_ZOOM,
+      );
+      updateCanvasViewport({
+        zoom,
+        x: width / 2 - (project.minX + boxWidth / 2) * zoom,
+        y:
+          top +
+          (height - top - padding) / 2 -
+          (project.minY + boxHeight / 2) * zoom,
+      });
+      window.dispatchEvent(
+        new CustomEvent(MAP_REVEAL_PROJECT_EVENT, {
+          detail: { projectId: project.id },
+        }),
+      );
+    },
+    [containerSize.height, containerSize.width, updateCanvasViewport],
   );
   const projectRowGroupId = useMemo(() => {
     const selectedProjectId = selectedCanvasNodes
@@ -7556,6 +7689,35 @@ export function MagicCanvas() {
       onWheel={onCanvasWheel}
       onContextMenu={openCanvasMenu}
     >
+      {mapProjects.length > 0 && (
+        <nav
+          className="magic-canvas-glass magic-canvas-project-strip"
+          style={styles.projectStrip}
+          aria-label="Projects on this map"
+          data-testid="map-project-strip"
+          onMouseDown={(event) => event.stopPropagation()}
+          onWheel={(event) => {
+            event.stopPropagation();
+            event.currentTarget.scrollLeft += event.deltaY + event.deltaX;
+          }}
+        >
+          {mapProjects.map((project) => (
+            <button
+              key={project.id}
+              type="button"
+              className="magic-canvas-button"
+              style={styles.projectChip}
+              data-testid="map-project-chip"
+              title={`Show ${project.label} on the map`}
+              onClick={() => revealMapProject(project)}
+            >
+              <span aria-hidden="true">{project.emoji}</span>
+              {project.label}
+              <span style={styles.projectChipCount}>{project.count}</span>
+            </button>
+          ))}
+        </nav>
+      )}
       <div
         ref={toolbarRef}
         className={`magic-canvas-glass magic-canvas-toolbar${toolbarOpen ? "" : " magic-canvas-toolbar-collapsed"}`}
