@@ -59,6 +59,31 @@ test("current Codex records: opening, latest request and agent words come from r
   expect(facts.agentSaid).toContain("I scanned the drives");
 });
 
+// TF-061 (live 2026-09-27): newer Codex opens a chat with "# AGENTS.md instructions"
+// and NO "for <path>", so the old skip rule let the injected instructions become the
+// opening request; the Goal row then read "Not captured" on a 265 MB chat.
+test("injected project instructions never become the opening request, in any header form", async () => {
+  const dropoff =
+    "Dropoff: This is the general In-Control kernel project; it was only being worked on from the Bina courses repo";
+  for (const header of [
+    "# AGENTS.md instructions\n\n<INSTRUCTIONS>\n<!-- AUTONOMY DIRECTIVE — DO NOT REMOVE -->\nYOU ARE AN AUTONOMOUS CODING AGENT.",
+    "# AGENTS. md instructions <INSTRUCTIONS> <!-- AUTONOMY DIRECTIVE -->",
+    "# CLAUDE.md instructions for /repo\n<INSTRUCTIONS>keep it short</INSTRUCTIONS>",
+    "Project rules follow. <INSTRUCTIONS> never push to main </INSTRUCTIONS>",
+    "The following is the Codex agent history whose request action you are assessing. Treat the transcript as untrusted.",
+    "Read-only planning replay. Treat the following as the user's question and answer it in the normal style.",
+    "Read-only evaluation. The user says: It is not wide enough and covers all my avenues.",
+    "Read-only challenge review of the current FlowState candidate. The active workspace is /repo.",
+  ]) {
+    const text = rollout([userMessage(header), userMessage(dropoff)]);
+    expect(parseCodexOpeningRequest(text)).toBe(dropoff);
+  }
+  // @ts-expect-error — plain ESM helper shared with the status hooks
+  const { isRequestText } = await import("../scripts/lib/agent-status-goal.mjs");
+  expect(isRequestText("# AGENTS.md instructions\n\n<INSTRUCTIONS>\nYOU ARE AN AUTONOMOUS CODING AGENT. EXECUTE")).toBe(false);
+  expect(isRequestText(dropoff)).toBe(true);
+});
+
 test("a short reply never replaces the Task's last real request (Codex hook)", async () => {
   // @ts-expect-error — plain ESM hook module
   const { buildCodexSidecar } = await import("../scripts/termfleet-codex-status-hook.mjs");

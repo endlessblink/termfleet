@@ -200,8 +200,16 @@ export function opensAsRequest(text: string | undefined): string | undefined {
   // Harness blocks, tool envelopes, command wrappers, slash commands, Claude's local-command
   // caveat, and the agent preambles subagents receive.
   if (/^[<$/]/.test(value)) return undefined;
-  if (/^#\s*(?:AGENTS|CLAUDE)\.md instructions for\b/i.test(value))
-    return undefined;
+  // The project-instructions file the agent injects as a user-role message. Newer
+  // Codex writes "# AGENTS.md instructions" with no "for <path>", and cleaning can
+  // split "AGENTS. md"; either way it opened a 265 MB chat and hid the real request
+  // (TF-061). Any "<name>.md instructions" header, or an <INSTRUCTIONS> block near
+  // the start, is harness text.
+  if (/^#\s*[\w.-]+\.\s?md\s+instructions\b/i.test(value)) return undefined;
+  if (/<\/?INSTRUCTIONS>/.test(value.slice(0, 120))) return undefined;
+  // Codex's approval reviewer and scripted runs ("Read-only planning replay",
+  // "Read-only evaluation", "Read-only challenge review" …) open with fixed preambles.
+  if (/^(?:the following is the codex agent history\b|read-only\b)/i.test(value)) return undefined;
   if (/^(?:caveat:|you are\b|##\s|base directory for this skill:)/i.test(value))
     return undefined;
   // Bracketed harness notices ride inside user messages ("[Request interrupted by user

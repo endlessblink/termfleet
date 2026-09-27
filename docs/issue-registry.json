@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-09-26T19:39:48.092Z",
+  "updatedAt": "2026-09-27T08:45:17.113Z",
   "issues": [
     {
       "id": "TF-001",
@@ -6742,8 +6742,8 @@
         },
         {
           "kind": "source",
-          "at": "2026-09-26T17:39:30.481Z",
-          "note": "2026-09-26 20:40 follow-up (shuffleboard pane, 138x27): that Claude runs its DEFAULT inline display mode (no ?1003h, cursor-up redraws) although settings.tui=fullscreen. Replaying its saved stream through vt_grid and through a private tmux reference at 138x27 gives identical 4,040-line output, including the stuck spinner line and broken divider, so the leftovers are in Claude's own output (live area taller than a 27-row pane), not a TermFleet drawing bug. Only the content-creation Claude actually runs fullscreen. Operator remedy: /tui fullscreen in that pane."
+          "at": "2026-09-27T07:44:43.277Z",
+          "note": "2026-09-27 flow-state pane 'still breaks' (live view, Claude in default inline mode, settings still carry CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1). Live daemon output (4.0 MB) replayed through vt_grid vs a private tmux at 138x27: identical screens at 40 spread cut points; the exact garbled moment (floating '4', doubled 'Smooshing...' line, 'okens)') is reproduced byte-for-byte by tmux at byte 3849304. Claude's own inline redraw, not TermFleet. Remedy: scripts/enable-claude-fullscreen.sh then restart Claude."
         }
       ],
       "owner": "termfleet",
@@ -6806,6 +6806,12 @@
           "type": "evidence",
           "kind": "source",
           "note": "2026-09-26 20:40 follow-up (shuffleboard pane, 138x27): that Claude runs its DEFAULT inline display mode (no ?1003h, cursor-up redraws) although settings.tui=fullscreen. Replaying its saved stream through vt_grid and through a private tmux reference at 138x27 gives identical 4,040-line output, including the stuck spinner line and broken divider, so the leftovers are in Claude's own output (live area taller than a 27-row pane), not a TermFleet drawing bug. Only the content-creation Claude actually runs fullscreen. Operator remedy: /tui fullscreen in that pane."
+        },
+        {
+          "at": "2026-09-27T07:44:43.277Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "2026-09-27 flow-state pane 'still breaks' (live view, Claude in default inline mode, settings still carry CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1). Live daemon output (4.0 MB) replayed through vt_grid vs a private tmux at 138x27: identical screens at 40 spread cut points; the exact garbled moment (floating '4', doubled 'Smooshing...' line, 'okens)') is reproduced byte-for-byte by tmux at byte 3849304. Claude's own inline redraw, not TermFleet. Remedy: scripts/enable-claude-fullscreen.sh then restart Claude."
         }
       ]
     },
@@ -6885,6 +6891,85 @@
           "type": "evidence",
           "kind": "focused-test",
           "note": "codex-pane-owner.spec (6 new) + single-chat-owner + codex-status-hook: 45/45 pass. Live: 22:39:12 the in-control-kernel chat's hook ran through the shared service, bound 01a0c847 to terminal-5acabdd8 and wrote its card (now: Reading files)."
+        }
+      ]
+    },
+    {
+      "id": "TF-061",
+      "title": "Codex card shows no goal when the chat opens with injected instructions",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "logic",
+      "matrixRefs": [],
+      "symptom": "in-control-kernel Codex card: Task 'No task declared', Goal 'Not captured' — the opening request picked was Codex's injected '# AGENTS.md instructions' block (new wording, no 'for <path>').",
+      "rootCause": "",
+      "guard": "playwright test goal-from-conversation task-line-live-records (live: no recent Codex chat opens with machine-written text)",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-09-27T08:45:16.811Z",
+          "note": "265 MB rollout 01a0c847: first user-role item is '# AGENTS.md instructions\\n\\n<INSTRUCTIONS>…' (newer Codex drops 'for <path>'); zero event_msg user_message records; the real opening ('Dropoff: This is the general In-Control kernel project…') is the second user item at byte 486123. opensAsRequest required 'instructions for'. Now: any '<name>.md instructions' header (incl. 'AGENTS. md'), an <INSTRUCTIONS> block in the first 120 chars, Codex approval-reviewer and 'Read-only …' scripted preambles are harness text, in both sessionTranscript.ts and agent-status-goal.mjs."
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-09-27T08:45:17.113Z",
+          "note": "goal-from-conversation (new: every header form + reviewer/Read-only preambles), task-line-plumbing, codex-status-hook, codex-pane-owner, single-chat-owner, task-line-coverage: 99 passed. New live guard in task-line-live-records scans the opening of 400 real recent Codex chats; it caught 5 'Read-only …' leaks on first run, now 0."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Operator checks the in-control-kernel card after relaunch",
+      "history": [
+        {
+          "at": "2026-09-27T08:45:14.979Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-09-27T08:45:15.276Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "see evidence"
+        },
+        {
+          "at": "2026-09-27T08:45:15.579Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "see evidence"
+        },
+        {
+          "at": "2026-09-27T08:45:15.867Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "see evidence"
+        },
+        {
+          "at": "2026-09-27T08:45:16.158Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "see evidence"
+        },
+        {
+          "at": "2026-09-27T08:45:16.481Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "see evidence"
+        },
+        {
+          "at": "2026-09-27T08:45:16.812Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "265 MB rollout 01a0c847: first user-role item is '# AGENTS.md instructions\\n\\n<INSTRUCTIONS>…' (newer Codex drops 'for <path>'); zero event_msg user_message records; the real opening ('Dropoff: This is the general In-Control kernel project…') is the second user item at byte 486123. opensAsRequest required 'instructions for'. Now: any '<name>.md instructions' header (incl. 'AGENTS. md'), an <INSTRUCTIONS> block in the first 120 chars, Codex approval-reviewer and 'Read-only …' scripted preambles are harness text, in both sessionTranscript.ts and agent-status-goal.mjs."
+        },
+        {
+          "at": "2026-09-27T08:45:17.113Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "goal-from-conversation (new: every header form + reviewer/Read-only preambles), task-line-plumbing, codex-status-hook, codex-pane-owner, single-chat-owner, task-line-coverage: 99 passed. New live guard in task-line-live-records scans the opening of 400 real recent Codex chats; it caught 5 'Read-only …' leaks on first run, now 0."
         }
       ]
     }

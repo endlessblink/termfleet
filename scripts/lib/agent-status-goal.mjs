@@ -65,7 +65,10 @@ const REQUEST_ACTION =
 export function isRequestText(value) {
   const text = String(value ?? "").replace(/\s+/g, " ").trim();
   if (text.length < 12) return false;
-  if (/^[<$/]/.test(text) || /^#\s*(?:AGENTS|CLAUDE)\.md instructions\b/i.test(text)) return false;
+  if (/^[<$/]/.test(text) || /^#\s*[\w.-]+\.\s?md\s+instructions\b/i.test(text)) return false;
+  // An injected <INSTRUCTIONS> block near the start is harness text (TF-061).
+  if (/<\/?INSTRUCTIONS>/.test(text.slice(0, 120))) return false;
+  if (/^(?:the following is the codex agent history\b|read-only\b)/i.test(text)) return false;
   const words = text.split(/\s+/);
   if (words.length < 4) return false;
   if (words.length < 8 && /^(?:this|that|it|these|those)\b/i.test(text)) return false;

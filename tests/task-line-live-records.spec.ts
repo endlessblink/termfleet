@@ -19,7 +19,7 @@ import {
 import path from "node:path";
 import { test, expect } from "@playwright/test";
 import { summarizeAgentStatus } from "../src/lib/agentStatusSummarizer";
-import { opensAsRequest, parseTranscript } from "../src/lib/sessionTranscript";
+import { opensAsRequest, parseCodexOpeningRequest, parseTranscript } from "../src/lib/sessionTranscript";
 import {
   qualityCheckAuthoritativeTaskLabel,
   qualityCheckUserAskLabel,
@@ -271,4 +271,39 @@ test("a pane whose vendor session record names the work never renders the placeh
   console.log(rows.slice(0, 40).join("\n"));
   console.log(`panes checked: ${rows.length}`);
   expect(offenders, offenders.slice(0, 20).join("\n")).toEqual([]);
+});
+
+// TF-061 (live 2026-09-27): a Codex update changed its injected project-instructions
+// header, the skip rule missed it, and a chat's Goal read "Not captured". This reads
+// the opening of every recent REAL Codex chat on this machine and fails if anything
+// machine-written would be taken as the operator's request — so the next vendor format
+// change is caught here, not on the operator's card.
+test("no recent Codex chat opens with machine-written text as its request", () => {
+  const root = path.join(process.env.HOME ?? "", ".codex", "sessions");
+  test.skip(!existsSync(root), "no Codex sessions on this machine");
+  const files: string[] = [];
+  const walk = (dir: string) => {
+    for (const name of readdirSync(dir)) {
+      const full = path.join(dir, name);
+      const stat = statSync(full);
+      if (stat.isDirectory()) walk(full);
+      else if (name.endsWith(".jsonl") && Date.now() - stat.mtimeMs < 14 * 864e5) files.push(full);
+    }
+  };
+  walk(root);
+  const harness =
+    /^#\s|^(?:you are|treat the|the following|read-only|continue working toward)\b|<\/?[a-z_][\w-]*(?:\s[^>]*)?>/i;
+  const leaks: string[] = [];
+  for (const file of files.slice(-400)) {
+    const fd = openSync(file, "r");
+    const buffer = Buffer.alloc(2 * 1024 * 1024);
+    const read = readSync(fd, buffer, 0, buffer.length, 0);
+    closeSync(fd);
+    const opening = parseCodexOpeningRequest(buffer.subarray(0, read).toString("utf8"));
+    if (opening && harness.test(opening.slice(0, 160))) {
+      leaks.push(`${path.basename(file)} → ${opening.slice(0, 90)}`);
+    }
+  }
+  console.log(`codex chats checked: ${Math.min(files.length, 400)}`);
+  expect(leaks, leaks.join("\n")).toEqual([]);
 });
