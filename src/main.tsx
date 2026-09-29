@@ -1,4 +1,6 @@
-// Must stay the first import: it times every renderer callback registered after it (TF-015).
+// Must stay the first imports: every localStorage write goes through the storage
+// governor, and the work recorder times every renderer callback registered after it (TF-015).
+import "./lib/storageGovernorInstall";
 import "./lib/workAttribution";
 import React from "react";
 import ReactDOM from "react-dom/client";

@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { flushStorageWrites } from "../lib/storageGovernor";
 import type {
   CanvasNode,
   CanvasState,
@@ -5186,11 +5187,37 @@ function persistWorkspaceSnapshot(snapshot: PersistedWorkspace, options: { force
     console.warn("Could not update workspace cache:", error);
   }
   lastPersistedSnapshot = serialized;
-  mirrorWorkspaceLayoutToDisk(serialized);
+  mirrorWorkspaceLayoutToDisk(serialized, Boolean(options.force));
 }
 
-function mirrorWorkspaceLayoutToDisk(serialized: string) {
+// TF-015 storage budget: status updates change the workspace many times a
+// second, and each change rewrote the whole ~0.3-0.5 MB layout file. Mirror at
+// most every 2 s (latest state wins); forced saves and flushes write at once.
+const DISK_MIRROR_MIN_INTERVAL_MS = 2_000;
+let lastDiskMirrorAt = 0;
+let pendingDiskMirror: string | null = null;
+let pendingDiskMirrorTimer: ReturnType<typeof setTimeout> | null = null;
+
+function flushPendingDiskMirror() {
+  const next = pendingDiskMirror;
+  if (next !== null) mirrorWorkspaceLayoutToDisk(next, true);
+}
+
+function mirrorWorkspaceLayoutToDisk(serialized: string, force = false) {
   if (!isTauriRuntime()) return;
+  const waitMs = lastDiskMirrorAt + DISK_MIRROR_MIN_INTERVAL_MS - Date.now();
+  if (!force && waitMs > 0) {
+    pendingDiskMirror = serialized;
+    pendingDiskMirrorTimer ??= setTimeout(() => {
+      pendingDiskMirrorTimer = null;
+      flushPendingDiskMirror();
+    }, waitMs);
+    return;
+  }
+  if (pendingDiskMirrorTimer) clearTimeout(pendingDiskMirrorTimer);
+  pendingDiskMirrorTimer = null;
+  pendingDiskMirror = null;
+  lastDiskMirrorAt = Date.now();
   // Tauri invokes are asynchronous; without a single-file queue, a slower older
   // save can complete after a newer save and roll the durable layout backwards.
   diskMirrorQueue = diskMirrorQueue
@@ -5227,6 +5254,8 @@ async function flushWorkspacePersistence(options: { force?: boolean } = {}) {
     persistDirty = false;
     persistWorkspaceSnapshot(buildPersistedSnapshot(useWorkspaceStore.getState()), options);
   }
+  flushPendingDiskMirror();
+  flushStorageWrites();
   await diskMirrorQueue;
 }
 

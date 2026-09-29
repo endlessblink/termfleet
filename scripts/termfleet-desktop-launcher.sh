@@ -231,8 +231,38 @@ if [[ "${1:-}" != "--child" ]]; then
   fi
 fi
 
+# TF-015 (2026-09-29): WebKit keeps localStorage in SQLite with a write-ahead
+# log. Heavy saving grew the log and its index to ~80 MB; WebKit's storage
+# process then read ~700 MB/s at startup and the cockpit never left the splash.
+# Before every window start (the UI is not running yet), checkpoint and
+# truncate the log when it is over budget. Contents are kept; only the log is
+# folded back into the database. Never blocks a launch for more than 20 s.
+termfleet_compact_webview_storage() {
+  local dir="${TERMFLEET_WEBVIEW_STORAGE_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/io.github.endlessblink.termfleet/localstorage}"
+  local limit_kb="${TERMFLEET_STORAGE_LOG_LIMIT_KB:-16384}"
+  local total_kb=0 file size_kb db
+  [[ -d "$dir" ]] || return 0
+  for file in "$dir"/*.localstorage-wal "$dir"/*.localstorage-shm; do
+    [[ -f "$file" ]] || continue
+    size_kb=$(( ($(stat -c %s "$file") + 1023) / 1024 ))
+    total_kb=$(( total_kb + size_kb ))
+  done
+  (( total_kb > limit_kb )) || return 0
+  command -v python3 >/dev/null 2>&1 || return 0
+  for db in "$dir"/*.localstorage; do
+    [[ -f "$db" ]] || continue
+    timeout 20 python3 -c 'import sqlite3, sys
+db = sqlite3.connect(sys.argv[1], timeout=10)
+print(db.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone())
+db.close()' "$db" >>"$LOG_FILE" 2>&1 || true
+  done
+  termfleet_incident_record "storage_compacted" "webview_storage_log_over_budget" "log_kb_before=$total_kb limit_kb=$limit_kb"
+  printf '[%s] compacted webview storage log (%s KB > %s KB)\n' "$(date --iso-8601=seconds)" "$total_kb" "$limit_kb" >>"$LOG_FILE"
+}
+
 if [[ "${1:-}" == "--child" ]]; then
   termfleet_incident_record "desktop_launch" "launcher_child" "pid=$$ command=$TERMFLEET_CMD"
+  termfleet_compact_webview_storage
   export TERMFLEET_OLLAMA_URL="${TERMFLEET_OLLAMA_URL:-http://127.0.0.1:11434}"
   export TERMFLEET_CONTEXT_TITLE_TIMEOUT_MS="${TERMFLEET_CONTEXT_TITLE_TIMEOUT_MS:-25000}"
   export TERMFLEET_TASK_CONTEXT_MODEL="${TERMFLEET_TASK_CONTEXT_MODEL:-qwen2.5:7b}"

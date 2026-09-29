@@ -116,6 +116,31 @@ if (existsSync(incidentJsonl)) {
   report("info", "Incident history", `automatic watchdog/desktop records will appear at ${incidentSummary}`);
 }
 
+// TF-015: WebKit's localStorage write log cannot shrink while the cockpit runs;
+// at ~1 GB the next launch sat on the splash screen. The launcher folds it back
+// before every window start; this shows how close the running session is.
+const webviewStorageDir = path.join(
+  process.env.XDG_DATA_HOME || path.join(os.homedir(), ".local", "share"),
+  "io.github.endlessblink.termfleet",
+  "localstorage",
+);
+if (existsSync(webviewStorageDir)) {
+  let logBytes = 0;
+  for (const name of readdirSync(webviewStorageDir)) {
+    if (name.endsWith(".localstorage-wal") || name.endsWith(".localstorage-shm")) {
+      logBytes += statSync(path.join(webviewStorageDir, name)).size;
+    }
+  }
+  const mb = (logBytes / 1048576).toFixed(1);
+  if (logBytes > 256 * 1048576) {
+    report("fail", "Webview storage log", `${mb} MB — something is saving far too often; close and reopen the cockpit to fold it back, then check storage-coalesced records`);
+  } else if (logBytes > 64 * 1048576) {
+    report("warn", "Webview storage log", `${mb} MB and growing while the cockpit runs; it is folded back at the next launch`);
+  } else {
+    report("ok", "Webview storage log", `${mb} MB (folded back at every launch when over 16 MB)`);
+  }
+}
+
 if (daemonProcesses.length === 1 && socketListeners.length === 1) {
   report("ok", "Daemon ownership", "one daemon process and one canonical socket listener");
 } else if (daemonProcesses.length === 0 && socketListeners.length === 0) {
