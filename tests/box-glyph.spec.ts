@@ -211,7 +211,7 @@ test("wide emoji icons render across their reserved terminal cells", async ({ pa
     };
 
     return {
-      tileWidth: (wideTile as HTMLCanvasElement | OffscreenCanvas).width,
+      tileWidth: wideTile.width,
       expectedTileWidth: atlas.deviceTileWidth * 2,
       firstCellLit: countLit(0, cellW),
       secondCellLit: countLit(cellW, cellW * 2),

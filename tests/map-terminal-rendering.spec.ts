@@ -159,6 +159,10 @@ test("the active quest orbit stays inside its map terminal card", async ({ page 
   await expect(terminalShell).toHaveCount(1);
   await expect(terminalShell).toHaveCSS("overflow", "hidden");
   await expect(terminalShell.evaluate((element) => getComputedStyle(element, "::before").animationName)).resolves.toBe("termfleet-terminal-quest-pulse");
+  // TF-015: a looping animation over a live pane forces a full software repaint
+  // every frame. The glow must settle after a few pulses, never loop forever.
+  await expect(questCard.evaluate((element) => getComputedStyle(element, "::after").animationIterationCount)).resolves.toBe("3");
+  await expect(terminalShell.evaluate((element) => getComputedStyle(element, "::before").animationIterationCount)).resolves.toBe("3");
   await page.screenshot({ path: testInfo.outputPath("quest-halo-start.png"), fullPage: false });
   await page.waitForTimeout(1200);
   await page.screenshot({ path: testInfo.outputPath("quest-halo-midpoint.png"), fullPage: false });
@@ -6843,5 +6847,26 @@ test("map sidebar lists every visible map terminal even when a project filter is
     .locator(".workspace-sidebar-row");
   for (const name of ["termfleet", "paper-bot", "bina-veze"]) {
     await expect(nodeRows.filter({ hasText: name }).first()).toBeVisible();
+  }
+});
+
+test("app styles never loop an animation forever (TF-015 software repaint cost)", () => {
+  // Compositing is disabled on the desktop, so every animated frame repaints
+  // the whole area under the element in software. Measured: a looping glow
+  // over nine panes took the renderer from ~1% to ~87% of a core.
+  const css = readFileSync(path.join(process.cwd(), "src/styles/global.css"), "utf8");
+  expect(css.match(/animation[^;]*\binfinite\b/g) ?? []).toEqual([]);
+});
+
+test("card shadow stays blur-free (TF-015 software repaint cost)", () => {
+  // Every map card and the workspace surface use --shadow-card. In software
+  // drawing a blurred shadow is recomputed on every redraw; the 42px blur
+  // roughly doubled map redraw time in the probe.
+  const theme = readFileSync(path.join(process.cwd(), "src/styles/theme.css"), "utf8");
+  const value = theme.match(/--shadow-card:\s*([^;]+);/)?.[1] ?? "";
+  expect(value).not.toBe("");
+  for (const layer of value.split(/,(?![^(]*\))/)) {
+    const lengths = layer.trim().replace(/^inset\s+/, "").match(/-?\d*\.?\d+px|\b0\b/g) ?? [];
+    expect(parseFloat(lengths[2] ?? "0"), `blur in "${layer.trim()}"`).toBe(0);
   }
 });

@@ -1,3 +1,5 @@
+// Must stay the first import: it times every renderer callback registered after it (TF-015).
+import "./lib/workAttribution";
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";

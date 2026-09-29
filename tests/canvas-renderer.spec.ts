@@ -206,3 +206,27 @@ test("glyph atlas evicts unbounded unique color tiles", async ({ page }) => {
 
   expect(result).toBeLessThanOrEqual(4096);
 });
+
+test("glyph atlas draws every tile into one shared sheet (TF-015)", async ({ page }) => {
+  // One canvas per tile made each new glyph/colour ~10x costlier in WebKit's
+  // software drawing and froze terminals ~250 ms on colour-animated output.
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+
+  const result = await page.evaluate(async () => {
+    const { GlyphAtlas, measureCell } = await import("/src/lib/fontAtlas.ts");
+    const metrics = measureCell('"Geist Mono", monospace', 14, 1, 1.2);
+    const atlas = new GlyphAtlas(metrics);
+    const tiles = Array.from({ length: 300 }, (_, index) =>
+      atlas.tile(String.fromCharCode(65 + (index % 26)), `#${(index * 4099).toString(16).padStart(6, "0").slice(-6)}`, false, false),
+    );
+    const sources = new Set(tiles.map((tile) => tile.source));
+    const slots = new Set(tiles.map((tile) => `${tile.sx},${tile.sy}`));
+    // Reusing a cached tile returns the same slot.
+    const again = atlas.tile("A", tiles[0] && `#${(0).toString(16).padStart(6, "0")}`, false, false);
+    return { sources: sources.size, slots: slots.size, reused: again.sx === tiles[0].sx && again.sy === tiles[0].sy };
+  });
+
+  expect(result.sources).toBe(1);
+  expect(result.slots).toBe(300);
+  expect(result.reused).toBe(true);
+});

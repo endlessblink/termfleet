@@ -103,6 +103,18 @@ fi
 export LIBGL_ALWAYS_SOFTWARE="${LIBGL_ALWAYS_SOFTWARE:-1}"
 export WEBKIT_DISABLE_COMPOSITING_MODE="${WEBKIT_DISABLE_COMPOSITING_MODE:-1}"
 export WEBKIT_DISABLE_DMABUF_RENDERER="${WEBKIT_DISABLE_DMABUF_RENDERER:-1}"
+# The installed WebKit JIT worker thread (JITWorker) has segfaulted, taking the
+# cockpit renderer with it while the independent PTY daemon remains healthy
+# (TF-055). Turning the whole JIT off stopped that but made every script in the
+# app 3-6x slower (TF-015). Compiling on the main thread instead removes the
+# JITWorker thread entirely and keeps full JIT speed. A stale JSC_useJIT from a
+# caller is dropped; TERMFLEET_WEBKIT_NO_JIT=1 is the explicit escape hatch back
+# to the slow interpreter.
+unset JSC_useJIT
+if [[ "${TERMFLEET_WEBKIT_NO_JIT:-0}" == "1" ]]; then
+  export JSC_useJIT=false
+fi
+export JSC_useConcurrentJIT="${JSC_useConcurrentJIT:-false}"
 export TERMFLEET_DAEMON_MEMORY_HIGH="${TERMFLEET_DAEMON_MEMORY_HIGH:-12G}"
 export TERMFLEET_DAEMON_TASKS_MAX="${TERMFLEET_DAEMON_TASKS_MAX:-10000}"
 # Bound the WebKit-backed desktop group separately from the daemon. A renderer
@@ -338,6 +350,8 @@ if command -v systemd-run >/dev/null 2>&1; then
     --setenv="LIBGL_ALWAYS_SOFTWARE=$LIBGL_ALWAYS_SOFTWARE" \
     --setenv="WEBKIT_DISABLE_COMPOSITING_MODE=$WEBKIT_DISABLE_COMPOSITING_MODE" \
     --setenv="WEBKIT_DISABLE_DMABUF_RENDERER=$WEBKIT_DISABLE_DMABUF_RENDERER" \
+    --setenv="JSC_useConcurrentJIT=$JSC_useConcurrentJIT" \
+    --setenv="TERMFLEET_WEBKIT_NO_JIT=${TERMFLEET_WEBKIT_NO_JIT:-0}" \
     --setenv="TERMFLEET_DAEMON_MEMORY_HIGH=$TERMFLEET_DAEMON_MEMORY_HIGH" \
     --setenv="TERMFLEET_DAEMON_TASKS_MAX=$TERMFLEET_DAEMON_TASKS_MAX" \
     --setenv="TERMFLEET_CMD=$TERMFLEET_CMD" \

@@ -127,7 +127,10 @@ select:focus-visible,
   border: 1px solid color-mix(in srgb, var(--accent-info) 72%, var(--border-subtle));
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-warning) 42%, transparent);
   opacity: 0.5;
-  animation: termfleet-map-quest-pulse 2.4s ease-in-out infinite;
+  /* Three pulses, then a steady highlight: a looping animation over a live
+     pane forced a full software repaint every frame (~87% renderer CPU in the
+     TF-015 paint probe vs ~1% static). */
+  animation: termfleet-map-quest-pulse 2.4s ease-in-out 3;
 }
 
 .workspace-sidebar-quest-preview {
@@ -1343,7 +1346,8 @@ button:active {
   border-radius: 6px;
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-warning) 38%, transparent);
   opacity: 0.45;
-  animation: termfleet-terminal-quest-pulse 2.4s ease-in-out infinite;
+  /* Finite on purpose — see .workspace-sidebar-row quest pulse (TF-015). */
+  animation: termfleet-terminal-quest-pulse 2.4s ease-in-out 3;
 }
 
 .terminal-block-shell--quest-active > * {

@@ -76,11 +76,33 @@ export function measureCell(
   };
 }
 
+/** Where a cached glyph lives: a rectangle inside the atlas's shared sheet. */
+export interface GlyphTile {
+  source: TileCanvas;
+  sx: number;
+  sy: number;
+  width: number;
+  height: number;
+}
+
+// Tiles live in slots of ONE shared sheet canvas instead of one canvas each.
+// Measured in WebKitGTK with the dock's software drawing (TF-015): creating a
+// per-tile OffscreenCanvas cost ~0.08 ms vs ~0.01 ms to draw into a sheet slot,
+// so a burst of ~3,000 new glyph/colour pairs (a fresh screen, colour-animated
+// agent text) froze a terminal for ~250 ms; blitting from one sheet is also
+// ~40% faster per full frame. Each slot is two cells wide so wide glyphs fit.
+const SHEET_COLUMNS = 64;
+const SLOT_CELLS = 2;
+
 export class GlyphAtlas {
-  private readonly tiles = new Map<string, TileCanvas>();
+  private readonly tiles = new Map<string, GlyphTile>();
   private readonly tileW: number;
   private readonly tileH: number;
   private readonly baseline: number;
+  private sheet: TileCanvas | null = null;
+  private sheetCtx: CanvasRenderingContext2D | null = null;
+  private nextSlot = 0;
+  private readonly freeSlots: GlyphTile[] = [];
 
   constructor(private readonly metrics: CellMetrics) {
     this.tileW = Math.ceil(metrics.cellWidth * metrics.dpr);
@@ -88,6 +110,27 @@ export class GlyphAtlas {
     // Alphabetic baseline near the bottom of the cell. Empirical 0.8 keeps
     // descenders inside the tile for typical monospace fonts.
     this.baseline = Math.round(this.tileH * 0.8);
+  }
+
+  private ensureSheet(): CanvasRenderingContext2D {
+    if (!this.sheet || !this.sheetCtx) {
+      const rows = Math.ceil(MAX_GLYPH_ATLAS_TILES / SHEET_COLUMNS);
+      this.sheet = createCanvas(this.tileW * SLOT_CELLS * SHEET_COLUMNS, this.tileH * rows);
+      this.sheetCtx = tileContext(this.sheet);
+    }
+    return this.sheetCtx;
+  }
+
+  /** A free slot: a fresh one while the sheet has room, else one released by eviction. */
+  private takeSlot(): { sx: number; sy: number } {
+    const reused = this.freeSlots.pop();
+    if (reused) return { sx: reused.sx, sy: reused.sy };
+    const index = this.nextSlot;
+    this.nextSlot += 1;
+    return {
+      sx: (index % SHEET_COLUMNS) * this.tileW * SLOT_CELLS,
+      sy: Math.floor(index / SHEET_COLUMNS) * this.tileH,
+    };
   }
 
   get cellWidth(): number {
@@ -111,8 +154,8 @@ export class GlyphAtlas {
   }
 
   /** Get (rasterizing on first use) the tile for a glyph in a given color/style. */
-  tile(char: string, fg: string, bold: boolean, italic: boolean, widthCells = 1): TileCanvas {
-    const tileCells = Math.max(1, Math.ceil(widthCells));
+  tile(char: string, fg: string, bold: boolean, italic: boolean, widthCells = 1): GlyphTile {
+    const tileCells = Math.min(SLOT_CELLS, Math.max(1, Math.ceil(widthCells)));
     const key = this.key(char, fg, bold, italic, tileCells);
     const cached = this.tiles.get(key);
     if (cached) {
@@ -123,31 +166,44 @@ export class GlyphAtlas {
       return cached;
     }
 
-    const canvas = createCanvas(this.tileW * tileCells, this.tileH);
-    const ctx = tileContext(canvas);
+    // Evict before allocating so the sheet never needs more than the cap.
+    while (this.tiles.size >= MAX_GLYPH_ATLAS_TILES) {
+      const oldest = this.tiles.keys().next();
+      if (oldest.done) break;
+      const evicted = this.tiles.get(oldest.value);
+      this.tiles.delete(oldest.value);
+      if (evicted) this.freeSlots.push(evicted);
+    }
+
+    const ctx = this.ensureSheet();
+    const { sx, sy } = this.takeSlot();
+    const width = this.tileW * tileCells;
     const m = this.metrics;
     const weight = bold ? "700" : "400";
     const style = italic ? "italic " : "";
+    ctx.save();
+    // Clip to the slot: glyph overhang must never bleed into a neighbour slot.
+    ctx.beginPath();
+    ctx.rect(sx, sy, this.tileW * SLOT_CELLS, this.tileH);
+    ctx.clip();
+    ctx.clearRect(sx, sy, this.tileW * SLOT_CELLS, this.tileH);
     ctx.font = `${style}${weight} ${m.fontSizePx * m.dpr}px ${m.fontFamily}`;
     ctx.textBaseline = "alphabetic";
     ctx.fillStyle = fg;
-    ctx.fillText(char, 0, this.baseline);
+    ctx.fillText(char, sx, sy + this.baseline);
     // Synthetic medium weight: stroke the glyph in its own color to thicken
     // stems. Baked once into the device-resolution tile, so it stays crisp.
     if (m.weightBoostPx > 0) {
       ctx.strokeStyle = fg;
       ctx.lineWidth = m.weightBoostPx;
       ctx.lineJoin = "round";
-      ctx.strokeText(char, 0, this.baseline);
+      ctx.strokeText(char, sx, sy + this.baseline);
     }
+    ctx.restore();
 
-    this.tiles.set(key, canvas);
-    while (this.tiles.size > MAX_GLYPH_ATLAS_TILES) {
-      const oldest = this.tiles.keys().next().value;
-      if (typeof oldest !== "string") break;
-      this.tiles.delete(oldest);
-    }
-    return canvas;
+    const tile: GlyphTile = { source: this.sheet as TileCanvas, sx, sy, width, height: this.tileH };
+    this.tiles.set(key, tile);
+    return tile;
   }
 
   /** Number of cached tiles (for diagnostics/tests). */

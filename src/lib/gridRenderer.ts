@@ -174,7 +174,7 @@ function drawRow(
       } else {
         const widthCells = cell.wide ? 2 : 1;
         const tile = atlas.tile(cell.c, fg, Boolean(cell.bold), Boolean(cell.italic), widthCells);
-        ctx.drawImage(tile as CanvasImageSource, x, y);
+        ctx.drawImage(tile.source as CanvasImageSource, tile.sx, tile.sy, tile.width, tile.height, x, y, tile.width, tile.height);
       }
     }
 

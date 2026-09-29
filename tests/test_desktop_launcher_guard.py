@@ -150,6 +150,21 @@ class DesktopLauncherGuardTests(unittest.TestCase):
         )
         self.assertIn('--setenv="WEBKIT_DISABLE_DMABUF_RENDERER=$WEBKIT_DISABLE_DMABUF_RENDERER"', script)
 
+    def test_desktop_launch_keeps_jit_but_drops_the_crashing_worker(self):
+        # TF-055 crashed in JavaScriptCore's JITWorker thread. Turning the whole
+        # JIT off (JSC_useJIT=false) made all app code 3-6x slower (TF-015).
+        # Compiling on the main thread removes the JITWorker thread entirely
+        # while keeping full JIT speed.
+        script = LAUNCHER.read_text()
+        self.assertIn('export JSC_useConcurrentJIT="${JSC_useConcurrentJIT:-false}"', script)
+        self.assertIn('--setenv="JSC_useConcurrentJIT=$JSC_useConcurrentJIT"', script)
+        self.assertNotIn('export JSC_useJIT="${JSC_useJIT:-false}"', script)
+        self.assertNotIn('--setenv="JSC_useJIT=$JSC_useJIT"', script)
+        # A stale JSC_useJIT=false inherited from a caller must not silently
+        # bring back the slow interpreter; only the explicit escape hatch may.
+        self.assertIn('unset JSC_useJIT', script)
+        self.assertIn('TERMFLEET_WEBKIT_NO_JIT', script)
+
     def test_desktop_unit_kills_webkit_children_with_the_ui(self):
         script = LAUNCHER.read_text()
         self.assertIn("-p KillMode=control-group", script)
