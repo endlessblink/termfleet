@@ -87,8 +87,8 @@ test("reads return the newest pending value", () => {
 
 test("large values get a longer interval (per-key byte budget)", () => {
   expect(writeIntervalMs(10)).toBe(2_000);
-  expect(writeIntervalMs(500_000)).toBe(500_000);
-  expect(writeIntervalMs(50_000_000)).toBe(15 * 60_000);
+  expect(writeIntervalMs(500_000)).toBe(2_500_000);
+  expect(writeIntervalMs(50_000_000)).toBe(60 * 60_000);
 });
 
 test("the quest-progress pattern stays within budget: 1 MB saved every second for 10 minutes", () => {
@@ -99,7 +99,7 @@ test("the quest-progress pattern stays within budget: 1 MB saved every second fo
     h.advance(1_000);
   }
   const totalMb = h.writes.reduce((sum, w) => sum + w.bytes, 0) / 1e6;
-  // Unguarded: 600 MB. Guarded: first write, then one per 15 minutes (the cap).
+  // Unguarded: 600 MB. Guarded: the first write only within 10 minutes.
   expect(totalMb).toBeLessThanOrEqual(2);
   expect(h.governor.getItem("termfleet.gamification.v6")?.startsWith("599")).toBe(true);
 });
@@ -163,4 +163,19 @@ test("the browser preview keeps plain storage; only the desktop app is governed"
   const source = readFileSync(path.join(process.cwd(), "src/lib/storageGovernor.ts"), "utf8");
   const install = source.slice(source.indexOf("export function installStorageGovernor"));
   expect(install).toContain('if (!("__TAURI_INTERNALS__" in window)) return;');
+});
+
+test("a long session stays within the daily log budget (2026-09-29: 96 MB in 5.5 h at the old budget)", () => {
+  const h = harness();
+  const workspace = (n: number) => `${n}`.padEnd(260_000, "w");
+  const quest = (n: number) => `${n}`.padEnd(545_000, "q");
+  // 24 hours: the workspace changes every second, the quest record every second.
+  for (let second = 0; second < 24 * 3600; second += 1) {
+    h.governor.setItem("terminal-workspace.v1", workspace(second));
+    h.governor.setItem("termfleet.gamification.v6", quest(second));
+    h.advance(1_000);
+  }
+  const totalMb = h.writes.reduce((sum, w) => sum + w.bytes, 0) / 1e6;
+  // SQLite logs ~2x the value size; the launcher folds the log back each launch.
+  expect(totalMb * 2).toBeLessThanOrEqual(80);
 });

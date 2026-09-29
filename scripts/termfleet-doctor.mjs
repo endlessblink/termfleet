@@ -132,9 +132,9 @@ if (existsSync(webviewStorageDir)) {
     }
   }
   const mb = (logBytes / 1048576).toFixed(1);
-  if (logBytes > 256 * 1048576) {
+  if (logBytes > 1024 * 1048576) {
     report("fail", "Webview storage log", `${mb} MB — something is saving far too often; close and reopen the cockpit to fold it back, then check storage-coalesced records`);
-  } else if (logBytes > 64 * 1048576) {
+  } else if (logBytes > 256 * 1048576) {
     report("warn", "Webview storage log", `${mb} MB and growing while the cockpit runs; it is folded back at the next launch`);
   } else {
     report("ok", "Webview storage log", `${mb} MB (folded back at every launch when over 16 MB)`);

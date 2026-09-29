@@ -21,11 +21,15 @@
 const MIN_INTERVAL_MS = 2_000;
 // Per-key sustained write budget. WebKit holds a read snapshot on this database
 // for the whole session, so its write log can only be folded back at the next
-// launch: every byte written while running stays on disk until then. 1 KB/s per
-// key keeps a multi-day session in the low hundreds of MB; a 0.5 MB record saves
-// every ~8 minutes, and every pending value is still written on close.
-const BYTES_PER_SECOND_BUDGET = 1_000;
-const MAX_INTERVAL_MS = 15 * 60_000;
+// launch: every byte written while running stays on disk until then (and SQLite
+// writes ~2x the value size). At 1 KB/s per key a 5.5 h session still grew the
+// log to ~96 MB (2026-09-29), so the budget is 200 B/s: the ~0.26 MB workspace
+// cache saves every ~22 min (the desktop reloads the authoritative disk layout
+// at startup anyway), the ~0.55 MB quest record every ~45 min, and every
+// pending value is still written on close. Expected log growth: ~70 MB/day,
+// folded back at every launch.
+const BYTES_PER_SECOND_BUDGET = 200;
+const MAX_INTERVAL_MS = 60 * 60_000;
 
 export type StorageLike = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
