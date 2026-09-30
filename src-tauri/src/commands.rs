@@ -2043,6 +2043,11 @@ pub async fn clipboard_read_text(corr_id: Option<String>) -> Result<String, Stri
 #[tauri::command]
 pub async fn clipboard_write_text(text: String, corr_id: Option<String>) -> Result<(), String> {
     use tokio::io::AsyncWriteExt;
+    // One write at a time. Concurrent writes each start a clipboard tool that
+    // grabs ownership, and whichever finishes last wins — a burst of ~20 left the
+    // clipboard holding stale or empty text (2026-09-30).
+    static CLIPBOARD_WRITE_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+    let _serialized = CLIPBOARD_WRITE_LOCK.lock().await;
     let cid = corr_id.unwrap_or_default();
     let attempts: [(&str, &[&str]); 3] = [
         ("wl-copy", &[]),

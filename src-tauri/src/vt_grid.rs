@@ -35,11 +35,23 @@ pub struct Osc52ClipboardCopy {
 #[derive(Clone, Default)]
 struct TerminalEventListener {
     clipboard_copy: Arc<Mutex<Option<Channel<Osc52ClipboardCopy>>>>,
+    /// True while a daemon snapshot (the pane's saved history) is being replayed.
+    /// History contains every OSC 52 copy an agent ever made; re-running them on
+    /// each reattach (e.g. clicking a pane in the sidebar) fired bursts of ~20
+    /// stale clipboard writes and wiped what the operator had just copied
+    /// (2026-09-30). Only copies from live output reach the clipboard.
+    replaying_history: Arc<AtomicBool>,
+    /// Count of copies passed on (diagnostics and tests).
+    copies_forwarded: Arc<std::sync::atomic::AtomicUsize>,
 }
 
 impl EventListener for TerminalEventListener {
     fn send_event(&self, event: Event) {
+        if self.replaying_history.load(Ordering::Relaxed) {
+            return;
+        }
         if let Some(text) = osc52_clipboard_copy_text(event) {
+            self.copies_forwarded.fetch_add(1, Ordering::Relaxed);
             if let Ok(channel) = self.clipboard_copy.lock() {
                 if let Some(channel) = channel.as_ref() {
                     let _ = channel.send(Osc52ClipboardCopy { text });
@@ -112,6 +124,8 @@ impl Dimensions for GridDims {
 struct TermState {
     term: Term<TerminalEventListener>,
     clipboard_copy: Arc<Mutex<Option<Channel<Osc52ClipboardCopy>>>>,
+    replaying_history: Arc<AtomicBool>,
+    copies_forwarded: Arc<std::sync::atomic::AtomicUsize>,
     parser: Processor,
     alternate_scroll_touched: bool,
     mode_scan_tail: Vec<u8>,
@@ -162,14 +176,22 @@ impl TermState {
     fn new(cols: usize, rows: usize) -> Self {
         let dims = GridDims { cols, rows };
         let clipboard_copy = Arc::new(Mutex::new(None));
+        let replaying_history = Arc::new(AtomicBool::new(false));
+        let copies_forwarded = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let term = Term::new(
             Config { osc52: Osc52::OnlyCopy, ..Config::default() },
             &dims,
-            TerminalEventListener { clipboard_copy: Arc::clone(&clipboard_copy) },
+            TerminalEventListener {
+                clipboard_copy: Arc::clone(&clipboard_copy),
+                replaying_history: Arc::clone(&replaying_history),
+                copies_forwarded: Arc::clone(&copies_forwarded),
+            },
         );
         Self {
             term,
             clipboard_copy,
+            replaying_history,
+            copies_forwarded,
             parser: Processor::new(),
             alternate_scroll_touched: false,
             mode_scan_tail: Vec::new(),
@@ -178,6 +200,14 @@ impl TermState {
             revision: 1,
             sync_output_since: None,
         }
+    }
+
+    /// Feed saved history (a daemon snapshot): rebuild the screen, but side
+    /// effects such as OSC 52 clipboard copies are not re-run.
+    fn feed_history(&mut self, bytes: &[u8]) {
+        self.replaying_history.store(true, Ordering::Relaxed);
+        self.feed(bytes);
+        self.replaying_history.store(false, Ordering::Relaxed);
     }
 
     fn feed(&mut self, bytes: &[u8]) {
@@ -296,7 +326,11 @@ impl TermState {
         self.term = Term::new(
             Config { osc52: Osc52::OnlyCopy, ..Config::default() },
             &dims,
-            TerminalEventListener { clipboard_copy: Arc::clone(&self.clipboard_copy) },
+            TerminalEventListener {
+                clipboard_copy: Arc::clone(&self.clipboard_copy),
+                replaying_history: Arc::clone(&self.replaying_history),
+                copies_forwarded: Arc::clone(&self.copies_forwarded),
+            },
         );
         self.parser = Processor::new();
         self.mode_scan_tail.clear();
@@ -861,7 +895,7 @@ fn feed_grid_from_daemon(
                 // grid atomically instead of stacking a duplicate scrollback.
                 let mut state = state.write().map_err(|_| "grid state poisoned")?;
                 state.reset();
-                state.feed(data.as_bytes());
+                state.feed_history(data.as_bytes());
             }
             DaemonResponse::SessionData { data } => {
                 let mut state = state.write().map_err(|_| "grid state poisoned")?;
@@ -1574,6 +1608,24 @@ mod tests {
             )),
             None
         );
+    }
+
+    #[test]
+    fn replayed_history_never_rewrites_the_clipboard_but_live_output_does() {
+        // 2026-09-30: every reattach replayed each old OSC 52 copy in a pane's
+        // history, firing ~20 stale clipboard writes and wiping the operator's copy.
+        let osc52 = "before\x1b]52;c;c3RhbGUgY29weQ==\x07after\r\n"; // "stale copy"
+        let mut state = TermState::new(DEFAULT_COLS, DEFAULT_ROWS);
+        state.reset(); // the live path resets before every snapshot replay
+        state.feed_history(osc52.as_bytes());
+        assert_eq!(state.copies_forwarded.load(Ordering::Relaxed), 0, "history replay copied");
+        assert!(!state.replaying_history.load(Ordering::Relaxed), "replay flag left set");
+        let screen = GridSnapshot::capture(&state.term);
+        let text: String = screen.cells[0].iter().map(|cell| cell.c.as_str()).collect();
+        assert!(text.starts_with("beforeafter"), "history still renders: {text:?}");
+
+        state.feed(b"\x1b]52;c;bGl2ZSBjb3B5\x07"); // "live copy"
+        assert_eq!(state.copies_forwarded.load(Ordering::Relaxed), 1, "live copy was dropped");
     }
 
     fn feed(bytes: &str) -> GridSnapshot {

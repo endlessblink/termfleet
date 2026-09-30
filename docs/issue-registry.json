@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-09-29T15:26:56.893Z",
+  "updatedAt": "2026-09-30T16:55:14.780Z",
   "issues": [
     {
       "id": "TF-001",
@@ -8839,6 +8839,50 @@
           "type": "evidence",
           "kind": "source",
           "note": "2026-09-29 13:03 live: operator says scroll-while-selecting now works but paste is wrong. paste-debug.log shows Claude's copies DO arrive via OSC 52 and xclip writes succeed, but only 62/83 chars (one wrapped line: 'The local H3 video nodes are loaded...'). Earlier 12:53 attempt had Shift held (wheel deltaX, local selection). Added per-drag route logging (dragroute: app/local, modes, rows, motion report count) in release for the next attempt."
+        }
+      ]
+    },
+    {
+      "id": "TF-067",
+      "title": "Reattaching a pane replays old clipboard copies and wipes the operator's clipboard",
+      "state": "reported",
+      "severity": "medium",
+      "surface": "desktop-runtime",
+      "matrixRefs": [],
+      "symptom": "Copy/paste unreliable: clicking a pane in the sidebar fired bursts of ~20 stale OSC 52 clipboard writes from the pane's history; the last writer won and a paste seconds later read an empty clipboard",
+      "rootCause": "",
+      "guard": "cargo test --lib replayed_history_never_rewrites_the_clipboard_but_live_output_does; serialized clipboard_write_text",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-09-30T16:55:14.740Z",
+          "note": "paste-debug.log 2026-09-30 19:49-19:52: 12 bursts of 4-15 clipboard writes, each within ~1 s of a sidebar-focus map jump; a Ctrl+V at 19:51:59 read len=0. Cause: vt_grid replays the daemon snapshot (full history) on every reattach and alacritty re-emits each historical OSC 52 ClipboardStore; the frontend wrote each one via concurrent xclip spawns. Fix: TermState.feed_history suppresses listener events during snapshot replay (flag shared across reset()); clipboard_write_text serialized with a tokio mutex."
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-09-30T16:55:14.780Z",
+          "note": "New Rust test replayed_history_never_rewrites_the_clipboard_but_live_output_does fails with the suppression disabled, passes with it; vt_grid tests 48/48."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Promote the UI release, then check paste-debug.log shows no write bursts on sidebar focus",
+      "history": [
+        {
+          "at": "2026-09-30T16:55:14.654Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-09-30T16:55:14.741Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "paste-debug.log 2026-09-30 19:49-19:52: 12 bursts of 4-15 clipboard writes, each within ~1 s of a sidebar-focus map jump; a Ctrl+V at 19:51:59 read len=0. Cause: vt_grid replays the daemon snapshot (full history) on every reattach and alacritty re-emits each historical OSC 52 ClipboardStore; the frontend wrote each one via concurrent xclip spawns. Fix: TermState.feed_history suppresses listener events during snapshot replay (flag shared across reset()); clipboard_write_text serialized with a tokio mutex."
+        },
+        {
+          "at": "2026-09-30T16:55:14.780Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "New Rust test replayed_history_never_rewrites_the_clipboard_but_live_output_does fails with the suppression disabled, passes with it; vt_grid tests 48/48."
         }
       ]
     }
