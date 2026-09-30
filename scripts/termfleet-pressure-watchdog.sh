@@ -4,6 +4,7 @@ set -euo pipefail
 STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/termfleet"
 source "$(dirname "${BASH_SOURCE[0]}")/termfleet-incident-log.sh"
 ALERT_LOG="$STATE_DIR/pressure-alerts.log"
+DESKTOP_SAMPLE_RETENTION_MINUTES="${TERMFLEET_DESKTOP_SAMPLE_RETENTION_MINUTES:-2880}"
 PROMPT_FILE="$STATE_DIR/pressure-alert.prompt"
 LOCK_FILE="$STATE_DIR/pressure-watchdog.lock"
 INTERVAL_SECONDS="${TERMFLEET_PRESSURE_WATCHDOG_INTERVAL:-5}"
@@ -25,11 +26,14 @@ HOST_PRESSURE_CONFIRMATIONS="${TERMFLEET_PRESSURE_WATCHDOG_HOST_PRESSURE_CONFIRM
 DESKTOP_BLOCKED_IO_THRESHOLD="${TERMFLEET_PRESSURE_WATCHDOG_DESKTOP_BLOCKED_IO_THRESHOLD:-20}"
 AUDIT_SCRIPT="${TERMFLEET_PRESSURE_AUDIT_SCRIPT:-$HOME/.local/bin/termfleet-system-audit}"
 AUDIT_TIMEOUT_SECONDS="${TERMFLEET_PRESSURE_AUDIT_TIMEOUT_SECONDS:-15}"
+INCIDENT_CAPTURE_SCRIPT="${TERMFLEET_INCIDENT_CAPTURE_SCRIPT:-$(dirname "${BASH_SOURCE[0]}")/termfleet-capture-desktop-incident.sh}"
+INCIDENT_CAPTURE_TIMEOUT_SECONDS="${TERMFLEET_INCIDENT_CAPTURE_TIMEOUT_SECONDS:-6}"
 LOAD_SHED_SCRIPT="${TERMFLEET_LOAD_SHED_SCRIPT:-$HOME/.local/bin/termfleet-load-shed}"
 LOAD_SHED_TIMEOUT_SECONDS="${TERMFLEET_LOAD_SHED_TIMEOUT_SECONDS:-10}"
 RECOVERY_COOLDOWN_SECONDS="${TERMFLEET_PRESSURE_WATCHDOG_RECOVERY_COOLDOWN:-120}"
 NOTIFY_REPLACE_ID="${TERMFLEET_PRESSURE_WATCHDOG_NOTIFY_ID:-4242}"
 RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$UID}"
+WATCHDOG_HEARTBEAT="$RUNTIME_DIR/termfleet/pressure-watchdog.heartbeat"
 last_alert_epoch=0
 last_host_alert_epoch=0
 last_recovery_epoch=0
@@ -40,6 +44,14 @@ webkit_missing_count=0
 desktop_blocked_count=0
 host_memory_pressure_count=0
 host_io_pressure_count=0
+
+record_watchdog_heartbeat() {
+  local stage="$1" tmp
+  mkdir -p "$RUNTIME_DIR/termfleet" 2>/dev/null || return 0
+  tmp="$WATCHDOG_HEARTBEAT.$$"
+  printf '%s\t%s\t%s\n' "$(date --iso-8601=seconds)" "$stage" "$$" >"$tmp" 2>/dev/null || return 0
+  mv -f -- "$tmp" "$WATCHDOG_HEARTBEAT" 2>/dev/null || rm -f -- "$tmp"
+}
 
 is_production_desktop() {
   local pid="$1"
@@ -54,6 +66,76 @@ flock -n 9 || exit 0
 
 read_psi_avg10() {
   awk '/^some / { for (i = 1; i <= NF; i++) if ($i ~ /^avg10=/) { sub("avg10=", "", $i); print $i; exit } }' "$1" 2>/dev/null || printf '0\n'
+}
+
+prune_desktop_samples() {
+  find "$STATE_DIR" -maxdepth 1 -type f -name 'desktop-samples-*.tsv' \
+    -mmin "+$DESKTOP_SAMPLE_RETENTION_MINUTES" -delete 2>/dev/null || true
+}
+
+read_proc_state_and_ticks() {
+  local pid="$1"
+  [[ "$pid" =~ ^[0-9]+$ && -r "/proc/$pid/stat" ]] || { printf 'gone 0\n'; return 0; }
+  awk '{ sub(/^.*\) /, ""); print $1, $12 + $13 }' "/proc/$pid/stat" 2>/dev/null || printf 'gone 0\n'
+}
+
+read_top_threads() {
+  local pid="$1"
+  [[ "$pid" =~ ^[0-9]+$ && -r "/proc/$pid/task" ]] || { printf 'absent\n'; return 0; }
+  ps -L -p "$pid" -o tid=,stat=,pcpu=,wchan:24= --sort=-pcpu 2>/dev/null |
+    awk 'NR <= 3 { gsub(/[[:space:]]/, "", $4); printf "%s%s:%s:%s:%s", separator, $1, $2, $3, ($4 == "" ? "unknown" : $4); separator = "," } END { if (NR == 0) print "absent"; else print "" }'
+}
+
+record_desktop_sample() {
+  local ui_pid="$1" webkit_process_pid="$2" cgroup_path="$3"
+
+  local timestamp sample_file ui_metrics webkit_metrics ui_state ui_ticks webkit_state webkit_ticks
+  local ui_threads webkit_threads
+  local host_cpu host_io host_io_full cgroup_cpu cgroup_cpu_full cgroup_io cgroup_io_full
+  timestamp="$(date --iso-8601=seconds)"
+  sample_file="$STATE_DIR/desktop-samples-$(date -u +%F).tsv"
+  if [[ "$ui_pid" =~ ^[0-9]+$ && -r "/proc/$ui_pid/stat" ]]; then
+    ui_metrics="$(read_proc_state_and_ticks "$ui_pid")"
+  else
+    ui_pid=0
+    ui_metrics="absent 0"
+    cgroup_path=""
+  fi
+  read -r ui_state ui_ticks <<<"$ui_metrics"
+  if [[ "$webkit_process_pid" =~ ^[0-9]+$ && -r "/proc/$webkit_process_pid/stat" ]]; then
+    webkit_metrics="$(read_proc_state_and_ticks "$webkit_process_pid")"
+  else
+    webkit_process_pid=0
+    webkit_metrics="absent 0"
+  fi
+  read -r webkit_state webkit_ticks <<<"$webkit_metrics"
+  ui_threads="$(read_top_threads "$ui_pid")"
+  webkit_threads="$(read_top_threads "$webkit_process_pid")"
+  host_cpu="$(read_psi_avg10 /proc/pressure/cpu)"
+  host_io="$(read_psi_avg10 /proc/pressure/io)"
+  host_io_full="$(awk '/^full / { for (i = 1; i <= NF; i++) if ($i ~ /^avg10=/) { sub("avg10=", "", $i); print $i; exit } }' /proc/pressure/io 2>/dev/null || printf '0')"
+  cgroup_cpu=0
+  cgroup_cpu_full=0
+  cgroup_io=0
+  cgroup_io_full=0
+  if [[ -n "$cgroup_path" ]]; then
+    cgroup_cpu="$(read_psi_avg10 "/sys/fs/cgroup${cgroup_path}/cpu.pressure")"
+    cgroup_cpu_full="$(awk '/^full / { for (i = 1; i <= NF; i++) if ($i ~ /^avg10=/) { sub("avg10=", "", $i); print $i; exit } }' "/sys/fs/cgroup${cgroup_path}/cpu.pressure" 2>/dev/null || printf '0')"
+    cgroup_io="$(read_psi_avg10 "/sys/fs/cgroup${cgroup_path}/io.pressure")"
+    cgroup_io_full="$(awk '/^full / { for (i = 1; i <= NF; i++) if ($i ~ /^avg10=/) { sub("avg10=", "", $i); print $i; exit } }' "/sys/fs/cgroup${cgroup_path}/io.pressure" 2>/dev/null || printf '0')"
+  fi
+  local sample_header
+  sample_header='timestamp\tui_pid\tui_state\tui_cpu_ticks\twebkit_pid\twebkit_state\twebkit_cpu_ticks\thost_cpu_some_avg10\thost_io_some_avg10\thost_io_full_avg10\tcgroup_cpu_some_avg10\tcgroup_cpu_full_avg10\tcgroup_io_some_avg10\tcgroup_io_full_avg10\tui_threads_top3\twebkit_threads_top3'
+  if [[ -e "$sample_file" ]] && [[ "$(head -n 1 "$sample_file")" != "$(printf '%b' "$sample_header")" ]]; then
+    mv -- "$sample_file" "${sample_file%.tsv}.schema-$(date -u +%H%M%S).tsv"
+  fi
+  if [[ ! -e "$sample_file" ]]; then
+    printf '%b\n' "$sample_header" >"$sample_file"
+  fi
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    "$timestamp" "$ui_pid" "$ui_state" "$ui_ticks" "$webkit_process_pid" "$webkit_state" "$webkit_ticks" \
+    "$host_cpu" "$host_io" "$host_io_full" "$cgroup_cpu" "$cgroup_cpu_full" "$cgroup_io" "$cgroup_io_full" \
+    "$ui_threads" "$webkit_threads" >>"$sample_file"
 }
 
 cockpit_heartbeat_age_seconds() {
@@ -99,6 +181,7 @@ run_load_shed() {
 }
 
 while :; do
+  record_watchdog_heartbeat loop-start
   desktop_info=""
   while read -r candidate_pid; do
     [[ -n "$candidate_pid" ]] || continue
@@ -111,6 +194,7 @@ while :; do
     fi
   done < <(pgrep -u "$UID" -x termfleet 2>/dev/null || true)
   IFS='|' read -r desktop_pid desktop_pgid desktop_state desktop_rss desktop_age_seconds <<<"$desktop_info"
+  record_watchdog_heartbeat desktop-discovered
   # Only inspect a WebKit renderer owned by the selected production desktop.
   # A host-wide first-match can mistake another WebKit app's blocked renderer
   # for TermFleet pressure and trigger an unrelated desktop recycle.
@@ -119,6 +203,12 @@ while :; do
     webkit_info="$(ps -eo pid=,ppid=,pgid=,state=,rss=,args= | awk -v pgid="$desktop_pgid" '$3 == pgid && $6 ~ /WebKitWebProcess/ { print $1 "|" $3 "|" $4 "|" $5; exit }')"
   fi
   IFS='|' read -r webkit_pid webkit_pgid webkit_state webkit_rss <<<"$webkit_info"
+  cgroup_path="$(awk -F: '$1 == "0" { print $3; exit }' "/proc/$desktop_pid/cgroup" 2>/dev/null || true)"
+  record_desktop_sample "$desktop_pid" "$webkit_pid" "$cgroup_path"
+  record_watchdog_heartbeat desktop-sampled
+  if (( sample_counter % 12 == 0 )); then
+    prune_desktop_samples
+  fi
   memory_psi="$(read_psi_avg10 /proc/pressure/memory)"
   io_psi="$(read_psi_avg10 /proc/pressure/io)"
   memory_available_kb="$(awk '/^MemAvailable:/ { print $2; exit }' /proc/meminfo)"
@@ -196,6 +286,17 @@ while :; do
     detail="io_psi_avg10=$io_psi"
   fi
 
+  incident_snapshot_attempted=0
+  if [[ -n "$reason" && "$last_incident_reason" != "$reason" && "$desktop_pid" =~ ^[0-9]+$ && ( "$reason" == webkit-blocked || "$reason" == webkit-missing || "$reason" == desktop-blocked || "$reason" == cockpit-heartbeat-stale ) ]]; then
+    # Capture before the watchdog writes incident records to the same ext4
+    # volume that may have blocked the desktop in jbd2_log_wait_commit.
+    incident_snapshot_attempted=1
+    if [[ -x "$INCIDENT_CAPTURE_SCRIPT" ]]; then
+      timeout "$INCIDENT_CAPTURE_TIMEOUT_SECONDS" "$INCIDENT_CAPTURE_SCRIPT" \
+        "$desktop_pid" "$desktop_pgid" "$reason" >/dev/null 2>&1 || true
+    fi
+  fi
+
   if (( sample_counter >= 12 )); then
     termfleet_incident_record "pressure_sample" "${reason:-normal}" "$incident_details"
     sample_counter=0
@@ -254,6 +355,12 @@ while :; do
       if (( recovery_planned == 1 )); then
         printf '%s recovery=desktop-group-%s daemon=preserved\n' "$timestamp" "$recovery_pgid" >>"$ALERT_LOG"
         termfleet_incident_record "desktop_recovery" "$reason" "recovery_pgid=$recovery_pgid daemon=preserved $incident_details"
+        # If the transition was logged before the recovery gate allowed a
+        # recycle, fall back to a last-moment snapshot before signaling the UI.
+        if (( incident_snapshot_attempted == 0 )) && [[ -x "$INCIDENT_CAPTURE_SCRIPT" && "$desktop_pid" =~ ^[0-9]+$ ]]; then
+          timeout "$INCIDENT_CAPTURE_TIMEOUT_SECONDS" "$INCIDENT_CAPTURE_SCRIPT" \
+            "$desktop_pid" "$recovery_pgid" "$reason" >/dev/null 2>&1 || true
+        fi
         kill -- "-$recovery_pgid" 2>>"$ALERT_LOG" || true
         sleep 1
         "$DESKTOP_LAUNCHER" --agent >>"$ALERT_LOG" 2>&1 &

@@ -317,17 +317,27 @@ class InstalledReleaseTests(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("window identity", result.stderr)
 
-    def test_dock_launcher_reuses_an_existing_termfleet_window(self):
+    def test_dock_launcher_ignores_a_stale_inherited_release_command(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = pathlib.Path(tmp)
             install_root, command, _, _, _ = self.make_release(root)
+            stale_release = root / "stale" / "termfleet"
+            stale_release.parent.mkdir()
+            stale_release.write_text("#!/usr/bin/env bash\nexit 99\n")
+            stale_release.chmod(0o755)
+            home = root / "home"
+            dock_bin = home / ".local" / "bin"
+            dock_bin.mkdir(parents=True)
+            (dock_bin / "termfleet").symlink_to(command)
             fake_bin = root / "fake-bin"
             fake_bin.mkdir()
             (fake_bin / "pgrep").write_text("#!/usr/bin/env bash\nprintf '123\\n'\n")
             (fake_bin / "pgrep").chmod(0o755)
             focus_marker = root / "focused"
             (fake_bin / "wmctrl").write_text(
-                "#!/usr/bin/env bash\nprintf '%s\\n' \"$*\" >\"$FOCUS_MARKER\"\n"
+                "#!/usr/bin/env bash\n"
+                "if [[ \"$1\" == '-l' ]]; then printf '0x1 0 host TermFleet\\n'; "
+                "else printf '%s\\n' \"$*\" >\"$FOCUS_MARKER\"; fi\n"
             )
             (fake_bin / "wmctrl").chmod(0o755)
 
@@ -336,7 +346,8 @@ class InstalledReleaseTests(unittest.TestCase):
                 env={
                     **os.environ,
                     "PATH": f"{fake_bin}:{os.environ['PATH']}",
-                    "TERMFLEET_CMD": str(command),
+                    "HOME": str(home),
+                    "TERMFLEET_CMD": str(stale_release),
                     "TERMFLEET_INSTALL_ROOT": str(install_root),
                     "TERMFLEET_TMPDIR": str(root / "tmp"),
                     "XDG_STATE_HOME": str(root / "state"),

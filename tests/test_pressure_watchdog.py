@@ -1,8 +1,12 @@
 """Static safety checks for the host-pressure watchdog."""
 
 import pathlib
+import os
 import subprocess
+import tempfile
+import time
 import unittest
+from datetime import date, timedelta
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -11,9 +15,189 @@ INSTALLER = ROOT / "scripts" / "install-pressure-watchdog.sh"
 LOAD_SHED = ROOT / "scripts" / "termfleet-load-shed.sh"
 SERVICE = ROOT / "systemd" / "termfleet-pressure-watchdog.service"
 INCIDENT_HELPER = ROOT / "scripts" / "termfleet-incident-log.sh"
+INCIDENT_SNAPSHOT = ROOT / "scripts" / "termfleet-capture-desktop-incident.sh"
 
 
 class PressureWatchdogTests(unittest.TestCase):
+    def test_watchdog_writes_atomic_progress_heartbeat_to_runtime_storage(self):
+        script = WATCHDOG.read_text()
+        helper = script.split("record_watchdog_heartbeat() {", 1)[1].split("\nis_production_desktop() {", 1)[0]
+        shell = "record_watchdog_heartbeat() {" + helper
+
+        with tempfile.TemporaryDirectory() as runtime_dir:
+            subprocess.run(
+                ["bash", "-c", shell + '\nrecord_watchdog_heartbeat loop-start\nrecord_watchdog_heartbeat desktop-sampled'],
+                env={**os.environ, "RUNTIME_DIR": runtime_dir, "WATCHDOG_HEARTBEAT": f"{runtime_dir}/termfleet/pressure-watchdog.heartbeat"},
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=10,
+            )
+            heartbeat = pathlib.Path(runtime_dir) / "termfleet" / "pressure-watchdog.heartbeat"
+            fields = heartbeat.read_text().strip().split("\t")
+            self.assertEqual(fields[1], "desktop-sampled")
+            self.assertRegex(fields[0], r"^\d{4}-\d\d-\d\dT")
+            self.assertRegex(fields[2], r"^\d+$")
+            self.assertEqual(list(heartbeat.parent.iterdir()), [heartbeat])
+
+    def test_installer_deploys_the_current_continuous_sampler(self):
+        with tempfile.TemporaryDirectory() as home:
+            (pathlib.Path(home) / ".local" / "bin").mkdir(parents=True)
+            env = {
+                **os.environ,
+                "HOME": home,
+                "XDG_DATA_HOME": str(pathlib.Path(home) / ".local" / "share"),
+                "XDG_CONFIG_HOME": str(pathlib.Path(home) / ".config"),
+                "XDG_RUNTIME_DIR": str(pathlib.Path(home) / ".runtime"),
+                "TERMFLEET_PRESSURE_WATCHDOG_FILES_ONLY": "1",
+            }
+            env.pop("DBUS_SESSION_BUS_ADDRESS", None)
+            result = subprocess.run(
+                ["bash", str(INSTALLER)],
+                cwd=ROOT,
+                env=env,
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=10,
+            )
+            self.assertIn("files-only (service not restarted)", result.stdout)
+            self.assertNotIn("systemctl", result.stdout)
+            installed = pathlib.Path(home) / ".local" / "share" / "termfleet" / "libexec" / "termfleet-pressure-watchdog"
+            self.assertEqual(installed.read_bytes(), WATCHDOG.read_bytes())
+            self.assertEqual(
+                (pathlib.Path(home) / ".config" / "systemd" / "user" / "termfleet-pressure-watchdog.service").read_bytes(),
+                SERVICE.read_bytes(),
+            )
+
+    def test_desktop_sampler_records_host_pressure_when_desktop_is_absent(self):
+        script = WATCHDOG.read_text()
+        helpers = script.split("read_psi_avg10() {", 1)[1].split("\ncockpit_heartbeat_age_seconds() {", 1)[0]
+        shell = "read_psi_avg10() {" + helpers
+
+        with tempfile.TemporaryDirectory() as state_dir:
+            result = subprocess.run(
+                ["bash", "-c", shell + '\nrecord_desktop_sample "" "" ""'],
+                env={**os.environ, "STATE_DIR": state_dir},
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=10,
+            )
+            sample_files = list(pathlib.Path(state_dir).glob("desktop-samples-*.tsv"))
+            self.assertEqual(len(sample_files), 1, result.stderr)
+            rows = sample_files[0].read_text().splitlines()
+            self.assertEqual(rows[0].split("\t")[0:3], ["timestamp", "ui_pid", "ui_state"])
+            sample = rows[-1].split("\t")
+            self.assertEqual(sample[1:7], ["0", "absent", "0", "0", "absent", "0"])
+            self.assertEqual(len(sample), len(rows[0].split("\t")))
+
+    def test_desktop_sample_retention_removes_files_older_than_two_days(self):
+        script = WATCHDOG.read_text()
+        self.assertIn("prune_desktop_samples() {", script)
+        pruning = script.split("prune_desktop_samples() {", 1)[1].split("\n}\n", 1)[0]
+        old_function = "prune_desktop_samples() {" + pruning + "\n}"
+
+        with tempfile.TemporaryDirectory() as state_dir:
+            old_sample = pathlib.Path(state_dir) / "desktop-samples-2026-09-20.tsv"
+            current_sample = pathlib.Path(state_dir) / "desktop-samples-2026-09-28.tsv"
+            unrelated = pathlib.Path(state_dir) / "unrelated.log"
+            for path in (old_sample, current_sample, unrelated):
+                path.write_text("sample\n")
+            old_time = time.time() - 3 * 86400
+            os.utime(old_sample, (old_time, old_time))
+
+            result = subprocess.run(
+                ["bash", "-c", 'DESKTOP_SAMPLE_RETENTION_MINUTES="${TERMFLEET_DESKTOP_SAMPLE_RETENTION_MINUTES:-2880}"; ' + old_function + "\nprune_desktop_samples"],
+                env={**os.environ, "STATE_DIR": state_dir},
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=10,
+            )
+            self.assertEqual(result.stdout, "")
+            self.assertFalse(old_sample.exists())
+            self.assertTrue(current_sample.exists())
+            self.assertTrue(unrelated.exists())
+
+    def test_desktop_sampler_records_bounded_ui_and_webkit_thread_summaries(self):
+        script = WATCHDOG.read_text()
+        helpers = script.split("read_psi_avg10() {", 1)[1].split("\ncockpit_heartbeat_age_seconds() {", 1)[0]
+        shell = "read_psi_avg10() {" + helpers
+
+        with tempfile.TemporaryDirectory() as state_dir:
+            result = subprocess.run(
+                ["bash", "-c", shell + '\nrecord_desktop_sample "$$" "" ""'],
+                env={**os.environ, "STATE_DIR": state_dir},
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=10,
+            )
+            sample_file = next(pathlib.Path(state_dir).glob("desktop-samples-*.tsv"))
+            headers, sample = [line.split("\t") for line in sample_file.read_text().splitlines()]
+            self.assertIn("ui_threads_top3", headers)
+            self.assertIn("webkit_threads_top3", headers)
+            self.assertEqual(sample[headers.index("webkit_threads_top3")], "absent")
+            ui_threads = sample[headers.index("ui_threads_top3")].split(",")
+            self.assertGreaterEqual(len(ui_threads), 1, result.stderr)
+            self.assertLessEqual(len(ui_threads), 3)
+            for thread in ui_threads:
+                self.assertRegex(thread, r"^\d+:[A-Za-z]+:[0-9.]+:[A-Za-z0-9_.-]+$")
+
+    def test_desktop_sampler_rotates_incompatible_existing_schema(self):
+        script = WATCHDOG.read_text()
+        helpers = script.split("read_psi_avg10() {", 1)[1].split("\ncockpit_heartbeat_age_seconds() {", 1)[0]
+        shell = "read_psi_avg10() {" + helpers
+
+        with tempfile.TemporaryDirectory() as state_dir:
+            sample_file = pathlib.Path(state_dir) / f"desktop-samples-{date.today().isoformat()}.tsv"
+            sample_file.write_text("timestamp\tui_pid\told_schema\nold-row\n")
+            subprocess.run(
+                ["bash", "-c", shell + '\nrecord_desktop_sample "" "" ""'],
+                env={**os.environ, "STATE_DIR": state_dir},
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=10,
+            )
+            headers, sample = [line.split("\t") for line in sample_file.read_text().splitlines()]
+            self.assertEqual(len(sample), len(headers))
+            self.assertIn("ui_threads_top3", headers)
+            archives = list(pathlib.Path(state_dir).glob("desktop-samples-*.schema-*.tsv"))
+            self.assertEqual(len(archives), 1)
+            self.assertIn("old-row", archives[0].read_text())
+
+    def test_desktop_incident_snapshot_is_read_only_and_precedes_recycle(self):
+        script = WATCHDOG.read_text()
+        self.assertIn("record_watchdog_heartbeat loop-start", script)
+        self.assertIn("record_watchdog_heartbeat desktop-discovered", script)
+        self.assertIn("record_watchdog_heartbeat desktop-sampled", script)
+        pressure_sample = script.index('termfleet_incident_record "pressure_sample"')
+        pressure_started = script.index('termfleet_incident_record "pressure_started"')
+        capture = script.index('"$INCIDENT_CAPTURE_SCRIPT"')
+        recovery = script.index('if (( recovery_planned == 1 )); then')
+        recycle = script.index('kill -- "-$recovery_pgid"', recovery)
+        self.assertLess(capture, pressure_sample)
+        self.assertLess(capture, pressure_started)
+        self.assertLess(capture, recycle)
+        self.assertNotIn('kill ', INCIDENT_SNAPSHOT.read_text())
+
+        with tempfile.TemporaryDirectory() as snapshot_root:
+            result = subprocess.run(
+                ["bash", str(INCIDENT_SNAPSHOT), str(os.getpid()), str(os.getpgrp()), "test"],
+                env={**os.environ, "TERMFLEET_INCIDENT_SNAPSHOT_DIR": snapshot_root},
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=10,
+            )
+            snapshot = pathlib.Path(result.stdout.strip())
+            self.assertTrue(snapshot.is_relative_to(pathlib.Path(snapshot_root)))
+            for name in ("identity.txt", "status.txt", "wchan.txt", "stack.txt", "io-series.txt", "pressure.txt", "mounts.txt", "processes.txt", "fds.txt"):
+                self.assertTrue((snapshot / name).is_file(), name)
+            self.assertIn(str(os.getpid()), (snapshot / "identity.txt").read_text())
+
     def test_restart_notification_matches_recovery_eligibility(self):
         script = WATCHDOG.read_text()
         start = script.index('      recovery_text=')
@@ -72,9 +256,11 @@ class PressureWatchdogTests(unittest.TestCase):
     def test_incident_helper_is_installed_with_the_watchdog(self):
         installer = INSTALLER.read_text()
         self.assertIn("termfleet-incident-log.sh", installer)
+        self.assertIn("termfleet-capture-desktop-incident.sh", installer)
         self.assertIn("termfleet-load-shed.sh", installer)
         release_installer = (ROOT / "scripts" / "install-release.sh").read_text()
         self.assertIn("termfleet-pressure-watchdog.sh", release_installer)
+        self.assertIn("termfleet-capture-desktop-incident.sh", release_installer)
         self.assertIn("termfleet-incident-log.sh", release_installer)
         self.assertIn("termfleet-load-shed.sh", release_installer)
         self.assertIn("try-restart termfleet-pressure-watchdog.service", release_installer)
@@ -98,6 +284,37 @@ class PressureWatchdogTests(unittest.TestCase):
         self.assertIn("incidents.jsonl", doctor)
         self.assertIn("incident-summary.md", doctor)
         self.assertIn("Incident history", doctor)
+
+    def test_incident_logs_retain_only_recent_days(self):
+        old_date = (date.today() - timedelta(days=5)).isoformat()
+        today = date.today().isoformat()
+        with tempfile.TemporaryDirectory() as state_root:
+            state_dir = pathlib.Path(state_root) / "termfleet"
+            state_dir.mkdir()
+            (state_dir / "incidents.jsonl").write_text(
+                f'{{"timestamp":"{old_date}T12:00:00+03:00","event":"old"}}\n'
+                f'{{"timestamp":"{today}T12:00:00+03:00","event":"recent"}}\n'
+            )
+            (state_dir / "incident-summary.md").write_text(
+                "# TermFleet incident history\n\n"
+                f"- {old_date}T12:00:00+03:00 — old\n"
+                f"- {today}T12:00:00+03:00 — recent\n"
+            )
+            subprocess.run(
+                ["bash", "-c", f'source "{INCIDENT_HELPER}"; termfleet_incident_record test recent'],
+                env={**os.environ, "XDG_STATE_HOME": state_root},
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=10,
+            )
+            incidents = (state_dir / "incidents.jsonl").read_text()
+            summary = (state_dir / "incident-summary.md").read_text()
+            self.assertNotIn('"event":"old"', incidents)
+            self.assertIn('"event":"recent"', incidents)
+            self.assertIn('"event":"test"', incidents)
+            self.assertNotIn(f"- {old_date}", summary)
+            self.assertIn(f"- {today}", summary)
 
     def test_desktop_d_state_needs_strong_io_corroboration_before_recycle(self):
         script = WATCHDOG.read_text()
@@ -184,6 +401,7 @@ class PressureWatchdogTests(unittest.TestCase):
         self.assertIn('last_incident_reason" != host-*', script)
         self.assertIn("Host-wide PSI is useful telemetry", script)
         self.assertIn("misleading TermFleet notification", script)
+        self.assertIn('watchdog-heartbeat.txt', INCIDENT_SNAPSHOT.read_text())
 
     def test_watchdog_ignores_private_verifier_desktops(self):
         script = WATCHDOG.read_text()

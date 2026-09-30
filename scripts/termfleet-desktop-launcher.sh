@@ -66,6 +66,11 @@ if [[ "$launch_context" == "shared-daemon-agent" ]]; then
   LOG_DIR="$XDG_STATE_HOME/termfleet"
   LOG_FILE="$LOG_DIR/desktop-launch.log"
 fi
+if [[ "$launch_context" == "dock" ]]; then
+  # Dock launches must follow the atomically promoted release, not an inherited
+  # TERMFLEET_CMD that may pin a retired content-addressed release.
+  TERMFLEET_CMD="${TERMFLEET_DOCK_CMD:-$HOME/.local/bin/termfleet}"
+fi
 
 mkdir -p "$LOG_DIR" "$TERMFLEET_TMPDIR"
 chmod 0700 "$TERMFLEET_TMPDIR"
