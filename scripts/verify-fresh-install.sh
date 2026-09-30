@@ -124,7 +124,13 @@ log "first command ran in a real shell (session $found)"
 # Agent status: this profile has a Claude Code config dir, so the status bar
 # offers "Connect agents". Click it, prove the bundled hook got registered from a
 # stable copy, then emit one real Claude hook event from inside the pane.
-xdotool mousemove --window "$WINDOW_ID" 1057 988 click 1
+# The status bar items shift with state ("system pressure high" adds one), so the
+# button's x moved from 1057 to ~1184 at this 1600x1000 size; try both.
+for x in 1184 1057; do
+  xdotool mousemove --window "$WINDOW_ID" "$x" 988 click 1
+  sleep 1.5
+  [[ -f "$XDG_DATA_HOME/termfleet/agent-hooks/termfleet-claude-status-hook.mjs" ]] && break
+done
 settings="$HOME/.claude/settings.json"
 hook="$XDG_DATA_HOME/termfleet/agent-hooks/termfleet-claude-status-hook.mjs"
 for _ in {1..40}; do
