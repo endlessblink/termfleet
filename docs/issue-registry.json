@@ -1,6 +1,6 @@
 {
   "schema": "termfleet.issue-registry.v1",
-  "updatedAt": "2026-09-27T08:45:17.113Z",
+  "updatedAt": "2026-09-29T15:26:56.893Z",
   "issues": [
     {
       "id": "TF-001",
@@ -166,8 +166,8 @@
         },
         {
           "kind": "live-desktop",
-          "at": "2026-09-12T09:38:27.145Z",
-          "note": "Controlled renderer SIGSTOP produced cockpit-heartbeat-stale after 48 seconds; watchdog replaced only desktop PGID 187429, preserved daemon PID 33820, one socket listener and all terminal IDs, then refreshed the heartbeat. Fresh screenshot SHA-256 7a73c867191574e99ec77d69f1fbb1473fcad6f1fca37998af90e412e355d19d shows the cockpit rendered rather than gray."
+          "at": "2026-09-26T09:15:26.431Z",
+          "note": "2026-09-26 system-pressure follow-up: repeated background Blender renders consumed about 14 CPU cores; CPU package reached 91C while GPU fan was 0 percent. Applied reversible CPU affinity 0-3 to identified render worker PID 920608 and its existing descendants, with no process termination. Worker affinity read back 0-3; later render exited. Follow-up CPU idle 83-88 percent, temperature 78C, GPU 40C and fan 0 percent. Render completion may contribute to lower load; next-render inheritance and user typing responsiveness remain unverified. Desktop PID 1144603 and daemon PID 1515447 remain alive with fresh cockpit heartbeat. Affinity applies only for this worker lifetime, not a permanent fix."
         }
       ],
       "owner": "termfleet",
@@ -463,6 +463,24 @@
           "from": "fixing",
           "to": "verifying",
           "note": "Installed gray-screen recovery path passed process, daemon, inventory, heartbeat, and visual-render gates; live typing and recurrence soak remain separate."
+        },
+        {
+          "at": "2026-09-25T19:52:22.077Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "2026-09-25 recovery diagnosis: initial window absent after clean exit; dock reopen produced blank gray screenshot SHA256 fe6a2df0b76b88f3d2ce21513977d16699e4bf903a022e32c00f9426f6f0cb34. Watchdog detected stale heartbeat after 61s and recovered UI at 22:51:46, preserving canonical daemon PID 1515447 and 24 live sessions. Visual recovery validation pending."
+        },
+        {
+          "at": "2026-09-25T19:52:51.683Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "2026-09-25 22:52 recovery read-back: replacement UI PID 4050356 visibly renders populated map/sidebar and terminal transcript, screenshot /tmp/termfleet-stuck-visual-recovered.png SHA256 31c7acdde816dbc4069933fa43b2036b323c58110bd139ceeb1da536e683e551. Health snapshot fresh 22:52:21; canonical daemon remains PID 1515447. Live session count now 23 versus initial 24; exact reason not established. System pressure high visible. Typing and recurrence remain unverified; doctor separately flags stale installed release."
+        },
+        {
+          "at": "2026-09-26T09:15:26.431Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "2026-09-26 system-pressure follow-up: repeated background Blender renders consumed about 14 CPU cores; CPU package reached 91C while GPU fan was 0 percent. Applied reversible CPU affinity 0-3 to identified render worker PID 920608 and its existing descendants, with no process termination. Worker affinity read back 0-3; later render exited. Follow-up CPU idle 83-88 percent, temperature 78C, GPU 40C and fan 0 percent. Render completion may contribute to lower load; next-render inheritance and user typing responsiveness remain unverified. Desktop PID 1144603 and daemon PID 1515447 remain alive with fresh cockpit heartbeat. Affinity applies only for this worker lifetime, not a permanent fix."
         }
       ]
     },
@@ -1869,34 +1887,39 @@
       "state": "verifying",
       "severity": "medium",
       "surface": "desktop-runtime",
-      "matrixRefs": [],
+      "matrixRefs": [
+        "3.14",
+        "3.31",
+        "3.37",
+        "3.38"
+      ],
       "symptom": "The installed cockpit consumes sustained CPU and feels slow while terminal work continues",
       "rootCause": "",
       "guard": "Live desktop process load stays bounded while status refresh remains correct",
       "evidence": [
         {
-          "kind": "source",
-          "at": "2026-08-30T13:42:22.988Z",
-          "note": "Dock startup now performs one bounded live-session reconciliation first; persisted-session archaeology, sidecar scans, Git reads, audit writes, and workspace persistence are deferred until after the window is usable."
+          "kind": "focused-test",
+          "at": "2026-09-28T18:02:23.798Z",
+          "note": "Live ledger (release f4744e06af38): grid-diff channel only ~6 msg/s (not the cost); sampled rendering updates avg 39.5 ms, max 709 ms; WebKit main 46% while in use. Pan probe (20 terminal-size map cards, software drawing): base p50 21/p95 40 ms at ~100% CPU; hardware GL+compositing did NOT help (104% CPU, same frame times; an earlier 0.1% reading was an occluded-window fluke). Removing the 42px blurred card shadow alone: p50 11/p95 24 ms; blur-free shadow reproduced this twice; a small 8px blur did not help. Fix: --shadow-card is now a crisp non-blurred edge (map cards + workspace surface); guard test fails on the old value. Installed 2732af0b315b-23b36cd8122e-64fb5530d4a1; boot smoke clean."
         },
         {
-          "kind": "installed-release",
-          "at": "2026-08-30T13:42:38.815Z",
-          "note": "Installed dock release verified at SHA-256 576d9d38a11b93e4b0dbfd96f1c25e86b47bbe8e78680e64d930457b5e395535."
+          "kind": "source",
+          "at": "2026-09-29T06:15:12.135Z",
+          "note": "Committed 545ea1a on main (only this session's hunks; other agents' uncommitted edits left unstaged). Regression gates: npm run verify:render-perf (fails on old atlas and JSC_useJIT=false), npm run verify:boot-smoke (failed on the broken recorder build), plus guard tests for launcher JIT, finite quest pulses, no infinite animations, blur-free card shadow, shared glyph sheet, recorder. Staged snapshot validated in isolation: tsc, bash -n, launcher JIT guard, render-perf, boot-smoke, recorder tests 6/6."
         },
         {
           "kind": "live-desktop",
-          "at": "2026-08-30T13:42:46.426Z",
-          "note": "Valid installed dock click measured process creation at 341 ms and visible TermFleet window at 430 ms; ready screenshot captured at 1448 ms with the pre-existing daemon unchanged."
+          "at": "2026-09-29T08:00:34.329Z",
+          "note": "2026-09-29 splash freeze: WebKit localStorage SQLite write log reached ~1 GB in 13 min (app wrote ~1.3 MB/s: quest record ~0.5 MB/s + workspace cache per status change); WebKit holds a read snapshot all session so live checkpoints fold back 0 frames; next start read ~700 MB/s and never left the splash (old known-good build hung too). Manual compaction restored a 4 s launch. Fix committed a940b0c: storage governor (dedupe, 1 KB/s per-key budget, read-your-writes, flush on close, full-storage retry), workspace disk mirror <=1 write/2 s, launcher compaction before every window start (first run folded 1,076,881 KB), doctor size check. Live: 0 KB log growth over 100 s; launch 7-8 s. Tests: storage-governor spec 11/11, compaction 3/3 on real SQLite, boot smoke."
         },
         {
-          "kind": "focused-test",
-          "at": "2026-08-30T13:47:04.170Z",
-          "note": "Fresh background rerun: all 60 startup, hydration, status-poll, and project-reconciliation regressions passed in 1.4 minutes; production build and installed-release verification also passed."
+          "kind": "installed-release",
+          "at": "2026-09-29T15:26:56.893Z",
+          "note": "5c5c44b: at 1 KB/s/key a 5.5 h session grew the WebKit storage log to ~96 MB (SQLite logs ~2x value size; no folding while running). Budget now 200 B/s/key, 2 s-60 min: workspace cache ~22 min (disk layout is authoritative at startup), quest record ~45 min, flush on close. 24 h simulation <= 80 MB log. Doctor warn 256 MB / fail 1 GB. Installed; boot smoke clean."
         }
       ],
       "owner": "termfleet",
-      "nextAction": "Reduce repeated status-file scanning and verify the installed app",
+      "nextAction": "Keep TF-015 verifying. Correlate a fresh typing or drag latency batch with continuous process-pressure samples; trace sustained WebKit CPU and any unprompted map movement without restarting the PTY daemon.",
       "history": [
         {
           "at": "2026-08-29T08:16:45.341Z",
@@ -2067,6 +2090,558 @@
           "from": "fixing",
           "to": "verifying",
           "note": "Focused trace-default and X11 ordering guards pass; installed launcher hash matches source. Full installed-release verification is blocked by unrelated dirty frontend/build drift, and live CPU proof requires a confirmed cockpit relaunch."
+        },
+        {
+          "at": "2026-09-24T12:41:03.846Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "2026-09-24 user reported freeze. Dock cockpit exited cleanly at 15:34:14 and relaunched twice; daemon pid 19463 remained reachable with 27-29 live PTYs. Two read-only desktop captures showed changing rendered content, but input response and original freeze surface remain unverified. Watchdog showed only a 5-second host I/O pressure event after relaunch; current heartbeat continues. Doctor reports dock release stale against local build."
+        },
+        {
+          "at": "2026-09-26T11:55:18.033Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "2026-09-26 live sample: running renderer PID 2198365 main thread accumulated 11 CPU seconds over 15 seconds idle and 13 over 15 seconds of map-sidebar scrolling. verify:installed-release confirms current promoted binary SHA fa0d8b06b813ac8bbd7c33113ea72b671f72b890b2381d6b14c93c4ec5a31539, while the running process maps to previous release 9d3a7c80efa7-7e0ac3865563-a7cdc84ddfce. Current promoted release responsiveness remains unmeasured; issue stays verifying pending dock launch and matched runtime samples."
+        },
+        {
+          "at": "2026-09-26T16:59:33.669Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "2026-09-26 dock relaunch: verified renderer executable under promoted release 960ef28d6035-fa0d8b06b813-5f47b8f8753d (sha256 fa0d8b06b813ac8bbd7c33113ea72b671f72b890b2381d6b14c93c4ec5a31539). Process-thread CPU over ~15s sidebar scroll: 2s on new renderer; matched idle sample displayed 0 whole seconds. Previous renderer: 13s on similar scroll and 11s idle over 15s. Process CPU evidence only; frame latency and visual smoothness not yet verified. PTY daemon remained running throughout."
+        },
+        {
+          "at": "2026-09-26T17:00:16.745Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "2026-09-26 dock capture: after the splash complaint, the current TermFleet window rendered the workspace and map/sidebar. New-release WebKit main thread accumulated 2 CPU seconds during ~15s of user scrolling. This confirms the page rendered under scroll, not smooth frame timing or every-pane responsiveness; user report and full visual/input acceptance remain open."
+        },
+        {
+          "at": "2026-09-26T18:53:28.112Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "2026-09-26: lazy geometry collection now applies the existing per-pane throttle before DOM layout reads. See docs/performance-investigation-2026-09-26.md. No installed latency improvement claimed."
+        },
+        {
+          "at": "2026-09-26T18:53:29.104Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "2026-09-26: terminal-geometry-throttle regression failed before implementation then passed (1 test); npx tsc --noEmit passed. Installed responsiveness and functional equivalence remain unverified."
+        },
+        {
+          "at": "2026-09-26T18:53:30.054Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "2026-09-26: sustained renderer CPU persists: 4.49/5.03 CPU/wall seconds, minimized 4.17/5.02, later 6.35/5.025. Earlier post-relaunch low CPU was transient. Disposable synthetic graphics comparison showed p95 frame deltas 17/18/21ms, no demonstrated acceleration benefit. Live flags unchanged. CPU profile pending operator sudo capture; no current key-to-paint or blank-pane recovery proof."
+        },
+        {
+          "at": "2026-09-26T19:20:47.276Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "2026-09-26: geometry collector and real-browser workspace persistence regressions each failed before and passed after fixes; stable gamification recovery receipt regression passed. Fresh npm run build and terminal-rendering source gate passed. Matrix3.37; installed speed and full functional equivalence remain unverified."
+        },
+        {
+          "at": "2026-09-26T19:20:49.627Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "2026-09-26: geometry throttling precedes DOM reads; persisted terminals preserve actual status timestamps. Live 15s observation:11 workspace revisions,7 identical except terminal lastStatusAt,270049 mean bytes. Thread sample:5.09s main and about4.4s heap/collector helpers over10s. No proof of dominant hotspot or installed improvement. See performance-investigation-2026-09-26.md."
+        },
+        {
+          "at": "2026-09-27T07:44:15.603Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "2026-09-27 isolated performance candidate installed and verified: release 4ee2c693a2e9-cccd47bb159a-d996f3f59df5, SHA256 cccd47bb159aa8e82b3db12bc2f4cc36cf13d4d7dc64345ad7bda18e2d859683; dock relaunch executable resolves to this release. The live PTY daemon remained on prior release and reachable; 21 live sessions before UI close, 22 after relaunch. User still reports overall sluggishness; performance impact not yet measured."
+        },
+        {
+          "at": "2026-09-27T07:47:47.831Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "2026-09-27 isolated release candidate focused Playwright regressions passed: terminal-geometry-throttle.spec.ts and workspace-persistence-timestamp.spec.ts (2 tests). Candidate build and installed-release verifier also passed; no performance gain is claimed."
+        },
+        {
+          "at": "2026-09-27T07:47:54.272Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "2026-09-27 candidate release 4ee2c693a2e9-cccd47bb159a-d996f3f59df5 launched from dock; user reported it stayed frozen and did not load. Candidate window was gracefully closed and prior UI release 960ef28d6035-fa0d8b06b813-5f47b8f8753d relaunched. Daemon remained reachable throughout with 22 live sessions after rollback. User-visible input/scroll smoothness on rollback and cause of candidate startup freeze remain unverified."
+        },
+        {
+          "at": "2026-09-27T07:53:02.897Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "2026-09-27: latest dock launch is again running candidate 4ee2c693a2e9-cccd47bb159a-d996f3f59df5; direct window capture is uniformly blank (SHA-256 273ccd9b004d261afad3b4c662b0ec8835ba39d363ead2d9f0dfa3a4f49e172b). WebKit process alive; daemon reachable with 22 live sessions. App log includes repeated vt-grid daemon stream parse failures, cause unconfirmed. No terminal daemon restart."
+        },
+        {
+          "at": "2026-09-27T08:02:58.933Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "2026-09-27 10:48 Asia/Jerusalem readback: cockpit PID 2969857 had exited; desktop log records clean status=0 exits at 10:41 and 10:45. PTY daemon remains reachable at PID 1515447 with 23 live sessions, preserved without restart. app-output has 8 vt-grid daemon stream parse failures; causal link to sluggishness is unproven. verify:installed-release fails because installed frontend checksum does not match current build. Sluggishness and startup freeze remain unverified; no code or runtime mutation performed."
+        },
+        {
+          "at": "2026-09-27T08:06:28.571Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "2026-09-27 10:50 Asia/Jerusalem: restored prior immutable release 960ef28d6035-fa0d8b06b813-5f47b8f8753d through installed dock wrapper. Visible TermFleet window is listed by wmctrl. UI PID 3168743 and WebKit PID 3169282 were alive at 02:03 elapsed; averaged CPU readback was 13.0% for UI and 19.5% for WebKit, not an interaction-latency measurement. Daemon remains PID 1515447 with 23 live sessions. No daemon restart; sluggishness improvement and actual window contents remain unverified."
+        },
+        {
+          "at": "2026-09-27T08:43:05.605Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "2026-09-27 11:27 Asia/Jerusalem: five-second process sample showed WebKit PID 3169282 accumulated 4 seconds CPU while UI PID 3168743 accumulated 1 second; prior release remains live. No latency trace file exists in /tmp, so interaction latency and trigger remain unmeasured. Daemon untouched."
+        },
+        {
+          "at": "2026-09-27T08:44:07.378Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "Timestamp correction: the preceding five-second CPU sample was recorded at approximately 2026-09-27 11:41 IDT; its note was appended at 11:43 IDT, not 11:27. Measurements and limitations are unchanged."
+        },
+        {
+          "at": "2026-09-27T08:45:42.333Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "2026-09-27 11:43 IDT: read-only perf record against WebKit PID 3169282 was denied; perf_event_paranoid=4 and required CAP_PERFMON/CAP_SYS_PTRACE/CAP_SYS_ADMIN are unavailable. No host policy changed and no profile was created. Hot function remains unidentified."
+        },
+        {
+          "at": "2026-09-27T08:46:12.358Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "2026-09-27 11:44 IDT: no-preprompt sudo -n perf fallback was blocked by the shell allowlist before execution; no command retried and no host state changed. A privileged profile requires an approved execution surface."
+        },
+        {
+          "at": "2026-09-27T09:24:10.212Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "User-supplied sudo perf report: perf rejected file ownership; --force then reported zero-sized data. The capture contains no samples, so it cannot identify a renderer hotspot; no speed gain is established."
+        },
+        {
+          "at": "2026-09-27T09:25:04.769Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "User reports that the dock launch again showed the startup screen for an extended interval before finally releasing; the same run still feels stuck after rendering. Repeated startup stall plus perceived sluggishness remains live; user accepted launch without any daemon or PTY restart."
+        },
+        {
+          "at": "2026-09-27T09:29:27.330Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "2026-09-27 12:23:53 dock log shows release 2732 launched; incident samples at +55s report foreground process R and heartbeat age 9s, then heartbeat ages 1–6s at +117–242s. Current dock screenshot at 12:25:22 shows workspace and terminal prompt, so startup eventually paints after about 89 seconds. The exact delay source within WebKit, durable layout loading, and daemon reconciliation remains unmeasured; launch responsiveness is not fixed."
+        },
+        {
+          "at": "2026-09-27T09:42:19.302Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "2026-09-27 15:xx Asia/Jerusalem live dock read: UI PID 4005569 and WebKit PID 4005681 have been alive about 8m36s; WebKit lifetime CPU 57.5%, UI 10.0% at sample, confirming active sustained renderer work after startup. Function-level profile not captured; perf profiling is blocked by the current shell allowlist, so no causal hotspot or responsiveness improvement is claimed."
+        },
+        {
+          "at": "2026-09-27T12:20:52.887Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "2026-09-27 15:18 IDT live read: active dock UI PID 4005569 is running release 2732af0b315b-7a1df6f18ec3-dc45f829f69c; WebKit PID 4005681. Over a four-second read, WebKit CPU time rose 2s (about 50% of one core), while UI CPU time did not move. Host CPU and memory PSI were zero; I/O PSI was some/full 1.90%/1.74% over 10s and 2.07%/1.77% over 60s. Daemon remains reachable with 19 live sessions; runtime reports 4 panes and 1474 total sessions including persisted. User still reports whole-app sluggishness. No latency trace exists; profiler access remains blocked and no causal app hotspot is identified. No daemon/UI restart or synthetic terminal input."
+        },
+        {
+          "at": "2026-09-27T12:28:51.667Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "2026-09-27: status refresh reads each eligible agent transcript tail and parseTranscript reparses identical contents; added a 256-entry LRU keyed by pane/provider/session with exact-text invalidation. Cache-focused regressions pass, related status suites pass (161 passed, 1 skipped), and npm run build passes. This only removes repeated JS parsing; the transcript read remains. No renderer performance or installed-app improvement is proven."
+        },
+        {
+          "at": "2026-09-27T12:30:16.323Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "2026-09-27: inspected status-poll transcript parsing as a possible renderer cost. A 256-entry exact-tail cache passed focused reuse/invalidation and boundedness regressions, plus the existing 161-test status suite and frontend build, but the change was removed: it leaves file reads intact and available poll volume does not plausibly explain about 50% of a renderer core. No performance gain is claimed; no release was promoted."
+        },
+        {
+          "at": "2026-09-27T12:30:23.809Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "2026-09-27 15:18 IDT readback: active dock UI PID 4005569 ran release 2732af0b315b-7a1df6f18ec3-dc45f829f69c; WebKit PID 4005681. Across four seconds WebKit CPU time rose 2s and UI CPU time did not move. Host CPU/memory PSI was zero; I/O PSI some/full was 1.90%/1.74% (10s) and 2.07%/1.77% (60s). termfleetctl reported 19 live sessions and 1474 total records; a separate runtime-controller read reported 4 attached panes; the on-disk workspace snapshot had 22 tabs/22 terminals. These counts are not interchangeable. No latency trace/profile; no restart or synthetic input."
+        },
+        {
+          "at": "2026-09-27T12:54:28.359Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Bounded renderer stall recorder regression passed: thresholds/rate-limit and 120-record cap (2 Playwright tests); frontend build passed. This is source evidence only; packaged logger output and live responsiveness remain unverified."
+        },
+        {
+          "at": "2026-09-27T13:05:43.739Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "Isolated dock release promoted; verify:installed-release readback passed for 2732af0b315b-28ebd5c8996b-22d6173da485 sha256=28ebd5c8996bd98cce67a8a0230431b109af60dac0a3b48b3599ca6292b45021. Current app window remains on prior build; dock relaunch and live JSONL readback still pending."
+        },
+        {
+          "at": "2026-09-27T14:19:34.699Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "2026-09-27 dock relaunch release 2732af0b315b-28ebd5c8996b-22d6173da485: visual root capture showed workspace rendered, not splash, but capture cannot prove first-paint duration. PID 1746285 remained alive ~424s; WebKit PID 1746342 at 35.7% CPU at sample. Daemon remained reachable with 20 sessions; no daemon restart. Geometry logs resumed; no renderer-stall rows found in current log. Splash eventually cleared, startup responsiveness remains unverified."
+        },
+        {
+          "at": "2026-09-27T15:21:01.596Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "2026-09-27 current responsiveness baseline: dock UI PID 1746285 is release 2732af0b315b-28ebd5c8996b-22d6173da485; over a 12-second process-time comparison WebKit PID 1746342 accumulated about 4 CPU seconds and UI about 1. Memory available 35 GiB; CPU PSI near zero, while I/O PSI avg10 some/full 4.06%/3.49%, avg60 2.31%/2.00%. Geometry logs flow but no renderer-stall row; terminal latency summarizer reports no trace file. Visual capture showed the workspace, so splash eventually cleared. Daemon reachable with 23 live sessions and 4 attached panes; no restart or synthetic terminal input. CPU/PSI do not prove the slow interaction or cause."
+        },
+        {
+          "at": "2026-09-27T15:46:26.633Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "2026-09-27: Added a keymap regression asserting the capture handler only refocuses after focus actually moved; npx playwright test keymap --reporter=line passed (4 tests). A preceding npx vitest attempt was invalid for this Playwright suite and failed at test.use(). npm run build passed. Source guard removes a Tauri set_focused_terminal call and Zustand activeTerminalId write from each already-focused key; installed latency remains unverified."
+        },
+        {
+          "at": "2026-09-27T15:48:00.774Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "2026-09-27: The focused change gates focusInput() in the window capture key handler on document.activeElement !== inputRef.current, preserving lost-focus recovery while avoiding redundant set_focused_terminal IPC and setActiveTerminal store writes for already-focused typing. Matrix row 2.7 now tracks the focused guard. Live speed impact is not yet measured."
+        },
+        {
+          "at": "2026-09-27T16:51:27.182Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "2026-09-27 user reports dock restart did not improve typing. Supplied watchdog event: cockpit heartbeat stale at 90s, renderer blocked, desktop process group recycled. Current readback: dock app PID 3069127 is executing installed release 2732af0b315b-d0e1bec1c108-b6edfe4319ca; WebKit PID 3069207 averaged about 46% CPU over 5m31s; cockpit snapshot mtime 19:49:11 +0300 is fresh. No input-to-render trace file exists; source shows tracing requires terminal-workspace.traceLatency localStorage or TERMINAL_WORKSPACE_TRACE_LATENCY launch env. verify:installed-release failed because installed frontend hash differs from current dist; installed binary path/checksum remains pinned by manifest. Root cause remains unproven; do not change code until input-to-render and renderer workload are measured."
+        },
+        {
+          "at": "2026-09-27T17:09:08.933Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Added bounded aggregate timings for recent-input-to-grid-diff, canvas draw duration, and input-to-next-frame callback. No key names, text, or pane identity; full latency trace remains disabled."
+        },
+        {
+          "at": "2026-09-27T17:09:09.220Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "npx playwright test tests/terminal-interaction-latency.spec.ts --reporter=line passed (1 test); npm run build passed. npm run verify:canvas-all could not start because sandbox denied local Vite bind with listen EPERM on 127.0.0.1:5177; no Canvas2D suite cases ran."
+        },
+        {
+          "at": "2026-09-27T17:12:52.296Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "npx playwright test tests/terminal-interaction-latency.spec.ts --reporter=line passed (1); npm run build passed; npm run verify:canvas-all passed 96 with 1 skipped. Browser suite did not exercise the packaged WebKit desktop. Install/desktop measurement is still pending because this shared checkout contains unrelated dirty work."
+        },
+        {
+          "at": "2026-09-27T19:46:16.637Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "Promoted isolated dock release 353017b7354a-b11df5c09703-457ceb2bda9d; npm run verify:installed-release confirmed binary SHA-256 b11df5c097031395078918932fefab0be61b4fb2d6663effbbadb0cf06c132ec. Dock window still needs close/reopen for runtime timing proof; PTY daemon remains running and must not restart."
+        },
+        {
+          "at": "2026-09-27T21:25:48.753Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "2026-09-28 read-only live sample: dock UI PID 685369 and WebKitWebProcess PID 685396 run from promoted release 353017b7354a-b11df5c09703-457ceb2bda9d; over 5 seconds the WebKit main thread ranged 28-31% CPU while UI was mostly idle. The cockpit snapshot timer remained fresh, proving JS callback progress only, not input or paint responsiveness. eu-stack attach was denied by host permissions and perf_event_paranoid=4 prevented usable perf capture; hot function/root cause and visible typing latency remain unknown. Daemon PID 1515447 remains healthy with 28 live and 1492 persisted sessions; left untouched. No performance improvement claimed."
+        },
+        {
+          "at": "2026-09-27T21:48:02.153Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "2026-09-28: Added a watchdog pre-recycle snapshot of UI state/stack/wchan/fds/I/O, system and cgroup pressure, mounts, process wait states, and daemon presence. Snapshot writes under runtime storage; capture is bounded and read-only, PTY daemon remains untouched. Real installed incident capture still pending."
+        },
+        {
+          "at": "2026-09-27T21:48:07.624Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "2026-09-28: python3 -m unittest tests.test_pressure_watchdog passed (18); shell syntax and git diff --check passed. Regression exercises a real temporary incident snapshot and asserts capture precedes process-group recycle. Installed read-back and next real incident artifact remain pending."
+        },
+        {
+          "at": "2026-09-27T21:51:05.906Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "2026-09-28: Installed watchdog/helper SHA-256 values match the tested checkout exactly (watchdog 4cb9184f54df09c43d82a70a27cb562ed8dfec27e471cb1377fdb435958b8379; capture helper b92c3af76028d40ae32d93494164e888e1fdfaa7387db76be4c2b35966686307). User watchdog service is active as PID 1053970. At read-back, UI PID 897832 was interruptible in poll and PTY daemon remained PID 1515447. No TermFleet or daemon restart. A real pre-recycle incident artifact is still pending."
+        },
+        {
+          "at": "2026-09-27T21:54:26.270Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "2026-09-28: Added a read-only watchdog snapshot on new desktop/WebKit blocked incidents before any persistent incident/sample writes; captures UI state/stack/wchan/fds/I/O, pressure, mounts, process wait states, and daemon presence under runtime storage. PTY daemon is not signaled. A real pre-recycle artifact is still pending."
+        },
+        {
+          "at": "2026-09-27T21:54:27.556Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "2026-09-28: Regression first failed on ordering, then passed after the snapshot moved before watchdog incident writes. python3 -m unittest tests.test_pressure_watchdog passed (18); bash -n, git diff --check, JSON validation, and npm run issues -- check passed. Live artifact pending."
+        },
+        {
+          "at": "2026-09-27T21:54:28.789Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "2026-09-28: Installed watchdog/helper hashes match checkout (watchdog 1d98919561da8e0e130664ac243a737dac2e2064967a6e442c7be63ec506e8f9; helper b92c3af76028d40ae32d93494164e888e1fdfaa7387db76be4c2b35966686307). User watchdog service active as PID 1094696. UI PID 897832 is currently runnable; PTY daemon remains PID 1515447. Neither app nor daemon restarted; real pre-recycle artifact pending."
+        },
+        {
+          "at": "2026-09-28T09:40:20.021Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "2026-09-28 fresh read-only live capture: dock UI PID 3259370 and WebKit PID 3259398 remain on promoted release 353017b7354a-b11df5c09703-457ceb2bda9d; UI state S in poll_schedule_timeout, not D; cgroup I/O PSI near zero and system I/O PSI avg10 was 1.39%; memory pressure near zero. PTY daemon PID 1515447 remained alive. Over a separate 5-second /proc stat sample, UI accumulated 109 CPU ticks and WebKit 103; host CPU PSI avg10 ranged 7.24–9.24% and other host processes were using multiple cores. This supports concurrent app and host CPU activity but does not identify the hot function or prove keyboard latency. Existing geometry log is stale (Sep 24); no fresh key-to-paint measurement, no code change, no restart, and no performance improvement claimed. Snapshot: /tmp/termfleet/incident-snapshots/desktop-20260928T093714Z-3259370."
+        },
+        {
+          "at": "2026-09-28T10:09:04.291Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Added five-second UI/WebKit process CPU tick and host/cgroup CPU-I/O PSI samples with 48-hour retention; current live capture shows high host CPU pressure and both app processes accruing CPU, while exact typing latency remains unmeasured."
+        },
+        {
+          "at": "2026-09-28T10:11:18.622Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "Pressure watchdog installed from this checkout; installed and source script SHA-256 both b78e1416bd8a02b875450ca928a6fa267b91cbf6a3df8414a575ffbb56940679. Watchdog is active as PID 1776280."
+        },
+        {
+          "at": "2026-09-28T10:11:19.013Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "Five-second sample file received consecutive rows for UI PID 1555124 and WebKit PID 1555215 with host/cgroup PSI; PTY daemon PID 1515447 remained Ssl. Only pressure watchdog restarted; TermFleet UI and PTY daemon were not restarted. Typing/drag latency and responsiveness improvement remain unverified."
+        },
+        {
+          "at": "2026-09-28T10:24:36.177Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "2026-09-28 13:22 local: continuous 5-second sampler is writing and auto-pruning after 48 hours. UI 1555124 and WebKit 1555215 remain alive; at 13:20 host CPU PSI avg10 reached 23.87%, host IO some 4.53%, while TermFleet cgroup CPU some/full were 0.87%/0.83%; current host CPU PSI is 24.97% and app cgroup is 2.88%/2.49%. At the same current snapshot, WebKit was 54.6% CPU and unrelated headless Chromium workers were ~194% each, ffmpeg ~67.6%. Existing app input aggregates from 12:44 showed input-to-frame callback p95 552-640ms, max 558-664ms, with canvasDraw p95 1-2ms; renderer timer-gap events were 298-859ms through 12:45. Those interaction events are not current, so correlation to today\\u2019s perceived lag is not yet established. PTY daemon 1515447 remains present; no restart performed."
+        },
+        {
+          "at": "2026-09-28T10:30:21.496Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "2026-09-28 13:26 IDT: continuous sampler confirmed UI PID 1555124 and WebKit PID 1555215 alive; over 16 minutes their cumulative CPU ticks rose 28,896→45,460 (~17% of one core) and 77,731→136,774 (~61% of one core). At 13:26 WebKit was ~58% CPU; host I/O PSI avg10 was 8.58% some / 7.44% full, while app cgroup I/O pressure remained near zero. Geometry records for the inspected terminal stayed at x=366,y=101,size=1104x731 and displayOffset=0; the two-second geometry timer only reads/logs bounds. Source map movement is explicit pan mousemove / drag, zoom controls, or one-time startup rescue for an off-screen target. No fresh input-latency event exists after 12:44, so no live typing-to-paint correlation yet. Daemon PID 1515447 remains alive; no restart."
+        },
+        {
+          "at": "2026-09-28T11:00:32.687Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Map viewport trace regression passes (1/1); frontend production build passes; installed/live responsive behavior remains unverified."
+        },
+        {
+          "at": "2026-09-28T11:42:54.540Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Added five-second host and desktop CPU/I-O pressure samples, explicit absent-desktop rows, pre-recycle incident capture, and two-day incident-log retention; map movement telemetry remains source-only pending a new dock UI."
+        },
+        {
+          "at": "2026-09-28T11:42:54.823Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "20 pressure-watchdog tests passed, including absent-desktop sampling and two-day incident retention; shell syntax and git diff checks passed."
+        },
+        {
+          "at": "2026-09-28T11:55:38.342Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "2026-09-28: release:install completed; verify:installed-release confirmed binary 2732af0b315b-2842b6c7fe00-a15a54b8b84c sha256 2842b6c7fe00bf7b8a426c47c0af4298c435fdc72c01cbdd10e166dc628dad4f. Current dock UI process still has prior binary hash 7c00bc5c7c03; user dock relaunch needed before fresh app telemetry. PTY daemon 1515447 remains present."
+        },
+        {
+          "at": "2026-09-28T12:03:15.838Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "2026-09-28 15:01 IDT partial runtime sample: continuous sampler remained active at 5s cadence; live UI/WebKit PIDs were 2575523/2575602 with UI state S, WebKit state R, host I/O PSI about 2.1% some/full and cgroup pressure 0. This is process/pressure context only, not typing-to-paint latency or user responsiveness. Installed-release verifier passes for 2732af0b315b-2842b6c7fe00-a15a54b8b84c (sha256 2842b6c7fe00bf7b8a426c47c0af4298c435fdc72c01cbdd10e166dc628dad4f); currently running UI was still on prior 7c00bc5c7c03 release, so new input/map telemetry has not yet reached live runtime. PTY daemon 1515447 remains healthy with 21 live sessions; untouched."
+        },
+        {
+          "at": "2026-09-28T12:09:12.983Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Focused interaction latency, map viewport trace, canvas movement attribution, and renderer stall telemetry regressions: 7 passed on 2026-09-28; live smoothness remains unverified."
+        },
+        {
+          "at": "2026-09-28T12:43:56.367Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "2026-09-28: Input latency diagnostics no longer serialize keyboard-event payloads; they keep pane, byte-count, and sequence metadata only. Per-process latency traces rotate at 1 MiB and remove files older than two days. Movement/viewport and interaction telemetry remain content-free. Map verifier accepts current manual-pan wrapper, immersive sidebar guard, and statusForAttach helper. Focused privacy/latency/map telemetry regressions (10), Rust input privacy/rotation/sanitizer tests (3), npm run build, cargo check, and npm run verify:map-terminals pass; live smoothness awaits fresh dock relaunch and user typing/drag confirmation."
+        },
+        {
+          "at": "2026-09-28T12:50:23.644Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "2026-09-28: Current-tree responsiveness guards passed: 10 Playwright tests cover key-to-render aggregation/privacy, viewport movement attribution, renderer stalls, and geometry throttling; verify:map-terminals passed. Rust check passed; the new two-day geometry log expiration boundary test passed. Terminal input traces contain metadata only, rotate bounded complete lines, and expire after two days. These source checks improve diagnosis but do not prove visible typing or drag smoothness; keep verifying until installed dock behavior is confirmed."
+        },
+        {
+          "at": "2026-09-28T13:10:05.745Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "2026-09-28: Added installer regression proving the helper installed into an isolated HOME matches the current 5-second sampler source. Focused watchdog suite: 21 tests pass. Live sampling is not currently active: user watchdog service is absent from this shell session and installed helper SHA differs from checkout (5bb0bea6 vs a924b50d); live responsiveness remains unverified."
+        },
+        {
+          "at": "2026-09-28T13:15:25.558Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Map viewport source attribution is now required by TypeScript; npm run build passed and map-viewport-trace regression passed 2/2. This proves source-level trace contract only; installed runtime smoothness remains unverified."
+        },
+        {
+          "at": "2026-09-28T13:24:27.149Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Pressure watchdog extended with bounded UI/WebKit per-thread CPU, state, and wait-channel summaries; legacy daily TSV schemas rotate safely. python3 -m unittest tests.test_pressure_watchdog: 23/23 pass; bash syntax and git diff check pass."
+        },
+        {
+          "at": "2026-09-28T13:55:15.388Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "2026-09-28: watchdog suite passes 24/24, map-terminal verifier passes, 11 focused sidebar/telemetry regressions pass, npm run build passes with large-chunk warnings. Read-only runtime sample at 16:50-16:52: UI 3509375 and WebKit 3509470 in S/poll with CPU accruing; host I/O PSI elevated at capture. Watchdog PID 3549922 is alive but its installed script lacks current sample/heartbeat code; last desktop sample is 16:25:12 and runtime heartbeat is absent. Current checkout tests installer deploys the newer script; installed monitor freshness remains unverified."
+        },
+        {
+          "at": "2026-09-28T13:55:15.733Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "2026-09-28: added atomic runtime watchdog heartbeat, included heartbeat in desktop incident snapshots, retained 48-hour bounded sample rotation; logs contain process/pressure/timing metadata only. Verified current installed watchdog checksum differs from checkout and is missing the current sampling implementation."
+        },
+        {
+          "at": "2026-09-28T14:48:02.221Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "2026-09-28: background hydration exact-position regression passes 1/1; content-free latency/movement/renderer/privacy telemetry suite passes 9/9; frontend build and verify:map-terminals pass. Full hydration suite could not start because review server bind returned EPERM; watchdog/launcher unit selection had sandbox user-bus/process-fixture failures."
+        },
+        {
+          "at": "2026-09-28T14:48:02.253Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "2026-09-28 17:47 IDT: verify:installed-release confirms promoted release 2732af0b315b-e1aa3f72dce2-944da7ffd062 (sha256 e1aa3f72dce286b0137be5431f42d575e92563adaad9b4a1f8ee0f917cde42f4). Five-second process/PSI sampler is actively appending and heartbeat is fresh; data excludes terminal text. Shell cannot inspect host desktop PIDs, geometry log predates this release, and live typing/drag proof awaits dock relaunch and user reproduction."
+        },
+        {
+          "at": "2026-09-28T15:07:32.068Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "2026-09-28: regression first failed when dock accepted stale inherited TERMFLEET_CMD; after fix, test_installed_release.test_dock_launcher_ignores_a_stale_inherited_release_command passes with a fixture current symlink; shell syntax and diff checks pass. Full launcher suite has unrelated source-contract failures; installed-release verifier currently fails because working-tree frontend checksum differs from promoted package. Dock relaunch and live key-to-render/map-position proof remain open."
+        },
+        {
+          "at": "2026-09-28T15:26:05.448Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "2026-09-28: python3 -m unittest tests.test_pressure_watchdog passed 24/24; source sampler SHA-256 matches staged watchdog, but live monitor runs deleted older script hash 5bb0bea6, so fresh sampling is not active."
+        },
+        {
+          "at": "2026-09-28T15:26:09.954Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "2026-09-28: source watchdog dynamically rediscovers UI and records bounded CPU/IO/PSI samples; installed process still has deleted older script mapped, sample heartbeat stale since 18:05, desktop runtime proof pending."
+        },
+        {
+          "at": "2026-09-28T15:27:10.006Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "2026-09-28: bounded telemetry regressions passed 5/5: Canvas movement source counts/attribution, map viewport source attribution, and terminal interaction aggregate cadence. Source-only; installed telemetry remains absent."
+        },
+        {
+          "at": "2026-09-28T15:32:58.721Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "2026-09-28: focused movement/viewport/input/geometry telemetry tests passed (6/6); watchdog sampler tests passed (24/24). Monitor output is still stale and desktop process IDs are not visible from this command context."
+        },
+        {
+          "at": "2026-09-28T15:33:28.199Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "2026-09-28: npm run build passed; verify:map-terminals passed; source traces identify map camera/card movement causes. Live desktop process IDs are not visible from this execution context and sampler files remain stale."
+        },
+        {
+          "at": "2026-09-28T15:34:57.982Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "2026-09-28 follow-up: current verify:installed-release fails because installed frontend checksum differs from this checkout build; 73 dirty paths mean this is not a safe release candidate. No dock update was promoted. Desktop PIDs remain outside this command context; latest known sampler row is 18:05."
+        },
+        {
+          "at": "2026-09-28T15:50:04.012Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "2026-09-28: python3 -m unittest tests.test_pressure_watchdog passes 24/24. Safe files-only staging completed. Repository and installed watchdog SHA-256 now match at 80a2af38c54f09e31da56a2ee420b148af6192ccd6505ee343578e93874c518e; the active service process still holds old script SHA-256 5bb0bea6ae7d32d8cadeb7b289e431c9edc2b53328ad08d8642bc020d4281531, and sampler/heartbeat remain frozen at 18:05. No service or desktop restart performed; fresh sampling and live typing/drag latency remain unverified."
+        },
+        {
+          "at": "2026-09-28T15:57:01.290Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "2026-09-28 follow-up: python3 -m unittest tests.test_pressure_watchdog passes 24/24; 8 focused terminal-input/map-viewport/canvas-movement/renderer-stall/geometry Playwright regressions pass; npm run build passes; npm run verify:map-terminals passes. Installed watchdog SHA matches current source, but active recovery-enabled process still holds stale code and the sample TSV/heartbeat remain frozen at 18:05. No live typing/drag sample has been collected by the replacement sampler; its service restart can recycle the desktop group and is awaiting explicit approval. Daemon untouched; no smoothness claim."
+        },
+        {
+          "at": "2026-09-28T15:59:19.426Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "2026-09-28: python3 -m unittest tests.test_pressure_watchdog passes 25/25, including a regression that invokes the actual pruning helper and proves files older than 48 hours are removed while the current sample and unrelated logs remain. Eight focused input-latency/map-viewport/canvas-movement/renderer-stall/geometry Playwright checks pass; npm run build and npm run verify:map-terminals pass. Files-only install restaged the current watchdog; source and installed SHA-256 both 692617e37b0f856ea978d55385957eb421927996dad7917557240ac3a1131c07. Active recovery-enabled process still holds old code; sample and heartbeat remain at 18:05. Fresh live telemetry and typing/drag correlation are pending the requested watchdog-only restart approval; PTY daemon untouched."
+        },
+        {
+          "at": "2026-09-28T16:15:43.699Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Added bounded timing-only renderer, input-to-frame, map movement, and viewport attribution probes; focused diagnostics tests pass. Installed/live proof pending."
+        },
+        {
+          "at": "2026-09-28T16:15:43.988Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "9 focused diagnostics tests passed; verify:terminal-geometry, verify:map-terminals, frontend build, and diff check run in current dirty checkout."
+        },
+        {
+          "at": "2026-09-28T16:20:28.645Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Added standalone read-only five-second UI/WebKit/PSI sampler with two-day retention; output is timing/state only, no terminal contents."
+        },
+        {
+          "at": "2026-09-28T16:20:28.970Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "python3 -m unittest tests.test_performance_sampler passed (2 tests); 9 focused renderer/input/map diagnostics tests passed; frontend build and map/geometry source verifiers passed."
+        },
+        {
+          "at": "2026-09-28T16:35:20.777Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "2026-09-28 19:30 IDT: running UI (launched with JSC_useJIT=false) WebKit renderer used ~1 full core at idle; per-thread sample: WebKit main thread 81.6%. Earlier same-day sample with JIT on was 28-31% main thread."
+        },
+        {
+          "at": "2026-09-28T16:35:20.807Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Disposable Xvfb WebKitGTK probe (synthetic grid decode, state JSON churn, label regex, atlas paint; graphics safeguards kept), 2 runs each: JSC_useJIT=false total 843/1118 ms (decode 78/91, labels 525/620); JSC_useConcurrentJIT=false 422/420 ms (decode 16/16, labels 181/178); default 593/454. No-JIT makes app JavaScript 3-6x slower; main-thread JIT matches default speed."
+        },
+        {
+          "at": "2026-09-28T16:46:03.720Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "2026-09-28 19:42 IDT: after UI-only dock relaunch with JSC_useConcurrentJIT=false (0 JITWorker threads confirmed), WebKit main thread idle load fell from 81.6% to 25.1% of a core over 10 s; user still reports sluggishness."
+        },
+        {
+          "at": "2026-09-28T16:46:03.755Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "Release 2732af0b315b-42607dd53f9d-a804ba24ae78 adds a bounded renderer work ledger (timers, frames, DOM events, React scheduler, Tauri callbacks; durations + bundle positions only, 10 s windows, stops after 1 h). Summarise with scripts/summarize-work-profile.mjs --maps <sourcemap build>. tests/work-attribution.spec.ts 4/4 pass, tsc clean, verify:installed-release OK."
+        },
+        {
+          "at": "2026-09-28T17:08:10.824Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "Release 2732af0b315b-42607dd53f9d never left the loading screen: work recorder assigned Tauri's non-writable transformCallback, TypeError at module load; watchdog then killed/relaunched it at ~63 s (cockpit-heartbeat-stale). Rolled current back to a40208d0de54 (loaded in ~6 s). Fix: dropped that hook, install wrapped so it can never throw; regression test added (5/5). Disposable Xvfb boot smoke with locked transformCallback: broken build -> 'Attempted to assign to readonly property', root empty; fixed build -> no errors, app mounted. Installed as 2732af0b315b-977b74e9241f-2317fa349d4a."
+        },
+        {
+          "at": "2026-09-28T17:26:22.453Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Work ledger on live dock (release 977b74e9241f, 2 min): JS callbacks busy only 5.9% of wall time while WebKit main thread was 25% -> most cost is style/paint, not JS. Disposable Xvfb paint probe with the dock's graphics flags (9 terminal-like canvases, 2 repainting at 10 Hz), 2 runs: none 0.8/1.1% renderer CPU, looping quest pulse 87.4/87.2%, same glow static 1.3/1.3%, glass blur 1.2/1.1%. Root cause of the remaining sluggishness: the infinite quest-pulse animations (sidebar row ::after and terminal shell ::before) force full software repaints every frame. Fix: 3 pulses then steady; guard test forbids infinite animations in global.css; quest halo test asserts iteration count 3. Installed as 2732af0b315b-720b38208f63-65c8dd41bbee; boot smoke clean."
+        },
+        {
+          "at": "2026-09-28T18:02:23.798Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Live ledger (release f4744e06af38): grid-diff channel only ~6 msg/s (not the cost); sampled rendering updates avg 39.5 ms, max 709 ms; WebKit main 46% while in use. Pan probe (20 terminal-size map cards, software drawing): base p50 21/p95 40 ms at ~100% CPU; hardware GL+compositing did NOT help (104% CPU, same frame times; an earlier 0.1% reading was an occluded-window fluke). Removing the 42px blurred card shadow alone: p50 11/p95 24 ms; blur-free shadow reproduced this twice; a small 8px blur did not help. Fix: --shadow-card is now a crisp non-blurred edge (map cards + workspace surface); guard test fails on the old value. Installed 2732af0b315b-23b36cd8122e-64fb5530d4a1; boot smoke clean."
+        },
+        {
+          "at": "2026-09-28T18:38:10.009Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "Release 870145e5a965 live: sampled updates style+layout avg 0.6 ms vs paint(+queued tasks) avg 11.7 ms, max 162 ms; page 3902 elements, 2 canvases visible (1.4 MP), 1920x1008@1. Visible vs minimized main-thread over 15 s each while idle: 4% vs 2% -> idle cost now small (was ~82% at session start with JIT off). Hitches of 80-190 ms appear in nearly every 10 s window (paint and React commits, one click handler 165 ms). Synthetic glass/backdrop probe did not reproduce cost. Next release 4c89de64e785 records changed inline-style property names (never values) and which page changes preceded any >=60 ms repaint."
+        },
+        {
+          "at": "2026-09-28T20:43:49.678Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "Hitch source: glyph atlas made one OffscreenCanvas per (char,colour,style) tile. Probe (dock graphics flags): new tile 0.08 ms separate canvas vs 0.01 ms in a shared sheet slot; full 138x27 frame of hits 13-18 ms vs 8-10 ms from a sheet; 1000 new tiles = 80 ms -> matches the 160-260 ms canvas render hitches in the live ledger. Fix: GlyphAtlas draws all tiles into one clipped-slot sheet with LRU slot reuse; renderer blits with source rects; new test asserts one shared source + slot reuse; 17/18 renderer pixel tests pass (the failing AskUserQuestion map-stream test fails identically without the change). Live after release b078c2a6f922 (UI-only restart, daemon untouched, loaded in 6 s vs 28 s): 90 s sample paint avg 1.5 ms (was 11.7-13.4), JS callbacks busy 1.8% (was 5-11%), one 106 ms hitch right after launch then max 60 ms. No typing sample yet after restart."
+        },
+        {
+          "at": "2026-09-29T06:15:12.135Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Committed 545ea1a on main (only this session's hunks; other agents' uncommitted edits left unstaged). Regression gates: npm run verify:render-perf (fails on old atlas and JSC_useJIT=false), npm run verify:boot-smoke (failed on the broken recorder build), plus guard tests for launcher JIT, finite quest pulses, no infinite animations, blur-free card shadow, shared glyph sheet, recorder. Staged snapshot validated in isolation: tsc, bash -n, launcher JIT guard, render-perf, boot-smoke, recorder tests 6/6."
+        },
+        {
+          "at": "2026-09-29T08:00:34.330Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "2026-09-29 splash freeze: WebKit localStorage SQLite write log reached ~1 GB in 13 min (app wrote ~1.3 MB/s: quest record ~0.5 MB/s + workspace cache per status change); WebKit holds a read snapshot all session so live checkpoints fold back 0 frames; next start read ~700 MB/s and never left the splash (old known-good build hung too). Manual compaction restored a 4 s launch. Fix committed a940b0c: storage governor (dedupe, 1 KB/s per-key budget, read-your-writes, flush on close, full-storage retry), workspace disk mirror <=1 write/2 s, launcher compaction before every window start (first run folded 1,076,881 KB), doctor size check. Live: 0 KB log growth over 100 s; launch 7-8 s. Tests: storage-governor spec 11/11, compaction 3/3 on real SQLite, boot smoke."
+        },
+        {
+          "at": "2026-09-29T15:26:56.893Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "5c5c44b: at 1 KB/s/key a 5.5 h session grew the WebKit storage log to ~96 MB (SQLite logs ~2x value size; no folding while running). Budget now 200 B/s/key, 2 s-60 min: workspace cache ~22 min (disk layout is authoritative at startup), quest record ~45 min, flush on close. 24 h simulation <= 80 MB log. Doctor warn 256 MB / fail 1 GB. Installed; boot smoke clean."
         }
       ]
     },
@@ -3490,32 +4065,32 @@
     {
       "id": "TF-025",
       "title": "Manual sidebar order resets and moves map terminals",
-      "state": "fixing",
+      "state": "verifying",
       "severity": "medium",
       "surface": "canvas",
       "matrixRefs": [],
       "symptom": "Dragging a terminal in the sidebar Manual view resets to position-derived order and changes its physical map location.",
-      "rootCause": "",
+      "rootCause": "Manual sidebar reorder also rotated same-project terminals through one another's canvas x/y slots.",
       "guard": "Focused sidebar-order state regression plus map-coordinate invariance assertion.",
       "evidence": [
         {
-          "kind": "source",
-          "at": "2026-09-04T19:16:48.545Z",
-          "note": "Both Map sidebar surfaces now dispatch the sidebar-only reorder action; map geometry remains in canvasState."
+          "kind": "browser-render",
+          "at": "2026-09-28T13:37:09.645Z",
+          "note": "Browser preview regression confirms sidebar reorder does not move map terminals; installed desktop behavior remains pending."
         },
         {
-          "kind": "browser-render",
-          "at": "2026-09-04T19:17:07.601Z",
-          "note": "Playwright opened the review app and exercised the Manual-order store contract in Chromium: 5 focused map-order tests passed."
+          "kind": "source",
+          "at": "2026-09-28T16:15:44.263Z",
+          "note": "Canvas movement and viewport probes retain source attribution; focused movement tests pass. Installed/live movement cause remains unverified."
         },
         {
           "kind": "focused-test",
-          "at": "2026-09-08T17:16:06.713Z",
-          "note": "Fresh 2026-09-08 regression chain confirms activity cannot reorder projects or terminals and refresh preserves the exact 16-terminal desktop authority order; 181 checks and production build passed. Installed desktop visual confirmation remains open."
+          "at": "2026-09-28T16:20:29.350Z",
+          "note": "Canvas movement and viewport attribution tests passed; live runtime attribution pending instrumented dock release."
         }
       ],
       "owner": "termfleet",
-      "nextAction": "Add the failing guard, separate sidebar order from map positions, then verify the dock release.",
+      "nextAction": "Promote a clean scoped dock release and confirm manual sidebar reorder leaves map positions unchanged in the installed desktop.",
       "history": [
         {
           "at": "2026-09-04T19:06:58.989Z",
@@ -3605,6 +4180,49 @@
           "from": "verifying",
           "to": "fixing",
           "note": null
+        },
+        {
+          "at": "2026-09-28T13:35:58.998Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Current store code now persists manual sidebar order without writing terminal x/y positions; implementation removes the former slot rotation."
+        },
+        {
+          "at": "2026-09-28T13:37:09.329Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Focused Playwright sidebar regressions pass 2/2; manual order preserves map node coordinates."
+        },
+        {
+          "at": "2026-09-28T13:37:09.645Z",
+          "type": "evidence",
+          "kind": "browser-render",
+          "note": "Browser preview regression confirms sidebar reorder does not move map terminals; installed desktop behavior remains pending."
+        },
+        {
+          "at": "2026-09-28T13:37:09.967Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": null
+        },
+        {
+          "at": "2026-09-28T16:15:44.263Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Canvas movement and viewport probes retain source attribution; focused movement tests pass. Installed/live movement cause remains unverified."
+        },
+        {
+          "at": "2026-09-28T16:15:44.556Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "canvas-movement-trace and map-viewport-trace focused tests passed."
+        },
+        {
+          "at": "2026-09-28T16:20:29.350Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Canvas movement and viewport attribution tests passed; live runtime attribution pending instrumented dock release."
         }
       ]
     },
@@ -3614,29 +4232,36 @@
       "state": "verifying",
       "severity": "medium",
       "surface": "desktop-runtime",
-      "matrixRefs": [],
-      "symptom": "The map Connect terminal action waits for recovery and can appear to do nothing.",
+      "matrixRefs": [
+        "5.50"
+      ],
+      "symptom": "The map Connect terminal action can leave a blank card; a user screenshot also shows an unexplained standalone 30 in a live Codex pane during repeated app-server reconnect failures.",
       "rootCause": "",
-      "guard": "Focused map connect guard plus installed map check",
+      "guard": "Focused map connect guard plus installed map check; attribute the Codex 30 to raw PTY output, VT grid text, geometry, or screenshot before adding a rendering guard",
       "evidence": [
         {
+          "kind": "source",
+          "at": "2026-09-26T18:43:06.863Z",
+          "note": "Connect now resolves the map card's linked pane identity at click time; it only uses a positional fallback when exactly one terminal exists."
+        },
+        {
           "kind": "focused-test",
-          "at": "2026-09-05T13:16:56.681Z",
-          "note": "Focused map guard passed: the linked terminal mount precedes saved-agent recovery."
+          "at": "2026-09-26T18:43:09.953Z",
+          "note": "The focused browser suite passed the exact-linked-pane and Connect interaction cases with a map node ID distinct from its pane ID; the regression now confirms click resolution uses linkedTerminalPaneId and never steals the active sibling."
         },
         {
           "kind": "installed-release",
-          "at": "2026-09-05T13:17:14.021Z",
-          "note": "Installed release verification passed; the map release probe attached and wrote through a fresh PTY, while screenshot capture was unavailable."
+          "at": "2026-09-26T18:44:20.328Z",
+          "note": "Fresh promoted release PTY proof: verify:map-connect-release click wrote a unique marker to a private test PTY. Xvfb screenshot capture failed with BadMatch, so dock visual proof remains pending."
         },
         {
-          "kind": "source",
-          "at": "2026-09-05T13:17:32.928Z",
-          "note": "The map handler now mounts only the existing linked terminal before invoking saved-agent recovery; it never fabricates a pane id."
+          "kind": "live-desktop",
+          "at": "2026-09-28T08:25:26.901Z",
+          "note": "User screenshot from 2026-09-28 00:30 IDT shows a blank terminal area and Connect terminal. Live doctor at 11:22 IDT reports healthy status wiring, current installed release, and readable status for both active terminals. Current daemon project is in-control-kernel; screenshot project cc-linux-enhancments is not active and no current pane status record matches its task. Same-pane PTY/grid and dock visual verification remain unavailable."
         }
       ],
       "owner": "termfleet",
-      "nextAction": "Verify the rebuilt dock immediately shows the linked terminal after Connect terminal.",
+      "nextAction": "Match the user screenshot to its exact pane and capture raw PTY output, VT grid text, geometry, and dock pixels to identify the standalone 30; then verify blank-card recovery on the dock.",
       "history": [
         {
           "at": "2026-09-05T13:14:57.947Z",
@@ -3695,6 +4320,42 @@
           "from": "fixing",
           "to": "verifying",
           "note": "Focused and installed checks pass; the live dock click remains the final proof."
+        },
+        {
+          "at": "2026-09-26T17:14:33.168Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "Current native desktop captures compared by SHA-256: one agent card still shows a blank terminal with Connect terminal (9fd086f86a35c725ca5d3dac006cc0caabb34a4a7d6bd73aed66feb2376f6b98); a different pane visibly renders text (454fe61d4803ceb89f1321442d6f3875e42e21e3b9deebb5e293cdcef8fb1ae1). The original in-control-kernel pane was not independently matched, so this is partial visual evidence only and the issue remains verifying."
+        },
+        {
+          "at": "2026-09-26T18:43:06.864Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Connect now resolves the map card's linked pane identity at click time; it only uses a positional fallback when exactly one terminal exists."
+        },
+        {
+          "at": "2026-09-26T18:43:09.953Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "The focused browser suite passed the exact-linked-pane and Connect interaction cases with a map node ID distinct from its pane ID; the regression now confirms click resolution uses linkedTerminalPaneId and never steals the active sibling."
+        },
+        {
+          "at": "2026-09-26T18:44:20.328Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "Fresh promoted release PTY proof: verify:map-connect-release click wrote a unique marker to a private test PTY. Xvfb screenshot capture failed with BadMatch, so dock visual proof remains pending."
+        },
+        {
+          "at": "2026-09-27T21:41:16.257Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "User-supplied screenshot (mtime 2026-09-28 00:30 IDT) visibly shows a blank terminal area and Connect terminal. At 00:34 IDT daemon status reported active project in-control-kernel; cc-linux-enhancments sessions were persisted, not live. Symptom is visible, but affected pane was not matched to an active PTY/grid."
+        },
+        {
+          "at": "2026-09-28T08:25:26.901Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "User screenshot from 2026-09-28 00:30 IDT shows a blank terminal area and Connect terminal. Live doctor at 11:22 IDT reports healthy status wiring, current installed release, and readable status for both active terminals. Current daemon project is in-control-kernel; screenshot project cc-linux-enhancments is not active and no current pane status record matches its task. Same-pane PTY/grid and dock visual verification remain unavailable."
         }
       ]
     },
@@ -6323,6 +6984,98 @@
       ]
     },
     {
+      "id": "TF-048",
+      "title": "Quest points and timer are fragile and run out",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "logic",
+      "matrixRefs": [],
+      "symptom": "Quest run wiped by a one-second status blip, counted time while the app was closed, goals from a new session were silently not scored, quests ran out after a few wins, storage grew without limit, and finished goals gave no visible reward",
+      "rootCause": "",
+      "guard": "tests/gamification.spec.ts grace/sleep/collision/compaction/tier/reward regressions plus gamification-panel gain and level-row check",
+      "evidence": [
+        {
+          "kind": "focused-test",
+          "at": "2026-09-24T12:17:44.328Z",
+          "note": "Operator screenshots: every open terminal card got the quest outline, and a 'Current quest' line was pushed into cards. Cause: 'busy' used the process-alive status, so idle prompts glowed and even counted toward '3 agents busy'. Now uses the same Running rule as the card badge; the card line is removed; paused text reads 'Paused until 3 agents are working (n/3 now)'. 48/48 quest tests pass; release 5619406a7442 installed."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Confirm the +points pop and level row in the dock-launched app",
+      "history": [
+        {
+          "at": "2026-09-23T18:36:10.070Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-09-23T18:36:10.397Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "39/39 gamification browser+logic tests, build, impeccable design gate, map-terminals verifier and diff check pass; preview screenshots show level-up pop and level row"
+        },
+        {
+          "at": "2026-09-23T18:36:21.670Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Regressions written, source fixed; installed dock check pending"
+        },
+        {
+          "at": "2026-09-23T18:36:22.034Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Regressions written, source fixed; installed dock check pending"
+        },
+        {
+          "at": "2026-09-23T18:36:22.377Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Regressions written, source fixed; installed dock check pending"
+        },
+        {
+          "at": "2026-09-23T18:36:22.757Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Regressions written, source fixed; installed dock check pending"
+        },
+        {
+          "at": "2026-09-23T18:36:23.299Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Regressions written, source fixed; installed dock check pending"
+        },
+        {
+          "at": "2026-09-23T20:37:12.813Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Live root cause for Start quest doing nothing: retired v1-v3 quest profiles (about 5MB) filled WebKit localStorage so every save threw silently and the next reload undid the click. Now pruned at mount, retried after prune on quota error, and kept in memory if storage still refuses. 42/42 quest tests incl. full-storage browser regression pass; release 7555fb5a515a promoted."
+        },
+        {
+          "at": "2026-09-24T06:02:05.970Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Operator could not understand the goal quest: renamed to 'Finish N checklist items' with a plain explanation, a live count of open checklist items, and a hint when no terminal has a checklist. Found no agent task checklists in any pane for about 8 hours, so the quest could not move. 42/42 tests pass; release d31f85e8c075 promoted."
+        },
+        {
+          "at": "2026-09-24T06:50:58.639Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Operator still could not tell what the quest meant. The first quest is now 'Get agents to finish 3 jobs': it counts each time an agent ends its turn and goes idle (hook turn=idle with activity, keyed by pane + hook write time so it counts once). Every quest now reads as one plain instruction. 45/45 tests pass; installed."
+        },
+        {
+          "at": "2026-09-24T12:17:44.329Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Operator screenshots: every open terminal card got the quest outline, and a 'Current quest' line was pushed into cards. Cause: 'busy' used the process-alive status, so idle prompts glowed and even counted toward '3 agents busy'. Now uses the same Running rule as the card badge; the card line is removed; paused text reads 'Paused until 3 agents are working (n/3 now)'. 48/48 quest tests pass; release 5619406a7442 installed."
+        }
+      ]
+    },
+    {
       "id": "TF-049",
       "title": "Zoomed-out map card preview text looks scrambled",
       "state": "reported",
@@ -6340,6 +7093,98 @@
           "at": "2026-09-23T22:26:35.489Z",
           "type": "created",
           "note": null
+        }
+      ]
+    },
+    {
+      "id": "TF-050",
+      "title": "Model questions have no choices in TermControl",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "desktop-runtime",
+      "matrixRefs": [
+        "3.21i"
+      ],
+      "symptom": "The phone shows approvals but not model question choices",
+      "rootCause": "The Codex mobile bridge read approval calls but skipped request_user_input calls; the phone also hid question text when a screen snapshot existed.",
+      "guard": "Codex question regression and phone browser choice test",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-09-24T06:06:56.211Z",
+          "note": "Codex and Claude question sources are read by the bridge; question title stays visible on phone; Codex digit selection sends no extra Enter"
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-09-24T06:06:56.537Z",
+          "note": "23 focused mobile checks pass; question parser failed before the fix and now passes; 42 phone browser checks pass including question options, typed answer focus, and one bound answer"
+        },
+        {
+          "kind": "installed-release",
+          "at": "2026-09-24T06:43:50.571Z",
+          "note": "termcontrol.service restarted at 2026-09-24 09:43 IDT PID 503924; local and public routes return 302 to login; daemon PID 22188 still reachable with 27 live sessions"
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Verify a real phone question in the live bridge",
+      "history": [
+        {
+          "at": "2026-09-24T06:02:13.140Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-09-24T06:02:21.040Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Codex rollout questions are omitted by pendingAsk"
+        },
+        {
+          "at": "2026-09-24T06:02:21.306Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Phone only exposes approval choices; focused synthetic Codex question failed before parser"
+        },
+        {
+          "at": "2026-09-24T06:02:21.583Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Added a failing Codex question regression and phone choice flow"
+        },
+        {
+          "at": "2026-09-24T06:02:21.936Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Reading pending Codex question calls and exposing their answer options"
+        },
+        {
+          "at": "2026-09-24T06:06:56.211Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Codex and Claude question sources are read by the bridge; question title stays visible on phone; Codex digit selection sends no extra Enter"
+        },
+        {
+          "at": "2026-09-24T06:06:56.537Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "23 focused mobile checks pass; question parser failed before the fix and now passes; 42 phone browser checks pass including question options, typed answer focus, and one bound answer"
+        },
+        {
+          "at": "2026-09-24T06:43:41.994Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Bridge and phone browser suites passed; restarted live TermControl bridge and public route responds; awaiting authenticated model question read-back"
+        },
+        {
+          "at": "2026-09-24T06:43:50.571Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "termcontrol.service restarted at 2026-09-24 09:43 IDT PID 503924; local and public routes return 302 to login; daemon PID 22188 still reachable with 27 live sessions"
         }
       ]
     },
@@ -6520,6 +7365,196 @@
           "from": "fixing",
           "to": "verifying",
           "note": "desktop look pending the next dock release"
+        }
+      ]
+    },
+    {
+      "id": "TF-054",
+      "title": "TermControl conversation messages look jumbled on phone",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "desktop-runtime",
+      "matrixRefs": [
+        "3.21j"
+      ],
+      "symptom": "A short TermControl conversation message is followed by FD-DAY-V1 briefing metadata, JSON state, and planning instructions; aligned spaces also collapse in assistant messages.",
+      "rootCause": "Codex converted every non-user message role into an assistant chat event, the text cleaner did not remove the daily briefing envelope, and assistant paragraphs collapsed repeated spaces.",
+      "guard": "Phone conversation shows only the short readable message before FD-DAY-V1, excludes system and developer records, and preserves aligned spaces in assistant text.",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-09-24T12:46:01.990Z",
+          "note": "Explicit Codex conversation-role filter, daily briefing envelope cleanup for Codex and Claude, and assistant whitespace rendering are implemented."
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-09-24T12:46:02.034Z",
+          "note": "2 briefing/feed regressions, 9 chat rendering checks, and 23 mobile verification checks passed; sandbox daemon access was rerun on host."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Read back the affected conversation in an authenticated phone session; then record live evidence and resolve only if the briefing metadata is absent.",
+      "history": [
+        {
+          "at": "2026-09-24T12:34:57.555Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-09-24T12:43:43.674Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Representative FD-DAY-V1 message supplied; focused guard and feed fix are in place."
+        },
+        {
+          "at": "2026-09-24T12:43:44.129Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Representative FD-DAY-V1 message supplied; focused guard and feed fix are in place."
+        },
+        {
+          "at": "2026-09-24T12:43:44.575Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Representative FD-DAY-V1 message supplied; focused guard and feed fix are in place."
+        },
+        {
+          "at": "2026-09-24T12:43:45.013Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Representative FD-DAY-V1 message supplied; focused guard and feed fix are in place."
+        },
+        {
+          "at": "2026-09-24T12:43:45.462Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Representative FD-DAY-V1 message supplied; focused guard and feed fix are in place."
+        },
+        {
+          "at": "2026-09-24T12:46:01.991Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Explicit Codex conversation-role filter, daily briefing envelope cleanup for Codex and Claude, and assistant whitespace rendering are implemented."
+        },
+        {
+          "at": "2026-09-24T12:46:02.034Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "2 briefing/feed regressions, 9 chat rendering checks, and 23 mobile verification checks passed; sandbox daemon access was rerun on host."
+        }
+      ]
+    },
+    {
+      "id": "TF-055",
+      "title": "JavaScriptCore JIT crash freezes the cockpit",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "desktop-runtime",
+      "matrixRefs": [
+        "3.36"
+      ],
+      "symptom": "The WebKit JIT worker segfaults, then the cockpit renderer disappears while daemon sessions remain live.",
+      "rootCause": "JavaScriptCore JITWorker segfaulted in the installed WebKit process; the dock launcher did not disable JIT or propagate that setting to its systemd child.",
+      "guard": "Launcher propagation regression and installed dock process environment read-back",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-09-24T21:19:02.185Z",
+          "note": "2026-09-24 16:08:32 kernel logged JITWorker segfault in libjavascriptcoregtk-4.1.so.0.10.14; watchdog recovered UI at 16:09 while daemon PID 19463 and 29 sessions survived."
+        },
+        {
+          "kind": "installed-release",
+          "at": "2026-09-24T21:19:03.230Z",
+          "note": "Installed libexec launcher SHA-256 c9ee9cacd2afedd5583577b0e40a22d30c8142f6e0aaaada2ad04c36552fea47 matches source; current UI PID 3178145 predates installation and still lacks JSC_useJIT, so active mitigation is unverified."
+        },
+        {
+          "kind": "live-desktop",
+          "at": "2026-09-27T21:25:49.070Z",
+          "note": "2026-09-28 read-only installed process check: active UI PID 685369 and WebKit child PID 685396 have no JSC_useJIT environment setting. Running binary matches promoted release 353017b7354a-b11df5c09703-457ceb2bda9d, but current source launcher contains JSC_useJIT=false while installed launcher hash 030f9d18a764dc4b7c198f13975a97175f947841dd6c0d189d547c67b2baec76 differs from source hash c9ee9cacd2afedd5583577b0e40a22d30c8142f6e0aaaada2ad04c36552fea47. This confirms the active installed launch path did not apply the mitigation; it does not establish that JIT caused the current high CPU. UI-only relaunch and live environment read-back are still required; PTY daemon must remain untouched."
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-09-28T16:35:20.835Z",
+          "note": "Launcher now drops JSC_useJIT and sets JSC_useConcurrentJIT=false (escape hatch TERMFLEET_WEBKIT_NO_JIT=1). Probe readback: with JSC_useConcurrentJIT=false the WebKit process has 0 JITWorker threads (default has 3), so the thread that segfaulted no longer exists. Guard test_desktop_launch_keeps_jit_but_drops_the_crashing_worker failed before, passes after; 6 other launcher-guard failures pre-exist (non-release command refusal). Installed libexec launcher updated; takes effect on next UI-only relaunch."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Add a failing launcher guard for disabling JIT in the desktop child",
+      "history": [
+        {
+          "at": "2026-09-24T13:11:54.525Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-09-24T13:13:19.773Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Kernel logged JITWorker segfault at 16:08:32; watchdog recovered the window at 16:09:02 and preserved 29 daemon sessions."
+        },
+        {
+          "at": "2026-09-24T13:13:20.724Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Live cockpit process after automatic recovery has no JSC_useJIT setting; focused guard failed before the launcher change."
+        },
+        {
+          "at": "2026-09-24T13:14:50.694Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Added regression first and observed it fail because the launcher did not export JSC_useJIT."
+        },
+        {
+          "at": "2026-09-24T13:14:52.297Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Dock launcher now defaults JSC_useJIT=false and passes it explicitly to systemd-run."
+        },
+        {
+          "at": "2026-09-24T13:14:53.504Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Targeted JIT and existing WebKit launcher guards passed 2/2; bash syntax passed. Broader launcher/installer suites have pre-existing failures from stale assertions and sandboxed window discovery."
+        },
+        {
+          "at": "2026-09-24T21:19:02.185Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "2026-09-24 16:08:32 kernel logged JITWorker segfault in libjavascriptcoregtk-4.1.so.0.10.14; watchdog recovered UI at 16:09 while daemon PID 19463 and 29 sessions survived."
+        },
+        {
+          "at": "2026-09-24T21:19:03.230Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "Installed libexec launcher SHA-256 c9ee9cacd2afedd5583577b0e40a22d30c8142f6e0aaaada2ad04c36552fea47 matches source; current UI PID 3178145 predates installation and still lacks JSC_useJIT, so active mitigation is unverified."
+        },
+        {
+          "at": "2026-09-24T21:19:04.171Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Launcher update installed without restart; UI-only relaunch and live JIT environment, visual, input, and recurrence checks remain."
+        },
+        {
+          "at": "2026-09-27T21:25:49.070Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "2026-09-28 read-only installed process check: active UI PID 685369 and WebKit child PID 685396 have no JSC_useJIT environment setting. Running binary matches promoted release 353017b7354a-b11df5c09703-457ceb2bda9d, but current source launcher contains JSC_useJIT=false while installed launcher hash 030f9d18a764dc4b7c198f13975a97175f947841dd6c0d189d547c67b2baec76 differs from source hash c9ee9cacd2afedd5583577b0e40a22d30c8142f6e0aaaada2ad04c36552fea47. This confirms the active installed launch path did not apply the mitigation; it does not establish that JIT caused the current high CPU. UI-only relaunch and live environment read-back are still required; PTY daemon must remain untouched."
+        },
+        {
+          "at": "2026-09-28T16:35:20.835Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Launcher now drops JSC_useJIT and sets JSC_useConcurrentJIT=false (escape hatch TERMFLEET_WEBKIT_NO_JIT=1). Probe readback: with JSC_useConcurrentJIT=false the WebKit process has 0 JITWorker threads (default has 3), so the thread that segfaulted no longer exists. Guard test_desktop_launch_keeps_jit_but_drops_the_crashing_worker failed before, passes after; 6 other launcher-guard failures pre-exist (non-release command refusal). Installed libexec launcher updated; takes effect on next UI-only relaunch."
         }
       ]
     },
@@ -6742,8 +7777,8 @@
         },
         {
           "kind": "source",
-          "at": "2026-09-27T07:44:43.277Z",
-          "note": "2026-09-27 flow-state pane 'still breaks' (live view, Claude in default inline mode, settings still carry CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1). Live daemon output (4.0 MB) replayed through vt_grid vs a private tmux at 138x27: identical screens at 40 spread cut points; the exact garbled moment (floating '4', doubled 'Smooshing...' line, 'okens)') is reproduced byte-for-byte by tmux at byte 3849304. Claude's own inline redraw, not TermFleet. Remedy: scripts/enable-claude-fullscreen.sh then restart Claude."
+          "at": "2026-09-28T08:57:41.091Z",
+          "note": "2026-09-28: the supplied content-creation Claude screenshot matches the inline-mode symptom family, but two uniform blue bars could be selection or cell backgrounds; a single frame cannot prove renderer corruption. Read-only config check: ~/.claude/settings.json is valid, fullscreen-disable env key absent, tui=fullscreen; current agent shell does not export that key. Screenshot pane is no longer live and app/daemon are stopped, so no same-pane redraw comparison was possible. Existing exact output replay evidence still identifies Claude inline redraw as its own source; next fresh Claude start and dock visual check remain required."
         }
       ],
       "owner": "termfleet",
@@ -6812,6 +7847,12 @@
           "type": "evidence",
           "kind": "source",
           "note": "2026-09-27 flow-state pane 'still breaks' (live view, Claude in default inline mode, settings still carry CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1). Live daemon output (4.0 MB) replayed through vt_grid vs a private tmux at 138x27: identical screens at 40 spread cut points; the exact garbled moment (floating '4', doubled 'Smooshing...' line, 'okens)') is reproduced byte-for-byte by tmux at byte 3849304. Claude's own inline redraw, not TermFleet. Remedy: scripts/enable-claude-fullscreen.sh then restart Claude."
+        },
+        {
+          "at": "2026-09-28T08:57:41.091Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "2026-09-28: the supplied content-creation Claude screenshot matches the inline-mode symptom family, but two uniform blue bars could be selection or cell backgrounds; a single frame cannot prove renderer corruption. Read-only config check: ~/.claude/settings.json is valid, fullscreen-disable env key absent, tui=fullscreen; current agent shell does not export that key. Screenshot pane is no longer live and app/daemon are stopped, so no same-pane redraw comparison was possible. Existing exact output replay evidence still identifies Claude inline redraw as its own source; next fresh Claude start and dock visual check remain required."
         }
       ]
     },
@@ -6970,6 +8011,834 @@
           "type": "evidence",
           "kind": "focused-test",
           "note": "goal-from-conversation (new: every header form + reviewer/Read-only preambles), task-line-plumbing, codex-status-hook, codex-pane-owner, single-chat-owner, task-line-coverage: 99 passed. New live guard in task-line-live-records scans the opening of 400 real recent Codex chats; it caught 5 'Read-only …' leaks on first run, now 0."
+        }
+      ]
+    },
+    {
+      "id": "TF-062",
+      "title": "Agent terminal scrolling skips too much content",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "desktop-runtime",
+      "matrixRefs": [
+        "6.14"
+      ],
+      "symptom": "Each wheel gesture jumps past several lines in Codex sessions, making it hard to read agent output.",
+      "rootCause": "Pixel-mode wheel input was interpreted at full scale before being sent to the Codex alternate-screen mouse-report path, so one 99–100 px gesture emitted about five rows. Pixel deltas are now reduced by 4x and fractional movement is accumulated; line and page units keep their existing semantics.",
+      "guard": "tests/terminal-viewport.spec.ts pixel wheel sensitivity and fractional remainder regressions; installed Codex pane wheel readback",
+      "evidence": [
+        {
+          "kind": "browser-render",
+          "at": "2026-09-28T10:04:55.189Z",
+          "note": "Playwright tests/terminal-viewport.spec.ts passed 6/6 in the isolated release source, exercising incremental wheel scrolling and accumulated fractional delta conversion in the Canvas2D terminal renderer."
+        },
+        {
+          "kind": "live-desktop",
+          "at": "2026-09-28T17:11:33.536Z",
+          "note": "Latest attempt is inconclusive: the live screenshots show the Bina Codex transcript already scrolled (New activity / Back to bottom), but no multiline highlight after Shift-drag at (379,585)-(920,688). Wheel-up result also remains unproven because Codex output changed during capture. Do not count either as selection or scroll proof; exact dock-pane interactions still need a reliable reproduction."
+        },
+        {
+          "kind": "source",
+          "at": "2026-09-28T17:40:21.071Z",
+          "note": "2026-09-28: Current workspace retains wheel delta normalization and changes held-drag autoscroll to a cancellable timer paced at two rows per 75 ms; release built from refreshed full workspace snapshot."
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-09-28T17:40:21.371Z",
+          "note": "2026-09-28: npx playwright test tests/selection.spec.ts tests/terminal-viewport.spec.ts --reporter=line passed 13/13, including paced drag autoscroll and wheel scrolling while holding a selection. git diff --check passed."
+        },
+        {
+          "kind": "installed-release",
+          "at": "2026-09-28T17:57:15.253Z",
+          "note": "2026-09-28: Root workspace release 2732af0b315b-f4744e06af38-06698a5604c9 promoted; npm run verify:installed-release passed with binary SHA-256 f4744e06af38edb6aabad3e383c7d1ddace5beb0d00d49df29df322a85a32daa. git diff --check and npm run issues -- check pass. Dock Codex scroll and selection behavior remains unverified because this shell has no DISPLAY or WAYLAND_DISPLAY."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Verify wheel scrolling while holding a multiline selection in the dock-launched Codex pane, then adjust the real input path until both interactions work.",
+      "history": [
+        {
+          "at": "2026-09-28T08:43:48.374Z",
+          "type": "created",
+          "note": "User reported that scrolling jumps too far and skips content written by Codex."
+        },
+        {
+          "at": "2026-09-28T08:44:55.696Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Source trace identified three rows or keys per calculated wheel notch; scope and expected one-third step reduction confirmed."
+        },
+        {
+          "at": "2026-09-28T08:44:56.018Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Implementing a narrower wheel step while preserving mouse reporting, direction, and viewport lock."
+        },
+        {
+          "at": "2026-09-28T08:44:56.359Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "TerminalCanvas wheel history and alternate-screen app-arrow paths now use one row/key per calculated notch instead of three; unchanged mouse-report path still emits its original number of reports."
+        },
+        {
+          "at": "2026-09-28T08:46:21.807Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "TerminalCanvas now moves one row/key per calculated notch rather than three; npm run build (tsc and Vite) passes. Focused regression and installed Codex-pane behavior remain unverified."
+        },
+        {
+          "at": "2026-09-28T08:56:29.545Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "tests/terminal-viewport.spec.ts wheel movement regression passes for positive, negative, sub-notch, and multi-notch input; guard checks one row per 24px."
+        },
+        {
+          "at": "2026-09-28T08:56:29.850Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Focused wheel-step regression passes and preserves the 24px-to-row contract."
+        },
+        {
+          "at": "2026-09-28T08:56:30.178Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Applying the single-row wheel conversion and replacing three repeated steps with one."
+        },
+        {
+          "at": "2026-09-28T08:56:30.489Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Isolated current-main release source built; waiting for dock promotion and Codex-pane readback."
+        },
+        {
+          "at": "2026-09-28T09:02:56.879Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "tests/terminal-viewport.spec.ts (6 passed), npm run verify:terminal-mouse (1 passed), and npm run build passed. npm run verify:canvas-all ran 97 tests: 96 passed and one unrelated map-delete/undo restore-status assertion failed (expected reconnected, received running)."
+        },
+        {
+          "at": "2026-09-28T09:24:26.865Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "deltaMode is now converted from pixels, lines, or pages into terminal rows; fractional row movement is accumulated per routing path and numeric wheel-route diagnostics are recorded."
+        },
+        {
+          "at": "2026-09-28T09:24:33.165Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Focused viewport regression passed 6/6; terminal mouse verifier passed 1/1; frontend TypeScript and Vite build passed. Installed Codex pane proof remains pending."
+        },
+        {
+          "at": "2026-09-28T10:04:55.190Z",
+          "type": "evidence",
+          "kind": "browser-render",
+          "note": "Playwright tests/terminal-viewport.spec.ts passed 6/6 in the isolated release source, exercising incremental wheel scrolling and accumulated fractional delta conversion in the Canvas2D terminal renderer."
+        },
+        {
+          "at": "2026-09-28T11:33:08.246Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "Promoted release 7f0b882c9c58-5bb2ff4aa874-f7db8d8385ac; installed-release verifier passed and running dock app PID 2385897 maps to that release binary (SHA-256 5bb2ff4aa8749445fbbe07136131dd10b76e1184a27431179f0009632ddf3e91)."
+        },
+        {
+          "at": "2026-09-28T11:33:08.594Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "Existing Codex pane remained attached to conversation 01a0cd23-39ac-7071-a03a-14ca40b91aa1. Live wheel-route log changed from rows=5 at deltaY=100 before fix to rows=1 at deltaY=99 and rows=-1 at deltaY=-99 after fix; reversing direction restored the viewed content."
+        },
+        {
+          "at": "2026-09-28T11:33:08.903Z",
+          "type": "transition",
+          "from": "verifying",
+          "to": "resolved",
+          "note": "Dock-launched Codex pane readback confirms one row per wheel notch in both directions; focused viewport and mouse regressions pass, and installed release matches the verified promotion."
+        },
+        {
+          "at": "2026-09-28T11:34:28.724Z",
+          "type": "transition",
+          "from": "resolved",
+          "to": "reopened",
+          "note": "Operator reports the installed terminal now will not scroll at all after the wheel-sensitivity release; previous live readback was insufficient to prove usable scrolling."
+        },
+        {
+          "at": "2026-09-28T11:41:12.385Z",
+          "type": "transition",
+          "from": "reopened",
+          "to": "reproducing",
+          "note": "Fresh dock telemetry captured six 100px wheel inputs on the active Codex pane; route was app-pages, with rows=0 for each input because 4x smoothing was applied before page-height conversion."
+        },
+        {
+          "at": "2026-09-28T11:41:12.704Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Added regression expectation that six 100px app-page inputs produce one PageUp/PageDown key; it failed before the route correction with Expected 1, Received 0."
+        },
+        {
+          "at": "2026-09-28T11:41:13.079Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Keep 4x pixel smoothing for row and mouse-report routes; bypass the extra scale for app-pages because that route already converts rows to whole pages."
+        },
+        {
+          "at": "2026-09-28T11:41:13.387Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "TerminalCanvas selects pixelSensitivity=1 for app-pages and 4 for mouse-report, history, and app-arrow paths; source code and focused regression now cover both branches."
+        },
+        {
+          "at": "2026-09-28T11:41:13.675Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Updated tests/terminal-viewport.spec.ts passes 7/7, including one page key over six 100px app-page inputs while retaining one-row mouse-route conversion; terminal-mouse regression passes 1/1."
+        },
+        {
+          "at": "2026-09-28T11:41:13.969Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "TypeScript/Vite build passes with route-specific smoothing; now rebuilding and verifying the dock-launched release."
+        },
+        {
+          "at": "2026-09-28T12:05:46.421Z",
+          "type": "transition",
+          "from": "verifying",
+          "to": "reopened",
+          "note": "Operator reports vertical wheel scrolling no longer moves Codex terminal content after the latest route changes; prior verification is rejected until the current dock path is reproduced."
+        },
+        {
+          "at": "2026-09-28T12:10:26.978Z",
+          "type": "transition",
+          "from": "reopened",
+          "to": "reproducing",
+          "note": "Live wheel-route diagnostics reproduce app-pages with deltaY=±99 and rows=0 for repeated events; hasHistory=false and no mouse-reporting route confirm the app fallback is receiving sub-page fractions that never produce a key in this code version."
+        },
+        {
+          "at": "2026-09-28T13:09:33.768Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "Regression after the next installed wheel-routing change: user reports both scroll directions now do nothing. Earlier live telemetry used a pane with hasHistory=false, altScreen=false, mouseReport=false and did not map to a Codex provider session; previous live evidence is not valid proof for this report. Reproduce against a confirmed Codex pane before changing route behavior."
+        },
+        {
+          "at": "2026-09-28T13:27:24.533Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Managed Codex terminal launches, exact reconnects, and cold restores now select Codex fullscreen transcript plus alternate-screen mode so physical wheel input is handled by Codex. Existing inline-mode pane behavior remains unverified."
+        },
+        {
+          "at": "2026-09-28T13:27:25.631Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Focused viewport and reconnect Playwright checks passed 20/20; terminal mouse verifier passed 1/1; Rust cold-restore test passed 1/1; frontend TypeScript/Vite build passed."
+        },
+        {
+          "at": "2026-09-28T13:27:26.754Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "Isolated release 2732af0b315b-8046191bd477-21770f0852af promoted and installed verifier passed (SHA-256 8046191bd477d4117702cfa2fa83a40fd7ebbcc670a3a673d76827d6ca466b0f). Dock launcher now runs this binary; daemon PID 1515447 remained unchanged. Exact Codex wheel readback pending."
+        },
+        {
+          "at": "2026-09-28T13:27:27.849Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Focused viewport, reconnect, mouse-report, and cold-restore regressions cover the Codex fullscreen transcript route."
+        },
+        {
+          "at": "2026-09-28T13:27:28.949Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Switching managed Codex launch/reconnect/restore behavior from inline scrollback keys to Codex fullscreen transcript wheel handling."
+        },
+        {
+          "at": "2026-09-28T13:27:30.058Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Promoted and launched isolated release. Still requiring confirmed Codex pane input and visible content movement in both directions."
+        },
+        {
+          "at": "2026-09-28T13:46:49.400Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "After adding lost-pointer-capture cleanup for text selection: terminal mouse verifier 1/1 and selection Playwright suite 5/5 pass; frontend TypeScript/Vite build passes."
+        },
+        {
+          "at": "2026-09-28T13:46:49.728Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "Second isolated release 2732af0b315b-f34bdd4267f8-7a9552ee86d4 promoted; installed verifier passes, SHA-256 f34bdd4267f80c5eeb2abf6c3623e83bcd609dc7e9b7f9c452c41220efe2e469. Launcher invoked; live dock process/content movement could not be read from this execution surface."
+        },
+        {
+          "at": "2026-09-28T13:46:50.073Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "Latest operator report: cannot scroll and repeated attempts select multiple lines. Which gesture triggers this (wheel/trackpad or click-drag) has not been confirmed; current release requires direct operator/live-desktop readback before resolving."
+        },
+        {
+          "at": "2026-09-28T14:15:26.918Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Codex now launches and resumes with tui.alternate_screen=never to preserve terminal scrollback and mouse drag selection. Earlier isolated viewport, selection, and reconnect checks passed; an unrelated agent-workstream assertion failed because the expected task label was missing."
+        },
+        {
+          "at": "2026-09-28T14:15:27.248Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "Isolated release 2732af0b315b-ac63ee0a2a9b-1f08c2c2aa6e promoted; installed verifier passed with SHA-256 ac63ee0a2a9b0271ff3aa62b431d82646a3e14ef08c0f99a15998901da5a0f54. Dock app PID 3770467 runs that exact hash; persistent PTY daemon PID 1515447 unchanged."
+        },
+        {
+          "at": "2026-09-28T14:15:27.580Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "Current dock UI and candidate launch configuration are live, but wheel movement and multi-line click-drag selection have not been directly observed after promotion. Operator reports selection/scroll still fails; keep verifying until both gestures are read back."
+        },
+        {
+          "at": "2026-09-28T14:34:42.303Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Selection drag could request up to eight rows on every animation frame; candidate pacing now caps each request at two rows and schedules requests every 75 ms while continuing to update the drag endpoint. Live dock confirmation remains open."
+        },
+        {
+          "at": "2026-09-28T14:38:39.663Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Isolated worktree selection suite passed 6/6 against Vite on port 5178; frontend TypeScript/Vite build passed. The existing default port resolves to another preview and canvas-all could not start here, so no live dock behavior is claimed."
+        },
+        {
+          "at": "2026-09-28T14:58:18.747Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Isolated candidate Playwright run passed 14/14 across terminal viewport, selection pacing, pointer cancellation, Shift-drag, primary-screen drag selection, and mouse encoding; frontend build and installed binary verification also passed. Dock interactions remain unconfirmed: two wheel-up events produced no visible frame delta at the tested point, and click-drag pixel changes were inconclusive; keep TF-062 verifying."
+        },
+        {
+          "at": "2026-09-28T14:58:19.084Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "Installed candidate release 2732af0b315b-07d31f53c977-fa564ee00102 verified with binary SHA-256 07d31f53c97706462358844ccba795665ac0bc9cfd454ac7539f1adf2db7c243; dock UI PID 4077134 now maps to that exact binary and daemon PID 1515447 remains unchanged. The active current symlink was changed by another build, so this window was launched with the candidate pinned directly."
+        },
+        {
+          "at": "2026-09-28T14:58:19.415Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "Dock UI PID 4077134 runs the verified candidate and PTY daemon PID 1515447 was preserved. Pointer-only wheel and drag attempts were made against the live window without reading terminal text; wheel movement showed no pixel change at the tested point and drag selection evidence was inconclusive. Operator reports scrolling and multiline selection still fail; direct success is not claimed."
+        },
+        {
+          "at": "2026-09-28T15:10:38.450Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Root cause for the latest report: wheel events during a held pointer selection still followed regular TUI mouse/history routing and did not extend the selection focus. Candidate now routes held-selection wheel input through grid history, updates selection focus, and paces edge auto-scroll to at most two rows every 75 ms."
+        },
+        {
+          "at": "2026-09-28T15:10:39.538Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Isolated candidate Playwright tests passed 15/15 across viewport wheel behavior, held-selection wheel routing/focus update, paced drag auto-scroll, pointer cancellation, Shift-drag, primary-screen drag, and mouse reports; TypeScript/Vite build passed."
+        },
+        {
+          "at": "2026-09-28T15:10:40.604Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "Promoted isolated candidate 2732af0b315b-6f7c322c9d02-519612d7a498; exact-checkout installed-release verifier passed with binary SHA-256 6f7c322c9d024019b8afc00fa8c890804cd69043c1b5c2e73ffff0dd11d0b6f2. Dock process resolves to that immutable binary; daemon PID 1515447 was preserved."
+        },
+        {
+          "at": "2026-09-28T15:10:41.670Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "Latest candidate dock UI is running and PTY daemon remains unchanged. The new held-selection wheel action has not yet been confirmed against a live Codex pane, so operator-visible scrolling and multiline selection remain unverified; keep verifying."
+        },
+        {
+          "at": "2026-09-28T16:01:35.777Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Managed Codex launches/restores keep fullscreen_transcript=false; held drag wheel forces history routing and rebases selection only after the updated grid frame is applied. Promoted release: 2732af0b315b-a40208d0de54-4017c4f64621."
+        },
+        {
+          "at": "2026-09-28T16:01:36.099Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Candidate isolated Playwright selection and viewport suite passes 14/14 after regression for frame-synchronized drag focus; earlier reconnect 13/13 and Rust restore planner 1/1 remain. Installed release checksum verifies; actual dock wheel and drag interaction remain unverified."
+        },
+        {
+          "at": "2026-09-28T16:04:48.758Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "Immutable dock release 2732af0b315b-a40208d0de54-4017c4f64621 promoted; binary SHA256 a40208d0de5412e7347642c9862ee62df94583fd010b05a59b165d152349824b; installed-release verification passed. Actual dock interaction remains unverified."
+        },
+        {
+          "at": "2026-09-28T16:04:49.066Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "No live desktop evidence available in this environment: graphical-session variables are absent and desktop capture helper cannot spawn pgrep (EPERM). Wheel scrolling while holding multiline selection in a fresh dock-launched Codex pane remains unverified."
+        },
+        {
+          "at": "2026-09-28T16:23:20.896Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "Current visual capture shows the Codex-owned Back to bottom indicator while transcript history is open; source search finds no matching TermFleet UI label. Dock symlink/current point to installed release 2732af0b315b-a40208d0de54-4017c4f64621, but the running window still uses prior release 2732af0b315b-6f7c322c9d02-519612d7a498 (PID 57267). Scroll and drag behavior remain untested in the running window; relaunch is required to exercise the promoted build."
+        },
+        {
+          "at": "2026-09-28T16:36:55.083Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Re-ran isolated candidate suite: npx playwright test --config playwright.scroll.config.ts tests/selection.spec.ts tests/terminal-viewport.spec.ts --reporter=line; 14/14 passed, including paced drag auto-scroll (2 rows/75 ms), wheel while holding selection extending focus, mouse-report drag selection, alternate-screen routing, and no-history fall-through. Candidate installed-release verifier also passes with binary SHA256 a40208d0de5412e7347642c9862ee62df94583fd010b05a59b165d152349824b."
+        },
+        {
+          "at": "2026-09-28T16:36:55.425Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "Live acceptance remains open. Dock symlink/current point to candidate 2732af0b315b-a40208d0de54-4017c4f64621, but UI PID 57267 still runs old 2732af0b315b-6f7c322c9d02-519612d7a498; daemon PID 1515447 is reachable with 19 live sessions. The old window is currently unmapped. Auto-review rejected stopping its desktop service because a visible unsent terminal draft may be lost; no target-pane scroll/selection behavior is claimed. Approval to close/reopen the UI is the remaining gate."
+        },
+        {
+          "at": "2026-09-28T17:00:34.337Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "Dock-launched Codex pane live Shift-drag visibly highlighted multiple transcript lines and the highlight persisted after release; screenshots /tmp/tf-shift-select-held.png SHA256 b2e697253f3407c9168525045ecf903bffa9fc97e77f15da3b1efc0ef75406d5 and /tmp/tf-select-wheel-release.png SHA256 7760e4d7d8e0d7f6a9c75d143872be1f67095d94b84e97493fa035ec3309f1da. Wheel-up then wheel-down while held was attempted, but endpoint comparison cannot prove both viewport movements; keep issue verifying."
+        },
+        {
+          "at": "2026-09-28T17:11:01.761Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "Fresh dock-launched live Codex transcript Shift-drag from (379,585) across six text rows to (920,688), clear of prompt, captured held and after release. Wheel-up capture remains inconclusive because active Codex output changed and transcript top anchor stayed fixed; both-direction scroll is unverified. See /tmp/tf-codex-multiline-held-final.png SHA256 8ce089615ca5b0279222c3098f20d6546bdc51e4c889f51c2172302db839b1dc and /tmp/tf-codex-multiline-released-final.png SHA256 8f3d0896a783b4c5b06a43890fd0c365888aa46dbdd08c2e6d7be39ee5613ebc; wheel capture /tmp/tf-codex-wheel-up-final.png SHA256 091475dfa34319f92a1384a358ac9f4bf439a0c27f98d7b5b418b9d79566646c."
+        },
+        {
+          "at": "2026-09-28T17:11:33.536Z",
+          "type": "evidence",
+          "kind": "live-desktop",
+          "note": "Latest attempt is inconclusive: the live screenshots show the Bina Codex transcript already scrolled (New activity / Back to bottom), but no multiline highlight after Shift-drag at (379,585)-(920,688). Wheel-up result also remains unproven because Codex output changed during capture. Do not count either as selection or scroll proof; exact dock-pane interactions still need a reliable reproduction."
+        },
+        {
+          "at": "2026-09-28T17:23:06.929Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "2026-09-28: Re-ran isolated candidate suite from /tmp/termfleet-scroll-release: npx playwright test --config playwright.scroll.config.ts tests/selection.spec.ts tests/terminal-viewport.spec.ts --reporter=line; 14/14 passed. Vite logged font paths outside allow list but all tests passed. Live pane check remains blocked at blank pty starting and is not counted as scroll/selection proof."
+        },
+        {
+          "at": "2026-09-28T17:25:43.199Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "2026-09-28: Rebuilt and promoted isolated candidate 2732af0b315b-c8fca2de796d-4017c4f64621; installed-release verifier passed binary SHA256 c8fca2de796d05d9e396a6e24e4d2db293ddc40d19d2e29c9d6795355b818f62. Dock process/live Codex pane interaction remains unverified."
+        },
+        {
+          "at": "2026-09-28T17:40:21.071Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "2026-09-28: Current workspace retains wheel delta normalization and changes held-drag autoscroll to a cancellable timer paced at two rows per 75 ms; release built from refreshed full workspace snapshot."
+        },
+        {
+          "at": "2026-09-28T17:40:21.371Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "2026-09-28: npx playwright test tests/selection.spec.ts tests/terminal-viewport.spec.ts --reporter=line passed 13/13, including paced drag autoscroll and wheel scrolling while holding a selection. git diff --check passed."
+        },
+        {
+          "at": "2026-09-28T17:40:21.692Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "2026-09-28: Isolated refreshed workspace release promoted as 2732af0b315b-79ab2e050609-ad6a94031ecf; npm run verify:installed-release passed binary SHA256 79ab2e050609a8202109cc6cc1a901a60ea3bd3fd5b158adbb5ee0b604d26964. Dock UI interaction remains unverified; this shell has no DISPLAY or WAYLAND_DISPLAY."
+        },
+        {
+          "at": "2026-09-28T17:57:15.253Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "2026-09-28: Root workspace release 2732af0b315b-f4744e06af38-06698a5604c9 promoted; npm run verify:installed-release passed with binary SHA-256 f4744e06af38edb6aabad3e383c7d1ddace5beb0d00d49df29df322a85a32daa. git diff --check and npm run issues -- check pass. Dock Codex scroll and selection behavior remains unverified because this shell has no DISPLAY or WAYLAND_DISPLAY."
+        }
+      ]
+    },
+    {
+      "id": "TF-063",
+      "title": "Codex leaves stray characters after terminal resizing",
+      "state": "reported",
+      "severity": "medium",
+      "surface": "canvas",
+      "matrixRefs": [],
+      "symptom": "Some Codex terminal panes intermittently show isolated colored characters or stale background blocks around the viewport after the terminal has resized. The latest supplied screenshot shows orange '30' and magenta '6' separated at the bottom after Codex tool output. This resembles upstream Codex TUI resize reports, but local pane-level resize and grid evidence is not yet correlated.",
+      "rootCause": "",
+      "guard": "Focused resize regression using the exact Codex pane and measured grid/output state; installed dock capture for visual confirmation",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-09-28T09:20:04.008Z",
+          "note": "Screenshot SHA-256 25354d1cd43e9e669cc3129db027f9830dba9e6fbf19770f15bfbb11992b9cc8 shows isolated orange '30' and magenta '6' in Codex pane after tool output. Upstream reports: openai/codex#16165 documents resize-generated input-area/background artifacts; openai/codex#21978 reports stale dimensions after resize and remains open. These support similarity only; neither proves TermFleet root cause."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Capture per-resize dimensions and the exact affected pane ID alongside a fresh artifact, then compare the rendered grid with PTY bytes before selecting the rendering layer to fix.",
+      "history": [
+        {
+          "at": "2026-09-28T09:19:52.014Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-09-28T09:20:04.008Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Screenshot SHA-256 25354d1cd43e9e669cc3129db027f9830dba9e6fbf19770f15bfbb11992b9cc8 shows isolated orange '30' and magenta '6' in Codex pane after tool output. Upstream reports: openai/codex#16165 documents resize-generated input-area/background artifacts; openai/codex#21978 reports stale dimensions after resize and remains open. These support similarity only; neither proves TermFleet root cause."
+        }
+      ]
+    },
+    {
+      "id": "TF-064",
+      "title": "Hydration preserves terminal map positions",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "canvas",
+      "matrixRefs": [
+        "3.39"
+      ],
+      "symptom": "Terminals move to a different place on the map without the operator arranging them.",
+      "rootCause": "",
+      "guard": "Workspace hydration preserves every existing terminal card position; explicit lane arrangement remains available.",
+      "evidence": [
+        {
+          "kind": "source",
+          "at": "2026-09-28T14:30:43.684Z",
+          "note": "Hydration now retains normalized existing canvas coordinates; only explicit map arrange action reflows saved cards."
+        },
+        {
+          "kind": "focused-test",
+          "at": "2026-09-28T15:33:28.465Z",
+          "note": "2026-09-28: targeted hydration position regression passed 1/1 and stable-persistence timestamp regression passed 1/1; installed visual proof remains pending."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Verify focused hydration regression and live dock position stability.",
+      "history": [
+        {
+          "at": "2026-09-28T14:27:46.623Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-09-28T14:30:42.439Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "User reports map terminal views keep changing position; live geometry log shows coordinates changing without matching movement-source records."
+        },
+        {
+          "at": "2026-09-28T14:30:42.738Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Focused hydration regression fails before fix: saved cards moved from 640,410 and 1740,260 to 640,260 and 1868,260."
+        },
+        {
+          "at": "2026-09-28T14:30:43.055Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Regression locks existing card positions across workspace hydration."
+        },
+        {
+          "at": "2026-09-28T14:30:43.355Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Removed automatic lane reflow from reconciliation and background hydration; explicit arrange action remains."
+        },
+        {
+          "at": "2026-09-28T14:30:43.685Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Hydration now retains normalized existing canvas coordinates; only explicit map arrange action reflows saved cards."
+        },
+        {
+          "at": "2026-09-28T14:30:43.994Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Pre-fix regression reproduced both coordinate changes; post-fix focused regression passes and full tests/workspace-hydration.spec.ts passes 27/27."
+        },
+        {
+          "at": "2026-09-28T14:30:44.307Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Source regression, full hydration suite, map source verifier, and frontend build pass; packaged live map proof is still required."
+        },
+        {
+          "at": "2026-09-28T14:48:02.284Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "2026-09-28: added background hydrateWorkspace({background:true}) saved-coordinate assertion; focused Playwright regression passes 1/1. Full suite and installed live map stability remain unverified."
+        },
+        {
+          "at": "2026-09-28T14:50:13.536Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "The new promoted release checksum passes and includes the hydration fix; this is package provenance only, not browser-render evidence. The real map-position stability check still requires dock relaunch."
+        },
+        {
+          "at": "2026-09-28T15:33:28.465Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "2026-09-28: targeted hydration position regression passed 1/1 and stable-persistence timestamp regression passed 1/1; installed visual proof remains pending."
+        }
+      ]
+    },
+    {
+      "id": "TF-065",
+      "title": "Map card drops a real latest request and shows Task not captured",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "canvas",
+      "matrixRefs": [],
+      "symptom": "All-pane matrix 2026-09-28: panes with a trusted opening-request Goal render Task not captured; e.g. latest request 'Check release-1.4.568.log and verify 1.4.568 is published...' passes the split-view task gate but the map card rejects it",
+      "rootCause": "",
+      "guard": "tests/map-card-task-row.spec.ts",
+      "evidence": [
+        {
+          "kind": "focused-test",
+          "at": "2026-09-28T19:00:28.452Z",
+          "note": "tests/map-card-task-row.spec.ts 4/4 (reproduced failure first: Received undefined); cockpit-row-stability:136 and map-terminal-rendering:4130 pass; remaining failures in those suites identical to baseline without the change"
+        },
+        {
+          "kind": "source",
+          "at": "2026-09-28T19:04:42.880Z",
+          "note": "Release 2732af0b315b-c8f55486f686-7175bf34d485 installed and verified; running window predates it (started 21:24, promoted 22:01), so fresh matrix 19 panes still FAIL on old code. Predicted after dock relaunch: 441b9613 and 1cede556 gain a Task; 5 panes whose only latest request is a question/nudge/overlong stay 'Task not captured' by the shared gate"
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "Map card judges the status-summary task with the same authoritative task gate as the split view",
+      "history": [
+        {
+          "at": "2026-09-28T18:32:25.271Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-09-28T19:00:28.411Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "src/lib/terminalHeaderState.ts resolveMapCardTaskRow; MagicCanvas uses it"
+        },
+        {
+          "at": "2026-09-28T19:00:28.452Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "tests/map-card-task-row.spec.ts 4/4 (reproduced failure first: Received undefined); cockpit-row-stability:136 and map-terminal-rendering:4130 pass; remaining failures in those suites identical to baseline without the change"
+        },
+        {
+          "at": "2026-09-28T19:00:35.754Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Map card Task gate mismatch vs split view"
+        },
+        {
+          "at": "2026-09-28T19:00:40.707Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Focused test reproduced: Received undefined for a real latest request"
+        },
+        {
+          "at": "2026-09-28T19:00:40.749Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "tests/map-card-task-row.spec.ts"
+        },
+        {
+          "at": "2026-09-28T19:00:40.791Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Shared resolveMapCardTaskRow; request judged by authoritative-task AND user-ask gates, only where the placeholder would show"
+        },
+        {
+          "at": "2026-09-28T19:00:40.828Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Focused tests pass; dock release + fresh all-pane matrix pending"
+        },
+        {
+          "at": "2026-09-28T19:04:42.880Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Release 2732af0b315b-c8f55486f686-7175bf34d485 installed and verified; running window predates it (started 21:24, promoted 22:01), so fresh matrix 19 panes still FAIL on old code. Predicted after dock relaunch: 441b9613 and 1cede556 gain a Task; 5 panes whose only latest request is a question/nudge/overlong stay 'Task not captured' by the shared gate"
+        }
+      ]
+    },
+    {
+      "id": "TF-066",
+      "title": "Drag-select cannot reach text hidden below a Claude fullscreen pane",
+      "state": "verifying",
+      "severity": "medium",
+      "surface": "desktop-runtime",
+      "matrixRefs": [
+        "5.52"
+      ],
+      "symptom": "2026-09-28 operator: cannot drag and select content hidden at the bottom of the terminal; screenshot of Claude fullscreen pane d8460eb7 shows Claude's own 'Jump to bottom (ctrl+End)' banner",
+      "rootCause": "Claude keeps fullscreen transcript content in its own scrollable view, but TermFleet local autoscroll cannot reveal that content. The drag router also recognized only DECSET 1003 any-motion and excluded alternate screen; xterm mouse modes 1002 button-drag and 1003 any-motion are mutually exclusive, so 1002-only drag reports were swallowed.",
+      "guard": "Forward unshifted left drag and release when either DECSET 1002 button-drag or 1003 any-motion is active, on primary or alternate screen; encode with SGR when 1006 is active. Keep Shift+drag local. Accept OSC 52 copy only through clipboard_write_text; never read clipboard contents.",
+      "evidence": [
+        {
+          "kind": "focused-test",
+          "at": "2026-09-29T08:02:37.283Z",
+          "note": "20/20 browser regressions passed across grid-diff, selection, terminal-mouse and terminal-viewport; Rust button_drag_and_any_motion_modes_are_reported passed. Regression-first red proof: 1002-only routing expected true but old 1003-only gate returned false."
+        },
+        {
+          "kind": "installed-release",
+          "at": "2026-09-29T08:02:37.315Z",
+          "note": "npm run release:install promoted a940b0c80355-c59dcccd4915-f52de332484c; npm run verify:installed-release passed, binary SHA256 c59dcccd49159df7184a71672fe37df0edf5bddea0f50547951caf3235c693df. PTY daemon was not restarted."
+        },
+        {
+          "kind": "source",
+          "at": "2026-09-29T10:03:45.328Z",
+          "note": "2026-09-29 13:03 live: operator says scroll-while-selecting now works but paste is wrong. paste-debug.log shows Claude's copies DO arrive via OSC 52 and xclip writes succeed, but only 62/83 chars (one wrapped line: 'The local H3 video nodes are loaded...'). Earlier 12:53 attempt had Shift held (wheel deltaX, local selection). Added per-drag route logging (dragroute: app/local, modes, rows, motion report count) in release for the next attempt."
+        }
+      ],
+      "owner": "termfleet",
+      "nextAction": "After dock relaunch, drag-select past the visible bottom of a real Claude fullscreen pane, release, and paste into a safe text field; verify the selected hidden text arrives through OSC 52, then record live-desktop evidence.",
+      "history": [
+        {
+          "at": "2026-09-28T20:51:20.786Z",
+          "type": "created",
+          "note": null
+        },
+        {
+          "at": "2026-09-29T07:08:24.813Z",
+          "type": "transition",
+          "from": "reported",
+          "to": "triaged",
+          "note": "Confirmed the reported failure is in Claude fullscreen: hidden content is in Claude own view; TermFleet local scrollback cannot reveal it. Keep fullscreen, route primary unshifted drag to app mouse reports, preserve Shift local selection, and forward copy-only OSC 52 through Rust clipboard write."
+        },
+        {
+          "at": "2026-09-29T07:08:47.537Z",
+          "type": "transition",
+          "from": "triaged",
+          "to": "reproducing",
+          "note": "Reproduction context confirmed from operator screenshot: Claude fullscreen reports its own Jump to bottom control while TermFleet is at local history bottom; local autoscroll cannot reveal hidden transcript lines."
+        },
+        {
+          "at": "2026-09-29T07:08:47.879Z",
+          "type": "transition",
+          "from": "reproducing",
+          "to": "guarded",
+          "note": "Added failing-first regression for fullscreen primary mouse-motion ownership and Shift local selection, plus OSC 52 copy-only listener wired before grid feed starts."
+        },
+        {
+          "at": "2026-09-29T07:08:48.265Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Primary drag reports are routed to fullscreen mouse-motion applications; Shift remains local. Rust grid enables OSC 52 OnlyCopy and forwards ClipboardStore clipboard events through existing clipboard_write_text; no clipboard read path."
+        },
+        {
+          "at": "2026-09-29T07:08:48.778Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Selection 5/5, terminal viewport 8/8, terminal mouse 2/2 pass; the new ownership test failed before helper implementation as intended."
+        },
+        {
+          "at": "2026-09-29T07:09:41.584Z",
+          "type": "transition",
+          "from": "guarded",
+          "to": "fixing",
+          "note": "Implementation and focused regression guards are in place; proceeding through release and live-pane verification."
+        },
+        {
+          "at": "2026-09-29T07:09:41.904Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Source and focused browser/Rust/build checks are complete. Installed dock release and live Claude drag-paste acceptance remain pending."
+        },
+        {
+          "at": "2026-09-29T07:09:42.286Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Primary unshifted drag reports are routed to fullscreen mouse-motion applications; Shift remains local. Rust enables OSC 52 OnlyCopy and forwards ClipboardStore events through existing clipboard_write_text; no clipboard read path."
+        },
+        {
+          "at": "2026-09-29T07:09:42.744Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Selection 5/5, terminal viewport 8/8, terminal mouse 2/2 pass; new ownership test failed before helper implementation as intended."
+        },
+        {
+          "at": "2026-09-29T07:12:58.907Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "npm run release:install promoted 545ea1ac3081-ae34287ee01c-3275c72b5245; built-in and separate npm run verify:installed-release both passed for binary SHA256 ae34287ee01cb9e2865f38812e58b1532ec14737a50d683a9a6193bf6d3c3811. PTY daemon was not restarted."
+        },
+        {
+          "at": "2026-09-29T07:43:22.898Z",
+          "type": "transition",
+          "from": "verifying",
+          "to": "fixing",
+          "note": "Operator reports installed behavior is unchanged. New failing regression confirms the drag router rejects altScreen=true, but Claude fullscreen uses alternate screen with mouse-motion tracking. Removing the erroneous screen-mode exclusion."
+        },
+        {
+          "at": "2026-09-29T07:51:09.337Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "Corrected mouse-routing guard passes focused suites; release 545ea1ac3081-66825822d869-0c10c1c1f0f5 installed and checksum verified. Awaiting real dock-launched Claude drag-paste acceptance."
+        },
+        {
+          "at": "2026-09-29T07:51:09.380Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "npm run release:install promoted 545ea1ac3081-66825822d869-0c10c1c1f0f5; npm run verify:installed-release passed, binary SHA256 66825822d8698580e39f92f96e43c8680f463cc12cd244ee7c70dacb4c2cdb38. PTY daemon was not restarted."
+        },
+        {
+          "at": "2026-09-29T07:51:09.425Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "Corrected regression: fullscreen alternate-screen mouse motion qualifies; exact held-left drag emits SGR CSI <32;col;row M. Terminal mouse 2/2, selection 5/5, terminal viewport 8/8 passed; new alt-screen expectation failed before the routing guard fix."
+        },
+        {
+          "at": "2026-09-29T07:59:45.050Z",
+          "type": "transition",
+          "from": "verifying",
+          "to": "fixing",
+          "note": "Protocol review found the second routing gap: 1002 button-drag and 1003 any-motion are mutually exclusive; the frontend tracked only 1003. Adding a separate 1002 mode bit and routing drags for either mode, regardless of screen."
+        },
+        {
+          "at": "2026-09-29T08:02:37.196Z",
+          "type": "transition",
+          "from": "fixing",
+          "to": "verifying",
+          "note": "DECSET 1002 button-drag and 1003 any-motion now travel independently through the Rust grid flags; either mode routes unshifted drags on either screen. Browser/Rust checks pass and corrected release checksum verifies. Real dock-pane drag-paste remains pending."
+        },
+        {
+          "at": "2026-09-29T08:02:37.240Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "Added a distinct grid flag for DECSET 1002; retained DECSET 1003 separately. Unshifted left drag routes when either is active, including alternate screen; Shift stays local and SGR 1006 encoding is preserved. OSC 52 remains copy-only through clipboard_write_text."
+        },
+        {
+          "at": "2026-09-29T08:02:37.283Z",
+          "type": "evidence",
+          "kind": "focused-test",
+          "note": "20/20 browser regressions passed across grid-diff, selection, terminal-mouse and terminal-viewport; Rust button_drag_and_any_motion_modes_are_reported passed. Regression-first red proof: 1002-only routing expected true but old 1003-only gate returned false."
+        },
+        {
+          "at": "2026-09-29T08:02:37.315Z",
+          "type": "evidence",
+          "kind": "installed-release",
+          "note": "npm run release:install promoted a940b0c80355-c59dcccd4915-f52de332484c; npm run verify:installed-release passed, binary SHA256 c59dcccd49159df7184a71672fe37df0edf5bddea0f50547951caf3235c693df. PTY daemon was not restarted."
+        },
+        {
+          "at": "2026-09-29T09:49:25.867Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "2026-09-29 mitigation: map card 'Copy last reply' button copies the pane's newest whole agent reply from its saved Claude/Codex chat (tests/last-reply.spec.ts 4/4; real freelance-desk chat gives the full 6335-char handoff). Release a940b0c80355-e68d35866e6b-0796add7a892 installed and verified; needs dock relaunch. Drag/scroll inside Claude fullscreen still open."
+        },
+        {
+          "at": "2026-09-29T10:03:45.328Z",
+          "type": "evidence",
+          "kind": "source",
+          "note": "2026-09-29 13:03 live: operator says scroll-while-selecting now works but paste is wrong. paste-debug.log shows Claude's copies DO arrive via OSC 52 and xclip writes succeed, but only 62/83 chars (one wrapped line: 'The local H3 video nodes are loaded...'). Earlier 12:53 attempt had Shift held (wheel deltaX, local selection). Added per-drag route logging (dragroute: app/local, modes, rows, motion report count) in release for the next attempt."
         }
       ]
     }

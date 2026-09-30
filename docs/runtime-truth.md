@@ -48,16 +48,39 @@ A stale socket file is fine; the launcher connects, is refused, and proceeds.
 
 | What | Where |
 | --- | --- |
-| Structured incidents (launch, exit, watchdog recovery, pressure) | `~/.local/state/termfleet/incidents.jsonl` |
-| Human incident summary | `~/.local/state/termfleet/incident-summary.md` |
+| Structured incidents (launch, exit, watchdog recovery, pressure; pruned to the latest two calendar days on first daily write) | `~/.local/state/termfleet/incidents.jsonl` |
+| Five-second desktop CPU, pressure, and top-three UI/WebKit thread summaries (thread ID, state, CPU share, wait channel; automatic 48-hour retention) | `~/.local/state/termfleet/desktop-samples-YYYY-MM-DD.tsv` |
+| Standalone five-second process/pressure sampler when the installed watchdog is stale; timing/state only, pruned after 48 hours | `/tmp/termfleet-performance/desktop-samples-YYYY-MM-DD.tsv`; verify with `npm run verify:performance-sampler` |
+| Watchdog progress stage, atomically refreshed in runtime memory; copied into each pre-recycle snapshot | `$XDG_RUNTIME_DIR/termfleet/pressure-watchdog.heartbeat` and `watchdog-heartbeat.txt` |
+| Canvas drag, resize, and layout summaries (at most one record per second, with bounded affected-node IDs and source counts) | `/tmp/terminal-workspace-geometry.jsonl` (`kind=canvas-node-movement`) |
+| Human incident summary (same two-day pruning policy) | `~/.local/state/termfleet/incident-summary.md` |
 | Launcher decisions + daemon startup | `~/.local/state/termfleet/desktop-launch.log` |
 | The cockpit's own stdout/stderr | `~/.local/state/termfleet/app-output.log` (+ `.1`) |
 | Per-pane agent status sidecars | `~/.local/share/terminal-workspace/agent-status/` |
 | Live cockpit health poll | `agent-status/termfleet-pane-health.json` |
+| Content-free renderer stalls, terminal interaction timings, map camera changes, and coalesced terminal movement sources | `/tmp/terminal-workspace-geometry.jsonl` (expires after two days of inactivity; rotates above 8 MiB, keeps the latest 1 MiB) |
+| Opt-in Rust terminal input timing events (pane ID, byte count, sequence IDs only) | `/tmp/terminal-workspace-latency-trace-<pid>-<thread>.jsonl` (each file rotates at 1 MiB; files older than two days are pruned on first write) |
 
 A clean exit is recorded as `desktop_exit ... status=0 daemon=preserved`. A
 watchdog-forced restart is `desktop_recovery` — an exit with no recovery event
 means nothing killed it.
+
+The pressure watchdog appends one compact row every five seconds, including
+while the desktop is absent or being replaced. It records process states and
+cumulative CPU ticks for the desktop/WebKit processes when present, plus host
+and desktop-cgroup CPU/I/O pressure and bounded summaries of each process's top
+three CPU threads (thread ID, state, CPU share, wait channel). An absent desktop
+is explicit in the row, so a quiet log can be distinguished from a missing app. These samples contain
+  no terminal content and are pruned after 48 hours. Incident JSONL and its
+  Markdown summary are pruned to the latest two calendar days on the first
+  incident write each day.
+
+The renderer log records only stall durations, batched input-to-render timing
+percentiles, geometry, committed camera changes, and movement-source counts. New
+browser and Rust input traces retain byte counts and key categories, never typed
+text or terminal output. The geometry log expires after two days of inactivity and
+rotates above 8 MiB; each opt-in Rust trace file rotates at 1 MiB, and old trace
+files are pruned after two days.
 
 **Still not covered:** a stall where the process looks healthy but the UI is not
 painting. The pressure watchdog samples every 5s and catches a *blocked*

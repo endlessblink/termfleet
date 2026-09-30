@@ -1,5 +1,29 @@
 # MASTER_PLAN.md - termfleet
 
+## 2026-09-28 — TF-015 sampler deployment correction
+
+Status: **in_progress**. The installed watchdog was stale even though its user service remained active: the running shell's open script SHA-256 was `5bb0bea6…`, while the tested repository version is `692617e3…`; its five-second sample TSV and runtime heartbeat were both frozen at 18:05. Staged the tested current watchdog, incident-capture helper, and load-shed helper with `TERMFLEET_PRESSURE_WATCHDOG_FILES_ONLY=1 scripts/install-pressure-watchdog.sh`; installed/source watchdog hashes now match. `python3 -m unittest tests.test_pressure_watchdog` passes 25/25, including a test that proves sample files older than 48 hours are removed without deleting current samples or unrelated logs. Fresh follow-up verification: 8 focused Playwright telemetry regressions pass, `npm run build` passes, and `npm run verify:map-terminals` passes. The existing watchdog process still holds the older script inode, so no new samples have appeared yet; its recovery-enabled service has not been restarted because it can recycle the desktop group. Next: refresh the live sample stream, then correlate typing and map movement telemetry with active use. The PTY daemon remains untouched.
+
+## 2026-09-28 — TF-062: Making Codex output easier to scroll through
+
+Status: **in_progress**. The prior installed wheel adjustment was reported to make both directions stop scrolling, and its pane telemetry did not identify a Codex session. Managed Codex launches, reconnects, and cold restores now request Codex fullscreen transcript and alternate-screen modes so Codex handles physical wheel input. Verified: focused viewport/reconnect Playwright checks (20 passed), `npm run verify:terminal-mouse` (1 passed), the focused Rust cold-restore test (1 passed), `npm run build`, and installed-release verification. The dock UI now runs the promoted binary, with the PTY daemon unchanged. Exact Codex-pane movement in both directions remains unverified; keep TF-062 open.
+
+## 2026-09-26 — TF-015: Reducing repeated work while measuring responsiveness
+
+Status: **in_progress**. The installed app remains sluggish. Diagnostic graphics comparisons did not demonstrate a speedup; existing graphics/JIT mitigations remain enabled. Live thread sampling found substantial heap-helper CPU, and a 15-second workspace-file sample found 7 of 11 revisions differed only in terminal timestamps (about 270 KB per revision).
+
+Candidate changes: throttle diagnostic geometry collection before DOM reads; preserve actual terminal status timestamps when creating persisted snapshots so unchanged durable state can deduplicate. No session/PTY ownership changes. Evidence and limits: `docs/performance-investigation-2026-09-26.md`.
+
+Geometry and real-store persistence regressions passed after failing before their fixes; stable gamification recovery receipt regression, `npx tsc --noEmit`, `npm run verify:terminal-rendering`, and fresh `npm run build` passed. Installed performance, blank-pane recovery, and complete functional equivalence remain unverified. CPU stack capture currently requires operator sudo authentication. Do not promote unrelated shared working-tree changes as part of this slice.
+
+Added lightweight Canvas2D responsiveness telemetry: every 20 completed input-to-diff/render-frame samples, the existing capped geometry log receives timing-only p50/p95/max values for recent-input-to-grid-diff, canvas draw duration, and next frame callback. It omits keys, typed text, pane IDs, and terminal output; full tracing remains disabled. `npx playwright test tests/terminal-interaction-latency.spec.ts --reporter=line` passed, `npm run build` passed, and `npm run verify:canvas-all` passed 96 tests with 1 skipped. This is measurement plumbing, not a demonstrated speed fix. The current shared tree has unrelated dirty changes, so installing it would bundle unreviewed work; installed measurement remains pending a scoped release.
+
+2026-09-28 update: input traces now parse events before logging and retain only pane identity, byte count, and sequence metadata; per-process trace files rotate at 1 MiB and expire after two days. Added regressions for raw typed-text exclusion and bounded rotation. A continuous host sampler now appends UI/WebKit state, CPU ticks, hot-thread summaries, and system/cgroup CPU and I/O pressure every five seconds; it records no terminal content and retains 48 hours. The exact background-hydration coordinate regression passes (1/1); the focused privacy/interaction/map telemetry suite passes (9/9); `npm run build`, `npm run verify:map-terminals`, and `npm run verify:installed-release` pass. Promoted release: `2732af0b315b-e1aa3f72dce2-944da7ffd062` (SHA-256 `e1aa3f72dce286b0137be5431f42d575e92563adaad9b4a1f8ee0f917cde42f4`). The sampler is fresh; the shell cannot inspect the host desktop PIDs, and the geometry log predates this release. No smoothness improvement is claimed. Dock relaunch plus live typing/drag and map-position confirmation remain required. Full hydration Playwright startup and the watchdog/launcher system tests were blocked by sandbox port/user-bus restrictions; see issue evidence.
+
+2026-09-28 runtime correction: the live pressure-watchdog shell (PID 54798) is still executing deleted installed script image SHA-256 `5bb0bea6ae7d32d8cadeb7b289e431c9edc2b53328ad08d8642bc020d4281531`; its sample log/heartbeat stopped at 18:05. The staged replacement script SHA-256 is `80a2af38c54f09e31da56a2ee420b148af6192ccd6505ee343578e93874c518e`, and `python3 -m unittest tests.test_pressure_watchdog` passes 24/24 with `git diff --check` clean. TF-015 remains verifying: no current sampler rows, installed release, live typing/drag latency, or user smoothness confirmation are verified. Loading the replacement requires restarting the recovery-enabled user watchdog service, which can recycle the desktop group; this sandbox has no user D-Bus, so that runtime gate is pending operator approval. Preserve daemon PID 1515447 and all PTYs.
+
+2026-09-28 follow-up: focused map and persistence checks pass (hydration preserves operator-placed coordinates 1/1; stable snapshot timestamps 1/1; viewport, canvas movement, input timing, and lazy geometry telemetry 6/6), `npm run build` and `npm run verify:map-terminals` pass. Fresh check from this execution context cannot see host desktop PIDs; the host sampler output remains stale at 18:05, so these results do not establish live performance or installed behavior. The mapped-card reflow candidate is guarded in source; camera changes now record bounded caller attribution. Both remain open pending current-runtime evidence and operator interaction. Do not claim smoothness or promote the broad dirty checkout.
+
 ## 2026-09-23 — TF-REL-02: Publish TermFleet as a public "early preview, Linux only"
 
 Goal: announce as soon as it's shippable, with honest scope, not bug-free. Order matters — each phase unblocks the next.
@@ -9939,3 +9963,30 @@ Caveat: `HEAD` alone still does not compile (`WorkbenchSidebar.tsx` uses
 `stores/workspace.ts`), so any release necessarily includes that in-progress refactor.
 Pre-existing and unrelated: `verify:typography` fails on `ProjectPlansBoard.tsx`
 (box-borders) and `SplitPane.tsx` (600+ font weights).
+
+## 2026-09-28 — Making Codex output readable while scrolling (TF-062)
+
+**Status: REOPENED; the earlier closure was invalidated.** Pixel-mode wheel events in Codex's alternate-screen terminal were
+forwarded at full scale, so one ~100px gesture scrolled five rows. The fourfold
+wheel adjustment was later reported to stop scrolling in both directions. Earlier
+live telemetry did not map the pane to a Codex conversation, so it is not valid
+proof. Managed Codex launches, reconnects, and cold restores now request fullscreen
+transcript and alternate-screen modes; installed Codex-pane movement remains
+unverified.
+line/page wheel units and Codex mouse reporting remain intact.
+
+- `npx playwright test tests/terminal-viewport.spec.ts --reporter=line` — 7 passed.
+- `npx playwright test terminal-mouse --reporter=line` — 1 passed.
+- `npm run build` — TypeScript and Vite passed (existing chunk-size warnings only).
+- The prior release and wheel readback have been superseded by the later no-scroll report and the invalid pane mapping described above.
+- Current release `2732af0b315b-8046191bd477-21770f0852af` passed installed-release verification; dock relaunch now uses that binary and left daemon PID 1515447 unchanged.
+- Focused viewport/reconnect Playwright checks passed (20), terminal mouse verifier passed (1), and Rust cold-restore test passed (1).
+- `TF-062` remains open pending live Codex-pane scroll confirmation in both directions.
+- Operator clarified that multi-line selection must continue scrolling during a held drag. The isolated candidate now paces selection auto-scroll to at most two rows every 75 ms; `npx playwright test selection --config=playwright.scroll.config.ts` passes 6/6 and `npm run build` passes. The dock scroll and drag readback remains open.
+- Latest root-checkout verification: `npx playwright test tests/terminal-viewport.spec.ts tests/selection.spec.ts --reporter=line` — 12 passed; `npm run build` passed; `npm run issues -- check` passed (63 records, 5 failure surfaces); `git diff --check` passed.
+- Installed release `2732af0b315b-a40208d0de54-4017c4f64621` passed installed-release verification with binary SHA-256 `a40208d0de5412e7347642c9862ee62df94583fd010b05a59b165d152349824b`.
+- Fresh live dock result: Shift-drag visibly selected multiple lines in a real Codex transcript, and the highlight persisted after pointer release. Evidence captures: `/tmp/tf-shift-select-held.png` (SHA-256 `b2e697253f3407c9168525045ecf903bffa9fc97e77f15da3b1efc0ef75406d5`) and `/tmp/tf-select-wheel-release.png` (SHA-256 `7760e4d7d8e0d7f6a9c75d143872be1f67095d94b84e97493fa035ec3309f1da`). A wheel-up then wheel-down was attempted while dragging, but the captures do not prove both viewport movements. Selection is live-verified; scroll in both directions while selecting remains open. `npm run issues -- evidence TF-062 live-desktop ...` recorded the partial result; `npm run issues -- check` passes (63 records, 5 surfaces).
+- 2026-09-28 latest: refreshed full-workspace release `2732af0b315b-79ab2e050609-ad6a94031ecf` promoted and installed-release verification passed (binary SHA-256 `79ab2e050609a8202109cc6cc1a901a60ea3bd3fd5b158adbb5ee0b604d26964`); latest focused selection/viewport regressions passed 13/13 and `git diff --check` passed. Live dock interaction remains unverified because this session has neither `DISPLAY` nor `WAYLAND_DISPLAY`; keep TF-062 open.
+- Superseding check: the latest dock screenshots show the Bina Codex pane already scrolled (`New activity / Back to bottom`) but no highlight after the attempted Shift-drag; wheel movement is also inconclusive because output changed during capture. Do not count this attempt as proof. `TF-062` remains open; both transcript selection and exact-pane scrolling need a reliable live reproduction.
+- 2026-09-28 follow-up: the isolated selection/viewport suite passes 14/14. Candidate `2732af0b315b-c8fca2de796d-4017c4f64621` was rebuilt, promoted, and passes installed-release checksum verification (binary SHA-256 `c8fca2de796d05d9e396a6e24e4d2db293ddc40d19d2e29c9d6795355b818f62`). A correct TermFleet shell pane remained blank at `pty starting`, and this tool session had no desktop display connection, so dock-launched Codex scrolling and selection remain unverified; TF-062 stays open.
+- 2026-09-28 latest: root workspace release `2732af0b315b-f4744e06af38-06698a5604c9` promoted and `npm run verify:installed-release` passed (binary SHA-256 `f4744e06af38edb6aabad3e383c7d1ddace5beb0d00d49df29df322a85a32daa`). Focused selection/viewport checks passed 13/13; `git diff --check` and `npm run issues -- check` passed. This shell has no desktop display, so real dock Codex scroll/selection behavior remains unverified and TF-062 stays open.
