@@ -10,6 +10,9 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { emit } from "@tauri-apps/api/event";
+import type { TerminalInteractionAggregate } from "./terminalInteractionLatency";
+import { createMapViewportTrace, type MapViewport, type MapViewportTrigger } from "./mapViewportTrace";
+import { createCanvasMovementBatcher, type CanvasMovementSource } from "./canvasMovementTrace";
 
 const GEOMETRY_INTERVAL_MS = 1000;
 const lastGeometryAt = new Map<string, number>();
@@ -40,6 +43,39 @@ function write(label: string, entry: Record<string, unknown>) {
   } catch {
     // ignore
   }
+}
+
+const traceMapViewport = createMapViewportTrace((line) => {
+  write("frontend.map.viewport", JSON.parse(line) as Record<string, unknown>);
+});
+const canvasMovementBatcher = createCanvasMovementBatcher((aggregate) => {
+  write("frontend.canvas.movement", { ...aggregate });
+});
+let canvasMovementFlushTimer: number | null = null;
+
+/** Coalesces repeated drag/resize/layout updates into no more than one log per second. */
+export function recordCanvasNodeMovement(
+  source: CanvasMovementSource,
+  deltaX: number,
+  deltaY: number,
+  movedNodes = 1,
+  movedNodeIds: readonly string[] = [],
+) {
+  canvasMovementBatcher.record(source, deltaX, deltaY, movedNodes, movedNodeIds);
+  if (canvasMovementFlushTimer !== null || typeof window === "undefined") return;
+  canvasMovementFlushTimer = window.setTimeout(() => {
+    canvasMovementFlushTimer = null;
+    canvasMovementBatcher.flush();
+  }, 1000);
+}
+
+/** Records committed map camera changes without logging animation-frame transforms. */
+export function recordMapViewportChange(
+  trigger: MapViewportTrigger,
+  from: MapViewport,
+  to: MapViewport,
+): boolean {
+  return traceMapViewport(trigger, from, to);
 }
 
 export interface TerminalGeometrySample {
@@ -75,12 +111,20 @@ export interface TerminalGeometrySample {
   selected?: boolean;
 }
 
-/** Throttled (1/s per pane) geometry sample. */
-export function recordTerminalGeometry(sample: TerminalGeometrySample) {
+/** Throttled (1/s per pane); lazy collectors avoid layout reads for skipped samples. */
+export function recordTerminalGeometry(sample: TerminalGeometrySample): void;
+export function recordTerminalGeometry(id: string, collect: () => TerminalGeometrySample): void;
+export function recordTerminalGeometry(
+  sampleOrId: TerminalGeometrySample | string,
+  collect?: () => TerminalGeometrySample,
+) {
+  const id = typeof sampleOrId === "string" ? sampleOrId : sampleOrId.id;
   const now = Date.now();
-  const previous = lastGeometryAt.get(sample.id) ?? 0;
+  const previous = lastGeometryAt.get(id) ?? 0;
   if (now - previous < GEOMETRY_INTERVAL_MS) return;
-  lastGeometryAt.set(sample.id, now);
+  const sample = typeof sampleOrId === "string" ? collect?.() : sampleOrId;
+  if (!sample) return;
+  lastGeometryAt.set(id, now);
   write("frontend.canvas.geometry", { kind: "geometry", ...sample });
 }
 
@@ -101,5 +145,51 @@ export interface TerminalKeyRouteSample {
  * `action: null` means the key was handed to the application.
  */
 export function recordTerminalKeyRoute(sample: TerminalKeyRouteSample) {
-  write("frontend.canvas.keyroute", { kind: "key", ...sample });
+  const { key, ...route } = sample;
+  write("frontend.canvas.keyroute", {
+    kind: "key",
+    ...route,
+    keyCategory: [...key].length === 1 ? "printable" : "named",
+  });
+}
+
+export interface TerminalWheelRouteSample {
+  id: string;
+  deltaX: number;
+  deltaY: number;
+  deltaMode: number;
+  action: string;
+  rows: number;
+  cellHeight: number;
+  hasHistory: boolean;
+  altScreen: boolean;
+  mouseReport: boolean;
+}
+
+export function recordTerminalWheelRoute(sample: TerminalWheelRouteSample) {
+  write("frontend.canvas.wheelroute", { kind: "wheel", ...sample });
+}
+
+export interface TerminalDragRouteSample {
+  id: string;
+  phase: "down" | "up";
+  route: "app" | "local" | "none";
+  shiftKey: boolean;
+  mouseReport: boolean;
+  mouseDrag: boolean;
+  mouseMotion: boolean;
+  altScreen: boolean;
+  row: number;
+  rows: number;
+  motionReports?: number;
+}
+
+/** Who owned a left-drag (TF-066): the app via mouse reports, or TermFleet's selection. */
+export function recordTerminalDragRoute(sample: TerminalDragRouteSample) {
+  write("frontend.canvas.dragroute", { kind: "drag", ...sample });
+}
+
+/** Timing-only aggregate; intentionally has no pane, key, or terminal-content fields. */
+export function recordTerminalInteractionLatency(aggregate: TerminalInteractionAggregate) {
+  write("frontend.canvas.interaction_latency", { ...aggregate });
 }

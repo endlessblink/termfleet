@@ -899,7 +899,7 @@ fn handle_daemon_request(
         DaemonRequest::WriteSession { id, data } => {
             trace_pty(
                 "daemon.write.receive",
-                format!("id={id} bytes={} data={data:?}", data.len()),
+                format!("id={id} bytes={}", data.len()),
             );
             pty_manager.write(&id, &data)?;
             trace_pty("daemon.write.done", format!("id={id} bytes={}", data.len()));
@@ -1008,7 +1008,7 @@ fn stream_daemon_session(
         for data in receiver {
             trace_pty(
                 "daemon.subscribe.emit",
-                format!("id={id} bytes={} data={data:?}", data.len()),
+                format!("id={id} bytes={}", data.len()),
             );
             write_daemon_response(stream, &DaemonResponse::SessionData { data })?;
         }

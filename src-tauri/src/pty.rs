@@ -1246,7 +1246,7 @@ impl PtyManager {
     pub fn write(&self, id: &str, data: &str) -> Result<(), String> {
         trace_pty(
             "pty.write.start",
-            format!("id={id} bytes={} data={data:?}", data.len()),
+            format!("id={id} bytes={}", data.len()),
         );
         // Resolve the session's writer under the registry lock, then release the
         // registry before the (potentially blocking) PTY write. Typing into a
@@ -1759,7 +1759,7 @@ fn push_session_event(
 fn append_pty_output(output: &Arc<Mutex<PtyOutputBuffer>>, data: &str) {
     trace_pty(
         "pty.output.read",
-        format!("bytes={} data={data:?}", data.len()),
+        format!("bytes={}", data.len()),
     );
     output.lock().unwrap().append(data);
 }

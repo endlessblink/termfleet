@@ -8,6 +8,7 @@ import {
   type DaemonInputQueue,
 } from "../lib/daemonInputQueue";
 import { traceTerminalLatency } from "../lib/terminalLatencyTrace";
+import { sanitizeTerminalLatencyTraceDetails } from "../lib/terminalLatencyTracePrivacy";
 import type { TerminalRuntimeStatus } from "../lib/types";
 import { statusForAttach } from "../lib/ptyAttachStatus";
 
@@ -140,13 +141,16 @@ function tracePty(label: string, details: Record<string, unknown> = {}) {
   const event = {
     t: performance.now(),
     label,
-    ...details,
+    ...sanitizeTerminalLatencyTraceDetails(details),
   };
   const debugWindow = window as typeof window & {
     __terminalWorkspacePtyTrace?: Array<Record<string, unknown>>;
   };
   debugWindow.__terminalWorkspacePtyTrace ??= [];
   debugWindow.__terminalWorkspacePtyTrace.push(event);
+  if (debugWindow.__terminalWorkspacePtyTrace.length > 2_000) {
+    debugWindow.__terminalWorkspacePtyTrace.splice(0, 500);
+  }
   console.debug("[TW-PTY]", event);
 }
 

@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { emit } from "@tauri-apps/api/event";
+import { sanitizeTerminalLatencyTraceDetails } from "./terminalLatencyTracePrivacy";
 
 const TRACE_EVENT = "terminal-workspace-latency-trace";
 const LOCAL_STORAGE_KEY = "terminal-workspace.traceLatency";
@@ -31,12 +32,7 @@ export function isTerminalLatencyTraceEnabled() {
 export function traceTerminalLatency(label: string, details: Record<string, unknown> = {}) {
   if (!enabled || typeof window === "undefined") return;
 
-  const safeDetails = { ...details };
-  if (typeof safeDetails.data === "string") {
-    safeDetails.dataLength = safeDetails.data.length;
-    safeDetails.dataPreview = safeDetails.data.slice(0, 80);
-    delete safeDetails.data;
-  }
+  const safeDetails = sanitizeTerminalLatencyTraceDetails(details);
 
   const event = {
     label,
@@ -50,6 +46,9 @@ export function traceTerminalLatency(label: string, details: Record<string, unkn
   };
   debugWindow.__terminalWorkspaceLatencyTrace ??= [];
   debugWindow.__terminalWorkspaceLatencyTrace.push(event);
+  if (debugWindow.__terminalWorkspaceLatencyTrace.length > 2_000) {
+    debugWindow.__terminalWorkspaceLatencyTrace.splice(0, 500);
+  }
 
   if (isTauriRuntime()) {
     emit(TRACE_EVENT, event).catch(() => {
