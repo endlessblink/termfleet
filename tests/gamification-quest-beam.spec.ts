@@ -45,8 +45,20 @@ test("accepted Workstream Quest marks only qualifying terminal shells", async ({
   });
   await page.reload({ waitUntil: "domcontentloaded" });
   await page.waitForTimeout(1000);
-  await expect(page.locator('.terminal-block-shell[data-quest-active="true"]')).toHaveCount(3, { timeout: 20000 });
-  await expect(page.locator('.terminal-block-shell[data-quest-active="false"]')).toHaveCount(0);
+  // Open-but-idle terminals must not glow (operator report: idle cards outlined).
+  await expect(page.locator(".terminal-block-shell")).toHaveCount(3, { timeout: 20000 });
+  await expect(page.locator('.terminal-block-shell[data-quest-active="true"]')).toHaveCount(0);
+  await page.evaluate(() => {
+    const store = window.__termfleetWorkspaceStore!;
+    const state = store.getState();
+    let seen = 0;
+    store.setState({ ...state, tabs: state.tabs.map((tab) => ({ ...tab, terminals: tab.terminals.map((terminal) => {
+      seen += 1;
+      return seen <= 2 ? { ...terminal, statusSummary: { task: "Build", path: "/tmp", now: "Working", status: "working", updatedAt: Date.now() } } : terminal;
+    }) })) });
+  });
+  await expect(page.locator('.terminal-block-shell[data-quest-active="true"]')).toHaveCount(2, { timeout: 20000 });
+  await expect(page.locator('.terminal-block-shell[data-quest-active="false"]')).toHaveCount(1);
   await page.waitForTimeout(1000);
   await page.screenshot({ path: testInfo.outputPath("quest-beam.png"), fullPage: false });
 });

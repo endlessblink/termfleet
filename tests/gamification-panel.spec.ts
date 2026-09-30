@@ -16,7 +16,7 @@ test("progress panel requires acceptance before the live quest begins", async ({
   await trigger.click();
   const panel = page.getByTestId("gamification-panel");
   await expect(panel).toContainText("Workstream quest");
-  await expect(panel).toContainText("Keep 3 workstreams running for 10 minutes");
+  await expect(panel).toContainText("Keep 3 agents busy for 10 minutes");
   await expect(panel.getByTestId("gamification-milestone-rail")).toContainText("10m");
   await expect(panel.getByTestId("gamification-milestone-rail")).toContainText("30m");
   await expect(panel.getByTestId("gamification-milestone-rail")).toContainText("3h");
@@ -24,7 +24,7 @@ test("progress panel requires acceptance before the live quest begins", async ({
   await expect(panel).toBeVisible();
   await expect(panel.getByTestId("gamification-active-count")).toContainText("Quest started");
   await expect(panel.getByTestId("gamification-active-count")).toContainText("Paused");
-  await expect(panel.getByTestId("gamification-active-count")).toContainText("add 2 live terminals");
+  await expect(panel.getByTestId("gamification-active-count")).toContainText("Paused until 3 agents are working (0/3 now)");
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem("termfleet.gamification.v6") ?? "null").activeQuestId)).toBe("parallel-work");
   await expect(page.getByTestId("gamification-accept")).toHaveCount(0);
   await expect(panel).toContainText("0:00 / 10:00");
@@ -74,9 +74,14 @@ test("hovering Quest shows the active quest and offers the next quest after 180 
   await trigger.hover();
   const panel = page.getByTestId("gamification-panel");
   await expect(panel).toBeVisible();
-  await expect(panel).toContainText("Finish the next tracked goal");
+  await expect(panel).toContainText("Agent jobs quest");
+  await expect(panel).toContainText("Get agents to finish 3 jobs");
+  // The operator could not tell what a "tracked goal" was; the quest must say it.
+  await expect(panel.getByTestId("gamification-quest-detail")).toContainText("It counts when the agent finishes and is waiting for you again");
   await expect(panel.getByTestId("gamification-accept")).toContainText("Start quest");
   await expect(trigger).not.toContainText("180:00");
+  await panel.getByTestId("gamification-accept").click();
+  await expect(panel.getByTestId("gamification-active-count")).toContainText(/No agent is working right now|working now/);
 });
 
 test("reset is explicit and preserves the workspace", async ({ page }) => {
@@ -174,6 +179,14 @@ test("finishing a Workstream Quest celebrates the earned milestone", async ({ pa
     }));
   });
   await page.reload({ waitUntil: "domcontentloaded" });
+  // Only terminals whose agent is actually working qualify, like the Running badge.
+  await expect(page.locator(".terminal-block-shell")).toHaveCount(3, { timeout: 20000 });
+  await expect(page.locator('.terminal-block-shell[data-quest-active="true"]')).toHaveCount(0);
+  await page.evaluate(() => {
+    const store = window.__termfleetWorkspaceStore!;
+    const state = store.getState();
+    store.setState({ ...state, tabs: state.tabs.map((tab) => ({ ...tab, terminals: tab.terminals.map((terminal) => ({ ...terminal, statusSummary: { task: "Build", path: "/tmp", now: "Working", status: "working", updatedAt: Date.now() } })) })) });
+  });
   await expect(page.locator('.terminal-block-shell[data-quest-active="true"]')).toHaveCount(3, { timeout: 20000 });
   await page.getByTestId("gamification-trigger").click();
   const celebration = page.getByTestId("gamification-quest-complete");
@@ -185,4 +198,60 @@ test("finishing a Workstream Quest celebrates the earned milestone", async ({ pa
   await expect(celebration).toBeVisible({ timeout: 5000 });
   await expect(celebration).toContainText("Milestone earned");
   await expect(celebration).toContainText("Parallel warm-up");
+});
+
+test("a new win pops its points on the Quest button and shows in the level row", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  await page.evaluate(() => { localStorage.removeItem("termfleet.gamification.v6"); localStorage.removeItem("termfleet.gamification.v6.dev"); });
+  await page.reload({ waitUntil: "domcontentloaded" });
+  const trigger = page.getByTestId("gamification-trigger");
+  await expect(trigger).toContainText("Lv 1", { timeout: 20000 });
+  await page.evaluate(() => {
+    const record = JSON.parse(localStorage.getItem("termfleet.gamification.v6") ?? "null");
+    record.events.push({ id: "goal:run:x:1:abc", type: "goal-completed", title: "Goal completed", detail: "Verify the release", points: 25, occurredAt: Date.now() });
+    localStorage.setItem("termfleet.gamification.v6", JSON.stringify(record));
+    window.dispatchEvent(new Event("termfleet-gamification-changed"));
+  });
+  await expect(page.getByTestId("gamification-gain")).toContainText("+25");
+  await expect(page.getByTestId("gamification-panel")).toHaveCount(0);
+  await expect(page.getByTestId("gamification-gain")).toHaveCount(0, { timeout: 5000 });
+  await trigger.click();
+  const levelRow = page.getByTestId("gamification-level-row");
+  await expect(levelRow).toContainText("Level 1");
+  await expect(levelRow).toContainText("25 pts · 75 to Level 2");
+  await expect(levelRow).toContainText("Verify the release");
+});
+
+test("Start quest works even when retired scores have filled browser storage", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+  // Fill and probe in one synchronous step: the running app prunes retired
+  // profiles on its next save, which is the fix under test.
+  const filled = await page.evaluate(() => {
+    localStorage.removeItem("termfleet.gamification.v6");
+    localStorage.removeItem("termfleet.gamification.v6.dev");
+    // Fill storage with a retired profile until the browser refuses writes,
+    // exactly like the live profile that made Start quest do nothing.
+    const chunk = "x".repeat(256 * 1024);
+    let junk = "";
+    for (let i = 0; i < 80; i += 1) {
+      try { localStorage.setItem("termfleet.gamification.v3", junk + chunk); junk += chunk; } catch { break; }
+    }
+    let pad = 0;
+    for (let size = 256 * 1024; size >= 1; size = Math.floor(size / 2)) {
+      try { localStorage.setItem("termfleet.gamification.v2", "y".repeat(pad + size)); pad += size; } catch { /* smaller */ }
+    }
+    try { localStorage.setItem("probe", "z".repeat(4096)); localStorage.removeItem("probe"); return "room"; } catch { return "full"; }
+  });
+  expect(filled).toBe("full");
+  await page.reload({ waitUntil: "domcontentloaded" });
+  const trigger = page.getByTestId("gamification-trigger");
+  await expect(trigger).toContainText("Quest", { timeout: 20000 });
+  await trigger.click();
+  await page.getByTestId("gamification-accept").click();
+  const panel = page.getByTestId("gamification-panel");
+  await expect(panel.getByTestId("gamification-active-count")).toContainText("Quest started");
+  await page.waitForTimeout(1500);
+  await expect(panel.getByTestId("gamification-active-count")).toContainText("Quest started");
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem("termfleet.gamification.v6") ?? "null")?.activeQuestId)).toBe("parallel-work");
+  expect(await page.evaluate(() => localStorage.getItem("termfleet.gamification.v3"))).toBeNull();
 });

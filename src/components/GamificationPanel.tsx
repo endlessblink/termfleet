@@ -4,7 +4,8 @@ import { Check, ChevronDown, CirclePlay, Flag, RotateCcw, Sparkles, Timer, Troph
 import { useWorkspaceStore } from "../stores/workspace";
 import {
   activeQuestMission, collectGamificationFacts, EMPTY_GAMIFICATION_RECORD, findMissionTarget, GAMIFICATION_CHANGED_EVENT, loadGamificationRecord, nextAvailableQuest,
-  retireCompletedQuest, saveGamificationRecord, summarizeGamification, syncGamificationRecord, type GamificationAchievement, type GamificationMission, type GamificationSummary,
+  parallelBreakSecondsLeft, pruneRetiredGamificationStorage, retireCompletedQuest, rewardForTransition, saveGamificationRecord, summarizeGamification, syncGamificationRecord,
+  type GamificationAchievement, type GamificationMission, type GamificationReward, type GamificationSummary,
 } from "../lib/gamification";
 
 const muted = { color: "var(--text-secondary)", fontSize: 11 };
@@ -22,12 +23,20 @@ export function GamificationPanel() {
   const setActivePane = useWorkspaceStore((state) => state.setActivePane);
   const [open, setOpen] = useState(false);
   const [resetArmed, setResetArmed] = useState(false);
-  const [record, setRecord] = useState(() => loadGamificationRecord(window.localStorage));
+  const [record, setRecord] = useState(() => {
+    // Old releases' retired scores can fill storage and make every save fail.
+    pruneRetiredGamificationStorage(window.localStorage);
+    return loadGamificationRecord(window.localStorage);
+  });
   const [summary, setSummary] = useState<GamificationSummary>(() => summarizeGamification(record));
   const [questAccepted, setQuestAccepted] = useState(() => Boolean(activeQuestMission(record)));
   const [questCelebration, setQuestCelebration] = useState<GamificationAchievement | null>(null);
+  // A brief "+25" on the Quest button: the earned points appear where the eye
+  // already is, then leave on their own. It never opens the panel or steals focus.
+  const [gain, setGain] = useState<(GamificationReward & { key: number }) | null>(null);
   const previousSummaryRef = useRef(summary);
   const celebrationTimeoutRef = useRef<number | null>(null);
+  const gainTimeoutRef = useRef<number | null>(null);
   const hoverCloseTimeoutRef = useRef<number | null>(null);
   const initialSyncRef = useRef(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -43,6 +52,17 @@ export function GamificationPanel() {
     earned: summary.achievements.some((achievement) => achievement.id === milestone.id && achievement.unlocked),
   }));
   const qualifyingTerminalCount = collectGamificationFacts(tabs).activeWorkstreams;
+  const breakSecondsLeft = isWorkstreamQuest ? parallelBreakSecondsLeft(record, Date.now()) : null;
+  const lastWin = summary.recentEvents.find((event) => event.points > 0) ?? null;
+  // Say what can actually move the quest right now, in the operator's words.
+  const agentsWorking = tabs.flatMap((tab) => tab.terminals).filter((terminal) => terminal.statusSummary?.status === "working").length;
+  const questHint = primaryMission?.id === "finish-goal"
+    ? agentsWorking > 0
+      ? `Quest started · ${agentsWorking} agent${agentsWorking === 1 ? " is" : "s are"} working now; you score when ${agentsWorking === 1 ? "it finishes" : "each one finishes"}`
+      : "Quest started · No agent is working right now. Ask one to do something."
+    : primaryMission?.id === "clean-run"
+      ? "Quest started · Run a command in a terminal and let it finish without errors"
+      : primaryMission?.nextAction;
   const focusMission = (mission: GamificationMission) => {
     const target = findMissionTarget(tabs, mission.id);
     if (!target) return;
@@ -52,11 +72,19 @@ export function GamificationPanel() {
   };
 
   const celebrateQuestCompletion = (previous: GamificationSummary, next: GamificationSummary) => {
-    const achievement = next.achievements.find((candidate) => candidate.id.startsWith("parallel-") && candidate.unlocked
+    const reward = rewardForTransition(previous, next);
+    if (reward && (reward.points > 0 || reward.levelReached)) {
+      setGain({ ...reward, key: Date.now() });
+      if (gainTimeoutRef.current !== null) window.clearTimeout(gainTimeoutRef.current);
+      gainTimeoutRef.current = window.setTimeout(() => setGain(null), 2600);
+    }
+    const achievement = next.achievements.find((candidate) => candidate.unlocked
       && !previous.achievements.some((old) => old.id === candidate.id && old.unlocked));
     if (!achievement) return;
     setQuestCelebration(achievement);
-    setOpen(true);
+    // Only the quest the player explicitly started pops its panel open; badges
+    // from ordinary work show on the button and inside the panel when opened.
+    if (achievement.id.startsWith("parallel-")) setOpen(true);
     if (celebrationTimeoutRef.current !== null) window.clearTimeout(celebrationTimeoutRef.current);
     celebrationTimeoutRef.current = window.setTimeout(() => setQuestCelebration(null), 5500);
   };
@@ -143,6 +171,7 @@ export function GamificationPanel() {
   useEffect(() => () => {
     if (celebrationTimeoutRef.current !== null) window.clearTimeout(celebrationTimeoutRef.current);
     if (hoverCloseTimeoutRef.current !== null) window.clearTimeout(hoverCloseTimeoutRef.current);
+    if (gainTimeoutRef.current !== null) window.clearTimeout(gainTimeoutRef.current);
   }, []);
 
   const keepQuestOpen = () => {
@@ -184,14 +213,16 @@ export function GamificationPanel() {
 
   return <>
     <div data-gamification-root style={{ position: "relative", flexShrink: 0 }} onPointerEnter={keepQuestOpen} onPointerLeave={closeQuestAfterHover}>
-    <button ref={triggerRef} type="button" data-testid="gamification-trigger" aria-expanded={open} aria-haspopup="dialog" aria-label="Open Workstream Quest" style={{ height: 28, display: "inline-flex", alignItems: "center", gap: 7, padding: "0 9px", borderTop: "1px solid var(--border-subtle)", borderRadius: "var(--radius-sm)", background: "var(--surface-base)", color: "var(--text-primary)", cursor: "pointer", fontFamily: "var(--font-ui)", fontSize: 11 }} onClick={keepQuestOpen}><span style={{ color: "var(--accent-live)", fontWeight: 500 }}>Quest</span><span style={muted}>{primaryMission ? formatMissionProgress(primaryMission).split(" /")[0] : "Ready"}</span><ChevronDown size={12} /></button>
+    <button ref={triggerRef} type="button" data-testid="gamification-trigger" aria-expanded={open} aria-haspopup="dialog" aria-label="Open Workstream Quest" style={{ position: "relative", height: 28, display: "inline-flex", alignItems: "center", gap: 7, padding: "0 9px", borderTop: "1px solid var(--border-subtle)", borderRadius: "var(--radius-sm)", background: "var(--surface-base)", color: "var(--text-primary)", cursor: "pointer", fontFamily: "var(--font-ui)", fontSize: 11 }} onClick={keepQuestOpen}><span style={{ color: "var(--accent-live)", fontWeight: 500 }}>Quest</span><span style={muted}>{primaryMission ? formatMissionProgress(primaryMission).split(" /")[0] : "Ready"}</span><span data-testid="gamification-level" style={muted} title={`Level ${summary.level} · ${summary.points} points`}>Lv {summary.level}</span><ChevronDown size={12} />{gain ? <span key={gain.key} data-testid="gamification-gain" className="gamification-trigger-gain" aria-live="polite" title={`${gain.title}: ${gain.detail}`}>{gain.levelReached ? `Level ${gain.levelReached}!` : `+${gain.points}`}</span> : null}</button>
     </div>
     {open && createPortal(<section role="dialog" aria-label="Workstream Quest" data-testid="gamification-panel" data-gamification-panel className="gamification-quest-panel" onPointerEnter={keepQuestOpen} onPointerLeave={closeQuestAfterHover}>
-      <header className="gamification-quest-header"><div className="gamification-quest-heading"><span aria-hidden="true" style={questAccent}><Flag size={16} /></span><div><div>Workstream quest</div><h2>{primaryMission?.title ?? "All quests complete"}</h2></div></div><button type="button" aria-label="Close progress panel" onClick={() => setOpen(false)}><X size={15} /></button></header>
+      <header className="gamification-quest-header"><div className="gamification-quest-heading"><span aria-hidden="true" style={questAccent}><Flag size={16} /></span><div><div>{isWorkstreamQuest ? "Workstream quest" : primaryMission?.id === "clean-run" ? "Command quest" : "Agent jobs quest"}</div><h2>{primaryMission?.title ?? "All quests complete"}</h2></div></div><button type="button" aria-label="Close progress panel" onClick={() => setOpen(false)}><X size={15} /></button></header>
       {questCelebration ? <div className="gamification-quest-celebration" data-testid="gamification-quest-complete" aria-live="polite"><span className="gamification-quest-celebration-mark" aria-hidden="true" style={rewardAccent}><Sparkles size={15} /></span><div><strong>Milestone earned</strong><span>{questCelebration.title}</span></div><button type="button" aria-label="Dismiss quest celebration" onClick={() => setQuestCelebration(null)}>Dismiss</button></div> : null}
-      {primaryMission && <div className="gamification-quest-progress"><div className="gamification-quest-status-row" data-testid="gamification-quest-status" aria-live="polite">{isWorkstreamQuest ? <span className={qualifyingTerminalCount >= 3 ? "is-counting" : ""}><UsersRound size={15} /> {Math.min(qualifyingTerminalCount, 3)}/3</span> : <span><Flag size={15} /> {primaryMission.progress}/{primaryMission.target}</span>}<span><Timer size={15} /> {formatMissionProgress(primaryMission)}</span></div><div data-testid="gamification-progress-bar" className="gamification-quest-progress-bar"><div style={{ width: `${Math.min(100, (primaryMission.progress / primaryMission.target) * 100)}%` }} /></div>{isWorkstreamQuest ? <div className="gamification-milestone-rail" data-testid="gamification-milestone-rail" aria-label="Quest milestones">{questMilestones.map((milestone, index) => <div key={milestone.id} data-state={milestone.earned ? "earned" : primaryMission.target === [600, 1800, 10800][index] ? "next" : "later"} title={`${milestone.title}: ${milestone.earned ? "earned" : "not yet"}`}><span aria-hidden="true">{milestone.earned ? <Check size={13} /> : index === 2 ? <Trophy size={13} /> : <Timer size={13} />}</span><b>{milestone.label}</b></div>)}</div> : null}</div>}
-      {questAccepted ? <div className="gamification-quest-callout" data-testid="gamification-active-count"><span aria-hidden="true">{isWorkstreamQuest && qualifyingTerminalCount >= 3 ? <Sparkles size={14} /> : isWorkstreamQuest ? <UsersRound size={14} /> : <Flag size={14} />}</span>{isWorkstreamQuest ? (qualifyingTerminalCount >= 3 ? "Quest started · timer is counting" : `Quest started · Paused · add ${Math.max(0, 3 - qualifyingTerminalCount)} live terminal${qualifyingTerminalCount === 2 ? "" : "s"}`) : primaryMission?.nextAction}</div> : <button type="button" data-testid="gamification-accept" className="gamification-quest-accept" onClick={acceptQuest}><Flag size={14} /> Start quest</button>}
-      {questAccepted && primaryMission && findMissionTarget(tabs, primaryMission.id) ? <button type="button" data-testid={`gamification-focus-${primaryMission.id}`} onClick={() => focusMission(primaryMission)} className="gamification-quest-focus"><CirclePlay size={13} /> Focus a workstream</button> : null}
+      {primaryMission && !isWorkstreamQuest ? <p className="gamification-quest-detail" data-testid="gamification-quest-detail">{primaryMission.detail}</p> : null}
+      {primaryMission && <div className="gamification-quest-progress"><div className="gamification-quest-status-row" data-testid="gamification-quest-status" aria-live="polite">{isWorkstreamQuest ? <span className={qualifyingTerminalCount >= 3 ? "is-counting" : ""}><UsersRound size={15} /> {Math.min(qualifyingTerminalCount, 3)}/3</span> : <span><Flag size={15} /> {primaryMission.progress}/{primaryMission.target} done</span>}{isWorkstreamQuest ? <span><Timer size={15} /> {formatMissionProgress(primaryMission)}</span> : null}</div><div data-testid="gamification-progress-bar" className="gamification-quest-progress-bar"><div style={{ width: `${Math.min(100, (primaryMission.progress / primaryMission.target) * 100)}%` }} /></div>{isWorkstreamQuest ? <div className="gamification-milestone-rail" data-testid="gamification-milestone-rail" aria-label="Quest milestones">{questMilestones.map((milestone, index) => <div key={milestone.id} data-state={milestone.earned ? "earned" : primaryMission.target === [600, 1800, 10800][index] ? "next" : "later"} title={`${milestone.title}: ${milestone.earned ? "earned" : "not yet"}`}><span aria-hidden="true">{milestone.earned ? <Check size={13} /> : index === 2 ? <Trophy size={13} /> : <Timer size={13} />}</span><b>{milestone.label}</b></div>)}</div> : null}</div>}
+      {questAccepted ? <div className="gamification-quest-callout" data-testid="gamification-active-count"><span aria-hidden="true">{isWorkstreamQuest && qualifyingTerminalCount >= 3 ? <Sparkles size={14} /> : isWorkstreamQuest ? <UsersRound size={14} /> : <Flag size={14} />}</span>{isWorkstreamQuest ? (qualifyingTerminalCount >= 3 ? "Quest started · timer is counting" : breakSecondsLeft !== null ? `Paused · clock restarts in ${breakSecondsLeft}s unless 3 agents are working again (${qualifyingTerminalCount}/3 now)` : `Quest started · Paused until 3 agents are working (${qualifyingTerminalCount}/3 now)`) : questHint}</div> : <button type="button" data-testid="gamification-accept" className="gamification-quest-accept" onClick={acceptQuest}><Flag size={14} /> Start quest</button>}
+      {questAccepted && primaryMission && findMissionTarget(tabs, primaryMission.id) ? <button type="button" data-testid={`gamification-focus-${primaryMission.id}`} onClick={() => focusMission(primaryMission)} className="gamification-quest-focus"><CirclePlay size={13} /> {primaryMission.id === "finish-goal" ? "Show me an agent" : "Focus a workstream"}</button> : null}
+      <div className="gamification-level-row" data-testid="gamification-level-row"><div><span><Trophy size={12} /> Level {summary.level}</span><span>{summary.points} pts · {Math.max(0, (summary.nextLevelPoints ?? summary.points) - summary.points)} to Level {summary.level + 1}</span></div><div className="gamification-level-bar"><div style={{ width: `${summary.levelProgressPercent}%` }} /></div>{lastWin ? <p data-testid="gamification-last-win">Last win: {lastWin.title} · {lastWin.detail} <b>+{lastWin.points}</b></p> : <p>Earn points each time an agent finishes a job.</p>}</div>
       {questAccepted && <div style={{ ...line, marginTop: 14, paddingTop: 10, display: "flex", justifyContent: "flex-end" }}>{!resetArmed ? <button type="button" data-testid="gamification-reset" className="gamification-quest-reset" onClick={() => setResetArmed(true)} aria-label="Reset quest progress"><RotateCcw size={12} /> Reset</button> : <div role="group" aria-label="Confirm progress reset"><button type="button" data-testid="gamification-reset-confirm" className="gamification-quest-confirm" onClick={resetProgress}>Reset quest</button><button type="button" onClick={() => setResetArmed(false)} className="gamification-quest-reset">Cancel</button></div>}</div>}
     </section>, document.body)}
   </>;
