@@ -78,6 +78,7 @@ import {
   qualityCheckNowLabel,
 } from "../lib/terminalHeaderQuality";
 import { traceTerminalLatency } from "../lib/terminalLatencyTrace";
+import { recordMapViewportChange } from "../lib/terminalGeometryLog";
 import type {
   Tab,
   TaskLineupItem,
@@ -174,7 +175,9 @@ import {
 import {
   buildTerminalHeaderState,
   resolveDistinctHeaderNow,
+  resolveMapCardTaskRow,
 } from "../lib/terminalHeaderState";
+import { copyPaneLastReply } from "../lib/copyLastReply";
 import { agentBudgetSignal } from "../lib/agentBudget";
 import { openCodexModelPicker } from "../lib/codexModelPicker";
 import { durableActivityIsLive } from "../lib/terminalActivity";
@@ -190,6 +193,10 @@ import { agentProviderIdentity } from "../lib/agentProviderIdentity";
 import { AgentProviderIdentity, TerminalSignifier } from "./AgentProviderIdentity";
 import { agentReconnectCommand } from "../lib/agentReconnect";
 import { TaskProgressBar } from "./TaskProgressBar";
+import { childLinkSegments, HELPER_TERMINAL_COLOR } from "../lib/childTerminals";
+
+/** Room around a helper link so its stroke is never clipped at any zoom. */
+const CHILD_LINK_PAD = 24;
 
 type CanvasRect = {
   minX: number;
@@ -612,6 +619,11 @@ const styles: Record<string, CSSProperties> = {
     inset: 0,
     transformOrigin: "0 0",
     backfaceVisibility: "hidden",
+  },
+  childLink: {
+    position: "absolute",
+    overflow: "visible",
+    pointerEvents: "none",
   },
   terminalOverlayLayer: {
     position: "absolute",
@@ -3021,7 +3033,7 @@ function CanvasNodeViewImpl({
             node.type,
             zoom,
           ),
-        });
+        }, "resize");
       }
 
       function onMouseUp() {
@@ -3556,25 +3568,13 @@ function CanvasNodeViewImpl({
   const terminalHeaderTaskDescription =
     terminalHeader.sources.goal === "shell-role"
       ? terminalHeader.taskDescription
-      : resolveDistinctHeaderNow(
-          terminalHeader.goalLabel,
-          terminalHeaderTaskCandidate,
-        ) ??
-        resolveDistinctHeaderNow(
-          terminalHeader.goalLabel,
-          terminalHeaderTaskLineCandidate,
-        ) ??
-        resolveDistinctHeaderNow(
-          terminalHeader.goalLabel,
-          terminalHeaderDurableActivityTask,
-        ) ??
-        resolveDistinctHeaderNow(
-          terminalHeader.goalLabel,
-          terminalHeaderStatusTask,
-        ) ??
-        // A real task that merely matches the Goal (a bound plan task is often both)
-        // still beats the placeholder.
-        terminalHeaderTaskCandidate ??
+      : resolveMapCardTaskRow({
+          goal: terminalHeader.goalLabel,
+          lineupTask: terminalHeaderTaskCandidate,
+          taskLine: terminalHeaderTaskLineCandidate,
+          durableActivityTask: terminalHeaderDurableActivityTask,
+          statusTask: terminalHeaderStatusTask,
+        }) ??
         canvasTaskFallback;
   const stabilizedTerminalHeaderTask = stableHeader(
     `map-task-row:${terminalTabId}:${terminalPaneId}:${node.taskBinding?.taskId ?? "unbound"}`,
@@ -4060,15 +4060,22 @@ function CanvasNodeViewImpl({
     const currentNode =
       currentState.canvasState.nodes.find((candidate) => candidate.id === node.id) ??
       node;
+    const currentRestoredNodePaneId = currentNode.id.startsWith("recovered-pane-")
+      ? currentNode.id.slice("recovered-pane-".length)
+      : currentNode.id;
+    const currentNodePaneIds = new Set(
+      [currentNode.id, currentRestoredNodePaneId, currentNode.linkedTerminalPaneId]
+        .filter((paneId): paneId is string => Boolean(paneId)),
+    );
     const currentTerminal =
       currentTab.terminals.find(
         (terminal) => terminal.id === currentNode.terminalPtyId,
       ) ??
-      currentTab.terminals.find((terminal) => terminal.paneId === currentNode.id) ??
       currentTab.terminals.find(
-        (terminal) => terminal.paneId === currentTab.activePaneId,
+        (terminal) => terminal.paneId === currentNode.linkedTerminalPaneId,
       ) ??
-      currentTab.terminals[0];
+      currentTab.terminals.find((terminal) => currentNodePaneIds.has(terminal.paneId)) ??
+      (currentTab.terminals.length === 1 ? currentTab.terminals[0] : undefined);
     // Never fabricate a terminal id. The old fallback synthesised
     // `terminal-<tabId>-<paneId>` when no existing terminal matched, and
     // activating an id that does not exist makes the app CREATE a new empty
@@ -4968,6 +4975,15 @@ function CanvasNodeViewImpl({
                 >
                   {workspaceLabel}
                 </span>
+                {linkedTab?.childOf && (
+                  <span
+                    style={{ ...styles.workspacePill, color: HELPER_TERMINAL_COLOR, borderColor: HELPER_TERMINAL_COLOR }}
+                    data-testid="canvas-terminal-node-helper"
+                    title="Opened by the terminal the dashed line leads to"
+                  >
+                    Helper
+                  </span>
+                )}
                 {terminalBranch && (
                   <span
                     style={styles.workspacePill}
@@ -5494,6 +5510,34 @@ function CanvasNodeViewImpl({
               onClick={onBindTask}
             >
               <ListTodo size={13} strokeWidth={1.8} />
+            </button>
+            <button
+              style={styles.headerButton}
+              title="Copy last reply"
+              aria-label="Copy last reply"
+              data-testid="canvas-terminal-copy-last-reply"
+              onMouseDown={(event) => event.stopPropagation()}
+              onClick={(event) => {
+                event.stopPropagation();
+                const button = event.currentTarget;
+                const labels = {
+                  copied: "Copied the last reply",
+                  "no-chat": "No agent chat found in this terminal",
+                  "no-reply": "No reply to copy yet",
+                  failed: "Could not copy the last reply",
+                } as const;
+                void copyPaneLastReply(terminalPaneId).then((outcome) => {
+                  button.title = labels[outcome];
+                  button.style.color =
+                    outcome === "copied" ? "var(--accent-success)" : "var(--accent-warning)";
+                  window.setTimeout(() => {
+                    button.title = "Copy last reply";
+                    button.style.color = "";
+                  }, 2500);
+                });
+              }}
+            >
+              <ClipboardCopy size={13} strokeWidth={1.8} />
             </button>
             <button
               style={styles.headerButton}
@@ -6582,6 +6626,24 @@ export function MagicCanvas() {
   startStatusPollLoop();
   const canvasState = useWorkspaceStore((state) => state.canvasState);
   const tabs = useWorkspaceStore((state) => state.tabs);
+  // FEATURE-64: a line from each parent agent's card to the children it started.
+  const childLinks = useMemo(() => childLinkSegments(tabs, canvasState.nodes), [tabs, canvasState.nodes]);
+  // The "Agent runs" summary covers the map; the operator must be able to close it.
+  const [agentLaneHidden, setAgentLaneHidden] = useState(() => {
+    try {
+      return window.localStorage.getItem("termfleet.agentLaneHidden") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const hideAgentLane = useCallback(() => {
+    setAgentLaneHidden(true);
+    try {
+      window.localStorage.setItem("termfleet.agentLaneHidden", "1");
+    } catch {
+      // Hidden for this session only.
+    }
+  }, []);
   const groups = useWorkspaceStore((state) => state.groups);
   const activeTabId = useWorkspaceStore((state) => state.activeTabId);
   const setActiveTab = useWorkspaceStore((state) => state.setActiveTab);
@@ -6589,6 +6651,15 @@ export function MagicCanvas() {
   const updateCanvasNode = useWorkspaceStore((state) => state.updateCanvasNode);
   const updateCanvasViewport = useWorkspaceStore(
     (state) => state.updateCanvasViewport,
+  );
+  const changeCanvasViewport = useCallback(
+    (
+      trigger: Parameters<typeof recordMapViewportChange>[0],
+      patch: Partial<{ x: number; y: number; zoom: number }>,
+    ) => {
+      updateCanvasViewport(patch, trigger);
+    },
+    [updateCanvasViewport],
   );
   const selectCanvasNodes = useWorkspaceStore(
     (state) => state.selectCanvasNodes,
@@ -6751,13 +6822,13 @@ export function MagicCanvas() {
     // map keeps its left edge (header, prompt) in view instead.
     const zoom = READABLE_TERMINAL_ZOOM;
     const centeredX = (containerSize.width - target.width * zoom) / 2;
-    updateCanvasViewport({
+    changeCanvasViewport("startup-offscreen-rescue", {
       x: Math.max(16, centeredX) - target.x * zoom,
       y: Math.max(40, (containerSize.height - target.height * zoom) / 2) - target.y * zoom,
       zoom,
     });
     autoFittedCanvasTargetRef.current = target.id;
-  }, [activeTabId, containerSize, nodes, selectedCanvasNodes, updateCanvasViewport, viewport]);
+  }, [activeTabId, changeCanvasViewport, containerSize, nodes, selectedCanvasNodes, viewport]);
   const activeTab = useMemo(
     () => tabs.find((tab) => tab.id === activeTabId),
     [activeTabId, tabs],
@@ -6835,7 +6906,7 @@ export function MagicCanvas() {
         MIN_ZOOM,
         MAX_ZOOM,
       );
-      updateCanvasViewport({
+      changeCanvasViewport("project-reveal", {
         zoom,
         x: width / 2 - (project.minX + boxWidth / 2) * zoom,
         y:
@@ -6849,7 +6920,7 @@ export function MagicCanvas() {
         }),
       );
     },
-    [containerSize.height, containerSize.width, updateCanvasViewport],
+    [changeCanvasViewport, containerSize.height, containerSize.width],
   );
   const projectRowGroupId = useMemo(() => {
     const selectedProjectId = selectedCanvasNodes
@@ -7339,7 +7410,7 @@ export function MagicCanvas() {
   );
 
   const centerNode = useCallback(
-    (node: CanvasNode, zoom: number) => {
+    (node: CanvasNode, zoom: number, trigger: "center-node" | "fit-active" = "center-node") => {
       const shellRect = shellRef.current?.getBoundingClientRect();
       const width = shellRect?.width ?? window.innerWidth;
       const height = shellRect?.height ?? window.innerHeight;
@@ -7355,13 +7426,13 @@ export function MagicCanvas() {
       const nextZoom = clamp(fittedZoom, MIN_ZOOM, MAX_ZOOM);
       const nextX = width / 2 - (node.x + node.width / 2) * nextZoom;
       const nextY = height / 2 - (node.y + node.height / 2) * nextZoom;
-      updateCanvasViewport({
+      changeCanvasViewport(trigger, {
         zoom: nextZoom,
         x: snapTerminalPixel(nextX, node.type, nextZoom),
         y: snapTerminalPixel(nextY, node.type, nextZoom),
       });
     },
-    [updateCanvasViewport],
+    [changeCanvasViewport],
   );
 
   const focusSelectedNode = useCallback(() => {
@@ -7372,23 +7443,24 @@ export function MagicCanvas() {
       canvasState.nodes.find((node) => node.type === "terminal") ??
       canvasState.nodes[0];
     if (!selected) {
-      updateCanvasViewport({ x: 0, y: 0, zoom: 1 });
+      changeCanvasViewport("reset-view", { x: 0, y: 0, zoom: 1 });
       return;
     }
     centerNode(
       selected,
       selected.type === "terminal" ? FOCUS_TERMINAL_ZOOM : 1,
+      "fit-active",
     );
   }, [
     canvasState.nodes,
     canvasState.selectedNodeId,
     centerNode,
-    updateCanvasViewport,
+    changeCanvasViewport,
   ]);
 
   const fitAllNodes = useCallback(() => {
     if (canvasState.nodes.length === 0) {
-      updateCanvasViewport({ x: 0, y: 0, zoom: 1 });
+      changeCanvasViewport("fit-all", { x: 0, y: 0, zoom: 1 });
       return;
     }
     const shellRect = shellRef.current?.getBoundingClientRect();
@@ -7414,21 +7486,26 @@ export function MagicCanvas() {
       MIN_ZOOM,
       1,
     );
-    updateCanvasViewport({
+    changeCanvasViewport("fit-all", {
       zoom: nextZoom,
       x: width / 2 - (bounds.minX + contentWidth / 2) * nextZoom,
       y: height / 2 - (bounds.minY + contentHeight / 2) * nextZoom,
     });
-  }, [canvasState.nodes, updateCanvasViewport]);
+  }, [canvasState.nodes, changeCanvasViewport]);
 
   const setZoomAt = useCallback(
-    (nextZoomValue: number, clientX?: number, clientY?: number) => {
+    (
+      nextZoomValue: number,
+      trigger: "wheel-zoom" | "toolbar-zoom-in" | "toolbar-zoom-out",
+      clientX?: number,
+      clientY?: number,
+    ) => {
       const viewport = canvasState.viewport;
       const nextZoom = clamp(nextZoomValue, MIN_ZOOM, MAX_ZOOM);
       const shellRect = shellRef.current?.getBoundingClientRect();
 
       if (!shellRect || clientX === undefined || clientY === undefined) {
-        updateCanvasViewport({ zoom: nextZoom });
+        changeCanvasViewport(trigger, { zoom: nextZoom });
         return;
       }
 
@@ -7437,13 +7514,13 @@ export function MagicCanvas() {
       const canvasX = (localX - viewport.x) / viewport.zoom;
       const canvasY = (localY - viewport.y) / viewport.zoom;
 
-      updateCanvasViewport({
+      changeCanvasViewport(trigger, {
         zoom: nextZoom,
         x: localX - canvasX * nextZoom,
         y: localY - canvasY * nextZoom,
       });
     },
-    [canvasState.viewport, updateCanvasViewport],
+    [canvasState.viewport, changeCanvasViewport],
   );
 
   const startCanvasPan = useCallback(
@@ -7512,7 +7589,7 @@ export function MagicCanvas() {
         // Commit the final viewport to the store once (recomputes liveNodeIds,
         // persists layout). Only when actually panned — a plain click stays cheap.
         if (pan && moved) {
-          updateCanvasViewport({ x: pan.nextX, y: pan.nextY });
+          changeCanvasViewport("manual-pan", { x: pan.nextX, y: pan.nextY });
         }
         if (options?.deselectOnClick && !moved) {
           selectCanvasNodes([]);
@@ -7527,7 +7604,7 @@ export function MagicCanvas() {
       canvasState.viewport.y,
       canvasState.viewport.zoom,
       selectCanvasNodes,
-      updateCanvasViewport,
+      changeCanvasViewport,
     ],
   );
 
@@ -7620,6 +7697,7 @@ export function MagicCanvas() {
       const factor = direction > 0 ? 1.1 : 0.9;
       setZoomAt(
         canvasState.viewport.zoom * factor,
+        "wheel-zoom",
         event.clientX,
         event.clientY,
       );
@@ -7946,7 +8024,7 @@ export function MagicCanvas() {
         </div>
       )}
 
-      {agentLane.total > 0 && (
+      {agentLane.total > 0 && !agentLaneHidden && (
         <div
           style={styles.agentLaneOverlay}
           data-testid="canvas-agent-lane-summary"
@@ -7962,6 +8040,17 @@ export function MagicCanvas() {
             <span
               style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
             >
+              <button
+                type="button"
+                className="magic-canvas-button"
+                style={{ ...styles.button, width: 24, height: 24 }}
+                data-testid="canvas-agent-lane-close"
+                title="Close this panel"
+                aria-label="Close agent runs panel"
+                onClick={hideAgentLane}
+              >
+                <X size={13} strokeWidth={1.8} />
+              </button>
               <button
                 type="button"
                 className="magic-canvas-button"
@@ -10080,6 +10169,35 @@ export function MagicCanvas() {
         onMouseDown={onCanvasMouseDown}
         onContextMenu={openCanvasMenu}
       >
+        {childLinks.map((link) => {
+          // One small SVG per link, sized to the link itself: a single
+          // map-wide SVG made every drag frame repaint far more than the line.
+          const left = Math.min(link.x1, link.x2) - CHILD_LINK_PAD;
+          const top = Math.min(link.y1, link.y2) - CHILD_LINK_PAD;
+          return (
+            <svg
+              key={link.id}
+              data-testid="canvas-child-link"
+              data-child-tab-id={link.id}
+              aria-hidden="true"
+              width={Math.abs(link.x2 - link.x1) + CHILD_LINK_PAD * 2}
+              height={Math.abs(link.y2 - link.y1) + CHILD_LINK_PAD * 2}
+              style={{ ...styles.childLink, left, top }}
+            >
+              <line
+                x1={link.x1 - left}
+                y1={link.y1 - top}
+                x2={link.x2 - left}
+                y2={link.y2 - top}
+                stroke={HELPER_TERMINAL_COLOR}
+                strokeOpacity={0.9}
+                strokeWidth={3}
+                strokeDasharray="10 8"
+                vectorEffect="non-scaling-stroke"
+              />
+            </svg>
+          );
+        })}
         {canvasState.nodes.map((node) => (
           <CanvasNodeView
             key={node.id}
@@ -10105,7 +10223,7 @@ export function MagicCanvas() {
         <button
           className="magic-canvas-button"
           style={styles.button}
-          onClick={() => setZoomAt(canvasState.viewport.zoom * 0.9)}
+          onClick={() => setZoomAt(canvasState.viewport.zoom * 0.9, "toolbar-zoom-out")}
           title="Zoom out"
           aria-label="Zoom out"
         >
@@ -10126,7 +10244,7 @@ export function MagicCanvas() {
         <button
           className="magic-canvas-button"
           style={styles.button}
-          onClick={() => setZoomAt(canvasState.viewport.zoom * 1.1)}
+          onClick={() => setZoomAt(canvasState.viewport.zoom * 1.1, "toolbar-zoom-in")}
           title="Zoom in"
           aria-label="Zoom in"
         >

@@ -8,6 +8,7 @@ import type {
 } from "./types";
 import {
   buildShellTerminalHeaderViewModel,
+  headerTextsEquivalent,
   type HeaderFieldSource,
 } from "./terminalHeaderViewModel";
 import { type AttentionState } from "./terminalAttention";
@@ -23,6 +24,7 @@ import {
   qualityCheckAuthoritativeTaskLabel,
   qualityCheckGoalLabel,
   qualityCheckNowLabel,
+  qualityCheckUserAskLabel,
   stripComposerChrome,
 } from "./terminalHeaderQuality";
 
@@ -107,6 +109,49 @@ export function resolveDistinctHeaderNow(
   if (!normalizedCandidate) return undefined;
   if (normalizedCandidate === normalize(task ?? "")) return undefined;
   if (/^(?:Working|Running|Running\s*\.{3}|Processing|Processing\s*\.{3}|Ready|Idle|Awaiting next action|Working on the current task|Working on the current request|Status unavailable|Activity not captured)$/i.test(candidate)) {
+    return undefined;
+  }
+  return candidate;
+}
+
+/**
+ * The map card's Task row. Each candidate must add something beyond the Goal; an
+ * in-progress checklist item still beats the placeholder even when it matches the
+ * Goal. Only when nothing else spoke does the status request get the task gate.
+ */
+export function resolveMapCardTaskRow(input: {
+  goal?: string | null;
+  lineupTask?: string | null;
+  taskLine?: string | null;
+  durableActivityTask?: string | null;
+  statusTask?: string | null;
+}): string | undefined {
+  return (
+    resolveDistinctHeaderNow(input.goal, input.lineupTask) ??
+    resolveDistinctHeaderNow(input.goal, input.taskLine) ??
+    resolveDistinctHeaderNow(input.goal, input.durableActivityTask) ??
+    (input.statusTask && /\{[^{}]+\}/.test(input.statusTask)
+      ? undefined
+      : resolveDistinctHeaderNow(input.goal, input.statusTask)) ??
+    (input.lineupTask?.trim() || undefined) ??
+    distinctStatusTask(input.goal, input.statusTask)
+  );
+}
+
+// The status summary's task is the pane's latest request or declared step, so it is
+// judged by the same task gate as the split view (TF-065), not the current-step gate
+// that rejected ordinary requests. It may be the operator's raw prompt, so the
+// user-ask gate must also pass: no commands, paths, or shell syntax. The map Task
+// row is a two-line box.
+function distinctStatusTask(goal?: string | null, value?: string | null) {
+  const candidate = value?.trim();
+  if (
+    !candidate ||
+    !qualityCheckAuthoritativeTaskLabel(candidate, { maxLength: 150 }).ok ||
+    !qualityCheckUserAskLabel(candidate, { maxLength: 150 }).ok ||
+    isSupervisedMetaProcessTask(candidate) ||
+    headerTextsEquivalent(goal, candidate)
+  ) {
     return undefined;
   }
   return candidate;
@@ -428,7 +473,7 @@ export function buildTerminalHeaderState(input: {
   });
   const shellRoleContext =
     input.paneKind === "shell" && view.taskDescription.source === "shell-role"
-      ? `Run commands directly in ${view.workspace.text}.`
+      ? "Nothing asked in this pane yet"
       : undefined;
   const goalTaskSource =
     input.statusSummary?.mainTaskSource === "goal-task" ||

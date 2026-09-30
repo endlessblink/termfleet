@@ -297,10 +297,43 @@ select:focus-visible,
 
   .gamification-quest-celebration,
   .gamification-quest-celebration::before,
-  .gamification-quest-celebration-mark {
+  .gamification-quest-celebration-mark,
+  .gamification-trigger-gain {
     animation: none;
   }
 }
+
+.gamification-trigger-gain {
+  position: absolute;
+  top: -9px;
+  right: -6px;
+  padding: 1px 6px;
+  border-radius: 99px;
+  background: var(--accent-warning);
+  color: var(--surface-base);
+  font-size: 10px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  animation: gamification-gain-pop 2.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes gamification-gain-pop {
+  0% { opacity: 0; transform: translateY(6px) scale(0.7); }
+  12% { opacity: 1; transform: translateY(0) scale(1.12); }
+  22% { transform: translateY(0) scale(1); }
+  80% { opacity: 1; transform: translateY(-2px); }
+  100% { opacity: 0; transform: translateY(-8px); }
+}
+
+.gamification-quest-detail { margin: 10px 0 0; color: var(--text-secondary); font-size: 12px; line-height: 1.4; }
+.gamification-level-row { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--border-subtle); font-size: 11px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.gamification-level-row > div:first-child { display: flex; justify-content: space-between; gap: 8px; }
+.gamification-level-row > div:first-child span:first-child { display: inline-flex; align-items: center; gap: 5px; color: var(--accent-warning); font-weight: 500; }
+.gamification-level-bar { height: 4px; margin-top: 7px; overflow: hidden; border-radius: 99px; background: color-mix(in srgb, var(--text-primary) 12%, transparent); }
+.gamification-level-bar > div { height: 100%; border-radius: inherit; background: var(--accent-warning); transition: width 300ms ease; }
+.gamification-level-row p { margin: 7px 0 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gamification-level-row p b { color: var(--accent-warning); font-weight: 500; }
 
 .workspace-sidebar-row:hover .workspace-sidebar-actions,
 .workspace-sidebar-row:focus-within .workspace-sidebar-actions,

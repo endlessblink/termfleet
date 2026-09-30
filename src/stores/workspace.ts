@@ -1,5 +1,4 @@
 import { create } from "zustand";
-import { flushStorageWrites } from "../lib/storageGovernor";
 import type {
   CanvasNode,
   CanvasState,
@@ -42,6 +41,9 @@ import {
 } from "../lib/canvasArrange";
 import { waitForClosePersistence } from "../lib/closePersistence";
 import { registerTaskRun } from "../lib/canonicalTaskRuntime";
+import { recordCanvasNodeMovement, recordMapViewportChange } from "../lib/terminalGeometryLog";
+import type { MapViewportTrigger } from "../lib/mapViewportTrace";
+import { flushStorageWrites } from "../lib/storageGovernor";
 
 const GROUP_COLORS = [
   "#7aa2f7",
@@ -429,7 +431,7 @@ interface WorkspaceState {
   exitImmersiveTerminal: () => void;
   toggleImmersiveTerminal: (tabId: string, paneId: string) => void;
   addCanvasNode: (node: Omit<CanvasNode, "id"> & { id?: string }) => void;
-  updateCanvasNode: (id: string, updates: Partial<CanvasNode>) => void;
+  updateCanvasNode: (id: string, updates: Partial<CanvasNode>, source?: "resize" | "workspace-update") => void;
   renameCanvasNode: (id: string, title: string) => void;
   moveCanvasNodes: (ids: string[], delta: { x: number; y: number }) => void;
   alignCanvasNodes: (ids: string[], mode: CanvasAlignMode) => void;
@@ -441,7 +443,7 @@ interface WorkspaceState {
   removeCanvasNode: (id: string) => void;
   selectCanvasNode: (id: string | null) => void;
   selectCanvasNodes: (ids: string[]) => void;
-  updateCanvasViewport: (viewport: Partial<CanvasState["viewport"]>) => void;
+  updateCanvasViewport: (viewport: Partial<CanvasState["viewport"]>, trigger: MapViewportTrigger) => void;
 
   // Split pane actions
   splitPane: (
@@ -599,7 +601,7 @@ function persistedTerminalSnapshot(terminal: TerminalState): TerminalState {
     purpose: terminal.purpose,
     mainUserAsk: persistedMainUserAsk(terminal.mainUserAsk),
     taskSidebarCollapsed: terminal.taskSidebarCollapsed,
-    lastStatusAt: Date.now(),
+    lastStatusAt: terminal.lastStatusAt,
   };
 }
 
@@ -2506,10 +2508,10 @@ export async function hydrateWorkspace(options: { background?: boolean } = {}) {
       recoveryTransfers,
     });
     if (initialCriticalHydration) return;
-    // Rebuild the visible map projection after terminal reconciliation so the
-    // dock-launched app opens with project lanes and a sidebar matching them.
+    // Hydration may discover panes and update project identities, but must not
+    // move cards the operator already placed. Project lane arrangement remains
+    // an explicit map action.
     const hydratedStore = useWorkspaceStore.getState();
-    hydratedStore.arrangeCanvasProjectLanes();
     hydratedStore.updateWorkspaceUiState({ canvasSidebarSortMode: "project" });
     // Hydration can add live panes without any user action. Explicitly arm the
     // persistence queue so a close immediately after recovery cannot checkpoint
@@ -2663,8 +2665,8 @@ export function createAgentWorkstream(
   prompt?: string,
   availability?: AgentProviderAvailability,
   opsContext?: WorkstreamOpsContext,
-  launchProfile: WorkstreamLaunchProfile = "terminal"
-) {
+  launchProfile: WorkstreamLaunchProfile = "terminal",
+): string | undefined {
   const store = useWorkspaceStore.getState();
   const activeTab = store.tabs.find((tab) => tab.id === store.activeTabId);
   const groupId = store.activeGroupFilter ?? activeTab?.groupId ?? store.activeGroupId;
@@ -2795,6 +2797,7 @@ export function createAgentWorkstream(
       createdAt,
     },
   });
+  const newTabId = useWorkspaceStore.getState().activeTabId;
   if (opsContext?.canonicalTaskId) {
     void registerTaskRun({
       runId,
@@ -2811,6 +2814,7 @@ export function createAgentWorkstream(
       failureReason: providerInfo.available ? undefined : providerInfo.message,
     }).catch(() => undefined);
   }
+  return newTabId ?? undefined;
 }
 
 function titleForPreviewUrl(url: string) {
@@ -3150,6 +3154,31 @@ function selectNodeAfterRemovingTerminalTab({
   return remainingNodes.find((node) => node.terminalTabId === nextTabId)?.id ?? null;
 }
 
+function recordCanvasLayoutMovement(
+  before: CanvasNode[],
+  after: CanvasNode[],
+) {
+  const previousById = new Map(before.map((node) => [node.id, node]));
+  let movedNodes = 0;
+  let maxDeltaX = 0;
+  let maxDeltaY = 0;
+  const movedNodeIds: string[] = [];
+  for (const node of after) {
+    const previous = previousById.get(node.id);
+    if (!previous) continue;
+    const deltaX = node.x - previous.x;
+    const deltaY = node.y - previous.y;
+    if (deltaX === 0 && deltaY === 0) continue;
+    movedNodes += 1;
+    movedNodeIds.push(node.id);
+    maxDeltaX = Math.max(maxDeltaX, Math.abs(deltaX));
+    maxDeltaY = Math.max(maxDeltaY, Math.abs(deltaY));
+  }
+  if (movedNodes > 0) {
+    recordCanvasNodeMovement("auto-layout", maxDeltaX, maxDeltaY, movedNodes, movedNodeIds);
+  }
+}
+
 export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   tabs: restoredProjects.tabs,
   groups: restoredProjects.groups,
@@ -3218,20 +3247,6 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       const nextLiveCwds = { ...liveCwds, ...state.liveCwds };
       const nextLiveGitRoots = { ...state.liveGitRoots, ...liveGitRoots };
       const projects = reconcileProjectGroups(tabs, state.groups, canvasState, nextLiveCwds, nextLiveGitRoots);
-      const canvasProjects = resolveCanvasNodeProjects(canvasState.nodes, projects.tabs);
-      const tidyPositions = planCanvasLanes(canvasState.nodes, canvasProjects, {
-        laneGap: CANVAS_PROJECT_LANE_GAP,
-        itemGap: CANVAS_PROJECT_TERMINAL_GAP,
-      });
-      const tidiedCanvasState = tidyPositions.size === 0
-        ? canvasState
-        : {
-            ...canvasState,
-            nodes: canvasState.nodes.map((node) => {
-              const next = tidyPositions.get(node.id);
-              return next ? { ...node, x: snapCanvasCoordinate(next.x), y: snapCanvasCoordinate(next.y) } : node;
-            }),
-          };
       const nextActive =
         projects.tabs.find((tab) => tab.id === activeTabId)?.id ?? projects.tabs[0].id;
       return {
@@ -3239,7 +3254,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         groups: projects.groups,
         terminalGroups: projects.groups,
         activeTabId: nextActive,
-        canvasState: tidiedCanvasState,
+        canvasState,
         workspaceUiState: {
           ...state.workspaceUiState,
           canvasSidebarSortMode: "project",
@@ -4541,7 +4556,26 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     }));
   },
 
-  updateCanvasNode: (id: string, updates: Partial<CanvasNode>) => {
+  updateCanvasNode: (id: string, updates: Partial<CanvasNode>, source?: "resize" | "workspace-update") => {
+    const previous = get().canvasState.nodes.find((node) => node.id === id);
+    if (previous) {
+      const nextX = updates.x ?? previous.x;
+      const nextY = updates.y ?? previous.y;
+      const nextWidth = updates.width ?? previous.width;
+      const nextHeight = updates.height ?? previous.height;
+      const deltaX = nextX - previous.x;
+      const deltaY = nextY - previous.y;
+      const resized = nextWidth !== previous.width || nextHeight !== previous.height;
+      if (deltaX !== 0 || deltaY !== 0 || resized) {
+        recordCanvasNodeMovement(
+          source ?? (resized ? "resize" : "workspace-update"),
+          deltaX,
+          deltaY,
+          1,
+          [id],
+        );
+      }
+    }
     set((state) => ({
       canvasState: {
         ...state.canvasState,
@@ -4579,6 +4613,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
 
   moveCanvasNodes: (ids: string[], delta: { x: number; y: number }) => {
     if (ids.length === 0 || (delta.x === 0 && delta.y === 0)) return;
+    recordCanvasNodeMovement("drag", delta.x, delta.y, ids.length, ids);
     const idSet = new Set(ids);
     set((state) => ({
       canvasState: {
@@ -4599,6 +4634,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   alignCanvasNodes: (ids: string[], mode: CanvasAlignMode) => {
     if (ids.length < 2) return;
     const idSet = new Set(ids);
+    const before = get().canvasState.nodes;
     set((state) => {
       const targets = state.canvasState.nodes.filter((node) => idSet.has(node.id));
       if (targets.length < 2) return {};
@@ -4623,11 +4659,13 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         },
       };
     });
+    recordCanvasLayoutMovement(before, get().canvasState.nodes);
   },
 
   distributeCanvasNodes: (ids: string[], mode: CanvasDistributeMode) => {
     if (ids.length < 3) return;
     const idSet = new Set(ids);
+    const before = get().canvasState.nodes;
     set((state) => {
       const targets = state.canvasState.nodes.filter((node) => idSet.has(node.id));
       if (targets.length < 3) return {};
@@ -4662,9 +4700,11 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         },
       };
     });
+    recordCanvasLayoutMovement(before, get().canvasState.nodes);
   },
 
   arrangeProjectRow: (groupId: string) => {
+    const before = get().canvasState.nodes;
     set((state) => {
       const projects = resolveCanvasNodeProjects(state.canvasState.nodes, state.tabs);
       const targets = state.canvasState.nodes.filter((node) => projects.get(node.id) === groupId);
@@ -4687,9 +4727,11 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         },
       };
     });
+    recordCanvasLayoutMovement(before, get().canvasState.nodes);
   },
 
   arrangeCanvasProjectLanes: () => {
+    const before = get().canvasState.nodes;
     set((state) => {
       const nodes = state.canvasState.nodes;
       if (nodes.length < 2) return {};
@@ -4715,6 +4757,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         },
       };
     });
+    recordCanvasLayoutMovement(before, get().canvasState.nodes);
   },
 
   reorderCanvasSidebarNodes: (draggedId: string, targetId: string, place: "before" | "after") => {
@@ -4742,10 +4785,6 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         const node = terminalNodes.find((candidate) => candidate.id === id);
         return node && projectKey(node) === projectKey(draggedNode);
       });
-      const slots = projectNodeIds.map((id) => {
-        const node = terminalNodes.find((candidate) => candidate.id === id)!;
-        return { x: node.x, y: node.y };
-      });
       const movedProjectOrder = [...projectNodeIds];
       const [moved] = movedProjectOrder.splice(movedProjectOrder.indexOf(draggedId), 1);
       let to = movedProjectOrder.indexOf(targetId);
@@ -4755,17 +4794,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       const nextOrder = order.map((id) =>
         projectNodeIds.includes(id) ? movedProjectOrder[projectIndex++] : id,
       );
-      const positionsById = new Map(
-        movedProjectOrder.map((id, index) => [id, slots[index]]),
-      );
       return {
-        canvasState: {
-          ...state.canvasState,
-          nodes: state.canvasState.nodes.map((node) => {
-            const position = positionsById.get(node.id);
-            return position ? { ...node, ...position } : node;
-          }),
-        },
         workspaceUiState: {
           ...state.workspaceUiState,
           canvasSidebarManualOrder: nextOrder,
@@ -4841,16 +4870,11 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     });
   },
 
-  updateCanvasViewport: (viewport: Partial<CanvasState["viewport"]>) => {
-    set((state) => ({
-      canvasState: {
-        ...state.canvasState,
-        viewport: {
-          ...state.canvasState.viewport,
-          ...viewport,
-        },
-      },
-    }));
+  updateCanvasViewport: (viewport: Partial<CanvasState["viewport"]>, trigger: MapViewportTrigger) => {
+    const from = get().canvasState.viewport;
+    const to = { ...from, ...viewport };
+    recordMapViewportChange(trigger, from, to);
+    set((state) => ({ canvasState: { ...state.canvasState, viewport: to } }));
   },
 
   // --- Split pane actions ---

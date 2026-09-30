@@ -745,8 +745,8 @@ test("gives an ordinary shell pane explicit structural context without inventing
     },
   });
 
-  expect(header.goalLabel).toBe("Run commands directly in termfleet.");
-  expect(header.taskDescription).toBe("Terminal session in termfleet");
+  expect(header.goalLabel).toBe("Nothing asked in this pane yet");
+  expect(header.taskDescription).toBe("No task — just a command prompt");
   expect(header.currentActivity).toBe("No active command or agent turn is running");
   expect(header.sources.goal).toBe("shell-role");
   expect(header.sources.context).toBe("shell-role");

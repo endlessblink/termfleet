@@ -1656,12 +1656,12 @@ function DrawingBoardButton() {
             x: -existing.x * zoom + 80,
             y: -existing.y * zoom + 80,
             zoom,
-          });
+          }, "board-open");
           selectCanvasNode(existing.id);
           return;
         }
 
-        updateCanvasViewport({ zoom });
+        updateCanvasViewport({ zoom }, "board-open");
         addCanvasNode({
           type: "board",
           title: "Drawing board",
@@ -2832,7 +2832,7 @@ function SessionsPanel({
       zoom,
       x: Math.round(nextX),
       y: Math.round(nextY),
-    });
+    }, "sidebar-focus");
   };
 
   const createAgentWorkstreamOnMap = async () => {
@@ -5355,7 +5355,7 @@ function MapPanel({
       zoom,
       x: node.type === "terminal" && zoom === 1 ? Math.round(nextX) : nextX,
       y: node.type === "terminal" && zoom === 1 ? Math.round(nextY) : nextY,
-    });
+    }, "sidebar-focus");
   };
 
   const groupVisibleNodes = canvasState.nodes;
@@ -8126,14 +8126,6 @@ function MapPanel({
                           >
                             {sidebarTaskLabel}
                           </div>
-                        </div>
-                      )}
-                      {questVisible && (
-                        <div
-                          className="workspace-sidebar-quest-preview"
-                          data-testid="map-node-quest-preview"
-                        >
-                          Current quest: {activeQuestTitle}
                         </div>
                       )}
                       {node.taskBinding && (

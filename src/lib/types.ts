@@ -159,6 +159,8 @@ export interface Tab {
   restoreName?: string;
   splitLayout: SplitNode;
   activePaneId: string;
+  /** Set when a parent agent's terminal opened this one as its helper (FEATURE-64). */
+  childOf?: { parentPaneId: string; parentTabId: string; requestId: string };
 }
 
 export type WorkstreamKind = "terminal" | "agent";

@@ -122,7 +122,7 @@ const checks = [
       /\{!immersiveTerminal\.enabled && <WorkbenchSidebar \/>}/.test(app) &&
       /\{!immersiveTerminal\.enabled && <StatusBar \/>}/.test(app) &&
       /const effectiveWorkspaceMode = restoredPanelMode === "tasks"\s*\? "tasks"\s*:\s*immersiveTerminal\.enabled\s*\? "split"\s*:\s*restoredPanelMode;/.test(workspaceSurface) &&
-      /\{!immersiveTerminal\.enabled && <CanvasSidebar \/>}/.test(workspaceSurface) &&
+      /!immersiveTerminal\.enabled && !sidebarMapPanelOpen && <CanvasSidebar \/>/.test(workspaceSurface) &&
       /const immersivePaneId =[\s\S]*immersiveTerminal\.enabled && immersiveTerminal\.tabId === tab\.id/.test(splitPane) &&
       /window\.addEventListener\("keydown", onKeyDown, true\);/.test(splitPane) &&
       /event\.key !== "Escape"/.test(splitPane) &&
@@ -526,7 +526,7 @@ const checks = [
     ok: /const panRafRef = useRef<number \| null>\(null\);/.test(magicCanvas) &&
       /panRafRef\.current = requestAnimationFrame\(applyPanToDom\);/.test(magicCanvas) &&
       /stageRef\.current\.style\.transform =/.test(magicCanvas) &&
-      /if \(pan && moved\) \{\s*updateCanvasViewport\(\{ x: pan\.nextX, y: pan\.nextY \}\);/.test(magicCanvas) &&
+      /if \(pan && moved\) \{\s*changeCanvasViewport\("manual-pan", \{ x: pan\.nextX, y: pan\.nextY \}\);/.test(magicCanvas) &&
       !/updateCanvasViewport\(\{\s*x: pan\.viewportX \+ moveEvent\.clientX - pan\.x,/.test(magicCanvas),
     message: "Canvas panning must update the stage transform via rAF/DOM during drag and commit the viewport to the store only on mouseup (never per mousemove).",
   },
@@ -1120,7 +1120,7 @@ const checks = [
   },
   {
     ok: /updateTerminalRuntime/.test(terminalComponent) &&
-      /status: details\.reused \? "reconnected" : "running"/.test(terminalComponent) &&
+      /status: statusForAttach\(ptyId, details\.reused\)/.test(terminalComponent) &&
       /lastStatusAt: Date\.now\(\)/.test(terminalComponent),
     message: "Terminal component must persist runtime status updates into workspace state.",
   },

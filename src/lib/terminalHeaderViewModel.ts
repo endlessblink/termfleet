@@ -817,10 +817,10 @@ export function buildShellTerminalHeaderViewModel(input: {
     // A trusted live activity (a known running command) says what the shell is doing.
     !input.trustedActivitySummary;
   const shellRoleTask = shellRoleFallback
-    ? `Terminal session in ${workspace}`
+    ? "No task — just a command prompt"
     : undefined;
   const shellRoleGoal = shellRoleFallback
-    ? `Run commands directly in ${workspace}.`
+    ? "Nothing asked in this pane yet"
     : undefined;
   const contextPurposeTitle = input.contextPurposeTitle;
   const declaredIdentity = resolveTaskIdentity({

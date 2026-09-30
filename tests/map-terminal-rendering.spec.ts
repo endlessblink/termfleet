@@ -102,22 +102,24 @@ test("an active Workstream Quest is revealed when hovering its live map card", a
     });
   });
 
+  // An open terminal sitting idle at its prompt is not "busy": the operator saw
+  // idle cards outlined, plus a "Current quest" line pushed into every card.
+  await expect(page.locator('.workspace-sidebar-row[data-quest-visible="false"]')).not.toHaveCount(0);
+  await expect(page.locator('.workspace-sidebar-row[data-quest-visible="true"]')).toHaveCount(0);
+  await expect(page.locator('.workspace-sidebar-row[data-quest-active="true"]')).toHaveCount(0);
+  await page.evaluate(() => {
+    const store = window.__termfleetWorkspaceStore!;
+    const state = store.getState();
+    store.setState({
+      ...state,
+      tabs: state.tabs.map((tab) => ({ ...tab, terminals: tab.terminals.map((terminal) => ({ ...terminal, statusSummary: { task: "Build", path: "/tmp", now: "Working", status: "working", updatedAt: Date.now() } })) })),
+    });
+  });
   const questCard = page.locator('.workspace-sidebar-row[data-quest-visible="true"]');
   await expect(questCard).toHaveCount(1);
-  await expect(questCard).toHaveAttribute("data-quest-active", "false");
-  await expect(questCard).toHaveAttribute(
-    "title",
-    /Current quest: Keep 3 workstreams running for 10 minutes/,
-  );
-  await expect(questCard.getByTestId("map-node-project-emoji")).toHaveAttribute(
-    "title",
-    /Current quest: Keep 3 workstreams running for 10 minutes/,
-  );
   await questCard.hover();
-  await expect(questCard.getByTestId("map-node-quest-preview")).toBeVisible();
-  await expect(questCard.getByTestId("map-node-quest-preview")).toHaveText(
-    "Current quest: Keep 3 workstreams running for 10 minutes",
-  );
+  await expect(page.getByText(/Current quest:/)).toHaveCount(0);
+  await expect(page.getByTestId("map-node-quest-preview")).toHaveCount(0);
 });
 
 test("the active quest orbit stays inside its map terminal card", async ({ page }, testInfo) => {
@@ -143,7 +145,7 @@ test("the active quest orbit stays inside its map terminal card", async ({ page 
       tabs: [{
         id: tabId, title: "Contained quest map terminal", emoji: "[]", color: "#7aa2f7", groupId: null,
         initialCwd: "/tmp/contained-quest-map-terminal",
-        terminals: [0, 1, 2].map((index) => ({ id: `contained-quest-pty-${index}`, paneId: `${paneId}-${index}`, cols: 80, rows: 24, status: "running" })),
+        terminals: [0, 1, 2].map((index) => ({ id: `contained-quest-pty-${index}`, paneId: `${paneId}-${index}`, cols: 80, rows: 24, status: "running", statusSummary: { task: "Build", path: "/tmp", now: "Working", status: "working", updatedAt: Date.now() } })),
         splitLayout: { id: `${paneId}-0`, type: "terminal" }, activePaneId: `${paneId}-0`,
       }],
       activeTabId: tabId, activeTerminalId: "contained-quest-pty-0",
@@ -813,6 +815,9 @@ test("map Connect terminal selects the pane without leaving the map", () => {
   expect(connectionBlock).toContain("setActiveTab(currentTab.id)");
   expect(connectionBlock).toContain("setActivePane(currentTab.id, targetPaneId)");
   expect(connectionBlock).toContain("setActiveTerminal(");
+  expect(connectionBlock).toContain("currentNode.linkedTerminalPaneId");
+  expect(connectionBlock).not.toContain("currentTab.activePaneId");
+  expect(connectionBlock).toMatch(/currentTab\.terminals\.length\s*===\s*1\s*\?\s*currentTab\.terminals\[0\]\s*:\s*undefined/);
   expect(connectionBlock).toContain("setConnectionGeneration");
   // Reconnect goes through the shared runtime wrapper rather than the low-level
   // helper, so the map button and dock startup take the identical path.
@@ -915,11 +920,11 @@ test("clicking map Connect terminal reconnects an unselected session in canvas",
       canvasState: {
         nodes: [
           {
-             id: "pane-reconnect-card",
-            type: "terminal",
-             title: "Reconnect session",
-             terminalTabId: "tab-reconnect",
-             terminalPtyId: "pty-reconnect-card",
+              id: "map-node-reconnect-card",
+              type: "terminal",
+              title: "Reconnect session",
+              terminalTabId: "tab-reconnect",
+              linkedTerminalPaneId: "pane-reconnect-card",
             x: 100,
             y: 100,
             width: 820,
@@ -960,7 +965,7 @@ test("clicking map Connect terminal reconnects an unselected session in canvas",
   expect(state.workspaceMode).toBe("canvas");
   expect(state.activeTabId).toBe("tab-reconnect");
   expect(state.activeTerminalId).toBe("terminal-tab-reconnect-pane-reconnect-card");
-  expect(state.selectedNodeId).toBe("pane-reconnect-card");
+  expect(state.selectedNodeId).toBe("map-node-reconnect-card");
   expect(state.zoom).toBe(1);
 });
 

@@ -411,7 +411,7 @@ export function CanvasSidebar() {
       zoom,
       x: node.type === "terminal" && zoom === 1 ? Math.round(nextX) : nextX,
       y: node.type === "terminal" && zoom === 1 ? Math.round(nextY) : nextY,
-    });
+    }, "sidebar-focus");
   }, [canvasState.viewport.zoom, selectCanvasNode, updateCanvasViewport]);
 
   const onRename = useCallback((node: CanvasNode, title: string) => {

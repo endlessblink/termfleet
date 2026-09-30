@@ -48,7 +48,7 @@ function isPlaceholderText(value: string): boolean {
   return (
     isNeutralText(text) ||
     /^(?:Task|Goal|Now) not captured$/i.test(text) ||
-    /^Terminal session in \S/.test(text)
+    text === "No task — just a command prompt"
   );
 }
 

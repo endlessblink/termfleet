@@ -1646,7 +1646,7 @@ export function SplitPaneLayout({ tab, sessionLabel }: SplitPaneLayoutProps) {
                          : "task-tool",
                   context:
                     shellHeader?.sources.goal === "shell-role"
-                      ? `Run commands directly in ${shellHeader.workspace}.`
+                      ? "Nothing asked in this pane yet"
                       : displayedHeaderContext || "",
                   contextSource: shellHeader?.sources.goal === "shell-role"
                     ? "shell-role"

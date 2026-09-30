@@ -135,8 +135,10 @@ test("the card shows the goal on top and the moment under it, always", () => {
 
 test("cards do not rename missing values or manufacture a task-shaped Now row", () => {
   expect(magicCanvas).toContain("const terminalHeaderTaskCandidate =");
-  expect(magicCanvas).toContain(
-    "resolveDistinctHeaderNow(\n      terminalHeader.goalLabel,\n      terminalHeaderTaskCandidate,\n    )",
+  // The Task row goes through one shared resolver that keeps it distinct from the Goal
+  // (TF-065; behaviour pinned in tests/map-card-task-row.spec.ts).
+  expect(magicCanvas).toMatch(
+    /resolveMapCardTaskRow\(\{\s*goal: terminalHeader\.goalLabel,\s*lineupTask: terminalHeaderTaskCandidate,/,
   );
   expect(magicCanvas).toContain("const terminalHeaderContextDescription =");
   expect(magicCanvas).toContain("const terminalHeaderContextCandidate =");

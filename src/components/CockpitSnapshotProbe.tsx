@@ -42,7 +42,7 @@ export function snapshotGoal(entry: Omit<CockpitSnapshotEntry, "updatedAt">) {
   // the final evidence boundary cannot erase it or admit arbitrary text.
   if (
     source === "shell-role" &&
-    /^Run commands directly in .+\.$/.test(supplied) &&
+    supplied === "Nothing asked in this pane yet" &&
     supplied.length <= 220
   ) {
     return supplied;

@@ -567,7 +567,7 @@ export function WorkbenchHeader() {
       zoom,
       x: Math.round(nextX),
       y: Math.round(nextY),
-    });
+    }, "header-focus");
   }, []);
 
   const launchAgentWorkstream = useCallback(async (provider: AgentProvider, initialMission = "Supervised workstream") => {

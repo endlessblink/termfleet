@@ -47,7 +47,7 @@ for (const entry of target) {
   ) problems.push("goal-too-short-for-about-what");
   if (
     String(record.contextSource ?? "").trim() === "shell-role" &&
-    !/^Run commands directly in .+\.$/.test(goal)
+    goal !== "Nothing asked in this pane yet"
   ) problems.push("invalid-shell-role-goal");
   if (!paneOwnedGoalSources.has(String(record.contextSource ?? "").trim())) problems.push("goal-lacks-pane-owned-source");
   if (!paneOwnedGoalSources.has(String(record.statusSummaryGoalSource ?? "").trim())) problems.push("goal-missing-capture-source");

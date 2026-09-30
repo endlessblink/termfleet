@@ -295,8 +295,8 @@ test("saved workspace layout blocks stale persisted sessions from resurrecting a
           type: "terminal",
           title: "Saved terminal",
           terminalTabId: "saved-tab",
-          x: 0,
-          y: 0,
+          x: 640,
+          y: 410,
           width: 820,
           height: 460,
         }],
@@ -311,12 +311,19 @@ test("saved workspace layout blocks stale persisted sessions from resurrecting a
       nodeTabIds: state.canvasState.nodes
         .filter((node) => node.type === "terminal")
         .map((node) => node.terminalTabId),
+      savedPosition: state.canvasState.nodes.find((node) => node.id === "node-saved")
+        ? {
+            x: state.canvasState.nodes.find((node) => node.id === "node-saved")!.x,
+            y: state.canvasState.nodes.find((node) => node.id === "node-saved")!.y,
+          }
+        : null,
     };
   });
 
   expect(result.calls).toContain("workspace_persisted_sessions");
   expect(result.tabIds).toEqual(["saved-tab"]);
   expect(result.nodeTabIds).toEqual(["saved-tab"]);
+  expect(result.savedPosition).toEqual({ x: 640, y: 410 });
 });
 
 test("saved workspace layout reattaches saved daemon sessions without importing unsaved ones", async ({ page }) => {
@@ -569,6 +576,60 @@ test("late hydration preserves a terminal created while the disk layout is being
 
   expect(result.tabIds).toContain("new-tab");
   expect(result.activeTabId).toBe("new-tab");
+});
+
+test("workspace hydration preserves operator-placed terminal map positions", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+
+  const result = await page.evaluate(async () => {
+    const { useWorkspaceStore } = await import("/src/stores/workspace.ts");
+    const tabs = [
+      {
+        id: "project-a-tab",
+        title: "Project A",
+        initialCwd: "/work/project-a",
+        terminals: [{ id: "terminal-project-a", paneId: "pane-a", status: "running" }],
+        splitLayout: { id: "pane-a", type: "terminal" },
+        activePaneId: "pane-a",
+      },
+      {
+        id: "project-b-tab",
+        title: "Project B",
+        initialCwd: "/work/project-b",
+        terminals: [{ id: "terminal-project-b", paneId: "pane-b", status: "running" }],
+        splitLayout: { id: "pane-b", type: "terminal" },
+        activePaneId: "pane-b",
+      },
+    ];
+    const nodes = [
+      { id: "node-a", type: "terminal", title: "Project A", terminalTabId: "project-a-tab", x: 640, y: 410, width: 820, height: 460 },
+      { id: "node-b", type: "terminal", title: "Project B", terminalTabId: "project-b-tab", x: 1740, y: 260, width: 820, height: 460 },
+    ];
+    useWorkspaceStore.setState({
+      hydrating: true,
+      tabs: tabs as never,
+      activeTabId: "project-a-tab",
+      groups: [],
+      terminalGroups: [],
+      canvasState: {
+        selectedNodeId: null,
+        selectedNodeIds: [],
+        viewport: { x: 0, y: 0, zoom: 1 },
+        nodes: nodes as never,
+      },
+    });
+
+    useWorkspaceStore.getState().hydrateRestoredWorkspace({
+      tabs: tabs as never,
+      activeTabId: "project-a-tab",
+    });
+    return useWorkspaceStore.getState().canvasState.nodes.map(({ id, x, y }) => ({ id, x, y }));
+  });
+
+  expect(result).toEqual([
+    { id: "node-a", x: 640, y: 410 },
+    { id: "node-b", x: 1740, y: 260 },
+  ]);
 });
 
 test("unsaved external agent sessions never become tabs by folder or title", async ({ page }) => {
