@@ -20,6 +20,7 @@ test("selection range, hit-test, and text extraction", async ({ page }) => {
       computeSelectionAutoScrollDelta,
       hasSelectionExtent,
       normalizeRange,
+      SELECTION_AUTO_SCROLL_INTERVAL_MS,
       rowSpan,
       isCellSelected,
       selectionToText,
@@ -64,6 +65,7 @@ test("selection range, hit-test, and text extraction", async ({ page }) => {
       scrollInside: computeSelectionAutoScrollDelta(160, 100, 300),
       scrollBelow: computeSelectionAutoScrollDelta(340, 100, 300),
       scrollBelowClamped: computeSelectionAutoScrollDelta(1000, 100, 300),
+      scrollInterval: SELECTION_AUTO_SCROLL_INTERVAL_MS,
     };
   });
 
@@ -88,7 +90,17 @@ test("selection range, hit-test, and text extraction", async ({ page }) => {
   expect(out.scrollAbove).toBeGreaterThan(0);
   expect(out.scrollInside).toBe(0);
   expect(out.scrollBelow).toBeLessThan(0);
-  expect(out.scrollBelowClamped).toBe(-8);
+  expect(out.scrollBelowClamped).toBe(-2);
+  expect(out.scrollInterval).toBe(75);
+});
+
+test("selection auto-scroll advances in paced steps while a drag stays outside the canvas", () => {
+  const source = readFileSync("src/components/TerminalCanvas.tsx", "utf8");
+  const scroll = source.match(/const scheduleSelectionAutoScroll = \(\) => \{[\s\S]*?\n  \};/)?.[0] ?? "";
+  expect(source).toContain("SELECTION_AUTO_SCROLL_INTERVAL_MS");
+  expect(scroll).toContain("window.setTimeout(tick, SELECTION_AUTO_SCROLL_INTERVAL_MS)");
+  expect(scroll).toContain("updateSelectionFocusFromLastPointer()");
+  expect(scroll).not.toContain("requestAnimationFrame");
 });
 
 test("terminal pointer-up only auto-copies an active selection drag", () => {
@@ -123,7 +135,7 @@ test("mouse-report terminals keep Shift-drag available for highlighting", () => 
     .toBeLessThan(up.indexOf("if (modesRef.current.mouseReport)"));
 });
 
-test("primary-screen mouse-report terminals allow drag-selection without Shift while preserving click reports", () => {
+test("fullscreen mouse-motion apps own unshifted drags while Shift keeps local selection", () => {
   const source = readFileSync("src/components/TerminalCanvas.tsx", "utf8");
   const down = source.match(
     /const handlePointerDown = \(event: React\.PointerEvent\) => \{[\s\S]*?\n  \};/
@@ -135,14 +147,10 @@ test("primary-screen mouse-report terminals allow drag-selection without Shift w
     /const handlePointerUp = \(event: React\.PointerEvent\) => \{[\s\S]*?\n  \};/
   )?.[0] ?? "";
 
-  // Alternate screen forwards unmodified pointer down immediately to the app.
-  expect(down).toContain("modesRef.current.altScreen");
-  // Primary screen tracks click candidate to disambiguate click vs drag.
-  expect(down).toContain("pendingMouseReportClickRef.current =");
-  // Pointer move past threshold drops the click candidate to enter text selection.
-  expect(move).toContain("pendingMouseReportClickRef.current = null");
-  // Pointer up forwards press and release when released without drag, or copies selection on extent.
-  expect(up).toContain("pendingClick.pointerId === event.pointerId");
-  expect(up).toContain("sendPointerMouseReport(event, true)");
+  expect(down).toContain("shouldSendMouseMotionDragToTerminalApp(modesRef.current, event)");
+  expect(down).toContain("mouseReportDragPointerRef.current = event.pointerId");
+  expect(move).toContain("sendPointerMouseReport(event, false, true)");
+  expect(up).toContain("mouseReportDragPointerRef.current === event.pointerId");
+  expect(down).toContain("if (modesRef.current.mouseReport && !event.shiftKey)");
+  expect(down).toContain("setPointerCapture(event.pointerId)");
 });
-

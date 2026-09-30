@@ -32,6 +32,7 @@ const MODE_HAS_HISTORY = 1 << 9;
 // Any-event mouse tracking (DECSET 1003): the app owns the whole surface
 // (see MODE_MOUSE_MOTION in vt_grid.rs).
 const MODE_MOUSE_MOTION = 1 << 10;
+const MODE_MOUSE_DRAG = 1 << 11;
 
 const STYLE_BOLD = 1 << 0;
 const STYLE_ITALIC = 1 << 1;
@@ -63,6 +64,8 @@ export interface DecodedFrame {
   hasHistory: boolean;
   /** Any-event mouse tracking is on (see MODE_MOUSE_MOTION). */
   mouseMotion: boolean;
+  /** Button-event mouse tracking is on (DECSET 1002). */
+  mouseDrag: boolean;
   dirtyRows: DecodedRow[];
 }
 
@@ -195,6 +198,7 @@ export function decodeFrame(buffer: ArrayBuffer): DecodedFrame {
     sgrMouse: Boolean(mode & MODE_SGR_MOUSE),
     hasHistory: Boolean(mode & MODE_HAS_HISTORY),
     mouseMotion: Boolean(mode & MODE_MOUSE_MOTION),
+    mouseDrag: Boolean(mode & MODE_MOUSE_DRAG),
     dirtyRows,
   };
 }

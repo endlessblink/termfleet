@@ -48,6 +48,27 @@ test("combining marks stay attached to one terminal cell", async ({ page }) => {
   expect(result).toEqual({ text: "שָׁ", columns: 1, scalars: 3 });
 });
 
+test("decode and apply preserves xterm button-drag mouse mode", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+
+  const result = await page.evaluate(async () => {
+    const { decodeFrame, HEADER_BYTES } = await import("/src/lib/gridDiff.ts");
+    const { GridBuffer } = await import("/src/lib/gridBuffer.ts");
+    const wire = new DataView(new ArrayBuffer(HEADER_BYTES));
+    wire.setUint8(0, 2);
+    wire.setUint16(1, 1, true);
+    wire.setUint16(3, 1, true);
+    wire.setUint32(11, (1 << 5) | (1 << 11), true);
+
+    const frame = decodeFrame(wire.buffer);
+    const buffer = new GridBuffer();
+    buffer.apply(frame);
+    return { frame: frame.mouseDrag, buffer: buffer.mouseDrag };
+  });
+
+  expect(result).toEqual({ frame: true, buffer: true });
+});
+
 test("decode + apply + partial render of a binary diff", async ({ page }) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
 

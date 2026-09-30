@@ -18,6 +18,33 @@ export interface TerminalViewportModes {
   mouseMotion?: boolean;
 }
 
+export function terminalWheelRowDelta(
+  delta: number,
+  deltaMode: number,
+  cellHeight: number,
+  pageRows: number,
+): number {
+  if (deltaMode === 1) return delta;
+  if (deltaMode === 2) return delta * Math.max(1, pageRows);
+  return delta / Math.max(1, cellHeight);
+}
+
+/** Normalize browser wheel units into app-owned wheel notches. */
+export function terminalWheelNotchDelta(delta: number, deltaMode: number): number {
+  if (deltaMode === 1) return delta / 3;
+  if (deltaMode === 2) return delta;
+  return delta / 99;
+}
+
+export function consumeTerminalWheelRows(
+  rowDelta: number,
+  remainder: number,
+): { rows: number; remainder: number } {
+  const total = rowDelta + remainder;
+  const rows = Math.trunc(total);
+  return { rows, remainder: total - rows };
+}
+
 export function terminalViewportAction(
   key: string,
   rows: number,

@@ -1,4 +1,4 @@
-export type TerminalMouseButton = 0 | 1 | 2 | 64 | 65;
+export type TerminalMouseButton = 0 | 1 | 2 | 32 | 64 | 65;
 
 export interface TerminalMouseModifiers {
   shiftKey?: boolean;
@@ -17,11 +17,10 @@ export interface TerminalWheelModes {
    * not, so TermFleet's history is a guaranteed dead end.
    */
   hasHistory?: boolean;
-  /**
-   * Any-event mouse tracking (DECSET 1003) is on: the app owns the whole
-   * surface, even on the primary screen (Claude Code's fullscreen TUI).
-   */
+  /** Any-event mouse tracking (DECSET 1003), often used for fullscreen hover. */
   mouseMotion?: boolean;
+  /** Button-event tracking (DECSET 1002), which requests motion during a drag. */
+  mouseDrag?: boolean;
   /**
    * Allow the wheel to fall back to the app's own page keys when there is no
    * history to scroll. Opt-in per surface (the map), because it sends keys the app
@@ -80,6 +79,13 @@ export function pointerButtonToTerminalButton(button: number): TerminalMouseButt
   if (button === 1) return 1;
   if (button === 2) return 2;
   return null;
+}
+
+export function shouldSendMouseMotionDragToTerminalApp(
+  modes: TerminalWheelModes = {},
+  modifiers: TerminalMouseModifiers = {}
+) {
+  return Boolean(modes.mouseReport && (modes.mouseDrag || modes.mouseMotion) && !modifiers.shiftKey);
 }
 
 // A mouse-reporting app owns the wheel ONLY on the alternate screen (vim/htop),

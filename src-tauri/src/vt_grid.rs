@@ -11,11 +11,11 @@
 
 use crate::daemon::{daemon_ensure_running, daemon_socket_path, DaemonRequest, DaemonResponse};
 use crate::daemon_ipc;
-use alacritty_terminal::event::VoidListener;
+use alacritty_terminal::event::{Event, EventListener};
 use alacritty_terminal::grid::{Dimensions, Scroll};
 use alacritty_terminal::index::{Column, Line};
 use alacritty_terminal::term::cell::Flags;
-use alacritty_terminal::term::{Config, Term, TermMode};
+use alacritty_terminal::term::{ClipboardType, Config, Osc52, Term, TermMode};
 use alacritty_terminal::vte::ansi::{Color, NamedColor, Processor, Rgb};
 use serde::Serialize;
 use std::collections::HashMap;
@@ -25,6 +25,48 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant};
 use tauri::ipc::{Channel, InvokeResponseBody};
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Osc52ClipboardCopy {
+    pub text: String,
+}
+
+#[derive(Clone, Default)]
+struct TerminalEventListener {
+    clipboard_copy: Arc<Mutex<Option<Channel<Osc52ClipboardCopy>>>>,
+}
+
+impl EventListener for TerminalEventListener {
+    fn send_event(&self, event: Event) {
+        if let Some(text) = osc52_clipboard_copy_text(event) {
+            if let Ok(channel) = self.clipboard_copy.lock() {
+                if let Some(channel) = channel.as_ref() {
+                    let _ = channel.send(Osc52ClipboardCopy { text });
+                }
+            }
+        }
+    }
+}
+
+fn osc52_clipboard_copy_text(event: Event) -> Option<String> {
+    match event {
+        Event::ClipboardStore(ClipboardType::Clipboard, text) => Some(text),
+        Event::ClipboardStore(ClipboardType::Selection, _)
+        | Event::ClipboardLoad(_, _)
+        | Event::MouseCursorDirty
+        | Event::Title(_)
+        | Event::ResetTitle
+        | Event::ColorRequest(_, _)
+        | Event::PtyWrite(_)
+        | Event::TextAreaSizeRequest(_)
+        | Event::CursorBlinkingChange
+        | Event::Wakeup
+        | Event::Bell
+        | Event::Exit
+        | Event::ChildExit(_) => None,
+    }
+}
 
 pub const DEFAULT_COLS: usize = 80;
 pub const DEFAULT_ROWS: usize = 24;
@@ -68,7 +110,8 @@ impl Dimensions for GridDims {
 
 /// Per-session VT state: the headless terminal plus its ANSI parser.
 struct TermState {
-    term: Term<VoidListener>,
+    term: Term<TerminalEventListener>,
+    clipboard_copy: Arc<Mutex<Option<Channel<Osc52ClipboardCopy>>>>,
     parser: Processor,
     alternate_scroll_touched: bool,
     mode_scan_tail: Vec<u8>,
@@ -118,9 +161,15 @@ fn should_publish_frame(
 impl TermState {
     fn new(cols: usize, rows: usize) -> Self {
         let dims = GridDims { cols, rows };
-        let term = Term::new(Config::default(), &dims, VoidListener);
+        let clipboard_copy = Arc::new(Mutex::new(None));
+        let term = Term::new(
+            Config { osc52: Osc52::OnlyCopy, ..Config::default() },
+            &dims,
+            TerminalEventListener { clipboard_copy: Arc::clone(&clipboard_copy) },
+        );
         Self {
             term,
+            clipboard_copy,
             parser: Processor::new(),
             alternate_scroll_touched: false,
             mode_scan_tail: Vec::new(),
@@ -244,7 +293,11 @@ impl TermState {
             cols: self.term.columns(),
             rows: self.term.screen_lines(),
         };
-        self.term = Term::new(Config::default(), &dims, VoidListener);
+        self.term = Term::new(
+            Config { osc52: Osc52::OnlyCopy, ..Config::default() },
+            &dims,
+            TerminalEventListener { clipboard_copy: Arc::clone(&self.clipboard_copy) },
+        );
         self.parser = Processor::new();
         self.mode_scan_tail.clear();
         self.unsupported_control_tail.clear();
@@ -322,6 +375,7 @@ impl GridManager {
         cols: usize,
         rows: usize,
         attach_token: Option<String>,
+        clipboard_channel: Option<Channel<Osc52ClipboardCopy>>,
     ) -> Result<(Arc<Session>, bool), String> {
         let mut sessions = self.sessions.lock().map_err(|_| "grid lock poisoned")?;
         if let Some(existing) = sessions.get(id) {
@@ -334,10 +388,19 @@ impl GridManager {
                 .attach_token
                 .lock()
                 .map_err(|_| "grid attach token poisoned")? = attach_token;
+            if let Some(channel) = clipboard_channel {
+                *existing.state.read().map_err(|_| "grid state poisoned")?
+                    .clipboard_copy.lock().map_err(|_| "clipboard channel poisoned")? = Some(channel);
+            }
             return Ok((Arc::clone(existing), false));
         }
+        let state = Arc::new(RwLock::new(TermState::new(cols, rows)));
+        if let Some(channel) = clipboard_channel {
+            *state.read().map_err(|_| "grid state poisoned")?
+                .clipboard_copy.lock().map_err(|_| "clipboard channel poisoned")? = Some(channel);
+        }
         let session = Arc::new(Session {
-            state: Arc::new(RwLock::new(TermState::new(cols, rows))),
+            state,
             emit: Arc::new(Mutex::new(EmitState::default())),
             stop: Arc::new(AtomicBool::new(false)),
             attach_token: Mutex::new(attach_token),
@@ -357,9 +420,20 @@ impl GridManager {
         rows: usize,
         attach_token: Option<String>,
     ) -> Result<(), String> {
+        self.attach_with_clipboard(id, cols, rows, attach_token, None)
+    }
+
+    pub fn attach_with_clipboard(
+        &self,
+        id: &str,
+        cols: usize,
+        rows: usize,
+        attach_token: Option<String>,
+        clipboard_channel: Option<Channel<Osc52ClipboardCopy>>,
+    ) -> Result<(), String> {
         {
             let cleanup_token = attach_token.clone();
-            let (session, is_new) = self.upsert_session(id, cols, rows, attach_token)?;
+            let (session, is_new) = self.upsert_session(id, cols, rows, attach_token, clipboard_channel)?;
             if !is_new {
                 return Ok(());
             }
@@ -866,7 +940,7 @@ fn apply_bidi_order<T>(logical: Vec<T>, order: &crate::bidi::RowOrder) -> Vec<T>
 }
 
 impl GridSnapshot {
-    fn capture(term: &Term<VoidListener>) -> Self {
+    fn capture(term: &Term<TerminalEventListener>) -> Self {
         let cols = term.columns();
         let rows = term.screen_lines();
         let mode = *term.mode();
@@ -1109,6 +1183,8 @@ const MODE_HAS_HISTORY: u32 = 1 << 9;
 // the grid history under it holds only stale frames pushed up by its ESC[2J clears.
 // Inline agents never set it, so TC-043 (wheel → our history) still holds for them.
 const MODE_MOUSE_MOTION: u32 = 1 << 10;
+// Button-event mouse tracking (DECSET 1002) is required to receive drag motion.
+const MODE_MOUSE_DRAG: u32 = 1 << 11;
 
 const STYLE_BOLD: u16 = 1 << 0;
 const STYLE_ITALIC: u16 = 1 << 1;
@@ -1144,6 +1220,7 @@ struct WireFrame {
     sgr_mouse: bool,
     has_history: bool,
     mouse_motion: bool,
+    mouse_drag: bool,
     rows_cells: Vec<Vec<WireCell>>,
 }
 
@@ -1174,7 +1251,7 @@ impl WireFrame {
         frame
     }
 
-    fn capture(term: &Term<VoidListener>) -> Self {
+    fn capture(term: &Term<TerminalEventListener>) -> Self {
         let cols = term.columns();
         let rows = term.screen_lines();
         let mode = *term.mode();
@@ -1268,6 +1345,7 @@ impl WireFrame {
             // `history_size()` needs the `Dimensions` trait, already in scope.
             has_history: grid.history_size() > 0,
             mouse_motion: mode.contains(TermMode::MOUSE_MOTION),
+            mouse_drag: mode.contains(TermMode::MOUSE_DRAG),
             rows_cells,
         }
     }
@@ -1306,6 +1384,9 @@ impl WireFrame {
         }
         if self.mouse_motion {
             flags |= MODE_MOUSE_MOTION;
+        }
+        if self.mouse_drag {
+            flags |= MODE_MOUSE_DRAG;
         }
         flags
     }
@@ -1400,7 +1481,7 @@ fn ordered_selection(
 }
 
 fn selection_text(
-    term: &Term<VoidListener>,
+    term: &Term<TerminalEventListener>,
     start_row: i32,
     start_col: usize,
     end_row: i32,
@@ -1444,7 +1525,7 @@ fn selection_text(
 }
 
 /// Collect scrollback and visible grid lines in terminal buffer coordinates.
-fn collect_search_lines(term: &Term<VoidListener>) -> Vec<(i32, String)> {
+fn collect_search_lines(term: &Term<TerminalEventListener>) -> Vec<(i32, String)> {
     let grid = term.grid();
     let screen = grid.screen_lines() as i32;
     let total = grid.total_lines() as i32;
@@ -1469,6 +1550,31 @@ fn collect_search_lines(term: &Term<VoidListener>) -> Vec<(i32, String)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn osc52_forwards_clipboard_copy_and_ignores_selection_or_load() {
+        assert_eq!(
+            osc52_clipboard_copy_text(Event::ClipboardStore(
+                ClipboardType::Clipboard,
+                "copied text".to_string(),
+            )),
+            Some("copied text".to_string())
+        );
+        assert_eq!(
+            osc52_clipboard_copy_text(Event::ClipboardStore(
+                ClipboardType::Selection,
+                "primary selection".to_string(),
+            )),
+            None
+        );
+        assert_eq!(
+            osc52_clipboard_copy_text(Event::ClipboardLoad(
+                ClipboardType::Clipboard,
+                Arc::new(str::to_owned),
+            )),
+            None
+        );
+    }
 
     fn feed(bytes: &str) -> GridSnapshot {
         let mut state = TermState::new(DEFAULT_COLS, DEFAULT_ROWS);
@@ -1541,7 +1647,7 @@ mod tests {
     fn reattach_resizes_existing_grid_to_new_size() {
         let manager = GridManager::new();
         let (_first, first_is_new) = manager
-            .upsert_session("regression-session", 80, 24, Some("first".to_string()))
+            .upsert_session("regression-session", 80, 24, Some("first".to_string()), None)
             .expect("first attach");
         assert!(first_is_new, "first upsert creates the session");
 
@@ -1556,7 +1662,7 @@ mod tests {
 
         // Re-attach (e.g. a map zoom toggled `mapProjection`) at a wider size.
         let (session, second_is_new) = manager
-            .upsert_session("regression-session", 100, 30, Some("second".to_string()))
+            .upsert_session("regression-session", 100, 30, Some("second".to_string()), None)
             .expect("re-attach");
         assert!(!second_is_new, "re-attach reuses the existing session");
 
@@ -1580,10 +1686,10 @@ mod tests {
     fn stale_detach_token_does_not_remove_new_grid_session() {
         let manager = GridManager::new();
         manager
-            .upsert_session("map-session", 80, 24, Some("old-mount".to_string()))
+            .upsert_session("map-session", 80, 24, Some("old-mount".to_string()), None)
             .expect("initial map grid should attach");
         manager
-            .upsert_session("map-session", 100, 30, Some("new-mount".to_string()))
+            .upsert_session("map-session", 100, 30, Some("new-mount".to_string()), None)
             .expect("new map grid should reattach");
 
         manager.detach("map-session", Some("old-mount"));
@@ -2494,22 +2600,28 @@ mod tests {
         assert_eq!(read_u16(&buffer, 15), DEFAULT_ROWS as u16);
     }
 
-    // Claude Code's fullscreen TUI on the primary screen: any-event mouse tracking,
-    // then an ESC[2J clear that pushes the old frame into grid history. The frame
-    // must say "app owns the pointer" so the wheel goes to Claude, not stale history.
+    // Button-event drag tracking (DECSET 1002) must reach the frontend even without
+    // optional any-event tracking (1003); the active mouse modes are mutually exclusive.
     #[test]
-    fn primary_screen_any_event_tracking_is_reported() {
+    fn button_drag_and_any_motion_modes_are_reported() {
         let mut state = TermState::new(40, 5);
-        state.feed(b"\x1b[?1000h\x1b[?1002h\x1b[?1003h\x1b[?1006hold frame\x1b[2J\x1b[Hnew");
+        state.feed(b"\x1b[?1000h\x1b[?1002h\x1b[?1006hold frame\x1b[2J\x1b[Hnew");
         let frame = WireFrame::capture_state(&state);
         assert!(!frame.alt_screen);
         assert!(frame.has_history, "ESC[2J pushes the old frame into history");
-        assert!(frame.mode_flags() & MODE_MOUSE_MOTION != 0);
-
-        // Plain click tracking (what inline apps use) must not claim the surface.
-        state.feed(b"\x1b[?1003l\x1b[?1000h");
-        let frame = WireFrame::capture_state(&state);
         assert!(frame.mouse_report);
-        assert_eq!(frame.mode_flags() & MODE_MOUSE_MOTION, 0);
+        assert!(!frame.mouse_motion);
+        assert_ne!(frame.mode_flags() & MODE_MOUSE_DRAG, 0);
+        assert!(frame.mouse_drag);
+
+        state.feed(b"\x1b[?1002l");
+        let frame = WireFrame::capture_state(&state);
+        assert!(!frame.mouse_drag);
+        assert_eq!(frame.mode_flags() & MODE_MOUSE_DRAG, 0);
+
+        state.feed(b"\x1b[?1003h");
+        let frame = WireFrame::capture_state(&state);
+        assert!(frame.mouse_motion);
+        assert_ne!(frame.mode_flags() & MODE_MOUSE_MOTION, 0);
     }
 }

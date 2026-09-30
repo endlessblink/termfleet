@@ -164,6 +164,11 @@ test("canvas terminal clears hidden textarea around paste and input events", () 
   expect(source).toContain('event.inputType === "insertFromPaste"');
   expect(source).toContain('input.addEventListener("beforeinput", onBeforeInput, true)');
   expect(source).toContain('input.addEventListener("input", clear, true)');
+  // A capture-phase key handler must not refocus/reclaim the PTY on every key.
+  // Keep the recovery path when keyboard focus actually moved elsewhere.
+  expect(captureKeyDownBlock).toMatch(
+    /if \(document\.activeElement !== inputRef\.current\) focusInput\(\);/,
+  );
   expect(onBeforeInputBlock).not.toContain("event.preventDefault()");
   expect(source).toMatch(/const handlePaste = \(event: React\.ClipboardEvent<HTMLTextAreaElement>\) => \{[\s\S]*const text = event\.clipboardData\.getData\("text"\);[\s\S]*const armed = performance\.now\(\) <= pasteShortcutArmedUntilRef\.current;[\s\S]*if \(!text && !\(armed && clipboardHasImage\(event\.clipboardData\)\)\) \{[\s\S]*event\.preventDefault\(\);[\s\S]*event\.stopPropagation\(\);[\s\S]*sendImagePasteShortcut\(\);/);
   expect(source).toMatch(/const onPaste = \(event: ClipboardEvent\) => \{[\s\S]*const text = event\.clipboardData\?\.getData\("text\/plain"\) \?\? "";[\s\S]*const armed = performance\.now\(\) <= pasteShortcutArmedUntilRef\.current;[\s\S]*decidePasteAction\(\{[\s\S]*if \(action === "ignore"\) return;[\s\S]*event\.preventDefault\(\);[\s\S]*event\.stopImmediatePropagation\(\);[\s\S]*if \(action === "image"\) \{[\s\S]*sendImagePasteShortcut\(\);/);

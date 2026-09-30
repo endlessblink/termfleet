@@ -16,7 +16,8 @@ export interface SelectionRange {
 }
 
 export const SELECTION_AUTO_SCROLL_ZONE_PX = 32;
-export const SELECTION_AUTO_SCROLL_MAX_LINES = 8;
+export const SELECTION_AUTO_SCROLL_MAX_LINES = 2;
+export const SELECTION_AUTO_SCROLL_INTERVAL_MS = 75;
 
 /** Order two drag endpoints into a row-major [start, end] range (inclusive). */
 export function normalizeRange(anchor: CellPoint, focus: CellPoint): SelectionRange {

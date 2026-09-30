@@ -22,6 +22,62 @@ test("terminal viewport shortcuts map to history navigation", async ({ page }) =
   expect(actions.enter).toBeNull();
 });
 
+test("wheel delta units follow browser semantics and retain sub-row trackpad movement", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+
+  const result = await page.evaluate(async () => {
+    const { consumeTerminalWheelRows, terminalWheelRowDelta } = await import("/src/lib/terminalViewport.ts");
+    const first = consumeTerminalWheelRows(terminalWheelRowDelta(8, 0, 16, 24), 0);
+    const second = consumeTerminalWheelRows(terminalWheelRowDelta(8, 0, 16, 24), first.remainder);
+    const third = consumeTerminalWheelRows(terminalWheelRowDelta(8, 0, 16, 24), second.remainder);
+    return {
+      pixelRows: [first.rows, second.rows, third.rows],
+      lineRows: terminalWheelRowDelta(3, 1, 16, 24),
+      pageRows: terminalWheelRowDelta(1, 2, 16, 24),
+      directionReversal: consumeTerminalWheelRows(-0.5, 0.5),
+    };
+  });
+
+  expect(result.pixelRows).toEqual([0, 1, 0]);
+  expect(result.lineRows).toBe(3);
+  expect(result.pageRows).toBe(24);
+  expect(result.directionReversal).toEqual({ rows: 0, remainder: 0 });
+});
+
+test("app-owned wheel scrolling uses stable notches independent of terminal grid size", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+
+  const result = await page.evaluate(async () => {
+    const { consumeTerminalWheelRows, terminalWheelNotchDelta } = await import("/src/lib/terminalViewport.ts");
+    const mouseWheel = terminalWheelNotchDelta(99, 0);
+    const trackpadOne = consumeTerminalWheelRows(terminalWheelNotchDelta(8, 0), 0);
+    const trackpadTwo = consumeTerminalWheelRows(terminalWheelNotchDelta(8, 0), trackpadOne.remainder);
+    const trackpadThree = consumeTerminalWheelRows(terminalWheelNotchDelta(8, 0), trackpadTwo.remainder);
+    const scrollOne = consumeTerminalWheelRows(terminalWheelNotchDelta(25, 0), 0);
+    const scrollTwo = consumeTerminalWheelRows(terminalWheelNotchDelta(25, 0), scrollOne.remainder);
+    const scrollThree = consumeTerminalWheelRows(terminalWheelNotchDelta(25, 0), scrollTwo.remainder);
+    const scrollFour = consumeTerminalWheelRows(terminalWheelNotchDelta(25, 0), scrollThree.remainder);
+    return {
+      mouseWheel,
+      lineWheel: terminalWheelNotchDelta(3, 1),
+      pageWheel: terminalWheelNotchDelta(1, 2),
+      trackpad: [trackpadOne.rows, trackpadTwo.rows, trackpadThree.rows],
+      accumulatedTrackpad: [scrollOne.rows, scrollTwo.rows, scrollThree.rows, scrollFour.rows],
+      reversal: consumeTerminalWheelRows(terminalWheelNotchDelta(-8, 0), terminalWheelNotchDelta(8, 0)),
+    };
+  });
+
+  expect(result.mouseWheel).toBeCloseTo(1, 1);
+  expect(result.lineWheel).toBe(1);
+  expect(result.pageWheel).toBe(1);
+  expect(result.trackpad).toEqual([0, 0, 0]);
+  expect(result.accumulatedTrackpad).toEqual([0, 0, 0, 1]);
+  expect(result.reversal).toEqual({ rows: 0, remainder: 0 });
+  // The action must not depend on the terminal's row count, which may be zero.
+  const source = readFileSync("src/components/TerminalCanvas.tsx", "utf8");
+  expect(source).toMatch(/wheelAction\.kind === "history"[\s\S]{0,180}terminalWheelNotchDelta\(wheelDelta, event\.deltaMode\)/);
+});
+
 // An alt-screen TUI (OpenCode, vim, htop, less) has no grid scrollback, so a
 // history action is a no-op that also swallows the key — the pane could not scroll
 // at all. These keys must fall through to the app on the alternate screen, and keep
@@ -90,14 +146,24 @@ test("app-owned scrolling leaves grid history first", () => {
   const helper = source.match(/const leaveGridHistoryForApp = \(\) => \{[\s\S]*?\n  \};/)?.[0] ?? "";
   expect(helper).toContain("grid_scroll_to_bottom");
   const wheel = source.match(/const handleWheel = [\s\S]*?\n  \};/)?.[0] ?? "";
-  const mouseBranch = wheel.match(/if \(wheelAction\.kind === "mouse-report"\) \{[\s\S]*?return;/)?.[0] ?? "";
-  expect(mouseBranch).toContain("leaveGridHistoryForApp()");
+  expect(wheel).toMatch(/if \(wheelAction\.kind === "mouse-report"\) \{[\s\S]{0,120}leaveGridHistoryForApp\(\)/);
   // Locking the viewport is only for scrolls that stay in our history.
   expect(wheel.indexOf("userViewportLockedRef.current = true")).toBeGreaterThan(wheel.indexOf("app-pages"));
   expect(source).toMatch(/modesRef\.current\.mouseMotion &&[\s\S]{0,200}leaveGridHistoryForApp\(\)/);
   // Shift+wheel arrives as a horizontal scroll on GTK; its direction must count.
   expect(wheel).toContain("event.deltaY !== 0 ? event.deltaY : event.deltaX");
   expect(wheel).toContain("const up = wheelDelta < 0");
+});
+
+test("wheel scrolling during a held selection follows the refreshed viewport", () => {
+  const source = readFileSync("src/components/TerminalCanvas.tsx", "utf8");
+  const wheel = source.match(/const handleWheel = \(event: React\.WheelEvent\) => \{[\s\S]*?\n  \};/)?.[0] ?? "";
+  const frameHandler = source.match(/channel\.onmessage = \(payload\) => \{[\s\S]*?\n    \};/)?.[0] ?? "";
+
+  expect(wheel).toContain("const selecting = selectionPointerIdRef.current !== null");
+  expect(wheel).toMatch(/selecting\s*\?\s*\{ kind: "history" as const \}/);
+  expect(frameHandler).toMatch(/buffer\.apply\(frame\)[\s\S]*?if \(selectionPointerIdRef\.current !== null\) updateSelectionFocusFromLastPointer\(\)/);
+  expect(wheel).not.toMatch(/grid_scroll[\s\S]{0,160}\.then\(/);
 });
 
 test("canvas terminal keeps keyboard-owned history separate from PTY input", () => {

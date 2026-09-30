@@ -34,6 +34,7 @@ import { decidePasteAction, encodePaste, isTerminalPasteShortcut, keyEventToByte
 import {
   encodeMouseReport,
   pointerButtonToTerminalButton,
+  shouldSendMouseMotionDragToTerminalApp,
   terminalWheelAction,
 } from "../lib/terminalMouse";
 import {
@@ -41,6 +42,7 @@ import {
   hasSelectionExtent,
   normalizeRange,
   pointToCell,
+  SELECTION_AUTO_SCROLL_INTERVAL_MS,
   selectionToText,
   visiblePointToAbsolute,
   visibleRowSpan,
@@ -57,11 +59,20 @@ import {
   scrollDeltaToReveal,
   type SearchMatch,
 } from "../lib/searchOverlay";
-import { terminalViewportAction } from "../lib/terminalViewport";
+import {
+  consumeTerminalWheelRows,
+  terminalWheelNotchDelta,
+  terminalViewportAction,
+  terminalWheelRowDelta,
+} from "../lib/terminalViewport";
 import {
   recordTerminalGeometry,
   recordTerminalKeyRoute,
+  recordTerminalInteractionLatency,
+  recordTerminalWheelRoute,
+  recordTerminalDragRoute,
 } from "../lib/terminalGeometryLog";
+import { createTerminalInteractionLatencyBatcher } from "../lib/terminalInteractionLatency";
 
 // Hack is the terminal buffer font (Warp's default terminal font), bundled via
 // @font-face. Fallbacks keep things sane before the face loads / on other systems.
@@ -113,6 +124,7 @@ const DEFAULT_TERMINAL_MODES = {
   sgrMouse: false,
   hasHistory: false,
   mouseMotion: false,
+  mouseDrag: false,
 };
 
 function isTransientAttachError(error: unknown) {
@@ -231,6 +243,12 @@ export function TerminalCanvas({
   const scrollToBottomPendingRef = useRef(false);
   const userViewportLockedRef = useRef(false);
   const lastInputAtRef = useRef(0);
+  const pendingInputLatencyRef = useRef<{ inputAt: number } | null>(null);
+  const pendingRenderLatencyRef = useRef<{ inputAt: number; diffAt: number } | null>(null);
+  const interactionLatencyBatcherRef = useRef(
+    createTerminalInteractionLatencyBatcher(recordTerminalInteractionLatency),
+  );
+  const wheelRemaindersRef = useRef({ history: 0, appArrows: 0, mouseReport: 0, appPages: 0 });
   const pasteShortcutArmedUntilRef = useRef(0);
   // Guards against two overlapping Ctrl+Shift+V reads (capture + bubble handlers)
   // racing the async backend clipboard read and double-pasting.
@@ -289,7 +307,9 @@ export function TerminalCanvas({
     clientX: number;
     clientY: number;
   } | null>(null);
-  const autoScrollRafRef = useRef<number | null>(null);
+  const mouseReportDragPointerRef = useRef<number | null>(null);
+  const dragMotionReportsRef = useRef(0);
+  const autoScrollTimerRef = useRef<number | null>(null);
   const autoScrollInFlightRef = useRef(false);
   // Gate atlas construction until the bundled Hack faces are loaded so cell
   // metrics and glyph tiles are measured against the real font, not a fallback.
@@ -383,9 +403,9 @@ export function TerminalCanvas({
   }, [fontsReady]);
 
   const cancelSelectionAutoScroll = () => {
-    if (autoScrollRafRef.current !== null) {
-      window.cancelAnimationFrame(autoScrollRafRef.current);
-      autoScrollRafRef.current = null;
+    if (autoScrollTimerRef.current !== null) {
+      window.clearTimeout(autoScrollTimerRef.current);
+      autoScrollTimerRef.current = null;
     }
     autoScrollInFlightRef.current = false;
   };
@@ -505,34 +525,36 @@ export function TerminalCanvas({
     // render-only sample left the log empty for every quiet pane.
     const emitGeometry = () => {
       if (disposed) return;
-      const overlay = overlayRef.current;
-      const rect = canvas.getBoundingClientRect();
-      recordTerminalGeometry({
-        id: sessionId,
-        map: mapProjection,
-        cols: buffer.cols,
-        rows: buffer.rows,
-        displayOffset: buffer.displayOffset,
-        hasHistory: modesRef.current.hasHistory,
-        altScreen: modesRef.current.altScreen,
-        mouseReport: modesRef.current.mouseReport,
-        sgrMouse: modesRef.current.sgrMouse,
-        alternateScroll: modesRef.current.alternateScroll,
-        dpr,
-        cellWidth: cellRef.current.width,
-        cellHeight: cellRef.current.height,
-        canvasDeviceWidth: canvas.width,
-        canvasDeviceHeight: canvas.height,
-        canvasCssWidth: parseFloat(canvas.style.width) || 0,
-        canvasCssHeight: parseFloat(canvas.style.height) || 0,
-        shellWidth: shellRef.current?.clientWidth ?? 0,
-        shellHeight: shellRef.current?.clientHeight ?? 0,
-        overlayDeviceWidth: overlay?.width ?? 0,
-        overlayDeviceHeight: overlay?.height ?? 0,
-        rectX: Math.round(rect.left),
-        rectY: Math.round(rect.top),
-        rectWidth: Math.round(rect.width),
-        rectHeight: Math.round(rect.height),
+      recordTerminalGeometry(sessionId, () => {
+        const overlay = overlayRef.current;
+        const rect = canvas.getBoundingClientRect();
+        return {
+          id: sessionId,
+          map: mapProjection,
+          cols: buffer.cols,
+          rows: buffer.rows,
+          displayOffset: buffer.displayOffset,
+          hasHistory: modesRef.current.hasHistory,
+          altScreen: modesRef.current.altScreen,
+          mouseReport: modesRef.current.mouseReport,
+          sgrMouse: modesRef.current.sgrMouse,
+          alternateScroll: modesRef.current.alternateScroll,
+          dpr,
+          cellWidth: cellRef.current.width,
+          cellHeight: cellRef.current.height,
+          canvasDeviceWidth: canvas.width,
+          canvasDeviceHeight: canvas.height,
+          canvasCssWidth: parseFloat(canvas.style.width) || 0,
+          canvasCssHeight: parseFloat(canvas.style.height) || 0,
+          shellWidth: shellRef.current?.clientWidth ?? 0,
+          shellHeight: shellRef.current?.clientHeight ?? 0,
+          overlayDeviceWidth: overlay?.width ?? 0,
+          overlayDeviceHeight: overlay?.height ?? 0,
+          rectX: Math.round(rect.left),
+          rectY: Math.round(rect.top),
+          rectWidth: Math.round(rect.width),
+          rectHeight: Math.round(rect.height),
+        };
       });
     };
     const geometryTimer = setInterval(emitGeometry, 2000);
@@ -559,18 +581,22 @@ export function TerminalCanvas({
         if (disposed) return;
         renderScheduled = false;
         lastRenderAt = performance.now();
+        const interactionTiming = pendingRenderLatencyRef.current;
+        pendingRenderLatencyRef.current = null;
         const full = pendingFullRender;
         const rowsToRender = new Set(pendingRenderRows);
         pendingFullRender = false;
         pendingRenderRows.clear();
         const snapshot = buffer.toSnapshot();
         onSnapshotRef.current?.(snapshot);
+        const drawStartedAt = performance.now();
         if (full) {
           ctx = sizeCanvasToGrid(canvas, atlas, snapshot.cols, snapshot.rows, dpr);
           renderSnapshot(ctx, atlas, snapshot, dpr, theme);
         } else {
           renderPartial(ctx, atlas, snapshot, rowsToRender, dpr, theme);
         }
+        const drawFinishedAt = performance.now();
         traceTerminalLatency("frontend.canvas.render", {
           id: sessionId,
           full,
@@ -585,6 +611,14 @@ export function TerminalCanvas({
         });
         requestAnimationFrame(() => {
           if (disposed) return;
+          if (interactionTiming) {
+            const frameCallbackAt = performance.now();
+            interactionLatencyBatcherRef.current.record({
+              recentInputToDiffMs: interactionTiming.diffAt - interactionTiming.inputAt,
+              canvasDrawMs: drawFinishedAt - drawStartedAt,
+              recentInputToFrameCallbackMs: frameCallbackAt - interactionTiming.inputAt,
+            });
+          }
           traceTerminalLatency("frontend.canvas.after_paint", {
             id: sessionId,
             full,
@@ -612,6 +646,12 @@ export function TerminalCanvas({
     };
 
     const channel = new Channel<ArrayBuffer>();
+    const osc52ClipboardChannel = new Channel<{ text: string }>();
+    osc52ClipboardChannel.onmessage = ({ text }) => {
+      if (!disposed && text) {
+        void invoke("clipboard_write_text", { text, corrId: newCorrId() }).catch(console.error);
+      }
+    };
     // "Frozen projection": the node keeps the terminal's working grid size and
     // clips it instead of reflowing. Only a full-screen TUI that would FRAGMENT on
     // reflow gets that; an agent TUI that repaints itself (OpenCode) reflows so it
@@ -626,6 +666,17 @@ export function TerminalCanvas({
       try {
         frame = decodeFrame(payload);
         changed = buffer.apply(frame);
+        // Scroll IPC can resolve before the refreshed grid frame arrives. Rebase a
+        // held drag endpoint only after displayOffset reflects that new viewport.
+        if (selectionPointerIdRef.current !== null) updateSelectionFocusFromLastPointer();
+        const pendingInput = pendingInputLatencyRef.current;
+        if (pendingInput) {
+          pendingRenderLatencyRef.current = {
+            inputAt: pendingInput.inputAt,
+            diffAt: performance.now(),
+          };
+          pendingInputLatencyRef.current = null;
+        }
         if (userViewportLockedRef.current && buffer.displayOffset === 0) {
           userViewportLockedRef.current = false;
         }
@@ -655,6 +706,7 @@ export function TerminalCanvas({
         sgrMouse: buffer.sgrMouse,
         hasHistory: buffer.hasHistory,
         mouseMotion: buffer.mouseMotion,
+        mouseDrag: buffer.mouseDrag,
       };
       const firstFrame = !firstFrameRef.current;
       if (firstFrame) {
@@ -958,7 +1010,13 @@ export function TerminalCanvas({
         await invoke("daemon_resize_session", { id: sessionId, cols: attachCols, rows: attachRows });
         if (disposed) return;
       }
-      await invoke("grid_attach", { id: sessionId, cols: attachCols, rows: attachRows, attachToken });
+      await invoke("grid_attach", {
+        id: sessionId,
+        cols: attachCols,
+        rows: attachRows,
+        attachToken,
+        onClipboardCopy: osc52ClipboardChannel,
+      });
       if (disposed) return;
       await invoke("grid_scroll_to_bottom", { id: sessionId });
       if (disposed) return;
@@ -1060,7 +1118,9 @@ export function TerminalCanvas({
   const send = (data: string, seqId = nextTerminalInputSequence(), source = "canvas-send") => {
     onInputData?.(data);
     scheduleScrollToBottom();
-    lastInputAtRef.current = performance.now();
+    const inputAt = performance.now();
+    lastInputAtRef.current = inputAt;
+    pendingInputLatencyRef.current = { inputAt };
     let queue = daemonInputQueueRef.current;
     if (!queue) {
       queue = createDaemonInputQueue({
@@ -1339,7 +1399,10 @@ export function TerminalCanvas({
   useEffect(() => {
     const onCaptureKeyDown = (event: KeyboardEvent) => {
       if (!terminalOwnsKeyboard()) return;
-      focusInput();
+      // The terminal already owns keyboard focus for ordinary typing. Calling
+      // focus() here also reclaims the PTY and updates the workspace store on
+      // every key; only restore focus when capture caught a key after focus moved.
+      if (document.activeElement !== inputRef.current) focusInput();
       clearHiddenInput();
       const key = event.key.toLowerCase();
       if ((event.ctrlKey || event.metaKey) && !event.shiftKey && key === "f") {
@@ -1697,8 +1760,8 @@ export function TerminalCanvas({
     };
   };
 
-  const sendPointerMouseReport = (event: React.PointerEvent, release = false) => {
-    const terminalButton = pointerButtonToTerminalButton(event.button);
+  const sendPointerMouseReport = (event: React.PointerEvent, release = false, motion = false) => {
+    const terminalButton = motion ? 32 : pointerButtonToTerminalButton(event.button);
     if (terminalButton === null) return false;
     const cell = pointerToVtCell(event);
     if (!cell) return false;
@@ -1725,9 +1788,9 @@ export function TerminalCanvas({
   };
 
   const scheduleSelectionAutoScroll = () => {
-    if (autoScrollRafRef.current !== null) return;
+    if (autoScrollTimerRef.current !== null) return;
     const tick = () => {
-      autoScrollRafRef.current = null;
+      autoScrollTimerRef.current = null;
       if (!anchorRef.current || selectionPointerIdRef.current === null) return;
       const canvas = canvasRef.current;
       const last = lastSelectionClientRef.current;
@@ -1745,9 +1808,9 @@ export function TerminalCanvas({
       } else {
         updateSelectionFocusFromLastPointer();
       }
-      autoScrollRafRef.current = window.requestAnimationFrame(tick);
+      autoScrollTimerRef.current = window.setTimeout(tick, SELECTION_AUTO_SCROLL_INTERVAL_MS);
     };
-    autoScrollRafRef.current = window.requestAnimationFrame(tick);
+    autoScrollTimerRef.current = window.setTimeout(tick, SELECTION_AUTO_SCROLL_INTERVAL_MS);
   };
 
   const stopSelectionDrag = (event?: React.PointerEvent) => {
@@ -1772,8 +1835,49 @@ export function TerminalCanvas({
     focusInput();
   };
 
+  const logDragRoute = (
+    event: React.PointerEvent,
+    phase: "down" | "up",
+    route: "app" | "local" | "none",
+  ) => {
+    const modes = modesRef.current;
+    recordTerminalDragRoute({
+      id: sessionIdRef.current,
+      phase,
+      route,
+      shiftKey: event.shiftKey,
+      mouseReport: modes.mouseReport,
+      mouseDrag: modes.mouseDrag === true,
+      mouseMotion: modes.mouseMotion === true,
+      altScreen: modes.altScreen,
+      row: pointerToVtCell(event)?.row ?? 0,
+      rows: bufferRef.current?.rows ?? 0,
+      motionReports: phase === "up" ? dragMotionReportsRef.current : undefined,
+    });
+  };
+
   const handlePointerDown = (event: React.PointerEvent) => {
     focusInput();
+    if (event.button === 0) {
+      dragMotionReportsRef.current = 0;
+      logDragRoute(
+        event,
+        "down",
+        shouldSendMouseMotionDragToTerminalApp(modesRef.current, event) ? "app" : "local",
+      );
+    }
+    if (
+      event.button === 0 &&
+      shouldSendMouseMotionDragToTerminalApp(modesRef.current, event)
+    ) {
+      if (sendPointerMouseReport(event)) {
+        mouseReportDragPointerRef.current = event.pointerId;
+        event.currentTarget.setPointerCapture(event.pointerId);
+        event.preventDefault();
+        event.stopPropagation();
+      }
+      return;
+    }
     if (modesRef.current.mouseReport && !event.shiftKey) {
       if (modesRef.current.altScreen) {
         if (sendPointerMouseReport(event)) {
@@ -1811,6 +1915,18 @@ export function TerminalCanvas({
   };
 
   const handlePointerMove = (event: React.PointerEvent) => {
+    if (mouseReportDragPointerRef.current === event.pointerId) {
+      if ((event.buttons & 1) === 0) {
+        mouseReportDragPointerRef.current = null;
+        return;
+      }
+      if (sendPointerMouseReport(event, false, true)) {
+        dragMotionReportsRef.current += 1;
+        event.preventDefault();
+        event.stopPropagation();
+      }
+      return;
+    }
     if (!anchorRef.current || selectionPointerIdRef.current !== event.pointerId) return;
     if ((event.buttons & 1) === 0) {
       stopSelectionDrag(event);
@@ -1885,6 +2001,27 @@ export function TerminalCanvas({
   };
 
   const handlePointerUp = (event: React.PointerEvent) => {
+    if (event.button === 0) {
+      logDragRoute(
+        event,
+        "up",
+        mouseReportDragPointerRef.current === event.pointerId
+          ? "app"
+          : selectionPointerIdRef.current === event.pointerId
+            ? "local"
+            : "none",
+      );
+    }
+    if (mouseReportDragPointerRef.current === event.pointerId) {
+      mouseReportDragPointerRef.current = null;
+      if (sendPointerMouseReport(event, true)) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+      stopSelectionDrag(event);
+      focusInput();
+      return;
+    }
     const activeSelectionPointerId = selectionPointerIdRef.current;
     if (activeSelectionPointerId !== null) {
       if (activeSelectionPointerId !== event.pointerId) return;
@@ -1978,15 +2115,40 @@ export function TerminalCanvas({
     // otherwise Shift+wheel-up scrolled DOWN and history was unreachable.
     const wheelDelta = event.deltaY !== 0 ? event.deltaY : event.deltaX;
     if (wheelDelta === 0) return;
-    const notches = Math.max(1, Math.round(Math.abs(wheelDelta) / 24));
     const up = wheelDelta < 0;
     const modes = modesRef.current;
 
-    const wheelAction = terminalWheelAction(
+    // A held selection owns the pointer gesture; wheel input should scroll our
+    // history and the focus will be rebased when the resulting grid frame arrives.
+    const selecting = selectionPointerIdRef.current !== null;
+    const wheelAction = selecting ? { kind: "history" as const } : terminalWheelAction(
       event,
       { ...modes, appPageKeys: mapProjection },
       up ? "up" : "down",
     );
+    const buffer = bufferRef.current;
+    const route = wheelAction.kind === "history" ? "history" : wheelAction.kind === "app-pages"
+      ? "appPages"
+      : wheelAction.kind === "app-arrows" ? "appArrows" : "mouseReport";
+    const remainder = wheelRemaindersRef.current[route];
+    const delta = wheelAction.kind === "history"
+      ? terminalWheelRowDelta(wheelDelta, event.deltaMode, cellRef.current.height, buffer?.rows ?? 1)
+      : terminalWheelNotchDelta(wheelDelta, event.deltaMode);
+    const consumed = consumeTerminalWheelRows(delta, remainder);
+    wheelRemaindersRef.current[route] = consumed.remainder;
+    const scrollCount = consumed.rows;
+    recordTerminalWheelRoute({
+      id: sessionId,
+      deltaX: event.deltaX,
+      deltaY: event.deltaY,
+      deltaMode: event.deltaMode,
+      action: wheelAction.kind,
+      rows: scrollCount,
+      cellHeight: cellRef.current.height,
+      hasHistory: modes.hasHistory === true,
+      altScreen: modes.altScreen,
+      mouseReport: modes.mouseReport,
+    });
     if (DEBUG_TERM_HUD) {
       const k = wheelAction.kind === "mouse-report" ? "mouse" : wheelAction.kind === "app-arrows" ? "arrows" : "history";
       bumpHud({ whN: (hudRef.current.whN + 1) & 0xffff, whKind: `${up ? "up" : "dn"}/${k}` });
@@ -1997,6 +2159,7 @@ export function TerminalCanvas({
     // enough: Claude-style prompts may use alt-screen without making arrows a
     // reliable scroll primitive, so those fall back to TermFleet history.
     if (wheelAction.kind === "mouse-report") {
+      if (scrollCount === 0) return;
       leaveGridHistoryForApp();
       const { col, row } = wheelCell(event);
       const button = up ? 64 : 65;
@@ -2007,24 +2170,25 @@ export function TerminalCanvas({
         sgr: modes.sgrMouse,
         modifiers: event,
       });
-      send(report.repeat(notches), nextTerminalInputSequence(), "canvas-wheel");
+      send(report.repeat(Math.abs(scrollCount)), nextTerminalInputSequence(), "canvas-wheel");
       return;
     }
 
     if (wheelAction.kind === "app-arrows") {
-      send(wheelAction.sequence.repeat(notches * 3), nextTerminalInputSequence(), "canvas-wheel");
+      if (scrollCount !== 0) send(wheelAction.sequence.repeat(Math.abs(scrollCount)), nextTerminalInputSequence(), "canvas-wheel");
       return;
     }
 
     // Nothing in our history and the app never claimed the mouse: give the wheel to
     // the app as its own page keys so the gesture still scrolls its content.
     if (wheelAction.kind === "app-pages") {
-      send(wheelAction.sequence.repeat(notches), nextTerminalInputSequence(), "canvas-wheel");
+      if (scrollCount !== 0) send(wheelAction.sequence.repeat(Math.abs(scrollCount)), nextTerminalInputSequence(), "canvas-wheel");
       return;
     }
 
+    if (scrollCount === 0) return;
     if (up) userViewportLockedRef.current = true;
-    invoke("grid_scroll", { id: sessionId, delta: (up ? 1 : -1) * notches * 3 }).catch(
+    invoke("grid_scroll", { id: sessionId, delta: up ? Math.abs(scrollCount) : -Math.abs(scrollCount) }).catch(
       console.error,
     );
   };

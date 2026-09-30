@@ -8,6 +8,37 @@ test.use({
   },
 });
 
+test("fullscreen mouse-motion apps own unshifted left drags while Shift keeps local selection", async ({ page }) => {
+  await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
+
+  const out = await page.evaluate(async () => {
+    const { shouldSendMouseMotionDragToTerminalApp } = await import("/src/lib/terminalMouse.ts");
+    return {
+      fullscreenPrimaryScreenDrag: shouldSendMouseMotionDragToTerminalApp({ mouseReport: true, mouseMotion: true }),
+      fullscreenAlternateScreenDrag: shouldSendMouseMotionDragToTerminalApp({
+        mouseReport: true,
+        mouseMotion: true,
+        altScreen: true,
+      }),
+      fullscreenButtonMotionDrag: shouldSendMouseMotionDragToTerminalApp({
+        mouseReport: true,
+        mouseDrag: true,
+      }),
+      ordinaryMouseAppDrag: shouldSendMouseMotionDragToTerminalApp({ mouseReport: true }),
+      shiftedFullscreenDrag: shouldSendMouseMotionDragToTerminalApp(
+        { mouseReport: true, mouseMotion: true },
+        { shiftKey: true }
+      ),
+    };
+  });
+
+  expect(out.fullscreenPrimaryScreenDrag).toBe(true);
+  expect(out.fullscreenAlternateScreenDrag).toBe(true);
+  expect(out.fullscreenButtonMotionDrag).toBe(true);
+  expect(out.ordinaryMouseAppDrag).toBe(false);
+  expect(out.shiftedFullscreenDrag).toBe(false);
+});
+
 test("terminal mouse reports encode SGR and legacy VT sequences", async ({ page }) => {
   await page.goto("http://127.0.0.1:5177/", { waitUntil: "domcontentloaded" });
 
@@ -23,6 +54,7 @@ test("terminal mouse reports encode SGR and legacy VT sequences", async ({ page 
 
     return {
       leftPressSgr: encodeMouseReport({ button: 0, col: 12, row: 3, sgr: true }),
+      leftDragMotionSgr: encodeMouseReport({ button: 32, col: 4, row: 5, sgr: true }),
       leftReleaseSgr: encodeMouseReport({ button: 0, col: 12, row: 3, sgr: true, release: true }),
       ctrlRightSgr: encodeMouseReport({
         button: 2,
@@ -210,6 +242,7 @@ test("terminal mouse reports encode SGR and legacy VT sequences", async ({ page 
   });
 
   expect(out.leftPressSgr).toBe("\x1b[<0;12;3M");
+  expect(out.leftDragMotionSgr).toBe("\x1b[<32;4;5M");
   expect(out.leftReleaseSgr).toBe("\x1b[<0;12;3m");
   expect(out.ctrlRightSgr).toBe("\x1b[<18;4;5M");
   expect(out.wheelDownLegacyHex).toBe("1b 5b 4d 61 29 22");
