@@ -2,13 +2,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { isNoise, clean } from '../noise.mjs';
 import { tailLines } from '../tail.mjs';
-import { PATHS, claudeSlug } from '../paths.mjs';
+import { claudeTranscript } from '../paths.mjs';
 
 export const provider = 'claude';
 
 export function transcriptPath(pane) {
-  const p = path.join(PATHS.claudeProjects, claudeSlug(pane.cwd), `${pane.sessionId}.jsonl`);
-  return fs.existsSync(p) ? p : null;
+  return claudeTranscript(pane.cwd, pane.sessionId);
 }
 
 const textOf = (blocks) =>
@@ -63,7 +62,8 @@ export function readFeed(pane, { limit = 60, bytes = 512 * 1024 } = {}) {
           collected.push({ kind: 'tool', at, name: b.name, summary: summariseTool(b) });
         }
       }
-      const text = textOf(blocks);
+      const raw = textOf(blocks);
+      const text = isNoise(raw) ? '' : clean(raw);
       if (text) collected.push({ kind: 'assistant', at, text });
     }
   }

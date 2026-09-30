@@ -45,6 +45,56 @@ export function pendingApproval(pane, { bytes = 1024 * 1024 } = {}) {
   return pendingApprovalFromRecords(records);
 }
 
+export function pendingQuestion(pane, { bytes = 1024 * 1024, screen = '' } = {}) {
+  const file = transcriptPath(pane);
+  if (!file) return null;
+  const records = [];
+  for (const line of tailLines(file, bytes)) {
+    try { records.push(JSON.parse(line)); } catch { /* partial tail record */ }
+  }
+  return pendingQuestionFromRecords(records, { screen });
+}
+
+export function pendingQuestionFromRecords(records, { screen = '' } = {}) {
+  const completed = new Set();
+  for (let i = records.length - 1; i >= 0; i--) {
+    const payload = records[i]?.payload;
+    if (payload?.type === 'custom_tool_call_output' || payload?.type === 'function_call_output') {
+      if (payload.call_id) completed.add(payload.call_id);
+      continue;
+    }
+    if (!['custom_tool_call', 'function_call'].includes(payload?.type) || completed.has(payload.call_id)) continue;
+    if (!['exec', 'functions.exec', 'request_user_input', 'functions.request_user_input'].includes(payload.name)) continue;
+    const source = String(payload.input ?? payload.arguments ?? '');
+    const start = payload.name.endsWith('request_user_input') ? source.indexOf('{')
+      : source.search(/tools\.(?:functions__)?request_user_input\s*\(\s*\{/);
+    if (start < 0) continue;
+    const brace = source.indexOf('{', start);
+    const end = matchingBrace(source, brace);
+    if (end < 0) continue;
+    let args;
+    try {
+      const literal = source.slice(brace, end + 1)
+        .replace(/([,{]\s*)([A-Za-z_$][\w$]*)\s*:/g, '$1"$2":')
+        .replace(/,\s*([}\]])/g, '$1');
+      args = JSON.parse(literal);
+    } catch { continue; }
+    const questions = args.questions || [];
+    const q = questions.find((item) => item.question && String(screen).includes(item.question)) || questions[0];
+    if (!q) continue;
+    const options = (q.options || []).slice(0, 9).map((option, index) => ({
+      key: String(index + 1), label: String(option.label || '').slice(0, 60),
+      detail: String(option.description || '').slice(0, 140),
+    }));
+    return {
+      kind: 'question', title: String(q.question || 'The agent is asking you something.').slice(0, 200),
+      header: String(q.header || '').slice(0, 40), options,
+      sourceId: payload.call_id || records[i]?.timestamp || '',
+    };
+  }
+  return null;
+}
+
 export function pendingApprovalFromRecords(records) {
   const completed = new Set();
   for (let i = records.length - 1; i >= 0; i--) {
@@ -129,6 +179,16 @@ const textOf = (content) => {
     .trim();
 };
 
+export function messageFromRecord(record) {
+  const payload = record?.payload;
+  if (payload?.type !== 'message' || !['user', 'assistant'].includes(payload.role)) return null;
+  const raw = textOf(payload.content);
+  if (!raw || isNoise(raw)) return null;
+  const text = clean(raw);
+  if (!text) return null;
+  return { kind: payload.role, at: record.timestamp || null, text };
+}
+
 /**
  * Rollout files are mostly noise (reasoning blobs, token counts, turn context).
  * Walk backwards and stop as soon as we have enough real conversation, so a
@@ -148,12 +208,9 @@ export function readFeed(pane, { limit = 60, bytes = 512 * 1024 } = {}) {
     const kind = payload.type;
     const at = o.timestamp || null;
 
-    if (kind === 'message' && payload.role) {
-      const raw = textOf(payload.content);
-      if (!raw || isNoise(raw)) continue;
-      const text = clean(raw);
-      if (!text) continue;
-      collected.push({ kind: payload.role === 'user' ? 'user' : 'assistant', at, text });
+    if (kind === 'message') {
+      const message = messageFromRecord(o);
+      if (message) collected.push(message);
       continue;
     }
 

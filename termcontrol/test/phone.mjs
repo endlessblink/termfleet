@@ -343,6 +343,26 @@ async function main() {
     await ctx.close();
   }
 
+  group('Conversation formatting');
+  {
+    const { ctx, p } = await signedIn(PHONES[1]);
+    const paneId = await p.$eval('.pane', (element) => element.dataset.id);
+    const message = 'Task       Status\nSync       Running';
+    await p.route('**/api/feed**', (route) => route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({ pane: { id: paneId, project: 'termfleet', provider: 'codex' },
+        version: 'test', live: 'waiting', producing: false, reachedStart: true,
+        events: [{ kind: 'assistant', text: message }], pending: [], ask: null }),
+    }));
+    await p.click('.pane');
+    await p.waitForSelector('.msg.assistant .rich p');
+    await check('conversation message keeps aligned text readable', async () => {
+      const rendered = await p.$eval('.msg.assistant .rich p', (element) => element.innerText);
+      eqText(rendered, message);
+    });
+    await ctx.close();
+  }
+
   group('Permission and live status');
   {
     const { ctx, p } = await signedIn(PHONES[1]);
@@ -394,6 +414,40 @@ async function main() {
       await p.evaluate(() => window.dispatchEvent(new Event('focus')));
       await p.waitForSelector('.askbox', { timeout: 1500 });
       ok(feedCall > callsBeforeReturn, 'returning to the chat did not request current permission state');
+    });
+    await ctx.close();
+  }
+
+  group('Question choices and replies');
+  {
+    const { ctx, p } = await signedIn(PHONES[1]);
+    const paneId = await p.$eval('.pane', (element) => element.dataset.id);
+    const question = {
+      id: 'codex:question:test', kind: 'question', header: 'Direction',
+      title: 'Which path should I take?', screen: 'Terminal redraw text',
+      options: [{ key: '1', label: 'First path' }, { key: '2', label: 'Second path' }],
+    };
+    const sent = [];
+    await p.route('**/api/feed**', (route) => route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({ pane: { id: paneId, project: 'termfleet', provider: 'codex' },
+        version: 'test', live: 'waiting', producing: false, events: [], pending: [], ask: question }),
+    }));
+    await p.route('**/api/send', async (route) => {
+      sent.push(route.request().postDataJSON());
+      await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ ok: true }) });
+    });
+    await p.click('.pane');
+    await p.waitForSelector('.askbox');
+    await check('a model question shows its choices and a typed reply on the phone', async () => {
+      const text = await p.textContent('.askbox');
+      ok(text.includes('Which path should I take?'), 'question text is hidden');
+      ok(text.includes('First path') && text.includes('Second path'), 'question choices are hidden');
+      ok(text.includes('Type a different answer'), 'typed answer action is missing');
+      await p.click('.askbox .typeinstead');
+      ok(await p.$eval('.composer textarea', (element) => document.activeElement === element), 'reply box was not focused');
+      await p.click('.askbox [data-choice="2"]');
+      ok(sent.length === 1 && sent[0].askId === question.id && sent[0].choice === '2', 'question answer was not sent once');
     });
     await ctx.close();
   }

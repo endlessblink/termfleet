@@ -1,35 +1,40 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { PATHS, claudeSlug } from './paths.mjs';
+import { claudeTranscript } from './paths.mjs';
 import { tailLines } from './tail.mjs';
 import {
   pendingApproval as codexPendingApproval,
+  pendingQuestion as codexPendingQuestion,
   transcriptPath as codexTranscriptPath,
 } from './adapters/codex.mjs';
 
 /**
  * What an agent is waiting for you to answer, if anything.
  *
- * Two shapes exist. A multiple-choice question (Claude's question tool) is in
- * the transcript with its own options. A permission request ("may I run this
+ * Two shapes exist. A model question is in the provider transcript with its
+ * own options. A permission request ("may I run this
  * command?") is not — it is drawn on screen only — but the status hooks record
  * that the pane is waiting and why, so we can still offer the standard
  * answers.
  */
 export function pendingAsk(pane, {
+  screen = '',
   codexApproval = codexPendingApproval,
+  codexQuestion = codexPendingQuestion,
   codexTranscript = codexTranscriptPath,
 } = {}) {
   if (pane.provider === 'codex') {
     const approval = codexApproval(pane);
     if (approval) return permissionAsk(pane, approval);
+    const question = codexQuestion(pane, { screen });
+    if (question) return { ...question, id: askId(pane, question) };
     // Once a rollout exists it is the authority: an unmatched call is pending,
     // and a matching output means it is finished. Status sidecars can lag behind
     // and must not resurrect that completed permission on the phone.
     if (codexTranscript(pane)) return null;
   }
   if (pane.provider === 'claude') {
-    const question = questionFromTranscript(pane);
+    const question = questionFromTranscript(pane, screen);
     if (question) return question;
   }
   if (pane.provider === 'opencode') {
@@ -56,7 +61,8 @@ export function pendingAsk(pane, {
 }
 
 function askId(pane, ask) {
-  return [pane.provider, pane.sessionId, pane.updatedAt, pane.turnReason, ask.sourceId, ask.kind, ask.title]
+  const source = ask.sourceId ? [ask.sourceId] : [pane.updatedAt, pane.turnReason];
+  return [pane.provider, pane.sessionId, ...source, ask.kind, ask.title]
     .map((value) => String(value || ''))
     .join(':');
 }
@@ -107,11 +113,14 @@ export function screenPermissionAsk(pane, screen) {
   return { ...ask, id: askId(pane, ask) };
 }
 
-function questionFromTranscript(pane) {
-  const file = path.join(PATHS.claudeProjects, claudeSlug(pane.cwd), `${pane.sessionId}.jsonl`);
-  if (!fs.existsSync(file)) return null;
+function questionFromTranscript(pane, screen = '') {
+  const file = claudeTranscript(pane.cwd, pane.sessionId);
+  if (!file) return null;
 
-  const lines = tailLines(file, 256 * 1024);
+  return questionFromRecords(pane, tailLines(file, 256 * 1024), screen);
+}
+
+export function questionFromRecords(pane, lines, screen = '') {
   const answered = new Set();
 
   for (let i = lines.length - 1; i >= 0; i--) {
@@ -131,17 +140,18 @@ function questionFromTranscript(pane) {
       if (b.type !== 'tool_use' || b.name !== 'AskUserQuestion') continue;
       if (answered.has(b.id)) return null;          // already answered
 
-      const q = b.input?.questions?.[0];
+      const questions = b.input?.questions || [];
+      const q = questions.find((item) => item.question && String(screen).includes(item.question)) || questions[0];
       if (!q) continue;
       const options = (q.options || []).slice(0, 4).map((opt, index) => ({
         key: String(index + 1),
         label: String(opt.label || '').slice(0, 60),
         detail: String(opt.description || '').slice(0, 140),
       }));
-      if (!options.length) continue;
 
       const ask = {
         kind: 'question',
+        sourceId: b.id,
         title: String(q.question || 'The agent is asking you something.').slice(0, 200),
         header: String(q.header || '').slice(0, 40),
         options,

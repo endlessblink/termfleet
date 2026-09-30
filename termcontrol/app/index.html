@@ -257,6 +257,7 @@
   .richbubble{white-space:normal}
   .rich > *{margin:0 0 10px}
   .rich > *:last-child{margin-bottom:0}
+  .rich p{white-space:pre-wrap}
   .rich ul, .rich ol{padding-inline-start:22px}
   .rich li{margin:0 0 4px}
   .rich h4{font-size:15.5px;font-weight:600;margin-top:14px}
@@ -1094,23 +1095,28 @@ function mountAsk(id, ask, onDone) {
   current?.remove();
 
   const box = document.createElement('section');
-  box.className = ask.screen ? 'askbox hasscreen' : 'askbox';
+  box.className = ask.screen && ask.kind === 'permission' ? 'askbox hasscreen' : 'askbox';
   box.dataset.askId = ask.id;
   box.setAttribute('aria-label', ask.kind === 'permission' ? 'Permission request' : 'Question from the agent');
   box.innerHTML = `
     <h3>${esc(ask.header || (ask.kind === 'permission' ? 'Permission requested' : 'Your answer is needed'))}</h3>
-    ${ask.screen ? '' : `<p>${esc(ask.title)}</p>`}
+    ${ask.screen && ask.kind === 'permission' ? '' : `<p>${esc(ask.title)}</p>`}
     ${ask.detail ? `<p class="detail">${esc(ask.detail)}</p>` : ''}
-    ${ask.screen ? `<div class="askscreen">${esc(ask.screen)}</div>` : ''}
+    ${ask.screen && ask.kind === 'permission' ? `<div class="askscreen">${esc(ask.screen)}</div>` : ''}
     <div class="opts">${ask.options.map((option) => `
       <button type="button" data-choice="${esc(option.key)}">
         ${esc(option.label)}
         ${option.detail ? `<span class="detail">${esc(option.detail)}</span>` : ''}
       </button>`).join('')}</div>
+    ${ask.kind === 'question' ? '<button type="button" class="typeinstead">Type a different answer</button>' : ''}
     <p class="askresult" role="status"></p>`;
   const composer = document.querySelector('.composer');
   if (composer) composer.before(box);
   else document.body.appendChild(box);
+
+  box.querySelector('.typeinstead')?.addEventListener('click', () => {
+    document.querySelector('.composer textarea')?.focus();
+  });
 
   box.querySelectorAll('[data-choice]').forEach((button) => {
     button.onclick = async () => {
@@ -1127,7 +1133,7 @@ function mountAsk(id, ask, onDone) {
         });
         response = await sent.json();
       } catch {
-        response = { error: 'Could not reach your machine. Nothing was approved.' };
+        response = { error: 'Could not reach your machine. Your answer was not sent.' };
       }
       if (response.error) {
         result.textContent = response.error;
@@ -1139,7 +1145,7 @@ function mountAsk(id, ask, onDone) {
       const option = ask.options.find((item) => item.key === button.dataset.choice);
       onDone?.({
         askId: ask.id,
-        text: `Permission answer: ${option?.label || button.dataset.choice}`,
+        text: `${ask.kind === 'permission' ? 'Permission answer' : 'Question answer'}: ${option?.label || button.dataset.choice}`,
         at: Date.now(),
       });
     };

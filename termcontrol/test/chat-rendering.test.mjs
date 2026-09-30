@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { chromium } from 'playwright';
 
 import { agentsByPane, reconcileLivePanes } from '../bridge/inventory.mjs';
 
@@ -112,4 +113,18 @@ test('a three-column table becomes one labelled card per row on a phone', () => 
 test('direction follows the language a line is mostly written in', () => {
   assert.match(richText('💬 `מעצבים עם AI` WhatsApp group'), /<p dir="ltr">/);
   assert.match(richText('שלחתי את ההודעה לקבוצת WhatsApp'), /<p dir="rtl">/);
+});
+
+test('the phone preserves aligned spaces in an assistant message', async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+    const message = 'Task       Status\nSync       Running';
+    const style = html.match(/<style>([\s\S]*?)<\/style>/)?.[1];
+    assert.ok(style, 'phone styles found');
+    await page.setContent(`<style>${style}</style><div class="msg assistant"><div class="bubble richbubble">${richText(message)}</div></div>`);
+    assert.equal(await page.locator('.rich p').innerText(), message);
+  } finally {
+    await browser.close();
+  }
 });

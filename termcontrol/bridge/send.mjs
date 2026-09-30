@@ -148,8 +148,17 @@ async function scrollbackBytes(id) {
  * the on-screen list; the named choices answer a permission prompt with the
  * provider's own keystroke.
  */
-export async function answerPrompt(pane, choice, approval) {
-  const key = /^[1-9]$/.test(String(choice)) ? `${choice}\r` : approval?.[choice];
+export function promptKey(pane, choice, approval, kind) {
+  if (/^[1-9]$/.test(String(choice))) {
+    // Codex selects a question option on the digit key itself; Enter after it
+    // can submit the next question before the operator sees that question.
+    return pane.provider === 'codex' && kind === 'question' ? String(choice) : `${choice}\r`;
+  }
+  return approval?.[choice];
+}
+
+export async function answerPrompt(pane, choice, approval, kind) {
+  const key = promptKey(pane, choice, approval, kind);
   if (!key) return { error: 'Unknown choice.' };
   const live = await liveSessionIds();
   if (!live.has(pane.id)) return { error: 'That terminal is not running any more.' };

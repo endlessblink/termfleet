@@ -157,8 +157,8 @@ const server = http.createServer(async (req, res) => {
     const { panes } = await currentPanes();
     const pane = panes.find((p) => p.id === id);
     if (!pane) return json(res, 404, { error: 'That terminal has been closed.' });
-    const transcriptAsk = pendingAsk(pane);
     const screen = await screenOf(pane.id);
+    const transcriptAsk = pendingAsk(pane, { screen });
     const ask = transcriptAsk || screenPermissionAsk(pane, screen);
     return json(res, 200, {
       pane,
@@ -190,12 +190,12 @@ const server = http.createServer(async (req, res) => {
         // prompt visible after the terminal has moved on or asked a new one.
         const fresh = (await currentPanes()).panes.find((candidate) => candidate.id === payload.pane);
         const freshScreen = fresh ? await screenOf(fresh.id) : '';
-        const freshAsk = fresh && (pendingAsk(fresh) || screenPermissionAsk(fresh, freshScreen));
+        const freshAsk = fresh && (pendingAsk(fresh, { screen: freshScreen }) || screenPermissionAsk(fresh, freshScreen));
         if (!fresh || !matchesAsk(freshAsk, payload.askId, payload.choice)) {
-          return json(res, 409, { error: 'That permission request is no longer active. Refresh and check the terminal again.' });
+          return json(res, 409, { error: 'That question or permission request is no longer active. Refresh and check the terminal again.' });
         }
         const adapter = adapterFor(fresh);
-        const result = await answerPrompt(fresh, payload.choice, adapter?.approval);
+        const result = await answerPrompt(fresh, payload.choice, adapter?.approval, freshAsk.kind);
         return json(res, result.error ? 400 : 200, result);
       }
 

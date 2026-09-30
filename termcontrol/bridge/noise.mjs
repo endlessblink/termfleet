@@ -9,7 +9,7 @@ const WRAPPED = [
   'command-name', 'command-message', 'local-command-stdout', 'task-notification',
   'user-prompt-submit-hook', 'function_results', 'untrusted',
   'model_switch', 'collaboration_mode', 'multi_agent_mode', 'apps_instructions',
-  'plugins_instructions',
+  'plugins_instructions', 'cross-session-message',
 ];
 
 const PREFIXES = [
@@ -19,6 +19,8 @@ const PREFIXES = [
   'the following is the codex agent history',
   'the user sent a new message while you were working',
   'hookspecificoutput:',
+  // Another agent messaging this one is not the operator speaking.
+  'another claude session sent a message',
   'you are `/root`, the primary agent in a team of agents collaborating to fulfill the user\'s goals.',
   '# agents.md instructions for ',
 ];
@@ -42,6 +44,9 @@ export function isNoise(text) {
 /** Strip injected blocks that trail a genuine operator message. */
 export function clean(text) {
   let s = String(text || '');
+  // The daily briefing hook appends machine-readable state and instructions
+  // after the operator-facing status line. It is not conversation content.
+  s = s.split(/(?:^|\n)\s*<!--\s*FD-DAY-V1\b/i, 1)[0];
   for (const tag of WRAPPED) {
     s = s.replace(new RegExp(`<${tag}[\\s\\S]*?</${tag}>`, 'gi'), '');
     s = s.replace(new RegExp(`<${tag}[\\s\\S]*$`, 'i'), '');

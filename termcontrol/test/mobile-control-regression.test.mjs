@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { pendingAsk, screenPermissionAsk, matchesCurrentAsk } from '../bridge/asks.mjs';
+import { pendingAsk, screenPermissionAsk, matchesCurrentAsk, questionFromRecords } from '../bridge/asks.mjs';
 import {
   dedupePanes,
   orderPanesLikeCanvasSidebar,
@@ -11,6 +11,7 @@ import { visibleFeed } from '../bridge/feed.mjs';
 import { byProject } from '../bridge/prefs.mjs';
 import { foldCodexStatus } from '../bridge/session-status.mjs';
 import * as codex from '../bridge/adapters/codex.mjs';
+import { promptKey } from '../bridge/send.mjs';
 import * as opencode from '../bridge/adapters/opencode.mjs';
 
 test('only an explicit permission notification exposes approval controls', () => {
@@ -40,6 +41,55 @@ test('a completed Codex transcript overrides a stale waiting notification', () =
   });
 
   assert.equal(ask, null);
+});
+
+test('a pending Codex question exposes its choices until the tool answers', () => {
+  const call = { payload: {
+    type: 'custom_tool_call', name: 'exec', call_id: 'question-1',
+    input: 'const reply = await tools.request_user_input({questions:[{header:"Direction",question:"Which way should I go?",options:[{label:"First",description:"Take the first path"},{label:"Second",description:"Take the second path"}]}]});',
+  } };
+  const question = codex.pendingQuestionFromRecords([call]);
+  assert.equal(question?.title, 'Which way should I go?');
+  assert.deepEqual(question?.options.map((option) => option.label), ['First', 'Second']);
+  assert.equal(codex.pendingQuestionFromRecords([call, { payload: {
+    type: 'custom_tool_call_output', call_id: 'question-1', output: '{}',
+  } }]), null);
+  const pane = { provider: 'codex', sessionId: 'question-session', updatedAt: 1 };
+  const questionFromPane = () => codex.pendingQuestionFromRecords([call]);
+  const first = pendingAsk(pane, { codexApproval: () => null, codexQuestion: questionFromPane });
+  const refreshed = pendingAsk({ ...pane, updatedAt: 2 }, {
+    codexApproval: () => null, codexQuestion: questionFromPane,
+  });
+  assert.equal(first?.kind, 'question');
+  assert.equal(first?.id, refreshed?.id);
+  assert.equal(promptKey(pane, '2', codex.approval, 'question'), '2');
+  assert.equal(promptKey(pane, '2', codex.approval, 'permission'), '2\r');
+  const second = { ...call, payload: { ...call.payload,
+    input: 'tools.request_user_input({questions:[{question:"First question?",options:[{label:"One"}]},{question:"Second question?",options:[{label:"Two"}]}]})',
+  } };
+  assert.equal(codex.pendingQuestionFromRecords([second], { screen: 'Second question?' })?.title, 'Second question?');
+  const freeform = { ...call, payload: { ...call.payload,
+    input: 'tools.request_user_input({questions:[{question:"Tell me more"}]})',
+  } };
+  assert.deepEqual(codex.pendingQuestionFromRecords([freeform])?.options, []);
+});
+
+test('Claude question choices follow the visible question and keep a stable identity', () => {
+  const pane = { provider: 'claude', sessionId: 'claude-question', updatedAt: 1 };
+  const call = JSON.stringify({ message: { role: 'assistant', content: [{
+    type: 'tool_use', name: 'AskUserQuestion', id: 'ask-claude-1', input: { questions: [
+      { question: 'First question?', options: [{ label: 'One' }] },
+      { question: 'Second question?', options: [{ label: 'Two' }] },
+    ] },
+  }] } });
+  const question = questionFromRecords(pane, [call], 'Second question?');
+  assert.equal(question?.title, 'Second question?');
+  assert.deepEqual(question?.options.map((option) => option.label), ['Two']);
+  assert.equal(question?.sourceId, 'ask-claude-1');
+  const answered = JSON.stringify({ message: { role: 'user', content: [{
+    type: 'tool_result', tool_use_id: 'ask-claude-1', content: 'Two',
+  }] } });
+  assert.equal(questionFromRecords(pane, [call, answered], 'Second question?'), null);
 });
 
 test('a real unmatched Codex escalated exec call exposes its command and reason', () => {
