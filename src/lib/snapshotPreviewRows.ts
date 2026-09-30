@@ -1,5 +1,10 @@
 import type { GridSnapshot } from "./gridSnapshot";
 
+// Cheap text preview for map cards below readable zoom. It crops instead of
+// resampling: the newest rows (where the prompt and latest output are) and the
+// leftmost columns, each copied one-to-one. Nearest-neighbour resampling used to
+// drop every other character and row, which made the preview read as scrambled
+// text (launch audit 2026-09-30).
 export function snapshotPreviewRows(snapshot: GridSnapshot | undefined, maxRows = 14, maxCols = 72) {
   if (!snapshot?.cells.length) {
     return Array.from({ length: maxRows }, () => ({
@@ -8,12 +13,12 @@ export function snapshotPreviewRows(snapshot: GridSnapshot | undefined, maxRows 
   }
 
   const rowCount = Math.min(maxRows, snapshot.cells.length);
+  const firstRow = snapshot.cells.length - rowCount;
   return Array.from({ length: rowCount }, (_, index) => {
-    const sourceRow = snapshot.cells[Math.floor(index * snapshot.cells.length / rowCount)] ?? [];
+    const sourceRow = snapshot.cells[firstRow + index] ?? [];
     const colCount = Math.min(maxCols, Math.max(1, snapshot.cols));
     const cells = Array.from({ length: colCount }, (_, colIndex) => {
-      const sourceIndex = Math.floor(colIndex * Math.max(1, sourceRow.length) / colCount);
-      const cell = sourceRow[sourceIndex];
+      const cell = sourceRow[colIndex];
       const active = Boolean(cell?.c?.trim());
       const char = cell?.c && cell.c !== "\u0000" ? cell.c : " ";
       const color = active
